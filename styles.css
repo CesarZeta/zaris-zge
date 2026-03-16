@@ -64,6 +64,8 @@ body {
     text-align: center;
 }
 .login-logo { font-size: 3rem; color: var(--primary); margin-bottom: 0.5rem; line-height: 1; }
+.login-logo-wrap { display: flex; justify-content: center; margin-bottom: 1.5rem; overflow: hidden; }
+.login-logo-img { max-width: 140px; height: auto; object-fit: contain; }
 .login-title { font-size: 1.5rem; font-weight: 700; color: var(--text-main); }
 .login-subtitle { font-size: 0.875rem; color: var(--text-muted); margin-bottom: 2rem; }
 .login-form { text-align: left; }
