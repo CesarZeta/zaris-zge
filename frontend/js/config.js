@@ -4,6 +4,7 @@
  */
 const ZARIS_CONFIG = {
     API_BASE: 'https://zaris-api-production-bf0b.up.railway.app/api',
+    // Local: 'http://127.0.0.1:8000/api',
     API_VERSION: 'v1',
     APP_VERSION: '1.0.0',
     APP_NAME: 'ZARIS Gestión Estatal',
