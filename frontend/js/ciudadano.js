@@ -203,6 +203,34 @@ document.addEventListener('DOMContentLoaded', () => {
         // Empresa
         els.btnGuardarEmpresa.addEventListener('click', handleGuardarEmpresa);
         els.btnCancelarEmpresa.addEventListener('click', handleCancelarEmpresa);
+
+        // emp_chk change: en modo edición, habilitar panel empresa de inmediato
+        // (sin necesidad de guardar el ciudadano primero)
+        els.empChk.addEventListener('change', () => {
+            if (!els.empChk.checked) {
+                els.empresaPanel.classList.remove('open');
+                return;
+            }
+            if (state.mode === 'edit') {
+                // En edición: si ya tiene empresa vinculada la muestra, si no abre panel vacío para vincular
+                const haTenidoEmpresa = !!state.ciudadanoId;
+                if (haTenidoEmpresa) {
+                    // intentar cargar empresa existente, si no tiene, abrir panel editable
+                    cargarEmpresaVinculada(state.ciudadanoId, false).then(loaded => {
+                        if (!loaded) {
+                            // No tiene empresa vinculada — abrir panel en blanco para vincular
+                            document.getElementById('ev-ciudadano-id').value = state.ciudadanoId;
+                            els.empresaPanel.classList.add('open');
+                            setTimeout(() => els.empresaPanel.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+                        }
+                    });
+                }
+            } else if (state.mode === 'new') {
+                // En nuevo: solo despliega panel luego de guardar (comportamiento existente)
+                ZUtils.toast('Guarde el ciudadano primero para vincular la empresa.', 'info', 3000);
+                // Mantiene el tick marcado para que se procese al guardar
+            }
+        });
         if (els.btnValidarCuitEv) {
             els.btnValidarCuitEv.addEventListener('click', () => {
                 const input = document.getElementById('ev-cuit');
@@ -560,9 +588,9 @@ document.addEventListener('DOMContentLoaded', () => {
     async function cargarEmpresaVinculada(ciudadanoId, soloLectura = true) {
         try {
             const empresas = await ZUtils.apiFetch(`/ciudadanos/${ciudadanoId}/empresas-vinculadas`);
-            if (!empresas || empresas.length === 0) return;
+            if (!empresas || empresas.length === 0) return false;  // sin empresa vinculada
 
-            const emp = empresas[0]; // Primera relación activa
+            const emp = empresas[0];
             els.empresaPanel.classList.add('open');
 
             const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
@@ -580,7 +608,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const evId = document.getElementById('ev-empresa-id');
             if (evId) evId.value = emp.id_empresa || '';
 
+            // En consulta O edición: nunca mostrar el botón "Cancelar Alta Empresa"
+            els.btnCancelarEmpresa.style.display = 'none';
+
             if (soloLectura) {
+                // Modo consulta: todo deshabilitado, sin guardar empresa
                 els.formEmpresaVinculada.querySelectorAll('.z-input, .z-select, .z-textarea').forEach(el => {
                     el.readOnly = true;
                     el.disabled = true;
@@ -589,11 +621,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 els.btnGuardarEmpresa.style.display = 'none';
                 const panelTitle = els.empresaPanel.querySelector('.z-card__title');
                 if (panelTitle) panelTitle.innerHTML = '🏢 Empresa Representada <small style="font-size:0.75rem;color:var(--z-text2);margin-left:8px;">(solo lectura)</small>';
+            } else {
+                // Modo edición: campos habilitados, puede modificar empresa vinculada
+                els.formEmpresaVinculada.querySelectorAll('.z-input, .z-select, .z-textarea').forEach(el => {
+                    el.readOnly = false;
+                    el.disabled = false;
+                    el.style.background = '';
+                });
+                els.btnGuardarEmpresa.style.display = '';
+                const panelTitle = els.empresaPanel.querySelector('.z-card__title');
+                if (panelTitle) panelTitle.innerHTML = '🏢 Empresa Vinculada <small style="font-size:0.75rem;color:var(--z-accent);margin-left:8px;">(editable)</small>';
             }
 
             setTimeout(() => els.empresaPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 600);
+            return true;  // empresa encontrada y cargada
         } catch (err) {
-            console.warn('[ZARIS] empresas-vinculadas no disponible: ', err.message);
+            console.warn('[ZARIS] empresas-vinculadas no disponible: ', err.message);
+            return false;
         }
     }
 
@@ -700,7 +744,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const accion = isEdit ? 'actualizado' : 'guardado';
             ZUtils.modalGuardado(
                 `Ciudadano ${accion}`,
-                `${response.apellido || ''}, ${response.nombre || ''} — ID: ${state.ciudadanoId}`,
+                `${response.apellido || ''}, ${response.nombre || ''}`,
                 () => activarModoNuevo(),
                 () => { window.location.href = 'menu.html'; }
             );
