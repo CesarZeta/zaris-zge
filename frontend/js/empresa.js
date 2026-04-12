@@ -231,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function mostrarResultadoUnico(emp) {
         state.empresaEncontrada = emp;
         els.resultName.textContent = emp.nombre;
-        els.resultDetail.textContent = `CUIT: ${emp.cuit} | ${emp.email} | ${emp.localidad || ''}`;
+        els.resultDetail.textContent = `CUIT: ${emp.cuit} │ ☎ ${emp.telefono || '-'} │ ✉ ${emp.email || '-'} │ ${emp.localidad || ''}`;
         els.resultList.innerHTML = '';
         els.btnEditarEncontrado.style.display    = 'inline-flex';
         els.btnConsultarEncontrado.style.display = 'inline-flex';
@@ -246,10 +246,14 @@ document.addEventListener('DOMContentLoaded', () => {
         els.btnConsultarEncontrado.style.display = 'none';
 
         els.resultList.innerHTML = resultados.map((emp, i) => `
-            <div style="padding:6px 0;border-bottom:1px solid var(--z-border);display:flex;align-items:center;gap:8px;">
+            <div style="padding:8px 0;border-bottom:1px solid var(--z-border);display:flex;align-items:flex-start;gap:8px;">
                 <div style="flex:1;">
-                    <strong style="color:var(--z-primary);">${emp.nombre}</strong>
-                    <span style="font-size:0.82rem;color:var(--z-text2);margin-left:8px;">CUIT: ${emp.cuit}</span>
+                    <strong style="color:var(--z-primary);font-size:0.95rem;">${emp.nombre}</strong>
+                    <div style="font-size:0.82rem;color:var(--z-text2);margin-top:2px;">
+                        <span>CUIT: ${emp.cuit}</span>
+                        <span style="margin-left:8px;">☎ ${emp.telefono || '-'}</span>
+                        <span style="margin-left:8px;">✉ ${emp.email || '-'}</span>
+                    </div>
                 </div>
                 <button class="z-btn z-btn--xs z-btn--primary" data-idx="${i}" data-action="editar">✏️ Editar</button>
                 <button class="z-btn z-btn--xs z-btn--ghost"   data-idx="${i}" data-action="consultar">👁 Ver</button>

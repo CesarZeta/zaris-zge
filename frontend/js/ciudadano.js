@@ -348,7 +348,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function mostrarResultadoUnico(ciudadano) {
         state.ciudadanoEncontrado = ciudadano;
         els.resultName.textContent = `${ciudadano.apellido}, ${ciudadano.nombre}`;
-        els.resultDetail.textContent = `${ciudadano.doc_tipo} ${ciudadano.doc_nro} | CUIL: ${ciudadano.cuil} | ${ciudadano.email}`;
+        els.resultDetail.textContent = `${ciudadano.doc_tipo} ${ciudadano.doc_nro} │ CUIL: ${ciudadano.cuil} │ ☎ ${ciudadano.telefono} │ ✉ ${ciudadano.email}`;
         els.resultList.innerHTML = '';
         document.getElementById('btn-editar-encontrado').style.display    = 'inline-flex';
         document.getElementById('btn-consultar-encontrado').style.display = 'inline-flex';
@@ -363,10 +363,14 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('btn-consultar-encontrado').style.display = 'none';
 
         els.resultList.innerHTML = resultados.map((c, i) => `
-            <div style="padding:6px 0;border-bottom:1px solid var(--z-border);display:flex;align-items:center;gap:8px;">
+            <div style="padding:8px 0;border-bottom:1px solid var(--z-border);display:flex;align-items:flex-start;gap:8px;">
                 <div style="flex:1;">
-                    <strong style="color:var(--z-primary);">${c.apellido}, ${c.nombre}</strong>
-                    <span style="font-size:0.82rem;color:var(--z-text2);margin-left:8px;">${c.doc_tipo} ${c.doc_nro}</span>
+                    <strong style="color:var(--z-primary);font-size:0.95rem;">${c.apellido}, ${c.nombre}</strong>
+                    <div style="font-size:0.82rem;color:var(--z-text2);margin-top:2px;">
+                        <span>${c.doc_tipo} ${c.doc_nro}</span>
+                        <span style="margin-left:8px;">☎ ${c.telefono || '-'}</span>
+                        <span style="margin-left:8px;">✉ ${c.email || '-'}</span>
+                    </div>
                 </div>
                 <button class="z-btn z-btn--xs z-btn--primary" data-idx="${i}" data-action="editar">✏️ Editar</button>
                 <button class="z-btn z-btn--xs z-btn--ghost"   data-idx="${i}" data-action="consultar">👁 Ver</button>
@@ -430,6 +434,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (ciudadano) poblarFormularioConsulta(ciudadano);
         setFormReadonly(true);
+
+        // Cargar empresa vinculada si emp_chk
+        if (ciudadano && ciudadano.emp_chk) {
+            cargarEmpresaVinculada(ciudadano.id_ciudadano, true);
+        }
 
         setTimeout(() => els.formCard.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
     }
@@ -540,9 +549,55 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         setTimeout(() => els.formCard.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+
+        // Cargar empresa vinculada si emp_chk
+        if (ciudadano && ciudadano.emp_chk) {
+            cargarEmpresaVinculada(ciudadano.id_ciudadano, false);
+        }
     }
 
-    // ── Validar CUIL (legacy, usado solo en modo edición si se edita manualmente) ──
+    // ── Cargar Empresa Vinculada al ciudadano ──
+    async function cargarEmpresaVinculada(ciudadanoId, soloLectura = true) {
+        try {
+            const empresas = await ZUtils.apiFetch(`/ciudadanos/${ciudadanoId}/empresas-vinculadas`);
+            if (!empresas || empresas.length === 0) return;
+
+            const emp = empresas[0]; // Primera relación activa
+            els.empresaPanel.classList.add('open');
+
+            const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+            set('ev-cuit',      emp.cuit);
+            set('ev-nombre',    emp.nombre);
+            set('ev-calle',     emp.calle);
+            set('ev-localidad', emp.localidad);
+            set('ev-provincia', emp.provincia);
+            set('ev-telefono',  emp.telefono);
+            set('ev-email',     emp.email);
+            const selAct = document.getElementById('ev-actividad');
+            if (selAct && emp.id_actividad) selAct.value = emp.id_actividad;
+            const selTipoRep = document.getElementById('ev-tipo-rep');
+            if (selTipoRep && emp.id_tipo_representacion) selTipoRep.value = emp.id_tipo_representacion;
+            const evId = document.getElementById('ev-empresa-id');
+            if (evId) evId.value = emp.id_empresa || '';
+
+            if (soloLectura) {
+                els.formEmpresaVinculada.querySelectorAll('.z-input, .z-select, .z-textarea').forEach(el => {
+                    el.readOnly = true;
+                    el.disabled = true;
+                    el.style.background = '#F5F5F5';
+                });
+                els.btnGuardarEmpresa.style.display = 'none';
+                const panelTitle = els.empresaPanel.querySelector('.z-card__title');
+                if (panelTitle) panelTitle.innerHTML = '🏢 Empresa Representada <small style="font-size:0.75rem;color:var(--z-text2);margin-left:8px;">(solo lectura)</small>';
+            }
+
+            setTimeout(() => els.empresaPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 600);
+        } catch (err) {
+            console.warn('[ZARIS] empresas-vinculadas no disponible: ', err.message);
+        }
+    }
+
+    // ── Validar CUIL (legacy) ──
     function handleValidarCuil() {
         const input = document.getElementById('cid-cuil');
         const result = ZValidaciones.validarCuilCuit(input.value);

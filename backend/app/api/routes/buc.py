@@ -180,6 +180,42 @@ async def modificar_ciudadano(
     return ciudadano
 
 
+@router.get("/ciudadanos/{id}/empresas-vinculadas")
+async def obtener_empresas_vinculadas(id: int, db: AsyncSession = Depends(get_db)):
+    """Obtener las empresas vinculadas a un ciudadano (via tabla ciudadano_empresa)."""
+    result = await db.execute(
+        select(CiudadanoEmpresa)
+        .options(
+            selectinload(CiudadanoEmpresa.empresa),
+            selectinload(CiudadanoEmpresa.tipo_representacion)
+        )
+        .where(
+            CiudadanoEmpresa.id_ciudadano == id,
+            CiudadanoEmpresa.activo == True
+        )
+    )
+    relaciones = result.scalars().all()
+    datos = []
+    for rel in relaciones:
+        emp = rel.empresa
+        if emp and emp.activo:
+            datos.append({
+                "id_relacion":          rel.id,
+                "id_empresa":           emp.id_empresa,
+                "cuit":                 emp.cuit,
+                "nombre":               emp.nombre,
+                "telefono":             emp.telefono,
+                "email":                emp.email,
+                "calle":                emp.calle,
+                "localidad":            emp.localidad,
+                "provincia":            emp.provincia,
+                "id_actividad":         emp.id_actividad,
+                "tipo_representacion":  rel.tipo_representacion.tipo if rel.tipo_representacion else None,
+                "id_tipo_representacion": rel.id_tipo_representacion,
+            })
+    return datos
+
+
 # ═══════════════════════════════════════════════════════════════
 # EMPRESAS
 # ═══════════════════════════════════════════════════════════════
