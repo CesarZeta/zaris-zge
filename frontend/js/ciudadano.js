@@ -36,7 +36,6 @@ document.addEventListener('DOMContentLoaded', () => {
         btnNuevoForzar:     document.getElementById('btn-nuevo-forzar'),
         btnGuardar:         document.getElementById('btn-guardar'),
         btnCancelar:        document.getElementById('btn-cancelar'),
-        btnValidarCuil:     document.getElementById('btn-validar-cuil'),
 
         // Empresa vinculada
         btnGuardarEmpresa:  document.getElementById('btn-guardar-empresa'),
@@ -110,9 +109,10 @@ document.addEventListener('DOMContentLoaded', () => {
         els.btnNuevoForzar.addEventListener('click', () => activarModoNuevo());
         els.btnEditarEncontrado.addEventListener('click', () => activarModoEdicion());
 
-        // CUIL validation
-        els.btnValidarCuil.addEventListener('click', handleValidarCuil);
-        document.getElementById('cid-cuil').addEventListener('input', formatCuilInput);
+        // CUIL Auto-generado: se recalcula cuando cambia Sexo o DNI
+        document.getElementById('cid-sexo').addEventListener('change', generarCuilAutomatico);
+        document.getElementById('cid-doc-nro').addEventListener('input', generarCuilAutomatico);
+        document.getElementById('cid-doc-tipo').addEventListener('change', generarCuilAutomatico);
 
         // Guardar/Cancelar
         els.btnGuardar.addEventListener('click', handleGuardar);
@@ -140,6 +140,44 @@ document.addEventListener('DOMContentLoaded', () => {
         els.obsTextarea.addEventListener('input', () => {
             els.obsCount.textContent = els.obsTextarea.value.length;
         });
+    }
+
+    // ── Auto-generar CUIL desde Sexo + DNI (Módulo 11) ──
+    function calcularDigitoVerificador(prefijo, dni) {
+        const base = `${prefijo}${dni.padStart(8, '0')}`;
+        const coeficientes = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+        let suma = 0;
+        for (let i = 0; i < 10; i++) {
+            suma += parseInt(base[i]) * coeficientes[i];
+        }
+        const resto = suma % 11;
+        if (resto === 0) return 0;
+        if (resto === 1) return prefijo === '20' ? 9 : prefijo === '27' ? 4 : 9;
+        return 11 - resto;
+    }
+
+    function generarCuilAutomatico() {
+        const sexo = document.getElementById('cid-sexo').value;
+        const docTipo = document.getElementById('cid-doc-tipo').value;
+        const docNro = document.getElementById('cid-doc-nro').value.replace(/\D/g, '');
+        const cuilInput = document.getElementById('cid-cuil');
+
+        // Solo genera para DNI (Pasaporte no tiene CUIL calculable)
+        if (!sexo || docTipo !== 'DNI' || docNro.length < 7) {
+            cuilInput.value = '';
+            cuilInput.style.color = '';
+            return;
+        }
+
+        // Prefijo según sexo
+        const prefijo = (sexo === 'MUJER') ? '27' : '20';
+
+        const digitoV = calcularDigitoVerificador(prefijo, docNro);
+        const cuil = `${prefijo}-${docNro.padStart(8, '0')}-${digitoV}`;
+
+        cuilInput.value = cuil;
+        cuilInput.style.color = 'var(--z-primary)';
+        ZValidaciones.marcarCampo(cuilInput, true);
     }
 
     // ── Búsqueda ──
@@ -196,7 +234,7 @@ document.addEventListener('DOMContentLoaded', () => {
             els.formCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 100);
 
-        document.getElementById('cid-cuil').focus();
+        document.getElementById('cid-doc-tipo').focus();
     }
 
     // ── Modo Edición ──
@@ -212,11 +250,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 100);
     }
 
-    // ── Validar CUIL ──
+    // ── Validar CUIL (legacy, usado solo en modo edición si se edita manualmente) ──
     function handleValidarCuil() {
         const input = document.getElementById('cid-cuil');
         const result = ZValidaciones.validarCuilCuit(input.value);
-
         if (result.valido) {
             input.value = result.formateado;
             ZValidaciones.marcarCampo(input, true);
@@ -227,30 +264,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function formatCuilInput(e) {
-        let val = e.target.value.replace(/[^0-9-]/g, '');
-        // Auto-format: XX-XXXXXXXX-X
-        const digits = val.replace(/-/g, '');
-        if (digits.length >= 2 && digits.length <= 10) {
-            val = digits.substring(0, 2) + '-' + digits.substring(2);
-        } else if (digits.length >= 11) {
-            val = digits.substring(0, 2) + '-' + digits.substring(2, 10) + '-' + digits.substring(10, 11);
-        }
-        e.target.value = val;
-    }
-
     // ── Guardar Ciudadano ──
     async function handleGuardar() {
         // Validar formulario
         const { valido, errores } = ZValidaciones.validarFormulario(els.formCiudadano);
 
-        // Validaciones específicas
+        // Validar CUIL auto-generado
         const cuil = document.getElementById('cid-cuil').value;
-        if (cuil) {
-            const cuilResult = ZValidaciones.validarCuilCuit(cuil);
-            if (!cuilResult.valido) {
-                ZValidaciones.marcarCampo(document.getElementById('cid-cuil'), false, cuilResult.error);
-                errores.push('CUIL inválido');
+        if (!cuil) {
+            // Intentar generarlo ahora si faltan datos
+            generarCuilAutomatico();
+            const cuilActualizado = document.getElementById('cid-cuil').value;
+            if (!cuilActualizado) {
+                errores.push('CUIL no generado: verificar DNI y Sexo');
+                ZValidaciones.marcarCampo(document.getElementById('cid-cuil'), false, 'Completar DNI y Sexo para generar el CUIL');
             }
         }
 
@@ -281,9 +308,8 @@ document.addEventListener('DOMContentLoaded', () => {
         data.ren_chk = false;
         data.email_chk = false;
 
-        // Formatear CUIL
-        const cuilResult = ZValidaciones.validarCuilCuit(data.cuil);
-        if (cuilResult.valido) data.cuil = cuilResult.formateado;
+        // El CUIL ya está formateado (auto-generado), enviarlo tal cual
+        // No re-validar ni re-formatear para evitar errores
 
         try {
             const response = await ZUtils.apiFetch('/ciudadanos', {

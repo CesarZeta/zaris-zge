@@ -181,22 +181,7 @@
                         <!-- ── Identificación ── -->
                         <div class="z-section-title">📋 Identificación</div>
 
-                        <div class="z-form-row z-form-row--3">
-                            <!-- CUIL -->
-                            <div class="z-form-group">
-                                <label class="z-label z-label--required" for="cid-cuil">CUIL</label>
-                                <div class="z-cuil-group">
-                                    <div class="z-form-group" style="margin-bottom:0">
-                                        <input type="text" class="z-input" id="cid-cuil" name="cuil"
-                                               placeholder="XX-XXXXXXXX-X" maxlength="13" required>
-                                        <div class="z-input-error" id="err-cuil"></div>
-                                    </div>
-                                    <button type="button" class="z-btn z-btn--ghost z-btn--sm" id="btn-validar-cuil"
-                                            title="Validar CUIL (futuro: API ARCA)" style="margin-top:0;white-space:nowrap;">
-                                        Validar
-                                    </button>
-                                </div>
-                            </div>
+                        <div class="z-form-row z-form-row--2">
                             <!-- Tipo Documento -->
                             <div class="z-form-group">
                                 <label class="z-label z-label--required" for="cid-doc-tipo">Tipo Documento</label>
@@ -213,6 +198,25 @@
                                 <input type="text" class="z-input" id="cid-doc-nro" name="doc_nro"
                                        placeholder="Ej: 30123456" maxlength="10" required>
                                 <div class="z-input-error" id="err-doc-nro"></div>
+                            </div>
+                        </div>
+
+                        <!-- CUIL auto-generado (solo lectura) -->
+                        <div class="z-form-row" style="margin-top:0.5rem;">
+                            <div class="z-form-group" style="max-width:380px;">
+                                <label class="z-label" for="cid-cuil">
+                                    CUIL
+                                    <span style="font-weight:400; font-size:0.78rem; color:var(--z-text2); margin-left:6px;">⚡ Auto-calculado</span>
+                                </label>
+                                <div class="z-cuil-group">
+                                    <div class="z-form-group" style="margin-bottom:0; flex:1;">
+                                        <input type="text" class="z-input" id="cid-cuil" name="cuil"
+                                               placeholder="Se genera al completar Sexo y DNI"
+                                               readonly style="background:#f0f4f8; cursor:default; color:var(--z-primary); font-weight:600;">
+                                        <div class="z-input-error" id="err-cuil"></div>
+                                        <div class="z-input-hint">Calculado desde DNI y Sexo · Validación ARCA: desarrollo diferido</div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -286,24 +290,17 @@
                             </div>
                         </div>
 
-                        <div class="z-form-row z-form-row--3">
+                        <div class="z-form-row z-form-row--1">
                             <div class="z-form-group">
                                 <label class="z-label z-label--required" for="cid-provincia">Estado / Provincia</label>
                                 <input type="text" class="z-input" id="cid-provincia" name="provincia"
                                        placeholder="Ej: Buenos Aires" maxlength="100" required>
                                 <div class="z-input-error" id="err-provincia"></div>
                             </div>
-                            <div class="z-form-group">
-                                <label class="z-label" for="cid-latitud">Latitud</label>
-                                <input type="text" class="z-input" id="cid-latitud" name="latitud"
-                                       placeholder="(normalización diferida)" disabled>
-                            </div>
-                            <div class="z-form-group">
-                                <label class="z-label" for="cid-longitud">Longitud</label>
-                                <input type="text" class="z-input" id="cid-longitud" name="longitud"
-                                       placeholder="(normalización diferida)" disabled>
-                            </div>
                         </div>
+                        <!-- Lat/Long: campos ocultos, se rellenan por geocodificación futura -->
+                        <input type="hidden" id="cid-latitud" name="latitud">
+                        <input type="hidden" id="cid-longitud" name="longitud">
 
                         <!-- ── Contacto ── -->
                         <div class="z-section-title" style="margin-top:1rem;">📞 Contacto</div>
