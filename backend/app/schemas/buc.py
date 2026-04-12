@@ -76,7 +76,7 @@ class CiudadanoBase(BaseModel):
         limpio = re.sub(r"[-\s]", "", v)
         if not re.match(r"^\d{11}$", limpio):
             raise ValueError("CUIL debe contener 11 digitos")
-        return v
+        return limpio  # guardar sin guiones
 
     @field_validator("telefono")
     @classmethod
@@ -177,7 +177,7 @@ class EmpresaBase(BaseModel):
         limpio = re.sub(r"[-\s]", "", v)
         if not re.match(r"^\d{11}$", limpio):
             raise ValueError("CUIT debe contener 11 digitos")
-        return v
+        return limpio  # guardar sin guiones
 
     @field_validator("telefono")
     @classmethod
