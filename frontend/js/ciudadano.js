@@ -109,10 +109,59 @@ document.addEventListener('DOMContentLoaded', () => {
         els.btnNuevoForzar.addEventListener('click', () => activarModoNuevo());
         els.btnEditarEncontrado.addEventListener('click', () => activarModoEdicion());
 
-        // CUIL Auto-generado: se recalcula cuando cambia Sexo o DNI
-        document.getElementById('cid-sexo').addEventListener('change', generarCuilAutomatico);
-        document.getElementById('cid-doc-nro').addEventListener('input', generarCuilAutomatico);
-        document.getElementById('cid-doc-tipo').addEventListener('change', generarCuilAutomatico);
+        // DNI → auto-calcula CUIL (si CUIL no fue editado manualmente)
+        const dniInput = document.getElementById('cid-doc-nro');
+        const cuilInput = document.getElementById('cid-cuil');
+
+        dniInput.addEventListener('input', () => {
+            if (!cuilInput.dataset.manualInput) generarCuilDesdeDni();
+        });
+        document.getElementById('cid-sexo').addEventListener('change', () => {
+            if (!cuilInput.dataset.manualInput) generarCuilDesdeDni();
+        });
+        document.getElementById('cid-doc-tipo').addEventListener('change', () => {
+            if (!cuilInput.dataset.manualInput) generarCuilDesdeDni();
+        });
+
+        // CUIL: formateo mientras escribe + marcar edición manual
+        cuilInput.addEventListener('input', (e) => {
+            formatCuilInput(e);
+            cuilInput.dataset.manualInput = cuilInput.value ? '1' : '';
+        });
+
+        // CUIL blur → extrae DNI si DNI está vacío
+        cuilInput.addEventListener('blur', () => {
+            const cuil = cuilInput.value.trim();
+            const dni = dniInput.value.trim();
+            if (cuil && !dni) {
+                const extracted = extraerDniDeCuil(cuil);
+                if (extracted) {
+                    dniInput.value = extracted;
+                    ZValidaciones.marcarCampo(dniInput, true);
+                }
+            }
+        });
+
+        // Botones Validar (placeholders, funcionalidad futura)
+        document.getElementById('btn-validar-dni').addEventListener('click', () => {
+            ZUtils.toast('Validación con RENAPER: próximamente disponible.', 'info');
+        });
+        document.getElementById('btn-validar-cuil').addEventListener('click', () => {
+            const input = document.getElementById('cid-cuil');
+            if (!input.value) {
+                ZUtils.toast('Ingresá un CUIL para validar.', 'warning');
+                return;
+            }
+            const result = ZValidaciones.validarCuilCuit(input.value);
+            if (result.valido) {
+                input.value = result.formateado;
+                ZValidaciones.marcarCampo(input, true);
+                ZUtils.toast('CUIL válido (dígito verificador correcto) ✓', 'success');
+            } else {
+                ZValidaciones.marcarCampo(input, false, result.error);
+                ZUtils.toast(result.error, 'error');
+            }
+        });
 
         // Guardar/Cancelar
         els.btnGuardar.addEventListener('click', handleGuardar);
@@ -142,42 +191,55 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ── Auto-generar CUIL desde Sexo + DNI (Módulo 11) ──
+    // ── Calcular dígito verificador CUIL/CUIT (Módulo 11) ──
     function calcularDigitoVerificador(prefijo, dni) {
         const base = `${prefijo}${dni.padStart(8, '0')}`;
         const coeficientes = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
         let suma = 0;
-        for (let i = 0; i < 10; i++) {
-            suma += parseInt(base[i]) * coeficientes[i];
-        }
+        for (let i = 0; i < 10; i++) suma += parseInt(base[i]) * coeficientes[i];
         const resto = suma % 11;
         if (resto === 0) return 0;
-        if (resto === 1) return prefijo === '20' ? 9 : prefijo === '27' ? 4 : 9;
+        if (resto === 1) return prefijo === '27' ? 4 : 9;
         return 11 - resto;
     }
 
-    function generarCuilAutomatico() {
+    // DNI → auto-genera CUIL (no sobreescribe si fue editado manualmente)
+    function generarCuilDesdeDni() {
         const sexo = document.getElementById('cid-sexo').value;
         const docTipo = document.getElementById('cid-doc-tipo').value;
         const docNro = document.getElementById('cid-doc-nro').value.replace(/\D/g, '');
         const cuilInput = document.getElementById('cid-cuil');
 
-        // Solo genera para DNI (Pasaporte no tiene CUIL calculable)
         if (!sexo || docTipo !== 'DNI' || docNro.length < 7) {
-            cuilInput.value = '';
-            cuilInput.style.color = '';
+            if (!cuilInput.dataset.manualInput) cuilInput.value = '';
             return;
         }
-
-        // Prefijo según sexo
         const prefijo = (sexo === 'MUJER') ? '27' : '20';
-
         const digitoV = calcularDigitoVerificador(prefijo, docNro);
-        const cuil = `${prefijo}-${docNro.padStart(8, '0')}-${digitoV}`;
-
-        cuilInput.value = cuil;
-        cuilInput.style.color = 'var(--z-primary)';
+        cuilInput.value = `${prefijo}-${docNro.padStart(8, '0')}-${digitoV}`;
         ZValidaciones.marcarCampo(cuilInput, true);
+    }
+
+    // Alias para compatibilidad
+    const generarCuilAutomatico = generarCuilDesdeDni;
+
+    // CUIL → extrae DNI (dígitos centrales, posiciones 2-9)
+    function extraerDniDeCuil(cuil) {
+        const digits = cuil.replace(/\D/g, '');
+        if (digits.length !== 11) return null;
+        return parseInt(digits.substring(2, 10)).toString();
+    }
+
+    // Formateo del CUIL mientras se escribe: XX-XXXXXXXX-X
+    function formatCuilInput(e) {
+        const digits = e.target.value.replace(/\D/g, '');
+        let val = digits;
+        if (digits.length > 2 && digits.length <= 10) {
+            val = digits.substring(0, 2) + '-' + digits.substring(2);
+        } else if (digits.length > 10) {
+            val = digits.substring(0, 2) + '-' + digits.substring(2, 10) + '-' + digits.substring(10, 11);
+        }
+        e.target.value = val;
     }
 
     // ── Búsqueda ──
@@ -269,16 +331,14 @@ document.addEventListener('DOMContentLoaded', () => {
         // Validar formulario
         const { valido, errores } = ZValidaciones.validarFormulario(els.formCiudadano);
 
-        // Validar CUIL auto-generado
-        const cuil = document.getElementById('cid-cuil').value;
-        if (!cuil) {
-            // Intentar generarlo ahora si faltan datos
-            generarCuilAutomatico();
-            const cuilActualizado = document.getElementById('cid-cuil').value;
-            if (!cuilActualizado) {
-                errores.push('CUIL no generado: verificar DNI y Sexo');
-                ZValidaciones.marcarCampo(document.getElementById('cid-cuil'), false, 'Completar DNI y Sexo para generar el CUIL');
-            }
+        // ── Validar que al menos DNI o CUIL estén cargados ──
+        const cuil = document.getElementById('cid-cuil').value.trim();
+        const docNro = document.getElementById('cid-doc-nro').value.trim();
+
+        if (!cuil && !docNro) {
+            errores.push('Se requiere al menos DNI o CUIL');
+            ZValidaciones.marcarCampo(document.getElementById('cid-doc-nro'), false, 'Ingresá el DNI o el CUIL');
+            ZValidaciones.marcarCampo(document.getElementById('cid-cuil'), false, 'Ingresá el CUIL o el DNI');
         }
 
         const email = document.getElementById('cid-email').value;
@@ -301,15 +361,30 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Recopilar datos
+        // Recopilar datos del formulario
         const formData = new FormData(els.formCiudadano);
         const data = Object.fromEntries(formData.entries());
-        data.emp_chk = els.empChk.checked;
-        data.ren_chk = false;
-        data.email_chk = false;
 
-        // El CUIL ya está formateado (auto-generado), enviarlo tal cual
-        // No re-validar ni re-formatear para evitar errores
+        // Checkboxes: FormData incluye solo los checked, completar los false
+        data.emp_chk = els.empChk.checked;
+        data.ren_chk  = document.getElementById('cid-dni-validado').checked;
+        data.email_chk = document.getElementById('cid-email-verificado').checked;
+        // cuil-validado es solo UI, no se envía al backend
+        delete data['cid-cuil-validado'];
+
+        const cuilFinal = document.getElementById('cid-cuil').value.trim();
+        const dniNro   = document.getElementById('cid-doc-nro').value.trim();
+
+        // Si se ingresó CUIL pero no DNI → extraer DNI del CUIL
+        if (cuilFinal && !dniNro) {
+            const extraido = extraerDniDeCuil(cuilFinal);
+            if (extraido) data.doc_nro = extraido;
+        }
+        // Si se ingresó DNI pero no CUIL → calcular CUIL
+        if (dniNro && !cuilFinal) {
+            generarCuilDesdeDni();
+            data.cuil = document.getElementById('cid-cuil').value.trim();
+        }
 
         try {
             const response = await ZUtils.apiFetch('/ciudadanos', {
