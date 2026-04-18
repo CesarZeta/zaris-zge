@@ -4,8 +4,52 @@ Validación de entrada/salida en los endpoints.
 """
 from datetime import date, datetime
 from typing import Optional
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 import re
+
+
+# ── Helpers de validación ──────────────────────────────────────
+
+def _validar_modulo11(valor: str) -> str:
+    """Valida CUIL/CUIT con algoritmo módulo 11. Retorna el valor limpio (sin guiones)."""
+    limpio = re.sub(r"[-\s]", "", valor)
+    if not re.match(r"^\d{11}$", limpio):
+        raise ValueError("Debe contener 11 dígitos numéricos")
+
+    digitos = [int(d) for d in limpio]
+    multiplicadores = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2]
+    suma = sum(d * m for d, m in zip(digitos[:10], multiplicadores))
+    resto = suma % 11
+
+    if resto == 0:
+        esperado = 0
+    elif resto == 1:
+        # Caso especial: dígito verificador 9 (o 4 para prefijo 27, pero se acepta 9)
+        esperado = 9
+    else:
+        esperado = 11 - resto
+
+    if digitos[10] != esperado:
+        raise ValueError(f"Dígito verificador inválido (se esperaba {esperado})")
+
+    return limpio  # guardar sin guiones
+
+
+def _validar_telefono_arg(valor: str) -> str:
+    """Valida teléfono argentino: 10 dígitos sin 0 de área."""
+    limpio = re.sub(r"[-\s()]", "", valor)
+    if not re.match(r"^\d{10}$", limpio):
+        raise ValueError("El teléfono debe contener exactamente 10 dígitos (código de área sin 0 + número)")
+    if limpio.startswith("0"):
+        raise ValueError("No incluir el 0 del código de área")
+    return limpio
+
+
+def _validar_email_fmt(valor: str) -> str:
+    """Valida formato de email."""
+    if not re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", valor):
+        raise ValueError("Formato de email inválido")
+    return valor.lower().strip()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -65,35 +109,25 @@ class CiudadanoBase(BaseModel):
     altura: Optional[str] = Field(None, max_length=20)
     localidad: Optional[str] = Field(None, max_length=100)
     provincia: Optional[str] = Field(None, max_length=100)
-    telefono: str = Field(..., max_length=10)
+    telefono: str = Field(..., max_length=15)
     email: str = Field(..., max_length=150)
     emp_chk: bool = False
-    observaciones: Optional[str] = Field(None, max_length=250)
+    observaciones: Optional[str] = Field(None, max_length=500)
 
     @field_validator("cuil")
     @classmethod
     def validar_cuil(cls, v):
-        limpio = re.sub(r"[-\s]", "", v)
-        if not re.match(r"^\d{11}$", limpio):
-            raise ValueError("CUIL debe contener 11 digitos")
-        return limpio  # guardar sin guiones
+        return _validar_modulo11(v)
 
     @field_validator("telefono")
     @classmethod
     def validar_telefono(cls, v):
-        limpio = re.sub(r"[-\s()]", "", v)
-        if not re.match(r"^\d{10}$", limpio):
-            raise ValueError("Telefono debe contener 10 digitos")
-        if limpio.startswith("0"):
-            raise ValueError("No incluir el 0 del codigo de area")
-        return limpio
+        return _validar_telefono_arg(v)
 
     @field_validator("email")
     @classmethod
     def validar_email(cls, v):
-        if not re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", v):
-            raise ValueError("Formato de email invalido")
-        return v.lower().strip()
+        return _validar_email_fmt(v)
 
 
 class CiudadanoCreate(CiudadanoBase):
@@ -114,10 +148,31 @@ class CiudadanoUpdate(BaseModel):
     altura: Optional[str] = Field(None, max_length=20)
     localidad: Optional[str] = Field(None, max_length=100)
     provincia: Optional[str] = Field(None, max_length=100)
-    telefono: Optional[str] = Field(None, max_length=10)
+    telefono: Optional[str] = Field(None, max_length=15)
     email: Optional[str] = Field(None, max_length=150)
     emp_chk: Optional[bool] = None
-    observaciones: Optional[str] = Field(None, max_length=250)
+    observaciones: Optional[str] = Field(None, max_length=500)
+
+    @field_validator("cuil")
+    @classmethod
+    def validar_cuil(cls, v):
+        if v is None:
+            return v
+        return _validar_modulo11(v)
+
+    @field_validator("telefono")
+    @classmethod
+    def validar_telefono(cls, v):
+        if v is None:
+            return v
+        return _validar_telefono_arg(v)
+
+    @field_validator("email")
+    @classmethod
+    def validar_email(cls, v):
+        if v is None:
+            return v
+        return _validar_email_fmt(v)
 
 
 class CiudadanoOut(BaseModel):
@@ -167,32 +222,24 @@ class EmpresaBase(BaseModel):
     altura: Optional[str] = Field(None, max_length=20)
     localidad: Optional[str] = Field(None, max_length=100)
     provincia: Optional[str] = Field(None, max_length=100)
-    telefono: str = Field(..., max_length=10)
+    telefono: str = Field(..., max_length=15)
     email: str = Field(..., max_length=150)
-    observaciones: Optional[str] = Field(None, max_length=250)
+    observaciones: Optional[str] = Field(None, max_length=500)
 
     @field_validator("cuit")
     @classmethod
     def validar_cuit(cls, v):
-        limpio = re.sub(r"[-\s]", "", v)
-        if not re.match(r"^\d{11}$", limpio):
-            raise ValueError("CUIT debe contener 11 digitos")
-        return limpio  # guardar sin guiones
+        return _validar_modulo11(v)
 
     @field_validator("telefono")
     @classmethod
     def validar_telefono(cls, v):
-        limpio = re.sub(r"[-\s()]", "", v)
-        if not re.match(r"^\d{10}$", limpio):
-            raise ValueError("Telefono debe contener 10 digitos")
-        return limpio
+        return _validar_telefono_arg(v)
 
     @field_validator("email")
     @classmethod
     def validar_email(cls, v):
-        if not re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", v):
-            raise ValueError("Formato de email invalido")
-        return v.lower().strip()
+        return _validar_email_fmt(v)
 
 
 class EmpresaCreate(EmpresaBase):
@@ -207,9 +254,30 @@ class EmpresaUpdate(BaseModel):
     altura: Optional[str] = Field(None, max_length=20)
     localidad: Optional[str] = Field(None, max_length=100)
     provincia: Optional[str] = Field(None, max_length=100)
-    telefono: Optional[str] = Field(None, max_length=10)
+    telefono: Optional[str] = Field(None, max_length=15)
     email: Optional[str] = Field(None, max_length=150)
-    observaciones: Optional[str] = Field(None, max_length=250)
+    observaciones: Optional[str] = Field(None, max_length=500)
+
+    @field_validator("cuit")
+    @classmethod
+    def validar_cuit(cls, v):
+        if v is None:
+            return v
+        return _validar_modulo11(v)
+
+    @field_validator("telefono")
+    @classmethod
+    def validar_telefono(cls, v):
+        if v is None:
+            return v
+        return _validar_telefono_arg(v)
+
+    @field_validator("email")
+    @classmethod
+    def validar_email(cls, v):
+        if v is None:
+            return v
+        return _validar_email_fmt(v)
 
 
 class EmpresaOut(BaseModel):

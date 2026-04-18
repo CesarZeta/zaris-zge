@@ -2,6 +2,7 @@
 ZARIS API — Rutas del módulo BUC (Base Única de Ciudadanos).
 Endpoints: /api/v1/buc/
 """
+import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, or_, func
@@ -21,6 +22,7 @@ from app.schemas.buc import (
 )
 
 router = APIRouter(prefix="/api/v1/buc", tags=["BUC"])
+logger = logging.getLogger("zaris.buc")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -56,11 +58,12 @@ async def listar_tipo_representacion(db: AsyncSession = Depends(get_db)):
 async def buscar_ciudadano(
     q: str = Query(..., min_length=1, description="DNI, CUIL, Email o Nombre"),
     tipo: str = Query("auto", description="'numero' para DNI/CUIL, 'texto' para nombre/apellido, 'auto' para detectar"),
+    limit: int = Query(20, ge=1, le=100, description="Máximo de resultados"),
+    offset: int = Query(0, ge=0, description="Desplazamiento para paginación"),
     db: AsyncSession = Depends(get_db)
 ):
     """Buscar ciudadano por DNI, CUIL, email o nombre (contains)."""
-    # Determinar modo de búsqueda
-    es_numerico = tipo == "numero" or (tipo == "auto" and q.replace("-","").isdigit())
+    es_numerico = tipo == "numero" or (tipo == "auto" and q.replace("-", "").isdigit())
 
     if es_numerico:
         cond = or_(
@@ -74,10 +77,13 @@ async def buscar_ciudadano(
             Ciudadano.email.ilike(f"%{q}%"),
         )
 
-    query = select(Ciudadano).where(
-        Ciudadano.activo == True,
-        cond
-    ).order_by(Ciudadano.apellido, Ciudadano.nombre).limit(20)
+    query = (
+        select(Ciudadano)
+        .where(Ciudadano.activo == True, cond)
+        .order_by(Ciudadano.apellido, Ciudadano.nombre)
+        .offset(offset)
+        .limit(limit)
+    )
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -116,7 +122,6 @@ async def crear_ciudadano(
     db: AsyncSession = Depends(get_db)
 ):
     """Alta de ciudadano."""
-    # Verificar duplicados (doc_tipo + doc_nro)
     existing = await db.execute(
         select(Ciudadano).where(
             Ciudadano.doc_tipo == data.doc_tipo,
@@ -129,7 +134,6 @@ async def crear_ciudadano(
             detail=f"Ya existe un ciudadano con {data.doc_tipo} {data.doc_nro}"
         )
 
-    # Verificar CUIL duplicado
     existing_cuil = await db.execute(
         select(Ciudadano).where(Ciudadano.cuil == data.cuil)
     )
@@ -140,6 +144,12 @@ async def crear_ciudadano(
     db.add(ciudadano)
     await db.commit()
     await db.refresh(ciudadano)
+
+    logger.info(
+        "ALTA ciudadano | id=%s | doc=%s %s | cuil=%s | nombre=%s %s",
+        ciudadano.id_ciudadano, ciudadano.doc_tipo, ciudadano.doc_nro,
+        ciudadano.cuil, ciudadano.apellido, ciudadano.nombre
+    )
     return ciudadano
 
 
@@ -149,7 +159,7 @@ async def obtener_ciudadano(id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Ciudadano)
         .options(selectinload(Ciudadano.nacionalidad))
-        .where(Ciudadano.id_ciudadano == id)
+        .where(Ciudadano.id_ciudadano == id, Ciudadano.activo == True)
     )
     ciudadano = result.scalars().first()
     if not ciudadano:
@@ -165,18 +175,24 @@ async def modificar_ciudadano(
 ):
     """Modificar ciudadano existente (update parcial)."""
     result = await db.execute(
-        select(Ciudadano).where(Ciudadano.id_ciudadano == id)
+        select(Ciudadano).where(Ciudadano.id_ciudadano == id, Ciudadano.activo == True)
     )
     ciudadano = result.scalars().first()
     if not ciudadano:
         raise HTTPException(status_code=404, detail="Ciudadano no encontrado")
 
     update_data = data.model_dump(exclude_unset=True)
+    campos_modificados = list(update_data.keys())
     for field, value in update_data.items():
         setattr(ciudadano, field, value)
 
     await db.commit()
     await db.refresh(ciudadano)
+
+    logger.info(
+        "MODIFICACION ciudadano | id=%s | cuil=%s | campos=%s",
+        ciudadano.id_ciudadano, ciudadano.cuil, campos_modificados
+    )
     return ciudadano
 
 
@@ -200,17 +216,17 @@ async def obtener_empresas_vinculadas(id: int, db: AsyncSession = Depends(get_db
         emp = rel.empresa
         if emp and emp.activo:
             datos.append({
-                "id_relacion":          rel.id,
-                "id_empresa":           emp.id_empresa,
-                "cuit":                 emp.cuit,
-                "nombre":               emp.nombre,
-                "telefono":             emp.telefono,
-                "email":                emp.email,
-                "calle":                emp.calle,
-                "localidad":            emp.localidad,
-                "provincia":            emp.provincia,
-                "id_actividad":         emp.id_actividad,
-                "tipo_representacion":  rel.tipo_representacion.tipo if rel.tipo_representacion else None,
+                "id_relacion":            rel.id,
+                "id_empresa":             emp.id_empresa,
+                "cuit":                   emp.cuit,
+                "nombre":                 emp.nombre,
+                "telefono":               emp.telefono,
+                "email":                  emp.email,
+                "calle":                  emp.calle,
+                "localidad":              emp.localidad,
+                "provincia":              emp.provincia,
+                "id_actividad":           emp.id_actividad,
+                "tipo_representacion":    rel.tipo_representacion.tipo if rel.tipo_representacion else None,
                 "id_tipo_representacion": rel.id_tipo_representacion,
             })
     return datos
@@ -224,25 +240,28 @@ async def obtener_empresas_vinculadas(id: int, db: AsyncSession = Depends(get_db
 async def buscar_empresa(
     q: str = Query(..., min_length=1, description="CUIT, Email o Nombre"),
     tipo: str = Query("auto", description="'numero' para CUIT, 'texto' para nombre, 'auto' para detectar"),
+    limit: int = Query(20, ge=1, le=100, description="Máximo de resultados"),
+    offset: int = Query(0, ge=0, description="Desplazamiento para paginación"),
     db: AsyncSession = Depends(get_db)
 ):
     """Buscar empresa por CUIT, email o nombre (contains)."""
-    es_numerico = tipo == "numero" or (tipo == "auto" and q.replace("-","").isdigit())
+    es_numerico = tipo == "numero" or (tipo == "auto" and q.replace("-", "").isdigit())
 
     if es_numerico:
-        cond = or_(
-            Empresa.cuit.ilike(f"%{q}%"),
-        )
+        cond = Empresa.cuit.ilike(f"%{q}%")
     else:
         cond = or_(
             Empresa.nombre.ilike(f"%{q}%"),
             Empresa.email.ilike(f"%{q}%"),
         )
 
-    query = select(Empresa).where(
-        Empresa.activo == True,
-        cond
-    ).order_by(Empresa.nombre).limit(20)
+    query = (
+        select(Empresa)
+        .where(Empresa.activo == True, cond)
+        .order_by(Empresa.nombre)
+        .offset(offset)
+        .limit(limit)
+    )
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -290,6 +309,11 @@ async def crear_empresa(
     db.add(empresa)
     await db.commit()
     await db.refresh(empresa)
+
+    logger.info(
+        "ALTA empresa | id=%s | cuit=%s | nombre=%s",
+        empresa.id_empresa, empresa.cuit, empresa.nombre
+    )
     return empresa
 
 
@@ -299,7 +323,7 @@ async def obtener_empresa(id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Empresa)
         .options(selectinload(Empresa.actividad))
-        .where(Empresa.id_empresa == id)
+        .where(Empresa.id_empresa == id, Empresa.activo == True)
     )
     empresa = result.scalars().first()
     if not empresa:
@@ -315,18 +339,24 @@ async def modificar_empresa(
 ):
     """Modificar empresa existente."""
     result = await db.execute(
-        select(Empresa).where(Empresa.id_empresa == id)
+        select(Empresa).where(Empresa.id_empresa == id, Empresa.activo == True)
     )
     empresa = result.scalars().first()
     if not empresa:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
 
     update_data = data.model_dump(exclude_unset=True)
+    campos_modificados = list(update_data.keys())
     for field, value in update_data.items():
         setattr(empresa, field, value)
 
     await db.commit()
     await db.refresh(empresa)
+
+    logger.info(
+        "MODIFICACION empresa | id=%s | cuit=%s | campos=%s",
+        empresa.id_empresa, empresa.cuit, campos_modificados
+    )
     return empresa
 
 
@@ -340,21 +370,18 @@ async def crear_relacion_ciudadano_empresa(
     db: AsyncSession = Depends(get_db)
 ):
     """Crear relación ciudadano-empresa con tipo de representación."""
-    # Verificar que el ciudadano existe
     cid = await db.execute(
-        select(Ciudadano).where(Ciudadano.id_ciudadano == data.id_ciudadano)
+        select(Ciudadano).where(Ciudadano.id_ciudadano == data.id_ciudadano, Ciudadano.activo == True)
     )
     if not cid.scalars().first():
         raise HTTPException(status_code=404, detail="Ciudadano no encontrado")
 
-    # Verificar que la empresa existe
     emp = await db.execute(
-        select(Empresa).where(Empresa.id_empresa == data.id_empresa)
+        select(Empresa).where(Empresa.id_empresa == data.id_empresa, Empresa.activo == True)
     )
     if not emp.scalars().first():
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
 
-    # Verificar duplicado
     existing = await db.execute(
         select(CiudadanoEmpresa).where(
             CiudadanoEmpresa.id_ciudadano == data.id_ciudadano,
@@ -372,4 +399,9 @@ async def crear_relacion_ciudadano_empresa(
     db.add(relacion)
     await db.commit()
     await db.refresh(relacion)
+
+    logger.info(
+        "VINCULACION ciudadano-empresa | ciudadano_id=%s | empresa_id=%s | tipo_rep=%s",
+        relacion.id_ciudadano, relacion.id_empresa, relacion.id_tipo_representacion
+    )
     return relacion
