@@ -460,42 +460,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         delete document.getElementById('cid-cuil').dataset.manualInput;
 
-        if (ciudadano) poblarFormularioConsulta(ciudadano);
+        if (ciudadano) poblarFormulario(ciudadano);
         setFormReadonly(true);
 
-        // Cargar empresa vinculada si emp_chk
         if (ciudadano && ciudadano.emp_chk) {
             cargarEmpresaVinculada(ciudadano.id_ciudadano, true);
         }
 
         setTimeout(() => els.formCard.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
-    }
-
-    function poblarFormularioConsulta(ciudadano) {
-        // Reusar activarModoEdicion pero solo para poblar campos
-        document.getElementById('cid-id').value          = ciudadano.id_ciudadano || '';
-        document.getElementById('cid-doc-tipo').value    = ciudadano.doc_tipo     || '';
-        document.getElementById('cid-doc-nro').value     = ciudadano.doc_nro      || '';
-        document.getElementById('cid-cuil').value        = ciudadano.cuil         || '';
-        document.getElementById('cid-nombre').value      = ciudadano.nombre       || '';
-        document.getElementById('cid-apellido').value    = ciudadano.apellido     || '';
-        document.getElementById('cid-sexo').value        = ciudadano.sexo         || '';
-        document.getElementById('cid-fecha-nac').value   = ciudadano.fecha_nac ? ciudadano.fecha_nac.substring(0, 10) : '';
-        document.getElementById('cid-nacionalidad').value = ciudadano.id_nacionalidad || '';
-        document.getElementById('cid-calle').value       = ciudadano.calle        || '';
-        document.getElementById('cid-localidad').value   = ciudadano.localidad    || '';
-        document.getElementById('cid-provincia').value   = ciudadano.provincia    || '';
-        document.getElementById('cid-latitud').value     = ciudadano.latitud      || '';
-        document.getElementById('cid-longitud').value    = ciudadano.longitud     || '';
-        document.getElementById('cid-telefono').value    = ciudadano.telefono     || '';
-        document.getElementById('cid-email').value       = ciudadano.email        || '';
-        document.getElementById('cid-observaciones').value = ciudadano.observaciones || '';
-        els.obsCount.textContent = (ciudadano.observaciones || '').length;
-        document.getElementById('cid-dni-validado').checked     = !!ciudadano.ren_chk;
-        document.getElementById('cid-cuil-validado').checked    = !!ciudadano.cuil_chk;
-        document.getElementById('cid-email-verificado').checked = !!ciudadano.email_chk;
-        // Checkbox representación de empresa
-        if (els.empChk) els.empChk.checked = !!ciudadano.emp_chk;
     }
 
     function setFormReadonly(readonly) {
@@ -523,6 +495,32 @@ document.addEventListener('DOMContentLoaded', () => {
             els.btnCancelar.onclick = null;  // restaura el listener original
         }
     }
+    // ── Poblar formulario con datos de un ciudadano (edición y consulta) ──
+    function poblarFormulario(ciudadano) {
+        document.getElementById('cid-id').value               = ciudadano.id_ciudadano || '';
+        document.getElementById('cid-doc-tipo').value         = ciudadano.doc_tipo     || '';
+        document.getElementById('cid-doc-nro').value          = ciudadano.doc_nro      || '';
+        document.getElementById('cid-cuil').value             = ciudadano.cuil         || '';
+        document.getElementById('cid-nombre').value           = ciudadano.nombre       || '';
+        document.getElementById('cid-apellido').value         = ciudadano.apellido     || '';
+        document.getElementById('cid-sexo').value             = ciudadano.sexo         || '';
+        document.getElementById('cid-fecha-nac').value        = ciudadano.fecha_nac ? ciudadano.fecha_nac.substring(0, 10) : '';
+        document.getElementById('cid-nacionalidad').value     = ciudadano.id_nacionalidad || '';
+        document.getElementById('cid-calle').value            = ciudadano.calle        || '';
+        document.getElementById('cid-localidad').value        = ciudadano.localidad    || '';
+        document.getElementById('cid-provincia').value        = ciudadano.provincia    || '';
+        document.getElementById('cid-latitud').value          = ciudadano.latitud      || '';
+        document.getElementById('cid-longitud').value         = ciudadano.longitud     || '';
+        document.getElementById('cid-telefono').value         = ciudadano.telefono     || '';
+        document.getElementById('cid-email').value            = ciudadano.email        || '';
+        document.getElementById('cid-observaciones').value    = ciudadano.observaciones || '';
+        document.getElementById('cid-dni-validado').checked   = !!ciudadano.ren_chk;
+        document.getElementById('cid-cuil-validado').checked  = !!ciudadano.cuil_chk;
+        document.getElementById('cid-email-verificado').checked = !!ciudadano.email_chk;
+        if (els.empChk) els.empChk.checked = !!ciudadano.emp_chk;
+        els.obsCount.textContent = (ciudadano.observaciones || '').length;
+    }
+
     // ── Modo Edición ──
     function activarModoEdicion(ciudadano) {
         state.mode = 'edit';
@@ -538,56 +536,12 @@ document.addEventListener('DOMContentLoaded', () => {
         els.searchResult.classList.remove('visible');
         setFormReadonly(false);
 
-        // Limpiar estado manual del CUIL
-        const cuilInput = document.getElementById('cid-cuil');
-        delete cuilInput.dataset.manualInput;
+        delete document.getElementById('cid-cuil').dataset.manualInput;
 
-        if (ciudadano) {
-            // Datos Hidden
-            document.getElementById('cid-id').value = ciudadano.id_ciudadano || '';
-
-            // Identificación
-            document.getElementById('cid-doc-tipo').value  = ciudadano.doc_tipo  || '';
-            document.getElementById('cid-doc-nro').value   = ciudadano.doc_nro   || '';
-            cuilInput.value = ciudadano.cuil || '';
-
-            // Indicadores de validación (set programáticamente, no interactivos)
-            document.getElementById('cid-dni-validado').checked    = !!ciudadano.ren_chk;
-            document.getElementById('cid-cuil-validado').checked   = !!ciudadano.cuil_chk;
-            document.getElementById('cid-email-verificado').checked = !!ciudadano.email_chk;
-
-            // Datos Personales
-            document.getElementById('cid-nombre').value    = ciudadano.nombre    || '';
-            document.getElementById('cid-apellido').value  = ciudadano.apellido  || '';
-            document.getElementById('cid-sexo').value      = ciudadano.sexo      || '';
-            document.getElementById('cid-fecha-nac').value = ciudadano.fecha_nac
-                ? ciudadano.fecha_nac.substring(0, 10) : '';
-            document.getElementById('cid-nacionalidad').value = ciudadano.id_nacionalidad || '';
-
-            // Domicilio
-            document.getElementById('cid-calle').value     = ciudadano.calle     || '';
-            document.getElementById('cid-localidad').value = ciudadano.localidad  || '';
-            document.getElementById('cid-provincia').value = ciudadano.provincia  || '';
-            document.getElementById('cid-latitud').value   = ciudadano.latitud   || '';
-            document.getElementById('cid-longitud').value  = ciudadano.longitud  || '';
-
-            // Contacto
-            document.getElementById('cid-telefono').value  = ciudadano.telefono  || '';
-            document.getElementById('cid-email').value     = ciudadano.email     || '';
-
-            // Observaciones
-            document.getElementById('cid-observaciones').value = ciudadano.observaciones || '';
-            els.obsCount.textContent = (ciudadano.observaciones || '').length;
-            // Checkboxes de validación batch y representación empresa
-            document.getElementById('cid-dni-validado').checked     = !!ciudadano.ren_chk;
-            document.getElementById('cid-cuil-validado').checked    = !!ciudadano.cuil_chk;
-            document.getElementById('cid-email-verificado').checked = !!ciudadano.email_chk;
-            if (els.empChk) els.empChk.checked = !!ciudadano.emp_chk;
-        }
+        if (ciudadano) poblarFormulario(ciudadano);
 
         setTimeout(() => els.formCard.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
 
-        // Cargar empresa vinculada si emp_chk
         if (ciudadano && ciudadano.emp_chk) {
             cargarEmpresaVinculada(ciudadano.id_ciudadano, false);
         }
@@ -837,12 +791,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             ZUtils.toast('Empresa guardada y vinculada al ciudadano (ID: ' + empResponse.id_empresa + ')', 'success');
 
-            setTimeout(() => {
-                if (confirm('¿Deseas dar de alta otro ciudadano?')) {
-                    activarModoNuevo();
-                } else {
-                    window.location.href = 'menu.html';
-                }
+            setTimeout(async () => {
+                const otraAlta = await ZUtils.confirm('Empresa guardada', '¿Deseás dar de alta otro ciudadano?');
+                if (otraAlta) activarModoNuevo();
+                else window.location.href = 'menu.html';
             }, 1000);
         } catch (err) {
             ZUtils.toast(`Error al guardar empresa: ${err.message}`, 'error');
@@ -867,73 +819,4 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // ── Datos de nacionalidades (hardcodeados para preview) ──
-    function getNacionalidadesData() {
-        return [
-            {id:1,pais:'Argentina',region:'América'},{id:2,pais:'Bolivia',region:'América'},
-            {id:3,pais:'Brasil',region:'América'},{id:4,pais:'Chile',region:'América'},
-            {id:5,pais:'Colombia',region:'América'},{id:6,pais:'Costa Rica',region:'América'},
-            {id:7,pais:'Cuba',region:'América'},{id:8,pais:'Ecuador',region:'América'},
-            {id:9,pais:'El Salvador',region:'América'},{id:10,pais:'Estados Unidos',region:'América'},
-            {id:11,pais:'Guatemala',region:'América'},{id:12,pais:'Haití',region:'América'},
-            {id:13,pais:'Honduras',region:'América'},{id:14,pais:'Jamaica',region:'América'},
-            {id:15,pais:'México',region:'América'},{id:16,pais:'Nicaragua',region:'América'},
-            {id:17,pais:'Panamá',region:'América'},{id:18,pais:'Paraguay',region:'América'},
-            {id:19,pais:'Perú',region:'América'},{id:20,pais:'Puerto Rico',region:'América'},
-            {id:21,pais:'República Dominicana',region:'América'},{id:22,pais:'Trinidad y Tobago',region:'América'},
-            {id:23,pais:'Uruguay',region:'América'},{id:24,pais:'Venezuela',region:'América'},
-            {id:25,pais:'Canadá',region:'América'},{id:26,pais:'Alemania',region:'Europa'},
-            {id:27,pais:'Austria',region:'Europa'},{id:28,pais:'Bélgica',region:'Europa'},
-            {id:29,pais:'Bulgaria',region:'Europa'},{id:30,pais:'Croacia',region:'Europa'},
-            {id:31,pais:'Dinamarca',region:'Europa'},{id:32,pais:'Eslovaquia',region:'Europa'},
-            {id:33,pais:'Eslovenia',region:'Europa'},{id:34,pais:'España',region:'Europa'},
-            {id:35,pais:'Estonia',region:'Europa'},{id:36,pais:'Finlandia',region:'Europa'},
-            {id:37,pais:'Francia',region:'Europa'},{id:38,pais:'Grecia',region:'Europa'},
-            {id:39,pais:'Hungría',region:'Europa'},{id:40,pais:'Irlanda',region:'Europa'},
-            {id:41,pais:'Italia',region:'Europa'},{id:42,pais:'Letonia',region:'Europa'},
-            {id:43,pais:'Lituania',region:'Europa'},{id:44,pais:'Luxemburgo',region:'Europa'},
-            {id:45,pais:'Malta',region:'Europa'},{id:46,pais:'Países Bajos',region:'Europa'},
-            {id:47,pais:'Polonia',region:'Europa'},{id:48,pais:'Portugal',region:'Europa'},
-            {id:49,pais:'Reino Unido',region:'Europa'},{id:50,pais:'República Checa',region:'Europa'},
-            {id:51,pais:'Rumania',region:'Europa'},{id:52,pais:'Suecia',region:'Europa'},
-            {id:53,pais:'Suiza',region:'Europa'},{id:54,pais:'Noruega',region:'Europa'},
-            {id:55,pais:'Ucrania',region:'Europa'},{id:56,pais:'Rusia',region:'Europa'},
-            {id:57,pais:'China',region:'Otros'},{id:58,pais:'Corea del Sur',region:'Otros'},
-            {id:59,pais:'India',region:'Otros'},{id:60,pais:'Israel',region:'Otros'},
-            {id:61,pais:'Japón',region:'Otros'},{id:62,pais:'Líbano',region:'Otros'},
-            {id:63,pais:'Siria',region:'Otros'},{id:64,pais:'Turquía',region:'Otros'},
-            {id:65,pais:'Australia',region:'Otros'}
-        ];
-    }
-
-    // ── Datos de actividades (hardcodeados para preview) ──
-    function getActividadesData() {
-        return [
-            {id:1,codigo_clae:471100,descripcion:'Venta menor - alimentos (no especializados)',categoria_tasa:'comercio'},
-            {id:2,codigo_clae:472100,descripcion:'Venta menor - alimentos (especializados)',categoria_tasa:'comercio'},
-            {id:3,codigo_clae:473000,descripcion:'Venta menor - combustibles',categoria_tasa:'comercio'},
-            {id:4,codigo_clae:475100,descripcion:'Venta menor - textiles',categoria_tasa:'comercio'},
-            {id:5,codigo_clae:476100,descripcion:'Venta menor - libros/papelería',categoria_tasa:'comercio'},
-            {id:6,codigo_clae:477100,descripcion:'Venta menor - prendas de vestir',categoria_tasa:'comercio'},
-            {id:7,codigo_clae:478100,descripcion:'Venta menor - alimentos móviles',categoria_tasa:'comercio'},
-            {id:8,codigo_clae:461000,descripcion:'Venta mayor - retribución/contrata',categoria_tasa:'comercio'},
-            {id:9,codigo_clae:551000,descripcion:'Alojamiento hotelero',categoria_tasa:'servicios'},
-            {id:10,codigo_clae:561000,descripcion:'Restaurantes y expendio de comidas',categoria_tasa:'servicios'},
-            {id:11,codigo_clae:620100,descripcion:'Programación informática',categoria_tasa:'servicios'},
-            {id:12,codigo_clae:631100,descripcion:'Procesamiento de datos',categoria_tasa:'servicios'},
-            {id:13,codigo_clae:641900,descripcion:'Intermediación monetaria',categoria_tasa:'servicios'},
-            {id:14,codigo_clae:681000,descripcion:'Actividades inmobiliarias',categoria_tasa:'servicios'},
-            {id:15,codigo_clae:691000,descripcion:'Actividades jurídicas',categoria_tasa:'servicios'},
-            {id:16,codigo_clae:692000,descripcion:'Contabilidad y auditoría',categoria_tasa:'servicios'},
-            {id:17,codigo_clae:711000,descripcion:'Arquitectura e ingeniería',categoria_tasa:'servicios'},
-            {id:18,codigo_clae:750000,descripcion:'Actividades veterinarias',categoria_tasa:'servicios'},
-            {id:19,codigo_clae:851000,descripcion:'Enseñanza inicial y primaria',categoria_tasa:'servicios'},
-            {id:20,codigo_clae:862000,descripcion:'Médicos y odontólogos',categoria_tasa:'servicios'},
-            {id:21,codigo_clae:101000,descripcion:'Elaboración de carne',categoria_tasa:'industria'},
-            {id:22,codigo_clae:105000,descripcion:'Productos lácteos',categoria_tasa:'industria'},
-            {id:23,codigo_clae:110000,descripcion:'Elaboración de bebidas',categoria_tasa:'industria'},
-            {id:24,codigo_clae:251100,descripcion:'Productos metálicos estructurales',categoria_tasa:'industria'},
-            {id:25,codigo_clae:310000,descripcion:'Muebles y colchones',categoria_tasa:'industria'}
-        ];
-    }
 });
