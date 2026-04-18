@@ -53,6 +53,27 @@ def _validar_email_fmt(valor: str) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════
+# USUARIOS
+# ═══════════════════════════════════════════════════════════════
+
+class UsuarioOut(BaseModel):
+    id_usuario:   int
+    nombre:       str
+    nivel_acceso: int
+    username:     str
+    id_cargo:     Optional[str]
+    id_municipio: int
+    activo:       bool
+    cuil:         Optional[str]
+    buc_acceso:   bool
+    fecha_alta:   datetime
+    fecha_modif:  datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ═══════════════════════════════════════════════════════════════
 # NACIONALIDADES
 # ═══════════════════════════════════════════════════════════════
 
@@ -152,6 +173,7 @@ class CiudadanoUpdate(BaseModel):
     email: Optional[str] = Field(None, max_length=150)
     emp_chk: Optional[bool] = None
     observaciones: Optional[str] = Field(None, max_length=500)
+    modificado_por: Optional[int] = None
 
     @field_validator("cuil")
     @classmethod
@@ -200,6 +222,7 @@ class CiudadanoOut(BaseModel):
     observaciones: Optional[str]
     fecha_modif: Optional[datetime]
     activo: bool
+    modificado_por: Optional[int]
 
     class Config:
         from_attributes = True
@@ -257,6 +280,7 @@ class EmpresaUpdate(BaseModel):
     telefono: Optional[str] = Field(None, max_length=15)
     email: Optional[str] = Field(None, max_length=150)
     observaciones: Optional[str] = Field(None, max_length=500)
+    modificado_por: Optional[int] = None
 
     @field_validator("cuit")
     @classmethod
@@ -298,6 +322,7 @@ class EmpresaOut(BaseModel):
     observaciones: Optional[str]
     fecha_modif: Optional[datetime]
     activo: bool
+    modificado_por: Optional[int]
 
     class Config:
         from_attributes = True

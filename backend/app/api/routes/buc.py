@@ -11,10 +11,11 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.models.buc import (
-    Nacionalidad, TipoRepresentacion, Actividad,
+    Usuario, Nacionalidad, TipoRepresentacion, Actividad,
     Ciudadano, Empresa, CiudadanoEmpresa
 )
 from app.schemas.buc import (
+    UsuarioOut,
     NacionalidadOut, TipoRepresentacionOut, ActividadOut,
     CiudadanoCreate, CiudadanoUpdate, CiudadanoOut, CiudadanoConNacionalidad,
     EmpresaCreate, EmpresaUpdate, EmpresaOut, EmpresaConActividad,
@@ -23,6 +24,23 @@ from app.schemas.buc import (
 
 router = APIRouter(prefix="/api/v1/buc", tags=["BUC"])
 logger = logging.getLogger("zaris.buc")
+
+
+# ═══════════════════════════════════════════════════════════════
+# USUARIOS
+# ═══════════════════════════════════════════════════════════════
+
+@router.get("/usuarios", response_model=list[UsuarioOut])
+async def listar_usuarios(
+    solo_activos: bool = Query(True, description="Filtrar solo usuarios activos"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Listar usuarios del sistema (para selector modificado_por)."""
+    q = select(Usuario).order_by(Usuario.nombre)
+    if solo_activos:
+        q = q.where(Usuario.activo == True)
+    result = await db.execute(q)
+    return result.scalars().all()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -190,8 +208,8 @@ async def modificar_ciudadano(
     await db.refresh(ciudadano)
 
     logger.info(
-        "MODIFICACION ciudadano | id=%s | cuil=%s | campos=%s",
-        ciudadano.id_ciudadano, ciudadano.cuil, campos_modificados
+        "MODIFICACION ciudadano | id=%s | cuil=%s | campos=%s | usuario=%s",
+        ciudadano.id_ciudadano, ciudadano.cuil, campos_modificados, ciudadano.modificado_por
     )
     return ciudadano
 
@@ -354,8 +372,8 @@ async def modificar_empresa(
     await db.refresh(empresa)
 
     logger.info(
-        "MODIFICACION empresa | id=%s | cuit=%s | campos=%s",
-        empresa.id_empresa, empresa.cuit, campos_modificados
+        "MODIFICACION empresa | id=%s | cuit=%s | campos=%s | usuario=%s",
+        empresa.id_empresa, empresa.cuit, campos_modificados, empresa.modificado_por
     )
     return empresa
 
