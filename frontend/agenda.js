@@ -208,7 +208,8 @@ function navegarHoy() {
 
 async function recargarCalendario() {
     const container = document.getElementById('calContainer');
-    container.innerHTML = '<div class="z-agenda-loading">Cargando...</div>';
+    container.innerHTML = '';
+    actualizarLabel();
     const idArea = document.getElementById('filtroArea').value || undefined;
 
     try {
@@ -216,7 +217,25 @@ async function recargarCalendario() {
         if (vistaActual === 'semana') await renderSemana(idArea);
         if (vistaActual === 'dia')    await renderDia(padDate(navDate), idArea);
     } catch (e) {
-        container.innerHTML = `<div class="z-alert z-alert--error" style="padding:1rem">Error: ${e.message}</div>`;
+        console.warn('Agenda calendar:', e.message);
+    }
+}
+
+function actualizarLabel() {
+    const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const anio = navDate.getFullYear();
+    const mes  = navDate.getMonth();
+    if (vistaActual === 'mes') {
+        document.getElementById('calLabel').textContent = `${meses[mes]} ${anio}`;
+    } else if (vistaActual === 'dia') {
+        document.getElementById('calLabel').textContent = new Date(navDate)
+            .toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    } else {
+        const lunes = new Date(navDate);
+        lunes.setDate(navDate.getDate() - (navDate.getDay() + 6) % 7);
+        const domingo = new Date(lunes);
+        domingo.setDate(lunes.getDate() + 6);
+        document.getElementById('calLabel').textContent = `${fmtFecha(padDate(lunes))} – ${fmtFecha(padDate(domingo))}`;
     }
 }
 
@@ -224,19 +243,26 @@ async function recargarCalendario() {
 async function renderMes(idArea) {
     const anio = navDate.getFullYear();
     const mes  = navDate.getMonth() + 1;
-    const params = new URLSearchParams({ anio, mes, capa: capaActual });
-    if (idArea) params.set('id_area', idArea);
-    const data = await apiFetch(`/calendario/mes?${params}`);
 
-    const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-    document.getElementById('calLabel').textContent = `${meses[mes-1]} ${anio}`;
+    let diasData;
+    try {
+        const params = new URLSearchParams({ anio, mes, capa: capaActual });
+        if (idArea) params.set('id_area', idArea);
+        const data = await apiFetch(`/calendario/mes?${params}`);
+        diasData = data.dias;
+    } catch (_) {
+        // Sin datos: generar días vacíos igual para mostrar el calendario
+        const totalDias = new Date(anio, mes, 0).getDate();
+        diasData = Array.from({ length: totalDias }, (_, i) => ({
+            fecha: `${anio}-${String(mes).padStart(2,'0')}-${String(i+1).padStart(2,'0')}`,
+            es_feriado: false, feriado_descripcion: null,
+            slots_totales: 0, slots_ocupados: 0, estado: 'fuera',
+        }));
+    }
 
     // Calcular offset del primer día (0=Lun)
     const primerDia = new Date(anio, mes - 1, 1).getDay();
     const offset = (primerDia + 6) % 7;
-
-    const diasMap = {};
-    data.dias.forEach(d => { diasMap[d.fecha] = d; });
 
     let html = `<div class="z-cal-mes">
         <div class="z-cal-mes__header">
@@ -249,7 +275,7 @@ async function renderMes(idArea) {
         html += `<div class="z-cal-mes__cell z-cal-mes__cell--otro-mes"></div>`;
     }
 
-    data.dias.forEach(dia => {
+    diasData.forEach(dia => {
         const numDia = parseInt(dia.fecha.slice(8));
         const estado = dia.estado;
         let info = '';
@@ -276,7 +302,7 @@ async function renderMes(idArea) {
     });
 
     // Completar grid hasta múltiplo de 7
-    const total = offset + data.dias.length;
+    const total = offset + diasData.length;
     const resto = total % 7 === 0 ? 0 : 7 - (total % 7);
     for (let i = 0; i < resto; i++) {
         html += `<div class="z-cal-mes__cell z-cal-mes__cell--otro-mes"></div>`;
@@ -300,10 +326,11 @@ function irADia(fecha) {
 async function renderDia(fecha, idArea) {
     const params = new URLSearchParams({ fecha, capa: capaActual });
     if (idArea) params.set('id_area', idArea);
-    const data = await apiFetch(`/calendario/dia?${params}`);
 
-    document.getElementById('calLabel').textContent = new Date(fecha + 'T00:00:00')
-        .toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    let data = { es_feriado: false, feriado_descripcion: null, slots: [] };
+    try {
+        data = await apiFetch(`/calendario/dia?${params}`);
+    } catch (_) { /* sin datos, mostrar día vacío */ }
 
     let feriadoTag = '';
     if (data.es_feriado) {
@@ -311,7 +338,7 @@ async function renderDia(fecha, idArea) {
     }
 
     let slotsHtml = '';
-    if (data.slots.length === 0) {
+    if (!data.slots.length) {
         slotsHtml = `<div class="z-cal-dia__empty">No hay agenda configurada para este día y capa.</div>`;
     } else {
         slotsHtml = data.slots.map(s => {
