@@ -38,16 +38,33 @@ async function apiFetch(path, opts = {}) {
     const url = path.startsWith('http') ? path : API_BASE + path;
     const res = await fetch(url, { ...opts, headers: { ...authHeaders(), ...(opts.headers || {}) } });
     if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(err.detail || `HTTP ${res.status}`);
+        const err = await res.json().catch(() => ({}));
+        const msg = err.detail || err.message || `HTTP ${res.status}`;
+        const e = new Error(msg);
+        e.status = res.status;
+        throw e;
     }
     return res.json();
 }
 
 async function bucFetch(path) {
     const res = await fetch(API_BUC + path, { headers: authHeaders() });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) { const e = new Error(`HTTP ${res.status}`); e.status = res.status; throw e; }
     return res.json();
+}
+
+function estadoVacio(tipo, msg) {
+    const icono = tipo === 'error' ? '⚠️' : '📅';
+    return `<div class="z-estado-vacio z-estado-${tipo}">
+        <span class="z-estado-icono">${icono}</span><p>${msg}</p>
+    </div>`;
+}
+
+function mensajeError(e) {
+    if (e.status === 404) return 'El módulo de agenda está siendo configurado.';
+    if (e.status === 401 || e.status === 403) return 'Sin autorización. Verificá tu sesión.';
+    if (!navigator.onLine) return 'Sin conexión a internet.';
+    return 'No se pudo conectar con el servidor. Intente nuevamente.';
 }
 
 // ── Formato de fechas ───────────────────────────────────────
@@ -374,7 +391,13 @@ async function renderSemana(idArea) {
 
     const params = new URLSearchParams({ fecha_inicio: padDate(lunes), capa: capaActual });
     if (idArea) params.set('id_area', idArea);
-    const data = await apiFetch(`/calendario/semana?${params}`);
+    let data;
+    try {
+        data = await apiFetch(`/calendario/semana?${params}`);
+    } catch (e) {
+        document.getElementById('calContainer').innerHTML = estadoVacio('error', mensajeError(e));
+        return;
+    }
 
     const domingo = new Date(lunes);
     domingo.setDate(lunes.getDate() + 6);
@@ -463,7 +486,7 @@ async function loadMisTurnos() {
             </tbody>
         </table>`;
     } catch (e) {
-        container.innerHTML = `<p style="color:var(--z-text-error);padding:1rem">Error: ${e.message}</p>`;
+        container.innerHTML = estadoVacio('error', mensajeError(e));
     }
 }
 
@@ -473,7 +496,7 @@ async function cancelarTurno(id) {
         await apiFetch(`/turnos/${id}/cancelar`, { method: 'PATCH' });
         loadMisTurnos();
     } catch (e) {
-        alert('Error al cancelar: ' + e.message);
+        alert(mensajeError(e));
     }
 }
 
@@ -527,7 +550,7 @@ async function loadAlertas() {
             </tbody>
         </table>`;
     } catch (e) {
-        container.innerHTML = `<p style="color:var(--z-text-error);padding:1rem">Error: ${e.message}</p>`;
+        container.innerHTML = estadoVacio('error', mensajeError(e));
     }
 }
 
@@ -538,7 +561,7 @@ async function resolverAlerta(id) {
         loadAlertas();
         loadAlertasBadge();
     } catch (e) {
-        alert('Error: ' + e.message);
+        alert(mensajeError(e));
     }
 }
 
@@ -638,7 +661,7 @@ async function loadAgendasAgentes() {
         if (!items.length) { container.innerHTML = '<p style="color:var(--z-text3);padding:1rem">Sin registros.</p>'; return; }
         container.innerHTML = tablaAgendaAgentes(items);
     } catch (e) {
-        container.innerHTML = `<p style="color:var(--z-text-error)">Error: ${e.message}</p>`;
+        container.innerHTML = estadoVacio('error', mensajeError(e));
     }
 }
 
@@ -728,7 +751,7 @@ async function bajaAgendaAgente(id) {
         await apiFetch(`/agendas/agentes/${id}/baja`, { method: 'PATCH' });
         loadAgendasAgentes();
     } catch (e) {
-        alert('Error: ' + e.message);
+        alert(mensajeError(e));
     }
 }
 
@@ -757,7 +780,7 @@ async function loadAgendasServicios() {
             </tbody>
         </table>`;
     } catch (e) {
-        container.innerHTML = `<p style="color:var(--z-text-error)">Error: ${e.message}</p>`;
+        container.innerHTML = estadoVacio('error', mensajeError(e));
     }
 }
 
@@ -785,7 +808,7 @@ async function loadAgendasLugares() {
             </tbody>
         </table>`;
     } catch (e) {
-        container.innerHTML = `<p style="color:var(--z-text-error)">Error: ${e.message}</p>`;
+        container.innerHTML = estadoVacio('error', mensajeError(e));
     }
 }
 
@@ -812,7 +835,7 @@ async function loadAusencias() {
             </tbody>
         </table>`;
     } catch (e) {
-        container.innerHTML = `<p style="color:var(--z-text-error)">Error: ${e.message}</p>`;
+        container.innerHTML = estadoVacio('error', mensajeError(e));
     }
 }
 
@@ -857,7 +880,7 @@ async function setCatalogo(tipo, btn) {
         if (tipo === 'clases')    await renderCatalogoClases(container);
         if (tipo === 'feriados')  await renderCatalogoFeriados(container);
     } catch (e) {
-        container.innerHTML = `<p style="color:var(--z-text-error)">Error: ${e.message}</p>`;
+        container.innerHTML = estadoVacio('error', mensajeError(e));
     }
 }
 
@@ -1125,7 +1148,7 @@ async function bajaFeriado(id) {
         await apiFetch(`/feriados/${id}`, { method: 'PATCH', body: JSON.stringify({ activo: false }) });
         setCatalogo('feriados');
     } catch (e) {
-        alert('Error: ' + e.message);
+        alert(mensajeError(e));
     }
 }
 
