@@ -1,0 +1,429 @@
+/* ============================================================
+   ZARIS Gestión Estatal — Módulo Agenda
+   Estilos específicos. Prefijo z-, variables --z-*
+   ============================================================ */
+
+/* ── Variables de calendario ─────────────────────────────── */
+:root {
+    --z-cal-disponible:  #22c55e;
+    --z-cal-parcial:     #f59e0b;
+    --z-cal-ocupado:     #ef4444;
+    --z-cal-feriado:     #94a3b8;
+    --z-cal-fuera:       #e2e8f0;
+    --z-cal-agente:      #3b82f6;
+    --z-cal-servicio:    #8b5cf6;
+    --z-cal-lugar:       #06b6d4;
+}
+
+/* ── Tabs principales ────────────────────────────────────── */
+.z-tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 2px solid var(--z-border);
+    margin-bottom: 1.5rem;
+    overflow-x: auto;
+    padding-bottom: 0;
+}
+
+.z-tab {
+    padding: 0.6rem 1.2rem;
+    border: none;
+    background: transparent;
+    color: var(--z-text2);
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    border-radius: var(--z-radius-sm) var(--z-radius-sm) 0 0;
+    transition: color var(--z-duration) var(--z-ease),
+                border-color var(--z-duration) var(--z-ease),
+                background var(--z-duration) var(--z-ease);
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.z-tab:hover {
+    color: var(--z-primary);
+    background: var(--z-bg-card-alt);
+}
+
+.z-tab--active {
+    color: var(--z-primary);
+    border-bottom-color: var(--z-primary);
+    background: var(--z-bg-card-alt);
+}
+
+.z-tab__badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 100px;
+    background: var(--z-cal-ocupado);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+}
+
+.z-tab__badge:empty { display: none; }
+
+/* ── Sub-tabs de administración ──────────────────────────── */
+.z-subtabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+}
+
+.z-subtab {
+    padding: 0.4rem 1rem;
+    border: 1.5px solid var(--z-border);
+    background: var(--z-bg-card);
+    color: var(--z-text2);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: var(--z-radius-sm);
+    transition: all var(--z-duration) var(--z-ease);
+}
+
+.z-subtab:hover { border-color: var(--z-primary); color: var(--z-primary); }
+.z-subtab--active { background: var(--z-primary); color: #fff; border-color: var(--z-primary); }
+
+/* ── Toolbar de calendario ───────────────────────────────── */
+.z-cal-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+    margin-bottom: 1.25rem;
+    padding: 0.875rem 1rem;
+    background: var(--z-bg-card);
+    border-radius: var(--z-radius);
+    border: 1px solid var(--z-border);
+    box-shadow: var(--z-shadow-sm);
+}
+
+.z-cal-toolbar__group {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.z-cal-btn {
+    padding: 0.35rem 0.8rem;
+    border: 1.5px solid var(--z-border);
+    background: var(--z-bg-card);
+    color: var(--z-text2);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: var(--z-radius-sm);
+    transition: all var(--z-duration) var(--z-ease);
+}
+
+.z-cal-btn:hover { border-color: var(--z-primary); color: var(--z-primary); }
+.z-cal-btn--active { background: var(--z-primary); color: #fff; border-color: var(--z-primary); }
+
+.z-cal-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+}
+
+.z-cal-nav__label {
+    font-weight: 700;
+    color: var(--z-primary);
+    font-size: 0.95rem;
+    min-width: 180px;
+    text-align: center;
+}
+
+/* ── Calendario mes ──────────────────────────────────────── */
+.z-cal-mes {
+    background: var(--z-bg-card);
+    border-radius: var(--z-radius-lg);
+    border: 1px solid var(--z-border);
+    overflow: hidden;
+    box-shadow: var(--z-shadow-sm);
+}
+
+.z-cal-mes__header {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    background: var(--z-primary);
+}
+
+.z-cal-mes__dow {
+    padding: 0.6rem;
+    text-align: center;
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.z-cal-mes__grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+}
+
+.z-cal-mes__cell {
+    min-height: 80px;
+    padding: 0.5rem;
+    border-right: 1px solid var(--z-border);
+    border-bottom: 1px solid var(--z-border);
+    cursor: pointer;
+    transition: background var(--z-duration) var(--z-ease);
+    position: relative;
+}
+
+.z-cal-mes__cell:hover { background: var(--z-bg-card-alt); }
+.z-cal-mes__cell--otro-mes { opacity: 0.35; pointer-events: none; }
+
+.z-cal-mes__num {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--z-text);
+    margin-bottom: 4px;
+}
+
+.z-cal-mes__dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 3px;
+}
+
+.z-cal-mes__cell--disponible .z-cal-mes__num  { color: var(--z-cal-disponible); }
+.z-cal-mes__cell--parcial    .z-cal-mes__num  { color: var(--z-cal-parcial); }
+.z-cal-mes__cell--ocupado    .z-cal-mes__num  { color: var(--z-cal-ocupado); }
+.z-cal-mes__cell--feriado                     { background: #f1f5f9; }
+.z-cal-mes__cell--feriado    .z-cal-mes__num  { color: var(--z-cal-feriado); }
+.z-cal-mes__cell--fuera                       { background: var(--z-bg-card-alt); }
+
+.z-cal-mes__info {
+    font-size: 0.7rem;
+    color: var(--z-text3);
+}
+
+/* ── Calendario día ──────────────────────────────────────── */
+.z-cal-dia {
+    background: var(--z-bg-card);
+    border-radius: var(--z-radius-lg);
+    border: 1px solid var(--z-border);
+    overflow: hidden;
+    box-shadow: var(--z-shadow-sm);
+}
+
+.z-cal-dia__header {
+    padding: 1rem 1.25rem;
+    background: linear-gradient(135deg, var(--z-primary), var(--z-primary-light));
+    color: #fff;
+    font-weight: 700;
+    font-size: 1.05rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.z-cal-dia__feriado-tag {
+    background: rgba(255,255,255,0.2);
+    padding: 2px 10px;
+    border-radius: 100px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.z-cal-dia__slots {
+    padding: 0.75rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.z-slot {
+    padding: 0.5rem 0.875rem;
+    border-radius: var(--z-radius-sm);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1.5px solid transparent;
+    transition: all var(--z-duration) var(--z-ease);
+    font-family: var(--z-font-mono);
+}
+
+.z-slot--libre {
+    background: #dcfce7;
+    color: #15803d;
+    border-color: #bbf7d0;
+}
+
+.z-slot--libre:hover {
+    background: #bbf7d0;
+    border-color: var(--z-cal-disponible);
+}
+
+.z-slot--ocupado {
+    background: #fee2e2;
+    color: #b91c1c;
+    border-color: #fecaca;
+    cursor: default;
+}
+
+.z-slot--feriado {
+    background: #f1f5f9;
+    color: var(--z-text3);
+    border-color: #e2e8f0;
+    cursor: default;
+    text-decoration: line-through;
+}
+
+.z-cal-dia__empty {
+    padding: 2rem;
+    text-align: center;
+    color: var(--z-text3);
+    font-size: 0.9rem;
+}
+
+/* ── Tabla de alertas ────────────────────────────────────── */
+.z-alerta-tipo {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 100px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.z-alerta-tipo--RRHH_AUSENTE            { background: #fef3c7; color: #92400e; }
+.z-alerta-tipo--SERVICIO_SIN_RRHH       { background: #fee2e2; color: #991b1b; }
+.z-alerta-tipo--LUGAR_SIN_SERVICIO      { background: #ede9fe; color: #4c1d95; }
+.z-alerta-tipo--CONFLICTO_DISPONIBILIDAD{ background: #ffedd5; color: #9a3412; }
+
+.z-alerta-resuelta { opacity: 0.5; }
+
+/* ── Leyenda de colores ──────────────────────────────────── */
+.z-cal-leyenda {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    font-size: 0.78rem;
+    color: var(--z-text2);
+}
+
+.z-cal-leyenda__item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.z-cal-leyenda__dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+}
+
+/* ── Semana (grid de horas) ──────────────────────────────── */
+.z-cal-semana {
+    overflow-x: auto;
+}
+
+.z-cal-semana__grid {
+    display: grid;
+    grid-template-columns: 60px repeat(7, 1fr);
+    min-width: 700px;
+    border: 1px solid var(--z-border);
+    border-radius: var(--z-radius-lg);
+    overflow: hidden;
+    background: var(--z-bg-card);
+}
+
+.z-cal-semana__header {
+    padding: 0.5rem;
+    background: var(--z-primary);
+    color: #fff;
+    text-align: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border-right: 1px solid rgba(255,255,255,0.15);
+}
+
+.z-cal-semana__hora {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.7rem;
+    color: var(--z-text3);
+    font-family: var(--z-font-mono);
+    border-right: 1px solid var(--z-border);
+    border-bottom: 1px solid var(--z-border);
+    background: var(--z-bg-card-alt);
+    text-align: right;
+}
+
+.z-cal-semana__cell {
+    border-right: 1px solid var(--z-border);
+    border-bottom: 1px solid var(--z-border);
+    min-height: 32px;
+    cursor: pointer;
+    transition: background var(--z-duration) var(--z-ease);
+}
+
+.z-cal-semana__cell:hover { background: #f0f7ff; }
+.z-cal-semana__cell--ocupado { background: #fee2e2; }
+.z-cal-semana__cell--feriado { background: repeating-linear-gradient(45deg, #f1f5f9, #f1f5f9 4px, #e2e8f0 4px, #e2e8f0 8px); }
+
+/* ── Filtros en tabla ────────────────────────────────────── */
+.z-agenda-filtros {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: flex-end;
+    margin-bottom: 1.25rem;
+    padding: 1rem;
+    background: var(--z-bg-card);
+    border-radius: var(--z-radius);
+    border: 1px solid var(--z-border);
+}
+
+/* ── Spinner de carga ────────────────────────────────────── */
+.z-agenda-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem;
+    color: var(--z-text3);
+    gap: 0.75rem;
+    font-size: 0.9rem;
+}
+
+.z-agenda-loading::before {
+    content: "";
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--z-border);
+    border-top-color: var(--z-primary);
+    border-radius: 50%;
+    animation: z-spin 0.8s linear infinite;
+}
+
+@keyframes z-spin { to { transform: rotate(360deg); } }
+
+/* ── Responsive ──────────────────────────────────────────── */
+@media (max-width: 600px) {
+    .z-cal-toolbar { flex-direction: column; align-items: stretch; }
+    .z-cal-nav { margin-left: 0; }
+    .z-cal-mes__cell { min-height: 56px; padding: 0.25rem; }
+    .z-cal-mes__num  { font-size: 0.75rem; }
+}

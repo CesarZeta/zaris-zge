@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.api.routes.buc import router as buc_router
+from app.api.routes.agenda import router as agenda_router
 
 # ── Logging ──────────────────────────────────────────────────────
 logging.basicConfig(
@@ -47,6 +48,7 @@ app.add_middleware(
 
 # Rutas
 app.include_router(buc_router)
+app.include_router(agenda_router)
 
 
 # Health check

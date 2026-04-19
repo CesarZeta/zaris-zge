@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="ZARIS — Módulo de Agenda">
+    <title>ZARIS — Agenda</title>
+    <link rel="stylesheet" href="styles.css?v=20260419">
+    <link rel="stylesheet" href="agenda.css?v=20260419">
+</head>
+<body>
+<div class="z-app">
+
+    <!-- ── Header ─────────────────────────────────────────── -->
+    <header class="z-header">
+        <a href="menu.html" class="z-header__brand">
+            <span>
+                <span class="z-header__title">ZARIS</span>
+                <span class="z-header__subtitle">Gestión Estatal</span>
+            </span>
+        </a>
+        <nav class="z-header__nav">
+            <span id="headerUsuario" class="z-header__btn" style="cursor:default"></span>
+            <a href="menu.html" class="z-header__btn">← Menú BUC</a>
+        </nav>
+    </header>
+
+    <main class="z-main">
+
+        <!-- ── Breadcrumb ────────────────────────────────── -->
+        <nav class="z-breadcrumb">
+            <a href="menu.html">BUC</a>
+            <span class="z-breadcrumb__sep">›</span>
+            <span class="z-breadcrumb__current">Agenda</span>
+        </nav>
+
+        <!-- ── Tabs principales ──────────────────────────── -->
+        <nav class="z-tabs" id="mainTabs" role="tablist">
+            <button class="z-tab z-tab--active" data-tab="calendario" role="tab">
+                Calendario
+            </button>
+            <button class="z-tab" data-tab="mis-turnos" role="tab">
+                Mis Turnos
+            </button>
+            <button class="z-tab" data-tab="alertas" role="tab">
+                Alertas&nbsp;<span class="z-tab__badge" id="alertasBadge"></span>
+            </button>
+            <button class="z-tab z-tab--admin" data-tab="admin" role="tab" style="display:none">
+                Administración
+            </button>
+        </nav>
+
+        <!-- ════════════════════════════════════════════════
+             SECCIÓN: CALENDARIO
+        ════════════════════════════════════════════════ -->
+        <section id="sec-calendario">
+
+            <!-- Toolbar -->
+            <div class="z-cal-toolbar">
+                <!-- Vista -->
+                <div class="z-cal-toolbar__group">
+                    <button class="z-cal-btn z-cal-btn--active" id="btnVistaMes"  onclick="setVista('mes')">Mes</button>
+                    <button class="z-cal-btn"                    id="btnVistaSem"  onclick="setVista('semana')">Semana</button>
+                    <button class="z-cal-btn"                    id="btnVistaDia"  onclick="setVista('dia')">Día</button>
+                </div>
+                <!-- Capa -->
+                <div class="z-cal-toolbar__group">
+                    <button class="z-cal-btn z-cal-btn--active" id="btnCapaAgentes"   onclick="setCapa('AGENTES')">Agentes</button>
+                    <button class="z-cal-btn"                    id="btnCapaServicios" onclick="setCapa('SERVICIOS')">Servicios</button>
+                    <button class="z-cal-btn"                    id="btnCapaLugares"   onclick="setCapa('LUGARES')">Lugares</button>
+                </div>
+                <!-- Área -->
+                <div class="z-cal-toolbar__group">
+                    <select class="z-input z-input--sm" id="filtroArea" onchange="recargarCalendario()" style="min-width:180px">
+                        <option value="">Todas las áreas</option>
+                    </select>
+                </div>
+                <!-- Navegador -->
+                <div class="z-cal-nav">
+                    <button class="z-cal-btn" onclick="navegarAnterior()">&#8592;</button>
+                    <span class="z-cal-nav__label" id="calLabel">Cargando...</span>
+                    <button class="z-cal-btn" onclick="navegarHoy()">Hoy</button>
+                    <button class="z-cal-btn" onclick="navegarSiguiente()">&#8594;</button>
+                </div>
+            </div>
+
+            <!-- Leyenda -->
+            <div class="z-cal-leyenda">
+                <div class="z-cal-leyenda__item"><div class="z-cal-leyenda__dot" style="background:var(--z-cal-disponible)"></div> Disponible</div>
+                <div class="z-cal-leyenda__item"><div class="z-cal-leyenda__dot" style="background:var(--z-cal-parcial)"></div> Parcial</div>
+                <div class="z-cal-leyenda__item"><div class="z-cal-leyenda__dot" style="background:var(--z-cal-ocupado)"></div> Sin disponibilidad</div>
+                <div class="z-cal-leyenda__item"><div class="z-cal-leyenda__dot" style="background:var(--z-cal-feriado)"></div> Feriado</div>
+                <div class="z-cal-leyenda__item"><div class="z-cal-leyenda__dot" style="background:var(--z-cal-fuera)"></div> Fuera de horario</div>
+            </div>
+
+            <!-- Contenedor del calendario -->
+            <div id="calContainer"></div>
+        </section>
+
+        <!-- ════════════════════════════════════════════════
+             SECCIÓN: MIS TURNOS
+        ════════════════════════════════════════════════ -->
+        <section id="sec-mis-turnos" hidden>
+            <div class="z-card" style="padding:1.5rem">
+                <h2 class="z-card__title" style="margin-bottom:1.25rem">Mis Turnos</h2>
+                <div id="misTurnosContainer">
+                    <div class="z-agenda-loading">Cargando turnos...</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ════════════════════════════════════════════════
+             SECCIÓN: ALERTAS
+        ════════════════════════════════════════════════ -->
+        <section id="sec-alertas" hidden>
+            <div class="z-card" style="padding:1.5rem">
+                <div class="z-agenda-filtros">
+                    <div class="z-form-group" style="margin:0">
+                        <label class="z-label">Tipo</label>
+                        <select class="z-input z-input--sm" id="filtroAlertaTipo" onchange="loadAlertas()">
+                            <option value="">Todos</option>
+                            <option value="RRHH_AUSENTE">RRHH Ausente</option>
+                            <option value="SERVICIO_SIN_RRHH">Servicio sin RRHH</option>
+                            <option value="LUGAR_SIN_SERVICIO">Lugar sin Servicio</option>
+                            <option value="CONFLICTO_DISPONIBILIDAD">Conflicto</option>
+                        </select>
+                    </div>
+                    <div class="z-form-group" style="margin:0">
+                        <label class="z-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                            <input type="checkbox" id="filtroAlertaResuelta" onchange="loadAlertas()">
+                            Mostrar resueltas
+                        </label>
+                    </div>
+                </div>
+                <div id="alertasContainer">
+                    <div class="z-agenda-loading">Cargando alertas...</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ════════════════════════════════════════════════
+             SECCIÓN: ADMINISTRACIÓN (nivel 4)
+        ════════════════════════════════════════════════ -->
+        <section id="sec-admin" hidden>
+
+            <nav class="z-subtabs" id="adminSubtabs">
+                <button class="z-subtab z-subtab--active" data-sub="agendas-agentes">Agendas Agentes</button>
+                <button class="z-subtab" data-sub="agendas-servicios">Agendas Servicios</button>
+                <button class="z-subtab" data-sub="agendas-lugares">Agendas Lugares</button>
+                <button class="z-subtab" data-sub="catalogos">Catálogos</button>
+                <button class="z-subtab" data-sub="ausencias">Ausencias</button>
+            </nav>
+
+            <!-- Sub-sección: Agendas Agentes -->
+            <div id="sub-agendas-agentes">
+                <div class="z-card" style="padding:1.5rem;margin-bottom:1.25rem">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+                        <h3 class="z-card__title">Agendas de Agentes</h3>
+                        <button class="z-btn z-btn--primary z-btn--sm" onclick="abrirFormAgendaAgente()">+ Nueva</button>
+                    </div>
+                    <div class="z-agenda-filtros" style="margin-bottom:0.75rem">
+                        <div class="z-form-group" style="margin:0">
+                            <label class="z-label">Área</label>
+                            <select class="z-input z-input--sm" id="filtroAAArea" onchange="loadAgendasAgentes()">
+                                <option value="">Todas</option>
+                            </select>
+                        </div>
+                        <div class="z-form-group" style="margin:0">
+                            <label class="z-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                                <input type="checkbox" id="filtroAAActivo" checked onchange="loadAgendasAgentes()">
+                                Solo activas
+                            </label>
+                        </div>
+                    </div>
+                    <div id="tablaAgendasAgentes"></div>
+                </div>
+
+                <!-- Formulario inline -->
+                <div class="z-card" id="formAgendasAgentesCard" hidden style="padding:1.5rem">
+                    <h4 class="z-card__title" id="formAATitle" style="margin-bottom:1rem">Nueva Agenda de Agente</h4>
+                    <form id="formAgendaAgente" onsubmit="submitAgendaAgente(event)">
+                        <div class="z-form-grid">
+                            <div class="z-form-group">
+                                <label class="z-label">Usuario (agente) *</label>
+                                <select class="z-input" id="aaIdUsuario" required>
+                                    <option value="">Seleccionar...</option>
+                                </select>
+                            </div>
+                            <div class="z-form-group">
+                                <label class="z-label">Área *</label>
+                                <select class="z-input" id="aaIdArea" required>
+                                    <option value="">Seleccionar...</option>
+                                </select>
+                            </div>
+                            <div class="z-form-group">
+                                <label class="z-label">Clase de Agenda *</label>
+                                <select class="z-input" id="aaIdClase" required>
+                                    <option value="">Seleccionar...</option>
+                                </select>
+                            </div>
+                            <div class="z-form-group">
+                                <label class="z-label">Fecha Desde *</label>
+                                <input class="z-input" type="date" id="aaFechaDesde" required>
+                            </div>
+                            <div class="z-form-group">
+                                <label class="z-label">Fecha Hasta</label>
+                                <input class="z-input" type="date" id="aaFechaHasta">
+                            </div>
+                            <div class="z-form-group">
+                                <label class="z-label">Hora Inicio *</label>
+                                <input class="z-input" type="time" id="aaHoraInicio" required>
+                            </div>
+                            <div class="z-form-group">
+                                <label class="z-label">Hora Fin *</label>
+                                <input class="z-input" type="time" id="aaHoraFin" required>
+                            </div>
+                            <div class="z-form-group">
+                                <label class="z-label">Nombre Parámetro</label>
+                                <input class="z-input" type="text" id="aaParametro" maxlength="120">
+                            </div>
+                        </div>
+                        <!-- Días de semana -->
+                        <div class="z-form-group">
+                            <label class="z-label">Días de la semana *</label>
+                            <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+                                <label class="z-dias-check"><input type="checkbox" data-bit="0" checked> Lun</label>
+                                <label class="z-dias-check"><input type="checkbox" data-bit="1" checked> Mar</label>
+                                <label class="z-dias-check"><input type="checkbox" data-bit="2" checked> Mié</label>
+                                <label class="z-dias-check"><input type="checkbox" data-bit="3" checked> Jue</label>
+                                <label class="z-dias-check"><input type="checkbox" data-bit="4" checked> Vie</label>
+                                <label class="z-dias-check"><input type="checkbox" data-bit="5"> Sáb</label>
+                                <label class="z-dias-check"><input type="checkbox" data-bit="6"> Dom</label>
+                            </div>
+                        </div>
+                        <div class="z-form-group">
+                            <label class="z-label">Observaciones</label>
+                            <textarea class="z-input" id="aaObservaciones" rows="2"></textarea>
+                        </div>
+                        <input type="hidden" id="aaEditId">
+                        <div class="z-form-actions" style="margin-top:1rem">
+                            <button type="submit" class="z-btn z-btn--primary" id="aaSubmitBtn">Guardar</button>
+                            <button type="button" class="z-btn" onclick="cerrarFormAgendaAgente()">Cancelar</button>
+                        </div>
+                        <p class="z-form-error" id="aaError" style="display:none;color:var(--z-text-error);margin-top:0.5rem"></p>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Sub-sección: Catálogos -->
+            <div id="sub-catalogos" hidden>
+                <div class="z-subtabs" style="margin-bottom:1rem">
+                    <button class="z-subtab z-subtab--active" onclick="setCatalogo('servicios',this)">Servicios</button>
+                    <button class="z-subtab" onclick="setCatalogo('lugares',this)">Lugares</button>
+                    <button class="z-subtab" onclick="setCatalogo('clases',this)">Clases</button>
+                    <button class="z-subtab" onclick="setCatalogo('feriados',this)">Feriados</button>
+                </div>
+                <div id="catalogoContainer"></div>
+            </div>
+
+            <!-- Sub-sección: Agendas Servicios -->
+            <div id="sub-agendas-servicios" hidden>
+                <div class="z-card" style="padding:1.5rem">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+                        <h3 class="z-card__title">Agendas de Servicios</h3>
+                        <button class="z-btn z-btn--primary z-btn--sm" onclick="loadAgendasServicios()">Actualizar</button>
+                    </div>
+                    <div id="tablaAgendasServicios"></div>
+                </div>
+            </div>
+
+            <!-- Sub-sección: Agendas Lugares -->
+            <div id="sub-agendas-lugares" hidden>
+                <div class="z-card" style="padding:1.5rem">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+                        <h3 class="z-card__title">Agendas de Lugares</h3>
+                        <button class="z-btn z-btn--primary z-btn--sm" onclick="loadAgendasLugares()">Actualizar</button>
+                    </div>
+                    <div id="tablaAgendasLugares"></div>
+                </div>
+            </div>
+
+            <!-- Sub-sección: Ausencias -->
+            <div id="sub-ausencias" hidden>
+                <div class="z-card" style="padding:1.5rem;margin-bottom:1.25rem">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+                        <h3 class="z-card__title">Ausencias de Agentes</h3>
+                        <button class="z-btn z-btn--primary z-btn--sm" onclick="document.getElementById('formAusenciaCard').hidden=false">+ Nueva</button>
+                    </div>
+                    <div id="tablaAusencias"></div>
+                </div>
+                <div class="z-card" id="formAusenciaCard" hidden style="padding:1.5rem">
+                    <h4 class="z-card__title" style="margin-bottom:1rem">Registrar Ausencia</h4>
+                    <form id="formAusencia" onsubmit="submitAusencia(event)">
+                        <div class="z-form-grid">
+                            <div class="z-form-group">
+                                <label class="z-label">Agente *</label>
+                                <select class="z-input" id="ausIdUsuario" required>
+                                    <option value="">Seleccionar...</option>
+                                </select>
+                            </div>
+                            <div class="z-form-group">
+                                <label class="z-label">Desde *</label>
+                                <input class="z-input" type="date" id="ausFechaDesde" required>
+                            </div>
+                            <div class="z-form-group">
+                                <label class="z-label">Hasta *</label>
+                                <input class="z-input" type="date" id="ausFechaHasta" required>
+                            </div>
+                            <div class="z-form-group">
+                                <label class="z-label">Motivo</label>
+                                <input class="z-input" type="text" id="ausMotivo" maxlength="200">
+                            </div>
+                        </div>
+                        <label class="z-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:1rem">
+                            <input type="checkbox" id="ausGeneraAlerta" checked>
+                            Generar alertas automáticas
+                        </label>
+                        <div class="z-form-actions">
+                            <button type="submit" class="z-btn z-btn--primary">Guardar</button>
+                            <button type="button" class="z-btn" onclick="document.getElementById('formAusenciaCard').hidden=true">Cancelar</button>
+                        </div>
+                        <p class="z-form-error" id="ausError" style="display:none;color:var(--z-text-error);margin-top:0.5rem"></p>
+                    </form>
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+</div>
+
+<!-- ── Modal nuevo turno ──────────────────────────────────── -->
+<div class="z-modal-overlay" id="modalTurno" hidden>
+    <div class="z-modal" style="max-width:480px">
+        <div class="z-modal__header">
+            <h3 class="z-modal__title">Nuevo Turno</h3>
+            <button class="z-modal__close" onclick="cerrarModalTurno()">✕</button>
+        </div>
+        <div class="z-modal__body">
+            <form id="formTurno" onsubmit="submitTurno(event)">
+                <div class="z-form-group">
+                    <label class="z-label">Fecha</label>
+                    <input class="z-input" type="date" id="turnoFecha" readonly>
+                </div>
+                <div class="z-form-group">
+                    <label class="z-label">Horario</label>
+                    <input class="z-input" type="text" id="turnoHorario" readonly>
+                </div>
+                <div class="z-form-group">
+                    <label class="z-label">Ciudadano (CUIL / Nombre)</label>
+                    <input class="z-input" type="text" id="turnoCiudadanoQ" placeholder="Buscar..." oninput="buscarCiudadanoTurno(this.value)">
+                    <div id="turnoCiudadanoResultados" style="display:none;margin-top:4px;background:var(--z-bg-card);border:1px solid var(--z-border);border-radius:var(--z-radius-sm);max-height:160px;overflow-y:auto"></div>
+                    <input type="hidden" id="turnoIdCiudadano">
+                </div>
+                <div class="z-form-group">
+                    <label class="z-label">Observaciones</label>
+                    <textarea class="z-input" id="turnoObs" rows="2"></textarea>
+                </div>
+                <input type="hidden" id="turnoTipoAgenda">
+                <input type="hidden" id="turnoIdAgenda">
+                <input type="hidden" id="turnoHoraInicio">
+                <input type="hidden" id="turnoHoraFin">
+                <div class="z-form-actions" style="margin-top:1rem">
+                    <button type="submit" class="z-btn z-btn--primary">Reservar Turno</button>
+                    <button type="button" class="z-btn" onclick="cerrarModalTurno()">Cancelar</button>
+                </div>
+                <p id="turnoError" style="display:none;color:var(--z-text-error);margin-top:0.5rem;font-size:0.85rem"></p>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ── Modal catálogo genérico ────────────────────────────── -->
+<div class="z-modal-overlay" id="modalCatalogo" hidden>
+    <div class="z-modal" style="max-width:500px">
+        <div class="z-modal__header">
+            <h3 class="z-modal__title" id="modalCatalogoTitle">Item</h3>
+            <button class="z-modal__close" onclick="cerrarModalCatalogo()">✕</button>
+        </div>
+        <div class="z-modal__body" id="modalCatalogoBody"></div>
+    </div>
+</div>
+
+<script src="agenda.js?v=20260419"></script>
+</body>
+</html>
