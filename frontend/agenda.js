@@ -339,6 +339,15 @@ function irADia(fecha) {
     recargarCalendario();
 }
 
+function volverAMes() {
+    vistaActual = 'mes';
+    ['mes','semana','dia'].forEach(v => {
+        const btn = document.getElementById(`btnVista${v.charAt(0).toUpperCase() + v.slice(1)}`);
+        if (btn) btn.classList.toggle('z-cal-btn--active', v === 'mes');
+    });
+    recargarCalendario();
+}
+
 // ── Vista Día ─────────────────────────────────────────────────
 async function renderDia(fecha, idArea) {
     const params = new URLSearchParams({ fecha, capa: capaActual });
@@ -354,32 +363,66 @@ async function renderDia(fecha, idArea) {
         feriadoTag = `<span class="z-cal-dia__feriado-tag">Feriado: ${data.feriado_descripcion}</span>`;
     }
 
-    let slotsHtml = '';
-    if (!data.slots.length) {
-        slotsHtml = `<div class="z-cal-dia__empty">No hay agenda configurada para este día y capa.</div>`;
-    } else {
-        slotsHtml = data.slots.map(s => {
-            const label = `${fmtHora(s.hora_inicio)} – ${fmtHora(s.hora_fin)}`;
-            if (s.es_feriado) {
-                return `<div class="z-slot z-slot--feriado">${label}</div>`;
-            }
-            if (!s.disponible) {
-                return `<div class="z-slot z-slot--ocupado" title="${s.turnos_count} turno(s)">${label} ✗</div>`;
-            }
-            return `<div class="z-slot z-slot--libre"
-                        onclick="abrirModalTurno('${fecha}','${s.hora_inicio}','${s.hora_fin}')"
-                        title="Click para reservar">${label}</div>`;
-        }).join('');
-    }
+    // Agrupar slots por hora de inicio
+    const slotsPorHora = {};
+    data.slots.forEach(s => {
+        const h = parseInt(s.hora_inicio.slice(0, 2));
+        (slotsPorHora[h] = slotsPorHora[h] || []).push(s);
+    });
+
+    // Rango de horas: 6 a 21 siempre visible, ampliar si hay slots fuera
+    const horaMin = Math.min(6,  ...Object.keys(slotsPorHora).map(Number));
+    const horaMax = Math.max(21, ...Object.keys(slotsPorHora).map(Number));
+    const horas   = Array.from({ length: horaMax - horaMin + 1 }, (_, i) => horaMin + i);
+
+    const esHoy = fecha === padDate(hoy);
+    const horaActual = hoy.getHours();
+
+    const filasHtml = horas.map(h => {
+        const slots = slotsPorHora[h] || [];
+        const hStr  = String(h).padStart(2, '0') + ':00';
+        const esActual = esHoy && h === horaActual;
+
+        let celdaHtml;
+        if (!slots.length) {
+            celdaHtml = `<div class="z-cal-dia__hour-slots z-cal-dia__hour-slots--vacia"></div>`;
+        } else {
+            const slotsHtml = slots.map(s => {
+                const label = `${fmtHora(s.hora_inicio)} – ${fmtHora(s.hora_fin)}`;
+                if (s.es_feriado)  return `<div class="z-slot z-slot--feriado">${label}</div>`;
+                if (!s.disponible) return `<div class="z-slot z-slot--ocupado" title="${s.turnos_count} turno(s)">${label} ✗</div>`;
+                return `<div class="z-slot z-slot--libre"
+                            onclick="abrirModalTurno('${fecha}','${s.hora_inicio}','${s.hora_fin}')"
+                            title="Click para reservar">${label}</div>`;
+            }).join('');
+            celdaHtml = `<div class="z-cal-dia__hour-slots">${slotsHtml}</div>`;
+        }
+
+        return `<div class="z-cal-dia__hour-row${esActual ? ' z-cal-dia__hour-row--actual' : ''}" id="hora-${h}">
+            <div class="z-cal-dia__hour-label">${hStr}</div>
+            ${celdaHtml}
+        </div>`;
+    }).join('');
 
     document.getElementById('calContainer').innerHTML = `
         <div class="z-cal-dia">
             <div class="z-cal-dia__header">
-                <span>${document.getElementById('calLabel').textContent}</span>
+                <div style="display:flex;align-items:center;gap:0.75rem">
+                    <button class="z-cal-btn z-cal-btn--back" onclick="volverAMes()" title="Volver al mes">← Mes</button>
+                    <span>${document.getElementById('calLabel').textContent}</span>
+                </div>
                 ${feriadoTag}
             </div>
-            <div class="z-cal-dia__slots">${slotsHtml}</div>
+            <div class="z-cal-dia__hours" id="diaHoursScroll">
+                ${filasHtml}
+            </div>
         </div>`;
+
+    // Scroll a las 8 AM
+    requestAnimationFrame(() => {
+        const el = document.getElementById('hora-8');
+        if (el) el.scrollIntoView({ behavior: 'instant', block: 'start' });
+    });
 }
 
 // ── Vista Semana ──────────────────────────────────────────────
