@@ -1,194 +1,86 @@
-# CLAUDE.md — ZARIS Gestión Estatal (ZGE)
-
-> Contexto operativo para Claude Code. La referencia exhaustiva del stack/credenciales
-> está en `ZARIS_REFERENCIA_PROYECTO.md` (no commiteado por `.gitignore`).
-> Este archivo prioriza lo necesario para trabajar día a día en el módulo **BUC**.
-
+---
+name: Reglas de Desarrollo ZARIS
+description: Reglas y directrices obligatorias para el desarrollo de módulos en la suite ZARIS Gestión Estatal.
 ---
 
-## 1. Qué es este proyecto
+# Reglas Mandatorias de Desarrollo para ZARIS
 
-**ZGE** = suite ZARIS Gestión Estatal. Módulos presentes hoy:
+Al desarrollar nuevas características o módulos para la suite ZARIS, usted **DEBE** adherirse
+a estas reglas estrictamente.
 
-- **BUC** — Base Única de Ciudadanos y Empresas (ABM ciudadanos, empresas, usuarios,
-  vínculos ciudadano↔empresa, padrones de referencia). En desarrollo activo.
-- **Agenda** — gestión de áreas y eventos. Frontend y schema SQL ya implementados
-  (ver sección 7).
+## 1. Login Único y Centralizado
 
-A futuro la suite incorporará CRM, Historia Clínica, etc. — bajo SSO único.
+El sistema entero (BUC, Agenda, Historia Clínica, CRM, etc.) opera bajo la premisa de
+**Single Sign-On (Login Único)**.
 
----
+- **Prohibido:** Crear pantallas de login, modales de autenticación o validaciones de
+  contraseñas de manera individual en cada módulo.
+- **Obligatorio:** Toda la autenticación ocurre en `home.html` (o el servicio de auth
+  principal). Los módulos deben asumir que la autenticación ya sucedió y simplemente
+  verificar la existencia de la sesión compartida (ej. chequeando `zaris_session` en
+  `localStorage`). Si no hay sesión, el usuario es redirigido a `home.html`.
 
-## 2. Stack
+## 2. Base Única de Ciudadanos (BUC) como Fuente Única de Verdad
 
-| Capa     | Tecnología |
-|----------|------------|
-| Frontend | HTML5 + JS (ES6+) + CSS3 vanilla. Sin frameworks. Google Fonts: Inter + JetBrains Mono. |
-| Backend  | Python 3.10+, FastAPI 0.111, SQLAlchemy 2.0 async (asyncpg), Pydantic 2.7, JWT (python-jose), bcrypt (passlib). |
-| BD       | PostgreSQL en Supabase (`REDACTED.supabase.co`). |
-| Deploy   | Frontend → GitHub Pages (`CesarZeta/zaris-frontend`). Backend → Railway (`CesarZeta/zaris-api`, auto-deploy on push). |
+Cualquier módulo que requiera registrar interacciones con individuos (pacientes, clientes,
+usuarios, solicitantes de turnos) **DEBE** consumir la entidad `Ciudadano` desde la BUC.
 
-URL pública API: `https://zaris-api-production-bf0b.up.railway.app/api`
-Health: `/api/health` · Docs: `/docs` · Prefijo BUC: `/api/v1/buc`
+- **Prohibido:** Crear tablas o entidades separadas para almacenar datos maestros de
+  personas (como DNI, nombre, teléfonos) dentro de un módulo subsidiario.
+- **Obligatorio:** Utilizar su llave primaria (ej. `id_ciudadano`) y referenciar siempre a
+  la tabla/fuente original `ciudadanos`. Los datos extra específicos de un negocio
+  pueden añadirse a la BUC si son relevantes globalmente; de lo contrario se referencian
+  externamente, pero el individuo siempre existe primero y únicamente en la BUC.
 
----
+## 3. Accesos y Roles Modulares (Arquitectura Futura)
 
-## 3. Layout del repo
+Las credenciales son para toda la suite, pero a corto/mediano plazo habrá control de
+acceso modular.
 
-```
-ZGE/
-├── frontend/          # HTML/JS/CSS — se sirve desde GitHub Pages
-│   ├── menu.html              # Hub del módulo BUC
-│   ├── ciudadano.html         # ABM + consulta de ciudadanos
-│   ├── empresa.html           # ABM + consulta de empresas
-│   ├── usuarios.html          # ABM de usuarios del sistema
-│   ├── mainconfig.html        # Padrones de referencia (nacionalidades, actividades, etc.)
-│   ├── agenda.html            # Pantalla del módulo Agenda
-│   ├── agenda.js              # Lógica de Agenda
-│   ├── agenda.css             # Estilos de Agenda
-│   ├── styles.css             # Tema global ZARIS (variables --z-*)
-│   └── js/validaciones.js     # Validaciones compartidas (CUIL/CUIT, email, tel)
-│
-├── backend/
-│   ├── app/
-│   │   ├── main.py                    # FastAPI + CORS + lifespan
-│   │   ├── core/{config,database}.py  # Settings + Engine async + Base ORM
-│   │   ├── api/routes/buc.py          # Todos los endpoints del módulo
-│   │   ├── models/buc.py              # ORM: Usuario, Nacionalidad, TipoRepresentacion,
-│   │   │                              #      Actividad, Ciudadano, Empresa, CiudadanoEmpresa
-│   │   └── schemas/buc.py             # Pydantic in/out
-│   ├── requirements.txt
-│   ├── Procfile                       # `web: uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-│   └── pyproject.toml
-│
-├── sql/                       # Excluido del repo (ver .gitignore). Schemas + migraciones.
-│   ├── 00_deploy_buc.sql              # Schema completo del módulo BUC
-│   ├── 01_migration_observaciones_500.sql
-│   ├── 02_migration_usuarios.sql
-│   ├── 03_agenda_areas.sql            # Áreas para el módulo Agenda
-│   ├── 04_agenda_schema.sql           # Schema principal del módulo Agenda
-│   └── deploy_to_supabase.py          # Aplicador de migraciones a Supabase
-│
-├── .agent/                    # Skills/workflows Antigravity (excluido del repo)
-└── .gitignore                 # Excluye: backend/.env, sql/, .agent/, *.docx, REFERENCIA
-```
+- Al generar nuevas arquitecturas de seguridad o diseñar los roles, anticipe que los
+  usuarios tendrán un conjunto de permisos que dictarán a qué aplicaciones o módulos
+  de la suite pueden acceder.
+- Utilice la misma tabla de usuarios y sesiones subyacente, pero añada configuraciones
+  de acceso modulares o banderas (flags) cuando sea requerido.
 
-`.gitignore` excluye `backend/.env`, `sql/`, `.agent/`, `*.docx`, `*.log`,
-`ZARIS_REFERENCIA_PROYECTO.md` y `deploy_to_supabase.py`.
+## 4. Stack Tecnológico
 
----
+- **Frontend:** Vanilla HTML/JS/CSS (sin frameworks)
+- **Backend:** FastAPI (Python 3.10+)
+- **Base de Datos:** PostgreSQL (Supabase en producción, Postgres 14 local en desarrollo)
+- **Deploy:** Railway (API) — el frontend actualmente corre solo en local
+- **Tipografía:** Google Fonts — Inter + JetBrains Mono
 
-## 4. Reglas mandatorias (de `.agent/skills/reglas_zaris/SKILL.md`)
+## 5. Convenciones de Código
 
-Estas son inviolables. Cualquier cambio debe respetarlas.
+- SQL: snake_case para tablas y columnas
+- API: prefijo `/api/v1/` + nombre_modulo
+- Archivos frontend: minúsculas con guiones o guiones_bajos
+- Timestamps: UTC siempre
+- Bajas lógicas: campo `activo = false`, nunca DELETE físico
 
-1. **SSO único.** Login solo en `home.html` / servicio central. Cada módulo verifica
-   `localStorage.zaris_session` y, si falta, redirige al home. Prohibido modales o
-   pantallas de login locales por módulo.
-2. **BUC es la fuente única de verdad para personas.** Cualquier módulo que
-   referencie ciudadanos lo hace por `id_ciudadano` apuntando a `ciudadanos`. Nunca
-   duplicar columnas maestras (DNI, nombre, teléfono) en módulos subsidiarios.
-3. **Roles modulares.** Tabla `usuarios` única, con flags por módulo (ej. `buc_acceso`).
-   Anticipar que un usuario puede tener acceso a un módulo y no a otro.
-4. **Convenciones:** SQL `snake_case`. API con prefijo `/api/v1/<modulo>`. Timestamps
-   en UTC. Bajas lógicas con `activo = false` — **nunca DELETE físico**.
+## 6. URLs del Proyecto
 
----
+### Producción
 
-## 5. Cómo trabajar día a día
+- **API:** `https://zaris-api-production-bf0b.up.railway.app`
+- **Health check:** `https://zaris-api-production-bf0b.up.railway.app/api/health`
+- **API docs (Swagger):** `https://zaris-api-production-bf0b.up.railway.app/docs`
 
-### Backend local
-```bash
-cd backend
-pip install -r requirements.txt
-# backend/.env debe existir con POSTGRES_* o DATABASE_URL apuntando a Supabase
-uvicorn app.main:app --reload
-```
+### Repositorio
 
-### Aplicar migraciones SQL a Supabase
-Las migraciones viven en `sql/`. Usar `sql/deploy_to_supabase.py` (no commiteado)
-o ejecutarlas manualmente desde el dashboard de Supabase. Cada nueva migración
-debe ser idempotente (`IF NOT EXISTS`, `ON CONFLICT DO NOTHING`).
+El proyecto ZARIS Gestión Estatal (ZGE) está organizado como **monorepo**. Todo el
+código (frontend, backend, SQL, documentación) vive en un único repositorio.
 
-### Deploy
-Workflow detallado en `.agent/workflows/deploy.md`. Resumen:
+- **Repositorio:** `github.com/CesarZeta/zaris-zge` (privado)
+- **Estructura:**
+  - `backend/` — FastAPI (deploy automático a Railway desde la rama `main`)
+  - `frontend/` — Vanilla HTML/JS/CSS (aún no deployado, corre en local)
+  - `sql/` — Scripts de esquema y migraciones
+  - `docs/` — Documentación técnica
 
-```bash
-# Frontend → GitHub Pages
-git add frontend/ .gitignore
-git commit -m "feat(BUC): ..."
-git push origin main          # Deploy automático
+### Desarrollo Local
 
-# Backend → Railway: copiar a clon temporal y push
-# (ver .agent/workflows/deploy.md para el script PowerShell completo)
-```
-
-> El repo local solo tiene remote `origin` → `zaris-frontend`. El backend se
-> sincroniza vía clon temporal en `$env:TEMP\zaris-api-deploy` que pushea a
-> `zaris-api`. **No** confirmar deploys ni pushes sin pedir autorización al usuario.
-
----
-
-## 6. Convenciones específicas que ya están vigentes
-
-Observadas en el código actual — replicar al sumar features:
-
-- **CUIL/CUIT:** se persisten **sin guiones** (ver commit `8889213`). Las validaciones
-  en `frontend/js/validaciones.js` aceptan input con o sin guiones y normalizan.
-- **Auditoría de cambios:** ciudadanos y empresas tienen `modificado_por` (FK a
-  `usuarios`) + `fecha_modif`. Toda mutación debe poblar ambos.
-- **Búsqueda dual** (numérica vs texto): los endpoints `/buscar` aceptan `tipo=auto`
-  y deciden entre buscar por CUIL/username o por nombre.
-- **Estilos:** todas las clases CSS usan prefijo `z-` y las variables `--z-*` definidas
-  en `frontend/styles.css`. Mantener consistencia visual con `mainconfig.html` y
-  `usuarios.html` (commit `b62ba02` estableció el patrón).
-- **Sin commits de credenciales.** `backend/.env` está en `.gitignore`. Las creds
-  reales viven en el dashboard de Railway (vars de entorno) y en
-  `ZARIS_REFERENCIA_PROYECTO.md` (local, no commiteado).
-
----
-
-## 7. Estado actual y próximas piezas (al 2026-04-21)
-
-Implementado:
-- ABM de ciudadanos (con padrón de nacionalidades).
-- ABM de empresas (con padrón de actividades CLAE-AFIP).
-- Vínculos ciudadano↔empresa con tipo de representación.
-- ABM de usuarios del sistema (con `nivel_acceso` 1–4 y flag `buc_acceso`).
-- Pantalla `mainconfig.html` para administrar padrones.
-- Auditoría `modificado_por` + paginación + endurecimiento de seguridad.
-- Módulo **Agenda** — frontend (`frontend/agenda.html`, `agenda.js`, `agenda.css`)
-  y migraciones (`sql/03_agenda_areas.sql`, `sql/04_agenda_schema.sql`).
-- Seed de tipos de reclamo: `backend/seed_reclamos.py` existe. **No** existe
-  `backend/seed_crm.py` (el módulo CRM todavía no fue iniciado).
-
-Aún faltante / a discutir con el usuario antes de tocar:
-- Pantalla `home.html` real con login SSO (hoy `menu.html` es el hub del módulo
-  BUC, no el portal SSO de la suite).
-- Roles efectivos por módulo más allá del flag `buc_acceso`.
-- Otros módulos de la suite (CRM, HC) — todavía no iniciados aquí.
-
----
-
-## 8. Entorno local (pendiente de configurar)
-
-Este entorno local aún **no está configurado**. Piezas pendientes:
-
-- **PostgreSQL 14 local:** pendiente de instalar manualmente en Windows.
-  - Comando sugerido: `winget install PostgreSQL.PostgreSQL.14`
-  - Target: base `zaris_dev` · usuario `postgres` · password `postgres` · puerto `5432`
-- **`backend/.env.local`:** pendiente de crear. Template:
-  ```
-  PROJECT_NAME="ZARIS API - LOCAL"
-  POSTGRES_USER=postgres
-  POSTGRES_PASSWORD=REDACTED
-  POSTGRES_SERVER=REDACTED
-  POSTGRES_PORT=5432
-  POSTGRES_DB=zaris_dev
-  SECRET_KEY="REDACTED"
-  ACCESS_TOKEN_EXPIRE_MINUTES=1440
-  ```
-- **`backend/run_local.bat`:** pendiente de crear. Debe exportar
-  `ENV_FILE=.env.local` y lanzar `uvicorn app.main:app --reload --port 8000`
-  (requiere previamente adaptar `backend/app/core/config.py` para leer
-  `env_file = os.getenv("ENV_FILE", ".env")`).
+- **API:** `http://127.0.0.1:8000`
+- **Frontend:** `http://localhost:8080`
+- **Base de datos:** `postgresql://postgres@127.0.0.1:5432/zaris_dev`
