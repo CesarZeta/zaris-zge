@@ -362,10 +362,10 @@ async def buscar_empresa(
     db: AsyncSession = Depends(get_db)
 ):
     """Buscar empresa por CUIT, email o nombre (contains)."""
-    es_numerico = tipo == "numero" or (tipo == "auto" and q.replace("-", "").isdigit())
-
-    if es_numerico:
-        cond = Empresa.cuit.ilike(f"%{q}%")
+   es_numerico = tipo == "numero" or (tipo == "auto" and q.replace("-", "").isdigit())
+if es_numerico:
+    q_normalizado = q.replace("-", "")
+    cond = func.replace(Empresa.cuit, "-", "").ilike(f"%{q_normalizado}%")
     else:
         cond = or_(
             Empresa.nombre.ilike(f"%{q}%"),
