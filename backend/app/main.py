@@ -46,6 +46,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_origins=["http://localhost:8080",
+    "https://cesarzeta.github.io"],
 )
 
 # Rutas
