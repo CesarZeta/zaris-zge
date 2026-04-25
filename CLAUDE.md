@@ -58,6 +58,10 @@ acceso modular.
 - Archivos frontend: minúsculas con guiones o guiones_bajos
 - Timestamps: UTC siempre
 - Bajas lógicas: campo `activo = false`, nunca DELETE físico
+- **CORS:** cuando se publique un nuevo frontend en otro dominio, agregar la URL a la
+  lista `allow_origins` en `backend/app/main.py`. NO duplicar el parámetro
+  `allow_origins=` dentro del bloque `add_middleware(CORSMiddleware, ...)`; Python
+  lanza `SyntaxError: keyword argument repeated` y la API no arranca.
 
 ## 6. URLs del Proyecto
 
@@ -66,6 +70,7 @@ acceso modular.
 - **API:** `https://zaris-api-production-bf0b.up.railway.app`
 - **Health check:** `https://zaris-api-production-bf0b.up.railway.app/api/health`
 - **API docs (Swagger):** `https://zaris-api-production-bf0b.up.railway.app/docs`
+- **Frontend:** `https://cesarzeta.github.io/zaris-zge/frontend/menu.html`
 
 ### Repositorio
 
@@ -73,10 +78,9 @@ El proyecto ZARIS Gestión Estatal (ZGE) está organizado como **monorepo**. Tod
 código (frontend, backend, SQL, documentación) vive en un único repositorio.
 
 - **Repositorio:** `github.com/CesarZeta/zaris-zge` (público)
-- `frontend/` — Vanilla HTML/JS/CSS (publicado en GitHub Pages)
 - **Estructura:**
+  - `frontend/` — Vanilla HTML/JS/CSS (publicado en GitHub Pages)
   - `backend/` — FastAPI (deploy automático a Railway desde la rama `main`)
-- **Frontend:** https://cesarzeta.github.io/zaris-zge/frontend/menu.html
   - `sql/` — Scripts de esquema y migraciones
   - `docs/` — Documentación técnica
 
@@ -85,3 +89,22 @@ código (frontend, backend, SQL, documentación) vive en un único repositorio.
 - **API:** `http://127.0.0.1:8000`
 - **Frontend:** `http://localhost:8080`
 - **Base de datos:** `postgresql://postgres@127.0.0.1:5432/zaris_dev`
+
+## 7. Configuración de Deploy (Railway)
+
+El servicio de Railway que sirve la API está configurado de la siguiente manera. Si se
+modifica la estructura del proyecto, hay que actualizar estos valores manualmente
+desde Railway → Settings.
+
+- **Servicio:** `zaris-api` (proyecto Railway: `inspiring-empathy`)
+- **Source Repo:** `CesarZeta/zaris-zge`
+- **Branch:** `main` (deploy automático en cada push)
+- **Root Directory:** `/backend`
+- **Custom Start Command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+
+> **Importante — fuente de verdad del comando de arranque:**
+> El **Custom Start Command de Railway tiene prioridad sobre el `Procfile`**. Aunque
+> el repo tenga un `Procfile` correcto, si el campo "Custom Start Command" en Railway
+> dice otra cosa, Railway usa el de Railway y el Procfile se ignora.
+> Si en el futuro se mueve `main.py` o se cambia la estructura, hay que actualizar el
+> comando en **Railway → Settings → Deploy → Custom Start Command**, no solo el Procfile.
