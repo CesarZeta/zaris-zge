@@ -1,0 +1,18 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Tabs</title><link rel="stylesheet" href="_preview.css"></head><body>
+<div class="card" style="padding:24px 26px;">
+  <style>
+    .tabs{display:flex;gap:22px;border-bottom:1px solid rgba(38,37,30,.1);padding-bottom:10px;}
+    .tab{font-family:var(--font-display);font-size:14px;font-weight:400;color:rgba(38,37,30,.55);padding:2px 0;cursor:pointer;border:none;background:none;position:relative;}
+    .tab:hover{color:#cf2d56;}
+    .tab--active{color:#26251e;}
+    .tab--active::after{content:'';position:absolute;left:0;right:0;bottom:-11px;height:1.5px;background:#26251e;}
+    .count{font-family:var(--font-mono);font-size:11px;color:rgba(38,37,30,.55);margin-left:4px;}
+  </style>
+  <div class="tabs">
+    <button class="tab tab--active">Overview <span class="count">4</span></button>
+    <button class="tab">Composer <span class="count">12</span></button>
+    <button class="tab">Timeline</button>
+    <button class="tab">Settings</button>
+  </div>
+</div>
+</body></html>

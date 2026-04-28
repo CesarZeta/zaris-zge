@@ -1,0 +1,47 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>ZARIS — Design for web apps</title>
+  <link rel="stylesheet" href="../../colors_and_type.css">
+  <style>
+    html, body { margin: 0; background: var(--zaris-cream); }
+    * { box-sizing: border-box; }
+  </style>
+</head>
+<body>
+  <template id="__bundler_thumbnail" data-bg-color="#f2f1ed">
+    <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+      <rect width="1200" height="800" fill="#f2f1ed"/>
+      <rect x="440" y="300" width="320" height="200" rx="32" fill="#26251e"/>
+      <path d="M540 370h120l-80 80h80" stroke="#f2f1ed" stroke-width="14" fill="none" stroke-linecap="square"/>
+      <text x="600" y="580" text-anchor="middle" font-family="system-ui, sans-serif" font-size="56" font-weight="500" letter-spacing="-2" fill="#26251e">ZARIS</text>
+    </svg>
+  </template>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="MarketingPrimitives.jsx"></script>
+  <script type="text/babel" src="Nav.jsx"></script>
+  <script type="text/babel" src="Hero.jsx"></script>
+  <script type="text/babel" src="Features.jsx"></script>
+  <script type="text/babel" src="PricingTable.jsx"></script>
+  <script type="text/babel" src="Footer.jsx"></script>
+
+  <script type="text/babel">
+    const App = () => (
+      <div>
+        <Nav />
+        <Hero />
+        <Features />
+        <PricingTable />
+        <Footer />
+      </div>
+    );
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

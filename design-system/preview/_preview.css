@@ -1,0 +1,50 @@
+/* Preview card shared styles — used by every card in preview/ */
+@import url("../colors_and_type.css");
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--zaris-cream);
+  color: var(--fg-1);
+  font-family: var(--font-display);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+.card {
+  padding: 20px 24px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100%;
+}
+
+.card--center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.card--stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  justify-content: center;
+}
+
+.label {
+  font-family: var(--font-system);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.value-mono {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-3);
+  letter-spacing: -0.275px;
+}

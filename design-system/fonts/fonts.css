@@ -1,0 +1,63 @@
+/* ZARIS Design System — Font Stacks
+ *
+ * STATUS: All three brand voices now back by real files.
+ *   - Fraunces   (serif, variable SOFT/WONK/opsz/wght)  ✓
+ *   - JetBrains Mono (mono, variable wght, italic)       ✓
+ *   - Space Grotesk (display sans, 5 static weights)     ✓
+ *
+ * Note: the written spec names CursorGothic / jjannon / berkeleyMono.
+ * Per the user, Space Grotesk / Fraunces / JetBrains Mono ARE the brand faces.
+ */
+
+/* --- Fraunces (variable) --- */
+@font-face {
+  font-family: "Fraunces";
+  src: url("./Fraunces-VariableFont_SOFT_WONK_opsz_wght.ttf") format("truetype-variations"),
+       url("./Fraunces-VariableFont_SOFT_WONK_opsz_wght.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Fraunces";
+  src: url("./Fraunces-Italic-VariableFont_SOFT_WONK_opsz_wght.ttf") format("truetype-variations"),
+       url("./Fraunces-Italic-VariableFont_SOFT_WONK_opsz_wght.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* --- JetBrains Mono (variable, roman + italic) --- */
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./JetBrainsMono-VariableFont_wght.ttf") format("truetype-variations"),
+       url("./JetBrainsMono-VariableFont_wght.ttf") format("truetype");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./JetBrainsMono-Italic-VariableFont_wght.ttf") format("truetype-variations"),
+       url("./JetBrainsMono-Italic-VariableFont_wght.ttf") format("truetype");
+  font-weight: 100 800;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* --- Space Grotesk (variable wght) --- */
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("./SpaceGrotesk-VariableFont_wght.ttf") format("truetype-variations"),
+       url("./SpaceGrotesk-VariableFont_wght.ttf") format("truetype");
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --font-display: "Space Grotesk", system-ui, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-serif:   "Fraunces", "Iowan Old Style", "Palatino Linotype", "URW Palladio L", P052, ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-system:  system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}

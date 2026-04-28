@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240" viewBox="0 0 320 240" fill="none">
+  <rect width="320" height="240" fill="#f2f1ed"></rect>
+  
+  <line x1="40" y1="30" x2="40" y2="210" stroke="rgba(38,37,30,0.1)" stroke-width="2"></line>
+  <circle cx="40" cy="48" r="8" fill="#dfa88f"></circle>
+  <text x="60" y="52" font-family="Space Grotesk" font-size="13" fill="#26251e">Thinking</text>
+  <circle cx="40" cy="96" r="8" fill="#9fc9a2"></circle>
+  <text x="60" y="100" font-family="Space Grotesk" font-size="13" fill="#26251e">Grep</text>
+  <circle cx="40" cy="144" r="8" fill="#9fbbe0"></circle>
+  <text x="60" y="148" font-family="Space Grotesk" font-size="13" fill="#26251e">Read</text>
+  <circle cx="40" cy="192" r="8" fill="#c0a8dd"></circle>
+  <text x="60" y="196" font-family="Space Grotesk" font-size="13" fill="#26251e">Edit</text>
+</svg>
