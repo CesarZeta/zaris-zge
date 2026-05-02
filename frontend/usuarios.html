@@ -6,7 +6,7 @@
     <meta name="description" content="ZARIS — Padrón de Usuarios">
     <title>ZARIS — Usuarios</title>
     <script>if (window.self !== window.top) { var s = document.createElement('style'); s.textContent = '.z-header{display:none!important}'; document.head.appendChild(s); }</script>
-    <link rel="stylesheet" href="styles.css?v=20260418-2">
+    <link rel="stylesheet" href="styles.css?v=20260502">
     <style>
         .z-form-card { animation: z-scaleIn 0.4s var(--z-ease); }
 
@@ -81,40 +81,48 @@
         .z-preview-label {
             font-size: 0.70rem; font-weight: 700; text-transform: uppercase;
             letter-spacing: 0.07em; color: var(--z-text3);
-            margin-bottom: 0.5rem; display: flex; align-items: center; gap: 6px;
+            margin-bottom: 0.5rem;
         }
         .z-preview-rows { display: flex; flex-direction: column; gap: 4px; }
         .z-preview-row {
-            display: flex; align-items: center; justify-content: space-between;
-            gap: 10px; padding: 0.45rem 0.85rem;
+            display: flex; align-items: center; gap: 12px;
+            padding: 0.5rem 0.9rem;
             background: var(--z-bg-card); border: 1px solid var(--z-border);
             border-radius: var(--z-radius); cursor: pointer;
             transition: border-color 0.15s, background 0.15s;
             font-size: 0.84rem; color: var(--z-text);
         }
-        .z-preview-row:hover { border-color: var(--zaris-orange); background: rgba(245,78,0,0.03); }
-        .z-preview-row__main { font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .z-preview-row__meta { font-size: 0.75rem; color: var(--z-text3); white-space: nowrap; }
-        .z-preview-row__action { font-size: 0.72rem; color: var(--zaris-orange); font-weight: 600; white-space: nowrap; opacity: 0; transition: opacity 0.15s; }
-        .z-preview-row:hover .z-preview-row__action { opacity: 1; }
+        .z-preview-row:hover { border-color: var(--z-accent); background: rgba(245,78,0,0.03); }
+        .z-preview-row__nombre { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .z-preview-row__username { font-size: 0.78rem; color: var(--z-text2); font-family: var(--z-font-mono); white-space: nowrap; }
+        .z-preview-row__nivel { font-size: 0.75rem; color: var(--z-text3); white-space: nowrap; }
+        .z-preview-row__estado { font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+        .z-preview-row__estado--activo   { background: rgba(31,138,101,.10); color: #1f8a65; }
+        .z-preview-row__estado--inactivo { background: rgba(207,45,86,.10);  color: #cf2d56; }
+        .z-preview-row__cta { font-size: 0.72rem; color: var(--z-accent); font-weight: 600; white-space: nowrap; opacity: 0; transition: opacity 0.15s; margin-left: auto; }
+        .z-preview-row:hover .z-preview-row__cta { opacity: 1; }
 
-        /* ── Panel de listado ── */
+        /* ── Listado ── */
+        .z-listado-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 1rem; gap: 1rem;
+        }
+        .z-listado-header h2 { font-size: 1.05rem; font-weight: 700; color: var(--z-primary); }
         .z-filter-bar {
             display: flex; align-items: flex-end; gap: 0.75rem; flex-wrap: wrap;
             background: var(--z-bg-card); border: 1px solid var(--z-border);
             border-radius: var(--z-radius-lg); padding: 1rem 1.25rem; margin-bottom: 1.25rem;
         }
-        .z-filter-group { display: flex; flex-direction: column; gap: 4px; min-width: 140px; }
+        .z-filter-group { display: flex; flex-direction: column; gap: 4px; }
         .z-filter-group label { font-size: 0.70rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--z-text3); }
         .z-filter-group input, .z-filter-group select {
             background: transparent; border: 1px solid var(--z-border); color: var(--z-text);
             padding: 0.4rem 0.65rem; border-radius: var(--z-radius);
             font-size: 0.84rem; font-family: var(--z-font); outline: none;
-            transition: border-color 0.15s;
+            transition: border-color 0.15s; min-width: 140px;
         }
-        .z-filter-group input:focus, .z-filter-group select:focus { border-color: var(--z-border-medium); }
+        .z-filter-group input:focus, .z-filter-group select:focus { border-color: var(--z-border-focus); outline: none; }
 
-        /* ── Tabla listado ── */
         .z-listado-wrap {
             overflow-x: auto; border-radius: var(--z-radius-lg);
             border: 1px solid var(--z-border); background: var(--z-bg-card);
@@ -122,30 +130,33 @@
         }
         .z-listado-wrap table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
         .z-listado-wrap thead th {
-            background: var(--surface-400); color: var(--z-text2); font-weight: 600;
+            background: var(--z-bg-card-alt); color: var(--z-text2); font-weight: 600;
             font-size: 0.70rem; text-transform: uppercase; letter-spacing: 0.05em;
             padding: 0.65rem 1rem; text-align: left; white-space: nowrap;
         }
-        .z-listado-wrap tbody tr { border-top: 1px solid var(--z-border); }
-        .z-listado-wrap tbody tr:hover { background: var(--surface-400); }
+        .z-listado-wrap tbody tr { border-top: 1px solid var(--z-border); transition: background 0.1s; }
+        .z-listado-wrap tbody tr:hover { background: var(--z-bg-card-alt); }
         .z-listado-wrap tbody td { padding: 0.6rem 1rem; color: var(--z-text); vertical-align: middle; }
         .z-listado-wrap td.mono { font-family: var(--z-font-mono); font-size: 0.78rem; color: var(--z-text2); }
-        .z-listado-wrap .z-tbl-btn {
+        .z-tbl-btn {
             border: 1px solid var(--z-border); background: transparent; color: var(--z-text2);
             padding: 0.25rem 0.6rem; border-radius: var(--z-radius-sm); cursor: pointer;
-            font-size: 0.75rem; font-family: var(--z-font); transition: all 0.15s;
+            font-size: 0.75rem; font-family: var(--z-font); transition: all 0.15s; margin-right: 4px;
         }
-        .z-listado-wrap .z-tbl-btn:hover { border-color: var(--zaris-orange); color: var(--zaris-orange); }
+        .z-tbl-btn:hover { border-color: var(--z-accent); color: var(--z-accent); background: rgba(245,78,0,0.05); }
+        .z-listado-count { font-size: 0.78rem; color: var(--z-text3); margin-bottom: 0.6rem; }
+        .z-badge-activo   { display:inline-block; padding:2px 8px; border-radius:20px; font-size:0.72rem; font-weight:600; background:rgba(31,138,101,.10); color:#1f8a65; }
+        .z-badge-inactivo { display:inline-block; padding:2px 8px; border-radius:20px; font-size:0.72rem; font-weight:600; background:rgba(207,45,86,.10); color:#cf2d56; }
 
+        /* ── Print ── */
+        .z-print-header { display: none; }
         @media print {
-            .z-header, .z-breadcrumb, .z-search-panel,
-            .z-filter-bar, .z-card__footer, .z-preview-section,
-            .z-listado-wrap .z-tbl-btn { display: none !important; }
-            .z-listado-print-header { display: block !important; text-align: center; margin-bottom: 1.5rem; }
-            .z-listado-print-header h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.2rem; }
-            .z-listado-print-header p  { font-size: 0.78rem; color: #666; }
+            .z-header, .z-breadcrumb, .z-search-panel, .z-preview-section,
+            .z-listado-header .z-btn, .z-filter-bar, .z-tbl-btn { display: none !important; }
+            .z-print-header { display: block !important; text-align: center; margin-bottom: 1.5rem; }
+            .z-print-header h2 { font-size: 1.1rem; font-weight: 700; }
+            .z-print-header p  { font-size: 0.78rem; color: #666; margin-top: 4px; }
         }
-        .z-listado-print-header { display: none; }
     </style>
 </head>
 <body>
@@ -171,39 +182,26 @@
                 <span class="z-breadcrumb__current">Padrón Usuarios</span>
             </nav>
 
-            <!-- ═══════════ BÚSQUEDA ═══════════ -->
+            <!-- ═══════════ PANEL BÚSQUEDA ═══════════ -->
             <div class="z-search-panel" id="search-panel">
-                <div class="z-search-panel__title">
-                    🔍 Buscar Usuario Existente
-                </div>
-                <div style="display:flex;gap:6px;margin-bottom:0.6rem;">
-                    <button type="button" class="z-btn z-btn--xs z-btn--primary" id="btn-modo-texto"  title="Buscar por nombre">Aa Nombre</button>
-                    <button type="button" class="z-btn z-btn--xs z-btn--ghost"   id="btn-modo-numero" title="Buscar por CUIL o usuario"># CUIL / Usuario</button>
-                </div>
+                <div class="z-search-panel__title">Buscar Usuario Existente</div>
                 <div class="z-search-box">
                     <div class="z-form-group">
                         <input type="text" class="z-input" id="search-query"
-                               placeholder="Ingresá nombre del usuario..."
-                               autofocus>
+                               placeholder="Ingresá nombre o usuario..." autofocus>
                     </div>
-                    <button class="z-btn z-btn--primary" id="btn-buscar">
-                        🔍 Buscar
-                    </button>
-                    <button class="z-btn z-btn--accent" id="btn-nuevo">
-                        ✚ Nuevo
-                    </button>
-                    <button class="z-btn z-btn--ghost" id="btn-listado">
-                        Listado
-                    </button>
+                    <button class="z-btn z-btn--primary" id="btn-buscar">Buscar</button>
+                    <button class="z-btn z-btn--accent"  id="btn-nuevo">+ Nuevo</button>
+                    <button class="z-btn z-btn--ghost"   id="btn-listado">Listado</button>
                 </div>
                 <div class="z-search-result" id="search-result">
                     <div class="z-search-result__name"   id="result-name"></div>
                     <div class="z-search-result__detail" id="result-detail"></div>
                     <div id="result-list" style="margin-top:8px;"></div>
                     <div style="margin-top:10px;display:flex;gap:8px;" id="result-actions">
-                        <button class="z-btn z-btn--sm z-btn--primary" id="btn-editar-encontrado"    style="display:none;">✏️ Editar</button>
-                        <button class="z-btn z-btn--sm z-btn--ghost"   id="btn-consultar-encontrado" style="display:none;">👁 Consultar</button>
-                        <button class="z-btn z-btn--sm z-btn--ghost"   id="btn-nuevo-forzar">✚ Alta nueva de todas formas</button>
+                        <button class="z-btn z-btn--sm z-btn--primary" id="btn-editar-encontrado"    style="display:none;">Editar</button>
+                        <button class="z-btn z-btn--sm z-btn--ghost"   id="btn-consultar-encontrado" style="display:none;">Consultar</button>
+                        <button class="z-btn z-btn--sm z-btn--ghost"   id="btn-nuevo-forzar">+ Alta nueva de todas formas</button>
                     </div>
                 </div>
             </div>
@@ -212,23 +210,34 @@
             <div class="z-preview-section" id="preview-section">
                 <div class="z-preview-label">Últimos usuarios ingresados</div>
                 <div class="z-preview-rows" id="preview-rows">
-                    <div style="color:var(--z-text3);font-size:0.82rem;">Cargando...</div>
+                    <div style="color:var(--z-text3);font-size:0.82rem;padding:0.5rem 0;">Cargando...</div>
                 </div>
             </div>
 
             <!-- ═══════════ LISTADO COMPLETO ═══════════ -->
             <div id="listado-section" style="display:none;">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;gap:1rem;">
-                    <h2 style="font-size:1.05rem;font-weight:700;color:var(--z-primary);">Listado de Usuarios</h2>
+                <div class="z-print-header" id="lst-print-header"></div>
+                <div class="z-listado-header">
+                    <h2>Listado de Usuarios</h2>
                     <div style="display:flex;gap:0.5rem;">
-                        <button class="z-btn z-btn--ghost" onclick="window.print()">Imprimir</button>
+                        <button class="z-btn z-btn--ghost" id="btn-imprimir-lst">Imprimir</button>
                         <button class="z-btn z-btn--ghost" id="btn-cerrar-listado">← Volver</button>
                     </div>
                 </div>
                 <div class="z-filter-bar">
                     <div class="z-filter-group">
-                        <label>Buscar texto</label>
-                        <input type="text" id="lst-texto" placeholder="Nombre o usuario..." style="min-width:160px;">
+                        <label>Buscar</label>
+                        <input type="text" id="lst-texto" placeholder="Nombre o usuario...">
+                    </div>
+                    <div class="z-filter-group">
+                        <label>Nivel</label>
+                        <select id="lst-nivel">
+                            <option value="">Todos</option>
+                            <option value="1">Administrador</option>
+                            <option value="2">Supervisor</option>
+                            <option value="3">Operador</option>
+                            <option value="4">Consultor</option>
+                        </select>
                     </div>
                     <div class="z-filter-group">
                         <label>Ordenar</label>
@@ -252,7 +261,7 @@
                         <button class="z-btn z-btn--ghost z-btn--sm"   id="btn-limpiar-lst">Limpiar</button>
                     </div>
                 </div>
-                <div class="z-listado-print-header" id="lst-print-header"></div>
+                <div class="z-listado-count" id="lst-count"></div>
                 <div id="listado-contenido"></div>
             </div>
 
@@ -261,19 +270,18 @@
                 <div class="z-card__header">
                     <div style="display:flex;align-items:center;gap:10px;">
                         <h2 class="z-card__title">
-                            👥 <span id="form-title">Alta de Usuario</span>
+                            <span id="form-title">Alta de Usuario</span>
                         </h2>
-                        <span class="z-badge z-badge--success" id="badge-activo" style="display:none;">Activo</span>
+                        <span id="badge-activo" style="display:none;"></span>
                     </div>
-                    <span class="z-form-state z-form-state--new" id="form-state">● NUEVO</span>
+                    <span class="z-form-state z-form-state--new" id="form-state">NUEVO</span>
                 </div>
 
                 <div class="z-card__body" id="form-body">
                     <form id="form-usuario" autocomplete="off">
                         <input type="hidden" id="usr-id">
 
-                        <!-- ── Identificación ── -->
-                        <div class="z-section-title">📋 Identificación</div>
+                        <div class="z-section-title">Identificación</div>
 
                         <div class="z-form-row z-form-row--2">
                             <div class="z-form-group">
@@ -325,8 +333,12 @@
                             </div>
                         </div>
 
-                        <!-- ── Contraseña ── -->
-                        <div class="z-section-title" style="margin-top:1rem;">🔐 Contraseña</div>
+                        <div id="activo-row" style="display:none;">
+                            <div class="z-section-title">Estado</div>
+                            <span id="activo-badge"></span>
+                        </div>
+
+                        <div class="z-section-title" style="margin-top:1rem;">Contraseña</div>
 
                         <div class="z-form-row z-form-row--2">
                             <div class="z-form-group">
@@ -352,11 +364,11 @@
                 </div>
 
                 <div class="z-card__footer">
-                    <button class="z-btn z-btn--ghost"   id="btn-cancelar">✕ Cancelar</button>
-                    <button class="z-btn z-btn--danger"  id="btn-baja"      style="display:none;">🚫 Dar de Baja</button>
-                    <button class="z-btn z-btn--success" id="btn-reactivar" style="display:none;">✅ Reactivar</button>
-                    <button class="z-btn z-btn--ghost"   id="btn-editar"    style="display:none;">✏️ Editar</button>
-                    <button class="z-btn z-btn--primary z-btn--lg" id="btn-guardar" style="display:none;">💾 Guardar Usuario</button>
+                    <button class="z-btn z-btn--ghost"   id="btn-cancelar">Cancelar</button>
+                    <button class="z-btn z-btn--danger"  id="btn-baja"      style="display:none;">Dar de Baja</button>
+                    <button class="z-btn z-btn--success" id="btn-reactivar" style="display:none;">Reactivar</button>
+                    <button class="z-btn z-btn--ghost"   id="btn-editar"    style="display:none;">Editar</button>
+                    <button class="z-btn z-btn--primary z-btn--lg" id="btn-guardar" style="display:none;">Guardar Usuario</button>
                 </div>
             </div>
         </main>
@@ -364,8 +376,8 @@
 
     <div class="z-toast-container" id="toast-container"></div>
 
-    <script src="js/config.js?v=20260418-2"></script>
-    <script src="js/validaciones.js?v=20260418-2"></script>
-    <script src="js/usuarios.js?v=20260418-2"></script>
+    <script src="js/config.js?v=20260502"></script>
+    <script src="js/validaciones.js?v=20260502"></script>
+    <script src="js/usuarios.js?v=20260502"></script>
 </body>
 </html>
