@@ -75,9 +75,12 @@
     if (frame) frame.src = url || 'frontend/welcome.html';
   };
 
-  document.querySelectorAll('.action[href]').forEach(link => {
+  document.querySelectorAll('.action[href], .nav__link[href]').forEach(link => {
     link.addEventListener('click', function (e) {
       e.preventDefault();
+      // marcar activo
+      document.querySelectorAll('.nav__link').forEach(l => l.classList.remove('active'));
+      if (link.classList.contains('nav__link')) link.classList.add('active');
       window.shellNavigate(link.href);
     });
   });

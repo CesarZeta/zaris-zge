@@ -434,7 +434,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderListado(rows) {
         const fecha = new Date().toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric' });
         $('lst-print-header').innerHTML =
-            `<h2>Padrón de Usuarios — ZARIS</h2><p>Listado generado el ${fecha} · ${rows.length} registro${rows.length!==1?'s':''}</p>`;
+            `<h2>Maestro de Usuarios — ZARIS</h2><p>Listado generado el ${fecha} · ${rows.length} registro${rows.length!==1?'s':''}</p>`;
         $('lst-count').textContent = `${rows.length} usuario${rows.length!==1?'s':''} encontrado${rows.length!==1?'s':''}`;
 
         if (rows.length === 0) {

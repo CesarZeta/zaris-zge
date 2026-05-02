@@ -228,6 +228,21 @@
   color: var(--fg-3);
 }
 
+/* ── Nav link directo (Maestros) ─────────────────────────── */
+.nav__link {
+  display: block;
+  padding: 5px 10px;
+  border-radius: 5px;
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: var(--fg-2);
+  text-decoration: none;
+  transition: color 150ms ease, background 150ms ease;
+  cursor: pointer;
+}
+.nav__link:hover { color: var(--fg-1); background: rgba(38,37,30,.05); }
+.nav__link.active { color: var(--zaris-orange); font-weight: 600; }
+
 /* ── Botones de acción ───────────────────────────────────── */
 .actions {
   display: flex;
