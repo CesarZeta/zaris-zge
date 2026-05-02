@@ -62,13 +62,22 @@ Monorepo: `github.com/CesarZeta/zaris-zge`.
 | Local | Frontend | `http://localhost:8080` — `python -m http.server 8080` (raíz del repo) |
 | Local | DB | `postgresql://postgres:145236@127.0.0.1:5432/zaris_dev` |
 
-## 7. Deploy Railway
+## 7. Workflow de Desarrollo
+
+1. Aplicar cambios en local.
+2. Verificar visualmente en local antes de cualquier push:
+   - Frontend: `python -m http.server 8080` (desde la raíz del repo) → `http://localhost:8080`
+   - Backend: `$env:ENV_FILE=".env.local"; uvicorn app.main:app --host 127.0.0.1 --port 8000` (desde `backend/`)
+3. Hacer `git push` **solo cuando el usuario lo pida explícitamente**, o cuando sea operativamente necesario (ej: Railway necesita el código para funcionar).
+4. No preguntar si hacer push después de cada tarea — indicar cómo testear local y esperar instrucción.
+
+## 9. Deploy Railway
 
 - **Proyecto:** `inspiring-empathy` → servicio `zaris-api`, branch `main`, root `/backend`.
 - **Start command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 - El Custom Start Command tiene prioridad sobre el `Procfile`. Si se mueve `main.py`, actualizar en Railway → Settings → Deploy.
 
-## 8. Campos Estándar por Tabla
+## 10. Campos Estándar por Tabla
 
 Toda tabla nueva debe incluir al final:
 
@@ -84,7 +93,7 @@ Toda tabla nueva debe incluir al final:
 
 `id_usuario_alta` e `id_usuario_modificacion` los inyecta el backend desde el JWT — no vienen del frontend.
 
-## 9. Horario en Tablas de Servicio
+## 11. Horario en Tablas de Servicio
 
 Tablas con horario de atención (`equipos`, `servicios`, etc.) deben incluir:
 
@@ -94,14 +103,14 @@ Tablas con horario de atención (`equipos`, `servicios`, etc.) deben incluir:
 | `hora_inicio` | `TIME` | `09:00` |
 | `hora_fin` | `TIME` | `16:00` |
 
-## 10. Agregar Módulo al Shell React
+## 12. Agregar Módulo al Shell React
 
 1. Crear `web-app/src/modules/<nombre>/`.
 2. Crear `index.ts` exportando un `ModuleManifest` (ver `src/lib/types.ts`).
 3. Importar el manifest en `web-app/src/modules/index.ts`.
 4. El sidebar y el router lo leen automáticamente — cero cambios al shell.
 
-## 11. Design System Visual — Obligatorio
+## 13. Design System Visual — Obligatorio
 
 El estilo oficial de ZARIS vive en `design-system/`. **Nunca** usar `styles.css` ni variables `--z-*` (son legacy, eliminadas).
 
@@ -141,3 +150,51 @@ El estilo oficial de ZARIS vive en `design-system/`. **Nunca** usar `styles.css`
 - Usar `../design-system/assets/zaris-mark-flat.svg` en sidebar/topbar (currentColor, sin fondo).
 - Formal (splash, login): `../design-system/assets/zaris-mark.svg`.
 - **Prohibido:** emoji en la UI del producto.
+
+## 14. Shell Vanilla — Navegación y Módulos en Iframe
+
+El shell (`index.html`) carga los módulos dentro de un `<iframe id="module-frame">`. El sidebar y topbar siempre permanecen visibles.
+
+### Navegar desde dentro del iframe
+```js
+// Desde cualquier módulo cargado en el iframe:
+(window.parent.shellNavigate || function(){ window.location='../index.html'; })('frontend/mi-modulo.html');
+```
+Usar este patrón en breadcrumbs, botones "← Inicio" y cualquier enlace de navegación inter-módulo.
+
+### Ocultar el header propio cuando se carga en el iframe
+Agregar en `<head>` de todo HTML de módulo, **antes** de los CSS:
+```html
+<script>if (window.self !== window.top) { var s = document.createElement('style'); s.textContent = '.z-header{display:none!important}'; document.head.appendChild(s); }</script>
+```
+
+### Guard vanilla en iframe
+Si no hay sesión y el módulo está dentro del iframe, no redirigir con `window.location` (rompería el shell). Usar:
+```js
+if (!localStorage.getItem('zaris_session')) {
+    if (window.self !== window.top) {
+        window.parent.shellNavigate && window.parent.shellNavigate('frontend/welcome.html');
+    } else {
+        window.location.href = '../index.html';
+    }
+}
+```
+
+## 15. Patrón de Baja Lógica — API y Frontend
+
+### Backend
+Endpoint estándar de soft-delete (implementado para `usuarios`, `ciudadanos`, `empresas`):
+```
+PUT /api/v1/buc/{entidad}/{id}/estado?activo=false   → dar de baja
+PUT /api/v1/buc/{entidad}/{id}/estado?activo=true    → reactivar
+```
+Nunca DELETE físico. El endpoint devuelve el objeto con `activo` actualizado.
+
+### Frontend vanilla
+En el bloque de resultado de búsqueda (`#result-actions`), agregar botón de baja:
+```html
+<button class="z-btn z-btn--sm z-btn--danger" id="btn-baja-encontrado" style="display:none;">
+    ✕ Dar de baja
+</button>
+```
+Mostrarlo en `mostrarResultadoUnico()` y conectarlo a una función `darBaja{Entidad}()` que llame al endpoint con `method: 'PUT'`.
