@@ -43,13 +43,14 @@ const ZUtils = {
      */
     async apiFetch(endpoint, options = {}) {
         const url = `${ZARIS_CONFIG.API_BUC}${endpoint}`;
+        const session = JSON.parse(localStorage.getItem('zaris_session') || 'null');
+        const token = session?.access_token;
         const defaults = {
-            headers: { 'Content-Type': 'application/json' }
+            headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            }
         };
-        // Merge headers
-        if (options.headers) {
-            defaults.headers = { ...defaults.headers, ...options.headers };
-        }
         const config = { ...defaults, ...options, headers: { ...defaults.headers, ...(options.headers || {}) } };
 
         try {

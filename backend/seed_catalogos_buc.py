@@ -4,7 +4,7 @@ Seed de catálogos BUC (Base Única de Ciudadanos) — ZARIS Gestión Estatal.
 
 Inserta los datos maestros en las tablas:
   - nacionalidades        (65 registros)
-  - tipos_representacion  (3 registros)
+  - tipo_representacion  (3 registros)
   - actividades           (25 registros — nomenclador CLAE simplificado)
 
 Idempotente: usar ON CONFLICT (id) DO NOTHING para permitir re-ejecuciones.
@@ -95,7 +95,7 @@ NACIONALIDADES = [
     (65, "Vietnam", "Otros"),
 ]
 
-TIPOS_REPRESENTACION = [
+TIPO_REPRESENTACION = [
     (1, "Representante Legal", "Titular o socio con maxima autoridad juridica y responsabilidad penal/tributaria total."),
     (2, "Apoderado Especial",  "Rol gerencial con poder notarial limitado para gestionar y aprobar en areas especificas."),
     (3, "Contacto Autorizado", "Personal operativo para carga de datos y gestiones diarias rutinarias sin poder de decision."),
@@ -140,10 +140,10 @@ async def seed():
             )
         print("OK")
 
-        print("Seeding tipos_representacion...", end=" ")
-        for id_, tipo, descripcion in TIPOS_REPRESENTACION:
+        print("Seeding tipo_representacion...", end=" ")
+        for id_, tipo, descripcion in TIPO_REPRESENTACION:
             await session.execute(
-                text("INSERT INTO tipos_representacion (id, tipo, descripcion) VALUES (:id, :tipo, :descripcion) ON CONFLICT (id) DO NOTHING"),
+                text("INSERT INTO tipo_representacion (id, tipo, descripcion) VALUES (:id, :tipo, :descripcion) ON CONFLICT (id) DO NOTHING"),
                 {"id": id_, "tipo": tipo, "descripcion": descripcion},
             )
         print("OK")

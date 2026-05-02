@@ -4,8 +4,83 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ZARIS — Gestión de Tablas</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="../design-system/fonts/fonts.css">
+  <link rel="stylesheet" href="../design-system/colors_and_type.css">
   <style>
+    /* ── Design System aliases (admin_tablas local) ── */
+    :root {
+      --z-bg:              var(--zaris-cream);
+      --z-bg-card:         var(--surface-100);
+      --z-bg-card-alt:     var(--surface-200);
+      --z-border:          var(--border-primary);
+      --z-text:            var(--fg-1);
+      --z-text2:           var(--fg-2);
+      --z-text3:           var(--fg-3);
+      --z-accent:          var(--zaris-orange);
+      --z-accent-hover:    #d84300;
+      --z-font:            var(--font-display);
+      --z-font-mono:       var(--font-mono);
+      --z-radius:          var(--radius-lg);
+      --z-radius-sm:       var(--radius-md);
+      --z-radius-lg:       var(--radius-xl);
+      --z-radius-xl:       16px;
+      --z-shadow-sm:       0 1px 4px rgba(38,37,30,.06), 0 0 0 1px var(--border-primary);
+      --z-shadow-lg:       var(--shadow-card);
+      --z-shadow-xl:       var(--shadow-card);
+      --z-primary:         var(--fg-1);
+      --z-text-success:    var(--color-success);
+      --z-bg-success:      rgba(31,138,101,.14);
+      --z-border-success:  rgba(31,138,101,.3);
+      --z-text-error:      var(--color-error);
+      --z-bg-error:        rgba(207,45,86,.14);
+      --z-border-error:    rgba(207,45,86,.3);
+      --z-text-warning:    var(--zaris-gold);
+      --z-bg-overlay:      rgba(38,37,30,.5);
+      --z-bg-input:        transparent;
+      --z-bg-input-focus:  rgba(255,255,255,.5);
+      --z-border-focus:    var(--border-medium);
+      --z-text-inverse:    var(--zaris-cream);
+    }
+
+    /* ── Topbar global ── */
+    .z-header {
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      background: rgba(242,241,237,.88);
+      backdrop-filter: blur(12px) saturate(1.2);
+      -webkit-backdrop-filter: blur(12px) saturate(1.2);
+      border-bottom: 1px solid var(--border-primary);
+      position: sticky;
+      top: 0;
+      z-index: 200;
+      flex-shrink: 0;
+    }
+    .z-header__brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      font-family: var(--font-display);
+    }
+    .z-header__title {
+      font-size: 17px;
+      font-weight: 500;
+      letter-spacing: -0.8px;
+      color: var(--fg-1);
+      transition: color 150ms ease;
+    }
+    .z-header__brand:hover .z-header__title { color: var(--color-error); }
+    .z-header__subtitle {
+      font-size: 12px;
+      color: var(--fg-3);
+      font-family: var(--font-display);
+      margin-left: 2px;
+    }
+    .z-header__nav { display: flex; align-items: center; }
+
     /* ── Layout ── */
     .layout {
       display: flex;
@@ -17,8 +92,8 @@
     .sidebar {
       width: 240px;
       min-width: 240px;
-      background: var(--z-bg-card);
-      border-right: 1px solid var(--z-border);
+      background: var(--surface-300);
+      border-right: 1px solid var(--border-primary);
       padding: 0.5rem 0 1.5rem;
       overflow-y: auto;
       position: sticky;
@@ -57,7 +132,6 @@
       border-left-color: var(--z-accent);
       font-weight: 600;
     }
-    .sidebar-item .icon { font-size: 0.9rem; width: 18px; text-align: center; flex-shrink: 0; }
 
     /* ── Main ── */
     .main {
@@ -118,17 +192,17 @@
     .btn-outline:hover { border-color: var(--z-text2); color: var(--z-text); }
 
     .btn-back {
-      background: rgba(255,255,255,0.10);
-      border: 1px solid rgba(255,255,255,0.15);
-      color: var(--z-text-inverse);
+      background: var(--surface-400);
+      border: 1px solid var(--border-primary);
+      color: var(--fg-2);
       padding: 0.35rem 0.9rem;
-      border-radius: var(--z-radius-sm);
+      border-radius: var(--radius-lg);
       cursor: pointer;
       font-size: 0.82rem;
-      font-family: var(--z-font);
-      transition: background 0.18s;
+      font-family: var(--font-display);
+      transition: background 0.15s, color 0.15s;
     }
-    .btn-back:hover { background: rgba(255,255,255,0.20); }
+    .btn-back:hover { background: var(--surface-500); color: var(--fg-1); }
 
     /* ── Toast ── */
     #toast {
@@ -369,29 +443,29 @@
   <nav class="sidebar">
 
     <div class="sidebar-group">Organización</div>
-    <div class="sidebar-item" data-tabla="area"            onclick="selectTabla(this)"><span class="icon">🏢</span> Áreas</div>
-    <div class="sidebar-item" data-tabla="subarea"         onclick="selectTabla(this)"><span class="icon">📂</span> Subáreas</div>
-    <div class="sidebar-item" data-tabla="tipo_usuario"    onclick="selectTabla(this)"><span class="icon">🏷️</span> Tipos de Usuario</div>
-    <div class="sidebar-item" data-tabla="cargos"          onclick="selectTabla(this)"><span class="icon">🪪</span> Cargos</div>
-    <div class="sidebar-item" data-tabla="usuarios"        onclick="selectTabla(this)"><span class="icon">👤</span> Usuarios</div>
-    <div class="sidebar-item" data-tabla="agentes"         onclick="selectTabla(this)"><span class="icon">👥</span> Agentes</div>
-    <div class="sidebar-item" data-tabla="equipos"         onclick="selectTabla(this)"><span class="icon">⚙️</span> Equipos</div>
-    <div class="sidebar-item" data-tabla="equipo_usuarios" onclick="selectTabla(this)"><span class="icon">🔗</span> Equipo-Usuarios</div>
+    <div class="sidebar-item" data-tabla="area"            onclick="selectTabla(this)">Áreas</div>
+    <div class="sidebar-item" data-tabla="subarea"         onclick="selectTabla(this)">Subáreas</div>
+    <div class="sidebar-item" data-tabla="tipo_usuario"    onclick="selectTabla(this)">Tipos de Usuario</div>
+    <div class="sidebar-item" data-tabla="cargos"          onclick="selectTabla(this)">Cargos</div>
+    <div class="sidebar-item" data-tabla="usuarios"        onclick="selectTabla(this)">Usuarios</div>
+    <div class="sidebar-item" data-tabla="agentes"         onclick="selectTabla(this)">Agentes</div>
+    <div class="sidebar-item" data-tabla="equipos"         onclick="selectTabla(this)">Equipos</div>
+    <div class="sidebar-item" data-tabla="equipo_usuarios" onclick="selectTabla(this)">Equipo-Usuarios</div>
 
     <div class="sidebar-group">Servicios y Reclamos</div>
-    <div class="sidebar-item" data-tabla="servicios"       onclick="selectTabla(this)"><span class="icon">🌐</span> Servicios</div>
-    <div class="sidebar-item" data-tabla="tipo_reclamo"    onclick="selectTabla(this)"><span class="icon">📋</span> Tipos de Reclamo</div>
+    <div class="sidebar-item" data-tabla="servicios"       onclick="selectTabla(this)">Servicios</div>
+    <div class="sidebar-item" data-tabla="tipo_reclamo"    onclick="selectTabla(this)">Tipos de Reclamo</div>
 
     <div class="sidebar-group">Agenda</div>
-    <div class="sidebar-item" data-tabla="areas"           onclick="selectTabla(this)"><span class="icon">🏛️</span> Secretarías</div>
-    <div class="sidebar-item" data-tabla="lugares_atencion" onclick="selectTabla(this)"><span class="icon">📍</span> Lugares de Atención</div>
-    <div class="sidebar-item" data-tabla="agenda_clase"    onclick="selectTabla(this)"><span class="icon">🗂️</span> Clases de Agenda</div>
-    <div class="sidebar-item" data-tabla="agenda_feriado"  onclick="selectTabla(this)"><span class="icon">📅</span> Feriados</div>
+    <div class="sidebar-item" data-tabla="areas"            onclick="selectTabla(this)">Secretarías</div>
+    <div class="sidebar-item" data-tabla="lugares_atencion" onclick="selectTabla(this)">Lugares de Atención</div>
+    <div class="sidebar-item" data-tabla="agenda_clase"     onclick="selectTabla(this)">Clases de Agenda</div>
+    <div class="sidebar-item" data-tabla="agenda_feriado"   onclick="selectTabla(this)">Feriados</div>
 
     <div class="sidebar-group">Catálogos BUC</div>
-    <div class="sidebar-item" data-tabla="actividades"         onclick="selectTabla(this)"><span class="icon">📊</span> Actividades (CLAE)</div>
-    <div class="sidebar-item" data-tabla="tipo_representacion" onclick="selectTabla(this)"><span class="icon">🤝</span> Tipo de Representación</div>
-    <div class="sidebar-item" data-tabla="nacionalidades"      onclick="selectTabla(this)"><span class="icon">🌍</span> Nacionalidades</div>
+    <div class="sidebar-item" data-tabla="actividades"         onclick="selectTabla(this)">Actividades (CLAE)</div>
+    <div class="sidebar-item" data-tabla="tipo_representacion" onclick="selectTabla(this)">Tipo de Representación</div>
+    <div class="sidebar-item" data-tabla="nacionalidades"      onclick="selectTabla(this)">Nacionalidades</div>
 
   </nav>
 
@@ -703,7 +777,7 @@ async function cargarTabla() {
     <div class="section-header">
       <h2>${schema.label}s</h2>
       <div class="section-header-actions">
-        <button class="btn-outline" onclick="window.print()">🖨 Imprimir listado</button>
+        <button class="btn-outline" onclick="window.print()">Imprimir listado</button>
         <button class="btn-primary" onclick="abrirNuevo()">+ Nuevo</button>
       </div>
     </div>
@@ -749,7 +823,7 @@ function renderTabla(rows, schema) {
     <div class="section-header">
       <h2>${schema.label}s <span style="font-size:.8rem;color:var(--z-text2);font-weight:400;">(${rows.length} activo${rows.length !== 1 ? 's' : ''})</span></h2>
       <div class="section-header-actions">
-        <button class="btn-outline" onclick="window.print()">🖨 Imprimir listado</button>
+        <button class="btn-outline" onclick="window.print()">Imprimir listado</button>
         <button class="btn-primary" onclick="abrirNuevo()">+ Nuevo</button>
       </div>
     </div>

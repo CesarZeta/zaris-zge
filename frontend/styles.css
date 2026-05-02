@@ -2,67 +2,68 @@
    ZARIS Gestión Estatal — Design System v1.0
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('../design-system/fonts/fonts.css');
+@import url('../design-system/colors_and_type.css');
 
 /* ── CSS Custom Properties ─────────────────────────────────── */
 :root {
-    /* Colores principales */
-    --z-primary:        #1B3A5C;
-    --z-primary-light:  #2A5580;
-    --z-primary-dark:   #0F2440;
-    --z-accent:         #F5A623;
-    --z-accent-light:   #FFD080;
-    --z-accent-hover:   #E6951A;
+    /* Colores principales — mapeados al design-system ZARIS */
+    --z-primary:        #26251e;                    /* ink */
+    --z-primary-light:  rgba(38, 37, 30, 0.70);
+    --z-primary-dark:   #1a1914;
+    --z-accent:         #f54e00;                    /* orange */
+    --z-accent-light:   rgba(245, 78, 0, 0.50);
+    --z-accent-hover:   #d84300;
 
     /* Superficies */
-    --z-bg:             #F0F2F5;
-    --z-bg-card:        #FFFFFF;
-    --z-bg-card-alt:    #F8F9FB;
-    --z-bg-sidebar:     #1B3A5C;
-    --z-bg-input:       #FFFFFF;
-    --z-bg-input-focus: #FEFEFE;
-    --z-bg-overlay:     rgba(15, 36, 64, 0.55);
-    --z-bg-success:     #E8F5E9;
-    --z-bg-error:       #FFEBEE;
-    --z-bg-warning:     #FFF8E1;
+    --z-bg:             #f2f1ed;                    /* cream */
+    --z-bg-card:        #f7f7f4;                    /* surface-100 */
+    --z-bg-card-alt:    #ebeae5;                    /* surface-300 */
+    --z-bg-sidebar:     #26251e;                    /* ink */
+    --z-bg-input:       #f7f7f4;
+    --z-bg-input-focus: #f2f1ed;
+    --z-bg-overlay:     rgba(38, 37, 30, 0.55);
+    --z-bg-success:     #e8f5e9;
+    --z-bg-error:       #ffebee;
+    --z-bg-warning:     #fff8e1;
 
     /* Texto */
-    --z-text:           #1A1D23;
-    --z-text2:          #4A5568;
-    --z-text3:          #8899AA;
-    --z-text-inverse:   #FFFFFF;
-    --z-text-link:      #2A5580;
-    --z-text-success:   #2E7D32;
-    --z-text-error:     #C62828;
-    --z-text-warning:   #F57F17;
+    --z-text:           #26251e;                    /* fg-1 */
+    --z-text2:          rgba(38, 37, 30, 0.70);     /* fg-2 */
+    --z-text3:          rgba(38, 37, 30, 0.55);     /* fg-3 */
+    --z-text-inverse:   #f2f1ed;                    /* cream sobre fondo oscuro */
+    --z-text-link:      #f54e00;                    /* orange */
+    --z-text-success:   #1f8a65;
+    --z-text-error:     #cf2d56;                    /* crimson */
+    --z-text-warning:   #c08532;                    /* gold */
 
     /* Bordes */
-    --z-border:         #D8DEE6;
-    --z-border-focus:   #2A5580;
-    --z-border-error:   #EF5350;
-    --z-border-success: #66BB6A;
+    --z-border:         rgba(38, 37, 30, 0.10);     /* border-primary */
+    --z-border-focus:   rgba(38, 37, 30, 0.40);
+    --z-border-error:   #cf2d56;
+    --z-border-success: #1f8a65;
 
     /* Radios */
-    --z-radius-sm:      6px;
-    --z-radius:         10px;
-    --z-radius-lg:      16px;
-    --z-radius-xl:      24px;
+    --z-radius-sm:      4px;
+    --z-radius:         8px;
+    --z-radius-lg:      10px;
+    --z-radius-xl:      16px;
 
     /* Sombras */
-    --z-shadow-sm:      0 1px 3px rgba(0,0,0,0.06);
-    --z-shadow:         0 4px 14px rgba(0,0,0,0.08);
-    --z-shadow-lg:      0 10px 30px rgba(0,0,0,0.12);
-    --z-shadow-xl:      0 20px 50px rgba(0,0,0,0.16);
-    --z-shadow-glow:    0 0 20px rgba(245, 166, 35, 0.3);
+    --z-shadow-sm:      0 1px 3px rgba(38, 37, 30, 0.04);
+    --z-shadow:         0 4px 14px rgba(38, 37, 30, 0.06);
+    --z-shadow-lg:      0 10px 30px rgba(38, 37, 30, 0.10);
+    --z-shadow-xl:      0 20px 50px rgba(38, 37, 30, 0.14);
+    --z-shadow-glow:    0 0 20px rgba(245, 78, 0, 0.20);
 
     /* Transiciones */
     --z-ease:           cubic-bezier(0.4, 0, 0.2, 1);
     --z-duration:       0.25s;
     --z-duration-slow:  0.4s;
 
-    /* Tipografía */
-    --z-font:           'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    --z-font-mono:      'JetBrains Mono', 'Fira Code', monospace;
+    /* Tipografía — brand voices del design-system */
+    --z-font:           "Space Grotesk", system-ui, "Helvetica Neue", Arial, sans-serif;
+    --z-font-mono:      "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 /* ── Reset & Base ──────────────────────────────────────────── */
@@ -73,7 +74,7 @@
 }
 
 html {
-    font-size: 15px;
+    font-size: 16px;
     scroll-behavior: smooth;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
