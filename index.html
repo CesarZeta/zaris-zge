@@ -43,10 +43,9 @@
     <aside class="sidebar" aria-label="Menú principal">
       <nav class="nav" id="nav">
 
-        <!-- RECLAMOS -->
+        <!-- RECLAMOS — funcional -->
         <div class="nav__group" data-open="false">
-          <button class="nav__title nav__title--stub"
-                  aria-expanded="false" data-toggle="group">
+          <button class="nav__title" aria-expanded="false" data-toggle="group">
             <span>Reclamos</span>
             <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
                  stroke="currentColor" stroke-width="1.5">
@@ -54,29 +53,43 @@
             </svg>
           </button>
           <div class="nav__panel">
-            <div class="nav__leaf"><span class="nav__leaf-label">Reclamos</span></div>
-            <div class="actions">
-              <button class="action" data-stub>Nuevo</button>
-              <button class="action" data-stub>Consulta</button>
-              <button class="action" data-stub>Listado</button>
+            <div class="nav__item" data-open="false">
+              <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                <span>Gestión de reclamos</span>
+                <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                     stroke="currentColor" stroke-width="1.5">
+                  <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+              <div class="nav__item-actions">
+                <div class="actions">
+                  <a class="action" href="frontend/reclamos.html">Nuevo</a>
+                  <a class="action" href="frontend/reclamos.html">Consulta</a>
+                  <a class="action" href="frontend/reclamos.html">Listado</a>
+                </div>
+              </div>
             </div>
-            <div class="nav__leaf"><span class="nav__leaf-label">Bandeja por áreas</span></div>
-            <div class="actions">
-              <button class="action" data-stub>Listado</button>
-            </div>
-            <div class="nav__leaf"><span class="nav__leaf-label">Orden de trabajo</span></div>
-            <div class="actions">
-              <button class="action" data-stub>Nuevo</button>
-              <button class="action" data-stub>Consulta</button>
-              <button class="action" data-stub>Listado</button>
+            <div class="nav__item" data-open="false">
+              <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                <span>Orden de trabajo</span>
+                <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                     stroke="currentColor" stroke-width="1.5">
+                  <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+              <div class="nav__item-actions">
+                <div class="actions">
+                  <button class="action" data-stub>Nuevo</button>
+                  <button class="action" data-stub>Listado</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- TURNOS -->
+        <!-- TURNOS — funcional -->
         <div class="nav__group" data-open="false">
-          <button class="nav__title nav__title--stub"
-                  aria-expanded="false" data-toggle="group">
+          <button class="nav__title" aria-expanded="false" data-toggle="group">
             <span>Turnos</span>
             <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
                  stroke="currentColor" stroke-width="1.5">
@@ -85,13 +98,14 @@
           </button>
           <div class="nav__panel">
             <div class="actions">
-              <button class="action" data-stub>Nuevo</button>
-              <button class="action" data-stub>Listado</button>
+              <a class="action" href="frontend/agenda.html">Nuevo</a>
+              <a class="action" href="frontend/agenda.html">Listado</a>
+              <a class="action" href="frontend/agenda.html">Calendario</a>
             </div>
           </div>
         </div>
 
-        <!-- ENTRADAS -->
+        <!-- ENTRADAS — preview -->
         <div class="nav__group" data-open="false">
           <button class="nav__title nav__title--stub"
                   aria-expanded="false" data-toggle="group">
@@ -185,217 +199,248 @@
                 <div class="nav__item" data-open="false">
                   <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
                     <span>Usuarios</span>
-                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
-                         stroke="currentColor" stroke-width="1.5">
-                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
                   </button>
-                  <div class="nav__item-actions">
-                    <div class="actions">
-                      <a class="action" href="frontend/usuarios.html">Nuevo</a>
-                      <a class="action" href="frontend/usuarios.html">Consulta</a>
-                      <a class="action" href="frontend/usuarios.html">Baja</a>
-                      <a class="action" href="frontend/usuarios.html">Listado</a>
-                    </div>
-                  </div>
+                  <div class="nav__item-actions"><div class="actions">
+                    <a class="action" href="frontend/usuarios.html">Nuevo</a>
+                    <a class="action" href="frontend/usuarios.html">Consulta</a>
+                    <a class="action" href="frontend/usuarios.html">Baja</a>
+                    <a class="action" href="frontend/usuarios.html">Listado</a>
+                  </div></div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Agentes</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </button>
+                  <div class="nav__item-actions"><div class="actions">
+                    <a class="action" href="frontend/admin_tablas.html?tabla=agentes">Nuevo</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=agentes">Consulta</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=agentes">Baja</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=agentes">Listado</a>
+                  </div></div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Equipos</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </button>
+                  <div class="nav__item-actions"><div class="actions">
+                    <a class="action" href="frontend/admin_tablas.html?tabla=equipos">Nuevo</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=equipos">Consulta</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=equipos">Baja</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=equipos">Listado</a>
+                  </div></div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Tipos de usuario</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </button>
+                  <div class="nav__item-actions"><div class="actions">
+                    <a class="action" href="frontend/admin_tablas.html?tabla=tipo_usuario">Nuevo</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=tipo_usuario">Consulta</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=tipo_usuario">Baja</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=tipo_usuario">Listado</a>
+                  </div></div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Cargos</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </button>
+                  <div class="nav__item-actions"><div class="actions">
+                    <a class="action" href="frontend/admin_tablas.html?tabla=cargos">Nuevo</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=cargos">Consulta</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=cargos">Baja</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=cargos">Listado</a>
+                  </div></div>
                 </div>
 
                 <div class="nav__item" data-open="false">
                   <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
                     <span>Áreas</span>
-                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
-                         stroke="currentColor" stroke-width="1.5">
-                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
                   </button>
-                  <div class="nav__item-actions">
-                    <div class="actions">
-                      <a class="action" href="frontend/admin_tablas.html?tabla=area">Nuevo</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=area">Consulta</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=area">Baja</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=area">Listado</a>
-                    </div>
-                  </div>
+                  <div class="nav__item-actions"><div class="actions">
+                    <a class="action" href="frontend/admin_tablas.html?tabla=area">Nuevo</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=area">Consulta</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=area">Baja</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=area">Listado</a>
+                  </div></div>
                 </div>
 
                 <div class="nav__item" data-open="false">
                   <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
                     <span>Subáreas</span>
-                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
-                         stroke="currentColor" stroke-width="1.5">
-                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
                   </button>
-                  <div class="nav__item-actions">
-                    <div class="actions">
-                      <a class="action" href="frontend/admin_tablas.html?tabla=subarea">Nuevo</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=subarea">Consulta</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=subarea">Baja</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=subarea">Listado</a>
-                    </div>
-                  </div>
+                  <div class="nav__item-actions"><div class="actions">
+                    <a class="action" href="frontend/admin_tablas.html?tabla=subarea">Nuevo</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=subarea">Consulta</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=subarea">Baja</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=subarea">Listado</a>
+                  </div></div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Servicios</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </button>
+                  <div class="nav__item-actions"><div class="actions">
+                    <a class="action" href="frontend/admin_tablas.html?tabla=servicios">Nuevo</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=servicios">Consulta</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=servicios">Baja</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=servicios">Listado</a>
+                  </div></div>
                 </div>
 
                 <div class="nav__item" data-open="false">
                   <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
                     <span>Actividades</span>
-                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
-                         stroke="currentColor" stroke-width="1.5">
-                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
                   </button>
-                  <div class="nav__item-actions">
-                    <div class="actions">
-                      <a class="action" href="frontend/admin_tablas.html?tabla=actividades">Nuevo</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=actividades">Consulta</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=actividades">Baja</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=actividades">Listado</a>
-                    </div>
-                  </div>
+                  <div class="nav__item-actions"><div class="actions">
+                    <a class="action" href="frontend/admin_tablas.html?tabla=actividades">Nuevo</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=actividades">Consulta</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=actividades">Baja</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=actividades">Listado</a>
+                  </div></div>
                 </div>
 
                 <div class="nav__item" data-open="false">
                   <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
                     <span>Representación</span>
-                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
-                         stroke="currentColor" stroke-width="1.5">
-                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
                   </button>
-                  <div class="nav__item-actions">
-                    <div class="actions">
-                      <a class="action" href="frontend/admin_tablas.html?tabla=tipo_representacion">Nuevo</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=tipo_representacion">Consulta</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=tipo_representacion">Baja</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=tipo_representacion">Listado</a>
-                    </div>
-                  </div>
+                  <div class="nav__item-actions"><div class="actions">
+                    <a class="action" href="frontend/admin_tablas.html?tabla=tipo_representacion">Nuevo</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=tipo_representacion">Consulta</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=tipo_representacion">Baja</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=tipo_representacion">Listado</a>
+                  </div></div>
                 </div>
 
                 <div class="nav__item" data-open="false">
                   <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
                     <span>Nacionalidades</span>
-                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
-                         stroke="currentColor" stroke-width="1.5">
-                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
                   </button>
-                  <div class="nav__item-actions">
-                    <div class="actions">
-                      <a class="action" href="frontend/admin_tablas.html?tabla=nacionalidades">Nuevo</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=nacionalidades">Consulta</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=nacionalidades">Baja</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=nacionalidades">Listado</a>
-                    </div>
-                  </div>
+                  <div class="nav__item-actions"><div class="actions">
+                    <a class="action" href="frontend/admin_tablas.html?tabla=nacionalidades">Nuevo</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=nacionalidades">Consulta</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=nacionalidades">Baja</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=nacionalidades">Listado</a>
+                  </div></div>
                 </div>
 
                 <div class="nav__item" data-open="false">
                   <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
                     <span>Tipo de reclamos</span>
-                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
-                         stroke="currentColor" stroke-width="1.5">
-                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
                   </button>
-                  <div class="nav__item-actions">
-                    <div class="actions">
-                      <a class="action" href="frontend/admin_tablas.html?tabla=tipo_reclamo">Nuevo</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=tipo_reclamo">Consulta</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=tipo_reclamo">Baja</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=tipo_reclamo">Listado</a>
-                    </div>
-                  </div>
+                  <div class="nav__item-actions"><div class="actions">
+                    <a class="action" href="frontend/admin_tablas.html?tabla=tipo_reclamo">Nuevo</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=tipo_reclamo">Consulta</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=tipo_reclamo">Baja</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=tipo_reclamo">Listado</a>
+                  </div></div>
                 </div>
 
                 <div class="nav__item" data-open="false">
                   <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
-                    <span>Secretarías</span>
-                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
-                         stroke="currentColor" stroke-width="1.5">
-                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
+                    <span>Áreas de reclamos</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
                   </button>
-                  <div class="nav__item-actions">
-                    <div class="actions">
-                      <a class="action" href="frontend/admin_tablas.html?tabla=areas">Nuevo</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=areas">Consulta</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=areas">Baja</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=areas">Listado</a>
-                    </div>
-                  </div>
+                  <div class="nav__item-actions"><div class="actions">
+                    <a class="action" href="frontend/admin_tablas.html?tabla=reclamos_area">Nuevo</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=reclamos_area">Consulta</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=reclamos_area">Baja</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=reclamos_area">Listado</a>
+                  </div></div>
                 </div>
 
                 <div class="nav__item" data-open="false">
                   <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
-                    <span>Lugares de atención</span>
-                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
-                         stroke="currentColor" stroke-width="1.5">
-                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
+                    <span>Subáreas de reclamos</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
                   </button>
-                  <div class="nav__item-actions">
-                    <div class="actions">
-                      <a class="action" href="frontend/admin_tablas.html?tabla=lugares_atencion">Nuevo</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=lugares_atencion">Consulta</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=lugares_atencion">Baja</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=lugares_atencion">Listado</a>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="nav__item" data-open="false">
-                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
-                    <span>Clases de agenda</span>
-                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
-                         stroke="currentColor" stroke-width="1.5">
-                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                  </button>
-                  <div class="nav__item-actions">
-                    <div class="actions">
-                      <a class="action" href="frontend/admin_tablas.html?tabla=agenda_clase">Nuevo</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=agenda_clase">Consulta</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=agenda_clase">Baja</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=agenda_clase">Listado</a>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="nav__item" data-open="false">
-                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
-                    <span>Feriados</span>
-                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
-                         stroke="currentColor" stroke-width="1.5">
-                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                  </button>
-                  <div class="nav__item-actions">
-                    <div class="actions">
-                      <a class="action" href="frontend/admin_tablas.html?tabla=agenda_feriado">Nuevo</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=agenda_feriado">Consulta</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=agenda_feriado">Baja</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=agenda_feriado">Listado</a>
-                    </div>
-                  </div>
+                  <div class="nav__item-actions"><div class="actions">
+                    <a class="action" href="frontend/admin_tablas.html?tabla=reclamos_subarea">Nuevo</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=reclamos_subarea">Consulta</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=reclamos_subarea">Baja</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=reclamos_subarea">Listado</a>
+                  </div></div>
                 </div>
 
                 <div class="nav__item" data-open="false">
                   <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
                     <span>Estado de reclamos</span>
-                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
-                         stroke="currentColor" stroke-width="1.5">
-                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
                   </button>
-                  <div class="nav__item-actions">
-                    <div class="actions">
-                      <a class="action" href="frontend/admin_tablas.html?tabla=estado_reclamo">Nuevo</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=estado_reclamo">Consulta</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=estado_reclamo">Baja</a>
-                      <a class="action" href="frontend/admin_tablas.html?tabla=estado_reclamo">Listado</a>
-                    </div>
-                  </div>
+                  <div class="nav__item-actions"><div class="actions">
+                    <a class="action" href="frontend/admin_tablas.html?tabla=estado_reclamo">Nuevo</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=estado_reclamo">Consulta</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=estado_reclamo">Baja</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=estado_reclamo">Listado</a>
+                  </div></div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Secretarías</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </button>
+                  <div class="nav__item-actions"><div class="actions">
+                    <a class="action" href="frontend/admin_tablas.html?tabla=areas">Nuevo</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=areas">Consulta</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=areas">Baja</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=areas">Listado</a>
+                  </div></div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Lugares de atención</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </button>
+                  <div class="nav__item-actions"><div class="actions">
+                    <a class="action" href="frontend/admin_tablas.html?tabla=lugares_atencion">Nuevo</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=lugares_atencion">Consulta</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=lugares_atencion">Baja</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=lugares_atencion">Listado</a>
+                  </div></div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Clases de agenda</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </button>
+                  <div class="nav__item-actions"><div class="actions">
+                    <a class="action" href="frontend/admin_tablas.html?tabla=agenda_clase">Nuevo</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=agenda_clase">Consulta</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=agenda_clase">Baja</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=agenda_clase">Listado</a>
+                  </div></div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Feriados</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </button>
+                  <div class="nav__item-actions"><div class="actions">
+                    <a class="action" href="frontend/admin_tablas.html?tabla=agenda_feriado">Nuevo</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=agenda_feriado">Consulta</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=agenda_feriado">Baja</a>
+                    <a class="action" href="frontend/admin_tablas.html?tabla=agenda_feriado">Listado</a>
+                  </div></div>
                 </div>
 
               </div>
