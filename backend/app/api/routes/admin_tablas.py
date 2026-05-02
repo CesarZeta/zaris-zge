@@ -73,6 +73,57 @@ TABLE_CONFIG: dict[str, dict] = {
         "cols": ["nombre", "descripcion", "id_subarea"],
         "fecha_mod": "fecha_modificacion",
     },
+    # Tablas BUC legacy — sin activo ni campos de auditoría
+    # ── Tablas de Agenda (sin campos estándar de auditoría)
+    "areas": {
+        "pk": "id",
+        "cols": ["nombre", "descripcion"],
+        "fecha_mod": "modificado_en",
+        "has_audit": False,
+    },
+    "lugares_atencion": {
+        "pk": "id",
+        "cols": ["nombre", "direccion", "es_atencion", "capacidad_servicios", "id_area"],
+        "fecha_mod": "modificado_en",
+        "has_audit": False,
+    },
+    "agenda_clase": {
+        "pk": "id",
+        "cols": [
+            "nombre", "descripcion", "visible_ciudadano", "requiere_rrhh",
+            "requiere_servicio", "requiere_lugar", "duracion_slot_minutos", "id_area",
+        ],
+        "fecha_mod": "modificado_en",
+        "has_audit": False,
+    },
+    "agenda_feriado": {
+        "pk": "id",
+        "cols": ["fecha", "descripcion", "ambito"],
+        "fecha_mod": None,
+        "has_audit": False,
+    },
+    # ── Tablas BUC legacy — sin activo ni campos de auditoría
+    "actividades": {
+        "pk": "id",
+        "cols": ["codigo_clae", "descripcion", "categoria_tasa"],
+        "fecha_mod": None,
+        "has_activo": False,
+        "has_audit": False,
+    },
+    "tipo_representacion": {
+        "pk": "id",
+        "cols": ["tipo", "descripcion"],
+        "fecha_mod": None,
+        "has_activo": False,
+        "has_audit": False,
+    },
+    "nacionalidades": {
+        "pk": "id",
+        "cols": ["pais", "region"],
+        "fecha_mod": None,
+        "has_activo": False,
+        "has_audit": False,
+    },
 }
 
 ALLOWED_TABLES = set(TABLE_CONFIG.keys())
@@ -107,7 +158,8 @@ async def listar(
     cfg = _get_config(tabla)
     pk = cfg["pk"]
     exclude = cfg.get("exclude", [])
-    stmt = text(f"SELECT * FROM {tabla} WHERE activo = TRUE ORDER BY {pk}")
+    where = "WHERE activo = TRUE" if cfg.get("has_activo", True) else ""
+    stmt = text(f"SELECT * FROM {tabla} {where} ORDER BY {pk}")
     result = await db.execute(stmt)
     rows = result.fetchall()
     return [_row_to_dict(r, exclude) for r in rows]
@@ -150,7 +202,8 @@ async def crear(
     if not data:
         raise HTTPException(status_code=422, detail="No se recibieron campos válidos")
 
-    data["id_usuario_alta"] = current_user["id_usuario"]
+    if cfg.get("has_audit", True):
+        data["id_usuario_alta"] = current_user["id_usuario"]
 
     cols = ", ".join(data.keys())
     vals = ", ".join(f":{k}" for k in data.keys())
@@ -186,10 +239,12 @@ async def editar(
     if not data:
         raise HTTPException(status_code=422, detail="No se recibieron campos válidos")
 
-    data["id_usuario_modificacion"] = current_user["id_usuario"]
+    if cfg.get("has_audit", True):
+        data["id_usuario_modificacion"] = current_user["id_usuario"]
     sets = ", ".join(f"{k} = :{k}" for k in data.keys())
+    fecha_extra = f", {fecha_mod} = NOW()" if fecha_mod else ""
     stmt = text(
-        f"UPDATE {tabla} SET {sets}, {fecha_mod} = NOW() "
+        f"UPDATE {tabla} SET {sets}{fecha_extra} "
         f"WHERE {pk} = :__id RETURNING *"
     )
     try:
@@ -219,13 +274,21 @@ async def baja_logica(
     cfg = _get_config(tabla)
     pk = cfg["pk"]
     fecha_mod = cfg["fecha_mod"]
-    stmt = text(
-        f"UPDATE {tabla} SET activo = FALSE, {fecha_mod} = NOW(), "
-        f"id_usuario_modificacion = :uid "
-        f"WHERE {pk} = :id RETURNING {pk}"
-    )
+    if not cfg.get("has_activo", True):
+        raise HTTPException(
+            status_code=400,
+            detail=f"La tabla '{tabla}' no soporta baja lógica (sin campo activo)"
+        )
+    parts: list[str] = ["activo = FALSE"]
+    params: dict = {"id": id}
+    if fecha_mod:
+        parts.append(f"{fecha_mod} = NOW()")
+    if cfg.get("has_audit", True):
+        parts.append("id_usuario_modificacion = :uid")
+        params["uid"] = current_user["id_usuario"]
+    stmt = text(f"UPDATE {tabla} SET {', '.join(parts)} WHERE {pk} = :id RETURNING {pk}")
     try:
-        result = await db.execute(stmt, {"id": id, "uid": current_user["id_usuario"]})
+        result = await db.execute(stmt, params)
         await db.commit()
         row = result.fetchone()
         if not row:

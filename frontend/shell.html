@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ZARIS · Menú</title>
+
+  <link rel="icon" type="image/svg+xml" href="../design-system/assets/zaris-favicon.svg">
+
+  <!--
+    Fuentes locales del design-system.
+    NOTA: colors_and_type.css importa "../fonts/fonts.css" (relativo a sí mismo),
+    lo que resuelve mal. Cargamos fonts.css directamente para garantizar las fuentes.
+  -->
+  <link rel="stylesheet" href="../design-system/fonts/fonts.css">
+
+  <!-- Tokens, base styles, clases semánticas -->
+  <link rel="stylesheet" href="../design-system/colors_and_type.css">
+
+  <!-- Layout y componentes de shell -->
+  <link rel="stylesheet" href="css/menu.css">
+
+  <!-- Lucide (iconos — stroke 1.5px, currentColor) -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+</head>
+<body>
+  <div class="app">
+
+    <!-- ── Topbar global ── -->
+    <header class="topbar" role="banner">
+
+      <!--
+        TODO: definir si el lockup linkea al home real de la app o queda inerte.
+        Por ahora href="#" (inerte).
+      -->
+      <a class="brand" href="#" aria-label="ZARIS — Inicio">
+        <!-- Mark oficial · variante flat (currentColor) según BRAND-USAGE.md -->
+        <svg class="brand__mark" viewBox="0 0 500 500" aria-hidden="true">
+          <g fill="none" stroke="currentColor" stroke-width="34"
+             stroke-linecap="round" stroke-linejoin="round">
+            <path d="M 110 78 L 388 78"/>
+            <path d="M 388 78 L 110 430"/>
+            <path d="M 388 220 L 222 430"/>
+            <path d="M 388 362 L 334 430"/>
+          </g>
+        </svg>
+        <span class="brand__name">ZARIS</span>
+      </a>
+
+      <div class="topbar__right">
+        <!--
+          TODO: reemplazar con datos reales del JWT (zaris_session en localStorage).
+          Leer: JSON.parse(localStorage.getItem('zaris_session'))?.user
+        -->
+        <span class="topbar__context">
+          <strong>operador</strong> · municipio demo
+        </span>
+        <div class="topbar__avatar" aria-hidden="true">CZ</div>
+      </div>
+
+    </header>
+
+    <!-- ── Sidebar ── -->
+    <aside class="sidebar" aria-label="Menú principal">
+      <nav class="nav" id="nav">
+
+        <!-- RECLAMOS — preview -->
+        <div class="nav__group" data-open="false">
+          <button class="nav__title nav__title--stub"
+                  aria-expanded="false" data-toggle="group">
+            <span>Reclamos</span>
+            <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                 stroke="currentColor" stroke-width="1.5">
+              <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <div class="nav__panel">
+            <div class="nav__leaf"><span class="nav__leaf-label">Reclamos</span></div>
+            <div class="actions">
+              <button class="action" data-stub>Nuevo</button>
+              <button class="action" data-stub>Consulta</button>
+              <button class="action" data-stub>Listado</button>
+            </div>
+            <div class="nav__leaf"><span class="nav__leaf-label">Bandeja por áreas</span></div>
+            <div class="actions">
+              <button class="action" data-stub>Listado</button>
+            </div>
+            <div class="nav__leaf"><span class="nav__leaf-label">Orden de trabajo</span></div>
+            <div class="actions">
+              <button class="action" data-stub>Nuevo</button>
+              <button class="action" data-stub>Consulta</button>
+              <button class="action" data-stub>Listado</button>
+            </div>
+            <div class="nav__leaf"><span class="nav__leaf-label">Informe pendientes</span></div>
+            <div class="actions">
+              <button class="action" data-stub>Listado</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- TURNOS — preview -->
+        <div class="nav__group" data-open="false">
+          <button class="nav__title nav__title--stub"
+                  aria-expanded="false" data-toggle="group">
+            <span>Turnos</span>
+            <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                 stroke="currentColor" stroke-width="1.5">
+              <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <div class="nav__panel">
+            <div class="actions">
+              <button class="action" data-stub>Nuevo</button>
+              <button class="action" data-stub>Listado</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ENTRADAS — preview -->
+        <div class="nav__group" data-open="false">
+          <button class="nav__title nav__title--stub"
+                  aria-expanded="false" data-toggle="group">
+            <span>Entradas</span>
+            <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                 stroke="currentColor" stroke-width="1.5">
+              <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <div class="nav__panel">
+            <div class="actions">
+              <button class="action" data-stub>Nuevo</button>
+              <button class="action" data-stub>Consulta</button>
+              <button class="action" data-stub>Listado</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- CONFIGURACIÓN — funcional -->
+        <div class="nav__group" data-open="true">
+          <button class="nav__title" aria-expanded="true" data-toggle="group">
+            <span>Configuración</span>
+            <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                 stroke="currentColor" stroke-width="1.5">
+              <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <div class="nav__panel">
+
+            <!-- Padrones — nivel 2 -->
+            <div class="nav__group" data-open="false">
+              <button class="nav__sub" aria-expanded="false" data-toggle="group">
+                <span>Padrones</span>
+                <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                     stroke="currentColor" stroke-width="1.5">
+                  <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+              <div class="nav__subpanel">
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Ciudadanos</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                         stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="nav__item-actions">
+                    <div class="actions">
+                      <a class="action" href="ciudadano.html">Nuevo</a>
+                      <a class="action" href="ciudadano.html">Consulta</a>
+                      <a class="action" href="ciudadano.html">Baja</a>
+                      <a class="action" href="ciudadano.html">Listado</a>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Empresas</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                         stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="nav__item-actions">
+                    <div class="actions">
+                      <a class="action" href="empresa.html">Nuevo</a>
+                      <a class="action" href="empresa.html">Consulta</a>
+                      <a class="action" href="empresa.html">Baja</a>
+                      <a class="action" href="empresa.html">Listado</a>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- Maestros — nivel 2 -->
+            <div class="nav__group" data-open="false">
+              <button class="nav__sub" aria-expanded="false" data-toggle="group">
+                <span>Maestros</span>
+                <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                     stroke="currentColor" stroke-width="1.5">
+                  <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+              <div class="nav__subpanel">
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Usuarios</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                         stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="nav__item-actions">
+                    <div class="actions">
+                      <a class="action" href="usuarios.html">Nuevo</a>
+                      <a class="action" href="usuarios.html">Consulta</a>
+                      <a class="action" href="usuarios.html">Baja</a>
+                      <a class="action" href="usuarios.html">Listado</a>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Áreas</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                         stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="nav__item-actions">
+                    <div class="actions">
+                      <a class="action" href="admin_tablas.html?tabla=area">Nuevo</a>
+                      <a class="action" href="admin_tablas.html?tabla=area">Consulta</a>
+                      <a class="action" href="admin_tablas.html?tabla=area">Baja</a>
+                      <a class="action" href="admin_tablas.html?tabla=area">Listado</a>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Subáreas</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                         stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="nav__item-actions">
+                    <div class="actions">
+                      <a class="action" href="admin_tablas.html?tabla=subarea">Nuevo</a>
+                      <a class="action" href="admin_tablas.html?tabla=subarea">Consulta</a>
+                      <a class="action" href="admin_tablas.html?tabla=subarea">Baja</a>
+                      <a class="action" href="admin_tablas.html?tabla=subarea">Listado</a>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Actividades</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                         stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="nav__item-actions">
+                    <div class="actions">
+                      <a class="action" href="admin_tablas.html?tabla=actividades">Nuevo</a>
+                      <a class="action" href="admin_tablas.html?tabla=actividades">Consulta</a>
+                      <a class="action" href="admin_tablas.html?tabla=actividades">Baja</a>
+                      <a class="action" href="admin_tablas.html?tabla=actividades">Listado</a>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Representación</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                         stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="nav__item-actions">
+                    <div class="actions">
+                      <a class="action" href="admin_tablas.html?tabla=tipo_representacion">Nuevo</a>
+                      <a class="action" href="admin_tablas.html?tabla=tipo_representacion">Consulta</a>
+                      <a class="action" href="admin_tablas.html?tabla=tipo_representacion">Baja</a>
+                      <a class="action" href="admin_tablas.html?tabla=tipo_representacion">Listado</a>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Nacionalidades</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                         stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="nav__item-actions">
+                    <div class="actions">
+                      <a class="action" href="admin_tablas.html?tabla=nacionalidades">Nuevo</a>
+                      <a class="action" href="admin_tablas.html?tabla=nacionalidades">Consulta</a>
+                      <a class="action" href="admin_tablas.html?tabla=nacionalidades">Baja</a>
+                      <a class="action" href="admin_tablas.html?tabla=nacionalidades">Listado</a>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Tipo de reclamos</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                         stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="nav__item-actions">
+                    <div class="actions">
+                      <a class="action" href="admin_tablas.html?tabla=tipo_reclamo">Nuevo</a>
+                      <a class="action" href="admin_tablas.html?tabla=tipo_reclamo">Consulta</a>
+                      <a class="action" href="admin_tablas.html?tabla=tipo_reclamo">Baja</a>
+                      <a class="action" href="admin_tablas.html?tabla=tipo_reclamo">Listado</a>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Secretarías</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                         stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="nav__item-actions">
+                    <div class="actions">
+                      <a class="action" href="admin_tablas.html?tabla=areas">Nuevo</a>
+                      <a class="action" href="admin_tablas.html?tabla=areas">Consulta</a>
+                      <a class="action" href="admin_tablas.html?tabla=areas">Baja</a>
+                      <a class="action" href="admin_tablas.html?tabla=areas">Listado</a>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Lugares de atención</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                         stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="nav__item-actions">
+                    <div class="actions">
+                      <a class="action" href="admin_tablas.html?tabla=lugares_atencion">Nuevo</a>
+                      <a class="action" href="admin_tablas.html?tabla=lugares_atencion">Consulta</a>
+                      <a class="action" href="admin_tablas.html?tabla=lugares_atencion">Baja</a>
+                      <a class="action" href="admin_tablas.html?tabla=lugares_atencion">Listado</a>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Clases de agenda</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                         stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="nav__item-actions">
+                    <div class="actions">
+                      <a class="action" href="admin_tablas.html?tabla=agenda_clase">Nuevo</a>
+                      <a class="action" href="admin_tablas.html?tabla=agenda_clase">Consulta</a>
+                      <a class="action" href="admin_tablas.html?tabla=agenda_clase">Baja</a>
+                      <a class="action" href="admin_tablas.html?tabla=agenda_clase">Listado</a>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Feriados</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                         stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="nav__item-actions">
+                    <div class="actions">
+                      <a class="action" href="admin_tablas.html?tabla=agenda_feriado">Nuevo</a>
+                      <a class="action" href="admin_tablas.html?tabla=agenda_feriado">Consulta</a>
+                      <a class="action" href="admin_tablas.html?tabla=agenda_feriado">Baja</a>
+                      <a class="action" href="admin_tablas.html?tabla=agenda_feriado">Listado</a>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Estado de reclamos</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                         stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="nav__item-actions">
+                    <div class="actions">
+                      <button class="action" data-action="estado_reclamos:nuevo">Nuevo</button>
+                      <button class="action" data-action="estado_reclamos:consulta">Consulta</button>
+                      <button class="action" data-action="estado_reclamos:baja">Baja</button>
+                      <button class="action" data-action="estado_reclamos:listado">Listado</button>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </nav>
+
+      <footer class="sidebar__foot">zaris-zge · shell</footer>
+    </aside>
+
+    <!-- ── Canvas placeholder ── -->
+    <main class="canvas">
+      <span class="canvas__kicker">Menú · shell</span>
+      <h1 class="canvas__title">Sidebar maquetada para evaluación visual.</h1>
+      <p class="canvas__lede">
+        Reclamos, Turnos y Entradas se muestran como preview — sus
+        acciones no disparan navegación. Configuración → Padrones y
+        Maestros despliega los tres niveles funcionalmente.
+      </p>
+      <p class="canvas__note">
+        Hover de marca: el texto vira a crimson #cf2d56 en 150ms.
+        Toda la pantalla consume tokens del design-system oficial.
+      </p>
+      <div class="canvas__log" id="log">
+        <em style="color:var(--fg-3)">Última acción: ninguna todavía. Probá clickear los botones de Configuración.</em>
+      </div>
+    </main>
+
+  </div>
+
+  <script src="js/menu.js"></script>
+</body>
+</html>
