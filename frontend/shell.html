@@ -64,10 +64,9 @@
     <aside class="sidebar" aria-label="Menú principal">
       <nav class="nav" id="nav">
 
-        <!-- RECLAMOS — preview -->
+        <!-- RECLAMOS — funcional -->
         <div class="nav__group" data-open="false">
-          <button class="nav__title nav__title--stub"
-                  aria-expanded="false" data-toggle="group">
+          <button class="nav__title" aria-expanded="false" data-toggle="group">
             <span>Reclamos</span>
             <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
                  stroke="currentColor" stroke-width="1.5">
@@ -75,33 +74,43 @@
             </svg>
           </button>
           <div class="nav__panel">
-            <div class="nav__leaf"><span class="nav__leaf-label">Reclamos</span></div>
-            <div class="actions">
-              <button class="action" data-stub>Nuevo</button>
-              <button class="action" data-stub>Consulta</button>
-              <button class="action" data-stub>Listado</button>
+            <div class="nav__item" data-open="false">
+              <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                <span>Gestión de reclamos</span>
+                <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                     stroke="currentColor" stroke-width="1.5">
+                  <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+              <div class="nav__item-actions">
+                <div class="actions">
+                  <a class="action" href="reclamos.html">Nuevo</a>
+                  <a class="action" href="reclamos.html">Consulta</a>
+                  <a class="action" href="reclamos.html">Listado</a>
+                </div>
+              </div>
             </div>
-            <div class="nav__leaf"><span class="nav__leaf-label">Bandeja por áreas</span></div>
-            <div class="actions">
-              <button class="action" data-stub>Listado</button>
-            </div>
-            <div class="nav__leaf"><span class="nav__leaf-label">Orden de trabajo</span></div>
-            <div class="actions">
-              <button class="action" data-stub>Nuevo</button>
-              <button class="action" data-stub>Consulta</button>
-              <button class="action" data-stub>Listado</button>
-            </div>
-            <div class="nav__leaf"><span class="nav__leaf-label">Informe pendientes</span></div>
-            <div class="actions">
-              <button class="action" data-stub>Listado</button>
+            <div class="nav__item" data-open="false">
+              <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                <span>Orden de trabajo</span>
+                <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                     stroke="currentColor" stroke-width="1.5">
+                  <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+              <div class="nav__item-actions">
+                <div class="actions">
+                  <button class="action" data-stub>Nuevo</button>
+                  <button class="action" data-stub>Listado</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- TURNOS — preview -->
+        <!-- TURNOS — funcional -->
         <div class="nav__group" data-open="false">
-          <button class="nav__title nav__title--stub"
-                  aria-expanded="false" data-toggle="group">
+          <button class="nav__title" aria-expanded="false" data-toggle="group">
             <span>Turnos</span>
             <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
                  stroke="currentColor" stroke-width="1.5">
@@ -110,8 +119,9 @@
           </button>
           <div class="nav__panel">
             <div class="actions">
-              <button class="action" data-stub>Nuevo</button>
-              <button class="action" data-stub>Listado</button>
+              <a class="action" href="agenda.html">Nuevo</a>
+              <a class="action" href="agenda.html">Listado</a>
+              <a class="action" href="agenda.html">Calendario</a>
             </div>
           </div>
         </div>
@@ -227,6 +237,78 @@
 
                 <div class="nav__item" data-open="false">
                   <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Agentes</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                         stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="nav__item-actions">
+                    <div class="actions">
+                      <a class="action" href="admin_tablas.html?tabla=agentes">Nuevo</a>
+                      <a class="action" href="admin_tablas.html?tabla=agentes">Consulta</a>
+                      <a class="action" href="admin_tablas.html?tabla=agentes">Baja</a>
+                      <a class="action" href="admin_tablas.html?tabla=agentes">Listado</a>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Equipos</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                         stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="nav__item-actions">
+                    <div class="actions">
+                      <a class="action" href="admin_tablas.html?tabla=equipos">Nuevo</a>
+                      <a class="action" href="admin_tablas.html?tabla=equipos">Consulta</a>
+                      <a class="action" href="admin_tablas.html?tabla=equipos">Baja</a>
+                      <a class="action" href="admin_tablas.html?tabla=equipos">Listado</a>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Tipos de usuario</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                         stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="nav__item-actions">
+                    <div class="actions">
+                      <a class="action" href="admin_tablas.html?tabla=tipo_usuario">Nuevo</a>
+                      <a class="action" href="admin_tablas.html?tabla=tipo_usuario">Consulta</a>
+                      <a class="action" href="admin_tablas.html?tabla=tipo_usuario">Baja</a>
+                      <a class="action" href="admin_tablas.html?tabla=tipo_usuario">Listado</a>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Cargos</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                         stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="nav__item-actions">
+                    <div class="actions">
+                      <a class="action" href="admin_tablas.html?tabla=cargos">Nuevo</a>
+                      <a class="action" href="admin_tablas.html?tabla=cargos">Consulta</a>
+                      <a class="action" href="admin_tablas.html?tabla=cargos">Baja</a>
+                      <a class="action" href="admin_tablas.html?tabla=cargos">Listado</a>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
                     <span>Áreas</span>
                     <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
                          stroke="currentColor" stroke-width="1.5">
@@ -257,6 +339,24 @@
                       <a class="action" href="admin_tablas.html?tabla=subarea">Consulta</a>
                       <a class="action" href="admin_tablas.html?tabla=subarea">Baja</a>
                       <a class="action" href="admin_tablas.html?tabla=subarea">Listado</a>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Servicios</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                         stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="nav__item-actions">
+                    <div class="actions">
+                      <a class="action" href="admin_tablas.html?tabla=servicios">Nuevo</a>
+                      <a class="action" href="admin_tablas.html?tabla=servicios">Consulta</a>
+                      <a class="action" href="admin_tablas.html?tabla=servicios">Baja</a>
+                      <a class="action" href="admin_tablas.html?tabla=servicios">Listado</a>
                     </div>
                   </div>
                 </div>
@@ -335,6 +435,60 @@
 
                 <div class="nav__item" data-open="false">
                   <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Áreas de reclamos</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                         stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="nav__item-actions">
+                    <div class="actions">
+                      <a class="action" href="admin_tablas.html?tabla=reclamos_area">Nuevo</a>
+                      <a class="action" href="admin_tablas.html?tabla=reclamos_area">Consulta</a>
+                      <a class="action" href="admin_tablas.html?tabla=reclamos_area">Baja</a>
+                      <a class="action" href="admin_tablas.html?tabla=reclamos_area">Listado</a>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Subáreas de reclamos</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                         stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="nav__item-actions">
+                    <div class="actions">
+                      <a class="action" href="admin_tablas.html?tabla=reclamos_subarea">Nuevo</a>
+                      <a class="action" href="admin_tablas.html?tabla=reclamos_subarea">Consulta</a>
+                      <a class="action" href="admin_tablas.html?tabla=reclamos_subarea">Baja</a>
+                      <a class="action" href="admin_tablas.html?tabla=reclamos_subarea">Listado</a>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Estado de reclamos</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                         stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="nav__item-actions">
+                    <div class="actions">
+                      <a class="action" href="admin_tablas.html?tabla=estado_reclamo">Nuevo</a>
+                      <a class="action" href="admin_tablas.html?tabla=estado_reclamo">Consulta</a>
+                      <a class="action" href="admin_tablas.html?tabla=estado_reclamo">Baja</a>
+                      <a class="action" href="admin_tablas.html?tabla=estado_reclamo">Listado</a>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
                     <span>Secretarías</span>
                     <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
                          stroke="currentColor" stroke-width="1.5">
@@ -401,24 +555,6 @@
                       <a class="action" href="admin_tablas.html?tabla=agenda_feriado">Consulta</a>
                       <a class="action" href="admin_tablas.html?tabla=agenda_feriado">Baja</a>
                       <a class="action" href="admin_tablas.html?tabla=agenda_feriado">Listado</a>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="nav__item" data-open="false">
-                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
-                    <span>Estado de reclamos</span>
-                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
-                         stroke="currentColor" stroke-width="1.5">
-                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                  </button>
-                  <div class="nav__item-actions">
-                    <div class="actions">
-                      <button class="action" data-action="estado_reclamos:nuevo">Nuevo</button>
-                      <button class="action" data-action="estado_reclamos:consulta">Consulta</button>
-                      <button class="action" data-action="estado_reclamos:baja">Baja</button>
-                      <button class="action" data-action="estado_reclamos:listado">Listado</button>
                     </div>
                   </div>
                 </div>

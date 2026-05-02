@@ -102,6 +102,25 @@ TABLE_CONFIG: dict[str, dict] = {
         "fecha_mod": None,
         "has_audit": False,
     },
+    # ── Reclamos
+    "reclamos_area": {
+        "pk": "id_area",
+        "cols": ["nombre"],
+        "fecha_mod": None,
+        "has_audit": False,
+    },
+    "reclamos_subarea": {
+        "pk": "id_subarea",
+        "cols": ["nombre", "id_area"],
+        "fecha_mod": None,
+        "has_audit": False,
+    },
+    "estado_reclamo": {
+        "pk": "id_estado_reclamo",
+        "cols": ["nombre", "descripcion", "color", "es_final", "orden"],
+        "fecha_mod": "fecha_modificacion",
+        "has_audit": False,
+    },
     # ── Tablas BUC legacy — sin activo ni campos de auditoría
     "actividades": {
         "pk": "id",

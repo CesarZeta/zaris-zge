@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZARIS — Reclamos</title>
+  <script>if (window.self !== window.top) { var s = document.createElement('style'); s.textContent = '.z-header{display:none!important}'; document.head.appendChild(s); }</script>
+  <link rel="stylesheet" href="../design-system/fonts/fonts.css">
+  <link rel="stylesheet" href="../design-system/colors_and_type.css">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--zaris-cream);
+      font-family: var(--font-display);
+      color: var(--fg-1);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    .z-header {
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      background: rgba(242,241,237,.88);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-primary);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .z-header__brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+    .z-header__title { font-size: 17px; font-weight: 500; letter-spacing: -0.8px; color: var(--fg-1); transition: color 150ms; }
+    .z-header__brand:hover .z-header__title { color: var(--color-error); }
+    .z-header__subtitle { font-size: 12px; color: var(--fg-3); margin-left: 2px; }
+    .z-header__nav { display: flex; align-items: center; gap: 8px; }
+    .btn-back {
+      background: var(--surface-400);
+      border: 1px solid var(--border-primary);
+      color: var(--fg-2);
+      padding: 0.3rem 0.85rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-family: var(--font-display);
+      transition: background 0.15s, color 0.15s;
+    }
+    .btn-back:hover { background: var(--surface-500); color: var(--fg-1); }
+
+    /* ── Layout ── */
+    .page { padding: 32px 40px; max-width: 1200px; }
+
+    /* ── Page header ── */
+    .page-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 28px;
+      gap: 16px;
+    }
+    .page-header__left { display: flex; align-items: center; gap: 14px; }
+    .page-header__icon {
+      width: 44px; height: 44px;
+      background: rgba(245,78,0,.08);
+      border: 1px solid rgba(245,78,0,.15);
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--zaris-orange);
+      flex-shrink: 0;
+    }
+    .page-title { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.5px; line-height: 1.1; }
+    .page-sub { font-size: 0.82rem; color: var(--fg-3); margin-top: 3px; }
+    .page-header__actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+    /* ── Botones ── */
+    .btn-primary {
+      background: var(--zaris-orange);
+      border: none;
+      color: #fff;
+      padding: 0.48rem 1.15rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.84rem;
+      font-family: var(--font-display);
+      font-weight: 600;
+      transition: background 0.18s;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .btn-primary:hover { background: #d84300; }
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border-primary);
+      color: var(--fg-2);
+      padding: 0.48rem 1.1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.84rem;
+      font-family: var(--font-display);
+      font-weight: 500;
+      transition: border-color 0.18s, color 0.18s;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .btn-outline:hover { border-color: var(--fg-2); color: var(--fg-1); }
+
+    /* ── Stats cards ── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--surface-100);
+      border: 1px solid var(--border-primary);
+      border-radius: 12px;
+      padding: 16px 18px;
+    }
+    .stat-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--fg-3); margin-bottom: 6px; }
+    .stat-value { font-size: 1.6rem; font-weight: 700; letter-spacing: -1px; color: var(--fg-1); line-height: 1; }
+    .stat-delta { font-size: 0.72rem; color: var(--fg-3); margin-top: 4px; }
+    .stat-card--alert .stat-value { color: var(--color-error); }
+    .stat-card--ok    .stat-value { color: #1f8a65; }
+
+    /* ── Filtros ── */
+    .filter-bar {
+      background: var(--surface-100);
+      border: 1px solid var(--border-primary);
+      border-radius: 12px;
+      padding: 14px 18px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: flex-end;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .filter-group { display: flex; flex-direction: column; gap: 4px; min-width: 140px; }
+    .filter-group label { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-3); }
+    .filter-group input,
+    .filter-group select {
+      background: transparent;
+      border: 1px solid var(--border-primary);
+      color: var(--fg-1);
+      padding: 0.38rem 0.65rem;
+      border-radius: 8px;
+      font-size: 0.84rem;
+      font-family: var(--font-display);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .filter-group input:focus,
+    .filter-group select:focus { border-color: var(--border-medium); }
+    .filter-actions { display: flex; gap: 8px; align-self: flex-end; }
+
+    /* ── Tabla ── */
+    .tbl-wrap {
+      border: 1px solid var(--border-primary);
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--surface-100);
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+    thead th {
+      background: var(--surface-300);
+      color: var(--fg-3);
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.6rem 1rem;
+      text-align: left;
+      white-space: nowrap;
+    }
+    tbody tr { border-top: 1px solid var(--border-primary); transition: background 0.1s; cursor: pointer; }
+    tbody tr:hover { background: var(--surface-300); }
+    tbody td { padding: 0.7rem 1rem; vertical-align: middle; }
+    td.mono { font-family: var(--font-mono); font-size: 0.78rem; color: var(--fg-3); }
+
+    /* ── Badges de estado ── */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 0.18rem 0.65rem;
+      border-radius: 20px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .badge-ingresado  { background: rgba(107,114,128,.12); color: #4b5563; }
+    .badge-ingresado::before  { background: #6b7280; }
+    .badge-revision   { background: rgba(245,158,11,.12); color: #b45309; }
+    .badge-revision::before   { background: #f59e0b; }
+    .badge-gestion    { background: rgba(59,130,246,.12); color: #1d4ed8; }
+    .badge-gestion::before    { background: #3b82f6; }
+    .badge-resuelto   { background: rgba(16,185,129,.12); color: #047857; }
+    .badge-resuelto::before   { background: #10b981; }
+    .badge-rechazado  { background: rgba(239,68,68,.12);  color: #b91c1c; }
+    .badge-rechazado::before  { background: #ef4444; }
+    .badge-cerrado    { background: rgba(139,92,246,.12); color: #6d28d9; }
+    .badge-cerrado::before    { background: #8b5cf6; }
+
+    /* ── Prioridad ── */
+    .prio { font-size: 0.72rem; font-weight: 600; }
+    .prio-alta   { color: var(--color-error); }
+    .prio-media  { color: #b45309; }
+    .prio-baja   { color: #1f8a65; }
+
+    /* ── Drawer / Panel de detalle ── */
+    .drawer-overlay {
+      position: fixed; inset: 0;
+      background: rgba(38,37,30,.4);
+      z-index: 200;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.22s;
+    }
+    .drawer-overlay.open { opacity: 1; pointer-events: auto; }
+    .drawer {
+      position: fixed;
+      top: 0; right: 0;
+      width: 480px; max-width: 95vw;
+      height: 100vh;
+      background: var(--surface-100);
+      border-left: 1px solid var(--border-primary);
+      z-index: 201;
+      transform: translateX(100%);
+      transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .drawer-overlay.open .drawer { transform: translateX(0); }
+    .drawer-header {
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid var(--border-primary);
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    }
+    .drawer-title { font-size: 1rem; font-weight: 700; color: var(--fg-1); line-height: 1.3; }
+    .drawer-id { font-size: 0.72rem; font-family: var(--font-mono); color: var(--fg-3); margin-top: 3px; }
+    .btn-close-drawer {
+      background: var(--surface-400); border: 1px solid var(--border-primary);
+      color: var(--fg-2); padding: 0.3rem 0.6rem; border-radius: 8px;
+      cursor: pointer; font-size: 0.82rem; flex-shrink: 0;
+      transition: background 0.15s;
+    }
+    .btn-close-drawer:hover { background: var(--surface-500); color: var(--fg-1); }
+    .drawer-body { flex: 1; overflow-y: auto; padding: 20px 24px; }
+    .drawer-footer {
+      padding: 14px 24px;
+      border-top: 1px solid var(--border-primary);
+      display: flex; gap: 8px; justify-content: flex-end;
+    }
+
+    .detail-section { margin-bottom: 20px; }
+    .detail-section-title {
+      font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--fg-3); margin-bottom: 10px;
+    }
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .detail-field { display: flex; flex-direction: column; gap: 3px; }
+    .detail-field label { font-size: 0.68rem; color: var(--fg-3); font-weight: 500; }
+    .detail-field span { font-size: 0.86rem; color: var(--fg-1); font-weight: 500; }
+    .detail-field.full { grid-column: 1 / -1; }
+
+    .timeline { display: flex; flex-direction: column; gap: 0; }
+    .timeline-item {
+      display: flex; gap: 12px; align-items: flex-start;
+      padding-bottom: 14px; position: relative;
+    }
+    .timeline-item:not(:last-child)::before {
+      content: '';
+      position: absolute;
+      left: 8px; top: 20px;
+      width: 1px; height: calc(100% - 6px);
+      background: var(--border-primary);
+    }
+    .timeline-dot {
+      width: 18px; height: 18px; border-radius: 50%;
+      border: 2px solid var(--border-primary);
+      background: var(--surface-100);
+      flex-shrink: 0; margin-top: 1px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .timeline-dot--active { border-color: var(--zaris-orange); background: rgba(245,78,0,.1); }
+    .timeline-content { flex: 1; }
+    .timeline-action { font-size: 0.84rem; font-weight: 600; color: var(--fg-1); }
+    .timeline-meta { font-size: 0.74rem; color: var(--fg-3); margin-top: 2px; }
+    .timeline-note { font-size: 0.82rem; color: var(--fg-2); margin-top: 4px; font-style: italic; }
+
+    /* ── Modal nuevo reclamo ── */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(38,37,30,.5);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 300;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.2s;
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: auto; }
+    .modal {
+      background: var(--surface-100);
+      border: 1px solid var(--border-primary);
+      border-radius: 16px;
+      width: 560px; max-width: 95vw;
+      max-height: 88vh; overflow-y: auto;
+      transform: translateY(14px);
+      transition: transform 0.2s;
+      box-shadow: 0 20px 60px rgba(38,37,30,.15);
+    }
+    .modal-overlay.open .modal { transform: translateY(0); }
+    .modal-header {
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid var(--border-primary);
+      display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; background: var(--surface-100); z-index: 1;
+    }
+    .modal-header h3 { font-size: 1rem; font-weight: 700; }
+    .btn-close {
+      background: none; border: none; color: var(--fg-3);
+      font-size: 1.1rem; cursor: pointer; padding: 0.25rem 0.45rem;
+      border-radius: 6px; transition: background 0.15s, color 0.15s;
+    }
+    .btn-close:hover { background: var(--surface-400); color: var(--fg-1); }
+    .modal-body { padding: 20px 24px; }
+    .modal-footer {
+      padding: 14px 24px;
+      border-top: 1px solid var(--border-primary);
+      display: flex; justify-content: flex-end; gap: 8px;
+    }
+
+    .field { margin-bottom: 14px; }
+    .field label {
+      display: block; font-size: 0.72rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--fg-2); margin-bottom: 5px;
+    }
+    .field input, .field select, .field textarea {
+      width: 100%;
+      background: transparent;
+      border: 1px solid var(--border-primary);
+      color: var(--fg-1);
+      padding: 0.52rem 0.8rem;
+      border-radius: 8px;
+      font-size: 0.87rem;
+      font-family: var(--font-display);
+      outline: none;
+      transition: border-color 0.18s;
+    }
+    .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--border-medium); }
+    .field textarea { resize: vertical; min-height: 80px; }
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 1.5rem; right: 1.5rem;
+      padding: 0.7rem 1.2rem; border-radius: 10px;
+      font-size: 0.85rem; font-weight: 500;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.28s; z-index: 9999;
+      box-shadow: 0 4px 20px rgba(38,37,30,.12);
+    }
+    #toast.show { opacity: 1; }
+    #toast.ok  { background: rgba(16,185,129,.12); color: #047857; border: 1px solid rgba(16,185,129,.3); }
+    #toast.err { background: rgba(207,45,86,.12); color: #b91c1c; border: 1px solid rgba(207,45,86,.3); }
+
+    .empty { text-align: center; padding: 3rem; color: var(--fg-3); font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+
+<!-- ── Guard iframe ──────────────────────────────────── -->
+<script>
+if (!localStorage.getItem('zaris_session')) {
+  if (window.self !== window.top) {
+    window.parent.shellNavigate && window.parent.shellNavigate('frontend/welcome.html');
+  } else {
+    window.location.href = '../index.html';
+  }
+}
+</script>
+
+<!-- ── Header ── -->
+<header class="z-header">
+  <a href="#" class="z-header__brand" onclick="(window.parent.shellNavigate||function(){window.location='../index.html'})('frontend/welcome.html');return false">
+    <span>
+      <span class="z-header__title">ZARIS</span>
+      <span class="z-header__subtitle">Reclamos</span>
+    </span>
+  </a>
+  <nav class="z-header__nav">
+    <span id="headerUsuario" style="font-size:0.82rem;color:var(--fg-3);cursor:default"></span>
+    <button class="btn-back" onclick="(window.parent.shellNavigate||function(){window.location='../index.html'})('frontend/welcome.html')">← Inicio</button>
+  </nav>
+</header>
+
+<div class="page">
+
+  <!-- ── Page header ── -->
+  <div class="page-header">
+    <div class="page-header__left">
+      <div class="page-header__icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/>
+          <polyline points="10 9 9 9 8 9"/>
+        </svg>
+      </div>
+      <div>
+        <h1 class="page-title">Reclamos ciudadanos</h1>
+        <p class="page-sub">Gestión de reclamos y solicitudes del municipio</p>
+      </div>
+    </div>
+    <div class="page-header__actions">
+      <button class="btn-outline" onclick="window.print()">
+        <i data-lucide="printer" style="width:14px;height:14px"></i>
+        Imprimir
+      </button>
+      <button class="btn-primary" onclick="abrirNuevoReclamo()">
+        <i data-lucide="plus" style="width:14px;height:14px"></i>
+        Nuevo reclamo
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Stats ── -->
+  <div class="stats-row" id="statsRow">
+    <div class="stat-card">
+      <div class="stat-label">Total activos</div>
+      <div class="stat-value" id="stat-total">—</div>
+      <div class="stat-delta">Este mes</div>
+    </div>
+    <div class="stat-card stat-card--alert">
+      <div class="stat-label">Ingresados</div>
+      <div class="stat-value" id="stat-ingresados">—</div>
+      <div class="stat-delta">Sin asignar</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">En gestión</div>
+      <div class="stat-value" id="stat-gestion">—</div>
+      <div class="stat-delta">En proceso</div>
+    </div>
+    <div class="stat-card stat-card--ok">
+      <div class="stat-label">Resueltos</div>
+      <div class="stat-value" id="stat-resueltos">—</div>
+      <div class="stat-delta">Cerrados OK</div>
+    </div>
+  </div>
+
+  <!-- ── Filtros ── -->
+  <div class="filter-bar">
+    <div class="filter-group" style="min-width:200px">
+      <label>Buscar</label>
+      <input type="text" id="flt-texto" placeholder="DNI, nombre, descripción...">
+    </div>
+    <div class="filter-group">
+      <label>Estado</label>
+      <select id="flt-estado">
+        <option value="">Todos</option>
+        <option value="Ingresado">Ingresado</option>
+        <option value="En revisión">En revisión</option>
+        <option value="En gestión">En gestión</option>
+        <option value="Resuelto">Resuelto</option>
+        <option value="Rechazado">Rechazado</option>
+        <option value="Cerrado">Cerrado</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Área</label>
+      <select id="flt-area">
+        <option value="">Todas</option>
+        <option value="Obras Públicas">Obras Públicas</option>
+        <option value="Salud">Salud</option>
+        <option value="Servicios Urbanos">Servicios Urbanos</option>
+        <option value="Asistencia Social">Asistencia Social</option>
+        <option value="Tránsito">Tránsito</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Prioridad</label>
+      <select id="flt-prio">
+        <option value="">Todas</option>
+        <option value="Alta">Alta</option>
+        <option value="Media">Media</option>
+        <option value="Baja">Baja</option>
+      </select>
+    </div>
+    <div class="filter-actions">
+      <button class="btn-primary" onclick="aplicarFiltros()">Filtrar</button>
+      <button class="btn-outline" onclick="limpiarFiltros()">Limpiar</button>
+    </div>
+  </div>
+
+  <!-- ── Tabla ── -->
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>N° Reclamo</th>
+          <th>Ciudadano</th>
+          <th>Tipo / Área</th>
+          <th>Estado</th>
+          <th>Prioridad</th>
+          <th>Ingreso</th>
+          <th>Responsable</th>
+        </tr>
+      </thead>
+      <tbody id="tbodyReclamos">
+        <tr><td colspan="7" class="empty">Cargando...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- ── Drawer detalle ── -->
+<div class="drawer-overlay" id="drawerOverlay" onclick="cerrarDrawer(event)">
+  <div class="drawer" id="drawer">
+    <div class="drawer-header">
+      <div>
+        <div class="drawer-title" id="drawerTitle">Reclamo</div>
+        <div class="drawer-id" id="drawerId"></div>
+      </div>
+      <button class="btn-close-drawer" onclick="cerrarDrawer()">✕ Cerrar</button>
+    </div>
+    <div class="drawer-body" id="drawerBody">
+    </div>
+    <div class="drawer-footer">
+      <button class="btn-outline" onclick="cerrarDrawer()">Cerrar</button>
+      <button class="btn-primary" id="btnCambiarEstado" onclick="cambiarEstadoReclamo()">Cambiar estado</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal nuevo reclamo ── -->
+<div class="modal-overlay" id="modalNuevo">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Nuevo reclamo</h3>
+      <button class="btn-close" onclick="cerrarModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field-row">
+        <div class="field">
+          <label>DNI / CUIL del ciudadano *</label>
+          <input type="text" id="nr-dni" placeholder="Ej: 30123456">
+        </div>
+        <div class="field">
+          <label>Nombre completo *</label>
+          <input type="text" id="nr-nombre" placeholder="Apellido, Nombre">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Área *</label>
+          <select id="nr-area">
+            <option value="">— Seleccionar —</option>
+            <option>Obras Públicas</option>
+            <option>Salud</option>
+            <option>Servicios Urbanos</option>
+            <option>Asistencia Social</option>
+            <option>Tránsito</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Tipo de reclamo *</label>
+          <select id="nr-tipo">
+            <option value="">— Seleccionar —</option>
+            <option>Bache en calzada</option>
+            <option>Luminaria apagada</option>
+            <option>Árbol caído</option>
+            <option>Turno no otorgado</option>
+            <option>Falta de insumos</option>
+            <option>Basura no recolectada</option>
+            <option>Subsidio denegado</option>
+            <option>Demora en trámite</option>
+            <option>Otro</option>
+          </select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Prioridad</label>
+          <select id="nr-prio">
+            <option value="Media">Media</option>
+            <option value="Alta">Alta</option>
+            <option value="Baja">Baja</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Teléfono de contacto</label>
+          <input type="text" id="nr-tel" placeholder="11 1234-5678">
+        </div>
+      </div>
+      <div class="field">
+        <label>Domicilio del reclamo</label>
+        <input type="text" id="nr-domicilio" placeholder="Calle, altura, barrio">
+      </div>
+      <div class="field">
+        <label>Descripción *</label>
+        <textarea id="nr-desc" placeholder="Describa el problema con el mayor detalle posible..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="cerrarModal()">Cancelar</button>
+      <button class="btn-primary" onclick="guardarNuevoReclamo()">Registrar reclamo</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ── -->
+<div id="toast"></div>
+
+<script>
+// ── Auth header ───────────────────────────────────────────────────
+const _local = ['localhost', '127.0.0.1', '0.0.0.0'];
+const _base  = _local.includes(window.location.hostname)
+  ? 'http://127.0.0.1:8000'
+  : 'https://zaris-api-production-bf0b.up.railway.app';
+
+function _authHeaders() {
+  const s = JSON.parse(localStorage.getItem('zaris_session') || 'null');
+  return s?.access_token ? { 'Authorization': `Bearer ${s.access_token}` } : {};
+}
+
+// Mostrar usuario en header
+const _sess = JSON.parse(localStorage.getItem('zaris_session') || 'null');
+if (_sess?.user) {
+  document.getElementById('headerUsuario').textContent = _sess.user.nombre || _sess.user.username || '';
+}
+
+// ── Dataset demo ──────────────────────────────────────────────────
+// En producción estos datos vendrán del backend /api/v1/reclamos
+const RECLAMOS_DEMO = [
+  { id: 1001, ciudadano: 'Rodríguez, María Elena', dni: '28.456.789', area: 'Obras Públicas', tipo: 'Bache en calzada', domicilio: 'Av. San Martín 1240', estado: 'En gestión', prioridad: 'Alta', fecha: '2026-04-28', responsable: 'García, Juan', desc: 'Gran bache en la calzada frente al número 1240, peligroso para vehículos y peatones. Fue reportado hace 15 días sin respuesta.', historia: [{fecha:'2026-04-28',accion:'Ingresado',usuario:'Operador Pérez',nota:'Reclamo registrado en ventanilla'},{fecha:'2026-04-29',accion:'Asignado a Obras Públicas',usuario:'Supervisor García',nota:''},{fecha:'2026-04-30',accion:'En gestión',usuario:'García, Juan',nota:'Equipo programado para el 02/05'}] },
+  { id: 1002, ciudadano: 'López, Carlos Alberto', dni: '35.120.044', area: 'Servicios Urbanos', tipo: 'Luminaria apagada', domicilio: 'Calle 9 de Julio 456', estado: 'Ingresado', prioridad: 'Media', fecha: '2026-04-29', responsable: '—', desc: 'Tres luminarias apagadas en el bloque entre Mitre y Belgrano. La zona queda sin iluminación desde las 20hs.', historia: [{fecha:'2026-04-29',accion:'Ingresado',usuario:'Operador Gómez',nota:'Reclamo registrado por web'}] },
+  { id: 1003, ciudadano: 'Fernández, Ana Lucía', dni: '40.897.123', area: 'Salud', tipo: 'Turno no otorgado', domicilio: 'Centro de Salud Nº 3', estado: 'En revisión', prioridad: 'Alta', fecha: '2026-04-27', responsable: 'Martínez, Laura', desc: 'Paciente con afección crónica no puede obtener turno con el médico especialista hace tres semanas. El sistema no muestra disponibilidad.', historia: [{fecha:'2026-04-27',accion:'Ingresado',usuario:'Operador Torres',nota:''},{fecha:'2026-04-28',accion:'En revisión',usuario:'Martínez, Laura',nota:'Se consulta al área de Salud disponibilidad'}] },
+  { id: 1004, ciudadano: 'Díaz, Roberto Marcelo', dni: '22.345.678', area: 'Asistencia Social', tipo: 'Subsidio denegado', domicilio: 'Bv. Illia 890', estado: 'Resuelto', prioridad: 'Alta', fecha: '2026-04-20', responsable: 'Ramos, Silvia', desc: 'Ciudadano con certificado de discapacidad solicita subsidio de transporte rechazado por error administrativo en carga de datos.', historia: [{fecha:'2026-04-20',accion:'Ingresado',usuario:'Operador López',nota:''},{fecha:'2026-04-21',accion:'Asignado',usuario:'Ramos, Silvia',nota:''},{fecha:'2026-04-23',accion:'En gestión',usuario:'Ramos, Silvia',nota:'Error detectado en el sistema'},{fecha:'2026-04-25',accion:'Resuelto',usuario:'Ramos, Silvia',nota:'Subsidio otorgado y notificado al ciudadano'}] },
+  { id: 1005, ciudadano: 'Acosta, Valeria', dni: '38.567.890', area: 'Servicios Urbanos', tipo: 'Árbol caído', domicilio: 'Laprida 234 esq. Paso', estado: 'Resuelto', prioridad: 'Alta', fecha: '2026-04-26', responsable: 'Equipo Urbano', desc: 'Árbol caído sobre la vereda pública bloqueando el paso tras la tormenta del 25/04. Riesgo eléctrico por cercanía a cables.', historia: [{fecha:'2026-04-26',accion:'Ingresado',usuario:'Operador Núñez',nota:'Urgencia alta — riesgo eléctrico'},{fecha:'2026-04-26',accion:'Derivado a emergencias',usuario:'Supervisor Castro',nota:''},{fecha:'2026-04-27',accion:'Resuelto',usuario:'Equipo Urbano',nota:'Árbol retirado. Sin daños eléctricos.'}] },
+  { id: 1006, ciudadano: 'Morales, Diego Hernán', dni: '31.234.567', area: 'Tránsito', tipo: 'Demora en trámite', domicilio: 'Dirección de Tránsito', estado: 'En revisión', prioridad: 'Baja', fecha: '2026-05-01', responsable: '—', desc: 'Renovación de licencia de conducir solicitada hace 45 días. El ciudadano no recibió respuesta ni notificación.', historia: [{fecha:'2026-05-01',accion:'Ingresado',usuario:'Operador Díaz',nota:'Reclamo registrado en ventanilla principal'}] },
+  { id: 1007, ciudadano: 'González, Patricia', dni: '27.890.123', area: 'Servicios Urbanos', tipo: 'Basura no recolectada', domicilio: 'Rivadavia 567, B° Centro', estado: 'Cerrado', prioridad: 'Media', fecha: '2026-04-18', responsable: 'Sánchez, Hugo', desc: 'Hace dos semanas no pasa el camión recolector por el bloque. Los vecinos acumulan bolsas en la vereda.', historia: [{fecha:'2026-04-18',accion:'Ingresado',usuario:'Operador Vera',nota:''},{fecha:'2026-04-19',accion:'Asignado',usuario:'Sánchez, Hugo',nota:''},{fecha:'2026-04-21',accion:'Resuelto',usuario:'Sánchez, Hugo',nota:'Falla en ruta del camión corregida'},{fecha:'2026-04-22',accion:'Cerrado',usuario:'Supervisor Castro',nota:'Verificación in situ confirmada'}] },
+  { id: 1008, ciudadano: 'Herrera, Marcelo', dni: '33.456.789', area: 'Obras Públicas', tipo: 'Falta de insumos', domicilio: 'Hospital Municipal', estado: 'Ingresado', prioridad: 'Alta', fecha: '2026-05-02', responsable: '—', desc: 'Falta de materiales de construcción para obra en centro comunitario Norte. Obra paralizada hace 3 días.', historia: [{fecha:'2026-05-02',accion:'Ingresado',usuario:'Operador Paz',nota:'Reportado por responsable de obra'}] },
+];
+
+let reclamosActivos = [...RECLAMOS_DEMO];
+let reclamoSeleccionado = null;
+
+// ── Stats ─────────────────────────────────────────────────────────
+function actualizarStats(rows) {
+  document.getElementById('stat-total').textContent      = rows.length;
+  document.getElementById('stat-ingresados').textContent = rows.filter(r => r.estado === 'Ingresado').length;
+  document.getElementById('stat-gestion').textContent    = rows.filter(r => r.estado === 'En gestión' || r.estado === 'En revisión').length;
+  document.getElementById('stat-resueltos').textContent  = rows.filter(r => r.estado === 'Resuelto').length;
+}
+
+// ── Badge estado ──────────────────────────────────────────────────
+function badgeEstado(estado) {
+  const map = {
+    'Ingresado':   'ingresado',
+    'En revisión': 'revision',
+    'En gestión':  'gestion',
+    'Resuelto':    'resuelto',
+    'Rechazado':   'rechazado',
+    'Cerrado':     'cerrado',
+  };
+  const cls = map[estado] || 'ingresado';
+  return `<span class="badge badge-${cls}">${estado}</span>`;
+}
+
+function badgePrio(p) {
+  const map = { 'Alta': 'alta', 'Media': 'media', 'Baja': 'baja' };
+  const cls = map[p] || 'media';
+  return `<span class="prio prio-${cls}">${p}</span>`;
+}
+
+// ── Render tabla ──────────────────────────────────────────────────
+function renderTabla(rows) {
+  const tbody = document.getElementById('tbodyReclamos');
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">Sin reclamos que coincidan con los filtros</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r => `
+    <tr onclick="abrirDetalle(${r.id})">
+      <td class="mono">#${r.id}</td>
+      <td>
+        <strong style="font-size:.85rem">${r.ciudadano}</strong>
+        <div style="font-size:.72rem;color:var(--fg-3);font-family:var(--font-mono)">${r.dni}</div>
+      </td>
+      <td>
+        <div style="font-size:.84rem;font-weight:500">${r.tipo}</div>
+        <div style="font-size:.72rem;color:var(--fg-3)">${r.area}</div>
+      </td>
+      <td>${badgeEstado(r.estado)}</td>
+      <td>${badgePrio(r.prioridad)}</td>
+      <td class="mono" style="font-size:.78rem">${r.fecha}</td>
+      <td style="font-size:.82rem;color:var(--fg-2)">${r.responsable}</td>
+    </tr>
+  `).join('');
+}
+
+// ── Filtros ───────────────────────────────────────────────────────
+function aplicarFiltros() {
+  const txt   = document.getElementById('flt-texto').value.toLowerCase().trim();
+  const est   = document.getElementById('flt-estado').value;
+  const area  = document.getElementById('flt-area').value;
+  const prio  = document.getElementById('flt-prio').value;
+
+  let rows = [...RECLAMOS_DEMO];
+  if (txt)  rows = rows.filter(r => r.ciudadano.toLowerCase().includes(txt) || r.dni.includes(txt) || r.tipo.toLowerCase().includes(txt) || r.desc.toLowerCase().includes(txt));
+  if (est)  rows = rows.filter(r => r.estado === est);
+  if (area) rows = rows.filter(r => r.area === area);
+  if (prio) rows = rows.filter(r => r.prioridad === prio);
+
+  reclamosActivos = rows;
+  actualizarStats(rows);
+  renderTabla(rows);
+}
+
+function limpiarFiltros() {
+  ['flt-texto','flt-estado','flt-area','flt-prio'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  aplicarFiltros();
+}
+
+// ── Drawer detalle ────────────────────────────────────────────────
+function abrirDetalle(id) {
+  const r = RECLAMOS_DEMO.find(x => x.id === id);
+  if (!r) return;
+  reclamoSeleccionado = r;
+
+  document.getElementById('drawerTitle').textContent = `${r.tipo}`;
+  document.getElementById('drawerId').textContent    = `Reclamo #${r.id} · ${r.area}`;
+
+  const timelineHTML = r.historia.map((h, i) => `
+    <div class="timeline-item">
+      <div class="timeline-dot ${i === r.historia.length - 1 ? 'timeline-dot--active' : ''}"></div>
+      <div class="timeline-content">
+        <div class="timeline-action">${h.accion}</div>
+        <div class="timeline-meta">${h.fecha} · ${h.usuario}</div>
+        ${h.nota ? `<div class="timeline-note">${h.nota}</div>` : ''}
+      </div>
+    </div>
+  `).join('');
+
+  document.getElementById('drawerBody').innerHTML = `
+    <div class="detail-section">
+      <div class="detail-section-title">Ciudadano</div>
+      <div class="detail-grid">
+        <div class="detail-field"><label>Nombre</label><span>${r.ciudadano}</span></div>
+        <div class="detail-field"><label>DNI / CUIL</label><span style="font-family:var(--font-mono)">${r.dni}</span></div>
+      </div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">Reclamo</div>
+      <div class="detail-grid">
+        <div class="detail-field"><label>Tipo</label><span>${r.tipo}</span></div>
+        <div class="detail-field"><label>Área</label><span>${r.area}</span></div>
+        <div class="detail-field"><label>Estado</label><span>${badgeEstado(r.estado)}</span></div>
+        <div class="detail-field"><label>Prioridad</label><span>${badgePrio(r.prioridad)}</span></div>
+        <div class="detail-field"><label>Fecha ingreso</label><span style="font-family:var(--font-mono)">${r.fecha}</span></div>
+        <div class="detail-field"><label>Responsable</label><span>${r.responsable}</span></div>
+        <div class="detail-field full"><label>Domicilio</label><span>${r.domicilio}</span></div>
+        <div class="detail-field full"><label>Descripción</label><span style="font-weight:400;line-height:1.5;font-size:.84rem">${r.desc}</span></div>
+      </div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">Historial</div>
+      <div class="timeline">${timelineHTML}</div>
+    </div>
+  `;
+
+  document.getElementById('drawerOverlay').classList.add('open');
+}
+
+function cerrarDrawer(e) {
+  if (e && e.target !== document.getElementById('drawerOverlay')) return;
+  document.getElementById('drawerOverlay').classList.remove('open');
+  reclamoSeleccionado = null;
+}
+
+// ── Cambiar estado (demo) ─────────────────────────────────────────
+function cambiarEstadoReclamo() {
+  if (!reclamoSeleccionado) return;
+  const estados = ['Ingresado','En revisión','En gestión','Resuelto','Rechazado','Cerrado'];
+  const actual  = reclamoSeleccionado.estado;
+  const idx     = estados.indexOf(actual);
+  const siguiente = estados[(idx + 1) % estados.length];
+  reclamoSeleccionado.estado = siguiente;
+  const orig = RECLAMOS_DEMO.find(x => x.id === reclamoSeleccionado.id);
+  if (orig) orig.estado = siguiente;
+  toast(`Estado actualizado a "${siguiente}"`, 'ok');
+  cerrarDrawer();
+  aplicarFiltros();
+}
+
+// ── Modal nuevo reclamo ───────────────────────────────────────────
+function abrirNuevoReclamo() {
+  document.getElementById('modalNuevo').classList.add('open');
+}
+
+function cerrarModal() {
+  document.getElementById('modalNuevo').classList.remove('open');
+}
+
+function guardarNuevoReclamo() {
+  const dni    = document.getElementById('nr-dni').value.trim();
+  const nombre = document.getElementById('nr-nombre').value.trim();
+  const area   = document.getElementById('nr-area').value;
+  const tipo   = document.getElementById('nr-tipo').value;
+  const desc   = document.getElementById('nr-desc').value.trim();
+
+  if (!dni || !nombre || !area || !tipo || !desc) {
+    toast('Completá todos los campos obligatorios (*)', 'err');
+    return;
+  }
+
+  const prio = document.getElementById('nr-prio').value;
+  const dom  = document.getElementById('nr-domicilio').value.trim();
+  const newId = Math.max(...RECLAMOS_DEMO.map(r => r.id)) + 1;
+  const hoy   = new Date().toISOString().slice(0,10);
+  const sess  = JSON.parse(localStorage.getItem('zaris_session') || 'null');
+  const user  = sess?.user?.nombre || 'Operador';
+
+  RECLAMOS_DEMO.unshift({
+    id: newId, ciudadano: nombre, dni, area, tipo,
+    domicilio: dom || '—', estado: 'Ingresado', prioridad: prio,
+    fecha: hoy, responsable: '—', desc,
+    historia: [{ fecha: hoy, accion: 'Ingresado', usuario: user, nota: 'Reclamo registrado' }]
+  });
+
+  cerrarModal();
+  toast(`Reclamo #${newId} registrado correctamente`, 'ok');
+  ['nr-dni','nr-nombre','nr-area','nr-tipo','nr-prio','nr-tel','nr-domicilio','nr-desc'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = id === 'nr-prio' ? 'Media' : '';
+  });
+  aplicarFiltros();
+}
+
+// ── Toast ─────────────────────────────────────────────────────────
+function toast(msg, type = 'ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `show ${type}`;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.className = ''; }, 3200);
+}
+
+// ── Teclado ───────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    cerrarModal();
+    cerrarDrawer();
+  }
+});
+
+document.getElementById('modalNuevo').addEventListener('click', e => {
+  if (e.target === document.getElementById('modalNuevo'))
+    cerrarModal();
+});
+
+// ── Init ──────────────────────────────────────────────────────────
+if (typeof lucide !== 'undefined') lucide.createIcons();
+aplicarFiltros();
+</script>
+</body>
+</html>
