@@ -418,6 +418,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     method: 'POST',
                     body: JSON.stringify(payload)
                 });
+                cargarVistaPrevia();
                 ZUtils.modalGuardado(
                     'Usuario creado',
                     `${u.nombre} (${u.username}) fue registrado correctamente.`,
@@ -441,6 +442,146 @@ document.addEventListener('DOMContentLoaded', () => {
             els.btnGuardar.textContent = '💾 Guardar';
         }
     }
+
+    // ── Vista previa: últimos 5 usuarios ──────────────────────
+    async function cargarVistaPrevia() {
+        const container = document.getElementById('preview-rows');
+        if (!container) return;
+        try {
+            const data = await ZUtils.apiFetch('/usuarios?solo_activos=true');
+            const recientes = [...data].reverse().slice(0, 5);
+            if (recientes.length === 0) {
+                container.innerHTML = '<div style="color:var(--z-text3);font-size:0.82rem;">Sin registros</div>';
+                return;
+            }
+            container.innerHTML = recientes.map(u => `
+                <div class="z-preview-row" data-id="${u.id_usuario}" data-modo="consulta">
+                    <span class="z-preview-row__main">${u.nombre}</span>
+                    <span class="z-preview-row__meta">${u.username}</span>
+                    <span class="z-preview-row__meta" style="margin-left:4px;">Nivel ${u.nivel_acceso}${!u.activo ? ' · <span style="color:#cf2d56">Inactivo</span>' : ''}</span>
+                    <span class="z-preview-row__action">Ver →</span>
+                </div>
+            `).join('');
+            container.querySelectorAll('.z-preview-row').forEach(row => {
+                row.addEventListener('click', () =>
+                    cargarUsuario(parseInt(row.dataset.id), 'consulta')
+                );
+            });
+        } catch {
+            container.innerHTML = '<div style="color:var(--z-text3);font-size:0.82rem;">No se pudo cargar la vista previa</div>';
+        }
+    }
+
+    // ── Listado completo ───────────────────────────────────────
+    let _listadoData = [];
+
+    async function abrirListado() {
+        document.getElementById('preview-section').style.display = 'none';
+        document.getElementById('listado-section').style.display = 'block';
+        document.getElementById('form-card').style.display       = 'none';
+        document.getElementById('search-panel').style.display    = 'none';
+        document.getElementById('listado-contenido').innerHTML   =
+            '<div style="text-align:center;padding:2rem;"><span class="z-spinner"></span></div>';
+        try {
+            _listadoData = await ZUtils.apiFetch('/usuarios?solo_activos=false');
+            aplicarFiltrosListado();
+        } catch (err) {
+            document.getElementById('listado-contenido').innerHTML =
+                `<div style="color:var(--z-text-error);padding:1rem;">Error: ${err.message}</div>`;
+        }
+    }
+
+    function cerrarListado() {
+        document.getElementById('listado-section').style.display = 'none';
+        document.getElementById('preview-section').style.display = 'block';
+        document.getElementById('search-panel').style.display    = 'block';
+    }
+
+    function aplicarFiltrosListado() {
+        let rows = [..._listadoData];
+        const txt   = (document.getElementById('lst-texto')?.value  || '').toLowerCase().trim();
+        const orden = document.getElementById('lst-orden')?.value   || 'reciente';
+        const desde = document.getElementById('lst-desde')?.value   || '';
+        const hasta = document.getElementById('lst-hasta')?.value   || '';
+
+        if (txt) {
+            rows = rows.filter(u =>
+                (u.nombre   || '').toLowerCase().includes(txt) ||
+                (u.username || '').toLowerCase().includes(txt) ||
+                (u.cuil     || '').includes(txt)
+            );
+        }
+        if (desde || hasta) {
+            rows = rows.filter(u => {
+                const d = (u.fecha_alta || '').slice(0, 10);
+                if (!d) return true;
+                if (desde && d < desde) return false;
+                if (hasta && d > hasta) return false;
+                return true;
+            });
+        }
+        if (orden === 'reciente') rows = rows.reverse();
+        else if (orden === 'az') rows.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es'));
+        else if (orden === 'za') rows.sort((a, b) => (b.nombre || '').localeCompare(a.nombre || '', 'es'));
+        // 'antiguo' ya viene asc de la API
+
+        renderListado(rows);
+    }
+
+    function limpiarFiltrosListado() {
+        ['lst-texto', 'lst-desde', 'lst-hasta'].forEach(id => {
+            const el = document.getElementById(id); if (el) el.value = '';
+        });
+        const ord = document.getElementById('lst-orden');
+        if (ord) ord.value = 'reciente';
+        aplicarFiltrosListado();
+    }
+
+    function renderListado(rows) {
+        const fecha = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        document.getElementById('lst-print-header').innerHTML =
+            `<h2>Padrón de Usuarios — ZARIS</h2><p>Listado generado el ${fecha} · ${rows.length} registro${rows.length !== 1 ? 's' : ''}</p>`;
+
+        const bodyRows = rows.length === 0
+            ? `<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--z-text3);">Sin resultados</td></tr>`
+            : rows.map(u => `<tr>
+                <td>${u.nombre}</td>
+                <td class="mono">${u.username}</td>
+                <td>${NIVELES[u.nivel_acceso] || u.nivel_acceso}</td>
+                <td class="mono">${u.cuil || '—'}</td>
+                <td><span style="color:${u.activo ? 'var(--color-success)' : '#cf2d56'};font-size:0.78rem;font-weight:600;">${u.activo ? 'Activo' : 'Inactivo'}</span></td>
+                <td>
+                    <button class="z-tbl-btn" data-id="${u.id_usuario}" data-modo="consulta">Ver</button>
+                    <button class="z-tbl-btn" data-id="${u.id_usuario}" data-modo="edicion" style="margin-left:4px;">Editar</button>
+                </td>
+            </tr>`).join('');
+
+        document.getElementById('listado-contenido').innerHTML = `
+            <div style="font-size:0.78rem;color:var(--z-text3);margin-bottom:0.6rem;">${rows.length} usuario${rows.length !== 1 ? 's' : ''} encontrado${rows.length !== 1 ? 's' : ''}</div>
+            <div class="z-listado-wrap">
+                <table>
+                    <thead><tr><th>Nombre</th><th>Usuario</th><th>Nivel</th><th>CUIL</th><th>Estado</th><th>Acciones</th></tr></thead>
+                    <tbody>${bodyRows}</tbody>
+                </table>
+            </div>`;
+
+        document.getElementById('listado-contenido').querySelectorAll('.z-tbl-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                cerrarListado();
+                cargarUsuario(parseInt(btn.dataset.id), btn.dataset.modo);
+            });
+        });
+    }
+
+    // Registrar eventos listado
+    document.getElementById('btn-listado')?.addEventListener('click', abrirListado);
+    document.getElementById('btn-cerrar-listado')?.addEventListener('click', cerrarListado);
+    document.getElementById('btn-filtrar-lst')?.addEventListener('click', aplicarFiltrosListado);
+    document.getElementById('btn-limpiar-lst')?.addEventListener('click', limpiarFiltrosListado);
+    document.getElementById('lst-texto')?.addEventListener('keydown', e => { if (e.key === 'Enter') aplicarFiltrosListado(); });
+
+    // Cargar vista previa al iniciar
+    cargarVistaPrevia();
 
     // ── Alta / Baja ────────────────────────────────────────────
     async function cambiarEstado(nuevoActivo) {

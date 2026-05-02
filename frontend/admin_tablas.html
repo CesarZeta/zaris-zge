@@ -408,12 +408,81 @@
     }
     .btn-danger:hover { opacity: 0.85; }
 
+    /* ── Vista previa ── */
+    .preview-section {
+      margin-bottom: 1.75rem;
+    }
+    .preview-label {
+      font-size: 0.70rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--z-text3);
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .preview-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .preview-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 0.45rem 0.85rem;
+      background: var(--z-bg-card);
+      border: 1px solid var(--z-border);
+      border-radius: var(--z-radius);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      font-size: 0.84rem;
+      color: var(--z-text);
+    }
+    .preview-row:hover { border-color: var(--z-accent); background: rgba(245,78,0,0.03); }
+    .preview-row__main { font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .preview-row__meta { font-size: 0.75rem; color: var(--z-text3); font-family: var(--z-font-mono); white-space: nowrap; }
+    .preview-row__action { font-size: 0.72rem; color: var(--z-accent); font-weight: 600; white-space: nowrap; opacity: 0; transition: opacity 0.15s; }
+    .preview-row:hover .preview-row__action { opacity: 1; }
+
+    /* ── Panel de filtros listado ── */
+    .filter-bar {
+      display: flex;
+      align-items: flex-end;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      background: var(--z-bg-card);
+      border: 1px solid var(--z-border);
+      border-radius: var(--z-radius-lg);
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+    .filter-group { display: flex; flex-direction: column; gap: 4px; min-width: 140px; }
+    .filter-group label { font-size: 0.70rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--z-text3); }
+    .filter-group input, .filter-group select {
+      background: var(--z-bg-input);
+      border: 1px solid var(--z-border);
+      color: var(--z-text);
+      padding: 0.4rem 0.65rem;
+      border-radius: var(--z-radius);
+      font-size: 0.84rem;
+      font-family: var(--z-font);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .filter-group input:focus, .filter-group select:focus { border-color: var(--z-border-focus); }
+    .filter-actions { display: flex; gap: 0.5rem; align-self: flex-end; }
+
     /* ── Print ── */
     .print-header { display: none; }
 
     @media print {
       .z-header, .sidebar, .section-header-actions,
-      .actions, #toast, .modal-overlay { display: none !important; }
+      .actions, #toast, .modal-overlay,
+      .preview-section, .filter-bar { display: none !important; }
       body { background: #fff !important; }
       .layout { display: block; }
       .main { padding: 0; overflow: visible; }
@@ -789,7 +858,7 @@ async function selectTabla(el) {
   await cargarTabla();
 }
 
-// ── Cargar y renderizar tabla ──────────────────────────────────
+// ── Cargar y renderizar tabla (vista principal con previa) ──────
 async function cargarTabla() {
   const schema = SCHEMAS[tablaActual];
   const main = document.getElementById('main');
@@ -797,7 +866,7 @@ async function cargarTabla() {
     <div class="section-header">
       <h2>${schema.label}s</h2>
       <div class="section-header-actions">
-        <button class="btn-outline" onclick="window.print()">Imprimir listado</button>
+        <button class="btn-outline" onclick="abrirListado()">Listado completo</button>
         <button class="btn-primary" onclick="abrirNuevo()">+ Nuevo</button>
       </div>
     </div>
@@ -807,23 +876,161 @@ async function cargarTabla() {
     const res = await fetch(`${API}/${tablaActual}`, { headers: _authHeaders() });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const rows = await res.json();
-    renderTabla(rows, schema);
+    renderVistaPrevia(rows, schema);
   } catch (e) {
     document.getElementById('main').innerHTML += `<div class="empty">Error al cargar datos: ${e.message}</div>`;
   }
 }
 
-function renderTabla(rows, schema) {
-  const main  = document.getElementById('main');
-  const cols  = schema.display;
-  const fecha = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+function renderVistaPrevia(rows, schema) {
+  const main = document.getElementById('main');
+  const labelField = schema.display.find(c => !isId(c)) || schema.display[0];
+  const subField   = schema.display.find(c => !isId(c) && c !== labelField);
+
+  // Últimos 5, más reciente primero (el array ya viene del backend; invertimos)
+  const recientes = [...rows].reverse().slice(0, 5);
+
+  const previewHTML = recientes.length === 0
+    ? `<div class="empty" style="padding:1.5rem;text-align:center;">Sin registros activos</div>`
+    : recientes.map(r => {
+        const pk     = r[schema.pk];
+        const main   = r[labelField] ?? '—';
+        const sub    = subField ? r[subField] : null;
+        const nombre = String(main).replace(/'/g, "\\'");
+        return `<div class="preview-row" onclick="abrirEditar(${pk})" title="Editar">
+          <span class="preview-row__main">${String(main).replace(/</g,'&lt;')}</span>
+          ${sub != null ? `<span class="preview-row__meta">${String(sub).replace(/</g,'&lt;').slice(0,40)}</span>` : ''}
+          <span class="preview-row__meta" style="margin-left:auto;">ID ${pk}</span>
+          <span class="preview-row__action">Editar →</span>
+        </div>`;
+      }).join('');
+
+  main.innerHTML = `
+    <div class="section-header">
+      <h2>${schema.label}s <span style="font-size:.8rem;color:var(--z-text2);font-weight:400;">(${rows.length} activo${rows.length !== 1 ? 's' : ''})</span></h2>
+      <div class="section-header-actions">
+        <button class="btn-outline" onclick="abrirListado()">Listado completo</button>
+        <button class="btn-primary" onclick="abrirNuevo()">+ Nuevo</button>
+      </div>
+    </div>
+    <div class="preview-section">
+      <div class="preview-label">Últimos registros ingresados</div>
+      <div class="preview-rows">${previewHTML}</div>
+    </div>`;
+}
+
+// ── Listado completo con filtros ───────────────────────────────
+async function abrirListado() {
+  const schema = SCHEMAS[tablaActual];
+  const main = document.getElementById('main');
+  const labelField = schema.display.find(c => !isId(c)) || schema.display[0];
+
+  main.innerHTML = `
+    <div class="section-header">
+      <h2>${schema.label}s — Listado</h2>
+      <div class="section-header-actions">
+        <button class="btn-outline" onclick="window.print()">Imprimir</button>
+        <button class="btn-outline" onclick="cargarTabla()">← Volver</button>
+        <button class="btn-primary" onclick="abrirNuevo()">+ Nuevo</button>
+      </div>
+    </div>
+    <div class="filter-bar" id="filter-bar">
+      <div class="filter-group">
+        <label>Buscar texto</label>
+        <input type="text" id="flt-texto" placeholder="Filtrar por nombre..." style="min-width:180px;">
+      </div>
+      <div class="filter-group">
+        <label>Ordenar</label>
+        <select id="flt-orden">
+          <option value="reciente">Más reciente primero</option>
+          <option value="az">A → Z</option>
+          <option value="za">Z → A</option>
+          <option value="antiguo">Más antiguo primero</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Fecha alta desde</label>
+        <input type="date" id="flt-desde">
+      </div>
+      <div class="filter-group">
+        <label>Fecha alta hasta</label>
+        <input type="date" id="flt-hasta">
+      </div>
+      <div class="filter-actions">
+        <button class="btn-primary" onclick="aplicarFiltros()">Filtrar</button>
+        <button class="btn-outline"  onclick="limpiarFiltros()">Limpiar</button>
+      </div>
+    </div>
+    <div class="loading"><span class="spinner"></span></div>`;
+
+  try {
+    const res = await fetch(`${API}/${tablaActual}`, { headers: _authHeaders() });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    window._listadoRows = await res.json();
+    aplicarFiltros();
+  } catch (e) {
+    main.innerHTML += `<div class="empty">Error al cargar datos: ${e.message}</div>`;
+  }
+}
+
+function aplicarFiltros() {
+  const schema = SCHEMAS[tablaActual];
+  const labelField = schema.display.find(c => !isId(c)) || schema.display[0];
+  let rows = [...(window._listadoRows || [])];
+
+  const txt    = (document.getElementById('flt-texto')?.value || '').toLowerCase().trim();
+  const orden  = document.getElementById('flt-orden')?.value  || 'reciente';
+  const desde  = document.getElementById('flt-desde')?.value  || '';
+  const hasta  = document.getElementById('flt-hasta')?.value  || '';
+
+  if (txt) {
+    rows = rows.filter(r => {
+      return schema.display.some(c => {
+        const v = r[c];
+        return v != null && String(v).toLowerCase().includes(txt);
+      });
+    });
+  }
+
+  if (desde || hasta) {
+    rows = rows.filter(r => {
+      const fa = r.fecha_alta || r.fecha_creacion || null;
+      if (!fa) return true;
+      const d = fa.slice(0, 10);
+      if (desde && d < desde) return false;
+      if (hasta && d > hasta) return false;
+      return true;
+    });
+  }
+
+  if (orden === 'reciente') rows = rows.reverse();
+  else if (orden === 'antiguo') { /* ya viene asc */ }
+  else if (orden === 'az') rows.sort((a, b) => String(a[labelField] ?? '').localeCompare(String(b[labelField] ?? ''), 'es'));
+  else if (orden === 'za') rows.sort((a, b) => String(b[labelField] ?? '').localeCompare(String(a[labelField] ?? ''), 'es'));
+
+  renderListadoFiltrado(rows, schema);
+}
+
+function limpiarFiltros() {
+  ['flt-texto', 'flt-desde', 'flt-hasta'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const orden = document.getElementById('flt-orden');
+  if (orden) orden.value = 'reciente';
+  aplicarFiltros();
+}
+
+function renderListadoFiltrado(rows, schema) {
+  const fecha   = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const cols    = schema.display;
   const headers = cols.map(c => `<th>${formatHeader(c)}</th>`).join('') + '<th>Acciones</th>';
 
   const bodyRows = rows.length === 0
-    ? `<tr><td colspan="${cols.length + 1}" class="empty">Sin registros activos</td></tr>`
+    ? `<tr><td colspan="${cols.length + 1}" class="empty">Sin resultados</td></tr>`
     : rows.map(r => {
-        const cells = cols.map(c => `<td class="${isId(c) ? 'mono' : ''}">${formatCell(r[c], c)}</td>`).join('');
-        const pk = r[schema.pk];
+        const cells  = cols.map(c => `<td class="${isId(c) ? 'mono' : ''}">${formatCell(r[c], c)}</td>`).join('');
+        const pk     = r[schema.pk];
         const nombre = r[Object.keys(r)[1]] || pk;
         return `<tr>
           ${cells}
@@ -834,25 +1041,29 @@ function renderTabla(rows, schema) {
         </tr>`;
       }).join('');
 
-  main.innerHTML = `
-    <!-- Header de impresión (visible solo al imprimir) -->
+  // Eliminar tabla anterior si existe
+  const prev = document.getElementById('listado-tabla-wrap');
+  if (prev) prev.remove();
+
+  const wrap = document.createElement('div');
+  wrap.id = 'listado-tabla-wrap';
+  wrap.innerHTML = `
     <div class="print-header">
       <h2>${schema.label}s — ZARIS Gestión Estatal</h2>
-      <p>Listado generado el ${fecha} &nbsp;·&nbsp; ${rows.length} registro${rows.length !== 1 ? 's' : ''} activo${rows.length !== 1 ? 's' : ''}</p>
+      <p>Listado generado el ${fecha} &nbsp;·&nbsp; ${rows.length} registro${rows.length !== 1 ? 's' : ''}</p>
     </div>
-    <div class="section-header">
-      <h2>${schema.label}s <span style="font-size:.8rem;color:var(--z-text2);font-weight:400;">(${rows.length} activo${rows.length !== 1 ? 's' : ''})</span></h2>
-      <div class="section-header-actions">
-        <button class="btn-outline" onclick="window.print()">Imprimir listado</button>
-        <button class="btn-primary" onclick="abrirNuevo()">+ Nuevo</button>
-      </div>
-    </div>
+    <div style="font-size:0.78rem;color:var(--z-text3);margin-bottom:0.6rem;">${rows.length} registro${rows.length !== 1 ? 's' : ''} encontrado${rows.length !== 1 ? 's' : ''}</div>
     <div class="tbl-wrap">
       <table>
         <thead><tr>${headers}</tr></thead>
         <tbody>${bodyRows}</tbody>
       </table>
     </div>`;
+  document.getElementById('main').appendChild(wrap);
+}
+
+function renderTabla(rows, schema) {
+  renderVistaPrevia(rows, schema);
 }
 
 function formatHeader(col) {
