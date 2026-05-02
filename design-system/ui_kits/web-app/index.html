@@ -1,0 +1,123 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>ZARIS Web App — UI Kit</title>
+  <link rel="stylesheet" href="../../colors_and_type.css">
+  <style>
+    html, body { margin: 0; height: 100%; background: var(--zaris-cream); overflow: hidden; }
+    #root { height: 100vh; display: flex; flex-direction: column; }
+    * { box-sizing: border-box; }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-thumb { background: rgba(38,37,30,.15); border-radius: 9999px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="Primitives.jsx"></script>
+  <script type="text/babel" src="Sidebar.jsx"></script>
+  <script type="text/babel" src="TopBar.jsx"></script>
+  <script type="text/babel" src="Composer.jsx"></script>
+  <script type="text/babel" src="Timeline.jsx"></script>
+  <script type="text/babel" src="DocumentCanvas.jsx"></script>
+  <script type="text/babel" src="CommandMenu.jsx"></script>
+
+  <script type="text/babel">
+    const INITIAL_STEPS = [
+      { kind: 'thinking', label: 'Plan the hero rewrite',          detail: 'Considering 3 variants · tone = editorial' },
+      { kind: 'grep',     label: 'Search for current hero copy',   detail: "grep -r 'hero-title' src/" },
+      { kind: 'read',     label: 'Read pages/index.tsx',           detail: '142 lines · last edited 2h ago' },
+      { kind: 'edit',     label: 'Apply 3 edits',                  detail: 'hero title, subhead, CTA label' },
+    ];
+
+    const Projects = () => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+          <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: 34, letterSpacing: '-0.72px', color: '#26251e', fontWeight: 400 }}>Projects</h2>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'rgba(38,37,30,.55)' }}>3 · updated today</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+          <ProjectCard name="ZARIS landing"  status="live"  meta="Marketing site · hero, features, pricing. Deploys to zaris.dev."/>
+          <ProjectCard name="Acme dashboard" status="draft" meta="Internal tool for Acme Corp. Timeline + composer integration."/>
+          <ProjectCard name="Docs rewrite"   status="idle"  meta="Migrating MDX to the new doc renderer. 42 pages."/>
+        </div>
+      </div>
+    );
+
+    const App = () => {
+      const [view, setView] = React.useState('composer');
+      const [cmdOpen, setCmdOpen] = React.useState(false);
+      const [steps, setSteps] = React.useState(INITIAL_STEPS);
+
+      React.useEffect(() => {
+        const h = e => {
+          if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setCmdOpen(o => !o); }
+          if (e.key === 'Escape') setCmdOpen(false);
+        };
+        window.addEventListener('keydown', h);
+        return () => window.removeEventListener('keydown', h);
+      }, []);
+
+      const onSend = (msg) => {
+        const lower = msg.toLowerCase();
+        const next = [
+          { kind: 'thinking', label: `Plan: "${msg.slice(0, 44)}${msg.length > 44 ? '…' : ''}"`, detail: 'Decomposing into atomic edits' },
+          { kind: 'grep',     label: 'Search relevant files', detail: `grep -r '${lower.split(' ')[0] || 'token'}' src/` },
+          { kind: 'read',     label: 'Read target file',      detail: 'src/hero.tsx · 88 lines' },
+          { kind: 'edit',     label: 'Applied 1 edit',        detail: 'Updated 1 line in src/hero.tsx' },
+        ];
+        setSteps(next);
+      };
+
+      return (
+        <div style={{ display: 'flex', height: '100vh', position: 'relative' }}>
+          <Sidebar activeView={view} onView={setView} />
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <TopBar onCmdK={() => setCmdOpen(true)} />
+            <main style={{ flex: 1, overflow: 'auto', padding: '28px 32px' }}>
+              {view === 'projects' ? <Projects /> :
+               view === 'timeline' ? (
+                 <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
+                   <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: 34, letterSpacing: '-0.72px', fontWeight: 400, color: '#26251e' }}>Timeline</h2>
+                   <ZCard variant="ring" style={{ padding: 22, background: '#f2f1ed' }}>
+                     <Timeline steps={steps} />
+                   </ZCard>
+                 </div>
+               ) : view === 'settings' ? (
+                 <div style={{ maxWidth: 560, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                   <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: 34, letterSpacing: '-0.72px', fontWeight: 400, color: '#26251e' }}>Settings</h2>
+                   <ZCard>
+                     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                       <div><div style={{ fontFamily: 'var(--font-system)', fontSize: 10.5, letterSpacing: '.05em', textTransform: 'uppercase', color: 'rgba(38,37,30,.55)', marginBottom: 6 }}>Workspace name</div><ZInput value="Marcus K." /></div>
+                       <div><div style={{ fontFamily: 'var(--font-system)', fontSize: 10.5, letterSpacing: '.05em', textTransform: 'uppercase', color: 'rgba(38,37,30,.55)', marginBottom: 6 }}>Default mode</div><div style={{ display: 'flex', gap: 6 }}><ZPill active>edit</ZPill><ZPill>ask</ZPill><ZPill>plan</ZPill></div></div>
+                     </div>
+                   </ZCard>
+                 </div>
+               ) : (
+                 <div style={{ maxWidth: 1100, margin: '0 auto', display: 'grid', gridTemplateColumns: '1fr 280px', gap: 24 }}>
+                   <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                     <DocumentCanvas />
+                     <Composer onSend={onSend} />
+                   </div>
+                   <ZCard variant="ring" style={{ background: '#f2f1ed', padding: 18, height: 'fit-content' }}>
+                     <div style={{ fontFamily: 'var(--font-system)', fontSize: 10.5, letterSpacing: '.05em', textTransform: 'uppercase', color: 'rgba(38,37,30,.55)', marginBottom: 14, fontWeight: 500 }}>Live · AI timeline</div>
+                     <Timeline steps={steps} />
+                   </ZCard>
+                 </div>
+               )}
+            </main>
+          </div>
+          <CommandMenu open={cmdOpen} onClose={() => setCmdOpen(false)} />
+        </div>
+      );
+    };
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

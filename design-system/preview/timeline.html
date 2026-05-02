@@ -1,0 +1,19 @@
+<!doctype html><html><head><meta charset="utf-8"><title>AI Timeline</title><link rel="stylesheet" href="_preview.css"></head><body>
+<div class="card" style="padding:22px 28px;">
+  <style>
+    .tl{position:relative;padding-left:22px;display:flex;flex-direction:column;gap:14px;}
+    .tl::before{content:'';position:absolute;left:6px;top:8px;bottom:8px;width:1.5px;background:rgba(38,37,30,.1);}
+    .step{display:flex;align-items:center;gap:12px;position:relative;}
+    .dot{position:absolute;left:-22px;top:50%;transform:translateY(-50%);width:12px;height:12px;border-radius:9999px;box-shadow:0 0 0 3px #f2f1ed;}
+    .lbl{font-family:var(--font-system);font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:rgba(38,37,30,.55);font-weight:500;min-width:72px;}
+    .txt{font-family:var(--font-display);font-size:14.5px;color:#26251e;}
+    code{font-family:var(--font-mono);font-size:12.5px;color:#26251e;background:#ebeae5;padding:1px 6px;border-radius:3px;}
+  </style>
+  <div class="tl">
+    <div class="step"><span class="dot" style="background:#dfa88f"></span><span class="lbl">Thinking</span><span class="txt">Planning the file layout</span></div>
+    <div class="step"><span class="dot" style="background:#9fc9a2"></span><span class="lbl">Grep</span><span class="txt">Searching for <code>ZarisButton</code></span></div>
+    <div class="step"><span class="dot" style="background:#9fbbe0"></span><span class="lbl">Read</span><span class="txt">Reading <code>tokens.css</code></span></div>
+    <div class="step"><span class="dot" style="background:#c0a8dd"></span><span class="lbl">Edit</span><span class="txt">Applied 3 edits to <code>App.jsx</code></span></div>
+  </div>
+</div>
+</body></html>

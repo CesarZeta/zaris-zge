@@ -1,0 +1,16 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Foreground Scale</title><link rel="stylesheet" href="_preview.css"></head><body>
+<div class="card card--stack" style="padding:24px;gap:10px;">
+  <style>
+    .row { display:flex; align-items:center; gap:14px; }
+    .sw { width:32px; height:24px; border-radius:4px; background: var(--surface-300); position:relative; overflow:hidden; box-shadow:0 0 0 1px rgba(38,37,30,0.1); }
+    .sw::after { content:''; position:absolute; inset:0; background: var(--c); }
+    .t { font-family:var(--font-display); font-size:13px; font-weight:500; }
+    .d { font-family:var(--font-mono); font-size:10.5px; color:var(--fg-3); }
+  </style>
+  <div class="row"><span class="sw" style="--c:#26251e"></span><span class="t" style="color:#26251e">fg-1 · Primary text</span><span class="d">#26251E · 100%</span></div>
+  <div class="row"><span class="sw" style="--c:rgba(38,37,30,0.7)"></span><span class="t" style="color:rgba(38,37,30,0.7)">fg-2 · Secondary</span><span class="d">rgba(38,37,30, .70)</span></div>
+  <div class="row"><span class="sw" style="--c:rgba(38,37,30,0.55)"></span><span class="t" style="color:rgba(38,37,30,0.55)">fg-3 · Muted</span><span class="d">rgba(38,37,30, .55)</span></div>
+  <div class="row"><span class="sw" style="--c:rgba(38,37,30,0.4)"></span><span class="t" style="color:rgba(38,37,30,0.4)">fg-4 · Decorative</span><span class="d">rgba(38,37,30, .40)</span></div>
+  <div class="row"><span class="sw" style="--c:rgba(38,37,30,0.2)"></span><span class="t" style="color:rgba(38,37,30,0.2)">fg-5 · Placeholder</span><span class="d">rgba(38,37,30, .20)</span></div>
+</div>
+</body></html>
