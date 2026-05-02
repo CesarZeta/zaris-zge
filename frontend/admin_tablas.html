@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ZARIS — Gestión de Tablas</title>
+  <script>if (window.self !== window.top) { var s = document.createElement('style'); s.textContent = '.z-header{display:none!important}'; document.head.appendChild(s); }</script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <link rel="stylesheet" href="../design-system/fonts/fonts.css">
   <link rel="stylesheet" href="../design-system/colors_and_type.css">
   <style>
@@ -132,6 +134,7 @@
       border-left-color: var(--z-accent);
       font-weight: 600;
     }
+    .si { width: 13px; height: 13px; stroke-width: 1.5; flex-shrink: 0; }
 
     /* ── Main ── */
     .main {
@@ -426,14 +429,14 @@
 
 <!-- Header -->
 <header class="z-header">
-  <a href="shell.html" class="z-header__brand">
+  <a href="../index.html" class="z-header__brand">
     <span>
       <span class="z-header__title">ZARIS</span>
       <span class="z-header__subtitle">Gestión de Tablas</span>
     </span>
   </a>
   <nav class="z-header__nav">
-    <button class="btn-back" onclick="window.location.href='shell.html'">← Menú principal</button>
+    <button class="btn-back" onclick="(window.parent.shellNavigate||function(){window.location='../index.html'})('frontend/welcome.html')">← Inicio</button>
   </nav>
 </header>
 
@@ -443,29 +446,30 @@
   <nav class="sidebar">
 
     <div class="sidebar-group">Organización</div>
-    <div class="sidebar-item" data-tabla="area"            onclick="selectTabla(this)">Áreas</div>
-    <div class="sidebar-item" data-tabla="subarea"         onclick="selectTabla(this)">Subáreas</div>
-    <div class="sidebar-item" data-tabla="tipo_usuario"    onclick="selectTabla(this)">Tipos de Usuario</div>
-    <div class="sidebar-item" data-tabla="cargos"          onclick="selectTabla(this)">Cargos</div>
-    <div class="sidebar-item" data-tabla="usuarios"        onclick="selectTabla(this)">Usuarios</div>
-    <div class="sidebar-item" data-tabla="agentes"         onclick="selectTabla(this)">Agentes</div>
-    <div class="sidebar-item" data-tabla="equipos"         onclick="selectTabla(this)">Equipos</div>
-    <div class="sidebar-item" data-tabla="equipo_usuarios" onclick="selectTabla(this)">Equipo-Usuarios</div>
+    <div class="sidebar-item" data-tabla="area"            onclick="selectTabla(this)"><i data-lucide="layers"      class="si"></i>Áreas</div>
+    <div class="sidebar-item" data-tabla="subarea"         onclick="selectTabla(this)"><i data-lucide="git-branch"  class="si"></i>Subáreas</div>
+    <div class="sidebar-item" data-tabla="tipo_usuario"    onclick="selectTabla(this)"><i data-lucide="badge"       class="si"></i>Tipos de Usuario</div>
+    <div class="sidebar-item" data-tabla="cargos"          onclick="selectTabla(this)"><i data-lucide="briefcase"   class="si"></i>Cargos</div>
+    <div class="sidebar-item" data-tabla="usuarios"        onclick="selectTabla(this)"><i data-lucide="users"       class="si"></i>Usuarios</div>
+    <div class="sidebar-item" data-tabla="agentes"         onclick="selectTabla(this)"><i data-lucide="user-check"  class="si"></i>Agentes</div>
+    <div class="sidebar-item" data-tabla="equipos"         onclick="selectTabla(this)"><i data-lucide="layout-grid" class="si"></i>Equipos</div>
+    <div class="sidebar-item" data-tabla="equipo_usuarios" onclick="selectTabla(this)"><i data-lucide="user-plus"   class="si"></i>Equipo-Usuarios</div>
 
     <div class="sidebar-group">Servicios y Reclamos</div>
-    <div class="sidebar-item" data-tabla="servicios"       onclick="selectTabla(this)">Servicios</div>
-    <div class="sidebar-item" data-tabla="tipo_reclamo"    onclick="selectTabla(this)">Tipos de Reclamo</div>
+    <div class="sidebar-item" data-tabla="servicios"      onclick="selectTabla(this)"><i data-lucide="wrench"          class="si"></i>Servicios</div>
+    <div class="sidebar-item" data-tabla="tipo_reclamo"   onclick="selectTabla(this)"><i data-lucide="tag"             class="si"></i>Tipos de Reclamo</div>
+    <div class="sidebar-item" data-tabla="estado_reclamo" onclick="selectTabla(this)"><i data-lucide="circle-dot"      class="si"></i>Estado de Reclamos</div>
 
     <div class="sidebar-group">Agenda</div>
-    <div class="sidebar-item" data-tabla="areas"            onclick="selectTabla(this)">Secretarías</div>
-    <div class="sidebar-item" data-tabla="lugares_atencion" onclick="selectTabla(this)">Lugares de Atención</div>
-    <div class="sidebar-item" data-tabla="agenda_clase"     onclick="selectTabla(this)">Clases de Agenda</div>
-    <div class="sidebar-item" data-tabla="agenda_feriado"   onclick="selectTabla(this)">Feriados</div>
+    <div class="sidebar-item" data-tabla="areas"            onclick="selectTabla(this)"><i data-lucide="building-2"    class="si"></i>Secretarías</div>
+    <div class="sidebar-item" data-tabla="lugares_atencion" onclick="selectTabla(this)"><i data-lucide="map-pin"       class="si"></i>Lugares de Atención</div>
+    <div class="sidebar-item" data-tabla="agenda_clase"     onclick="selectTabla(this)"><i data-lucide="calendar-range" class="si"></i>Clases de Agenda</div>
+    <div class="sidebar-item" data-tabla="agenda_feriado"   onclick="selectTabla(this)"><i data-lucide="calendar-x"   class="si"></i>Feriados</div>
 
-    <div class="sidebar-group">Catálogos BUC</div>
-    <div class="sidebar-item" data-tabla="actividades"         onclick="selectTabla(this)">Actividades (CLAE)</div>
-    <div class="sidebar-item" data-tabla="tipo_representacion" onclick="selectTabla(this)">Tipo de Representación</div>
-    <div class="sidebar-item" data-tabla="nacionalidades"      onclick="selectTabla(this)">Nacionalidades</div>
+    <div class="sidebar-group">Catálogos</div>
+    <div class="sidebar-item" data-tabla="actividades"         onclick="selectTabla(this)"><i data-lucide="activity" class="si"></i>Actividades (CLAE)</div>
+    <div class="sidebar-item" data-tabla="tipo_representacion" onclick="selectTabla(this)"><i data-lucide="shield"   class="si"></i>Tipo de Representación</div>
+    <div class="sidebar-item" data-tabla="nacionalidades"      onclick="selectTabla(this)"><i data-lucide="globe"    class="si"></i>Nacionalidades</div>
 
   </nav>
 
@@ -530,7 +534,11 @@ function _authHeaders() {
 
 // ── Auth guard ─────────────────────────────────────────────────
 if (!localStorage.getItem('zaris_session')) {
-  window.location.href = 'shell.html';
+  if (window.self !== window.top) {
+    window.parent.shellNavigate && window.parent.shellNavigate('frontend/welcome.html');
+  } else {
+    window.location.href = '../index.html';
+  }
 }
 
 // ── Estado ────────────────────────────────────────────────────
@@ -639,6 +647,18 @@ const SCHEMAS = {
   },
 
   // ── Servicios y Reclamos
+  estado_reclamo: {
+    label: 'Estado de Reclamo',
+    pk: 'id_estado_reclamo',
+    cols: [
+      { field: 'nombre',      label: 'Nombre',      type: 'text',     required: true },
+      { field: 'descripcion', label: 'Descripción', type: 'textarea', required: false },
+      { field: 'color',       label: 'Color (hex)', type: 'text',     required: false, hint: 'Ej: #f54e00' },
+      { field: 'es_final',    label: 'Estado final (cierra reclamo)', type: 'checkbox', required: false },
+      { field: 'orden',       label: 'Orden de display', type: 'number', required: false },
+    ],
+    display: ['id_estado_reclamo', 'nombre', 'descripcion', 'es_final', 'orden'],
+  },
   servicios: {
     label: 'Servicio',
     pk: 'id',
@@ -1048,6 +1068,9 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
     if (e.target === overlay) overlay.classList.remove('open');
   });
 });
+
+// ── Inicializar iconos Lucide ──────────────────────────────────
+if (typeof lucide !== 'undefined') lucide.createIcons();
 
 // ── Auto-selección por URL param (?tabla=area) ─────────────────
 (function () {

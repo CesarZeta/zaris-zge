@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="ZARIS — Módulo de Agenda">
     <title>ZARIS — Agenda</title>
+    <script>if (window.self !== window.top) { var s = document.createElement('style'); s.textContent = '.z-header{display:none!important}'; document.head.appendChild(s); }</script>
     <link rel="stylesheet" href="styles.css?v=20260419d">
     <link rel="stylesheet" href="agenda.css?v=20260419d">
 </head>
@@ -21,7 +22,7 @@
         </a>
         <nav class="z-header__nav">
             <span id="headerUsuario" class="z-header__btn" style="cursor:default"></span>
-            <a href="menu.html" class="z-header__btn">← Menú BUC</a>
+            <a href="#" class="z-header__btn" onclick="(window.parent.shellNavigate||function(){window.location='../index.html'})('frontend/welcome.html');return false">← Inicio</a>
         </nav>
     </header>
 
@@ -29,7 +30,7 @@
 
         <!-- ── Breadcrumb ────────────────────────────────── -->
         <nav class="z-breadcrumb">
-            <a href="menu.html">BUC</a>
+            <a href="#" onclick="(window.parent.shellNavigate||function(){window.location='../index.html'})('frontend/welcome.html');return false">INICIO</a>
             <span class="z-breadcrumb__sep">›</span>
             <span class="z-breadcrumb__current">Agenda</span>
         </nav>

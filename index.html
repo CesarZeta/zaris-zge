@@ -380,6 +380,24 @@
                   </div>
                 </div>
 
+                <div class="nav__item" data-open="false">
+                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
+                    <span>Estado de reclamos</span>
+                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
+                         stroke="currentColor" stroke-width="1.5">
+                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="nav__item-actions">
+                    <div class="actions">
+                      <a class="action" href="frontend/admin_tablas.html?tabla=estado_reclamo">Nuevo</a>
+                      <a class="action" href="frontend/admin_tablas.html?tabla=estado_reclamo">Consulta</a>
+                      <a class="action" href="frontend/admin_tablas.html?tabla=estado_reclamo">Baja</a>
+                      <a class="action" href="frontend/admin_tablas.html?tabla=estado_reclamo">Listado</a>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </div>
 
@@ -393,12 +411,7 @@
 
     <!-- ── Canvas ── -->
     <main class="canvas" id="canvas">
-      <span class="canvas__kicker">ZARIS · Gestión Estatal</span>
-      <h1 class="canvas__title">Bienvenido</h1>
-      <p class="canvas__lede">
-        Seleccioná un módulo del menú lateral para comenzar.
-        Reclamos, Turnos y Entradas están en desarrollo — Configuración ya es funcional.
-      </p>
+      <iframe id="module-frame" src="frontend/welcome.html" title="Módulo activo"></iframe>
     </main>
 
   </div>

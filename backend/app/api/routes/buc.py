@@ -313,6 +313,25 @@ async def modificar_ciudadano(
     return ciudadano
 
 
+@router.put("/ciudadanos/{id}/estado", response_model=CiudadanoOut)
+async def cambiar_estado_ciudadano(
+    id: int,
+    activo: bool = Query(..., description="true para reactivar, false para dar de baja"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Dar de baja o reactivar un ciudadano (soft delete)."""
+    result = await db.execute(select(Ciudadano).where(Ciudadano.id_ciudadano == id))
+    ciudadano = result.scalars().first()
+    if not ciudadano:
+        raise HTTPException(status_code=404, detail="Ciudadano no encontrado")
+    ciudadano.activo = activo
+    await db.commit()
+    await db.refresh(ciudadano)
+    accion = "REACTIVACION" if activo else "BAJA"
+    logger.info("%s ciudadano | id=%s | cuil=%s", accion, ciudadano.id_ciudadano, ciudadano.cuil)
+    return ciudadano
+
+
 @router.get("/ciudadanos/{id}/empresas-vinculadas")
 async def obtener_empresas_vinculadas(id: int, db: AsyncSession = Depends(get_db)):
     """Obtener las empresas vinculadas a un ciudadano (via tabla ciudadano_empresa)."""
@@ -473,6 +492,25 @@ async def modificar_empresa(
         "MODIFICACION empresa | id=%s | cuit=%s | campos=%s | usuario=%s",
         empresa.id_empresa, empresa.cuit, campos_modificados, empresa.modificado_por
     )
+    return empresa
+
+
+@router.put("/empresas/{id}/estado", response_model=EmpresaOut)
+async def cambiar_estado_empresa(
+    id: int,
+    activo: bool = Query(..., description="true para reactivar, false para dar de baja"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Dar de baja o reactivar una empresa (soft delete)."""
+    result = await db.execute(select(Empresa).where(Empresa.id_empresa == id))
+    empresa = result.scalars().first()
+    if not empresa:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    empresa.activo = activo
+    await db.commit()
+    await db.refresh(empresa)
+    accion = "REACTIVACION" if activo else "BAJA"
+    logger.info("%s empresa | id=%s | cuit=%s", accion, empresa.id_empresa, empresa.cuit)
     return empresa
 
 

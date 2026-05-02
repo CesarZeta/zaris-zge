@@ -36,6 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btnNuevo:                 document.getElementById('btn-nuevo'),
         btnEditarEncontrado:      document.getElementById('btn-editar-encontrado'),
         btnConsultarEncontrado:   document.getElementById('btn-consultar-encontrado'),
+        btnBajaEncontrado:        document.getElementById('btn-baja-encontrado'),
         btnNuevoForzar:           document.getElementById('btn-nuevo-forzar'),
         btnGuardar:               document.getElementById('btn-guardar'),
         btnCancelar:              document.getElementById('btn-cancelar'),
@@ -119,6 +120,7 @@ document.addEventListener('DOMContentLoaded', () => {
         els.btnNuevoForzar.addEventListener('click', () => activarModoNuevo());
         els.btnEditarEncontrado.addEventListener('click', () => activarModoEdicion(state.ciudadanoEncontrado));
         els.btnConsultarEncontrado.addEventListener('click', () => activarModoConsulta(state.ciudadanoEncontrado));
+        els.btnBajaEncontrado.addEventListener('click', () => darBajaCiudadano(state.ciudadanoEncontrado));
 
         // DNI → auto-calcula CUIL (si CUIL no fue editado manualmente)
         const dniInput  = document.getElementById('cid-doc-nro');
@@ -382,7 +384,26 @@ document.addEventListener('DOMContentLoaded', () => {
         els.resultList.innerHTML = '';
         document.getElementById('btn-editar-encontrado').style.display    = 'inline-flex';
         document.getElementById('btn-consultar-encontrado').style.display = 'inline-flex';
+        document.getElementById('btn-baja-encontrado').style.display      = 'inline-flex';
         els.searchResult.classList.add('visible');
+    }
+
+    async function darBajaCiudadano(ciudadano) {
+        if (!ciudadano) return;
+        const ok = await ZUtils.confirm(
+            'Confirmar baja',
+            `¿Dar de baja a ${ciudadano.apellido}, ${ciudadano.nombre} (CUIL ${ciudadano.cuil})?\nEl registro quedará inactivo y no aparecerá en búsquedas.`
+        );
+        if (!ok) return;
+        try {
+            await ZUtils.apiFetch(`/ciudadanos/${ciudadano.id_ciudadano}/estado?activo=false`, { method: 'PUT' });
+            ZUtils.toast('Ciudadano dado de baja correctamente', 'success');
+            els.searchResult.classList.remove('visible');
+            els.searchQuery.value = '';
+            state.ciudadanoEncontrado = null;
+        } catch (err) {
+            ZUtils.toast(`Error al dar de baja: ${err.message}`, 'error');
+        }
     }
 
     function mostrarListaResultados(resultados) {

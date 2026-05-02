@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btnNuevo:                 document.getElementById('btn-nuevo'),
         btnEditarEncontrado:      document.getElementById('btn-editar-encontrado'),
         btnConsultarEncontrado:   document.getElementById('btn-consultar-encontrado'),
+        btnBajaEncontrado:        document.getElementById('btn-baja-encontrado'),
         btnNuevoForzar:           document.getElementById('btn-nuevo-forzar'),
         btnGuardar:               document.getElementById('btn-guardar'),
         btnCancelar:              document.getElementById('btn-cancelar'),
@@ -132,6 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
         els.btnNuevoForzar.addEventListener('click', () => activarModoNuevo());
         els.btnEditarEncontrado.addEventListener('click', () => activarModoEdicion(state.empresaEncontrada));
         els.btnConsultarEncontrado.addEventListener('click', () => activarModoConsulta(state.empresaEncontrada));
+        els.btnBajaEncontrado.addEventListener('click', () => darBajaEmpresa(state.empresaEncontrada));
 
         // CUIT: formato + lookup automático al completar
         const cuitInput = document.getElementById('emp-cuit');
@@ -245,6 +247,7 @@ document.addEventListener('DOMContentLoaded', () => {
         els.resultList.innerHTML = '';
         els.btnEditarEncontrado.style.display    = 'inline-flex';
         els.btnConsultarEncontrado.style.display = 'inline-flex';
+        els.btnBajaEncontrado.style.display      = 'inline-flex';
         els.searchResult.classList.add('visible');
     }
 
@@ -514,6 +517,27 @@ document.addEventListener('DOMContentLoaded', () => {
             );
         } catch (err) {
             ZUtils.toast(`Error al guardar: ${err.message}`, 'error');
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // BAJA LÓGICA
+    // ─────────────────────────────────────────────────────────
+    async function darBajaEmpresa(empresa) {
+        if (!empresa) return;
+        const ok = await ZUtils.confirm(
+            'Confirmar baja',
+            `¿Dar de baja a "${empresa.nombre}"?\n\nEsta acción desactiva la empresa. Se puede reactivar posteriormente.`
+        );
+        if (!ok) return;
+        try {
+            await ZUtils.apiFetch(`/empresas/${empresa.id_empresa}/estado?activo=false`, { method: 'PUT' });
+            ZUtils.toast('Empresa dada de baja correctamente', 'success');
+            els.searchResult.classList.remove('visible');
+            els.searchQuery.value = '';
+            state.empresaEncontrada = null;
+        } catch (err) {
+            ZUtils.toast(`Error al dar de baja: ${err.message}`, 'error');
         }
     }
 

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="ZARIS — Padrón de Usuarios">
     <title>ZARIS — Usuarios</title>
+    <script>if (window.self !== window.top) { var s = document.createElement('style'); s.textContent = '.z-header{display:none!important}'; document.head.appendChild(s); }</script>
     <link rel="stylesheet" href="styles.css?v=20260418-2">
     <style>
         .z-form-card { animation: z-scaleIn 0.4s var(--z-ease); }
@@ -86,13 +87,13 @@
                 </span>
             </a>
             <nav class="z-header__nav">
-                <a href="mainconfig.html" class="z-header__btn">← Configuración</a>
+                <a href="#" class="z-header__btn" onclick="(window.parent.shellNavigate||function(){window.location='../index.html'})('frontend/welcome.html');return false">← Inicio</a>
             </nav>
         </header>
 
         <main class="z-main">
             <nav class="z-breadcrumb">
-                <a href="menu.html">BUC</a>
+                <a href="#" onclick="(window.parent.shellNavigate||function(){window.location='../index.html'})('frontend/welcome.html');return false">INICIO</a>
                 <span class="z-breadcrumb__sep">›</span>
                 <a href="mainconfig.html">Configuración</a>
                 <span class="z-breadcrumb__sep">›</span>

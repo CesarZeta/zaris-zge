@@ -69,4 +69,17 @@
     });
   });
 
+  // ── Shell navigation (iframe) ──────────────────────────────────
+  window.shellNavigate = function (url) {
+    const frame = document.getElementById('module-frame');
+    if (frame) frame.src = url || 'frontend/welcome.html';
+  };
+
+  document.querySelectorAll('.action[href]').forEach(link => {
+    link.addEventListener('click', function (e) {
+      e.preventDefault();
+      window.shellNavigate(link.href);
+    });
+  });
+
 })();

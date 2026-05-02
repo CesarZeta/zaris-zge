@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="ZARIS — Configuración del Sistema">
     <title>ZARIS — Configuración</title>
+    <script>if (window.self !== window.top) { var s = document.createElement('style'); s.textContent = '.z-header{display:none!important}'; document.head.appendChild(s); }</script>
     <link rel="stylesheet" href="styles.css">
     <style>
         .z-hero {
@@ -66,13 +67,13 @@
                 </span>
             </a>
             <nav class="z-header__nav">
-                <a href="menu.html" class="z-header__btn">← Menú BUC</a>
+                <a href="#" class="z-header__btn" onclick="(window.parent.shellNavigate||function(){window.location='../index.html'})('frontend/welcome.html');return false">← Inicio</a>
             </nav>
         </header>
 
         <main class="z-main">
             <nav class="z-breadcrumb">
-                <a href="menu.html">BUC</a>
+                <a href="#" onclick="(window.parent.shellNavigate||function(){window.location='../index.html'})('frontend/welcome.html');return false">INICIO</a>
                 <span class="z-breadcrumb__sep">›</span>
                 <span class="z-breadcrumb__current">Configuración</span>
             </nav>

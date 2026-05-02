@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ZARIS · Bienvenido</title>
+  <link rel="stylesheet" href="../design-system/fonts/fonts.css">
+  <link rel="stylesheet" href="../design-system/colors_and_type.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--zaris-cream);
+      font-family: var(--font-display);
+    }
+    .welcome {
+      padding: 48px 56px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .welcome__kicker {
+      font-family: var(--font-system);
+      font-size: 10.5px;
+      font-weight: 500;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      color: var(--fg-3);
+    }
+    .welcome__title {
+      font-size: 34px;
+      font-weight: 400;
+      letter-spacing: -0.72px;
+      color: var(--fg-1);
+      margin: 0;
+    }
+    .welcome__lede {
+      font-size: 15px;
+      color: var(--fg-2);
+      line-height: 1.5;
+      max-width: 540px;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="welcome">
+    <span class="welcome__kicker">ZARIS · Gestión Estatal</span>
+    <h1 class="welcome__title">Bienvenido</h1>
+    <p class="welcome__lede">
+      Seleccioná un módulo del menú lateral para comenzar.
+      Reclamos, Turnos y Entradas están en desarrollo — Configuración ya es funcional.
+    </p>
+  </div>
+</body>
+</html>
