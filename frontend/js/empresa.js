@@ -551,4 +551,153 @@ document.addEventListener('DOMContentLoaded', () => {
         );
         if (confirmed) window.location.href = 'menu.html';
     }
+
+    // ─────────────────────────────────────────────────────────
+    // UTIL
+    // ─────────────────────────────────────────────────────────
+    function esc(s) {
+        return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // VISTA PREVIA
+    // ─────────────────────────────────────────────────────────
+    async function cargarVistaPrevia() {
+        const container = document.getElementById('preview-rows');
+        if (!container) return;
+        container.innerHTML = '<div style="color:var(--z-text3);font-size:.82rem;padding:.5rem 0;">Cargando...</div>';
+        try {
+            const data = await ZUtils.apiFetch('/empresas?solo_activos=false&limit=200');
+            const recientes = data.slice(0, 5);
+            if (recientes.length === 0) {
+                container.innerHTML = '<div style="color:var(--z-text3);font-size:.82rem;padding:.5rem 0;">Sin registros</div>';
+                return;
+            }
+            container.innerHTML = recientes.map(e => `
+                <div class="z-preview-row" data-id="${e.id_empresa}">
+                    <span class="z-preview-row__nombre">${esc(e.nombre)}</span>
+                    <span class="z-preview-row__mono">${esc(e.cuit || '—')}</span>
+                    <span class="z-preview-row__meta">${esc(e.localidad || e.provincia || '—')}</span>
+                    <span class="z-preview-row__estado z-preview-row__estado--${e.activo ? 'activo' : 'inactivo'}">${e.activo ? 'Activo' : 'Inactivo'}</span>
+                    <span class="z-preview-row__cta">Ver →</span>
+                </div>`).join('');
+            container.querySelectorAll('.z-preview-row').forEach(row =>
+                row.addEventListener('click', async () => {
+                    try {
+                        const emp = await ZUtils.apiFetch(`/empresas/${row.dataset.id}`);
+                        mostrarResultadoUnico(emp);
+                    } catch(err) { ZUtils.toast('Error al cargar empresa', 'error'); }
+                })
+            );
+        } catch (err) {
+            console.error('[Preview empresas]', err);
+            container.innerHTML = `<div style="color:var(--z-text3);font-size:.82rem;padding:.5rem 0;">No se pudo cargar (${err.message})</div>`;
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // LISTADO COMPLETO
+    // ─────────────────────────────────────────────────────────
+    let _listadoData = [];
+
+    async function abrirListado() {
+        document.getElementById('search-panel').style.display    = 'none';
+        document.getElementById('preview-section').style.display = 'none';
+        document.getElementById('form-card').style.display       = 'none';
+        document.getElementById('listado-section').style.display = 'block';
+        document.getElementById('listado-contenido').innerHTML   = '<div style="text-align:center;padding:2rem;color:var(--z-text3);">Cargando...</div>';
+        document.getElementById('lst-count').textContent = '';
+        try {
+            _listadoData = await ZUtils.apiFetch('/empresas?solo_activos=false&limit=1000');
+            aplicarFiltros();
+        } catch (err) {
+            document.getElementById('listado-contenido').innerHTML =
+                `<div style="color:#cf2d56;padding:1rem;">Error: ${err.message}</div>`;
+        }
+    }
+
+    function cerrarListado() {
+        document.getElementById('listado-section').style.display  = 'none';
+        document.getElementById('search-panel').style.display     = 'block';
+        document.getElementById('preview-section').style.display  = 'block';
+    }
+
+    function aplicarFiltros() {
+        let rows  = [..._listadoData];
+        const txt  = (document.getElementById('lst-texto').value  || '').toLowerCase().trim();
+        const ord  = document.getElementById('lst-orden').value   || 'reciente';
+        const desd = document.getElementById('lst-desde').value   || '';
+        const hast = document.getElementById('lst-hasta').value   || '';
+
+        if (txt) rows = rows.filter(e =>
+            (e.nombre || '').toLowerCase().includes(txt) ||
+            (e.cuit   || '').replace(/-/g,'').includes(txt.replace(/-/g,''))
+        );
+        if (desd || hast) rows = rows.filter(e => {
+            const d = (e.fecha_alta || '').slice(0,10);
+            if (!d) return true;
+            if (desd && d < desd) return false;
+            if (hast && d > hast) return false;
+            return true;
+        });
+        if      (ord === 'reciente') rows.sort((a,b) => (b.id_empresa||0)-(a.id_empresa||0));
+        else if (ord === 'antiguo')  rows.sort((a,b) => (a.id_empresa||0)-(b.id_empresa||0));
+        else if (ord === 'az')       rows.sort((a,b) => (a.nombre||'').localeCompare(b.nombre||'','es'));
+        else if (ord === 'za')       rows.sort((a,b) => (b.nombre||'').localeCompare(a.nombre||'','es'));
+        renderListado(rows);
+    }
+
+    function limpiarFiltros() {
+        ['lst-texto','lst-desde','lst-hasta'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+        document.getElementById('lst-orden').value = 'reciente';
+        aplicarFiltros();
+    }
+
+    function renderListado(rows) {
+        const fecha = new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
+        document.getElementById('lst-print-header').innerHTML =
+            `<h2>Padrón de Empresas — ZARIS</h2><p>Listado generado el ${fecha} · ${rows.length} registro${rows.length!==1?'s':''}</p>`;
+        document.getElementById('lst-count').textContent =
+            `${rows.length} empresa${rows.length!==1?'s':''} encontrada${rows.length!==1?'s':''}`;
+
+        if (rows.length === 0) {
+            document.getElementById('listado-contenido').innerHTML =
+                '<div style="text-align:center;padding:2.5rem;color:var(--z-text3);">Sin resultados</div>';
+            return;
+        }
+        const bodyRows = rows.map(e => `<tr>
+            <td>${esc(e.nombre)}</td>
+            <td class="mono">${esc(e.cuit||'—')}</td>
+            <td>${esc(e.localidad||'—')}</td>
+            <td>${esc(e.provincia||'—')}</td>
+            <td><span class="z-badge-${e.activo?'activo':'inactivo'}">${e.activo?'Activo':'Inactivo'}</span></td>
+            <td>
+                <button class="z-tbl-btn" data-id="${e.id_empresa}">Ver / Editar</button>
+            </td></tr>`).join('');
+
+        document.getElementById('listado-contenido').innerHTML = `
+            <div class="z-listado-wrap"><table>
+                <thead><tr><th>Nombre</th><th>CUIT</th><th>Localidad</th><th>Provincia</th><th>Estado</th><th>Acciones</th></tr></thead>
+                <tbody>${bodyRows}</tbody>
+            </table></div>`;
+
+        document.getElementById('listado-contenido').querySelectorAll('.z-tbl-btn').forEach(btn =>
+            btn.addEventListener('click', async () => {
+                cerrarListado();
+                try {
+                    const emp = await ZUtils.apiFetch(`/empresas/${btn.dataset.id}`);
+                    mostrarResultadoUnico(emp);
+                } catch(err) { ZUtils.toast('Error al cargar empresa', 'error'); }
+            })
+        );
+    }
+
+    document.getElementById('btn-listado')?.addEventListener('click', abrirListado);
+    document.getElementById('btn-cerrar-listado')?.addEventListener('click', cerrarListado);
+    document.getElementById('btn-imprimir-lst')?.addEventListener('click', () => window.print());
+    document.getElementById('btn-filtrar-lst')?.addEventListener('click', aplicarFiltros);
+    document.getElementById('btn-limpiar-lst')?.addEventListener('click', limpiarFiltros);
+    document.getElementById('lst-texto')?.addEventListener('keydown', e => { if(e.key==='Enter') aplicarFiltros(); });
+
+    cargarVistaPrevia();
 });

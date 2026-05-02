@@ -844,4 +844,154 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // ── Util ──────────────────────────────────────────────────────────────
+    function esc(s) {
+        return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // ── Vista previa ──────────────────────────────────────────────────────
+    async function cargarVistaPrevia() {
+        const container = document.getElementById('preview-rows');
+        if (!container) return;
+        container.innerHTML = '<div style="color:var(--z-text3);font-size:.82rem;padding:.5rem 0;">Cargando...</div>';
+        try {
+            const data = await ZUtils.apiFetch('/ciudadanos?solo_activos=false&limit=200');
+            const recientes = data.slice(0, 5); // ya vienen ordenados por id desc
+            if (recientes.length === 0) {
+                container.innerHTML = '<div style="color:var(--z-text3);font-size:.82rem;padding:.5rem 0;">Sin registros</div>';
+                return;
+            }
+            container.innerHTML = recientes.map(c => `
+                <div class="z-preview-row" data-id="${c.id_ciudadano}">
+                    <span class="z-preview-row__nombre">${esc(c.apellido)}, ${esc(c.nombre)}</span>
+                    <span class="z-preview-row__mono">${c.doc_tipo || ''} ${esc(c.doc_nro || '—')}</span>
+                    <span class="z-preview-row__meta">${esc(c.cuil || '—')}</span>
+                    <span class="z-preview-row__estado z-preview-row__estado--${c.activo ? 'activo' : 'inactivo'}">${c.activo ? 'Activo' : 'Inactivo'}</span>
+                    <span class="z-preview-row__cta">Ver →</span>
+                </div>`).join('');
+            container.querySelectorAll('.z-preview-row').forEach(row =>
+                row.addEventListener('click', () => cargarCiudadanoDesdePrevia(parseInt(row.dataset.id)))
+            );
+        } catch (err) {
+            console.error('[Preview ciudadanos]', err);
+            container.innerHTML = `<div style="color:var(--z-text3);font-size:.82rem;padding:.5rem 0;">No se pudo cargar (${err.message})</div>`;
+        }
+    }
+
+    async function cargarCiudadanoDesdePrevia(id) {
+        try {
+            const c = await ZUtils.apiFetch(`/ciudadanos/${id}`);
+            mostrarResultadoUnico(c);
+        } catch (err) {
+            ZUtils.toast('Error al cargar ciudadano', 'error');
+        }
+    }
+
+    // ── Listado completo ──────────────────────────────────────────────────
+    let _listadoData = [];
+
+    async function abrirListado() {
+        document.getElementById('search-panel').style.display   = 'none';
+        document.getElementById('preview-section').style.display = 'none';
+        document.getElementById('form-card').style.display      = 'none';
+        document.getElementById('listado-section').style.display = 'block';
+        document.getElementById('listado-contenido').innerHTML  = '<div style="text-align:center;padding:2rem;color:var(--z-text3);">Cargando...</div>';
+        document.getElementById('lst-count').textContent = '';
+        try {
+            _listadoData = await ZUtils.apiFetch('/ciudadanos?solo_activos=false&limit=1000');
+            aplicarFiltros();
+        } catch (err) {
+            document.getElementById('listado-contenido').innerHTML =
+                `<div style="color:#cf2d56;padding:1rem;">Error: ${err.message}</div>`;
+        }
+    }
+
+    function cerrarListado() {
+        document.getElementById('listado-section').style.display  = 'none';
+        document.getElementById('search-panel').style.display     = 'block';
+        document.getElementById('preview-section').style.display  = 'block';
+    }
+
+    function aplicarFiltros() {
+        let rows  = [..._listadoData];
+        const txt  = (document.getElementById('lst-texto').value  || '').toLowerCase().trim();
+        const ord  = document.getElementById('lst-orden').value   || 'reciente';
+        const desd = document.getElementById('lst-desde').value   || '';
+        const hast = document.getElementById('lst-hasta').value   || '';
+
+        if (txt) rows = rows.filter(c =>
+            (c.nombre   || '').toLowerCase().includes(txt) ||
+            (c.apellido || '').toLowerCase().includes(txt) ||
+            (c.doc_nro  || '').includes(txt) ||
+            (c.cuil     || '').includes(txt)
+        );
+        if (desd || hast) rows = rows.filter(c => {
+            const d = (c.fecha_alta || '').slice(0,10);
+            if (!d) return true;
+            if (desd && d < desd) return false;
+            if (hast && d > hast) return false;
+            return true;
+        });
+        if      (ord === 'reciente') rows.sort((a,b) => (b.id_ciudadano||0)-(a.id_ciudadano||0));
+        else if (ord === 'antiguo')  rows.sort((a,b) => (a.id_ciudadano||0)-(b.id_ciudadano||0));
+        else if (ord === 'az')       rows.sort((a,b) => (a.apellido||'').localeCompare(b.apellido||'','es'));
+        else if (ord === 'za')       rows.sort((a,b) => (b.apellido||'').localeCompare(a.apellido||'','es'));
+        renderListado(rows);
+    }
+
+    function limpiarFiltros() {
+        ['lst-texto','lst-desde','lst-hasta'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+        document.getElementById('lst-orden').value = 'reciente';
+        aplicarFiltros();
+    }
+
+    function renderListado(rows) {
+        const fecha = new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
+        document.getElementById('lst-print-header').innerHTML =
+            `<h2>Padrón de Ciudadanos — ZARIS</h2><p>Listado generado el ${fecha} · ${rows.length} registro${rows.length!==1?'s':''}</p>`;
+        document.getElementById('lst-count').textContent =
+            `${rows.length} ciudadano${rows.length!==1?'s':''} encontrado${rows.length!==1?'s':''}`;
+
+        if (rows.length === 0) {
+            document.getElementById('listado-contenido').innerHTML =
+                '<div style="text-align:center;padding:2.5rem;color:var(--z-text3);">Sin resultados</div>';
+            return;
+        }
+        const bodyRows = rows.map(c => `<tr>
+            <td>${esc(c.apellido)}, ${esc(c.nombre)}</td>
+            <td class="mono">${esc(c.doc_tipo||'')} ${esc(c.doc_nro||'—')}</td>
+            <td class="mono">${esc(c.cuil||'—')}</td>
+            <td>${esc(c.email||'—')}</td>
+            <td><span class="z-badge-${c.activo?'activo':'inactivo'}">${c.activo?'Activo':'Inactivo'}</span></td>
+            <td>
+                <button class="z-tbl-btn" data-id="${c.id_ciudadano}" data-modo="consulta">Ver</button>
+                <button class="z-tbl-btn" data-id="${c.id_ciudadano}" data-modo="edicion">Editar</button>
+            </td></tr>`).join('');
+
+        document.getElementById('listado-contenido').innerHTML = `
+            <div class="z-listado-wrap"><table>
+                <thead><tr><th>Apellido, Nombre</th><th>Documento</th><th>CUIL</th><th>Email</th><th>Estado</th><th>Acciones</th></tr></thead>
+                <tbody>${bodyRows}</tbody>
+            </table></div>`;
+
+        document.getElementById('listado-contenido').querySelectorAll('.z-tbl-btn').forEach(btn =>
+            btn.addEventListener('click', () => {
+                const c = _listadoData.find(x => x.id_ciudadano === parseInt(btn.dataset.id));
+                cerrarListado();
+                if (c) mostrarResultadoUnico(c);
+                else cargarCiudadanoDesdePrevia(parseInt(btn.dataset.id));
+            })
+        );
+    }
+
+    // Registrar eventos listado + preview
+    document.getElementById('btn-listado')?.addEventListener('click', abrirListado);
+    document.getElementById('btn-cerrar-listado')?.addEventListener('click', cerrarListado);
+    document.getElementById('btn-imprimir-lst')?.addEventListener('click', () => window.print());
+    document.getElementById('btn-filtrar-lst')?.addEventListener('click', aplicarFiltros);
+    document.getElementById('btn-limpiar-lst')?.addEventListener('click', limpiarFiltros);
+    document.getElementById('lst-texto')?.addEventListener('keydown', e => { if(e.key==='Enter') aplicarFiltros(); });
+
+    cargarVistaPrevia();
+
 });

@@ -171,6 +171,21 @@ async def listar_tipo_representacion(db: AsyncSession = Depends(get_db)):
 # CIUDADANOS
 # ═══════════════════════════════════════════════════════════════
 
+@router.get("/ciudadanos", response_model=list[CiudadanoOut])
+async def listar_ciudadanos(
+    solo_activos: bool = Query(True),
+    limit: int = Query(200, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db)
+):
+    """Listar ciudadanos (para vista previa y listado)."""
+    stmt = select(Ciudadano).order_by(Ciudadano.id_ciudadano.desc()).offset(offset).limit(limit)
+    if solo_activos:
+        stmt = stmt.where(Ciudadano.activo == True)
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
 @router.get("/ciudadanos/buscar", response_model=list[CiudadanoOut])
 async def buscar_ciudadano(
     q: str = Query(..., min_length=1, description="DNI, CUIL, Email o Nombre"),
@@ -371,6 +386,20 @@ async def obtener_empresas_vinculadas(id: int, db: AsyncSession = Depends(get_db
 # ═══════════════════════════════════════════════════════════════
 # EMPRESAS
 # ═══════════════════════════════════════════════════════════════
+
+@router.get("/empresas", response_model=list[EmpresaOut])
+async def listar_empresas(
+    solo_activos: bool = Query(True),
+    limit: int = Query(200, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db)
+):
+    """Listar empresas (para vista previa y listado)."""
+    stmt = select(Empresa).order_by(Empresa.id_empresa.desc()).offset(offset).limit(limit)
+    if solo_activos:
+        stmt = stmt.where(Empresa.activo == True)
+    result = await db.execute(stmt)
+    return result.scalars().all()
 
 @router.get("/empresas/buscar", response_model=list[EmpresaOut])
 async def buscar_empresa(
