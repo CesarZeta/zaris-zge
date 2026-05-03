@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ZARIS · Iniciar sesión</title>
+  <link rel="icon" type="image/svg+xml" href="../design-system/assets/zaris-favicon.svg">
+  <link rel="stylesheet" href="../design-system/fonts/fonts.css">
+  <link rel="stylesheet" href="../design-system/colors_and_type.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--zaris-cream);
+      font-family: var(--font-display);
+    }
+
+    .login-card {
+      width: 100%;
+      max-width: 360px;
+      background: var(--surface-100);
+      border: 1px solid var(--border-primary);
+      border-radius: 12px;
+      padding: 40px 36px 36px;
+      box-shadow: 0 2px 16px rgba(38,37,30,.08);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 32px;
+    }
+
+    .brand__mark {
+      width: 28px;
+      height: 28px;
+      color: var(--fg-1);
+    }
+
+    .brand__name {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.8px;
+      color: var(--fg-1);
+    }
+
+    .login-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--fg-1);
+      margin-bottom: 4px;
+      letter-spacing: -0.4px;
+    }
+
+    .login-sub {
+      font-size: 13px;
+      color: var(--fg-3);
+      margin-bottom: 28px;
+    }
+
+    .field {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--fg-2);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+
+    input {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1px solid var(--border-medium);
+      border-radius: 7px;
+      background: var(--surface-100);
+      font-family: var(--font-display);
+      font-size: 14px;
+      color: var(--fg-1);
+      outline: none;
+      transition: border-color 150ms ease, box-shadow 150ms ease;
+    }
+
+    input:focus {
+      border-color: var(--zaris-orange);
+      box-shadow: 0 0 0 3px rgba(245,78,0,.12);
+    }
+
+    .btn-submit {
+      width: 100%;
+      margin-top: 8px;
+      padding: 10px 16px;
+      background: var(--fg-1);
+      color: var(--zaris-cream);
+      border: none;
+      border-radius: 7px;
+      font-family: var(--font-display);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 150ms ease;
+    }
+
+    .btn-submit:hover { background: #3a3930; }
+    .btn-submit:disabled { opacity: .5; cursor: default; }
+
+    .error-msg {
+      display: none;
+      margin-top: 14px;
+      padding: 10px 12px;
+      background: rgba(207,45,86,.08);
+      border: 1px solid rgba(207,45,86,.2);
+      border-radius: 7px;
+      font-size: 13px;
+      color: var(--color-error);
+    }
+
+    .error-msg.visible { display: block; }
+
+    .login-foot {
+      margin-top: 24px;
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      color: var(--fg-4);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<div class="login-card">
+  <div class="brand">
+    <svg class="brand__mark" viewBox="0 0 500 500" aria-hidden="true">
+      <g fill="none" stroke="currentColor" stroke-width="34"
+         stroke-linecap="round" stroke-linejoin="round">
+        <path d="M 110 78 L 388 78"/>
+        <path d="M 388 78 L 110 430"/>
+        <path d="M 388 220 L 222 430"/>
+        <path d="M 388 362 L 334 430"/>
+      </g>
+    </svg>
+    <span class="brand__name">ZARIS</span>
+  </div>
+
+  <h1 class="login-title">Iniciar sesión</h1>
+  <p class="login-sub">Gestión Estatal · Municipio Demo</p>
+
+  <form id="login-form">
+    <div class="field">
+      <label for="email">Correo electrónico</label>
+      <input type="email" id="email" name="email" autocomplete="username"
+             placeholder="usuario@municipio.gob.ar" required />
+    </div>
+    <div class="field">
+      <label for="password">Contraseña</label>
+      <input type="password" id="password" name="password" autocomplete="current-password"
+             placeholder="••••••••" required />
+    </div>
+    <button type="submit" class="btn-submit" id="btn-submit">Ingresar</button>
+    <div class="error-msg" id="error-msg"></div>
+  </form>
+
+  <p class="login-foot">zaris-zge · v0.1</p>
+</div>
+
+<script>
+  const _local = ['localhost', '127.0.0.1', '0.0.0.0'];
+  const API_BASE = _local.includes(window.location.hostname)
+    ? 'http://127.0.0.1:8000'
+    : 'https://zaris-api-production-bf0b.up.railway.app';
+
+  // Si ya hay sesión, ir al shell
+  if (localStorage.getItem('zaris_session')) {
+    window.location.href = '../index.html';
+  }
+
+  const form    = document.getElementById('login-form');
+  const btn     = document.getElementById('btn-submit');
+  const errorEl = document.getElementById('error-msg');
+
+  function showError(msg) {
+    errorEl.textContent = msg;
+    errorEl.classList.add('visible');
+  }
+
+  function hideError() {
+    errorEl.classList.remove('visible');
+  }
+
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    hideError();
+    btn.disabled = true;
+    btn.textContent = 'Ingresando…';
+
+    const email    = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        showError(data.detail || 'Error al iniciar sesión.');
+        return;
+      }
+
+      localStorage.setItem('zaris_session', JSON.stringify({
+        access_token: data.access_token,
+        user: data.user,
+      }));
+
+      window.location.href = '../index.html';
+
+    } catch (err) {
+      showError('No se pudo conectar con el servidor. Verificá que el backend esté activo.');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Ingresar';
+    }
+  });
+</script>
+
+</body>
+</html>

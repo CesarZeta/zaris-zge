@@ -162,25 +162,88 @@ El shell (`index.html`) carga los módulos dentro de un `<iframe id="module-fram
 ```
 Usar este patrón en breadcrumbs, botones "← Inicio" y cualquier enlace de navegación inter-módulo.
 
-### Ocultar el header propio cuando se carga en el iframe
+### Ocultar header Y sidebar propios cuando se carga en el iframe
+
+Todo módulo que tenga su propio header (`.z-header`) o sidebar interno (`.sidebar`) **debe** ocultarlos al correr dentro del iframe del shell, para evitar duplicación de navegación.
+
 Agregar en `<head>` de todo HTML de módulo, **antes** de los CSS:
+
 ```html
+<!-- Módulos sin sidebar propio (mayoría): -->
 <script>if (window.self !== window.top) { var s = document.createElement('style'); s.textContent = '.z-header{display:none!important}'; document.head.appendChild(s); }</script>
+
+<!-- Módulos CON sidebar propio (ej: admin_tablas.html): -->
+<script>if (window.self !== window.top) { var s = document.createElement('style'); s.textContent = '.z-header{display:none!important}.sidebar{display:none!important}.layout{min-height:100vh!important}'; document.head.appendChild(s); }</script>
 ```
 
+**Regla:** nunca mostrar navegación propia del módulo cuando `window.self !== window.top`. El shell es el único responsable de la navegación lateral.
+
 ### Guard vanilla en iframe
-Si no hay sesión y el módulo está dentro del iframe, no redirigir con `window.location` (rompería el shell). Usar:
+Si no hay sesión y el módulo está dentro del iframe, redirigir el shell completo al inicio (no solo el iframe):
 ```js
 if (!localStorage.getItem('zaris_session')) {
     if (window.self !== window.top) {
-        window.parent.shellNavigate && window.parent.shellNavigate('frontend/welcome.html');
+        window.parent.location.href = '../index.html';
     } else {
         window.location.href = '../index.html';
     }
 }
 ```
+El shell `index.html` detecta que no hay sesión y redirige a `frontend/login.html`.
 
-## 15. Patrón de Baja Lógica — API y Frontend
+### Login vanilla
+El shell redirige a `frontend/login.html` si no hay `zaris_session` en localStorage.  
+Credenciales dev: email `<username>@municipio.gob.ar`, password `[redactado]` (generadas con `seed_auth.py`).
+
+## 15. Admin Tablas — CRUD Genérico de Maestros
+
+`frontend/admin_tablas.html` es el módulo genérico para todas las tablas de configuración. Se activa via `?tabla=<nombre>` en la URL.
+
+### Agregar una tabla nueva a admin_tablas
+
+1. **Backend** — agregar entrada en `TABLE_CONFIG` en `backend/app/api/routes/admin_tablas.py`:
+```python
+"nombre_tabla": {
+    "pk": "id_campo",           # columna PK
+    "cols": ["col1", "col2"],   # columnas editables (nunca pk, activo, audit)
+    "fecha_mod": "fecha_modificacion",  # columna de timestamp de edición, o None
+    "has_audit": True,          # False si la tabla no tiene id_usuario_alta/modificacion
+    "has_activo": True,         # False si la tabla no tiene columna activo
+    "col_types": {              # solo si hay columnas TIME o DATE
+        "hora_inicio": "time",
+        "fecha": "date",
+    },
+}
+```
+   - El backend agrega `activo=True` automáticamente en INSERT cuando `has_activo=True`.
+   - Columnas `TIME`/`DATE` deben declararse en `col_types` — asyncpg requiere objetos Python (`datetime.time`/`datetime.date`), no strings.
+
+2. **Frontend** — agregar `<div class="sidebar-item">` en `admin_tablas.html` y entrada en `SCHEMAS` (JS).
+
+3. **Shell** — agregar `<a class="nav__link" href="frontend/admin_tablas.html?tabla=nombre_tabla">` en la sección Maestros de `index.html`.
+
+### Estándar visual obligatorio — panel de búsqueda
+
+Todo frontend de tabla maestro (admin_tablas y módulos independientes como usuarios) **debe** incluir el panel celeste de búsqueda como primer elemento visible después del título:
+
+```html
+<div class="search-panel">
+  <div class="search-panel__title">Buscar {Entidad} existente</div>
+  <div class="search-panel__row">
+    <input class="search-panel__input" placeholder="Ingresá nombre o descripción..." ...>
+    <button class="btn-primary">Buscar</button>
+    <button class="btn-primary">+ Nuevo</button>
+    <button class="btn-outline">Listado</button>
+  </div>
+</div>
+```
+
+Debajo del panel van los últimos registros ingresados (vista previa). El patrón está implementado en `admin_tablas.html` (`renderVistaPrevia`) y en `usuarios.html`. **No** usar solo botones sueltos — siempre agrupar en el panel celeste.
+
+### Tablas actualmente configuradas
+`agentes`, `equipos`, `equipo_usuarios`, `servicios`, `tipo_usuario`, `cargos`, `area`, `subarea`, `usuarios`, `tipo_reclamo`, `tipo_representacion`, `actividades`, `nacionalidades`, `reclamos_area`, `reclamos_subarea`, `estado_reclamo`, `areas`, `lugares_atencion`, `agenda_clase`, `agenda_feriado`.
+
+## 16. Patrón de Baja Lógica — API y Frontend
 
 ### Backend
 Endpoint estándar de soft-delete (implementado para `usuarios`, `ciudadanos`, `empresas`):

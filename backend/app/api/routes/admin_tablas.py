@@ -3,6 +3,7 @@ ZARIS API — Endpoints CRUD genéricos para tablas administrativas.
 Prefijo: /api/v1/admin/
 """
 import logging
+from datetime import date, time
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
@@ -56,6 +57,7 @@ TABLE_CONFIG: dict[str, dict] = {
         "pk": "id_equipo",
         "cols": ["nombre", "descripcion", "id_subarea", "dias_semana", "hora_inicio", "hora_fin"],
         "fecha_mod": "fecha_modificacion",
+        "col_types": {"hora_inicio": "time", "hora_fin": "time"},
     },
     "equipo_usuarios": {
         "pk": "id_equipo_usuario",
@@ -67,6 +69,7 @@ TABLE_CONFIG: dict[str, dict] = {
         "cols": ["nombre", "descripcion", "id_area", "id_usuario_responsable", "capacidad_agentes",
                  "dias_semana", "hora_inicio", "hora_fin"],
         "fecha_mod": "modificado_en",
+        "col_types": {"hora_inicio": "time", "hora_fin": "time"},
     },
     "tipo_reclamo": {
         "pk": "id_tipo_reclamo",
@@ -101,6 +104,7 @@ TABLE_CONFIG: dict[str, dict] = {
         "cols": ["fecha", "descripcion", "ambito"],
         "fecha_mod": None,
         "has_audit": False,
+        "col_types": {"fecha": "date"},
     },
     # ── Reclamos
     "reclamos_area": {
@@ -159,11 +163,26 @@ def _row_to_dict(row: Any, exclude: list[str]) -> dict:
     d = dict(row._mapping)
     for col in exclude:
         d.pop(col, None)
-    # Serializar TIME a string para JSON
+    # Serializar TIME/DATE a string para JSON
     for k, v in d.items():
         if hasattr(v, "isoformat"):
             d[k] = str(v)
     return d
+
+
+def _coerce_types(data: dict, col_types: dict) -> None:
+    """Convierte strings a tipos nativos de Python requeridos por asyncpg."""
+    for col, typ in col_types.items():
+        if col not in data or data[col] is None:
+            continue
+        val = data[col]
+        if not isinstance(val, str):
+            continue
+        if typ == "date":
+            data[col] = date.fromisoformat(val)
+        elif typ == "time":
+            h, m = val.split(":")[:2]
+            data[col] = time(int(h), int(m))
 
 
 # ─── GET /{tabla} — listar activos ────────────────────────────────────────────
@@ -224,6 +243,11 @@ async def crear(
     if cfg.get("has_audit", True):
         data["id_usuario_alta"] = current_user["id_usuario"]
 
+    if cfg.get("has_activo", True) and "activo" not in data:
+        data["activo"] = True
+
+    col_types = cfg.get("col_types", {})
+    _coerce_types(data, col_types)
     cols = ", ".join(data.keys())
     vals = ", ".join(f":{k}" for k in data.keys())
     stmt = text(f"INSERT INTO {tabla} ({cols}) VALUES ({vals}) RETURNING *")
@@ -260,6 +284,8 @@ async def editar(
 
     if cfg.get("has_audit", True):
         data["id_usuario_modificacion"] = current_user["id_usuario"]
+    col_types = cfg.get("col_types", {})
+    _coerce_types(data, col_types)
     sets = ", ".join(f"{k} = :{k}" for k in data.keys())
     fecha_extra = f", {fecha_mod} = NOW()" if fecha_mod else ""
     stmt = text(

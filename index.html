@@ -43,7 +43,7 @@
     <aside class="sidebar" aria-label="Menú principal">
       <nav class="nav" id="nav">
 
-        <!-- RECLAMOS — funcional -->
+        <!-- RECLAMOS -->
         <div class="nav__group" data-open="false">
           <button class="nav__title" aria-expanded="false" data-toggle="group">
             <span>Reclamos</span>
@@ -53,41 +53,12 @@
             </svg>
           </button>
           <div class="nav__panel">
-            <div class="nav__item" data-open="false">
-              <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
-                <span>Gestión de reclamos</span>
-                <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
-                     stroke="currentColor" stroke-width="1.5">
-                  <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </button>
-              <div class="nav__item-actions">
-                <div class="actions">
-                  <a class="action" href="frontend/reclamos.html">Nuevo</a>
-                  <a class="action" href="frontend/reclamos.html">Consulta</a>
-                  <a class="action" href="frontend/reclamos.html">Listado</a>
-                </div>
-              </div>
-            </div>
-            <div class="nav__item" data-open="false">
-              <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
-                <span>Orden de trabajo</span>
-                <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
-                     stroke="currentColor" stroke-width="1.5">
-                  <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </button>
-              <div class="nav__item-actions">
-                <div class="actions">
-                  <button class="action" data-stub>Nuevo</button>
-                  <button class="action" data-stub>Listado</button>
-                </div>
-              </div>
-            </div>
+            <a class="nav__link" href="frontend/reclamos.html">Gestión de reclamos</a>
+            <a class="nav__link nav__link--stub" href="#">Orden de trabajo</a>
           </div>
         </div>
 
-        <!-- TURNOS — funcional -->
+        <!-- TURNOS -->
         <div class="nav__group" data-open="false">
           <button class="nav__title" aria-expanded="false" data-toggle="group">
             <span>Turnos</span>
@@ -97,18 +68,13 @@
             </svg>
           </button>
           <div class="nav__panel">
-            <div class="actions">
-              <a class="action" href="frontend/agenda.html">Nuevo</a>
-              <a class="action" href="frontend/agenda.html">Listado</a>
-              <a class="action" href="frontend/agenda.html">Calendario</a>
-            </div>
+            <a class="nav__link" href="frontend/agenda.html">Gestión de turnos</a>
           </div>
         </div>
 
-        <!-- ENTRADAS — preview -->
+        <!-- ENTRADAS — pendiente -->
         <div class="nav__group" data-open="false">
-          <button class="nav__title nav__title--stub"
-                  aria-expanded="false" data-toggle="group">
+          <button class="nav__title nav__title--stub" aria-expanded="false" data-toggle="group">
             <span>Entradas</span>
             <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
                  stroke="currentColor" stroke-width="1.5">
@@ -116,11 +82,7 @@
             </svg>
           </button>
           <div class="nav__panel">
-            <div class="actions">
-              <button class="action" data-stub>Nuevo</button>
-              <button class="action" data-stub>Consulta</button>
-              <button class="action" data-stub>Listado</button>
-            </div>
+            <a class="nav__link nav__link--stub" href="#">Gestión de entradas</a>
           </div>
         </div>
 
@@ -135,7 +97,7 @@
           </button>
           <div class="nav__panel">
 
-            <!-- Padrones -->
+            <!-- Padrones — links directos al iframe, sin sub-acordeón -->
             <div class="nav__group" data-open="false">
               <button class="nav__sub" aria-expanded="false" data-toggle="group">
                 <span>Padrones</span>
@@ -145,43 +107,8 @@
                 </svg>
               </button>
               <div class="nav__subpanel">
-
-                <div class="nav__item" data-open="false">
-                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
-                    <span>Ciudadanos</span>
-                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
-                         stroke="currentColor" stroke-width="1.5">
-                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                  </button>
-                  <div class="nav__item-actions">
-                    <div class="actions">
-                      <a class="action" href="frontend/ciudadano.html">Nuevo</a>
-                      <a class="action" href="frontend/ciudadano.html">Consulta</a>
-                      <a class="action" href="frontend/ciudadano.html">Baja</a>
-                      <a class="action" href="frontend/ciudadano.html">Listado</a>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="nav__item" data-open="false">
-                  <button class="nav__item-toggle" aria-expanded="false" data-toggle="item">
-                    <span>Empresas</span>
-                    <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
-                         stroke="currentColor" stroke-width="1.5">
-                      <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                  </button>
-                  <div class="nav__item-actions">
-                    <div class="actions">
-                      <a class="action" href="frontend/empresa.html">Nuevo</a>
-                      <a class="action" href="frontend/empresa.html">Consulta</a>
-                      <a class="action" href="frontend/empresa.html">Baja</a>
-                      <a class="action" href="frontend/empresa.html">Listado</a>
-                    </div>
-                  </div>
-                </div>
-
+                <a class="nav__link" href="frontend/ciudadano.html">Ciudadanos</a>
+                <a class="nav__link" href="frontend/empresa.html">Empresas</a>
               </div>
             </div>
 
@@ -232,6 +159,12 @@
 
   </div>
 
+  <script>
+    // Guard de sesión — redirige al login si no hay sesión activa
+    if (!localStorage.getItem('zaris_session')) {
+      window.location.replace('frontend/login.html');
+    }
+  </script>
   <script src="frontend/js/menu.js"></script>
 </body>
 </html>

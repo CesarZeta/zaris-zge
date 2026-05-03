@@ -50,37 +50,17 @@
     });
   });
 
-  // ── Acciones stub (preview) ──────────────────────────────────
-  document.querySelectorAll('.action[data-stub]').forEach(btn => {
-    btn.addEventListener('click', function () {
-      const groupLabel = btn.closest('.nav__panel')
-        ?.previousElementSibling
-        ?.querySelector('span')
-        ?.textContent?.trim() || 'módulo';
-      setLog(`Pendiente de implementación — ${groupLabel}`);
-    });
-  });
-
-  // ── Acciones con data-action ─────────────────────────────────
-  document.querySelectorAll('.action[data-action]').forEach(btn => {
-    btn.addEventListener('click', function () {
-      const [modulo, accion] = (btn.dataset.action || '').split(':');
-      setLog(`Navegando: ${modulo} → ${accion}`);
-    });
-  });
-
   // ── Shell navigation (iframe) ──────────────────────────────────
   window.shellNavigate = function (url) {
     const frame = document.getElementById('module-frame');
     if (frame) frame.src = url || 'frontend/welcome.html';
   };
 
-  document.querySelectorAll('.action[href], .nav__link[href]').forEach(link => {
+  document.querySelectorAll('.nav__link[href]').forEach(link => {
     link.addEventListener('click', function (e) {
       e.preventDefault();
-      // marcar activo
       document.querySelectorAll('.nav__link').forEach(l => l.classList.remove('active'));
-      if (link.classList.contains('nav__link')) link.classList.add('active');
+      link.classList.add('active');
       window.shellNavigate(link.href);
     });
   });

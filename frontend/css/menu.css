@@ -242,6 +242,7 @@
 }
 .nav__link:hover { color: var(--fg-1); background: rgba(38,37,30,.05); }
 .nav__link.active { color: var(--zaris-orange); font-weight: 600; }
+.nav__link--stub { opacity: .45; cursor: default; pointer-events: none; }
 
 /* ── Botones de acción ───────────────────────────────────── */
 .actions {

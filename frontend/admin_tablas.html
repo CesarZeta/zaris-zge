@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ZARIS — Gestión de Tablas</title>
-  <script>if (window.self !== window.top) { var s = document.createElement('style'); s.textContent = '.z-header{display:none!important}'; document.head.appendChild(s); }</script>
+  <script>if (window.self !== window.top) { var s = document.createElement('style'); s.textContent = '.z-header{display:none!important}.sidebar{display:none!important}.layout{min-height:100vh!important}'; document.head.appendChild(s); }</script>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <link rel="stylesheet" href="../design-system/fonts/fonts.css">
   <link rel="stylesheet" href="../design-system/colors_and_type.css">
@@ -476,6 +476,41 @@
     .filter-group input:focus, .filter-group select:focus { border-color: var(--z-border-focus); }
     .filter-actions { display: flex; gap: 0.5rem; align-self: flex-end; }
 
+    /* ── Panel de búsqueda (estándar todos los maestros) ── */
+    .search-panel {
+      background: linear-gradient(135deg, #E3F2FD 0%, #F0F7FF 100%);
+      border: 1.5px solid #BBDEFB;
+      border-radius: var(--z-radius-lg);
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .search-panel__title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--z-primary);
+      margin-bottom: 0.75rem;
+    }
+    .search-panel__row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .search-panel__input {
+      flex: 1;
+      min-width: 200px;
+      padding: 0.55rem 0.9rem;
+      border: 1px solid var(--z-border);
+      border-radius: var(--z-radius);
+      background: #fff;
+      font-family: var(--z-font);
+      font-size: 0.9rem;
+      color: var(--z-text);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .search-panel__input:focus { border-color: var(--z-border-focus); }
+
     /* ── Print ── */
     .print-header { display: none; }
 
@@ -606,7 +641,7 @@ function _authHeaders() {
 // ── Auth guard ─────────────────────────────────────────────────
 if (!localStorage.getItem('zaris_session')) {
   if (window.self !== window.top) {
-    window.parent.shellNavigate && window.parent.shellNavigate('frontend/welcome.html');
+    window.parent.location.href = '../index.html';
   } else {
     window.location.href = '../index.html';
   }
@@ -623,7 +658,7 @@ const SCHEMAS = {
 
   // ── Organización
   area: {
-    label: 'Área',
+    label: 'Área', titulo: 'Maestro de Áreas',
     pk: 'id_area',
     cols: [
       { field: 'nombre',      label: 'Nombre',      type: 'text',     required: true },
@@ -632,7 +667,7 @@ const SCHEMAS = {
     display: ['id_area', 'nombre', 'descripcion'],
   },
   subarea: {
-    label: 'Subárea',
+    label: 'Subárea', titulo: 'Maestro de Subáreas',
     pk: 'id_subarea',
     cols: [
       { field: 'nombre',      label: 'Nombre',      type: 'text',     required: true },
@@ -642,7 +677,7 @@ const SCHEMAS = {
     display: ['id_subarea', 'nombre', 'descripcion', 'id_area'],
   },
   tipo_usuario: {
-    label: 'Tipo de Usuario',
+    label: 'Tipo de Usuario', titulo: 'Maestro de Tipos de Usuario',
     pk: 'id_tipo_usuario',
     cols: [
       { field: 'nombre',      label: 'Nombre',      type: 'text',     required: true },
@@ -651,7 +686,7 @@ const SCHEMAS = {
     display: ['id_tipo_usuario', 'nombre', 'descripcion'],
   },
   cargos: {
-    label: 'Cargo',
+    label: 'Cargo', titulo: 'Maestro de Cargos',
     pk: 'id_cargo',
     cols: [
       { field: 'nombre',      label: 'Nombre',      type: 'text',     required: true },
@@ -660,7 +695,7 @@ const SCHEMAS = {
     display: ['id_cargo', 'nombre', 'descripcion'],
   },
   usuarios: {
-    label: 'Usuario',
+    label: 'Usuario', titulo: 'Maestro de Usuarios',
     pk: 'id_usuario',
     cols: [
       { field: 'nombre',          label: 'Nombre completo',  type: 'text',   required: true },
@@ -680,7 +715,7 @@ const SCHEMAS = {
     display: ['id_usuario', 'nombre', 'username', 'cuil', 'nivel_acceso', 'buc_acceso'],
   },
   agentes: {
-    label: 'Agente',
+    label: 'Agente', titulo: 'Maestro de Agentes',
     pk: 'id_agente',
     cols: [
       { field: 'nombre',     label: 'Nombre',    type: 'text',   required: true },
@@ -694,7 +729,7 @@ const SCHEMAS = {
     display: ['id_agente', 'apellido', 'nombre', 'legajo', 'email', 'id_cargo', 'id_subarea'],
   },
   equipos: {
-    label: 'Equipo',
+    label: 'Equipo', titulo: 'Maestro de Equipos',
     pk: 'id_equipo',
     cols: [
       { field: 'nombre',      label: 'Nombre',             type: 'text',     required: true },
@@ -707,7 +742,7 @@ const SCHEMAS = {
     display: ['id_equipo', 'nombre', 'id_subarea', 'dias_semana', 'hora_inicio', 'hora_fin'],
   },
   equipo_usuarios: {
-    label: 'Miembro de Equipo',
+    label: 'Miembro de Equipo', titulo: 'Maestro de Miembros de Equipo',
     pk: 'id_equipo_usuario',
     cols: [
       { field: 'id_equipo',  label: 'Equipo',  type: 'select', fk: 'equipos',  fkLabel: 'nombre', fkPk: 'id_equipo',  required: true },
@@ -719,7 +754,7 @@ const SCHEMAS = {
 
   // ── Reclamos
   reclamos_area: {
-    label: 'Área de Reclamo',
+    label: 'Área de Reclamo', titulo: 'Maestro de Áreas de Reclamos',
     pk: 'id_area',
     cols: [
       { field: 'nombre', label: 'Nombre', type: 'text', required: true },
@@ -727,7 +762,7 @@ const SCHEMAS = {
     display: ['id_area', 'nombre'],
   },
   reclamos_subarea: {
-    label: 'Subárea de Reclamo',
+    label: 'Subárea de Reclamo', titulo: 'Maestro de Subáreas de Reclamos',
     pk: 'id_subarea',
     cols: [
       { field: 'nombre',   label: 'Nombre',           type: 'text',   required: true },
@@ -738,7 +773,7 @@ const SCHEMAS = {
 
   // ── Servicios y Reclamos
   estado_reclamo: {
-    label: 'Estado de Reclamo',
+    label: 'Estado de Reclamo', titulo: 'Maestro de Estados de Reclamos',
     pk: 'id_estado_reclamo',
     cols: [
       { field: 'nombre',      label: 'Nombre',      type: 'text',     required: true },
@@ -750,7 +785,7 @@ const SCHEMAS = {
     display: ['id_estado_reclamo', 'nombre', 'descripcion', 'es_final', 'orden'],
   },
   servicios: {
-    label: 'Servicio',
+    label: 'Servicio', titulo: 'Maestro de Servicios',
     pk: 'id',
     cols: [
       { field: 'nombre',                 label: 'Nombre',                    type: 'text',     required: true },
@@ -764,7 +799,7 @@ const SCHEMAS = {
     display: ['id', 'nombre', 'descripcion', 'dias_semana', 'hora_inicio', 'hora_fin'],
   },
   tipo_reclamo: {
-    label: 'Tipo de Reclamo',
+    label: 'Tipo de Reclamo', titulo: 'Maestro de Tipos de Reclamos',
     pk: 'id_tipo_reclamo',
     cols: [
       { field: 'nombre',      label: 'Nombre',      type: 'text',     required: true },
@@ -776,7 +811,7 @@ const SCHEMAS = {
 
   // ── Agenda
   areas: {
-    label: 'Secretaría',
+    label: 'Secretaría', titulo: 'Maestro de Secretarías',
     pk: 'id',
     cols: [
       { field: 'nombre',      label: 'Nombre',      type: 'text',     required: true },
@@ -785,7 +820,7 @@ const SCHEMAS = {
     display: ['id', 'nombre', 'descripcion'],
   },
   lugares_atencion: {
-    label: 'Lugar de Atención',
+    label: 'Lugar de Atención', titulo: 'Maestro de Lugares de Atención',
     pk: 'id',
     cols: [
       { field: 'nombre',              label: 'Nombre',                   type: 'text',     required: true },
@@ -797,7 +832,7 @@ const SCHEMAS = {
     display: ['id', 'nombre', 'direccion', 'es_atencion', 'capacidad_servicios', 'id_area'],
   },
   agenda_clase: {
-    label: 'Clase de Agenda',
+    label: 'Clase de Agenda', titulo: 'Maestro de Clases de Agenda',
     pk: 'id',
     cols: [
       { field: 'nombre',                label: 'Nombre',                     type: 'text',     required: true },
@@ -812,7 +847,7 @@ const SCHEMAS = {
     display: ['id', 'nombre', 'duracion_slot_minutos', 'visible_ciudadano', 'requiere_rrhh', 'requiere_servicio', 'requiere_lugar'],
   },
   agenda_feriado: {
-    label: 'Feriado',
+    label: 'Feriado', titulo: 'Maestro de Feriados',
     pk: 'id',
     cols: [
       { field: 'fecha',       label: 'Fecha',       type: 'date',   required: true },
@@ -829,7 +864,7 @@ const SCHEMAS = {
 
   // ── Catálogos BUC
   actividades: {
-    label: 'Actividad (CLAE)',
+    label: 'Actividad (CLAE)', titulo: 'Maestro de Actividades (CLAE)',
     pk: 'id',
     cols: [
       { field: 'codigo_clae',    label: 'Código CLAE',    type: 'number',   required: true },
@@ -839,7 +874,7 @@ const SCHEMAS = {
     display: ['id', 'codigo_clae', 'descripcion', 'categoria_tasa'],
   },
   tipo_representacion: {
-    label: 'Tipo de Representación',
+    label: 'Tipo de Representación', titulo: 'Maestro de Tipos de Representación',
     pk: 'id',
     cols: [
       { field: 'tipo',        label: 'Tipo',        type: 'text',     required: true },
@@ -848,7 +883,7 @@ const SCHEMAS = {
     display: ['id', 'tipo', 'descripcion'],
   },
   nacionalidades: {
-    label: 'Nacionalidad',
+    label: 'Nacionalidad', titulo: 'Maestro de Nacionalidades',
     pk: 'id',
     cols: [
       { field: 'pais',   label: 'País',   type: 'text', required: true },
@@ -918,19 +953,24 @@ async function cargarTabla() {
   const schema = SCHEMAS[tablaActual];
   const main = document.getElementById('main');
   main.innerHTML = `
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:1.5rem;">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:1.25rem;">
       ${tablaIcon(tablaActual)}
       <div>
-        <h1 style="font-size:1.4rem;font-weight:700;letter-spacing:-0.4px;color:var(--z-primary);line-height:1.1;">${schema.label}s</h1>
+        <h1 style="font-size:1.4rem;font-weight:700;letter-spacing:-0.4px;color:var(--z-primary);line-height:1.1;">${schema.titulo || ('Maestro de ' + schema.label)}</h1>
         ${tablaSub(tablaActual) ? `<p style="font-size:.80rem;color:var(--z-text3);margin-top:2px;">${tablaSub(tablaActual)}</p>` : ''}
       </div>
     </div>
-    <div class="section-header" style="margin-bottom:1rem;">
-      <span></span>
-      <div class="section-header-actions">
-        <button class="btn-outline" onclick="abrirListado()">Listado completo</button>
+    <div class="search-panel">
+      <div class="search-panel__title">Buscar ${schema.label} existente</div>
+      <div class="search-panel__row">
+        <input class="search-panel__input" id="sp-query" type="text"
+               placeholder="Ingresá nombre o descripción..."
+               onkeydown="if(event.key==='Enter')buscarEnTabla()">
+        <button class="btn-primary" onclick="buscarEnTabla()">Buscar</button>
         <button class="btn-primary" onclick="abrirNuevo()">+ Nuevo</button>
+        <button class="btn-outline" onclick="abrirListado()">Listado</button>
       </div>
+      <div id="sp-results" style="margin-top:.75rem;"></div>
     </div>
     <div class="loading"><span class="spinner"></span></div>`;
 
@@ -971,21 +1011,65 @@ function renderVistaPrevia(rows, schema) {
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:1.25rem;">
       ${tablaIcon(tablaActual)}
       <div>
-        <h1 style="font-size:1.4rem;font-weight:700;letter-spacing:-0.4px;color:var(--z-primary);line-height:1.1;">${schema.label}s <span style="font-size:.8rem;color:var(--z-text2);font-weight:400;">(${rows.length})</span></h1>
+        <h1 style="font-size:1.4rem;font-weight:700;letter-spacing:-0.4px;color:var(--z-primary);line-height:1.1;">${schema.titulo || ('Maestro de ' + schema.label)} <span style="font-size:.8rem;color:var(--z-text2);font-weight:400;">(${rows.length})</span></h1>
         ${tablaSub(tablaActual) ? `<p style="font-size:.80rem;color:var(--z-text3);margin-top:2px;">${tablaSub(tablaActual)}</p>` : ''}
       </div>
     </div>
-    <div class="section-header" style="margin-bottom:1rem;">
-      <span></span>
-      <div class="section-header-actions">
-        <button class="btn-outline" onclick="abrirListado()">Listado completo</button>
+    <div class="search-panel">
+      <div class="search-panel__title">Buscar ${schema.label} existente</div>
+      <div class="search-panel__row">
+        <input class="search-panel__input" id="sp-query" type="text"
+               placeholder="Ingresá nombre o descripción..."
+               onkeydown="if(event.key==='Enter')buscarEnTabla()">
+        <button class="btn-primary" onclick="buscarEnTabla()">Buscar</button>
         <button class="btn-primary" onclick="abrirNuevo()">+ Nuevo</button>
+        <button class="btn-outline" onclick="abrirListado()">Listado</button>
       </div>
+      <div id="sp-results" style="margin-top:.75rem;"></div>
     </div>
     <div class="preview-section">
       <div class="preview-label">Últimos registros ingresados</div>
       <div class="preview-rows">${previewHTML}</div>
     </div>`;
+}
+
+// ── Búsqueda en panel principal ────────────────────────────────
+async function buscarEnTabla() {
+  const q = (document.getElementById('sp-query')?.value || '').trim().toLowerCase();
+  const resultsEl = document.getElementById('sp-results');
+  if (!resultsEl) return;
+  if (!q) { resultsEl.innerHTML = ''; return; }
+
+  const schema = SCHEMAS[tablaActual];
+  const labelField = schema.display.find(c => !isId(c)) || schema.display[0];
+  const subField   = schema.display.find(c => !isId(c) && c !== labelField);
+
+  resultsEl.innerHTML = `<div class="loading"><span class="spinner"></span></div>`;
+  try {
+    const res = await fetch(`${API}/${tablaActual}`, { headers: _authHeaders() });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const rows = await res.json();
+    const found = rows.filter(r =>
+      schema.display.some(f => String(r[f] ?? '').toLowerCase().includes(q))
+    );
+    if (found.length === 0) {
+      resultsEl.innerHTML = `<div style="font-size:.85rem;color:var(--z-text3);padding:.5rem 0;">Sin resultados para "<strong>${q}</strong>"</div>`;
+      return;
+    }
+    resultsEl.innerHTML = found.slice(0, 8).map(r => {
+      const pk  = r[schema.pk];
+      const lbl = r[labelField] ?? '—';
+      const sub = subField ? r[subField] : null;
+      return `<div class="preview-row" onclick="abrirEditar(${pk})" title="Editar" style="background:#fff;margin-bottom:4px;">
+        <span class="preview-row__main">${String(lbl).replace(/</g,'&lt;')}</span>
+        ${sub != null ? `<span class="preview-row__meta">${String(sub).replace(/</g,'&lt;').slice(0,40)}</span>` : ''}
+        <span class="preview-row__meta" style="margin-left:auto;">ID ${pk}</span>
+        <span class="preview-row__action">Editar →</span>
+      </div>`;
+    }).join('') + (found.length > 8 ? `<div style="font-size:.8rem;color:var(--z-text3);padding:.25rem 0;">… y ${found.length - 8} más — usá Listado para ver todos</div>` : '');
+  } catch (e) {
+    resultsEl.innerHTML = `<div style="font-size:.85rem;color:var(--color-error);">Error: ${e.message}</div>`;
+  }
 }
 
 // ── Listado completo con filtros ───────────────────────────────
@@ -998,7 +1082,7 @@ async function abrirListado() {
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:1.25rem;">
       ${tablaIcon(tablaActual)}
       <div>
-        <h1 style="font-size:1.4rem;font-weight:700;letter-spacing:-0.4px;color:var(--z-primary);line-height:1.1;">${schema.label}s — Listado</h1>
+        <h1 style="font-size:1.4rem;font-weight:700;letter-spacing:-0.4px;color:var(--z-primary);line-height:1.1;">${schema.titulo || ('Maestro de ' + schema.label)} — Listado</h1>
         ${tablaSub(tablaActual) ? `<p style="font-size:.80rem;color:var(--z-text3);margin-top:2px;">${tablaSub(tablaActual)}</p>` : ''}
       </div>
     </div>
