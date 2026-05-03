@@ -56,7 +56,8 @@ Monorepo: `github.com/CesarZeta/zaris-zge`.
 | Prod | API | `https://zaris-api-production-bf0b.up.railway.app` |
 | Prod | Health | `https://zaris-api-production-bf0b.up.railway.app/api/health` |
 | Prod | Swagger | `https://zaris-api-production-bf0b.up.railway.app/docs` |
-| Prod | Frontend | `https://cesarzeta.github.io/zaris-zge/frontend/menu.html` |
+| Prod | Frontend | `https://cesarzeta.github.io/zaris-zge/index.html` |
+| Prod | Login | `https://cesarzeta.github.io/zaris-zge/frontend/login.html` |
 | Local | API | `http://127.0.0.1:8000` — `$env:ENV_FILE=".env.local"; uvicorn app.main:app --host 127.0.0.1 --port 8000` (desde `backend/`) |
 | Local | Web app | `http://localhost:5173` — `cd web-app && pnpm dev` |
 | Local | Frontend | `http://localhost:8080` — `python -m http.server 8080` (raíz del repo) |
@@ -116,10 +117,19 @@ El estilo oficial de ZARIS vive en `design-system/`. **Nunca** usar `styles.css`
 
 ### CSS a incluir en todo HTML frontend (vanilla)
 
+La ruta depende de dónde vive el archivo:
+
 ```html
+<!-- Módulos en frontend/ (un nivel de profundidad): -->
 <link rel="stylesheet" href="../design-system/fonts/fonts.css">
 <link rel="stylesheet" href="../design-system/colors_and_type.css">
+
+<!-- Archivos en la raíz (index.html, welcome.html cargado desde raíz): -->
+<link rel="stylesheet" href="design-system/fonts/fonts.css">
+<link rel="stylesheet" href="design-system/colors_and_type.css">
 ```
+
+**Quirk:** `welcome.html` vive en `frontend/` pero el servidor lo sirve como iframe desde la raíz, por lo que usa la ruta sin `../`.
 
 ### Tokens CSS — no inventar variables propias
 
@@ -191,6 +201,38 @@ if (!localStorage.getItem('zaris_session')) {
 ```
 El shell `index.html` detecta que no hay sesión y redirige a `frontend/login.html`.
 
+### Manejo de 401 en módulos vanilla
+
+Cuando un fetch devuelve 401 (token expirado o inválido), el módulo debe limpiar la sesión y redirigir. Patrón estándar con `_handleUnauth()`:
+
+```js
+function _handleUnauth() {
+  localStorage.removeItem('zaris_session');
+  if (window.self !== window.top) {
+    window.parent.location.href = '../index.html';
+  } else {
+    window.location.href = '../index.html';
+  }
+}
+
+// En cada fetch protegido:
+const res = await fetch(url, { headers: _authHeaders() });
+if (res.status === 401) { _handleUnauth(); return; }
+if (!res.ok) throw new Error(`HTTP ${res.status}`);
+```
+
+**Implementado en:** `admin_tablas.html` (todas las llamadas a la API).
+
+### Topbar — menú de usuario con cerrar sesión
+
+El topbar del shell (`index.html`) tiene un dropdown al hacer clic en el nombre/avatar:
+- Muestra nombre completo y rol del usuario logueado
+- Botón **Cerrar sesión** que llama a `localStorage.removeItem('zaris_session')` y redirige a `frontend/login.html`
+- CSS en `frontend/css/menu.css` bajo `.user-menu*`
+- Lógica en `frontend/js/menu.js`
+
+IDs relevantes: `#user-menu-trigger`, `#user-menu-dropdown`, `#btn-logout`, `#topbar-avatar`, `#topbar-context`, `#user-menu-info`.
+
 ### Login vanilla
 El shell redirige a `frontend/login.html` si no hay `zaris_session` en localStorage.  
 Credenciales dev: email `<username>@municipio.gob.ar`, password `[redactado]` (generadas con `seed_auth.py`).
@@ -242,6 +284,27 @@ Debajo del panel van los últimos registros ingresados (vista previa). El patró
 
 ### Tablas actualmente configuradas
 `agentes`, `equipos`, `equipo_usuarios`, `servicios`, `tipo_usuario`, `cargos`, `area`, `subarea`, `usuarios`, `tipo_reclamo`, `tipo_representacion`, `actividades`, `nacionalidades`, `reclamos_area`, `reclamos_subarea`, `estado_reclamo`, `areas`, `lugares_atencion`, `agenda_clase`, `agenda_feriado`.
+
+## 17. Slash Commands del Proyecto
+
+Comandos disponibles en `.claude/commands/` — invocar con `/nombre`:
+
+| Comando | Descripción |
+|---|---|
+| `/deploy-railway` | Commit + push + polling health check Railway |
+| `/check-api-health` | Verifica todos los endpoints críticos en prod |
+| `/run-migration` | Aplica SQL pendiente en local o Supabase prod |
+| `/seed-table` | Inserta datos demo en tablas vacías (idempotente) |
+| `/audit-shell` | Verifica nav__links, guards, patrones iframe y SCHEMAS |
+| `/push-and-verify` | Ciclo completo: commit → push → deploy → verificación |
+
+### Scripts de mantenimiento
+
+| Script | Uso |
+|---|---|
+| `backend/seed_auth.py` | Aplica migración 11 (email en usuarios) + setea passwords `[redactado]` |
+| `backend/seed_demo.py` | Seed local — tablas vacías contra `http://127.0.0.1:8000` |
+| `backend/seed_prod.py` | Seed prod — tablas vacías contra Railway (confirmar antes de usar) |
 
 ## 16. Patrón de Baja Lógica — API y Frontend
 
