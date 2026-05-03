@@ -307,6 +307,67 @@ Comandos disponibles en `.claude/commands/` — invocar con `/nombre`:
 | `backend/seed_auth.py` | Aplica migración 11 (email en usuarios) + setea passwords `[redactado]` |
 | `backend/seed_demo.py` | Seed local — tablas vacías contra `http://127.0.0.1:8000` |
 | `backend/seed_prod.py` | Seed prod — tablas vacías contra Railway (confirmar antes de usar) |
+| `backend/seed_incremental.py` | Seed incremental (no borra): cargos, áreas, subareas, tipo_reclamo, ciudadanos (500 desde CSVs en `Tablas Iniciales/`) |
+| `backend/seed_reclamos_prod.py` | Inserta 20 reclamos demo en prod; detecta automáticamente si el constraint de estado usa tildes |
+
+## 18. Módulo Reclamos
+
+### Tablas
+
+| Tabla | Rol |
+|---|---|
+| `reclamos` | Transaccional principal — un registro por reclamo |
+| `reclamo_historial` | Timeline de cambios de estado (INSERT solo, nunca UPDATE) |
+| `tipo_reclamo` | Maestro con `id_area` (FK → `area`) y `sla_dias` |
+| `estado_reclamo` | Maestro de estados válidos — la API valida contra esta tabla |
+
+`nro_reclamo` se genera automáticamente vía trigger `trg_nro_reclamo` → `REC-YYYY-XXXXXX`.
+
+### Endpoints
+
+```
+GET  /api/v1/reclamos                   → lista con filtros (estado, id_area, prioridad, texto, limit, offset)
+GET  /api/v1/reclamos/stats             → conteos por estado para tarjetas del dashboard
+GET  /api/v1/reclamos/{id}             → detalle con historial de estado
+POST /api/v1/reclamos                  → crear reclamo (requiere id_ciudadano BUC)
+PUT  /api/v1/reclamos/{id}/estado      → cambiar estado + insertar entrada en historial
+GET  /api/v1/reclamos/catalogo/areas   → áreas activas para filtros
+GET  /api/v1/reclamos/catalogo/tipos   → tipos de reclamo activos
+```
+
+### Validación de estados
+
+`PUT /{id}/estado` consulta `estado_reclamo WHERE activo=TRUE` para obtener los valores permitidos. Fallback a set hardcoded `{"Ingresado", "En revisión", "En gestión", "Resuelto", "Rechazado", "Cerrado"}` si la tabla está vacía.
+
+### Ciudadano en reclamos
+
+Todo reclamo requiere `id_ciudadano` válido de la BUC. El frontend busca ciudadanos vía `GET /api/v1/buc/ciudadanos/buscar?q=<texto>` con debounce de 300ms antes de permitir el submit.
+
+### Patrón XSS — resultados de búsqueda BUC en vanilla JS
+
+Cuando se renderizan resultados donde el usuario puede hacer clic para seleccionar, **nunca** interpolar datos del servidor en handlers `onclick`. Usar `data-attrs` + event delegation:
+
+```js
+// Guardar datos en un objeto auxiliar
+let _bucResultados = {};
+data.forEach(c => { _bucResultados[c.id_ciudadano] = c; });
+
+// Renderizar con data-id, escapar HTML en texto visible
+res.innerHTML = data.map(c => {
+    const nombre = (c.nombre || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return `<div class="buc-item" data-id="${c.id_ciudadano}">${nombre}</div>`;
+}).join('');
+
+// Attach listeners después del render
+res.querySelectorAll('.buc-item[data-id]').forEach(el => {
+    el.addEventListener('click', () => {
+        const c = _bucResultados[parseInt(el.dataset.id)];
+        if (c) seleccionarCiudadano(c.id_ciudadano, c.apellido, c.nombre, c.cuil);
+    });
+});
+```
+
+**Implementado en:** `frontend/reclamos.html` (búsqueda de ciudadano en modal nuevo reclamo).
 
 ## 16. Patrón de Baja Lógica — API y Frontend
 
