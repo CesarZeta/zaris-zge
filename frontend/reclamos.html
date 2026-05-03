@@ -95,6 +95,7 @@
       display: flex; align-items: center; gap: 6px;
     }
     .btn-primary:hover { background: #d84300; }
+    .btn-primary:disabled { opacity: .5; cursor: default; }
     .btn-outline {
       background: transparent;
       border: 1px solid var(--border-primary);
@@ -226,7 +227,7 @@
     .drawer {
       position: fixed;
       top: 0; right: 0;
-      width: 480px; max-width: 95vw;
+      width: 500px; max-width: 95vw;
       height: 100vh;
       background: var(--surface-100);
       border-left: 1px solid var(--border-primary);
@@ -255,7 +256,7 @@
     .drawer-footer {
       padding: 14px 24px;
       border-top: 1px solid var(--border-primary);
-      display: flex; gap: 8px; justify-content: flex-end;
+      display: flex; gap: 8px; justify-content: flex-end; align-items: center;
     }
 
     .detail-section { margin-bottom: 20px; }
@@ -294,7 +295,7 @@
     .timeline-meta { font-size: 0.74rem; color: var(--fg-3); margin-top: 2px; }
     .timeline-note { font-size: 0.82rem; color: var(--fg-2); margin-top: 4px; font-style: italic; }
 
-    /* ── Modal nuevo reclamo ── */
+    /* ── Modal cambio de estado ── */
     .modal-overlay {
       position: fixed; inset: 0;
       background: rgba(38,37,30,.5);
@@ -308,7 +309,7 @@
       background: var(--surface-100);
       border: 1px solid var(--border-primary);
       border-radius: 16px;
-      width: 560px; max-width: 95vw;
+      width: 580px; max-width: 95vw;
       max-height: 88vh; overflow-y: auto;
       transform: translateY(14px);
       transition: transform 0.2s;
@@ -357,6 +358,30 @@
     .field textarea { resize: vertical; min-height: 80px; }
     .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
+    /* ── Búsqueda de ciudadano inline ── */
+    .buc-search { position: relative; }
+    .buc-results {
+      position: absolute; top: 100%; left: 0; right: 0;
+      background: var(--surface-100); border: 1px solid var(--border-medium);
+      border-top: none; border-radius: 0 0 8px 8px;
+      max-height: 180px; overflow-y: auto; z-index: 50;
+    }
+    .buc-item {
+      padding: 0.5rem 0.8rem; cursor: pointer; font-size: 0.84rem;
+      border-bottom: 1px solid var(--border-primary);
+      transition: background 0.1s;
+    }
+    .buc-item:hover { background: var(--surface-300); }
+    .buc-item:last-child { border-bottom: none; }
+    .buc-selected {
+      background: rgba(245,78,0,.06);
+      border: 1px solid rgba(245,78,0,.2);
+      border-radius: 8px;
+      padding: 0.45rem 0.8rem;
+      font-size: 0.84rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+
     /* ── Toast ── */
     #toast {
       position: fixed; bottom: 1.5rem; right: 1.5rem;
@@ -371,19 +396,22 @@
     #toast.err { background: rgba(207,45,86,.12); color: #b91c1c; border: 1px solid rgba(207,45,86,.3); }
 
     .empty { text-align: center; padding: 3rem; color: var(--fg-3); font-size: 0.9rem; }
+    .loading { text-align: center; padding: 2rem; color: var(--fg-3); font-size: 0.84rem; }
   </style>
 </head>
 <body>
 
 <!-- ── Guard iframe ──────────────────────────────────── -->
 <script>
-if (!localStorage.getItem('zaris_session')) {
+function _handleUnauth() {
+  localStorage.removeItem('zaris_session');
   if (window.self !== window.top) {
-    window.parent.shellNavigate && window.parent.shellNavigate('frontend/welcome.html');
+    window.parent.location.href = '../index.html';
   } else {
     window.location.href = '../index.html';
   }
 }
+if (!localStorage.getItem('zaris_session')) { _handleUnauth(); }
 </script>
 
 <!-- ── Header ── -->
@@ -420,9 +448,9 @@ if (!localStorage.getItem('zaris_session')) {
       </div>
     </div>
     <div class="page-header__actions">
-      <button class="btn-outline" onclick="window.print()">
-        <i data-lucide="printer" style="width:14px;height:14px"></i>
-        Imprimir
+      <button class="btn-outline" onclick="cargarReclamos()">
+        <i data-lucide="refresh-cw" style="width:14px;height:14px"></i>
+        Actualizar
       </button>
       <button class="btn-primary" onclick="abrirNuevoReclamo()">
         <i data-lucide="plus" style="width:14px;height:14px"></i>
@@ -436,7 +464,7 @@ if (!localStorage.getItem('zaris_session')) {
     <div class="stat-card">
       <div class="stat-label">Total activos</div>
       <div class="stat-value" id="stat-total">—</div>
-      <div class="stat-delta">Este mes</div>
+      <div class="stat-delta">Registrados</div>
     </div>
     <div class="stat-card stat-card--alert">
       <div class="stat-label">Ingresados</div>
@@ -457,7 +485,7 @@ if (!localStorage.getItem('zaris_session')) {
 
   <!-- ── Filtros ── -->
   <div class="filter-bar">
-    <div class="filter-group" style="min-width:200px">
+    <div class="filter-group" style="min-width:220px">
       <label>Buscar</label>
       <input type="text" id="flt-texto" placeholder="DNI, nombre, descripción...">
     </div>
@@ -477,11 +505,6 @@ if (!localStorage.getItem('zaris_session')) {
       <label>Área</label>
       <select id="flt-area">
         <option value="">Todas</option>
-        <option value="Obras Públicas">Obras Públicas</option>
-        <option value="Salud">Salud</option>
-        <option value="Servicios Urbanos">Servicios Urbanos</option>
-        <option value="Asistencia Social">Asistencia Social</option>
-        <option value="Tránsito">Tránsito</option>
       </select>
     </div>
     <div class="filter-group">
@@ -494,7 +517,7 @@ if (!localStorage.getItem('zaris_session')) {
       </select>
     </div>
     <div class="filter-actions">
-      <button class="btn-primary" onclick="aplicarFiltros()">Filtrar</button>
+      <button class="btn-primary" onclick="cargarReclamos()">Filtrar</button>
       <button class="btn-outline" onclick="limpiarFiltros()">Limpiar</button>
     </div>
   </div>
@@ -514,7 +537,7 @@ if (!localStorage.getItem('zaris_session')) {
         </tr>
       </thead>
       <tbody id="tbodyReclamos">
-        <tr><td colspan="7" class="empty">Cargando...</td></tr>
+        <tr><td colspan="7" class="loading">Cargando...</td></tr>
       </tbody>
     </table>
   </div>
@@ -531,11 +554,41 @@ if (!localStorage.getItem('zaris_session')) {
       </div>
       <button class="btn-close-drawer" onclick="cerrarDrawer()">✕ Cerrar</button>
     </div>
-    <div class="drawer-body" id="drawerBody">
-    </div>
+    <div class="drawer-body" id="drawerBody"></div>
     <div class="drawer-footer">
       <button class="btn-outline" onclick="cerrarDrawer()">Cerrar</button>
-      <button class="btn-primary" id="btnCambiarEstado" onclick="cambiarEstadoReclamo()">Cambiar estado</button>
+      <button class="btn-primary" id="btnCambiarEstado" onclick="abrirModalEstado()">Cambiar estado</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal cambio de estado ── -->
+<div class="modal-overlay" id="modalEstado">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Cambiar estado del reclamo</h3>
+      <button class="btn-close" onclick="cerrarModalEstado()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Nuevo estado *</label>
+        <select id="est-nuevo">
+          <option value="Ingresado">Ingresado</option>
+          <option value="En revisión">En revisión</option>
+          <option value="En gestión">En gestión</option>
+          <option value="Resuelto">Resuelto</option>
+          <option value="Rechazado">Rechazado</option>
+          <option value="Cerrado">Cerrado</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Nota (opcional)</label>
+        <textarea id="est-nota" placeholder="Observación sobre el cambio de estado..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="cerrarModalEstado()">Cancelar</button>
+      <button class="btn-primary" onclick="guardarCambioEstado()">Confirmar cambio</button>
     </div>
   </div>
 </div>
@@ -545,44 +598,30 @@ if (!localStorage.getItem('zaris_session')) {
   <div class="modal">
     <div class="modal-header">
       <h3>Nuevo reclamo</h3>
-      <button class="btn-close" onclick="cerrarModal()">✕</button>
+      <button class="btn-close" onclick="cerrarModalNuevo()">✕</button>
     </div>
     <div class="modal-body">
-      <div class="field-row">
-        <div class="field">
-          <label>DNI / CUIL del ciudadano *</label>
-          <input type="text" id="nr-dni" placeholder="Ej: 30123456">
+      <!-- Búsqueda de ciudadano BUC -->
+      <div class="field">
+        <label>Ciudadano (DNI o apellido) *</label>
+        <div class="buc-search">
+          <input type="text" id="nr-buc-q" placeholder="Buscar por DNI o apellido..." oninput="buscarCiudadano(this.value)">
+          <div class="buc-results" id="buc-results" style="display:none"></div>
         </div>
-        <div class="field">
-          <label>Nombre completo *</label>
-          <input type="text" id="nr-nombre" placeholder="Apellido, Nombre">
-        </div>
+        <div id="buc-selected" style="margin-top:6px;display:none"></div>
+        <input type="hidden" id="nr-id-ciudadano">
       </div>
       <div class="field-row">
         <div class="field">
           <label>Área *</label>
-          <select id="nr-area">
+          <select id="nr-area" onchange="cargarTiposReclamo(this.value)">
             <option value="">— Seleccionar —</option>
-            <option>Obras Públicas</option>
-            <option>Salud</option>
-            <option>Servicios Urbanos</option>
-            <option>Asistencia Social</option>
-            <option>Tránsito</option>
           </select>
         </div>
         <div class="field">
           <label>Tipo de reclamo *</label>
           <select id="nr-tipo">
-            <option value="">— Seleccionar —</option>
-            <option>Bache en calzada</option>
-            <option>Luminaria apagada</option>
-            <option>Árbol caído</option>
-            <option>Turno no otorgado</option>
-            <option>Falta de insumos</option>
-            <option>Basura no recolectada</option>
-            <option>Subsidio denegado</option>
-            <option>Demora en trámite</option>
-            <option>Otro</option>
+            <option value="">— Seleccionar área primero —</option>
           </select>
         </div>
       </div>
@@ -596,13 +635,9 @@ if (!localStorage.getItem('zaris_session')) {
           </select>
         </div>
         <div class="field">
-          <label>Teléfono de contacto</label>
-          <input type="text" id="nr-tel" placeholder="11 1234-5678">
+          <label>Domicilio del reclamo</label>
+          <input type="text" id="nr-domicilio" placeholder="Calle, altura, barrio">
         </div>
-      </div>
-      <div class="field">
-        <label>Domicilio del reclamo</label>
-        <input type="text" id="nr-domicilio" placeholder="Calle, altura, barrio">
       </div>
       <div class="field">
         <label>Descripción *</label>
@@ -610,8 +645,8 @@ if (!localStorage.getItem('zaris_session')) {
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn-outline" onclick="cerrarModal()">Cancelar</button>
-      <button class="btn-primary" onclick="guardarNuevoReclamo()">Registrar reclamo</button>
+      <button class="btn-outline" onclick="cerrarModalNuevo()">Cancelar</button>
+      <button class="btn-primary" id="btnGuardarReclamo" onclick="guardarNuevoReclamo()">Registrar reclamo</button>
     </div>
   </div>
 </div>
@@ -620,7 +655,7 @@ if (!localStorage.getItem('zaris_session')) {
 <div id="toast"></div>
 
 <script>
-// ── Auth header ───────────────────────────────────────────────────
+// ── Config ────────────────────────────────────────────────────
 const _local = ['localhost', '127.0.0.1', '0.0.0.0'];
 const _base  = _local.includes(window.location.hostname)
   ? 'http://127.0.0.1:8000'
@@ -628,7 +663,16 @@ const _base  = _local.includes(window.location.hostname)
 
 function _authHeaders() {
   const s = JSON.parse(localStorage.getItem('zaris_session') || 'null');
-  return s?.access_token ? { 'Authorization': `Bearer ${s.access_token}` } : {};
+  return s?.access_token
+    ? { 'Authorization': `Bearer ${s.access_token}`, 'Content-Type': 'application/json' }
+    : { 'Content-Type': 'application/json' };
+}
+
+async function _apiFetch(url, opts = {}) {
+  const res = await fetch(_base + url, { ...opts, headers: _authHeaders() });
+  if (res.status === 401) { _handleUnauth(); return null; }
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+  return res.json();
 }
 
 // Mostrar usuario en header
@@ -637,31 +681,12 @@ if (_sess?.user) {
   document.getElementById('headerUsuario').textContent = _sess.user.nombre || _sess.user.username || '';
 }
 
-// ── Dataset demo ──────────────────────────────────────────────────
-// En producción estos datos vendrán del backend /api/v1/reclamos
-const RECLAMOS_DEMO = [
-  { id: 1001, ciudadano: 'Rodríguez, María Elena', dni: '28.456.789', area: 'Obras Públicas', tipo: 'Bache en calzada', domicilio: 'Av. San Martín 1240', estado: 'En gestión', prioridad: 'Alta', fecha: '2026-04-28', responsable: 'García, Juan', desc: 'Gran bache en la calzada frente al número 1240, peligroso para vehículos y peatones. Fue reportado hace 15 días sin respuesta.', historia: [{fecha:'2026-04-28',accion:'Ingresado',usuario:'Operador Pérez',nota:'Reclamo registrado en ventanilla'},{fecha:'2026-04-29',accion:'Asignado a Obras Públicas',usuario:'Supervisor García',nota:''},{fecha:'2026-04-30',accion:'En gestión',usuario:'García, Juan',nota:'Equipo programado para el 02/05'}] },
-  { id: 1002, ciudadano: 'López, Carlos Alberto', dni: '35.120.044', area: 'Servicios Urbanos', tipo: 'Luminaria apagada', domicilio: 'Calle 9 de Julio 456', estado: 'Ingresado', prioridad: 'Media', fecha: '2026-04-29', responsable: '—', desc: 'Tres luminarias apagadas en el bloque entre Mitre y Belgrano. La zona queda sin iluminación desde las 20hs.', historia: [{fecha:'2026-04-29',accion:'Ingresado',usuario:'Operador Gómez',nota:'Reclamo registrado por web'}] },
-  { id: 1003, ciudadano: 'Fernández, Ana Lucía', dni: '40.897.123', area: 'Salud', tipo: 'Turno no otorgado', domicilio: 'Centro de Salud Nº 3', estado: 'En revisión', prioridad: 'Alta', fecha: '2026-04-27', responsable: 'Martínez, Laura', desc: 'Paciente con afección crónica no puede obtener turno con el médico especialista hace tres semanas. El sistema no muestra disponibilidad.', historia: [{fecha:'2026-04-27',accion:'Ingresado',usuario:'Operador Torres',nota:''},{fecha:'2026-04-28',accion:'En revisión',usuario:'Martínez, Laura',nota:'Se consulta al área de Salud disponibilidad'}] },
-  { id: 1004, ciudadano: 'Díaz, Roberto Marcelo', dni: '22.345.678', area: 'Asistencia Social', tipo: 'Subsidio denegado', domicilio: 'Bv. Illia 890', estado: 'Resuelto', prioridad: 'Alta', fecha: '2026-04-20', responsable: 'Ramos, Silvia', desc: 'Ciudadano con certificado de discapacidad solicita subsidio de transporte rechazado por error administrativo en carga de datos.', historia: [{fecha:'2026-04-20',accion:'Ingresado',usuario:'Operador López',nota:''},{fecha:'2026-04-21',accion:'Asignado',usuario:'Ramos, Silvia',nota:''},{fecha:'2026-04-23',accion:'En gestión',usuario:'Ramos, Silvia',nota:'Error detectado en el sistema'},{fecha:'2026-04-25',accion:'Resuelto',usuario:'Ramos, Silvia',nota:'Subsidio otorgado y notificado al ciudadano'}] },
-  { id: 1005, ciudadano: 'Acosta, Valeria', dni: '38.567.890', area: 'Servicios Urbanos', tipo: 'Árbol caído', domicilio: 'Laprida 234 esq. Paso', estado: 'Resuelto', prioridad: 'Alta', fecha: '2026-04-26', responsable: 'Equipo Urbano', desc: 'Árbol caído sobre la vereda pública bloqueando el paso tras la tormenta del 25/04. Riesgo eléctrico por cercanía a cables.', historia: [{fecha:'2026-04-26',accion:'Ingresado',usuario:'Operador Núñez',nota:'Urgencia alta — riesgo eléctrico'},{fecha:'2026-04-26',accion:'Derivado a emergencias',usuario:'Supervisor Castro',nota:''},{fecha:'2026-04-27',accion:'Resuelto',usuario:'Equipo Urbano',nota:'Árbol retirado. Sin daños eléctricos.'}] },
-  { id: 1006, ciudadano: 'Morales, Diego Hernán', dni: '31.234.567', area: 'Tránsito', tipo: 'Demora en trámite', domicilio: 'Dirección de Tránsito', estado: 'En revisión', prioridad: 'Baja', fecha: '2026-05-01', responsable: '—', desc: 'Renovación de licencia de conducir solicitada hace 45 días. El ciudadano no recibió respuesta ni notificación.', historia: [{fecha:'2026-05-01',accion:'Ingresado',usuario:'Operador Díaz',nota:'Reclamo registrado en ventanilla principal'}] },
-  { id: 1007, ciudadano: 'González, Patricia', dni: '27.890.123', area: 'Servicios Urbanos', tipo: 'Basura no recolectada', domicilio: 'Rivadavia 567, B° Centro', estado: 'Cerrado', prioridad: 'Media', fecha: '2026-04-18', responsable: 'Sánchez, Hugo', desc: 'Hace dos semanas no pasa el camión recolector por el bloque. Los vecinos acumulan bolsas en la vereda.', historia: [{fecha:'2026-04-18',accion:'Ingresado',usuario:'Operador Vera',nota:''},{fecha:'2026-04-19',accion:'Asignado',usuario:'Sánchez, Hugo',nota:''},{fecha:'2026-04-21',accion:'Resuelto',usuario:'Sánchez, Hugo',nota:'Falla en ruta del camión corregida'},{fecha:'2026-04-22',accion:'Cerrado',usuario:'Supervisor Castro',nota:'Verificación in situ confirmada'}] },
-  { id: 1008, ciudadano: 'Herrera, Marcelo', dni: '33.456.789', area: 'Obras Públicas', tipo: 'Falta de insumos', domicilio: 'Hospital Municipal', estado: 'Ingresado', prioridad: 'Alta', fecha: '2026-05-02', responsable: '—', desc: 'Falta de materiales de construcción para obra en centro comunitario Norte. Obra paralizada hace 3 días.', historia: [{fecha:'2026-05-02',accion:'Ingresado',usuario:'Operador Paz',nota:'Reportado por responsable de obra'}] },
-];
-
-let reclamosActivos = [...RECLAMOS_DEMO];
+// ── Estado global ──────────────────────────────────────────────
 let reclamoSeleccionado = null;
+let _bucTimer = null;
+let _bucCiudadano = null;
 
-// ── Stats ─────────────────────────────────────────────────────────
-function actualizarStats(rows) {
-  document.getElementById('stat-total').textContent      = rows.length;
-  document.getElementById('stat-ingresados').textContent = rows.filter(r => r.estado === 'Ingresado').length;
-  document.getElementById('stat-gestion').textContent    = rows.filter(r => r.estado === 'En gestión' || r.estado === 'En revisión').length;
-  document.getElementById('stat-resueltos').textContent  = rows.filter(r => r.estado === 'Resuelto').length;
-}
-
-// ── Badge estado ──────────────────────────────────────────────────
+// ── Helpers visuales ──────────────────────────────────────────
 function badgeEstado(estado) {
   const map = {
     'Ingresado':   'ingresado',
@@ -671,58 +696,117 @@ function badgeEstado(estado) {
     'Rechazado':   'rechazado',
     'Cerrado':     'cerrado',
   };
-  const cls = map[estado] || 'ingresado';
-  return `<span class="badge badge-${cls}">${estado}</span>`;
+  return `<span class="badge badge-${map[estado]||'ingresado'}">${estado}</span>`;
 }
 
 function badgePrio(p) {
   const map = { 'Alta': 'alta', 'Media': 'media', 'Baja': 'baja' };
-  const cls = map[p] || 'media';
-  return `<span class="prio prio-${cls}">${p}</span>`;
+  return `<span class="prio prio-${map[p]||'media'}">${p}</span>`;
 }
 
-// ── Render tabla ──────────────────────────────────────────────────
-function renderTabla(rows) {
-  const tbody = document.getElementById('tbodyReclamos');
-  if (rows.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="empty">Sin reclamos que coincidan con los filtros</td></tr>';
+function _fmtFecha(iso) {
+  if (!iso) return '—';
+  return iso.slice(0, 10);
+}
+
+// ── Stats ─────────────────────────────────────────────────────
+async function cargarStats() {
+  try {
+    const stats = await _apiFetch('/api/v1/reclamos/stats');
+    if (!stats) return;
+    const total = Object.values(stats).reduce((a, b) => a + b, 0);
+    document.getElementById('stat-total').textContent      = total;
+    document.getElementById('stat-ingresados').textContent = stats['Ingresado'] || 0;
+    document.getElementById('stat-gestion').textContent    = (stats['En gestión']||0) + (stats['En revisión']||0);
+    document.getElementById('stat-resueltos').textContent  = stats['Resuelto'] || 0;
+  } catch(e) {
+    console.warn('Error stats:', e);
+  }
+}
+
+// ── Cargar áreas en selects ───────────────────────────────────
+async function cargarAreas() {
+  try {
+    const areas = await _apiFetch('/api/v1/reclamos/catalogo/areas');
+    if (!areas) return;
+    const flt = document.getElementById('flt-area');
+    const nrArea = document.getElementById('nr-area');
+    areas.forEach(a => {
+      flt.insertAdjacentHTML('beforeend', `<option value="${a.id_area}">${a.nombre}</option>`);
+      nrArea.insertAdjacentHTML('beforeend', `<option value="${a.id_area}">${a.nombre}</option>`);
+    });
+  } catch(e) {
+    console.warn('Error cargando áreas:', e);
+  }
+}
+
+async function cargarTiposReclamo(idArea) {
+  const sel = document.getElementById('nr-tipo');
+  sel.innerHTML = '<option value="">Cargando...</option>';
+  if (!idArea) {
+    sel.innerHTML = '<option value="">— Seleccionar área primero —</option>';
     return;
   }
-  tbody.innerHTML = rows.map(r => `
-    <tr onclick="abrirDetalle(${r.id})">
-      <td class="mono">#${r.id}</td>
-      <td>
-        <strong style="font-size:.85rem">${r.ciudadano}</strong>
-        <div style="font-size:.72rem;color:var(--fg-3);font-family:var(--font-mono)">${r.dni}</div>
-      </td>
-      <td>
-        <div style="font-size:.84rem;font-weight:500">${r.tipo}</div>
-        <div style="font-size:.72rem;color:var(--fg-3)">${r.area}</div>
-      </td>
-      <td>${badgeEstado(r.estado)}</td>
-      <td>${badgePrio(r.prioridad)}</td>
-      <td class="mono" style="font-size:.78rem">${r.fecha}</td>
-      <td style="font-size:.82rem;color:var(--fg-2)">${r.responsable}</td>
-    </tr>
-  `).join('');
+  try {
+    const tipos = await _apiFetch(`/api/v1/reclamos/catalogo/tipos?id_area=${idArea}`);
+    if (!tipos) return;
+    sel.innerHTML = '<option value="">— Seleccionar tipo —</option>';
+    tipos.forEach(t => {
+      sel.insertAdjacentHTML('beforeend', `<option value="${t.id_tipo_reclamo}">${t.nombre}</option>`);
+    });
+  } catch(e) {
+    sel.innerHTML = '<option value="">Error al cargar tipos</option>';
+  }
 }
 
-// ── Filtros ───────────────────────────────────────────────────────
-function aplicarFiltros() {
-  const txt   = document.getElementById('flt-texto').value.toLowerCase().trim();
+// ── Cargar reclamos ───────────────────────────────────────────
+async function cargarReclamos() {
+  const tbody = document.getElementById('tbodyReclamos');
+  tbody.innerHTML = '<tr><td colspan="7" class="loading">Cargando...</td></tr>';
+
+  const params = new URLSearchParams();
+  const txt   = document.getElementById('flt-texto').value.trim();
   const est   = document.getElementById('flt-estado').value;
   const area  = document.getElementById('flt-area').value;
   const prio  = document.getElementById('flt-prio').value;
+  if (txt)  params.set('texto', txt);
+  if (est)  params.set('estado', est);
+  if (area) params.set('id_area', area);
+  if (prio) params.set('prioridad', prio);
+  params.set('limit', '200');
 
-  let rows = [...RECLAMOS_DEMO];
-  if (txt)  rows = rows.filter(r => r.ciudadano.toLowerCase().includes(txt) || r.dni.includes(txt) || r.tipo.toLowerCase().includes(txt) || r.desc.toLowerCase().includes(txt));
-  if (est)  rows = rows.filter(r => r.estado === est);
-  if (area) rows = rows.filter(r => r.area === area);
-  if (prio) rows = rows.filter(r => r.prioridad === prio);
+  try {
+    const rows = await _apiFetch(`/api/v1/reclamos?${params}`);
+    if (!rows) return;
 
-  reclamosActivos = rows;
-  actualizarStats(rows);
-  renderTabla(rows);
+    if (rows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty">Sin reclamos que coincidan con los filtros</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = rows.map(r => `
+      <tr onclick="abrirDetalle(${r.id_reclamo})">
+        <td class="mono">${r.nro_reclamo || '#' + r.id_reclamo}</td>
+        <td>
+          <strong style="font-size:.85rem">${r.ciudadano_apellido || '—'}, ${r.ciudadano_nombre || '—'}</strong>
+          <div style="font-size:.72rem;color:var(--fg-3);font-family:var(--font-mono)">${r.doc_nro || '—'}</div>
+        </td>
+        <td>
+          <div style="font-size:.84rem;font-weight:500">${r.tipo_nombre || '—'}</div>
+          <div style="font-size:.72rem;color:var(--fg-3)">${r.area_nombre || '—'}</div>
+        </td>
+        <td>${badgeEstado(r.estado)}</td>
+        <td>${badgePrio(r.prioridad)}</td>
+        <td class="mono" style="font-size:.78rem">${_fmtFecha(r.fecha_alta)}</td>
+        <td style="font-size:.82rem;color:var(--fg-2)">${r.agente_nombre || '—'}</td>
+      </tr>
+    `).join('');
+
+    await cargarStats();
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="7" class="empty">Error al cargar: ${e.message}</td></tr>`;
+    toast('Error al cargar reclamos', 'err');
+  }
 }
 
 function limpiarFiltros() {
@@ -730,57 +814,65 @@ function limpiarFiltros() {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
-  aplicarFiltros();
+  cargarReclamos();
 }
 
-// ── Drawer detalle ────────────────────────────────────────────────
-function abrirDetalle(id) {
-  const r = RECLAMOS_DEMO.find(x => x.id === id);
-  if (!r) return;
-  reclamoSeleccionado = r;
-
-  document.getElementById('drawerTitle').textContent = `${r.tipo}`;
-  document.getElementById('drawerId').textContent    = `Reclamo #${r.id} · ${r.area}`;
-
-  const timelineHTML = r.historia.map((h, i) => `
-    <div class="timeline-item">
-      <div class="timeline-dot ${i === r.historia.length - 1 ? 'timeline-dot--active' : ''}"></div>
-      <div class="timeline-content">
-        <div class="timeline-action">${h.accion}</div>
-        <div class="timeline-meta">${h.fecha} · ${h.usuario}</div>
-        ${h.nota ? `<div class="timeline-note">${h.nota}</div>` : ''}
-      </div>
-    </div>
-  `).join('');
-
-  document.getElementById('drawerBody').innerHTML = `
-    <div class="detail-section">
-      <div class="detail-section-title">Ciudadano</div>
-      <div class="detail-grid">
-        <div class="detail-field"><label>Nombre</label><span>${r.ciudadano}</span></div>
-        <div class="detail-field"><label>DNI / CUIL</label><span style="font-family:var(--font-mono)">${r.dni}</span></div>
-      </div>
-    </div>
-    <div class="detail-section">
-      <div class="detail-section-title">Reclamo</div>
-      <div class="detail-grid">
-        <div class="detail-field"><label>Tipo</label><span>${r.tipo}</span></div>
-        <div class="detail-field"><label>Área</label><span>${r.area}</span></div>
-        <div class="detail-field"><label>Estado</label><span>${badgeEstado(r.estado)}</span></div>
-        <div class="detail-field"><label>Prioridad</label><span>${badgePrio(r.prioridad)}</span></div>
-        <div class="detail-field"><label>Fecha ingreso</label><span style="font-family:var(--font-mono)">${r.fecha}</span></div>
-        <div class="detail-field"><label>Responsable</label><span>${r.responsable}</span></div>
-        <div class="detail-field full"><label>Domicilio</label><span>${r.domicilio}</span></div>
-        <div class="detail-field full"><label>Descripción</label><span style="font-weight:400;line-height:1.5;font-size:.84rem">${r.desc}</span></div>
-      </div>
-    </div>
-    <div class="detail-section">
-      <div class="detail-section-title">Historial</div>
-      <div class="timeline">${timelineHTML}</div>
-    </div>
-  `;
-
+// ── Drawer detalle ────────────────────────────────────────────
+async function abrirDetalle(idReclamo) {
+  document.getElementById('drawerBody').innerHTML = '<div class="loading">Cargando detalle...</div>';
   document.getElementById('drawerOverlay').classList.add('open');
+
+  try {
+    const r = await _apiFetch(`/api/v1/reclamos/${idReclamo}`);
+    if (!r) return;
+    reclamoSeleccionado = r;
+
+    document.getElementById('drawerTitle').textContent = r.tipo_nombre || 'Reclamo';
+    document.getElementById('drawerId').textContent    = `${r.nro_reclamo || '#'+r.id_reclamo} · ${r.area_nombre || '—'}`;
+
+    const timelineHTML = (r.historial || []).map((h, i, arr) => `
+      <div class="timeline-item">
+        <div class="timeline-dot ${i === arr.length - 1 ? 'timeline-dot--active' : ''}"></div>
+        <div class="timeline-content">
+          <div class="timeline-action">${h.accion}</div>
+          <div class="timeline-meta">${_fmtFecha(h.fecha_alta)} · ${h.usuario_nombre || 'Sistema'}</div>
+          ${h.nota ? `<div class="timeline-note">${h.nota}</div>` : ''}
+        </div>
+      </div>
+    `).join('');
+
+    document.getElementById('drawerBody').innerHTML = `
+      <div class="detail-section">
+        <div class="detail-section-title">Ciudadano</div>
+        <div class="detail-grid">
+          <div class="detail-field"><label>Nombre</label><span>${r.ciudadano_apellido || '—'}, ${r.ciudadano_nombre || '—'}</span></div>
+          <div class="detail-field"><label>DNI / CUIL</label><span style="font-family:var(--font-mono)">${r.doc_nro || '—'}</span></div>
+          <div class="detail-field"><label>Teléfono</label><span>${r.ciudadano_email ? r.ciudadano_email.split('@')[0] : '—'}</span></div>
+          <div class="detail-field"><label>Email</label><span style="font-size:.78rem">${r.ciudadano_email || '—'}</span></div>
+        </div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-title">Reclamo</div>
+        <div class="detail-grid">
+          <div class="detail-field"><label>Tipo</label><span>${r.tipo_nombre || '—'}</span></div>
+          <div class="detail-field"><label>Área</label><span>${r.area_nombre || '—'}</span></div>
+          <div class="detail-field"><label>Estado</label><span>${badgeEstado(r.estado)}</span></div>
+          <div class="detail-field"><label>Prioridad</label><span>${badgePrio(r.prioridad)}</span></div>
+          <div class="detail-field"><label>Fecha ingreso</label><span style="font-family:var(--font-mono)">${_fmtFecha(r.fecha_alta)}</span></div>
+          <div class="detail-field"><label>Responsable</label><span>${r.agente_nombre || '—'}</span></div>
+          <div class="detail-field full"><label>Domicilio</label><span>${r.domicilio_reclamo || '—'}</span></div>
+          <div class="detail-field full"><label>Descripción</label><span style="font-weight:400;line-height:1.5;font-size:.84rem">${r.descripcion}</span></div>
+          ${r.observaciones ? `<div class="detail-field full"><label>Observaciones</label><span style="font-weight:400;font-size:.82rem;color:var(--fg-2)">${r.observaciones}</span></div>` : ''}
+        </div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-title">Historial</div>
+        <div class="timeline">${timelineHTML || '<p style="color:var(--fg-3);font-size:.82rem">Sin historial</p>'}</div>
+      </div>
+    `;
+  } catch(e) {
+    document.getElementById('drawerBody').innerHTML = `<p class="empty">Error al cargar detalle: ${e.message}</p>`;
+  }
 }
 
 function cerrarDrawer(e) {
@@ -789,66 +881,146 @@ function cerrarDrawer(e) {
   reclamoSeleccionado = null;
 }
 
-// ── Cambiar estado (demo) ─────────────────────────────────────────
-function cambiarEstadoReclamo() {
+// ── Modal cambio de estado ────────────────────────────────────
+function abrirModalEstado() {
   if (!reclamoSeleccionado) return;
-  const estados = ['Ingresado','En revisión','En gestión','Resuelto','Rechazado','Cerrado'];
-  const actual  = reclamoSeleccionado.estado;
-  const idx     = estados.indexOf(actual);
-  const siguiente = estados[(idx + 1) % estados.length];
-  reclamoSeleccionado.estado = siguiente;
-  const orig = RECLAMOS_DEMO.find(x => x.id === reclamoSeleccionado.id);
-  if (orig) orig.estado = siguiente;
-  toast(`Estado actualizado a "${siguiente}"`, 'ok');
-  cerrarDrawer();
-  aplicarFiltros();
+  const sel = document.getElementById('est-nuevo');
+  sel.value = reclamoSeleccionado.estado;
+  document.getElementById('est-nota').value = '';
+  document.getElementById('modalEstado').classList.add('open');
 }
 
-// ── Modal nuevo reclamo ───────────────────────────────────────────
+function cerrarModalEstado() {
+  document.getElementById('modalEstado').classList.remove('open');
+}
+
+async function guardarCambioEstado() {
+  if (!reclamoSeleccionado) return;
+  const nuevo = document.getElementById('est-nuevo').value;
+  const nota  = document.getElementById('est-nota').value.trim();
+  try {
+    const res = await _apiFetch(`/api/v1/reclamos/${reclamoSeleccionado.id_reclamo}/estado`, {
+      method: 'PUT',
+      body: JSON.stringify({ estado: nuevo, nota }),
+    });
+    if (!res) return;
+    cerrarModalEstado();
+    cerrarDrawer();
+    toast(`Estado actualizado a "${nuevo}"`, 'ok');
+    await cargarReclamos();
+  } catch(e) {
+    toast('Error al cambiar estado: ' + e.message, 'err');
+  }
+}
+
+// ── Modal nuevo reclamo ───────────────────────────────────────
 function abrirNuevoReclamo() {
+  _bucCiudadano = null;
+  document.getElementById('nr-buc-q').value = '';
+  document.getElementById('nr-id-ciudadano').value = '';
+  document.getElementById('buc-selected').style.display = 'none';
+  document.getElementById('buc-results').style.display = 'none';
+  document.getElementById('nr-area').value = '';
+  document.getElementById('nr-tipo').innerHTML = '<option value="">— Seleccionar área primero —</option>';
+  document.getElementById('nr-prio').value = 'Media';
+  document.getElementById('nr-domicilio').value = '';
+  document.getElementById('nr-desc').value = '';
   document.getElementById('modalNuevo').classList.add('open');
 }
 
-function cerrarModal() {
+function cerrarModalNuevo() {
   document.getElementById('modalNuevo').classList.remove('open');
 }
 
-function guardarNuevoReclamo() {
-  const dni    = document.getElementById('nr-dni').value.trim();
-  const nombre = document.getElementById('nr-nombre').value.trim();
-  const area   = document.getElementById('nr-area').value;
-  const tipo   = document.getElementById('nr-tipo').value;
-  const desc   = document.getElementById('nr-desc').value.trim();
-
-  if (!dni || !nombre || !area || !tipo || !desc) {
-    toast('Completá todos los campos obligatorios (*)', 'err');
+// Búsqueda BUC con debounce
+function buscarCiudadano(q) {
+  clearTimeout(_bucTimer);
+  if (q.length < 3) {
+    document.getElementById('buc-results').style.display = 'none';
     return;
   }
-
-  const prio = document.getElementById('nr-prio').value;
-  const dom  = document.getElementById('nr-domicilio').value.trim();
-  const newId = Math.max(...RECLAMOS_DEMO.map(r => r.id)) + 1;
-  const hoy   = new Date().toISOString().slice(0,10);
-  const sess  = JSON.parse(localStorage.getItem('zaris_session') || 'null');
-  const user  = sess?.user?.nombre || 'Operador';
-
-  RECLAMOS_DEMO.unshift({
-    id: newId, ciudadano: nombre, dni, area, tipo,
-    domicilio: dom || '—', estado: 'Ingresado', prioridad: prio,
-    fecha: hoy, responsable: '—', desc,
-    historia: [{ fecha: hoy, accion: 'Ingresado', usuario: user, nota: 'Reclamo registrado' }]
-  });
-
-  cerrarModal();
-  toast(`Reclamo #${newId} registrado correctamente`, 'ok');
-  ['nr-dni','nr-nombre','nr-area','nr-tipo','nr-prio','nr-tel','nr-domicilio','nr-desc'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = id === 'nr-prio' ? 'Media' : '';
-  });
-  aplicarFiltros();
+  _bucTimer = setTimeout(async () => {
+    try {
+      const data = await _apiFetch(`/api/v1/buc/ciudadanos/buscar?q=${encodeURIComponent(q)}&limit=8`);
+      if (!data) return;
+      const res = document.getElementById('buc-results');
+      if (!data.length) {
+        res.innerHTML = '<div class="buc-item" style="color:var(--fg-3)">Sin resultados</div>';
+        res.style.display = 'block';
+        return;
+      }
+      res.innerHTML = data.map(c => `
+        <div class="buc-item" onclick="seleccionarCiudadano(${c.id_ciudadano}, '${(c.apellido||'').replace(/'/g,"\\'")}', '${(c.nombre||'').replace(/'/g,"\\'")}', '${c.doc_nro||''}')">
+          <strong>${c.apellido}, ${c.nombre}</strong>
+          <span style="font-family:var(--font-mono);font-size:.76rem;color:var(--fg-3);margin-left:8px">${c.doc_nro}</span>
+        </div>
+      `).join('');
+      res.style.display = 'block';
+    } catch(e) {
+      console.warn('Error BUC:', e);
+    }
+  }, 300);
 }
 
-// ── Toast ─────────────────────────────────────────────────────────
+function seleccionarCiudadano(id, apellido, nombre, docNro) {
+  _bucCiudadano = { id, apellido, nombre, docNro };
+  document.getElementById('nr-id-ciudadano').value = id;
+  document.getElementById('buc-results').style.display = 'none';
+  document.getElementById('nr-buc-q').value = `${apellido}, ${nombre}`;
+  const selDiv = document.getElementById('buc-selected');
+  selDiv.innerHTML = `<div class="buc-selected"><span><strong>${apellido}, ${nombre}</strong> <span style="font-family:var(--font-mono);font-size:.76rem;color:var(--fg-3)">${docNro}</span></span><button onclick="limpiarCiudadanoSeleccionado()" style="background:none;border:none;color:var(--fg-3);cursor:pointer;font-size:.8rem">✕</button></div>`;
+  selDiv.style.display = 'block';
+}
+
+function limpiarCiudadanoSeleccionado() {
+  _bucCiudadano = null;
+  document.getElementById('nr-id-ciudadano').value = '';
+  document.getElementById('nr-buc-q').value = '';
+  document.getElementById('buc-selected').style.display = 'none';
+}
+
+async function guardarNuevoReclamo() {
+  const idCiudadano = document.getElementById('nr-id-ciudadano').value;
+  const idArea      = document.getElementById('nr-area').value;
+  const idTipo      = document.getElementById('nr-tipo').value;
+  const desc        = document.getElementById('nr-desc').value.trim();
+  const prio        = document.getElementById('nr-prio').value;
+  const domicilio   = document.getElementById('nr-domicilio').value.trim();
+
+  if (!idCiudadano) { toast('Seleccioná un ciudadano de la BUC', 'err'); return; }
+  if (!idArea)      { toast('Seleccioná un área', 'err'); return; }
+  if (!idTipo)      { toast('Seleccioná un tipo de reclamo', 'err'); return; }
+  if (!desc)        { toast('Completá la descripción', 'err'); return; }
+
+  const btn = document.getElementById('btnGuardarReclamo');
+  btn.disabled = true;
+  btn.textContent = 'Registrando...';
+
+  try {
+    const res = await _apiFetch('/api/v1/reclamos', {
+      method: 'POST',
+      body: JSON.stringify({
+        id_ciudadano: parseInt(idCiudadano),
+        id_tipo_reclamo: parseInt(idTipo),
+        id_area: parseInt(idArea),
+        descripcion: desc,
+        prioridad: prio,
+        domicilio_reclamo: domicilio,
+      }),
+    });
+    if (!res) return;
+    cerrarModalNuevo();
+    toast(`Reclamo ${res.nro_reclamo || '#'+res.id_reclamo} registrado`, 'ok');
+    await cargarReclamos();
+  } catch(e) {
+    toast('Error al registrar: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Registrar reclamo';
+  }
+}
+
+// ── Toast ─────────────────────────────────────────────────────
 function toast(msg, type = 'ok') {
   const el = document.getElementById('toast');
   el.textContent = msg;
@@ -857,22 +1029,36 @@ function toast(msg, type = 'ok') {
   el._t = setTimeout(() => { el.className = ''; }, 3200);
 }
 
-// ── Teclado ───────────────────────────────────────────────────────
+// ── Teclado ───────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
-    cerrarModal();
+    cerrarModalNuevo();
+    cerrarModalEstado();
     cerrarDrawer();
   }
 });
 
 document.getElementById('modalNuevo').addEventListener('click', e => {
-  if (e.target === document.getElementById('modalNuevo'))
-    cerrarModal();
+  if (e.target === document.getElementById('modalNuevo')) cerrarModalNuevo();
+});
+document.getElementById('modalEstado').addEventListener('click', e => {
+  if (e.target === document.getElementById('modalEstado')) cerrarModalEstado();
 });
 
-// ── Init ──────────────────────────────────────────────────────────
+// Cerrar resultados BUC al hacer click fuera
+document.addEventListener('click', e => {
+  if (!e.target.closest('.buc-search')) {
+    document.getElementById('buc-results').style.display = 'none';
+  }
+});
+
+// ── Init ──────────────────────────────────────────────────────
 if (typeof lucide !== 'undefined') lucide.createIcons();
-aplicarFiltros();
+
+(async () => {
+  await cargarAreas();
+  await cargarReclamos();
+})();
 </script>
 </body>
 </html>

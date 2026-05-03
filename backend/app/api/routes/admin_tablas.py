@@ -73,10 +73,9 @@ TABLE_CONFIG: dict[str, dict] = {
     },
     "tipo_reclamo": {
         "pk": "id_tipo_reclamo",
-        "cols": ["nombre", "descripcion", "id_subarea"],
+        "cols": ["nombre", "descripcion", "id_area", "sla_dias"],
         "fecha_mod": "fecha_modificacion",
     },
-    # Tablas BUC legacy — sin activo ni campos de auditoría
     # ── Tablas de Agenda (sin campos estándar de auditoría)
     "areas": {
         "pk": "id",
@@ -107,45 +106,27 @@ TABLE_CONFIG: dict[str, dict] = {
         "col_types": {"fecha": "date"},
     },
     # ── Reclamos
-    "reclamos_area": {
-        "pk": "id_area",
-        "cols": ["nombre"],
-        "fecha_mod": None,
-        "has_audit": False,
-    },
-    "reclamos_subarea": {
-        "pk": "id_subarea",
-        "cols": ["nombre", "id_area"],
-        "fecha_mod": None,
-        "has_audit": False,
-    },
     "estado_reclamo": {
         "pk": "id_estado_reclamo",
         "cols": ["nombre", "descripcion", "color", "es_final", "orden"],
         "fecha_mod": "fecha_modificacion",
         "has_audit": False,
     },
-    # ── Tablas BUC legacy — sin activo ni campos de auditoría
+    # ── Tablas BUC — ahora con auditoría y baja lógica
     "actividades": {
         "pk": "id",
         "cols": ["codigo_clae", "descripcion", "categoria_tasa"],
-        "fecha_mod": None,
-        "has_activo": False,
-        "has_audit": False,
+        "fecha_mod": "fecha_modificacion",
     },
     "tipo_representacion": {
         "pk": "id",
         "cols": ["tipo", "descripcion"],
-        "fecha_mod": None,
-        "has_activo": False,
-        "has_audit": False,
+        "fecha_mod": "fecha_modificacion",
     },
     "nacionalidades": {
         "pk": "id",
         "cols": ["pais", "region"],
-        "fecha_mod": None,
-        "has_activo": False,
-        "has_audit": False,
+        "fecha_mod": "fecha_modificacion",
     },
 }
 
