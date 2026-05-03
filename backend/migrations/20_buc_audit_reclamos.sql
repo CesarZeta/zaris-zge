@@ -63,15 +63,8 @@ ALTER TABLE empresas
     ADD COLUMN IF NOT EXISTS id_usuario_alta     INTEGER REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
     ADD COLUMN IF NOT EXISTS id_usuario_modificacion INTEGER REFERENCES usuarios(id_usuario) ON DELETE SET NULL;
 
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_name='empresas' AND column_name='fecha_modif'
-    ) THEN
-        UPDATE empresas SET fecha_modif = fecha_modif;  -- no-op, fecha_modif ya existe
-    END IF;
-END $$;
+-- empresas mantiene fecha_modif (legacy BUC); los campos audit id_usuario_alta/modificacion
+-- se agregan arriba. No renombrar fecha_modif — el ORM y el código existente lo usan.
 
 -- ── 2. Tabla area (secretarías municipales) ─────────────────────────────────
 -- Ya existe la tabla 'area' (para maestros generales).

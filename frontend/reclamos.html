@@ -685,6 +685,7 @@ if (_sess?.user) {
 let reclamoSeleccionado = null;
 let _bucTimer = null;
 let _bucCiudadano = null;
+let _bucResultados = {};
 
 // ── Helpers visuales ──────────────────────────────────────────
 function badgeEstado(estado) {
@@ -949,12 +950,28 @@ function buscarCiudadano(q) {
         res.style.display = 'block';
         return;
       }
-      res.innerHTML = data.map(c => `
-        <div class="buc-item" onclick="seleccionarCiudadano(${c.id_ciudadano}, '${(c.apellido||'').replace(/'/g,"\\'")}', '${(c.nombre||'').replace(/'/g,"\\'")}', '${c.doc_nro||''}')">
-          <strong>${c.apellido}, ${c.nombre}</strong>
-          <span style="font-family:var(--font-mono);font-size:.76rem;color:var(--fg-3);margin-left:8px">${c.doc_nro}</span>
-        </div>
-      `).join('');
+      // Almacenar ciudadanos por id para acceder desde el click sin inyección
+      _bucResultados = {};
+      data.forEach(c => { _bucResultados[c.id_ciudadano] = c; });
+
+      res.innerHTML = data.map(c => {
+        const apellido = (c.apellido || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const nombre   = (c.nombre   || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const docNro   = (c.doc_nro  || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return `<div class="buc-item" data-id="${c.id_ciudadano}">
+          <strong>${apellido}, ${nombre}</strong>
+          <span style="font-family:var(--font-mono);font-size:.76rem;color:var(--fg-3);margin-left:8px">${docNro}</span>
+        </div>`;
+      }).join('');
+
+      // Delegación de eventos: un solo listener, sin inline handlers
+      res.querySelectorAll('.buc-item[data-id]').forEach(el => {
+        el.addEventListener('click', () => {
+          const c = _bucResultados[parseInt(el.dataset.id)];
+          if (c) seleccionarCiudadano(c.id_ciudadano, c.apellido || '', c.nombre || '', c.doc_nro || '');
+        });
+      });
+
       res.style.display = 'block';
     } catch(e) {
       console.warn('Error BUC:', e);

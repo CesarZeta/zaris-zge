@@ -224,9 +224,21 @@ async def cambiar_estado(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    ESTADOS_VALIDOS = {"Ingresado", "En revisión", "En gestión", "Resuelto", "Rechazado", "Cerrado"}
     nuevo_estado = body.get("estado")
-    if nuevo_estado not in ESTADOS_VALIDOS:
+    if not nuevo_estado:
+        raise HTTPException(status_code=422, detail="Campo 'estado' requerido")
+
+    # Validar contra tabla estado_reclamo; fallback a lista hardcoded si la tabla está vacía
+    r_estados = await db.execute(text(
+        "SELECT nombre FROM estado_reclamo WHERE activo = TRUE"
+    ))
+    estados_rows = r_estados.fetchall()
+    if estados_rows:
+        estados_validos = {row.nombre for row in estados_rows}
+    else:
+        estados_validos = {"Ingresado", "En revisión", "En gestión", "Resuelto", "Rechazado", "Cerrado"}
+
+    if nuevo_estado not in estados_validos:
         raise HTTPException(status_code=422, detail=f"Estado inválido: {nuevo_estado}")
 
     # Obtener estado actual

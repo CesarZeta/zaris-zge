@@ -283,7 +283,9 @@ Todo frontend de tabla maestro (admin_tablas y módulos independientes como usua
 Debajo del panel van los últimos registros ingresados (vista previa). El patrón está implementado en `admin_tablas.html` (`renderVistaPrevia`) y en `usuarios.html`. **No** usar solo botones sueltos — siempre agrupar en el panel celeste.
 
 ### Tablas actualmente configuradas
-`agentes`, `equipos`, `equipo_usuarios`, `servicios`, `tipo_usuario`, `cargos`, `area`, `subarea`, `usuarios`, `tipo_reclamo`, `tipo_representacion`, `actividades`, `nacionalidades`, `reclamos_area`, `reclamos_subarea`, `estado_reclamo`, `areas`, `lugares_atencion`, `agenda_clase`, `agenda_feriado`.
+`agentes`, `equipos`, `equipo_usuarios`, `servicios`, `tipo_usuario`, `cargos`, `area`, `subarea`, `usuarios`, `tipo_reclamo`, `tipo_representacion`, `actividades`, `nacionalidades`, `estado_reclamo`, `areas`, `lugares_atencion`, `agenda_clase`, `agenda_feriado`.
+
+> `reclamos_area` y `reclamos_subarea` fueron eliminadas de admin_tablas en migración 20. El módulo Reclamos usa las tablas generales `area` y `subarea`.
 
 ## 17. Slash Commands del Proyecto
 

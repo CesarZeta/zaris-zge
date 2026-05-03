@@ -47,9 +47,16 @@ class Usuario(Base):
 class Nacionalidad(Base):
     __tablename__ = "nacionalidades"
 
-    id     = Column(Integer, primary_key=True, autoincrement=True)
-    pais   = Column(String(100), nullable=False)
-    region = Column(String(50), nullable=False)
+    id                      = Column(Integer, primary_key=True, autoincrement=True)
+    pais                    = Column(String(100), nullable=False)
+    region                  = Column(String(50), nullable=False)
+    activo                  = Column(Boolean, nullable=False, default=True)
+    id_municipio            = Column(Integer, nullable=True)
+    id_subarea              = Column(Integer, nullable=True)
+    fecha_alta              = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    fecha_modificacion      = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    id_usuario_alta         = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
+    id_usuario_modificacion = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
 
     ciudadanos = relationship("Ciudadano", back_populates="nacionalidad")
 
@@ -57,9 +64,16 @@ class Nacionalidad(Base):
 class TipoRepresentacion(Base):
     __tablename__ = "tipo_representacion"
 
-    id          = Column(Integer, primary_key=True, autoincrement=True)
-    tipo        = Column(String(50), nullable=False)
-    descripcion = Column(String(200), nullable=False)
+    id                      = Column(Integer, primary_key=True, autoincrement=True)
+    tipo                    = Column(String(50), nullable=False)
+    descripcion             = Column(String(200), nullable=False)
+    activo                  = Column(Boolean, nullable=False, default=True)
+    id_municipio            = Column(Integer, nullable=True)
+    id_subarea              = Column(Integer, nullable=True)
+    fecha_alta              = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    fecha_modificacion      = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    id_usuario_alta         = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
+    id_usuario_modificacion = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
 
     relaciones = relationship("CiudadanoEmpresa", back_populates="tipo_representacion")
 
@@ -67,10 +81,17 @@ class TipoRepresentacion(Base):
 class Actividad(Base):
     __tablename__ = "actividades"
 
-    id             = Column(Integer, primary_key=True, autoincrement=True)
-    codigo_clae    = Column(Integer, nullable=False)
-    descripcion    = Column(String(200), nullable=False)
-    categoria_tasa = Column(String(50), nullable=False)
+    id                      = Column(Integer, primary_key=True, autoincrement=True)
+    codigo_clae             = Column(Integer, nullable=False)
+    descripcion             = Column(String(200), nullable=False)
+    categoria_tasa          = Column(String(50), nullable=False)
+    activo                  = Column(Boolean, nullable=False, default=True)
+    id_municipio            = Column(Integer, nullable=True)
+    id_subarea              = Column(Integer, nullable=True)
+    fecha_alta              = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    fecha_modificacion      = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    id_usuario_alta         = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
+    id_usuario_modificacion = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
 
     empresas = relationship("Empresa", back_populates="actividad")
 
@@ -101,10 +122,17 @@ class Ciudadano(Base):
     email          = Column(String(150), nullable=False)
     email_chk      = Column(Boolean, nullable=False, default=False)
     emp_chk        = Column(Boolean, nullable=False, default=False)
-    observaciones  = Column(String(500))
-    fecha_modif    = Column(DateTime)
-    activo         = Column(Boolean, nullable=False, default=True)
-    modificado_por = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
+    observaciones           = Column(String(500))
+    # legacy: campo original de última modificación
+    fecha_modif             = Column(DateTime)
+    activo                  = Column(Boolean, nullable=False, default=True)
+    modificado_por          = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
+    # campos estándar agregados en migración 20
+    id_municipio            = Column(Integer, nullable=True)
+    id_subarea              = Column(Integer, nullable=True)
+    fecha_modificacion      = Column(DateTime(timezone=True), nullable=True)
+    id_usuario_alta         = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
+    id_usuario_modificacion = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("doc_tipo", "doc_nro", name="uq_ciudadano_doc"),
@@ -135,10 +163,16 @@ class Empresa(Base):
     telefono       = Column(String(15), nullable=False)
     email          = Column(String(150), nullable=False)
     email_chk      = Column(Boolean, nullable=False, default=False)
-    observaciones  = Column(String(500))
-    fecha_modif    = Column(DateTime)
-    activo         = Column(Boolean, nullable=False, default=True)
-    modificado_por = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
+    observaciones           = Column(String(500))
+    # legacy: campo original de última modificación
+    fecha_modif             = Column(DateTime)
+    activo                  = Column(Boolean, nullable=False, default=True)
+    modificado_por          = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
+    # campos estándar agregados en migración 20
+    id_municipio            = Column(Integer, nullable=True)
+    id_subarea              = Column(Integer, nullable=True)
+    id_usuario_alta         = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
+    id_usuario_modificacion = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
 
     __table_args__ = (
         Index("idx_empresa_email", "email"),
