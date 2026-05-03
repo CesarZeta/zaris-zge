@@ -638,13 +638,18 @@ function _authHeaders() {
   return token ? { 'Authorization': `Bearer ${token}` } : {};
 }
 
-// ── Auth guard ─────────────────────────────────────────────────
-if (!localStorage.getItem('zaris_session')) {
+function _handleUnauth() {
+  localStorage.removeItem('zaris_session');
   if (window.self !== window.top) {
     window.parent.location.href = '../index.html';
   } else {
     window.location.href = '../index.html';
   }
+}
+
+// ── Auth guard ─────────────────────────────────────────────────
+if (!localStorage.getItem('zaris_session')) {
+  _handleUnauth();
 }
 
 // ── Estado ────────────────────────────────────────────────────
@@ -976,6 +981,7 @@ async function cargarTabla() {
 
   try {
     const res = await fetch(`${API}/${tablaActual}`, { headers: _authHeaders() });
+    if (res.status === 401) { _handleUnauth(); return; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const rows = await res.json();
     renderVistaPrevia(rows, schema);
@@ -1047,6 +1053,7 @@ async function buscarEnTabla() {
   resultsEl.innerHTML = `<div class="loading"><span class="spinner"></span></div>`;
   try {
     const res = await fetch(`${API}/${tablaActual}`, { headers: _authHeaders() });
+    if (res.status === 401) { _handleUnauth(); return; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const rows = await res.json();
     const found = rows.filter(r =>
@@ -1125,6 +1132,7 @@ async function abrirListado() {
 
   try {
     const res = await fetch(`${API}/${tablaActual}`, { headers: _authHeaders() });
+    if (res.status === 401) { _handleUnauth(); return; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     window._listadoRows = await res.json();
     aplicarFiltros();
@@ -1327,6 +1335,7 @@ async function abrirEditar(id) {
 
   try {
     const res = await fetch(`${API}/${tablaActual}/${id}`, { headers: _authHeaders() });
+    if (res.status === 401) { _handleUnauth(); return; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const record = await res.json();
     await buildForm(schema, record);
