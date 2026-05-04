@@ -117,7 +117,7 @@ class OrdenTrabajo(Base):
     id_reclamo              = Column(Integer, ForeignKey("reclamos.id_reclamo", ondelete="RESTRICT"), nullable=False)
     id_estado               = Column(Integer, ForeignKey("estado_ot.id_estado_ot", ondelete="RESTRICT"), nullable=False)
     id_agente               = Column(Integer, ForeignKey("agentes.id_agente", ondelete="SET NULL"), nullable=True)
-    id_equipo               = Column(Integer, ForeignKey("equipos.id_equipo", ondelete="SET NULL"), nullable=True)
+    id_equipo               = Column(Integer, ForeignKey("equipos.id_equipo", ondelete="SET NULL", use_alter=True, name="fk_ot_equipo"), nullable=True)
     es_auditoria            = Column(Boolean, nullable=False, default=False)
     resultado_auditoria     = Column(String(20), nullable=True)
     observaciones_auditoria = Column(Text, nullable=True)
@@ -151,7 +151,7 @@ class EquipoAgente(Base):
     __tablename__ = "equipo_agentes"
 
     id_equipo_agente    = Column(Integer, primary_key=True, autoincrement=True)
-    id_equipo           = Column(Integer, ForeignKey("equipos.id_equipo", ondelete="CASCADE"), nullable=False)
+    id_equipo           = Column(Integer, ForeignKey("equipos.id_equipo", ondelete="CASCADE", use_alter=True, name="fk_ea_equipo"), nullable=False)
     id_agente           = Column(Integer, ForeignKey("agentes.id_agente", ondelete="CASCADE"), nullable=False)
     activo              = Column(Boolean, nullable=False, default=True)
     id_municipio        = Column(Integer, nullable=True)
