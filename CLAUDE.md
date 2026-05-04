@@ -283,7 +283,7 @@ Todo frontend de tabla maestro (admin_tablas y módulos independientes como usua
 Debajo del panel van los últimos registros ingresados (vista previa). El patrón está implementado en `admin_tablas.html` (`renderVistaPrevia`) y en `usuarios.html`. **No** usar solo botones sueltos — siempre agrupar en el panel celeste.
 
 ### Tablas actualmente configuradas
-`agentes`, `equipos`, `equipo_usuarios`, `servicios`, `tipo_usuario`, `cargos`, `area`, `subarea`, `usuarios`, `tipo_reclamo`, `tipo_representacion`, `actividades`, `nacionalidades`, `estado_reclamo`, `areas`, `lugares_atencion`, `agenda_clase`, `agenda_feriado`.
+`agentes`, `equipos`, `equipo_usuarios`, `equipo_agentes`, `servicios`, `tipo_usuario`, `cargos`, `area`, `subarea`, `usuarios`, `tipo_reclamo`, `tipo_representacion`, `actividades`, `nacionalidades`, `estado_reclamo`, `estado_ot`, `configuracion_general`, `areas`, `lugares_atencion`, `agenda_clase`, `agenda_feriado`.
 
 > `reclamos_area` y `reclamos_subarea` fueron eliminadas de admin_tablas en migración 20. El módulo Reclamos usa las tablas generales `area` y `subarea`.
 
@@ -318,26 +318,66 @@ Comandos disponibles en `.claude/commands/` — invocar con `/nombre`:
 |---|---|
 | `reclamos` | Transaccional principal — un registro por reclamo |
 | `reclamo_historial` | Timeline de cambios de estado (INSERT solo, nunca UPDATE) |
-| `tipo_reclamo` | Maestro con `id_area` (FK → `area`) y `sla_dias` |
+| `tipo_reclamo` | Maestro con `id_area`, `id_subarea`, `sla_dias`, `audit` (FK → `area`, `subarea`) |
 | `estado_reclamo` | Maestro de estados válidos — la API valida contra esta tabla |
+| `ordenes_trabajo` | OT operativa o de auditoría asociada a un reclamo |
+| `estado_ot` | Estados de OT: `En gestión`, `En espera`, `Pendiente`, `Terminada`, `Cancelada` |
+| `equipo_agentes` | Relación equipo ↔ agente (reemplaza `equipo_usuarios` en lógica de OTs) |
+| `configuracion_general` | Key/value de parámetros del sistema |
 
 `nro_reclamo` se genera automáticamente vía trigger `trg_nro_reclamo` → `REC-YYYY-XXXXXX`.
+`nro_ot` se genera automáticamente vía trigger `trg_nro_ot` → `OT-YYYY-XXXXXX`.
 
-### Endpoints
+### Estados de reclamo (v1.2)
+
+`Sin asignar` → `En gestión` → `En espera` → `En auditoría` → `Resuelto` / `Cancelado`
+
+- **Sin asignar:** reclamo ingresado, sin OT asignada.
+- **En gestión:** OT generada y en ejecución.
+- **En espera:** bloqueado por subreclamo activo.
+- **En auditoría:** OT operativa cerrada, pendiente de auditoría.
+- **Resuelto / Cancelado:** estados finales.
+
+### Endpoints reclamos
 
 ```
-GET  /api/v1/reclamos                   → lista con filtros (estado, id_area, prioridad, texto, limit, offset)
-GET  /api/v1/reclamos/stats             → conteos por estado para tarjetas del dashboard
-GET  /api/v1/reclamos/{id}             → detalle con historial de estado
-POST /api/v1/reclamos                  → crear reclamo (requiere id_ciudadano BUC)
-PUT  /api/v1/reclamos/{id}/estado      → cambiar estado + insertar entrada en historial
-GET  /api/v1/reclamos/catalogo/areas   → áreas activas para filtros
-GET  /api/v1/reclamos/catalogo/tipos   → tipos de reclamo activos
+GET  /api/v1/reclamos                      → lista con filtros (estado, id_area, prioridad, texto, limit, offset)
+GET  /api/v1/reclamos/stats                → conteos por estado
+GET  /api/v1/reclamos/catalogo/areas       → áreas activas
+GET  /api/v1/reclamos/catalogo/tipos       → tipos de reclamo activos
+GET  /api/v1/reclamos/{id}                 → detalle con historial, OTs y subreclamos
+POST /api/v1/reclamos                      → crear reclamo (requiere id_ciudadano BUC)
+PUT  /api/v1/reclamos/{id}/estado          → cambiar estado + insertar entrada en historial
+PUT  /api/v1/reclamos/{id}/cancelar        → cancelar reclamo + cascade a OTs activas (requiere motivo)
+POST /api/v1/reclamos/{id}/subreclamo      → crear subreclamo (max 1 nivel; padre pasa a En espera)
+```
+
+### Endpoints ordenes_trabajo
+
+```
+GET  /api/v1/ot/catalogo/estados           → estados de OT activos
+GET  /api/v1/ot/mesa/supervisor            → reclamos activos para asignación
+GET  /api/v1/ot/mesa/agente                → OTs del agente autenticado
+GET  /api/v1/ot/mesa/auditoria             → OTs en auditoría (respeta config auditor_misma_subarea)
+GET  /api/v1/ot                            → lista OTs con filtros
+GET  /api/v1/ot/{id_ot}                    → detalle OT
+POST /api/v1/ot                            → crear OT (supervisor asigna a agente/equipo)
+PUT  /api/v1/ot/{id_ot}/tomar              → agente toma OT sin asignar
+PUT  /api/v1/ot/{id_ot}/estado             → cambiar estado OT
+PUT  /api/v1/ot/{id_ot}/aprobar            → auditor aprueba OT → reclamo Resuelto
+PUT  /api/v1/ot/{id_ot}/rechazar           → auditor rechaza OT → nueva OT Pendiente con id_ot_origen
 ```
 
 ### Validación de estados
 
-`PUT /{id}/estado` consulta `estado_reclamo WHERE activo=TRUE` para obtener los valores permitidos. Fallback a set hardcoded `{"Ingresado", "En revisión", "En gestión", "Resuelto", "Rechazado", "Cerrado"}` si la tabla está vacía.
+`PUT /{id}/estado` consulta `estado_reclamo WHERE activo=TRUE`. Fallback hardcoded a `{"Sin asignar", "En gestión", "En espera", "En auditoría", "Resuelto", "Cancelado"}` si la tabla está vacía.
+
+### Configuración general
+
+| Clave | Tipo | Descripción |
+|---|---|---|
+| `auditor_misma_subarea_permitido` | boolean | Si `false`, auditor no puede pertenecer a la subárea del reclamo |
+| `ot_pendiente_dias_vencimiento` | integer | Días máximos que una OT Pendiente puede estar sin reasignarse |
 
 ### Ciudadano en reclamos
 
@@ -369,7 +409,7 @@ res.querySelectorAll('.buc-item[data-id]').forEach(el => {
 
 **Implementado en:** `frontend/reclamos.html` (búsqueda de ciudadano en modal nuevo reclamo).
 
-## 16. Patrón de Baja Lógica — API y Frontend
+## 19. Patrón de Baja Lógica — API y Frontend
 
 ### Backend
 Endpoint estándar de soft-delete (implementado para `usuarios`, `ciudadanos`, `empresas`):
@@ -383,7 +423,7 @@ Nunca DELETE físico. El endpoint devuelve el objeto con `activo` actualizado.
 En el bloque de resultado de búsqueda (`#result-actions`), agregar botón de baja:
 ```html
 <button class="z-btn z-btn--sm z-btn--danger" id="btn-baja-encontrado" style="display:none;">
-    ✕ Dar de baja
+    Dar de baja
 </button>
 ```
 Mostrarlo en `mostrarResultadoUnico()` y conectarlo a una función `darBaja{Entidad}()` que llame al endpoint con `method: 'PUT'`.
