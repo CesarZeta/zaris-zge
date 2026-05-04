@@ -10,11 +10,31 @@ from sqlalchemy.orm import relationship
 from app.core.database import Base
 
 
+class Agente(Base):
+    """Stub — tabla gestionada por admin_tablas, sin modelo propio."""
+    __tablename__ = "agentes"
+    __table_args__ = {"extend_existing": True}
+    id_agente = Column(Integer, primary_key=True, autoincrement=True)
+
+
+class Area(Base):
+    """Stub — tabla gestionada por admin_tablas, sin modelo propio."""
+    __tablename__ = "area"
+    __table_args__ = {"extend_existing": True}
+    id_area = Column(Integer, primary_key=True, autoincrement=True)
+
+
+class Subarea(Base):
+    """Stub — tabla gestionada por admin_tablas, sin modelo propio."""
+    __tablename__ = "subarea"
+    __table_args__ = {"extend_existing": True}
+    id_subarea = Column(Integer, primary_key=True, autoincrement=True)
+
+
 class Equipo(Base):
-    """Stub para que SQLAlchemy resuelva las FKs a equipos.id_equipo."""
+    """Stub — tabla gestionada por admin_tablas, sin modelo propio."""
     __tablename__ = "equipos"
     __table_args__ = {"extend_existing": True}
-
     id_equipo = Column(Integer, primary_key=True, autoincrement=True)
 
 
