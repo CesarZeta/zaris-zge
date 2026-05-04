@@ -427,3 +427,58 @@ En el bloque de resultado de búsqueda (`#result-actions`), agregar botón de ba
 </button>
 ```
 Mostrarlo en `mostrarResultadoUnico()` y conectarlo a una función `darBaja{Entidad}()` que llame al endpoint con `method: 'PUT'`.
+
+## 20. Modelos SQLAlchemy — Stubs para Tablas sin Modelo Propio
+
+SQLAlchemy valida en startup que toda tabla referenciada en un `ForeignKey()` exista en su metadata. Si una tabla vive en la DB pero no tiene modelo Python, la app crashea con `NoReferencedTableError`.
+
+**Regla:** toda tabla referenciada por FK en un modelo debe tener al menos un stub en Python.
+
+Los stubs actuales están al inicio de `backend/app/models/reclamos.py`:
+
+```python
+class Agente(Base):
+    __tablename__ = "agentes"
+    __table_args__ = {"extend_existing": True}
+    id_agente = Column(Integer, primary_key=True, autoincrement=True)
+
+class Area(Base):
+    __tablename__ = "area"
+    __table_args__ = {"extend_existing": True}
+    id_area = Column(Integer, primary_key=True, autoincrement=True)
+
+class Subarea(Base):
+    __tablename__ = "subarea"
+    __table_args__ = {"extend_existing": True}
+    id_subarea = Column(Integer, primary_key=True, autoincrement=True)
+
+class Equipo(Base):
+    __tablename__ = "equipos"
+    __table_args__ = {"extend_existing": True}
+    id_equipo = Column(Integer, primary_key=True, autoincrement=True)
+```
+
+**Cuándo agregar un stub:** al crear un modelo con `ForeignKey("tabla_sin_modelo.id_campo")`, agregar el stub correspondiente en el mismo archivo antes de usarlo. `extend_existing=True` evita conflictos si la tabla ya fue declarada en otro modelo.
+
+## 21. Estado de Migraciones en Prod (Supabase)
+
+Las siguientes tablas ya existen en Supabase prod y **no deben re-crearse**:
+
+| Tabla | Migración | Notas |
+|---|---|---|
+| `reclamos` | 20 | Trigger `trg_nro_reclamo` → `REC-YYYY-XXXXXX` |
+| `reclamo_historial` | 20 | FK a `reclamos` |
+| `tipo_reclamo` | 20 | Columna `audit` agregada en migración 21 |
+| `estado_reclamo` | manual | Estados válidos del flujo de reclamos |
+| `ordenes_trabajo` | pre-existente | Trigger `trg_nro_ot` → `OT-YYYY-XXXXXX` |
+| `estado_ot` | pre-existente | Seeds: En gestión, En espera, Pendiente, Terminada, Cancelada |
+| `equipo_agentes` | pre-existente | Reemplaza `equipo_usuarios` en lógica de OTs |
+| `configuracion_general` | pre-existente | Seeds: `auditor_misma_subarea_permitido`, `ot_pendiente_dias_vencimiento` |
+
+**Estados de reclamos en prod** fueron migrados en 2026-05-04:
+- `Ingresado` → `Sin asignar`
+- `En revisión` → `En gestión`
+- `Cerrado` → `Resuelto`
+- `Rechazado` → `Cancelado`
+
+CHECK constraint activo: `ck_reclamo_estado` con valores `('Sin asignar','En gestión','En espera','En auditoría','Resuelto','Cancelado')`.
