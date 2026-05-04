@@ -71,11 +71,6 @@ TABLE_CONFIG: dict[str, dict] = {
         "fecha_mod": "modificado_en",
         "col_types": {"hora_inicio": "time", "hora_fin": "time"},
     },
-    "tipo_reclamo": {
-        "pk": "id_tipo_reclamo",
-        "cols": ["nombre", "descripcion", "id_area", "sla_dias"],
-        "fecha_mod": "fecha_modificacion",
-    },
     # ── Tablas de Agenda (sin campos estándar de auditoría)
     "areas": {
         "pk": "id",
@@ -109,6 +104,28 @@ TABLE_CONFIG: dict[str, dict] = {
     "estado_reclamo": {
         "pk": "id_estado_reclamo",
         "cols": ["nombre", "descripcion", "color", "es_final", "orden"],
+        "fecha_mod": "fecha_modificacion",
+        "has_audit": False,
+    },
+    "estado_ot": {
+        "pk": "id_estado_ot",
+        "cols": ["nombre", "descripcion", "color", "es_final", "orden"],
+        "fecha_mod": "fecha_modificacion",
+        "has_audit": False,
+    },
+    "equipo_agentes": {
+        "pk": "id_equipo_agente",
+        "cols": ["id_equipo", "id_agente"],
+        "fecha_mod": "fecha_modificacion",
+    },
+    "tipo_reclamo": {
+        "pk": "id_tipo_reclamo",
+        "cols": ["nombre", "descripcion", "id_area", "id_subarea", "sla_dias", "audit"],
+        "fecha_mod": "fecha_modificacion",
+    },
+    "configuracion_general": {
+        "pk": "id_config",
+        "cols": ["clave", "valor", "tipo", "descripcion"],
         "fecha_mod": "fecha_modificacion",
         "has_audit": False,
     },

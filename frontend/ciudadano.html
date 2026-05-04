@@ -229,7 +229,7 @@
             <!-- ═══════════ BÚSQUEDA ═══════════ -->
             <div class="z-search-panel" id="search-panel">
                 <div class="z-search-panel__title">
-                    Buscar Ciudadano Existente
+                    Buscar ciudadano existente
                 </div>
                 <!-- Toggle tipo búsqueda -->
                 <div style="display:flex;gap:6px;margin-bottom:0.6rem;">
@@ -253,16 +253,16 @@
                     <div id="result-list" style="margin-top:8px;"></div>
                     <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap;" id="result-actions">
                         <button class="z-btn z-btn--sm z-btn--primary" id="btn-editar-encontrado" style="display:none;">
-                            ✏️ Editar
+                            Editar
                         </button>
                         <button class="z-btn z-btn--sm z-btn--ghost" id="btn-consultar-encontrado" style="display:none;">
-                            👁 Consultar
+                            Consultar
                         </button>
                         <button class="z-btn z-btn--sm z-btn--danger" id="btn-baja-encontrado" style="display:none;">
-                            ✕ Dar de baja
+                            Dar de baja
                         </button>
                         <button class="z-btn z-btn--sm z-btn--ghost" id="btn-nuevo-forzar">
-                            ✚ Alta nueva de todas formas
+                            + Alta nueva de todas formas
                         </button>
                     </div>
                 </div>
@@ -280,7 +280,7 @@
             <div id="listado-section" style="display:none;">
                 <div class="z-print-header" id="lst-print-header"></div>
                 <div class="z-listado-header">
-                    <h2>Listado de Ciudadanos</h2>
+                    <h2>Listado de ciudadanos</h2>
                     <div style="display:flex;gap:.5rem;">
                         <button class="z-btn z-btn--ghost" id="btn-imprimir-lst">Imprimir</button>
                         <button class="z-btn z-btn--ghost" id="btn-cerrar-listado">← Volver</button>
@@ -321,7 +321,7 @@
             <div class="z-card z-form-card" id="form-card" style="display:none;">
                 <div class="z-card__header">
                     <h2 class="z-card__title">
-                        👤 <span id="form-title">Alta de Ciudadano</span>
+                        <span id="form-title">Alta de ciudadano</span>
                     </h2>
                     <span class="z-form-state z-form-state--new" id="form-state">
                         ● NUEVO
@@ -333,7 +333,7 @@
                         <input type="hidden" id="cid-id" name="id_ciudadano">
 
                         <!-- ── Identificación ── -->
-                        <div class="z-section-title">📋 Identificación</div>
+                        <div class="z-section-title">Identificación</div>
 
                         <div class="z-form-row z-form-row--3">
                             <!-- Tipo Documento -->
@@ -379,7 +379,7 @@
                         </div>
 
                         <!-- ── Datos Personales ── -->
-                        <div class="z-section-title" style="margin-top:1.5rem;">👤 Datos Personales</div>
+                        <div class="z-section-title" style="margin-top:1.5rem;">Datos personales</div>
 
                         <div class="z-form-row z-form-row--2">
                             <div class="z-form-group">
@@ -424,7 +424,7 @@
 
 
                         <!-- ── Domicilio ── -->
-                        <div class="z-section-title" style="margin-top:1rem;">🏠 Domicilio</div>
+                        <div class="z-section-title" style="margin-top:1rem;">Domicilio</div>
 
                         <div class="z-form-row z-form-row--2">
                             <div class="z-form-group">
@@ -454,7 +454,7 @@
                         <input type="hidden" id="cid-longitud" name="longitud">
 
                         <!-- ── Contacto ── -->
-                        <div class="z-section-title" style="margin-top:1rem;">📞 Contacto</div>
+                        <div class="z-section-title" style="margin-top:1rem;">Contacto</div>
 
                         <div class="z-form-row z-form-row--2">
                             <div class="z-form-group">
@@ -479,7 +479,7 @@
                         </div>
 
                         <!-- ── Empresa ── -->
-                        <div class="z-section-title" style="margin-top:1rem;">🏢 Representación Empresarial</div>
+                        <div class="z-section-title" style="margin-top:1rem;">Representación empresarial</div>
 
                         <div class="z-form-group">
                             <label class="z-checkbox">
@@ -491,7 +491,7 @@
                         </div>
 
                         <!-- ── Observaciones ── -->
-                        <div class="z-section-title" style="margin-top:1rem;">📝 Observaciones</div>
+                        <div class="z-section-title" style="margin-top:1rem;">Observaciones</div>
 
                         <div class="z-form-group">
                             <textarea class="z-textarea" id="cid-observaciones" name="observaciones"
@@ -507,10 +507,10 @@
                 <!-- Footer con botones -->
                 <div class="z-card__footer">
                     <button class="z-btn z-btn--ghost" id="btn-cancelar">
-                        ✕ Cancelar
+                        Cancelar
                     </button>
                     <button class="z-btn z-btn--primary z-btn--lg" id="btn-guardar">
-                        💾 Guardar Ciudadano
+                        Guardar ciudadano
                     </button>
                 </div>
             </div>
@@ -519,7 +519,7 @@
             <div class="z-empresa-panel" id="empresa-panel">
                 <div class="z-card">
                     <div class="z-card__header">
-                        <h2 class="z-card__title">🏢 Alta de Empresa Vinculada</h2>
+                        <h2 class="z-card__title">Alta de empresa vinculada</h2>
                         <span class="z-badge z-badge--info">Flujo desde Ciudadano</span>
                     </div>
                     <div class="z-card__body">
@@ -567,7 +567,7 @@
                                 </div>
                             </div>
 
-                            <div class="z-section-title" style="margin-top:1rem;">🏠 Domicilio Empresa</div>
+                            <div class="z-section-title" style="margin-top:1rem;">Domicilio empresa</div>
 
                             <div class="z-form-row z-form-row--2">
                                 <div class="z-form-group">
@@ -608,10 +608,10 @@
                     </div>
                     <div class="z-card__footer">
                         <button class="z-btn z-btn--ghost" id="btn-cancelar-empresa">
-                            ✕ Cancelar Alta Empresa
+                            Cancelar alta empresa
                         </button>
                         <button class="z-btn z-btn--accent z-btn--lg" id="btn-guardar-empresa">
-                            💾 Guardar Empresa
+                            Guardar empresa
                         </button>
                     </div>
                 </div>

@@ -156,7 +156,7 @@
             <div id="sub-agendas-agentes">
                 <div class="z-card" style="padding:1.5rem;margin-bottom:1.25rem">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
-                        <h3 class="z-card__title">Agendas de Agentes</h3>
+                        <h3 class="z-card__title">Agendas de agentes</h3>
                         <button class="z-btn z-btn--primary z-btn--sm" onclick="abrirFormAgendaAgente()">+ Nueva</button>
                     </div>
                     <div class="z-agenda-filtros" style="margin-bottom:0.75rem">
@@ -178,7 +178,7 @@
 
                 <!-- Formulario inline -->
                 <div class="z-card" id="formAgendasAgentesCard" hidden style="padding:1.5rem">
-                    <h4 class="z-card__title" id="formAATitle" style="margin-bottom:1rem">Nueva Agenda de Agente</h4>
+                    <h4 class="z-card__title" id="formAATitle" style="margin-bottom:1rem">Nueva agenda de agente</h4>
                     <form id="formAgendaAgente" onsubmit="submitAgendaAgente(event)">
                         <div class="z-form-grid">
                             <div class="z-form-group">
@@ -262,7 +262,7 @@
             <div id="sub-agendas-servicios" hidden>
                 <div class="z-card" style="padding:1.5rem">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
-                        <h3 class="z-card__title">Agendas de Servicios</h3>
+                        <h3 class="z-card__title">Agendas de servicios</h3>
                         <button class="z-btn z-btn--primary z-btn--sm" onclick="loadAgendasServicios()">Actualizar</button>
                     </div>
                     <div id="tablaAgendasServicios"></div>
@@ -273,7 +273,7 @@
             <div id="sub-agendas-lugares" hidden>
                 <div class="z-card" style="padding:1.5rem">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
-                        <h3 class="z-card__title">Agendas de Lugares</h3>
+                        <h3 class="z-card__title">Agendas de lugares</h3>
                         <button class="z-btn z-btn--primary z-btn--sm" onclick="loadAgendasLugares()">Actualizar</button>
                     </div>
                     <div id="tablaAgendasLugares"></div>
@@ -334,8 +334,8 @@
 <div class="z-modal-overlay" id="modalTurno" hidden>
     <div class="z-modal" style="max-width:480px">
         <div class="z-modal__header">
-            <h3 class="z-modal__title">Nuevo Turno</h3>
-            <button class="z-modal__close" onclick="cerrarModalTurno()">✕</button>
+            <h3 class="z-modal__title">Nuevo turno</h3>
+            <button class="z-modal__close" onclick="cerrarModalTurno()" aria-label="Cerrar"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
         <div class="z-modal__body">
             <form id="formTurno" onsubmit="submitTurno(event)">
@@ -362,7 +362,7 @@
                 <input type="hidden" id="turnoHoraInicio">
                 <input type="hidden" id="turnoHoraFin">
                 <div class="z-form-actions" style="margin-top:1rem">
-                    <button type="submit" class="z-btn z-btn--primary">Reservar Turno</button>
+                    <button type="submit" class="z-btn z-btn--primary">Reservar turno</button>
                     <button type="button" class="z-btn" onclick="cerrarModalTurno()">Cancelar</button>
                 </div>
                 <p id="turnoError" style="display:none;color:var(--z-text-error);margin-top:0.5rem;font-size:0.85rem"></p>
@@ -376,7 +376,7 @@
     <div class="z-modal" style="max-width:500px">
         <div class="z-modal__header">
             <h3 class="z-modal__title" id="modalCatalogoTitle">Item</h3>
-            <button class="z-modal__close" onclick="cerrarModalCatalogo()">✕</button>
+            <button class="z-modal__close" onclick="cerrarModalCatalogo()" aria-label="Cerrar"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
         <div class="z-modal__body" id="modalCatalogoBody"></div>
     </div>

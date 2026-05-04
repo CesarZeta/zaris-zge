@@ -46,11 +46,19 @@
 <body>
   <div class="welcome">
     <span class="welcome__kicker">ZARIS · Gestión Estatal</span>
-    <h1 class="welcome__title">Bienvenido</h1>
-    <p class="welcome__lede">
+    <h1 class="welcome__title" id="welcome-title">Panel de trabajo</h1>
+    <p class="welcome__lede" id="welcome-lede">
       Seleccioná un módulo del menú lateral para comenzar.
-      Reclamos, Turnos y Entradas están en desarrollo — Configuración ya es funcional.
     </p>
   </div>
+  <script>
+    try {
+      const s = JSON.parse(localStorage.getItem('zaris_session') || '{}');
+      const nombre = s.user && s.user.nombre ? s.user.nombre : null;
+      if (nombre) {
+        document.getElementById('welcome-title').textContent = nombre;
+      }
+    } catch(_) {}
+  </script>
 </body>
 </html>
