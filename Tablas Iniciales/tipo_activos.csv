@@ -1,0 +1,544 @@
+﻿id_identificador_tipo;descripcion;id_icono;requiere_ciudadano
+2;Tablero;;False
+3;Centro de Salud;;False
+4;Losas;;False
+5;Espacio Verde;;False
+6;Micro basural;;False
+8;Destino Macro basura;;False
+10;Generador de Desechos;;False
+12;Generador;;False
+13;Arboles;;False
+15;Medidor;;False
+16;Geriátricos;;False
+17;Jardines;;False
+18;Escuela;;False
+19;Recolección de Residuos;;False
+20;Lote de Arboles;;False
+22;Camiones;;False
+24;Parquímetro;;False
+26;Parcela;;False
+28;Marcos quilômetros;;False
+29;Ruta Segura;;False
+31;Autos;;False
+33;Maquinaria liviana;;False
+34;Balizas;;False
+36;Depósitos de agua;;False
+38;Farmacia;;False
+39;Comercio;;False
+40;Industria;;False
+41;Rede de Esgoto;;False
+42;Rede Mista;;False
+43;Rede de Agua;;False
+44;Registro de Agua;;False
+47;Medidor de Agua;;False
+48;Punto Verde;;False
+51;Playon deportivo;;False
+52;Salon deportivo;;False
+57;Terreno baldío;;False
+60;Contenedor de Pila;;False
+61;Contenedor de Ropa;;False
+62;Contenedor de Aceite;;False
+64;Oficinas;;False
+65;Depósitos;;False
+66;Terminal;;False
+67;Centros Veterinarios;;False
+68;Comercios Pet Friendly;;False
+69;Colonias Felinas;;False
+70;Cementerio;;False
+71;Sala de Calderas;;False
+72;Establecimiento SICPA;;False
+73;Tablero en Plaza;;False
+74;Columna en Plaza;;False
+75;Contenedor Orgánico;;False
+76;Plaza;;False
+77;Tablero faltante;;False
+78;Columna faltante;;False
+83;Farola;;False
+84;Panadería;;False
+86;Carnicería;;False
+87;Establecimiento;;False
+89;Señal;;False
+91;Mobiliario Público;;False
+92;Alcantarilla;;False
+93;Edificio Público;;False
+94;Faroles;;False
+95;Bancas;;False
+96;Papeleras;;False
+97;Tachicanes;;False
+98;Cicloparqueaderos;;False
+99;Mascota;;False
+101;Bajada a playa;;False
+102;Centro de Atención Primaria (CAP);;False
+103;Sociedad de Fomento;;False
+104;Centro Educativo;;False
+105;Centro Cultural;;False
+106;Centro Deportivo;;False
+107;Centro Administrativo-institucional;;False
+108;Centro Servizos Públicos;;False
+109;Centro Dotacional Múltiple;;False
+110;Centro Relixioso;;False
+111;Centro Recreativo Ou De Relación Social;;False
+116;Punto de Arrojo;;False
+117;Basural;;False
+118;Lomada;;False
+119;Poste Nuevo;;False
+125;Hardware;;False
+126;Cartelería;;False
+130;Colectividad;;False
+131;Culto;;False
+132;Cooperación Internacional;;False
+133;ONG;;False
+135;Enquinchado;;False
+136;Cámara de Seguridad;;False
+137;Calle;;False
+138;Sendero;;False
+139;Hospital;;False
+140;Posta Sanitaria;;False
+141;Alarmas Comunitarias;;False
+142;Consejos Barriales;;False
+143;Polideportivos Sociales;;False
+144;Empleado Municipal;;False
+145;TDT;;False
+146;Telecentro;;False
+148;Sala Cuna;;False
+149;Jardín Maternal;;False
+153;Bienes Muebles;;False
+154;Feriantes;;False
+155;Telefonía;;False
+156;Red de Cloaca;;False
+158;Red de Agua;;False
+160;Centro de Inclusión Social (CIS);;False
+161;Alojamiento;;False
+165;Playa;;False
+167;IPJ;;False
+168;Canasto;;False
+171;Comando;;False
+172;Comisaría;;False
+173;Domo de seguridad;;False
+174;PC;;False
+175;Fibra Óptica;;False
+176;Equipo Médico;;False
+199;Vados;;False
+200;Estacionamiento;;False
+201;Obras;;False
+202;Terrazas;;False
+203;Taxi;;False
+204;Animales peligrosos;;False
+205;Venta ambulante;;False
+206;Entidades Ciudadanas;;False
+207;Cementerios;;False
+208;Servicios Sociales;;False
+209;Contratos;;False
+210;Sintomas Dengue;;False
+211;Pantallas;;False
+212;Impresoras / Escáneres;;False
+214;Luminaria;;False
+215;Instituciones;;False
+217;Perro Potencialmente peligroso;;False
+218;Recolección AVUs;;False
+219;Sensor;;False
+220;Centros Comunitarios;;False
+247;Contactos idiBell;;False
+265;Inmuebles de Importancia Histórica;;False
+270;Comercio Reempadronado;;False
+275;Hotel (Señalización);;False
+276;Castraciones;;False
+279;Licencia de conducir;;False
+282;Inmueble;;False
+288;Contratista;;False
+289;Caso Dengue;;False
+290;Permiso Obra;;False
+291;Cazoleta (contención árboles);;False
+292;Curriculum Vitae;;False
+293;Proveedores PJ;;False
+294;Obra Simple;;False
+296;Planos Obras Privadas;;False
+297;Proveedores del Estado;;False
+299;No generador Res Patógenos;;False
+300;Habilitación Comercial;;False
+301;Proveedores PH;;False
+302;Habilitación;;False
+306;Uso de Suelo;;False
+307;Presentación Planos de Obras;;False
+308;Vivienda;;False
+309;Bache;;False
+310;Loteo;;False
+311;Planos Agrimensura;;False
+312;Previa Agrimensura;;False
+313;Tramites Varios;;False
+315;Espacio Urbano;;False
+317;Inscripcion Deportistas;;False
+321;Ecomuseo;;False
+325;Gabinete Estanco;;False
+338;Calle de Tierra;;False
+341;Reempadronamiento de comercio;;False
+343;Solicitud de libre deuda;;False
+344;Carnet Sanitario Comun;;False
+346;IPVU - Solicitud Vivienda;;False
+347;Señal de tránsito;;False
+348;Reductor de velocidad;;False
+349;Alta de luz;;False
+350;Reserva de Denominación;;False
+351;CONEXIÓN DOMICILIARIA;;False
+352;Reserva Natural;;False
+353;Factibilidad de loteo;;False
+354;Garantias Loteo;;False
+356;Licencia de conducir rt;;False
+357;Inmueble Alquilado;;False
+359;Inscripcion de Nacimientos;;False
+360;Solicitud DNI;;False
+361;Solicitud Pasaporte;;False
+362;Tramite Reconocimientos;;False
+363;Registro de Proveedores;;False
+364;H. C. - Casos sin local;;False
+366;Obras Particulares;;False
+367;Permiso de obra nuevo;;False
+368;SEHAC - Deb. Aut tasas mun.;;False
+369;Puentes y Pasarelas;;False
+370;Educacion Vial;;False
+371;Documentación;;False
+372;Visado;;False
+376;Avenidas;;False
+377;Centro Vecinal;;False
+378;Becas escolares;;False
+380;Generadores G. A.;;False
+391;Defensa al consumidor;;False
+397;Inscripción Ciclo Turismo;;False
+399;Domicilio elect. consum. pvr;;False
+400;Subsidio Luz y Gas pvr;;False
+403;Programa tarifa eléctrica;;False
+404;Jubilación Ordinaria Común;;False
+405;Autos en Vía Pública;;False
+408;Pago de transport. áridos prod;;False
+409;Pago de Extractores De Arido;;False
+412;Habilitación comercial riv;;False
+413;Cambio de titularidad;;False
+414;Insc. Residencias Est. 2025;;False
+418;Cuota Mensual IVUJ;;False
+419;Expedientes de Obras;;False
+423;Ovitrampa;;False
+424;Poda, extracción y plantación;;False
+425;Solicitud de Certificados;;False
+426;Huerta Municipal;;False
+427;Comercio adherido;;False
+428;Turismo y Patrimonio;;False
+429;Licencia de funcionamiento;;False
+436;Inscripto Deportes;;False
+437;FICHA OMAPED;;False
+439;Aires acondicionados;;False
+441;Renovación de Licencia de Cond;;False
+444;Comprobantes - PJ - CC;;False
+446;Comprobantes - PH - SC;;False
+447;Comprobantes - PJ - SC;;False
+448;Comprobantes - Empleado;;False
+449;Equipamiento Salud;;False
+450;Participación en Subasta;;False
+460;Redeterminación de Precios -PJ;;False
+461;Participación en Subasta - PH;;False
+462;Dotación;;False
+463;Ojos en Alerta;;False
+464;Numeracion Domiciliaria;;False
+466;Permiso de ocupacion;;False
+469;Certificado Adultos Mayores;;False
+470;Camino rural;;False
+471;Estacionamiento medido;;False
+472;Postulaciones de empleo;;False
+477;Suberoteca;;False
+484;Punto Educar;;False
+485;PE - Guardavidas;;False
+486;contador domiciliario;;False
+487;Libre deuda tributario PF - PJ;;False
+488;Lib. Deuda Infracción Tránsito;;False
+489;Lib. Deuda Proveedores con HC;;False
+495;Telefono o Internet;;False
+500;Permiso de uso de vía pública;;False
+501;Organizaciones Sociales;;False
+504;Garita de colectivo;;False
+505;Expediente Permiso de Obra;;False
+507;Prueba jueves;;False
+508;Matrimonio en oficina movil;;False
+509;Inscripción sentencia judicial;;False
+510;Pedido de Informes;;False
+511;Poder Judicial - Partidas;;False
+515;Area;;False
+518;Artistas;;False
+519;Linea Municipal;;False
+520;Certificado medico Adultos;;False
+523;Reclamos;;False
+524;Apertura de agencias P.H;;False
+526;Apto Bromatológico;;False
+527;Constitución de sociedades;;False
+531;Fauna;;False
+532;Contenedor;;False
+533;Ruleros y Puntos Verdes;;False
+556;Proyectos culturales 2025;;False
+568;Trámites y Requisitos;;False
+572;Nomenclador;;False
+573;Acta de Infracción;;False
+582;Ficha de Aceptación al Basural;;False
+583;Carnet Sanitario Especial;;False
+586;Renovaciones;;False
+587;Prueba interna caracteres;;False
+588;Dependencia Policial;;False
+589;Asociaciones;;False
+590;Instituciones Sindicales;;False
+593;Food Trucks;;False
+595;Escuelas;;False
+597;Solicitud de Asistencia;;False
+604;Apertura de agencias Personas;;False
+605;Apertura de agencias P. J;;False
+606;Educación no formal;;False
+607;Contribuyente;;False
+608;Oficina de Patentamiento;;False
+615;Escuela de tango;;False
+616;Solicitud de Licencias;;False
+617;Edificios Municipales;;False
+619;Inscripción Escuela Municipal de Musica;;False
+621;Escuela de Arte;;False
+622;Oficio;;False
+624;Punto Seguro;;False
+626;Libre deuda;;False
+627;Codificación parcelaria;;False
+628;Plancheta;;False
+630;Copia de mensura;;False
+631;Certificado de no titularidad;;False
+632;Reporte parcelario;;False
+634;Solicitudes de Permisos de Bien Nacional de Uso Público;;False
+635;DEPARTAMENTO DEPORTES Y RECREACIÓN;;False
+636;Escuelas Deportivas;;False
+638;Habilitación comercial perito;;False
+642;Centro de acopio;;False
+645;Libre deuda de tránsito;;False
+646;Devolución de licencia;;False
+649;Solicitud de Cambio de Titularidad de Inmueble;;False
+650;Comercios;;False
+651;Libre deuda instructor;;False
+652;Libre deuda matriculas;;False
+654;Libre deuda renovaciones, bajas y cierres;;False
+655;Libre deuda transportes y vehiculos;;False
+656;Libre deuda vehiculos para academia o rent a car;;False
+657;Libre deuda de obras y conexiones;;False
+658;Libre deuda suministros;;False
+659;Libre deuda por contrato de trabajo en via publica;;False
+660;Plazas de garaje;;False
+661;Mercadillos ambulantes;;False
+666;Certificado para actividad comercial;;False
+669;Arroyo;;False
+671;Bandera;;False
+674;Garitas;;False
+675;Estación de compostaje;;False
+676;Inscripción de Asociaciones;;False
+677;Inscripción de Fundaciones;;False
+681;Solicitud de antecedentes catastrales;;False
+682;Animal de compañía;;False
+683;Miembro Club Universitario;;False
+684;Cocina;;False
+687;Anexo de rubros;;False
+689;Pisos;;False
+690;Habitaciones;;False
+691;Oficina de Coordinacion;;False
+692;Comedores CIS;;False
+693;Sum;;False
+694;Patios;;False
+695;Depositos;;False
+696;Baños comunitarios;;False
+697;HALL;;False
+698;Baños apto discapacidad;;False
+700;Baños oficina de Coordinacion;;False
+703;Inscripción de Proveedores;;False
+705;Cambio de Domicilio Postal;;False
+715;Inscripción de profesionales;;False
+716;Renovación puesto de venta ambulante;;False
+717;Baños Habitaciones;;False
+718;Baños Ludoteca;;False
+719;Ludoteca;;False
+721;Sala de profesionales;;False
+722;Baños Sala de profesionales;;False
+723;Oficina De Vigilancia;;False
+725;Oficina De Mantenimiento;;False
+726;Baños sum;;False
+727;Pasillos;;False
+728;Sala de máquinas;;False
+729;Cuarto de limpieza;;False
+730;Renovacion proveedores;;False
+731;Presentación de planos para Permiso de Obra;;False
+734;Comercio Club Universitario;;False
+735;Número domiciliario;;False
+737;Poste Inactivo;;False
+739;CIS Piso;;False
+740;CIS Habitación;;False
+741;CIS Plaza;;False
+744;Asociaciones Civiles;;False
+746;Requisicion de materiales y servicios;;False
+747;Castraciones - Autorización Quirúrgica;;False
+748;LUMINARIA ALTA EN COLUMNA;;False
+749;LUMINARIA EN PARED;;False
+750;LUMINARIA BAJA EN COLUMNA;;False
+751;Reserva de Denominación - AF;;False
+752;MuniCentros;;False
+753;PROFESIONAL;;False
+754;Poda;;False
+755;Renovaciones comerciales;;False
+757;Oficina de Defensa al Consumidor;;False
+758;Casinos;;False
+759;Inscripción de proveedores municipales;;False
+773;Documentación Anual Obligatoria;;False
+777;Tablero;;False
+779;documentacion-anual-obligatoria-asociaciones;;False
+780;Carteles de tránsito;;False
+782;Justificaciones;;False
+783;Apertura de Partidas Municipales;;False
+784;Activo - Identificador;;False
+785;Semáforos;;False
+790;Solicitud de registro como agente de venta de estacionamiento tarifado - Canelones;;False
+791;Habilitación y renovación de registro único obligatorio transportistas de residuos;;False
+792;Licencia de conducir;;False
+793;Constitución de Fundaciones;;False
+794;Inscripción Asambleas;;False
+796;Extintores;;False
+804;Relevamiento de comercios;;False
+806;Relevamiento de comercios;;False
+808;Renovación de Carnet de Marca y Señal;;False
+809;Registro Permanente de Cooperativas;;False
+810;Manejo Integrado de Plaga;;False
+812;Club de Abuelos;;False
+815;Deportes;;False
+818;Asociación Vecinal;;False
+820;Estaciones de bombeo de captación;;False
+822;Tanques de agua;;False
+823;Plantas potabilizadoras;;False
+824;Solicitud o renovación pase libre para personas con discapacidad;;False
+829;Licitadores;;False
+830;Solicitud de permiso de exploración;;False
+834;Vecinales Barriales;;False
+835;Registro de Consorcios de Riego;;False
+836;Solicitud baja comercial e industrial;;False
+838;Solicitud de poda;;False
+839;Solicitud de extracción;;False
+840;Inscripción o actualización de Ficha IPVU;;False
+841;Patentamiento;;False
+842;Autorización para espectáculos públicos;;False
+843;Transferecncia dentro de la provincia;;False
+844;Comedores Sociales;;False
+845;Reempadronamiento de Proveedores;;False
+849;Reclamos y Sugerencias SU.SE.PU.;;False
+850;Hogares de Personas Mayores;;False
+858;AF oficios;;False
+859;AF tramites generales;;False
+861;Herramientas - Pañol;;False
+862;Subsuelo Casa Central;;False
+863;Primer Piso Casa Central;;False
+864;Segundo Piso Casa Central;;False
+865;Tercer Piso Casa Central;;False
+866;Cuarto Piso Casa Central;;False
+868;Quinto Piso Casa Central;;False
+869;Planta Baja Casa Central;;False
+870;Playa de Estacionamiento Casa Central;;False
+876;Comercio-ts;;False
+877;Nómina Municipal (Trelew);;False
+878;Libre de deuda;;False
+879;Permiso de poda y extracción de arbolado público;;False
+882;Presentación de Comprobantes - Con contratación;;False
+883;Eventos Bailables;;False
+884;vehiculo;;False
+886;Modificación de Proyecto de Obra;;False
+887;Avance de obra digital;;False
+888;Final de Obra;;False
+889;Permiso de Edificación;;False
+891;Baja de HAPROT JUJUY;;False
+892;Habilitación HAPROT (Secretaría Provincial de Transporte);;False
+893;Autorización para Evento Social Cultural;;False
+894;Declaración de Propaganda;;False
+896;Imprenta Roque Sáenz Peña;;False
+897;Buzón de peticiones ciudadanas;;False
+899;Colegios;;False
+900;Transportes;;False
+907;Mesa de entrada;;False
+908;Primer piso Imprenta Roque Sáenz Peña;;False
+909;Segundo piso Imprenta Roque Sáenz Peña;;False
+910;LD inmueble y obras;;False
+912;Artesano;;False
+913;Factibilidad Quebrada de Humahuaca;;False
+914;Débito automático;;False
+129;Mascotas;;True
+79;Calles de Arena;;False
+80;Calles de Asfalto;;False
+81;Calles de Reticulado;;False
+82;Calles de Hormigón;;False
+120;Ordenadores;;False
+121;Monitores;;False
+169;Rampa Accesible;;False
+170;Empresa;;False
+222;Canastas;;False
+223;Porterías;;False
+224;Banquillos;;False
+225;Paradas de Taxis;;False
+226;Clubes Deportivos y Sociales;;False
+227;Estaciones de Servicios;;False
+228;Bancos y Cajeros automáticos;;False
+230;Organismos/Delegaciones Nacionales;;False
+231;Organismos Provinciales;;False
+232;Profesionales - Permiso de Obra;;False
+233;Universidades/Facultades;;False
+234;Punto Limpio;;False
+235;Portátiles;;False
+237;Pista Saludable/gimnasio Cielo Abierto;;False
+238;Empresa De Servicios Públicos;;False
+239;Dársenas De Carga Y Descarga;;False
+240;Dársenas Para Personas Con Discapacidad;;False
+241;Darsenas De Estacionamiento Para Motos;;False
+242;Compostera Municipal;;False
+243;Recolección Diferenciada (Empresarias e Instituciones);;False
+244;Centros Informacion Turística;;False
+245;Atractivos Turisticos;;False
+246;Manantiales y aguas termales;;False
+248;Juntas Vecinales;;False
+249;Comedor;;False
+251;Permisionario;;False
+252;Personal;;False
+253;Museos;;False
+254;Bibliotecas;;False
+259;Turnero;;False
+260;Reloj;;False
+262;Edificios;;False
+264;Punto de Agua Potable;;False
+266;Vehículo;;False
+267;Motosierra;;False
+268;Motoguadaña;;False
+269;Asistente a Eventos;;False
+271;Parque;;False
+273;Firma Digital Token;;False
+274;Reloj Biométrico;;False
+277;Estacionamiento Reservado (Entidades);;False
+326;Aula de la naturaleza;;False
+327;Camping;;False
+328;Casa Rural;;False
+329;Centro de visitantes;;False
+331;Hotel de Montaña;;False
+332;Mirador;;False
+333;Punto de información;;False
+334;Refugio;;False
+335;Kiosco Restaurante_Area Recreativa;;False
+340;Tomógrafo;;False
+345;Instalación;;False
+1;Poste;81;False
+9;Dependencia Municipal;69;False
+11;Semaforos;80;False
+14;Parada de Colectivo;79;False
+23;Estaciones Deportivas;71;False
+25;Tapa de Cloacas;83;False
+27;Contenedor de Basura;66;False
+30;Centro de Atención Social;70;False
+35;Desfibriladores;82;False
+37;Antenas;78;False
+45;Contenedor de Restos (residuos sin clasificar);68;False
+46;Contenedor de Envases;65;False
+49;Contenedor de Papel;67;False
+50;Contenedor de Vidrio;64;False
+53;Espacio recreativo;74;False
+54;Espacio cultural;73;False
+55;Espacio educativo;72;False
+63;Centro Barrial;76;False
+88;Ambulancia;75;False
+826;Cámaras de seguridad Policía;84;False
+827;Cámaras de seguridad Gobierno de Córdoba;85;False
