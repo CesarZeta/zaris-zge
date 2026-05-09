@@ -1,0 +1,26 @@
+id,codigo_clae,descripcion,categoria_tasa
+1,471110,Venta al por menor en almacenes y minimercados,comercio
+2,471120,Venta al por menor en supermercados y hipermercados,comercio
+3,472110,Venta al por menor de productos de panadería y pastelería,comercio
+4,473000,Venta al por menor de combustibles para vehículos,comercio
+5,477110,Venta al por menor de prendas y accesorios de vestir,comercio
+6,478100,Venta al por menor en puestos de feria,comercio
+7,561010,Restaurantes y cantinas,servicios
+8,561020,Servicios de comidas por encargo y otros,servicios
+9,562000,Servicios de catering,servicios
+10,551000,Servicios de hotelería,servicios
+11,611010,Telefonía fija,servicios
+12,620100,Desarrollo de software y consultoría informática,servicios
+13,641100,Bancos y entidades financieras,servicios
+14,651100,Seguros de vida,servicios
+15,681010,Alquiler de inmuebles propios,servicios
+16,711100,Actividades de arquitectura e ingeniería,servicios
+17,731100,Publicidad,servicios
+18,861000,Servicios de salud / clínicas y consultorios,servicios
+19,932100,Gimnasios y actividad física,servicios
+20,960210,Peluquerías y salones de belleza,servicios
+21,101100,Producción y procesamiento de carne,industria
+22,102000,Elaboración de pescado,industria
+23,107100,Fabricación de productos de panadería,industria
+24,110100,Destilación y rectificación de bebidas alcohólicas,industria
+25,131100,Preparación e hilatura de fibras textiles,industria
