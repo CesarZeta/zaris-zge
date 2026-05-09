@@ -242,26 +242,46 @@ async def crear_reclamo(
         if not body.get(f):
             raise HTTPException(status_code=422, detail=f"Campo requerido: {f}")
 
+    # direccion es el campo nuevo (§22); domicilio_reclamo se mantiene como alias entrante
+    direccion = body.get("direccion") or body.get("domicilio_reclamo") or ""
+
     data = {
         "id_ciudadano":     body["id_ciudadano"],
         "id_tipo_reclamo":  body.get("id_tipo_reclamo"),
         "id_area":          body.get("id_area"),
         "descripcion":      body["descripcion"],
-        "domicilio_reclamo": body.get("domicilio_reclamo", ""),
+        "direccion":        direccion,
         "prioridad":        body.get("prioridad", "Media"),
         "observaciones":    body.get("observaciones", ""),
+        "latitud":          body.get("latitud"),
+        "longitud":         body.get("longitud"),
+        "id_localidad":     body.get("id_localidad"),
+        "id_activo":        body.get("id_activo"),
+        "canal_origen":     body.get("canal_origen"),
+        "fuente_geolocalizacion": body.get("fuente_geolocalizacion"),
         "id_usuario_alta":  current_user["id_usuario"],
     }
 
     try:
+        # Resolver id_estado_fk de "Sin asignar" para nuevos reclamos
+        r_est = await db.execute(text(
+            "SELECT id_estado_reclamo FROM estado_reclamo WHERE nombre = 'Sin asignar' AND activo = TRUE LIMIT 1"
+        ))
+        est_row = r_est.fetchone()
+        data["id_estado_fk"] = est_row.id_estado_reclamo if est_row else None
+
         result = await db.execute(text("""
             INSERT INTO reclamos
-                (id_ciudadano, id_tipo_reclamo, id_area, descripcion, domicilio_reclamo,
-                 prioridad, estado, observaciones, activo, fecha_alta, fecha_modificacion,
+                (id_ciudadano, id_tipo_reclamo, id_area, descripcion, direccion,
+                 domicilio_reclamo, prioridad, estado, id_estado_fk, observaciones,
+                 latitud, longitud, id_localidad, id_activo, canal_origen,
+                 fuente_geolocalizacion, activo, fecha_alta, fecha_modificacion,
                  id_usuario_alta, id_usuario_modificacion)
             VALUES
-                (:id_ciudadano, :id_tipo_reclamo, :id_area, :descripcion, :domicilio_reclamo,
-                 :prioridad, 'Sin asignar', :observaciones, TRUE, NOW(), NOW(),
+                (:id_ciudadano, :id_tipo_reclamo, :id_area, :descripcion, :direccion,
+                 :direccion, :prioridad, 'Sin asignar', :id_estado_fk, :observaciones,
+                 :latitud, :longitud, :id_localidad, :id_activo, :canal_origen,
+                 :fuente_geolocalizacion, TRUE, NOW(), NOW(),
                  :id_usuario_alta, :id_usuario_alta)
             RETURNING id_reclamo, nro_reclamo
         """), data)
@@ -412,27 +432,45 @@ async def crear_subreclamo(
         if not body.get(f):
             raise HTTPException(status_code=422, detail=f"Campo requerido: {f}")
 
+    direccion = body.get("direccion") or body.get("domicilio_reclamo") or ""
+
     data = {
         "id_ciudadano":     body.get("id_ciudadano") or padre.id_ciudadano,
         "id_tipo_reclamo":  body["id_tipo_reclamo"],
         "id_area":          body.get("id_area"),
         "descripcion":      body["descripcion"],
-        "domicilio_reclamo": body.get("domicilio_reclamo", ""),
+        "direccion":        direccion,
         "prioridad":        body.get("prioridad", "Media"),
         "observaciones":    body.get("observaciones", ""),
+        "latitud":          body.get("latitud"),
+        "longitud":         body.get("longitud"),
+        "id_localidad":     body.get("id_localidad"),
+        "id_activo":        body.get("id_activo"),
+        "canal_origen":     body.get("canal_origen"),
+        "fuente_geolocalizacion": body.get("fuente_geolocalizacion"),
         "id_reclamo_padre": id_reclamo,
         "id_usuario_alta":  current_user["id_usuario"],
     }
 
     try:
+        r_est = await db.execute(text(
+            "SELECT id_estado_reclamo FROM estado_reclamo WHERE nombre = 'Sin asignar' AND activo = TRUE LIMIT 1"
+        ))
+        est_row = r_est.fetchone()
+        data["id_estado_fk"] = est_row.id_estado_reclamo if est_row else None
+
         result = await db.execute(text("""
             INSERT INTO reclamos
-                (id_ciudadano, id_tipo_reclamo, id_area, descripcion, domicilio_reclamo,
-                 prioridad, estado, observaciones, id_reclamo_padre, activo,
+                (id_ciudadano, id_tipo_reclamo, id_area, descripcion, direccion,
+                 domicilio_reclamo, prioridad, estado, id_estado_fk, observaciones,
+                 latitud, longitud, id_localidad, id_activo, canal_origen,
+                 fuente_geolocalizacion, id_reclamo_padre, activo,
                  fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion)
             VALUES
-                (:id_ciudadano, :id_tipo_reclamo, :id_area, :descripcion, :domicilio_reclamo,
-                 :prioridad, 'Sin asignar', :observaciones, :id_reclamo_padre, TRUE,
+                (:id_ciudadano, :id_tipo_reclamo, :id_area, :descripcion, :direccion,
+                 :direccion, :prioridad, 'Sin asignar', :id_estado_fk, :observaciones,
+                 :latitud, :longitud, :id_localidad, :id_activo, :canal_origen,
+                 :fuente_geolocalizacion, :id_reclamo_padre, TRUE,
                  NOW(), NOW(), :id_usuario_alta, :id_usuario_alta)
             RETURNING id_reclamo, nro_reclamo
         """), data)

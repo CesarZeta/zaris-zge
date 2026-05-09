@@ -309,6 +309,7 @@ Comandos disponibles en `.claude/commands/` — invocar con `/nombre`:
 | `backend/seed_prod.py` | Seed prod — tablas vacías contra Railway (confirmar antes de usar) |
 | `backend/seed_incremental.py` | Seed incremental (no borra): cargos, áreas, subareas, tipo_reclamo, ciudadanos (500 desde CSVs en `Tablas Iniciales/`) |
 | `backend/seed_reclamos_prod.py` | Inserta 20 reclamos demo en prod; detecta automáticamente si el constraint de estado usa tildes |
+| `backend/seed_geo_argentina.py` | Carga provincias / partidos / localidades AR (idempotente vía UPSERT) — usar tras migración 22 |
 
 ## 18. Módulo Reclamos
 
@@ -318,12 +319,15 @@ Comandos disponibles en `.claude/commands/` — invocar con `/nombre`:
 |---|---|
 | `reclamos` | Transaccional principal — un registro por reclamo |
 | `reclamo_historial` | Timeline de cambios de estado (INSERT solo, nunca UPDATE) |
+| `reclamo_adjuntos` | Adjuntos del reclamo (§22) — binarios en Supabase Storage, metadatos acá |
 | `tipo_reclamo` | Maestro con `id_area`, `id_subarea`, `sla_dias`, `audit` (FK → `area`, `subarea`) |
-| `estado_reclamo` | Maestro de estados válidos — la API valida contra esta tabla |
+| `estado_reclamo` | Maestro de estados válidos — PK **`id_estado_reclamo`** (no `id_estado`) |
 | `ordenes_trabajo` | OT operativa o de auditoría asociada a un reclamo |
 | `estado_ot` | Estados de OT: `En gestión`, `En espera`, `Pendiente`, `Terminada`, `Cancelada` |
 | `equipo_agentes` | Relación equipo ↔ agente (reemplaza `equipo_usuarios` en lógica de OTs) |
 | `configuracion_general` | Key/value de parámetros del sistema |
+| `provincias` / `partidos` / `localidades` | Árbol geo AR (§22) — `reclamos.id_localidad` apunta al nivel más fino |
+| `tipos_activo` / `activos` | Catálogo de activos físicos georreferenciados (§22) |
 
 `nro_reclamo` se genera automáticamente vía trigger `trg_nro_reclamo` → `REC-YYYY-XXXXXX`.
 `nro_ot` se genera automáticamente vía trigger `trg_nro_ot` → `OT-YYYY-XXXXXX`.
@@ -482,3 +486,79 @@ Las siguientes tablas ya existen en Supabase prod y **no deben re-crearse**:
 - `Rechazado` → `Cancelado`
 
 CHECK constraint activo: `ck_reclamo_estado` con valores `('Sin asignar','En gestión','En espera','En auditoría','Resuelto','Cancelado')`.
+
+### Migración 22 — Geolocalización + Activos + Adjuntos (`backend/migrations/22_geo_activos_adjuntos.sql`)
+
+Aplicada en local. **Pendiente de aplicar en prod Supabase.** Incluye:
+
+- Crea `provincias`, `partidos`, `localidades`.
+- Crea `tipos_activo`, `activos`.
+- Crea `reclamo_adjuntos`.
+- Agrega a `reclamos`: `id_estado_fk` (FK → `estado_reclamo.id_estado_reclamo`), `direccion`, `latitud`, `longitud`, `id_localidad`, `id_activo`, `canal_origen`, `fuente_geolocalizacion`, `fecha_cierre`, `fecha_primer_asignacion`, `sla_vencimiento`.
+- Trigger `trg_sla_reclamo`: calcula `sla_vencimiento = fecha_alta + tipo_reclamo.sla_dias` al INSERT.
+- La columna `estado` (VARCHAR) se mantiene transicional para compatibilidad — deprecada cuando frontend y endpoints migren 100% a `id_estado_fk`.
+
+## 22. Geolocalización, Activos y Adjuntos (Reclamos)
+
+### Árbol geográfico (provincia → partido → localidad)
+
+- `provincias`: 24 entidades (23 provincias AR + CABA).
+- `partidos`: 135 partidos PBA + 15 comunas CABA + capitales del resto. Único `(id_provincia, nombre)`.
+- `localidades`: nivel más fino. Único `(id_partido, nombre)`.
+- `reclamos.id_localidad` y `activos.id_localidad` apuntan al nivel más fino. Para agregar por partido o provincia, hacer JOIN.
+- Seed: `backend/seed_geo_argentina.py` (idempotente vía UPSERT). Comando local: `$env:DATABASE_URL="postgresql+asyncpg://postgres:145236@127.0.0.1:5432/zaris_dev"; python backend/seed_geo_argentina.py`.
+
+### Activos (físicos del municipio)
+
+- `tipos_activo`: catálogo (luminaria, semáforo, contenedor, etc.). Campo `requiere_ciudadano` (boolean) marca si el activo necesita asociar a un ciudadano.
+- `activos`: cada ítem físico con `codigo_unico`, `id_tipo_activo`, `direccion`, `id_localidad`, `latitud`, `longitud`.
+- `reclamos.id_activo` permite vincular un reclamo a un activo específico (ej. luminaria `cod_00007`). Cuando se setea, se sugiere también poblar `lat/lon` del activo en el reclamo y marcar `fuente_geolocalizacion = 'activo_referenciado'`.
+- Sample anonimizado en `Tablas Iniciales/Activos.csv` (49.360 activos con lat/lon dentro del bbox de Vicente López).
+
+### Geolocalización en `reclamos`
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `latitud` / `longitud` | NUMERIC(10,7) | WGS84. Index compuesto `idx_reclamos_lat_lon`. |
+| `id_localidad` | FK | nivel más fino. |
+| `direccion` | VARCHAR(300) | Texto normalizado (resultado de OSM o input manual). Reemplaza al deprecado `domicilio_reclamo`. |
+| `fuente_geolocalizacion` | VARCHAR(20) | `pin_manual` / `geocoding_osm` / `gps_dispositivo` / `activo_referenciado`. |
+
+**OT vs reclamo:** la OT usa la misma lat/lon del reclamo (no tiene columnas geo propias). Para queries con lat/lon de OTs, hacer JOIN con `reclamos`.
+
+### Servicio externo: OpenStreetMap / Nominatim
+
+- **Geocoding directo:** `GET https://nominatim.openstreetmap.org/search?q=<calle+altura+localidad>&format=json&limit=5&countrycodes=ar`
+- **Geocoding inverso:** `GET https://nominatim.openstreetmap.org/reverse?lat=<>&lon=<>&format=json`
+- **Política de uso:** máx 1 req/seg, enviar `User-Agent: ZARIS-API/1.0 (cesar@zaris.dev)`. Para producción real, considerar Photon o Nominatim self-hosted.
+- **Mapas en frontend:** Leaflet + tiles de OSM (gratis, sin API key).
+- En el formulario de alta de reclamo, al pickear desde mapa setear `fuente_geolocalizacion = 'pin_manual'`; al elegir sugerencia de Nominatim, `geocoding_osm`.
+
+### Sub-reclamos
+
+- Sigue como auto-referencia en `reclamos` (campo `id_reclamo_padre`).
+- **Profundidad máxima: 1 nivel.** Validado en `POST /api/v1/reclamos/{id}/subreclamo`: si el padre ya tiene `id_reclamo_padre`, rechaza.
+- No hay límite de cantidad de sub-reclamos por reclamo.
+
+### Adjuntos (Supabase Storage)
+
+- Tabla `reclamo_adjuntos`: solo metadatos (`storage_path`, `mime_type`, `tamano_bytes`).
+- Bucket: `reclamos-adjuntos` con políticas RLS que requieren JWT válido.
+- Path convention: `reclamos/{id_reclamo}/{uuid}.{ext}`.
+- **Flujo de upload (a implementar):** frontend pide URL firmada al backend → sube directo a Storage → backend inserta fila en `reclamo_adjuntos`. La URL firmada tiene TTL corto.
+- Solo imágenes en V1. Adjuntos desde web app o app móvil futura.
+
+### Campos extras en reclamos (CRM)
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `canal_origen` | VARCHAR(20) | `web` / `whatsapp` / `telefono` / `presencial` / `oficio` / `app_movil` / `otro`. |
+| `fecha_primer_asignacion` | TIMESTAMPTZ | Set al pasar de `Sin asignar` → `En gestión` (medición de SLA real). |
+| `fecha_cierre` | TIMESTAMPTZ | Set al pasar a estado final (`Resuelto` o `Cancelado`). |
+| `sla_vencimiento` | TIMESTAMPTZ | Calculado por trigger `trg_sla_reclamo` = `fecha_alta + tipo_reclamo.sla_dias`. |
+
+### Estado (FK vs VARCHAR — transición)
+
+- **Migración 22 introduce `id_estado_fk`** como FK a `estado_reclamo(id_estado_reclamo)`.
+- La columna `estado` (VARCHAR con CHECK) se mantiene poblada en paralelo durante el período de transición. Endpoints existentes que leen/escriben `estado` siguen funcionando.
+- Nuevos consumidores deben usar `id_estado_fk`. Cuando frontend y endpoints migren 100%, se removerá el VARCHAR en una migración futura.
