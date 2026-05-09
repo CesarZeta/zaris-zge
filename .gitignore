@@ -37,6 +37,8 @@ deploy_to_supabase.py
 # Temp
 *.tmp
 *.log
+*.err
+uvicorn.*
 
 # Documentos archivados con info sensible (no versionar)
 docs/archivo/

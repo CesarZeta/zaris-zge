@@ -1,0 +1,289 @@
+﻿id_tipo_incidente;Tipo;id_estado_predeterminado;SLA;auditoria;id_prioridad;id_area_servicio
+53434;Acumulación de agua/agua estancada;5;2;0;2;7378
+50356;Bache en calle de adoquines;5;2;0;2;7534
+50413;Camión de recolección que incumple normas de tránsito;5;2;0;2;7537
+53142;Colocación de cables, interruptores y tomacorrientes;5;2;0;2;7985
+50404;Colocación de cesto papelero;5;2;0;2;7537
+53143;Colocación de motores, contactores y accesorios;5;2;0;2;7985
+53521;Colocación de teléfonos, intercom, porteros eléctricos y accesorios;5;2;0;2;8014
+50594;Columna en mal estado/sin mantenimiento;5;2;0;2;6717
+52261;Control de incidente;5;2;0;2;7874
+53136;Corte de pasto y poda básica;5;2;0;2;7984
+53169;Creación de estructuras de madera;5;2;0;2;7989
+53179;Desinfección y desratización en edificios;5;2;0;2;7990
+53175;Desinfeccion y limpieza de tanques;5;2;0;2;7990
+53137;Desmonte e instalación de azulejos y cerámicas;5;2;0;2;7984
+53173;Desmonte, provision y colocación de vidrios;5;2;0;2;7989
+53157;Destapación de tuberías obstruidas por residuos o sedimentos;5;2;0;2;7988
+53139;Ejecución y reparación de revoques y pinturas de menor envergadura;5;2;0;2;7984
+53133;Entrega de insumos en establecimientos;5;2;0;2;7984
+50395;Falta de recolección de residuos orgánicos/húmedos;5;2;0;2;7537
+50393;Falta de recolección de residuos reciclables (Programa Día Verde);5;2;0;2;7536
+53432;Hundimiento de calzada;5;2;0;2;7378
+53433;Hundimiento en vereda;5;2;0;2;7378
+50424;Inconvenientes con el suministro de agua;5;2;0;2;7538
+50392;Inconvenientes con las tareas de guardián de plaza;5;2;0;2;7535
+50391;Inconvenientes con los horarios de apertura y cierre de parque/plaza;5;2;0;2;7535
+50362;Inconvenientes con obras de bacheo;5;2;0;2;7534
+53144;Inspección y mantenimiento de instalaciones eléctricas;5;2;0;2;7985
+53178;Instalación cartelería y luminaria de emergencia;5;2;0;2;7990
+53517;Instalación de aires acondicionados;5;2;0;2;8013
+53167;Instalación de armarios y estanterías;5;2;0;2;7989
+53519;Instalación de sistemas de audio y video;5;2;0;2;8014
+53161;Instalación de sistemas de drenaje para aguas pluviales o residuales;5;2;0;2;7988
+53164;Instalación de tuberías de agua potable y desagüe;5;2;0;2;7988
+52369;Instalación eléctrica en mal estado/fuera de norma;5;2;0;2;7894
+53155;Instalación y mantenimiento de calefones y termotanques;5;2;0;2;7987
+53154;Instalación y mantenimiento de estufas y cocinas;5;2;0;2;7987
+53170;Instalación y reparación de mosquiteros;5;2;0;2;7989
+50407;Lavado de cesto papelero;5;2;0;2;7537
+53430;Limpieza de conducto;5;2;0;2;7378
+53436;Limpieza de rejas longitudinales;5;2;0;2;7378
+53135;Limpieza de techos, canaletas y desagües pluviales;5;2;0;2;7984
+53176;Limpieza de techos, canaletas y desagües pluviales;5;2;0;2;7990
+53435;Limpieza de zanja a cielo abierto;5;2;0;2;7378
+50402;Limpieza/higienización de espacio público;5;2;0;2;7537
+53177;Mantenimiento de salidas de emergencia;5;2;0;2;7990
+53163;Mantenimiento de sistemas de bombeo para suministrar agua;5;2;0;2;7988
+53141;Mantenimiento de tableros eléctricos;5;2;0;2;7985
+53160;Mantenimiento e instalación de accesorios sanitarios;5;2;0;2;7988
+53174;Matafuegos;5;2;0;2;7990
+52368;Matafuegos faltantes y/o vencidos;5;2;0;2;7894
+52351;Ocupación irregular de objetos y/o vehículos;5;2;0;2;7890
+50416;Personal de empresa de recolección con conductas indebidas;5;2;0;2;7538
+50417;Personal de empresa de recolección realiza pedido de dádivas;5;2;0;2;7538
+50428;Poste en mal estado/sin mantenimiento;5;2;0;2;7540
+50429;Poste quebrado/cortado;5;2;0;2;7540
+50446;Remoción de volquete abandonado o mal dispuesto;5;2;0;2;7544
+50422;Reparación de calle rota por empresa de servicio;5;2;0;2;7538
+53431;Reparación de cámara/Tapa de inspección;5;2;0;2;7378
+50439;Reparación de cartel nomenclador de calle;5;2;0;2;7543
+53162;Reparación de fugas en tuberías y sanitarios;5;2;0;2;7988
+53168;Reparación de puertas, ventanas, muebles y juegos de plaza dañados;5;2;0;2;7989
+53172;Reparación e instalación de cerraduras, picaportes y cerrojos;5;2;0;2;7989
+53438;Reposición de rejas de sumidero;5;2;0;2;7378
+53134;Restauración, renovación y conservación de mobiliario;5;2;0;2;7984
+53166;Restauración, renovación y conservación de mobiliario;5;2;0;2;7989
+50397;Retiro de escombros y/o restos de obra;5;2;0;2;7537
+50398;Retiro de muebles y/o electrodomésticos en desuso;5;2;0;2;7537
+50400;Retiro de restos de poda y/o de arbolado público;5;2;0;2;7537
+50399;Retiro de restos de poda y/o jardinería domiciliaria;5;2;0;2;7537
+53522;Revisión por fallas de internet;5;2;0;2;8014
+53156;Revisión y mantenimiento de aires acondicionados;5;2;0;2;7987
+53523;Revisión y reparación de monitores, pc, notebook, impresoras, accesorios;5;2;0;2;8014
+53171;Sellado de ventanas;5;2;0;2;7989
+50595;Tapa faltante/deteriorada;5;2;0;2;6717
+52352;Toldos/cerramientos/estructuras irregulares en vía pública;5;2;0;2;7890
+50403;Yuyos/malezas/césped no cortado/plantas que interfieren en vía pública;5;2;0;2;7537
+52360;Abejas en espacio público;5;1;0;2;7891
+50414;Acopio de cartoneros en espacio público;5;1;0;2;7537
+52341;Actividad fuera del horario habilitado;5;1;0;2;7886
+52349;Agua servida en vía pública;5;1;0;2;7889
+51392;Anegamiento;5;1;0;2;7794
+50354;Árbol obstruye semáforo/luminaria/cartel/etc.;5;1;0;2;7533
+51394;Árbol/tocón/rama caído afecta vehículo;5;1;0;2;7794
+51395;Árbol/tocón/rama caído/quebrado;5;1;0;2;7794
+51396;Árbol/tocón/rama con peligro de caída;5;1;0;2;7794
+52359;Avispas en espacio público;5;1;0;2;7891
+50360;Bache en calle de asfalto;5;4;0;2;7534
+50361;Bache en calle de hormigón;5;15;0;2;7534
+50430;Cable cortado;5;1;0;2;7540
+51391;Caída de mampostería;5;1;0;2;7794
+51408;Cámara de seguridad afectada;5;3;0;2;7794
+52374;Carga y descarga fuera del horario habilitado;5;1;0;2;7886
+51399;Cartel/poste caído;5;1;0;2;7794
+51397;Cartel/poste caído afecta inmueble;5;1;0;2;7794
+51398;Cartel/poste caído afecta vehículo;5;1;0;2;7794
+51400;Cartel/poste con peligro de caída;5;1;0;2;7794
+50441;Colocación de reductores de velocidad;5;1;0;2;7544
+50366;Construcción de cuneta;5;3;0;2;7534
+50374;Construcción de rampa de accesibilidad;5;15;0;2;7534
+50372;Construcción de senderos en parque/plaza;5;5;0;2;7535
+52345;Consulta sobre habilitación comercial nocturna;5;1;0;2;7887
+52348;Derrame tóxico o material riesgoso;5;1;0;2;7889
+50425;Desobstrucción de cloacas;5;1;0;2;7538
+50426;Error en los datos de la licencia emitida: reimpresión/duplicado;5;7;0;2;7539
+52356;Eventos irregulares en vía pública;5;1;0;2;7890
+50401;Falta de barrido o barrido deficiente;5;1;0;2;7537
+52342;Falta de Habilitación - Actividad no declarada;5;1;0;2;7886
+52370;Falta de higiene;5;1;0;2;7895
+52354;Falta de mant./Instal.o traslado de pantallas simple/Luminosas y digitales;5;1;0;2;7890
+52343;Fumadores en espacios no permitidos;5;1;0;2;7886
+52357;Garita/puestos de diarios y/o flores irregulares;5;1;0;2;7890
+50440;Hidrolavado por grafitis/pegatinas;5;3;0;2;7543
+50355;Inconvenientes con intervenciones de arbolado;5;3;0;2;7533
+50376;Instalación de bancos, mesas y sillas en parque/plaza;5;10;0;2;7535
+50380;Instalación de bebederos en parque/plaza;5;5;0;2;7535
+50382;Instalación de caniles en parque/plaza;5;5;0;2;7535
+50438;Instalación de cartel nomenclador de calle;5;30;0;2;7543
+50385;Instalación de cestos de basura en parque/plaza;5;5;0;2;7535
+50388;Instalación de estaciones de ejercicio en parque/plaza;5;5;0;2;7535
+50390;Instalación de fuentes en parque/plaza;5;5;0;2;7535
+50387;Instalación de juegos en parque/plaza;5;5;0;2;7535
+50377;Instalación de rejas en parque/plaza;5;5;0;2;7535
+51389;Instalación eléctrica expuesta;5;1;0;2;7794
+50394;Irregularidades con Punto Verde;5;1;0;2;7536
+50411;Lavado de contenedor;5;1;0;2;7537
+50598;Limpieza de luminaria;5;3;0;2;6717
+50435;Limpieza de túneles/viaductos/puentes;5;3;0;2;7543
+50597;Luminaria inferior intermitente;5;3;0;2;6717
+50596;Luminaria superior intermitente;5;3;0;2;6717
+51403;Luminaria/semáforo caído;5;1;0;2;7794
+51401;Luminaria/semáforo caído afecta inmueble;5;1;0;2;7794
+51402;Luminaria/semáforo caído afecta vehículo;5;1;0;2;7794
+51404;Luminaria/semáforo con peligro de caída;5;1;0;2;7794
+52328;Malos olores;5;1;0;2;7884
+52361;Mosquitos en espacio público;5;1;0;2;7891
+52335;Música fuera del horario habilitado;5;1;0;2;7885
+52336;Música/bares no habilitados;5;1;0;2;7885
+50418;Nivelación de tapa de empresa de servicio público en calle/vereda;5;7;0;2;7538
+51390;Objeto en tendido eléctrico;5;1;0;2;7794
+52334;Obras fuera del horario permitido;5;1;0;2;7885
+52364;Olores nauseabundos en vía pública;5;1;0;2;7892
+52363;Otras plagas en espacio público;5;1;0;2;7891
+52337;Otros ruidos molestos;5;1;0;2;7885
+50443;Parada de colectivo en mal estado/sin mantenimiento;5;3;0;2;7544
+52350;Pasacalles en vía pública;5;1;0;2;7890
+52371;Pérdida de cadena de frío;5;1;0;2;7895
+51405;Pozo/hundimiento en calle;5;3;0;2;7794
+51406;Pozo/hundimiento en vereda;5;3;0;2;7794
+52329;Presencia de plagas /roedores, cucarachas…etc);5;1;0;2;7884
+51409;Punto seguro afectado;5;3;0;2;7794
+50379;Reparación de bebederos en parque/plaza;5;10;0;2;7535
+50370;Reparación de bicisenda;5;7;0;2;7534
+50406;Reparación de cesto papelero;5;3;0;2;7537
+50410;Reparación de contenedor;5;7;0;2;7537
+50365;Reparación de cuneta;5;3;0;2;7534
+50442;Reparación de dársena para ascenso / descenso de colectivos;5;15;0;2;7544
+50434;Reparación de elementos en túneles / puentes;5;7;0;2;7543
+50389;Reparación de fuentes en parque/plaza;5;10;0;2;7535
+50386;Reparación de juegos/estaciones de ejercicio en parque/plaza;5;10;0;2;7535
+50367;Reparación de lomo de burro o reductor de velocidad;5;7;0;2;7534
+50378;Reparación de monumento/obra de arte en parque/plaza;5;10;0;2;7535
+50368;Reparación de rampa de accesibilidad;5;7;0;2;7534
+50369;Reparación de rejas en esquina;5;7;0;2;7534
+50375;Reparación de rejas, bancos, mesas y sillas en parque/plaza;5;10;0;2;7535
+50436;Reparación de semáforo;5;1;0;2;7543
+50371;Reparación de senderos en parque/plaza;5;10;0;2;7535
+50420;Reparación de tapa de empresa de servicio público en calle/vereda;5;7;0;2;7538
+50427;Reparación de vereda por obra mal terminada;5;7;0;2;7540
+50423;Reparación de vereda rota por empresa de servicio;5;5;0;2;7538
+50381;Reparación o daño de caniles en parque/plaza;5;10;0;2;7535
+50364;Reparación/construcción de cordón;5;3;0;2;7534
+50363;Repavimentación de calle;5;3;0;2;7534
+50433;Repintado / reparación de demarcación vial en calle o cordón;5;15;0;2;7543
+50405;Reposición de cesto papelero;5;3;0;2;7537
+50383;Reposición de cesto papelero en parque/plaza;5;3;0;2;7535
+50409;Reposición de contenedor;5;7;0;2;7537
+50419;Reposición de tapa faltante de empresa de servicio público en calle/vereda;5;7;0;2;7538
+50373;Retiro de afiches y/o pasacalles;5;3;0;2;7534
+50432;Retiro de animales muertos en vía pública;5;1;0;2;7542
+50415;Retiro de objetos/elementos en desuso;5;4;0;2;7537
+52362;Roedores en espacio público;5;1;0;2;7891
+52330;Ruidos molestos por aires acondicionados;5;1;0;2;7885
+52332;Ruidos Molestos por Autoelevadores;5;1;0;2;7885
+52333;Ruidos molestos por carga y descarga;5;1;0;2;7885
+51407;Tapa tormenta/rota/desplazada/faltante;5;3;0;2;7794
+50408;Vaciado de cesto papelero;5;1;0;2;7537
+50384;Vaciado de cesto papelero en parque/plaza;5;1;0;2;7535
+50412;Vaciado de contenedor;5;5;0;2;7537
+50445;Vehículo mal estacionado;5;1;0;2;7544
+50444;Vehículo obstruyendo garage;5;1;0;2;7544
+52373;Venta ambulante irregular;5;1;0;2;7886
+52340;Venta de bebidas alcohólicas a menores de edad;5;1;0;2;7886
+52338;Venta de bebidas alcohólicas fuera del horario habilitado;5;1;0;2;7886
+52372;Venta de productos vencidos o en mal estado;5;1;0;2;7895
+52344;Venta ilegal en vía pública;5;1;0;2;7886
+52339;Venta no habilitada de bebidas alcohólicas;5;1;0;2;7886
+51393;Árbol/tocón/rama caída afecta inmueble;5;1;0;1;7794
+44534;Bajada y/o tablero para eventos;5;3;0;;6891
+44532;Cámara sin energía;5;1;0;;6891
+44537;Columna electrificada;5;1;0;;6891
+49065;Consultas y otros;5;3;0;;7378
+44533;Corrimiento columna;5;3;0;;6891
+44536;Interferencia con Terceros/Servicios Públicos;5;3;0;;6891
+49062;Inundación/ Anegamiento;5;3;0;;7378
+49063;Limpieza de sumideros y bocas;5;3;0;;7378
+43101;Luminaria inferior apagada durante la noche;5;3;0;;6717
+43102;Luminaria superior apagada durante la noche;5;3;0;;6717
+43103;Luminaria superior e inferior apagada durante la noche;5;3;0;;6717
+43104;Luminaria superior e inferior encendida de día;5;3;0;;6717
+44535;Problema con tableros;5;3;0;;6891
+51410;Recolección ramas/montículos;5;2;0;1;7794
+44615;Relevamiento Luminaria;5;3;0;;6895
+49061;Reparación de calle por hundimiento/socavamiento;5;3;0;;7378
+49064;Reparación de sumideros;5;3;0;;7378
+50937;Yuyos/malezas/césped no cortado/plantas;5;2;0;3;7535
+50421;Incon. En cámaras de inspec. de empresa de servicio público en calle/vereda;5;1;0;2;7538
+50431;Irreg. en la disposición de residuos húmedos/orgánicos de establecimientos;5;1;0;2;7541
+50396;Irregularidades en la disposición de residuos húmedos/orgánicos;5;2;0;2;7537
+55220;ACTA DE INSPECCIÓN GENERAL;5;1;0;2;6361
+53873;Censo Comercial;5;1;0;2;8070
+43105;Columna metálica de alumbrado inclinada;5;3;0;;6891
+52367;Gestión interna;5;1;0;2;7893
+53165;Inspección y mantenimiento de instalaciones sanitarias;5;2;0;2;7988
+53131;Instalación de armarios y estanterías;5;2;0;2;7984
+53159;Instalación de tuberías de agua potable y desagüe;5;2;0;2;7988
+45513;Mantenimiento Correctivo;5;7;0;;7008
+53140;Mantenimiento de sistema de iluminación: luminarias, lámparas y accesorios;5;2;0;2;7985
+53158;Mantenimiento de tanques de agua;5;2;0;2;7988
+53048;Vehículos Abandonados;5;4;0;2;7545
+52863;Vehículos Abandonados;5;1;0;2;7545
+50653;Relevamiento Punto Seguro;5;1;0;2;7585
+50437;Reparación de señal de tránsito;5;2;0;2;7543
+53138;Revisión y mantenimiento de rejas y estructuras de hierro;5;2;0;2;7984
+50190;Service kilometraje;5;3;0;2;7008
+58461;Siniestro Flota Automotor;5;2;0;2;7008
+53132;Traslado de mobiliario: carga y descarga mobiliario, sillas.;5;2;0;2;7984
+50638;Vehículos Abandonados;5;3;0;2;7545
+51549;Asesoramiento a Comercios;7;;0;2;7814
+51550;Asesoramiento Antecedentes Policiales;7;;0;2;7814
+51566;Asesoramiento Cultura;7;;0;2;7814
+51577;Asesoramiento de Medicamentos;7;;0;2;7814
+51578;Asesoramiento de Vacunas;7;;0;2;7814
+51568;Asesoramiento Desarrollo Social;7;;0;2;7814
+51569;Asesoramiento Educación;7;;0;2;7814
+51570;Asesoramiento Fiscalización y Control;7;;0;2;7814
+51602;Asesoramiento general IIPP;7;;0;2;7814
+51574;Asesoramiento Inscripción a Cursos;7;;0;2;7814
+51600;Asesoramiento inscripción a talleres;7;;0;2;7814
+51553;Asesoramiento para trámites en mesa de entradas;7;;0;2;7814
+51588;Asesoramiento por Cambio de Domicilio Postal;7;;0;2;7814
+51718;Asesoramiento por corte de raíces;7;;0;2;7814
+51576;Asesoramiento por necesidad de Alimentos Secos;7;;0;2;7814
+51575;Asesoramiento por necesidad de Atención Psicológica;7;;0;2;7814
+51717;Asesoramiento por plantación;7;;0;2;7814
+51572;Asesoramiento por Poda;7;;0;2;7814
+51716;Asesoramiento por solicitud de extracción;7;;0;2;7814
+57606;Asesoramiento Regularización de Construcciones;7;;0;2;7814
+58642;Asesoramiento regularización de planos;7;;0;2;7814
+51573;Asesoramiento Salud;7;;0;2;7814
+51579;Asesoramiento sobre Actividades Lúdicas;7;;0;2;7814
+51581;Asesoramiento sobre Actividades Remotas;7;;0;2;7814
+51587;Asesoramiento sobre Alta y Baja de Débito Automático;7;;0;2;7814
+51591;Asesoramiento sobre Asistencia Alimentaria;7;;0;2;7814
+51590;Asesoramiento sobre Bono de Pileta;7;;0;2;7814
+51589;Asesoramiento sobre Descuento 10%;7;;0;2;7814
+51551;Asesoramiento sobre Día verde;7;;0;2;7814
+51586;Asesoramiento sobre Estado de Deuda;7;;0;2;7814
+51571;Asesoramiento sobre Planes de pago;7;;0;2;7814
+51554;Asesoramiento sobre Presupuesto participativo;7;;0;2;7814
+51561;Asesoramiento sobre procedimientos en temas municipales;7;;0;2;7814
+51598;Asesoramiento sobre Residuos ecológicos: pilas, aceite, lámparas, tapitas.;7;;0;2;7814
+51555;Asesoramiento sobre Seguridad;7;;0;2;7814
+51556;Asesoramiento sobre Seguridad e Higiene;7;;0;2;7814
+51580;Asesoramiento sobre Talleres DDSS;7;;0;2;7814
+51567;Asesoramiento sobre talleres y Cursos;7;;0;2;7814
+51557;Asesoramiento sobre Tránsito;7;;0;2;7814
+51560;Asesoramiento sobre Vencimientos;7;;0;2;7814
+51558;Asesoramiento UAP;7;;0;2;7814
+51559;Asesoramiento vacunación antirrábica, castración y desparasitación;7;;0;2;7814
+51592;Consultas varias sobre Deportes;7;;0;2;7814
+51593;Derivación de llamados de empleados municipales;7;;0;2;7814
+51594;Derivación de llamados externos a áreas;7;;0;2;7814
+51595;Derivación de llamados externos a áreas Descentralizadas;7;;0;2;7814
+51552;Gestión de turnos Salud;7;;0;2;7814
+51582;Reclamo de Adultos Mayores;7;;0;2;7814
+52805;Salud: Otros motivos;7;;0;2;7814
+52803;Turnos no otorgado por falta de agenda;7;;0;2;7814
+52802;Turnos no otorgado por falta de turno;7;;0;2;7814
