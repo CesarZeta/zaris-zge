@@ -2,7 +2,7 @@
 ZARIS API — Modelos ORM del módulo Reclamos (v1.2).
 """
 from sqlalchemy import (
-    Column, Integer, String, Boolean, Text, DateTime,
+    Column, Integer, String, Boolean, Text, DateTime, Numeric, BigInteger,
     ForeignKey, Index, CheckConstraint, func
 )
 from sqlalchemy.orm import relationship
@@ -38,6 +38,22 @@ class Equipo(Base):
     id_equipo = Column(Integer, primary_key=True, autoincrement=True)
 
 
+class EstadoReclamo(Base):
+    """Catálogo de estados válidos del flujo de reclamos.
+    Migración 22: ahora referenciado por FK desde reclamos.id_estado_fk.
+    """
+    __tablename__ = "estado_reclamo"
+    __table_args__ = {"extend_existing": True}
+
+    id_estado_reclamo  = Column(Integer, primary_key=True, autoincrement=True)
+    nombre             = Column(String(30), nullable=False, unique=True)
+    descripcion        = Column(Text, nullable=True)
+    color              = Column(String(20), nullable=True)
+    es_final           = Column(Boolean, nullable=False, default=False)
+    orden              = Column(Integer, nullable=False, default=0)
+    activo             = Column(Boolean, nullable=False, default=True)
+
+
 class Reclamo(Base):
     __tablename__ = "reclamos"
 
@@ -47,12 +63,29 @@ class Reclamo(Base):
     id_tipo_reclamo     = Column(Integer, ForeignKey("tipo_reclamo.id_tipo_reclamo", ondelete="SET NULL"), nullable=True)
     id_area             = Column(Integer, ForeignKey("area.id_area", ondelete="SET NULL"), nullable=True)
     descripcion         = Column(Text, nullable=False)
-    domicilio_reclamo   = Column(String(300), nullable=True)
+    # Renombrado en migración 22: domicilio_reclamo → direccion
+    direccion           = Column(String(300), nullable=True)
+    domicilio_reclamo   = Column(String(300), nullable=True)  # deprecado, se mantiene transicional
     prioridad           = Column(String(10), nullable=False, default="Media")
+    # estado VARCHAR mantenido por compatibilidad; usar id_estado_fk para nuevos usos
     estado              = Column(String(30), nullable=False, default="Sin asignar")
+    id_estado_fk        = Column(Integer, ForeignKey("estado_reclamo.id_estado_reclamo", ondelete="RESTRICT"), nullable=True)
     id_agente_asignado  = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
     id_reclamo_padre    = Column(Integer, ForeignKey("reclamos.id_reclamo", ondelete="SET NULL"), nullable=True)
     observaciones       = Column(Text, nullable=True)
+    # ── Geo (migración 22) ───────────────────────────────────────────────
+    latitud             = Column(Numeric(10, 7), nullable=True)
+    longitud            = Column(Numeric(10, 7), nullable=True)
+    id_localidad        = Column(Integer, ForeignKey("localidades.id_localidad", ondelete="SET NULL"), nullable=True)
+    fuente_geolocalizacion = Column(String(20), nullable=True)
+    # ── Activo referenciado (migración 22) ───────────────────────────────
+    id_activo           = Column(Integer, ForeignKey("activos.id_activo", ondelete="SET NULL"), nullable=True)
+    # ── CRM extras (migración 22) ────────────────────────────────────────
+    canal_origen            = Column(String(20), nullable=True)
+    fecha_cierre            = Column(DateTime(timezone=True), nullable=True)
+    fecha_primer_asignacion = Column(DateTime(timezone=True), nullable=True)
+    sla_vencimiento         = Column(DateTime(timezone=True), nullable=True)
+    # ── Estándar §10 ─────────────────────────────────────────────────────
     activo              = Column(Boolean, nullable=False, default=True)
     id_municipio        = Column(Integer, nullable=True)
     id_subarea          = Column(Integer, nullable=True)
@@ -67,17 +100,62 @@ class Reclamo(Base):
             "estado IN ('Sin asignar','En gestión','En espera','En auditoría','Resuelto','Cancelado')",
             name="ck_reclamo_estado"
         ),
-        Index("idx_reclamos_ciudadano", "id_ciudadano"),
-        Index("idx_reclamos_area", "id_area"),
-        Index("idx_reclamos_estado", "estado"),
+        CheckConstraint(
+            "canal_origen IS NULL OR canal_origen IN "
+            "('web','whatsapp','telefono','presencial','oficio','app_movil','otro')",
+            name="ck_reclamos_canal"
+        ),
+        CheckConstraint(
+            "fuente_geolocalizacion IS NULL OR fuente_geolocalizacion IN "
+            "('pin_manual','geocoding_osm','gps_dispositivo','activo_referenciado')",
+            name="ck_reclamos_fuente_geo"
+        ),
+        Index("idx_reclamos_ciudadano",  "id_ciudadano"),
+        Index("idx_reclamos_area",       "id_area"),
+        Index("idx_reclamos_estado",     "estado"),
+        Index("idx_reclamos_estado_fk",  "id_estado_fk"),
         Index("idx_reclamos_fecha_alta", "fecha_alta"),
-        Index("idx_reclamos_padre", "id_reclamo_padre"),
+        Index("idx_reclamos_padre",      "id_reclamo_padre"),
+        Index("idx_reclamos_localidad",  "id_localidad"),
+        Index("idx_reclamos_activo_ref", "id_activo"),
+        Index("idx_reclamos_lat_lon",    "latitud", "longitud"),
     )
 
     historial = relationship("ReclamoHistorial", back_populates="reclamo",
                              cascade="all, delete-orphan", order_by="ReclamoHistorial.fecha_alta")
     ordenes   = relationship("OrdenTrabajo", back_populates="reclamo",
                              foreign_keys="OrdenTrabajo.id_reclamo")
+    adjuntos  = relationship("ReclamoAdjunto", back_populates="reclamo",
+                             cascade="all, delete-orphan")
+
+
+class ReclamoAdjunto(Base):
+    """Adjuntos del reclamo. Los binarios viven en Supabase Storage;
+    aquí solo guardamos el path y metadatos.
+    """
+    __tablename__ = "reclamo_adjuntos"
+
+    id_adjunto      = Column(Integer, primary_key=True, autoincrement=True)
+    id_reclamo      = Column(Integer, ForeignKey("reclamos.id_reclamo", ondelete="CASCADE"), nullable=False)
+    storage_bucket  = Column(String(100), nullable=False, default="reclamos-adjuntos")
+    storage_path    = Column(String(500), nullable=False)
+    nombre_archivo  = Column(String(255), nullable=False)
+    mime_type       = Column(String(100), nullable=True)
+    tamano_bytes    = Column(BigInteger, nullable=True)
+    descripcion     = Column(Text, nullable=True)
+    activo          = Column(Boolean, nullable=False, default=True)
+    id_municipio    = Column(Integer, nullable=True)
+    id_subarea      = Column(Integer, nullable=True)
+    fecha_alta      = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    fecha_modificacion = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    id_usuario_alta = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
+    id_usuario_modificacion = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
+
+    __table_args__ = (
+        Index("idx_adjuntos_reclamo", "id_reclamo"),
+    )
+
+    reclamo = relationship("Reclamo", back_populates="adjuntos")
 
 
 class ReclamoHistorial(Base):
