@@ -14,6 +14,8 @@ from app.api.routes.agenda import router as agenda_router
 from app.api.routes.admin_tablas import router as admin_tablas_router
 from app.api.routes.reclamos import router as reclamos_router
 from app.api.routes.ordenes_trabajo import router as ot_router
+from app.api.routes.geo import router as geo_router
+from app.api.routes.activos import router as activos_router
 from app.init_db import create_tables
 
 # ── Logging ──────────────────────────────────────────────────────
@@ -63,6 +65,8 @@ app.include_router(agenda_router)
 app.include_router(admin_tablas_router, prefix="/api/v1/admin")
 app.include_router(reclamos_router)
 app.include_router(ot_router)
+app.include_router(geo_router)
+app.include_router(activos_router)
 
 
 # Health check
