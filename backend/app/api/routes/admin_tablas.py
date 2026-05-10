@@ -305,6 +305,46 @@ async def editar(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+# ─── GET /area/{id}/subareas — drill-down: subáreas de un área ────────────────
+
+@router.get("/area/{id_area}/subareas")
+async def subareas_de_area(
+    id_area: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Lista las subáreas activas que pertenecen al área dada,
+    con el conteo de tipos de reclamo activos asociados a cada una."""
+    r = await db.execute(text("""
+        SELECT s.id_subarea, s.nombre, s.descripcion,
+               COUNT(tr.id_tipo_reclamo) FILTER (WHERE tr.activo) AS tipos_activos
+        FROM subarea s
+        LEFT JOIN tipo_reclamo tr ON tr.id_subarea = s.id_subarea
+        WHERE s.id_area = :id_area AND s.activo = TRUE
+        GROUP BY s.id_subarea, s.nombre, s.descripcion
+        ORDER BY s.nombre
+    """), {"id_area": id_area})
+    return [dict(row._mapping) for row in r.fetchall()]
+
+
+# ─── GET /subarea/{id}/tipos-reclamo — drill-down: tipos de reclamo de una subárea ──
+
+@router.get("/subarea/{id_subarea}/tipos-reclamo")
+async def tipos_de_subarea(
+    id_subarea: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Lista los tipos de reclamo activos que pertenecen a la subárea dada."""
+    r = await db.execute(text("""
+        SELECT id_tipo_reclamo, nombre, descripcion, sla_dias, audit
+        FROM tipo_reclamo
+        WHERE id_subarea = :id_subarea AND activo = TRUE
+        ORDER BY nombre
+    """), {"id_subarea": id_subarea})
+    return [dict(row._mapping) for row in r.fetchall()]
+
+
 # ─── DELETE /{tabla}/{id} — baja lógica ───────────────────────────────────────
 
 @router.delete("/{tabla}/{id}")

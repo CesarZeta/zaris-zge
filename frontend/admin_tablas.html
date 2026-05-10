@@ -448,6 +448,36 @@
     .preview-row__action { font-size: 0.72rem; color: var(--z-accent); font-weight: 600; white-space: nowrap; opacity: 0; transition: opacity 0.15s; }
     .preview-row:hover .preview-row__action { opacity: 1; }
 
+    /* ── Drill-down de hijos (área→subáreas, subárea→tipos) ── */
+    .hijos-row td { padding: 0 !important; }
+    .hijos-panel-inner {
+      padding: 0.7rem 1.1rem 0.9rem;
+      border-left: 3px solid var(--z-accent);
+      background: var(--surface-300);
+    }
+    .hijos-panel-title {
+      font-size: 0.72rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--z-text3); margin-bottom: 0.5rem;
+    }
+    .hijos-item {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 0.6rem;
+      padding: 0.32rem 0.6rem;
+      background: var(--surface-100);
+      border: 1px solid var(--z-border);
+      border-radius: 6px;
+      margin-bottom: 4px;
+      font-size: 0.84rem;
+    }
+    .hijos-item:last-child { margin-bottom: 0; }
+    .hijos-item__name { font-weight: 500; flex: 1; min-width: 0; }
+    .hijos-item__meta {
+      font-size: 0.74rem; color: var(--z-text3);
+      font-family: var(--z-font-mono); white-space: nowrap;
+      display: flex; align-items: center; gap: 6px;
+    }
+
     /* ── Panel de filtros listado ── */
     .filter-bar {
       display: flex;
@@ -1131,6 +1161,14 @@ async function abrirListado() {
     <div class="loading"><span class="spinner"></span></div>`;
 
   try {
+    // Pre-cargar opciones de FKs para que el listado muestre nombres en lugar
+    // de IDs (ej. id_area/id_subarea). Lookup-only, no agrega latencia notable.
+    const fksDelSchema = (schema.cols || []).filter(c => c.type === 'select' && c.fk);
+    await Promise.all(fksDelSchema.map(c => loadFkOptions(c.fk, c.fkPk, c.fkLabel)));
+    // Para drill-down: cargar también la tabla hija si aplica
+    if (tablaActual === 'area') await loadFkOptions('subarea', 'id_subarea', 'nombre');
+    if (tablaActual === 'subarea') await loadFkOptions('area', 'id_area', 'nombre');
+
     const res = await fetch(`${API}/${tablaActual}`, { headers: _authHeaders() });
     if (res.status === 401) { _handleUnauth(); return; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1194,19 +1232,29 @@ function renderListadoFiltrado(rows, schema) {
   const cols    = schema.display;
   const headers = cols.map(c => `<th>${formatHeader(c)}</th>`).join('') + '<th>Acciones</th>';
 
+  // Las tablas area y subarea soportan drill-down de hijos
+  const drillDown = (tablaActual === 'area') ? 'subareas'
+                  : (tablaActual === 'subarea') ? 'tipos'
+                  : null;
+
   const bodyRows = rows.length === 0
     ? `<tr><td colspan="${cols.length + 1}" class="empty">Sin resultados</td></tr>`
     : rows.map(r => {
         const cells  = cols.map(c => `<td class="${isId(c) ? 'mono' : ''}">${formatCell(r[c], c)}</td>`).join('');
         const pk     = r[schema.pk];
         const nombre = r[Object.keys(r)[1]] || pk;
+        const drillBtn = drillDown
+          ? `<button class="btn-outline" style="font-size:.74rem;padding:.25rem .55rem;" onclick="toggleHijos('${drillDown}', ${pk}, ${cols.length + 1})">Ver hijos</button>`
+          : '';
         return `<tr>
           ${cells}
           <td class="actions">
+            ${drillBtn}
             <button class="btn-edit" onclick="abrirEditar(${pk})">Editar</button>
             <button class="btn-del"  onclick="abrirBaja(${pk}, '${String(nombre).replace(/'/g,"\\'")}')">Baja</button>
           </td>
-        </tr>`;
+        </tr>
+        <tr id="hijos-${drillDown}-${pk}" class="hijos-row" style="display:none"><td colspan="${cols.length + 1}" style="background:var(--surface-300);padding:0"><div class="hijos-panel" id="hijos-panel-${drillDown}-${pk}">Cargando...</div></td></tr>`;
       }).join('');
 
   // Eliminar tabla anterior si existe
@@ -1234,17 +1282,91 @@ function renderTabla(rows, schema) {
   renderVistaPrevia(rows, schema);
 }
 
+// ── Drill-down: subáreas de un área / tipos de una subárea ──────
+async function toggleHijos(tipo, id, colspan) {
+  const tr   = document.getElementById(`hijos-${tipo}-${id}`);
+  const panel = document.getElementById(`hijos-panel-${tipo}-${id}`);
+  if (!tr || !panel) return;
+  const abierto = tr.style.display !== 'none';
+  if (abierto) {
+    tr.style.display = 'none';
+    return;
+  }
+  // Cerrar otros paneles abiertos primero (UX: solo uno a la vez)
+  document.querySelectorAll('.hijos-row').forEach(r => { r.style.display = 'none'; });
+
+  tr.style.display = 'table-row';
+  panel.innerHTML = '<div style="padding:.8rem;font-size:.82rem;color:var(--z-text3)">Cargando...</div>';
+
+  const url = (tipo === 'subareas')
+    ? `${API}/area/${id}/subareas`
+    : `${API}/subarea/${id}/tipos-reclamo`;
+  try {
+    const res = await fetch(url, { headers: _authHeaders() });
+    if (res.status === 401) { _handleUnauth(); return; }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data.length) {
+      panel.innerHTML = `<div style="padding:.8rem;font-size:.82rem;color:var(--z-text3);font-style:italic">Sin ${tipo === 'subareas' ? 'subáreas' : 'tipos de reclamo'} asociados</div>`;
+      return;
+    }
+    const titulo = tipo === 'subareas'
+      ? `Subáreas de esta área (${data.length})`
+      : `Tipos de reclamo de esta subárea (${data.length})`;
+    const filas = data.map(d => {
+      const nombre = String(d.nombre || '').replace(/</g,'&lt;');
+      if (tipo === 'subareas') {
+        const tipos = d.tipos_activos || 0;
+        return `<div class="hijos-item">
+          <span class="hijos-item__name">${nombre}</span>
+          <span class="hijos-item__meta">${tipos} tipo${tipos === 1 ? '' : 's'} de reclamo</span>
+        </div>`;
+      } else {
+        const sla = d.sla_dias != null ? `${d.sla_dias} día${d.sla_dias === 1 ? '' : 's'} SLA` : '—';
+        const aud = d.audit ? '<span class="badge badge-on" style="font-size:.66rem">audit</span>' : '';
+        return `<div class="hijos-item">
+          <span class="hijos-item__name">${nombre}</span>
+          <span class="hijos-item__meta">${sla} ${aud}</span>
+        </div>`;
+      }
+    }).join('');
+    panel.innerHTML = `
+      <div class="hijos-panel-inner">
+        <div class="hijos-panel-title">${titulo}</div>
+        ${filas}
+      </div>`;
+  } catch (e) {
+    panel.innerHTML = `<div style="padding:.8rem;color:var(--color-error)">Error: ${e.message}</div>`;
+  }
+}
+
 function formatHeader(col) {
   return col
     .replace(/^id_/, '').replace(/_/g, ' ')
     .replace(/\b\w/g, l => l.toUpperCase());
 }
 function isId(col) { return col.startsWith('id_') || col === 'id'; }
+
+// Mapa de columnas FK comunes → tabla destino. Permite mostrar el nombre
+// en lugar del ID numérico en los listados.
+const FK_DISPLAY_MAP = {
+  id_area: { fk: 'area', pk: 'id_area', label: 'nombre' },
+  id_subarea: { fk: 'subarea', pk: 'id_subarea', label: 'nombre' },
+  id_tipo_usuario: { fk: 'tipo_usuario', pk: 'id_tipo_usuario', label: 'nombre' },
+  id_cargo: { fk: 'cargos', pk: 'id_cargo', label: 'nombre' },
+};
+
 function formatCell(val, col) {
   if (val === null || val === undefined) return '<span style="color:var(--z-text3)">—</span>';
   if (typeof val === 'boolean') return val
     ? '<span class="badge badge-on">Sí</span>'
     : '<span class="badge badge-off">No</span>';
+  // Si la columna es FK y el cache ya la tiene cargada, mostrar nombre
+  const fkDef = FK_DISPLAY_MAP[col];
+  if (fkDef && fkCache[fkDef.fk]) {
+    const opt = fkCache[fkDef.fk].find(o => String(o.value) === String(val));
+    if (opt) return `<span title="ID ${val}">${String(opt.label).replace(/</g,'&lt;')}</span>`;
+  }
   return String(val).replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
