@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZARIS — Órdenes de Trabajo · Auditoría</title>
+  <script>
+    if (window.self === window.top) {
+      var p = window.location.pathname.replace(/^.*\//, 'frontend/');
+      var s = window.location.search || '';
+      window.location.replace('../index.html?modulo=' + encodeURIComponent(p + s));
+    } else {
+      var st = document.createElement('style');
+      st.textContent = '.z-header{display:none!important}';
+      document.head.appendChild(st);
+    }
+  </script>
+  <link rel="stylesheet" href="../design-system/fonts/fonts.css">
+  <link rel="stylesheet" href="../design-system/colors_and_type.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--zaris-cream); font-family: var(--font-display); color: var(--fg-1); min-height: 100vh; }
+    .page { padding: 24px 28px; }
+
+    .zaris-breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; margin: 0 0 14px; }
+    .zaris-breadcrumb a { color: var(--zaris-orange); text-decoration: none; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
+    .zaris-breadcrumb a:hover { text-decoration: underline; }
+    .zaris-breadcrumb__sep { color: var(--fg-3); }
+    .zaris-breadcrumb__current { color: var(--fg-2); font-weight: 600; }
+
+    h1.title { font-weight: 600; font-size: 1.6rem; letter-spacing: -0.02em; margin: 0 0 4px; }
+    p.subtitle { color: var(--fg-3); font-size: 0.86rem; margin-bottom: 18px; }
+
+    .toolbar { background: #e3f2fd; border: 1px solid #bbdefb; border-radius: 10px; padding: 12px 16px; margin-bottom: 12px; }
+    .toolbar__title { font-size: 0.74rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #1565c0; margin-bottom: 8px; }
+    .toolbar__row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field label { font-size: 0.7rem; color: var(--fg-3); text-transform: uppercase; letter-spacing: 0.04em; }
+    .field input, .field select { font-family: var(--font-display); font-size: 0.84rem; padding: 6px 10px; border-radius: 7px; border: 1px solid var(--border-medium); background: var(--surface-100); color: var(--fg-1); min-width: 150px; }
+    .field input.search-wide { min-width: 260px; }
+
+    .btn { font-family: var(--font-display); font-size: 0.84rem; cursor: pointer; border-radius: 8px; padding: 7px 14px; transition: 0.15s; border: 1px solid transparent; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary { background: var(--zaris-orange); color: white; border-color: var(--zaris-orange); }
+    .btn-primary:hover:not(:disabled) { filter: brightness(0.95); }
+    .btn-outline { background: var(--surface-100); color: var(--fg-1); border-color: var(--border-medium); }
+    .btn-outline:hover { background: var(--surface-300); }
+    .btn-sm { font-size: 0.78rem; padding: 5px 10px; }
+    .btn-success { background: #2e7d32; color: white; border-color: #2e7d32; }
+    .btn-success:hover { filter: brightness(0.95); }
+    .btn-danger { background: var(--color-error); color: white; border-color: var(--color-error); }
+    .btn-danger:hover { filter: brightness(0.93); }
+
+    .stats { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+    .stats__chip { background: var(--surface-100); border: 1px solid var(--border-primary); border-radius: 999px; padding: 4px 11px; font-size: 0.76rem; color: var(--fg-2); }
+    .stats__chip strong { color: var(--fg-1); font-weight: 600; margin-right: 4px; }
+
+    .card { background: var(--surface-100); border: 1px solid var(--border-primary); border-radius: 12px; overflow-x: auto; overflow-y: hidden; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.84rem; min-width: 1100px; }
+    th { text-align: left; font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--fg-3); padding: 9px 12px; border-bottom: 1px solid var(--border-primary); background: var(--surface-300); white-space: nowrap; }
+    td { padding: 10px 12px; border-bottom: 1px solid var(--border-primary); vertical-align: middle; }
+    tbody tr:hover { background: var(--surface-300); }
+    tbody tr:last-child td { border-bottom: none; }
+
+    th.col-sla, td.col-sla { min-width: 160px; }
+    th.col-action, td.col-action { min-width: 200px; white-space: nowrap; }
+    .col-action .btn + .btn { margin-left: 4px; }
+
+    .nro { font-family: var(--font-mono); font-size: 0.78rem; color: var(--fg-2); white-space: nowrap; }
+    .truncate { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 0.7rem; font-weight: 600; border: 1px solid transparent; }
+    .badge--alta   { background: #ffebee; color: #c62828; border-color: #ffcdd2; }
+    .badge--media  { background: #fff3e0; color: #ef6c00; border-color: #ffe0b2; }
+    .badge--baja   { background: #e8f5e9; color: #2e7d32; border-color: #c8e6c9; }
+    .badge--audit  { background: #f3e5f5; color: #6a1b9a; border-color: #e1bee7; }
+
+    .sla { display: flex; flex-direction: column; gap: 1px; line-height: 1.2; white-space: nowrap; }
+    .sla__main { font-size: 0.84rem; font-weight: 600; }
+    .sla__sub { font-size: 0.68rem; color: var(--fg-3); }
+    .sla--ok       { color: #2e7d32; }
+    .sla--warn     { color: #ef6c00; }
+    .sla--danger   { color: var(--color-error); }
+    .sla--vencido  { color: white; background: var(--color-error); padding: 3px 8px; border-radius: 6px; align-self: flex-start; font-size: 0.78rem; }
+
+    .empty { padding: 36px; text-align: center; color: var(--fg-3); font-size: 0.88rem; }
+    .loading { padding: 26px; text-align: center; color: var(--fg-3); font-size: 0.84rem; }
+    .error-banner { background: #ffebee; border: 1px solid #ffcdd2; border-left: 4px solid var(--color-error); border-radius: 8px; padding: 14px 18px; margin-bottom: 16px; color: #c62828; font-size: 0.88rem; }
+
+    .origen-cell { display: flex; flex-direction: column; gap: 1px; }
+    .origen-cell__nro { font-family: var(--font-mono); font-size: 0.72rem; color: var(--fg-3); }
+    .origen-cell__name { font-size: 0.8rem; }
+
+    /* Modal */
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(38,37,30,0.5); display: none; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(2px); }
+    .modal-backdrop.open { display: flex; }
+    .modal { background: var(--surface-100); border-radius: 12px; padding: 22px 26px; width: min(560px, 92vw); max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.18); }
+    .modal__title { font-size: 1.1rem; font-weight: 600; margin-bottom: 4px; }
+    .modal__subtitle { font-size: 0.82rem; color: var(--fg-3); margin-bottom: 14px; }
+    .modal__field { margin-bottom: 12px; }
+    .modal__field label { display: block; font-size: 0.78rem; color: var(--fg-2); margin-bottom: 5px; font-weight: 500; }
+    .modal__field--required label::after { content: ' *'; color: var(--color-error); }
+    .modal__field textarea { width: 100%; font-family: var(--font-display); font-size: 0.86rem; padding: 8px 11px; border-radius: 8px; border: 1px solid var(--border-medium); background: var(--surface-100); color: var(--fg-1); min-height: 90px; resize: vertical; }
+    .modal__info { background: var(--surface-300); border-radius: 8px; padding: 10px 13px; font-size: 0.82rem; margin-bottom: 12px; color: var(--fg-2); line-height: 1.4; }
+    .modal__info strong { color: var(--fg-1); }
+    .modal__warn { background: #fff3e0; border-left: 3px solid #ef6c00; border-radius: 6px; padding: 8px 12px; font-size: 0.8rem; color: #6a4500; margin-bottom: 12px; }
+    .modal__actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
+
+    .toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface-100); border: 1px solid var(--border-medium); border-left: 4px solid var(--zaris-orange); padding: 12px 18px; border-radius: 8px; font-size: 0.86rem; box-shadow: 0 6px 22px rgba(0,0,0,0.12); display: none; max-width: 420px; z-index: 2000; }
+    .toast.show { display: block; animation: toast-in 0.2s ease-out; }
+    .toast--ok    { border-left-color: #2e7d32; }
+    .toast--err   { border-left-color: var(--color-error); }
+    @keyframes toast-in { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <nav class="zaris-breadcrumb" aria-label="Ruta de navegación">
+      <a href="#" data-bc-home>INICIO</a>
+      <span class="zaris-breadcrumb__sep">›</span>
+      <span class="zaris-breadcrumb__current">Órdenes de Trabajo · Auditoría</span>
+    </nav>
+
+    <h1 class="title">Mesa de Auditoría</h1>
+    <p class="subtitle" id="subtitle">Cargando OTs pendientes de auditoría...</p>
+
+    <div id="error-banner" class="error-banner" style="display:none;"></div>
+
+    <div class="toolbar">
+      <div class="toolbar__title">Buscar y filtrar</div>
+      <div class="toolbar__row">
+        <div class="field">
+          <label>Nº OT, reclamo o tipo</label>
+          <input type="text" id="f-texto" class="search-wide" placeholder="Ej: OT-2026-000001 o bache" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>Prioridad</label>
+          <select id="f-prioridad">
+            <option value="">Todas</option>
+            <option value="Alta">Alta</option>
+            <option value="Media">Media</option>
+            <option value="Baja">Baja</option>
+          </select>
+        </div>
+        <button class="btn btn-outline" id="btn-refresh">Refrescar</button>
+      </div>
+    </div>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>OT auditoría</th>
+            <th>Prio.</th>
+            <th class="col-sla">SLA reclamo</th>
+            <th>Tipo</th>
+            <th>Subárea</th>
+            <th>Ciudadano</th>
+            <th>OT operativa origen</th>
+            <th>Descripción</th>
+            <th class="col-action">Acción</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"><tr><td colspan="9" class="loading">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal aprobar -->
+  <div class="modal-backdrop" id="modal-aprobar">
+    <div class="modal">
+      <div class="modal__title">Aprobar auditoría</div>
+      <div class="modal__subtitle" id="modal-aprobar-subtitle">—</div>
+      <div class="modal__info" id="modal-aprobar-info">—</div>
+      <div class="modal__warn">Al aprobar, el reclamo pasa a estado <strong>Resuelto</strong> y el ciclo se cierra.</div>
+      <div class="modal__field">
+        <label>Observaciones (opcional)</label>
+        <textarea id="obs-aprobar" placeholder="Comentarios de la auditoría..."></textarea>
+      </div>
+      <div class="modal__actions">
+        <button class="btn btn-outline" data-close-modal="modal-aprobar">Cancelar</button>
+        <button class="btn btn-success" id="btn-confirm-aprobar">Aprobar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal rechazar -->
+  <div class="modal-backdrop" id="modal-rechazar">
+    <div class="modal">
+      <div class="modal__title">Rechazar auditoría</div>
+      <div class="modal__subtitle" id="modal-rechazar-subtitle">—</div>
+      <div class="modal__info" id="modal-rechazar-info">—</div>
+      <div class="modal__warn">Al rechazar, se genera una <strong>nueva OT Pendiente</strong> con el agente del trabajo original y el reclamo vuelve a <strong>En gestión</strong>.</div>
+      <div class="modal__field modal__field--required">
+        <label>Motivo del rechazo</label>
+        <textarea id="obs-rechazar" placeholder="Describí qué no cumple..."></textarea>
+      </div>
+      <div class="modal__actions">
+        <button class="btn btn-outline" data-close-modal="modal-rechazar">Cancelar</button>
+        <button class="btn btn-danger" id="btn-confirm-rechazar">Rechazar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const API_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+      ? 'http://127.0.0.1:8000' : 'https://zaris-api-production-bf0b.up.railway.app';
+
+    const _raw = localStorage.getItem('zaris_session');
+    if (!_raw) {
+      if (window.self !== window.top) window.parent.location.href = '../index.html';
+      else window.location.href = '../index.html';
+    }
+    const _sess = _raw ? JSON.parse(_raw) : null;
+    const _authHeaders = () => ({ 'Authorization': 'Bearer ' + _sess.access_token, 'Content-Type': 'application/json' });
+    function _handleUnauth() {
+      localStorage.removeItem('zaris_session');
+      if (window.self !== window.top) window.parent.location.href = '../index.html';
+      else window.location.href = '../index.html';
+    }
+
+    document.querySelectorAll('[data-bc-home]').forEach(el => {
+      el.addEventListener('click', e => {
+        e.preventDefault();
+        if (window.parent && window.parent.shellNavigate) window.parent.shellNavigate('frontend/welcome.html');
+        else window.location.href = '../index.html';
+      });
+    });
+
+    const $ = id => document.getElementById(id);
+    function escapeHtml(s) { return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function showToast(msg, kind='ok') {
+      const t = $('toast');
+      t.className = 'toast show toast--' + kind;
+      t.textContent = msg;
+      setTimeout(() => t.className = 'toast', 3000);
+    }
+    function badgePrio(p) {
+      const cls = p === 'Alta' ? 'badge--alta' : p === 'Baja' ? 'badge--baja' : 'badge--media';
+      return `<span class="badge ${cls}">${escapeHtml(p || 'Media')}</span>`;
+    }
+    function formatSLA(sla_vencimiento, sla_dias) {
+      if (!sla_vencimiento) return `<span class="sla__sub">${sla_dias != null ? sla_dias + 'd (sin fecha)' : '—'}</span>`;
+      const venc = new Date(sla_vencimiento);
+      const now = new Date();
+      const ms = venc - now;
+      const minutes = Math.floor(Math.abs(ms) / 60000);
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
+      const fmtAbs = () => {
+        if (days > 0) return `${days}d ${hours % 24}h`;
+        if (hours > 0) return `${hours}h ${minutes % 60}m`;
+        return `${minutes}m`;
+      };
+      if (ms < 0) return `<div class="sla"><span class="sla--vencido">Vencido hace ${fmtAbs()}</span></div>`;
+      let cls = 'sla--ok';
+      if (hours < 24) cls = 'sla--warn';
+      if (hours < 6) cls = 'sla--danger';
+      const fecha = venc.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      return `<div class="sla"><span class="sla__main ${cls}">${fmtAbs()}</span><span class="sla__sub">vence ${fecha}</span></div>`;
+    }
+
+    let _ots = [];
+    let _idAgente = null;
+    let _modalOT = null;
+
+    async function cargarMesa() {
+      $('tbody').innerHTML = '<tr><td colspan="9" class="loading">Cargando...</td></tr>';
+      $('error-banner').style.display = 'none';
+      try {
+        const res = await fetch(API_BASE + '/api/v1/ot/auditor/me', { headers: _authHeaders() });
+        if (res.status === 401) { _handleUnauth(); return; }
+        const data = await res.json();
+        if (!res.ok) {
+          _ots = [];
+          $('subtitle').textContent = 'Acceso denegado o sin agente auditor vinculado.';
+          $('error-banner').textContent = data.detail || `Error HTTP ${res.status}`;
+          $('error-banner').style.display = '';
+          $('tbody').innerHTML = `<tr><td colspan="9" class="empty">Sin OTs de auditoría disponibles</td></tr>`;
+          return;
+        }
+        _idAgente = data.id_agente;
+        _ots = data.ots || [];
+        $('subtitle').textContent = `Auditando como agente #${_idAgente}. Aprobá o rechazá las OTs operativas cerradas.`;
+        render();
+      } catch (e) {
+        console.error(e);
+        $('tbody').innerHTML = `<tr><td colspan="9" class="empty">Error de red: ${escapeHtml(e.message)}</td></tr>`;
+      }
+    }
+
+    function aplicarFiltros() {
+      const txt = ($('f-texto').value || '').trim().toLowerCase();
+      const fp = $('f-prioridad').value;
+      return _ots.filter(o => {
+        if (fp && o.reclamo_prioridad !== fp) return false;
+        if (txt) {
+          const hay = [o.nro_ot||'', o.nro_reclamo||'', o.tipo_nombre||'',
+                       o.reclamo_descripcion||'', o.subarea_nombre||'',
+                       o.ot_origen_nro||'',
+                       (o.ot_origen_agente_apellido||'') + ' ' + (o.ot_origen_agente_nombre||''),
+                       (o.ciudadano_apellido||'') + ' ' + (o.ciudadano_nombre||'')].join(' ').toLowerCase();
+          if (!hay.includes(txt)) return false;
+        }
+        return true;
+      });
+    }
+
+    function origenCell(o) {
+      const nombre = (o.ot_origen_agente_apellido || o.ot_origen_agente_nombre)
+        ? `${o.ot_origen_agente_apellido || ''}, ${o.ot_origen_agente_nombre || ''}`
+        : '—';
+      return `<div class="origen-cell">
+        <span class="origen-cell__nro">${escapeHtml(o.ot_origen_nro || '—')}</span>
+        <span class="origen-cell__name">Agente: ${escapeHtml(nombre)}</span>
+      </div>`;
+    }
+
+    function render() {
+      const filtrados = aplicarFiltros();
+      $('stats').innerHTML = `<span class="stats__chip"><strong>${_ots.length}</strong> OTs en auditoría</span>` +
+        (filtrados.length !== _ots.length ? `<span class="stats__chip"><strong>${filtrados.length}</strong> visibles tras filtros</span>` : '');
+
+      const tbody = $('tbody');
+      if (!filtrados.length) {
+        tbody.innerHTML = `<tr><td colspan="9" class="empty">No hay OTs pendientes de auditoría${_ots.length ? ' que coincidan con los filtros' : ''}</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtrados.map(o => `
+        <tr>
+          <td><div class="nro">${escapeHtml(o.nro_ot || '—')}</div><div class="nro" style="font-size:0.7rem;color:var(--fg-3);">${escapeHtml(o.nro_reclamo || '')}</div></td>
+          <td>${badgePrio(o.reclamo_prioridad)}</td>
+          <td class="col-sla">${formatSLA(o.sla_vencimiento, o.sla_dias)}</td>
+          <td class="truncate" title="${escapeHtml(o.tipo_nombre || '')}">${escapeHtml(o.tipo_nombre || '—')}</td>
+          <td class="truncate" title="${escapeHtml(o.subarea_nombre || '')}">${escapeHtml(o.subarea_nombre || '—')}</td>
+          <td>${escapeHtml((o.ciudadano_apellido || '') + ', ' + (o.ciudadano_nombre || ''))}</td>
+          <td>${origenCell(o)}</td>
+          <td class="truncate" title="${escapeHtml(o.reclamo_descripcion || '')}">${escapeHtml(o.reclamo_descripcion || '')}</td>
+          <td class="col-action">
+            <button class="btn btn-success btn-sm" data-aprobar="${o.id_ot}">Aprobar</button>
+            <button class="btn btn-danger btn-sm" data-rechazar="${o.id_ot}">Rechazar</button>
+          </td>
+        </tr>
+      `).join('');
+
+      tbody.querySelectorAll('[data-aprobar]').forEach(b => b.addEventListener('click', () => abrirModal('aprobar', parseInt(b.dataset.aprobar))));
+      tbody.querySelectorAll('[data-rechazar]').forEach(b => b.addEventListener('click', () => abrirModal('rechazar', parseInt(b.dataset.rechazar))));
+    }
+
+    function abrirModal(kind, idOt) {
+      _modalOT = _ots.find(o => o.id_ot === idOt);
+      if (!_modalOT) return;
+      const sub = `${_modalOT.nro_ot} · ${_modalOT.nro_reclamo} — ${_modalOT.tipo_nombre || ''}`;
+      const origenAg = (_modalOT.ot_origen_agente_apellido || _modalOT.ot_origen_agente_nombre)
+        ? `${_modalOT.ot_origen_agente_apellido || ''}, ${_modalOT.ot_origen_agente_nombre || ''}`
+        : '—';
+      const info = `OT operativa origen: <strong>${escapeHtml(_modalOT.ot_origen_nro || '—')}</strong><br>Agente que realizó el trabajo: <strong>${escapeHtml(origenAg)}</strong><br>Observaciones del agente: ${escapeHtml(_modalOT.ot_origen_obs || '(sin observaciones)')}`;
+      if (kind === 'aprobar') {
+        $('modal-aprobar-subtitle').textContent = sub;
+        $('modal-aprobar-info').innerHTML = info;
+        $('obs-aprobar').value = '';
+        $('modal-aprobar').classList.add('open');
+      } else {
+        $('modal-rechazar-subtitle').textContent = sub;
+        $('modal-rechazar-info').innerHTML = info;
+        $('obs-rechazar').value = '';
+        $('modal-rechazar').classList.add('open');
+      }
+    }
+    function cerrarModal(id) { $(id).classList.remove('open'); if (id.startsWith('modal-')) _modalOT = null; }
+
+    async function confirmar(kind) {
+      if (!_modalOT) return;
+      const url = `${API_BASE}/api/v1/ot/${_modalOT.id_ot}/${kind}`;
+      const obs = (kind === 'aprobar' ? $('obs-aprobar') : $('obs-rechazar')).value.trim();
+      if (kind === 'rechazar' && !obs) { showToast('El motivo del rechazo es obligatorio', 'err'); return; }
+      const btn = kind === 'aprobar' ? $('btn-confirm-aprobar') : $('btn-confirm-rechazar');
+      btn.disabled = true; btn.textContent = kind === 'aprobar' ? 'Aprobando...' : 'Rechazando...';
+      try {
+        const res = await fetch(url, { method: 'PUT', headers: _authHeaders(), body: JSON.stringify({ observaciones: obs }) });
+        if (res.status === 401) { _handleUnauth(); return; }
+        const data = await res.json();
+        if (!res.ok) { showToast(`Error: ${data.detail || res.status}`, 'err'); return; }
+        cerrarModal(kind === 'aprobar' ? 'modal-aprobar' : 'modal-rechazar');
+        showToast(kind === 'aprobar' ? 'Auditoría aprobada — reclamo resuelto' : 'Auditoría rechazada — nueva OT pendiente generada');
+        cargarMesa();
+      } catch (e) { showToast('Error de red: ' + e.message, 'err'); }
+      finally { btn.disabled = false; btn.textContent = kind === 'aprobar' ? 'Aprobar' : 'Rechazar'; }
+    }
+
+    // Wire up
+    let _debounceTimer = null;
+    $('f-texto').addEventListener('input', () => { clearTimeout(_debounceTimer); _debounceTimer = setTimeout(render, 150); });
+    $('f-prioridad').addEventListener('change', render);
+    $('btn-refresh').addEventListener('click', cargarMesa);
+    $('btn-confirm-aprobar').addEventListener('click', () => confirmar('aprobar'));
+    $('btn-confirm-rechazar').addEventListener('click', () => confirmar('rechazar'));
+    document.querySelectorAll('[data-close-modal]').forEach(btn => btn.addEventListener('click', () => cerrarModal(btn.dataset.closeModal)));
+    document.querySelectorAll('.modal-backdrop').forEach(bk => bk.addEventListener('click', e => { if (e.target === bk) cerrarModal(bk.id); }));
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Escape') return;
+      ['modal-aprobar','modal-rechazar'].forEach(id => { if ($(id).classList.contains('open')) cerrarModal(id); });
+    });
+
+    cargarMesa();
+    setInterval(() => { if (_ots.length) render(); }, 30000);
+  </script>
+</body>
+</html>

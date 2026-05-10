@@ -810,20 +810,20 @@ if (!localStorage.getItem('zaris_session')) { _handleUnauth(); }
 
   <!-- ── Filtros ── -->
   <div class="filter-bar">
-    <div class="filter-group" style="min-width:220px">
+    <div class="filter-group" style="min-width:280px">
       <label>Buscar</label>
-      <input type="text" id="flt-texto" placeholder="DNI, nombre, descripción...">
+      <input type="text" id="flt-texto" placeholder="Nº reclamo, tipo, DNI, nombre, descripción...">
     </div>
     <div class="filter-group">
       <label>Estado</label>
       <select id="flt-estado">
         <option value="">Todos</option>
-        <option value="Ingresado">Ingresado</option>
-        <option value="En revisión">En revisión</option>
+        <option value="Sin asignar">Sin asignar</option>
         <option value="En gestión">En gestión</option>
+        <option value="En espera">En espera</option>
+        <option value="En auditoría">En auditoría</option>
         <option value="Resuelto">Resuelto</option>
-        <option value="Rechazado">Rechazado</option>
-        <option value="Cerrado">Cerrado</option>
+        <option value="Cancelado">Cancelado</option>
       </select>
     </div>
     <div class="filter-group">
@@ -1494,6 +1494,23 @@ function limpiarFiltros() {
   });
   cargarReclamos();
 }
+
+// Búsqueda viva con debounce en el input de texto + Enter para forzar
+(function wireFiltrosVivos() {
+  let _t = null;
+  const txt = document.getElementById('flt-texto');
+  if (txt) {
+    txt.addEventListener('input', () => {
+      clearTimeout(_t);
+      _t = setTimeout(cargarReclamos, 300);
+    });
+    txt.addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(_t); cargarReclamos(); } });
+  }
+  ['flt-estado','flt-area','flt-prio'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', cargarReclamos);
+  });
+})();
 
 // ── Drawer detalle ────────────────────────────────────────────
 async function abrirDetalle(idReclamo) {
