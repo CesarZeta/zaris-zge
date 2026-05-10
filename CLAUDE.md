@@ -307,6 +307,7 @@ Comandos disponibles en `.claude/commands/` — invocar con `/nombre`:
 | `/seed-table` | Inserta datos demo en tablas vacías (idempotente) |
 | `/audit-shell` | Verifica nav__links, guards, patrones iframe y SCHEMAS |
 | `/push-and-verify` | Ciclo completo: commit → push → deploy → verificación |
+| `/verify-prod-schema` | Preflight: chequea que tablas/columnas existan en prod antes de codear |
 
 ### Scripts de mantenimiento
 
@@ -745,8 +746,28 @@ Esto vale para áreas, tipos de usuario, cargos, nacionalidades, actividades —
 ### Aplicar en local Y prod en la misma sesión
 Una migración aplicada solo en uno desincroniza los entornos. Si aplicaste en prod via MCP, corré también el script en local (o viceversa) antes de cerrar la tarea. Documentar el paso en el commit.
 
-### Antes de aplicar, verificar el estado real con `execute_sql`
-**No confiar en CLAUDE.md §21** sobre qué migraciones están aplicadas — la doc puede estar desactualizada. Siempre `to_regclass('public.tabla')` y `COUNT(*)` antes de re-aplicar para evitar duplicar datos o crashear por tabla ya existente.
+### Antes de aplicar (o de codear backend), verificar el estado real con `execute_sql`
+**No confiar en CLAUDE.md §21 ni en la simetría con local.** Antes de:
+- **Aplicar/re-aplicar una migración:** chequear si la tabla/columna ya existe.
+- **Codear un endpoint backend que referencie una columna o filas:** chequear que existan en prod, no solo en local.
+
+**Por qué:** la doc queda atrás Y local puede tener cambios manuales sin migración formal. Casos reales:
+- Mig 22 figuraba como pendiente en CLAUDE.md cuando ya estaba aplicada con 1000 activos seedeados (2026-05-09).
+- `agentes.es_auditor` existía en local (cambio manual viejo) pero no en prod. Backend `/ot/auditor/me` referenciaba la columna; en prod habría crasheado (2026-05-10).
+- `agentes` tenía 3 filas en local pero 0 en prod. Las mesas Agente/Auditoría habrían estado inútiles silenciosamente (2026-05-10).
+
+**Comandos de verificación:**
+```sql
+-- Existencia de tabla y conteo
+SELECT to_regclass('public.tabla') AS existe,
+       (SELECT COUNT(*) FROM tabla WHERE activo) AS filas_activas;
+
+-- Columnas que voy a referenciar en backend
+SELECT column_name FROM information_schema.columns
+WHERE table_name='tabla' AND column_name IN ('col1','col2');
+```
+
+**Regla operativa:** si codeo backend que dependa de `tabla.columna_nueva`, verifico que exista en prod via `execute_sql` ANTES de pushear. Si no existe, crear migración formal aunque "ya esté en local".
 
 ### Backup antes de operaciones destructivas en prod
 Para `UPDATE`/`DELETE` masivos en prod: snapshot previo en tabla `_backup_<tabla>_YYYY_MM_DD`. Permite revert manual sin necesidad de point-in-time recovery.
