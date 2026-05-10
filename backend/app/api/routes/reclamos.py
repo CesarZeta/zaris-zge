@@ -180,8 +180,16 @@ async def obtener_reclamo(
     result = await db.execute(text("""
         SELECT
             r.id_reclamo, r.nro_reclamo, r.prioridad, r.estado,
-            r.descripcion, r.domicilio_reclamo, r.observaciones,
+            r.descripcion, r.domicilio_reclamo, r.direccion, r.observaciones,
             r.fecha_alta, r.fecha_modificacion,
+            r.fecha_primer_asignacion, r.fecha_cierre, r.sla_vencimiento,
+            r.canal_origen, r.fuente_geolocalizacion,
+            r.latitud, r.longitud,
+            r.id_localidad, loc.nombre AS localidad_nombre,
+            par.id_partido, par.nombre AS partido_nombre,
+            prov.id_provincia, prov.nombre AS provincia_nombre,
+            r.id_activo, act.codigo_unico AS activo_codigo,
+            ta.id_tipo_activo, ta.nombre AS activo_tipo_nombre,
             r.id_reclamo_padre,
             r.id_ciudadano, c.nombre AS ciudadano_nombre, c.apellido AS ciudadano_apellido,
             c.doc_nro, c.cuil, c.telefono, c.email AS ciudadano_email,
@@ -194,6 +202,11 @@ async def obtener_reclamo(
         LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
         LEFT JOIN area a ON a.id_area = r.id_area
         LEFT JOIN usuarios u ON u.id_usuario = r.id_agente_asignado
+        LEFT JOIN localidades loc ON loc.id_localidad = r.id_localidad
+        LEFT JOIN partidos par ON par.id_partido = loc.id_partido
+        LEFT JOIN provincias prov ON prov.id_provincia = par.id_provincia
+        LEFT JOIN activos act ON act.id_activo = r.id_activo
+        LEFT JOIN tipos_activo ta ON ta.id_tipo_activo = act.id_tipo_activo
         WHERE r.id_reclamo = :id AND r.activo = TRUE
     """), {"id": id_reclamo})
     row = result.fetchone()
