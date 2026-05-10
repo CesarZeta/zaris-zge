@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZARIS — Órdenes de Trabajo · Agente</title>
+  <script>
+    if (window.self === window.top) {
+      var p = window.location.pathname.replace(/^.*\//, 'frontend/');
+      var s = window.location.search || '';
+      window.location.replace('../index.html?modulo=' + encodeURIComponent(p + s));
+    } else {
+      var st = document.createElement('style');
+      st.textContent = '.z-header{display:none!important}';
+      document.head.appendChild(st);
+    }
+  </script>
+  <link rel="stylesheet" href="../design-system/fonts/fonts.css">
+  <link rel="stylesheet" href="../design-system/colors_and_type.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--zaris-cream); font-family: var(--font-display); color: var(--fg-1); min-height: 100vh; }
+    .page { padding: 24px 28px; }
+
+    .zaris-breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; margin: 0 0 14px; }
+    .zaris-breadcrumb a { color: var(--zaris-orange); text-decoration: none; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
+    .zaris-breadcrumb a:hover { text-decoration: underline; }
+    .zaris-breadcrumb__sep { color: var(--fg-3); }
+    .zaris-breadcrumb__current { color: var(--fg-2); font-weight: 600; }
+
+    h1.title { font-weight: 600; font-size: 1.6rem; letter-spacing: -0.02em; margin: 0 0 4px; }
+    p.subtitle { color: var(--fg-3); font-size: 0.86rem; margin-bottom: 18px; }
+
+    .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-primary); margin-bottom: 14px; }
+    .tab { background: transparent; border: none; cursor: pointer; font-family: var(--font-display); font-size: 0.92rem; font-weight: 500; padding: 10px 18px; color: var(--fg-3); border-bottom: 2px solid transparent; transition: 0.15s; margin-bottom: -1px; }
+    .tab:hover { color: var(--fg-1); }
+    .tab.active { color: var(--zaris-orange); border-bottom-color: var(--zaris-orange); font-weight: 600; }
+    .tab__count { background: var(--surface-300); color: var(--fg-2); padding: 1px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; margin-left: 6px; }
+    .tab.active .tab__count { background: var(--zaris-orange); color: white; }
+
+    .toolbar { background: #e3f2fd; border: 1px solid #bbdefb; border-radius: 10px; padding: 12px 16px; margin-bottom: 12px; }
+    .toolbar__title { font-size: 0.74rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #1565c0; margin-bottom: 8px; }
+    .toolbar__row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field label { font-size: 0.7rem; color: var(--fg-3); text-transform: uppercase; letter-spacing: 0.04em; }
+    .field input, .field select { font-family: var(--font-display); font-size: 0.84rem; padding: 6px 10px; border-radius: 7px; border: 1px solid var(--border-medium); background: var(--surface-100); color: var(--fg-1); min-width: 150px; }
+    .field input.search-wide { min-width: 260px; }
+
+    .btn { font-family: var(--font-display); font-size: 0.84rem; cursor: pointer; border-radius: 8px; padding: 7px 14px; transition: 0.15s; border: 1px solid transparent; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary { background: var(--zaris-orange); color: white; border-color: var(--zaris-orange); }
+    .btn-primary:hover:not(:disabled) { filter: brightness(0.95); }
+    .btn-outline { background: var(--surface-100); color: var(--fg-1); border-color: var(--border-medium); }
+    .btn-outline:hover { background: var(--surface-300); }
+    .btn-sm { font-size: 0.78rem; padding: 5px 10px; }
+    .btn-success { background: #2e7d32; color: white; border-color: #2e7d32; }
+    .btn-success:hover { filter: brightness(0.95); }
+
+    .stats { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+    .stats__chip { background: var(--surface-100); border: 1px solid var(--border-primary); border-radius: 999px; padding: 4px 11px; font-size: 0.76rem; color: var(--fg-2); }
+    .stats__chip strong { color: var(--fg-1); font-weight: 600; margin-right: 4px; }
+
+    .card { background: var(--surface-100); border: 1px solid var(--border-primary); border-radius: 12px; overflow-x: auto; overflow-y: hidden; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.84rem; min-width: 1100px; }
+    th { text-align: left; font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--fg-3); padding: 9px 12px; border-bottom: 1px solid var(--border-primary); background: var(--surface-300); white-space: nowrap; }
+    td { padding: 10px 12px; border-bottom: 1px solid var(--border-primary); vertical-align: middle; }
+    tbody tr:hover { background: var(--surface-300); }
+    tbody tr:last-child td { border-bottom: none; }
+
+    th.col-sla, td.col-sla { min-width: 160px; }
+    th.col-action, td.col-action { min-width: 200px; white-space: nowrap; }
+
+    .nro { font-family: var(--font-mono); font-size: 0.78rem; color: var(--fg-2); white-space: nowrap; }
+    .truncate { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 0.7rem; font-weight: 600; border: 1px solid transparent; }
+    .badge--alta   { background: #ffebee; color: #c62828; border-color: #ffcdd2; }
+    .badge--media  { background: #fff3e0; color: #ef6c00; border-color: #ffe0b2; }
+    .badge--baja   { background: #e8f5e9; color: #2e7d32; border-color: #c8e6c9; }
+    .badge--gest   { background: #e3f2fd; color: #1565c0; border-color: #bbdefb; }
+    .badge--esp    { background: #fff8e1; color: #f57f17; border-color: #ffecb3; }
+    .badge--pend   { background: #ede7f6; color: #4527a0; border-color: #d1c4e9; }
+
+    .sla { display: flex; flex-direction: column; gap: 1px; line-height: 1.2; white-space: nowrap; }
+    .sla__main { font-size: 0.84rem; font-weight: 600; }
+    .sla__sub { font-size: 0.68rem; color: var(--fg-3); }
+    .sla--ok       { color: #2e7d32; }
+    .sla--warn     { color: #ef6c00; }
+    .sla--danger   { color: var(--color-error); }
+    .sla--vencido  { color: white; background: var(--color-error); padding: 3px 8px; border-radius: 6px; align-self: flex-start; font-size: 0.78rem; }
+
+    .empty { padding: 36px; text-align: center; color: var(--fg-3); font-size: 0.88rem; }
+    .loading { padding: 26px; text-align: center; color: var(--fg-3); font-size: 0.84rem; }
+    .error-banner { background: #ffebee; border: 1px solid #ffcdd2; border-left: 4px solid var(--color-error); border-radius: 8px; padding: 14px 18px; margin-bottom: 16px; color: #c62828; font-size: 0.88rem; }
+
+    .equipo-tag { font-size: 0.7rem; color: var(--fg-3); display: block; margin-top: 2px; }
+
+    /* Modal */
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(38,37,30,0.5); display: none; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(2px); }
+    .modal-backdrop.open { display: flex; }
+    .modal { background: var(--surface-100); border-radius: 12px; padding: 22px 26px; width: min(520px, 92vw); max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.18); }
+    .modal__title { font-size: 1.1rem; font-weight: 600; margin-bottom: 4px; }
+    .modal__subtitle { font-size: 0.82rem; color: var(--fg-3); margin-bottom: 14px; }
+    .modal__field { margin-bottom: 12px; }
+    .modal__field label { display: block; font-size: 0.78rem; color: var(--fg-2); margin-bottom: 5px; font-weight: 500; }
+    .modal__field select, .modal__field textarea { width: 100%; font-family: var(--font-display); font-size: 0.86rem; padding: 8px 11px; border-radius: 8px; border: 1px solid var(--border-medium); background: var(--surface-100); color: var(--fg-1); }
+    .modal__field textarea { min-height: 80px; resize: vertical; }
+    .modal__current { background: var(--surface-300); border-radius: 8px; padding: 8px 11px; font-size: 0.8rem; margin-bottom: 12px; color: var(--fg-2); }
+    .modal__current strong { color: var(--fg-1); }
+    .modal__actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
+
+    .toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface-100); border: 1px solid var(--border-medium); border-left: 4px solid var(--zaris-orange); padding: 12px 18px; border-radius: 8px; font-size: 0.86rem; box-shadow: 0 6px 22px rgba(0,0,0,0.12); display: none; max-width: 420px; z-index: 2000; }
+    .toast.show { display: block; animation: toast-in 0.2s ease-out; }
+    .toast--ok    { border-left-color: #2e7d32; }
+    .toast--err   { border-left-color: var(--color-error); }
+    @keyframes toast-in { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <nav class="zaris-breadcrumb" aria-label="Ruta de navegación">
+      <a href="#" data-bc-home>INICIO</a>
+      <span class="zaris-breadcrumb__sep">›</span>
+      <span class="zaris-breadcrumb__current">Órdenes de Trabajo · Agente</span>
+    </nav>
+
+    <h1 class="title">Mesa del Agente</h1>
+    <p class="subtitle" id="subtitle">Cargando tus órdenes asignadas...</p>
+
+    <div id="error-banner" class="error-banner" style="display:none;"></div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="mias">Mis OTs <span class="tab__count" id="cnt-mias">0</span></button>
+      <button class="tab" data-tab="disponibles">Disponibles para tomar <span class="tab__count" id="cnt-disp">0</span></button>
+    </div>
+
+    <div class="toolbar">
+      <div class="toolbar__title">Buscar y filtrar</div>
+      <div class="toolbar__row">
+        <div class="field">
+          <label>Nº reclamo o tipo</label>
+          <input type="text" id="f-texto" class="search-wide" placeholder="Ej: REC-2026-000001 o bache" autocomplete="off">
+        </div>
+        <div class="field" id="field-estado">
+          <label>Estado OT</label>
+          <select id="f-estado">
+            <option value="">Todos</option>
+            <option value="En gestión">En gestión</option>
+            <option value="En espera">En espera</option>
+            <option value="Pendiente">Pendiente</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Prioridad</label>
+          <select id="f-prioridad">
+            <option value="">Todas</option>
+            <option value="Alta">Alta</option>
+            <option value="Media">Media</option>
+            <option value="Baja">Baja</option>
+          </select>
+        </div>
+        <button class="btn btn-outline" id="btn-refresh">Refrescar</button>
+      </div>
+    </div>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="card">
+      <table>
+        <thead id="thead"></thead>
+        <tbody id="tbody"><tr><td colspan="9" class="loading">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal cambiar estado -->
+  <div class="modal-backdrop" id="modal-estado">
+    <div class="modal">
+      <div class="modal__title">Cambiar estado de la OT</div>
+      <div class="modal__subtitle" id="modal-estado-subtitle">—</div>
+      <div class="modal__current" id="modal-estado-current">—</div>
+
+      <div class="modal__field">
+        <label>Nuevo estado</label>
+        <select id="sel-estado">
+          <option value="En gestión">En gestión</option>
+          <option value="En espera">En espera</option>
+          <option value="Pendiente">Pendiente</option>
+          <option value="Terminada">Terminada (cerrar OT)</option>
+        </select>
+      </div>
+      <div class="modal__field">
+        <label>Observaciones (opcional)</label>
+        <textarea id="obs-estado" placeholder="Notas del trabajo realizado..."></textarea>
+      </div>
+      <div class="modal__actions">
+        <button class="btn btn-outline" data-close-modal="modal-estado">Cancelar</button>
+        <button class="btn btn-primary" id="btn-confirm-estado">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const API_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+      ? 'http://127.0.0.1:8000' : 'https://zaris-api-production-bf0b.up.railway.app';
+
+    const _raw = localStorage.getItem('zaris_session');
+    if (!_raw) {
+      if (window.self !== window.top) window.parent.location.href = '../index.html';
+      else window.location.href = '../index.html';
+    }
+    const _sess = _raw ? JSON.parse(_raw) : null;
+    const _authHeaders = () => ({ 'Authorization': 'Bearer ' + _sess.access_token, 'Content-Type': 'application/json' });
+    function _handleUnauth() {
+      localStorage.removeItem('zaris_session');
+      if (window.self !== window.top) window.parent.location.href = '../index.html';
+      else window.location.href = '../index.html';
+    }
+
+    document.querySelectorAll('[data-bc-home]').forEach(el => {
+      el.addEventListener('click', e => {
+        e.preventDefault();
+        if (window.parent && window.parent.shellNavigate) window.parent.shellNavigate('frontend/welcome.html');
+        else window.location.href = '../index.html';
+      });
+    });
+
+    const $ = id => document.getElementById(id);
+    function escapeHtml(s) { return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function showToast(msg, kind='ok') {
+      const t = $('toast');
+      t.className = 'toast show toast--' + kind;
+      t.textContent = msg;
+      setTimeout(() => t.className = 'toast', 3000);
+    }
+    function badgeEstado(e) {
+      const map = { 'En gestión':['badge--gest','En gestión'], 'En espera':['badge--esp','En espera'], 'Pendiente':['badge--pend','Pendiente'] };
+      const [cls, lbl] = map[e] || ['badge--gest', e || '—'];
+      return `<span class="badge ${cls}">${escapeHtml(lbl)}</span>`;
+    }
+    function badgePrio(p) {
+      const cls = p === 'Alta' ? 'badge--alta' : p === 'Baja' ? 'badge--baja' : 'badge--media';
+      return `<span class="badge ${cls}">${escapeHtml(p || 'Media')}</span>`;
+    }
+    function formatSLA(sla_vencimiento, sla_dias) {
+      if (!sla_vencimiento) return `<span class="sla__sub">${sla_dias != null ? sla_dias + 'd (sin fecha)' : '—'}</span>`;
+      const venc = new Date(sla_vencimiento);
+      const now = new Date();
+      const ms = venc - now;
+      const minutes = Math.floor(Math.abs(ms) / 60000);
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
+      const fmtAbs = () => {
+        if (days > 0) return `${days}d ${hours % 24}h`;
+        if (hours > 0) return `${hours}h ${minutes % 60}m`;
+        return `${minutes}m`;
+      };
+      if (ms < 0) return `<div class="sla"><span class="sla--vencido">Vencido hace ${fmtAbs()}</span></div>`;
+      let cls = 'sla--ok';
+      if (hours < 24) cls = 'sla--warn';
+      if (hours < 6) cls = 'sla--danger';
+      const fecha = venc.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      return `<div class="sla"><span class="sla__main ${cls}">${fmtAbs()}</span><span class="sla__sub">vence ${fecha}</span></div>`;
+    }
+
+    let _ots = [];
+    let _idAgente = null;
+    let _tab = 'mias';
+    let _modalOT = null;
+
+    async function cargarMesa() {
+      $('tbody').innerHTML = '<tr><td colspan="9" class="loading">Cargando...</td></tr>';
+      $('error-banner').style.display = 'none';
+      try {
+        const res = await fetch(API_BASE + '/api/v1/ot/agente/me', { headers: _authHeaders() });
+        if (res.status === 401) { _handleUnauth(); return; }
+        const data = await res.json();
+        if (!res.ok) {
+          _ots = [];
+          $('subtitle').textContent = 'Tu usuario no tiene un agente asociado.';
+          $('error-banner').textContent = data.detail || `Error HTTP ${res.status}`;
+          $('error-banner').style.display = '';
+          $('tbody').innerHTML = `<tr><td colspan="9" class="empty">Sin OTs (usuario sin agente vinculado)</td></tr>`;
+          $('cnt-mias').textContent = 0;
+          $('cnt-disp').textContent = 0;
+          return;
+        }
+        _idAgente = data.id_agente;
+        _ots = data.ots || [];
+        $('subtitle').textContent = `Trabajando como agente #${_idAgente}. Tomá OTs disponibles o gestioná las tuyas.`;
+        render();
+      } catch (e) {
+        console.error(e);
+        $('tbody').innerHTML = `<tr><td colspan="9" class="empty">Error de red: ${escapeHtml(e.message)}</td></tr>`;
+      }
+    }
+
+    function porTab() {
+      return _ots.filter(o => _tab === 'mias' ? o.scope === 'mia' : o.scope === 'disponible_equipo');
+    }
+
+    function aplicarFiltros() {
+      const txt = ($('f-texto').value || '').trim().toLowerCase();
+      const fe = $('f-estado').value;
+      const fp = $('f-prioridad').value;
+      return porTab().filter(o => {
+        if (fe && o.estado_nombre !== fe) return false;
+        if (fp && o.reclamo_prioridad !== fp) return false;
+        if (txt) {
+          const hay = [o.nro_ot||'', o.nro_reclamo||'', o.tipo_nombre||'',
+                       o.reclamo_descripcion||'', o.subarea_nombre||'',
+                       o.equipo_nombre||'',
+                       (o.ciudadano_apellido||'') + ' ' + (o.ciudadano_nombre||'')].join(' ').toLowerCase();
+          if (!hay.includes(txt)) return false;
+        }
+        return true;
+      });
+    }
+
+    function renderHead() {
+      if (_tab === 'mias') {
+        $('thead').innerHTML = `<tr>
+          <th>OT / Reclamo</th>
+          <th>Estado</th>
+          <th>Prio.</th>
+          <th class="col-sla">SLA</th>
+          <th>Tipo</th>
+          <th>Subárea</th>
+          <th>Ciudadano</th>
+          <th>Descripción</th>
+          <th class="col-action">Acción</th>
+        </tr>`;
+      } else {
+        $('thead').innerHTML = `<tr>
+          <th>OT / Reclamo</th>
+          <th>Equipo</th>
+          <th>Prio.</th>
+          <th class="col-sla">SLA</th>
+          <th>Tipo</th>
+          <th>Subárea</th>
+          <th>Ciudadano</th>
+          <th>Descripción</th>
+          <th class="col-action">Acción</th>
+        </tr>`;
+      }
+    }
+
+    function render() {
+      $('cnt-mias').textContent = _ots.filter(o => o.scope === 'mia').length;
+      $('cnt-disp').textContent = _ots.filter(o => o.scope === 'disponible_equipo').length;
+      $('field-estado').style.display = _tab === 'mias' ? '' : 'none';
+
+      renderHead();
+      const filtrados = aplicarFiltros();
+
+      const counts = {};
+      porTab().forEach(o => { counts[o.estado_nombre] = (counts[o.estado_nombre] || 0) + 1; });
+      $('stats').innerHTML = Object.entries(counts).map(([k,v]) =>
+        `<span class="stats__chip"><strong>${v}</strong> ${escapeHtml(k)}</span>`).join('')
+        || `<span class="stats__chip">Sin OTs en esta vista</span>`;
+
+      const tbody = $('tbody');
+      if (!filtrados.length) {
+        tbody.innerHTML = `<tr><td colspan="9" class="empty">${
+          _tab === 'mias' ? 'No tenés OTs asignadas. Mirá la pestaña "Disponibles" para tomar alguna.' : 'No hay OTs disponibles en tus equipos por ahora.'
+        }</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtrados.map(o => {
+        const otCol = `<div class="nro">${escapeHtml(o.nro_ot || '—')}</div><div class="nro" style="font-size:0.72rem;color:var(--fg-3);">${escapeHtml(o.nro_reclamo || '')}</div>`;
+        if (_tab === 'mias') {
+          return `<tr>
+            <td>${otCol}</td>
+            <td>${badgeEstado(o.estado_nombre)}</td>
+            <td>${badgePrio(o.reclamo_prioridad)}</td>
+            <td class="col-sla">${formatSLA(o.sla_vencimiento, o.sla_dias)}</td>
+            <td class="truncate" title="${escapeHtml(o.tipo_nombre || '')}">${escapeHtml(o.tipo_nombre || '—')}</td>
+            <td class="truncate" title="${escapeHtml(o.subarea_nombre || '')}">${escapeHtml(o.subarea_nombre || '—')}</td>
+            <td>${escapeHtml((o.ciudadano_apellido || '') + ', ' + (o.ciudadano_nombre || ''))}</td>
+            <td class="truncate" title="${escapeHtml(o.reclamo_descripcion || '')}">${escapeHtml(o.reclamo_descripcion || '')}</td>
+            <td class="col-action"><button class="btn btn-primary btn-sm" data-estado="${o.id_ot}">Cambiar estado</button></td>
+          </tr>`;
+        } else {
+          return `<tr>
+            <td>${otCol}</td>
+            <td>${escapeHtml(o.equipo_nombre || '—')}<span class="equipo-tag">Sin agente asignado</span></td>
+            <td>${badgePrio(o.reclamo_prioridad)}</td>
+            <td class="col-sla">${formatSLA(o.sla_vencimiento, o.sla_dias)}</td>
+            <td class="truncate" title="${escapeHtml(o.tipo_nombre || '')}">${escapeHtml(o.tipo_nombre || '—')}</td>
+            <td class="truncate" title="${escapeHtml(o.subarea_nombre || '')}">${escapeHtml(o.subarea_nombre || '—')}</td>
+            <td>${escapeHtml((o.ciudadano_apellido || '') + ', ' + (o.ciudadano_nombre || ''))}</td>
+            <td class="truncate" title="${escapeHtml(o.reclamo_descripcion || '')}">${escapeHtml(o.reclamo_descripcion || '')}</td>
+            <td class="col-action"><button class="btn btn-success btn-sm" data-tomar="${o.id_ot}">Tomar OT</button></td>
+          </tr>`;
+        }
+      }).join('');
+
+      tbody.querySelectorAll('[data-estado]').forEach(b => b.addEventListener('click', () => abrirModalEstado(parseInt(b.dataset.estado))));
+      tbody.querySelectorAll('[data-tomar]').forEach(b => b.addEventListener('click', () => tomarOT(parseInt(b.dataset.tomar))));
+    }
+
+    // ── Acciones ─────────────────────────────────────────────────
+    async function tomarOT(idOt) {
+      if (!_idAgente) { showToast('No tenés agente asignado', 'err'); return; }
+      try {
+        const res = await fetch(API_BASE + `/api/v1/ot/${idOt}/tomar`, {
+          method: 'PUT', headers: _authHeaders(),
+          body: JSON.stringify({ id_agente: _idAgente })
+        });
+        if (res.status === 401) { _handleUnauth(); return; }
+        const data = await res.json();
+        if (!res.ok) { showToast(`Error: ${data.detail || res.status}`, 'err'); return; }
+        showToast(`OT tomada: pasa a "Mis OTs"`);
+        cargarMesa();
+      } catch (e) { showToast('Error de red: ' + e.message, 'err'); }
+    }
+
+    function abrirModalEstado(idOt) {
+      _modalOT = _ots.find(o => o.id_ot === idOt);
+      if (!_modalOT) return;
+      $('modal-estado-subtitle').textContent = `${_modalOT.nro_ot} · ${_modalOT.nro_reclamo} — ${_modalOT.tipo_nombre || ''}`;
+      $('modal-estado-current').innerHTML = `Estado actual: <strong>${escapeHtml(_modalOT.estado_nombre)}</strong>`;
+      $('sel-estado').value = _modalOT.estado_nombre === 'En gestión' ? 'En espera' : 'En gestión';
+      $('obs-estado').value = '';
+      $('modal-estado').classList.add('open');
+    }
+
+    async function confirmarEstado() {
+      if (!_modalOT) return;
+      const nuevoEstado = $('sel-estado').value;
+      const obs = $('obs-estado').value.trim();
+      const btn = $('btn-confirm-estado');
+      btn.disabled = true; btn.textContent = 'Aplicando...';
+      try {
+        const res = await fetch(API_BASE + `/api/v1/ot/${_modalOT.id_ot}/estado`, {
+          method: 'PUT', headers: _authHeaders(),
+          body: JSON.stringify({ estado: nuevoEstado, observaciones: obs })
+        });
+        if (res.status === 401) { _handleUnauth(); return; }
+        const data = await res.json();
+        if (!res.ok) { showToast(`Error: ${data.detail || res.status}`, 'err'); return; }
+        cerrarModal('modal-estado');
+        showToast(`OT actualizada a "${nuevoEstado}"`);
+        cargarMesa();
+      } catch (e) { showToast('Error de red: ' + e.message, 'err'); }
+      finally { btn.disabled = false; btn.textContent = 'Confirmar'; }
+    }
+
+    function cerrarModal(id) { $(id).classList.remove('open'); if (id === 'modal-estado') _modalOT = null; }
+
+    // ── Wire up ──────────────────────────────────────────────────
+    document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === t));
+      _tab = t.dataset.tab;
+      $('f-estado').value = '';
+      render();
+    }));
+
+    let _debounceTimer = null;
+    $('f-texto').addEventListener('input', () => { clearTimeout(_debounceTimer); _debounceTimer = setTimeout(render, 150); });
+    $('f-estado').addEventListener('change', render);
+    $('f-prioridad').addEventListener('change', render);
+    $('btn-refresh').addEventListener('click', cargarMesa);
+
+    $('btn-confirm-estado').addEventListener('click', confirmarEstado);
+    document.querySelectorAll('[data-close-modal]').forEach(btn => btn.addEventListener('click', () => cerrarModal(btn.dataset.closeModal)));
+    document.querySelectorAll('.modal-backdrop').forEach(bk => bk.addEventListener('click', e => { if (e.target === bk) cerrarModal(bk.id); }));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('modal-estado').classList.contains('open')) cerrarModal('modal-estado'); });
+
+    cargarMesa();
+    setInterval(() => { if (_ots.length) render(); }, 30000);
+  </script>
+</body>
+</html>

@@ -145,7 +145,7 @@ async def listar_reclamos(
         conds.append("r.prioridad = :prioridad")
         params["prioridad"] = prioridad
     if texto:
-        conds.append("(r.descripcion ILIKE :txt OR r.nro_reclamo ILIKE :txt OR c.nombre ILIKE :txt OR c.apellido ILIKE :txt OR c.doc_nro ILIKE :txt)")
+        conds.append("(r.descripcion ILIKE :txt OR r.nro_reclamo ILIKE :txt OR c.nombre ILIKE :txt OR c.apellido ILIKE :txt OR c.doc_nro ILIKE :txt OR tr.nombre ILIKE :txt)")
         params["txt"] = f"%{texto}%"
 
     where = " AND ".join(conds)
