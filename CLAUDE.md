@@ -359,10 +359,25 @@ GET  /api/v1/reclamos/catalogo/areas       → áreas activas
 GET  /api/v1/reclamos/catalogo/tipos       → tipos de reclamo activos
 GET  /api/v1/reclamos/{id}                 → detalle con historial, OTs y subreclamos
 POST /api/v1/reclamos                      → crear reclamo (requiere id_ciudadano BUC)
+PUT  /api/v1/reclamos/{id}                 → editar reclamo (alcance variable según estado)
 PUT  /api/v1/reclamos/{id}/estado          → cambiar estado + insertar entrada en historial
 PUT  /api/v1/reclamos/{id}/cancelar        → cancelar reclamo + cascade a OTs activas (requiere motivo)
 POST /api/v1/reclamos/{id}/subreclamo      → crear subreclamo (max 1 nivel; padre pasa a En espera)
 ```
+
+### Edición de reclamos — alcance por estado
+
+`PUT /reclamos/{id}` aplica una allowlist de campos según el estado actual del reclamo (helper `_require_gestion` exige `nivel_acceso ∈ {1,2,3}`):
+
+| Estado | Campos editables |
+|---|---|
+| `Sin asignar` | tipo, prioridad, canal, dirección, lat/lon, localidad, activo, empresa, fuente_geo, ciudadano, descripción, **observaciones** |
+| `En gestión` / `En espera` / `En auditoría` | **observaciones** (único). Body opcional: `nota_historial` para custom-text en `reclamo_historial.nota` (default: lista de campos modificados). |
+| `Resuelto` / `Cancelado` | ninguno → 422 |
+
+Toda edición inserta entrada `Reclamo editado` en `reclamo_historial` preservando estado anterior/nuevo (= estado actual). Si el body trae un campo prohibido para el estado actual: 422 con detalle de campos rechazados vs permitidos. Cambio de tipo re-deriva `id_area` desde `subarea.id_area` (fuente de verdad — ver memoria `tipo_reclamo_area_inconsistencia`). Cambio de empresa valida vínculo activo en `ciudadano_empresa`.
+
+Mismo guard `_require_gestion` aplica también a `PUT /{id}/cancelar`.
 
 ### Endpoints adjuntos (§26)
 
