@@ -120,7 +120,7 @@ TABLE_CONFIG: dict[str, dict] = {
     },
     "tipo_reclamo": {
         "pk": "id_tipo_reclamo",
-        "cols": ["nombre", "descripcion", "id_area", "id_subarea", "sla_dias", "audit"],
+        "cols": ["nombre", "descripcion", "id_subarea", "sla_dias", "audit"],
         "fecha_mod": "fecha_modificacion",
     },
     "configuracion_general": {
