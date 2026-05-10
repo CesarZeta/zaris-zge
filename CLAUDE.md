@@ -489,7 +489,7 @@ CHECK constraint activo: `ck_reclamo_estado` con valores `('Sin asignar','En ges
 
 ### Migración 22 — Geolocalización + Activos + Adjuntos (`backend/migrations/22_geo_activos_adjuntos.sql`)
 
-Aplicada en local. **Pendiente de aplicar en prod Supabase.** Incluye:
+**Aplicada en prod Supabase y en local (zaris_dev) al 2026-05-09.** Datos seedeados en prod: 24 provincias, 102 partidos, 352 localidades, 5 tipos_activo, 1000 activos. Incluye:
 
 - Crea `provincias`, `partidos`, `localidades`.
 - Crea `tipos_activo`, `activos`.
@@ -497,6 +497,27 @@ Aplicada en local. **Pendiente de aplicar en prod Supabase.** Incluye:
 - Agrega a `reclamos`: `id_estado_fk` (FK → `estado_reclamo.id_estado_reclamo`), `direccion`, `latitud`, `longitud`, `id_localidad`, `id_activo`, `canal_origen`, `fuente_geolocalizacion`, `fecha_cierre`, `fecha_primer_asignacion`, `sla_vencimiento`.
 - Trigger `trg_sla_reclamo`: calcula `sla_vencimiento = fecha_alta + tipo_reclamo.sla_dias` al INSERT.
 - La columna `estado` (VARCHAR) se mantiene transicional para compatibilidad — deprecada cuando frontend y endpoints migren 100% a `id_estado_fk`.
+
+### Migración 23 — Reasignación de subáreas a sus áreas correctas (`backend/migrations/23_reasignar_subareas_a_areas.sql`)
+
+**Aplicada en prod y local al 2026-05-09.** Resuelve inconsistencia entre `tipo_reclamo.id_area` y `subarea.id_area` reasignando subáreas mal ubicadas (10 subáreas operativas que estaban bajo "Gobierno" pasan a "Servicios Públicos"; 2 a Planeamiento; 1 a Tránsito). 35/35 subáreas activas alineadas con la moda de tipos. Snapshot pre-update en `_backup_subarea_2026_05_09`.
+
+### Migración 24 — Re-seed de subarea + tipo_reclamo desde CSVs (`backend/migrations/24_reseed_subareas_tipos_desde_csv.sql` + `backend/seed_subareas_tipos_csv.py`)
+
+**Aplicada en prod y local al 2026-05-09.** Re-seed completo desde `Tablas Iniciales/subarea.csv` (40) y `tipo_reclamo.csv` (288), más 9 subáreas inferidas como huérfanas. Resultado prod:
+
+| Área canónica | id_area prod | Subáreas | Tipos |
+|---|---|---|---|
+| Secretaría de Servicios Públicos | 22 | 33 | 184 |
+| Gobierno | 1 | 6 | 54 |
+| Secretaria de Planeamiento y Obras Publicas | 6 | 5 | 27 |
+| Subsecretaría de Tránsito | 36 | 4 | 16 |
+| Secretaría de Seguridad | 28 | 1 | 1 |
+| **Total** | — | **49** | **282** |
+
+Áreas resueltas por heurística por keyword (ver `seed_subareas_tipos_csv.py`). Áreas huérfanas (sin subáreas activas) soft-deleted automáticamente. Snapshot pre-update en `_backup_pre_reseed_2026_05_09`.
+
+> **Importante**: cualquier nueva sesión que toque estas tablas debe verificar el estado actual con `execute_sql` antes de aplicar cambios — esta sección puede quedar desactualizada (CLAUDE.md §24 lo formaliza).
 
 ## 22. Geolocalización, Activos y Adjuntos (Reclamos)
 
