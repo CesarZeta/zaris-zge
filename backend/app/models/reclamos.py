@@ -183,7 +183,6 @@ class TipoReclamo(Base):
     id_tipo_reclamo     = Column(Integer, primary_key=True, autoincrement=True)
     nombre              = Column(String(200), nullable=False)
     descripcion         = Column(Text, nullable=True)
-    id_area             = Column(Integer, ForeignKey("area.id_area", ondelete="SET NULL"), nullable=True)
     id_subarea          = Column(Integer, ForeignKey("subarea.id_subarea", ondelete="SET NULL"), nullable=True)
     sla_dias            = Column(Integer, default=5)
     audit               = Column(Boolean, nullable=False, default=False)
@@ -195,7 +194,6 @@ class TipoReclamo(Base):
     id_usuario_modificacion = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
 
     __table_args__ = (
-        Index("idx_tipo_reclamo_area", "id_area"),
         Index("idx_tipo_reclamo_subarea", "id_subarea"),
     )
 

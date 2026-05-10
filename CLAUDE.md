@@ -315,7 +315,6 @@ Comandos disponibles en `.claude/commands/` — invocar con `/nombre`:
 | `backend/seed_auth.py` | Aplica migración 11 (email en usuarios) + setea passwords `123456` |
 | `backend/seed_demo.py` | Seed local — tablas vacías contra `http://127.0.0.1:8000` |
 | `backend/seed_prod.py` | Seed prod — tablas vacías contra Railway (confirmar antes de usar) |
-| `backend/seed_incremental.py` | Seed incremental (no borra): cargos, áreas, subareas, tipo_reclamo, ciudadanos (500 desde CSVs en `Tablas Iniciales/`) |
 | `backend/seed_reclamos_prod.py` | Inserta 20 reclamos demo en prod; detecta automáticamente si el constraint de estado usa tildes |
 | `backend/seed_geo_argentina.py` | Carga provincias / partidos / localidades AR (idempotente vía UPSERT) — usar tras migración 22 |
 
@@ -375,7 +374,7 @@ POST /api/v1/reclamos/{id}/subreclamo      → crear subreclamo (max 1 nivel; pa
 | `En gestión` / `En espera` / `En auditoría` | **observaciones** (único). Body opcional: `nota_historial` para custom-text en `reclamo_historial.nota` (default: lista de campos modificados). |
 | `Resuelto` / `Cancelado` | ninguno → 422 |
 
-Toda edición inserta entrada `Reclamo editado` en `reclamo_historial` preservando estado anterior/nuevo (= estado actual). Si el body trae un campo prohibido para el estado actual: 422 con detalle de campos rechazados vs permitidos. Cambio de tipo re-deriva `id_area` desde `subarea.id_area` (fuente de verdad — ver memoria `tipo_reclamo_area_inconsistencia`). Cambio de empresa valida vínculo activo en `ciudadano_empresa`.
+Toda edición inserta entrada `Reclamo editado` en `reclamo_historial` preservando estado anterior/nuevo (= estado actual). Si el body trae un campo prohibido para el estado actual: 422 con detalle de campos rechazados vs permitidos. Cambio de tipo re-deriva `id_area` desde `subarea.id_area` (fuente única desde mig 27). Cambio de empresa valida vínculo activo en `ciudadano_empresa`.
 
 Mismo guard `_require_gestion` aplica también a `PUT /{id}/cancelar`.
 
@@ -533,6 +532,10 @@ CHECK constraint activo: `ck_reclamo_estado` con valores `('Sin asignar','En ges
 ### Migración 23 — Reasignación de subáreas a sus áreas correctas (`backend/migrations/23_reasignar_subareas_a_areas.sql`)
 
 **Aplicada en prod y local al 2026-05-09.** Resuelve inconsistencia entre `tipo_reclamo.id_area` y `subarea.id_area` reasignando subáreas mal ubicadas (10 subáreas operativas que estaban bajo "Gobierno" pasan a "Servicios Públicos"; 2 a Planeamiento; 1 a Tránsito). 35/35 subáreas activas alineadas con la moda de tipos. Snapshot pre-update en `_backup_subarea_2026_05_09`.
+
+### Migración 27 — Drop `tipo_reclamo.id_area` (`backend/migrations/27_drop_tipo_reclamo_id_area.sql`)
+
+**Aplicada en local y prod al 2026-05-10.** Elimina la columna redundante `tipo_reclamo.id_area` (y su índice `idx_tipo_reclamo_area`). Desde mig 24 la fuente única del área de un tipo es `subarea.id_area` vía `tr.id_subarea → s.id_area`; mantener la columna espejo obligaba a doble escritura y abría la puerta a inconsistencias (123/282 filas divergentes antes de mig 23-24). Backend (`reclamos.py`, `ordenes_trabajo.py`) ya consultaba exclusivamente vía JOIN con `subarea`; `admin_tablas.py` quitó `id_area` de los `cols` editables de `tipo_reclamo`. Sin vistas ni triggers dependientes.
 
 ### Migración 26 — Cleanup de áreas duplicadas con/sin tilde (`backend/migrations/26_cleanup_areas_duplicadas.sql`)
 
@@ -761,7 +764,6 @@ Para `UPDATE`/`DELETE` masivos en prod: snapshot previo en tabla `_backup_<tabla
 | `seed_activos_local.py` | tipos_activo, activos | `Tablas Iniciales/Activos.csv` |
 | `seed_auth.py` | usuarios | hardcoded dev |
 | `seed_demo.py` / `seed_prod.py` | varios | hardcoded mínimo |
-| `seed_incremental.py` | cargos, áreas, subareas, tipo_reclamo, ciudadanos | varios CSVs |
 
 ## 26. Adjuntos de Reclamos (Supabase Storage)
 
