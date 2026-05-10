@@ -512,25 +512,36 @@
 
     /* empresas vinculadas al ciudadano */
     .empresas-vinc {
-      margin-top: 8px; padding: 8px 10px;
+      margin-top: 10px; padding: 10px 12px;
       background: var(--surface-300);
       border: 1px solid var(--border-primary);
       border-radius: 8px;
-      font-size: 0.78rem;
     }
     .empresas-vinc__title {
       font-size: 0.66rem; font-weight: 700; text-transform: uppercase;
-      letter-spacing: 0.05em; color: var(--fg-3); margin-bottom: 4px;
+      letter-spacing: 0.05em; color: var(--fg-3); margin-bottom: 8px;
     }
     .empresas-vinc__item {
-      display: flex; align-items: center; gap: 8px;
-      padding: 4px 0;
+      display: flex; align-items: center; gap: 10px;
+      padding: 5px 0;
+      font-size: 0.82rem;
+      line-height: 1.3;
     }
-    .empresas-vinc__item input[type=radio] { accent-color: var(--zaris-orange); }
-    .empresas-vinc__item label { cursor: pointer; flex: 1; }
+    .empresas-vinc__item input[type=radio] {
+      accent-color: var(--zaris-orange);
+      flex-shrink: 0;
+      width: 14px; height: 14px;
+      margin: 0;
+    }
+    .empresas-vinc__item label {
+      cursor: pointer;
+      flex: 1; min-width: 0;
+      display: flex; align-items: center; gap: 6px;
+      flex-wrap: wrap;
+    }
     .empresas-vinc__rep {
-      font-size: 0.7rem; color: var(--fg-3);
-      font-style: italic; margin-left: 4px;
+      font-size: 0.72rem; color: var(--fg-3);
+      font-style: italic;
     }
 
     /* sub-reclamo */
@@ -776,7 +787,7 @@ if (!localStorage.getItem('zaris_session')) { _handleUnauth(); }
 
       <!-- ─ Sección 1: ciudadano ─ -->
       <div class="form-section">
-        <div class="form-section__title">Ciudadano <span class="badge-num">BUC</span></div>
+        <div class="form-section__title">Ciudadano</div>
         <div class="field" style="margin-bottom:0">
           <label class="form-required">Buscar por DNI, CUIL o apellido</label>
           <div class="buc-search">
@@ -795,7 +806,7 @@ if (!localStorage.getItem('zaris_session')) { _handleUnauth(); }
 
       <!-- ─ Sección 2: clasificación + estado + canal ─ -->
       <div class="form-section">
-        <div class="form-section__title">Clasificación <span class="badge-num">53</span><span class="badge-num">54</span><span class="badge-num">55</span></div>
+        <div class="form-section__title">Clasificación</div>
         <div class="field-row-3">
           <div class="field" style="margin-bottom:0">
             <label class="form-required">Área</label>
@@ -841,7 +852,7 @@ if (!localStorage.getItem('zaris_session')) { _handleUnauth(); }
 
       <!-- ─ Sección 3: ubicación (PIN GPS + activo + dirección) ─ -->
       <div class="form-section">
-        <div class="form-section__title">Ubicación <span class="badge-num">56</span><span class="badge-num">57</span><span class="badge-num">58</span><span class="badge-num">60</span><span class="badge-num">61</span></div>
+        <div class="form-section__title">Ubicación</div>
         <div class="map-toolbar">
           <button type="button" class="btn-mini" id="btn-modo-pin" onclick="setModoMapa('pin')">
             <i data-lucide="map-pin" style="width:14px;height:14px"></i>
@@ -868,11 +879,11 @@ if (!localStorage.getItem('zaris_session')) { _handleUnauth(); }
 
         <div class="field-row" style="margin-top:10px">
           <div class="field" style="margin-bottom:0">
-            <label>Calle y altura (60)</label>
+            <label>Calle y altura</label>
             <input type="text" id="nr-direccion" placeholder="Av. Maipú 1924">
           </div>
           <div class="field" style="margin-bottom:0">
-            <label>Localidad / Barrio (61)</label>
+            <label>Localidad / Barrio</label>
             <select id="nr-localidad">
               <option value="">— Seleccionar —</option>
             </select>
@@ -888,7 +899,7 @@ if (!localStorage.getItem('zaris_session')) { _handleUnauth(); }
             <input type="text" id="nr-lon" readonly placeholder="—" style="font-family:var(--font-mono);font-size:0.78rem">
           </div>
           <div class="field" style="margin-bottom:0">
-            <label>Activo Nº (58)</label>
+            <label>Activo Nº</label>
             <input type="text" id="nr-activo-codigo" readonly placeholder="—" style="font-family:var(--font-mono);font-size:0.78rem">
           </div>
           <div class="field" style="margin-bottom:0">
@@ -903,7 +914,7 @@ if (!localStorage.getItem('zaris_session')) { _handleUnauth(); }
 
       <!-- ─ Sección 4: descripción + observaciones ─ -->
       <div class="form-section">
-        <div class="form-section__title">Detalle <span class="badge-num">63</span></div>
+        <div class="form-section__title">Detalle</div>
         <div class="field" style="margin-bottom:8px">
           <label class="form-required">Descripción</label>
           <textarea id="nr-desc" placeholder="Describa el problema con el mayor detalle posible..."></textarea>
@@ -1372,6 +1383,11 @@ function abrirNuevoReclamo() {
   document.getElementById('sr-desc').value = '';
   document.getElementById('modalNuevo').classList.add('open');
   setModoMapa('pin');
+  // áreas: garantizar que estén cargadas (idempotente)
+  const nrAreaSel = document.getElementById('nr-area');
+  if (nrAreaSel && nrAreaSel.options.length <= 1) {
+    cargarAreas();
+  }
   // localidades: si no se cargaron aún, cargar
   if (!_localidadesCargadas) cargarLocalidades();
   // mapa: inicializar lazy tras render del modal
