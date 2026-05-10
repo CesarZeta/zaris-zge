@@ -804,21 +804,28 @@ if (!localStorage.getItem('zaris_session')) { _handleUnauth(); }
         </div>
       </div>
 
-      <!-- ─ Sección 2: clasificación + estado + canal ─ -->
+      <!-- ─ Sección 2: clasificación ─ -->
       <div class="form-section">
         <div class="form-section__title">Clasificación</div>
+        <div class="field" style="margin-bottom:10px">
+          <label class="form-required">Tipo de reclamo</label>
+          <div class="buc-search">
+            <input type="text" id="nr-tipo-q" placeholder="Buscar tipo de reclamo..." oninput="buscarTipoReclamo(this.value)" autocomplete="off">
+            <div class="buc-results" id="nr-tipo-results" style="display:none"></div>
+          </div>
+          <input type="hidden" id="nr-tipo">
+          <input type="hidden" id="nr-id-area">
+          <input type="hidden" id="nr-id-subarea">
+          <div id="nr-tipo-selected" style="margin-top:6px;display:none"></div>
+        </div>
         <div class="field-row-3">
           <div class="field" style="margin-bottom:0">
-            <label class="form-required">Área</label>
-            <select id="nr-area" onchange="cargarTiposReclamo(this.value)">
-              <option value="">— Seleccionar —</option>
-            </select>
+            <label>Área (auto)</label>
+            <input type="text" id="nr-area-display" readonly placeholder="Se completa al elegir tipo" style="background:var(--surface-300);color:var(--fg-2)">
           </div>
           <div class="field" style="margin-bottom:0">
-            <label class="form-required">Tipo de reclamo</label>
-            <select id="nr-tipo">
-              <option value="">— Seleccionar área primero —</option>
-            </select>
+            <label>Subárea (auto)</label>
+            <input type="text" id="nr-subarea-display" readonly placeholder="Se completa al elegir tipo" style="background:var(--surface-300);color:var(--fg-2)">
           </div>
           <div class="field" style="margin-bottom:0">
             <label>Estado</label>
@@ -934,16 +941,25 @@ if (!localStorage.getItem('zaris_session')) { _handleUnauth(); }
           <h4>Sub-reclamo</h4>
           <button type="button" class="btn-mini" onclick="toggleSubreclamo()">Quitar</button>
         </div>
+        <div class="field" style="margin-bottom:10px">
+          <label class="form-required">Tipo de reclamo</label>
+          <div class="buc-search">
+            <input type="text" id="sr-tipo-q" placeholder="Buscar tipo de reclamo..." oninput="buscarTipoReclamoSub(this.value)" autocomplete="off">
+            <div class="buc-results" id="sr-tipo-results" style="display:none"></div>
+          </div>
+          <input type="hidden" id="sr-tipo">
+          <input type="hidden" id="sr-id-area">
+          <input type="hidden" id="sr-id-subarea">
+          <div id="sr-tipo-selected" style="margin-top:6px;display:none"></div>
+        </div>
         <div class="field-row-3">
           <div class="field" style="margin-bottom:0">
-            <label class="form-required">Área</label>
-            <select id="sr-area" onchange="cargarTiposReclamoSub(this.value)">
-              <option value="">— Seleccionar —</option>
-            </select>
+            <label>Área (auto)</label>
+            <input type="text" id="sr-area-display" readonly placeholder="—" style="background:var(--surface-300);color:var(--fg-2)">
           </div>
           <div class="field" style="margin-bottom:0">
-            <label class="form-required">Tipo</label>
-            <select id="sr-tipo"><option value="">— Seleccionar área primero —</option></select>
+            <label>Subárea (auto)</label>
+            <input type="text" id="sr-subarea-display" readonly placeholder="—" style="background:var(--surface-300);color:var(--fg-2)">
           </div>
           <div class="field" style="margin-bottom:0">
             <label>Estado</label>
@@ -1159,36 +1175,18 @@ async function cargarStats() {
 
 // ── Cargar áreas en selects ───────────────────────────────────
 async function cargarAreas() {
+  // Solo pobla el filtro del listado (flt-area). El modal usa el buscador
+  // autocompletar de tipo_reclamo, que deduce el área via subárea.
   try {
     const areas = await _apiFetch('/api/v1/reclamos/catalogo/areas');
     if (!areas) return;
     const flt = document.getElementById('flt-area');
-    const nrArea = document.getElementById('nr-area');
+    if (!flt) return;
     areas.forEach(a => {
       flt.insertAdjacentHTML('beforeend', `<option value="${a.id_area}">${a.nombre}</option>`);
-      nrArea.insertAdjacentHTML('beforeend', `<option value="${a.id_area}">${a.nombre}</option>`);
     });
   } catch(e) {
     console.warn('Error cargando áreas:', e);
-  }
-}
-
-async function cargarTiposReclamo(idArea) {
-  const sel = document.getElementById('nr-tipo');
-  sel.innerHTML = '<option value="">Cargando...</option>';
-  if (!idArea) {
-    sel.innerHTML = '<option value="">— Seleccionar área primero —</option>';
-    return;
-  }
-  try {
-    const tipos = await _apiFetch(`/api/v1/reclamos/catalogo/tipos?id_area=${idArea}`);
-    if (!tipos) return;
-    sel.innerHTML = '<option value="">— Seleccionar tipo —</option>';
-    tipos.forEach(t => {
-      sel.insertAdjacentHTML('beforeend', `<option value="${t.id_tipo_reclamo}">${t.nombre}</option>`);
-    });
-  } catch(e) {
-    sel.innerHTML = '<option value="">Error al cargar tipos</option>';
   }
 }
 
@@ -1355,8 +1353,15 @@ function abrirNuevoReclamo() {
   document.getElementById('buc-results').style.display = 'none';
   document.getElementById('empresas-vinculadas').style.display = 'none';
   document.getElementById('empresas-vinculadas').innerHTML = '';
-  document.getElementById('nr-area').value = '';
-  document.getElementById('nr-tipo').innerHTML = '<option value="">— Seleccionar área primero —</option>';
+  // Tipo de reclamo (con buscador)
+  document.getElementById('nr-tipo-q').value = '';
+  document.getElementById('nr-tipo').value = '';
+  document.getElementById('nr-id-area').value = '';
+  document.getElementById('nr-id-subarea').value = '';
+  document.getElementById('nr-area-display').value = '';
+  document.getElementById('nr-subarea-display').value = '';
+  document.getElementById('nr-tipo-selected').style.display = 'none';
+  document.getElementById('nr-tipo-results').style.display = 'none';
   document.getElementById('nr-prio').value = 'Media';
   document.getElementById('nr-canal').value = 'web';
   document.getElementById('nr-direccion').value = '';
@@ -1376,18 +1381,19 @@ function abrirNuevoReclamo() {
   // subreclamo cerrado
   document.getElementById('sub-section').style.display = 'none';
   document.getElementById('btn-toggle-sub').style.display = 'block';
-  document.getElementById('sr-area').value = '';
-  document.getElementById('sr-tipo').innerHTML = '<option value="">— Seleccionar área primero —</option>';
+  document.getElementById('sr-tipo-q').value = '';
+  document.getElementById('sr-tipo').value = '';
+  document.getElementById('sr-id-area').value = '';
+  document.getElementById('sr-id-subarea').value = '';
+  document.getElementById('sr-area-display').value = '';
+  document.getElementById('sr-subarea-display').value = '';
+  document.getElementById('sr-tipo-selected').style.display = 'none';
+  document.getElementById('sr-tipo-results').style.display = 'none';
   document.getElementById('sr-direccion').value = '';
   document.getElementById('sr-prio').value = 'Media';
   document.getElementById('sr-desc').value = '';
   document.getElementById('modalNuevo').classList.add('open');
   setModoMapa('pin');
-  // áreas: garantizar que estén cargadas (idempotente)
-  const nrAreaSel = document.getElementById('nr-area');
-  if (nrAreaSel && nrAreaSel.options.length <= 1) {
-    cargarAreas();
-  }
   // localidades: si no se cargaron aún, cargar
   if (!_localidadesCargadas) cargarLocalidades();
   // mapa: inicializar lazy tras render del modal
@@ -1453,7 +1459,8 @@ async function seleccionarCiudadano(id, apellido, nombre, docNro) {
   _bucCiudadano = { id, apellido, nombre, docNro };
   document.getElementById('nr-id-ciudadano').value = id;
   document.getElementById('buc-results').style.display = 'none';
-  document.getElementById('nr-buc-q').value = `${apellido}, ${nombre}`;
+  // El input de búsqueda se vacía: la identidad queda en el chip de abajo
+  document.getElementById('nr-buc-q').value = '';
   const selDiv = document.getElementById('buc-selected');
   selDiv.innerHTML = `<div class="buc-selected"><span><strong>${apellido}, ${nombre}</strong> <span style="font-family:var(--font-mono);font-size:.76rem;color:var(--fg-3)">${docNro}</span></span><button onclick="limpiarCiudadanoSeleccionado()" aria-label="Quitar" style="background:none;border:none;color:var(--fg-3);cursor:pointer;display:inline-flex;align-items:center"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>`;
   selDiv.style.display = 'block';
@@ -1508,8 +1515,9 @@ async function cargarEmpresasVinculadas(idCiudadano) {
 
 async function guardarNuevoReclamo() {
   const idCiudadano = document.getElementById('nr-id-ciudadano').value;
-  const idArea      = document.getElementById('nr-area').value;
   const idTipo      = document.getElementById('nr-tipo').value;
+  const idArea      = document.getElementById('nr-id-area').value;
+  const idSubarea   = document.getElementById('nr-id-subarea').value;
   const desc        = document.getElementById('nr-desc').value.trim();
   const prio        = document.getElementById('nr-prio').value;
   const canal       = document.getElementById('nr-canal').value;
@@ -1522,7 +1530,6 @@ async function guardarNuevoReclamo() {
   const fuente      = document.getElementById('nr-fuente-geo').value;
 
   if (!idCiudadano) { toast('Seleccioná un ciudadano de la BUC', 'err'); return; }
-  if (!idArea)      { toast('Seleccioná un área', 'err'); return; }
   if (!idTipo)      { toast('Seleccioná un tipo de reclamo', 'err'); return; }
   if (!desc)        { toast('Completá la descripción', 'err'); return; }
 
@@ -1530,20 +1537,20 @@ async function guardarNuevoReclamo() {
   const subAbierto = document.getElementById('sub-section').style.display !== 'none';
   let subPayload = null;
   if (subAbierto) {
-    const srArea = document.getElementById('sr-area').value;
     const srTipo = document.getElementById('sr-tipo').value;
+    const srArea = document.getElementById('sr-id-area').value;
     const srDesc = document.getElementById('sr-desc').value.trim();
-    if (!srArea || !srTipo || !srDesc) {
+    if (!srTipo || !srDesc) {
       toast('Completá los campos requeridos del sub-reclamo o quitalo', 'err');
       return;
     }
     subPayload = {
-      id_area: parseInt(srArea),
       id_tipo_reclamo: parseInt(srTipo),
       descripcion: srDesc,
       prioridad: document.getElementById('sr-prio').value,
       direccion: document.getElementById('sr-direccion').value.trim() || direccion,
     };
+    if (srArea) subPayload.id_area = parseInt(srArea);
   }
 
   const btn = document.getElementById('btnGuardarReclamo');
@@ -1554,13 +1561,15 @@ async function guardarNuevoReclamo() {
     const payload = {
       id_ciudadano: parseInt(idCiudadano),
       id_tipo_reclamo: parseInt(idTipo),
-      id_area: parseInt(idArea),
       descripcion: desc,
       prioridad: prio,
       canal_origen: canal,
       direccion: direccion,
       observaciones: obs,
     };
+    // id_area lo deriva el backend desde subarea si no se manda. Solo lo
+    // enviamos cuando el frontend ya lo calculó (informativo, no crítico).
+    if (idArea) payload.id_area = parseInt(idArea);
     if (lat && lon) {
       payload.latitud = parseFloat(lat);
       payload.longitud = parseFloat(lon);
@@ -1873,28 +1882,143 @@ function toggleSubreclamo() {
   } else {
     sec.style.display = 'block';
     btn.style.display = 'none';
-    // copiar áreas del select padre al hijo
-    const padreOpts = document.getElementById('nr-area').innerHTML;
-    document.getElementById('sr-area').innerHTML = padreOpts;
   }
 }
 
-async function cargarTiposReclamoSub(idArea) {
-  const sel = document.getElementById('sr-tipo');
-  sel.innerHTML = '<option value="">Cargando...</option>';
-  if (!idArea) {
-    sel.innerHTML = '<option value="">— Seleccionar área primero —</option>';
+// ── Buscador de tipo de reclamo (autocompletar) ──
+let _tipoTimer = null;
+let _tipoResultados = {};
+
+function buscarTipoReclamo(q) {
+  clearTimeout(_tipoTimer);
+  if (q.length < 2) {
+    document.getElementById('nr-tipo-results').style.display = 'none';
     return;
   }
-  try {
-    const data = await _apiFetch(`/api/v1/reclamos/catalogo/tipos?id_area=${idArea}`);
-    if (!data) return;
-    sel.innerHTML = '<option value="">— Seleccionar —</option>' + data.map(t =>
-      `<option value="${t.id_tipo_reclamo}">${(t.nombre||'').replace(/</g,'&lt;')}</option>`
-    ).join('');
-  } catch(e) {
-    sel.innerHTML = '<option value="">Error al cargar</option>';
+  _tipoTimer = setTimeout(async () => {
+    try {
+      const data = await _apiFetch(`/api/v1/reclamos/catalogo/tipos?q=${encodeURIComponent(q)}&limit=20`);
+      if (!data) return;
+      const res = document.getElementById('nr-tipo-results');
+      if (!data.length) {
+        res.innerHTML = '<div class="buc-item" style="color:var(--fg-3)">Sin resultados</div>';
+        res.style.display = 'block';
+        return;
+      }
+      _tipoResultados = {};
+      data.forEach(t => { _tipoResultados[t.id_tipo_reclamo] = t; });
+      res.innerHTML = data.map(t => {
+        const nombre  = (t.nombre || '').replace(/</g,'&lt;');
+        const area    = (t.area_nombre || '').replace(/</g,'&lt;');
+        const subarea = (t.subarea_nombre || '').replace(/</g,'&lt;');
+        return `<div class="buc-item" data-tipo-id="${t.id_tipo_reclamo}">
+          <strong>${nombre}</strong>
+          <span style="font-size:.74rem;color:var(--fg-3);display:block;margin-top:2px">${area}${subarea ? ' · ' + subarea : ''}</span>
+        </div>`;
+      }).join('');
+      res.style.display = 'block';
+      res.querySelectorAll('.buc-item[data-tipo-id]').forEach(el => {
+        el.addEventListener('click', () => {
+          const t = _tipoResultados[parseInt(el.dataset.tipoId)];
+          if (t) seleccionarTipoReclamo(t);
+        });
+      });
+    } catch(e) {
+      console.warn('buscarTipoReclamo error:', e);
+    }
+  }, 250);
+}
+
+function seleccionarTipoReclamo(t) {
+  document.getElementById('nr-tipo').value = t.id_tipo_reclamo;
+  document.getElementById('nr-id-area').value = t.id_area || '';
+  document.getElementById('nr-id-subarea').value = t.id_subarea || '';
+  document.getElementById('nr-area-display').value = t.area_nombre || '';
+  document.getElementById('nr-subarea-display').value = t.subarea_nombre || '';
+  document.getElementById('nr-tipo-q').value = '';
+  document.getElementById('nr-tipo-results').style.display = 'none';
+  const sel = document.getElementById('nr-tipo-selected');
+  const nombre = (t.nombre || '').replace(/</g,'&lt;');
+  sel.innerHTML = `<div class="buc-selected"><span><strong>${nombre}</strong></span><button onclick="limpiarTipoReclamo()" aria-label="Quitar" style="background:none;border:none;color:var(--fg-3);cursor:pointer;display:inline-flex;align-items:center"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>`;
+  sel.style.display = 'block';
+}
+
+function limpiarTipoReclamo() {
+  document.getElementById('nr-tipo').value = '';
+  document.getElementById('nr-id-area').value = '';
+  document.getElementById('nr-id-subarea').value = '';
+  document.getElementById('nr-area-display').value = '';
+  document.getElementById('nr-subarea-display').value = '';
+  document.getElementById('nr-tipo-selected').style.display = 'none';
+  document.getElementById('nr-tipo-q').value = '';
+}
+
+// ── Buscador de tipo para el sub-reclamo (mismo patrón) ──
+let _srTipoTimer = null;
+let _srTipoResultados = {};
+
+function buscarTipoReclamoSub(q) {
+  clearTimeout(_srTipoTimer);
+  if (q.length < 2) {
+    document.getElementById('sr-tipo-results').style.display = 'none';
+    return;
   }
+  _srTipoTimer = setTimeout(async () => {
+    try {
+      const data = await _apiFetch(`/api/v1/reclamos/catalogo/tipos?q=${encodeURIComponent(q)}&limit=20`);
+      if (!data) return;
+      const res = document.getElementById('sr-tipo-results');
+      if (!data.length) {
+        res.innerHTML = '<div class="buc-item" style="color:var(--fg-3)">Sin resultados</div>';
+        res.style.display = 'block';
+        return;
+      }
+      _srTipoResultados = {};
+      data.forEach(t => { _srTipoResultados[t.id_tipo_reclamo] = t; });
+      res.innerHTML = data.map(t => {
+        const nombre  = (t.nombre || '').replace(/</g,'&lt;');
+        const area    = (t.area_nombre || '').replace(/</g,'&lt;');
+        const subarea = (t.subarea_nombre || '').replace(/</g,'&lt;');
+        return `<div class="buc-item" data-tipo-id="${t.id_tipo_reclamo}">
+          <strong>${nombre}</strong>
+          <span style="font-size:.74rem;color:var(--fg-3);display:block;margin-top:2px">${area}${subarea ? ' · ' + subarea : ''}</span>
+        </div>`;
+      }).join('');
+      res.style.display = 'block';
+      res.querySelectorAll('.buc-item[data-tipo-id]').forEach(el => {
+        el.addEventListener('click', () => {
+          const t = _srTipoResultados[parseInt(el.dataset.tipoId)];
+          if (t) seleccionarTipoReclamoSub(t);
+        });
+      });
+    } catch(e) {
+      console.warn('buscarTipoReclamoSub error:', e);
+    }
+  }, 250);
+}
+
+function seleccionarTipoReclamoSub(t) {
+  document.getElementById('sr-tipo').value = t.id_tipo_reclamo;
+  document.getElementById('sr-id-area').value = t.id_area || '';
+  document.getElementById('sr-id-subarea').value = t.id_subarea || '';
+  document.getElementById('sr-area-display').value = t.area_nombre || '';
+  document.getElementById('sr-subarea-display').value = t.subarea_nombre || '';
+  document.getElementById('sr-tipo-q').value = '';
+  document.getElementById('sr-tipo-results').style.display = 'none';
+  const sel = document.getElementById('sr-tipo-selected');
+  const nombre = (t.nombre || '').replace(/</g,'&lt;');
+  sel.innerHTML = `<div class="buc-selected"><span><strong>${nombre}</strong></span><button onclick="limpiarTipoReclamoSub()" aria-label="Quitar" style="background:none;border:none;color:var(--fg-3);cursor:pointer;display:inline-flex;align-items:center"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>`;
+  sel.style.display = 'block';
+}
+
+function limpiarTipoReclamoSub() {
+  document.getElementById('sr-tipo').value = '';
+  document.getElementById('sr-id-area').value = '';
+  document.getElementById('sr-id-subarea').value = '';
+  document.getElementById('sr-area-display').value = '';
+  document.getElementById('sr-subarea-display').value = '';
+  document.getElementById('sr-tipo-selected').style.display = 'none';
+  document.getElementById('sr-tipo-q').value = '';
 }
 
 // ── Alta inline de ciudadano ──
@@ -2072,11 +2196,17 @@ document.getElementById('modalEmpresa').addEventListener('click', e => {
   if (e.target === document.getElementById('modalEmpresa')) cerrarAltaEmpresa();
 });
 
-// Cerrar resultados BUC al hacer click fuera
+// Cerrar resultados de los 3 buscadores BUC-style al hacer click fuera
 document.addEventListener('click', e => {
-  if (!e.target.closest('.buc-search')) {
-    document.getElementById('buc-results').style.display = 'none';
-  }
+  const dentro = e.target.closest('.buc-search');
+  ['buc-results', 'nr-tipo-results', 'sr-tipo-results'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    // Si el click NO fue dentro de NINGÚN .buc-search, cerrar todos.
+    // Si fue dentro de UNO, cerrar los OTROS.
+    if (!dentro) { el.style.display = 'none'; return; }
+    if (!dentro.contains(el)) el.style.display = 'none';
+  });
 });
 
 // ── Init ──────────────────────────────────────────────────────

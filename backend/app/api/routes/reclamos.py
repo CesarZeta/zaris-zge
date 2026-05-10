@@ -79,24 +79,35 @@ async def catalogo_areas(
 @router.get("/catalogo/tipos")
 async def catalogo_tipos(
     id_area: Optional[int] = Query(None),
+    q: Optional[str] = Query(None, description="Filtro por nombre (ILIKE)"),
+    limit: int = Query(500, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    cond = "tr.activo = TRUE"
-    params = {}
+    """
+    Lista tipos de reclamo. Fuente de verdad del área: subarea.id_area
+    (no tipo_reclamo.id_area, que tiene 123/282 filas inconsistentes en
+    prod). El filtro por id_area también opera contra subarea.id_area.
+    """
+    cond = ["tr.activo = TRUE"]
+    params: dict = {"lim": limit}
     if id_area:
-        cond += " AND tr.id_area = :id_area"
+        cond.append("s.id_area = :id_area")
         params["id_area"] = id_area
+    if q and q.strip():
+        cond.append("tr.nombre ILIKE :q")
+        params["q"] = f"%{q.strip()}%"
 
     result = await db.execute(text(f"""
         SELECT tr.id_tipo_reclamo, tr.nombre, tr.sla_dias, tr.audit,
-               tr.id_area, a.nombre AS area_nombre,
+               s.id_area, a.nombre AS area_nombre,
                tr.id_subarea, s.nombre AS subarea_nombre
         FROM tipo_reclamo tr
-        LEFT JOIN area a ON a.id_area = tr.id_area
         LEFT JOIN subarea s ON s.id_subarea = tr.id_subarea
-        WHERE {cond}
+        LEFT JOIN area a ON a.id_area = s.id_area
+        WHERE {' AND '.join(cond)}
         ORDER BY tr.nombre
+        LIMIT :lim
     """), params)
     return [dict(r._mapping) for r in result.fetchall()]
 
@@ -245,10 +256,26 @@ async def crear_reclamo(
     # direccion es el campo nuevo (§22); domicilio_reclamo se mantiene como alias entrante
     direccion = body.get("direccion") or body.get("domicilio_reclamo") or ""
 
+    # id_area: si no viene en el body, derivar de tipo_reclamo → subarea → area
+    # (fuente de verdad: subarea.id_area, no tipo_reclamo.id_area que tiene
+    # 123/282 filas inconsistentes en prod).
+    id_area = body.get("id_area")
+    id_tipo = body.get("id_tipo_reclamo")
+    if not id_area and id_tipo:
+        r_area = await db.execute(text("""
+            SELECT s.id_area
+            FROM tipo_reclamo tr
+            LEFT JOIN subarea s ON s.id_subarea = tr.id_subarea
+            WHERE tr.id_tipo_reclamo = :id_tr
+        """), {"id_tr": id_tipo})
+        row_area = r_area.fetchone()
+        if row_area:
+            id_area = row_area.id_area
+
     data = {
         "id_ciudadano":     body["id_ciudadano"],
-        "id_tipo_reclamo":  body.get("id_tipo_reclamo"),
-        "id_area":          body.get("id_area"),
+        "id_tipo_reclamo":  id_tipo,
+        "id_area":          id_area,
         "descripcion":      body["descripcion"],
         "direccion":        direccion,
         "prioridad":        body.get("prioridad", "Media"),
