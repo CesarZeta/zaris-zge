@@ -16,6 +16,14 @@ logger = logging.getLogger("zaris.reclamos")
 
 ESTADOS_VALIDOS = {"Sin asignar", "En gestión", "En espera", "En auditoría", "Resuelto", "Cancelado"}
 
+NIVELES_GESTION = {1, 2, 3}  # Admin, Supervisor, Operador (CLAUDE.md §3)
+
+
+def _require_gestion(current_user: dict):
+    if current_user.get("nivel_acceso") not in NIVELES_GESTION:
+        raise HTTPException(status_code=403,
+            detail="No tenés permisos para esta acción (requiere nivel Operador o superior)")
+
 
 def _to_dict(row) -> dict:
     d = dict(row._mapping)
@@ -400,6 +408,105 @@ async def cambiar_estado(
     return {"ok": True, "id_reclamo": id_reclamo, "estado": nuevo_estado}
 
 
+# ── PUT /reclamos/{id} — editar (alcance según estado) ───────────────────────
+
+# Campos editables sólo cuando el reclamo está "Sin asignar" (alta corregible).
+EDITABLE_FIELDS_FULL = {
+    "id_ciudadano", "id_tipo_reclamo", "descripcion", "direccion",
+    "prioridad", "latitud", "longitud",
+    "id_localidad", "id_activo", "id_empresa", "canal_origen",
+    "fuente_geolocalizacion",
+}
+# Campos editables en cualquier estado vivo (notas operativas durante la gestión).
+EDITABLE_FIELDS_ALWAYS = {"observaciones"}
+
+
+@router.put("/{id_reclamo}")
+async def editar_reclamo(
+    id_reclamo: int,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    _require_gestion(current_user)
+
+    r = await db.execute(text("""
+        SELECT id_ciudadano, estado FROM reclamos
+        WHERE id_reclamo = :id AND activo = TRUE
+    """), {"id": id_reclamo})
+    row = r.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Reclamo {id_reclamo} no encontrado")
+    if row.estado in ("Resuelto", "Cancelado"):
+        raise HTTPException(status_code=422,
+            detail=f"No se puede editar un reclamo cerrado (actual: {row.estado})")
+
+    permitidos = EDITABLE_FIELDS_ALWAYS | (EDITABLE_FIELDS_FULL if row.estado == "Sin asignar" else set())
+    rechazados = [k for k in body.keys() if k in EDITABLE_FIELDS_FULL and k not in permitidos]
+    if rechazados:
+        raise HTTPException(status_code=422,
+            detail=f"En estado '{row.estado}' solo se pueden editar: {sorted(permitidos)}. Rechazados: {rechazados}")
+
+    updates = {k: v for k, v in body.items() if k in permitidos}
+    if not updates:
+        raise HTTPException(status_code=422, detail="No hay campos editables en el body")
+
+    # Si cambia el tipo, re-derivar id_area desde subarea.id_area (fuente de verdad)
+    if "id_tipo_reclamo" in updates and updates["id_tipo_reclamo"]:
+        r_area = await db.execute(text("""
+            SELECT s.id_area
+            FROM tipo_reclamo tr
+            LEFT JOIN subarea s ON s.id_subarea = tr.id_subarea
+            WHERE tr.id_tipo_reclamo = :id_tr
+        """), {"id_tr": updates["id_tipo_reclamo"]})
+        row_area = r_area.fetchone()
+        if row_area and row_area.id_area:
+            updates["id_area"] = row_area.id_area
+
+    # Validar vínculo ciudadano-empresa si cambia alguno de los dos
+    id_ciudadano_final = updates.get("id_ciudadano", row.id_ciudadano)
+    id_empresa_final = updates.get("id_empresa")
+    if id_empresa_final:
+        rep = await db.execute(text("""
+            SELECT 1 FROM ciudadano_empresa
+            WHERE id_ciudadano = :id_c AND id_empresa = :id_e AND activo = TRUE
+        """), {"id_c": id_ciudadano_final, "id_e": id_empresa_final})
+        if not rep.fetchone():
+            raise HTTPException(status_code=422,
+                detail="El ciudadano no representa a esa empresa")
+
+    # Mantener domicilio_reclamo sincronizado con direccion (columna legacy)
+    if "direccion" in updates:
+        updates["domicilio_reclamo"] = updates["direccion"]
+
+    set_clauses = [f"{k} = :{k}" for k in updates.keys()]
+    set_clauses.append("fecha_modificacion = NOW()")
+    set_clauses.append("id_usuario_modificacion = :uid")
+    params = dict(updates)
+    params["id"] = id_reclamo
+    params["uid"] = current_user["id_usuario"]
+
+    try:
+        await db.execute(text(f"""
+            UPDATE reclamos SET {', '.join(set_clauses)}
+            WHERE id_reclamo = :id
+        """), params)
+        nota_hist = body.get("nota_historial") or f"Campos modificados: {', '.join(updates.keys())}"
+        await _insertar_historial(db, id_reclamo, "Reclamo editado",
+                                   row.estado, row.estado,
+                                   nota_hist,
+                                   current_user["id_usuario"])
+        await db.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("Error al editar reclamo %s: %s", id_reclamo, e)
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {"ok": True, "id_reclamo": id_reclamo, "campos": list(updates.keys())}
+
+
 # ── PUT /reclamos/{id}/cancelar — cancelar con cascade a OTs ─────────────────
 
 @router.put("/{id_reclamo}/cancelar")
@@ -409,6 +516,7 @@ async def cancelar_reclamo(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    _require_gestion(current_user)
     motivo = body.get("motivo", "").strip()
     if not motivo:
         raise HTTPException(status_code=422, detail="Campo 'motivo' requerido")
