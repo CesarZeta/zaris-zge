@@ -1365,30 +1365,17 @@ async function renderListadoFiltrado(rows, schema) {
     </div></td></tr>`;
   }
 
-  // Para áreas/subáreas, agregamos el conteo de hijos como badge en la celda nombre.
-  function formatCellWithBadge(val, col, pk, isLabelCol) {
-    const base = formatCell(val, col);
-    if (!drillDown || !isLabelCol) return base;
-    const data = hijosByPk[pk];
-    const n = data ? data.length : 0;
-    const label = drillDown === 'subareas'
-      ? (n === 1 ? 'subárea' : 'subáreas')
-      : (n === 1 ? 'tipo' : 'tipos');
-    return `${base} <span class="count-badge">${n} ${label}</span>`;
-  }
-
-  // Detectar la columna "label" (primer no-ID); ahí agregamos el badge.
+  // El conteo no se muestra en la celda nombre porque ya aparece como
+  // "SUBÁREAS ASOCIADAS (N)" en el panel inline de hijos abajo. Sería redundante.
   const labelCol = cols.find(c => !isId(c)) || cols[0];
 
   const bodyRows = rows.length === 0
     ? `<tr><td colspan="${cols.length + 1}" class="empty">Sin resultados</td></tr>`
     : rows.map(r => {
         const pk = r[schema.pk];
-        const cells = cols.map(c => {
-          const isLabel = (c === labelCol);
-          const cellHtml = formatCellWithBadge(r[c], c, pk, isLabel);
-          return `<td class="${isId(c) ? 'mono' : ''}">${cellHtml}</td>`;
-        }).join('');
+        const cells = cols.map(c =>
+          `<td class="${isId(c) ? 'mono' : ''}">${formatCell(r[c], c)}</td>`
+        ).join('');
         const nombre = r[labelCol] || pk;
         const asociados = drillDown ? renderHijosInline(pk, drillDown) : '';
         return `<tr>
