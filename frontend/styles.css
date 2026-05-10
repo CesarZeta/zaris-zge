@@ -488,33 +488,34 @@ body {
     transform: none !important;
 }
 
-/* ── Breadcrumb ────────────────────────────────────────────── */
-.z-breadcrumb {
+/* ── Breadcrumb (CLAUDE.md §23, DS nuevo) ─────────────────── */
+.zaris-breadcrumb {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 0.85rem;
-    color: var(--z-text3);
-    margin-bottom: 1.5rem;
+    gap: 6px;
+    font-family: var(--font-display, 'Space Grotesk', system-ui, sans-serif);
+    font-size: 0.78rem;
+    margin: 0 0 16px;
 }
 
-.z-breadcrumb a {
-    color: var(--z-text-link);
+.zaris-breadcrumb a {
+    color: var(--zaris-orange, #f54e00);
     text-decoration: none;
-    transition: color var(--z-duration) var(--z-ease);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
 }
 
-.z-breadcrumb a:hover {
-    color: var(--z-primary);
+.zaris-breadcrumb a:hover {
+    text-decoration: underline;
 }
 
-.z-breadcrumb__sep {
-    color: var(--z-text3);
-    font-size: 0.7rem;
+.zaris-breadcrumb__sep {
+    color: var(--fg-3, rgba(38, 37, 30, .55));
 }
 
-.z-breadcrumb__current {
-    color: var(--z-text);
+.zaris-breadcrumb__current {
+    color: var(--fg-2, rgba(38, 37, 30, .7));
     font-weight: 600;
 }
 

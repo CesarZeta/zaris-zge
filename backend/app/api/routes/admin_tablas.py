@@ -50,7 +50,7 @@ TABLE_CONFIG: dict[str, dict] = {
     },
     "agentes": {
         "pk": "id_agente",
-        "cols": ["nombre", "apellido", "legajo", "email", "telefono", "id_cargo", "id_subarea", "id_usuario"],
+        "cols": ["nombre", "apellido", "legajo", "email", "telefono", "id_cargo", "id_subarea", "id_usuario", "es_auditor"],
         "fecha_mod": "fecha_modificacion",
     },
     "equipos": {
