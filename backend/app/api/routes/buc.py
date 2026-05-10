@@ -4,8 +4,8 @@ Endpoints: /api/v1/buc/
 """
 import logging
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, or_, func
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import select, or_, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -188,35 +188,69 @@ async def listar_ciudadanos(
 
 @router.get("/ciudadanos/buscar", response_model=list[CiudadanoOut])
 async def buscar_ciudadano(
-    q: str = Query(..., min_length=1, description="DNI, CUIL, Email o Nombre"),
-    tipo: str = Query("auto", description="'numero' para DNI/CUIL, 'texto' para nombre/apellido, 'auto' para detectar"),
-    limit: int = Query(20, ge=1, le=100, description="Máximo de resultados"),
-    offset: int = Query(0, ge=0, description="Desplazamiento para paginación"),
+    response: Response,
+    q: str = Query(..., min_length=1, description="DNI, CUIL, teléfono, email o nombre/apellido"),
+    tipo: str = Query("auto", description="'numero' (DNI/CUIL/tel), 'texto' (nombre/apellido/email), 'auto'"),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db)
 ):
-    """Buscar ciudadano por DNI, CUIL, email o nombre (contains)."""
-    es_numerico = tipo == "numero" or (tipo == "auto" and q.replace("-", "").isdigit())
+    """
+    Búsqueda flexible de ciudadanos. En modo `auto`:
+    - Si el query es solo dígitos (ignorando guiones/espacios/paréntesis),
+      busca en `doc_nro`, `cuil` y `telefono` — todos comparados con dígitos
+      normalizados (matchea "(11) 6429-5018" con "1164295018").
+    - Si tiene letras, hace `AND` multi-palabra: cada palabra debe matchear
+      en alguno de `apellido`, `nombre` o `email`. "calabro elisa" encuentra
+      "Calabro Elisabeth Graciela" — el OR del comportamiento previo daba
+      muchos falsos positivos.
+
+    Header `X-Total-Count`: total de matches sin paginar (para mostrar
+    "y N más" en el frontend).
+    """
+    q_clean = q.strip()
+    soloDigits = q_clean.translate(str.maketrans("", "", " -()._"))
+    es_numerico = tipo == "numero" or (tipo == "auto" and soloDigits.isdigit() and len(soloDigits) >= 3)
 
     if es_numerico:
+        # Normalizamos las columnas removiendo separadores comunes
+        digits_expr = lambda col: func.regexp_replace(col, r"[^0-9]", "", "g")
         cond = or_(
-            Ciudadano.doc_nro.ilike(f"%{q}%"),
-            Ciudadano.cuil.ilike(f"%{q}%"),
+            digits_expr(Ciudadano.doc_nro).ilike(f"%{soloDigits}%"),
+            digits_expr(Ciudadano.cuil).ilike(f"%{soloDigits}%"),
+            digits_expr(Ciudadano.telefono).ilike(f"%{soloDigits}%"),
         )
     else:
-        cond = or_(
-            Ciudadano.nombre.ilike(f"%{q}%"),
-            Ciudadano.apellido.ilike(f"%{q}%"),
-            Ciudadano.email.ilike(f"%{q}%"),
-        )
+        # AND multi-palabra: cada token debe matchear en algún campo de texto
+        tokens = [t for t in q_clean.split() if t]
+        if not tokens:
+            response.headers["X-Total-Count"] = "0"
+            return []
+        cond = and_(*[
+            or_(
+                Ciudadano.apellido.ilike(f"%{tok}%"),
+                Ciudadano.nombre.ilike(f"%{tok}%"),
+                Ciudadano.email.ilike(f"%{tok}%"),
+            )
+            for tok in tokens
+        ])
 
-    query = (
+    base_filter = (Ciudadano.activo == True, cond)
+
+    # Total sin paginar (para X-Total-Count)
+    total_q = select(func.count()).select_from(Ciudadano).where(*base_filter)
+    total = (await db.execute(total_q)).scalar_one()
+
+    page_q = (
         select(Ciudadano)
-        .where(Ciudadano.activo == True, cond)
+        .where(*base_filter)
         .order_by(Ciudadano.apellido, Ciudadano.nombre)
         .offset(offset)
         .limit(limit)
     )
-    result = await db.execute(query)
+    result = await db.execute(page_q)
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
     return result.scalars().all()
 
 
