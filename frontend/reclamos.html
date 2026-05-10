@@ -4,7 +4,19 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ZARIS — Reclamos</title>
-  <script>if (window.self !== window.top) { var s = document.createElement('style'); s.textContent = '.z-header{display:none!important}'; document.head.appendChild(s); }</script>
+  <script>
+    // Si se accede standalone (fuera del iframe del shell), redirigir
+    // al shell con ?modulo= para cargar este HTML adentro y mostrar sidebar.
+    if (window.self === window.top) {
+      var p = window.location.pathname.replace(/^.*\//, 'frontend/');
+      var s = window.location.search || '';
+      window.location.replace('../index.html?modulo=' + encodeURIComponent(p + s));
+    } else {
+      var st = document.createElement('style');
+      st.textContent = '.z-header{display:none!important}';
+      document.head.appendChild(st);
+    }
+  </script>
   <link rel="stylesheet" href="../design-system/fonts/fonts.css">
   <link rel="stylesheet" href="../design-system/colors_and_type.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
@@ -59,6 +71,20 @@
 
     /* ── Layout ── */
     .page { padding: 32px 40px; max-width: 1200px; }
+
+    /* ── Breadcrumb (CLAUDE.md §23) ── */
+    .zaris-breadcrumb {
+      display: flex; align-items: center; gap: 6px;
+      font-family: var(--font-display); font-size: 0.78rem;
+      margin: 0 0 16px;
+    }
+    .zaris-breadcrumb a {
+      color: var(--zaris-orange); text-decoration: none;
+      text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;
+    }
+    .zaris-breadcrumb a:hover { text-decoration: underline; }
+    .zaris-breadcrumb__sep { color: var(--fg-3); }
+    .zaris-breadcrumb__current { color: var(--fg-2); font-weight: 600; }
 
     /* ── Page header ── */
     .page-header {
@@ -712,6 +738,13 @@ if (!localStorage.getItem('zaris_session')) { _handleUnauth(); }
 </header>
 
 <div class="page">
+
+  <!-- ── Breadcrumb ── -->
+  <nav class="zaris-breadcrumb" aria-label="Ruta de navegación">
+    <a href="#" data-bc-home>INICIO</a>
+    <span class="zaris-breadcrumb__sep">›</span>
+    <span class="zaris-breadcrumb__current">Reclamos</span>
+  </nav>
 
   <!-- ── Page header ── -->
   <div class="page-header">
@@ -2639,6 +2672,18 @@ function cerrarLightbox() {
 }
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && document.getElementById('lightbox').classList.contains('open')) cerrarLightbox();
+});
+
+// ── Breadcrumb: navegacion al inicio (CLAUDE.md §23) ──────────
+document.querySelectorAll('[data-bc-home]').forEach(el => {
+  el.addEventListener('click', e => {
+    e.preventDefault();
+    if (window.parent && window.parent !== window && window.parent.shellNavigate) {
+      window.parent.shellNavigate('frontend/welcome.html');
+    } else {
+      window.location.href = '../index.html';
+    }
+  });
 });
 
 // ── Init ──────────────────────────────────────────────────────
