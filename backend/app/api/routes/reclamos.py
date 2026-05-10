@@ -93,9 +93,8 @@ async def catalogo_tipos(
     current_user: dict = Depends(get_current_user),
 ):
     """
-    Lista tipos de reclamo. Fuente de verdad del área: subarea.id_area
-    (no tipo_reclamo.id_area, que tiene 123/282 filas inconsistentes en
-    prod). El filtro por id_area también opera contra subarea.id_area.
+    Lista tipos de reclamo. El área se deriva siempre de subarea.id_area
+    (mig 27 eliminó la columna redundante tipo_reclamo.id_area).
     """
     cond = ["tr.activo = TRUE"]
     params: dict = {"lim": limit}
@@ -279,9 +278,8 @@ async def crear_reclamo(
     # direccion es el campo nuevo (§22); domicilio_reclamo se mantiene como alias entrante
     direccion = body.get("direccion") or body.get("domicilio_reclamo") or ""
 
-    # id_area: si no viene en el body, derivar de tipo_reclamo → subarea → area
-    # (fuente de verdad: subarea.id_area, no tipo_reclamo.id_area que tiene
-    # 123/282 filas inconsistentes en prod).
+    # id_area: si no viene en el body, derivar de tipo_reclamo → subarea → area.
+    # Fuente única: subarea.id_area (mig 27 eliminó tipo_reclamo.id_area).
     id_area = body.get("id_area")
     id_tipo = body.get("id_tipo_reclamo")
     if not id_area and id_tipo:
