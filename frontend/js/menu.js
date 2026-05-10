@@ -82,4 +82,22 @@
     });
   });
 
+  // ── Auto-cargar módulo desde ?modulo=<ruta> ───────────────────
+  // Permite que un acceso standalone (frontend/reclamos.html) sea
+  // redirigido al shell con ?modulo=frontend/reclamos.html y aterrice
+  // con la sidebar visible. La whitelist evita open redirects.
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const mod = params.get('modulo');
+    if (mod && /^frontend\/[a-z0-9_-]+\.html(\?.*)?$/i.test(mod)) {
+      const frame = document.getElementById('module-frame');
+      if (frame) frame.src = mod;
+      // Marcar el nav-link correspondiente como activo si existe
+      const linkPath = mod.split('?')[0];
+      document.querySelectorAll('.nav__link[href]').forEach(l => {
+        if (l.getAttribute('href') === linkPath) l.classList.add('active');
+      });
+    }
+  } catch (e) { /* ignorar */ }
+
 })();

@@ -639,6 +639,58 @@ Cuando un form requiere referenciar una entidad que podría no existir aún (ej:
 - En listado completo: usar el panel inline para mostrar el conteo en su título (`SUBÁREAS ASOCIADAS (4)`), **no duplicar** badges en la celda nombre.
 - Mostrar nombres FK como texto (no IDs numéricos). Mapeo en `FK_DISPLAY_MAP` del frontend que resuelve `id_area`/`id_subarea`/`id_cargo`/`id_tipo_usuario` → nombre con tooltip del ID.
 
+### Breadcrumb de navegación — obligatorio en todo módulo
+
+Todo HTML de módulo en `frontend/` (excepto `login.html`, `welcome.html`, `shell.html`, `menu.html`, `mainconfig.html`) **debe** mostrar un breadcrumb arriba del título que ayude al usuario a entender dónde está parado. Patrón único:
+
+```html
+<!-- Justo antes del bloque de título del módulo -->
+<nav class="zaris-breadcrumb" aria-label="Ruta de navegación">
+  <a href="#" data-bc-home>INICIO</a>
+  <span class="zaris-breadcrumb__sep">›</span>
+  <span class="zaris-breadcrumb__current">Reclamos</span>
+</nav>
+```
+
+CSS (incluir una vez por archivo, en el `<style>` del módulo):
+
+```css
+.zaris-breadcrumb {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--font-display); font-size: 0.78rem;
+  margin: 8px 0 16px;
+}
+.zaris-breadcrumb a {
+  color: var(--zaris-orange); text-decoration: none;
+  text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;
+}
+.zaris-breadcrumb a:hover { text-decoration: underline; }
+.zaris-breadcrumb__sep { color: var(--fg-3); }
+.zaris-breadcrumb__current {
+  color: var(--fg-2); font-weight: 600;
+}
+```
+
+JS (una vez por archivo, dispara navegación correcta esté o no en iframe):
+
+```js
+document.querySelectorAll('[data-bc-home]').forEach(el => {
+  el.addEventListener('click', e => {
+    e.preventDefault();
+    if (window.parent && window.parent.shellNavigate) {
+      window.parent.shellNavigate('frontend/welcome.html');
+    } else {
+      window.location.href = '../index.html';
+    }
+  });
+});
+```
+
+Reglas:
+- Solo dos niveles: `INICIO > <Módulo>`. Si el módulo tiene sub-vistas (ej: detalle de reclamo), agregar tercer nivel: `INICIO > Reclamos > REC-2026-000017`.
+- **Prohibido** usar `.z-breadcrumb` o `var(--z-*)` (legacy, eliminadas — ver §13).
+- **Implementado en:** todos los HTML de módulo. `ciudadano.html` y `empresa.html` están migrados a este patrón en una pasada futura (hoy todavía usan `.z-breadcrumb` legacy).
+
 ## 24. Workflow de seed desde CSVs en `Tablas Iniciales/`
 
 Los CSVs en `Tablas Iniciales/` son la **fuente autoritativa** de catálogos (subáreas, tipos de reclamo, agentes, cargos, ciudadanos, actividades, nacionalidades). Reglas para escribir scripts de seed:
