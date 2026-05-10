@@ -577,6 +577,81 @@
     .help-text {
       font-size: 0.72rem; color: var(--fg-3); margin-top: 4px;
     }
+
+    /* Adjuntos */
+    .adj-dropzone {
+      border: 1.5px dashed var(--border-medium);
+      border-radius: 10px;
+      padding: 18px 14px;
+      text-align: center;
+      background: var(--surface-100);
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .adj-dropzone:hover, .adj-dropzone.dragover {
+      background: rgba(245,78,0,.05); border-color: var(--zaris-orange);
+    }
+    .adj-dropzone__hint { font-size: .8rem; color: var(--fg-2); }
+    .adj-dropzone__hint strong { color: var(--zaris-orange); }
+    .adj-dropzone__sub { font-size: .7rem; color: var(--fg-3); margin-top: 4px; }
+    .adj-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .adj-thumb {
+      position: relative; width: 84px; height: 84px;
+      border-radius: 8px; overflow: hidden;
+      border: 1px solid var(--border-primary);
+      background: var(--surface-300);
+    }
+    .adj-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .adj-thumb__rm {
+      position: absolute; top: 3px; right: 3px;
+      width: 20px; height: 20px; border-radius: 50%;
+      background: rgba(0,0,0,.6); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; cursor: pointer; border: none;
+      font-family: var(--font-mono);
+    }
+    .adj-thumb__rm:hover { background: var(--color-error); }
+    .adj-thumb__name {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: rgba(0,0,0,.55); color: #fff;
+      font-size: .58rem; padding: 2px 4px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      font-family: var(--font-mono);
+    }
+
+    /* Drawer — galería de adjuntos */
+    .adj-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+    .adj-gallery__item {
+      position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden;
+      cursor: zoom-in; background: var(--surface-300);
+      border: 1px solid var(--border-primary);
+    }
+    .adj-gallery__item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .adj-gallery__rm {
+      position: absolute; top: 4px; right: 4px;
+      width: 22px; height: 22px; border-radius: 50%;
+      background: rgba(0,0,0,.6); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; cursor: pointer; border: none; opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .adj-gallery__item:hover .adj-gallery__rm { opacity: 1; }
+    .adj-gallery__rm:hover { background: var(--color-error); }
+
+    /* Lightbox */
+    .lightbox {
+      position: fixed; inset: 0; background: rgba(0,0,0,.88);
+      z-index: 9999; display: none; align-items: center; justify-content: center;
+      cursor: zoom-out;
+    }
+    .lightbox.open { display: flex; }
+    .lightbox img { max-width: 95vw; max-height: 92vh; box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+    .lightbox__close {
+      position: absolute; top: 14px; right: 18px;
+      background: rgba(255,255,255,.12); color: #fff; border: none;
+      width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
+      font-size: 18px;
+    }
     .form-required::after {
       content: '*'; color: var(--zaris-orange); margin-left: 2px;
     }
@@ -725,6 +800,12 @@ if (!localStorage.getItem('zaris_session')) { _handleUnauth(); }
     </table>
   </div>
 
+</div>
+
+<!-- ── Lightbox para visualizar adjuntos ── -->
+<div class="lightbox" id="lightbox" onclick="cerrarLightbox()">
+  <button class="lightbox__close" onclick="cerrarLightbox()" aria-label="Cerrar">×</button>
+  <img id="lightbox-img" alt="">
 </div>
 
 <!-- ── Drawer detalle ── -->
@@ -930,6 +1011,17 @@ if (!localStorage.getItem('zaris_session')) { _handleUnauth(); }
           <label>Observaciones internas</label>
           <textarea id="nr-obs" placeholder="Notas para el equipo de gestión..." style="min-height:60px"></textarea>
         </div>
+      </div>
+
+      <!-- ─ Sección 4.5: adjuntos (imágenes) ─ -->
+      <div class="form-section">
+        <h3 class="form-section__title">Adjuntos (opcional)</h3>
+        <div class="adj-dropzone" id="adj-dropzone" onclick="document.getElementById('adj-input').click()">
+          <div class="adj-dropzone__hint">Arrastrá imágenes acá o <strong>hacé clic para elegir</strong></div>
+          <div class="adj-dropzone__sub">JPG, PNG, WEBP, HEIC · máx 10 MB cada una</div>
+        </div>
+        <input type="file" id="adj-input" multiple accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif" style="display:none">
+        <div class="adj-list" id="adj-list"></div>
       </div>
 
       <!-- ─ Sección 5: subreclamo (oculto hasta expandir) ─ -->
@@ -1333,10 +1425,15 @@ async function abrirDetalle(idReclamo) {
         </div>
       </div>
       <div class="detail-section">
+        <div class="detail-section-title">Adjuntos</div>
+        <div id="drawer-adj"></div>
+      </div>
+      <div class="detail-section">
         <div class="detail-section-title">Historial</div>
         <div class="timeline">${timelineHTML || '<p style="color:var(--fg-3);font-size:.82rem">Sin historial</p>'}</div>
       </div>
     `;
+    cargarAdjuntosDrawer(idReclamo);
   } catch(e) {
     document.getElementById('drawerBody').innerHTML = `<p class="empty">Error al cargar detalle: ${e.message}</p>`;
   }
@@ -1428,6 +1525,10 @@ function abrirNuevoReclamo() {
   document.getElementById('sr-direccion').value = '';
   document.getElementById('sr-prio').value = 'Media';
   document.getElementById('sr-desc').value = '';
+  // adjuntos
+  _archivosAdjuntos = [];
+  renderAdjuntosPendientes();
+  document.getElementById('adj-input').value = '';
   document.getElementById('modalNuevo').classList.add('open');
   setModoMapa('pin');
   // localidades: si no se cargaron aún, cargar
@@ -1635,8 +1736,19 @@ async function guardarNuevoReclamo() {
       }
     }
 
+    let adjResultado = null;
+    if (_archivosAdjuntos.length && res.id_reclamo) {
+      btn.textContent = 'Subiendo adjuntos...';
+      adjResultado = await subirAdjuntos(res.id_reclamo, _archivosAdjuntos);
+    }
+
     cerrarModalNuevo();
-    toast(`Reclamo ${res.nro_reclamo || '#'+res.id_reclamo} registrado` + (subPayload ? ' + sub-reclamo' : ''), 'ok');
+    let msgAdj = '';
+    if (adjResultado) {
+      if (adjResultado.fallidos === 0) msgAdj = ` + ${adjResultado.exitosos} adjuntos`;
+      else msgAdj = ` (${adjResultado.exitosos}/${adjResultado.exitosos + adjResultado.fallidos} adjuntos subidos)`;
+    }
+    toast(`Reclamo ${res.nro_reclamo || '#'+res.id_reclamo} registrado` + (subPayload ? ' + sub-reclamo' : '') + msgAdj, adjResultado && adjResultado.fallidos ? 'err' : 'ok');
     await cargarReclamos();
   } catch(e) {
     toast('Error al registrar: ' + e.message, 'err');
@@ -1658,6 +1770,7 @@ let _markerActivo = null;
 let _activosLayer = null;
 let _modoMapa = 'pin';   // 'pin' | 'activo'
 let _empresaSeleccionada = null;
+let _archivosAdjuntos = []; // [{file, dataUrl}]
 let _nominatimTimer = null;
 let _nominatimResultados = {};
 
@@ -2244,6 +2357,159 @@ document.addEventListener('click', e => {
     if (!dentro) { el.style.display = 'none'; return; }
     if (!dentro.contains(el)) el.style.display = 'none';
   });
+});
+
+// ════════════════════════════════════════════════════════════════
+// FASE 3 — Adjuntos (imágenes)
+// ════════════════════════════════════════════════════════════════
+
+const ADJ_MAX_BYTES = 10 * 1024 * 1024;
+const ADJ_MIMES = new Set(['image/jpeg','image/png','image/webp','image/gif','image/heic','image/heif']);
+
+(function initDropzoneAdjuntos() {
+  const input = document.getElementById('adj-input');
+  const dz    = document.getElementById('adj-dropzone');
+  if (!input || !dz) return;
+  input.addEventListener('change', () => {
+    agregarArchivosAdjuntos(input.files);
+    input.value = '';
+  });
+  ['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, e => {
+    e.preventDefault(); e.stopPropagation(); dz.classList.add('dragover');
+  }));
+  ['dragleave','drop'].forEach(ev => dz.addEventListener(ev, e => {
+    e.preventDefault(); e.stopPropagation(); dz.classList.remove('dragover');
+  }));
+  dz.addEventListener('drop', e => {
+    if (e.dataTransfer && e.dataTransfer.files) agregarArchivosAdjuntos(e.dataTransfer.files);
+  });
+})();
+
+function agregarArchivosAdjuntos(fileList) {
+  const arr = Array.from(fileList || []);
+  for (const f of arr) {
+    if (!ADJ_MIMES.has(f.type)) {
+      toast(`"${f.name}": tipo no permitido (${f.type || 'desconocido'})`, 'err'); continue;
+    }
+    if (f.size > ADJ_MAX_BYTES) {
+      toast(`"${f.name}": supera 10 MB`, 'err'); continue;
+    }
+    const reader = new FileReader();
+    reader.onload = e => {
+      _archivosAdjuntos.push({ file: f, dataUrl: e.target.result });
+      renderAdjuntosPendientes();
+    };
+    reader.readAsDataURL(f);
+  }
+}
+
+function renderAdjuntosPendientes() {
+  const cont = document.getElementById('adj-list');
+  if (!cont) return;
+  cont.innerHTML = _archivosAdjuntos.map((a, i) => `
+    <div class="adj-thumb" title="${a.file.name}">
+      <img src="${a.dataUrl}" alt="">
+      <button class="adj-thumb__rm" type="button" data-idx="${i}" aria-label="Quitar">×</button>
+      <div class="adj-thumb__name">${a.file.name}</div>
+    </div>
+  `).join('');
+  cont.querySelectorAll('.adj-thumb__rm').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.idx);
+      _archivosAdjuntos.splice(idx, 1);
+      renderAdjuntosPendientes();
+    });
+  });
+}
+
+async function subirAdjuntos(idReclamo, archivos) {
+  let exitosos = 0, fallidos = 0;
+  for (const a of archivos) {
+    try {
+      const meta = await _apiFetch(`/api/v1/reclamos/${idReclamo}/adjuntos/upload-url`, {
+        method: 'POST',
+        body: JSON.stringify({
+          nombre_archivo: a.file.name,
+          mime_type: a.file.type,
+          tamano_bytes: a.file.size,
+        }),
+      });
+      if (!meta) { fallidos++; continue; }
+      const putRes = await fetch(meta.upload_url, {
+        method: 'PUT',
+        headers: { 'Content-Type': a.file.type, 'x-upsert': 'true' },
+        body: a.file,
+      });
+      if (!putRes.ok) {
+        console.warn('PUT storage falló', putRes.status, await putRes.text().catch(()=>''));
+        fallidos++; continue;
+      }
+      await _apiFetch(`/api/v1/reclamos/${idReclamo}/adjuntos/${meta.id_adjunto}/confirm`, {
+        method: 'POST', body: '{}',
+      });
+      exitosos++;
+    } catch (e) {
+      console.warn('Adjunto falló:', e);
+      fallidos++;
+    }
+  }
+  return { exitosos, fallidos };
+}
+
+// ── Drawer: galería + borrar adjuntos del reclamo abierto ─────
+async function cargarAdjuntosDrawer(idReclamo) {
+  const cont = document.getElementById('drawer-adj');
+  if (!cont) return;
+  cont.innerHTML = '<p style="color:var(--fg-3);font-size:.78rem">Cargando adjuntos...</p>';
+  try {
+    const data = await _apiFetch(`/api/v1/reclamos/${idReclamo}/adjuntos`);
+    if (!data) return;
+    if (!data.length) {
+      cont.innerHTML = '<p style="color:var(--fg-3);font-size:.78rem">Sin adjuntos.</p>';
+      return;
+    }
+    cont.innerHTML = `<div class="adj-gallery">${data.map(a => `
+      <div class="adj-gallery__item" data-id="${a.id_adjunto}" data-url="${a.url || ''}" title="${(a.nombre_archivo||'').replace(/"/g,'&quot;')}">
+        ${a.url ? `<img src="${a.url}" alt="">` : '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--fg-3);font-size:.7rem">sin URL</div>'}
+        <button class="adj-gallery__rm" type="button" data-rm="${a.id_adjunto}" aria-label="Borrar">×</button>
+      </div>
+    `).join('')}</div>`;
+    cont.querySelectorAll('.adj-gallery__item').forEach(it => {
+      it.addEventListener('click', e => {
+        if (e.target.classList.contains('adj-gallery__rm')) return;
+        const url = it.dataset.url;
+        if (url) abrirLightbox(url);
+      });
+    });
+    cont.querySelectorAll('[data-rm]').forEach(btn => {
+      btn.addEventListener('click', async e => {
+        e.stopPropagation();
+        if (!confirm('¿Borrar este adjunto?')) return;
+        const id = btn.dataset.rm;
+        try {
+          await _apiFetch(`/api/v1/reclamos/${idReclamo}/adjuntos/${id}`, { method: 'DELETE' });
+          await cargarAdjuntosDrawer(idReclamo);
+        } catch (err) {
+          toast('No se pudo borrar el adjunto: ' + err.message, 'err');
+        }
+      });
+    });
+  } catch (e) {
+    cont.innerHTML = `<p style="color:var(--color-error);font-size:.78rem">Error al cargar adjuntos: ${e.message}</p>`;
+  }
+}
+
+function abrirLightbox(url) {
+  document.getElementById('lightbox-img').src = url;
+  document.getElementById('lightbox').classList.add('open');
+}
+function cerrarLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('lightbox').classList.contains('open')) cerrarLightbox();
 });
 
 // ── Init ──────────────────────────────────────────────────────

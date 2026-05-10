@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["*"]
     DATABASE_URL: str = ""
 
+    # Supabase Storage (adjuntos de reclamos)
+    SUPABASE_URL: str = ""
+    SUPABASE_SERVICE_KEY: str = ""
+    SUPABASE_ADJUNTOS_BUCKET: str = "reclamos-adjuntos"
+
     @property
     def ASYNC_DATABASE_URI(self) -> str:
         # Si existe DATABASE_URL (Railway la provee), usarla

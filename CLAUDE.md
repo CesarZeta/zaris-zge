@@ -356,6 +356,15 @@ PUT  /api/v1/reclamos/{id}/cancelar        → cancelar reclamo + cascade a OTs 
 POST /api/v1/reclamos/{id}/subreclamo      → crear subreclamo (max 1 nivel; padre pasa a En espera)
 ```
 
+### Endpoints adjuntos (§26)
+
+```
+POST   /api/v1/reclamos/{id}/adjuntos/upload-url        → backend valida + crea fila pre-upload + URL firmada PUT (TTL 5min)
+POST   /api/v1/reclamos/{id}/adjuntos/{id_adj}/confirm  → marca activo=TRUE tras subida exitosa
+GET    /api/v1/reclamos/{id}/adjuntos                   → lista activos con URLs firmadas GET (TTL 1h)
+DELETE /api/v1/reclamos/{id}/adjuntos/{id_adj}          → soft-delete + remove del bucket
+```
+
 ### Endpoints ordenes_trabajo
 
 ```
@@ -668,3 +677,38 @@ Para `UPDATE`/`DELETE` masivos en prod: snapshot previo en tabla `_backup_<tabla
 | `seed_auth.py` | usuarios | hardcoded dev |
 | `seed_demo.py` / `seed_prod.py` | varios | hardcoded mínimo |
 | `seed_incremental.py` | cargos, áreas, subareas, tipo_reclamo, ciudadanos | varios CSVs |
+
+## 26. Adjuntos de Reclamos (Supabase Storage)
+
+**Implementado al 2026-05-10.** El frontend nunca habla con Storage con auth de usuario — el backend firma URLs con la `service_role` key.
+
+### Configuración
+- Bucket: `reclamos-adjuntos` (privado, file_size_limit 10 MB, mime allowlist sólo imágenes: `image/jpeg|png|webp|gif|heic|heif`).
+- Tabla `reclamo_adjuntos` (existía desde migración 22): metadatos + `storage_bucket` + `storage_path`. Audit completa.
+- Vars de entorno backend (`backend/.env.local` y Railway):
+  - `SUPABASE_URL` — URL del proyecto Supabase (`https://<id>.supabase.co`)
+  - `SUPABASE_SERVICE_KEY` — `service_role` (legacy `eyJ...`) o `sb_secret_...` (nueva). Ambas funcionan; **nunca** la `anon`/`publishable`.
+  - `SUPABASE_ADJUNTOS_BUCKET` — default `reclamos-adjuntos`.
+
+### Flujo de upload (modal nuevo reclamo)
+1. Usuario elige imágenes (drag&drop o file picker) — se acumulan en memoria con preview base64.
+2. Al guardar el reclamo: primero `POST /reclamos`, después por cada archivo:
+   - `POST /reclamos/{id}/adjuntos/upload-url` con `{nombre_archivo, mime_type, tamano_bytes}` → backend valida, inserta fila con `activo=FALSE`, devuelve `{id_adjunto, upload_url, storage_path, bucket}`.
+   - `PUT` directo a `upload_url` con header `Content-Type: <mime>` y `x-upsert: true`, body = binario.
+   - `POST /reclamos/{id}/adjuntos/{id_adj}/confirm` → marca `activo=TRUE`.
+3. Si algún upload falla, el reclamo queda creado y el toast informa cuántos subieron.
+
+### Flujo de visualización (drawer detalle)
+- `cargarAdjuntosDrawer(idReclamo)` se invoca desde `abrirDetalle()` después del render.
+- `GET /reclamos/{id}/adjuntos` devuelve `[{id_adjunto, storage_path, nombre_archivo, mime_type, tamano_bytes, fecha_alta, url}]` — `url` es firmada con TTL 1h.
+- Galería en grid; click abre lightbox (overlay full-screen con la imagen, ESC o click cierra).
+- Hover muestra botón `×` para borrar (soft-delete + `DELETE` del binario en bucket).
+
+### Diseño
+- **Bucket privado** + URL firmada al servir. Los paths siguen `reclamos/{id_reclamo}/{uuid}.{ext}`.
+- **No hay policies RLS sobre `storage.objects`**: el backend usa `service_role` que las bypassa. Toda autorización vive en endpoints FastAPI (validación JWT + scope al reclamo).
+- **Filas pre-upload con `activo=FALSE`**: si el cliente abandona entre `upload-url` y `confirm`, queda una fila huérfana sin binario, invisible para el GET. Limpieza opcional en sesión futura via cron o batch.
+- **Best-effort delete del binario**: si Storage falla al borrar, la fila queda soft-deleted igual y se loggea — el usuario nunca ve el adjunto.
+
+### Frontend en otros módulos
+Para sumar adjuntos a otra entidad (ej: OTs), replicar el patrón: nueva tabla `<entidad>_adjuntos` con mismos campos, nuevo bucket si conviene aislar, y reutilizar `app/core/storage.py` (las funciones reciben `path` arbitrario y leen el bucket de settings — extraer a parámetro si se usan múltiples buckets).
