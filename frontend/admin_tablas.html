@@ -450,15 +450,21 @@
 
     /* ── Asociados inline (área→subáreas, subárea→tipos) ── */
     .asociados-row td {
-      padding: 0 0 0.6rem 0 !important;
+      padding: 0 0 0.7rem 0 !important;
       border-top: none !important;
     }
     .asociados-wrap {
-      margin: 0 0 0 2rem;
-      padding: 0.6rem 0.9rem 0.7rem;
+      margin: 0 0.5rem 0 2rem;
+      padding: 0.65rem 1rem 0.8rem;
       background: rgba(245,78,0,0.04);
       border-left: 3px solid var(--z-accent);
-      border-radius: 0 6px 6px 0;
+      border-radius: 0 8px 8px 0;
+    }
+    .asociados-wrap--empty {
+      padding: 0.5rem 1rem;
+      font-size: 0.78rem;
+      color: var(--z-text3);
+      font-style: italic;
     }
     .asociados-title {
       font-size: 0.7rem;
@@ -466,34 +472,61 @@
       text-transform: uppercase;
       letter-spacing: 0.05em;
       color: var(--z-text3);
-      margin-bottom: 0.4rem;
+      margin-bottom: 0.5rem;
     }
     .asociados-count {
       font-family: var(--z-font-mono);
-      font-weight: 500;
+      font-weight: 600;
       color: var(--z-accent);
       margin-left: 4px;
     }
     .asociados-list {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 4px 12px;
+      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+      gap: 6px 14px;
     }
     .hijo-asociado {
       display: flex; align-items: center; justify-content: space-between;
-      gap: 0.6rem;
-      padding: 0.2rem 0.5rem;
-      font-size: 0.82rem;
-      border-radius: 4px;
+      gap: 0.8rem;
+      padding: 0.32rem 0.7rem;
+      font-size: 0.84rem;
+      line-height: 1.3;
+      border-radius: 6px;
       background: var(--surface-100);
       border: 1px solid var(--z-border);
+      min-width: 0;
     }
-    .hijo-asociado__name { font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hijo-asociado__name {
+      font-weight: 500;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .hijo-asociado__meta {
       font-size: 0.72rem;
       color: var(--z-text3);
       font-family: var(--z-font-mono);
       white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    /* Badge de conteo (al lado del nombre en preview y listado) */
+    .count-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.12rem 0.55rem;
+      margin-left: 0.5rem;
+      background: rgba(245,78,0,0.1);
+      color: var(--z-accent);
+      border: 1px solid rgba(245,78,0,0.2);
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      font-family: var(--z-font-mono);
+      white-space: nowrap;
+      vertical-align: middle;
     }
 
     /* ── Panel de filtros listado ── */
@@ -1038,13 +1071,31 @@ async function cargarTabla() {
   }
 }
 
-function renderVistaPrevia(rows, schema) {
+async function renderVistaPrevia(rows, schema) {
   const main = document.getElementById('main');
   const labelField = schema.display.find(c => !isId(c)) || schema.display[0];
   const subField   = schema.display.find(c => !isId(c) && c !== labelField);
 
   // Últimos 5, más reciente primero (el array ya viene del backend; invertimos)
   const recientes = [...rows].reverse().slice(0, 5);
+
+  // Pre-fetch conteos de hijos para áreas y subáreas (las únicas que tienen drill-down)
+  const drillDown = (tablaActual === 'area') ? 'subareas'
+                  : (tablaActual === 'subarea') ? 'tipos'
+                  : null;
+  let countByPk = {};
+  if (drillDown && recientes.length) {
+    await Promise.all(recientes.map(async r => {
+      const pk = r[schema.pk];
+      const url = drillDown === 'subareas'
+        ? `${API}/area/${pk}/subareas`
+        : `${API}/subarea/${pk}/tipos-reclamo`;
+      try {
+        const res = await fetch(url, { headers: _authHeaders() });
+        if (res.ok) countByPk[pk] = (await res.json()).length;
+      } catch { countByPk[pk] = 0; }
+    }));
+  }
 
   const previewHTML = recientes.length === 0
     ? `<div class="empty" style="padding:1.5rem;text-align:center;">Sin registros activos</div>`
@@ -1053,11 +1104,19 @@ function renderVistaPrevia(rows, schema) {
         const main   = r[labelField] ?? '—';
         const sub    = subField ? r[subField] : null;
         const nombre = String(main).replace(/'/g, "\\'");
+        let countBadge = '';
+        if (drillDown && countByPk[pk] != null) {
+          const n = countByPk[pk];
+          const label = drillDown === 'subareas'
+            ? (n === 1 ? 'subárea' : 'subáreas')
+            : (n === 1 ? 'tipo' : 'tipos');
+          countBadge = `<span class="count-badge">${n} ${label}</span>`;
+        }
         return `<div class="preview-row" onclick="abrirEditar(${pk})" title="Editar">
           <span class="preview-row__main">${String(main).replace(/</g,'&lt;')}</span>
+          ${countBadge}
           ${sub != null ? `<span class="preview-row__meta">${String(sub).replace(/</g,'&lt;').slice(0,40)}</span>` : ''}
-          <span class="preview-row__meta" style="margin-left:auto;">ID ${pk}</span>
-          <span class="preview-row__action">Editar →</span>
+          <span class="preview-row__action" style="margin-left:auto;">Editar →</span>
         </div>`;
       }).join('');
 
@@ -1118,8 +1177,7 @@ async function buscarEnTabla() {
       return `<div class="preview-row" onclick="abrirEditar(${pk})" title="Editar" style="background:#fff;margin-bottom:4px;">
         <span class="preview-row__main">${String(lbl).replace(/</g,'&lt;')}</span>
         ${sub != null ? `<span class="preview-row__meta">${String(sub).replace(/</g,'&lt;').slice(0,40)}</span>` : ''}
-        <span class="preview-row__meta" style="margin-left:auto;">ID ${pk}</span>
-        <span class="preview-row__action">Editar →</span>
+        <span class="preview-row__action" style="margin-left:auto;">Editar →</span>
       </div>`;
     }).join('') + (found.length > 8 ? `<div style="font-size:.8rem;color:var(--z-text3);padding:.25rem 0;">… y ${found.length - 8} más — usá Listado para ver todos</div>` : '');
   } catch (e) {
@@ -1247,13 +1305,18 @@ function limpiarFiltros() {
 
 async function renderListadoFiltrado(rows, schema) {
   const fecha   = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  const cols    = schema.display;
-  const headers = cols.map(c => `<th>${formatHeader(c)}</th>`).join('') + '<th>Acciones</th>';
 
   // Las tablas area y subarea muestran sus hijos asociados inline (sin botón)
   const drillDown = (tablaActual === 'area') ? 'subareas'
                   : (tablaActual === 'subarea') ? 'tipos'
                   : null;
+
+  // Si hay drill-down, ocultamos la columna PK suelta (queda como tooltip / es redundante
+  // con el badge de conteo). Para tipo_reclamo (que muestra id_subarea como FK) no aplica.
+  const cols = drillDown
+    ? schema.display.filter(c => c !== schema.pk)
+    : schema.display;
+  const headers = cols.map(c => `<th>${formatHeader(c)}</th>`).join('') + '<th>Acciones</th>';
 
   // Pre-cargar todos los hijos en paralelo si aplica
   let hijosByPk = {};
@@ -1274,7 +1337,11 @@ async function renderListadoFiltrado(rows, schema) {
 
   function renderHijosInline(pk, drillType) {
     const data = hijosByPk[pk];
-    if (!data || !data.length) return '';
+    if (!data || !data.length) {
+      return `<tr class="asociados-row"><td colspan="${cols.length + 1}"><div class="asociados-wrap asociados-wrap--empty">
+        Sin ${drillType === 'subareas' ? 'subáreas' : 'tipos de reclamo'} asociados
+      </div></td></tr>`;
+    }
     const titulo = drillType === 'subareas' ? 'Subáreas asociadas' : 'Tipos de reclamo asociados';
     const items = data.map(d => {
       const nombre = String(d.nombre || '').replace(/</g,'&lt;');
@@ -1298,12 +1365,31 @@ async function renderListadoFiltrado(rows, schema) {
     </div></td></tr>`;
   }
 
+  // Para áreas/subáreas, agregamos el conteo de hijos como badge en la celda nombre.
+  function formatCellWithBadge(val, col, pk, isLabelCol) {
+    const base = formatCell(val, col);
+    if (!drillDown || !isLabelCol) return base;
+    const data = hijosByPk[pk];
+    const n = data ? data.length : 0;
+    const label = drillDown === 'subareas'
+      ? (n === 1 ? 'subárea' : 'subáreas')
+      : (n === 1 ? 'tipo' : 'tipos');
+    return `${base} <span class="count-badge">${n} ${label}</span>`;
+  }
+
+  // Detectar la columna "label" (primer no-ID); ahí agregamos el badge.
+  const labelCol = cols.find(c => !isId(c)) || cols[0];
+
   const bodyRows = rows.length === 0
     ? `<tr><td colspan="${cols.length + 1}" class="empty">Sin resultados</td></tr>`
     : rows.map(r => {
-        const cells  = cols.map(c => `<td class="${isId(c) ? 'mono' : ''}">${formatCell(r[c], c)}</td>`).join('');
-        const pk     = r[schema.pk];
-        const nombre = r[Object.keys(r)[1]] || pk;
+        const pk = r[schema.pk];
+        const cells = cols.map(c => {
+          const isLabel = (c === labelCol);
+          const cellHtml = formatCellWithBadge(r[c], c, pk, isLabel);
+          return `<td class="${isId(c) ? 'mono' : ''}">${cellHtml}</td>`;
+        }).join('');
+        const nombre = r[labelCol] || pk;
         const asociados = drillDown ? renderHijosInline(pk, drillDown) : '';
         return `<tr>
           ${cells}
