@@ -835,10 +835,12 @@ const SCHEMAS = {
       { field: 'legajo',     label: 'Legajo',    type: 'text',   required: false },
       { field: 'email',      label: 'Email',     type: 'text',   required: false },
       { field: 'telefono',   label: 'Teléfono',  type: 'text',   required: false },
-      { field: 'id_cargo',   label: 'Cargo',     type: 'select', fk: 'cargos',  fkLabel: 'nombre', fkPk: 'id_cargo',   required: false },
-      { field: 'id_subarea', label: 'Subárea',   type: 'select', fk: 'subarea', fkLabel: 'nombre', fkPk: 'id_subarea', required: false },
+      { field: 'id_cargo',   label: 'Cargo',     type: 'select',   fk: 'cargos',   fkLabel: 'nombre', fkPk: 'id_cargo',   required: false },
+      { field: 'id_subarea', label: 'Subárea',   type: 'select',   fk: 'subarea',  fkLabel: 'nombre', fkPk: 'id_subarea', required: false },
+      { field: 'id_usuario', label: 'Usuario vinculado', type: 'select', fk: 'usuarios', fkLabel: 'nombre', fkPk: 'id_usuario', required: false },
+      { field: 'es_auditor', label: 'Auditor',   type: 'checkbox', required: false },
     ],
-    display: ['id_agente', 'apellido', 'nombre', 'legajo', 'email', 'id_cargo', 'id_subarea'],
+    display: ['id_agente', 'apellido', 'nombre', 'legajo', 'email', 'id_cargo', 'id_subarea', 'id_usuario', 'es_auditor'],
   },
   equipos: {
     label: 'Equipo', titulo: 'Maestro de Equipos',
@@ -1478,6 +1480,7 @@ const FK_DISPLAY_MAP = {
   id_subarea: { fk: 'subarea', pk: 'id_subarea', label: 'nombre' },
   id_tipo_usuario: { fk: 'tipo_usuario', pk: 'id_tipo_usuario', label: 'nombre' },
   id_cargo: { fk: 'cargos', pk: 'id_cargo', label: 'nombre' },
+  id_usuario: { fk: 'usuarios', pk: 'id_usuario', label: 'nombre' },
 };
 
 function formatCell(val, col) {
