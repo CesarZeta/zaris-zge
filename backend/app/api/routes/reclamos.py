@@ -190,6 +190,7 @@ async def obtener_reclamo(
             prov.id_provincia, prov.nombre AS provincia_nombre,
             r.id_activo, act.codigo_unico AS activo_codigo,
             ta.id_tipo_activo, ta.nombre AS activo_tipo_nombre,
+            r.id_empresa, emp.nombre AS empresa_nombre, emp.cuit AS empresa_cuit,
             r.id_reclamo_padre,
             r.id_ciudadano, c.nombre AS ciudadano_nombre, c.apellido AS ciudadano_apellido,
             c.doc_nro, c.cuil, c.telefono, c.email AS ciudadano_email,
@@ -207,6 +208,7 @@ async def obtener_reclamo(
         LEFT JOIN provincias prov ON prov.id_provincia = par.id_provincia
         LEFT JOIN activos act ON act.id_activo = r.id_activo
         LEFT JOIN tipos_activo ta ON ta.id_tipo_activo = act.id_tipo_activo
+        LEFT JOIN empresas emp ON emp.id_empresa = r.id_empresa
         WHERE r.id_reclamo = :id AND r.activo = TRUE
     """), {"id": id_reclamo})
     row = result.fetchone()
@@ -285,6 +287,16 @@ async def crear_reclamo(
         if row_area:
             id_area = row_area.id_area
 
+    id_empresa = body.get("id_empresa")
+    if id_empresa:
+        rep = await db.execute(text("""
+            SELECT 1 FROM ciudadano_empresa
+            WHERE id_ciudadano = :id_c AND id_empresa = :id_e AND activo = TRUE
+        """), {"id_c": body["id_ciudadano"], "id_e": id_empresa})
+        if not rep.fetchone():
+            raise HTTPException(status_code=422,
+                detail="El ciudadano no representa a esa empresa")
+
     data = {
         "id_ciudadano":     body["id_ciudadano"],
         "id_tipo_reclamo":  id_tipo,
@@ -297,6 +309,7 @@ async def crear_reclamo(
         "longitud":         body.get("longitud"),
         "id_localidad":     body.get("id_localidad"),
         "id_activo":        body.get("id_activo"),
+        "id_empresa":       id_empresa,
         "canal_origen":     body.get("canal_origen"),
         "fuente_geolocalizacion": body.get("fuente_geolocalizacion"),
         "id_usuario_alta":  current_user["id_usuario"],
@@ -314,13 +327,13 @@ async def crear_reclamo(
             INSERT INTO reclamos
                 (id_ciudadano, id_tipo_reclamo, id_area, descripcion, direccion,
                  domicilio_reclamo, prioridad, estado, id_estado_fk, observaciones,
-                 latitud, longitud, id_localidad, id_activo, canal_origen,
+                 latitud, longitud, id_localidad, id_activo, id_empresa, canal_origen,
                  fuente_geolocalizacion, activo, fecha_alta, fecha_modificacion,
                  id_usuario_alta, id_usuario_modificacion)
             VALUES
                 (:id_ciudadano, :id_tipo_reclamo, :id_area, :descripcion, :direccion,
                  :direccion, :prioridad, 'Sin asignar', :id_estado_fk, :observaciones,
-                 :latitud, :longitud, :id_localidad, :id_activo, :canal_origen,
+                 :latitud, :longitud, :id_localidad, :id_activo, :id_empresa, :canal_origen,
                  :fuente_geolocalizacion, TRUE, NOW(), NOW(),
                  :id_usuario_alta, :id_usuario_alta)
             RETURNING id_reclamo, nro_reclamo
@@ -457,7 +470,7 @@ async def crear_subreclamo(
 ):
     # Validar que el padre existe y no es él mismo un subreclamo
     r = await db.execute(text("""
-        SELECT id_reclamo, id_ciudadano, id_reclamo_padre, estado
+        SELECT id_reclamo, id_ciudadano, id_empresa, id_reclamo_padre, estado
         FROM reclamos WHERE id_reclamo = :id AND activo = TRUE
     """), {"id": id_reclamo})
     padre = r.fetchone()
@@ -474,8 +487,23 @@ async def crear_subreclamo(
 
     direccion = body.get("direccion") or body.get("domicilio_reclamo") or ""
 
+    # id_empresa: por defecto hereda del padre. Si el body lo trae, valida.
+    id_ciudadano_sub = body.get("id_ciudadano") or padre.id_ciudadano
+    if "id_empresa" in body:
+        id_empresa = body.get("id_empresa")
+        if id_empresa:
+            rep = await db.execute(text("""
+                SELECT 1 FROM ciudadano_empresa
+                WHERE id_ciudadano = :id_c AND id_empresa = :id_e AND activo = TRUE
+            """), {"id_c": id_ciudadano_sub, "id_e": id_empresa})
+            if not rep.fetchone():
+                raise HTTPException(status_code=422,
+                    detail="El ciudadano no representa a esa empresa")
+    else:
+        id_empresa = padre.id_empresa
+
     data = {
-        "id_ciudadano":     body.get("id_ciudadano") or padre.id_ciudadano,
+        "id_ciudadano":     id_ciudadano_sub,
         "id_tipo_reclamo":  body["id_tipo_reclamo"],
         "id_area":          body.get("id_area"),
         "descripcion":      body["descripcion"],
@@ -486,6 +514,7 @@ async def crear_subreclamo(
         "longitud":         body.get("longitud"),
         "id_localidad":     body.get("id_localidad"),
         "id_activo":        body.get("id_activo"),
+        "id_empresa":       id_empresa,
         "canal_origen":     body.get("canal_origen"),
         "fuente_geolocalizacion": body.get("fuente_geolocalizacion"),
         "id_reclamo_padre": id_reclamo,
@@ -503,13 +532,13 @@ async def crear_subreclamo(
             INSERT INTO reclamos
                 (id_ciudadano, id_tipo_reclamo, id_area, descripcion, direccion,
                  domicilio_reclamo, prioridad, estado, id_estado_fk, observaciones,
-                 latitud, longitud, id_localidad, id_activo, canal_origen,
+                 latitud, longitud, id_localidad, id_activo, id_empresa, canal_origen,
                  fuente_geolocalizacion, id_reclamo_padre, activo,
                  fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion)
             VALUES
                 (:id_ciudadano, :id_tipo_reclamo, :id_area, :descripcion, :direccion,
                  :direccion, :prioridad, 'Sin asignar', :id_estado_fk, :observaciones,
-                 :latitud, :longitud, :id_localidad, :id_activo, :canal_origen,
+                 :latitud, :longitud, :id_localidad, :id_activo, :id_empresa, :canal_origen,
                  :fuente_geolocalizacion, :id_reclamo_padre, TRUE,
                  NOW(), NOW(), :id_usuario_alta, :id_usuario_alta)
             RETURNING id_reclamo, nro_reclamo
