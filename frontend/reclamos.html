@@ -1290,6 +1290,9 @@ async function abrirDetalle(idReclamo) {
     const activoTxt = r.id_activo
       ? `${r.activo_codigo || '#'+r.id_activo}${r.activo_tipo_nombre ? ' · ' + r.activo_tipo_nombre : ''}`
       : null;
+    const empresaTxt = r.id_empresa
+      ? `${r.empresa_nombre || '#'+r.id_empresa}${r.empresa_cuit ? ' · CUIT ' + r.empresa_cuit : ''}`
+      : null;
 
     document.getElementById('drawerBody').innerHTML = `
       <div class="detail-section">
@@ -1314,6 +1317,7 @@ async function abrirDetalle(idReclamo) {
           <div class="detail-field"><label>Vencimiento SLA</label><span style="font-family:var(--font-mono)">${r.sla_vencimiento ? _fmtFecha(r.sla_vencimiento) : '—'}</span></div>
           ${r.fecha_primer_asignacion ? `<div class="detail-field"><label>Primera asignación</label><span style="font-family:var(--font-mono)">${_fmtFecha(r.fecha_primer_asignacion)}</span></div>` : ''}
           ${r.fecha_cierre ? `<div class="detail-field"><label>Cierre</label><span style="font-family:var(--font-mono)">${_fmtFecha(r.fecha_cierre)}</span></div>` : ''}
+          ${empresaTxt ? `<div class="detail-field full"><label>A nombre de empresa</label><span style="font-weight:600">${empresaTxt}</span></div>` : ''}
           <div class="detail-field full"><label>Descripción</label><span style="font-weight:400;line-height:1.5;font-size:.84rem">${r.descripcion}</span></div>
           ${r.observaciones ? `<div class="detail-field full"><label>Observaciones</label><span style="font-weight:400;font-size:.82rem;color:var(--fg-2)">${r.observaciones}</span></div>` : ''}
         </div>
@@ -1609,6 +1613,7 @@ async function guardarNuevoReclamo() {
     if (idLocalidad) payload.id_localidad = parseInt(idLocalidad);
     if (idActivo)    payload.id_activo = parseInt(idActivo);
     if (fuente)      payload.fuente_geolocalizacion = fuente;
+    if (_empresaSeleccionada) payload.id_empresa = parseInt(_empresaSeleccionada);
 
     const res = await _apiFetch('/api/v1/reclamos', {
       method: 'POST',
