@@ -373,8 +373,33 @@
       border-bottom: 1px solid var(--border-primary);
       transition: background 0.1s;
     }
-    .buc-item:hover { background: var(--surface-300); }
+    .buc-item:hover, .buc-item.is-active { background: var(--surface-300); }
     .buc-item:last-child { border-bottom: none; }
+    .buc-item--ciudadano { padding: 0.5rem 0.8rem; }
+    .buc-item__line1 { display: flex; align-items: baseline; gap: 8px; }
+    .buc-item__line1 strong { font-weight: 700; color: var(--fg-1); }
+    .buc-item__doc { font-family: var(--font-mono); font-size: 0.74rem; color: var(--fg-3); }
+    .buc-item__line2 {
+      margin-top: 2px; font-size: 0.72rem; color: var(--fg-2);
+      display: flex; flex-wrap: wrap; gap: 4px 10px;
+    }
+    .buc-item__meta-icon { color: var(--fg-3); font-family: var(--font-mono); margin-right: 3px; }
+    .buc-item__hl { background: rgba(245,78,0,.18); color: var(--fg-1); border-radius: 2px; padding: 0 1px; }
+    .buc-item__more {
+      padding: 0.4rem 0.8rem; font-size: 0.72rem; color: var(--fg-3);
+      font-style: italic; background: var(--surface-300); text-align: center;
+      border-top: 1px solid var(--border-primary);
+    }
+    .buc-item__loading {
+      padding: 0.6rem 0.8rem; font-size: 0.78rem; color: var(--fg-3);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .buc-item__loading::before {
+      content: ''; width: 12px; height: 12px;
+      border: 2px solid var(--border-medium); border-top-color: var(--zaris-orange);
+      border-radius: 50%; animation: buc-spin 0.7s linear infinite;
+    }
+    @keyframes buc-spin { to { transform: rotate(360deg); } }
     .buc-selected {
       background: rgba(245,78,0,.06);
       border: 1px solid rgba(245,78,0,.2);
@@ -1546,51 +1571,155 @@ function cerrarModalNuevo() {
   if (_activosLayer) { _activosLayer.clearLayers(); }
 }
 
-// Búsqueda BUC con debounce
+// ── Búsqueda BUC: helpers compartidos ──────────────────────────
+const _esc = s => (s || '').replace(/[&<>"']/g, ch => ({
+  '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+}[ch]));
+
+function _highlight(text, query) {
+  const safe = _esc(text);
+  if (!query) return safe;
+  const tokens = String(query).trim().split(/\s+/).filter(t => t.length >= 2);
+  if (!tokens.length) return safe;
+  const pattern = tokens.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  return safe.replace(new RegExp(`(${pattern})`, 'gi'), '<span class="buc-item__hl">$1</span>');
+}
+
+function _edad(fechaNac) {
+  if (!fechaNac) return null;
+  const d = new Date(fechaNac);
+  if (isNaN(d)) return null;
+  const ahora = new Date();
+  let edad = ahora.getFullYear() - d.getFullYear();
+  const m = ahora.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && ahora.getDate() < d.getDate())) edad--;
+  return edad >= 0 && edad < 130 ? edad : null;
+}
+
+let _bucActiveIdx = -1;  // índice del item resaltado para teclado
+let _bucReqId = 0;       // anti-race: ignorar respuestas obsoletas
+
+// Búsqueda BUC con debounce + indicador buscando + total + teclado
 function buscarCiudadano(q) {
   clearTimeout(_bucTimer);
+  const res = document.getElementById('buc-results');
+  q = (q || '').trim();
   if (q.length < 3) {
-    document.getElementById('buc-results').style.display = 'none';
+    res.style.display = 'none';
+    res.innerHTML = '';
+    _bucActiveIdx = -1;
     return;
   }
+
+  // Mostrar "Buscando..." inmediato (antes del debounce)
+  res.innerHTML = '<div class="buc-item__loading">Buscando...</div>';
+  res.style.display = 'block';
+  _bucActiveIdx = -1;
+
+  const reqId = ++_bucReqId;
   _bucTimer = setTimeout(async () => {
     try {
-      const data = await _apiFetch(`/api/v1/buc/ciudadanos/buscar?q=${encodeURIComponent(q)}&limit=8`);
-      if (!data) return;
-      const res = document.getElementById('buc-results');
+      // Necesitamos el header X-Total-Count, así que llamamos fetch directo
+      const r = await fetch(`${_base}/api/v1/buc/ciudadanos/buscar?q=${encodeURIComponent(q)}&limit=8`, {
+        headers: _authHeaders(),
+      });
+      if (reqId !== _bucReqId) return;  // llegó respuesta vieja: descartar
+      if (r.status === 401) { _handleUnauth(); return; }
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      const total = parseInt(r.headers.get('X-Total-Count') || data.length);
+
       if (!data.length) {
         res.innerHTML = '<div class="buc-item" style="color:var(--fg-3)">Sin resultados</div>';
-        res.style.display = 'block';
         return;
       }
-      // Almacenar ciudadanos por id para acceder desde el click sin inyección
+
       _bucResultados = {};
       data.forEach(c => { _bucResultados[c.id_ciudadano] = c; });
 
-      res.innerHTML = data.map(c => {
-        const apellido = (c.apellido || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        const nombre   = (c.nombre   || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        const docNro   = (c.doc_nro  || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        return `<div class="buc-item" data-id="${c.id_ciudadano}">
-          <strong>${apellido}, ${nombre}</strong>
-          <span style="font-family:var(--font-mono);font-size:.76rem;color:var(--fg-3);margin-left:8px">${docNro}</span>
-        </div>`;
-      }).join('');
+      res.innerHTML = data.map((c, idx) => {
+        const apellido = _highlight(c.apellido, q);
+        const nombre   = _highlight(c.nombre, q);
+        const docNro   = _highlight(c.doc_nro, q);
+        const tel      = c.telefono ? _highlight(c.telefono, q) : '';
+        const email    = c.email && !c.email.endsWith('@_') ? _highlight(c.email, q) : '';
+        const dir      = [c.calle, c.altura, c.localidad].filter(Boolean).join(' ');
+        const dirHl    = dir ? _highlight(dir, q) : '';
+        const edad     = _edad(c.fecha_nac);
 
-      // Delegación de eventos: un solo listener, sin inline handlers
+        const meta = [];
+        if (tel)   meta.push(`<span><span class="buc-item__meta-icon">tel</span>${tel}</span>`);
+        if (email) meta.push(`<span><span class="buc-item__meta-icon">@</span>${email}</span>`);
+        if (dirHl) meta.push(`<span><span class="buc-item__meta-icon">dir</span>${dirHl}</span>`);
+        if (edad !== null) meta.push(`<span style="color:var(--fg-3)">${edad} años</span>`);
+
+        return `<div class="buc-item buc-item--ciudadano" data-id="${c.id_ciudadano}" data-idx="${idx}">
+          <div class="buc-item__line1">
+            <strong>${apellido}, ${nombre}</strong>
+            <span class="buc-item__doc">${docNro || '—'}</span>
+          </div>
+          ${meta.length ? `<div class="buc-item__line2">${meta.join('')}</div>` : ''}
+        </div>`;
+      }).join('') + (total > data.length
+        ? `<div class="buc-item__more">y ${total - data.length} más — refiná la búsqueda</div>`
+        : '');
+
       res.querySelectorAll('.buc-item[data-id]').forEach(el => {
         el.addEventListener('click', () => {
           const c = _bucResultados[parseInt(el.dataset.id)];
           if (c) seleccionarCiudadano(c.id_ciudadano, c.apellido || '', c.nombre || '', c.doc_nro || '');
         });
+        el.addEventListener('mouseenter', () => {
+          _bucSetActive(parseInt(el.dataset.idx));
+        });
       });
-
-      res.style.display = 'block';
     } catch(e) {
+      if (reqId !== _bucReqId) return;
+      res.innerHTML = `<div class="buc-item" style="color:var(--color-error)">Error: ${_esc(e.message)}</div>`;
       console.warn('Error BUC:', e);
     }
-  }, 300);
+  }, 280);
 }
+
+function _bucSetActive(idx) {
+  const items = document.querySelectorAll('#buc-results .buc-item[data-id]');
+  if (!items.length) { _bucActiveIdx = -1; return; }
+  if (idx < 0) idx = items.length - 1;
+  if (idx >= items.length) idx = 0;
+  _bucActiveIdx = idx;
+  items.forEach((el, i) => el.classList.toggle('is-active', i === idx));
+  items[idx].scrollIntoView({ block: 'nearest' });
+}
+
+// Navegación con teclado en el input de búsqueda BUC
+(function initBucKeyboardNav() {
+  const input = document.getElementById('nr-buc-q');
+  if (!input) return;
+  input.addEventListener('keydown', e => {
+    const res = document.getElementById('buc-results');
+    if (res.style.display !== 'block') return;
+    const items = res.querySelectorAll('.buc-item[data-id]');
+    if (!items.length) {
+      if (e.key === 'Escape') { res.style.display = 'none'; }
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      _bucSetActive(_bucActiveIdx + 1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      _bucSetActive(_bucActiveIdx - 1);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const idx = _bucActiveIdx >= 0 ? _bucActiveIdx : 0;
+      const el = items[idx];
+      if (el) el.click();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      res.style.display = 'none';
+    }
+  });
+})();
 
 async function seleccionarCiudadano(id, apellido, nombre, docNro) {
   _bucCiudadano = { id, apellido, nombre, docNro };
