@@ -1123,10 +1123,31 @@ async function cargarTabla() {
   }
 }
 
+// Tablas con composición custom de label en la vista previa.
+// Para personas (agentes, usuarios, ciudadanos) mostramos "Apellido, Nombre".
+function composeLabel(row, schema) {
+  if (row.apellido && row.nombre) return `${row.apellido}, ${row.nombre}`;
+  const labelField = schema.display.find(c => !isId(c)) || schema.display[0];
+  return row[labelField] ?? '—';
+}
+
+function composeMeta(row, schema) {
+  // Para agentes: mostrar legajo + flag auditor en el meta
+  if (row.legajo !== undefined || row.es_auditor !== undefined) {
+    const parts = [];
+    if (row.legajo) parts.push(`#${row.legajo}`);
+    if (row.email) parts.push(row.email);
+    if (row.es_auditor === true) parts.push('Auditor');
+    return parts.join(' · ') || null;
+  }
+  // Default: segundo display field que no sea el label
+  const labelField = schema.display.find(c => !isId(c)) || schema.display[0];
+  const subField = schema.display.find(c => !isId(c) && c !== labelField);
+  return subField ? row[subField] : null;
+}
+
 async function renderVistaPrevia(rows, schema) {
   const main = document.getElementById('main');
-  const labelField = schema.display.find(c => !isId(c)) || schema.display[0];
-  const subField   = schema.display.find(c => !isId(c) && c !== labelField);
 
   // Últimos 5, más reciente primero (el array ya viene del backend; invertimos)
   const recientes = [...rows].reverse().slice(0, 5);
@@ -1152,10 +1173,9 @@ async function renderVistaPrevia(rows, schema) {
   const previewHTML = recientes.length === 0
     ? `<div class="empty" style="padding:1.5rem;text-align:center;">Sin registros activos</div>`
     : recientes.map(r => {
-        const pk     = r[schema.pk];
-        const main   = r[labelField] ?? '—';
-        const sub    = subField ? r[subField] : null;
-        const nombre = String(main).replace(/'/g, "\\'");
+        const pk    = r[schema.pk];
+        const main  = composeLabel(r, schema);
+        const sub   = composeMeta(r, schema);
         let countBadge = '';
         if (drillDown && countByPk[pk] != null) {
           const n = countByPk[pk];
@@ -1167,8 +1187,8 @@ async function renderVistaPrevia(rows, schema) {
         return `<div class="preview-row" onclick="abrirEditar(${pk})" title="Editar">
           <span class="preview-row__main">${String(main).replace(/</g,'&lt;')}</span>
           ${countBadge}
-          ${sub != null ? `<span class="preview-row__meta">${String(sub).replace(/</g,'&lt;').slice(0,40)}</span>` : ''}
-          <span class="preview-row__action" style="margin-left:auto;">Editar →</span>
+          ${sub != null ? `<span class="preview-row__meta">${String(sub).replace(/</g,'&lt;').slice(0,80)}</span>` : ''}
+          <span class="preview-row__action">Editar →</span>
         </div>`;
       }).join('');
 
@@ -1207,8 +1227,6 @@ async function buscarEnTabla() {
   if (!q) { resultsEl.innerHTML = ''; return; }
 
   const schema = SCHEMAS[tablaActual];
-  const labelField = schema.display.find(c => !isId(c)) || schema.display[0];
-  const subField   = schema.display.find(c => !isId(c) && c !== labelField);
 
   resultsEl.innerHTML = `<div class="loading"><span class="spinner"></span></div>`;
   try {
@@ -1225,12 +1243,12 @@ async function buscarEnTabla() {
     }
     resultsEl.innerHTML = found.slice(0, 8).map(r => {
       const pk  = r[schema.pk];
-      const lbl = r[labelField] ?? '—';
-      const sub = subField ? r[subField] : null;
+      const lbl = composeLabel(r, schema);
+      const sub = composeMeta(r, schema);
       return `<div class="preview-row" onclick="abrirEditar(${pk})" title="Editar" style="background:#fff;margin-bottom:4px;">
         <span class="preview-row__main">${String(lbl).replace(/</g,'&lt;')}</span>
-        ${sub != null ? `<span class="preview-row__meta">${String(sub).replace(/</g,'&lt;').slice(0,40)}</span>` : ''}
-        <span class="preview-row__action" style="margin-left:auto;">Editar →</span>
+        ${sub != null ? `<span class="preview-row__meta">${String(sub).replace(/</g,'&lt;').slice(0,80)}</span>` : ''}
+        <span class="preview-row__action">Editar →</span>
       </div>`;
     }).join('') + (found.length > 8 ? `<div style="font-size:.8rem;color:var(--z-text3);padding:.25rem 0;">… y ${found.length - 8} más — usá Listado para ver todos</div>` : '');
   } catch (e) {
