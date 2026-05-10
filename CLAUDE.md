@@ -46,7 +46,12 @@ Usar `get_current_user` de `app/core/auth.py` en todo endpoint que requiera iden
 - Timestamps: UTC.
 - Bajas lógicas: `activo = false`, nunca DELETE físico.
 - **CORS:** agregar nueva URL a `allow_origins` en `backend/app/main.py`. No duplicar el parámetro — Python lanza `SyntaxError`.
-- **Quirk:** `usuarios` usa `fecha_modif` (no `fecha_modificacion`). No renombrar.
+- **Quirks de columnas legacy de auditoría** (verificado en prod 2026-05-10, no renombrar):
+  - **Estándar §10 (`fecha_modificacion`):** la mayoría de tablas (21).
+  - **Legacy `fecha_modif`:** `usuarios`, `empresas`. `ciudadanos` tiene **ambas** (legacy + nueva) — usar `fecha_modificacion` como fuente.
+  - **Legacy `modificado_en`:** `lugares_atencion`, `servicios`, `turnos`, `areas`, y todas las `agenda_*` (`agenda_agente`, `agenda_ausencia`, `agenda_clase`, `agenda_lugar`, `agenda_servicio`).
+  - Antes de escribir un UPDATE con `fecha_modificacion = NOW()`, verificar que la tabla tenga esa columna (`information_schema.columns`). Migración 26 falló por esto en `lugares_atencion`.
+- **CORS y headers custom:** cuando un endpoint devuelve un header custom (ej. `X-Total-Count`), agregar también `response.headers["Access-Control-Expose-Headers"] = "NombreHeader"`. Sin esto, navegadores cross-origin lo bloquean. Ejemplo en `GET /buc/ciudadanos/buscar`.
 
 ## 6. URLs del Proyecto
 
@@ -114,7 +119,9 @@ Tablas con horario de atención (`equipos`, `servicios`, etc.) deben incluir:
 
 ## 13. Design System Visual — Obligatorio
 
-El estilo oficial de ZARIS vive en `design-system/`. **Nunca** usar `styles.css` ni variables `--z-*` (son legacy, eliminadas).
+El estilo oficial de ZARIS vive en `design-system/`. **Para código nuevo, prohibido** usar `styles.css` o variables `--z-*` (son legacy). Usar siempre los tokens del DS nuevo (`--zaris-*`, `--surface-*`, `--fg-*`, `--font-display`, `--font-mono`).
+
+> **Estado real (verificado 2026-05-10):** los tokens `--z-*` y la clase `.z-breadcrumb` siguen vivos en 5 archivos legacy: `agenda.html`, `ciudadano.html`, `empresa.html`, `mainconfig.html`, `usuarios.html`. **Funcionan**, pero contradicen esta regla y deben migrarse al DS nuevo en una pasada futura. Mientras tanto: no agregar más usos. Si tocás esos archivos, aprovechá para migrar el bloque que tocaste.
 
 ### CSS a incluir en todo HTML frontend (vanilla)
 
