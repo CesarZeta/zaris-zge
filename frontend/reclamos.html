@@ -1272,13 +1272,32 @@ async function abrirDetalle(idReclamo) {
       </div>
     `).join('');
 
+    const direccion = r.direccion || r.domicilio_reclamo || '';
+    const ubicacion = [r.localidad_nombre, r.partido_nombre, r.provincia_nombre].filter(Boolean).join(' · ');
+    const tieneCoords = r.latitud != null && r.longitud != null;
+    const coordsTxt = tieneCoords ? `${(+r.latitud).toFixed(6)}, ${(+r.longitud).toFixed(6)}` : '—';
+    const osmHref = tieneCoords ? `https://www.openstreetmap.org/?mlat=${r.latitud}&mlon=${r.longitud}#map=18/${r.latitud}/${r.longitud}` : null;
+    const fuenteLabel = {
+      pin_manual: 'Pin manual en mapa',
+      geocoding_osm: 'Sugerencia OpenStreetMap',
+      gps_dispositivo: 'GPS del dispositivo',
+      activo_referenciado: 'Activo referenciado',
+    }[r.fuente_geolocalizacion] || r.fuente_geolocalizacion || '—';
+    const canalLabel = {
+      web: 'Web', whatsapp: 'WhatsApp', telefono: 'Teléfono',
+      presencial: 'Presencial', oficio: 'Oficio', app_movil: 'App móvil', otro: 'Otro',
+    }[r.canal_origen] || r.canal_origen || '—';
+    const activoTxt = r.id_activo
+      ? `${r.activo_codigo || '#'+r.id_activo}${r.activo_tipo_nombre ? ' · ' + r.activo_tipo_nombre : ''}`
+      : null;
+
     document.getElementById('drawerBody').innerHTML = `
       <div class="detail-section">
         <div class="detail-section-title">Ciudadano</div>
         <div class="detail-grid">
           <div class="detail-field"><label>Nombre</label><span>${r.ciudadano_apellido || '—'}, ${r.ciudadano_nombre || '—'}</span></div>
           <div class="detail-field"><label>DNI / CUIL</label><span style="font-family:var(--font-mono)">${r.doc_nro || '—'}</span></div>
-          <div class="detail-field"><label>Teléfono</label><span>${r.ciudadano_email ? r.ciudadano_email.split('@')[0] : '—'}</span></div>
+          <div class="detail-field"><label>Teléfono</label><span style="font-family:var(--font-mono)">${r.telefono || '—'}</span></div>
           <div class="detail-field"><label>Email</label><span style="font-size:.78rem">${r.ciudadano_email || '—'}</span></div>
         </div>
       </div>
@@ -1289,11 +1308,24 @@ async function abrirDetalle(idReclamo) {
           <div class="detail-field"><label>Área</label><span>${r.area_nombre || '—'}</span></div>
           <div class="detail-field"><label>Estado</label><span>${badgeEstado(r.estado)}</span></div>
           <div class="detail-field"><label>Prioridad</label><span>${badgePrio(r.prioridad)}</span></div>
-          <div class="detail-field"><label>Fecha ingreso</label><span style="font-family:var(--font-mono)">${_fmtFecha(r.fecha_alta)}</span></div>
+          <div class="detail-field"><label>Canal</label><span>${canalLabel}</span></div>
           <div class="detail-field"><label>Responsable</label><span>${r.agente_nombre || '—'}</span></div>
-          <div class="detail-field full"><label>Domicilio</label><span>${r.domicilio_reclamo || '—'}</span></div>
+          <div class="detail-field"><label>Fecha ingreso</label><span style="font-family:var(--font-mono)">${_fmtFecha(r.fecha_alta)}</span></div>
+          <div class="detail-field"><label>Vencimiento SLA</label><span style="font-family:var(--font-mono)">${r.sla_vencimiento ? _fmtFecha(r.sla_vencimiento) : '—'}</span></div>
+          ${r.fecha_primer_asignacion ? `<div class="detail-field"><label>Primera asignación</label><span style="font-family:var(--font-mono)">${_fmtFecha(r.fecha_primer_asignacion)}</span></div>` : ''}
+          ${r.fecha_cierre ? `<div class="detail-field"><label>Cierre</label><span style="font-family:var(--font-mono)">${_fmtFecha(r.fecha_cierre)}</span></div>` : ''}
           <div class="detail-field full"><label>Descripción</label><span style="font-weight:400;line-height:1.5;font-size:.84rem">${r.descripcion}</span></div>
           ${r.observaciones ? `<div class="detail-field full"><label>Observaciones</label><span style="font-weight:400;font-size:.82rem;color:var(--fg-2)">${r.observaciones}</span></div>` : ''}
+        </div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-title">Ubicación</div>
+        <div class="detail-grid">
+          <div class="detail-field full"><label>Dirección</label><span>${direccion || '—'}</span></div>
+          <div class="detail-field full"><label>Localidad</label><span>${ubicacion || '—'}</span></div>
+          <div class="detail-field"><label>Coordenadas</label><span style="font-family:var(--font-mono);font-size:.78rem">${osmHref ? `<a href="${osmHref}" target="_blank" rel="noopener" style="color:var(--zaris-orange);text-decoration:none">${coordsTxt}</a>` : coordsTxt}</span></div>
+          <div class="detail-field"><label>Fuente</label><span style="font-size:.8rem">${fuenteLabel}</span></div>
+          ${activoTxt ? `<div class="detail-field full"><label>Activo referenciado</label><span style="font-family:var(--font-mono);font-size:.82rem">${activoTxt}</span></div>` : ''}
         </div>
       </div>
       <div class="detail-section">
