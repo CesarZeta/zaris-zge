@@ -562,3 +562,84 @@ Aplicada en local. **Pendiente de aplicar en prod Supabase.** Incluye:
 - **Migración 22 introduce `id_estado_fk`** como FK a `estado_reclamo(id_estado_reclamo)`.
 - La columna `estado` (VARCHAR con CHECK) se mantiene poblada en paralelo durante el período de transición. Endpoints existentes que leen/escriben `estado` siguen funcionando.
 - Nuevos consumidores deben usar `id_estado_fk`. Cuando frontend y endpoints migren 100%, se removerá el VARCHAR en una migración futura.
+
+## 23. Patrones de UI ya validados — usar como default
+
+Estos patrones se decidieron en sesiones anteriores y **deben reutilizarse** en lugar de inventar variantes. Si necesitás algo distinto, justificá por qué este no aplica.
+
+### Buscador con autocompletar (≥ ~30 opciones)
+Para selectores con muchas opciones (`tipo_reclamo` tiene 282, `ciudadanos` tiene miles), un `<select>` es inusable. Usar siempre **input + dropdown de resultados** consultando un endpoint con `?q=<texto>` y filtro `ILIKE`.
+
+- **Patrón:** input → debounce 250-300ms → fetch `/endpoint?q=&limit=20` → dropdown con resultados → click selecciona y guarda en hidden input.
+- **HTML:** clase `.buc-search` con input + `<div class="buc-results">` posicionado absolute debajo.
+- **Backend:** endpoint debe aceptar `q` (ILIKE) y `limit`. Ej: `GET /api/v1/reclamos/catalogo/tipos?q=bache&limit=20`.
+- **Click-outside:** cerrar todos los dropdowns al click fuera del `.buc-search`.
+- **XSS:** escapar HTML del nombre con `.replace(/</g,'&lt;')` siempre. Usar `data-id` + event delegation, **nunca** interpolar IDs en `onclick` inline.
+- **Implementado en:** `frontend/reclamos.html` (ciudadanos, tipo de reclamo).
+
+### Drill-down jerárquico inline (sin botón)
+Para listados de tablas padre cuyo dataset cabe en pantalla (ej: ≤ 50 áreas, ≤ 50 subáreas), **mostrar siempre los hijos asociados debajo de cada fila** con sangría e indicador naranja. Sin botón "Ver hijos".
+
+- **Pre-fetch en paralelo:** `await Promise.all(rows.map(r => fetch(/padre/{id}/hijos)))` antes de renderizar la tabla.
+- **CSS:** `.asociados-row` con borde-izq naranja, `.asociados-list` en grid `repeat(auto-fill, minmax(360px, 1fr))` para nombres largos.
+- **No agregar badges de conteo en la celda nombre del listado** — el panel ya muestra "(N)" en su título. Sería redundante.
+- **Sí agregar badge en preview** (5 últimos), porque ahí no se muestra el panel inline.
+- **Implementado en:** `frontend/admin_tablas.html` (área→subáreas, subárea→tipos).
+
+### Modal anidado para alta inline
+Cuando un form requiere referenciar una entidad que podría no existir aún (ej: ciudadano en reclamo), **modal anidado completo** con todos los campos requeridos por el `Create` schema. Z-index mayor al modal padre. ESC y click-fuera priorizan cerrar el modal anidado primero. No "form rápido relajado" — respetar siempre el schema completo.
+
+### Listados de maestros — contador visible
+- En vista preview (5 últimos): badge naranja al lado del nombre con `N hijos` (cuando aplique).
+- En listado completo: usar el panel inline para mostrar el conteo en su título (`SUBÁREAS ASOCIADAS (4)`), **no duplicar** badges en la celda nombre.
+- Mostrar nombres FK como texto (no IDs numéricos). Mapeo en `FK_DISPLAY_MAP` del frontend que resuelve `id_area`/`id_subarea`/`id_cargo`/`id_tipo_usuario` → nombre con tooltip del ID.
+
+## 24. Workflow de seed desde CSVs en `Tablas Iniciales/`
+
+Los CSVs en `Tablas Iniciales/` son la **fuente autoritativa** de catálogos (subáreas, tipos de reclamo, agentes, cargos, ciudadanos, actividades, nacionalidades). Reglas para escribir scripts de seed:
+
+### Idempotencia obligatoria
+Todo seed debe poder correrse múltiples veces sin duplicar ni romper. Patrón:
+1. Soft-delete (`activo=FALSE`) lo activo previo.
+2. Para cada row del CSV: buscar por nombre (case-insensitive, trim) — si existe, `UPDATE activo=TRUE` + actualizar campos. Si no, `INSERT`.
+3. Soft-delete entidades padre que quedaron huérfanas tras el seed.
+
+### Encoding
+- Lectura del CSV: `open(path, encoding="utf-8-sig")` (incluye BOM removal).
+- Output del script en Windows: setear `$env:PYTHONIOENCODING="utf-8"` antes de correr Python, sino `cp1252` rompe en `print` con caracteres unicode (✓, →, ñ, tildes).
+- Evitar caracteres unicode decorativos (━, →, ❌) en `print()` de scripts; usar ASCII (`-`, `->`, `[FAIL]`).
+
+### NO hardcodear IDs entre entornos
+Local y prod tienen IDs distintos para las mismas entidades (ej: en local `id_area=1` puede ser "Salud" mientras en prod es "Gobierno"). Resolver siempre **por nombre** dentro del script:
+```python
+# Buscar por keyword case-insensitive, reactivar si está inactiva, crear si no existe
+row = await conn.fetchrow(
+    "SELECT id_area, activo FROM area WHERE LOWER(nombre) LIKE $1 ORDER BY activo DESC, id_area LIMIT 1",
+    "%gobierno%"
+)
+```
+Esto vale para áreas, tipos de usuario, cargos, nacionalidades, actividades — cualquier catálogo cuyos IDs no estén garantizados estables entre entornos.
+
+### Aplicar en local Y prod en la misma sesión
+Una migración aplicada solo en uno desincroniza los entornos. Si aplicaste en prod via MCP, corré también el script en local (o viceversa) antes de cerrar la tarea. Documentar el paso en el commit.
+
+### Antes de aplicar, verificar el estado real con `execute_sql`
+**No confiar en CLAUDE.md §21** sobre qué migraciones están aplicadas — la doc puede estar desactualizada. Siempre `to_regclass('public.tabla')` y `COUNT(*)` antes de re-aplicar para evitar duplicar datos o crashear por tabla ya existente.
+
+### Backup antes de operaciones destructivas en prod
+Para `UPDATE`/`DELETE` masivos en prod: snapshot previo en tabla `_backup_<tabla>_YYYY_MM_DD`. Permite revert manual sin necesidad de point-in-time recovery.
+
+### CSVs y mapping de IDs legacy
+- Los CSVs traen IDs del sistema legacy (ej: `id_area_servicio=6361`) que **no se usan** en la DB nueva. El mapeo es por nombre.
+- Los CSVs pueden tener referencias a IDs huérfanos (ej: `tipo_reclamo.id_area_servicio=7984` que no está en `subarea.csv`). Inferir nombres del contenido de los tipos que las usan, agregar como subáreas extra.
+- `subarea.csv` viene con `id_area=1` genérico. La asignación real de área se hace por **heurística por keyword** sobre el nombre de la subárea (ver `seed_subareas_tipos_csv.py`).
+
+### Comandos de seed disponibles
+| Script | Tablas | Origen |
+|---|---|---|
+| `seed_geo_argentina.py` | provincias, partidos, localidades | hardcoded AR |
+| `seed_subareas_tipos_csv.py` | subarea, tipo_reclamo | `Tablas Iniciales/*.csv` |
+| `seed_activos_local.py` | tipos_activo, activos | `Tablas Iniciales/Activos.csv` |
+| `seed_auth.py` | usuarios | hardcoded dev |
+| `seed_demo.py` / `seed_prod.py` | varios | hardcoded mínimo |
+| `seed_incremental.py` | cargos, áreas, subareas, tipo_reclamo, ciudadanos | varios CSVs |
