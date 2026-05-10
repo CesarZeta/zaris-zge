@@ -1,0 +1,30 @@
+-- ════════════════════════════════════════════════════════════════════════════
+-- ZARIS — Migración 24: Re-seed de subareas + tipo_reclamo desde CSV oficial
+-- ════════════════════════════════════════════════════════════════════════════
+-- Contexto:
+--   Las tablas subarea y tipo_reclamo tenían datos parciales/inconsistentes
+--   sembrados en migraciones anteriores. El usuario provee CSVs autoritativos
+--   en `Tablas Iniciales/` (subarea.csv: 40 filas, tipo_reclamo.csv: 288 filas).
+--
+-- Estrategia (idempotente):
+--   1. Soft-delete todos los tipos y subareas activos.
+--   2. Reactivar/insert subareas por nombre (49 = 40 CSV + 9 huerfanas inferidas).
+--      Cada subarea se asigna a una área canónica via heurística por keyword.
+--   3. Reactivar/insert tipos por nombre, asignados a su subárea via JSONB.
+--   4. Soft-delete áreas huérfanas (sin subareas activas).
+--
+-- Áreas canónicas resueltas por nombre (case-insensitive):
+--   Gobierno, Planeamiento, Salud, Seguridad, Servicios Públicos, Tránsito.
+--   Si no existen, se crean.
+--
+-- Aplicación:
+--   Esta migración se ejecutó en partes via MCP (24a/b/c/d/e/f) en prod, y en
+--   local via backend/seed_subareas_tipos_csv.py (idéntica lógica, idempotente).
+--   Para entornos nuevos: correr el script Python contra DATABASE_URL.
+-- ════════════════════════════════════════════════════════════════════════════
+
+-- Esta migración se ejecuta a través del script Python:
+--   backend/seed_subareas_tipos_csv.py
+-- que es idempotente y se puede correr múltiples veces sin efectos adversos.
+--
+-- En prod ya fue aplicado el 2026-05-09 con backup en _backup_pre_reseed_2026_05_09.
