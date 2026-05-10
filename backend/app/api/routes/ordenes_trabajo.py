@@ -76,24 +76,54 @@ async def mesa_supervisor(
         params["id_subarea"] = id_subarea
 
     result = await db.execute(text(f"""
+        WITH ot_activa AS (
+            SELECT DISTINCT ON (ot.id_reclamo)
+                ot.id_reclamo, ot.id_ot, ot.nro_ot,
+                ot.id_agente, ot.id_equipo,
+                eot.nombre AS ot_estado_nombre
+            FROM ordenes_trabajo ot
+            JOIN estado_ot eot ON eot.id_estado_ot = ot.id_estado
+            WHERE ot.activo = TRUE
+              AND ot.es_auditoria = FALSE
+              AND eot.nombre IN ('En gestión','En espera','Pendiente')
+            ORDER BY ot.id_reclamo, ot.fecha_alta DESC
+        ),
+        ot_counts AS (
+            SELECT id_reclamo, COUNT(*) AS cant_ots
+            FROM ordenes_trabajo
+            WHERE activo = TRUE
+            GROUP BY id_reclamo
+        )
         SELECT
             r.id_reclamo, r.nro_reclamo, r.estado, r.prioridad,
             r.descripcion, r.domicilio_reclamo, r.fecha_alta,
+            r.sla_vencimiento,
             r.id_reclamo_padre,
             c.nombre AS ciudadano_nombre, c.apellido AS ciudadano_apellido, c.doc_nro,
             tr.nombre AS tipo_nombre, tr.sla_dias, tr.audit AS tipo_audit,
             a.nombre AS area_nombre,
-            COUNT(ot.id_ot) FILTER (WHERE ot.activo = TRUE) AS cant_ots
+            s.id_subarea, s.nombre AS subarea_nombre,
+            COALESCE(otc.cant_ots, 0) AS cant_ots,
+            ota.id_ot AS ot_activa_id,
+            ota.nro_ot AS ot_activa_nro,
+            ota.ot_estado_nombre AS ot_activa_estado,
+            ota.id_agente AS ot_id_agente,
+            (ag.apellido || ', ' || ag.nombre) AS ot_agente_nombre,
+            ota.id_equipo AS ot_id_equipo,
+            eq.nombre AS ot_equipo_nombre
         FROM reclamos r
         LEFT JOIN ciudadanos c ON c.id_ciudadano = r.id_ciudadano
         LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
         LEFT JOIN area a ON a.id_area = r.id_area
-        LEFT JOIN ordenes_trabajo ot ON ot.id_reclamo = r.id_reclamo
+        LEFT JOIN subarea s ON s.id_subarea = r.id_subarea
+        LEFT JOIN ot_counts otc ON otc.id_reclamo = r.id_reclamo
+        LEFT JOIN ot_activa ota ON ota.id_reclamo = r.id_reclamo
+        LEFT JOIN agentes ag ON ag.id_agente = ota.id_agente
+        LEFT JOIN equipos eq ON eq.id_equipo = ota.id_equipo
         WHERE {" AND ".join(conds)}
-        GROUP BY r.id_reclamo, c.nombre, c.apellido, c.doc_nro,
-                 tr.nombre, tr.sla_dias, tr.audit, a.nombre
         ORDER BY
             CASE r.prioridad WHEN 'Alta' THEN 1 WHEN 'Media' THEN 2 ELSE 3 END,
+            r.sla_vencimiento ASC NULLS LAST,
             r.fecha_alta ASC
     """), params)
 
@@ -102,27 +132,36 @@ async def mesa_supervisor(
 
 # ── GET /ot/mesa/agente ──────────────────────────────────────────────────────
 
-@router.get("/mesa/agente")
-async def mesa_agente(
-    id_agente: int = Query(...),
-    db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-):
-    """OTs en gestión, en espera o pendiente asignadas al agente o a sus equipos."""
+async def _mesa_agente_query(db: AsyncSession, id_agente: int):
+    """SQL compartido por /mesa/agente y /agente/me."""
     result = await db.execute(text("""
         SELECT
             ot.id_ot, ot.nro_ot, ot.es_auditoria,
             ot.fecha_creacion, ot.observaciones,
             eot.nombre AS estado_nombre, eot.color AS estado_color,
-            r.id_reclamo, r.nro_reclamo, r.prioridad AS reclamo_prioridad,
+            r.id_reclamo, r.nro_reclamo,
+            r.estado AS reclamo_estado,
+            r.prioridad AS reclamo_prioridad,
             r.descripcion AS reclamo_descripcion,
-            tr.nombre AS tipo_nombre, tr.sla_dias,
-            eq.nombre AS equipo_nombre,
-            ot.id_agente
+            r.fecha_alta AS reclamo_fecha_alta,
+            r.sla_vencimiento,
+            r.direccion AS reclamo_direccion,
+            tr.nombre AS tipo_nombre, tr.sla_dias, tr.audit AS tipo_audit,
+            s.id_subarea, s.nombre AS subarea_nombre,
+            ot.id_equipo, eq.nombre AS equipo_nombre,
+            ot.id_agente,
+            CASE
+              WHEN ot.id_agente = :id_agente THEN 'mia'
+              WHEN ot.id_agente IS NULL AND ot.id_equipo IS NOT NULL THEN 'disponible_equipo'
+              ELSE 'otro'
+            END AS scope,
+            c.nombre AS ciudadano_nombre, c.apellido AS ciudadano_apellido
         FROM ordenes_trabajo ot
         JOIN estado_ot eot ON eot.id_estado_ot = ot.id_estado
         JOIN reclamos r ON r.id_reclamo = ot.id_reclamo
+        LEFT JOIN ciudadanos c ON c.id_ciudadano = r.id_ciudadano
         LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
+        LEFT JOIN subarea s ON s.id_subarea = r.id_subarea
         LEFT JOIN equipos eq ON eq.id_equipo = ot.id_equipo
         WHERE ot.activo = TRUE
           AND eot.nombre IN ('En gestión','En espera','Pendiente')
@@ -139,10 +178,48 @@ async def mesa_agente(
           )
         ORDER BY
             CASE r.prioridad WHEN 'Alta' THEN 1 WHEN 'Media' THEN 2 ELSE 3 END,
+            r.sla_vencimiento ASC NULLS LAST,
             ot.fecha_creacion ASC
     """), {"id_agente": id_agente})
-
     return [_to_dict(row) for row in result.fetchall()]
+
+
+async def _resolver_id_agente_por_usuario(db: AsyncSession, id_usuario: int) -> Optional[int]:
+    """Mig 28: vínculo formal por id, no por email. Ver memoria feedback_vincular_por_id."""
+    r = await db.execute(text(
+        "SELECT id_agente FROM agentes WHERE id_usuario = :uid AND activo = TRUE LIMIT 1"
+    ), {"uid": id_usuario})
+    row = r.fetchone()
+    return row.id_agente if row else None
+
+
+@router.get("/mesa/agente")
+async def mesa_agente(
+    id_agente: int = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """OTs en gestión, en espera o pendiente asignadas al agente o a sus equipos."""
+    return await _mesa_agente_query(db, id_agente)
+
+
+@router.get("/agente/me")
+async def mesa_agente_me(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Mesa del agente logueado. Resuelve via agentes.id_usuario = current_user.id_usuario (mig 28)."""
+    id_usuario = current_user.get("id_usuario")
+    if not id_usuario:
+        raise HTTPException(status_code=422, detail="Usuario sin id_usuario en el token")
+    id_agente = await _resolver_id_agente_por_usuario(db, id_usuario)
+    if id_agente is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Tu usuario no está vinculado a ningún agente activo. Pedile al administrador que asocie tu cuenta al registro de Agentes."
+        )
+    rows = await _mesa_agente_query(db, id_agente)
+    return {"id_agente": id_agente, "ots": rows}
 
 
 # ── GET /ot/mesa/auditoria ───────────────────────────────────────────────────
@@ -174,17 +251,30 @@ async def mesa_auditoria(
 
     result = await db.execute(text(f"""
         SELECT
-            ot.id_ot, ot.nro_ot, ot.fecha_creacion,
+            ot.id_ot, ot.nro_ot, ot.fecha_creacion, ot.observaciones,
             eot.nombre AS estado_nombre, eot.color AS estado_color,
-            r.id_reclamo, r.nro_reclamo, r.prioridad AS reclamo_prioridad,
-            r.descripcion AS reclamo_descripcion, r.id_subarea,
-            tr.nombre AS tipo_nombre,
-            ot.id_agente, ag.nombre AS agente_nombre, ag.apellido AS agente_apellido
+            r.id_reclamo, r.nro_reclamo,
+            r.prioridad AS reclamo_prioridad,
+            r.descripcion AS reclamo_descripcion,
+            r.id_subarea, s.nombre AS subarea_nombre,
+            r.sla_vencimiento,
+            tr.nombre AS tipo_nombre, tr.sla_dias,
+            ot.id_agente, ag.nombre AS agente_nombre, ag.apellido AS agente_apellido,
+            c.nombre AS ciudadano_nombre, c.apellido AS ciudadano_apellido,
+            ot.id_ot_origen,
+            ot_orig.nro_ot AS ot_origen_nro,
+            ot_orig.observaciones AS ot_origen_obs,
+            ag_orig.apellido AS ot_origen_agente_apellido,
+            ag_orig.nombre AS ot_origen_agente_nombre
         FROM ordenes_trabajo ot
         JOIN estado_ot eot ON eot.id_estado_ot = ot.id_estado
         JOIN reclamos r ON r.id_reclamo = ot.id_reclamo
+        LEFT JOIN ciudadanos c ON c.id_ciudadano = r.id_ciudadano
         LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
+        LEFT JOIN subarea s ON s.id_subarea = r.id_subarea
         LEFT JOIN agentes ag ON ag.id_agente = ot.id_agente
+        LEFT JOIN ordenes_trabajo ot_orig ON ot_orig.id_ot = ot.id_ot_origen
+        LEFT JOIN agentes ag_orig ON ag_orig.id_agente = ot_orig.id_agente
         WHERE ot.activo = TRUE
           AND ot.es_auditoria = TRUE
           AND eot.nombre NOT IN ('Terminada','Cancelada')
@@ -194,6 +284,98 @@ async def mesa_auditoria(
     """), {"id_agente": id_agente})
 
     return [_to_dict(row) for row in result.fetchall()]
+
+
+# ── GET /ot/auditor/me ───────────────────────────────────────────────────────
+
+async def _verificar_es_auditor(db: AsyncSession, id_agente: int) -> bool:
+    r = await db.execute(text("SELECT es_auditor FROM agentes WHERE id_agente = :id AND activo = TRUE"), {"id": id_agente})
+    row = r.fetchone()
+    return bool(row and row.es_auditor)
+
+
+@router.get("/auditor/me")
+async def mesa_auditor_me(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Mesa del auditor logueado. Verifica que el usuario sea agente con es_auditor=TRUE.
+
+    Resuelve via agentes.id_usuario = current_user.id_usuario (mig 28).
+    Aplica filtro de subárea según configuracion_general.auditor_misma_subarea_permitido.
+    """
+    id_usuario = current_user.get("id_usuario")
+    if not id_usuario:
+        raise HTTPException(status_code=422, detail="Usuario sin id_usuario en el token")
+    id_agente = await _resolver_id_agente_por_usuario(db, id_usuario)
+    if id_agente is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Tu usuario no está vinculado a ningún agente activo. Pedile al administrador que asocie tu cuenta."
+        )
+    if not await _verificar_es_auditor(db, id_agente):
+        raise HTTPException(
+            status_code=403,
+            detail="No tenés permisos de auditor. Pedile al administrador que active es_auditor en tu registro de agente."
+        )
+
+    # reusa la lógica de mesa_auditoria
+    cfg = await db.execute(text(
+        "SELECT valor FROM configuracion_general WHERE clave = 'auditor_misma_subarea_permitido'"
+    ))
+    cfg_row = cfg.fetchone()
+    misma_subarea_ok = (cfg_row.valor.lower() == "true") if cfg_row else False
+
+    subarea_filter = ""
+    if not misma_subarea_ok:
+        subarea_filter = """
+            AND (r.id_subarea IS NULL OR r.id_subarea NOT IN (
+                SELECT id_subarea FROM agentes WHERE id_agente = :id_agente
+                UNION
+                SELECT eq.id_subarea FROM equipo_agentes ea
+                JOIN equipos eq ON eq.id_equipo = ea.id_equipo
+                WHERE ea.id_agente = :id_agente AND ea.activo = TRUE
+            ))
+        """
+
+    result = await db.execute(text(f"""
+        SELECT
+            ot.id_ot, ot.nro_ot, ot.fecha_creacion, ot.observaciones,
+            eot.nombre AS estado_nombre, eot.color AS estado_color,
+            r.id_reclamo, r.nro_reclamo,
+            r.prioridad AS reclamo_prioridad,
+            r.descripcion AS reclamo_descripcion,
+            r.id_subarea, s.nombre AS subarea_nombre,
+            r.sla_vencimiento,
+            tr.nombre AS tipo_nombre, tr.sla_dias,
+            ot.id_agente, ag.nombre AS agente_nombre, ag.apellido AS agente_apellido,
+            c.nombre AS ciudadano_nombre, c.apellido AS ciudadano_apellido,
+            ot.id_ot_origen,
+            ot_orig.nro_ot AS ot_origen_nro,
+            ot_orig.observaciones AS ot_origen_obs,
+            ag_orig.apellido AS ot_origen_agente_apellido,
+            ag_orig.nombre AS ot_origen_agente_nombre
+        FROM ordenes_trabajo ot
+        JOIN estado_ot eot ON eot.id_estado_ot = ot.id_estado
+        JOIN reclamos r ON r.id_reclamo = ot.id_reclamo
+        LEFT JOIN ciudadanos c ON c.id_ciudadano = r.id_ciudadano
+        LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
+        LEFT JOIN subarea s ON s.id_subarea = r.id_subarea
+        LEFT JOIN agentes ag ON ag.id_agente = ot.id_agente
+        LEFT JOIN ordenes_trabajo ot_orig ON ot_orig.id_ot = ot.id_ot_origen
+        LEFT JOIN agentes ag_orig ON ag_orig.id_agente = ot_orig.id_agente
+        WHERE ot.activo = TRUE
+          AND ot.es_auditoria = TRUE
+          AND eot.nombre NOT IN ('Terminada','Cancelada')
+          AND (ot.id_agente IS NULL OR ot.id_agente = :id_agente)
+          {subarea_filter}
+        ORDER BY
+            CASE r.prioridad WHEN 'Alta' THEN 1 WHEN 'Media' THEN 2 ELSE 3 END,
+            r.sla_vencimiento ASC NULLS LAST,
+            ot.fecha_creacion ASC
+    """), {"id_agente": id_agente})
+
+    return {"id_agente": id_agente, "ots": [_to_dict(row) for row in result.fetchall()]}
 
 
 # ── GET /ot — listar OTs con filtros ─────────────────────────────────────────
@@ -360,6 +542,83 @@ async def crear_ot(
         await db.rollback()
         logger.error("Error al crear OT: %s", e)
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ── PUT /ot/{id}/reasignar ────────────────────────────────────────────────────
+
+@router.put("/{id_ot}/reasignar")
+async def reasignar_ot(
+    id_ot: int,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Supervisor reasigna una OT activa a otro agente o equipo. Requiere nota."""
+    if current_user.get("nivel_acceso", 99) > 2:
+        raise HTTPException(status_code=403, detail="Solo administrador o supervisor")
+
+    nuevo_id_agente = body.get("id_agente")
+    nuevo_id_equipo = body.get("id_equipo")
+    nota = (body.get("nota") or "").strip()
+
+    if not nuevo_id_agente and not nuevo_id_equipo:
+        raise HTTPException(status_code=422, detail="Se requiere id_agente o id_equipo")
+    if not nota:
+        raise HTTPException(status_code=422, detail="Campo requerido: nota")
+
+    r = await db.execute(text("""
+        SELECT ot.id_reclamo, ot.id_agente, ot.id_equipo,
+               eot.nombre AS estado_actual, eot.es_final,
+               ag.apellido AS ag_apellido, ag.nombre AS ag_nombre,
+               eq.nombre AS eq_nombre
+        FROM ordenes_trabajo ot
+        JOIN estado_ot eot ON eot.id_estado_ot = ot.id_estado
+        LEFT JOIN agentes ag ON ag.id_agente = ot.id_agente
+        LEFT JOIN equipos eq ON eq.id_equipo = ot.id_equipo
+        WHERE ot.id_ot = :id AND ot.activo = TRUE
+    """), {"id": id_ot})
+    ot = r.fetchone()
+    if not ot:
+        raise HTTPException(status_code=404, detail=f"OT {id_ot} no encontrada")
+    if ot.es_final:
+        raise HTTPException(status_code=422, detail=f"OT en estado final ({ot.estado_actual}) no se puede reasignar")
+
+    asignado_antes = (
+        f"agente {ot.ag_apellido}, {ot.ag_nombre}" if ot.id_agente
+        else (f"equipo {ot.eq_nombre}" if ot.id_equipo else "sin asignar")
+    )
+
+    await db.execute(text("""
+        UPDATE ordenes_trabajo
+        SET id_agente = :id_agente,
+            id_equipo = :id_equipo,
+            fecha_modificacion = NOW(),
+            id_usuario_modificacion = :uid
+        WHERE id_ot = :id
+    """), {
+        "id_agente": nuevo_id_agente, "id_equipo": nuevo_id_equipo,
+        "id": id_ot, "uid": current_user["id_usuario"],
+    })
+
+    # nombre nuevo destinatario
+    if nuevo_id_agente:
+        rn = await db.execute(text("SELECT apellido, nombre FROM agentes WHERE id_agente = :id"), {"id": nuevo_id_agente})
+        a = rn.fetchone()
+        asignado_despues = f"agente {a.apellido}, {a.nombre}" if a else f"agente #{nuevo_id_agente}"
+    else:
+        rn = await db.execute(text("SELECT nombre FROM equipos WHERE id_equipo = :id"), {"id": nuevo_id_equipo})
+        e = rn.fetchone()
+        asignado_despues = f"equipo {e.nombre}" if e else f"equipo #{nuevo_id_equipo}"
+
+    await _insertar_historial_reclamo(
+        db, ot.id_reclamo,
+        f"OT reasignada",
+        ot.estado_actual, ot.estado_actual,
+        f"Reasignada de {asignado_antes} → {asignado_despues}. {nota}",
+        current_user["id_usuario"]
+    )
+    await db.commit()
+    return {"ok": True, "id_ot": id_ot, "asignado_a": asignado_despues}
 
 
 # ── PUT /ot/{id}/tomar ────────────────────────────────────────────────────────
