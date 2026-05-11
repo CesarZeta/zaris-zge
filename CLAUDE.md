@@ -939,6 +939,32 @@ Si vas a auditar algo nuevo, elegí el sistema según la entidad. No mezclar.
 #### Sub-fase 3.A — Frontend web-app React ✅ ENTREGADA (2026-05-10)
 Módulo en `web-app/src/modules/agenda/`. Vistas: Timeline (Gantt con grilla horaria 07-20, línea hora actual, conflictos resaltados), Mensual (grilla 6×7), Eventos (tabla con paginación), Conflictos. Modales: Evento, Encargados, Reserva (con buscador BUC propio), Ocupación, Conflicto. Hooks con react-query. Store Zustand para filtros. TypeScript estricto, sin libs nuevas. **Pruebas manuales en navegador en `PRUEBAS_PENDIENTES.md` bloque A (47 casos)**.
 
+#### Verbos HTTP del router agenda_v2 (referencia obligatoria)
+
+No son obvios y mezclan PUT con PATCH. Antes de scriptear un smoke test o codear un cliente nuevo, hacer `grep "@router\." backend/app/api/routes/agenda_v2.py` para confirmar. Mapeo al 2026-05-11:
+
+| Acción | Verbo | Path |
+|---|---|---|
+| Crear evento | POST | `/eventos` |
+| Editar evento (full) | PUT | `/eventos/{id}` |
+| Cancelar evento | **PATCH** | `/eventos/{id}/cancelar` |
+| Eliminar evento (soft) | DELETE | `/eventos/{id}` |
+| Asignar encargado | POST | `/eventos/{id}/encargados` |
+| Quitar encargado | DELETE | `/eventos/{id}/encargados/{id_evento_encargado}` |
+| Crear reserva | POST | `/eventos/{id}/reservas` |
+| Marcar asistió | **PATCH** | `/reservas/{id}/asistio` |
+| Cancelar reserva | **PATCH** | `/reservas/{id}/cancelar` |
+| Crear ocupación | POST | `/ocupaciones` |
+| Editar ocupación | PUT | `/ocupaciones/{id}` |
+| Cancelar ocupación | DELETE | `/ocupaciones/{id}` |
+| Calendario día | GET | `/calendario` (**NO** `/calendario/dia`) |
+| Calendario mes | GET | `/mes` |
+| Conflictos | GET | `/conflictos?resuelto=false` |
+| Resolver conflicto | **PATCH** | `/conflictos/{id}/resolver` |
+| Recurso (agente o equipo) | GET | `/recurso/{tipo_recurso}/{id_recurso}` |
+
+Smoke test reproducible: `smoke_agenda.ps1` en la raíz. Cubre 15 endpoints clave.
+
 #### Sub-fase 3.B — Pendientes UI
 - [ ] Drag & drop sobre la grilla Gantt (mover bloques entre recursos/horarios).
 - [ ] Imagen QR renderizada (hoy solo el código de texto).
@@ -988,3 +1014,56 @@ Documentados como ejemplo de qué pasa cuando se omite la validación:
 - Fase 1: `seed_agenda.py` primera versión usaba `AsyncSession.execute(text(sql_completo_archivo))`. Falló por multi-statement en asyncpg. Se cambió a `raw_connection().driver_connection.execute(sql)` (ver §5).
 
 **Regla operativa:** validar antes de codear ahorra tiempo. Codear primero y corregir después implica reescribir archivos o, peor, dejar inconsistencias.
+
+## 29. Patrones de la web-app React (auth + storage + diagnóstico)
+
+### `localStorage['zaris_session']` tiene **dos shapes** según superficie
+
+La web-app y los módulos vanilla **no comparten** la forma del session storage. Cualquier helper que lea el storage directamente debe soportar ambas o el bug es silencioso (sin token → 401 → redirect a login).
+
+```jsonc
+// web-app/ — zustand/persist con name:'zaris_session'
+{ "state": { "accessToken": "eyJ...", "user": {...} }, "version": 0 }
+
+// frontend/ vanilla — guardado plano
+{ "access_token": "eyJ...", "user": {...} }
+```
+
+Pattern para leer token con fallback (ver `web-app/src/lib/api.ts`):
+
+```ts
+function getToken(): string | null {
+  const raw = localStorage.getItem('zaris_session')
+  if (!raw) return null
+  const parsed = JSON.parse(raw)
+  return parsed?.state?.accessToken ?? parsed?.access_token ?? null
+}
+```
+
+### Diagnóstico de "redirect inesperado a /login" en la web-app
+
+Cuando un usuario logueado hace click en una ruta protegida y termina en `/login`:
+
+1. **PRIMER sospechoso siempre: `web-app/src/lib/api.ts`**
+   - ¿`getToken()` lee la shape correcta? (ver punto anterior)
+   - ¿El handler `if (res.status === 401) { ... window.location.href = '/login' }` está disparando porque la request salió sin Authorization?
+
+2. **Recién después:** AppShell guards, router, CSS. El loop "click → 401 → redirect" se ve idéntico a "el router no respeta auth", pero no es lo mismo.
+
+Caso real: commit `46df578` (2026-05-10). Diagnostiqué CSS/router/AppShell durante 5 turnos cuando el bug eran 2 líneas en `getToken()`.
+
+### Mapeo de rutas hijo en React Router v6
+
+En `web-app/src/app/routes.tsx`, las rutas hijo de un módulo deben ser **XOR** entre `index: true` y `path: string`. Pasar `index: undefined` + `path: undefined` a la vez (cuando se mapea genérico desde un `ModuleRoute`) puede hacer que React Router descarte la ruta silenciosamente y deje solo la primera. Patrón correcto:
+
+```ts
+children: mod.routes.map((r) =>
+  r.index
+    ? { index: true as const, handle: r.handle, element: createElement(r.element) }
+    : { path: r.path,         handle: r.handle, element: createElement(r.element) }
+)
+```
+
+### Smoke tests scriptables del backend
+
+Para verificar la capa API de un módulo nuevo sin esperar a tener UI, escribir un `.ps1` con login + secuencia de requests + asserts. Ejemplo: `smoke_agenda.ps1` cubre 15 casos del Bloque A en <2 segundos. Antes de scriptear, **leer los decoradores `@router.get/post/put/patch/delete` del archivo de rutas reales** — la doc y los hooks del frontend pueden estar desactualizados, el router no.
