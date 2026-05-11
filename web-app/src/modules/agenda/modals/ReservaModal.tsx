@@ -74,8 +74,8 @@ export function ReservaModal({ open, onClose, idEvento }: Props) {
         <h3 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 500, color: 'var(--fg-1)' }}>Nueva reserva</h3>
         <CiudadanoSearch onSelect={(c) => setCid(c)} />
         {cid && (
-          <div style={{ marginTop: 8, padding: 8, background: 'var(--surface-100)', borderRadius: 'var(--radius-md)', fontSize: 13 }}>
-            <strong>{cid.apellido}, {cid.nombre}</strong>
+          <div style={{ marginTop: 6, fontSize: 13, color: 'var(--fg-2)' }}>
+            Seleccionado: <strong>{cid.apellido}, {cid.nombre}</strong>
             {cid.doc_nro && <span style={{ color: 'var(--fg-3)' }}> · DNI {cid.doc_nro}</span>}
           </div>
         )}

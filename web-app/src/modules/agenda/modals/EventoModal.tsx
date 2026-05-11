@@ -40,26 +40,33 @@ export function EventoModal({ open, onClose, idEvento, defaultDate, onCreated }:
   const eliminar = useEliminarEvento()
   const [form, setForm] = useState<EventoCreatePayload>(() => emptyPayload(defaultDate))
 
+  // Reset al abrir o al cambiar el evento editado; NO al cambiar defaultDate
+  // (eso reiniciaba el form pisando lo que el usuario ya habia tipeado/marcado).
   useEffect(() => {
     if (!open) return
-    if (idEvento && detalle.data) {
-      setForm({
-        nombre: detalle.data.nombre,
-        descripcion: detalle.data.descripcion ?? '',
-        id_subarea: detalle.data.id_subarea,
-        fecha: detalle.data.fecha,
-        hora_inicio: detalle.data.hora_inicio.slice(0, 5),
-        hora_fin: detalle.data.hora_fin.slice(0, 5),
-        capacidad_ciudadanos: detalle.data.capacidad_ciudadanos,
-        cantidad_encargados: detalle.data.cantidad_encargados,
-        tipo_qr: detalle.data.tipo_qr,
-        admite_autoservicio: detalle.data.admite_autoservicio,
-        id_municipio: detalle.data.id_municipio,
-      })
-    } else if (!idEvento) {
+    if (!idEvento) {
       setForm(emptyPayload(defaultDate))
     }
-  }, [open, idEvento, detalle.data, defaultDate])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, idEvento])
+
+  // Cuando llega el detalle del evento en edicion, hidratar el form una vez.
+  useEffect(() => {
+    if (!open || !idEvento || !detalle.data) return
+    setForm({
+      nombre: detalle.data.nombre,
+      descripcion: detalle.data.descripcion ?? '',
+      id_subarea: detalle.data.id_subarea,
+      fecha: detalle.data.fecha,
+      hora_inicio: detalle.data.hora_inicio.slice(0, 5),
+      hora_fin: detalle.data.hora_fin.slice(0, 5),
+      capacidad_ciudadanos: detalle.data.capacidad_ciudadanos,
+      cantidad_encargados: detalle.data.cantidad_encargados,
+      tipo_qr: detalle.data.tipo_qr,
+      admite_autoservicio: detalle.data.admite_autoservicio,
+      id_municipio: detalle.data.id_municipio,
+    })
+  }, [open, idEvento, detalle.data])
 
   function update<K extends keyof EventoCreatePayload>(k: K, v: EventoCreatePayload[K]) {
     setForm((f) => ({ ...f, [k]: v }))
