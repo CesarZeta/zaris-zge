@@ -15,8 +15,16 @@ export function CiudadanoSearch({ onSelect, placeholder = 'DNI, CUIL, telefono o
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const reqIdRef = useRef(0)
+  // Tras un pick, setQ() rellena el input con el nombre, lo cual reabriria
+  // el dropdown ("Sin resultados") por el effect debounced. Este flag salta
+  // un ciclo del effect para que la linea "Seleccionado: ..." quede visible.
+  const skipNextRef = useRef(false)
 
   useEffect(() => {
+    if (skipNextRef.current) {
+      skipNextRef.current = false
+      return
+    }
     if (q.trim().length < 2) {
       setResults([]); setOpen(false); return
     }
@@ -76,7 +84,13 @@ export function CiudadanoSearch({ onSelect, placeholder = 'DNI, CUIL, telefono o
           {results.map((c) => (
             <button
               key={c.id_ciudadano}
-              onClick={() => { onSelect(c); setOpen(false); setQ(`${c.apellido ?? ''}, ${c.nombre ?? ''}`.trim()) }}
+              onClick={() => {
+                skipNextRef.current = true
+                onSelect(c)
+                setOpen(false)
+                setResults([])
+                setQ(`${c.apellido ?? ''}, ${c.nombre ?? ''}`.trim())
+              }}
               style={{
                 display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px',
                 background: 'transparent', border: 'none', cursor: 'pointer',
