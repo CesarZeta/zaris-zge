@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Modal } from '../components/Modal'
+import { ConfirmModal } from '../components/ConfirmModal'
 import { Button } from '../../../ui'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { useEventoDetalle, useCrearEvento, useActualizarEvento, useCancelarEvento, useEliminarEvento } from '../hooks/useEventos'
@@ -39,6 +40,7 @@ export function EventoModal({ open, onClose, idEvento, defaultDate, onCreated }:
   const cancelar = useCancelarEvento()
   const eliminar = useEliminarEvento()
   const [form, setForm] = useState<EventoCreatePayload>(() => emptyPayload(defaultDate))
+  const [confirm, setConfirm] = useState<'cancelar' | 'eliminar' | null>(null)
 
   // Reset al abrir o al cambiar el evento editado; NO al cambiar defaultDate
   // (eso reiniciaba el form pisando lo que el usuario ya habia tipeado/marcado).
@@ -92,9 +94,9 @@ export function EventoModal({ open, onClose, idEvento, defaultDate, onCreated }:
     }
   }
 
-  async function onCancel() {
+  async function doCancel() {
     if (!idEvento) return
-    if (!confirm('Cancelar este evento? No cancela reservas automaticamente.')) return
+    setConfirm(null)
     try {
       await cancelar.mutateAsync(idEvento)
       push({ kind: 'success', title: 'Evento cancelado' })
@@ -104,9 +106,9 @@ export function EventoModal({ open, onClose, idEvento, defaultDate, onCreated }:
     }
   }
 
-  async function onDelete() {
+  async function doDelete() {
     if (!idEvento) return
-    if (!confirm('Baja logica del evento? Se podra reactivar manualmente.')) return
+    setConfirm(null)
     try {
       await eliminar.mutateAsync(idEvento)
       push({ kind: 'success', title: 'Evento dado de baja' })
@@ -128,8 +130,8 @@ export function EventoModal({ open, onClose, idEvento, defaultDate, onCreated }:
         <>
           {idEvento != null && (
             <>
-              <Button variant="ghost" onClick={onDelete}>Eliminar</Button>
-              <Button variant="ghost" onClick={onCancel}>Cancelar evento</Button>
+              <Button variant="ghost" onClick={() => setConfirm('eliminar')}>Eliminar</Button>
+              <Button variant="ghost" onClick={() => setConfirm('cancelar')}>Cancelar evento</Button>
             </>
           )}
           <Button variant="ghost" onClick={onClose}>Cerrar</Button>
@@ -172,6 +174,24 @@ export function EventoModal({ open, onClose, idEvento, defaultDate, onCreated }:
           </div>
         </div>
       )}
+      <ConfirmModal
+        open={confirm === 'cancelar'}
+        title="Cancelar evento"
+        message="Cancelar este evento? No cancela reservas automaticamente — el operador debe revisarlas manualmente."
+        confirmLabel="Cancelar evento"
+        danger
+        onConfirm={doCancel}
+        onCancel={() => setConfirm(null)}
+      />
+      <ConfirmModal
+        open={confirm === 'eliminar'}
+        title="Eliminar evento"
+        message="Baja logica del evento? Se podra reactivar manualmente desde la base."
+        confirmLabel="Eliminar"
+        danger
+        onConfirm={doDelete}
+        onCancel={() => setConfirm(null)}
+      />
     </Modal>
   )
 }

@@ -43,27 +43,42 @@ export function ConflictsView() {
       )}
       {data && data.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {data.map((c) => (
-            <Card key={c.id_conflicto} variant="default" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <AlertTriangle size={20} strokeWidth={1.5} style={{ color: c.resuelto ? 'var(--color-success)' : 'var(--color-error)' }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, color: 'var(--fg-1)' }}>
-                  conflicto #{c.id_conflicto} · {c.tipo_recurso} #{c.id_recurso}
+          {data.map((c) => {
+            const oo = c.ocupacion_origen_detalle as { fecha?: string; hora_inicio?: string; hora_fin?: string } | null
+            const oc = c.ocupacion_conflicto_detalle as { fecha?: string; hora_inicio?: string; hora_fin?: string } | null
+            const ocupFecha = oo?.fecha ?? oc?.fecha
+            const ocupRango = oo
+              ? `${oo.hora_inicio?.slice(0, 5)}-${oo.hora_fin?.slice(0, 5)}`
+              : oc
+              ? `${oc.hora_inicio?.slice(0, 5)}-${oc.hora_fin?.slice(0, 5)}`
+              : null
+            return (
+              <Card key={c.id_conflicto} variant="default" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <AlertTriangle size={20} strokeWidth={1.5} style={{ color: c.resuelto ? 'var(--color-success)' : 'var(--color-error)' }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, color: 'var(--fg-1)' }}>
+                    conflicto #{c.id_conflicto} · {c.tipo_recurso} #{c.id_recurso}
+                    {ocupFecha && (
+                      <span style={{ marginLeft: 8, color: 'var(--fg-2)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                        · {ocupFecha}{ocupRango ? ` ${ocupRango}` : ''}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
+                    ocupaciones #{c.id_ocupacion_origen ?? '?'} vs #{c.id_ocupacion_conflicto ?? '?'} ·
+                    detectado {new Date(c.fecha_deteccion).toLocaleString('es-AR')}
+                  </div>
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
-                  ocupaciones #{c.id_ocupacion_origen ?? '?'} vs #{c.id_ocupacion_conflicto ?? '?'} ·
-                  detectado {new Date(c.fecha_deteccion).toLocaleString('es-AR')}
-                </div>
-              </div>
-              <Badge kind={c.resuelto ? 'success' : 'error'}>{c.resuelto ? 'resuelto' : 'pendiente'}</Badge>
-              <button
-                onClick={() => setSel(c)}
-                style={{ background: 'var(--surface-300)', border: 'none', borderRadius: 'var(--radius-md)', padding: '6px 12px', cursor: 'pointer', fontFamily: 'var(--font-display)', fontSize: 13 }}
-              >
-                ver
-              </button>
-            </Card>
-          ))}
+                <Badge kind={c.resuelto ? 'success' : 'error'}>{c.resuelto ? 'resuelto' : 'pendiente'}</Badge>
+                <button
+                  onClick={() => setSel(c)}
+                  style={{ background: 'var(--surface-300)', border: 'none', borderRadius: 'var(--radius-md)', padding: '6px 12px', cursor: 'pointer', fontFamily: 'var(--font-display)', fontSize: 13 }}
+                >
+                  ver
+                </button>
+              </Card>
+            )
+          })}
         </div>
       )}
 

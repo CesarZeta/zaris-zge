@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { CheckCircle, X as XIcon } from 'lucide-react'
 import { Modal } from '../components/Modal'
+import { ConfirmModal } from '../components/ConfirmModal'
 import { CiudadanoSearch } from '../components/CiudadanoSearch'
 import { Button } from '../../../ui'
 import { useEventoDetalle } from '../hooks/useEventos'
@@ -24,6 +25,7 @@ export function ReservaModal({ open, onClose, idEvento }: Props) {
   const [cid, setCid] = useState<CiudadanoMinimo | null>(null)
   const [origen, setOrigen] = useState<OrigenReserva>('backoffice')
   const [qr, setQr] = useState<string | null>(null)
+  const [confirmCancelId, setConfirmCancelId] = useState<number | null>(null)
 
   async function onCrear() {
     if (!idEvento || !cid) return
@@ -46,8 +48,8 @@ export function ReservaModal({ open, onClose, idEvento }: Props) {
     }
   }
 
-  async function onCancelar(id: number) {
-    if (!confirm('Cancelar esta reserva? Libera el cupo.')) return
+  async function doCancelar(id: number) {
+    setConfirmCancelId(null)
     try {
       await cancelar.mutateAsync(id)
       push({ kind: 'success', title: 'Reserva cancelada' })
@@ -119,7 +121,7 @@ export function ReservaModal({ open, onClose, idEvento }: Props) {
                 </button>
               )}
               {r.estado_codigo !== 'cancelada' && (
-                <button onClick={() => onCancelar(r.id_evento_reserva)} aria-label="Cancelar reserva" style={iconBtn}>
+                <button onClick={() => setConfirmCancelId(r.id_evento_reserva)} aria-label="Cancelar reserva" style={iconBtn}>
                   <XIcon size={14} strokeWidth={1.5} />
                 </button>
               )}
@@ -127,6 +129,15 @@ export function ReservaModal({ open, onClose, idEvento }: Props) {
           </div>
         ))}
       </div>
+      <ConfirmModal
+        open={confirmCancelId != null}
+        title="Cancelar reserva"
+        message="Cancelar esta reserva? Libera el cupo del evento."
+        confirmLabel="Cancelar reserva"
+        danger
+        onConfirm={() => confirmCancelId != null && doCancelar(confirmCancelId)}
+        onCancel={() => setConfirmCancelId(null)}
+      />
     </Modal>
   )
 }
