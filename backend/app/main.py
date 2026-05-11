@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.api.routes.auth import router as auth_router
 from app.api.routes.buc import router as buc_router
 from app.api.routes.agenda import router as agenda_router
+from app.api.routes.agenda_v2 import router as agenda_v2_router
 from app.api.routes.admin_tablas import router as admin_tablas_router
 from app.api.routes.reclamos import router as reclamos_router
 from app.api.routes.reclamo_adjuntos import router as reclamo_adjuntos_router
@@ -63,6 +64,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(buc_router)
 app.include_router(agenda_router)
+app.include_router(agenda_v2_router)
 app.include_router(admin_tablas_router, prefix="/api/v1/admin")
 app.include_router(reclamos_router)
 app.include_router(reclamo_adjuntos_router)
