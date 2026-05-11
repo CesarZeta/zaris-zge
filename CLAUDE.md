@@ -38,6 +38,27 @@ Usar `get_current_user` de `app/core/auth.py` en todo endpoint que requiera iden
 - **Iconos:** Lucide React, `stroke-width="1.5"`, `currentColor`.
 - **Backend:** FastAPI (Python 3.10+), SQLAlchemy async + asyncpg, PostgreSQL (Supabase prod / `zaris_dev` local).
 
+### Estado real de cada superficie (verificado 2026-05-10)
+
+No suponer paridad entre superficies. Hoy:
+
+| Módulo | Vanilla `frontend/` | Web-app React `web-app/src/modules/` |
+|---|---|---|
+| Login/Shell | ✓ `login.html`, `index.html` | ✓ `AppShell`, `LoginPage` |
+| BUC ciudadanos | ✓ `ciudadano.html` | ✗ (solo helper de búsqueda inline en módulo agenda) |
+| Reclamos | ✓ `reclamos.html` (todo el flujo) | ✗ |
+| OT (3 mesas) | ✓ `ot_supervisor.html`, `ot_agente.html`, `ot_auditoria.html` | ✗ |
+| Empresas | ✓ `empresa.html` | ✗ |
+| Usuarios | ✓ `usuarios.html` | ✗ |
+| Admin tablas (genérico) | ✓ `admin_tablas.html` | ✗ |
+| Agenda | ✓ `agenda.html` (legacy, ver §27) | ✓ Fase 3.A (timeline + mensual + eventos + conflictos) |
+| Dashboard | ✗ | ✓ stub demo |
+
+**Implicaciones:**
+- Si te piden "imitar el módulo X en web-app", verificar primero si existe ahí. Hoy solo `dashboard` y `agenda` viven en React. El resto es vanilla.
+- Componentes UI compartidos web-app: `src/ui/index.tsx` (Button, IconButton, Pill, Badge, Input, Card, EmptyState, Skeleton, Table). **No hay** modal base, datepicker, dropdown, drawer — se construyen en cada módulo o se promueven al `ui/` cuando son maduros.
+- Helper `src/lib/api.ts` soporta GET/POST/PUT/PATCH/DELETE + opciones `{ params, withHeaders }`. `getWithHeaders` devuelve `{ data, headers }` para leer `X-Total-Count`.
+
 ## 5. Convenciones de Código
 
 - SQL: snake_case.
@@ -52,6 +73,16 @@ Usar `get_current_user` de `app/core/auth.py` en todo endpoint que requiera iden
   - **Legacy `modificado_en`:** `lugares_atencion`, `servicios`, `turnos`, `areas`, y todas las `agenda_*` (`agenda_agente`, `agenda_ausencia`, `agenda_clase`, `agenda_lugar`, `agenda_servicio`).
   - Antes de escribir un UPDATE con `fecha_modificacion = NOW()`, verificar que la tabla tenga esa columna (`information_schema.columns`). Migración 26 falló por esto en `lugares_atencion`.
 - **CORS y headers custom:** cuando un endpoint devuelve un header custom (ej. `X-Total-Count`), agregar también `response.headers["Access-Control-Expose-Headers"] = "NombreHeader"`. Sin esto, navegadores cross-origin lo bloquean. Ejemplo en `GET /buc/ciudadanos/buscar`.
+- **asyncpg + multi-statement SQL (quirk crítico para scripts de seed/migración):** asyncpg **no acepta** múltiples statements en una sentencia preparada. Si pasás un archivo `.sql` con varios `CREATE`/`INSERT`/`ALTER` a `AsyncSession.execute(text(sql))`, falla con `"no se pueden insertar múltiples órdenes en una sentencia preparada"`. Solución verificada en `seed_agenda.py`:
+
+  ```python
+  async with engine.connect() as conn:
+      raw = await conn.get_raw_connection()
+      asyncpg_conn = raw.driver_connection   # conexion asyncpg real
+      await asyncpg_conn.execute(sql)        # acepta scripts multi-statement
+  ```
+
+  Alternativas si no querés tocar la conexión cruda: partir el SQL por `;` en Python (cuidado con BEGIN/COMMIT, comentarios, `$$` de funciones) o usar el cliente `psql` por subprocess. La opción `driver_connection` es la más limpia para correr archivos `.sql` enteros desde Python.
 
 ## 6. URLs del Proyecto
 
@@ -820,3 +851,140 @@ Para `UPDATE`/`DELETE` masivos en prod: snapshot previo en tabla `_backup_<tabla
 
 ### Frontend en otros módulos
 Para sumar adjuntos a otra entidad (ej: OTs), replicar el patrón: nueva tabla `<entidad>_adjuntos` con mismos campos, nuevo bucket si conviene aislar, y reutilizar `app/core/storage.py` (las funciones reciben `path` arbitrario y leen el bucket de settings — extraer a parámetro si se usan múltiples buckets).
+
+## 27. Módulo Agenda — Estado actual (sub-fase 1.A)
+
+### Datos en zaris_dev local al 2026-05-10
+
+**Aplicado solo en local** (no en prod todavía, decisión explícita del usuario). Migraciones 30-34 + `seed_agenda.py`.
+
+#### Migraciones nuevas
+
+| # | Archivo | Qué hace |
+|---|---|---|
+| 30 | `30_agenda_municipios_y_tipo_reclamo.sql` | Crea `municipios` + ALTER `tipo_reclamo` (`duracion_estimada_min INT DEFAULT 60`, `asignacion_a VARCHAR(10) DEFAULT 'agente'` con CHECK in `agente|equipo`) |
+| 31 | `31_agenda_catalogos.sql` | `estado_evento` (codes: `activo`,`finalizado`,`cancelado`) + `estado_reserva` (codes: `reservada`,`asistio`,`cancelada`) |
+| 32 | `32_agenda_eventos_y_reservas.sql` | `eventos` + `evento_encargados` + `evento_reservas` |
+| 33 | `33_agenda_ocupaciones.sql` | `ocupaciones` (tabla única con CHECK que garantiza consistencia por tipo: `ot|evento|turno`) |
+| 34 | `34_agenda_auditoria_y_conflictos.sql` | `conflictos_log` + `agenda_audit_log` |
+
+Todas siguen estándar §10 completo (`activo`, `id_municipio`, `fecha_alta`, `fecha_modificacion`, audit user). PKs explícitas `id_<tabla>`. Timestamps `TIMESTAMPTZ`. Idempotentes (`CREATE TABLE IF NOT EXISTS`, `ON CONFLICT DO NOTHING`).
+
+#### Seeds demo
+- 4 agentes activos en municipio 1 (3 originales + 1 demo "Carlos Demo" agregado por idempotencia).
+- 1 equipo "Equipo Demo Mantenimiento" con 2 agentes vinculados vía `equipo_agentes`.
+- 1 evento "Vacunacion antigripal" — lunes próximo 9:00-12:00, capacidad 20, tipo_qr=`nominal`, autoservicio=TRUE.
+- 2 reservas (los 2 primeros ciudadanos activos).
+- 3 ocupaciones (1 `ot` + 1 `evento` + 1 `turno`).
+
+Comando:
+```powershell
+cd backend
+$env:ENV_FILE=".env.local"; python seed_agenda.py
+```
+
+### Convenciones del módulo
+
+**FKs apuntan a las PKs reales del proyecto:**
+- `eventos.id_subarea` → `subarea.id_subarea`
+- `eventos.id_estado_evento` → `estado_evento.id_estado_evento`
+- `evento_reservas.id_ciudadano` → `ciudadanos.id_ciudadano`
+- `ocupaciones.id_orden_trabajo` → `ordenes_trabajo.id_ot`
+- `evento_encargados.id_recurso` y `ocupaciones.id_recurso` → `agentes.id_agente` o `equipos.id_equipo` (sin FK física porque depende de `tipo_recurso`; validación en backend).
+
+**Tabla única `ocupaciones`** con CHECK `ck_ocupacion_consistencia`: garantiza que solo se popule la FK correspondiente al `tipo` (`ot`→`id_orden_trabajo`, `evento`→`id_evento`, `turno`→`id_ciudadano`). No usar tablas separadas por tipo.
+
+**`equipo_agentes` (no `equipo_usuarios`):** el módulo Agenda usa `equipo_agentes` como pivot equipo↔agente (igual que el módulo OT). `equipo_usuarios` solo existe en local como tabla vacía legacy; en prod no existe.
+
+**`asignacion_a` en `tipo_reclamo`:** define si las OTs del tipo bloquean agenda de `agente` o de `equipo`. `duracion_estimada_min` es lo que bloquea el calendario (distinto de `sla_dias`, que es deadline del reclamo).
+
+### Convención bitmask `dias_semana`
+
+`agenda_agente`, `agenda_lugar`, `agenda_servicio` (y futuras tablas de disponibilidad) usan **`dias_semana SMALLINT`** con bitmask, NO TEXT como `servicios`:
+
+| Día | Bit | Valor |
+|---|---|---|
+| Lunes | 0 | 1 |
+| Martes | 1 | 2 |
+| Miércoles | 2 | 4 |
+| Jueves | 3 | 8 |
+| Viernes | 4 | 16 |
+| Sábado | 5 | 32 |
+| Domingo | 6 | 64 |
+
+Ejemplos: lunes a viernes = `31`, fin de semana = `96`, todos = `127`. CHECK `BETWEEN 0 AND 127` cierra el universo.
+
+**Helper UI obligatorio** cuando se renderice la UI: `frontend/js/dias-semana.js` (vanilla) o `web-app/src/lib/diasSemana.ts` (React) con `serialize(array)→int`, `deserialize(int)→array`, `format(int)→"Lun, Mié, Vie"` (con atajos "Lun a Vie" para 31 y "Todos" para 127).
+
+### Sistemas de auditoría coexistentes
+
+El proyecto tiene **dos sistemas de auditoría con vocabularios distintos** — no unificar sin decisión explícita:
+- `reclamo_historial` (Reclamos + OT): registra cambios de estado y notas custom como filas append-only.
+- `agenda_audit_log` (Agenda 3.A): registra `entidad` ∈ {evento, ocupacion, reserva} con `accion` ∈ {crear, modificar, cancelar, asignar} y diffs JSONB.
+
+Si vas a auditar algo nuevo, elegí el sistema según la entidad. No mezclar.
+
+### Pendientes Agenda
+
+#### Sub-fase 1.B — estandarizar legacy (no iniciada)
+- [ ] Decidir `areas` (legacy, 6 filas, usado por modelo agenda viejo) vs `area` (canónico, usado por Reclamos/OT). Probable: migrar agenda a `area`.
+- [ ] Estandarizar 6 tablas legacy (`agenda_clase`, `agenda_feriado`, `agenda_agente`, `agenda_lugar`, `agenda_servicio`, `agenda_ausencia`): PK `id` → `id_agenda_<x>`, `creado_en`/`modificado_en` → `fecha_alta`/`fecha_modificacion`, `creado_por` → `id_usuario_alta`, agregar `id_usuario_modificacion`, agregar `id_municipio`/`id_subarea`.
+- [ ] Migrar `agenda_agente.id_usuario` → `id_agente` (FK a `agentes`). Idem `agenda_ausencia`.
+- [ ] Reescribir modelo SQLAlchemy de las legacy.
+- [ ] Decidir qué hacer con `turnos`, `agenda_alerta`, `agenda_servicio_agente`, `agenda_lugar_servicio` (vacías en local, no existen en prod). El modelo nuevo (`ocupaciones`+`eventos`+`reservas`) las reemplaza conceptualmente. Probable drop si nada en backend las usa.
+
+#### Sub-fase 2 — Backend API ✅ ENTREGADA (2026-05-10)
+22 endpoints en `backend/app/api/routes/agenda_v2.py`. Servicios en `backend/app/services/agenda.py`. Schemas en `backend/app/schemas/agenda_v2.py`. Convive con router legacy `agenda.py` bajo el mismo prefix `/api/v1/agenda` sin colisión de paths. 13/13 pruebas E2E OK.
+
+#### Sub-fase 3.A — Frontend web-app React ✅ ENTREGADA (2026-05-10)
+Módulo en `web-app/src/modules/agenda/`. Vistas: Timeline (Gantt con grilla horaria 07-20, línea hora actual, conflictos resaltados), Mensual (grilla 6×7), Eventos (tabla con paginación), Conflictos. Modales: Evento, Encargados, Reserva (con buscador BUC propio), Ocupación, Conflicto. Hooks con react-query. Store Zustand para filtros. TypeScript estricto, sin libs nuevas. **Pruebas manuales en navegador en `PRUEBAS_PENDIENTES.md` bloque A (47 casos)**.
+
+#### Sub-fase 3.B — Pendientes UI
+- [ ] Drag & drop sobre la grilla Gantt (mover bloques entre recursos/horarios).
+- [ ] Imagen QR renderizada (hoy solo el código de texto).
+- [ ] Selectores con autocompletar para OT (por nro/descripción) y evento (por nombre) en `OcupacionModal` (hoy son inputs numéricos de ID).
+- [ ] Selector de agente/equipo por nombre en `EventoEncargadosModal` (hoy input numérico).
+- [ ] Filtro por subárea en `AgendaFilters` (backend ya lo acepta).
+- [ ] Navegación por teclado en la grilla (flechas + Enter).
+- [ ] Vista autoservicio público (cuando `evento.admite_autoservicio=TRUE`).
+- [ ] Migrar/dropear `frontend/agenda.html` vanilla legacy (queda inservible si todo migra a React).
+
+#### Aplicar en prod
+- [ ] Replicar migraciones 30-34 + `seed_agenda.py` en Supabase prod cuando esté validada la sub-fase 1.B. Backup pre-aplicación. Hoy prod no tiene ninguna tabla nueva del módulo.
+
+## 28. Recibir prompts armados afuera del proyecto
+
+Cuando el usuario pega un prompt generado fuera de la sesión (ChatGPT, otro Claude, doc compartido), tratarlo como **propuesta**, no como orden de ejecución. Antes de escribir código, validar contra la realidad del proyecto:
+
+### Checklist obligatorio antes de empezar
+
+1. **PKs y nombres de columnas:** los proyectos genéricos asumen `id`, `tabla(id)`. ZARIS usa `id_<tabla>`. Si el prompt dice `REFERENCES ciudadanos(id)`, hay que reescribirlo a `REFERENCES ciudadanos(id_ciudadano)`. Verificar con `information_schema.columns` o consulta a la PK real (ver §24).
+2. **Tablas asumidas vs existentes:** correr `to_regclass('public.<tabla>')` para cada tabla que el prompt referencia. Si dice "si no existe creala mínima", chequear si **realmente** no existe — `ordenes_trabajo` ya existía con 18 columnas, no había que crearla mínima.
+3. **Tablas deprecadas:** prompts viejos usan `equipo_usuarios` que ya no existe en prod (reemplazada por `equipo_agentes`). Revisar §18 + §21 antes de codear.
+4. **Convenciones del proyecto vs prompt:** §10 (campos estándar), §5 (quirks de auditoría), §13 (DS) suelen contradecir lo que un prompt externo asume. Por defecto gana el proyecto, no el prompt.
+5. **Librerías del stack:** verificar `package.json`, `requirements.txt` antes de aceptar imports. Si el prompt dice "usar date-fns" y no está, decidir entre instalarlo o reemplazar por Date nativo. Ej: web-app no tiene date-fns ni dayjs.
+6. **Módulos asumidos:** "imitar el módulo X" requiere que X exista. La web-app React solo tiene `dashboard` y `agenda` — Reclamos/OT/BUC viven en `frontend/` vanilla (§4).
+7. **Decisiones previas pendientes:** si en sesiones anteriores se acordó algo (ej: `dias_semana` bitmask en §27), un prompt externo puede pedir lo contrario (TEXT). Detectarlo y preguntar.
+
+### Cómo responder al prompt
+
+**No empezar a codear directo.** Primero devolver:
+- Lista de conflictos detectados ("el prompt asume X pero la realidad es Y").
+- Decisiones que requieren input del usuario (preguntar con `AskUserQuestion`).
+- Alcance reducido si hay piezas que dependen de algo no resuelto (ej: "esto va a sub-fase B").
+- Recién con eso resuelto, empezar a generar archivos.
+
+Si el prompt es muy largo y el conflicto está al final, vale la pena leer todo antes de empezar, no descubrir el problema en archivo 15 de 25.
+
+### Casos reales de esta sesión (2026-05-10)
+
+Documentados como ejemplo de qué pasa cuando se omite la validación:
+- Fase 1: prompt pedía `disponibilidad_base` + `disponibilidad_excepciones` que duplican `agenda_agente/lugar/servicio` existentes. Hubo que dividir en sub-fase 1.A (lo nuevo) y 1.B (estandarizar legacy).
+- Fase 1: prompt usaba `REFERENCES ciudadanos(id)`, `REFERENCES subarea(id)`, `REFERENCES ordenes_trabajo(id)`. Reales: `id_ciudadano`, `id_subarea`, `id_ot`.
+- Fase 1: prompt pedía `equipo_usuarios`. No existe en prod. Se usó `equipo_agentes`.
+- Fase 1: prompt pedía `dias_semana TEXT`. Decisión previa de la sesión: SMALLINT bitmask. Se mantuvo bitmask.
+- Fase 3.A: prompt decía "imitar Reclamos/BUC en web-app". No existen ahí. Se construyó buscador BUC propio en el módulo agenda.
+- Fase 3.A: prompt suponía `date-fns` instalado. No está. Se usó Date nativo + helpers locales en `lib/dates.ts`.
+- Fase 1: `seed_agenda.py` primera versión usaba `AsyncSession.execute(text(sql_completo_archivo))`. Falló por multi-statement en asyncpg. Se cambió a `raw_connection().driver_connection.execute(sql)` (ver §5).
+
+**Regla operativa:** validar antes de codear ahorra tiempo. Codear primero y corregir después implica reescribir archivos o, peor, dejar inconsistencias.
