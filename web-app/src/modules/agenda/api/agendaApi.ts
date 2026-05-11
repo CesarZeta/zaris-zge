@@ -1,0 +1,136 @@
+import { api } from '../../../lib/api'
+import type {
+  CalendarioDia,
+  CalendarioMes,
+  CiudadanoMinimo,
+  Conflicto,
+  EncargadoCreateResponse,
+  EstadoCatalogo,
+  Evento,
+  EventoCreatePayload,
+  EventoDetalle,
+  EventoEncargado,
+  EventoUpdatePayload,
+  Ocupacion,
+  OcupacionCreatePayload,
+  OcupacionCreated,
+  OcupacionUpdatePayload,
+  RecursoAgenda,
+  Reserva,
+  ReservaCreatePayload,
+  TipoRecurso,
+} from '../types/agenda'
+
+const BASE = '/api/v1/agenda'
+
+// ----- Catalogos -----------------------------------------------------------
+export function getEstadosEvento() {
+  return api.get<EstadoCatalogo[]>(`${BASE}/catalogos/estados-evento`)
+}
+export function getEstadosReserva() {
+  return api.get<EstadoCatalogo[]>(`${BASE}/catalogos/estados-reserva`)
+}
+
+// ----- Eventos -------------------------------------------------------------
+export function listarEventos(params?: {
+  fecha_desde?: string
+  fecha_hasta?: string
+  id_estado_evento?: number
+  id_subarea?: number
+  id_municipio?: number
+  limit?: number
+  offset?: number
+}) {
+  return api.getWithHeaders<Evento[]>(`${BASE}/eventos`, { params })
+}
+export function crearEvento(payload: EventoCreatePayload) {
+  return api.post<Evento>(`${BASE}/eventos`, payload)
+}
+export function detalleEvento(id: number) {
+  return api.get<EventoDetalle>(`${BASE}/eventos/${id}`)
+}
+export function actualizarEvento(id: number, payload: EventoUpdatePayload) {
+  return api.put<Evento>(`${BASE}/eventos/${id}`, payload)
+}
+export function cancelarEvento(id: number) {
+  return api.patch<Evento>(`${BASE}/eventos/${id}/cancelar`)
+}
+export function eliminarEvento(id: number) {
+  return api.delete<void>(`${BASE}/eventos/${id}`)
+}
+
+// ----- Encargados ----------------------------------------------------------
+export function listarEncargados(idEvento: number) {
+  return api.get<EventoEncargado[]>(`${BASE}/eventos/${idEvento}/encargados`)
+}
+export function asignarEncargado(idEvento: number, tipo_recurso: TipoRecurso, id_recurso: number) {
+  return api.post<EncargadoCreateResponse>(`${BASE}/eventos/${idEvento}/encargados`, { tipo_recurso, id_recurso })
+}
+export function desasignarEncargado(idEvento: number, idEncargado: number) {
+  return api.delete<void>(`${BASE}/eventos/${idEvento}/encargados/${idEncargado}`)
+}
+
+// ----- Reservas ------------------------------------------------------------
+export function listarReservas(idEvento: number) {
+  return api.get<Reserva[]>(`${BASE}/eventos/${idEvento}/reservas`)
+}
+export function crearReserva(idEvento: number, payload: ReservaCreatePayload) {
+  return api.post<Reserva>(`${BASE}/eventos/${idEvento}/reservas`, payload)
+}
+export function marcarAsistio(idReserva: number) {
+  return api.patch<Reserva>(`${BASE}/reservas/${idReserva}/asistio`)
+}
+export function cancelarReserva(idReserva: number) {
+  return api.patch<Reserva>(`${BASE}/reservas/${idReserva}/cancelar`)
+}
+
+// ----- Ocupaciones ---------------------------------------------------------
+export function listarOcupaciones(params?: {
+  tipo_recurso?: TipoRecurso
+  id_recurso?: number
+  fecha_desde?: string
+  fecha_hasta?: string
+  tipo?: string
+  id_municipio?: number
+  limit?: number
+  offset?: number
+}) {
+  return api.getWithHeaders<Ocupacion[]>(`${BASE}/ocupaciones`, { params })
+}
+export function crearOcupacion(payload: OcupacionCreatePayload) {
+  return api.post<OcupacionCreated>(`${BASE}/ocupaciones`, payload)
+}
+export function actualizarOcupacion(id: number, payload: OcupacionUpdatePayload) {
+  return api.put<OcupacionCreated>(`${BASE}/ocupaciones/${id}`, payload)
+}
+export function eliminarOcupacion(id: number) {
+  return api.delete<void>(`${BASE}/ocupaciones/${id}`)
+}
+
+// ----- Vista coordinador --------------------------------------------------
+export function getAgendaRecurso(tipo_recurso: TipoRecurso, id_recurso: number, desde: string, hasta: string) {
+  return api.get<RecursoAgenda>(`${BASE}/recurso/${tipo_recurso}/${id_recurso}`, {
+    params: { desde, hasta },
+  })
+}
+export function getCalendarioDia(fecha: string, id_municipio = 1, tipo_recurso: 'agente' | 'equipo' | 'todos' = 'todos') {
+  return api.get<CalendarioDia>(`${BASE}/calendario`, {
+    params: { fecha, id_municipio, tipo_recurso },
+  })
+}
+export function getCalendarioMes(anio: number, mes: number, id_municipio = 1) {
+  return api.get<CalendarioMes>(`${BASE}/mes`, { params: { anio, mes, id_municipio } })
+}
+
+// ----- Conflictos ---------------------------------------------------------
+export function listarConflictos(params?: { resuelto?: boolean; desde?: string; hasta?: string; limit?: number; offset?: number }) {
+  return api.get<Conflicto[]>(`${BASE}/conflictos`, { params })
+}
+export function resolverConflicto(id: number, observaciones?: string) {
+  return api.patch<Conflicto>(`${BASE}/conflictos/${id}/resolver`, { observaciones: observaciones ?? null })
+}
+
+// ----- BUC (busqueda de ciudadanos) ---------------------------------------
+export function buscarCiudadanos(q: string, limit = 10) {
+  return api.get<CiudadanoMinimo[]>(`/api/v1/buc/ciudadanos/buscar`, { params: { q, limit, tipo: 'auto' } })
+}
