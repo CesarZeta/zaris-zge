@@ -161,3 +161,60 @@ Verificado con sesión activa. El breadcrumb `INICIO › <Módulo>` está presen
 ---
 
 *Reporte generado automáticamente por Antigravity el 2026-05-11.*
+
+---
+
+## Addendum 2026-05-11 — Smoke test backend Agenda v2 (local)
+
+**Ejecutado por:** Claude Code (script `smoke_agenda.ps1`) con backend local arriba en :8000 y migraciones 30-34 aplicadas + `seed_agenda.py` corrido.
+
+Subset del Bloque A verificable sin UI (solo lógica de backend + datos). Se ejecutó tras los fixes commit `46df578` (token zustand-persist) y los servicios locales arriba.
+
+### Resultados (15 casos, 15/15 PASS)
+
+| Caso | Endpoint | Resultado |
+|---|---|---|
+| **A.2.3** | `GET /agenda/calendario` | ✅ Devuelve 8 recursos (agentes+equipos) en `2026-05-11` |
+| **A.6** | `POST /agenda/eventos` | ✅ Evento creado con estado `activo`, id devuelto |
+| **A.7.2** | `POST /agenda/eventos/{id}/encargados` | ✅ Encargado asignado, retorna `EncargadoConflictoWarning` |
+| **A.7.3** | `GET /agenda/eventos/{id}/encargados` | ✅ Lista del evento correcto |
+| **A.8.5** | `POST /agenda/eventos/{id}/reservas` | ✅ 3/3 reservas con QR generado (capacidad=3) |
+| **A.8.7** | `POST` 4ta reserva sobre cupo lleno | ✅ Rechazada (`422`) por capacidad agotada |
+| **A.8.9** | `PATCH /agenda/reservas/{id}/cancelar` | ✅ Reserva cancelada |
+| **A.8.10** | `PATCH /agenda/reservas/{id}/asistio` | ✅ Reserva marcada como asistio |
+| **A.9.5** | `POST /agenda/ocupaciones` (turno libre) | ✅ Creada (caso real: detectó 1 conflicto pre-existente del seed) |
+| **A.12.1** | `GET /agenda/eventos` con `X-Total-Count` | ✅ Devuelve 5 eventos + header `X-Total-Count=5` |
+| **A.13.1** | `GET /agenda/conflictos?resuelto=false` | ✅ Devuelve 4 conflictos pendientes |
+| **A.13.5** | `PATCH /agenda/conflictos/{id}/resolver` | ✅ Conflicto pasa a `resuelto=TRUE` |
+| **A.14.2** | `PUT /agenda/eventos/{id}` | ✅ Nombre editado correctamente |
+| **A.14.3** | `PATCH /agenda/eventos/{id}/cancelar` | ✅ Estado pasa a `cancelado` |
+| **A.15.1** | Cualquier endpoint con Bearer inválido | ✅ Retorna 401 |
+
+### Verbos HTTP del router agenda_v2 (referencia)
+
+Aclaración del API real (corregida durante este smoke):
+- **Reservas** usan `PATCH /reservas/{id}/asistio` y `PATCH /reservas/{id}/cancelar` (no PUT con `{codigo}`).
+- **Cancelar evento:** `PATCH /eventos/{id}/cancelar` (no PUT).
+- **Resolver conflicto:** `PATCH /conflictos/{id}/resolver`.
+- **Calendario día:** `GET /agenda/calendario` (no `/calendario/dia`).
+
+### Casos del Bloque A todavía pendientes (UI-only)
+
+Requieren navegador en `localhost:5173` con ojo humano: A.1.x, A.2.1-A.2.5 (excepto A.2.3 ya cubierto), A.3.x, A.4.x, A.5.x, A.7.4-A.7.5 (UI confirm + toast naranja), A.8.1-A.8.4, A.8.6, A.8.8, A.9.1-A.9.4, A.9.6 (verificación visual del borde rojo), A.10.1, A.10.3, A.11.x (vista mensual), A.12.2-A.12.10, A.13.2-A.13.4, A.13.6, A.14.1, A.14.4, A.15.2-A.15.4, A.16.x, A.17.x.
+
+**32 casos UI** quedan pendientes de testing manual en browser. La capa de backend está verde.
+
+### Servicios locales arriba al momento del smoke
+
+| Servicio | URL | Estado |
+|---|---|---|
+| Backend local | http://127.0.0.1:8000 | ✅ |
+| Web-app React | http://localhost:5173 | ✅ |
+| Frontend vanilla | http://localhost:8080 | ✅ |
+
+### Fixes desplegados que habilitaron este smoke
+
+- `46df578` — `getToken()` lee la estructura zustand-persist correcta + children-routes XOR.
+- Servicios locales arrancados con `$env:ENV_FILE=".env.local"` correctamente vía PowerShell (no bash).
+- `seed_agenda.py` reaplicó migraciones 30-34 + datos demo (idempotente).
+
