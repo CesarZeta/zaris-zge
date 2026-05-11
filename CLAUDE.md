@@ -91,7 +91,7 @@ Monorepo: `github.com/CesarZeta/zaris-zge`.
 | Entorno | Servicio | URL / Comando |
 |---|---|---|
 | Prod | API | `https://zaris-api-production-bf0b.up.railway.app` |
-| Prod | Health | `https://zaris-api-production-bf0b.up.railway.app/api/health` |
+| Prod | Health | `/api/health`, `/health`, `/healthz` (los 3 alias del mismo endpoint, devuelven `{status:"ok",...}`) |
 | Prod | Swagger | `https://zaris-api-production-bf0b.up.railway.app/docs` |
 | Prod | Frontend | `https://cesarzeta.github.io/zaris-zge/index.html` |
 | Prod | Login | `https://cesarzeta.github.io/zaris-zge/frontend/login.html` |
@@ -339,6 +339,7 @@ Comandos disponibles en `.claude/commands/` — invocar con `/nombre`:
 | `/audit-shell` | Verifica nav__links, guards, patrones iframe y SCHEMAS |
 | `/push-and-verify` | Ciclo completo: commit → push → deploy → verificación |
 | `/verify-prod-schema` | Preflight: chequea que tablas/columnas existan en prod antes de codear |
+| `/qa-report-template` | Convención y plantilla para reportes QA (`reporte_pruebas_<bloque>_YYYY-MM-DD.md` en raíz) |
 
 ### Scripts de mantenimiento
 
@@ -1067,3 +1068,62 @@ children: mod.routes.map((r) =>
 ### Smoke tests scriptables del backend
 
 Para verificar la capa API de un módulo nuevo sin esperar a tener UI, escribir un `.ps1` con login + secuencia de requests + asserts. Ejemplo: `smoke_agenda.ps1` cubre 15 casos del Bloque A en <2 segundos. Antes de scriptear, **leer los decoradores `@router.get/post/put/patch/delete` del archivo de rutas reales** — la doc y los hooks del frontend pueden estar desactualizados, el router no.
+
+### Forms compartidos creación/edición — `useEffect` que reinicia el state
+
+Modal con dos modos (creación + edición) que sincroniza el form con un detalle remoto y un `defaultDate`/`defaultX` opcional: si todos los inputs externos van al mismo `useEffect`, cualquier cambio del prop "default" mientras el modal está abierto pisa lo que el usuario tipeó.
+
+**Mal (pisa el form):**
+```ts
+useEffect(() => {
+  if (idEvento && detalle.data) setForm(fromDetalle(detalle.data))
+  else if (!idEvento) setForm(emptyPayload(defaultDate))
+}, [open, idEvento, detalle.data, defaultDate])
+```
+
+**Bien (separar reset de hidratación):**
+```ts
+// Reset solo al abrir o cambiar de evento. Sin defaultDate en deps.
+useEffect(() => {
+  if (!open) return
+  if (!idEvento) setForm(emptyPayload(defaultDate))
+}, [open, idEvento])
+
+// Hidratar desde el detalle, una vez disponible.
+useEffect(() => {
+  if (!open || !idEvento || !detalle.data) return
+  setForm(fromDetalle(detalle.data))
+}, [open, idEvento, detalle.data])
+```
+
+Caso real: BUG-A-001 (commit `365b5ea`, 2026-05-11). El usuario marcó autoservicio=ON, fecha del Timeline cambió por una invalidate de query, el effect re-corrió y pisó el checkbox. Backend persistía OK; el bug era que el form mandaba `false` en submit.
+
+### Confirmaciones de acciones destructivas
+
+`window.confirm()` nativo se ve perfecto en navegadores reales pero **agentes QA y headless browsers tienden a auto-aceptarlo sin renderizar nada**, así que no se ve en screenshots ni se puede inspeccionar por DOM. Para apps que se testean con agentes IA (o para mejor UX consistente con el resto del producto), usar un componente `ConfirmModal` explícito — vive en `web-app/src/modules/agenda/components/ConfirmModal.tsx`. Promoverlo a `src/ui/` cuando lo use otro módulo.
+
+### Buscadores con autocompletar — quirk del setQ post-pick
+
+Componentes tipo `CiudadanoSearch` (input + dropdown debounced) tienen un edge case sutil: al hacer pick, lo natural es `setQ(<nombre completo>)` para mostrarlo en el input. Pero eso re-dispara el `useEffect` del debounce (porque `q.length >= 2`), que vuelve a abrir el dropdown con "Buscando…" o "Sin resultados", tapando la línea de confirmación.
+
+Patrón obligatorio para evitarlo:
+
+```ts
+const skipNextRef = useRef(false)
+
+useEffect(() => {
+  if (skipNextRef.current) { skipNextRef.current = false; return }
+  // ... resto del effect debounced
+}, [q])
+
+// En el handler del pick:
+onClick={() => {
+  skipNextRef.current = true
+  onSelect(c)
+  setOpen(false)
+  setResults([])
+  setQ(`${c.apellido}, ${c.nombre}`)
+}}
+```
+
+Implementado en `CiudadanoSearch.tsx`. Replicar en cualquier autocompletar nuevo (OT, evento, agente — pendientes en sub-fase 3.B Agenda).
