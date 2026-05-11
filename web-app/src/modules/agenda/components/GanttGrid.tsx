@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { CalendarioDia, Ocupacion } from '../types/agenda'
 import { GanttResourceRow } from './GanttResourceRow'
 import { mismaFecha, fromIsoDate, horaActualHHMM, timeToMinutes } from '../../../lib/dates'
+import { HOUR_START, HOUR_END, PX_PER_HOUR, ROW_HEIGHT, COL_LEFT_WIDTH } from '../dnd/gridConstants'
 
 interface Props {
   data: CalendarioDia
@@ -9,12 +10,6 @@ interface Props {
   onOcupacionClick: (o: Ocupacion) => void
   onSlotVacioClick: (args: { tipo_recurso: 'agente' | 'equipo'; id_recurso: number; nombre: string | null; hora_inicio: string; hora_fin: string }) => void
 }
-
-const HOUR_START = 7    // 07:00
-const HOUR_END   = 20   // 20:00
-const PX_PER_HOUR = 90
-const ROW_HEIGHT = 56
-const COL_LEFT_WIDTH = 200
 
 export function GanttGrid({ data, conflictoOcupIds, onOcupacionClick, onSlotVacioClick }: Props) {
   const horas = useMemo(() => {

@@ -129,7 +129,7 @@ export interface OcupacionCreatePayload {
 
 export type OcupacionUpdatePayload = Partial<Pick<
   OcupacionCreatePayload,
-  'fecha' | 'hora_inicio' | 'hora_fin' | 'duracion_aplicada_min' | 'rol_en_evento' | 'motivo'
+  'fecha' | 'hora_inicio' | 'hora_fin' | 'duracion_aplicada_min' | 'rol_en_evento' | 'motivo' | 'tipo_recurso' | 'id_recurso'
 >>
 
 export interface OcupacionCreated {

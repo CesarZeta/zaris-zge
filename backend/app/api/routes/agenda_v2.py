@@ -799,6 +799,8 @@ async def actualizar_ocupacion(
     new_f  = cambios.get("fecha",       actual["fecha"])
     new_hi = cambios.get("hora_inicio", actual["hora_inicio"])
     new_hf = cambios.get("hora_fin",    actual["hora_fin"])
+    new_tr = cambios.get("tipo_recurso", actual["tipo_recurso"])
+    new_ir = cambios.get("id_recurso",   actual["id_recurso"])
     if new_hf <= new_hi:
         raise HTTPException(422, "hora_fin debe ser mayor que hora_inicio")
 
@@ -808,14 +810,14 @@ async def actualizar_ocupacion(
     params = {**cambios, "uid": current_user["id_usuario"], "id": id_ocupacion}
     await db.execute(text(f"UPDATE ocupaciones SET {', '.join(sets)} WHERE id_ocupacion = :id"), params)
 
-    # Revalidar conflictos
+    # Revalidar conflictos sobre el recurso nuevo (puede haber cambiado)
     conflictos = await detectar_conflictos(
-        db, actual["tipo_recurso"], actual["id_recurso"], new_f, new_hi, new_hf,
+        db, new_tr, new_ir, new_f, new_hi, new_hf,
         id_ocupacion_excluir=id_ocupacion,
     )
     if conflictos:
         await registrar_conflictos(
-            db, id_ocupacion, actual["tipo_recurso"], actual["id_recurso"],
+            db, id_ocupacion, new_tr, new_ir,
             conflictos, actual["id_municipio"], current_user["id_usuario"],
         )
     nuevo = await _ocupacion_to_out(db, id_ocupacion)

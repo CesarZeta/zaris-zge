@@ -187,6 +187,15 @@ class OcupacionUpdate(BaseModel):
     duracion_aplicada_min: Optional[int] = Field(None, ge=0)
     rol_en_evento: Optional[str] = None
     motivo: Optional[str] = None
+    tipo_recurso: Optional[Literal["agente", "equipo"]] = None
+    id_recurso: Optional[int] = None
+
+    @model_validator(mode="after")
+    def _validar_recurso(self) -> "OcupacionUpdate":
+        # tipo_recurso e id_recurso deben venir juntos o no venir
+        if (self.tipo_recurso is None) != (self.id_recurso is None):
+            raise ValueError("tipo_recurso e id_recurso deben enviarse juntos")
+        return self
 
 
 class OcupacionOut(BaseModel):
