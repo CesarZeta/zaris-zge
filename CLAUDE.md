@@ -966,15 +966,30 @@ No son obvios y mezclan PUT con PATCH. Antes de scriptear un smoke test o codear
 
 Smoke test reproducible: `smoke_agenda.ps1` en la raíz. Cubre 15 endpoints clave.
 
-#### Sub-fase 3.B — Pendientes UI
-- [ ] Drag & drop sobre la grilla Gantt (mover bloques entre recursos/horarios).
+#### Sub-fase 3.B — Drag & Drop sobre la grilla ✅ ENTREGADA (2026-05-11)
+
+Lib: **`@dnd-kit/core@6.3.1`** (PointerSensor, distancia mínima 5px para no confundir click con drag). Implementación en [web-app/src/modules/agenda/dnd/](web-app/src/modules/agenda/dnd/) (types, gridConstants, useDragMutations, useOTsPendientes) + cambios en `GanttOccupationBlock` (useDraggable), `GanttResourceRow` (useDroppable), `TimelineView` (DndContext + DragOverlay + ConfirmModal) y nuevo `PendingOTsPanel` colapsable.
+
+Backend ampliado: `OcupacionUpdate` ahora acepta `tipo_recurso` e `id_recurso` opcionales (juntos) en `PUT /agenda/ocupaciones/{id}`; el handler revalida conflictos contra el recurso nuevo. Sin migración (las columnas ya existían en `ocupaciones`).
+
+Capacidades:
+1. **Mover dentro del mismo recurso:** snap a 15 min, clamp dentro de 07-20, persiste directo sin confirmación.
+2. **Reasignar a otro recurso:** abre `ConfirmModal` con nombre del recurso destino y horario. Cancelar = no llama backend.
+3. **Crear ocupación desde OT pendiente:** drag de OT del `PendingOTsPanel` (lista `GET /ot?estado=Pendiente` filtrada client-side por `id_agente IS NULL && id_equipo IS NULL`) a una fila → modal "Planificar OT" → confirma → `POST /ocupaciones` tipo='ot' con `hora_inicio=09:00`, duración 60min. El usuario ajusta después si quiere.
+
+Pruebas validadas: 9 PASS / 0 FAIL en agente Chrome (T1-T11, ver `reporte_pruebas_3B_2026-05-11.md` si existe). Smoke `smoke_agenda.ps1` 15/15 OK pre y post-cambios.
+
+#### Sub-fase 3.B — Pendientes restantes
+- [ ] **Drag con teclado:** @dnd-kit soporta `KeyboardSensor` nativo (flechas + Enter); activarlo es 3 líneas en `TimelineView`. Pendiente porque el agente Chrome no lo pudo automatizar.
+- [ ] **Drag de OT a hora exacta del drop:** hoy cae a 09:00 fijo. Para soltar en la hora del cursor hace falta computar `event.activatorEvent.clientX` y restar el rect de la fila (requiere `useDndMonitor` o pasar refs).
+- [ ] **Snap visual durante drag:** línea vertical en la posición de snap mientras se arrastra (hoy solo overlay translúcido).
+- [ ] **Bloquear drag de ocupaciones tipo=evento:** las ocupaciones con `rol_en_evento='encargado'` están atadas a `evento_encargados`. Hoy reasignarlas con drag mueve solo la fila de `ocupaciones`, dejando `evento_encargados.id_recurso` desincronizado. Workaround actual: pasa pero la app no lo refleja en el modal de evento. Fix: en `GanttOccupationBlock` deshabilitar `useDraggable` si `ocupacion.tipo === 'evento'`, o coordinar backend.
 - [ ] Imagen QR renderizada (hoy solo el código de texto).
-- [ ] Selectores con autocompletar para OT (por nro/descripción) y evento (por nombre) en `OcupacionModal` (hoy son inputs numéricos de ID).
-- [ ] Selector de agente/equipo por nombre en `EventoEncargadosModal` (hoy input numérico).
+- [ ] Selectores con autocompletar para OT y evento en `OcupacionModal`.
+- [ ] Selector de agente/equipo por nombre en `EventoEncargadosModal`.
 - [ ] Filtro por subárea en `AgendaFilters` (backend ya lo acepta).
-- [ ] Navegación por teclado en la grilla (flechas + Enter).
 - [ ] Vista autoservicio público (cuando `evento.admite_autoservicio=TRUE`).
-- [ ] Migrar/dropear `frontend/agenda.html` vanilla legacy (queda inservible si todo migra a React).
+- [ ] Migrar/dropear `frontend/agenda.html` vanilla legacy.
 
 #### Aplicar en prod
 - [ ] Replicar migraciones 30-34 + `seed_agenda.py` en Supabase prod cuando esté validada la sub-fase 1.B. Backup pre-aplicación. Hoy prod no tiene ninguna tabla nueva del módulo.
@@ -1127,3 +1142,11 @@ onClick={() => {
 ```
 
 Implementado en `CiudadanoSearch.tsx`. Replicar en cualquier autocompletar nuevo (OT, evento, agente — pendientes en sub-fase 3.B Agenda).
+
+### Grillas con `useDroppable` + clicks de fondo
+
+Si una fila de grilla es `useDroppable` (de `@dnd-kit/core`) **y** además quiere capturar clicks "en celda vacía" para crear algo, hay dos trampas que cuestan tiempo:
+
+1. **No poner `onClick` directamente en el wrapper droppable.** El handler de pointerdown de dnd-kit y el bubbling del click pueden cruzarse y dejar la fila "muda" en algunos puntos. Patrón seguro: dentro del wrapper droppable, primer hijo absoluto `<div style="position:absolute; inset:0; zIndex:0; cursor:pointer" onClick={...}>` que actúa como background clickeable. Los bloques (draggables) se posicionan encima con `position:absolute; left/width` propios y captan pointer solo en su área.
+
+2. **No envolver el bloque draggable en un `<div pointerEvents:auto>` que llene el wrapper.** Aunque el padre tenga `pointerEvents:none`, si el hijo `auto` no tiene un `position:absolute` con `left/width` propios, se extiende a toda la fila y se come los clicks del fondo. El draggable tiene que ser el `<button>`/`<div>` final con su `left/width`, sin wrappers intermedios full-bleed. Caso real: BUG-3B-01 en TimelineView Agenda (2026-05-11).
