@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Trash2, UserPlus } from 'lucide-react'
 import { Modal } from '../components/Modal'
+import { ConfirmModal } from '../components/ConfirmModal'
 import { Button } from '../../../ui'
 import { useEventoDetalle } from '../hooks/useEventos'
 import { useAsignarEncargado, useDesasignarEncargado } from '../hooks/useOcupaciones'
@@ -20,6 +21,7 @@ export function EventoEncargadosModal({ open, onClose, idEvento }: Props) {
   const desasignar = useDesasignarEncargado()
   const [tipo, setTipo] = useState<TipoRecurso>('agente')
   const [idRec, setIdRec] = useState<number | ''>('')
+  const [confirmRemoveId, setConfirmRemoveId] = useState<number | null>(null)
 
   async function onAdd() {
     if (!idEvento || !idRec) return
@@ -38,9 +40,9 @@ export function EventoEncargadosModal({ open, onClose, idEvento }: Props) {
     }
   }
 
-  async function onRemove(idEnc: number) {
+  async function doRemove(idEnc: number) {
     if (!idEvento) return
-    if (!confirm('Quitar este encargado y dar de baja su ocupacion?')) return
+    setConfirmRemoveId(null)
     try {
       await desasignar.mutateAsync({ idEvento, idEncargado: idEnc })
       push({ kind: 'success', title: 'Encargado quitado' })
@@ -97,7 +99,7 @@ export function EventoEncargadosModal({ open, onClose, idEvento }: Props) {
               </div>
             </div>
             <button
-              onClick={() => onRemove(enc.id_evento_encargado)}
+              onClick={() => setConfirmRemoveId(enc.id_evento_encargado)}
               aria-label="Quitar encargado"
               style={{
                 background: 'transparent', border: 'none', cursor: 'pointer',
@@ -109,6 +111,15 @@ export function EventoEncargadosModal({ open, onClose, idEvento }: Props) {
           </div>
         ))}
       </div>
+      <ConfirmModal
+        open={confirmRemoveId != null}
+        title="Quitar encargado"
+        message="Quitar este encargado y dar de baja su ocupacion? Esta accion se puede deshacer manualmente."
+        confirmLabel="Quitar"
+        danger
+        onConfirm={() => confirmRemoveId != null && doRemove(confirmRemoveId)}
+        onCancel={() => setConfirmRemoveId(null)}
+      />
     </Modal>
   )
 }

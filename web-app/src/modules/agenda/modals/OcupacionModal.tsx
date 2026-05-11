@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Modal } from '../components/Modal'
+import { ConfirmModal } from '../components/ConfirmModal'
 import { Button } from '../../../ui'
 import { CiudadanoSearch } from '../components/CiudadanoSearch'
 import { useCrearOcupacion, useEliminarOcupacion } from '../hooks/useOcupaciones'
@@ -39,6 +40,7 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
   const eliminar = useEliminarOcupacion()
   const [form, setForm] = useState<OcupacionCreatePayload>(() => emptyOcup(defaults))
   const [ciudadano, setCiudadano] = useState<CiudadanoMinimo | null>(null)
+  const [confirmDel, setConfirmDel] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -76,9 +78,9 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
     }
   }
 
-  async function onDelete() {
+  async function doDelete() {
     if (!ocupacion) return
-    if (!confirm('Dar de baja esta ocupacion?')) return
+    setConfirmDel(false)
     try {
       await eliminar.mutateAsync(ocupacion.id_ocupacion)
       push({ kind: 'success', title: 'Ocupacion dada de baja' })
@@ -98,7 +100,7 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
       width={620}
       footer={
         <>
-          {ocupacion && <Button variant="ghost" onClick={onDelete}>Eliminar</Button>}
+          {ocupacion && <Button variant="ghost" onClick={() => setConfirmDel(true)}>Eliminar</Button>}
           <Button variant="ghost" onClick={onClose}>Cerrar</Button>
           {!ocupacion && <Button variant="accent" onClick={submit}>Crear</Button>}
         </>
@@ -162,6 +164,15 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
           )}
         </div>
       )}
+      <ConfirmModal
+        open={confirmDel}
+        title="Dar de baja ocupacion"
+        message="Dar de baja esta ocupacion? Se libera el slot del recurso en la grilla."
+        confirmLabel="Dar de baja"
+        danger
+        onConfirm={doDelete}
+        onCancel={() => setConfirmDel(false)}
+      />
     </Modal>
   )
 }

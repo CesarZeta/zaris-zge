@@ -75,6 +75,8 @@ app.include_router(activos_router)
 
 # Health check
 @app.get("/api/health", tags=["Health"])
+@app.get("/health",     tags=["Health"])
+@app.get("/healthz",    tags=["Health"])
 async def health_check():
     return {
         "status": "ok",
