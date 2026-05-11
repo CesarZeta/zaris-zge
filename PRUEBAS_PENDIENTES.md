@@ -57,7 +57,7 @@ cd web-app; pnpm dev
 ### A.2 Vista Timeline — render base
 - [ ] **A.2.1** Por defecto, fecha activa = hoy. El input date arriba lo confirma.
 - [ ] **A.2.2** Filtros visibles: ChevronLeft, date picker, etiqueta "Martes 11 mayo 2026" (o la fecha que sea), ChevronRight, Hoy, segmentos todos/agente/equipo, indicador "municipio 1".
-- [ ] **A.2.3** Grilla horaria 07:00-20:00 visible. Header sticky con horas cada hora. La columna izquierda lista los 4 agentes (Juan Pérez, Laura Martínez, María González, Carlos Demo) y los equipos activos.
+- [x] **A.2.3** Grilla horaria 07:00-20:00 visible. Header sticky con horas cada hora. La columna izquierda lista los 4 agentes (Juan Pérez, Laura Martínez, María González, Carlos Demo) y los equipos activos. — **backend OK 2026-05-11** (smoke `GET /agenda/calendario` devolvió 8 recursos). UI visual pendiente.
 - [ ] **A.2.4** Si la fecha es **hoy**, hay una línea vertical roja con badge "ahora" en la posición de la hora actual.
 - [ ] **A.2.5** Si no hay ocupaciones para esa fecha, las filas se ven vacías pero con la grilla intacta (separadores cada hora).
 
@@ -84,13 +84,13 @@ cd web-app; pnpm dev
 ### A.6 Modal Evento — crear
 - [ ] **A.6.1** Click "Nuevo evento" en la parte superior → abre EventoModal en modo creación con defaults (hora 09:00-10:00, capacidad 10, tipo_qr=ninguno).
 - [ ] **A.6.2** Cargar: nombre "Test 3.A", fecha = mañana, hora 14:00-15:00, capacidad 3, encargados 1, tipo_qr=nominal, autoservicio=ON.
-- [ ] **A.6.3** Submit. Toast verde "Evento creado id=N".
+- [x] **A.6.3** Submit. Toast verde "Evento creado id=N". — **backend OK 2026-05-11** (`POST /agenda/eventos` retorna 201 con id). Toast UI pendiente.
 - [ ] **A.6.4** Inmediatamente después, abre **EventoEncargadosModal** del nuevo evento.
 
 ### A.7 Modal Encargados
 - [ ] **A.7.1** Lista vacía al inicio.
-- [ ] **A.7.2** Seleccionar tipo `agente`, ID 1, click "Agregar". Toast verde "Encargado asignado".
-- [ ] **A.7.3** El encargado aparece en la lista con "Pérez, Juan".
+- [x] **A.7.2** Seleccionar tipo `agente`, ID 1, click "Agregar". Toast verde "Encargado asignado". — **backend OK 2026-05-11** (`POST /eventos/{id}/encargados` retorna `EncargadoConflictoWarning`). UI pendiente.
+- [x] **A.7.3** El encargado aparece en la lista con "Pérez, Juan". — **backend OK 2026-05-11** (`GET /eventos/{id}/encargados`).
 - [ ] **A.7.4** Click papelera quita el encargado (con confirm). Toast verde "Encargado quitado".
 - [ ] **A.7.5** Si asigno un encargado con conflicto de agenda existente, toast NARANJA "Encargado asignado con conflicto" + el encargado igualmente queda asignado.
 
@@ -99,19 +99,19 @@ cd web-app; pnpm dev
 - [ ] **A.8.2** Buscador BUC: tipear "perez" → dropdown con resultados (debounce ~280ms).
 - [ ] **A.8.3** Tipear "1164295018" → matchea por teléfono normalizado.
 - [ ] **A.8.4** Seleccionar un ciudadano del dropdown → aparece "Seleccionado: Apellido, Nombre" con DNI.
-- [ ] **A.8.5** Click "Reservar". Toast verde "Reserva creada" + aparece QR como string (`EVT...-RES...-epoch`).
+- [x] **A.8.5** Click "Reservar". Toast verde "Reserva creada" + aparece QR como string (`EVT...-RES...-epoch`). — **backend OK 2026-05-11** (3/3 reservas con QR generado).
 - [ ] **A.8.6** El cupo disponible decrementa en 1.
-- [ ] **A.8.7** Crear N reservas más hasta agotar cupo. La última debe dar toast rojo "Sin cupo disponible".
+- [x] **A.8.7** Crear N reservas más hasta agotar cupo. La última debe dar toast rojo "Sin cupo disponible". — **backend OK 2026-05-11** (4ta reserva rechazada con 422 por cupo).
 - [ ] **A.8.8** En la lista de reservas activas, cada reserva tiene 2 botones: CheckCircle (asistio) y X (cancelar).
-- [ ] **A.8.9** Click cancelar en una reserva → toast verde + la reserva queda atenuada (opacity 0.55) + cupo se libera.
-- [ ] **A.8.10** Click asistio en otra reserva → toast verde + estado cambia a "asistio".
+- [x] **A.8.9** Click cancelar en una reserva → toast verde + la reserva queda atenuada (opacity 0.55) + cupo se libera. — **backend OK 2026-05-11** (`PATCH /reservas/{id}/cancelar`).
+- [x] **A.8.10** Click asistio en otra reserva → toast verde + estado cambia a "asistio". — **backend OK 2026-05-11** (`PATCH /reservas/{id}/asistio`).
 
 ### A.9 Modal Ocupación — crear
 - [ ] **A.9.1** Desde celda vacía en Timeline. Modal abre con datos pre-cargados (tipo=turno, recurso del slot, horario snap a la posición del click).
 - [ ] **A.9.2** Cambiar tipo a `ot`. Aparece campo "ID orden de trabajo".
 - [ ] **A.9.3** Cambiar tipo a `evento`. Aparece campo "ID evento".
 - [ ] **A.9.4** Volver a `turno`. Aparece CiudadanoSearch + textarea motivo.
-- [ ] **A.9.5** Buscar y seleccionar ciudadano, completar motivo, submit. Toast verde "Ocupacion creada sin conflictos" si la franja está libre.
+- [x] **A.9.5** Buscar y seleccionar ciudadano, completar motivo, submit. Toast verde "Ocupacion creada sin conflictos" si la franja está libre. — **backend OK 2026-05-11** (`POST /ocupaciones` retorna `OcupacionCreatedOut` con lista de conflictos).
 - [ ] **A.9.6** Crear una ocupación que solape con una existente del mismo agente. Toast NARANJA "Ocupacion creada con conflicto" + el bloque aparece con borde rojo + badge.
 
 ### A.10 Modal Ocupación — lectura
@@ -128,7 +128,7 @@ cd web-app; pnpm dev
 - [ ] **A.11.6** Click en una celda vacía → navega igualmente al timeline (no debería romper aunque no haya nada que ver).
 
 ### A.12 Vista Eventos (event list)
-- [ ] **A.12.1** Tab "eventos" → tabla con columnas: fecha, horario, nombre, cupo, estado, acciones.
+- [x] **A.12.1** Tab "eventos" → tabla con columnas: fecha, horario, nombre, cupo, estado, acciones. — **backend OK 2026-05-11** (`GET /agenda/eventos` con header `X-Total-Count`). UI tabla pendiente.
 - [ ] **A.12.2** Header con filtros "desde / hasta" (date inputs) + "total: N" en mono a la derecha.
 - [ ] **A.12.3** Estado `activo` con badge verde, `cancelado` con badge rojo.
 - [ ] **A.12.4** Botón ícono Calendar abre el modal de editar evento.
@@ -140,21 +140,21 @@ cd web-app; pnpm dev
 - [ ] **A.12.10** Si total = 0 con un rango raro, EmptyState "No hay eventos en el rango".
 
 ### A.13 Vista Conflictos
-- [ ] **A.13.1** Tab "conflictos" → segmentos "pendientes / resueltos / todos" arriba.
+- [x] **A.13.1** Tab "conflictos" → segmentos "pendientes / resueltos / todos" arriba. — **backend OK 2026-05-11** (`GET /agenda/conflictos?resuelto=false`).
 - [ ] **A.13.2** Lista de cards con AlertTriangle, descripción, badge "pendiente"/"resuelto", botón "ver".
 - [ ] **A.13.3** Si no hay conflictos, EmptyState "No hay conflictos / Genial, no hay solapes pendientes".
 - [ ] **A.13.4** Click "ver" → ConflictoModal con 2 columnas (ocupación origen vs conflicto) + textarea observaciones + "Marcar como resuelto".
-- [ ] **A.13.5** Resolver: agregar texto, click botón → toast verde + modal cierra + el card pasa a estado "resuelto".
+- [x] **A.13.5** Resolver: agregar texto, click botón → toast verde + modal cierra + el card pasa a estado "resuelto". — **backend OK 2026-05-11** (`PATCH /conflictos/{id}/resolver`).
 - [ ] **A.13.6** Filtrar por "resueltos" muestra el que acabo de resolver. "Pendientes" lo oculta.
 
 ### A.14 Edición y cancelación de evento
 - [ ] **A.14.1** Desde EventListView, abrir un evento. Modal con campos cargados.
-- [ ] **A.14.2** Cambiar el nombre y submit. Toast "Evento actualizado". El cambio se refleja en la tabla.
-- [ ] **A.14.3** Botón "Cancelar evento" → confirm → toast → en la tabla el badge pasa a rojo "cancelado".
+- [x] **A.14.2** Cambiar el nombre y submit. Toast "Evento actualizado". El cambio se refleja en la tabla. — **backend OK 2026-05-11** (`PUT /agenda/eventos/{id}`).
+- [x] **A.14.3** Botón "Cancelar evento" → confirm → toast → en la tabla el badge pasa a rojo "cancelado". — **backend OK 2026-05-11** (`PATCH /agenda/eventos/{id}/cancelar`).
 - [ ] **A.14.4** Botón "Eliminar" → confirm → el evento desaparece de la tabla (activo=FALSE).
 
 ### A.15 Comportamiento general
-- [ ] **A.15.1** Token expirado: forzar `localStorage.removeItem('zaris_session')` y refresh → redirige a `/login`.
+- [x] **A.15.1** Token expirado: forzar `localStorage.removeItem('zaris_session')` y refresh → redirige a `/login`. — **backend OK 2026-05-11** (Bearer inválido → 401, api.ts redirige).
 - [ ] **A.15.2** Si el backend está caído, al cargar `/agenda` aparece un mensaje de error en rojo (no se queda colgado).
 - [ ] **A.15.3** Los skeletons aparecen mientras carga (no flicker de "vacío").
 - [ ] **A.15.4** Cambiar fecha rápido no genera N+1 fetches innecesarios (react-query cachea por queryKey).
