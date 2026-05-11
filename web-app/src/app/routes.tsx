@@ -17,12 +17,11 @@ export const router = createBrowserRouter([
       ...modules.map((mod) => ({
         path: mod.id,
         handle: { breadcrumb: mod.label },
-        children: mod.routes.map((r) => ({
-          index:   r.index,
-          path:    r.path,
-          handle:  r.handle,
-          element: createElement(r.element),
-        })),
+        children: mod.routes.map((r) =>
+          r.index
+            ? { index: true as const, handle: r.handle, element: createElement(r.element) }
+            : { path: r.path,        handle: r.handle, element: createElement(r.element) }
+        ),
       })),
     ],
   },
