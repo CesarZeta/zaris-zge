@@ -1,4 +1,5 @@
 import React from 'react'
+import { useDroppable } from '@dnd-kit/core'
 import type { CalendarioRecurso, Ocupacion } from '../types/agenda'
 import { GanttOccupationBlock } from './GanttOccupationBlock'
 import { timeToMinutes } from '../../../lib/dates'
@@ -21,14 +22,17 @@ function _GanttResourceRow({
   const totalMin = (hourEnd - hourStart)
   const width = (totalMin / 60) * pxPerHour
 
-  // Bloques de ausencia (todo el dia => bloque que cubre toda la franja con patron rayado)
+  const { setNodeRef, isOver, active } = useDroppable({
+    id: `row-${recurso.tipo}-${recurso.id_recurso}`,
+    data: { kind: 'row', tipo_recurso: recurso.tipo, id_recurso: recurso.id_recurso },
+  })
+
   const ausencias = recurso.ausencias
 
   function handleBgClick(e: React.MouseEvent<HTMLDivElement>) {
     const rect = e.currentTarget.getBoundingClientRect()
     const x = e.clientX - rect.left
     const minutosDesdeInicio = (x / pxPerHour) * 60 + hourStart
-    // Snap a la hora mas cercana
     const snap = Math.round(minutosDesdeInicio / 30) * 30
     const hi = `${String(Math.floor(snap / 60)).padStart(2, '0')}:${String(snap % 60).padStart(2, '0')}`
     const fin = snap + 60
@@ -36,17 +40,31 @@ function _GanttResourceRow({
     onEmptySlotClick(hi, hf)
   }
 
+  const isDropTarget = isOver && active != null
+
   return (
     <div
+      ref={setNodeRef}
       style={{
         position: 'relative', height: rowHeight, width,
         borderBottom: '1px solid var(--border-primary)',
         background:
           'repeating-linear-gradient(to right, transparent 0, transparent ' + (pxPerHour - 1) + 'px, var(--border-primary) ' + (pxPerHour - 1) + 'px, var(--border-primary) ' + pxPerHour + 'px)',
+        outline: isDropTarget ? '2px dashed var(--zaris-orange)' : 'none',
+        outlineOffset: isDropTarget ? -2 : 0,
+        transition: 'outline-color 120ms',
       }}
-      onClick={handleBgClick}
+      data-row-tipo={recurso.tipo}
+      data-row-id={recurso.id_recurso}
     >
-      {/* Ausencias: bloques rayados de fondo (cubren todo el row si es ausencia de dia entero) */}
+      {/* Layer de fondo clickeable. Va debajo de las ocupaciones (zIndex 0) y
+          captura clicks en celdas vacias para abrir el modal de nueva ocupacion.
+          Necesario porque el droppable wrapper recibe pointerdown de dnd-kit y
+          no siempre dispara click sobre el padre. */}
+      <div
+        onClick={handleBgClick}
+        style={{ position: 'absolute', inset: 0, zIndex: 0, cursor: 'pointer' }}
+      />
       {ausencias.map((au) => (
         <div
           key={au.id_ausencia}
@@ -61,32 +79,28 @@ function _GanttResourceRow({
             position: 'absolute', left: 8, top: 6, fontSize: 11, color: 'var(--zaris-gold)',
             fontFamily: 'var(--font-display)', fontWeight: 500,
           }}>
-            licencia {au.motivo ? ` · ${au.motivo}` : ''}
+            licencia {au.motivo ? ` - ${au.motivo}` : ''}
           </span>
         </div>
       ))}
-      {/* Ocupaciones */}
+      {/* Las ocupaciones se posicionan en absoluto sobre la fila. El <button>
+          dentro de GanttOccupationBlock tiene su propio left/width y captura
+          pointer events solo en su area; el resto de la fila queda libre para
+          que el layer de fondo dispare el click de "nueva ocupacion". */}
       {recurso.ocupaciones.map((o) => {
         const inicio = timeToMinutes(o.hora_inicio.slice(0, 5))
         const fin = timeToMinutes(o.hora_fin.slice(0, 5))
         if (fin <= hourStart || inicio >= hourEnd) return null
         return (
-          <div
+          <GanttOccupationBlock
             key={o.id_ocupacion}
-            onClick={(ev) => ev.stopPropagation()}
-            style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
-          >
-            <div style={{ pointerEvents: 'auto' }}>
-              <GanttOccupationBlock
-                ocupacion={o}
-                hourStart={hourStart}
-                pxPerHour={pxPerHour}
-                rowHeight={rowHeight}
-                enConflicto={conflictoOcupIds.has(o.id_ocupacion)}
-                onClick={() => onBlockClick(o)}
-              />
-            </div>
-          </div>
+            ocupacion={o}
+            hourStart={hourStart}
+            pxPerHour={pxPerHour}
+            rowHeight={rowHeight}
+            enConflicto={conflictoOcupIds.has(o.id_ocupacion)}
+            onClick={() => onBlockClick(o)}
+          />
         )
       })}
     </div>
