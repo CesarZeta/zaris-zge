@@ -234,7 +234,7 @@ async def buscar_o_crear_ciudadano_por_dni(
 
     Defaults para campos NOT NULL no provistos por el form:
       cuil = doc_nro sin formato (sera mejorado cuando un operador complete los datos)
-      sexo = 'otro'
+      sexo = 'OTROS' (uppercase: prod tiene CHECK ciudadanos_sexo_check para HOMBRE|MUJER|OTROS)
       fecha_nac = 1900-01-01 (sentinela visible)
       id_nacionalidad = primer match 'Argentina' o 1
       telefono = '0' si no viene
@@ -272,7 +272,7 @@ async def buscar_o_crear_ciudadano_por_dni(
              activo, ren_chk, email_chk, emp_chk, observaciones,
              fecha_alta, id_municipio)
         VALUES
-            ('DNI', :dni, :cuil, :nombre, :apellido, 'otro', '1900-01-01',
+            ('DNI', :dni, :cuil, :nombre, :apellido, 'OTROS', '1900-01-01',
              :id_nac, :tel, :email,
              TRUE, FALSE, FALSE, FALSE, 'Creado por autoservicio - datos a completar',
              NOW(), :mun)
