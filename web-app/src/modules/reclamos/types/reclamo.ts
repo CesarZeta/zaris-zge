@@ -41,6 +41,8 @@ export interface ReclamoListado {
   fecha_alta: string
   fecha_modificacion: string | null
   id_reclamo_padre: number | null
+  latitud: number | null
+  longitud: number | null
   id_ciudadano: number
   ciudadano_nombre: string | null
   ciudadano_apellido: string | null
