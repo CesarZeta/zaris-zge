@@ -5,6 +5,10 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+# Excepcion: web-app/dist es el build del shell React que GitHub Pages publica
+# (ver .github/workflows/deploy-web-app.yml). Versionado intencional.
+!web-app/dist/
+!web-app/dist/**
 env/
 venv/
 .venv/

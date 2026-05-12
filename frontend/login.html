@@ -219,9 +219,15 @@
         return;
       }
 
+      // Publicamos AMBAS shapes en la misma clave para que tanto los modulos
+      // vanilla (que leen access_token/user planos) como el shell React
+      // (zustand-persist con state.accessToken) funcionen con un solo login.
+      // Ver CLAUDE.md §29 "Shape zaris_session".
       localStorage.setItem('zaris_session', JSON.stringify({
         access_token: data.access_token,
         user: data.user,
+        state: { accessToken: data.access_token, user: data.user },
+        version: 0,
       }));
 
       window.location.href = '../index.html';

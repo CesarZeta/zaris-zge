@@ -1,10 +1,12 @@
 import { createElement } from 'react'
-import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { createHashRouter, Navigate } from 'react-router-dom'
 import { AppShell } from './AppShell'
 import { LoginPage } from './LoginPage'
 import { modules } from '../modules'
 
-export const router = createBrowserRouter([
+// HashRouter porque GitHub Pages no soporta HTML5 routing sin server-side rewrites.
+// URLs quedan tipo `/zaris-zge/web-app/#/agenda/timeline`. Funciona con F5.
+export const router = createHashRouter([
   {
     path: '/login',
     element: createElement(LoginPage),
