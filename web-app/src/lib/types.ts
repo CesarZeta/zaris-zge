@@ -6,6 +6,7 @@ export interface User {
   nombre: string
   email: string
   nivel_acceso: 1 | 2 | 3 | 4
+  modulos_permitidos?: string[]   // CLAUDE.md §30. Opcional para retro-compat con sesiones viejas.
 }
 
 export interface SubNavItem {
@@ -26,7 +27,8 @@ export interface ModuleManifest {
   icon: LucideIcon
   routes: ModuleRoute[]
   navItems?: SubNavItem[]
-  permissions?: string[]
+  permissions?: string[]          // deprecado: usar moduloCodigo
+  moduloCodigo?: string           // CLAUDE.md §30: si esta seteado y el usuario no lo tiene en modulos_permitidos, el modulo se oculta del sidebar.
 }
 
 export interface Notification {

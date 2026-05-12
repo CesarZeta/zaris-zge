@@ -9,7 +9,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.auth import verify_password, create_access_token, get_current_user
+from app.core.auth import (
+    verify_password,
+    create_access_token,
+    get_current_user,
+    modulos_permitidos,
+)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
 
@@ -44,15 +49,23 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
         )
 
     token = create_access_token({"sub": str(user.id_usuario)})
+    modulos = await modulos_permitidos(db, user.id_usuario, user.nivel_acceso)
     user_data = {
         "id_usuario": user.id_usuario,
         "nombre": user.nombre,
         "email": user.email,
         "nivel_acceso": user.nivel_acceso,
+        "modulos_permitidos": modulos,
     }
     return LoginResponse(access_token=token, user=user_data)
 
 
 @router.get("/me")
-async def me(current_user: dict = Depends(get_current_user)):
-    return current_user
+async def me(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    modulos = await modulos_permitidos(
+        db, current_user["id_usuario"], current_user["nivel_acceso"]
+    )
+    return {**current_user, "modulos_permitidos": modulos}

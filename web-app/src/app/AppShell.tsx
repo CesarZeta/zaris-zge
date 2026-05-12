@@ -15,6 +15,7 @@ const isEmbedded = typeof window !== 'undefined' && window.self !== window.top
 
 export function AppShell() {
   const user = useAuthStore((s) => s.user)
+  const refreshSession = useAuthStore((s) => s.refreshSession)
   const openCmdk = useUiStore((s) => s.openCmdk)
   const navigate = useNavigate()
 
@@ -22,6 +23,14 @@ export function AppShell() {
   useEffect(() => {
     if (!user) navigate('/login', { replace: true })
   }, [user, navigate])
+
+  // CLAUDE.md §30: si el user fue persistido antes del feature de permisos,
+  // refrescamos contra /auth/me para traer modulos_permitidos sin re-loguear.
+  useEffect(() => {
+    if (user && !Array.isArray(user.modulos_permitidos)) {
+      void refreshSession()
+    }
+  }, [user, refreshSession])
 
   // Atajo Ctrl+K solo standalone (en iframe el shell vanilla maneja sus atajos)
   useEffect(() => {

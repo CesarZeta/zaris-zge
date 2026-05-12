@@ -31,7 +31,15 @@ export function Sidebar() {
 
       {/* Nav */}
       <nav className={s.nav} aria-label="Navegación principal">
-        {modules.map((mod) => {
+        {modules.filter((mod) => {
+          // CLAUDE.md §30. Si el manifest declara moduloCodigo y el usuario tiene
+          // modulos_permitidos, ocultar si no esta en la lista. Si no hay info,
+          // fail-open (el guard real esta en el backend).
+          if (!mod.moduloCodigo) return true
+          const permitidos = user?.modulos_permitidos
+          if (!Array.isArray(permitidos)) return true
+          return permitidos.includes(mod.moduloCodigo)
+        }).map((mod) => {
           const Icon = mod.icon
           const isActive = location.pathname.startsWith(`/${mod.id}`)
           return (

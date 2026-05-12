@@ -14,6 +14,7 @@ from app.api.routes.agenda import router as agenda_router
 from app.api.routes.agenda_v2 import router as agenda_v2_router
 from app.api.routes.agenda_publico import router as agenda_publico_router
 from app.api.routes.admin_tablas import router as admin_tablas_router
+from app.api.routes.admin_permisos import router as admin_permisos_router
 from app.api.routes.reclamos import router as reclamos_router
 from app.api.routes.reclamo_adjuntos import router as reclamo_adjuntos_router
 from app.api.routes.ordenes_trabajo import router as ot_router
@@ -68,6 +69,10 @@ app.include_router(buc_router)
 app.include_router(agenda_router)
 app.include_router(agenda_v2_router)
 app.include_router(agenda_publico_router)
+# IMPORTANTE: admin_permisos_router debe registrarse ANTES de admin_tablas_router.
+# admin_tablas usa /api/v1/admin/{tabla} y /api/v1/admin/{tabla}/{id}, que sin un
+# orden explicito atrapan rutas como /api/v1/admin/permisos/* como si {tabla}='permisos'.
+app.include_router(admin_permisos_router)
 app.include_router(admin_tablas_router, prefix="/api/v1/admin")
 app.include_router(reclamos_router)
 app.include_router(reclamo_adjuntos_router)
