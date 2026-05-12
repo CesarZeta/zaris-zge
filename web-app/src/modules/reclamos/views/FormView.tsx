@@ -44,7 +44,7 @@ const emptyForm: FormState = {
   observaciones: '', nota_historial: '',
 }
 
-const PRIORIDADES: Prioridad[] = ['Baja', 'Media', 'Alta', 'Crítica']
+const PRIORIDADES: Prioridad[] = ['Baja', 'Media', 'Alta']
 const CANALES: { value: CanalOrigen; label: string }[] = [
   { value: 'web', label: 'Web' },
   { value: 'whatsapp', label: 'WhatsApp' },

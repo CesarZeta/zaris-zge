@@ -9,7 +9,7 @@ const ESTADOS_VALIDOS = [
   'Sin asignar', 'En gestión', 'En espera', 'En auditoría', 'Resuelto', 'Cancelado',
 ] as const
 
-const PRIORIDADES: Prioridad[] = ['Baja', 'Media', 'Alta', 'Crítica']
+const PRIORIDADES: Prioridad[] = ['Baja', 'Media', 'Alta']
 
 export function ListView() {
   const navigate = useNavigate()
