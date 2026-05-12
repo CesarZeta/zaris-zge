@@ -48,7 +48,7 @@ El directorio `web-app/` contiene un **shell React contenedor** (`AppShell` + si
 - **Iconos:** Lucide React (módulos React) o SVG inline (módulos vanilla). `stroke-width="1.5"`, `currentColor`.
 - **Backend:** FastAPI (Python 3.10+), SQLAlchemy async + asyncpg, PostgreSQL (Supabase prod / `zaris_dev` local).
 
-### Estado real de cada módulo (verificado 2026-05-11)
+### Estado real de cada módulo (verificado 2026-05-12)
 
 No suponer paridad entre stacks. Hoy:
 
@@ -56,17 +56,17 @@ No suponer paridad entre stacks. Hoy:
 |---|---|---|---|
 | Login | `login.html` | `LoginPage` (solo en `localhost:5173`) | vanilla |
 | Shell del producto | `index.html` | `AppShell` (solo dev) | vanilla |
-| BUC ciudadanos | `ciudadano.html` | — | vanilla |
-| Reclamos | `reclamos.html` | — | vanilla |
-| OT (3 mesas) | `ot_*.html` | — | vanilla |
-| Empresas | `empresa.html` | — | vanilla |
+| **BUC ciudadanos** | — (borrado 2026-05-12) | **`modules/ciudadanos/`** | **React** (publicado) |
+| **Empresas** | — (borrado 2026-05-12) | **`modules/empresas/`** | **React** (publicado) |
+| **Reclamos** | — (borrado 2026-05-12) | **`modules/reclamos/`** (Fases A + B1+B2 + B3) | **React** (publicado) |
+| OT (3 mesas) | `ot_supervisor.html`, `ot_agente.html`, `ot_auditoria.html` | — | vanilla |
 | Usuarios | `usuarios.html` | — | vanilla |
 | Admin tablas | `admin_tablas.html` | — | vanilla |
 | **Agenda** | — (legacy borrado 2026-05-12) | **`modules/agenda/`** (Fase 3.A + 3.B drag&drop) | **React** (publicado) |
 | Dashboard | — | `modules/dashboard/` (stub demo, solo dev) | ninguno (no enlazado) |
 
 **Implicaciones:**
-- Si te piden "imitar el módulo X en React", verificar primero si existe ahí. Hoy **solo Agenda** está en React en producción. El resto es vanilla.
+- Si te piden "imitar el módulo X en React", verificar primero si existe ahí. Hoy **Agenda, Ciudadanos, Empresas y Reclamos** están en React en producción. OT (3 mesas), Usuarios y Admin Tablas siguen en vanilla.
 - Componentes UI compartidos React: `web-app/src/ui/index.tsx` (Button, IconButton, Pill, Badge, Input, Card, EmptyState, Skeleton, Table). **No hay** modal base, datepicker, dropdown, drawer — se construyen en cada módulo o se promueven a `ui/` cuando son maduros.
 - Helper `web-app/src/lib/api.ts` soporta GET/POST/PUT/PATCH/DELETE + opciones `{ params, withHeaders }`. `getWithHeaders` devuelve `{ data, headers }` para leer `X-Total-Count`.
 
@@ -576,7 +576,7 @@ res.querySelectorAll('.buc-item[data-id]').forEach(el => {
 });
 ```
 
-**Implementado en:** `frontend/reclamos.html` (búsqueda de ciudadano en modal nuevo reclamo).
+**Implementado en:** módulos vanilla legacy. Patrón vigente para cualquier nuevo módulo vanilla que rendere resultados clickeables desde la BUC. Los módulos Reclamos / Ciudadanos / Empresas ya migrados a React resuelven el mismo issue via JSX (sin interpolar HTML), por lo que no aplica ahí.
 
 ## 19. Patrón de Baja Lógica — API y Frontend
 
@@ -802,7 +802,7 @@ Para selectores con muchas opciones (`tipo_reclamo` tiene 282, `ciudadanos` tien
 - **Backend:** endpoint debe aceptar `q` (ILIKE) y `limit`. Ej: `GET /api/v1/reclamos/catalogo/tipos?q=bache&limit=20`.
 - **Click-outside:** cerrar todos los dropdowns al click fuera del `.buc-search`.
 - **XSS:** escapar HTML del nombre con `.replace(/</g,'&lt;')` siempre. Usar `data-id` + event delegation, **nunca** interpolar IDs en `onclick` inline.
-- **Implementado en:** `frontend/reclamos.html` (ciudadanos, tipo de reclamo).
+- **Implementado en (vanilla):** patrón vigente para cualquier módulo vanilla nuevo. La versión React del autocompletar BUC vive en `web-app/src/modules/ciudadanos/components/CiudadanoSearch.tsx` (también usado por Reclamos y Agenda) — misma idea (debounce + dropdown + skipNextRef post-pick, ver §29) pero con JSX en lugar de innerHTML.
 
 ### Drill-down jerárquico inline (sin botón)
 Para listados de tablas padre cuyo dataset cabe en pantalla (ej: ≤ 50 áreas, ≤ 50 subáreas), **mostrar siempre los hijos asociados debajo de cada fila** con sangría e indicador naranja. Sin botón "Ver hijos".
@@ -1409,7 +1409,7 @@ async def modulos_permitidos(db, id_usuario: int, nivel: int) -> list[str]:
 **Shell vanilla (`frontend/js/menu.js`):** al cargar el shell, llamar `/auth/me`, leer `modulos_permitidos`, ocultar `<a class="nav__link">` cuyos `data-modulo` no estén en la lista.
 
 ```html
-<a class="nav__link" href="frontend/reclamos.html" data-modulo="reclamos">Reclamos</a>
+<a class="nav__link" href="web-app/dist/index.html#/reclamos" data-modulo="reclamos">Gestión de reclamos</a>
 ```
 
 ```js
@@ -1438,8 +1438,8 @@ Sin esta validación backend, la restricción UI sería evadible (basta llamar a
 
 | Código | Nombre | min_nivel_acceso | Cubre |
 |---|---|---|---|
-| `reclamos` | Reclamos | 4 | `frontend/reclamos.html` |
-| `padrones` | Padrones | 4 | `frontend/ciudadano.html` + `frontend/empresa.html` |
+| `reclamos` | Reclamos | 4 | módulo React `reclamos` |
+| `padrones` | Padrones | 4 | módulos React `ciudadanos` + `empresas` |
 | `ot_agente` | OT - Agente | 3 | `frontend/ot_agente.html` |
 | `turnos` | Turnos y eventos | 3 | módulo React `agenda` |
 | `ot_supervisor` | OT - Supervisor | 2 | `frontend/ot_supervisor.html` |
@@ -1509,12 +1509,12 @@ Devuelve 403 si el usuario no tiene el módulo. **Hoy no aplicado a endpoints ex
 | Archivo | `var(--z-*)` | `.z-*` | DS nuevo |
 |---|---|---|---|
 | `frontend/usuarios.html` + `usuarios.js` | 0 | 0 | ✅ |
-| `frontend/ciudadano.html` + `ciudadano.js` | 0 | 0 | ✅ |
-| `frontend/empresa.html` + `empresa.js` | 0 | 0 | ✅ |
+| `frontend/ot_supervisor.html`, `ot_agente.html`, `ot_auditoria.html` | 0 | 0 | ✅ |
 | `frontend/js/config.js` + `validaciones.js` | 0 | 0 | ✅ |
 | `frontend/admin_tablas.html` | ~123 | 5 (solo `z-header*` oculto en iframe) | parcial — alias-mapping local `--z-*` → DS. Sin dependencias externas. Deuda cosmética opcional. |
-| `frontend/reclamos.html` | 0 | 5 (solo `z-header*` oculto) | ✅ (clases solo decorativas residuales) |
 | `frontend/login.html`, `welcome.html` | 0 | 0 | ✅ |
+
+> **Nota 2026-05-12:** los HTMLs `ciudadano.html`, `empresa.html`, `reclamos.html` (y sus JS) fueron eliminados al migrar a React (commits `a61ec9d`, `6aa3fdc`, `3e4a532`-`deae0bc`). Las equivalencias de tokens/clases listadas más abajo siguen siendo útiles si en algún momento se reintroduce un módulo vanilla nuevo.
 
 ### Equivalencias usadas en la migración (referencia)
 
