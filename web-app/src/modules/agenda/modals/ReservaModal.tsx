@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { CheckCircle, X as XIcon } from 'lucide-react'
+import { CheckCircle, X as XIcon, QrCode } from 'lucide-react'
 import { Modal } from '../components/Modal'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { CiudadanoSearch } from '../components/CiudadanoSearch'
+import { QRDisplay } from '../components/QRDisplay'
 import { Button } from '../../../ui'
 import { useEventoDetalle } from '../hooks/useEventos'
 import { useReservas, useCrearReserva, useMarcarAsistio, useCancelarReserva } from '../hooks/useReservas'
@@ -26,6 +27,7 @@ export function ReservaModal({ open, onClose, idEvento }: Props) {
   const [origen, setOrigen] = useState<OrigenReserva>('backoffice')
   const [qr, setQr] = useState<string | null>(null)
   const [confirmCancelId, setConfirmCancelId] = useState<number | null>(null)
+  const [qrExpandedId, setQrExpandedId] = useState<number | null>(null)
 
   async function onCrear() {
     if (!idEvento || !cid) return
@@ -90,8 +92,11 @@ export function ReservaModal({ open, onClose, idEvento }: Props) {
           <Button variant="accent" onClick={onCrear} style={{ marginLeft: 'auto' }}>Reservar</Button>
         </div>
         {qr && (
-          <div style={{ marginTop: 10, padding: 8, background: 'rgba(159,187,224,.20)', borderRadius: 'var(--radius-md)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
-            QR generado: {qr}
+          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <QRDisplay value={qr} size={120} />
+            <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>
+              Mostrar este codigo al ingresar al evento para acreditar la reserva.
+            </div>
           </div>
         )}
       </div>
@@ -103,29 +108,47 @@ export function ReservaModal({ open, onClose, idEvento }: Props) {
         )}
         {(reservas.data ?? []).map((r) => (
           <div key={r.id_evento_reserva} style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            display: 'flex', flexDirection: 'column', gap: 8,
             padding: '8px 10px', background: 'var(--surface-200)', borderRadius: 'var(--radius-md)',
             opacity: r.estado_codigo === 'cancelada' ? 0.55 : 1,
           }}>
-            <div>
-              <div style={{ fontSize: 13 }}>
-                <strong>{r.ciudadano_apellido}, {r.ciudadano_nombre}</strong>
-                <span style={{ color: 'var(--fg-3)', marginLeft: 6, fontFamily: 'var(--font-mono)', fontSize: 11 }}>· {r.estado_codigo}</span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: 13 }}>
+                  <strong>{r.ciudadano_apellido}, {r.ciudadano_nombre}</strong>
+                  <span style={{ color: 'var(--fg-3)', marginLeft: 6, fontFamily: 'var(--font-mono)', fontSize: 11 }}>· {r.estado_codigo}</span>
+                </div>
+                {r.qr_codigo && (
+                  <div style={{ fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>{r.qr_codigo}</div>
+                )}
               </div>
-              {r.qr_codigo && <div style={{ fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>{r.qr_codigo}</div>}
+              <div style={{ display: 'flex', gap: 6 }}>
+                {r.qr_codigo && r.estado_codigo !== 'cancelada' && (
+                  <button
+                    onClick={() => setQrExpandedId((cur) => cur === r.id_evento_reserva ? null : r.id_evento_reserva)}
+                    aria-label={qrExpandedId === r.id_evento_reserva ? 'Ocultar QR' : 'Ver QR'}
+                    style={iconBtn}
+                  >
+                    <QrCode size={14} strokeWidth={1.5} />
+                  </button>
+                )}
+                {r.estado_codigo !== 'asistio' && r.estado_codigo !== 'cancelada' && (
+                  <button onClick={() => onAsistio(r.id_evento_reserva)} aria-label="Marcar asistencia" style={iconBtn}>
+                    <CheckCircle size={14} strokeWidth={1.5} />
+                  </button>
+                )}
+                {r.estado_codigo !== 'cancelada' && (
+                  <button onClick={() => setConfirmCancelId(r.id_evento_reserva)} aria-label="Cancelar reserva" style={iconBtn}>
+                    <XIcon size={14} strokeWidth={1.5} />
+                  </button>
+                )}
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {r.estado_codigo !== 'asistio' && r.estado_codigo !== 'cancelada' && (
-                <button onClick={() => onAsistio(r.id_evento_reserva)} aria-label="Marcar asistencia" style={iconBtn}>
-                  <CheckCircle size={14} strokeWidth={1.5} />
-                </button>
-              )}
-              {r.estado_codigo !== 'cancelada' && (
-                <button onClick={() => setConfirmCancelId(r.id_evento_reserva)} aria-label="Cancelar reserva" style={iconBtn}>
-                  <XIcon size={14} strokeWidth={1.5} />
-                </button>
-              )}
-            </div>
+            {qrExpandedId === r.id_evento_reserva && r.qr_codigo && (
+              <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 4 }}>
+                <QRDisplay value={r.qr_codigo} size={140} showText={false} />
+              </div>
+            )}
           </div>
         ))}
       </div>
