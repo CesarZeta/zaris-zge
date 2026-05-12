@@ -80,7 +80,7 @@ export function Overview() {
           <div style={legendTitle}>Estados</div>
           <div style={legendRowStyle}>
             <LegendDot color="#c62828" label="Sin asignar" />
-            <LegendDot color="#ef6c00" label="En gestión" />
+            <LegendDot color="#1f8a65" label="En gestión" />
             <LegendDot color="#f57f17" label="En espera" />
             <LegendDot color="#6a1b9a" label="En auditoría" />
           </div>
