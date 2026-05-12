@@ -835,13 +835,15 @@ Una migración aplicada solo en uno desincroniza los entornos. Si aplicaste en p
 
 ### Antes de aplicar (o de codear backend), verificar el estado real con `execute_sql`
 **No confiar en CLAUDE.md §21 ni en la simetría con local.** Antes de:
-- **Aplicar/re-aplicar una migración:** chequear si la tabla/columna ya existe.
+- **Aplicar/re-aplicar una migración:** chequear si la tabla/columna/seeds ya existen.
 - **Codear un endpoint backend que referencie una columna o filas:** chequear que existan en prod, no solo en local.
+- **Codear un INSERT que omita columnas:** chequear NOT NULL + DEFAULT + CHECK constraints en prod. Lo que local acepta puede explotar en prod.
 
 **Por qué:** la doc queda atrás Y local puede tener cambios manuales sin migración formal. Casos reales:
 - Mig 22 figuraba como pendiente en CLAUDE.md cuando ya estaba aplicada con 1000 activos seedeados (2026-05-09).
 - `agentes.es_auditor` existía en local (cambio manual viejo) pero no en prod. Backend `/ot/auditor/me` referenciaba la columna; en prod habría crasheado (2026-05-10).
 - `agentes` tenía 3 filas en local pero 0 en prod. Las mesas Agente/Auditoría habrían estado inútiles silenciosamente (2026-05-10).
+- **Sesión 2026-05-12 cazó 3 drifts en una sola pasada de E2E:** (a) tablas Agenda con `activo NOT NULL` SIN default en prod (local sí tenía), backend `INSERT` confiaba en default → 500. (b) catálogos `municipios`/`estado_evento`/`estado_reserva` vacíos en prod aunque las migs 30+31 los creaban. (c) `ciudadanos_sexo_check` solo en prod requiere uppercase (`HOMBRE|MUJER|OTROS`), backend insertaba `'otro'` → 500. **Cada uno costó un round-trip de debugging que un `execute_sql` de 5 segundos hubiera evitado.**
 
 **Comandos de verificación:**
 ```sql
@@ -852,17 +854,55 @@ SELECT to_regclass('public.tabla') AS existe,
 -- Columnas que voy a referenciar en backend
 SELECT column_name FROM information_schema.columns
 WHERE table_name='tabla' AND column_name IN ('col1','col2');
+
+-- Defaults y NOT NULL (drift entre local y prod ataca acá)
+SELECT column_name, is_nullable, column_default
+  FROM information_schema.columns
+ WHERE table_name='tabla'
+   AND column_name IN ('activo','col2','col3');
+
+-- CHECKs (valores aceptados)
+SELECT conname, pg_get_constraintdef(oid)
+  FROM pg_constraint
+ WHERE conrelid='tabla'::regclass AND contype='c';
+
+-- Seeds del catálogo
+SELECT COUNT(*) FROM catalogo WHERE activo;
 ```
 
-**Regla operativa:** si codeo backend que dependa de `tabla.columna_nueva`, verifico que exista en prod via `execute_sql` ANTES de pushear. Si no existe, crear migración formal aunque "ya esté en local".
+**Regla operativa:** si codeo backend que dependa de `tabla.columna_nueva`, o que haga un INSERT que omita columnas (confiando en defaults), verifico que TODO el contrato (existencia + defaults + CHECKs + seeds dependientes) coincida en prod via `execute_sql` ANTES de pushear. Si no, crear migración formal aunque "ya esté en local".
 
 ### Backup antes de operaciones destructivas en prod
 Para `UPDATE`/`DELETE` masivos en prod: snapshot previo en tabla `_backup_<tabla>_YYYY_MM_DD`. Permite revert manual sin necesidad de point-in-time recovery.
+
+### Antes de codear un seed, inspeccionar el CSV
+Los CSVs en `Tablas Iniciales/` no son confiables ciegamente:
+- Pueden estar **mal/duplicados**: `agente.csv` era idéntico a `cargo.csv` hasta 2026-05-12 (cargos por área, NO personas). Si el script lo usaba para insertar agentes, hubiera creado basura.
+- Pueden estar **vacíos** o tener columnas distintas a las esperadas.
+- Pueden referenciar IDs legacy que no existen en otros CSVs.
+
+**Antes de escribir el seed, mirar:**
+```bash
+head -3 "Tablas Iniciales/<nombre>.csv"     # columnas reales + sample
+wc -l    "Tablas Iniciales/<nombre>.csv"     # ¿está vacío?
+```
+
+Si los datos no son lo que esperabas, **avisar al usuario inmediatamente** en lugar de improvisar mapeos. Los CSVs reales los conoce el municipio; un placeholder mal hecho es deuda nueva.
 
 ### CSVs y mapping de IDs legacy
 - Los CSVs traen IDs del sistema legacy (ej: `id_area_servicio=6361`) que **no se usan** en la DB nueva. El mapeo es por nombre.
 - Los CSVs pueden tener referencias a IDs huérfanos (ej: `tipo_reclamo.id_area_servicio=7984` que no está en `subarea.csv`). Inferir nombres del contenido de los tipos que las usan, agregar como subáreas extra.
 - `subarea.csv` viene con `id_area=1` genérico. La asignación real de área se hace por **heurística por keyword** sobre el nombre de la subárea (ver `seed_subareas_tipos_csv.py`).
+- **Agentes con cargo huérfano:** si el `id_cargo` legacy no matchea con `cargo.csv` y no hay info real, NO inventar nombre de cargo. Distribuir entre cargos genéricos (id 1-5: Director/Coordinador/Técnico/Administrativo/Operario) via hash determinístico de `apellido||nombre` para que sea reproducible. Patrón usado en sesión 2026-05-12 con 71/84 agentes.
+
+### Idempotencia de seeds — patrón obligatorio
+Todo script de seed debe poder correrse N veces sin duplicar. Patrón mínimo:
+1. **Dedupe sobre lo existente, no por contador**: leer `SELECT key FROM tabla` al inicio y descartar filas del CSV cuya key ya esté en DB. Anti-patrón: `if existing > 0: return` (lo que hace `seed_inicial.py` — se saltea TODO si hay 1 fila, incluso si faltan 499).
+2. **`--confirm-prod` flag** cuando la conexión apunta a Supabase. Default a local.
+3. **`--limite N`** parametrizable. No hardcodear 500/1000 en el código.
+4. **Defaults compatibles con prod**: ver bloque anterior sobre CHECKs y NOT NULL. Pasar **siempre** todos los campos NOT NULL aunque tengan default — el default puede no existir en prod aunque sí en local.
+
+Ejemplos canónicos: `backend/seed_ciudadanos_csv.py` y `backend/seed_agentes_csv.py` (sesión 2026-05-12).
 
 ### Comandos de seed disponibles
 | Script | Tablas | Origen |
@@ -870,6 +910,8 @@ Para `UPDATE`/`DELETE` masivos en prod: snapshot previo en tabla `_backup_<tabla
 | `seed_geo_argentina.py` | provincias, partidos, localidades | hardcoded AR |
 | `seed_subareas_tipos_csv.py` | subarea, tipo_reclamo | `Tablas Iniciales/*.csv` |
 | `seed_activos_local.py` | tipos_activo, activos | `Tablas Iniciales/Activos.csv` |
+| `seed_ciudadanos_csv.py` | ciudadanos | `Tablas Iniciales/ciudadano.csv` |
+| `seed_agentes_csv.py` | agentes | `Tablas Iniciales/agente.csv` + `cargo.csv` |
 | `seed_auth.py` | usuarios | hardcoded dev |
 | `seed_demo.py` / `seed_prod.py` | varios | hardcoded mínimo |
 
@@ -1416,3 +1458,20 @@ Configurado en `vite.config.ts` para GitHub Pages (Pages sirve el repo bajo `/za
 ### Quirk 5: PNG/QR en bundle React — solo render cliente
 
 Lib `qrcode` (~26KB gzipped) sobre `<canvas>`. No agregar deps de QR al backend a menos que se necesite imprimir/firmar. El backend solo genera el string identificador (`EVT<id>-RES<id>-<ts>`) en `services/agenda.py`; el frontend lo renderiza visualmente. Patrón implementado en `web-app/src/modules/agenda/components/QRDisplay.tsx`.
+
+### Quirk 6: usar `node_modules/.bin/vite`, no `npx vite`
+
+`npx vite build` puede descargar una versión distinta a la que tiene fijada el proyecto y eso introduce bugs que el repo no ve. Caso 2026-05-12: `npx vite` bajó vite 8 latest que fallaba con error PostCSS resolviendo `@import url("../fonts/fonts.css")` de `design-system/colors_and_type.css`; `node_modules/.bin/vite` (también 8.0.10) compila sin problema. Diagnóstico costó 10 min hasta detectar que `npx` no usaba el binario local.
+
+**Regla:** siempre `cd web-app && node_modules/.bin/vite build` (o `pnpm build` que también respeta el local). Nunca `npx vite`.
+
+### Quirk 7: favicon + title del scaffold de Vite quedan invisibles hasta que un módulo entra a prod
+
+Cuando se crea un módulo React con `pnpm create vite`, el scaffold deja `<title>web-app</title>` + `<link rel="icon" href="/vite.svg">` (rayo violeta). En desarrollo nadie mira la pestaña — y queda olvidado.
+
+**Antes de pushear un módulo React por primera vez a producción**, verificar `web-app/index.html`:
+- `<title>` debe decir "ZARIS · ..." (no "web-app", "Vite App", "React App").
+- `<link rel="icon">` debe apuntar a `/zaris-favicon.svg` (no `/favicon.svg`, `/vite.svg`).
+- `web-app/public/` solo debe tener `zaris-favicon.svg` (y `icons.svg` si aplica). NO debe haber `favicon.svg` (default Vite) ni `zaris-mark.svg` (variante eliminada del DS en sesión 2026-05-12).
+
+Vite reescribe el `href="/zaris-favicon.svg"` durante el build aplicando `base: '/zaris-zge/web-app/dist/'`, así que funciona en local (`localhost:5173`) y en GH Pages (`/zaris-zge/...`) sin tocar nada.
