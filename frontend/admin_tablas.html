@@ -11,8 +11,17 @@
       var s = window.location.search || '';
       window.location.replace('../index.html?modulo=' + encodeURIComponent(p + s));
     } else {
+      // En iframe: ocultar solo el header interno. Mantener el sidebar
+      // interno de tablas porque es el unico selector para cambiar de
+      // tabla (Areas / Subareas / Tipo Reclamo / etc). El sidebar del
+      // shell vanilla muestra solo 1 item 'maestros' que abre este modulo.
+      // Tambien recalcular alturas: como el .z-header (64px) esta oculto,
+      // el sidebar interno con top:64px/height:calc(100vh-64px) queda
+      // mal posicionado. Lo reajustamos a 0/100vh.
       var st = document.createElement('style');
-      st.textContent = '.z-header{display:none!important}.sidebar{display:none!important}.layout{min-height:100vh!important}';
+      st.textContent = '.z-header{display:none!important}'
+                     + '.layout{min-height:100vh!important}'
+                     + '.sidebar{top:0!important;height:100vh!important}';
       document.head.appendChild(st);
     }
   </script>
