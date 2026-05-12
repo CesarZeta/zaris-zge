@@ -1,10 +1,14 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { useReclamoAdjuntos, useReclamoDetalle } from '../hooks/useReclamos'
 import { useAuthStore } from '../../../stores/auth'
+import { useNotificationsStore } from '../../../stores/notifications'
 import { Badge } from '../components/Badge'
 import { CambiarEstadoModal } from '../components/CambiarEstadoModal'
 import { CancelarReclamoModal } from '../components/CancelarReclamoModal'
+import { UploadAdjuntosPanel } from '../components/UploadAdjuntosPanel'
+import { borrarAdjunto } from '../api/reclamosApi'
 import type { Adjunto, ReclamoDetalle, HistorialItem, OTAsociada, Subreclamo } from '../types/reclamo'
 
 const FUENTE_LABEL: Record<string, string> = {
@@ -137,7 +141,7 @@ export function DetailView() {
 
       <UbicacionSection r={r} />
 
-      <AdjuntosSection idReclamo={r.id_reclamo} />
+      <AdjuntosSection idReclamo={r.id_reclamo} puedeGestionar={accionesVisibles} />
 
       {r.subreclamos.length > 0 && <SubreclamosSection items={r.subreclamos} />}
 
@@ -182,12 +186,31 @@ function UbicacionSection({ r }: { r: ReclamoDetalle }) {
   )
 }
 
-function AdjuntosSection({ idReclamo }: { idReclamo: number }) {
+function AdjuntosSection({ idReclamo, puedeGestionar }: { idReclamo: number; puedeGestionar: boolean }) {
   const adjuntos = useReclamoAdjuntos(idReclamo)
+  const qc = useQueryClient()
+  const push = useNotificationsStore((s) => s.push)
   const [lightbox, setLightbox] = useState<Adjunto | null>(null)
+  const [borrando, setBorrando] = useState<number | null>(null)
+
+  async function handleBorrar(a: Adjunto) {
+    if (!window.confirm(`¿Borrar el adjunto "${a.nombre_archivo}"? Esta acción no se puede deshacer.`)) return
+    setBorrando(a.id_adjunto)
+    try {
+      await borrarAdjunto(idReclamo, a.id_adjunto)
+      push({ kind: 'success', title: 'Adjunto eliminado' })
+      qc.invalidateQueries({ queryKey: ['reclamos', 'adjuntos', idReclamo] })
+    } catch (err) {
+      push({ kind: 'error', title: 'Error al eliminar', body: (err as Error).message })
+    } finally {
+      setBorrando(null)
+    }
+  }
 
   return (
     <ReclamoSection title="Adjuntos">
+      {puedeGestionar && <UploadAdjuntosPanel idReclamo={idReclamo} />}
+
       {adjuntos.isLoading && <div style={{ color: 'var(--fg-3)', fontSize: '0.82rem' }}>Cargando adjuntos...</div>}
       {adjuntos.isError && <div style={{ color: 'var(--color-error)', fontSize: '0.82rem' }}>Error al cargar adjuntos</div>}
       {adjuntos.data && adjuntos.data.length === 0 && (
@@ -196,23 +219,48 @@ function AdjuntosSection({ idReclamo }: { idReclamo: number }) {
       {adjuntos.data && adjuntos.data.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
           {adjuntos.data.map((a) => (
-            <button
+            <div
               key={a.id_adjunto}
-              onClick={() => setLightbox(a)}
               style={{
                 position: 'relative', aspectRatio: '1 / 1', overflow: 'hidden',
                 background: 'var(--surface-200)', border: '1px solid var(--border-primary)',
-                borderRadius: 'var(--radius-md)', cursor: 'zoom-in', padding: 0,
+                borderRadius: 'var(--radius-md)',
               }}
-              title={a.nombre_archivo}
             >
-              <img
-                src={a.url}
-                alt={a.nombre_archivo}
-                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                loading="lazy"
-              />
-            </button>
+              <button
+                onClick={() => setLightbox(a)}
+                style={{
+                  display: 'block', width: '100%', height: '100%', padding: 0,
+                  background: 'transparent', border: 'none', cursor: 'zoom-in',
+                }}
+                title={a.nombre_archivo}
+              >
+                <img
+                  src={a.url}
+                  alt={a.nombre_archivo}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  loading="lazy"
+                />
+              </button>
+              {puedeGestionar && (
+                <button
+                  type="button"
+                  onClick={() => handleBorrar(a)}
+                  disabled={borrando === a.id_adjunto}
+                  aria-label="Eliminar adjunto"
+                  style={{
+                    position: 'absolute', top: 6, right: 6,
+                    width: 26, height: 26, borderRadius: '50%',
+                    background: 'rgba(0,0,0,0.6)', color: 'white',
+                    border: 'none', cursor: borrando === a.id_adjunto ? 'wait' : 'pointer',
+                    fontSize: 14, lineHeight: 1,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  {borrando === a.id_adjunto ? '…' : '×'}
+                </button>
+              )}
+            </div>
           ))}
         </div>
       )}

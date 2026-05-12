@@ -4,6 +4,8 @@ import { useNotificationsStore } from '../../../stores/notifications'
 import { CiudadanoSearch } from '../../agenda/components/CiudadanoSearch'
 import type { CiudadanoMinimo } from '../../agenda/types/agenda'
 import { TipoReclamoPicker } from '../components/TipoReclamoPicker'
+import { MapaPicker } from '../components/MapaPicker'
+import { GeocodingSearch } from '../components/GeocodingSearch'
 import {
   useCrearReclamo,
   useEditarReclamo,
@@ -19,6 +21,8 @@ import type {
 
 type Modo = 'new' | 'edit'
 
+type FuenteGeo = 'pin_manual' | 'geocoding_osm' | 'gps_dispositivo' | 'activo_referenciado'
+
 interface FormState {
   // Identidad
   ciudadano: CiudadanoMinimo | null
@@ -30,6 +34,10 @@ interface FormState {
   prioridad: Prioridad
   canal_origen: CanalOrigen | ''
   direccion: string
+  // Geo
+  latitud: number | null
+  longitud: number | null
+  fuente_geolocalizacion: FuenteGeo | null
   descripcion: string
   observaciones: string
   // Modo edit: nota libre para historial (solo si no estamos en Sin asignar)
@@ -40,7 +48,9 @@ const emptyForm: FormState = {
   ciudadano: null, id_ciudadano: null,
   tipo: null, id_tipo_reclamo: null,
   prioridad: 'Media', canal_origen: '',
-  direccion: '', descripcion: '',
+  direccion: '',
+  latitud: null, longitud: null, fuente_geolocalizacion: null,
+  descripcion: '',
   observaciones: '', nota_historial: '',
 }
 
@@ -112,6 +122,9 @@ export function FormView() {
       prioridad: r.prioridad ?? 'Media',
       canal_origen: (r.canal_origen as CanalOrigen | null) ?? '',
       direccion: r.direccion ?? r.domicilio_reclamo ?? '',
+      latitud: r.latitud ?? null,
+      longitud: r.longitud ?? null,
+      fuente_geolocalizacion: (r.fuente_geolocalizacion as FuenteGeo | null) ?? null,
       descripcion: r.descripcion ?? '',
       observaciones: r.observaciones ?? '',
       nota_historial: '',
@@ -142,6 +155,11 @@ export function FormView() {
       direccion: form.direccion.trim() || null,
       observaciones: form.observaciones.trim() || null,
       canal_origen: form.canal_origen || null,
+      latitud: form.latitud,
+      longitud: form.longitud,
+      fuente_geolocalizacion: form.latitud != null && form.longitud != null
+        ? (form.fuente_geolocalizacion ?? 'pin_manual')
+        : null,
     }
     return { ok: true, data }
   }
@@ -178,6 +196,11 @@ export function FormView() {
       direccion: form.direccion.trim() || null,
       observaciones: form.observaciones.trim() || null,
       canal_origen: form.canal_origen || null,
+      latitud: form.latitud,
+      longitud: form.longitud,
+      fuente_geolocalizacion: form.latitud != null && form.longitud != null
+        ? (form.fuente_geolocalizacion ?? 'pin_manual')
+        : null,
     }
     return { ok: true, data }
   }
@@ -340,10 +363,42 @@ export function FormView() {
           </Section>
         )}
 
-        {/* Ubicacion minima (B1 sin mapa/geo, solo texto) */}
+        {/* Ubicacion: mapa + buscador OSM + direccion texto */}
         {fullEdit && (
-          <Section title="Ubicación (texto)">
-            <Field label="Dirección" hint="En Fase C agregaremos el mapa con pin y geocoding OSM.">
+          <Section title="Ubicación">
+            <Field
+              label="Buscar dirección"
+              hint="Tipeá una calle y elegí una sugerencia. También podés hacer clic en el mapa o arrastrar el pin."
+            >
+              <GeocodingSearch
+                onPick={(r) => {
+                  if (r.lat == null || r.lon == null) return
+                  setForm((p) => ({
+                    ...p,
+                    latitud: r.lat,
+                    longitud: r.lon,
+                    fuente_geolocalizacion: 'geocoding_osm',
+                    direccion: r.display_name ?? p.direccion,
+                  }))
+                }}
+              />
+            </Field>
+
+            <MapaPicker
+              lat={form.latitud}
+              lon={form.longitud}
+              onChange={(la, lo, fuente) => {
+                setForm((p) => ({ ...p, latitud: la, longitud: lo, fuente_geolocalizacion: fuente }))
+              }}
+              height={320}
+            />
+
+            <Field
+              label="Dirección"
+              hint={form.latitud != null && form.longitud != null
+                ? `Coordenadas: ${form.latitud.toFixed(6)}, ${form.longitud.toFixed(6)}${form.fuente_geolocalizacion ? ` · ${form.fuente_geolocalizacion}` : ''}`
+                : 'Sin coordenadas. Buscá o tocá el mapa para fijar un punto.'}
+            >
               <input
                 value={form.direccion}
                 onChange={(e) => setField('direccion', e.target.value)}
@@ -352,6 +407,16 @@ export function FormView() {
                 style={inputStyle(false)}
               />
             </Field>
+
+            {form.latitud != null && form.longitud != null && (
+              <button
+                type="button"
+                onClick={() => setForm((p) => ({ ...p, latitud: null, longitud: null, fuente_geolocalizacion: null }))}
+                style={btnXsGhost}
+              >
+                Quitar pin
+              </button>
+            )}
           </Section>
         )}
 
