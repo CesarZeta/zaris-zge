@@ -4,10 +4,10 @@
 
 - **Login:** `POST /api/v1/auth/login` — body `{ email, password }` → `{ access_token, token_type, user }`. Vigencia: 24 h.
 - **Me:** `GET /api/v1/auth/me` — usuario autenticado actual.
-- **Storage:** `localStorage` clave `zaris_session` (objeto `{ access_token, user }`). Todos los módulos leen de ahí.
-- **Requests:** header `Authorization: Bearer <token>` en todo endpoint protegido. El helper `src/lib/api.ts` lo hace automáticamente.
-- **Guard React:** `AppShell` redirige a `/login` sin sesión. No crear login por módulo.
-- **Guard vanilla:** verificar `localStorage.getItem('zaris_session')` al inicio; si no existe, redirigir al login.
+- **Storage:** `localStorage` clave `zaris_session` — un solo objeto que mantiene **dos shapes en la misma key**: el plano `{ access_token, user }` que leen los módulos vanilla, y `{ state: { accessToken, user }, version: 0 }` que escribe `zustand/persist` en los módulos React. Tanto `frontend/login.html` como el storage custom de `web-app/src/stores/auth.ts` mantienen ambas formas sincronizadas. Detalle en §29.
+- **Requests:** header `Authorization: Bearer <token>` en todo endpoint protegido. En módulos React, `web-app/src/lib/api.ts` lo hace automáticamente leyendo `state.accessToken ?? access_token`. En módulos vanilla, cada módulo lo agrega manualmente.
+- **Guard módulos vanilla:** verificar `localStorage.getItem('zaris_session')` al inicio; si no existe, redirigir al login del shell vanilla.
+- **Guard módulos React:** `AppShell` redirige a `/login` (interno del shell React) si no hay sesión — útil solo en `localhost:5173` standalone. En producción, el módulo React vive en iframe del shell vanilla, que ya garantizó sesión antes de cargarlo.
 - **Hashing:** `bcrypt` 5.x directo — `bcrypt.hashpw(password.encode(), bcrypt.gensalt())`. No usar `passlib` (incompatible con bcrypt 4.x+ en Python 3.14+).
 - **Seed local:** `cd backend && $env:ENV_FILE=".env.local"; python seed_auth.py`. Password dev: `123456`.
 - **Prohibido:** endpoints de auth por módulo, passwords en texto plano.
@@ -28,36 +28,45 @@ Usar `get_current_user` de `app/core/auth.py` en todo endpoint que requiera iden
 
 ## 4. Stack Tecnológico
 
-| Superficie | Stack | Directorio |
-|---|---|---|
-| Web app (shell React) | React 18 + TS + Vite + React Router v7 + Zustand | `web-app/` |
-| Módulos legacy | HTML / JS / CSS | `frontend/` |
+**ZARIS tiene UN SOLO shell de aplicación: el shell vanilla** (`index.html` + `frontend/`). Es el contenedor principal del producto: sidebar de navegación, topbar con usuario, iframe central donde se cargan módulos. Todo lo que ve el usuario en producción vive dentro de este shell.
 
-- **Tipografía web-app:** Space Grotesk + Fraunces + JetBrains Mono. Fuentes en `web-app/src/assets/fonts/`, tokens en `src/styles/tokens.css`.
-- **Tipografía vanilla:** Google Fonts — Inter + JetBrains Mono.
-- **Iconos:** Lucide React, `stroke-width="1.5"`, `currentColor`.
+Los módulos que ese shell carga pueden estar implementados en dos stacks:
+
+| Stack del módulo | Directorio | Cuándo usarlo |
+|---|---|---|
+| **Vanilla** (HTML/JS/CSS) | `frontend/<modulo>.html` | Módulos legacy y módulos simples nuevos |
+| **React** (build de Vite) | `web-app/src/modules/<modulo>/` | Módulos nuevos complejos (forms con estado, DnD, timeline interactivo) |
+
+El directorio `web-app/` contiene un **shell React contenedor** (`AppShell` + sidebar + topbar propios) que **solo se usa en desarrollo local** (`localhost:5173`) para iterar módulos React sin tener que levantar el shell vanilla. **En producción, ese AppShell se auto-oculta** (regla §14) y el módulo React vive embebido en el iframe del shell vanilla. **No hay dos shells en producción** — hay uno solo (vanilla) que carga módulos de distintos stacks.
+
+> Si en algún momento te encontrás pensando "el shell React debería tener su propio sidebar/topbar/notificaciones en prod", **estás equivocado**. Esa función es del shell vanilla. El AppShell del shell React es andamiaje de desarrollo, no UI de producción.
+
+- **Tipografía módulo React:** Space Grotesk + Fraunces + JetBrains Mono. Fuentes en `web-app/src/assets/fonts/`, tokens en `src/styles/tokens.css`.
+- **Tipografía módulo vanilla:** Google Fonts — Inter + JetBrains Mono.
+- **Iconos:** Lucide React (módulos React) o SVG inline (módulos vanilla). `stroke-width="1.5"`, `currentColor`.
 - **Backend:** FastAPI (Python 3.10+), SQLAlchemy async + asyncpg, PostgreSQL (Supabase prod / `zaris_dev` local).
 
-### Estado real de cada superficie (verificado 2026-05-10)
+### Estado real de cada módulo (verificado 2026-05-11)
 
-No suponer paridad entre superficies. Hoy:
+No suponer paridad entre stacks. Hoy:
 
-| Módulo | Vanilla `frontend/` | Web-app React `web-app/src/modules/` |
-|---|---|---|
-| Login/Shell | ✓ `login.html`, `index.html` | ✓ `AppShell`, `LoginPage` |
-| BUC ciudadanos | ✓ `ciudadano.html` | ✗ (solo helper de búsqueda inline en módulo agenda) |
-| Reclamos | ✓ `reclamos.html` (todo el flujo) | ✗ |
-| OT (3 mesas) | ✓ `ot_supervisor.html`, `ot_agente.html`, `ot_auditoria.html` | ✗ |
-| Empresas | ✓ `empresa.html` | ✗ |
-| Usuarios | ✓ `usuarios.html` | ✗ |
-| Admin tablas (genérico) | ✓ `admin_tablas.html` | ✗ |
-| Agenda | ✓ `agenda.html` (legacy, ver §27) | ✓ Fase 3.A (timeline + mensual + eventos + conflictos) |
-| Dashboard | ✗ | ✓ stub demo |
+| Módulo | Vanilla (`frontend/`) | React (`web-app/src/modules/`) | Producción carga |
+|---|---|---|---|
+| Login | `login.html` | `LoginPage` (solo en `localhost:5173`) | vanilla |
+| Shell del producto | `index.html` | `AppShell` (solo dev) | vanilla |
+| BUC ciudadanos | `ciudadano.html` | — | vanilla |
+| Reclamos | `reclamos.html` | — | vanilla |
+| OT (3 mesas) | `ot_*.html` | — | vanilla |
+| Empresas | `empresa.html` | — | vanilla |
+| Usuarios | `usuarios.html` | — | vanilla |
+| Admin tablas | `admin_tablas.html` | — | vanilla |
+| **Agenda** | `agenda.html` (legacy, dropea cuando se valide React) | **`modules/agenda/`** (Fase 3.A + 3.B drag&drop) | **React** (publicado) |
+| Dashboard | — | `modules/dashboard/` (stub demo, solo dev) | ninguno (no enlazado) |
 
 **Implicaciones:**
-- Si te piden "imitar el módulo X en web-app", verificar primero si existe ahí. Hoy solo `dashboard` y `agenda` viven en React. El resto es vanilla.
-- Componentes UI compartidos web-app: `src/ui/index.tsx` (Button, IconButton, Pill, Badge, Input, Card, EmptyState, Skeleton, Table). **No hay** modal base, datepicker, dropdown, drawer — se construyen en cada módulo o se promueven al `ui/` cuando son maduros.
-- Helper `src/lib/api.ts` soporta GET/POST/PUT/PATCH/DELETE + opciones `{ params, withHeaders }`. `getWithHeaders` devuelve `{ data, headers }` para leer `X-Total-Count`.
+- Si te piden "imitar el módulo X en React", verificar primero si existe ahí. Hoy **solo Agenda** está en React en producción. El resto es vanilla.
+- Componentes UI compartidos React: `web-app/src/ui/index.tsx` (Button, IconButton, Pill, Badge, Input, Card, EmptyState, Skeleton, Table). **No hay** modal base, datepicker, dropdown, drawer — se construyen en cada módulo o se promueven a `ui/` cuando son maduros.
+- Helper `web-app/src/lib/api.ts` soporta GET/POST/PUT/PATCH/DELETE + opciones `{ params, withHeaders }`. `getWithHeaders` devuelve `{ data, headers }` para leer `X-Total-Count`.
 
 ## 5. Convenciones de Código
 
@@ -93,11 +102,12 @@ Monorepo: `github.com/CesarZeta/zaris-zge`.
 | Prod | API | `https://zaris-api-production-bf0b.up.railway.app` |
 | Prod | Health | `/api/health`, `/health`, `/healthz` (los 3 alias del mismo endpoint, devuelven `{status:"ok",...}`) |
 | Prod | Swagger | `https://zaris-api-production-bf0b.up.railway.app/docs` |
-| Prod | Frontend | `https://cesarzeta.github.io/zaris-zge/index.html` |
-| Prod | Login | `https://cesarzeta.github.io/zaris-zge/frontend/login.html` |
+| Prod | Shell del producto (entrada) | `https://cesarzeta.github.io/zaris-zge/index.html` |
+| Prod | Login del shell | `https://cesarzeta.github.io/zaris-zge/frontend/login.html` |
+| Prod | Bundle React (embebido en iframe) | `https://cesarzeta.github.io/zaris-zge/web-app/dist/index.html#/<modulo>/<ruta>` — accedés vía links del shell, no directamente |
 | Local | API | `http://127.0.0.1:8000` — `$env:ENV_FILE=".env.local"; uvicorn app.main:app --host 127.0.0.1 --port 8000` (desde `backend/`) |
-| Local | Web app | `http://localhost:5173` — `cd web-app && pnpm dev` |
-| Local | Frontend | `http://localhost:8080` — `python -m http.server 8080` (raíz del repo) |
+| Local | Shell React standalone (solo dev) | `http://localhost:5173` — `cd web-app && pnpm dev`. Muestra AppShell con sidebar+topbar propios para iterar módulos React sin levantar el shell vanilla. |
+| Local | Shell del producto + módulos vanilla | `http://localhost:8080` — `python -m http.server 8080` (raíz del repo) |
 | Local | DB | `postgresql://postgres:145236@127.0.0.1:5432/zaris_dev` |
 
 ## 7. Workflow de Desarrollo
@@ -141,12 +151,34 @@ Tablas con horario de atención (`equipos`, `servicios`, etc.) deben incluir:
 | `hora_inicio` | `TIME` | `09:00` |
 | `hora_fin` | `TIME` | `16:00` |
 
-## 12. Agregar Módulo al Shell React
+## 12. Agregar un módulo React al producto
 
-1. Crear `web-app/src/modules/<nombre>/`.
-2. Crear `index.ts` exportando un `ModuleManifest` (ver `src/lib/types.ts`).
-3. Importar el manifest en `web-app/src/modules/index.ts`.
-4. El sidebar y el router lo leen automáticamente — cero cambios al shell.
+Los módulos React viven en `web-app/src/modules/<nombre>/`. Se publican como build estático de Vite a GitHub Pages y el shell vanilla los carga en su iframe. **Antes de empezar leer §4 y §14** para entender el contexto.
+
+### Crear el módulo
+
+1. `web-app/src/modules/<nombre>/index.ts` exporta un `ModuleManifest` (ver `web-app/src/lib/types.ts`).
+2. Importar el manifest en `web-app/src/modules/index.ts` (array `modules`).
+3. El AppShell del shell React contenedor (solo visible en `localhost:5173` durante desarrollo) lee el array y lo agrega al sidebar y al router. Esto **NO** afecta producción.
+4. Para que el módulo sea accesible en producción, agregar un `<a class="nav__link" href="web-app/dist/index.html#/<nombre>/<ruta>">` en `index.html` (raíz, dentro del `nav__group` correspondiente).
+
+### Cómo se publica a producción
+
+- **Build:** `pnpm build` en `web-app/` genera `web-app/dist/` con assets que apuntan a `/zaris-zge/web-app/dist/` (configurado en `web-app/vite.config.ts` con `base`).
+- **GitHub Pages:** sirve el repo entero desde la raíz; `web-app/dist/index.html` queda accesible en `https://cesarzeta.github.io/zaris-zge/web-app/dist/index.html`.
+- **Workflow automático:** `.github/workflows/deploy-web-app.yml` rebuildea `web-app/dist/` y commitea el resultado en cada push a main que toque `web-app/**`.
+- **Primer deploy:** ya está commiteado (`web-app/dist/` versionado, ver `.gitignore` con excepción explícita).
+
+### Reglas que un módulo React DEBE respetar
+
+- **Router:** `createHashRouter` (no `createBrowserRouter`). GitHub Pages no soporta HTML5 routing sin server-side rewrites; el F5 sobre `/agenda/timeline` daría 404. Las URLs quedan `…/web-app/dist/index.html#/agenda/timeline`.
+- **API base:** leer de `import.meta.env.VITE_API_BASE`. Variables:
+  - `web-app/.env.development` → `http://127.0.0.1:8000`
+  - `web-app/.env.production` → URL Railway prod
+- **Sesión:** usar `useAuthStore` (`web-app/src/stores/auth.ts`) que ya implementa `dualShapeStorage` (mantiene `zaris_session` con `access_token` plano + `state.accessToken`, ver §29).
+- **Iframe:** el `AppShell` ya detecta `window.self !== window.top` y se auto-oculta. **No agregar UI propia de navegación** (sidebar, topbar, notificaciones globales) al shell React — esa UI vive en el shell vanilla (`index.html` + `frontend/css/menu.css`).
+- **Comunicación con el shell vanilla:** `window.parent?.shellNavigate?.('frontend/<otro-modulo>.html')` para mover el iframe a otro módulo desde el código React.
+- **Estilos:** usar tokens del DS (`var(--zaris-orange)`, `var(--fg-1)`, etc.) en lugar de colores hardcodeados — el shell vanilla los inyecta vía `design-system/colors_and_type.css` y el shell React los importa también (`web-app/src/styles/tokens.css`).
 
 ## 13. Design System Visual — Obligatorio
 
@@ -200,32 +232,54 @@ La ruta depende de dónde vive el archivo:
 - Formal (splash, login): `../design-system/assets/zaris-mark.svg`.
 - **Prohibido:** emoji en la UI del producto.
 
-## 14. Shell Vanilla — Navegación y Módulos en Iframe
+## 14. Shell del producto — iframe único, sidebar y topbar exclusivos del shell
 
-El shell (`index.html`) carga los módulos dentro de un `<iframe id="module-frame">`. El sidebar y topbar siempre permanecen visibles.
+El shell del producto (`index.html` raíz) carga TODOS los módulos dentro de un `<iframe id="module-frame">`. El sidebar y el topbar siempre permanecen visibles y son responsabilidad EXCLUSIVA del shell. **Esta regla aplica por igual a módulos vanilla y a módulos React** — no hay excepciones.
 
-### Navegar desde dentro del iframe
-```js
-// Desde cualquier módulo cargado en el iframe:
-(window.parent.shellNavigate || function(){ window.location='../index.html'; })('frontend/mi-modulo.html');
-```
-Usar este patrón en breadcrumbs, botones "← Inicio" y cualquier enlace de navegación inter-módulo.
+### Regla universal: ocultar navegación propia cuando `window.self !== window.top`
 
-### Ocultar header Y sidebar propios cuando se carga en el iframe
+Si el módulo (de cualquier stack) tiene su propio header, sidebar o topbar interno, **debe** ocultarlos al detectar que corre en iframe. Garantiza que el usuario nunca ve doble navegación.
 
-Todo módulo que tenga su propio header (`.z-header`) o sidebar interno (`.sidebar`) **debe** ocultarlos al correr dentro del iframe del shell, para evitar duplicación de navegación.
-
-Agregar en `<head>` de todo HTML de módulo, **antes** de los CSS:
+**Módulos vanilla** — agregar en `<head>` del HTML, **antes** de los CSS:
 
 ```html
-<!-- Módulos sin sidebar propio (mayoría): -->
+<!-- Sin sidebar propio (mayoría): -->
 <script>if (window.self !== window.top) { var s = document.createElement('style'); s.textContent = '.z-header{display:none!important}'; document.head.appendChild(s); }</script>
 
-<!-- Módulos CON sidebar propio (ej: admin_tablas.html): -->
+<!-- CON sidebar propio (ej. admin_tablas.html): -->
 <script>if (window.self !== window.top) { var s = document.createElement('style'); s.textContent = '.z-header{display:none!important}.sidebar{display:none!important}.layout{min-height:100vh!important}'; document.head.appendChild(s); }</script>
 ```
 
-**Regla:** nunca mostrar navegación propia del módulo cuando `window.self !== window.top`. El shell es el único responsable de la navegación lateral.
+**Módulos React (shell React contenedor)** — el `AppShell` (`web-app/src/app/AppShell.tsx`) detecta el iframe al montar y renderiza solo `<Outlet>` + `<Notifications>`, sin sidebar/topbar/CommandMenu:
+
+```ts
+const isEmbedded = typeof window !== 'undefined' && window.self !== window.top
+// ...
+if (isEmbedded) {
+  return (
+    <main className={s.embeddedContent}>
+      <Outlet />
+      <Notifications />
+    </main>
+  )
+}
+// modo standalone (solo dev local en localhost:5173): renderiza sidebar+topbar+contenido
+```
+
+**Regla operativa al pensar un nuevo componente:** si pensaste "esto va al topbar/sidebar del shell React", PARÁ. Si va a vivir embebido, el topbar/sidebar son del shell vanilla. El componente va a `index.html` y `frontend/css/menu.css`. El shell React solo lo replica para que el módulo se vea coherente en `localhost:5173` durante desarrollo.
+
+### Navegar entre módulos desde dentro del iframe
+
+```js
+// Desde un módulo vanilla:
+(window.parent.shellNavigate || function(){ window.location='../index.html'; })('frontend/mi-modulo.html');
+
+// Desde un módulo React (TypeScript):
+declare global { interface Window { shellNavigate?: (url: string) => void } }
+window.parent?.shellNavigate?.('frontend/mi-otro-modulo.html')
+```
+
+Usar este patrón en breadcrumbs, botones "← Inicio" y cualquier enlace inter-módulo. Nunca usar `window.location.href` directo — rompe el shell.
 
 ### Guard vanilla en iframe
 Si no hay sesión y el módulo está dentro del iframe, redirigir el shell completo al inicio (no solo el iframe):
@@ -1150,3 +1204,124 @@ Si una fila de grilla es `useDroppable` (de `@dnd-kit/core`) **y** además quier
 1. **No poner `onClick` directamente en el wrapper droppable.** El handler de pointerdown de dnd-kit y el bubbling del click pueden cruzarse y dejar la fila "muda" en algunos puntos. Patrón seguro: dentro del wrapper droppable, primer hijo absoluto `<div style="position:absolute; inset:0; zIndex:0; cursor:pointer" onClick={...}>` que actúa como background clickeable. Los bloques (draggables) se posicionan encima con `position:absolute; left/width` propios y captan pointer solo en su área.
 
 2. **No envolver el bloque draggable en un `<div pointerEvents:auto>` que llene el wrapper.** Aunque el padre tenga `pointerEvents:none`, si el hijo `auto` no tiene un `position:absolute` con `left/width` propios, se extiende a toda la fila y se come los clicks del fondo. El draggable tiene que ser el `<button>`/`<div>` final con su `left/width`, sin wrappers intermedios full-bleed. Caso real: BUG-3B-01 en TimelineView Agenda (2026-05-11).
+
+## 30. Permisos por módulo (diseño, no implementado)
+
+§3 hoy solo define `nivel_acceso ∈ {1=Admin, 2=Supervisor, 3=Operador, 4=Consultor}` — un rol único, jerárquico. No alcanza para "Juan es supervisor pero solo de Reclamos, no debe ver Agenda ni Admin Tablas". Cuando se necesite ese control fino, aplicar el modelo híbrido descripto acá.
+
+### Modelo: nivel mínimo por módulo + override por usuario
+
+Cada módulo declara su **nivel mínimo de acceso** (default). Si el `nivel_acceso` del usuario lo alcanza, ve el módulo. Adicionalmente, una tabla nueva `usuario_modulos` permite **override** explícito por usuario:
+
+- Fila con `permitido = TRUE` → el usuario ve el módulo aunque su nivel sea más alto que el mínimo (otorga acceso).
+- Fila con `permitido = FALSE` → el usuario NO ve el módulo aunque su nivel sí lo permitiría (bloquea acceso).
+- Sin fila → cae al default por nivel.
+
+### Schema futuro (cuando se implemente)
+
+```sql
+-- Migración futura (a definir cuando se decida implementar)
+CREATE TABLE usuario_modulos (
+  id_usuario_modulo   SERIAL PRIMARY KEY,
+  id_usuario          INTEGER NOT NULL REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
+  modulo_codigo       VARCHAR(50) NOT NULL,   -- 'reclamos', 'agenda', 'admin_tablas', etc.
+  permitido           BOOLEAN NOT NULL,        -- TRUE = override que otorga, FALSE = override que bloquea
+  motivo              TEXT,                    -- opcional, registro de por qué
+  -- estándar §10
+  activo                  BOOLEAN DEFAULT TRUE,
+  id_municipio            INTEGER,
+  id_subarea              INTEGER,
+  fecha_alta              TIMESTAMPTZ DEFAULT NOW(),
+  fecha_modificacion      TIMESTAMPTZ DEFAULT NOW(),
+  id_usuario_alta         INTEGER REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
+  id_usuario_modificacion INTEGER REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
+  UNIQUE (id_usuario, modulo_codigo)
+);
+
+-- Catálogo de módulos. Permite que el admin gestione defaults via UI.
+CREATE TABLE modulos (
+  modulo_codigo       VARCHAR(50) PRIMARY KEY,
+  nombre              VARCHAR(100) NOT NULL,
+  descripcion         TEXT,
+  min_nivel_acceso    SMALLINT NOT NULL DEFAULT 4,  -- default: nivel 4 = todos pueden
+  -- estándar §10
+  activo              BOOLEAN DEFAULT TRUE
+);
+
+INSERT INTO modulos (modulo_codigo, nombre, min_nivel_acceso) VALUES
+  ('reclamos', 'Reclamos', 4),
+  ('ot', 'Órdenes de trabajo', 3),
+  ('agenda', 'Agenda', 3),
+  ('buc', 'Ciudadanos', 4),
+  ('empresas', 'Empresas', 4),
+  ('usuarios', 'Usuarios', 1),       -- solo admin
+  ('admin_tablas', 'Admin tablas', 1) -- solo admin
+;
+```
+
+### Endpoints futuros
+
+- `GET /api/v1/auth/me` → devolver además `modulos_permitidos: ['reclamos', 'agenda', ...]` ya resuelto por el backend aplicando la regla híbrida.
+- `GET /api/v1/admin/usuarios/{id}/modulos` → para la UI de gestión.
+- `PUT /api/v1/admin/usuarios/{id}/modulos` → set bulk de overrides.
+- `GET /api/v1/admin/modulos` / `PUT /api/v1/admin/modulos/{codigo}` → gestión de `min_nivel_acceso`.
+
+### Resolución en el backend (pseudocódigo)
+
+```python
+async def modulos_permitidos(db, id_usuario: int, nivel: int) -> list[str]:
+    # 1. Defaults: todos los modulos con min_nivel_acceso >= nivel
+    defaults = await db.execute(text("""
+        SELECT modulo_codigo FROM modulos
+        WHERE activo = TRUE AND min_nivel_acceso >= :nivel
+    """), {"nivel": nivel})
+    permitidos = {r.modulo_codigo for r in defaults.fetchall()}
+
+    # 2. Overrides del usuario
+    overrides = await db.execute(text("""
+        SELECT modulo_codigo, permitido FROM usuario_modulos
+        WHERE id_usuario = :uid AND activo = TRUE
+    """), {"uid": id_usuario})
+    for r in overrides.fetchall():
+        if r.permitido:
+            permitidos.add(r.modulo_codigo)
+        else:
+            permitidos.discard(r.modulo_codigo)
+
+    return sorted(permitidos)
+```
+
+### Resolución en el frontend
+
+**Shell vanilla (`frontend/js/menu.js`):** al cargar el shell, llamar `/auth/me`, leer `modulos_permitidos`, ocultar `<a class="nav__link">` cuyos `data-modulo` no estén en la lista.
+
+```html
+<a class="nav__link" href="frontend/reclamos.html" data-modulo="reclamos">Reclamos</a>
+```
+
+```js
+const permitidos = new Set((session.user.modulos_permitidos ?? []))
+document.querySelectorAll('.nav__link[data-modulo]').forEach(a => {
+  if (!permitidos.has(a.dataset.modulo)) a.style.display = 'none'
+})
+```
+
+**Shell React (`web-app/src/app/AppShell.tsx`):** el array `modules` ya tiene `permissions?: string[]` declarado en `ModuleManifest`. Convertirlo en `modulo_codigo: string` y filtrar el sidebar leyendo `user.modulos_permitidos`. El campo `permissions` actual queda deprecado.
+
+**Guard a nivel endpoint backend:** además del filtro UI, cada endpoint sensible debe validar que el usuario tenga el módulo. Helper futuro:
+
+```python
+async def require_modulo(modulo: str, current_user, db):
+    permitidos = await modulos_permitidos(db, current_user["id_usuario"], current_user["nivel_acceso"])
+    if modulo not in permitidos:
+        raise HTTPException(403, f"Sin acceso al modulo '{modulo}'")
+```
+
+Sin esta validación backend, la restricción UI sería evadible (basta llamar al endpoint directo).
+
+### Estado actual (2026-05-11)
+
+- **Schema:** ninguna tabla creada todavía.
+- **Endpoints:** `/auth/me` no devuelve `modulos_permitidos`.
+- **UI:** ningún módulo se filtra. Todos los usuarios ven el sidebar completo.
+- **Cuando se implemente:** crear migración 35 con `modulos` + `usuario_modulos`, seedear catálogo, ampliar `/auth/me`, ajustar shells, agregar guard backend. Documentar la implementación reemplazando esta sección con el estado real.
