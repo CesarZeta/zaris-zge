@@ -5,6 +5,28 @@
     <link rel="icon" type="image/svg+xml" href="/zaris-zge/web-app/dist/zaris-favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ZARIS · Gestión Estatal</title>
+    <script>
+      // Guard de produccion (CLAUDE.md §14): el bundle React NUNCA debe verse
+      // standalone en prod, solo embebido en el iframe del shell vanilla.
+      // Si alguien abre /zaris-zge/web-app/dist/index.html#/<modulo> directo,
+      // lo redirigimos al shell vanilla preservando el hash como modulo activo.
+      (function () {
+        try {
+          if (window.self !== window.top) return;                 // OK: embebido
+          var p = window.location.pathname || '';
+          // Solo activamos el redirect en el path de GH Pages prod
+          if (p.indexOf('/zaris-zge/web-app/dist/') === -1) return; // dev local: dejar pasar
+          var hash = window.location.hash || '';                   // ej '#/ot/agente'
+          var target = '/zaris-zge/index.html';
+          if (hash && hash.length > 1) {
+            // El shell vanilla acepta ?modulo=<url-encoded> para abrir el iframe
+            // apuntando al bundle React con el hash deseado.
+            target += '?modulo=' + encodeURIComponent('web-app/dist/index.html' + hash);
+          }
+          window.location.replace(target);
+        } catch (e) { /* fail-open */ }
+      })();
+    </script>
     <script type="module" crossorigin src="/zaris-zge/web-app/dist/assets/index-DkRSuH8H.js"></script>
     <link rel="stylesheet" crossorigin href="/zaris-zge/web-app/dist/assets/index-C9ozLLVi.css">
   </head>
