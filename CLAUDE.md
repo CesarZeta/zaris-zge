@@ -644,6 +644,10 @@ CHECK constraint activo: `ck_reclamo_estado` con valores `('Sin asignar','En ges
 
 **Catálogos seedeados en prod:** municipios=1, estado_evento=3, estado_reserva=3. Sin eventos productivos (1 residual del E2E con `activo=false`).
 
+### Migración 38 — Permisos por módulo (`backend/migrations/38_permisos_por_modulo.sql`)
+
+**Aplicada en local y prod al 2026-05-12.** Crea `modulos` (8 seeds: reclamos, padrones, ot_*, turnos, usuarios, admin_tablas con `min_nivel_acceso` segmentado) + `usuario_modulos` (overrides). Ambas con estándar §10 completo. CHECK `min_nivel_acceso BETWEEN 1 AND 4`. UNIQUE `(id_usuario, modulo_codigo)` en overrides. Ver §30 para el detalle del modelo y los endpoints.
+
 ### Migración 26 — Cleanup de áreas duplicadas con/sin tilde (`backend/migrations/26_cleanup_areas_duplicadas.sql`)
 
 **Aplicada en local y prod al 2026-05-10.** Consolida 15 pares de áreas duplicadas (una con tildes, otra sin) eligiendo dinámicamente como canónico el de cada par con más referencias entrantes (`subarea + tipo_reclamo + reclamos + lugares_atencion`); en empate, el activo; en empate, el id menor. Re-routea las FKs entrantes y soft-deletea los duplicados. Si **ambos** estaban inactivos en el grupo, no reactiva nada (área histórica sin uso).
@@ -1382,12 +1386,62 @@ async def require_modulo(modulo: str, current_user, db):
 
 Sin esta validación backend, la restricción UI sería evadible (basta llamar al endpoint directo).
 
-### Estado actual (2026-05-11)
+### Estado actual (2026-05-12) — IMPLEMENTADO
 
-- **Schema:** ninguna tabla creada todavía.
-- **Endpoints:** `/auth/me` no devuelve `modulos_permitidos`.
-- **UI:** ningún módulo se filtra. Todos los usuarios ven el sidebar completo.
-- **Cuando se implemente:** crear migración 35 con `modulos` + `usuario_modulos`, seedear catálogo, ampliar `/auth/me`, ajustar shells, agregar guard backend. Documentar la implementación reemplazando esta sección con el estado real.
+**Migración 38 (`backend/migrations/38_permisos_por_modulo.sql`) aplicada en local y prod.** Tablas `modulos` + `usuario_modulos` siguiendo §10. Catálogo seedeado con 8 módulos:
+
+| Código | Nombre | min_nivel_acceso | Cubre |
+|---|---|---|---|
+| `reclamos` | Reclamos | 4 | `frontend/reclamos.html` |
+| `padrones` | Padrones | 4 | `frontend/ciudadano.html` + `frontend/empresa.html` |
+| `ot_agente` | OT - Agente | 3 | `frontend/ot_agente.html` |
+| `turnos` | Turnos y eventos | 3 | módulo React `agenda` |
+| `ot_supervisor` | OT - Supervisor | 2 | `frontend/ot_supervisor.html` |
+| `ot_auditoria` | OT - Auditoría | 2 | `frontend/ot_auditoria.html` |
+| `usuarios` | Usuarios | 1 | `frontend/usuarios.html` |
+| `admin_tablas` | Maestros | 1 | resto de `frontend/admin_tablas.html?tabla=*` |
+
+**Backend (`backend/app/core/auth.py`):**
+- `modulos_permitidos(db, id_usuario, nivel) -> list[str]` — resuelve defaults por nivel + overrides activos.
+- `require_modulo(modulo: str)` — dependency factory para guard de endpoints (devuelve `current_user` igual que `get_current_user`).
+
+**Endpoints (`backend/app/api/routes/admin_permisos.py`, prefix `/api/v1/admin/permisos`):**
+- `GET /modulos` — catálogo
+- `PUT /modulos/{codigo}` — editar `min_nivel_acceso`
+- `GET /usuarios/{id}/modulos` — resolución + overrides
+- `PUT /usuarios/{id}/modulos` — set bulk de overrides (reemplaza activos)
+
+**Orden de routers crítico:** `admin_permisos_router` se registra en `main.py` **antes** de `admin_tablas_router`. `admin_tablas` usa `/api/v1/admin/{tabla}` y `/api/v1/admin/{tabla}/{id}` que sin orden explícito atraparían `/api/v1/admin/permisos/*` como si `{tabla}='permisos'`. Devuelve 422 (`int_parsing` sobre `id='modulos'`).
+
+**Auth endpoints ampliados:**
+- `POST /api/v1/auth/login` — el `user` ahora incluye `modulos_permitidos: list[str]`.
+- `GET /api/v1/auth/me` — idem.
+
+**Frontend vanilla (`frontend/js/menu.js`):**
+- Cada `<a class="nav__link">` en `index.html` tiene `data-modulo="<codigo>"`.
+- `menu.js` filtra al cargar: oculta links cuyo `data-modulo` no esté en `user.modulos_permitidos`. Si un grupo (`.nav__panel` o `.nav__subpanel`) queda sin links visibles, se oculta el grupo entero.
+- Para sesiones cargadas antes del feature (sin `modulos_permitidos` en cache), `menu.js` refresca contra `/auth/me` y persiste la nueva shape sin re-loguear. Si `/me` falla → fail-open en UI (el guard real está en backend).
+
+**Frontend React (shell standalone `localhost:5173`):**
+- `ModuleManifest` extendido con `moduloCodigo?: string`. Solo `agendaModule` lo usa (`turnos`); `dashboardModule` queda sin filtro (es stub demo, no se filtra).
+- `Sidebar.tsx` filtra por `user.modulos_permitidos`. Fail-open si falta.
+- `useAuthStore` agregó `refreshSession()` que llama a `/me` y actualiza el user; `AppShell` lo invoca cuando detecta que `user.modulos_permitidos` no está.
+
+**Guard a nivel endpoint backend (uso opcional):**
+```python
+from app.core.auth import require_modulo
+
+@router.get("/algo-sensible")
+async def algo(current: dict = Depends(require_modulo("reclamos"))):
+    ...
+```
+Devuelve 403 si el usuario no tiene el módulo. **Hoy no aplicado a endpoints existentes** — los routers ya tenían su propio criterio (`nivel_acceso`). Si querés bloquear acceso real al endpoint, agregalo. La UI ya está filtrada.
+
+**Smoke verificado (2026-05-12):**
+- Login admin nivel 1 → 8 módulos. Login supervisor nivel 2 → 6. Operador nivel 3 → 4.
+- PUT override `reclamos:permitido=FALSE` al usuario id=2 → siguiente login pierde `reclamos`. PUT con `overrides=[]` lo restaura. PUT con `modulo_codigo` inexistente → 422.
+- `/admin/permisos/modulos`: admin=200, supervisor=403, sin auth=401.
+- Verificado que `/admin/agentes` (admin_tablas) sigue funcionando tras reordenar routers.
 
 ## 31. Auditoría de estilos legacy — deuda pendiente
 
@@ -1402,9 +1456,22 @@ Esta sección lista exactamente **qué legacy queda y qué hacer con cada cosa**
 | 1. Unificar `LoginPage.tsx` con look del vanilla | ✅ 2026-05-12 | Card sobre `surface-100`, SVG ZARIS inline (currentColor, mismo path que vanilla), labels uppercase, botón `fg-1`, subtítulo "Gestión Estatal · Municipio Demo". |
 | 2. Borrar `frontend/agenda.html` + `agenda.css` + `agenda.js` | ✅ 2026-05-12 | Reemplazados por módulo React `web-app/src/modules/agenda/` en prod desde 3.A. |
 | 3. Borrar `frontend/shell.html` | ✅ 2026-05-12 | Era huérfano (0 referencias). |
-| 4. Migrar 5 HTMLs legacy (`admin_tablas`, `ciudadano`, `empresa`, `usuarios`, `mainconfig`) + sus `.js` | ⏳ pendiente | Trabajo pesado: ~500 ocurrencias de `var(--z-*)` y `.z-*`. Posterga para sesión dedicada. |
+| 4. Migrar 5 HTMLs legacy (`admin_tablas`, `ciudadano`, `empresa`, `usuarios`, `mainconfig`) + sus `.js` | ⏳ **diferido** (sesión 2026-05-12, alcance real > previo) | Ver "Alcance real del paso 4" abajo. |
 | 5. Borrar `frontend/styles.css` | ⏳ depende de 4 | Es el archivo que mantiene vivos los aliases legacy. |
 | 6. Borrar `frontend/menu.html` y `frontend/mainconfig.html` | ⏳ depende de 4 | Quedarían huérfanos cuando los HTMLs del paso 4 dejen de referenciarlos. |
+
+### Alcance real del paso 4 (auditado 2026-05-12)
+
+Lo que parecía "renombrar `--z-X` por `--zaris-X`" es en realidad **reescribir componentes**. `frontend/styles.css` (838 líneas) no es un espejo de aliases: **define ~30 clases con CSS propio** que el DS nuevo NO tiene equivalente listo. Para migrar hay que decidir:
+
+**Opciones (priorizar al retomar):**
+1. **Renombrar variables solamente** (~1.5h): cambiar `--z-X` por su equivalente DS dentro de `styles.css` y los HTMLs. Las clases `.z-btn` etc. quedan vivas pero usan tokens DS nuevos. Resultado: `--z-*` desaparece pero `.z-*` sigue. NO permite borrar `styles.css` todavía. Bajo riesgo.
+2. **Promover .z-* a componentes DS oficiales** (~6-8h): mover `styles.css` a `design-system/components/{button,card,modal,input,toast,spinner,badge}.css` y migrar HTMLs. Esto también sirve al shell React. Mayor riesgo.
+3. **Migrar HTML por HTML con estilos inline** (~4-5h): cada HTML legacy adopta el patrón del DS nuevo en su propio `<style>` (igual que `login.html`). Riesgo bajo, pero duplica código.
+
+**Clases que necesitan equivalente DS:** `.z-btn` (5 variantes: primary/accent/ghost/danger/success + sm/lg/full/icon), `.z-card` (header/body/footer/interactive), `.z-input` + `.z-select` + `.z-textarea`, `.z-modal` (overlay/header/body/footer/close), `.z-toast` (container/icon/message + success/error), `.z-form-group` + `.z-form-row` (grids 2/3/4/1-2/2-1), `.z-label` (+required), `.z-checkbox` custom, `.z-alert` (success/error/warning/info), `.z-section-title`, `.z-panel-expand`, `.z-search-box`, `.z-spinner`, `.z-badge` (success/error/warning/info), `.z-menu-grid` + `.z-menu-card`, `.z-header*` (legacy del header viejo, ya invisible en iframe).
+
+**Recomendación al retomar:** opción 1 primero (rename variables) para sacar `--z-*` del codebase. Después opción 2 en una sesión grande dedicada al DS. Opción 3 solo si el DS no avanza nunca.
 
 ### Archivos con `var(--z-*)` o `class="z-*"` legacy — restantes (post-cleanup 2026-05-12)
 
