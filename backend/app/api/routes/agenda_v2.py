@@ -31,6 +31,7 @@ from app.schemas.agenda_v2 import (
     ConflictoResolverIn,
     EncargadoConflictoWarning,
     EstadoCatalogoOut,
+    EventoBusquedaOut,
     EventoCreate,
     EventoDetalleOut,
     EventoEncargadoCreate,
@@ -41,9 +42,12 @@ from app.schemas.agenda_v2 import (
     OcupacionCreatedOut,
     OcupacionOut,
     OcupacionUpdate,
+    OTBusquedaOut,
     RecursoAgendaOut,
+    RecursoOut,
     ReservaCreate,
     ReservaOut,
+    SubareaOut,
 )
 from app.services.agenda import (
     agenda_ausencia_cols,
@@ -93,6 +97,152 @@ async def listar_estados_reserva(
         WHERE activo = TRUE
         ORDER BY COALESCE(orden, id_estado_reserva)
     """))).mappings().all()
+    return [dict(r) for r in rows]
+
+
+# =============================================================================
+# Catalogos extra (sub-fase 3.B — autocompletar / filtros)
+# =============================================================================
+@router.get("/catalogos/subareas", response_model=list[SubareaOut])
+async def listar_subareas_agenda(
+    q: Optional[str] = Query(None, max_length=80),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
+    """Subareas activas con nombre del area padre. Filtro opcional `q` (ILIKE en nombre)."""
+    conds = ["s.activo = TRUE"]
+    params: dict[str, Any] = {"lim": limit}
+    if q:
+        conds.append("s.nombre ILIKE :q")
+        params["q"] = f"%{q}%"
+    where = " AND ".join(conds)
+    rows = (await db.execute(text(f"""
+        SELECT s.id_subarea, s.nombre,
+               s.id_area, a.nombre AS area_nombre
+        FROM subarea s
+        LEFT JOIN area a ON a.id_area = s.id_area
+        WHERE {where}
+        ORDER BY s.nombre
+        LIMIT :lim
+    """), params)).mappings().all()
+    return [dict(r) for r in rows]
+
+
+@router.get("/catalogos/recursos", response_model=list[RecursoOut])
+async def listar_recursos_agenda(
+    tipo: Optional[Literal["agente", "equipo"]] = Query(None),
+    q: Optional[str] = Query(None, max_length=80),
+    id_municipio: Optional[int] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
+    """Lista agentes y equipos activos con nombre. Para selectores por nombre."""
+    out: list[dict[str, Any]] = []
+    if tipo in (None, "agente"):
+        conds = ["activo = TRUE"]
+        params: dict[str, Any] = {"lim": limit}
+        if q:
+            conds.append("(apellido ILIKE :q OR nombre ILIKE :q)")
+            params["q"] = f"%{q}%"
+        if id_municipio is not None:
+            conds.append("id_municipio = :im")
+            params["im"] = id_municipio
+        where = " AND ".join(conds)
+        rows = (await db.execute(text(f"""
+            SELECT id_agente AS id, apellido || ', ' || nombre AS nombre
+            FROM agentes WHERE {where}
+            ORDER BY apellido, nombre LIMIT :lim
+        """), params)).mappings().all()
+        out.extend({"tipo_recurso": "agente", "id_recurso": r["id"], "nombre": r["nombre"]} for r in rows)
+    if tipo in (None, "equipo"):
+        conds = ["activo = TRUE"]
+        params = {"lim": limit}
+        if q:
+            conds.append("nombre ILIKE :q")
+            params["q"] = f"%{q}%"
+        if id_municipio is not None:
+            conds.append("id_municipio = :im")
+            params["im"] = id_municipio
+        where = " AND ".join(conds)
+        rows = (await db.execute(text(f"""
+            SELECT id_equipo AS id, nombre
+            FROM equipos WHERE {where}
+            ORDER BY nombre LIMIT :lim
+        """), params)).mappings().all()
+        out.extend({"tipo_recurso": "equipo", "id_recurso": r["id"], "nombre": r["nombre"]} for r in rows)
+    return out
+
+
+@router.get("/catalogos/ot-busqueda", response_model=list[OTBusquedaOut])
+async def buscar_ots_agenda(
+    q: Optional[str] = Query(None, max_length=80),
+    estado: Optional[str] = Query(None, description="Filtro por estado nombre (ej: Pendiente)"),
+    limit: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
+    """Busqueda liviana de OTs para autocompletar. q matchea nro_ot, nro_reclamo o descripcion."""
+    conds = ["ot.activo = TRUE"]
+    params: dict[str, Any] = {"lim": limit}
+    if q:
+        conds.append("(ot.nro_ot ILIKE :q OR r.nro_reclamo ILIKE :q OR r.descripcion ILIKE :q)")
+        params["q"] = f"%{q}%"
+    if estado:
+        conds.append("eot.nombre = :est")
+        params["est"] = estado
+    where = " AND ".join(conds)
+    rows = (await db.execute(text(f"""
+        SELECT ot.id_ot, ot.nro_ot,
+               eot.nombre AS estado_nombre,
+               r.descripcion AS reclamo_descripcion, r.nro_reclamo,
+               ot.id_agente, ot.id_equipo
+        FROM ordenes_trabajo ot
+        JOIN estado_ot eot ON eot.id_estado_ot = ot.id_estado
+        JOIN reclamos r ON r.id_reclamo = ot.id_reclamo
+        WHERE {where}
+        ORDER BY ot.fecha_creacion DESC
+        LIMIT :lim
+    """), params)).mappings().all()
+    return [dict(r) for r in rows]
+
+
+@router.get("/catalogos/evento-busqueda", response_model=list[EventoBusquedaOut])
+async def buscar_eventos_agenda(
+    q: Optional[str] = Query(None, max_length=80),
+    fecha_desde: Optional[date] = Query(None),
+    fecha_hasta: Optional[date] = Query(None),
+    id_municipio: Optional[int] = Query(None),
+    solo_activos: bool = Query(True),
+    limit: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
+    """Busqueda liviana de eventos para autocompletar (nombre)."""
+    conds: list[str] = []
+    params: dict[str, Any] = {"lim": limit}
+    if solo_activos:
+        conds.append("e.activo = TRUE")
+    if q:
+        conds.append("e.nombre ILIKE :q")
+        params["q"] = f"%{q}%"
+    if fecha_desde is not None:
+        conds.append("e.fecha >= :fd"); params["fd"] = fecha_desde
+    if fecha_hasta is not None:
+        conds.append("e.fecha <= :fh"); params["fh"] = fecha_hasta
+    if id_municipio is not None:
+        conds.append("e.id_municipio = :im"); params["im"] = id_municipio
+    where = (" WHERE " + " AND ".join(conds)) if conds else ""
+    rows = (await db.execute(text(f"""
+        SELECT e.id_evento, e.nombre, e.fecha, e.hora_inicio, e.hora_fin,
+               ee.codigo AS estado_codigo
+        FROM eventos e
+        LEFT JOIN estado_evento ee ON ee.id_estado_evento = e.id_estado_evento
+        {where}
+        ORDER BY e.fecha DESC, e.hora_inicio
+        LIMIT :lim
+    """), params)).mappings().all()
     return [dict(r) for r in rows]
 
 
@@ -955,29 +1105,34 @@ async def calendario_dia(
     fecha: date,
     id_municipio: int = 1,
     tipo_recurso: Literal["agente", "equipo", "todos"] = "todos",
+    id_subarea: Optional[int] = Query(None, description="Filtra recursos cuyo id_subarea coincida"),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
 ):
     """Timeline del coordinador para una fecha. Devuelve los recursos del
     municipio con ocupaciones (y ausencias para agentes) en ese dia."""
-    # 1) Recursos activos del municipio
+    # 1) Recursos activos del municipio (filtrado opcional por subarea)
     recursos: list[dict[str, Any]] = []
+    sa_clause = " AND id_subarea = :sa" if id_subarea is not None else ""
+    base_params: dict[str, Any] = {"m": id_municipio}
+    if id_subarea is not None:
+        base_params["sa"] = id_subarea
     if tipo_recurso in ("agente", "todos"):
-        rows = (await db.execute(text("""
+        rows = (await db.execute(text(f"""
             SELECT id_agente AS id_recurso, apellido || ', ' || nombre AS nombre
             FROM agentes
-            WHERE activo = TRUE AND (id_municipio IS NULL OR id_municipio = :m)
+            WHERE activo = TRUE AND (id_municipio IS NULL OR id_municipio = :m){sa_clause}
             ORDER BY apellido, nombre
-        """), {"m": id_municipio})).mappings().all()
+        """), base_params)).mappings().all()
         for r in rows:
             recursos.append({"tipo": "agente", "id_recurso": r["id_recurso"], "nombre": r["nombre"]})
     if tipo_recurso in ("equipo", "todos"):
-        rows = (await db.execute(text("""
+        rows = (await db.execute(text(f"""
             SELECT id_equipo AS id_recurso, nombre
             FROM equipos
-            WHERE activo = TRUE AND (id_municipio IS NULL OR id_municipio = :m)
+            WHERE activo = TRUE AND (id_municipio IS NULL OR id_municipio = :m){sa_clause}
             ORDER BY nombre
-        """), {"m": id_municipio})).mappings().all()
+        """), base_params)).mappings().all()
         for r in rows:
             recursos.append({"tipo": "equipo", "id_recurso": r["id_recurso"], "nombre": r["nombre"]})
 

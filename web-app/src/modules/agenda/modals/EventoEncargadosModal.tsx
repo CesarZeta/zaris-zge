@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Trash2, UserPlus } from 'lucide-react'
 import { Modal } from '../components/Modal'
 import { ConfirmModal } from '../components/ConfirmModal'
+import { RecursoPicker } from '../components/RecursoPicker'
 import { Button } from '../../../ui'
 import { useEventoDetalle } from '../hooks/useEventos'
 import { useAsignarEncargado, useDesasignarEncargado } from '../hooks/useOcupaciones'
@@ -20,13 +21,13 @@ export function EventoEncargadosModal({ open, onClose, idEvento }: Props) {
   const asignar = useAsignarEncargado()
   const desasignar = useDesasignarEncargado()
   const [tipo, setTipo] = useState<TipoRecurso>('agente')
-  const [idRec, setIdRec] = useState<number | ''>('')
+  const [idRec, setIdRec] = useState<number | null>(null)
   const [confirmRemoveId, setConfirmRemoveId] = useState<number | null>(null)
 
   async function onAdd() {
     if (!idEvento || !idRec) return
     try {
-      const r = await asignar.mutateAsync({ idEvento, tipo_recurso: tipo, id_recurso: Number(idRec) })
+      const r = await asignar.mutateAsync({ idEvento, tipo_recurso: tipo, id_recurso: idRec })
       const conConflicto = (r.conflictos?.length ?? 0) > 0
       push({
         kind: conConflicto ? 'error' : 'success',
@@ -34,7 +35,7 @@ export function EventoEncargadosModal({ open, onClose, idEvento }: Props) {
         body: conConflicto ? `${r.conflictos.length} solape - ver Conflictos` : r.mensaje ?? undefined,
         ttl: conConflicto ? 7000 : 4000,
       })
-      setIdRec('')
+      setIdRec(null)
     } catch (e) {
       push({ kind: 'error', title: 'No se pudo asignar', body: (e as Error).message })
     }
@@ -61,21 +62,14 @@ export function EventoEncargadosModal({ open, onClose, idEvento }: Props) {
       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 14 }}>
         <div>
           <label style={{ fontSize: 11, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Tipo</label>
-          <select value={tipo} onChange={(e) => setTipo(e.target.value as TipoRecurso)} style={inp}>
+          <select value={tipo} onChange={(e) => { setTipo(e.target.value as TipoRecurso); setIdRec(null) }} style={inp}>
             <option value="agente">agente</option>
             <option value="equipo">equipo</option>
           </select>
         </div>
         <div style={{ flex: 1 }}>
-          <label style={{ fontSize: 11, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: '.04em' }}>ID {tipo}</label>
-          <input
-            type="number"
-            value={idRec}
-            min={1}
-            onChange={(e) => setIdRec(e.target.value ? Number(e.target.value) : '')}
-            placeholder="ej: 1"
-            style={inp}
-          />
+          <label style={{ fontSize: 11, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{tipo === 'agente' ? 'Agente' : 'Equipo'}</label>
+          <RecursoPicker tipo={tipo} value={idRec} onChange={setIdRec} />
         </div>
         <Button variant="accent" onClick={onAdd} icon={<UserPlus size={14} strokeWidth={1.5} />}>
           Agregar

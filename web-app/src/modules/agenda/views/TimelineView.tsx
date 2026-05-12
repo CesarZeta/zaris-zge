@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Plus, Users } from 'lucide-react'
 import {
-  DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
+  DndContext, DragOverlay, PointerSensor, KeyboardSensor, useSensor, useSensors,
   type DragEndEvent, type DragStartEvent,
+  type KeyboardCoordinateGetter,
 } from '@dnd-kit/core'
 import { useCalendarioDia } from '../hooks/useAgenda'
 import { useConflictos } from '../hooks/useConflictos'
@@ -18,7 +19,7 @@ import { EventoEncargadosModal } from '../modals/EventoEncargadosModal'
 import { Button, Skeleton } from '../../../ui'
 import { useDragMutations } from '../dnd/useDragMutations'
 import type { DragPayload } from '../dnd/types'
-import { PX_PER_HOUR, SNAP_MIN, HOUR_START } from '../dnd/gridConstants'
+import { PX_PER_HOUR, SNAP_MIN, HOUR_START, ROW_HEIGHT } from '../dnd/gridConstants'
 import { timeToMinutes } from '../../../lib/dates'
 import type { Ocupacion, OcupacionCreatePayload, TipoRecurso } from '../types/agenda'
 
@@ -41,7 +42,8 @@ export function TimelineView() {
   const fecha = useAgendaStore((s) => s.fechaActiva)
   const idMun = useAgendaStore((s) => s.idMunicipio)
   const filtroRec = useAgendaStore((s) => s.filtroRecurso)
-  const cal = useCalendarioDia(fecha, idMun, filtroRec)
+  const filtroSubarea = useAgendaStore((s) => s.filtroSubarea)
+  const cal = useCalendarioDia(fecha, idMun, filtroRec, filtroSubarea)
   const conf = useConflictos(false)
   const { moverOcupacion, crearDesdeOT } = useDragMutations()
 
@@ -67,9 +69,22 @@ export function TimelineView() {
 
   // PointerSensor con activationConstraint para que un click corto sea click,
   // no drag. 5px de distancia minima antes de iniciar drag.
-  const sensors = useSensors(useSensor(PointerSensor, {
-    activationConstraint: { distance: 5 },
-  }))
+  // KeyboardSensor: foco con Tab al bloque, Space/Enter activa drag, flechas mueven
+  // en pasos de SNAP_MIN (X) o ROW_HEIGHT (Y), Space/Enter suelta, Esc cancela.
+  const pxPerSnapMin = (PX_PER_HOUR * SNAP_MIN) / 60
+  const keyboardCoordinateGetter: KeyboardCoordinateGetter = (event, { currentCoordinates }) => {
+    switch (event.code) {
+      case 'ArrowRight': return { ...currentCoordinates, x: currentCoordinates.x + pxPerSnapMin }
+      case 'ArrowLeft':  return { ...currentCoordinates, x: currentCoordinates.x - pxPerSnapMin }
+      case 'ArrowDown':  return { ...currentCoordinates, y: currentCoordinates.y + ROW_HEIGHT }
+      case 'ArrowUp':    return { ...currentCoordinates, y: currentCoordinates.y - ROW_HEIGHT }
+    }
+    return undefined
+  }
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: keyboardCoordinateGetter }),
+  )
 
   function handleDragStart(e: DragStartEvent) {
     const data = e.active.data.current as DragPayload | undefined
@@ -134,14 +149,31 @@ export function TimelineView() {
     // === CREAR OCUPACION DESDE OT PENDIENTE ==============================
     if (data.kind === 'pending-ot') {
       const ot = data.ot
-      // Para crear desde OT no tenemos posicion X del drop relativa al row
-      // (el draggable nace fuera de la grilla). Insertamos al inicio de la
-      // primera media hora libre del recurso si la podemos calcular; si no,
-      // 09:00 por default. El usuario despues edita en el modal si quiere.
-      // V1: usamos hora 09:00 fija, duracion segun sla del tipo (default 60min).
+      // Hora exacta del drop: usamos activatorEvent.clientX + delta.x para
+      // ubicar el pointer al soltar, y lo mapeamos al rect de la fila destino
+      // (data-row-tipo/id estan en el DOM del GanttResourceRow).
       const dur = 60
-      const hi = '09:00:00'
-      const fin = 9 * 60 + dur
+      let hi = '09:00:00'
+      const rowEl = document.querySelector<HTMLDivElement>(
+        `[data-row-tipo="${overData.tipo_recurso}"][data-row-id="${overData.id_recurso}"]`,
+      )
+      const act = e.activatorEvent as PointerEvent | MouseEvent | null
+      if (rowEl && act && 'clientX' in act) {
+        const dropX = act.clientX + e.delta.x
+        const rect = rowEl.getBoundingClientRect()
+        const xInRow = dropX - rect.left
+        if (xInRow >= 0 && xInRow <= rect.width) {
+          const minutosDesdeStart = (xInRow / PX_PER_HOUR) * 60
+          const minutosAbs = HOUR_START * 60 + minutosDesdeStart
+          const snap = Math.round(minutosAbs / SNAP_MIN) * SNAP_MIN
+          const minMin = HOUR_START * 60
+          const maxMin = 20 * 60 - dur
+          const inicioClamped = Math.max(minMin, Math.min(maxMin, snap))
+          hi = toHHMMSS(inicioClamped)
+        }
+      }
+      const inicioFinal = timeToMinutes(hi.slice(0, 5))
+      const fin = inicioFinal + dur
       const hf = toHHMMSS(fin)
       const nombreDest = nombreRecurso(overData.tipo_recurso, overData.id_recurso)
       setPendingConfirm({
