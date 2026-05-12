@@ -158,6 +158,7 @@ async def listar_reclamos(
             r.descripcion, r.domicilio_reclamo, r.observaciones,
             r.fecha_alta, r.fecha_modificacion,
             r.id_reclamo_padre,
+            r.latitud, r.longitud,
             r.id_ciudadano, c.nombre AS ciudadano_nombre, c.apellido AS ciudadano_apellido, c.doc_nro,
             r.id_tipo_reclamo, tr.nombre AS tipo_nombre, tr.sla_dias, tr.audit AS tipo_audit,
             r.id_area, a.nombre AS area_nombre,
