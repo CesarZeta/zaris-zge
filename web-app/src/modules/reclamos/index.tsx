@@ -1,0 +1,22 @@
+import { FileText } from 'lucide-react'
+import type { ModuleManifest } from '../../lib/types'
+import { ReclamosLayout } from './ReclamosLayout'
+import { ListView } from './views/ListView'
+import { DetailView } from './views/DetailView'
+
+const Wrap = (Component: React.FC) => () => (
+  <ReclamosLayout>
+    <Component />
+  </ReclamosLayout>
+)
+
+export const reclamosModule: ModuleManifest = {
+  id: 'reclamos',
+  label: 'reclamos',
+  icon: FileText,
+  moduloCodigo: 'reclamos',
+  routes: [
+    { index: true,    element: Wrap(ListView),   handle: { breadcrumb: 'reclamos · listado' } },
+    { path: ':id',    element: Wrap(DetailView), handle: { breadcrumb: 'reclamos · detalle' } },
+  ],
+}
