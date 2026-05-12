@@ -426,6 +426,7 @@ Comandos disponibles en `.claude/commands/` — invocar con `/nombre`:
 | `/push-and-verify` | Ciclo completo: commit → push → deploy → verificación |
 | `/verify-prod-schema` | Preflight: chequea que tablas/columnas existan en prod antes de codear |
 | `/qa-report-template` | Convención y plantilla para reportes QA (`reporte_pruebas_<bloque>_YYYY-MM-DD.md` en raíz) |
+| `/migrate-vanilla-to-react` | Receta de 10 pasos para migrar un módulo vanilla a React embebido. Validada con Agenda + Ciudadanos. |
 
 ### Scripts de mantenimiento
 
