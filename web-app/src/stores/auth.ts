@@ -9,6 +9,7 @@ interface AuthState {
   login: (token: string, user: User) => void
   logout: () => void
   hasPermission: (minLevel: number) => boolean
+  refreshSession: () => Promise<void>   // recarga user desde /auth/me (para refrescar modulos_permitidos)
 }
 
 // Storage custom que mantiene en `zaris_session` AMBAS shapes:
@@ -54,6 +55,24 @@ export const useAuthStore = create<AuthState>()(
       hasPermission(minLevel) {
         const level = get().user?.nivel_acceso
         return level !== undefined && level <= minLevel
+      },
+
+      async refreshSession() {
+        const token = get().accessToken
+        if (!token) return
+        try {
+          // Llamamos directo a fetch para evitar dependencia circular con lib/api
+          const apiBase = (import.meta as any).env?.VITE_API_BASE
+            ?? 'https://zaris-api-production-bf0b.up.railway.app'
+          const res = await fetch(`${apiBase}/api/v1/auth/me`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+          if (!res.ok) return
+          const fresh = await res.json() as User
+          set({ user: fresh })
+        } catch {
+          // fail-open: si /me no responde, dejamos el user previo
+        }
       },
     }),
     {

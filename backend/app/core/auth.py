@@ -62,3 +62,53 @@ async def get_current_user(
     if not user or not user.activo:
         raise unauthorized
     return dict(user._mapping)
+
+
+async def modulos_permitidos(db: AsyncSession, id_usuario: int, nivel: int) -> list[str]:
+    """Resuelve la lista de modulo_codigo que un usuario puede ver, aplicando
+    el modelo hibrido de CLAUDE.md §30: default por min_nivel_acceso + override
+    explicito por usuario_modulos (permitido TRUE otorga, FALSE bloquea).
+    """
+    defaults = await db.execute(
+        text("""
+            SELECT modulo_codigo FROM modulos
+            WHERE activo = TRUE AND min_nivel_acceso >= :nivel
+        """),
+        {"nivel": nivel},
+    )
+    permitidos = {r.modulo_codigo for r in defaults.fetchall()}
+
+    overrides = await db.execute(
+        text("""
+            SELECT modulo_codigo, permitido FROM usuario_modulos
+            WHERE id_usuario = :uid AND activo = TRUE
+        """),
+        {"uid": id_usuario},
+    )
+    for r in overrides.fetchall():
+        if r.permitido:
+            permitidos.add(r.modulo_codigo)
+        else:
+            permitidos.discard(r.modulo_codigo)
+    return sorted(permitidos)
+
+
+def require_modulo(modulo: str):
+    """Dependencia FastAPI que valida que el usuario tenga acceso al modulo
+    indicado. Uso: `current = Depends(require_modulo("reclamos"))`. Devuelve
+    el `current_user` igual que `get_current_user` para que el endpoint lo use.
+    """
+    async def _guard(
+        current_user: dict = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+    ) -> dict:
+        modulos = await modulos_permitidos(
+            db, current_user["id_usuario"], current_user["nivel_acceso"]
+        )
+        if modulo not in modulos:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Sin acceso al modulo '{modulo}'",
+            )
+        return current_user
+    return _guard

@@ -1,10 +1,41 @@
 // ZARIS Shell — acordeón de navegación + datos de sesión
 
-(function () {
+(async function () {
 
   // ── Sesión ──────────────────────────────────────────────────
   const session = JSON.parse(localStorage.getItem('zaris_session') || 'null');
-  const user    = session?.user;
+  let user      = session?.user;
+
+  // Si la sesion fue cargada antes del feature de permisos por modulo
+  // (sin modulos_permitidos), refresheamos contra /auth/me. Asi un usuario
+  // logueado desde antes del deploy ve el sidebar filtrado sin re-loguear.
+  if (user && !Array.isArray(user.modulos_permitidos)) {
+    try {
+      const _local = ['localhost', '127.0.0.1', '0.0.0.0'];
+      const API = _local.includes(window.location.hostname)
+        ? 'http://127.0.0.1:8000'
+        : 'https://zaris-api-production-bf0b.up.railway.app';
+      const token = session?.access_token || session?.state?.accessToken;
+      if (token) {
+        const res = await fetch(`${API}/api/v1/auth/me`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const me = await res.json();
+          if (Array.isArray(me.modulos_permitidos)) {
+            user = { ...user, modulos_permitidos: me.modulos_permitidos };
+            // Persistir mantiene ambas shapes (§29)
+            const updated = {
+              ...(session || {}),
+              user,
+              state: { ...(session?.state || {}), user },
+            };
+            localStorage.setItem('zaris_session', JSON.stringify(updated));
+          }
+        }
+      }
+    } catch (e) { /* fail-open: si no responde, no filtro */ }
+  }
 
   const avatarEl  = document.getElementById('topbar-avatar');
   const contextEl = document.getElementById('topbar-context');
@@ -66,6 +97,30 @@
       btn.setAttribute('aria-expanded', String(!isOpen));
     });
   });
+
+  // ── Filtrado de modulos por permisos (CLAUDE.md §30) ─────────
+  // user.modulos_permitidos viene de /auth/login y /auth/me. Si el usuario
+  // tiene una sesion antigua sin ese campo, no filtramos (fail-open en UI;
+  // el guard real esta en el backend con `require_modulo`).
+  const modulosPermitidos = Array.isArray(user?.modulos_permitidos)
+    ? new Set(user.modulos_permitidos)
+    : null;
+
+  if (modulosPermitidos) {
+    document.querySelectorAll('.nav__link[data-modulo]').forEach(link => {
+      if (!modulosPermitidos.has(link.dataset.modulo)) {
+        link.hidden = true;
+      }
+    });
+    // Ocultar grupos que quedaron sin links visibles
+    document.querySelectorAll('.nav__panel, .nav__subpanel').forEach(panel => {
+      const visible = panel.querySelectorAll('.nav__link:not([hidden])').length;
+      if (visible === 0) {
+        const group = panel.closest('.nav__group');
+        if (group) group.hidden = true;
+      }
+    });
+  }
 
   // ── Shell navigation (iframe) ─────────────────────────────────
   window.shellNavigate = function (url) {

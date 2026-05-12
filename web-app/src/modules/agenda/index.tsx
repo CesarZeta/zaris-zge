@@ -16,6 +16,7 @@ export const agendaModule: ModuleManifest = {
   id:    'agenda',
   label: 'agenda',
   icon:  CalendarDays,
+  moduloCodigo: 'turnos',
   routes: [
     { index: true,         element: WithLayout(TimelineView),   handle: { breadcrumb: 'agenda · timeline' } },
     { path: 'timeline',    element: WithLayout(TimelineView),   handle: { breadcrumb: 'agenda · timeline' } },
