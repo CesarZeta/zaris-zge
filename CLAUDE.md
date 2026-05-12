@@ -1326,3 +1326,60 @@ Sin esta validación backend, la restricción UI sería evadible (basta llamar a
 - **Endpoints:** `/auth/me` no devuelve `modulos_permitidos`.
 - **UI:** ningún módulo se filtra. Todos los usuarios ven el sidebar completo.
 - **Cuando se implemente:** crear migración 35 con `modulos` + `usuario_modulos`, seedear catálogo, ampliar `/auth/me`, ajustar shells, agregar guard backend. Documentar la implementación reemplazando esta sección con el estado real.
+
+## 31. Auditoría de estilos legacy — deuda pendiente
+
+**Verificada 2026-05-12.** El proyecto migró al DS nuevo (`design-system/colors_and_type.css` con tokens `--zaris-*` / `--surface-*` / `--fg-*` / `--font-display`) pero **conserva archivos y clases legacy del DS v1.0 (`--z-*`, `.z-*`)** que coexisten porque `frontend/styles.css` los redefinió como espejo del DS nuevo. Visualmente no rompe nada — los colores son los mismos — pero contradice §13 y genera confusión.
+
+Esta sección lista exactamente **qué legacy queda y qué hacer con cada cosa**. Es deuda técnica visible, no bugs.
+
+### Logins: dos pantallas, DS nuevo pero NO consistentes entre sí
+
+| Login | Archivo | Look | Cuándo se ve |
+|---|---|---|---|
+| **Vanilla** | `frontend/login.html` | Card sobre cream + logo SVG ZARIS izquierda + subtítulo "Gestión Estatal · Municipio Demo" + labels UPPERCASE | Producción (GH Pages) y local `http://localhost:8080` |
+| **React** | `web-app/src/app/LoginPage.tsx` + `LoginPage.module.css` | Card sobre `surface-400` + logo cuadrado dark con "Z" centrado + subtítulo "Ingresá tus credenciales..." + labels caso normal | **Solo dev** en `localhost:5173`. En prod nunca se ve. |
+
+**Decisión histórica:** ambos son DS nuevo, pero el React se diseñó antes de que el vanilla se cerrara. **Tarea pendiente:** unificar `LoginPage.tsx` con el look del vanilla (es el oficial). Cualquier dev que vea solo `localhost:5173` puede creer que ESE es el login del producto — error conceptual.
+
+### Archivos con `var(--z-*)` o `class="z-*"` legacy
+
+Conteo verificado 2026-05-12 (excluye `node_modules`, `dist/`):
+
+| Archivo | var(--z-*) | class z-* | Acción recomendada |
+|---|---|---|---|
+| `frontend/styles.css` | 108 | (define todo) | **Migrar todo a tokens DS nuevo o borrar y reescribir.** Es el archivo que mantiene vivos a los demás. |
+| `frontend/agenda.css` | 87 | - | **Borrar junto con `agenda.html` legacy.** Ver más abajo. |
+| `frontend/agenda.js` | 25 | - | **Borrar junto con `agenda.html` legacy.** |
+| `frontend/admin_tablas.html` | 123 | 5 | Migrar var() a `--zaris-*` y quitar `z-header` (oculto en iframe igual). |
+| `frontend/ciudadano.html` | 39 | 178 | Migrar — alto volumen de clases. |
+| `frontend/empresa.html` | 33 | 100 | Migrar. |
+| `frontend/usuarios.html` | 43 | 89 | Migrar. |
+| `frontend/agenda.html` | 9 | 167 | **Borrar archivo — agenda React publicada (§27).** |
+| `frontend/mainconfig.html` | 6 | 29 | Verificar uso; probable borrar (usuarios.js lo referencia). |
+| `frontend/menu.html` | 21 | 24 | Verificar uso. |
+| `frontend/reclamos.html` | - | 5 | Solo `z-header` que el guard de iframe oculta. Bajo prioridad. |
+| `frontend/js/{ciudadano,empresa,usuarios,config}.js` | varios | varios | Escriben HTML inline con clases z-*. Migrar a clases DS nuevas. |
+| `frontend/login.html` | 0 | 0 | ✅ Limpio. |
+| `frontend/welcome.html` | 0 | 0 | ✅ Limpio. |
+
+### Dead code candidato a borrar (verificar primero)
+
+- **`frontend/shell.html`** → **0 referencias** en el repo. Borrar es seguro.
+- **`frontend/menu.html`** → referenciado por `agenda.html` + `agenda.js` + `ciudadano.html` + `empresa.html` + `js/ciudadano.js`. Si se hace la migración de esos a DS nuevo y se quitan, este queda también huérfano.
+- **`frontend/mainconfig.html`** → referenciado por `usuarios.html` + `js/usuarios.js`. Idem: queda huérfano cuando esos migren.
+
+### Tarea futura — bloque de limpieza
+
+Cuando se decida ejecutar:
+
+1. **Unificar `LoginPage.tsx` con look del vanilla** (low risk, alto valor visual). Editar `LoginPage.module.css` para usar background cream + logo SVG ZARIS + subtítulo "Gestión Estatal · Municipio Demo" + labels uppercase. Tomar `frontend/login.html` como referencia.
+2. **Borrar `frontend/agenda.html` + `agenda.css` + `agenda.js`** (módulo React ya en prod desde mig sub-fase 3.A, validado en sesión 2026-05-11 con 63 PASS). Verificar antes que ningún módulo lo enlace.
+3. **Borrar `frontend/shell.html`** (sin referencias).
+4. **Migrar 5 HTMLs legacy (`admin_tablas`, `ciudadano`, `empresa`, `usuarios`, `mainconfig`) + sus `.js`:** reemplazar `var(--z-X)` por su equivalente `--zaris-*` / `--fg-*` / `--surface-*`, y clases `.z-btn` / `.z-card` / `.z-input` por componentes del DS nuevo. **Lista de mapeo en `frontend/styles.css` líneas 9-67** (cada `--z-X` tiene un comentario con su equivalente DS).
+5. **Borrar `frontend/styles.css`** una vez migrados todos sus consumidores.
+6. **Borrar `frontend/menu.html` y `frontend/mainconfig.html`** si quedaron huérfanos tras 4.
+
+### Por qué NO se hizo hoy
+
+El usuario reportó "ver pantalla de logueo anterior" el 2026-05-12. La causa real fue la divergencia entre login vanilla y login React (punto 1 arriba), no que existiera un archivo con DS v1.0 puro. Como toda la cadena legacy funciona con los mismos colores del DS nuevo, no hay regresión visual urgente. Esta auditoría es la base para programar el bloque de limpieza en una sesión dedicada.
