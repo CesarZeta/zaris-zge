@@ -46,6 +46,7 @@ El directorio `web-app/` contiene un **shell React contenedor** (`AppShell` + si
 - **Tipografía módulo React:** Space Grotesk + Fraunces + JetBrains Mono. Fuentes en `web-app/src/assets/fonts/`, tokens en `src/styles/tokens.css`.
 - **Tipografía módulo vanilla:** Google Fonts — Inter + JetBrains Mono.
 - **Iconos:** Lucide React (módulos React) o SVG inline (módulos vanilla). `stroke-width="1.5"`, `currentColor`.
+- **Mapas (módulos React):** **Leaflet 1.9 vanilla** (`leaflet` + `@types/leaflet`, sin `react-leaflet`). React 19 + react-leaflet v5 tuvo bugs de compat al cierre 2026-05-12; el patrón usado es montar el mapa en `useEffect` con `useRef<L.Map>` y mantener `onChange` estable vía `useRef` callback. Referencia: `web-app/src/modules/reclamos/components/MapaPicker.tsx`. Workaround obligatorio para iconos del marker (Vite rompe los paths default): import explícito de los PNG (`marker-icon-2x.png`, `marker-icon.png`, `marker-shadow.png`) y `L.Marker.prototype.options.icon = L.icon({...})`.
 - **Backend:** FastAPI (Python 3.10+), SQLAlchemy async + asyncpg, PostgreSQL (Supabase prod / `zaris_dev` local).
 
 ### Estado real de cada módulo (verificado 2026-05-12)
@@ -1639,3 +1640,24 @@ $env:PGPASSWORD="145236"
 ```
 
 En prod: lo mismo via `execute_sql` Supabase MCP. Password de todos los devs: `123456` (set por `seed_auth.py`).
+
+### Quirk 11: `Start-Process pnpm/npm/npx/yarn` falla — son `.cmd`, no `.exe`
+
+Tirar `Start-Process -FilePath "pnpm" -ArgumentList "dev"` desde PowerShell devuelve `"%1 no es una aplicación Win32 válida"`. En Windows, `pnpm`/`npm`/`npx`/`yarn`/`tsc` (y cualquier CLI instalado por Node) son shims `.cmd`, no binarios PE. `Start-Process` quiere un ejecutable.
+
+**Receta verificada (sesión 2026-05-12):**
+
+```powershell
+Start-Process -FilePath "cmd.exe" `
+  -ArgumentList "/c","pnpm dev > _dev.log 2> _dev.err.log" `
+  -WorkingDirectory "c:\Users\Cesar\Documents\ZARIS\Desarrollo\ZGE\web-app" `
+  -WindowStyle Hidden
+```
+
+Es decir: `cmd.exe /c "<comando>"` como wrapper. La redirección dentro del string queda manejada por cmd, no por PowerShell — útil para no perder stdout/stderr.
+
+Esta es la contraparte node-de [[Quirk 9: `python -m http.server`]]. Para Python alcanzaba con `Start-Process python ...` porque `python.exe` sí es un ejecutable. Para herramientas Node hay que pasar por cmd.
+
+**Alternativa:** ejecutar el binario directo desde `node_modules/.bin/` (que sí es un script Node con shebang, pero PowerShell lo ejecuta vía `node`). Ej: `Start-Process node -ArgumentList "$cwd/node_modules/.bin/vite","build"`. Menos legible.
+
+Para foreground (no detached) PowerShell ejecuta `pnpm dev` sin Start-Process y funciona perfecto — el problema es solo con `Start-Process`.
