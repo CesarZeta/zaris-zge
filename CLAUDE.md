@@ -625,6 +625,25 @@ CHECK constraint activo: `ck_reclamo_estado` con valores `('Sin asignar','En ges
 
 **Aplicada en local y prod al 2026-05-10.** Elimina la columna redundante `tipo_reclamo.id_area` (y su índice `idx_tipo_reclamo_area`). Desde mig 24 la fuente única del área de un tipo es `subarea.id_area` vía `tr.id_subarea → s.id_area`; mantener la columna espejo obligaba a doble escritura y abría la puerta a inconsistencias (123/282 filas divergentes antes de mig 23-24). Backend (`reclamos.py`, `ordenes_trabajo.py`) ya consultaba exclusivamente vía JOIN con `subarea`; `admin_tablas.py` quitó `id_area` de los `cols` editables de `tipo_reclamo`. Sin vistas ni triggers dependientes.
 
+### Migraciones 30-37 — Módulo Agenda (sub-fase 1.A + autoservicio)
+
+**Aplicadas en local y prod al 2026-05-12.** Estado final del módulo Agenda en prod:
+
+- **Mig 30** (`30_agenda_municipios_y_tipo_reclamo.sql`): crea `municipios` (seed: 1 fila) + ALTER `tipo_reclamo` agregando `duracion_estimada_min INTEGER DEFAULT 60` y `asignacion_a VARCHAR(10) DEFAULT 'agente'` con CHECK `('agente','equipo')`. La parte 1 (CREATE TABLE) se aplicó en el E2E del 2026-05-12; la parte 2 (ALTER tipo_reclamo) quedó pendiente hasta esta sesión, fixed via `30_part2_alter_tipo_reclamo`.
+- **Mig 31** (`31_agenda_catalogos.sql`): `estado_evento` (3 seeds: activo/finalizado/cancelado) + `estado_reserva` (3 seeds: reservada/asistio/cancelada).
+- **Mig 32** (`32_agenda_eventos_y_reservas.sql`): `eventos` + `evento_encargados` + `evento_reservas`.
+- **Mig 33** (`33_agenda_ocupaciones.sql`): `ocupaciones` con CHECK de consistencia tipo↔FK.
+- **Mig 34** (`34_agenda_auditoria_y_conflictos.sql`): `conflictos_log` + `agenda_audit_log`.
+- **Mig 35** (`35_agenda_autoservicio_tokens.sql`): `eventos.token_publico` + `evento_reservas.token_reserva` (UUID con índices únicos parciales WHERE NOT NULL) + backfill via `gen_random_uuid()`. Requiere `pgcrypto` (creada en la misma mig).
+- **Mig 36** (`36_agenda_activo_defaults.sql`): `ALTER COLUMN activo SET DEFAULT TRUE` en las 7 tablas Agenda con esa columna (el E2E descubrió el drift).
+- **Mig 37** (`37_agenda_defaults_y_notnull_completos.sql`): cierra el resto del drift de defaults + NOT NULL. Sincroniza ~13 defaults (`id_municipio=1` en 8 tablas, `resuelto=FALSE`, `capacidad_ciudadanos=1`, `cantidad_encargados=0`, `tipo_qr='ninguno'`, `admite_autoservicio=FALSE`) y ~18 `SET NOT NULL` en timestamps con `DEFAULT NOW()`. Verificado pre-aplicación: 0 NULLs en columnas afectadas, no requiere backfill.
+
+**Snapshot pre-mig 30 (parte 2)** en `_backup_tipo_reclamo_2026_05_12_premig30` (282 filas).
+
+**Smoke post-aplicación** (`/api/v1/agenda/calendario`, `/mes`, `/conflictos`, `/eventos/{id}`): 4/4 → HTTP 200 contra Railway. Endpoints públicos `/agenda/publico/*`: 4/4 OK (404/422 según corresponde sin auth).
+
+**Catálogos seedeados en prod:** municipios=1, estado_evento=3, estado_reserva=3. Sin eventos productivos (1 residual del E2E con `activo=false`).
+
 ### Migración 26 — Cleanup de áreas duplicadas con/sin tilde (`backend/migrations/26_cleanup_areas_duplicadas.sql`)
 
 **Aplicada en local y prod al 2026-05-10.** Consolida 15 pares de áreas duplicadas (una con tildes, otra sin) eligiendo dinámicamente como canónico el de cada par con más referencias entrantes (`subarea + tipo_reclamo + reclamos + lugares_atencion`); en empate, el activo; en empate, el id menor. Re-routea las FKs entrantes y soft-deletea los duplicados. Si **ambos** estaban inactivos en el grupo, no reactiva nada (área histórica sin uso).
@@ -952,9 +971,9 @@ Para sumar adjuntos a otra entidad (ej: OTs), replicar el patrón: nueva tabla `
 
 ## 27. Módulo Agenda — Estado actual (sub-fase 1.A)
 
-### Datos en zaris_dev local al 2026-05-10
+### Datos en zaris_dev local al 2026-05-10 + sincronización prod 2026-05-12
 
-**Aplicado solo en local** (no en prod todavía, decisión explícita del usuario). Migraciones 30-34 + `seed_agenda.py`.
+**Aplicado en local Y prod (Supabase) al 2026-05-12.** Migraciones 30-34 + 36-37 + `seed_agenda.py`. Ver §21 sección "Migraciones 30-37" para detalle por mig. Smoke 4/4 endpoints OK contra Railway.
 
 #### Migraciones nuevas
 
@@ -1089,7 +1108,7 @@ Pruebas validadas: 9 PASS / 0 FAIL en agente Chrome (T1-T11, ver `reporte_prueba
 - [x] ~~Migrar/dropear `frontend/agenda.html` vanilla legacy~~ — cerrado 2026-05-12.
 
 #### Aplicar en prod
-- [ ] Replicar migraciones 30-34 + `seed_agenda.py` en Supabase prod cuando esté validada la sub-fase 1.B. Backup pre-aplicación. Hoy prod no tiene ninguna tabla nueva del módulo.
+- [x] ~~Replicar migraciones 30-34 + `seed_agenda.py` en Supabase prod~~ — cerrado 2026-05-12. Las tablas habían entrado en prod durante el E2E del autoservicio sin documentar. Esta sesión completó la parte 2 de mig 30 (ALTER tipo_reclamo) + creó y aplicó mig 37 (defaults + NOT NULL) en local y prod. Ver §21 sección "Migraciones 30-37".
 
 ## 28. Recibir prompts armados afuera del proyecto
 
