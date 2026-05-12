@@ -43,3 +43,9 @@ export const crearReclamo = (data: ReclamoCreate) =>
 
 export const editarReclamo = (id: number, data: ReclamoUpdate) =>
   api.put<{ ok: boolean; id_reclamo: number; campos: string[] }>(`${BASE}/${id}`, data)
+
+export const cambiarEstadoReclamo = (id: number, body: { estado: string; nota?: string }) =>
+  api.put<{ ok: boolean; id_reclamo: number; estado: string }>(`${BASE}/${id}/estado`, body)
+
+export const cancelarReclamo = (id: number, body: { motivo: string }) =>
+  api.put<{ ok: boolean; id_reclamo: number; estado: string }>(`${BASE}/${id}/cancelar`, body)

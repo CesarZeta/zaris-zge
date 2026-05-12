@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useReclamoAdjuntos, useReclamoDetalle } from '../hooks/useReclamos'
+import { useAuthStore } from '../../../stores/auth'
 import { Badge } from '../components/Badge'
+import { CambiarEstadoModal } from '../components/CambiarEstadoModal'
+import { CancelarReclamoModal } from '../components/CancelarReclamoModal'
 import type { Adjunto, ReclamoDetalle, HistorialItem, OTAsociada, Subreclamo } from '../types/reclamo'
 
 const FUENTE_LABEL: Record<string, string> = {
@@ -21,6 +24,9 @@ export function DetailView() {
   const params = useParams<{ id?: string }>()
   const id = params.id ? Number(params.id) : null
   const detalle = useReclamoDetalle(id)
+  const user = useAuthStore((s) => s.user)
+  const [openEstado, setOpenEstado] = useState(false)
+  const [openCancelar, setOpenCancelar] = useState(false)
 
   if (detalle.isLoading) {
     return <div style={{ color: 'var(--fg-3)', padding: 20 }}>Cargando reclamo...</div>
@@ -31,6 +37,10 @@ export function DetailView() {
   if (!detalle.data) return null
 
   const r = detalle.data
+  const esFinal = r.estado === 'Resuelto' || r.estado === 'Cancelado'
+  // Gestion solo nivel 1/2/3 (admin/supervisor/operador). Nivel 4 (consultor) solo lee.
+  const puedeGestionar = !!user && user.nivel_acceso <= 3
+  const accionesVisibles = !esFinal && puedeGestionar
 
   return (
     <>
@@ -44,13 +54,33 @@ export function DetailView() {
             {r.nro_reclamo || `#${r.id_reclamo}`} · {r.area_nombre || '—'}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {r.estado !== 'Resuelto' && r.estado !== 'Cancelado' && (
-            <button onClick={() => navigate(`/reclamos/${r.id_reclamo}/editar`)} style={btnPrimary}>Editar</button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {accionesVisibles && (
+            <>
+              <button onClick={() => setOpenEstado(true)} style={btnPrimary}>Cambiar estado</button>
+              <button onClick={() => navigate(`/reclamos/${r.id_reclamo}/editar`)} style={btnGhost}>Editar</button>
+              <button onClick={() => setOpenCancelar(true)} style={btnDanger}>Cancelar reclamo</button>
+            </>
           )}
-          <button onClick={() => navigate('/reclamos')} style={btnGhost}>← Volver al listado</button>
+          <button onClick={() => navigate('/reclamos')} style={btnGhost}>← Volver</button>
         </div>
       </div>
+
+      {/* Modales B3 */}
+      <CambiarEstadoModal
+        open={openEstado}
+        idReclamo={r.id_reclamo}
+        estadoActual={r.estado}
+        onClose={() => setOpenEstado(false)}
+        onSuccess={() => { setOpenEstado(false); detalle.refetch() }}
+      />
+      <CancelarReclamoModal
+        open={openCancelar}
+        idReclamo={r.id_reclamo}
+        nroReclamo={r.nro_reclamo}
+        onClose={() => setOpenCancelar(false)}
+        onSuccess={() => { setOpenCancelar(false); detalle.refetch() }}
+      />
 
       <ReclamoSection title="Estado" icon="●">
         <Grid cols="repeat(4, 1fr)">
@@ -396,6 +426,11 @@ const btnGhost: React.CSSProperties = {
 }
 const btnPrimary: React.CSSProperties = {
   padding: '7px 14px', background: 'var(--zaris-dark)', color: 'var(--zaris-cream)',
+  border: 'none', borderRadius: 'var(--radius-lg)', fontFamily: 'var(--font-display)',
+  fontSize: 'var(--size-btn)', fontWeight: 500, cursor: 'pointer',
+}
+const btnDanger: React.CSSProperties = {
+  padding: '7px 14px', background: 'var(--color-error)', color: '#fff',
   border: 'none', borderRadius: 'var(--radius-lg)', fontFamily: 'var(--font-display)',
   fontSize: 'var(--size-btn)', fontWeight: 500, cursor: 'pointer',
 }
