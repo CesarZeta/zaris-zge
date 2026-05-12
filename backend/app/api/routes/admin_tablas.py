@@ -129,6 +129,11 @@ TABLE_CONFIG: dict[str, dict] = {
         "fecha_mod": "fecha_modificacion",
         "has_audit": False,
     },
+    "municipios": {
+        "pk": "id_municipio",
+        "cols": ["nombre", "provincia"],
+        "fecha_mod": "fecha_modificacion",
+    },
     # ── Tablas BUC — ahora con auditoría y baja lógica
     "actividades": {
         "pk": "id",

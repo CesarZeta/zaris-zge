@@ -693,6 +693,10 @@
     <div class="sidebar-item" data-tabla="tipo_representacion" onclick="selectTabla(this)"><i data-lucide="shield"   class="si"></i>Tipo de Representación</div>
     <div class="sidebar-item" data-tabla="nacionalidades"      onclick="selectTabla(this)"><i data-lucide="globe"    class="si"></i>Nacionalidades</div>
 
+    <div class="sidebar-group">Sistema</div>
+    <div class="sidebar-item" data-tabla="municipios"            onclick="selectTabla(this)"><i data-lucide="landmark"  class="si"></i>Municipios</div>
+    <div class="sidebar-item" data-tabla="configuracion_general" onclick="selectTabla(this)"><i data-lucide="settings-2" class="si"></i>Configuración general</div>
+
   </nav>
 
   <!-- Content -->
@@ -1014,6 +1018,26 @@ const SCHEMAS = {
     ],
     display: ['id', 'pais', 'region'],
   },
+  municipios: {
+    label: 'Municipio', titulo: 'Municipios',
+    pk: 'id_municipio',
+    cols: [
+      { field: 'nombre',    label: 'Nombre',    type: 'text', required: true },
+      { field: 'provincia', label: 'Provincia', type: 'text', required: false },
+    ],
+    display: ['id_municipio', 'nombre', 'provincia'],
+  },
+  configuracion_general: {
+    label: 'Parámetro', titulo: 'Configuración general',
+    pk: 'id_config',
+    cols: [
+      { field: 'clave',       label: 'Clave',       type: 'text',     required: true },
+      { field: 'valor',       label: 'Valor',       type: 'text',     required: true },
+      { field: 'tipo',        label: 'Tipo',        type: 'text',     required: false },
+      { field: 'descripcion', label: 'Descripción', type: 'textarea', required: false },
+    ],
+    display: ['id_config', 'clave', 'valor', 'tipo', 'descripcion'],
+  },
 };
 
 // ── Toast ─────────────────────────────────────────────────────
@@ -1051,6 +1075,8 @@ const TABLA_META = {
   actividades:       { icon: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',  sub: 'Actividades económicas CLAE' },
   tipo_representacion:{ icon: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',  sub: 'Tipos de vínculo empresa-ciudadano' },
   nacionalidades:    { icon: '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',  sub: 'Países y regiones de origen' },
+  municipios:        { icon: '<line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/>',  sub: 'Municipios donde opera el sistema' },
+  configuracion_general: { icon: '<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',  sub: 'Parámetros del sistema (key/value)' },
 };
 
 function tablaIcon(tabla) {
