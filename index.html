@@ -65,115 +65,86 @@
       </div>
     </header>
 
-    <!-- ── Sidebar ── -->
+    <!-- ── Sidebar — diseño plano con iconos (clon del shell React) ── -->
     <aside class="sidebar" aria-label="Menú principal">
-      <nav class="nav" id="nav">
+      <nav class="nav-flat" id="nav" aria-label="Navegación principal">
 
-        <!-- RECLAMOS -->
-        <div class="nav__group" data-open="false">
-          <button class="nav__title" aria-expanded="false" data-toggle="group">
-            <span>Reclamos</span>
-            <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
-                 stroke="currentColor" stroke-width="1.5">
-              <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
-          <div class="nav__panel">
-            <a class="nav__link" href="web-app/dist/index.html#/reclamos" data-modulo="reclamos">Gestión de reclamos</a>
-          </div>
-        </div>
+        <a class="nav-flat__item" href="frontend/welcome.html" data-flat-home>
+          <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="7" height="7" rx="1"/>
+            <rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="3" y="14" width="7" height="7" rx="1"/>
+            <rect x="14" y="14" width="7" height="7" rx="1"/>
+          </svg>
+          <span>dashboard</span>
+        </a>
 
-        <!-- ÓRDENES DE TRABAJO -->
-        <div class="nav__group" data-open="false">
-          <button class="nav__title" aria-expanded="false" data-toggle="group">
-            <span>Gestión de Órdenes de Trabajo</span>
-            <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
-                 stroke="currentColor" stroke-width="1.5">
-              <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
-          <div class="nav__panel">
-            <a class="nav__link" href="web-app/dist/index.html#/ot/supervisor" data-modulo="ot_supervisor">Mesa Supervisor</a>
-            <a class="nav__link" href="web-app/dist/index.html#/ot/agente" data-modulo="ot_agente">Mesa Agente</a>
-            <a class="nav__link" href="web-app/dist/index.html#/ot/auditoria" data-modulo="ot_auditoria">Mesa Auditoría</a>
-          </div>
-        </div>
+        <a class="nav-flat__item" href="web-app/dist/index.html#/agenda/timeline" data-modulo="turnos">
+          <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="18" rx="2"/>
+            <path d="M16 2v4M8 2v4M3 10h18"/>
+          </svg>
+          <span>agenda</span>
+        </a>
 
-        <!-- AGENDA -->
-        <div class="nav__group" data-open="false">
-          <button class="nav__title" aria-expanded="false" data-toggle="group">
-            <span>Agenda</span>
-            <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
-                 stroke="currentColor" stroke-width="1.5">
-              <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
-          <div class="nav__panel">
-            <a class="nav__link" href="web-app/dist/index.html#/agenda/timeline" data-modulo="turnos">Timeline</a>
-            <a class="nav__link" href="web-app/dist/index.html#/agenda/mensual" data-modulo="turnos">Mensual</a>
-            <a class="nav__link" href="web-app/dist/index.html#/agenda/eventos" data-modulo="turnos">Eventos</a>
-            <a class="nav__link" href="web-app/dist/index.html#/agenda/conflictos" data-modulo="turnos">Conflictos</a>
-          </div>
-        </div>
+        <a class="nav-flat__item" href="web-app/dist/index.html#/ciudadanos" data-modulo="padrones">
+          <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+          <span>ciudadanos</span>
+        </a>
 
-        <!-- CONFIGURACIÓN -->
-        <div class="nav__group" data-open="true">
-          <button class="nav__title" aria-expanded="true" data-toggle="group">
-            <span>Configuración</span>
-            <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
-                 stroke="currentColor" stroke-width="1.5">
-              <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
-          <div class="nav__panel">
+        <a class="nav-flat__item" href="web-app/dist/index.html#/empresas" data-modulo="padrones">
+          <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="4" y="2" width="16" height="20" rx="2"/>
+            <path d="M9 22v-4h6v4M8 6h.01M16 6h.01M12 6h.01M12 10h.01M12 14h.01M16 10h.01M16 14h.01M8 10h.01M8 14h.01"/>
+          </svg>
+          <span>empresas</span>
+        </a>
 
-            <!-- Padrones — links directos al iframe, sin sub-acordeón -->
-            <div class="nav__group" data-open="false">
-              <button class="nav__sub" aria-expanded="false" data-toggle="group">
-                <span>Padrones</span>
-                <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
-                     stroke="currentColor" stroke-width="1.5">
-                  <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </button>
-              <div class="nav__subpanel">
-                <a class="nav__link" href="web-app/dist/index.html#/ciudadanos" data-modulo="padrones">Ciudadanos</a>
-                <a class="nav__link" href="web-app/dist/index.html#/empresas" data-modulo="padrones">Empresas</a>
-              </div>
-            </div>
+        <a class="nav-flat__item" href="web-app/dist/index.html#/reclamos" data-modulo="reclamos">
+          <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+          <span>reclamos</span>
+        </a>
 
-            <!-- Maestros — links directos al iframe, sin sub-acordeón -->
-            <div class="nav__group" data-open="false">
-              <button class="nav__sub" aria-expanded="false" data-toggle="group">
-                <span>Maestros</span>
-                <svg class="nav__caret" viewBox="0 0 10 10" fill="none"
-                     stroke="currentColor" stroke-width="1.5">
-                  <path d="M3 2 L7 5 L3 8" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </button>
-              <div class="nav__subpanel">
-                <a class="nav__link" href="frontend/usuarios.html" data-modulo="usuarios">Usuarios</a>
-                <a class="nav__link" href="frontend/admin_tablas.html?tabla=agentes" data-modulo="admin_tablas">Agentes</a>
-                <a class="nav__link" href="frontend/admin_tablas.html?tabla=equipos" data-modulo="admin_tablas">Equipos</a>
-                <a class="nav__link" href="frontend/admin_tablas.html?tabla=tipo_usuario" data-modulo="admin_tablas">Tipos de usuario</a>
-                <a class="nav__link" href="frontend/admin_tablas.html?tabla=cargos" data-modulo="admin_tablas">Cargos</a>
-                <a class="nav__link" href="frontend/admin_tablas.html?tabla=area" data-modulo="admin_tablas">Áreas</a>
-                <a class="nav__link" href="frontend/admin_tablas.html?tabla=subarea" data-modulo="admin_tablas">Subáreas</a>
-                <a class="nav__link" href="frontend/admin_tablas.html?tabla=servicios" data-modulo="admin_tablas">Servicios</a>
-                <a class="nav__link" href="frontend/admin_tablas.html?tabla=actividades" data-modulo="admin_tablas">Actividades</a>
-                <a class="nav__link" href="frontend/admin_tablas.html?tabla=tipo_representacion" data-modulo="admin_tablas">Representación</a>
-                <a class="nav__link" href="frontend/admin_tablas.html?tabla=nacionalidades" data-modulo="admin_tablas">Nacionalidades</a>
-                <a class="nav__link" href="frontend/admin_tablas.html?tabla=tipo_reclamo" data-modulo="admin_tablas">Tipo de reclamos</a>
-                <a class="nav__link" href="frontend/admin_tablas.html?tabla=estado_reclamo" data-modulo="admin_tablas">Estado de reclamos</a>
-                <a class="nav__link" href="frontend/admin_tablas.html?tabla=areas" data-modulo="admin_tablas">Secretarías</a>
-                <a class="nav__link" href="frontend/admin_tablas.html?tabla=lugares_atencion" data-modulo="admin_tablas">Lugares de atención</a>
-                <a class="nav__link" href="frontend/admin_tablas.html?tabla=agenda_clase" data-modulo="admin_tablas">Clases de agenda</a>
-                <a class="nav__link" href="frontend/admin_tablas.html?tabla=agenda_feriado" data-modulo="admin_tablas">Feriados</a>
-              </div>
-            </div>
+        <!-- OT: link plano (lleva por default a supervisor). Las 3 mesas se eligen
+             dentro del módulo OT via tabs internas en futura sub-fase. Por ahora,
+             el shell vanilla mantiene 3 data-modulo via JS si necesita filtrar. -->
+        <a class="nav-flat__item" href="web-app/dist/index.html#/ot/supervisor" data-modulo="ot_supervisor" data-modulo-fallback="ot_agente,ot_auditoria">
+          <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 2h6a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v0a2 2 0 0 1 2-2z"/>
+            <path d="M9 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3"/>
+            <path d="M9 12h6M9 16h6"/>
+          </svg>
+          <span>OT</span>
+        </a>
 
-          </div>
-        </div>
+        <a class="nav-flat__item" href="frontend/usuarios.html" data-modulo="usuarios">
+          <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="8.5" cy="7" r="4"/>
+            <circle cx="18" cy="15" r="3"/>
+            <path d="M21 21l-1.5-1.5"/>
+          </svg>
+          <span>usuarios</span>
+        </a>
+
+        <a class="nav-flat__item" href="frontend/admin_tablas.html?tabla=agentes" data-modulo="admin_tablas">
+          <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+          <span>maestros</span>
+        </a>
 
       </nav>
 

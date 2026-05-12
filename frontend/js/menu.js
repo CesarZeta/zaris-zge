@@ -107,12 +107,18 @@
     : null;
 
   if (modulosPermitidos) {
-    document.querySelectorAll('.nav__link[data-modulo]').forEach(link => {
-      if (!modulosPermitidos.has(link.dataset.modulo)) {
-        link.hidden = true;
-      }
+    // Soporta el sidebar plano nuevo (.nav-flat__item) y el legacy (.nav__link).
+    // Para items con data-modulo-fallback (ej OT: ot_supervisor con fallback a
+    // ot_agente/ot_auditoria) basta con que CUALQUIERA de los códigos esté
+    // permitido para mostrar el item.
+    document.querySelectorAll('.nav-flat__item[data-modulo], .nav__link[data-modulo]').forEach(link => {
+      const principal = link.dataset.modulo;
+      const fallback = (link.dataset.moduloFallback || '').split(',').map(s => s.trim()).filter(Boolean);
+      const todos = [principal, ...fallback];
+      const algunoPermitido = todos.some(m => modulosPermitidos.has(m));
+      if (!algunoPermitido) link.hidden = true;
     });
-    // Ocultar grupos que quedaron sin links visibles
+    // Legacy: ocultar grupos vacios del sidebar viejo
     document.querySelectorAll('.nav__panel, .nav__subpanel').forEach(panel => {
       const visible = panel.querySelectorAll('.nav__link:not([hidden])').length;
       if (visible === 0) {
@@ -128,12 +134,13 @@
     if (frame) frame.src = url || 'frontend/welcome.html';
   };
 
-  document.querySelectorAll('.nav__link[href]').forEach(link => {
+  // Handler para links del sidebar plano (nav-flat__item) y legacy (nav__link).
+  document.querySelectorAll('.nav-flat__item[href], .nav__link[href]').forEach(link => {
     link.addEventListener('click', function (e) {
       e.preventDefault();
-      document.querySelectorAll('.nav__link').forEach(l => l.classList.remove('active'));
+      document.querySelectorAll('.nav-flat__item, .nav__link').forEach(l => l.classList.remove('active'));
       link.classList.add('active');
-      window.shellNavigate(link.href);
+      window.shellNavigate(link.getAttribute('href'));
     });
   });
 
@@ -156,7 +163,7 @@
       // Para vanilla compara sin la query; para React sin el hash.
       const linkPath = mod.split('?')[0].split('#')[0];
       const linkFull = mod.split('?')[0];                      // vanilla con query
-      document.querySelectorAll('.nav__link[href]').forEach(l => {
+      document.querySelectorAll('.nav-flat__item[href], .nav__link[href]').forEach(l => {
         const href = l.getAttribute('href') || '';
         if (href === mod || href === linkFull || href === linkPath) l.classList.add('active');
       });
