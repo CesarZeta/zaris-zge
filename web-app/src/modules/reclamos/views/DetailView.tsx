@@ -82,7 +82,7 @@ export function DetailView() {
         onSuccess={() => { setOpenCancelar(false); detalle.refetch() }}
       />
 
-      <ReclamoSection title="Estado" icon="●">
+      <ReclamoSection title="Estado">
         <Grid cols="repeat(4, 1fr)">
           <Cell label="Estado">
             <Badge kind="estado" value={r.estado} />
