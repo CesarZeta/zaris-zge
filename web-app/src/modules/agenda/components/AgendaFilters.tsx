@@ -1,14 +1,26 @@
 import { ChevronLeft, ChevronRight, RotateCcw, Calendar } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { useAgendaStore, type FiltroRecurso } from '../store/agendaStore'
 import { fromIsoDate, sumarDias, toIsoDate, etiquetaFechaLarga } from '../../../lib/dates'
+import { listarSubareasAgenda } from '../api/agendaApi'
+import type { SubareaItem } from '../types/agenda'
 
-export function AgendaFilters({ showRecursoFilter = true }: { showRecursoFilter?: boolean }) {
+export function AgendaFilters({ showRecursoFilter = true, showSubareaFilter = true }: { showRecursoFilter?: boolean; showSubareaFilter?: boolean }) {
   const fecha     = useAgendaStore((s) => s.fechaActiva)
   const setFecha  = useAgendaStore((s) => s.setFechaActiva)
   const filtro    = useAgendaStore((s) => s.filtroRecurso)
   const setFiltro = useAgendaStore((s) => s.setFiltroRecurso)
+  const idSub     = useAgendaStore((s) => s.filtroSubarea)
+  const setIdSub  = useAgendaStore((s) => s.setFiltroSubarea)
   const irAHoy    = useAgendaStore((s) => s.irAHoy)
   const idMun     = useAgendaStore((s) => s.idMunicipio)
+
+  const subareas = useQuery<SubareaItem[]>({
+    queryKey: ['agenda', 'subareas'],
+    queryFn: () => listarSubareasAgenda(undefined, 200),
+    staleTime: 5 * 60_000,
+    enabled: showSubareaFilter,
+  })
 
   const fechaDate = fromIsoDate(fecha)
 
@@ -58,8 +70,31 @@ export function AgendaFilters({ showRecursoFilter = true }: { showRecursoFilter?
         <RotateCcw size={13} strokeWidth={1.5} /> Hoy
       </button>
 
+      {showSubareaFilter && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+          <label style={{ fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+            Subarea
+          </label>
+          <select
+            value={idSub ?? ''}
+            onChange={(e) => setIdSub(e.target.value ? Number(e.target.value) : null)}
+            style={{
+              fontFamily: 'var(--font-display)', fontSize: 12, padding: '4px 8px',
+              border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-md)',
+              background: 'var(--surface-100)', color: 'var(--fg-1)', outline: 'none',
+              maxWidth: 220,
+            }}
+          >
+            <option value="">todas</option>
+            {subareas.data?.map((s) => (
+              <option key={s.id_subarea} value={s.id_subarea}>{s.nombre}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {showRecursoFilter && (
-        <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
+        <div style={{ display: 'flex', gap: 4, marginLeft: showSubareaFilter ? 0 : 'auto' }}>
           {(['todos', 'agente', 'equipo'] as FiltroRecurso[]).map((opt) => (
             <button
               key={opt}
@@ -78,7 +113,7 @@ export function AgendaFilters({ showRecursoFilter = true }: { showRecursoFilter?
         </div>
       )}
 
-      <div style={{ fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', marginLeft: showRecursoFilter ? 8 : 'auto' }}>
+      <div style={{ fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
         municipio {idMun}
       </div>
     </div>

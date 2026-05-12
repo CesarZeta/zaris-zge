@@ -3,9 +3,12 @@ import { Modal } from '../components/Modal'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { Button } from '../../../ui'
 import { CiudadanoSearch } from '../components/CiudadanoSearch'
+import { OTSearch } from '../components/OTSearch'
+import { EventoSearch } from '../components/EventoSearch'
+import { RecursoPicker } from '../components/RecursoPicker'
 import { useCrearOcupacion, useEliminarOcupacion } from '../hooks/useOcupaciones'
 import { useNotificationsStore } from '../../../stores/notifications'
-import type { CiudadanoMinimo, Ocupacion, OcupacionCreatePayload, TipoOcupacion, TipoRecurso } from '../types/agenda'
+import type { CiudadanoMinimo, EventoBusquedaItem, Ocupacion, OcupacionCreatePayload, OTBusquedaItem, TipoOcupacion, TipoRecurso } from '../types/agenda'
 
 interface Props {
   open: boolean
@@ -40,12 +43,16 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
   const eliminar = useEliminarOcupacion()
   const [form, setForm] = useState<OcupacionCreatePayload>(() => emptyOcup(defaults))
   const [ciudadano, setCiudadano] = useState<CiudadanoMinimo | null>(null)
+  const [otSel, setOtSel] = useState<OTBusquedaItem | null>(null)
+  const [evSel, setEvSel] = useState<EventoBusquedaItem | null>(null)
   const [confirmDel, setConfirmDel] = useState(false)
 
   useEffect(() => {
     if (open) {
       setForm(emptyOcup(defaults))
       setCiudadano(null)
+      setOtSel(null)
+      setEvSel(null)
     }
   }, [open, defaults])
 
@@ -123,8 +130,13 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
               <option value="equipo">equipo</option>
             </select>
           </Field>
-          <Field label={`ID ${form.tipo_recurso}`}>
-            <input type="number" min={1} value={form.id_recurso} onChange={(e) => update('id_recurso', Number(e.target.value))} style={inp} />
+          <Field label={form.tipo_recurso === 'agente' ? 'Agente' : 'Equipo'}>
+            <RecursoPicker
+              tipo={form.tipo_recurso}
+              value={form.id_recurso || null}
+              onChange={(id) => update('id_recurso', id ?? 0)}
+              idMunicipio={form.id_municipio}
+            />
           </Field>
           <Field label="Fecha">
             <input type="date" value={form.fecha} onChange={(e) => update('fecha', e.target.value)} style={inp} />
@@ -137,14 +149,33 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
           </Field>
 
           {form.tipo === 'ot' && (
-            <Field label="ID orden de trabajo" full>
-              <input type="number" min={1} value={form.id_orden_trabajo ?? ''} onChange={(e) => update('id_orden_trabajo', e.target.value ? Number(e.target.value) : null)} style={inp} placeholder="id_ot (ej: 1)" />
-            </Field>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={lbl}>Orden de trabajo</label>
+              <OTSearch
+                onSelect={(ot) => { setOtSel(ot); update('id_orden_trabajo', ot.id_ot) }}
+              />
+              {otSel && (
+                <div style={{ marginTop: 6, fontSize: 13, color: 'var(--fg-2)' }}>
+                  Seleccionado: <strong>{otSel.nro_ot ?? `OT #${otSel.id_ot}`}</strong>
+                  {otSel.estado_nombre && <span style={{ color: 'var(--fg-3)' }}> · {otSel.estado_nombre}</span>}
+                </div>
+              )}
+            </div>
           )}
           {form.tipo === 'evento' && (
-            <Field label="ID evento" full>
-              <input type="number" min={1} value={form.id_evento ?? ''} onChange={(e) => update('id_evento', e.target.value ? Number(e.target.value) : null)} style={inp} placeholder="id_evento" />
-            </Field>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={lbl}>Evento</label>
+              <EventoSearch
+                onSelect={(ev) => { setEvSel(ev); update('id_evento', ev.id_evento) }}
+                idMunicipio={form.id_municipio}
+              />
+              {evSel && (
+                <div style={{ marginTop: 6, fontSize: 13, color: 'var(--fg-2)' }}>
+                  Seleccionado: <strong>{evSel.nombre}</strong>
+                  <span style={{ color: 'var(--fg-3)' }}> · {evSel.fecha} {evSel.hora_inicio.slice(0, 5)}-{evSel.hora_fin.slice(0, 5)}</span>
+                </div>
+              )}
+            </div>
           )}
           {form.tipo === 'turno' && (
             <>

@@ -7,6 +7,7 @@ import type {
   EncargadoCreateResponse,
   EstadoCatalogo,
   Evento,
+  EventoBusquedaItem,
   EventoCreatePayload,
   EventoDetalle,
   EventoEncargado,
@@ -15,9 +16,12 @@ import type {
   OcupacionCreatePayload,
   OcupacionCreated,
   OcupacionUpdatePayload,
+  OTBusquedaItem,
   RecursoAgenda,
+  RecursoItem,
   Reserva,
   ReservaCreatePayload,
+  SubareaItem,
   TipoRecurso,
 } from '../types/agenda'
 
@@ -113,10 +117,15 @@ export function getAgendaRecurso(tipo_recurso: TipoRecurso, id_recurso: number, 
     params: { desde, hasta },
   })
 }
-export function getCalendarioDia(fecha: string, id_municipio = 1, tipo_recurso: 'agente' | 'equipo' | 'todos' = 'todos') {
-  return api.get<CalendarioDia>(`${BASE}/calendario`, {
-    params: { fecha, id_municipio, tipo_recurso },
-  })
+export function getCalendarioDia(
+  fecha: string,
+  id_municipio = 1,
+  tipo_recurso: 'agente' | 'equipo' | 'todos' = 'todos',
+  id_subarea: number | null = null,
+) {
+  const params: Record<string, unknown> = { fecha, id_municipio, tipo_recurso }
+  if (id_subarea != null) params.id_subarea = id_subarea
+  return api.get<CalendarioDia>(`${BASE}/calendario`, { params })
 }
 export function getCalendarioMes(anio: number, mes: number, id_municipio = 1) {
   return api.get<CalendarioMes>(`${BASE}/mes`, { params: { anio, mes, id_municipio } })
@@ -133,4 +142,21 @@ export function resolverConflicto(id: number, observaciones?: string) {
 // ----- BUC (busqueda de ciudadanos) ---------------------------------------
 export function buscarCiudadanos(q: string, limit = 10) {
   return api.get<CiudadanoMinimo[]>(`/api/v1/buc/ciudadanos/buscar`, { params: { q, limit, tipo: 'auto' } })
+}
+
+// ----- Catalogos extra (sub-fase 3.B) -------------------------------------
+export function listarSubareasAgenda(q?: string, limit = 50) {
+  return api.get<SubareaItem[]>(`${BASE}/catalogos/subareas`, { params: { q, limit } })
+}
+
+export function listarRecursosAgenda(opts?: { tipo?: TipoRecurso; q?: string; id_municipio?: number; limit?: number }) {
+  return api.get<RecursoItem[]>(`${BASE}/catalogos/recursos`, { params: opts })
+}
+
+export function buscarOTsAgenda(q?: string, estado?: string, limit = 20) {
+  return api.get<OTBusquedaItem[]>(`${BASE}/catalogos/ot-busqueda`, { params: { q, estado, limit } })
+}
+
+export function buscarEventosAgenda(q?: string, opts?: { fecha_desde?: string; fecha_hasta?: string; id_municipio?: number; limit?: number }) {
+  return api.get<EventoBusquedaItem[]>(`${BASE}/catalogos/evento-busqueda`, { params: { q, ...opts } })
 }

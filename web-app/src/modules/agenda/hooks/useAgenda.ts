@@ -6,10 +6,15 @@ import {
 } from '../api/agendaApi'
 import type { TipoRecurso } from '../types/agenda'
 
-export function useCalendarioDia(fecha: string, idMunicipio: number, tipoRecurso: 'agente' | 'equipo' | 'todos' = 'todos') {
+export function useCalendarioDia(
+  fecha: string,
+  idMunicipio: number,
+  tipoRecurso: 'agente' | 'equipo' | 'todos' = 'todos',
+  idSubarea: number | null = null,
+) {
   return useQuery({
-    queryKey: ['agenda', 'calendario', fecha, idMunicipio, tipoRecurso],
-    queryFn:  () => getCalendarioDia(fecha, idMunicipio, tipoRecurso),
+    queryKey: ['agenda', 'calendario', fecha, idMunicipio, tipoRecurso, idSubarea],
+    queryFn:  () => getCalendarioDia(fecha, idMunicipio, tipoRecurso, idSubarea),
   })
 }
 

@@ -208,3 +208,36 @@ export interface CiudadanoMinimo {
   telefono: string | null
   email: string | null
 }
+
+// Catalogos de autocompletar / filtros (sub-fase 3.B)
+export interface SubareaItem {
+  id_subarea: number
+  nombre: string
+  id_area: number | null
+  area_nombre: string | null
+}
+
+export interface RecursoItem {
+  tipo_recurso: TipoRecurso
+  id_recurso: number
+  nombre: string
+}
+
+export interface OTBusquedaItem {
+  id_ot: number
+  nro_ot: string | null
+  estado_nombre: string | null
+  reclamo_descripcion: string | null
+  nro_reclamo: string | null
+  id_agente: number | null
+  id_equipo: number | null
+}
+
+export interface EventoBusquedaItem {
+  id_evento: number
+  nombre: string
+  fecha: string
+  hora_inicio: string
+  hora_fin: string
+  estado_codigo: string | null
+}
