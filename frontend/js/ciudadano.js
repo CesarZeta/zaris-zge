@@ -261,9 +261,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function setModoBusqueda(modo) {
         state.busquedaTipo = modo;
         els.btnModoNumero.className = modo === 'numero'
-            ? 'z-btn z-btn--xs z-btn--primary' : 'z-btn z-btn--xs z-btn--ghost';
+            ? 'btn-zaris btn-zaris--xs btn-zaris--primary' : 'btn-zaris btn-zaris--xs btn-zaris--ghost';
         els.btnModoTexto.className = modo === 'texto'
-            ? 'z-btn z-btn--xs z-btn--primary' : 'z-btn z-btn--xs z-btn--ghost';
+            ? 'btn-zaris btn-zaris--xs btn-zaris--primary' : 'btn-zaris btn-zaris--xs btn-zaris--ghost';
         els.searchQuery.placeholder = modo === 'numero'
             ? 'Ingresá DNI o CUIL...'
             : 'Ingresá nombre o apellido...';
@@ -414,17 +414,17 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('btn-consultar-encontrado').style.display = 'none';
 
         els.resultList.innerHTML = resultados.map((c, i) => `
-            <div style="padding:8px 0;border-bottom:1px solid var(--z-border);display:flex;align-items:flex-start;gap:8px;">
+            <div style="padding:8px 0;border-bottom:1px solid var(--border-primary);display:flex;align-items:flex-start;gap:8px;">
                 <div style="flex:1;">
-                    <strong style="color:var(--z-primary);font-size:0.95rem;">${c.apellido}, ${c.nombre}</strong>
-                    <div style="font-size:0.82rem;color:var(--z-text2);margin-top:2px;">
+                    <strong style="color:var(--fg-1);font-size:0.95rem;">${c.apellido}, ${c.nombre}</strong>
+                    <div style="font-size:0.82rem;color:var(--fg-2);margin-top:2px;">
                         <span>${c.doc_tipo} ${c.doc_nro}</span>
                         <span style="margin-left:8px;">☎ ${c.telefono || '-'}</span>
                         <span style="margin-left:8px;">✉ ${c.email || '-'}</span>
                     </div>
                 </div>
-                <button class="z-btn z-btn--xs z-btn--primary" data-idx="${i}" data-action="editar">✏️ Editar</button>
-                <button class="z-btn z-btn--xs z-btn--ghost"   data-idx="${i}" data-action="consultar">👁 Ver</button>
+                <button class="btn-zaris btn-zaris--xs btn-zaris--primary" data-idx="${i}" data-action="editar">✏️ Editar</button>
+                <button class="btn-zaris btn-zaris--xs btn-zaris--ghost"   data-idx="${i}" data-action="consultar">👁 Ver</button>
             </div>
         `).join('');
 
@@ -450,7 +450,7 @@ document.addEventListener('DOMContentLoaded', () => {
         els.formCiudadano.reset();
         els.formCard.style.display = 'block';
         els.formTitle.textContent = 'Alta de Ciudadano';
-        els.formState.className = 'z-form-state z-form-state--new';
+        els.formState.className = 'form-state form-state--new';
         els.formState.textContent = '● NUEVO';
         els.empresaPanel.classList.remove('open');
         els.searchResult.classList.remove('visible');
@@ -458,7 +458,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setFormReadonly(false);
 
         // Limpiar validaciones visuales y estado manual CUIL
-        els.formCiudadano.querySelectorAll('.z-input, .z-select, .z-textarea').forEach(el => {
+        els.formCiudadano.querySelectorAll('.input-zaris, .select-zaris, .textarea-zaris').forEach(el => {
             ZValidaciones.limpiarCampo(el);
         });
         delete document.getElementById('cid-cuil').dataset.manualInput;
@@ -477,7 +477,7 @@ document.addEventListener('DOMContentLoaded', () => {
         els.formCiudadano.reset();
         els.formCard.style.display = 'block';
         els.formTitle.textContent = 'Consulta de Ciudadano';
-        els.formState.className = 'z-form-state z-form-state--view';
+        els.formState.className = 'form-state form-state--view';
         els.formState.textContent = '👁 CONSULTA';
         els.empresaPanel.classList.remove('open');
         els.searchResult.classList.remove('visible');
@@ -496,7 +496,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function setFormReadonly(readonly) {
         // Excluir el checkbox de empresa (debe ser visible siempre en consulta/edición)
-        els.formCiudadano.querySelectorAll('.z-input:not([type=hidden]), .z-select, .z-textarea').forEach(el => {
+        els.formCiudadano.querySelectorAll('.input-zaris:not([type=hidden]), .select-zaris, .textarea-zaris').forEach(el => {
             el.readOnly = readonly;
             el.disabled = readonly;
             el.style.background = readonly ? '#F5F5F5' : '';
@@ -511,9 +511,9 @@ document.addEventListener('DOMContentLoaded', () => {
         els.btnGuardar.style.display = readonly ? 'none' : '';
         // En modo solo lectura (consulta): cambiar botón Cancelar por Salir al Menú
         if (readonly) {
-            els.btnCancelar.textContent = '↗ Salir al Menú';
-            els.btnCancelar.className = 'z-btn z-btn--ghost';
-            els.btnCancelar.onclick = () => { window.location.href = 'menu.html'; };
+            els.btnCancelar.textContent = '↗ Salir al Inicio';
+            els.btnCancelar.className = 'btn-zaris btn-zaris--ghost';
+            els.btnCancelar.onclick = _zarisGoInicio;
         } else {
             els.btnCancelar.innerHTML = '✕ Cancelar';
             els.btnCancelar.onclick = null;  // restaura el listener original
@@ -554,7 +554,7 @@ document.addEventListener('DOMContentLoaded', () => {
         els.formCiudadano.reset();
         els.formCard.style.display = 'block';
         els.formTitle.textContent = 'Modificar Ciudadano';
-        els.formState.className = 'z-form-state z-form-state--edit';
+        els.formState.className = 'form-state form-state--edit';
         els.formState.textContent = '✏️ EDICIÓN';
         els.empresaPanel.classList.remove('open');
         els.searchResult.classList.remove('visible');
@@ -602,24 +602,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (soloLectura) {
                 // Modo consulta: todo deshabilitado, sin guardar empresa
-                els.formEmpresaVinculada.querySelectorAll('.z-input, .z-select, .z-textarea').forEach(el => {
+                els.formEmpresaVinculada.querySelectorAll('.input-zaris, .select-zaris, .textarea-zaris').forEach(el => {
                     el.readOnly = true;
                     el.disabled = true;
                     el.style.background = '#F5F5F5';
                 });
                 els.btnGuardarEmpresa.style.display = 'none';
-                const panelTitle = els.empresaPanel.querySelector('.z-card__title');
-                if (panelTitle) panelTitle.innerHTML = '🏢 Empresa Representada <small style="font-size:0.75rem;color:var(--z-text2);margin-left:8px;">(solo lectura)</small>';
+                const panelTitle = els.empresaPanel.querySelector('.card-zaris__title');
+                if (panelTitle) panelTitle.innerHTML = '🏢 Empresa Representada <small style="font-size:0.75rem;color:var(--fg-2);margin-left:8px;">(solo lectura)</small>';
             } else {
                 // Modo edición: campos habilitados, puede modificar empresa vinculada
-                els.formEmpresaVinculada.querySelectorAll('.z-input, .z-select, .z-textarea').forEach(el => {
+                els.formEmpresaVinculada.querySelectorAll('.input-zaris, .select-zaris, .textarea-zaris').forEach(el => {
                     el.readOnly = false;
                     el.disabled = false;
                     el.style.background = '';
                 });
                 els.btnGuardarEmpresa.style.display = '';
-                const panelTitle = els.empresaPanel.querySelector('.z-card__title');
-                if (panelTitle) panelTitle.innerHTML = '🏢 Empresa Vinculada <small style="font-size:0.75rem;color:var(--z-accent);margin-left:8px;">(editable)</small>';
+                const panelTitle = els.empresaPanel.querySelector('.card-zaris__title');
+                if (panelTitle) panelTitle.innerHTML = '🏢 Empresa Vinculada <small style="font-size:0.75rem;color:var(--zaris-orange);margin-left:8px;">(editable)</small>';
             }
 
             setTimeout(() => els.empresaPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 600);
@@ -737,8 +737,8 @@ document.addEventListener('DOMContentLoaded', () => {
             ZUtils.modalGuardado(
                 `Ciudadano ${accion}`,
                 `${response.apellido || ''}, ${response.nombre || ''}`,
-                () => activarModoNuevo(),
-                () => { window.location.href = 'menu.html'; }
+                () => activarModoNuevo()
+                // onSalir omitido: usa _zarisGoInicio()
             );
 
             // Si emp_chk está marcado, desplegar panel empresa
@@ -759,7 +759,7 @@ document.addEventListener('DOMContentLoaded', () => {
             'Los datos no guardados se perderán. ¿Estás seguro que deseas salir?'
         );
         if (confirmed) {
-            window.location.href = 'menu.html';
+            _zarisGoInicio();
         }
     }
 
@@ -819,7 +819,7 @@ document.addEventListener('DOMContentLoaded', () => {
             setTimeout(async () => {
                 const otraAlta = await ZUtils.confirm('Empresa guardada', '¿Deseás dar de alta otro ciudadano?');
                 if (otraAlta) activarModoNuevo();
-                else window.location.href = 'menu.html';
+                else _zarisGoInicio();
             }, 1000);
         } catch (err) {
             ZUtils.toast(`Error al guardar empresa: ${err.message}`, 'error');
@@ -853,28 +853,28 @@ document.addEventListener('DOMContentLoaded', () => {
     async function cargarVistaPrevia() {
         const container = document.getElementById('preview-rows');
         if (!container) return;
-        container.innerHTML = '<div style="color:var(--z-text3);font-size:.82rem;padding:.5rem 0;">Cargando...</div>';
+        container.innerHTML = '<div style="color:var(--fg-3);font-size:.82rem;padding:.5rem 0;">Cargando...</div>';
         try {
             const data = await ZUtils.apiFetch('/ciudadanos?solo_activos=false&limit=200');
             const recientes = data.slice(0, 5); // ya vienen ordenados por id desc
             if (recientes.length === 0) {
-                container.innerHTML = '<div style="color:var(--z-text3);font-size:.82rem;padding:.5rem 0;">Sin registros</div>';
+                container.innerHTML = '<div style="color:var(--fg-3);font-size:.82rem;padding:.5rem 0;">Sin registros</div>';
                 return;
             }
             container.innerHTML = recientes.map(c => `
-                <div class="z-preview-row" data-id="${c.id_ciudadano}">
-                    <span class="z-preview-row__nombre">${esc(c.apellido)}, ${esc(c.nombre)}</span>
-                    <span class="z-preview-row__mono">${c.doc_tipo || ''} ${esc(c.doc_nro || '—')}</span>
-                    <span class="z-preview-row__meta">${esc(c.cuil || '—')}</span>
-                    <span class="z-preview-row__estado z-preview-row__estado--${c.activo ? 'activo' : 'inactivo'}">${c.activo ? 'Activo' : 'Inactivo'}</span>
-                    <span class="z-preview-row__cta">Ver →</span>
+                <div class="preview-row" data-id="${c.id_ciudadano}">
+                    <span class="preview-row__nombre">${esc(c.apellido)}, ${esc(c.nombre)}</span>
+                    <span class="preview-row__mono">${c.doc_tipo || ''} ${esc(c.doc_nro || '—')}</span>
+                    <span class="preview-row__meta">${esc(c.cuil || '—')}</span>
+                    <span class="preview-row__estado preview-row__estado--${c.activo ? 'activo' : 'inactivo'}">${c.activo ? 'Activo' : 'Inactivo'}</span>
+                    <span class="preview-row__cta">Ver →</span>
                 </div>`).join('');
-            container.querySelectorAll('.z-preview-row').forEach(row =>
+            container.querySelectorAll('.preview-row').forEach(row =>
                 row.addEventListener('click', () => cargarCiudadanoDesdePrevia(parseInt(row.dataset.id)))
             );
         } catch (err) {
             console.error('[Preview ciudadanos]', err);
-            container.innerHTML = `<div style="color:var(--z-text3);font-size:.82rem;padding:.5rem 0;">No se pudo cargar (${err.message})</div>`;
+            container.innerHTML = `<div style="color:var(--fg-3);font-size:.82rem;padding:.5rem 0;">No se pudo cargar (${err.message})</div>`;
         }
     }
 
@@ -895,7 +895,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('preview-section').style.display = 'none';
         document.getElementById('form-card').style.display      = 'none';
         document.getElementById('listado-section').style.display = 'block';
-        document.getElementById('listado-contenido').innerHTML  = '<div style="text-align:center;padding:2rem;color:var(--z-text3);">Cargando...</div>';
+        document.getElementById('listado-contenido').innerHTML  = '<div style="text-align:center;padding:2rem;color:var(--fg-3);">Cargando...</div>';
         document.getElementById('lst-count').textContent = '';
         try {
             _listadoData = await ZUtils.apiFetch('/ciudadanos?solo_activos=false&limit=1000');
@@ -954,7 +954,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (rows.length === 0) {
             document.getElementById('listado-contenido').innerHTML =
-                '<div style="text-align:center;padding:2.5rem;color:var(--z-text3);">Sin resultados</div>';
+                '<div style="text-align:center;padding:2.5rem;color:var(--fg-3);">Sin resultados</div>';
             return;
         }
         const bodyRows = rows.map(c => `<tr>
@@ -962,19 +962,19 @@ document.addEventListener('DOMContentLoaded', () => {
             <td class="mono">${esc(c.doc_tipo||'')} ${esc(c.doc_nro||'—')}</td>
             <td class="mono">${esc(c.cuil||'—')}</td>
             <td>${esc(c.email||'—')}</td>
-            <td><span class="z-badge-${c.activo?'activo':'inactivo'}">${c.activo?'Activo':'Inactivo'}</span></td>
+            <td><span class="badge-${c.activo?'activo':'inactivo'}">${c.activo?'Activo':'Inactivo'}</span></td>
             <td>
-                <button class="z-tbl-btn" data-id="${c.id_ciudadano}" data-modo="consulta">Ver</button>
-                <button class="z-tbl-btn" data-id="${c.id_ciudadano}" data-modo="edicion">Editar</button>
+                <button class="tbl-btn" data-id="${c.id_ciudadano}" data-modo="consulta">Ver</button>
+                <button class="tbl-btn" data-id="${c.id_ciudadano}" data-modo="edicion">Editar</button>
             </td></tr>`).join('');
 
         document.getElementById('listado-contenido').innerHTML = `
-            <div class="z-listado-wrap"><table>
+            <div class="listado-wrap"><table>
                 <thead><tr><th>Apellido, Nombre</th><th>Documento</th><th>CUIL</th><th>Email</th><th>Estado</th><th>Acciones</th></tr></thead>
                 <tbody>${bodyRows}</tbody>
             </table></div>`;
 
-        document.getElementById('listado-contenido').querySelectorAll('.z-tbl-btn').forEach(btn =>
+        document.getElementById('listado-contenido').querySelectorAll('.tbl-btn').forEach(btn =>
             btn.addEventListener('click', () => {
                 const c = _listadoData.find(x => x.id_ciudadano === parseInt(btn.dataset.id));
                 cerrarListado();

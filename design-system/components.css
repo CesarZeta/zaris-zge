@@ -1,0 +1,24 @@
+/* ZARIS Design System — Components index
+ * ---------------------------------------------------------------
+ * Importar este archivo (junto con colors_and_type.css) para
+ * tener disponible el set completo de componentes *-zaris.
+ *
+ * Uso desde frontend/ (un nivel):
+ *   <link rel="stylesheet" href="../design-system/fonts/fonts.css">
+ *   <link rel="stylesheet" href="../design-system/colors_and_type.css">
+ *   <link rel="stylesheet" href="../design-system/components.css">
+ *
+ * Uso desde raíz (index.html):
+ *   <link rel="stylesheet" href="design-system/components.css">
+ * --------------------------------------------------------------- */
+
+@import url("./components/button.css");
+@import url("./components/card.css");
+@import url("./components/form.css");
+@import url("./components/modal.css");
+@import url("./components/alert.css");
+@import url("./components/toast.css");
+@import url("./components/badge.css");
+@import url("./components/spinner.css");
+@import url("./components/menu-card.css");
+@import url("./components/misc.css");

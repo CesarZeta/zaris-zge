@@ -1,0 +1,215 @@
+/* ZARIS DS — Misc
+ * Section title, panel expandible, breadcrumb (canónico §23),
+ * search panel celeste (§15), preview row de maestros.
+ * --------------------------------------------------------------- */
+
+/* Section title — sub-encabezado dentro de cards o vistas */
+.section-title-zaris {
+  font-family: var(--font-display);
+  font-size: var(--size-caption);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-1);
+  padding-bottom: 8px;
+  margin-bottom: 1rem;
+  border-bottom: 2px solid var(--zaris-orange);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+/* Panel expandible (max-height transition) */
+.panel-expand-zaris {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 280ms cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 280ms ease;
+  opacity: 0;
+}
+.panel-expand-zaris.open {
+  max-height: 2000px;
+  opacity: 1;
+}
+
+/* Breadcrumb canónico §23 */
+.zaris-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  margin: 8px 0 16px;
+}
+.zaris-breadcrumb a {
+  color: var(--zaris-orange);
+  text-decoration: none;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  cursor: pointer;
+}
+.zaris-breadcrumb a:hover { text-decoration: underline; }
+.zaris-breadcrumb__sep { color: var(--fg-3); }
+.zaris-breadcrumb__current {
+  color: var(--fg-2);
+  font-weight: 600;
+}
+
+/* Search panel celeste (§15) — patrón obligatorio en módulos de maestros */
+.search-panel-zaris {
+  background: rgba(245, 78, 0, 0.06);
+  border: 1px solid rgba(245, 78, 0, 0.20);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  margin-bottom: 1.25rem;
+}
+
+.search-panel-zaris__title {
+  font-family: var(--font-display);
+  font-size: var(--size-caption);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-2);
+  margin-bottom: 10px;
+}
+
+.search-panel-zaris__row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.search-panel-zaris__input {
+  flex: 1;
+  min-width: 220px;
+  font-family: var(--font-display);
+  font-size: var(--size-ui);
+  color: var(--fg-1);
+  background: var(--surface-100);
+  padding: 10px 14px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 200ms ease;
+}
+.search-panel-zaris__input::placeholder { color: var(--fg-5); }
+.search-panel-zaris__input:focus {
+  border-color: var(--border-medium);
+  box-shadow: var(--shadow-focus);
+}
+
+/* Preview / listado simple — fila por row con título + meta + estado */
+.preview-section-zaris {
+  margin-top: 1.5rem;
+}
+
+.preview-label-zaris {
+  font-family: var(--font-display);
+  font-size: var(--size-caption);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-3);
+  margin-bottom: 0.5rem;
+}
+
+.preview-rows-zaris {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.preview-row-zaris {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface-100);
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-primary);
+  transition: background 150ms ease, border-color 150ms ease;
+}
+.preview-row-zaris:hover {
+  background: var(--surface-200);
+  border-color: var(--border-medium);
+}
+
+.preview-row-zaris__nombre {
+  font-family: var(--font-display);
+  font-size: var(--size-ui);
+  color: var(--fg-1);
+  font-weight: 500;
+}
+
+.preview-row-zaris__meta {
+  font-family: var(--font-mono);
+  font-size: var(--size-mono);
+  color: var(--fg-3);
+}
+
+.preview-row-zaris__estado {
+  font-family: var(--font-display);
+  font-size: var(--size-caption);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+}
+.preview-row-zaris__estado--activo {
+  background: rgba(31, 138, 101, 0.12);
+  color: var(--color-success);
+}
+.preview-row-zaris__estado--inactivo {
+  background: rgba(207, 45, 86, 0.12);
+  color: var(--color-error);
+}
+
+.preview-row-zaris__cta {
+  font-family: var(--font-display);
+  font-size: var(--size-caption);
+  color: var(--zaris-orange);
+  cursor: pointer;
+  background: none;
+  border: none;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 4px 8px;
+}
+.preview-row-zaris__cta:hover { color: var(--color-error); }
+
+/* Listado wrapper (header con conteo + tabla/cards) */
+.listado-wrap-zaris {
+  background: var(--surface-100);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  box-shadow: var(--ring-border);
+  margin-top: 1rem;
+}
+
+.listado-header-zaris {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.listado-count-zaris {
+  font-family: var(--font-mono);
+  font-size: var(--size-mono);
+  color: var(--fg-3);
+}
+
+@media (max-width: 768px) {
+  .preview-row-zaris {
+    grid-template-columns: 1fr;
+    align-items: flex-start;
+  }
+}

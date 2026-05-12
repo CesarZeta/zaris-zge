@@ -118,16 +118,16 @@ const ZValidaciones = {
      * @param {string} [errorMsg] - Mensaje de error opcional
      */
     marcarCampo(inputEl, isValid, errorMsg = '') {
-        inputEl.classList.remove('z-input--error', 'z-input--success');
+        inputEl.classList.remove('input-zaris--error', 'input-zaris--success');
 
         if (isValid) {
-            inputEl.classList.add('z-input--success');
+            inputEl.classList.add('input-zaris--success');
         } else {
-            inputEl.classList.add('z-input--error');
+            inputEl.classList.add('input-zaris--error');
         }
 
         // Buscar elemento de error siguiente
-        const errorEl = inputEl.parentElement.querySelector('.z-input-error');
+        const errorEl = inputEl.parentElement.querySelector('.input-error-zaris');
         if (errorEl) {
             if (isValid) {
                 errorEl.classList.remove('visible');
@@ -144,8 +144,8 @@ const ZValidaciones = {
      * @param {HTMLElement} inputEl
      */
     limpiarCampo(inputEl) {
-        inputEl.classList.remove('z-input--error', 'z-input--success');
-        const errorEl = inputEl.parentElement.querySelector('.z-input-error');
+        inputEl.classList.remove('input-zaris--error', 'input-zaris--success');
+        const errorEl = inputEl.parentElement.querySelector('.input-error-zaris');
         if (errorEl) {
             errorEl.classList.remove('visible');
             errorEl.textContent = '';

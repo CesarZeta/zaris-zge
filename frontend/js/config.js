@@ -35,6 +35,18 @@ const ZARIS_ENUMS = {
 };
 
 /**
+ * Navegación al inicio del shell. Si vive en iframe usa shellNavigate;
+ * si abrieron el HTML standalone (no debería pasar tras el guard), reload al shell.
+ */
+function _zarisGoInicio() {
+    if (window.parent && window.parent.shellNavigate) {
+        window.parent.shellNavigate('frontend/welcome.html');
+    } else {
+        window.location.href = '../index.html';
+    }
+}
+
+/**
  * Utilidades generales
  */
 const ZUtils = {
@@ -70,19 +82,19 @@ const ZUtils = {
      * Muestra una notificación toast
      */
     toast(message, type = 'success', duration = 4000) {
-        let container = document.querySelector('.z-toast-container');
+        let container = document.querySelector('.toast-zaris-container');
         if (!container) {
             container = document.createElement('div');
-            container.className = 'z-toast-container';
+            container.className = 'toast-zaris-container';
             document.body.appendChild(container);
         }
 
         const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
         const toast = document.createElement('div');
-        toast.className = `z-toast z-toast--${type}`;
+        toast.className = `toast-zaris toast-zaris--${type}`;
         toast.innerHTML = `
-            <span class="z-toast__icon">${icons[type] || icons.info}</span>
-            <span class="z-toast__message">${message}</span>
+            <span class="toast-zaris__icon">${icons[type] || icons.info}</span>
+            <span class="toast-zaris__message">${message}</span>
         `;
         container.appendChild(toast);
 
@@ -100,19 +112,19 @@ const ZUtils = {
     confirm(title, message) {
         return new Promise((resolve) => {
             const overlay = document.createElement('div');
-            overlay.className = 'z-modal-overlay active';
+            overlay.className = 'modal-zaris-overlay active';
             overlay.innerHTML = `
-                <div class="z-modal">
-                    <div class="z-modal__header">
-                        <h3 class="z-modal__title">${title}</h3>
-                        <button class="z-modal__close" data-action="cancel">&times;</button>
+                <div class="modal-zaris">
+                    <div class="modal-zaris__header">
+                        <h3 class="modal-zaris__title">${title}</h3>
+                        <button class="modal-zaris__close" data-action="cancel">&times;</button>
                     </div>
-                    <div class="z-modal__body">
+                    <div class="modal-zaris__body">
                         <p>${message}</p>
                     </div>
-                    <div class="z-modal__footer">
-                        <button class="z-btn z-btn--ghost" data-action="cancel">No, continuar</button>
-                        <button class="z-btn z-btn--primary" data-action="confirm">Sí, salir</button>
+                    <div class="modal-zaris__footer">
+                        <button class="btn-zaris btn-zaris--ghost" data-action="cancel">No, continuar</button>
+                        <button class="btn-zaris btn-zaris--primary" data-action="confirm">Sí, salir</button>
                     </div>
                 </div>
             `;
@@ -132,25 +144,25 @@ const ZUtils = {
     },
 
     /**
-     * Modal post-guardado: OK (nueva alta) o Salir (volver al menú)
+     * Modal post-guardado: OK (nueva alta) o Salir (volver al inicio del shell)
      * onOk: función a llamar cuando elige "OK"
-     * onSalir: función a llamar cuando elige "Salir" (default: ir a menu.html)
+     * onSalir: función a llamar cuando elige "Salir" (default: navegar al inicio del shell)
      */
     modalGuardado(titulo, detalle, onOk, onSalir) {
         const overlay = document.createElement('div');
-        overlay.className = 'z-modal-overlay active';
+        overlay.className = 'modal-zaris-overlay active';
         overlay.innerHTML = `
-            <div class="z-modal" style="max-width:420px;">
-                <div class="z-modal__header" style="background:linear-gradient(135deg,#1B5E20,#2E7D32);color:#fff;border-radius:12px 12px 0 0;">
-                    <h3 class="z-modal__title" style="color:#fff;">✅ ${titulo}</h3>
+            <div class="modal-zaris" style="max-width:420px;">
+                <div class="modal-zaris__header" style="background:var(--color-success);color:var(--zaris-cream);border-radius:var(--radius-xl) var(--radius-xl) 0 0;">
+                    <h3 class="modal-zaris__title" style="color:var(--zaris-cream);">✅ ${titulo}</h3>
                 </div>
-                <div class="z-modal__body" style="text-align:center;padding:1.5rem 2rem;">
-                    <p style="font-size:1rem;color:var(--z-text);margin-bottom:0.3rem;">${detalle}</p>
-                    <p style="font-size:0.85rem;color:var(--z-text2);">¿Qué desea hacer a continuación?</p>
+                <div class="modal-zaris__body" style="text-align:center;padding:1.5rem 2rem;">
+                    <p style="font-size:1rem;color:var(--fg-1);margin-bottom:0.3rem;">${detalle}</p>
+                    <p style="font-size:0.85rem;color:var(--fg-2);">¿Qué desea hacer a continuación?</p>
                 </div>
-                <div class="z-modal__footer" style="justify-content:center;gap:1rem;">
-                    <button class="z-btn z-btn--ghost z-btn--lg" data-action="salir">↗ Salir al Menú</button>
-                    <button class="z-btn z-btn--primary z-btn--lg" data-action="ok">✚ Nueva Alta</button>
+                <div class="modal-zaris__footer" style="justify-content:center;gap:1rem;">
+                    <button class="btn-zaris btn-zaris--ghost btn-zaris--lg" data-action="salir">↗ Salir al Inicio</button>
+                    <button class="btn-zaris btn-zaris--primary btn-zaris--lg" data-action="ok">✚ Nueva Alta</button>
                 </div>
             </div>
         `;
@@ -162,7 +174,7 @@ const ZUtils = {
                 if (onOk) onOk();
             } else if (action === 'salir' || e.target === overlay) {
                 overlay.remove();
-                if (onSalir) onSalir(); else window.location.href = 'menu.html';
+                if (onSalir) onSalir(); else _zarisGoInicio();
             }
         });
     },
