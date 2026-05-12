@@ -138,19 +138,27 @@
   });
 
   // ── Auto-cargar módulo desde ?modulo=<ruta> ───────────────────
-  // Permite que un acceso standalone (ej: frontend/ot_supervisor.html) sea
-  // redirigido al shell con ?modulo=frontend/ot_supervisor.html y aterrice
-  // con la sidebar visible. La whitelist evita open redirects.
+  // Permite que un acceso standalone (vanilla o bundle React) sea
+  // redirigido al shell con ?modulo=<ruta> y aterrice con la sidebar visible.
+  // La whitelist acepta:
+  //   - frontend/<nombre>.html(?...)?
+  //   - web-app/dist/index.html(#/...)?
+  // y evita open redirects rechazando cualquier otro path.
   try {
     const params = new URLSearchParams(window.location.search);
     const mod = params.get('modulo');
-    if (mod && /^frontend\/[a-z0-9_-]+\.html(\?.*)?$/i.test(mod)) {
+    const isVanilla = /^frontend\/[a-z0-9_-]+\.html(\?.*)?$/i.test(mod || '');
+    const isReact   = /^web-app\/dist\/index\.html(#\/.*)?$/i.test(mod || '');
+    if (mod && (isVanilla || isReact)) {
       const frame = document.getElementById('module-frame');
       if (frame) frame.src = mod;
-      // Marcar el nav-link correspondiente como activo si existe
-      const linkPath = mod.split('?')[0];
+      // Marcar el nav-link correspondiente como activo si existe.
+      // Para vanilla compara sin la query; para React sin el hash.
+      const linkPath = mod.split('?')[0].split('#')[0];
+      const linkFull = mod.split('?')[0];                      // vanilla con query
       document.querySelectorAll('.nav__link[href]').forEach(l => {
-        if (l.getAttribute('href') === linkPath) l.classList.add('active');
+        const href = l.getAttribute('href') || '';
+        if (href === mod || href === linkFull || href === linkPath) l.classList.add('active');
       });
     }
   } catch (e) { /* ignorar */ }
