@@ -27,12 +27,14 @@ L.Marker.prototype.options.icon = DefaultIcon
 const DEFAULT_CENTER: [number, number] = [-34.5305, -58.4779]
 const DEFAULT_ZOOM = 13
 
-// Color del marker por estado del reclamo.
+// Color del marker por estado del reclamo. Verde de --color-success del DS
+// (#1f8a65) para "En gestión" — destaca como "operacion en curso" sin chocar
+// con el naranja del brand.
 const ESTADO_COLOR: Record<string, string> = {
-  'Sin asignar':  '#c62828', // rojo
-  'En gestión':   '#ef6c00', // naranja
-  'En espera':    '#f57f17', // amarillo
-  'En auditoría': '#6a1b9a', // violeta
+  'Sin asignar':  '#c62828', // rojo (urgencia)
+  'En gestión':   '#1f8a65', // verde DS --color-success (en curso)
+  'En espera':    '#f57f17', // amarillo (bloqueado)
+  'En auditoría': '#6a1b9a', // violeta (verificacion)
 }
 
 function colorEstado(estado: EstadoReclamo | string | null): string {
