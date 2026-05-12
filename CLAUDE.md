@@ -459,6 +459,20 @@ Comandos disponibles en `.claude/commands/` — invocar con `/nombre`:
 `nro_reclamo` se genera automáticamente vía trigger `trg_nro_reclamo` → `REC-YYYY-XXXXXX`.
 `nro_ot` se genera automáticamente vía trigger `trg_nro_ot` → `OT-YYYY-XXXXXX`.
 
+### CHECK constraints en `reclamos` (verificado prod 2026-05-12)
+
+| Campo | CHECK | Valores aceptados |
+|---|---|---|
+| `prioridad` | `reclamos_prioridad_check` | **`Alta`, `Media`, `Baja`** — NO acepta `Crítica`, `Urgente`, etc. Agregar valor nuevo requiere migración del CHECK ANTES de exponerlo en UI. |
+| `estado` | `ck_reclamo_estado` | `Sin asignar`, `En gestión`, `En espera`, `En auditoría`, `Resuelto`, `Cancelado` (con tildes). |
+
+Antes de modificar selects de UI o tipos TypeScript que mapean estos campos, correr:
+```sql
+SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
+WHERE conrelid = 'reclamos'::regclass AND contype = 'c';
+```
+Caso real sesión 2026-05-12: introducir `'Crítica'` en `type Prioridad` costó un commit de fix (`4efcacb`) cuando el smoke API explotó con IntegrityError. La doc puede estar atrás; el CHECK es el contrato real.
+
 ### Estados de reclamo (v1.2)
 
 `Sin asignar` → `En gestión` → `En espera` → `En auditoría` → `Resuelto` / `Cancelado`
@@ -626,7 +640,7 @@ Las siguientes tablas ya existen en Supabase prod y **no deben re-crearse**:
 | `tipo_reclamo` | 20 | Columna `audit` agregada en migración 21 |
 | `estado_reclamo` | manual | Estados válidos del flujo de reclamos |
 | `ordenes_trabajo` | pre-existente | Trigger `trg_nro_ot` → `OT-YYYY-XXXXXX` |
-| `estado_ot` | pre-existente | Seeds: En gestión, En espera, Pendiente, Terminada, Cancelada |
+| `estado_ot` | pre-existente | Seeds **aplicados 2026-05-12 via MCP** (la tabla estaba vacía en prod, el endpoint `/reclamos/{id}/cancelar` lo cazó al fallar buscando `'Cancelada'`). 5 estados: En gestión, En espera, Pendiente, Terminada, Cancelada. Idempotente con `ON CONFLICT (nombre) DO NOTHING`. |
 | `equipo_agentes` | pre-existente | Reemplaza `equipo_usuarios` en lógica de OTs |
 | `configuracion_general` | pre-existente | Seeds: `auditor_misma_subarea_permitido`, `ot_pendiente_dias_vencimiento` |
 
