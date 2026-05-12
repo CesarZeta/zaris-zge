@@ -215,6 +215,80 @@ async def agenda_ausencia_cols(session: AsyncSession) -> set[str]:
 # =============================================================================
 # Resumen corto por tipo de ocupacion - usado en GET /ocupaciones y /calendario
 # =============================================================================
+# =============================================================================
+# Autoservicio publico — busca-o-crea ciudadano por DNI
+# =============================================================================
+async def buscar_o_crear_ciudadano_por_dni(
+    session: AsyncSession,
+    dni: str,
+    apellido: str,
+    nombre: str,
+    telefono: Optional[str] = None,
+    email: Optional[str] = None,
+    id_municipio: int = 1,
+) -> dict[str, Any]:
+    """Busca un ciudadano por doc_nro (digits-only). Si existe activo, lo devuelve
+    sin tocar. Si no existe, crea uno minimo con datos del form publico de autoservicio.
+
+    Devuelve dict con id_ciudadano + apellido + nombre + doc_nro + creado (bool).
+
+    Defaults para campos NOT NULL no provistos por el form:
+      cuil = doc_nro sin formato (sera mejorado cuando un operador complete los datos)
+      sexo = 'otro'
+      fecha_nac = 1900-01-01 (sentinela visible)
+      id_nacionalidad = primer match 'Argentina' o 1
+      telefono = '0' si no viene
+      email = '<dni>@autoservicio.local' si no viene
+      observaciones = 'Creado por autoservicio - datos a completar'
+    """
+    import re
+    dni_clean = re.sub(r"[^\d]", "", dni or "")
+    if len(dni_clean) < 6:
+        raise ValueError("DNI debe tener al menos 6 digitos numericos")
+
+    # Buscar primero (activos y dados de baja — si esta dado de baja, no recrear)
+    row = (await session.execute(text("""
+        SELECT id_ciudadano, apellido, nombre, doc_nro, activo
+          FROM ciudadanos
+         WHERE regexp_replace(doc_nro, '[^0-9]', '', 'g') = :d
+         LIMIT 1
+    """), {"d": dni_clean})).mappings().first()
+    if row:
+        return {**dict(row), "creado": False}
+
+    # Crear nuevo
+    id_nac = await session.scalar(text(
+        "SELECT id FROM nacionalidades WHERE pais ILIKE 'Argentina' LIMIT 1"
+    ))
+    id_nac = int(id_nac) if id_nac else 1
+
+    tel = telefono.strip() if telefono and telefono.strip() else "0"
+    em  = email.strip().lower() if email and email.strip() else f"{dni_clean}@autoservicio.local"
+
+    new_id = await session.scalar(text("""
+        INSERT INTO ciudadanos
+            (doc_tipo, doc_nro, cuil, nombre, apellido, sexo, fecha_nac,
+             id_nacionalidad, telefono, email,
+             activo, ren_chk, email_chk, emp_chk, observaciones,
+             fecha_alta, id_municipio)
+        VALUES
+            ('DNI', :dni, :cuil, :nombre, :apellido, 'otro', '1900-01-01',
+             :id_nac, :tel, :email,
+             TRUE, FALSE, FALSE, FALSE, 'Creado por autoservicio - datos a completar',
+             NOW(), :mun)
+        RETURNING id_ciudadano
+    """), {
+        "dni": dni_clean, "cuil": dni_clean,
+        "nombre": nombre[:100], "apellido": apellido[:100],
+        "id_nac": id_nac, "tel": tel[:40], "email": em[:200], "mun": id_municipio,
+    })
+    return {
+        "id_ciudadano": int(new_id),
+        "apellido": apellido, "nombre": nombre, "doc_nro": dni_clean,
+        "activo": True, "creado": True,
+    }
+
+
 def descripcion_corta_sql() -> str:
     """SQL CASE que arma una descripcion legible de la ocupacion segun su tipo.
     Diseñado para usar en JOINs - referencias a tablas: o (ocupaciones),

@@ -24,6 +24,7 @@ export interface Evento {
   cantidad_encargados: number
   tipo_qr: TipoQR
   admite_autoservicio: boolean
+  token_publico: string | null
   id_estado_evento: number
   estado_codigo: string | null
   activo: boolean

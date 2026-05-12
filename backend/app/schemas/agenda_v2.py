@@ -79,6 +79,7 @@ class EventoOut(BaseModel):
     cantidad_encargados: int
     tipo_qr: str
     admite_autoservicio: bool
+    token_publico: Optional[str] = None  # solo poblado cuando admite_autoservicio=TRUE
     id_estado_evento: int
     estado_codigo: Optional[str] = None
     activo: bool
@@ -334,3 +335,49 @@ class EventoBusquedaOut(BaseModel):
     hora_inicio: time
     hora_fin: time
     estado_codigo: Optional[str] = None
+
+
+# =============================================================================
+# Autoservicio publico (sin JWT) — sub-fase 3.B
+# =============================================================================
+class EventoPublicoOut(BaseModel):
+    """Vista publica de un evento (sin datos sensibles).
+    No expone capacidad total ni listado de reservas — solo si hay cupo y datos
+    minimos para que el ciudadano sepa que esta reservando."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id_evento: int
+    nombre: str
+    descripcion: Optional[str] = None
+    fecha: date
+    hora_inicio: time
+    hora_fin: time
+    cupo_disponible: int
+    estado_codigo: str
+    admite_autoservicio: bool
+    tipo_qr: str
+
+
+class ReservaPublicaCreate(BaseModel):
+    """Form publico de reserva. DNI + apellido + nombre obligatorios;
+    telefono y email opcionales."""
+    dni: str = Field(..., min_length=6, max_length=15)
+    apellido: str = Field(..., min_length=1, max_length=120)
+    nombre: str = Field(..., min_length=1, max_length=120)
+    telefono: Optional[str] = Field(None, max_length=40)
+    email: Optional[str] = Field(None, max_length=200)
+
+
+class ReservaPublicaOut(BaseModel):
+    """Devuelta tras crear o consultar una reserva publica."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id_evento_reserva: int
+    token_reserva: str  # UUID
+    qr_codigo: Optional[str] = None
+    estado_codigo: str
+    origen: str
+    ciudadano_apellido: Optional[str] = None
+    ciudadano_nombre: Optional[str] = None
+    ciudadano_dni: Optional[str] = None
+    evento: EventoPublicoOut
