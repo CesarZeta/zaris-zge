@@ -170,9 +170,12 @@ ZARIS uses **Lucide** ([lucide.dev](https://lucide.dev)) as its icon system, loa
 - Icon button pattern: 14px icon + 14px Space Grotesk label with 8px gap.
 
 ### Custom marks
-- `assets/zaris-logo.svg` — wordmark in display type
-- `assets/zaris-mark.svg` — condensed Z monogram for favicon/app icon
+- `assets/zaris-mark-flat.svg` — Z monogram, `stroke="currentColor"` (the only mark variant; tint with CSS)
+- `assets/zaris-favicon.svg` — 32×32 favicon (black `rx=80` background)
+- `assets/zaris-social-share.svg` — 1200×630 Open Graph card
 - `assets/illustration-timeline.svg` — AI timeline metaphor illustration
+
+See `assets/BRAND-USAGE.md` for the full mark policy.
 
 ### Usage rules
 - **No emoji** in product UI.
