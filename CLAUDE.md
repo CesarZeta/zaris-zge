@@ -41,6 +41,8 @@ El directorio `web-app/` contiene un **shell React contenedor** (`AppShell` + si
 
 > Si en algún momento te encontrás pensando "el shell React debería tener su propio sidebar/topbar/notificaciones en prod", **estás equivocado**. Esa función es del shell vanilla. El AppShell del shell React es andamiaje de desarrollo, no UI de producción.
 
+> **Reportes visuales del usuario: PRIMERO preguntar/verificar en qué shell lo vio.** Si el usuario dice "veo X pantalla rara / estilo viejo / sidebar distinto", la primera pregunta es **dónde** lo vio — `localhost:5173` (shell React standalone, solo dev), `localhost:8080/index.html` (shell vanilla local, producto real), `cesarzeta.github.io/zaris-zge/` (prod), o un iframe interno. Las tres superficies se ven distinto y NO es el mismo bug en cada una. Confundirlas hace que audites el archivo equivocado. Caso real sesión 2026-05-12: el usuario reportó "pantalla de logueo anterior" y se asumió que era un legacy puro; era la divergencia entre `frontend/login.html` (vanilla, oficial) y `web-app/src/app/LoginPage.tsx` (shell React, dev), ambos en DS nuevo pero con look distinto.
+
 - **Tipografía módulo React:** Space Grotesk + Fraunces + JetBrains Mono. Fuentes en `web-app/src/assets/fonts/`, tokens en `src/styles/tokens.css`.
 - **Tipografía módulo vanilla:** Google Fonts — Inter + JetBrains Mono.
 - **Iconos:** Lucide React (módulos React) o SVG inline (módulos vanilla). `stroke-width="1.5"`, `currentColor`.
@@ -1383,3 +1385,35 @@ Cuando se decida ejecutar:
 ### Por qué NO se hizo hoy
 
 El usuario reportó "ver pantalla de logueo anterior" el 2026-05-12. La causa real fue la divergencia entre login vanilla y login React (punto 1 arriba), no que existiera un archivo con DS v1.0 puro. Como toda la cadena legacy funciona con los mismos colores del DS nuevo, no hay regresión visual urgente. Esta auditoría es la base para programar el bloque de limpieza en una sesión dedicada.
+
+## 32. Build de `web-app/dist/` y testing local del shell vanilla + bundle
+
+Reglas operativas verificadas en sesión 2026-05-12 cuando se intentó probar la integración shell vanilla + módulo Agenda React **en local**.
+
+### Quirk 1: `pnpm build` toma las env vars del shell
+
+`web-app/vite.config.ts` lee `VITE_API_BASE` de `.env.development` o `.env.production` según el modo. **Pero si la variable está exportada en el shell al ejecutar `pnpm build`, esa gana sobre los `.env` files** — comportamiento estándar de Vite, fácil de pasar por alto.
+
+Consecuencia real (sesión 2026-05-12): se hizo `VITE_API_BASE=http://127.0.0.1:8000 pnpm build --mode development` para probar local. El bundle resultante apuntaba a `127.0.0.1:8000` (correcto para esa prueba). **Si ese dist se commitea, prod queda roto** (apunta a un origen local desde Pages).
+
+**Regla:** antes de commitear `web-app/dist/`, ejecutar `pnpm build` **sin variables seteadas en el shell**, en una terminal limpia, modo prod (default). Verificar con `grep "zaris-api" dist/assets/index-*.js` que el bundle apunte a Railway, no a localhost. Si dudás, abrir el archivo y mirar el primer hit del string `zaris-api`.
+
+### Quirk 2: `web-app/dist/index.html` tiene `base: '/zaris-zge/...'`
+
+Configurado en `vite.config.ts` para GitHub Pages (Pages sirve el repo bajo `/zaris-zge/`). Local:
+- `http://localhost:8080/web-app/dist/index.html` → carga el HTML pero **los assets quedan 404** porque buscan `/zaris-zge/web-app/dist/assets/...` y el server raíz no tiene ese prefijo.
+- En prod (Pages) no hay problema: la URL real es `https://cesarzeta.github.io/zaris-zge/web-app/dist/...`.
+
+**Cómo probar local la integración shell vanilla + bundle:** levantar un server alternativo que sirva el repo bajo `/zaris-zge/`. Receta en memoria `project_proxy_local_zaris_zge.md`.
+
+### Quirk 3: CORS de FastAPI hay que actualizar si agregás un nuevo origen local
+
+`backend/app/main.py` tiene allowlist explícita. Si levantás un nuevo server local (ej. `localhost:8090` para el proxy), agregalo a `allow_origins` y **reiniciá uvicorn** (los cambios en main.py no entran con autoreload de uvicorn si no usás `--reload`).
+
+### Quirk 4: levantar uvicorn local — chequear si ya hay uno corriendo
+
+`Get-NetTCPConnection -LocalPort 8000` o `curl 127.0.0.1:8000/health` antes de `python -m uvicorn ...`. Si ya hay uno, se va a chocar con error `[Errno 10048] solo se permite un uso de cada dirección de socket`. Bajarlo con `Stop-Process` (puede pedir UAC si lo lanzó otro user) o pedir al usuario que lo baje desde su terminal.
+
+### Quirk 5: PNG/QR en bundle React — solo render cliente
+
+Lib `qrcode` (~26KB gzipped) sobre `<canvas>`. No agregar deps de QR al backend a menos que se necesite imprimir/firmar. El backend solo genera el string identificador (`EVT<id>-RES<id>-<ts>`) en `services/agenda.py`; el frontend lo renderiza visualmente. Patrón implementado en `web-app/src/modules/agenda/components/QRDisplay.tsx`.
