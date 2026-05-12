@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  cambiarEstadoReclamo,
+  cancelarReclamo,
   crearReclamo,
   editarReclamo,
   getCatalogoAreas,
@@ -85,6 +87,28 @@ export function useEditarReclamo(id: number | null) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: ReclamoUpdate) => editarReclamo(id as number, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['reclamos'] })
+    },
+  })
+}
+
+export function useCambiarEstadoReclamo(id: number | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { estado: string; nota?: string }) =>
+      cambiarEstadoReclamo(id as number, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['reclamos'] })
+    },
+  })
+}
+
+export function useCancelarReclamo(id: number | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { motivo: string }) =>
+      cancelarReclamo(id as number, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['reclamos'] })
     },
