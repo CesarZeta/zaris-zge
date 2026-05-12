@@ -8,7 +8,8 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
+# dist NO se ignora: es el build que GitHub Pages publica
+# (workflow .github/workflows/deploy-web-app.yml lo regenera en cada push)
 dist-ssr
 *.local
 

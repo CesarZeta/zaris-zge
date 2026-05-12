@@ -1,0 +1,64 @@
+name: Build & publish shell React (web-app/)
+
+# Cada push a main que toque web-app/ rebuildea el shell React y commitea el
+# dist/ resultante en la misma rama. GitHub Pages sirve el repo entero desde
+# main, asi que el build queda en cesarzeta.github.io/zaris-zge/web-app/.
+#
+# Si el dist/ no cambia (mismo hash), no se hace commit.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web-app/**'
+      - '.github/workflows/deploy-web-app.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-web-app
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # token con permisos para commitear de vuelta
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          cache-dependency-path: web-app/pnpm-lock.yaml
+
+      - name: Install deps
+        working-directory: web-app
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        working-directory: web-app
+        run: pnpm build
+
+      - name: Commit dist/ if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f web-app/dist
+          if git diff --staged --quiet; then
+            echo "Sin cambios en web-app/dist; nada que commitear."
+          else
+            git commit -m "build(web-app): publicar dist [skip ci]"
+            git push
+          fi

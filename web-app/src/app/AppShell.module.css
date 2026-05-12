@@ -16,3 +16,14 @@
   overflow-y: auto;
   background: var(--zaris-cream);
 }
+
+/* Modo embebido en iframe del shell vanilla (regla §14): sin sidebar/topbar,
+   fondo transparente para tomar el del shell, padding pequeño para que el contenido
+   no quede pegado a los bordes del iframe. */
+.embeddedContent {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  padding: 16px 24px;
+  background: transparent;
+}
