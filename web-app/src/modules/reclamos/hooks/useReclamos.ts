@@ -1,5 +1,7 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  crearReclamo,
+  editarReclamo,
   getCatalogoAreas,
   getCatalogoTipos,
   getStats,
@@ -7,6 +9,7 @@ import {
   listarReclamos,
   obtenerReclamo,
 } from '../api/reclamosApi'
+import type { ReclamoCreate, ReclamoUpdate } from '../types/reclamo'
 
 const HORA = 60 * 60 * 1000
 
@@ -64,5 +67,26 @@ export function useReclamoAdjuntos(id: number | null) {
     queryKey: ['reclamos', 'adjuntos', id],
     queryFn:  () => listarAdjuntos(id as number),
     enabled:  id != null,
+  })
+}
+
+// ── Mutations ──
+export function useCrearReclamo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: ReclamoCreate) => crearReclamo(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['reclamos'] })
+    },
+  })
+}
+
+export function useEditarReclamo(id: number | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: ReclamoUpdate) => editarReclamo(id as number, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['reclamos'] })
+    },
   })
 }

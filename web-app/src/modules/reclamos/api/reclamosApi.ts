@@ -4,6 +4,9 @@ import type {
   TipoCatalogo,
   ReclamoListado,
   ReclamoDetalle,
+  ReclamoCreate,
+  ReclamoCreateResponse,
+  ReclamoUpdate,
   StatsReclamos,
   Adjunto,
 } from '../types/reclamo'
@@ -34,3 +37,9 @@ export const obtenerReclamo = (id: number) =>
 
 export const listarAdjuntos = (id: number) =>
   api.get<Adjunto[]>(`${BASE}/${id}/adjuntos`)
+
+export const crearReclamo = (data: ReclamoCreate) =>
+  api.post<ReclamoCreateResponse>(BASE, data)
+
+export const editarReclamo = (id: number, data: ReclamoUpdate) =>
+  api.put<{ ok: boolean; id_reclamo: number; campos: string[] }>(`${BASE}/${id}`, data)

@@ -42,6 +42,10 @@ export function ListView() {
 
   return (
     <>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button onClick={() => navigate('/reclamos/nuevo')} style={btnAccent}>+ Nuevo reclamo</button>
+      </div>
+
       <StatsBar estadoActivo={estado} onSelectEstado={setEstado} />
 
       <div style={filterBarStyle}>
@@ -220,6 +224,11 @@ const btnGhost: React.CSSProperties = {
   padding: '7px 14px', background: 'transparent', color: 'var(--fg-2)',
   border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-lg)',
   fontFamily: 'var(--font-display)', fontSize: 'var(--size-btn)', cursor: 'pointer',
+}
+const btnAccent: React.CSSProperties = {
+  padding: '9px 16px', background: 'var(--zaris-orange)', color: '#fff',
+  border: 'none', borderRadius: 'var(--radius-lg)', fontFamily: 'var(--font-display)',
+  fontSize: 'var(--size-btn)', fontWeight: 500, cursor: 'pointer',
 }
 const tableWrap: React.CSSProperties = {
   overflowX: 'auto', borderRadius: 'var(--radius-lg)',

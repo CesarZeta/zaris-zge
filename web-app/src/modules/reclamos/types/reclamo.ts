@@ -134,3 +134,49 @@ export interface Adjunto {
 export interface StatsReclamos {
   [estado: string]: number
 }
+
+// Canal de origen del reclamo
+export type CanalOrigen = 'web' | 'whatsapp' | 'telefono' | 'presencial' | 'oficio' | 'app_movil' | 'otro'
+
+// Payload para POST /reclamos (alta)
+export interface ReclamoCreate {
+  id_ciudadano: number
+  descripcion: string
+  id_tipo_reclamo?: number | null
+  id_area?: number | null
+  prioridad?: Prioridad
+  direccion?: string | null
+  observaciones?: string | null
+  latitud?: number | null
+  longitud?: number | null
+  id_localidad?: number | null
+  id_activo?: number | null
+  id_empresa?: number | null
+  canal_origen?: CanalOrigen | null
+  fuente_geolocalizacion?: string | null
+}
+
+// Respuesta POST /reclamos
+export interface ReclamoCreateResponse {
+  id_reclamo: number
+  nro_reclamo: string | null
+  estado: EstadoReclamo
+}
+
+// Payload para PUT /reclamos/{id} (allowlist segun estado backend)
+export interface ReclamoUpdate {
+  id_ciudadano?: number
+  id_tipo_reclamo?: number | null
+  descripcion?: string
+  direccion?: string | null
+  prioridad?: Prioridad
+  latitud?: number | null
+  longitud?: number | null
+  id_localidad?: number | null
+  id_activo?: number | null
+  id_empresa?: number | null
+  canal_origen?: CanalOrigen | null
+  fuente_geolocalizacion?: string | null
+  observaciones?: string | null
+  nota_historial?: string | null
+}
