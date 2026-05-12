@@ -1,0 +1,73 @@
+/* ZARIS DS — Menu Grid & Card
+ * Para la grilla de "tarjetas de módulo" (welcome.html, menu.html).
+ * --------------------------------------------------------------- */
+
+.menu-grid-zaris {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+
+.menu-card-zaris {
+  background: var(--surface-100);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--ring-border);
+  padding: 1.75rem 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 200ms ease,
+              border-color 200ms ease;
+  text-decoration: none;
+  color: inherit;
+  position: relative;
+  overflow: hidden;
+}
+
+.menu-card-zaris::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--zaris-orange);
+  transform: scaleX(0);
+  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: left;
+}
+.menu-card-zaris:hover::before {
+  transform: scaleX(1);
+}
+
+.menu-card-zaris:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-card);
+}
+
+.menu-card-zaris__icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.75rem;
+  display: block;
+  color: var(--zaris-orange);
+}
+
+.menu-card-zaris__title {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--fg-1);
+  margin-bottom: 0.4rem;
+}
+
+.menu-card-zaris__desc {
+  font-family: var(--font-display);
+  font-size: var(--size-mono);
+  color: var(--fg-3);
+  line-height: 1.5;
+}
+
+@media (max-width: 768px) {
+  .menu-grid-zaris { grid-template-columns: 1fr; }
+}

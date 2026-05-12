@@ -1,0 +1,55 @@
+/* ZARIS DS — Card
+ * ---------------------------------------------------------------
+ * Estructura con header/body/footer. Reemplaza al legacy .z-card.
+ * --------------------------------------------------------------- */
+
+.card-zaris {
+  background: var(--surface-100);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--ring-border);
+  overflow: hidden;
+  transition: box-shadow 200ms ease, transform 150ms ease;
+}
+.card-zaris--elevated { box-shadow: var(--shadow-card); }
+.card-zaris--ambient  { box-shadow: var(--shadow-ambient), var(--ring-border); }
+.card-zaris--featured { border-radius: var(--radius-xl); }
+.card-zaris--interactive { cursor: pointer; }
+.card-zaris--interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card);
+}
+
+.card-zaris__header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--surface-200);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+}
+
+.card-zaris__title {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--fg-1);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.card-zaris__body {
+  padding: 20px;
+}
+
+.card-zaris__footer {
+  padding: 14px 20px;
+  border-top: 1px solid var(--border-primary);
+  background: var(--surface-200);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-5);
+}

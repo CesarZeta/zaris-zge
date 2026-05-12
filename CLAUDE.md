@@ -185,9 +185,11 @@ Los módulos React viven en `web-app/src/modules/<nombre>/`. Se publican como bu
 
 ## 13. Design System Visual — Obligatorio
 
-El estilo oficial de ZARIS vive en `design-system/`. **Para código nuevo, prohibido** usar `styles.css` o variables `--z-*` (son legacy). Usar siempre los tokens del DS nuevo (`--zaris-*`, `--surface-*`, `--fg-*`, `--font-display`, `--font-mono`).
+El estilo oficial de ZARIS vive en `design-system/`. Tokens en `colors_and_type.css`, componentes en `design-system/components/*.css` (agrupados por `design-system/components.css`). **Prohibido** inventar variables propias, copiar valores hex literales, o agregar archivos como el legacy `frontend/styles.css` (que fue eliminado el 2026-05-12 junto a sus clases `.z-*` y vars `--z-*`).
 
-> **Estado real (actualizado 2026-05-12):** los tokens `--z-*` y la clase `.z-breadcrumb` siguen vivos en 4 archivos legacy: `ciudadano.html`, `empresa.html`, `mainconfig.html`, `usuarios.html` (`agenda.html` fue borrado el 2026-05-12). **Funcionan**, pero contradicen esta regla y deben migrarse al DS nuevo en una pasada futura. Mientras tanto: no agregar más usos. Si tocás esos archivos, aprovechá para migrar el bloque que tocaste.
+> **Deuda residual:** `admin_tablas.html` todavía declara internamente un alias-mapping `--z-*` → tokens DS y sus clases internas ad-hoc (`.btn-primary`, `.field`, `.modal`). Funciona, no carga ningún CSS legacy. Migrarlo al naming `*-zaris` es cosmético (~30 min) y opcional. Cualquier módulo nuevo debe usar el DS directo.
+
+> **Antes de crear un componente nuevo del DS o adoptar un naming nuevo:** `grep -rn "<naming-propuesto>" design-system/` para evitar dos namings paralelos. Sesión 2026-05-12 evitó duplicar `btn-zaris` con un hipotético `ds-btn` al detectar 3 huérfanos pre-existentes en `colors_and_type.css`. Aplica también a variables CSS (`--<nombre>`).
 
 ### CSS a incluir en todo HTML frontend (vanilla)
 
@@ -197,13 +199,41 @@ La ruta depende de dónde vive el archivo:
 <!-- Módulos en frontend/ (un nivel de profundidad): -->
 <link rel="stylesheet" href="../design-system/fonts/fonts.css">
 <link rel="stylesheet" href="../design-system/colors_and_type.css">
+<link rel="stylesheet" href="../design-system/components.css">
 
 <!-- Archivos en la raíz (index.html, welcome.html cargado desde raíz): -->
 <link rel="stylesheet" href="design-system/fonts/fonts.css">
 <link rel="stylesheet" href="design-system/colors_and_type.css">
+<link rel="stylesheet" href="design-system/components.css">
 ```
 
 **Quirk:** `welcome.html` vive en `frontend/` pero el servidor lo sirve como iframe desde la raíz, por lo que usa la ruta sin `../`.
+
+### Componentes del DS — naming `*-zaris`
+
+| Componente | Clase base | Modificadores |
+|---|---|---|
+| Botón | `.btn-zaris` | `--primary`, `--accent`, `--ghost`, `--outline`, `--danger`, `--success`, `--pill`, `--pill-active`, `--xs`, `--sm`, `--lg`, `--full`, `--icon` |
+| Card | `.card-zaris` | `--elevated`, `--ambient`, `--featured`, `--interactive` + `__header` / `__title` / `__body` / `__footer` |
+| Input/Select/Textarea | `.input-zaris`, `.select-zaris`, `.textarea-zaris` | `--error`, `--success` |
+| Form layout | `.form-zaris-group`, `.form-zaris-row` | `--2`, `--3`, `--4`, `--1-2`, `--2-1` |
+| Label | `.label-zaris` | `--required` |
+| Hint/error | `.input-hint-zaris`, `.input-error-zaris` | + `.visible` para mostrar error |
+| Checkbox | `.checkbox-zaris` | + `__label` |
+| Modal | `.modal-zaris-overlay`, `.modal-zaris` | `--lg`, `--xl` + `__header` / `__title` / `__close` / `__body` / `__footer` |
+| Alert | `.alert-zaris` | `--success`, `--error`, `--warning`, `--info` |
+| Toast | `.toast-zaris-container`, `.toast-zaris` | `--success`, `--error`, `--warning`, `--info` + `__icon` / `__message` |
+| Badge | `.badge-zaris` | `--success`, `--error`, `--warning`, `--info`, `--neutral`, `--sm` |
+| Spinner | `.spinner-zaris` | `--sm`, `--lg` |
+| Menu card | `.menu-grid-zaris`, `.menu-card-zaris` | + `__icon` / `__title` / `__desc` |
+| Section title | `.section-title-zaris` | — |
+| Panel expandible | `.panel-expand-zaris` | + `.open` para abrir |
+| Search panel celeste (§15) | `.search-panel-zaris` | + `__title` / `__row` / `__input` |
+| Search box | `.search-box-zaris` | — |
+| Preview row maestros | `.preview-row-zaris` | + `__nombre` / `__meta` / `__estado--activo|inactivo` / `__cta` |
+| Listado wrap | `.listado-wrap-zaris`, `.listado-header-zaris`, `.listado-count-zaris` | — |
+
+Las clases con prefijo `.zaris-*` (breadcrumb, body-serif, micro, h1-h4, etc.) siguen viviendo en `colors_and_type.css`. Las nuevas en `components/*.css`.
 
 ### Tokens CSS — no inventar variables propias
 
@@ -778,7 +808,7 @@ Cuando un form requiere referenciar una entidad que podría no existir aún (ej:
 
 ### Breadcrumb de navegación — obligatorio en todo módulo
 
-Todo HTML de módulo en `frontend/` (excepto `login.html`, `welcome.html`, `menu.html`, `mainconfig.html`) **debe** mostrar un breadcrumb arriba del título que ayude al usuario a entender dónde está parado. Patrón único:
+Todo HTML de módulo en `frontend/` (excepto `login.html` y `welcome.html`) **debe** mostrar un breadcrumb arriba del título que ayude al usuario a entender dónde está parado. Patrón único:
 
 ```html
 <!-- Justo antes del bloque de título del módulo -->
@@ -826,7 +856,7 @@ document.querySelectorAll('[data-bc-home]').forEach(el => {
 Reglas:
 - Solo dos niveles: `INICIO > <Módulo>`. Si el módulo tiene sub-vistas (ej: detalle de reclamo), agregar tercer nivel: `INICIO > Reclamos > REC-2026-000017`.
 - **Prohibido** usar `.z-breadcrumb` o `var(--z-*)` (legacy, eliminadas — ver §13).
-- **Implementado en:** todos los HTML de módulo. `ciudadano.html` y `empresa.html` están migrados a este patrón en una pasada futura (hoy todavía usan `.z-breadcrumb` legacy).
+- **Implementado en:** todos los HTML de módulo (login no lleva, welcome no lleva).
 
 ## 24. Workflow de seed desde CSVs en `Tablas Iniciales/`
 
@@ -1444,56 +1474,76 @@ Devuelve 403 si el usuario no tiene el módulo. **Hoy no aplicado a endpoints ex
 - `/admin/permisos/modulos`: admin=200, supervisor=403, sin auth=401.
 - Verificado que `/admin/agentes` (admin_tablas) sigue funcionando tras reordenar routers.
 
-## 31. Auditoría de estilos legacy — deuda pendiente
+## 31. Limpieza de estilos legacy — CERRADA (2026-05-12)
 
-**Verificada 2026-05-12.** El proyecto migró al DS nuevo (`design-system/colors_and_type.css` con tokens `--zaris-*` / `--surface-*` / `--fg-*` / `--font-display`) pero **conserva archivos y clases legacy del DS v1.0 (`--z-*`, `.z-*`)** que coexisten porque `frontend/styles.css` los redefinió como espejo del DS nuevo. Visualmente no rompe nada — los colores son los mismos — pero contradice §13 y genera confusión.
+**Bloque completado.** El DS v1.0 (`--z-*`, `.z-*`, `frontend/styles.css`) fue eliminado del repo. Los módulos vanilla cargan ahora componentes oficiales `*-zaris` definidos en `design-system/components/*.css`.
 
-Esta sección lista exactamente **qué legacy queda y qué hacer con cada cosa**. Es deuda técnica visible, no bugs.
-
-### Avance del bloque de limpieza
+### Avance del bloque
 
 | Paso | Estado | Notas |
 |---|---|---|
-| 1. Unificar `LoginPage.tsx` con look del vanilla | ✅ 2026-05-12 | Card sobre `surface-100`, SVG ZARIS inline (currentColor, mismo path que vanilla), labels uppercase, botón `fg-1`, subtítulo "Gestión Estatal · Municipio Demo". |
-| 2. Borrar `frontend/agenda.html` + `agenda.css` + `agenda.js` | ✅ 2026-05-12 | Reemplazados por módulo React `web-app/src/modules/agenda/` en prod desde 3.A. |
-| 3. Borrar `frontend/shell.html` | ✅ 2026-05-12 | Era huérfano (0 referencias). |
-| 4. Migrar 5 HTMLs legacy (`admin_tablas`, `ciudadano`, `empresa`, `usuarios`, `mainconfig`) + sus `.js` | ⏳ **diferido** (sesión 2026-05-12, alcance real > previo) | Ver "Alcance real del paso 4" abajo. |
-| 5. Borrar `frontend/styles.css` | ⏳ depende de 4 | Es el archivo que mantiene vivos los aliases legacy. |
-| 6. Borrar `frontend/menu.html` y `frontend/mainconfig.html` | ⏳ depende de 4 | Quedarían huérfanos cuando los HTMLs del paso 4 dejen de referenciarlos. |
+| 1. Unificar `LoginPage.tsx` con look del vanilla | ✅ | Card sobre `surface-100`, SVG ZARIS inline (currentColor), labels uppercase, botón `fg-1`. |
+| 2. Borrar `frontend/agenda.html` + `agenda.css` + `agenda.js` | ✅ | Reemplazados por módulo React. |
+| 3. Borrar `frontend/shell.html` | ✅ | Huérfano. |
+| 4. Promover componentes a `design-system/components/*.css` + migrar `usuarios`, `ciudadano`, `empresa` (HTML+JS) | ✅ | 10 archivos CSS nuevos (button, card, form, modal, alert, toast, badge, spinner, menu-card, misc) + agregador `components.css`. Naming `*-zaris` siguiendo lo que el DS ya tenía (`btn-zaris`, `card-zaris`, `input-zaris`). |
+| 5. Borrar `frontend/styles.css` | ✅ | Cero referencias antes de borrar. |
+| 6. Borrar `frontend/menu.html` + `frontend/mainconfig.html` | ✅ | Dead code legacy del shell viejo. Hrefs y `window.location.href` reemplazados por `_zarisGoInicio()` en `config.js` (helper que usa `shellNavigate('frontend/welcome.html')` en iframe o `../index.html` standalone). |
 
-### Alcance real del paso 4 (auditado 2026-05-12)
+### Estado actual del codebase
 
-Lo que parecía "renombrar `--z-X` por `--zaris-X`" es en realidad **reescribir componentes**. `frontend/styles.css` (838 líneas) no es un espejo de aliases: **define ~30 clases con CSS propio** que el DS nuevo NO tiene equivalente listo. Para migrar hay que decidir:
-
-**Opciones (priorizar al retomar):**
-1. **Renombrar variables solamente** (~1.5h): cambiar `--z-X` por su equivalente DS dentro de `styles.css` y los HTMLs. Las clases `.z-btn` etc. quedan vivas pero usan tokens DS nuevos. Resultado: `--z-*` desaparece pero `.z-*` sigue. NO permite borrar `styles.css` todavía. Bajo riesgo.
-2. **Promover .z-* a componentes DS oficiales** (~6-8h): mover `styles.css` a `design-system/components/{button,card,modal,input,toast,spinner,badge}.css` y migrar HTMLs. Esto también sirve al shell React. Mayor riesgo.
-3. **Migrar HTML por HTML con estilos inline** (~4-5h): cada HTML legacy adopta el patrón del DS nuevo en su propio `<style>` (igual que `login.html`). Riesgo bajo, pero duplica código.
-
-**Clases que necesitan equivalente DS:** `.z-btn` (5 variantes: primary/accent/ghost/danger/success + sm/lg/full/icon), `.z-card` (header/body/footer/interactive), `.z-input` + `.z-select` + `.z-textarea`, `.z-modal` (overlay/header/body/footer/close), `.z-toast` (container/icon/message + success/error), `.z-form-group` + `.z-form-row` (grids 2/3/4/1-2/2-1), `.z-label` (+required), `.z-checkbox` custom, `.z-alert` (success/error/warning/info), `.z-section-title`, `.z-panel-expand`, `.z-search-box`, `.z-spinner`, `.z-badge` (success/error/warning/info), `.z-menu-grid` + `.z-menu-card`, `.z-header*` (legacy del header viejo, ya invisible en iframe).
-
-**Recomendación al retomar:** opción 1 primero (rename variables) para sacar `--z-*` del codebase. Después opción 2 en una sesión grande dedicada al DS. Opción 3 solo si el DS no avanza nunca.
-
-### Archivos con `var(--z-*)` o `class="z-*"` legacy — restantes (post-cleanup 2026-05-12)
-
-| Archivo | var(--z-*) | class z-* | Acción recomendada |
+| Archivo | `var(--z-*)` | `.z-*` | DS nuevo |
 |---|---|---|---|
-| `frontend/styles.css` | 108 | (define todo) | **Migrar todo a tokens DS nuevo o borrar y reescribir.** Es el archivo que mantiene vivos a los demás. |
-| `frontend/admin_tablas.html` | 123 | 5 | Migrar var() a `--zaris-*` y quitar `z-header` (oculto en iframe igual). |
-| `frontend/ciudadano.html` | 39 | 178 | Migrar — alto volumen de clases. |
-| `frontend/empresa.html` | 33 | 100 | Migrar. |
-| `frontend/usuarios.html` | 43 | 89 | Migrar. |
-| `frontend/mainconfig.html` | 6 | 29 | Verificar uso; probable borrar (usuarios.js lo referencia). |
-| `frontend/menu.html` | 21 | 24 | Verificar uso. |
-| `frontend/reclamos.html` | - | 5 | Solo `z-header` que el guard de iframe oculta. Bajo prioridad. |
-| `frontend/js/{ciudadano,empresa,usuarios,config}.js` | varios | varios | Escriben HTML inline con clases z-*. Migrar a clases DS nuevas. |
-| `frontend/login.html` | 0 | 0 | ✅ Limpio. |
-| `frontend/welcome.html` | 0 | 0 | ✅ Limpio. |
+| `frontend/usuarios.html` + `usuarios.js` | 0 | 0 | ✅ |
+| `frontend/ciudadano.html` + `ciudadano.js` | 0 | 0 | ✅ |
+| `frontend/empresa.html` + `empresa.js` | 0 | 0 | ✅ |
+| `frontend/js/config.js` + `validaciones.js` | 0 | 0 | ✅ |
+| `frontend/admin_tablas.html` | ~123 | 5 (solo `z-header*` oculto en iframe) | parcial — alias-mapping local `--z-*` → DS. Sin dependencias externas. Deuda cosmética opcional. |
+| `frontend/reclamos.html` | 0 | 5 (solo `z-header*` oculto) | ✅ (clases solo decorativas residuales) |
+| `frontend/login.html`, `welcome.html` | 0 | 0 | ✅ |
 
-### Dead code candidato a borrar (verificar primero)
+### Equivalencias usadas en la migración (referencia)
 
-- **`frontend/menu.html`** → referenciado por `ciudadano.html` + `empresa.html` + `js/ciudadano.js`. Queda huérfano cuando esos HTMLs migren al DS nuevo (paso 4).
-- **`frontend/mainconfig.html`** → referenciado por `usuarios.html` + `js/usuarios.js`. Idem: queda huérfano cuando esos migren.
+| Legacy | DS nuevo |
+|---|---|
+| `--z-bg-card` | `--surface-100` |
+| `--z-bg-card-alt` | `--surface-200` |
+| `--z-text` | `--fg-1` |
+| `--z-text2` | `--fg-2` |
+| `--z-text3` | `--fg-3` |
+| `--z-border` | `--border-primary` |
+| `--z-border-focus` | `--border-medium` |
+| `--z-accent` | `--zaris-orange` |
+| `--z-text-error` | `--color-error` |
+| `--z-text-success` | `--color-success` |
+| `--z-radius` | `--radius-lg` |
+| `--z-radius-sm` | `--radius-md` |
+| `--z-radius-lg` | `--radius-xl` |
+| `--z-font` | `--font-display` |
+| `--z-font-mono` | `--font-mono` |
+| `.z-btn .z-btn--primary` | `.btn-zaris .btn-zaris--primary` |
+| `.z-card .z-card__body` | `.card-zaris .card-zaris__body` |
+| `.z-input` / `.z-select` / `.z-textarea` | `.input-zaris` / `.select-zaris` / `.textarea-zaris` |
+| `.z-form-group` / `.z-form-row` | `.form-zaris-group` / `.form-zaris-row` |
+| `.z-label` / `.z-label--required` | `.label-zaris` / `.label-zaris--required` |
+| `.z-checkbox` / `.z-checkbox__label` | `.checkbox-zaris` / `.checkbox-zaris__label` |
+| `.z-input-error` / `.z-input-hint` | `.input-error-zaris` / `.input-hint-zaris` |
+| `.z-modal-overlay` / `.z-modal` | `.modal-zaris-overlay` / `.modal-zaris` |
+| `.z-toast-container` / `.z-toast` | `.toast-zaris-container` / `.toast-zaris` |
+| `.z-badge` | `.badge-zaris` |
+| `.z-spinner` | `.spinner-zaris` |
+| `.z-section-title` | `.section-title-zaris` |
+| `.z-search-box` | `.search-box-zaris` |
+| `.z-search-panel` | `.search-panel-zaris` |
+| `.z-form-state` (local) | `.form-state` (local del HTML, sin prefijo) |
+| `.z-preview-row*` (local) | `.preview-row*` (local del HTML) |
+| `.z-listado-wrap` / `.z-tbl-btn` (local) | `.listado-wrap` / `.tbl-btn` (local) |
+| `.z-badge-activo` / `.z-badge-inactivo` (local) | `.badge-activo` / `.badge-inactivo` (local) |
+
+> **Patrón importado:** las clases compartidas viven en `design-system/components/`. Las clases específicas del HTML (search-result, form-state, preview-row, filter-bar, listado-wrap, tbl-btn, badge-activo/inactivo, print-header, validate-group, check-validate, cuil-group, empresa-panel) viven inline en el `<style>` de cada HTML, sin prefijo `z-`. Es la convención: si una clase se usa en >1 archivo, va al DS; si es de una vista puntual, queda local.
+
+### Posible deuda futura (opcional)
+
+`admin_tablas.html` todavía tiene 123 `var(--z-*)` locales que mapean a tokens DS. No carga ningún CSS legacy y funciona. Migrar es find/replace de variables + renombrar clases internas — ~30 min, sin ganancia funcional. Solo si querés "0 `--z-*` en el repo".
 
 ## 32. Build de `web-app/dist/` y testing local del shell vanilla + bundle
 
@@ -1543,3 +1593,34 @@ Cuando se crea un módulo React con `pnpm create vite`, el scaffold deja `<title
 - `web-app/public/` solo debe tener `zaris-favicon.svg` (y `icons.svg` si aplica). NO debe haber `favicon.svg` (default Vite) ni `zaris-mark.svg` (variante eliminada del DS en sesión 2026-05-12).
 
 Vite reescribe el `href="/zaris-favicon.svg"` durante el build aplicando `base: '/zaris-zge/web-app/dist/'`, así que funciona en local (`localhost:5173`) y en GH Pages (`/zaris-zge/...`) sin tocar nada.
+
+### Quirk 8: `localhost` ≠ `127.0.0.1` para CORS del browser (no para Node/PS)
+
+Para servidores locales que el browser MCP o el navegador del usuario vayan a usar, **abrir el HTML desde `http://localhost:<port>`, no `http://127.0.0.1:<port>`** — aunque resuelven a la misma IP, son orígenes CORS distintos. El allowlist en `backend/app/main.py` tiene `http://localhost:8080` y `http://localhost:8090` explícitos; `127.0.0.1` NO está. Si lo necesitás, lo agregás y reiniciás uvicorn.
+
+Curl, psql, `Invoke-WebRequest` etc. no tienen este problema (sin origin/preflight). Es exclusivo del browser.
+
+### Quirk 9: `python -m http.server` debe lanzarse detached con `Start-Process` desde PowerShell
+
+`Bash run_in_background=true` con `python -m http.server` queda zombie en Windows: el proceso existe pero no escucha. Receta verificada:
+
+```powershell
+Start-Process -FilePath python `
+  -ArgumentList "-m","http.server","8080" `
+  -WorkingDirectory "c:\Users\Cesar\Documents\ZARIS\Desarrollo\ZGE" `
+  -WindowStyle Hidden
+```
+
+Después `Invoke-WebRequest -UseBasicParsing -Method Head http://localhost:8080/...` valida que sirve. Para matar zombies: `Get-Process python | Where-Object { $_.StartTime -gt (Get-Date).AddMinutes(-30) } | Stop-Process -Force`.
+
+### Quirk 10: credenciales dev en local — admin es `ciudadanovl@`, no `admin@`
+
+Los emails dev son `<username>@municipio.gob.ar` donde `<username>` viene del campo `usuarios.username`, no del rol. En local el admin (nivel 1) tiene username `ciudadanovl` (Cesar Zeta). Probar con `admin@municipio.gob.ar` → 401. Antes de smoke con login:
+
+```powershell
+$env:PGPASSWORD="145236"
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -h 127.0.0.1 -U postgres -d zaris_dev `
+  -c "SELECT email, nombre, nivel_acceso FROM usuarios WHERE activo ORDER BY nivel_acceso;"
+```
+
+En prod: lo mismo via `execute_sql` Supabase MCP. Password de todos los devs: `123456` (set por `seed_auth.py`).

@@ -1,0 +1,18 @@
+/* ZARIS DS — Spinner
+ * --------------------------------------------------------------- */
+
+.spinner-zaris {
+  width: 20px;
+  height: 20px;
+  border: 2.5px solid var(--border-primary);
+  border-top-color: var(--zaris-orange);
+  border-radius: 50%;
+  animation: spinner-zaris-rotate 0.6s linear infinite;
+  display: inline-block;
+}
+.spinner-zaris--sm { width: 14px; height: 14px; border-width: 2px; }
+.spinner-zaris--lg { width: 32px; height: 32px; border-width: 3px; }
+
+@keyframes spinner-zaris-rotate {
+  to { transform: rotate(360deg); }
+}
