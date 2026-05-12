@@ -253,7 +253,9 @@ async def _evento_to_out(db: AsyncSession, id_evento: int) -> Optional[dict[str,
     row = (await db.execute(text("""
         SELECT e.id_evento, e.nombre, e.descripcion, e.id_subarea, e.fecha,
                e.hora_inicio, e.hora_fin, e.capacidad_ciudadanos, e.cantidad_encargados,
-               e.tipo_qr, e.admite_autoservicio, e.id_estado_evento, ee.codigo AS estado_codigo,
+               e.tipo_qr, e.admite_autoservicio,
+               CAST(e.token_publico AS TEXT) AS token_publico,
+               e.id_estado_evento, ee.codigo AS estado_codigo,
                e.activo, e.id_municipio, e.fecha_alta, e.fecha_modificacion
         FROM eventos e
         LEFT JOIN estado_evento ee ON ee.id_estado_evento = e.id_estado_evento
@@ -276,10 +278,12 @@ async def crear_evento(
         INSERT INTO eventos (
             nombre, descripcion, id_subarea, fecha, hora_inicio, hora_fin,
             capacidad_ciudadanos, cantidad_encargados, tipo_qr, admite_autoservicio,
+            token_publico,
             id_estado_evento, id_municipio, id_usuario_alta
         ) VALUES (
             :n, :d, :sa, :f, :hi, :hf,
             :cap, :enc, :qr, :auto,
+            CASE WHEN :auto = TRUE THEN gen_random_uuid() ELSE NULL END,
             :es, :mun, :uid
         )
         RETURNING id_evento
@@ -334,7 +338,9 @@ async def listar_eventos(
     rows = (await db.execute(text(f"""
         SELECT e.id_evento, e.nombre, e.descripcion, e.id_subarea, e.fecha,
                e.hora_inicio, e.hora_fin, e.capacidad_ciudadanos, e.cantidad_encargados,
-               e.tipo_qr, e.admite_autoservicio, e.id_estado_evento, ee.codigo AS estado_codigo,
+               e.tipo_qr, e.admite_autoservicio,
+               CAST(e.token_publico AS TEXT) AS token_publico,
+               e.id_estado_evento, ee.codigo AS estado_codigo,
                e.activo, e.id_municipio, e.fecha_alta, e.fecha_modificacion
         FROM eventos e
         LEFT JOIN estado_evento ee ON ee.id_estado_evento = e.id_estado_evento
@@ -397,6 +403,16 @@ async def actualizar_evento(
     sets = [f"{k} = :{k}" for k in cambios.keys()]
     sets.append("fecha_modificacion = NOW()")
     sets.append("id_usuario_modificacion = :uid")
+    # Rotacion de token_publico segun cambio de admite_autoservicio
+    if "admite_autoservicio" in cambios:
+        nuevo = bool(cambios["admite_autoservicio"])
+        anterior = bool(actual.get("admite_autoservicio"))
+        if nuevo and not anterior:
+            # OFF -> ON: generar token si todavia no tiene
+            sets.append("token_publico = COALESCE(token_publico, gen_random_uuid())")
+        elif anterior and not nuevo:
+            # ON -> OFF: invalidar link existente
+            sets.append("token_publico = NULL")
     params = {**cambios, "uid": current_user["id_usuario"], "id": id_evento}
     await db.execute(text(f"UPDATE eventos SET {', '.join(sets)} WHERE id_evento = :id"), params)
 
