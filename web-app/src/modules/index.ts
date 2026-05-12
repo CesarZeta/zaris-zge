@@ -4,6 +4,7 @@ import { agendaModule } from './agenda'
 import { ciudadanosModule } from './ciudadanos'
 import { empresasModule } from './empresas'
 import { reclamosModule } from './reclamos'
+import { otModule } from './ot'
 
 // Registrar módulos nuevos acá — el shell los lee automáticamente.
 export const modules: ModuleManifest[] = [
@@ -12,4 +13,5 @@ export const modules: ModuleManifest[] = [
   ciudadanosModule,
   empresasModule,
   reclamosModule,
+  otModule,
 ]
