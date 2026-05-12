@@ -230,8 +230,7 @@ La ruta depende de dónde vive el archivo:
 
 ### Logo y marca
 
-- Usar `../design-system/assets/zaris-mark-flat.svg` en sidebar/topbar (currentColor, sin fondo).
-- Formal (splash, login): `../design-system/assets/zaris-mark.svg`.
+- Marca: **única variante** es `design-system/assets/zaris-mark-flat.svg` (`stroke="currentColor"`, sin fondo). En React inyectar inline con `?raw` para heredar color; en HTML vanilla usar SVG inline (`frontend/login.html` es el patrón canónico). Las variantes `zaris-mark.svg`/`-white`/`-inverse`/`zaris-logo.svg` fueron eliminadas el 2026-05-12 porque no se usaban — cualquier color se logra con CSS sobre el `flat`. Ver `design-system/assets/BRAND-USAGE.md`.
 - **Prohibido:** emoji en la UI del producto.
 
 ## 14. Shell del producto — iframe único, sidebar y topbar exclusivos del shell
