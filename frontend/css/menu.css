@@ -74,6 +74,28 @@
   font-weight: 500;
 }
 
+/* Campana de notificaciones - placeholder visual, sin logica.
+   Sigue el mismo patron de hover que .user-menu__trigger. */
+.topbar__bell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--fg-2);
+  transition: background 150ms ease, color 150ms ease;
+  flex-shrink: 0;
+}
+
+.topbar__bell:hover {
+  background: rgba(38,37,30,.07);
+  color: var(--fg-1);
+}
+
 .topbar__avatar {
   width: 28px;
   height: 28px;
