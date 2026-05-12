@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Copy, Check, ExternalLink } from 'lucide-react'
 import { Modal } from '../components/Modal'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { Button } from '../../../ui'
@@ -174,6 +175,9 @@ export function EventoModal({ open, onClose, idEvento, defaultDate, onCreated }:
           </div>
         </div>
       )}
+      {idEvento && detalle.data?.admite_autoservicio && detalle.data.token_publico && (
+        <AutoservicioLink token={detalle.data.token_publico} />
+      )}
       <ConfirmModal
         open={confirm === 'cancelar'}
         title="Cancelar evento"
@@ -209,4 +213,74 @@ const inp: React.CSSProperties = {
   fontFamily: 'var(--font-display)', fontSize: 'var(--size-ui)', color: 'var(--fg-1)',
   padding: '8px 10px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-primary)',
   background: 'var(--surface-100)', outline: 'none', width: '100%',
+}
+
+function buildAutoservicioUrl(token: string): string {
+  // Hash router => el link siempre va al index del bundle + #/autoservicio/<token>.
+  // En prod: https://cesarzeta.github.io/zaris-zge/web-app/dist/index.html#/autoservicio/<token>
+  // En dev local: http://localhost:5173/#/autoservicio/<token>
+  const loc = window.location
+  const baseHref = loc.origin + loc.pathname.replace(/(index\.html)?$/, '')
+  return `${baseHref}#/autoservicio/${token}`
+}
+
+function AutoservicioLink({ token }: { token: string }) {
+  const push = useNotificationsStore((s) => s.push)
+  const [copied, setCopied] = useState(false)
+  const url = buildAutoservicioUrl(token)
+
+  async function onCopy() {
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
+      push({ kind: 'success', title: 'Link copiado' })
+    } catch {
+      push({ kind: 'error', title: 'No se pudo copiar', body: 'Copialo manualmente.' })
+    }
+  }
+
+  return (
+    <div style={{
+      marginTop: 12, padding: 12,
+      background: 'var(--surface-200)', borderRadius: 'var(--radius-md)',
+      border: '1px solid var(--border-primary)',
+    }}>
+      <div style={{
+        fontFamily: 'var(--font-display)', fontSize: 11, color: 'var(--fg-3)',
+        textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6,
+      }}>
+        Link publico de autoservicio
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input
+          readOnly
+          value={url}
+          style={{
+            flex: 1, fontFamily: 'var(--font-mono)', fontSize: 12,
+            padding: '8px 10px', borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--border-primary)', background: 'var(--surface-100)',
+            color: 'var(--fg-1)', outline: 'none',
+          }}
+          onFocus={(e) => e.currentTarget.select()}
+        />
+        <button onClick={onCopy} aria-label="Copiar link" style={iconBtnEv}>
+          {copied ? <Check size={14} strokeWidth={1.5} /> : <Copy size={14} strokeWidth={1.5} />}
+        </button>
+        <a href={url} target="_blank" rel="noreferrer" aria-label="Abrir en nueva pestania" style={iconBtnEv}>
+          <ExternalLink size={14} strokeWidth={1.5} />
+        </a>
+      </div>
+      <div style={{ marginTop: 6, fontSize: 11, color: 'var(--fg-3)' }}>
+        Compartilo por WhatsApp, email o como QR. Cualquiera con el link puede reservar mientras haya cupo.
+      </div>
+    </div>
+  )
+}
+
+const iconBtnEv: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  background: 'var(--surface-100)', border: '1px solid var(--border-primary)',
+  borderRadius: 'var(--radius-md)', padding: '8px 10px', cursor: 'pointer',
+  color: 'var(--fg-2)', textDecoration: 'none',
 }
