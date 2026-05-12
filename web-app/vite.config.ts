@@ -7,5 +7,5 @@ import react from '@vitejs/plugin-react'
 // En dev (`pnpm dev`), base sigue siendo '/' para que localhost:5173 funcione.
 export default defineConfig(({ command }) => ({
   plugins: [react()],
-  base: command === 'build' ? '/zaris-zge/web-app/' : '/',
+  base: command === 'build' ? '/zaris-zge/web-app/dist/' : '/',
 }))
