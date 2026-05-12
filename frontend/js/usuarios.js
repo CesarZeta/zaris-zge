@@ -105,17 +105,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         usuarios.forEach(u => {
             const row = document.createElement('div');
-            row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--z-border);';
+            row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border-primary);';
             row.innerHTML = `
                 <span style="font-size:0.88rem;">
                     <strong>${u.nombre}</strong>
-                    <span style="color:var(--z-text2);margin-left:8px;">${u.username}</span>
-                    <span style="color:var(--z-text3);margin-left:6px;font-size:0.78rem;">${NIVELES[u.nivel_acceso] || ''}</span>
-                    ${!u.activo ? '<span style="color:#cf2d56;font-size:0.75rem;margin-left:6px;">[Inactivo]</span>' : ''}
+                    <span style="color:var(--fg-2);margin-left:8px;">${u.username}</span>
+                    <span style="color:var(--fg-3);margin-left:6px;font-size:0.78rem;">${NIVELES[u.nivel_acceso] || ''}</span>
+                    ${!u.activo ? '<span style="color:var(--color-error);font-size:0.75rem;margin-left:6px;">[Inactivo]</span>' : ''}
                 </span>
                 <span style="display:flex;gap:6px;">
-                    <button class="z-btn z-btn--xs z-btn--primary" data-id="${u.id_usuario}" data-modo="edicion">Editar</button>
-                    <button class="z-btn z-btn--xs z-btn--ghost"   data-id="${u.id_usuario}" data-modo="consulta">Ver</button>
+                    <button class="btn-zaris btn-zaris--xs btn-zaris--primary" data-id="${u.id_usuario}" data-modo="edicion">Editar</button>
+                    <button class="btn-zaris btn-zaris--xs btn-zaris--ghost"   data-id="${u.id_usuario}" data-modo="consulta">Ver</button>
                 </span>`;
             row.querySelectorAll('button').forEach(btn =>
                 btn.addEventListener('click', () => cargarUsuario(parseInt(btn.dataset.id), btn.dataset.modo))
@@ -151,7 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
         $('usr-password-confirm').value = '';
         const badge = $('activo-badge');
         badge.textContent  = u.activo ? 'Activo' : 'Inactivo';
-        badge.className    = u.activo ? 'z-badge-activo' : 'z-badge-inactivo';
+        badge.className    = u.activo ? 'badge-activo' : 'badge-inactivo';
     }
 
     function activarModoNuevo() {
@@ -161,7 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
         mostrarFormCard();
         $('form-title').textContent      = 'Alta de Usuario';
         $('form-state').textContent      = 'NUEVO';
-        $('form-state').className        = 'z-form-state z-form-state--new';
+        $('form-state').className        = 'form-state form-state--new';
         $('activo-row').style.display    = 'none';
         $('usr-username').readOnly       = false;
         $('password-req-star').style.display = 'inline';
@@ -180,7 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const u = state.usuario;
         $('form-title').textContent      = 'Editar Usuario';
         $('form-state').textContent      = 'EDICIÓN';
-        $('form-state').className        = 'z-form-state z-form-state--edit';
+        $('form-state').className        = 'form-state form-state--edit';
         $('activo-row').style.display    = 'block';
         $('usr-username').readOnly       = true;
         $('password-req-star').style.display = 'none';
@@ -197,7 +197,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.modo = 'consulta';
         $('form-title').textContent      = 'Consulta de Usuario';
         $('form-state').textContent      = 'CONSULTA';
-        $('form-state').className        = 'z-form-state z-form-state--view';
+        $('form-state').className        = 'form-state form-state--view';
         $('activo-row').style.display    = 'block';
         setFieldsDisabled(true);
         $('btn-guardar').style.display   = 'none';
@@ -219,7 +219,7 @@ document.addEventListener('DOMContentLoaded', () => {
          'usr-password','usr-password-confirm'].forEach(id => { const el=$(id); if(el) el.value=''; });
         $('usr-nivel').value      = '';
         $('usr-buc-acceso').checked = false;
-        document.querySelectorAll('.z-input-error').forEach(el => { el.textContent=''; el.style.display='none'; });
+        document.querySelectorAll('.input-error-zaris').forEach(el => { el.textContent=''; el.style.display='none'; });
     }
 
     function mostrarFormCard() {
@@ -242,7 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Validación ─────────────────────────────────────────────────────────────
     function validar() {
-        document.querySelectorAll('.z-input-error').forEach(el => { el.textContent=''; el.style.display='none'; });
+        document.querySelectorAll('.input-error-zaris').forEach(el => { el.textContent=''; el.style.display='none'; });
         let ok = true;
 
         const showErr = (id, msg) => { const el=$(id); if(el){el.textContent=msg;el.style.display='block';} };
@@ -293,8 +293,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 ZUtils.modalGuardado(
                     'Usuario creado',
                     `${u.nombre} (${u.username}) fue registrado correctamente.`,
-                    activarModoNuevo,
-                    () => window.location.href = 'mainconfig.html'
+                    activarModoNuevo
+                    // onSalir omitido: usa _zarisGoInicio() (shell vanilla → welcome.html)
                 );
             } else {
                 const u = await ZUtils.apiFetch(`/usuarios/${state.usuario.id_usuario}`, { method:'PUT', body:JSON.stringify(payload) });
@@ -339,7 +339,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function cargarVistaPrevia() {
         const container = $('preview-rows');
         if (!container) return;
-        container.innerHTML = '<div style="color:var(--z-text3);font-size:0.82rem;padding:0.5rem 0;">Cargando...</div>';
+        container.innerHTML = '<div style="color:var(--fg-3);font-size:0.82rem;padding:0.5rem 0;">Cargando...</div>';
         try {
             const data = await ZUtils.apiFetch('/usuarios?solo_activos=false');
             // Ordenar por id desc (más alto = más reciente) y tomar primeros 5
@@ -348,26 +348,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 .slice(0, 5);
 
             if (recientes.length === 0) {
-                container.innerHTML = '<div style="color:var(--z-text3);font-size:0.82rem;padding:0.5rem 0;">Sin registros</div>';
+                container.innerHTML = '<div style="color:var(--fg-3);font-size:0.82rem;padding:0.5rem 0;">Sin registros</div>';
                 return;
             }
 
             container.innerHTML = recientes.map(u => `
-                <div class="z-preview-row" data-id="${u.id_usuario}">
-                    <span class="z-preview-row__nombre">${esc(u.nombre)}</span>
-                    <span class="z-preview-row__username">${esc(u.username)}</span>
-                    <span class="z-preview-row__nivel">${NIVELES[u.nivel_acceso] || 'Nivel ' + u.nivel_acceso}</span>
-                    <span class="z-preview-row__estado z-preview-row__estado--${u.activo ? 'activo' : 'inactivo'}">${u.activo ? 'Activo' : 'Inactivo'}</span>
-                    <span class="z-preview-row__cta">Ver →</span>
+                <div class="preview-row" data-id="${u.id_usuario}">
+                    <span class="preview-row__nombre">${esc(u.nombre)}</span>
+                    <span class="preview-row__username">${esc(u.username)}</span>
+                    <span class="preview-row__nivel">${NIVELES[u.nivel_acceso] || 'Nivel ' + u.nivel_acceso}</span>
+                    <span class="preview-row__estado preview-row__estado--${u.activo ? 'activo' : 'inactivo'}">${u.activo ? 'Activo' : 'Inactivo'}</span>
+                    <span class="preview-row__cta">Ver →</span>
                 </div>
             `).join('');
 
-            container.querySelectorAll('.z-preview-row').forEach(row =>
+            container.querySelectorAll('.preview-row').forEach(row =>
                 row.addEventListener('click', () => cargarUsuario(parseInt(row.dataset.id), 'consulta'))
             );
         } catch (err) {
             console.error('[Preview usuarios]', err);
-            container.innerHTML = `<div style="color:var(--z-text3);font-size:0.82rem;padding:0.5rem 0;">No se pudo cargar la vista previa (${err.message})</div>`;
+            container.innerHTML = `<div style="color:var(--fg-3);font-size:0.82rem;padding:0.5rem 0;">No se pudo cargar la vista previa (${err.message})</div>`;
         }
     }
 
@@ -377,14 +377,14 @@ document.addEventListener('DOMContentLoaded', () => {
         $('preview-section').style.display = 'none';
         $('form-card').style.display     = 'none';
         $('listado-section').style.display = 'block';
-        $('listado-contenido').innerHTML = '<div style="text-align:center;padding:2rem;color:var(--z-text3);">Cargando...</div>';
+        $('listado-contenido').innerHTML = '<div style="text-align:center;padding:2rem;color:var(--fg-3);">Cargando...</div>';
         $('lst-count').textContent = '';
         try {
             _listadoData = await ZUtils.apiFetch('/usuarios?solo_activos=false');
             aplicarFiltros();
         } catch (err) {
             $('listado-contenido').innerHTML =
-                `<div style="color:#cf2d56;padding:1rem;">Error al cargar: ${err.message}</div>`;
+                `<div style="color:var(--color-error);padding:1rem;">Error al cargar: ${err.message}</div>`;
         }
     }
 
@@ -439,7 +439,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (rows.length === 0) {
             $('listado-contenido').innerHTML =
-                '<div style="text-align:center;padding:2.5rem;color:var(--z-text3);">Sin resultados para los filtros aplicados</div>';
+                '<div style="text-align:center;padding:2.5rem;color:var(--fg-3);">Sin resultados para los filtros aplicados</div>';
             return;
         }
 
@@ -449,15 +449,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="mono">${esc(u.username)}</td>
                 <td>${NIVELES[u.nivel_acceso] || u.nivel_acceso}</td>
                 <td class="mono">${u.cuil || '—'}</td>
-                <td><span class="z-badge-${u.activo?'activo':'inactivo'}">${u.activo?'Activo':'Inactivo'}</span></td>
+                <td><span class="badge-${u.activo?'activo':'inactivo'}">${u.activo?'Activo':'Inactivo'}</span></td>
                 <td>
-                    <button class="z-tbl-btn" data-id="${u.id_usuario}" data-modo="consulta">Ver</button>
-                    <button class="z-tbl-btn" data-id="${u.id_usuario}" data-modo="edicion">Editar</button>
+                    <button class="tbl-btn" data-id="${u.id_usuario}" data-modo="consulta">Ver</button>
+                    <button class="tbl-btn" data-id="${u.id_usuario}" data-modo="edicion">Editar</button>
                 </td>
             </tr>`).join('');
 
         $('listado-contenido').innerHTML = `
-            <div class="z-listado-wrap">
+            <div class="listado-wrap">
                 <table>
                     <thead><tr>
                         <th>Nombre</th><th>Usuario</th><th>Nivel</th>
@@ -467,7 +467,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </table>
             </div>`;
 
-        $('listado-contenido').querySelectorAll('.z-tbl-btn').forEach(btn =>
+        $('listado-contenido').querySelectorAll('.tbl-btn').forEach(btn =>
             btn.addEventListener('click', () => {
                 cerrarListado();
                 cargarUsuario(parseInt(btn.dataset.id), btn.dataset.modo);

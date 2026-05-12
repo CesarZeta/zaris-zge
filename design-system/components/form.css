@@ -1,0 +1,158 @@
+/* ZARIS DS — Form fields (input, select, textarea, label, checkbox)
+ * --------------------------------------------------------------- */
+
+.form-zaris-group {
+  margin-bottom: 1.1rem;
+}
+
+.form-zaris-row {
+  display: grid;
+  gap: 1rem;
+}
+.form-zaris-row--2 { grid-template-columns: 1fr 1fr; }
+.form-zaris-row--3 { grid-template-columns: 1fr 1fr 1fr; }
+.form-zaris-row--4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+.form-zaris-row--1-2 { grid-template-columns: 1fr 2fr; }
+.form-zaris-row--2-1 { grid-template-columns: 2fr 1fr; }
+
+.label-zaris {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--size-caption);
+  font-weight: 600;
+  color: var(--fg-2);
+  margin-bottom: 6px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.label-zaris--required::after {
+  content: ' *';
+  color: var(--color-error);
+}
+
+.input-zaris,
+.select-zaris,
+.textarea-zaris {
+  width: 100%;
+  font-family: var(--font-display);
+  font-size: var(--size-ui);
+  color: var(--fg-1);
+  background: var(--surface-100);
+  padding: 9px 12px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 200ms ease, background 150ms ease;
+}
+.input-zaris::placeholder,
+.textarea-zaris::placeholder { color: var(--fg-5); }
+
+.input-zaris:focus,
+.select-zaris:focus,
+.textarea-zaris:focus {
+  border-color: var(--border-medium);
+  background: var(--surface-200);
+  box-shadow: var(--shadow-focus);
+}
+
+.input-zaris--error {
+  border-color: var(--color-error) !important;
+  box-shadow: 0 0 0 3px rgba(207, 45, 86, 0.12) !important;
+}
+.input-zaris--success {
+  border-color: var(--color-success) !important;
+  box-shadow: 0 0 0 3px rgba(31, 138, 101, 0.12) !important;
+}
+
+.select-zaris {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2326251e' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+  cursor: pointer;
+}
+
+.textarea-zaris {
+  resize: vertical;
+  min-height: 80px;
+  font-family: var(--font-display);
+}
+
+.input-hint-zaris {
+  font-size: var(--size-caption);
+  color: var(--fg-3);
+  margin-top: 4px;
+}
+
+.input-error-zaris {
+  font-size: var(--size-caption);
+  color: var(--color-error);
+  margin-top: 4px;
+  display: none;
+}
+.input-error-zaris.visible { display: block; }
+
+/* Checkbox custom */
+.checkbox-zaris {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox-zaris input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border-medium);
+  appearance: none;
+  cursor: pointer;
+  transition: all 150ms ease;
+  position: relative;
+  flex-shrink: 0;
+  background: var(--surface-100);
+}
+
+.checkbox-zaris input[type="checkbox"]:checked {
+  background: var(--zaris-dark);
+  border-color: var(--zaris-dark);
+}
+
+.checkbox-zaris input[type="checkbox"]:checked::after {
+  content: '✓';
+  color: var(--zaris-cream);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.checkbox-zaris__label {
+  font-family: var(--font-display);
+  font-size: var(--size-ui);
+  color: var(--fg-1);
+}
+
+/* Search box: row de form + botones alineados al final */
+.search-box-zaris {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+.search-box-zaris .form-zaris-group {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+@media (max-width: 768px) {
+  .form-zaris-row--2,
+  .form-zaris-row--3,
+  .form-zaris-row--4,
+  .form-zaris-row--1-2,
+  .form-zaris-row--2-1 { grid-template-columns: 1fr; }
+}

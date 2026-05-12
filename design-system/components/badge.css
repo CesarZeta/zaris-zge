@@ -1,0 +1,42 @@
+/* ZARIS DS — Badge
+ * --------------------------------------------------------------- */
+
+.badge-zaris {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-display);
+  font-size: var(--size-caption);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--surface-400);
+  color: var(--fg-2);
+}
+
+.badge-zaris--success {
+  background: rgba(31, 138, 101, 0.12);
+  color: var(--color-success);
+}
+.badge-zaris--error {
+  background: rgba(207, 45, 86, 0.12);
+  color: var(--color-error);
+}
+.badge-zaris--warning {
+  background: rgba(192, 133, 50, 0.14);
+  color: var(--zaris-gold);
+}
+.badge-zaris--info {
+  background: rgba(245, 78, 0, 0.10);
+  color: var(--zaris-orange);
+}
+.badge-zaris--neutral {
+  background: var(--surface-400);
+  color: var(--fg-3);
+}
+
+.badge-zaris--sm {
+  padding: 2px 8px;
+  font-size: 10px;
+}

@@ -6,391 +6,347 @@
     <meta name="description" content="ZARIS — Alta y Modificación de Empresa">
     <title>ZARIS — Empresa</title>
     <script>
-      // Standalone → redirigir al shell con ?modulo=
       if (window.self === window.top) {
         var p = window.location.pathname.replace(/^.*\//, 'frontend/');
         var sq = window.location.search || '';
         window.location.replace('../index.html?modulo=' + encodeURIComponent(p + sq));
       } else {
         var st = document.createElement('style');
-        st.textContent = '.z-header{display:none!important}';
+        st.textContent = '.legacy-header{display:none!important}';
         document.head.appendChild(st);
       }
     </script>
-    <link rel="stylesheet" href="styles.css?v=20260418-2">
+    <link rel="stylesheet" href="../design-system/fonts/fonts.css">
+    <link rel="stylesheet" href="../design-system/colors_and_type.css">
+    <link rel="stylesheet" href="../design-system/components.css">
     <style>
-        .z-form-card { animation: z-scaleIn 0.4s var(--z-ease); }
-
-        .z-search-panel {
-            background: linear-gradient(135deg, #FFF8E1 0%, #FFFDF5 100%);
-            border-radius: var(--z-radius-lg);
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-            border: 1.5px solid #FFECB3;
+        body {
+            background: var(--zaris-cream);
+            color: var(--fg-1);
+            font-family: var(--font-display);
+            margin: 0;
+            min-height: 100vh;
         }
-        .z-search-panel__title {
-            font-size: 0.92rem;
-            font-weight: 700;
-            color: var(--z-primary);
-            margin-bottom: 0.75rem;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
+        main { padding: 1.5rem 2rem; max-width: 1400px; margin: 0 auto; }
+        .legacy-header { display: none; }
 
-        .z-search-result {
-            background: var(--z-bg-card);
-            border-radius: var(--z-radius);
-            padding: 1rem 1.25rem;
-            margin-top: 1rem;
-            border: 1px solid var(--z-border);
+        .form-card { animation: scaleIn 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        @keyframes scaleIn { from { opacity:0; transform: scale(0.97); } to { opacity:1; transform: scale(1); } }
+
+        .search-result {
+            background: var(--surface-100); border-radius: var(--radius-lg);
+            padding: 1rem 1.25rem; margin-top: 1rem;
+            border: 1px solid var(--border-primary);
             display: none;
-            animation: z-slideDown 0.3s var(--z-ease);
+            animation: slideDown 0.24s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .z-search-result.visible { display: block; }
-        .z-search-result__name {
-            font-weight: 700;
-            color: var(--z-primary);
-            font-size: 1.05rem;
-        }
-        .z-search-result__detail {
-            font-size: 0.85rem;
-            color: var(--z-text2);
-            margin-top: 4px;
-        }
+        .search-result.visible { display: block; }
+        .search-result__name { font-weight: 600; color: var(--fg-1); font-size: 1.05rem; }
+        .search-result__detail { font-size: 0.85rem; color: var(--fg-2); margin-top: 4px; }
+        @keyframes slideDown { from { opacity:0; transform: translateY(-6px); } to { opacity:1; transform: translateY(0); } }
 
-        .z-cuil-group {
-            display: flex;
-            gap: 8px;
-            align-items: flex-start;
+        .cuil-group { display: flex; gap: 8px; align-items: flex-start; }
+        .cuil-group .form-zaris-group { flex: 1; }
+
+        .form-state {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 4px 12px; border-radius: var(--radius-pill);
+            font-size: var(--size-caption); font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.04em;
         }
-        .z-cuil-group .z-form-group { flex: 1; }
+        .form-state--new  { background: rgba(31, 138, 101, 0.12); color: var(--color-success); }
+        .form-state--edit { background: rgba(192, 133, 50, 0.14); color: var(--zaris-gold); }
+        .form-state--view { background: rgba(38, 37, 30, 0.08);  color: var(--fg-2); }
 
-        .z-form-state {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 6px 14px;
-            border-radius: 100px;
-            font-size: 0.8rem;
-            font-weight: 600;
+        /* Preview */
+        .preview-section { margin-bottom: 1.5rem; }
+        .preview-label { font-size: var(--size-caption); font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--fg-3); margin-bottom: 0.5rem; }
+        .preview-rows { display: flex; flex-direction: column; gap: 4px; }
+        .preview-row {
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 14px;
+            background: var(--surface-100); border: 1px solid var(--border-primary);
+            border-radius: var(--radius-md); cursor: pointer;
+            transition: border-color 0.15s, background 0.15s;
+            font-size: var(--size-mono); color: var(--fg-1);
         }
-        .z-form-state--new { background: #E8F5E9; color: #2E7D32; }
-        .z-form-state--edit { background: #FFF8E1; color: #F57F17; }
+        .preview-row:hover { border-color: var(--zaris-orange); background: rgba(245,78,0,0.03); }
+        .preview-row__nombre { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .preview-row__meta { font-size: var(--size-caption); color: var(--fg-3); white-space: nowrap; }
+        .preview-row__mono { font-size: var(--size-caption); color: var(--fg-2); font-family: var(--font-mono); white-space: nowrap; }
+        .preview-row__estado { font-size: var(--size-caption); font-weight: 600; padding: 2px 8px; border-radius: var(--radius-pill); white-space: nowrap; }
+        .preview-row__estado--activo   { background: rgba(31,138,101,.10); color: var(--color-success); }
+        .preview-row__estado--inactivo { background: rgba(207,45,86,.10);  color: var(--color-error); }
+        .preview-row__cta { font-size: var(--size-caption); color: var(--zaris-orange); font-weight: 600; white-space: nowrap; opacity: 0; transition: opacity 0.15s; margin-left: auto; }
+        .preview-row:hover .preview-row__cta { opacity: 1; }
 
-        /* ── Vista previa ── */
-        .z-preview-section { margin-bottom: 1.5rem; }
-        .z-preview-label { font-size:.70rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--z-text3);margin-bottom:.5rem; }
-        .z-preview-rows { display:flex;flex-direction:column;gap:4px; }
-        .z-preview-row { display:flex;align-items:center;gap:10px;padding:.48rem .9rem;background:var(--z-bg-card);border:1px solid var(--z-border);border-radius:var(--z-radius);cursor:pointer;transition:border-color .15s,background .15s;font-size:.84rem;color:var(--z-text); }
-        .z-preview-row:hover { border-color:var(--z-accent);background:rgba(245,78,0,.03); }
-        .z-preview-row__nombre { font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-        .z-preview-row__meta { font-size:.75rem;color:var(--z-text3);white-space:nowrap; }
-        .z-preview-row__mono { font-size:.75rem;color:var(--z-text2);font-family:var(--z-font-mono);white-space:nowrap; }
-        .z-preview-row__estado { font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap; }
-        .z-preview-row__estado--activo   { background:rgba(31,138,101,.10);color:#1f8a65; }
-        .z-preview-row__estado--inactivo { background:rgba(207,45,86,.10);color:#cf2d56; }
-        .z-preview-row__cta { font-size:.72rem;color:var(--z-accent);font-weight:600;white-space:nowrap;opacity:0;transition:opacity .15s;margin-left:auto; }
-        .z-preview-row:hover .z-preview-row__cta { opacity:1; }
+        /* Listado */
+        .listado-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; gap: 1rem; }
+        .listado-header h2 { font-size: 1.05rem; font-weight: 600; color: var(--fg-1); margin: 0; }
+        .filter-bar { display: flex; align-items: flex-end; gap: 0.75rem; flex-wrap: wrap; background: var(--surface-100); border: 1px solid var(--border-primary); border-radius: var(--radius-lg); padding: 1rem 1.25rem; margin-bottom: 1.25rem; }
+        .filter-group { display: flex; flex-direction: column; gap: 4px; }
+        .filter-group label { font-size: var(--size-caption); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-3); }
+        .filter-group input, .filter-group select {
+            background: var(--surface-100); border: 1px solid var(--border-primary); color: var(--fg-1);
+            padding: 6px 10px; border-radius: var(--radius-md);
+            font-size: var(--size-mono); font-family: var(--font-display); outline: none;
+            transition: border-color 0.15s; min-width: 140px;
+        }
+        .filter-group input:focus, .filter-group select:focus { border-color: var(--border-medium); }
+        .listado-wrap { overflow-x: auto; border-radius: var(--radius-lg); border: 1px solid var(--border-primary); background: var(--surface-100); box-shadow: var(--shadow-ambient); }
+        .listado-wrap table { width: 100%; border-collapse: collapse; font-size: var(--size-mono); }
+        .listado-wrap thead th { background: var(--surface-200); color: var(--fg-2); font-weight: 600; font-size: var(--size-caption); text-transform: uppercase; letter-spacing: 0.05em; padding: 10px 16px; text-align: left; white-space: nowrap; }
+        .listado-wrap tbody tr { border-top: 1px solid var(--border-primary); transition: background 0.1s; }
+        .listado-wrap tbody tr:hover { background: var(--surface-200); }
+        .listado-wrap tbody td { padding: 10px 16px; color: var(--fg-1); vertical-align: middle; }
+        .listado-wrap td.mono { font-family: var(--font-mono); font-size: var(--size-mono); color: var(--fg-2); }
+        .tbl-btn { border: 1px solid var(--border-primary); background: transparent; color: var(--fg-2); padding: 4px 10px; border-radius: var(--radius-md); cursor: pointer; font-size: var(--size-caption); font-family: var(--font-display); transition: all 0.15s; margin-right: 4px; }
+        .tbl-btn:hover { border-color: var(--zaris-orange); color: var(--zaris-orange); background: rgba(245,78,0,0.05); }
+        .listado-count { font-size: var(--size-mono); color: var(--fg-3); margin-bottom: 0.6rem; font-family: var(--font-mono); }
+        .badge-activo   { display:inline-block; padding:2px 10px; border-radius:var(--radius-pill); font-size:10px; font-weight:600; background:rgba(31,138,101,.12); color:var(--color-success); text-transform:uppercase; letter-spacing: 0.04em; }
+        .badge-inactivo { display:inline-block; padding:2px 10px; border-radius:var(--radius-pill); font-size:10px; font-weight:600; background:rgba(207,45,86,.12); color:var(--color-error); text-transform:uppercase; letter-spacing: 0.04em; }
 
-        /* ── Listado ── */
-        .z-listado-header { display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;gap:1rem; }
-        .z-listado-header h2 { font-size:1.05rem;font-weight:700;color:var(--z-primary); }
-        .z-filter-bar { display:flex;align-items:flex-end;gap:.75rem;flex-wrap:wrap;background:var(--z-bg-card);border:1px solid var(--z-border);border-radius:var(--z-radius-lg);padding:1rem 1.25rem;margin-bottom:1.25rem; }
-        .z-filter-group { display:flex;flex-direction:column;gap:4px; }
-        .z-filter-group label { font-size:.70rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--z-text3); }
-        .z-filter-group input,.z-filter-group select { background:transparent;border:1px solid var(--z-border);color:var(--z-text);padding:.4rem .65rem;border-radius:var(--z-radius);font-size:.84rem;font-family:var(--z-font);outline:none;transition:border-color .15s;min-width:140px; }
-        .z-filter-group input:focus,.z-filter-group select:focus { border-color:var(--z-border-focus); }
-        .z-listado-wrap { overflow-x:auto;border-radius:var(--z-radius-lg);border:1px solid var(--z-border);background:var(--z-bg-card);box-shadow:0 1px 4px rgba(38,37,30,.06); }
-        .z-listado-wrap table { width:100%;border-collapse:collapse;font-size:.84rem; }
-        .z-listado-wrap thead th { background:var(--z-bg-card-alt);color:var(--z-text2);font-weight:600;font-size:.70rem;text-transform:uppercase;letter-spacing:.05em;padding:.65rem 1rem;text-align:left;white-space:nowrap; }
-        .z-listado-wrap tbody tr { border-top:1px solid var(--z-border);transition:background .1s; }
-        .z-listado-wrap tbody tr:hover { background:var(--z-bg-card-alt); }
-        .z-listado-wrap tbody td { padding:.6rem 1rem;color:var(--z-text);vertical-align:middle; }
-        .z-listado-wrap td.mono { font-family:var(--z-font-mono);font-size:.78rem;color:var(--z-text2); }
-        .z-tbl-btn { border:1px solid var(--z-border);background:transparent;color:var(--z-text2);padding:.25rem .6rem;border-radius:var(--z-radius-sm);cursor:pointer;font-size:.75rem;font-family:var(--z-font);transition:all .15s;margin-right:4px; }
-        .z-tbl-btn:hover { border-color:var(--z-accent);color:var(--z-accent);background:rgba(245,78,0,.05); }
-        .z-listado-count { font-size:.78rem;color:var(--z-text3);margin-bottom:.6rem; }
-        .z-badge-activo   { display:inline-block;padding:2px 8px;border-radius:20px;font-size:.72rem;font-weight:600;background:rgba(31,138,101,.10);color:#1f8a65; }
-        .z-badge-inactivo { display:inline-block;padding:2px 8px;border-radius:20px;font-size:.72rem;font-weight:600;background:rgba(207,45,86,.10);color:#cf2d56; }
-        .z-print-header { display:none; }
+        .print-header { display: none; }
         @media print {
-            .z-header,.zaris-breadcrumb,.z-search-panel,.z-preview-section,
-            .z-listado-header .z-btn,.z-filter-bar,.z-tbl-btn { display:none!important; }
-            .z-print-header { display:block!important;text-align:center;margin-bottom:1.5rem; }
-            .z-print-header h2 { font-size:1.1rem;font-weight:700; }
-            .z-print-header p  { font-size:.78rem;color:#666;margin-top:4px; }
+            .legacy-header, .zaris-breadcrumb, .search-panel-zaris, .preview-section,
+            .listado-header .btn-zaris, .filter-bar, .tbl-btn { display: none !important; }
+            .print-header { display: block !important; text-align: center; margin-bottom: 1.5rem; }
+            .print-header h2 { font-size: 1.1rem; font-weight: 700; }
+            .print-header p  { font-size: 0.78rem; color: #666; margin-top: 4px; }
         }
     </style>
 </head>
 <body>
-    <div class="z-app">
-        <!-- Header -->
-        <header class="z-header">
-            <a href="menu.html" class="z-header__brand">
-                <span>
-                    <span class="z-header__title">ZARIS</span>
-                    <span class="z-header__subtitle">Gestión Estatal</span>
-                </span>
-            </a>
-            <nav class="z-header__nav">
-                <a href="#" class="z-header__btn" id="btn-volver-menu" onclick="(window.parent.shellNavigate||function(){window.location='../index.html'})('frontend/welcome.html');return false">← Inicio</a>
-            </nav>
-        </header>
+    <header class="legacy-header"></header>
 
-        <!-- Main -->
-        <main class="z-main">
-            <!-- Breadcrumb -->
-            <nav class="zaris-breadcrumb">
-                <a href="#" onclick="(window.parent.shellNavigate||function(){window.location='../index.html'})('frontend/welcome.html');return false">INICIO</a>
-                <span class="zaris-breadcrumb__sep">›</span>
-                <span class="zaris-breadcrumb__current">Empresa</span>
-            </nav>
+    <main>
+        <nav class="zaris-breadcrumb">
+            <a href="#" data-bc-home>INICIO</a>
+            <span class="zaris-breadcrumb__sep">›</span>
+            <span class="zaris-breadcrumb__current">Empresa</span>
+        </nav>
 
-            <!-- ═══════════ TÍTULO ═══════════ -->
-            <div style="display:flex;align-items:center;gap:12px;margin-bottom:1.5rem;">
-                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--z-accent);flex-shrink:0;">
-                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
-                </svg>
-                <div>
-                    <h1 style="font-size:1.55rem;font-weight:700;letter-spacing:-0.5px;color:var(--z-primary);line-height:1.1;">Padrón de Empresas</h1>
-                    <p style="font-size:0.82rem;color:var(--z-text3);margin-top:2px;">Base Única de Ciudadanos — razones sociales y actividad económica</p>
+        <!-- ═══════════ TÍTULO ═══════════ -->
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:1.5rem;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--zaris-orange);flex-shrink:0;">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+            </svg>
+            <div>
+                <h1 style="font-size:1.55rem;font-weight:600;letter-spacing:-0.5px;color:var(--fg-1);line-height:1.1;margin:0;">Padrón de Empresas</h1>
+                <p style="font-size:0.82rem;color:var(--fg-3);margin:2px 0 0;">Base Única de Ciudadanos — razones sociales y actividad económica</p>
+            </div>
+        </div>
+
+        <!-- ═══════════ BÚSQUEDA ═══════════ -->
+        <div class="search-panel-zaris" id="search-panel">
+            <div class="search-panel-zaris__title">Buscar empresa existente</div>
+            <div style="display:flex;gap:6px;margin-bottom:0.6rem;">
+                <button type="button" class="btn-zaris btn-zaris--xs btn-zaris--primary" id="btn-modo-numero" title="Buscar por CUIT"># CUIT</button>
+                <button type="button" class="btn-zaris btn-zaris--xs btn-zaris--ghost"   id="btn-modo-texto"  title="Buscar por nombre">Aa Nombre</button>
+            </div>
+            <div class="search-box-zaris">
+                <div class="form-zaris-group" style="margin-bottom:0;flex:1;">
+                    <input type="text" class="search-panel-zaris__input" id="search-query"
+                           placeholder="Ingresá CUIT de la empresa..." autofocus>
+                </div>
+                <button class="btn-zaris btn-zaris--primary" id="btn-buscar">Buscar</button>
+                <button class="btn-zaris btn-zaris--accent"  id="btn-nuevo">+ Nuevo</button>
+                <button class="btn-zaris btn-zaris--ghost"   id="btn-listado">Listado</button>
+            </div>
+            <div class="search-result" id="search-result">
+                <div class="search-result__name" id="result-name"></div>
+                <div class="search-result__detail" id="result-detail"></div>
+                <div id="result-list" style="margin-top:8px;"></div>
+                <div style="margin-top: 10px; display: flex; gap: 8px;" id="result-actions">
+                    <button class="btn-zaris btn-zaris--sm btn-zaris--primary" id="btn-editar-encontrado" style="display:none;">Editar</button>
+                    <button class="btn-zaris btn-zaris--sm btn-zaris--ghost" id="btn-consultar-encontrado" style="display:none;">Consultar</button>
+                    <button class="btn-zaris btn-zaris--sm btn-zaris--danger" id="btn-baja-encontrado" style="display:none;">Dar de baja</button>
+                    <button class="btn-zaris btn-zaris--sm btn-zaris--ghost" id="btn-nuevo-forzar">+ Alta nueva de todas formas</button>
                 </div>
             </div>
+        </div>
 
-            <!-- ═══════════ BÚSQUEDA ═══════════ -->
-            <div class="z-search-panel" id="search-panel">
-                <div class="z-search-panel__title">
-                    Buscar empresa existente
-                </div>
-                <!-- Toggle tipo búsqueda -->
-                <div style="display:flex;gap:6px;margin-bottom:0.6rem;">
-                    <button type="button" class="z-btn z-btn--xs z-btn--primary" id="btn-modo-numero" title="Buscar por CUIT"># CUIT</button>
-                    <button type="button" class="z-btn z-btn--xs z-btn--ghost"   id="btn-modo-texto"  title="Buscar por nombre">Aa Nombre</button>
-                </div>
-                <div class="z-search-box">
-                    <div class="z-form-group">
-                        <input type="text" class="z-input" id="search-query"
-                               placeholder="Ingresá CUIT de la empresa..."
-                               autofocus>
-                    </div>
-                    <button class="z-btn z-btn--primary" id="btn-buscar">Buscar</button>
-                    <button class="z-btn z-btn--accent"  id="btn-nuevo">+ Nuevo</button>
-                    <button class="z-btn z-btn--ghost"   id="btn-listado">Listado</button>
-                </div>
-                <div class="z-search-result" id="search-result">
-                    <div class="z-search-result__name" id="result-name"></div>
-                    <div class="z-search-result__detail" id="result-detail"></div>
-                    <div id="result-list" style="margin-top:8px;"></div>
-                    <div style="margin-top: 10px; display: flex; gap: 8px;" id="result-actions">
-                        <button class="z-btn z-btn--sm z-btn--primary" id="btn-editar-encontrado" style="display:none;">
-                            Editar
-                        </button>
-                        <button class="z-btn z-btn--sm z-btn--ghost" id="btn-consultar-encontrado" style="display:none;">
-                            Consultar
-                        </button>
-                        <button class="z-btn z-btn--sm z-btn--danger" id="btn-baja-encontrado" style="display:none;">
-                            Dar de baja
-                        </button>
-                        <button class="z-btn z-btn--sm z-btn--ghost" id="btn-nuevo-forzar">
-                            + Alta nueva de todas formas
-                        </button>
-                    </div>
+        <!-- ═══════════ VISTA PREVIA ═══════════ -->
+        <div class="preview-section" id="preview-section">
+            <div class="preview-label">Últimas empresas ingresadas</div>
+            <div class="preview-rows" id="preview-rows">
+                <div style="color:var(--fg-3);font-size:.82rem;padding:.5rem 0;">Cargando...</div>
+            </div>
+        </div>
+
+        <!-- ═══════════ LISTADO COMPLETO ═══════════ -->
+        <div id="listado-section" style="display:none;">
+            <div class="print-header" id="lst-print-header"></div>
+            <div class="listado-header">
+                <h2>Listado de Empresas</h2>
+                <div style="display:flex;gap:.5rem;">
+                    <button class="btn-zaris btn-zaris--ghost btn-zaris--sm" id="btn-imprimir-lst">Imprimir</button>
+                    <button class="btn-zaris btn-zaris--ghost btn-zaris--sm" id="btn-cerrar-listado">← Volver</button>
                 </div>
             </div>
-
-            <!-- ═══════════ VISTA PREVIA ═══════════ -->
-            <div class="z-preview-section" id="preview-section">
-                <div class="z-preview-label">Últimas empresas ingresadas</div>
-                <div class="z-preview-rows" id="preview-rows">
-                    <div style="color:var(--z-text3);font-size:.82rem;padding:.5rem 0;">Cargando...</div>
+            <div class="filter-bar">
+                <div class="filter-group">
+                    <label>Buscar</label>
+                    <input type="text" id="lst-texto" placeholder="Nombre o CUIT...">
+                </div>
+                <div class="filter-group">
+                    <label>Ordenar</label>
+                    <select id="lst-orden">
+                        <option value="reciente">Más reciente primero</option>
+                        <option value="az">Nombre A → Z</option>
+                        <option value="za">Nombre Z → A</option>
+                        <option value="antiguo">Más antiguo primero</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Fecha alta desde</label>
+                    <input type="date" id="lst-desde">
+                </div>
+                <div class="filter-group">
+                    <label>Fecha alta hasta</label>
+                    <input type="date" id="lst-hasta">
+                </div>
+                <div style="display:flex;gap:.5rem;align-self:flex-end;">
+                    <button class="btn-zaris btn-zaris--primary btn-zaris--sm" id="btn-filtrar-lst">Filtrar</button>
+                    <button class="btn-zaris btn-zaris--ghost btn-zaris--sm"   id="btn-limpiar-lst">Limpiar</button>
                 </div>
             </div>
+            <div class="listado-count" id="lst-count"></div>
+            <div id="listado-contenido"></div>
+        </div>
 
-            <!-- ═══════════ LISTADO COMPLETO ═══════════ -->
-            <div id="listado-section" style="display:none;">
-                <div class="z-print-header" id="lst-print-header"></div>
-                <div class="z-listado-header">
-                    <h2>Listado de Empresas</h2>
-                    <div style="display:flex;gap:.5rem;">
-                        <button class="z-btn z-btn--ghost" id="btn-imprimir-lst">Imprimir</button>
-                        <button class="z-btn z-btn--ghost" id="btn-cerrar-listado">← Volver</button>
-                    </div>
-                </div>
-                <div class="z-filter-bar">
-                    <div class="z-filter-group">
-                        <label>Buscar</label>
-                        <input type="text" id="lst-texto" placeholder="Nombre o CUIT...">
-                    </div>
-                    <div class="z-filter-group">
-                        <label>Ordenar</label>
-                        <select id="lst-orden">
-                            <option value="reciente">Más reciente primero</option>
-                            <option value="az">Nombre A → Z</option>
-                            <option value="za">Nombre Z → A</option>
-                            <option value="antiguo">Más antiguo primero</option>
-                        </select>
-                    </div>
-                    <div class="z-filter-group">
-                        <label>Fecha alta desde</label>
-                        <input type="date" id="lst-desde">
-                    </div>
-                    <div class="z-filter-group">
-                        <label>Fecha alta hasta</label>
-                        <input type="date" id="lst-hasta">
-                    </div>
-                    <div style="display:flex;gap:.5rem;align-self:flex-end;">
-                        <button class="z-btn z-btn--primary z-btn--sm" id="btn-filtrar-lst">Filtrar</button>
-                        <button class="z-btn z-btn--ghost z-btn--sm"   id="btn-limpiar-lst">Limpiar</button>
-                    </div>
-                </div>
-                <div class="z-listado-count" id="lst-count"></div>
-                <div id="listado-contenido"></div>
+        <!-- ═══════════ FORMULARIO EMPRESA ═══════════ -->
+        <div class="card-zaris form-card" id="form-card" style="display:none;">
+            <div class="card-zaris__header">
+                <h2 class="card-zaris__title">
+                    <span id="form-title">Alta de empresa</span>
+                </h2>
+                <span class="form-state form-state--new" id="form-state">● NUEVO</span>
             </div>
 
-            <!-- ═══════════ FORMULARIO EMPRESA ═══════════ -->
-            <div class="z-card z-form-card" id="form-card" style="display:none;">
-                <div class="z-card__header">
-                    <h2 class="z-card__title">
-                        <span id="form-title">Alta de empresa</span>
-                    </h2>
-                    <span class="z-form-state z-form-state--new" id="form-state">
-                        ● NUEVO
-                    </span>
-                </div>
+            <div class="card-zaris__body">
+                <form id="form-empresa" autocomplete="off">
+                    <input type="hidden" id="emp-id" name="id_empresa">
 
-                <div class="z-card__body">
-                    <form id="form-empresa" autocomplete="off">
-                        <input type="hidden" id="emp-id" name="id_empresa">
+                    <div class="section-title-zaris">Identificación</div>
 
-                        <!-- ── Identificación ── -->
-                        <div class="z-section-title">Identificación</div>
-
-                        <div class="z-form-row z-form-row--2">
-                            <!-- CUIT -->
-                            <div class="z-form-group">
-                                <label class="z-label z-label--required" for="emp-cuit">CUIT</label>
-                                <div class="z-cuil-group">
-                                    <div class="z-form-group" style="margin-bottom:0">
-                                        <input type="text" class="z-input" id="emp-cuit" name="cuit"
-                                               placeholder="XX-XXXXXXXX-X" maxlength="13" required>
-                                        <div class="z-input-error" id="err-cuit"></div>
-                                    </div>
-                                    <button type="button" class="z-btn z-btn--ghost z-btn--sm" id="btn-validar-cuit"
-                                            title="Validar CUIT (futuro: API ARCA)" style="white-space:nowrap;">
-                                        Validar
-                                    </button>
+                    <div class="form-zaris-row form-zaris-row--2">
+                        <div class="form-zaris-group">
+                            <label class="label-zaris label-zaris--required" for="emp-cuit">CUIT</label>
+                            <div class="cuil-group">
+                                <div class="form-zaris-group" style="margin-bottom:0">
+                                    <input type="text" class="input-zaris" id="emp-cuit" name="cuit"
+                                           placeholder="XX-XXXXXXXX-X" maxlength="13" required>
+                                    <div class="input-error-zaris" id="err-cuit"></div>
                                 </div>
-                            </div>
-                            <!-- Nombre -->
-                            <div class="z-form-group">
-                                <label class="z-label z-label--required" for="emp-nombre">Nombre de Empresa</label>
-                                <input type="text" class="z-input" id="emp-nombre" name="nombre"
-                                       placeholder="Razón social" maxlength="100" required>
-                                <div class="z-input-error" id="err-nombre"></div>
+                                <button type="button" class="btn-zaris btn-zaris--ghost btn-zaris--sm" id="btn-validar-cuit"
+                                        title="Validar CUIT (futuro: API ARCA)" style="white-space:nowrap;">Validar</button>
                             </div>
                         </div>
-
-                        <!-- Actividad -->
-                        <div class="z-form-row" style="margin-top:0.5rem;">
-                            <div class="z-form-group">
-                                <label class="z-label z-label--required" for="emp-actividad">Actividad Económica (CLAE)</label>
-                                <!-- Filtro de búsqueda para CLAE -->
-                                <input type="text" class="z-input" id="clae-filtro"
-                                       placeholder="Filtrar actividades..." autocomplete="off"
-                                       style="margin-bottom:4px;">
-                                <select class="z-select" id="emp-actividad" name="id_actividad" required size="1">
-                                    <option value="">Cargando...</option>
-                                </select>
-                                <div class="z-input-error" id="err-actividad"></div>
-                            </div>
-                            <div class="z-form-group" style="display:flex;align-items:flex-end;padding-bottom:1.1rem;">
-                                <span class="z-badge" id="badge-categoria" style="display:none;"></span>
-                            </div>
+                        <div class="form-zaris-group">
+                            <label class="label-zaris label-zaris--required" for="emp-nombre">Nombre de Empresa</label>
+                            <input type="text" class="input-zaris" id="emp-nombre" name="nombre"
+                                   placeholder="Razón social" maxlength="100" required>
+                            <div class="input-error-zaris" id="err-nombre"></div>
                         </div>
+                    </div>
 
-                        <!-- ── Domicilio ── -->
-                        <div class="z-section-title" style="margin-top:1rem;">Domicilio</div>
-
-                        <div class="z-form-row z-form-row--2">
-                            <div class="z-form-group">
-                                <label class="z-label z-label--required" for="emp-calle">Calle y Altura</label>
-                                <input type="text" class="z-input" id="emp-calle" name="calle"
-                                       placeholder="Dirección de la empresa" maxlength="200" required>
-                                <div class="z-input-error" id="err-calle"></div>
-                            </div>
-                            <div class="z-form-group">
-                                <label class="z-label z-label--required" for="emp-localidad">Localidad / Barrio</label>
-                                <input type="text" class="z-input" id="emp-localidad" name="localidad"
-                                       maxlength="100" required>
-                                <div class="z-input-error" id="err-localidad"></div>
-                            </div>
+                    <div class="form-zaris-row form-zaris-row--2-1" style="margin-top:0.5rem;">
+                        <div class="form-zaris-group">
+                            <label class="label-zaris label-zaris--required" for="emp-actividad">Actividad Económica (CLAE)</label>
+                            <input type="text" class="input-zaris" id="clae-filtro"
+                                   placeholder="Filtrar actividades..." autocomplete="off"
+                                   style="margin-bottom:4px;">
+                            <select class="select-zaris" id="emp-actividad" name="id_actividad" required size="1">
+                                <option value="">Cargando...</option>
+                            </select>
+                            <div class="input-error-zaris" id="err-actividad"></div>
                         </div>
-
-                        <div class="z-form-row z-form-row--1">
-                            <div class="z-form-group">
-                                <label class="z-label z-label--required" for="emp-provincia">Estado / Provincia</label>
-                                <input type="text" class="z-input" id="emp-provincia" name="provincia" maxlength="100" required>
-                                <div class="z-input-error" id="err-provincia"></div>
-                            </div>
+                        <div class="form-zaris-group" style="display:flex;align-items:flex-end;padding-bottom:1.1rem;">
+                            <span class="badge-zaris" id="badge-categoria" style="display:none;"></span>
                         </div>
-                        <!-- Lat/Long ocultos -->
-                        <input type="hidden" id="emp-latitud" name="latitud">
-                        <input type="hidden" id="emp-longitud" name="longitud">
+                    </div>
 
-                        <!-- ── Contacto ── -->
-                        <div class="z-section-title" style="margin-top:1rem;">Contacto</div>
+                    <div class="section-title-zaris" style="margin-top:1rem;">Domicilio</div>
 
-                        <div class="z-form-row z-form-row--2">
-                            <div class="z-form-group">
-                                <label class="z-label z-label--required" for="emp-telefono">Teléfono</label>
-                                <input type="text" class="z-input" id="emp-telefono" name="telefono"
-                                       placeholder="Cód. área + número (10 dígitos)" maxlength="10" required>
-                                <div class="z-input-hint">Sin el 0 del código de área. Ej: 1155667788</div>
-                                <div class="z-input-error" id="err-telefono"></div>
-                            </div>
-                            <div class="z-form-group">
-                                <label class="z-label z-label--required" for="emp-email">Email</label>
-                                <input type="email" class="z-input" id="emp-email" name="email"
-                                       placeholder="empresa@correo.com" maxlength="150" required>
-                                <div class="z-input-error" id="err-email"></div>
-                            </div>
+                    <div class="form-zaris-row form-zaris-row--2">
+                        <div class="form-zaris-group">
+                            <label class="label-zaris label-zaris--required" for="emp-calle">Calle y Altura</label>
+                            <input type="text" class="input-zaris" id="emp-calle" name="calle"
+                                   placeholder="Dirección de la empresa" maxlength="200" required>
+                            <div class="input-error-zaris" id="err-calle"></div>
                         </div>
-
-
-
-                        <!-- ── Observaciones ── -->
-                        <div class="z-section-title" style="margin-top:1rem;">Observaciones</div>
-
-                        <div class="z-form-group">
-                            <textarea class="z-textarea" id="emp-observaciones" name="observaciones"
-                                      placeholder="Notas adicionales (máx. 500 caracteres)"
-                                      maxlength="500" rows="3"></textarea>
-                            <div class="z-input-hint">
-                                <span id="obs-count">0</span>/500 caracteres
-                            </div>
+                        <div class="form-zaris-group">
+                            <label class="label-zaris label-zaris--required" for="emp-localidad">Localidad / Barrio</label>
+                            <input type="text" class="input-zaris" id="emp-localidad" name="localidad"
+                                   maxlength="100" required>
+                            <div class="input-error-zaris" id="err-localidad"></div>
                         </div>
-                    </form>
-                </div>
+                    </div>
 
-                <!-- Footer -->
-                <div class="z-card__footer">
-                    <button class="z-btn z-btn--ghost" id="btn-cancelar">
-                        Cancelar
-                    </button>
-                    <button class="z-btn z-btn--accent z-btn--lg" id="btn-guardar">
-                        Guardar empresa
-                    </button>
-                </div>
+                    <div class="form-zaris-group">
+                        <label class="label-zaris label-zaris--required" for="emp-provincia">Estado / Provincia</label>
+                        <input type="text" class="input-zaris" id="emp-provincia" name="provincia" maxlength="100" required>
+                        <div class="input-error-zaris" id="err-provincia"></div>
+                    </div>
+                    <input type="hidden" id="emp-latitud" name="latitud">
+                    <input type="hidden" id="emp-longitud" name="longitud">
+
+                    <div class="section-title-zaris" style="margin-top:1rem;">Contacto</div>
+
+                    <div class="form-zaris-row form-zaris-row--2">
+                        <div class="form-zaris-group">
+                            <label class="label-zaris label-zaris--required" for="emp-telefono">Teléfono</label>
+                            <input type="text" class="input-zaris" id="emp-telefono" name="telefono"
+                                   placeholder="Cód. área + número (10 dígitos)" maxlength="10" required>
+                            <div class="input-hint-zaris">Sin el 0 del código de área. Ej: 1155667788</div>
+                            <div class="input-error-zaris" id="err-telefono"></div>
+                        </div>
+                        <div class="form-zaris-group">
+                            <label class="label-zaris label-zaris--required" for="emp-email">Email</label>
+                            <input type="email" class="input-zaris" id="emp-email" name="email"
+                                   placeholder="empresa@correo.com" maxlength="150" required>
+                            <div class="input-error-zaris" id="err-email"></div>
+                        </div>
+                    </div>
+
+                    <div class="section-title-zaris" style="margin-top:1rem;">Observaciones</div>
+
+                    <div class="form-zaris-group">
+                        <textarea class="textarea-zaris" id="emp-observaciones" name="observaciones"
+                                  placeholder="Notas adicionales (máx. 500 caracteres)"
+                                  maxlength="500" rows="3"></textarea>
+                        <div class="input-hint-zaris">
+                            <span id="obs-count">0</span>/500 caracteres
+                        </div>
+                    </div>
+                </form>
             </div>
-        </main>
-    </div>
 
-    <!-- Toast container -->
-    <div class="z-toast-container" id="toast-container"></div>
+            <div class="card-zaris__footer">
+                <button class="btn-zaris btn-zaris--ghost" id="btn-cancelar">Cancelar</button>
+                <button class="btn-zaris btn-zaris--accent btn-zaris--lg" id="btn-guardar">Guardar empresa</button>
+            </div>
+        </div>
+    </main>
 
-    <script src="js/config.js?v=20260418-2"></script>
-    <script src="js/validaciones.js?v=20260418-2"></script>
-    <script src="js/empresa.js?v=20260418-2"></script>
+    <div class="toast-zaris-container" id="toast-container"></div>
+
+    <script>
+      document.querySelectorAll('[data-bc-home]').forEach(function(el){
+        el.addEventListener('click', function(e){
+          e.preventDefault();
+          if (window.parent && window.parent.shellNavigate) {
+            window.parent.shellNavigate('frontend/welcome.html');
+          } else {
+            window.location.href = '../index.html';
+          }
+        });
+      });
+    </script>
+
+    <script src="js/config.js?v=20260512"></script>
+    <script src="js/validaciones.js?v=20260512"></script>
+    <script src="js/empresa.js?v=20260512"></script>
 </body>
 </html>

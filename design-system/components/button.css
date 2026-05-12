@@ -1,0 +1,108 @@
+/* ZARIS DS — Button
+ * ---------------------------------------------------------------
+ * Base + variants + sizes. Reemplaza al legacy .z-btn de styles.css.
+ * Tokens: colors_and_type.css.
+ * --------------------------------------------------------------- */
+
+.btn-zaris {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  font-family: var(--font-display);
+  font-size: var(--size-btn);
+  line-height: 1;
+  font-weight: 500;
+  color: var(--fg-1);
+  background: var(--surface-300);
+  padding: 10px 16px;
+  border-radius: var(--radius-lg);
+  border: none;
+  outline: none;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 150ms ease, background 150ms ease, box-shadow 200ms ease, transform 100ms ease;
+  box-shadow: var(--ring-border);
+}
+.btn-zaris:hover { color: var(--color-error); }
+.btn-zaris:active:not(:disabled) { transform: scale(0.97); }
+.btn-zaris:focus-visible { box-shadow: var(--shadow-focus), var(--ring-border-med); }
+.btn-zaris:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Variants */
+.btn-zaris--primary {
+  background: var(--zaris-dark);
+  color: var(--zaris-cream);
+  box-shadow: none;
+}
+.btn-zaris--primary:hover { color: var(--zaris-cream); background: #3a3930; }
+
+.btn-zaris--accent {
+  background: var(--zaris-orange);
+  color: var(--zaris-cream);
+  box-shadow: none;
+}
+.btn-zaris--accent:hover { color: var(--zaris-cream); background: #d84300; }
+
+.btn-zaris--ghost {
+  background: transparent;
+  color: var(--fg-2);
+  box-shadow: var(--ring-border);
+}
+.btn-zaris--ghost:hover { color: var(--fg-1); background: rgba(38, 37, 30, 0.04); }
+
+.btn-zaris--outline {
+  background: transparent;
+  color: var(--fg-1);
+  box-shadow: var(--ring-border-med);
+}
+.btn-zaris--outline:hover { background: rgba(38, 37, 30, 0.04); }
+
+.btn-zaris--danger {
+  background: var(--color-error);
+  color: var(--zaris-cream);
+  box-shadow: none;
+}
+.btn-zaris--danger:hover { color: var(--zaris-cream); background: #b8214a; }
+
+.btn-zaris--success {
+  background: var(--color-success);
+  color: var(--zaris-cream);
+  box-shadow: none;
+}
+.btn-zaris--success:hover { color: var(--zaris-cream); background: #186e51; }
+
+.btn-zaris--pill {
+  background: var(--surface-400);
+  color: var(--fg-3);
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  font-size: var(--size-caption);
+}
+.btn-zaris--pill-active {
+  background: var(--surface-500);
+  color: var(--fg-2);
+}
+
+/* Sizes */
+.btn-zaris--xs {
+  padding: 4px 10px;
+  font-size: var(--size-caption);
+}
+.btn-zaris--sm {
+  padding: 6px 12px;
+  font-size: var(--size-mono);
+}
+.btn-zaris--lg {
+  padding: 14px 28px;
+  font-size: var(--size-ui);
+}
+.btn-zaris--full { width: 100%; }
+
+.btn-zaris--icon {
+  padding: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+}

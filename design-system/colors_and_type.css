@@ -271,90 +271,12 @@ a.zaris:hover {
 }
 
 /* ============================================================
- * BUTTONS
+ * COMPONENTES (button, card, input, etc.)
+ * ------------------------------------------------------------
+ * Los componentes viven en `design-system/components/*.css`
+ * y se importan via `design-system/components.css`. Incluir
+ * ese archivo en cada módulo (ver §13 / §31).
  * ============================================================ */
-.btn-zaris {
-  font-family: var(--font-display);
-  font-size: var(--size-btn);
-  line-height: 1;
-  font-weight: 400;
-  color: var(--fg-1);
-  background: var(--surface-300);
-  padding: 10px 12px 10px 14px;
-  border-radius: var(--radius-lg);
-  border: none;
-  outline: none;
-  cursor: pointer;
-  transition: color 150ms ease, box-shadow 200ms ease, background 150ms ease;
-  box-shadow: var(--ring-border);
-}
-.btn-zaris:hover { color: var(--color-error); }
-.btn-zaris:focus-visible { box-shadow: var(--shadow-focus), var(--ring-border-med); }
-
-.btn-zaris--pill {
-  background: var(--surface-400);
-  color: var(--fg-3);
-  padding: 3px 8px;
-  border-radius: var(--radius-pill);
-}
-.btn-zaris--pill-active {
-  background: var(--surface-500);
-  color: var(--fg-2);
-}
-
-.btn-zaris--ghost {
-  background: rgba(38, 37, 30, 0.06);
-  color: var(--fg-3);
-  padding: 6px 12px;
-  border-radius: var(--radius-lg);
-  box-shadow: none;
-}
-.btn-zaris--ghost:hover { color: var(--color-error); background: rgba(38, 37, 30, 0.1); }
-
-.btn-zaris--primary {
-  background: var(--zaris-dark);
-  color: var(--zaris-cream);
-  box-shadow: none;
-}
-.btn-zaris--primary:hover { color: var(--zaris-cream); background: #1b1a15; }
-
-.btn-zaris--accent {
-  background: var(--zaris-orange);
-  color: var(--zaris-cream);
-  box-shadow: none;
-}
-.btn-zaris--accent:hover { background: #d84300; }
-
-/* ============================================================
- * CARDS
- * ============================================================ */
-.card-zaris {
-  background: var(--surface-400);
-  border-radius: var(--radius-lg);
-  padding: 16px;
-  box-shadow: var(--ring-border);
-}
-.card-zaris--elevated { box-shadow: var(--shadow-card); }
-.card-zaris--ambient  { box-shadow: var(--shadow-ambient), var(--ring-border); }
-.card-zaris--featured { border-radius: var(--radius-xl); }
-
-/* ============================================================
- * INPUTS
- * ============================================================ */
-.input-zaris {
-  font-family: var(--font-display);
-  font-size: var(--size-ui);
-  color: var(--fg-1);
-  background: transparent;
-  padding: 8px 10px;
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-lg);
-  outline: none;
-  transition: border-color 150ms ease, box-shadow 200ms ease;
-  width: 100%;
-}
-.input-zaris::placeholder { color: var(--fg-5); }
-.input-zaris:focus { border-color: var(--border-medium); box-shadow: var(--shadow-focus); }
 
 /* ============================================================
  * UTILITIES

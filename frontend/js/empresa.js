@@ -191,11 +191,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function setModoBusqueda(modo) {
         state.busquedaTipo = modo;
         els.btnModoNumero.className = modo === 'numero'
-            ? 'z-btn z-btn--xs z-btn--primary'
-            : 'z-btn z-btn--xs z-btn--ghost';
+            ? 'btn-zaris btn-zaris--xs btn-zaris--primary'
+            : 'btn-zaris btn-zaris--xs btn-zaris--ghost';
         els.btnModoTexto.className = modo === 'texto'
-            ? 'z-btn z-btn--xs z-btn--primary'
-            : 'z-btn z-btn--xs z-btn--ghost';
+            ? 'btn-zaris btn-zaris--xs btn-zaris--primary'
+            : 'btn-zaris btn-zaris--xs btn-zaris--ghost';
         els.searchQuery.placeholder = modo === 'numero'
             ? 'Ingresá CUIT de la empresa...'
             : 'Ingresá nombre o razón social...';
@@ -259,17 +259,17 @@ document.addEventListener('DOMContentLoaded', () => {
         els.btnConsultarEncontrado.style.display = 'none';
 
         els.resultList.innerHTML = resultados.map((emp, i) => `
-            <div style="padding:8px 0;border-bottom:1px solid var(--z-border);display:flex;align-items:flex-start;gap:8px;">
+            <div style="padding:8px 0;border-bottom:1px solid var(--border-primary);display:flex;align-items:flex-start;gap:8px;">
                 <div style="flex:1;">
-                    <strong style="color:var(--z-primary);font-size:0.95rem;">${emp.nombre}</strong>
-                    <div style="font-size:0.82rem;color:var(--z-text2);margin-top:2px;">
+                    <strong style="color:var(--fg-1);font-size:0.95rem;">${emp.nombre}</strong>
+                    <div style="font-size:0.82rem;color:var(--fg-2);margin-top:2px;">
                         <span>CUIT: ${emp.cuit}</span>
                         <span style="margin-left:8px;">☎ ${emp.telefono || '-'}</span>
                         <span style="margin-left:8px;">✉ ${emp.email || '-'}</span>
                     </div>
                 </div>
-                <button class="z-btn z-btn--xs z-btn--primary" data-idx="${i}" data-action="editar">✏️ Editar</button>
-                <button class="z-btn z-btn--xs z-btn--ghost"   data-idx="${i}" data-action="consultar">👁 Ver</button>
+                <button class="btn-zaris btn-zaris--xs btn-zaris--primary" data-idx="${i}" data-action="editar">✏️ Editar</button>
+                <button class="btn-zaris btn-zaris--xs btn-zaris--ghost"   data-idx="${i}" data-action="consultar">👁 Ver</button>
             </div>
         `).join('');
 
@@ -303,7 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // MODOS
     // ─────────────────────────────────────────────────────────
     function setFormReadonly(readonly) {
-        els.formEmpresa.querySelectorAll('.z-input, .z-select, .z-textarea').forEach(el => {
+        els.formEmpresa.querySelectorAll('.input-zaris, .select-zaris, .textarea-zaris').forEach(el => {
             if (el.type === 'hidden') return;
             el.readOnly = readonly;
             el.disabled = readonly;
@@ -314,8 +314,8 @@ document.addEventListener('DOMContentLoaded', () => {
         els.claeFiltro.disabled = readonly;
         // En modo consulta: cambiar Cancelar por Salir al Menú
         if (readonly) {
-            els.btnCancelar.textContent = '↗ Salir al Menú';
-            els.btnCancelar.onclick = () => { window.location.href = 'menu.html'; };
+            els.btnCancelar.textContent = '↗ Salir al Inicio';
+            els.btnCancelar.onclick = _zarisGoInicio;
         } else {
             els.btnCancelar.innerHTML = '✕ Cancelar';
             els.btnCancelar.onclick = null;
@@ -332,14 +332,14 @@ document.addEventListener('DOMContentLoaded', () => {
         renderActividades('');
         els.formCard.style.display = 'block';
         els.formTitle.textContent = 'Alta de Empresa';
-        els.formState.className = 'z-form-state z-form-state--new';
+        els.formState.className = 'form-state form-state--new';
         els.formState.textContent = '● NUEVO';
         els.badgeCategoria.style.display = 'none';
         els.searchResult.classList.remove('visible');
         els.obsCount.textContent = '0';
         setFormReadonly(false);
 
-        els.formEmpresa.querySelectorAll('.z-input, .z-select, .z-textarea').forEach(el => {
+        els.formEmpresa.querySelectorAll('.input-zaris, .select-zaris, .textarea-zaris').forEach(el => {
             ZValidaciones.limpiarCampo(el);
         });
 
@@ -357,7 +357,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderActividades('');
         els.formCard.style.display = 'block';
         els.formTitle.textContent = 'Modificar Empresa';
-        els.formState.className = 'z-form-state z-form-state--edit';
+        els.formState.className = 'form-state form-state--edit';
         els.formState.textContent = '✏️ EDICIÓN';
         els.searchResult.classList.remove('visible');
         setFormReadonly(false);
@@ -378,7 +378,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderActividades('');
         els.formCard.style.display = 'block';
         els.formTitle.textContent = 'Consulta de Empresa';
-        els.formState.className = 'z-form-state z-form-state--view';
+        els.formState.className = 'form-state form-state--view';
         els.formState.textContent = '👁 CONSULTA';
         els.searchResult.classList.remove('visible');
 
@@ -512,8 +512,8 @@ document.addEventListener('DOMContentLoaded', () => {
             ZUtils.modalGuardado(
                 `Empresa ${accion}`,
                 `${response.nombre || data.nombre}`,
-                () => activarModoNuevo(),
-                () => { window.location.href = 'menu.html'; }
+                () => activarModoNuevo()
+                // onSalir omitido: usa _zarisGoInicio()
             );
         } catch (err) {
             ZUtils.toast(`Error al guardar: ${err.message}`, 'error');
@@ -549,7 +549,7 @@ document.addEventListener('DOMContentLoaded', () => {
             '¿Salir del formulario?',
             'Los datos no guardados se perderán. ¿Estás seguro que deseas salir?'
         );
-        if (confirmed) window.location.href = 'menu.html';
+        if (confirmed) _zarisGoInicio();
     }
 
     // ─────────────────────────────────────────────────────────
@@ -565,23 +565,23 @@ document.addEventListener('DOMContentLoaded', () => {
     async function cargarVistaPrevia() {
         const container = document.getElementById('preview-rows');
         if (!container) return;
-        container.innerHTML = '<div style="color:var(--z-text3);font-size:.82rem;padding:.5rem 0;">Cargando...</div>';
+        container.innerHTML = '<div style="color:var(--fg-3);font-size:.82rem;padding:.5rem 0;">Cargando...</div>';
         try {
             const data = await ZUtils.apiFetch('/empresas?solo_activos=false&limit=200');
             const recientes = data.slice(0, 5);
             if (recientes.length === 0) {
-                container.innerHTML = '<div style="color:var(--z-text3);font-size:.82rem;padding:.5rem 0;">Sin registros</div>';
+                container.innerHTML = '<div style="color:var(--fg-3);font-size:.82rem;padding:.5rem 0;">Sin registros</div>';
                 return;
             }
             container.innerHTML = recientes.map(e => `
-                <div class="z-preview-row" data-id="${e.id_empresa}">
-                    <span class="z-preview-row__nombre">${esc(e.nombre)}</span>
-                    <span class="z-preview-row__mono">${esc(e.cuit || '—')}</span>
-                    <span class="z-preview-row__meta">${esc(e.localidad || e.provincia || '—')}</span>
-                    <span class="z-preview-row__estado z-preview-row__estado--${e.activo ? 'activo' : 'inactivo'}">${e.activo ? 'Activo' : 'Inactivo'}</span>
-                    <span class="z-preview-row__cta">Ver →</span>
+                <div class="preview-row" data-id="${e.id_empresa}">
+                    <span class="preview-row__nombre">${esc(e.nombre)}</span>
+                    <span class="preview-row__mono">${esc(e.cuit || '—')}</span>
+                    <span class="preview-row__meta">${esc(e.localidad || e.provincia || '—')}</span>
+                    <span class="preview-row__estado preview-row__estado--${e.activo ? 'activo' : 'inactivo'}">${e.activo ? 'Activo' : 'Inactivo'}</span>
+                    <span class="preview-row__cta">Ver →</span>
                 </div>`).join('');
-            container.querySelectorAll('.z-preview-row').forEach(row =>
+            container.querySelectorAll('.preview-row').forEach(row =>
                 row.addEventListener('click', async () => {
                     try {
                         const emp = await ZUtils.apiFetch(`/empresas/${row.dataset.id}`);
@@ -591,7 +591,7 @@ document.addEventListener('DOMContentLoaded', () => {
             );
         } catch (err) {
             console.error('[Preview empresas]', err);
-            container.innerHTML = `<div style="color:var(--z-text3);font-size:.82rem;padding:.5rem 0;">No se pudo cargar (${err.message})</div>`;
+            container.innerHTML = `<div style="color:var(--fg-3);font-size:.82rem;padding:.5rem 0;">No se pudo cargar (${err.message})</div>`;
         }
     }
 
@@ -605,7 +605,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('preview-section').style.display = 'none';
         document.getElementById('form-card').style.display       = 'none';
         document.getElementById('listado-section').style.display = 'block';
-        document.getElementById('listado-contenido').innerHTML   = '<div style="text-align:center;padding:2rem;color:var(--z-text3);">Cargando...</div>';
+        document.getElementById('listado-contenido').innerHTML   = '<div style="text-align:center;padding:2rem;color:var(--fg-3);">Cargando...</div>';
         document.getElementById('lst-count').textContent = '';
         try {
             _listadoData = await ZUtils.apiFetch('/empresas?solo_activos=false&limit=1000');
@@ -662,7 +662,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (rows.length === 0) {
             document.getElementById('listado-contenido').innerHTML =
-                '<div style="text-align:center;padding:2.5rem;color:var(--z-text3);">Sin resultados</div>';
+                '<div style="text-align:center;padding:2.5rem;color:var(--fg-3);">Sin resultados</div>';
             return;
         }
         const bodyRows = rows.map(e => `<tr>
@@ -670,18 +670,18 @@ document.addEventListener('DOMContentLoaded', () => {
             <td class="mono">${esc(e.cuit||'—')}</td>
             <td>${esc(e.localidad||'—')}</td>
             <td>${esc(e.provincia||'—')}</td>
-            <td><span class="z-badge-${e.activo?'activo':'inactivo'}">${e.activo?'Activo':'Inactivo'}</span></td>
+            <td><span class="badge-${e.activo?'activo':'inactivo'}">${e.activo?'Activo':'Inactivo'}</span></td>
             <td>
-                <button class="z-tbl-btn" data-id="${e.id_empresa}">Ver / Editar</button>
+                <button class="tbl-btn" data-id="${e.id_empresa}">Ver / Editar</button>
             </td></tr>`).join('');
 
         document.getElementById('listado-contenido').innerHTML = `
-            <div class="z-listado-wrap"><table>
+            <div class="listado-wrap"><table>
                 <thead><tr><th>Nombre</th><th>CUIT</th><th>Localidad</th><th>Provincia</th><th>Estado</th><th>Acciones</th></tr></thead>
                 <tbody>${bodyRows}</tbody>
             </table></div>`;
 
-        document.getElementById('listado-contenido').querySelectorAll('.z-tbl-btn').forEach(btn =>
+        document.getElementById('listado-contenido').querySelectorAll('.tbl-btn').forEach(btn =>
             btn.addEventListener('click', async () => {
                 cerrarListado();
                 try {
