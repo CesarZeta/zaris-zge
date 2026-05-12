@@ -19,9 +19,15 @@ const COLORES: Record<Ocupacion['tipo'], { bg: string; border: string; text: str
 }
 
 export function GanttOccupationBlock({ ocupacion, hourStart, pxPerHour, rowHeight, enConflicto, onClick }: Props) {
+  // Las ocupaciones tipo 'evento' estan atadas a evento_encargados (vinculo
+  // logico al evento). Reasignarlas con drag dejaria evento_encargados.id_recurso
+  // desincronizado de ocupaciones.id_recurso. Bloqueamos drag aca; el cambio de
+  // encargado se hace desde el modal del evento. Ver CLAUDE.md §27 sub-fase 3.B.
+  const dragDisabled = ocupacion.tipo === 'evento'
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `block-${ocupacion.id_ocupacion}`,
     data: { kind: 'occupation', ocupacion },
+    disabled: dragDisabled,
   })
 
   const inicio = timeToMinutes(ocupacion.hora_inicio.slice(0, 5))
@@ -39,14 +45,18 @@ export function GanttOccupationBlock({ ocupacion, hourStart, pxPerHour, rowHeigh
     <button
       ref={setNodeRef}
       onClick={(e) => { if (isDragging) { e.preventDefault(); return } onClick() }}
-      title={`${ocupacion.tipo} - ${ocupacion.hora_inicio.slice(0, 5)}-${ocupacion.hora_fin.slice(0, 5)} - ${ocupacion.descripcion_corta ?? ''}`}
+      title={
+        dragDisabled
+          ? `${ocupacion.tipo} - ${ocupacion.hora_inicio.slice(0, 5)}-${ocupacion.hora_fin.slice(0, 5)} - ${ocupacion.descripcion_corta ?? ''} (editar desde el modal del evento)`
+          : `${ocupacion.tipo} - ${ocupacion.hora_inicio.slice(0, 5)}-${ocupacion.hora_fin.slice(0, 5)} - ${ocupacion.descripcion_corta ?? ''}`
+      }
       {...listeners}
       {...attributes}
       style={{
         position: 'absolute', left, width, top: 6, height: rowHeight - 12,
         background: col.bg, border: `1.5px solid ${enConflicto ? 'var(--color-error)' : col.border}`,
         borderRadius: 'var(--radius-md)',
-        cursor: isDragging ? 'grabbing' : 'grab',
+        cursor: dragDisabled ? 'pointer' : isDragging ? 'grabbing' : 'grab',
         textAlign: 'left',
         padding: '4px 6px', overflow: 'hidden',
         fontFamily: 'var(--font-display)', fontSize: 11, color: col.text,

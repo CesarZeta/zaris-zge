@@ -1,8 +1,9 @@
-import React from 'react'
-import { useDroppable } from '@dnd-kit/core'
+import React, { useRef, useState } from 'react'
+import { useDroppable, useDndMonitor } from '@dnd-kit/core'
 import type { CalendarioRecurso, Ocupacion } from '../types/agenda'
 import { GanttOccupationBlock } from './GanttOccupationBlock'
 import { timeToMinutes } from '../../../lib/dates'
+import { HOUR_START, SNAP_MIN } from '../dnd/gridConstants'
 
 interface Props {
   recurso: CalendarioRecurso
@@ -27,6 +28,34 @@ function _GanttResourceRow({
     data: { kind: 'row', tipo_recurso: recurso.tipo, id_recurso: recurso.id_recurso },
   })
 
+  // Snap visual: linea vertical naranja sobre la posicion donde se soltaria
+  // (snap a SNAP_MIN). Solo se muestra si la fila es el droppable activo.
+  const rowElRef = useRef<HTMLDivElement | null>(null)
+  const [snapPx, setSnapPx] = useState<number | null>(null)
+
+  function setRefs(el: HTMLDivElement | null) {
+    rowElRef.current = el
+    setNodeRef(el)
+  }
+
+  useDndMonitor({
+    onDragMove(ev) {
+      if (!isOver || !rowElRef.current) return
+      const act = ev.activatorEvent as PointerEvent | MouseEvent | null
+      if (!act || !('clientX' in act)) return
+      const rect = rowElRef.current.getBoundingClientRect()
+      const xInRow = act.clientX + ev.delta.x - rect.left
+      if (xInRow < 0 || xInRow > rect.width) { setSnapPx(null); return }
+      const minutosDesdeStart = (xInRow / pxPerHour) * 60
+      const minutosAbs = HOUR_START * 60 + minutosDesdeStart
+      const snap = Math.round(minutosAbs / SNAP_MIN) * SNAP_MIN
+      const snapPos = ((snap - HOUR_START * 60) / 60) * pxPerHour
+      setSnapPx(snapPos)
+    },
+    onDragEnd() { setSnapPx(null) },
+    onDragCancel() { setSnapPx(null) },
+  })
+
   const ausencias = recurso.ausencias
 
   function handleBgClick(e: React.MouseEvent<HTMLDivElement>) {
@@ -44,7 +73,7 @@ function _GanttResourceRow({
 
   return (
     <div
-      ref={setNodeRef}
+      ref={setRefs}
       style={{
         position: 'relative', height: rowHeight, width,
         borderBottom: '1px solid var(--border-primary)',
@@ -65,6 +94,19 @@ function _GanttResourceRow({
         onClick={handleBgClick}
         style={{ position: 'absolute', inset: 0, zIndex: 0, cursor: 'pointer' }}
       />
+      {/* Snap visual: linea vertical naranja en la posicion de snap mientras
+          esta fila es el droppable activo. */}
+      {isDropTarget && snapPx != null && (
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute', top: 0, bottom: 0, left: snapPx,
+            width: 2, background: 'var(--zaris-orange)',
+            boxShadow: '0 0 6px rgba(245,78,0,.5)',
+            pointerEvents: 'none', zIndex: 25,
+          }}
+        />
+      )}
       {ausencias.map((au) => (
         <div
           key={au.id_ausencia}

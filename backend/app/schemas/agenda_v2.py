@@ -296,3 +296,41 @@ class CalendarioMesOut(BaseModel):
     mes: int
     id_municipio: int
     dias: list[CalendarioMesDia] = []
+
+
+# =============================================================================
+# Catalogos extra (sub-fase 3.B — autocompletar / filtros)
+# =============================================================================
+class SubareaOut(BaseModel):
+    id_subarea: int
+    nombre: str
+    id_area: Optional[int] = None
+    area_nombre: Optional[str] = None
+
+
+class RecursoOut(BaseModel):
+    """Listado de agentes/equipos con nombre, para selectores por nombre."""
+    tipo_recurso: Literal["agente", "equipo"]
+    id_recurso: int
+    nombre: str
+
+
+class OTBusquedaOut(BaseModel):
+    """Resultado liviano de busqueda de OT — para autocompletar en OcupacionModal."""
+    id_ot: int
+    nro_ot: Optional[str] = None
+    estado_nombre: Optional[str] = None
+    reclamo_descripcion: Optional[str] = None
+    nro_reclamo: Optional[str] = None
+    id_agente: Optional[int] = None
+    id_equipo: Optional[int] = None
+
+
+class EventoBusquedaOut(BaseModel):
+    """Resultado liviano de busqueda de evento — para autocompletar en OcupacionModal."""
+    id_evento: int
+    nombre: str
+    fecha: date
+    hora_inicio: time
+    hora_fin: time
+    estado_codigo: Optional[str] = None
