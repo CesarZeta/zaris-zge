@@ -47,6 +47,11 @@ El directorio `web-app/` contiene un **shell React contenedor** (`AppShell` + si
 - **Tipografía módulo vanilla:** Google Fonts — Inter + JetBrains Mono.
 - **Iconos:** Lucide React (módulos React) o SVG inline (módulos vanilla). `stroke-width="1.5"`, `currentColor`.
 - **Mapas (módulos React):** **Leaflet 1.9 vanilla** (`leaflet` + `@types/leaflet`, sin `react-leaflet`). React 19 + react-leaflet v5 tuvo bugs de compat al cierre 2026-05-12; el patrón usado es montar el mapa en `useEffect` con `useRef<L.Map>` y mantener `onChange` estable vía `useRef` callback. Referencia: `web-app/src/modules/reclamos/components/MapaPicker.tsx`. Workaround obligatorio para iconos del marker (Vite rompe los paths default): import explícito de los PNG (`marker-icon-2x.png`, `marker-icon.png`, `marker-shadow.png`) y `L.Marker.prototype.options.icon = L.icon({...})`.
+  - **Elegir tile basemap según uso:**
+    - **Pin manual / formularios** (`MapaPicker` Reclamos B4): OSM Standard `https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png`. Tile colorinche pero útil para reconocer calles al picar pin.
+    - **Dashboards / mapas con markers** (`DashboardMap`): **CartoDB Positron** `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png` (subdomains `'abcd'`, maxZoom 20). Gris claro minimal, gratis, sin API key. Los markers de color destacan sin competir con el tile. Atribución obligatoria: `© OpenStreetMap © CARTO`.
+  - **Markers custom por estado:** `L.divIcon` con `<div>` inline (círculo de color + borde blanco + box-shadow) en lugar de PNG. Permite color dinámico y se renderiza más nítido en retina.
+  - **Colores de estado deben venir del DS, no inventados.** Para "En gestión" usar `--color-success` `#1f8a65` (verde teal). NUNCA usar naranja para estado porque choca con `--zaris-orange` `#f54e00` del brand (item activo del sidebar, bordes de cards). Otros estados: `Sin asignar=#c62828` rojo, `En espera=#f57f17` amarillo, `En auditoría=#6a1b9a` violeta — todos lo bastante lejos del brand para no confundirse.
 - **Backend:** FastAPI (Python 3.10+), SQLAlchemy async + asyncpg, PostgreSQL (Supabase prod / `zaris_dev` local).
 
 ### Estado real de cada módulo (verificado 2026-05-12)
@@ -279,9 +284,22 @@ Si el módulo (de cualquier stack) tiene su propio header, sidebar o topbar inte
 <!-- Sin sidebar propio (mayoría): -->
 <script>if (window.self !== window.top) { var s = document.createElement('style'); s.textContent = '.z-header{display:none!important}'; document.head.appendChild(s); }</script>
 
-<!-- CON sidebar propio (ej. admin_tablas.html): -->
-<script>if (window.self !== window.top) { var s = document.createElement('style'); s.textContent = '.z-header{display:none!important}.sidebar{display:none!important}.layout{min-height:100vh!important}'; document.head.appendChild(s); }</script>
+<!-- CON sidebar interno que SÍ debe verse en iframe (ej. admin_tablas.html — selector de tablas): -->
+<script>
+if (window.self !== window.top) {
+  // Solo ocultamos el header interno. El sidebar interno se mantiene porque
+  // es el UNICO selector para cambiar de tabla. Reajustamos top/height del
+  // sidebar porque su offset asumía que el header propio ocupaba 64px.
+  var st = document.createElement('style');
+  st.textContent = '.z-header{display:none!important}'
+                 + '.layout{min-height:100vh!important}'
+                 + '.sidebar{top:0!important;height:100vh!important}';
+  document.head.appendChild(st);
+}
+</script>
 ```
+
+**Excepción: doble sidebar permitido cuando el módulo tiene MUCHOS sub-items.** El shell vanilla muestra los módulos (sidebar plano `.nav-flat`); el módulo interno (admin_tablas) muestra el selector de sub-recursos (17 tablas agrupadas). Es feo si el sidebar interno tiene 1-3 items (poner tabs en lugar), pero válido cuando son 10+.
 
 **Módulos React (shell React contenedor)** — el `AppShell` (`web-app/src/app/AppShell.tsx`) detecta el iframe al montar y renderiza solo `<Outlet>` + `<Notifications>`, sin sidebar/topbar/CommandMenu:
 
@@ -348,6 +366,38 @@ if (!res.ok) throw new Error(`HTTP ${res.status}`);
 ```
 
 **Implementado en:** `admin_tablas.html` (todas las llamadas a la API).
+
+### Sidebar plano — `.nav-flat` (estilo shell React)
+
+Desde 2026-05-12 jornada 4, el sidebar del shell vanilla (`index.html`) usa diseño **plano de 1 nivel** con icono + label, sin acordeones. Reemplaza la versión anterior `.nav__group/.nav__panel/.nav__sub` con 3 niveles colapsables. Clona el estilo del `Sidebar.tsx` del shell React.
+
+**Estructura:**
+
+```html
+<aside class="sidebar" aria-label="Menú principal">
+  <nav class="nav-flat" id="nav" aria-label="Navegación principal">
+    <a class="nav-flat__item" href="web-app/dist/index.html#/reclamos" data-modulo="reclamos">
+      <svg class="nav-flat__icon" viewBox="0 0 24 24" ...>...</svg>
+      <span>reclamos</span>
+    </a>
+    <!-- Item que cubre múltiples permisos: ver §30 data-modulo-fallback -->
+    <a class="nav-flat__item" href="..." data-modulo="ot_supervisor" data-modulo-fallback="ot_agente,ot_auditoria">
+      <svg ...>...</svg><span>OT</span>
+    </a>
+  </nav>
+  <footer class="sidebar__foot">zaris-zge · v0.1</footer>
+</aside>
+```
+
+**Reglas:**
+- 1 item por módulo (no acordeones). Si un módulo necesita sub-vistas (OT con 3 mesas, Agenda con 4 vistas), las tabs internas del módulo manejan eso.
+- **Iconos SVG inline** copiados de Lucide (`stroke-width="1.5"`, `currentColor`). NO cargar Lucide UMD via `<script>` — suma 200KB+ al shell.
+- Estado activo: borde naranja a la izquierda (`box-shadow: inset 3px 0 0 var(--zaris-orange)`) + fondo `var(--surface-400)`.
+- Si un módulo grande necesita un selector de sub-recursos (ej: admin_tablas con 17 tablas), ese módulo expone su PROPIO sidebar interno cuando corre en iframe. Doble sidebar permitido — ver "Excepción" arriba.
+
+**CSS:** `frontend/css/menu.css` bloque `.nav-flat*`. Las clases legacy `.nav__group/.nav__panel/.nav__sub` quedan en el archivo sin uso (deuda cosmética, no urgente).
+
+**JS:** `frontend/js/menu.js` selecciona ambos (`.nav-flat__item, .nav__link`) por compat retro.
 
 ### Topbar — menú de usuario con cerrar sesión
 
@@ -1407,18 +1457,37 @@ async def modulos_permitidos(db, id_usuario: int, nivel: int) -> list[str]:
 
 ### Resolución en el frontend
 
-**Shell vanilla (`frontend/js/menu.js`):** al cargar el shell, llamar `/auth/me`, leer `modulos_permitidos`, ocultar `<a class="nav__link">` cuyos `data-modulo` no estén en la lista.
+**Shell vanilla (`frontend/js/menu.js`):** al cargar el shell, llamar `/auth/me`, leer `modulos_permitidos`, ocultar items del sidebar cuyos `data-modulo` no estén en la lista.
 
 ```html
-<a class="nav__link" href="web-app/dist/index.html#/reclamos" data-modulo="reclamos">Gestión de reclamos</a>
+<!-- Sidebar plano (estilo nav-flat, post 2026-05-12 jornada 4) -->
+<a class="nav-flat__item" href="web-app/dist/index.html#/reclamos" data-modulo="reclamos">
+  <svg ...></svg><span>reclamos</span>
+</a>
+
+<!-- Item que cubre MULTIPLES moduloCodigos (data-modulo-fallback CSV) -->
+<a class="nav-flat__item"
+   href="web-app/dist/index.html#/ot/supervisor"
+   data-modulo="ot_supervisor"
+   data-modulo-fallback="ot_agente,ot_auditoria">
+  <svg ...></svg><span>OT</span>
+</a>
 ```
 
 ```js
+// menu.js: si CUALQUIERA de los codigos (principal + fallback) esta permitido,
+// el item se muestra. Util cuando un modulo cubre varios sub-permisos (OT con
+// 3 mesas) o cuando supervisor/agente/auditoria viven en el mismo bundle.
 const permitidos = new Set((session.user.modulos_permitidos ?? []))
-document.querySelectorAll('.nav__link[data-modulo]').forEach(a => {
-  if (!permitidos.has(a.dataset.modulo)) a.style.display = 'none'
+document.querySelectorAll('.nav-flat__item[data-modulo], .nav__link[data-modulo]').forEach(a => {
+  const principal = a.dataset.modulo
+  const fallback = (a.dataset.moduloFallback || '').split(',').map(s => s.trim()).filter(Boolean)
+  const algunoPermitido = [principal, ...fallback].some(m => permitidos.has(m))
+  if (!algunoPermitido) a.hidden = true
 })
 ```
+
+**Sin `data-modulo-fallback` declarado, OT desaparece** del sidebar para usuarios con `ot_agente` pero sin `ot_supervisor` — caso real cazado en sesión 2026-05-12 jornada 4. Cuando un manifest React cubre múltiples permisos backend, exponer todos los códigos en el HTML del shell.
 
 **Shell React (`web-app/src/app/AppShell.tsx`):** el array `modules` ya tiene `permissions?: string[]` declarado en `ModuleManifest`. Convertirlo en `modulo_codigo: string` y filtrar el sidebar leyendo `user.modulos_permitidos`. El campo `permissions` actual queda deprecado.
 
@@ -1661,3 +1730,41 @@ Esta es la contraparte node-de [[Quirk 9: `python -m http.server`]]. Para Python
 **Alternativa:** ejecutar el binario directo desde `node_modules/.bin/` (que sí es un script Node con shebang, pero PowerShell lo ejecuta vía `node`). Ej: `Start-Process node -ArgumentList "$cwd/node_modules/.bin/vite","build"`. Menos legible.
 
 Para foreground (no detached) PowerShell ejecuta `pnpm dev` sin Start-Process y funciona perfecto — el problema es solo con `Start-Process`.
+
+### Quirk 12: bundle React standalone en prod debe redirigir al shell vanilla
+
+`web-app/dist/index.html` se sirve en GH Pages bajo `/zaris-zge/web-app/dist/`. Si un usuario abre esa URL directo (compartiendo link, marcador viejo, o "abrir en nueva pestaña"), ve el `AppShell` React **standalone con su propio sidebar** — viola la regla §14 (un solo shell en producción) y desconcierta porque la nav es distinta a la del shell vanilla.
+
+**Fix**: script inline en `<head>` de `web-app/index.html` (NO en main.tsx — necesita correr ANTES de que React monte y pueda redirigir sin destellar el AppShell):
+
+```html
+<script>
+  (function () {
+    try {
+      if (window.self !== window.top) return;                   // OK: embebido en iframe
+      var p = window.location.pathname || '';
+      if (p.indexOf('/zaris-zge/web-app/dist/') === -1) return; // dev local: dejar pasar
+      var hash = window.location.hash || '';
+      var target = '/zaris-zge/index.html';
+      if (hash && hash.length > 1) {
+        target += '?modulo=' + encodeURIComponent('web-app/dist/index.html' + hash);
+      }
+      window.location.replace(target);
+    } catch (e) { /* fail-open */ }
+  })();
+</script>
+```
+
+**Complemento obligatorio** en `frontend/js/menu.js`: la whitelist de `?modulo=` debe aceptar paths del bundle React además de los HTMLs vanilla, sino el shell descarta el redirect silenciosamente:
+
+```js
+const isVanilla = /^frontend\/[a-z0-9_-]+\.html(\?.*)?$/i.test(mod || '')
+const isReact   = /^web-app\/dist\/index\.html(#\/.*)?$/i.test(mod || '')
+if (mod && (isVanilla || isReact)) {
+  document.getElementById('module-frame').src = mod
+}
+```
+
+**Por qué necesita ambas piezas**: si solo aplicas el guard sin actualizar la whitelist, el redirect funciona pero el shell descarta el `?modulo=` y queda mostrando welcome. Si solo aplicas la whitelist sin el guard, el bundle sigue accesible standalone.
+
+Cazado en sesión 2026-05-12 jornada 4 — el usuario reportó "veo un shell con sidebar dashboard/agenda/ciudadanos que no es el shell normal". Verificar en prod abriendo `https://cesarzeta.github.io/zaris-zge/web-app/dist/index.html#/reclamos` en pestaña nueva: debe redirigir a `index.html?modulo=...` automáticamente.
