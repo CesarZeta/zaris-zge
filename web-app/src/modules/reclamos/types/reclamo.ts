@@ -9,7 +9,9 @@ export type EstadoReclamo =
   | 'Resuelto'
   | 'Cancelado'
 
-export type Prioridad = 'Baja' | 'Media' | 'Alta' | 'Crítica'
+// Valores aceptados por reclamos_prioridad_check en prod (verificado 2026-05-12).
+// El vanilla original solo expone estos 3 — no agregar Critica/Urgente sin migrar el CHECK.
+export type Prioridad = 'Baja' | 'Media' | 'Alta'
 
 export interface AreaCatalogo {
   id_area: number
