@@ -45,6 +45,9 @@ export function DetailView() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          {r.estado !== 'Resuelto' && r.estado !== 'Cancelado' && (
+            <button onClick={() => navigate(`/reclamos/${r.id_reclamo}/editar`)} style={btnPrimary}>Editar</button>
+          )}
           <button onClick={() => navigate('/reclamos')} style={btnGhost}>← Volver al listado</button>
         </div>
       </div>
@@ -390,6 +393,11 @@ const btnGhost: React.CSSProperties = {
   padding: '7px 14px', background: 'transparent', color: 'var(--fg-2)',
   border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-lg)',
   fontFamily: 'var(--font-display)', fontSize: 'var(--size-btn)', cursor: 'pointer',
+}
+const btnPrimary: React.CSSProperties = {
+  padding: '7px 14px', background: 'var(--zaris-dark)', color: 'var(--zaris-cream)',
+  border: 'none', borderRadius: 'var(--radius-lg)', fontFamily: 'var(--font-display)',
+  fontSize: 'var(--size-btn)', fontWeight: 500, cursor: 'pointer',
 }
 
 function formatFecha(iso: string): string {
