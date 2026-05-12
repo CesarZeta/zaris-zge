@@ -123,7 +123,7 @@ export function getCalendarioDia(
   tipo_recurso: 'agente' | 'equipo' | 'todos' = 'todos',
   id_subarea: number | null = null,
 ) {
-  const params: Record<string, unknown> = { fecha, id_municipio, tipo_recurso }
+  const params: Record<string, string | number | boolean | null | undefined> = { fecha, id_municipio, tipo_recurso }
   if (id_subarea != null) params.id_subarea = id_subarea
   return api.get<CalendarioDia>(`${BASE}/calendario`, { params })
 }

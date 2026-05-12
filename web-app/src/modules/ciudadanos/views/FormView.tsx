@@ -19,7 +19,7 @@ import {
   validarEmail,
   validarTelefono,
 } from '../lib/cuilUtils'
-import type { CiudadanoCreate, DocTipo, Sexo } from '../types/ciudadano'
+import type { CiudadanoCreate, DocTipo, Sexo, VerificarDuplicadoResp } from '../types/ciudadano'
 
 type Modo = 'new' | 'edit' | 'view'
 
@@ -233,9 +233,10 @@ export function FormView() {
 
     // Verificacion de duplicados solo en alta
     if (modo === 'new') {
+      const noDup: VerificarDuplicadoResp = { existe: false }
       const [emailDup, telDup] = await Promise.all([
-        verificarDuplicadoCiudadano('email', data.email, id ?? undefined).catch(() => ({ existe: false })),
-        verificarDuplicadoCiudadano('telefono', data.telefono, id ?? undefined).catch(() => ({ existe: false })),
+        verificarDuplicadoCiudadano('email', data.email, id ?? undefined).catch(() => noDup),
+        verificarDuplicadoCiudadano('telefono', data.telefono, id ?? undefined).catch(() => noDup),
       ])
       const dupErrs: Record<string, string> = {}
       if (emailDup.existe) dupErrs.email = `Ya registrado: ${emailDup.nombre}`

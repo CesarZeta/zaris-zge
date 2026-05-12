@@ -10,8 +10,6 @@ import {
 } from '../api/empresasApi'
 import type { EmpresaCreate, EmpresaUpdate } from '../types/empresa'
 
-const HORA = 60 * 60 * 1000
-
 // ── Lista (preview) ──
 export function useEmpresasRecientes(limit = 5) {
   return useQuery({
