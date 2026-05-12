@@ -1,4 +1,4 @@
-// Badges para estado y prioridad. Colores espejo del vanilla (frontend/reclamos.html badgeEstado/badgePrio).
+// Badges para estado y prioridad.
 
 interface BadgeProps {
   kind: 'estado' | 'prioridad'

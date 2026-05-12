@@ -138,8 +138,8 @@
   });
 
   // ── Auto-cargar módulo desde ?modulo=<ruta> ───────────────────
-  // Permite que un acceso standalone (frontend/reclamos.html) sea
-  // redirigido al shell con ?modulo=frontend/reclamos.html y aterrice
+  // Permite que un acceso standalone (ej: frontend/ot_supervisor.html) sea
+  // redirigido al shell con ?modulo=frontend/ot_supervisor.html y aterrice
   // con la sidebar visible. La whitelist evita open redirects.
   try {
     const params = new URLSearchParams(window.location.search);
