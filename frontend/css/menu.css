@@ -385,6 +385,51 @@
   display: block;
 }
 
+/* ── Nav plano (clon del shell React) ───────────────────── */
+/* Diseño: 1 item por módulo con icono + label, sin acordeones.
+   Ver web-app/src/shell/Sidebar/Sidebar.module.css para la referencia. */
+.nav-flat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  padding: 0 4px;
+}
+
+.nav-flat__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-lg, 10px);
+  font-family: var(--font-display);
+  font-size: 13.5px;
+  color: var(--fg-2);
+  text-decoration: none;
+  background: transparent;
+  transition: color 150ms ease, background 150ms ease;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.nav-flat__item:hover {
+  background: var(--surface-400);
+  color: var(--fg-1);
+}
+
+.nav-flat__item.active {
+  background: var(--surface-400);
+  color: var(--fg-1);
+  box-shadow: inset 3px 0 0 var(--zaris-orange);
+}
+
+.nav-flat__icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: currentColor;
+}
+
 /* ── Print ──────────────────────────────────────────────── */
 @media print {
   .topbar, .sidebar { display: none !important; }
