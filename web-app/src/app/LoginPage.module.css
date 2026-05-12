@@ -1,115 +1,126 @@
 .page {
   min-height: 100vh;
-  background: var(--zaris-cream);
   display: flex;
   align-items: center;
   justify-content: center;
+  background: var(--zaris-cream);
+  font-family: var(--font-display);
   padding: 24px;
 }
 
 .card {
   width: 100%;
-  max-width: 380px;
-  background: var(--surface-400);
-  border-radius: var(--radius-xl);
-  padding: 40px 36px;
-  box-shadow: var(--shadow-card);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0;
+  max-width: 360px;
+  background: var(--surface-100);
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  padding: 40px 36px 36px;
+  box-shadow: 0 2px 16px rgba(38, 37, 30, 0.08);
 }
 
-.mark {
-  width: 48px;
-  height: 48px;
-  background: var(--zaris-dark);
-  border-radius: 12px;
+.brand {
   display: flex;
   align-items: center;
-  justify-content: center;
-  margin-bottom: 24px;
+  gap: 10px;
+  margin-bottom: 32px;
+  color: var(--fg-1);
+}
+
+.brandMark {
+  width: 28px;
+  height: 28px;
+}
+
+.brandName {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.8px;
+  color: var(--fg-1);
 }
 
 .title {
-  font-family: var(--font-display);
-  font-size: var(--size-subhead);
-  font-weight: 400;
-  letter-spacing: var(--track-subhead);
+  font-size: 20px;
+  font-weight: 600;
   color: var(--fg-1);
-  text-align: center;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
+  letter-spacing: -0.4px;
 }
 
 .subtitle {
-  font-size: var(--size-btn);
+  font-size: 13px;
   color: var(--fg-3);
-  text-align: center;
-  line-height: 1.5;
   margin-bottom: 28px;
 }
 
 .form {
-  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 16px;
 }
 
 .field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  margin-bottom: 16px;
 }
 
 .label {
-  font-family: var(--font-display);
-  font-size: var(--size-btn);
-  color: var(--fg-2);
+  display: block;
+  font-size: 12px;
   font-weight: 500;
+  color: var(--fg-2);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .input {
-  font-family: var(--font-display);
-  font-size: var(--size-ui);
-  color: var(--fg-1);
-  background: var(--surface-200);
-  padding: 10px 12px;
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-lg);
-  outline: none;
-  transition: border-color 150ms ease, box-shadow 200ms ease;
   width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border-medium);
+  border-radius: 7px;
+  background: var(--surface-100);
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--fg-1);
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
 }
-
-.input::placeholder { color: var(--fg-5); }
 
 .input:focus {
-  border-color: var(--border-medium);
-  box-shadow: var(--shadow-focus);
-}
-
-.error {
-  font-size: 13px;
-  color: var(--color-error);
-  background: rgba(207, 45, 86, 0.08);
-  border-radius: var(--radius-md);
-  padding: 8px 12px;
+  border-color: var(--zaris-orange);
+  box-shadow: 0 0 0 3px rgba(245, 78, 0, 0.12);
 }
 
 .submit {
-  font-family: var(--font-display);
-  font-size: var(--size-btn);
-  font-weight: 500;
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 16px;
+  background: var(--fg-1);
   color: var(--zaris-cream);
-  background: var(--zaris-dark);
   border: none;
-  border-radius: var(--radius-lg);
-  padding: 11px 16px;
+  border-radius: 7px;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
   transition: background 150ms ease;
-  margin-top: 4px;
 }
 
-.submit:hover:not(:disabled) { background: #1b1a15; }
-.submit:disabled { opacity: 0.6; cursor: not-allowed; }
+.submit:hover:not(:disabled) { background: #3a3930; }
+.submit:disabled { opacity: 0.5; cursor: default; }
+
+.error {
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: rgba(207, 45, 86, 0.08);
+  border: 1px solid rgba(207, 45, 86, 0.2);
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--color-error);
+}
+
+.foot {
+  margin-top: 24px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--fg-4);
+  text-align: center;
+}

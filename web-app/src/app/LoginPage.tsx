@@ -36,15 +36,20 @@ export function LoginPage() {
   return (
     <div className={s.page}>
       <div className={s.card}>
-        {/* Mark */}
-        <div className={s.mark}>
-          <svg width="20" height="20" viewBox="0 0 28 28" fill="none">
-            <path d="M6 6h16L8 22h16" stroke="#f2f1ed" strokeWidth="2.8" strokeLinecap="square" />
+        <div className={s.brand}>
+          <svg className={s.brandMark} viewBox="0 0 500 500" aria-hidden="true">
+            <g fill="none" stroke="currentColor" strokeWidth="34" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M 110 78 L 388 78" />
+              <path d="M 388 78 L 110 430" />
+              <path d="M 388 220 L 222 430" />
+              <path d="M 388 362 L 334 430" />
+            </g>
           </svg>
+          <span className={s.brandName}>ZARIS</span>
         </div>
 
         <h1 className={s.title}>Iniciar sesión</h1>
-        <p className={s.subtitle}>Ingresá tus credenciales para acceder al sistema ZARIS.</p>
+        <p className={s.subtitle}>Gestión Estatal · Municipio Demo</p>
 
         <form className={s.form} onSubmit={handleSubmit} noValidate>
           <div className={s.field}>
@@ -52,7 +57,7 @@ export function LoginPage() {
             <input
               id="email"
               type="email"
-              autoComplete="email"
+              autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className={s.input}
@@ -75,12 +80,14 @@ export function LoginPage() {
             />
           </div>
 
-          {error && <p className={s.error} role="alert">{error}</p>}
-
           <button type="submit" className={s.submit} disabled={loading}>
             {loading ? 'Ingresando…' : 'Ingresar'}
           </button>
+
+          {error && <div className={s.error} role="alert">{error}</div>}
         </form>
+
+        <p className={s.foot}>zaris-zge · v0.1</p>
       </div>
     </div>
   )
