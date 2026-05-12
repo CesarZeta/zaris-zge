@@ -8,18 +8,24 @@ import { useAuthStore } from '../stores/auth'
 import { useUiStore } from '../stores/ui'
 import s from './AppShell.module.css'
 
+// Cuando el shell React vive embebido en iframe del shell vanilla (regla CLAUDE.md §14),
+// debe ocultar su propio sidebar+topbar y mostrar solo el contenido. La navegacion lateral
+// y la sesion son responsabilidad del shell vanilla.
+const isEmbedded = typeof window !== 'undefined' && window.self !== window.top
+
 export function AppShell() {
   const user = useAuthStore((s) => s.user)
   const openCmdk = useUiStore((s) => s.openCmdk)
   const navigate = useNavigate()
 
-  // Guard: si no hay sesión redirigir a login
+  // Guard: si no hay sesion redirigir a login
   useEffect(() => {
     if (!user) navigate('/login', { replace: true })
   }, [user, navigate])
 
-  // Atajo ⌘K / Ctrl+K global
+  // Atajo Ctrl+K solo standalone (en iframe el shell vanilla maneja sus atajos)
   useEffect(() => {
+    if (isEmbedded) return
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
@@ -31,6 +37,16 @@ export function AppShell() {
   }, [openCmdk])
 
   if (!user) return null
+
+  // Modo embebido: solo el contenido + toasts. Sin sidebar/topbar/cmdk.
+  if (isEmbedded) {
+    return (
+      <main className={s.embeddedContent}>
+        <Outlet />
+        <Notifications />
+      </main>
+    )
+  }
 
   return (
     <div className={s.shell}>

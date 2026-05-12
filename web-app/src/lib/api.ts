@@ -1,4 +1,6 @@
-const BASE = 'http://127.0.0.1:8000'
+// BASE se resuelve por variable de entorno de Vite. Dev (sin .env) cae a localhost;
+// prod (.env.production) apunta a Railway. Documentado en CLAUDE.md §6.
+const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://127.0.0.1:8000'
 
 function getToken(): string | null {
   try {
