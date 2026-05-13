@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# ZARIS pre-commit gate: tsc --noEmit cuando hay cambios staged en web-app/
+# Skip rapido si el commit no toca web-app/ (la mayoria de los casos).
+# Para bypassear puntualmente: git commit --no-verify (no usar como habito).
+#
+# Instalacion: bash tools/hooks/install.sh
+
+set -e
+
+WEBAPP_STAGED=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^web-app/' || true)
+
+if [ -z "$WEBAPP_STAGED" ]; then
+  exit 0
+fi
+
+# Solo nos interesan archivos que afectan al typecheck (ts/tsx/tsconfig*/package.json).
+TS_RELEVANT=$(echo "$WEBAPP_STAGED" | grep -E '\.(ts|tsx|json)$|tsconfig.*\.json$' || true)
+if [ -z "$TS_RELEVANT" ]; then
+  exit 0
+fi
+
+echo "[pre-commit] cambios en web-app/ — corriendo typecheck (tsc -b --noEmit)..."
+
+cd web-app
+
+# Usar pnpm si esta disponible (default del proyecto), sino caer al binario local.
+if command -v pnpm >/dev/null 2>&1; then
+  pnpm -s typecheck
+else
+  ./node_modules/.bin/tsc -b --noEmit
+fi
+
+echo "[pre-commit] typecheck OK"
