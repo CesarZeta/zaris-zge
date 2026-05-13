@@ -1353,6 +1353,13 @@ Permisos: `nivel_acceso <= 2` (admin/supervisor) puede mutar; cualquier autentic
 | Consultar efectiva (resolver bitmask + vigencia + intersección espacio atendido) | GET | `/api/v1/agenda/disponibilidad/efectiva?tipo_recurso=&id_recurso=&fecha=` |
 | Vista semanal | GET | `/api/v1/agenda/semana?desde=&dias=&tipo_recurso=&atendido=` |
 
+#### Quirks operativos B1 (cazados en sesión 2026-05-13)
+
+- **`GET /agenda/semana` con `tipo_recurso='todos'` es O(recursos × días)**. En prod con 84 agentes + 1 equipo + 1 espacio × 7 días tomó ~20s porque `disponibilidad_efectiva()` se llama una vez por (recurso, día). El frontend B2 **NO debe** llamar `/semana` sin filtro; siempre pasar `tipo_recurso=<específico>` para reducir el espacio. Optimización pendiente cuando se note: batch query con `(tipo_recurso, id_recurso) IN ((...))` y resolución del bitmask en Python en un solo pase.
+- **Espacio `atendido=TRUE` SIN agentes vinculados → disponibilidad efectiva `[]`**. La mig 40 deliberadamente NO enforce "atendido => al menos 1 agente" para no bloquear el alta inicial; queda como validación de capa frontend o checklist UX. Síntoma: el espacio aparece en `/calendario` pero su grilla queda toda gris ("fuera de horario") sin razón obvia. Recomendado en B2: badge "⚠ falta vincular agentes" en el espacio del listado cuando `atendido && agentes_vinculados.length === 0`.
+- **`EXTRACT(field FROM :param)` con asyncpg requiere cast inline** — usar `(:f)::date` (memoria [[feedback_asyncpg_extract_cast_date]]). Aplicar a cualquier query que extienda `disponibilidad_efectiva` o consulte fechas/horas con parámetros bindeados.
+- **Smoke local ≠ prod en este módulo**: prod arrancó la sesión con 1 espacio + 2 disponibilidades + 1 evento residuales del E2E de autoservicio del 2026-05-12. Inocuos pero alteran conteos del smoke. Si vas a contar items en prod, considerar `WHERE fecha_alta > '2026-05-13'` para excluir los demos viejos.
+
 #### Pendiente B2 — Frontend (3 vistas + filtros)
 
 - 3 vistas switcheables en `AgendaLayout`: **Día / Semana / Mes**. Día y Semana = grillas Gantt (filas=recursos, columnas=horas o días). Mes = calendario con bloques de eventos/ocupaciones.
