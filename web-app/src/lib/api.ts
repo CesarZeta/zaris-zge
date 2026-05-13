@@ -55,7 +55,17 @@ async function request<T>(
 
   if (res.status === 401) {
     localStorage.removeItem('zaris_session')
-    window.location.href = '/login'
+    // Si vivimos en iframe del shell vanilla (prod), redirigir el parent al
+    // login del shell. Si estamos standalone (localhost:5173 dev), al /login interno.
+    if (typeof window !== 'undefined' && window.self !== window.top) {
+      try {
+        ;(window.parent as Window).location.href = (window.parent.location.pathname.match(/^\/[^/]+\//)?.[0] ?? '/') + 'frontend/login.html'
+      } catch {
+        window.location.href = '/login'
+      }
+    } else {
+      window.location.href = '/login'
+    }
     throw new Error('No autenticado')
   }
 
