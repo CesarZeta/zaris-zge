@@ -1,5 +1,5 @@
 """
-Logica de negocio del modulo Agenda (sub-fase 1.A).
+Logica de negocio del modulo Agenda (sub-fase 1.A + B1 espacios y disponibilidad).
 
 Funciones puras o que operan sobre AsyncSession - sin imports del router.
 
@@ -14,6 +14,132 @@ from typing import Any, Iterable, Optional
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+
+# =============================================================================
+# Disponibilidad efectiva (mig 41 + espacios atendidos mig 40)
+# =============================================================================
+# Bitmask §27: Lun=bit0, Mar=bit1, Mie=bit2, Jue=bit3, Vie=bit4, Sab=bit5, Dom=bit6.
+# Postgres EXTRACT(ISODOW FROM fecha) devuelve 1=Lun..7=Dom. Pasamos a 0-based.
+
+async def disponibilidad_efectiva(
+    session: AsyncSession,
+    tipo_recurso: str,
+    id_recurso: int,
+    fecha: date,
+) -> list[dict[str, Any]]:
+    """Devuelve los rangos horarios efectivos de un recurso para una fecha.
+
+    Reglas:
+      - agente / equipo: lookup directo en disponibilidad_recurso.
+      - espacio desatendido: lookup directo en disponibilidad_recurso para
+        (tipo_recurso='espacio', id_recurso=id).
+      - espacio atendido: interseccion del horario propio del espacio con
+        la union de horarios de sus agentes vinculados activos. Si el
+        espacio no tiene horario propio definido, devuelve la union de
+        horarios de los agentes. Si no tiene agentes vinculados, devuelve
+        lista vacia.
+
+    Cada item devuelto: {hora_inicio: time, hora_fin: time, etiqueta: str|None}.
+    Los rangos vienen ya resueltos para esa fecha y no se solapan entre si
+    (cuando hay solapes los unimos).
+    """
+    if tipo_recurso in ("agente", "equipo"):
+        return await _disponibilidad_directa(session, tipo_recurso, id_recurso, fecha)
+
+    if tipo_recurso == "espacio":
+        # 1) Es atendido?
+        row = (await session.execute(text("""
+            SELECT atendido
+            FROM espacios_agenda
+            WHERE id_espacio = :id AND activo = TRUE
+        """), {"id": id_recurso})).mappings().first()
+        if not row:
+            return []
+        atendido = bool(row["atendido"])
+
+        if not atendido:
+            # Desatendido: solo su propio horario.
+            return await _disponibilidad_directa(session, "espacio", id_recurso, fecha)
+
+        # Atendido: union de agentes vinculados activos.
+        agentes_ids = [int(r["id_agente"]) for r in (await session.execute(text("""
+            SELECT id_agente FROM espacio_agentes
+            WHERE id_espacio = :id AND activo = TRUE
+        """), {"id": id_recurso})).mappings().all()]
+
+        if not agentes_ids:
+            return []
+
+        union_agentes: list[tuple[dtime, dtime, Optional[str]]] = []
+        for ag_id in agentes_ids:
+            for r in await _disponibilidad_directa(session, "agente", ag_id, fecha):
+                union_agentes.append((r["hora_inicio"], r["hora_fin"], r.get("etiqueta")))
+
+        # Si el espacio TAMBIEN tiene horario propio, intersectamos.
+        propio = await _disponibilidad_directa(session, "espacio", id_recurso, fecha)
+
+        if propio:
+            # Para cada rango propio, intersectar con la union de agentes y unir.
+            rangos: list[tuple[dtime, dtime, Optional[str]]] = []
+            for (pi, pf, pet) in [(p["hora_inicio"], p["hora_fin"], p.get("etiqueta")) for p in propio]:
+                for (ai, af, _aet) in union_agentes:
+                    inter_i = max(pi, ai)
+                    inter_f = min(pf, af)
+                    if inter_i < inter_f:
+                        rangos.append((inter_i, inter_f, pet))
+            merged = _merge_rangos(rangos)
+        else:
+            merged = _merge_rangos(union_agentes)
+
+        return [{"hora_inicio": hi, "hora_fin": hf, "etiqueta": et} for (hi, hf, et) in merged]
+
+    return []
+
+
+async def _disponibilidad_directa(
+    session: AsyncSession,
+    tipo_recurso: str,
+    id_recurso: int,
+    fecha: date,
+) -> list[dict[str, Any]]:
+    """Lookup en disponibilidad_recurso aplicando bitmask de dia + vigencia."""
+    # Cast explicito a ::date: asyncpg pasa el parametro como `unknown` y
+    # Postgres no puede resolver el overload de EXTRACT(field, unknown).
+    rows = (await session.execute(text("""
+        SELECT hora_inicio, hora_fin, etiqueta, dias_semana
+        FROM disponibilidad_recurso
+        WHERE activo = TRUE
+          AND tipo_recurso = :tr
+          AND id_recurso   = :ir
+          AND (dias_semana & (1 << (EXTRACT(ISODOW FROM (:f)::date)::int - 1))) <> 0
+          AND (vigente_desde IS NULL OR (:f)::date >= vigente_desde)
+          AND (vigente_hasta IS NULL OR (:f)::date <= vigente_hasta)
+        ORDER BY hora_inicio
+    """), {"tr": tipo_recurso, "ir": id_recurso, "f": fecha})).mappings().all()
+    # Si hay multiples filas que se solapan o son contiguas, las unimos.
+    triples = [(r["hora_inicio"], r["hora_fin"], r["etiqueta"]) for r in rows]
+    merged = _merge_rangos(triples)
+    return [{"hora_inicio": hi, "hora_fin": hf, "etiqueta": et} for (hi, hf, et) in merged]
+
+
+def _merge_rangos(
+    rangos: list[tuple[dtime, dtime, Optional[str]]],
+) -> list[tuple[dtime, dtime, Optional[str]]]:
+    """Une rangos solapados/contiguos. Etiqueta del primero se preserva,
+    se descarta la de los siguientes cuando se unen."""
+    if not rangos:
+        return []
+    rangos_sorted = sorted(rangos, key=lambda x: x[0])
+    out: list[tuple[dtime, dtime, Optional[str]]] = [rangos_sorted[0]]
+    for (hi, hf, et) in rangos_sorted[1:]:
+        prev_hi, prev_hf, prev_et = out[-1]
+        if hi <= prev_hf:
+            # Solape o contiguo: extender el rango previo.
+            out[-1] = (prev_hi, max(prev_hf, hf), prev_et)
+        else:
+            out.append((hi, hf, et))
+    return out
 
 
 # =============================================================================
