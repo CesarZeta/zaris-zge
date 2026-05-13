@@ -1,10 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   actualizarModulo,
+  getIdentidad,
   listarModulos,
   listarUsuarios,
   setPermisosUsuario,
+  updateIdentidad,
   verPermisosUsuario,
+  type IdentidadUpdate,
 } from '../api/configApi'
 import type { OverrideIn } from '../types/config'
 
@@ -51,5 +54,22 @@ export function useSetPermisosUsuario(id_usuario: number | null) {
   return useMutation({
     mutationFn: (overrides: OverrideIn[]) => setPermisosUsuario(id_usuario as number, overrides),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['config'] }),
+  })
+}
+
+// Identidad del topbar
+export function useIdentidad() {
+  return useQuery({
+    queryKey: ['config', 'identidad'],
+    queryFn: getIdentidad,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useUpdateIdentidad() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: IdentidadUpdate) => updateIdentidad(payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['config', 'identidad'] }),
   })
 }

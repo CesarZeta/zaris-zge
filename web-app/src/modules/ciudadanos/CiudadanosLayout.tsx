@@ -6,7 +6,7 @@ function goInicio(e: React.MouseEvent) {
   e.preventDefault()
   const w = window.parent as Window & { shellNavigate?: (url: string) => void }
   if (w?.shellNavigate) {
-    w.shellNavigate('frontend/welcome.html')
+    w.shellNavigate('web-app/dist/index.html#/dashboard')
   } else {
     window.location.href = '/'
   }

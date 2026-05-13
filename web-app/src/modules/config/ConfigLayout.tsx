@@ -5,14 +5,15 @@ import { Settings } from 'lucide-react'
 function goInicio(e: React.MouseEvent) {
   e.preventDefault()
   const w = window.parent as Window & { shellNavigate?: (url: string) => void }
-  if (w?.shellNavigate) w.shellNavigate('frontend/welcome.html')
+  if (w?.shellNavigate) w.shellNavigate('web-app/dist/index.html#/dashboard')
   else window.location.href = '/'
 }
 
 const TABS = [
-  { to: 'permisos', label: 'Permisos por usuario' },
-  { to: 'modulos',  label: 'Catálogo de módulos' },
-  { to: 'sistema',  label: 'Sistema' },
+  { to: 'identidad', label: 'Identidad' },
+  { to: 'permisos',  label: 'Permisos por usuario' },
+  { to: 'modulos',   label: 'Catálogo de módulos' },
+  { to: 'sistema',   label: 'Sistema' },
 ]
 
 export function ConfigLayout({ children }: { children: ReactNode }) {
