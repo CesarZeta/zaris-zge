@@ -27,13 +27,14 @@ def _headers() -> dict:
     }
 
 
-async def crear_signed_upload_url(path: str) -> dict:
+async def crear_signed_upload_url(path: str, bucket: str | None = None) -> dict:
     """
-    Devuelve `{ url, token, path }` para que el cliente haga PUT del binario.
+    Devuelve `{ url, token, path, bucket }` para que el cliente haga PUT del binario.
     El path es relativo al bucket (ej: 'reclamos/42/uuid.jpg').
+    Si `bucket` es None, usa el default de adjuntos de reclamos.
     """
     _check_config()
-    bucket = settings.SUPABASE_ADJUNTOS_BUCKET
+    bucket = bucket or settings.SUPABASE_ADJUNTOS_BUCKET
     url = f"{settings.SUPABASE_URL}/storage/v1/object/upload/sign/{bucket}/{path}"
     async with httpx.AsyncClient(timeout=10) as client:
         r = await client.post(url, headers=_headers())
@@ -49,10 +50,10 @@ async def crear_signed_upload_url(path: str) -> dict:
     }
 
 
-async def crear_signed_download_url(path: str, ttl_sec: int = DOWNLOAD_TTL_SEC) -> str:
+async def crear_signed_download_url(path: str, ttl_sec: int = DOWNLOAD_TTL_SEC, bucket: str | None = None) -> str:
     """URL firmada para visualizar (GET) un objeto privado."""
     _check_config()
-    bucket = settings.SUPABASE_ADJUNTOS_BUCKET
+    bucket = bucket or settings.SUPABASE_ADJUNTOS_BUCKET
     url = f"{settings.SUPABASE_URL}/storage/v1/object/sign/{bucket}/{path}"
     async with httpx.AsyncClient(timeout=10) as client:
         r = await client.post(url, headers=_headers(), json={"expiresIn": ttl_sec})
@@ -62,10 +63,15 @@ async def crear_signed_download_url(path: str, ttl_sec: int = DOWNLOAD_TTL_SEC) 
     return f"{settings.SUPABASE_URL}/storage/v1{r.json()['signedURL']}"
 
 
-async def borrar_objeto(path: str) -> None:
+def url_publica(path: str, bucket: str) -> str:
+    """URL publica directa (sin firma) para buckets `public=TRUE`. No verifica existencia."""
+    return f"{settings.SUPABASE_URL}/storage/v1/object/public/{bucket}/{path}"
+
+
+async def borrar_objeto(path: str, bucket: str | None = None) -> None:
     """Borra el objeto del bucket. No-op silencioso si no existe."""
     _check_config()
-    bucket = settings.SUPABASE_ADJUNTOS_BUCKET
+    bucket = bucket or settings.SUPABASE_ADJUNTOS_BUCKET
     url = f"{settings.SUPABASE_URL}/storage/v1/object/{bucket}/{path}"
     async with httpx.AsyncClient(timeout=10) as client:
         await client.delete(url, headers=_headers())
