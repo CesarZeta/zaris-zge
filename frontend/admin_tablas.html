@@ -656,7 +656,7 @@
     </span>
   </a>
   <nav class="z-header__nav">
-    <button class="btn-back" onclick="(window.parent.shellNavigate||function(){window.location='../index.html'})('frontend/welcome.html')">← Inicio</button>
+    <button class="btn-back" onclick="(window.parent.shellNavigate||function(){window.location='../index.html'})('web-app/dist/index.html#/dashboard')">← Inicio</button>
   </nav>
 </header>
 
@@ -1106,7 +1106,7 @@ document.addEventListener('click', e => {
   if (!link) return;
   e.preventDefault();
   if (window.parent && window.parent !== window && window.parent.shellNavigate) {
-    window.parent.shellNavigate('frontend/welcome.html');
+    window.parent.shellNavigate('web-app/dist/index.html#/dashboard');
   } else {
     window.location.href = '../index.html';
   }

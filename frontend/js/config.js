@@ -40,7 +40,7 @@ const ZARIS_ENUMS = {
  */
 function _zarisGoInicio() {
     if (window.parent && window.parent.shellNavigate) {
-        window.parent.shellNavigate('frontend/welcome.html');
+        window.parent.shellNavigate('web-app/dist/index.html#/dashboard');
     } else {
         window.location.href = '../index.html';
     }
