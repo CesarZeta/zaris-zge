@@ -69,10 +69,12 @@ No suponer paridad entre stacks. Hoy:
 | Usuarios | `usuarios.html` | — | vanilla |
 | Admin tablas | `admin_tablas.html` | — | vanilla |
 | **Agenda** | — (legacy borrado 2026-05-12) | **`modules/agenda/`** (Fase 3.A + 3.B drag&drop) | **React** (publicado) |
-| Dashboard | — | `modules/dashboard/` (stub demo, solo dev) | ninguno (no enlazado) |
+| **Dashboard** | — | **`modules/dashboard/`** (mapa Leaflet + stats reales) | **React — HOME del iframe** desde 2026-05-13 (se carga al entrar al shell y al hacer click en INICIO desde cualquier módulo) |
+| OT (3 mesas React) | — | `modules/ot/` (Supervisor / Agente / Auditoría) | React |
+| Config (permisos/identidad/etc.) | — | `modules/config/` | React |
 
 **Implicaciones:**
-- Si te piden "imitar el módulo X en React", verificar primero si existe ahí. Hoy **Agenda, Ciudadanos, Empresas y Reclamos** están en React en producción. OT (3 mesas), Usuarios y Admin Tablas siguen en vanilla.
+- Si te piden "imitar el módulo X en React", verificar primero si existe ahí. Hoy **Dashboard, Agenda, Ciudadanos, Empresas, Reclamos, OT y Config** están en React en producción. Usuarios y Admin Tablas siguen en vanilla.
 - Componentes UI compartidos React: `web-app/src/ui/index.tsx` (Button, IconButton, Pill, Badge, Input, Card, EmptyState, Skeleton, Table). **No hay** modal base, datepicker, dropdown, drawer — se construyen en cada módulo o se promueven a `ui/` cuando son maduros.
 - Helper `web-app/src/lib/api.ts` soporta GET/POST/PUT/PATCH/DELETE + opciones `{ params, withHeaders }`. `getWithHeaders` devuelve `{ data, headers }` para leer `X-Total-Count`.
 
@@ -207,13 +209,13 @@ La ruta depende de dónde vive el archivo:
 <link rel="stylesheet" href="../design-system/colors_and_type.css">
 <link rel="stylesheet" href="../design-system/components.css">
 
-<!-- Archivos en la raíz (index.html, welcome.html cargado desde raíz): -->
+<!-- Archivos en la raíz (index.html): -->
 <link rel="stylesheet" href="design-system/fonts/fonts.css">
 <link rel="stylesheet" href="design-system/colors_and_type.css">
 <link rel="stylesheet" href="design-system/components.css">
 ```
 
-**Quirk:** `welcome.html` vive en `frontend/` pero el servidor lo sirve como iframe desde la raíz, por lo que usa la ruta sin `../`.
+> `welcome.html` fue borrado el 2026-05-13. La home del shell ahora es el módulo Dashboard React, cargado directamente en el iframe. Cualquier referencia legacy a `shellNavigate('frontend/welcome.html')` debe usar `shellNavigate('web-app/dist/index.html#/dashboard')`. Lo mismo aplica al `src` por defecto del iframe.
 
 ### Componentes del DS — naming `*-zaris`
 
@@ -332,8 +334,26 @@ window.parent?.shellNavigate?.('frontend/mi-otro-modulo.html')
 
 Usar este patrón en breadcrumbs, botones "← Inicio" y cualquier enlace inter-módulo. Nunca usar `window.location.href` directo — rompe el shell.
 
+### Guard de sesión del shell — DEBE ir en `<head>`, ANTES del iframe
+
+El shell `index.html` redirige a `frontend/login.html` si no hay `zaris_session` en localStorage. El script **DEBE ejecutarse en `<head>` antes de que el navegador empiece a cargar el `<iframe>`**, no al final del body. Si va abajo, el iframe arranca primero, el bundle React monta sin sesión, hace requests al backend, recibe 401, y el handler de 401 redirige el iframe — en producción bajo `/zaris-zge/` ese redirect termina en `cesarzeta.github.io/login` → **404 de GitHub Pages dentro del iframe** mientras el shell padre se ve OK.
+
+Patrón obligatorio en `index.html`:
+```html
+<head>
+  <!-- ... CSS, lucide, etc ... -->
+
+  <!-- Guard de sesion — DEBE ir antes del iframe para que nunca monte sin sesion -->
+  <script>
+    if (!localStorage.getItem('zaris_session')) {
+      window.location.replace('frontend/login.html');
+    }
+  </script>
+</head>
+```
+
 ### Guard vanilla en iframe
-Si no hay sesión y el módulo está dentro del iframe, redirigir el shell completo al inicio (no solo el iframe):
+Si un módulo vanilla quiere doblar el check (defensa en profundidad por si alguien abre el HTML standalone), patrón estándar:
 ```js
 if (!localStorage.getItem('zaris_session')) {
     if (window.self !== window.top) {
@@ -398,6 +418,22 @@ Desde 2026-05-12 jornada 4, el sidebar del shell vanilla (`index.html`) usa dise
 **CSS:** `frontend/css/menu.css` bloque `.nav-flat*`. Las clases legacy `.nav__group/.nav__panel/.nav__sub` quedan en el archivo sin uso (deuda cosmética, no urgente).
 
 **JS:** `frontend/js/menu.js` selecciona ambos (`.nav-flat__item, .nav__link`) por compat retro.
+
+### Topbar — layout (izquierda · centro · derecha)
+
+Desde 2026-05-13 el topbar tiene 3 bloques fijos:
+
+| Posición | Contenido | IDs/clases |
+|---|---|---|
+| **Izquierda** | `ZARIS` (logo+wordmark, link a inicio) · "GESTION ESTADO" (hardcoded, NO editable) · separador vertical · logo municipio (opcional, `<img>` hidden si no hay URL) · nombre municipio | `.brand` `.brand__name` `.brand__app` `.topbar__sep` `.muni` `#topbar-muni-logo` `#topbar-muni-nombre` |
+| **Centro** | Fecha+hora "mar 13 may, 14:32", refresca cada 30s | `.topbar__center` `#topbar-clock` |
+| **Derecha** | Campana de notificaciones (placeholder) · dropdown usuario con nombre+rol+logout | `.topbar__bell` `.user-menu` |
+
+**"GESTION ESTADO" es interno del producto.** Vive hardcoded en el HTML como `<span class="brand__app">GESTION ESTADO</span>`. NO se puede editar desde UI ni se persiste en DB. Backend lo expone en `GET /api/v1/config/identidad` solo por compat con el shell vanilla. Si en el futuro alguien tiene que cambiar el nombre del producto, edita `index.html` y `backend/app/api/routes/config_identidad.py` (constante `APP_NOMBRE`).
+
+**El nombre y logo del municipio SÍ son editables** desde el módulo Config → Identidad (ver §21 para las claves y §32 Quirk 13 para el flujo de upload). `menu.js` los carga al boot llamando a `GET /api/v1/config/identidad` (público).
+
+**Cache-bust `?v=`:** los assets del shell (`menu.css`, `menu.js`) se cargan con `?v=YYYY-MM-DDx`. Bumpear ese sufijo cuando los edites o el navegador puede servir la versión vieja por días. Aplica también a JS/CSS de cualquier módulo vanilla.
 
 ### Topbar — menú de usuario con cerrar sesión
 
@@ -598,6 +634,10 @@ PUT  /api/v1/ot/{id_ot}/rechazar           → auditor rechaza OT → nueva OT P
 |---|---|---|
 | `auditor_misma_subarea_permitido` | boolean | Si `false`, auditor no puede pertenecer a la subárea del reclamo |
 | `ot_pendiente_dias_vencimiento` | integer | Días máximos que una OT Pendiente puede estar sin reasignarse |
+| `municipio_nombre` | string | Nombre del municipio que se muestra en el topbar (ej. "MUNICIPALIDAD DE SAN ANDRÉS"). Editable desde Config → Identidad. |
+| `municipio_logo_url` | string | URL pública del logo del municipio (servida desde bucket `config-assets` de Supabase Storage). Vacía = sin logo. Editable desde Config → Identidad. |
+
+> La clave `app_nombre` **no existe** (se intentó en 2026-05-13 y se borró). "GESTION ESTADO" es interno del producto, hardcoded en el HTML del shell. Ver §14 (topbar layout).
 
 ### Ciudadano en reclamos
 
@@ -874,7 +914,7 @@ Cuando un form requiere referenciar una entidad que podría no existir aún (ej:
 
 ### Breadcrumb de navegación — obligatorio en todo módulo
 
-Todo HTML de módulo en `frontend/` (excepto `login.html` y `welcome.html`) **debe** mostrar un breadcrumb arriba del título que ayude al usuario a entender dónde está parado. Patrón único:
+Todo HTML de módulo en `frontend/` (excepto `login.html`) **debe** mostrar un breadcrumb arriba del título que ayude al usuario a entender dónde está parado. Patrón único:
 
 ```html
 <!-- Justo antes del bloque de título del módulo -->
@@ -911,7 +951,7 @@ document.querySelectorAll('[data-bc-home]').forEach(el => {
   el.addEventListener('click', e => {
     e.preventDefault();
     if (window.parent && window.parent.shellNavigate) {
-      window.parent.shellNavigate('frontend/welcome.html');
+      window.parent.shellNavigate('web-app/dist/index.html#/dashboard');
     } else {
       window.location.href = '../index.html';
     }
@@ -1040,12 +1080,16 @@ Ejemplos canónicos: `backend/seed_ciudadanos_csv.py` y `backend/seed_agentes_cs
 **Implementado al 2026-05-10.** El frontend nunca habla con Storage con auth de usuario — el backend firma URLs con la `service_role` key.
 
 ### Configuración
-- Bucket: `reclamos-adjuntos` (privado, file_size_limit 10 MB, mime allowlist sólo imágenes: `image/jpeg|png|webp|gif|heic|heif`).
+- Buckets:
+  - `reclamos-adjuntos` (**privado**, 10 MB, image/jpeg|png|webp|gif|heic|heif) — fotos de reclamos.
+  - `config-assets` (**público**, 2 MB, image/png|jpeg|webp|svg+xml) — logo del municipio. Endpoint `/api/v1/config/identidad/logo-upload-url` (ver §14).
 - Tabla `reclamo_adjuntos` (existía desde migración 22): metadatos + `storage_bucket` + `storage_path`. Audit completa.
-- Vars de entorno backend (`backend/.env.local` y Railway):
+- Vars de entorno backend (`backend/.env.local` y **Railway**):
   - `SUPABASE_URL` — URL del proyecto Supabase (`https://<id>.supabase.co`)
   - `SUPABASE_SERVICE_KEY` — `service_role` (legacy `eyJ...`) o `sb_secret_...` (nueva). Ambas funcionan; **nunca** la `anon`/`publishable`.
-  - `SUPABASE_ADJUNTOS_BUCKET` — default `reclamos-adjuntos`.
+  - `SUPABASE_ADJUNTOS_BUCKET` — default `reclamos-adjuntos`. El bucket `config-assets` está hardcoded en `config_identidad.py` (no usa esta var).
+
+> **Quirk operativo cazado 2026-05-13:** las 3 env vars Supabase tienen que estar **explícitamente seteadas en Railway**. La sub-fase B5 de Reclamos pasó el smoke local (con `.env.local` válido) y se pusheó como cerrada, pero los adjuntos en prod estaban devolviendo 503 desde el deploy hasta la sesión del 13/5 porque Railway nunca tuvo esas vars. Si pusheás una feature nueva que usa Storage (o vas a modificar `storage.py`), después del deploy testeá un POST `/upload-url` contra prod, no solo contra local.
 
 ### Flujo de upload (modal nuevo reclamo)
 1. Usuario elige imágenes (drag&drop o file picker) — se acumulan en memoria con preview base64.
@@ -1768,3 +1812,28 @@ if (mod && (isVanilla || isReact)) {
 **Por qué necesita ambas piezas**: si solo aplicas el guard sin actualizar la whitelist, el redirect funciona pero el shell descarta el `?modulo=` y queda mostrando welcome. Si solo aplicas la whitelist sin el guard, el bundle sigue accesible standalone.
 
 Cazado en sesión 2026-05-12 jornada 4 — el usuario reportó "veo un shell con sidebar dashboard/agenda/ciudadanos que no es el shell normal". Verificar en prod abriendo `https://cesarzeta.github.io/zaris-zge/web-app/dist/index.html#/reclamos` en pestaña nueva: debe redirigir a `index.html?modulo=...` automáticamente.
+
+### Quirk 13: redirects absolutos del bundle React rompen bajo subpath `/zaris-zge/`
+
+En prod el shell vive en `cesarzeta.github.io/zaris-zge/index.html` y el bundle React vive en `cesarzeta.github.io/zaris-zge/web-app/dist/index.html`. Cualquier `window.location.href = '/foo'` desde dentro del bundle (o desde JS del shell) salta a `cesarzeta.github.io/foo` **sin** el prefijo `/zaris-zge/`. En GH Pages eso devuelve el 404 genérico ("There isn't a GitHub Pages site here.") porque no existe un proyecto `cesarzeta.github.io/foo`.
+
+Casos en los que vas a tropezar:
+- Handler 401 en `web-app/src/lib/api.ts` redirigiendo a `/login`.
+- Botones "Cerrar sesión" haciendo `window.location.href = '/login.html'`.
+- Cualquier `<a href="/...">` que el bundle tenga hardcoded.
+
+**Patrón correcto** desde el bundle React (que vive en iframe en prod):
+```ts
+// Detectar el subpath del shell padre y redirigir el parent, no el iframe.
+if (typeof window !== 'undefined' && window.self !== window.top) {
+  const subpath = window.parent.location.pathname.match(/^\/[^/]+\//)?.[0] ?? '/'
+  ;(window.parent as Window).location.href = subpath + 'frontend/login.html'
+} else {
+  // standalone (localhost:5173 dev)
+  window.location.href = '/login'
+}
+```
+
+**Síntoma visual del bug**: el shell vanilla carga OK (topbar + sidebar normales), pero **dentro del iframe** aparece el 404 de GitHub Pages con logo de GitHub y "There isn't a GitHub Pages site here.". Aplica a cualquier asset/ruta que el bundle pida con path absoluto desde la raíz.
+
+Cazado 2026-05-13 cuando dashboard pasó a ser home: el handler 401 hacía `window.location.href = '/login'`. Antes con welcome.html como home no se notaba porque welcome.html no hace requests al backend, así que nunca se gatillaba el 401 → redirect mal.
