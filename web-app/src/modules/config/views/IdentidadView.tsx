@@ -7,14 +7,12 @@ const MIME_OK = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']
 const MAX_BYTES = 2 * 1024 * 1024
 
 interface FormState {
-  app_nombre: string
   municipio_nombre: string
   municipio_logo_url: string
 }
 
 function toForm(d: IdentidadValues | undefined): FormState {
   return {
-    app_nombre: d?.app_nombre ?? '',
     municipio_nombre: d?.municipio_nombre ?? '',
     municipio_logo_url: d?.municipio_logo_url ?? '',
   }
@@ -35,8 +33,7 @@ export function IdentidadView() {
   }, [identidad.data])
 
   const dirty = identidad.data
-    && (form.app_nombre !== identidad.data.app_nombre
-      || form.municipio_nombre !== identidad.data.municipio_nombre
+    && (form.municipio_nombre !== identidad.data.municipio_nombre
       || form.municipio_logo_url !== identidad.data.municipio_logo_url)
 
   async function handleArchivo(e: React.ChangeEvent<HTMLInputElement>) {
@@ -80,7 +77,6 @@ export function IdentidadView() {
     setOkMsg(null)
     try {
       await update.mutateAsync({
-        app_nombre: form.app_nombre.trim(),
         municipio_nombre: form.municipio_nombre.trim(),
         municipio_logo_url: form.municipio_logo_url.trim(),
       })
@@ -133,26 +129,13 @@ export function IdentidadView() {
         <div style={previewLabel}>Vista previa</div>
         <div style={previewBar}>
           <span style={previewZaris}>ZARIS</span>
-          <span style={previewApp}>{form.app_nombre || 'GESTION ESTADO'}</span>
+          <span style={previewApp}>GESTION ESTADO</span>
           <span style={previewSep}></span>
           {form.municipio_logo_url ? (
             <img src={form.municipio_logo_url} alt="" style={previewLogo} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
           ) : null}
           <span style={previewMuni}>{form.municipio_nombre || 'MUNICIPALIDAD'}</span>
         </div>
-      </div>
-
-      <div style={fieldGroup}>
-        <label style={labelStyle}>Nombre de la aplicación</label>
-        <input
-          type="text"
-          value={form.app_nombre}
-          maxLength={80}
-          onChange={(e) => setForm((f) => ({ ...f, app_nombre: e.target.value }))}
-          style={inputStyle}
-          placeholder="GESTION ESTADO"
-        />
-        <span style={hintStyle}>Aparece al lado del logo ZARIS. Mayúsculas recomendadas.</span>
       </div>
 
       <div style={fieldGroup}>
