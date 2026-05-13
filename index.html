@@ -12,6 +12,16 @@
   <link rel="stylesheet" href="frontend/css/menu.css?v=2026-05-13c">
 
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+
+  <!-- Guard de sesion — debe ejecutarse ANTES de que el iframe del modulo
+       monte y haga su primer request al backend. Sin esto, el bundle React
+       arranca, recibe 401 del API, y redirige el iframe al login con un
+       path mal calculado, mostrando 404 de GH Pages. -->
+  <script>
+    if (!localStorage.getItem('zaris_session')) {
+      window.location.replace('frontend/login.html');
+    }
+  </script>
 </head>
 <body>
   <div class="app">
@@ -185,12 +195,6 @@
 
   </div>
 
-  <script>
-    // Guard de sesión — redirige al login si no hay sesión activa
-    if (!localStorage.getItem('zaris_session')) {
-      window.location.replace('frontend/login.html');
-    }
-  </script>
   <script src="frontend/js/menu.js?v=2026-05-13a"></script>
 </body>
 </html>
