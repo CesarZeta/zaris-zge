@@ -89,7 +89,7 @@ No suponer paridad entre stacks. Hoy:
 - **Quirks de columnas legacy de auditoría** (verificado en prod 2026-05-10, no renombrar):
   - **Estándar §10 (`fecha_modificacion`):** la mayoría de tablas (21).
   - **Legacy `fecha_modif`:** `usuarios`, `empresas`. `ciudadanos` tiene **ambas** (legacy + nueva) — usar `fecha_modificacion` como fuente.
-  - **Legacy `modificado_en`:** `lugares_atencion`, `servicios`, `turnos`, `areas`, y todas las `agenda_*` (`agenda_agente`, `agenda_ausencia`, `agenda_clase`, `agenda_lugar`, `agenda_servicio`).
+  - **Legacy `modificado_en`:** `lugares_atencion`, `servicios` (las únicas con esta forma post mig 39). `agenda_clase` y `agenda_feriado` fueron estandarizadas en mig 39; el resto de `agenda_*` legacy y `turnos`/`areas` fueron dropeadas.
   - Antes de escribir un UPDATE con `fecha_modificacion = NOW()`, verificar que la tabla tenga esa columna (`information_schema.columns`). Migración 26 falló por esto en `lugares_atencion`.
 - **CORS y headers custom:** cuando un endpoint devuelve un header custom (ej. `X-Total-Count`), agregar también `response.headers["Access-Control-Expose-Headers"] = "NombreHeader"`. Sin esto, navegadores cross-origin lo bloquean. Ejemplo en `GET /buc/ciudadanos/buscar`.
 - **Orden de routers FastAPI con `{param}` greedy en main.py:** si registrás un router nuevo bajo un prefix cuyo tronco lo comparte otro router que usa `/{param}` greedy (como `admin_tablas` con `/{tabla}` y `/{tabla}/{id}`), el router específico **debe registrarse ANTES** del genérico. Sino FastAPI matchea por orden de registro y atrapa la ruta nueva como si fuera `{tabla}='lo-que-sea'`. Síntoma: 422 con `int_parsing` en `{id}` (porque `{id}` no es int). Caso real sesión 2026-05-12: `admin_permisos` bajo `/api/v1/admin/permisos/*` atrapado por `admin_tablas` con `{tabla}='permisos'`, `{id}='modulos'`. Fix: invertir el orden en `main.py`.
@@ -495,7 +495,7 @@ Todo frontend de tabla maestro (admin_tablas y módulos independientes como usua
 Debajo del panel van los últimos registros ingresados (vista previa). El patrón está implementado en `admin_tablas.html` (`renderVistaPrevia`) y en `usuarios.html`. **No** usar solo botones sueltos — siempre agrupar en el panel celeste.
 
 ### Tablas actualmente configuradas
-`agentes`, `equipos`, `equipo_usuarios`, `equipo_agentes`, `servicios`, `tipo_usuario`, `cargos`, `area`, `subarea`, `usuarios`, `tipo_reclamo`, `tipo_representacion`, `actividades`, `nacionalidades`, `estado_reclamo`, `estado_ot`, `configuracion_general`, `areas`, `lugares_atencion`, `agenda_clase`, `agenda_feriado`.
+`agentes`, `equipos`, `equipo_usuarios`, `equipo_agentes`, `servicios`, `tipo_usuario`, `cargos`, `area`, `subarea`, `usuarios`, `tipo_reclamo`, `tipo_representacion`, `actividades`, `nacionalidades`, `estado_reclamo`, `estado_ot`, `configuracion_general`, `lugares_atencion`, `agenda_clase`, `agenda_feriado`.
 
 > `reclamos_area` y `reclamos_subarea` fueron eliminadas de admin_tablas en migración 20. El módulo Reclamos usa las tablas generales `area` y `subarea`.
 
@@ -1162,7 +1162,7 @@ $env:ENV_FILE=".env.local"; python seed_agenda.py
 
 ### Convención bitmask `dias_semana`
 
-`agenda_agente`, `agenda_lugar`, `agenda_servicio` (y futuras tablas de disponibilidad) usan **`dias_semana SMALLINT`** con bitmask, NO TEXT como `servicios`:
+Las futuras tablas de disponibilidad usarán **`dias_semana SMALLINT`** con bitmask, NO TEXT como `servicios` (`agenda_agente`/`agenda_lugar`/`agenda_servicio` originalmente la usaban, ahora dropeadas en mig 39):
 
 | Día | Bit | Valor |
 |---|---|---|
@@ -1188,12 +1188,15 @@ Si vas a auditar algo nuevo, elegí el sistema según la entidad. No mezclar.
 
 ### Pendientes Agenda
 
-#### Sub-fase 1.B — estandarizar legacy (no iniciada)
-- [ ] Decidir `areas` (legacy, 6 filas, usado por modelo agenda viejo) vs `area` (canónico, usado por Reclamos/OT). Probable: migrar agenda a `area`.
-- [ ] Estandarizar 6 tablas legacy (`agenda_clase`, `agenda_feriado`, `agenda_agente`, `agenda_lugar`, `agenda_servicio`, `agenda_ausencia`): PK `id` → `id_agenda_<x>`, `creado_en`/`modificado_en` → `fecha_alta`/`fecha_modificacion`, `creado_por` → `id_usuario_alta`, agregar `id_usuario_modificacion`, agregar `id_municipio`/`id_subarea`.
-- [ ] Migrar `agenda_agente.id_usuario` → `id_agente` (FK a `agentes`). Idem `agenda_ausencia`.
-- [ ] Reescribir modelo SQLAlchemy de las legacy.
-- [ ] Decidir qué hacer con `turnos`, `agenda_alerta`, `agenda_servicio_agente`, `agenda_lugar_servicio` (vacías en local, no existen en prod). El modelo nuevo (`ocupaciones`+`eventos`+`reservas`) las reemplaza conceptualmente. Probable drop si nada en backend las usa.
+#### Sub-fase 1.B — limpieza legacy ✅ ENTREGADA (2026-05-13, mig 39)
+- [x] **Drop 9 tablas legacy vacías**: `agenda_agente`, `agenda_servicio`, `agenda_lugar`, `agenda_servicio_agente`, `agenda_lugar_servicio`, `agenda_ausencia`, `agenda_alerta`, `turnos`, `areas` (plural). Sí existían en prod aunque la doc decía lo contrario. Todas con 0 filas en ambos entornos.
+- [x] **Estandarizar `agenda_clase` y `agenda_feriado`** al §10: PK `id_agenda_clase` / `id_agenda_feriado`, `creado_por` → `id_usuario_alta`, `creado_en` → `fecha_alta`, `modificado_en` → `fecha_modificacion`, agregadas `id_usuario_modificacion`, `id_municipio`, `id_subarea`, `activo SET DEFAULT TRUE`. Backfill `id_municipio=1`. `agenda_clase.id_area` y `fecha_baja` dropeadas.
+- [x] **Tabla nueva `ausencias_agente`** (estándar §10 completo, FK `id_agente` → `agentes.id_agente`). Reemplaza `agenda_ausencia`. `agenda_v2` ya consulta esta tabla en `/calendario`, `/mes`, `/recurso/{tipo}/{id}` — el JOIN ahora va por `id_agente` directo (no por `usuarios.id_usuario`).
+- [x] **Cleanup FKs a `areas`**: `agenda_clase`, `lugares_atencion` y `servicios` tenían `id_area` → `areas(id)`. Limpiado a NULL y FK dropeado. Las columnas `id_area` sobreviven en `lugares_atencion`/`servicios` por compatibilidad (sin FK, siempre NULL); en `agenda_clase` fue dropeada.
+- [x] **Backend limpio**: `models/agenda.py` reescrito (solo modelos vivos), `schemas/agenda.py` borrado, `routes/agenda.py` borrado, `main.py` deja de registrar el router legacy. Helper `agenda_ausencia_cols` removido.
+- [x] **admin_tablas actualizado**: `agenda_clase` y `agenda_feriado` con PK nueva y `has_audit: True`. Item `areas` removido del sidebar y de `SCHEMAS` del frontend. `lugares_atencion`/`servicios` quedaron sin selector `id_area`.
+
+Snapshot pre-mig en prod y local: `_backup_agenda_clase_2026_05_13`, `_backup_agenda_feriado_2026_05_13`, `_backup_areas_2026_05_13`, `_backup_lugares_atencion_id_area_2026_05_13`, `_backup_servicios_id_area_2026_05_13`. Ver `backend/migrations/39_agenda_legacy_dropear_y_estandarizar.sql`.
 
 #### Sub-fase 2 — Backend API ✅ ENTREGADA (2026-05-10)
 22 endpoints en `backend/app/api/routes/agenda_v2.py`. Servicios en `backend/app/services/agenda.py`. Schemas en `backend/app/schemas/agenda_v2.py`. Convive con router legacy `agenda.py` bajo el mismo prefix `/api/v1/agenda` sin colisión de paths. 13/13 pruebas E2E OK.

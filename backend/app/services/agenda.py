@@ -192,24 +192,6 @@ async def lookup_estado_reserva(session: AsyncSession, codigo: str) -> Optional[
     ), {"c": codigo})
 
 
-# =============================================================================
-# Columnas reales de agenda_ausencia (legacy) - cache lazy
-# =============================================================================
-_AUSENCIA_COLS: Optional[set[str]] = None
-
-
-async def agenda_ausencia_cols(session: AsyncSession) -> set[str]:
-    """agenda_ausencia es legacy: usa modificado_en y posiblemente id_usuario.
-    Detectamos columnas reales al primer uso para no asumir."""
-    global _AUSENCIA_COLS
-    if _AUSENCIA_COLS is not None:
-        return _AUSENCIA_COLS
-    rows = (await session.execute(text(
-        "SELECT column_name FROM information_schema.columns "
-        "WHERE table_name = 'agenda_ausencia'"
-    ))).all()
-    _AUSENCIA_COLS = {r[0] for r in rows}
-    return _AUSENCIA_COLS
 
 
 # =============================================================================

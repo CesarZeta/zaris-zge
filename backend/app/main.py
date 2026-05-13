@@ -10,7 +10,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.routes.auth import router as auth_router
 from app.api.routes.buc import router as buc_router
-from app.api.routes.agenda import router as agenda_router
 from app.api.routes.agenda_v2 import router as agenda_v2_router
 from app.api.routes.agenda_publico import router as agenda_publico_router
 from app.api.routes.admin_tablas import router as admin_tablas_router
@@ -67,7 +66,6 @@ app.add_middleware(
 # Rutas
 app.include_router(auth_router)
 app.include_router(buc_router)
-app.include_router(agenda_router)
 app.include_router(agenda_v2_router)
 app.include_router(agenda_publico_router)
 # IMPORTANTE: admin_permisos_router debe registrarse ANTES de admin_tablas_router.
