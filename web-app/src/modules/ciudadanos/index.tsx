@@ -16,6 +16,7 @@ export const ciudadanosModule: ModuleManifest = {
   label: 'ciudadanos',
   icon: Users,
   moduloCodigo: 'padrones',
+  hideFromSidebar: true,  // Se llega via la landing del modulo Contactos.
   routes: [
     { index: true,           element: Wrap(BuscarView), handle: { breadcrumb: 'ciudadanos · buscar' } },
     { path: 'buscar',        element: Wrap(BuscarView), handle: { breadcrumb: 'ciudadanos · buscar' } },

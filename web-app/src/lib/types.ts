@@ -29,6 +29,7 @@ export interface ModuleManifest {
   navItems?: SubNavItem[]
   permissions?: string[]          // deprecado: usar moduloCodigo
   moduloCodigo?: string           // CLAUDE.md §30: si esta seteado y el usuario no lo tiene en modulos_permitidos, el modulo se oculta del sidebar.
+  hideFromSidebar?: boolean       // El modulo se registra (rutas activas, deep-links del shell vanilla) pero NO aparece en el sidebar del shell React standalone. Util para modulos accesibles solo desde una landing (ej: ciudadanos / empresas viven bajo contactos).
 }
 
 export interface Notification {

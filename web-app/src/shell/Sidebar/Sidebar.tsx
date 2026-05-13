@@ -32,6 +32,9 @@ export function Sidebar() {
       {/* Nav */}
       <nav className={s.nav} aria-label="Navegación principal">
         {modules.filter((mod) => {
+          // Manifest puede pedir que el modulo no aparezca en sidebar (ej:
+          // ciudadanos/empresas viven detras de la landing de Contactos).
+          if (mod.hideFromSidebar) return false
           // CLAUDE.md §30. Si el manifest declara moduloCodigo y el usuario tiene
           // modulos_permitidos, ocultar si no esta en la lista. Si no hay info,
           // fail-open (el guard real esta en el backend).
