@@ -294,7 +294,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     'Usuario creado',
                     `${u.nombre} (${u.username}) fue registrado correctamente.`,
                     activarModoNuevo
-                    // onSalir omitido: usa _zarisGoInicio() (shell vanilla → welcome.html)
+                    // onSalir omitido: usa _zarisGoInicio() (shell vanilla → dashboard)
                 );
             } else {
                 const u = await ZUtils.apiFetch(`/usuarios/${state.usuario.id_usuario}`, { method:'PUT', body:JSON.stringify(payload) });

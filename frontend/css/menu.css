@@ -31,6 +31,16 @@
   z-index: 100;
 }
 
+.topbar__left {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  min-width: 0;
+  flex-wrap: nowrap;
+  flex-shrink: 1;
+  overflow: hidden;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -55,7 +65,75 @@
   transition: color 150ms ease;
 }
 
+.brand__app {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  padding-left: 8px;
+  border-left: 1px solid var(--border-primary);
+  white-space: nowrap;
+}
+
 .brand:hover .brand__name { color: var(--color-error); }
+
+.topbar__sep {
+  width: 1px;
+  height: 28px;
+  background: var(--border-medium);
+  flex-shrink: 0;
+}
+
+.muni {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.muni__logo {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  flex-shrink: 0;
+  border-radius: 4px;
+}
+
+.muni__nombre {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar__center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 0;
+}
+
+.topbar__clock {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg-2);
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .brand__app, .muni__nombre, .topbar__clock { display: none; }
+}
 
 .topbar__right {
   display: flex;

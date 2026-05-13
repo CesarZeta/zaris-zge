@@ -2,6 +2,12 @@
 
 (async function () {
 
+  // ── API base (se usa para identidad y refresh de modulos_permitidos) ──
+  const _local = ['localhost', '127.0.0.1', '0.0.0.0'];
+  const API = _local.includes(window.location.hostname)
+    ? 'http://127.0.0.1:8000'
+    : 'https://zaris-api-production-bf0b.up.railway.app';
+
   // ── Sesión ──────────────────────────────────────────────────
   const session = JSON.parse(localStorage.getItem('zaris_session') || 'null');
   let user      = session?.user;
@@ -11,10 +17,6 @@
   // logueado desde antes del deploy ve el sidebar filtrado sin re-loguear.
   if (user && !Array.isArray(user.modulos_permitidos)) {
     try {
-      const _local = ['localhost', '127.0.0.1', '0.0.0.0'];
-      const API = _local.includes(window.location.hostname)
-        ? 'http://127.0.0.1:8000'
-        : 'https://zaris-api-production-bf0b.up.railway.app';
       const token = session?.access_token || session?.state?.accessToken;
       if (token) {
         const res = await fetch(`${API}/api/v1/auth/me`, {
@@ -131,7 +133,7 @@
   // ── Shell navigation (iframe) ─────────────────────────────────
   window.shellNavigate = function (url) {
     const frame = document.getElementById('module-frame');
-    if (frame) frame.src = url || 'frontend/welcome.html';
+    if (frame) frame.src = url || 'web-app/dist/index.html#/dashboard';
   };
 
   // Handler para links del sidebar plano (nav-flat__item) y legacy (nav__link).
@@ -143,6 +145,50 @@
       window.shellNavigate(link.getAttribute('href'));
     });
   });
+
+  // ── Identidad del topbar (nombre app + logo/nombre municipio) ──
+  // GET /api/v1/config/identidad es publico. Cualquier valor que falle queda
+  // con los defaults del HTML ("GESTION ESTADO" / "MUNICIPALIDAD" / sin logo).
+  (async function cargarIdentidad() {
+    try {
+      const res = await fetch(`${API}/api/v1/config/identidad`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const appEl = document.getElementById('topbar-app-nombre');
+      const muniNombreEl = document.getElementById('topbar-muni-nombre');
+      const muniLogoEl = document.getElementById('topbar-muni-logo');
+      if (appEl && data.app_nombre) appEl.textContent = data.app_nombre;
+      if (muniNombreEl && data.municipio_nombre) muniNombreEl.textContent = data.municipio_nombre;
+      if (muniLogoEl && data.municipio_logo_url) {
+        muniLogoEl.src = data.municipio_logo_url;
+        muniLogoEl.hidden = false;
+        // Si la imagen falla al cargar, la ocultamos para no mostrar el icono roto.
+        muniLogoEl.addEventListener('error', () => { muniLogoEl.hidden = true; }, { once: true });
+      }
+    } catch (e) { /* fail-open: defaults del HTML */ }
+  })();
+
+  // ── Reloj del topbar ──────────────────────────────────────────
+  // Formato "mar 13 may, 14:32". Refresca cada 30s (granularidad de minuto).
+  const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const DIAS  = ['dom','lun','mar','mié','jue','vie','sáb'];
+  function _fmtFechaHora(d) {
+    const dia  = DIAS[d.getDay()];
+    const num  = d.getDate();
+    const mes  = MESES[d.getMonth()];
+    const hh   = String(d.getHours()).padStart(2, '0');
+    const mm   = String(d.getMinutes()).padStart(2, '0');
+    return `${dia} ${num} ${mes}, ${hh}:${mm}`;
+  }
+  function _refrescarReloj() {
+    const el = document.getElementById('topbar-clock');
+    if (!el) return;
+    const d = new Date();
+    el.textContent = _fmtFechaHora(d);
+    el.setAttribute('datetime', d.toISOString());
+  }
+  _refrescarReloj();
+  setInterval(_refrescarReloj, 30000);
 
   // ── Auto-cargar módulo desde ?modulo=<ruta> ───────────────────
   // Permite que un acceso standalone (vanilla o bundle React) sea

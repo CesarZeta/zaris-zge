@@ -9,7 +9,7 @@
 
   <link rel="stylesheet" href="design-system/fonts/fonts.css">
   <link rel="stylesheet" href="design-system/colors_and_type.css">
-  <link rel="stylesheet" href="frontend/css/menu.css">
+  <link rel="stylesheet" href="frontend/css/menu.css?v=2026-05-13c">
 
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 </head>
@@ -18,18 +18,36 @@
 
     <!-- ── Topbar global ── -->
     <header class="topbar" role="banner">
-      <a class="brand" href="index.html" aria-label="ZARIS — Inicio">
-        <svg class="brand__mark" viewBox="0 0 500 500" aria-hidden="true">
-          <g fill="none" stroke="currentColor" stroke-width="34"
-             stroke-linecap="round" stroke-linejoin="round">
-            <path d="M 110 78 L 388 78"/>
-            <path d="M 388 78 L 110 430"/>
-            <path d="M 388 220 L 222 430"/>
-            <path d="M 388 362 L 334 430"/>
-          </g>
-        </svg>
-        <span class="brand__name">ZARIS</span>
-      </a>
+      <div class="topbar__left">
+        <a class="brand" href="index.html" aria-label="ZARIS — Inicio">
+          <svg class="brand__mark" viewBox="0 0 500 500" aria-hidden="true">
+            <g fill="none" stroke="currentColor" stroke-width="34"
+               stroke-linecap="round" stroke-linejoin="round">
+              <path d="M 110 78 L 388 78"/>
+              <path d="M 388 78 L 110 430"/>
+              <path d="M 388 220 L 222 430"/>
+              <path d="M 388 362 L 334 430"/>
+            </g>
+          </svg>
+          <span class="brand__name">ZARIS</span>
+          <span class="brand__app" id="topbar-app-nombre">GESTION ESTADO</span>
+        </a>
+
+        <span class="topbar__sep" aria-hidden="true"></span>
+
+        <!-- Identidad del municipio: logo (opcional) + nombre. La cargan menu.js
+             desde /api/v1/config/identidad. Si municipio_logo_url esta vacio,
+             el <img> queda oculto y solo se muestra el texto. -->
+        <div class="muni" id="topbar-muni">
+          <img class="muni__logo" id="topbar-muni-logo" alt="Logo municipio" hidden>
+          <span class="muni__nombre" id="topbar-muni-nombre">MUNICIPALIDAD</span>
+        </div>
+      </div>
+
+      <div class="topbar__center">
+        <!-- Fecha y hora del cliente. menu.js la inicializa y refresca cada 30s. -->
+        <time class="topbar__clock" id="topbar-clock" datetime="">—</time>
+      </div>
 
       <div class="topbar__right">
         <!-- Campana de notificaciones (placeholder visual, sin logica todavia) -->
@@ -147,7 +165,7 @@
           <span>maestros</span>
         </a>
 
-        <a class="nav-flat__item" href="web-app/dist/index.html#/config/permisos" data-modulo="usuarios">
+        <a class="nav-flat__item" href="web-app/dist/index.html#/config/identidad" data-modulo="usuarios">
           <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
             <circle cx="12" cy="12" r="3"/>
@@ -162,7 +180,7 @@
 
     <!-- ── Canvas ── -->
     <main class="canvas" id="canvas">
-      <iframe id="module-frame" src="frontend/welcome.html" title="Módulo activo"></iframe>
+      <iframe id="module-frame" src="web-app/dist/index.html#/dashboard" title="Módulo activo"></iframe>
     </main>
 
   </div>
@@ -173,6 +191,6 @@
       window.location.replace('frontend/login.html');
     }
   </script>
-  <script src="frontend/js/menu.js"></script>
+  <script src="frontend/js/menu.js?v=2026-05-13a"></script>
 </body>
 </html>
