@@ -2,6 +2,7 @@ import { Settings } from 'lucide-react'
 import { Navigate } from 'react-router-dom'
 import type { ModuleManifest } from '../../lib/types'
 import { ConfigLayout } from './ConfigLayout'
+import { IdentidadView } from './views/IdentidadView'
 import { UsuariosPermisosView } from './views/UsuariosPermisosView'
 import { CatalogoModulosView } from './views/CatalogoModulosView'
 import { SistemaView } from './views/SistemaView'
@@ -12,7 +13,7 @@ const Wrap = (Component: React.FC) => () => (
   </ConfigLayout>
 )
 
-const RedirectPermisos = () => <Navigate to="/config/permisos" replace />
+const RedirectIdentidad = () => <Navigate to="/config/identidad" replace />
 
 export const configModule: ModuleManifest = {
   id: 'config',
@@ -22,7 +23,8 @@ export const configModule: ModuleManifest = {
   // tenes acceso a configuracion. Backend `require_admin` exige nivel=1 igual.
   moduloCodigo: 'usuarios',
   routes: [
-    { index: true,           element: RedirectPermisos,        handle: { breadcrumb: 'config' } },
+    { index: true,           element: RedirectIdentidad,          handle: { breadcrumb: 'config' } },
+    { path: 'identidad',     element: Wrap(IdentidadView),        handle: { breadcrumb: 'config · identidad' } },
     { path: 'permisos',      element: Wrap(UsuariosPermisosView), handle: { breadcrumb: 'config · permisos' } },
     { path: 'modulos',       element: Wrap(CatalogoModulosView),  handle: { breadcrumb: 'config · módulos' } },
     { path: 'sistema',       element: Wrap(SistemaView),          handle: { breadcrumb: 'config · sistema' } },
