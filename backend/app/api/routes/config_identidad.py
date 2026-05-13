@@ -28,7 +28,10 @@ from app.core import storage
 router = APIRouter(prefix="/api/v1/config/identidad", tags=["Config - Identidad"])
 
 BUCKET = "config-assets"
-CLAVES = ("app_nombre", "municipio_nombre", "municipio_logo_url")
+# `app_nombre` ('GESTION ESTADO') es hardcoded del producto, no editable.
+# Solo persistimos lo que el municipio puede personalizar.
+APP_NOMBRE = "GESTION ESTADO"
+CLAVES = ("municipio_nombre", "municipio_logo_url")
 MIME_OK = {"image/png", "image/jpeg", "image/webp", "image/svg+xml"}
 MIME_EXT = {
     "image/png": "png",
@@ -50,13 +53,12 @@ async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
 # ---------------------------------------------------------------------------
 
 class IdentidadOut(BaseModel):
-    app_nombre: str
+    app_nombre: str  # constante del producto, devuelto por compat con shell vanilla
     municipio_nombre: str
     municipio_logo_url: str
 
 
 class IdentidadUpdate(BaseModel):
-    app_nombre: Optional[str] = Field(default=None, max_length=80)
     municipio_nombre: Optional[str] = Field(default=None, max_length=120)
     municipio_logo_url: Optional[str] = Field(default=None, max_length=500)
 
@@ -84,7 +86,7 @@ async def _leer_claves(db: AsyncSession) -> dict[str, str]:
     data = {r.clave: r.valor for r in rows.fetchall()}
     # Defaults para claves faltantes (no deberian faltar tras seed, pero por las dudas)
     return {
-        "app_nombre": data.get("app_nombre", "GESTION ESTADO"),
+        "app_nombre": APP_NOMBRE,
         "municipio_nombre": data.get("municipio_nombre", "MUNICIPALIDAD"),
         "municipio_logo_url": data.get("municipio_logo_url", ""),
     }
