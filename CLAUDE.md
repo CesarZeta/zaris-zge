@@ -804,6 +804,17 @@ CHECK constraint activo: `ck_reclamo_estado` con valores `('Sin asignar','En ges
 
 **Catálogos seedeados en prod:** municipios=1, estado_evento=3, estado_reserva=3. Sin eventos productivos (1 residual del E2E con `activo=false`).
 
+### Migraciones 40-43 — Agenda sub-fase B1: Espacios + Disponibilidad multi-rango
+
+**Aplicadas en local y prod al 2026-05-13.** Habilitan los tres tipos de recurso (`agente`, `equipo`, `espacio`) y horarios laborales multi-rango con turnos rotativos. Detalle:
+
+- **Mig 40** (`40_agenda_espacios.sql`): crea `espacios_agenda` (estándar §10 completo, con `atendido BOOLEAN DEFAULT TRUE`, `capacidad_personas`, `direccion`, `id_subarea`) + N:M `espacio_agentes` (con UNIQUE `(id_espacio, id_agente)`). Catálogo separado de `lugares_atencion` legacy a propósito (ese legacy no tiene shape §10 y no es 1:1 con espacios de agenda — ver decisión 2026-05-13).
+- **Mig 41** (`41_agenda_disponibilidad_recurso.sql`): crea `disponibilidad_recurso` (multi-rango — múltiples filas por recurso permiten turnos rotativos). Columnas clave: `tipo_recurso ∈ {agente,equipo,espacio}`, `id_recurso`, `dias_semana SMALLINT 0-127` (bitmask §27), `hora_inicio/hora_fin TIME`, `vigente_desde/vigente_hasta DATE` (opcionales, para rotaciones programadas), `etiqueta`. CHECK enforce: `hora_fin > hora_inicio` y `vigente_hasta >= vigente_desde`. Estándar §10 completo.
+- **Mig 42** (`42_agenda_tipo_recurso_espacio.sql`): amplía CHECK `tipo_recurso` en `ocupaciones` (`ck_ocup_tipo_recurso`) y `evento_encargados` (`ck_evt_enc_tipo_recurso`) agregando `'espacio'`. Sin FK física (id_recurso es polimórfica; validación en backend).
+- **Mig 43** (`43_agenda_eventos_id_espacio.sql`): agrega `eventos.id_espacio INTEGER REFERENCES espacios_agenda(id_espacio) ON DELETE SET NULL` (opcional — eventos itinerantes/virtuales no usan espacio).
+
+Migraciones idempotentes (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS`). No rompen compat: las tablas nuevas vienen vacías y el filtro `tipo_recurso` en endpoints existentes seguía aceptando `agente|equipo|todos` y ahora también acepta `espacio`.
+
 ### Migración 38 — Permisos por módulo (`backend/migrations/38_permisos_por_modulo.sql`)
 
 **Aplicada en local y prod al 2026-05-12.** Crea `modulos` (8 seeds: reclamos, padrones, ot_*, turnos, usuarios, admin_tablas con `min_nivel_acceso` segmentado) + `usuario_modulos` (overrides). Ambas con estándar §10 completo. CHECK `min_nivel_acceso BETWEEN 1 AND 4`. UNIQUE `(id_usuario, modulo_codigo)` en overrides. Ver §30 para el detalle del modelo y los endpoints.
@@ -1280,6 +1291,80 @@ Pruebas validadas: 9 PASS / 0 FAIL en agente Chrome (T1-T11, ver `reporte_prueba
 
 #### Aplicar en prod
 - [x] ~~Replicar migraciones 30-34 + `seed_agenda.py` en Supabase prod~~ — cerrado 2026-05-12. Las tablas habían entrado en prod durante el E2E del autoservicio sin documentar. Esta sesión completó la parte 2 de mig 30 (ALTER tipo_reclamo) + creó y aplicó mig 37 (defaults + NOT NULL) en local y prod. Ver §21 sección "Migraciones 30-37".
+
+### Sub-fase B1 — Espacios + Disponibilidad multi-rango (BACKEND ✅ ENTREGADO 2026-05-13)
+
+Habilita 3 tipos de recurso (`agente`, `equipo`, `espacio`) en la grilla de agenda, horarios laborales multi-rango (turnos rotativos), distinción atendido/desatendido para espacios, y eventos como bloques en la grilla. **Frontend pendiente** (sub-fase B2).
+
+**DB (migs 40-43):** ver §21.
+
+**Servicio `services/agenda.py::disponibilidad_efectiva(db, tipo_recurso, id_recurso, fecha)`**: resuelve los rangos horarios efectivos para una fecha aplicando bitmask `dias_semana` + ventana `vigente_desde/hasta`. Para `tipo_recurso='espacio'`:
+- **Espacio desatendido**: devuelve directo el horario propio del espacio.
+- **Espacio atendido**: intersecta el horario propio del espacio con la **unión** de horarios de los agentes vinculados activos (tabla `espacio_agentes`). Si el espacio no tiene horario propio, devuelve la unión sola. Si no tiene agentes vinculados, lista vacía.
+
+Función auxiliar `_merge_rangos()` une rangos solapados o contiguos para evitar duplicados (preserva la `etiqueta` del primer rango). Etiqueta de los rangos unidos se descarta. Quirk: cast explícito `(:f)::date` en SQL — asyncpg pasa parámetros DATE como `unknown` y Postgres no puede resolver el overload de `EXTRACT(ISODOW FROM ...)` sin el cast (cazado en smoke del 2026-05-13).
+
+**Routers nuevos:**
+
+| Router | Prefix | Endpoints |
+|---|---|---|
+| `agenda_espacios.py` | `/api/v1/agenda/espacios` | GET `` (listado, filtros `atendido`/`q`), POST, GET `/{id}` (con `agentes_vinculados`), PUT `/{id}`, DELETE `/{id}` (soft + cascade soft N:M), GET `/{id}/agentes`, POST `/{id}/agentes`, DELETE `/{id}/agentes/{id_espacio_agente}` |
+| `agenda_disponibilidad.py` | `/api/v1/agenda/disponibilidad` | GET `` (filtros tipo_recurso/id_recurso), POST, PUT `/{id}`, DELETE `/{id}` (soft), GET `/efectiva?tipo_recurso=&id_recurso=&fecha=` |
+
+Permisos: `nivel_acceso <= 2` (admin/supervisor) puede mutar; cualquier autenticado lee. POST valida existencia del recurso (`agentes/equipos/espacios_agenda WHERE activo=TRUE`).
+
+**Modificaciones a `agenda_v2.py`:**
+
+| Endpoint | Cambio |
+|---|---|
+| `GET /agenda/calendario` | Acepta `tipo_recurso='espacio'` y `tipo_recurso='todos'` (default) ahora incluye espacios. Nuevo query param `atendido` (solo aplica si tipo=`espacio` o `todos`). Response agrega `recursos[].atendido`, `recursos[].disponibilidad: [{hora_inicio,hora_fin,etiqueta}]`, y top-level `eventos: [{id_evento,nombre,...,capacidad_ciudadanos,reservas_activas,cupo_libre,id_espacio,encargados:[[tipo,id]]}]`. |
+| `GET /agenda/mes` | Acepta `tipo_recurso` opcional. Cuando != `todos` el conteo de ocupaciones se filtra por `ocupaciones.tipo_recurso`. |
+| `GET /agenda/semana` (**nuevo**) | `desde=YYYY-MM-DD&dias=N` (1-14, default 7). Mismos filtros que `/calendario`. Response: `{desde, hasta, id_municipio, recursos:[...sin ocupaciones], dias:[{fecha, ocupaciones, ausencias, eventos, disponibilidad_por_recurso}]}`. |
+
+**Schemas Pydantic nuevos en `schemas/agenda_v2.py`:**
+- `DisponibilidadRangoEfectivo` — `{hora_inicio: time, hora_fin: time, etiqueta?: str}`. Es lo que devuelve `disponibilidad_efectiva()`.
+- `EventoEnCalendarioOut` — vista liviana del evento con `cupo_libre`, `id_espacio`, `encargados: list[tuple[str,int]]` (para pintar bloque en la fila adecuada).
+- `CalendarioSemanaOut` + `CalendarioSemanaDiaOut`.
+- `EspacioAgendaCreate/Update/Out`, `EspacioAgenteCreate/Out`, `DisponibilidadRecursoCreate/Update/Out`.
+- `CalendarioRecurso` agrega `atendido: bool | None` y `disponibilidad: list[DisponibilidadRangoEfectivo]`.
+- `RecursoOut.tipo_recurso`, `EventoEncargadoCreate.tipo_recurso`, `OcupacionCreate.tipo_recurso`, `OcupacionUpdate.tipo_recurso` aceptan ahora `'espacio'`.
+
+**Compat retro garantizado:**
+- Endpoints existentes (`/calendario`, `/mes`, `/ocupaciones`, `/eventos/{id}/encargados`) siguen aceptando los valores anteriores (`agente|equipo|todos`); solo agregan `espacio`.
+- Campos nuevos en responses (`atendido`, `disponibilidad`, `eventos` en /calendario) son listas con default `[]` — clientes viejos pueden ignorarlos.
+- Validador del CHECK constraint enforce: insertar `tipo_recurso='espacio'` en `ocupaciones`/`evento_encargados` ya funciona.
+
+**Verbos HTTP nuevos del módulo (sub-fase B1):**
+
+| Acción | Verbo | Path |
+|---|---|---|
+| Listar espacios | GET | `/api/v1/agenda/espacios` |
+| Crear espacio | POST | `/api/v1/agenda/espacios` |
+| Detalle espacio (con agentes vinculados) | GET | `/api/v1/agenda/espacios/{id}` |
+| Editar espacio | PUT | `/api/v1/agenda/espacios/{id}` |
+| Borrar espacio (soft + N:M cascade) | DELETE | `/api/v1/agenda/espacios/{id}` |
+| Listar agentes de un espacio | GET | `/api/v1/agenda/espacios/{id}/agentes` |
+| Vincular agente | POST | `/api/v1/agenda/espacios/{id}/agentes` |
+| Desvincular agente | DELETE | `/api/v1/agenda/espacios/{id}/agentes/{id_ea}` |
+| Listar disponibilidad | GET | `/api/v1/agenda/disponibilidad` |
+| Crear disponibilidad | POST | `/api/v1/agenda/disponibilidad` |
+| Editar | PUT | `/api/v1/agenda/disponibilidad/{id}` |
+| Borrar (soft) | DELETE | `/api/v1/agenda/disponibilidad/{id}` |
+| Consultar efectiva (resolver bitmask + vigencia + intersección espacio atendido) | GET | `/api/v1/agenda/disponibilidad/efectiva?tipo_recurso=&id_recurso=&fecha=` |
+| Vista semanal | GET | `/api/v1/agenda/semana?desde=&dias=&tipo_recurso=&atendido=` |
+
+#### Pendiente B2 — Frontend (3 vistas + filtros)
+
+- 3 vistas switcheables en `AgendaLayout`: **Día / Semana / Mes**. Día y Semana = grillas Gantt (filas=recursos, columnas=horas o días). Mes = calendario con bloques de eventos/ocupaciones.
+- Toggle de tipo de recurso: **Agentes / Equipos / Espacios atendidos / Espacios desatendidos** (4 botones).
+- Renderizado en grilla:
+  - Disponibilidad horaria del recurso = fondo claro habilitado.
+  - Fuera de horario = gris diagonal "no disponible".
+  - Ocupaciones = bloques opacos (como hoy).
+  - **Eventos = bloques violeta con badge `(3/20)` cupo libre. Cupo agotado = tachado.**
+  - Ausencias = bloque rojo translúcido (solo agentes).
+- UI de gestión: pantalla "Configuración" del módulo Agenda con tabs Espacios + Disponibilidad. Cada espacio muestra sus agentes vinculados; cada disponibilidad usa el helper §27 (`web-app/src/lib/diasSemana.ts`) para el bitmask.
+- Estimado: 3-5 días para B2 completo.
 
 ## 28. Recibir prompts armados afuera del proyecto
 

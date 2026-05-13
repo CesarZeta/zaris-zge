@@ -98,7 +98,7 @@ class EventoDetalleOut(EventoOut):
 # Encargados de evento
 # =============================================================================
 class EventoEncargadoCreate(BaseModel):
-    tipo_recurso: Literal["agente", "equipo"]
+    tipo_recurso: Literal["agente", "equipo", "espacio"]
     id_recurso: int
 
 
@@ -151,7 +151,7 @@ class ReservaOut(BaseModel):
 # =============================================================================
 class OcupacionCreate(BaseModel):
     tipo: Literal["ot", "evento", "turno"]
-    tipo_recurso: Literal["agente", "equipo"]
+    tipo_recurso: Literal["agente", "equipo", "espacio"]
     id_recurso: int
     fecha: date
     hora_inicio: time
@@ -188,7 +188,7 @@ class OcupacionUpdate(BaseModel):
     duracion_aplicada_min: Optional[int] = Field(None, ge=0)
     rol_en_evento: Optional[str] = None
     motivo: Optional[str] = None
-    tipo_recurso: Optional[Literal["agente", "equipo"]] = None
+    tipo_recurso: Optional[Literal["agente", "equipo", "espacio"]] = None
     id_recurso: Optional[int] = None
 
     @model_validator(mode="after")
@@ -270,18 +270,83 @@ class RecursoAgendaOut(BaseModel):
     ausencias: list[AusenciaOut] = []
 
 
+class DisponibilidadRangoEfectivo(BaseModel):
+    """Un rango horario de disponibilidad calculada para un dia puntual.
+
+    A diferencia de DisponibilidadRecursoOut (que es CRUD), aqui hora_inicio /
+    hora_fin ya estan resueltas para el dia consultado (filtrando por
+    dias_semana bitmask y vigencias). Se usa en /calendario, /semana, /mes."""
+    hora_inicio: time
+    hora_fin: time
+    etiqueta: Optional[str] = None
+
+
+class EventoEnCalendarioOut(BaseModel):
+    """Vista liviana de un evento para pintarlo como bloque en la grilla.
+
+    cupo_libre = capacidad - reservas_activas. Cuando es 0, el frontend pinta
+    el bloque tachado / con badge 'agotado'."""
+    id_evento: int
+    nombre: str
+    fecha: date
+    hora_inicio: time
+    hora_fin: time
+    capacidad_ciudadanos: int
+    reservas_activas: int
+    cupo_libre: int
+    estado_codigo: Optional[str] = None
+    id_espacio: Optional[int] = None
+    id_subarea: Optional[int] = None
+    # Encargados resueltos a (tipo_recurso, id_recurso) pares para que el
+    # frontend pueda decidir en que fila pintar el bloque cuando esta filtrando
+    # por agentes/equipos. Si el filtro es por espacio, el id_espacio del propio
+    # evento alcanza.
+    encargados: list[tuple[str, int]] = []
+
+
 class CalendarioRecurso(BaseModel):
     tipo: str
     id_recurso: int
     nombre: Optional[str] = None
+    # Sub-fase B1: agregado para distinguir espacios atendidos vs desatendidos.
+    # None para agente/equipo, True/False para espacio.
+    atendido: Optional[bool] = None
     ocupaciones: list[OcupacionOut] = []
     ausencias: list[AusenciaOut] = []
+    # Sub-fase B1: rangos horarios de disponibilidad resueltos para esta fecha.
+    # Lista vacia => sin horario configurado (frontend pinta toda la fila como
+    # "fuera de horario" o "siempre disponible" segun convencion).
+    disponibilidad: list[DisponibilidadRangoEfectivo] = []
 
 
 class CalendarioDiaOut(BaseModel):
     fecha: date
     id_municipio: int
     recursos: list[CalendarioRecurso] = []
+    # Sub-fase B1: eventos del dia (resumen ligero) — pintar como bloques.
+    eventos: list[EventoEnCalendarioOut] = []
+
+
+class CalendarioSemanaDiaOut(BaseModel):
+    """Un dia dentro de la vista semanal. Mismo shape que /calendario pero
+    sin volver a listar los recursos (vienen al nivel raiz de la semana)."""
+    fecha: date
+    ocupaciones: list[OcupacionOut] = []
+    ausencias: list[AusenciaOut] = []
+    eventos: list[EventoEnCalendarioOut] = []
+    # Mapa recurso -> rangos disponibilidad para ESE dia (puede variar por dia
+    # cuando hay turnos rotativos).
+    disponibilidad_por_recurso: dict[str, list[DisponibilidadRangoEfectivo]] = {}
+
+
+class CalendarioSemanaOut(BaseModel):
+    """Vista semanal: 7 dias contiguos. Los recursos vienen al nivel raiz
+    (no se repiten por dia)."""
+    desde: date
+    hasta: date
+    id_municipio: int
+    recursos: list[CalendarioRecurso] = []   # sin disponibilidad ni ocupaciones (vienen en dias[])
+    dias: list[CalendarioSemanaDiaOut] = []
 
 
 class CalendarioMesDia(BaseModel):
@@ -310,10 +375,12 @@ class SubareaOut(BaseModel):
 
 
 class RecursoOut(BaseModel):
-    """Listado de agentes/equipos con nombre, para selectores por nombre."""
-    tipo_recurso: Literal["agente", "equipo"]
+    """Listado de recursos de agenda con nombre, para selectores."""
+    tipo_recurso: Literal["agente", "equipo", "espacio"]
     id_recurso: int
     nombre: str
+    # Solo poblado cuando tipo_recurso='espacio'.
+    atendido: Optional[bool] = None
 
 
 class OTBusquedaOut(BaseModel):
@@ -381,3 +448,118 @@ class ReservaPublicaOut(BaseModel):
     ciudadano_nombre: Optional[str] = None
     ciudadano_dni: Optional[str] = None
     evento: EventoPublicoOut
+
+
+# =============================================================================
+# Espacios de agenda (mig 40)
+# =============================================================================
+class EspacioAgendaBase(BaseModel):
+    nombre: str = Field(..., min_length=1, max_length=150)
+    descripcion: Optional[str] = None
+    direccion: Optional[str] = Field(None, max_length=300)
+    capacidad_personas: Optional[int] = Field(None, ge=0)
+    atendido: bool = True
+    id_subarea: Optional[int] = None
+
+
+class EspacioAgendaCreate(EspacioAgendaBase):
+    id_municipio: int = 1
+
+
+class EspacioAgendaUpdate(BaseModel):
+    nombre: Optional[str] = Field(None, min_length=1, max_length=150)
+    descripcion: Optional[str] = None
+    direccion: Optional[str] = Field(None, max_length=300)
+    capacidad_personas: Optional[int] = Field(None, ge=0)
+    atendido: Optional[bool] = None
+    id_subarea: Optional[int] = None
+    activo: Optional[bool] = None
+
+
+class EspacioAgendaOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id_espacio: int
+    nombre: str
+    descripcion: Optional[str] = None
+    direccion: Optional[str] = None
+    capacidad_personas: Optional[int] = None
+    atendido: bool
+    id_subarea: Optional[int] = None
+    subarea_nombre: Optional[str] = None
+    activo: bool
+    id_municipio: int
+    fecha_alta: datetime
+    fecha_modificacion: datetime
+    # Solo poblado por endpoints de detalle (no por listados):
+    agentes_vinculados: list["EspacioAgenteOut"] = []
+
+
+class EspacioAgenteCreate(BaseModel):
+    id_agente: int
+
+
+class EspacioAgenteOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id_espacio_agente: int
+    id_espacio: int
+    id_agente: int
+    agente_nombre: Optional[str] = None
+    activo: bool
+    fecha_alta: datetime
+
+
+# =============================================================================
+# Disponibilidad de recurso (mig 41)
+# =============================================================================
+class DisponibilidadRecursoBase(BaseModel):
+    tipo_recurso: Literal["agente", "equipo", "espacio"]
+    id_recurso: int
+    dias_semana: int = Field(..., ge=0, le=127, description="Bitmask: Lun=1, Mar=2, Mie=4, Jue=8, Vie=16, Sab=32, Dom=64")
+    hora_inicio: time
+    hora_fin: time
+    vigente_desde: Optional[date] = None
+    vigente_hasta: Optional[date] = None
+    etiqueta: Optional[str] = Field(None, max_length=60)
+
+    @model_validator(mode="after")
+    def _validar(self) -> "DisponibilidadRecursoBase":
+        if self.hora_fin <= self.hora_inicio:
+            raise ValueError("hora_fin debe ser mayor que hora_inicio")
+        if self.vigente_desde and self.vigente_hasta and self.vigente_hasta < self.vigente_desde:
+            raise ValueError("vigente_hasta debe ser >= vigente_desde")
+        return self
+
+
+class DisponibilidadRecursoCreate(DisponibilidadRecursoBase):
+    id_municipio: int = 1
+    id_subarea: Optional[int] = None
+
+
+class DisponibilidadRecursoUpdate(BaseModel):
+    dias_semana: Optional[int] = Field(None, ge=0, le=127)
+    hora_inicio: Optional[time] = None
+    hora_fin: Optional[time] = None
+    vigente_desde: Optional[date] = None
+    vigente_hasta: Optional[date] = None
+    etiqueta: Optional[str] = Field(None, max_length=60)
+    activo: Optional[bool] = None
+
+
+class DisponibilidadRecursoOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id_disponibilidad: int
+    tipo_recurso: str
+    id_recurso: int
+    dias_semana: int
+    hora_inicio: time
+    hora_fin: time
+    vigente_desde: Optional[date] = None
+    vigente_hasta: Optional[date] = None
+    etiqueta: Optional[str] = None
+    activo: bool
+    id_municipio: int
+    fecha_alta: datetime
+    fecha_modificacion: datetime

@@ -27,8 +27,11 @@ from app.schemas.agenda_v2 import (
     CalendarioMesDia,
     CalendarioMesOut,
     CalendarioRecurso,
+    CalendarioSemanaDiaOut,
+    CalendarioSemanaOut,
     ConflictoOut,
     ConflictoResolverIn,
+    DisponibilidadRangoEfectivo,
     EncargadoConflictoWarning,
     EstadoCatalogoOut,
     EventoBusquedaOut,
@@ -36,6 +39,7 @@ from app.schemas.agenda_v2 import (
     EventoDetalleOut,
     EventoEncargadoCreate,
     EventoEncargadoOut,
+    EventoEnCalendarioOut,
     EventoOut,
     EventoUpdate,
     OcupacionCreate,
@@ -53,6 +57,7 @@ from app.services.agenda import (
     cupo_disponible,
     descripcion_corta_sql,
     detectar_conflictos,
+    disponibilidad_efectiva,
     existe_recurso,
     generar_qr_codigo,
     lookup_estado_evento,
@@ -1111,42 +1116,26 @@ async def agenda_de_recurso(
 async def calendario_dia(
     fecha: date,
     id_municipio: int = 1,
-    tipo_recurso: Literal["agente", "equipo", "todos"] = "todos",
+    tipo_recurso: Literal["agente", "equipo", "espacio", "todos"] = "todos",
     id_subarea: Optional[int] = Query(None, description="Filtra recursos cuyo id_subarea coincida"),
+    atendido: Optional[bool] = Query(None, description="Solo aplica a tipo_recurso='espacio'. None=todos, True=atendidos, False=desatendidos"),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
 ):
     """Timeline del coordinador para una fecha. Devuelve los recursos del
-    municipio con ocupaciones (y ausencias para agentes) en ese dia."""
-    # 1) Recursos activos del municipio (filtrado opcional por subarea)
-    recursos: list[dict[str, Any]] = []
-    sa_clause = " AND id_subarea = :sa" if id_subarea is not None else ""
-    base_params: dict[str, Any] = {"m": id_municipio}
-    if id_subarea is not None:
-        base_params["sa"] = id_subarea
-    if tipo_recurso in ("agente", "todos"):
-        rows = (await db.execute(text(f"""
-            SELECT id_agente AS id_recurso, apellido || ', ' || nombre AS nombre
-            FROM agentes
-            WHERE activo = TRUE AND (id_municipio IS NULL OR id_municipio = :m){sa_clause}
-            ORDER BY apellido, nombre
-        """), base_params)).mappings().all()
-        for r in rows:
-            recursos.append({"tipo": "agente", "id_recurso": r["id_recurso"], "nombre": r["nombre"]})
-    if tipo_recurso in ("equipo", "todos"):
-        rows = (await db.execute(text(f"""
-            SELECT id_equipo AS id_recurso, nombre
-            FROM equipos
-            WHERE activo = TRUE AND (id_municipio IS NULL OR id_municipio = :m){sa_clause}
-            ORDER BY nombre
-        """), base_params)).mappings().all()
-        for r in rows:
-            recursos.append({"tipo": "equipo", "id_recurso": r["id_recurso"], "nombre": r["nombre"]})
+    municipio con ocupaciones, ausencias (solo agentes), disponibilidad
+    horaria resuelta para esa fecha, y los eventos del dia.
+
+    Sub-fase B1: agrega tipo_recurso='espacio', filtro 'atendido', disponibilidad
+    horaria y eventos en grilla. Compat retro: con defaults se comporta como antes
+    salvo que ahora tambien devuelve disponibilidad + eventos."""
+    recursos = await _listar_recursos_para_calendario(db, id_municipio, tipo_recurso, id_subarea, atendido)
+    eventos_dia = await _eventos_del_dia(db, fecha, id_municipio)
 
     if not recursos:
-        return {"fecha": fecha, "id_municipio": id_municipio, "recursos": []}
+        return {"fecha": fecha, "id_municipio": id_municipio, "recursos": [], "eventos": eventos_dia}
 
-    # 2) Ocupaciones del dia (un solo SELECT) y luego split en Python
+    # Ocupaciones del dia
     rows = (await db.execute(text(f"""
         SELECT o.id_ocupacion, o.tipo, o.tipo_recurso, o.id_recurso, o.fecha,
                o.hora_inicio, o.hora_fin, o.id_orden_trabajo, o.id_evento, o.id_ciudadano,
@@ -1166,7 +1155,7 @@ async def calendario_dia(
         key = (r["tipo_recurso"], r["id_recurso"])
         ocup_por_recurso.setdefault(key, []).append(dict(r))
 
-    # 3) Ausencias del dia (tabla nueva ausencias_agente, mig 39)
+    # Ausencias del dia (solo aplica a agentes)
     aus_por_agente: dict[int, list[dict[str, Any]]] = {}
     rows_aus = (await db.execute(text("""
         SELECT a.id_agente, au.id_ausencia_agente AS id_ausencia,
@@ -1186,18 +1175,124 @@ async def calendario_dia(
             "motivo": r["motivo"],
         })
 
-    # 4) Build response
     out_recursos = []
     for rec in recursos:
+        disp = await disponibilidad_efectiva(db, rec["tipo"], rec["id_recurso"], fecha)
         out_recursos.append({
             "tipo": rec["tipo"],
             "id_recurso": rec["id_recurso"],
             "nombre": rec["nombre"],
+            "atendido": rec.get("atendido"),
             "ocupaciones": ocup_por_recurso.get((rec["tipo"], rec["id_recurso"]), []),
             "ausencias": aus_por_agente.get(rec["id_recurso"], []) if rec["tipo"] == "agente" else [],
+            "disponibilidad": disp,
         })
 
-    return {"fecha": fecha, "id_municipio": id_municipio, "recursos": out_recursos}
+    return {"fecha": fecha, "id_municipio": id_municipio, "recursos": out_recursos, "eventos": eventos_dia}
+
+
+# =============================================================================
+# Helpers compartidos para /calendario y /semana
+# =============================================================================
+async def _listar_recursos_para_calendario(
+    db: AsyncSession,
+    id_municipio: int,
+    tipo_recurso: str,
+    id_subarea: Optional[int],
+    atendido: Optional[bool],
+) -> list[dict[str, Any]]:
+    """Listado de recursos activos del municipio para la grilla. Incluye
+    agentes, equipos y/o espacios segun `tipo_recurso`. Para espacios admite
+    filtro adicional `atendido`."""
+    recursos: list[dict[str, Any]] = []
+    sa_clause_simple = " AND id_subarea = :sa" if id_subarea is not None else ""
+    base_params: dict[str, Any] = {"m": id_municipio}
+    if id_subarea is not None:
+        base_params["sa"] = id_subarea
+
+    if tipo_recurso in ("agente", "todos"):
+        rows = (await db.execute(text(f"""
+            SELECT id_agente AS id_recurso, apellido || ', ' || nombre AS nombre
+            FROM agentes
+            WHERE activo = TRUE AND (id_municipio IS NULL OR id_municipio = :m){sa_clause_simple}
+            ORDER BY apellido, nombre
+        """), base_params)).mappings().all()
+        for r in rows:
+            recursos.append({"tipo": "agente", "id_recurso": r["id_recurso"], "nombre": r["nombre"], "atendido": None})
+
+    if tipo_recurso in ("equipo", "todos"):
+        rows = (await db.execute(text(f"""
+            SELECT id_equipo AS id_recurso, nombre
+            FROM equipos
+            WHERE activo = TRUE AND (id_municipio IS NULL OR id_municipio = :m){sa_clause_simple}
+            ORDER BY nombre
+        """), base_params)).mappings().all()
+        for r in rows:
+            recursos.append({"tipo": "equipo", "id_recurso": r["id_recurso"], "nombre": r["nombre"], "atendido": None})
+
+    if tipo_recurso in ("espacio", "todos"):
+        where = ["activo = TRUE", "id_municipio = :m"]
+        params: dict[str, Any] = {"m": id_municipio}
+        if id_subarea is not None:
+            where.append("id_subarea = :sa"); params["sa"] = id_subarea
+        if atendido is not None:
+            where.append("atendido = :at"); params["at"] = atendido
+        rows = (await db.execute(text(f"""
+            SELECT id_espacio AS id_recurso, nombre, atendido
+            FROM espacios_agenda
+            WHERE {' AND '.join(where)}
+            ORDER BY nombre
+        """), params)).mappings().all()
+        for r in rows:
+            recursos.append({"tipo": "espacio", "id_recurso": r["id_recurso"], "nombre": r["nombre"], "atendido": bool(r["atendido"])})
+
+    return recursos
+
+
+async def _eventos_del_dia(db: AsyncSession, fecha: date, id_municipio: int) -> list[dict[str, Any]]:
+    """Eventos activos en una fecha, con cupo y encargados resueltos."""
+    rows = (await db.execute(text("""
+        SELECT e.id_evento, e.nombre, e.fecha, e.hora_inicio, e.hora_fin,
+               e.capacidad_ciudadanos, e.id_espacio, e.id_subarea,
+               ee.codigo AS estado_codigo,
+               (SELECT COUNT(*) FROM evento_reservas r
+                 WHERE r.id_evento = e.id_evento AND r.activo = TRUE
+                   AND r.id_estado_reserva IN (
+                       SELECT id_estado_reserva FROM estado_reserva
+                       WHERE codigo IN ('reservada','asistio')
+                   )) AS reservas_activas
+        FROM eventos e
+        LEFT JOIN estado_evento ee ON ee.id_estado_evento = e.id_estado_evento
+        WHERE e.activo = TRUE AND e.id_municipio = :m AND e.fecha = :f
+        ORDER BY e.hora_inicio
+    """), {"f": fecha, "m": id_municipio})).mappings().all()
+
+    out = []
+    for r in rows:
+        # Encargados resueltos como pares (tipo_recurso, id_recurso).
+        enc_rows = (await db.execute(text("""
+            SELECT tipo_recurso, id_recurso
+            FROM evento_encargados
+            WHERE id_evento = :id AND activo = TRUE
+        """), {"id": r["id_evento"]})).mappings().all()
+        encargados = [(e["tipo_recurso"], int(e["id_recurso"])) for e in enc_rows]
+        cap = int(r["capacidad_ciudadanos"] or 0)
+        reservas = int(r["reservas_activas"] or 0)
+        out.append({
+            "id_evento": r["id_evento"],
+            "nombre": r["nombre"],
+            "fecha": r["fecha"],
+            "hora_inicio": r["hora_inicio"],
+            "hora_fin": r["hora_fin"],
+            "capacidad_ciudadanos": cap,
+            "reservas_activas": reservas,
+            "cupo_libre": max(0, cap - reservas),
+            "estado_codigo": r["estado_codigo"],
+            "id_espacio": r["id_espacio"],
+            "id_subarea": r["id_subarea"],
+            "encargados": encargados,
+        })
+    return out
 
 
 @router.get("/mes", response_model=CalendarioMesOut)
@@ -1205,10 +1300,13 @@ async def calendario_mes(
     anio: int = Query(..., ge=2020, le=2100),
     mes: int = Query(..., ge=1, le=12),
     id_municipio: int = 1,
+    tipo_recurso: Literal["agente", "equipo", "espacio", "todos"] = "todos",
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
 ):
-    """Resumen mensual: por dia, conteos de eventos, ocupaciones por tipo y ausencias."""
+    """Resumen mensual: por dia, conteos de eventos, ocupaciones por tipo y ausencias.
+    Cuando tipo_recurso != 'todos' los conteos de ocupaciones se filtran por
+    `ocupaciones.tipo_recurso`."""
     _, ndias = calendar.monthrange(anio, mes)
     primer_dia = date(anio, mes, 1)
     ultimo_dia = date(anio, mes, ndias)
@@ -1223,14 +1321,19 @@ async def calendario_mes(
     """), {"m": id_municipio, "fd": primer_dia, "fh": ultimo_dia})).mappings().all()
     eventos_por_dia = {r["fecha"]: int(r["cant"]) for r in ev_rows}
 
-    # Ocupaciones por dia y por tipo
-    oc_rows = (await db.execute(text("""
+    # Ocupaciones por dia y por tipo (con filtro opcional por tipo_recurso)
+    oc_params: dict[str, Any] = {"m": id_municipio, "fd": primer_dia, "fh": ultimo_dia}
+    oc_filter = ""
+    if tipo_recurso != "todos":
+        oc_filter = " AND tipo_recurso = :tr"
+        oc_params["tr"] = tipo_recurso
+    oc_rows = (await db.execute(text(f"""
         SELECT fecha, tipo, COUNT(*) AS cant
         FROM ocupaciones
         WHERE activo = TRUE AND id_municipio = :m
-          AND fecha BETWEEN :fd AND :fh
+          AND fecha BETWEEN :fd AND :fh{oc_filter}
         GROUP BY fecha, tipo
-    """), {"m": id_municipio, "fd": primer_dia, "fh": ultimo_dia})).mappings().all()
+    """), oc_params)).mappings().all()
     ocup_por_dia: dict[date, dict[str, int]] = {}
     for r in oc_rows:
         ocup_por_dia.setdefault(r["fecha"], {})[r["tipo"]] = int(r["cant"])
@@ -1267,6 +1370,119 @@ async def calendario_mes(
         })
 
     return {"anio": anio, "mes": mes, "id_municipio": id_municipio, "dias": dias}
+
+
+# =============================================================================
+# Vista semanal (sub-fase B1)
+# =============================================================================
+@router.get("/semana", response_model=CalendarioSemanaOut)
+async def calendario_semana(
+    desde: date = Query(..., description="Fecha del primer dia (inclusive)"),
+    dias: int = Query(7, ge=1, le=14, description="Cantidad de dias contiguos (default 7)"),
+    id_municipio: int = 1,
+    tipo_recurso: Literal["agente", "equipo", "espacio", "todos"] = "todos",
+    id_subarea: Optional[int] = Query(None),
+    atendido: Optional[bool] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
+    """Vista semanal: 7 dias contiguos (configurable). Los recursos vienen al
+    nivel raiz; las ocupaciones/eventos/disponibilidad se desglosan por dia.
+
+    Una sola query a ocupaciones/eventos cubre todo el rango (O(1) round-trips
+    contra DB para el bloque transaccional; la disponibilidad si necesita un
+    pase por (recurso, dia) por el bitmask + vigencia)."""
+    hasta = desde + timedelta(days=dias - 1)
+
+    recursos = await _listar_recursos_para_calendario(db, id_municipio, tipo_recurso, id_subarea, atendido)
+
+    # Ocupaciones de TODO el rango
+    rows = (await db.execute(text(f"""
+        SELECT o.id_ocupacion, o.tipo, o.tipo_recurso, o.id_recurso, o.fecha,
+               o.hora_inicio, o.hora_fin, o.id_orden_trabajo, o.id_evento, o.id_ciudadano,
+               o.duracion_aplicada_min, o.rol_en_evento, o.motivo,
+               o.activo, o.id_municipio, o.fecha_alta,
+               {descripcion_corta_sql()} AS descripcion_corta
+        FROM ocupaciones o
+        LEFT JOIN eventos         ev ON ev.id_evento    = o.id_evento
+        LEFT JOIN ordenes_trabajo ot ON ot.id_ot        = o.id_orden_trabajo
+        LEFT JOIN ciudadanos      ci ON ci.id_ciudadano = o.id_ciudadano
+        WHERE o.activo = TRUE AND o.id_municipio = :m
+          AND o.fecha BETWEEN :fd AND :fh
+        ORDER BY o.fecha, o.tipo_recurso, o.id_recurso, o.hora_inicio
+    """), {"m": id_municipio, "fd": desde, "fh": hasta})).mappings().all()
+    ocup_por_dia: dict[date, list[dict[str, Any]]] = {}
+    for r in rows:
+        ocup_por_dia.setdefault(r["fecha"], []).append(dict(r))
+
+    # Ausencias activas en el rango (mapeadas dia por dia)
+    aus_por_dia: dict[date, list[dict[str, Any]]] = {}
+    aus_rows = (await db.execute(text("""
+        SELECT a.id_agente, au.id_ausencia_agente AS id_ausencia,
+               au.fecha_desde, au.fecha_hasta, au.motivo
+        FROM ausencias_agente au
+        JOIN agentes a ON a.id_agente = au.id_agente
+        WHERE au.activo = TRUE
+          AND NOT (au.fecha_hasta < :fd OR au.fecha_desde > :fh)
+          AND a.activo = TRUE
+          AND (a.id_municipio IS NULL OR a.id_municipio = :m)
+    """), {"m": id_municipio, "fd": desde, "fh": hasta})).mappings().all()
+    for r in aus_rows:
+        d0 = max(r["fecha_desde"], desde)
+        d1 = min(r["fecha_hasta"], hasta)
+        cur = d0
+        item = {
+            "id_agente": int(r["id_agente"]),
+            "id_ausencia": r["id_ausencia"],
+            "fecha_desde": r["fecha_desde"],
+            "fecha_hasta": r["fecha_hasta"],
+            "motivo": r["motivo"],
+        }
+        while cur <= d1:
+            aus_por_dia.setdefault(cur, []).append(item)
+            cur += timedelta(days=1)
+
+    # Eventos del rango
+    eventos_por_dia: dict[date, list[dict[str, Any]]] = {}
+    for i in range(dias):
+        d = desde + timedelta(days=i)
+        eventos_por_dia[d] = await _eventos_del_dia(db, d, id_municipio)
+
+    # Build response por dia
+    dias_out: list[dict[str, Any]] = []
+    for i in range(dias):
+        d = desde + timedelta(days=i)
+        disp_por_recurso: dict[str, list[dict[str, Any]]] = {}
+        for rec in recursos:
+            key = f"{rec['tipo']}:{rec['id_recurso']}"
+            disp_por_recurso[key] = await disponibilidad_efectiva(db, rec["tipo"], rec["id_recurso"], d)
+
+        dias_out.append({
+            "fecha": d,
+            "ocupaciones": ocup_por_dia.get(d, []),
+            "ausencias": aus_por_dia.get(d, []),
+            "eventos": eventos_por_dia.get(d, []),
+            "disponibilidad_por_recurso": disp_por_recurso,
+        })
+
+    # Recursos al nivel raiz: sin disponibilidad ni ocupaciones (ya vienen por dia)
+    recursos_raiz = [{
+        "tipo": r["tipo"],
+        "id_recurso": r["id_recurso"],
+        "nombre": r["nombre"],
+        "atendido": r.get("atendido"),
+        "ocupaciones": [],
+        "ausencias": [],
+        "disponibilidad": [],
+    } for r in recursos]
+
+    return {
+        "desde": desde,
+        "hasta": hasta,
+        "id_municipio": id_municipio,
+        "recursos": recursos_raiz,
+        "dias": dias_out,
+    }
 
 
 # =============================================================================
