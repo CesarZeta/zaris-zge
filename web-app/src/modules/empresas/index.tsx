@@ -16,6 +16,7 @@ export const empresasModule: ModuleManifest = {
   label: 'empresas',
   icon: Building2,
   moduloCodigo: 'padrones',
+  hideFromSidebar: true,  // Se llega via la landing del modulo Contactos.
   routes: [
     { index: true,           element: Wrap(BuscarView), handle: { breadcrumb: 'empresas · buscar' } },
     { path: 'buscar',        element: Wrap(BuscarView), handle: { breadcrumb: 'empresas · buscar' } },

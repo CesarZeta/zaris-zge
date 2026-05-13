@@ -97,31 +97,13 @@
     <aside class="sidebar" aria-label="Menú principal">
       <nav class="nav-flat" id="nav" aria-label="Navegación principal">
 
-        <a class="nav-flat__item" href="web-app/dist/index.html#/agenda/timeline" data-modulo="turnos">
-          <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect x="3" y="4" width="18" height="18" rx="2"/>
-            <path d="M16 2v4M8 2v4M3 10h18"/>
-          </svg>
-          <span>agenda</span>
-        </a>
-
-        <a class="nav-flat__item" href="web-app/dist/index.html#/ciudadanos" data-modulo="padrones">
-          <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-            <circle cx="9" cy="7" r="4"/>
-            <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
-            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-          </svg>
-          <span>ciudadanos</span>
-        </a>
-
-        <a class="nav-flat__item" href="web-app/dist/index.html#/empresas" data-modulo="padrones">
-          <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect x="4" y="2" width="16" height="20" rx="2"/>
-            <path d="M9 22v-4h6v4M8 6h.01M16 6h.01M12 6h.01M12 10h.01M12 14h.01M16 10h.01M16 14h.01M8 10h.01M8 14h.01"/>
-          </svg>
-          <span>empresas</span>
-        </a>
+        <!-- Orden de items definido por el usuario (sesion 2026-05-13).
+             Dashboard NO va en sidebar (es HOME del iframe).
+             Ciudadanos y Empresas viven dentro de Contactos (landing).
+             Usuarios sale del top-level y vive dentro de Maestros (admin_tablas
+             ya lo expone como tabla en su sidebar interno).
+             Turnos y Entradas son placeholders: hoy ambos van a Agenda hasta
+             que se definan los modulos propios. -->
 
         <a class="nav-flat__item" href="web-app/dist/index.html#/reclamos" data-modulo="reclamos">
           <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -132,6 +114,35 @@
             <polyline points="10 9 9 9 8 9"/>
           </svg>
           <span>reclamos</span>
+        </a>
+
+        <!-- Turnos: placeholder. Hoy enlaza a Agenda timeline. Cuando se defina
+             el modulo Turnos (frontoffice por espacio/lugar) reemplazar href. -->
+        <a class="nav-flat__item" href="web-app/dist/index.html#/agenda/timeline" data-modulo="turnos">
+          <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"/>
+            <polyline points="12 7 12 12 15 14"/>
+          </svg>
+          <span>turnos</span>
+        </a>
+
+        <!-- Entradas: placeholder. Hoy enlaza a Agenda eventos. Cuando se defina
+             el modulo Entradas (frontoffice de eventos) reemplazar href. -->
+        <a class="nav-flat__item" href="web-app/dist/index.html#/agenda/eventos" data-modulo="turnos">
+          <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7"/>
+            <path d="M3 7l9-4 9 4"/>
+            <path d="M9 12h6"/>
+          </svg>
+          <span>entradas</span>
+        </a>
+
+        <a class="nav-flat__item" href="web-app/dist/index.html#/agenda/timeline" data-modulo="turnos">
+          <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="18" rx="2"/>
+            <path d="M16 2v4M8 2v4M3 10h18"/>
+          </svg>
+          <span>agenda</span>
         </a>
 
         <!-- OT: link plano (lleva por default a supervisor). Las 3 mesas se eligen
@@ -146,14 +157,15 @@
           <span>OT</span>
         </a>
 
-        <a class="nav-flat__item" href="frontend/usuarios.html" data-modulo="usuarios">
+        <!-- Contactos: landing con tarjetas a Ciudadanos / Empresas. -->
+        <a class="nav-flat__item" href="web-app/dist/index.html#/contactos" data-modulo="padrones">
           <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-            <circle cx="8.5" cy="7" r="4"/>
-            <circle cx="18" cy="15" r="3"/>
-            <path d="M21 21l-1.5-1.5"/>
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
           </svg>
-          <span>usuarios</span>
+          <span>contactos</span>
         </a>
 
         <a class="nav-flat__item" href="frontend/admin_tablas.html?tabla=agentes" data-modulo="admin_tablas">
