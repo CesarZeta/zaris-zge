@@ -66,38 +66,32 @@ TABLE_CONFIG: dict[str, dict] = {
     },
     "servicios": {
         "pk": "id",
-        "cols": ["nombre", "descripcion", "id_area", "id_usuario_responsable", "capacidad_agentes",
+        "cols": ["nombre", "descripcion", "id_usuario_responsable", "capacidad_agentes",
                  "dias_semana", "hora_inicio", "hora_fin"],
         "fecha_mod": "modificado_en",
         "col_types": {"hora_inicio": "time", "hora_fin": "time"},
     },
-    # ── Tablas de Agenda (sin campos estándar de auditoría)
-    "areas": {
-        "pk": "id",
-        "cols": ["nombre", "descripcion"],
-        "fecha_mod": "modificado_en",
-        "has_audit": False,
-    },
+    # ── Tablas de Agenda (mig 39 estandariza agenda_clase y agenda_feriado)
     "lugares_atencion": {
         "pk": "id",
-        "cols": ["nombre", "direccion", "es_atencion", "capacidad_servicios", "id_area"],
+        "cols": ["nombre", "direccion", "es_atencion", "capacidad_servicios"],
         "fecha_mod": "modificado_en",
         "has_audit": False,
     },
     "agenda_clase": {
-        "pk": "id",
+        "pk": "id_agenda_clase",
         "cols": [
             "nombre", "descripcion", "visible_ciudadano", "requiere_rrhh",
-            "requiere_servicio", "requiere_lugar", "duracion_slot_minutos", "id_area",
+            "requiere_servicio", "requiere_lugar", "duracion_slot_minutos",
         ],
-        "fecha_mod": "modificado_en",
-        "has_audit": False,
+        "fecha_mod": "fecha_modificacion",
+        "has_audit": True,
     },
     "agenda_feriado": {
-        "pk": "id",
+        "pk": "id_agenda_feriado",
         "cols": ["fecha", "descripcion", "ambito"],
-        "fecha_mod": None,
-        "has_audit": False,
+        "fecha_mod": "fecha_modificacion",
+        "has_audit": True,
         "col_types": {"fecha": "date"},
     },
     # ── Reclamos

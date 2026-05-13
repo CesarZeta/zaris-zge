@@ -50,7 +50,6 @@ from app.schemas.agenda_v2 import (
     SubareaOut,
 )
 from app.services.agenda import (
-    agenda_ausencia_cols,
     cupo_disponible,
     descripcion_corta_sql,
     detectar_conflictos,
@@ -1052,8 +1051,7 @@ async def agenda_de_recurso(
 ):
     """Agenda completa de un recurso en un rango (max 31 dias).
     Incluye ocupaciones + ausencias del recurso (estas ultimas leyendo la tabla
-    legacy `agenda_ausencia` solo si el recurso es agente y existe vinculo via
-    `agentes.id_usuario`)."""
+    `ausencias_agente` introducida en mig 39, solo si el recurso es agente)."""
     if hasta < desde:
         raise HTTPException(422, "hasta debe ser >= desde")
     if (hasta - desde).days > 31:
@@ -1077,23 +1075,16 @@ async def agenda_de_recurso(
         ORDER BY o.fecha, o.hora_inicio
     """), {"tr": tipo_recurso, "ir": id_recurso, "fd": desde, "fh": hasta})).mappings().all()
 
-    # Ausencias legacy SOLO si es agente y tiene vinculo a usuarios.
+    # Ausencias (tabla nueva ausencias_agente, mig 39) - solo agentes
     ausencias: list[dict[str, Any]] = []
     if tipo_recurso == "agente":
-        id_usuario_agente = await db.scalar(text(
-            "SELECT id_usuario FROM agentes WHERE id_agente = :i"
-        ), {"i": id_recurso})
-        if id_usuario_agente:
-            cols = await agenda_ausencia_cols(db)
-            user_col = "id_usuario" if "id_usuario" in cols else None
-            if user_col:
-                ausencias = [dict(r) for r in (await db.execute(text(f"""
-                    SELECT id AS id_ausencia, fecha_desde, fecha_hasta, motivo, genera_alerta
-                    FROM agenda_ausencia
-                    WHERE activo = TRUE AND {user_col} = :u
-                      AND NOT (fecha_hasta < :fd OR fecha_desde > :fh)
-                    ORDER BY fecha_desde
-                """), {"u": id_usuario_agente, "fd": desde, "fh": hasta})).mappings().all()]
+        ausencias = [dict(r) for r in (await db.execute(text("""
+            SELECT id_ausencia_agente AS id_ausencia, fecha_desde, fecha_hasta, motivo
+            FROM ausencias_agente
+            WHERE activo = TRUE AND id_agente = :i
+              AND NOT (fecha_hasta < :fd OR fecha_desde > :fh)
+            ORDER BY fecha_desde
+        """), {"i": id_recurso, "fd": desde, "fh": hasta})).mappings().all()]
 
     # Nombre del recurso
     if tipo_recurso == "agente":
@@ -1175,29 +1166,25 @@ async def calendario_dia(
         key = (r["tipo_recurso"], r["id_recurso"])
         ocup_por_recurso.setdefault(key, []).append(dict(r))
 
-    # 3) Ausencias del dia (solo agentes con id_usuario vinculado)
-    cols = await agenda_ausencia_cols(db)
-    user_col = "id_usuario" if "id_usuario" in cols else None
+    # 3) Ausencias del dia (tabla nueva ausencias_agente, mig 39)
     aus_por_agente: dict[int, list[dict[str, Any]]] = {}
-    if user_col:
-        rows_aus = (await db.execute(text(f"""
-            SELECT a.id_agente, au.id AS id_ausencia, au.fecha_desde, au.fecha_hasta,
-                   au.motivo, au.genera_alerta
-            FROM agenda_ausencia au
-            JOIN agentes a ON a.id_usuario = au.{user_col}
-            WHERE au.activo = TRUE
-              AND :f BETWEEN au.fecha_desde AND au.fecha_hasta
-              AND a.activo = TRUE
-              AND (a.id_municipio IS NULL OR a.id_municipio = :m)
-        """), {"f": fecha, "m": id_municipio})).mappings().all()
-        for r in rows_aus:
-            aus_por_agente.setdefault(int(r["id_agente"]), []).append({
-                "id_ausencia": r["id_ausencia"],
-                "fecha_desde": r["fecha_desde"],
-                "fecha_hasta": r["fecha_hasta"],
-                "motivo": r["motivo"],
-                "genera_alerta": r["genera_alerta"],
-            })
+    rows_aus = (await db.execute(text("""
+        SELECT a.id_agente, au.id_ausencia_agente AS id_ausencia,
+               au.fecha_desde, au.fecha_hasta, au.motivo
+        FROM ausencias_agente au
+        JOIN agentes a ON a.id_agente = au.id_agente
+        WHERE au.activo = TRUE
+          AND :f BETWEEN au.fecha_desde AND au.fecha_hasta
+          AND a.activo = TRUE
+          AND (a.id_municipio IS NULL OR a.id_municipio = :m)
+    """), {"f": fecha, "m": id_municipio})).mappings().all()
+    for r in rows_aus:
+        aus_por_agente.setdefault(int(r["id_agente"]), []).append({
+            "id_ausencia": r["id_ausencia"],
+            "fecha_desde": r["fecha_desde"],
+            "fecha_hasta": r["fecha_hasta"],
+            "motivo": r["motivo"],
+        })
 
     # 4) Build response
     out_recursos = []
@@ -1248,27 +1235,24 @@ async def calendario_mes(
     for r in oc_rows:
         ocup_por_dia.setdefault(r["fecha"], {})[r["tipo"]] = int(r["cant"])
 
-    # Ausencias por dia (intersecta rangos)
-    cols = await agenda_ausencia_cols(db)
-    user_col = "id_usuario" if "id_usuario" in cols else None
+    # Ausencias por dia (tabla nueva ausencias_agente, mig 39)
     ausencias_por_dia: dict[date, int] = {}
-    if user_col:
-        aus_rows = (await db.execute(text(f"""
-            SELECT au.fecha_desde, au.fecha_hasta
-            FROM agenda_ausencia au
-            JOIN agentes a ON a.id_usuario = au.{user_col}
-            WHERE au.activo = TRUE
-              AND NOT (au.fecha_hasta < :fd OR au.fecha_desde > :fh)
-              AND a.activo = TRUE
-              AND (a.id_municipio IS NULL OR a.id_municipio = :m)
-        """), {"m": id_municipio, "fd": primer_dia, "fh": ultimo_dia})).mappings().all()
-        for r in aus_rows:
-            d0 = max(r["fecha_desde"], primer_dia)
-            d1 = min(r["fecha_hasta"], ultimo_dia)
-            cur = d0
-            while cur <= d1:
-                ausencias_por_dia[cur] = ausencias_por_dia.get(cur, 0) + 1
-                cur += timedelta(days=1)
+    aus_rows = (await db.execute(text("""
+        SELECT au.fecha_desde, au.fecha_hasta
+        FROM ausencias_agente au
+        JOIN agentes a ON a.id_agente = au.id_agente
+        WHERE au.activo = TRUE
+          AND NOT (au.fecha_hasta < :fd OR au.fecha_desde > :fh)
+          AND a.activo = TRUE
+          AND (a.id_municipio IS NULL OR a.id_municipio = :m)
+    """), {"m": id_municipio, "fd": primer_dia, "fh": ultimo_dia})).mappings().all()
+    for r in aus_rows:
+        d0 = max(r["fecha_desde"], primer_dia)
+        d1 = min(r["fecha_hasta"], ultimo_dia)
+        cur = d0
+        while cur <= d1:
+            ausencias_por_dia[cur] = ausencias_por_dia.get(cur, 0) + 1
+            cur += timedelta(days=1)
 
     dias = []
     for d in range(1, ndias + 1):

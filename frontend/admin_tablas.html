@@ -683,7 +683,6 @@
     <div class="sidebar-item" data-tabla="estado_reclamo"    onclick="selectTabla(this)"><i data-lucide="circle-dot"      class="si"></i>Estado de Reclamos</div>
 
     <div class="sidebar-group">Agenda</div>
-    <div class="sidebar-item" data-tabla="areas"            onclick="selectTabla(this)"><i data-lucide="building-2"    class="si"></i>Secretarías</div>
     <div class="sidebar-item" data-tabla="lugares_atencion" onclick="selectTabla(this)"><i data-lucide="map-pin"       class="si"></i>Lugares de Atención</div>
     <div class="sidebar-item" data-tabla="agenda_clase"     onclick="selectTabla(this)"><i data-lucide="calendar-range" class="si"></i>Clases de Agenda</div>
     <div class="sidebar-item" data-tabla="agenda_feriado"   onclick="selectTabla(this)"><i data-lucide="calendar-x"   class="si"></i>Feriados</div>
@@ -936,16 +935,7 @@ const SCHEMAS = {
     display: ['id_tipo_reclamo', 'nombre', 'descripcion', 'id_subarea'],
   },
 
-  // ── Agenda
-  areas: {
-    label: 'Secretaría', titulo: 'Maestro de Secretarías',
-    pk: 'id',
-    cols: [
-      { field: 'nombre',      label: 'Nombre',      type: 'text',     required: true },
-      { field: 'descripcion', label: 'Descripción', type: 'textarea', required: false },
-    ],
-    display: ['id', 'nombre', 'descripcion'],
-  },
+  // ── Agenda (mig 39: areas dropeada, agenda_clase y agenda_feriado estandarizadas)
   lugares_atencion: {
     label: 'Lugar de Atención', titulo: 'Maestro de Lugares de Atención',
     pk: 'id',
@@ -954,13 +944,12 @@ const SCHEMAS = {
       { field: 'direccion',           label: 'Dirección',                type: 'text',     required: false },
       { field: 'es_atencion',         label: 'Es lugar de atención',     type: 'checkbox', required: false },
       { field: 'capacidad_servicios', label: 'Capacidad de servicios',   type: 'number',   required: false },
-      { field: 'id_area',             label: 'Secretaría',               type: 'select',   fk: 'areas', fkLabel: 'nombre', fkPk: 'id', required: false },
     ],
-    display: ['id', 'nombre', 'direccion', 'es_atencion', 'capacidad_servicios', 'id_area'],
+    display: ['id', 'nombre', 'direccion', 'es_atencion', 'capacidad_servicios'],
   },
   agenda_clase: {
     label: 'Clase de Agenda', titulo: 'Maestro de Clases de Agenda',
-    pk: 'id',
+    pk: 'id_agenda_clase',
     cols: [
       { field: 'nombre',                label: 'Nombre',                     type: 'text',     required: true },
       { field: 'descripcion',           label: 'Descripción',                type: 'textarea', required: false },
@@ -969,13 +958,12 @@ const SCHEMAS = {
       { field: 'requiere_rrhh',         label: 'Requiere RRHH',              type: 'checkbox', required: false },
       { field: 'requiere_servicio',     label: 'Requiere servicio',          type: 'checkbox', required: false },
       { field: 'requiere_lugar',        label: 'Requiere lugar',             type: 'checkbox', required: false },
-      { field: 'id_area',               label: 'Secretaría',                 type: 'select',   fk: 'areas', fkLabel: 'nombre', fkPk: 'id', required: false },
     ],
-    display: ['id', 'nombre', 'duracion_slot_minutos', 'visible_ciudadano', 'requiere_rrhh', 'requiere_servicio', 'requiere_lugar'],
+    display: ['id_agenda_clase', 'nombre', 'duracion_slot_minutos', 'visible_ciudadano', 'requiere_rrhh', 'requiere_servicio', 'requiere_lugar'],
   },
   agenda_feriado: {
     label: 'Feriado', titulo: 'Maestro de Feriados',
-    pk: 'id',
+    pk: 'id_agenda_feriado',
     cols: [
       { field: 'fecha',       label: 'Fecha',       type: 'date',   required: true },
       { field: 'descripcion', label: 'Descripción', type: 'text',   required: true },
@@ -986,7 +974,7 @@ const SCHEMAS = {
           { v: 'MUNICIPAL',   l: 'Municipal' },
         ]},
     ],
-    display: ['id', 'fecha', 'descripcion', 'ambito'],
+    display: ['id_agenda_feriado', 'fecha', 'descripcion', 'ambito'],
   },
 
   // ── Catálogos BUC
@@ -1068,7 +1056,6 @@ const TABLA_META = {
   reclamos_subarea:  { icon: '<line x1="6" y1="3" x2="6" y2="15"/><path d="M21 6H8"/><path d="M21 12H8"/><path d="M21 18H8"/>',  sub: 'Subáreas dentro de cada área de reclamos' },
   tipo_reclamo:      { icon: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>',  sub: 'Categorías de reclamos ciudadanos' },
   estado_reclamo:    { icon: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',  sub: 'Estados del ciclo de vida de reclamos' },
-  areas:             { icon: '<path d="M3 21h18"/><path d="M9 8h1"/><path d="M9 12h1"/><path d="M9 16h1"/><path d="M14 8h1"/><path d="M14 12h1"/><path d="M14 16h1"/><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/>',  sub: 'Secretarías y dependencias' },
   lugares_atencion:  { icon: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',  sub: 'Sedes y oficinas de atención al público' },
   agenda_clase:      { icon: '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',  sub: 'Tipos de turnos y clases de agenda' },
   agenda_feriado:    { icon: '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/>',  sub: 'Días no hábiles nacionales, provinciales y municipales' },
