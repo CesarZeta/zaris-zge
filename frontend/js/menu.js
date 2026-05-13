@@ -146,18 +146,17 @@
     });
   });
 
-  // ── Identidad del topbar (nombre app + logo/nombre municipio) ──
+  // ── Identidad del topbar (nombre/logo municipio) ──
   // GET /api/v1/config/identidad es publico. Cualquier valor que falle queda
-  // con los defaults del HTML ("GESTION ESTADO" / "MUNICIPALIDAD" / sin logo).
+  // con los defaults del HTML. El nombre de la app ("GESTION ESTADO") es
+  // hardcoded del producto, no editable por usuario.
   (async function cargarIdentidad() {
     try {
       const res = await fetch(`${API}/api/v1/config/identidad`);
       if (!res.ok) return;
       const data = await res.json();
-      const appEl = document.getElementById('topbar-app-nombre');
       const muniNombreEl = document.getElementById('topbar-muni-nombre');
       const muniLogoEl = document.getElementById('topbar-muni-logo');
-      if (appEl && data.app_nombre) appEl.textContent = data.app_nombre;
       if (muniNombreEl && data.municipio_nombre) muniNombreEl.textContent = data.municipio_nombre;
       if (muniLogoEl && data.municipio_logo_url) {
         muniLogoEl.src = data.municipio_logo_url;
