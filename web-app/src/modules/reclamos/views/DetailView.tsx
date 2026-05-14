@@ -7,6 +7,7 @@ import { useNotificationsStore } from '../../../stores/notifications'
 import { Badge } from '../components/Badge'
 import { CambiarEstadoModal } from '../components/CambiarEstadoModal'
 import { CancelarReclamoModal } from '../components/CancelarReclamoModal'
+import { SubreclamoModal } from '../components/SubreclamoModal'
 import { UploadAdjuntosPanel } from '../components/UploadAdjuntosPanel'
 import { borrarAdjunto } from '../api/reclamosApi'
 import type { Adjunto, ReclamoDetalle, HistorialItem, OTAsociada, Subreclamo } from '../types/reclamo'
@@ -31,6 +32,7 @@ export function DetailView() {
   const user = useAuthStore((s) => s.user)
   const [openEstado, setOpenEstado] = useState(false)
   const [openCancelar, setOpenCancelar] = useState(false)
+  const [openSubreclamo, setOpenSubreclamo] = useState(false)
 
   if (detalle.isLoading) {
     return <div style={{ color: 'var(--fg-3)', padding: 20 }}>Cargando reclamo...</div>
@@ -45,6 +47,9 @@ export function DetailView() {
   // Gestion solo nivel 1/2/3 (admin/supervisor/operador). Nivel 4 (consultor) solo lee.
   const puedeGestionar = !!user && user.nivel_acceso <= 3
   const accionesVisibles = !esFinal && puedeGestionar
+  // Subreclamo: solo sobre reclamos vivos que no sean ellos mismos un subreclamo
+  // (el backend rechaza anidar > 1 nivel).
+  const puedeSubreclamar = accionesVisibles && r.id_reclamo_padre == null
 
   return (
     <>
@@ -63,6 +68,9 @@ export function DetailView() {
             <>
               <button onClick={() => setOpenEstado(true)} style={btnPrimary}>Cambiar estado</button>
               <button onClick={() => navigate(`/reclamos/${r.id_reclamo}/editar`)} style={btnGhost}>Editar</button>
+              {puedeSubreclamar && (
+                <button onClick={() => setOpenSubreclamo(true)} style={btnGhost}>Generar subreclamo</button>
+              )}
               <button onClick={() => setOpenCancelar(true)} style={btnDanger}>Cancelar reclamo</button>
             </>
           )}
@@ -84,6 +92,13 @@ export function DetailView() {
         nroReclamo={r.nro_reclamo}
         onClose={() => setOpenCancelar(false)}
         onSuccess={() => { setOpenCancelar(false); detalle.refetch() }}
+      />
+      <SubreclamoModal
+        open={openSubreclamo}
+        idReclamo={r.id_reclamo}
+        nroReclamo={r.nro_reclamo}
+        onClose={() => setOpenSubreclamo(false)}
+        onSuccess={() => { setOpenSubreclamo(false); detalle.refetch() }}
       />
 
       <ReclamoSection title="Estado">

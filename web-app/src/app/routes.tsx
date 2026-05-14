@@ -5,6 +5,8 @@ import { LoginPage } from './LoginPage'
 import { modules } from '../modules'
 import { AutoservicioPage } from '../autoservicio/AutoservicioPage'
 import { MiReservaPage } from '../autoservicio/MiReservaPage'
+import { TurnosPage } from '../autoservicio/TurnosPage'
+import { MiTurnoPage } from '../autoservicio/MiTurnoPage'
 
 // HashRouter porque GitHub Pages no soporta HTML5 routing sin server-side rewrites.
 // URLs quedan tipo `/zaris-zge/web-app/#/agenda/timeline`. Funciona con F5.
@@ -22,6 +24,16 @@ export const router = createHashRouter([
   {
     path: '/autoservicio/:tokenPublico/reserva/:tokenReserva',
     element: createElement(MiReservaPage),
+  },
+  // Turnos autoservicio: el ciudadano arranca eligiendo el tramite (no hay
+  // token de entrada como en eventos). /turno/:tokenTurno permite ver/cancelar.
+  {
+    path: '/turnos-autoservicio',
+    element: createElement(TurnosPage),
+  },
+  {
+    path: '/turno/:tokenTurno',
+    element: createElement(MiTurnoPage),
   },
   {
     path: '/',

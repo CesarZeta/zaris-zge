@@ -50,6 +50,16 @@ export const cambiarEstadoReclamo = (id: number, body: { estado: string; nota?: 
 export const cancelarReclamo = (id: number, body: { motivo: string }) =>
   api.put<{ ok: boolean; id_reclamo: number; estado: string }>(`${BASE}/${id}/cancelar`, body)
 
+// Crea un subreclamo del reclamo {id}. Hereda ciudadano/empresa del padre;
+// solo requiere descripcion + id_tipo_reclamo. El backend pone el padre "En espera".
+export const crearSubreclamo = (
+  id: number,
+  body: { descripcion: string; id_tipo_reclamo: number; prioridad?: string; observaciones?: string },
+) =>
+  api.post<{ id_reclamo: number; nro_reclamo: string; id_reclamo_padre: number }>(
+    `${BASE}/${id}/subreclamo`, body,
+  )
+
 // ── Adjuntos ──
 
 export interface UploadUrlResponse {
