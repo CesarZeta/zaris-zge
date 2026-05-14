@@ -4,6 +4,7 @@ import type { MesaAuditoriaRow } from '../types/ot'
 import { BadgePrioridad, SLACell, nombreAgente, nombreCiudadano } from '../lib/format'
 import { Field, Toolbar, inputStyle } from '../components/Toolbar'
 import { AuditarModal } from '../components/AuditarModal'
+import { OTDetalleDrawer } from '../components/OTDetalleDrawer'
 
 type Kind = 'aprobar' | 'rechazar'
 
@@ -15,6 +16,7 @@ export function AuditoriaView() {
   const [fTexto, setFTexto] = useState('')
   const [fPrioridad, setFPrioridad] = useState('')
   const [modal, setModal] = useState<{ kind: Kind; ot: MesaAuditoriaRow } | null>(null)
+  const [drawerOT, setDrawerOT] = useState<MesaAuditoriaRow | null>(null)
 
   const filtrados = useMemo(() => {
     const txt = fTexto.trim().toLowerCase()
@@ -125,6 +127,7 @@ export function AuditoriaView() {
                 </td>
                 <td style={tdStyle}><Clamp2 wide title={o.reclamo_descripcion}>{o.reclamo_descripcion ?? ''}</Clamp2></td>
                 <td style={{ ...tdStyle, ...stickyTd }}>
+                  <button onClick={() => setDrawerOT(o)} style={{ ...btnGhostSm, marginRight: 4 }}>Ver</button>
                   <button onClick={() => setModal({ kind: 'aprobar', ot: o })} style={{ ...btnSuccessSm, marginRight: 4 }}>
                     Aprobar
                   </button>
@@ -143,6 +146,12 @@ export function AuditoriaView() {
         kind={modal?.kind ?? null}
         ot={modal?.ot ?? null}
         onClose={() => setModal(null)}
+      />
+      <OTDetalleDrawer
+        open={drawerOT !== null}
+        idReclamo={drawerOT?.id_reclamo ?? null}
+        idOTResaltada={drawerOT?.id_ot ?? null}
+        onClose={() => setDrawerOT(null)}
       />
     </div>
   )
@@ -233,4 +242,9 @@ const btnSuccessSm: React.CSSProperties = {
 
 const btnDangerSm: React.CSSProperties = {
   ...btnBase, background: 'var(--color-error)', color: 'white', borderColor: 'var(--color-error)',
+}
+
+const btnGhostSm: React.CSSProperties = {
+  ...btnBase, background: 'transparent', color: 'var(--fg-2)',
+  border: '1px solid var(--border-medium)',
 }
