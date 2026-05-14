@@ -1293,9 +1293,18 @@ async def _listar_recursos_para_calendario(
     return recursos
 
 
-async def _eventos_del_dia(db: AsyncSession, fecha: date, id_municipio: int) -> list[dict[str, Any]]:
-    """Eventos activos en una fecha, con cupo y encargados resueltos."""
-    rows = (await db.execute(text("""
+async def _eventos_del_rango(
+    db: AsyncSession,
+    fecha_desde: date,
+    fecha_hasta: date,
+    id_municipio: int,
+) -> dict[date, list[dict[str, Any]]]:
+    """Eventos activos en un rango de fechas, con cupo y encargados resueltos.
+
+    2 queries totales (eventos + encargados) sin importar la longitud del rango.
+    Devuelve dict[fecha] -> lista de eventos.
+    """
+    ev_rows = (await db.execute(text("""
         SELECT e.id_evento, e.nombre, e.fecha, e.hora_inicio, e.hora_fin,
                e.capacidad_ciudadanos, e.id_espacio, e.id_subarea,
                ee.codigo AS estado_codigo,
@@ -1307,22 +1316,32 @@ async def _eventos_del_dia(db: AsyncSession, fecha: date, id_municipio: int) -> 
                    )) AS reservas_activas
         FROM eventos e
         LEFT JOIN estado_evento ee ON ee.id_estado_evento = e.id_estado_evento
-        WHERE e.activo = TRUE AND e.id_municipio = :m AND e.fecha = :f
-        ORDER BY e.hora_inicio
-    """), {"f": fecha, "m": id_municipio})).mappings().all()
+        WHERE e.activo = TRUE AND e.id_municipio = :m
+          AND e.fecha BETWEEN :fd AND :fh
+        ORDER BY e.fecha, e.hora_inicio
+    """), {"m": id_municipio, "fd": fecha_desde, "fh": fecha_hasta})).mappings().all()
 
-    out = []
-    for r in rows:
-        # Encargados resueltos como pares (tipo_recurso, id_recurso).
-        enc_rows = (await db.execute(text("""
-            SELECT tipo_recurso, id_recurso
-            FROM evento_encargados
-            WHERE id_evento = :id AND activo = TRUE
-        """), {"id": r["id_evento"]})).mappings().all()
-        encargados = [(e["tipo_recurso"], int(e["id_recurso"])) for e in enc_rows]
+    if not ev_rows:
+        return {}
+
+    # Bulk de encargados para todos los eventos del rango.
+    ids = [r["id_evento"] for r in ev_rows]
+    enc_rows = (await db.execute(text("""
+        SELECT id_evento, tipo_recurso, id_recurso
+        FROM evento_encargados
+        WHERE activo = TRUE AND id_evento = ANY(:ids)
+    """), {"ids": ids})).mappings().all()
+    enc_por_evento: dict[int, list[tuple[str, int]]] = {}
+    for e in enc_rows:
+        enc_por_evento.setdefault(int(e["id_evento"]), []).append(
+            (e["tipo_recurso"], int(e["id_recurso"]))
+        )
+
+    out: dict[date, list[dict[str, Any]]] = {}
+    for r in ev_rows:
         cap = int(r["capacidad_ciudadanos"] or 0)
         reservas = int(r["reservas_activas"] or 0)
-        out.append({
+        out.setdefault(r["fecha"], []).append({
             "id_evento": r["id_evento"],
             "nombre": r["nombre"],
             "fecha": r["fecha"],
@@ -1334,9 +1353,15 @@ async def _eventos_del_dia(db: AsyncSession, fecha: date, id_municipio: int) -> 
             "estado_codigo": r["estado_codigo"],
             "id_espacio": r["id_espacio"],
             "id_subarea": r["id_subarea"],
-            "encargados": encargados,
+            "encargados": enc_por_evento.get(int(r["id_evento"]), []),
         })
     return out
+
+
+async def _eventos_del_dia(db: AsyncSession, fecha: date, id_municipio: int) -> list[dict[str, Any]]:
+    """Wrapper compat retro de _eventos_del_rango para un solo dia."""
+    rango = await _eventos_del_rango(db, fecha, fecha, id_municipio)
+    return rango.get(fecha, [])
 
 
 @router.get("/mes", response_model=CalendarioMesOut)
@@ -1486,11 +1511,8 @@ async def calendario_semana(
             aus_por_dia.setdefault(cur, []).append(item)
             cur += timedelta(days=1)
 
-    # Eventos del rango
-    eventos_por_dia: dict[date, list[dict[str, Any]]] = {}
-    for i in range(dias):
-        d = desde + timedelta(days=i)
-        eventos_por_dia[d] = await _eventos_del_dia(db, d, id_municipio)
+    # Eventos del rango (1 query base + 1 bulk de encargados, sin importar la cantidad de dias).
+    eventos_por_dia = await _eventos_del_rango(db, desde, hasta, id_municipio)
 
     # Disponibilidad efectiva en BATCH para todos los recursos x todos los dias.
     # Antes: dias x recursos awaits secuenciales. Con 84 agentes x 7 dias eso
