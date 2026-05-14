@@ -5,6 +5,7 @@ import type { EstadoOT, MesaAgenteRow } from '../types/ot'
 import { BadgeEstadoOT, BadgePrioridad, SLACell, nombreCiudadano } from '../lib/format'
 import { Field, StatsChips, Toolbar, inputStyle } from '../components/Toolbar'
 import { CambiarEstadoOTModal } from '../components/CambiarEstadoOTModal'
+import { OTDetalleDrawer } from '../components/OTDetalleDrawer'
 
 type Tab = 'mias' | 'disponibles'
 
@@ -21,6 +22,7 @@ export function AgenteView() {
   const [fEstado, setFEstado] = useState<EstadoOT | ''>('')
   const [fPrioridad, setFPrioridad] = useState('')
   const [modalOT, setModalOT] = useState<MesaAgenteRow | null>(null)
+  const [drawerOT, setDrawerOT] = useState<MesaAgenteRow | null>(null)
 
   const counts = useMemo(() => ({
     mias: ots.filter((o) => o.scope === 'mia').length,
@@ -182,10 +184,11 @@ export function AgenteView() {
                 <td style={tdStyle}>{nombreCiudadano(o.ciudadano_apellido, o.ciudadano_nombre)}</td>
                 <td style={tdStyle}><Clamp2 wide title={o.reclamo_descripcion}>{o.reclamo_descripcion ?? ''}</Clamp2></td>
                 <td style={{ ...tdStyle, ...stickyTd }}>
+                  <button onClick={() => setDrawerOT(o)} style={btnGhostSm}>Ver</button>
                   {tab === 'mias' ? (
-                    <button onClick={() => setModalOT(o)} style={btnPrimarySm}>Cambiar estado</button>
+                    <button onClick={() => setModalOT(o)} style={{ ...btnPrimarySm, marginLeft: 4 }}>Cambiar estado</button>
                   ) : (
-                    <button onClick={() => tomarOT(o)} disabled={mutTomar.isPending} style={btnSuccessSm}>
+                    <button onClick={() => tomarOT(o)} disabled={mutTomar.isPending} style={{ ...btnSuccessSm, marginLeft: 4 }}>
                       Tomar OT
                     </button>
                   )}
@@ -200,6 +203,12 @@ export function AgenteView() {
         open={modalOT !== null}
         ot={modalOT}
         onClose={() => setModalOT(null)}
+      />
+      <OTDetalleDrawer
+        open={drawerOT !== null}
+        idReclamo={drawerOT?.id_reclamo ?? null}
+        idOTResaltada={drawerOT?.id_ot ?? null}
+        onClose={() => setDrawerOT(null)}
       />
     </div>
   )
@@ -316,4 +325,9 @@ const btnPrimarySm: React.CSSProperties = {
 
 const btnSuccessSm: React.CSSProperties = {
   ...btnBase, background: '#2e7d32', color: 'white', borderColor: '#2e7d32',
+}
+
+const btnGhostSm: React.CSSProperties = {
+  ...btnBase, background: 'transparent', color: 'var(--fg-2)',
+  border: '1px solid var(--border-medium)',
 }
