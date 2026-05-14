@@ -66,6 +66,7 @@ from app.services.agenda import (
     lookup_estado_reserva,
     registrar_audit,
     registrar_conflictos,
+    subarea_del_usuario,
 )
 
 
@@ -296,7 +297,7 @@ async def _evento_to_out(db: AsyncSession, id_evento: int) -> Optional[dict[str,
         SELECT e.id_evento, e.nombre, e.descripcion, e.id_subarea, e.fecha,
                e.hora_inicio, e.hora_fin, e.capacidad_ciudadanos, e.cantidad_encargados,
                e.tipo_qr, e.admite_autoservicio,
-               CAST(e.token_publico AS TEXT) AS token_publico,
+               CAST(e.token_publico AS TEXT) AS token_publico, e.id_espacio,
                e.id_estado_evento, ee.codigo AS estado_codigo,
                e.activo, e.id_municipio, e.fecha_alta, e.fecha_modificacion
         FROM eventos e
@@ -320,12 +321,12 @@ async def crear_evento(
         INSERT INTO eventos (
             nombre, descripcion, id_subarea, fecha, hora_inicio, hora_fin,
             capacidad_ciudadanos, cantidad_encargados, tipo_qr, admite_autoservicio,
-            token_publico,
+            token_publico, id_espacio,
             id_estado_evento, id_municipio, id_usuario_alta
         ) VALUES (
             :n, :d, :sa, :f, :hi, :hf,
             :cap, :enc, :qr, :auto,
-            CASE WHEN :auto = TRUE THEN gen_random_uuid() ELSE NULL END,
+            CASE WHEN :auto = TRUE THEN gen_random_uuid() ELSE NULL END, :esp,
             :es, :mun, :uid
         )
         RETURNING id_evento
@@ -334,6 +335,7 @@ async def crear_evento(
         "f": payload.fecha, "hi": payload.hora_inicio, "hf": payload.hora_fin,
         "cap": payload.capacidad_ciudadanos, "enc": payload.cantidad_encargados,
         "qr": payload.tipo_qr, "auto": payload.admite_autoservicio,
+        "esp": payload.id_espacio,
         "es": id_estado, "mun": payload.id_municipio,
         "uid": current_user["id_usuario"],
     })).first()
@@ -355,6 +357,7 @@ async def listar_eventos(
     id_estado_evento: Optional[int] = None,
     id_subarea: Optional[int] = None,
     id_municipio: Optional[int] = None,
+    con_espacio: Optional[bool] = Query(None, description="True=solo eventos con id_espacio (modulo Entradas), False=solo sin espacio, omitir=todos"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -373,6 +376,10 @@ async def listar_eventos(
         where.append("e.id_subarea = :isa"); params["isa"] = id_subarea
     if id_municipio is not None:
         where.append("e.id_municipio = :imu"); params["imu"] = id_municipio
+    if con_espacio is True:
+        where.append("e.id_espacio IS NOT NULL")
+    elif con_espacio is False:
+        where.append("e.id_espacio IS NULL")
     where_sql = " AND ".join(where)
 
     total = await db.scalar(text(f"SELECT COUNT(*) FROM eventos e WHERE {where_sql}"), params)
@@ -381,7 +388,7 @@ async def listar_eventos(
         SELECT e.id_evento, e.nombre, e.descripcion, e.id_subarea, e.fecha,
                e.hora_inicio, e.hora_fin, e.capacidad_ciudadanos, e.cantidad_encargados,
                e.tipo_qr, e.admite_autoservicio,
-               CAST(e.token_publico AS TEXT) AS token_publico,
+               CAST(e.token_publico AS TEXT) AS token_publico, e.id_espacio,
                e.id_estado_evento, ee.codigo AS estado_codigo,
                e.activo, e.id_municipio, e.fecha_alta, e.fecha_modificacion
         FROM eventos e
@@ -1156,6 +1163,7 @@ async def calendario_dia(
     id_municipio: int = 1,
     tipo_recurso: Literal["agente", "equipo", "espacio", "todos"] = "todos",
     id_subarea: Optional[int] = Query(None, description="Filtra recursos cuyo id_subarea coincida"),
+    scope_subarea_propia: bool = Query(False, description="Si True, limita los recursos a la subarea del usuario logueado (resuelta via su agente). Fail-open: si no se puede resolver, no filtra. Pensado para la vista por equipos del supervisor (ver §33 CLAUDE.md)."),
     atendido: Optional[bool] = Query(None, description="Solo aplica a tipo_recurso='espacio'. None=todos, True=atendidos, False=desatendidos"),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
@@ -1167,6 +1175,7 @@ async def calendario_dia(
     Sub-fase B1: agrega tipo_recurso='espacio', filtro 'atendido', disponibilidad
     horaria y eventos en grilla. Compat retro: con defaults se comporta como antes
     salvo que ahora tambien devuelve disponibilidad + eventos."""
+    id_subarea = await _resolver_scope_subarea(db, _user, id_subarea, scope_subarea_propia)
     recursos = await _listar_recursos_para_calendario(db, id_municipio, tipo_recurso, id_subarea, atendido)
     eventos_dia = await _eventos_del_dia(db, fecha, id_municipio)
 
@@ -1238,6 +1247,30 @@ async def calendario_dia(
 # =============================================================================
 # Helpers compartidos para /calendario y /semana
 # =============================================================================
+async def _resolver_scope_subarea(
+    db: AsyncSession,
+    user: dict,
+    id_subarea: Optional[int],
+    scope_subarea_propia: bool,
+) -> Optional[int]:
+    """Resuelve el filtro de subarea efectivo para la grilla.
+
+    - Si `id_subarea` viene explicito, gana (filtro manual del usuario).
+    - Si no, y `scope_subarea_propia=True`, intenta resolver la subarea del
+      usuario logueado via su agente. Admin (nivel 1) NO se scopea — ve todo.
+    - Fail-open: si no se puede resolver (usuario sin agente / agente sin
+      subarea — drift de datos comun en prod), devuelve None y la grilla
+      muestra todos los recursos. La vista por equipos del supervisor depende
+      de que el municipio seedee `agentes.id_subarea`."""
+    if id_subarea is not None:
+        return id_subarea
+    if not scope_subarea_propia:
+        return None
+    if int(user.get("nivel_acceso", 99)) <= 1:
+        return None  # admin ve todo
+    return await subarea_del_usuario(db, int(user["id_usuario"]))
+
+
 async def _listar_recursos_para_calendario(
     db: AsyncSession,
     id_municipio: int,
@@ -1451,6 +1484,7 @@ async def calendario_semana(
     id_municipio: int = 1,
     tipo_recurso: Literal["agente", "equipo", "espacio", "todos"] = "todos",
     id_subarea: Optional[int] = Query(None),
+    scope_subarea_propia: bool = Query(False, description="Si True, limita los recursos a la subarea del usuario logueado. Fail-open. Ver /calendario."),
     atendido: Optional[bool] = Query(None),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
@@ -1463,6 +1497,7 @@ async def calendario_semana(
     pase por (recurso, dia) por el bitmask + vigencia)."""
     hasta = desde + timedelta(days=dias - 1)
 
+    id_subarea = await _resolver_scope_subarea(db, _user, id_subarea, scope_subarea_propia)
     recursos = await _listar_recursos_para_calendario(db, id_municipio, tipo_recurso, id_subarea, atendido)
 
     # Ocupaciones de TODO el rango

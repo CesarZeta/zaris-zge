@@ -117,6 +117,11 @@ TABLE_CONFIG: dict[str, dict] = {
         "cols": ["nombre", "descripcion", "id_subarea", "sla_dias", "audit"],
         "fecha_mod": "fecha_modificacion",
     },
+    "tipo_servicio_turno": {
+        "pk": "id_tipo_servicio_turno",
+        "cols": ["nombre", "descripcion", "duracion_min", "id_subarea"],
+        "fecha_mod": "fecha_modificacion",
+    },
     "configuracion_general": {
         "pk": "id_config",
         "cols": ["clave", "valor", "tipo", "descripcion"],

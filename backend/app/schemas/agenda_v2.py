@@ -38,6 +38,7 @@ class EventoBase(BaseModel):
     cantidad_encargados: int = Field(0, ge=0)
     tipo_qr: Literal["nominal", "generico", "ninguno"] = "ninguno"
     admite_autoservicio: bool = False
+    id_espacio: Optional[int] = None  # espacio fisico (eventos "con entradas" del modulo Entradas)
 
     @model_validator(mode="after")
     def _horario_valido(self) -> "EventoBase":
@@ -63,6 +64,7 @@ class EventoUpdate(BaseModel):
     cantidad_encargados: Optional[int] = Field(None, ge=0)
     tipo_qr: Optional[Literal["nominal", "generico", "ninguno"]] = None
     admite_autoservicio: Optional[bool] = None
+    id_espacio: Optional[int] = None
 
 
 class EventoOut(BaseModel):
@@ -80,6 +82,7 @@ class EventoOut(BaseModel):
     tipo_qr: str
     admite_autoservicio: bool
     token_publico: Optional[str] = None  # solo poblado cuando admite_autoservicio=TRUE
+    id_espacio: Optional[int] = None     # espacio fisico del evento (eventos "con entradas")
     id_estado_evento: int
     estado_codigo: Optional[str] = None
     activo: bool

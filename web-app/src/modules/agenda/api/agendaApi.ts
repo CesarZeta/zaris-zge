@@ -133,10 +133,12 @@ export function getCalendarioDia(
   tipo_recurso: TipoRecurso | 'todos' = 'todos',
   id_subarea: number | null = null,
   atendido: boolean | null = null,
+  scope_subarea_propia = false,
 ) {
   const params: Record<string, string | number | boolean | null | undefined> = { fecha, id_municipio, tipo_recurso }
   if (id_subarea != null) params.id_subarea = id_subarea
   if (atendido != null) params.atendido = atendido
+  if (scope_subarea_propia) params.scope_subarea_propia = true
   return api.get<CalendarioDia>(`${BASE}/calendario`, { params })
 }
 export function getCalendarioSemana(
@@ -146,10 +148,12 @@ export function getCalendarioSemana(
   tipo_recurso: TipoRecurso | 'todos' = 'todos',
   id_subarea: number | null = null,
   atendido: boolean | null = null,
+  scope_subarea_propia = false,
 ) {
   const params: Record<string, string | number | boolean | null | undefined> = { desde, dias, id_municipio, tipo_recurso }
   if (id_subarea != null) params.id_subarea = id_subarea
   if (atendido != null) params.atendido = atendido
+  if (scope_subarea_propia) params.scope_subarea_propia = true
   return api.get<CalendarioSemana>(`${BASE}/semana`, { params })
 }
 export function getCalendarioMes(

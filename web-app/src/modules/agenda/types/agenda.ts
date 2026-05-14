@@ -25,6 +25,7 @@ export interface Evento {
   tipo_qr: TipoQR
   admite_autoservicio: boolean
   token_publico: string | null
+  id_espacio: number | null
   id_estado_evento: number
   estado_codigo: string | null
   activo: boolean
@@ -50,6 +51,7 @@ export interface EventoCreatePayload {
   cantidad_encargados: number
   tipo_qr: TipoQR
   admite_autoservicio: boolean
+  id_espacio?: number | null
   id_municipio?: number
 }
 

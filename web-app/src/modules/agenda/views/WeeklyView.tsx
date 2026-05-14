@@ -20,7 +20,7 @@ export function WeeklyView() {
   const idMun = useAgendaStore((s) => s.idMunicipio)
   const filtroRec = useAgendaStore((s) => s.filtroRecurso)
   const filtroSubarea = useAgendaStore((s) => s.filtroSubarea)
-  const { tipo_recurso, atendido } = filtroUIaBackend(filtroRec)
+  const { tipo_recurso, atendido, scopeSubareaPropia } = filtroUIaBackend(filtroRec)
 
   // Empezamos la semana en el lunes de la semana de la fecha activa.
   const desde = useMemo(() => {
@@ -30,7 +30,7 @@ export function WeeklyView() {
     return toIsoDate(sumarDias(d, -restar))
   }, [fecha])
 
-  const sem = useCalendarioSemana(desde, 7, idMun, tipo_recurso, filtroSubarea, atendido)
+  const sem = useCalendarioSemana(desde, 7, idMun, tipo_recurso, filtroSubarea, atendido, scopeSubareaPropia)
   const [eventoOpen, setEventoOpen] = useState<{ id: number | null } | null>(null)
   const [ocupOpen,   setOcupOpen]   = useState<{ ocupacion: Ocupacion | null } | null>(null)
 

@@ -43,8 +43,8 @@ export function TimelineView() {
   const idMun = useAgendaStore((s) => s.idMunicipio)
   const filtroRec = useAgendaStore((s) => s.filtroRecurso)
   const filtroSubarea = useAgendaStore((s) => s.filtroSubarea)
-  const { tipo_recurso, atendido } = filtroUIaBackend(filtroRec)
-  const cal = useCalendarioDia(fecha, idMun, tipo_recurso, filtroSubarea, atendido)
+  const { tipo_recurso, atendido, scopeSubareaPropia } = filtroUIaBackend(filtroRec)
+  const cal = useCalendarioDia(fecha, idMun, tipo_recurso, filtroSubarea, atendido, scopeSubareaPropia)
   const conf = useConflictos(false)
   const { moverOcupacion, crearDesdeOT } = useDragMutations()
 
