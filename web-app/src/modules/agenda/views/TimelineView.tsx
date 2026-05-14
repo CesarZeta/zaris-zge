@@ -7,7 +7,7 @@ import {
 } from '@dnd-kit/core'
 import { useCalendarioDia } from '../hooks/useAgenda'
 import { useConflictos } from '../hooks/useConflictos'
-import { useAgendaStore } from '../store/agendaStore'
+import { useAgendaStore, filtroUIaBackend } from '../store/agendaStore'
 import { AgendaFilters } from '../components/AgendaFilters'
 import { GanttGrid } from '../components/GanttGrid'
 import { PendingOTsPanel } from '../components/PendingOTsPanel'
@@ -43,7 +43,8 @@ export function TimelineView() {
   const idMun = useAgendaStore((s) => s.idMunicipio)
   const filtroRec = useAgendaStore((s) => s.filtroRecurso)
   const filtroSubarea = useAgendaStore((s) => s.filtroSubarea)
-  const cal = useCalendarioDia(fecha, idMun, filtroRec, filtroSubarea)
+  const { tipo_recurso, atendido } = filtroUIaBackend(filtroRec)
+  const cal = useCalendarioDia(fecha, idMun, tipo_recurso, filtroSubarea, atendido)
   const conf = useConflictos(false)
   const { moverOcupacion, crearDesdeOT } = useDragMutations()
 
@@ -271,6 +272,7 @@ export function TimelineView() {
                     setOcupOpen({ ocupacion: o })
                   }
                 }}
+                onEventoClick={(ev) => setEventoOpen({ id: ev.id_evento })}
                 onSlotVacioClick={({ tipo_recurso, id_recurso, hora_inicio, hora_fin }) => {
                   setOcupOpen({
                     ocupacion: null,
