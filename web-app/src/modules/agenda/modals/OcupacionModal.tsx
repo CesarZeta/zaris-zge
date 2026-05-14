@@ -3,12 +3,11 @@ import { Modal } from '../components/Modal'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { Button } from '../../../ui'
 import { CiudadanoSearch } from '../components/CiudadanoSearch'
-import { OTSearch } from '../components/OTSearch'
 import { EventoSearch } from '../components/EventoSearch'
 import { RecursoPicker } from '../components/RecursoPicker'
 import { useCrearOcupacion, useEliminarOcupacion } from '../hooks/useOcupaciones'
 import { useNotificationsStore } from '../../../stores/notifications'
-import type { CiudadanoMinimo, EventoBusquedaItem, Ocupacion, OcupacionCreatePayload, OTBusquedaItem, TipoOcupacion, TipoRecurso } from '../types/agenda'
+import type { CiudadanoMinimo, EventoBusquedaItem, Ocupacion, OcupacionCreatePayload, TipoOcupacion, TipoRecurso } from '../types/agenda'
 
 interface Props {
   open: boolean
@@ -20,8 +19,11 @@ interface Props {
 }
 
 function emptyOcup(d?: Partial<OcupacionCreatePayload>): OcupacionCreatePayload {
+  // Las ocupaciones tipo 'ot' se crean desde OcupacionOTModal (modal dedicado);
+  // este modal generico solo crea turno/evento. Si llega un default tipo='ot'
+  // lo degradamos a 'turno' para no quedar en un estado sin selector.
   return {
-    tipo: d?.tipo ?? 'turno',
+    tipo: d?.tipo === 'ot' ? 'turno' : (d?.tipo ?? 'turno'),
     tipo_recurso: d?.tipo_recurso ?? 'agente',
     id_recurso: d?.id_recurso ?? 1,
     fecha: d?.fecha ?? new Date().toISOString().slice(0, 10),
@@ -43,7 +45,6 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
   const eliminar = useEliminarOcupacion()
   const [form, setForm] = useState<OcupacionCreatePayload>(() => emptyOcup(defaults))
   const [ciudadano, setCiudadano] = useState<CiudadanoMinimo | null>(null)
-  const [otSel, setOtSel] = useState<OTBusquedaItem | null>(null)
   const [evSel, setEvSel] = useState<EventoBusquedaItem | null>(null)
   const [confirmDel, setConfirmDel] = useState(false)
 
@@ -51,7 +52,6 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
     if (open) {
       setForm(emptyOcup(defaults))
       setCiudadano(null)
-      setOtSel(null)
       setEvSel(null)
     }
   }, [open, defaults])
@@ -61,11 +61,22 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
   }
 
   async function submit() {
-    // Limpiar FKs segun tipo
+    // Limpiar FKs segun tipo (este modal solo crea turno/evento; ot va por OcupacionOTModal)
     const payload: OcupacionCreatePayload = { ...form }
-    if (payload.tipo === 'ot')     { payload.id_evento = null; payload.id_ciudadano = null }
     if (payload.tipo === 'evento') { payload.id_orden_trabajo = null; payload.id_ciudadano = null }
     if (payload.tipo === 'turno')  { payload.id_orden_trabajo = null; payload.id_evento = null }
+    if (!payload.id_recurso) {
+      push({ kind: 'error', title: 'Falta el recurso', body: 'Selecciona un agente o equipo.' })
+      return
+    }
+    if (payload.tipo === 'evento' && !payload.id_evento) {
+      push({ kind: 'error', title: 'Falta el evento', body: 'Busca y selecciona un evento.' })
+      return
+    }
+    if (payload.tipo === 'turno' && !payload.id_ciudadano) {
+      push({ kind: 'error', title: 'Falta el ciudadano', body: 'Busca y selecciona un ciudadano.' })
+      return
+    }
     if (payload.hora_fin <= payload.hora_inicio) {
       push({ kind: 'error', title: 'Horario invalido', body: 'hora_fin > hora_inicio' })
       return
@@ -121,7 +132,6 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
             <select value={form.tipo} onChange={(e) => update('tipo', e.target.value as TipoOcupacion)} style={inp}>
               <option value="turno">turno</option>
               <option value="evento">evento</option>
-              <option value="ot">ot (orden de trabajo)</option>
             </select>
           </Field>
           <Field label="Tipo de recurso">
@@ -148,20 +158,6 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
             <input type="time" value={form.hora_fin} onChange={(e) => update('hora_fin', e.target.value)} style={inp} />
           </Field>
 
-          {form.tipo === 'ot' && (
-            <div style={{ gridColumn: '1 / -1' }}>
-              <label style={lbl}>Orden de trabajo</label>
-              <OTSearch
-                onSelect={(ot) => { setOtSel(ot); update('id_orden_trabajo', ot.id_ot) }}
-              />
-              {otSel && (
-                <div style={{ marginTop: 6, fontSize: 13, color: 'var(--fg-2)' }}>
-                  Seleccionado: <strong>{otSel.nro_ot ?? `OT #${otSel.id_ot}`}</strong>
-                  {otSel.estado_nombre && <span style={{ color: 'var(--fg-3)' }}> · {otSel.estado_nombre}</span>}
-                </div>
-              )}
-            </div>
-          )}
           {form.tipo === 'evento' && (
             <div style={{ gridColumn: '1 / -1' }}>
               <label style={lbl}>Evento</label>
