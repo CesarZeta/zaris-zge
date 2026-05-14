@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, Users } from 'lucide-react'
+import { Users } from 'lucide-react'
 import {
   DndContext, DragOverlay, PointerSensor, KeyboardSensor, useSensor, useSensors,
   type DragEndEvent, type DragStartEvent,
@@ -16,7 +16,7 @@ import { EventoModal } from '../modals/EventoModal'
 import { OcupacionModal } from '../modals/OcupacionModal'
 import { ReservaModal } from '../modals/ReservaModal'
 import { EventoEncargadosModal } from '../modals/EventoEncargadosModal'
-import { Button, Skeleton } from '../../../ui'
+import { Skeleton } from '../../../ui'
 import { useDragMutations } from '../dnd/useDragMutations'
 import type { DragPayload } from '../dnd/types'
 import { PX_PER_HOUR, SNAP_MIN, HOUR_START, ROW_HEIGHT } from '../dnd/gridConstants'
@@ -232,17 +232,6 @@ export function TimelineView() {
       onDragCancel={handleDragCancel}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Button variant="default" icon={<Plus size={14} strokeWidth={1.5} />} onClick={() => setEventoOpen({ id: null })}>
-              Nuevo evento
-            </Button>
-            <Button variant="accent" icon={<Plus size={14} strokeWidth={1.5} />} onClick={() => setOcupOpen({ ocupacion: null, defaults: { fecha } })}>
-              Nueva ocupacion
-            </Button>
-          </div>
-        </div>
-
         <AgendaFilters />
 
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
