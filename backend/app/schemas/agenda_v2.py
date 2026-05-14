@@ -132,6 +132,12 @@ class ReservaCreate(BaseModel):
     origen: Literal["backoffice", "autoservicio"] = "backoffice"
 
 
+class AcreditarQRIn(BaseModel):
+    """Body para acreditar asistencia escaneando el QR fisico de la reserva.
+    `qr_codigo` es el string que el lector lee del QR (formato EVT{id}-RES{id}-{ts})."""
+    qr_codigo: str
+
+
 class ReservaOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

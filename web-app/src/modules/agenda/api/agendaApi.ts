@@ -97,6 +97,9 @@ export function marcarAsistio(idReserva: number) {
 export function cancelarReserva(idReserva: number) {
   return api.patch<Reserva>(`${BASE}/reservas/${idReserva}/cancelar`)
 }
+export function acreditarReservaQR(qrCodigo: string) {
+  return api.post<Reserva>(`${BASE}/reservas/acreditar-qr`, { qr_codigo: qrCodigo })
+}
 
 // ----- Ocupaciones ---------------------------------------------------------
 export function listarOcupaciones(params?: {

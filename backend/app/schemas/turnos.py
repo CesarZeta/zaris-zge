@@ -83,3 +83,52 @@ class TurnoOut(BaseModel):
     id_subarea: Optional[int] = None
     fecha_alta: datetime
     fecha_modificacion: datetime
+
+
+# =============================================================================
+# Autoservicio publico (sin JWT) — el ciudadano elige tipo de servicio, dia y
+# slot libre. El backend cruza disponibilidad_recurso con ocupaciones.
+# =============================================================================
+class AgenteDisponibleOut(BaseModel):
+    """Agente que atiende un tipo de servicio (vista publica minima)."""
+    id_agente: int
+    nombre: str
+
+
+class SlotLibreOut(BaseModel):
+    """Un slot horario libre para reservar un turno."""
+    id_agente: int
+    agente_nombre: str
+    fecha: date
+    hora_inicio: time
+    hora_fin: time
+
+
+class TurnoPublicoCreate(BaseModel):
+    """Reserva de turno por autoservicio. Busca/crea ciudadano por DNI."""
+    id_tipo_servicio_turno: int
+    id_agente: int
+    fecha: date
+    hora_inicio: time
+    dni: str = Field(..., min_length=6, max_length=20)
+    apellido: str = Field(..., min_length=1, max_length=100)
+    nombre: str = Field(..., min_length=1, max_length=100)
+    telefono: Optional[str] = None
+    email: Optional[str] = None
+    observaciones: Optional[str] = None
+
+
+class TurnoPublicoOut(BaseModel):
+    """Datos de un turno reservado por autoservicio (incluye token para
+    consultar/cancelar despues)."""
+    id_turno: int
+    token_turno: str
+    estado: Literal["reservado", "cumplido", "cancelado"]
+    fecha: date
+    hora_inicio: time
+    hora_fin: time
+    tipo_servicio_nombre: Optional[str] = None
+    agente_nombre: Optional[str] = None
+    ciudadano_apellido: Optional[str] = None
+    ciudadano_nombre: Optional[str] = None
+    ciudadano_dni: Optional[str] = None

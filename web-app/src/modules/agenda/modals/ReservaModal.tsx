@@ -6,7 +6,7 @@ import { CiudadanoSearch } from '../components/CiudadanoSearch'
 import { QRDisplay } from '../components/QRDisplay'
 import { Button } from '../../../ui'
 import { useEventoDetalle } from '../hooks/useEventos'
-import { useReservas, useCrearReserva, useMarcarAsistio, useCancelarReserva } from '../hooks/useReservas'
+import { useReservas, useCrearReserva, useMarcarAsistio, useCancelarReserva, useAcreditarQR } from '../hooks/useReservas'
 import { useNotificationsStore } from '../../../stores/notifications'
 import type { CiudadanoMinimo, OrigenReserva } from '../types/agenda'
 
@@ -23,11 +23,25 @@ export function ReservaModal({ open, onClose, idEvento }: Props) {
   const crear = useCrearReserva(idEvento ?? 0)
   const asistio = useMarcarAsistio()
   const cancelar = useCancelarReserva()
+  const acreditarQR = useAcreditarQR()
   const [cid, setCid] = useState<CiudadanoMinimo | null>(null)
   const [origen, setOrigen] = useState<OrigenReserva>('backoffice')
   const [qr, setQr] = useState<string | null>(null)
   const [confirmCancelId, setConfirmCancelId] = useState<number | null>(null)
   const [qrExpandedId, setQrExpandedId] = useState<number | null>(null)
+  const [qrAcreditar, setQrAcreditar] = useState('')
+
+  async function onAcreditarQR() {
+    const codigo = qrAcreditar.trim()
+    if (!codigo) return
+    try {
+      const r = await acreditarQR.mutateAsync(codigo)
+      push({ kind: 'success', title: 'Asistencia acreditada', body: `${r.ciudadano_apellido}, ${r.ciudadano_nombre}` })
+      setQrAcreditar('')
+    } catch (e) {
+      push({ kind: 'error', title: 'No se pudo acreditar', body: (e as Error).message })
+    }
+  }
 
   async function onCrear() {
     if (!idEvento || !cid) return
@@ -99,6 +113,28 @@ export function ReservaModal({ open, onClose, idEvento }: Props) {
             </div>
           </div>
         )}
+      </div>
+
+      <div style={{ padding: 12, background: 'var(--surface-200)', borderRadius: 'var(--radius-md)', marginBottom: 16 }}>
+        <h3 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 500, color: 'var(--fg-1)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <QrCode size={14} strokeWidth={1.5} /> Acreditar por QR
+        </h3>
+        <div style={{ fontSize: 12, color: 'var(--fg-3)', marginBottom: 8 }}>
+          Escane&aacute; el QR del ciudadano con el lector (o peg&aacute; el c&oacute;digo) y se marca la asistencia.
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            value={qrAcreditar}
+            onChange={(e) => setQrAcreditar(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') onAcreditarQR() }}
+            placeholder="EVT…-RES…-…"
+            style={{ ...inp, flex: 1, fontFamily: 'var(--font-mono)' }}
+            autoComplete="off"
+          />
+          <Button variant="accent" onClick={onAcreditarQR} disabled={!qrAcreditar.trim() || acreditarQR.isPending}>
+            {acreditarQR.isPending ? 'Acreditando…' : 'Acreditar'}
+          </Button>
+        </div>
       </div>
 
       <h3 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 500, color: 'var(--fg-1)' }}>Reservas activas</h3>

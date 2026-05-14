@@ -72,3 +72,93 @@ export function deleteReservaPublica(tokenReserva: string) {
     method: 'DELETE',
   })
 }
+
+// =============================================================================
+// Turnos — autoservicio publico
+// =============================================================================
+export interface TipoServicioTurno {
+  id_tipo_servicio_turno: number
+  nombre: string
+  descripcion: string | null
+  duracion_min: number
+  activo: boolean
+}
+
+export interface AgenteDisponible {
+  id_agente: number
+  nombre: string
+}
+
+export interface SlotLibre {
+  id_agente: number
+  agente_nombre: string
+  fecha: string
+  hora_inicio: string
+  hora_fin: string
+}
+
+export interface TurnoPublicoCreate {
+  id_tipo_servicio_turno: number
+  id_agente: number
+  fecha: string
+  hora_inicio: string
+  dni: string
+  apellido: string
+  nombre: string
+  telefono?: string
+  email?: string
+  observaciones?: string
+}
+
+export interface TurnoPublico {
+  id_turno: number
+  token_turno: string
+  estado: 'reservado' | 'cumplido' | 'cancelado'
+  fecha: string
+  hora_inicio: string
+  hora_fin: string
+  tipo_servicio_nombre: string | null
+  agente_nombre: string | null
+  ciudadano_apellido: string | null
+  ciudadano_nombre: string | null
+  ciudadano_dni: string | null
+}
+
+export function getTiposServicioTurno() {
+  return jsonFetch<TipoServicioTurno[]>('/api/v1/turnos/publico/tipos-servicio')
+}
+
+export function getAgentesTurno() {
+  return jsonFetch<AgenteDisponible[]>('/api/v1/turnos/publico/agentes')
+}
+
+export function getSlotsTurno(params: {
+  id_tipo_servicio_turno: number
+  id_agente?: number
+  fecha_desde?: string
+  dias?: number
+}) {
+  const qs = new URLSearchParams()
+  qs.set('id_tipo_servicio_turno', String(params.id_tipo_servicio_turno))
+  if (params.id_agente != null) qs.set('id_agente', String(params.id_agente))
+  if (params.fecha_desde) qs.set('fecha_desde', params.fecha_desde)
+  if (params.dias != null) qs.set('dias', String(params.dias))
+  return jsonFetch<SlotLibre[]>(`/api/v1/turnos/publico/slots?${qs.toString()}`)
+}
+
+export function postTurnoPublico(payload: TurnoPublicoCreate) {
+  return jsonFetch<TurnoPublico>('/api/v1/turnos/publico/reservar', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function getTurnoPublico(tokenTurno: string) {
+  return jsonFetch<TurnoPublico>(`/api/v1/turnos/publico/turno/${tokenTurno}`)
+}
+
+export function deleteTurnoPublico(tokenTurno: string) {
+  return jsonFetch<TurnoPublico>(`/api/v1/turnos/publico/turno/${tokenTurno}`, {
+    method: 'DELETE',
+  })
+}

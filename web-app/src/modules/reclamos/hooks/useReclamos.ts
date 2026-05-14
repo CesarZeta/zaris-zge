@@ -3,6 +3,7 @@ import {
   cambiarEstadoReclamo,
   cancelarReclamo,
   crearReclamo,
+  crearSubreclamo,
   editarReclamo,
   getCatalogoAreas,
   getCatalogoTipos,
@@ -109,6 +110,17 @@ export function useCancelarReclamo(id: number | null) {
   return useMutation({
     mutationFn: (body: { motivo: string }) =>
       cancelarReclamo(id as number, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['reclamos'] })
+    },
+  })
+}
+
+export function useCrearSubreclamo(id: number | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { descripcion: string; id_tipo_reclamo: number; prioridad?: string; observaciones?: string }) =>
+      crearSubreclamo(id as number, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['reclamos'] })
     },
