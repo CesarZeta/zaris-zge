@@ -4,11 +4,15 @@ import type {
   CambiarEstadoOTBody,
   CatalogoEstadoOT,
   CrearOTBody,
+  CrearOTConAgendaBody,
+  CrearOTConAgendaResponse,
   EquipoLite,
   MesaAgenteResponse,
   MesaAuditoriaResponse,
   MesaSupervisorRow,
   ReasignarOTBody,
+  SlotsRecursoResponse,
+  TipoRecursoOT,
 } from '../types/ot'
 
 const BASE = '/api/v1/ot'
@@ -38,9 +42,21 @@ export const listarAgentesActivos = () =>
 export const listarEquiposActivos = () =>
   api.get<EquipoLite[]>('/api/v1/admin/equipos')
 
+// Slots libres de un recurso (agente/equipo) para una fecha
+export const getSlotsRecurso = (
+  tipo_recurso: TipoRecursoOT, id_recurso: number, fecha: string, duracion_min = 60,
+) =>
+  api.get<SlotsRecursoResponse>(`${BASE}/slots-recurso`, {
+    params: { tipo_recurso, id_recurso, fecha, duracion_min },
+  })
+
 // Mutations
 export const crearOT = (body: CrearOTBody) =>
   api.post<{ id_ot: number; nro_ot: string; id_reclamo: number }>(BASE, body)
+
+// Crea OT + ocupacion en la agenda en una transaccion
+export const crearOTConAgenda = (body: CrearOTConAgendaBody) =>
+  api.post<CrearOTConAgendaResponse>(`${BASE}/con-agenda`, body)
 
 export const reasignarOT = (id_ot: number, body: ReasignarOTBody) =>
   api.put<{ ok: boolean; id_ot: number; asignado_a: string }>(`${BASE}/${id_ot}/reasignar`, body)

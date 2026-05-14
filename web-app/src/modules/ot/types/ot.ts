@@ -49,6 +49,8 @@ export interface MesaSupervisorRow {
   ot_activa_id: number | null
   ot_activa_nro: string | null
   ot_activa_estado: EstadoOT | null
+  // true si la OT activa tiene una ocupacion en la agenda; false = creada sin agendar.
+  ot_activa_agendada: boolean | null
   ot_id_agente: number | null
   ot_agente_nombre: string | null
   ot_id_equipo: number | null
@@ -145,6 +147,41 @@ export interface CrearOTBody {
   id_agente?: number | null
   id_equipo?: number | null
   observaciones?: string
+}
+
+// GET /ot/slots-recurso — huecos libres de un recurso para una fecha
+export type TipoRecursoOT = 'agente' | 'equipo'
+
+export interface SlotLibre {
+  hora_inicio: string  // HH:MM:SS
+  hora_fin: string     // HH:MM:SS
+}
+
+export interface SlotsRecursoResponse {
+  tipo_recurso: TipoRecursoOT
+  id_recurso: number
+  fecha: string
+  duracion_min: number
+  slots: SlotLibre[]
+}
+
+// POST /ot/con-agenda — crea OT + ocupacion en la agenda en una transaccion
+export interface CrearOTConAgendaBody {
+  id_reclamo: number
+  tipo_recurso: TipoRecursoOT
+  id_recurso: number
+  fecha: string        // YYYY-MM-DD
+  hora_inicio: string  // HH:MM
+  hora_fin: string     // HH:MM
+  observaciones?: string
+}
+
+export interface CrearOTConAgendaResponse {
+  id_ot: number
+  nro_ot: string
+  id_reclamo: number
+  id_ocupacion: number
+  conflictos: { id_ocupacion: number; tipo: string; hora_inicio: string; hora_fin: string }[]
 }
 
 // PUT /ot/{id}/reasignar

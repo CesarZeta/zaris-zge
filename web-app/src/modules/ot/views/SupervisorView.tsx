@@ -6,6 +6,7 @@ import { Field, StatsChips, Toolbar, inputStyle } from '../components/Toolbar'
 import { AsignarModal } from '../components/AsignarModal'
 import { ReasignarModal } from '../components/ReasignarModal'
 import { OTDetalleDrawer } from '../components/OTDetalleDrawer'
+import { PlanificadorOT } from '../components/PlanificadorOT'
 
 type Tab = 'asignar' | 'reasignar'
 
@@ -22,6 +23,8 @@ export function SupervisorView() {
   const [modalAsignarReclamos, setModalAsignarReclamos] = useState<MesaSupervisorRow[]>([])
   const [modalReasignReclamo, setModalReasignReclamo] = useState<MesaSupervisorRow | null>(null)
   const [drawerRow, setDrawerRow] = useState<MesaSupervisorRow | null>(null)
+  // Reclamo elegido para el panel de planificacion (tab Asignar).
+  const [reclamoPlanificar, setReclamoPlanificar] = useState<MesaSupervisorRow | null>(null)
 
   // Counts globales (no filtrados, por tab) — para badges en pestañas
   const nAsignar = useMemo(
@@ -67,7 +70,7 @@ export function SupervisorView() {
 
   // Limpiar selección al cambiar tab o al cambiar dataset
   useEffect(() => {
-    if (tab === 'reasignar') setSeleccionados(new Set())
+    if (tab === 'reasignar') { setSeleccionados(new Set()); setReclamoPlanificar(null) }
   }, [tab])
 
   useEffect(() => {
@@ -82,6 +85,9 @@ export function SupervisorView() {
       prev.forEach((id) => { if (vivos.has(id)) next.add(id) })
       return next
     })
+    // Si el reclamo planificado ya no esta en el dataset (ej: se le creo OT y
+    // paso a En gestion -> sale del tab Asignar), limpiar el panel.
+    setReclamoPlanificar((prev) => (prev && !vivos.has(prev.id_reclamo) ? null : prev))
   }, [reclamos])
 
   function toggleSel(id: number, on: boolean) {
@@ -107,10 +113,6 @@ export function SupervisorView() {
 
   const allVisiblesSelected =
     filtrados.length > 0 && filtrados.every((r) => seleccionados.has(r.id_reclamo))
-
-  function abrirAsignarUno(r: MesaSupervisorRow) {
-    setModalAsignarReclamos([r])
-  }
 
   function abrirAsignarLote() {
     const rows = filtrados.filter((r) => seleccionados.has(r.id_reclamo))
@@ -179,66 +181,95 @@ export function SupervisorView() {
         </div>
       )}
 
-      <div style={cardStyle}>
-        <table style={tableStyle}>
-          <thead>
-            {tab === 'asignar' ? (
-              <tr>
-                <th style={{ ...thStyle, width: 32, paddingTop: 9, paddingBottom: 9, paddingLeft: 12, paddingRight: 0 }}>
-                  <input
-                    type="checkbox"
-                    checked={allVisiblesSelected}
-                    onChange={(e) => toggleSelAll(e.target.checked)}
-                    style={checkboxStyle}
-                  />
-                </th>
-                <th style={thStyle}>N° reclamo</th>
-                <th style={thStyle}>Prio.</th>
-                <th style={{ ...thStyle, minWidth: 150 }}>SLA</th>
-                <th style={thStyle}>Tipo</th>
-                <th style={thStyle}>Subárea</th>
-                <th style={thStyle}>Ciudadano</th>
-                <th style={thStyle}>Descripción</th>
-                <th style={{ ...thStyle, ...stickyTh }}>Acción</th>
-              </tr>
-            ) : (
-              <tr>
-                <th style={thStyle}>N° reclamo</th>
-                <th style={thStyle}>Estado</th>
-                <th style={thStyle}>Prio.</th>
-                <th style={{ ...thStyle, minWidth: 150 }}>SLA</th>
-                <th style={thStyle}>Tipo</th>
-                <th style={thStyle}>Subárea</th>
-                <th style={thStyle}>Ciudadano</th>
-                <th style={thStyle}>Asignado a</th>
-                <th style={{ ...thStyle, ...stickyTh }}>Acción</th>
-              </tr>
-            )}
-          </thead>
-          <tbody>
-            {isLoading && (
-              <tr><td colSpan={tab === 'asignar' ? 9 : 9} style={emptyStyle}>Cargando…</td></tr>
-            )}
-            {isError && (
-              <tr><td colSpan={9} style={emptyStyle}>Error: {(error as Error)?.message ?? 'desconocido'}</td></tr>
-            )}
-            {!isLoading && !isError && filtrados.length === 0 && (
-              <tr><td colSpan={9} style={emptyStyle}>Sin reclamos en esta vista</td></tr>
-            )}
-            {filtrados.map((r) => {
-              const isSel = seleccionados.has(r.id_reclamo)
-              if (tab === 'asignar') {
+      <div style={tab === 'asignar' ? layoutAsignarStyle : undefined}>
+        <div style={cardStyle}>
+          <table style={tableStyle}>
+            <thead>
+              {tab === 'asignar' ? (
+                <tr>
+                  <th style={{ ...thStyle, width: 32, paddingTop: 9, paddingBottom: 9, paddingLeft: 12, paddingRight: 0 }}>
+                    <input
+                      type="checkbox"
+                      checked={allVisiblesSelected}
+                      onChange={(e) => toggleSelAll(e.target.checked)}
+                      style={checkboxStyle}
+                    />
+                  </th>
+                  <th style={thStyle}>N° reclamo</th>
+                  <th style={thStyle}>Prio.</th>
+                  <th style={{ ...thStyle, minWidth: 150 }}>SLA</th>
+                  <th style={thStyle}>Tipo</th>
+                  <th style={thStyle}>Subárea</th>
+                  <th style={thStyle}>Ciudadano</th>
+                  <th style={{ ...thStyle, ...stickyTh }}>Acción</th>
+                </tr>
+              ) : (
+                <tr>
+                  <th style={thStyle}>N° reclamo</th>
+                  <th style={thStyle}>Estado</th>
+                  <th style={thStyle}>Prio.</th>
+                  <th style={{ ...thStyle, minWidth: 150 }}>SLA</th>
+                  <th style={thStyle}>Tipo</th>
+                  <th style={thStyle}>Subárea</th>
+                  <th style={thStyle}>Ciudadano</th>
+                  <th style={thStyle}>Asignado a</th>
+                  <th style={{ ...thStyle, ...stickyTh }}>Acción</th>
+                </tr>
+              )}
+            </thead>
+            <tbody>
+              {isLoading && (
+                <tr><td colSpan={9} style={emptyStyle}>Cargando…</td></tr>
+              )}
+              {isError && (
+                <tr><td colSpan={9} style={emptyStyle}>Error: {(error as Error)?.message ?? 'desconocido'}</td></tr>
+              )}
+              {!isLoading && !isError && filtrados.length === 0 && (
+                <tr><td colSpan={9} style={emptyStyle}>Sin reclamos en esta vista</td></tr>
+              )}
+              {filtrados.map((r) => {
+                const isSel = seleccionados.has(r.id_reclamo)
+                if (tab === 'asignar') {
+                  const isPlan = reclamoPlanificar?.id_reclamo === r.id_reclamo
+                  return (
+                    <tr
+                      key={r.id_reclamo}
+                      onClick={() => setReclamoPlanificar(r)}
+                      style={{
+                        cursor: 'pointer',
+                        background: isPlan ? '#ffe6da' : isSel ? '#fff1ea' : undefined,
+                      }}
+                    >
+                      <td
+                        style={{ ...tdStyle, width: 32, paddingTop: 10, paddingBottom: 10, paddingLeft: 12, paddingRight: 0 }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSel}
+                          onChange={(e) => toggleSel(r.id_reclamo, e.target.checked)}
+                          style={checkboxStyle}
+                        />
+                      </td>
+                      <td style={{ ...tdStyle, ...monoStyle }}>{r.nro_reclamo ?? '—'}</td>
+                      <td style={tdStyle}><BadgePrioridad prioridad={r.prioridad} /></td>
+                      <td style={tdStyle}>
+                        <SLACell sla_vencimiento={r.sla_vencimiento} sla_dias={r.sla_dias} />
+                      </td>
+                      <td style={tdStyle}><Clamp2 title={r.tipo_nombre}>{r.tipo_nombre ?? '—'}</Clamp2></td>
+                      <td style={tdStyle}><Clamp2 title={r.subarea_nombre}>{r.subarea_nombre ?? '—'}</Clamp2></td>
+                      <td style={tdStyle}>{nombreCiudadano(r.ciudadano_apellido, r.ciudadano_nombre)}</td>
+                      <td style={{ ...tdStyle, ...stickyTd }} onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => setDrawerRow(r)} style={btnGhostSm}>Ver</button>
+                        <button onClick={() => setReclamoPlanificar(r)} style={{ ...btnPrimarySm, marginLeft: 4 }}>Planificar</button>
+                      </td>
+                    </tr>
+                  )
+                }
                 return (
-                  <tr key={r.id_reclamo} style={isSel ? { background: '#fff1ea' } : undefined}>
-                    <td style={{ ...tdStyle, width: 32, paddingTop: 10, paddingBottom: 10, paddingLeft: 12, paddingRight: 0 }}>
-                      <input
-                        type="checkbox"
-                        checked={isSel}
-                        onChange={(e) => toggleSel(r.id_reclamo, e.target.checked)}
-                        style={checkboxStyle}
-                      />
-                    </td>
+                  <tr key={r.id_reclamo}>
                     <td style={{ ...tdStyle, ...monoStyle }}>{r.nro_reclamo ?? '—'}</td>
+                    <td style={tdStyle}><BadgeEstadoReclamo estado={r.estado} /></td>
                     <td style={tdStyle}><BadgePrioridad prioridad={r.prioridad} /></td>
                     <td style={tdStyle}>
                       <SLACell sla_vencimiento={r.sla_vencimiento} sla_dias={r.sla_dias} />
@@ -246,35 +277,24 @@ export function SupervisorView() {
                     <td style={tdStyle}><Clamp2 title={r.tipo_nombre}>{r.tipo_nombre ?? '—'}</Clamp2></td>
                     <td style={tdStyle}><Clamp2 title={r.subarea_nombre}>{r.subarea_nombre ?? '—'}</Clamp2></td>
                     <td style={tdStyle}>{nombreCiudadano(r.ciudadano_apellido, r.ciudadano_nombre)}</td>
-                    <td style={tdStyle}><Clamp2 wide title={r.descripcion}>{r.descripcion ?? ''}</Clamp2></td>
+                    <td style={tdStyle}><AsignadoCell row={r} /></td>
                     <td style={{ ...tdStyle, ...stickyTd }}>
                       <button onClick={() => setDrawerRow(r)} style={btnGhostSm}>Ver</button>
-                      <button onClick={() => abrirAsignarUno(r)} style={{ ...btnPrimarySm, marginLeft: 4 }}>Asignar OT</button>
+                      <button onClick={() => abrirReasignar(r)} style={{ ...btnWarnSm, marginLeft: 4 }}>Reasignar</button>
                     </td>
                   </tr>
                 )
-              }
-              return (
-                <tr key={r.id_reclamo}>
-                  <td style={{ ...tdStyle, ...monoStyle }}>{r.nro_reclamo ?? '—'}</td>
-                  <td style={tdStyle}><BadgeEstadoReclamo estado={r.estado} /></td>
-                  <td style={tdStyle}><BadgePrioridad prioridad={r.prioridad} /></td>
-                  <td style={tdStyle}>
-                    <SLACell sla_vencimiento={r.sla_vencimiento} sla_dias={r.sla_dias} />
-                  </td>
-                  <td style={tdStyle}><Clamp2 title={r.tipo_nombre}>{r.tipo_nombre ?? '—'}</Clamp2></td>
-                  <td style={tdStyle}><Clamp2 title={r.subarea_nombre}>{r.subarea_nombre ?? '—'}</Clamp2></td>
-                  <td style={tdStyle}>{nombreCiudadano(r.ciudadano_apellido, r.ciudadano_nombre)}</td>
-                  <td style={tdStyle}><AsignadoCell row={r} /></td>
-                  <td style={{ ...tdStyle, ...stickyTd }}>
-                    <button onClick={() => setDrawerRow(r)} style={btnGhostSm}>Ver</button>
-                    <button onClick={() => abrirReasignar(r)} style={{ ...btnWarnSm, marginLeft: 4 }}>Reasignar</button>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {tab === 'asignar' && (
+          <PlanificadorOT
+            reclamo={reclamoPlanificar}
+            onDone={() => setReclamoPlanificar(null)}
+          />
+        )}
       </div>
 
       <AsignarModal
@@ -380,6 +400,12 @@ const asignCellKind: React.CSSProperties = {
 const cardStyle: React.CSSProperties = {
   background: 'var(--surface-100)', border: '1px solid var(--border-primary)',
   borderRadius: 12, overflowX: 'auto', overflowY: 'hidden',
+  minWidth: 0,
+}
+
+// Tab "Asignar": bandeja a la izquierda + panel de planificacion a la derecha.
+const layoutAsignarStyle: React.CSSProperties = {
+  display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 14, alignItems: 'start',
 }
 
 const tableStyle: React.CSSProperties = {
