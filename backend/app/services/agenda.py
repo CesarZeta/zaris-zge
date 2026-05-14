@@ -142,6 +142,131 @@ def _merge_rangos(
     return out
 
 
+async def disponibilidad_efectiva_batch(
+    session: AsyncSession,
+    recursos: list[tuple[str, int, Optional[bool]]],
+    fechas: list[date],
+) -> dict[tuple[str, int, date], list[dict[str, Any]]]:
+    """Version batch de disponibilidad_efectiva: una sola query a Postgres por tipo
+    de tabla y todo el merge en Python. Evita el O(recursos x dias) de round-trips
+    que sufre /calendario y /semana cuando hay muchos agentes.
+
+    Input:
+      recursos: lista (tipo_recurso, id_recurso, atendido) — atendido solo aplica
+                a espacios; para agentes/equipos pasar None.
+      fechas:   lista de fechas a resolver.
+
+    Output: dict[(tipo, id, fecha)] -> rangos (mismo shape que disponibilidad_efectiva).
+    """
+    if not recursos or not fechas:
+        return {}
+
+    # Identificar espacios atendidos y resolver sus agentes vinculados en bulk.
+    espacios_atendidos_ids: list[int] = [
+        id_r for (t, id_r, atend) in recursos if t == "espacio" and atend is True
+    ]
+    espacio_a_agentes: dict[int, list[int]] = {}
+    if espacios_atendidos_ids:
+        rows = (await session.execute(text("""
+            SELECT id_espacio, id_agente
+            FROM espacio_agentes
+            WHERE activo = TRUE AND id_espacio = ANY(:ids)
+        """), {"ids": espacios_atendidos_ids})).mappings().all()
+        for r in rows:
+            espacio_a_agentes.setdefault(int(r["id_espacio"]), []).append(int(r["id_agente"]))
+
+    # Identificar set de (tipo, id) que necesitamos en disponibilidad_recurso:
+    # los recursos pedidos directamente + los agentes vinculados a espacios atendidos.
+    pares_disp: set[tuple[str, int]] = set()
+    for (t, id_r, _atend) in recursos:
+        pares_disp.add((t, id_r))
+    for ag_ids in espacio_a_agentes.values():
+        for ag_id in ag_ids:
+            pares_disp.add(("agente", ag_id))
+
+    # Una query bulk para todas las filas activas de disponibilidad_recurso
+    # que matcheen esos pares.
+    disp_rows_por_par: dict[tuple[str, int], list[dict[str, Any]]] = {}
+    if pares_disp:
+        # Postgres no acepta IN sobre tuplas via asyncpg facilmente. Filtramos
+        # por (tipo IN (...)) AND (id IN (...)) y descartamos los pares espureos
+        # en Python — barato porque ya tenemos pocas tablas.
+        tipos = list({t for (t, _i) in pares_disp})
+        ids = list({i for (_t, i) in pares_disp})
+        rows = (await session.execute(text("""
+            SELECT tipo_recurso, id_recurso, dias_semana, hora_inicio, hora_fin,
+                   etiqueta, vigente_desde, vigente_hasta
+            FROM disponibilidad_recurso
+            WHERE activo = TRUE
+              AND tipo_recurso = ANY(:tipos)
+              AND id_recurso   = ANY(:ids)
+        """), {"tipos": tipos, "ids": ids})).mappings().all()
+        for r in rows:
+            par = (r["tipo_recurso"], int(r["id_recurso"]))
+            if par in pares_disp:  # descartar par espureo
+                disp_rows_por_par.setdefault(par, []).append(dict(r))
+
+    # Helper local: resuelve un par (tipo, id) en una fecha aplicando bitmask + vigencia.
+    def rangos_directos(tipo: str, id_r: int, f: date) -> list[tuple[dtime, dtime, Optional[str]]]:
+        rows = disp_rows_por_par.get((tipo, id_r), [])
+        if not rows:
+            return []
+        # ISO weekday: Lun=1..Dom=7. Bitmask §27: Lun=bit0..Dom=bit6.
+        bit = 1 << (f.isoweekday() - 1)
+        out: list[tuple[dtime, dtime, Optional[str]]] = []
+        for r in rows:
+            if (int(r["dias_semana"]) & bit) == 0:
+                continue
+            vd = r["vigente_desde"]
+            vh = r["vigente_hasta"]
+            if vd is not None and f < vd:
+                continue
+            if vh is not None and f > vh:
+                continue
+            out.append((r["hora_inicio"], r["hora_fin"], r["etiqueta"]))
+        return _merge_rangos(out)
+
+    # Construir el output final.
+    resultado: dict[tuple[str, int, date], list[dict[str, Any]]] = {}
+    for (t, id_r, atend) in recursos:
+        for f in fechas:
+            if t in ("agente", "equipo"):
+                merged = rangos_directos(t, id_r, f)
+            elif t == "espacio":
+                if atend is False:
+                    merged = rangos_directos("espacio", id_r, f)
+                else:
+                    # Atendido (atend True o None tratado como True para no
+                    # romper si alguien olvida pasar el flag — coincide con
+                    # disponibilidad_efectiva singular que valida por DB).
+                    ag_ids = espacio_a_agentes.get(id_r, [])
+                    if not ag_ids:
+                        merged = []
+                    else:
+                        union_ag: list[tuple[dtime, dtime, Optional[str]]] = []
+                        for ag_id in ag_ids:
+                            union_ag.extend(rangos_directos("agente", ag_id, f))
+                        propio = rangos_directos("espacio", id_r, f)
+                        if propio:
+                            rangos: list[tuple[dtime, dtime, Optional[str]]] = []
+                            for (pi, pf, pet) in propio:
+                                for (ai, af, _aet) in union_ag:
+                                    inter_i = max(pi, ai)
+                                    inter_f = min(pf, af)
+                                    if inter_i < inter_f:
+                                        rangos.append((inter_i, inter_f, pet))
+                            merged = _merge_rangos(rangos)
+                        else:
+                            merged = _merge_rangos(union_ag)
+            else:
+                merged = []
+            resultado[(t, id_r, f)] = [
+                {"hora_inicio": hi, "hora_fin": hf, "etiqueta": et}
+                for (hi, hf, et) in merged
+            ]
+    return resultado
+
+
 # =============================================================================
 # Conflictos
 # =============================================================================
