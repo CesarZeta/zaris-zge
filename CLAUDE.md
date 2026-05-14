@@ -820,6 +820,10 @@ Migraciones idempotentes (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXIST
 
 **Aplicada en local y prod al 2026-05-14.** Crea el catálogo `tipo_servicio_turno` (estándar §10, con `duracion_min`, 3 seeds idempotentes) y la tabla transaccional `turnos` (estándar §10, FKs a `ciudadanos`/`agentes`/`tipo_servicio_turno`, `estado` CHECK `reservado|cumplido|cancelado`, `id_ocupacion` → fila espejo en `ocupaciones`). Idempotente (`CREATE TABLE IF NOT EXISTS`). Ver §33 para el modelo del módulo. **Ojo:** la tabla legacy `turnos` que mig 39 dropeó NO es esta — son tablas distintas que comparten nombre.
 
+### Migración 46 — Turnos autoservicio (`backend/migrations/46_turnos_autoservicio.sql`)
+
+**Aplicada en local y prod al 2026-05-14.** Agrega `turnos.token_turno UUID` (no enumerable, único, default `gen_random_uuid()`, backfill de filas existentes — habilita que el ciudadano consulte/cancele su turno sin JWT) y `turnos.origen VARCHAR(15)` CHECK `backoffice|autoservicio` default `backoffice`. Requiere `pgcrypto` (ya creada en mig 35). Idempotente. Ver §33 sección "Turnos autoservicio".
+
 ### Migración 38 — Permisos por módulo (`backend/migrations/38_permisos_por_modulo.sql`)
 
 **Aplicada en local y prod al 2026-05-12.** Crea `modulos` (8 seeds iniciales: reclamos, padrones, ot_*, turnos, usuarios, admin_tablas con `min_nivel_acceso` segmentado) + `usuario_modulos` (overrides). Ambas con estándar §10 completo. CHECK `min_nivel_acceso BETWEEN 1 AND 4`. UNIQUE `(id_usuario, modulo_codigo)` en overrides. Ver §30 para el detalle del modelo y los endpoints. **Mig 44 (2026-05-14)** separó `turnos` en `agenda`/`turnos`/`entradas` → catálogo actual 10 módulos.
@@ -1266,8 +1270,14 @@ No son obvios y mezclan PUT con PATCH. Antes de scriptear un smoke test o codear
 | Conflictos | GET | `/conflictos?resuelto=false` |
 | Resolver conflicto | **PATCH** | `/conflictos/{id}/resolver` |
 | Recurso (agente o equipo) | GET | `/recurso/{tipo_recurso}/{id_recurso}` |
+| Marcar asistió (por id) | **PATCH** | `/reservas/{id_evento_reserva}/asistio` |
+| Acreditar asistencia escaneando QR | **POST** | `/reservas/acreditar-qr` |
 
 Smoke test reproducible: `smoke_agenda.ps1` en la raíz. Cubre 15 endpoints clave.
+
+#### QR físico de reservas — flujo de acreditación (2026-05-14)
+
+El QR de una reserva de evento (`evento_reservas.qr_codigo`, formato opaco `EVT{id}-RES{id}-{ts}` generado por `services/agenda.py::generar_qr_codigo`) es un **identificador**, no una URL. El operador lo escanea con un lector y se acredita la asistencia vía `POST /api/v1/agenda/reservas/acreditar-qr` con body `{qr_codigo}` — resuelve la reserva por el string y marca `asistio`. Errores: 404 si el QR no corresponde a reserva activa, 409 si la reserva está cancelada. Reusa el helper `_patch_reserva_estado`. El endpoint se registra **antes** que `/reservas/{id}/...` en el router (defensa contra match greedy, aunque distinto número de segmentos). UI: sección "Acreditar por QR" en `ReservaModal.tsx` (input + botón, Enter acredita). El `id`-numérico (`PATCH /reservas/{id}/asistio`) sigue existiendo para acreditar manual desde la lista.
 
 #### Sub-fase 3.B — Drag & Drop sobre la grilla ✅ ENTREGADA (2026-05-11)
 
@@ -2079,6 +2089,31 @@ Un turno reserva un bloque de la disponibilidad de un agente para que un ciudada
 
 **Autoservicio:** Entradas YA tiene autoservicio funcionando — un evento con `admite_autoservicio=true` tiene `token_publico` y la página pública `/autoservicio/:tokenPublico` (que ya existía para eventos) lo gestiona sin cambios. La card de Entradas muestra el link público.
 
-### Pendiente — Turnos autoservicio
+### Turnos autoservicio — ENTREGADO (2026-05-14)
 
-Turnos NO tiene autoservicio aún. A diferencia de eventos (fecha/hora fija), un turno requiere que el ciudadano elija un slot libre, lo que necesita backend público nuevo: endpoints sin JWT para listar tipos de servicio, calcular slots libres cruzando `disponibilidad_recurso` con `ocupaciones`, y crear el turno. Es la sub-fase pendiente más grande del proyecto Turnos/Entradas.
+Flujo público sin JWT para que el ciudadano reserve un turno sin pasar por mesa. A diferencia de eventos (fecha/hora fija), el ciudadano elige un slot libre que el backend calcula cruzando `disponibilidad_recurso` con `ocupaciones`.
+
+**DB (migración 46 `46_turnos_autoservicio.sql`, aplicada local + prod 2026-05-14):** agrega `turnos.token_turno UUID` (no enumerable, único, default `gen_random_uuid()`, backfill de filas viejas — espeja `evento_reservas.token_reserva`) y `turnos.origen VARCHAR(15)` CHECK `backoffice|autoservicio` default `backoffice`. Requiere `pgcrypto` (ya creada en mig 35). Idempotente.
+
+**Router `backend/app/api/routes/turnos_publico.py` (prefix `/api/v1/turnos/publico`, sin auth):**
+
+| Acción | Verbo | Path |
+|---|---|---|
+| Listar tipos de servicio | GET | `/tipos-servicio` |
+| Listar agentes con disponibilidad cargada | GET | `/agentes` |
+| Slots libres | GET | `/slots?id_tipo_servicio_turno=&id_agente=&fecha_desde=&dias=` |
+| Reservar turno | POST | `/reservar` |
+| Consultar turno por token | GET | `/turno/{token_turno}` |
+| Cancelar turno por token | DELETE | `/turno/{token_turno}` |
+
+> **Orden de routers crítico (main.py):** `turnos_publico_router` se registra **ANTES** de `turnos_router`. `turnos_router` tiene `/api/v1/turnos/{id_turno}` con `{id_turno}` int; sin el orden explícito `/turnos/publico/*` sería atrapado como `{id_turno}='publico'` → 422. Mismo quirk §5.
+
+**Cálculo de slots (`_slots_libres_agente`):** llama a `services/agenda.py::disponibilidad_efectiva('agente', id, fecha)`, parte cada rango en bloques de `duracion_min` del tipo de servicio (descarta el último si no entra completo), y filtra los que se solapan con cualquier fila activa de `ocupaciones` (tipo_recurso='agente', misma fecha). `id_agente` opcional: si se omite, busca en todos los agentes con disponibilidad cargada.
+
+**POST /reservar:** valida tipo + agente activos, que el slot caiga dentro de la disponibilidad efectiva, que no se solape con ocupaciones, busca/crea ciudadano por DNI (`buscar_o_crear_ciudadano_por_dni`), rechaza si el ciudadano ya tiene turno no-cancelado ese día. Crea turno (`origen='autoservicio'`) + ocupación espejo. Devuelve `token_turno` en la respuesta (sin él el ciudadano no puede volver a su turno).
+
+**Frontend público (`web-app/src/autoservicio/`):**
+- `TurnosPage.tsx` — path `/turnos-autoservicio`. Flujo de 4 pasos (tipo → agente → slot → datos) con `StepIndicator`. Al reservar redirige a `/turno/:tokenTurno`.
+- `MiTurnoPage.tsx` — path `/turno/:tokenTurno`. Ver/cancelar el turno. Espeja `MiReservaPage` de eventos.
+- `api.ts` extendido con `getTiposServicioTurno/getAgentesTurno/getSlotsTurno/postTurnoPublico/getTurnoPublico/deleteTurnoPublico`.
+- El backoffice de Turnos (`modules/turnos/pages/Overview.tsx`) muestra un banner "Autoservicio para ciudadanos" con el link fijo `#/turnos-autoservicio` + botón copiar. A diferencia de Entradas (token por evento), el link de Turnos es fijo — el ciudadano arranca eligiendo el trámite.

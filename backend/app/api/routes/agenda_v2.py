@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_user
 from app.core.database import get_db
 from app.schemas.agenda_v2 import (
+    AcreditarQRIn,
     AusenciaOut,
     CalendarioDiaOut,
     CalendarioMesDia,
@@ -832,6 +833,46 @@ async def _patch_reserva_estado(
         actual.get("id_municipio", 1) if isinstance(actual.get("id_municipio"), int) else 1,
     )
     await db.commit()
+    return nueva
+
+
+@router.post("/reservas/acreditar-qr", response_model=ReservaOut)
+async def acreditar_reserva_qr(
+    payload: AcreditarQRIn,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Acredita asistencia escaneando el QR fisico de una reserva.
+
+    El operador escanea el QR con un lector; el string leido (`qr_codigo`)
+    se resuelve a la reserva y se marca `asistio`. Cierra el flujo del QR
+    fisico — antes solo se podia acreditar por `id` numerico desde la lista.
+
+    Errores:
+      - 404 si el qr_codigo no corresponde a ninguna reserva activa.
+      - 409 si la reserva esta cancelada (no se puede acreditar).
+    """
+    qr = (payload.qr_codigo or "").strip()
+    if not qr:
+        raise HTTPException(422, "qr_codigo vacio")
+
+    row = (await db.execute(text("""
+        SELECT r.id_evento_reserva, er.codigo AS estado_codigo
+        FROM evento_reservas r
+        LEFT JOIN estado_reserva er ON er.id_estado_reserva = r.id_estado_reserva
+        WHERE r.qr_codigo = :q AND r.activo = TRUE
+        LIMIT 1
+    """), {"q": qr})).mappings().first()
+    if not row:
+        raise HTTPException(404, "El codigo QR no corresponde a ninguna reserva")
+    if row["estado_codigo"] == "cancelada":
+        raise HTTPException(409, "La reserva fue cancelada, no se puede acreditar")
+
+    nueva = await _patch_reserva_estado(
+        db, int(row["id_evento_reserva"]), "asistio", current_user["id_usuario"],
+    )
+    if not nueva:
+        raise HTTPException(404, "Reserva no encontrada")
     return nueva
 
 

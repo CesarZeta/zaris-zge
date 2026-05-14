@@ -128,6 +128,9 @@ export function Overview() {
         <Chip label="Cancelados" value={counts.cancelado} color={ESTADO_COLOR.cancelado} />
       </div>
 
+      {/* Link publico de autoservicio */}
+      <LinkAutoservicio />
+
       {isError && <div style={errorBanner}>{(error as Error)?.message ?? 'Error al cargar turnos'}</div>}
 
       {/* Tabla */}
@@ -201,6 +204,45 @@ export function Overview() {
         onCancel={() => setConfirmCancelar(null)}
       />
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  )
+}
+
+function LinkAutoservicio() {
+  const push = useNotificationsStore((s) => s.push)
+  // Turnos autoservicio no tiene token de entrada (el ciudadano arranca
+  // eligiendo el tramite). El link es fijo: la pagina publica de turnos.
+  const url = `${window.location.origin}${window.location.pathname}#/turnos-autoservicio`
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+      background: 'var(--surface-100)', border: '1px solid var(--border-primary)',
+      borderRadius: 12, padding: '12px 16px',
+    }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--fg-2)' }}>
+          Autoservicio para ciudadanos
+        </span>
+        <span style={{ fontSize: '0.74rem', color: 'var(--fg-3)' }}>
+          Compartí este link para que reserven turnos sin pasar por mesa.
+        </span>
+      </div>
+      <code style={{
+        marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: '0.74rem',
+        color: 'var(--fg-2)', background: 'var(--surface-300)',
+        padding: '4px 8px', borderRadius: 6, maxWidth: 360,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>{url}</code>
+      <button
+        style={btnGhostSm}
+        onClick={() => {
+          navigator.clipboard?.writeText(url)
+            .then(() => push({ kind: 'success', title: 'Link copiado' }))
+            .catch(() => push({ kind: 'error', title: 'No se pudo copiar' }))
+        }}
+      >
+        Copiar link
+      </button>
     </div>
   )
 }

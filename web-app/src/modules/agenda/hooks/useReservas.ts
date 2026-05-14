@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { cancelarReserva, crearReserva, listarReservas, marcarAsistio } from '../api/agendaApi'
+import { acreditarReservaQR, cancelarReserva, crearReserva, listarReservas, marcarAsistio } from '../api/agendaApi'
 import type { ReservaCreatePayload } from '../types/agenda'
 
 export function useReservas(idEvento: number | null) {
@@ -34,6 +34,14 @@ export function useCancelarReserva() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (idReserva: number) => cancelarReserva(idReserva),
+    onSuccess:  () => invalidate(qc),
+  })
+}
+
+export function useAcreditarQR() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (qrCodigo: string) => acreditarReservaQR(qrCodigo),
     onSuccess:  () => invalidate(qc),
   })
 }
