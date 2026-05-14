@@ -6,16 +6,111 @@ IMPORTANTE: rutas con segmentos fijos (/catalogo/*, /mesa/*) van ANTES de /{id_o
 para que FastAPI no las interprete como path param.
 """
 import logging
-from typing import Optional
+from datetime import date, datetime, time, timedelta
+from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.auth import get_current_user
+from app.services.agenda import disponibilidad_efectiva
 
 router = APIRouter(prefix="/api/v1/ot", tags=["Órdenes de Trabajo"])
 logger = logging.getLogger("zaris.ordenes_trabajo")
+
+
+# ── Helpers de slots (planificacion de OT sobre la agenda) ───────────────────
+def _slots_de_rango(rango_ini: time, rango_fin: time, duracion_min: int) -> list[tuple[time, time]]:
+    """Parte un rango horario en slots consecutivos de `duracion_min`.
+    Descarta el ultimo si no entra completo."""
+    out: list[tuple[time, time]] = []
+    cursor = datetime.combine(date.min, rango_ini)
+    fin = datetime.combine(date.min, rango_fin)
+    paso = timedelta(minutes=duracion_min)
+    while cursor + paso <= fin:
+        out.append((cursor.time(), (cursor + paso).time()))
+        cursor += paso
+    return out
+
+
+def _solapa(a_ini: time, a_fin: time, b_ini: time, b_fin: time) -> bool:
+    return a_ini < b_fin and a_fin > b_ini
+
+
+def _merge_rangos(rangos: list[tuple[time, time]]) -> list[tuple[time, time]]:
+    """Une rangos solapados o contiguos. Usado para la disponibilidad de un
+    equipo = union de las disponibilidades de sus agentes."""
+    if not rangos:
+        return []
+    ordenados = sorted(rangos, key=lambda r: r[0])
+    out = [ordenados[0]]
+    for ini, fin in ordenados[1:]:
+        last_ini, last_fin = out[-1]
+        if ini <= last_fin:
+            out[-1] = (last_ini, max(last_fin, fin))
+        else:
+            out.append((ini, fin))
+    return out
+
+
+async def _slots_libres_recurso(
+    db: AsyncSession, tipo_recurso: str, id_recurso: int, fecha: date, duracion_min: int,
+) -> list[dict[str, Any]]:
+    """Slots libres de un agente o equipo para una fecha.
+
+    - agente: disponibilidad efectiva del agente menos sus ocupaciones.
+    - equipo: union de las disponibilidades de los agentes del equipo
+      (equipo_agentes) menos la union de ocupaciones de todos ellos. Si el
+      equipo no tiene agentes con agenda cargada, devuelve [] (no disponible).
+    """
+    if tipo_recurso == "agente":
+        rangos_raw = await disponibilidad_efectiva(db, "agente", id_recurso, fecha)
+        rangos = [(r["hora_inicio"], r["hora_fin"]) for r in rangos_raw]
+        ocup = (await db.execute(text("""
+            SELECT hora_inicio, hora_fin FROM ocupaciones
+            WHERE activo = TRUE AND tipo_recurso = 'agente' AND id_recurso = :ir AND fecha = :f
+        """), {"ir": id_recurso, "f": fecha})).mappings().all()
+        ocupadas = [(o["hora_inicio"], o["hora_fin"]) for o in ocup]
+    elif tipo_recurso == "equipo":
+        # Agentes del equipo.
+        agentes = (await db.execute(text("""
+            SELECT id_agente FROM equipo_agentes
+            WHERE id_equipo = :ie AND activo = TRUE
+        """), {"ie": id_recurso})).scalars().all()
+        if not agentes:
+            return []
+        # Union de disponibilidades de todos los agentes.
+        rangos_all: list[tuple[time, time]] = []
+        for id_ag in agentes:
+            for r in await disponibilidad_efectiva(db, "agente", id_ag, fecha):
+                rangos_all.append((r["hora_inicio"], r["hora_fin"]))
+        rangos = _merge_rangos(rangos_all)
+        if not rangos:
+            return []
+        # Ocupaciones: las del equipo + las de cualquiera de sus agentes.
+        ocup = (await db.execute(text("""
+            SELECT hora_inicio, hora_fin FROM ocupaciones
+            WHERE activo = TRUE AND fecha = :f
+              AND (
+                (tipo_recurso = 'equipo' AND id_recurso = :ie)
+                OR (tipo_recurso = 'agente' AND id_recurso = ANY(:ags))
+              )
+        """), {"f": fecha, "ie": id_recurso, "ags": list(agentes)})).mappings().all()
+        ocupadas = [(o["hora_inicio"], o["hora_fin"]) for o in ocup]
+    else:
+        raise HTTPException(422, "tipo_recurso debe ser 'agente' o 'equipo'")
+
+    out: list[dict[str, Any]] = []
+    for r_ini, r_fin in rangos:
+        for s_ini, s_fin in _slots_de_rango(r_ini, r_fin, duracion_min):
+            if any(_solapa(s_ini, s_fin, o_ini, o_fin) for o_ini, o_fin in ocupadas):
+                continue
+            out.append({
+                "hora_inicio": s_ini.strftime("%H:%M:%S"),
+                "hora_fin": s_fin.strftime("%H:%M:%S"),
+            })
+    return out
 
 
 def _to_dict(row) -> dict:
@@ -80,7 +175,12 @@ async def mesa_supervisor(
             SELECT DISTINCT ON (ot.id_reclamo)
                 ot.id_reclamo, ot.id_ot, ot.nro_ot,
                 ot.id_agente, ot.id_equipo,
-                eot.nombre AS ot_estado_nombre
+                eot.nombre AS ot_estado_nombre,
+                EXISTS (
+                    SELECT 1 FROM ocupaciones oc
+                    WHERE oc.id_orden_trabajo = ot.id_ot
+                      AND oc.tipo = 'ot' AND oc.activo = TRUE
+                ) AS ot_agendada
             FROM ordenes_trabajo ot
             JOIN estado_ot eot ON eot.id_estado_ot = ot.id_estado
             WHERE ot.activo = TRUE
@@ -107,6 +207,7 @@ async def mesa_supervisor(
             ota.id_ot AS ot_activa_id,
             ota.nro_ot AS ot_activa_nro,
             ota.ot_estado_nombre AS ot_activa_estado,
+            ota.ot_agendada AS ot_activa_agendada,
             ota.id_agente AS ot_id_agente,
             (ag.apellido || ', ' || ag.nombre) AS ot_agente_nombre,
             ota.id_equipo AS ot_id_equipo,
@@ -376,6 +477,142 @@ async def mesa_auditor_me(
     """), {"id_agente": id_agente})
 
     return {"id_agente": id_agente, "ots": [_to_dict(row) for row in result.fetchall()]}
+
+
+# ── GET /ot/slots-recurso — slots libres de un agente/equipo ─────────────────
+# Segmento fijo: DEBE ir antes de GET /{id_ot}.
+
+@router.get("/slots-recurso")
+async def slots_recurso(
+    tipo_recurso: str = Query(..., description="agente | equipo"),
+    id_recurso: int = Query(...),
+    fecha: date = Query(...),
+    duracion_min: int = Query(60, ge=15, le=480),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
+    """Huecos libres de un recurso para una fecha, en bloques de `duracion_min`.
+    Para equipo: union de las disponibilidades de sus agentes (equipo_agentes)
+    menos las ocupaciones de todos ellos. Equipo sin agentes con agenda -> []."""
+    if tipo_recurso not in ("agente", "equipo"):
+        raise HTTPException(422, "tipo_recurso debe ser 'agente' o 'equipo'")
+    slots = await _slots_libres_recurso(db, tipo_recurso, id_recurso, fecha, duracion_min)
+    return {"tipo_recurso": tipo_recurso, "id_recurso": id_recurso,
+            "fecha": fecha.isoformat(), "duracion_min": duracion_min, "slots": slots}
+
+
+# ── POST /ot/con-agenda — crear OT + ocupacion en una transaccion ────────────
+
+@router.post("/con-agenda", status_code=201)
+async def crear_ot_con_agenda(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Crea la OT y, en la misma transaccion, su ocupacion en la agenda.
+    Body: {id_reclamo, tipo_recurso, id_recurso, fecha, hora_inicio, hora_fin,
+    observaciones?}. El supervisor queda registrado en id_supervisor_asigna.
+    Si la ocupacion entra en conflicto de horario, igual se crea (se reporta)."""
+    for campo in ("id_reclamo", "tipo_recurso", "id_recurso", "fecha", "hora_inicio", "hora_fin"):
+        if body.get(campo) in (None, ""):
+            raise HTTPException(422, f"Campo requerido: {campo}")
+    tipo_recurso = body["tipo_recurso"]
+    if tipo_recurso not in ("agente", "equipo"):
+        raise HTTPException(422, "tipo_recurso debe ser 'agente' o 'equipo'")
+
+    id_reclamo = body["id_reclamo"]
+    r = (await db.execute(text(
+        "SELECT estado FROM reclamos WHERE id_reclamo = :id AND activo = TRUE"
+    ), {"id": id_reclamo})).fetchone()
+    if not r:
+        raise HTTPException(404, f"Reclamo {id_reclamo} no encontrado")
+    if r.estado in ("Cancelado", "Resuelto"):
+        raise HTTPException(422, f"No se puede asignar OT a un reclamo {r.estado}")
+
+    id_estado_en_gestion = await _id_estado_ot(db, "En gestión")
+    uid = current_user["id_usuario"]
+    id_recurso = body["id_recurso"]
+    id_agente = id_recurso if tipo_recurso == "agente" else None
+    id_equipo = id_recurso if tipo_recurso == "equipo" else None
+
+    # asyncpg requiere objetos date/time, no strings. El body llega como dict crudo.
+    try:
+        f_ocup = date.fromisoformat(str(body["fecha"]))
+        hi_ocup = time.fromisoformat(str(body["hora_inicio"]))
+        hf_ocup = time.fromisoformat(str(body["hora_fin"]))
+    except ValueError as e:
+        raise HTTPException(422, f"Formato de fecha/hora invalido: {e}")
+    if hf_ocup <= hi_ocup:
+        raise HTTPException(422, "hora_fin debe ser mayor que hora_inicio")
+
+    try:
+        # 1. Crear la OT.
+        row = (await db.execute(text("""
+            INSERT INTO ordenes_trabajo
+                (id_reclamo, id_estado, id_agente, id_equipo, es_auditoria,
+                 id_supervisor_asigna, activo, fecha_alta, fecha_modificacion,
+                 id_usuario_alta, id_usuario_modificacion)
+            VALUES
+                (:id_reclamo, :id_estado, :id_agente, :id_equipo, FALSE,
+                 :uid, TRUE, NOW(), NOW(), :uid, :uid)
+            RETURNING id_ot, nro_ot
+        """), {
+            "id_reclamo": id_reclamo, "id_estado": id_estado_en_gestion,
+            "id_agente": id_agente, "id_equipo": id_equipo, "uid": uid,
+        })).fetchone()
+        id_ot = row.id_ot
+        nro_ot = row.nro_ot or f"OT-{id_ot}"
+
+        estado_ant = r.estado
+        await db.execute(text("""
+            UPDATE reclamos SET estado = 'En gestión', fecha_modificacion = NOW(),
+                id_usuario_modificacion = :uid
+            WHERE id_reclamo = :id AND estado NOT IN ('Cancelado','Resuelto')
+        """), {"id": id_reclamo, "uid": uid})
+        await _insertar_historial_reclamo(db, id_reclamo, f"OT {nro_ot} generada",
+                                           estado_ant, "En gestión",
+                                           body.get("observaciones", ""), uid)
+
+        # 2. Crear la ocupacion espejo en la agenda.
+        ocup = (await db.execute(text("""
+            INSERT INTO ocupaciones
+                (tipo, tipo_recurso, id_recurso, fecha, hora_inicio, hora_fin,
+                 id_orden_trabajo, id_municipio, activo, fecha_alta, fecha_modificacion,
+                 id_usuario_alta, id_usuario_modificacion)
+            VALUES
+                ('ot', :tr, :ir, :f, :hi, :hf, :id_ot, :mun, TRUE, NOW(), NOW(), :uid, :uid)
+            RETURNING id_ocupacion
+        """), {
+            "tr": tipo_recurso, "ir": id_recurso, "f": f_ocup,
+            "hi": hi_ocup, "hf": hf_ocup, "id_ot": id_ot,
+            "mun": body.get("id_municipio", 1), "uid": uid,
+        })).fetchone()
+        id_ocupacion = ocup.id_ocupacion
+
+        # 3. Detectar conflictos de solapamiento con otras ocupaciones del recurso.
+        conflictos = (await db.execute(text("""
+            SELECT id_ocupacion, tipo, hora_inicio, hora_fin
+            FROM ocupaciones
+            WHERE activo = TRUE AND tipo_recurso = :tr AND id_recurso = :ir
+              AND fecha = :f AND id_ocupacion <> :self
+              AND hora_inicio < :hf AND hora_fin > :hi
+        """), {
+            "tr": tipo_recurso, "ir": id_recurso, "f": f_ocup,
+            "self": id_ocupacion, "hi": hi_ocup, "hf": hf_ocup,
+        })).mappings().all()
+
+        await db.commit()
+        return {
+            "id_ot": id_ot, "nro_ot": nro_ot, "id_reclamo": id_reclamo,
+            "id_ocupacion": id_ocupacion,
+            "conflictos": [dict(c) for c in conflictos],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error("Error al crear OT con agenda: %s", e)
+        raise HTTPException(400, str(e))
 
 
 # ── GET /ot — listar OTs con filtros ─────────────────────────────────────────

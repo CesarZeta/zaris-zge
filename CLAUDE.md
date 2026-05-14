@@ -2117,3 +2117,42 @@ Flujo público sin JWT para que el ciudadano reserve un turno sin pasar por mesa
 - `MiTurnoPage.tsx` — path `/turno/:tokenTurno`. Ver/cancelar el turno. Espeja `MiReservaPage` de eventos.
 - `api.ts` extendido con `getTiposServicioTurno/getAgentesTurno/getSlotsTurno/postTurnoPublico/getTurnoPublico/deleteTurnoPublico`.
 - El backoffice de Turnos (`modules/turnos/pages/Overview.tsx`) muestra un banner "Autoservicio para ciudadanos" con el link fijo `#/turnos-autoservicio` + botón copiar. A diferencia de Entradas (token por evento), el link de Turnos es fijo — el ciudadano arranca eligiendo el trámite.
+
+## 34. Módulo OT — frontend dedicado del Supervisor (crear OT + agendar en una pasada)
+
+Implementado 2026-05-14 jornada 5. El bullet "OT" del menú es el frontend donde el supervisor, desde la bandeja de reclamos de su subárea, crea la OT **y** la planifica en la agenda de agentes/equipos en un solo flujo. Antes eran dos pasos en dos módulos (crear OT en `modules/ot`, agendarla en `modules/agenda`).
+
+### Vista Supervisor — layout 2 columnas (tab "Asignar")
+
+`web-app/src/modules/ot/views/SupervisorView.tsx`: el tab Asignar usa grid `minmax(0,1fr) 340px` — bandeja de reclamos a la izquierda, `PlanificadorOT` a la derecha. Click en una fila (o en el botón "Planificar") selecciona el reclamo en el panel. El flujo de **lote** (checkboxes + `AsignarModal`) se mantiene intacto: agendar 10 OTs distintas en un panel no tiene sentido, el lote sigue siendo asignación simple sin agenda. El tab "Reasignar" no cambió.
+
+### `PlanificadorOT.tsx` — panel de planificación
+
+`web-app/src/modules/ot/components/PlanificadorOT.tsx`: muestra contexto del reclamo → selector agente/equipo → fecha → **slots libres como chips clickeables** → dos acciones:
+- **"Crear OT y agendar"** → `POST /ot/con-agenda` (crea OT + ocupación espejo en una transacción).
+- **"Crear OT sin agendar"** → `POST /ot` normal. La OT queda sin ocupación; igual registra al supervisor en `id_supervisor_asigna`.
+
+Valida FK antes de enviar (ver memoria `feedback_validar_fk_antes_submit`).
+
+### Backend nuevo en `ordenes_trabajo.py`
+
+| Acción | Verbo | Path | Notas |
+|---|---|---|---|
+| Slots libres de un recurso | GET | `/api/v1/ot/slots-recurso?tipo_recurso=&id_recurso=&fecha=&duracion_min=` | **Segmento fijo: registrado ANTES de `GET /{id_ot}`** (§5). Agente: disponibilidad efectiva menos sus ocupaciones. Equipo: unión de las disponibilidades de los agentes del equipo (`equipo_agentes`) menos la unión de ocupaciones de todos ellos. Equipo sin agentes con agenda → `[]`. |
+| Crear OT + agenda | POST | `/api/v1/ot/con-agenda` | Crea OT y ocupación tipo `'ot'` en una transacción. Body `dict` → convierte fecha/hora con `date.fromisoformat`/`time.fromisoformat` (asyncpg no castea strings, ver memoria `feedback_asyncpg_dict_crudo_fecha`). Detecta conflictos de solapamiento y los devuelve, pero la OT igual se crea. `id_supervisor_asigna` = usuario logueado. |
+
+`GET /ot/mesa/supervisor` ahora expone **`ot_activa_agendada`** (boolean): el CTE `ot_activa` agrega un `EXISTS` sobre `ocupaciones` tipo `'ot'` activas ligadas a la OT. Permite distinguir en la bandeja las OTs creadas sin agendar.
+
+Helpers compartidos en `ordenes_trabajo.py`: `_slots_de_rango`, `_solapa`, `_merge_rangos` (une rangos solapados — usado para la unión de disponibilidades del equipo), `_slots_libres_recurso`. Reutilizan `services/agenda.py::disponibilidad_efectiva`.
+
+### Hooks `useOT.ts`
+
+`useSlotsRecurso(tipo, id, fecha, duracion)` — query de slots, `enabled` solo con recurso+fecha elegidos. `useCrearOTConAgenda()` — mutation que invalida mesas de OT **y** queries de agenda (`['agenda']`), porque la ocupación nueva debe aparecer en la grilla del módulo Agenda.
+
+### Estado de los 3 módulos del menú (confirmado 2026-05-14)
+
+- **OT** → frontend dedicado del supervisor (esta sección). Crea OT relacionada al reclamo + la agenda.
+- **Turnos** → ligado a **agentes**, turnos de atención al ciudadano (§33). NO se tocó.
+- **Entradas** → ligado a **espacios** + eventos con cupo (§33). NO se tocó.
+
+`OcupacionOTModal` en el módulo Agenda (§ ver jornada anterior) se mantiene: sigue siendo válido planificar en la Agenda una OT ya creada. El flujo nuevo de OT no lo reemplaza, lo complementa.
