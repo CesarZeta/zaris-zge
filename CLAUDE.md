@@ -1356,14 +1356,14 @@ Permisos: `nivel_acceso <= 2` (admin/supervisor) puede mutar; cualquier autentic
 
 #### Quirks operativos B1 (cazados en sesión 2026-05-13)
 
-- **`GET /agenda/semana` con `tipo_recurso='todos'` es O(recursos × días)**. En prod con 84 agentes + 1 equipo + 1 espacio × 7 días tomó ~20s porque `disponibilidad_efectiva()` se llama una vez por (recurso, día). El frontend B2 **NO debe** llamar `/semana` sin filtro; siempre pasar `tipo_recurso=<específico>` para reducir el espacio. Optimización pendiente cuando se note: batch query con `(tipo_recurso, id_recurso) IN ((...))` y resolución del bitmask en Python en un solo pase.
+- ~~**`GET /agenda/semana` con `tipo_recurso='todos'` es O(recursos × días)**~~ **Optimizado 2026-05-14** (commits `37d5034` + `8d047f5`). `/semana 7d` con 84 agentes pasó de timeout a 2.6s; `/semana 14d` a 3.3s. Ya **es seguro llamar `/semana` con `tipo_recurso='todos'`** sin penalty. Ver sección "Performance" más abajo en B2.
 - **Espacio `atendido=TRUE` SIN agentes vinculados → disponibilidad efectiva `[]`**. La mig 40 deliberadamente NO enforce "atendido => al menos 1 agente" para no bloquear el alta inicial; queda como validación de capa frontend o checklist UX. Síntoma: el espacio aparece en `/calendario` pero su grilla queda toda gris ("fuera de horario") sin razón obvia. Recomendado en B2: badge "⚠ falta vincular agentes" en el espacio del listado cuando `atendido && agentes_vinculados.length === 0`.
 - **`EXTRACT(field FROM :param)` con asyncpg requiere cast inline** — usar `(:f)::date` (memoria [[feedback_asyncpg_extract_cast_date]]). Aplicar a cualquier query que extienda `disponibilidad_efectiva` o consulte fechas/horas con parámetros bindeados.
 - **Smoke local ≠ prod en este módulo**: prod arrancó la sesión con 1 espacio + 2 disponibilidades + 1 evento residuales del E2E de autoservicio del 2026-05-12. Inocuos pero alteran conteos del smoke. Si vas a contar items en prod, considerar `WHERE fecha_alta > '2026-05-13'` para excluir los demos viejos.
 
-### Sub-fase B2 — Frontend (CÓDIGO ENTREGADO 2026-05-13, ❗PENDIENTE VERIFICACIÓN VISUAL)
+### Sub-fase B2 — Frontend (✅ CERRADA al 2026-05-14, commit `7186fe1`)
 
-> **No fue probado en navegador.** Typecheck + build + smoke API OK, pero el flujo UI completo (crear espacio → crear disponibilidad → ver fondo en grilla → ver evento como bloque) **no se validó manualmente**. Cualquier sesión siguiente que toque B2 debería partir por levantar `pnpm dev` en localhost:5173, seedear 1 espacio + 1 disponibilidad + 1 evento, y caminar las 3 vistas (Día/Semana/Mes) + la Config antes de codear nada nuevo. Memoria [[feedback_entrega_frontend_sin_verificacion_visual]] documenta la lección.
+> **Verificación visual completa en navegador hecha 2026-05-14.** Levanté `pnpm dev` + uvicorn local, seedeé 2 espacios (atendido+desatendido) + 3 disponibilidades vía API, y caminé Día/Semana/Mes + Config (Espacios + Disponibilidad). Bloque de evento se renderiza con bg violeta `rgba(106,27,154,.2)` en la fila del encargado, los filtros de pills filtran la grilla correctamente, la disponibilidad efectiva intersecta espacio atendido con agentes vinculados.
 
 **Estructura del módulo Agenda al cierre B2:**
 
@@ -1409,11 +1409,38 @@ Permisos: `nivel_acceso <= 2` (admin/supervisor) puede mutar; cualquier autentic
 
 **DnD:** solo en Vista Día (igual que sub-fase 3.B). Vista Semana NO tiene DnD por simplicidad.
 
-**Pendientes post-B2 (no incluidos):**
-- Verificación visual completa en navegador (bloqueante para considerar B2 "cerrado").
+**Hallazgos de la verificación visual 2026-05-14 (fixeados en el commit):**
+- **Drift `id_municipio NULL`** entre `/recursos/conteos` y `/calendario`/`/semana`: el conteo usaba `WHERE id_municipio = :im` mientras los listados de grilla usan `IS NULL OR =`. En prod hay agentes/equipos legacy con `id_municipio` NULL (3 agentes, 3 equipos) y el pill decía "Agentes 1" pero la grilla mostraba 4. **Fix aplicado en `7186fe1`**: ahora ambas reglas son consistentes (`IS NULL OR = :im`). Si agregás un endpoint nuevo que filtre por municipio sobre agentes/equipos, usar la misma regla NULL-friendly.
+
+**Pendientes post-B2 (no bloqueantes):**
+- 3 ítems `data-modulo="turnos"` duplicados en sidebar vanilla (`turnos`, `entradas`, `agenda`) — consolidar a 1.
+- **Eventos sin `id_espacio` ni encargados son invisibles en la grilla Día.** El backend los devuelve en `eventos[]` top-level del response `/calendario`, pero el frontend B2 los pinta solo en filas con encargado/espacio. Decisión UX pendiente: fila "Eventos sin asignar" en la grilla, o validación en `POST /eventos` que exija al menos 1 encargado o `id_espacio` (mi preferencia).
+- Badge "⚠ falta vincular agentes" en EspaciosConfig cuando un espacio atendido tiene 0 agentes vinculados (sino la grilla pinta toda la fila gris sin razón obvia).
 - Drag en vista Semana.
-- Badge "⚠ falta vincular agentes" en EspaciosConfig.
 - KeyboardSensor en DnD (heredado de 3.B).
+- Título "timeline" residual entre las pills y la fecha en vista Día (legacy de sub-fase 3.A).
+
+### Performance — optimización 2026-05-14 (commits `37d5034` + `8d047f5`)
+
+Con 84 agentes en prod, los endpoints B1 originales eran inusables:
+
+| Endpoint | Original | Final | Mejora |
+|---|---|---|---|
+| `/agenda/calendario` agente 1d | 23.1s | 2.2s | ~10× |
+| `/agenda/semana` agente 7d | timeout >60s | 2.6s | >23× |
+| `/agenda/semana` todos 14d | (peor) | 3.3s | flat |
+
+**Cómo bajar de O(recursos × días) round-trips a O(1)** — patrón aplicado:
+
+1. **`services/agenda.py::disponibilidad_efectiva_batch(session, recursos, fechas)`** — 2 queries totales (`disponibilidad_recurso` con `WHERE tipo = ANY AND id = ANY`, descartando pares espureos en Python; + `espacio_agentes` para los atendidos del input). Bitmask + vigencia + intersección espacio↔agentes se resuelven en Python sobre las filas ya cargadas. La función singular `disponibilidad_efectiva` sigue intacta para `/disponibilidad/efectiva` (compat retro).
+
+2. **`agenda_v2.py::_eventos_del_rango(db, fd, fh, mun)`** — 1 query base (`eventos BETWEEN :fd AND :fh`) + 1 bulk de encargados (`evento_encargados WHERE id_evento = ANY(:ids)`). `_eventos_del_dia(db, f, m)` queda como wrapper compat retro que delega al rango con `fd=fh=f`.
+
+3. **`/calendario` y `/semana`** ahora ambos llaman a los batch directos. **Compat retro 100%** verificado con smoke regression byte-a-byte entre singular y batch (agente con horario, espacio atendido con intersección, espacio desatendido, espacio fuera de días, evento con encargado).
+
+**Latencia base Railway↔Supabase es ~2-3s** para queries con JOINs sobre 84 filas. Por debajo de eso es físicamente imposible sin tocar arquitectura (mover backend a la misma region, PgBouncer, caché Redis). Ver memoria [[reference_agenda_latencia_base_railway_supabase]] para más detalles.
+
+**Patrón generalizable** para próximos endpoints con loops N×M: ver memoria [[feedback_patron_batch_helper_singular_wrapper]]. Aplica a cualquier nuevo endpoint que itere sobre recursos × fechas/items.
 
 ## 28. Recibir prompts armados afuera del proyecto
 
