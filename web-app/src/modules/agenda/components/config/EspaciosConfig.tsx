@@ -48,7 +48,14 @@ export function EspaciosConfig() {
               {
                 key: 'atendido',
                 header: 'Tipo',
-                render: (r) => <Badge kind={r.atendido ? 'success' : 'neutral'}>{r.atendido ? 'atendido' : 'desatendido'}</Badge>,
+                render: (r) => (
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <Badge kind={r.atendido ? 'success' : 'neutral'}>{r.atendido ? 'atendido' : 'desatendido'}</Badge>
+                    {r.atendido && r.cant_agentes === 0 && (
+                      <Badge kind="warn">⚠ falta vincular agentes</Badge>
+                    )}
+                  </div>
+                ),
               },
               {
                 key: '_acciones',

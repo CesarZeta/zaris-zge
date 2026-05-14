@@ -34,6 +34,14 @@ export function GanttGrid({ data, conflictoOcupIds, onOcupacionClick, onSlotVaci
     }
     return out
   }, [data.eventos])
+
+  // Eventos huerfanos: sin encargados Y sin espacio. No tienen fila propia donde
+  // pintarse, asi que los juntamos en una fila sintetica "Eventos sin asignar".
+  const eventosSinAsignar = useMemo(() => {
+    return (data.eventos ?? []).filter(
+      (ev) => (ev.encargados ?? []).length === 0 && ev.id_espacio == null,
+    )
+  }, [data.eventos])
   const horas = useMemo(() => {
     const out: number[] = []
     for (let h = HOUR_START; h <= HOUR_END; h++) out.push(h)
@@ -99,6 +107,36 @@ export function GanttGrid({ data, conflictoOcupIds, onOcupacionClick, onSlotVaci
             </div>
           )
         })}
+        {/* Fila sintetica para eventos sin encargado ni espacio. */}
+        {eventosSinAsignar.length > 0 && (
+          <div
+            style={{
+              height: ROW_HEIGHT, borderBottom: '1px solid var(--border-primary)',
+              padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 10,
+              background: 'var(--surface-200)',
+            }}
+          >
+            <div style={{
+              width: 30, height: 30, borderRadius: 'var(--radius-pill)',
+              background: 'rgba(106,27,154,.20)',
+              color: 'var(--fg-1)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 600,
+            }}>
+              ?
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{
+                fontFamily: 'var(--font-display)', fontSize: 13, color: 'var(--fg-1)', fontWeight: 500,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>
+                Eventos sin asignar
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
+                sin encargado ni espacio
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       {/* Grilla scrolleable horizontal */}
       <div style={{ flex: 1, overflowX: 'auto', position: 'relative' }}>
@@ -157,6 +195,72 @@ export function GanttGrid({ data, conflictoOcupIds, onOcupacionClick, onSlotVaci
               })}
             />
           ))}
+          {/* Fila sintetica de eventos sin asignar: solo pinta bloques violeta,
+              sin droppable ni disponibilidad (no es un recurso real). */}
+          {eventosSinAsignar.length > 0 && (
+            <div
+              style={{
+                position: 'relative', height: ROW_HEIGHT, width: gridWidth,
+                borderBottom: '1px solid var(--border-primary)',
+                background: 'repeating-linear-gradient(45deg, rgba(38,37,30,.05) 0 6px, transparent 6px 12px), var(--surface-200)',
+              }}
+            >
+              <div
+                aria-hidden
+                style={{
+                  position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0,
+                  background:
+                    'repeating-linear-gradient(to right, transparent 0, transparent ' + (PX_PER_HOUR - 1) + 'px, var(--border-primary) ' + (PX_PER_HOUR - 1) + 'px, var(--border-primary) ' + PX_PER_HOUR + 'px)',
+                }}
+              />
+              {eventosSinAsignar.map((ev) => {
+                const ini = timeToMinutes(ev.hora_inicio.slice(0, 5))
+                const fin = timeToMinutes(ev.hora_fin.slice(0, 5))
+                if (fin <= HOUR_START * 60 || ini >= HOUR_END * 60) return null
+                const iniC = Math.max(ini, HOUR_START * 60)
+                const finC = Math.min(fin, HOUR_END * 60)
+                const left = ((iniC - HOUR_START * 60) / 60) * PX_PER_HOUR
+                const w = ((finC - iniC) / 60) * PX_PER_HOUR
+                const cupoAgotado = ev.cupo_libre <= 0 && ev.capacidad_ciudadanos > 0
+                return (
+                  <button
+                    key={`ev-sa-${ev.id_evento}`}
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onEventoClick?.(ev) }}
+                    title={`${ev.nombre} - ${ev.hora_inicio.slice(0, 5)} a ${ev.hora_fin.slice(0, 5)}`}
+                    style={{
+                      position: 'absolute', top: 4, height: ROW_HEIGHT - 12,
+                      left, width: w,
+                      background: 'rgba(106,27,154,.20)',
+                      border: '1px solid #6a1b9a',
+                      borderRadius: 'var(--radius-md)',
+                      color: 'var(--fg-1)',
+                      padding: '4px 8px',
+                      display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 2,
+                      fontFamily: 'var(--font-display)', fontSize: 11,
+                      overflow: 'hidden', textAlign: 'left',
+                      cursor: 'pointer', zIndex: 2,
+                    }}
+                  >
+                    <div style={{
+                      fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                      textDecoration: cupoAgotado ? 'line-through' : 'none',
+                    }}>
+                      {ev.nombre}
+                    </div>
+                    {ev.capacidad_ciudadanos > 0 && (
+                      <div style={{
+                        fontFamily: 'var(--font-mono)', fontSize: 10,
+                        color: cupoAgotado ? 'var(--color-error)' : 'var(--fg-2)',
+                      }}>
+                        {ev.reservas_activas}/{ev.capacidad_ciudadanos}{cupoAgotado ? ' · agotado' : ''}
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>

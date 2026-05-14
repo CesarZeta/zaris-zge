@@ -232,10 +232,7 @@ export function TimelineView() {
       onDragCancel={handleDragCancel}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: 'var(--size-subhead)', fontWeight: 400, letterSpacing: 'var(--track-subhead)', color: 'var(--fg-1)' }}>
-            timeline
-          </h2>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: 8 }}>
             <Button variant="default" icon={<Plus size={14} strokeWidth={1.5} />} onClick={() => setEventoOpen({ id: null })}>
               Nuevo evento

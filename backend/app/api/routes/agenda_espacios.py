@@ -50,8 +50,10 @@ async def _espacio_to_out(db: AsyncSession, id_espacio: int, incluir_agentes: bo
         return None
     out = dict(row)
     out["agentes_vinculados"] = []
+    out["cant_agentes"] = 0
     if incluir_agentes:
         out["agentes_vinculados"] = await _listar_agentes_espacio(db, id_espacio)
+        out["cant_agentes"] = len(out["agentes_vinculados"])
     return out
 
 
@@ -91,13 +93,17 @@ async def listar_espacios(
     rows = (await db.execute(text(f"""
         SELECT e.id_espacio, e.nombre, e.descripcion, e.direccion, e.capacidad_personas,
                e.atendido, e.id_subarea, s.nombre AS subarea_nombre,
-               e.activo, e.id_municipio, e.fecha_alta, e.fecha_modificacion
+               e.activo, e.id_municipio, e.fecha_alta, e.fecha_modificacion,
+               (SELECT COUNT(*) FROM espacio_agentes ea
+                 WHERE ea.id_espacio = e.id_espacio AND ea.activo = TRUE) AS cant_agentes
         FROM espacios_agenda e
         LEFT JOIN subarea s ON s.id_subarea = e.id_subarea
         WHERE {where_sql}
         ORDER BY e.nombre
     """), params)).mappings().all()
     # Listado liviano: no incluir agentes vinculados (es n+1, lo trae /detalle).
+    # Si traemos solo el conteo agregado (cant_agentes) para que el frontend
+    # pueda marcar espacios atendidos sin agentes.
     out = []
     for r in rows:
         d = dict(r)
