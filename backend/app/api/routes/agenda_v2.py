@@ -59,6 +59,7 @@ from app.services.agenda import (
     descripcion_corta_sql,
     detectar_conflictos,
     disponibilidad_efectiva,
+    disponibilidad_efectiva_batch,
     existe_recurso,
     generar_qr_codigo,
     lookup_estado_evento,
@@ -1212,9 +1213,15 @@ async def calendario_dia(
             "motivo": r["motivo"],
         })
 
+    # Disponibilidad efectiva en BATCH (antes era 1 await por recurso -> N round-trips).
+    disp_batch = await disponibilidad_efectiva_batch(
+        db,
+        [(rec["tipo"], rec["id_recurso"], rec.get("atendido")) for rec in recursos],
+        [fecha],
+    )
+
     out_recursos = []
     for rec in recursos:
-        disp = await disponibilidad_efectiva(db, rec["tipo"], rec["id_recurso"], fecha)
         out_recursos.append({
             "tipo": rec["tipo"],
             "id_recurso": rec["id_recurso"],
@@ -1222,7 +1229,7 @@ async def calendario_dia(
             "atendido": rec.get("atendido"),
             "ocupaciones": ocup_por_recurso.get((rec["tipo"], rec["id_recurso"]), []),
             "ausencias": aus_por_agente.get(rec["id_recurso"], []) if rec["tipo"] == "agente" else [],
-            "disponibilidad": disp,
+            "disponibilidad": disp_batch.get((rec["tipo"], rec["id_recurso"], fecha), []),
         })
 
     return {"fecha": fecha, "id_municipio": id_municipio, "recursos": out_recursos, "eventos": eventos_dia}
@@ -1485,6 +1492,16 @@ async def calendario_semana(
         d = desde + timedelta(days=i)
         eventos_por_dia[d] = await _eventos_del_dia(db, d, id_municipio)
 
+    # Disponibilidad efectiva en BATCH para todos los recursos x todos los dias.
+    # Antes: dias x recursos awaits secuenciales. Con 84 agentes x 7 dias eso
+    # eran 588 round-trips contra la DB.
+    fechas_rango = [desde + timedelta(days=i) for i in range(dias)]
+    disp_batch = await disponibilidad_efectiva_batch(
+        db,
+        [(rec["tipo"], rec["id_recurso"], rec.get("atendido")) for rec in recursos],
+        fechas_rango,
+    )
+
     # Build response por dia
     dias_out: list[dict[str, Any]] = []
     for i in range(dias):
@@ -1492,7 +1509,7 @@ async def calendario_semana(
         disp_por_recurso: dict[str, list[dict[str, Any]]] = {}
         for rec in recursos:
             key = f"{rec['tipo']}:{rec['id_recurso']}"
-            disp_por_recurso[key] = await disponibilidad_efectiva(db, rec["tipo"], rec["id_recurso"], d)
+            disp_por_recurso[key] = disp_batch.get((rec["tipo"], rec["id_recurso"], d), [])
 
         dias_out.append({
             "fecha": d,
