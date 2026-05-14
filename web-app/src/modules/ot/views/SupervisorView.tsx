@@ -5,6 +5,7 @@ import { BadgeEstadoReclamo, BadgePrioridad, SLACell, nombreCiudadano } from '..
 import { Field, StatsChips, Toolbar, inputStyle } from '../components/Toolbar'
 import { AsignarModal } from '../components/AsignarModal'
 import { ReasignarModal } from '../components/ReasignarModal'
+import { OTDetalleDrawer } from '../components/OTDetalleDrawer'
 
 type Tab = 'asignar' | 'reasignar'
 
@@ -20,6 +21,7 @@ export function SupervisorView() {
 
   const [modalAsignarReclamos, setModalAsignarReclamos] = useState<MesaSupervisorRow[]>([])
   const [modalReasignReclamo, setModalReasignReclamo] = useState<MesaSupervisorRow | null>(null)
+  const [drawerRow, setDrawerRow] = useState<MesaSupervisorRow | null>(null)
 
   // Counts globales (no filtrados, por tab) — para badges en pestañas
   const nAsignar = useMemo(
@@ -71,6 +73,11 @@ export function SupervisorView() {
   useEffect(() => {
     const vivos = new Set(reclamos.map((r) => r.id_reclamo))
     setSeleccionados((prev) => {
+      // Bail si no cambio: evita loop cuando `reclamos` es un array
+      // nuevo en cada render (data ?? []) pero las ids no cambiaron.
+      let allHere = true
+      prev.forEach((id) => { if (!vivos.has(id)) allHere = false })
+      if (allHere) return prev
       const next = new Set<number>()
       prev.forEach((id) => { if (vivos.has(id)) next.add(id) })
       return next
@@ -241,7 +248,8 @@ export function SupervisorView() {
                     <td style={tdStyle}>{nombreCiudadano(r.ciudadano_apellido, r.ciudadano_nombre)}</td>
                     <td style={tdStyle}><Clamp2 wide title={r.descripcion}>{r.descripcion ?? ''}</Clamp2></td>
                     <td style={{ ...tdStyle, ...stickyTd }}>
-                      <button onClick={() => abrirAsignarUno(r)} style={btnPrimarySm}>Asignar OT</button>
+                      <button onClick={() => setDrawerRow(r)} style={btnGhostSm}>Ver</button>
+                      <button onClick={() => abrirAsignarUno(r)} style={{ ...btnPrimarySm, marginLeft: 4 }}>Asignar OT</button>
                     </td>
                   </tr>
                 )
@@ -259,7 +267,8 @@ export function SupervisorView() {
                   <td style={tdStyle}>{nombreCiudadano(r.ciudadano_apellido, r.ciudadano_nombre)}</td>
                   <td style={tdStyle}><AsignadoCell row={r} /></td>
                   <td style={{ ...tdStyle, ...stickyTd }}>
-                    <button onClick={() => abrirReasignar(r)} style={btnWarnSm}>Reasignar</button>
+                    <button onClick={() => setDrawerRow(r)} style={btnGhostSm}>Ver</button>
+                    <button onClick={() => abrirReasignar(r)} style={{ ...btnWarnSm, marginLeft: 4 }}>Reasignar</button>
                   </td>
                 </tr>
               )
@@ -278,6 +287,12 @@ export function SupervisorView() {
         open={modalReasignReclamo !== null}
         reclamo={modalReasignReclamo}
         onClose={() => setModalReasignReclamo(null)}
+      />
+      <OTDetalleDrawer
+        open={drawerRow !== null}
+        idReclamo={drawerRow?.id_reclamo ?? null}
+        idOTResaltada={drawerRow?.ot_activa_id ?? null}
+        onClose={() => setDrawerRow(null)}
       />
     </div>
   )
@@ -427,6 +442,11 @@ const btnPrimarySm: React.CSSProperties = {
 
 const btnWarnSm: React.CSSProperties = {
   ...btnBase, background: '#ef6c00', color: 'white', borderColor: '#ef6c00',
+}
+
+const btnGhostSm: React.CSSProperties = {
+  ...btnBase, background: 'transparent', color: 'var(--fg-2)',
+  border: '1px solid var(--border-medium)',
 }
 
 const selbarBtnPrimary: React.CSSProperties = {
