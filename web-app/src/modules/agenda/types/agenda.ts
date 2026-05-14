@@ -316,6 +316,7 @@ export interface EspacioAgenda {
   id_municipio: number
   fecha_alta: string
   fecha_modificacion: string
+  cant_agentes: number
   agentes_vinculados: EspacioAgente[]
 }
 
