@@ -68,8 +68,8 @@ No suponer paridad entre stacks. Hoy:
 | Usuarios | `usuarios.html` | — | vanilla |
 | Admin tablas | `admin_tablas.html` | — | vanilla |
 | **Agenda** | — (legacy borrado 2026-05-12) | **`modules/agenda/`** (Fase 3.A + 3.B drag&drop + B1+B2 espacios/disponibilidad) | **React** (publicado) |
-| **Turnos** | — | **`modules/turnos/`** (scaffold 2026-05-14 — landing mínima, sin lógica aún) | **React** (publicado, scaffold) |
-| **Entradas** | — | **`modules/entradas/`** (scaffold 2026-05-14 — landing mínima, sin lógica aún) | **React** (publicado, scaffold) |
+| **Turnos** | — | **`modules/turnos/`** (backoffice completo 2026-05-14 — lista/alta/reprogramar/cumplir/cancelar; autoservicio público pendiente) | **React** (publicado) |
+| **Entradas** | — | **`modules/entradas/`** (backoffice completo 2026-05-14 — lista de eventos con espacio + gestión de reservas reusando `ReservaModal` de Agenda; autoservicio ya funciona vía flujo público de eventos) | **React** (publicado) |
 | **Dashboard** | — | **`modules/dashboard/`** (mapa Leaflet + stats reales) | **React — HOME del iframe** desde 2026-05-13 (se carga al entrar al shell y al hacer click en INICIO desde cualquier módulo) |
 | **OT (3 mesas)** | — (borrado, era `ot_supervisor.html`/`ot_agente.html`/`ot_auditoria.html`) | **`modules/ot/`** (Supervisor / Agente / Auditoría + drawer detalle compartido) | **React** (publicado) |
 | Config (permisos/identidad/etc.) | — | `modules/config/` | React |
@@ -90,7 +90,7 @@ No suponer paridad entre stacks. Hoy:
 - **Quirks de columnas legacy de auditoría** (verificado en prod 2026-05-10, no renombrar):
   - **Estándar §10 (`fecha_modificacion`):** la mayoría de tablas (21).
   - **Legacy `fecha_modif`:** `usuarios`, `empresas`. `ciudadanos` tiene **ambas** (legacy + nueva) — usar `fecha_modificacion` como fuente.
-  - **Legacy `modificado_en`:** `lugares_atencion`, `servicios` (las únicas con esta forma post mig 39). `agenda_clase` y `agenda_feriado` fueron estandarizadas en mig 39; el resto de `agenda_*` legacy y `turnos`/`areas` fueron dropeadas.
+  - **Legacy `modificado_en`:** `lugares_atencion`, `servicios` (las únicas con esta forma post mig 39). `agenda_clase` y `agenda_feriado` fueron estandarizadas en mig 39; el resto de `agenda_*` legacy y `areas` fueron dropeadas. La tabla legacy `turnos` fue dropeada en mig 39, pero **mig 45 creó una `turnos` nueva** (estándar §10 completo) para el módulo Turnos — no confundir.
   - Antes de escribir un UPDATE con `fecha_modificacion = NOW()`, verificar que la tabla tenga esa columna (`information_schema.columns`). Migración 26 falló por esto en `lugares_atencion`.
 - **CORS y headers custom:** cuando un endpoint devuelve un header custom (ej. `X-Total-Count`), agregar también `response.headers["Access-Control-Expose-Headers"] = "NombreHeader"`. Sin esto, navegadores cross-origin lo bloquean. Ejemplo en `GET /buc/ciudadanos/buscar`.
 - **Orden de routers FastAPI con `{param}` greedy en main.py:** si registrás un router nuevo bajo un prefix cuyo tronco lo comparte otro router que usa `/{param}` greedy (como `admin_tablas` con `/{tabla}` y `/{tabla}/{id}`), el router específico **debe registrarse ANTES** del genérico. Sino FastAPI matchea por orden de registro y atrapa la ruta nueva como si fuera `{tabla}='lo-que-sea'`. Síntoma: 422 con `int_parsing` en `{id}` (porque `{id}` no es int). Caso real sesión 2026-05-12: `admin_permisos` bajo `/api/v1/admin/permisos/*` atrapado por `admin_tablas` con `{tabla}='permisos'`, `{id}='modulos'`. Fix: invertir el orden en `main.py`.
@@ -816,6 +816,10 @@ CHECK constraint activo: `ck_reclamo_estado` con valores `('Sin asignar','En ges
 
 Migraciones idempotentes (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS`). No rompen compat: las tablas nuevas vienen vacías y el filtro `tipo_recurso` en endpoints existentes seguía aceptando `agente|equipo|todos` y ahora también acepta `espacio`.
 
+### Migración 45 — Módulo Turnos (`backend/migrations/45_turnos.sql`)
+
+**Aplicada en local y prod al 2026-05-14.** Crea el catálogo `tipo_servicio_turno` (estándar §10, con `duracion_min`, 3 seeds idempotentes) y la tabla transaccional `turnos` (estándar §10, FKs a `ciudadanos`/`agentes`/`tipo_servicio_turno`, `estado` CHECK `reservado|cumplido|cancelado`, `id_ocupacion` → fila espejo en `ocupaciones`). Idempotente (`CREATE TABLE IF NOT EXISTS`). Ver §33 para el modelo del módulo. **Ojo:** la tabla legacy `turnos` que mig 39 dropeó NO es esta — son tablas distintas que comparten nombre.
+
 ### Migración 38 — Permisos por módulo (`backend/migrations/38_permisos_por_modulo.sql`)
 
 **Aplicada en local y prod al 2026-05-12.** Crea `modulos` (8 seeds iniciales: reclamos, padrones, ot_*, turnos, usuarios, admin_tablas con `min_nivel_acceso` segmentado) + `usuario_modulos` (overrides). Ambas con estándar §10 completo. CHECK `min_nivel_acceso BETWEEN 1 AND 4`. UNIQUE `(id_usuario, modulo_codigo)` en overrides. Ver §30 para el detalle del modelo y los endpoints. **Mig 44 (2026-05-14)** separó `turnos` en `agenda`/`turnos`/`entradas` → catálogo actual 10 módulos.
@@ -1371,9 +1375,10 @@ Permisos: `nivel_acceso <= 2` (admin/supervisor) puede mutar; cualquier autentic
 - **4 tabs principales** en `AgendaLayout`: **Vistas / Eventos / Conflictos / Config**.
 - Dentro de **Vistas** (default), **sub-toggle Día / Semana / Mes** (botones), persistido en `agendaStore.vistaGrilla` (no en la URL).
 - Compat retro: URLs viejas `/agenda/timeline`, `/agenda/mensual` redirigen a `Vistas`.
-- **Pills de tipo de recurso** (4 opciones con conteo): Agentes / Equipos / Espacios atendidos / Espacios desatendidos. Persistido en `agendaStore.filtroRecurso: FiltroRecursoUI`. NO existe opción "Todos" (consistente con el quirk de performance B1).
+- **Pills de tipo de recurso** (4 opciones con conteo): Agentes / Equipos · OT / Esp. atendidos · Turnos / Esp. eventos · Entradas. Persistido en `agendaStore.filtroRecurso: FiltroRecursoUI`. NO existe opción "Todos" (consistente con el quirk de performance B1). **Las pills NO son intercambiables — cada vista sirve a un módulo distinto** (Pendiente Grande 2, cerrado 2026-05-14): Equipos→asignación de OT, Esp. atendidos→Turnos, Esp. eventos→Entradas. `RecursoTogglePills` muestra un subtítulo dinámico explicando el propósito de la pill activa.
 - Helper `web-app/src/lib/diasSemana.ts`: `serialize/deserialize/togglearDia/format` para el bitmask `dias_semana`. `format(31)` → `'Lun a Vie'`, `format(96)` → `'Sab y Dom'`, `format(127)` → `'Todos los dias'`.
-- Helper `agendaStore.filtroUIaBackend(filtro)` → `{ tipo_recurso, atendido }` para pasar al backend (`espacios_atendidos` → `tipo_recurso='espacio', atendido=true`).
+- Helper `agendaStore.filtroUIaBackend(filtro)` → `{ tipo_recurso, atendido, scopeSubareaPropia }` para pasar al backend (`espacios_atendidos` → `tipo_recurso='espacio', atendido=true`; `equipos` → `scopeSubareaPropia=true`).
+- **Scope por subárea del supervisor (vista Equipos):** `/calendario` y `/semana` aceptan `scope_subarea_propia: bool`. Cuando es `true`, el backend resuelve la subárea del usuario logueado vía `usuarios.id_usuario → agentes.id_usuario → agentes.id_subarea` (helper `services/agenda.py::subarea_del_usuario`) y filtra los recursos a esa subárea. **Admin (nivel 1) NO se scopea** — ve todo. **Fail-open:** si no se puede resolver la subárea (usuario sin agente, o agente sin `id_subarea` — drift común en prod, hoy 0 agentes tienen subárea seedeada), no se aplica el filtro. La pill "Equipos · OT" manda `scope_subarea_propia=true` automáticamente; las otras pills no. El helper `_resolver_scope_subarea` en `agenda_v2.py` centraliza la lógica: `id_subarea` explícito > scope propio > None.
 
 **Componentes nuevos:**
 
@@ -1744,8 +1749,8 @@ Sin esta validación backend, la restricción UI sería evadible (basta llamar a
 | `padrones` | Padrones | 4 | módulos React `ciudadanos` + `empresas` |
 | `ot_agente` | OT - Agente | 3 | módulo React `ot` (vista Agente) |
 | `agenda` | Agenda | 3 | módulo React `agenda` — sustrato de disponibilidad horaria de agentes/espacios |
-| `turnos` | Turnos | 3 | módulo React `turnos` — scaffold; ocupaciones tipo turno sobre agentes |
-| `entradas` | Entradas | 3 | módulo React `entradas` — scaffold; reservas a eventos en espacios |
+| `turnos` | Turnos | 3 | módulo React `turnos` — backoffice de turnos de atención (tabla `turnos`, mig 45) |
+| `entradas` | Entradas | 3 | módulo React `entradas` — backoffice de eventos con cupo en espacios físicos |
 | `ot_supervisor` | OT - Supervisor | 2 | módulo React `ot` (vista Supervisor) |
 | `ot_auditoria` | OT - Auditoría | 2 | módulo React `ot` (vista Auditoría) |
 | `usuarios` | Usuarios | 1 | `frontend/usuarios.html` (pantalla propia — admin_tablas no hashea password) |
@@ -2030,3 +2035,50 @@ if (typeof window !== 'undefined' && window.self !== window.top) {
 **Síntoma visual del bug**: el shell vanilla carga OK (topbar + sidebar normales), pero **dentro del iframe** aparece el 404 de GitHub Pages con logo de GitHub y "There isn't a GitHub Pages site here.". Aplica a cualquier asset/ruta que el bundle pida con path absoluto desde la raíz.
 
 Cazado 2026-05-13 cuando dashboard pasó a ser home: el handler 401 hacía `window.location.href = '/login'`. Antes con welcome.html como home no se notaba porque welcome.html no hace requests al backend, así que nunca se gatillaba el 401 → redirect mal.
+
+### Quirk 14: `web-app/dist/` y commits — qué compila Vite y en qué orden commitear
+
+`vite build` compila **todo lo que esté en el working tree en ese momento**, no lo que está staged. Dos consecuencias operativas al commitear:
+
+1. **No rebuildees `dist/` para commit con trabajo ajeno sin commitear en el working tree.** Si hay cambios a medias de otra tarea (común en este repo), Vite los mete en el bundle y el commit queda con un `dist/` que incluye fuentes que todavía no se commitearon (o que van en otro commit). El HEAD final puede quedar consistente, pero el commit intermedio tiene dist cruzado — malo para `git bisect` / revisar PRs / `git checkout <ese commit>`. Orden correcto: **commitear los fuentes primero, rebuildear el dist con el working tree ya acotado, commitear el dist** (o incluirlo en el mismo commit que sus fuentes). Si no podés acotar el working tree, stasheá lo ajeno antes de rebuildear. Detalle: memoria `feedback_rebuild_dist_working_tree_limpio`.
+
+2. **Antes de commitear `dist/`, rebuildear sin `VITE_API_BASE` en el shell y verificar que apunte a Railway.** Si rebuildeaste en modo dev para verificación local (`vite build --mode development` → apunta a `127.0.0.1:8000`), ese dist NO debe commitearse. `grep -o 'zaris-api-production' web-app/dist/assets/index-*.js` debe dar match antes del commit. Ver Quirk 1.
+
+## 33. Módulos Turnos y Entradas
+
+Dos módulos React que se apoyan en el sustrato de Agenda. Implementados al 2026-05-14 (backoffice completo). Ver §27 para el modelo de agenda subyacente.
+
+### Turnos — turnos de atención sobre agentes
+
+Un turno reserva un bloque de la disponibilidad de un agente para que un ciudadano realice un trámite (tipo de servicio). Estados: `reservado` → `cumplido` | `cancelado`.
+
+**DB (migración 45 `45_turnos.sql`, aplicada local + prod 2026-05-14):**
+- `tipo_servicio_turno`: catálogo (estándar §10) con `duracion_min`. Gestionado desde **admin_tablas** (`TABLE_CONFIG["tipo_servicio_turno"]`). 3 seeds: Atención general (30min), Licencia de conducir (45min), Habilitación comercial (60min).
+- `turnos`: tabla transaccional (estándar §10). FKs a `ciudadanos`, `agentes`, `tipo_servicio_turno`. `estado` CHECK `reservado|cumplido|cancelado`. `id_ocupacion` → fila espejo en `ocupaciones`.
+
+**Patrón clave — ocupación espejo:** cada turno mantiene una fila en `ocupaciones` (tipo='turno', tipo_recurso='agente') para aparecer en la grilla del módulo Agenda. El backend (`routes/turnos.py`) sincroniza ambas tablas:
+- crear turno → INSERT turno + INSERT ocupación espejo
+- reprogramar → UPDATE ambas
+- cumplir → solo UPDATE turno.estado (la ocupación se mantiene como histórico en la grilla)
+- cancelar → UPDATE turno.estado + soft-delete de la ocupación espejo (libera la grilla)
+
+**Endpoints (`/api/v1/turnos`):** GET `/catalogo/tipos-servicio`, GET `` (filtros estado/agente/ciudadano/fecha), GET `/{id}`, POST `` (calcula `hora_fin` con `duracion_min` si se omite; valida solapamiento del agente), PUT `/{id}` (reprograma — solo estado `reservado`), PATCH `/{id}/cumplir`, PATCH `/{id}/cancelar`. Permisos: nivel 1-3 muta, cualquiera lee.
+
+**Frontend:** `web-app/src/modules/turnos/` — vista única con tabla + filtros + chips de conteo + `TurnoFormModal` (alta/reprogramación). Reusa `Modal`, `ConfirmModal`, `CiudadanoSearch` del módulo Agenda (cross-module import OK, comparten el recurso agente).
+
+### Entradas — eventos con cupo en espacios físicos
+
+**No tiene tablas ni migración propias.** Reusa la entidad `eventos` + `evento_reservas` del backend de Agenda. Un "evento con entradas" es simplemente un `evento` con `id_espacio` no nulo.
+
+**Cambios backend en `agenda_v2.py` (compat-retro, campos opcionales):**
+- `EventoOut` y `EventoBase`/`EventoUpdate` ahora incluyen `id_espacio`.
+- `_evento_to_out` y `listar_eventos` devuelven `id_espacio`; `crear_evento`/`actualizar_evento` lo persisten.
+- `GET /agenda/eventos` acepta query param `con_espacio` (True=solo con espacio, False=solo sin, omitir=todos). El módulo Entradas filtra con `con_espacio=true`.
+
+**Frontend:** `web-app/src/modules/entradas/` — grilla de cards de eventos con espacio + `EventoEntradaFormModal` (alta, con selector de espacio vía `useEspacios` de Agenda). La gestión de reservas reusa **directamente el `ReservaModal` de Agenda** (`modules/agenda/modals/ReservaModal.tsx`).
+
+**Autoservicio:** Entradas YA tiene autoservicio funcionando — un evento con `admite_autoservicio=true` tiene `token_publico` y la página pública `/autoservicio/:tokenPublico` (que ya existía para eventos) lo gestiona sin cambios. La card de Entradas muestra el link público.
+
+### Pendiente — Turnos autoservicio
+
+Turnos NO tiene autoservicio aún. A diferencia de eventos (fecha/hora fija), un turno requiere que el ciudadano elija un slot libre, lo que necesita backend público nuevo: endpoints sin JWT para listar tipos de servicio, calcular slots libres cruzando `disponibilidad_recurso` con `ocupaciones`, y crear el turno. Es la sub-fase pendiente más grande del proyecto Turnos/Entradas.
