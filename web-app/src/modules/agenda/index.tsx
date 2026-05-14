@@ -1,10 +1,10 @@
 import { CalendarDays } from 'lucide-react'
 import type { ModuleManifest } from '../../lib/types'
 import { AgendaLayout } from './AgendaLayout'
-import { TimelineView } from './views/TimelineView'
-import { MonthlyView } from './views/MonthlyView'
+import { VistasView } from './views/VistasView'
 import { EventListView } from './views/EventListView'
 import { ConflictsView } from './views/ConflictsView'
+import { ConfigView } from './views/ConfigView'
 
 const WithLayout = (Component: React.FC) => () => (
   <AgendaLayout>
@@ -18,10 +18,13 @@ export const agendaModule: ModuleManifest = {
   icon:  CalendarDays,
   moduloCodigo: 'turnos',
   routes: [
-    { index: true,         element: WithLayout(TimelineView),   handle: { breadcrumb: 'agenda · timeline' } },
-    { path: 'timeline',    element: WithLayout(TimelineView),   handle: { breadcrumb: 'agenda · timeline' } },
-    { path: 'mensual',     element: WithLayout(MonthlyView),    handle: { breadcrumb: 'agenda · mensual' } },
+    { index: true,         element: WithLayout(VistasView),     handle: { breadcrumb: 'agenda · vistas' } },
+    // Compat retro: links viejos /agenda/timeline y /agenda/mensual caen en la
+    // misma VistasView (la sub-vista activa la decide el store).
+    { path: 'timeline',    element: WithLayout(VistasView),     handle: { breadcrumb: 'agenda · vistas' } },
+    { path: 'mensual',     element: WithLayout(VistasView),     handle: { breadcrumb: 'agenda · vistas' } },
     { path: 'eventos',     element: WithLayout(EventListView),  handle: { breadcrumb: 'agenda · eventos' } },
     { path: 'conflictos',  element: WithLayout(ConflictsView),  handle: { breadcrumb: 'agenda · conflictos' } },
+    { path: 'config',      element: WithLayout(ConfigView),     handle: { breadcrumb: 'agenda · config' } },
   ],
 }

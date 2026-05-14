@@ -49,6 +49,7 @@ from app.schemas.agenda_v2 import (
     OTBusquedaOut,
     RecursoAgendaOut,
     RecursoOut,
+    RecursosConteosOut,
     ReservaCreate,
     ReservaOut,
     SubareaOut,
@@ -177,6 +178,42 @@ async def listar_recursos_agenda(
         """), params)).mappings().all()
         out.extend({"tipo_recurso": "equipo", "id_recurso": r["id"], "nombre": r["nombre"]} for r in rows)
     return out
+
+
+@router.get("/recursos/conteos", response_model=RecursosConteosOut)
+async def conteos_recursos_agenda(
+    id_municipio: Optional[int] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
+    """Cantidad de recursos activos por tipo. Alimenta los pills del toggle en Agenda B2."""
+    params: dict[str, Any] = {}
+    # Misma regla que /calendario y /semana: id_municipio NULL se trata como
+    # del municipio actual. Sin el OR NULL, agentes/equipos legacy sin
+    # municipio aparecen en la grilla pero no en el conteo del pill.
+    where_mun = ""
+    if id_municipio is not None:
+        params["im"] = id_municipio
+        where_mun = " AND (id_municipio IS NULL OR id_municipio = :im)"
+
+    agentes = (await db.execute(
+        text(f"SELECT COUNT(*) FROM agentes WHERE activo = TRUE{where_mun}"), params
+    )).scalar_one()
+    equipos = (await db.execute(
+        text(f"SELECT COUNT(*) FROM equipos WHERE activo = TRUE{where_mun}"), params
+    )).scalar_one()
+    esp_atendidos = (await db.execute(
+        text(f"SELECT COUNT(*) FROM espacios_agenda WHERE activo = TRUE AND atendido = TRUE{where_mun}"), params
+    )).scalar_one()
+    esp_desatendidos = (await db.execute(
+        text(f"SELECT COUNT(*) FROM espacios_agenda WHERE activo = TRUE AND atendido = FALSE{where_mun}"), params
+    )).scalar_one()
+    return {
+        "agentes": agentes or 0,
+        "equipos": equipos or 0,
+        "espacios_atendidos": esp_atendidos or 0,
+        "espacios_desatendidos": esp_desatendidos or 0,
+    }
 
 
 @router.get("/catalogos/ot-busqueda", response_model=list[OTBusquedaOut])

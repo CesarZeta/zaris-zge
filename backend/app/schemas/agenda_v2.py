@@ -383,6 +383,14 @@ class RecursoOut(BaseModel):
     atendido: Optional[bool] = None
 
 
+class RecursosConteosOut(BaseModel):
+    """Conteos de recursos activos por tipo, para los pills del toggle de Agenda B2."""
+    agentes: int
+    equipos: int
+    espacios_atendidos: int
+    espacios_desatendidos: int
+
+
 class OTBusquedaOut(BaseModel):
     """Resultado liviano de busqueda de OT — para autocompletar en OcupacionModal."""
     id_ot: int

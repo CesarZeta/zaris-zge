@@ -1,27 +1,49 @@
 import { useQuery } from '@tanstack/react-query'
 import {
+  getAgendaRecurso,
   getCalendarioDia,
   getCalendarioMes,
-  getAgendaRecurso,
+  getCalendarioSemana,
+  getRecursosConteos,
 } from '../api/agendaApi'
 import type { TipoRecurso } from '../types/agenda'
 
 export function useCalendarioDia(
   fecha: string,
   idMunicipio: number,
-  tipoRecurso: 'agente' | 'equipo' | 'todos' = 'todos',
+  tipoRecurso: TipoRecurso | 'todos' = 'todos',
   idSubarea: number | null = null,
+  atendido: boolean | null = null,
 ) {
   return useQuery({
-    queryKey: ['agenda', 'calendario', fecha, idMunicipio, tipoRecurso, idSubarea],
-    queryFn:  () => getCalendarioDia(fecha, idMunicipio, tipoRecurso, idSubarea),
+    queryKey: ['agenda', 'calendario', fecha, idMunicipio, tipoRecurso, idSubarea, atendido],
+    queryFn:  () => getCalendarioDia(fecha, idMunicipio, tipoRecurso, idSubarea, atendido),
   })
 }
 
-export function useCalendarioMes(anio: number, mes: number, idMunicipio: number) {
+export function useCalendarioSemana(
+  desde: string,
+  dias: number,
+  idMunicipio: number,
+  tipoRecurso: TipoRecurso | 'todos' = 'todos',
+  idSubarea: number | null = null,
+  atendido: boolean | null = null,
+) {
   return useQuery({
-    queryKey: ['agenda', 'mes', anio, mes, idMunicipio],
-    queryFn:  () => getCalendarioMes(anio, mes, idMunicipio),
+    queryKey: ['agenda', 'semana', desde, dias, idMunicipio, tipoRecurso, idSubarea, atendido],
+    queryFn:  () => getCalendarioSemana(desde, dias, idMunicipio, tipoRecurso, idSubarea, atendido),
+  })
+}
+
+export function useCalendarioMes(
+  anio: number,
+  mes: number,
+  idMunicipio: number,
+  tipoRecurso: TipoRecurso | 'todos' = 'todos',
+) {
+  return useQuery({
+    queryKey: ['agenda', 'mes', anio, mes, idMunicipio, tipoRecurso],
+    queryFn:  () => getCalendarioMes(anio, mes, idMunicipio, tipoRecurso),
   })
 }
 
@@ -30,5 +52,14 @@ export function useAgendaRecurso(tipoRecurso: TipoRecurso, idRecurso: number, de
     queryKey: ['agenda', 'recurso', tipoRecurso, idRecurso, desde, hasta],
     queryFn:  () => getAgendaRecurso(tipoRecurso, idRecurso, desde, hasta),
     enabled,
+  })
+}
+
+export function useRecursosConteos(idMunicipio: number) {
+  return useQuery({
+    queryKey: ['agenda', 'recursos', 'conteos', idMunicipio],
+    queryFn:  () => getRecursosConteos(idMunicipio),
+    // Conteos cambian pocas veces; cache mas largo evita refetch en cada cambio de tab.
+    staleTime: 60_000,
   })
 }

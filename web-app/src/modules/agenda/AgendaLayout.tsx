@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
-import { CalendarDays, CalendarRange, ListChecks, AlertTriangle } from 'lucide-react'
+import { CalendarDays, ListChecks, AlertTriangle, Settings } from 'lucide-react'
 
 const tabs = [
-  { to: '/agenda',             label: 'timeline',   icon: CalendarDays,   end: true  },
-  { to: '/agenda/mensual',     label: 'mensual',    icon: CalendarRange,  end: false },
+  { to: '/agenda',             label: 'vistas',     icon: CalendarDays,   end: true  },
   { to: '/agenda/eventos',     label: 'eventos',    icon: ListChecks,     end: false },
   { to: '/agenda/conflictos',  label: 'conflictos', icon: AlertTriangle,  end: false },
+  { to: '/agenda/config',      label: 'config',     icon: Settings,       end: false },
 ]
 
 export function AgendaLayout({ children }: { children: ReactNode }) {
@@ -17,7 +17,7 @@ export function AgendaLayout({ children }: { children: ReactNode }) {
           agenda
         </h1>
         <p style={{ margin: '6px 0 0', color: 'var(--fg-3)', fontSize: 'var(--size-btn)' }}>
-          eventos, ocupaciones y vista timeline del coordinador.
+          dia, semana, mes, eventos y configuracion de espacios y disponibilidad.
         </p>
       </div>
 

@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react'
 import { useDroppable, useDndMonitor } from '@dnd-kit/core'
-import type { CalendarioRecurso, Ocupacion } from '../types/agenda'
+import type { CalendarioRecurso, EventoEnCalendario, Ocupacion } from '../types/agenda'
 import { GanttOccupationBlock } from './GanttOccupationBlock'
 import { timeToMinutes } from '../../../lib/dates'
 import { HOUR_START, SNAP_MIN } from '../dnd/gridConstants'
@@ -12,13 +12,16 @@ interface Props {
   pxPerHour: number
   rowHeight: number
   conflictoOcupIds: Set<number>
+  eventos?: EventoEnCalendario[]
   onBlockClick: (o: Ocupacion) => void
+  onEventoClick?: (e: EventoEnCalendario) => void
   onEmptySlotClick: (hi: string, hf: string) => void
 }
 
 function _GanttResourceRow({
   recurso, hourStart, hourEnd, pxPerHour, rowHeight,
-  conflictoOcupIds, onBlockClick, onEmptySlotClick,
+  conflictoOcupIds, eventos = [],
+  onBlockClick, onEventoClick, onEmptySlotClick,
 }: Props) {
   const totalMin = (hourEnd - hourStart)
   const width = (totalMin / 60) * pxPerHour
@@ -58,6 +61,12 @@ function _GanttResourceRow({
 
   const ausencias = recurso.ausencias
 
+  // Disponibilidad: rangos efectivos para ESTA fecha (puede ser []). Si esta vacio
+  // pintamos toda la fila como "fuera de horario" (gris diagonal). Si tiene rangos,
+  // el fondo base sigue gris y montamos rectangulos blancos por cada rango habilitado.
+  const disponibilidad = recurso.disponibilidad ?? []
+  const tieneDisponibilidad = disponibilidad.length > 0
+
   function handleBgClick(e: React.MouseEvent<HTMLDivElement>) {
     const rect = e.currentTarget.getBoundingClientRect()
     const x = e.clientX - rect.left
@@ -77,8 +86,12 @@ function _GanttResourceRow({
       style={{
         position: 'relative', height: rowHeight, width,
         borderBottom: '1px solid var(--border-primary)',
-        background:
-          'repeating-linear-gradient(to right, transparent 0, transparent ' + (pxPerHour - 1) + 'px, var(--border-primary) ' + (pxPerHour - 1) + 'px, var(--border-primary) ' + pxPerHour + 'px)',
+        // Fondo base: "fuera de horario" (gris diagonal sutil) cuando hay
+        // disponibilidad configurada para esta fecha. Sin disponibilidad,
+        // pintamos como gris pleno tambien — los rangos blancos lo aclaran arriba.
+        background: tieneDisponibilidad
+          ? 'repeating-linear-gradient(45deg, rgba(38,37,30,.05) 0 6px, transparent 6px 12px), var(--surface-200)'
+          : 'repeating-linear-gradient(45deg, rgba(38,37,30,.05) 0 6px, transparent 6px 12px), var(--surface-200)',
         outline: isDropTarget ? '2px dashed var(--zaris-orange)' : 'none',
         outlineOffset: isDropTarget ? -2 : 0,
         transition: 'outline-color 120ms',
@@ -86,13 +99,45 @@ function _GanttResourceRow({
       data-row-tipo={recurso.tipo}
       data-row-id={recurso.id_recurso}
     >
+      {/* Capa 1: rangos de disponibilidad como rectangulos blancos (habilitado). */}
+      {disponibilidad.map((d, i) => {
+        const ini = timeToMinutes(d.hora_inicio.slice(0, 5))
+        const fin = timeToMinutes(d.hora_fin.slice(0, 5))
+        if (fin <= hourStart || ini >= hourEnd) return null
+        const iniC = Math.max(ini, hourStart)
+        const finC = Math.min(fin, hourEnd)
+        const left = ((iniC - hourStart) / 60) * pxPerHour
+        const w = ((finC - iniC) / 60) * pxPerHour
+        return (
+          <div
+            key={`disp-${i}`}
+            title={d.etiqueta ?? 'horario habilitado'}
+            style={{
+              position: 'absolute', top: 0, bottom: 0, left, width: w,
+              background: 'var(--surface-100)',
+              borderLeft: '1px solid rgba(31,138,101,.30)',
+              borderRight: '1px solid rgba(31,138,101,.30)',
+              pointerEvents: 'none', zIndex: 0,
+            }}
+          />
+        )
+      })}
+      {/* Capa 2: lineas verticales horarias (sobre la disponibilidad). */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0,
+          background:
+            'repeating-linear-gradient(to right, transparent 0, transparent ' + (pxPerHour - 1) + 'px, var(--border-primary) ' + (pxPerHour - 1) + 'px, var(--border-primary) ' + pxPerHour + 'px)',
+        }}
+      />
       {/* Layer de fondo clickeable. Va debajo de las ocupaciones (zIndex 0) y
           captura clicks en celdas vacias para abrir el modal de nueva ocupacion.
           Necesario porque el droppable wrapper recibe pointerdown de dnd-kit y
           no siempre dispara click sobre el padre. */}
       <div
         onClick={handleBgClick}
-        style={{ position: 'absolute', inset: 0, zIndex: 0, cursor: 'pointer' }}
+        style={{ position: 'absolute', inset: 0, zIndex: 1, cursor: 'pointer' }}
       />
       {/* Snap visual: linea vertical naranja en la posicion de snap mientras
           esta fila es el droppable activo. */}
@@ -125,6 +170,55 @@ function _GanttResourceRow({
           </span>
         </div>
       ))}
+      {/* Capa de eventos: bloques violeta con badge de cupo. zIndex 2 para que
+          queden encima del fondo clickeable y de la disponibilidad pero debajo
+          de las ocupaciones tipicas (que estan en zIndex implicito superior). */}
+      {eventos.map((ev) => {
+        const ini = timeToMinutes(ev.hora_inicio.slice(0, 5))
+        const fin = timeToMinutes(ev.hora_fin.slice(0, 5))
+        if (fin <= hourStart || ini >= hourEnd) return null
+        const iniC = Math.max(ini, hourStart)
+        const finC = Math.min(fin, hourEnd)
+        const left = ((iniC - hourStart) / 60) * pxPerHour
+        const w = ((finC - iniC) / 60) * pxPerHour
+        const cupoAgotado = ev.cupo_libre <= 0 && ev.capacidad_ciudadanos > 0
+        return (
+          <button
+            key={`ev-${ev.id_evento}`}
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onEventoClick?.(ev) }}
+            title={`${ev.nombre} - ${ev.hora_inicio.slice(0, 5)} a ${ev.hora_fin.slice(0, 5)}`}
+            style={{
+              position: 'absolute', top: 4, height: rowHeight - 12,
+              left, width: w,
+              background: 'rgba(106,27,154,.20)',
+              border: '1px solid #6a1b9a',
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--fg-1)',
+              padding: '4px 8px',
+              display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 2,
+              fontFamily: 'var(--font-display)', fontSize: 11,
+              overflow: 'hidden', textAlign: 'left',
+              cursor: 'pointer', zIndex: 2,
+            }}
+          >
+            <div style={{
+              fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              textDecoration: cupoAgotado ? 'line-through' : 'none',
+            }}>
+              {ev.nombre}
+            </div>
+            {ev.capacidad_ciudadanos > 0 && (
+              <div style={{
+                fontFamily: 'var(--font-mono)', fontSize: 10,
+                color: cupoAgotado ? 'var(--color-error)' : 'var(--fg-2)',
+              }}>
+                {ev.reservas_activas}/{ev.capacidad_ciudadanos}{cupoAgotado ? ' · agotado' : ''}
+              </div>
+            )}
+          </button>
+        )
+      })}
       {/* Las ocupaciones se posicionan en absoluto sobre la fila. El <button>
           dentro de GanttOccupationBlock tiene su propio left/width y captura
           pointer events solo en su area; el resto de la fila queda libre para
