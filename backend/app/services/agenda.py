@@ -431,6 +431,23 @@ async def existe_recurso(session: AsyncSession, tipo_recurso: str, id_recurso: i
     return bool(n)
 
 
+async def subarea_del_usuario(session: AsyncSession, id_usuario: int) -> Optional[int]:
+    """Resuelve la subarea del usuario logueado via su agente asociado
+    (usuarios.id_usuario -> agentes.id_usuario -> agentes.id_subarea).
+
+    Devuelve None si el usuario no tiene agente asociado o el agente no tiene
+    subarea seteada. El caller decide el comportamiento ante None: el patron
+    usado en /calendario y /semana es fail-open (sin subarea resoluble => no
+    se aplica el scope, ve todos los recursos). Esto es necesario porque en
+    prod hoy los agentes no tienen id_subarea seedeada (drift de datos)."""
+    row = await session.scalar(text("""
+        SELECT id_subarea FROM agentes
+        WHERE id_usuario = :u AND activo = TRUE AND id_subarea IS NOT NULL
+        LIMIT 1
+    """), {"u": id_usuario})
+    return int(row) if row is not None else None
+
+
 async def lookup_estado_evento(session: AsyncSession, codigo: str) -> Optional[int]:
     return await session.scalar(text(
         "SELECT id_estado_evento FROM estado_evento WHERE codigo = :c AND activo = TRUE"

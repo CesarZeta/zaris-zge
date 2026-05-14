@@ -2,10 +2,11 @@ import { Ticket } from 'lucide-react'
 import type { ModuleManifest } from '../../lib/types'
 import { Overview } from './pages/Overview'
 
-// Scaffold (2026-05-14). El modulo Entradas gestiona reservas a eventos que
-// ocupan disponibilidad de espacios fisicos (ver §27 CLAUDE.md). Hoy solo
-// landing minima; la logica (backoffice + autoservicio) se implementa en una
-// sub-fase posterior. moduloCodigo='entradas' separado de 'agenda' en mig 44.
+// Modulo Entradas: gestion backoffice de eventos con cupo en espacios fisicos.
+// Reusa la entidad `eventos` del backend de Agenda (filtro con_espacio=true) y
+// el ReservaModal de Agenda para gestionar las reservas de entradas. Backend:
+// /agenda/eventos + /agenda/eventos/{id}/reservas (sin migracion nueva).
+// moduloCodigo='entradas' (mig 44). Pendiente: vista autoservicio (sub-fase A1).
 export const entradasModule: ModuleManifest = {
   id:    'entradas',
   label: 'entradas',

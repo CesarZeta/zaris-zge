@@ -41,12 +41,19 @@ export const useAgendaStore = create<AgendaState>()((set) => ({
  * Traduce el filtro UI a los params que entiende el backend:
  *   - tipo_recurso: 'agente' | 'equipo' | 'espacio'
  *   - atendido: solo aplica a tipo_recurso='espacio'
+ *   - scopeSubareaPropia: la vista "equipos" sirve a la asignacion de OT y
+ *     se scopea a la subarea del supervisor logueado (ver §33 CLAUDE.md).
+ *     Backend hace fail-open si no puede resolver la subarea del usuario.
  */
-export function filtroUIaBackend(f: FiltroRecursoUI): { tipo_recurso: TipoRecurso; atendido: boolean | null } {
+export function filtroUIaBackend(f: FiltroRecursoUI): {
+  tipo_recurso: TipoRecurso
+  atendido: boolean | null
+  scopeSubareaPropia: boolean
+} {
   switch (f) {
-    case 'agentes':              return { tipo_recurso: 'agente',  atendido: null }
-    case 'equipos':              return { tipo_recurso: 'equipo',  atendido: null }
-    case 'espacios_atendidos':   return { tipo_recurso: 'espacio', atendido: true }
-    case 'espacios_desatendidos': return { tipo_recurso: 'espacio', atendido: false }
+    case 'agentes':               return { tipo_recurso: 'agente',  atendido: null,  scopeSubareaPropia: false }
+    case 'equipos':               return { tipo_recurso: 'equipo',  atendido: null,  scopeSubareaPropia: true }
+    case 'espacios_atendidos':    return { tipo_recurso: 'espacio', atendido: true,  scopeSubareaPropia: false }
+    case 'espacios_desatendidos': return { tipo_recurso: 'espacio', atendido: false, scopeSubareaPropia: false }
   }
 }

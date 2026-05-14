@@ -2,10 +2,12 @@ import { Clock } from 'lucide-react'
 import type { ModuleManifest } from '../../lib/types'
 import { Overview } from './pages/Overview'
 
-// Scaffold (2026-05-14). El modulo Turnos gestiona ocupaciones tipo 'turno'
-// sobre la disponibilidad de agentes (ver §27 CLAUDE.md). Hoy solo landing
-// minima; la logica (backoffice + autoservicio) se implementa en una sub-fase
-// posterior. moduloCodigo='turnos' separado de 'agenda' en migracion 44.
+// Modulo Turnos: gestion backoffice de turnos de atencion. Un turno reserva un
+// bloque de la disponibilidad de un agente para un tramite (tipo de servicio).
+// Estados: reservado -> cumplido | cancelado. Cada turno mantiene una fila
+// espejo en `ocupaciones` (tipo='turno') para aparecer en la grilla de Agenda.
+// Backend: mig 45 + routes/turnos.py. moduloCodigo='turnos' (mig 44).
+// Pendiente: vista autoservicio publica (sub-fase A1).
 export const turnosModule: ModuleManifest = {
   id:    'turnos',
   label: 'turnos',

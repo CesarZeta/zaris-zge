@@ -14,10 +14,11 @@ export function useCalendarioDia(
   tipoRecurso: TipoRecurso | 'todos' = 'todos',
   idSubarea: number | null = null,
   atendido: boolean | null = null,
+  scopeSubareaPropia = false,
 ) {
   return useQuery({
-    queryKey: ['agenda', 'calendario', fecha, idMunicipio, tipoRecurso, idSubarea, atendido],
-    queryFn:  () => getCalendarioDia(fecha, idMunicipio, tipoRecurso, idSubarea, atendido),
+    queryKey: ['agenda', 'calendario', fecha, idMunicipio, tipoRecurso, idSubarea, atendido, scopeSubareaPropia],
+    queryFn:  () => getCalendarioDia(fecha, idMunicipio, tipoRecurso, idSubarea, atendido, scopeSubareaPropia),
   })
 }
 
@@ -28,10 +29,11 @@ export function useCalendarioSemana(
   tipoRecurso: TipoRecurso | 'todos' = 'todos',
   idSubarea: number | null = null,
   atendido: boolean | null = null,
+  scopeSubareaPropia = false,
 ) {
   return useQuery({
-    queryKey: ['agenda', 'semana', desde, dias, idMunicipio, tipoRecurso, idSubarea, atendido],
-    queryFn:  () => getCalendarioSemana(desde, dias, idMunicipio, tipoRecurso, idSubarea, atendido),
+    queryKey: ['agenda', 'semana', desde, dias, idMunicipio, tipoRecurso, idSubarea, atendido, scopeSubareaPropia],
+    queryFn:  () => getCalendarioSemana(desde, dias, idMunicipio, tipoRecurso, idSubarea, atendido, scopeSubareaPropia),
   })
 }
 
