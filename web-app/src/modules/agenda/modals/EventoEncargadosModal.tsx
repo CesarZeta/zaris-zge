@@ -7,7 +7,10 @@ import { Button } from '../../../ui'
 import { useEventoDetalle } from '../hooks/useEventos'
 import { useAsignarEncargado, useDesasignarEncargado } from '../hooks/useOcupaciones'
 import { useNotificationsStore } from '../../../stores/notifications'
-import type { TipoRecurso } from '../types/agenda'
+// Solo agente|equipo aplican como encargado de evento. 'espacio' existe en
+// TipoRecurso (B1) pero NO se asigna como encargado — el espacio del evento se
+// linkea via eventos.id_espacio, no via evento_encargados.
+type EncargadoTipoRecurso = 'agente' | 'equipo'
 
 interface Props {
   open: boolean
@@ -20,7 +23,7 @@ export function EventoEncargadosModal({ open, onClose, idEvento }: Props) {
   const detalle = useEventoDetalle(open ? idEvento : null)
   const asignar = useAsignarEncargado()
   const desasignar = useDesasignarEncargado()
-  const [tipo, setTipo] = useState<TipoRecurso>('agente')
+  const [tipo, setTipo] = useState<EncargadoTipoRecurso>('agente')
   const [idRec, setIdRec] = useState<number | null>(null)
   const [confirmRemoveId, setConfirmRemoveId] = useState<number | null>(null)
 
@@ -62,7 +65,7 @@ export function EventoEncargadosModal({ open, onClose, idEvento }: Props) {
       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 14 }}>
         <div>
           <label style={{ fontSize: 11, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Tipo</label>
-          <select value={tipo} onChange={(e) => { setTipo(e.target.value as TipoRecurso); setIdRec(null) }} style={inp}>
+          <select value={tipo} onChange={(e) => { setTipo(e.target.value as EncargadoTipoRecurso); setIdRec(null) }} style={inp}>
             <option value="agente">agente</option>
             <option value="equipo">equipo</option>
           </select>

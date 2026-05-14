@@ -1352,6 +1352,7 @@ Permisos: `nivel_acceso <= 2` (admin/supervisor) puede mutar; cualquier autentic
 | Borrar (soft) | DELETE | `/api/v1/agenda/disponibilidad/{id}` |
 | Consultar efectiva (resolver bitmask + vigencia + intersección espacio atendido) | GET | `/api/v1/agenda/disponibilidad/efectiva?tipo_recurso=&id_recurso=&fecha=` |
 | Vista semanal | GET | `/api/v1/agenda/semana?desde=&dias=&tipo_recurso=&atendido=` |
+| Conteos de recursos por tipo (pills B2) | GET | `/api/v1/agenda/recursos/conteos?id_municipio=` |
 
 #### Quirks operativos B1 (cazados en sesión 2026-05-13)
 
@@ -1360,18 +1361,59 @@ Permisos: `nivel_acceso <= 2` (admin/supervisor) puede mutar; cualquier autentic
 - **`EXTRACT(field FROM :param)` con asyncpg requiere cast inline** — usar `(:f)::date` (memoria [[feedback_asyncpg_extract_cast_date]]). Aplicar a cualquier query que extienda `disponibilidad_efectiva` o consulte fechas/horas con parámetros bindeados.
 - **Smoke local ≠ prod en este módulo**: prod arrancó la sesión con 1 espacio + 2 disponibilidades + 1 evento residuales del E2E de autoservicio del 2026-05-12. Inocuos pero alteran conteos del smoke. Si vas a contar items en prod, considerar `WHERE fecha_alta > '2026-05-13'` para excluir los demos viejos.
 
-#### Pendiente B2 — Frontend (3 vistas + filtros)
+### Sub-fase B2 — Frontend (CÓDIGO ENTREGADO 2026-05-13, ❗PENDIENTE VERIFICACIÓN VISUAL)
 
-- 3 vistas switcheables en `AgendaLayout`: **Día / Semana / Mes**. Día y Semana = grillas Gantt (filas=recursos, columnas=horas o días). Mes = calendario con bloques de eventos/ocupaciones.
-- Toggle de tipo de recurso: **Agentes / Equipos / Espacios atendidos / Espacios desatendidos** (4 botones).
-- Renderizado en grilla:
-  - Disponibilidad horaria del recurso = fondo claro habilitado.
-  - Fuera de horario = gris diagonal "no disponible".
-  - Ocupaciones = bloques opacos (como hoy).
-  - **Eventos = bloques violeta con badge `(3/20)` cupo libre. Cupo agotado = tachado.**
-  - Ausencias = bloque rojo translúcido (solo agentes).
-- UI de gestión: pantalla "Configuración" del módulo Agenda con tabs Espacios + Disponibilidad. Cada espacio muestra sus agentes vinculados; cada disponibilidad usa el helper §27 (`web-app/src/lib/diasSemana.ts`) para el bitmask.
-- Estimado: 3-5 días para B2 completo.
+> **No fue probado en navegador.** Typecheck + build + smoke API OK, pero el flujo UI completo (crear espacio → crear disponibilidad → ver fondo en grilla → ver evento como bloque) **no se validó manualmente**. Cualquier sesión siguiente que toque B2 debería partir por levantar `pnpm dev` en localhost:5173, seedear 1 espacio + 1 disponibilidad + 1 evento, y caminar las 3 vistas (Día/Semana/Mes) + la Config antes de codear nada nuevo. Memoria [[feedback_entrega_frontend_sin_verificacion_visual]] documenta la lección.
+
+**Estructura del módulo Agenda al cierre B2:**
+
+- **4 tabs principales** en `AgendaLayout`: **Vistas / Eventos / Conflictos / Config**.
+- Dentro de **Vistas** (default), **sub-toggle Día / Semana / Mes** (botones), persistido en `agendaStore.vistaGrilla` (no en la URL).
+- Compat retro: URLs viejas `/agenda/timeline`, `/agenda/mensual` redirigen a `Vistas`.
+- **Pills de tipo de recurso** (4 opciones con conteo): Agentes / Equipos / Espacios atendidos / Espacios desatendidos. Persistido en `agendaStore.filtroRecurso: FiltroRecursoUI`. NO existe opción "Todos" (consistente con el quirk de performance B1).
+- Helper `web-app/src/lib/diasSemana.ts`: `serialize/deserialize/togglearDia/format` para el bitmask `dias_semana`. `format(31)` → `'Lun a Vie'`, `format(96)` → `'Sab y Dom'`, `format(127)` → `'Todos los dias'`.
+- Helper `agendaStore.filtroUIaBackend(filtro)` → `{ tipo_recurso, atendido }` para pasar al backend (`espacios_atendidos` → `tipo_recurso='espacio', atendido=true`).
+
+**Componentes nuevos:**
+
+| Archivo | Rol |
+|---|---|
+| `views/VistasView.tsx` | Contenedor de Vistas — VistaToggle + RecursoTogglePills + render switcheable |
+| `views/WeeklyView.tsx` | Vista Semana (Gantt 7 días, sin DnD) consume `/agenda/semana` |
+| `views/MonthlyView.tsx` | Refactor: usa fecha del store + tipo_recurso del filtro |
+| `views/ConfigView.tsx` | Pantalla Config con sub-tabs Espacios + Disponibilidad |
+| `components/RecursoTogglePills.tsx` | 4 pills con conteo (consume `/recursos/conteos`) |
+| `components/VistaToggle.tsx` | Sub-toggle Día/Semana/Mes |
+| `components/config/EspaciosConfig.tsx` | Tabla CRUD de espacios |
+| `components/config/EspacioFormModal.tsx` | Crear/editar espacio |
+| `components/config/EspacioAgentesModal.tsx` | Listar/vincular/desvincular agentes a espacio |
+| `components/config/DisponibilidadConfig.tsx` | Tabla CRUD de disponibilidad |
+| `components/config/DisponibilidadFormModal.tsx` | Crear/editar disponibilidad (checkboxes días + horario + vigencia) |
+| `hooks/useEspacios.ts` | Query + mutaciones espacios |
+| `hooks/useDisponibilidad.ts` | Query + mutaciones disponibilidad + efectiva |
+
+**Cambios visuales en la grilla (Vista Día):**
+
+- Fondo base de cada fila: gris diagonal "fuera de horario".
+- Encima, **rectángulos blancos** por cada rango de `disponibilidad` efectiva de la fecha = horario habilitado.
+- Eventos del response `/calendario.eventos[]` se pintan como bloques violeta (`rgba(106,27,154,.20)` con borde `#6a1b9a`) en la fila del/los encargado(s) o del espacio. Badge `(reservas_activas/capacidad)`; cuando `cupo_libre <= 0` el nombre se tacha y se muestra "agotado" en rojo.
+- Filtro `'espacios_atendidos'` / `'espacios_desatendidos'`: la columna izq muestra subtítulo `espacio · atendido` o `espacio · desatendido` + ícono violeta.
+
+**Quirks ya documentados que ataca B2:**
+
+- Conteos: una sola request al endpoint nuevo `/recursos/conteos` con `staleTime: 60_000` en lugar de 4 GETs paralelos.
+- Espacio atendido sin agentes: la pill muestra el conteo, pero la grilla pinta toda la fila gris. Pendiente UX: badge "⚠ falta vincular agentes" cuando `atendido && agentes_vinculados.length === 0` (no implementado en este sprint).
+- `disponibilidad_por_recurso` en `/semana` usa clave `"{tipo}:{id}"` con dos puntos (ver [[reference_agenda_semana_disponibilidad_key]]).
+
+**Restricción explícita en `EventoEncargadosModal`:** el modal usa `type EncargadoTipoRecurso = 'agente' | 'equipo'` local (no `TipoRecurso` global), porque un espacio NO puede ser encargado de un evento — los espacios se linkean via `eventos.id_espacio`. Si en el futuro se quiere permitir "espacio como encargado", revisar este alias específicamente.
+
+**DnD:** solo en Vista Día (igual que sub-fase 3.B). Vista Semana NO tiene DnD por simplicidad.
+
+**Pendientes post-B2 (no incluidos):**
+- Verificación visual completa en navegador (bloqueante para considerar B2 "cerrado").
+- Drag en vista Semana.
+- Badge "⚠ falta vincular agentes" en EspaciosConfig.
+- KeyboardSensor en DnD (heredado de 3.B).
 
 ## 28. Recibir prompts armados afuera del proyecto
 

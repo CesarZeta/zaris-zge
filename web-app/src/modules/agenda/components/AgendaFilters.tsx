@@ -1,15 +1,15 @@
 import { ChevronLeft, ChevronRight, RotateCcw, Calendar } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import { useAgendaStore, type FiltroRecurso } from '../store/agendaStore'
+import { useAgendaStore } from '../store/agendaStore'
 import { fromIsoDate, sumarDias, toIsoDate, etiquetaFechaLarga } from '../../../lib/dates'
 import { listarSubareasAgenda } from '../api/agendaApi'
 import type { SubareaItem } from '../types/agenda'
 
-export function AgendaFilters({ showRecursoFilter = true, showSubareaFilter = true }: { showRecursoFilter?: boolean; showSubareaFilter?: boolean }) {
+// El bloque "filtroRecurso" se movio a <RecursoTogglePills/>. Esta barra solo
+// mantiene navegacion temporal (dia anterior/siguiente/hoy) y filtro de subarea.
+export function AgendaFilters({ showSubareaFilter = true }: { showSubareaFilter?: boolean }) {
   const fecha     = useAgendaStore((s) => s.fechaActiva)
   const setFecha  = useAgendaStore((s) => s.setFechaActiva)
-  const filtro    = useAgendaStore((s) => s.filtroRecurso)
-  const setFiltro = useAgendaStore((s) => s.setFiltroRecurso)
   const idSub     = useAgendaStore((s) => s.filtroSubarea)
   const setIdSub  = useAgendaStore((s) => s.setFiltroSubarea)
   const irAHoy    = useAgendaStore((s) => s.irAHoy)
@@ -93,27 +93,7 @@ export function AgendaFilters({ showRecursoFilter = true, showSubareaFilter = tr
         </div>
       )}
 
-      {showRecursoFilter && (
-        <div style={{ display: 'flex', gap: 4, marginLeft: showSubareaFilter ? 0 : 'auto' }}>
-          {(['todos', 'agente', 'equipo'] as FiltroRecurso[]).map((opt) => (
-            <button
-              key={opt}
-              onClick={() => setFiltro(opt)}
-              style={{
-                padding: '6px 12px', borderRadius: 'var(--radius-pill)',
-                border: 'none', cursor: 'pointer',
-                background: filtro === opt ? 'var(--zaris-dark)' : 'var(--surface-400)',
-                color: filtro === opt ? 'var(--zaris-cream)' : 'var(--fg-2)',
-                fontFamily: 'var(--font-display)', fontSize: 12,
-              }}
-            >
-              {opt}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div style={{ fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
+      <div style={{ fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', marginLeft: showSubareaFilter ? 0 : 'auto' }}>
         municipio {idMun}
       </div>
     </div>

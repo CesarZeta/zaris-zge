@@ -1,24 +1,37 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useMemo } from 'react'
 import { ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react'
 import { useCalendarioMes } from '../hooks/useAgenda'
-import { useAgendaStore } from '../store/agendaStore'
+import { useAgendaStore, filtroUIaBackend } from '../store/agendaStore'
 import { MonthlyCalendar } from '../components/MonthlyCalendar'
 import { Skeleton } from '../../../ui'
+import { fromIsoDate } from '../../../lib/dates'
 
 export function MonthlyView() {
   const idMun = useAgendaStore((s) => s.idMunicipio)
+  const fecha = useAgendaStore((s) => s.fechaActiva)
   const setFecha = useAgendaStore((s) => s.setFechaActiva)
-  const navigate = useNavigate()
-  const [anio, setAnio] = useState(new Date().getFullYear())
-  const [mes,  setMes]  = useState(new Date().getMonth() + 1)
-  const cal = useCalendarioMes(anio, mes, idMun)
+  const setVistaGrilla = useAgendaStore((s) => s.setVistaGrilla)
+  const filtroRec = useAgendaStore((s) => s.filtroRecurso)
+  const { tipo_recurso } = filtroUIaBackend(filtroRec)
+
+  const { anio, mes } = useMemo(() => {
+    const d = fromIsoDate(fecha)
+    return { anio: d.getFullYear(), mes: d.getMonth() + 1 }
+  }, [fecha])
+
+  const cal = useCalendarioMes(anio, mes, idMun, tipo_recurso)
 
   function navegar(dx: number) {
     let nm = mes + dx, ny = anio
-    if (nm < 1) { nm = 12; ny-- }
-    if (nm > 12) { nm = 1; ny++ }
-    setMes(nm); setAnio(ny)
+    if (nm < 1)  { nm = 12; ny-- }
+    if (nm > 12) { nm = 1;  ny++ }
+    // Mantenemos el dia 1 del mes navegado.
+    setFecha(`${ny}-${String(nm).padStart(2, '0')}-01`)
+  }
+
+  function irAHoy() {
+    const t = new Date()
+    setFecha(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`)
   }
 
   return (
@@ -29,7 +42,7 @@ export function MonthlyView() {
         </h2>
         <div style={{ display: 'flex', gap: 6 }}>
           <button onClick={() => navegar(-1)} aria-label="Mes anterior" style={navBtn}><ChevronLeft size={14} strokeWidth={1.5} /></button>
-          <button onClick={() => { setAnio(new Date().getFullYear()); setMes(new Date().getMonth() + 1) }} style={{ ...navBtn, gap: 6, display: 'inline-flex', alignItems: 'center', padding: '6px 10px' }}>
+          <button onClick={irAHoy} style={{ ...navBtn, gap: 6, display: 'inline-flex', alignItems: 'center', padding: '6px 10px' }}>
             <RotateCcw size={13} strokeWidth={1.5} /> Hoy
           </button>
           <button onClick={() => navegar(1)} aria-label="Mes siguiente" style={navBtn}><ChevronRight size={14} strokeWidth={1.5} /></button>
@@ -46,7 +59,7 @@ export function MonthlyView() {
           data={cal.data}
           onDiaClick={(fechaIso) => {
             setFecha(fechaIso)
-            navigate('/agenda/timeline')
+            setVistaGrilla('dia')
           }}
         />
       )}

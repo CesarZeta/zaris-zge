@@ -1,6 +1,6 @@
 // Tipos del modulo Agenda - matchean los schemas Pydantic v2 del backend.
 
-export type TipoRecurso = 'agente' | 'equipo'
+export type TipoRecurso = 'agente' | 'equipo' | 'espacio'
 export type TipoOcupacion = 'ot' | 'evento' | 'turno'
 export type TipoQR = 'nominal' | 'generico' | 'ninguno'
 export type OrigenReserva = 'backoffice' | 'autoservicio'
@@ -157,18 +157,58 @@ export interface RecursoAgenda {
   ausencias: Ausencia[]
 }
 
+export interface DisponibilidadRangoEfectivo {
+  hora_inicio: string   // HH:MM:SS
+  hora_fin: string      // HH:MM:SS
+  etiqueta: string | null
+}
+
+export interface EventoEnCalendario {
+  id_evento: number
+  nombre: string
+  fecha: string
+  hora_inicio: string
+  hora_fin: string
+  capacidad_ciudadanos: number
+  reservas_activas: number
+  cupo_libre: number
+  estado_codigo: string | null
+  id_espacio: number | null
+  id_subarea: number | null
+  encargados: Array<[string, number]>  // [tipo_recurso, id_recurso]
+}
+
 export interface CalendarioRecurso {
   tipo: TipoRecurso
   id_recurso: number
   nombre: string | null
+  atendido: boolean | null  // null para agente/equipo, true/false para espacio
   ocupaciones: Ocupacion[]
   ausencias: Ausencia[]
+  disponibilidad: DisponibilidadRangoEfectivo[]
 }
 
 export interface CalendarioDia {
   fecha: string
   id_municipio: number
   recursos: CalendarioRecurso[]
+  eventos: EventoEnCalendario[]
+}
+
+export interface CalendarioSemanaDia {
+  fecha: string
+  ocupaciones: Ocupacion[]
+  ausencias: Ausencia[]
+  eventos: EventoEnCalendario[]
+  disponibilidad_por_recurso: Record<string, DisponibilidadRangoEfectivo[]>
+}
+
+export interface CalendarioSemana {
+  desde: string
+  hasta: string
+  id_municipio: number
+  recursos: CalendarioRecurso[]
+  dias: CalendarioSemanaDia[]
 }
 
 export interface CalendarioMesDia {
@@ -241,4 +281,94 @@ export interface EventoBusquedaItem {
   hora_inicio: string
   hora_fin: string
   estado_codigo: string | null
+}
+
+// ============================================================================
+// Sub-fase B2: filtros UI, conteos, espacios, disponibilidad
+// ============================================================================
+
+// 4 valores que mapean a los pills del toggle. NO se manda 'todos' al backend
+// (por performance: /semana con todos es O(n*7)). El frontend siempre elige uno.
+export type FiltroRecursoUI = 'agentes' | 'equipos' | 'espacios_atendidos' | 'espacios_desatendidos'
+
+// Vistas de la sub-pestana 'Vistas' del AgendaLayout.
+export type VistaGrilla = 'dia' | 'semana' | 'mes'
+
+export interface RecursosConteos {
+  agentes: number
+  equipos: number
+  espacios_atendidos: number
+  espacios_desatendidos: number
+}
+
+export interface EspacioAgenda {
+  id_espacio: number
+  nombre: string
+  descripcion: string | null
+  direccion: string | null
+  capacidad_personas: number | null
+  atendido: boolean
+  id_subarea: number | null
+  subarea_nombre: string | null
+  activo: boolean
+  id_municipio: number
+  fecha_alta: string
+  fecha_modificacion: string
+  agentes_vinculados: EspacioAgente[]
+}
+
+export interface EspacioAgendaCreatePayload {
+  nombre: string
+  descripcion?: string | null
+  direccion?: string | null
+  capacidad_personas?: number | null
+  atendido: boolean
+  id_subarea?: number | null
+  id_municipio?: number
+}
+
+export type EspacioAgendaUpdatePayload = Partial<EspacioAgendaCreatePayload> & {
+  activo?: boolean
+}
+
+export interface EspacioAgente {
+  id_espacio_agente: number
+  id_espacio: number
+  id_agente: number
+  agente_nombre: string | null
+  activo: boolean
+  fecha_alta: string
+}
+
+export interface DisponibilidadRecurso {
+  id_disponibilidad: number
+  tipo_recurso: TipoRecurso
+  id_recurso: number
+  dias_semana: number      // bitmask 0-127
+  hora_inicio: string      // HH:MM:SS
+  hora_fin: string
+  vigente_desde: string | null  // YYYY-MM-DD
+  vigente_hasta: string | null
+  etiqueta: string | null
+  activo: boolean
+  id_municipio: number
+  fecha_alta: string
+  fecha_modificacion: string
+}
+
+export interface DisponibilidadRecursoCreatePayload {
+  tipo_recurso: TipoRecurso
+  id_recurso: number
+  dias_semana: number
+  hora_inicio: string
+  hora_fin: string
+  vigente_desde?: string | null
+  vigente_hasta?: string | null
+  etiqueta?: string | null
+  id_municipio?: number
+  id_subarea?: number | null
+}
+
+export type DisponibilidadRecursoUpdatePayload = Partial<Omit<DisponibilidadRecursoCreatePayload, 'tipo_recurso' | 'id_recurso' | 'id_municipio' | 'id_subarea'>> & {
+  activo?: boolean
 }

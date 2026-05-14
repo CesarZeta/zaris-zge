@@ -258,7 +258,7 @@ interface TableProps<T> {
   keyField: keyof T
 }
 
-export function Table<T extends Record<string, unknown>>({ columns, rows, keyField }: TableProps<T>) {
+export function Table<T extends object>({ columns, rows, keyField }: TableProps<T>) {
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--size-btn)', fontFamily: 'var(--font-display)' }}>
@@ -277,10 +277,10 @@ export function Table<T extends Record<string, unknown>>({ columns, rows, keyFie
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={String(row[keyField])} style={{ borderBottom: '1px solid var(--border-primary)' }}>
+            <tr key={String((row as Record<string, unknown>)[keyField as string])} style={{ borderBottom: '1px solid var(--border-primary)' }}>
               {columns.map((col) => (
                 <td key={String(col.key)} style={{ padding: '10px 12px', color: 'var(--fg-1)' }}>
-                  {col.render ? col.render(row) : String(row[col.key as keyof T] ?? '')}
+                  {col.render ? col.render(row) : String((row as Record<string, unknown>)[col.key as string] ?? '')}
                 </td>
               ))}
             </tr>
