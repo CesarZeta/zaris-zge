@@ -508,6 +508,9 @@ class EspacioAgendaOut(BaseModel):
     id_municipio: int
     fecha_alta: datetime
     fecha_modificacion: datetime
+    # Conteo agregado de agentes vinculados activos. Lo pobla el listado (sin n+1)
+    # para que el frontend pueda marcar espacios atendidos sin agentes.
+    cant_agentes: int = 0
     # Solo poblado por endpoints de detalle (no por listados):
     agentes_vinculados: list["EspacioAgenteOut"] = []
 
