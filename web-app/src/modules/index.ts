@@ -2,6 +2,8 @@ import type { ModuleManifest } from '../lib/types'
 import { dashboardModule } from './dashboard'
 import { reclamosModule } from './reclamos'
 import { agendaModule } from './agenda'
+import { turnosModule } from './turnos'
+import { entradasModule } from './entradas'
 import { otModule } from './ot'
 import { contactosModule } from './contactos'
 import { ciudadanosModule } from './ciudadanos'
@@ -18,6 +20,8 @@ import { configModule } from './config'
 export const modules: ModuleManifest[] = [
   dashboardModule,
   reclamosModule,
+  turnosModule,
+  entradasModule,
   agendaModule,
   otModule,
   contactosModule,

@@ -102,8 +102,9 @@
              Ciudadanos y Empresas viven dentro de Contactos (landing).
              Usuarios sale del top-level y vive dentro de Maestros (admin_tablas
              ya lo expone como tabla en su sidebar interno).
-             Turnos y Entradas son placeholders: hoy ambos van a Agenda hasta
-             que se definan los modulos propios. -->
+             Turnos y Entradas son modulos propios (scaffold 2026-05-14);
+             Agenda es el sustrato de disponibilidad. Permisos separados en
+             migracion 44: agenda / turnos / entradas. -->
 
         <a class="nav-flat__item" href="web-app/dist/index.html#/reclamos" data-modulo="reclamos">
           <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -116,9 +117,8 @@
           <span>reclamos</span>
         </a>
 
-        <!-- Turnos: placeholder. Hoy enlaza a Agenda timeline. Cuando se defina
-             el modulo Turnos (frontoffice por espacio/lugar) reemplazar href. -->
-        <a class="nav-flat__item" href="web-app/dist/index.html#/agenda/timeline" data-modulo="turnos">
+        <!-- Turnos: modulo propio (scaffold). Ocupa disponibilidad de agentes. -->
+        <a class="nav-flat__item" href="web-app/dist/index.html#/turnos" data-modulo="turnos">
           <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="9"/>
             <polyline points="12 7 12 12 15 14"/>
@@ -126,9 +126,8 @@
           <span>turnos</span>
         </a>
 
-        <!-- Entradas: placeholder. Hoy enlaza a Agenda eventos. Cuando se defina
-             el modulo Entradas (frontoffice de eventos) reemplazar href. -->
-        <a class="nav-flat__item" href="web-app/dist/index.html#/agenda/eventos" data-modulo="turnos">
+        <!-- Entradas: modulo propio (scaffold). Reservas a eventos en espacios. -->
+        <a class="nav-flat__item" href="web-app/dist/index.html#/entradas" data-modulo="entradas">
           <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7"/>
             <path d="M3 7l9-4 9 4"/>
@@ -137,7 +136,8 @@
           <span>entradas</span>
         </a>
 
-        <a class="nav-flat__item" href="web-app/dist/index.html#/agenda/timeline" data-modulo="turnos">
+        <!-- Agenda: sustrato de disponibilidad horaria de agentes y espacios. -->
+        <a class="nav-flat__item" href="web-app/dist/index.html#/agenda" data-modulo="agenda">
           <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <rect x="3" y="4" width="18" height="18" rx="2"/>
             <path d="M16 2v4M8 2v4M3 10h18"/>

@@ -16,7 +16,7 @@ export const agendaModule: ModuleManifest = {
   id:    'agenda',
   label: 'agenda',
   icon:  CalendarDays,
-  moduloCodigo: 'turnos',
+  moduloCodigo: 'agenda',
   routes: [
     { index: true,         element: WithLayout(VistasView),     handle: { breadcrumb: 'agenda · vistas' } },
     // Compat retro: links viejos /agenda/timeline y /agenda/mensual caen en la

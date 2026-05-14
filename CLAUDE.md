@@ -65,12 +65,13 @@ No suponer paridad entre stacks. Hoy:
 | **BUC ciudadanos** | — (borrado 2026-05-12) | **`modules/ciudadanos/`** | **React** (publicado) |
 | **Empresas** | — (borrado 2026-05-12) | **`modules/empresas/`** | **React** (publicado) |
 | **Reclamos** | — (borrado 2026-05-12) | **`modules/reclamos/`** (Fases A + B1+B2 + B3) | **React** (publicado) |
-| OT (3 mesas) | `ot_supervisor.html`, `ot_agente.html`, `ot_auditoria.html` | — | vanilla |
 | Usuarios | `usuarios.html` | — | vanilla |
 | Admin tablas | `admin_tablas.html` | — | vanilla |
-| **Agenda** | — (legacy borrado 2026-05-12) | **`modules/agenda/`** (Fase 3.A + 3.B drag&drop) | **React** (publicado) |
+| **Agenda** | — (legacy borrado 2026-05-12) | **`modules/agenda/`** (Fase 3.A + 3.B drag&drop + B1+B2 espacios/disponibilidad) | **React** (publicado) |
+| **Turnos** | — | **`modules/turnos/`** (scaffold 2026-05-14 — landing mínima, sin lógica aún) | **React** (publicado, scaffold) |
+| **Entradas** | — | **`modules/entradas/`** (scaffold 2026-05-14 — landing mínima, sin lógica aún) | **React** (publicado, scaffold) |
 | **Dashboard** | — | **`modules/dashboard/`** (mapa Leaflet + stats reales) | **React — HOME del iframe** desde 2026-05-13 (se carga al entrar al shell y al hacer click en INICIO desde cualquier módulo) |
-| OT (3 mesas React) | — | `modules/ot/` (Supervisor / Agente / Auditoría) | React |
+| **OT (3 mesas)** | — (borrado, era `ot_supervisor.html`/`ot_agente.html`/`ot_auditoria.html`) | **`modules/ot/`** (Supervisor / Agente / Auditoría + drawer detalle compartido) | **React** (publicado) |
 | Config (permisos/identidad/etc.) | — | `modules/config/` | React |
 
 **Implicaciones:**
@@ -817,7 +818,7 @@ Migraciones idempotentes (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXIST
 
 ### Migración 38 — Permisos por módulo (`backend/migrations/38_permisos_por_modulo.sql`)
 
-**Aplicada en local y prod al 2026-05-12.** Crea `modulos` (8 seeds: reclamos, padrones, ot_*, turnos, usuarios, admin_tablas con `min_nivel_acceso` segmentado) + `usuario_modulos` (overrides). Ambas con estándar §10 completo. CHECK `min_nivel_acceso BETWEEN 1 AND 4`. UNIQUE `(id_usuario, modulo_codigo)` en overrides. Ver §30 para el detalle del modelo y los endpoints.
+**Aplicada en local y prod al 2026-05-12.** Crea `modulos` (8 seeds iniciales: reclamos, padrones, ot_*, turnos, usuarios, admin_tablas con `min_nivel_acceso` segmentado) + `usuario_modulos` (overrides). Ambas con estándar §10 completo. CHECK `min_nivel_acceso BETWEEN 1 AND 4`. UNIQUE `(id_usuario, modulo_codigo)` en overrides. Ver §30 para el detalle del modelo y los endpoints. **Mig 44 (2026-05-14)** separó `turnos` en `agenda`/`turnos`/`entradas` → catálogo actual 10 módulos.
 
 ### Migración 26 — Cleanup de áreas duplicadas con/sin tilde (`backend/migrations/26_cleanup_areas_duplicadas.sql`)
 
@@ -1413,7 +1414,7 @@ Permisos: `nivel_acceso <= 2` (admin/supervisor) puede mutar; cualquier autentic
 - **Drift `id_municipio NULL`** entre `/recursos/conteos` y `/calendario`/`/semana`: el conteo usaba `WHERE id_municipio = :im` mientras los listados de grilla usan `IS NULL OR =`. En prod hay agentes/equipos legacy con `id_municipio` NULL (3 agentes, 3 equipos) y el pill decía "Agentes 1" pero la grilla mostraba 4. **Fix aplicado en `7186fe1`**: ahora ambas reglas son consistentes (`IS NULL OR = :im`). Si agregás un endpoint nuevo que filtre por municipio sobre agentes/equipos, usar la misma regla NULL-friendly.
 
 **Pendientes post-B2 (no bloqueantes):**
-- 3 ítems `data-modulo="turnos"` duplicados en sidebar vanilla (`turnos`, `entradas`, `agenda`) — consolidar a 1.
+- ~~3 ítems `data-modulo="turnos"` duplicados en sidebar vanilla~~ — cerrado 2026-05-14 (mig 44). Los 3 ítems ahora tienen `data-modulo` propios (`turnos`/`entradas`/`agenda`) y apuntan a `#/turnos`, `#/entradas`, `#/agenda`.
 - **Eventos sin `id_espacio` ni encargados son invisibles en la grilla Día.** El backend los devuelve en `eventos[]` top-level del response `/calendario`, pero el frontend B2 los pinta solo en filas con encargado/espacio. Decisión UX pendiente: fila "Eventos sin asignar" en la grilla, o validación en `POST /eventos` que exija al menos 1 encargado o `id_espacio` (mi preferencia).
 - Badge "⚠ falta vincular agentes" en EspaciosConfig cuando un espacio atendido tiene 0 agentes vinculados (sino la grilla pinta toda la fila gris sin razón obvia).
 - Drag en vista Semana.
@@ -1735,18 +1736,22 @@ Sin esta validación backend, la restricción UI sería evadible (basta llamar a
 
 ### Estado actual (2026-05-12) — IMPLEMENTADO
 
-**Migración 38 (`backend/migrations/38_permisos_por_modulo.sql`) aplicada en local y prod.** Tablas `modulos` + `usuario_modulos` siguiendo §10. Catálogo seedeado con 8 módulos:
+**Migración 38 (`backend/migrations/38_permisos_por_modulo.sql`) aplicada en local y prod.** Tablas `modulos` + `usuario_modulos` siguiendo §10. **Migración 44 (2026-05-14) separó el código `turnos` en tres** (`agenda` / `turnos` / `entradas`). Catálogo actual — 10 módulos:
 
 | Código | Nombre | min_nivel_acceso | Cubre |
 |---|---|---|---|
 | `reclamos` | Reclamos | 4 | módulo React `reclamos` |
 | `padrones` | Padrones | 4 | módulos React `ciudadanos` + `empresas` |
-| `ot_agente` | OT - Agente | 3 | `frontend/ot_agente.html` |
-| `turnos` | Turnos y eventos | 3 | módulo React `agenda` |
-| `ot_supervisor` | OT - Supervisor | 2 | `frontend/ot_supervisor.html` |
-| `ot_auditoria` | OT - Auditoría | 2 | `frontend/ot_auditoria.html` |
-| `usuarios` | Usuarios | 1 | `frontend/usuarios.html` |
+| `ot_agente` | OT - Agente | 3 | módulo React `ot` (vista Agente) |
+| `agenda` | Agenda | 3 | módulo React `agenda` — sustrato de disponibilidad horaria de agentes/espacios |
+| `turnos` | Turnos | 3 | módulo React `turnos` — scaffold; ocupaciones tipo turno sobre agentes |
+| `entradas` | Entradas | 3 | módulo React `entradas` — scaffold; reservas a eventos en espacios |
+| `ot_supervisor` | OT - Supervisor | 2 | módulo React `ot` (vista Supervisor) |
+| `ot_auditoria` | OT - Auditoría | 2 | módulo React `ot` (vista Auditoría) |
+| `usuarios` | Usuarios | 1 | `frontend/usuarios.html` (pantalla propia — admin_tablas no hashea password) |
 | `admin_tablas` | Maestros | 1 | resto de `frontend/admin_tablas.html?tabla=*` |
+
+> **Migración 44** (`44_permisos_separar_agenda_turnos_entradas.sql`, aplicada local + prod 2026-05-14): la fila `turnos` ("Turnos y eventos") se reconvirtió en `agenda` ("Agenda") vía `UPDATE` de la PK — seguro porque no había overrides en `usuario_modulos`. Se insertaron `turnos` y `entradas`. Los scaffolds React `web-app/src/modules/turnos/` y `entradas/` son landings mínimas; la lógica (backoffice + autoservicio) es sub-fase futura.
 
 **Backend (`backend/app/core/auth.py`):**
 - `modulos_permitidos(db, id_usuario, nivel) -> list[str]` — resuelve defaults por nivel + overrides activos.
@@ -1770,7 +1775,7 @@ Sin esta validación backend, la restricción UI sería evadible (basta llamar a
 - Para sesiones cargadas antes del feature (sin `modulos_permitidos` en cache), `menu.js` refresca contra `/auth/me` y persiste la nueva shape sin re-loguear. Si `/me` falla → fail-open en UI (el guard real está en backend).
 
 **Frontend React (shell standalone `localhost:5173`):**
-- `ModuleManifest` extendido con `moduloCodigo?: string`. Solo `agendaModule` lo usa (`turnos`); `dashboardModule` queda sin filtro (es stub demo, no se filtra).
+- `ModuleManifest` extendido con `moduloCodigo?: string`. Lo usan `agendaModule` (`agenda`), `turnosModule` (`turnos`), `entradasModule` (`entradas`), `contactosModule` (`padrones`); `dashboardModule` queda sin filtro (es stub demo, no se filtra).
 - `Sidebar.tsx` filtra por `user.modulos_permitidos`. Fail-open si falta.
 - `useAuthStore` agregó `refreshSession()` que llama a `/me` y actualiza el user; `AppShell` lo invoca cuando detecta que `user.modulos_permitidos` no está.
 
@@ -1810,12 +1815,13 @@ Devuelve 403 si el usuario no tiene el módulo. **Hoy no aplicado a endpoints ex
 | Archivo | `var(--z-*)` | `.z-*` | DS nuevo |
 |---|---|---|---|
 | `frontend/usuarios.html` + `usuarios.js` | 0 | 0 | ✅ |
-| `frontend/ot_supervisor.html`, `ot_agente.html`, `ot_auditoria.html` | 0 | 0 | ✅ |
 | `frontend/js/config.js` + `validaciones.js` | 0 | 0 | ✅ |
 | `frontend/admin_tablas.html` | ~123 | 5 (solo `z-header*` oculto en iframe) | parcial — alias-mapping local `--z-*` → DS. Sin dependencias externas. Deuda cosmética opcional. |
 | `frontend/login.html`, `welcome.html` | 0 | 0 | ✅ |
 
 > **Nota 2026-05-12:** los HTMLs `ciudadano.html`, `empresa.html`, `reclamos.html` (y sus JS) fueron eliminados al migrar a React (commits `a61ec9d`, `6aa3fdc`, `3e4a532`-`deae0bc`). Las equivalencias de tokens/clases listadas más abajo siguen siendo útiles si en algún momento se reintroduce un módulo vanilla nuevo.
+>
+> **Nota 2026-05-13:** los HTMLs `ot_supervisor.html`, `ot_agente.html`, `ot_auditoria.html` también fueron eliminados — el módulo OT vive 100% en React (`web-app/src/modules/ot/`) desde antes; la entrada en esta tabla quedó como residuo histórico. Los códigos de permiso `ot_supervisor`/`ot_agente`/`ot_auditoria` siguen activos a nivel sidebar vanilla, pero el destino del link es el bundle React, no un HTML.
 
 ### Equivalencias usadas en la migración (referencia)
 

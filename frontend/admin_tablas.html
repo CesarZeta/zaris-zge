@@ -635,7 +635,9 @@
     <div class="sidebar-item" data-tabla="subarea"         onclick="selectTabla(this)"><i data-lucide="git-branch"  class="si"></i>Subáreas</div>
     <div class="sidebar-item" data-tabla="tipo_usuario"    onclick="selectTabla(this)"><i data-lucide="badge"       class="si"></i>Tipos de Usuario</div>
     <div class="sidebar-item" data-tabla="cargos"          onclick="selectTabla(this)"><i data-lucide="briefcase"   class="si"></i>Cargos</div>
-    <div class="sidebar-item" data-tabla="usuarios"        onclick="selectTabla(this)"><i data-lucide="users"       class="si"></i>Usuarios</div>
+    <!-- Usuarios usa su propia pantalla (frontend/usuarios.html): el CRUD generico
+         de admin_tablas no maneja el hash de password ni el alta con login funcional. -->
+    <div class="sidebar-item" data-tabla="usuarios"        onclick="abrirUsuarios()"><i data-lucide="users"       class="si"></i>Usuarios</div>
     <div class="sidebar-item" data-tabla="agentes"         onclick="selectTabla(this)"><i data-lucide="user-check"  class="si"></i>Agentes</div>
     <div class="sidebar-item" data-tabla="equipos"         onclick="selectTabla(this)"><i data-lucide="layout-grid" class="si"></i>Equipos</div>
     <div class="sidebar-item" data-tabla="equipo_usuarios" onclick="selectTabla(this)"><i data-lucide="user-plus"   class="si"></i>Equipo-Usuarios</div>
@@ -1070,6 +1072,16 @@ async function selectTabla(el) {
   el.classList.add('active');
   tablaActual = el.dataset.tabla;
   await cargarTabla();
+}
+
+// Usuarios tiene pantalla propia (maneja password/bcrypt; admin_tablas no).
+// Navegamos por el shell vanilla si estamos embebidos, sino directo.
+function abrirUsuarios() {
+  if (window.parent && window.parent.shellNavigate) {
+    window.parent.shellNavigate('frontend/usuarios.html');
+  } else {
+    window.location.href = 'usuarios.html';
+  }
 }
 
 // ── Cargar y renderizar tabla (vista principal con previa) ──────
