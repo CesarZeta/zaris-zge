@@ -67,6 +67,8 @@ export interface CiudadanoCreate {
   altura?: string | null
   localidad?: string | null
   provincia?: string | null
+  latitud?: number | null
+  longitud?: number | null
   telefono: string
   email: string
   emp_chk?: boolean
@@ -107,6 +109,8 @@ export interface EmpresaCreate {
   altura?: string | null
   localidad?: string | null
   provincia?: string | null
+  latitud?: number | null
+  longitud?: number | null
   telefono: string
   email: string
   observaciones?: string | null
