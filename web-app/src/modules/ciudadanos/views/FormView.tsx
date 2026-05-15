@@ -36,6 +36,8 @@ export interface FormState {
   calle: string
   localidad: string
   provincia: string
+  latitud: number | null
+  longitud: number | null
   telefono: string
   email: string
   emp_chk: boolean
@@ -46,6 +48,7 @@ const emptyForm: FormState = {
   doc_tipo: '', doc_nro: '', cuil: '', cuilManual: false,
   nombre: '', apellido: '', sexo: '', fecha_nac: '',
   id_nacionalidad: '', calle: '', localidad: '', provincia: '',
+  latitud: null, longitud: null,
   telefono: '', email: '', emp_chk: false, observaciones: '',
 }
 
@@ -101,6 +104,8 @@ export function FormView() {
       calle: c.calle || '',
       localidad: c.localidad || '',
       provincia: c.provincia || '',
+      latitud: c.latitud ?? null,
+      longitud: c.longitud ?? null,
       telefono: c.telefono || '',
       email: c.email || '',
       emp_chk: !!c.emp_chk,
@@ -214,6 +219,8 @@ export function FormView() {
       calle: form.calle.trim() || null,
       localidad: form.localidad.trim() || null,
       provincia: form.provincia.trim() || null,
+      latitud: form.latitud,
+      longitud: form.longitud,
       telefono: soloDigitos(form.telefono),
       email: form.email.trim().toLowerCase(),
       emp_chk: form.emp_chk,

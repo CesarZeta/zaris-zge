@@ -21,6 +21,8 @@ export interface EmpresaFormState {
   calle: string
   localidad: string
   provincia: string
+  latitud: number | null
+  longitud: number | null
   telefono: string
   email: string
   observaciones: string
@@ -29,6 +31,7 @@ export interface EmpresaFormState {
 const emptyForm: EmpresaFormState = {
   cuit: '', nombre: '', id_actividad: '',
   calle: '', localidad: '', provincia: '',
+  latitud: null, longitud: null,
   telefono: '', email: '', observaciones: '',
 }
 
@@ -70,6 +73,8 @@ export function FormView() {
       calle: e.calle || '',
       localidad: e.localidad || '',
       provincia: e.provincia || '',
+      latitud: e.latitud ?? null,
+      longitud: e.longitud ?? null,
       telefono: e.telefono || '',
       email: e.email || '',
       observaciones: e.observaciones || '',
@@ -141,6 +146,8 @@ export function FormView() {
       calle: form.calle.trim() || null,
       localidad: form.localidad.trim() || null,
       provincia: form.provincia.trim() || null,
+      latitud: form.latitud,
+      longitud: form.longitud,
       telefono: soloDigitos(form.telefono),
       email: form.email.trim().toLowerCase(),
       observaciones: form.observaciones.trim() || null,
