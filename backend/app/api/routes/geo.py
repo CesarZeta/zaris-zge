@@ -122,28 +122,126 @@ async def listar_localidades(
 async def buscar_direccion(
     q: str = Query(..., min_length=3, description="Texto a geocodificar"),
     limit: int = Query(5, ge=1, le=10),
+    solo_direcciones: bool = Query(
+        False,
+        description="Si True, excluye POIs (comercios, oficinas, etc.) y devuelve solo calles/edificios.",
+    ),
     current_user: dict = Depends(get_current_user),
 ):
-    """Geocoding directo: texto → candidatos con lat/lon."""
-    data = await _nominatim_get("/search", {
+    """Geocoding directo: texto → candidatos con lat/lon.
+
+    Cuando `solo_direcciones=True`, pasa `layer=address` a Nominatim y filtra el
+    response para excluir resultados con `class` de POI (amenity/shop/office/etc.).
+    Útil para formularios de domicilio: el ciudadano vive en una calle, no en
+    un bar/oficina/local.
+    """
+    # Cuando solo_direcciones=True pedimos el máximo que Nominatim acepta (40)
+    # porque algunas queries devuelven decenas de POIs antes de las calles
+    # válidas. No usamos `layer=address` porque excluye `highway/secondary` que
+    # sí son direcciones válidas (calle sin número exacto).
+    upstream_limit = 40 if solo_direcciones else limit
+    params: dict = {
         "q": q,
         "format": "json",
-        "limit": str(limit),
+        "limit": str(upstream_limit),
         "countrycodes": "ar",
         "addressdetails": "1",
-    })
+    }
+    data = await _nominatim_get("/search", params)
     if not isinstance(data, list):
         return []
-    return [
-        {
-            "display_name": d.get("display_name"),
-            "lat": float(d["lat"]) if d.get("lat") else None,
-            "lon": float(d["lon"]) if d.get("lon") else None,
-            "type": d.get("type"),
-            "address": d.get("address") or {},
-        }
-        for d in data
-    ]
+
+    # Filtros para `solo_direcciones=True`:
+    # - class POI puro (amenity/shop/office/etc.) sin `road` válido → descarta.
+    # - Resultados con `address.road` válido pero `display_name` que arranca con
+    #   nombre de POI (ej. "Warner Chappell Music, 1351, Avenida Córdoba...") →
+    #   se mantiene pero reescribimos `display_name` desde address para
+    #   ocultar el nombre del comercio. El edificio puede alojar un comercio,
+    #   pero la calle+altura sigue siendo la misma dirección postal.
+    POI_CLASS_BLACKLIST = {
+        "amenity", "shop", "office", "tourism", "leisure",
+        "craft", "healthcare", "club", "emergency", "man_made",
+    }
+
+    def _es_pieza_de_direccion(d: dict) -> bool:
+        """Tiene calle o lugar geográfico identificable → es candidato válido."""
+        a = d.get("address") or {}
+        return bool(
+            a.get("road") or a.get("pedestrian") or a.get("footway")
+            or a.get("cycleway") or a.get("path")
+        )
+
+    def _display_name_desde_address(d: dict) -> str:
+        """Reconstruye un display_name limpio desde `address`, sin el nombre
+        del POI/comercio que Nominatim a veces antepone."""
+        a = d.get("address") or {}
+        partes = []
+        calle = a.get("road") or a.get("pedestrian") or a.get("footway") or ""
+        hn = a.get("house_number")
+        if calle:
+            partes.append(f"{hn} {calle}" if hn else calle)
+        loc = (a.get("suburb") or a.get("neighbourhood") or a.get("city")
+               or a.get("town") or a.get("village"))
+        if loc:
+            partes.append(loc)
+        # partido / departamento intermedio
+        med = a.get("state_district") or a.get("city_district") or a.get("county")
+        if med and med not in partes:
+            partes.append(med)
+        if a.get("state"):
+            partes.append(a["state"])
+        if a.get("postcode"):
+            partes.append(a["postcode"])
+        if a.get("country"):
+            partes.append(a["country"])
+        return ", ".join(partes) if partes else (d.get("display_name") or "")
+
+    out = []
+    for d in data:
+        cls = d.get("class")
+        typ = d.get("type")
+        if solo_direcciones:
+            tiene_calle = _es_pieza_de_direccion(d)
+            # POI puro y sin calle reconocible → descartar.
+            if cls in POI_CLASS_BLACKLIST and not tiene_calle:
+                continue
+            # POI con calle (ej. McDonalds tiene `road` en su address) → también
+            # descartar: la búsqueda por el nombre del POI es lo que el usuario
+            # NO quiere en un campo de domicilio.
+            if cls in POI_CLASS_BLACKLIST:
+                continue
+            # Reescribir display_name si viene un nombre propio antes de la calle.
+            display_name = d.get("display_name") or ""
+            address = d.get("address") or {}
+            calle_busqueda = (address.get("road") or address.get("pedestrian")
+                              or address.get("footway") or "")
+            arranca_con_calle = (
+                display_name.lower().startswith(calle_busqueda.lower())
+                or (address.get("house_number") and
+                    display_name.lower().startswith(str(address["house_number"]).lower()))
+            )
+            if calle_busqueda and not arranca_con_calle:
+                display_name = _display_name_desde_address(d)
+            out.append({
+                "display_name": display_name,
+                "lat": float(d["lat"]) if d.get("lat") else None,
+                "lon": float(d["lon"]) if d.get("lon") else None,
+                "type": typ,
+                "class": cls,
+                "address": d.get("address") or {},
+            })
+        else:
+            out.append({
+                "display_name": d.get("display_name"),
+                "lat": float(d["lat"]) if d.get("lat") else None,
+                "lon": float(d["lon"]) if d.get("lon") else None,
+                "type": typ,
+                "class": cls,
+                "address": d.get("address") or {},
+            })
+        if len(out) >= limit:
+            break
+    return out
 
 
 @router.get("/reverse")

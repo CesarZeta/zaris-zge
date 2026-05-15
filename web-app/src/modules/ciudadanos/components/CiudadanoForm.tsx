@@ -1,6 +1,7 @@
 import type { FormState } from '../views/FormView'
 import { formatCuilInput } from '../lib/cuilUtils'
 import type { Nacionalidad } from '../types/ciudadano'
+import { AddressSearch } from '../../../ui/AddressSearch'
 
 interface Props {
   form: FormState
@@ -123,38 +124,61 @@ export function CiudadanoForm({ form, errores, readonly, nacionalidades, onChang
 
       {/* ── Domicilio ── */}
       <Section title="Domicilio">
+        <Field
+          label="Buscar dirección (OpenStreetMap)"
+          hint="Tipeá calle, altura y localidad y elegí una sugerencia. Calle, Localidad y Provincia se completan solo desde OSM — no se editan a mano. Si tu dirección no aparece, refiná la búsqueda."
+        >
+          <AddressSearch
+            disabled={readonly}
+            onPick={({ calle, localidad, provincia }, raw) => {
+              onChange('calle', calle)
+              onChange('localidad', localidad)
+              onChange('provincia', provincia)
+              onChange('latitud', raw.lat ?? null)
+              onChange('longitud', raw.lon ?? null)
+            }}
+          />
+        </Field>
         <Row cols="1fr 1fr">
           <Field label="Calle y Altura" required error={errores.calle}>
             <input
               type="text"
               value={form.calle}
-              onChange={(e) => onChange('calle', e.target.value)}
-              disabled={readonly}
+              readOnly
+              tabIndex={-1}
               maxLength={200}
-              placeholder="Ej: Av. San Martin 1234"
-              style={inputStyle(readonly)}
+              placeholder="(se completa desde OSM)"
+              style={inputStyle(true)}
             />
           </Field>
           <Field label="Localidad / Barrio" required error={errores.localidad}>
             <input
               type="text"
               value={form.localidad}
-              onChange={(e) => onChange('localidad', e.target.value)}
-              disabled={readonly}
+              readOnly
+              tabIndex={-1}
               maxLength={100}
-              style={inputStyle(readonly)}
+              placeholder="(se completa desde OSM)"
+              style={inputStyle(true)}
             />
           </Field>
         </Row>
-        <Field label="Estado / Provincia" required error={errores.provincia}>
+        <Field
+          label="Estado / Provincia"
+          required
+          error={errores.provincia}
+          hint={form.latitud != null && form.longitud != null
+            ? `Coordenadas: ${form.latitud.toFixed(6)}, ${form.longitud.toFixed(6)}`
+            : undefined}
+        >
           <input
             type="text"
             value={form.provincia}
-            onChange={(e) => onChange('provincia', e.target.value)}
-            disabled={readonly}
+            readOnly
+            tabIndex={-1}
             maxLength={100}
-            placeholder="Ej: Buenos Aires"
-            style={inputStyle(readonly)}
+            placeholder="(se completa desde OSM)"
+            style={inputStyle(true)}
           />
         </Field>
       </Section>
