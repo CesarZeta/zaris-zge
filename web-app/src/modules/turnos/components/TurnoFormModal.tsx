@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Modal } from '../../agenda/components/Modal'
 import { CiudadanoSearch } from '../../agenda/components/CiudadanoSearch'
+import { RecursoPicker } from '../../agenda/components/RecursoPicker'
 import { Button } from '../../../ui'
 import { useNotificationsStore } from '../../../stores/notifications'
-import { useAgentesActivos, useCrearTurno, useReprogramarTurno, useTiposServicio } from '../hooks/useTurnos'
+import { useCrearTurno, useReprogramarTurno, useTiposServicio } from '../hooks/useTurnos'
 import type { CiudadanoMinimo } from '../../agenda/types/agenda'
 import type { Turno } from '../types/turno'
 
@@ -20,7 +21,6 @@ export function TurnoFormModal({ open, onClose, turno }: Props) {
   const push = useNotificationsStore((s) => s.push)
   const esEdicion = turno != null
   const tipos = useTiposServicio()
-  const agentes = useAgentesActivos()
   const crear = useCrearTurno()
   const reprogramar = useReprogramarTurno()
 
@@ -135,20 +135,20 @@ export function TurnoFormModal({ open, onClose, turno }: Props) {
         {/* Agente */}
         <div>
           <label style={lbl}>Agente</label>
-          <select
-            value={idAgente}
-            onChange={(e) => setIdAgente(e.target.value === '' ? '' : Number(e.target.value))}
-            disabled={esEdicion}
-            style={inp}
-          >
-            <option value="">Elegí un agente…</option>
-            {(agentes.data ?? []).filter((a) => a.activo !== false).map((a) => (
-              <option key={a.id_agente} value={a.id_agente}>
-                {a.apellido}, {a.nombre}
-              </option>
-            ))}
-          </select>
-          {esEdicion && <div style={hint}>El agente no se puede cambiar al reprogramar.</div>}
+          {esEdicion ? (
+            <>
+              <div style={{ ...inp, background: 'var(--surface-200)', color: 'var(--fg-2)', display: 'flex', alignItems: 'center' }}>
+                {turno?.agente_nombre ?? '—'}
+              </div>
+              <div style={hint}>El agente no se puede cambiar al reprogramar.</div>
+            </>
+          ) : (
+            <RecursoPicker
+              tipo="agente"
+              value={idAgente === '' ? null : idAgente}
+              onChange={(id) => setIdAgente(id ?? '')}
+            />
+          )}
         </div>
 
         {/* Tipo de servicio */}
