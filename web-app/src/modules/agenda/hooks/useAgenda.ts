@@ -42,10 +42,11 @@ export function useCalendarioMes(
   mes: number,
   idMunicipio: number,
   tipoRecurso: TipoRecurso | 'todos' = 'todos',
+  idSubarea: number | null = null,
 ) {
   return useQuery({
-    queryKey: ['agenda', 'mes', anio, mes, idMunicipio, tipoRecurso],
-    queryFn:  () => getCalendarioMes(anio, mes, idMunicipio, tipoRecurso),
+    queryKey: ['agenda', 'mes', anio, mes, idMunicipio, tipoRecurso, idSubarea],
+    queryFn:  () => getCalendarioMes(anio, mes, idMunicipio, tipoRecurso, idSubarea),
   })
 }
 
