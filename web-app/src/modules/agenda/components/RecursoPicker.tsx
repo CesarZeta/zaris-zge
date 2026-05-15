@@ -59,6 +59,16 @@ export function RecursoPicker({ tipo, value, onChange, idMunicipio, placeholder 
     }
   }, [value, seleccionado.data]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Si cambia el tipo (agente <-> equipo), resetear el texto del input para
+  // no dejar la query del modo anterior visible. El parent ya limpia `value`,
+  // pero `q` vive aca dentro.
+  useEffect(() => {
+    skipNextRef.current = true
+    setQ('')
+    setResults([])
+    setOpen(false)
+  }, [tipo])
+
   // Busqueda debounced.
   useEffect(() => {
     if (skipNextRef.current) {
