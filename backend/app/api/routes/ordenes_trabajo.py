@@ -215,8 +215,10 @@ async def mesa_supervisor(
         FROM reclamos r
         LEFT JOIN ciudadanos c ON c.id_ciudadano = r.id_ciudadano
         LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
-        LEFT JOIN area a ON a.id_area = r.id_area
-        LEFT JOIN subarea s ON s.id_subarea = r.id_subarea
+        -- Subarea y area se derivan del tipo (mig 27 dropeo tipo_reclamo.id_area;
+        -- reclamos.id_area y id_subarea pueden estar NULL en filas viejas).
+        LEFT JOIN subarea s ON s.id_subarea = tr.id_subarea
+        LEFT JOIN area a ON a.id_area = s.id_area
         LEFT JOIN ot_counts otc ON otc.id_reclamo = r.id_reclamo
         LEFT JOIN ot_activa ota ON ota.id_reclamo = r.id_reclamo
         LEFT JOIN agentes ag ON ag.id_agente = ota.id_agente
@@ -262,7 +264,9 @@ async def _mesa_agente_query(db: AsyncSession, id_agente: int):
         JOIN reclamos r ON r.id_reclamo = ot.id_reclamo
         LEFT JOIN ciudadanos c ON c.id_ciudadano = r.id_ciudadano
         LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
-        LEFT JOIN subarea s ON s.id_subarea = r.id_subarea
+        -- Subarea cosmetica: derivada del tipo porque r.id_subarea puede estar NULL
+        -- en reclamos viejos. NO afecta el scope (WHERE r.id_subarea...) si lo hay.
+        LEFT JOIN subarea s ON s.id_subarea = tr.id_subarea
         LEFT JOIN equipos eq ON eq.id_equipo = ot.id_equipo
         WHERE ot.activo = TRUE
           AND eot.nombre IN ('En gestión','En espera','Pendiente')
@@ -372,7 +376,9 @@ async def mesa_auditoria(
         JOIN reclamos r ON r.id_reclamo = ot.id_reclamo
         LEFT JOIN ciudadanos c ON c.id_ciudadano = r.id_ciudadano
         LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
-        LEFT JOIN subarea s ON s.id_subarea = r.id_subarea
+        -- Subarea cosmetica: derivada del tipo porque r.id_subarea puede estar NULL
+        -- en reclamos viejos. NO afecta el scope (WHERE r.id_subarea...) si lo hay.
+        LEFT JOIN subarea s ON s.id_subarea = tr.id_subarea
         LEFT JOIN agentes ag ON ag.id_agente = ot.id_agente
         LEFT JOIN ordenes_trabajo ot_orig ON ot_orig.id_ot = ot.id_ot_origen
         LEFT JOIN agentes ag_orig ON ag_orig.id_agente = ot_orig.id_agente
@@ -461,7 +467,9 @@ async def mesa_auditor_me(
         JOIN reclamos r ON r.id_reclamo = ot.id_reclamo
         LEFT JOIN ciudadanos c ON c.id_ciudadano = r.id_ciudadano
         LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
-        LEFT JOIN subarea s ON s.id_subarea = r.id_subarea
+        -- Subarea cosmetica: derivada del tipo porque r.id_subarea puede estar NULL
+        -- en reclamos viejos. NO afecta el scope (WHERE r.id_subarea...) si lo hay.
+        LEFT JOIN subarea s ON s.id_subarea = tr.id_subarea
         LEFT JOIN agentes ag ON ag.id_agente = ot.id_agente
         LEFT JOIN ordenes_trabajo ot_orig ON ot_orig.id_ot = ot.id_ot_origen
         LEFT JOIN agentes ag_orig ON ag_orig.id_agente = ot_orig.id_agente

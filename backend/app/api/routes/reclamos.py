@@ -152,6 +152,8 @@ async def listar_reclamos(
     params["limit"] = limit
     params["offset"] = offset
 
+    # Area: fuente unica es subarea.id_area (mig 27 dropeo tipo_reclamo.id_area).
+    # r.id_area puede estar NULL en reclamos viejos; usar el area derivada del tipo.
     result = await db.execute(text(f"""
         SELECT
             r.id_reclamo, r.nro_reclamo, r.prioridad, r.estado,
@@ -161,13 +163,14 @@ async def listar_reclamos(
             r.latitud, r.longitud,
             r.id_ciudadano, c.nombre AS ciudadano_nombre, c.apellido AS ciudadano_apellido, c.doc_nro,
             r.id_tipo_reclamo, tr.nombre AS tipo_nombre, tr.sla_dias, tr.audit AS tipo_audit,
-            r.id_area, a.nombre AS area_nombre,
+            s.id_area, a.nombre AS area_nombre,
             r.id_agente_asignado,
             COALESCE(u.nombre, '—') AS agente_nombre
         FROM reclamos r
         LEFT JOIN ciudadanos c ON c.id_ciudadano = r.id_ciudadano
         LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
-        LEFT JOIN area a ON a.id_area = r.id_area
+        LEFT JOIN subarea s ON s.id_subarea = tr.id_subarea
+        LEFT JOIN area a ON a.id_area = s.id_area
         LEFT JOIN usuarios u ON u.id_usuario = r.id_agente_asignado
         WHERE {where}
         ORDER BY r.fecha_alta DESC
@@ -203,13 +206,14 @@ async def obtener_reclamo(
             r.id_ciudadano, c.nombre AS ciudadano_nombre, c.apellido AS ciudadano_apellido,
             c.doc_nro, c.cuil, c.telefono, c.email AS ciudadano_email,
             r.id_tipo_reclamo, tr.nombre AS tipo_nombre, tr.sla_dias, tr.audit AS tipo_audit,
-            r.id_area, a.nombre AS area_nombre,
+            s.id_area, a.nombre AS area_nombre,
             r.id_agente_asignado,
             COALESCE(u.nombre, '—') AS agente_nombre
         FROM reclamos r
         LEFT JOIN ciudadanos c ON c.id_ciudadano = r.id_ciudadano
         LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
-        LEFT JOIN area a ON a.id_area = r.id_area
+        LEFT JOIN subarea s ON s.id_subarea = tr.id_subarea
+        LEFT JOIN area a ON a.id_area = s.id_area
         LEFT JOIN usuarios u ON u.id_usuario = r.id_agente_asignado
         LEFT JOIN localidades loc ON loc.id_localidad = r.id_localidad
         LEFT JOIN partidos par ON par.id_partido = loc.id_partido

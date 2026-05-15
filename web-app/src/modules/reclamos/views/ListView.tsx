@@ -149,7 +149,9 @@ export function ListView() {
                   </Td>
                   <Td>
                     <div style={{ fontSize: '0.84rem', fontWeight: 500 }}>{r.tipo_nombre || '—'}</div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--fg-3)' }}>{r.area_nombre || '—'}</div>
+                    {r.area_nombre && (
+                      <div style={{ fontSize: '0.72rem', color: 'var(--fg-3)' }}>{r.area_nombre}</div>
+                    )}
                   </Td>
                   <Td><Badge kind="estado" value={r.estado} /></Td>
                   <Td><Badge kind="prioridad" value={r.prioridad ?? 'Media'} /></Td>
