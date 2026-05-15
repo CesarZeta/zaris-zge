@@ -832,11 +832,11 @@ Migraciones idempotentes (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXIST
 
 **Aplicada en local y prod al 2026-05-10.** Consolida 15 pares de áreas duplicadas (una con tildes, otra sin) eligiendo dinámicamente como canónico el de cada par con más referencias entrantes (`subarea + tipo_reclamo + reclamos + lugares_atencion`); en empate, el activo; en empate, el id menor. Re-routea las FKs entrantes y soft-deletea los duplicados. Si **ambos** estaban inactivos en el grupo, no reactiva nada (área histórica sin uso).
 
-Resultado prod: 19 reclamos legacy de "Servicios Públicos" sin tilde (id=9, ya inactiva) reasignados al canónico "Secretaría de Servicios Públicos" (id=22), que ahora suma 19 reclamos + 49 subáreas + 184 tipos. Las 5 áreas activas finales son: Gobierno (1), Planeamiento sin tilde (6), Servicios Públicos con tilde (22), Seguridad con tilde (28), Tránsito con tilde (36). Snapshot pre-update en `_backup_area_2026_05_10` en ambos entornos.
+Resultado prod: 19 reclamos legacy de "Servicios Públicos" sin tilde (id=9, ya inactiva) reasignados al canónico "Secretaría de Servicios Públicos" (id=22), que ahora suma 19 reclamos + 49 subáreas + 184 tipos. Las 5 áreas activas finales son: Gobierno (1), Planeamiento con tilde (6 — renombrada 2026-05-15), Servicios Públicos con tilde (22), Seguridad con tilde (28), Tránsito con tilde (36). Snapshot pre-update en `_backup_area_2026_05_10` en ambos entornos.
 
 **Operación por nombre normalizado, NO por ID hardcodeado** — los IDs canónicos difieren entre local y prod (local elige los sin-tilde porque eran los activos, prod elige una mezcla); la función `_ascii_fold(text)` se crea on-the-fly y se borra al final. Idempotente.
 
-> Nota: en prod queda como deuda renombrar `area.id_area=6` ("Secretaria de Planeamiento y Obras Publicas") con tildes para consistencia visual. No es bloqueante. Si se hace, solo es un `UPDATE area SET nombre = 'Secretaría de Planeamiento y Obras Públicas' WHERE id_area = 6;`.
+> Nota: `area.id_area=6` renombrada con tildes a "Secretaría de Planeamiento y Obras Públicas" en local y prod el 2026-05-15. Deuda cerrada.
 
 ### Migración 25 — `reclamos.id_empresa` (`backend/migrations/25_reclamos_id_empresa.sql`)
 
@@ -850,7 +850,7 @@ Resultado prod: 19 reclamos legacy de "Servicios Públicos" sin tilde (id=9, ya 
 |---|---|---|---|
 | Secretaría de Servicios Públicos | 22 | 33 | 184 |
 | Gobierno | 1 | 6 | 54 |
-| Secretaria de Planeamiento y Obras Publicas | 6 | 5 | 27 |
+| Secretaría de Planeamiento y Obras Públicas | 6 | 5 | 27 |
 | Subsecretaría de Tránsito | 36 | 4 | 16 |
 | Secretaría de Seguridad | 28 | 1 | 1 |
 | **Total** | — | **49** | **282** |
