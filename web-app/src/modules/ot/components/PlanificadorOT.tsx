@@ -1,12 +1,16 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ClipboardList, CalendarClock } from 'lucide-react'
 import { useNotificationsStore } from '../../../stores/notifications'
 import {
-  useAgentesActivos, useEquiposActivos, useSlotsRecurso,
+  useSlotsRecurso,
   useCrearOT, useCrearOTConAgenda,
 } from '../hooks/useOT'
 import type { MesaSupervisorRow, SlotLibre, TipoRecursoOT } from '../types/ot'
-import { BadgePrioridad, nombreAgente } from '../lib/format'
+import { BadgePrioridad } from '../lib/format'
+// Reuso del RecursoPicker de Agenda (cross-module import OK: comparten
+// el mismo recurso de backend, ver feedback_cross_module_imports_react).
+// Necesario para no listar 84+ agentes en un <select> en prod.
+import { RecursoPicker } from '../../agenda/components/RecursoPicker'
 
 interface Props {
   reclamo: MesaSupervisorRow | null
@@ -23,8 +27,6 @@ const DURACION_MIN = 60
  */
 export function PlanificadorOT({ reclamo, onDone }: Props) {
   const push = useNotificationsStore((s) => s.push)
-  const agentesQ = useAgentesActivos(reclamo != null)
-  const equiposQ = useEquiposActivos(reclamo != null)
   const crearConAgenda = useCrearOTConAgenda()
   const crearSimple = useCrearOT()
 
@@ -53,9 +55,6 @@ export function PlanificadorOT({ reclamo, onDone }: Props) {
     DURACION_MIN,
   )
   const slots = slotsQ.data?.slots ?? []
-
-  const agentes = useMemo(() => agentesQ.data?.filter((a) => a.activo) ?? [], [agentesQ.data])
-  const equipos = useMemo(() => equiposQ.data?.filter((e) => e.activo) ?? [], [equiposQ.data])
 
   const pendiente = crearConAgenda.isPending || crearSimple.isPending
 
@@ -149,25 +148,11 @@ export function PlanificadorOT({ reclamo, onDone }: Props) {
       </div>
 
       <Field label={modo === 'agente' ? 'Agente' : 'Equipo'}>
-        <select
-          value={idRecurso}
-          onChange={(e) => setIdRecurso(e.target.value ? Number(e.target.value) : '')}
-          style={inputStyle}
-          disabled={modo === 'agente' ? agentesQ.isLoading : equiposQ.isLoading}
-        >
-          <option value="">— Seleccionar —</option>
-          {modo === 'agente'
-            ? agentes.map((a) => (
-                <option key={a.id_agente} value={a.id_agente}>
-                  {nombreAgente(a.apellido, a.nombre)}{a.legajo ? ` · #${a.legajo}` : ''}
-                </option>
-              ))
-            : equipos.map((e) => (
-                <option key={e.id_equipo} value={e.id_equipo}>
-                  {e.nombre ?? `Equipo #${e.id_equipo}`}
-                </option>
-              ))}
-        </select>
+        <RecursoPicker
+          tipo={modo}
+          value={idRecurso !== '' ? (idRecurso as number) : null}
+          onChange={(id) => setIdRecurso(id ?? '')}
+        />
       </Field>
 
       <Field label="Fecha">
