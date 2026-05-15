@@ -206,7 +206,7 @@ Los módulos React viven en `web-app/src/modules/<nombre>/`. Se publican como bu
 
 El estilo oficial de ZARIS vive en `design-system/`. Tokens en `colors_and_type.css`, componentes en `design-system/components/*.css` (agrupados por `design-system/components.css`). **Prohibido** inventar variables propias, copiar valores hex literales, o agregar archivos como el legacy `frontend/styles.css` (que fue eliminado el 2026-05-12 junto a sus clases `.z-*` y vars `--z-*`).
 
-> **Deuda residual:** `admin_tablas.html` todavía declara internamente un alias-mapping `--z-*` → tokens DS y sus clases internas ad-hoc (`.btn-primary`, `.field`, `.modal`). Funciona, no carga ningún CSS legacy. Migrarlo al naming `*-zaris` es cosmético (~30 min) y opcional. Cualquier módulo nuevo debe usar el DS directo.
+> **Estado:** `admin_tablas.html` ya usa tokens DS directos (0 `var(--z-*)` desde commit `951232a`, 2026-05-13). Conserva clases internas ad-hoc (`.btn-primary`, `.field`, `.modal`) **a propósito** — renombrarlas a `*-zaris` colisionaría con el DS sin ganancia funcional. No carga ningún CSS legacy. Cualquier módulo nuevo debe usar el DS directo.
 
 > **Antes de crear un componente nuevo del DS o adoptar un naming nuevo:** `grep -rn "<naming-propuesto>" design-system/` para evitar dos namings paralelos. Sesión 2026-05-12 evitó duplicar `btn-zaris` con un hipotético `ds-btn` al detectar 3 huérfanos pre-existentes en `colors_and_type.css`. Aplica también a variables CSS (`--<nombre>`).
 
@@ -1293,13 +1293,13 @@ Capacidades:
 Pruebas validadas: 9 PASS / 0 FAIL en agente Chrome (T1-T11, ver `reporte_pruebas_3B_2026-05-11.md` si existe). Smoke `smoke_agenda.ps1` 15/15 OK pre y post-cambios.
 
 #### Sub-fase 3.B — Pendientes restantes
-- [ ] **Drag con teclado:** @dnd-kit soporta `KeyboardSensor` nativo (flechas + Enter); activarlo es 3 líneas en `TimelineView`. Pendiente porque el agente Chrome no lo pudo automatizar.
-- [ ] **Drag de OT a hora exacta del drop:** hoy cae a 09:00 fijo. Para soltar en la hora del cursor hace falta computar `event.activatorEvent.clientX` y restar el rect de la fila (requiere `useDndMonitor` o pasar refs).
-- [ ] **Snap visual durante drag:** línea vertical en la posición de snap mientras se arrastra (hoy solo overlay translúcido).
-- [ ] **Bloquear drag de ocupaciones tipo=evento:** las ocupaciones con `rol_en_evento='encargado'` están atadas a `evento_encargados`. Hoy reasignarlas con drag mueve solo la fila de `ocupaciones`, dejando `evento_encargados.id_recurso` desincronizado. Workaround actual: pasa pero la app no lo refleja en el modal de evento. Fix: en `GanttOccupationBlock` deshabilitar `useDraggable` si `ocupacion.tipo === 'evento'`, o coordinar backend.
+- [x] ~~**Drag con teclado:**~~ cerrado — `KeyboardSensor` activo en `TimelineView.tsx` (`keyboardCoordinateGetter` con flechas en pasos de `SNAP_MIN`/`ROW_HEIGHT`).
+- [x] ~~**Drag de OT a hora exacta del drop:**~~ cerrado — `TimelineView.tsx::handleDragEnd` rama `pending-ot` usa `activatorEvent.clientX + delta.x` mapeado al rect de la fila (`data-row-tipo/id`) y snap a `SNAP_MIN`. Cae a 09:00 solo si el drop queda fuera del rect.
+- [x] ~~**Snap visual durante drag:**~~ cerrado — `GanttResourceRow.tsx` usa `useDndMonitor` (`onDragMove`) para computar la posición de snap y renderiza una línea vertical naranja (`zIndex 25`, box-shadow) mientras la fila es el droppable activo.
+- [x] ~~**Bloquear drag de ocupaciones tipo=evento:**~~ cerrado — `GanttOccupationBlock.tsx` setea `dragDisabled = ocupacion.tipo === 'evento'` y pasa `disabled` a `useDraggable`; el `title` del bloque indica "editar desde el modal del evento".
 - [ ] Imagen QR renderizada (hoy solo el código de texto).
-- [ ] Selectores con autocompletar para OT y evento en `OcupacionModal`.
-- [ ] Selector de agente/equipo por nombre en `EventoEncargadosModal`.
+- [x] ~~Selectores con autocompletar para OT y evento en `OcupacionModal`.~~ cerrado — `RecursoPicker.tsx` reescrito de `<select>` a input + dropdown debounced (250ms) consultando `GET /agenda/catalogos/recursos?q=`. Mismo patrón que `CiudadanoSearch` con `skipNextRef` post-pick. Restringido a `tipo: 'agente'|'equipo'` (los espacios se eligen con su propio listado).
+- [x] ~~Selector de agente/equipo por nombre en `EventoEncargadosModal`.~~ cerrado — usa el mismo `RecursoPicker` con autocompletar.
 - [ ] Filtro por subárea en `AgendaFilters` (backend ya lo acepta).
 - [ ] Vista autoservicio público (cuando `evento.admite_autoservicio=TRUE`).
 - [x] ~~Migrar/dropear `frontend/agenda.html` vanilla legacy~~ — cerrado 2026-05-12.
@@ -1428,13 +1428,13 @@ Permisos: `nivel_acceso <= 2` (admin/supervisor) puede mutar; cualquier autentic
 **Hallazgos de la verificación visual 2026-05-14 (fixeados en el commit):**
 - **Drift `id_municipio NULL`** entre `/recursos/conteos` y `/calendario`/`/semana`: el conteo usaba `WHERE id_municipio = :im` mientras los listados de grilla usan `IS NULL OR =`. En prod hay agentes/equipos legacy con `id_municipio` NULL (3 agentes, 3 equipos) y el pill decía "Agentes 1" pero la grilla mostraba 4. **Fix aplicado en `7186fe1`**: ahora ambas reglas son consistentes (`IS NULL OR = :im`). Si agregás un endpoint nuevo que filtre por municipio sobre agentes/equipos, usar la misma regla NULL-friendly.
 
-**Pendientes post-B2 (no bloqueantes):**
+**Pendientes post-B2:** todos cerrados al 2026-05-14 jornada 5 (commit `9bce2eb` salvo el primero).
 - ~~3 ítems `data-modulo="turnos"` duplicados en sidebar vanilla~~ — cerrado 2026-05-14 (mig 44). Los 3 ítems ahora tienen `data-modulo` propios (`turnos`/`entradas`/`agenda`) y apuntan a `#/turnos`, `#/entradas`, `#/agenda`.
-- **Eventos sin `id_espacio` ni encargados son invisibles en la grilla Día.** El backend los devuelve en `eventos[]` top-level del response `/calendario`, pero el frontend B2 los pinta solo en filas con encargado/espacio. Decisión UX pendiente: fila "Eventos sin asignar" en la grilla, o validación en `POST /eventos` que exija al menos 1 encargado o `id_espacio` (mi preferencia).
-- Badge "⚠ falta vincular agentes" en EspaciosConfig cuando un espacio atendido tiene 0 agentes vinculados (sino la grilla pinta toda la fila gris sin razón obvia).
-- Drag en vista Semana.
-- KeyboardSensor en DnD (heredado de 3.B).
-- Título "timeline" residual entre las pills y la fecha en vista Día (legacy de sub-fase 3.A).
+- ~~Eventos sin `id_espacio` ni encargados invisibles en grilla Día~~ — cerrado. `GanttGrid.tsx` arma `eventosSinAsignar` (sin encargados Y sin espacio) y los pinta en una fila sintética "Eventos sin asignar" (solo bloques violeta, sin droppable ni disponibilidad).
+- ~~Badge "⚠ falta vincular agentes" en EspaciosConfig~~ — cerrado. El backend (`agenda_espacios.py`) expone `cant_agentes` sin n+1; `EspaciosConfig.tsx` muestra el badge cuando `atendido && cant_agentes === 0`.
+- ~~Drag en vista Semana~~ — cerrado. `WeeklyView.tsx` tiene `DndContext` + `useDraggable`/`useDroppable` + `ConfirmModal` para mover ocupaciones entre días/recursos conservando horario.
+- ~~KeyboardSensor en DnD~~ — cerrado (ver sub-fase 3.B arriba).
+- ~~Título "timeline" residual en vista Día~~ — cerrado en `9bce2eb`.
 
 ### Performance — optimización 2026-05-14 (commits `37d5034` + `8d047f5`)
 
@@ -1831,7 +1831,7 @@ Devuelve 403 si el usuario no tiene el módulo. **Hoy no aplicado a endpoints ex
 |---|---|---|---|
 | `frontend/usuarios.html` + `usuarios.js` | 0 | 0 | ✅ |
 | `frontend/js/config.js` + `validaciones.js` | 0 | 0 | ✅ |
-| `frontend/admin_tablas.html` | ~123 | 5 (solo `z-header*` oculto en iframe) | parcial — alias-mapping local `--z-*` → DS. Sin dependencias externas. Deuda cosmética opcional. |
+| `frontend/admin_tablas.html` | 0 (desde `951232a`) | 5 (solo `z-header*` oculto en iframe) | ✅ tokens DS directos. Clases internas (`.btn-primary`, `.field`, `.modal`) se conservan a propósito — ver §15. |
 | `frontend/login.html`, `welcome.html` | 0 | 0 | ✅ |
 
 > **Nota 2026-05-12:** los HTMLs `ciudadano.html`, `empresa.html`, `reclamos.html` (y sus JS) fueron eliminados al migrar a React (commits `a61ec9d`, `6aa3fdc`, `3e4a532`-`deae0bc`). Las equivalencias de tokens/clases listadas más abajo siguen siendo útiles si en algún momento se reintroduce un módulo vanilla nuevo.
@@ -1878,9 +1878,9 @@ Devuelve 403 si el usuario no tiene el módulo. **Hoy no aplicado a endpoints ex
 
 > **Patrón importado:** las clases compartidas viven en `design-system/components/`. Las clases específicas del HTML (search-result, form-state, preview-row, filter-bar, listado-wrap, tbl-btn, badge-activo/inactivo, print-header, validate-group, check-validate, cuil-group, empresa-panel) viven inline en el `<style>` de cada HTML, sin prefijo `z-`. Es la convención: si una clase se usa en >1 archivo, va al DS; si es de una vista puntual, queda local.
 
-### Posible deuda futura (opcional)
+### Deuda futura — cerrada
 
-`admin_tablas.html` todavía tiene 123 `var(--z-*)` locales que mapean a tokens DS. No carga ningún CSS legacy y funciona. Migrar es find/replace de variables + renombrar clases internas — ~30 min, sin ganancia funcional. Solo si querés "0 `--z-*` en el repo".
+`admin_tablas.html` fue migrado a tokens DS directos en commit `951232a` (2026-05-13): 0 `var(--z-*)` remanentes. Las clases internas (`.btn-primary`, `.field`, `.modal`) se conservan a propósito (renombrarlas a `*-zaris` colisionaría con el DS sin ganancia funcional). No queda deuda de estilos legacy en el repo.
 
 ## 32. Build de `web-app/dist/` y testing local del shell vanilla + bundle
 

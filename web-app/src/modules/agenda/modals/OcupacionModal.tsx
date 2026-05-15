@@ -142,7 +142,7 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
           </Field>
           <Field label={form.tipo_recurso === 'agente' ? 'Agente' : 'Equipo'}>
             <RecursoPicker
-              tipo={form.tipo_recurso}
+              tipo={form.tipo_recurso as 'agente' | 'equipo'}
               value={form.id_recurso || null}
               onChange={(id) => update('id_recurso', id ?? 0)}
               idMunicipio={form.id_municipio}
