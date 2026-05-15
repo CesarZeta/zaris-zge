@@ -164,8 +164,11 @@ export function getCalendarioMes(
   mes: number,
   id_municipio = 1,
   tipo_recurso: TipoRecurso | 'todos' = 'todos',
+  id_subarea: number | null = null,
 ) {
-  return api.get<CalendarioMes>(`${BASE}/mes`, { params: { anio, mes, id_municipio, tipo_recurso } })
+  const params: Record<string, string | number | boolean | null | undefined> = { anio, mes, id_municipio, tipo_recurso }
+  if (id_subarea != null) params.id_subarea = id_subarea
+  return api.get<CalendarioMes>(`${BASE}/mes`, { params })
 }
 export function getRecursosConteos(id_municipio = 1) {
   return api.get<RecursosConteos>(`${BASE}/recursos/conteos`, { params: { id_municipio } })

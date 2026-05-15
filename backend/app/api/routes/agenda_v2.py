@@ -1444,38 +1444,58 @@ async def calendario_mes(
     mes: int = Query(..., ge=1, le=12),
     id_municipio: int = 1,
     tipo_recurso: Literal["agente", "equipo", "espacio", "todos"] = "todos",
+    id_subarea: Optional[int] = Query(None, description="Filtra por id_subarea de eventos/recursos de las ocupaciones"),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
 ):
     """Resumen mensual: por dia, conteos de eventos, ocupaciones por tipo y ausencias.
     Cuando tipo_recurso != 'todos' los conteos de ocupaciones se filtran por
-    `ocupaciones.tipo_recurso`."""
+    `ocupaciones.tipo_recurso`. Cuando id_subarea viene, se filtran:
+    - eventos: por `eventos.id_subarea`.
+    - ocupaciones: por la subarea del recurso (agente.id_subarea / equipo.id_subarea / espacios_agenda.id_subarea).
+    - ausencias: por subarea del agente."""
     _, ndias = calendar.monthrange(anio, mes)
     primer_dia = date(anio, mes, 1)
     ultimo_dia = date(anio, mes, ndias)
 
     # Eventos por dia
-    ev_rows = (await db.execute(text("""
+    ev_params: dict[str, Any] = {"m": id_municipio, "fd": primer_dia, "fh": ultimo_dia}
+    ev_filter = ""
+    if id_subarea is not None:
+        ev_filter = " AND id_subarea = :sa"
+        ev_params["sa"] = id_subarea
+    ev_rows = (await db.execute(text(f"""
         SELECT fecha, COUNT(*) AS cant
         FROM eventos
         WHERE activo = TRUE AND id_municipio = :m
-          AND fecha BETWEEN :fd AND :fh
+          AND fecha BETWEEN :fd AND :fh{ev_filter}
         GROUP BY fecha
-    """), {"m": id_municipio, "fd": primer_dia, "fh": ultimo_dia})).mappings().all()
+    """), ev_params)).mappings().all()
     eventos_por_dia = {r["fecha"]: int(r["cant"]) for r in ev_rows}
 
-    # Ocupaciones por dia y por tipo (con filtro opcional por tipo_recurso)
+    # Ocupaciones por dia y por tipo (con filtro opcional por tipo_recurso e id_subarea)
     oc_params: dict[str, Any] = {"m": id_municipio, "fd": primer_dia, "fh": ultimo_dia}
     oc_filter = ""
     if tipo_recurso != "todos":
-        oc_filter = " AND tipo_recurso = :tr"
+        oc_filter = " AND o.tipo_recurso = :tr"
         oc_params["tr"] = tipo_recurso
+    # Filtro por subarea del recurso. Se hace via subquery EXISTS para no
+    # duplicar filas. id_subarea = NULL en el recurso => NO matchea (filtro estricto).
+    sa_filter = ""
+    if id_subarea is not None:
+        oc_params["sa"] = id_subarea
+        sa_filter = """
+          AND (
+            (o.tipo_recurso = 'agente'  AND EXISTS (SELECT 1 FROM agentes a WHERE a.id_agente = o.id_recurso AND a.id_subarea = :sa))
+         OR (o.tipo_recurso = 'equipo'  AND EXISTS (SELECT 1 FROM equipos e WHERE e.id_equipo = o.id_recurso AND e.id_subarea = :sa))
+         OR (o.tipo_recurso = 'espacio' AND EXISTS (SELECT 1 FROM espacios_agenda es WHERE es.id_espacio = o.id_recurso AND es.id_subarea = :sa))
+          )"""
     oc_rows = (await db.execute(text(f"""
-        SELECT fecha, tipo, COUNT(*) AS cant
-        FROM ocupaciones
-        WHERE activo = TRUE AND id_municipio = :m
-          AND fecha BETWEEN :fd AND :fh{oc_filter}
-        GROUP BY fecha, tipo
+        SELECT o.fecha, o.tipo, COUNT(*) AS cant
+        FROM ocupaciones o
+        WHERE o.activo = TRUE AND o.id_municipio = :m
+          AND o.fecha BETWEEN :fd AND :fh{oc_filter}{sa_filter}
+        GROUP BY o.fecha, o.tipo
     """), oc_params)).mappings().all()
     ocup_por_dia: dict[date, dict[str, int]] = {}
     for r in oc_rows:
@@ -1483,15 +1503,20 @@ async def calendario_mes(
 
     # Ausencias por dia (tabla nueva ausencias_agente, mig 39)
     ausencias_por_dia: dict[date, int] = {}
-    aus_rows = (await db.execute(text("""
+    aus_params: dict[str, Any] = {"m": id_municipio, "fd": primer_dia, "fh": ultimo_dia}
+    aus_sa_filter = ""
+    if id_subarea is not None:
+        aus_params["sa"] = id_subarea
+        aus_sa_filter = " AND a.id_subarea = :sa"
+    aus_rows = (await db.execute(text(f"""
         SELECT au.fecha_desde, au.fecha_hasta
         FROM ausencias_agente au
         JOIN agentes a ON a.id_agente = au.id_agente
         WHERE au.activo = TRUE
           AND NOT (au.fecha_hasta < :fd OR au.fecha_desde > :fh)
           AND a.activo = TRUE
-          AND (a.id_municipio IS NULL OR a.id_municipio = :m)
-    """), {"m": id_municipio, "fd": primer_dia, "fh": ultimo_dia})).mappings().all()
+          AND (a.id_municipio IS NULL OR a.id_municipio = :m){aus_sa_filter}
+    """), aus_params)).mappings().all()
     for r in aus_rows:
         d0 = max(r["fecha_desde"], primer_dia)
         d1 = min(r["fecha_hasta"], ultimo_dia)
