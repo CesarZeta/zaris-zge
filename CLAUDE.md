@@ -767,6 +767,12 @@ Las siguientes tablas ya existen en Supabase prod y **no deben re-crearse**:
 
 CHECK constraint activo: `ck_reclamo_estado` con valores `('Sin asignar','En gestión','En espera','En auditoría','Resuelto','Cancelado')`.
 
+### Drift no-migración: `ciudadanos.latitud/longitud` + `empresas.latitud/longitud`
+
+**Verificado prod + local 2026-05-15.** Las 4 columnas existen como `NUMERIC(10,7) NULL` en ambos entornos, **sin migración formal numerada**. Probable cambio manual viejo (mismo origen que `agentes.es_auditor` — caso documentado en §24). Los modelos SQLAlchemy `Ciudadano`/`Empresa` ya las exponían; los schemas Pydantic `*Out` también. Lo que faltaba al 2026-05-15 era declararlas en `CiudadanoBase`/`Update` + `EmpresaBase`/`Update` para aceptarlas en POST/PUT — agregado en commit `164b817` junto a la normalización OSM (ver §22).
+
+**Implicación:** si una sesión futura pide "agregar lat/lon a ciudadanos/empresas", la respuesta es verificar con `execute_sql` y solo tocar schemas Pydantic + frontend. NO redactar `ADD COLUMN`. Ver memoria [[reference_buc_lat_lon_columnas_existentes]].
+
 ### Migración 22 — Geolocalización + Activos + Adjuntos (`backend/migrations/22_geo_activos_adjuntos.sql`)
 
 **Aplicada en prod Supabase y en local (zaris_dev) al 2026-05-09.** Datos seedeados en prod: 24 provincias, 102 partidos, 352 localidades, 5 tipos_activo, 1000 activos. Incluye:
@@ -894,6 +900,26 @@ Resultado prod: 19 reclamos legacy de "Servicios Públicos" sin tilde (id=9, ya 
 - **Política de uso:** máx 1 req/seg, enviar `User-Agent: ZARIS-API/1.0 (cesar@zaris.dev)`. Para producción real, considerar Photon o Nominatim self-hosted.
 - **Mapas en frontend:** Leaflet + tiles de OSM (gratis, sin API key).
 - En el formulario de alta de reclamo, al pickear desde mapa setear `fuente_geolocalizacion = 'pin_manual'`; al elegir sugerencia de Nominatim, `geocoding_osm`.
+
+#### Endpoint `GET /api/v1/geo/buscar` — proxy a Nominatim
+
+| Param | Default | Notas |
+|---|---|---|
+| `q` | requerido (≥3 chars) | Texto libre a geocodificar. |
+| `limit` | 5 (1-10) | Cantidad de resultados a devolver. |
+| `solo_direcciones` | `false` | Si `true`, filtra POIs (comercios, hoteles, restaurantes, oficinas, escuelas, hospitales, etc.) y devuelve solo calles/edificios residenciales. Usado por el buscador OSM de Ciudadanos y Empresas. Reclamos lo deja en `false` porque ahí sí tiene sentido pickear un POI ("hay un bache frente al McDonalds"). |
+
+**Lógica de `solo_direcciones=true`** (implementada 2026-05-15 en `backend/app/api/routes/geo.py::buscar_direccion`):
+
+1. Pide `limit=40` upstream a Nominatim (no `limit*3`). Algunas queries genéricas tienen 15+ POIs antes del primer resultado válido — con limit bajo se devuelven 0 falsos negativos.
+2. NO usar `layer=address` de Nominatim — es demasiado restrictivo, excluye `highway/secondary` (calle sin número exacto) que sí son direcciones válidas.
+3. Blacklist por `class` POI puro: `amenity`, `shop`, `office`, `tourism`, `leisure`, `craft`, `healthcare`, `club`, `emergency`, `man_made` → descartar siempre.
+4. Cuando `class=building` con `type` no residencial (`commercial`, `retail`, `industrial`, `office`, `hotel`, `restaurant`, `school`, `hospital`, etc.) **pero** tiene `address.road` válido → **mantener** y **reescribir `display_name` desde `address`**. Caso real: Nominatim devuelve "Warner Chappell Music, 1351, Avenida Córdoba, Retiro, CABA" → mostrar "1351 Avenida Córdoba, Retiro, Comuna 1, CABA". El edificio aloja un comercio, pero la calle+altura es la dirección postal real.
+5. Cortar la iteración al alcanzar `limit` aceptados.
+
+Response: agrega `class` al output anterior. Compat retro con `solo_direcciones=false` (default).
+
+Detalles del aprendizaje (incluyendo trampas que NO funcionaron) en memoria [[feedback_nominatim_filtrar_pois]].
 
 ### Sub-reclamos
 
