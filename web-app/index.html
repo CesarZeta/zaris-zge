@@ -14,13 +14,17 @@
         try {
           if (window.self !== window.top) return;                 // OK: embebido
           var p = window.location.pathname || '';
-          // Solo activamos el redirect en el path de GH Pages prod
-          if (p.indexOf('/zaris-zge/web-app/dist/') === -1) return; // dev local: dejar pasar
+          // Activamos el redirect cuando se abre el bundle React standalone en prod.
+          // Soporta dominio propio (zge.zaris.com.ar/web-app/dist/) y el path
+          // legacy de GH Pages (/zaris-zge/web-app/dist/) por compatibilidad.
+          var isProd = p.indexOf('/web-app/dist/') !== -1;
+          if (!isProd) return;                                     // dev local: dejar pasar
           var hash = window.location.hash || '';                   // ej '#/ot/agente'
-          var target = '/zaris-zge/index.html';
+          // Detectar si estamos bajo un subpath (/zaris-zge/) o en raiz del dominio
+          var subpath = p.match(/^(\/[^/]+)\/web-app\/dist\//);
+          var base = subpath ? subpath[1] + '/index.html' : '/index.html';
+          var target = base;
           if (hash && hash.length > 1) {
-            // El shell vanilla acepta ?modulo=<url-encoded> para abrir el iframe
-            // apuntando al bundle React con el hash deseado.
             target += '?modulo=' + encodeURIComponent('web-app/dist/index.html' + hash);
           }
           window.location.replace(target);
