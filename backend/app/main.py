@@ -62,6 +62,8 @@ app.add_middleware(
         "http://localhost:8080",
         "http://localhost:8090",
         "https://cesarzeta.github.io",
+        "http://zge.zaris.com.ar",
+        "https://zge.zaris.com.ar",
     ],
     allow_credentials=True,
     allow_methods=["*"],
