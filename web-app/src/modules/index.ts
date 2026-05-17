@@ -9,6 +9,7 @@ import { contactosModule } from './contactos'
 import { ciudadanosModule } from './ciudadanos'
 import { empresasModule } from './empresas'
 import { configModule } from './config'
+import { tramitesModule } from './tramites'
 
 // Registrar módulos nuevos acá — el shell los lee automáticamente.
 // El orden refleja el sidebar del shell vanilla (index.html). Ver §14 CLAUDE.md.
@@ -27,5 +28,6 @@ export const modules: ModuleManifest[] = [
   contactosModule,
   ciudadanosModule,
   empresasModule,
+  tramitesModule,
   configModule,
 ]

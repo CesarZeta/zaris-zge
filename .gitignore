@@ -44,6 +44,9 @@ deploy_to_supabase.py
 *.err
 uvicorn.*
 
+# Uploads mock (tramites, local storage)
+backend/uploads/
+
 # Documentos archivados con info sensible (no versionar)
 docs/archivo/
 
