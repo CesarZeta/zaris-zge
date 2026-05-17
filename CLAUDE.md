@@ -72,10 +72,11 @@ No suponer paridad entre stacks. Hoy:
 | **Entradas** | — | **`modules/entradas/`** (backoffice completo 2026-05-14 — lista de eventos con espacio + gestión de reservas reusando `ReservaModal` de Agenda; autoservicio ya funciona vía flujo público de eventos) | **React** (publicado) |
 | **Dashboard** | — | **`modules/dashboard/`** (mapa Leaflet + stats reales) | **React — HOME del iframe** desde 2026-05-13 (se carga al entrar al shell y al hacer click en INICIO desde cualquier módulo) |
 | **OT (3 mesas)** | — (borrado, era `ot_supervisor.html`/`ot_agente.html`/`ot_auditoria.html`) | **`modules/ot/`** (Supervisor / Agente / Auditoría + drawer detalle compartido) | **React** (publicado) |
+| **Trámites** | — | **`modules/tramites/`** (backend Fase 1+2 + frontend Fase 3 completo — bandeja, detalle, acciones, timeline, adjuntos, pase, relacionar; 2026-05-16) | **React** (publicado) |
 | Config (permisos/identidad/etc.) | — | `modules/config/` | React |
 
 **Implicaciones:**
-- Si te piden "imitar el módulo X en React", verificar primero si existe ahí. Hoy **Dashboard, Agenda, Ciudadanos, Empresas, Reclamos, OT y Config** están en React en producción. Usuarios y Admin Tablas siguen en vanilla.
+- Si te piden "imitar el módulo X en React", verificar primero si existe ahí. Hoy **Dashboard, Agenda, Ciudadanos, Empresas, Reclamos, OT, Trámites y Config** están en React en producción. Usuarios y Admin Tablas siguen en vanilla.
 - Componentes UI compartidos React: `web-app/src/ui/index.tsx` (Button, IconButton, Pill, Badge, Input, Card, EmptyState, Skeleton, Table). **No hay** modal base, datepicker, dropdown, drawer — se construyen en cada módulo o se promueven a `ui/` cuando son maduros.
 - Helper `web-app/src/lib/api.ts` soporta GET/POST/PUT/PATCH/DELETE + opciones `{ params, withHeaders }`. `getWithHeaders` devuelve `{ data, headers }` para leer `X-Total-Count`.
 
@@ -2346,6 +2347,34 @@ Implementa el ciclo de vida operacional completo via API. Smoke test §9 pasado:
 - Comentar: 201
 - Timeline: 6 movimientos (creacion, numeracion, toma, adjunto, transicion, comentario)
 
-### Roadmap
+### Fase 3 — Frontend React (✅ ENTREGADA 2026-05-16)
 
-- **Fase 3** (pendiente): frontend React — bandeja del área, formulario de inicio, timeline de movimientos, visor de documentos, gestión de firmas.
+Módulo completo en `web-app/src/modules/tramites/`. Pusheado en commit `e2234de`.
+
+**Páginas y componentes:**
+
+| Archivo | Rol |
+|---|---|
+| `pages/BandejaTramites.tsx` | Lista de trámites con filtros (estado, tipo, texto) + chips de conteo |
+| `pages/DetalleTramite.tsx` | Vista detalle: metadatos, documentos, historial (Timeline), relaciones, panel acciones |
+| `components/EstadoBadge.tsx` | Badge de color dinámico con `estado_etiqueta` + `estado_color` del FSM |
+| `components/Timeline.tsx` | Historial append-only de movimientos (tipo, actor, fecha, comentario, campos_modificados) |
+| `components/ListaDocumentos.tsx` | Lista de adjuntos del trámite con descarga |
+| `components/PanelAcciones.tsx` | Botones de acción según transiciones permitidas: transicionar, tomar/liberar, pasar, relacionar, comentar |
+| `components/FileUploader.tsx` | Modal drag&drop para adjuntar documentos (multi-archivo, progreso, observación) |
+| `components/ModalPase.tsx` | Modal para pase manual a subárea o equipo con selector + comentario |
+| `components/ModalRelacionar.tsx` | Modal para vincular trámites por número de expediente (resuelve número → id via bandeja) |
+| `hooks/useTramites.ts` | react-query hooks: `useTramite`, `useBandeja`, `useTransicionesPermitidas` |
+| `lib/api.ts` | Funciones tipadas para todos los endpoints de trámites |
+| `lib/types.ts` | Tipos TypeScript: `TramiteBandejaItem`, `TramiteDetalle`, `TramiteMovimiento`, `TramiteRelacion`, etc. |
+
+**Rutas:** `/tramites` (bandeja) + `/tramites/:numero` (detalle). Hash router compatible con GH Pages.
+
+**Módulo en catálogo DB:** `modulos (modulo_codigo='tramites', min_nivel_acceso=3)` — insertado en prod 2026-05-16.
+
+**Seed prod:** 9 tipos, 21 trámites demo. Seed idempotente en `backend/seed_tramites.py`.
+
+**Pendientes / roadmap:**
+- Formulario de alta de trámite desde el frontend (hoy solo via API)
+- Visor inline de PDFs y firmas digitales
+- Notificaciones cuando un trámite llega a la bandeja del área
