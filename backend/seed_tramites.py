@@ -323,7 +323,7 @@ async def seed_tipos(conn, sa):
     # 1. poda-arbol
     tipos["poda-arbol"] = await seed_tipo(conn,
         "poda-arbol", "Solicitud de poda de arbol", "POD",
-        ["ciudadano"], False, "tree", "#22c55e",
+        ["ciudadano"], False, "trees", "#22c55e",
         campos=[
             {"nombre_interno": "direccion_arbol", "etiqueta": "Direccion del arbol", "tipo_dato": "direccion", "obligatorio": True, "orden": 1},
             {"nombre_interno": "especie_aproximada", "etiqueta": "Especie aproximada", "tipo_dato": "seleccion", "obligatorio": False, "orden": 2,

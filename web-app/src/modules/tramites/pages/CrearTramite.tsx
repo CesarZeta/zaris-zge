@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import React, { useState, createElement } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText } from 'lucide-react'
+import { FileText, icons as lucideIcons } from 'lucide-react'
+import type { LucideProps } from 'lucide-react'
 import { Button, Skeleton } from '../../../ui'
 import { EntitySelect } from '../components/EntitySelect'
 import { FormularioDinamico, validarDatos } from '../components/FormularioDinamico'
@@ -313,6 +314,14 @@ export function CrearTramite() {
   )
 }
 
+function LucideIcono({ nombre }: { nombre: string | null | undefined }) {
+  if (!nombre) return <span style={{ fontSize: 18 }}>📄</span>
+  const key = nombre.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()).replace(/^[a-z]/, (c) => c.toUpperCase()) as keyof typeof lucideIcons
+  const Icon = lucideIcons[key] as React.FC<LucideProps> | undefined
+  if (!Icon) return <span style={{ fontSize: 18 }}>📄</span>
+  return createElement(Icon, { size: 20, strokeWidth: 1.5, color: 'var(--fg-2)' } as LucideProps)
+}
+
 function TipoCard({ tipo, activo, onClick }: { tipo: TipoTramite; activo: boolean; onClick: () => void }) {
   return (
     <button
@@ -332,7 +341,7 @@ function TipoCard({ tipo, activo, onClick }: { tipo: TipoTramite; activo: boolea
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <span style={{ fontSize: 18 }}>{tipo.icono ?? '📄'}</span>
+        <LucideIcono nombre={tipo.icono} />
         <span style={{ fontSize: 10, background: 'var(--surface-400)', padding: '1px 6px', borderRadius: 'var(--radius-pill)', color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
           {tipo.prefijo}
         </span>
