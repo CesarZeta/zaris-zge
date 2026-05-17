@@ -1,6 +1,10 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import * as LucideIcons from 'lucide-react'
+import {
+  FileText, MapPin, Store, Megaphone, Trees, CalendarDays,
+  Scale, Microscope, ArrowRightLeft, Building2, Leaf, Gavel,
+  ClipboardList, Folder, Truck, Wrench, Shield, Home,
+} from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Button, Skeleton } from '../../../ui'
 import { EntitySelect } from '../components/EntitySelect'
@@ -304,7 +308,7 @@ export function CrearTramite() {
             variant="primary"
             onClick={() => { void handleCrear() }}
             disabled={crearMutation.isPending}
-            icon={<LucideIcons.FileText size={15} strokeWidth={1.5} />}
+            icon={<FileText size={15} strokeWidth={1.5} />}
           >
             {crearMutation.isPending ? 'Creando...' : 'Crear trámite'}
           </Button>
@@ -314,13 +318,29 @@ export function CrearTramite() {
   )
 }
 
-function toPascalCase(s: string) {
-  return s.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()).replace(/^[a-z]/, (c) => c.toUpperCase())
+const ICONO_MAP: Record<string, LucideIcon> = {
+  'file-text': FileText,
+  'map-pin': MapPin,
+  'store': Store,
+  'megaphone': Megaphone,
+  'trees': Trees,
+  'calendar-days': CalendarDays,
+  'scale': Scale,
+  'microscope': Microscope,
+  'arrow-right-left': ArrowRightLeft,
+  'building-2': Building2,
+  'leaf': Leaf,
+  'gavel': Gavel,
+  'clipboard-list': ClipboardList,
+  'folder': Folder,
+  'truck': Truck,
+  'wrench': Wrench,
+  'shield': Shield,
+  'home': Home,
 }
 
 function LucideIcono({ nombre }: { nombre: string | null | undefined }) {
-  const all = LucideIcons as unknown as Record<string, LucideIcon>
-  const Icon: LucideIcon = (nombre ? all[toPascalCase(nombre)] : undefined) ?? LucideIcons.FileText
+  const Icon: LucideIcon = (nombre ? ICONO_MAP[nombre.toLowerCase()] : undefined) ?? FileText
   return <Icon size={20} strokeWidth={1.5} color="var(--fg-2)" />
 }
 
