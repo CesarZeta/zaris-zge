@@ -62,7 +62,7 @@ class UsuarioCreate(BaseModel):
     username:     str = Field(..., max_length=50, pattern=r"^[a-zA-Z0-9_.\-]+$")
     password:     str = Field(..., min_length=8, max_length=100)
     id_cargo:     Optional[str] = Field(None, max_length=100)
-    id_municipio: int = Field(377)
+    id_municipio: int = Field(1)
     cuil:         Optional[str] = Field(None, max_length=11)
     buc_acceso:   bool = False
 

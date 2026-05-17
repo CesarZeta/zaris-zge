@@ -14,7 +14,7 @@ from app.models.buc import (
     Usuario, Nacionalidad, TipoRepresentacion, Actividad,
     Ciudadano, Empresa, CiudadanoEmpresa
 )
-from passlib.context import CryptContext
+import bcrypt
 
 from app.schemas.buc import (
     UsuarioCreate, UsuarioUpdate, UsuarioOut,
@@ -26,7 +26,6 @@ from app.schemas.buc import (
 
 router = APIRouter(prefix="/api/v1/buc", tags=["BUC"])
 logger = logging.getLogger("zaris.buc")
-_pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -89,7 +88,7 @@ async def crear_usuario(data: UsuarioCreate, db: AsyncSession = Depends(get_db))
         raise HTTPException(status_code=409, detail=f"Ya existe un usuario con username '{data.username}'")
 
     data_dict = data.model_dump()
-    data_dict["password_hash"] = _pwd.hash(data_dict.pop("password"))
+    data_dict["password_hash"] = bcrypt.hashpw(data_dict.pop("password").encode(), bcrypt.gensalt()).decode()
 
     usuario = Usuario(**data_dict)
     db.add(usuario)
@@ -109,7 +108,7 @@ async def modificar_usuario(id: int, data: UsuarioUpdate, db: AsyncSession = Dep
 
     update_data = data.model_dump(exclude_unset=True)
     if "password" in update_data:
-        update_data["password_hash"] = _pwd.hash(update_data.pop("password"))
+        update_data["password_hash"] = bcrypt.hashpw(update_data.pop("password").encode(), bcrypt.gensalt()).decode()
 
     campos_modificados = list(update_data.keys())
     for field, value in update_data.items():
