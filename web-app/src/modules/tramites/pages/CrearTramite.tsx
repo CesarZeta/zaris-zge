@@ -1,7 +1,7 @@
-import React, { useState, createElement } from 'react'
+import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, icons as lucideIcons } from 'lucide-react'
-import type { LucideProps } from 'lucide-react'
+import * as LucideIcons from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { Button, Skeleton } from '../../../ui'
 import { EntitySelect } from '../components/EntitySelect'
 import { FormularioDinamico, validarDatos } from '../components/FormularioDinamico'
@@ -304,7 +304,7 @@ export function CrearTramite() {
             variant="primary"
             onClick={() => { void handleCrear() }}
             disabled={crearMutation.isPending}
-            icon={<FileText size={15} strokeWidth={1.5} />}
+            icon={<LucideIcons.FileText size={15} strokeWidth={1.5} />}
           >
             {crearMutation.isPending ? 'Creando...' : 'Crear trámite'}
           </Button>
@@ -314,12 +314,14 @@ export function CrearTramite() {
   )
 }
 
+function toPascalCase(s: string) {
+  return s.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()).replace(/^[a-z]/, (c) => c.toUpperCase())
+}
+
 function LucideIcono({ nombre }: { nombre: string | null | undefined }) {
-  if (!nombre) return <span style={{ fontSize: 18 }}>📄</span>
-  const key = nombre.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()).replace(/^[a-z]/, (c) => c.toUpperCase()) as keyof typeof lucideIcons
-  const Icon = lucideIcons[key] as React.FC<LucideProps> | undefined
-  if (!Icon) return <span style={{ fontSize: 18 }}>📄</span>
-  return createElement(Icon, { size: 20, strokeWidth: 1.5, color: 'var(--fg-2)' } as LucideProps)
+  const all = LucideIcons as unknown as Record<string, LucideIcon>
+  const Icon: LucideIcon = (nombre ? all[toPascalCase(nombre)] : undefined) ?? LucideIcons.FileText
+  return <Icon size={20} strokeWidth={1.5} color="var(--fg-2)" />
 }
 
 function TipoCard({ tipo, activo, onClick }: { tipo: TipoTramite; activo: boolean; onClick: () => void }) {
