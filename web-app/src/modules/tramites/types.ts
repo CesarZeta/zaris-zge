@@ -10,7 +10,7 @@ export type TipoMovimiento =
 
 export type TipoDatoCampo =
   | 'texto' | 'texto_largo' | 'numero' | 'decimal' | 'fecha' | 'fecha_hora'
-  | 'booleano' | 'seleccion' | 'seleccion_multiple'
+  | 'booleano' | 'seleccion' | 'seleccion_multiple' | 'direccion'
   | 'ciudadano' | 'empresa' | 'agente' | 'subarea' | 'equipo'
   | 'archivo' | 'moneda'
 
