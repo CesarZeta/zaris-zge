@@ -4,7 +4,7 @@ Validación de entrada/salida en los endpoints.
 """
 from datetime import date, datetime
 from typing import Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, computed_field
 import re
 
 
@@ -248,6 +248,11 @@ class CiudadanoOut(BaseModel):
     fecha_modif: Optional[datetime]
     activo: bool
     modificado_por: Optional[int]
+
+    @computed_field
+    @property
+    def nombre_completo(self) -> str:
+        return f"{self.apellido}, {self.nombre}"
 
     class Config:
         from_attributes = True

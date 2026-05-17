@@ -78,7 +78,7 @@ def _validar_escalar(nombre: str, valor: Any, tipo_dato: str, validacion: dict |
             return f"'{nombre}' debe ser un numero decimal"
         return None
 
-    if tipo_dato in ("texto", "texto_largo"):
+    if tipo_dato in ("texto", "texto_largo", "direccion"):
         if not isinstance(valor, str):
             return f"'{nombre}' debe ser texto"
         if validacion:
