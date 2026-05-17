@@ -59,11 +59,6 @@ TABLE_CONFIG: dict[str, dict] = {
         "fecha_mod": "fecha_modificacion",
         "col_types": {"hora_inicio": "time", "hora_fin": "time"},
     },
-    "equipo_usuarios": {
-        "pk": "id_equipo_usuario",
-        "cols": ["id_equipo", "id_usuario", "rol"],
-        "fecha_mod": "fecha_modificacion",
-    },
     "servicios": {
         "pk": "id",
         "cols": ["nombre", "descripcion", "id_usuario_responsable", "capacidad_agentes",
@@ -238,7 +233,8 @@ async def crear(
     allowed = cfg["cols"]
     exclude = cfg.get("exclude", [])
 
-    data = {k: v for k, v in body.items() if k in allowed}
+    # Excluir Nones del INSERT para que la DB aplique sus DEFAULT (ej: capacidad_agentes DEFAULT 0)
+    data = {k: v for k, v in body.items() if k in allowed and v is not None}
     if not data:
         raise HTTPException(status_code=422, detail="No se recibieron campos válidos")
 
