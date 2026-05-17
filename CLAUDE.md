@@ -2182,3 +2182,170 @@ Helpers compartidos en `ordenes_trabajo.py`: `_slots_de_rango`, `_solapa`, `_mer
 - **Entradas** → ligado a **espacios** + eventos con cupo (§33). NO se tocó.
 
 `OcupacionOTModal` en el módulo Agenda (§ ver jornada anterior) se mantiene: sigue siendo válido planificar en la Agenda una OT ya creada. El flujo nuevo de OT no lo reemplaza, lo complementa.
+
+## 35. Módulo Trámites / Expedientes
+
+Gestión de expedientes administrativos tipo "ventanilla" (entrada de documentación → circuito interno → resolución). Diseñado para flujos multi-área, firmas digitales y numeración correlativa por tipo.
+
+### Filosofía de diseño
+
+- **Separación catálogo / instancia**: el catálogo (`tipo_tramite`, `tipo_tramite_version`, `_campo`, `_estado`, `_transicion`, `_documento_requerido`) define el FSM y los campos de cada tipo de trámite. Las instancias (`tramite`, `tramite_movimiento`, `tramite_documento`, `tramite_firma`) son los expedientes reales.
+- **Versionado del circuito**: cada tipo tiene versiones numeradas (`tipo_tramite_version`). Un trámite instanciado queda vinculado a la versión que estaba publicada al momento de crearse — cambiar el circuito no altera trámites en curso.
+- **FK circular diferida**: `tipo_tramite.id_version_publicada → tipo_tramite_version` y `tipo_tramite_version.id_tipo_tramite → tipo_tramite` se resuelven con `DEFERRABLE INITIALLY DEFERRED`.
+- **Numeración atómica**: `tipo_tramite_numerador` con `INSERT ... ON CONFLICT DO UPDATE SET ultimo_numero + 1 RETURNING` evita race conditions. Formato: `{prefijo}{sep}{codigo_municipio}{sep}{anio}{sep}{correlativo_padded}` → ej. `POD-LPL-2026-0001`.
+- **Ledger append-only**: `tramite_movimiento` registra cada acción (creacion, pase, cambio_estado, firma, etc.) como fila nueva. Nunca se modifica.
+- **Iniciador polimórfico**: `iniciador_tipo ∈ {ciudadano, empresa, area_interna}` + CHECK que enforce exactamente una de `{id_ciudadano_iniciador, id_empresa_iniciadora, id_subarea_iniciadora}` según el tipo.
+- **Destinatario polimórfico**: `destinatario_actual_tipo ∈ {subarea, equipo}` + CHECK similar.
+
+### Tablas
+
+**Catálogo (7 tablas):**
+
+| Tabla | PK | Rol |
+|---|---|---|
+| `tipo_tramite` | `id_tipo_tramite` | Catálogo maestro con código único, prefijo de numeración, iniciadores permitidos, config de número |
+| `tipo_tramite_version` | `id_tipo_tramite_version` | Versión del circuito (v1, v2…). FK circular deferida. `publicada=TRUE` = activa |
+| `tipo_tramite_campo` | `id_tipo_tramite_campo` | Campos del formulario de inicio (tipo_dato, orden, opciones_jsonb) |
+| `tipo_tramite_estado` | `id_tipo_tramite_estado` | Estados del FSM (codigo, etiqueta, color, es_inicial/es_final) |
+| `tipo_tramite_transicion` | `id_tipo_tramite_transicion` | Arco del FSM (origen→destino, quien_puede_jsonb, requiere_comentario/adjunto) |
+| `tipo_tramite_documento_requerido` | `id_tipo_tramite_documento_requerido` | Docs que el iniciador/área debe adjuntar (obligatorio, formatos, requiere_firma) |
+| `tipo_tramite_numerador` | `(id_tipo_tramite, anio, id_municipio)` | Contador correlativo atómico |
+
+**Instancias (5 tablas):**
+
+| Tabla | PK | Rol |
+|---|---|---|
+| `tramite` | `id_tramite` | Expediente instanciado. `numero_expediente` único. Polimorfismo iniciador + destinatario |
+| `tramite_movimiento` | `id_tramite_movimiento` | Ledger append-only. UNIQUE `(id_tramite, orden_secuencial)` |
+| `tramite_documento` | `id_tramite_documento` | Adjunto real (storage_path, sha256, mime_type, size_bytes) |
+| `tramite_firma` | `id_tramite_firma` | Firma digital solicitada/aplicada. Polimorfismo: agente / subarea / equipo |
+| `tramite_relacion` | `id_tramite_relacion` | Vínculo entre trámites (asociacion_simple, derivacion, sustitución) |
+
+Todas siguen estándar §10: `activo BOOLEAN NOT NULL DEFAULT TRUE`, `id_municipio INT NOT NULL`, `fecha_alta TIMESTAMPTZ NOT NULL DEFAULT NOW()`, `fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT NOW()`, `id_usuario_alta`, `id_usuario_modificacion`.
+
+### Migraciones
+
+| # | Archivo | Contenido |
+|---|---|---|
+| 47 | `47_tramites_catalogos.sql` | Agrega `codigo_corto` a `municipios` si falta. Crea las 7 tablas catálogo. FK circular deferida. |
+| 48 | `48_tramites_instancias.sql` | Crea las 5 tablas instancia con todos los CHECK constraints. |
+| 49 | `49_tramites_indices.sql` | 12 índices (destinatario, estado actual, número, movimientos, firmas pendientes). |
+
+**Aplicadas en local (zaris_dev) al 2026-05-16.** Pendiente: aplicar en prod Supabase cuando se decida subir la Fase 1.
+
+### Seeds
+
+`backend/seed_tramites.py` — idempotente, crea:
+- 7 subareas del circuito (Mesa de Entradas, Habilitaciones, Bromatología, Obras Particulares, Legales, RRHH, Espacios Verdes)
+- 9 tipos de trámite con versión publicada v1 (campos, estados, transiciones, docs requeridos):
+  - `poda-arbol` (POD) — ciudadano/empresa, 5 estados, 5 transiciones
+  - `pedido-informe` (INF) — area_interna, 4 estados, 3 transiciones
+  - `licencia-ordinaria` (LIC) — ciudadano, 5 estados, 4 transiciones
+  - `habilitacion-comercial` (HAB) — empresa, 6 estados, 6 transiciones
+  - `cambio-domicilio-comercial` (CDC) — empresa, 4 estados, 3 transiciones
+  - `transferencia-habilitacion` (THC) — empresa, 5 estados, 4 transiciones
+  - `inspeccion-bromatologica` (BRO) — ciudadano/empresa, 4 estados, 3 transiciones
+  - `cartel-publicitario` (CAR) — ciudadano/empresa, 5 estados, 4 transiciones
+  - `recurso-administrativo` (REA) — ciudadano/empresa, 5 estados, 4 transiciones
+- 20 trámites instanciados en estados variados con movimientos, documentos y 2 relaciones entre trámites
+
+Comando:
+```powershell
+cd backend
+$env:ENV_FILE=".env.local"; python seed_tramites.py
+```
+
+### Endpoints (Fase 1 — solo consulta)
+
+`APIRouter(prefix="/api/v1/tramites", tags=["tramites"])`. Router registrado ANTES de `admin_tablas_router` (evita colisión con `/{tabla}` greedy).
+
+| Método | Path | Descripción |
+|---|---|---|
+| GET | `/tipos` | Listar tipos activos. Filtros: `iniciador`, `q` (ILIKE nombre/codigo). Devuelve `{total, items}`. |
+| GET | `/tipos/{id_tipo_tramite}` | Detalle completo: campos, estados, transiciones, docs requeridos. |
+| GET | `` (bandeja) | Listar trámites. Filtros: `estado_codigo`, `id_tipo_tramite`, `iniciador_tipo`, `iniciador_id`, `destinatario_tipo` (`subarea`\|`equipo`), `destinatario_id`, `numero`, `q`, `desde`, `hasta`, `solo_activos`, `limit`, `offset`. `X-Total-Count` + `Access-Control-Expose-Headers`. |
+| GET | `/{numero_o_id}` | Detalle del trámite (acepta número de expediente `POD-LPL-2026-0001` o id int). Incluye últimos 5 movimientos. |
+| GET | `/{numero_o_id}/movimientos` | Historial completo de movimientos con paginación. |
+| GET | `/{numero_o_id}/documentos` | Documentos adjuntos del trámite. |
+
+Todos los endpoints requieren JWT (`Depends(get_current_user)`).
+
+### Servicios
+
+`backend/app/services/tramites/numerador.py`:
+- `proximo_numero(db, id_tipo_tramite, id_municipio, anio) -> int` — atómico via INSERT ON CONFLICT DO UPDATE RETURNING.
+- `formatear_numero(prefijo, separador, incluye_municipio, incluye_anio, codigo_municipio, anio, correlativo, largo_correlativo) -> str`
+
+### JSONB en asyncpg — quirk crítico (Fase 1)
+
+asyncpg no acepta `dict` Python ni el shorthand `::jsonb` en prepared statements vía SQLAlchemy `text()`. Dos patrones verificados:
+
+```python
+# Mal — falla en asyncpg:
+conn.execute(text("INSERT INTO t (col) VALUES (:v::jsonb)"), {"v": {"key": "val"}})
+
+# Bien — serializar a string + CAST SQL estándar:
+conn.execute(
+    text("INSERT INTO t (col) VALUES (CAST(:v AS jsonb))"),
+    {"v": json.dumps({"key": "val"}) if val is not None else None}
+)
+```
+
+Aplica a cualquier columna JSONB en `tramites` (campos, transiciones, movimientos). Documentado porque el `::jsonb` funciona en `psql` y en scripts que van por `asyncpg_conn.execute()` directo (§5 multi-statement), pero no en prepared statements de SQLAlchemy + asyncpg.
+
+### Fase 2 — Backend mutaciones (✅ ENTREGADA 2026-05-16)
+
+Implementa el ciclo de vida operacional completo via API. Smoke test §9 pasado: trámite `POD-LPL-2026-0009` creado → tomado → adjunto → transicionado → 6 movimientos en ledger.
+
+**Migración 050 (`50_tramites_auditoria.sql`, aplicada local 2026-05-16):** agrega `id_usuario_alta` e `id_usuario_modificacion` a las 5 tablas de instancias (`tramite`, `tramite_movimiento`, `tramite_documento`, `tramite_firma`, `tramite_relacion`). Idempotente (`ADD COLUMN IF NOT EXISTS`).
+
+**Servicios en `backend/app/services/tramites/`:**
+
+| Módulo | Función principal |
+|---|---|
+| `auth.py` | `resolver_agente_desde_usuario` → `{id_agente, id_subarea, ids_equipos, id_municipio, nivel_acceso}`. `es_admin(nivel)=nivel<=2`. `agente_puede_tomar/operar` con reglas de toma exclusiva. |
+| `autorizacion.py` | `quien_puede_actuar(quien_puede_jsonb, agente_info)` — OR entre `subareas/equipos/iniciador/roles`. `listar_transiciones_permitidas` anota cada transición con `disponible + motivo_no_disponible`. |
+| `movimientos.py` | `registrar_movimiento(db, id_tramite, tipo, ...)` — append-only al ledger con `COALESCE(MAX, 0)+1` y `CAST(:v AS jsonb)` para todos los JSONB. |
+| `creacion.py` | `validar_campos_contra_tipo` — todos los `tipo_dato` incluyendo seleccion_multiple, FKs, archivo (ignorado en creación). `resolver_iniciador` — polimórfico ciudadano/empresa/area_interna. `determinar_destinatario_inicial` — v1: subarea del agente creador. |
+| `documentos.py` | Guarda en `backend/uploads/tramites/{anio}/{expediente}/{slug}.{ext}`. SHA256 streaming 64KB. `crear_firmas_pendientes` desde `firmantes_jsonb`. |
+| `firmas.py` | `agente_puede_firmar` — polimórfico agente/subarea/equipo asignado. `marcar_firma` captura `ip_firma`, `user_agent_firma`, `hash_documento_firmado`. `actualizar_estado_firma_documento` — solo rol `'firma'` bloquea; `visado/notificacion` son informativos. `verificar_integridad_documento` — recomputa SHA256 del disco. |
+
+**12 endpoints nuevos (`routes/tramites.py`):**
+
+| Verbo | Path | Descripción |
+|---|---|---|
+| POST | `/api/v1/tramites` | Crear trámite (201). Numerador atómico, estado inicial FSM, 2 movimientos (creacion + numeracion). |
+| GET | `/{ref}/transiciones-permitidas` | Transiciones del estado actual anotadas con `disponible + motivo`. |
+| POST | `/{ref}/tomar` | Pessimistic lock (`SELECT FOR UPDATE`). Valida colectivo destinatario. |
+| POST | `/{ref}/liberar` | Libera toma. Solo el tomador o admin. |
+| POST | `/{ref}/transicionar` | Valida `quien_puede_jsonb`, `requiere_adjunto` (count docs desde `fecha_entrada_estado_actual`), aplica `destino_automatico_jsonb`, libera toma. |
+| POST | `/{ref}/pase` | Pase manual a subarea/equipo. Libera toma automáticamente. |
+| POST | `/{ref}/comentar` | Comentario libre (201). Cualquier agente autenticado. |
+| POST | `/{ref}/documentos` | Upload multipart. Validación extensión + tamaño. `crear_firmas_pendientes` si el doc_requerido lo indica. (201) |
+| GET | `/{ref}/documentos/{id}/contenido` | `FileResponse` streaming desde `backend/uploads/`. |
+| POST | `/{ref}/documentos/{id}/firmar` | Verifica integridad SHA256 + registra evidencia de firma auditable. |
+| POST | `/{ref}/documentos/{id}/rechazar-firma` | Marca rechazado + recalcula `estado_firma` del documento. |
+| POST | `/{ref}/relacionar` | Vincula dos trámites (sorted para UNIQUE). Registra movimiento `relacion` en ambos. (201) |
+
+**Reglas operativas críticas:**
+- Toda mutación abre transacción y hace `SELECT ... FOR UPDATE` sobre `tramite` antes de modificar.
+- `pase` y transición a estado final auto-liberan la toma (`id_agente_tomado_por = NULL`).
+- `requiere_adjunto` se valida contando `tramite_documento.activo=TRUE` con `fecha_alta >= fecha_entrada_estado_actual`.
+- El parámetro `iniciador_fks` de `resolver_iniciador` devuelve claves largas (`id_ciudadano_iniciador`, etc.); el INSERT las mapea explícitamente a `:cid`, `:eid`, `:crep`, `:sub_ini`.
+- Mock storage en `backend/uploads/` (en `.gitignore`). SHA256 en el INSERT; `FileResponse` sirve directo.
+
+**Quirk resuelto — mapeo de parámetros iniciador:** el spread `**iniciador_fks` sobre el dict del INSERT falla porque las claves largas no coinciden con los `:alias` del SQL. Siempre mapear explícitamente: `"cid": iniciador_fks.get("id_ciudadano_iniciador")`, etc. (sesión 2026-05-16).
+
+**Smoke test §9 — resultados (local, 2026-05-16):**
+- Login: 200 — `ciudadanovl@municipio.gob.ar` (nivel 1, agente 1, subarea 1)
+- Crear trámite: 201 — `POD-LPL-2026-0009` (tipo 3, `id_tipo_tramite` empieza en 3 en local por cómo los creó el seed)
+- Transiciones: 200 — 1 transición disponible: "Derivar a Espacios Verdes" (id=1)
+- Tomar: 200 — agente 1 tomó el trámite
+- Adjuntar: 201 — doc 17, `estado_firma: no_requiere`
+- Transicionar: 200 — `en_evaluacion`, destinatario `Espacios Verdes`, toma liberada
+- Comentar: 201
+- Timeline: 6 movimientos (creacion, numeracion, toma, adjunto, transicion, comentario)
+
+### Roadmap
+
+- **Fase 3** (pendiente): frontend React — bandeja del área, formulario de inicio, timeline de movimientos, visor de documentos, gestión de firmas.

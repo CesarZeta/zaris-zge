@@ -24,6 +24,7 @@ from app.api.routes.ordenes_trabajo import router as ot_router
 from app.api.routes.geo import router as geo_router
 from app.api.routes.activos import router as activos_router
 from app.api.routes.config_identidad import router as config_identidad_router
+from app.api.routes.tramites import router as tramites_router
 from app.init_db import create_tables
 
 # ── Logging ──────────────────────────────────────────────────────
@@ -83,6 +84,9 @@ app.include_router(agenda_disponibilidad_router)
 # turnos_publico ANTES de turnos: /turnos/publico/* lo atraparia /turnos/{id_turno} (int) -> 422
 app.include_router(turnos_publico_router)
 app.include_router(turnos_router)
+# tramites_router ANTES de admin_tablas (que tiene /{tabla} greedy).
+# /tramites/* no colisiona con otros routers pero lo dejamos arriba por convención.
+app.include_router(tramites_router)
 # IMPORTANTE: admin_permisos_router debe registrarse ANTES de admin_tablas_router.
 # admin_tablas usa /api/v1/admin/{tabla} y /api/v1/admin/{tabla}/{id}, que sin un
 # orden explicito atrapan rutas como /api/v1/admin/permisos/* como si {tabla}='permisos'.
