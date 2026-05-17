@@ -209,11 +209,11 @@ async def seed_tipo(conn, codigo, nombre, prefijo, iniciadores, permite_rep, ico
     # Campos
     for campo in campos:
         existe = await fetchval(conn,
-            "SELECT 1 FROM tipo_tramite_campo WHERE id_tipo_tramite_version = :v AND nombre_interno = :n",
+            "SELECT id_tipo_tramite_campo FROM tipo_tramite_campo WHERE id_tipo_tramite_version = :v AND nombre_interno = :n",
             {"v": id_ver, "n": campo["nombre_interno"]})
+        opciones_raw = campo.get("opciones")
+        opciones_str = json.dumps(opciones_raw) if opciones_raw is not None else None
         if not existe:
-            opciones_raw = campo.get("opciones")
-            opciones_str = json.dumps(opciones_raw) if opciones_raw is not None else None
             await conn.execute(text("""
                 INSERT INTO tipo_tramite_campo (
                     id_tipo_tramite_version, nombre_interno, etiqueta, tipo_dato,
@@ -227,6 +227,11 @@ async def seed_tipo(conn, codigo, nombre, prefijo, iniciadores, permite_rep, ico
                 "ay": campo.get("ayuda"),
                 "m": ID_MUNICIPIO
             })
+        else:
+            # Actualizar tipo_dato (puede haber cambiado, ej: texto -> direccion)
+            await conn.execute(text(
+                "UPDATE tipo_tramite_campo SET tipo_dato = :td WHERE id_tipo_tramite_campo = :id"
+            ), {"td": campo["tipo_dato"], "id": existe})
 
     # Estados: guardar mapa codigo->id
     estado_ids = {}
@@ -320,7 +325,7 @@ async def seed_tipos(conn, sa):
         "poda-arbol", "Solicitud de poda de arbol", "POD",
         ["ciudadano"], False, "tree", "#22c55e",
         campos=[
-            {"nombre_interno": "direccion_arbol", "etiqueta": "Direccion del arbol", "tipo_dato": "texto", "obligatorio": True, "orden": 1},
+            {"nombre_interno": "direccion_arbol", "etiqueta": "Direccion del arbol", "tipo_dato": "direccion", "obligatorio": True, "orden": 1},
             {"nombre_interno": "especie_aproximada", "etiqueta": "Especie aproximada", "tipo_dato": "seleccion", "obligatorio": False, "orden": 2,
              "opciones": {"opciones": ["nativa", "exotica", "no_se"]}},
             {"nombre_interno": "motivo", "etiqueta": "Motivo del pedido", "tipo_dato": "texto_largo", "obligatorio": True, "orden": 3},
@@ -412,7 +417,7 @@ async def seed_tipos(conn, sa):
         campos=[
             {"nombre_interno": "rubro", "etiqueta": "Rubro", "tipo_dato": "seleccion", "obligatorio": True, "orden": 1,
              "opciones": {"opciones": ["gastronomico", "comercial", "industrial", "servicios", "otro"]}},
-            {"nombre_interno": "direccion_local", "etiqueta": "Direccion del local", "tipo_dato": "texto", "obligatorio": True, "orden": 2},
+            {"nombre_interno": "direccion_local", "etiqueta": "Direccion del local", "tipo_dato": "direccion", "obligatorio": True, "orden": 2},
             {"nombre_interno": "superficie_m2", "etiqueta": "Superficie (m2)", "tipo_dato": "decimal", "obligatorio": True, "orden": 3},
             {"nombre_interno": "horario_atencion", "etiqueta": "Horario de atencion", "tipo_dato": "texto", "obligatorio": True, "orden": 4},
             {"nombre_interno": "tiene_cartel", "etiqueta": "Tiene cartel publicitario", "tipo_dato": "booleano", "obligatorio": False, "orden": 5},
@@ -454,8 +459,8 @@ async def seed_tipos(conn, sa):
         "cambio-domicilio-comercial", "Cambio de domicilio comercial", "CDC",
         ["empresa"], True, "map-pin", "#14b8a6",
         campos=[
-            {"nombre_interno": "direccion_anterior", "etiqueta": "Direccion anterior", "tipo_dato": "texto", "obligatorio": True, "orden": 1},
-            {"nombre_interno": "direccion_nueva", "etiqueta": "Direccion nueva", "tipo_dato": "texto", "obligatorio": True, "orden": 2},
+            {"nombre_interno": "direccion_anterior", "etiqueta": "Direccion anterior", "tipo_dato": "direccion", "obligatorio": True, "orden": 1},
+            {"nombre_interno": "direccion_nueva", "etiqueta": "Direccion nueva", "tipo_dato": "direccion", "obligatorio": True, "orden": 2},
             {"nombre_interno": "fecha_efectiva", "etiqueta": "Fecha efectiva del cambio", "tipo_dato": "fecha", "obligatorio": True, "orden": 3},
             {"nombre_interno": "nro_habilitacion_actual", "etiqueta": "N° de habilitacion actual", "tipo_dato": "texto", "obligatorio": True, "orden": 4},
         ],
@@ -546,7 +551,7 @@ async def seed_tipos(conn, sa):
         "cartel-publicitario", "Instalacion de cartel publicitario", "CAR",
         ["empresa"], True, "megaphone", "#f97316",
         campos=[
-            {"nombre_interno": "direccion_local", "etiqueta": "Direccion del local", "tipo_dato": "texto", "obligatorio": True, "orden": 1},
+            {"nombre_interno": "direccion_local", "etiqueta": "Direccion del local", "tipo_dato": "direccion", "obligatorio": True, "orden": 1},
             {"nombre_interno": "dimensiones", "etiqueta": "Dimensiones del cartel", "tipo_dato": "texto", "obligatorio": True, "orden": 2},
             {"nombre_interno": "tipo_cartel", "etiqueta": "Tipo de cartel", "tipo_dato": "seleccion", "obligatorio": True, "orden": 3,
              "opciones": {"opciones": ["frontal", "marquesina", "saliente", "luminoso"]}},

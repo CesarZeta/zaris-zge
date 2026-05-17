@@ -202,7 +202,7 @@ export function CrearTramite() {
               <EntitySelect
                 endpoint={`${BASE}/api/v1/buc/empresas/buscar`}
                 idField="id_empresa"
-                labelField="razon_social"
+                labelField="nombre"
                 value={idEmpresa}
                 onChange={(id) => setIdEmpresa(id)}
                 placeholder="Buscar empresa por razón social o CUIT..."

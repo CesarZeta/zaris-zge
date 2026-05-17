@@ -1,6 +1,8 @@
+import { useState, useEffect, useRef } from 'react'
 import { Input } from '../../../ui'
 import type { TipoTramiteCampo } from '../types'
 import { EntitySelect } from './EntitySelect'
+import { geoBuscar, type GeoBuscarResult } from '../../../lib/geoNominatim'
 
 interface CampoDinamicoProps {
   campo: TipoTramiteCampo
@@ -13,7 +15,7 @@ const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://12
 
 const ENDPOINTS: Record<string, { endpoint: string; idField: string; labelField: string; searchParam: string }> = {
   ciudadano: { endpoint: '/api/v1/buc/ciudadanos/buscar', idField: 'id_ciudadano', labelField: 'nombre_completo', searchParam: 'q' },
-  empresa:   { endpoint: '/api/v1/buc/empresas/buscar',   idField: 'id_empresa',   labelField: 'razon_social',    searchParam: 'q' },
+  empresa:   { endpoint: '/api/v1/buc/empresas/buscar',   idField: 'id_empresa',   labelField: 'nombre',          searchParam: 'q' },
   agente:    { endpoint: '/api/v1/agentes',               idField: 'id_agente',    labelField: 'nombre',          searchParam: 'q' },
   subarea:   { endpoint: '/api/v1/subareas',              idField: 'id_subarea',   labelField: 'nombre',          searchParam: 'q' },
   equipo:    { endpoint: '/api/v1/equipos',               idField: 'id_equipo',    labelField: 'nombre',          searchParam: 'q' },
@@ -214,6 +216,18 @@ export function CampoDinamico({ campo, value, onChange, error }: CampoDinamicoPr
         onChange={(e) => set(e.target.value ? Number(e.target.value) : null)}
       />
     )
+  } else if (tipo_dato === 'direccion') {
+    return (
+      <div style={fieldWrapStyle}>
+        {labelEl}
+        <DireccionOSMInput
+          value={typeof value === 'string' ? value : ''}
+          onChange={set}
+        />
+        {hintEl}
+        {errorEl}
+      </div>
+    )
   } else {
     // texto (default)
     input = (
@@ -234,6 +248,106 @@ export function CampoDinamico({ campo, value, onChange, error }: CampoDinamicoPr
       {errorEl}
     </div>
   )
+}
+
+/* ── Buscador de dirección OSM ────────────────────────────────────────────── */
+
+function DireccionOSMInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [query, setQuery] = useState(value)
+  const [resultados, setResultados] = useState<GeoBuscarResult[]>([])
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const skipRef = useRef(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (skipRef.current) { skipRef.current = false; return }
+    if (query.trim().length < 3) { setResultados([]); setOpen(false); return }
+    const t = setTimeout(async () => {
+      setLoading(true)
+      try {
+        const res = await geoBuscar(query, 7, true)
+        setResultados(res)
+        setOpen(res.length > 0)
+      } catch { setResultados([]) } finally { setLoading(false) }
+    }, 350)
+    return () => clearTimeout(t)
+  }, [query])
+
+  useEffect(() => {
+    function handleOut(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleOut)
+    return () => document.removeEventListener('mousedown', handleOut)
+  }, [])
+
+  function seleccionar(r: GeoBuscarResult) {
+    skipRef.current = true
+    setQuery(r.display_name)
+    setOpen(false)
+    setResultados([])
+    onChange(r.display_name)
+  }
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
+      <Input
+        type="text"
+        value={query}
+        onChange={(e) => { setQuery(e.target.value); onChange(e.target.value) }}
+        placeholder="Escribí la dirección..."
+      />
+      {loading && (
+        <div style={osmDropdownStyle}>
+          <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--fg-3)', fontFamily: 'var(--font-display)' }}>Buscando…</div>
+        </div>
+      )}
+      {open && resultados.length > 0 && (
+        <div style={osmDropdownStyle}>
+          {resultados.map((r, i) => (
+            <button
+              key={i}
+              type="button"
+              onMouseDown={() => seleccionar(r)}
+              style={osmOptionStyle}
+            >
+              {r.display_name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const osmDropdownStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: '100%',
+  left: 0,
+  right: 0,
+  marginTop: 4,
+  background: 'var(--surface-100)',
+  border: '1px solid var(--border-medium)',
+  borderRadius: 'var(--radius-lg)',
+  boxShadow: 'var(--shadow-card)',
+  zIndex: 100,
+  maxHeight: 240,
+  overflowY: 'auto',
+}
+
+const osmOptionStyle: React.CSSProperties = {
+  display: 'block',
+  width: '100%',
+  padding: '8px 12px',
+  fontSize: 12,
+  fontFamily: 'var(--font-display)',
+  color: 'var(--fg-2)',
+  textAlign: 'left',
+  border: 'none',
+  background: 'transparent',
+  cursor: 'pointer',
+  lineHeight: 1.4,
 }
 
 const fieldWrapStyle: React.CSSProperties = {
