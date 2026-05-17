@@ -1635,7 +1635,8 @@ function readForm() {
       data[col.field] = el.checked;
     } else {
       const v = el.value.trim();
-      data[col.field] = v === '' ? null : (col.type === 'number' ? Number(v) : v);
+      const isNumeric = col.type === 'number' || col.fk || col.field.startsWith('id_');
+      data[col.field] = v === '' ? null : (isNumeric ? Number(v) : v);
     }
   }
   return data;
