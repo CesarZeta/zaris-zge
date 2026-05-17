@@ -11,8 +11,6 @@ interface CampoDinamicoProps {
   error?: string
 }
 
-const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://127.0.0.1:8000'
-
 const ENDPOINTS: Record<string, { endpoint: string; idField: string; labelField: string; searchParam: string }> = {
   ciudadano: { endpoint: '/api/v1/buc/ciudadanos/buscar', idField: 'id_ciudadano', labelField: 'nombre_completo', searchParam: 'q' },
   empresa:   { endpoint: '/api/v1/buc/empresas/buscar',   idField: 'id_empresa',   labelField: 'nombre',          searchParam: 'q' },
@@ -44,7 +42,7 @@ export function CampoDinamico({ campo, value, onChange, error }: CampoDinamicoPr
       <div style={fieldWrapStyle}>
         {labelEl}
         <EntitySelect
-          endpoint={`${BASE}${cfg.endpoint}`}
+          endpoint={cfg.endpoint}
           idField={cfg.idField}
           labelField={cfg.labelField}
           searchParam={cfg.searchParam}
