@@ -34,7 +34,11 @@ from dotenv import dotenv_values
 # --- Config ---
 env_file = os.environ.get("ENV_FILE", ".env.local")
 cfg = dotenv_values(env_file)
-DATABASE_URL = cfg.get("DATABASE_URL", "postgresql+asyncpg://postgres:145236@127.0.0.1:5432/zaris_dev")
+DATABASE_URL = (
+    os.environ.get("DATABASE_URL")
+    or cfg.get("DATABASE_URL")
+    or "postgresql+asyncpg://postgres:145236@127.0.0.1:5432/zaris_dev"
+)
 
 engine = create_async_engine(DATABASE_URL, echo=False)
 AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
