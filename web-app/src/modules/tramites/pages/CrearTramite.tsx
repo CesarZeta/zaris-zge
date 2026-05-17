@@ -13,7 +13,6 @@ import { useTiposTramite, useTipoTramiteDetalle, useCrearTramite } from '../hook
 import { useNotificationsStore } from '../../../stores/notifications'
 import type { IniciadorTipo, TipoTramite } from '../types'
 
-const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://127.0.0.1:8000'
 
 export function CrearTramite() {
   const navigate = useNavigate()
@@ -191,7 +190,7 @@ export function CrearTramite() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <label style={labelStyle}>Ciudadano</label>
               <EntitySelect
-                endpoint={`${BASE}/api/v1/buc/ciudadanos/buscar`}
+                endpoint="/api/v1/buc/ciudadanos/buscar"
                 idField="id_ciudadano"
                 labelField="nombre_completo"
                 value={idCiudadano}
@@ -205,7 +204,7 @@ export function CrearTramite() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <label style={labelStyle}>Empresa</label>
               <EntitySelect
-                endpoint={`${BASE}/api/v1/buc/empresas/buscar`}
+                endpoint="/api/v1/buc/empresas/buscar"
                 idField="id_empresa"
                 labelField="nombre"
                 value={idEmpresa}
@@ -219,7 +218,7 @@ export function CrearTramite() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <label style={labelStyle}>Área interna</label>
               <EntitySelect
-                endpoint={`${BASE}/api/v1/admin/subareas`}
+                endpoint="/api/v1/admin/subareas"
                 idField="id_subarea"
                 labelField="nombre"
                 value={idSubareaIniciadora}
@@ -234,7 +233,7 @@ export function CrearTramite() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
               <label style={labelStyle}>Representante (ciudadano)</label>
               <EntitySelect
-                endpoint={`${BASE}/api/v1/buc/ciudadanos/buscar`}
+                endpoint="/api/v1/buc/ciudadanos/buscar"
                 idField="id_ciudadano"
                 labelField="nombre_completo"
                 value={idRepresentante}
