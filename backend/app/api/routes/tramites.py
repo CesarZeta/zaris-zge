@@ -14,7 +14,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -59,6 +59,7 @@ from app.services.tramites import documentos as svc_docs
 from app.services.tramites import firmas as svc_firmas
 from app.services.tramites import movimientos as svc_mov
 from app.services.tramites import numerador as svc_num
+from app.services import notificaciones as svc_notif
 
 router = APIRouter(prefix="/api/v1/tramites", tags=["tramites"])
 
@@ -863,6 +864,7 @@ async def _tramite_detalle_out(id_tramite: int, db: AsyncSession) -> TramiteDeta
 async def crear_tramite(
     body: TramiteCreateIn,
     request: Request,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -992,6 +994,10 @@ async def crear_tramite(
     )
 
     await db.commit()
+
+    # Notificar destinatario inicial (fail-safe interno, no rompe el flow)
+    await svc_notif.notificar_tramite_a_bandeja(db, id_tramite, "creacion", background_tasks)
+
     return await _tramite_detalle_out(id_tramite, db)
 
 
@@ -1144,6 +1150,7 @@ async def transicionar_tramite(
     tramite_ref: str,
     body: TransicionIn,
     request: Request,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1270,6 +1277,15 @@ async def transicionar_tramite(
         comentario=body.comentario,
     )
     await db.commit()
+
+    # Notificar solo si el destinatario cambio (transicion con dest_auto a otro recurso)
+    destino_cambio = (
+        nuevo_dest_tipo != tramite.get("destinatario_actual_tipo")
+        or (nuevo_dest_sa or nuevo_dest_eq) != (tramite.get("id_subarea_actual") or tramite.get("id_equipo_actual"))
+    )
+    if destino_cambio and not es_final:
+        await svc_notif.notificar_tramite_a_bandeja(db, id_tramite, "transicion", background_tasks)
+
     return await _tramite_detalle_out(id_tramite, db)
 
 
@@ -1282,6 +1298,7 @@ async def pase_tramite(
     tramite_ref: str,
     body: PaseIn,
     request: Request,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1338,6 +1355,10 @@ async def pase_tramite(
         comentario=body.comentario,
     )
     await db.commit()
+
+    # Notificar al nuevo destinatario (siempre, el pase es explicito)
+    await svc_notif.notificar_tramite_a_bandeja(db, id_tramite, "pase", background_tasks)
+
     return await _tramite_detalle_out(id_tramite, db)
 
 
