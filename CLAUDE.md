@@ -2394,5 +2394,53 @@ Módulo completo en `web-app/src/modules/tramites/`. Pusheado en commit `e2234de
 - **HTTP cache cazó el binario viejo durante la verificación:** `fetch()` default usa el cache del browser; con `Last-Modified` de FastAPI puede devolver 304 + body cacheado. Fix: `cache: 'no-store'` en `descargarDocumentoBlob`. Si en el futuro agregás otro helper que sirva binarios autenticados, replicar.
 - **Path quirk de `services/tramites/documentos.py::ruta_absoluta_mock` (no fixeado, deuda):** la función devuelve `Path("backend") / storage_path`. Como uvicorn corre con cwd=`backend/`, eso resuelve a `backend/backend/uploads/...`. Cualquier carpeta `backend/backend/` que aparezca en `git status` es artefacto de uploads viejos — borrarla. Fix definitivo sería usar path absoluto desde `__file__`, pero requiere migrar storage_path o un fallback que pruebe ambos.
 
-**Pendientes / roadmap:**
-- Notificaciones al área cuando un trámite nuevo entra a su bandeja (no existe sistema de notif al destinatario; el campo `requiere_notificacion` de `tipo_tramite_documento_requerido` es solo metadato del doc, no dispara nada).
+### Notificaciones a la bandeja (✅ ENTREGADO 2026-05-18)
+
+Sistema in-app + email cuando un trámite entra a la bandeja del destinatario (creación, pase, transición que cambia destinatario).
+
+**Migración 51 (`51_notificaciones.sql`):** crea `notificacion` (estándar §10 + columnas in-app: `id_usuario`, `tipo`, `titulo`, `mensaje`, `url_destino`, `recurso_tipo`/`recurso_id` polimórfica, `leida`/`leida_en`, `enviada_mail`/`enviada_mail_en`). Índices: `(id_usuario, leida, fecha_alta DESC)` parcial sobre `activo=TRUE` y `(recurso_tipo, recurso_id)`. **Solo aplicada en local al 2026-05-18.** Falta aplicar en prod Supabase.
+
+**Backend nuevo:**
+- `app/core/config.py` agrega `SMTP_HOST/PORT/USER/PASS/FROM/USE_TLS` + `APP_BASE_URL`. Cuando SMTP queda vacío, el sender corre en modo MOCK (log a stdout, no rompe el flow). Apuntado a Zoho Mail (`smtp.zoho.com:587` + STARTTLS).
+- `app/services/email.py::enviar_mail(to, subject, body_html, body_text)` — usa `smtplib` de stdlib (síncrono, OK en threadpool de BackgroundTasks de FastAPI). Sin nueva dep.
+- `app/services/notificaciones.py::notificar_tramite_a_bandeja(db, id_tramite, evento, background_tasks)` — resuelve destinatarios (todos los agentes activos con email del subarea/equipo destinatario actual del trámite), inserta una fila por usuario en `notificacion` y dispara mail async via `background_tasks.add_task`. Fail-safe: cualquier error se logea pero no levanta. **CRITICAL: hace `await db.commit()` adentro** porque el caller ya commiteó antes y la sesión queda lista para nueva transacción; sin commit las filas se descartaban silenciosamente.
+- Hooks en `routes/tramites.py`: `crear_tramite` (siempre), `pase_tramite` (siempre), `transicionar_tramite` (solo cuando el destinatario cambia y no es estado final). Los tres signatures suman `background_tasks: BackgroundTasks`.
+- Router nuevo `routes/notificaciones.py` (prefix `/api/v1/notificaciones`): `GET ""`, `GET /count`, `PATCH /{id}/leer`, `PATCH /leer-todas`. Solo del usuario logueado. `X-Total-Count` expuesto via `Access-Control-Expose-Headers`.
+
+**Frontend nuevo:**
+- `web-app/src/lib/notificacionesBackend.ts` — cliente tipado + hooks react-query (`useNotificaciones`, `useNotificacionesCount` con `refetchInterval: 30_000`, `useMarcarLeida`, `useMarcarTodasLeidas`). **Separado de `stores/notifications`** que sigue usándose para toasts efímeros.
+- `web-app/src/shell/TopBar/NotificacionesDropdown.tsx` — componente nuevo de campana + dropdown. Reemplaza el botón Bell estático del TopBar. Maneja iframe/standalone: en iframe usa `window.parent.shellNavigate('web-app/dist/index.html#/tramites/...')`; standalone usa `useNavigate(hash)`. Cierra con click-outside + Escape. Click en notif: marca leída + navega + cierra.
+- `web-app/src/shell/TopBar/TopBar.tsx` simplificado: importa el nuevo dropdown, ya no necesita el contador del store local.
+
+**Verificación visual (2026-05-18):**
+1. Login como `ciudadanovl@municipio.gob.ar` (admin, nivel 1).
+2. Para que el admin pueda crear trámites necesité crearle un agente: `INSERT INTO agentes (nombre,apellido,id_usuario,id_subarea,id_municipio,activo) VALUES ('Cesar','Zeta',1,1,1,TRUE)` — quedó como agente 9. CONSERVAR esta fila para sesiones futuras.
+3. POST /tramites con `id_tipo_tramite=4` (pedido-informe), iniciador `area_interna`/subarea=1, destinatario subarea=1 → `INF-LPL-2026-0009` creado.
+4. Backend insertó 2 notificaciones (Cesar Zeta + Roberto Filad, ambos agentes activos de subarea 1).
+5. Email logueado en MOCK con HTML + body text + link a `https://zge.zaris.com.ar/#/tramites/INF-LPL-2026-0009`.
+6. Topbar polling → badge "1" rojo en la campana.
+7. Click campana → dropdown con la notif. Click notif → URL cambió a `#/tramites/INF-LPL-2026-0009` + DB confirma `leida=true, leida_en=NOW()`.
+
+**Quirks cazados durante implementación:**
+- **`tramite` no tiene `id_tipo_tramite` directo, va via `tipo_tramite_version`.** Mi JOIN inicial `tt ON tt.id_tipo_tramite = t.id_tipo_tramite` rompía con `UndefinedColumnError`. Fix: `JOIN tipo_tramite_version ttv ON ttv.id_tipo_tramite_version = t.id_tipo_tramite_version JOIN tipo_tramite tt ON tt.id_tipo_tramite = ttv.id_tipo_tramite`.
+- **`db.flush()` no persiste si el endpoint no commitea después.** El caller ya hizo su commit, dejando la sesión SQLAlchemy lista para nueva transacción. Sin un commit nuevo dentro del service, las filas insertadas se descartan al cerrar la sesión. Fix: `db.commit()` adentro del service (no flush).
+- **`subarea.id_municipio` está NULL en muchas filas del seed local** (mig 22 lo dejó sin backfill). Cualquier endpoint que filtre `WHERE id_municipio = :mun` no las matchea. Para que el smoke pase: `UPDATE subarea SET id_municipio=1 WHERE id_subarea=1`. NO replicar en prod sin diagnóstico — puede haber filas históricas con NULL intencional.
+
+**Email en MOCK hasta que se setee SMTP en Railway:**
+Para activar envíos reales agregar al `.env` de Railway (y `backend/.env.local` para dev):
+```
+SMTP_HOST=smtp.zoho.com
+SMTP_PORT=587
+SMTP_USER=<tu-zoho-user>
+SMTP_PASS=<app-password-zoho>
+SMTP_FROM=ZARIS <noreply@municipio.gob.ar>
+SMTP_USE_TLS=True
+APP_BASE_URL=https://zge.zaris.com.ar
+```
+Si alguna de las primeras 4 está vacía, `smtp_configurado()` devuelve False y se cae a modo MOCK. Reiniciar uvicorn tras cambiar el env.
+
+**Pendientes futuros (no críticos):**
+- Aplicar mig 51 en prod Supabase.
+- Setear credenciales Zoho SMTP en Railway.
+- Notificaciones para otros eventos: firma pendiente solicitada al firmante, comentario en trámite que tomé, transición a estado final si el iniciador es interno. Diseño extensible: el `tipo` y `recurso_tipo` ya soportan más casos.
+- Campana en el shell vanilla (hoy es placeholder). Por arquitectura distinta a React, requiere implementarla en `index.html` + `frontend/js/menu.js` aparte. La campana React ya cubre el flujo principal (el usuario navega dentro del bundle React cuando trabaja con trámites).
