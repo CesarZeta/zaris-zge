@@ -42,7 +42,9 @@ export const obtenerTransicionesPermitidas = (numero: string) =>
   api.get<TransicionesPermitidas>(`${BASE}/${numero}/transiciones-permitidas`)
 
 export const obtenerDocumentos = (numero: string) =>
-  api.get<TramiteDocumento[]>(`${BASE}/${numero}/documentos`)
+  api.get<{ numero_expediente: string; documentos: TramiteDocumento[]; total: number }>(
+    `${BASE}/${numero}/documentos`,
+  )
 
 /* ── Mutaciones del ciclo de vida ───────────────────────── */
 
@@ -141,8 +143,26 @@ function getTokenFromStorage(): string | null {
 export function descargarDocumentoUrl(numero: string, idDoc: number): string {
   const BASE_URL =
     (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://127.0.0.1:8000'
+  return `${BASE_URL}${BASE}/${numero}/documentos/${idDoc}/contenido`
+}
+
+export async function descargarDocumentoBlob(
+  numero: string,
+  idDoc: number,
+): Promise<{ blob: Blob; objectUrl: string; mime: string }> {
+  const url = descargarDocumentoUrl(numero, idDoc)
   const token = getTokenFromStorage()
-  return `${BASE_URL}${BASE}/${numero}/documentos/${idDoc}/contenido${token ? `?token=${token}` : ''}`
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    cache: 'no-store',
+  })
+  if (!res.ok) {
+    const txt = await res.text().catch(() => res.statusText)
+    throw new Error(`HTTP ${res.status} ${txt.slice(0, 200)}`)
+  }
+  const blob = await res.blob()
+  const mime = res.headers.get('content-type') ?? blob.type ?? 'application/octet-stream'
+  return { blob, objectUrl: URL.createObjectURL(blob), mime }
 }
 
 export const firmarDocumento = (

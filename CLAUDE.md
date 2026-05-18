@@ -2232,7 +2232,7 @@ Todas siguen estándar §10: `activo BOOLEAN NOT NULL DEFAULT TRUE`, `id_municip
 | 48 | `48_tramites_instancias.sql` | Crea las 5 tablas instancia con todos los CHECK constraints. |
 | 49 | `49_tramites_indices.sql` | 12 índices (destinatario, estado actual, número, movimientos, firmas pendientes). |
 
-**Aplicadas en local (zaris_dev) al 2026-05-16.** Pendiente: aplicar en prod Supabase cuando se decida subir la Fase 1.
+**Aplicadas en local (zaris_dev) y en prod (Supabase) al 2026-05-16.** Las 5 tablas catálogo + 5 instancia + columnas de auditoría (mig 50) están en ambos entornos. Verificable con `to_regclass('public.tramite')` + chequeo de `id_usuario_alta/modificacion` en `information_schema.columns`.
 
 ### Seeds
 
@@ -2357,24 +2357,42 @@ Módulo completo en `web-app/src/modules/tramites/`. Pusheado en commit `e2234de
 |---|---|
 | `pages/BandejaTramites.tsx` | Lista de trámites con filtros (estado, tipo, texto) + chips de conteo |
 | `pages/DetalleTramite.tsx` | Vista detalle: metadatos, documentos, historial (Timeline), relaciones, panel acciones |
+| `pages/CrearTramite.tsx` | Alta de trámite desde la UI: selector de tipo + formulario dinámico generado desde `tipo_tramite_campo` + resolución de iniciador (ciudadano/empresa/area_interna) |
+| `components/FormularioDinamico.tsx` + `CampoDinamico.tsx` | Render del formulario derivado del catálogo del tipo (todos los `tipo_dato` soportados) |
+| `components/EntitySelect.tsx` | Buscador con autocompletar para FKs (ciudadano/empresa). Recibe `path`, NO URL completa (ver memoria [[feedback_entityselect_path_no_url]]) |
+| `components/DatosTramite.tsx` | Panel de datos/campos del trámite en el detalle |
 | `components/EstadoBadge.tsx` | Badge de color dinámico con `estado_etiqueta` + `estado_color` del FSM |
+| `components/EstadoFirmaBadge.tsx` | Badge del estado de firma de un documento |
 | `components/Timeline.tsx` | Historial append-only de movimientos (tipo, actor, fecha, comentario, campos_modificados) |
 | `components/ListaDocumentos.tsx` | Lista de adjuntos del trámite con descarga |
 | `components/PanelAcciones.tsx` | Botones de acción según transiciones permitidas: transicionar, tomar/liberar, pasar, relacionar, comentar |
 | `components/FileUploader.tsx` | Modal drag&drop para adjuntar documentos (multi-archivo, progreso, observación) |
+| `components/VisorDocumento.tsx` | Modal full-screen para previsualizar adjuntos: PDFs (react-pdf 10.4 + pdfjs-dist 5.4.296, navegación páginas + zoom + teclado ←/→/Esc), imágenes (PNG/JPG/WEBP/GIF/HEIC con `<img>` + zoom), fallback a descarga para otros mimes. Carga via `descargarDocumentoBlob` (fetch con Bearer header + `cache: 'no-store'`) y `URL.createObjectURL`, revoke al cerrar |
+| `components/ModalTransicion.tsx` | Modal para aplicar una transición FSM con comentario y adjuntos requeridos |
+| `components/ModalFirma.tsx` | Modal para firmar/rechazar firma de un documento (captura evidencia auditable) |
 | `components/ModalPase.tsx` | Modal para pase manual a subárea o equipo con selector + comentario |
 | `components/ModalRelacionar.tsx` | Modal para vincular trámites por número de expediente (resuelve número → id via bandeja) |
 | `hooks/useTramites.ts` | react-query hooks: `useTramite`, `useBandeja`, `useTransicionesPermitidas` |
 | `lib/api.ts` | Funciones tipadas para todos los endpoints de trámites |
 | `lib/types.ts` | Tipos TypeScript: `TramiteBandejaItem`, `TramiteDetalle`, `TramiteMovimiento`, `TramiteRelacion`, etc. |
 
-**Rutas:** `/tramites` (bandeja) + `/tramites/:numero` (detalle). Hash router compatible con GH Pages.
+**Rutas:** `/tramites` (bandeja) + `/tramites/nuevo` (alta) + `/tramites/:numero` (detalle). Hash router compatible con GH Pages.
 
 **Módulo en catálogo DB:** `modulos (modulo_codigo='tramites', min_nivel_acceso=3)` — insertado en prod 2026-05-16.
 
 **Seed prod:** 9 tipos, 21 trámites demo. Seed idempotente en `backend/seed_tramites.py`.
 
+### Visor de documentos (✅ ENTREGADO 2026-05-18)
+
+`VisorDocumento.tsx` reemplaza el `<a target=_blank>` que estaba roto en `ListaDocumentos.tsx` (el endpoint `/documentos/{id}/contenido` solo acepta auth por header `Authorization`, no por `?token=` query param). Botones nuevos: **Ver** (abre visor inline) y **Descargar** (fetch + anchor con `URL.createObjectURL`).
+
+**Dependencias:** `react-pdf@10.4.1` + `pdfjs-dist@5.4.296` (pin obligatorio — `react-pdf` 10.4 declara `pdfjs-dist@5.4.296` exacto; pnpm puede instalar `5.7.x` que falla con `UnknownErrorException: API version "5.4.296" does not match the Worker version "5.7.284"`). Worker importado con `import pdfWorkerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url'` y asignado a `pdfjs.GlobalWorkerOptions.workerSrc`.
+
+**Quirks resueltos al implementar:**
+- **Bug pre-existente en `DetalleTramite.tsx`:** la página pasaba `documentos={[]}` hardcoded a `ListaDocumentos`, NUNCA llamaba a `obtenerDocumentos`. Además `obtenerDocumentos` esperaba `TramiteDocumento[]` plano pero el endpoint devuelve `{numero_expediente, documentos:[], total}`. Fix: tipar el wrapper + agregar `documentos` al hook `useTramite` + pasar `docsData` real.
+- **Shape de respuesta `/documentos`:** el endpoint NO devuelve `hash_sha256`, `nombre_archivo_original`, `agente_subio_nombre` ni `asignado_a.{tipo,id,nombre}` rico — solo `asignado_nombre` plano. `types.ts` los marcó opcionales y `ListaDocumentos`/`ModalFirma` ya soportan ambos shapes con `?? '—'`.
+- **HTTP cache cazó el binario viejo durante la verificación:** `fetch()` default usa el cache del browser; con `Last-Modified` de FastAPI puede devolver 304 + body cacheado. Fix: `cache: 'no-store'` en `descargarDocumentoBlob`. Si en el futuro agregás otro helper que sirva binarios autenticados, replicar.
+- **Path quirk de `services/tramites/documentos.py::ruta_absoluta_mock` (no fixeado, deuda):** la función devuelve `Path("backend") / storage_path`. Como uvicorn corre con cwd=`backend/`, eso resuelve a `backend/backend/uploads/...`. Cualquier carpeta `backend/backend/` que aparezca en `git status` es artefacto de uploads viejos — borrarla. Fix definitivo sería usar path absoluto desde `__file__`, pero requiere migrar storage_path o un fallback que pruebe ambos.
+
 **Pendientes / roadmap:**
-- Formulario de alta de trámite desde el frontend (hoy solo via API)
-- Visor inline de PDFs y firmas digitales
-- Notificaciones cuando un trámite llega a la bandeja del área
+- Notificaciones al área cuando un trámite nuevo entra a su bandeja (no existe sistema de notif al destinatario; el campo `requiere_notificacion` de `tipo_tramite_documento_requerido` es solo metadato del doc, no dispara nada).
