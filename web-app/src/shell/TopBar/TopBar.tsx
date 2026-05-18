@@ -1,14 +1,13 @@
 import { useMatches } from 'react-router-dom'
-import { Search, Bell } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { useAuthStore } from '../../stores/auth'
 import { useUiStore } from '../../stores/ui'
-import { useNotificationsStore } from '../../stores/notifications'
+import { NotificacionesDropdown } from './NotificacionesDropdown'
 import s from './TopBar.module.css'
 
 export function TopBar() {
   const user = useAuthStore((s) => s.user)
   const openCmdk = useUiStore((s) => s.openCmdk)
-  const notifCount = useNotificationsStore((s) => s.items.length)
   const matches = useMatches()
 
   const crumbs = matches
@@ -40,12 +39,7 @@ export function TopBar() {
 
       {/* Right actions */}
       <div className={s.right}>
-        <button className={s.iconBtn} aria-label="Notificaciones" style={{ position: 'relative' }}>
-          <Bell size={16} strokeWidth={1.5} />
-          {notifCount > 0 && (
-            <span className={s.badge}>{notifCount > 9 ? '9+' : notifCount}</span>
-          )}
-        </button>
+        <NotificacionesDropdown />
 
         {user && (
           <div className={s.userPill} title={user.email}>
