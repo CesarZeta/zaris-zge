@@ -152,9 +152,15 @@
   font-weight: 500;
 }
 
-/* Campana de notificaciones - placeholder visual, sin logica.
-   Sigue el mismo patron de hover que .user-menu__trigger. */
+/* Campana de notificaciones - funcional desde 2026-05-18.
+   Logica en menu.js (polling 30s + dropdown click). */
+.notif-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
 .topbar__bell {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -166,12 +172,154 @@
   cursor: pointer;
   color: var(--fg-2);
   transition: background 150ms ease, color 150ms ease;
-  flex-shrink: 0;
 }
 
 .topbar__bell:hover {
   background: rgba(38,37,30,.07);
   color: var(--fg-1);
+}
+
+.topbar__bell-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  background: var(--color-error);
+  color: #fff;
+  font-size: 9px;
+  font-family: var(--font-mono);
+  border-radius: 99px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.notif-menu__dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 360px;
+  max-height: 480px;
+  overflow: hidden;
+  background: var(--surface-100);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px rgba(0,0,0,.18);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+}
+
+.notif-menu__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--surface-200);
+  font-family: var(--font-display);
+}
+
+.notif-menu__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.notif-menu__action {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--fg-3);
+  font-size: 11px;
+  font-family: var(--font-display);
+}
+
+.notif-menu__action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.notif-menu__list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.notif-menu__empty {
+  margin: 0;
+  padding: 24px 16px;
+  color: var(--fg-3);
+  font-family: var(--font-display);
+  font-size: 12px;
+  text-align: center;
+}
+
+.notif-menu__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--border-primary);
+  background: transparent;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-display);
+}
+
+.notif-menu__item:hover {
+  background: rgba(38,37,30,.04);
+}
+
+.notif-menu__item--unread {
+  background: rgba(245,78,0,.04);
+}
+
+.notif-menu__item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.notif-menu__item-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notif-menu__item-msg {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--fg-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.notif-menu__item-date {
+  margin: 4px 0 0;
+  font-size: 10px;
+  color: var(--fg-3);
+}
+
+.notif-menu__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 99px;
+  background: var(--zaris-orange);
+  flex-shrink: 0;
+  margin-top: 6px;
 }
 
 .topbar__avatar {

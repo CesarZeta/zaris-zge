@@ -167,6 +167,146 @@
     } catch (e) { /* fail-open: defaults del HTML */ }
   })();
 
+  // ── Campana de notificaciones ─────────────────────────────────
+  // Conectada a /api/v1/notificaciones (entregado 2026-05-18).
+  // Polling cada 30s. Click en item: marca leida + navega al recurso.
+  function _authToken() {
+    const s = JSON.parse(localStorage.getItem('zaris_session') || 'null');
+    return s?.state?.accessToken ?? s?.access_token ?? null;
+  }
+  function _authHeaders() {
+    const t = _authToken();
+    return t ? { 'Authorization': `Bearer ${t}` } : {};
+  }
+  function _fmtFechaRelativa(iso) {
+    const d = new Date(iso);
+    const diffMin = Math.round((Date.now() - d.getTime()) / 60000);
+    if (diffMin < 1) return 'ahora';
+    if (diffMin < 60) return `hace ${diffMin} min`;
+    const diffHr = Math.round(diffMin / 60);
+    if (diffHr < 24) return `hace ${diffHr} h`;
+    return d.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
+  }
+  function _escapeHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function _renderNotifList(items) {
+    const list = document.getElementById('notif-menu-list');
+    if (!list) return;
+    if (!items || items.length === 0) {
+      list.innerHTML = '<p class="notif-menu__empty">Sin notificaciones</p>';
+      return;
+    }
+    list.innerHTML = items.map(n => {
+      const cls = n.leida ? 'notif-menu__item' : 'notif-menu__item notif-menu__item--unread';
+      const dot = n.leida ? '' : '<span class="notif-menu__dot" aria-label="No leida"></span>';
+      const msg = n.mensaje ? `<p class="notif-menu__item-msg">${_escapeHtml(n.mensaje)}</p>` : '';
+      return `<button type="button" class="${cls}" data-id="${n.id_notificacion}" data-url="${_escapeHtml(n.url_destino || '')}">
+        <div class="notif-menu__item-body">
+          <p class="notif-menu__item-title">${_escapeHtml(n.titulo)}</p>
+          ${msg}
+          <p class="notif-menu__item-date">${_escapeHtml(_fmtFechaRelativa(n.fecha_alta))}</p>
+        </div>
+        ${dot}
+      </button>`;
+    }).join('');
+    // Bind click handlers (event delegation seria mas limpia pero esto es chico)
+    list.querySelectorAll('.notif-menu__item').forEach(btn => {
+      btn.addEventListener('click', () => _onClickNotif(parseInt(btn.dataset.id, 10), btn.dataset.url));
+    });
+  }
+  async function _onClickNotif(id, url) {
+    try {
+      await fetch(`${API}/api/v1/notificaciones/${id}/leer`, { method: 'PATCH', headers: _authHeaders() });
+    } catch (e) { /* fail-open */ }
+    _closeNotif();
+    void _refrescarNotifBadge();
+    if (url && url.startsWith('#/')) {
+      // Navegar el iframe al bundle React. El shell vanilla mantiene contexto.
+      window.shellNavigate(`web-app/dist/index.html${url}`);
+    }
+  }
+  async function _refrescarNotifBadge() {
+    const badge = document.getElementById('topbar-bell-badge');
+    if (!badge || !_authToken()) return;
+    try {
+      const res = await fetch(`${API}/api/v1/notificaciones/count`, { headers: _authHeaders() });
+      if (!res.ok) { badge.hidden = true; return; }
+      const data = await res.json();
+      const n = data?.no_leidas ?? 0;
+      if (n > 0) {
+        badge.textContent = n > 9 ? '9+' : String(n);
+        badge.hidden = false;
+      } else {
+        badge.hidden = true;
+      }
+    } catch (e) { /* fail-open: dejar oculto */ }
+  }
+  async function _cargarNotifLista() {
+    const list = document.getElementById('notif-menu-list');
+    if (!list || !_authToken()) return;
+    list.innerHTML = '<p class="notif-menu__empty">Cargando…</p>';
+    try {
+      const res = await fetch(`${API}/api/v1/notificaciones?limit=20`, { headers: _authHeaders() });
+      if (!res.ok) { list.innerHTML = '<p class="notif-menu__empty">Error al cargar</p>'; return; }
+      const data = await res.json();
+      _renderNotifList(data?.items || []);
+    } catch (e) {
+      list.innerHTML = '<p class="notif-menu__empty">Sin conexion</p>';
+    }
+  }
+  function _openNotif() {
+    const dd = document.getElementById('notif-menu-dropdown');
+    const bell = document.getElementById('topbar-bell');
+    if (!dd) return;
+    dd.hidden = false;
+    if (bell) bell.setAttribute('aria-expanded', 'true');
+    void _cargarNotifLista();
+  }
+  function _closeNotif() {
+    const dd = document.getElementById('notif-menu-dropdown');
+    const bell = document.getElementById('topbar-bell');
+    if (!dd) return;
+    dd.hidden = true;
+    if (bell) bell.setAttribute('aria-expanded', 'false');
+  }
+  (function _initNotif() {
+    const bell = document.getElementById('topbar-bell');
+    const dd = document.getElementById('notif-menu-dropdown');
+    const markAll = document.getElementById('notif-menu-mark-all');
+    if (!bell || !dd) return;
+
+    bell.addEventListener('click', function (e) {
+      e.stopPropagation();
+      dd.hidden ? _openNotif() : _closeNotif();
+    });
+    document.addEventListener('click', function (e) {
+      if (!dd.hidden && !dd.contains(e.target) && e.target !== bell && !bell.contains(e.target)) {
+        _closeNotif();
+      }
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !dd.hidden) _closeNotif();
+    });
+    if (markAll) {
+      markAll.addEventListener('click', async function (e) {
+        e.stopPropagation();
+        try {
+          await fetch(`${API}/api/v1/notificaciones/leer-todas`, { method: 'PATCH', headers: _authHeaders() });
+          void _refrescarNotifBadge();
+          void _cargarNotifLista();
+        } catch (err) { /* fail-open */ }
+      });
+    }
+
+    // Polling de badge cada 30s. Tambien refrescar al volver de background.
+    void _refrescarNotifBadge();
+    setInterval(_refrescarNotifBadge, 30000);
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) void _refrescarNotifBadge();
+    });
+  })();
+
   // ── Reloj del topbar ──────────────────────────────────────────
   // Formato "mar 13 may, 14:32". Refresca cada 30s (granularidad de minuto).
   const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];

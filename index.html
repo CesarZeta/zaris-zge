@@ -9,7 +9,7 @@
 
   <link rel="stylesheet" href="design-system/fonts/fonts.css">
   <link rel="stylesheet" href="design-system/colors_and_type.css">
-  <link rel="stylesheet" href="frontend/css/menu.css?v=2026-05-13c">
+  <link rel="stylesheet" href="frontend/css/menu.css?v=2026-05-18a">
 
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 
@@ -60,19 +60,35 @@
       </div>
 
       <div class="topbar__right">
-        <!-- Campana de notificaciones (placeholder visual, sin logica todavia) -->
-        <button
-          class="topbar__bell"
-          id="topbar-bell"
-          type="button"
-          aria-label="Notificaciones"
-          title="Notificaciones (proximamente)"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>
-            <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
-          </svg>
-        </button>
+        <!-- Campana de notificaciones (logica en menu.js) -->
+        <div class="notif-menu" id="notif-menu">
+          <button
+            class="topbar__bell"
+            id="topbar-bell"
+            type="button"
+            aria-label="Notificaciones"
+            aria-haspopup="true"
+            aria-expanded="false"
+            title="Notificaciones"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>
+              <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+            </svg>
+            <span class="topbar__bell-badge" id="topbar-bell-badge" hidden>0</span>
+          </button>
+          <div class="notif-menu__dropdown" id="notif-menu-dropdown" hidden role="dialog" aria-label="Notificaciones">
+            <header class="notif-menu__header">
+              <span class="notif-menu__title">Notificaciones</span>
+              <button type="button" class="notif-menu__action" id="notif-menu-mark-all" title="Marcar todas como leidas">
+                Marcar todas
+              </button>
+            </header>
+            <div class="notif-menu__list" id="notif-menu-list">
+              <p class="notif-menu__empty">Cargando…</p>
+            </div>
+          </div>
+        </div>
 
         <div class="user-menu" id="user-menu">
           <button class="user-menu__trigger" id="user-menu-trigger" aria-haspopup="true" aria-expanded="false">
@@ -209,6 +225,6 @@
 
   </div>
 
-  <script src="frontend/js/menu.js?v=2026-05-13a"></script>
+  <script src="frontend/js/menu.js?v=2026-05-18a"></script>
 </body>
 </html>
