@@ -2446,8 +2446,19 @@ Si alguna de las primeras 4 vars está vacía, `smtp_configurado()` devuelve Fal
 - **`smtp.zoho.com` funciona para cuentas con dominio custom**, NO solo cuentas free. No hace falta `smtppro.zoho.com` salvo que Zoho explícitamente te diga.
 - **Reinicio de uvicorn obligatorio al cambiar `.env.local`.** Las settings se cargan UNA VEZ al startup. `Start-Process python` sin matar el proceso anterior puede dejarlo corriendo con vars viejas (cazado por verificar `Get-Process python ... StartTime` antes del smoke). Memoria nueva: [[feedback_uvicorn_settings_no_recarga]].
 
+**Campana en shell vanilla (✅ ENTREGADA 2026-05-18 — bug cazado en smoke prod):**
+
+Durante el smoke end-to-end en prod del 2026-05-18 se confirmó que la campana React (`NotificacionesDropdown.tsx`) vive en `TopBar.tsx` que **se auto-oculta en iframe** (regla §14). Como en prod los usuarios viven embebidos en el shell vanilla, **la campana React es invisible**. Solo aparece en `localhost:5173` standalone (dev). El backend insertaba notifs OK y mandaba mails reales, pero el usuario nunca veía el badge.
+
+Fix: campana funcional implementada en el shell vanilla, consumiendo los mismos endpoints `/api/v1/notificaciones`:
+
+- `index.html`: bell + dropdown HTML (IDs: `topbar-bell`, `topbar-bell-badge`, `notif-menu-dropdown`, `notif-menu-list`, `notif-menu-mark-all`).
+- `frontend/css/menu.css`: estilos `.notif-menu__*` (badge naranja, dropdown card, item con dot para no-leídas, hover).
+- `frontend/js/menu.js`: bloque "Campana de notificaciones" con `_refrescarNotifBadge` (polling 30s), `_cargarNotifLista` (al abrir), `_onClickNotif` (marca leída + navega via `shellNavigate('web-app/dist/index.html#/tramites/...')`). Cierra con click-outside + Escape. Refresh extra en `visibilitychange` (volver de background).
+- Cache-bust `?v=2026-05-18a` en menu.css/menu.js.
+
+**Las DOS campanas conviven sin colisión** porque viven en DOMs distintos (shell vanilla vs shell React standalone). El bundle React mantiene su `NotificacionesDropdown` para devs que trabajan en `localhost:5173`.
+
 **Pendientes futuros (no críticos):**
-- Aplicar mig 51 en prod Supabase.
-- Setear credenciales Zoho SMTP en Railway.
 - Notificaciones para otros eventos: firma pendiente solicitada al firmante, comentario en trámite que tomé, transición a estado final si el iniciador es interno. Diseño extensible: el `tipo` y `recurso_tipo` ya soportan más casos.
-- Campana en el shell vanilla (hoy es placeholder). Por arquitectura distinta a React, requiere implementarla en `index.html` + `frontend/js/menu.js` aparte. La campana React ya cubre el flujo principal (el usuario navega dentro del bundle React cuando trabaja con trámites).
+- Marcar `enviada_mail=TRUE` en el row de `notificacion` cuando el send tiene éxito (hoy queda en `false` siempre, es deuda menor — no afecta el flujo de UI ni de email).
