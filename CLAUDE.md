@@ -2426,18 +2426,25 @@ Sistema in-app + email cuando un trámite entra a la bandeja del destinatario (c
 - **`db.flush()` no persiste si el endpoint no commitea después.** El caller ya hizo su commit, dejando la sesión SQLAlchemy lista para nueva transacción. Sin un commit nuevo dentro del service, las filas insertadas se descartan al cerrar la sesión. Fix: `db.commit()` adentro del service (no flush).
 - **`subarea.id_municipio` está NULL en muchas filas del seed local** (mig 22 lo dejó sin backfill). Cualquier endpoint que filtre `WHERE id_municipio = :mun` no las matchea. Para que el smoke pase: `UPDATE subarea SET id_municipio=1 WHERE id_subarea=1`. NO replicar en prod sin diagnóstico — puede haber filas históricas con NULL intencional.
 
-**Email en MOCK hasta que se setee SMTP en Railway:**
-Para activar envíos reales agregar al `.env` de Railway (y `backend/.env.local` para dev):
+**SMTP Zoho configurado y verificado al 2026-05-18:**
+Mail real funcionando para `noreply@zaris.com.ar` con app password de 16 chars (probada `dgpbZH8nwpsP` — guardada solo en Railway + `.env.local` gitignored). Host correcto: `smtp.zoho.com:587` STARTTLS. Smoke verificado: trámite creado en local → mail real recibido en bandeja Zoho `noreply@zaris.com.ar`.
+
 ```
 SMTP_HOST=smtp.zoho.com
 SMTP_PORT=587
-SMTP_USER=<tu-zoho-user>
-SMTP_PASS=<app-password-zoho>
-SMTP_FROM=ZARIS <noreply@municipio.gob.ar>
 SMTP_USE_TLS=True
+SMTP_USER=noreply@zaris.com.ar
+SMTP_PASS=<app-password-16-chars>
+SMTP_FROM=ZARIS <noreply@zaris.com.ar>
 APP_BASE_URL=https://zge.zaris.com.ar
 ```
-Si alguna de las primeras 4 está vacía, `smtp_configurado()` devuelve False y se cae a modo MOCK. Reiniciar uvicorn tras cambiar el env.
+Si alguna de las primeras 4 vars está vacía, `smtp_configurado()` devuelve False y se cae a modo MOCK (loguea a stdout, no rompe el flow).
+
+**Quirks resueltos durante el setup (sesión 2026-05-18):**
+- **App password Zoho son SIEMPRE 16 chars.** Si lo que copiaste tiene 12, te quedaste corto — probablemente Zoho mostró el formato `xxxx xxxx xxxx xxxx` y copiaste solo parte. Regenerar y contar antes de cerrar.
+- **Cuenta nueva en Zoho requiere setup inicial via web** (login + aceptar términos + verificación) ANTES de que SMTP acepte la auth. Si la cuenta nunca fue usada para mandar mails desde la interfaz web, SMTP devuelve 535 aunque la password sea correcta.
+- **`smtp.zoho.com` funciona para cuentas con dominio custom**, NO solo cuentas free. No hace falta `smtppro.zoho.com` salvo que Zoho explícitamente te diga.
+- **Reinicio de uvicorn obligatorio al cambiar `.env.local`.** Las settings se cargan UNA VEZ al startup. `Start-Process python` sin matar el proceso anterior puede dejarlo corriendo con vars viejas (cazado por verificar `Get-Process python ... StartTime` antes del smoke). Memoria nueva: [[feedback_uvicorn_settings_no_recarga]].
 
 **Pendientes futuros (no críticos):**
 - Aplicar mig 51 en prod Supabase.
