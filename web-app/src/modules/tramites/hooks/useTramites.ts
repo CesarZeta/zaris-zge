@@ -7,6 +7,7 @@ import {
   obtenerTramite,
   obtenerMovimientos,
   obtenerTransicionesPermitidas,
+  obtenerDocumentos,
   crearTramite,
   tomarTramite,
   liberarTramite,
@@ -76,16 +77,24 @@ export function useTramite(numero: string | null) {
     staleTime: 5 * 1000,
   })
 
+  const documentos = useQuery({
+    queryKey: ['tramites', 'documentos', numero],
+    queryFn: () => obtenerDocumentos(numero!),
+    enabled: numero != null && numero !== '',
+    staleTime: 10 * 1000,
+  })
+
   const refetch = useCallback(async () => {
     if (!numero) return
     await Promise.all([
       qc.invalidateQueries({ queryKey: ['tramites', 'detalle', numero] }),
       qc.invalidateQueries({ queryKey: ['tramites', 'movimientos', numero] }),
       qc.invalidateQueries({ queryKey: ['tramites', 'transiciones', numero] }),
+      qc.invalidateQueries({ queryKey: ['tramites', 'documentos', numero] }),
     ])
   }, [qc, numero])
 
-  return { detalle, movimientos, transiciones, refetch }
+  return { detalle, movimientos, transiciones, documentos, refetch }
 }
 
 /* ── Mutaciones ──────────────────────────────────────────── */

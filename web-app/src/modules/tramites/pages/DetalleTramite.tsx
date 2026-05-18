@@ -16,13 +16,14 @@ export function DetalleTramite() {
   const user = useAuthStore((s) => s.user)
   const [showUploader, setShowUploader] = useState(false)
 
-  const { detalle, movimientos, transiciones, refetch } = useTramite(numero ?? '')
+  const { detalle, movimientos, transiciones, documentos, refetch } = useTramite(numero ?? '')
 
   const isLoading = detalle.isLoading
   const error = detalle.error
   const data = detalle.data
   const movData = movimientos.data?.movimientos ?? []
   const transData = transiciones.data
+  const docsData = documentos.data?.documentos ?? []
 
   if (isLoading) {
     return (
@@ -115,7 +116,7 @@ export function DetalleTramite() {
           <section style={cardStyle}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <h2 style={{ ...cardTitleStyle, margin: 0 }}>
-                Documentos ({data.cant_documentos})
+                Documentos ({docsData.length})
               </h2>
               <button type="button" onClick={() => setShowUploader(true)} style={btnSmallStyle}>
                 <Paperclip size={13} strokeWidth={1.5} /> Adjuntar
@@ -123,7 +124,7 @@ export function DetalleTramite() {
             </div>
             <ListaDocumentos
               tramiteNumero={data.numero_expediente}
-              documentos={[]}
+              documentos={docsData}
               onCambio={() => { void refetch() }}
             />
           </section>
@@ -168,7 +169,11 @@ export function DetalleTramite() {
           <PanelAcciones
             tramite={data}
             transicionesPermitidas={transData?.transiciones ?? []}
-            documentosDesdeEstado={[]}
+            documentosDesdeEstado={docsData.filter((d) =>
+              data.fecha_entrada_estado_actual
+                ? new Date(d.fecha_alta) >= new Date(data.fecha_entrada_estado_actual)
+                : true,
+            )}
             idUsuarioActual={user?.id_usuario}
             onActualizar={() => { void refetch() }}
           />
