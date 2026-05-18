@@ -66,15 +66,17 @@ export function ModalFirma({ tramiteNumero, doc, firma, onFirmado, onCerrar }: M
               <p style={{ margin: 0, fontWeight: 600, fontSize: 14, fontFamily: 'var(--font-display)', color: 'var(--fg-1)' }}>
                 {doc.nombre}
               </p>
-              <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-display)' }}>
-                Hash SHA256:{' '}
-                <span
-                  title={doc.hash_sha256}
-                  style={{ fontFamily: 'var(--font-mono)', cursor: 'help' }}
-                >
-                  {doc.hash_sha256.slice(0, 16)}…
-                </span>
-              </p>
+              {doc.hash_sha256 && (
+                <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-display)' }}>
+                  Hash SHA256:{' '}
+                  <span
+                    title={doc.hash_sha256}
+                    style={{ fontFamily: 'var(--font-mono)', cursor: 'help' }}
+                  >
+                    {doc.hash_sha256.slice(0, 16)}…
+                  </span>
+                </p>
+              )}
               <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-display)' }}>
                 Tamaño: {formatBytes(doc.tamano_bytes)}
               </p>
@@ -83,7 +85,7 @@ export function ModalFirma({ tramiteNumero, doc, firma, onFirmado, onCerrar }: M
 
           {/* Firmante */}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 13, fontFamily: 'var(--font-display)', color: 'var(--fg-2)' }}>
-            <span>Firmás como: <strong>{firma.asignado_a.nombre}</strong></span>
+            <span>Firmás como: <strong>{firma.asignado_a?.nombre ?? firma.asignado_nombre ?? '—'}</strong></span>
             <span>·</span>
             <span>Rol: <strong>{ROLES[firma.rol_intervencion]}</strong></span>
           </div>

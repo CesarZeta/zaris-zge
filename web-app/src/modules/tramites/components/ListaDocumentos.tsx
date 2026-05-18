@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { FileText, Download, PenSquare, XCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import { FileText, Download, Eye, PenSquare, XCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import type { TramiteDocumento, TramiteFirma } from '../types'
-import { descargarDocumentoUrl, rechazarFirma } from '../lib/api'
+import { descargarDocumentoBlob, rechazarFirma } from '../lib/api'
 import { EstadoFirmaBadge } from './EstadoFirmaBadge'
 import { ModalFirma } from './ModalFirma'
+import { VisorDocumento } from './VisorDocumento'
 import { useNotificationsStore } from '../../../stores/notifications'
 
 interface ListaDocumentosProps {
@@ -15,7 +16,27 @@ interface ListaDocumentosProps {
 export function ListaDocumentos({ tramiteNumero, documentos, onCambio }: ListaDocumentosProps) {
   const push = useNotificationsStore((s) => s.push)
   const [firmaAbierta, setFirmaAbierta] = useState<{ doc: TramiteDocumento; firma: TramiteFirma } | null>(null)
+  const [visorAbierto, setVisorAbierto] = useState<TramiteDocumento | null>(null)
+  const [descargandoId, setDescargandoId] = useState<number | null>(null)
   const [expandidos, setExpandidos] = useState<Set<number>>(new Set())
+
+  async function handleDescargar(doc: TramiteDocumento) {
+    setDescargandoId(doc.id_tramite_documento)
+    try {
+      const { objectUrl } = await descargarDocumentoBlob(tramiteNumero, doc.id_tramite_documento)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = doc.nombre
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000)
+    } catch (err) {
+      push({ kind: 'error', title: 'No se pudo descargar', body: (err as Error).message })
+    } finally {
+      setDescargandoId(null)
+    }
+  }
 
   function toggleExpandido(id: number) {
     setExpandidos((prev) => {
@@ -86,25 +107,38 @@ export function ListaDocumentos({ tramiteNumero, documentos, onCambio }: ListaDo
                     {doc.nombre}
                   </p>
                   <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-display)' }}>
-                    {formatBytes(doc.tamano_bytes)} · {doc.mime_type} ·{' '}
-                    <span
-                      title={doc.hash_sha256}
-                      style={{ fontFamily: 'var(--font-mono)', cursor: 'help' }}
-                    >
-                      {doc.hash_sha256.slice(0, 8)}…
-                    </span>
+                    {formatBytes(doc.tamano_bytes)} · {doc.mime_type}
+                    {doc.hash_sha256 ? (
+                      <>
+                        {' '}·{' '}
+                        <span
+                          title={doc.hash_sha256}
+                          style={{ fontFamily: 'var(--font-mono)', cursor: 'help' }}
+                        >
+                          {doc.hash_sha256.slice(0, 8)}…
+                        </span>
+                      </>
+                    ) : null}
                   </p>
                 </div>
                 <EstadoFirmaBadge estado={doc.estado_firma} />
-                <a
-                  href={descargarDocumentoUrl(tramiteNumero, doc.id_tramite_documento)}
-                  target="_blank"
-                  rel="noreferrer"
-                  title="Descargar / ver"
-                  style={{ color: 'var(--fg-3)', display: 'inline-flex' }}
+                <button
+                  type="button"
+                  onClick={() => setVisorAbierto(doc)}
+                  style={iconBtnStyle}
+                  title="Ver documento"
+                >
+                  <Eye size={16} strokeWidth={1.5} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { void handleDescargar(doc) }}
+                  disabled={descargandoId === doc.id_tramite_documento}
+                  style={iconBtnStyle}
+                  title="Descargar"
                 >
                   <Download size={16} strokeWidth={1.5} />
-                </a>
+                </button>
                 {doc.firmas.length > 0 && (
                   <button
                     type="button"
@@ -144,7 +178,7 @@ export function ListaDocumentos({ tramiteNumero, documentos, onCambio }: ListaDo
                       }}
                     >
                       <span style={{ flex: 1 }}>
-                        {firma.asignado_a.nombre} ·{' '}
+                        {firma.asignado_a?.nombre ?? firma.asignado_nombre ?? '—'} ·{' '}
                         <span style={{ color: 'var(--fg-3)' }}>
                           {ROLES[firma.rol_intervencion]}
                         </span>
@@ -186,6 +220,14 @@ export function ListaDocumentos({ tramiteNumero, documentos, onCambio }: ListaDo
           firma={firmaAbierta.firma}
           onFirmado={handleFirmado}
           onCerrar={() => setFirmaAbierta(null)}
+        />
+      )}
+
+      {visorAbierto && (
+        <VisorDocumento
+          tramiteNumero={tramiteNumero}
+          doc={visorAbierto}
+          onCerrar={() => setVisorAbierto(null)}
         />
       )}
     </>

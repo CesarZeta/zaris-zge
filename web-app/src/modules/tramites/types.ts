@@ -161,14 +161,14 @@ export interface TramiteMovimiento {
 export interface TramiteDocumento {
   id_tramite_documento: number
   nombre: string
-  nombre_archivo_original: string
+  nombre_archivo_original?: string
   mime_type: string
   tamano_bytes: number
-  hash_sha256: string
+  hash_sha256?: string
   requiere_firma: boolean
   estado_firma: EstadoFirma
   posicion_orden: number
-  agente_subio_nombre: string
+  agente_subio_nombre?: string
   fecha_alta: string
   firmas: TramiteFirma[]
 }
@@ -177,14 +177,17 @@ export interface TramiteFirma {
   id_tramite_firma: number
   rol_intervencion: RolIntervencion
   orden: number
-  asignado_a: { tipo: 'agente' | 'subarea' | 'equipo'; id: number; nombre: string }
+  /** Forma rica (no la devuelve el endpoint actual GET /documentos). */
+  asignado_a?: { tipo: 'agente' | 'subarea' | 'equipo'; id: number; nombre: string }
+  /** Forma plana que devuelve el backend hoy. */
+  asignado_nombre?: string
   estado: 'pendiente' | 'firmado' | 'rechazado'
-  firmante_nombre: string | null
+  firmante_nombre?: string | null
   firmado_en: string | null
-  ip_firma: string | null
-  hash_documento_firmado: string | null
-  motivo_rechazo: string | null
-  rechazado_en: string | null
+  ip_firma?: string | null
+  hash_documento_firmado?: string | null
+  motivo_rechazo?: string | null
+  rechazado_en?: string | null
 }
 
 export interface TransicionPermitida extends TipoTramiteTransicion {
