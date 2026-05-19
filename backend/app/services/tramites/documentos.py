@@ -17,7 +17,12 @@ from fastapi import HTTPException, UploadFile
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-UPLOADS_BASE = Path("backend/uploads")
+# Resolver el directorio backend/uploads/ desde __file__ para que funcione
+# tanto si uvicorn corre con cwd=backend/ como si corre desde la raiz del repo.
+# Estructura: backend/app/services/tramites/documentos.py -> subir 3 niveles
+# llega a backend/, donde vive uploads/.
+_BACKEND_DIR = Path(__file__).resolve().parents[3]
+UPLOADS_BASE = _BACKEND_DIR / "uploads"
 UPLOADS_MAX_SIZE_MB = 25
 
 ALLOWED_MIME_MAP: dict[str, str] = {
@@ -121,7 +126,9 @@ async def guardar_archivo_mock(
     sha256 = calcular_sha256_streaming_mock(candidato)
     mime = ALLOWED_MIME_MAP.get(ext) or mimetypes.guess_type(file.filename or "")[0] or "application/octet-stream"
 
-    storage_path = str(candidato.relative_to(Path("backend")))
+    # storage_path es relativo a UPLOADS_BASE (ej: "tramites/2026/expediente-X/foo.pdf").
+    # Sin prefijo "uploads/" ni "backend/" — ruta_absoluta_mock reconstruye la ruta fisica.
+    storage_path = str(candidato.relative_to(UPLOADS_BASE)).replace("\\", "/")
 
     return {
         "storage_path": storage_path,
@@ -141,8 +148,13 @@ def calcular_sha256_streaming_mock(file_path: Path, chunk_size: int = 65536) -> 
 
 
 def ruta_absoluta_mock(storage_path: str) -> Path:
-    """Devuelve la ruta absoluta en disco a partir del storage_path relativo."""
-    return Path("backend") / storage_path
+    """Devuelve la ruta absoluta en disco a partir del storage_path relativo.
+
+    storage_path no incluye 'uploads/' ni 'backend/' — es relativo a UPLOADS_BASE
+    (ej. 'tramites/2026/expediente-X/foo.pdf'). Funciona independientemente del
+    cwd con el que se haya lanzado uvicorn.
+    """
+    return UPLOADS_BASE / storage_path
 
 
 def existe_archivo_mock(storage_path: str) -> bool:

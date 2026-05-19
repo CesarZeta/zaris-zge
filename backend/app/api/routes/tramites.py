@@ -1217,10 +1217,11 @@ async def transicionar_tramite(
 
     # Verificar estado destino es_final
     estado_destino_row = (await db.execute(
-        text("SELECT es_final FROM tipo_tramite_estado WHERE id_tipo_tramite_estado=:id"),
+        text("SELECT es_final, etiqueta FROM tipo_tramite_estado WHERE id_tipo_tramite_estado=:id"),
         {"id": id_estado_destino},
     )).fetchone()
     es_final = estado_destino_row.es_final if estado_destino_row else False
+    etiqueta_destino = estado_destino_row.etiqueta if estado_destino_row else ""
 
     # Calcular nuevo destinatario
     dest_auto = trans.get("destino_automatico_jsonb")
@@ -1285,6 +1286,12 @@ async def transicionar_tramite(
     )
     if destino_cambio and not es_final:
         await svc_notif.notificar_tramite_a_bandeja(db, id_tramite, "transicion", background_tasks)
+
+    # Si llego a estado final, notificar al iniciador interno (si lo es).
+    if es_final:
+        await svc_notif.notificar_estado_final_a_iniciador(
+            db, id_tramite, etiqueta_destino, background_tasks,
+        )
 
     return await _tramite_detalle_out(id_tramite, db)
 
@@ -1371,6 +1378,7 @@ async def comentar_tramite(
     tramite_ref: str,
     body: ComentarioIn,
     request: Request,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1393,6 +1401,11 @@ async def comentar_tramite(
         comentario=body.comentario,
     )
     await db.commit()
+
+    # Notif al agente tomador si lo hay y no es quien comento.
+    await svc_notif.notificar_comentario_a_tomador(
+        db, id_tramite, current_user["id_usuario"], body.comentario, background_tasks,
+    )
     return mov
 
 
@@ -1404,6 +1417,7 @@ async def comentar_tramite(
 async def adjuntar_documento(
     tramite_ref: str,
     request: Request,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     id_tipo_tramite_documento_requerido: Optional[int] = Form(None),
     nombre: Optional[str] = Form(None),
@@ -1517,6 +1531,10 @@ async def adjuntar_documento(
         },
     )
     await db.commit()
+
+    # Notificar a cada firmante pendiente despues del commit.
+    for id_firma in ids_firmas:
+        await svc_notif.notificar_firma_pendiente(db, id_tramite, id_firma, background_tasks)
 
     # Cargar firmas para el response
     firma_rows = (await db.execute(
