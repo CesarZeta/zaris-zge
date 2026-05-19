@@ -793,6 +793,8 @@ CHECK constraint activo: `ck_reclamo_estado` con valores `('Sin asignar','En ges
 
 **Aplicada en local y prod al 2026-05-10.** Elimina la columna redundante `tipo_reclamo.id_area` (y su índice `idx_tipo_reclamo_area`). Desde mig 24 la fuente única del área de un tipo es `subarea.id_area` vía `tr.id_subarea → s.id_area`; mantener la columna espejo obligaba a doble escritura y abría la puerta a inconsistencias (123/282 filas divergentes antes de mig 23-24). Backend (`reclamos.py`, `ordenes_trabajo.py`) ya consultaba exclusivamente vía JOIN con `subarea`; `admin_tablas.py` quitó `id_area` de los `cols` editables de `tipo_reclamo`. Sin vistas ni triggers dependientes.
 
+> **Quirk derivado** (cazado 2026-05-19): `reclamos.id_area` y `reclamos.id_subarea` **siguen existiendo** en la tabla con NULL para filas viejas. Cualquier filtro `WHERE r.id_area = :x` o `WHERE r.id_subarea = :x` deja invisibles los reclamos legacy. Usar siempre `s.id_area` / `tr.id_subarea` (derivados via JOIN). Aplica también a SELECTs/JOINs (ya cubierto en sesiones previas) y a filtros WHERE (este caso). Ver memoria [[feedback_filtros_legacy_post_mig27]].
+
 ### Migraciones 30-37 — Módulo Agenda (sub-fase 1.A + autoservicio)
 
 **Aplicadas en local y prod al 2026-05-12.** Estado final del módulo Agenda en prod:
