@@ -410,6 +410,11 @@ async def mesa_auditor_me(
 
     Resuelve via agentes.id_usuario = current_user.id_usuario (mig 28).
     Aplica filtro de subárea según configuracion_general.auditor_misma_subarea_permitido.
+
+    Admin (nivel_acceso=1) bypassea el check de es_auditor: por definicion tiene
+    acceso total. La regla "no auditar lo propio" sigue garantizada por el filtro
+    `ot.id_agente IS NULL OR ot.id_agente = :id_agente` que ya excluye OTs operativas
+    propias del listado de auditoria.
     """
     id_usuario = current_user.get("id_usuario")
     if not id_usuario:
@@ -420,7 +425,8 @@ async def mesa_auditor_me(
             status_code=404,
             detail="Tu usuario no está vinculado a ningún agente activo. Pedile al administrador que asocie tu cuenta."
         )
-    if not await _verificar_es_auditor(db, id_agente):
+    es_admin = (current_user.get("nivel_acceso") or 99) <= 1
+    if not es_admin and not await _verificar_es_auditor(db, id_agente):
         raise HTTPException(
             status_code=403,
             detail="No tenés permisos de auditor. Pedile al administrador que active es_auditor en tu registro de agente."
