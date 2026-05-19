@@ -139,7 +139,9 @@ async def listar_reclamos(
         conds.append("r.estado = :estado")
         params["estado"] = estado
     if id_area:
-        conds.append("r.id_area = :id_area")
+        # Fuente unica del area: s.id_area derivada del tipo (mig 27). r.id_area
+        # puede estar NULL en reclamos viejos. Ver feedback_area_via_subarea_no_via_r_id_area.
+        conds.append("s.id_area = :id_area")
         params["id_area"] = id_area
     if prioridad:
         conds.append("r.prioridad = :prioridad")

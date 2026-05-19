@@ -7,13 +7,6 @@ import type {
   Turno,
 } from '../types/turno'
 
-export interface AgenteLite {
-  id_agente: number
-  nombre: string | null
-  apellido: string | null
-  activo?: boolean
-}
-
 export const listarTiposServicio = () =>
   api.get<TipoServicioTurno[]>('/api/v1/turnos/catalogo/tipos-servicio')
 
@@ -31,6 +24,3 @@ export const cumplirTurno = (id_turno: number) =>
 
 export const cancelarTurno = (id_turno: number) =>
   api.patch<Turno>(`/api/v1/turnos/${id_turno}/cancelar`)
-
-export const listarAgentesActivos = () =>
-  api.get<AgenteLite[]>('/api/v1/admin/agentes')
