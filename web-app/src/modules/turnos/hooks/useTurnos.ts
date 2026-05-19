@@ -3,7 +3,6 @@ import {
   cancelarTurno,
   crearTurno,
   cumplirTurno,
-  listarAgentesActivos,
   listarTiposServicio,
   listarTurnos,
   reprogramarTurno,
@@ -24,14 +23,6 @@ export function useTiposServicio() {
   return useQuery({
     queryKey: ['turnos', 'tipos-servicio'],
     queryFn: listarTiposServicio,
-    staleTime: HORA,
-  })
-}
-
-export function useAgentesActivos() {
-  return useQuery({
-    queryKey: ['turnos', 'agentes-activos'],
-    queryFn: listarAgentesActivos,
     staleTime: HORA,
   })
 }
