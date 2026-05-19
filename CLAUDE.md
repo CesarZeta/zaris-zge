@@ -2396,7 +2396,7 @@ Módulo completo en `web-app/src/modules/tramites/`. Pusheado en commit `e2234de
 - **Bug pre-existente en `DetalleTramite.tsx`:** la página pasaba `documentos={[]}` hardcoded a `ListaDocumentos`, NUNCA llamaba a `obtenerDocumentos`. Además `obtenerDocumentos` esperaba `TramiteDocumento[]` plano pero el endpoint devuelve `{numero_expediente, documentos:[], total}`. Fix: tipar el wrapper + agregar `documentos` al hook `useTramite` + pasar `docsData` real.
 - **Shape de respuesta `/documentos`:** el endpoint NO devuelve `hash_sha256`, `nombre_archivo_original`, `agente_subio_nombre` ni `asignado_a.{tipo,id,nombre}` rico — solo `asignado_nombre` plano. `types.ts` los marcó opcionales y `ListaDocumentos`/`ModalFirma` ya soportan ambos shapes con `?? '—'`.
 - **HTTP cache cazó el binario viejo durante la verificación:** `fetch()` default usa el cache del browser; con `Last-Modified` de FastAPI puede devolver 304 + body cacheado. Fix: `cache: 'no-store'` en `descargarDocumentoBlob`. Si en el futuro agregás otro helper que sirva binarios autenticados, replicar.
-- **Path quirk de `services/tramites/documentos.py::ruta_absoluta_mock` (no fixeado, deuda):** la función devuelve `Path("backend") / storage_path`. Como uvicorn corre con cwd=`backend/`, eso resuelve a `backend/backend/uploads/...`. Cualquier carpeta `backend/backend/` que aparezca en `git status` es artefacto de uploads viejos — borrarla. Fix definitivo sería usar path absoluto desde `__file__`, pero requiere migrar storage_path o un fallback que pruebe ambos.
+- **Path de `services/tramites/documentos.py` (fix 2026-05-19):** `UPLOADS_BASE` se resuelve desde `Path(__file__).resolve().parents[3] / "uploads"`, independiente del cwd. `storage_path` es relativo a `UPLOADS_BASE` (sin prefijo `uploads/` ni `backend/`). Si aparece carpeta `backend/backend/` en `git status`, es artefacto de uploads previos al fix — borrar con `rm -rf backend/backend`.
 
 ### Notificaciones a la bandeja (✅ ENTREGADO 2026-05-18)
 
@@ -2463,9 +2463,43 @@ Fix: campana funcional implementada en el shell vanilla, consumiendo los mismos 
 
 **Las DOS campanas conviven sin colisión** porque viven en DOMs distintos (shell vanilla vs shell React standalone). El bundle React mantiene su `NotificacionesDropdown` para devs que trabajan en `localhost:5173`.
 
+**Notificaciones extendidas a más eventos (✅ ENTREGADO 2026-05-19):**
+
+Tres notifs nuevas que se suman a `tramite_bandeja_{creacion,pase,transicion}` (que ya existían). Todas reusan el helper `_emitir_a_usuarios()` que centraliza INSERT con RETURNING + commit + encolado del background task. Fail-safe (try/except global, log + return 0).
+
+| Trigger | Función | Destinatarios | Tipo notif |
+|---|---|---|---|
+| `POST /{ref}/comentar` | `notificar_comentario_a_tomador` | Usuario del `tramite.id_agente_tomado_por`, excluyendo al que comentó (`id_usuario_que_comento`) | `tramite_comentario` |
+| `POST /{ref}/transicionar` cuando `es_final=TRUE` | `notificar_estado_final_a_iniciador` | Usuarios de la `id_subarea_iniciadora` (solo si `iniciador_tipo='area_interna'`; ciudadano/empresa no se notifican porque no tienen cuenta) | `tramite_estado_final` |
+| `POST /{ref}/documentos` con `requiere_firma=TRUE` y firmantes definidos | `notificar_firma_pendiente` (loop por cada `id_tramite_firma`) | Polimórfico: usuarios del agente/subarea/equipo asignado a la firma | `tramite_firma_pendiente` |
+
+**Helpers nuevos en `services/notificaciones.py`:**
+- `_datos_tramite(db, id_tramite)` — SELECT base compartido por los 4 notificadores. Trae `numero_expediente`, `asunto`, `tipo_nombre`, destinatario actual, iniciador, `id_agente_tomado_por`.
+- `_usuarios_por_subarea`, `_usuarios_por_equipo`, `_usuarios_por_agente` — resuelven destinatarios con email activo.
+- `_emitir_a_usuarios(...)` — inserta filas con RETURNING, commitea, encola sends. Acepta `excluir_usuario` para casos como comentario (no notificar al autor).
+
+**Quirk de comentario:** se exige `BackgroundTasks` en la signature del endpoint `/comentar` (antes no lo tenía). El notificador corre después del commit del movimiento, idéntico patrón a creación/pase/transición.
+
+**Smoke E2E verificado (2026-05-19):** 3 trámites pedido-informe (`INF-LPL-2026-0017/0018/0019`):
+- Comentario al tomador: 1 notif a admin, excluyendo correctamente al user "administrativo" que comentó.
+- Estado final: trámite avanzado por `Solicitado → Respondiendo → Respondido → Archivado` (final). 2 notifs `tramite_estado_final` a la subarea iniciadora.
+- Firma pendiente: doc requerido con `firmantes_jsonb=[{tipo:subarea,id:1}]` → 2 notifs `tramite_firma_pendiente` a los users de la subarea 1.
+- Todas con `enviada_mail=TRUE` (email real via Zoho). Cleanup completo.
+
 **Pendientes futuros (no críticos):**
-- Notificaciones para otros eventos: firma pendiente solicitada al firmante, comentario en trámite que tomé, transición a estado final si el iniciador es interno. Diseño extensible: el `tipo` y `recurso_tipo` ya soportan más casos.
-- Marcar `enviada_mail=TRUE` en el row de `notificacion` cuando el send tiene éxito (hoy queda en `false` siempre, es deuda menor — no afecta el flujo de UI ni de email).
+- (vacío al 2026-05-19)
+
+**Marcar `enviada_mail=TRUE` tras send exitoso (✅ ENTREGADO 2026-05-19):**
+
+Patrón usado: el INSERT en `notificacion` ahora hace `RETURNING id_notificacion`. Por cada usuario destinatario, en lugar de encolar `enviar_mail` directo como background task, se encola un wrapper `_enviar_mail_y_marcar(id_notif, to, subj, html, text)` que:
+1. Llama a `enviar_mail(...)`. Si devuelve `False`, sale (deja la fila con `enviada_mail=FALSE` para reintento manual o auditoría).
+2. Si `True`, abre una sesión SQL nueva via `AsyncSessionLocal()` (la sesión del request ya está cerrada cuando esto corre en background), hace `UPDATE notificacion SET enviada_mail=TRUE, enviada_mail_en=NOW() WHERE id_notificacion=:nid AND activo=TRUE AND enviada_mail=FALSE`, commitea, cierra.
+
+**Por qué abrir sesión nueva:** los `BackgroundTasks` de FastAPI corren *después* de cerrar la respuesta HTTP, fuera del contexto del request. Reusar `db` del request da `InterfaceError: cannot operate on a closed database`.
+
+**Por qué el `for` de sends va después del `await db.commit()`:** si el background task levanta antes de que el commit persista la fila, el `UPDATE` no encuentra nada que actualizar. Commitear primero, encolar después.
+
+**Smoke verificado (2026-05-19):** crear trámite → 2 destinatarios → 2 mails reales enviados via Zoho → 2 filas con `enviada_mail=TRUE` + timestamp.
 
 ### Editor admin de tipos custom (✅ ENTREGADO 2026-05-18, commit `65b6ac2`)
 
