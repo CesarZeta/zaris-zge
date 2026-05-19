@@ -1645,9 +1645,9 @@ Si una fila de grilla es `useDroppable` (de `@dnd-kit/core`) **y** además quier
 
 2. **No envolver el bloque draggable en un `<div pointerEvents:auto>` que llene el wrapper.** Aunque el padre tenga `pointerEvents:none`, si el hijo `auto` no tiene un `position:absolute` con `left/width` propios, se extiende a toda la fila y se come los clicks del fondo. El draggable tiene que ser el `<button>`/`<div>` final con su `left/width`, sin wrappers intermedios full-bleed. Caso real: BUG-3B-01 en TimelineView Agenda (2026-05-11).
 
-## 30. Permisos por módulo (diseño, no implementado)
+## 30. Permisos por módulo
 
-§3 hoy solo define `nivel_acceso ∈ {1=Admin, 2=Supervisor, 3=Operador, 4=Consultor}` — un rol único, jerárquico. No alcanza para "Juan es supervisor pero solo de Reclamos, no debe ver Agenda ni Admin Tablas". Cuando se necesite ese control fino, aplicar el modelo híbrido descripto acá.
+§3 define `nivel_acceso ∈ {1=Admin, 2=Supervisor, 3=Operador, 4=Consultor}` — un rol único, jerárquico. Para control fino del tipo "Juan es supervisor pero solo de Reclamos, no debe ver Agenda ni Admin Tablas" se aplica el modelo híbrido descripto acá. **Implementado** en mig 38 (2026-05-12) + mig 44 (2026-05-14 separa `agenda`/`turnos`/`entradas`). Las subsecciones que mencionan "schema futuro" o "cuando se implemente" son textos heredados del diseño; el "Estado actual" al final de la sección es la referencia operativa.
 
 ### Modelo: nivel mínimo por módulo + override por usuario
 
@@ -2304,7 +2304,7 @@ Aplica a cualquier columna JSONB en `tramites` (campos, transiciones, movimiento
 
 Implementa el ciclo de vida operacional completo via API. Smoke test §9 pasado: trámite `POD-LPL-2026-0009` creado → tomado → adjunto → transicionado → 6 movimientos en ledger.
 
-**Migración 050 (`50_tramites_auditoria.sql`, aplicada local 2026-05-16):** agrega `id_usuario_alta` e `id_usuario_modificacion` a las 5 tablas de instancias (`tramite`, `tramite_movimiento`, `tramite_documento`, `tramite_firma`, `tramite_relacion`). Idempotente (`ADD COLUMN IF NOT EXISTS`).
+**Migración 050 (`50_tramites_auditoria.sql`, aplicada local + prod 2026-05-16):** agrega `id_usuario_alta` e `id_usuario_modificacion` a las 5 tablas de instancias (`tramite`, `tramite_movimiento`, `tramite_documento`, `tramite_firma`, `tramite_relacion`). Idempotente (`ADD COLUMN IF NOT EXISTS`).
 
 **Servicios en `backend/app/services/tramites/`:**
 
@@ -2404,7 +2404,7 @@ Módulo completo en `web-app/src/modules/tramites/`. Pusheado en commit `e2234de
 
 Sistema in-app + email cuando un trámite entra a la bandeja del destinatario (creación, pase, transición que cambia destinatario).
 
-**Migración 51 (`51_notificaciones.sql`):** crea `notificacion` (estándar §10 + columnas in-app: `id_usuario`, `tipo`, `titulo`, `mensaje`, `url_destino`, `recurso_tipo`/`recurso_id` polimórfica, `leida`/`leida_en`, `enviada_mail`/`enviada_mail_en`). Índices: `(id_usuario, leida, fecha_alta DESC)` parcial sobre `activo=TRUE` y `(recurso_tipo, recurso_id)`. **Solo aplicada en local al 2026-05-18.** Falta aplicar en prod Supabase.
+**Migración 51 (`51_notificaciones.sql`):** crea `notificacion` (estándar §10 + columnas in-app: `id_usuario`, `tipo`, `titulo`, `mensaje`, `url_destino`, `recurso_tipo`/`recurso_id` polimórfica, `leida`/`leida_en`, `enviada_mail`/`enviada_mail_en`). Índices: `(id_usuario, leida, fecha_alta DESC)` parcial sobre `activo=TRUE` y `(recurso_tipo, recurso_id)`. **Aplicada en local y prod al 2026-05-18.**
 
 **Backend nuevo:**
 - `app/core/config.py` agrega `SMTP_HOST/PORT/USER/PASS/FROM/USE_TLS` + `APP_BASE_URL`. Cuando SMTP queda vacío, el sender corre en modo MOCK (log a stdout, no rompe el flow). Apuntado a Zoho Mail (`smtp.zoho.com:587` + STARTTLS).
