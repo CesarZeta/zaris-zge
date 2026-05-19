@@ -2466,3 +2466,165 @@ Fix: campana funcional implementada en el shell vanilla, consumiendo los mismos 
 **Pendientes futuros (no críticos):**
 - Notificaciones para otros eventos: firma pendiente solicitada al firmante, comentario en trámite que tomé, transición a estado final si el iniciador es interno. Diseño extensible: el `tipo` y `recurso_tipo` ya soportan más casos.
 - Marcar `enviada_mail=TRUE` en el row de `notificacion` cuando el send tiene éxito (hoy queda en `false` siempre, es deuda menor — no afecta el flujo de UI ni de email).
+
+### Editor admin de tipos custom (✅ ENTREGADO 2026-05-18, commit `65b6ac2`)
+
+CRUD completo del catálogo de tipos vía UI React. Antes solo se podía vía `seed_tramites.py`. Ahora cualquier Admin/Supervisor puede crear/editar tipos desde `/tramites/config`.
+
+**Decisiones de diseño acordadas (sesión 2026-05-18):**
+- **Versionado:** v1 editable in-place si NO tiene trámites instanciados. Con trámites, fuerza crear v2 borrador (UI copia estructura automáticamente).
+- **Borrado:** soft-delete siempre (`activo=FALSE`). Coherente con §5.
+- **Permisos:** nivel ≤ 2 (Admin + Supervisor) para todas las mutaciones del catálogo.
+
+**Backend nuevo:**
+- `routes/tramites_admin.py` — 19 endpoints CRUD bajo `/api/v1/admin/tramites`. Registrado **ANTES** de `admin_tablas_router` para evitar colisión con `/api/v1/admin/{tabla}` greedy (§5 quirk).
+- `services/tramites/versionado.py` — helpers `asegurar_editable`, `crear_borrador_desde_publicada` (copia campos+estados+transiciones+docs con re-mapeo de IDs), `publicar_version` (valida 1 inicial + ≥1 final).
+- `schemas/tramites.py` — 11 schemas In/Out nuevos (TipoTramiteCreateIn, CampoIn, EstadoIn, TransicionIn2, DocumentoRequeridoIn, etc.).
+
+**Endpoints (19 total bajo `/api/v1/admin/tramites`):**
+
+| Recurso | Endpoints |
+|---|---|
+| `tipos` | POST · PUT `/{id}` · DELETE `/{id}` · GET `/{id}/admin` |
+| `versiones` | GET `/{id}` (detalle completo, no solo publicada) · POST `/tipos/{id}/versiones` (crear borrador) · POST `/versiones/{id}/publicar` · POST `/versiones/{id}/archivar` |
+| `campos` | POST `/versiones/{id}/campos` · PUT `/campos/{id}` · DELETE `/campos/{id}` |
+| `estados` | POST `/versiones/{id}/estados` · PUT `/estados/{id}` · DELETE `/estados/{id}` |
+| `transiciones` | POST `/versiones/{id}/transiciones` · PUT `/transiciones/{id}` · DELETE `/transiciones/{id}` |
+| `documentos-requeridos` | POST `/versiones/{id}/documentos-requeridos` · PUT `/documentos-requeridos/{id}` · DELETE `/documentos-requeridos/{id}` |
+
+**Frontend nuevo (`web-app/src/modules/tramites/admin/`):**
+- `pages/ConfigTramites.tsx` — lista de tipos con badge de versión publicada y botón "Nuevo tipo".
+- `pages/ConfigTramiteDetalle.tsx` — editor con selector de versiones + 5 tabs (General/Campos/Estados/Transiciones/Docs requeridos) + botones Publicar/Archivar/Nuevo borrador + mensaje de editable.
+- `modals/` — 6 modales: NuevoTipoModal, EditarTipoModal, CampoModal, EstadoModal, TransicionModal, DocReqModal + `_modalShell.tsx` (helper compartido).
+- `api.ts` + `hooks.ts` — 19 hooks react-query con invalidación automática.
+
+**UI integrada como tab "Configuración"** en `TramitesLayout` (visible solo `nivel <= 2` vía `useAuthStore.hasPermission(2)`).
+
+**Acceso:** `/tramites/config` (lista) + `/tramites/config/:idTipo` (editor).
+
+**Manual de uso:** `docs/manual_admin_tramites.html` (autocontenido con 11 capturas reales) o vía módulo Guías (`/guias` → card "TRÁMITES (CREACIÓN)").
+
+**Smoke E2E validado:** crear tipo → 3 estados → 2 transiciones → campo → doc requerido → publicar → instanciar trámite → editar v1 publicada con trámites = 409 → crear v2 borrador (copia estructura). Cleanup completo (test data borrada, agente del admin restaurado).
+
+
+## 36. Generación de manuales operativos (HTML autocontenidos)
+
+Receta probada (sesión 2026-05-18, 3 manuales generados). Reusable para cualquier módulo nuevo.
+
+### Patrón fundamental
+
+1. **Carpeta temporal `_<modulo>_caps/`** (gitignored, manual al final) con:
+   - `package.json` mínimo con `"type": "module"`
+   - `_token.txt` y `_user.json` (auth para inyectar en localStorage)
+   - `_id<entidad>.txt` (ids de demo para deep-links)
+   - `capture.mjs` (script Playwright)
+   - `build_html.mjs` (ensambla HTML con base64 inline)
+2. **Setup Playwright local sin contaminar** `package.json` del web-app:
+   ```bash
+   cd _modulo_caps
+   echo '{"name":"caps","type":"module","private":true}' > package.json
+   npm install playwright --no-save --no-package-lock
+   npx --yes -p playwright@latest playwright install chromium
+   ```
+3. **Datos demo** en DB para que las capturas tengan contenido rico. Sembrar vía API (no SQL crudo) para respetar reglas de negocio.
+4. **Script Playwright** con UNA página fresca por captura para evitar estado residual de modales:
+   ```js
+   async function shot(name, url, prepFn) {
+     const page = await ctx.newPage()
+     await page.goto(url, { waitUntil: 'networkidle' })
+     if (prepFn) try { await prepFn(page) } catch (e) { console.warn(e.message) }
+     await page.screenshot({ path: path.join(OUT, name) })
+     await page.close()
+   }
+   ```
+5. **Build HTML** con `dataUrl(filename)` → `data:image/png;base64,...` y look ZARIS (tokens del DS: `--zaris-orange`, `--zaris-cream`, etc.).
+6. **Cleanup OBLIGATORIO al final:** borrar data demo, restaurar flags tocados (ej. `es_auditor`), eliminar carpeta `_<modulo>_caps/`, bajar servers.
+
+### Convenciones del HTML
+
+- **Tamaño esperado:** 1-3 MB con 9-12 capturas embebidas. Si pasa de 5 MB, revisar (probable capturas gigantes o demasiadas).
+- **Estructura:** hero con borde naranja izquierdo + breadcrumb tag + h1, índice con anchors, secciones numeradas (1-N), tablas de errores comunes + glosario al final.
+- **Componentes:** `blockquote` con variantes `.warn` (ámbar), `.danger` (rojo), `.info` (azul). `.badge` con clases por estado. `.flow` para diagramas tipo "paso 1 → paso 2".
+- **Footer:** "Manual generado el YYYY-MM-DD · ZARIS · Gestión Estatal · Capturas reales del entorno local".
+
+### Almacenamiento y serving
+
+- Los HTMLs viven en **`docs/`** en la raíz del repo (junto al `flujos_operativos_zge.md` legacy).
+- GH Pages los sirve automáticamente como `https://zge.zaris.com.ar/docs/manual_X.html`.
+- En dev local accesibles vía `http://localhost:8080/docs/manual_X.html` (servidos por el `python -m http.server 8080` raíz).
+- **NO embeber en iframe** (lento + pierde sidebar). Servir como pestaña nueva vía `target="_blank"`. Ver [[feedback_acortar_alcance_html_autocontenido]].
+
+### Quirks operativos a recordar
+
+- **`browser_screenshot` del MCP NO persiste el PNG.** Solo Playwright headless guarda en disco. Ver [[feedback_screenshots_no_persisten_browser_mcp]].
+- **PowerShell `Out-File -NoNewline` encoding:** strings cortos = UTF-8 con BOM, strings largos = UTF-16 LE con BOM. Leer en Node con `replace(/^﻿/, '').trim()` cubre el caso UTF-8; UTF-16 requiere `Buffer.toString('utf16le').replace(...)`.
+- **El `addInitScript` de Playwright** debe inyectar la sesión ANTES de navegar, no después, para que el guard React no redirija a `/login`.
+- **Sembrar data con API, NO con SQL crudo:** SQL crudo puede saltarse triggers, validaciones de negocio y dejar la DB en estado inconsistente. La API ya respeta todo.
+
+### Manuales actuales (al 2026-05-18)
+
+| Manual | Audiencia | Capturas | Secciones |
+|---|---|---|---|
+| `manual_reclamos.html` | Operador o superior | 10 | 11 |
+| `manual_ot.html` | Supervisor / Agente / Auditor | 9 | 11 |
+| `manual_admin_tramites.html` | Admin o Supervisor | 11 | 11 |
+
+### Próximos manuales sugeridos (no obligatorios)
+
+- Agenda (calendario + espacios + disponibilidad)
+- Turnos + Entradas (autoservicio + backoffice)
+- Padrones (Ciudadanos + Empresas vía Contactos)
+- Trámites operativo (uso del usuario final del módulo trámites, distinto al de creación de tipos custom)
+
+
+## 37. Módulo Guías (catálogo de manuales)
+
+Módulo React `/guias` registrado en sidebar después de Configuración. Es el front-end de los manuales generados según §36. **Sin `moduloCodigo` → visible para todos los usuarios autenticados** (es material informativo, no datos protegidos).
+
+**Archivos (`web-app/src/modules/guias/`):**
+- `index.tsx` — ModuleManifest (icon: BookOpen).
+- `GuiasLayout.tsx` — Layout con breadcrumb INICIO › Guías.
+- `pages/GuiasIndex.tsx` — Grid de cards (auto-fill minmax 320px). Cada card abre el HTML correspondiente en pestaña nueva vía `target="_blank"` + `rel="noopener noreferrer"`.
+
+**Sidebar vanilla (`index.html`):** item "guías" sin `data-modulo` para que sea visible para todos. Ícono SVG inline (libro abierto, `stroke-width="1.5"`).
+
+### Cómo agregar una guía nueva
+
+1. Generar `docs/manual_X.html` siguiendo la receta de §36.
+2. Agregar una entrada al array `GUIAS` en `GuiasIndex.tsx`:
+   ```ts
+   {
+     titulo: 'NOMBRE EN UPPERCASE',
+     descripcion: 'Una frase larga (~150 chars) explicando qué cubre el manual.',
+     icon: SomeLucideIcon,
+     htmlName: 'manual_X.html',
+     audiencia: 'Operador o superior',
+     tags: ['Operativo', 'N capturas', 'N secciones'],
+   }
+   ```
+3. **No requiere tocar:** module manifest, sidebar vanilla, typecheck, ni rebuild manual del shell.
+
+### Helper `urlDocs(htmlName)` — quirk de resolución de URL
+
+El componente vive en el bundle React (`/web-app/dist/index.html#/guias`) pero los HTMLs están 2 niveles arriba en `/docs/`. El helper detecta entorno:
+
+```ts
+function urlDocs(htmlName: string): string {
+  // 1. Iframe del shell vanilla (prod o local 8080): usa parent location
+  if (window.self !== window.top) {
+    try {
+      const parentLoc = window.parent.location
+      const base = parentLoc.pathname.replace(/[^/]*$/, '')
+      return `${parentLoc.origin}${base}docs/${htmlName}`
+    } catch { /* cross-origin fallback */ }
+  }
+  // 2. Standalone localhost:5173 (dev React aislado): apunta al shell vanilla local
+  if (window.location.hostname === 'localhost' && window.location.port === '5173') {
+    return `http://localhost:8080/docs/${htmlName}`
+  }
+  // 3. Standalone otros (degenerado)
+  return `${window.location.origin}/docs/${htmlName}`
+}
+```
+
+**Verificado en navegador** (sesión 2026-05-18) que los 3 casos resuelven correcto y los HTMLs cargan en pestaña nueva sin errores.
