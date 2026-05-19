@@ -373,3 +373,279 @@ class FirmaDetalleOut(BaseModel):
     firmado_en: Optional[datetime] = None
     hash_documento_firmado: Optional[str] = None
     estado_firma_documento: str
+
+
+# ---------------------------------------------------------------------------
+# Schemas Admin Catalogo (CRUD de tipo_tramite y sub-tablas)
+# ---------------------------------------------------------------------------
+
+INICIADORES_VALIDOS = {"ciudadano", "empresa", "area_interna"}
+TIPO_DATO_VALIDOS = {
+    "texto", "texto_largo", "numero", "decimal", "fecha", "fecha_hora",
+    "booleano", "seleccion", "seleccion_multiple", "ciudadano", "empresa",
+    "agente", "subarea", "equipo", "archivo", "moneda", "direccion",
+}
+APORTA_QUIEN_VALIDOS = {"iniciador", "oficina_actual", "cualquiera"}
+
+
+class TipoTramiteCreateIn(BaseModel):
+    """Crea un nuevo tipo + v1 borrador automaticamente."""
+    codigo: str
+    nombre: str
+    descripcion: Optional[str] = None
+    prefijo: str
+    iniciadores_permitidos: list[str]
+    permite_representante: bool = False
+    incluye_municipio: bool = True
+    incluye_anio: bool = True
+    largo_correlativo: int = 4
+    separador: str = "-"
+    correlativo_reinicia_anual: bool = True
+    icono: Optional[str] = None
+    color: Optional[str] = None
+    id_municipio: int = 1
+
+    @field_validator("codigo", "nombre", "prefijo")
+    @classmethod
+    def no_vacio(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Campo obligatorio")
+        return v
+
+    @field_validator("iniciadores_permitidos")
+    @classmethod
+    def iniciadores_validos(cls, v: list[str]) -> list[str]:
+        if not v:
+            raise ValueError("Debe haber al menos un iniciador permitido")
+        invalidos = set(v) - INICIADORES_VALIDOS
+        if invalidos:
+            raise ValueError(f"Iniciadores invalidos: {invalidos}. Validos: {INICIADORES_VALIDOS}")
+        return v
+
+    @field_validator("largo_correlativo")
+    @classmethod
+    def largo_correlativo_valido(cls, v: int) -> int:
+        if not 1 <= v <= 8:
+            raise ValueError("largo_correlativo debe estar entre 1 y 8")
+        return v
+
+    @field_validator("separador")
+    @classmethod
+    def separador_un_char(cls, v: str) -> str:
+        if len(v) != 1:
+            raise ValueError("separador debe ser un solo caracter")
+        return v
+
+
+class TipoTramiteUpdateIn(BaseModel):
+    """Actualiza datos identitarios del tipo (NO afectan circuito)."""
+    nombre: Optional[str] = None
+    descripcion: Optional[str] = None
+    prefijo: Optional[str] = None
+    iniciadores_permitidos: Optional[list[str]] = None
+    permite_representante: Optional[bool] = None
+    incluye_municipio: Optional[bool] = None
+    incluye_anio: Optional[bool] = None
+    largo_correlativo: Optional[int] = None
+    separador: Optional[str] = None
+    correlativo_reinicia_anual: Optional[bool] = None
+    icono: Optional[str] = None
+    color: Optional[str] = None
+
+    @field_validator("iniciadores_permitidos")
+    @classmethod
+    def iniciadores_validos_opt(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+        if v is None:
+            return None
+        if not v:
+            raise ValueError("Debe haber al menos un iniciador permitido")
+        invalidos = set(v) - INICIADORES_VALIDOS
+        if invalidos:
+            raise ValueError(f"Iniciadores invalidos: {invalidos}")
+        return v
+
+
+class CampoIn(BaseModel):
+    nombre_interno: str
+    etiqueta: str
+    tipo_dato: str
+    obligatorio: bool = False
+    orden: int = 0
+    opciones_jsonb: Optional[Any] = None
+    validacion_jsonb: Optional[Any] = None
+    ayuda: Optional[str] = None
+    visible_en_listado: bool = False
+
+    @field_validator("nombre_interno")
+    @classmethod
+    def nombre_interno_valido(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("nombre_interno obligatorio")
+        # snake_case-ish: solo letras, numeros y _; max 50
+        import re
+        if not re.match(r"^[a-z][a-z0-9_]{0,49}$", v):
+            raise ValueError("nombre_interno debe ser snake_case (a-z, 0-9, _), empezar con letra, max 50")
+        return v
+
+    @field_validator("tipo_dato")
+    @classmethod
+    def tipo_dato_valido(cls, v: str) -> str:
+        if v not in TIPO_DATO_VALIDOS:
+            raise ValueError(f"tipo_dato invalido. Validos: {sorted(TIPO_DATO_VALIDOS)}")
+        return v
+
+
+class CampoUpdateIn(BaseModel):
+    etiqueta: Optional[str] = None
+    tipo_dato: Optional[str] = None
+    obligatorio: Optional[bool] = None
+    orden: Optional[int] = None
+    opciones_jsonb: Optional[Any] = None
+    validacion_jsonb: Optional[Any] = None
+    ayuda: Optional[str] = None
+    visible_en_listado: Optional[bool] = None
+
+    @field_validator("tipo_dato")
+    @classmethod
+    def tipo_dato_valido(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        if v not in TIPO_DATO_VALIDOS:
+            raise ValueError(f"tipo_dato invalido. Validos: {sorted(TIPO_DATO_VALIDOS)}")
+        return v
+
+
+class EstadoIn(BaseModel):
+    codigo: str
+    etiqueta: str
+    descripcion: Optional[str] = None
+    color: Optional[str] = None
+    orden: int = 0
+    es_inicial: bool = False
+    es_final: bool = False
+    permite_adjuntar: bool = True
+    permite_comentar: bool = True
+    oculto_para_iniciador: bool = False
+
+    @field_validator("codigo")
+    @classmethod
+    def codigo_valido(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("codigo obligatorio")
+        import re
+        if not re.match(r"^[a-z][a-z0-9_]{0,49}$", v):
+            raise ValueError("codigo debe ser snake_case")
+        return v
+
+
+class EstadoUpdateIn(BaseModel):
+    etiqueta: Optional[str] = None
+    descripcion: Optional[str] = None
+    color: Optional[str] = None
+    orden: Optional[int] = None
+    es_inicial: Optional[bool] = None
+    es_final: Optional[bool] = None
+    permite_adjuntar: Optional[bool] = None
+    permite_comentar: Optional[bool] = None
+    oculto_para_iniciador: Optional[bool] = None
+
+
+class TransicionIn2(BaseModel):
+    """Para CRUD del catalogo. Distinto a TransicionIn que es para EJECUTAR una transicion."""
+    id_estado_origen: int
+    id_estado_destino: int
+    etiqueta_accion: str
+    orden: int = 0
+    quien_puede_jsonb: Optional[Any] = None  # dict; default {}
+    requiere_comentario: bool = False
+    requiere_adjunto: bool = False
+    destino_automatico_jsonb: Optional[Any] = None
+    notifica_iniciador: bool = True
+
+
+class TransicionUpdateIn(BaseModel):
+    id_estado_origen: Optional[int] = None
+    id_estado_destino: Optional[int] = None
+    etiqueta_accion: Optional[str] = None
+    orden: Optional[int] = None
+    quien_puede_jsonb: Optional[Any] = None
+    requiere_comentario: Optional[bool] = None
+    requiere_adjunto: Optional[bool] = None
+    destino_automatico_jsonb: Optional[Any] = None
+    notifica_iniciador: Optional[bool] = None
+
+
+class DocumentoRequeridoIn(BaseModel):
+    nombre: str
+    descripcion: Optional[str] = None
+    id_tipo_tramite_estado: Optional[int] = None
+    obligatorio: bool = True
+    formatos_permitidos: list[str] = ["pdf", "jpg", "png"]
+    tamano_max_mb: int = 10
+    requiere_firma: bool = False
+    firmantes_jsonb: Optional[Any] = None
+    aporta_quien: str = "iniciador"
+    orden: int = 0
+
+    @field_validator("aporta_quien")
+    @classmethod
+    def aporta_quien_valido(cls, v: str) -> str:
+        if v not in APORTA_QUIEN_VALIDOS:
+            raise ValueError(f"aporta_quien invalido. Validos: {sorted(APORTA_QUIEN_VALIDOS)}")
+        return v
+
+
+class DocumentoRequeridoUpdateIn(BaseModel):
+    nombre: Optional[str] = None
+    descripcion: Optional[str] = None
+    id_tipo_tramite_estado: Optional[int] = None
+    obligatorio: Optional[bool] = None
+    formatos_permitidos: Optional[list[str]] = None
+    tamano_max_mb: Optional[int] = None
+    requiere_firma: Optional[bool] = None
+    firmantes_jsonb: Optional[Any] = None
+    aporta_quien: Optional[str] = None
+    orden: Optional[int] = None
+
+    @field_validator("aporta_quien")
+    @classmethod
+    def aporta_quien_valido_opt(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        if v not in APORTA_QUIEN_VALIDOS:
+            raise ValueError(f"aporta_quien invalido. Validos: {sorted(APORTA_QUIEN_VALIDOS)}")
+        return v
+
+
+class TipoTramiteAdminOut(BaseModel):
+    """Devuelve el tipo + sus versiones."""
+    id_tipo_tramite: int
+    codigo: str
+    nombre: str
+    descripcion: Optional[str] = None
+    prefijo: str
+    iniciadores_permitidos: list[str]
+    permite_representante: bool
+    incluye_municipio: bool
+    incluye_anio: bool
+    largo_correlativo: int
+    separador: str
+    correlativo_reinicia_anual: bool
+    icono: Optional[str] = None
+    color: Optional[str] = None
+    activo: bool
+    id_version_publicada: Optional[int] = None
+    versiones: list[VersionOut] = []
+
+
+class VersionAdminOut(BaseModel):
+    id_tipo_tramite_version: int
+    id_tipo_tramite: int
+    version_num: int
+    estado: str
+    publicada_en: Optional[datetime] = None
+    activo: bool
+    cant_tramites: int = 0

@@ -25,6 +25,7 @@ from app.api.routes.geo import router as geo_router
 from app.api.routes.activos import router as activos_router
 from app.api.routes.config_identidad import router as config_identidad_router
 from app.api.routes.tramites import router as tramites_router
+from app.api.routes.tramites_admin import router as tramites_admin_router
 from app.api.routes.notificaciones import router as notificaciones_router
 from app.init_db import create_tables
 
@@ -88,6 +89,9 @@ app.include_router(turnos_router)
 # tramites_router ANTES de admin_tablas (que tiene /{tabla} greedy).
 # /tramites/* no colisiona con otros routers pero lo dejamos arriba por convención.
 app.include_router(tramites_router)
+# tramites_admin: CRUD del catalogo de tipos. Prefix /api/v1/admin/tramites.
+# DEBE ir ANTES de admin_tablas_router (/api/v1/admin/{tabla} greedy lo atraparia).
+app.include_router(tramites_admin_router)
 app.include_router(notificaciones_router)
 # IMPORTANTE: admin_permisos_router debe registrarse ANTES de admin_tablas_router.
 # admin_tablas usa /api/v1/admin/{tabla} y /api/v1/admin/{tabla}/{id}, que sin un

@@ -78,6 +78,8 @@ export interface TipoTramiteDocRequerido {
   tamano_max_mb: number
   requiere_firma: boolean
   quien_debe_adjuntar: string
+  // Solo viene del endpoint admin /versiones/{id}, no del público /tipos/{id}.
+  id_tipo_tramite_estado?: number | null
 }
 
 export interface TipoTramiteDetalle extends TipoTramite {
@@ -89,6 +91,45 @@ export interface TipoTramiteDetalle extends TipoTramite {
     transiciones: TipoTramiteTransicion[]
     documentos_requeridos: TipoTramiteDocRequerido[]
   }
+}
+
+/* ── Admin del catalogo (CRUD de tipos) ───────────────── */
+
+export type EstadoVersion = 'borrador' | 'publicado' | 'archivado'
+
+export interface VersionAdmin {
+  id_tipo_tramite_version: number
+  id_tipo_tramite: number
+  version_num: number
+  estado: EstadoVersion
+  publicada_en: string | null
+  activo: boolean
+  cant_tramites?: number
+}
+
+export interface TipoTramiteAdmin {
+  id_tipo_tramite: number
+  codigo: string
+  nombre: string
+  descripcion: string | null
+  prefijo: string
+  iniciadores_permitidos: IniciadorTipo[]
+  permite_representante: boolean
+  incluye_municipio: boolean
+  incluye_anio: boolean
+  largo_correlativo: number
+  separador: string
+  correlativo_reinicia_anual: boolean
+  icono: string | null
+  color: string | null
+  activo: boolean
+  id_version_publicada: number | null
+  versiones: Array<{
+    id_tipo_tramite_version: number
+    version_num: number
+    estado: EstadoVersion
+    publicada_en: string | null
+  }>
 }
 
 export interface TramiteBandejaItem {
