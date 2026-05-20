@@ -5,10 +5,12 @@ import { BadgePrioridad, SLACell, nombreAgente, nombreCiudadano } from '../lib/f
 import { Field, Toolbar, inputStyle } from '../components/Toolbar'
 import { AuditarModal } from '../components/AuditarModal'
 import { OTDetalleDrawer } from '../components/OTDetalleDrawer'
+import { useAuthStore } from '../../../stores/auth'
 
 type Kind = 'aprobar' | 'rechazar'
 
 export function AuditoriaView() {
+  const puedeGestionarAdjuntos = useAuthStore((s) => s.user != null && s.user.nivel_acceso <= 2)
   const { data, isLoading, isError, error, refetch, isFetching } = useMesaAuditoria()
   const idAgente = data?.id_agente ?? null
   const ots = data?.ots ?? []
@@ -151,6 +153,7 @@ export function AuditoriaView() {
         open={drawerOT !== null}
         idReclamo={drawerOT?.id_reclamo ?? null}
         idOTResaltada={drawerOT?.id_ot ?? null}
+        puedeGestionarAdjuntos={puedeGestionarAdjuntos}
         onClose={() => setDrawerOT(null)}
       />
     </div>

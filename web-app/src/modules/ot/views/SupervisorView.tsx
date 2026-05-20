@@ -7,10 +7,12 @@ import { AsignarModal } from '../components/AsignarModal'
 import { ReasignarModal } from '../components/ReasignarModal'
 import { OTDetalleDrawer } from '../components/OTDetalleDrawer'
 import { PlanificadorOT } from '../components/PlanificadorOT'
+import { useAuthStore } from '../../../stores/auth'
 
 type Tab = 'asignar' | 'reasignar'
 
 export function SupervisorView() {
+  const puedeGestionarAdjuntos = useAuthStore((s) => s.user != null && s.user.nivel_acceso <= 2)
   const { data, isLoading, isError, error, refetch, isFetching } = useMesaSupervisor()
   const reclamos = data ?? []
 
@@ -312,6 +314,7 @@ export function SupervisorView() {
         open={drawerRow !== null}
         idReclamo={drawerRow?.id_reclamo ?? null}
         idOTResaltada={drawerRow?.ot_activa_id ?? null}
+        puedeGestionarAdjuntos={puedeGestionarAdjuntos}
         onClose={() => setDrawerRow(null)}
       />
     </div>
