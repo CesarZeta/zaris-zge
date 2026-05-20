@@ -153,8 +153,25 @@ export function ListView() {
                       <div style={{ fontSize: '0.72rem', color: 'var(--fg-3)' }}>{r.area_nombre}</div>
                     )}
                   </Td>
-                  <Td><Badge kind="estado" value={r.estado} /></Td>
-                  <Td><Badge kind="prioridad" value={r.prioridad ?? 'Media'} /></Td>
+                  <Td>
+                    {/* #6 — clic en el badge filtra el listado, no navega al detalle */}
+                    <span
+                      onClick={(e) => { e.stopPropagation(); setEstado(r.estado) }}
+                      title={`Filtrar por estado "${r.estado}"`}
+                      style={badgeClickable}
+                    >
+                      <Badge kind="estado" value={r.estado} />
+                    </span>
+                  </Td>
+                  <Td>
+                    <span
+                      onClick={(e) => { e.stopPropagation(); setPrioridad(r.prioridad ?? 'Media') }}
+                      title={`Filtrar por prioridad "${r.prioridad ?? 'Media'}"`}
+                      style={badgeClickable}
+                    >
+                      <Badge kind="prioridad" value={r.prioridad ?? 'Media'} />
+                    </span>
+                  </Td>
                   <Td mono style={{ fontSize: '0.78rem' }}>{formatFecha(r.fecha_alta)}</Td>
                   <Td style={{ fontSize: '0.82rem', color: 'var(--fg-2)' }}>{r.agente_nombre || '—'}</Td>
                 </tr>
@@ -231,6 +248,9 @@ const btnAccent: React.CSSProperties = {
   padding: '9px 16px', background: 'var(--zaris-orange)', color: '#fff',
   border: 'none', borderRadius: 'var(--radius-lg)', fontFamily: 'var(--font-display)',
   fontSize: 'var(--size-btn)', fontWeight: 500, cursor: 'pointer',
+}
+const badgeClickable: React.CSSProperties = {
+  display: 'inline-flex', cursor: 'pointer',
 }
 const tableWrap: React.CSSProperties = {
   overflowX: 'auto', borderRadius: 'var(--radius-lg)',

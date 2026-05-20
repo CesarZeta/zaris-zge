@@ -121,6 +121,18 @@ def _to_dict(row) -> dict:
     return d
 
 
+def _require_supervisor(current_user: dict):
+    """#2 — La asignación de OT y la Mesa del Supervisor son exclusivas de
+    Administrador (1) y Supervisor (2). Un Operador (3) o Consultor (4) no puede
+    crear/asignar/reasignar OTs ni ver la bandeja del supervisor.
+    Espeja la regla del módulo de permisos: ot_supervisor exige min_nivel_acceso=2."""
+    if current_user.get("nivel_acceso", 99) > 2:
+        raise HTTPException(
+            status_code=403,
+            detail="Acción exclusiva de Supervisor o Administrador (Mesa del Supervisor).",
+        )
+
+
 async def _id_estado_ot(db: AsyncSession, nombre: str) -> int:
     r = await db.execute(text(
         "SELECT id_estado_ot FROM estado_ot WHERE nombre = :n AND activo = TRUE"
@@ -164,6 +176,7 @@ async def mesa_supervisor(
     current_user: dict = Depends(get_current_user),
 ):
     """Vista del supervisor: reclamos activos (Sin asignar, En gestión, En espera, En auditoría)."""
+    _require_supervisor(current_user)
     conds = ["r.activo = TRUE", "r.estado NOT IN ('Resuelto','Cancelado')"]
     params: dict = {}
     if id_subarea:
@@ -527,6 +540,7 @@ async def crear_ot_con_agenda(
     Body: {id_reclamo, tipo_recurso, id_recurso, fecha, hora_inicio, hora_fin,
     observaciones?}. El supervisor queda registrado en id_supervisor_asigna.
     Si la ocupacion entra en conflicto de horario, igual se crea (se reporta)."""
+    _require_supervisor(current_user)
     for campo in ("id_reclamo", "tipo_recurso", "id_recurso", "fecha", "hora_inicio", "hora_fin"):
         if body.get(campo) in (None, ""):
             raise HTTPException(422, f"Campo requerido: {campo}")
@@ -733,6 +747,7 @@ async def crear_ot(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    _require_supervisor(current_user)
     if not body.get("id_reclamo"):
         raise HTTPException(status_code=422, detail="Campo requerido: id_reclamo")
     if not body.get("id_agente") and not body.get("id_equipo"):

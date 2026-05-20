@@ -12,26 +12,31 @@ interface Props {
   onSuccess?: () => void
 }
 
-// Solo se permite transicionar a estados vivos. Cancelado usa el endpoint
-// dedicado /cancelar (motivo requerido + cascade OTs). Resuelto se logra
-// desde el flujo de auditoría (OT aprobada), no acá.
-const ESTADOS_TRANSICIONABLES: EstadoReclamo[] = [
-  'Sin asignar',
-  'En gestión',
-  'En espera',
-  'En auditoría',
-  'Resuelto',
-]
+// #3 — Grafo de transiciones permitidas. Espeja TRANSICIONES_PERMITIDAS del
+// backend (reclamos.py). Cancelado se omite acá porque usa el endpoint dedicado
+// /cancelar (motivo requerido + cascade OTs). El dropdown solo ofrece estados
+// alcanzables desde el estado actual; el resto se deshabilita.
+const TRANSICIONES_PERMITIDAS: Record<EstadoReclamo, EstadoReclamo[]> = {
+  'Sin asignar':  ['En gestión'],
+  'En gestión':   ['En espera', 'En auditoría', 'Resuelto'],
+  'En espera':    ['En gestión', 'En auditoría'],
+  'En auditoría': ['En gestión', 'Resuelto'],
+  'Resuelto':     [],
+  'Cancelado':    [],
+}
 
 export function CambiarEstadoModal({ open, idReclamo, estadoActual, onClose, onSuccess }: Props) {
   const push = useNotificationsStore((s) => s.push)
   const mut = useCambiarEstadoReclamo(idReclamo)
-  const [estadoNuevo, setEstadoNuevo] = useState<EstadoReclamo>(estadoActual)
+  const alcanzables = TRANSICIONES_PERMITIDAS[estadoActual] ?? []
+  // Preselecciona el primer estado alcanzable (no el actual, que no es opción).
+  const [estadoNuevo, setEstadoNuevo] = useState<EstadoReclamo>(alcanzables[0] ?? estadoActual)
   const [nota, setNota] = useState('')
 
   useEffect(() => {
     if (open) {
-      setEstadoNuevo(estadoActual)
+      const opciones = TRANSICIONES_PERMITIDAS[estadoActual] ?? []
+      setEstadoNuevo(opciones[0] ?? estadoActual)
       setNota('')
     }
   }, [open, estadoActual])
@@ -60,7 +65,11 @@ export function CambiarEstadoModal({ open, idReclamo, estadoActual, onClose, onS
       footer={
         <>
           <button onClick={onClose} disabled={mut.isPending} style={btnGhost}>Cancelar</button>
-          <button onClick={confirmar} disabled={mut.isPending || estadoNuevo === estadoActual} style={btnPrimary}>
+          <button
+            onClick={confirmar}
+            disabled={mut.isPending || alcanzables.length === 0 || estadoNuevo === estadoActual}
+            style={btnPrimary}
+          >
             {mut.isPending ? 'Guardando...' : 'Aplicar cambio'}
           </button>
         </>
@@ -71,17 +80,30 @@ export function CambiarEstadoModal({ open, idReclamo, estadoActual, onClose, onS
           <div style={readonlyField}>{estadoActual}</div>
         </Field>
 
-        <Field label="Nuevo estado" required>
-          <select
-            value={estadoNuevo}
-            onChange={(e) => setEstadoNuevo(e.target.value as EstadoReclamo)}
-            style={inputStyle}
-          >
-            {ESTADOS_TRANSICIONABLES.map((e) => (
-              <option key={e} value={e}>{e}</option>
-            ))}
-          </select>
-        </Field>
+        {alcanzables.length === 0 ? (
+          <div style={{
+            padding: '12px 14px', background: 'var(--surface-300)',
+            border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-lg)',
+            color: 'var(--fg-2)', fontSize: 'var(--size-ui)', lineHeight: 1.5,
+          }}>
+            El reclamo está en estado <strong>{estadoActual}</strong> (final). No admite
+            cambios de estado. {estadoActual === 'Resuelto'
+              ? 'Para reabrirlo, generá una nueva OT o un subreclamo.'
+              : ''}
+          </div>
+        ) : (
+          <Field label="Nuevo estado" required hint="Solo se muestran las transiciones válidas desde el estado actual.">
+            <select
+              value={estadoNuevo}
+              onChange={(e) => setEstadoNuevo(e.target.value as EstadoReclamo)}
+              style={inputStyle}
+            >
+              {alcanzables.map((e) => (
+                <option key={e} value={e}>{e}</option>
+              ))}
+            </select>
+          </Field>
+        )}
 
         <Field label="Nota para el historial" hint="Opcional. Aparece en el timeline del reclamo y se concatena en observaciones.">
           <textarea
