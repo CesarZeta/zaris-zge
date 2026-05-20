@@ -246,13 +246,30 @@
     const list = document.getElementById('notif-menu-list');
     if (!list || !_authToken()) return;
     list.innerHTML = '<p class="notif-menu__empty">Cargando…</p>';
+    // Timeout duro: si el fetch o el res.json() se cuelgan (red lenta, proxy,
+    // Railway cold-start), abortamos a los 12s para no dejar "Cargando…" eterno.
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 12000);
     try {
-      const res = await fetch(`${API}/api/v1/notificaciones?limit=20`, { headers: _authHeaders() });
+      console.log('[notif] fetch start', `${API}/api/v1/notificaciones?limit=20`);
+      const res = await fetch(`${API}/api/v1/notificaciones?limit=20`, {
+        headers: _authHeaders(),
+        signal: ctrl.signal,
+      });
+      console.log('[notif] fetch resolved', res.status, res.ok);
       if (!res.ok) { list.innerHTML = '<p class="notif-menu__empty">Error al cargar</p>'; return; }
       const data = await res.json();
+      console.log('[notif] json parsed', data);
       _renderNotifList(data?.items || []);
+      console.log('[notif] rendered');
     } catch (e) {
-      list.innerHTML = '<p class="notif-menu__empty">Sin conexion</p>';
+      console.error('[notif] error', e && e.name, e && e.message);
+      const msg = e && e.name === 'AbortError'
+        ? 'No se pudo cargar (tiempo agotado)'
+        : 'Sin conexion';
+      list.innerHTML = `<p class="notif-menu__empty">${msg}</p>`;
+    } finally {
+      clearTimeout(timer);
     }
   }
   function _openNotif() {
