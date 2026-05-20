@@ -17,6 +17,10 @@ venv/
 backend/.env
 backend/.env.local
 
+# Backups de la DB de prod (datos reales — NUNCA al repo publico)
+backups/
+*.dump
+
 # IDE
 .vscode/
 .idea/
