@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     SMTP_USE_TLS: bool = True        # STARTTLS para Zoho/Gmail/Office365 en puerto 587
     APP_BASE_URL: str = "https://zge.zaris.com.ar"  # URL para links en mails (apunta al shell vanilla en prod)
 
+    # App Vecinos (PWA publica de ciudadanos)
+    APP_VECINOS_FRONTEND_URL: str = "http://localhost:5174"  # URL del frontend PWA para links de activacion/recovery
+    JWT_PUBLICO_EXPIRA_DIAS: int = 30  # Vigencia del JWT scope=publico (mas largo que el de agente)
+
     @property
     def ASYNC_DATABASE_URI(self) -> str:
         # Si existe DATABASE_URL (Railway la provee), usarla

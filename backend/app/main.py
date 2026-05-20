@@ -27,6 +27,8 @@ from app.api.routes.config_identidad import router as config_identidad_router
 from app.api.routes.tramites import router as tramites_router
 from app.api.routes.tramites_admin import router as tramites_admin_router
 from app.api.routes.notificaciones import router as notificaciones_router
+from app.api.routes.publico_auth import router as publico_auth_router
+from app.api.routes.publico_identidad import router as publico_identidad_router
 from app.init_db import create_tables
 
 # ── Logging ──────────────────────────────────────────────────────
@@ -104,6 +106,9 @@ app.include_router(ot_router)
 app.include_router(geo_router)
 app.include_router(activos_router)
 app.include_router(config_identidad_router)
+# App Vecinos (PWA publica de ciudadanos)
+app.include_router(publico_auth_router)
+app.include_router(publico_identidad_router)
 
 
 # Health check
