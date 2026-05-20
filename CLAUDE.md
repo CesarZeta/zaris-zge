@@ -121,6 +121,8 @@ Monorepo: `github.com/CesarZeta/zaris-zge`.
 | Local | API | `http://127.0.0.1:8000` — `$env:ENV_FILE=".env.local"; uvicorn app.main:app --host 127.0.0.1 --port 8000` (desde `backend/`) |
 | Local | Shell React standalone (solo dev) | `http://localhost:5173` — `cd web-app && pnpm dev`. Muestra AppShell con sidebar+topbar propios para iterar módulos React sin levantar el shell vanilla. |
 | Local | Shell del producto + módulos vanilla | `http://localhost:8080` — `python -m http.server 8080` (raíz del repo) |
+| Prod | PWA App Vecinos | `https://vecinos.zaris.com.ar` (Vercel, repo `CesarZeta/zaris-vecinos`, branch `main`) |
+| Local | PWA App Vecinos | `http://localhost:5174` — `cd zaris-vecinos && pnpm dev` (repo separado, scaffold Etapa 1 creado 2026-05-19) |
 | Local | DB | `postgresql://postgres:145236@127.0.0.1:5432/zaris_dev` |
 
 ## 7. Workflow de Desarrollo
@@ -146,6 +148,19 @@ Desde 2026-05-13 hay un hook `pre-commit` que corre `tsc -b --noEmit` cuando el 
 - **Proyecto:** `inspiring-empathy` → servicio `zaris-api`, branch `main`, root `/backend`.
 - **Start command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 - El Custom Start Command tiene prioridad sobre el `Procfile`. Si se mueve `main.py`, actualizar en Railway → Settings → Deploy.
+
+### El autodeploy de Railway NO es confiable — verificar prod después de cada push backend
+
+Cazado 2026-05-20: se pushearon dos commits backend a `main` y prod siguió sirviendo código viejo (endpoint nuevo daba 404, allowlist CORS vieja). **No era el código.** Dos causas que se dieron en la misma sesión:
+
+1. **El servicio estaba caído** — el usuario tuvo que levantarlo manualmente desde el dashboard para que tomara el commit.
+2. **Incidente de plataforma "builds slow to progress"** — Railway encoló el build por horas (banner amarillo en el dashboard).
+
+**Regla operativa:** tras pushear backend, NO asumir que prod ya tiene el código. Verificar con `curl /openapi.json` (¿aparece el path nuevo?) o un preflight del header esperado. Si no aplica en ~5 min, **pedirle al usuario que mire el dashboard Railway** (servicio `zaris-api` → Deployments): banner de incidente, deploy en Failed/Building, o servicio caído. El health (`/api/health`) puede seguir 200 con el deploy VIEJO activo — no sirve para confirmar que el commit nuevo aplicó. Para eso, chequear algo que **solo exista en el commit nuevo**.
+
+**Cómo distinguir "deploy viejo en prod" de "mi test CORS está mal hecho"**: usar un origen que YA estaba permitido hace tiempo (`https://zge.zaris.com.ar`) como control. Si el preflight `OPTIONS` con ese origen devuelve `Access-Control-Allow-Origin` pero el origen nuevo no, es deploy viejo (no test roto). Comando: `curl -s -i -X OPTIONS -H "Origin: https://zge.zaris.com.ar" -H "Access-Control-Request-Method: GET" <url> | grep -i access-control-allow-origin`.
+
+> **CORS de FastAPI no acepta wildcards** — `allow_origins` es lista de strings exactos. `*.vercel.app` NO funciona; hay que poner la URL exacta del deploy. Ver §6 (App Vecinos).
 
 ## 10. Campos Estándar por Tabla
 
@@ -867,6 +882,15 @@ Resultado prod: 19 reclamos legacy de "Servicios Públicos" sin tilde (id=9, ya 
 Áreas resueltas por heurística por keyword (ver `seed_subareas_tipos_csv.py`). Áreas huérfanas (sin subáreas activas) soft-deleted automáticamente. Snapshot pre-update en `_backup_pre_reseed_2026_05_09`.
 
 > **Importante**: cualquier nueva sesión que toque estas tablas debe verificar el estado actual con `execute_sql` antes de aplicar cambios — esta sección puede quedar desactualizada (CLAUDE.md §24 lo formaliza).
+
+### Migraciones 52-53 — Auth público de ciudadanos (App Vecinos Etapa 0)
+
+**Aplicadas en local y prod al 2026-05-19.** Detalle en §38.
+
+- **Mig 52** (`52_configuracion_municipio_branding.sql`): agrega 3 claves a `configuracion_general` (`municipio_descripcion`, `municipio_color_primary`, `municipio_color_accent`). Idempotente (`INSERT ON CONFLICT DO NOTHING`). Las 3 quedan vacías esperando carga desde el panel admin.
+- **Mig 53** (`53_ciudadano_credencial_y_canales.sql`): agrega `ciudadanos.estado_validacion` (CHECK `auto_registrado|vinculado_pendiente|verificado`, default `auto_registrado`) + 3 tablas nuevas: `ciudadano_credencial` (1:1 con ciudadanos, password + tokens activación/recovery + lockout), `ciudadano_canal_preferido` (1:1, flags multi-canal), `ciudadano_push_subscription` (placeholder Web Push). Las 3 con estándar §10. Idempotente.
+
+> **Nota sobre numeración mig 51**: hay dos archivos `51_*.sql` en `backend/migrations/` (`51_notificaciones.sql` y `51_tramites_tipo_dato_direccion.sql`). Ambos están aplicados en local y prod al 2026-05-19. La numeración duplicada es deuda cosmética; cualquier mig nueva debe usar 54+.
 
 ## 22. Geolocalización, Activos y Adjuntos (Reclamos)
 
@@ -2664,3 +2688,144 @@ function urlDocs(htmlName: string): string {
 ```
 
 **Verificado en navegador** (sesión 2026-05-18) que los 3 casos resuelven correcto y los HTMLs cargan en pestaña nueva sin errores.
+
+## 38. Auth público de ciudadanos (App Vecinos)
+
+Backend mínimo para la PWA `zaris-vecinos` que permite a los ciudadanos enviar reclamos desde el celular. Etapa 0 entrega **solo auth + identidad del municipio**. Reclamos/adjuntos/push son etapas posteriores.
+
+### Modelo
+
+- **Login con DNI + password.** Sin autoregistro: la alta la hace un agente municipal (nivel ≤ 3) desde un endpoint protegido, o, en una etapa futura, desde un flow público de auto-registro con dedupe contra BUC.
+- **Activación en dos pasos:** el agente carga al ciudadano + email → backend genera `token_activacion` UUID (vigencia 7 días) y manda mail → el ciudadano clickea el link `{APP_VECINOS_FRONTEND_URL}/activar?token=<uuid>`, elige password y queda logueado.
+- **Recovery análogo:** el ciudadano pide reseteo desde la PWA → mail con `token_recovery` UUID (24h) → setea nuevo pass → JWT directo.
+- **Scope JWT:** todos los tokens llevan claim `scope`. `"agente"` para los usuarios internos (`usuarios`), `"publico"` para ciudadanos (`ciudadanos` + `ciudadano_credencial`). Cada guard del backend rechaza el scope opuesto con 401.
+- **Multi-canal preparado pero NO conectado:** tabla `ciudadano_canal_preferido` con flags `canal_email/push/whatsapp/sms`. Solo `email` se usa en el MVP. WhatsApp/SMS son columnas reservadas.
+- **Multi-municipio:** cada deploy Railway es de un municipio. El endpoint público de identidad no necesita slug porque lee la única config del proyecto. Cuando consolidemos a multi-tenant compartido (etapa futura), agregar header `X-Municipio-Slug`.
+
+### Tablas (migraciones 52 y 53)
+
+| Tabla | Rol |
+|---|---|
+| `configuracion_general` (3 claves nuevas) | `municipio_descripcion`, `municipio_color_primary`, `municipio_color_accent`. La carga real se hace desde el panel admin ZARIS (etapa futura). |
+| `ciudadanos.estado_validacion` (columna nueva) | `'auto_registrado' \| 'vinculado_pendiente' \| 'verificado'`. Default `auto_registrado` para no romper inserts existentes. Los altas del agente quedan `verificado`. |
+| `ciudadano_credencial` | 1:1 con `ciudadanos`. `password_hash` (NULL hasta activar), `token_activacion`/`token_recovery` UUID + expiración, lockout (`intentos_fallidos`, `bloqueada_hasta`), `activado_en`, `fecha_ultimo_login`, `fecha_ultimo_cambio_password`. Estándar §10 completo. Índices parciales sobre los dos tokens cuando NOT NULL. |
+| `ciudadano_canal_preferido` | 1:1 con `ciudadanos`. `canal_email=TRUE`, `canal_push=TRUE` por default. `canal_whatsapp` y `canal_sms` por default `FALSE`. |
+| `ciudadano_push_subscription` | Placeholder Web Push (`endpoint`, `p256dh`, `auth_secret`, `user_agent`). Tabla creada, sin endpoint que la consuma todavía. UNIQUE `(id_ciudadano, endpoint)`. Etapa 5. |
+
+**Aplicadas en local Y prod al 2026-05-19.** Idempotentes (`ADD COLUMN IF NOT EXISTS` + `CREATE TABLE IF NOT EXISTS` + `INSERT ON CONFLICT DO NOTHING`).
+
+### Endpoints (`/api/v1/publico/auth/*`)
+
+| Verbo | Path | Auth | Descripción |
+|---|---|---|---|
+| POST | `/registrar` | JWT scope `agente` (nivel ≤ 3) | Alta ciudadano + credencial + canal_preferido. Manda mail de activación via `BackgroundTasks`. 409 si DNI ya existe en `ciudadanos` activos o email duplicado en credencial activa. |
+| POST | `/activar` | sin auth | Activa con `token_activacion` (vigencia 7d). Setea password (min 8 chars). Devuelve JWT scope `publico`. |
+| POST | `/reenviar-activacion` | sin auth | Regenera token + reenvía mail. **Anti-enumeración**: siempre 200 OK aunque el DNI no exista o la cuenta ya esté activada. Cooldown silencioso de 5 minutos. |
+| POST | `/login` | sin auth | Login con DNI + password. Lockout: 5 intentos fallidos → bloqueo 15 min. |
+| GET | `/me` | JWT scope `publico` | Devuelve datos básicos del ciudadano logueado. |
+| POST | `/recuperar-password` | sin auth | Pide email de recovery. Misma política anti-enumeración + cooldown 5 min. |
+| POST | `/resetear-password` | sin auth | Aplica nuevo pass con `token_recovery` (vigencia 24h). Resetea lockout. Devuelve JWT scope `publico` para que el ciudadano quede logueado. |
+
+### Endpoint público de identidad (`/api/v1/publico/identidad-municipio`)
+
+- **Sin auth** (la PWA lo lee antes de tener token, en la pantalla de login).
+- Lee de `configuracion_general` las 5 claves: `municipio_nombre`, `municipio_logo_url`, `municipio_descripcion`, `municipio_color_primary`, `municipio_color_accent`. Claves ausentes/vacías → `null`.
+
+### Vigencia de tokens
+
+- `token_activacion`: 7 días. Renovable con `/reenviar-activacion`.
+- `token_recovery`: 24 horas (más corto que activación porque la cuenta ya está activa).
+- JWT scope `publico`: 30 días por default. Configurable via `JWT_PUBLICO_EXPIRA_DIAS`. **Más largo que el JWT scope `agente` (24h)** porque la PWA debe minimizar fricción de re-login.
+
+### Lockout
+
+5 intentos fallidos consecutivos → `bloqueada_hasta = NOW() + 15 minutes`, `intentos_fallidos` reseteado a 0. Durante el bloqueo, `/login` devuelve 401 "Cuenta bloqueada temporalmente". Al hacer reset password o login exitoso, `bloqueada_hasta` se limpia.
+
+### Anti-enumeración
+
+`/reenviar-activacion` y `/recuperar-password` siempre devuelven 200 OK con `{"enviado": true}` independientemente de si el DNI existe, si la cuenta ya está activada, o si el cooldown está activo. No se revela al cliente nada sobre la existencia/estado de la cuenta. El mail se manda (o no) silenciosamente en `BackgroundTasks`.
+
+### Scope check en `core/auth.py`
+
+- `create_access_token(data)` ahora setea `scope='agente'` por default (retrocompat con tokens existentes).
+- `crear_token_ciudadano(id_ciudadano, expira_dias=None)` emite scope `publico` con vigencia `JWT_PUBLICO_EXPIRA_DIAS`.
+- `get_current_user` rechaza tokens con `scope != 'agente'` (default a `'agente'` para tokens viejos sin el claim).
+- `get_current_ciudadano` rechaza tokens con `scope != 'publico'`, valida que el ciudadano + credencial estén `activo=TRUE` y `activado=TRUE`. Devuelve dict con `id_ciudadano, doc_nro (dni), nombre, apellido, email, estado_validacion`.
+
+### Email — display name del municipio sobre address ZARIS
+
+El remitente real es siempre `noreply@zaris.com.ar` (decisión 2026-05-19), pero el header `From:` lleva el **display name del municipio**: `"MUNICIPALIDAD DE SAN ANDRÉS <noreply@zaris.com.ar>"`. Implementado vía `enviar_mail(..., from_override="...")`. La marca ZARIS no aparece en el body al vecino.
+
+Funciones nuevas en `services/email.py`: `enviar_mail_activacion_ciudadano` y `enviar_mail_recovery_ciudadano`. Template HTML sobrio con logo del municipio (si está en `municipio_logo_url`), botón CTA naranja `var(--zaris-orange)`, link de fallback. Sin emojis.
+
+### Variables de entorno
+
+| Var | Default | Notas |
+|---|---|---|
+| `APP_VECINOS_FRONTEND_URL` | `http://localhost:5174` | URL del frontend PWA. En Railway prod debe apuntar a `https://vecinos.zaris.com.ar`. Se usa para armar los links de los mails de activación/recovery. |
+| `JWT_PUBLICO_EXPIRA_DIAS` | `30` | Vigencia del JWT scope publico. |
+
+### Estado de deploy (2026-05-20)
+
+- **Backend Etapa 0 deployado en prod** (commit `553b0a3`). Los 8 endpoints (`/api/v1/publico/auth/*` + `/api/v1/publico/identidad-municipio`) responden en Railway. Verificado: `/identidad-municipio` → 200 con branding de San Andrés (nombre + logo cargados; `descripcion`/colores aún `null`, pendiente carga desde panel admin).
+- **PWA scaffold (Etapa 1)** creada en repo separado `CesarZeta/zaris-vecinos`, deployada en Vercel → `https://vecinos.zaris.com.ar`. Verificada local end-to-end (build, SW activado, branding consumido desde prod, routing). Detalle de la PWA en su propio README; **no documentar la PWA en este CLAUDE.md** (es otro repo).
+- **CORS**: el origen `https://vecinos.zaris.com.ar` (+ `http://` y `https://zaris-vecinos.vercel.app`) agregado a `allow_origins` en `backend/app/main.py` (commit `5d70425`). `http://localhost:5174` ya estaba para dev.
+
+### Quirks operativos
+
+- **DNI digit-only**: el endpoint `_solo_digitos()` normaliza el DNI a string sin puntos antes de comparar con `ciudadanos.doc_nro`. La PWA puede mandar "12.345.678" o "12345678" indistintamente.
+- **CUIL placeholder**: el alta desde `/registrar` genera `cuil = '20' + dni.zfill(8) + '9'` (formato digit-only, prefijo masculino default). El ciudadano puede actualizarlo desde la PWA en una etapa futura. `ciudadanos.cuil` es UNIQUE NOT NULL.
+- **Defaults pragmáticos en `ciudadanos`**: `doc_tipo='DNI'`, `sexo='OTROS'`, `fecha_nac='1900-01-01'` (sentinela), `id_nacionalidad=1` (Argentina), `ren_chk=FALSE`, `email_chk=FALSE`, `emp_chk=FALSE`. El agente NO los carga al alta para minimizar fricción; quedan pendientes de completar por el ciudadano.
+- **CAST en lugar de `::uuid`** en queries con `text()`: `WHERE cc.token_activacion = CAST(:token AS uuid)`. sqlalchemy parsea `:token::uuid` mal porque confunde el `::` del cast con el prefijo `::` del parameter binding.
+- **`INTERVAL` con duraciones variables**: en queries con duraciones (`INTERVAL '7 days'`), construir el SQL con f-string para que el número quede literal antes de pasar a `text()`. No usar `:dias` como bind param porque asyncpg no le pone comillas correctamente alrededor del INTERVAL.
+- **Mail de activación**: el `BackgroundTask` corre después del commit del endpoint, sigue el patrón estándar de notificaciones (§35). Si SMTP no está configurado, `enviar_mail()` cae a modo MOCK (log a stdout, no rompe el flow).
+
+### Smoke test
+
+`backend/smoke_publico_auth.py` cubre los 15 pasos del prompt de Etapa 0: cleanup → login agente → registrar → verificar DB (ciudadanos + credencial + canal_preferido) → activar → /me con scope publico → /me con scope agente debe dar 401 → login → 5 fallidos → lockout → recovery → resetear-password → login con nuevo pass → /identidad-municipio → cleanup. Ejecutar con `$env:PYTHONIOENCODING="utf-8"; python smoke_publico_auth.py` desde `backend/`. Levantar uvicorn antes (`$env:ENV_FILE=".env.local"; uvicorn app.main:app --host 127.0.0.1 --port 8000`).
+
+**Validado el 2026-05-19**: 15/15 OK en local con mails reales enviados via Zoho SMTP (display name "MUNICIPALIDAD DE SAN ANDRÉS").
+
+### Fuera de alcance de Etapa 0
+
+- `POST /api/v1/publico/reclamos` — Etapa 2.
+- Adjuntos públicos (fotos del reclamo) — Etapa 2.
+- Push notifications (envío) — Etapa 5. La tabla `ciudadano_push_subscription` queda sin endpoint hasta entonces.
+- Flow público de autoregistro (reemplaza el alta del agente) — etapa futura.
+- Bandeja de revisión de ciudadanos `vinculado_pendiente` — etapa futura.
+- Panel admin ZARIS para configurar el branding del municipio — producto separado.
+
+## 39. Módulo Usuarios — estado y deuda crítica (QA 2026-05-19)
+
+**Stack**: vanilla puro. HTML 415 LOC en [frontend/usuarios.html](frontend/usuarios.html), JS 483 LOC en [frontend/js/usuarios.js](frontend/js/usuarios.js). Endpoints en [backend/app/api/routes/buc.py](backend/app/api/routes/buc.py) prefix `/api/v1/buc/usuarios/*`.
+
+### Deuda CRÍTICA conocida — NO codear features nuevas sin patchear esto primero
+
+Detalle + PoCs en [reporte_pruebas_usuarios_2026-05-19.md](reporte_pruebas_usuarios_2026-05-19.md) (untracked, ver §40).
+
+| # | Severidad | Bug | Archivo |
+|---|---|---|---|
+| 1 | **CRITICAL** | Router `buc.py` ENTERO sin auth — los 28 endpoints (usuarios + ciudadanos + empresas + nacionalidades + ciudadano_empresa) aceptan POST/PUT/GET sin JWT. Verificado: creé admin nivel 1 con curl sin token. Viola §3. | [backend/app/api/routes/buc.py](backend/app/api/routes/buc.py) — 0 referencias a `get_current_user` / `require_modulo`. |
+| 2 | **CRITICAL** | XSS persistente en `mostrarResultados()` — `u.nombre` y `u.username` se interpolan en `innerHTML` sin `esc()`. Encadenado con #1: alta sin auth + payload en nombre = control del shell de cualquier admin que busque. | [frontend/js/usuarios.js:106-124](frontend/js/usuarios.js#L106-L124) |
+| 3 | **CRITICAL** | XSS persistente en topbar del shell — `menu.js:54-57` interpola `user.nombre` sin escape. El XSS dispara apenas el user víctima abre el shell (no necesita ir a Usuarios). | [frontend/js/menu.js:54-57](frontend/js/menu.js#L54-L57) |
+| 4 | HIGH | Form no captura email → users creados desde UI no pueden loguearse (`/auth/login` busca por email, queda NULL). Fix sugerido: agregar campo email + autogenerar `<username>@municipio.gob.ar` server-side como fallback. | [frontend/usuarios.html](frontend/usuarios.html) (form) + [backend/app/api/routes/buc.py:83](backend/app/api/routes/buc.py#L83) (POST) |
+| 5 | HIGH | Módulo no es accesible desde el sidebar — item "configuración" usa `data-modulo="usuarios"` pero apunta a `web-app/dist/index.html#/config/identidad` (módulo Config React). El frontend de Usuarios queda huérfano. | [index.html](index.html) sidebar |
+| 6 | MEDIUM | Modal confirm de baja muestra "No, continuar / Sí, salir" (texto del flow "cancelar alta") — `ZUtils.confirm()` tiene labels hardcoded. Ver memoria [[feedback_modal_zutils_confirm_textos_fijos]]. | [frontend/js/config.js](frontend/js/config.js) `confirm()` |
+
+**Inconsistencia con §3**: §3 dice "usar `get_current_user` en todo endpoint que requiera identidad o permisos". El router `buc.py` viola esto desde origen — no es regresión.
+
+**Antes de tocar el módulo**: verificar que los bugs 1-3 sigan abiertos con un curl rápido sin token. Si están patcheados, actualizar esta sección.
+
+## 40. Reportes de QA — convención de no-versionado
+
+Los reportes generados por `/qa-report-template` (`reporte_pruebas_<bloque>_YYYY-MM-DD.md` en raíz) **NO se commitean** hasta que sus hallazgos estén resueltos. Razón: el repo es público (§6) y los reportes contienen PoCs reproducibles de vulnerabilidades. Commitear un reporte con XSS payload + endpoint vulnerable sin patch = publicar guía de explotación.
+
+**Estado actual de los reportes existentes (2026-05-19):**
+- `reporte_pruebas_admin_tablas_2026-05-17.md` — untracked.
+- `reporte_pruebas_usuarios_2026-05-19.md` — untracked.
+
+**Regla operativa:**
+- Mantener los reportes en raíz como artefacto local (untracked).
+- `.gitignore` no los excluye explícitamente para no perder visibilidad en `git status` — sirven como recordatorio de deuda pendiente.
+- Cuando los hallazgos críticos se resuelven, el reporte se puede archivar como `docs/qa-archive/reporte_<modulo>_YYYY-MM-DD.md` sin las PoCs (reescrito).
+- Nunca incluir reportes con PoCs activos en commits, ni en mensajes de PR.
