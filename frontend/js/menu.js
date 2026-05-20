@@ -272,12 +272,34 @@
       clearTimeout(timer);
     }
   }
+  // El contenido del shell es un <iframe> same-origin. Los clicks dentro del
+  // iframe NO se propagan al document del shell, asi que el listener
+  // click-outside del shell nunca se entera y el panel queda "pegado". Para
+  // cerrarlo al clickear sobre el modulo, enganchamos un listener pointerdown
+  // DENTRO del documento del iframe mientras el dropdown esta abierto.
+  // (Un overlay full-screen no sirve: el dropdown vive en el stacking context
+  //  del topbar (z-index 100) y queda por debajo de cualquier overlay del body,
+  //  por lo que el overlay terminaria tapando el propio dropdown.)
+  function _iframeDoc() {
+    const frame = document.getElementById('module-frame');
+    try { return frame && frame.contentDocument; } catch (e) { return null; }
+  }
+  function _onIframePointerDown() { _closeNotif(); }
+  function _engancharCierreIframe() {
+    const doc = _iframeDoc();
+    if (doc) doc.addEventListener('pointerdown', _onIframePointerDown, true);
+  }
+  function _desengancharCierreIframe() {
+    const doc = _iframeDoc();
+    if (doc) doc.removeEventListener('pointerdown', _onIframePointerDown, true);
+  }
   function _openNotif() {
     const dd = document.getElementById('notif-menu-dropdown');
     const bell = document.getElementById('topbar-bell');
     if (!dd) return;
     dd.hidden = false;
     if (bell) bell.setAttribute('aria-expanded', 'true');
+    _engancharCierreIframe();
     void _cargarNotifLista();
   }
   function _closeNotif() {
@@ -286,6 +308,7 @@
     if (!dd) return;
     dd.hidden = true;
     if (bell) bell.setAttribute('aria-expanded', 'false');
+    _desengancharCierreIframe();
   }
   (function _initNotif() {
     const bell = document.getElementById('topbar-bell');
