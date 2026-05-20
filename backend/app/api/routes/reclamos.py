@@ -16,6 +16,24 @@ logger = logging.getLogger("zaris.reclamos")
 
 ESTADOS_VALIDOS = {"Sin asignar", "En gestión", "En espera", "En auditoría", "Resuelto", "Cancelado"}
 
+# Grafo de transiciones permitidas del ciclo de vida del reclamo (CLAUDE.md §18).
+# Flujo nominal: Sin asignar -> En gestión -> En espera -> En auditoría -> Resuelto.
+# - "Cancelado" es alcanzable desde cualquier estado vivo (vía PUT /cancelar, no por acá,
+#   pero lo dejamos permitido para no romper si llega por /estado).
+# - "En gestión" <-> "En espera" es bidireccional: un reclamo en espera (subreclamo,
+#   insumos, etc.) puede volver a gestión cuando se desbloquea.
+# - "En auditoría" puede volver a "En gestión" si la auditoría rechaza y reabre.
+# - "Resuelto" y "Cancelado" son finales: no salen (se reabre creando OT/subreclamo, no
+#   por cambio directo de estado).
+TRANSICIONES_PERMITIDAS: dict[str, set[str]] = {
+    "Sin asignar":  {"En gestión", "Cancelado"},
+    "En gestión":   {"En espera", "En auditoría", "Resuelto", "Cancelado"},
+    "En espera":    {"En gestión", "En auditoría", "Cancelado"},
+    "En auditoría": {"En gestión", "Resuelto", "Cancelado"},
+    "Resuelto":     set(),
+    "Cancelado":    set(),
+}
+
 NIVELES_GESTION = {1, 2, 3}  # Admin, Supervisor, Operador (CLAUDE.md §3)
 
 
@@ -379,6 +397,8 @@ async def cambiar_estado(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    _require_gestion(current_user)
+
     nuevo_estado = body.get("estado")
     if not nuevo_estado:
         raise HTTPException(status_code=422, detail="Campo 'estado' requerido")
@@ -388,13 +408,50 @@ async def cambiar_estado(
         raise HTTPException(status_code=422, detail=f"Estado inválido: {nuevo_estado}")
 
     r = await db.execute(text(
-        "SELECT estado FROM reclamos WHERE id_reclamo = :id AND activo = TRUE"
+        "SELECT estado, id_reclamo_padre FROM reclamos WHERE id_reclamo = :id AND activo = TRUE"
     ), {"id": id_reclamo})
     row = r.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail=f"Reclamo {id_reclamo} no encontrado")
 
     estado_anterior = row.estado
+
+    # #3 — Validación secuencial del FSM: no permitir saltos no contemplados.
+    # No-op (mismo estado) se acepta sin chequear el grafo.
+    if nuevo_estado != estado_anterior:
+        permitidos = TRANSICIONES_PERMITIDAS.get(estado_anterior, set())
+        if nuevo_estado not in permitidos:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Transición no permitida: '{estado_anterior}' → '{nuevo_estado}'. "
+                    f"Desde '{estado_anterior}' solo se puede pasar a: "
+                    f"{sorted(permitidos) if permitidos else 'ningún estado (es final)'}."
+                ),
+            )
+
+    # #1 — Integridad referencial padre/hijo: no cerrar/auditar un reclamo padre
+    # si tiene subreclamos activos sin resolver. Solo aplica si NO es subreclamo.
+    if nuevo_estado in ("Resuelto", "En auditoría") and row.id_reclamo_padre is None:
+        hijos = await db.execute(text("""
+            SELECT nro_reclamo, estado
+            FROM reclamos
+            WHERE id_reclamo_padre = :id AND activo = TRUE
+              AND estado NOT IN ('Resuelto', 'Cancelado')
+            ORDER BY id_reclamo
+        """), {"id": id_reclamo})
+        pendientes = hijos.fetchall()
+        if pendientes:
+            detalle = ", ".join(f"{h.nro_reclamo} ({h.estado})" for h in pendientes)
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"No se puede pasar a '{nuevo_estado}': hay {len(pendientes)} "
+                    f"subreclamo(s) sin resolver: {detalle}. "
+                    "Resolvé o cancelá los subreclamos primero."
+                ),
+            )
+
     nota = body.get("nota", "")
 
     await db.execute(text("""
