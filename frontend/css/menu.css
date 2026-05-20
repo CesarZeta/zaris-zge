@@ -198,6 +198,12 @@
   pointer-events: none;
 }
 
+/* El atributo HTML `hidden` debe ganar sobre el display:flex de arriba.
+   Sin esto, el badge se ve aunque el contador sea 0 (display:flex pisa hidden). */
+.topbar__bell-badge[hidden] {
+  display: none;
+}
+
 .notif-menu__dropdown {
   position: absolute;
   top: calc(100% + 6px);
