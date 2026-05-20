@@ -288,6 +288,19 @@
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && !dd.hidden) _closeNotif();
     });
+    // #5 — Cerrar el dropdown al navegar entre modulos. Los clicks dentro del
+    // iframe NO se propagan al document del shell, asi que el click-outside no
+    // alcanza: el panel quedaba "pegado" sobre el contenido del modulo. Cerramos
+    // (a) al clickear cualquier nav-link y (b) al perder el foco la ventana del
+    // shell (el foco se va al iframe cuando el usuario opera el modulo).
+    document.querySelectorAll('.nav-flat__item, .nav__link').forEach(function (link) {
+      link.addEventListener('click', function () { if (!dd.hidden) _closeNotif(); });
+    });
+    window.addEventListener('blur', function () { if (!dd.hidden) _closeNotif(); });
+    var frame = document.getElementById('module-frame');
+    if (frame) {
+      frame.addEventListener('load', function () { if (!dd.hidden) _closeNotif(); });
+    }
     if (markAll) {
       markAll.addEventListener('click', async function (e) {
         e.stopPropagation();
