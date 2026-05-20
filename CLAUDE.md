@@ -906,7 +906,11 @@ Resultado prod: 19 reclamos legacy de "Servicios Públicos" sin tilde (id=9, ya 
 - **Mig 52** (`52_configuracion_municipio_branding.sql`): agrega 3 claves a `configuracion_general` (`municipio_descripcion`, `municipio_color_primary`, `municipio_color_accent`). Idempotente (`INSERT ON CONFLICT DO NOTHING`). Las 3 quedan vacías esperando carga desde el panel admin.
 - **Mig 53** (`53_ciudadano_credencial_y_canales.sql`): agrega `ciudadanos.estado_validacion` (CHECK `auto_registrado|vinculado_pendiente|verificado`, default `auto_registrado`) + 3 tablas nuevas: `ciudadano_credencial` (1:1 con ciudadanos, password + tokens activación/recovery + lockout), `ciudadano_canal_preferido` (1:1, flags multi-canal), `ciudadano_push_subscription` (placeholder Web Push). Las 3 con estándar §10. Idempotente.
 
-> **Nota sobre numeración mig 51**: hay dos archivos `51_*.sql` en `backend/migrations/` (`51_notificaciones.sql` y `51_tramites_tipo_dato_direccion.sql`). Ambos están aplicados en local y prod al 2026-05-19. La numeración duplicada es deuda cosmética; cualquier mig nueva debe usar 54+.
+> **Nota sobre numeración mig 51**: hay dos archivos `51_*.sql` en `backend/migrations/` (`51_notificaciones.sql` y `51_tramites_tipo_dato_direccion.sql`). Ambos están aplicados en local y prod al 2026-05-19. La numeración duplicada es deuda cosmética; cualquier mig nueva debe usar 55+.
+
+### Migración 54 — Adjuntos de OT (`backend/migrations/54_ot_adjuntos.sql`)
+
+**Aplicada en local y prod al 2026-05-20.** Crea `ot_adjuntos` (estándar §10, FK `id_ot` → `ordenes_trabajo(id_ot) ON DELETE CASCADE`, índice `idx_ot_adjuntos_ot`). Espejo de `reclamo_adjuntos`. Cierra el hallazgo QA Royman #4 (adjuntos en OT diferido en commit `2110263`). Idempotente (`CREATE TABLE IF NOT EXISTS`). Ver §34 sección "Adjuntos de OT".
 
 ## 22. Geolocalización, Activos y Adjuntos (Reclamos)
 
@@ -1224,7 +1228,7 @@ Ejemplos canónicos: `backend/seed_ciudadanos_csv.py` y `backend/seed_agentes_cs
 - **Best-effort delete del binario**: si Storage falla al borrar, la fila queda soft-deleted igual y se loggea — el usuario nunca ve el adjunto.
 
 ### Frontend en otros módulos
-Para sumar adjuntos a otra entidad (ej: OTs), replicar el patrón: nueva tabla `<entidad>_adjuntos` con mismos campos, nuevo bucket si conviene aislar, y reutilizar `app/core/storage.py` (las funciones reciben `path` arbitrario y leen el bucket de settings — extraer a parámetro si se usan múltiples buckets).
+Para sumar adjuntos a otra entidad (ej: OTs), replicar el patrón: nueva tabla `<entidad>_adjuntos` con mismos campos, nuevo bucket si conviene aislar, y reutilizar `app/core/storage.py` (las funciones reciben `path` arbitrario y leen el bucket de settings — extraer a parámetro si se usan múltiples buckets). **Ya hecho para OT** (`ot_adjuntos`, mig 54, ver §34) — reusa el mismo bucket `reclamos-adjuntos` con paths bajo `ot/{id_ot}/`. Es la referencia canónica para clonar a futuras entidades.
 
 ## 27. Módulo Agenda — Estado actual (sub-fase 1.A)
 
@@ -2241,6 +2245,17 @@ Antes, los endpoints de asignación de OT solo usaban `get_current_user` sin che
 - **Sidebar vanilla:** el link OT en `index.html` apunta a `#/ot` (no `#/ot/supervisor`) para que el redirect por rol decida la mesa. Conserva `data-modulo-fallback="ot_agente,ot_auditoria"` para que el item siga visible al operador (que aterriza en su Mesa de Agente).
 
 Defensa en profundidad: aunque un operador deep-linkee a `/ot/supervisor`, el frontend muestra el mensaje y el backend rechaza con 403. Ver memoria [[guard_nivel_endpoint_no_solo_ui]].
+
+### Adjuntos de OT — evidencia del trabajo (hallazgo QA Royman #4, 2026-05-20)
+
+El #4 que quedó diferido en el commit `2110263`. Las OT ahora tienen adjuntos propios (fotos de la evidencia del trabajo: bache reparado, luminaria cambiada). **Independientes de los adjuntos del reclamo** (§26): el drawer muestra ambas secciones — "ADJUNTOS" (del reclamo) y "EVIDENCIA DE LA OT" (de la OT resaltada).
+
+- **Tabla `ot_adjuntos`** (mig 54, ver §21): espejo de `reclamo_adjuntos` pero FK a `ordenes_trabajo(id_ot) ON DELETE CASCADE`. Reusa el bucket privado `reclamos-adjuntos` (paths bajo `ot/{id_ot}/{uuid}.{ext}`). Modelo `OrdenTrabajoAdjunto` en `backend/app/models/reclamos.py`.
+- **Router `ot_adjuntos.py`** (prefix `/api/v1/ot/{id_ot}/adjuntos`): mismo flujo que reclamo_adjuntos — `POST /upload-url` → PUT directo al storage → `POST /{id_adj}/confirm`; `GET ""` (URLs firmadas TTL 1h); `DELETE /{id_adj}` (soft-delete + remove del bucket). Reusa `app/core/storage.py` (que ya aceptaba `bucket`/`path` arbitrarios).
+- **Registrado en `main.py` ANTES de `ot_router`** (§5): `/ot/{id_ot}/adjuntos` no debe ser atrapado por el `/{id_ot}` greedy del router de OT.
+- **Permiso SUBIR/BORRAR**: agente asignado a la OT (`ordenes_trabajo.id_agente` = `agentes.id_agente` del usuario, resuelto vía `agentes.id_usuario`) **o** nivel ≤ 2 (admin/supervisor). Helper `_require_puede_gestionar`. **VER (listar) lo puede cualquier autenticado** — todas las mesas ven la evidencia.
+- **Frontend**: `web-app/src/modules/ot/` → `api/otAdjuntosApi.ts`, `hooks/useOTAdjuntos.ts`, `components/UploadAdjuntosOTPanel.tsx` (clon del de reclamos apuntando a la API de OT + queryKey `['ot','adjuntos',idOt]`). La sección vive en `OTDetalleDrawer.tsx` (`OTAdjuntosSection`), se muestra cuando `idOTResaltada != null`. El drawer recibe prop `puedeGestionarAdjuntos`: AgenteView lo pasa `true` si `scope ∈ {'mia','disponible_equipo'}`; Supervisor/Auditoría lo pasan `user.nivel_acceso <= 2`. El gate solo gobierna la UI — el backend igual hace cumplir el guard (un operador no-asignado recibe 403).
+- **Verificado end-to-end (2026-05-20)**: smoke backend 5/5 (agente asignado sube OK, no-asignado 403, admin OK, listar, OT inexistente 404) + verificación visual en navegador (subir PNG real al storage Supabase → galería → borrar → vuelve a "Sin evidencia adjunta").
 
 ## 35. Módulo Trámites / Expedientes
 

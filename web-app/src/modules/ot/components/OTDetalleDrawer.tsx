@@ -8,11 +8,17 @@ import type {
   Subreclamo,
 } from '../../reclamos/types/reclamo'
 import { BadgeEstadoOT, BadgeEstadoReclamo, BadgePrioridad } from '../lib/format'
+import { useOTAdjuntos, useBorrarAdjuntoOT } from '../hooks/useOTAdjuntos'
+import { UploadAdjuntosOTPanel } from './UploadAdjuntosOTPanel'
 
 interface Props {
   open: boolean
   idReclamo: number | null
   idOTResaltada?: number | null
+  /** Si true, muestra el panel para subir/borrar evidencia de la OT resaltada.
+   *  Supervisor/Auditoría: nivel <= 2. Agente: solo si la OT es suya (scope 'mia'/equipo).
+   *  El backend igual hace cumplir el guard; esto solo gobierna la UI. */
+  puedeGestionarAdjuntos?: boolean
   onClose: () => void
 }
 
@@ -28,7 +34,7 @@ const CANAL_LABEL: Record<string, string> = {
   presencial: 'Presencial', oficio: 'Oficio', app_movil: 'App móvil', otro: 'Otro',
 }
 
-export function OTDetalleDrawer({ open, idReclamo, idOTResaltada, onClose }: Props) {
+export function OTDetalleDrawer({ open, idReclamo, idOTResaltada, puedeGestionarAdjuntos, onClose }: Props) {
   const detalle = useReclamoDetalle(open ? idReclamo : null)
 
   const r = detalle.data
@@ -105,6 +111,10 @@ export function OTDetalleDrawer({ open, idReclamo, idOTResaltada, onClose }: Pro
           <UbicacionSection r={r} />
 
           <AdjuntosSection idReclamo={r.id_reclamo} />
+
+          {idOTResaltada != null && (
+            <OTAdjuntosSection idOt={idOTResaltada} puedeGestionar={!!puedeGestionarAdjuntos} />
+          )}
 
           {r.subreclamos.length > 0 && <SubreclamosSection items={r.subreclamos} />}
 
@@ -190,6 +200,92 @@ function AdjuntosSection({ idReclamo }: { idReclamo: number }) {
                 loading="lazy"
               />
             </button>
+          ))}
+        </div>
+      )}
+      {lightbox && (
+        <div
+          onClick={() => setLightbox(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 9999, cursor: 'zoom-out', padding: 40,
+          }}
+        >
+          <img
+            src={lightbox.url}
+            alt={lightbox.nombre_archivo}
+            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+          />
+        </div>
+      )}
+    </Section>
+  )
+}
+
+function OTAdjuntosSection({ idOt, puedeGestionar }: { idOt: number; puedeGestionar: boolean }) {
+  const adjuntos = useOTAdjuntos(idOt)
+  const borrar = useBorrarAdjuntoOT(idOt)
+  const [lightbox, setLightbox] = useState<Adjunto | null>(null)
+
+  return (
+    <Section title="Evidencia de la OT">
+      {puedeGestionar && <UploadAdjuntosOTPanel idOt={idOt} />}
+
+      {adjuntos.isLoading && (
+        <div style={{ color: 'var(--fg-3)', fontSize: '0.82rem' }}>Cargando evidencia…</div>
+      )}
+      {adjuntos.isError && (
+        <div style={{ color: 'var(--color-error)', fontSize: '0.82rem' }}>Error al cargar evidencia</div>
+      )}
+      {adjuntos.data && adjuntos.data.length === 0 && (
+        <div style={{ color: 'var(--fg-3)', fontSize: '0.82rem' }}>Sin evidencia adjunta</div>
+      )}
+      {adjuntos.data && adjuntos.data.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
+          {adjuntos.data.map((a) => (
+            <div
+              key={a.id_adjunto}
+              style={{
+                position: 'relative', aspectRatio: '1 / 1', overflow: 'hidden',
+                background: 'var(--surface-200)', border: '1px solid var(--border-primary)',
+                borderRadius: 'var(--radius-md)',
+              }}
+            >
+              <button
+                onClick={() => setLightbox(a)}
+                title={a.nombre_archivo}
+                style={{ width: '100%', height: '100%', padding: 0, border: 'none', background: 'none', cursor: 'zoom-in' }}
+              >
+                <img
+                  src={a.url}
+                  alt={a.nombre_archivo}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  loading="lazy"
+                />
+              </button>
+              {puedeGestionar && (
+                <button
+                  type="button"
+                  aria-label="Borrar evidencia"
+                  disabled={borrar.isPending}
+                  onClick={() => {
+                    if (window.confirm(`¿Borrar "${a.nombre_archivo}"? Esta acción no se puede deshacer.`)) {
+                      borrar.mutate(a.id_adjunto)
+                    }
+                  }}
+                  style={{
+                    position: 'absolute', top: 6, right: 6,
+                    width: 24, height: 24, borderRadius: '50%',
+                    background: 'rgba(0,0,0,0.6)', color: 'white',
+                    border: 'none', cursor: 'pointer', fontSize: 15, lineHeight: '22px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  ×
+                </button>
+              )}
+            </div>
           ))}
         </div>
       )}
