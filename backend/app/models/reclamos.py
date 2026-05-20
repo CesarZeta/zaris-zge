@@ -158,6 +158,33 @@ class ReclamoAdjunto(Base):
     reclamo = relationship("Reclamo", back_populates="adjuntos")
 
 
+class OrdenTrabajoAdjunto(Base):
+    """Adjuntos de una OT (evidencia del trabajo realizado). Espeja
+    ReclamoAdjunto; binarios en Supabase Storage, aquí solo metadatos.
+    """
+    __tablename__ = "ot_adjuntos"
+
+    id_adjunto      = Column(Integer, primary_key=True, autoincrement=True)
+    id_ot           = Column(Integer, ForeignKey("ordenes_trabajo.id_ot", ondelete="CASCADE"), nullable=False)
+    storage_bucket  = Column(String(100), nullable=False, default="reclamos-adjuntos")
+    storage_path    = Column(String(500), nullable=False)
+    nombre_archivo  = Column(String(255), nullable=False)
+    mime_type       = Column(String(100), nullable=True)
+    tamano_bytes    = Column(BigInteger, nullable=True)
+    descripcion     = Column(Text, nullable=True)
+    activo          = Column(Boolean, nullable=False, default=True)
+    id_municipio    = Column(Integer, nullable=True)
+    id_subarea      = Column(Integer, nullable=True)
+    fecha_alta      = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    fecha_modificacion = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    id_usuario_alta = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
+    id_usuario_modificacion = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
+
+    __table_args__ = (
+        Index("idx_ot_adjuntos_ot", "id_ot"),
+    )
+
+
 class ReclamoHistorial(Base):
     __tablename__ = "reclamo_historial"
 

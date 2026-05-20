@@ -208,6 +208,7 @@ export function AgenteView() {
         open={drawerOT !== null}
         idReclamo={drawerOT?.id_reclamo ?? null}
         idOTResaltada={drawerOT?.id_ot ?? null}
+        puedeGestionarAdjuntos={drawerOT?.scope === 'mia' || drawerOT?.scope === 'disponible_equipo'}
         onClose={() => setDrawerOT(null)}
       />
     </div>
