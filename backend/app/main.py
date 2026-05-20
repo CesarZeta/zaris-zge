@@ -69,6 +69,10 @@ app.add_middleware(
         "https://cesarzeta.github.io",
         "http://zge.zaris.com.ar",
         "https://zge.zaris.com.ar",
+        # App Vecinos (PWA en Vercel)
+        "http://vecinos.zaris.com.ar",
+        "https://vecinos.zaris.com.ar",
+        "https://zaris-vecinos.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
