@@ -668,6 +668,22 @@ PUT  /api/v1/ot/{id_ot}/rechazar           → auditor rechaza OT → nueva OT P
 
 `PUT /{id}/estado` consulta `estado_reclamo WHERE activo=TRUE`. Fallback hardcoded a `{"Sin asignar", "En gestión", "En espera", "En auditoría", "Resuelto", "Cancelado"}` si la tabla está vacía.
 
+**FSM de transiciones (desde 2026-05-20, hallazgo QA #3).** `PUT /{id}/estado` valida el grafo `TRANSICIONES_PERMITIDAS` en `reclamos.py` además de exigir `_require_gestion` (nivel ≤ 3). No se permiten saltos arbitrarios (antes el endpoint aceptaba cualquier estado→cualquier estado). Grafo:
+
+| Desde | Puede ir a |
+|---|---|
+| `Sin asignar` | `En gestión`, `Cancelado` |
+| `En gestión` | `En espera`, `En auditoría`, `Resuelto`, `Cancelado` |
+| `En espera` | `En gestión`, `En auditoría`, `Cancelado` |
+| `En auditoría` | `En gestión`, `Resuelto`, `Cancelado` |
+| `Resuelto` / `Cancelado` | (final — ninguno) |
+
+- Transición fuera del grafo → 422 listando los alcanzables.
+- Mismo estado (no-op) se acepta sin chequear el grafo.
+- El frontend espeja el grafo en `web-app/src/modules/reclamos/components/CambiarEstadoModal.tsx` (sin `Cancelado`, que va por el endpoint dedicado `/cancelar`): el dropdown solo muestra estados alcanzables; reclamo en estado final muestra mensaje "no admite cambios". **Si modificás el grafo, tocá los DOS lugares** (backend `reclamos.py` + modal frontend) o se desincronizan.
+
+**Integridad padre/hijo (hallazgo QA #1).** `PUT /{id}/estado` a `Resuelto` o `En auditoría` se bloquea con 422 si el reclamo (que no es subreclamo) tiene subreclamos activos con estado distinto a `Resuelto`/`Cancelado`. El mensaje enumera los pendientes. Antes se podía cerrar el padre dejando hijos huérfanos activos.
+
 ### Configuración general
 
 | Clave | Tipo | Descripción |
@@ -1855,7 +1871,9 @@ from app.core.auth import require_modulo
 async def algo(current: dict = Depends(require_modulo("reclamos"))):
     ...
 ```
-Devuelve 403 si el usuario no tiene el módulo. **Hoy no aplicado a endpoints existentes** — los routers ya tenían su propio criterio (`nivel_acceso`). Si querés bloquear acceso real al endpoint, agregalo. La UI ya está filtrada.
+Devuelve 403 si el usuario no tiene el módulo. **`require_modulo` casi no se usa** — la mayoría de routers aplican su propio criterio de nivel con helpers locales (`_require_gestion` en reclamos, `_require_supervisor` en OT). La UI filtra el sidebar por módulo, pero eso NO impone nada en el backend.
+
+> **OJO — esto es una trampa de seguridad recurrente.** Que el sidebar oculte un módulo NO protege sus endpoints. Hasta 2026-05-20, el router OT (`POST /ot`, `/ot/con-agenda`, `GET /mesa/supervisor`) NO chequeaba nivel: un operador con JWT válido los llamaba directo y creaba/asignaba OT (hallazgo QA #2). **Antes de asumir que "el router ya valida nivel", verificalo** — leé el handler y confirmá que invoca un `_require_*` o `require_modulo` como primera línea. Si no, es bug aunque la UI lo oculte. Ver memoria [[guard_nivel_endpoint_no_solo_ui]].
 
 **Smoke verificado (2026-05-12):**
 - Login admin nivel 1 → 8 módulos. Login supervisor nivel 2 → 6. Operador nivel 3 → 4.
@@ -2213,6 +2231,16 @@ Helpers compartidos en `ordenes_trabajo.py`: `_slots_de_rango`, `_solapa`, `_mer
 ### Mesa Auditoría — admin (nivel 1) bypassea `es_auditor`
 
 Desde 2026-05-19: el check `agentes.es_auditor=TRUE` en `GET /api/v1/ot/auditor/me` se saltea cuando `current_user.nivel_acceso <= 1`. Admin por definición tiene acceso total al módulo y no necesita el flag explícito en DB. La regla "no auditar lo propio" se preserva via el filtro existente `(ot.id_agente IS NULL OR ot.id_agente = :id_agente)` del listado, que excluye las OTs operativas asignadas al mismo agente. Niveles 2-4 siguen requiriendo `es_auditor=TRUE` en su fila de `agentes`. El endpoint legacy `GET /mesa/auditoria?id_agente=` nunca chequeó `es_auditor` (recibía el id por query), así que no necesitó cambio.
+
+### Guard de nivel — Mesa Supervisor y asignación de OT exigen nivel ≤ 2 (hallazgo QA #2, 2026-05-20)
+
+Antes, los endpoints de asignación de OT solo usaban `get_current_user` sin chequear nivel — un Operador (nivel 3) podía crear/asignar OT desde la Mesa Supervisor. Fix:
+
+- **Backend:** helper `_require_supervisor(current_user)` en `ordenes_trabajo.py` (403 si `nivel_acceso > 2`), aplicado como primera línea de `GET /ot/mesa/supervisor`, `POST /ot`, `POST /ot/con-agenda`. `PUT /ot/{id}/reasignar` ya lo tenía inline. Espeja `modulos.ot_supervisor.min_nivel_acceso = 2`.
+- **Frontend (bundle React):** gate `WrapNivel` en `web-app/src/modules/ot/index.tsx` — `/ot/supervisor` y `/ot/auditoria` exigen nivel ≤ 2; el operador ve "Acceso restringido". El redirect de `/ot` (sin sub-ruta) es por rol: nivel ≤ 2 → `/ot/supervisor`, resto → `/ot/agente`.
+- **Sidebar vanilla:** el link OT en `index.html` apunta a `#/ot` (no `#/ot/supervisor`) para que el redirect por rol decida la mesa. Conserva `data-modulo-fallback="ot_agente,ot_auditoria"` para que el item siga visible al operador (que aterriza en su Mesa de Agente).
+
+Defensa en profundidad: aunque un operador deep-linkee a `/ot/supervisor`, el frontend muestra el mensaje y el backend rechaza con 403. Ver memoria [[guard_nivel_endpoint_no_solo_ui]].
 
 ## 35. Módulo Trámites / Expedientes
 
