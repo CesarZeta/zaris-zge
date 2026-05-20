@@ -78,8 +78,11 @@ export function DashboardMap({ reclamos, onMarkerClick }: Props) {
       center: DEFAULT_CENTER,
       zoom: DEFAULT_ZOOM,
       scrollWheelZoom: true,
-      zoomControl: true,
+      // El control de zoom default va en top-left, donde vive el panel de stats
+      // ("Dashboard" + cards). Lo movemos a bottom-right para que no se solapen.
+      zoomControl: false,
     })
+    L.control.zoom({ position: 'bottomright' }).addTo(map)
     // Tile gris claro (CartoDB Positron, gratis sin API key). Pensado para
     // dashboards: minimal, no compite visualmente con los markers de estado.
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
