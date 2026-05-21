@@ -251,19 +251,14 @@
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 12000);
     try {
-      console.log('[notif] fetch start', `${API}/api/v1/notificaciones?limit=20`);
       const res = await fetch(`${API}/api/v1/notificaciones?limit=20`, {
         headers: _authHeaders(),
         signal: ctrl.signal,
       });
-      console.log('[notif] fetch resolved', res.status, res.ok);
       if (!res.ok) { list.innerHTML = '<p class="notif-menu__empty">Error al cargar</p>'; return; }
       const data = await res.json();
-      console.log('[notif] json parsed', data);
       _renderNotifList(data?.items || []);
-      console.log('[notif] rendered');
     } catch (e) {
-      console.error('[notif] error', e && e.name, e && e.message);
       const msg = e && e.name === 'AbortError'
         ? 'No se pudo cargar (tiempo agotado)'
         : 'Sin conexion';
@@ -295,8 +290,11 @@
       ov = document.createElement('div');
       ov.id = 'notif-menu-overlay';
       ov.style.cssText = 'position:fixed;inset:0;z-index:' + _OVERLAY_Z + ';background:transparent;';
-      // pointerdown (no click) para ganarle al ciclo de focus del iframe.
-      ov.addEventListener('pointerdown', function (e) { e.preventDefault(); _closeNotif(); });
+      // mousedown + pointerdown: cubrimos ambos caminos de evento para cerrar
+      // al clickear afuera (incluido el area del iframe del modulo).
+      const cerrar = function () { _closeNotif(); };
+      ov.addEventListener('pointerdown', cerrar);
+      ov.addEventListener('mousedown', cerrar);
       document.body.appendChild(ov);
     }
     ov.style.display = 'block';
