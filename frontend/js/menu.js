@@ -272,26 +272,40 @@
       clearTimeout(timer);
     }
   }
-  // El contenido del shell es un <iframe> same-origin. Los clicks dentro del
-  // iframe NO se propagan al document del shell, asi que el listener
-  // click-outside del shell nunca se entera y el panel queda "pegado". Para
-  // cerrarlo al clickear sobre el modulo, enganchamos un listener pointerdown
-  // DENTRO del documento del iframe mientras el dropdown esta abierto.
-  // (Un overlay full-screen no sirve: el dropdown vive en el stacking context
-  //  del topbar (z-index 100) y queda por debajo de cualquier overlay del body,
-  //  por lo que el overlay terminaria tapando el propio dropdown.)
-  function _iframeDoc() {
-    const frame = document.getElementById('module-frame');
-    try { return frame && frame.contentDocument; } catch (e) { return null; }
+  // Cierre del dropdown: el contenido del shell es un <iframe>, y los clicks
+  // dentro del iframe NO se propagan al document del shell, asi que el listener
+  // click-outside del shell por si solo no alcanza. Solucion robusta (no
+  // depende del contentDocument del iframe, que puede cambiar al navegar):
+  // un OVERLAY invisible full-screen en el body que captura el primer click en
+  // cualquier lado y cierra. Para que los clicks DENTRO del dropdown sigan
+  // funcionando, elevamos el contenedor .notif-menu por encima del overlay
+  // mientras esta abierto (z-index dinamico, evita el problema de stacking
+  // context del topbar porque movemos el contenedor entero, no solo el panel).
+  // El overlay va en z-index 900. Elevamos el TOPBAR (no el .notif-menu) por
+  // encima del overlay mientras el dropdown esta abierto. El topbar es sticky
+  // y su padre (.app) no crea stacking context, asi que su z-index compite
+  // directo con el del overlay (a nivel body). Elevar .notif-menu NO sirve
+  // porque queda confinado dentro del stacking context del topbar (z-index 100).
+  const _OVERLAY_Z = 900;
+  function _mostrarOverlayNotif() {
+    const topbar = document.querySelector('.topbar');
+    if (topbar) topbar.style.zIndex = String(_OVERLAY_Z + 1);
+    let ov = document.getElementById('notif-menu-overlay');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.id = 'notif-menu-overlay';
+      ov.style.cssText = 'position:fixed;inset:0;z-index:' + _OVERLAY_Z + ';background:transparent;';
+      // pointerdown (no click) para ganarle al ciclo de focus del iframe.
+      ov.addEventListener('pointerdown', function (e) { e.preventDefault(); _closeNotif(); });
+      document.body.appendChild(ov);
+    }
+    ov.style.display = 'block';
   }
-  function _onIframePointerDown() { _closeNotif(); }
-  function _engancharCierreIframe() {
-    const doc = _iframeDoc();
-    if (doc) doc.addEventListener('pointerdown', _onIframePointerDown, true);
-  }
-  function _desengancharCierreIframe() {
-    const doc = _iframeDoc();
-    if (doc) doc.removeEventListener('pointerdown', _onIframePointerDown, true);
+  function _ocultarOverlayNotif() {
+    const ov = document.getElementById('notif-menu-overlay');
+    if (ov) ov.style.display = 'none';
+    const topbar = document.querySelector('.topbar');
+    if (topbar) topbar.style.zIndex = '';
   }
   function _openNotif() {
     const dd = document.getElementById('notif-menu-dropdown');
@@ -299,7 +313,7 @@
     if (!dd) return;
     dd.hidden = false;
     if (bell) bell.setAttribute('aria-expanded', 'true');
-    _engancharCierreIframe();
+    _mostrarOverlayNotif();
     void _cargarNotifLista();
   }
   function _closeNotif() {
@@ -308,7 +322,7 @@
     if (!dd) return;
     dd.hidden = true;
     if (bell) bell.setAttribute('aria-expanded', 'false');
-    _desengancharCierreIframe();
+    _ocultarOverlayNotif();
   }
   (function _initNotif() {
     const bell = document.getElementById('topbar-bell');
