@@ -220,6 +220,13 @@
   flex-direction: column;
 }
 
+/* El atributo HTML `hidden` debe ganar sobre el display:flex de arriba. Sin
+   esto el dropdown arranca VISIBLE (el hidden inicial no aplica) y nunca se
+   oculta al hacer dd.hidden=true. Mismo bug que el badge (commit 5dfe00c). */
+.notif-menu__dropdown[hidden] {
+  display: none;
+}
+
 .notif-menu__header {
   display: flex;
   align-items: center;
