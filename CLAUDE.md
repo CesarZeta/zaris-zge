@@ -2532,6 +2532,8 @@ Fix: campana funcional implementada en el shell vanilla, consumiendo los mismos 
 
 **Las DOS campanas conviven sin colisión** porque viven en DOMs distintos (shell vanilla vs shell React standalone). El bundle React mantiene su `NotificacionesDropdown` para devs que trabajan en `localhost:5173`.
 
+> **Quirk crítico CSS (cazado 2026-05-20, commits `5dfe00c` + `fda6c01`):** tanto `.topbar__bell-badge` como `.notif-menu__dropdown` tienen `display:flex/block` en `menu.css`, que **pisa el atributo HTML `hidden`** por especificidad. Sin una regla `.<clase>[hidden]{display:none}`, el elemento se ve aunque tenga `hidden` — el badge mostraba "0" siempre, y el dropdown arrancaba ABIERTO y no se cerraba (el JS hacía `el.hidden=true` pero el CSS lo ignoraba). **Cualquier componente nuevo del shell vanilla que use `display:` explícito + toggle por atributo `hidden` DEBE incluir la regla `[hidden]{display:none}`.** Ver memoria [[reference_css_display_pisa_hidden]]. El cierre del dropdown al clickear afuera usa un overlay full-screen en el body + elevación del `.topbar` por encima (no del `.notif-menu`, que queda confinado en el stacking context del topbar `z-index:100`).
+
 **Notificaciones extendidas a más eventos (✅ ENTREGADO 2026-05-19):**
 
 Tres notifs nuevas que se suman a `tramite_bandeja_{creacion,pase,transicion}` (que ya existían). Todas reusan el helper `_emitir_a_usuarios()` que centraliza INSERT con RETURNING + commit + encolado del background task. Fail-safe (try/except global, log + return 0).
