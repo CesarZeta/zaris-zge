@@ -110,7 +110,7 @@ export function ConfigTramiteDetalle() {
 
   async function handlePublicar() {
     if (!versionElegida) return
-    if (!confirm('¿Publicar esta versión? Quedará disponible para nuevos trámites y se archivará la anterior (si la hay).')) return
+    if (!confirm('¿Publicar esta versión? El tipo quedará disponible en «Nuevo trámite» y se archivará la versión anterior (si la hay).')) return
     try {
       await publicar.mutateAsync(versionElegida)
     } catch (e) {
@@ -219,6 +219,40 @@ export function ConfigTramiteDetalle() {
           </p>
         )}
       </Card>
+
+      {/* Banner de disponibilidad: conecta "crear el tipo" con "disponer el tipo
+          para usarlo". Un borrador NO aparece en Nuevo trámite hasta publicarlo. */}
+      {versionActiva?.estado === 'borrador' && versionData && (() => {
+        const sinInicial = !versionData.estados.some((e) => e.es_inicial)
+        const sinFinal = !versionData.estados.some((e) => e.es_final)
+        const faltan: string[] = []
+        if (sinInicial) faltan.push('un estado inicial')
+        if (sinFinal) faltan.push('un estado final')
+        const listo = faltan.length === 0
+        return (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+            padding: '14px 18px', borderRadius: 'var(--radius-lg, 12px)',
+            background: listo ? 'rgba(245,78,0,.07)' : 'rgba(184,134,11,.08)',
+            border: `1px solid ${listo ? 'var(--zaris-orange)' : 'rgba(184,134,11,.4)'}`,
+          }}>
+            <Send size={20} strokeWidth={1.5} color={listo ? 'var(--zaris-orange)' : 'var(--fg-2)'} />
+            <div style={{ flex: 1, minWidth: 240 }}>
+              <strong style={{ display: 'block', fontSize: 14, color: 'var(--fg-1)' }}>
+                {listo ? 'Listo para publicar' : 'Todavía no se puede publicar'}
+              </strong>
+              <span style={{ fontSize: 13, color: 'var(--fg-2)' }}>
+                {listo
+                  ? 'Este modelo está en borrador. Al publicarlo va a aparecer en «Nuevo trámite» para que los operadores lo usen.'
+                  : `En la pestaña Estados falta definir ${faltan.join(' y ')} antes de poder publicar.`}
+              </span>
+            </div>
+            <Button variant="accent" icon={<Send size={14} />} onClick={handlePublicar} disabled={!listo}>
+              Publicar y habilitar
+            </Button>
+          </div>
+        )
+      })()}
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 8, borderBottom: '1px solid var(--border-primary)' }}>
