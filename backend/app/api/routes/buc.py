@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
+from app.core.auth import get_current_user
 from app.models.buc import (
     Usuario, Nacionalidad, TipoRepresentacion, Actividad,
     Ciudadano, Empresa, CiudadanoEmpresa
@@ -110,7 +111,11 @@ async def buscar_subareas(
 
 
 @router.post("/usuarios", response_model=UsuarioOut, status_code=201)
-async def crear_usuario(data: UsuarioCreate, db: AsyncSession = Depends(get_db)):
+async def crear_usuario(
+    data: UsuarioCreate,
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
     """Alta de usuario con contraseña hasheada (bcrypt)."""
     existing = await db.execute(select(Usuario).where(Usuario.username == data.username))
     if existing.scalars().first():
@@ -128,7 +133,12 @@ async def crear_usuario(data: UsuarioCreate, db: AsyncSession = Depends(get_db))
 
 
 @router.put("/usuarios/{id}", response_model=UsuarioOut)
-async def modificar_usuario(id: int, data: UsuarioUpdate, db: AsyncSession = Depends(get_db)):
+async def modificar_usuario(
+    id: int,
+    data: UsuarioUpdate,
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(get_current_user),
+):
     """Modificar datos de usuario. Si se envía 'password', se re-hashea."""
     result = await db.execute(select(Usuario).where(Usuario.id_usuario == id))
     usuario = result.scalars().first()
@@ -154,7 +164,8 @@ async def modificar_usuario(id: int, data: UsuarioUpdate, db: AsyncSession = Dep
 async def cambiar_estado_usuario(
     id: int,
     activo: bool = Query(..., description="true para reactivar, false para dar de baja"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(get_current_user),
 ):
     """Dar de alta o de baja a un usuario (soft delete)."""
     result = await db.execute(select(Usuario).where(Usuario.id_usuario == id))
@@ -313,7 +324,8 @@ async def verificar_duplicado_ciudadano(
 @router.post("/ciudadanos", response_model=CiudadanoOut, status_code=201)
 async def crear_ciudadano(
     data: CiudadanoCreate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(get_current_user),
 ):
     """Alta de ciudadano."""
     existing = await db.execute(
@@ -365,7 +377,8 @@ async def obtener_ciudadano(id: int, db: AsyncSession = Depends(get_db)):
 async def modificar_ciudadano(
     id: int,
     data: CiudadanoUpdate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(get_current_user),
 ):
     """Modificar ciudadano existente (update parcial)."""
     result = await db.execute(
@@ -394,7 +407,8 @@ async def modificar_ciudadano(
 async def cambiar_estado_ciudadano(
     id: int,
     activo: bool = Query(..., description="true para reactivar, false para dar de baja"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(get_current_user),
 ):
     """Dar de baja o reactivar un ciudadano (soft delete)."""
     result = await db.execute(select(Ciudadano).where(Ciudadano.id_ciudadano == id))
@@ -522,7 +536,8 @@ async def verificar_duplicado_empresa(
 @router.post("/empresas", response_model=EmpresaOut, status_code=201)
 async def crear_empresa(
     data: EmpresaCreate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(get_current_user),
 ):
     """Alta de empresa."""
     existing = await db.execute(
@@ -561,7 +576,8 @@ async def obtener_empresa(id: int, db: AsyncSession = Depends(get_db)):
 async def modificar_empresa(
     id: int,
     data: EmpresaUpdate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(get_current_user),
 ):
     """Modificar empresa existente."""
     result = await db.execute(
@@ -590,7 +606,8 @@ async def modificar_empresa(
 async def cambiar_estado_empresa(
     id: int,
     activo: bool = Query(..., description="true para reactivar, false para dar de baja"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(get_current_user),
 ):
     """Dar de baja o reactivar una empresa (soft delete)."""
     result = await db.execute(select(Empresa).where(Empresa.id_empresa == id))
@@ -612,7 +629,8 @@ async def cambiar_estado_empresa(
 @router.post("/ciudadano-empresa", response_model=CiudadanoEmpresaOut, status_code=201)
 async def crear_relacion_ciudadano_empresa(
     data: CiudadanoEmpresaCreate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(get_current_user),
 ):
     """Crear relación ciudadano-empresa con tipo de representación."""
     cid = await db.execute(
