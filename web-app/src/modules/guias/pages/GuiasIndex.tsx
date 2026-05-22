@@ -37,11 +37,11 @@ const GUIAS: Guia[] = [
   },
   {
     titulo: 'TRÁMITES (CREACIÓN)',
-    descripcion: 'Cómo el administrador configura tipos de trámite custom: estados, transiciones, campos, documentos requeridos y versionado.',
+    descripcion: 'Cómo crear y publicar tipos de trámite custom: estados, transiciones, campos, documentos requeridos, versionado y leyenda Sistema/Custom.',
     icon: Settings,
     htmlName: 'manual_admin_tramites.html',
     audiencia: 'Admin o Supervisor',
-    tags: ['Configuración', '11 capturas', '11 secciones'],
+    tags: ['Configuración', '12 capturas', '11 secciones'],
   },
 ]
 
