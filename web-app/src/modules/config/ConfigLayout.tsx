@@ -8,17 +8,20 @@ function goInicio(e: React.MouseEvent) {
   shellGoInicio()
 }
 
+// Paths ABSOLUTOS: `to="permisos"` (relativo) se resolvería contra la ruta
+// actual completa (ej. estando en /config/identidad daría /config/identidad/permisos,
+// ruta inexistente → catch-all '*' → dashboard). Con '/config/...' siempre apunta bien.
 const TABS = [
-  { to: 'identidad', label: 'Identidad' },
-  { to: 'permisos',  label: 'Permisos por usuario' },
-  { to: 'modulos',   label: 'Catálogo de módulos' },
-  { to: 'sistema',   label: 'Sistema' },
+  { to: '/config/identidad', slug: 'identidad', label: 'Identidad' },
+  { to: '/config/permisos',  slug: 'permisos',  label: 'Permisos por usuario' },
+  { to: '/config/modulos',   slug: 'modulos',   label: 'Catálogo de módulos' },
+  { to: '/config/sistema',   slug: 'sistema',   label: 'Sistema' },
 ]
 
 export function ConfigLayout({ children }: { children: ReactNode }) {
   const location = useLocation()
   const partes = location.pathname.split('/').filter(Boolean)
-  const subtitulo = TABS.find((t) => partes[1] === t.to)?.label
+  const subtitulo = TABS.find((t) => partes[1] === t.slug)?.label
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 1400, margin: '0 auto', width: '100%', padding: '0 8px' }}>
