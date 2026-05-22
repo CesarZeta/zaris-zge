@@ -180,8 +180,8 @@ async def seed_tipo(conn, codigo, nombre, prefijo, iniciadores, permite_rep, ico
         r = await conn.execute(text("""
             INSERT INTO tipo_tramite (
                 codigo, nombre, prefijo, iniciadores_permitidos, permite_representante,
-                icono, color, id_municipio, activo
-            ) VALUES (:c, :n, :p, :i, :r, :ico, :col, :m, TRUE)
+                icono, color, id_municipio, activo, es_sistema
+            ) VALUES (:c, :n, :p, :i, :r, :ico, :col, :m, TRUE, TRUE)
             RETURNING id_tipo_tramite
         """), {
             "c": codigo, "n": nombre, "p": prefijo,
