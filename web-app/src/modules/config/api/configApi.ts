@@ -16,9 +16,11 @@ export const listarModulos = () =>
 export const actualizarModulo = (codigo: string, min_nivel_acceso: number) =>
   api.put<ModuloCatalogo>(`${PERMS}/modulos/${encodeURIComponent(codigo)}`, { min_nivel_acceso })
 
-// Permisos por usuario
+// Permisos por usuario.
+// El handler genérico de admin_tablas (GET /{tabla}) devuelve todos los usuarios
+// activos sin paginar — no acepta limit/offset, así que no los mandamos.
 export const listarUsuarios = () =>
-  api.get<UsuarioLite[]>(`${ADMIN}/usuarios`, { params: { limit: 200 } })
+  api.get<UsuarioLite[]>(`${ADMIN}/usuarios`)
 
 export const verPermisosUsuario = (id_usuario: number) =>
   api.get<UsuarioModulosResponse>(`${PERMS}/usuarios/${id_usuario}/modulos`)
@@ -30,13 +32,15 @@ export const setPermisosUsuario = (id_usuario: number, overrides: OverrideIn[]) 
 const IDENTIDAD = '/api/v1/config/identidad'
 
 export interface IdentidadValues {
+  // `app_nombre` ('GESTION ESTADO') es interno del producto — el backend lo
+  // devuelve por compat con el shell vanilla pero NO es editable (§14). Por eso
+  // no figura en IdentidadUpdate: el PUT lo ignoraría.
   app_nombre: string
   municipio_nombre: string
   municipio_logo_url: string
 }
 
 export interface IdentidadUpdate {
-  app_nombre?: string
   municipio_nombre?: string
   municipio_logo_url?: string
 }
