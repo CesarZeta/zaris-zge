@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZARIS · QA Reclamos y Órdenes de Trabajo</title>
+<style>
+  :root {
+    --zaris-orange: #f54e00;
+    --zaris-cream: #f2f1ed;
+    --surface-100: #f7f7f4;
+    --surface-300: #ebeae5;
+    --surface-400: #e6e5e0;
+    --fg-1: #26251e;
+    --fg-2: rgba(38,37,30,.7);
+    --fg-3: rgba(38,37,30,.55);
+    --border-primary: rgba(38,37,30,.1);
+    --border-medium: rgba(38,37,30,.2);
+    --color-error: #cf2d56;
+    --color-success: #1f8a65;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--zaris-cream);
+    color: var(--fg-1);
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    line-height: 1.55;
+    font-size: 15px;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 32px 24px 80px; }
+  .hero {
+    border-left: 5px solid var(--zaris-orange);
+    background: var(--surface-100);
+    padding: 24px 28px;
+    border-radius: 0 12px 12px 0;
+    margin-bottom: 28px;
+  }
+  .tag {
+    display: inline-block;
+    font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--zaris-orange); font-weight: 700; margin-bottom: 6px;
+  }
+  h1 { margin: 0 0 8px; font-size: 1.9rem; }
+  h2 {
+    margin: 40px 0 14px; font-size: 1.35rem;
+    border-bottom: 2px solid var(--border-primary); padding-bottom: 6px;
+  }
+  h3 { margin: 26px 0 10px; font-size: 1.1rem; color: var(--fg-1); }
+  p, li { color: var(--fg-2); }
+  a { color: var(--zaris-orange); }
+  code {
+    background: var(--surface-400); padding: 1px 6px; border-radius: 4px;
+    font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.85em;
+    color: var(--fg-1);
+  }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 0.86rem; }
+  th, td { border: 1px solid var(--border-primary); padding: 7px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--surface-300); font-weight: 700; color: var(--fg-1); }
+  tr:nth-child(even) td { background: var(--surface-100); }
+  .nivel { font-weight: 700; }
+  .n1 { color: #6a1b9a; } .n2 { color: var(--zaris-orange); }
+  .n3 { color: var(--color-success); } .n4 { color: var(--fg-3); }
+  blockquote {
+    margin: 14px 0; padding: 12px 16px; border-radius: 8px;
+    border-left: 4px solid; font-size: 0.9rem;
+  }
+  blockquote.info { background: #eaf2fb; border-color: #2f6fb0; }
+  blockquote.warn { background: #fef6e7; border-color: #f57f17; }
+  blockquote.danger { background: #fdecef; border-color: var(--color-error); }
+  blockquote p { color: var(--fg-1); margin: 4px 0; }
+  .badge {
+    display: inline-block; padding: 1px 8px; border-radius: 999px;
+    font-size: 0.72rem; font-weight: 700; white-space: nowrap;
+  }
+  .b-sinasignar { background: #fdecef; color: #c62828; }
+  .b-gestion { background: #e6f4ef; color: var(--color-success); }
+  .b-espera { background: #fef6e7; color: #f57f17; }
+  .b-auditoria { background: #f3e9f7; color: #6a1b9a; }
+  .b-resuelto { background: #e6f4ef; color: #1f8a65; }
+  .b-cancelado { background: var(--surface-400); color: var(--fg-2); }
+  .flow {
+    background: var(--surface-100); border: 1px solid var(--border-primary);
+    border-radius: 8px; padding: 12px 16px; font-family: "JetBrains Mono", monospace;
+    font-size: 0.82rem; color: var(--fg-1); overflow-x: auto; white-space: nowrap;
+  }
+  .caso th:first-child { width: 36px; }
+  .caso .res { width: 90px; text-align: center; }
+  .res-cell { text-align: center; font-weight: 700; color: var(--fg-3); }
+  .toc { background: var(--surface-100); border: 1px solid var(--border-primary); border-radius: 10px; padding: 16px 22px; margin-bottom: 24px; }
+  .toc ol { margin: 6px 0; padding-left: 22px; }
+  .toc a { text-decoration: none; }
+  .footer { margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--border-primary); color: var(--fg-3); font-size: 0.8rem; text-align: center; }
+  .kbd { background: var(--surface-400); border: 1px solid var(--border-medium); border-radius: 4px; padding: 0 5px; font-family: monospace; font-size: 0.8em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <span class="tag">Plan de pruebas QA · Producción</span>
+    <h1>Reclamos y Órdenes de Trabajo</h1>
+    <p style="color:var(--fg-1);margin:0;">Guía para el tester humano. Cada caso tiene pasos concretos, el resultado esperado y una columna para marcar <strong>PASS / FAIL</strong>. Anotá número de reclamo/OT generado y captura de cualquier comportamiento raro.</p>
+  </div>
+
+  <div class="toc">
+    <strong>Índice</strong>
+    <ol>
+      <li><a href="#entorno">Entorno y acceso</a></li>
+      <li><a href="#usuarios">Usuarios de prueba (por rol)</a></li>
+      <li><a href="#ciudadanos">Ciudadanos y tipos para usar</a></li>
+      <li><a href="#flujo">El flujo en una imagen</a></li>
+      <li><a href="#reclamos">Casos · Reclamos</a></li>
+      <li><a href="#ot">Casos · Órdenes de Trabajo</a></li>
+      <li><a href="#permisos">Casos · Permisos y seguridad</a></li>
+      <li><a href="#preguntas">Preguntas guía para el tester</a></li>
+      <li><a href="#glosario">Glosario de estados</a></li>
+    </ol>
+  </div>
+
+  <h2 id="entorno">1 · Entorno y acceso</h2>
+  <table>
+    <tr><th>Qué</th><th>Dónde</th></tr>
+    <tr><td>Entrada del producto</td><td><a href="https://zge.zaris.com.ar/index.html">https://zge.zaris.com.ar/index.html</a></td></tr>
+    <tr><td>Login</td><td>Email del usuario + password <code>123456</code> (ver tabla abajo)</td></tr>
+    <tr><td>Reclamos</td><td>Sidebar → <strong>reclamos</strong></td></tr>
+    <tr><td>Órdenes de trabajo</td><td>Sidebar → <strong>OT</strong> (la mesa que ves depende de tu rol)</td></tr>
+  </table>
+  <blockquote class="danger"><p><strong>⚠ Es PRODUCCIÓN.</strong> Los reclamos y OT que crees quedan en datos reales. Usá descripciones claras tipo <code>[QA] prueba tester — borrar</code> para identificarlos. Avisá al final qué números generaste así se limpian.</p></blockquote>
+
+  <h2 id="usuarios">2 · Usuarios de prueba (por rol)</h2>
+  <p>Todos con password <code>123456</code>. El <strong>nivel</strong> define qué puede hacer cada uno. La <strong>subárea</strong> importa para los casos de cierre directo y de "no auditar lo propio".</p>
+
+  <h3>Para Reclamos y asignación de OT (supervisores / admin)</h3>
+  <table>
+    <tr><th>Email</th><th>Nombre</th><th>Nivel</th><th>Subárea</th><th>Notas</th></tr>
+    <tr><td><code>ciudadanovl@municipio.gob.ar</code></td><td>Cesar Zeta</td><td class="nivel n1">1 · Admin</td><td>Habilitación Comercial</td><td>Ve todo. Es agente <strong>auditor</strong> (agente 1).</td></tr>
+    <tr><td><code>roymanos@municipio.gob.ar</code></td><td>Roy Manoss</td><td class="nivel n1">1 · Admin</td><td>Inspecciones</td><td>Admin sin agente vinculado.</td></tr>
+    <tr><td><code>pabloyacob@municipio.gob.ar</code></td><td>Pablo Yacob</td><td class="nivel n2">2 · Supervisor</td><td>Obras Municipales - Pluviales</td><td>Supervisor con agente (puede asignar y agendar OT).</td></tr>
+    <tr><td><code>lourdesacosta@municipio.gob.ar</code></td><td>Lourdes Acosta</td><td class="nivel n2">2 · Supervisor</td><td>Inconveniente con olores/plagas</td><td>Supervisor con agente.</td></tr>
+    <tr><td><code>agustinybarra@municipio.gob.ar</code></td><td>Agustín Ybarra</td><td class="nivel n2">2 · Supervisor</td><td>Mantenimiento general</td><td>Supervisor con agente.</td></tr>
+  </table>
+
+  <h3>Para vista Agente de OT (operadores con agente)</h3>
+  <table>
+    <tr><th>Email</th><th>Nombre</th><th>Nivel</th><th>Subárea</th><th>Notas</th></tr>
+    <tr><td><code>mgonzalez@municipio.gob.ar</code></td><td>María González</td><td class="nivel n3">3 · Operador</td><td>Inspecciones</td><td>Es agente <strong>auditor</strong> (agente 3) → sirve también para Mesa de Auditoría.</td></tr>
+    <tr><td><code>lmartinez@municipio.gob.ar</code></td><td>Laura Martínez</td><td class="nivel n3">3 · Operador</td><td>Censos</td><td>Operador con agente (agente 2).</td></tr>
+    <tr><td><code>miguelzorrilla@municipio.gob.ar</code></td><td>Miguel Zorrilla</td><td class="nivel n3">3 · Operador</td><td>Control de incidentes</td><td>Operador con agente.</td></tr>
+    <tr><td><code>angelwolfram@municipio.gob.ar</code></td><td>Angel Wolfram</td><td class="nivel n3">3 · Operador</td><td>Alumbrado Público</td><td>Operador con agente.</td></tr>
+  </table>
+
+  <h3>Para probar el bloqueo por rol (consultor)</h3>
+  <table>
+    <tr><th>Email</th><th>Nombre</th><th>Nivel</th><th>Notas</th></tr>
+    <tr><td><code>mariakramer@municipio.gob.ar</code></td><td>María Kramer</td><td class="nivel n4">4 · Consultor</td><td>No debería poder asignar OT ni crear/editar. Solo consultar.</td></tr>
+  </table>
+
+  <blockquote class="info"><p><strong>Auditores en producción:</strong> solo <code>ciudadanovl@</code> (admin) y <code>mgonzalez@</code> (operador). Cualquier otro usuario que entre a la Mesa de Auditoría debería ver "Acceso restringido" (salvo admin, que pasa siempre).</p></blockquote>
+
+  <h2 id="ciudadanos">3 · Ciudadanos y tipos para usar</h2>
+  <p>Al crear un reclamo hay que elegir un <strong>ciudadano</strong> de la base (buscar por DNI, apellido o CUIL) y un <strong>tipo de reclamo</strong>.</p>
+
+  <h3>Ciudadanos existentes (buscar por DNI o apellido)</h3>
+  <table>
+    <tr><th>Apellido, Nombre</th><th>DNI</th></tr>
+    <tr><td>Pérez, Juan</td><td><code>12345678</code></td></tr>
+    <tr><td>Garrapatelli, Marcelo Ricardo</td><td><code>11222333</code></td></tr>
+    <tr><td>Rioboo, Nahiara Hada Luz</td><td><code>43156565</code></td></tr>
+    <tr><td>Sobrado Solá, Romina</td><td><code>30056413</code></td></tr>
+    <tr><td>Cardiello, Maria Irma</td><td><code>35960669</code></td></tr>
+  </table>
+
+  <h3>Tipos de reclamo útiles para los casos de cierre directo</h3>
+  <p>El "cierre directo sin OT" solo lo puede hacer un supervisor/admin <em>cuya subárea coincida con la del tipo de reclamo</em>. Combinaciones que funcionan:</p>
+  <table>
+    <tr><th>Tipo de reclamo</th><th>Subárea del tipo</th><th>Quién puede cerrarlo directo</th></tr>
+    <tr><td>Acumulación de agua / agua estancada</td><td>Obras Municipales - Pluviales</td><td><code>pabloyacob@</code> (su subárea coincide) ✓</td></tr>
+    <tr><td>Hundimiento de calzada</td><td>Obras Municipales - Pluviales</td><td><code>pabloyacob@</code> ✓</td></tr>
+    <tr><td>Columna en mal estado / sin mantenimiento</td><td>Alumbrado Público</td><td>Solo admin, o un supervisor de Alumbrado (ninguno de la lista) → buen caso para probar el <strong>403</strong>.</td></tr>
+  </table>
+
+  <h2 id="flujo">4 · El flujo en una imagen</h2>
+  <div class="flow">[Vecino] → REC creado <span class="badge b-sinasignar">Sin asignar</span> → Supervisor crea OT → <span class="badge b-gestion">En gestión</span> → Agente trabaja + sube evidencia → cierra OT → <span class="badge b-auditoria">En auditoría</span> → Auditor aprueba → <span class="badge b-resuelto">Resuelto</span> &nbsp;(o rechaza → nueva OT)</div>
+  <p style="margin-top:10px;">Atajo: un supervisor de la subárea correcta puede pasar <span class="badge b-sinasignar">Sin asignar</span> directo a <span class="badge b-resuelto">Resuelto</span> <strong>si el reclamo no tiene OT</strong> (cierre directo).</p>
+
+  <h2 id="reclamos">5 · Casos · Reclamos</h2>
+  <p>Logueate como <code>pabloyacob@</code> (supervisor) salvo que el caso diga otra cosa.</p>
+  <table class="caso">
+    <tr><th>#</th><th>Caso / pasos</th><th>Resultado esperado</th><th class="res">PASS/FAIL</th></tr>
+    <tr><td>R1</td><td>Crear reclamo: ciudadano DNI <code>12345678</code>, tipo "Acumulación de agua", prioridad Media, una dirección, descripción <code>[QA] prueba — borrar</code>. Guardar.</td><td>Se crea con número <code>REC-2026-XXXXXX</code> y estado <span class="badge b-sinasignar">Sin asignar</span>. Anotá el número.</td><td class="res-cell">—</td></tr>
+    <tr><td>R2</td><td>Buscar el ciudadano por <strong>apellido</strong> "Pérez" en el alta. Luego probar buscar por CUIL <code>20123456786</code>.</td><td>El buscador devuelve resultados con debounce (escribir y esperar ~0.3s). Encuentra a la persona por ambos criterios.</td><td class="res-cell">—</td></tr>
+    <tr><td>R3</td><td>Probar adjuntar 1 o 2 fotos (JPG/PNG) al crear el reclamo.</td><td>Las imágenes suben y se ven en la galería del detalle al abrirlo.</td><td class="res-cell">—</td></tr>
+    <tr><td>R4</td><td>Abrir el detalle del reclamo R1 y editar solo la <strong>descripción / observaciones</strong>. Guardar.</td><td>Guarda OK. En el historial (timeline) aparece una entrada "Reclamo editado".</td><td class="res-cell">—</td></tr>
+    <tr><td>R5</td><td>Probar el filtro de la bandeja: por estado <span class="badge b-sinasignar">Sin asignar</span>, por prioridad, y por texto libre.</td><td>La lista se filtra correctamente. Las stats/conteos de arriba coinciden.</td><td class="res-cell">—</td></tr>
+    <tr><td>R6</td><td><strong>Cierre directo OK:</strong> logueado como <code>pabloyacob@</code>, en el reclamo R1 (tipo de Pluviales, su subárea), abrir "Cambiar estado". Elegir <span class="badge b-resuelto">Resuelto</span> y confirmar el pop-up.</td><td>Se cierra a <span class="badge b-resuelto">Resuelto</span> sin necesidad de OT. Historial registra el cierre.</td><td class="res-cell">—</td></tr>
+    <tr><td>R7</td><td><strong>Cierre directo bloqueado (403):</strong> crear un reclamo nuevo tipo "Columna en mal estado" (subárea Alumbrado, distinta a la de Pablo). Como <code>pabloyacob@</code> intentar Resuelto directo.</td><td>El sistema lo rechaza con mensaje claro de que no pertenece a la subárea. <strong>No</strong> se cierra.</td><td class="res-cell">—</td></tr>
+    <tr><td>R8</td><td><strong>Transición inválida:</strong> en un reclamo <span class="badge b-sinasignar">Sin asignar</span>, abrir "Cambiar estado".</td><td>El dropdown solo ofrece estados alcanzables (En gestión / Cancelar). NO ofrece saltar a En espera o En auditoría.</td><td class="res-cell">—</td></tr>
+    <tr><td>R9</td><td><strong>Cancelar reclamo:</strong> usar la acción Cancelar e intentar guardar SIN motivo, luego con motivo.</td><td>Sin motivo: lo rechaza. Con motivo: pasa a <span class="badge b-cancelado">Cancelado</span>.</td><td class="res-cell">—</td></tr>
+    <tr><td>R10</td><td><strong>Subreclamo:</strong> en un reclamo, crear un subreclamo. Verificar el padre.</td><td>El padre pasa a <span class="badge b-espera">En espera</span>. No se permite un sub-sub-reclamo (máx 1 nivel).</td><td class="res-cell">—</td></tr>
+    <tr><td>R11</td><td><strong>Estado final no editable:</strong> abrir el reclamo ya <span class="badge b-resuelto">Resuelto</span> de R6 e intentar cambiar estado o editar campos.</td><td>Muestra que no admite cambios / campos bloqueados.</td><td class="res-cell">—</td></tr>
+    <tr><td>R12</td><td><strong>Padre con hijos abiertos:</strong> con un reclamo que tiene un subreclamo activo (no resuelto), intentar pasar el padre a Resuelto o En auditoría.</td><td>Se bloquea enumerando los subreclamos pendientes.</td><td class="res-cell">—</td></tr>
+  </table>
+
+  <h2 id="ot">6 · Casos · Órdenes de Trabajo</h2>
+
+  <h3>Mesa Supervisor — crear y agendar (login <code>pabloyacob@</code>)</h3>
+  <table class="caso">
+    <tr><th>#</th><th>Caso / pasos</th><th>Resultado esperado</th><th class="res">PASS/FAIL</th></tr>
+    <tr><td>O1</td><td>Entrar a OT. Verificar que aterriza en la <strong>Mesa Supervisor</strong> (no en Agente).</td><td>Se ve la bandeja de reclamos para asignar.</td><td class="res-cell">—</td></tr>
+    <tr><td>O2</td><td>Tomar un reclamo <span class="badge b-sinasignar">Sin asignar</span>, click "Planificar". Elegir un agente, una fecha, y un <strong>slot libre</strong>. Botón <strong>"Crear OT y agendar"</strong>.</td><td>Se crea la OT (<code>OT-2026-XXXXXX</code>), el reclamo pasa a <span class="badge b-gestion">En gestión</span>, y la ocupación aparece en la grilla de Agenda del agente.</td><td class="res-cell">—</td></tr>
+    <tr><td>O3</td><td>Crear otra OT pero con <strong>"Crear OT sin agendar"</strong>.</td><td>La OT se crea, el reclamo pasa a En gestión, pero la OT queda marcada como NO agendada en la bandeja.</td><td class="res-cell">—</td></tr>
+    <tr><td>O4</td><td>Asignación en lote: seleccionar varios reclamos con checkbox y asignarlos juntos.</td><td>Todas las OT se crean. (En lote no se agenda, es asignación simple.)</td><td class="res-cell">—</td></tr>
+    <tr><td>O5</td><td>Reasignar: en la pestaña "Reasignar", mover una OT a otro agente.</td><td>La OT cambia de responsable.</td><td class="res-cell">—</td></tr>
+  </table>
+
+  <h3>Mesa Agente — trabajar la OT (login <code>mgonzalez@</code> u otro operador con agente)</h3>
+  <table class="caso">
+    <tr><th>#</th><th>Caso / pasos</th><th>Resultado esperado</th><th class="res">PASS/FAIL</th></tr>
+    <tr><td>A1</td><td>Entrar a OT. Verificar que aterriza en la <strong>Mesa Agente</strong> y se ven las OT propias.</td><td>Lista de OT asignadas al agente logueado.</td><td class="res-cell">—</td></tr>
+    <tr><td>A2</td><td>Tomar una OT sin asignar de su equipo (si hay).</td><td>La OT queda asignada al agente.</td><td class="res-cell">—</td></tr>
+    <tr><td>A3</td><td>Abrir el detalle (drawer) de una OT propia. En "EVIDENCIA DE LA OT" subir una foto.</td><td>La imagen sube y aparece en la galería de evidencia (separada de los adjuntos del reclamo).</td><td class="res-cell">—</td></tr>
+    <tr><td>A4</td><td>Cambiar el estado de la OT (En gestión → En espera → Terminada según corresponda).</td><td>Los estados cambian respetando las opciones ofrecidas.</td><td class="res-cell">—</td></tr>
+    <tr><td>A5</td><td>Cerrar/terminar la OT operativa.</td><td>El reclamo asociado pasa a <span class="badge b-auditoria">En auditoría</span>.</td><td class="res-cell">—</td></tr>
+  </table>
+
+  <h3>Mesa Auditoría (login <code>mgonzalez@</code> auditor, o <code>ciudadanovl@</code> admin)</h3>
+  <table class="caso">
+    <tr><th>#</th><th>Caso / pasos</th><th>Resultado esperado</th><th class="res">PASS/FAIL</th></tr>
+    <tr><td>U1</td><td>Entrar a OT → pestaña/Mesa Auditoría con un usuario auditor.</td><td>Se ven OT en auditoría. (Un usuario NO auditor y no admin debería ver "Acceso restringido".)</td><td class="res-cell">—</td></tr>
+    <tr><td>U2</td><td>Aprobar una OT en auditoría.</td><td>El reclamo pasa a <span class="badge b-resuelto">Resuelto</span>.</td><td class="res-cell">—</td></tr>
+    <tr><td>U3</td><td>Rechazar una OT en auditoría.</td><td>Se genera una nueva OT Pendiente vinculada al origen; el reclamo vuelve a gestión.</td><td class="res-cell">—</td></tr>
+    <tr><td>U4</td><td><strong>No auditar lo propio:</strong> con <code>mgonzalez@</code>, verificar que NO aparezcan en su mesa de auditoría las OT operativas que él mismo trabajó.</td><td>Esas OT no figuran para auditar.</td><td class="res-cell">—</td></tr>
+  </table>
+
+  <h2 id="permisos">7 · Casos · Permisos y seguridad</h2>
+  <table class="caso">
+    <tr><th>#</th><th>Caso / pasos</th><th>Resultado esperado</th><th class="res">PASS/FAIL</th></tr>
+    <tr><td>P1</td><td>Loguearse como <code>mariakramer@</code> (consultor, nivel 4). Mirar el sidebar.</td><td>No ve ítems que no le corresponden. Reclamos solo lectura si aparece.</td><td class="res-cell">—</td></tr>
+    <tr><td>P2</td><td>Como consultor o operador, intentar entrar a la Mesa Supervisor de OT (deep-link <code>#/ot/supervisor</code>).</td><td>Muestra "Acceso restringido"; no puede crear ni asignar OT.</td><td class="res-cell">—</td></tr>
+    <tr><td>P3</td><td>Como operador con agente, verificar que SÍ aterriza en su Mesa de Agente al entrar a OT.</td><td>Aterriza en Agente, no en Supervisor.</td><td class="res-cell">—</td></tr>
+    <tr><td>P4</td><td>Cerrar sesión desde el menú de usuario (arriba a la derecha) y verificar que vuelve al login.</td><td>Cierra sesión y redirige a login. No se puede volver con el botón "atrás".</td><td class="res-cell">—</td></tr>
+    <tr><td>P5</td><td>Loguearse con email correcto pero password incorrecta.</td><td>Mensaje de error claro, no entra.</td><td class="res-cell">—</td></tr>
+  </table>
+
+  <h2 id="preguntas">8 · Preguntas guía para el tester</h2>
+  <p>Respondé estas mientras probás. Sirven para detectar problemas de usabilidad además de bugs:</p>
+  <ul>
+    <li>¿El número de reclamo / OT se ve claramente después de crearlo?</li>
+    <li>Al crear un reclamo, ¿es evidente que primero hay que elegir un ciudadano de la base?</li>
+    <li>¿El buscador de ciudadanos responde rápido? ¿Encontrás a la persona por DNI <em>y</em> por apellido?</li>
+    <li>Cuando un cambio de estado no está permitido, ¿el mensaje explica <em>por qué</em> o solo dice "error"?</li>
+    <li>En el cierre directo bloqueado (R7), ¿el mensaje deja claro que es un tema de subárea?</li>
+    <li>¿Se entiende la diferencia entre los adjuntos del <em>reclamo</em> y la <em>evidencia de la OT</em>?</li>
+    <li>¿La grilla de agenda muestra realmente la OT recién agendada en el horario elegido?</li>
+    <li>¿Aparece alguna pantalla rota, sidebar duplicado, o página en blanco al navegar entre módulos?</li>
+    <li>¿Llega notificación (campana arriba) cuando algo cae en tu bandeja?</li>
+    <li>¿Algo tardó demasiado en cargar (más de ~5 segundos)?</li>
+  </ul>
+
+  <h2 id="glosario">9 · Glosario de estados</h2>
+  <h3>Reclamos</h3>
+  <table>
+    <tr><th>Estado</th><th>Qué significa</th></tr>
+    <tr><td><span class="badge b-sinasignar">Sin asignar</span></td><td>Ingresado, sin OT.</td></tr>
+    <tr><td><span class="badge b-gestion">En gestión</span></td><td>OT generada y en ejecución.</td></tr>
+    <tr><td><span class="badge b-espera">En espera</span></td><td>Bloqueado por un subreclamo activo.</td></tr>
+    <tr><td><span class="badge b-auditoria">En auditoría</span></td><td>OT operativa cerrada, pendiente de auditoría.</td></tr>
+    <tr><td><span class="badge b-resuelto">Resuelto</span> / <span class="badge b-cancelado">Cancelado</span></td><td>Estados finales (no se editan).</td></tr>
+  </table>
+  <h3>Transiciones permitidas (qué puede ofrecer el dropdown)</h3>
+  <table>
+    <tr><th>Desde</th><th>Puede ir a</th></tr>
+    <tr><td>Sin asignar</td><td>En gestión, Cancelado <span style="color:var(--fg-3)">(+ Resuelto si cierre directo)</span></td></tr>
+    <tr><td>En gestión</td><td>En espera, En auditoría, Resuelto, Cancelado</td></tr>
+    <tr><td>En espera</td><td>En gestión, En auditoría, Cancelado</td></tr>
+    <tr><td>En auditoría</td><td>En gestión, Resuelto, Cancelado</td></tr>
+    <tr><td>Resuelto / Cancelado</td><td>(final — ninguno)</td></tr>
+  </table>
+
+  <div class="footer">
+    Plan de pruebas QA · ZARIS · Gestión Estatal · Generado 2026-05-22 · Datos de usuarios reales de producción
+  </div>
+
+</div>
+</body>
+</html>
