@@ -684,6 +684,12 @@ PUT  /api/v1/ot/{id_ot}/rechazar           → auditor rechaza OT → nueva OT P
 
 **Integridad padre/hijo (hallazgo QA #1).** `PUT /{id}/estado` a `Resuelto` o `En auditoría` se bloquea con 422 si el reclamo (que no es subreclamo) tiene subreclamos activos con estado distinto a `Resuelto`/`Cancelado`. El mensaje enumera los pendientes. Antes se podía cerrar el padre dejando hijos huérfanos activos.
 
+**Cierre directo sin OT (desde 2026-05-22).** Excepción al grafo FSM: `Sin asignar → Resuelto` (que el grafo normal NO permite) se habilita SOLO cuando se cumplen las 3 condiciones (helper `_validar_cierre_directo_sin_ot` en `reclamos.py`):
+1. el usuario es **supervisor o admin** (`nivel_acceso ≤ 2`);
+2. el reclamo **no tiene OT activa** (`ordenes_trabajo WHERE id_reclamo=:id AND activo` vacío → sino 422);
+3. la **subárea del usuario** (`usuarios.id_subarea`, mig 55 §21) **== subárea del tipo de reclamo** (`tipo_reclamo.id_subarea`, derivada vía `reclamos.id_tipo_reclamo`; NO usar `reclamos.id_subarea` que puede ser NULL). Si no coincide → 403.
+Caso de uso: reclamo que se resuelve sin generar OT (consulta, duplicado, sin info). El frontend (`CambiarEstadoModal.tsx`) ofrece "Resuelto" desde "Sin asignar" solo a `hasPermission(2)` y muestra un pop-up de confirmación; **el backend es la fuente de verdad de la subárea** (el modal no la conoce, así que un supervisor de otra subárea ve la opción pero recibe 403 con mensaje claro al confirmar). Es una **3ª rama** del handler `cambiar_estado`, exenta del chequeo del grafo (`es_cierre_directo` se valida antes del `elif` del grafo).
+
 ### Configuración general
 
 | Clave | Tipo | Descripción |
@@ -911,6 +917,14 @@ Resultado prod: 19 reclamos legacy de "Servicios Públicos" sin tilde (id=9, ya 
 ### Migración 54 — Adjuntos de OT (`backend/migrations/54_ot_adjuntos.sql`)
 
 **Aplicada en local y prod al 2026-05-20.** Crea `ot_adjuntos` (estándar §10, FK `id_ot` → `ordenes_trabajo(id_ot) ON DELETE CASCADE`, índice `idx_ot_adjuntos_ot`). Espejo de `reclamo_adjuntos`. Cierra el hallazgo QA Royman #4 (adjuntos en OT diferido en commit `2110263`). Idempotente (`CREATE TABLE IF NOT EXISTS`). Ver §34 sección "Adjuntos de OT".
+
+### Migración 55 — usuarios.id_subarea + es_externo (`backend/migrations/55_usuarios_subarea_externo.sql`)
+
+**Aplicada en local y prod al 2026-05-22.** Agrega `usuarios.id_subarea INTEGER` (FK lógica → `subarea.id_subarea`, sin FK física, índice `idx_usuarios_subarea`) y `usuarios.es_externo BOOLEAN NOT NULL DEFAULT FALSE`. Idempotente (`ADD COLUMN IF NOT EXISTS`).
+
+- **Subárea obligatoria salvo `es_externo`**: lo enforce el backend (`schemas/buc.py` model_validator en Create/Update) y el form, NO un NOT NULL en DB (los externos van con `id_subarea=NULL`). Habilita la regla de cierre directo de reclamo (ver §18).
+- **Backfill random** (en la misma sesión, local + prod): se asignó subárea random a los 84 agentes sin subárea y a los usuarios no-externos sin subárea, vía `(abs(hashtext(pk::text)) % total_subareas) + 1` sobre `subarea WHERE activo`. Determinístico/reproducible. 0 filas quedaron sin subárea.
+- **`usuarios` NO tiene `id_tipo_usuario`** — el `TABLE_CONFIG` y `SCHEMAS` de admin_tablas lo referenciaban (drift histórico que rompía el UPDATE de usuario); removido en esta sesión. La columna de pertenencia es `id_subarea` + `es_externo`.
 
 ## 22. Geolocalización, Activos y Adjuntos (Reclamos)
 
@@ -2842,7 +2856,9 @@ Funciones nuevas en `services/email.py`: `enviar_mail_activacion_ciudadano` y `e
 
 ## 39. Módulo Usuarios — estado y deuda crítica (QA 2026-05-19)
 
-**Stack**: vanilla puro. HTML 415 LOC en [frontend/usuarios.html](frontend/usuarios.html), JS 483 LOC en [frontend/js/usuarios.js](frontend/js/usuarios.js). Endpoints en [backend/app/api/routes/buc.py](backend/app/api/routes/buc.py) prefix `/api/v1/buc/usuarios/*`.
+**Stack**: vanilla puro. HTML en [frontend/usuarios.html](frontend/usuarios.html), JS en [frontend/js/usuarios.js](frontend/js/usuarios.js). Endpoints en [backend/app/api/routes/buc.py](backend/app/api/routes/buc.py) prefix `/api/v1/buc/usuarios/*`.
+
+> **Ampliado 2026-05-22 (mig 55, §21):** el form ahora tiene **campo subárea predictivo + checkbox "usuario externo"** (subárea obligatoria salvo externo, validado en `schemas/buc.py`). Listado/preview muestran subárea + hay filtro por subárea. Buscador principal y filtro de listado pasan a predictivo en-vivo (debounce). `UsuarioOut` suma `id_subarea`/`subarea_nombre`/`es_externo`. Endpoint nuevo `GET /buc/subareas/buscar` (predictivo). **Esa sesión NO resolvió los bugs CRITICAL de abajo** — siguen vivos, y el endpoint nuevo hereda el #1 (sin auth).
 
 ### Deuda CRÍTICA conocida — NO codear features nuevas sin patchear esto primero
 
