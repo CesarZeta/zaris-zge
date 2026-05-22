@@ -1,27 +1,32 @@
 import { useState } from 'react'
+import {
+  ClipboardList, Hash, ArrowRight, Hand, LockOpen, RefreshCw, Zap,
+  Paperclip, PenLine, Check, X, MessageSquare, Link2, Ban, RotateCcw,
+  Circle, ChevronUp, ChevronDown, type LucideIcon,
+} from 'lucide-react'
 import type { TramiteMovimiento, TipoMovimiento } from '../types'
 
 /* ── Iconos y etiquetas por tipo de movimiento ───────────── */
 
 const TIPO_CONFIG: Record<
   TipoMovimiento,
-  { emoji: string; color: string; etiqueta: (m: TramiteMovimiento) => string }
+  { icon: LucideIcon; color: string; etiqueta: (m: TramiteMovimiento) => string }
 > = {
-  creacion:       { emoji: '📋', color: '#1f8a65', etiqueta: (m) => `Trámite creado por ${m.agente_nombre}` },
-  numeracion:     { emoji: '🔢', color: '#6a1b9a', etiqueta: (m) => `Numerado: ${String(m.metadata_jsonb?.numero_expediente ?? '')}` },
-  pase:           { emoji: '➡️', color: '#1565c0', etiqueta: (m) => `Pase: ${m.origen_jsonb?.nombre ?? '—'} → ${m.destino_jsonb?.nombre ?? '—'}` },
-  toma:           { emoji: '✋', color: '#f57f17', etiqueta: (m) => `Tomado por ${m.agente_nombre}` },
-  liberacion:     { emoji: '🔓', color: '#78909c', etiqueta: (m) => `Liberado por ${m.agente_nombre}` },
-  cambio_estado:  { emoji: '🔄', color: '#f54e00', etiqueta: (m) => `Estado: ${m.estado_origen_etiqueta ?? '—'} → ${m.estado_destino_etiqueta ?? '—'}` },
-  transicion:     { emoji: '⚡', color: '#f54e00', etiqueta: (m) => `Transición: ${m.estado_origen_etiqueta ?? '—'} → ${m.estado_destino_etiqueta ?? '—'}` },
-  adjunto:        { emoji: '📎', color: '#5c6bc0', etiqueta: (m) => `Adjuntó: ${String(m.metadata_jsonb?.nombre ?? 'documento')}` },
-  firma_solicitada: { emoji: '✍️', color: '#7b1fa2', etiqueta: (m) => `Firma solicitada en ${String(m.metadata_jsonb?.documento_nombre ?? 'documento')}` },
-  firma_realizada:  { emoji: '✅', color: '#1f8a65', etiqueta: (m) => `Firmó: ${String(m.metadata_jsonb?.documento_nombre ?? 'documento')}` },
-  firma_rechazada:  { emoji: '❌', color: 'var(--color-error)', etiqueta: (m) => `Rechazó firma de ${String(m.metadata_jsonb?.documento_nombre ?? 'documento')}` },
-  comentario:     { emoji: '💬', color: '#546e7a', etiqueta: () => 'Comentario' },
-  relacion:       { emoji: '🔗', color: '#00838f', etiqueta: (m) => `Asoció con ${String(m.metadata_jsonb?.numero_relacionado ?? '')}` },
-  desistido:      { emoji: '🚫', color: 'var(--color-error)', etiqueta: () => 'Trámite desistido' },
-  reapertura:     { emoji: '🔁', color: '#f57f17', etiqueta: () => 'Reapertura del trámite' },
+  creacion:       { icon: ClipboardList, color: '#1f8a65', etiqueta: (m) => `Trámite creado por ${m.agente_nombre}` },
+  numeracion:     { icon: Hash,          color: '#6a1b9a', etiqueta: (m) => `Numerado: ${String(m.metadata_jsonb?.numero_expediente ?? '')}` },
+  pase:           { icon: ArrowRight,    color: '#1565c0', etiqueta: (m) => `Pase: ${m.origen_jsonb?.nombre ?? '—'} → ${m.destino_jsonb?.nombre ?? '—'}` },
+  toma:           { icon: Hand,          color: '#f57f17', etiqueta: (m) => `Tomado por ${m.agente_nombre}` },
+  liberacion:     { icon: LockOpen,      color: '#78909c', etiqueta: (m) => `Liberado por ${m.agente_nombre}` },
+  cambio_estado:  { icon: RefreshCw,     color: '#f54e00', etiqueta: (m) => `Estado: ${m.estado_origen_etiqueta ?? '—'} → ${m.estado_destino_etiqueta ?? '—'}` },
+  transicion:     { icon: Zap,           color: '#f54e00', etiqueta: (m) => `Transición: ${m.estado_origen_etiqueta ?? '—'} → ${m.estado_destino_etiqueta ?? '—'}` },
+  adjunto:        { icon: Paperclip,     color: '#5c6bc0', etiqueta: (m) => `Adjuntó: ${String(m.metadata_jsonb?.nombre ?? 'documento')}` },
+  firma_solicitada: { icon: PenLine,     color: '#7b1fa2', etiqueta: (m) => `Firma solicitada en ${String(m.metadata_jsonb?.documento_nombre ?? 'documento')}` },
+  firma_realizada:  { icon: Check,       color: '#1f8a65', etiqueta: (m) => `Firmó: ${String(m.metadata_jsonb?.documento_nombre ?? 'documento')}` },
+  firma_rechazada:  { icon: X,           color: 'var(--color-error)', etiqueta: (m) => `Rechazó firma de ${String(m.metadata_jsonb?.documento_nombre ?? 'documento')}` },
+  comentario:     { icon: MessageSquare, color: '#546e7a', etiqueta: () => 'Comentario' },
+  relacion:       { icon: Link2,         color: '#00838f', etiqueta: (m) => `Asoció con ${String(m.metadata_jsonb?.numero_relacionado ?? '')}` },
+  desistido:      { icon: Ban,           color: 'var(--color-error)', etiqueta: () => 'Trámite desistido' },
+  reapertura:     { icon: RotateCcw,     color: '#f57f17', etiqueta: () => 'Reapertura del trámite' },
 }
 
 function formatFechaRelativa(iso: string): string {
@@ -65,10 +70,11 @@ export function Timeline({ movimientos }: TimelineProps) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
       {ordenados.map((mov, idx) => {
         const cfg = TIPO_CONFIG[mov.tipo] ?? {
-          emoji: '•',
+          icon: Circle,
           color: 'var(--fg-3)',
           etiqueta: () => mov.tipo,
         }
+        const Icono = cfg.icon
         const esUltimo = idx === ordenados.length - 1
         const expandidoActual = expandido === mov.id_tramite_movimiento
 
@@ -86,12 +92,11 @@ export function Timeline({ movimientos }: TimelineProps) {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: 13,
                   flexShrink: 0,
                   zIndex: 1,
                 }}
               >
-                {cfg.emoji}
+                <Icono size={15} strokeWidth={1.5} color={cfg.color} />
               </div>
               {!esUltimo && (
                 <div
@@ -165,9 +170,14 @@ export function Timeline({ movimientos }: TimelineProps) {
                     cursor: 'pointer',
                     padding: '4px 0',
                     fontFamily: 'var(--font-display)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
                   }}
                 >
-                  {expandidoActual ? '▲ Ocultar detalles' : '▼ Ver detalles'}
+                  {expandidoActual
+                    ? <><ChevronUp size={12} strokeWidth={1.5} /> Ocultar detalles</>
+                    : <><ChevronDown size={12} strokeWidth={1.5} /> Ver detalles</>}
                 </button>
               )}
               {expandidoActual && mov.metadata_jsonb && (
