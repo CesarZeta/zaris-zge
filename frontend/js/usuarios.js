@@ -16,9 +16,98 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Refs ───────────────────────────────────────────────────────────────────
     const $ = id => document.getElementById(id);
 
+    // ── Buscador predictivo de subárea ───────────────────────────────────────────
+    // (input + dropdown debounced; skipNextRef evita reabrir el dropdown al pickear, §29)
+    let _subareaDebounce = null;
+    let _subareaSkipNext = false;
+
+    function setSubareaSeleccionada(id, nombre, areaNombre) {
+        $('usr-subarea').value = id != null ? id : '';
+        if (id != null) {
+            $('usr-subarea-q').value = nombre || '';
+            $('usr-subarea-selected').textContent = areaNombre ? `Área: ${areaNombre}` : '';
+        } else {
+            $('usr-subarea-q').value = '';
+            $('usr-subarea-selected').textContent = '';
+        }
+        $('usr-subarea-results').classList.remove('visible');
+    }
+
+    async function buscarSubareas(q) {
+        const box = $('usr-subarea-results');
+        try {
+            const data = await ZUtils.apiFetch(`/subareas/buscar?q=${encodeURIComponent(q)}&limit=20`);
+            if (!data.length) {
+                box.innerHTML = '<div class="subarea-results__empty">Sin resultados</div>';
+                box.classList.add('visible');
+                return;
+            }
+            box.innerHTML = data.map(s => `
+                <div class="subarea-item" data-id="${s.id_subarea}" data-nombre="${esc(s.nombre)}" data-area="${esc(s.area_nombre || '')}">
+                    <span class="subarea-item__nombre">${esc(s.nombre)}</span>
+                    ${s.area_nombre ? `<span class="subarea-item__area">${esc(s.area_nombre)}</span>` : ''}
+                </div>`).join('');
+            box.classList.add('visible');
+            box.querySelectorAll('.subarea-item').forEach(el =>
+                el.addEventListener('click', () => {
+                    _subareaSkipNext = true;
+                    setSubareaSeleccionada(parseInt(el.dataset.id), el.dataset.nombre, el.dataset.area);
+                })
+            );
+        } catch (err) {
+            box.innerHTML = `<div class="subarea-results__empty">Error: ${esc(err.message)}</div>`;
+            box.classList.add('visible');
+        }
+    }
+
+    $('usr-subarea-q').addEventListener('input', () => {
+        if (_subareaSkipNext) { _subareaSkipNext = false; return; }
+        // Al tipear manualmente se invalida la selección previa.
+        $('usr-subarea').value = '';
+        $('usr-subarea-selected').textContent = '';
+        const q = $('usr-subarea-q').value.trim();
+        clearTimeout(_subareaDebounce);
+        if (q.length < 1) { $('usr-subarea-results').classList.remove('visible'); return; }
+        _subareaDebounce = setTimeout(() => buscarSubareas(q), 280);
+    });
+
+    // Click-outside cierra el dropdown
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('#row-subarea-wrap') && !e.target.closest('#usr-subarea-q')
+            && !e.target.closest('#usr-subarea-results')) {
+            $('usr-subarea-results').classList.remove('visible');
+        }
+    });
+
+    // Toggle: usuario externo deshabilita y limpia subárea
+    $('usr-externo').addEventListener('change', aplicarToggleExterno);
+
+    function aplicarToggleExterno() {
+        const externo = $('usr-externo').checked;
+        $('usr-subarea-q').disabled = externo;
+        if (externo) {
+            setSubareaSeleccionada(null);
+            $('usr-subarea-q').placeholder = 'No aplica (usuario externo)';
+            const lbl = document.querySelector('label[for="usr-subarea-q"]');
+            if (lbl) lbl.classList.remove('label-zaris--required');
+        } else {
+            $('usr-subarea-q').placeholder = 'Escribí para buscar subárea...';
+            const lbl = document.querySelector('label[for="usr-subarea-q"]');
+            if (lbl) lbl.classList.add('label-zaris--required');
+        }
+    }
+
     // ── Inicialización ─────────────────────────────────────────────────────────
     $('btn-buscar').addEventListener('click', buscar);
     $('search-query').addEventListener('keydown', e => { if (e.key === 'Enter') buscar(); });
+    // Búsqueda predictiva en vivo (debounce 280ms). El botón "Buscar" sigue disponible.
+    let _buscarDebounce = null;
+    $('search-query').addEventListener('input', () => {
+        clearTimeout(_buscarDebounce);
+        const q = $('search-query').value.trim();
+        if (q.length < 1) { $('search-result').classList.remove('visible'); return; }
+        _buscarDebounce = setTimeout(buscar, 280);
+    });
     $('btn-nuevo').addEventListener('click', activarModoNuevo);
     $('btn-nuevo-forzar').addEventListener('click', activarModoNuevo);
     $('btn-cancelar').addEventListener('click', handleCancelar);
@@ -33,6 +122,14 @@ document.addEventListener('DOMContentLoaded', () => {
     $('btn-filtrar-lst').addEventListener('click', aplicarFiltros);
     $('btn-limpiar-lst').addEventListener('click', limpiarFiltros);
     $('lst-texto').addEventListener('keydown', e => { if (e.key === 'Enter') aplicarFiltros(); });
+    // Filtro en vivo mientras se escribe (filtrado en memoria, instantáneo).
+    let _filtroDebounce = null;
+    $('lst-texto').addEventListener('input', () => {
+        clearTimeout(_filtroDebounce);
+        _filtroDebounce = setTimeout(aplicarFiltros, 200);
+    });
+    $('lst-subarea').addEventListener('change', aplicarFiltros);
+    $('lst-nivel').addEventListener('change', aplicarFiltros);
 
     ZValidaciones.bindGuardarBoton($('form-card'), $('btn-guardar'), {
         extra: () => {
@@ -147,6 +244,9 @@ document.addEventListener('DOMContentLoaded', () => {
         $('usr-cargo').value           = u.id_cargo   || '';
         $('usr-cuil').value            = u.cuil       || '';
         $('usr-buc-acceso').checked    = u.buc_acceso || false;
+        $('usr-externo').checked       = u.es_externo || false;
+        setSubareaSeleccionada(u.id_subarea ?? null, u.subarea_nombre, null);
+        aplicarToggleExterno();
         $('usr-password').value        = '';
         $('usr-password-confirm').value = '';
         const badge = $('activo-badge');
@@ -209,9 +309,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function setFieldsDisabled(dis) {
         ['usr-nombre','usr-username','usr-nivel','usr-cargo','usr-cuil',
-         'usr-buc-acceso','usr-password','usr-password-confirm'].forEach(id => {
+         'usr-buc-acceso','usr-externo','usr-subarea-q','usr-password','usr-password-confirm'].forEach(id => {
             const el = $(id); if (el) el.disabled = dis;
         });
+        // En modo no-consulta, el input de subárea respeta el toggle de externo.
+        if (!dis) aplicarToggleExterno();
     }
 
     function resetFormulario() {
@@ -219,6 +321,9 @@ document.addEventListener('DOMContentLoaded', () => {
          'usr-password','usr-password-confirm'].forEach(id => { const el=$(id); if(el) el.value=''; });
         $('usr-nivel').value      = '';
         $('usr-buc-acceso').checked = false;
+        $('usr-externo').checked    = false;
+        setSubareaSeleccionada(null);
+        aplicarToggleExterno();
         document.querySelectorAll('.input-error-zaris').forEach(el => { el.textContent=''; el.style.display='none'; });
     }
 
@@ -253,6 +358,10 @@ document.addEventListener('DOMContentLoaded', () => {
             { showErr('err-username', 'Solo letras, números, puntos y guiones'); ok=false; }
         if (!$('usr-nivel').value)            { showErr('err-nivel',    'Seleccioná un nivel de acceso'); ok=false; }
 
+        if (!$('usr-externo').checked && !$('usr-subarea').value) {
+            showErr('err-subarea', 'La subárea es obligatoria (o marcá "Usuario externo")'); ok=false;
+        }
+
         const pass = $('usr-password').value;
         const cf   = $('usr-password-confirm').value;
         if (state.modo === 'nuevo') {
@@ -273,12 +382,15 @@ document.addEventListener('DOMContentLoaded', () => {
     async function guardar() {
         if (!validar()) return;
 
+        const externo = $('usr-externo').checked;
         const payload = {
             nombre:       $('usr-nombre').value.trim(),
             nivel_acceso: parseInt($('usr-nivel').value),
             id_cargo:     $('usr-cargo').value.trim() || null,
             cuil:         $('usr-cuil').value.replace(/[-\s]/g,'') || null,
             buc_acceso:   $('usr-buc-acceso').checked,
+            es_externo:   externo,
+            id_subarea:   externo ? null : (parseInt($('usr-subarea').value) || null),
         };
         if ($('usr-password').value) payload.password = $('usr-password').value;
 
@@ -357,6 +469,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="preview-row__nombre">${esc(u.nombre)}</span>
                     <span class="preview-row__username">${esc(u.username)}</span>
                     <span class="preview-row__nivel">${NIVELES[u.nivel_acceso] || 'Nivel ' + u.nivel_acceso}</span>
+                    <span class="preview-row__nivel">${u.es_externo ? 'Externo' : esc(u.subarea_nombre || '—')}</span>
                     <span class="preview-row__estado preview-row__estado--${u.activo ? 'activo' : 'inactivo'}">${u.activo ? 'Activo' : 'Inactivo'}</span>
                     <span class="preview-row__cta">Ver →</span>
                 </div>
@@ -381,6 +494,7 @@ document.addEventListener('DOMContentLoaded', () => {
         $('lst-count').textContent = '';
         try {
             _listadoData = await ZUtils.apiFetch('/usuarios?solo_activos=false');
+            poblarFiltroSubareas();
             aplicarFiltros();
         } catch (err) {
             $('listado-contenido').innerHTML =
@@ -394,20 +508,39 @@ document.addEventListener('DOMContentLoaded', () => {
         $('preview-section').style.display  = 'block';
     }
 
+    function poblarFiltroSubareas() {
+        const sel = $('lst-subarea');
+        if (!sel) return;
+        const vistos = new Map();
+        _listadoData.forEach(u => {
+            if (u.id_subarea != null && u.subarea_nombre && !vistos.has(u.id_subarea)) {
+                vistos.set(u.id_subarea, u.subarea_nombre);
+            }
+        });
+        const opciones = [...vistos.entries()].sort((a, b) => a[1].localeCompare(b[1], 'es'));
+        sel.innerHTML = '<option value="">Todas</option>'
+            + '<option value="__externo">Externos (sin subárea)</option>'
+            + opciones.map(([id, nombre]) => `<option value="${id}">${esc(nombre)}</option>`).join('');
+    }
+
     function aplicarFiltros() {
         let rows   = [..._listadoData];
         const txt  = ($('lst-texto').value  || '').toLowerCase().trim();
         const niv  = $('lst-nivel').value   || '';
+        const sub  = $('lst-subarea').value || '';
         const ord  = $('lst-orden').value   || 'reciente';
         const desd = $('lst-desde').value   || '';
         const hast = $('lst-hasta').value   || '';
 
         if (txt) rows = rows.filter(u =>
-            (u.nombre   || '').toLowerCase().includes(txt) ||
-            (u.username || '').toLowerCase().includes(txt) ||
-            (u.cuil     || '').includes(txt)
+            (u.nombre        || '').toLowerCase().includes(txt) ||
+            (u.username      || '').toLowerCase().includes(txt) ||
+            (u.cuil          || '').includes(txt) ||
+            (u.subarea_nombre|| '').toLowerCase().includes(txt)
         );
         if (niv) rows = rows.filter(u => String(u.nivel_acceso) === niv);
+        if (sub === '__externo') rows = rows.filter(u => u.es_externo);
+        else if (sub) rows = rows.filter(u => String(u.id_subarea) === sub);
         if (desd || hast) rows = rows.filter(u => {
             const d = (u.fecha_alta || '').slice(0, 10);
             if (!d) return true;
@@ -427,6 +560,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function limpiarFiltros() {
         ['lst-texto','lst-desde','lst-hasta'].forEach(id => { const el=$(id); if(el) el.value=''; });
         $('lst-nivel').value = '';
+        $('lst-subarea').value = '';
         $('lst-orden').value = 'reciente';
         aplicarFiltros();
     }
@@ -448,6 +582,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${esc(u.nombre)}</td>
                 <td class="mono">${esc(u.username)}</td>
                 <td>${NIVELES[u.nivel_acceso] || u.nivel_acceso}</td>
+                <td>${u.es_externo ? '<span style="color:var(--fg-3);font-style:italic;">Externo</span>' : esc(u.subarea_nombre || '—')}</td>
                 <td class="mono">${u.cuil || '—'}</td>
                 <td><span class="badge-${u.activo?'activo':'inactivo'}">${u.activo?'Activo':'Inactivo'}</span></td>
                 <td>
@@ -460,7 +595,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="listado-wrap">
                 <table>
                     <thead><tr>
-                        <th>Nombre</th><th>Usuario</th><th>Nivel</th>
+                        <th>Nombre</th><th>Usuario</th><th>Nivel</th><th>Subárea</th>
                         <th>CUIL</th><th>Estado</th><th>Acciones</th>
                     </tr></thead>
                     <tbody>${bodyRows}</tbody>

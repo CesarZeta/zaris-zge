@@ -800,10 +800,10 @@ const SCHEMAS = {
           { v: '4', l: '4 — Consultor' },
         ]},
       { field: 'buc_acceso',      label: 'Acceso BUC',       type: 'checkbox', required: false },
-      { field: 'id_tipo_usuario', label: 'Tipo de usuario',  type: 'select', fk: 'tipo_usuario', fkLabel: 'nombre', fkPk: 'id_tipo_usuario', required: false },
+      { field: 'es_externo',      label: 'Usuario externo',  type: 'checkbox', required: false },
       { field: 'id_subarea',      label: 'Subárea',          type: 'select', fk: 'subarea',      fkLabel: 'nombre', fkPk: 'id_subarea',      required: false },
     ],
-    display: ['id_usuario', 'nombre', 'username', 'cuil', 'nivel_acceso', 'buc_acceso'],
+    display: ['id_usuario', 'nombre', 'username', 'cuil', 'nivel_acceso', 'id_subarea', 'es_externo'],
   },
   agentes: {
     label: 'Agente', titulo: 'Maestro de Agentes',
