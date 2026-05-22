@@ -2892,3 +2892,39 @@ Los reportes generados por `/qa-report-template` (`reporte_pruebas_<bloque>_YYYY
 - `.gitignore` no los excluye explícitamente para no perder visibilidad en `git status` — sirven como recordatorio de deuda pendiente.
 - Cuando los hallazgos críticos se resuelven, el reporte se puede archivar como `docs/qa-archive/reporte_<modulo>_YYYY-MM-DD.md` sin las PoCs (reescrito).
 - Nunca incluir reportes con PoCs activos en commits, ni en mensajes de PR.
+
+## 41. Módulo Config (React) + estándar de verificación en la interfaz
+
+Módulo React `web-app/src/modules/config/` (ítem "configuración" del sidebar, `data-modulo="admin_tablas"` desde §39). Es admin-only — el backend exige `nivel_acceso=1` en `require_admin` (los endpoints de identidad y permisos). 4 tabs en `ConfigLayout`:
+
+| Tab | Vista | Endpoint backend | Qué hace |
+|---|---|---|---|
+| Identidad | `IdentidadView` | `GET/PUT /api/v1/config/identidad` (+ `/logo-upload-url`) | Nombre y logo del municipio en el topbar. `app_nombre` ('GESTION ESTADO') es interno, NO editable (§14) — el PUT lo ignora. |
+| Permisos por usuario | `UsuariosPermisosView` | `GET /api/v1/admin/permisos/usuarios/{id}/modulos` + `PUT` | Matriz de overrides por módulo (§30). Lista usuarios vía `GET /api/v1/admin/usuarios` (handler genérico admin_tablas). |
+| Catálogo de módulos | `CatalogoModulosView` | `GET /api/v1/admin/permisos/modulos` + `PUT /{codigo}` | Editar `min_nivel_acceso` de cada módulo. |
+| Sistema | `SistemaView` | — (solo navegación) | Cards de atajo a `admin_tablas?tabla=...` y `usuarios.html`. |
+
+**Cliente API:** `web-app/src/modules/config/api/configApi.ts` + hooks en `hooks/useConfig.ts`. Los 3 endpoints existen, están registrados en `main.py` y las shapes coinciden. Verificado end-to-end en navegador 2026-05-22.
+
+### Bugs de navegación cazados y resueltos (2026-05-22) — referencia para módulos React en iframe
+
+Tres bugs distintos en este módulo, todos de **navegación**, ninguno detectable leyendo el código solo (ver estándar abajo):
+
+1. **`window.location.href` absoluto rompe bajo `/zaris-zge/`** (commit `3ea2847`). `SistemaView` e `ConfigLayout` (botón INICIO) caían a `window.location.href = '/${href}'` en el fallback → salta a `cesarzeta.github.io/${href}` SIN el subpath → 404 de GH Pages en el iframe (§32 Quirk 13). **Fix:** helper compartido `web-app/src/lib/shellNav.ts` (`shellNavigate` + `shellGoInicio`) que delega en `window.parent.shellNavigate` y solo en standalone dev resuelve el subpath. **Reusar este helper en cualquier módulo React que navegue al shell** en vez de reinventar el patrón.
+2. **`NavLink to="x"` relativo expulsa al dashboard** (commit `9105dbf`). Los tabs usaban `to="permisos"` (relativo): estando en `/config/identidad`, React Router lo resolvía a `/config/identidad/permisos` (ruta inexistente) → catch-all `path:'*'` en `routes.tsx` → redirect a `/dashboard`. Solo se notaba **al clickear una tab** (la primera carga directa por URL funcionaba). **Fix:** paths ABSOLUTOS `to="/config/<tab>"`. **Regla:** en layouts con tabs internas usar paths absolutos, no relativos — el relativo anida contra la ruta actual completa.
+3. **Tipos del API mentían** (commit `a04878c`, deuda menor): `app_nombre` figuraba en `IdentidadUpdate` (lo ignora el PUT) y `listarUsuarios` mandaba `?limit=200` que el handler genérico ignora. Alineados con el backend real.
+
+### `admin_tablas` configuracion_general — mostrar `descripcion` en la preview (2026-05-22)
+
+La tabla `configuracion_general` tiene columna `descripcion` con texto útil por parámetro, pero la vista previa de `admin_tablas.html` mostraba solo `clave` + `valor` (vía `composeLabel`/`composeMeta` genéricos). El admin veía claves crudas sin saber qué hacen. **Fix** (commit `b32b71f`): caso especial en `renderVistaPrevia` para `tablaActual === 'configuracion_general'` que renderiza clave + descripción en gris debajo + valor a la derecha. `configuracion_general` **no tiene columna `activo`** (sin baja lógica) — borrar registros de basura es DELETE físico, no soft-delete.
+
+### Estándar OBLIGATORIO: verificar navegación/UI en la interfaz, no en el código
+
+**Todo cambio de navegación/routing/UI se verifica abriendo el navegador y reproduciendo el flujo real ANTES de declararlo terminado.** Para el humano la realidad vive en la interfaz; el código es una hipótesis. Endpoint que existe + tipo que matchea + ruta mapeada pueden seguir dando pantalla rota. Procedimiento (memoria [[feedback_testear_navegacion_en_interfaz]]):
+
+1. Entorno correcto: prod si ya está deployado, o local con proxy `/zaris-zge/` si toca subpath.
+2. **Confirmar que el iframe carga el bundle NUEVO** antes de juzgar — GH Pages puede servir el nuevo pero el iframe sirve el viejo cacheado (§ memoria iframe cache). Cache-bust: `frame.src='about:blank'` → `frame.src='...?_cb='+Date.now()+'#/ruta'`, verificar el hash del `<script src>` del iframe = último commit.
+3. Recorrer **TODAS las vías de navegación que el usuario tiene a mano**: cada tab/botón, ida y vuelta, saltando entre secciones. NO entrar a cada vista por URL directa — eso oculta bugs de links relativos. El gesto humano es clickear, no tipear URLs.
+4. Recién entonces declarar verificado. Si no lo hice, decirlo explícito.
+
+> Caso 2026-05-22: declaré "Config completado" dos veces con bugs vivos porque verifiqué entrando por URL directa (no clickeando tabs) y porque el iframe servía bundle cacheado. "Entré a la URL y cargó" ≠ "navegué el módulo como un usuario".
