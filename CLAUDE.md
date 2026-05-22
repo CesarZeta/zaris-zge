@@ -926,6 +926,10 @@ Resultado prod: 19 reclamos legacy de "Servicios Públicos" sin tilde (id=9, ya 
 - **Backfill random** (en la misma sesión, local + prod): se asignó subárea random a los 84 agentes sin subárea y a los usuarios no-externos sin subárea, vía `(abs(hashtext(pk::text)) % total_subareas) + 1` sobre `subarea WHERE activo`. Determinístico/reproducible. 0 filas quedaron sin subárea.
 - **`usuarios` NO tiene `id_tipo_usuario`** — el `TABLE_CONFIG` y `SCHEMAS` de admin_tablas lo referenciaban (drift histórico que rompía el UPDATE de usuario); removido en esta sesión. La columna de pertenencia es `id_subarea` + `es_externo`.
 
+### Migración 56 — tipo_tramite.es_sistema (`backend/migrations/56_tipo_tramite_es_sistema.sql`)
+
+**Aplicada en local y prod al 2026-05-22.** Agrega `tipo_tramite.es_sistema BOOLEAN NOT NULL DEFAULT FALSE` para distinguir tipos precargados por seed (`TRUE`) de tipos custom creados por usuario desde el editor admin (`FALSE`). Backfill por **código** (no por id — regla §24) de los 9 tipos del seed original. `seed_tramites.py` ahora inserta `es_sistema=TRUE`. Idempotente. Ver §35 sección "Listado admin de tipos". **Ojo:** `tipo_tramite` (catálogo) NO tiene `id_usuario_alta` — la mig 50 sumó auditoría de usuario solo a las tablas de instancias; por eso se usa `es_sistema` y no `id_usuario_alta IS NULL` para distinguir origen. Ver memoria [[reference_tipo_tramite_sin_usuario_alta]].
+
 ## 22. Geolocalización, Activos y Adjuntos (Reclamos)
 
 ### Árbol geográfico (provincia → partido → localidad)
@@ -2617,11 +2621,25 @@ CRUD completo del catálogo de tipos vía UI React. Antes solo se podía vía `s
 - `modals/` — 6 modales: NuevoTipoModal, EditarTipoModal, CampoModal, EstadoModal, TransicionModal, DocReqModal + `_modalShell.tsx` (helper compartido).
 - `api.ts` + `hooks.ts` — 19 hooks react-query con invalidación automática.
 
-**UI integrada como tab "Configuración"** en `TramitesLayout` (visible solo `nivel <= 2` vía `useAuthStore.hasPermission(2)`).
+**UI integrada como tab "Tipos de trámite"** en `TramitesLayout` (visible solo `nivel <= 2` vía `useAuthStore.hasPermission(2)`). La pestaña se llamó "Configuración" hasta 2026-05-22, pero ese nombre sugería config del sistema; renombrada a "Tipos de trámite" (pestaña + breadcrumb + título). Las rutas internas siguen siendo `/tramites/config` por compat (solo cambió el label visible).
 
 **Acceso:** `/tramites/config` (lista) + `/tramites/config/:idTipo` (editor).
 
-**Manual de uso:** `docs/manual_admin_tramites.html` (autocontenido con 11 capturas reales) o vía módulo Guías (`/guias` → card "TRÁMITES (CREACIÓN)").
+### Listado admin de tipos + leyenda Sistema/Custom + Publicado/Borrador (2026-05-22)
+
+**Bug de fondo corregido:** la pantalla "Tipos de trámite" reusaba el endpoint **público** `GET /api/v1/tramites/tipos`, que SOLO devuelve tipos con versión publicada (`id_version_publicada IS NOT NULL`). Consecuencia: un tipo custom en **borrador no aparecía en ningún lado** — ni en "Nuevo trámite" (correcto) ni en la lista de administración (bug: el admin no podía volver a editarlo/publicarlo si recargaba).
+
+Fix:
+- **Endpoint nuevo `GET /api/v1/admin/tramites/tipos`** (en `tramites_admin.py`, ahora 20 endpoints): lista TODOS los tipos activos (publicados + borradores + sin estados) con `es_sistema` y `estado_version` derivado (`publicado` / `borrador` / `sin_estados` / `archivado`). Es el que consume la pantalla admin (`useTiposCatalogo`), NO el público.
+- **`ConfigTramites.tsx`** muestra dos badges por fila: **Origen** (`Sistema` neutral / `Custom` success) y **Estado** (`Publicado` / `Borrador` / `Borrador (sin estados)` / `Archivado`). El borrador ahora SÍ aparece en la lista.
+- **`ConfigTramiteDetalle.tsx`** tiene un **banner de publicación** cuando la versión es borrador: "Listo para publicar" (botón "Publicar y habilitar" activo) o "Todavía no se puede publicar" listando qué falta (estado inicial/final). Conecta crear el tipo con disponerlo para usar.
+- `es_sistema` distingue seed (`TRUE`) de custom (`FALSE`) — ver mig 56 §21 y memoria [[reference_tipo_tramite_sin_usuario_alta]].
+
+> **Regla del flujo:** un tipo custom recién creado nace en borrador y NO está disponible en "Nuevo trámite". El alta lista solo publicados. Hay que ir al editor → agregar estados inicial+final → "Publicar y habilitar". Recién ahí aparece en el selector de alta.
+
+**Tipos custom seedeados en prod (2026-05-22):** `exencion-tasas` (EXT) y `permiso-espacio-publico` (PEP) publicados + `solicitud-arbolado` (ARB) dejado como borrador de ejemplo (no aparece en alta hasta publicarlo).
+
+**Manual de uso:** `docs/manual_admin_tramites.html` (autocontenido, 12 capturas reales — regenerado 2026-05-22 con la UI nueva) o vía módulo Guías (`/guias` → card "TRÁMITES (CREACIÓN)"). El manual operativo es `docs/manual_tramites.html` (card "TRÁMITES (USO OPERATIVO)").
 
 **Smoke E2E validado:** crear tipo → 3 estados → 2 transiciones → campo → doc requerido → publicar → instanciar trámite → editar v1 publicada con trámites = 409 → crear v2 borrador (copia estructura). Cleanup completo (test data borrada, agente del admin restaurado).
 
@@ -2686,14 +2704,14 @@ Receta probada (sesión 2026-05-18, 3 manuales generados). Reusable para cualqui
 |---|---|---|---|
 | `manual_reclamos.html` | Operador o superior | 10 | 11 |
 | `manual_ot.html` | Supervisor / Agente / Auditor | 9 | 11 |
-| `manual_admin_tramites.html` | Admin o Supervisor | 11 | 11 |
+| `manual_tramites.html` | Operador o superior | 8 | 13 |
+| `manual_admin_tramites.html` | Admin o Supervisor | 12 | 11 |
 
 ### Próximos manuales sugeridos (no obligatorios)
 
 - Agenda (calendario + espacios + disponibilidad)
 - Turnos + Entradas (autoservicio + backoffice)
 - Padrones (Ciudadanos + Empresas vía Contactos)
-- Trámites operativo (uso del usuario final del módulo trámites, distinto al de creación de tipos custom)
 
 
 ## 37. Módulo Guías (catálogo de manuales)
