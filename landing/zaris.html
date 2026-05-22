@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZARIS · Suite de Gestión del Estado</title>
+  <meta name="description" content="ZARIS Gestión del Estado: la suite que unifica reclamos, órdenes de trabajo, agenda, trámites y atención ciudadana en una sola plataforma para gobiernos locales.">
+
+  <link rel="icon" href="../design-system/assets/zaris-favicon.svg" type="image/svg+xml">
+
+  <!-- Design System oficial de ZARIS — fuentes, tokens y componentes *-zaris -->
+  <link rel="stylesheet" href="../design-system/fonts/fonts.css">
+  <link rel="stylesheet" href="../design-system/colors_and_type.css">
+  <link rel="stylesheet" href="../design-system/components.css">
+
+  <style>
+    /* ============================================================
+     * Landing comercial ZARIS — usa solo tokens y clases *-zaris.
+     * No inventa variables propias.
+     * ============================================================ */
+
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: var(--zaris-cream);
+      color: var(--fg-1);
+      font-family: var(--font-display);
+      overflow-x: hidden;
+    }
+    img { display: block; max-width: 100%; height: auto; }
+    a { color: inherit; }
+
+    /* Layout shell ---------------------------------------------- */
+    .topbar {
+      position: sticky; top: 0; z-index: 50;
+      display: flex; align-items: center; gap: 16px;
+      height: 60px; padding: 0 32px;
+      background: rgba(242, 241, 237, .88);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-primary);
+    }
+    .topbar__brand { display: flex; align-items: center; gap: 12px; color: var(--fg-1); text-decoration: none; }
+    .topbar__brand svg { width: 26px; height: 26px; color: var(--fg-1); }
+    .topbar__brand strong {
+      font-family: var(--font-display); font-weight: 600;
+      letter-spacing: -.02em; font-size: 1.05rem;
+    }
+    .topbar__brand span {
+      color: var(--fg-3); font-size: .82rem; padding-left: 12px;
+      border-left: 1px solid var(--border-primary); margin-left: 4px;
+    }
+    .topbar__spacer { flex: 1; }
+    .topbar__nav { display: flex; gap: 28px; align-items: center; }
+    .topbar__nav a {
+      color: var(--fg-2); text-decoration: none; font-size: .9rem;
+      transition: color .15s ease;
+    }
+    .topbar__nav a:hover { color: var(--fg-1); }
+
+    main { padding: 0; }
+
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 0 32px; }
+
+    /* Hero ------------------------------------------------------- */
+    .hero {
+      padding: 120px 0 96px;
+      background:
+        radial-gradient(circle at 12% 8%, rgba(245, 78, 0, .07), transparent 42%),
+        radial-gradient(circle at 92% 88%, rgba(31, 138, 101, .055), transparent 42%),
+        var(--zaris-cream);
+      border-bottom: 1px solid var(--border-primary);
+    }
+    .hero__eyebrow {
+      display: inline-block;
+      font-family: var(--font-mono); font-size: .72rem;
+      color: var(--zaris-orange); text-transform: uppercase; letter-spacing: .14em;
+      margin-bottom: 24px;
+      padding: 6px 12px;
+      border: 1px solid rgba(245, 78, 0, .25);
+      border-radius: var(--radius-pill);
+      background: rgba(245, 78, 0, .04);
+    }
+    .hero__title {
+      font-family: var(--font-display);
+      font-size: clamp(2.6rem, 6vw, 4.5rem);
+      line-height: 1.05;
+      letter-spacing: var(--track-hero);
+      font-weight: 400;
+      margin: 0 0 28px;
+      max-width: 18ch;
+    }
+    .hero__title em {
+      font-family: var(--font-serif);
+      font-style: italic;
+      font-weight: 400;
+      color: var(--zaris-orange);
+    }
+    .hero__lead {
+      font-family: var(--font-serif);
+      font-size: clamp(1.15rem, 1.7vw, 1.4rem);
+      line-height: 1.55;
+      color: var(--fg-2);
+      max-width: 58ch;
+      margin: 0 0 40px;
+    }
+    .hero__ctas { display: flex; gap: 12px; flex-wrap: wrap; }
+    .hero__meta {
+      display: flex; gap: 28px; margin-top: 56px;
+      flex-wrap: wrap;
+      padding-top: 28px;
+      border-top: 1px solid var(--border-primary);
+      max-width: 800px;
+    }
+    .hero__meta-item { display: flex; flex-direction: column; gap: 4px; }
+    .hero__meta-num {
+      font-family: var(--font-display); font-size: 1.6rem;
+      letter-spacing: -.04em; color: var(--fg-1);
+    }
+    .hero__meta-lbl {
+      font-family: var(--font-mono); font-size: .72rem;
+      color: var(--fg-3); text-transform: uppercase; letter-spacing: .1em;
+    }
+
+    /* Section ---------------------------------------------------- */
+    section { padding: 96px 0; }
+    .section__head { max-width: 760px; margin: 0 auto 64px; text-align: center; }
+    .section__eyebrow {
+      font-family: var(--font-mono); font-size: .72rem;
+      color: var(--zaris-orange); text-transform: uppercase; letter-spacing: .14em;
+      margin: 0 0 14px;
+    }
+    .section__title {
+      font-family: var(--font-display);
+      font-size: clamp(2rem, 4vw, 2.6rem);
+      line-height: 1.15; letter-spacing: var(--track-section);
+      font-weight: 400; margin: 0 0 16px;
+    }
+    .section__sub {
+      font-family: var(--font-serif); font-size: 1.15rem; line-height: 1.55;
+      color: var(--fg-2); margin: 0;
+    }
+
+    /* Pilares ---------------------------------------------------- */
+    .pilares {
+      display: grid; gap: 20px;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+    .pilar {
+      background: var(--surface-100);
+      border: 1px solid var(--border-primary);
+      border-radius: var(--radius-lg);
+      padding: 28px;
+      transition: transform .2s ease, border-color .2s ease;
+    }
+    .pilar:hover {
+      transform: translateY(-2px);
+      border-color: var(--border-medium);
+    }
+    .pilar__icon {
+      width: 36px; height: 36px;
+      color: var(--zaris-orange); margin-bottom: 18px;
+    }
+    .pilar__title {
+      font-family: var(--font-display); font-size: 1.15rem;
+      font-weight: 600; letter-spacing: -.01em; margin: 0 0 10px;
+    }
+    .pilar__body {
+      font-family: var(--font-serif); font-size: .98rem;
+      line-height: 1.55; color: var(--fg-2); margin: 0;
+    }
+
+    /* Módulos (showcase con screenshots) ------------------------- */
+    .modulos-sec { background: var(--surface-200); border-top: 1px solid var(--border-primary); border-bottom: 1px solid var(--border-primary); }
+    .modulo {
+      display: grid; gap: 64px; align-items: center;
+      grid-template-columns: 1fr 1.4fr;
+      margin-bottom: 120px;
+    }
+    .modulo:last-of-type { margin-bottom: 0; }
+    .modulo--reverse { grid-template-columns: 1.4fr 1fr; }
+    .modulo--reverse .modulo__copy { order: 2; }
+
+    .modulo__tag {
+      font-family: var(--font-mono); font-size: .72rem;
+      color: var(--zaris-orange); text-transform: uppercase; letter-spacing: .14em;
+      margin: 0 0 12px;
+    }
+    .modulo__title {
+      font-family: var(--font-display); font-size: 1.85rem;
+      line-height: 1.2; letter-spacing: -.02em; font-weight: 400;
+      margin: 0 0 18px;
+    }
+    .modulo__lead {
+      font-family: var(--font-serif); font-size: 1.08rem; line-height: 1.55;
+      color: var(--fg-2); margin: 0 0 24px;
+    }
+    .modulo__bullets {
+      list-style: none; padding: 0; margin: 0 0 0; display: grid; gap: 12px;
+    }
+    .modulo__bullets li {
+      display: flex; gap: 12px;
+      font-size: .98rem; line-height: 1.5; color: var(--fg-1);
+    }
+    .modulo__bullets li::before {
+      content: ""; flex-shrink: 0; width: 6px; height: 6px;
+      border-radius: 50%; background: var(--zaris-orange);
+      margin-top: 9px;
+    }
+
+    .modulo__shot {
+      background: var(--surface-100);
+      border: 1px solid var(--border-primary);
+      border-radius: var(--radius-xl);
+      overflow: hidden;
+      box-shadow: var(--shadow-card);
+      position: relative;
+    }
+    .modulo__shot::before {
+      content: "";
+      display: block;
+      height: 28px;
+      background: linear-gradient(to bottom, var(--surface-300), var(--surface-200));
+      border-bottom: 1px solid var(--border-primary);
+    }
+    .modulo__shot::after {
+      content: "● ● ●";
+      position: absolute; top: 6px; left: 14px;
+      font-size: .55rem; letter-spacing: 6px; color: var(--fg-4);
+    }
+    .modulo__shot img {
+      display: block; width: 100%; height: auto;
+    }
+
+    /* Por qué ZARIS ---------------------------------------------- */
+    .razones {
+      display: grid; gap: 28px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+    .razon {
+      padding: 28px; border-top: 2px solid var(--zaris-orange);
+      background: var(--surface-100);
+      border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+      border-bottom: 1px solid var(--border-primary);
+      border-left: 1px solid var(--border-primary);
+      border-right: 1px solid var(--border-primary);
+    }
+    .razon__num {
+      font-family: var(--font-mono); font-size: .75rem;
+      color: var(--zaris-orange); margin-bottom: 12px;
+    }
+    .razon__title {
+      font-family: var(--font-display); font-size: 1.15rem;
+      font-weight: 600; letter-spacing: -.01em; margin: 0 0 10px;
+    }
+    .razon__body {
+      font-family: var(--font-serif); font-size: .98rem;
+      line-height: 1.55; color: var(--fg-2); margin: 0;
+    }
+
+    /* Cita ------------------------------------------------------- */
+    .cita {
+      background: var(--surface-300);
+      border-top: 1px solid var(--border-primary);
+      border-bottom: 1px solid var(--border-primary);
+      padding: 96px 0; text-align: center;
+    }
+    .cita blockquote {
+      font-family: var(--font-serif); font-style: italic;
+      font-size: clamp(1.5rem, 3vw, 2.1rem);
+      line-height: 1.4; color: var(--fg-1);
+      max-width: 28ch; margin: 0 auto 20px;
+    }
+    .cita__lead {
+      font-family: var(--font-display);
+      color: var(--zaris-orange); font-size: 4rem;
+      letter-spacing: -.06em; line-height: 1; margin: 0 0 16px;
+    }
+    .cita__attr {
+      font-family: var(--font-mono); font-size: .8rem;
+      color: var(--fg-3); text-transform: uppercase; letter-spacing: .14em;
+    }
+
+    /* CTA final -------------------------------------------------- */
+    .cta {
+      padding: 96px 0 120px;
+      background:
+        radial-gradient(circle at 50% 100%, rgba(245, 78, 0, .08), transparent 60%),
+        var(--zaris-cream);
+      text-align: center;
+    }
+    .cta h2 {
+      font-family: var(--font-display);
+      font-size: clamp(2rem, 4vw, 2.6rem);
+      letter-spacing: var(--track-section);
+      font-weight: 400;
+      max-width: 22ch; margin: 0 auto 20px;
+    }
+    .cta p {
+      font-family: var(--font-serif); font-size: 1.15rem;
+      color: var(--fg-2); margin: 0 auto 36px; max-width: 50ch;
+    }
+    .cta__ctas { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+    /* Footer ----------------------------------------------------- */
+    footer {
+      padding: 40px 0;
+      border-top: 1px solid var(--border-primary);
+      color: var(--fg-3);
+    }
+    .footer__inner {
+      display: flex; justify-content: space-between; align-items: center;
+      flex-wrap: wrap; gap: 16px;
+      font-family: var(--font-mono); font-size: .78rem;
+      letter-spacing: .04em;
+    }
+
+    /* Botones tipo *-zaris (fallback inline si components.css no carga) */
+    .btn-zaris {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      font-family: var(--font-display); font-size: .92rem; font-weight: 500;
+      padding: 12px 22px; border-radius: var(--radius-md);
+      border: 1px solid transparent;
+      cursor: pointer; text-decoration: none;
+      transition: background .15s ease, color .15s ease, border-color .15s ease;
+    }
+    .btn-zaris--primary { background: var(--fg-1); color: var(--zaris-cream); }
+    .btn-zaris--primary:hover { background: #000; }
+    .btn-zaris--accent { background: var(--zaris-orange); color: white; }
+    .btn-zaris--accent:hover { background: #d94400; }
+    .btn-zaris--outline {
+      background: transparent; color: var(--fg-1);
+      border-color: var(--border-medium);
+    }
+    .btn-zaris--outline:hover { background: var(--surface-300); }
+
+    /* Responsive ------------------------------------------------- */
+    @media (max-width: 880px) {
+      .modulo, .modulo--reverse { grid-template-columns: 1fr; }
+      .modulo--reverse .modulo__copy { order: 0; }
+      .topbar__nav { display: none; }
+      section { padding: 72px 0; }
+      .hero { padding: 80px 0 64px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="topbar">
+    <a class="topbar__brand" href="#top">
+      <svg viewBox="0 0 500 500" aria-hidden="true">
+        <g fill="none" stroke="currentColor" stroke-width="34" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M 110 78 L 388 78"></path>
+          <path d="M 388 78 L 110 430"></path>
+          <path d="M 388 220 L 222 430"></path>
+          <path d="M 388 362 L 334 430"></path>
+        </g>
+      </svg>
+      <strong>ZARIS</strong>
+      <span>Suite de Gestión del Estado</span>
+    </a>
+    <div class="topbar__spacer"></div>
+    <nav class="topbar__nav" aria-label="Secciones">
+      <a href="#pilares">La suite</a>
+      <a href="#modulos">Módulos</a>
+      <a href="#porque">Por qué ZARIS</a>
+      <a href="#contacto">Contacto</a>
+    </nav>
+  </header>
+
+  <main id="top">
+
+    <!-- HERO ----------------------------------------------------- -->
+    <section class="hero">
+      <div class="wrap">
+        <span class="hero__eyebrow">Gobierno local · Operación diaria</span>
+        <h1 class="hero__title">Una sola plataforma para gestionar <em>todo el municipio</em>.</h1>
+        <p class="hero__lead">
+          ZARIS unifica reclamos, órdenes de trabajo, agenda de recursos, trámites administrativos y atención ciudadana en una experiencia coherente, trazable y construida sobre el padrón único de personas.
+        </p>
+        <div class="hero__ctas">
+          <a class="btn-zaris btn-zaris--accent" href="#contacto">Solicitar una demo</a>
+          <a class="btn-zaris btn-zaris--outline" href="#modulos">Recorrer la suite</a>
+        </div>
+
+        <div class="hero__meta">
+          <div class="hero__meta-item">
+            <span class="hero__meta-num">8</span>
+            <span class="hero__meta-lbl">módulos integrados</span>
+          </div>
+          <div class="hero__meta-item">
+            <span class="hero__meta-num">1</span>
+            <span class="hero__meta-lbl">padrón único de ciudadanos</span>
+          </div>
+          <div class="hero__meta-item">
+            <span class="hero__meta-num">100%</span>
+            <span class="hero__meta-lbl">trazabilidad por expediente</span>
+          </div>
+          <div class="hero__meta-item">
+            <span class="hero__meta-num">SSO</span>
+            <span class="hero__meta-lbl">acceso unificado con permisos por módulo</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PILARES -------------------------------------------------- -->
+    <section id="pilares">
+      <div class="wrap">
+        <div class="section__head">
+          <p class="section__eyebrow">Diseñado para gobiernos locales</p>
+          <h2 class="section__title">Una suite que entiende cómo trabaja un municipio.</h2>
+          <p class="section__sub">
+            ZARIS no es un módulo más sobre el sistema existente. Es la capa transversal que conecta lo que el vecino reclama, lo que el área resuelve y lo que el funcionario firma.
+          </p>
+        </div>
+
+        <div class="pilares">
+          <article class="pilar">
+            <svg class="pilar__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9"></circle>
+              <path d="M12 7v5l3 2"></path>
+            </svg>
+            <h3 class="pilar__title">Tiempo real</h3>
+            <p class="pilar__body">
+              Cada reclamo entra al circuito en el momento. Estados, asignaciones y vencimientos de SLA se actualizan al instante para que nadie llegue tarde.
+            </p>
+          </article>
+
+          <article class="pilar">
+            <svg class="pilar__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 6h18"></path>
+              <path d="M3 12h18"></path>
+              <path d="M3 18h12"></path>
+            </svg>
+            <h3 class="pilar__title">Trazabilidad completa</h3>
+            <p class="pilar__body">
+              Toda acción queda registrada: quién la hizo, cuándo, sobre qué. La auditoría es parte del producto, no una funcionalidad agregada.
+            </p>
+          </article>
+
+          <article class="pilar">
+            <svg class="pilar__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+            <h3 class="pilar__title">Padrón único</h3>
+            <p class="pilar__body">
+              Una sola Base Única de Ciudadanos. Un mismo vecino no se duplica entre áreas: el reclamo, el turno y el trámite hablan de la misma persona.
+            </p>
+          </article>
+
+          <article class="pilar">
+            <svg class="pilar__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 11l3 3L22 4"></path>
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+            </svg>
+            <h3 class="pilar__title">Permisos por módulo</h3>
+            <p class="pilar__body">
+              Acceso granular con SSO. Cada usuario ve exactamente los módulos que su rol necesita: un supervisor de obras no ve trámites de licencias.
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- MODULOS -------------------------------------------------- -->
+    <section id="modulos" class="modulos-sec">
+      <div class="wrap">
+        <div class="section__head">
+          <p class="section__eyebrow">La suite, módulo por módulo</p>
+          <h2 class="section__title">Ocho módulos. Una sola experiencia.</h2>
+          <p class="section__sub">
+            Todo lo que el municipio necesita para operar de cara al vecino y puertas adentro. Diseño coherente, datos compartidos, una sola sesión.
+          </p>
+        </div>
+
+        <!-- DASHBOARD -->
+        <div class="modulo">
+          <div class="modulo__copy">
+            <p class="modulo__tag">Tablero ejecutivo</p>
+            <h3 class="modulo__title">Una vista del municipio en tiempo real.</h3>
+            <p class="modulo__lead">
+              El dashboard cruza reclamos activos, prioridades, ciudadanos del padrón y geolocalización. Permite ver en un instante qué pasa, dónde pasa y qué requiere atención inmediata.
+            </p>
+            <ul class="modulo__bullets">
+              <li>Mapa interactivo con estado por reclamo</li>
+              <li>Contadores por prioridad y por estado del circuito</li>
+              <li>Auto-refresco de métricas claves del operativo diario</li>
+            </ul>
+          </div>
+          <div class="modulo__shot">
+            <img src="img/zaris-dashboard.png" alt="Dashboard de ZARIS mostrando 13 reclamos activos sobre el mapa de Vicente López">
+          </div>
+        </div>
+
+        <!-- RECLAMOS -->
+        <div class="modulo modulo--reverse">
+          <div class="modulo__shot">
+            <img src="img/zaris-reclamos.png" alt="Bandeja de reclamos de ZARIS con filtros por estado, área y prioridad">
+          </div>
+          <div class="modulo__copy">
+            <p class="modulo__tag">Reclamos</p>
+            <h3 class="modulo__title">Del whatsapp al expediente, sin perder a nadie.</h3>
+            <p class="modulo__lead">
+              Cada reclamo se carga una vez, queda numerado de forma correlativa (REC-AAAA-XXXXXX) y avanza por un circuito visible. Estados, SLA, asignaciones y subreclamos quedan a la vista del operador y del supervisor.
+            </p>
+            <ul class="modulo__bullets">
+              <li>Ingreso multicanal: web, presencial, app móvil, oficio</li>
+              <li>Geolocalización por mapa, por dirección o por activo (luminarias, contenedores, etc.)</li>
+              <li>Adjuntos con firma segura y SLA por tipo de reclamo</li>
+              <li>Historial completo y cascada de subreclamos</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- AGENDA -->
+        <div class="modulo">
+          <div class="modulo__copy">
+            <p class="modulo__tag">Agenda de recursos</p>
+            <h3 class="modulo__title">Toda la disponibilidad municipal en una sola grilla.</h3>
+            <p class="modulo__lead">
+              Agentes, equipos y espacios físicos comparten un calendario único. Vista diaria, semanal y mensual. Drag &amp; drop para reasignar, detección automática de conflictos y horarios laborales multi-rango con rotaciones programables.
+            </p>
+            <ul class="modulo__bullets">
+              <li>Asignar OTs y turnos arrastrando bloques en la grilla</li>
+              <li>Espacios atendidos y desatendidos, con vínculo de agentes</li>
+              <li>Eventos con cupo y reservas autoservicio del vecino</li>
+              <li>Conflictos resaltados, sin sobreasignaciones silenciosas</li>
+            </ul>
+          </div>
+          <div class="modulo__shot">
+            <img src="img/zaris-agenda.png" alt="Vista de agenda de ZARIS con 84 agentes en grilla de día">
+          </div>
+        </div>
+
+        <!-- OT -->
+        <div class="modulo modulo--reverse">
+          <div class="modulo__shot">
+            <img src="img/zaris-ot.png" alt="Mesa del Supervisor de Órdenes de Trabajo con bandeja de reclamos a asignar">
+          </div>
+          <div class="modulo__copy">
+            <p class="modulo__tag">Órdenes de trabajo</p>
+            <h3 class="modulo__title">Tres mesas, un mismo flujo: supervisar, ejecutar, auditar.</h3>
+            <p class="modulo__lead">
+              El supervisor planifica las OTs desde el reclamo mismo: elige el agente o equipo, ve sus huecos libres y agenda en una sola pasada. El agente toma sus OTs desde su mesa; el auditor cierra el ciclo controlando la calidad antes de marcar el reclamo como resuelto.
+            </p>
+            <ul class="modulo__bullets">
+              <li>Numeración correlativa OT-AAAA-XXXXXX, automática</li>
+              <li>Planificación con slots reales de disponibilidad del recurso</li>
+              <li>Auditoría con aprobación o rechazo trazado</li>
+              <li>Reasignación masiva por subárea o por equipo</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- TRAMITES -->
+        <div class="modulo">
+          <div class="modulo__copy">
+            <p class="modulo__tag">Trámites administrativos</p>
+            <h3 class="modulo__title">Expedientes digitales con circuito propio por tipo.</h3>
+            <p class="modulo__lead">
+              Cada tipo de trámite tiene su propio FSM versionado: estados, transiciones, documentos requeridos y firmas. Habilitaciones comerciales, licencias, pedidos de informe, recursos administrativos &mdash; cada flujo se modela una vez y todos los expedientes lo siguen.
+            </p>
+            <ul class="modulo__bullets">
+              <li>Numeración con prefijo por tipo y por municipio (POD-LPL-2026-0001)</li>
+              <li>Pases entre áreas con comentarios, adjuntos y firma</li>
+              <li>Ledger append-only: cada movimiento queda registrado</li>
+              <li>Relacionar trámites, derivar, sustituir &mdash; sin perder historia</li>
+            </ul>
+          </div>
+          <div class="modulo__shot">
+            <img src="img/zaris-tramites.png" alt="Bandeja de trámites de ZARIS con 20 expedientes en distintos estados">
+          </div>
+        </div>
+
+        <!-- CONTACTOS / BUC -->
+        <div class="modulo modulo--reverse">
+          <div class="modulo__shot">
+            <img src="img/zaris-contactos.png" alt="Padrón de Ciudadanos de ZARIS con búsqueda por DNI y CUIL">
+          </div>
+          <div class="modulo__copy">
+            <p class="modulo__tag">Padrón único · BUC</p>
+            <h3 class="modulo__title">Una sola identidad por persona. Una sola por empresa.</h3>
+            <p class="modulo__lead">
+              La Base Única de Ciudadanos centraliza datos personales, contactos y vínculos con empresas. Búsqueda inteligente por DNI, CUIL, teléfono normalizado o texto libre. Nada de tablas paralelas por área.
+            </p>
+            <ul class="modulo__bullets">
+              <li>Una API de búsqueda para toda la suite</li>
+              <li>Validación de CUIL/CUIT y normalización automática</li>
+              <li>Relación N:M ciudadano &harr; empresa (representación legal)</li>
+              <li>Bajas lógicas con reactivación rastreada</li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- CITA INSPIRACIONAL --------------------------------------- -->
+    <section class="cita">
+      <div class="wrap">
+        <div class="cita__lead">&ldquo;</div>
+        <blockquote>
+          La transparencia no es un módulo. Es la consecuencia de un sistema bien diseñado.
+        </blockquote>
+        <p class="cita__attr">Filosofía de producto · ZARIS</p>
+      </div>
+    </section>
+
+    <!-- POR QUE ZARIS -------------------------------------------- -->
+    <section id="porque">
+      <div class="wrap">
+        <div class="section__head">
+          <p class="section__eyebrow">Por qué ZARIS</p>
+          <h2 class="section__title">Pensada desde el municipio. Operada por el municipio.</h2>
+          <p class="section__sub">
+            No adaptamos un CRM genérico al sector público. ZARIS nace del trabajo diario en gestión local y entiende su lógica, sus áreas, sus circuitos y sus restricciones.
+          </p>
+        </div>
+
+        <div class="razones">
+          <article class="razon">
+            <div class="razon__num">01</div>
+            <h3 class="razon__title">Una sola sesión, una sola navegación</h3>
+            <p class="razon__body">
+              El operador no salta entre sistemas. Reclamos, agenda, trámites, padrón &mdash; todo en una experiencia coherente con permisos por módulo y rol.
+            </p>
+          </article>
+
+          <article class="razon">
+            <div class="razon__num">02</div>
+            <h3 class="razon__title">Datos que conversan</h3>
+            <p class="razon__body">
+              Un reclamo deriva en una OT que toma un agente del equipo de Mantenimiento. El expediente queda vinculado al ciudadano. Todo conectado, sin reingresar nada.
+            </p>
+          </article>
+
+          <article class="razon">
+            <div class="razon__num">03</div>
+            <h3 class="razon__title">Diseñado para escalar</h3>
+            <p class="razon__body">
+              Probado con padrones de cientos de miles de vecinos, decenas de subáreas y catálogos de cientos de tipos de reclamo y trámite. El rendimiento se mide y se mantiene.
+            </p>
+          </article>
+
+          <article class="razon">
+            <div class="razon__num">04</div>
+            <h3 class="razon__title">Implementación en semanas</h3>
+            <p class="razon__body">
+              Migraciones de catálogos desde CSV, seeds idempotentes, deploys reproducibles. La puesta en marcha no es un proyecto de un año.
+            </p>
+          </article>
+
+          <article class="razon">
+            <div class="razon__num">05</div>
+            <h3 class="razon__title">Ciudadano en el centro</h3>
+            <p class="razon__body">
+              Autoservicio público para turnos y reservas con QR. El vecino resuelve solo lo que puede resolver solo. El municipio se concentra en lo que requiere atención humana.
+            </p>
+          </article>
+
+          <article class="razon">
+            <div class="razon__num">06</div>
+            <h3 class="razon__title">Auditoría que es parte del diseño</h3>
+            <p class="razon__body">
+              Cada acción tiene autor, fecha y traza. Las bajas son lógicas, los historiales son append-only. La transparencia no se reporta: se consulta.
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA ------------------------------------------------------ -->
+    <section id="contacto" class="cta">
+      <div class="wrap">
+        <h2>Llevá la gestión de tu municipio al siguiente nivel.</h2>
+        <p>
+          Coordinamos una demo guiada por nuestro equipo, con datos similares a los de tu municipio. Sin compromiso, sin formularios extensos.
+        </p>
+        <div class="cta__ctas">
+          <a class="btn-zaris btn-zaris--accent" href="mailto:contacto@zaris.com.ar?subject=Quiero%20conocer%20ZARIS%20Gesti%C3%B3n%20del%20Estado">Pedir una demo</a>
+          <a class="btn-zaris btn-zaris--outline" href="https://zge.zaris.com.ar/" target="_blank" rel="noopener">Ver la suite en vivo</a>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <div class="wrap footer__inner">
+      <div>ZARIS &middot; Gestión del Estado &middot; v0.1</div>
+      <div>© 2026 ZARIS Consultora &middot; Construido para gobiernos locales</div>
+    </div>
+  </footer>
+
+</body>
+</html>
