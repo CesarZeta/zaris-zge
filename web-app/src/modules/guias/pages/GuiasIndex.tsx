@@ -28,6 +28,14 @@ const GUIAS: Guia[] = [
     tags: ['Operativo', '9 capturas', '11 secciones'],
   },
   {
+    titulo: 'TRÁMITES (USO OPERATIVO)',
+    descripcion: 'Cómo trabajar un expediente: alta, tomar, mover el estado, pase a otra área, adjuntar documentos, relacionar y notificaciones.',
+    icon: FileText,
+    htmlName: 'manual_tramites.html',
+    audiencia: 'Operador o superior',
+    tags: ['Operativo', '8 capturas', '13 secciones'],
+  },
+  {
     titulo: 'TRÁMITES (CREACIÓN)',
     descripcion: 'Cómo el administrador configura tipos de trámite custom: estados, transiciones, campos, documentos requeridos y versionado.',
     icon: Settings,
@@ -111,7 +119,7 @@ export function GuiasIndex() {
       </div>
 
       <footer style={footerStyle}>
-        Más guías próximamente para Agenda, Turnos, Entradas, Padrones y Trámites (uso operativo).
+        Más guías próximamente para Agenda, Turnos, Entradas y Padrones.
       </footer>
     </div>
   )
