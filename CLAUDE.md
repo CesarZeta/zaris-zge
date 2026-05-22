@@ -2858,24 +2858,26 @@ Funciones nuevas en `services/email.py`: `enviar_mail_activacion_ciudadano` y `e
 
 **Stack**: vanilla puro. HTML en [frontend/usuarios.html](frontend/usuarios.html), JS en [frontend/js/usuarios.js](frontend/js/usuarios.js). Endpoints en [backend/app/api/routes/buc.py](backend/app/api/routes/buc.py) prefix `/api/v1/buc/usuarios/*`.
 
-> **Ampliado 2026-05-22 (mig 55, §21):** el form ahora tiene **campo subárea predictivo + checkbox "usuario externo"** (subárea obligatoria salvo externo, validado en `schemas/buc.py`). Listado/preview muestran subárea + hay filtro por subárea. Buscador principal y filtro de listado pasan a predictivo en-vivo (debounce). `UsuarioOut` suma `id_subarea`/`subarea_nombre`/`es_externo`. Endpoint nuevo `GET /buc/subareas/buscar` (predictivo). **Esa sesión NO resolvió los bugs CRITICAL de abajo** — siguen vivos, y el endpoint nuevo hereda el #1 (sin auth).
+> **Ampliado 2026-05-22 (mig 55, §21):** el form ahora tiene **campo subárea predictivo + checkbox "usuario externo"** (subárea obligatoria salvo externo, validado en `schemas/buc.py`). Listado/preview muestran subárea + hay filtro por subárea. Buscador principal y filtro de listado pasan a predictivo en-vivo (debounce). `UsuarioOut` suma `id_subarea`/`subarea_nombre`/`es_externo`. Endpoint nuevo `GET /buc/subareas/buscar` (predictivo).
 
-### Deuda CRÍTICA conocida — NO codear features nuevas sin patchear esto primero
+> **Bugs CRITICAL #1, #2, #3 RESUELTOS y pusheados a prod el 2026-05-22.** Ver "Estado de la deuda" abajo.
 
-Detalle + PoCs en [reporte_pruebas_usuarios_2026-05-19.md](reporte_pruebas_usuarios_2026-05-19.md) (untracked, ver §40).
+### Deuda conocida — estado al 2026-05-22
 
-| # | Severidad | Bug | Archivo |
-|---|---|---|---|
-| 1 | **CRITICAL** | Router `buc.py` ENTERO sin auth — los 28 endpoints (usuarios + ciudadanos + empresas + nacionalidades + ciudadano_empresa) aceptan POST/PUT/GET sin JWT. Verificado: creé admin nivel 1 con curl sin token. Viola §3. | [backend/app/api/routes/buc.py](backend/app/api/routes/buc.py) — 0 referencias a `get_current_user` / `require_modulo`. |
-| 2 | **CRITICAL** | XSS persistente en `mostrarResultados()` — `u.nombre` y `u.username` se interpolan en `innerHTML` sin `esc()`. Encadenado con #1: alta sin auth + payload en nombre = control del shell de cualquier admin que busque. | [frontend/js/usuarios.js:106-124](frontend/js/usuarios.js#L106-L124) |
-| 3 | **CRITICAL** | XSS persistente en topbar del shell — `menu.js:54-57` interpola `user.nombre` sin escape. El XSS dispara apenas el user víctima abre el shell (no necesita ir a Usuarios). | [frontend/js/menu.js:54-57](frontend/js/menu.js#L54-L57) |
-| 4 | HIGH | Form no captura email → users creados desde UI no pueden loguearse (`/auth/login` busca por email, queda NULL). Fix sugerido: agregar campo email + autogenerar `<username>@municipio.gob.ar` server-side como fallback. | [frontend/usuarios.html](frontend/usuarios.html) (form) + [backend/app/api/routes/buc.py:83](backend/app/api/routes/buc.py#L83) (POST) |
-| 5 | HIGH | Módulo no es accesible desde el sidebar — item "configuración" usa `data-modulo="usuarios"` pero apunta a `web-app/dist/index.html#/config/identidad` (módulo Config React). El frontend de Usuarios queda huérfano. | [index.html](index.html) sidebar |
-| 6 | MEDIUM | Modal confirm de baja muestra "No, continuar / Sí, salir" (texto del flow "cancelar alta") — `ZUtils.confirm()` tiene labels hardcoded. Ver memoria [[feedback_modal_zutils_confirm_textos_fijos]]. | [frontend/js/config.js](frontend/js/config.js) `confirm()` |
+Detalle en [reporte_pruebas_usuarios_2026-05-19.md](reporte_pruebas_usuarios_2026-05-19.md) (untracked, sin PoCs desde que se resolvieron los críticos, ver §40).
 
-**Inconsistencia con §3**: §3 dice "usar `get_current_user` en todo endpoint que requiera identidad o permisos". El router `buc.py` viola esto desde origen — no es regresión.
+| # | Severidad | Bug | Estado | Archivo |
+|---|---|---|---|---|
+| 1 | CRITICAL | Router `buc.py` sin auth en escritura — POST/PUT aceptaban alta de admin sin JWT. | **✅ RESUELTO 2026-05-22** — `get_current_user` en los 9 endpoints de escritura (usuarios/ciudadanos/empresas + ciudadano-empresa). GET de búsqueda/catálogo siguen abiertos a propósito. Smoke: POST sin token=401, con token=201. | [backend/app/api/routes/buc.py](backend/app/api/routes/buc.py) |
+| 2 | CRITICAL | XSS persistente en `mostrarResultados()` (`u.nombre`/`u.username` sin `esc()`). | **✅ RESUELTO 2026-05-22** — `esc()` aplicado. | [frontend/js/usuarios.js](frontend/js/usuarios.js) |
+| 3 | CRITICAL | XSS persistente en topbar del shell (`user.nombre` sin escape). | **✅ RESUELTO 2026-05-22** — helper `esc()` en menu.js + cache-bust `?v=2026-05-22a`. | [frontend/js/menu.js](frontend/js/menu.js) |
+| 4 | HIGH | Form no captura email → users creados desde UI no pueden loguearse (`/auth/login` busca por email, queda NULL). Fix sugerido: agregar campo email + autogenerar `<username>@municipio.gob.ar` server-side como fallback. | abierto | [frontend/usuarios.html](frontend/usuarios.html) (form) + [backend/app/api/routes/buc.py](backend/app/api/routes/buc.py) (POST) |
+| 5 | HIGH | Módulo no es accesible desde el sidebar — item "configuración" usa `data-modulo="usuarios"` pero apunta a `web-app/dist/index.html#/config/identidad` (módulo Config React). El frontend de Usuarios queda huérfano. | abierto | [index.html](index.html) sidebar |
+| 6 | MEDIUM | Modal confirm de baja muestra "No, continuar / Sí, salir" (texto del flow "cancelar alta") — `ZUtils.confirm()` tiene labels hardcoded. Ver memoria [[feedback_modal_zutils_confirm_textos_fijos]]. | abierto | [frontend/js/config.js](frontend/js/config.js) `confirm()` |
 
-**Antes de tocar el módulo**: verificar que los bugs 1-3 sigan abiertos con un curl rápido sin token. Si están patcheados, actualizar esta sección.
+**Deuda residual de seguridad (no crítica)**: los GET del router BUC siguen sin auth (alcance "solo escritura" elegido para no romper consumidores vanilla); `UsuarioOut` podría exponer `password_hash` — verificar schema antes de endurecer a router-wide.
+
+**Antes de tocar el módulo**: los bugs 4-6 siguen abiertos. Verificar con un curl rápido si #1-3 reaparecieron antes de asumir que siguen cerrados.
 
 ## 40. Reportes de QA — convención de no-versionado
 

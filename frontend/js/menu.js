@@ -45,16 +45,20 @@
 
   const NIVELES = { 1: 'Administrador', 2: 'Supervisor', 3: 'Operador', 4: 'Consultor' };
 
+  // Escape HTML — el nombre/username viene de la DB y puede contener payloads
+  // XSS (alta sin sanitizar). NUNCA interpolar datos de usuario en innerHTML sin esto.
+  const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
   if (user) {
     const name     = user.nombre || user.username || '';
     const initials = name.split(' ').slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || 'ZG';
     const nivel    = NIVELES[user.nivel_acceso] || 'Usuario';
 
     if (avatarEl)  avatarEl.textContent = initials;
-    if (contextEl) contextEl.innerHTML  = `<strong>${name.split(' ')[0]}</strong> · ${nivel}`;
+    if (contextEl) contextEl.innerHTML  = `<strong>${esc(name.split(' ')[0])}</strong> · ${esc(nivel)}`;
     if (infoEl)    infoEl.innerHTML     = `
-      <div class="user-menu__info-name">${name}</div>
-      <div class="user-menu__info-role">${nivel}</div>`;
+      <div class="user-menu__info-name">${esc(name)}</div>
+      <div class="user-menu__info-role">${esc(nivel)}</div>`;
   }
 
   // ── User menu dropdown ──────────────────────────────────────
