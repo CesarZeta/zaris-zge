@@ -43,8 +43,10 @@ TABLE_CONFIG: dict[str, dict] = {
         "fecha_mod": "fecha_modificacion",
     },
     "usuarios": {
+        # NOTA: id_tipo_usuario NO existe en la tabla usuarios (era drift histórico
+        # del TABLE_CONFIG). Las columnas reales de pertenencia son id_subarea + es_externo.
         "pk": "id_usuario",
-        "cols": ["nombre", "nivel_acceso", "username", "cuil", "buc_acceso", "id_tipo_usuario", "id_subarea"],
+        "cols": ["nombre", "nivel_acceso", "username", "cuil", "buc_acceso", "id_subarea", "es_externo"],
         "fecha_mod": "fecha_modif",
         "exclude": ["password_hash"],
     },

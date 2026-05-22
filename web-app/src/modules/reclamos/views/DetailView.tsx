@@ -9,6 +9,7 @@ import { CambiarEstadoModal } from '../components/CambiarEstadoModal'
 import { CancelarReclamoModal } from '../components/CancelarReclamoModal'
 import { SubreclamoModal } from '../components/SubreclamoModal'
 import { UploadAdjuntosPanel } from '../components/UploadAdjuntosPanel'
+import { ConfirmModal } from '../../agenda/components/ConfirmModal'
 import { borrarAdjunto } from '../api/reclamosApi'
 import type { Adjunto, ReclamoDetalle, HistorialItem, OTAsociada, Subreclamo } from '../types/reclamo'
 
@@ -207,9 +208,13 @@ function AdjuntosSection({ idReclamo, puedeGestionar }: { idReclamo: number; pue
   const push = useNotificationsStore((s) => s.push)
   const [lightbox, setLightbox] = useState<Adjunto | null>(null)
   const [borrando, setBorrando] = useState<number | null>(null)
+  // Adjunto pendiente de confirmar borrado (pop-up de advertencia del DS, §29).
+  const [aBorrar, setABorrar] = useState<Adjunto | null>(null)
 
-  async function handleBorrar(a: Adjunto) {
-    if (!window.confirm(`¿Borrar el adjunto "${a.nombre_archivo}"? Esta acción no se puede deshacer.`)) return
+  async function ejecutarBorrado() {
+    if (!aBorrar) return
+    const a = aBorrar
+    setABorrar(null)
     setBorrando(a.id_adjunto)
     try {
       await borrarAdjunto(idReclamo, a.id_adjunto)
@@ -260,7 +265,7 @@ function AdjuntosSection({ idReclamo, puedeGestionar }: { idReclamo: number; pue
               {puedeGestionar && (
                 <button
                   type="button"
-                  onClick={() => handleBorrar(a)}
+                  onClick={() => setABorrar(a)}
                   disabled={borrando === a.id_adjunto}
                   aria-label="Eliminar adjunto"
                   style={{
@@ -295,6 +300,16 @@ function AdjuntosSection({ idReclamo, puedeGestionar }: { idReclamo: number; pue
           />
         </div>
       )}
+      <ConfirmModal
+        open={aBorrar !== null}
+        title="Eliminar adjunto"
+        message={`¿Estás seguro de borrar el adjunto "${aBorrar?.nombre_archivo ?? ''}"? Esta acción no se puede deshacer.`}
+        confirmLabel="Sí, eliminar"
+        cancelLabel="No, volver"
+        danger
+        onConfirm={() => void ejecutarBorrado()}
+        onCancel={() => setABorrar(null)}
+      />
     </ReclamoSection>
   )
 }

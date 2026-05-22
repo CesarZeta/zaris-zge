@@ -4,6 +4,7 @@ import { useEspacios, useEliminarEspacio } from '../../hooks/useEspacios'
 import { Button, Badge, EmptyState, Skeleton, Table } from '../../../../ui'
 import { EspacioFormModal } from './EspacioFormModal'
 import { EspacioAgentesModal } from './EspacioAgentesModal'
+import { ConfirmModal } from '../ConfirmModal'
 import type { EspacioAgenda } from '../../types/agenda'
 
 export function EspaciosConfig() {
@@ -11,6 +12,7 @@ export function EspaciosConfig() {
   const eliminar = useEliminarEspacio()
   const [formOpen, setFormOpen] = useState<{ espacio: EspacioAgenda | null } | null>(null)
   const [agentesOpen, setAgentesOpen] = useState<number | null>(null)
+  const [aEliminar, setAEliminar] = useState<EspacioAgenda | null>(null)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -74,11 +76,7 @@ export function EspaciosConfig() {
                     <Button
                       variant="ghost"
                       icon={<Trash2 size={13} strokeWidth={1.5} />}
-                      onClick={() => {
-                        if (confirm(`Eliminar el espacio "${r.nombre}"? Esta accion es reversible (baja logica).`)) {
-                          eliminar.mutate(r.id_espacio)
-                        }
-                      }}
+                      onClick={() => setAEliminar(r)}
                     >
                       Eliminar
                     </Button>
@@ -99,6 +97,16 @@ export function EspaciosConfig() {
         open={agentesOpen != null}
         onClose={() => setAgentesOpen(null)}
         idEspacio={agentesOpen}
+      />
+      <ConfirmModal
+        open={aEliminar != null}
+        title="Eliminar espacio"
+        message={`¿Estás seguro de eliminar el espacio "${aEliminar?.nombre ?? ''}"? Es una baja lógica (reversible).`}
+        confirmLabel="Sí, eliminar"
+        cancelLabel="No, volver"
+        danger
+        onConfirm={() => { if (aEliminar) { eliminar.mutate(aEliminar.id_espacio); setAEliminar(null) } }}
+        onCancel={() => setAEliminar(null)}
       />
     </div>
   )

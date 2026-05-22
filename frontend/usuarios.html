@@ -169,6 +169,24 @@
         .preview-row__cta { font-size: var(--size-caption); color: var(--zaris-orange); font-weight: 600; white-space: nowrap; opacity: 0; transition: opacity 0.15s; margin-left: auto; }
         .preview-row:hover .preview-row__cta { opacity: 1; }
 
+        /* Dropdown predictivo de subárea */
+        .subarea-results {
+            position: absolute; top: 100%; left: 0; right: 0; z-index: 30;
+            background: var(--surface-100); border: 1px solid var(--border-medium);
+            border-radius: var(--radius-md); margin-top: 2px; max-height: 240px;
+            overflow-y: auto; box-shadow: var(--shadow-ambient); display: none;
+        }
+        .subarea-results.visible { display: block; }
+        .subarea-item {
+            padding: 8px 12px; cursor: pointer; font-size: var(--size-mono);
+            border-bottom: 1px solid var(--border-primary); transition: background 0.1s;
+        }
+        .subarea-item:last-child { border-bottom: none; }
+        .subarea-item:hover { background: var(--surface-200); }
+        .subarea-item__nombre { font-weight: 600; color: var(--fg-1); }
+        .subarea-item__area { font-size: var(--size-caption); color: var(--fg-3); margin-left: 6px; }
+        .subarea-results__empty { padding: 8px 12px; color: var(--fg-3); font-size: var(--size-caption); }
+
         /* Print */
         .print-header { display: none; }
         @media print {
@@ -256,6 +274,12 @@
                         <option value="2">Supervisor</option>
                         <option value="3">Operador</option>
                         <option value="4">Consultor</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Subárea</label>
+                    <select id="lst-subarea">
+                        <option value="">Todas</option>
                     </select>
                 </div>
                 <div class="filter-group">
@@ -352,6 +376,26 @@
                         </div>
                     </div>
 
+                    <div class="section-title-zaris">Pertenencia</div>
+
+                    <div class="form-zaris-row form-zaris-row--2">
+                        <div class="form-zaris-group" style="position:relative;">
+                            <label class="label-zaris label-zaris--required" for="usr-subarea-q">Subárea</label>
+                            <input type="text" class="input-zaris" id="usr-subarea-q"
+                                   placeholder="Escribí para buscar subárea..." autocomplete="off">
+                            <input type="hidden" id="usr-subarea">
+                            <div id="usr-subarea-results" class="subarea-results"></div>
+                            <div class="input-hint-zaris" id="usr-subarea-selected"></div>
+                            <div class="input-error-zaris" id="err-subarea"></div>
+                        </div>
+                        <div class="form-zaris-group" style="display:flex;align-items:flex-end;padding-bottom:1.1rem;">
+                            <label class="checkbox-zaris">
+                                <input type="checkbox" id="usr-externo">
+                                <span class="checkbox-zaris__label">Usuario externo (sin subárea)</span>
+                            </label>
+                        </div>
+                    </div>
+
                     <div id="activo-row" style="display:none;">
                         <div class="section-title-zaris">Estado</div>
                         <span id="activo-badge"></span>
@@ -410,6 +454,6 @@
 
     <script src="js/config.js?v=20260512"></script>
     <script src="js/validaciones.js?v=20260512"></script>
-    <script src="js/usuarios.js?v=20260512"></script>
+    <script src="js/usuarios.js?v=20260522b"></script>
 </body>
 </html>

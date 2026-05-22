@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Modal } from '../../agenda/components/Modal'
+import { ConfirmModal } from '../../agenda/components/ConfirmModal'
 import { useReclamoAdjuntos, useReclamoDetalle } from '../../reclamos/hooks/useReclamos'
 import type {
   Adjunto,
@@ -227,6 +228,7 @@ function OTAdjuntosSection({ idOt, puedeGestionar }: { idOt: number; puedeGestio
   const adjuntos = useOTAdjuntos(idOt)
   const borrar = useBorrarAdjuntoOT(idOt)
   const [lightbox, setLightbox] = useState<Adjunto | null>(null)
+  const [aBorrar, setABorrar] = useState<Adjunto | null>(null)
 
   return (
     <Section title="Evidencia de la OT">
@@ -269,11 +271,7 @@ function OTAdjuntosSection({ idOt, puedeGestionar }: { idOt: number; puedeGestio
                   type="button"
                   aria-label="Borrar evidencia"
                   disabled={borrar.isPending}
-                  onClick={() => {
-                    if (window.confirm(`¿Borrar "${a.nombre_archivo}"? Esta acción no se puede deshacer.`)) {
-                      borrar.mutate(a.id_adjunto)
-                    }
-                  }}
+                  onClick={() => setABorrar(a)}
                   style={{
                     position: 'absolute', top: 6, right: 6,
                     width: 24, height: 24, borderRadius: '50%',
@@ -305,6 +303,16 @@ function OTAdjuntosSection({ idOt, puedeGestionar }: { idOt: number; puedeGestio
           />
         </div>
       )}
+      <ConfirmModal
+        open={aBorrar !== null}
+        title="Borrar evidencia"
+        message={`¿Estás seguro de borrar "${aBorrar?.nombre_archivo ?? ''}"? Esta acción no se puede deshacer.`}
+        confirmLabel="Sí, borrar"
+        cancelLabel="No, volver"
+        danger
+        onConfirm={() => { if (aBorrar) { borrar.mutate(aBorrar.id_adjunto); setABorrar(null) } }}
+        onCancel={() => setABorrar(null)}
+      />
     </Section>
   )
 }

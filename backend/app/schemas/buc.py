@@ -4,7 +4,7 @@ Validación de entrada/salida en los endpoints.
 """
 from datetime import date, datetime
 from typing import Optional
-from pydantic import BaseModel, Field, field_validator, computed_field
+from pydantic import BaseModel, Field, field_validator, computed_field, model_validator
 import re
 
 
@@ -65,6 +65,16 @@ class UsuarioCreate(BaseModel):
     id_municipio: int = Field(1)
     cuil:         Optional[str] = Field(None, max_length=11)
     buc_acceso:   bool = False
+    id_subarea:   Optional[int] = None
+    es_externo:   bool = False
+
+    @model_validator(mode="after")
+    def _subarea_obligatoria_salvo_externo(self):
+        if not self.es_externo and self.id_subarea is None:
+            raise ValueError("La subárea es obligatoria salvo que el usuario sea externo")
+        if self.es_externo:
+            self.id_subarea = None  # un externo no pertenece a ninguna subárea
+        return self
 
 
 class UsuarioUpdate(BaseModel):
@@ -75,6 +85,23 @@ class UsuarioUpdate(BaseModel):
     cuil:         Optional[str] = Field(None, max_length=11)
     buc_acceso:   Optional[bool] = None
     password:     Optional[str] = Field(None, min_length=8, max_length=100)
+    id_subarea:   Optional[int] = None
+    es_externo:   Optional[bool] = None
+
+    @model_validator(mode="after")
+    def _coherencia_subarea_externo(self):
+        # Solo validar cuando el update toca alguno de los dos campos relevantes.
+        toca_externo = "es_externo" in self.model_fields_set
+        toca_subarea = "id_subarea" in self.model_fields_set
+        if not toca_externo and not toca_subarea:
+            return self
+        # Si se marca externo, anular subárea.
+        if self.es_externo is True:
+            self.id_subarea = None
+        # Si se desmarca externo (o ya era no-externo) y se está poniendo subárea NULL → error.
+        elif self.es_externo is False and toca_subarea and self.id_subarea is None:
+            raise ValueError("La subárea es obligatoria salvo que el usuario sea externo")
+        return self
 
 
 class UsuarioOut(BaseModel):
@@ -87,6 +114,9 @@ class UsuarioOut(BaseModel):
     activo:       bool
     cuil:         Optional[str]
     buc_acceso:   bool
+    id_subarea:   Optional[int]
+    subarea_nombre: Optional[str] = None
+    es_externo:   bool
     fecha_alta:   datetime
     fecha_modif:  datetime
 

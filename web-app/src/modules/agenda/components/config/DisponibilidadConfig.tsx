@@ -8,10 +8,12 @@ import { useQuery } from '@tanstack/react-query'
 import { format as formatBitmask } from '../../../../lib/diasSemana'
 import type { DisponibilidadRecurso, RecursoItem, TipoRecurso } from '../../types/agenda'
 import { DisponibilidadFormModal } from './DisponibilidadFormModal'
+import { ConfirmModal } from '../ConfirmModal'
 
 export function DisponibilidadConfig() {
   const [filtroTipo, setFiltroTipo] = useState<TipoRecurso | 'todos'>('todos')
   const [formOpen, setFormOpen] = useState<{ disp: DisponibilidadRecurso | null } | null>(null)
+  const [aEliminar, setAEliminar] = useState<DisponibilidadRecurso | null>(null)
   const eliminar = useEliminarDisponibilidad()
 
   const lista = useDisponibilidad(filtroTipo === 'todos' ? undefined : { tipo_recurso: filtroTipo })
@@ -109,11 +111,7 @@ export function DisponibilidadConfig() {
                     <Button
                       variant="ghost"
                       icon={<Trash2 size={13} strokeWidth={1.5} />}
-                      onClick={() => {
-                        if (confirm(`Eliminar esta disponibilidad? Esta accion es reversible (baja logica).`)) {
-                          eliminar.mutate(r.id_disponibilidad)
-                        }
-                      }}
+                      onClick={() => setAEliminar(r)}
                     >
                       Eliminar
                     </Button>
@@ -129,6 +127,16 @@ export function DisponibilidadConfig() {
         open={formOpen != null}
         onClose={() => setFormOpen(null)}
         disp={formOpen?.disp ?? null}
+      />
+      <ConfirmModal
+        open={aEliminar != null}
+        title="Eliminar disponibilidad"
+        message="¿Estás seguro de eliminar esta disponibilidad? Es una baja lógica (reversible)."
+        confirmLabel="Sí, eliminar"
+        cancelLabel="No, volver"
+        danger
+        onConfirm={() => { if (aEliminar) { eliminar.mutate(aEliminar.id_disponibilidad); setAEliminar(null) } }}
+        onCancel={() => setAEliminar(null)}
       />
     </div>
   )
