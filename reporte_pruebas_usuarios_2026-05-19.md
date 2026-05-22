@@ -8,7 +8,9 @@
 
 > **ACTUALIZACIÓN 2026-05-22**: los **3 hallazgos CRITICAL** (auth bypass del router BUC + 2 XSS persistentes) fueron **RESUELTOS y pusheados a producción**. Las PoCs explotables se removieron por §40 (repo público).
 >
-> **ACTUALIZACIÓN 2026-05-22 (2ª tanda)**: los **3 hallazgos restantes** (#03 login imposible, #04 sin link sidebar, #05 modal texto) también **RESUELTOS y verificados en navegador**. El módulo Usuarios queda sin deuda funcional conocida (resta solo deuda de seguridad menor: GET del router BUC sin auth).
+> **ACTUALIZACIÓN 2026-05-22 (2ª tanda)**: los **3 hallazgos restantes** (#03 login imposible, #04 sin link sidebar, #05 modal texto) también **RESUELTOS y verificados en navegador**.
+>
+> **ACTUALIZACIÓN 2026-05-22 (3ª tanda)**: cerrada la deuda de seguridad de los GET — el router BUC completo ahora exige JWT (guard a nivel router). El módulo queda **sin deuda conocida**.
 
 ---
 
@@ -64,7 +66,7 @@ Encadenado con BUG-USU-02 (alta sin auth), permitía persistir un payload y ejec
 - `POST /api/v1/buc/usuarios` **con** token → **201** + cleanup baja OK.
 - `GET /api/v1/buc/usuarios/buscar` sin token → **200** (sigue abierto, esperado).
 
-> **Deuda residual (no crítica)**: los GET siguen sin auth y `UsuarioOut` aún podría exponer `password_hash` (verificar schema). Considerar para una próxima iteración endurecer a router-wide + excluir el hash del schema.
+> **Cerrado completo (3ª tanda 2026-05-22)**: se endureció a **guard a nivel router** — los GET también exigen JWT ahora (`APIRouter(..., dependencies=[Depends(get_current_user)])`). `UsuarioOut` ya **NO** exponía `password_hash` (verificado). Smoke: GET sin token=401, con token=200; App Vecinos (`/publico/*`) intacta.
 
 ---
 
@@ -156,7 +158,7 @@ Al abrir el módulo, los 5 últimos usuarios en la vista previa incluían `qa_te
 | P2 | BUG-USU-04 (no link sidebar) | ✅ RESUELTO 2026-05-22 |
 | P3 | BUG-USU-05 (modal texto) | ✅ RESUELTO 2026-05-22 |
 
-Todos los hallazgos del reporte fueron resueltos. Resta solo deuda de seguridad menor (no bloqueante): los GET del router BUC siguen sin auth (alcance "solo escritura"), considerar endurecer a router-wide en una próxima iteración.
+Todos los hallazgos del reporte fueron resueltos. La deuda de seguridad de los GET también se cerró (3ª tanda 2026-05-22): el router BUC completo exige JWT vía guard a nivel router. **Sin deuda conocida.**
 
 ---
 

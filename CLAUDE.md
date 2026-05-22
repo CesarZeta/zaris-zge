@@ -2868,16 +2868,16 @@ Detalle en [reporte_pruebas_usuarios_2026-05-19.md](reporte_pruebas_usuarios_202
 
 | # | Severidad | Bug | Estado | Archivo |
 |---|---|---|---|---|
-| 1 | CRITICAL | Router `buc.py` sin auth en escritura — POST/PUT aceptaban alta de admin sin JWT. | **✅ RESUELTO 2026-05-22** — `get_current_user` en los 9 endpoints de escritura (usuarios/ciudadanos/empresas + ciudadano-empresa). GET de búsqueda/catálogo siguen abiertos a propósito. Smoke: POST sin token=401, con token=201. | [backend/app/api/routes/buc.py](backend/app/api/routes/buc.py) |
+| 1 | CRITICAL | Router `buc.py` sin auth — los 28 endpoints aceptaban requests sin JWT. | **✅ RESUELTO 2026-05-22** — guard a nivel router (`APIRouter(..., dependencies=[Depends(get_current_user)])`): **TODO el router exige JWT** (28 endpoints, GET incluidos). Cualquier endpoint nuevo queda protegido por defecto. Smoke: GET y POST sin token=401, con token=200/201. App Vecinos (`/publico/*`, router separado) no afectada. | [backend/app/api/routes/buc.py](backend/app/api/routes/buc.py) |
 | 2 | CRITICAL | XSS persistente en `mostrarResultados()` (`u.nombre`/`u.username` sin `esc()`). | **✅ RESUELTO 2026-05-22** — `esc()` aplicado. | [frontend/js/usuarios.js](frontend/js/usuarios.js) |
 | 3 | CRITICAL | XSS persistente en topbar del shell (`user.nombre` sin escape). | **✅ RESUELTO 2026-05-22** — helper `esc()` en menu.js + cache-bust `?v=2026-05-22a`. | [frontend/js/menu.js](frontend/js/menu.js) |
 | 4 | HIGH | Form no captura email → users creados desde UI no podían loguearse (`/auth/login` busca por email). | **✅ RESUELTO 2026-05-22** — POST autogenera `<username>@municipio.gob.ar` si no viene (valida unicidad 409); `email` opcional en Create/Update/Out + form. Smoke: alta sin email → login OK. | [frontend/usuarios.html](frontend/usuarios.html) + [backend/app/api/routes/buc.py](backend/app/api/routes/buc.py) |
 | 5 | HIGH | Módulo no accesible desde el sidebar — el item con `data-modulo="usuarios"` era en realidad "configuración" (Config React). | **✅ RESUELTO 2026-05-22** — item nuevo "usuarios" → `frontend/usuarios.html`; "configuración" pasó a `data-modulo="admin_tablas"`. | [index.html](index.html) sidebar |
 | 6 | MEDIUM | Modal confirm de baja con texto equivocado ("No, continuar / Sí, salir"). | **✅ RESUELTO 2026-05-22** — `ZUtils.confirm(title, msg, opts)` acepta `cancelLabel`/`confirmLabel`/`danger` + escapa title/msg. `cambiarEstado()` pasa "Cancelar"/"Sí, dar de baja". Ver [[feedback_modal_zutils_confirm_textos_fijos]]. | [frontend/js/config.js](frontend/js/config.js) `confirm()` |
 
-**Deuda residual de seguridad (no crítica, único pendiente del módulo)**: los GET del router BUC siguen sin auth (alcance "solo escritura" elegido para no romper consumidores vanilla); `UsuarioOut` **NO** expone `password_hash` (verificado 2026-05-22). Considerar endurecer GET a router-wide en una próxima iteración.
+**Estado al 2026-05-22**: los 6 hallazgos del reporte QA + la deuda de seguridad de los GET están **resueltos y verificados** (smoke backend + navegador). El router BUC completo exige JWT (guard a nivel router). `UsuarioOut` **NO** expone `password_hash` (verificado). **El módulo Usuarios/BUC queda sin deuda conocida.**
 
-**Estado al 2026-05-22**: los 6 hallazgos del reporte QA están resueltos y verificados (3 críticos + 3 usabilidad). El módulo queda sin deuda funcional conocida.
+> **Patrón**: para proteger un router entero (todos los verbos, incluido GET, + endpoints futuros), usar `APIRouter(prefix=..., dependencies=[Depends(get_current_user)])` en vez de `Depends` por-handler. Más robusto contra regresiones. Solo dejar endpoints sin guard si son genuinamente públicos (entonces van en un router separado, como `/publico/*`).
 
 ## 40. Reportes de QA — convención de no-versionado
 
