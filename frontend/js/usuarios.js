@@ -205,8 +205,8 @@ document.addEventListener('DOMContentLoaded', () => {
             row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border-primary);';
             row.innerHTML = `
                 <span style="font-size:0.88rem;">
-                    <strong>${u.nombre}</strong>
-                    <span style="color:var(--fg-2);margin-left:8px;">${u.username}</span>
+                    <strong>${esc(u.nombre)}</strong>
+                    <span style="color:var(--fg-2);margin-left:8px;">${esc(u.username)}</span>
                     <span style="color:var(--fg-3);margin-left:6px;font-size:0.78rem;">${NIVELES[u.nivel_acceso] || ''}</span>
                     ${!u.activo ? '<span style="color:var(--color-error);font-size:0.75rem;margin-left:6px;">[Inactivo]</span>' : ''}
                 </span>
