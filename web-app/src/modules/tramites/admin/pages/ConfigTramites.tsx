@@ -67,8 +67,8 @@ export function ConfigTramites() {
                 <th style={cellHead}>Código</th>
                 <th style={cellHead}>Nombre</th>
                 <th style={cellHead}>Prefijo</th>
-                <th style={cellHead}>Iniciadores</th>
-                <th style={cellHead}>Versión publicada</th>
+                <th style={cellHead}>Origen</th>
+                <th style={cellHead}>Estado</th>
                 <th style={{ ...cellHead, width: 100, textAlign: 'right' }}>Acciones</th>
               </tr>
             </thead>
@@ -79,18 +79,14 @@ export function ConfigTramites() {
                   <td style={cell}>{t.nombre}</td>
                   <td style={cellMono}>{t.prefijo}</td>
                   <td style={cell}>
-                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                      {t.iniciadores_permitidos.map((i) => (
-                        <Badge key={i} kind="neutral">{i}</Badge>
-                      ))}
-                    </div>
+                    {t.es_sistema ? (
+                      <Badge kind="neutral">Sistema</Badge>
+                    ) : (
+                      <Badge kind="success">Custom</Badge>
+                    )}
                   </td>
                   <td style={cell}>
-                    {t.id_version_publicada ? (
-                      <Badge kind="success">publicada</Badge>
-                    ) : (
-                      <Badge kind="warn">sin publicar</Badge>
-                    )}
+                    <BadgeEstado estado={t.estado_version} />
                   </td>
                   <td style={{ ...cell, textAlign: 'right' }}>
                     <button
@@ -126,6 +122,21 @@ export function ConfigTramites() {
       )}
     </div>
   )
+}
+
+function BadgeEstado({ estado }: { estado: 'publicado' | 'borrador' | 'sin_estados' | 'archivado' }) {
+  switch (estado) {
+    case 'publicado':
+      return <Badge kind="success">Publicado</Badge>
+    case 'borrador':
+      return <Badge kind="warn">Borrador</Badge>
+    case 'sin_estados':
+      return <Badge kind="warn">Borrador (sin estados)</Badge>
+    case 'archivado':
+      return <Badge kind="neutral">Archivado</Badge>
+    default:
+      return <Badge kind="neutral">{estado}</Badge>
+  }
 }
 
 const cellHead: React.CSSProperties = {

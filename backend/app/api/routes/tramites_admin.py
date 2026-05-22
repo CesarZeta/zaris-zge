@@ -37,6 +37,8 @@ from app.schemas.tramites import (
     EstadoIn,
     EstadoOut,
     EstadoUpdateIn,
+    TipoTramiteAdminListItem,
+    TipoTramiteAdminListOut,
     TipoTramiteAdminOut,
     TipoTramiteCreateIn,
     TipoTramiteUpdateIn,
@@ -76,6 +78,65 @@ async def _resolver_agente_publicador(user: dict, db: AsyncSession) -> Optional[
 # ---------------------------------------------------------------------------
 # tipo_tramite CRUD
 # ---------------------------------------------------------------------------
+
+@router.get("/tipos", response_model=TipoTramiteAdminListOut)
+async def listar_tipos_admin(
+    user: dict = Depends(_require_admin_supervisor),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lista TODOS los tipos activos (publicados, en borrador y sin publicar) para
+    la pantalla de administracion. A diferencia de GET /api/v1/tramites/tipos
+    (publico, solo publicados), este incluye borradores y marca es_sistema +
+    estado de la ultima version (publicado/borrador/sin_estados)."""
+    filas = (await db.execute(
+        text("""
+            SELECT tt.id_tipo_tramite, tt.codigo, tt.nombre, tt.prefijo,
+                   tt.iniciadores_permitidos,
+                   COALESCE(tt.es_sistema, FALSE) AS es_sistema,
+                   tt.id_version_publicada,
+                   -- estado de la version mas alta activa
+                   (SELECT v.estado
+                      FROM tipo_tramite_version v
+                     WHERE v.id_tipo_tramite = tt.id_tipo_tramite AND v.activo = TRUE
+                     ORDER BY v.version_num DESC
+                     LIMIT 1) AS estado_ultima_version,
+                   -- cantidad de estados de esa version (para distinguir borrador vacio)
+                   (SELECT COUNT(*)
+                      FROM tipo_tramite_estado e
+                      JOIN tipo_tramite_version v2 ON v2.id_tipo_tramite_version = e.id_tipo_tramite_version
+                     WHERE v2.id_tipo_tramite = tt.id_tipo_tramite AND v2.activo = TRUE
+                       AND v2.version_num = (
+                         SELECT MAX(v3.version_num) FROM tipo_tramite_version v3
+                          WHERE v3.id_tipo_tramite = tt.id_tipo_tramite AND v3.activo = TRUE)
+                       AND e.activo = TRUE) AS cant_estados
+            FROM tipo_tramite tt
+            WHERE tt.activo = TRUE
+            ORDER BY tt.es_sistema DESC, tt.nombre
+        """),
+    )).fetchall()
+
+    items: list[TipoTramiteAdminListItem] = []
+    for f in filas:
+        if f.id_version_publicada is not None:
+            estado = "publicado"
+        elif f.estado_ultima_version == "borrador" and int(f.cant_estados or 0) == 0:
+            estado = "sin_estados"
+        elif f.estado_ultima_version == "borrador":
+            estado = "borrador"
+        else:
+            estado = f.estado_ultima_version or "borrador"
+        items.append(TipoTramiteAdminListItem(
+            id_tipo_tramite=f.id_tipo_tramite,
+            codigo=f.codigo,
+            nombre=f.nombre,
+            prefijo=f.prefijo,
+            iniciadores_permitidos=list(f.iniciadores_permitidos or []),
+            es_sistema=bool(f.es_sistema),
+            id_version_publicada=f.id_version_publicada,
+            estado_version=estado,
+        ))
+    return TipoTramiteAdminListOut(items=items, total=len(items))
+
 
 @router.post("/tipos", status_code=201, response_model=TipoTramiteAdminOut)
 async def crear_tipo_tramite(
@@ -219,6 +280,7 @@ async def _detalle_tipo_admin(db: AsyncSession, id_tipo_tramite: int) -> TipoTra
                    iniciadores_permitidos, permite_representante,
                    incluye_municipio, incluye_anio, largo_correlativo, separador,
                    correlativo_reinicia_anual, icono, color, activo,
+                   COALESCE(es_sistema, FALSE) AS es_sistema,
                    id_version_publicada
             FROM tipo_tramite WHERE id_tipo_tramite = :id
         """),
@@ -249,6 +311,7 @@ async def _detalle_tipo_admin(db: AsyncSession, id_tipo_tramite: int) -> TipoTra
         separador=tipo.separador,
         correlativo_reinicia_anual=tipo.correlativo_reinicia_anual,
         icono=tipo.icono, color=tipo.color, activo=tipo.activo,
+        es_sistema=bool(tipo.es_sistema),
         id_version_publicada=tipo.id_version_publicada,
         versiones=[
             VersionOut(

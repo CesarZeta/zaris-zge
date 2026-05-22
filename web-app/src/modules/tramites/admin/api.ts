@@ -5,6 +5,7 @@
 import { api } from '../../../lib/api'
 import type {
   TipoTramiteAdmin,
+  TipoTramiteAdminListItem,
   VersionAdmin,
   TipoTramiteCampo,
   TipoTramiteEstado,
@@ -59,6 +60,11 @@ export const eliminarTipo = (id: number) =>
 
 export const detalleTipoAdmin = (id: number) =>
   api.get<TipoTramiteAdmin>(`${BASE}/tipos/${id}/admin`)
+
+/** Lista TODOS los tipos activos (publicados, borradores y sin publicar) para la
+ * pantalla de administración. Incluye es_sistema y estado_version. */
+export const listarTiposAdmin = () =>
+  api.get<{ items: TipoTramiteAdminListItem[]; total: number }>(`${BASE}/tipos`)
 
 /* ── Versiones ──────────────────────────────────────────── */
 
