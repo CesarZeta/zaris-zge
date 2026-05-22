@@ -109,22 +109,28 @@ const ZUtils = {
     /**
      * Muestra modal de confirmación
      */
-    confirm(title, message) {
+    confirm(title, message, opts = {}) {
+        // Labels personalizables (default: flow "cancelar alta"). `danger` pinta el
+        // botón de confirmar en rojo (para bajas/borrados).
+        const _esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const cancelLabel  = _esc(opts.cancelLabel  || 'No, continuar');
+        const confirmLabel = _esc(opts.confirmLabel || 'Sí, salir');
+        const confirmClass = opts.danger ? 'btn-zaris--danger' : 'btn-zaris--primary';
         return new Promise((resolve) => {
             const overlay = document.createElement('div');
             overlay.className = 'modal-zaris-overlay active';
             overlay.innerHTML = `
                 <div class="modal-zaris">
                     <div class="modal-zaris__header">
-                        <h3 class="modal-zaris__title">${title}</h3>
+                        <h3 class="modal-zaris__title">${_esc(title)}</h3>
                         <button class="modal-zaris__close" data-action="cancel">&times;</button>
                     </div>
                     <div class="modal-zaris__body">
-                        <p>${message}</p>
+                        <p>${_esc(message)}</p>
                     </div>
                     <div class="modal-zaris__footer">
-                        <button class="btn-zaris btn-zaris--ghost" data-action="cancel">No, continuar</button>
-                        <button class="btn-zaris btn-zaris--primary" data-action="confirm">Sí, salir</button>
+                        <button class="btn-zaris btn-zaris--ghost" data-action="cancel">${cancelLabel}</button>
+                        <button class="btn-zaris ${confirmClass}" data-action="confirm">${confirmLabel}</button>
                     </div>
                 </div>
             `;

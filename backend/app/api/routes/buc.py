@@ -36,7 +36,7 @@ logger = logging.getLogger("zaris.buc")
 # SELECT base que enriquece cada usuario con el nombre de su subárea (LEFT JOIN,
 # porque los usuarios externos / sin subárea tienen id_subarea NULL).
 _USUARIO_SELECT = """
-    SELECT u.id_usuario, u.nombre, u.nivel_acceso, u.username, u.id_cargo,
+    SELECT u.id_usuario, u.nombre, u.nivel_acceso, u.username, u.email, u.id_cargo,
            u.id_municipio, u.activo, u.cuil, u.buc_acceso,
            u.id_subarea, s.nombre AS subarea_nombre, u.es_externo,
            u.fecha_alta, u.fecha_modif
@@ -123,6 +123,14 @@ async def crear_usuario(
 
     data_dict = data.model_dump()
     data_dict["password_hash"] = bcrypt.hashpw(data_dict.pop("password").encode(), bcrypt.gensalt()).decode()
+
+    # Email: si no viene, autogenerar <username>@municipio.gob.ar. /auth/login busca
+    # por email, así que un usuario sin email nunca podría loguearse (BUG-USU-03).
+    email = (data_dict.get("email") or "").strip() or f"{data.username}@municipio.gob.ar"
+    data_dict["email"] = email
+    dup_email = await db.execute(select(Usuario).where(Usuario.email == email))
+    if dup_email.scalars().first():
+        raise HTTPException(status_code=409, detail=f"Ya existe un usuario con email '{email}'")
 
     usuario = Usuario(**data_dict)
     db.add(usuario)

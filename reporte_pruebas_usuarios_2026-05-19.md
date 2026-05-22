@@ -6,7 +6,9 @@
 
 **Login usado**: `ciudadanovl@municipio.gob.ar` (admin nivel 1).
 
-> **ACTUALIZACIÓN 2026-05-22**: los **3 hallazgos CRITICAL** (auth bypass del router BUC + 2 XSS persistentes) fueron **RESUELTOS y pusheados a producción** (commit en `main`). Las PoCs explotables se removieron de este reporte por §40 (repo público). Quedan abiertos los HIGH/MEDIUM de usabilidad (#03, #04, #05).
+> **ACTUALIZACIÓN 2026-05-22**: los **3 hallazgos CRITICAL** (auth bypass del router BUC + 2 XSS persistentes) fueron **RESUELTOS y pusheados a producción**. Las PoCs explotables se removieron por §40 (repo público).
+>
+> **ACTUALIZACIÓN 2026-05-22 (2ª tanda)**: los **3 hallazgos restantes** (#03 login imposible, #04 sin link sidebar, #05 modal texto) también **RESUELTOS y verificados en navegador**. El módulo Usuarios queda sin deuda funcional conocida (resta solo deuda de seguridad menor: GET del router BUC sin auth).
 
 ---
 
@@ -66,63 +68,41 @@ Encadenado con BUG-USU-02 (alta sin auth), permitía persistir un payload y ejec
 
 ---
 
-### [BUG-USU-03] HIGH — Form no captura email → users creados desde UI no pueden loguearse
+### [BUG-USU-03] HIGH — Form no captura email → users creados desde UI no pueden loguearse ✅ RESUELTO 2026-05-22
 
-**Severidad**: HIGH.
-**Reproducible**: 100%.
-**Caso**: ALTA-04 + login posterior.
+**Severidad**: HIGH. **Estado**: **RESUELTO** (pusheado a `main` el 2026-05-22).
 
-**Pasos**:
-1. Crear user vía form (con todos los campos visibles).
-2. Intentar login con `<username>@municipio.gob.ar` y la password elegida.
-3. **401 No autorizado**.
+**Problema**: `usuarios.email` nullable, el form no lo incluía, y `/auth/login` busca por email → un user creado desde la UI nunca podía loguearse.
 
-**Causa**: la columna `usuarios.email` es nullable y el form no la incluye. `seed_auth.py` arma el email a partir del username, pero el endpoint POST no lo hace. El endpoint `/auth/login` busca por `email`, no por `username`. Resultado: ningún usuario creado desde la UI puede iniciar sesión sin que un admin (o el seed) le complete el email a mano en DB.
+**Fix aplicado** (opción A+B combinadas):
+- Backend (`buc.py` POST `/usuarios`): si no viene email, autogenera `<username>@municipio.gob.ar`. Valida unicidad (409 si duplicado). `UsuarioCreate`/`UsuarioUpdate` aceptan `email` opcional; `UsuarioOut` + `_USUARIO_SELECT` lo devuelven.
+- Frontend (`usuarios.html` + `usuarios.js`): campo "Email" opcional en el form (con hint que explica el autogenerado), incluido en payload solo si tiene valor, poblado en edición.
 
-**Fix sugerido** (cualquiera resuelve):
-- A) Agregar campo "Email" al form (con validación), enviarlo al backend.
-- B) Backend autogenera `email = f"{username}@municipio.gob.ar"` cuando no viene en el payload (compat con seed).
-- C) Cambiar `/auth/login` para aceptar username o email.
-
-Recomendado: A + C (input explícito + login con cualquiera).
+**Verificado (smoke local + navegador 2026-05-22)**: crear sin email → email autogenerado + **login del user nuevo OK**; crear con email explícito → persiste; email duplicado → 409; GET trae el email y el form lo puebla en edición.
 
 ---
 
-### [BUG-USU-04] HIGH — Módulo Usuarios no es accesible desde el sidebar
+### [BUG-USU-04] HIGH — Módulo Usuarios no es accesible desde el sidebar ✅ RESUELTO 2026-05-22
 
-**Severidad**: HIGH (usabilidad — el módulo es funcional pero invisible).
-**Reproducible**: 100%.
-**Caso**: NAV-01.
+**Severidad**: HIGH. **Estado**: **RESUELTO** (pusheado a `main` el 2026-05-22).
 
-**Pasos**:
-1. Login como admin.
-2. Mirar el sidebar del shell vanilla. Items: reclamos · turnos · entradas · agenda · OT · trámites · contactos · maestros · configuración · guías.
-3. No existe "usuarios".
+**Problema**: el item con `data-modulo="usuarios"` era en realidad "configuración" (apuntaba al módulo Config React). No existía link a `frontend/usuarios.html`.
 
-**Análisis** (verificado en `index.html`):
-- El item con `data-modulo="usuarios"` se llama "configuración" y apunta a `web-app/dist/index.html#/config/identidad` (módulo Config React de identidad del municipio).
-- `frontend/usuarios.html` solo es accesible escribiendo la URL a mano (o vía `index.html?modulo=frontend%2Fusuarios.html`).
+**Fix aplicado**: item nuevo "usuarios" en el sidebar de `index.html` (`data-modulo="usuarios"` → `frontend/usuarios.html`, ícono de personas). El item "configuración" pasó a `data-modulo="admin_tablas"` (corrige el mismatch — config de identidad es admin nivel 1, igual que maestros).
 
-**Impacto**: el módulo Usuarios queda huérfano en producción. Un admin nuevo no puede llegar a la pantalla.
-
-**Fix sugerido**: agregar item nuevo en `index.html` sidebar (`data-modulo="usuarios"`) → `href="frontend/usuarios.html"`. Y darle al item "configuración" un `data-modulo` distinto (ej. `admin_tablas` o crear un nuevo código `config_identidad`).
+**Verificado (navegador 2026-05-22)**: el sidebar muestra "usuarios" entre "maestros" y "configuración"; click carga `usuarios.html` en el iframe del shell.
 
 ---
 
-### [BUG-USU-05] MEDIUM — Modal de confirmación de baja muestra texto equivocado
+### [BUG-USU-05] MEDIUM — Modal de confirmación de baja muestra texto equivocado ✅ RESUELTO 2026-05-22
 
-**Severidad**: MEDIUM (UX confusa, sin pérdida de datos).
-**Reproducible**: 100%.
-**Caso**: BAJA-01.
+**Severidad**: MEDIUM. **Estado**: **RESUELTO** (pusheado a `main` el 2026-05-22).
 
-**Pasos**:
-1. Cargar usuario en modo edición.
-2. Click en "Dar de Baja".
-3. Aparece modal con título "Dar de baja usuario" pero los botones dicen **"No, continuar"** y **"Sí, salir"**.
+**Problema**: `ZUtils.confirm()` tenía labels hardcoded ("No, continuar"/"Sí, salir", del flow "abandonar cambios"). La baja de usuario los reusaba → texto confuso.
 
-**Análisis**: `ZUtils.confirm()` parece tener textos hardcoded del modal de "abandonar cambios sin guardar". El texto "Sí, salir" sugiere abandonar la pantalla, no eliminar al usuario.
+**Fix aplicado**: `confirm(title, message, opts)` ahora acepta `cancelLabel`, `confirmLabel` y `danger` (botón rojo). Retrocompat: sin `opts` mantiene los defaults. `cambiarEstado()` pasa "Cancelar" / "Sí, dar de baja" (+ `danger:true` en baja). Bonus: `confirm()` ahora escapa `title`/`message` (cierra deuda XSS latente del mismo tipo).
 
-**Fix sugerido**: revisar [`frontend/js/config.js`](frontend/js/config.js) `confirm()` — aceptar parámetros para los labels de los botones, y desde `cambiarEstado()` en `usuarios.js:316` pasarle "Cancelar" / "Sí, dar de baja".
+**Verificado (navegador 2026-05-22)**: el modal de baja muestra título "Dar de baja usuario", botones "Cancelar" + "Sí, dar de baja" (rojo), nombre escapado.
 
 ---
 
@@ -172,11 +152,11 @@ Al abrir el módulo, los 5 últimos usuarios en la vista previa incluían `qa_te
 |---|---|---|
 | P0 | BUG-USU-02 (auth bypass) | ✅ RESUELTO 2026-05-22 |
 | P0 | BUG-USU-01 (XSS persistente) | ✅ RESUELTO 2026-05-22 |
-| P1 | BUG-USU-03 (login imposible) | abierto |
-| P2 | BUG-USU-04 (no link sidebar) | abierto |
-| P3 | BUG-USU-05 (modal texto) | abierto |
+| P1 | BUG-USU-03 (login imposible) | ✅ RESUELTO 2026-05-22 |
+| P2 | BUG-USU-04 (no link sidebar) | ✅ RESUELTO 2026-05-22 |
+| P3 | BUG-USU-05 (modal texto) | ✅ RESUELTO 2026-05-22 |
 
-Los dos P0 estaban encadenados (alta sin auth + XSS persistente en el nombre) y se resolvieron juntos en la misma tanda. Quedan los tres de usabilidad (P1-P3), no explotables.
+Todos los hallazgos del reporte fueron resueltos. Resta solo deuda de seguridad menor (no bloqueante): los GET del router BUC siguen sin auth (alcance "solo escritura"), considerar endurecer a router-wide en una próxima iteración.
 
 ---
 
