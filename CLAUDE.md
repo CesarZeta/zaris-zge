@@ -2897,19 +2897,20 @@ Detalle en [reporte_pruebas_usuarios_2026-05-19.md](reporte_pruebas_usuarios_202
 
 > **Patrón**: para proteger un router entero (todos los verbos, incluido GET, + endpoints futuros), usar `APIRouter(prefix=..., dependencies=[Depends(get_current_user)])` en vez de `Depends` por-handler. Más robusto contra regresiones. Solo dejar endpoints sin guard si son genuinamente públicos (entonces van en un router separado, como `/publico/*`).
 
-## 40. Reportes de QA — convención de no-versionado
+## 40. Reportes vs guías de QA — qué se versiona y qué no
 
-Los reportes generados por `/qa-report-template` (`reporte_pruebas_<bloque>_YYYY-MM-DD.md` en raíz) **NO se commitean** hasta que sus hallazgos estén resueltos. Razón: el repo es público (§6) y los reportes contienen PoCs reproducibles de vulnerabilidades. Commitear un reporte con XSS payload + endpoint vulnerable sin patch = publicar guía de explotación.
+**Distinguir dos artefactos distintos:**
 
-**Estado actual de los reportes existentes (2026-05-19):**
-- `reporte_pruebas_admin_tablas_2026-05-17.md` — untracked.
-- `reporte_pruebas_usuarios_2026-05-19.md` — untracked.
+1. **Reportes de QA** (`reporte_pruebas_<bloque>_YYYY-MM-DD.md`, generados por `/qa-report-template`): el **resultado** de una corrida de pruebas. Pueden contener PoCs reproducibles de vulnerabilidades (payloads XSS, endpoint sin auth + cómo explotarlo). **NO se commitean mientras tengan PoCs de hallazgos sin resolver** — el repo es público vía GH Pages (§6 + memoria [[reference_gh_pages_publica_todo_lo_commiteado]]), commitear eso = publicar guía de explotación.
+   - **SÍ se pueden versionar** cuando: (a) los hallazgos están **resueltos**, **y** (b) el reporte **no tiene payloads explotables** (verificar con `grep -cE "<script>|javascript:|onerror=|alert\("` → debe dar 0). Caso real 2026-05-22: `reporte_pruebas_admin_tablas_2026-05-17.md` se versionó tras confirmar 0 payloads + bugs resueltos.
+   - Si tiene PoCs activos: mantener untracked, o archivar reescrito sin PoCs en `docs/qa-archive/`.
+
+2. **Guías de QA** (`docs/qa_<modulo>.html`): el **plan de pruebas** para el tester humano — pasos + resultado esperado + columna PASS/FAIL. NO contienen PoCs (describen qué probar, no cómo explotar). **Se versionan normalmente** en `docs/`, servidas como `https://zge.zaris.com.ar/docs/qa_<modulo>.html`. Formato canónico: `docs/qa_reclamos_ot.html` y `docs/qa_tramites.html` (hero naranja + índice + tablas de casos + preguntas guía + glosario, sin emoji §13). **NO se registran en el módulo Guías** (ese es para manuales operativos del producto §37); las guías QA se comparten por link directo al tester. Generarlas con datos reales de prod (usuarios por rol con subárea, IDs/códigos reales).
 
 **Regla operativa:**
-- Mantener los reportes en raíz como artefacto local (untracked).
-- `.gitignore` no los excluye explícitamente para no perder visibilidad en `git status` — sirven como recordatorio de deuda pendiente.
-- Cuando los hallazgos críticos se resuelven, el reporte se puede archivar como `docs/qa-archive/reporte_<modulo>_YYYY-MM-DD.md` sin las PoCs (reescrito).
-- Nunca incluir reportes con PoCs activos en commits, ni en mensajes de PR.
+- `.gitignore` no excluye los reportes — quedan visibles en `git status` como recordatorio de deuda.
+- Antes de versionar cualquier `.md`/`.html` de QA: `grep` de payloads + confirmar hallazgos resueltos.
+- Nunca incluir reportes con PoCs activos en commits ni en mensajes de PR.
 
 ## 41. Módulo Config (React) + estándar de verificación en la interfaz
 
