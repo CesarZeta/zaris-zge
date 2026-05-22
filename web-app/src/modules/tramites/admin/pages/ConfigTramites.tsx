@@ -17,10 +17,11 @@ export function ConfigTramites() {
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <h1 style={{ fontSize: '1.4rem', margin: 0, color: 'var(--fg-1)' }}>
-            Configuración de trámites
+            Tipos de trámite
           </h1>
           <p style={{ margin: '4px 0 0', color: 'var(--fg-2)', fontSize: 14 }}>
-            Tipos de trámite y versiones de circuitos. Solo Admin/Supervisor.
+            Definí los modelos de trámite y su circuito de estados. Un tipo recién creado queda
+            en borrador; al <strong>publicarlo</strong> aparece disponible en «Nuevo trámite». Solo Admin/Supervisor.
           </p>
         </div>
         <Button variant="accent" icon={<Plus size={16} />} onClick={() => setModalAbierto(true)}>

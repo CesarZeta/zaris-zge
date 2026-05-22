@@ -56,7 +56,7 @@ export function TramitesLayout({ children }: { children: ReactNode }) {
               style={{ ...bcCurrentStyle, cursor: isConfigDetalle ? 'pointer' : 'default' }}
               onClick={isConfigDetalle ? () => navigate('/tramites/config') : undefined}
             >
-              Configuración
+              Tipos de trámite
             </span>
             {isConfigDetalle && idTipoConfig && (
               <>
@@ -92,7 +92,7 @@ export function TramitesLayout({ children }: { children: ReactNode }) {
                 fontWeight: isConfig ? 600 : 400,
               }}
             >
-              Configuración
+              Tipos de trámite
             </button>
           )}
         </div>
