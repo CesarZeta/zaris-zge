@@ -5,7 +5,7 @@ Endpoints: /api/v1/buc/
 import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import select, or_, and_, func
+from sqlalchemy import select, or_, and_, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -32,6 +32,18 @@ logger = logging.getLogger("zaris.buc")
 # USUARIOS
 # ═══════════════════════════════════════════════════════════════
 
+# SELECT base que enriquece cada usuario con el nombre de su subárea (LEFT JOIN,
+# porque los usuarios externos / sin subárea tienen id_subarea NULL).
+_USUARIO_SELECT = """
+    SELECT u.id_usuario, u.nombre, u.nivel_acceso, u.username, u.id_cargo,
+           u.id_municipio, u.activo, u.cuil, u.buc_acceso,
+           u.id_subarea, s.nombre AS subarea_nombre, u.es_externo,
+           u.fecha_alta, u.fecha_modif
+    FROM usuarios u
+    LEFT JOIN subarea s ON s.id_subarea = u.id_subarea
+"""
+
+
 @router.get("/usuarios/buscar", response_model=list[UsuarioOut])
 async def buscar_usuario(
     q: str = Query(..., min_length=1, description="Nombre, username o CUIL"),
@@ -43,18 +55,13 @@ async def buscar_usuario(
     """Buscar usuarios por nombre, username o CUIL."""
     es_numerico = tipo == "numero" or (tipo == "auto" and q.replace("-", "").isdigit())
     if es_numerico:
-        cond = or_(
-            Usuario.cuil.ilike(f"%{q}%"),
-            Usuario.username.ilike(f"%{q}%"),
-        )
+        cond = "(u.cuil ILIKE :q OR u.username ILIKE :q)"
     else:
-        cond = or_(
-            Usuario.nombre.ilike(f"%{q}%"),
-            Usuario.username.ilike(f"%{q}%"),
-        )
-    stmt = select(Usuario).where(cond).order_by(Usuario.nombre).offset(offset).limit(limit)
-    result = await db.execute(stmt)
-    return result.scalars().all()
+        cond = "(u.nombre ILIKE :q OR u.username ILIKE :q)"
+    r = await db.execute(text(
+        _USUARIO_SELECT + f" WHERE {cond} ORDER BY u.nombre OFFSET :off LIMIT :lim"
+    ), {"q": f"%{q}%", "off": offset, "lim": limit})
+    return [dict(row._mapping) for row in r.fetchall()]
 
 
 @router.get("/usuarios", response_model=list[UsuarioOut])
@@ -63,21 +70,43 @@ async def listar_usuarios(
     db: AsyncSession = Depends(get_db)
 ):
     """Listar usuarios del sistema (para selector modificado_por)."""
-    stmt = select(Usuario).order_by(Usuario.nombre)
-    if solo_activos:
-        stmt = stmt.where(Usuario.activo == True)
-    result = await db.execute(stmt)
-    return result.scalars().all()
+    where = " WHERE u.activo = TRUE" if solo_activos else ""
+    r = await db.execute(text(_USUARIO_SELECT + where + " ORDER BY u.nombre"))
+    return [dict(row._mapping) for row in r.fetchall()]
 
 
 @router.get("/usuarios/{id}", response_model=UsuarioOut)
 async def obtener_usuario(id: int, db: AsyncSession = Depends(get_db)):
     """Obtener usuario por ID."""
-    result = await db.execute(select(Usuario).where(Usuario.id_usuario == id))
-    u = result.scalars().first()
-    if not u:
+    r = await db.execute(text(_USUARIO_SELECT + " WHERE u.id_usuario = :id"), {"id": id})
+    row = r.fetchone()
+    if not row:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    return u
+    return dict(row._mapping)
+
+
+@router.get("/subareas/buscar")
+async def buscar_subareas(
+    q: str = Query("", description="Texto libre sobre nombre de subárea o área"),
+    limit: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db)
+):
+    """Buscador predictivo de subáreas (para el form de Usuarios).
+    Devuelve id, nombre de subárea y nombre del área a la que pertenece."""
+    params = {"lim": limit}
+    where = "WHERE s.activo = TRUE"
+    if q.strip():
+        where += " AND (s.nombre ILIKE :q OR a.nombre ILIKE :q)"
+        params["q"] = f"%{q.strip()}%"
+    r = await db.execute(text(f"""
+        SELECT s.id_subarea, s.nombre, a.nombre AS area_nombre
+        FROM subarea s
+        LEFT JOIN area a ON a.id_area = s.id_area
+        {where}
+        ORDER BY s.nombre
+        LIMIT :lim
+    """), params)
+    return [dict(row._mapping) for row in r.fetchall()]
 
 
 @router.post("/usuarios", response_model=UsuarioOut, status_code=201)

@@ -43,6 +43,62 @@ def _require_gestion(current_user: dict):
             detail="No tenés permisos para esta acción (requiere nivel Operador o superior)")
 
 
+NIVELES_SUPERVISOR = {1, 2}  # Admin, Supervisor
+
+
+async def _validar_cierre_directo_sin_ot(db, id_reclamo: int, id_tipo_reclamo, current_user: dict):
+    """Reglas para resolver un reclamo 'Sin asignar' sin generar OT:
+
+    1. El usuario debe ser supervisor (nivel ≤ 2; admin nivel 1 incluido).
+    2. El reclamo no debe tener una OT activa (coherencia: si tiene OT, debe
+       seguir el flujo normal de gestión/auditoría).
+    3. La subárea del usuario debe coincidir con la subárea del tipo de reclamo.
+    """
+    if current_user.get("nivel_acceso") not in NIVELES_SUPERVISOR:
+        raise HTTPException(
+            status_code=403,
+            detail="Resolver un reclamo sin OT requiere nivel Supervisor o Administrador.",
+        )
+
+    # No debe existir OT activa para este reclamo.
+    ot = await db.execute(text(
+        "SELECT 1 FROM ordenes_trabajo WHERE id_reclamo = :id AND activo = TRUE LIMIT 1"
+    ), {"id": id_reclamo})
+    if ot.fetchone():
+        raise HTTPException(
+            status_code=422,
+            detail="El reclamo ya tiene una OT asignada; no puede resolverse por cierre directo.",
+        )
+
+    # Subárea del tipo de reclamo (fuente única; reclamos.id_subarea puede ser NULL).
+    sub_tipo = None
+    if id_tipo_reclamo is not None:
+        rt = await db.execute(text(
+            "SELECT id_subarea FROM tipo_reclamo WHERE id_tipo_reclamo = :id"
+        ), {"id": id_tipo_reclamo})
+        rtr = rt.fetchone()
+        sub_tipo = rtr.id_subarea if rtr else None
+
+    if sub_tipo is None:
+        raise HTTPException(
+            status_code=422,
+            detail="El tipo de reclamo no tiene subárea asociada; no se puede validar el cierre directo.",
+        )
+
+    # Subárea del usuario logueado.
+    ru = await db.execute(text(
+        "SELECT id_subarea, es_externo FROM usuarios WHERE id_usuario = :uid"
+    ), {"uid": current_user["id_usuario"]})
+    rur = ru.fetchone()
+    sub_usuario = rur.id_subarea if rur else None
+
+    if sub_usuario is None or sub_usuario != sub_tipo:
+        raise HTTPException(
+            status_code=403,
+            detail="Solo un supervisor de la misma subárea del reclamo puede resolverlo sin OT.",
+        )
+
+
 def _to_dict(row) -> dict:
     d = dict(row._mapping)
     for k, v in d.items():
@@ -408,7 +464,7 @@ async def cambiar_estado(
         raise HTTPException(status_code=422, detail=f"Estado inválido: {nuevo_estado}")
 
     r = await db.execute(text(
-        "SELECT estado, id_reclamo_padre FROM reclamos WHERE id_reclamo = :id AND activo = TRUE"
+        "SELECT estado, id_reclamo_padre, id_tipo_reclamo FROM reclamos WHERE id_reclamo = :id AND activo = TRUE"
     ), {"id": id_reclamo})
     row = r.fetchone()
     if not row:
@@ -416,9 +472,18 @@ async def cambiar_estado(
 
     estado_anterior = row.estado
 
+    # Cierre directo sin OT: un reclamo "Sin asignar" (todavía sin OT) puede
+    # resolverse directamente, SOLO por un supervisor (nivel ≤ 2) que pertenezca
+    # a la misma subárea que el tipo de reclamo. No pasa por el grafo normal del
+    # FSM (que solo permitiría 'En gestión'/'Cancelado' desde 'Sin asignar').
+    es_cierre_directo = estado_anterior == "Sin asignar" and nuevo_estado == "Resuelto"
+    if es_cierre_directo:
+        await _validar_cierre_directo_sin_ot(db, id_reclamo, row.id_tipo_reclamo, current_user)
+
     # #3 — Validación secuencial del FSM: no permitir saltos no contemplados.
     # No-op (mismo estado) se acepta sin chequear el grafo.
-    if nuevo_estado != estado_anterior:
+    # El cierre directo ya fue validado arriba y queda exento del grafo.
+    elif nuevo_estado != estado_anterior:
         permitidos = TRANSICIONES_PERMITIDAS.get(estado_anterior, set())
         if nuevo_estado not in permitidos:
             raise HTTPException(

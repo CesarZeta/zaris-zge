@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { Modal } from '../Modal'
+import { ConfirmModal } from '../ConfirmModal'
 import { Button, EmptyState, Skeleton } from '../../../../ui'
 import { useEspacio, useVincularAgente, useDesvincularAgente } from '../../hooks/useEspacios'
 import { RecursoPicker } from '../RecursoPicker'
@@ -11,12 +12,15 @@ interface Props {
   idEspacio: number | null
 }
 
+type AgenteVinculado = { id_espacio_agente: number; id_agente: number; agente_nombre?: string | null }
+
 export function EspacioAgentesModal({ open, onClose, idEspacio }: Props) {
   const det = useEspacio(idEspacio)
   const vincular   = useVincularAgente()
   const desvincular = useDesvincularAgente()
   const [agenteSel, setAgenteSel] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [aDesvincular, setADesvincular] = useState<AgenteVinculado | null>(null)
 
   async function agregar() {
     if (!idEspacio || !agenteSel) return
@@ -75,11 +79,7 @@ export function EspacioAgentesModal({ open, onClose, idEspacio }: Props) {
                     <Button
                       variant="ghost"
                       icon={<Trash2 size={13} strokeWidth={1.5} />}
-                      onClick={() => {
-                        if (idEspacio && confirm(`Desvincular a "${a.agente_nombre ?? 'el agente'}" del espacio?`)) {
-                          desvincular.mutate({ idEspacio, idEspacioAgente: a.id_espacio_agente })
-                        }
-                      }}
+                      onClick={() => setADesvincular(a)}
                     >
                       Quitar
                     </Button>
@@ -90,6 +90,21 @@ export function EspacioAgentesModal({ open, onClose, idEspacio }: Props) {
           </>
         )}
       </div>
+      <ConfirmModal
+        open={aDesvincular != null}
+        title="Desvincular agente"
+        message={`¿Estás seguro de desvincular a "${aDesvincular?.agente_nombre ?? 'el agente'}" del espacio?`}
+        confirmLabel="Sí, desvincular"
+        cancelLabel="No, volver"
+        danger
+        onConfirm={() => {
+          if (idEspacio && aDesvincular) {
+            desvincular.mutate({ idEspacio, idEspacioAgente: aDesvincular.id_espacio_agente })
+          }
+          setADesvincular(null)
+        }}
+        onCancel={() => setADesvincular(null)}
+      />
     </Modal>
   )
 }

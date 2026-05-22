@@ -21,6 +21,7 @@ import { CampoModal } from '../modals/CampoModal'
 import { EstadoModal } from '../modals/EstadoModal'
 import { TransicionModal } from '../modals/TransicionModal'
 import { DocReqModal } from '../modals/DocReqModal'
+import { ConfirmModal } from '../../../agenda/components/ConfirmModal'
 import type {
   TipoTramiteCampo,
   TipoTramiteEstado,
@@ -62,6 +63,9 @@ export function ConfigTramiteDetalle() {
   const [transEditando, setTransEditando] = useState<TipoTramiteTransicion | 'nuevo' | null>(null)
   const [docEditando, setDocEditando] = useState<TipoTramiteDocRequerido | 'nuevo' | null>(null)
 
+  // Pop-up de confirmación genérico para todos los borrados de esta pantalla (§29).
+  const [confirmar, setConfirmar] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null)
+
   const crearBorrador = useCrearBorrador()
   const publicar = usePublicarVersion()
   const archivar = useArchivarVersion()
@@ -89,14 +93,19 @@ export function ConfigTramiteDetalle() {
   const editable = versionActiva?.estado === 'borrador' || (versionActiva?.estado === 'publicado' && (versionData?.cant_tramites ?? 0) === 0)
   const tieneBorradorAbierto = tipoData.versiones.some((v) => v.estado === 'borrador')
 
-  async function handleEliminarTipo() {
-    if (!confirm(`¿Desactivar el tipo "${tipoData!.nombre}"? Sólo se permite si no hay trámites activos.`)) return
-    try {
-      await eliminarTipoM.mutateAsync(tipoData!.id_tipo_tramite)
-      navigate('/tramites/config')
-    } catch (e) {
-      alert(e instanceof Error ? e.message : 'Error al eliminar')
-    }
+  function handleEliminarTipo() {
+    setConfirmar({
+      title: 'Desactivar tipo de trámite',
+      message: `¿Estás seguro de desactivar el tipo "${tipoData!.nombre}"? Sólo se permite si no hay trámites activos. Es una baja lógica.`,
+      onConfirm: async () => {
+        try {
+          await eliminarTipoM.mutateAsync(tipoData!.id_tipo_tramite)
+          navigate('/tramites/config')
+        } catch (e) {
+          alert(e instanceof Error ? e.message : 'Error al eliminar')
+        }
+      },
+    })
   }
 
   async function handlePublicar() {
@@ -288,11 +297,14 @@ export function ConfigTramiteDetalle() {
                     <Accion
                       editable={editable}
                       onEdit={() => setCampoEditando(c)}
-                      onDel={async () => {
-                        if (!confirm(`Eliminar campo "${c.etiqueta}"?`)) return
-                        try { await eliminarCampoM.mutateAsync(c.id_tipo_tramite_campo) }
-                        catch (e) { alert(e instanceof Error ? e.message : 'Error') }
-                      }}
+                      onDel={() => setConfirmar({
+                        title: 'Eliminar campo',
+                        message: `¿Estás seguro de eliminar el campo "${c.etiqueta}"?`,
+                        onConfirm: async () => {
+                          try { await eliminarCampoM.mutateAsync(c.id_tipo_tramite_campo) }
+                          catch (e) { alert(e instanceof Error ? e.message : 'Error') }
+                        },
+                      })}
                     />
                   </td>
                 </tr>
@@ -339,11 +351,14 @@ export function ConfigTramiteDetalle() {
                     <Accion
                       editable={editable}
                       onEdit={() => setEstadoEditando(e)}
-                      onDel={async () => {
-                        if (!confirm(`Eliminar estado "${e.etiqueta}"?`)) return
-                        try { await eliminarEstadoM.mutateAsync(e.id_tipo_tramite_estado) }
-                        catch (er) { alert(er instanceof Error ? er.message : 'Error') }
-                      }}
+                      onDel={() => setConfirmar({
+                        title: 'Eliminar estado',
+                        message: `¿Estás seguro de eliminar el estado "${e.etiqueta}"?`,
+                        onConfirm: async () => {
+                          try { await eliminarEstadoM.mutateAsync(e.id_tipo_tramite_estado) }
+                          catch (er) { alert(er instanceof Error ? er.message : 'Error') }
+                        },
+                      })}
                     />
                   </td>
                 </tr>
@@ -388,11 +403,14 @@ export function ConfigTramiteDetalle() {
                       <Accion
                         editable={editable}
                         onEdit={() => setTransEditando(t)}
-                        onDel={async () => {
-                          if (!confirm(`Eliminar transición "${t.etiqueta_accion}"?`)) return
-                          try { await eliminarTransM.mutateAsync(t.id_tipo_tramite_transicion) }
-                          catch (er) { alert(er instanceof Error ? er.message : 'Error') }
-                        }}
+                        onDel={() => setConfirmar({
+                          title: 'Eliminar transición',
+                          message: `¿Estás seguro de eliminar la transición "${t.etiqueta_accion}"?`,
+                          onConfirm: async () => {
+                            try { await eliminarTransM.mutateAsync(t.id_tipo_tramite_transicion) }
+                            catch (er) { alert(er instanceof Error ? er.message : 'Error') }
+                          },
+                        })}
                       />
                     </td>
                   </tr>
@@ -438,11 +456,14 @@ export function ConfigTramiteDetalle() {
                       <Accion
                         editable={editable}
                         onEdit={() => setDocEditando(d)}
-                        onDel={async () => {
-                          if (!confirm(`Eliminar "${d.nombre}"?`)) return
-                          try { await eliminarDocM.mutateAsync(d.id_tipo_tramite_documento_requerido) }
-                          catch (er) { alert(er instanceof Error ? er.message : 'Error') }
-                        }}
+                        onDel={() => setConfirmar({
+                          title: 'Eliminar documento requerido',
+                          message: `¿Estás seguro de eliminar "${d.nombre}"?`,
+                          onConfirm: async () => {
+                            try { await eliminarDocM.mutateAsync(d.id_tipo_tramite_documento_requerido) }
+                            catch (er) { alert(er instanceof Error ? er.message : 'Error') }
+                          },
+                        })}
                       />
                     </td>
                   </tr>
@@ -487,6 +508,17 @@ export function ConfigTramiteDetalle() {
           onCerrar={() => setDocEditando(null)}
         />
       )}
+
+      <ConfirmModal
+        open={confirmar != null}
+        title={confirmar?.title ?? 'Confirmar'}
+        message={confirmar?.message ?? ''}
+        confirmLabel="Sí, eliminar"
+        cancelLabel="No, volver"
+        danger
+        onConfirm={() => { confirmar?.onConfirm(); setConfirmar(null) }}
+        onCancel={() => setConfirmar(null)}
+      />
     </div>
   )
 }

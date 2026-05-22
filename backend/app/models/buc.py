@@ -27,6 +27,8 @@ class Usuario(Base):
     activo        = Column(Boolean, nullable=False, default=True)
     cuil          = Column(String(11))
     buc_acceso    = Column(Boolean, nullable=False, default=False)
+    id_subarea    = Column(Integer)              # FK lógica → subarea.id_subarea (obligatoria salvo es_externo)
+    es_externo    = Column(Boolean, nullable=False, default=False)
     fecha_alta    = Column(DateTime, nullable=False, server_default=func.now())
     fecha_modif   = Column(DateTime, nullable=False, server_default=func.now())
 
