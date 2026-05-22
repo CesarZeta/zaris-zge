@@ -25,7 +25,15 @@ from app.schemas.buc import (
     CiudadanoEmpresaCreate, CiudadanoEmpresaOut
 )
 
-router = APIRouter(prefix="/api/v1/buc", tags=["BUC"])
+# Guard a nivel router: TODO endpoint del módulo BUC exige JWT válido (scope agente).
+# Esto cubre los GET de búsqueda/catálogo además de las mutaciones — ningún
+# consumidor es público (la App Vecinos usa el router /publico/*, no /buc/*).
+# Cualquier endpoint nuevo en este router queda protegido por defecto.
+router = APIRouter(
+    prefix="/api/v1/buc",
+    tags=["BUC"],
+    dependencies=[Depends(get_current_user)],
+)
 logger = logging.getLogger("zaris.buc")
 
 
@@ -114,7 +122,6 @@ async def buscar_subareas(
 async def crear_usuario(
     data: UsuarioCreate,
     db: AsyncSession = Depends(get_db),
-    _user: dict = Depends(get_current_user),
 ):
     """Alta de usuario con contraseña hasheada (bcrypt)."""
     existing = await db.execute(select(Usuario).where(Usuario.username == data.username))
@@ -145,7 +152,6 @@ async def modificar_usuario(
     id: int,
     data: UsuarioUpdate,
     db: AsyncSession = Depends(get_db),
-    _user: dict = Depends(get_current_user),
 ):
     """Modificar datos de usuario. Si se envía 'password', se re-hashea."""
     result = await db.execute(select(Usuario).where(Usuario.id_usuario == id))
@@ -173,7 +179,6 @@ async def cambiar_estado_usuario(
     id: int,
     activo: bool = Query(..., description="true para reactivar, false para dar de baja"),
     db: AsyncSession = Depends(get_db),
-    _user: dict = Depends(get_current_user),
 ):
     """Dar de alta o de baja a un usuario (soft delete)."""
     result = await db.execute(select(Usuario).where(Usuario.id_usuario == id))
@@ -333,7 +338,6 @@ async def verificar_duplicado_ciudadano(
 async def crear_ciudadano(
     data: CiudadanoCreate,
     db: AsyncSession = Depends(get_db),
-    _user: dict = Depends(get_current_user),
 ):
     """Alta de ciudadano."""
     existing = await db.execute(
@@ -386,7 +390,6 @@ async def modificar_ciudadano(
     id: int,
     data: CiudadanoUpdate,
     db: AsyncSession = Depends(get_db),
-    _user: dict = Depends(get_current_user),
 ):
     """Modificar ciudadano existente (update parcial)."""
     result = await db.execute(
@@ -416,7 +419,6 @@ async def cambiar_estado_ciudadano(
     id: int,
     activo: bool = Query(..., description="true para reactivar, false para dar de baja"),
     db: AsyncSession = Depends(get_db),
-    _user: dict = Depends(get_current_user),
 ):
     """Dar de baja o reactivar un ciudadano (soft delete)."""
     result = await db.execute(select(Ciudadano).where(Ciudadano.id_ciudadano == id))
@@ -545,7 +547,6 @@ async def verificar_duplicado_empresa(
 async def crear_empresa(
     data: EmpresaCreate,
     db: AsyncSession = Depends(get_db),
-    _user: dict = Depends(get_current_user),
 ):
     """Alta de empresa."""
     existing = await db.execute(
@@ -585,7 +586,6 @@ async def modificar_empresa(
     id: int,
     data: EmpresaUpdate,
     db: AsyncSession = Depends(get_db),
-    _user: dict = Depends(get_current_user),
 ):
     """Modificar empresa existente."""
     result = await db.execute(
@@ -615,7 +615,6 @@ async def cambiar_estado_empresa(
     id: int,
     activo: bool = Query(..., description="true para reactivar, false para dar de baja"),
     db: AsyncSession = Depends(get_db),
-    _user: dict = Depends(get_current_user),
 ):
     """Dar de baja o reactivar una empresa (soft delete)."""
     result = await db.execute(select(Empresa).where(Empresa.id_empresa == id))
@@ -638,7 +637,6 @@ async def cambiar_estado_empresa(
 async def crear_relacion_ciudadano_empresa(
     data: CiudadanoEmpresaCreate,
     db: AsyncSession = Depends(get_db),
-    _user: dict = Depends(get_current_user),
 ):
     """Crear relación ciudadano-empresa con tipo de representación."""
     cid = await db.execute(
