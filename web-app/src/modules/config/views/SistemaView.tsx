@@ -1,4 +1,5 @@
 import { Database, Landmark, Settings2, Users } from 'lucide-react'
+import { shellNavigate } from '../../../lib/shellNav'
 
 interface Atajo {
   icon: typeof Database
@@ -36,9 +37,7 @@ const ATAJOS: Atajo[] = [
 
 function irA(href: string, e: React.MouseEvent) {
   e.preventDefault()
-  const w = window.parent as Window & { shellNavigate?: (url: string) => void }
-  if (w?.shellNavigate) w.shellNavigate(href)
-  else window.location.href = `/${href}`
+  shellNavigate(href)
 }
 
 export function SistemaView() {

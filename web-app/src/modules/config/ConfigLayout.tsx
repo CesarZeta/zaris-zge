@@ -1,12 +1,11 @@
 import type { ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { Settings } from 'lucide-react'
+import { shellGoInicio } from '../../lib/shellNav'
 
 function goInicio(e: React.MouseEvent) {
   e.preventDefault()
-  const w = window.parent as Window & { shellNavigate?: (url: string) => void }
-  if (w?.shellNavigate) w.shellNavigate('web-app/dist/index.html#/dashboard')
-  else window.location.href = '/'
+  shellGoInicio()
 }
 
 const TABS = [
