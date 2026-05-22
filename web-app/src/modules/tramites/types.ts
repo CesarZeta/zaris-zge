@@ -123,6 +123,7 @@ export interface TipoTramiteAdmin {
   icono: string | null
   color: string | null
   activo: boolean
+  es_sistema: boolean
   id_version_publicada: number | null
   versiones: Array<{
     id_tipo_tramite_version: number
@@ -130,6 +131,18 @@ export interface TipoTramiteAdmin {
     estado: EstadoVersion
     publicada_en: string | null
   }>
+}
+
+/** Item de la lista de administración de tipos (incluye borradores). */
+export interface TipoTramiteAdminListItem {
+  id_tipo_tramite: number
+  codigo: string
+  nombre: string
+  prefijo: string
+  iniciadores_permitidos: IniciadorTipo[]
+  es_sistema: boolean
+  id_version_publicada: number | null
+  estado_version: 'publicado' | 'borrador' | 'sin_estados' | 'archivado'
 }
 
 export interface TramiteBandejaItem {

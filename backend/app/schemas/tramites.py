@@ -637,6 +637,7 @@ class TipoTramiteAdminOut(BaseModel):
     icono: Optional[str] = None
     color: Optional[str] = None
     activo: bool
+    es_sistema: bool = False
     id_version_publicada: Optional[int] = None
     versiones: list[VersionOut] = []
 
@@ -649,3 +650,21 @@ class VersionAdminOut(BaseModel):
     publicada_en: Optional[datetime] = None
     activo: bool
     cant_tramites: int = 0
+
+
+class TipoTramiteAdminListItem(BaseModel):
+    """Item de la lista de administracion de tipos: incluye borradores y sin publicar."""
+    id_tipo_tramite: int
+    codigo: str
+    nombre: str
+    prefijo: str
+    iniciadores_permitidos: list[str]
+    es_sistema: bool
+    id_version_publicada: Optional[int] = None
+    # estado_version: 'publicado' | 'borrador' | 'sin_estados' — derivado de la ultima version
+    estado_version: str
+
+
+class TipoTramiteAdminListOut(BaseModel):
+    items: list[TipoTramiteAdminListItem]
+    total: int

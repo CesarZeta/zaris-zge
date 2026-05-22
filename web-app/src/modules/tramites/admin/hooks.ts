@@ -34,18 +34,19 @@ import {
   type TransicionCreateBody,
   type TransicionUpdateBody,
 } from './api'
-import { listarTipos } from '../lib/api'
+import { listarTiposAdmin } from './api'
 
 const HORA = 60 * 60 * 1000
 
 /* ── Queries ──────────────────────────────────────────── */
 
 export function useTiposCatalogo() {
-  // Reusa el endpoint publico de listar tipos. Para el admin no hace falta
-  // un endpoint dedicado: el listado completo lo arma el detalle por id.
+  // Endpoint admin dedicado: lista TODOS los tipos (publicados, borradores y
+  // sin publicar) con es_sistema + estado_version. El endpoint publico
+  // /tramites/tipos solo devuelve publicados, por eso no sirve acá.
   return useQuery({
-    queryKey: ['tramites', 'tipos', {}],
-    queryFn: () => listarTipos(),
+    queryKey: ['tramites', 'admin', 'tipos'],
+    queryFn: () => listarTiposAdmin(),
     staleTime: HORA,
   })
 }
