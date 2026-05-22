@@ -344,6 +344,13 @@
 
                     <div class="form-zaris-row form-zaris-row--2">
                         <div class="form-zaris-group">
+                            <label class="label-zaris" for="usr-email">Email</label>
+                            <input type="email" class="input-zaris" id="usr-email"
+                                   placeholder="usuario@municipio.gob.ar" maxlength="150">
+                            <div class="input-hint-zaris">Se usa para iniciar sesión. Si lo dejás vacío, se genera <code>usuario@municipio.gob.ar</code>.</div>
+                            <div class="input-error-zaris" id="err-email"></div>
+                        </div>
+                        <div class="form-zaris-group">
                             <label class="label-zaris label-zaris--required" for="usr-nivel">Nivel de acceso</label>
                             <select class="select-zaris" id="usr-nivel" required>
                                 <option value="">Seleccionar...</option>
@@ -354,20 +361,23 @@
                             </select>
                             <div class="input-error-zaris" id="err-nivel"></div>
                         </div>
+                    </div>
+
+                    <div class="form-zaris-row form-zaris-row--2">
                         <div class="form-zaris-group">
                             <label class="label-zaris" for="usr-cargo">Cargo / Rol</label>
                             <input type="text" class="input-zaris" id="usr-cargo"
                                    placeholder="Ej: Jefe de Sección" maxlength="100">
                         </div>
-                    </div>
-
-                    <div class="form-zaris-row form-zaris-row--2">
                         <div class="form-zaris-group">
                             <label class="label-zaris" for="usr-cuil">CUIL</label>
                             <input type="text" class="input-zaris" id="usr-cuil"
                                    placeholder="XX-XXXXXXXX-X" maxlength="13">
                             <div class="input-error-zaris" id="err-cuil"></div>
                         </div>
+                    </div>
+
+                    <div class="form-zaris-row">
                         <div class="form-zaris-group" style="display:flex;align-items:flex-end;padding-bottom:1.1rem;">
                             <label class="checkbox-zaris">
                                 <input type="checkbox" id="usr-buc-acceso">
@@ -452,8 +462,8 @@
       });
     </script>
 
-    <script src="js/config.js?v=20260512"></script>
+    <script src="js/config.js?v=20260522c"></script>
     <script src="js/validaciones.js?v=20260512"></script>
-    <script src="js/usuarios.js?v=20260522b"></script>
+    <script src="js/usuarios.js?v=20260522c"></script>
 </body>
 </html>

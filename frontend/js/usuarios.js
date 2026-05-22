@@ -240,6 +240,7 @@ document.addEventListener('DOMContentLoaded', () => {
         $('usr-id').value              = u.id_usuario || '';
         $('usr-nombre').value          = u.nombre     || '';
         $('usr-username').value        = u.username   || '';
+        $('usr-email').value           = u.email      || '';
         $('usr-nivel').value           = u.nivel_acceso || '';
         $('usr-cargo').value           = u.id_cargo   || '';
         $('usr-cuil').value            = u.cuil       || '';
@@ -308,7 +309,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function setFieldsDisabled(dis) {
-        ['usr-nombre','usr-username','usr-nivel','usr-cargo','usr-cuil',
+        ['usr-nombre','usr-username','usr-email','usr-nivel','usr-cargo','usr-cuil',
          'usr-buc-acceso','usr-externo','usr-subarea-q','usr-password','usr-password-confirm'].forEach(id => {
             const el = $(id); if (el) el.disabled = dis;
         });
@@ -317,7 +318,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function resetFormulario() {
-        ['usr-id','usr-nombre','usr-username','usr-cargo','usr-cuil',
+        ['usr-id','usr-nombre','usr-username','usr-email','usr-cargo','usr-cuil',
          'usr-password','usr-password-confirm'].forEach(id => { const el=$(id); if(el) el.value=''; });
         $('usr-nivel').value      = '';
         $('usr-buc-acceso').checked = false;
@@ -392,6 +393,8 @@ document.addEventListener('DOMContentLoaded', () => {
             es_externo:   externo,
             id_subarea:   externo ? null : (parseInt($('usr-subarea').value) || null),
         };
+        const emailVal = $('usr-email').value.trim();
+        if (emailVal) payload.email = emailVal;  // vacío → backend autogenera <username>@municipio.gob.ar
         if ($('usr-password').value) payload.password = $('usr-password').value;
 
         try {
@@ -428,9 +431,13 @@ document.addEventListener('DOMContentLoaded', () => {
     async function cambiarEstado(nuevoActivo) {
         const titulo = nuevoActivo ? 'Reactivar usuario' : 'Dar de baja usuario';
         const msg    = nuevoActivo
-            ? `¿Reactivar a <strong>${state.usuario.nombre}</strong>?`
-            : `¿Dar de baja a <strong>${state.usuario.nombre}</strong>? No podrá iniciar sesión.`;
-        const ok = await ZUtils.confirm(titulo, msg);
+            ? `¿Reactivar a ${state.usuario.nombre}?`
+            : `¿Dar de baja a ${state.usuario.nombre}? No podrá iniciar sesión.`;
+        const ok = await ZUtils.confirm(titulo, msg, {
+            cancelLabel:  'Cancelar',
+            confirmLabel: nuevoActivo ? 'Sí, reactivar' : 'Sí, dar de baja',
+            danger:       !nuevoActivo,
+        });
         if (!ok) return;
         try {
             const u = await ZUtils.apiFetch(

@@ -61,6 +61,9 @@ class UsuarioCreate(BaseModel):
     nivel_acceso: int = Field(..., ge=1, le=4)
     username:     str = Field(..., max_length=50, pattern=r"^[a-zA-Z0-9_.\-]+$")
     password:     str = Field(..., min_length=8, max_length=100)
+    # Opcional: si no viene, el endpoint autogenera <username>@municipio.gob.ar.
+    # Necesario porque /auth/login busca por email (un user sin email no puede loguear).
+    email:        Optional[str] = Field(None, max_length=150)
     id_cargo:     Optional[str] = Field(None, max_length=100)
     id_municipio: int = Field(1)
     cuil:         Optional[str] = Field(None, max_length=11)
@@ -85,6 +88,7 @@ class UsuarioUpdate(BaseModel):
     cuil:         Optional[str] = Field(None, max_length=11)
     buc_acceso:   Optional[bool] = None
     password:     Optional[str] = Field(None, min_length=8, max_length=100)
+    email:        Optional[str] = Field(None, max_length=150)
     id_subarea:   Optional[int] = None
     es_externo:   Optional[bool] = None
 
@@ -109,6 +113,7 @@ class UsuarioOut(BaseModel):
     nombre:       str
     nivel_acceso: int
     username:     str
+    email:        Optional[str] = None
     id_cargo:     Optional[str]
     id_municipio: int
     activo:       bool
