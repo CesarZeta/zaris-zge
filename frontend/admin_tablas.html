@@ -1185,6 +1185,21 @@ async function renderVistaPrevia(rows, schema) {
             : (n === 1 ? 'tipo' : 'tipos');
           countBadge = `<span class="count-badge">${n} ${label}</span>`;
         }
+        // configuracion_general: clave + descripcion debajo + valor a la derecha,
+        // para que el admin entienda cada parametro sin abrir el editor.
+        if (tablaActual === 'configuracion_general') {
+          const clave = String(r.clave ?? '—').replace(/</g,'&lt;');
+          const desc  = r.descripcion ? String(r.descripcion).replace(/</g,'&lt;') : '';
+          const valor = r.valor != null && r.valor !== '' ? String(r.valor).replace(/</g,'&lt;').slice(0,80) : '(vacío)';
+          return `<div class="preview-row" onclick="abrirEditar(${pk})" title="Editar" style="align-items:flex-start;">
+            <span class="preview-row__main" style="white-space:normal;">
+              ${clave}
+              ${desc ? `<span style="display:block;font-weight:400;font-size:0.78rem;color:var(--fg-3);margin-top:2px;white-space:normal;">${desc}</span>` : ''}
+            </span>
+            <span class="preview-row__meta">${valor}</span>
+            <span class="preview-row__action">Editar →</span>
+          </div>`;
+        }
         return `<div class="preview-row" onclick="abrirEditar(${pk})" title="Editar">
           <span class="preview-row__main">${String(main).replace(/</g,'&lt;')}</span>
           ${countBadge}
