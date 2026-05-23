@@ -27,6 +27,8 @@ from app.api.routes.activos import router as activos_router
 from app.api.routes.config_identidad import router as config_identidad_router
 from app.api.routes.tramites import router as tramites_router
 from app.api.routes.tramites_admin import router as tramites_admin_router
+from app.api.routes.encuestas_admin import router as encuestas_admin_router
+from app.api.routes.encuestas_publico import router as encuestas_publico_router
 from app.api.routes.notificaciones import router as notificaciones_router
 from app.api.routes.publico_auth import router as publico_auth_router
 from app.api.routes.publico_identidad import router as publico_identidad_router
@@ -99,6 +101,9 @@ app.include_router(tramites_router)
 # tramites_admin: CRUD del catalogo de tipos. Prefix /api/v1/admin/tramites.
 # DEBE ir ANTES de admin_tablas_router (/api/v1/admin/{tabla} greedy lo atraparia).
 app.include_router(tramites_admin_router)
+# encuestas_admin: prefix /api/v1/admin/encuestas. ANTES de admin_tablas_router
+# (/api/v1/admin/{tabla} greedy atraparia /admin/encuestas como {tabla}='encuestas').
+app.include_router(encuestas_admin_router)
 app.include_router(notificaciones_router)
 # IMPORTANTE: admin_permisos_router debe registrarse ANTES de admin_tablas_router.
 # admin_tablas usa /api/v1/admin/{tabla} y /api/v1/admin/{tabla}/{id}, que sin un
@@ -117,6 +122,8 @@ app.include_router(config_identidad_router)
 # App Vecinos (PWA publica de ciudadanos)
 app.include_router(publico_auth_router)
 app.include_router(publico_identidad_router)
+# Encuestas publicas (form del ciudadano, sin JWT, rate-limited por IP)
+app.include_router(encuestas_publico_router)
 
 
 # Health check
