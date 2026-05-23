@@ -2518,7 +2518,7 @@ Sistema in-app + email cuando un trámite entra a la bandeja del destinatario (c
 - **`subarea.id_municipio` está NULL en muchas filas del seed local** (mig 22 lo dejó sin backfill). Cualquier endpoint que filtre `WHERE id_municipio = :mun` no las matchea. Para que el smoke pase: `UPDATE subarea SET id_municipio=1 WHERE id_subarea=1`. NO replicar en prod sin diagnóstico — puede haber filas históricas con NULL intencional.
 
 **SMTP Zoho configurado y verificado al 2026-05-18:**
-Mail real funcionando para `noreply@zaris.com.ar` con app password de 16 chars (probada `dgpbZH8nwpsP` — guardada solo en Railway + `.env.local` gitignored). Host correcto: `smtp.zoho.com:587` STARTTLS. Smoke verificado: trámite creado en local → mail real recibido en bandeja Zoho `noreply@zaris.com.ar`.
+Mail real funcionando **desde local** para `noreply@zaris.com.ar` con app password de **12 chars** (`dgpbZH8nwpsP` — guardada solo en Railway + `.env.local` gitignored; el largo NO es fijo, NO asumir 16). Host: `smtp.zoho.com:587` STARTTLS. Smoke verificado: trámite creado en local → mail recibido. **OJO: esto funciona en LOCAL. Desde prod (Railway) el SMTP da `timed out` (egress bloqueado) — ver §42 "BLOQUEO PENDIENTE".**
 
 ```
 SMTP_HOST=smtp.zoho.com
@@ -2532,7 +2532,7 @@ APP_BASE_URL=https://zge.zaris.com.ar
 Si alguna de las primeras 4 vars está vacía, `smtp_configurado()` devuelve False y se cae a modo MOCK (loguea a stdout, no rompe el flow).
 
 **Quirks resueltos durante el setup (sesión 2026-05-18):**
-- **App password Zoho son SIEMPRE 16 chars.** Si lo que copiaste tiene 12, te quedaste corto — probablemente Zoho mostró el formato `xxxx xxxx xxxx xxxx` y copiaste solo parte. Regenerar y contar antes de cerrar.
+- **El largo de la app password Zoho NO es fijo (corregido 2026-05-23 — antes esta línea afirmaba "siempre 16", FALSO).** La que funciona es de **12 chars** (`dgpbZH8nwpsP`). No asumir un largo; verificar el valor real en `.env.local`. Un 535 es por cuenta/password mal, no por "le faltan chars".
 - **Cuenta nueva en Zoho requiere setup inicial via web** (login + aceptar términos + verificación) ANTES de que SMTP acepte la auth. Si la cuenta nunca fue usada para mandar mails desde la interfaz web, SMTP devuelve 535 aunque la password sea correcta.
 - **`smtp.zoho.com` funciona para cuentas con dominio custom**, NO solo cuentas free. No hace falta `smtppro.zoho.com` salvo que Zoho explícitamente te diga.
 - **Reinicio de uvicorn obligatorio al cambiar `.env.local`.** Las settings se cargan UNA VEZ al startup. `Start-Process python` sin matar el proceso anterior puede dejarlo corriendo con vars viejas (cazado por verificar `Get-Process python ... StartTime` antes del smoke). Memoria nueva: [[feedback_uvicorn_settings_no_recarga]].
@@ -3005,8 +3005,28 @@ Auth a nivel router (`dependencies=[Depends(get_current_user)]`, §39). Registra
 - Atender respuestas (`PATCH /respuestas/{id}/atender`): admin/supervisor.
 - Endpoints públicos `/api/v1/publico/encuesta/*`: SIN auth, validados por token UUID + rate limiting 5/min por IP (in-memory, `app/middleware/rate_limit.py`). Router separado (§39). Nunca devuelven datos personales del ciudadano ni descripción del reclamo (§40). Token inválido/inexistente → 404; completada → 410; expirada → 410 (y marca `estado='expirada'`). IP real vía `app/utils/request_helpers.py::get_real_ip` (lee `X-Forwarded-For` por el proxy de Railway). `valor_texto` se trunca a 1000 chars (no se rechaza); body máx 4 KB.
 
-### Dispatcher (fase 2E — NO implementado aún)
-Diseño acordado: endpoint `POST /api/v1/admin/encuestas/dispatcher/ejecutar` con override de auth (header `X-Dispatcher-Token` en vez de JWT — máquina, no humano), token en `settings.DISPATCHER_TOKEN` (Railway env var + GitHub Secret `ZARIS_DISPATCHER_TOKEN`, NO commitear). Cron horario via GitHub Actions (`.github/workflows/encuestas-dispatcher.yml`). Llamará a `procesar_envios_pendientes()` + `expirar_envios_vencidos()`.
+### Dispatcher (fase 2E — endpoint ENTREGADO, cron pendiente)
+Endpoint `POST /api/v1/admin/encuestas/dispatcher/ejecutar` (commit `bb51749`) con override de auth (header `X-Dispatcher-Token` en vez de JWT — máquina, no humano), token en `settings.DISPATCHER_TOKEN` (Railway env var, NO commitear). Llama a `procesar_envios_pendientes()` (envíos `pendiente` con `fecha_alta < NOW()-24h`) + `expirar_envios_vencidos()`. **El token de `.env.local` es de DEV (≠ el de Railway) — usar el de Railway para disparar prod, sino 401.** Cron horario via GitHub Actions (`.github/workflows/encuestas-dispatcher.yml`) = **sub-bloque D, NO implementado**.
+
+### Hook de cierre (fase 2E.C — ENTREGADO 2026-05-23)
+Hook no-bloqueante que crea el `encuesta_envio` al pasar un reclamo a 'Resuelto'. En 2 puntos, **tras el `db.commit()`** (nunca antes): `cambiar_estado` en `reclamos.py` (cierre manual, condicionado a `nuevo_estado=='Resuelto'`) y helper `_disparar_encuesta()` en `ordenes_trabajo.py` (llamado tras los commits de `cambiar_estado_ot` y `aprobar_ot`). Defensivo: `try/except` con log warning, sin re-raise — el cierre del reclamo nunca falla por encuestas (verificado V6). `crear_envio_para_reclamo` devuelve **tupla** `(fila_mapping|None, motivo)`, NO un objeto — acceso por key `envio["id_encuesta_envio"]`. `_resolver_reclamo` NO commitea (lo hacen sus callers).
+
+### Form público del ciudadano (fase 2D frontend — ENTREGADO 2026-05-23)
+`frontend/encuesta.html` (vanilla público, sin sesión, auth por token UUID). Consume `GET/POST /api/v1/publico/encuesta/{token}` (backend 2D ya existía). Ramificación condicional client-side: P1 likert 1-5 → rama visible (`<=2 insatisfechos`, `3 neutrales`, `>=4 satisfechos`); el backend recalcula `rama_seguida` server-side. Verificado en navegador (local + prod). Link del email apunta a `{FRONTEND_BASE_URL}/frontend/encuesta.html?token=...` (default prod `zge.zaris.com.ar`).
+
+### Fixes del email (2026-05-23)
+- **Logo URL absoluta** (`b5d9162`): `municipio_logo_url` puede ser ruta relativa (`/design-system/...`) → `<img>` roto en clientes de email. Helper `_absolutizar_url()` en `encuestas_service.py` la prefija con `FRONTEND_BASE_URL` si no es http(s). URL del bucket Supabase (ya absoluta) queda intacta. **En prod el logo sale del bucket `config-assets`; el `/design-system/...` es solo el placeholder de local.**
+- **`fecha_cierre`** (`938e7f5`): `cambiar_estado` y `_resolver_reclamo` no seteaban `reclamos.fecha_cierre` al pasar a estado final (§22 lo exige) → el email mostraba "cerrado el ." vacío. Fix: `fecha_cierre=NOW()` al pasar a Resuelto/Cancelado (CASE en `cambiar_estado` para no pisar en transiciones intermedias).
+
+### ⚠️ BLOQUEO PENDIENTE: el email NUNCA sale desde prod (SMTP egress de Railway)
+**Verificado 2026-05-23 con logs de Railway:** `enviar_mail` da `error=timed out` en SMTP puertos **587 Y 465**. Railway bloquea el egress SMTP saliente (red del datacenter). En **local funciona** (Zoho SMTP) — engañoso. Afecta a los 4 módulos que mandan mail. **Fix pendiente:** migrar `services/email.py` a **API HTTP (Resend)** — `httpx` ya está en requirements; rama `_enviar_via_resend()` cuando `RESEND_API_KEY` esté seteada, fallback SMTP para local; requiere cuenta Resend + dominio `zaris.com.ar` verificado por DNS + `RESEND_API_KEY` en Railway. Ver memoria [[reference_railway_bloquea_egress_smtp]]. **Para confirmar que un mail salió de prod: chequear `encuesta_envio.fecha_envio`/`estado='enviada'` en la DB, NO la bandeja (un mail recibido pudo salir de local).**
+
+### Sanitización de PII en logs (Ley 25.326)
+- Helper centralizado: `app.utils.log_helpers.mask_email()`
+- Formato: `<primer_char>***@<dominio>` (3 asteriscos fijos para no leakear longitud)
+- Aplicado en `services/email.py` (sender central usado por encuestas, notificaciones, trámites y App Vecinos — los 4 logs de `to=` enmascarados)
+- Tokens de encuestas: helper local `_tok()` en `encuestas_service.py` (consistente con el patrón)
+- Smoke test: `backend/scripts/test_mask_email.py`
 
 ### Sanitización de PII en logs (Ley 25.326)
 - Helper centralizado: `app.utils.log_helpers.mask_email()`
