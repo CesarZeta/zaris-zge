@@ -38,6 +38,15 @@ class Settings(BaseSettings):
     APP_VECINOS_FRONTEND_URL: str = "http://localhost:5174"  # URL del frontend PWA para links de activacion/recovery
     JWT_PUBLICO_EXPIRA_DIAS: int = 30  # Vigencia del JWT scope=publico (mas largo que el de agente)
 
+    # Encuestas (CSAT) — mig 57
+    # Base del frontend del producto (shell vanilla) para armar el link publico de la encuesta.
+    # En prod apunta al dominio real (§6). El form publico vive en /frontend/encuesta.html.
+    FRONTEND_BASE_URL: str = "https://zge.zaris.com.ar"
+    # Token compartido para autenticar el job dispatcher de encuestas (cron externo que
+    # dispara procesar_envios_pendientes/expirar_envios_vencidos). Set via env var en Railway;
+    # NO commitear el valor real. Vacio => el endpoint dispatcher debe rechazar (cuando exista).
+    DISPATCHER_TOKEN: str = ""
+
     @property
     def ASYNC_DATABASE_URI(self) -> str:
         # Si existe DATABASE_URL (Railway la provee), usarla
