@@ -1031,6 +1031,7 @@ async def _resolver_reclamo(db: AsyncSession, id_reclamo: int, id_usuario: int):
     estado_ant = r.fetchone().estado
     await db.execute(text("""
         UPDATE reclamos SET estado = 'Resuelto', fecha_modificacion = NOW(),
+            fecha_cierre = NOW(),
             id_usuario_modificacion = :uid
         WHERE id_reclamo = :id
     """), {"id": id_reclamo, "uid": id_usuario})

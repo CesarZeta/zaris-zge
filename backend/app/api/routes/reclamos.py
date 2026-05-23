@@ -520,14 +520,18 @@ async def cambiar_estado(
 
     nota = body.get("nota", "")
 
+    # fecha_cierre se setea al pasar a un estado final (§22). Para estados no
+    # finales queda en NULL (CASE evita pisarla en transiciones intermedias).
+    es_final = nuevo_estado in ("Resuelto", "Cancelado")
     await db.execute(text("""
         UPDATE reclamos
         SET estado = :estado, fecha_modificacion = NOW(),
             observaciones = COALESCE(:obs, observaciones),
-            id_usuario_modificacion = :uid
+            id_usuario_modificacion = :uid,
+            fecha_cierre = CASE WHEN :es_final THEN NOW() ELSE fecha_cierre END
         WHERE id_reclamo = :id
     """), {"estado": nuevo_estado, "id": id_reclamo, "obs": nota or None,
-           "uid": current_user["id_usuario"]})
+           "uid": current_user["id_usuario"], "es_final": es_final})
 
     await _insertar_historial(db, id_reclamo, f"Cambio de estado a {nuevo_estado}",
                                estado_anterior, nuevo_estado, nota,
