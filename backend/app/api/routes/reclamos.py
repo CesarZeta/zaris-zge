@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.auth import get_current_user
+from app.services import encuestas_service as svc_encuestas
 
 router = APIRouter(prefix="/api/v1/reclamos", tags=["Reclamos"])
 logger = logging.getLogger("zaris.reclamos")
@@ -532,6 +533,21 @@ async def cambiar_estado(
                                estado_anterior, nuevo_estado, nota,
                                current_user["id_usuario"])
     await db.commit()
+
+    # Hook encuestas — disparo no-bloqueante (§42). El cierre del reclamo ya commiteó;
+    # si encuestas falla, NO debe afectar el resultado del endpoint. Solo al pasar a
+    # 'Resuelto' (no en 'Cancelado' ni transiciones intermedias).
+    if nuevo_estado == "Resuelto":
+        try:
+            envio, _motivo = await svc_encuestas.crear_envio_para_reclamo(db, id_reclamo)
+            if envio:
+                logger.info("Encuesta CSAT creada (id_envio=%s) para reclamo %s",
+                            envio["id_encuesta_envio"], id_reclamo)
+        except Exception as e:
+            logger.warning("No se pudo crear envío de encuesta para reclamo %s: %s",
+                           id_reclamo, e)
+            # NO re-raise — el cierre del reclamo ya pasó, encuestas es accesorio
+
     return {"ok": True, "id_reclamo": id_reclamo, "estado": nuevo_estado}
 
 
