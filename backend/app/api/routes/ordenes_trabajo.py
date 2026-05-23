@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.auth import get_current_user
 from app.services.agenda import disponibilidad_efectiva
+from app.services import encuestas_service as svc_encuestas
 
 router = APIRouter(prefix="/api/v1/ot", tags=["Órdenes de Trabajo"])
 logger = logging.getLogger("zaris.ordenes_trabajo")
@@ -967,6 +968,12 @@ async def cambiar_estado_ot(
             await _post_cierre_ot_operativa(db, id_ot, ot, current_user["id_usuario"])
 
         await db.commit()
+
+        # Hook encuestas tras el commit. Solo si el cierre operativo resolvió el
+        # reclamo (no si pasó a 'En auditoría' por audit=true — el service lo filtra).
+        if nuevo_estado == "Terminada" and not ot.es_auditoria:
+            await _disparar_encuesta(db, ot.id_reclamo)
+
         return {"ok": True, "id_ot": id_ot, "estado": nuevo_estado}
     except HTTPException:
         raise
@@ -1031,6 +1038,23 @@ async def _resolver_reclamo(db: AsyncSession, id_reclamo: int, id_usuario: int):
                                        estado_ant, "Resuelto", "OT cerrada sin auditoría", id_usuario)
 
 
+async def _disparar_encuesta(db: AsyncSession, id_reclamo: int):
+    """Hook encuestas — disparo no-bloqueante (§42). Se llama DESPUÉS del commit
+    que cierra el reclamo. El service valida internamente que el reclamo esté en
+    'Resuelto' (devuelve MOTIVO_NO_RESUELTO si no), así que es seguro llamarlo tras
+    cualquier cierre de OT: si el reclamo quedó en 'En auditoría' no crea nada.
+    Si encuestas falla, NO debe afectar el resultado del endpoint."""
+    try:
+        envio, _motivo = await svc_encuestas.crear_envio_para_reclamo(db, id_reclamo)
+        if envio:
+            logger.info("Encuesta CSAT creada (id_envio=%s) para reclamo %s",
+                        envio["id_encuesta_envio"], id_reclamo)
+    except Exception as e:
+        logger.warning("No se pudo crear envío de encuesta para reclamo %s: %s",
+                       id_reclamo, e)
+        # NO re-raise — el cierre del reclamo ya pasó, encuestas es accesorio
+
+
 # ── PUT /ot/{id}/aprobar ──────────────────────────────────────────────────────
 
 @router.put("/{id_ot}/aprobar")
@@ -1069,6 +1093,10 @@ async def aprobar_ot(
 
         await _resolver_reclamo(db, ot.id_reclamo, current_user["id_usuario"])
         await db.commit()
+
+        # Hook encuestas tras el commit — la aprobación siempre resuelve el reclamo.
+        await _disparar_encuesta(db, ot.id_reclamo)
+
         return {"ok": True, "id_ot": id_ot, "resultado": "aprobada"}
     except HTTPException:
         raise
