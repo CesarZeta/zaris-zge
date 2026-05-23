@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Encuesta de satisfacción</title>
+  <link rel="icon" type="image/svg+xml" href="../design-system/assets/zaris-favicon.svg">
+  <link rel="stylesheet" href="../design-system/fonts/fonts.css">
+  <link rel="stylesheet" href="../design-system/colors_and_type.css">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--zaris-cream); color: var(--fg-1);
+      font-family: var(--font-display), Arial, sans-serif;
+      min-height: 100vh; padding: 24px 16px;
+    }
+    .wrap { max-width: 560px; margin: 0 auto; }
+    .brand { text-align: center; padding-bottom: 16px; }
+    .brand img { max-height: 56px; margin-bottom: 8px; }
+    .brand__name {
+      font-size: 0.82rem; font-weight: 700; letter-spacing: .06em;
+      text-transform: uppercase; color: var(--fg-2);
+    }
+    .card {
+      background: var(--surface-100); border: 1px solid var(--border-primary);
+      border-radius: 14px; padding: 28px 24px; margin-top: 16px;
+    }
+    h1 { font-size: 1.35rem; margin: 0 0 6px; line-height: 1.25; }
+    .ref { font-size: 0.85rem; color: var(--fg-3); margin: 0 0 20px; }
+    .q { margin: 22px 0; }
+    .q__label { font-size: 0.98rem; font-weight: 600; margin: 0 0 10px; display: block; }
+    .q__req { color: var(--color-error); }
+    /* Likert 1-5 */
+    .likert { display: flex; gap: 8px; flex-wrap: wrap; }
+    .likert button {
+      flex: 1 1 0; min-width: 58px; padding: 14px 6px; cursor: pointer;
+      border: 1.5px solid var(--border-medium); border-radius: 10px;
+      background: var(--surface-100); font-family: inherit; font-size: 0.78rem;
+      color: var(--fg-2); transition: all .12s; text-align: center;
+    }
+    .likert button .n { display: block; font-size: 1.2rem; font-weight: 700; color: var(--fg-1); }
+    .likert button:hover { border-color: var(--zaris-orange); }
+    .likert button.sel {
+      border-color: var(--zaris-orange); background: var(--zaris-orange);
+    }
+    .likert button.sel .n, .likert button.sel { color: #fff; }
+    /* Opciones (radio) */
+    .opt {
+      display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+      border: 1.5px solid var(--border-primary); border-radius: 10px;
+      margin-bottom: 8px; cursor: pointer; font-size: 0.92rem;
+      transition: border-color .12s, background .12s;
+    }
+    .opt:hover { border-color: var(--border-medium); }
+    .opt.sel { border-color: var(--zaris-orange); background: var(--surface-400); }
+    .opt input { accent-color: var(--zaris-orange); width: 18px; height: 18px; flex: none; }
+    /* Si/No */
+    .sino { display: flex; gap: 10px; }
+    .sino button {
+      flex: 1; padding: 12px; cursor: pointer; font-family: inherit; font-size: 0.92rem;
+      border: 1.5px solid var(--border-medium); border-radius: 10px;
+      background: var(--surface-100); color: var(--fg-1); transition: all .12s;
+    }
+    .sino button:hover { border-color: var(--zaris-orange); }
+    .sino button.sel { border-color: var(--zaris-orange); background: var(--zaris-orange); color: #fff; }
+    /* Texto libre */
+    textarea {
+      width: 100%; min-height: 84px; resize: vertical; padding: 12px;
+      border: 1.5px solid var(--border-medium); border-radius: 10px;
+      font-family: inherit; font-size: 0.92rem; color: var(--fg-1);
+      background: var(--surface-100);
+    }
+    textarea:focus { outline: none; border-color: var(--zaris-orange); }
+    .btn {
+      display: block; width: 100%; margin-top: 20px; padding: 14px;
+      background: var(--zaris-orange); color: #fff; border: none; border-radius: 10px;
+      font-family: inherit; font-size: 1rem; font-weight: 700; letter-spacing: .03em;
+      cursor: pointer; transition: opacity .12s;
+    }
+    .btn:hover { opacity: .92; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .msg { text-align: center; padding: 32px 8px; }
+    .msg__icon { font-size: 2.4rem; line-height: 1; margin-bottom: 12px; }
+    .msg h2 { font-size: 1.25rem; margin: 0 0 8px; }
+    .msg p { color: var(--fg-2); font-size: 0.95rem; margin: 0; line-height: 1.5; }
+    .hidden { display: none !important; }
+    .foot { text-align: center; font-size: 0.78rem; color: var(--fg-3); margin-top: 16px; }
+    .err { color: var(--color-error); font-size: 0.85rem; margin-top: 8px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand" id="brand">
+      <div class="brand__name" id="brand-name"></div>
+    </div>
+
+    <!-- Estado: cargando -->
+    <div class="card" id="loading">
+      <div class="msg"><p>Cargando encuesta…</p></div>
+    </div>
+
+    <!-- Estado: error (token inválido / expirada / ya respondida) -->
+    <div class="card hidden" id="state-error">
+      <div class="msg">
+        <div class="msg__icon" id="error-icon">·</div>
+        <h2 id="error-title">No se pudo cargar la encuesta</h2>
+        <p id="error-text"></p>
+      </div>
+    </div>
+
+    <!-- Estado: formulario -->
+    <div class="card hidden" id="state-form">
+      <h1 id="form-title">Encuesta de satisfacción</h1>
+      <p class="ref" id="form-ref"></p>
+      <form id="form" novalidate>
+        <div id="questions"></div>
+        <div class="err hidden" id="form-err"></div>
+        <button type="submit" class="btn" id="submit-btn">Enviar respuesta</button>
+      </form>
+    </div>
+
+    <!-- Estado: gracias -->
+    <div class="card hidden" id="state-done">
+      <div class="msg">
+        <div class="msg__icon">✓</div>
+        <h2>¡Gracias por tu respuesta!</h2>
+        <p id="done-text">Tu opinión nos ayuda a mejorar la atención.</p>
+      </div>
+    </div>
+
+    <div class="foot" id="foot"></div>
+  </div>
+
+  <script>
+  (function () {
+    const _local = ['localhost', '127.0.0.1'];
+    const API_BASE = _local.includes(window.location.hostname)
+      ? 'http://127.0.0.1:8000'
+      : 'https://zaris-api-production-bf0b.up.railway.app';
+
+    const token = new URLSearchParams(window.location.search).get('token') || '';
+    const startedAt = Date.now();
+
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    function show(stateId) {
+      ['loading', 'state-error', 'state-form', 'state-done'].forEach((id) => {
+        $(id).classList.toggle('hidden', id !== stateId);
+      });
+    }
+
+    function showError(title, text, icon) {
+      $('error-title').textContent = title;
+      $('error-text').textContent = text || '';
+      if (icon) $('error-icon').textContent = icon;
+      show('state-error');
+    }
+
+    // Estado del formulario en memoria
+    let preguntas = [];       // todas las del backend
+    let clasificacion = null; // valor de P1 (likert)
+    const respuestas = {};    // id_pregunta -> {valor_numerico|id_opcion_seleccionada|valor_texto}
+
+    // Mapeo clasificación -> rama (debe espejar el backend; el server recalcula igual)
+    function ramaDe(clf) {
+      if (clf <= 2) return 'insatisfechos';
+      if (clf === 3) return 'neutrales';
+      return 'satisfechos';
+    }
+
+    async function cargar() {
+      if (!token) { showError('Enlace inválido', 'El enlace de la encuesta no es válido.', '!'); return; }
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/publico/encuesta/${encodeURIComponent(token)}`);
+        if (res.status === 410) {
+          const d = await res.json().catch(() => ({}));
+          showError('Encuesta no disponible', d.detail || 'Este enlace ya no está disponible.', '·');
+          return;
+        }
+        if (res.status === 404) { showError('Encuesta no encontrada', 'No encontramos esta encuesta.', '·'); return; }
+        if (res.status === 429) { showError('Demasiados intentos', 'Esperá un momento e intentá de nuevo.', '·'); return; }
+        if (!res.ok) { showError('No se pudo cargar', 'Intentá nuevamente en unos minutos.', '·'); return; }
+        const data = await res.json();
+        render(data);
+      } catch (e) {
+        showError('Sin conexión', 'No pudimos contactar al servidor. Revisá tu conexión.', '·');
+      }
+    }
+
+    function render(data) {
+      const enc = data.encuesta || {};
+      preguntas = data.preguntas || [];
+
+      // Branding
+      if (enc.municipio_nombre) $('brand-name').textContent = enc.municipio_nombre;
+      if (enc.municipio_logo_url) {
+        const img = document.createElement('img');
+        img.src = enc.municipio_logo_url;
+        img.alt = enc.municipio_nombre || '';
+        $('brand').insertBefore(img, $('brand-name'));
+      }
+      $('form-title').textContent = enc.titulo || 'Encuesta de satisfacción';
+      if (enc.reclamo_referencia) $('form-ref').textContent = enc.reclamo_referencia;
+      if (enc.fecha_expiracion) {
+        const f = new Date(enc.fecha_expiracion);
+        $('foot').textContent = 'Este enlace expira el ' + f.toLocaleDateString('es-AR');
+      }
+
+      renderQuestions();
+      show('state-form');
+    }
+
+    // Render dinámico: P1 (todos/likert) siempre; rama según clasificación; P8 (todos/texto) siempre al final.
+    function renderQuestions() {
+      const cont = $('questions');
+      cont.innerHTML = '';
+      const rama = clasificacion != null ? ramaDe(clasificacion) : null;
+
+      const visibles = preguntas.filter((p) => {
+        if (p.rama === 'todos') return true;
+        return rama != null && p.rama === rama;
+      }).sort((a, b) => {
+        // 'todos' con orden 1 primero, ramas en el medio, 'todos' orden 99 (texto) al final
+        return a.orden - b.orden;
+      });
+
+      visibles.forEach((p) => cont.appendChild(renderQuestion(p)));
+    }
+
+    function renderQuestion(p) {
+      const div = document.createElement('div');
+      div.className = 'q';
+      div.dataset.qid = p.id_pregunta;
+
+      const label = document.createElement('label');
+      label.className = 'q__label';
+      label.innerHTML = esc(p.texto) + (p.obligatoria ? ' <span class="q__req">*</span>' : '');
+      div.appendChild(label);
+
+      if (p.tipo === 'likert5') {
+        const box = document.createElement('div');
+        box.className = 'likert';
+        const etiquetas = ['Muy malo', 'Malo', 'Regular', 'Bueno', 'Excelente'];
+        for (let i = 1; i <= 5; i++) {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.innerHTML = `<span class="n">${i}</span>${etiquetas[i - 1]}`;
+          if (clasificacion === i) b.classList.add('sel');
+          b.addEventListener('click', () => {
+            clasificacion = i;
+            respuestas[p.id_pregunta] = { valor_numerico: i };
+            renderQuestions(); // re-render: cambia la rama visible
+          });
+          box.appendChild(b);
+        }
+        div.appendChild(box);
+      } else if (p.tipo === 'multiple') {
+        (p.opciones || []).forEach((o) => {
+          const lbl = document.createElement('label');
+          lbl.className = 'opt';
+          const sel = respuestas[p.id_pregunta] &&
+                      respuestas[p.id_pregunta].id_opcion_seleccionada === o.id_opcion;
+          if (sel) lbl.classList.add('sel');
+          const input = document.createElement('input');
+          input.type = 'radio';
+          input.name = 'q' + p.id_pregunta;
+          input.value = o.id_opcion;
+          if (sel) input.checked = true;
+          input.addEventListener('change', () => {
+            respuestas[p.id_pregunta] = { id_opcion_seleccionada: o.id_opcion };
+            div.querySelectorAll('.opt').forEach((e) => e.classList.remove('sel'));
+            lbl.classList.add('sel');
+          });
+          lbl.appendChild(input);
+          lbl.appendChild(document.createTextNode(' ' + (o.texto || '')));
+          div.appendChild(lbl);
+        });
+      } else if (p.tipo === 'si_no') {
+        const box = document.createElement('div');
+        box.className = 'sino';
+        [['Sí', true], ['No', false]].forEach(([txt, val]) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.textContent = txt;
+          const cur = respuestas[p.id_pregunta];
+          if (cur && cur.valor_numerico === (val ? 1 : 0)) b.classList.add('sel');
+          b.addEventListener('click', () => {
+            respuestas[p.id_pregunta] = { valor_numerico: val ? 1 : 0 };
+            box.querySelectorAll('button').forEach((e) => e.classList.remove('sel'));
+            b.classList.add('sel');
+          });
+          box.appendChild(b);
+        });
+        div.appendChild(box);
+      } else if (p.tipo === 'texto_libre') {
+        const ta = document.createElement('textarea');
+        ta.maxLength = 1000;
+        ta.placeholder = 'Escribí tu comentario (opcional)…';
+        const cur = respuestas[p.id_pregunta];
+        if (cur && cur.valor_texto) ta.value = cur.valor_texto;
+        ta.addEventListener('input', () => {
+          respuestas[p.id_pregunta] = { valor_texto: ta.value };
+        });
+        div.appendChild(ta);
+      }
+      return div;
+    }
+
+    function validar() {
+      if (clasificacion == null) return 'Elegí una puntuación para continuar.';
+      const rama = ramaDe(clasificacion);
+      const faltan = preguntas.filter((p) => {
+        if (!p.obligatoria) return false;
+        if (p.rama !== 'todos' && p.rama !== rama) return false;
+        const r = respuestas[p.id_pregunta];
+        if (!r) return true;
+        return r.valor_numerico == null && r.id_opcion_seleccionada == null &&
+               !(r.valor_texto && r.valor_texto.trim());
+      });
+      return faltan.length ? 'Respondé todas las preguntas obligatorias (*).' : '';
+    }
+
+    async function enviar(ev) {
+      ev.preventDefault();
+      $('form-err').classList.add('hidden');
+      const error = validar();
+      if (error) { $('form-err').textContent = error; $('form-err').classList.remove('hidden'); return; }
+
+      const rama = ramaDe(clasificacion);
+      const payload = {
+        clasificacion_inicial: clasificacion,
+        tiempo_completado_seg: Math.round((Date.now() - startedAt) / 1000),
+        respuestas: preguntas
+          .filter((p) => p.rama === 'todos' || p.rama === rama)
+          .map((p) => ({ id_pregunta: p.id_pregunta, ...(respuestas[p.id_pregunta] || {}) }))
+          .filter((r) => r.valor_numerico != null || r.id_opcion_seleccionada != null ||
+                         (r.valor_texto && r.valor_texto.trim())),
+      };
+
+      const btn = $('submit-btn');
+      btn.disabled = true; btn.textContent = 'Enviando…';
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/publico/encuesta/${encodeURIComponent(token)}/responder`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          const d = await res.json().catch(() => ({}));
+          if (d.mensaje) $('done-text').textContent = d.mensaje;
+          show('state-done');
+          return;
+        }
+        if (res.status === 410) {
+          const d = await res.json().catch(() => ({}));
+          showError('Encuesta no disponible', d.detail || 'Este enlace ya no está disponible.', '·');
+          return;
+        }
+        if (res.status === 429) {
+          $('form-err').textContent = 'Demasiados intentos. Esperá un momento.';
+          $('form-err').classList.remove('hidden');
+        } else {
+          const d = await res.json().catch(() => ({}));
+          $('form-err').textContent = d.detail || 'No se pudo enviar. Intentá de nuevo.';
+          $('form-err').classList.remove('hidden');
+        }
+      } catch (e) {
+        $('form-err').textContent = 'Sin conexión. Revisá tu internet e intentá de nuevo.';
+        $('form-err').classList.remove('hidden');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Enviar respuesta';
+      }
+    }
+
+    $('form').addEventListener('submit', enviar);
+    cargar();
+  })();
+  </script>
+</body>
+</html>
