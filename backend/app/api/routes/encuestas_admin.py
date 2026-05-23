@@ -19,15 +19,19 @@ Registrar en main.py ANTES de admin_tablas_router (evita el {tabla} greedy, §5)
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+import logging
+import secrets as stdlib_secrets
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
+from app.core.config import settings
 from app.core.database import get_db
+from app.utils.request_helpers import get_real_ip
 from app.schemas.encuestas import (
     DashboardComentarioItem,
     DashboardDistribucionItem,
@@ -50,6 +54,18 @@ router = APIRouter(
     tags=["Encuestas Admin"],
     dependencies=[Depends(get_current_user)],
 )
+
+# Router SEPARADO para el dispatcher: NO lleva el guard JWT del router admin.
+# FastAPI aplica las dependencies del APIRouter a TODAS sus rutas de forma aditiva;
+# `dependencies=[]` en el decorador del path NO las anula. Por eso el dispatcher
+# (autenticado por header X-Dispatcher-Token, no JWT) vive en su propio router sin
+# guard global. Mismo prefix para mantener la URL /api/v1/admin/encuestas/dispatcher.
+dispatcher_router = APIRouter(
+    prefix="/api/v1/admin/encuestas",
+    tags=["Encuestas Dispatcher"],
+)
+
+logger = logging.getLogger("zaris.encuestas.admin")
 
 ESTADOS_ENVIO = {"pendiente", "enviada", "abierta", "completada", "expirada", "error_envio"}
 ID_MUNICIPIO_DEFAULT = 1
@@ -546,3 +562,54 @@ async def atender_respuesta(
           FROM encuesta_respuesta WHERE id_encuesta_respuesta = :id
     """), {"id": id_respuesta})).fetchone()
     return EncuestaRespuestaOut.model_validate(row._mapping)
+
+
+# ===========================================================================
+# Dispatcher (fase 2E) — llamado por cron (GitHub Actions)
+# ===========================================================================
+
+@dispatcher_router.post(
+    "/dispatcher/ejecutar",
+    summary="Procesa envíos pendientes y expiraciones de encuestas",
+    description="Endpoint llamado por cron. Auth via header X-Dispatcher-Token (no JWT — es máquina).",
+)
+async def ejecutar_dispatcher(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Procesa la cola de encuestas:
+      1. Envíos 'pendiente' con fecha_alta < NOW() - 24h → envía email.
+      2. Envíos 'enviada'/'abierta' con fecha_expiracion < NOW() → marca 'expirada'.
+    Típicamente cada hora por GitHub Actions.
+    """
+    expected = settings.DISPATCHER_TOKEN
+    if not expected:
+        # Token no configurado en el entorno → endpoint deshabilitado (no abrir sin auth).
+        raise HTTPException(503, "Dispatcher no configurado")
+
+    token = request.headers.get("X-Dispatcher-Token", "")
+    if not stdlib_secrets.compare_digest(token, expected):
+        logger.warning("Dispatcher: acceso no autorizado desde IP %s", get_real_ip(request))
+        raise HTTPException(401, "No autorizado")
+
+    try:
+        resultado_envios = await svc.procesar_envios_pendientes(db, limite=50)
+        cantidad_expirados = await svc.expirar_envios_vencidos(db)
+        logger.info(
+            "Dispatcher OK: procesados=%s exitosos=%s fallidos=%s expirados=%s",
+            resultado_envios.get("procesados", 0),
+            resultado_envios.get("exitosos", 0),
+            resultado_envios.get("fallidos", 0),
+            cantidad_expirados,
+        )
+        return {
+            "envios": resultado_envios,
+            "expirados": cantidad_expirados,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Dispatcher: error inesperado")
+        raise HTTPException(500, "Error procesando dispatcher")
