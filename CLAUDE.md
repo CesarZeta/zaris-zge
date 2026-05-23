@@ -3008,3 +3008,10 @@ Auth a nivel router (`dependencies=[Depends(get_current_user)]`, §39). Registra
 ### Dispatcher (fase 2E — NO implementado aún)
 Diseño acordado: endpoint `POST /api/v1/admin/encuestas/dispatcher/ejecutar` con override de auth (header `X-Dispatcher-Token` en vez de JWT — máquina, no humano), token en `settings.DISPATCHER_TOKEN` (Railway env var + GitHub Secret `ZARIS_DISPATCHER_TOKEN`, NO commitear). Cron horario via GitHub Actions (`.github/workflows/encuestas-dispatcher.yml`). Llamará a `procesar_envios_pendientes()` + `expirar_envios_vencidos()`.
 
+### Sanitización de PII en logs (Ley 25.326)
+- Helper centralizado: `app.utils.log_helpers.mask_email()`
+- Formato: `<primer_char>***@<dominio>` (3 asteriscos fijos para no leakear longitud)
+- Aplicado en `services/email.py` (sender central usado por encuestas, notificaciones, trámites y App Vecinos — los 4 logs de `to=` enmascarados)
+- Tokens de encuestas: helper local `_tok()` en `encuestas_service.py` (consistente con el patrón)
+- Smoke test: `backend/scripts/test_mask_email.py`
+

@@ -10,6 +10,7 @@ from email.message import EmailMessage
 from email.utils import formataddr
 
 from app.core.config import settings
+from app.utils.log_helpers import mask_email
 
 logger = logging.getLogger("zaris.email")
 
@@ -39,13 +40,13 @@ def enviar_mail(
         True si el envio fue exitoso (o mock). False si SMTP esta configurado pero fallo.
     """
     if not to or "@" not in to:
-        logger.warning("enviar_mail: destinatario invalido %r", to)
+        logger.warning("enviar_mail: destinatario invalido %s", mask_email(to))
         return False
 
     if not smtp_configurado():
         logger.info(
             "[email MOCK] to=%s subject=%r body=%s",
-            to,
+            mask_email(to),
             subject,
             (body_text or _strip_html(body_html))[:200],
         )
@@ -70,10 +71,10 @@ def enviar_mail(
             with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as smtp:
                 smtp.login(settings.SMTP_USER, settings.SMTP_PASS)
                 smtp.send_message(msg)
-        logger.info("email enviado: to=%s subject=%r", to, subject)
+        logger.info("email enviado: to=%s subject=%r", mask_email(to), subject)
         return True
     except Exception as e:
-        logger.error("email fallo: to=%s subject=%r error=%s", to, subject, e)
+        logger.error("email fallo: to=%s subject=%r error=%s", mask_email(to), subject, e)
         return False
 
 
