@@ -211,6 +211,19 @@ async def _branding(db: AsyncSession) -> dict:
     }
 
 
+def _absolutizar_url(u: str) -> str:
+    """Devuelve una URL absoluta para usar en un email. Si `u` ya es absoluta
+    (http/https) la devuelve tal cual; si es relativa la prefija con
+    FRONTEND_BASE_URL. Vacío → vacío (el template oculta el <img>)."""
+    u = (u or "").strip()
+    if not u:
+        return ""
+    if u.startswith("http://") or u.startswith("https://"):
+        return u
+    base = settings.FRONTEND_BASE_URL.rstrip("/")
+    return f"{base}/{u.lstrip('/')}"
+
+
 def _fmt_fecha(dt: Optional[datetime]) -> str:
     if dt is None:
         return ""
@@ -321,6 +334,10 @@ async def enviar_email_encuesta(db: AsyncSession, id_encuesta_envio: int) -> boo
 
         url = f"{settings.FRONTEND_BASE_URL}/frontend/encuesta.html?token={env['token_unico']}"
         brand = await _branding(db)
+        # El logo del municipio puede estar guardado como ruta relativa
+        # (ej. '/design-system/assets/...'). En un cliente de email NO hay origen,
+        # así que hay que entregar una URL absoluta o el <img> queda roto.
+        logo_url = _absolutizar_url(brand["logo_url"])
         asunto, html, texto = _render_email_encuesta(
             nombre_ciudadano=env["nombre_ciudadano"],
             nro_reclamo=env["nro_reclamo"] or str(id_encuesta_envio),
@@ -329,7 +346,7 @@ async def enviar_email_encuesta(db: AsyncSession, id_encuesta_envio: int) -> boo
             fecha_expiracion=env["fecha_expiracion"],
             url=url,
             municipio_nombre=brand["nombre"],
-            municipio_logo_url=brand["logo_url"],
+            municipio_logo_url=logo_url,
         )
 
         ok = enviar_mail(env["email_destino_snapshot"], asunto, html, texto,
