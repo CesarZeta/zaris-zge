@@ -2492,7 +2492,7 @@ Sistema in-app + email cuando un trámite entra a la bandeja del destinatario (c
 **Migración 51 (`51_notificaciones.sql`):** crea `notificacion` (estándar §10 + columnas in-app: `id_usuario`, `tipo`, `titulo`, `mensaje`, `url_destino`, `recurso_tipo`/`recurso_id` polimórfica, `leida`/`leida_en`, `enviada_mail`/`enviada_mail_en`). Índices: `(id_usuario, leida, fecha_alta DESC)` parcial sobre `activo=TRUE` y `(recurso_tipo, recurso_id)`. **Aplicada en local y prod al 2026-05-18.**
 
 **Backend nuevo:**
-- `app/core/config.py` agrega `SMTP_HOST/PORT/USER/PASS/FROM/USE_TLS` + `APP_BASE_URL`. Cuando SMTP queda vacío, el sender corre en modo MOCK (log a stdout, no rompe el flow). Apuntado a Zoho Mail (`smtp.zoho.com:587` + STARTTLS).
+- `app/core/config.py` aporta las vars de email (hoy `RESEND_API_KEY`/`RESEND_FROM` — ver §42; originalmente `SMTP_*`, ya migrado a Resend) + `APP_BASE_URL`. Sin key configurada, el sender corre en modo MOCK (log a stdout, no rompe el flow).
 - `app/services/email.py::enviar_mail(to, subject, body_html, body_text)` — usa `smtplib` de stdlib (síncrono, OK en threadpool de BackgroundTasks de FastAPI). Sin nueva dep.
 - `app/services/notificaciones.py::notificar_tramite_a_bandeja(db, id_tramite, evento, background_tasks)` — resuelve destinatarios (todos los agentes activos con email del subarea/equipo destinatario actual del trámite), inserta una fila por usuario en `notificacion` y dispara mail async via `background_tasks.add_task`. Fail-safe: cualquier error se logea pero no levanta. **CRITICAL: hace `await db.commit()` adentro** porque el caller ya commiteó antes y la sesión queda lista para nueva transacción; sin commit las filas se descartaban silenciosamente.
 - Hooks en `routes/tramites.py`: `crear_tramite` (siempre), `pase_tramite` (siempre), `transicionar_tramite` (solo cuando el destinatario cambia y no es estado final). Los tres signatures suman `background_tasks: BackgroundTasks`.
@@ -2517,25 +2517,9 @@ Sistema in-app + email cuando un trámite entra a la bandeja del destinatario (c
 - **`db.flush()` no persiste si el endpoint no commitea después.** El caller ya hizo su commit, dejando la sesión SQLAlchemy lista para nueva transacción. Sin un commit nuevo dentro del service, las filas insertadas se descartan al cerrar la sesión. Fix: `db.commit()` adentro del service (no flush).
 - **`subarea.id_municipio` está NULL en muchas filas del seed local** (mig 22 lo dejó sin backfill). Cualquier endpoint que filtre `WHERE id_municipio = :mun` no las matchea. Para que el smoke pase: `UPDATE subarea SET id_municipio=1 WHERE id_subarea=1`. NO replicar en prod sin diagnóstico — puede haber filas históricas con NULL intencional.
 
-**SMTP Zoho configurado y verificado al 2026-05-18:**
-Mail real funcionando **desde local** para `noreply@zaris.com.ar` con app password de **12 chars** (`dgpbZH8nwpsP` — guardada solo en Railway + `.env.local` gitignored; el largo NO es fijo, NO asumir 16). Host: `smtp.zoho.com:587` STARTTLS. Smoke verificado: trámite creado en local → mail recibido. **OJO: esto funciona en LOCAL. Desde prod (Railway) el SMTP da `timed out` (egress bloqueado) — ver §42 "BLOQUEO PENDIENTE".**
+**Envío de email — migrado de SMTP Zoho a Resend (API HTTP) el 2026-05-24.** El setup SMTP Zoho original quedó OBSOLETO (Railway bloquea egress SMTP). Toda la config de email vive ahora en **§42 "Email vía Resend"**: vars `RESEND_API_KEY`/`RESEND_FROM`, remitente `notificaciones@zaris.com.ar` (dominio raíz verificado), modo MOCK cuando falta la key. NO usar `SMTP_*` ni `smtp.zoho.com` — esas vars se borraron del config.
 
-```
-SMTP_HOST=smtp.zoho.com
-SMTP_PORT=587
-SMTP_USE_TLS=True
-SMTP_USER=noreply@zaris.com.ar
-SMTP_PASS=<app-password-16-chars>
-SMTP_FROM=ZARIS <noreply@zaris.com.ar>
-APP_BASE_URL=https://zge.zaris.com.ar
-```
-Si alguna de las primeras 4 vars está vacía, `smtp_configurado()` devuelve False y se cae a modo MOCK (loguea a stdout, no rompe el flow).
-
-**Quirks resueltos durante el setup (sesión 2026-05-18):**
-- **El largo de la app password Zoho NO es fijo (corregido 2026-05-23 — antes esta línea afirmaba "siempre 16", FALSO).** La que funciona es de **12 chars** (`dgpbZH8nwpsP`). No asumir un largo; verificar el valor real en `.env.local`. Un 535 es por cuenta/password mal, no por "le faltan chars".
-- **Cuenta nueva en Zoho requiere setup inicial via web** (login + aceptar términos + verificación) ANTES de que SMTP acepte la auth. Si la cuenta nunca fue usada para mandar mails desde la interfaz web, SMTP devuelve 535 aunque la password sea correcta.
-- **`smtp.zoho.com` funciona para cuentas con dominio custom**, NO solo cuentas free. No hace falta `smtppro.zoho.com` salvo que Zoho explícitamente te diga.
-- **Reinicio de uvicorn obligatorio al cambiar `.env.local`.** Las settings se cargan UNA VEZ al startup. `Start-Process python` sin matar el proceso anterior puede dejarlo corriendo con vars viejas (cazado por verificar `Get-Process python ... StartTime` antes del smoke). Memoria nueva: [[feedback_uvicorn_settings_no_recarga]].
+> **Quirk vigente (no específico de email):** reinicio de uvicorn obligatorio al cambiar `.env.local`. Las settings se cargan UNA VEZ al startup. `Start-Process python` sin matar el proceso anterior puede dejarlo corriendo con vars viejas (verificar `Get-Process python ... StartTime` antes del smoke). Memoria [[feedback_uvicorn_settings_no_recarga]].
 
 **Campana en shell vanilla (✅ ENTREGADA 2026-05-18 — bug cazado en smoke prod):**
 
@@ -2831,7 +2815,7 @@ Backend mínimo para la PWA `zaris-vecinos` que permite a los ciudadanos enviar 
 
 ### Email — display name del municipio sobre address ZARIS
 
-El remitente real es siempre `noreply@zaris.com.ar` (decisión 2026-05-19), pero el header `From:` lleva el **display name del municipio**: `"MUNICIPALIDAD DE SAN ANDRÉS <noreply@zaris.com.ar>"`. Implementado vía `enviar_mail(..., from_override="...")`. La marca ZARIS no aparece en el body al vecino.
+El remitente real es siempre el address de `RESEND_FROM` (`notificaciones@zaris.com.ar`, dominio raíz verificado en Resend — §42; antes `noreply@zaris.com.ar` por SMTP), pero el header `From:` lleva el **display name del municipio**: `"MUNICIPALIDAD DE SAN ANDRÉS <notificaciones@zaris.com.ar>"`. Implementado vía `enviar_mail(..., from_override="...")`. La marca ZARIS no aparece en el body al vecino.
 
 Funciones nuevas en `services/email.py`: `enviar_mail_activacion_ciudadano` y `enviar_mail_recovery_ciudadano`. Template HTML sobrio con logo del municipio (si está en `municipio_logo_url`), botón CTA naranja `var(--zaris-orange)`, link de fallback. Sin emojis.
 
@@ -2977,7 +2961,7 @@ Encuestas de satisfacción disparadas al cierre de reclamos. Encuesta estándar 
 - Los links expiran 15 días después del envío. `expirar_envios_vencidos()` marca `'expirada'` los `'enviada'/'abierta'` vencidos. El form público (2D) devolverá 410 Gone para tokens expirados.
 
 ### Email
-- Reutiliza el sender central `app.services.email.enviar_mail(...) -> bool` (NO existe `email_service.enviar_email`; ver auditoría 2A). Template inline en `encuestas_service._render_email_encuesta`. `from_override` con display name del municipio sobre `SMTP_FROM` (§38). Si el vecino solicita contacto (rama insatisfechos, P7=Sí), se notifica por email a los usuarios de la subárea.
+- Reutiliza el sender central `app.services.email.enviar_mail(...) -> bool` (NO existe `email_service.enviar_email`; ver auditoría 2A). Template inline en `encuestas_service._render_email_encuesta`. `from_override` con display name del municipio sobre `RESEND_FROM` (§38, §42). Si el vecino solicita contacto (rama insatisfechos, P7=Sí), se notifica por email a los usuarios de la subárea.
 
 ### Datos personales / logs
 - Los endpoints de dashboard NO devuelven datos personales del ciudadano. Solo `/envios/{id}` y `/respuestas/pendientes-contacto` los incluyen (para que el agente contacte). El form público (2D) NO devolverá nombre/email/DNI.
@@ -3018,8 +3002,24 @@ Hook no-bloqueante que crea el `encuesta_envio` al pasar un reclamo a 'Resuelto'
 - **Logo URL absoluta** (`b5d9162`): `municipio_logo_url` puede ser ruta relativa (`/design-system/...`) → `<img>` roto en clientes de email. Helper `_absolutizar_url()` en `encuestas_service.py` la prefija con `FRONTEND_BASE_URL` si no es http(s). URL del bucket Supabase (ya absoluta) queda intacta. **En prod el logo sale del bucket `config-assets`; el `/design-system/...` es solo el placeholder de local.**
 - **`fecha_cierre`** (`938e7f5`): `cambiar_estado` y `_resolver_reclamo` no seteaban `reclamos.fecha_cierre` al pasar a estado final (§22 lo exige) → el email mostraba "cerrado el ." vacío. Fix: `fecha_cierre=NOW()` al pasar a Resuelto/Cancelado (CASE en `cambiar_estado` para no pisar en transiciones intermedias).
 
-### ⚠️ BLOQUEO PENDIENTE: el email NUNCA sale desde prod (SMTP egress de Railway)
-**Verificado 2026-05-23 con logs de Railway:** `enviar_mail` da `error=timed out` en SMTP puertos **587 Y 465**. Railway bloquea el egress SMTP saliente (red del datacenter). En **local funciona** (Zoho SMTP) — engañoso. Afecta a los 4 módulos que mandan mail. **Fix pendiente:** migrar `services/email.py` a **API HTTP (Resend)** — `httpx` ya está en requirements; rama `_enviar_via_resend()` cuando `RESEND_API_KEY` esté seteada, fallback SMTP para local; requiere cuenta Resend + dominio `zaris.com.ar` verificado por DNS + `RESEND_API_KEY` en Railway. Ver memoria [[reference_railway_bloquea_egress_smtp]]. **Para confirmar que un mail salió de prod: chequear `encuesta_envio.fecha_envio`/`estado='enviada'` en la DB, NO la bandeja (un mail recibido pudo salir de local).**
+### Email vía Resend (API HTTP) — migrado desde SMTP Zoho (RESUELTO 2026-05-24, commit `139332e`)
+**Por qué se migró:** Railway bloquea el egress SMTP saliente (587 Y 465 dan `timed out` desde prod; verificado 2026-05-23 con logs de Railway). En local SMTP funcionaba — engañoso. Resend usa HTTPS (puerto 443), que Railway no bloquea.
+
+`services/email.py` fue **reescrito completo** (sin smtplib/email.mime). Usa `httpx.AsyncClient` directo contra `POST https://api.resend.com/emails` (NO la lib oficial `resend` — el backend es async, un solo endpoint). Detalle:
+
+- **`enviar_mail(to, subject, body_html, body_text=None, from_override=None) -> bool` es ahora ASYNC.** Misma firma pública (no rompió los 4 clientes), pero los 3 callers async ganaron `await`: `notificaciones.py`, `encuestas_service.py` (×2 llamadas), y las 2 funciones App Vecinos (`enviar_mail_activacion_ciudadano`/`enviar_mail_recovery_ciudadano` pasaron a `async def` — se siguen encolando con `add_task`, Starlette await-ea corutinas).
+- **`enviar_mail_raise(...) -> str` (NUEVA):** devuelve el `message_id` de Resend, levanta `ResendError(status_code, body)` ante 4xx/5xx o fallo de transporte. `enviar_mail` la envuelve y captura, devolviendo bool (contrato histórico). El dispatcher de encuestas sigue consumiendo el bool — **NO conectada al dispatcher todavía** (queda lista para distinguir 5xx-reintentar de 4xx-fallar).
+- **Modo MOCK:** si `RESEND_API_KEY` vacía (`resend_configurado()` False), loggea y devuelve True sin enviar. Reemplaza al viejo `smtp_configurado()`.
+- **Logging:** cada envío exitoso loggea el `message_id` (trazabilidad en Resend → Logs). Destinatario siempre enmascarado con `mask_email`. **El `message_id` NO se persiste en DB** (`encuesta_envio` no tiene columna) — vive solo en logs.
+- **Timeouts:** `httpx.Timeout(30.0, connect=10.0)`.
+
+**Config (`core/config.py`):** se borraron las 6 vars `SMTP_*`. Nuevas: `RESEND_API_KEY` (env var, NO commitear) y `RESEND_FROM` (default `notificaciones@zaris.com.ar`). Se agregó `extra = "ignore"` al `Config` de pydantic-settings — sin esto el backend **no arranca** mientras `.env.local`/Railway aún tengan las `SMTP_*` viejas (esta versión está en `extra_forbidden` por default; cazado al importar). `_from_municipio` en encuestas lee `RESEND_FROM`.
+
+> **El remitente es `@zaris.com.ar` (dominio raíz), NO `@send.zaris.com.ar`.** El subdominio daba 403 `not authorized to send from send.zaris.com.ar` — lo verificado en Resend es el dominio raíz (`send.zaris.com.ar` es solo Return-Path interno de SES, no dominio de envío). El `from` debe usar EXACTAMENTE el dominio verificado.
+
+**Verificado LOCAL (2026-05-24):** 3 mails reales a `cesarzarini@hotmail.com` vía `enviar_mail_raise` (message_id `f48d01b6-...`) y `enviar_mail` (`9d5618bd-...`). El 403 inicial (subdominio mal) confirmó de paso el manejo de errores: `ResendError` con status+body, `enviar_mail` → False, sin silenciar.
+
+**Verificado PROD end-to-end (2026-05-24):** se disparó el dispatcher de encuestas en Railway (`POST /api/v1/admin/encuestas/dispatcher/ejecutar` con header `X-Dispatcher-Token`) → `{"procesados":1,"exitosos":1,"fallidos":0}`. El envío `id=3` (que venía con **2 intentos fallidos bajo SMTP** — los timeouts) pasó a `estado='enviada'` + `fecha_envio` poblada en el 3er intento, ya con Resend. Mail recibido OK. **El bloqueo SMTP de Railway quedó resuelto.** `ultimo_error_envio` NO se limpia al tener éxito (queda el texto del último fallo como histórico — no es bug). Ver memoria [[reference_railway_bloquea_egress_smtp]].
 
 ### Sanitización de PII en logs (Ley 25.326)
 - Helper centralizado: `app.utils.log_helpers.mask_email()`
