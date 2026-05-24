@@ -167,7 +167,7 @@ async def _enviar_mail_y_marcar(
     enviado y solo fallar el UPDATE; preferimos perder el flag a romper el flow.
     """
     try:
-        ok = enviar_mail(to, subject, body_html, body_text)
+        ok = await enviar_mail(to, subject, body_html, body_text)
         if not ok:
             return
         async with AsyncSessionLocal() as session:
