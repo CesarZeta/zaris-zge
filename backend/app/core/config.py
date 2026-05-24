@@ -24,14 +24,11 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_KEY: str = ""
     SUPABASE_ADJUNTOS_BUCKET: str = "reclamos-adjuntos"
 
-    # SMTP (notificaciones por email). Si quedan vacios, sender corre en modo MOCK (log a stdout).
-    # Zoho Mail: SMTP_HOST=smtp.zoho.com, SMTP_PORT=587, SMTP_USE_TLS=True.
-    SMTP_HOST: str = ""
-    SMTP_PORT: int = 587
-    SMTP_USER: str = ""
-    SMTP_PASS: str = ""
-    SMTP_FROM: str = ""              # Remitente (ej: "ZARIS <noreply@municipio.gob.ar>")
-    SMTP_USE_TLS: bool = True        # STARTTLS para Zoho/Gmail/Office365 en puerto 587
+    # Email via Resend (API HTTP, puerto 443). Migrado desde SMTP Zoho porque Railway
+    # bloquea el egress SMTP saliente (587/465 dan timeout). Si RESEND_API_KEY queda vacia,
+    # el sender corre en modo MOCK (log a stdout, no envia). Ver app/services/email.py.
+    RESEND_API_KEY: str = ""         # API key de Resend (empieza con "re_"). Set via env var; NO commitear.
+    RESEND_FROM: str = "notificaciones@zaris.com.ar"  # Remitente por defecto. Debe usar el dominio VERIFICADO en Resend (zaris.com.ar raíz).
     APP_BASE_URL: str = "https://zge.zaris.com.ar"  # URL para links en mails (apunta al shell vanilla en prod)
 
     # App Vecinos (PWA publica de ciudadanos)
@@ -68,6 +65,10 @@ class Settings(BaseSettings):
         # Permite seleccionar el archivo de entorno con la variable ENV_FILE
         # (ej: ENV_FILE=.env.local para desarrollo local). Default: .env
         env_file = os.getenv("ENV_FILE", ".env")
+        # Ignorar env vars desconocidas (ej. las SMTP_* deprecadas que aun viven en
+        # .env.local y Railway tras migrar a Resend). Sin esto, pydantic-settings rechaza
+        # extras y el backend no arranca hasta limpiar las vars en TODOS los entornos.
+        extra = "ignore"
 
 
 settings = Settings()
