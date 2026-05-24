@@ -349,8 +349,8 @@ async def enviar_email_encuesta(db: AsyncSession, id_encuesta_envio: int) -> boo
             municipio_logo_url=logo_url,
         )
 
-        ok = enviar_mail(env["email_destino_snapshot"], asunto, html, texto,
-                         from_override=_from_municipio(brand["nombre"]))
+        ok = await enviar_mail(env["email_destino_snapshot"], asunto, html, texto,
+                               from_override=_from_municipio(brand["nombre"]))
 
         if ok:
             await db.execute(text("""
@@ -397,11 +397,11 @@ async def enviar_email_encuesta(db: AsyncSession, id_encuesta_envio: int) -> boo
 
 
 def _from_municipio(nombre: str) -> Optional[str]:
-    """Display name del municipio sobre el address SMTP_FROM (§38). None si no hay FROM."""
-    base = settings.SMTP_FROM
+    """Display name del municipio sobre el address RESEND_FROM (§38). None si no hay FROM."""
+    base = settings.RESEND_FROM
     if not base:
         return None
-    # extraer el address de SMTP_FROM ("ZARIS <noreply@x>" o "noreply@x")
+    # extraer el address de RESEND_FROM ("ZARIS <notificaciones@x>" o "notificaciones@x")
     addr = base.split("<")[-1].rstrip(">").strip() if "<" in base else base.strip()
     return f"{nombre} <{addr}>"
 
@@ -615,7 +615,7 @@ async def _notificar_solicitud_contacto(db, *, id_subarea, nro_reclamo, id_recla
         texto = (f"Un vecino solicitó contacto tras la encuesta del reclamo "
                  f"#{nro_reclamo or id_reclamo}. Revisalo en ZARIS.")
         for u in usuarios:
-            enviar_mail(u[0], asunto, html, texto)
+            await enviar_mail(u[0], asunto, html, texto)
     except Exception as e:
         logger.error("_notificar_solicitud_contacto fallo (reclamo=%s): %s", id_reclamo, e)
 

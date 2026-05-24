@@ -1,25 +1,125 @@
 """
-ZARIS - Sender de email simple via SMTP (stdlib).
+ZARIS - Sender de email via API HTTP de Resend (https://resend.com).
 
-Modo MOCK cuando SMTP no esta configurado: logea el mail a stdout en lugar de enviarlo.
-Pensado para correr en BackgroundTasks de FastAPI (no bloquea el endpoint).
+Migrado desde SMTP Zoho (smtplib) porque Railway bloquea el egress SMTP saliente
+(puertos 587/465 dan timeout consistente). Resend usa HTTPS (puerto 443), que Railway
+no bloquea. Un solo endpoint: POST https://api.resend.com/emails.
+
+Diseno (decidido con Cesar):
+  - httpx.AsyncClient directo (el backend es async, evitamos la lib oficial `resend`).
+  - Remitente por defecto: notificaciones@send.zaris.com.ar (subdominio verificado en Resend).
+  - `enviar_mail(...) -> bool` mantiene su firma publica (no rompe los 4 modulos clientes).
+    Es ASYNC: se encola en BackgroundTasks (Starlette await-ea corutinas encoladas).
+  - Modo MOCK cuando RESEND_API_KEY no esta configurada: logea el mail a stdout y devuelve
+    True (no rompe el flujo del caller). Util para dev sin la key y para tests.
+  - Cada envio exitoso logea el `message_id` que devuelve Resend (trazabilidad en Resend > Logs).
+  - `enviar_mail_raise(...) -> str` (NUEVA): levanta ResendError ante 4xx/5xx, para cuando un
+    caller quiera distinguir fallo transitorio de definitivo. `enviar_mail` la envuelve y
+    captura, devolviendo bool (contrato historico de los clientes).
 """
 import logging
-import smtplib
-from email.message import EmailMessage
-from email.utils import formataddr
+
+import httpx
 
 from app.core.config import settings
 from app.utils.log_helpers import mask_email
 
 logger = logging.getLogger("zaris.email")
 
+RESEND_ENDPOINT = "https://api.resend.com/emails"
 
-def smtp_configurado() -> bool:
-    return bool(settings.SMTP_HOST and settings.SMTP_USER and settings.SMTP_PASS and settings.SMTP_FROM)
+# Resend a veces tarda en responder bajo carga: 10s para conectar, 30s total.
+_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 
 
-def enviar_mail(
+class ResendError(Exception):
+    """Resend devolvio un error (4xx/5xx) o la request fallo a nivel transporte.
+
+    `status_code` es None cuando el fallo fue de red/timeout (no hubo respuesta HTTP).
+    """
+
+    def __init__(self, message: str, status_code: int | None = None, body: str | None = None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.body = body
+
+
+def resend_configurado() -> bool:
+    """True si hay API key de Resend. Si False, el sender corre en modo MOCK."""
+    return bool(settings.RESEND_API_KEY)
+
+
+async def enviar_mail_raise(
+    to: str,
+    subject: str,
+    body_html: str,
+    body_text: str | None = None,
+    from_override: str | None = None,
+) -> str:
+    """
+    Envia un email via Resend. Devuelve el `message_id` de Resend en caso de exito.
+
+    Levanta ResendError si Resend responde 4xx/5xx o si la request falla a nivel red.
+    NO entra en modo MOCK: esta variante siempre intenta enviar de verdad (usar cuando
+    el caller quiere manejar el error explicitamente).
+
+    from_override: reemplaza el remitente (util para que el display name sea el del
+    municipio, ej. "MUNICIPALIDAD DE SAN ANDRES <notificaciones@send.zaris.com.ar>").
+    Si no se pasa, usa settings.RESEND_FROM.
+
+    Raises:
+        ResendError: ante 4xx/5xx de Resend o fallo de transporte.
+        ValueError: si el destinatario es invalido.
+    """
+    if not to or "@" not in to:
+        raise ValueError(f"destinatario invalido: {mask_email(to)}")
+
+    payload: dict = {
+        "from": from_override or settings.RESEND_FROM,
+        "to": [to],
+        "subject": subject,
+        "html": body_html,
+    }
+    if body_text:
+        payload["text"] = body_text
+
+    headers = {
+        "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.post(RESEND_ENDPOINT, json=payload, headers=headers)
+    except httpx.HTTPError as e:
+        # Timeout, DNS, conexion rechazada, etc. — no hubo respuesta HTTP.
+        logger.error("Resend transporte fallo: to=%s subject=%r error=%s", mask_email(to), subject, e)
+        raise ResendError(f"fallo de transporte hacia Resend: {e}", status_code=None) from e
+
+    if resp.status_code >= 400:
+        body = resp.text[:500]
+        logger.error(
+            "Resend rechazo: to=%s subject=%r status=%s body=%s",
+            mask_email(to), subject, resp.status_code, body,
+        )
+        raise ResendError(
+            f"Resend devolvio {resp.status_code}", status_code=resp.status_code, body=body
+        )
+
+    message_id = ""
+    try:
+        message_id = (resp.json() or {}).get("id", "")
+    except Exception:
+        pass  # Resend respondio 2xx pero el body no era JSON parseable; igual fue exito.
+
+    logger.info(
+        "email enviado (Resend): to=%s subject=%r message_id=%s",
+        mask_email(to), subject, message_id,
+    )
+    return message_id
+
+
+async def enviar_mail(
     to: str,
     subject: str,
     body_html: str,
@@ -27,23 +127,23 @@ def enviar_mail(
     from_override: str | None = None,
 ) -> bool:
     """
-    Envia un email sincronicamente. Si SMTP no esta configurado, logea el contenido (modo MOCK)
-    y devuelve True (no rompe el flujo del caller).
+    Envia un email via Resend. Si RESEND_API_KEY no esta configurada, logea el contenido
+    (modo MOCK) y devuelve True (no rompe el flujo del caller).
 
-    En BackgroundTasks: FastAPI corre cada task en un threadpool, asi que smtplib (sincrono)
-    no bloquea el event loop.
+    Es ASYNC y se encola en BackgroundTasks de FastAPI (Starlette await-ea corutinas).
 
-    from_override: si se pasa, reemplaza el header "From" (util para que el display name
-    sea del municipio aunque el address sea siempre noreply@zaris.com.ar).
+    from_override: reemplaza el remitente (display name del municipio sobre el address
+    notificaciones@send.zaris.com.ar). Si no se pasa, usa settings.RESEND_FROM.
 
     Returns:
-        True si el envio fue exitoso (o mock). False si SMTP esta configurado pero fallo.
+        True si el envio fue exitoso (o mock). False si Resend esta configurado pero fallo
+        (el caller — ej. el dispatcher de encuestas — decide si reintentar o marcar fallido).
     """
     if not to or "@" not in to:
         logger.warning("enviar_mail: destinatario invalido %s", mask_email(to))
         return False
 
-    if not smtp_configurado():
+    if not resend_configurado():
         logger.info(
             "[email MOCK] to=%s subject=%r body=%s",
             mask_email(to),
@@ -52,29 +152,15 @@ def enviar_mail(
         )
         return True
 
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = from_override or settings.SMTP_FROM
-    msg["To"] = to
-    msg.set_content(body_text or _strip_html(body_html))
-    msg.add_alternative(body_html, subtype="html")
-
     try:
-        if settings.SMTP_USE_TLS:
-            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as smtp:
-                smtp.ehlo()
-                smtp.starttls()
-                smtp.ehlo()
-                smtp.login(settings.SMTP_USER, settings.SMTP_PASS)
-                smtp.send_message(msg)
-        else:
-            with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as smtp:
-                smtp.login(settings.SMTP_USER, settings.SMTP_PASS)
-                smtp.send_message(msg)
-        logger.info("email enviado: to=%s subject=%r", mask_email(to), subject)
+        await enviar_mail_raise(
+            to=to, subject=subject, body_html=body_html,
+            body_text=body_text, from_override=from_override,
+        )
         return True
-    except Exception as e:
-        logger.error("email fallo: to=%s subject=%r error=%s", mask_email(to), subject, e)
+    except (ResendError, ValueError):
+        # enviar_mail_raise ya logueo el detalle. Devolvemos bool para no romper el
+        # contrato historico de los clientes (notificaciones, encuestas, App Vecinos).
         return False
 
 
@@ -97,17 +183,20 @@ def _strip_html(html: str) -> str:
 
 
 def formatear_remitente(nombre: str, email: str) -> str:
-    """Helper para armar 'Nombre <email@dom>'."""
-    return formataddr((nombre, email))
+    """Helper para armar 'Nombre <email@dom>'. Resend acepta este formato en `from`."""
+    nombre = (nombre or "").strip()
+    if not nombre:
+        return email
+    return f"{nombre} <{email}>"
 
 
 # ────────────────────────────────────────────────────────────────────────────
 # Templates de App Vecinos (auth publico de ciudadanos)
 # ────────────────────────────────────────────────────────────────────────────
 
-def _zaris_from_address() -> str:
-    """Address del remitente real (parte despues del '<' en SMTP_FROM, o el SMTP_USER)."""
-    raw = settings.SMTP_FROM or settings.SMTP_USER or "noreply@zaris.com.ar"
+def _from_address_base() -> str:
+    """Address base del remitente (settings.RESEND_FROM, sin display name)."""
+    raw = settings.RESEND_FROM or "notificaciones@zaris.com.ar"
     if "<" in raw and ">" in raw:
         return raw.split("<", 1)[1].split(">", 1)[0].strip()
     return raw.strip()
@@ -196,7 +285,7 @@ Si no esperabas este correo, podes ignorarlo.
     return html, text
 
 
-def enviar_mail_activacion_ciudadano(
+async def enviar_mail_activacion_ciudadano(
     to: str,
     nombre: str,
     apellido: str,
@@ -208,7 +297,7 @@ def enviar_mail_activacion_ciudadano(
     """
     Manda mail de activacion al ciudadano recien dado de alta.
     Link: {frontend_url}/activar?token={token} - valido 7 dias.
-    Modo MOCK si SMTP no esta configurado.
+    Modo MOCK si Resend no esta configurado.
     """
     cta_url = f"{frontend_url.rstrip('/')}/activar?token={token}"
     saludo_nombre = (nombre or "").strip() or apellido or "vecino"
@@ -229,14 +318,13 @@ def enviar_mail_activacion_ciudadano(
         municipio_logo_url=municipio_logo_url,
     )
 
-    # Display name del municipio + address ZARIS (decision sesion 2026-05-19).
-    from_addr = _zaris_from_address()
-    from_header = formatear_remitente(municipio_nombre, from_addr)
+    # Display name del municipio + address del subdominio Resend (decision sesion 2026-05-19).
+    from_header = formatear_remitente(municipio_nombre, _from_address_base())
 
-    return enviar_mail(to=to, subject=subject, body_html=html, body_text=text, from_override=from_header)
+    return await enviar_mail(to=to, subject=subject, body_html=html, body_text=text, from_override=from_header)
 
 
-def enviar_mail_recovery_ciudadano(
+async def enviar_mail_recovery_ciudadano(
     to: str,
     nombre: str,
     apellido: str,
@@ -267,7 +355,6 @@ def enviar_mail_recovery_ciudadano(
         municipio_logo_url=municipio_logo_url,
     )
 
-    from_addr = _zaris_from_address()
-    from_header = formatear_remitente(municipio_nombre, from_addr)
+    from_header = formatear_remitente(municipio_nombre, _from_address_base())
 
-    return enviar_mail(to=to, subject=subject, body_html=html, body_text=text, from_override=from_header)
+    return await enviar_mail(to=to, subject=subject, body_html=html, body_text=text, from_override=from_header)
