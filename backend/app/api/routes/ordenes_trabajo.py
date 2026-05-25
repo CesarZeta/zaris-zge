@@ -595,7 +595,8 @@ async def crear_ot_con_agenda(
         estado_ant = r.estado
         await db.execute(text("""
             UPDATE reclamos SET estado = 'En gestión', fecha_modificacion = NOW(),
-                id_usuario_modificacion = :uid
+                id_usuario_modificacion = :uid,
+                fecha_primer_asignacion = COALESCE(fecha_primer_asignacion, NOW())
             WHERE id_reclamo = :id AND estado NOT IN ('Cancelado','Resuelto')
         """), {"id": id_reclamo, "uid": uid})
         await _insertar_historial_reclamo(db, id_reclamo, f"OT {nro_ot} generada",
@@ -792,7 +793,8 @@ async def crear_ot(
         estado_ant = reclamo.estado
         await db.execute(text("""
             UPDATE reclamos SET estado = 'En gestión', fecha_modificacion = NOW(),
-                id_usuario_modificacion = :uid
+                id_usuario_modificacion = :uid,
+                fecha_primer_asignacion = COALESCE(fecha_primer_asignacion, NOW())
             WHERE id_reclamo = :id AND estado NOT IN ('Cancelado','Resuelto')
         """), {"id": id_reclamo, "uid": current_user["id_usuario"]})
 
