@@ -80,6 +80,27 @@ async def encuestas_estan_activas(db: AsyncSession) -> bool:
         return False
 
 
+async def antifatiga_esta_activo(db: AsyncSession) -> bool:
+    """Lee configuracion_general.encuestas_antifatiga_activo.
+
+    Default seguro = TRUE: si la clave no existe o no se puede leer, se mantiene
+    la regla anti-fatiga activa (comportamiento histórico). Solo se desactiva si
+    la clave existe explícitamente con valor 'false'.
+    """
+    try:
+        row = (await db.execute(text("""
+            SELECT valor FROM configuracion_general
+             WHERE clave = 'encuestas_antifatiga_activo' AND activo = TRUE
+             LIMIT 1
+        """))).fetchone()
+        if not row:
+            return True  # sin clave -> regla activa por defecto
+        return str(row[0]).strip().lower() != "false"
+    except Exception as e:
+        logger.error("antifatiga_esta_activo fallo: %s", e)
+        return True  # fail-safe: ante error, no reenviar de más
+
+
 # =============================================================================
 # Crear envio
 # =============================================================================
@@ -137,9 +158,10 @@ async def crear_envio_para_reclamo(db: AsyncSession, id_reclamo: int):
             logger.info("crear_envio: ciudadano del reclamo=%s sin email valido", id_reclamo)
             return None, MOTIVO_SIN_EMAIL
 
-        # 5. Anti-fatiga: mismo ciudadano + misma subarea en los ultimos 30 dias
+        # 5. Anti-fatiga: mismo ciudadano + misma subarea en los ultimos 30 dias.
+        #    Se puede desactivar desde configuracion_general.encuestas_antifatiga_activo.
         id_subarea = rec["id_subarea"]
-        if id_subarea is not None:
+        if id_subarea is not None and await antifatiga_esta_activo(db):
             reciente = (await db.execute(text("""
                 SELECT 1
                   FROM encuesta_envio ee
