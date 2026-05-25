@@ -100,6 +100,46 @@ async def _validar_cierre_directo_sin_ot(db, id_reclamo: int, id_tipo_reclamo, c
         )
 
 
+async def _require_misma_subarea(db, id_tipo_reclamo, current_user: dict, accion: str):
+    """Impide el cierre/auditoría cross-subárea por la vía manual del FSM.
+
+    Un usuario solo puede llevar un reclamo a 'Resuelto'/'En auditoría' si su
+    subárea (`usuarios.id_subarea`) coincide con la subárea del tipo de reclamo
+    (fuente única; `reclamos.id_subarea` puede ser NULL — §27). El admin
+    (nivel 1) está exento (acceso total). El cierre vía OT no pasa por acá:
+    el endpoint de OT actualiza `reclamos.estado` directamente, y el agente que
+    cierra ya pertenece a la subárea por construcción.
+    """
+    if current_user.get("nivel_acceso") == 1:  # admin: acceso total
+        return
+
+    sub_tipo = None
+    if id_tipo_reclamo is not None:
+        rt = await db.execute(text(
+            "SELECT id_subarea FROM tipo_reclamo WHERE id_tipo_reclamo = :id"
+        ), {"id": id_tipo_reclamo})
+        rtr = rt.fetchone()
+        sub_tipo = rtr.id_subarea if rtr else None
+
+    if sub_tipo is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"El tipo de reclamo no tiene subárea asociada; no se puede validar el pase a '{accion}'.",
+        )
+
+    ru = await db.execute(text(
+        "SELECT id_subarea FROM usuarios WHERE id_usuario = :uid"
+    ), {"uid": current_user["id_usuario"]})
+    rur = ru.fetchone()
+    sub_usuario = rur.id_subarea if rur else None
+
+    if sub_usuario is None or sub_usuario != sub_tipo:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Solo un usuario de la misma subárea del reclamo puede pasarlo a '{accion}'.",
+        )
+
+
 def _to_dict(row) -> dict:
     d = dict(row._mapping)
     for k, v in d.items():
@@ -495,6 +535,12 @@ async def cambiar_estado(
                     f"{sorted(permitidos) if permitidos else 'ningún estado (es final)'}."
                 ),
             )
+        # Bloqueo de cierre/auditoría cross-subárea por la vía manual del FSM:
+        # un no-admin solo puede llevar el reclamo a un estado final/auditoría si
+        # su subárea coincide con la del tipo de reclamo. (El cierre vía OT no
+        # pasa por este endpoint — lo hace ordenes_trabajo.py directamente.)
+        if nuevo_estado in ("Resuelto", "En auditoría"):
+            await _require_misma_subarea(db, row.id_tipo_reclamo, current_user, nuevo_estado)
 
     # #1 — Integridad referencial padre/hijo: no cerrar/auditar un reclamo padre
     # si tiene subreclamos activos sin resolver. Solo aplica si NO es subreclamo.
@@ -523,15 +569,22 @@ async def cambiar_estado(
     # fecha_cierre se setea al pasar a un estado final (§22). Para estados no
     # finales queda en NULL (CASE evita pisarla en transiciones intermedias).
     es_final = nuevo_estado in ("Resuelto", "Cancelado")
+    # fecha_primer_asignacion se setea la primera vez que el reclamo entra a
+    # 'En gestión' (medición real del SLA de primera asignación, §22). El COALESCE
+    # evita pisarla si vuelve a 'En gestión' desde 'En espera'/'En auditoría'.
+    es_primera_gestion = nuevo_estado == "En gestión"
     await db.execute(text("""
         UPDATE reclamos
         SET estado = :estado, fecha_modificacion = NOW(),
             observaciones = COALESCE(:obs, observaciones),
             id_usuario_modificacion = :uid,
-            fecha_cierre = CASE WHEN :es_final THEN NOW() ELSE fecha_cierre END
+            fecha_cierre = CASE WHEN :es_final THEN NOW() ELSE fecha_cierre END,
+            fecha_primer_asignacion = CASE WHEN :es_gestion
+                THEN COALESCE(fecha_primer_asignacion, NOW()) ELSE fecha_primer_asignacion END
         WHERE id_reclamo = :id
     """), {"estado": nuevo_estado, "id": id_reclamo, "obs": nota or None,
-           "uid": current_user["id_usuario"], "es_final": es_final})
+           "uid": current_user["id_usuario"], "es_final": es_final,
+           "es_gestion": es_primera_gestion})
 
     await _insertar_historial(db, id_reclamo, f"Cambio de estado a {nuevo_estado}",
                                estado_anterior, nuevo_estado, nota,
