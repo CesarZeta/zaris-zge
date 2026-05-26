@@ -75,6 +75,7 @@ No suponer paridad entre stacks. Hoy:
 | **Dashboard** | — | **`modules/dashboard/`** (mapa Leaflet + stats reales) | **React — HOME del iframe** desde 2026-05-13 (se carga al entrar al shell y al hacer click en INICIO desde cualquier módulo) |
 | **OT (3 mesas)** | — (borrado, era `ot_supervisor.html`/`ot_agente.html`/`ot_auditoria.html`) | **`modules/ot/`** (Supervisor / Agente / Auditoría + drawer detalle compartido) | **React** (publicado) |
 | **Trámites** | — | **`modules/tramites/`** (backend Fase 1+2 + frontend Fase 3 completo — bandeja, detalle, acciones, timeline, adjuntos, pase, relacionar; 2026-05-16) | **React** (publicado) |
+| **Datos (BI)** | — | **`modules/bi/`** (landing DATOS → Operativo + Ejecutivo. Operativo: 4 tabs Resumen/Resueltos-SLA/Pendientes+mapa/Subreclamos. Ejecutivo: placeholder. 2026-05-26) | **React** (publicado) |
 | Config (permisos/identidad/etc.) | — | `modules/config/` | React |
 
 **Implicaciones:**
@@ -795,7 +796,7 @@ class Equipo(Base):
 
 > **El detalle histórico de cada migración (qué hace, cuándo se aplicó, snapshots de backup) vive en [`HISTORIAL_MIGRACIONES.md`](HISTORIAL_MIGRACIONES.md)** (raíz del repo). Acá queda solo el resumen vigente. **No confiar en esta doc como fuente de verdad** — antes de codear algo schema-dependent, verificar el estado real con `execute_sql` (regla §24).
 
-**Estado general:** migraciones 20-64 aplicadas en local Y prod (Supabase) sin divergencia conocida al 2026-05-26. La numeración 51 está duplicada (`51_notificaciones.sql` + `51_tramites_tipo_dato_direccion.sql`, ambas aplicadas) — **cualquier mig nueva debe usar 65+**. Migs 62-64 (sesión 2026-05-26): 62 `usuarios.fecha_ultimo_login` + tabla `usuario_login_log` (auditoría de accesos); 63 `agentes.cuil`; 64 índice UNIQUE parcial `agentes.id_usuario WHERE NOT NULL` (regla 1:1 agente↔usuario, §39).
+**Estado general:** migraciones 20-65 aplicadas en local Y prod (Supabase) sin divergencia conocida al 2026-05-26. La numeración 51 está duplicada (`51_notificaciones.sql` + `51_tramites_tipo_dato_direccion.sql`, ambas aplicadas) — **cualquier mig nueva debe usar 66+**. Migs 62-64 (sesión 2026-05-26): 62 `usuarios.fecha_ultimo_login` + tabla `usuario_login_log` (auditoría de accesos); 63 `agentes.cuil`; 64 índice UNIQUE parcial `agentes.id_usuario WHERE NOT NULL` (regla 1:1 agente↔usuario, §39). Mig 65: fila `modulos.bi` (nombre "Datos", nivel 2) para el módulo BI §43.
 
 **Tablas que YA existen en prod y NO deben re-crearse:** `reclamos`, `reclamo_historial`, `tipo_reclamo`, `estado_reclamo`, `ordenes_trabajo`, `estado_ot` (5 seeds), `equipo_agentes`, `configuracion_general`, todas las de Agenda (migs 30-43), Turnos (45-46), permisos (38/44), trámites (47-50, 56), notificaciones (51), encuestas (57-58, 60-61), auth público de ciudadanos (52-53), adjuntos de OT (54), `usuarios.id_subarea`/`es_externo` (55), `usuario_login_log` (62). Detalle por mig en `HISTORIAL_MIGRACIONES.md`. Ver memoria [[project_supabase_estado_schema]].
 
@@ -2701,4 +2702,32 @@ Hook no-bloqueante que crea el `encuesta_envio` al pasar un reclamo a 'Resuelto'
 - Aplicado en `services/email.py` (sender central usado por encuestas, notificaciones, trámites y App Vecinos — los 4 logs de `to=` enmascarados)
 - Tokens de encuestas: helper local `_tok()` en `encuestas_service.py` (consistente con el patrón)
 - Smoke test: `backend/scripts/test_mask_email.py`
+
+## 43. Módulo Datos (BI — Análisis de datos)
+
+Tableros analíticos sobre `reclamos`. Módulo React `web-app/src/modules/bi/` (sidebar "datos", `moduloCodigo='bi'`, mig 65, nivel ≤ 2). Router backend `backend/app/api/routes/bi.py` (`/api/v1/bi/*`, guard JWT a nivel router). Entregado 2026-05-26.
+
+### Estructura
+- **Landing DATOS** (`/bi`, `pages/DatosLanding.tsx`): 2 tarjetas estilo Contactos → **Operativo** (activo) + **Ejecutivo** (placeholder "Próximamente", contenido a definir por el usuario).
+- **Operativo** (`/bi/operativo/*`, `BiLayout` con 4 tabs): Resumen, Resueltos/SLA, Pendientes (+ mapa geo), Subreclamos.
+
+### Reglas de visualización (OBLIGATORIAS para toda viz nueva del módulo)
+Ver memoria `reference_bi_lineamientos_visualizaciones`. Resumen:
+- **Recharts 2.15, NO 3.x** — la 3.8 trae `es-toolkit` que rompe con Vite 8 (`require_isUnsafeProperty`; root vacío sin error en consola del browser, el error vive en el log de Vite).
+- **Toda viz lleva etiqueta de total** (barras: valor en segmento + total afuera; donas: `%` + valor). Pastilla de fondo **OSCURA** `rgba(38,37,30,0.78)` + texto claro `#f7f7f4` (el usuario pidió oscuro explícitamente).
+- **Histogramas temporales: toggle Mes/Día + drill-down** (clic en barra de mes → días de ese mes). Componente genérico `components/HistogramaTemporal.tsx` (series + fetchers inyectados).
+- **Toda tabla de detalle lleva botón "Exportar CSV"** (helper `components/exportCsv.ts`, BOM UTF-8 para Excel).
+- **Estilo ZARIS** (tokens DS), NO la paleta de los tableros Power BI de referencia.
+- **Agregación 100% en SQL** (`GROUP BY`/`date_trunc`/`FILTER`); el frontend solo dibuja. Diseñado para escalar.
+
+### Backend
+Endpoints por vista en `bi.py`. Convenciones críticas:
+- **Área vía subárea** (§27): JOIN `reclamos → tipo_reclamo → subarea → area`. `reclamos.id_area` legacy es NULL.
+- **Mono-municipio**: filtro `(id_municipio = :m OR id_municipio IS NULL)` — los reclamos reales tienen `id_municipio` NULL (local Y prod). Filtrar estricto = BI vacío.
+- Tiempo de cierre = `fecha_cierre - fecha_alta`; demora pendiente = `NOW() - fecha_alta`. Tramos 0-3 / 4-7 / +7 días.
+- Subreclamos = `id_reclamo_padre IS NOT NULL` ("intervenciones" en la jerga de los tableros de referencia).
+- El mapa de Pendientes reusa `modules/dashboard/components/DashboardMap.tsx` (Leaflet vanilla) — endpoint `/bi/pendientes-geo`.
+
+### Datos demo (prod, 2026-05-26)
+Los 30 reclamos de prod fueron poblados con `fecha_cierre` (resueltos) y `latitud/longitud` (todos) para que el BI tenga contenido. Backups `_backup_reclamos_fecha_cierre_2026_05_26` y `_backup_reclamos_geo_demo_2026_05_26`.
 
