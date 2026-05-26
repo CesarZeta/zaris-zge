@@ -584,7 +584,7 @@ Comandos disponibles en `.claude/commands/` — invocar con `/nombre`:
 | `tipos_activo` / `activos` | Catálogo de activos físicos georreferenciados (§22) |
 
 `nro_reclamo` se genera automáticamente vía trigger `trg_nro_reclamo` → `REC-YYYY-XXXXXX`.
-`nro_ot` se genera automáticamente vía trigger `trg_nro_ot` → `OT-YYYY-XXXXXX`.
+`nro_ot` se genera automáticamente vía trigger `trg_nro_ot` → `OT-YYYY-XXXXXX`. **Ojo (cazado 2026-05-25):** este trigger NO existía en prod pese a estar documentado acá — las OT salían con `nro_ot` NULL. Lo creó **mig 59** (`fn_generar_nro_ot` + trigger BEFORE INSERT, espejo de `fn_generar_nro_reclamo`) + backfill. Si tocás numeración de OT, verificá el trigger con `pg_trigger` (ver [[feedback_verificar_trigger_existe_no_confiar_doc]]).
 
 ### CHECK constraints en `reclamos` (verificado prod 2026-05-12)
 
@@ -689,6 +689,8 @@ PUT  /api/v1/ot/{id_ot}/rechazar           → auditor rechaza OT → nueva OT P
 2. el reclamo **no tiene OT activa** (`ordenes_trabajo WHERE id_reclamo=:id AND activo` vacío → sino 422);
 3. la **subárea del usuario** (`usuarios.id_subarea`, mig 55 §21) **== subárea del tipo de reclamo** (`tipo_reclamo.id_subarea`, derivada vía `reclamos.id_tipo_reclamo`; NO usar `reclamos.id_subarea` que puede ser NULL). Si no coincide → 403.
 Caso de uso: reclamo que se resuelve sin generar OT (consulta, duplicado, sin info). El frontend (`CambiarEstadoModal.tsx`) ofrece "Resuelto" desde "Sin asignar" solo a `hasPermission(2)` y muestra un pop-up de confirmación; **el backend es la fuente de verdad de la subárea** (el modal no la conoce, así que un supervisor de otra subárea ve la opción pero recibe 403 con mensaje claro al confirmar). Es una **3ª rama** del handler `cambiar_estado`, exenta del chequeo del grafo (`es_cierre_directo` se valida antes del `elif` del grafo).
+
+**Bloqueo cierre cross-subárea por la vía normal (desde 2026-05-25).** El chequeo de subárea de arriba SOLO cubría el atajo `Sin asignar → Resuelto`. Pero un reclamo ya en `En gestión` podía pasar a `Resuelto`/`En auditoría` por la vía normal del FSM sin chequear subárea — un supervisor de otra subárea cerraba reclamos ajenos. Fix: helper `_require_misma_subarea` aplicado también al pase manual a `Resuelto`/`En auditoría` (admin nivel 1 exento). **El cierre vía OT (`ordenes_trabajo.py` actualiza `reclamos.estado` directo, NO pasa por `cambiar_estado`) no se afecta** — el agente que cierra pertenece a la subárea por construcción. Si agregás otra ruta que lleve un reclamo a estado final, recordá el guard (ver [[feedback_guard_subarea_cubre_todas_las_vias]]).
 
 ### Configuración general
 
@@ -930,6 +932,14 @@ Resultado prod: 19 reclamos legacy de "Servicios Públicos" sin tilde (id=9, ya 
 
 **Aplicada en local y prod al 2026-05-22.** Agrega `tipo_tramite.es_sistema BOOLEAN NOT NULL DEFAULT FALSE` para distinguir tipos precargados por seed (`TRUE`) de tipos custom creados por usuario desde el editor admin (`FALSE`). Backfill por **código** (no por id — regla §24) de los 9 tipos del seed original. `seed_tramites.py` ahora inserta `es_sistema=TRUE`. Idempotente. Ver §35 sección "Listado admin de tipos". **Ojo:** `tipo_tramite` (catálogo) NO tiene `id_usuario_alta` — la mig 50 sumó auditoría de usuario solo a las tablas de instancias; por eso se usa `es_sistema` y no `id_usuario_alta IS NULL` para distinguir origen. Ver memoria [[reference_tipo_tramite_sin_usuario_alta]].
 
+### Migración 59 — Trigger de numeración de OT (`backend/migrations/59_ot_nro_trigger.sql`)
+
+**Aplicada en local y prod al 2026-05-25.** Crea `fn_generar_nro_ot()` + trigger `trg_nro_ot` BEFORE INSERT en `ordenes_trabajo` (espejo de `fn_generar_nro_reclamo`) y backfillea las filas con `nro_ot` NULL. **El trigger NO existía en prod** pese a estar documentado en §18 — toda OT creada vía API salía sin número (el backend solo devolvía un fallback `OT-{id}` que no persistía). Idempotente. Ver [[feedback_verificar_trigger_existe_no_confiar_doc]].
+
+### Migración 60 — Toggle anti-fatiga de encuestas (`backend/migrations/60_encuestas_antifatiga_toggle.sql`)
+
+**Aplicada en local y prod al 2026-05-25.** Seed de la clave `encuestas_antifatiga_activo` (boolean, default `'true'`) en `configuracion_general`. Hasta entonces la regla anti-fatiga (no reenviar encuesta al mismo ciudadano/subárea dentro de 30 días) estaba hardcodeada. Ahora `encuestas_service.antifatiga_esta_activo(db)` la lee; `'false'` la desactiva (default seguro TRUE ante clave ausente/error). Editable desde Config → Sistema (§41). Idempotente.
+
 ## 22. Geolocalización, Activos y Adjuntos (Reclamos)
 
 ### Árbol geográfico (provincia → partido → localidad)
@@ -1005,7 +1015,7 @@ Detalles del aprendizaje (incluyendo trampas que NO funcionaron) en memoria [[fe
 | Campo | Tipo | Notas |
 |---|---|---|
 | `canal_origen` | VARCHAR(20) | `web` / `whatsapp` / `telefono` / `presencial` / `oficio` / `app_movil` / `otro`. |
-| `fecha_primer_asignacion` | TIMESTAMPTZ | Set al pasar de `Sin asignar` → `En gestión` (medición de SLA real). |
+| `fecha_primer_asignacion` | TIMESTAMPTZ | Set al pasar a `En gestión` (medición de SLA real). **Hasta 2026-05-25 NO se seteaba** (bug); ahora se hace vía `COALESCE(fecha_primer_asignacion, NOW())` en `cambiar_estado` (reclamos.py) y en `crear_ot`/`crear_ot_con_agenda` (ordenes_trabajo.py). El COALESCE evita pisarla al volver a En gestión. |
 | `fecha_cierre` | TIMESTAMPTZ | Set al pasar a estado final (`Resuelto` o `Cancelado`). |
 | `sla_vencimiento` | TIMESTAMPTZ | Calculado por trigger `trg_sla_reclamo` = `fecha_alta + tipo_reclamo.sla_dias`. |
 
@@ -2905,7 +2915,7 @@ Módulo React `web-app/src/modules/config/` (ítem "configuración" del sidebar,
 | Identidad | `IdentidadView` | `GET/PUT /api/v1/config/identidad` (+ `/logo-upload-url`) | Nombre y logo del municipio en el topbar. `app_nombre` ('GESTION ESTADO') es interno, NO editable (§14) — el PUT lo ignora. |
 | Permisos por usuario | `UsuariosPermisosView` | `GET /api/v1/admin/permisos/usuarios/{id}/modulos` + `PUT` | Matriz de overrides por módulo (§30). Lista usuarios vía `GET /api/v1/admin/usuarios` (handler genérico admin_tablas). |
 | Catálogo de módulos | `CatalogoModulosView` | `GET /api/v1/admin/permisos/modulos` + `PUT /{codigo}` | Editar `min_nivel_acceso` de cada módulo. |
-| Sistema | `SistemaView` | — (solo navegación) | Cards de atajo a `admin_tablas?tabla=...` y `usuarios.html`. |
+| Sistema | `SistemaView` + `ParametrosSistemaView` | `GET /api/v1/admin/configuracion_general` + `PUT /{id_config}` | **Desde 2026-05-25:** pantalla de ajustes agrupada y tipada (toggle/number/text/color) sobre `configuracion_general`, secciones Encuestas / Reclamos y OT / App Vecinos / Otros. Debajo, atajos a Municipios/Maestros. Ver [[reference_config_sistema_pantalla_tipada]]. Clave nueva: seed (mig) + leer backend + sumar a `SECCIONES`. `municipio_nombre`/`logo` ocultos acá (se editan en Identidad). El item "usuarios" se quitó del sidebar del shell (sigue accesible acá vía atajo "Usuarios del sistema"). |
 
 **Cliente API:** `web-app/src/modules/config/api/configApi.ts` + hooks en `hooks/useConfig.ts`. Los 3 endpoints existen, están registrados en `main.py` y las shapes coinciden. Verificado end-to-end en navegador 2026-05-22.
 
@@ -2953,6 +2963,7 @@ Encuestas de satisfacción disparadas al cierre de reclamos. Encuesta estándar 
 
 ### Anti-fatiga
 - Un ciudadano no recibe más de una encuesta de la misma subárea (derivada) en los últimos 30 días. El dashboard agrupa por área.
+- **Desactivable (desde 2026-05-25, mig 60):** la regla se puede apagar con la clave `encuestas_antifatiga_activo` en `configuracion_general` (toggle en Config → Sistema). `encuestas_service.antifatiga_esta_activo(db)` la lee; default seguro TRUE (clave ausente/error → regla activa). Con `'false'` se encuesta en cada cierre. `DIAS_ANTIFATIGA=30` sigue hardcodeado (solo el on/off es configurable).
 
 ### Delay de envío
 - El email se envía 24 h después del cierre (no inmediato): dar tiempo a verificar que la solución persistió. El dispatcher procesa envíos `'pendiente'` con `fecha_alta < NOW() - 24h`.
