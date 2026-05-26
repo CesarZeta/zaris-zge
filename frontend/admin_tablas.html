@@ -635,9 +635,9 @@
     <div class="sidebar-item" data-tabla="subarea"         onclick="selectTabla(this)"><i data-lucide="git-branch"  class="si"></i>Subáreas</div>
     <div class="sidebar-item" data-tabla="tipo_usuario"    onclick="selectTabla(this)"><i data-lucide="badge"       class="si"></i>Tipos de Usuario</div>
     <div class="sidebar-item" data-tabla="cargos"          onclick="selectTabla(this)"><i data-lucide="briefcase"   class="si"></i>Cargos</div>
-    <!-- Usuarios usa su propia pantalla (frontend/usuarios.html): el CRUD generico
-         de admin_tablas no maneja el hash de password ni el alta con login funcional. -->
-    <div class="sidebar-item" data-tabla="usuarios"        onclick="abrirUsuarios()"><i data-lucide="users"       class="si"></i>Usuarios</div>
+    <!-- Usuarios NO se administra desde Maestros: tiene pantalla propia
+         (frontend/usuarios.html) que hashea password y registra auditoría de
+         login. El CRUD genérico de admin_tablas dejaría usuarios sin login. -->
     <div class="sidebar-item" data-tabla="agentes"         onclick="selectTabla(this)"><i data-lucide="user-check"  class="si"></i>Agentes</div>
     <div class="sidebar-item" data-tabla="equipos"         onclick="selectTabla(this)"><i data-lucide="layout-grid" class="si"></i>Equipos</div>
     <div class="sidebar-item" data-tabla="equipo_agentes"  onclick="selectTabla(this)"><i data-lucide="users"        class="si"></i>Equipo-Agentes</div>
@@ -785,26 +785,9 @@ const SCHEMAS = {
     ],
     display: ['id_cargo', 'nombre', 'descripcion'],
   },
-  usuarios: {
-    label: 'Usuario', titulo: 'Maestro de Usuarios',
-    pk: 'id_usuario',
-    cols: [
-      { field: 'nombre',          label: 'Nombre completo',  type: 'text',   required: true },
-      { field: 'username',        label: 'Username',         type: 'text',   required: true },
-      { field: 'cuil',            label: 'CUIL',             type: 'text',   required: false },
-      { field: 'nivel_acceso',    label: 'Nivel de acceso',  type: 'select', required: true,
-        options: [
-          { v: '1', l: '1 — Administrador' },
-          { v: '2', l: '2 — Supervisor' },
-          { v: '3', l: '3 — Operador' },
-          { v: '4', l: '4 — Consultor' },
-        ]},
-      { field: 'buc_acceso',      label: 'Acceso BUC',       type: 'checkbox', required: false },
-      { field: 'es_externo',      label: 'Usuario externo',  type: 'checkbox', required: false },
-      { field: 'id_subarea',      label: 'Subárea',          type: 'select', fk: 'subarea',      fkLabel: 'nombre', fkPk: 'id_subarea',      required: false },
-    ],
-    display: ['id_usuario', 'nombre', 'username', 'cuil', 'nivel_acceso', 'id_subarea', 'es_externo'],
-  },
+  // usuarios: NO se administra desde Maestros (pantalla propia: usuarios.html).
+  // El backend devuelve 403 ante POST/PUT/DELETE de la tabla usuarios; solo
+  // queda como FK read-only para selects de otras tablas (id_usuario_*).
   agentes: {
     label: 'Agente', titulo: 'Maestro de Agentes',
     pk: 'id_agente',
@@ -1074,16 +1057,6 @@ async function selectTabla(el) {
   el.classList.add('active');
   tablaActual = el.dataset.tabla;
   await cargarTabla();
-}
-
-// Usuarios tiene pantalla propia (maneja password/bcrypt; admin_tablas no).
-// Navegamos por el shell vanilla si estamos embebidos, sino directo.
-function abrirUsuarios() {
-  if (window.parent && window.parent.shellNavigate) {
-    window.parent.shellNavigate('frontend/usuarios.html');
-  } else {
-    window.location.href = 'usuarios.html';
-  }
 }
 
 // ── Cargar y renderizar tabla (vista principal con previa) ──────

@@ -150,6 +150,21 @@ TABLE_CONFIG: dict[str, dict] = {
 
 ALLOWED_TABLES = set(TABLE_CONFIG.keys())
 
+# Tablas que se pueden LEER por el CRUD genérico (para poblar selects FK de otras
+# tablas) pero NO mutar desde acá. `usuarios` tiene su propia pantalla
+# (frontend/usuarios.html) que hashea password y registra auditoría de login; el
+# alta/edición/baja genérico de admin_tablas dejaría usuarios sin login funcional.
+READ_ONLY_TABLES = {"usuarios"}
+
+
+def _bloquear_si_read_only(tabla: str) -> None:
+    if tabla in READ_ONLY_TABLES:
+        raise HTTPException(
+            status_code=403,
+            detail=f"La tabla '{tabla}' no se administra desde Maestros. "
+                   f"Usá la pantalla dedicada del módulo Usuarios.",
+        )
+
 
 def _get_config(tabla: str) -> dict:
     if tabla not in ALLOWED_TABLES:
@@ -232,6 +247,7 @@ async def crear(
     current_user: dict = Depends(get_current_user),
 ):
     cfg = _get_config(tabla)
+    _bloquear_si_read_only(tabla)
     allowed = cfg["cols"]
     exclude = cfg.get("exclude", [])
 
@@ -273,6 +289,7 @@ async def editar(
     current_user: dict = Depends(get_current_user),
 ):
     cfg = _get_config(tabla)
+    _bloquear_si_read_only(tabla)
     pk = cfg["pk"]
     allowed = cfg["cols"]
     fecha_mod = cfg["fecha_mod"]
@@ -357,6 +374,7 @@ async def baja_logica(
     current_user: dict = Depends(get_current_user),
 ):
     cfg = _get_config(tabla)
+    _bloquear_si_read_only(tabla)
     pk = cfg["pk"]
     fecha_mod = cfg["fecha_mod"]
     if not cfg.get("has_activo", True):
