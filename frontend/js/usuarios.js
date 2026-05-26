@@ -131,7 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $('lst-subarea').addEventListener('change', aplicarFiltros);
     $('lst-nivel').addEventListener('change', aplicarFiltros);
 
-    ZValidaciones.bindGuardarBoton($('form-card'), $('btn-guardar'), {
+    const _guardarBtn = ZValidaciones.bindGuardarBoton($('form-card'), $('btn-guardar'), {
         extra: () => {
             const pwd = $('usr-password').value;
             const cf  = $('usr-password-confirm').value;
@@ -145,6 +145,10 @@ document.addEventListener('DOMContentLoaded', () => {
             return true;
         }
     });
+    // Los campos se pueblan programáticamente al editar/consultar (setear .value no
+    // dispara input/change), así que el botón no se re-evalúa solo. Llamarlo a mano
+    // tras cada cambio de modo o populación del form.
+    function revalidarGuardar() { _guardarBtn.check(); }
 
     $('search-query').focus();
     cargarVistaPrevia();
@@ -253,6 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const badge = $('activo-badge');
         badge.textContent  = u.activo ? 'Activo' : 'Inactivo';
         badge.className    = u.activo ? 'badge-activo' : 'badge-inactivo';
+        revalidarGuardar();
     }
 
     function activarModoNuevo() {
@@ -273,6 +278,7 @@ document.addEventListener('DOMContentLoaded', () => {
         $('btn-baja').style.display      = 'none';
         $('btn-reactivar').style.display = 'none';
         $('btn-cancelar').textContent    = 'Cancelar';
+        revalidarGuardar();
         $('usr-nombre').focus();
     }
 
@@ -292,6 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
         $('btn-cancelar').textContent    = 'Salir';
         $('btn-baja').style.display      = (u && u.activo)  ? 'inline-flex' : 'none';
         $('btn-reactivar').style.display = (u && !u.activo) ? 'inline-flex' : 'none';
+        revalidarGuardar();
     }
 
     function activarModoConsulta() {
