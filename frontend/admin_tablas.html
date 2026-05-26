@@ -361,6 +361,42 @@
       display: flex; justify-content: flex-end; gap: 0.75rem;
     }
 
+    /* ── Horario de asistencia (franjas de disponibilidad) ── */
+    .horario-sec { margin-top: 1.25rem; border-top: 1px dashed var(--border-primary); padding-top: 1rem; }
+    .horario-sec__title { font-size: 0.9rem; font-weight: 700; color: var(--fg-1); margin-bottom: 0.5rem; }
+    .horario-sec__hint { font-size: 0.78rem; color: var(--fg-3); margin-bottom: 0.75rem; }
+    .franja {
+      border: 1px solid var(--border-primary); border-radius: var(--radius-lg);
+      padding: 0.75rem 1rem; margin-bottom: 0.6rem; background: var(--surface-200);
+    }
+    .franja__dias { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 0.6rem; }
+    .franja__dia {
+      display: inline-flex; align-items: center; gap: 4px; font-size: 0.78rem;
+      color: var(--fg-2); cursor: pointer; user-select: none;
+      border: 1px solid var(--border-primary); border-radius: var(--radius-pill);
+      padding: 3px 10px; transition: all 0.12s;
+    }
+    .franja__dia input { margin: 0; cursor: pointer; }
+    .franja__dia.on { background: rgba(245,78,0,0.1); border-color: var(--zaris-orange); color: var(--zaris-orange); }
+    .franja__horas { display: flex; align-items: flex-end; gap: 0.75rem; flex-wrap: wrap; }
+    .franja__horas .field { margin: 0; }
+    .franja__horas input[type=time], .franja__horas input[type=text] {
+      padding: 5px 8px; border: 1px solid var(--border-primary); border-radius: var(--radius-md);
+      font-family: var(--font-display); font-size: 0.85rem; background: var(--surface-100); color: var(--fg-1);
+    }
+    .franja__del {
+      margin-left: auto; background: none; border: 1px solid var(--border-primary);
+      color: var(--color-error); border-radius: var(--radius-md); padding: 5px 10px;
+      cursor: pointer; font-size: 0.78rem; font-family: var(--font-display);
+    }
+    .franja__del:hover { border-color: var(--color-error); background: rgba(207,45,86,.06); }
+    .horario-add {
+      background: none; border: 1px dashed var(--border-medium); color: var(--fg-2);
+      border-radius: var(--radius-md); padding: 6px 14px; cursor: pointer;
+      font-size: 0.82rem; font-family: var(--font-display);
+    }
+    .horario-add:hover { border-color: var(--zaris-orange); color: var(--zaris-orange); }
+
     /* ── Form fields ── */
     .field { margin-bottom: 1rem; }
     .field label {
@@ -1623,6 +1659,131 @@ function _abrirInline() {
 function cerrarInline() {
   document.getElementById('inlineForm').style.display = 'none';
   document.getElementById('inlineFormBody').innerHTML = '';
+  _franjasState = [];
+  _franjasOriginalIds = [];
+}
+
+// ── Horario de asistencia del agente (franjas de disponibilidad_recurso) ──────
+// Cada franja: { id_disponibilidad?, dias (bitmask 0-127), hora_inicio, hora_fin, etiqueta }.
+// Alimenta la disponibilidad efectiva del agente en el módulo Agenda (§27).
+const DIAS = [['Lun',1],['Mar',2],['Mié',4],['Jue',8],['Vie',16],['Sáb',32],['Dom',64]];
+let _franjasState = [];        // franjas en edición (en memoria)
+let _franjasOriginalIds = [];  // ids que ya existían al abrir (para detectar borrados)
+let _franjaSeq = 0;            // key local para el DOM
+
+function _franjaRowHTML(f) {
+  const dias = DIAS.map(([lbl, bit]) =>
+    `<label class="franja__dia ${(f.dias & bit) ? 'on' : ''}" data-bit="${bit}">
+       <input type="checkbox" ${(f.dias & bit) ? 'checked' : ''}> ${lbl}
+     </label>`).join('');
+  return `<div class="franja" data-key="${f._k}">
+    <div class="franja__dias">${dias}</div>
+    <div class="franja__horas">
+      <div class="field"><label>Desde</label><input type="time" class="fr-hi" value="${f.hora_inicio || ''}"></div>
+      <div class="field"><label>Hasta</label><input type="time" class="fr-hf" value="${f.hora_fin || ''}"></div>
+      <div class="field"><label>Etiqueta (opcional)</label><input type="text" class="fr-et" placeholder="Ej: Turno mañana" value="${(f.etiqueta || '').replace(/"/g,'&quot;')}"></div>
+      <button type="button" class="franja__del">Quitar</button>
+    </div>
+  </div>`;
+}
+
+function renderHorarioSeccion() {
+  if (tablaActual !== 'agentes') return;
+  const body = document.getElementById('inlineFormBody');
+  let sec = body.querySelector('#horarioSec');
+  if (!sec) {
+    sec = document.createElement('div');
+    sec.id = 'horarioSec';
+    sec.className = 'horario-sec';
+    body.appendChild(sec);
+  }
+  const filas = _franjasState.map(_franjaRowHTML).join('') ||
+    '<p class="horario-sec__hint">Sin franjas. Agregá al menos una para que el agente tenga disponibilidad en la Agenda.</p>';
+  sec.innerHTML = `
+    <div class="horario-sec__title">Horario de asistencia</div>
+    <div class="horario-sec__hint">Días y rango horario en que el agente está disponible. Podés cargar varias franjas (ej: turno mañana y turno tarde).</div>
+    <div id="franjasList">${filas}</div>
+    <button type="button" class="horario-add" id="btnAddFranja">+ Agregar franja</button>`;
+
+  sec.querySelector('#btnAddFranja').onclick = () => {
+    _capturarFranjasDelDOM();
+    _franjasState.push({ _k: ++_franjaSeq, dias: 0, hora_inicio: '', hora_fin: '', etiqueta: '' });
+    renderHorarioSeccion();
+  };
+  sec.querySelectorAll('.franja').forEach(div => {
+    div.querySelectorAll('.franja__dia').forEach(lbl => {
+      lbl.querySelector('input').onchange = (e) => lbl.classList.toggle('on', e.target.checked);
+    });
+    div.querySelector('.franja__del').onclick = () => {
+      _capturarFranjasDelDOM();
+      _franjasState = _franjasState.filter(f => f._k !== Number(div.dataset.key));
+      renderHorarioSeccion();
+    };
+  });
+}
+
+// Lee los valores actuales del DOM a _franjasState (antes de re-render o guardar).
+function _capturarFranjasDelDOM() {
+  const list = document.getElementById('franjasList');
+  if (!list) return;
+  list.querySelectorAll('.franja').forEach(div => {
+    const k = Number(div.dataset.key);
+    const f = _franjasState.find(x => x._k === k);
+    if (!f) return;
+    let dias = 0;
+    div.querySelectorAll('.franja__dia').forEach(lbl => {
+      if (lbl.querySelector('input').checked) dias |= Number(lbl.dataset.bit);
+    });
+    f.dias = dias;
+    f.hora_inicio = div.querySelector('.fr-hi').value;
+    f.hora_fin = div.querySelector('.fr-hf').value;
+    f.etiqueta = div.querySelector('.fr-et').value.trim();
+  });
+}
+
+async function _cargarFranjasAgente(idAgente) {
+  _franjasState = [];
+  _franjasOriginalIds = [];
+  if (!idAgente) return;
+  try {
+    const res = await fetch(`${_base}/api/v1/agenda/disponibilidad?tipo_recurso=agente&id_recurso=${idAgente}`, { headers: _authHeaders() });
+    if (!res.ok) return;
+    const data = await res.json();
+    _franjasState = data.map(d => ({
+      _k: ++_franjaSeq, id_disponibilidad: d.id_disponibilidad,
+      dias: d.dias_semana, hora_inicio: (d.hora_inicio || '').slice(0,5),
+      hora_fin: (d.hora_fin || '').slice(0,5), etiqueta: d.etiqueta || '',
+    }));
+    _franjasOriginalIds = _franjasState.map(f => f.id_disponibilidad);
+  } catch (_) { /* sin disponibilidad cargada */ }
+}
+
+// Sincroniza las franjas con disponibilidad_recurso para un agente ya guardado.
+// Borra las que se quitaron y crea las nuevas. (No edita in-place: borrar+crear
+// mantiene la lógica simple y es seguro porque son pocas franjas por agente.)
+async function _sincronizarFranjas(idAgente) {
+  _capturarFranjasDelDOM();
+  // 1) borrar las originales que ya no están
+  const vivas = new Set(_franjasState.filter(f => f.id_disponibilidad).map(f => f.id_disponibilidad));
+  for (const idOrig of _franjasOriginalIds) {
+    if (!vivas.has(idOrig)) {
+      await fetch(`${_base}/api/v1/agenda/disponibilidad/${idOrig}`, { method: 'DELETE', headers: _authHeaders() });
+    }
+  }
+  // 2) crear las nuevas (sin id) que tengan días + horas válidas
+  for (const f of _franjasState) {
+    if (f.id_disponibilidad) continue;  // ya existía (no editamos in-place en v1)
+    if (!f.dias || !f.hora_inicio || !f.hora_fin) continue;  // franja incompleta: se ignora
+    await fetch(`${_base}/api/v1/agenda/disponibilidad`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ..._authHeaders() },
+      body: JSON.stringify({
+        tipo_recurso: 'agente', id_recurso: idAgente,
+        dias_semana: f.dias, hora_inicio: f.hora_inicio, hora_fin: f.hora_fin,
+        etiqueta: f.etiqueta || null,
+      }),
+    });
+  }
 }
 
 async function abrirNuevo() {
@@ -1632,6 +1793,8 @@ async function abrirNuevo() {
     document.getElementById('inlineFormTitle').textContent = `Nuevo ${schema.label}`;
     _abrirInline();
     await buildForm(schema, null, 'inlineFormBody');
+    _franjasState = []; _franjasOriginalIds = [];
+    renderHorarioSeccion();
     return;
   }
   document.getElementById('modalTitle').textContent = `Nuevo ${schema.label}`;
@@ -1659,6 +1822,10 @@ async function abrirEditar(id) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const record = await res.json();
     await buildForm(schema, record, bodyId);
+    if (inline && tablaActual === 'agentes') {
+      await _cargarFranjasAgente(id);
+      renderHorarioSeccion();
+    }
   } catch (e) {
     if (inline) cerrarInline(); else closeModal('formModal');
     toast(`Error al cargar registro: ${e.message}`, 'err');
@@ -1712,6 +1879,18 @@ async function guardarRegistro() {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.detail || `HTTP ${res.status}`);
     }
+    const saved = await res.json().catch(() => ({}));
+
+    // Agentes: sincronizar las franjas de horario con disponibilidad_recurso.
+    // El id sale del editId (edición) o del registro recién creado (alta).
+    if (tablaActual === 'agentes') {
+      const idAgente = editId || saved.id_agente;
+      if (idAgente) {
+        try { await _sincronizarFranjas(idAgente); }
+        catch (e2) { toast(`Agente guardado, pero falló el horario: ${e2.message}`, 'err'); }
+      }
+    }
+
     if (inline) cerrarInline(); else closeModal('formModal');
     toast(editId ? 'Registro actualizado' : 'Registro creado', 'ok');
     await cargarTabla();
