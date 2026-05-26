@@ -148,7 +148,29 @@ document.addEventListener('DOMContentLoaded', () => {
     // Los campos se pueblan programáticamente al editar/consultar (setear .value no
     // dispara input/change), así que el botón no se re-evalúa solo. Llamarlo a mano
     // tras cada cambio de modo o populación del form.
-    function revalidarGuardar() { _guardarBtn.check(); }
+    function revalidarGuardar() { _guardarBtn.check(); pistaPassword(); }
+
+    // Pista en vivo del estado de la contraseña: como el botón Guardar se deshabilita
+    // cuando falta confirmar (o no coinciden), el usuario no puede apretarlo para ver
+    // el error. Mostramos el motivo en el hint de "Confirmar contraseña" mientras tipea.
+    function pistaPassword() {
+        const err = $('err-password-confirm');
+        if (!err) return;
+        const pwd = $('usr-password').value;
+        const cf  = $('usr-password-confirm').value;
+        const show = (msg, esError) => {
+            err.textContent = msg;
+            err.style.display = msg ? 'block' : 'none';
+            err.style.color = esError ? 'var(--color-error)' : 'var(--fg-3)';
+        };
+        if (!pwd) { show('', false); return; }            // sin contraseña: nada que confirmar
+        if (pwd.length < 8) { show('La nueva contraseña debe tener mínimo 8 caracteres.', true); return; }
+        if (!cf) { show('Repetí la contraseña para confirmar el cambio.', false); return; }
+        if (pwd !== cf) { show('Las contraseñas no coinciden.', true); return; }
+        show('La contraseña coincide.', false);
+    }
+    $('usr-password').addEventListener('input', pistaPassword);
+    $('usr-password-confirm').addEventListener('input', pistaPassword);
 
     $('search-query').focus();
     cargarVistaPrevia();
