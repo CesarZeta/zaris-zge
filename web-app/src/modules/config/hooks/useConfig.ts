@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  actualizarConfigParam,
   actualizarModulo,
   getIdentidad,
+  listarConfigGeneral,
   listarModulos,
   listarUsuarios,
   setPermisosUsuario,
@@ -71,5 +73,23 @@ export function useUpdateIdentidad() {
   return useMutation({
     mutationFn: (payload: IdentidadUpdate) => updateIdentidad(payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['config', 'identidad'] }),
+  })
+}
+
+// Parámetros del sistema (configuracion_general)
+export function useConfigGeneral() {
+  return useQuery({
+    queryKey: ['config', 'general'],
+    queryFn: listarConfigGeneral,
+    staleTime: 60 * 1000,
+  })
+}
+
+export function useActualizarConfigParam() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id_config, valor }: { id_config: number; valor: string }) =>
+      actualizarConfigParam(id_config, valor),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['config', 'general'] }),
   })
 }
