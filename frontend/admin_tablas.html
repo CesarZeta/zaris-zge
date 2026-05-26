@@ -795,6 +795,7 @@ const SCHEMAS = {
       { field: 'nombre',     label: 'Nombre',    type: 'text',   required: true },
       { field: 'apellido',   label: 'Apellido',  type: 'text',   required: true },
       { field: 'legajo',     label: 'Legajo',    type: 'text',   required: false },
+      { field: 'cuil',       label: 'CUIL',      type: 'text',   required: false },
       { field: 'email',      label: 'Email',     type: 'text',   required: false },
       { field: 'telefono',   label: 'Teléfono',  type: 'text',   required: false },
       { field: 'id_cargo',   label: 'Cargo',     type: 'select',   fk: 'cargos',   fkLabel: 'nombre', fkPk: 'id_cargo',   required: false },
@@ -802,7 +803,7 @@ const SCHEMAS = {
       { field: 'id_usuario', label: 'Usuario vinculado', type: 'select', fk: 'usuarios', fkLabel: 'nombre', fkPk: 'id_usuario', required: false },
       { field: 'es_auditor', label: 'Auditor',   type: 'checkbox', required: false },
     ],
-    display: ['id_agente', 'apellido', 'nombre', 'legajo', 'email', 'id_cargo', 'id_subarea', 'id_usuario', 'es_auditor'],
+    display: ['id_agente', 'apellido', 'nombre', 'legajo', 'cuil', 'id_cargo', 'id_subarea', 'id_usuario', 'es_auditor'],
   },
   equipos: {
     label: 'Equipo', titulo: 'Maestro de Equipos',
