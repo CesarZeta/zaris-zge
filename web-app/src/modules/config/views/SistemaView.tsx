@@ -1,5 +1,6 @@
-import { Database, Landmark, Settings2, Users } from 'lucide-react'
+import { Database, Landmark, Users } from 'lucide-react'
 import { shellNavigate } from '../../../lib/shellNav'
+import { ParametrosSistemaView } from './ParametrosSistemaView'
 
 interface Atajo {
   icon: typeof Database
@@ -8,13 +9,9 @@ interface Atajo {
   href: string
 }
 
+// Atajos a pantallas de catálogos/maestros que NO son ajustes booleanos del
+// sistema (viven en admin_tablas vanilla o en la pantalla de usuarios).
 const ATAJOS: Atajo[] = [
-  {
-    icon: Settings2,
-    titulo: 'Parámetros generales',
-    descripcion: 'Edita configuracion_general (auditor_misma_subarea_permitido, ot_pendiente_dias_vencimiento, etc.).',
-    href: 'frontend/admin_tablas.html?tabla=configuracion_general',
-  },
   {
     icon: Landmark,
     titulo: 'Municipios',
@@ -42,15 +39,26 @@ function irA(href: string, e: React.MouseEvent) {
 
 export function SistemaView() {
   return (
-    <div>
-      <p style={{ fontSize: '0.86rem', color: 'var(--fg-3)', marginBottom: 18 }}>
-        Accesos directos a la configuración base del sistema. Algunos abren el módulo Maestros con la tabla preseleccionada.
-      </p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+      {/* Ajustes reales del sistema, agrupados y con controles tipados. */}
+      <ParametrosSistemaView />
 
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 14,
-      }}>
-        {ATAJOS.map((a) => {
+      {/* Accesos a catálogos/maestros (secundario). */}
+      <div>
+        <div style={{
+          fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.95rem',
+          color: 'var(--fg-1)', marginBottom: 4,
+        }}>
+          Catálogos y maestros
+        </div>
+        <p style={{ fontSize: '0.82rem', color: 'var(--fg-3)', marginTop: 0, marginBottom: 14 }}>
+          Abren el módulo Maestros o la gestión de usuarios.
+        </p>
+
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 14,
+        }}>
+          {ATAJOS.map((a) => {
           const Icon = a.icon
           return (
             <a
@@ -75,6 +83,7 @@ export function SistemaView() {
             </a>
           )
         })}
+        </div>
       </div>
     </div>
   )

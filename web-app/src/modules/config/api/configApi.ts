@@ -59,3 +59,21 @@ export const updateIdentidad = (payload: IdentidadUpdate) =>
 
 export const crearLogoUploadUrl = (mime_type: string, tamano_bytes: number) =>
   api.post<LogoUploadResponse>(`${IDENTIDAD}/logo-upload-url`, { mime_type, tamano_bytes })
+
+// Parámetros del sistema (tabla key/value configuracion_general).
+// Reusa el handler genérico de admin_tablas: GET lista todas las filas,
+// PUT /{id_config} actualiza las columnas editables (acá solo `valor`).
+export interface ConfigParam {
+  id_config: number
+  clave: string
+  valor: string
+  tipo: string
+  descripcion: string | null
+  activo: boolean
+}
+
+export const listarConfigGeneral = () =>
+  api.get<ConfigParam[]>(`${ADMIN}/configuracion_general`)
+
+export const actualizarConfigParam = (id_config: number, valor: string) =>
+  api.put<ConfigParam>(`${ADMIN}/configuracion_general/${id_config}`, { valor })
