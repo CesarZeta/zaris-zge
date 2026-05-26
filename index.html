@@ -5,6 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ZARIS · Gestión Estatal</title>
 
+  <!-- Guard de sesion — DEBE ser lo PRIMERO del <head>, antes de cualquier CSS
+       o <script src> externo (lucide). Si va después de un recurso bloqueante
+       lento, el navegador alcanza a pintar el shell (topbar/sidebar) por unos
+       ms antes de que el redirect dispare → "flash" de la pantalla sin login.
+       Estando arriba de todo, redirige antes de pintar nada. También evita que
+       el iframe del módulo monte sin sesión y caiga en 404 de GH Pages. -->
+  <script>
+    if (!localStorage.getItem('zaris_session')) {
+      window.location.replace('frontend/login.html');
+    }
+  </script>
+
   <link rel="icon" type="image/svg+xml" href="design-system/assets/zaris-favicon.svg">
 
   <link rel="stylesheet" href="design-system/fonts/fonts.css">
@@ -12,16 +24,6 @@
   <link rel="stylesheet" href="frontend/css/menu.css?v=2026-05-20e">
 
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-
-  <!-- Guard de sesion — debe ejecutarse ANTES de que el iframe del modulo
-       monte y haga su primer request al backend. Sin esto, el bundle React
-       arranca, recibe 401 del API, y redirige el iframe al login con un
-       path mal calculado, mostrando 404 de GH Pages. -->
-  <script>
-    if (!localStorage.getItem('zaris_session')) {
-      window.location.replace('frontend/login.html');
-    }
-  </script>
 </head>
 <body>
   <div class="app">
@@ -246,6 +248,6 @@
 
   </div>
 
-  <script src="frontend/js/menu.js?v=2026-05-22b"></script>
+  <script src="frontend/js/menu.js?v=2026-05-26a"></script>
 </body>
 </html>
