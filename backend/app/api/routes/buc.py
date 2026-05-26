@@ -206,9 +206,27 @@ async def crear_usuario(
 
     usuario = Usuario(**data_dict)
     db.add(usuario)
+    await db.flush()  # asigna id_usuario sin cerrar la transacción
+
+    # Regla 1:1 agente↔usuario: un usuario INTERNO fuerza la creación de su
+    # agente vinculado (datos mínimos, se completan luego desde Maestros →
+    # Agentes). Los externos NO tienen agente. La auditoría se lleva por
+    # usuario y, vía este vínculo, se puede auditar por agente.
+    if not usuario.es_externo:
+        await db.execute(text("""
+            INSERT INTO agentes (nombre, apellido, id_subarea, id_municipio, id_usuario, activo)
+            VALUES (:nombre, '', :id_subarea, :id_municipio, :id_usuario, TRUE)
+        """), {
+            "nombre": usuario.nombre,
+            "id_subarea": usuario.id_subarea,
+            "id_municipio": usuario.id_municipio,
+            "id_usuario": usuario.id_usuario,
+        })
+
     await db.commit()
     await db.refresh(usuario)
-    logger.info("ALTA usuario | id=%s | username=%s", usuario.id_usuario, usuario.username)
+    logger.info("ALTA usuario | id=%s | username=%s | externo=%s | agente_creado=%s",
+                usuario.id_usuario, usuario.username, usuario.es_externo, not usuario.es_externo)
     return usuario
 
 
