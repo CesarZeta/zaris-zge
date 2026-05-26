@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZARIS · Manual de Encuestas (resultados CSAT)</title>
+<style>
+  :root{
+    --zaris-orange:#f54e00; --zaris-cream:#f2f1ed;
+    --surface-100:#f7f7f4; --surface-300:#ebeae5; --surface-400:#e6e5e0;
+    --fg-1:#26251e; --fg-2:rgba(38,37,30,.72); --fg-3:rgba(38,37,30,.55);
+    --border:rgba(38,37,30,.12); --border-med:rgba(38,37,30,.2);
+    --ok:#1f8a65; --warn:#b8860b; --err:#cf2d56; --info:#1565c0;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--zaris-cream);color:var(--fg-1);
+    font-family:'Inter',-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.6;}
+  .wrap{max-width:920px;margin:0 auto;padding:0 24px 80px;}
+  header.hero{border-left:6px solid var(--zaris-orange);padding:32px 0 28px 28px;margin:40px 0 8px;}
+  .tag{display:inline-block;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;
+    font-weight:700;color:var(--zaris-orange);background:rgba(245,78,0,.08);
+    padding:4px 10px;border-radius:4px;margin-bottom:14px;}
+  h1{font-size:2.2rem;margin:0 0 6px;letter-spacing:-.01em;font-weight:800;}
+  .lede{color:var(--fg-2);font-size:1.05rem;margin:6px 0 0;}
+  .meta{color:var(--fg-3);font-size:.85rem;margin-top:14px;}
+  nav.toc{background:var(--surface-100);border:1px solid var(--border);border-radius:12px;
+    padding:20px 26px;margin:28px 0;}
+  nav.toc h2{margin:0 0 10px;font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-3);}
+  nav.toc ol{margin:0;padding-left:20px;columns:2;column-gap:32px;}
+  nav.toc a{color:var(--fg-1);text-decoration:none;}
+  nav.toc a:hover{color:var(--zaris-orange);text-decoration:underline;}
+  section{margin:42px 0;}
+  h2.sec{font-size:1.4rem;border-bottom:2px solid var(--surface-400);padding-bottom:8px;
+    margin:0 0 16px;display:flex;gap:10px;align-items:baseline;}
+  h2.sec .num{color:var(--zaris-orange);font-weight:800;}
+  h3{font-size:1.08rem;margin:24px 0 8px;}
+  p{margin:10px 0;}
+  blockquote{margin:16px 0;padding:12px 18px;border-radius:8px;border-left:4px solid var(--info);
+    background:rgba(21,101,192,.06);font-size:.95rem;}
+  blockquote.warn{border-color:var(--warn);background:rgba(184,134,11,.08);}
+  blockquote.danger{border-color:var(--err);background:rgba(207,45,86,.07);}
+  blockquote.ok{border-color:var(--ok);background:rgba(31,138,101,.07);}
+  blockquote strong{display:block;margin-bottom:2px;}
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:.92rem;}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:top;}
+  th{background:var(--surface-300);font-weight:700;font-size:.82rem;text-transform:uppercase;letter-spacing:.03em;}
+  code{background:var(--surface-300);padding:1px 6px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:.88em;}
+  .badge{display:inline-block;font-size:.78rem;padding:2px 9px;border-radius:99px;font-weight:600;}
+  .b-ok{background:rgba(31,138,101,.15);color:var(--ok);}
+  .b-warn{background:rgba(184,134,11,.16);color:var(--warn);}
+  .b-info{background:rgba(21,101,192,.13);color:var(--info);}
+  .b-err{background:rgba(207,45,86,.13);color:var(--err);}
+  .b-neutral{background:var(--surface-400);color:var(--fg-2);}
+  .flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:16px 0;font-size:.9rem;}
+  .flow .step{background:var(--surface-100);border:1px solid var(--border-med);border-radius:8px;
+    padding:7px 13px;font-weight:600;}
+  .flow .arrow{color:var(--zaris-orange);font-weight:800;}
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:16px 0;}
+  .kpi{background:var(--surface-100);border:1px solid var(--border);border-radius:10px;padding:14px 16px;}
+  .kpi .lbl{font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--fg-3);font-weight:700;}
+  .kpi .desc{font-size:.86rem;color:var(--fg-2);margin-top:4px;}
+  ul{margin:10px 0;padding-left:22px;} li{margin:6px 0;}
+  footer{margin-top:60px;padding-top:20px;border-top:1px solid var(--border);
+    color:var(--fg-3);font-size:.82rem;text-align:center;}
+  .stars{color:var(--warn);letter-spacing:1px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <span class="tag">Manual operativo · Encuestas</span>
+    <h1>Encuestas de satisfacción (CSAT)</h1>
+    <p class="lede">Cómo leer los resultados de las encuestas que ZARIS envía a los vecinos cuando se
+      resuelve un reclamo, y cómo dar seguimiento a quienes pidieron ser contactados.</p>
+    <p class="meta">Audiencia: Supervisor o Administrador · Módulo: <code>Encuestas</code> en el menú lateral</p>
+  </header>
+
+  <nav class="toc">
+    <h2>Contenido</h2>
+    <ol>
+      <li><a href="#que-es">Qué es y cómo se generan</a></li>
+      <li><a href="#acceso">Quién accede</a></li>
+      <li><a href="#resumen">Pestaña Resumen</a></li>
+      <li><a href="#contacto">Pestaña Pedidos de contacto</a></li>
+      <li><a href="#envios">Pestaña Envíos</a></li>
+      <li><a href="#glosario">Glosario y preguntas frecuentes</a></li>
+    </ol>
+  </nav>
+
+  <section id="que-es">
+    <h2 class="sec"><span class="num">1.</span> Qué es y cómo se generan</h2>
+    <p>Una <strong>encuesta CSAT</strong> (del inglés <em>Customer Satisfaction</em>) le pregunta al vecino
+      qué tan satisfecho quedó con la atención de su reclamo. ZARIS las dispara y envía automáticamente:
+      vos no tenés que crearlas ni mandarlas a mano.</p>
+
+    <div class="flow">
+      <span class="step">Reclamo pasa a "Resuelto"</span>
+      <span class="arrow">→</span>
+      <span class="step">Se crea la encuesta</span>
+      <span class="arrow">→</span>
+      <span class="step">A las 24 h se manda por email</span>
+      <span class="arrow">→</span>
+      <span class="step">El vecino responde</span>
+      <span class="arrow">→</span>
+      <span class="step">Ves el resultado acá</span>
+    </div>
+
+    <p>Puntos clave del circuito automático:</p>
+    <ul>
+      <li>Solo se encuesta cuando un reclamo se cierra como <strong>Resuelto</strong> (no en "Cancelado").</li>
+      <li>El email sale <strong>24 horas después</strong> del cierre, para dar tiempo a confirmar que la
+        solución se mantuvo.</li>
+      <li>El link de la encuesta <strong>vence a los 15 días</strong>. Pasado ese plazo el vecino ya no puede
+        responder y el envío queda como <span class="badge b-neutral">expirada</span>.</li>
+      <li>Para no cansar al vecino, no se le manda más de una encuesta de la misma área en 30 días
+        (regla anti-fatiga, configurable por el Administrador).</li>
+    </ul>
+
+    <blockquote>
+      <strong>El vecino puntúa de 1 a 5.</strong> Según su nota inicial, la encuesta le muestra preguntas
+      distintas (rama de satisfechos, neutrales o insatisfechos). Los <em>insatisfechos</em> (1 o 2) pueden
+      marcar que quieren ser contactados — y ahí entra tu trabajo de seguimiento (sección 4).
+    </blockquote>
+  </section>
+
+  <section id="acceso">
+    <h2 class="sec"><span class="num">2.</span> Quién accede</h2>
+    <p>El módulo <strong>Encuestas</strong> es exclusivo de los perfiles <strong>Supervisor</strong> y
+      <strong>Administrador</strong> (nivel de acceso 1 o 2). Un Operador o Consultor no ve el ítem en el
+      menú, y si intentara entrar por link directo vería un cartel de "Acceso restringido".</p>
+    <blockquote class="warn">
+      <strong>¿No te aparece "encuestas" en el menú?</strong> Si tu sesión es vieja, cerrá sesión y volvé a
+      entrar: el menú se actualiza al iniciar sesión. Si seguís sin verlo, confirmá con el Administrador que
+      tu usuario tiene nivel Supervisor o Administrador.
+    </blockquote>
+    <p>Para abrirlo: en el menú lateral, hacé click en <strong>encuestas</strong>. El módulo tiene tres
+      pestañas arriba: <strong>Resumen</strong>, <strong>Pedidos de contacto</strong> y <strong>Envíos</strong>.</p>
+  </section>
+
+  <section id="resumen">
+    <h2 class="sec"><span class="num">3.</span> Pestaña Resumen</h2>
+    <p>Es la vista de un vistazo de cómo viene la satisfacción. Arriba hay un <strong>selector de período</strong>
+      (Desde / Hasta) con atajos <code>30 días</code>, <code>90 días</code> y <code>1 año</code>. Todo lo que
+      ves debajo se recalcula para el período elegido.</p>
+
+    <h3>Las cuatro tarjetas (KPIs)</h3>
+    <div class="kpi-grid">
+      <div class="kpi"><span class="lbl">CSAT promedio</span><div class="desc">Promedio de las puntuaciones
+        (1 a 5). Cuanto más cerca de 5, mejor. Se pinta verde si es alto, rojo si es bajo.</div></div>
+      <div class="kpi"><span class="lbl">Tasa de respuesta</span><div class="desc">Qué porcentaje de las
+        encuestas enviadas fue efectivamente respondido. Ej: "2 de 3 enviadas".</div></div>
+      <div class="kpi"><span class="lbl">% insatisfechos</span><div class="desc">Porcentaje de respuestas con
+        nota 1 o 2. Se resalta en rojo si supera el 20 %.</div></div>
+      <div class="kpi"><span class="lbl">Contactos pendientes</span><div class="desc">Cuántos vecinos pidieron
+        ser llamados y todavía no fueron atendidos. Es tu bandeja de trabajo (pestaña siguiente).</div></div>
+    </div>
+
+    <h3>Los gráficos y tablas</h3>
+    <ul>
+      <li><strong>Distribución de puntajes:</strong> barras de 5<span class="stars">★</span> a 1<span class="stars">★</span>,
+        mostrando cuántas respuestas hubo en cada nivel y su porcentaje.</li>
+      <li><strong>Evolución mensual del CSAT:</strong> una línea con el promedio mes a mes (últimos 6 meses).
+        Sirve para ver si la satisfacción mejora o empeora.</li>
+      <li><strong>CSAT por área:</strong> tabla con el promedio de cada área municipal. Permite detectar qué
+        área tiene la mejor (o peor) satisfacción.</li>
+      <li><strong>Comentarios recientes:</strong> los últimos comentarios de texto libre que dejaron los vecinos,
+        con su puntuación al lado.</li>
+    </ul>
+
+    <blockquote>
+      <strong>Si una sección está vacía</strong> ("Sin respuestas en el período") es porque todavía no hay
+      encuestas respondidas en ese rango de fechas. Ampliá el período (probá "1 año") para ver más datos.
+    </blockquote>
+  </section>
+
+  <section id="contacto">
+    <h2 class="sec"><span class="num">4.</span> Pestaña Pedidos de contacto</h2>
+    <p>Es tu <strong>bandeja accionable</strong>. Lista a los vecinos <strong>insatisfechos</strong> que, al
+      responder la encuesta, marcaron que querían que el municipio los contacte. Cada fila muestra:</p>
+    <ul>
+      <li>Nombre del vecino y su puntuación (ej. <span class="badge b-err">1★ · insatisfechos</span>).</li>
+      <li><strong>Teléfono</strong> y <strong>email</strong> (clickeables: abren el teléfono o el correo).</li>
+      <li>El <strong>número de reclamo</strong> que originó la encuesta y la fecha de respuesta.</li>
+      <li>Un botón <strong>Atendido</strong>.</li>
+    </ul>
+
+    <h3>Cómo dar seguimiento</h3>
+    <div class="flow">
+      <span class="step">1. Contactás al vecino (teléfono / email)</span>
+      <span class="arrow">→</span>
+      <span class="step">2. Click en "Atendido"</span>
+      <span class="arrow">→</span>
+      <span class="step">3. Confirmás en el pop-up</span>
+      <span class="arrow">→</span>
+      <span class="step">4. Sale de la lista</span>
+    </div>
+    <p>Al confirmar, el pedido <strong>sale de la bandeja</strong> (queda registrado quién lo atendió y cuándo)
+      y baja el contador de "Contactos pendientes" del Resumen.</p>
+
+    <blockquote class="warn">
+      <strong>Marcar "Atendido" es definitivo en la bandeja.</strong> No hay vista de "atendidos" para
+      revertirlo desde la pantalla: una vez marcado, ese pedido no vuelve a aparecer. Marcalo solo cuando
+      realmente contactaste al vecino.
+    </blockquote>
+    <blockquote class="ok">
+      <strong>Bandeja vacía = todo al día.</strong> Si ves "Sin pedidos pendientes", ningún vecino está
+      esperando que lo llamen en este momento.
+    </blockquote>
+  </section>
+
+  <section id="envios">
+    <h2 class="sec"><span class="num">5.</span> Pestaña Envíos</h2>
+    <p>Es la vista de <strong>trazabilidad</strong>: cada encuesta que el sistema generó, en qué estado está y
+      sus fechas. Útil para entender por qué un vecino no respondió, o si un envío falló.</p>
+
+    <p>Usá el filtro <strong>Estado</strong> para acotar la lista. Los estados posibles:</p>
+    <table>
+      <thead><tr><th>Estado</th><th>Qué significa</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge b-neutral">pendiente</span></td><td>La encuesta se creó pero todavía no se
+          mandó el email (aún no pasaron las 24 h, o el dispatcher no corrió todavía).</td></tr>
+        <tr><td><span class="badge b-warn">enviada</span></td><td>El email salió. Esperando que el vecino abra
+          y responda.</td></tr>
+        <tr><td><span class="badge b-info">abierta</span></td><td>El vecino abrió el link pero aún no terminó
+          de responder.</td></tr>
+        <tr><td><span class="badge b-ok">completada</span></td><td>El vecino respondió. Tiene resultado para
+          ver en el detalle.</td></tr>
+        <tr><td><span class="badge b-neutral">expirada</span></td><td>Pasaron los 15 días sin respuesta. El
+          link ya no funciona.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Ver el detalle de un envío</h3>
+    <p>Hacé click en cualquier fila de la tabla. Se abre un panel lateral con todos los datos del envío
+      (email destino, fechas de envío / apertura / completado / vencimiento, intentos de envío y último error
+      si lo hubo). Si el vecino respondió, también muestra <strong>su respuesta</strong>: puntaje inicial,
+      rama seguida, si pidió contacto y si ya fue atendido.</p>
+
+    <blockquote>
+      <strong>¿Un envío con varios "intentos" y un "último error"?</strong> Significa que el email no pudo
+      entregarse en algún momento (casilla inexistente, etc.). El sistema reintenta automáticamente; si el
+      problema persiste, verificá que el email del vecino sea correcto en su ficha de ciudadano.
+    </blockquote>
+  </section>
+
+  <section id="glosario">
+    <h2 class="sec"><span class="num">6.</span> Glosario y preguntas frecuentes</h2>
+    <table>
+      <thead><tr><th>Término</th><th>Significado</th></tr></thead>
+      <tbody>
+        <tr><td>CSAT</td><td>Índice de satisfacción del vecino, de 1 (muy malo) a 5 (excelente).</td></tr>
+        <tr><td>Rama</td><td>Conjunto de preguntas que se le muestra al vecino según su nota inicial:
+          satisfechos (4-5), neutrales (3), insatisfechos (1-2).</td></tr>
+        <tr><td>Tasa de respuesta</td><td>Respuestas completadas ÷ encuestas enviadas, en porcentaje.</td></tr>
+        <tr><td>Pedido de contacto</td><td>Un vecino insatisfecho que marcó que quiere ser llamado por el
+          municipio.</td></tr>
+        <tr><td>Dispatcher</td><td>Proceso automático que corre cada hora, manda los emails pendientes (>24 h)
+          y vence los envíos viejos. No requiere intervención manual.</td></tr>
+        <tr><td>Anti-fatiga</td><td>Regla que evita encuestar al mismo vecino de la misma área más de una vez
+          en 30 días.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Preguntas frecuentes</h3>
+    <p><strong>¿Tengo que crear o enviar encuestas manualmente?</strong> No. Todo el envío es automático. Esta
+      pantalla es solo para <em>ver resultados</em> y <em>dar seguimiento a los pedidos de contacto</em>.</p>
+    <p><strong>¿Por qué un reclamo cerrado no generó encuesta?</strong> Porque se cerró como "Cancelado" (no
+      "Resuelto"), porque las encuestas están desactivadas por configuración, o porque el vecino ya recibió
+      una encuesta de esa área en los últimos 30 días (anti-fatiga).</p>
+    <p><strong>¿Los datos personales del vecino son visibles?</strong> Solo en la bandeja de "Pedidos de
+      contacto" y en el detalle de un envío — justamente para que puedas contactarlo. Los dashboards muestran
+      números agregados, sin datos personales.</p>
+  </section>
+
+  <footer>
+    Manual generado el 2026-05-26 · ZARIS · Gestión Estatal
+  </footer>
+
+</div>
+</body>
+</html>
