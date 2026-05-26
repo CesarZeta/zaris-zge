@@ -1,5 +1,7 @@
 # Reglas Mandatorias de Desarrollo — ZARIS
 
+> **Mantenimiento de este documento:** acá van *reglas* (qué hacer siempre), no *bitácora* (qué pasó una vez). El detalle histórico de migraciones aplicadas vive en [`HISTORIAL_MIGRACIONES.md`](HISTORIAL_MIGRACIONES.md) — al cerrar una migración, su bitácora va ahí, no acá. La numeración de secciones (`§N`) tiene huecos históricos (§8/§16/§25): **no renumerar** (hay cientos de refs cruzadas). Criterio completo en memoria `feedback_mantenimiento_doc_y_memorias`.
+
 ## 1. Autenticación JWT (SSO)
 
 - **Login:** `POST /api/v1/auth/login` — body `{ email, password }` → `{ access_token, token_type, user }`. Vigencia: 24 h.
@@ -197,7 +199,8 @@ Los módulos React viven en `web-app/src/modules/<nombre>/`. Se publican como bu
 1. `web-app/src/modules/<nombre>/index.ts` exporta un `ModuleManifest` (ver `web-app/src/lib/types.ts`).
 2. Importar el manifest en `web-app/src/modules/index.ts` (array `modules`).
 3. El AppShell del shell React contenedor (solo visible en `localhost:5173` durante desarrollo) lee el array y lo agrega al sidebar y al router. Esto **NO** afecta producción.
-4. Para que el módulo sea accesible en producción, agregar un `<a class="nav__link" href="web-app/dist/index.html#/<nombre>/<ruta>">` en `index.html` (raíz, dentro del `nav__group` correspondiente).
+4. Para que el módulo sea accesible en producción, agregar un `<a class="nav-flat__item" href="web-app/dist/index.html#/<nombre>/<ruta>" data-modulo="<codigo>">` en `index.html` (raíz, dentro del `nav-flat`).
+5. **Si el ítem lleva `data-modulo="<codigo>"`, ese código DEBE existir como fila en la tabla `modulos` (catálogo de permisos §30) — sino el ítem queda OCULTO para TODOS los usuarios (incluido admin), porque `modulos_permitidos` nunca lo incluye.** `menu.js` filtra cada `data-modulo` contra `user.modulos_permitidos`; un código sin fila en `modulos` no se resuelve y queda `a.hidden=true`. Insertar la fila con migración formal (`INSERT INTO modulos (modulo_codigo, nombre, min_nivel_acceso, ...) ... ON CONFLICT DO NOTHING`), aplicada en local Y prod (§24). Si el módulo es informativo y debe verlo cualquiera, NO le pongas `data-modulo` (ej. Guías). El gating por nivel del propio módulo React (ej. `WrapNivel`) es independiente de esto: un admin entra por nivel aunque su sesión cacheada no tenga el código todavía — pero el ítem del sidebar igual se oculta hasta que la fila exista y la sesión se refresque. Cazado 2026-05-26 con Encuestas (mig 61). Ver [[feedback_modulo_react_necesita_fila_en_modulos]].
 
 ### Cómo se publica a producción
 
@@ -786,159 +789,18 @@ class Equipo(Base):
 
 ## 21. Estado de Migraciones en Prod (Supabase)
 
-Las siguientes tablas ya existen en Supabase prod y **no deben re-crearse**:
+> **El detalle histórico de cada migración (qué hace, cuándo se aplicó, snapshots de backup) vive en [`HISTORIAL_MIGRACIONES.md`](HISTORIAL_MIGRACIONES.md)** (raíz del repo). Acá queda solo el resumen vigente. **No confiar en esta doc como fuente de verdad** — antes de codear algo schema-dependent, verificar el estado real con `execute_sql` (regla §24).
 
-| Tabla | Migración | Notas |
-|---|---|---|
-| `reclamos` | 20 | Trigger `trg_nro_reclamo` → `REC-YYYY-XXXXXX` |
-| `reclamo_historial` | 20 | FK a `reclamos` |
-| `tipo_reclamo` | 20 | Columna `audit` agregada en migración 21 |
-| `estado_reclamo` | manual | Estados válidos del flujo de reclamos |
-| `ordenes_trabajo` | pre-existente | Trigger `trg_nro_ot` → `OT-YYYY-XXXXXX` |
-| `estado_ot` | pre-existente | Seeds **aplicados 2026-05-12 via MCP** (la tabla estaba vacía en prod, el endpoint `/reclamos/{id}/cancelar` lo cazó al fallar buscando `'Cancelada'`). 5 estados: En gestión, En espera, Pendiente, Terminada, Cancelada. Idempotente con `ON CONFLICT (nombre) DO NOTHING`. |
-| `equipo_agentes` | pre-existente | Reemplaza `equipo_usuarios` en lógica de OTs |
-| `configuracion_general` | pre-existente | Seeds: `auditor_misma_subarea_permitido`, `ot_pendiente_dias_vencimiento` |
+**Estado general:** migraciones 20-60 aplicadas en local Y prod (Supabase) sin divergencia conocida al 2026-05-25. La numeración 51 está duplicada (`51_notificaciones.sql` + `51_tramites_tipo_dato_direccion.sql`, ambas aplicadas) — cualquier mig nueva debe usar 61+.
 
-**Estados de reclamos en prod** fueron migrados en 2026-05-04:
-- `Ingresado` → `Sin asignar`
-- `En revisión` → `En gestión`
-- `Cerrado` → `Resuelto`
-- `Rechazado` → `Cancelado`
+**Tablas que YA existen en prod y NO deben re-crearse:** `reclamos`, `reclamo_historial`, `tipo_reclamo`, `estado_reclamo`, `ordenes_trabajo`, `estado_ot` (5 seeds), `equipo_agentes`, `configuracion_general`, todas las de Agenda (migs 30-43), Turnos (45-46), permisos (38/44), trámites (47-50, 56), notificaciones (51), encuestas (57-58, 60), auth público de ciudadanos (52-53), adjuntos de OT (54), `usuarios.id_subarea`/`es_externo` (55). Detalle por mig en `HISTORIAL_MIGRACIONES.md`. Ver memoria [[project_supabase_estado_schema]].
 
-CHECK constraint activo: `ck_reclamo_estado` con valores `('Sin asignar','En gestión','En espera','En auditoría','Resuelto','Cancelado')`.
+**Estados de reclamos en prod** (migrados 2026-05-04): `Ingresado→Sin asignar`, `En revisión→En gestión`, `Cerrado→Resuelto`, `Rechazado→Cancelado`. CHECK `ck_reclamo_estado`: `('Sin asignar','En gestión','En espera','En auditoría','Resuelto','Cancelado')`.
 
-### Drift no-migración: `ciudadanos.latitud/longitud` + `empresas.latitud/longitud`
-
-**Verificado prod + local 2026-05-15.** Las 4 columnas existen como `NUMERIC(10,7) NULL` en ambos entornos, **sin migración formal numerada**. Probable cambio manual viejo (mismo origen que `agentes.es_auditor` — caso documentado en §24). Los modelos SQLAlchemy `Ciudadano`/`Empresa` ya las exponían; los schemas Pydantic `*Out` también. Lo que faltaba al 2026-05-15 era declararlas en `CiudadanoBase`/`Update` + `EmpresaBase`/`Update` para aceptarlas en POST/PUT — agregado en commit `164b817` junto a la normalización OSM (ver §22).
-
-**Implicación:** si una sesión futura pide "agregar lat/lon a ciudadanos/empresas", la respuesta es verificar con `execute_sql` y solo tocar schemas Pydantic + frontend. NO redactar `ADD COLUMN`. Ver memoria [[reference_buc_lat_lon_columnas_existentes]].
-
-### Migración 22 — Geolocalización + Activos + Adjuntos (`backend/migrations/22_geo_activos_adjuntos.sql`)
-
-**Aplicada en prod Supabase y en local (zaris_dev) al 2026-05-09.** Datos seedeados en prod: 24 provincias, 102 partidos, 352 localidades, 5 tipos_activo, 1000 activos. Incluye:
-
-- Crea `provincias`, `partidos`, `localidades`.
-- Crea `tipos_activo`, `activos`.
-- Crea `reclamo_adjuntos`.
-- Agrega a `reclamos`: `id_estado_fk` (FK → `estado_reclamo.id_estado_reclamo`), `direccion`, `latitud`, `longitud`, `id_localidad`, `id_activo`, `canal_origen`, `fuente_geolocalizacion`, `fecha_cierre`, `fecha_primer_asignacion`, `sla_vencimiento`.
-- Trigger `trg_sla_reclamo`: calcula `sla_vencimiento = fecha_alta + tipo_reclamo.sla_dias` al INSERT.
-- La columna `estado` (VARCHAR) se mantiene transicional para compatibilidad — deprecada cuando frontend y endpoints migren 100% a `id_estado_fk`.
-
-### Migración 23 — Reasignación de subáreas a sus áreas correctas (`backend/migrations/23_reasignar_subareas_a_areas.sql`)
-
-**Aplicada en prod y local al 2026-05-09.** Resuelve inconsistencia entre `tipo_reclamo.id_area` y `subarea.id_area` reasignando subáreas mal ubicadas (10 subáreas operativas que estaban bajo "Gobierno" pasan a "Servicios Públicos"; 2 a Planeamiento; 1 a Tránsito). 35/35 subáreas activas alineadas con la moda de tipos. Snapshot pre-update en `_backup_subarea_2026_05_09`.
-
-### Migración 27 — Drop `tipo_reclamo.id_area` (`backend/migrations/27_drop_tipo_reclamo_id_area.sql`)
-
-**Aplicada en local y prod al 2026-05-10.** Elimina la columna redundante `tipo_reclamo.id_area` (y su índice `idx_tipo_reclamo_area`). Desde mig 24 la fuente única del área de un tipo es `subarea.id_area` vía `tr.id_subarea → s.id_area`; mantener la columna espejo obligaba a doble escritura y abría la puerta a inconsistencias (123/282 filas divergentes antes de mig 23-24). Backend (`reclamos.py`, `ordenes_trabajo.py`) ya consultaba exclusivamente vía JOIN con `subarea`; `admin_tablas.py` quitó `id_area` de los `cols` editables de `tipo_reclamo`. Sin vistas ni triggers dependientes.
-
-> **Quirk derivado** (cazado 2026-05-19): `reclamos.id_area` y `reclamos.id_subarea` **siguen existiendo** en la tabla con NULL para filas viejas. Cualquier filtro `WHERE r.id_area = :x` o `WHERE r.id_subarea = :x` deja invisibles los reclamos legacy. Usar siempre `s.id_area` / `tr.id_subarea` (derivados via JOIN). Aplica también a SELECTs/JOINs (ya cubierto en sesiones previas) y a filtros WHERE (este caso). Ver memoria [[feedback_filtros_legacy_post_mig27]].
-
-### Migraciones 30-37 — Módulo Agenda (sub-fase 1.A + autoservicio)
-
-**Aplicadas en local y prod al 2026-05-12.** Estado final del módulo Agenda en prod:
-
-- **Mig 30** (`30_agenda_municipios_y_tipo_reclamo.sql`): crea `municipios` (seed: 1 fila) + ALTER `tipo_reclamo` agregando `duracion_estimada_min INTEGER DEFAULT 60` y `asignacion_a VARCHAR(10) DEFAULT 'agente'` con CHECK `('agente','equipo')`. La parte 1 (CREATE TABLE) se aplicó en el E2E del 2026-05-12; la parte 2 (ALTER tipo_reclamo) quedó pendiente hasta esta sesión, fixed via `30_part2_alter_tipo_reclamo`.
-- **Mig 31** (`31_agenda_catalogos.sql`): `estado_evento` (3 seeds: activo/finalizado/cancelado) + `estado_reserva` (3 seeds: reservada/asistio/cancelada).
-- **Mig 32** (`32_agenda_eventos_y_reservas.sql`): `eventos` + `evento_encargados` + `evento_reservas`.
-- **Mig 33** (`33_agenda_ocupaciones.sql`): `ocupaciones` con CHECK de consistencia tipo↔FK.
-- **Mig 34** (`34_agenda_auditoria_y_conflictos.sql`): `conflictos_log` + `agenda_audit_log`.
-- **Mig 35** (`35_agenda_autoservicio_tokens.sql`): `eventos.token_publico` + `evento_reservas.token_reserva` (UUID con índices únicos parciales WHERE NOT NULL) + backfill via `gen_random_uuid()`. Requiere `pgcrypto` (creada en la misma mig).
-- **Mig 36** (`36_agenda_activo_defaults.sql`): `ALTER COLUMN activo SET DEFAULT TRUE` en las 7 tablas Agenda con esa columna (el E2E descubrió el drift).
-- **Mig 37** (`37_agenda_defaults_y_notnull_completos.sql`): cierra el resto del drift de defaults + NOT NULL. Sincroniza ~13 defaults (`id_municipio=1` en 8 tablas, `resuelto=FALSE`, `capacidad_ciudadanos=1`, `cantidad_encargados=0`, `tipo_qr='ninguno'`, `admite_autoservicio=FALSE`) y ~18 `SET NOT NULL` en timestamps con `DEFAULT NOW()`. Verificado pre-aplicación: 0 NULLs en columnas afectadas, no requiere backfill.
-
-**Snapshot pre-mig 30 (parte 2)** en `_backup_tipo_reclamo_2026_05_12_premig30` (282 filas).
-
-**Smoke post-aplicación** (`/api/v1/agenda/calendario`, `/mes`, `/conflictos`, `/eventos/{id}`): 4/4 → HTTP 200 contra Railway. Endpoints públicos `/agenda/publico/*`: 4/4 OK (404/422 según corresponde sin auth).
-
-**Catálogos seedeados en prod:** municipios=1, estado_evento=3, estado_reserva=3. Sin eventos productivos (1 residual del E2E con `activo=false`).
-
-### Migraciones 40-43 — Agenda sub-fase B1: Espacios + Disponibilidad multi-rango
-
-**Aplicadas en local y prod al 2026-05-13.** Habilitan los tres tipos de recurso (`agente`, `equipo`, `espacio`) y horarios laborales multi-rango con turnos rotativos. Detalle:
-
-- **Mig 40** (`40_agenda_espacios.sql`): crea `espacios_agenda` (estándar §10 completo, con `atendido BOOLEAN DEFAULT TRUE`, `capacidad_personas`, `direccion`, `id_subarea`) + N:M `espacio_agentes` (con UNIQUE `(id_espacio, id_agente)`). Catálogo separado de `lugares_atencion` legacy a propósito (ese legacy no tiene shape §10 y no es 1:1 con espacios de agenda — ver decisión 2026-05-13).
-- **Mig 41** (`41_agenda_disponibilidad_recurso.sql`): crea `disponibilidad_recurso` (multi-rango — múltiples filas por recurso permiten turnos rotativos). Columnas clave: `tipo_recurso ∈ {agente,equipo,espacio}`, `id_recurso`, `dias_semana SMALLINT 0-127` (bitmask §27), `hora_inicio/hora_fin TIME`, `vigente_desde/vigente_hasta DATE` (opcionales, para rotaciones programadas), `etiqueta`. CHECK enforce: `hora_fin > hora_inicio` y `vigente_hasta >= vigente_desde`. Estándar §10 completo.
-- **Mig 42** (`42_agenda_tipo_recurso_espacio.sql`): amplía CHECK `tipo_recurso` en `ocupaciones` (`ck_ocup_tipo_recurso`) y `evento_encargados` (`ck_evt_enc_tipo_recurso`) agregando `'espacio'`. Sin FK física (id_recurso es polimórfica; validación en backend).
-- **Mig 43** (`43_agenda_eventos_id_espacio.sql`): agrega `eventos.id_espacio INTEGER REFERENCES espacios_agenda(id_espacio) ON DELETE SET NULL` (opcional — eventos itinerantes/virtuales no usan espacio).
-
-Migraciones idempotentes (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS`). No rompen compat: las tablas nuevas vienen vacías y el filtro `tipo_recurso` en endpoints existentes seguía aceptando `agente|equipo|todos` y ahora también acepta `espacio`.
-
-### Migración 45 — Módulo Turnos (`backend/migrations/45_turnos.sql`)
-
-**Aplicada en local y prod al 2026-05-14.** Crea el catálogo `tipo_servicio_turno` (estándar §10, con `duracion_min`, 3 seeds idempotentes) y la tabla transaccional `turnos` (estándar §10, FKs a `ciudadanos`/`agentes`/`tipo_servicio_turno`, `estado` CHECK `reservado|cumplido|cancelado`, `id_ocupacion` → fila espejo en `ocupaciones`). Idempotente (`CREATE TABLE IF NOT EXISTS`). Ver §33 para el modelo del módulo. **Ojo:** la tabla legacy `turnos` que mig 39 dropeó NO es esta — son tablas distintas que comparten nombre.
-
-### Migración 46 — Turnos autoservicio (`backend/migrations/46_turnos_autoservicio.sql`)
-
-**Aplicada en local y prod al 2026-05-14.** Agrega `turnos.token_turno UUID` (no enumerable, único, default `gen_random_uuid()`, backfill de filas existentes — habilita que el ciudadano consulte/cancele su turno sin JWT) y `turnos.origen VARCHAR(15)` CHECK `backoffice|autoservicio` default `backoffice`. Requiere `pgcrypto` (ya creada en mig 35). Idempotente. Ver §33 sección "Turnos autoservicio".
-
-### Migración 38 — Permisos por módulo (`backend/migrations/38_permisos_por_modulo.sql`)
-
-**Aplicada en local y prod al 2026-05-12.** Crea `modulos` (8 seeds iniciales: reclamos, padrones, ot_*, turnos, usuarios, admin_tablas con `min_nivel_acceso` segmentado) + `usuario_modulos` (overrides). Ambas con estándar §10 completo. CHECK `min_nivel_acceso BETWEEN 1 AND 4`. UNIQUE `(id_usuario, modulo_codigo)` en overrides. Ver §30 para el detalle del modelo y los endpoints. **Mig 44 (2026-05-14)** separó `turnos` en `agenda`/`turnos`/`entradas` → catálogo actual 10 módulos.
-
-### Migración 26 — Cleanup de áreas duplicadas con/sin tilde (`backend/migrations/26_cleanup_areas_duplicadas.sql`)
-
-**Aplicada en local y prod al 2026-05-10.** Consolida 15 pares de áreas duplicadas (una con tildes, otra sin) eligiendo dinámicamente como canónico el de cada par con más referencias entrantes (`subarea + tipo_reclamo + reclamos + lugares_atencion`); en empate, el activo; en empate, el id menor. Re-routea las FKs entrantes y soft-deletea los duplicados. Si **ambos** estaban inactivos en el grupo, no reactiva nada (área histórica sin uso).
-
-Resultado prod: 19 reclamos legacy de "Servicios Públicos" sin tilde (id=9, ya inactiva) reasignados al canónico "Secretaría de Servicios Públicos" (id=22), que ahora suma 19 reclamos + 49 subáreas + 184 tipos. Las 5 áreas activas finales son: Gobierno (1), Planeamiento con tilde (6 — renombrada 2026-05-15), Servicios Públicos con tilde (22), Seguridad con tilde (28), Tránsito con tilde (36). Snapshot pre-update en `_backup_area_2026_05_10` en ambos entornos.
-
-**Operación por nombre normalizado, NO por ID hardcodeado** — los IDs canónicos difieren entre local y prod (local elige los sin-tilde porque eran los activos, prod elige una mezcla); la función `_ascii_fold(text)` se crea on-the-fly y se borra al final. Idempotente.
-
-> Nota: `area.id_area=6` renombrada con tildes a "Secretaría de Planeamiento y Obras Públicas" en local y prod el 2026-05-15. Deuda cerrada.
-
-### Migración 25 — `reclamos.id_empresa` (`backend/migrations/25_reclamos_id_empresa.sql`)
-
-**Aplicada en local y prod al 2026-05-10.** Agrega `id_empresa INTEGER NULL REFERENCES empresas(id_empresa) ON DELETE SET NULL` en `reclamos` (1:1, opcional). El backend valida en POST/subreclamo que el ciudadano represente a la empresa via `ciudadano_empresa.activo=TRUE`; si no, 422. El subreclamo hereda `id_empresa` del padre por defecto (override permitido). El GET detalle hace JOIN con `empresas` y devuelve `empresa_nombre` y `empresa_cuit`. La N:M `ciudadano_empresa` (con `id_tipo_representacion`) sigue siendo la única fuente de verdad de qué empresas representa cada ciudadano — esta columna en `reclamos` solo guarda el "a nombre de quién" del reclamo puntual.
-
-### Migración 24 — Re-seed de subarea + tipo_reclamo desde CSVs (`backend/migrations/24_reseed_subareas_tipos_desde_csv.sql` + `backend/seed_subareas_tipos_csv.py`)
-
-**Aplicada en prod y local al 2026-05-09.** Re-seed completo desde `Tablas Iniciales/subarea.csv` (40) y `tipo_reclamo.csv` (288), más 9 subáreas inferidas como huérfanas. Resultado prod:
-
-| Área canónica | id_area prod | Subáreas | Tipos |
-|---|---|---|---|
-| Secretaría de Servicios Públicos | 22 | 33 | 184 |
-| Gobierno | 1 | 6 | 54 |
-| Secretaría de Planeamiento y Obras Públicas | 6 | 5 | 27 |
-| Subsecretaría de Tránsito | 36 | 4 | 16 |
-| Secretaría de Seguridad | 28 | 1 | 1 |
-| **Total** | — | **49** | **282** |
-
-Áreas resueltas por heurística por keyword (ver `seed_subareas_tipos_csv.py`). Áreas huérfanas (sin subáreas activas) soft-deleted automáticamente. Snapshot pre-update en `_backup_pre_reseed_2026_05_09`.
-
-> **Importante**: cualquier nueva sesión que toque estas tablas debe verificar el estado actual con `execute_sql` antes de aplicar cambios — esta sección puede quedar desactualizada (CLAUDE.md §24 lo formaliza).
-
-### Migraciones 52-53 — Auth público de ciudadanos (App Vecinos Etapa 0)
-
-**Aplicadas en local y prod al 2026-05-19.** Detalle en §38.
-
-- **Mig 52** (`52_configuracion_municipio_branding.sql`): agrega 3 claves a `configuracion_general` (`municipio_descripcion`, `municipio_color_primary`, `municipio_color_accent`). Idempotente (`INSERT ON CONFLICT DO NOTHING`). Las 3 quedan vacías esperando carga desde el panel admin.
-- **Mig 53** (`53_ciudadano_credencial_y_canales.sql`): agrega `ciudadanos.estado_validacion` (CHECK `auto_registrado|vinculado_pendiente|verificado`, default `auto_registrado`) + 3 tablas nuevas: `ciudadano_credencial` (1:1 con ciudadanos, password + tokens activación/recovery + lockout), `ciudadano_canal_preferido` (1:1, flags multi-canal), `ciudadano_push_subscription` (placeholder Web Push). Las 3 con estándar §10. Idempotente.
-
-> **Nota sobre numeración mig 51**: hay dos archivos `51_*.sql` en `backend/migrations/` (`51_notificaciones.sql` y `51_tramites_tipo_dato_direccion.sql`). Ambos están aplicados en local y prod al 2026-05-19. La numeración duplicada es deuda cosmética; cualquier mig nueva debe usar 55+.
-
-### Migración 54 — Adjuntos de OT (`backend/migrations/54_ot_adjuntos.sql`)
-
-**Aplicada en local y prod al 2026-05-20.** Crea `ot_adjuntos` (estándar §10, FK `id_ot` → `ordenes_trabajo(id_ot) ON DELETE CASCADE`, índice `idx_ot_adjuntos_ot`). Espejo de `reclamo_adjuntos`. Cierra el hallazgo QA Royman #4 (adjuntos en OT diferido en commit `2110263`). Idempotente (`CREATE TABLE IF NOT EXISTS`). Ver §34 sección "Adjuntos de OT".
-
-### Migración 55 — usuarios.id_subarea + es_externo (`backend/migrations/55_usuarios_subarea_externo.sql`)
-
-**Aplicada en local y prod al 2026-05-22.** Agrega `usuarios.id_subarea INTEGER` (FK lógica → `subarea.id_subarea`, sin FK física, índice `idx_usuarios_subarea`) y `usuarios.es_externo BOOLEAN NOT NULL DEFAULT FALSE`. Idempotente (`ADD COLUMN IF NOT EXISTS`).
-
-- **Subárea obligatoria salvo `es_externo`**: lo enforce el backend (`schemas/buc.py` model_validator en Create/Update) y el form, NO un NOT NULL en DB (los externos van con `id_subarea=NULL`). Habilita la regla de cierre directo de reclamo (ver §18).
-- **Backfill random** (en la misma sesión, local + prod): se asignó subárea random a los 84 agentes sin subárea y a los usuarios no-externos sin subárea, vía `(abs(hashtext(pk::text)) % total_subareas) + 1` sobre `subarea WHERE activo`. Determinístico/reproducible. 0 filas quedaron sin subárea.
-- **`usuarios` NO tiene `id_tipo_usuario`** — el `TABLE_CONFIG` y `SCHEMAS` de admin_tablas lo referenciaban (drift histórico que rompía el UPDATE de usuario); removido en esta sesión. La columna de pertenencia es `id_subarea` + `es_externo`.
-
-### Migración 56 — tipo_tramite.es_sistema (`backend/migrations/56_tipo_tramite_es_sistema.sql`)
-
-**Aplicada en local y prod al 2026-05-22.** Agrega `tipo_tramite.es_sistema BOOLEAN NOT NULL DEFAULT FALSE` para distinguir tipos precargados por seed (`TRUE`) de tipos custom creados por usuario desde el editor admin (`FALSE`). Backfill por **código** (no por id — regla §24) de los 9 tipos del seed original. `seed_tramites.py` ahora inserta `es_sistema=TRUE`. Idempotente. Ver §35 sección "Listado admin de tipos". **Ojo:** `tipo_tramite` (catálogo) NO tiene `id_usuario_alta` — la mig 50 sumó auditoría de usuario solo a las tablas de instancias; por eso se usa `es_sistema` y no `id_usuario_alta IS NULL` para distinguir origen. Ver memoria [[reference_tipo_tramite_sin_usuario_alta]].
-
-### Migración 59 — Trigger de numeración de OT (`backend/migrations/59_ot_nro_trigger.sql`)
-
-**Aplicada en local y prod al 2026-05-25.** Crea `fn_generar_nro_ot()` + trigger `trg_nro_ot` BEFORE INSERT en `ordenes_trabajo` (espejo de `fn_generar_nro_reclamo`) y backfillea las filas con `nro_ot` NULL. **El trigger NO existía en prod** pese a estar documentado en §18 — toda OT creada vía API salía sin número (el backend solo devolvía un fallback `OT-{id}` que no persistía). Idempotente. Ver [[feedback_verificar_trigger_existe_no_confiar_doc]].
-
-### Migración 60 — Toggle anti-fatiga de encuestas (`backend/migrations/60_encuestas_antifatiga_toggle.sql`)
-
-**Aplicada en local y prod al 2026-05-25.** Seed de la clave `encuestas_antifatiga_activo` (boolean, default `'true'`) en `configuracion_general`. Hasta entonces la regla anti-fatiga (no reenviar encuesta al mismo ciudadano/subárea dentro de 30 días) estaba hardcodeada. Ahora `encuestas_service.antifatiga_esta_activo(db)` la lee; `'false'` la desactiva (default seguro TRUE ante clave ausente/error). Editable desde Config → Sistema (§41). Idempotente.
+**Implicaciones vivas (no son bitácora — son reglas):**
+- **`ciudadanos`/`empresas` YA tienen `latitud`/`longitud`** (`NUMERIC(10,7) NULL`, sin migración formal — drift manual viejo). Si piden "agregar lat/lon", NO redactar `ADD COLUMN`: verificar con `execute_sql` y solo tocar schemas Pydantic + frontend. Ver [[reference_buc_lat_lon_columnas_existentes]].
+- **Mig 27 dropeó `tipo_reclamo.id_area`** pero `reclamos.id_area`/`reclamos.id_subarea` **siguen existiendo con NULL** para filas viejas. Cualquier filtro `WHERE r.id_area=:x` o JOIN deja invisibles reclamos legacy. Usar siempre `s.id_area` / `tr.id_subarea` (derivados vía JOIN). Ver [[feedback_filtros_legacy_post_mig27]] y §27.
+- **Trigger `trg_nro_ot`** lo creó mig 59 (NO existía pese a estar documentado antes). Si tocás numeración de OT, verificá el trigger con `pg_trigger`. Ver [[feedback_verificar_trigger_existe_no_confiar_doc]].
 
 ## 22. Geolocalización, Activos y Adjuntos (Reclamos)
 
@@ -1258,306 +1120,88 @@ Ejemplos canónicos: `backend/seed_ciudadanos_csv.py` y `backend/seed_agentes_cs
 ### Frontend en otros módulos
 Para sumar adjuntos a otra entidad (ej: OTs), replicar el patrón: nueva tabla `<entidad>_adjuntos` con mismos campos, nuevo bucket si conviene aislar, y reutilizar `app/core/storage.py` (las funciones reciben `path` arbitrario y leen el bucket de settings — extraer a parámetro si se usan múltiples buckets). **Ya hecho para OT** (`ot_adjuntos`, mig 54, ver §34) — reusa el mismo bucket `reclamos-adjuntos` con paths bajo `ot/{id_ot}/`. Es la referencia canónica para clonar a futuras entidades.
 
-## 27. Módulo Agenda — Estado actual (sub-fase 1.A)
+## 27. Módulo Agenda
 
-### Datos en zaris_dev local al 2026-05-10 + sincronización prod 2026-05-12
+> **Bitácora de implementación** (migraciones 30-43, seeds demo, sub-fases entregadas, pendientes cerrados) en [`HISTORIAL_MIGRACIONES.md`](HISTORIAL_MIGRACIONES.md). Acá quedan las reglas vivas. Estado: backend (22 endpoints `agenda_v2.py` + espacios + disponibilidad) y frontend React (`web-app/src/modules/agenda/`) en producción. Ver memoria [[project_agenda_espacios_disponibilidad]].
 
-**Aplicado en local Y prod (Supabase) al 2026-05-12.** Migraciones 30-34 + 36-37 + `seed_agenda.py`. Ver §21 sección "Migraciones 30-37" para detalle por mig. Smoke 4/4 endpoints OK contra Railway.
+### Estructura del módulo (cierre B2, 2026-05-14)
 
-#### Migraciones nuevas
-
-| # | Archivo | Qué hace |
-|---|---|---|
-| 30 | `30_agenda_municipios_y_tipo_reclamo.sql` | Crea `municipios` + ALTER `tipo_reclamo` (`duracion_estimada_min INT DEFAULT 60`, `asignacion_a VARCHAR(10) DEFAULT 'agente'` con CHECK in `agente|equipo`) |
-| 31 | `31_agenda_catalogos.sql` | `estado_evento` (codes: `activo`,`finalizado`,`cancelado`) + `estado_reserva` (codes: `reservada`,`asistio`,`cancelada`) |
-| 32 | `32_agenda_eventos_y_reservas.sql` | `eventos` + `evento_encargados` + `evento_reservas` |
-| 33 | `33_agenda_ocupaciones.sql` | `ocupaciones` (tabla única con CHECK que garantiza consistencia por tipo: `ot|evento|turno`) |
-| 34 | `34_agenda_auditoria_y_conflictos.sql` | `conflictos_log` + `agenda_audit_log` |
-
-Todas siguen estándar §10 completo (`activo`, `id_municipio`, `fecha_alta`, `fecha_modificacion`, audit user). PKs explícitas `id_<tabla>`. Timestamps `TIMESTAMPTZ`. Idempotentes (`CREATE TABLE IF NOT EXISTS`, `ON CONFLICT DO NOTHING`).
-
-#### Seeds demo
-- 4 agentes activos en municipio 1 (3 originales + 1 demo "Carlos Demo" agregado por idempotencia).
-- 1 equipo "Equipo Demo Mantenimiento" con 2 agentes vinculados vía `equipo_agentes`.
-- 1 evento "Vacunacion antigripal" — lunes próximo 9:00-12:00, capacidad 20, tipo_qr=`nominal`, autoservicio=TRUE.
-- 2 reservas (los 2 primeros ciudadanos activos).
-- 3 ocupaciones (1 `ot` + 1 `evento` + 1 `turno`).
-
-Comando:
-```powershell
-cd backend
-$env:ENV_FILE=".env.local"; python seed_agenda.py
-```
+- **4 tabs** en `AgendaLayout`: **Vistas / Eventos / Conflictos / Config**. Dentro de Vistas, sub-toggle **Día / Semana / Mes** (persistido en `agendaStore.vistaGrilla`). URLs viejas `/agenda/timeline`, `/agenda/mensual` redirigen a Vistas.
+- **Pills de tipo de recurso** (4, con conteo desde `/recursos/conteos`): Agentes / Equipos·OT / Esp. atendidos·Turnos / Esp. eventos·Entradas. **NO hay opción "Todos"** (ver Performance). **Las pills NO son intercambiables** — cada una sirve a un módulo distinto: Equipos→asignación de OT, Esp. atendidos→Turnos, Esp. eventos→Entradas.
+- **DnD solo en Vista Día y Semana** (`@dnd-kit/core@6.3.1`, PointerSensor + KeyboardSensor). Bloques tipo `evento` no son arrastrables (se editan desde el modal del evento).
 
 ### Convenciones del módulo
 
-**FKs apuntan a las PKs reales del proyecto:**
-- `eventos.id_subarea` → `subarea.id_subarea`
-- `eventos.id_estado_evento` → `estado_evento.id_estado_evento`
-- `evento_reservas.id_ciudadano` → `ciudadanos.id_ciudadano`
-- `ocupaciones.id_orden_trabajo` → `ordenes_trabajo.id_ot`
-- `evento_encargados.id_recurso` y `ocupaciones.id_recurso` → `agentes.id_agente` o `equipos.id_equipo` (sin FK física porque depende de `tipo_recurso`; validación en backend).
+**FKs a las PKs reales:** `eventos.id_subarea`→`subarea.id_subarea`, `eventos.id_estado_evento`→`estado_evento.id_estado_evento`, `evento_reservas.id_ciudadano`→`ciudadanos.id_ciudadano`, `ocupaciones.id_orden_trabajo`→`ordenes_trabajo.id_ot`. `evento_encargados.id_recurso` y `ocupaciones.id_recurso` → `agentes`/`equipos`/`espacios_agenda` (sin FK física; polimórfica por `tipo_recurso`, validación en backend).
 
-**Tabla única `ocupaciones`** con CHECK `ck_ocupacion_consistencia`: garantiza que solo se popule la FK correspondiente al `tipo` (`ot`→`id_orden_trabajo`, `evento`→`id_evento`, `turno`→`id_ciudadano`). No usar tablas separadas por tipo.
+**Tabla única `ocupaciones`** con CHECK `ck_ocupacion_consistencia`: solo se popula la FK del `tipo` (`ot`→`id_orden_trabajo`, `evento`→`id_evento`, `turno`→`id_ciudadano`). No usar tablas separadas por tipo.
 
-**`equipo_agentes` (no `equipo_usuarios`):** el módulo Agenda usa `equipo_agentes` como pivot equipo↔agente (igual que el módulo OT). `equipo_usuarios` solo existe en local como tabla vacía legacy; en prod no existe.
+**`equipo_agentes` (no `equipo_usuarios`):** pivot equipo↔agente. `equipo_usuarios` solo existe vacío en local; en prod no existe.
 
-**`asignacion_a` en `tipo_reclamo`:** define si las OTs del tipo bloquean agenda de `agente` o de `equipo`. `duracion_estimada_min` es lo que bloquea el calendario (distinto de `sla_dias`, que es deadline del reclamo).
+**`asignacion_a` en `tipo_reclamo`:** define si las OTs del tipo bloquean agenda de `agente` o `equipo`. `duracion_estimada_min` es lo que bloquea el calendario (distinto de `sla_dias`, deadline del reclamo).
+
+**Tres tipos de recurso:** `agente`, `equipo`, `espacio`. Espacio puede ser `atendido` (necesita agentes vinculados vía `espacio_agentes`) o desatendido.
 
 ### Convención bitmask `dias_semana`
 
-Las futuras tablas de disponibilidad usarán **`dias_semana SMALLINT`** con bitmask, NO TEXT como `servicios` (`agenda_agente`/`agenda_lugar`/`agenda_servicio` originalmente la usaban, ahora dropeadas en mig 39):
+`dias_semana SMALLINT` con bitmask, NO TEXT. Lunes=bit0=1, Martes=2, Miércoles=4, Jueves=8, Viernes=16, Sábado=32, Domingo=64. Ejemplos: L-V=`31`, fin de semana=`96`, todos=`127`. CHECK `BETWEEN 0 AND 127`.
 
-| Día | Bit | Valor |
-|---|---|---|
-| Lunes | 0 | 1 |
-| Martes | 1 | 2 |
-| Miércoles | 2 | 4 |
-| Jueves | 3 | 8 |
-| Viernes | 4 | 16 |
-| Sábado | 5 | 32 |
-| Domingo | 6 | 64 |
+**Helper UI obligatorio:** `frontend/js/dias-semana.js` (vanilla) o `web-app/src/lib/diasSemana.ts` (React) con `serialize/deserialize/togglearDia/format`. `format(31)`→`Lun a Vie`, `format(96)`→`Sab y Dom`, `format(127)`→`Todos los dias`.
 
-Ejemplos: lunes a viernes = `31`, fin de semana = `96`, todos = `127`. CHECK `BETWEEN 0 AND 127` cierra el universo.
+### Lógica `disponibilidad_efectiva(db, tipo_recurso, id_recurso, fecha)`
 
-**Helper UI obligatorio** cuando se renderice la UI: `frontend/js/dias-semana.js` (vanilla) o `web-app/src/lib/diasSemana.ts` (React) con `serialize(array)→int`, `deserialize(int)→array`, `format(int)→"Lun, Mié, Vie"` (con atajos "Lun a Vie" para 31 y "Todos" para 127).
+Resuelve los rangos horarios efectivos para una fecha aplicando bitmask `dias_semana` + ventana `vigente_desde/hasta`. Para `tipo_recurso='espacio'`:
+- **Desatendido:** horario propio del espacio.
+- **Atendido:** intersecta el horario del espacio con la **unión** de horarios de los agentes vinculados activos. Sin horario propio → la unión sola. Sin agentes vinculados → `[]` (la mig 40 NO enforce "atendido ⇒ ≥1 agente"; síntoma: grilla toda gris).
+
+`_merge_rangos()` une rangos solapados/contiguos. **Quirk:** cast inline `(:f)::date` — asyncpg pasa DATE como `unknown` y Postgres no resuelve `EXTRACT(ISODOW FROM ...)` sin el cast. Ver [[feedback_asyncpg_extract_cast_date]].
+
+**Scope por subárea del supervisor:** `/calendario` y `/semana` aceptan `scope_subarea_propia`. Si `true`, filtra recursos a la subárea del usuario (`usuarios → agentes.id_subarea`). **Admin (nivel 1) NO se scopea.** **Fail-open** si no se puede resolver la subárea. La pill "Equipos·OT" lo manda automáticamente. Helper `_resolver_scope_subarea` en `agenda_v2.py`: `id_subarea` explícito > scope propio > None.
 
 ### Sistemas de auditoría coexistentes
 
-El proyecto tiene **dos sistemas de auditoría con vocabularios distintos** — no unificar sin decisión explícita:
-- `reclamo_historial` (Reclamos + OT): registra cambios de estado y notas custom como filas append-only.
-- `agenda_audit_log` (Agenda 3.A): registra `entidad` ∈ {evento, ocupacion, reserva} con `accion` ∈ {crear, modificar, cancelar, asignar} y diffs JSONB.
+Dos sistemas con vocabularios distintos — **no unificar sin decisión explícita**:
+- `reclamo_historial` (Reclamos + OT): cambios de estado y notas custom, append-only.
+- `agenda_audit_log` (Agenda): `entidad` ∈ {evento,ocupacion,reserva} con `accion` ∈ {crear,modificar,cancelar,asignar} y diffs JSONB.
 
-Si vas a auditar algo nuevo, elegí el sistema según la entidad. No mezclar.
+### Verbos HTTP del router agenda_v2 (referencia obligatoria)
 
-### Pendientes Agenda
-
-#### Sub-fase 1.B — limpieza legacy ✅ ENTREGADA (2026-05-13, mig 39)
-- [x] **Drop 9 tablas legacy vacías**: `agenda_agente`, `agenda_servicio`, `agenda_lugar`, `agenda_servicio_agente`, `agenda_lugar_servicio`, `agenda_ausencia`, `agenda_alerta`, `turnos`, `areas` (plural). Sí existían en prod aunque la doc decía lo contrario. Todas con 0 filas en ambos entornos.
-- [x] **Estandarizar `agenda_clase` y `agenda_feriado`** al §10: PK `id_agenda_clase` / `id_agenda_feriado`, `creado_por` → `id_usuario_alta`, `creado_en` → `fecha_alta`, `modificado_en` → `fecha_modificacion`, agregadas `id_usuario_modificacion`, `id_municipio`, `id_subarea`, `activo SET DEFAULT TRUE`. Backfill `id_municipio=1`. `agenda_clase.id_area` y `fecha_baja` dropeadas.
-- [x] **Tabla nueva `ausencias_agente`** (estándar §10 completo, FK `id_agente` → `agentes.id_agente`). Reemplaza `agenda_ausencia`. `agenda_v2` ya consulta esta tabla en `/calendario`, `/mes`, `/recurso/{tipo}/{id}` — el JOIN ahora va por `id_agente` directo (no por `usuarios.id_usuario`).
-- [x] **Cleanup FKs a `areas`**: `agenda_clase`, `lugares_atencion` y `servicios` tenían `id_area` → `areas(id)`. Limpiado a NULL y FK dropeado. Las columnas `id_area` sobreviven en `lugares_atencion`/`servicios` por compatibilidad (sin FK, siempre NULL); en `agenda_clase` fue dropeada.
-- [x] **Backend limpio**: `models/agenda.py` reescrito (solo modelos vivos), `schemas/agenda.py` borrado, `routes/agenda.py` borrado, `main.py` deja de registrar el router legacy. Helper `agenda_ausencia_cols` removido.
-- [x] **admin_tablas actualizado**: `agenda_clase` y `agenda_feriado` con PK nueva y `has_audit: True`. Item `areas` removido del sidebar y de `SCHEMAS` del frontend. `lugares_atencion`/`servicios` quedaron sin selector `id_area`.
-
-Snapshot pre-mig en prod y local: `_backup_agenda_clase_2026_05_13`, `_backup_agenda_feriado_2026_05_13`, `_backup_areas_2026_05_13`, `_backup_lugares_atencion_id_area_2026_05_13`, `_backup_servicios_id_area_2026_05_13`. Ver `backend/migrations/39_agenda_legacy_dropear_y_estandarizar.sql`.
-
-#### Sub-fase 2 — Backend API ✅ ENTREGADA (2026-05-10)
-22 endpoints en `backend/app/api/routes/agenda_v2.py`. Servicios en `backend/app/services/agenda.py`. Schemas en `backend/app/schemas/agenda_v2.py`. Convive con router legacy `agenda.py` bajo el mismo prefix `/api/v1/agenda` sin colisión de paths. 13/13 pruebas E2E OK.
-
-#### Sub-fase 3.A — Frontend web-app React ✅ ENTREGADA (2026-05-10)
-Módulo en `web-app/src/modules/agenda/`. Vistas: Timeline (Gantt con grilla horaria 07-20, línea hora actual, conflictos resaltados), Mensual (grilla 6×7), Eventos (tabla con paginación), Conflictos. Modales: Evento, Encargados, Reserva (con buscador BUC propio), Ocupación, Conflicto. Hooks con react-query. Store Zustand para filtros. TypeScript estricto, sin libs nuevas. **Pruebas manuales en navegador en `PRUEBAS_PENDIENTES.md` bloque A (47 casos)**.
-
-#### Verbos HTTP del router agenda_v2 (referencia obligatoria)
-
-No son obvios y mezclan PUT con PATCH. Antes de scriptear un smoke test o codear un cliente nuevo, hacer `grep "@router\." backend/app/api/routes/agenda_v2.py` para confirmar. Mapeo al 2026-05-11:
+Mezclan PUT con PATCH. Antes de scriptear un smoke o codear un cliente, `grep "@router\." backend/app/api/routes/agenda_v2.py` para confirmar.
 
 | Acción | Verbo | Path |
 |---|---|---|
-| Crear evento | POST | `/eventos` |
-| Editar evento (full) | PUT | `/eventos/{id}` |
-| Cancelar evento | **PATCH** | `/eventos/{id}/cancelar` |
-| Eliminar evento (soft) | DELETE | `/eventos/{id}` |
-| Asignar encargado | POST | `/eventos/{id}/encargados` |
-| Quitar encargado | DELETE | `/eventos/{id}/encargados/{id_evento_encargado}` |
+| Crear / Editar full / Cancelar / Eliminar evento | POST / PUT / **PATCH** `/cancelar` / DELETE | `/eventos`, `/eventos/{id}` |
+| Asignar / Quitar encargado | POST / DELETE | `/eventos/{id}/encargados[/{id_ee}]` |
 | Crear reserva | POST | `/eventos/{id}/reservas` |
-| Marcar asistió | **PATCH** | `/reservas/{id}/asistio` |
-| Cancelar reserva | **PATCH** | `/reservas/{id}/cancelar` |
-| Crear ocupación | POST | `/ocupaciones` |
-| Editar ocupación | PUT | `/ocupaciones/{id}` |
-| Cancelar ocupación | DELETE | `/ocupaciones/{id}` |
-| Calendario día | GET | `/calendario` (**NO** `/calendario/dia`) |
-| Calendario mes | GET | `/mes` |
-| Conflictos | GET | `/conflictos?resuelto=false` |
-| Resolver conflicto | **PATCH** | `/conflictos/{id}/resolver` |
-| Recurso (agente o equipo) | GET | `/recurso/{tipo_recurso}/{id_recurso}` |
-| Marcar asistió (por id) | **PATCH** | `/reservas/{id_evento_reserva}/asistio` |
-| Acreditar asistencia escaneando QR | **POST** | `/reservas/acreditar-qr` |
+| Marcar asistió / Cancelar reserva | **PATCH** | `/reservas/{id}/asistio`, `/reservas/{id}/cancelar` |
+| Acreditar por QR | **POST** | `/reservas/acreditar-qr` |
+| Crear / Editar / Cancelar ocupación | POST / PUT / DELETE | `/ocupaciones[/{id}]` |
+| Calendario día / mes / semana | GET | `/calendario` (NO `/calendario/dia`), `/mes`, `/semana?desde=&dias=` |
+| Conflictos / Resolver | GET / **PATCH** | `/conflictos?resuelto=false`, `/conflictos/{id}/resolver` |
+| Recurso | GET | `/recurso/{tipo_recurso}/{id_recurso}` |
+| Conteos de recursos por tipo (pills) | GET | `/recursos/conteos?id_municipio=` |
 
-Smoke test reproducible: `smoke_agenda.ps1` en la raíz. Cubre 15 endpoints clave.
+**Router `agenda_espacios.py`** (`/api/v1/agenda/espacios`): GET listado (filtros `atendido`/`q`), POST, GET `/{id}` (con `agentes_vinculados` + `cant_agentes`), PUT, DELETE (soft + cascade N:M), GET/POST/DELETE `/{id}/agentes[/{id_ea}]`.
+**Router `agenda_disponibilidad.py`** (`/api/v1/agenda/disponibilidad`): GET (filtros tipo/id), POST, PUT `/{id}`, DELETE `/{id}` (soft), GET `/efectiva?tipo_recurso=&id_recurso=&fecha=`.
+Permisos: `nivel_acceso <= 2` muta; cualquier autenticado lee.
 
-#### QR físico de reservas — flujo de acreditación (2026-05-14)
+Smoke reproducible: `smoke_agenda.ps1` (raíz), 15 endpoints clave.
 
-El QR de una reserva de evento (`evento_reservas.qr_codigo`, formato opaco `EVT{id}-RES{id}-{ts}` generado por `services/agenda.py::generar_qr_codigo`) es un **identificador**, no una URL. El operador lo escanea con un lector y se acredita la asistencia vía `POST /api/v1/agenda/reservas/acreditar-qr` con body `{qr_codigo}` — resuelve la reserva por el string y marca `asistio`. Errores: 404 si el QR no corresponde a reserva activa, 409 si la reserva está cancelada. Reusa el helper `_patch_reserva_estado`. El endpoint se registra **antes** que `/reservas/{id}/...` en el router (defensa contra match greedy, aunque distinto número de segmentos). UI: sección "Acreditar por QR" en `ReservaModal.tsx` (input + botón, Enter acredita). El `id`-numérico (`PATCH /reservas/{id}/asistio`) sigue existiendo para acreditar manual desde la lista.
+### QR físico de reservas
 
-#### Sub-fase 3.B — Drag & Drop sobre la grilla ✅ ENTREGADA (2026-05-11)
+`evento_reservas.qr_codigo` es un **identificador opaco** (`EVT{id}-RES{id}-{ts}`, generado por `services/agenda.py::generar_qr_codigo`), no una URL. El operador lo escanea y acredita vía `POST /api/v1/agenda/reservas/acreditar-qr` con body `{qr_codigo}` → marca `asistio`. 404 si no es reserva activa, 409 si cancelada. Registrado **antes** que `/reservas/{id}/...` (anti-greedy). UI: sección "Acreditar por QR" en `ReservaModal.tsx`. El PNG se renderiza solo en cliente (`QRDisplay.tsx`, lib `qrcode` ~26KB) — el backend solo genera el string.
 
-Lib: **`@dnd-kit/core@6.3.1`** (PointerSensor, distancia mínima 5px para no confundir click con drag). Implementación en [web-app/src/modules/agenda/dnd/](web-app/src/modules/agenda/dnd/) (types, gridConstants, useDragMutations, useOTsPendientes) + cambios en `GanttOccupationBlock` (useDraggable), `GanttResourceRow` (useDroppable), `TimelineView` (DndContext + DragOverlay + ConfirmModal) y nuevo `PendingOTsPanel` colapsable.
+### Performance — patrón batch (optimización 2026-05-14)
 
-Backend ampliado: `OcupacionUpdate` ahora acepta `tipo_recurso` e `id_recurso` opcionales (juntos) en `PUT /agenda/ocupaciones/{id}`; el handler revalida conflictos contra el recurso nuevo. Sin migración (las columnas ya existían en `ocupaciones`).
+Con 84 agentes en prod, los endpoints B1 originales eran inusables (`/calendario` 23s→2.2s, `/semana` 7d timeout→2.6s). El patrón que lo arregló:
 
-Capacidades:
-1. **Mover dentro del mismo recurso:** snap a 15 min, clamp dentro de 07-20, persiste directo sin confirmación.
-2. **Reasignar a otro recurso:** abre `ConfirmModal` con nombre del recurso destino y horario. Cancelar = no llama backend.
-3. **Crear ocupación desde OT pendiente:** drag de OT del `PendingOTsPanel` (lista `GET /ot?estado=Pendiente` filtrada client-side por `id_agente IS NULL && id_equipo IS NULL`) a una fila → modal "Planificar OT" → confirma → `POST /ocupaciones` tipo='ot' con `hora_inicio=09:00`, duración 60min. El usuario ajusta después si quiere.
+1. **`disponibilidad_efectiva_batch(session, recursos, fechas)`** — 2 queries totales (`WHERE tipo=ANY AND id=ANY`), bitmask/vigencia/intersección resueltos en Python. La singular `disponibilidad_efectiva` queda para `/disponibilidad/efectiva` (compat retro).
+2. **`_eventos_del_rango(db, fd, fh, mun)`** — 1 query base + 1 bulk de encargados. `_eventos_del_dia` queda como wrapper.
+3. `/calendario` y `/semana` llaman a los batch. Compat retro verificado byte-a-byte.
 
-Pruebas validadas: 9 PASS / 0 FAIL en agente Chrome (T1-T11, ver `reporte_pruebas_3B_2026-05-11.md` si existe). Smoke `smoke_agenda.ps1` 15/15 OK pre y post-cambios.
+**Latencia base Railway↔Supabase ~2-3s** con JOINs sobre 84 filas — piso físico sin tocar arquitectura. Ver [[reference_agenda_latencia_base_railway_supabase]]. Patrón generalizable para loops N×M: [[feedback_patron_batch_helper_singular_wrapper]].
 
-#### Sub-fase 3.B — Pendientes restantes
-- [x] ~~**Drag con teclado:**~~ cerrado — `KeyboardSensor` activo en `TimelineView.tsx` (`keyboardCoordinateGetter` con flechas en pasos de `SNAP_MIN`/`ROW_HEIGHT`).
-- [x] ~~**Drag de OT a hora exacta del drop:**~~ cerrado — `TimelineView.tsx::handleDragEnd` rama `pending-ot` usa `activatorEvent.clientX + delta.x` mapeado al rect de la fila (`data-row-tipo/id`) y snap a `SNAP_MIN`. Cae a 09:00 solo si el drop queda fuera del rect.
-- [x] ~~**Snap visual durante drag:**~~ cerrado — `GanttResourceRow.tsx` usa `useDndMonitor` (`onDragMove`) para computar la posición de snap y renderiza una línea vertical naranja (`zIndex 25`, box-shadow) mientras la fila es el droppable activo.
-- [x] ~~**Bloquear drag de ocupaciones tipo=evento:**~~ cerrado — `GanttOccupationBlock.tsx` setea `dragDisabled = ocupacion.tipo === 'evento'` y pasa `disabled` a `useDraggable`; el `title` del bloque indica "editar desde el modal del evento".
-- [x] ~~Imagen QR renderizada~~ cerrado — `QRDisplay.tsx` renderiza el código sobre `<canvas>` con lib `qrcode` (errorCorrectionLevel 'M', ~26KB gzipped). Usado en `ReservaModal.tsx` (backoffice, sección expandible por reserva) y `MiReservaPage.tsx` (autoservicio eventos). Turnos no requiere QR: acreditación es manual desde backoffice.
-- [x] ~~Selectores con autocompletar para OT y evento en `OcupacionModal`.~~ cerrado — `OcupacionModal` usa `EventoSearch` (consume `GET /agenda/catalogos/evento-busqueda?q=`). `OcupacionOTModal` usa `OTSearch` (consume `GET /agenda/catalogos/ot-busqueda?q=`). `RecursoPicker` reescrito de `<select>` a input + dropdown debounced (250ms) sobre `GET /agenda/catalogos/recursos?q=`. Mismo patrón que `CiudadanoSearch` con `skipNextRef` post-pick. Restringido a `tipo: 'agente'|'equipo'` (los espacios se eligen con su propio listado).
-- [x] ~~Selector de agente/equipo por nombre en `EventoEncargadosModal`.~~ cerrado — usa el mismo `RecursoPicker` con autocompletar.
-- [x] ~~Filtro por subárea en `AgendaFilters` (backend ya lo acepta).~~ cerrado — `AgendaFilters` ya tenía el select. `MonthlyView` no lo renderizaba ni lo pasaba al hook; ahora monta el mismo select en su header y `useCalendarioMes` acepta `idSubarea`. Backend `GET /agenda/mes` extendido con `id_subarea` filtrando eventos (`eventos.id_subarea`), ocupaciones (EXISTS subquery sobre `agentes`/`equipos`/`espacios_agenda.id_subarea` según `o.tipo_recurso`) y ausencias (`agentes.id_subarea`). Verificado visualmente: cambiar el select dispara request con `&id_subarea=N` y resultados cambian.
-- [x] ~~Vista autoservicio público (cuando `evento.admite_autoservicio=TRUE`).~~ cerrado — flujo end-to-end ya implementado: backend `agenda_publico.py` (GET evento + POST reservar + GET/DELETE reserva por token, sin JWT), página pública `web-app/src/autoservicio/AutoservicioPage.tsx` (form de reserva en `/autoservicio/:tokenPublico`), `MiReservaPage.tsx` (consulta + QR + cancelar). En backoffice: `EventoModal` y módulo Entradas muestran el link copiable cuando `admite_autoservicio=TRUE && token_publico`. No hay landing índice de eventos sin token a propósito — el patrón es que el municipio comparte el link via whatsapp/cartel/redes.
-- [x] ~~Migrar/dropear `frontend/agenda.html` vanilla legacy~~ — cerrado 2026-05-12.
-
-#### Aplicar en prod
-- [x] ~~Replicar migraciones 30-34 + `seed_agenda.py` en Supabase prod~~ — cerrado 2026-05-12. Las tablas habían entrado en prod durante el E2E del autoservicio sin documentar. Esta sesión completó la parte 2 de mig 30 (ALTER tipo_reclamo) + creó y aplicó mig 37 (defaults + NOT NULL) en local y prod. Ver §21 sección "Migraciones 30-37".
-
-### Sub-fase B1 — Espacios + Disponibilidad multi-rango (BACKEND ✅ ENTREGADO 2026-05-13)
-
-Habilita 3 tipos de recurso (`agente`, `equipo`, `espacio`) en la grilla de agenda, horarios laborales multi-rango (turnos rotativos), distinción atendido/desatendido para espacios, y eventos como bloques en la grilla. **Frontend pendiente** (sub-fase B2).
-
-**DB (migs 40-43):** ver §21.
-
-**Servicio `services/agenda.py::disponibilidad_efectiva(db, tipo_recurso, id_recurso, fecha)`**: resuelve los rangos horarios efectivos para una fecha aplicando bitmask `dias_semana` + ventana `vigente_desde/hasta`. Para `tipo_recurso='espacio'`:
-- **Espacio desatendido**: devuelve directo el horario propio del espacio.
-- **Espacio atendido**: intersecta el horario propio del espacio con la **unión** de horarios de los agentes vinculados activos (tabla `espacio_agentes`). Si el espacio no tiene horario propio, devuelve la unión sola. Si no tiene agentes vinculados, lista vacía.
-
-Función auxiliar `_merge_rangos()` une rangos solapados o contiguos para evitar duplicados (preserva la `etiqueta` del primer rango). Etiqueta de los rangos unidos se descarta. Quirk: cast explícito `(:f)::date` en SQL — asyncpg pasa parámetros DATE como `unknown` y Postgres no puede resolver el overload de `EXTRACT(ISODOW FROM ...)` sin el cast (cazado en smoke del 2026-05-13).
-
-**Routers nuevos:**
-
-| Router | Prefix | Endpoints |
-|---|---|---|
-| `agenda_espacios.py` | `/api/v1/agenda/espacios` | GET `` (listado, filtros `atendido`/`q`), POST, GET `/{id}` (con `agentes_vinculados`), PUT `/{id}`, DELETE `/{id}` (soft + cascade soft N:M), GET `/{id}/agentes`, POST `/{id}/agentes`, DELETE `/{id}/agentes/{id_espacio_agente}` |
-| `agenda_disponibilidad.py` | `/api/v1/agenda/disponibilidad` | GET `` (filtros tipo_recurso/id_recurso), POST, PUT `/{id}`, DELETE `/{id}` (soft), GET `/efectiva?tipo_recurso=&id_recurso=&fecha=` |
-
-Permisos: `nivel_acceso <= 2` (admin/supervisor) puede mutar; cualquier autenticado lee. POST valida existencia del recurso (`agentes/equipos/espacios_agenda WHERE activo=TRUE`).
-
-**Modificaciones a `agenda_v2.py`:**
-
-| Endpoint | Cambio |
-|---|---|
-| `GET /agenda/calendario` | Acepta `tipo_recurso='espacio'` y `tipo_recurso='todos'` (default) ahora incluye espacios. Nuevo query param `atendido` (solo aplica si tipo=`espacio` o `todos`). Response agrega `recursos[].atendido`, `recursos[].disponibilidad: [{hora_inicio,hora_fin,etiqueta}]`, y top-level `eventos: [{id_evento,nombre,...,capacidad_ciudadanos,reservas_activas,cupo_libre,id_espacio,encargados:[[tipo,id]]}]`. |
-| `GET /agenda/mes` | Acepta `tipo_recurso` opcional. Cuando != `todos` el conteo de ocupaciones se filtra por `ocupaciones.tipo_recurso`. |
-| `GET /agenda/semana` (**nuevo**) | `desde=YYYY-MM-DD&dias=N` (1-14, default 7). Mismos filtros que `/calendario`. Response: `{desde, hasta, id_municipio, recursos:[...sin ocupaciones], dias:[{fecha, ocupaciones, ausencias, eventos, disponibilidad_por_recurso}]}`. |
-
-**Schemas Pydantic nuevos en `schemas/agenda_v2.py`:**
-- `DisponibilidadRangoEfectivo` — `{hora_inicio: time, hora_fin: time, etiqueta?: str}`. Es lo que devuelve `disponibilidad_efectiva()`.
-- `EventoEnCalendarioOut` — vista liviana del evento con `cupo_libre`, `id_espacio`, `encargados: list[tuple[str,int]]` (para pintar bloque en la fila adecuada).
-- `CalendarioSemanaOut` + `CalendarioSemanaDiaOut`.
-- `EspacioAgendaCreate/Update/Out`, `EspacioAgenteCreate/Out`, `DisponibilidadRecursoCreate/Update/Out`.
-- `CalendarioRecurso` agrega `atendido: bool | None` y `disponibilidad: list[DisponibilidadRangoEfectivo]`.
-- `RecursoOut.tipo_recurso`, `EventoEncargadoCreate.tipo_recurso`, `OcupacionCreate.tipo_recurso`, `OcupacionUpdate.tipo_recurso` aceptan ahora `'espacio'`.
-
-**Compat retro garantizado:**
-- Endpoints existentes (`/calendario`, `/mes`, `/ocupaciones`, `/eventos/{id}/encargados`) siguen aceptando los valores anteriores (`agente|equipo|todos`); solo agregan `espacio`.
-- Campos nuevos en responses (`atendido`, `disponibilidad`, `eventos` en /calendario) son listas con default `[]` — clientes viejos pueden ignorarlos.
-- Validador del CHECK constraint enforce: insertar `tipo_recurso='espacio'` en `ocupaciones`/`evento_encargados` ya funciona.
-
-**Verbos HTTP nuevos del módulo (sub-fase B1):**
-
-| Acción | Verbo | Path |
-|---|---|---|
-| Listar espacios | GET | `/api/v1/agenda/espacios` |
-| Crear espacio | POST | `/api/v1/agenda/espacios` |
-| Detalle espacio (con agentes vinculados) | GET | `/api/v1/agenda/espacios/{id}` |
-| Editar espacio | PUT | `/api/v1/agenda/espacios/{id}` |
-| Borrar espacio (soft + N:M cascade) | DELETE | `/api/v1/agenda/espacios/{id}` |
-| Listar agentes de un espacio | GET | `/api/v1/agenda/espacios/{id}/agentes` |
-| Vincular agente | POST | `/api/v1/agenda/espacios/{id}/agentes` |
-| Desvincular agente | DELETE | `/api/v1/agenda/espacios/{id}/agentes/{id_ea}` |
-| Listar disponibilidad | GET | `/api/v1/agenda/disponibilidad` |
-| Crear disponibilidad | POST | `/api/v1/agenda/disponibilidad` |
-| Editar | PUT | `/api/v1/agenda/disponibilidad/{id}` |
-| Borrar (soft) | DELETE | `/api/v1/agenda/disponibilidad/{id}` |
-| Consultar efectiva (resolver bitmask + vigencia + intersección espacio atendido) | GET | `/api/v1/agenda/disponibilidad/efectiva?tipo_recurso=&id_recurso=&fecha=` |
-| Vista semanal | GET | `/api/v1/agenda/semana?desde=&dias=&tipo_recurso=&atendido=` |
-| Conteos de recursos por tipo (pills B2) | GET | `/api/v1/agenda/recursos/conteos?id_municipio=` |
-
-#### Quirks operativos B1 (cazados en sesión 2026-05-13)
-
-- ~~**`GET /agenda/semana` con `tipo_recurso='todos'` es O(recursos × días)**~~ **Optimizado 2026-05-14** (commits `37d5034` + `8d047f5`). `/semana 7d` con 84 agentes pasó de timeout a 2.6s; `/semana 14d` a 3.3s. Ya **es seguro llamar `/semana` con `tipo_recurso='todos'`** sin penalty. Ver sección "Performance" más abajo en B2.
-- **Espacio `atendido=TRUE` SIN agentes vinculados → disponibilidad efectiva `[]`**. La mig 40 deliberadamente NO enforce "atendido => al menos 1 agente" para no bloquear el alta inicial; queda como validación de capa frontend o checklist UX. Síntoma: el espacio aparece en `/calendario` pero su grilla queda toda gris ("fuera de horario") sin razón obvia. Recomendado en B2: badge "⚠ falta vincular agentes" en el espacio del listado cuando `atendido && agentes_vinculados.length === 0`.
-- **`EXTRACT(field FROM :param)` con asyncpg requiere cast inline** — usar `(:f)::date` (memoria [[feedback_asyncpg_extract_cast_date]]). Aplicar a cualquier query que extienda `disponibilidad_efectiva` o consulte fechas/horas con parámetros bindeados.
-- **Smoke local ≠ prod en este módulo**: prod arrancó la sesión con 1 espacio + 2 disponibilidades + 1 evento residuales del E2E de autoservicio del 2026-05-12. Inocuos pero alteran conteos del smoke. Si vas a contar items en prod, considerar `WHERE fecha_alta > '2026-05-13'` para excluir los demos viejos.
-
-### Sub-fase B2 — Frontend (✅ CERRADA al 2026-05-14, commit `7186fe1`)
-
-> **Verificación visual completa en navegador hecha 2026-05-14.** Levanté `pnpm dev` + uvicorn local, seedeé 2 espacios (atendido+desatendido) + 3 disponibilidades vía API, y caminé Día/Semana/Mes + Config (Espacios + Disponibilidad). Bloque de evento se renderiza con bg violeta `rgba(106,27,154,.2)` en la fila del encargado, los filtros de pills filtran la grilla correctamente, la disponibilidad efectiva intersecta espacio atendido con agentes vinculados.
-
-**Estructura del módulo Agenda al cierre B2:**
-
-- **4 tabs principales** en `AgendaLayout`: **Vistas / Eventos / Conflictos / Config**.
-- Dentro de **Vistas** (default), **sub-toggle Día / Semana / Mes** (botones), persistido en `agendaStore.vistaGrilla` (no en la URL).
-- Compat retro: URLs viejas `/agenda/timeline`, `/agenda/mensual` redirigen a `Vistas`.
-- **Pills de tipo de recurso** (4 opciones con conteo): Agentes / Equipos · OT / Esp. atendidos · Turnos / Esp. eventos · Entradas. Persistido en `agendaStore.filtroRecurso: FiltroRecursoUI`. NO existe opción "Todos" (consistente con el quirk de performance B1). **Las pills NO son intercambiables — cada vista sirve a un módulo distinto** (Pendiente Grande 2, cerrado 2026-05-14): Equipos→asignación de OT, Esp. atendidos→Turnos, Esp. eventos→Entradas. `RecursoTogglePills` muestra un subtítulo dinámico explicando el propósito de la pill activa.
-- Helper `web-app/src/lib/diasSemana.ts`: `serialize/deserialize/togglearDia/format` para el bitmask `dias_semana`. `format(31)` → `'Lun a Vie'`, `format(96)` → `'Sab y Dom'`, `format(127)` → `'Todos los dias'`.
-- Helper `agendaStore.filtroUIaBackend(filtro)` → `{ tipo_recurso, atendido, scopeSubareaPropia }` para pasar al backend (`espacios_atendidos` → `tipo_recurso='espacio', atendido=true`; `equipos` → `scopeSubareaPropia=true`).
-- **Scope por subárea del supervisor (vista Equipos):** `/calendario` y `/semana` aceptan `scope_subarea_propia: bool`. Cuando es `true`, el backend resuelve la subárea del usuario logueado vía `usuarios.id_usuario → agentes.id_usuario → agentes.id_subarea` (helper `services/agenda.py::subarea_del_usuario`) y filtra los recursos a esa subárea. **Admin (nivel 1) NO se scopea** — ve todo. **Fail-open:** si no se puede resolver la subárea (usuario sin agente, o agente sin `id_subarea` — drift común en prod, hoy 0 agentes tienen subárea seedeada), no se aplica el filtro. La pill "Equipos · OT" manda `scope_subarea_propia=true` automáticamente; las otras pills no. El helper `_resolver_scope_subarea` en `agenda_v2.py` centraliza la lógica: `id_subarea` explícito > scope propio > None.
-
-**Componentes nuevos:**
-
-| Archivo | Rol |
-|---|---|
-| `views/VistasView.tsx` | Contenedor de Vistas — VistaToggle + RecursoTogglePills + render switcheable |
-| `views/WeeklyView.tsx` | Vista Semana (Gantt 7 días, sin DnD) consume `/agenda/semana` |
-| `views/MonthlyView.tsx` | Refactor: usa fecha del store + tipo_recurso del filtro |
-| `views/ConfigView.tsx` | Pantalla Config con sub-tabs Espacios + Disponibilidad |
-| `components/RecursoTogglePills.tsx` | 4 pills con conteo (consume `/recursos/conteos`) |
-| `components/VistaToggle.tsx` | Sub-toggle Día/Semana/Mes |
-| `components/config/EspaciosConfig.tsx` | Tabla CRUD de espacios |
-| `components/config/EspacioFormModal.tsx` | Crear/editar espacio |
-| `components/config/EspacioAgentesModal.tsx` | Listar/vincular/desvincular agentes a espacio |
-| `components/config/DisponibilidadConfig.tsx` | Tabla CRUD de disponibilidad |
-| `components/config/DisponibilidadFormModal.tsx` | Crear/editar disponibilidad (checkboxes días + horario + vigencia) |
-| `hooks/useEspacios.ts` | Query + mutaciones espacios |
-| `hooks/useDisponibilidad.ts` | Query + mutaciones disponibilidad + efectiva |
-
-**Cambios visuales en la grilla (Vista Día):**
-
-- Fondo base de cada fila: gris diagonal "fuera de horario".
-- Encima, **rectángulos blancos** por cada rango de `disponibilidad` efectiva de la fecha = horario habilitado.
-- Eventos del response `/calendario.eventos[]` se pintan como bloques violeta (`rgba(106,27,154,.20)` con borde `#6a1b9a`) en la fila del/los encargado(s) o del espacio. Badge `(reservas_activas/capacidad)`; cuando `cupo_libre <= 0` el nombre se tacha y se muestra "agotado" en rojo.
-- Filtro `'espacios_atendidos'` / `'espacios_desatendidos'`: la columna izq muestra subtítulo `espacio · atendido` o `espacio · desatendido` + ícono violeta.
-
-**Quirks ya documentados que ataca B2:**
-
-- Conteos: una sola request al endpoint nuevo `/recursos/conteos` con `staleTime: 60_000` en lugar de 4 GETs paralelos.
-- Espacio atendido sin agentes: la pill muestra el conteo, pero la grilla pinta toda la fila gris. Pendiente UX: badge "⚠ falta vincular agentes" cuando `atendido && agentes_vinculados.length === 0` (no implementado en este sprint).
-- `disponibilidad_por_recurso` en `/semana` usa clave `"{tipo}:{id}"` con dos puntos (ver [[reference_agenda_semana_disponibilidad_key]]).
-
-**Restricción explícita en `EventoEncargadosModal`:** el modal usa `type EncargadoTipoRecurso = 'agente' | 'equipo'` local (no `TipoRecurso` global), porque un espacio NO puede ser encargado de un evento — los espacios se linkean via `eventos.id_espacio`. Si en el futuro se quiere permitir "espacio como encargado", revisar este alias específicamente.
-
-**DnD:** solo en Vista Día (igual que sub-fase 3.B). Vista Semana NO tiene DnD por simplicidad.
-
-**Hallazgos de la verificación visual 2026-05-14 (fixeados en el commit):**
-- **Drift `id_municipio NULL`** entre `/recursos/conteos` y `/calendario`/`/semana`: el conteo usaba `WHERE id_municipio = :im` mientras los listados de grilla usan `IS NULL OR =`. En prod hay agentes/equipos legacy con `id_municipio` NULL (3 agentes, 3 equipos) y el pill decía "Agentes 1" pero la grilla mostraba 4. **Fix aplicado en `7186fe1`**: ahora ambas reglas son consistentes (`IS NULL OR = :im`). Si agregás un endpoint nuevo que filtre por municipio sobre agentes/equipos, usar la misma regla NULL-friendly.
-
-**Pendientes post-B2:** todos cerrados al 2026-05-14 jornada 5 (commit `9bce2eb` salvo el primero).
-- ~~3 ítems `data-modulo="turnos"` duplicados en sidebar vanilla~~ — cerrado 2026-05-14 (mig 44). Los 3 ítems ahora tienen `data-modulo` propios (`turnos`/`entradas`/`agenda`) y apuntan a `#/turnos`, `#/entradas`, `#/agenda`.
-- ~~Eventos sin `id_espacio` ni encargados invisibles en grilla Día~~ — cerrado. `GanttGrid.tsx` arma `eventosSinAsignar` (sin encargados Y sin espacio) y los pinta en una fila sintética "Eventos sin asignar" (solo bloques violeta, sin droppable ni disponibilidad).
-- ~~Badge "⚠ falta vincular agentes" en EspaciosConfig~~ — cerrado. El backend (`agenda_espacios.py`) expone `cant_agentes` sin n+1; `EspaciosConfig.tsx` muestra el badge cuando `atendido && cant_agentes === 0`.
-- ~~Drag en vista Semana~~ — cerrado. `WeeklyView.tsx` tiene `DndContext` + `useDraggable`/`useDroppable` + `ConfirmModal` para mover ocupaciones entre días/recursos conservando horario.
-- ~~KeyboardSensor en DnD~~ — cerrado (ver sub-fase 3.B arriba).
-- ~~Título "timeline" residual en vista Día~~ — cerrado en `9bce2eb`.
-
-### Performance — optimización 2026-05-14 (commits `37d5034` + `8d047f5`)
-
-Con 84 agentes en prod, los endpoints B1 originales eran inusables:
-
-| Endpoint | Original | Final | Mejora |
-|---|---|---|---|
-| `/agenda/calendario` agente 1d | 23.1s | 2.2s | ~10× |
-| `/agenda/semana` agente 7d | timeout >60s | 2.6s | >23× |
-| `/agenda/semana` todos 14d | (peor) | 3.3s | flat |
-
-**Cómo bajar de O(recursos × días) round-trips a O(1)** — patrón aplicado:
-
-1. **`services/agenda.py::disponibilidad_efectiva_batch(session, recursos, fechas)`** — 2 queries totales (`disponibilidad_recurso` con `WHERE tipo = ANY AND id = ANY`, descartando pares espureos en Python; + `espacio_agentes` para los atendidos del input). Bitmask + vigencia + intersección espacio↔agentes se resuelven en Python sobre las filas ya cargadas. La función singular `disponibilidad_efectiva` sigue intacta para `/disponibilidad/efectiva` (compat retro).
-
-2. **`agenda_v2.py::_eventos_del_rango(db, fd, fh, mun)`** — 1 query base (`eventos BETWEEN :fd AND :fh`) + 1 bulk de encargados (`evento_encargados WHERE id_evento = ANY(:ids)`). `_eventos_del_dia(db, f, m)` queda como wrapper compat retro que delega al rango con `fd=fh=f`.
-
-3. **`/calendario` y `/semana`** ahora ambos llaman a los batch directos. **Compat retro 100%** verificado con smoke regression byte-a-byte entre singular y batch (agente con horario, espacio atendido con intersección, espacio desatendido, espacio fuera de días, evento con encargado).
-
-**Latencia base Railway↔Supabase es ~2-3s** para queries con JOINs sobre 84 filas. Por debajo de eso es físicamente imposible sin tocar arquitectura (mover backend a la misma region, PgBouncer, caché Redis). Ver memoria [[reference_agenda_latencia_base_railway_supabase]] para más detalles.
-
-**Patrón generalizable** para próximos endpoints con loops N×M: ver memoria [[feedback_patron_batch_helper_singular_wrapper]]. Aplica a cualquier nuevo endpoint que itere sobre recursos × fechas/items.
+**Quirk de clave:** `disponibilidad_por_recurso` en `/semana` usa formato `"{tipo}:{id}"` con dos puntos. Ver [[reference_agenda_semana_disponibilidad_key]].
 
 ## 28. Recibir prompts armados afuera del proyecto
 
@@ -2692,7 +2336,7 @@ Receta probada (sesión 2026-05-18, 3 manuales generados). Reusable para cualqui
 - **El `addInitScript` de Playwright** debe inyectar la sesión ANTES de navegar, no después, para que el guard React no redirija a `/login`.
 - **Sembrar data con API, NO con SQL crudo:** SQL crudo puede saltarse triggers, validaciones de negocio y dejar la DB en estado inconsistente. La API ya respeta todo.
 
-### Manuales actuales (al 2026-05-18)
+### Manuales actuales (al 2026-05-26)
 
 | Manual | Audiencia | Capturas | Secciones |
 |---|---|---|---|
@@ -2700,6 +2344,9 @@ Receta probada (sesión 2026-05-18, 3 manuales generados). Reusable para cualqui
 | `manual_ot.html` | Supervisor / Agente / Auditor | 9 | 11 |
 | `manual_tramites.html` | Operador o superior | 8 | 13 |
 | `manual_admin_tramites.html` | Admin o Supervisor | 12 | 11 |
+| `manual_encuestas.html` | Supervisor o Admin | 0 (texto) | 6 |
+
+> **Variante sin capturas (válida):** `manual_encuestas.html` se generó SIN capturas embebidas. La receta full de §36 usa Playwright para capturas reales, pero el `browser_screenshot` del MCP integrado no persiste el PNG ([[feedback_screenshots_no_persisten_browser_mcp]]) y montar Playwright es setup pesado. Para módulos **analíticos/simples** (dashboards de lectura, pocas pantallas), un manual de texto + tablas + diagramas de flujo con el estilo ZARIS canónico es claro y suficiente — entregable sin el setup de capturas. Reservar el manual con capturas para flujos operativos multi-paso donde "ver la pantalla" agrega valor real (Reclamos, OT, Trámites).
 
 ### Próximos manuales sugeridos (no obligatorios)
 
@@ -3035,13 +2682,6 @@ Hook no-bloqueante que crea el `encuesta_envio` al pasar un reclamo a 'Resuelto'
 **Verificado LOCAL (2026-05-24):** 3 mails reales a `cesarzarini@hotmail.com` vía `enviar_mail_raise` (message_id `f48d01b6-...`) y `enviar_mail` (`9d5618bd-...`). El 403 inicial (subdominio mal) confirmó de paso el manejo de errores: `ResendError` con status+body, `enviar_mail` → False, sin silenciar.
 
 **Verificado PROD end-to-end (2026-05-24):** se disparó el dispatcher de encuestas en Railway (`POST /api/v1/admin/encuestas/dispatcher/ejecutar` con header `X-Dispatcher-Token`) → `{"procesados":1,"exitosos":1,"fallidos":0}`. El envío `id=3` (que venía con **2 intentos fallidos bajo SMTP** — los timeouts) pasó a `estado='enviada'` + `fecha_envio` poblada en el 3er intento, ya con Resend. Mail recibido OK. **El bloqueo SMTP de Railway quedó resuelto.** `ultimo_error_envio` NO se limpia al tener éxito (queda el texto del último fallo como histórico — no es bug). Ver memoria [[reference_railway_bloquea_egress_smtp]].
-
-### Sanitización de PII en logs (Ley 25.326)
-- Helper centralizado: `app.utils.log_helpers.mask_email()`
-- Formato: `<primer_char>***@<dominio>` (3 asteriscos fijos para no leakear longitud)
-- Aplicado en `services/email.py` (sender central usado por encuestas, notificaciones, trámites y App Vecinos — los 4 logs de `to=` enmascarados)
-- Tokens de encuestas: helper local `_tok()` en `encuestas_service.py` (consistente con el patrón)
-- Smoke test: `backend/scripts/test_mask_email.py`
 
 ### Sanitización de PII en logs (Ley 25.326)
 - Helper centralizado: `app.utils.log_helpers.mask_email()`
