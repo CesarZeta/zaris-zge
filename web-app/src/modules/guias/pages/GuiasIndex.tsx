@@ -1,4 +1,4 @@
-import { FileText, ClipboardList, Settings, ExternalLink } from 'lucide-react'
+import { FileText, ClipboardList, Settings, BarChart3, ExternalLink } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 interface Guia {
@@ -42,6 +42,14 @@ const GUIAS: Guia[] = [
     htmlName: 'manual_admin_tramites.html',
     audiencia: 'Admin o Supervisor',
     tags: ['Configuración', '12 capturas', '11 secciones'],
+  },
+  {
+    titulo: 'ENCUESTAS (RESULTADOS CSAT)',
+    descripcion: 'Cómo leer los resultados de las encuestas de satisfacción que se envían al cerrar reclamos, y dar seguimiento a los vecinos que pidieron ser contactados.',
+    icon: BarChart3,
+    htmlName: 'manual_encuestas.html',
+    audiencia: 'Supervisor o Admin',
+    tags: ['Operativo', '6 secciones'],
   },
 ]
 
