@@ -538,9 +538,13 @@ Todo frontend de tabla maestro (admin_tablas y módulos independientes como usua
 Debajo del panel van los últimos registros ingresados (vista previa). El patrón está implementado en `admin_tablas.html` (`renderVistaPrevia`) y en `usuarios.html`. **No** usar solo botones sueltos — siempre agrupar en el panel celeste.
 
 ### Tablas actualmente configuradas
-`agentes`, `equipos`, `equipo_usuarios`, `equipo_agentes`, `servicios`, `tipo_usuario`, `cargos`, `area`, `subarea`, `usuarios`, `tipo_reclamo`, `tipo_representacion`, `actividades`, `nacionalidades`, `estado_reclamo`, `estado_ot`, `configuracion_general`, `lugares_atencion`, `agenda_clase`, `agenda_feriado`.
+`agentes`, `equipos`, `equipo_usuarios`, `equipo_agentes`, `servicios`, `tipo_usuario`, `cargos`, `area`, `subarea`, `tipo_reclamo`, `tipo_representacion`, `actividades`, `nacionalidades`, `estado_reclamo`, `estado_ot`, `configuracion_general`, `lugares_atencion`, `agenda_clase`, `agenda_feriado`.
 
 > `reclamos_area` y `reclamos_subarea` fueron eliminadas de admin_tablas en migración 20. El módulo Reclamos usa las tablas generales `area` y `subarea`.
+
+> **`usuarios` es READ-ONLY en admin_tablas (sesión 2026-05-26).** GET sigue habilitado (selects FK de otras tablas: `agentes.id_usuario`), pero POST/PUT/DELETE devuelven **403** (`READ_ONLY_TABLES` en `admin_tablas.py`). Usuarios se administra SOLO desde su pantalla propia `frontend/usuarios.html` (hashea password + audita login). El ítem "Usuarios" se quitó del sidebar de Maestros y el `SCHEMAS.usuarios` del front.
+
+> **Form de `agentes` es INLINE, no modal (sesión 2026-05-26).** `INLINE_FORM_TABLES = {agentes}` en `admin_tablas.html`: el form se renderiza en el flujo de la página (`#inlineForm`, fuera de `#main` para sobrevivir el re-render de `cargarTabla`), no en el modal genérico. Motivo: el agente crece en campos. Incluye sección "Horario de asistencia" (franjas Lun-Dom bitmask + hora inicio/fin) que escribe en `disponibilidad_recurso` (tipo_recurso=agente) vía `/api/v1/agenda/disponibilidad` — alimenta la disponibilidad efectiva del agente en Agenda (§27). El resto de tablas siguen con el modal genérico.
 
 ## 17. Slash Commands del Proyecto
 
@@ -791,9 +795,9 @@ class Equipo(Base):
 
 > **El detalle histórico de cada migración (qué hace, cuándo se aplicó, snapshots de backup) vive en [`HISTORIAL_MIGRACIONES.md`](HISTORIAL_MIGRACIONES.md)** (raíz del repo). Acá queda solo el resumen vigente. **No confiar en esta doc como fuente de verdad** — antes de codear algo schema-dependent, verificar el estado real con `execute_sql` (regla §24).
 
-**Estado general:** migraciones 20-60 aplicadas en local Y prod (Supabase) sin divergencia conocida al 2026-05-25. La numeración 51 está duplicada (`51_notificaciones.sql` + `51_tramites_tipo_dato_direccion.sql`, ambas aplicadas) — cualquier mig nueva debe usar 61+.
+**Estado general:** migraciones 20-64 aplicadas en local Y prod (Supabase) sin divergencia conocida al 2026-05-26. La numeración 51 está duplicada (`51_notificaciones.sql` + `51_tramites_tipo_dato_direccion.sql`, ambas aplicadas) — **cualquier mig nueva debe usar 65+**. Migs 62-64 (sesión 2026-05-26): 62 `usuarios.fecha_ultimo_login` + tabla `usuario_login_log` (auditoría de accesos); 63 `agentes.cuil`; 64 índice UNIQUE parcial `agentes.id_usuario WHERE NOT NULL` (regla 1:1 agente↔usuario, §39).
 
-**Tablas que YA existen en prod y NO deben re-crearse:** `reclamos`, `reclamo_historial`, `tipo_reclamo`, `estado_reclamo`, `ordenes_trabajo`, `estado_ot` (5 seeds), `equipo_agentes`, `configuracion_general`, todas las de Agenda (migs 30-43), Turnos (45-46), permisos (38/44), trámites (47-50, 56), notificaciones (51), encuestas (57-58, 60), auth público de ciudadanos (52-53), adjuntos de OT (54), `usuarios.id_subarea`/`es_externo` (55). Detalle por mig en `HISTORIAL_MIGRACIONES.md`. Ver memoria [[project_supabase_estado_schema]].
+**Tablas que YA existen en prod y NO deben re-crearse:** `reclamos`, `reclamo_historial`, `tipo_reclamo`, `estado_reclamo`, `ordenes_trabajo`, `estado_ot` (5 seeds), `equipo_agentes`, `configuracion_general`, todas las de Agenda (migs 30-43), Turnos (45-46), permisos (38/44), trámites (47-50, 56), notificaciones (51), encuestas (57-58, 60-61), auth público de ciudadanos (52-53), adjuntos de OT (54), `usuarios.id_subarea`/`es_externo` (55), `usuario_login_log` (62). Detalle por mig en `HISTORIAL_MIGRACIONES.md`. Ver memoria [[project_supabase_estado_schema]].
 
 **Estados de reclamos en prod** (migrados 2026-05-04): `Ingresado→Sin asignar`, `En revisión→En gestión`, `Cerrado→Resuelto`, `Rechazado→Cancelado`. CHECK `ck_reclamo_estado`: `('Sin asignar','En gestión','En espera','En auditoría','Resuelto','Cancelado')`.
 
@@ -2520,6 +2524,14 @@ Funciones nuevas en `services/email.py`: `enviar_mail_activacion_ciudadano` y `e
 > **Ampliado 2026-05-22 (mig 55, §21):** el form ahora tiene **campo subárea predictivo + checkbox "usuario externo"** (subárea obligatoria salvo externo, validado en `schemas/buc.py`). Listado/preview muestran subárea + hay filtro por subárea. Buscador principal y filtro de listado pasan a predictivo en-vivo (debounce). `UsuarioOut` suma `id_subarea`/`subarea_nombre`/`es_externo`. Endpoint nuevo `GET /buc/subareas/buscar` (predictivo).
 
 > **Bugs CRITICAL #1, #2, #3 RESUELTOS y pusheados a prod el 2026-05-22.** Ver "Estado de la deuda" abajo.
+
+> **Rediseño 2026-05-26 (en prod, verificado navegando):**
+> - **Form sin nombre/cargo/CUIL**: el username ES la identidad. `UsuarioCreate.nombre` es opcional; el backend lo iguala al username si no viene (la columna es NOT NULL). El form quedó: usuario, nivel, email, subárea, contraseña. Cargo y CUIL ya NO existen en Usuarios (sí en Agentes).
+> - **Módulos a los que accede**: `UsuarioOut.modulos_permitidos` (resuelto en batch, `_modulos_permitidos_batch` en `buc.py`), mostrados como chips **al lado del Nivel** en el form (no en la previa). En alta nueva derivan del nivel + catálogo (`GET /admin/permisos/modulos`); en consulta/edición son los reales del usuario.
+> - **Auditoría de login** (mig 62): `usuarios.fecha_ultimo_login` + tabla append-only `usuario_login_log` (timestamp + IP + user agent). `POST /auth/login` los escribe (best-effort, no bloquea login; usa `get_real_ip`). Último login se muestra en la previa y en la sección "Actividad" del form. Endpoint `GET /buc/usuarios/{id}/login-log` + modal "Ver historial de accesos". La auditoría se lleva por usuario y, vía la regla 1:1, se audita por agente.
+> - **Regla 1:1 agente↔usuario** (mig 64): el alta de usuario **interno** crea automáticamente su agente vinculado (datos mínimos, en la misma tx de `POST /buc/usuarios`); el **externo** NO. Índice UNIQUE parcial `agentes.id_usuario WHERE NOT NULL` lo refuerza en DB.
+> - **Auto-logout 10 min** (shell `menu.js`): timer global que se reinicia con actividad del shell y del iframe; a los 10 min sin actividad limpia `zaris_session` y va a login.
+> - **Fix flash de login**: el guard de sesión se movió a ser lo PRIMERO del `<head>` de `index.html` (antes de CSS y del script de lucide), para no pintar el shell antes del redirect.
 
 ### Deuda conocida — estado al 2026-05-22
 
