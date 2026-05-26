@@ -10,6 +10,7 @@ import { ciudadanosModule } from './ciudadanos'
 import { empresasModule } from './empresas'
 import { configModule } from './config'
 import { tramitesModule } from './tramites'
+import { encuestasModule } from './encuestas'
 import { guiasModule } from './guias'
 
 // Registrar módulos nuevos acá — el shell los lee automáticamente.
@@ -30,6 +31,7 @@ export const modules: ModuleManifest[] = [
   ciudadanosModule,
   empresasModule,
   tramitesModule,
+  encuestasModule,
   configModule,
   guiasModule,
 ]
