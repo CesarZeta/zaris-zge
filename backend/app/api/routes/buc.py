@@ -47,10 +47,64 @@ _USUARIO_SELECT = """
     SELECT u.id_usuario, u.nombre, u.nivel_acceso, u.username, u.email, u.id_cargo,
            u.id_municipio, u.activo, u.cuil, u.buc_acceso,
            u.id_subarea, s.nombre AS subarea_nombre, u.es_externo,
-           u.fecha_alta, u.fecha_modif
+           u.fecha_alta, u.fecha_modif, u.fecha_ultimo_login
     FROM usuarios u
     LEFT JOIN subarea s ON s.id_subarea = u.id_subarea
 """
+
+
+async def _modulos_permitidos_batch(db: AsyncSession, usuarios: list[dict]) -> None:
+    """Puebla in-place `modulos_permitidos` en cada dict de usuario.
+
+    Resuelve el modelo híbrido §30 (default por min_nivel_acceso + overrides
+    por usuario) para un lote, con 2 queries totales en vez de 2×N.
+    """
+    if not usuarios:
+        return
+
+    # 1. Defaults por nivel: para cada nivel presente, los módulos cuyo
+    #    min_nivel_acceso >= nivel.
+    cat = await db.execute(text(
+        "SELECT modulo_codigo, min_nivel_acceso FROM modulos WHERE activo = TRUE"
+    ))
+    catalogo = [(r.modulo_codigo, r.min_nivel_acceso) for r in cat.fetchall()]
+
+    # 2. Overrides de todos los usuarios del lote.
+    ids = [u["id_usuario"] for u in usuarios]
+    ov = await db.execute(text(
+        "SELECT id_usuario, modulo_codigo, permitido FROM usuario_modulos "
+        "WHERE activo = TRUE AND id_usuario = ANY(:ids)"
+    ), {"ids": ids})
+    overrides: dict[int, dict[str, bool]] = {}
+    for r in ov.fetchall():
+        overrides.setdefault(r.id_usuario, {})[r.modulo_codigo] = r.permitido
+
+    for u in usuarios:
+        nivel = u["nivel_acceso"]
+        permitidos = {cod for cod, minn in catalogo if minn >= nivel}
+        for cod, ok in overrides.get(u["id_usuario"], {}).items():
+            if ok:
+                permitidos.add(cod)
+            else:
+                permitidos.discard(cod)
+        u["modulos_permitidos"] = sorted(permitidos)
+
+
+@router.get("/usuarios/{id}/login-log")
+async def historial_logins(
+    id: int,
+    limit: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    """Historial de accesos (auditoría) de un usuario, más reciente primero."""
+    r = await db.execute(text("""
+        SELECT id_login_log, fecha_login, ip, user_agent
+        FROM usuario_login_log
+        WHERE id_usuario = :id
+        ORDER BY fecha_login DESC
+        LIMIT :lim
+    """), {"id": id, "lim": limit})
+    return [dict(row._mapping) for row in r.fetchall()]
 
 
 @router.get("/usuarios/buscar", response_model=list[UsuarioOut])
@@ -70,7 +124,9 @@ async def buscar_usuario(
     r = await db.execute(text(
         _USUARIO_SELECT + f" WHERE {cond} ORDER BY u.nombre OFFSET :off LIMIT :lim"
     ), {"q": f"%{q}%", "off": offset, "lim": limit})
-    return [dict(row._mapping) for row in r.fetchall()]
+    rows = [dict(row._mapping) for row in r.fetchall()]
+    await _modulos_permitidos_batch(db, rows)
+    return rows
 
 
 @router.get("/usuarios", response_model=list[UsuarioOut])
@@ -81,7 +137,9 @@ async def listar_usuarios(
     """Listar usuarios del sistema (para selector modificado_por)."""
     where = " WHERE u.activo = TRUE" if solo_activos else ""
     r = await db.execute(text(_USUARIO_SELECT + where + " ORDER BY u.nombre"))
-    return [dict(row._mapping) for row in r.fetchall()]
+    rows = [dict(row._mapping) for row in r.fetchall()]
+    await _modulos_permitidos_batch(db, rows)
+    return rows
 
 
 @router.get("/usuarios/{id}", response_model=UsuarioOut)
@@ -91,7 +149,9 @@ async def obtener_usuario(id: int, db: AsyncSession = Depends(get_db)):
     row = r.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    return dict(row._mapping)
+    d = dict(row._mapping)
+    await _modulos_permitidos_batch(db, [d])
+    return d
 
 
 @router.get("/subareas/buscar")
@@ -130,6 +190,11 @@ async def crear_usuario(
 
     data_dict = data.model_dump()
     data_dict["password_hash"] = bcrypt.hashpw(data_dict.pop("password").encode(), bcrypt.gensalt()).decode()
+
+    # `nombre` es NOT NULL en la DB pero el form ya no lo captura: el usuario ES
+    # la identidad. Si no vino, lo igualamos al username.
+    if not (data_dict.get("nombre") or "").strip():
+        data_dict["nombre"] = data.username
 
     # Email: si no viene, autogenerar <username>@municipio.gob.ar. /auth/login busca
     # por email, así que un usuario sin email nunca podría loguearse (BUG-USU-03).

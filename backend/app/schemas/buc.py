@@ -57,7 +57,10 @@ def _validar_email_fmt(valor: str) -> str:
 # ═══════════════════════════════════════════════════════════════
 
 class UsuarioCreate(BaseModel):
-    nombre:       str = Field(..., max_length=150)
+    # El usuario (username) es la identidad de la cuenta — el form ya no captura
+    # un "nombre completo" aparte. `nombre` es opcional: si no viene, el endpoint
+    # lo iguala al username (la columna es NOT NULL en la DB).
+    nombre:       Optional[str] = Field(None, max_length=150)
     nivel_acceso: int = Field(..., ge=1, le=4)
     username:     str = Field(..., max_length=50, pattern=r"^[a-zA-Z0-9_.\-]+$")
     password:     str = Field(..., min_length=8, max_length=100)
@@ -124,6 +127,11 @@ class UsuarioOut(BaseModel):
     es_externo:   bool
     fecha_alta:   datetime
     fecha_modif:  datetime
+    fecha_ultimo_login: Optional[datetime] = None
+    # Códigos de módulo a los que el usuario tiene acceso (modelo híbrido §30).
+    # Solo lo poblan los endpoints de consulta (listar/buscar/obtener); las
+    # mutaciones lo dejan en [] porque la UI recarga la lista tras guardar.
+    modulos_permitidos: list[str] = []
 
     class Config:
         from_attributes = True

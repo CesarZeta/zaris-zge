@@ -5,6 +5,64 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const NIVELES = { 1: 'Administrador', 2: 'Supervisor', 3: 'Operador', 4: 'Consultor' };
 
+    // Etiquetas legibles para los códigos de módulo (catálogo §30).
+    const MODULO_LABEL = {
+        reclamos: 'Reclamos', padrones: 'Padrones', agenda: 'Agenda',
+        turnos: 'Turnos', entradas: 'Entradas', tramites: 'Trámites',
+        encuestas: 'Encuestas', usuarios: 'Usuarios', admin_tablas: 'Maestros',
+        ot_agente: 'OT·Agente', ot_supervisor: 'OT·Supervisor', ot_auditoria: 'OT·Auditoría',
+        guias: 'Guías',
+    };
+
+    // Renderiza los módulos permitidos como chips. Devuelve HTML escapado.
+    function modChips(mods) {
+        const arr = Array.isArray(mods) ? mods : [];
+        if (!arr.length) return '<span class="mod-chip mod-chip--none">sin acceso</span>';
+        return arr.map(c => `<span class="mod-chip">${esc(MODULO_LABEL[c] || c)}</span>`).join('');
+    }
+
+    // Fecha+hora legible (es-AR) para "último login". Null → "Nunca".
+    function fmtFechaHora(iso) {
+        if (!iso) return 'Nunca';
+        const d = new Date(iso);
+        if (isNaN(d)) return '—';
+        return d.toLocaleString('es-AR', {
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit',
+        });
+    }
+
+    // Catálogo de módulos (modulo_codigo → min_nivel_acceso) para previsualizar,
+    // al cambiar el nivel en el form, qué módulos otorgaría por defecto. Los
+    // overrides por usuario no se ven acá (el form no los edita); el detalle de
+    // un usuario cargado usa sus modulos_permitidos reales (ya resueltos).
+    let _modCatalogo = null;
+    async function cargarModCatalogo() {
+        if (_modCatalogo) return _modCatalogo;
+        try {
+            const data = await ZUtils.apiFetch('/admin/permisos/modulos', { base: 'root' });
+            _modCatalogo = data.filter(m => m.activo !== false)
+                .map(m => ({ codigo: m.modulo_codigo, min: m.min_nivel_acceso }));
+        } catch (_) { _modCatalogo = []; }
+        return _modCatalogo;
+    }
+
+    // Pinta los chips de acceso en el form. Si hay un usuario cargado usa sus
+    // módulos reales; si no (alta nueva), deriva del nivel elegido + catálogo.
+    async function renderModulosAcceso() {
+        const chips = $('usr-modulos-chips');
+        if (!chips) return;
+        if (state.usuario && Array.isArray(state.usuario.modulos_permitidos)) {
+            chips.innerHTML = modChips(state.usuario.modulos_permitidos);
+            return;
+        }
+        const nivel = parseInt($('usr-nivel').value);
+        if (!nivel) { chips.innerHTML = '<span class="mod-chip mod-chip--none">elegí un nivel</span>'; return; }
+        const cat = await cargarModCatalogo();
+        const mods = cat.filter(m => m.min >= nivel).map(m => m.codigo).sort();
+        chips.innerHTML = modChips(mods);
+    }
+
     // ── State ──────────────────────────────────────────────────────────────────
     const state = {
         modo:    null,   // 'nuevo' | 'edicion' | 'consulta'
@@ -172,6 +230,21 @@ document.addEventListener('DOMContentLoaded', () => {
     $('usr-password').addEventListener('input', pistaPassword);
     $('usr-password-confirm').addEventListener('input', pistaPassword);
 
+    // Al cambiar el nivel en alta nueva, refrescar los módulos que otorgaría.
+    $('usr-nivel').addEventListener('change', () => {
+        if (state.modo === 'nuevo') renderModulosAcceso();
+    });
+
+    // Historial de accesos (auditoría)
+    $('btn-ver-historial').addEventListener('click', abrirHistorial);
+    $('btn-cerrar-historial').addEventListener('click', cerrarHistorial);
+    $('historial-overlay').addEventListener('click', (e) => {
+        if (e.target === $('historial-overlay')) cerrarHistorial();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && $('historial-overlay').style.display === 'flex') cerrarHistorial();
+    });
+
     $('search-query').focus();
     cargarVistaPrevia();
 
@@ -214,8 +287,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (usuarios.length === 1) {
             const u = usuarios[0];
-            name.textContent   = u.nombre;
-            detail.textContent = `${u.username} — ${NIVELES[u.nivel_acceso] || 'Nivel ' + u.nivel_acceso} — ${u.activo ? 'Activo' : 'Inactivo'}`;
+            name.textContent   = u.username;
+            detail.textContent = `${NIVELES[u.nivel_acceso] || 'Nivel ' + u.nivel_acceso} — ${u.es_externo ? 'Externo' : (u.subarea_nombre || 'Sin subárea')} — ${u.activo ? 'Activo' : 'Inactivo'}`;
             btnE.style.display = 'inline-flex';
             btnC.style.display = 'inline-flex';
             btnE.onclick = () => cargarUsuario(u.id_usuario, 'edicion');
@@ -231,9 +304,8 @@ document.addEventListener('DOMContentLoaded', () => {
             row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border-primary);';
             row.innerHTML = `
                 <span style="font-size:0.88rem;">
-                    <strong>${esc(u.nombre)}</strong>
-                    <span style="color:var(--fg-2);margin-left:8px;">${esc(u.username)}</span>
-                    <span style="color:var(--fg-3);margin-left:6px;font-size:0.78rem;">${NIVELES[u.nivel_acceso] || ''}</span>
+                    <strong>${esc(u.username)}</strong>
+                    <span style="color:var(--fg-3);margin-left:8px;font-size:0.78rem;">${NIVELES[u.nivel_acceso] || ''}</span>
                     ${!u.activo ? '<span style="color:var(--color-error);font-size:0.75rem;margin-left:6px;">[Inactivo]</span>' : ''}
                 </span>
                 <span style="display:flex;gap:6px;">
@@ -264,12 +336,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Formulario ─────────────────────────────────────────────────────────────
     function poblarFormulario(u) {
         $('usr-id').value              = u.id_usuario || '';
-        $('usr-nombre').value          = u.nombre     || '';
         $('usr-username').value        = u.username   || '';
         $('usr-email').value           = u.email      || '';
         $('usr-nivel').value           = u.nivel_acceso || '';
-        $('usr-cargo').value           = u.id_cargo   || '';
-        $('usr-cuil').value            = u.cuil       || '';
         $('usr-buc-acceso').checked    = u.buc_acceso || false;
         $('usr-externo').checked       = u.es_externo || false;
         setSubareaSeleccionada(u.id_subarea ?? null, u.subarea_nombre, null);
@@ -279,6 +348,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const badge = $('activo-badge');
         badge.textContent  = u.activo ? 'Activo' : 'Inactivo';
         badge.className    = u.activo ? 'badge-activo' : 'badge-inactivo';
+        // Módulos a los que accede (al lado del nivel) + último login (al final).
+        renderModulosAcceso();
+        $('ultimo-login-row').style.display = 'block';
+        $('usr-ultimo-login').textContent   = fmtFechaHora(u.fecha_ultimo_login);
         revalidarGuardar();
     }
 
@@ -300,8 +373,10 @@ document.addEventListener('DOMContentLoaded', () => {
         $('btn-baja').style.display      = 'none';
         $('btn-reactivar').style.display = 'none';
         $('btn-cancelar').textContent    = 'Cancelar';
+        $('ultimo-login-row').style.display = 'none';  // un alta nueva nunca inició sesión
+        renderModulosAcceso();
         revalidarGuardar();
-        $('usr-nombre').focus();
+        $('usr-username').focus();
     }
 
     function activarModoEdicion() {
@@ -338,7 +413,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function setFieldsDisabled(dis) {
-        ['usr-nombre','usr-username','usr-email','usr-nivel','usr-cargo','usr-cuil',
+        ['usr-username','usr-email','usr-nivel',
          'usr-buc-acceso','usr-externo','usr-subarea-q','usr-password','usr-password-confirm'].forEach(id => {
             const el = $(id); if (el) el.disabled = dis;
         });
@@ -347,7 +422,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function resetFormulario() {
-        ['usr-id','usr-nombre','usr-username','usr-email','usr-cargo','usr-cuil',
+        ['usr-id','usr-username','usr-email',
          'usr-password','usr-password-confirm'].forEach(id => { const el=$(id); if(el) el.value=''; });
         $('usr-nivel').value      = '';
         $('usr-buc-acceso').checked = false;
@@ -364,7 +439,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function handleCancelar() {
         if (state.modo === 'nuevo') {
-            const tieneData = $('usr-nombre').value || $('usr-username').value || $('usr-password').value;
+            const tieneData = $('usr-username').value || $('usr-email').value || $('usr-password').value;
             if (tieneData) {
                 const ok = await ZUtils.confirm('Cancelar alta', '¿Descartar los datos ingresados?');
                 if (!ok) return;
@@ -382,7 +457,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const showErr = (id, msg) => { const el=$(id); if(el){el.textContent=msg;el.style.display='block';} };
 
-        if (!$('usr-nombre').value.trim())    { showErr('err-nombre',   'El nombre es requerido'); ok=false; }
         if (!$('usr-username').value.trim())  { showErr('err-username', 'El nombre de usuario es requerido'); ok=false; }
         else if (!/^[a-zA-Z0-9_.\-]+$/.test($('usr-username').value.trim()))
             { showErr('err-username', 'Solo letras, números, puntos y guiones'); ok=false; }
@@ -401,10 +475,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (pass && pass !== cf) { showErr('err-password-confirm', 'Las contraseñas no coinciden'); ok=false; }
 
-        if ($('usr-cuil').value.trim()) {
-            const cuil = $('usr-cuil').value.replace(/[-\s]/g,'');
-            if (!/^\d{11}$/.test(cuil)) { showErr('err-cuil', 'El CUIL debe contener 11 dígitos'); ok=false; }
-        }
         return ok;
     }
 
@@ -414,10 +484,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const externo = $('usr-externo').checked;
         const payload = {
-            nombre:       $('usr-nombre').value.trim(),
             nivel_acceso: parseInt($('usr-nivel').value),
-            id_cargo:     $('usr-cargo').value.trim() || null,
-            cuil:         $('usr-cuil').value.replace(/[-\s]/g,'') || null,
             buc_acceso:   $('usr-buc-acceso').checked,
             es_externo:   externo,
             id_subarea:   externo ? null : (parseInt($('usr-subarea').value) || null),
@@ -436,7 +503,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 cargarVistaPrevia();
                 ZUtils.modalGuardado(
                     'Usuario creado',
-                    `${u.nombre} (${u.username}) fue registrado correctamente.`,
+                    `El usuario ${u.username} fue registrado correctamente.`,
                     activarModoNuevo
                     // onSalir omitido: usa _zarisGoInicio() (shell vanilla → dashboard)
                 );
@@ -460,8 +527,8 @@ document.addEventListener('DOMContentLoaded', () => {
     async function cambiarEstado(nuevoActivo) {
         const titulo = nuevoActivo ? 'Reactivar usuario' : 'Dar de baja usuario';
         const msg    = nuevoActivo
-            ? `¿Reactivar a ${state.usuario.nombre}?`
-            : `¿Dar de baja a ${state.usuario.nombre}? No podrá iniciar sesión.`;
+            ? `¿Reactivar al usuario ${state.usuario.username}?`
+            : `¿Dar de baja al usuario ${state.usuario.username}? No podrá iniciar sesión.`;
         const ok = await ZUtils.confirm(titulo, msg, {
             cancelLabel:  'Cancelar',
             confirmLabel: nuevoActivo ? 'Sí, reactivar' : 'Sí, dar de baja',
@@ -483,6 +550,36 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // ── Historial de accesos (auditoría) ─────────────────────────────────────────
+    async function abrirHistorial() {
+        if (!state.usuario) return;
+        const u = state.usuario;
+        $('historial-title').textContent = `Historial de accesos — ${u.username}`;
+        $('historial-body').innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--fg-3);">Cargando...</td></tr>';
+        $('historial-empty').style.display = 'none';
+        $('historial-overlay').style.display = 'flex';
+        try {
+            const data = await ZUtils.apiFetch(`/usuarios/${u.id_usuario}/login-log?limit=50`);
+            if (!data.length) {
+                $('historial-body').innerHTML = '';
+                $('historial-empty').style.display = 'block';
+                return;
+            }
+            $('historial-body').innerHTML = data.map(l => `
+                <tr>
+                    <td class="mono">${esc(fmtFechaHora(l.fecha_login))}</td>
+                    <td class="mono">${esc(l.ip || '—')}</td>
+                    <td style="max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(l.user_agent || '')}">${esc(l.user_agent || '—')}</td>
+                </tr>`).join('');
+        } catch (err) {
+            $('historial-body').innerHTML = `<tr><td colspan="3" style="color:var(--color-error);">Error: ${esc(err.message)}</td></tr>`;
+        }
+    }
+
+    function cerrarHistorial() {
+        $('historial-overlay').style.display = 'none';
+    }
+
     // ── Vista previa ───────────────────────────────────────────────────────────
     async function cargarVistaPrevia() {
         const container = $('preview-rows');
@@ -490,9 +587,11 @@ document.addEventListener('DOMContentLoaded', () => {
         container.innerHTML = '<div style="color:var(--fg-3);font-size:0.82rem;padding:0.5rem 0;">Cargando...</div>';
         try {
             const data = await ZUtils.apiFetch('/usuarios?solo_activos=false');
-            // Ordenar por id desc (más alto = más reciente) y tomar primeros 5
+            // Ordenar por última actividad (fecha_modif desc) → muestra tanto
+            // los recién ingresados como los recién modificados. Fallback a id.
+            const ts = u => Date.parse(u.fecha_modif || u.fecha_alta || '') || (u.id_usuario || 0);
             const recientes = [...data]
-                .sort((a, b) => (b.id_usuario || 0) - (a.id_usuario || 0))
+                .sort((a, b) => ts(b) - ts(a))
                 .slice(0, 5);
 
             if (recientes.length === 0) {
@@ -500,12 +599,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            // El usuario ES la identidad (no mostramos nombre/cargo/cuil): username
+            // como label principal + nivel + subárea + último login + estado. Los
+            // módulos a los que accede NO van acá — se ven en el detalle, al lado
+            // del nivel.
             container.innerHTML = recientes.map(u => `
                 <div class="preview-row" data-id="${u.id_usuario}">
-                    <span class="preview-row__nombre">${esc(u.nombre)}</span>
-                    <span class="preview-row__username">${esc(u.username)}</span>
+                    <span class="preview-row__nombre">${esc(u.username)}</span>
                     <span class="preview-row__nivel">${NIVELES[u.nivel_acceso] || 'Nivel ' + u.nivel_acceso}</span>
-                    <span class="preview-row__nivel">${u.es_externo ? 'Externo' : esc(u.subarea_nombre || '—')}</span>
+                    <span class="preview-row__nivel" style="flex:1;min-width:0;">${u.es_externo ? 'Externo' : esc(u.subarea_nombre || '—')}</span>
+                    <span class="preview-row__nivel" title="Último inicio de sesión">↪ ${fmtFechaHora(u.fecha_ultimo_login)}</span>
                     <span class="preview-row__estado preview-row__estado--${u.activo ? 'activo' : 'inactivo'}">${u.activo ? 'Activo' : 'Inactivo'}</span>
                     <span class="preview-row__cta">Ver →</span>
                 </div>
@@ -569,9 +672,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const hast = $('lst-hasta').value   || '';
 
         if (txt) rows = rows.filter(u =>
-            (u.nombre        || '').toLowerCase().includes(txt) ||
             (u.username      || '').toLowerCase().includes(txt) ||
-            (u.cuil          || '').includes(txt) ||
             (u.subarea_nombre|| '').toLowerCase().includes(txt)
         );
         if (niv) rows = rows.filter(u => String(u.nivel_acceso) === niv);
@@ -587,8 +688,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if      (ord === 'reciente') rows.sort((a,b) => (b.id_usuario||0)-(a.id_usuario||0));
         else if (ord === 'antiguo')  rows.sort((a,b) => (a.id_usuario||0)-(b.id_usuario||0));
-        else if (ord === 'az')       rows.sort((a,b) => (a.nombre||'').localeCompare(b.nombre||'','es'));
-        else if (ord === 'za')       rows.sort((a,b) => (b.nombre||'').localeCompare(a.nombre||'','es'));
+        else if (ord === 'az')       rows.sort((a,b) => (a.username||'').localeCompare(b.username||'','es'));
+        else if (ord === 'za')       rows.sort((a,b) => (b.username||'').localeCompare(a.username||'','es'));
 
         renderListado(rows);
     }
@@ -615,11 +716,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const bodyRows = rows.map(u => `
             <tr>
-                <td>${esc(u.nombre)}</td>
                 <td class="mono">${esc(u.username)}</td>
                 <td>${NIVELES[u.nivel_acceso] || u.nivel_acceso}</td>
                 <td>${u.es_externo ? '<span style="color:var(--fg-3);font-style:italic;">Externo</span>' : esc(u.subarea_nombre || '—')}</td>
-                <td class="mono">${u.cuil || '—'}</td>
                 <td><span class="badge-${u.activo?'activo':'inactivo'}">${u.activo?'Activo':'Inactivo'}</span></td>
                 <td>
                     <button class="tbl-btn" data-id="${u.id_usuario}" data-modo="consulta">Ver</button>
@@ -631,8 +730,8 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="listado-wrap">
                 <table>
                     <thead><tr>
-                        <th>Nombre</th><th>Usuario</th><th>Nivel</th><th>Subárea</th>
-                        <th>CUIL</th><th>Estado</th><th>Acciones</th>
+                        <th>Usuario</th><th>Nivel</th><th>Subárea</th>
+                        <th>Estado</th><th>Acciones</th>
                     </tr></thead>
                     <tbody>${bodyRows}</tbody>
                 </table>
