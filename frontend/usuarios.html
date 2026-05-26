@@ -167,6 +167,23 @@
         .preview-row__estado--activo   { background: rgba(31,138,101,.10); color: var(--color-success); }
         .preview-row__estado--inactivo { background: rgba(207,45,86,.10);  color: var(--color-error); }
         .preview-row__cta { font-size: var(--size-caption); color: var(--zaris-orange); font-weight: 600; white-space: nowrap; opacity: 0; transition: opacity 0.15s; margin-left: auto; }
+
+        /* Chips de módulos a los que accede el usuario */
+        .mod-chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+        .mod-chip {
+            display: inline-block; padding: 1px 8px; border-radius: var(--radius-pill);
+            font-size: 10px; font-weight: 600; letter-spacing: 0.02em;
+            background: var(--surface-300); color: var(--fg-2);
+            border: 1px solid var(--border-primary); white-space: nowrap;
+        }
+        .mod-chip--none { background: transparent; border: none; color: var(--fg-3); font-style: italic; font-weight: 400; }
+
+        /* Caja de módulos a los que accede, al lado del nivel (en el form) */
+        .mod-acceso-box { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+        .mod-acceso-box__label {
+            font-size: var(--size-caption); font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.05em; color: var(--fg-3);
+        }
         .preview-row:hover .preview-row__cta { opacity: 1; }
 
         /* Dropdown predictivo de subárea */
@@ -225,7 +242,7 @@
             <div class="search-box-zaris">
                 <div class="form-zaris-group" style="margin-bottom:0;flex:1;">
                     <input type="text" class="search-panel-zaris__input" id="search-query"
-                           placeholder="Ingresá nombre o usuario..." autofocus>
+                           placeholder="Ingresá el nombre de usuario..." autofocus>
                 </div>
                 <button class="btn-zaris btn-zaris--primary" id="btn-buscar">Buscar</button>
                 <button class="btn-zaris btn-zaris--accent"  id="btn-nuevo">+ Nuevo</button>
@@ -245,7 +262,7 @@
 
         <!-- ═══════════ VISTA PREVIA ═══════════ -->
         <div class="preview-section" id="preview-section">
-            <div class="preview-label">Últimos usuarios ingresados</div>
+            <div class="preview-label">Últimos usuarios ingresados y modificados</div>
             <div class="preview-rows" id="preview-rows">
                 <div style="color:var(--fg-3);font-size:0.82rem;padding:0.5rem 0;">Cargando...</div>
             </div>
@@ -264,7 +281,7 @@
             <div class="filter-bar">
                 <div class="filter-group">
                     <label>Buscar</label>
-                    <input type="text" id="lst-texto" placeholder="Nombre o usuario...">
+                    <input type="text" id="lst-texto" placeholder="Usuario o subárea...">
                 </div>
                 <div class="filter-group">
                     <label>Nivel</label>
@@ -328,27 +345,11 @@
 
                     <div class="form-zaris-row form-zaris-row--2">
                         <div class="form-zaris-group">
-                            <label class="label-zaris label-zaris--required" for="usr-nombre">Nombre completo</label>
-                            <input type="text" class="input-zaris" id="usr-nombre"
-                                   placeholder="Nombre y apellido" maxlength="150" required>
-                            <div class="input-error-zaris" id="err-nombre"></div>
-                        </div>
-                        <div class="form-zaris-group">
                             <label class="label-zaris label-zaris--required" for="usr-username">Nombre de usuario</label>
                             <input type="text" class="input-zaris" id="usr-username"
                                    placeholder="usuario.ejemplo" maxlength="50" required>
-                            <div class="input-hint-zaris">Solo letras, números, puntos y guiones.</div>
+                            <div class="input-hint-zaris">El usuario es la identidad de la cuenta. Solo letras, números, puntos y guiones.</div>
                             <div class="input-error-zaris" id="err-username"></div>
-                        </div>
-                    </div>
-
-                    <div class="form-zaris-row form-zaris-row--2">
-                        <div class="form-zaris-group">
-                            <label class="label-zaris" for="usr-email">Email</label>
-                            <input type="email" class="input-zaris" id="usr-email"
-                                   placeholder="usuario@municipio.gob.ar" maxlength="150">
-                            <div class="input-hint-zaris">Se usa para iniciar sesión. Si lo dejás vacío, se genera <code>usuario@municipio.gob.ar</code>.</div>
-                            <div class="input-error-zaris" id="err-email"></div>
                         </div>
                         <div class="form-zaris-group">
                             <label class="label-zaris label-zaris--required" for="usr-nivel">Nivel de acceso</label>
@@ -360,20 +361,20 @@
                                 <option value="4">4 — Consultor</option>
                             </select>
                             <div class="input-error-zaris" id="err-nivel"></div>
+                            <div class="mod-acceso-box" id="usr-modulos-box">
+                                <span class="mod-acceso-box__label">Accede a:</span>
+                                <span class="mod-chips" id="usr-modulos-chips"></span>
+                            </div>
                         </div>
                     </div>
 
                     <div class="form-zaris-row form-zaris-row--2">
                         <div class="form-zaris-group">
-                            <label class="label-zaris" for="usr-cargo">Cargo / Rol</label>
-                            <input type="text" class="input-zaris" id="usr-cargo"
-                                   placeholder="Ej: Jefe de Sección" maxlength="100">
-                        </div>
-                        <div class="form-zaris-group">
-                            <label class="label-zaris" for="usr-cuil">CUIL</label>
-                            <input type="text" class="input-zaris" id="usr-cuil"
-                                   placeholder="XX-XXXXXXXX-X" maxlength="13">
-                            <div class="input-error-zaris" id="err-cuil"></div>
+                            <label class="label-zaris" for="usr-email">Email</label>
+                            <input type="email" class="input-zaris" id="usr-email"
+                                   placeholder="usuario@municipio.gob.ar" maxlength="150">
+                            <div class="input-hint-zaris">Se usa para iniciar sesión. Si lo dejás vacío, se genera <code>usuario@municipio.gob.ar</code>.</div>
+                            <div class="input-error-zaris" id="err-email"></div>
                         </div>
                     </div>
 
@@ -433,6 +434,16 @@
                             <div class="input-error-zaris" id="err-password-confirm"></div>
                         </div>
                     </div>
+
+                    <div id="ultimo-login-row" style="display:none;">
+                        <div class="section-title-zaris" style="margin-top:1rem;">Actividad</div>
+                        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:var(--size-mono);color:var(--fg-2);">
+                            <span>Último inicio de sesión:
+                                <strong id="usr-ultimo-login" style="color:var(--fg-1);margin-left:6px;">—</strong>
+                            </span>
+                            <button type="button" class="btn-zaris btn-zaris--ghost btn-zaris--sm" id="btn-ver-historial">Ver historial de accesos</button>
+                        </div>
+                    </div>
                 </form>
             </div>
 
@@ -445,6 +456,25 @@
             </div>
         </div>
     </main>
+
+    <!-- Modal historial de accesos -->
+    <div class="modal-zaris-overlay" id="historial-overlay" style="display:none;">
+        <div class="modal-zaris modal-zaris--lg">
+            <div class="modal-zaris__header">
+                <h3 class="modal-zaris__title" id="historial-title">Historial de accesos</h3>
+                <button class="modal-zaris__close" id="btn-cerrar-historial" aria-label="Cerrar">×</button>
+            </div>
+            <div class="modal-zaris__body">
+                <div class="listado-wrap">
+                    <table>
+                        <thead><tr><th>Fecha y hora</th><th>IP</th><th>Dispositivo</th></tr></thead>
+                        <tbody id="historial-body"></tbody>
+                    </table>
+                </div>
+                <div id="historial-empty" style="display:none;text-align:center;padding:2rem;color:var(--fg-3);">Sin accesos registrados.</div>
+            </div>
+        </div>
+    </div>
 
     <div class="toast-zaris-container" id="toast-container"></div>
 
@@ -462,8 +492,8 @@
       });
     </script>
 
-    <script src="js/config.js?v=20260522c"></script>
+    <script src="js/config.js?v=20260526d"></script>
     <script src="js/validaciones.js?v=20260512"></script>
-    <script src="js/usuarios.js?v=20260526b"></script>
+    <script src="js/usuarios.js?v=20260526f"></script>
 </body>
 </html>

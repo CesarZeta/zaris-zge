@@ -54,7 +54,14 @@ const ZUtils = {
      * Fetch wrapper con manejo de errores
      */
     async apiFetch(endpoint, options = {}) {
-        const url = `${ZARIS_CONFIG.API_BUC}${endpoint}`;
+        // base: 'buc' (default) → prefija API_BUC (/api/v1/buc). 'root' → solo
+        // /api/v1, para endpoints fuera del módulo BUC (ej. admin/permisos).
+        const { base, ...fetchOpts } = options;
+        const prefix = base === 'root'
+            ? `${ZARIS_CONFIG.API_BASE}/${ZARIS_CONFIG.API_VERSION}`
+            : ZARIS_CONFIG.API_BUC;
+        const url = `${prefix}${endpoint}`;
+        options = fetchOpts;
         const session = JSON.parse(localStorage.getItem('zaris_session') || 'null');
         const token = session?.access_token;
         const defaults = {

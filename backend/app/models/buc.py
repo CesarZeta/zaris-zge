@@ -31,6 +31,7 @@ class Usuario(Base):
     es_externo    = Column(Boolean, nullable=False, default=False)
     fecha_alta    = Column(DateTime, nullable=False, server_default=func.now())
     fecha_modif   = Column(DateTime, nullable=False, server_default=func.now())
+    fecha_ultimo_login = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         CheckConstraint("nivel_acceso BETWEEN 1 AND 4", name="ck_usuarios_nivel"),

@@ -82,12 +82,55 @@
     }
   });
 
-  if (btnLogout) {
-    btnLogout.addEventListener('click', function () {
-      localStorage.removeItem('zaris_session');
-      window.location.replace('frontend/login.html');
-    });
+  function _cerrarSesion() {
+    localStorage.removeItem('zaris_session');
+    window.location.replace('frontend/login.html');
   }
+
+  if (btnLogout) {
+    btnLogout.addEventListener('click', _cerrarSesion);
+  }
+
+  // ── Auto-logout por inactividad (10 min) ─────────────────────
+  // Mantener al usuario logueado mientras trabaja, pero cerrar la sesión si
+  // deja el equipo desatendido. El timer se reinicia con cualquier actividad
+  // del shell Y del iframe del módulo (ambos same-origin en prod y local).
+  // Defensa en profundidad: el guard de <head> impide ver el shell sin sesión;
+  // esto cierra la sesión que quedó abierta sin uso.
+  const IDLE_MS = 10 * 60 * 1000;
+  let _idleTimer = null;
+
+  function _resetIdle() {
+    clearTimeout(_idleTimer);
+    _idleTimer = setTimeout(_cerrarSesion, IDLE_MS);
+  }
+
+  const _idleEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'wheel'];
+  _idleEvents.forEach(ev =>
+    document.addEventListener(ev, _resetIdle, { passive: true, capture: true })
+  );
+
+  // El usuario pasa la mayoría del tiempo dentro del iframe del módulo. Sin
+  // escuchar su actividad, lo desloguearíamos aunque esté trabajando. Como el
+  // iframe recarga su contenido al navegar entre módulos, re-enganchamos los
+  // listeners en cada 'load' del iframe. try/catch por si algún módulo futuro
+  // queda cross-origin (entonces solo perdemos la detección fina, no rompe).
+  const _frame = document.getElementById('module-frame');
+  function _engancharIframe() {
+    try {
+      const doc = _frame && _frame.contentWindow && _frame.contentWindow.document;
+      if (!doc) return;
+      _idleEvents.forEach(ev =>
+        doc.addEventListener(ev, _resetIdle, { passive: true, capture: true })
+      );
+    } catch (_) { /* cross-origin: ignorar */ }
+  }
+  if (_frame) {
+    _frame.addEventListener('load', _engancharIframe);
+    _engancharIframe();
+  }
+
+  _resetIdle();
 
   // ── Acordeón ─────────────────────────────────────────────────
   document.querySelectorAll('[data-toggle]').forEach(btn => {

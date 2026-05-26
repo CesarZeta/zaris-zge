@@ -3,7 +3,8 @@ ZARIS API — Endpoints de autenticación.
 POST /api/v1/auth/login  → JWT
 GET  /api/v1/auth/me     → usuario actual
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+import logging
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +18,7 @@ from app.core.auth import (
 )
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
+logger = logging.getLogger("zaris.auth")
 
 
 class LoginRequest(BaseModel):
@@ -31,7 +33,7 @@ class LoginResponse(BaseModel):
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         text("""
             SELECT id_usuario, nombre, email, nivel_acceso, password_hash, activo
@@ -47,6 +49,27 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales no coinciden. Probá de nuevo.",
         )
+
+    # Auditoría de login: actualizar el último login (denormalizado para la UI)
+    # e insertar la fila append-only en usuario_login_log. Best-effort: un fallo
+    # acá no debe impedir el login.
+    try:
+        from app.utils.request_helpers import get_real_ip
+        ip = get_real_ip(request)
+        ua = (request.headers.get("user-agent") or "")[:1000]
+        await db.execute(
+            text("UPDATE usuarios SET fecha_ultimo_login = NOW() WHERE id_usuario = :id"),
+            {"id": user.id_usuario},
+        )
+        await db.execute(
+            text("""INSERT INTO usuario_login_log (id_usuario, ip, user_agent)
+                    VALUES (:id, :ip, :ua)"""),
+            {"id": user.id_usuario, "ip": ip[:64], "ua": ua},
+        )
+        await db.commit()
+    except Exception as exc:  # noqa: BLE001
+        await db.rollback()
+        logger.warning("No se pudo registrar auditoría de login id=%s: %s", user.id_usuario, exc)
 
     token = create_access_token({"sub": str(user.id_usuario)})
     modulos = await modulos_permitidos(db, user.id_usuario, user.nivel_acceso)
