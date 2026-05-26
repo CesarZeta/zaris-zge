@@ -339,6 +339,28 @@
     }
     .btn-cancel:hover { border-color: var(--fg-2); color: var(--fg-1); }
 
+    /* ── Formulario inline (no modal) ── */
+    .inline-form {
+      background: var(--surface-100);
+      border: 1px solid var(--border-primary);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-ambient);
+      margin-top: 1.25rem;
+      overflow: hidden;
+    }
+    .inline-form__header {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--border-primary);
+      background: var(--surface-200);
+    }
+    .inline-form__header h3 { font-size: 1.05rem; font-weight: 700; color: var(--fg-1); margin: 0; }
+    .inline-form__body { padding: 1.5rem; }
+    .inline-form__footer {
+      padding: 1rem 1.5rem;
+      border-top: 1px solid var(--border-primary);
+      display: flex; justify-content: flex-end; gap: 0.75rem;
+    }
+
     /* ── Form fields ── */
     .field { margin-bottom: 1rem; }
     .field label {
@@ -673,6 +695,20 @@
     </div>
   </main>
 
+</div>
+
+<!-- Formulario inline (no modal) para tablas que crecerán en campos (ej: Agentes).
+     Vive FUERA de #main (que se reescribe con innerHTML en cada cargarTabla).
+     Oculto por defecto; se muestra en el flujo de la página en vez del modal. -->
+<div class="inline-form" id="inlineForm" style="display:none;margin:0 1.5rem 1.5rem;">
+  <div class="inline-form__header">
+    <h3 id="inlineFormTitle">Nuevo registro</h3>
+  </div>
+  <div class="inline-form__body" id="inlineFormBody"></div>
+  <div class="inline-form__footer">
+    <button class="btn-cancel" id="btnInlineCancel">Cancelar</button>
+    <button class="btn-primary" id="btnInlineSave">Guardar</button>
+  </div>
 </div>
 
 <!-- Modal formulario -->
@@ -1057,6 +1093,7 @@ async function selectTabla(el) {
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
   el.classList.add('active');
   tablaActual = el.dataset.tabla;
+  cerrarInline();  // no arrastrar el form inline de otra tabla
   await cargarTabla();
 }
 
@@ -1518,8 +1555,8 @@ async function loadFkOptions(fk, fkPk, fkLabel) {
 }
 
 // ── Construir formulario ───────────────────────────────────────
-async function buildForm(schema, record = null) {
-  const body = document.getElementById('modalBody');
+async function buildForm(schema, record = null, bodyId = 'modalBody') {
+  const body = document.getElementById(bodyId);
   body.innerHTML = '<div class="loading"><span class="spinner"></span></div>';
 
   const fkCols = schema.cols.filter(c => c.type === 'select' && c.fk);
@@ -1574,10 +1611,29 @@ async function buildForm(schema, record = null) {
   body.innerHTML = html;
 }
 
-// ── Abrir modales ──────────────────────────────────────────────
+// ── Abrir formulario (modal genérico o inline según la tabla) ──────────────────
+// Tablas que usan el formulario INLINE (no modal) porque van a crecer en campos.
+const INLINE_FORM_TABLES = new Set(['agentes']);
+const _usaInline = () => INLINE_FORM_TABLES.has(tablaActual);
+
+function _abrirInline() {
+  document.getElementById('inlineForm').style.display = 'block';
+  document.getElementById('inlineForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function cerrarInline() {
+  document.getElementById('inlineForm').style.display = 'none';
+  document.getElementById('inlineFormBody').innerHTML = '';
+}
+
 async function abrirNuevo() {
   editId = null;
   const schema = SCHEMAS[tablaActual];
+  if (_usaInline()) {
+    document.getElementById('inlineFormTitle').textContent = `Nuevo ${schema.label}`;
+    _abrirInline();
+    await buildForm(schema, null, 'inlineFormBody');
+    return;
+  }
   document.getElementById('modalTitle').textContent = `Nuevo ${schema.label}`;
   await buildForm(schema);
   openModal('formModal');
@@ -1586,18 +1642,25 @@ async function abrirNuevo() {
 async function abrirEditar(id) {
   editId = id;
   const schema = SCHEMAS[tablaActual];
-  document.getElementById('modalTitle').textContent = `Editar ${schema.label}`;
-  openModal('formModal');
-  document.getElementById('modalBody').innerHTML = '<div class="loading"><span class="spinner"></span></div>';
+  const inline = _usaInline();
+  const bodyId = inline ? 'inlineFormBody' : 'modalBody';
+  if (inline) {
+    document.getElementById('inlineFormTitle').textContent = `Editar ${schema.label}`;
+    _abrirInline();
+  } else {
+    document.getElementById('modalTitle').textContent = `Editar ${schema.label}`;
+    openModal('formModal');
+  }
+  document.getElementById(bodyId).innerHTML = '<div class="loading"><span class="spinner"></span></div>';
 
   try {
     const res = await fetch(`${API}/${tablaActual}/${id}`, { headers: _authHeaders() });
     if (res.status === 401) { _handleUnauth(); return; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const record = await res.json();
-    await buildForm(schema, record);
+    await buildForm(schema, record, bodyId);
   } catch (e) {
-    closeModal('formModal');
+    if (inline) cerrarInline(); else closeModal('formModal');
     toast(`Error al cargar registro: ${e.message}`, 'err');
   }
 }
@@ -1632,7 +1695,8 @@ async function guardarRegistro() {
     }
   }
 
-  const btn = document.getElementById('btnSave');
+  const inline = _usaInline();
+  const btn = document.getElementById(inline ? 'btnInlineSave' : 'btnSave');
   btn.disabled = true;
   btn.textContent = 'Guardando…';
 
@@ -1648,7 +1712,7 @@ async function guardarRegistro() {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.detail || `HTTP ${res.status}`);
     }
-    closeModal('formModal');
+    if (inline) cerrarInline(); else closeModal('formModal');
     toast(editId ? 'Registro actualizado' : 'Registro creado', 'ok');
     await cargarTabla();
   } catch (e) {
@@ -1694,11 +1758,16 @@ async function confirmarBaja() {
   }
 }
 
+// ── Formulario inline: botones Guardar / Cancelar ──────────────
+document.getElementById('btnInlineSave').addEventListener('click', guardarRegistro);
+document.getElementById('btnInlineCancel').addEventListener('click', cerrarInline);
+
 // ── Atajos de teclado ──────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     closeModal('formModal');
     closeModal('confirmModal');
+    cerrarInline();
   }
 });
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
