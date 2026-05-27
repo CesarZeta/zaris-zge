@@ -167,7 +167,7 @@
   <li><span class="badge baja">Baja</span> Sin urgencia.</li>
 </ul>
 
-<blockquote class="info">El reclamo guarda <strong>quién</strong> lo presentó (ciudadano de la BUC), <strong>dónde</strong> ocurre (dirección + lat/lon con mapa) y <strong>qué tipo</strong> es (catalogado para que el sistema sepa qué área se ocupa y cuánto plazo SLA tiene).</blockquote>
+<blockquote class="info">El reclamo guarda <strong>quién</strong> lo presentó (ciudadano de la BUC), <strong>dónde</strong> ocurre (dirección + lat/lon con mapa) y <strong>qué tipo</strong> es (catalogado para que el sistema sepa qué subárea se ocupa y cuánto plazo SLA tiene).</blockquote>
 
 <h2 id="listado">2. El listado de reclamos</h2>
 <p>Al entrar al módulo <strong>Reclamos</strong> ves la pantalla principal con:</p>
@@ -197,7 +197,7 @@
 <ul>
   <li><strong>Buscar</strong>: tipea cualquier parte del número (<code>REC-2026</code>), DNI, apellido o palabras de la descripción. Tiene debounce de 300ms (no consulta en cada tecla).</li>
   <li><strong>Estado</strong>: dropdown con los 6 estados oficiales.</li>
-  <li><strong>Área</strong>: la subárea responsable (Servicios Públicos, Tránsito, Salud…).</li>
+  <li><strong>Área</strong>: filtra por área responsable. <em>Nota:</em> en la columna del tipo, bajo el nombre del reclamo, se muestra la <strong>subárea</strong> responsable (Servicios Públicos, Tránsito, Salud…).</li>
   <li><strong>Prioridad</strong>: Alta / Media / Baja.</li>
 </ul>
 
@@ -215,7 +215,7 @@
 <h3>4.1 Pasos en orden</h3>
 <ol>
   <li><span class="step-num">1</span><strong>Ciudadano</strong>: tipeá DNI, apellido, teléfono o email. Se abre un dropdown con coincidencias de la <strong>Base Única de Ciudadanos (BUC)</strong>. Click en el resultado correcto.</li>
-  <li><span class="step-num">2</span><strong>Tipo de reclamo</strong>: tipeá lo que el ciudadano describe ("bache", "luz", "ruido"). Sale autocomplete con tipos del catálogo. Cada tipo trae automáticamente: área responsable, plazo SLA y duración estimada.</li>
+  <li><span class="step-num">2</span><strong>Tipo de reclamo</strong>: tipeá lo que el ciudadano describe ("bache", "luz", "ruido"). Sale autocomplete con tipos del catálogo. Cada tipo trae automáticamente: subárea responsable, plazo SLA y duración estimada.</li>
   <li><span class="step-num">3</span><strong>Prioridad</strong>: por defecto Media. Cambialo a Alta si es urgente (riesgo, salud).</li>
   <li><span class="step-num">4</span><strong>Canal</strong>: cómo llegó el reclamo. Web, WhatsApp, Teléfono, Presencial, Oficio, App móvil, Otro.</li>
   <li><span class="step-num">5</span><strong>Ubicación</strong>: ver sección siguiente.</li>
@@ -250,7 +250,7 @@
 
 <p>De arriba a abajo:</p>
 <ul>
-  <li><strong>Cabecera</strong>: tipo del reclamo (ej "Bache en calle de adoquines"), número oficial (<code>REC-2026-000022</code>) y área responsable.</li>
+  <li><strong>Cabecera</strong>: tipo del reclamo (ej "Bache en calle de adoquines"), número oficial (<code>REC-2026-000022</code>) y subárea responsable.</li>
   <li><strong>Botones de acción</strong> (arriba a la derecha): Cambiar estado · Editar · Generar subreclamo · Cancelar reclamo · Volver.</li>
   <li><strong>Sección Estado</strong>: estado actual, prioridad, responsable asignado, canal, fecha ingreso, vencimiento SLA.</li>
   <li><strong>Sección Ciudadano</strong>: nombre, DNI/CUIL, teléfono, email.</li>
