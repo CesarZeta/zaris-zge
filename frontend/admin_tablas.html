@@ -1161,6 +1161,10 @@ async function cargarTabla() {
     <div class="loading"><span class="spinner"></span></div>`;
 
   try {
+    // Equipos: precargar nombres de subárea para mostrarlos en el meta (no los días).
+    if (tablaActual === 'equipos') {
+      await loadFkOptions('subarea', 'id_subarea', 'nombre');
+    }
     const res = await fetch(`${API}/${tablaActual}`, { headers: _authHeaders() });
     if (res.status === 401) { _handleUnauth(); return; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1187,6 +1191,13 @@ function composeMeta(row, schema) {
     if (row.email) parts.push(row.email);
     if (row.es_auditor === true) parts.push('Auditor');
     return parts.join(' · ') || null;
+  }
+  // Para equipos (grupos de trámites): mostrar la subárea, no los días de semana.
+  // La subárea es lo relevante del grupo; el horario no aporta acá.
+  if (tablaActual === 'equipos') {
+    if (row.id_subarea == null) return 'Sin subárea';
+    const opt = (fkCache.subarea || []).find(o => String(o.value) === String(row.id_subarea));
+    return opt ? `Subárea: ${opt.label}` : `Subárea #${row.id_subarea}`;
   }
   // Default: segundo display field que no sea el label
   const labelField = schema.display.find(c => !isId(c)) || schema.display[0];
@@ -1218,6 +1229,20 @@ async function renderVistaPrevia(rows, schema) {
     }));
   }
 
+  // Equipos: conteo de integrantes (1 fetch de equipo_agentes, contar por equipo)
+  let integrantesByEquipo = null;
+  if (tablaActual === 'equipos' && recientes.length) {
+    integrantesByEquipo = {};
+    try {
+      const res = await fetch(`${API}/equipo_agentes`, { headers: _authHeaders() });
+      if (res.ok) {
+        (await res.json()).forEach(r => {
+          integrantesByEquipo[r.id_equipo] = (integrantesByEquipo[r.id_equipo] || 0) + 1;
+        });
+      }
+    } catch { /* sin conteo */ }
+  }
+
   const previewHTML = recientes.length === 0
     ? `<div class="empty" style="padding:1.5rem;text-align:center;">Sin registros activos</div>`
     : recientes.map(r => {
@@ -1231,6 +1256,9 @@ async function renderVistaPrevia(rows, schema) {
             ? (n === 1 ? 'subárea' : 'subáreas')
             : (n === 1 ? 'tipo' : 'tipos');
           countBadge = `<span class="count-badge">${n} ${label}</span>`;
+        } else if (integrantesByEquipo) {
+          const n = integrantesByEquipo[pk] || 0;
+          countBadge = `<span class="count-badge">${n} ${n === 1 ? 'integrante' : 'integrantes'}</span>`;
         }
         // configuracion_general: clave + descripcion debajo + valor a la derecha,
         // para que el admin entienda cada parametro sin abrir el editor.
@@ -1649,7 +1677,7 @@ async function buildForm(schema, record = null, bodyId = 'modalBody') {
 
 // ── Abrir formulario (modal genérico o inline según la tabla) ──────────────────
 // Tablas que usan el formulario INLINE (no modal) porque van a crecer en campos.
-const INLINE_FORM_TABLES = new Set(['agentes']);
+const INLINE_FORM_TABLES = new Set(['agentes', 'equipos']);
 const _usaInline = () => INLINE_FORM_TABLES.has(tablaActual);
 
 function _abrirInline() {
@@ -1661,6 +1689,8 @@ function cerrarInline() {
   document.getElementById('inlineFormBody').innerHTML = '';
   _franjasState = [];
   _franjasOriginalIds = [];
+  _integrantesState = [];
+  _integrantesOriginalIds = [];
 }
 
 // ── Horario de asistencia del agente (franjas de disponibilidad_recurso) ──────
@@ -1786,6 +1816,156 @@ async function _sincronizarFranjas(idAgente) {
   }
 }
 
+// ── Integrantes del equipo (relaciones equipo_agentes) ────────────────────────
+// Cada integrante: { id_equipo_agente?, id_agente, nombre }.
+// Al pasar un trámite a un equipo (tipo destinatario 'equipo'), cualquiera de
+// estos agentes lo ve en su bandeja y puede tomarlo/pasarlo (ver Trámites §35).
+let _integrantesState = [];        // integrantes en edición (en memoria)
+let _integrantesOriginalIds = [];  // ids de equipo_agente que ya existían al abrir
+let _agentesCache = null;          // listado completo de agentes (para el buscador)
+
+function _agenteNombre(a) {
+  const ap = (a.apellido || '').trim();
+  const no = (a.nombre || '').trim();
+  const full = [ap, no].filter(Boolean).join(', ');
+  return full || `Agente ${a.id_agente}`;
+}
+
+async function _getAgentes() {
+  if (_agentesCache) return _agentesCache;
+  try {
+    const res = await fetch(`${API}/agentes`, { headers: _authHeaders() });
+    if (res.status === 401) { _handleUnauth(); return []; }
+    if (!res.ok) return [];
+    _agentesCache = await res.json();
+  } catch (_) { _agentesCache = []; }
+  return _agentesCache;
+}
+
+function renderIntegrantesSeccion() {
+  if (tablaActual !== 'equipos') return;
+  const body = document.getElementById('inlineFormBody');
+  let sec = body.querySelector('#integrantesSec');
+  if (!sec) {
+    sec = document.createElement('div');
+    sec.id = 'integrantesSec';
+    sec.className = 'horario-sec';
+    body.appendChild(sec);
+  }
+  const filas = _integrantesState.map(m => `
+    <div class="franja" data-agente="${m.id_agente}" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;">
+      <span>${(_agenteNombre(m)).replace(/</g,'&lt;')}</span>
+      <button type="button" class="franja__del" data-quitar="${m.id_agente}">Quitar</button>
+    </div>`).join('') ||
+    '<p class="horario-sec__hint">Sin integrantes. Buscá y agregá agentes; cualquiera del grupo podrá tomar los trámites pasados a este equipo.</p>';
+  sec.innerHTML = `
+    <div class="horario-sec__title">Integrantes del grupo</div>
+    <div class="horario-sec__hint">Agentes que forman parte de esta mesa. Cuando un trámite se pasa a este equipo, todos sus integrantes lo ven en "Mi bandeja" y cualquiera puede tomarlo.</div>
+    <div class="buc-search" style="position:relative;margin:0.5rem 0;">
+      <input type="text" id="integSearch" class="input" placeholder="Buscar agente por apellido, nombre o legajo…" autocomplete="off" style="width:100%;">
+      <div id="integResults" class="buc-results" style="position:absolute;left:0;right:0;z-index:30;background:var(--surface-100);border:1px solid var(--border-primary);border-radius:var(--radius-md);max-height:240px;overflow:auto;display:none;"></div>
+    </div>
+    <div id="integList">${filas}</div>`;
+
+  // Quitar integrante
+  sec.querySelectorAll('[data-quitar]').forEach(btn => {
+    btn.onclick = () => {
+      const idA = Number(btn.dataset.quitar);
+      _integrantesState = _integrantesState.filter(m => m.id_agente !== idA);
+      renderIntegrantesSeccion();
+    };
+  });
+
+  // Buscador con autocompletar (85 agentes → filtro en cliente con debounce)
+  const input = sec.querySelector('#integSearch');
+  const results = sec.querySelector('#integResults');
+  let _t = null;
+  input.oninput = () => {
+    clearTimeout(_t);
+    _t = setTimeout(async () => {
+      const q = input.value.trim().toLowerCase();
+      if (q.length < 2) { results.style.display = 'none'; return; }
+      const agentes = await _getAgentes();
+      const yaIds = new Set(_integrantesState.map(m => m.id_agente));
+      const match = agentes.filter(a => {
+        if (yaIds.has(a.id_agente)) return false;
+        const hay = `${a.apellido || ''} ${a.nombre || ''} ${a.legajo || ''}`.toLowerCase();
+        return q.split(/\s+/).every(tok => hay.includes(tok));
+      }).slice(0, 20);
+      if (!match.length) {
+        results.innerHTML = '<div class="buc-item" style="padding:.5rem .75rem;color:var(--fg-3);">Sin coincidencias</div>';
+      } else {
+        results.innerHTML = match.map(a =>
+          `<div class="buc-item" data-id="${a.id_agente}" style="padding:.5rem .75rem;cursor:pointer;">${_agenteNombre(a).replace(/</g,'&lt;')}${a.legajo ? ` <span style="color:var(--fg-3);">· leg. ${String(a.legajo).replace(/</g,'&lt;')}</span>` : ''}</div>`
+        ).join('');
+      }
+      results.style.display = 'block';
+      results.querySelectorAll('.buc-item[data-id]').forEach(el => {
+        el.onclick = () => {
+          const a = _agentesCache.find(x => x.id_agente === Number(el.dataset.id));
+          if (a) {
+            _integrantesState.push({ id_agente: a.id_agente, apellido: a.apellido, nombre: a.nombre });
+            input.value = '';
+            results.style.display = 'none';
+            renderIntegrantesSeccion();
+          }
+        };
+      });
+    }, 250);
+  };
+}
+
+async function _cargarIntegrantes(idEquipo) {
+  _integrantesState = [];
+  _integrantesOriginalIds = [];
+  if (!idEquipo) return;
+  try {
+    const [relRes, agentes] = await Promise.all([
+      fetch(`${API}/equipo_agentes`, { headers: _authHeaders() }),
+      _getAgentes(),
+    ]);
+    if (!relRes.ok) return;
+    const rels = (await relRes.json()).filter(r => r.id_equipo === idEquipo);
+    const byId = {};
+    agentes.forEach(a => { byId[a.id_agente] = a; });
+    _integrantesState = rels.map(r => {
+      const a = byId[r.id_agente] || { id_agente: r.id_agente };
+      return { id_equipo_agente: r.id_equipo_agente, id_agente: r.id_agente, apellido: a.apellido, nombre: a.nombre };
+    });
+    _integrantesOriginalIds = _integrantesState.map(m => m.id_equipo_agente).filter(Boolean);
+  } catch (_) { /* sin integrantes */ }
+}
+
+// Sincroniza los integrantes con equipo_agentes para un equipo ya guardado.
+// Re-lee las relaciones reales del equipo, borra (soft-delete) las que se
+// quitaron y crea las nuevas. Re-leer evita depender del state al alta nueva.
+async function _sincronizarIntegrantes(idEquipo) {
+  let reales = [];
+  try {
+    const res = await fetch(`${API}/equipo_agentes`, { headers: _authHeaders() });
+    if (res.ok) reales = (await res.json()).filter(r => r.id_equipo === idEquipo);
+  } catch (_) { /* sigue con reales=[] */ }
+
+  const agentesVivos = new Set(_integrantesState.map(m => m.id_agente));
+  const agentesReales = new Set(reales.map(r => r.id_agente));
+
+  // 1) borrar las relaciones reales cuyo agente ya no está en el state
+  for (const r of reales) {
+    if (!agentesVivos.has(r.id_agente)) {
+      await fetch(`${API}/equipo_agentes/${r.id_equipo_agente}`, { method: 'DELETE', headers: _authHeaders() });
+    }
+  }
+  // 2) crear las del state que no existen como relación real
+  for (const m of _integrantesState) {
+    if (agentesReales.has(m.id_agente)) continue;  // ya vinculado
+    await fetch(`${API}/equipo_agentes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ..._authHeaders() },
+      body: JSON.stringify({ id_equipo: idEquipo, id_agente: m.id_agente }),
+    });
+  }
+}
+
 async function abrirNuevo() {
   editId = null;
   const schema = SCHEMAS[tablaActual];
@@ -1793,8 +1973,13 @@ async function abrirNuevo() {
     document.getElementById('inlineFormTitle').textContent = `Nuevo ${schema.label}`;
     _abrirInline();
     await buildForm(schema, null, 'inlineFormBody');
-    _franjasState = []; _franjasOriginalIds = [];
-    renderHorarioSeccion();
+    if (tablaActual === 'agentes') {
+      _franjasState = []; _franjasOriginalIds = [];
+      renderHorarioSeccion();
+    } else if (tablaActual === 'equipos') {
+      _integrantesState = []; _integrantesOriginalIds = [];
+      renderIntegrantesSeccion();
+    }
     return;
   }
   document.getElementById('modalTitle').textContent = `Nuevo ${schema.label}`;
@@ -1825,6 +2010,9 @@ async function abrirEditar(id) {
     if (inline && tablaActual === 'agentes') {
       await _cargarFranjasAgente(id);
       renderHorarioSeccion();
+    } else if (inline && tablaActual === 'equipos') {
+      await _cargarIntegrantes(id);
+      renderIntegrantesSeccion();
     }
   } catch (e) {
     if (inline) cerrarInline(); else closeModal('formModal');
@@ -1888,6 +2076,15 @@ async function guardarRegistro() {
       if (idAgente) {
         try { await _sincronizarFranjas(idAgente); }
         catch (e2) { toast(`Agente guardado, pero falló el horario: ${e2.message}`, 'err'); }
+      }
+    }
+
+    // Equipos: sincronizar integrantes con equipo_agentes.
+    if (tablaActual === 'equipos') {
+      const idEquipo = editId || saved.id_equipo;
+      if (idEquipo) {
+        try { await _sincronizarIntegrantes(idEquipo); }
+        catch (e2) { toast(`Equipo guardado, pero falló la sincronización de integrantes: ${e2.message}`, 'err'); }
       }
     }
 
