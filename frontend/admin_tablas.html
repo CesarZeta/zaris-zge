@@ -1936,9 +1936,9 @@ function renderIntegrantesSeccion() {
     body.appendChild(sec);
   }
   const filas = _integrantesState.map(m => `
-    <div class="franja" data-agente="${m.id_agente}" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;">
+    <div class="integ-row" data-agente="${m.id_agente}" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:6px 0;border-bottom:1px solid var(--border-primary);">
       <span>${(_agenteNombre(m)).replace(/</g,'&lt;')}</span>
-      <button type="button" class="franja__del" data-quitar="${m.id_agente}">Quitar</button>
+      <button type="button" class="integ-row__del" data-quitar="${m.id_agente}">Quitar</button>
     </div>`).join('') ||
     '<p class="horario-sec__hint">Sin integrantes. Buscá y agregá agentes; cualquiera del grupo podrá tomar los trámites pasados a este equipo.</p>';
   sec.innerHTML = `
