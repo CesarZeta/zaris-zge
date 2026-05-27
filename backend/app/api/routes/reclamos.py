@@ -197,6 +197,29 @@ async def catalogo_areas(
     return [dict(r._mapping) for r in result.fetchall()]
 
 
+# ── GET /reclamos/catalogo/subareas ──────────────────────────────────────────
+
+@router.get("/catalogo/subareas")
+async def catalogo_subareas(
+    id_area: Optional[int] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    cond = ["s.activo = TRUE"]
+    params: dict = {}
+    if id_area:
+        cond.append("s.id_area = :id_area")
+        params["id_area"] = id_area
+    result = await db.execute(text(f"""
+        SELECT s.id_subarea, s.nombre, s.id_area, a.nombre AS area_nombre
+        FROM subarea s
+        LEFT JOIN area a ON a.id_area = s.id_area
+        WHERE {' AND '.join(cond)}
+        ORDER BY s.nombre
+    """), params)
+    return [dict(r._mapping) for r in result.fetchall()]
+
+
 # ── GET /reclamos/catalogo/tipos ─────────────────────────────────────────────
 
 @router.get("/catalogo/tipos")
@@ -240,6 +263,7 @@ async def catalogo_tipos(
 async def listar_reclamos(
     estado: Optional[str] = Query(None),
     id_area: Optional[int] = Query(None),
+    id_subarea: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
     texto: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=500),
@@ -258,6 +282,11 @@ async def listar_reclamos(
         # puede estar NULL en reclamos viejos. Ver feedback_area_via_subarea_no_via_r_id_area.
         conds.append("s.id_area = :id_area")
         params["id_area"] = id_area
+    if id_subarea:
+        # Subárea fuente única: tr.id_subarea derivada del tipo (§27). r.id_subarea
+        # puede estar NULL en reclamos viejos.
+        conds.append("tr.id_subarea = :id_subarea")
+        params["id_subarea"] = id_subarea
     if prioridad:
         conds.append("r.prioridad = :prioridad")
         params["prioridad"] = prioridad

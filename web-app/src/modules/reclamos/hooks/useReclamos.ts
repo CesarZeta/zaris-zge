@@ -6,6 +6,7 @@ import {
   crearSubreclamo,
   editarReclamo,
   getCatalogoAreas,
+  getCatalogoSubareas,
   getCatalogoTipos,
   getStats,
   listarAdjuntos,
@@ -19,6 +20,14 @@ const HORA = 60 * 60 * 1000
 // ── Catalogos ──
 export function useAreasCatalogo() {
   return useQuery({ queryKey: ['reclamos', 'areas'], queryFn: getCatalogoAreas, staleTime: HORA })
+}
+
+export function useSubareasCatalogo(id_area?: number) {
+  return useQuery({
+    queryKey: ['reclamos', 'subareas', id_area ?? 'all'],
+    queryFn: () => getCatalogoSubareas({ id_area }),
+    staleTime: HORA,
+  })
 }
 
 export function useTiposCatalogo(id_area?: number) {
@@ -42,6 +51,7 @@ export function useStats() {
 export interface FiltrosReclamos {
   estado?: string
   id_area?: number
+  id_subarea?: number
   prioridad?: string
   texto?: string
   limit?: number
