@@ -75,3 +75,45 @@ async def borrar_objeto(path: str, bucket: str | None = None) -> None:
     url = f"{settings.SUPABASE_URL}/storage/v1/object/{bucket}/{path}"
     async with httpx.AsyncClient(timeout=10) as client:
         await client.delete(url, headers=_headers())
+
+
+async def subir_objeto(
+    path: str,
+    contenido: bytes,
+    content_type: str,
+    bucket: str | None = None,
+) -> None:
+    """Sube un binario al bucket directamente desde el backend (service_role).
+
+    Usado cuando el backend necesita ver el binario (ej: calcular SHA256 para
+    firmas en Trámites), a diferencia del flujo signed-upload donde el cliente
+    sube directo. `x-upsert: true` permite re-subir el mismo path sin error.
+    """
+    _check_config()
+    bucket = bucket or settings.SUPABASE_ADJUNTOS_BUCKET
+    url = f"{settings.SUPABASE_URL}/storage/v1/object/{bucket}/{path}"
+    headers = {**_headers(), "Content-Type": content_type, "x-upsert": "true"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.post(url, headers=headers, content=contenido)
+    if r.status_code not in (200, 201):
+        raise HTTPException(
+            status_code=502,
+            detail=f"Storage upload error: {r.status_code} {r.text}",
+        )
+
+
+async def descargar_objeto(path: str, bucket: str | None = None) -> bytes:
+    """Descarga el binario del bucket (service_role). Lanza 404 si no existe."""
+    _check_config()
+    bucket = bucket or settings.SUPABASE_ADJUNTOS_BUCKET
+    url = f"{settings.SUPABASE_URL}/storage/v1/object/{bucket}/{path}"
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.get(url, headers=_headers())
+    if r.status_code == 404:
+        raise HTTPException(status_code=404, detail="Archivo no encontrado en storage")
+    if r.status_code != 200:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Storage download error: {r.status_code} {r.text}",
+        )
+    return r.content

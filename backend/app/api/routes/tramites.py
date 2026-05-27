@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
-from fastapi.responses import FileResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1789,15 +1788,13 @@ async def descargar_documento(
     if not doc:
         raise HTTPException(404, "Documento no encontrado")
 
-    ruta = svc_docs.ruta_absoluta_mock(doc.storage_path)
-    if not ruta.exists():
-        raise HTTPException(500, "Archivo no encontrado en disco")
-
-    return FileResponse(
-        path=str(ruta),
-        media_type=doc.mime_type,
-        filename=doc.nombre_archivo_original,
-        content_disposition_type="inline",
+    contenido = await svc_docs.descargar_bytes(doc.storage_path)  # 404 si no existe en bucket
+    return Response(
+        content=contenido,
+        media_type=doc.mime_type or "application/octet-stream",
+        headers={
+            "Content-Disposition": f'inline; filename="{doc.nombre_archivo_original or "documento"}"',
+        },
     )
 
 

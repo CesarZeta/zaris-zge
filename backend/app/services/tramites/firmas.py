@@ -10,8 +10,10 @@ from fastapi import HTTPException, Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import hashlib
+
 from app.services.tramites.auth import es_admin
-from app.services.tramites.documentos import calcular_sha256_streaming_mock, ruta_absoluta_mock
+from app.services.tramites.documentos import descargar_bytes
 
 
 async def agente_puede_firmar(
@@ -148,19 +150,16 @@ async def verificar_integridad_documento(
     tramite_documento: dict,
 ) -> str:
     """
-    Recalcula SHA256 del archivo en disco y lo compara con el almacenado.
-    Lanza HTTPException 500 si hay corrupcion.
+    Recalcula SHA256 del archivo en el bucket y lo compara con el almacenado.
+    Lanza HTTPException 500 si hay corrupcion (404 si el objeto no existe).
     Devuelve el hash actual (para guardarlo al firmar).
     """
     storage_path = tramite_documento.get("storage_path")
     if not storage_path:
         raise HTTPException(500, "El documento no tiene storage_path registrado")
 
-    ruta = ruta_absoluta_mock(storage_path)
-    if not ruta.exists():
-        raise HTTPException(500, "Archivo no encontrado en disco — posible corrupcion")
-
-    hash_actual = calcular_sha256_streaming_mock(ruta)
+    contenido = await descargar_bytes(storage_path)  # 404 si no existe en bucket
+    hash_actual = hashlib.sha256(contenido).hexdigest()
     hash_original = tramite_documento.get("hash_sha256")
 
     if hash_original and hash_actual != hash_original:
