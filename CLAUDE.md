@@ -921,6 +921,15 @@ Para listados de tablas padre cuyo dataset cabe en pantalla (ej: ≤ 50 áreas, 
 ### Modal anidado para alta inline
 Cuando un form requiere referenciar una entidad que podría no existir aún (ej: ciudadano en reclamo), **modal anidado completo** con todos los campos requeridos por el `Create` schema. Z-index mayor al modal padre. ESC y click-fuera priorizan cerrar el modal anidado primero. No "form rápido relajado" — respetar siempre el schema completo.
 
+### Identificador técnico se autocompleta desde la etiqueta visible (auto-slug)
+Cuando un form pide al usuario cargar **un identificador técnico** (snake_case, código, slug — cosas que el usuario municipal no conoce) **junto a** una etiqueta visible/legible, el identificador **debe autocompletarse desde la etiqueta** y no exigir que el usuario lo tipee a mano.
+
+- **Patrón:** la etiqueta visible va **primero** en el form. Su `onChange` deriva el identificador con un helper `aSnakeCase` (NFD + `replace(/\p{Diacritic}/gu,'')` para tildes, lowercase, `[^a-z0-9]+`→`_`, trim de `_`, prefijo `_` si arranca con dígito). Un `useRef` marca si el usuario editó el identificador a mano: mientras no lo haya tocado, se re-deriva en cada cambio de etiqueta; una vez editado, se respeta lo suyo (pero siempre normalizado).
+- **Validación en vivo, no al submit:** indicador ✓/✕ + borde verde/rojo al costado del input, hint **siempre visible** que aclara la restricción en lenguaje llano ("solo minúsculas, números y guión bajo, **sin espacios**"), y botón Guardar deshabilitado mientras el identificador sea inválido. NO dejar que el usuario complete todo el form y recién al guardar le tire un error en rojo al pie (mala UX, cazada en QA 2026-05-27).
+- **Listas de opciones (`seleccion`/`seleccion_multiple`):** editar con **filas {Etiqueta visible, Valor interno}** + botón "+ Agregar opción" y quitar, NO un textarea con formato `valor|Etiqueta` (conocimiento técnico que el usuario no tiene). El valor interno se autocompleta desde la etiqueta de cada opción con el mismo `aSnakeCase`. Internamente sigue produciendo el mismo `opciones_jsonb` `[{valor,etiqueta}]`.
+- **Implementado en:** `web-app/src/modules/tramites/admin/modals/CampoModal.tsx` (nombre interno del campo + valores de opción). Referencia canónica para cualquier form futuro con identificadores técnicos.
+- **Modales de edición con muchos campos: cierre seguro.** El click-outside debe exigir `mousedown` Y `mouseup` sobre el overlay (no un solo `onClick`), sino arrastrar para seleccionar texto en un input y soltar sobre el fondo cierra el modal y se pierde lo cargado. Patrón en `web-app/src/modules/tramites/admin/modals/_modalShell.tsx` (cazado en QA 2026-05-27, BUG-02). El modal anidado de alta (arriba) sí prioriza cerrar con click-fuera porque es un overlay rápido; este matiz aplica a modales de carga larga.
+
 ### Listados de maestros — contador visible
 - En vista preview (5 últimos): badge naranja al lado del nombre con `N hijos` (cuando aplique).
 - En listado completo: usar el panel inline para mostrar el conteo en su título (`SUBÁREAS ASOCIADAS (4)`), **no duplicar** badges en la celda nombre.
@@ -2281,6 +2290,8 @@ CRUD completo del catálogo de tipos vía UI React. Antes solo se podía vía `s
 **UI integrada como tab "Tipos de trámite"** en `TramitesLayout` (visible solo `nivel <= 2` vía `useAuthStore.hasPermission(2)`). La pestaña se llamó "Configuración" hasta 2026-05-22, pero ese nombre sugería config del sistema; renombrada a "Tipos de trámite" (pestaña + breadcrumb + título). Las rutas internas siguen siendo `/tramites/config` por compat (solo cambió el label visible).
 
 **Acceso:** `/tramites/config` (lista) + `/tramites/config/:idTipo` (editor).
+
+**Mejoras de UX del editor de campos (hallazgos QA 2026-05-27, commits `32e0ed6`+`4b967a5`):** el `CampoModal` autocompleta el nombre interno desde la etiqueta visible (auto-slug, ver §23), valida en vivo con indicador ✓/✕, edita las opciones de `seleccion`/`seleccion_multiple` con filas {Etiqueta, Valor} en vez del textarea `valor|Etiqueta`, y `_modalShell` ya no cierra al arrastrar texto fuera del modal (click-outside exige mousedown+mouseup sobre el overlay). La lista de campos tiene botones ↑↓ (`useReordenarCampo`, intercambia `orden` vía 2 PUT). BUG-01 "Failed to fetch" del reporte era blip transitorio de Railway (§9), no código.
 
 ### Listado admin de tipos + leyenda Sistema/Custom + Publicado/Borrador (2026-05-22)
 
