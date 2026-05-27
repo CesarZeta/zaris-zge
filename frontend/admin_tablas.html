@@ -2147,6 +2147,12 @@ async function guardarRegistro() {
     return;
   }
 
+  // Equipos nuevos: setear municipio (mono-municipio §38). Sin esto el endpoint
+  // /tramites/destinatarios filtra por municipio y la mesa no aparece en el pase.
+  if (tablaActual === 'equipos' && !editId && !data.id_municipio) {
+    data.id_municipio = 1;
+  }
+
   const inline = _usaInline();
   const btn = document.getElementById(inline ? 'btnInlineSave' : 'btnSave');
   btn.disabled = true;

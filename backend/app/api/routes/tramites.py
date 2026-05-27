@@ -420,23 +420,27 @@ async def listar_destinatarios_pase(
     por nombre.
     """
     like = f"%{q}%" if q else None
+    # id_municipio puede ser NULL en filas con drift de datos (seeds viejos sin
+    # municipio). Aceptamos NULL para no ocultar mesas/agentes/subareas válidos
+    # del selector de pase — mismo criterio que BI (§43). De lo contrario una
+    # mesa sin municipio nunca aparecería como destino de un pase.
     agentes = (await db.execute(text("""
         SELECT a.id_agente AS id, a.apellido || ', ' || a.nombre AS nombre, sa.nombre AS subarea_nombre
         FROM agentes a
         LEFT JOIN subarea sa ON sa.id_subarea = a.id_subarea
-        WHERE a.activo = TRUE AND a.id_municipio = :mun
+        WHERE a.activo = TRUE AND (a.id_municipio = :mun OR a.id_municipio IS NULL)
           AND (CAST(:q AS text) IS NULL OR (a.apellido || ', ' || a.nombre) ILIKE :q)
         ORDER BY a.apellido, a.nombre LIMIT 50
     """), {"mun": id_municipio, "q": like})).fetchall()
     equipos = (await db.execute(text("""
         SELECT id_equipo AS id, nombre FROM equipos
-        WHERE activo = TRUE AND id_municipio = :mun
+        WHERE activo = TRUE AND (id_municipio = :mun OR id_municipio IS NULL)
           AND (CAST(:q AS text) IS NULL OR nombre ILIKE :q)
         ORDER BY nombre LIMIT 50
     """), {"mun": id_municipio, "q": like})).fetchall()
     subareas = (await db.execute(text("""
         SELECT id_subarea AS id, nombre FROM subarea
-        WHERE activo = TRUE AND id_municipio = :mun
+        WHERE activo = TRUE AND (id_municipio = :mun OR id_municipio IS NULL)
           AND (CAST(:q AS text) IS NULL OR nombre ILIKE :q)
         ORDER BY nombre LIMIT 50
     """), {"mun": id_municipio, "q": like})).fetchall()
@@ -1504,9 +1508,11 @@ async def pase_tramite(
     if not puede:
         raise HTTPException(403, motivo)
 
+    # Validación de destino tolerante a id_municipio NULL (drift de datos, §43):
+    # una mesa/agente/subarea sin municipio igual debe poder recibir el pase.
     if body.destinatario_tipo == "subarea":
         dest_row = (await db.execute(
-            text("SELECT id_subarea FROM subarea WHERE id_subarea=:id AND activo=TRUE AND id_municipio=:mun LIMIT 1"),
+            text("SELECT id_subarea FROM subarea WHERE id_subarea=:id AND activo=TRUE AND (id_municipio=:mun OR id_municipio IS NULL) LIMIT 1"),
             {"id": body.destinatario_id, "mun": tramite["id_municipio"]},
         )).fetchone()
         if not dest_row:
@@ -1514,7 +1520,7 @@ async def pase_tramite(
         nuevo_sa, nuevo_eq, nuevo_ag = body.destinatario_id, None, None
     elif body.destinatario_tipo == "equipo":
         dest_row = (await db.execute(
-            text("SELECT id_equipo FROM equipos WHERE id_equipo=:id AND activo=TRUE AND id_municipio=:mun LIMIT 1"),
+            text("SELECT id_equipo FROM equipos WHERE id_equipo=:id AND activo=TRUE AND (id_municipio=:mun OR id_municipio IS NULL) LIMIT 1"),
             {"id": body.destinatario_id, "mun": tramite["id_municipio"]},
         )).fetchone()
         if not dest_row:
@@ -1522,7 +1528,7 @@ async def pase_tramite(
         nuevo_sa, nuevo_eq, nuevo_ag = None, body.destinatario_id, None
     elif body.destinatario_tipo == "agente":
         dest_row = (await db.execute(
-            text("SELECT id_agente FROM agentes WHERE id_agente=:id AND activo=TRUE AND id_municipio=:mun LIMIT 1"),
+            text("SELECT id_agente FROM agentes WHERE id_agente=:id AND activo=TRUE AND (id_municipio=:mun OR id_municipio IS NULL) LIMIT 1"),
             {"id": body.destinatario_id, "mun": tramite["id_municipio"]},
         )).fetchone()
         if not dest_row:

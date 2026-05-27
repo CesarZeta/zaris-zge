@@ -72,14 +72,17 @@ async def seed():
                 id_equipo = eq["id_equipo"]
                 await db.execute(
                     "UPDATE equipos SET activo=TRUE, descripcion=$2, id_subarea=$3, "
-                    "fecha_modificacion=NOW() WHERE id_equipo=$1",
+                    "id_municipio=COALESCE(id_municipio, 1), fecha_modificacion=NOW() "
+                    "WHERE id_equipo=$1",
                     id_equipo, descripcion, id_subarea,
                 )
                 print(f"[OK]  equipo existente reactivado: '{nombre_equipo}' (id={id_equipo})")
             else:
+                # id_municipio=1: sin esto, el endpoint /tramites/destinatarios (que
+                # filtra por municipio) NO mostraría la mesa en el selector de pase.
                 row = await db.fetchrow(
-                    "INSERT INTO equipos (nombre, descripcion, id_subarea, activo) "
-                    "VALUES ($1, $2, $3, TRUE) RETURNING id_equipo",
+                    "INSERT INTO equipos (nombre, descripcion, id_subarea, id_municipio, activo) "
+                    "VALUES ($1, $2, $3, 1, TRUE) RETURNING id_equipo",
                     nombre_equipo, descripcion, id_subarea,
                 )
                 id_equipo = row["id_equipo"]
