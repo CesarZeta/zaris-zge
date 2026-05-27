@@ -65,8 +65,13 @@ async def agente_puede_ejecutar_transicion(
 
     if "roles" in quien:
         roles = quien["roles"]
-        ok = "supervisor" in roles and es_admin(agente_info["nivel_acceso"])
-        checks.append((ok, "Solo supervisores pueden ejecutar esta accion"))
+        # Mapeo rol -> nivel_acceso máximo (§3): el agente cumple si su nivel
+        # alcanza (<=) el de ALGUNO de los roles pedidos. Ej: roles=["supervisor"]
+        # lo cumple admin(1) y supervisor(2); roles=["operador"] lo cumple 1,2,3.
+        ROL_NIVEL = {"administrador": 1, "admin": 1, "supervisor": 2, "operador": 3, "consultor": 4}
+        niveles_pedidos = [ROL_NIVEL[r] for r in roles if r in ROL_NIVEL]
+        ok = bool(niveles_pedidos) and agente_info["nivel_acceso"] <= max(niveles_pedidos)
+        checks.append((ok, f"Tu rol no alcanza el requerido {roles}"))
 
     if not checks:
         return True, None
