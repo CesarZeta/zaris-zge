@@ -157,6 +157,19 @@ export function useEliminarCampo() {
   })
 }
 
+/** Reordena dos campos intercambiando su `orden` (BUG-05: botones ↑↓).
+ *  Reusa el PUT de campo: 2 requests, 1 sola invalidación. */
+export function useReordenarCampo() {
+  const inv = useInvalidarCatalogo()
+  return useMutation({
+    mutationFn: async (args: { aId: number; aOrden: number; bId: number; bOrden: number }) => {
+      await actualizarCampo(args.aId, { orden: args.bOrden })
+      await actualizarCampo(args.bId, { orden: args.aOrden })
+    },
+    onSuccess: () => inv(),
+  })
+}
+
 /* ── Estados ─────────────────────────────────────────── */
 
 export function useCrearEstado() {

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  ArrowLeft, Plus, Edit2, Trash2, Send, Archive, FilePlus,
+  ArrowLeft, Plus, Edit2, Trash2, Send, Archive, FilePlus, ChevronUp, ChevronDown,
 } from 'lucide-react'
 import { Button, Card, Badge, Skeleton, EmptyState } from '../../../../ui'
 import {
@@ -12,6 +12,7 @@ import {
   useArchivarVersion,
   useEliminarTipo,
   useEliminarCampo,
+  useReordenarCampo,
   useEliminarEstado,
   useEliminarTransicion,
   useEliminarDocReq,
@@ -71,6 +72,7 @@ export function ConfigTramiteDetalle() {
   const archivar = useArchivarVersion()
   const eliminarTipoM = useEliminarTipo()
   const eliminarCampoM = useEliminarCampo()
+  const reordenarCampoM = useReordenarCampo()
   const eliminarEstadoM = useEliminarEstado()
   const eliminarTransM = useEliminarTransicion()
   const eliminarDocM = useEliminarDocReq()
@@ -320,9 +322,32 @@ export function ConfigTramiteDetalle() {
               </tr>
             </thead>
             <tbody>
-              {versionData.campos.map((c) => (
+              {[...versionData.campos].sort((a, b) => a.orden - b.orden).map((c, idx, arr) => (
                 <tr key={c.id_tipo_tramite_campo} style={{ borderBottom: '1px solid var(--border-primary)' }}>
-                  <td style={td}>{c.orden}</td>
+                  <td style={td}>
+                    <div style={{ display: 'inline-flex', flexDirection: 'column', verticalAlign: 'middle' }}>
+                      <button
+                        onClick={() => {
+                          const prev = arr[idx - 1]
+                          reordenarCampoM.mutate({ aId: c.id_tipo_tramite_campo, aOrden: c.orden, bId: prev.id_tipo_tramite_campo, bOrden: prev.orden })
+                        }}
+                        disabled={!editable || idx === 0 || reordenarCampoM.isPending}
+                        title="Subir" style={btnOrden}
+                      >
+                        <ChevronUp size={13} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          const next = arr[idx + 1]
+                          reordenarCampoM.mutate({ aId: c.id_tipo_tramite_campo, aOrden: c.orden, bId: next.id_tipo_tramite_campo, bOrden: next.orden })
+                        }}
+                        disabled={!editable || idx === arr.length - 1 || reordenarCampoM.isPending}
+                        title="Bajar" style={btnOrden}
+                      >
+                        <ChevronDown size={13} />
+                      </button>
+                    </div>
+                  </td>
                   <td style={tdMono}>{c.nombre_interno}</td>
                   <td style={td}>{c.etiqueta}</td>
                   <td style={td}>{c.tipo_dato}</td>
@@ -633,4 +658,8 @@ const tdMono: React.CSSProperties = { ...td, fontFamily: 'var(--font-mono)', fon
 const btnIconoMini: React.CSSProperties = {
   background: 'transparent', border: 'none', cursor: 'pointer',
   color: 'var(--fg-2)', padding: 4, borderRadius: 4,
+}
+const btnOrden: React.CSSProperties = {
+  background: 'transparent', border: 'none', cursor: 'pointer',
+  color: 'var(--fg-2)', padding: 0, lineHeight: 0, height: 16,
 }
