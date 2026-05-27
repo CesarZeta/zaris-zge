@@ -316,6 +316,30 @@ async def publicar_version(
     if int(final) < 1:
         raise HTTPException(409, "La version debe tener al menos 1 estado final")
 
+    # Ningún estado no-final puede quedar sin transición de salida: un trámite
+    # caería ahí y no podría avanzar nunca (estado muerto). Cazado en repaso 2026-05-27.
+    muertos = (await db.execute(
+        text("""
+            SELECT e.etiqueta
+            FROM tipo_tramite_estado e
+            WHERE e.id_tipo_tramite_version = :v AND e.activo = TRUE AND e.es_final = FALSE
+              AND NOT EXISTS (
+                SELECT 1 FROM tipo_tramite_transicion t
+                WHERE t.id_tipo_tramite_version = :v AND t.activo = TRUE
+                  AND t.id_estado_origen = e.id_tipo_tramite_estado
+              )
+            ORDER BY e.orden
+        """),
+        {"v": id_version},
+    )).fetchall()
+    if muertos:
+        nombres = ", ".join(m.etiqueta for m in muertos)
+        raise HTTPException(
+            409,
+            f"Estados sin salida (un trámite quedaría atascado): {nombres}. "
+            "Agregá al menos una transición desde cada estado no-final, o marcalo como final.",
+        )
+
     # Archivar version publicada anterior (si la hay)
     anterior = (await db.execute(
         text("""
