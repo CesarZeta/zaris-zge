@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Plus, Edit2, Trash2, Send, Archive, FilePlus, ChevronUp, ChevronDown,
+  Pencil, Eye,
 } from 'lucide-react'
 import { Button, Card, Badge, Skeleton, EmptyState } from '../../../../ui'
 import {
@@ -22,6 +23,7 @@ import { CampoModal } from '../modals/CampoModal'
 import { EstadoModal } from '../modals/EstadoModal'
 import { TransicionModal } from '../modals/TransicionModal'
 import { DocReqModal } from '../modals/DocReqModal'
+import { PreviewFormulario } from '../components/PreviewFormulario'
 import { ConfirmModal } from '../../../agenda/components/ConfirmModal'
 import type {
   TipoTramiteCampo,
@@ -56,6 +58,8 @@ export function ConfigTramiteDetalle() {
 
   // tabs
   const [tab, setTab] = useState<TabKey>('general')
+  // sub-modo de la tab Campos: editar la estructura o previsualizar el form
+  const [modoCampos, setModoCampos] = useState<'editar' | 'preview'>('editar')
 
   // modales
   const [editarTipoAbierto, setEditarTipoAbierto] = useState(false)
@@ -303,6 +307,36 @@ export function ConfigTramiteDetalle() {
       {tab !== 'general' && !versionData && <Skeleton height={200} />}
 
       {tab === 'campos' && versionData && (
+        <>
+          {/* Toggle Editar / Vista previa */}
+          <div style={{ display: 'flex', gap: 6, alignSelf: 'flex-start' }}>
+            <button
+              onClick={() => setModoCampos('editar')}
+              style={{
+                ...toggleBtn,
+                background: modoCampos === 'editar' ? 'var(--zaris-dark)' : 'var(--surface-300)',
+                color: modoCampos === 'editar' ? 'var(--zaris-cream)' : 'var(--fg-1)',
+              }}
+            >
+              <Pencil size={13} /> Editar
+            </button>
+            <button
+              onClick={() => setModoCampos('preview')}
+              style={{
+                ...toggleBtn,
+                background: modoCampos === 'preview' ? 'var(--zaris-dark)' : 'var(--surface-300)',
+                color: modoCampos === 'preview' ? 'var(--zaris-cream)' : 'var(--fg-1)',
+              }}
+            >
+              <Eye size={13} /> Vista previa
+            </button>
+          </div>
+
+          {modoCampos === 'preview' ? (
+            <Card>
+              <PreviewFormulario campos={versionData.campos} nombreTipo={tipoData.nombre} />
+            </Card>
+          ) : (
         <SeccionLista
           titulo="Campos del formulario inicial"
           editable={editable}
@@ -371,6 +405,8 @@ export function ConfigTramiteDetalle() {
             </tbody>
           </table>
         </SeccionLista>
+          )}
+        </>
       )}
 
       {tab === 'estados' && versionData && (
@@ -658,6 +694,12 @@ const tdMono: React.CSSProperties = { ...td, fontFamily: 'var(--font-mono)', fon
 const btnIconoMini: React.CSSProperties = {
   background: 'transparent', border: 'none', cursor: 'pointer',
   color: 'var(--fg-2)', padding: 4, borderRadius: 4,
+}
+const toggleBtn: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: 6,
+  padding: '6px 14px', borderRadius: 'var(--radius-pill)',
+  border: 'none', cursor: 'pointer',
+  fontSize: 13, fontFamily: 'var(--font-display)', fontWeight: 500,
 }
 const btnOrden: React.CSSProperties = {
   background: 'transparent', border: 'none', cursor: 'pointer',
