@@ -53,6 +53,8 @@ export interface ReclamoListado {
   tipo_audit: boolean | null
   id_area: number | null
   area_nombre: string | null
+  id_subarea: number | null
+  subarea_nombre: string | null
   id_agente_asignado: number | null
   agente_nombre: string | null
 }
