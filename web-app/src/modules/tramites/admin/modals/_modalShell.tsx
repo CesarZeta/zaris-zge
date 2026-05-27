@@ -19,7 +19,7 @@ export function ModalShell({
           <h2 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--fg-1)' }}>{titulo}</h2>
           <button onClick={onCerrar} style={cerrarBtn} aria-label="Cerrar">×</button>
         </div>
-        <div style={{ padding: 16 }}>{children}</div>
+        <div style={{ padding: 16, overflowY: 'auto', flex: 1, minHeight: 0 }}>{children}</div>
       </div>
     </div>
   )
