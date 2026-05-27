@@ -278,6 +278,177 @@ async def detalle_tipo_tramite(
 
 
 # ---------------------------------------------------------------------------
+# GET /api/v1/tramites/mi-bandeja  (tramites que me corresponden)
+# ---------------------------------------------------------------------------
+
+@router.get("/mi-bandeja", response_model=TramiteListOut)
+async def mi_bandeja(
+    response: Response,
+    estado_codigo: Optional[str] = Query(None),
+    tipo_codigo: Optional[str] = Query(None),
+    sin_tomar: Optional[bool] = Query(None),
+    q: Optional[str] = Query(None),
+    limit: int = Query(50, le=200),
+    offset: int = Query(0),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Tramites que estan en MI bandeja: destinatario actual = mi subarea, uno de
+    mis equipos (mesa), o yo directamente (agente), o ya tomado por mi.
+    Resuelve los colectivos del agente server-side (no se puede expresar con el
+    filtro destinatario_tipo+id unico de GET /tramites).
+    """
+    agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
+    if not agente:
+        raise HTTPException(403, "El usuario no tiene un agente asociado")
+
+    # Colectivos a los que pertenece el agente
+    bandeja_conds = [
+        "(t.destinatario_actual_tipo='agente' AND t.id_agente_actual = :mi_agente)",
+        "(t.destinatario_actual_tipo='subarea' AND t.id_subarea_actual = :mi_subarea)",
+        "t.id_agente_tomado_por = :mi_agente",
+    ]
+    params: dict[str, Any] = {
+        "mi_agente": agente["id_agente"],
+        "mi_subarea": agente["id_subarea"],
+        "limit": limit, "offset": offset,
+    }
+    if agente["ids_equipos"]:
+        bandeja_conds.append("(t.destinatario_actual_tipo='equipo' AND t.id_equipo_actual = ANY(:mis_equipos))")
+        params["mis_equipos"] = agente["ids_equipos"]
+
+    conditions = [
+        "t.activo = TRUE",
+        "t.id_municipio = :mun",
+        "(" + " OR ".join(bandeja_conds) + ")",
+    ]
+    params["mun"] = agente["id_municipio"]
+
+    if estado_codigo:
+        conditions.append("tte.codigo = :estado_codigo")
+        params["estado_codigo"] = estado_codigo
+    if tipo_codigo:
+        conditions.append("tt.codigo = :tipo_codigo")
+        params["tipo_codigo"] = tipo_codigo
+    if sin_tomar is True:
+        conditions.append("t.id_agente_tomado_por IS NULL")
+    elif sin_tomar is False:
+        conditions.append("t.id_agente_tomado_por IS NOT NULL")
+    if q:
+        conditions.append("(t.asunto ILIKE :q OR t.numero_expediente ILIKE :q)")
+        params["q"] = f"%{q}%"
+
+    where_clause = " AND ".join(conditions)
+
+    total = (await db.execute(text(f"""
+        SELECT COUNT(*) FROM tramite t
+        JOIN tipo_tramite_version ttv ON ttv.id_tipo_tramite_version = t.id_tipo_tramite_version
+        JOIN tipo_tramite tt ON tt.id_tipo_tramite = ttv.id_tipo_tramite
+        JOIN tipo_tramite_estado tte ON tte.id_tipo_tramite_estado = t.id_tipo_tramite_estado_actual
+        WHERE {where_clause}
+    """), params)).scalar() or 0
+
+    rows = (await db.execute(text(f"""
+        SELECT
+            t.id_tramite, t.numero_expediente, t.asunto,
+            tt.codigo AS tipo_codigo, tt.nombre AS tipo_nombre,
+            tte.codigo AS estado_codigo, tte.etiqueta AS estado_etiqueta, tte.color AS estado_color,
+            t.iniciador_tipo,
+            CASE
+                WHEN t.iniciador_tipo = 'ciudadano' THEN c.apellido || ', ' || c.nombre
+                WHEN t.iniciador_tipo = 'empresa' THEN e.nombre
+                WHEN t.iniciador_tipo = 'area_interna' THEN sa_ini.nombre
+            END AS iniciador_nombre,
+            t.destinatario_actual_tipo,
+            CASE
+                WHEN t.destinatario_actual_tipo = 'subarea' THEN sa.nombre
+                WHEN t.destinatario_actual_tipo = 'equipo' THEN eq.nombre
+                WHEN t.destinatario_actual_tipo = 'agente' THEN ag_dst.apellido || ', ' || ag_dst.nombre
+            END AS destinatario_actual_nombre,
+            ag_tom.apellido || ', ' || ag_tom.nombre AS tomado_por_nombre,
+            t.tomado_en, t.fecha_alta, t.fecha_entrada_estado_actual
+        FROM tramite t
+        JOIN tipo_tramite_version ttv ON ttv.id_tipo_tramite_version = t.id_tipo_tramite_version
+        JOIN tipo_tramite tt ON tt.id_tipo_tramite = ttv.id_tipo_tramite
+        JOIN tipo_tramite_estado tte ON tte.id_tipo_tramite_estado = t.id_tipo_tramite_estado_actual
+        LEFT JOIN ciudadanos c ON c.id_ciudadano = t.id_ciudadano_iniciador
+        LEFT JOIN empresas e ON e.id_empresa = t.id_empresa_iniciadora
+        LEFT JOIN subarea sa_ini ON sa_ini.id_subarea = t.id_subarea_iniciadora
+        LEFT JOIN subarea sa ON sa.id_subarea = t.id_subarea_actual
+        LEFT JOIN equipos eq ON eq.id_equipo = t.id_equipo_actual
+        LEFT JOIN agentes ag_dst ON ag_dst.id_agente = t.id_agente_actual
+        LEFT JOIN agentes ag_tom ON ag_tom.id_agente = t.id_agente_tomado_por
+        WHERE {where_clause}
+        ORDER BY t.fecha_alta DESC
+        LIMIT :limit OFFSET :offset
+    """), params)).fetchall()
+
+    now = datetime.now(timezone.utc)
+    items = [
+        TramiteListItem(
+            id_tramite=r.id_tramite, numero_expediente=r.numero_expediente, asunto=r.asunto,
+            tipo_codigo=r.tipo_codigo, tipo_nombre=r.tipo_nombre,
+            estado_codigo=r.estado_codigo, estado_etiqueta=r.estado_etiqueta, estado_color=r.estado_color,
+            iniciador_tipo=r.iniciador_tipo, iniciador_nombre=r.iniciador_nombre,
+            destinatario_actual_tipo=r.destinatario_actual_tipo,
+            destinatario_actual_nombre=r.destinatario_actual_nombre,
+            tomado_por_nombre=r.tomado_por_nombre, tomado_en=r.tomado_en, fecha_alta=r.fecha_alta,
+            dias_en_estado_actual=_dias_entre(r.fecha_entrada_estado_actual, now),
+        )
+        for r in rows
+    ]
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
+    return TramiteListOut(items=items, total=total, limit=limit, offset=offset)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/tramites/destinatarios  (opciones para pase: agentes + equipos)
+# ---------------------------------------------------------------------------
+
+@router.get("/destinatarios")
+async def listar_destinatarios_pase(
+    id_municipio: int = Query(1),
+    q: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Opciones de destino para un pase: agentes (personas) y equipos (mesas) del
+    municipio, mas las subareas. El frontend agrupa por tipo. Filtro `q` opcional
+    por nombre.
+    """
+    like = f"%{q}%" if q else None
+    agentes = (await db.execute(text("""
+        SELECT a.id_agente AS id, a.apellido || ', ' || a.nombre AS nombre, sa.nombre AS subarea_nombre
+        FROM agentes a
+        LEFT JOIN subarea sa ON sa.id_subarea = a.id_subarea
+        WHERE a.activo = TRUE AND a.id_municipio = :mun
+          AND (CAST(:q AS text) IS NULL OR (a.apellido || ', ' || a.nombre) ILIKE :q)
+        ORDER BY a.apellido, a.nombre LIMIT 50
+    """), {"mun": id_municipio, "q": like})).fetchall()
+    equipos = (await db.execute(text("""
+        SELECT id_equipo AS id, nombre FROM equipos
+        WHERE activo = TRUE AND id_municipio = :mun
+          AND (CAST(:q AS text) IS NULL OR nombre ILIKE :q)
+        ORDER BY nombre LIMIT 50
+    """), {"mun": id_municipio, "q": like})).fetchall()
+    subareas = (await db.execute(text("""
+        SELECT id_subarea AS id, nombre FROM subarea
+        WHERE activo = TRUE AND id_municipio = :mun
+          AND (CAST(:q AS text) IS NULL OR nombre ILIKE :q)
+        ORDER BY nombre LIMIT 50
+    """), {"mun": id_municipio, "q": like})).fetchall()
+
+    return {
+        "agentes": [{"id": r.id, "nombre": r.nombre, "subarea_nombre": r.subarea_nombre} for r in agentes],
+        "equipos": [{"id": r.id, "nombre": r.nombre} for r in equipos],
+        "subareas": [{"id": r.id, "nombre": r.nombre} for r in subareas],
+    }
+
+
+# ---------------------------------------------------------------------------
 # GET /api/v1/tramites  (bandeja)
 # ---------------------------------------------------------------------------
 
@@ -390,6 +561,7 @@ async def listar_tramites(
             CASE
                 WHEN t.destinatario_actual_tipo = 'subarea' THEN sa.nombre
                 WHEN t.destinatario_actual_tipo = 'equipo' THEN eq.nombre
+                WHEN t.destinatario_actual_tipo = 'agente' THEN ag_dst.apellido || ', ' || ag_dst.nombre
             END AS destinatario_actual_nombre,
             ag_tom.apellido || ', ' || ag_tom.nombre AS tomado_por_nombre,
             t.tomado_en,
@@ -404,6 +576,7 @@ async def listar_tramites(
         LEFT JOIN subarea sa_ini ON sa_ini.id_subarea = t.id_subarea_iniciadora
         LEFT JOIN subarea sa ON sa.id_subarea = t.id_subarea_actual
         LEFT JOIN equipos eq ON eq.id_equipo = t.id_equipo_actual
+        LEFT JOIN agentes ag_dst ON ag_dst.id_agente = t.id_agente_actual
         LEFT JOIN agentes ag_tom ON ag_tom.id_agente = t.id_agente_tomado_por
         WHERE {where_clause}
         ORDER BY t.fecha_alta DESC
@@ -480,6 +653,7 @@ async def detalle_tramite(
                 CASE
                     WHEN t.destinatario_actual_tipo = 'subarea' THEN sa.nombre
                     WHEN t.destinatario_actual_tipo = 'equipo' THEN eq.nombre
+                    WHEN t.destinatario_actual_tipo = 'agente' THEN ag_dst.apellido || ', ' || ag_dst.nombre
                 END AS destinatario_actual_nombre,
                 ag_tom.apellido || ', ' || ag_tom.nombre AS tomado_por_nombre
             FROM tramite t
@@ -492,6 +666,7 @@ async def detalle_tramite(
             LEFT JOIN ciudadanos cr ON cr.id_ciudadano = t.id_ciudadano_representante
             LEFT JOIN subarea sa ON sa.id_subarea = t.id_subarea_actual
             LEFT JOIN equipos eq ON eq.id_equipo = t.id_equipo_actual
+            LEFT JOIN agentes ag_dst ON ag_dst.id_agente = t.id_agente_actual
             LEFT JOIN agentes ag_tom ON ag_tom.id_agente = t.id_agente_tomado_por
             WHERE {where} AND t.activo = TRUE
         """),
@@ -781,6 +956,7 @@ async def _tramite_detalle_out(id_tramite: int, db: AsyncSession) -> TramiteDeta
                 CASE
                     WHEN t.destinatario_actual_tipo='subarea' THEN sa.nombre
                     WHEN t.destinatario_actual_tipo='equipo' THEN eq.nombre
+                    WHEN t.destinatario_actual_tipo='agente' THEN ag_dst.apellido||', '||ag_dst.nombre
                 END AS destinatario_actual_nombre,
                 ag_tom.apellido||', '||ag_tom.nombre AS tomado_por_nombre
             FROM tramite t
@@ -793,6 +969,7 @@ async def _tramite_detalle_out(id_tramite: int, db: AsyncSession) -> TramiteDeta
             LEFT JOIN ciudadanos cr ON cr.id_ciudadano=t.id_ciudadano_representante
             LEFT JOIN subarea sa ON sa.id_subarea=t.id_subarea_actual
             LEFT JOIN equipos eq ON eq.id_equipo=t.id_equipo_actual
+            LEFT JOIN agentes ag_dst ON ag_dst.id_agente=t.id_agente_actual
             LEFT JOIN agentes ag_tom ON ag_tom.id_agente=t.id_agente_tomado_por
             WHERE t.id_tramite=:id AND t.activo=TRUE
         """),
@@ -1228,6 +1405,7 @@ async def transicionar_tramite(
     nuevo_dest_tipo = tramite.get("destinatario_actual_tipo")
     nuevo_dest_sa = tramite.get("id_subarea_actual")
     nuevo_dest_eq = tramite.get("id_equipo_actual")
+    nuevo_dest_ag = tramite.get("id_agente_actual")
     liberar_toma = es_final
 
     if dest_auto:
@@ -1235,6 +1413,7 @@ async def transicionar_tramite(
         dest_auto_id = dest_auto.get("id")
         nuevo_dest_sa = dest_auto_id if nuevo_dest_tipo == "subarea" else None
         nuevo_dest_eq = dest_auto_id if nuevo_dest_tipo == "equipo" else None
+        nuevo_dest_ag = dest_auto_id if nuevo_dest_tipo == "agente" else None
         liberar_toma = True
 
     update_params: dict[str, Any] = {
@@ -1242,6 +1421,7 @@ async def transicionar_tramite(
         "dest_tipo": nuevo_dest_tipo,
         "dest_sa": nuevo_dest_sa,
         "dest_eq": nuevo_dest_eq,
+        "dest_ag": nuevo_dest_ag,
         "tomado": None if liberar_toma else tramite.get("id_agente_tomado_por"),
         "tomado_en": None if liberar_toma else tramite.get("tomado_en"),
         "uid": current_user["id_usuario"],
@@ -1255,6 +1435,7 @@ async def transicionar_tramite(
                 destinatario_actual_tipo=:dest_tipo,
                 id_subarea_actual=:dest_sa,
                 id_equipo_actual=:dest_eq,
+                id_agente_actual=:dest_ag,
                 id_agente_tomado_por=:tomado,
                 tomado_en=:tomado_en,
                 fecha_modificacion=NOW(),
@@ -1264,8 +1445,8 @@ async def transicionar_tramite(
         update_params,
     )
 
-    orig_jsonb = {"tipo": tramite.get("destinatario_actual_tipo"), "id": tramite.get("id_subarea_actual") or tramite.get("id_equipo_actual")}
-    dest_jsonb = {"tipo": nuevo_dest_tipo, "id": nuevo_dest_sa or nuevo_dest_eq}
+    orig_jsonb = {"tipo": tramite.get("destinatario_actual_tipo"), "id": tramite.get("id_subarea_actual") or tramite.get("id_equipo_actual") or tramite.get("id_agente_actual")}
+    dest_jsonb = {"tipo": nuevo_dest_tipo, "id": nuevo_dest_sa or nuevo_dest_eq or nuevo_dest_ag}
 
     await svc_mov.registrar_movimiento(
         db, id_tramite, "transicion", current_user["id_usuario"], agente["id_agente"],
@@ -1330,7 +1511,7 @@ async def pase_tramite(
         )).fetchone()
         if not dest_row:
             raise HTTPException(404, f"Subarea {body.destinatario_id} no encontrada")
-        nuevo_sa, nuevo_eq = body.destinatario_id, None
+        nuevo_sa, nuevo_eq, nuevo_ag = body.destinatario_id, None, None
     elif body.destinatario_tipo == "equipo":
         dest_row = (await db.execute(
             text("SELECT id_equipo FROM equipos WHERE id_equipo=:id AND activo=TRUE AND id_municipio=:mun LIMIT 1"),
@@ -1338,22 +1519,35 @@ async def pase_tramite(
         )).fetchone()
         if not dest_row:
             raise HTTPException(404, f"Equipo {body.destinatario_id} no encontrado")
-        nuevo_sa, nuevo_eq = None, body.destinatario_id
+        nuevo_sa, nuevo_eq, nuevo_ag = None, body.destinatario_id, None
+    elif body.destinatario_tipo == "agente":
+        dest_row = (await db.execute(
+            text("SELECT id_agente FROM agentes WHERE id_agente=:id AND activo=TRUE AND id_municipio=:mun LIMIT 1"),
+            {"id": body.destinatario_id, "mun": tramite["id_municipio"]},
+        )).fetchone()
+        if not dest_row:
+            raise HTTPException(404, f"Agente {body.destinatario_id} no encontrado")
+        nuevo_sa, nuevo_eq, nuevo_ag = None, None, body.destinatario_id
     else:
-        raise HTTPException(400, "destinatario_tipo debe ser 'subarea' o 'equipo'")
+        raise HTTPException(400, "destinatario_tipo debe ser 'subarea', 'equipo' o 'agente'")
 
-    orig_jsonb = {"tipo": tramite.get("destinatario_actual_tipo"), "id": tramite.get("id_subarea_actual") or tramite.get("id_equipo_actual")}
+    orig_jsonb = {
+        "tipo": tramite.get("destinatario_actual_tipo"),
+        "id": tramite.get("id_subarea_actual") or tramite.get("id_equipo_actual") or tramite.get("id_agente_actual"),
+    }
     dest_jsonb = {"tipo": body.destinatario_tipo, "id": body.destinatario_id}
 
     await db.execute(
         text("""
             UPDATE tramite SET
                 destinatario_actual_tipo=:dt, id_subarea_actual=:sa, id_equipo_actual=:eq,
+                id_agente_actual=:ag,
                 id_agente_tomado_por=NULL, tomado_en=NULL,
                 fecha_modificacion=NOW(), id_usuario_modificacion=:uid
             WHERE id_tramite=:id
         """),
-        {"dt": body.destinatario_tipo, "sa": nuevo_sa, "eq": nuevo_eq, "uid": current_user["id_usuario"], "id": id_tramite},
+        {"dt": body.destinatario_tipo, "sa": nuevo_sa, "eq": nuevo_eq, "ag": nuevo_ag,
+         "uid": current_user["id_usuario"], "id": id_tramite},
     )
     await svc_mov.registrar_movimiento(
         db, id_tramite, "pase", current_user["id_usuario"], agente["id_agente"],

@@ -27,6 +27,27 @@ export const obtenerTipo = (id: number) =>
 export const listarBandeja = (params: BandejaParams) =>
   api.get<{ items: TramiteBandejaItem[]; total: number }>(BASE, { params: params as Record<string, string | number | boolean | null | undefined> })
 
+export const listarMiBandeja = (params?: {
+  estado_codigo?: string
+  tipo_codigo?: string
+  sin_tomar?: boolean
+  q?: string
+  limit?: number
+  offset?: number
+}) =>
+  api.get<{ items: TramiteBandejaItem[]; total: number }>(`${BASE}/mi-bandeja`, {
+    params: params as Record<string, string | number | boolean | null | undefined>,
+  })
+
+export type DestinatariosPase = {
+  agentes: { id: number; nombre: string; subarea_nombre: string | null }[]
+  equipos: { id: number; nombre: string }[]
+  subareas: { id: number; nombre: string }[]
+}
+
+export const listarDestinatariosPase = (q?: string) =>
+  api.get<DestinatariosPase>(`${BASE}/destinatarios`, { params: { q } })
+
 /* ── Detalle y movimientos ───────────────────────────────── */
 
 export const obtenerTramite = (numeroOId: string | number) =>
@@ -64,7 +85,7 @@ export const transicionarTramite = (
 
 export const pasarTramite = (
   numero: string,
-  body: { destinatario_tipo: 'subarea' | 'equipo'; destinatario_id: number; comentario?: string },
+  body: { destinatario_tipo: 'subarea' | 'equipo' | 'agente'; destinatario_id: number; comentario?: string },
 ) => api.post<TramiteDetalle>(`${BASE}/${numero}/pase`, body)
 
 export const comentarTramite = (numero: string, comentario: string) =>

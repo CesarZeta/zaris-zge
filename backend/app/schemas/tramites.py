@@ -287,7 +287,7 @@ class TransicionIn(BaseModel):
 
 
 class PaseIn(BaseModel):
-    destinatario_tipo: str  # subarea | equipo
+    destinatario_tipo: str  # subarea | equipo | agente
     destinatario_id: int
     comentario: Optional[str] = None
 
