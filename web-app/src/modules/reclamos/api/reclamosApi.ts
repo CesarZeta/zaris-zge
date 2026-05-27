@@ -1,6 +1,7 @@
 import { api } from '../../../lib/api'
 import type {
   AreaCatalogo,
+  SubareaCatalogo,
   TipoCatalogo,
   ReclamoListado,
   ReclamoDetalle,
@@ -19,12 +20,16 @@ export const getStats = () =>
 export const getCatalogoAreas = () =>
   api.get<AreaCatalogo[]>(`${BASE}/catalogo/areas`)
 
+export const getCatalogoSubareas = (params: { id_area?: number } = {}) =>
+  api.get<SubareaCatalogo[]>(`${BASE}/catalogo/subareas`, { params })
+
 export const getCatalogoTipos = (params: { id_area?: number; q?: string; limit?: number } = {}) =>
   api.get<TipoCatalogo[]>(`${BASE}/catalogo/tipos`, { params })
 
 export const listarReclamos = (params: {
   estado?: string
   id_area?: number
+  id_subarea?: number
   prioridad?: string
   texto?: string
   limit?: number

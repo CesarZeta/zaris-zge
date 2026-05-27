@@ -1,22 +1,19 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAreasCatalogo, useReclamosListado, type FiltrosReclamos } from '../hooks/useReclamos'
+import { useAreasCatalogo, useSubareasCatalogo, useReclamosListado, type FiltrosReclamos } from '../hooks/useReclamos'
 import { StatsBar } from '../components/StatsBar'
 import { Badge } from '../components/Badge'
-import type { Prioridad } from '../types/reclamo'
 
 const ESTADOS_VALIDOS = [
   'Sin asignar', 'En gestión', 'En espera', 'En auditoría', 'Resuelto', 'Cancelado',
 ] as const
-
-const PRIORIDADES: Prioridad[] = ['Baja', 'Media', 'Alta']
 
 export function ListView() {
   const navigate = useNavigate()
 
   const [estado, setEstado] = useState<string | null>(null)
   const [idArea, setIdArea] = useState<number | null>(null)
-  const [prioridad, setPrioridad] = useState<string | null>(null)
+  const [idSubarea, setIdSubarea] = useState<number | null>(null)
   const [texto, setTexto] = useState('')
   const [textoDebounced, setTextoDebounced] = useState('')
 
@@ -28,16 +25,23 @@ export function ListView() {
   const filtros: FiltrosReclamos = {
     estado: estado ?? undefined,
     id_area: idArea ?? undefined,
-    prioridad: prioridad ?? undefined,
+    id_subarea: idSubarea ?? undefined,
     texto: textoDebounced || undefined,
     limit: 200,
   }
 
   const areas = useAreasCatalogo()
+  const subareas = useSubareasCatalogo(idArea ?? undefined)
   const listado = useReclamosListado(filtros)
 
+  // Si cambia el área y la subárea elegida ya no pertenece a ella, resetearla.
+  useEffect(() => {
+    if (idSubarea == null || subareas.data == null) return
+    if (!subareas.data.some((s) => s.id_subarea === idSubarea)) setIdSubarea(null)
+  }, [subareas.data, idSubarea])
+
   function limpiar() {
-    setEstado(null); setIdArea(null); setPrioridad(null); setTexto('')
+    setEstado(null); setIdArea(null); setIdSubarea(null); setTexto('')
   }
 
   return (
@@ -73,7 +77,7 @@ export function ListView() {
           <label style={filterLabel}>Área</label>
           <select
             value={idArea ?? ''}
-            onChange={(e) => setIdArea(e.target.value ? Number(e.target.value) : null)}
+            onChange={(e) => { setIdArea(e.target.value ? Number(e.target.value) : null); setIdSubarea(null) }}
             disabled={areas.isLoading}
             style={filterInput}
           >
@@ -82,14 +86,15 @@ export function ListView() {
           </select>
         </div>
         <div style={filterGroup}>
-          <label style={filterLabel}>Prioridad</label>
+          <label style={filterLabel}>Subárea</label>
           <select
-            value={prioridad ?? ''}
-            onChange={(e) => setPrioridad(e.target.value || null)}
+            value={idSubarea ?? ''}
+            onChange={(e) => setIdSubarea(e.target.value ? Number(e.target.value) : null)}
+            disabled={subareas.isLoading}
             style={filterInput}
           >
             <option value="">Todas</option>
-            {PRIORIDADES.map((p) => <option key={p} value={p}>{p}</option>)}
+            {(subareas.data ?? []).map((s) => <option key={s.id_subarea} value={s.id_subarea}>{s.nombre}</option>)}
           </select>
         </div>
         <div style={{ display: 'flex', gap: 8, alignSelf: 'flex-end' }}>
@@ -164,13 +169,7 @@ export function ListView() {
                     </span>
                   </Td>
                   <Td>
-                    <span
-                      onClick={(e) => { e.stopPropagation(); setPrioridad(r.prioridad ?? 'Media') }}
-                      title={`Filtrar por prioridad "${r.prioridad ?? 'Media'}"`}
-                      style={badgeClickable}
-                    >
-                      <Badge kind="prioridad" value={r.prioridad ?? 'Media'} />
-                    </span>
+                    <Badge kind="prioridad" value={r.prioridad ?? 'Media'} />
                   </Td>
                   <Td mono style={{ fontSize: '0.78rem' }}>{formatFecha(r.fecha_alta)}</Td>
                   <Td style={{ fontSize: '0.82rem', color: 'var(--fg-2)' }}>{r.agente_nombre || '—'}</Td>
