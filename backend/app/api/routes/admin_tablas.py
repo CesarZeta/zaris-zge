@@ -57,7 +57,7 @@ TABLE_CONFIG: dict[str, dict] = {
     },
     "equipos": {
         "pk": "id_equipo",
-        "cols": ["nombre", "descripcion", "id_subarea", "dias_semana", "hora_inicio", "hora_fin"],
+        "cols": ["nombre", "descripcion", "id_subarea", "tipo_grupo", "dias_semana", "hora_inicio", "hora_fin"],
         "fecha_mod": "fecha_modificacion",
         "col_types": {"hora_inicio": "time", "hora_fin": "time"},
     },
