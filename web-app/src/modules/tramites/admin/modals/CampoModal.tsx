@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Button, Input } from '../../../../ui'
 import { useActualizarCampo, useCrearCampo } from '../hooks'
 import { ModalShell, label, requiredMark, errorMsg, formRow } from './_modalShell'
@@ -26,6 +26,23 @@ const TIPOS_DATO: Array<{ v: TipoDatoCampo; l: string }> = [
 
 const REQUIERE_OPCIONES: TipoDatoCampo[] = ['seleccion', 'seleccion_multiple']
 
+const NOMBRE_INTERNO_RE = /^[a-z][a-z0-9_]{0,49}$/
+
+/**
+ * Convierte una etiqueta visible a snake_case (BUG-07): saca tildes, baja a
+ * minúsculas, reemplaza todo lo no [a-z0-9] por "_", colapsa y recorta. Si
+ * arranca con dígito, le antepone "_". "Tipo de obra" → "tipo_de_obra".
+ */
+function aSnakeCase(texto: string): string {
+  const base = texto
+    .normalize('NFD').replace(/\p{Diacritic}/gu, '') // saca tildes (diacríticos combinantes)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 50)
+  return /^[0-9]/.test(base) ? `_${base}`.slice(0, 50) : base
+}
+
 export function CampoModal({
   idVersion, campo, onCerrar,
 }: {
@@ -36,6 +53,9 @@ export function CampoModal({
   const esNuevo = campo === null
   const [nombreInterno, setNombreInterno] = useState(campo?.nombre_interno ?? '')
   const [etiqueta, setEtiqueta] = useState(campo?.etiqueta ?? '')
+  // BUG-07: mientras el usuario no toque el nombre interno a mano, se autocompleta
+  // desde la etiqueta. Una vez que lo edita manualmente, se respeta lo suyo.
+  const nombreEditadoAMano = useRef(false)
   const [tipoDato, setTipoDato] = useState<TipoDatoCampo>(campo?.tipo_dato ?? 'texto')
   const [obligatorio, setObligatorio] = useState(campo?.obligatorio ?? false)
   const [ayuda, setAyuda] = useState(campo?.ayuda ?? '')
@@ -61,9 +81,14 @@ export function CampoModal({
     })
   }
 
+  // Validez del nombre interno (BUG-03): en alta debe ser snake_case; en edición
+  // es inmutable, así que no se valida.
+  const nombreValido = !esNuevo || NOMBRE_INTERNO_RE.test(nombreInterno)
+  const mostrarEstadoNombre = esNuevo && nombreInterno.length > 0
+
   async function handleGuardar() {
     setError('')
-    if (esNuevo && !/^[a-z][a-z0-9_]{0,49}$/.test(nombreInterno)) {
+    if (esNuevo && !NOMBRE_INTERNO_RE.test(nombreInterno)) {
       setError('Nombre interno debe ser snake_case (a-z, 0-9, _), empezar con letra')
       return
     }
@@ -114,23 +139,60 @@ export function CampoModal({
 
   return (
     <ModalShell titulo={esNuevo ? 'Nuevo campo del formulario' : `Editar campo · ${campo!.nombre_interno}`} onCerrar={onCerrar} ancho={560}>
+      {/* Etiqueta primero: es lo que el usuario piensa naturalmente, y de acá
+          se autocompleta el nombre interno (BUG-07). */}
+      <div style={formRow}>
+        <label style={label}>Etiqueta visible <span style={requiredMark}>*</span></label>
+        <Input
+          value={etiqueta}
+          onChange={(e) => {
+            const val = e.target.value
+            setEtiqueta(val)
+            if (esNuevo && !nombreEditadoAMano.current) setNombreInterno(aSnakeCase(val))
+          }}
+          placeholder="Motivo de la solicitud"
+        />
+      </div>
+
       <div style={formRow}>
         <label style={label}>Nombre interno <span style={requiredMark}>*</span></label>
-        <Input value={nombreInterno} onChange={(e) => setNombreInterno(e.target.value.toLowerCase())} disabled={!esNuevo} placeholder="motivo" style={{ fontFamily: 'var(--font-mono)' }} />
+        <div style={{ position: 'relative' }}>
+          <Input
+            value={nombreInterno}
+            onChange={(e) => {
+              if (esNuevo) nombreEditadoAMano.current = true
+              setNombreInterno(aSnakeCase(e.target.value))
+            }}
+            disabled={!esNuevo}
+            placeholder="motivo"
+            style={{
+              fontFamily: 'var(--font-mono)',
+              paddingRight: mostrarEstadoNombre ? 30 : undefined,
+              borderColor: mostrarEstadoNombre
+                ? (nombreValido ? 'var(--color-success)' : 'var(--color-error)')
+                : undefined,
+            }}
+          />
+          {mostrarEstadoNombre && (
+            <span style={{
+              position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+              color: nombreValido ? 'var(--color-success)' : 'var(--color-error)',
+              fontSize: 15, fontWeight: 700, pointerEvents: 'none',
+            }}>
+              {nombreValido ? '✓' : '✕'}
+            </span>
+          )}
+        </div>
         {esNuevo ? (
           <p style={{ fontSize: 11, color: 'var(--fg-3)', margin: '4px 0 0' }}>
-            snake_case. No se puede cambiar después.
+            Identificador técnico: solo minúsculas, números y guión bajo, sin espacios
+            (se completa solo desde la etiqueta). No se puede cambiar después.
           </p>
         ) : (
           <p style={{ fontSize: 11, color: 'var(--fg-3)', margin: '4px 0 0' }}>
             El nombre interno no se puede cambiar.
           </p>
         )}
-      </div>
-
-      <div style={formRow}>
-        <label style={label}>Etiqueta visible <span style={requiredMark}>*</span></label>
-        <Input value={etiqueta} onChange={(e) => setEtiqueta(e.target.value)} placeholder="Motivo de la solicitud" />
       </div>
 
       <div style={formRow}>
@@ -180,7 +242,7 @@ export function CampoModal({
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
         <Button onClick={onCerrar}>Cancelar</Button>
-        <Button variant="accent" onClick={handleGuardar} disabled={pending}>
+        <Button variant="accent" onClick={handleGuardar} disabled={pending || !nombreValido || !etiqueta.trim()}>
           {pending ? 'Guardando…' : 'Guardar'}
         </Button>
       </div>
