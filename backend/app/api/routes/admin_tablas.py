@@ -57,7 +57,10 @@ TABLE_CONFIG: dict[str, dict] = {
     },
     "equipos": {
         "pk": "id_equipo",
-        "cols": ["nombre", "descripcion", "id_subarea", "tipo_grupo", "dias_semana", "hora_inicio", "hora_fin"],
+        # id_municipio editable para que el alta lo setee (mono-municipio §38): el
+        # endpoint /tramites/destinatarios filtra por municipio; una mesa sin él no
+        # aparecería en el selector de pase.
+        "cols": ["nombre", "descripcion", "id_subarea", "tipo_grupo", "id_municipio", "dias_semana", "hora_inicio", "hora_fin"],
         "fecha_mod": "fecha_modificacion",
         "col_types": {"hora_inicio": "time", "hora_fin": "time"},
     },
