@@ -884,11 +884,14 @@ const SCHEMAS = {
       { field: 'nombre',      label: 'Nombre',             type: 'text',     required: true },
       { field: 'descripcion', label: 'Descripción',        type: 'textarea', required: false },
       { field: 'id_subarea',  label: 'Subárea',            type: 'select',   fk: 'subarea', fkLabel: 'nombre', fkPk: 'id_subarea', required: false },
-      { field: 'dias_semana', label: 'Días (coma-separados)', type: 'text', required: false, hint: 'Ej: lunes,martes,miércoles,jueves,viernes' },
-      { field: 'hora_inicio', label: 'Hora inicio',        type: 'time',     required: false },
-      { field: 'hora_fin',    label: 'Hora fin',           type: 'time',     required: false },
+      { field: 'tipo_grupo',  label: 'Tipo de grupo',      type: 'select',   required: true,
+        options: [
+          { v: 'mesa_tramites',    l: 'Mesa de entrada de trámites' },
+          { v: 'trabajo_reclamos', l: 'Grupo de trabajo (reclamos / OT)' },
+        ],
+        hint: 'Mesa de trámites: recibe pases, sin horario. Grupo de reclamos: atiende reclamos y se agenda (lleva horario).' },
     ],
-    display: ['id_equipo', 'nombre', 'id_subarea', 'dias_semana', 'hora_inicio', 'hora_fin'],
+    display: ['id_equipo', 'nombre', 'id_subarea', 'tipo_grupo'],
   },
   equipo_agentes: {
     label: 'Equipo-Agente', titulo: 'Asignación de Agentes a Equipos',
@@ -1192,12 +1195,21 @@ function composeMeta(row, schema) {
     if (row.es_auditor === true) parts.push('Auditor');
     return parts.join(' · ') || null;
   }
-  // Para equipos (grupos de trámites): mostrar la subárea, no los días de semana.
-  // La subárea es lo relevante del grupo; el horario no aporta acá.
+  // Para equipos: diferenciar por tipo.
+  //  - Mesa de entrada: solo el tipo (la subárea no aplica; el conteo va en el badge).
+  //  - Cuadrilla / grupo de trabajo: tipo + subárea a la que pertenece.
   if (tablaActual === 'equipos') {
-    if (row.id_subarea == null) return 'Sin subárea';
-    const opt = (fkCache.subarea || []).find(o => String(o.value) === String(row.id_subarea));
-    return opt ? `Subárea: ${opt.label}` : `Subárea #${row.id_subarea}`;
+    if (row.tipo_grupo === 'trabajo_reclamos') {
+      let sub;
+      if (row.id_subarea == null) {
+        sub = 'sin subárea';
+      } else {
+        const opt = (fkCache.subarea || []).find(o => String(o.value) === String(row.id_subarea));
+        sub = opt ? opt.label : `subárea #${row.id_subarea}`;
+      }
+      return `Grupo de trabajo · ${sub}`;
+    }
+    return 'Mesa de entrada de trámites';
   }
   // Default: segundo display field que no sea el label
   const labelField = schema.display.find(c => !isId(c)) || schema.display[0];
@@ -1479,7 +1491,25 @@ async function renderListadoFiltrado(rows, schema) {
   const cols = drillDown
     ? schema.display.filter(c => c !== schema.pk)
     : schema.display;
-  const headers = cols.map(c => `<th>${formatHeader(c)}</th>`).join('') + '<th>Acciones</th>';
+  // Para equipos sumamos una columna "Integrantes" (conteo desde equipo_agentes).
+  const colIntegrantes = tablaActual === 'equipos';
+  const headers = cols.map(c => `<th>${formatHeader(c)}</th>`).join('')
+    + (colIntegrantes ? '<th>Integrantes</th>' : '')
+    + '<th>Acciones</th>';
+
+  // Equipos: conteo de integrantes por equipo (1 fetch).
+  let integrantesByEquipo = null;
+  if (colIntegrantes && rows.length) {
+    integrantesByEquipo = {};
+    try {
+      const res = await fetch(`${API}/equipo_agentes`, { headers: _authHeaders() });
+      if (res.ok) {
+        (await res.json()).forEach(rr => {
+          integrantesByEquipo[rr.id_equipo] = (integrantesByEquipo[rr.id_equipo] || 0) + 1;
+        });
+      }
+    } catch { /* sin conteo */ }
+  }
 
   // Pre-cargar todos los hijos en paralelo si aplica
   let hijosByPk = {};
@@ -1541,8 +1571,12 @@ async function renderListadoFiltrado(rows, schema) {
         ).join('');
         const nombre = r[labelCol] || pk;
         const asociados = drillDown ? renderHijosInline(pk, drillDown) : '';
+        const celdaInteg = colIntegrantes
+          ? `<td class="mono">${(integrantesByEquipo && integrantesByEquipo[pk]) || 0}</td>`
+          : '';
         return `<tr>
           ${cells}
+          ${celdaInteg}
           <td class="actions">
             <button class="btn-edit" onclick="abrirEditar(${pk})">Editar</button>
             <button class="btn-del"  onclick="abrirBaja(${pk}, '${String(nombre).replace(/'/g,"\\'")}')">Baja</button>
@@ -1592,11 +1626,20 @@ const FK_DISPLAY_MAP = {
   id_usuario: { fk: 'usuarios', pk: 'id_usuario', label: 'nombre' },
 };
 
+// Valores legibles para columnas enum conocidas (no FK).
+const ENUM_LABELS = {
+  tipo_grupo: { mesa_tramites: 'Mesa de entrada de trámites', trabajo_reclamos: 'Grupo de trabajo (cuadrilla)' },
+};
+
 function formatCell(val, col) {
   if (val === null || val === undefined) return '<span style="color:var(--fg-3)">—</span>';
   if (typeof val === 'boolean') return val
     ? '<span class="badge badge-on">Sí</span>'
     : '<span class="badge badge-off">No</span>';
+  // Enums conocidos: mostrar etiqueta legible
+  if (ENUM_LABELS[col] && ENUM_LABELS[col][val]) {
+    return `<span title="${val}">${ENUM_LABELS[col][val]}</span>`;
+  }
   // Si la columna es FK y el cache ya la tiene cargada, mostrar nombre
   const fkDef = FK_DISPLAY_MAP[col];
   if (fkDef && fkCache[fkDef.fk]) {
@@ -1717,21 +1760,60 @@ function _franjaRowHTML(f) {
   </div>`;
 }
 
+// Recurso al que aplican las franjas de horario según la tabla en edición.
+// agentes → siempre. equipos → solo si tipo_grupo='trabajo_reclamos' (las mesas
+// de trámites no se agendan). Devuelve null si esta tabla no lleva horario.
+function _recursoHorario() {
+  if (tablaActual === 'agentes') return { tipo: 'agente', id: editId };
+  if (tablaActual === 'equipos') {
+    const sel = document.getElementById('f_tipo_grupo');
+    const tipoGrupo = sel ? sel.value : null;
+    if (tipoGrupo === 'trabajo_reclamos') return { tipo: 'equipo', id: editId };
+  }
+  return null;
+}
+
+// Conecta el select tipo_grupo (equipos): al cambiar, re-renderiza la sección de
+// horario (visible solo para trabajo_reclamos) y marca la subárea como requerida.
+function _bindTipoGrupo() {
+  const sel = document.getElementById('f_tipo_grupo');
+  if (!sel) return;
+  const aplicar = () => {
+    const esReclamos = sel.value === 'trabajo_reclamos';
+    const sub = document.getElementById('f_id_subarea');
+    if (sub) {
+      sub.required = esReclamos;
+      const lbl = sub.closest('.field')?.querySelector('label');
+      if (lbl) lbl.textContent = esReclamos ? 'Subárea (requerida)' : 'Subárea';
+    }
+    renderHorarioSeccion();
+  };
+  sel.onchange = aplicar;
+  aplicar();
+}
+
 function renderHorarioSeccion() {
-  if (tablaActual !== 'agentes') return;
+  const rec = _recursoHorario();
   const body = document.getElementById('inlineFormBody');
   let sec = body.querySelector('#horarioSec');
+  // Si esta tabla/tipo no lleva horario, quitar la sección si existía y salir.
+  if (!rec) {
+    if (sec) sec.remove();
+    return;
+  }
   if (!sec) {
     sec = document.createElement('div');
     sec.id = 'horarioSec';
     sec.className = 'horario-sec';
     body.appendChild(sec);
   }
+  const esEquipo = rec.tipo === 'equipo';
+  const sujeto = esEquipo ? 'el grupo' : 'el agente';
   const filas = _franjasState.map(_franjaRowHTML).join('') ||
-    '<p class="horario-sec__hint">Sin franjas. Agregá al menos una para que el agente tenga disponibilidad en la Agenda.</p>';
+    `<p class="horario-sec__hint">Sin franjas. Agregá al menos una para que ${sujeto} tenga disponibilidad en la Agenda.</p>`;
   sec.innerHTML = `
-    <div class="horario-sec__title">Horario de asistencia</div>
-    <div class="horario-sec__hint">Días y rango horario en que el agente está disponible. Podés cargar varias franjas (ej: turno mañana y turno tarde).</div>
+    <div class="horario-sec__title">Horario de atención</div>
+    <div class="horario-sec__hint">Días y rango horario en que ${sujeto} está disponible para atender reclamos. Podés cargar varias franjas (ej: turno mañana y turno tarde).</div>
     <div id="franjasList">${filas}</div>
     <button type="button" class="horario-add" id="btnAddFranja">+ Agregar franja</button>`;
 
@@ -1771,12 +1853,13 @@ function _capturarFranjasDelDOM() {
   });
 }
 
-async function _cargarFranjasAgente(idAgente) {
+// Carga franjas de disponibilidad_recurso para un recurso (agente o equipo).
+async function _cargarFranjas(tipoRecurso, idRecurso) {
   _franjasState = [];
   _franjasOriginalIds = [];
-  if (!idAgente) return;
+  if (!idRecurso) return;
   try {
-    const res = await fetch(`${_base}/api/v1/agenda/disponibilidad?tipo_recurso=agente&id_recurso=${idAgente}`, { headers: _authHeaders() });
+    const res = await fetch(`${_base}/api/v1/agenda/disponibilidad?tipo_recurso=${tipoRecurso}&id_recurso=${idRecurso}`, { headers: _authHeaders() });
     if (!res.ok) return;
     const data = await res.json();
     _franjasState = data.map(d => ({
@@ -1788,10 +1871,10 @@ async function _cargarFranjasAgente(idAgente) {
   } catch (_) { /* sin disponibilidad cargada */ }
 }
 
-// Sincroniza las franjas con disponibilidad_recurso para un agente ya guardado.
+// Sincroniza las franjas con disponibilidad_recurso para un recurso ya guardado.
 // Borra las que se quitaron y crea las nuevas. (No edita in-place: borrar+crear
-// mantiene la lógica simple y es seguro porque son pocas franjas por agente.)
-async function _sincronizarFranjas(idAgente) {
+// mantiene la lógica simple y es seguro porque son pocas franjas por recurso.)
+async function _sincronizarFranjas(tipoRecurso, idRecurso) {
   _capturarFranjasDelDOM();
   // 1) borrar las originales que ya no están
   const vivas = new Set(_franjasState.filter(f => f.id_disponibilidad).map(f => f.id_disponibilidad));
@@ -1808,7 +1891,7 @@ async function _sincronizarFranjas(idAgente) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ..._authHeaders() },
       body: JSON.stringify({
-        tipo_recurso: 'agente', id_recurso: idAgente,
+        tipo_recurso: tipoRecurso, id_recurso: idRecurso,
         dias_semana: f.dias, hora_inicio: f.hora_inicio, hora_fin: f.hora_fin,
         etiqueta: f.etiqueta || null,
       }),
@@ -1978,7 +2061,9 @@ async function abrirNuevo() {
       renderHorarioSeccion();
     } else if (tablaActual === 'equipos') {
       _integrantesState = []; _integrantesOriginalIds = [];
+      _franjasState = []; _franjasOriginalIds = [];
       renderIntegrantesSeccion();
+      _bindTipoGrupo();      // muestra/oculta horario + render inicial según tipo
     }
     return;
   }
@@ -2008,11 +2093,17 @@ async function abrirEditar(id) {
     const record = await res.json();
     await buildForm(schema, record, bodyId);
     if (inline && tablaActual === 'agentes') {
-      await _cargarFranjasAgente(id);
+      await _cargarFranjas('agente', id);
       renderHorarioSeccion();
     } else if (inline && tablaActual === 'equipos') {
       await _cargarIntegrantes(id);
       renderIntegrantesSeccion();
+      // Si el grupo es de trabajo (reclamos), cargar sus franjas ANTES de bindear
+      // (el render que dispara _bindTipoGrupo ya las muestra).
+      if (record.tipo_grupo === 'trabajo_reclamos') {
+        await _cargarFranjas('equipo', id);
+      }
+      _bindTipoGrupo();
     }
   } catch (e) {
     if (inline) cerrarInline(); else closeModal('formModal');
@@ -2050,6 +2141,12 @@ async function guardarRegistro() {
     }
   }
 
+  // Equipos: subárea obligatoria solo para grupos de trabajo (reclamos/OT).
+  if (tablaActual === 'equipos' && data.tipo_grupo === 'trabajo_reclamos' && !data.id_subarea) {
+    toast('Un grupo de trabajo (reclamos) requiere subárea', 'err');
+    return;
+  }
+
   const inline = _usaInline();
   const btn = document.getElementById(inline ? 'btnInlineSave' : 'btnSave');
   btn.disabled = true;
@@ -2074,17 +2171,21 @@ async function guardarRegistro() {
     if (tablaActual === 'agentes') {
       const idAgente = editId || saved.id_agente;
       if (idAgente) {
-        try { await _sincronizarFranjas(idAgente); }
+        try { await _sincronizarFranjas('agente', idAgente); }
         catch (e2) { toast(`Agente guardado, pero falló el horario: ${e2.message}`, 'err'); }
       }
     }
 
-    // Equipos: sincronizar integrantes con equipo_agentes.
+    // Equipos: sincronizar integrantes y, si es grupo de trabajo, el horario.
     if (tablaActual === 'equipos') {
       const idEquipo = editId || saved.id_equipo;
       if (idEquipo) {
         try { await _sincronizarIntegrantes(idEquipo); }
         catch (e2) { toast(`Equipo guardado, pero falló la sincronización de integrantes: ${e2.message}`, 'err'); }
+        if (data.tipo_grupo === 'trabajo_reclamos') {
+          try { await _sincronizarFranjas('equipo', idEquipo); }
+          catch (e2) { toast(`Equipo guardado, pero falló el horario: ${e2.message}`, 'err'); }
+        }
       }
     }
 
