@@ -149,8 +149,8 @@ export function ListView() {
                   </Td>
                   <Td>
                     <div style={{ fontSize: '0.84rem', fontWeight: 500 }}>{r.tipo_nombre || '—'}</div>
-                    {r.area_nombre && (
-                      <div style={{ fontSize: '0.72rem', color: 'var(--fg-3)' }}>{r.area_nombre}</div>
+                    {(r.subarea_nombre || r.area_nombre) && (
+                      <div style={{ fontSize: '0.72rem', color: 'var(--fg-3)' }}>{r.subarea_nombre || r.area_nombre}</div>
                     )}
                   </Td>
                   <Td>

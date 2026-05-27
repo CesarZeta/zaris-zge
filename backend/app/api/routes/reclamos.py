@@ -281,6 +281,7 @@ async def listar_reclamos(
             r.id_ciudadano, c.nombre AS ciudadano_nombre, c.apellido AS ciudadano_apellido, c.doc_nro,
             r.id_tipo_reclamo, tr.nombre AS tipo_nombre, tr.sla_dias, tr.audit AS tipo_audit,
             s.id_area, a.nombre AS area_nombre,
+            tr.id_subarea, s.nombre AS subarea_nombre,
             r.id_agente_asignado,
             COALESCE(u.nombre, '—') AS agente_nombre
         FROM reclamos r
@@ -324,6 +325,7 @@ async def obtener_reclamo(
             c.doc_nro, c.cuil, c.telefono, c.email AS ciudadano_email,
             r.id_tipo_reclamo, tr.nombre AS tipo_nombre, tr.sla_dias, tr.audit AS tipo_audit,
             s.id_area, a.nombre AS area_nombre,
+            tr.id_subarea, s.nombre AS subarea_nombre,
             r.id_agente_asignado,
             COALESCE(u.nombre, '—') AS agente_nombre
         FROM reclamos r
