@@ -290,9 +290,6 @@ export interface BandejaParams {
   desde?: string
   hasta?: string
   solo_activos?: boolean
-  mis_tramites?: boolean
-  mi_subarea?: boolean
-  mi_equipo?: boolean
   limit?: number
   offset?: number
 }
