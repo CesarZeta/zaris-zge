@@ -2,6 +2,7 @@ import { FileText } from 'lucide-react'
 import type { ModuleManifest } from '../../lib/types'
 import { TramitesLayout } from './TramitesLayout'
 import { BandejaTramites } from './pages/BandejaTramites'
+import { MiBandeja } from './pages/MiBandeja'
 import { CrearTramite } from './pages/CrearTramite'
 import { DetalleTramite } from './pages/DetalleTramite'
 import { ConfigTramites } from './admin/pages/ConfigTramites'
@@ -20,6 +21,7 @@ export const tramitesModule: ModuleManifest = {
   moduloCodigo: 'tramites',
   routes: [
     { index: true,                  element: Wrap(BandejaTramites),       handle: { breadcrumb: 'trámites · bandeja' } },
+    { path: 'mi-bandeja',           element: Wrap(MiBandeja),             handle: { breadcrumb: 'trámites · mi bandeja' } },
     { path: 'nuevo',                element: Wrap(CrearTramite),          handle: { breadcrumb: 'trámites · nuevo' } },
     { path: 'config',               element: Wrap(ConfigTramites),        handle: { breadcrumb: 'trámites · config' } },
     { path: 'config/:idTipo',       element: Wrap(ConfigTramiteDetalle),  handle: { breadcrumb: 'trámites · config · editor' } },

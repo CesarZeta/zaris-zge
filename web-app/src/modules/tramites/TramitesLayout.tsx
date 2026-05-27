@@ -21,8 +21,9 @@ export function TramitesLayout({ children }: { children: ReactNode }) {
 
   const isCrear = partes[1] === 'nuevo'
   const isConfig = partes[1] === 'config'
+  const isMiBandeja = partes[1] === 'mi-bandeja'
   const isConfigDetalle = isConfig && partes.length >= 3
-  const isDetalle = !isCrear && !isConfig && partes.length >= 2
+  const isDetalle = !isCrear && !isConfig && !isMiBandeja && partes.length >= 2
   const numeroExpediente = isDetalle ? partes[1] : null
   const idTipoConfig = isConfigDetalle ? partes[2] : null
 
@@ -32,11 +33,17 @@ export function TramitesLayout({ children }: { children: ReactNode }) {
         <a href="#" onClick={goInicio} style={bcLinkStyle}>INICIO</a>
         <span style={bcSepStyle}>›</span>
         <span
-          style={{ ...bcCurrentStyle, cursor: isDetalle || isCrear || isConfig ? 'pointer' : 'default' }}
-          onClick={isDetalle || isCrear || isConfig ? () => navigate('/tramites') : undefined}
+          style={{ ...bcCurrentStyle, cursor: isDetalle || isCrear || isConfig || isMiBandeja ? 'pointer' : 'default' }}
+          onClick={isDetalle || isCrear || isConfig || isMiBandeja ? () => navigate('/tramites') : undefined}
         >
           Trámites
         </span>
+        {isMiBandeja && (
+          <>
+            <span style={bcSepStyle}>›</span>
+            <span style={bcCurrentStyle}>Mi bandeja</span>
+          </>
+        )}
         {isDetalle && numeroExpediente && (
           <>
             <span style={bcSepStyle}>›</span>
@@ -75,12 +82,23 @@ export function TramitesLayout({ children }: { children: ReactNode }) {
             onClick={() => navigate('/tramites')}
             style={{
               ...tabBtn,
-              borderBottom: !isConfig ? '2px solid var(--zaris-orange)' : '2px solid transparent',
-              color: !isConfig ? 'var(--fg-1)' : 'var(--fg-3)',
-              fontWeight: !isConfig ? 600 : 400,
+              borderBottom: !isConfig && !isMiBandeja ? '2px solid var(--zaris-orange)' : '2px solid transparent',
+              color: !isConfig && !isMiBandeja ? 'var(--fg-1)' : 'var(--fg-3)',
+              fontWeight: !isConfig && !isMiBandeja ? 600 : 400,
             }}
           >
             Bandeja
+          </button>
+          <button
+            onClick={() => navigate('/tramites/mi-bandeja')}
+            style={{
+              ...tabBtn,
+              borderBottom: isMiBandeja ? '2px solid var(--zaris-orange)' : '2px solid transparent',
+              color: isMiBandeja ? 'var(--fg-1)' : 'var(--fg-3)',
+              fontWeight: isMiBandeja ? 600 : 400,
+            }}
+          >
+            Mi bandeja
           </button>
           {puedeConfigurar && (
             <button

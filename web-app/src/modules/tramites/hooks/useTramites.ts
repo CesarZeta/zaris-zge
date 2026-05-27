@@ -4,6 +4,7 @@ import {
   listarTipos,
   obtenerTipo,
   listarBandeja,
+  listarMiBandeja,
   obtenerTramite,
   obtenerMovimientos,
   obtenerTransicionesPermitidas,
@@ -46,6 +47,24 @@ export function useBandeja(params: BandejaParams) {
   return useQuery({
     queryKey: ['tramites', 'bandeja', params],
     queryFn: () => listarBandeja(params),
+    staleTime: 15 * 1000,
+    placeholderData: (prev) => prev,
+  })
+}
+
+export type MiBandejaParams = {
+  estado_codigo?: string
+  tipo_codigo?: string
+  sin_tomar?: boolean
+  q?: string
+  limit?: number
+  offset?: number
+}
+
+export function useMiBandeja(params: MiBandejaParams) {
+  return useQuery({
+    queryKey: ['tramites', 'mi-bandeja', params],
+    queryFn: () => listarMiBandeja(params),
     staleTime: 15 * 1000,
     placeholderData: (prev) => prev,
   })
@@ -120,7 +139,7 @@ export function useTransicionarTramite(numero: string) {
 
 export function usePasarTramite(numero: string) {
   return useMutation({
-    mutationFn: (body: { destinatario_tipo: 'subarea' | 'equipo'; destinatario_id: number; comentario?: string }) =>
+    mutationFn: (body: { destinatario_tipo: 'subarea' | 'equipo' | 'agente'; destinatario_id: number; comentario?: string }) =>
       pasarTramite(numero, body),
   })
 }

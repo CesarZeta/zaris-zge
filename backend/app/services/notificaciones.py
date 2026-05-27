@@ -37,7 +37,7 @@ async def _datos_tramite(db: AsyncSession, id_tramite: int) -> dict | None:
         text("""
             SELECT t.id_tramite, t.numero_expediente, t.asunto, t.id_municipio,
                    t.destinatario_actual_tipo,
-                   COALESCE(t.id_subarea_actual, t.id_equipo_actual) AS destinatario_actual_id,
+                   COALESCE(t.id_subarea_actual, t.id_equipo_actual, t.id_agente_actual) AS destinatario_actual_id,
                    t.iniciador_tipo, t.id_subarea_iniciadora, t.id_agente_tomado_por,
                    tt.nombre AS tipo_nombre
               FROM tramite t
@@ -225,6 +225,15 @@ async def _resolver_destinatarios_usuarios(
                 JOIN usuarios u ON u.id_usuario = a.id_usuario AND u.activo = TRUE
                 WHERE ea.id_equipo = :did
                   AND ea.activo = TRUE
+                  AND u.email IS NOT NULL AND u.email <> ''
+            """
+        elif destinatario_tipo == "agente":
+            sql = """
+                SELECT u.id_usuario, u.nombre, u.email
+                FROM agentes a
+                JOIN usuarios u ON u.id_usuario = a.id_usuario AND u.activo = TRUE
+                WHERE a.id_agente = :did
+                  AND a.activo = TRUE
                   AND u.email IS NOT NULL AND u.email <> ''
             """
         else:
