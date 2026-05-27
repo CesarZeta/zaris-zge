@@ -1,7 +1,7 @@
 # Manual de uso — Configuración de trámites
 
 **Audiencia:** Admin (nivel 1) o Supervisor (nivel 2) del municipio.
-**Acceso:** Trámites → tab **Configuración**.
+**Acceso:** Trámites → tab **Tipos de trámite**.
 **Versión:** 2026-05-18 · UI cerrada en sesión del día.
 
 ---
@@ -29,7 +29,7 @@ Cada **tipo de trámite** (ej. "Poda de árbol", código `poda-arbol`, prefijo `
 
 ## 2. Crear un tipo nuevo (de cero)
 
-Pantalla: `Trámites → Configuración → Nuevo tipo`
+Pantalla: `Trámites → Tipos de trámite → Nuevo tipo`
 
 1. Completá:
    - **Código** (obligatorio) — Kebab-case (`a-z`, `0-9`, guiones). Ej: `poda-arbol`. Es único y **no se puede cambiar después**.
@@ -135,7 +135,7 @@ Son los **documentos que el sistema espera** en distintos momentos del circuito.
 
 ### 4.1 Crear un tipo de cero y publicarlo
 
-1. Configuración → **Nuevo tipo** → completar form → guardar.
+1. Tipos de trámite → **Nuevo tipo** → completar form → guardar.
 2. La UI te lleva al editor con v1 en borrador.
 3. Tab **Estados** → crear "Ingresado" (es_inicial=✓), "En revisión", "Resuelto" (es_final=✓).
 4. Tab **Transiciones** → crear "Ingresado → En revisión" (etiqueta "Pasar a revisión"), "En revisión → Resuelto" (etiqueta "Resolver", requiere_comentario=✓).
@@ -147,7 +147,7 @@ Desde ese momento, los usuarios pueden crear trámites de este tipo desde **Trá
 
 ### 4.2 Modificar el circuito de un tipo ya en uso
 
-1. Configuración → click ⚙ del tipo.
+1. Tipos de trámite → click ⚙ del tipo.
 2. La v1 publicada está bloqueada (mensaje: "Esta versión tiene N trámite(s) instanciado(s). Es inmutable…").
 3. Click **Nuevo borrador** → la UI crea v2 copiando toda la estructura de v1.
 4. Editás v2 libremente.
