@@ -19,8 +19,31 @@ const ENDPOINTS: Record<string, { endpoint: string; idField: string; labelField:
   equipo:    { endpoint: '/api/v1/equipos',               idField: 'id_equipo',    labelField: 'nombre',          searchParam: 'q' },
 }
 
+/**
+ * Normaliza `opciones_jsonb` a `{valor, etiqueta}[]` tolerando shapes legacy.
+ * Tipos seedeados viejos guardaron `{ opciones: ["a","b"] }` o un array de strings,
+ * mientras que el editor nuevo produce `[{valor, etiqueta}]`. Sin esto, `.map` revienta.
+ */
+function normalizarOpciones(raw: unknown): Array<{ valor: string; etiqueta: string }> {
+  let arr: unknown = raw
+  if (raw && !Array.isArray(raw) && typeof raw === 'object' && 'opciones' in (raw as object)) {
+    arr = (raw as { opciones: unknown }).opciones
+  }
+  if (!Array.isArray(arr)) return []
+  return arr
+    .map((op) => {
+      if (op && typeof op === 'object' && 'valor' in op) {
+        const o = op as { valor: unknown; etiqueta?: unknown }
+        return { valor: String(o.valor), etiqueta: String(o.etiqueta ?? o.valor) }
+      }
+      return { valor: String(op), etiqueta: String(op) }
+    })
+    .filter((o) => o.valor !== 'undefined' && o.valor !== '')
+}
+
 export function CampoDinamico({ campo, value, onChange, error }: CampoDinamicoProps) {
   const { nombre_interno: nombre, etiqueta, tipo_dato, obligatorio, opciones_jsonb, validacion_jsonb, ayuda } = campo
+  const opciones = normalizarOpciones(opciones_jsonb)
 
   function set(v: unknown) { onChange(nombre, v) }
 
@@ -98,7 +121,7 @@ export function CampoDinamico({ campo, value, onChange, error }: CampoDinamicoPr
           style={selectStyle}
         >
           <option value="">— Seleccionar —</option>
-          {(opciones_jsonb ?? []).map((op) => (
+          {opciones.map((op) => (
             <option key={op.valor} value={op.valor}>{op.etiqueta}</option>
           ))}
         </select>
@@ -118,7 +141,7 @@ export function CampoDinamico({ campo, value, onChange, error }: CampoDinamicoPr
       <div style={fieldWrapStyle}>
         {labelEl}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {(opciones_jsonb ?? []).map((op) => (
+          {opciones.map((op) => (
             <label key={op.valor} style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer', fontSize: 13, fontFamily: 'var(--font-display)', color: 'var(--fg-1)' }}>
               <input
                 type="checkbox"
