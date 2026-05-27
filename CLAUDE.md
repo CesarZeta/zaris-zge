@@ -796,7 +796,7 @@ class Equipo(Base):
 
 > **El detalle histórico de cada migración (qué hace, cuándo se aplicó, snapshots de backup) vive en [`HISTORIAL_MIGRACIONES.md`](HISTORIAL_MIGRACIONES.md)** (raíz del repo). Acá queda solo el resumen vigente. **No confiar en esta doc como fuente de verdad** — antes de codear algo schema-dependent, verificar el estado real con `execute_sql` (regla §24).
 
-**Estado general:** migraciones 20-65 aplicadas en local Y prod (Supabase) sin divergencia conocida al 2026-05-26. La numeración 51 está duplicada (`51_notificaciones.sql` + `51_tramites_tipo_dato_direccion.sql`, ambas aplicadas) — **cualquier mig nueva debe usar 66+**. Migs 62-64 (sesión 2026-05-26): 62 `usuarios.fecha_ultimo_login` + tabla `usuario_login_log` (auditoría de accesos); 63 `agentes.cuil`; 64 índice UNIQUE parcial `agentes.id_usuario WHERE NOT NULL` (regla 1:1 agente↔usuario, §39). Mig 65: fila `modulos.bi` (nombre "Datos", nivel 2) para el módulo BI §43.
+**Estado general:** migraciones 20-66 aplicadas en local Y prod (Supabase) sin divergencia conocida al 2026-05-27. La numeración 51 está duplicada (`51_notificaciones.sql` + `51_tramites_tipo_dato_direccion.sql`, ambas aplicadas) — **cualquier mig nueva debe usar 67+**. Migs 62-64 (sesión 2026-05-26): 62 `usuarios.fecha_ultimo_login` + tabla `usuario_login_log` (auditoría de accesos); 63 `agentes.cuil`; 64 índice UNIQUE parcial `agentes.id_usuario WHERE NOT NULL` (regla 1:1 agente↔usuario, §39). Mig 65: fila `modulos.bi` (nombre "Datos", nivel 2) para el módulo BI §43. **Mig 66 (sesión 2026-05-27): `tramite.id_agente_actual` + CHECK `ck_tramite_destinatario` ampliado a 4 ramas (NULL/subarea/equipo/agente) — habilita destinatario directo a un agente (§35).**
 
 **Tablas que YA existen en prod y NO deben re-crearse:** `reclamos`, `reclamo_historial`, `tipo_reclamo`, `estado_reclamo`, `ordenes_trabajo`, `estado_ot` (5 seeds), `equipo_agentes`, `configuracion_general`, todas las de Agenda (migs 30-43), Turnos (45-46), permisos (38/44), trámites (47-50, 56), notificaciones (51), encuestas (57-58, 60-61), auth público de ciudadanos (52-53), adjuntos de OT (54), `usuarios.id_subarea`/`es_externo` (55), `usuario_login_log` (62). Detalle por mig en `HISTORIAL_MIGRACIONES.md`. Ver memoria [[project_supabase_estado_schema]].
 
@@ -1946,7 +1946,7 @@ Gestión de expedientes administrativos tipo "ventanilla" (entrada de documentac
 - **Numeración atómica**: `tipo_tramite_numerador` con `INSERT ... ON CONFLICT DO UPDATE SET ultimo_numero + 1 RETURNING` evita race conditions. Formato: `{prefijo}{sep}{codigo_municipio}{sep}{anio}{sep}{correlativo_padded}` → ej. `POD-LPL-2026-0001`.
 - **Ledger append-only**: `tramite_movimiento` registra cada acción (creacion, pase, cambio_estado, firma, etc.) como fila nueva. Nunca se modifica.
 - **Iniciador polimórfico**: `iniciador_tipo ∈ {ciudadano, empresa, area_interna}` + CHECK que enforce exactamente una de `{id_ciudadano_iniciador, id_empresa_iniciadora, id_subarea_iniciadora}` según el tipo.
-- **Destinatario polimórfico**: `destinatario_actual_tipo ∈ {subarea, equipo}` + CHECK similar.
+- **Destinatario polimórfico**: `destinatario_actual_tipo ∈ {subarea, equipo, agente}` + CHECK `ck_tramite_destinatario` con 4 ramas (NULL / subarea / equipo / agente), exactamente una de `{id_subarea_actual, id_equipo_actual, id_agente_actual}` poblada según el tipo. **`agente` = destinatario directo a una persona** (mig 66, sesión 2026-05-27): pasar a un agente le asigna el trámite a esa persona (aparece en SU bandeja, nadie más lo toma). Fiel al modelo Mesa Digital de VL (origin/destination con tipo `user|area|subarea|group`). **Si agregás una ruta nueva que cambie el destinatario o lleve a estado final, el UPDATE DEBE setear las 3 FKs (`id_subarea_actual`/`id_equipo_actual`/`id_agente_actual`) coherente con el tipo, o viola el CHECK** — cazado en `transicionar_tramite`, que omitía `id_agente_actual` y habría tirado 500 al transicionar un trámite ya asignado a un agente. Ver [[project_tramites_destinatario_agente_y_mi_bandeja]].
 
 ### Tablas
 
@@ -2126,9 +2126,20 @@ Módulo completo en `web-app/src/modules/tramites/`. Pusheado en commit `e2234de
 | `lib/api.ts` | Funciones tipadas para todos los endpoints de trámites |
 | `lib/types.ts` | Tipos TypeScript: `TramiteBandejaItem`, `TramiteDetalle`, `TramiteMovimiento`, `TramiteRelacion`, etc. |
 
-**Rutas:** `/tramites` (bandeja) + `/tramites/nuevo` (alta) + `/tramites/:numero` (detalle). Hash router compatible con GH Pages.
+**Rutas:** `/tramites` (bandeja) + `/tramites/mi-bandeja` (Mi bandeja) + `/tramites/nuevo` (alta) + `/tramites/:numero` (detalle). Hash router compatible con GH Pages. La ruta `mi-bandeja` va ANTES de `:numero` (param greedy).
 
 **Módulo en catálogo DB:** `modulos (modulo_codigo='tramites', min_nivel_acceso=3)` — insertado en prod 2026-05-16.
+
+### Mi bandeja + pases a agente (✅ ENTREGADO 2026-05-27)
+
+Vista "Mi bandeja" (tab nuevo en `TramitesLayout`, NO ítem de sidebar — comparte el permiso `tramites`) donde el agente ve sus trámites y hace pases/toma inline. Dos endpoints nuevos en `routes/tramites.py`, ambos registrados **ANTES** de `GET /{numero_o_id}` (param greedy, §5):
+
+- **`GET /api/v1/tramites/mi-bandeja`**: resuelve server-side los colectivos del agente (mi subárea + mis equipos/mesas + asignado a mí como `agente` + tomado por mí). El `GET /tramites` general NO sirve para esto: solo filtra `destinatario_tipo`+`id` único, no "cualquiera de mis colectivos". **El tab viejo "Mis trámites"/"Mi subárea" de `BandejaTramites` mandaba `mis_tramites:true`/`mi_subarea:true` que el backend IGNORA silenciosamente — nunca filtró; se quitaron esos tabs.** Filtros: `estado_codigo`, `tipo_codigo`, `sin_tomar`, `q`.
+- **`GET /api/v1/tramites/destinatarios?q=`**: opciones de pase agrupadas (agentes / equipos / subáreas). Quirk asyncpg: `:q IS NULL` → `AmbiguousParameterError`; usar `CAST(:q AS text) IS NULL`.
+
+Frontend: `pages/MiBandeja.tsx` (tomar + pasar por fila) + `ModalPase` ampliado a 3 solapas (Agente / Mesa(equipo) / Subárea) con buscador sobre `/destinatarios`. `usePasarTramite`, `pasarTramite`, `PaseIn.destinatario_tipo` y el type `DestinatarioTipo` ahora aceptan `'agente'`. La mesa = `equipos` existente (no hay concepto nuevo de "grupo de mesa"). Ver [[project_tramites_destinatario_agente_y_mi_bandeja]].
+
+> **Fix colateral mismo commit:** `admin/modals/_modalShell.tsx` (los 6 modales del editor de tipos) no scrolleaba — caja `maxHeight:90vh; overflow:hidden` pero body sin `overflow-y`, dejando inaccesibles los botones de abajo en forms largos. Fix: body `flex:1; minHeight:0; overflowY:auto` (header fijo, body scrollea). Patrón a replicar en cualquier modal con cap de altura.
 
 **Seed prod:** 9 tipos, 21 trámites demo. Seed idempotente en `backend/seed_tramites.py`.
 
