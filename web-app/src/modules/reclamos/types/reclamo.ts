@@ -18,6 +18,13 @@ export interface AreaCatalogo {
   nombre: string
 }
 
+export interface SubareaCatalogo {
+  id_subarea: number
+  nombre: string
+  id_area: number | null
+  area_nombre: string | null
+}
+
 export interface TipoCatalogo {
   id_tipo_reclamo: number
   nombre: string
