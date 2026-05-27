@@ -1,8 +1,10 @@
 """
-Mock storage para documentos de tramites (Fase 2).
+Storage de documentos de tramites — Supabase Storage (bucket privado).
 
-Los archivos se guardan en backend/uploads/tramites/{anio}/{numero_expediente}/{slug}.{ext}
-SHA256 streaming (chunks 64KB). Interfaz nombrada para refactor a Supabase en Fase 3.
+Migrado del mock local (backend/uploads/, efimero en Railway) a Supabase el
+2026-05-27. El backend calcula el SHA256 sobre los bytes (clave para firmas) y
+sube el binario al bucket con service_role. La descarga vuelve a streamear desde
+el bucket. Bucket: 'tramites-documentos' (privado).
 """
 from __future__ import annotations
 
@@ -10,6 +12,7 @@ import hashlib
 import json
 import mimetypes
 import re
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -17,12 +20,9 @@ from fastapi import HTTPException, UploadFile
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# Resolver el directorio backend/uploads/ desde __file__ para que funcione
-# tanto si uvicorn corre con cwd=backend/ como si corre desde la raiz del repo.
-# Estructura: backend/app/services/tramites/documentos.py -> subir 3 niveles
-# llega a backend/, donde vive uploads/.
-_BACKEND_DIR = Path(__file__).resolve().parents[3]
-UPLOADS_BASE = _BACKEND_DIR / "uploads"
+from app.core import storage
+
+TRAMITES_BUCKET = "tramites-documentos"
 UPLOADS_MAX_SIZE_MB = 25
 
 ALLOWED_MIME_MAP: dict[str, str] = {
@@ -102,63 +102,44 @@ async def guardar_archivo_mock(
     nombre_logico: str,
 ) -> dict:
     """
-    Guarda el archivo en disco local.
+    Sube el archivo a Supabase Storage (bucket privado TRAMITES_BUCKET).
+
+    El backend calcula el SHA256 sobre los bytes (necesario para la verificación
+    de integridad en firmas) y luego hace PUT del binario al bucket. El nombre
+    conserva el patrón mock por compat, pero ya NO escribe a disco local.
+
     Devuelve {storage_path, hash_sha256, tamano_bytes, mime_type, nombre_archivo_original}.
     """
     ext = _extension(file.filename or "bin")
-    slug_base = _slug(nombre_logico or Path(file.filename or "archivo").stem)
-    if not slug_base:
-        slug_base = "archivo"
-
-    directorio = UPLOADS_BASE / "tramites" / str(anio) / _slug(numero_expediente)
-    directorio.mkdir(parents=True, exist_ok=True)
-
-    # Resolver colisiones de nombre
-    candidato = directorio / f"{slug_base}.{ext}"
-    sufijo = 2
-    while candidato.exists():
-        candidato = directorio / f"{slug_base}_{sufijo}.{ext}"
-        sufijo += 1
+    slug_base = _slug(nombre_logico or Path(file.filename or "archivo").stem) or "archivo"
 
     contenido = await file.read()
-    candidato.write_bytes(contenido)
-
-    sha256 = calcular_sha256_streaming_mock(candidato)
+    sha256 = hashlib.sha256(contenido).hexdigest()
     mime = ALLOWED_MIME_MAP.get(ext) or mimetypes.guess_type(file.filename or "")[0] or "application/octet-stream"
 
-    # storage_path es relativo a UPLOADS_BASE (ej: "tramites/2026/expediente-X/foo.pdf").
-    # Sin prefijo "uploads/" ni "backend/" — ruta_absoluta_mock reconstruye la ruta fisica.
-    storage_path = str(candidato.relative_to(UPLOADS_BASE)).replace("\\", "/")
+    # Path en el bucket: tramites/{anio}/{expediente}/{uuid}.{ext}. El uuid evita
+    # colisiones sin necesidad de listar el bucket (el slug va en el nombre lógico DB).
+    storage_path = f"tramites/{anio}/{_slug(numero_expediente)}/{uuid.uuid4()}.{ext}"
+
+    await storage.subir_objeto(storage_path, contenido, mime, bucket=TRAMITES_BUCKET)
 
     return {
         "storage_path": storage_path,
         "hash_sha256": sha256,
         "tamano_bytes": len(contenido),
         "mime_type": mime,
-        "nombre_archivo_original": file.filename or candidato.name,
+        "nombre_archivo_original": file.filename or f"{slug_base}.{ext}",
     }
 
 
-def calcular_sha256_streaming_mock(file_path: Path, chunk_size: int = 65536) -> str:
-    h = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        for chunk in iter(lambda: f.read(chunk_size), b""):
-            h.update(chunk)
-    return h.hexdigest()
+async def descargar_bytes(storage_path: str) -> bytes:
+    """Descarga el binario del bucket de trámites."""
+    return await storage.descargar_objeto(storage_path, bucket=TRAMITES_BUCKET)
 
 
-def ruta_absoluta_mock(storage_path: str) -> Path:
-    """Devuelve la ruta absoluta en disco a partir del storage_path relativo.
-
-    storage_path no incluye 'uploads/' ni 'backend/' — es relativo a UPLOADS_BASE
-    (ej. 'tramites/2026/expediente-X/foo.pdf'). Funciona independientemente del
-    cwd con el que se haya lanzado uvicorn.
-    """
-    return UPLOADS_BASE / storage_path
-
-
-def existe_archivo_mock(storage_path: str) -> bool:
-    return ruta_absoluta_mock(storage_path).exists()
+async def borrar_archivo(storage_path: str) -> None:
+    """Borra el objeto del bucket (best-effort)."""
+    await storage.borrar_objeto(storage_path, bucket=TRAMITES_BUCKET)
 
 
 async def obtener_proxima_posicion(id_tramite: int, db: AsyncSession) -> int:

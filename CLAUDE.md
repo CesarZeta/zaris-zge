@@ -2061,7 +2061,7 @@ Implementa el ciclo de vida operacional completo via API. Smoke test §9 pasado:
 | `autorizacion.py` | `quien_puede_actuar(quien_puede_jsonb, agente_info)` — OR entre `subareas/equipos/iniciador/roles`. `listar_transiciones_permitidas` anota cada transición con `disponible + motivo_no_disponible`. |
 | `movimientos.py` | `registrar_movimiento(db, id_tramite, tipo, ...)` — append-only al ledger con `COALESCE(MAX, 0)+1` y `CAST(:v AS jsonb)` para todos los JSONB. |
 | `creacion.py` | `validar_campos_contra_tipo` — todos los `tipo_dato` incluyendo seleccion_multiple, FKs, archivo (ignorado en creación). `resolver_iniciador` — polimórfico ciudadano/empresa/area_interna. `determinar_destinatario_inicial` — v1: subarea del agente creador. |
-| `documentos.py` | Guarda en `backend/uploads/tramites/{anio}/{expediente}/{slug}.{ext}`. SHA256 streaming 64KB. `crear_firmas_pendientes` desde `firmantes_jsonb`. |
+| `documentos.py` | Sube a Supabase Storage (bucket `tramites-documentos`, path `tramites/{anio}/{expediente}/{uuid}.{ext}`). SHA256 sobre los bytes. `crear_firmas_pendientes` desde `firmantes_jsonb`. |
 | `firmas.py` | `agente_puede_firmar` — polimórfico agente/subarea/equipo asignado. `marcar_firma` captura `ip_firma`, `user_agent_firma`, `hash_documento_firmado`. `actualizar_estado_firma_documento` — solo rol `'firma'` bloquea; `visado/notificacion` son informativos. `verificar_integridad_documento` — recomputa SHA256 del disco. |
 
 **12 endpoints nuevos (`routes/tramites.py`):**
@@ -2076,7 +2076,7 @@ Implementa el ciclo de vida operacional completo via API. Smoke test §9 pasado:
 | POST | `/{ref}/pase` | Pase manual a subarea/equipo. Libera toma automáticamente. |
 | POST | `/{ref}/comentar` | Comentario libre (201). Cualquier agente autenticado. |
 | POST | `/{ref}/documentos` | Upload multipart. Validación extensión + tamaño. `crear_firmas_pendientes` si el doc_requerido lo indica. (201) |
-| GET | `/{ref}/documentos/{id}/contenido` | `FileResponse` streaming desde `backend/uploads/`. |
+| GET | `/{ref}/documentos/{id}/contenido` | `Response` con el binario descargado del bucket Supabase (inline). |
 | POST | `/{ref}/documentos/{id}/firmar` | Verifica integridad SHA256 + registra evidencia de firma auditable. |
 | POST | `/{ref}/documentos/{id}/rechazar-firma` | Marca rechazado + recalcula `estado_firma` del documento. |
 | POST | `/{ref}/relacionar` | Vincula dos trámites (sorted para UNIQUE). Registra movimiento `relacion` en ambos. (201) |
@@ -2086,7 +2086,7 @@ Implementa el ciclo de vida operacional completo via API. Smoke test §9 pasado:
 - `pase` y transición a estado final auto-liberan la toma (`id_agente_tomado_por = NULL`).
 - `requiere_adjunto` se valida contando `tramite_documento.activo=TRUE` con `fecha_alta >= fecha_entrada_estado_actual`.
 - El parámetro `iniciador_fks` de `resolver_iniciador` devuelve claves largas (`id_ciudadano_iniciador`, etc.); el INSERT las mapea explícitamente a `:cid`, `:eid`, `:crep`, `:sub_ini`.
-- Mock storage en `backend/uploads/` (en `.gitignore`). SHA256 en el INSERT; `FileResponse` sirve directo.
+- **Storage: Supabase Storage** (bucket privado `tramites-documentos`, migrado 2026-05-27 desde el mock local efímero). El backend recibe el archivo en multipart, calcula el SHA256 sobre los bytes (clave para firmas) y hace PUT al bucket con service_role (`storage.subir_objeto`). La descarga streamea desde el bucket (`storage.descargar_objeto`). `verificar_integridad_documento` recomputa el SHA256 descargando del bucket. `storage_path` es relativo al bucket: `tramites/{anio}/{expediente}/{uuid}.{ext}`. Reusa `app/core/storage.py` como Reclamos (§26) y OT (§34).
 
 **Quirk resuelto — mapeo de parámetros iniciador:** el spread `**iniciador_fks` sobre el dict del INSERT falla porque las claves largas no coinciden con los `:alias` del SQL. Siempre mapear explícitamente: `"cid": iniciador_fks.get("id_ciudadano_iniciador")`, etc. (sesión 2026-05-16).
 
