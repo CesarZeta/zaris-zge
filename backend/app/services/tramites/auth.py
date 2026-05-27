@@ -55,7 +55,10 @@ async def agente_pertenece_al_colectivo(
     destinatario_tipo: str,
     destinatario_id: int,
 ) -> bool:
-    """True si el agente pertenece a la subarea o equipo dado."""
+    """True si el agente es el destinatario directo (agente) o pertenece a la
+    subarea/equipo destinatario."""
+    if destinatario_tipo == "agente":
+        return agente_info["id_agente"] == destinatario_id
     if destinatario_tipo == "subarea":
         return agente_info["id_subarea"] == destinatario_id
     if destinatario_tipo == "equipo":
@@ -81,13 +84,15 @@ async def agente_puede_tomar(
         return False, "El tramite ya fue tomado por otro agente"
 
     dest_tipo = tramite.get("destinatario_actual_tipo")
-    id_subarea = tramite.get("id_subarea_actual")
-    id_equipo = tramite.get("id_equipo_actual")
 
     if not dest_tipo:
         return False, "El tramite no tiene destinatario asignado"
 
-    dest_id = id_subarea if dest_tipo == "subarea" else id_equipo
+    dest_id = {
+        "subarea": tramite.get("id_subarea_actual"),
+        "equipo": tramite.get("id_equipo_actual"),
+        "agente": tramite.get("id_agente_actual"),
+    }.get(dest_tipo)
     if dest_id is None:
         return False, "El tramite no tiene destinatario asignado"
 

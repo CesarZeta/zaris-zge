@@ -1,5 +1,5 @@
 export type IniciadorTipo = 'ciudadano' | 'empresa' | 'area_interna'
-export type DestinatarioTipo = 'subarea' | 'equipo'
+export type DestinatarioTipo = 'subarea' | 'equipo' | 'agente'
 export type EstadoFirma = 'no_requiere' | 'pendiente' | 'firmado' | 'rechazado'
 export type RolIntervencion = 'firma' | 'visado' | 'notificacion'
 export type TipoMovimiento =

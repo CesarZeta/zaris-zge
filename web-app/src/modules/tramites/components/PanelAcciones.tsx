@@ -66,7 +66,7 @@ export function PanelAcciones({ tramite, transicionesPermitidas, documentosDesde
     onActualizar()
   }
 
-  async function handlePase(body: { destinatario_tipo: 'subarea' | 'equipo'; destinatario_id: number; comentario?: string }) {
+  async function handlePase(body: { destinatario_tipo: 'subarea' | 'equipo' | 'agente'; destinatario_id: number; comentario?: string }) {
     await pasarTramite(tramite.numero_expediente, body)
     push({ kind: 'success', title: 'Pase registrado' })
     setShowPase(false)
