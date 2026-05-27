@@ -1,8 +1,13 @@
-import type { ReactNode } from 'react'
+import { useRef, type ReactNode } from 'react'
 
 /**
  * Shell mínimo de modal: overlay + caja centrada. Reusable por todos los
  * modales del admin. No usa libs externas para mantener bundle chico.
+ *
+ * Click-outside seguro (BUG-02): el modal solo cierra si el mousedown Y el
+ * mouseup ocurren sobre el overlay. Si arranca dentro de un input (arrastrar
+ * para seleccionar texto) y suelta sobre el overlay, NO cierra — antes eso
+ * disparaba un click espurio y se perdía todo lo cargado.
  */
 export function ModalShell({
   titulo, onCerrar, ancho = 520, children,
@@ -12,8 +17,16 @@ export function ModalShell({
   ancho?: number
   children: ReactNode
 }) {
+  const downEnOverlay = useRef(false)
   return (
-    <div style={overlay} onClick={(e) => { if (e.target === e.currentTarget) onCerrar() }}>
+    <div
+      style={overlay}
+      onMouseDown={(e) => { downEnOverlay.current = e.target === e.currentTarget }}
+      onMouseUp={(e) => {
+        if (downEnOverlay.current && e.target === e.currentTarget) onCerrar()
+        downEnOverlay.current = false
+      }}
+    >
       <div style={{ ...box, maxWidth: ancho }}>
         <div style={header}>
           <h2 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--fg-1)' }}>{titulo}</h2>
