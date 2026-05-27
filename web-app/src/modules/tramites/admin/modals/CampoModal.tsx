@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { Plus, Trash2 } from 'lucide-react'
 import { Button, Input } from '../../../../ui'
 import { useActualizarCampo, useCrearCampo } from '../hooks'
 import { ModalShell, label, requiredMark, errorMsg, formRow } from './_modalShell'
@@ -13,8 +14,8 @@ const TIPOS_DATO: Array<{ v: TipoDatoCampo; l: string }> = [
   { v: 'fecha', l: 'Fecha' },
   { v: 'fecha_hora', l: 'Fecha + hora' },
   { v: 'booleano', l: 'Sí/No' },
-  { v: 'seleccion', l: 'Selección única' },
-  { v: 'seleccion_multiple', l: 'Selección múltiple' },
+  { v: 'seleccion', l: 'Lista de opciones (elegir una)' },
+  { v: 'seleccion_multiple', l: 'Lista de opciones (elegir varias)' },
   { v: 'ciudadano', l: 'Buscador de ciudadano' },
   { v: 'empresa', l: 'Buscador de empresa' },
   { v: 'agente', l: 'Selector de agente' },
@@ -61,24 +62,43 @@ export function CampoModal({
   const [ayuda, setAyuda] = useState(campo?.ayuda ?? '')
   const [orden, setOrden] = useState(campo?.orden ?? 1)
   const [visibleEnListado, setVisibleEnListado] = useState(campo?.visible_en_listado ?? false)
-  const [opcionesTexto, setOpcionesTexto] = useState(
+  // BUG-04: las opciones se editan como filas {valor, etiqueta} en vez de un
+  // textarea con formato pipe. El valor (interno) se autocompleta desde la
+  // etiqueta visible, igual que el nombre interno del campo.
+  const [opciones, setOpciones] = useState<Array<{ valor: string; etiqueta: string }>>(
     campo?.opciones_jsonb
-      ? (campo.opciones_jsonb as Array<{ valor: string; etiqueta: string }>).map((o) => `${o.valor}|${o.etiqueta}`).join('\n')
-      : ''
+      ? (campo.opciones_jsonb as Array<{ valor: string; etiqueta: string }>).map((o) => ({ valor: o.valor, etiqueta: o.etiqueta }))
+      : []
   )
   const [error, setError] = useState('')
 
   const crear = useCrearCampo()
   const actualizar = useActualizarCampo()
 
-  function parseOpciones(): Array<{ valor: string; etiqueta: string }> | null {
-    const lineas = opcionesTexto.split('\n').map((l) => l.trim()).filter(Boolean)
-    if (lineas.length === 0) return null
-    return lineas.map((l) => {
-      const [v, ...rest] = l.split('|')
-      const et = rest.join('|').trim() || v.trim()
-      return { valor: v.trim(), etiqueta: et }
-    })
+  function agregarOpcion() {
+    setOpciones((prev) => [...prev, { valor: '', etiqueta: '' }])
+  }
+  function quitarOpcion(idx: number) {
+    setOpciones((prev) => prev.filter((_, i) => i !== idx))
+  }
+  function setEtiquetaOpcion(idx: number, et: string) {
+    setOpciones((prev) => prev.map((o, i) => {
+      if (i !== idx) return o
+      // si el valor estaba vacío o seguía al slug de la etiqueta anterior, lo re-derivamos
+      const valorAuto = aSnakeCase(o.etiqueta) === o.valor || o.valor === ''
+      return { etiqueta: et, valor: valorAuto ? aSnakeCase(et) : o.valor }
+    }))
+  }
+  function setValorOpcion(idx: number, v: string) {
+    setOpciones((prev) => prev.map((o, i) => (i === idx ? { ...o, valor: aSnakeCase(v) } : o)))
+  }
+
+  /** Opciones limpias para enviar (sin filas vacías). null si no aplica/ninguna. */
+  function opcionesValidas(): Array<{ valor: string; etiqueta: string }> | null {
+    const limpias = opciones
+      .map((o) => ({ valor: o.valor.trim(), etiqueta: o.etiqueta.trim() || o.valor.trim() }))
+      .filter((o) => o.valor)
+    return limpias.length ? limpias : null
   }
 
   // Validez del nombre interno (BUG-03): en alta debe ser snake_case; en edición
@@ -94,9 +114,9 @@ export function CampoModal({
     }
     if (!etiqueta.trim()) { setError('Etiqueta obligatoria'); return }
 
-    const opciones = REQUIERE_OPCIONES.includes(tipoDato) ? parseOpciones() : null
-    if (REQUIERE_OPCIONES.includes(tipoDato) && (!opciones || opciones.length === 0)) {
-      setError('Este tipo requiere al menos 1 opción. Una por línea: "valor|Etiqueta"')
+    const opcs = REQUIERE_OPCIONES.includes(tipoDato) ? opcionesValidas() : null
+    if (REQUIERE_OPCIONES.includes(tipoDato) && (!opcs || opcs.length === 0)) {
+      setError('Este tipo requiere al menos 1 opción. Agregá al menos una con el botón "+ Agregar opción".')
       return
     }
 
@@ -112,7 +132,7 @@ export function CampoModal({
             orden,
             ayuda: ayuda.trim() || null,
             visible_en_listado: visibleEnListado,
-            opciones_jsonb: opciones,
+            opciones_jsonb: opcs,
           },
         })
       } else {
@@ -125,7 +145,7 @@ export function CampoModal({
             orden,
             ayuda: ayuda.trim() || null,
             visible_en_listado: visibleEnListado,
-            opciones_jsonb: opciones,
+            opciones_jsonb: opcs,
           },
         })
       }
@@ -204,14 +224,56 @@ export function CampoModal({
 
       {REQUIERE_OPCIONES.includes(tipoDato) && (
         <div style={formRow}>
-          <label style={label}>Opciones (una por línea: <code>valor|Etiqueta</code>)</label>
-          <textarea
-            value={opcionesTexto}
-            onChange={(e) => setOpcionesTexto(e.target.value)}
-            rows={4}
-            placeholder="alta|Alta&#10;media|Media&#10;baja|Baja"
-            style={textarea}
-          />
+          <label style={label}>Opciones de la lista</label>
+          <p style={{ fontSize: 11, color: 'var(--fg-3)', margin: '0 0 8px' }}>
+            Escribí lo que verá el usuario en la "Etiqueta". El valor interno se
+            completa solo (podés ajustarlo si lo necesitás).
+          </p>
+          {opciones.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', gap: 8, fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-display)' }}>
+                <span style={{ flex: 1 }}>Etiqueta visible</span>
+                <span style={{ flex: 1 }}>Valor interno</span>
+                <span style={{ width: 28 }} />
+              </div>
+              {opciones.map((o, idx) => (
+                <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <Input
+                    value={o.etiqueta}
+                    onChange={(e) => setEtiquetaOpcion(idx, e.target.value)}
+                    placeholder="Alta"
+                    style={{ flex: 1 }}
+                  />
+                  <Input
+                    value={o.valor}
+                    onChange={(e) => setValorOpcion(idx, e.target.value)}
+                    placeholder="alta"
+                    style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 13 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => quitarOpcion(idx)}
+                    title="Quitar opción"
+                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', padding: 4, borderRadius: 4, width: 28 }}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={agregarOpcion}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8,
+              background: 'transparent', border: '1px dashed var(--border-medium)',
+              borderRadius: 'var(--radius-md)', padding: '6px 12px', cursor: 'pointer',
+              color: 'var(--fg-2)', fontFamily: 'var(--font-display)', fontSize: 13,
+            }}
+          >
+            <Plus size={14} /> Agregar opción
+          </button>
         </div>
       )}
 
