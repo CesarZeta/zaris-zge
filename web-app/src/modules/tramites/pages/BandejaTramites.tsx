@@ -7,18 +7,12 @@ import { EstadoBadge } from '../components/EstadoBadge'
 import type { TramiteBandejaItem, BandejaParams } from '../types'
 
 const LIMIT = 50
-const TABS = [
-  { id: 'mis_tramites', label: 'Mis trámites' },
-  { id: 'mi_subarea', label: 'Mi subárea' },
-  { id: 'todos', label: 'Todos' },
-]
 
 export function BandejaTramites() {
   const navigate = useNavigate()
   const [sp, setSp] = useSearchParams()
 
   // Filtros desde URL
-  const tabActivo = sp.get('tab') ?? 'todos'
   const estadoCodigo = sp.get('estado') ?? ''
   const idTipo = sp.get('tipo') ? Number(sp.get('tipo')) : undefined
   const iniciadorTipo = sp.get('iniciador') ?? ''
@@ -34,15 +28,6 @@ export function BandejaTramites() {
       const next = new URLSearchParams(prev)
       if (value) { next.set(key, value) } else { next.delete(key) }
       if (key !== 'pagina') next.delete('pagina')
-      return next
-    })
-  }
-
-  function setTab(tab: string) {
-    setSp((prev) => {
-      const next = new URLSearchParams(prev)
-      next.set('tab', tab)
-      next.delete('pagina')
       return next
     })
   }
@@ -69,8 +54,6 @@ export function BandejaTramites() {
     ...(iniciadorTipo ? { iniciador_tipo: iniciadorTipo } : {}),
     ...(numero ? { numero } : {}),
     ...(q ? { q } : {}),
-    ...(tabActivo === 'mis_tramites' ? { mis_tramites: true } : {}),
-    ...(tabActivo === 'mi_subarea' ? { mi_subarea: true } : {}),
   }
 
   const { data, isLoading, error, refetch } = useBandeja(params)
@@ -96,32 +79,6 @@ export function BandejaTramites() {
         <Button variant="accent" icon={<Plus size={16} strokeWidth={1.5} />} onClick={() => navigate('/tramites/nuevo')}>
           Nuevo trámite
         </Button>
-      </div>
-
-      {/* Tabs rápidos */}
-      <div style={{ display: 'flex', gap: 4, background: 'var(--surface-300)', padding: 4, borderRadius: 'var(--radius-lg)', width: 'fit-content' }}>
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setTab(tab.id)}
-            style={{
-              padding: '6px 14px',
-              borderRadius: 'calc(var(--radius-lg) - 2px)',
-              border: 'none',
-              cursor: 'pointer',
-              fontFamily: 'var(--font-display)',
-              fontSize: 13,
-              fontWeight: tabActivo === tab.id ? 600 : 400,
-              background: tabActivo === tab.id ? 'var(--surface-100)' : 'transparent',
-              color: tabActivo === tab.id ? 'var(--fg-1)' : 'var(--fg-3)',
-              boxShadow: tabActivo === tab.id ? 'var(--ring-border)' : 'none',
-              transition: 'all 120ms ease',
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
       </div>
 
       {/* Filtros */}
