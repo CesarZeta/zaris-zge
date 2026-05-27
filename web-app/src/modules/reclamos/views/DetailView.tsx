@@ -61,7 +61,7 @@ export function DetailView() {
             {r.tipo_nombre || 'Reclamo'}
           </h2>
           <div style={{ fontSize: '0.82rem', color: 'var(--fg-3)', marginTop: 2, fontFamily: 'var(--font-mono)' }}>
-            {r.nro_reclamo || `#${r.id_reclamo}`} · {r.area_nombre || '—'}
+            {r.nro_reclamo || `#${r.id_reclamo}`} · {r.subarea_nombre || r.area_nombre || '—'}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
