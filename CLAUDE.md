@@ -2364,6 +2364,15 @@ Receta probada (sesión 2026-05-18, 3 manuales generados). Reusable para cualqui
 
 > **Variante sin capturas (válida):** `manual_encuestas.html` se generó SIN capturas embebidas. La receta full de §36 usa Playwright para capturas reales, pero el `browser_screenshot` del MCP integrado no persiste el PNG ([[feedback_screenshots_no_persisten_browser_mcp]]) y montar Playwright es setup pesado. Para módulos **analíticos/simples** (dashboards de lectura, pocas pantallas), un manual de texto + tablas + diagramas de flujo con el estilo ZARIS canónico es claro y suficiente — entregable sin el setup de capturas. Reservar el manual con capturas para flujos operativos multi-paso donde "ver la pantalla" agrega valor real (Reclamos, OT, Trámites).
 
+### El manual es parte del entregable cuando cambia la UI que documenta
+
+**Antes de cerrar un cambio de UI/flujo, chequear si ese módulo tiene manual en `docs/` (`manual_<modulo>.html`).** Si lo tiene, actualizar el texto + las capturas afectadas es parte del mismo entregable, no un paso opcional para "otra sesión". Un manual que describe la UI vieja miente al usuario y nadie lo nota hasta que alguien lo lee.
+
+- **Cómo detectar el desfasaje rápido:** extraer el texto del HTML (quitar los `data:image/...;base64` con regex, después los tags) y grepear los términos que tu cambio tocó (nombres de botones, tabs, tipos de opción). Si el manual nombra algo que renombraste/quitaste/agregaste, está desfasado.
+- **Regenerar capturas afectadas, no todas:** identificá qué `<figure>` corresponde a la pantalla que cambió (por el `<figcaption>`/heading que la precede) y regenerá solo esas + insertá las nuevas. El resto de capturas siguen válidas.
+- **Patch del HTML con guardas:** para swaps de base64 y ediciones de texto, un script Node/Python con `assert`/`must()` sobre cada anchor antes de escribir es más seguro que editar a mano un archivo de 3 MB. **Al anclar texto que vive dentro de markup, incluí los tags inline** (`El pase <strong>libera la toma</strong>...`, no `El pase libera la toma...`) o el match falla. Verificá el resultado en el browser (imágenes no rotas, secciones nuevas presentes) antes de commitear.
+- **Una sola fuente por manual.** No mantener `.md` + `.html` del mismo manual: el HTML es el canónico (es lo que se publica en `docs/` y lo que el usuario abre vía Guías §37). Un `.md` paralelo se desincroniza en silencio (caso real: `manual_admin_tramites.md` quedó 5 días atrás del HTML/UH — se eliminó 2026-05-27). Si querés fuente editable, que sea el propio HTML.
+
 ### Próximos manuales sugeridos (no obligatorios)
 
 - Agenda (calendario + espacios + disponibilidad)
