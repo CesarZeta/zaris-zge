@@ -2,6 +2,7 @@ import { Clock } from 'lucide-react'
 import type { ModuleManifest } from '../../lib/types'
 import { TurnosLayout } from './TurnosLayout'
 import { Overview } from './pages/Overview'
+import { Atendidos } from './pages/Atendidos'
 import { Prestaciones } from './pages/Prestaciones'
 
 // Modulo Turnos (replanteado mig 71): los turnos cumplen PRESTACIONES. Una
@@ -23,6 +24,7 @@ export const turnosModule: ModuleManifest = {
   moduloCodigo: 'turnos',
   routes: [
     { index: true,           element: Wrap(Overview),     handle: { breadcrumb: 'turnos' } },
+    { path: 'atendidos',     element: Wrap(Atendidos),    handle: { breadcrumb: 'turnos · atendidos' } },
     { path: 'prestaciones',  element: Wrap(Prestaciones),  handle: { breadcrumb: 'turnos · prestaciones' } },
   ],
 }

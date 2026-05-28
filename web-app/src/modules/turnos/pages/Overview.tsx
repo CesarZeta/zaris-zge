@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
-import { Plus, RefreshCw } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { CalendarDays, Plus, RefreshCw } from 'lucide-react'
 import { useTurnos, useCumplirTurno, useCancelarTurno } from '../hooks/useTurnos'
 import { TurnoFormModal } from '../components/TurnoFormModal'
+import { CumplirTurnoModal } from '../components/CumplirTurnoModal'
 import { ConfirmModal } from '../../agenda/components/ConfirmModal'
 import { useNotificationsStore } from '../../../stores/notifications'
 import type { EstadoTurno, Turno } from '../types/turno'
@@ -16,6 +18,7 @@ const ESTADO_COLOR: Record<EstadoTurno, { bg: string; fg: string }> = {
 
 export function Overview() {
   const push = useNotificationsStore((s) => s.push)
+  const navigate = useNavigate()
   const [fEstado, setFEstado] = useState<FiltroEstado>('')
   const [fTexto, setFTexto] = useState('')
   const [fDesde, setFDesde] = useState('')
@@ -53,10 +56,10 @@ export function Overview() {
     return c
   }, [turnos])
 
-  async function doCumplir(t: Turno) {
+  async function doCumplir(t: Turno, observaciones: string) {
     setConfirmCumplir(null)
     try {
-      await cumplir.mutateAsync(t.id_turno)
+      await cumplir.mutateAsync({ id_turno: t.id_turno, observaciones: observaciones || undefined })
       push({ kind: 'success', title: 'Turno marcado como cumplido' })
     } catch (e) {
       push({ kind: 'error', title: 'No se pudo cumplir', body: (e as Error).message })
@@ -114,6 +117,9 @@ export function Overview() {
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
           <button onClick={() => refetch()} style={btnGhost} title="Refrescar">
             <RefreshCw size={14} strokeWidth={1.5} style={{ animation: isFetching ? 'spin 1s linear infinite' : undefined }} />
+          </button>
+          <button onClick={() => navigate('/agenda')} style={btnGhost} title="Ver turnos en la agenda (día/semana/mes)">
+            <CalendarDays size={14} strokeWidth={1.5} /> Ver en agenda
           </button>
           <button onClick={() => { setEditTurno(null); setModalOpen(true) }} style={btnPrimary}>
             <Plus size={14} strokeWidth={1.5} /> Nuevo turno
@@ -191,12 +197,9 @@ export function Overview() {
       </div>
 
       <TurnoFormModal open={modalOpen} onClose={() => setModalOpen(false)} turno={editTurno} />
-      <ConfirmModal
-        open={confirmCumplir != null}
-        title="Marcar turno como cumplido"
-        message={`Confirmás que el turno de ${confirmCumplir?.ciudadano_nombre ?? ''} fue atendido?`}
-        confirmLabel="Marcar cumplido"
-        onConfirm={() => confirmCumplir && doCumplir(confirmCumplir)}
+      <CumplirTurnoModal
+        turno={confirmCumplir}
+        onConfirm={(obs) => confirmCumplir && doCumplir(confirmCumplir, obs)}
         onCancel={() => setConfirmCumplir(null)}
       />
       <ConfirmModal

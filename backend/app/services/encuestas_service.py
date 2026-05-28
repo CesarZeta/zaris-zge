@@ -49,7 +49,11 @@ MOTIVO_YA_EXISTE = "Ya existe envío para este reclamo"
 MOTIVO_SIN_EMAIL = "Ciudadano sin email válido"
 MOTIVO_ANTIFATIGA = "Anti-fatiga: ya recibió encuesta del área en últimos 30 días"
 MOTIVO_SIN_PLANTILLA = "No hay plantilla de encuesta activa para reclamos"
+MOTIVO_SIN_PLANTILLA_TURNO = "No hay plantilla de encuesta activa para turnos"
+MOTIVO_NO_CUMPLIDO = "Turno no existe o no está cumplido"
 MOTIVO_ERROR = "Error interno al crear el envío"
+
+ESTADO_CUMPLIDO_TURNO = "cumplido"
 
 
 def _tok(token) -> str:
@@ -217,6 +221,101 @@ async def crear_envio_para_reclamo(db: AsyncSession, id_reclamo: int):
         return None, MOTIVO_ERROR
 
 
+async def crear_envio_para_turno(db: AsyncSession, id_turno: int):
+    """
+    Crea un encuesta_envio 'pendiente' para un turno cumplido. Espeja a
+    crear_envio_para_reclamo pero usando la plantilla tipo='turnos' y la FK
+    id_turno (mig 72). Devuelve tuple (fila_mapping | None, motivo).
+
+    La subarea para el anti-fatiga sale del propio turno (t.id_subarea) o, en su
+    defecto, de la prestacion (tp.id_subarea).
+    Idempotente: si ya hay envio para el turno, devuelve (None, MOTIVO_YA_EXISTE).
+    """
+    try:
+        if not await encuestas_estan_activas(db):
+            logger.info("crear_envio_turno: encuestas desactivadas, skip turno=%s", id_turno)
+            return None, MOTIVO_DESACTIVADAS
+
+        t = (await db.execute(text("""
+            SELECT t.id_turno, t.estado, t.id_ciudadano, t.id_municipio,
+                   COALESCE(t.id_subarea, tp.id_subarea) AS id_subarea,
+                   c.email AS email_ciudadano
+              FROM turnos t
+              JOIN ciudadanos c ON c.id_ciudadano = t.id_ciudadano
+              LEFT JOIN tipo_prestacion tp ON tp.id_tipo_prestacion = t.id_tipo_prestacion
+             WHERE t.id_turno = :id AND t.activo = TRUE
+             LIMIT 1
+        """), {"id": id_turno})).fetchone()
+
+        if t is None:
+            logger.info("crear_envio_turno: turno=%s no existe", id_turno)
+            return None, MOTIVO_NO_CUMPLIDO
+        t = t._mapping
+        if t["estado"] != ESTADO_CUMPLIDO_TURNO:
+            logger.info("crear_envio_turno: turno=%s no esta cumplido (estado=%s)", id_turno, t["estado"])
+            return None, MOTIVO_NO_CUMPLIDO
+
+        ya = (await db.execute(text("""
+            SELECT 1 FROM encuesta_envio
+             WHERE id_turno = :id AND activo = TRUE LIMIT 1
+        """), {"id": id_turno})).fetchone()
+        if ya:
+            logger.info("crear_envio_turno: turno=%s ya tiene envio, skip", id_turno)
+            return None, MOTIVO_YA_EXISTE
+
+        email = (t["email_ciudadano"] or "").strip()
+        if not email or "@" not in email:
+            logger.info("crear_envio_turno: ciudadano del turno=%s sin email valido", id_turno)
+            return None, MOTIVO_SIN_EMAIL
+
+        id_subarea = t["id_subarea"]
+        if id_subarea is not None and await antifatiga_esta_activo(db):
+            reciente = (await db.execute(text("""
+                SELECT 1 FROM encuesta_envio ee
+                 WHERE ee.id_ciudadano = :cid AND ee.id_subarea = :sub AND ee.activo = TRUE
+                   AND ee.fecha_alta > NOW() - make_interval(days => :dias)
+                 LIMIT 1
+            """), {"cid": t["id_ciudadano"], "sub": id_subarea, "dias": DIAS_ANTIFATIGA})).fetchone()
+            if reciente:
+                logger.info("crear_envio_turno: anti-fatiga ciudadano=%s subarea=%s", t["id_ciudadano"], id_subarea)
+                return None, MOTIVO_ANTIFATIGA
+
+        plantilla = (await db.execute(text("""
+            SELECT id_encuesta_plantilla FROM encuesta_plantilla
+             WHERE tipo = 'turnos' AND activo = TRUE
+             ORDER BY id_encuesta_plantilla LIMIT 1
+        """))).fetchone()
+        if plantilla is None:
+            logger.warning("crear_envio_turno: no hay plantilla activa tipo='turnos'")
+            return None, MOTIVO_SIN_PLANTILLA_TURNO
+
+        token = uuid.uuid4()
+        fecha_exp = _now() + timedelta(days=DIAS_EXPIRACION_ENVIO)
+
+        nuevo = (await db.execute(text("""
+            INSERT INTO encuesta_envio (
+                id_plantilla, id_ciudadano, id_turno, token_unico,
+                email_destino_snapshot, fecha_expiracion, estado,
+                id_municipio, id_subarea
+            ) VALUES (
+                :pid, :cid, :tid, :token, :email, :fexp, 'pendiente', :mun, :sub
+            )
+            RETURNING id_encuesta_envio, token_unico, estado, id_turno
+        """), {
+            "pid": plantilla[0], "cid": t["id_ciudadano"], "tid": id_turno,
+            "token": str(token), "email": email, "fexp": fecha_exp,
+            "mun": t["id_municipio"], "sub": id_subarea,
+        })).fetchone()
+        await db.commit()
+
+        logger.info("crear_envio_turno: OK turno=%s envio=%s token=%s", id_turno, nuevo[0], _tok(nuevo[1]))
+        return nuevo._mapping, MOTIVO_OK
+    except Exception as e:
+        await db.rollback()
+        logger.error("crear_envio_para_turno fallo (turno=%s): %s", id_turno, e)
+        return None, MOTIVO_ERROR
+
+
 # =============================================================================
 # Branding del municipio (header del email)
 # =============================================================================
@@ -316,6 +415,68 @@ def _render_email_encuesta(
     return asunto, html, texto
 
 
+def _render_email_turno(
+    *, nombre_ciudadano: str, prestacion_nombre: str,
+    fecha_turno: Optional[datetime], fecha_expiracion: Optional[datetime],
+    url: str, municipio_nombre: str, municipio_logo_url: str,
+) -> tuple[str, str, str]:
+    """Devuelve (asunto, html, texto_plano) para la encuesta de un turno."""
+    asunto = "Tu opinión sobre la atención que recibiste nos importa"
+
+    prest_esc = _esc(prestacion_nombre or "tu atención")
+    nombre_esc = _esc(nombre_ciudadano or "")
+    muni_esc = _esc(municipio_nombre)
+    f_turno = _fmt_fecha(fecha_turno)
+    f_exp = _fmt_fecha(fecha_expiracion)
+
+    logo_html = (
+        f'<img src="{_esc(municipio_logo_url)}" alt="{muni_esc}" '
+        f'style="max-height:48px;margin-bottom:8px;">'
+        if municipio_logo_url else ""
+    )
+    fue_atendido = f" del {f_turno}" if f_turno else ""
+
+    html = f"""\
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"></head>
+<body style="margin:0;background:#f2f1ed;font-family:Arial,Helvetica,sans-serif;color:#26251e;">
+  <div style="max-width:560px;margin:0 auto;padding:24px;">
+    <div style="text-align:center;padding-bottom:16px;border-bottom:1px solid rgba(38,37,30,.1);">
+      {logo_html}
+      <div style="font-size:14px;font-weight:bold;letter-spacing:.04em;text-transform:uppercase;color:#26251e;">{muni_esc}</div>
+    </div>
+    <div style="background:#f7f7f4;border-radius:12px;padding:24px;margin-top:16px;">
+      <p style="font-size:16px;margin:0 0 12px;">Hola {nombre_esc},</p>
+      <p style="font-size:15px;line-height:1.5;margin:0 0 12px;">
+        Gracias por acercarte a &ldquo;{prest_esc}&rdquo;{fue_atendido}.
+        Nos gustaría saber qué te pareció la atención que recibiste.
+        La encuesta toma menos de 1 minuto.
+      </p>
+      <div style="text-align:center;margin:24px 0;">
+        <a href="{_esc(url)}" style="display:inline-block;background:#f54e00;color:#fff;
+           text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:bold;
+           font-size:15px;letter-spacing:.03em;">RESPONDER ENCUESTA</a>
+      </div>
+      <p style="font-size:13px;color:rgba(38,37,30,.55);margin:0;">
+        Este link expira el {f_exp}. Gracias por ayudarnos a mejorar.
+      </p>
+    </div>
+    <p style="text-align:center;font-size:13px;color:rgba(38,37,30,.55);margin-top:16px;">{muni_esc}</p>
+  </div>
+</body></html>"""
+
+    texto = (
+        f"Hola {nombre_ciudadano or ''},\n\n"
+        f"Gracias por acercarte a \"{prestacion_nombre or 'tu atención'}\"{fue_atendido}.\n"
+        f"Nos gustaría saber qué te pareció la atención que recibiste. "
+        f"La encuesta toma menos de 1 minuto.\n\n"
+        f"Responder encuesta:\n{url}\n\n"
+        f"Este link expira el {f_exp}. Gracias por ayudarnos a mejorar.\n\n"
+        f"{municipio_nombre}\n"
+    )
+    return asunto, html, texto
+
+
 def _esc(s: str) -> str:
     return (
         (s or "")
@@ -331,16 +492,23 @@ def _esc(s: str) -> str:
 # =============================================================================
 
 async def enviar_email_encuesta(db: AsyncSession, id_encuesta_envio: int) -> bool:
-    """Toma un envio 'pendiente', arma y manda el email. Actualiza estado/intentos."""
+    """Toma un envio 'pendiente', arma y manda el email. Actualiza estado/intentos.
+
+    Soporta envios de reclamo (id_reclamo) y de turno (id_turno, mig 72): los
+    JOIN a reclamos/turnos son LEFT y el render se ramifica segun el origen."""
     try:
         env = (await db.execute(text("""
             SELECT ee.id_encuesta_envio, ee.token_unico, ee.estado,
                    ee.email_destino_snapshot, ee.fecha_expiracion, ee.intentos_envio,
+                   ee.id_reclamo, ee.id_turno,
                    r.nro_reclamo, r.descripcion, r.fecha_cierre,
+                   t.fecha AS turno_fecha, tp.nombre AS prestacion_nombre,
                    c.nombre AS nombre_ciudadano
               FROM encuesta_envio ee
-              JOIN reclamos r   ON r.id_reclamo = ee.id_reclamo
               JOIN ciudadanos c ON c.id_ciudadano = ee.id_ciudadano
+              LEFT JOIN reclamos r        ON r.id_reclamo = ee.id_reclamo
+              LEFT JOIN turnos t          ON t.id_turno = ee.id_turno
+              LEFT JOIN tipo_prestacion tp ON tp.id_tipo_prestacion = t.id_tipo_prestacion
              WHERE ee.id_encuesta_envio = :id AND ee.activo = TRUE
              LIMIT 1
         """), {"id": id_encuesta_envio})).fetchone()
@@ -360,16 +528,27 @@ async def enviar_email_encuesta(db: AsyncSession, id_encuesta_envio: int) -> boo
         # (ej. '/design-system/assets/...'). En un cliente de email NO hay origen,
         # así que hay que entregar una URL absoluta o el <img> queda roto.
         logo_url = _absolutizar_url(brand["logo_url"])
-        asunto, html, texto = _render_email_encuesta(
-            nombre_ciudadano=env["nombre_ciudadano"],
-            nro_reclamo=env["nro_reclamo"] or str(id_encuesta_envio),
-            descripcion=env["descripcion"],
-            fecha_cierre=env["fecha_cierre"],
-            fecha_expiracion=env["fecha_expiracion"],
-            url=url,
-            municipio_nombre=brand["nombre"],
-            municipio_logo_url=logo_url,
-        )
+        if env["id_turno"] is not None:
+            asunto, html, texto = _render_email_turno(
+                nombre_ciudadano=env["nombre_ciudadano"],
+                prestacion_nombre=env["prestacion_nombre"] or "tu atención",
+                fecha_turno=env["turno_fecha"],
+                fecha_expiracion=env["fecha_expiracion"],
+                url=url,
+                municipio_nombre=brand["nombre"],
+                municipio_logo_url=logo_url,
+            )
+        else:
+            asunto, html, texto = _render_email_encuesta(
+                nombre_ciudadano=env["nombre_ciudadano"],
+                nro_reclamo=env["nro_reclamo"] or str(id_encuesta_envio),
+                descripcion=env["descripcion"],
+                fecha_cierre=env["fecha_cierre"],
+                fecha_expiracion=env["fecha_expiracion"],
+                url=url,
+                municipio_nombre=brand["nombre"],
+                municipio_logo_url=logo_url,
+            )
 
         ok = await enviar_mail(env["email_destino_snapshot"], asunto, html, texto,
                                from_override=_from_municipio(brand["nombre"]))
@@ -504,11 +683,11 @@ async def registrar_respuesta(
         # 2. Token apto
         env = (await db.execute(text("""
             SELECT ee.id_encuesta_envio, ee.id_plantilla, ee.estado, ee.fecha_expiracion,
-                   ee.id_reclamo, ee.id_ciudadano, ee.id_municipio, ee.id_subarea,
+                   ee.id_reclamo, ee.id_turno, ee.id_ciudadano, ee.id_municipio, ee.id_subarea,
                    r.nro_reclamo,
-                   COALESCE(tr.id_subarea, r.id_subarea) AS subarea_reclamo
+                   COALESCE(ee.id_subarea, tr.id_subarea, r.id_subarea) AS subarea_origen
               FROM encuesta_envio ee
-              JOIN reclamos r ON r.id_reclamo = ee.id_reclamo
+              LEFT JOIN reclamos r ON r.id_reclamo = ee.id_reclamo
               LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
              WHERE ee.token_unico = CAST(:t AS uuid) AND ee.activo = TRUE
              LIMIT 1
@@ -599,9 +778,12 @@ async def registrar_respuesta(
 
         # 5. Notificar al area si solicita contacto (best-effort, no rompe la respuesta)
         if solicita_contacto:
+            referencia = (
+                f"Reclamo #{env['nro_reclamo']}" if env["id_reclamo"] is not None
+                else f"Turno #{env['id_turno']}"
+            )
             await _notificar_solicitud_contacto(
-                db, id_subarea=env["subarea_reclamo"], nro_reclamo=env["nro_reclamo"],
-                id_reclamo=env["id_reclamo"],
+                db, id_subarea=env["subarea_origen"], referencia=referencia,
             )
 
         return {"ok": True, "mensaje": "¡Gracias por tu respuesta!"}
@@ -611,11 +793,12 @@ async def registrar_respuesta(
         return {"ok": False, "error": "No se pudo registrar la respuesta"}
 
 
-async def _notificar_solicitud_contacto(db, *, id_subarea, nro_reclamo, id_reclamo):
-    """Manda un email a los usuarios del area responsable cuando un vecino pide contacto."""
+async def _notificar_solicitud_contacto(db, *, id_subarea, referencia: str):
+    """Manda un email a los usuarios del area responsable cuando un vecino pide
+    contacto. `referencia` es legible (ej. 'Reclamo #123' o 'Turno #45')."""
     try:
         if id_subarea is None:
-            logger.info("solicita_contacto: reclamo=%s sin subarea, no se notifica", id_reclamo)
+            logger.info("solicita_contacto: %s sin subarea, no se notifica", referencia)
             return
         usuarios = (await db.execute(text("""
             SELECT DISTINCT u.email
@@ -627,19 +810,19 @@ async def _notificar_solicitud_contacto(db, *, id_subarea, nro_reclamo, id_recla
         if not usuarios:
             logger.info("solicita_contacto: subarea=%s sin usuarios con email", id_subarea)
             return
-        asunto = f"[ZARIS] Vecino solicita contacto - Reclamo #{nro_reclamo or id_reclamo}"
+        ref_esc = _esc(referencia)
+        asunto = f"[ZARIS] Vecino solicita contacto - {referencia}"
         html = (
-            f"<p>Un vecino respondió la encuesta de satisfacción del reclamo "
-            f"<strong>#{_esc(str(nro_reclamo or id_reclamo))}</strong> y "
-            f"<strong>solicitó ser contactado</strong>.</p>"
-            f"<p>Revisá el reclamo en ZARIS y comunicate con el vecino.</p>"
+            f"<p>Un vecino respondió la encuesta de satisfacción "
+            f"(<strong>{ref_esc}</strong>) y <strong>solicitó ser contactado</strong>.</p>"
+            f"<p>Revisalo en ZARIS y comunicate con el vecino.</p>"
         )
-        texto = (f"Un vecino solicitó contacto tras la encuesta del reclamo "
-                 f"#{nro_reclamo or id_reclamo}. Revisalo en ZARIS.")
+        texto = (f"Un vecino solicitó contacto tras la encuesta ({referencia}). "
+                 f"Revisalo en ZARIS.")
         for u in usuarios:
             await enviar_mail(u[0], asunto, html, texto)
     except Exception as e:
-        logger.error("_notificar_solicitud_contacto fallo (reclamo=%s): %s", id_reclamo, e)
+        logger.error("_notificar_solicitud_contacto fallo (%s): %s", referencia, e)
 
 
 # =============================================================================
