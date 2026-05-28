@@ -2765,6 +2765,15 @@ Hook no-bloqueante que crea el `encuesta_envio` al pasar un reclamo a 'Resuelto'
 - Tokens de encuestas: helper local `_tok()` en `encuestas_service.py` (consistente con el patrón)
 - Smoke test: `backend/scripts/test_mask_email.py`
 
+### Pendientes — encuestas + agenda de turnos (sesión futura, anotado 2026-05-28)
+
+El backoffice de encuestas (`web-app/src/modules/encuestas/`: views `EnviosView`/`ResumenView`/`ContactoView`) y su router (`encuestas_admin.py`) **se escribieron antes de la mig 72 y NO contemplan turnos**. Pedidos del usuario + deuda detectada, a encarar juntos:
+
+1. **Ver la encuesta de turnos + las preguntas de cada plantilla (frontend).** El backend YA expone `GET /admin/encuestas/plantillas` (lista todas, con `tipo`) y `GET /admin/encuestas/plantillas/{id}` (devuelve preguntas + opciones). **Falta la vista** en el módulo encuestas que las liste y muestre las preguntas (hoy no hay view de plantillas). Es gap de frontend, el backend está listo.
+2. **Filtro por TIPO de encuesta en la vista de resultados.** `GET /admin/encuestas/envios` y los `dashboard/*` **NO aceptan `tipo` ni `id_plantilla`** — agregar el filtro (backend + UI) para separar resultados de reclamos vs turnos.
+3. **TRAP polimórfico sin resolver en el admin** (ver [[encuesta_envio_polimorfico_left_join]]): `encuestas_admin.py` líneas ~267/303/395 hacen **`JOIN reclamos` inner** (`/respuestas/pendientes-contacto`, `/dashboard/resumen`, `/dashboard/por-area`) → **excluyen silenciosamente los envíos de turno**. `/envios` (línea ~184) sí los incluye pero sin referencia de turno. `POST /admin/encuestas/disparar` solo llama a `crear_envio_para_reclamo` (no hay disparo manual para turnos). Pasar esos JOIN a LEFT + branch por origen al encarar el filtro por tipo.
+4. **Agenda solo-turnos embebida en el módulo Turnos.** El CTA "Ver en agenda" del Overview de Turnos hoy salta al módulo Agenda que muestra TODO (OTs + eventos + turnos) — **no corresponde dentro de Turnos**. Construir una vista propia embebida (día/semana/mes) que reuse la grilla Gantt de Agenda pero filtrada a **solo `tipo='turno'`**, respetando el scoping por agente/subárea (§33). Requiere agregar un filtro `solo_tipo` a `/calendario`, `/mes`, `/semana` en `agenda_v2.py` (hoy devuelven todas las ocupaciones sin filtro de tipo; `GET /agenda/ocupaciones` sí tiene `tipo` pero no es el que alimenta la grilla) + propagarlo a los componentes `GanttGrid`/`TimelineView`/`WeeklyView`/`MonthlyView`. Decisión acordada: vista embebida en Turnos (no reusar el módulo Agenda). Hasta entonces el CTA "Ver en agenda" queda como está (impreciso, conocido).
+
 ## 43. Módulo Datos (BI — Análisis de datos)
 
 Tableros analíticos sobre `reclamos`. Módulo React `web-app/src/modules/bi/` (sidebar "datos", `moduloCodigo='bi'`, mig 65, nivel ≤ 2). Router backend `backend/app/api/routes/bi.py` (`/api/v1/bi/*`, guard JWT a nivel router). Entregado 2026-05-26.
