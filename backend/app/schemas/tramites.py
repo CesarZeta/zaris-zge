@@ -83,11 +83,13 @@ class TransicionOut(BaseModel):
     id_estado_origen: int
     id_estado_destino: int
     etiqueta_accion: str
+    tipo_accion: str = "avanzar"
     orden: int
     requiere_comentario: bool
     requiere_adjunto: bool
     quien_puede_jsonb: Any
     notifica_iniciador: bool
+    mensaje_iniciador: Optional[str] = None
 
 
 class DocumentoRequeridoOut(BaseModel):
@@ -100,6 +102,7 @@ class DocumentoRequeridoOut(BaseModel):
     formatos_permitidos: list[str]
     tamano_max_mb: int
     requiere_firma: bool
+    cantidad_max_archivos: int = 1
     orden: int
 
 
@@ -386,6 +389,7 @@ TIPO_DATO_VALIDOS = {
     "agente", "subarea", "equipo", "archivo", "moneda", "direccion",
 }
 APORTA_QUIEN_VALIDOS = {"iniciador", "oficina_actual", "cualquiera"}
+TIPO_ACCION_VALIDOS = {"aprobar", "rechazar", "derivar", "avanzar", "otro"}
 
 
 class TipoTramiteCreateIn(BaseModel):
@@ -558,24 +562,44 @@ class TransicionIn2(BaseModel):
     id_estado_origen: int
     id_estado_destino: int
     etiqueta_accion: str
+    tipo_accion: str = "avanzar"
     orden: int = 0
     quien_puede_jsonb: Optional[Any] = None  # dict; default {}
     requiere_comentario: bool = False
     requiere_adjunto: bool = False
     destino_automatico_jsonb: Optional[Any] = None
     notifica_iniciador: bool = True
+    mensaje_iniciador: Optional[str] = None
+
+    @field_validator("tipo_accion")
+    @classmethod
+    def tipo_accion_valido(cls, v: str) -> str:
+        if v not in TIPO_ACCION_VALIDOS:
+            raise ValueError(f"tipo_accion invalido. Validos: {sorted(TIPO_ACCION_VALIDOS)}")
+        return v
 
 
 class TransicionUpdateIn(BaseModel):
     id_estado_origen: Optional[int] = None
     id_estado_destino: Optional[int] = None
     etiqueta_accion: Optional[str] = None
+    tipo_accion: Optional[str] = None
     orden: Optional[int] = None
     quien_puede_jsonb: Optional[Any] = None
     requiere_comentario: Optional[bool] = None
     requiere_adjunto: Optional[bool] = None
     destino_automatico_jsonb: Optional[Any] = None
     notifica_iniciador: Optional[bool] = None
+    mensaje_iniciador: Optional[str] = None
+
+    @field_validator("tipo_accion")
+    @classmethod
+    def tipo_accion_valido_opt(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        if v not in TIPO_ACCION_VALIDOS:
+            raise ValueError(f"tipo_accion invalido. Validos: {sorted(TIPO_ACCION_VALIDOS)}")
+        return v
 
 
 class DocumentoRequeridoIn(BaseModel):
@@ -588,6 +612,7 @@ class DocumentoRequeridoIn(BaseModel):
     requiere_firma: bool = False
     firmantes_jsonb: Optional[Any] = None
     aporta_quien: str = "iniciador"
+    cantidad_max_archivos: int = 1
     orden: int = 0
 
     @field_validator("aporta_quien")
@@ -608,6 +633,7 @@ class DocumentoRequeridoUpdateIn(BaseModel):
     requiere_firma: Optional[bool] = None
     firmantes_jsonb: Optional[Any] = None
     aporta_quien: Optional[str] = None
+    cantidad_max_archivos: Optional[int] = None
     orden: Optional[int] = None
 
     @field_validator("aporta_quien")

@@ -52,14 +52,19 @@ export interface TipoTramiteEstado {
   permite_comentar: boolean
 }
 
+export type TipoAccionTransicion = 'aprobar' | 'rechazar' | 'derivar' | 'avanzar' | 'otro'
+
 export interface TipoTramiteTransicion {
   id_tipo_tramite_transicion: number
   id_estado_origen: number
   id_estado_destino: number
   etiqueta_accion: string
+  tipo_accion?: TipoAccionTransicion
   orden: number
   requiere_comentario: boolean
   requiere_adjunto: boolean
+  notifica_iniciador?: boolean
+  mensaje_iniciador?: string | null
   quien_puede_jsonb: {
     subareas?: number[]
     equipos?: number[]
@@ -78,6 +83,8 @@ export interface TipoTramiteDocRequerido {
   tamano_max_mb: number
   requiere_firma: boolean
   quien_debe_adjuntar: string
+  cantidad_max_archivos?: number
+  orden: number
   // Solo viene del endpoint admin /versiones/{id}, no del público /tipos/{id}.
   id_tipo_tramite_estado?: number | null
 }

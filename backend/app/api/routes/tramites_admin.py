@@ -369,9 +369,9 @@ async def detalle_version(
     transiciones = (await db.execute(
         text("""
             SELECT id_tipo_tramite_transicion, id_estado_origen, id_estado_destino,
-                   etiqueta_accion, orden, quien_puede_jsonb,
+                   etiqueta_accion, tipo_accion, orden, quien_puede_jsonb,
                    requiere_comentario, requiere_adjunto,
-                   destino_automatico_jsonb, notifica_iniciador
+                   destino_automatico_jsonb, notifica_iniciador, mensaje_iniciador
             FROM tipo_tramite_transicion
             WHERE id_tipo_tramite_version = :v AND activo = TRUE
             ORDER BY orden, id_tipo_tramite_transicion
@@ -383,7 +383,7 @@ async def detalle_version(
             SELECT id_tipo_tramite_documento_requerido, nombre, descripcion,
                    id_tipo_tramite_estado, obligatorio, formatos_permitidos,
                    tamano_max_mb, requiere_firma, firmantes_jsonb,
-                   aporta_quien, orden
+                   aporta_quien, cantidad_max_archivos, orden
             FROM tipo_tramite_documento_requerido
             WHERE id_tipo_tramite_version = :v AND activo = TRUE
             ORDER BY orden, id_tipo_tramite_documento_requerido
@@ -774,21 +774,22 @@ async def crear_transicion(
         text("""
             INSERT INTO tipo_tramite_transicion
                 (id_tipo_tramite_version, id_estado_origen, id_estado_destino,
-                 etiqueta_accion, orden, quien_puede_jsonb,
+                 etiqueta_accion, tipo_accion, orden, quien_puede_jsonb,
                  requiere_comentario, requiere_adjunto,
-                 destino_automatico_jsonb, notifica_iniciador,
+                 destino_automatico_jsonb, notifica_iniciador, mensaje_iniciador,
                  activo, id_municipio)
-            VALUES (:v, :ori, :dst, :eti, :ord, CAST(:qp AS jsonb), :rc, :ra,
-                    CAST(:da AS jsonb), :ni, TRUE, :mun)
+            VALUES (:v, :ori, :dst, :eti, :ta, :ord, CAST(:qp AS jsonb), :rc, :ra,
+                    CAST(:da AS jsonb), :ni, :mi, TRUE, :mun)
             RETURNING id_tipo_tramite_transicion
         """),
         {
             "v": id_version, "ori": body.id_estado_origen, "dst": body.id_estado_destino,
-            "eti": body.etiqueta_accion, "ord": body.orden,
+            "eti": body.etiqueta_accion, "ta": body.tipo_accion, "ord": body.orden,
             "qp": json.dumps(body.quien_puede_jsonb) if body.quien_puede_jsonb is not None else "{}",
             "rc": body.requiere_comentario, "ra": body.requiere_adjunto,
             "da": json.dumps(body.destino_automatico_jsonb) if body.destino_automatico_jsonb is not None else None,
-            "ni": body.notifica_iniciador, "mun": ver["id_municipio"],
+            "ni": body.notifica_iniciador, "mi": body.mensaje_iniciador,
+            "mun": ver["id_municipio"],
         },
     )).scalar_one()
     await db.commit()
@@ -831,8 +832,8 @@ async def actualizar_transicion(
     sets: list[str] = []
     params: dict[str, Any] = {"id": id_trans}
     for field in ("id_estado_origen", "id_estado_destino", "etiqueta_accion",
-                  "orden", "requiere_comentario", "requiere_adjunto",
-                  "notifica_iniciador"):
+                  "tipo_accion", "orden", "requiere_comentario", "requiere_adjunto",
+                  "notifica_iniciador", "mensaje_iniciador"):
         val = getattr(body, field)
         if val is not None:
             sets.append(f"{field} = :{field}")
@@ -883,11 +884,13 @@ async def _transicion_out(db: AsyncSession, id_trans: int) -> TransicionOut:
         id_estado_origen=r.id_estado_origen,
         id_estado_destino=r.id_estado_destino,
         etiqueta_accion=r.etiqueta_accion,
+        tipo_accion=r.tipo_accion,
         orden=r.orden,
         requiere_comentario=r.requiere_comentario,
         requiere_adjunto=r.requiere_adjunto,
         quien_puede_jsonb=r.quien_puede_jsonb,
         notifica_iniciador=r.notifica_iniciador,
+        mensaje_iniciador=r.mensaje_iniciador,
     )
 
 
@@ -920,9 +923,10 @@ async def crear_documento_requerido(
             INSERT INTO tipo_tramite_documento_requerido
                 (id_tipo_tramite_version, id_tipo_tramite_estado, nombre, descripcion,
                  obligatorio, formatos_permitidos, tamano_max_mb, requiere_firma,
-                 firmantes_jsonb, aporta_quien, orden, activo, id_municipio)
+                 firmantes_jsonb, aporta_quien, cantidad_max_archivos, orden,
+                 activo, id_municipio)
             VALUES (:v, :est, :nom, :desc, :obl, :for, :tam, :rf,
-                    CAST(:fj AS jsonb), :aq, :ord, TRUE, :mun)
+                    CAST(:fj AS jsonb), :aq, :cma, :ord, TRUE, :mun)
             RETURNING id_tipo_tramite_documento_requerido
         """),
         {
@@ -931,7 +935,8 @@ async def crear_documento_requerido(
             "for": body.formatos_permitidos, "tam": body.tamano_max_mb,
             "rf": body.requiere_firma,
             "fj": json.dumps(body.firmantes_jsonb) if body.firmantes_jsonb is not None else None,
-            "aq": body.aporta_quien, "ord": body.orden, "mun": ver["id_municipio"],
+            "aq": body.aporta_quien, "cma": body.cantidad_max_archivos,
+            "ord": body.orden, "mun": ver["id_municipio"],
         },
     )).scalar_one()
     await db.commit()
@@ -967,7 +972,8 @@ async def actualizar_documento_requerido(
     sets: list[str] = []
     params: dict[str, Any] = {"id": id_doc}
     for field in ("nombre", "descripcion", "id_tipo_tramite_estado", "obligatorio",
-                  "tamano_max_mb", "requiere_firma", "aporta_quien", "orden"):
+                  "tamano_max_mb", "requiere_firma", "aporta_quien",
+                  "cantidad_max_archivos", "orden"):
         val = getattr(body, field)
         if val is not None:
             sets.append(f"{field} = :{field}")
@@ -1020,5 +1026,7 @@ async def _doc_req_out(db: AsyncSession, id_doc: int) -> DocumentoRequeridoOut:
         aporta_quien=r.aporta_quien,
         formatos_permitidos=list(r.formatos_permitidos or []),
         tamano_max_mb=r.tamano_max_mb,
-        requiere_firma=r.requiere_firma, orden=r.orden,
+        requiere_firma=r.requiere_firma,
+        cantidad_max_archivos=r.cantidad_max_archivos,
+        orden=r.orden,
     )
