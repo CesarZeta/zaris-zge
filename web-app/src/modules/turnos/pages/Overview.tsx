@@ -39,7 +39,7 @@ export function Overview() {
     const txt = fTexto.trim().toLowerCase()
     if (!txt) return turnos
     return turnos.filter((t) =>
-      [t.ciudadano_nombre, t.ciudadano_dni, t.recurso_nombre, t.agente_nombre, t.tipo_servicio_nombre, t.observaciones]
+      [t.ciudadano_nombre, t.ciudadano_dni, t.recurso_nombre, t.agente_nombre, t.prestacion_nombre, t.observaciones]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
@@ -78,7 +78,7 @@ export function Overview() {
       <div>
         <h1 style={titulo}>turnos</h1>
         <p style={{ margin: '6px 0 0', color: 'var(--fg-3)', fontSize: 'var(--size-btn)' }}>
-          gestión de turnos de atención sobre la disponibilidad de agentes.
+          gestión de turnos. Cada turno cumple una prestación (que define el recurso y la duración).
         </p>
       </div>
 
@@ -141,7 +141,7 @@ export function Overview() {
               <th style={th}>Fecha / Hora</th>
               <th style={th}>Ciudadano</th>
               <th style={th}>Atiende</th>
-              <th style={th}>Servicio</th>
+              <th style={th}>Prestación</th>
               <th style={th}>Estado</th>
               <th style={th}>Observaciones</th>
               <th style={{ ...th, textAlign: 'right' }}>Acciones</th>
@@ -170,7 +170,7 @@ export function Overview() {
                     {t.id_espacio != null ? 'Lugar de atención' : 'Agente'}
                   </div>
                 </td>
-                <td style={td}>{t.tipo_servicio_nombre ?? '—'}</td>
+                <td style={td}>{t.prestacion_nombre ?? '—'}</td>
                 <td style={td}><EstadoBadge estado={t.estado} /></td>
                 <td style={{ ...td, maxWidth: 200, color: 'var(--fg-3)' }}>{t.observaciones ?? ''}</td>
                 <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>

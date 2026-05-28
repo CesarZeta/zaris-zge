@@ -1,18 +1,17 @@
 // Pagina publica de autoservicio de Turnos.
 // Path: /turnos-autoservicio
 //
-// Flujo de 4 pasos: tipo de servicio -> agente -> slot libre -> datos del
-// ciudadano. Al reservar redirige a /turno/:tokenTurno (MiTurnoPage).
+// Flujo de 3 pasos (mig 71): prestacion -> slot libre -> datos del ciudadano.
+// El recurso (agente o lugar) ya viene fijado por la prestacion, asi que el
+// ciudadano no lo elige. Al reservar redirige a /turno/:tokenTurno (MiTurnoPage).
 // SIN AppShell, SIN JWT — el ciudadano final llega via link compartible.
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  getTiposServicioTurno,
-  getRecursosTurno,
+  getPrestacionesTurno,
   getSlotsTurno,
   postTurnoPublico,
-  type TipoServicioTurno,
-  type RecursoDisponible,
+  type PrestacionPublica,
   type SlotLibre,
 } from './api'
 import { layoutStyles as s, ZarisMark } from './shared'
@@ -25,20 +24,18 @@ function formatHora(t: string): string {
   return t.slice(0, 5)
 }
 
-type Paso = 'tipo' | 'agente' | 'slot' | 'datos'
+type Paso = 'prestacion' | 'slot' | 'datos'
 
 export function TurnosPage() {
   const navigate = useNavigate()
-  const [paso, setPaso] = useState<Paso>('tipo')
+  const [paso, setPaso] = useState<Paso>('prestacion')
 
   // Catalogos
-  const [tipos, setTipos] = useState<TipoServicioTurno[]>([])
-  const [recursos, setRecursos] = useState<RecursoDisponible[]>([])
+  const [prestaciones, setPrestaciones] = useState<PrestacionPublica[]>([])
   const [slots, setSlots] = useState<SlotLibre[]>([])
 
   // Seleccion
-  const [tipo, setTipo] = useState<TipoServicioTurno | null>(null)
-  const [recurso, setRecurso] = useState<RecursoDisponible | null>(null) // null = cualquiera
+  const [prestacion, setPrestacion] = useState<PrestacionPublica | null>(null)
   const [slot, setSlot] = useState<SlotLibre | null>(null)
 
   // Datos del ciudadano
@@ -52,16 +49,12 @@ export function TurnosPage() {
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
 
-  // Carga inicial de catalogos
+  // Carga inicial del catalogo de prestaciones
   useEffect(() => {
     let cancel = false
     setLoading(true); setError(null)
-    Promise.all([getTiposServicioTurno(), getRecursosTurno()])
-      .then(([t, r]) => {
-        if (cancel) return
-        setTipos(t)
-        setRecursos(r)
-      })
+    getPrestacionesTurno()
+      .then((p) => { if (!cancel) setPrestaciones(p) })
       .catch((e: Error) => { if (!cancel) setError(e.message) })
       .finally(() => { if (!cancel) setLoading(false) })
     return () => { cancel = true }
@@ -69,22 +62,16 @@ export function TurnosPage() {
 
   // Carga de slots al entrar al paso 'slot'
   useEffect(() => {
-    if (paso !== 'slot' || !tipo) return
+    if (paso !== 'slot' || !prestacion) return
     let cancel = false
     setLoading(true); setError(null); setSlots([])
-    getSlotsTurno({
-      id_tipo_servicio_turno: tipo.id_tipo_servicio_turno,
-      tipo_recurso: recurso?.tipo_recurso,
-      id_recurso: recurso?.id_recurso,
-      dias: 14,
-    })
+    getSlotsTurno({ id_tipo_prestacion: prestacion.id_tipo_prestacion, dias: 14 })
       .then((sl) => { if (!cancel) setSlots(sl) })
       .catch((e: Error) => { if (!cancel) setError(e.message) })
       .finally(() => { if (!cancel) setLoading(false) })
     return () => { cancel = true }
-  }, [paso, tipo, recurso])
+  }, [paso, prestacion])
 
-  // Slots agrupados por fecha para render
   const slotsPorFecha = useMemo(() => {
     const m = new Map<string, SlotLibre[]>()
     for (const sl of slots) {
@@ -96,14 +83,11 @@ export function TurnosPage() {
   }, [slots])
 
   async function doReservar() {
-    if (!tipo || !slot) return
+    if (!prestacion || !slot) return
     setEnviando(true); setError(null)
     try {
       const turno = await postTurnoPublico({
-        id_tipo_servicio_turno: tipo.id_tipo_servicio_turno,
-        ...(slot.tipo_recurso === 'espacio'
-          ? { id_espacio: slot.id_recurso }
-          : { id_agente: slot.id_recurso }),
+        id_tipo_prestacion: prestacion.id_tipo_prestacion,
         fecha: slot.fecha,
         hora_inicio: slot.hora_inicio,
         dni: dni.trim(),
@@ -125,28 +109,28 @@ export function TurnosPage() {
   return (
     <Shell>
       <h1 style={s.h1}>Reservar un turno</h1>
-      <p style={s.desc}>Eleg&iacute; el tr&aacute;mite, el d&iacute;a y completa tus datos.</p>
+      <p style={s.desc}>Eleg&iacute; la prestaci&oacute;n, el d&iacute;a y completa tus datos.</p>
 
       <StepIndicator paso={paso} />
 
       {loading && <div style={s.center}>Cargando&hellip;</div>}
 
-      {/* PASO 1: tipo de servicio */}
-      {!loading && paso === 'tipo' && (
+      {/* PASO 1: prestacion */}
+      {!loading && paso === 'prestacion' && (
         <div>
-          <h2 style={s.h2}>&iquest;Qu&eacute; tr&aacute;mite necesit&aacute;s?</h2>
-          {tipos.length === 0 && <div style={s.warn}>No hay tr&aacute;mites disponibles en este momento.</div>}
+          <h2 style={s.h2}>&iquest;Qu&eacute; necesit&aacute;s?</h2>
+          {prestaciones.length === 0 && <div style={s.warn}>No hay prestaciones disponibles en este momento.</div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
-            {tipos.map((t) => (
+            {prestaciones.map((p) => (
               <button
-                key={t.id_tipo_servicio_turno}
+                key={p.id_tipo_prestacion}
                 style={optionBtn}
-                onClick={() => { setTipo(t); setRecurso(null); setSlot(null); setPaso('agente') }}
+                onClick={() => { setPrestacion(p); setSlot(null); setPaso('slot') }}
               >
-                <div style={{ fontWeight: 600, fontSize: 15 }}>{t.nombre}</div>
-                {t.descripcion && <div style={{ fontSize: 13, color: 'var(--fg-2)', marginTop: 2 }}>{t.descripcion}</div>}
-                <div style={{ fontSize: 12, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', marginTop: 4 }}>
-                  Duraci&oacute;n: {t.duracion_min} min
+                <div style={{ fontWeight: 600, fontSize: 15 }}>{p.nombre}</div>
+                {p.descripcion && <div style={{ fontSize: 13, color: 'var(--fg-2)', marginTop: 2 }}>{p.descripcion}</div>}
+                <div style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 4 }}>
+                  {p.recurso_nombre ?? ''} &middot; {p.duracion_min} min
                 </div>
               </button>
             ))}
@@ -154,37 +138,14 @@ export function TurnosPage() {
         </div>
       )}
 
-      {/* PASO 2: recurso (agente o lugar de atencion) */}
-      {!loading && paso === 'agente' && tipo && (
-        <div>
-          <h2 style={s.h2}>&iquest;D&oacute;nde o con qui&eacute;n quer&eacute;s ser atendido?</h2>
-          <p style={{ ...s.desc, marginBottom: 12 }}>Tr&aacute;mite: <strong>{tipo.nombre}</strong></p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <button style={optionBtn} onClick={() => { setRecurso(null); setSlot(null); setPaso('slot') }}>
-              <div style={{ fontWeight: 600, fontSize: 15 }}>Cualquier disponible</div>
-              <div style={{ fontSize: 13, color: 'var(--fg-2)', marginTop: 2 }}>Te mostramos todos los horarios libres</div>
-            </button>
-            {recursos.map((r) => (
-              <button
-                key={`${r.tipo_recurso}-${r.id_recurso}`}
-                style={optionBtn}
-                onClick={() => { setRecurso(r); setSlot(null); setPaso('slot') }}
-              >
-                <div style={{ fontWeight: 600, fontSize: 15 }}>{r.nombre}</div>
-                <div style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 2 }}>
-                  {r.tipo_recurso === 'espacio' ? 'Lugar de atención' : 'Agente'}
-                </div>
-              </button>
-            ))}
-          </div>
-          <button style={backBtn} onClick={() => setPaso('tipo')}>&larr; Cambiar tr&aacute;mite</button>
-        </div>
-      )}
-
-      {/* PASO 3: slot */}
-      {!loading && paso === 'slot' && tipo && (
+      {/* PASO 2: slot */}
+      {!loading && paso === 'slot' && prestacion && (
         <div>
           <h2 style={s.h2}>Eleg&iacute; d&iacute;a y horario</h2>
+          <p style={{ ...s.desc, marginBottom: 12 }}>
+            Prestaci&oacute;n: <strong>{prestacion.nombre}</strong>
+            {prestacion.recurso_nombre && <> &middot; {prestacion.recurso_nombre}</>}
+          </p>
           {slotsPorFecha.length === 0 && (
             <div style={s.warn}>No hay horarios disponibles en los pr&oacute;ximos 14 d&iacute;as.</div>
           )}
@@ -200,10 +161,9 @@ export function TurnosPage() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {sl.map((slk) => (
                     <button
-                      key={`${slk.tipo_recurso}-${slk.id_recurso}-${slk.hora_inicio}`}
+                      key={`${slk.hora_inicio}`}
                       style={slotBtn}
                       onClick={() => { setSlot(slk); setPaso('datos') }}
-                      title={recurso ? undefined : slk.recurso_nombre}
                     >
                       {formatHora(slk.hora_inicio)}
                     </button>
@@ -212,18 +172,18 @@ export function TurnosPage() {
               </div>
             ))}
           </div>
-          <button style={backBtn} onClick={() => setPaso('agente')}>&larr; Cambiar selecci&oacute;n</button>
+          <button style={backBtn} onClick={() => setPaso('prestacion')}>&larr; Cambiar prestaci&oacute;n</button>
         </div>
       )}
 
-      {/* PASO 4: datos del ciudadano */}
-      {!loading && paso === 'datos' && tipo && slot && (
+      {/* PASO 3: datos del ciudadano */}
+      {!loading && paso === 'datos' && prestacion && slot && (
         <div>
           <h2 style={s.h2}>Completa tus datos</h2>
           <div style={{ ...s.metaRow, marginBottom: 18 }}>
             <div style={s.metaCell}>
-              <div style={s.metaLabel}>Tr&aacute;mite</div>
-              <div style={s.metaValue}>{tipo.nombre}</div>
+              <div style={s.metaLabel}>Prestaci&oacute;n</div>
+              <div style={s.metaValue}>{prestacion.nombre}</div>
             </div>
             <div style={s.metaCell}>
               <div style={s.metaLabel}>D&iacute;a</div>
@@ -280,7 +240,7 @@ export function TurnosPage() {
 
 function StepIndicator({ paso }: { paso: Paso }) {
   const pasos: { key: Paso }[] = [
-    { key: 'tipo' }, { key: 'agente' }, { key: 'slot' }, { key: 'datos' },
+    { key: 'prestacion' }, { key: 'slot' }, { key: 'datos' },
   ]
   const idx = pasos.findIndex((p) => p.key === paso)
   return (

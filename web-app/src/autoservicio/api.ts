@@ -74,44 +74,29 @@ export function deleteReservaPublica(tokenReserva: string) {
 }
 
 // =============================================================================
-// Turnos — autoservicio publico
+// Turnos — autoservicio publico (mig 71: el ciudadano elige una prestacion,
+// que ya trae el recurso fijo; solo elige slot + datos)
 // =============================================================================
-export interface TipoServicioTurno {
-  id_tipo_servicio_turno: number
+export interface PrestacionPublica {
+  id_tipo_prestacion: number
   nombre: string
   descripcion: string | null
+  clase: 'atencion' | 'reserva_espacio'
   duracion_min: number
-  activo: boolean
-}
-
-export interface AgenteDisponible {
-  id_agente: number
-  nombre: string
-}
-
-export interface RecursoDisponible {
-  tipo_recurso: 'agente' | 'espacio'
-  id_recurso: number
-  nombre: string
+  recurso_nombre: string | null
 }
 
 export interface SlotLibre {
   tipo_recurso: 'agente' | 'espacio'
   id_recurso: number
   recurso_nombre: string
-  // compat retro
-  id_agente: number | null
-  agente_nombre: string | null
   fecha: string
   hora_inicio: string
   hora_fin: string
 }
 
 export interface TurnoPublicoCreate {
-  id_tipo_servicio_turno: number
-  // exactamente uno
-  id_agente?: number
-  id_espacio?: number
+  id_tipo_prestacion: number
   fecha: string
   hora_inicio: string
   dni: string
@@ -129,38 +114,24 @@ export interface TurnoPublico {
   fecha: string
   hora_inicio: string
   hora_fin: string
-  tipo_servicio_nombre: string | null
-  agente_nombre: string | null
-  espacio_nombre: string | null
+  prestacion_nombre: string | null
   recurso_nombre: string | null
   ciudadano_apellido: string | null
   ciudadano_nombre: string | null
   ciudadano_dni: string | null
 }
 
-export function getTiposServicioTurno() {
-  return jsonFetch<TipoServicioTurno[]>('/api/v1/turnos/publico/tipos-servicio')
-}
-
-export function getAgentesTurno() {
-  return jsonFetch<AgenteDisponible[]>('/api/v1/turnos/publico/agentes')
-}
-
-export function getRecursosTurno() {
-  return jsonFetch<RecursoDisponible[]>('/api/v1/turnos/publico/recursos')
+export function getPrestacionesTurno() {
+  return jsonFetch<PrestacionPublica[]>('/api/v1/turnos/publico/prestaciones')
 }
 
 export function getSlotsTurno(params: {
-  id_tipo_servicio_turno: number
-  tipo_recurso?: 'agente' | 'espacio'
-  id_recurso?: number
+  id_tipo_prestacion: number
   fecha_desde?: string
   dias?: number
 }) {
   const qs = new URLSearchParams()
-  qs.set('id_tipo_servicio_turno', String(params.id_tipo_servicio_turno))
-  if (params.tipo_recurso) qs.set('tipo_recurso', params.tipo_recurso)
-  if (params.id_recurso != null) qs.set('id_recurso', String(params.id_recurso))
+  qs.set('id_tipo_prestacion', String(params.id_tipo_prestacion))
   if (params.fecha_desde) qs.set('fecha_desde', params.fecha_desde)
   if (params.dias != null) qs.set('dias', String(params.dias))
   return jsonFetch<SlotLibre[]>(`/api/v1/turnos/publico/slots?${qs.toString()}`)
