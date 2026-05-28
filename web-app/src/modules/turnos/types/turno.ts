@@ -1,11 +1,30 @@
 export type EstadoTurno = 'reservado' | 'cumplido' | 'cancelado'
+export type ClasePrestacion = 'atencion' | 'reserva_espacio'
+export type TipoRecurso = 'agente' | 'espacio'
 
-export interface TipoServicioTurno {
-  id_tipo_servicio_turno: number
+export interface TipoPrestacion {
+  id_tipo_prestacion: number
   nombre: string
   descripcion: string | null
+  clase: ClasePrestacion
   duracion_min: number
+  tipo_recurso: TipoRecurso | null
+  id_agente: number | null
+  id_espacio: number | null
+  recurso_nombre: string | null
+  id_subarea: number | null
   activo: boolean
+}
+
+export interface PrestacionInput {
+  nombre: string
+  descripcion?: string | null
+  clase: ClasePrestacion
+  duracion_min: number
+  tipo_recurso: TipoRecurso
+  id_agente?: number | null
+  id_espacio?: number | null
+  id_subarea?: number | null
 }
 
 export interface Turno {
@@ -19,8 +38,9 @@ export interface Turno {
   espacio_nombre: string | null
   recurso_tipo: 'agente' | 'espacio' | null
   recurso_nombre: string | null
-  id_tipo_servicio_turno: number
-  tipo_servicio_nombre: string | null
+  id_tipo_prestacion: number
+  prestacion_nombre: string | null
+  prestacion_clase: string | null
   id_ocupacion: number | null
   fecha: string
   hora_inicio: string
@@ -36,10 +56,7 @@ export interface Turno {
 
 export interface CrearTurnoBody {
   id_ciudadano: number
-  // Exactamente uno de id_agente / id_espacio.
-  id_agente?: number
-  id_espacio?: number
-  id_tipo_servicio_turno: number
+  id_tipo_prestacion: number
   fecha: string
   hora_inicio: string
   hora_fin?: string
@@ -49,7 +66,7 @@ export interface CrearTurnoBody {
 }
 
 export interface ReprogramarTurnoBody {
-  id_tipo_servicio_turno?: number
+  id_tipo_prestacion?: number
   fecha?: string
   hora_inicio?: string
   hora_fin?: string
@@ -59,7 +76,9 @@ export interface ReprogramarTurnoBody {
 export interface ListarTurnosFiltros {
   estado?: EstadoTurno
   id_agente?: number
+  id_espacio?: number
   id_ciudadano?: number
+  id_tipo_prestacion?: number
   fecha_desde?: string
   fecha_hasta?: string
 }

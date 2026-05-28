@@ -1,13 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   cancelarTurno,
+  crearPrestacion,
   crearTurno,
   cumplirTurno,
-  listarTiposServicio,
+  editarPrestacion,
+  eliminarPrestacion,
+  listarPrestaciones,
   listarTurnos,
   reprogramarTurno,
 } from '../api/turnosApi'
-import type { CrearTurnoBody, ListarTurnosFiltros, ReprogramarTurnoBody } from '../types/turno'
+import type {
+  CrearTurnoBody,
+  ListarTurnosFiltros,
+  PrestacionInput,
+  ReprogramarTurnoBody,
+} from '../types/turno'
 
 const HORA = 60 * 60 * 1000
 
@@ -19,14 +27,44 @@ export function useTurnos(filtros: ListarTurnosFiltros) {
   })
 }
 
-export function useTiposServicio() {
+// --- Prestaciones ---
+export function usePrestaciones(params: { clase?: string; q?: string } = {}) {
   return useQuery({
-    queryKey: ['turnos', 'tipos-servicio'],
-    queryFn: listarTiposServicio,
+    queryKey: ['turnos', 'prestaciones', params],
+    queryFn: () => listarPrestaciones(params),
     staleTime: HORA,
   })
 }
 
+function invalidarPrest(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ['turnos', 'prestaciones'] })
+}
+
+export function useCrearPrestacion() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: PrestacionInput) => crearPrestacion(body),
+    onSuccess: () => invalidarPrest(qc),
+  })
+}
+
+export function useEditarPrestacion() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body: PrestacionInput }) => editarPrestacion(id, body),
+    onSuccess: () => invalidarPrest(qc),
+  })
+}
+
+export function useEliminarPrestacion() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => eliminarPrestacion(id),
+    onSuccess: () => invalidarPrest(qc),
+  })
+}
+
+// --- Turnos ---
 function invalidar(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['turnos', 'lista'] })
 }

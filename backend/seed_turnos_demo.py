@@ -1,13 +1,17 @@
 """
-Seed demo de Turnos + capacidad (disponibilidad de agentes, lugares de atencion
-atendidos/desatendidos) + turnos demo. Idempotente.
+Seed demo de Turnos (replanteado mig 71: prestaciones con recurso embebido).
 
-Siembra lo necesario para demostrar:
+Siembra lo necesario para demostrar el modelo de PRESTACIONES:
   - Disponibilidad horaria de varios agentes (L-V 08-16).
   - Un lugar de atencion ATENDIDO (capacidad = union de sus agentes vinculados).
   - Un lugar de atencion DESATENDIDO (horario propio).
+  - Prestaciones de ejemplo con recurso fijo (agente o espacio) y clase
+    (atencion | reserva_espacio). El recurso se resuelve por nombre (§24).
+  - Soft-delete de los tipos viejos sin recurso (las 3-4 filas planas previas a
+    la mig 71 quedan invalidas porque no tienen recurso; se desactivan).
   - Turnos demo contra agente y contra lugar, repartidos en varios ciudadanos,
-    incluyendo al ciudadano modelo (Juan Perez, id 1) para la vista 360.
+    incluyendo al ciudadano modelo (Juan Perez, id 1) para la vista 360. El
+    recurso del turno sale de la prestacion elegida.
 
 Uso:
   Local: $env:ENV_FILE=".env.local"; python seed_turnos_demo.py
@@ -29,13 +33,11 @@ ID_MUNICIPIO = 1
 CIUDADANO_MODELO = 1  # Juan Perez, DNI 12345678
 DIAS_LV = 31  # bitmask Lun-Vie (§27)
 
-# Lugares demo (resueltos por nombre, idempotente).
-LUGAR_ATENDIDO = "Mesa de Atencion Municipal"
-LUGAR_DESATENDIDO = "Sala de Tramites Express"
+LUGAR_ATENDIDO = "Sala Municipal de Odontologia"
+LUGAR_DESATENDIDO = "Salon de Usos Multiples"
 
 
 def proximo_dia_habil(desde: date, offset_dias: int = 0) -> date:
-    """Devuelve un dia habil (lun-vie) a partir de 'desde' saltando offset dias habiles."""
     d = desde
     saltos = 0
     while True:
@@ -47,13 +49,11 @@ def proximo_dia_habil(desde: date, offset_dias: int = 0) -> date:
 
 
 def _t(hhmm: str) -> time:
-    """'08:00' -> time(8,0). asyncpg requiere objeto time, no string (§5)."""
     h, m = hhmm.split(":")
     return time(int(h), int(m))
 
 
 async def asegurar_disponibilidad(db, tipo_recurso: str, id_recurso: int, hi: str, hf: str) -> None:
-    """Crea una fila de disponibilidad L-V si el recurso no tiene ninguna activa."""
     existe = await db.scalar(text("""
         SELECT 1 FROM disponibilidad_recurso
         WHERE tipo_recurso = :tr AND id_recurso = :ir AND activo = TRUE LIMIT 1
@@ -96,10 +96,40 @@ async def vincular_agente(db, id_espacio: int, id_agente: int) -> None:
     """), {"e": id_espacio, "a": id_agente, "m": ID_MUNICIPIO})
 
 
-async def crear_turno_demo(db, id_ciudadano: int, tipo_recurso: str, id_recurso: int,
-                           id_tipo_servicio: int, dur_min: int, fecha: date, hora_inicio: time) -> bool:
-    """Crea un turno demo + ocupacion espejo si el ciudadano no tiene ya un turno
-    no-cancelado ese dia (idempotencia razonable). Devuelve True si lo creo."""
+async def asegurar_prestacion(db, nombre: str, clase: str, tipo_recurso: str,
+                              id_recurso: int, dur_min: int, descripcion: str) -> int:
+    """Crea (o reactiva con recurso correcto) una prestacion por nombre. Idempotente."""
+    row = (await db.execute(text("""
+        SELECT id_tipo_prestacion FROM tipo_prestacion WHERE LOWER(nombre) = LOWER(:n) LIMIT 1
+    """), {"n": nombre})).first()
+    ia = id_recurso if tipo_recurso == "agente" else None
+    ie = id_recurso if tipo_recurso == "espacio" else None
+    if row:
+        pid = int(row[0])
+        await db.execute(text("""
+            UPDATE tipo_prestacion SET
+                descripcion = :d, clase = :c, duracion_min = :dur,
+                tipo_recurso = :tr, id_agente = :ia, id_espacio = :ie,
+                activo = TRUE, fecha_modificacion = NOW()
+            WHERE id_tipo_prestacion = :id
+        """), {"d": descripcion, "c": clase, "dur": dur_min, "tr": tipo_recurso,
+               "ia": ia, "ie": ie, "id": pid})
+        return pid
+    new_id = await db.scalar(text("""
+        INSERT INTO tipo_prestacion (nombre, descripcion, clase, duracion_min, tipo_recurso,
+                                     id_agente, id_espacio, activo, id_municipio, fecha_alta, fecha_modificacion)
+        VALUES (:n, :d, :c, :dur, :tr, :ia, :ie, TRUE, :m, NOW(), NOW())
+        RETURNING id_tipo_prestacion
+    """), {"n": nombre, "d": descripcion, "c": clase, "dur": dur_min, "tr": tipo_recurso,
+           "ia": ia, "ie": ie, "m": ID_MUNICIPIO})
+    return int(new_id)
+
+
+async def crear_turno_demo(db, id_ciudadano: int, id_tipo_prestacion: int,
+                           tipo_recurso: str, id_recurso: int, dur_min: int,
+                           fecha: date, hora_inicio: time) -> bool:
+    """Crea un turno demo + ocupacion espejo (recurso copiado de la prestacion)
+    si el ciudadano no tiene ya un turno no-cancelado ese dia."""
     dup = await db.scalar(text("""
         SELECT 1 FROM turnos
         WHERE id_ciudadano = :ic AND fecha = :f AND activo = TRUE AND estado <> 'cancelado' LIMIT 1
@@ -115,16 +145,16 @@ async def crear_turno_demo(db, id_ciudadano: int, tipo_recurso: str, id_recurso:
     """), {"tr": tipo_recurso, "ir": id_recurso, "f": fecha, "hi": hora_inicio, "hf": hora_fin,
            "ic": id_ciudadano, "m": ID_MUNICIPIO})
     await db.execute(text("""
-        INSERT INTO turnos (id_ciudadano, id_agente, id_espacio, id_tipo_servicio_turno, id_ocupacion,
+        INSERT INTO turnos (id_ciudadano, id_agente, id_espacio, id_tipo_prestacion, id_ocupacion,
                             fecha, hora_inicio, hora_fin, estado, observaciones, origen,
                             id_municipio, fecha_alta, fecha_modificacion)
-        VALUES (:ic, :ia, :ie, :its, :iocup, :f, :hi, :hf, 'reservado', 'Turno demo', 'backoffice',
+        VALUES (:ic, :ia, :ie, :itp, :iocup, :f, :hi, :hf, 'reservado', 'Turno demo', 'backoffice',
                 :m, NOW(), NOW())
     """), {
         "ic": id_ciudadano,
         "ia": id_recurso if tipo_recurso == "agente" else None,
         "ie": id_recurso if tipo_recurso == "espacio" else None,
-        "its": id_tipo_servicio, "iocup": id_ocup,
+        "itp": id_tipo_prestacion, "iocup": id_ocup,
         "f": fecha, "hi": hora_inicio, "hf": hora_fin, "m": ID_MUNICIPIO,
     })
     return True
@@ -139,7 +169,6 @@ async def main(confirm_prod: bool) -> None:
 
     async with AsyncSessionLocal() as db:
         # --- 1) Agentes demo con disponibilidad L-V ---------------------------
-        # Tomamos los primeros 4 agentes activos (id estable) y les aseguramos horario.
         agentes = [int(r[0]) for r in (await db.execute(text("""
             SELECT id_agente FROM agentes WHERE activo = TRUE ORDER BY id_agente LIMIT 4
         """))).all()]
@@ -152,50 +181,90 @@ async def main(confirm_prod: bool) -> None:
 
         # --- 2) Lugares de atencion ------------------------------------------
         id_atendido = await asegurar_espacio(db, LUGAR_ATENDIDO, True, "Av. Mitre 100")
-        # Vinculamos 2 agentes al lugar atendido (su capacidad sale de ellos).
         for ia in agentes[:2]:
             await vincular_agente(db, id_atendido, ia)
-        print(f"Lugar atendido id={id_atendido} con agentes {agentes[:2]}")
+        print(f"Lugar atendido id={id_atendido} (Odontologia) con agentes {agentes[:2]}")
 
         id_desatendido = await asegurar_espacio(db, LUGAR_DESATENDIDO, False, "Av. Mitre 250")
-        # Desatendido: horario propio del espacio.
         await asegurar_disponibilidad(db, "espacio", id_desatendido, "09:00", "15:00")
-        print(f"Lugar desatendido id={id_desatendido} con horario propio")
+        print(f"Lugar desatendido id={id_desatendido} (SUM) con horario propio")
 
-        # --- 3) Tipo de servicio + ciudadanos --------------------------------
-        tipo = (await db.execute(text("""
-            SELECT id_tipo_servicio_turno, duracion_min FROM tipo_servicio_turno
-            WHERE activo = TRUE ORDER BY id_tipo_servicio_turno LIMIT 1
-        """))).first()
-        if not tipo:
-            print("No hay tipo_servicio_turno activo. Abortando turnos demo.")
-            await db.commit()
-            return
-        id_tipo, dur = int(tipo[0]), int(tipo[1])
+        # --- 3) Soft-delete de tipos viejos sin recurso (planos pre-mig71) ----
+        # El CHECK ck_tipo_prestacion_recurso (NOT VALID) igual se evalua al
+        # tocar la fila, asi que al desactivarlas hay que dejarlas cumpliendo:
+        # les asignamos un recurso placeholder (agente[0]) y las marcamos
+        # inactivas en el mismo UPDATE.
+        res = await db.execute(text("""
+            UPDATE tipo_prestacion
+            SET activo = FALSE, tipo_recurso = 'agente', id_agente = :ph,
+                fecha_modificacion = NOW()
+            WHERE activo = TRUE AND id_agente IS NULL AND id_espacio IS NULL
+        """), {"ph": agentes[0]})
+        if res.rowcount:
+            print(f"Tipos viejos sin recurso desactivados: {res.rowcount}")
 
-        # Ciudadanos: el modelo (id 1) + 3 mas distintos.
+        # --- 4) Prestaciones de ejemplo con recurso real ---------------------
+        p_odonto_ag = await asegurar_prestacion(
+            db, "Atencion medica - Odontologia", "atencion", "agente", agentes[0], 30,
+            "Consulta odontologica con profesional asignado")
+        p_clinica = await asegurar_prestacion(
+            db, "Atencion medica - Clinica general", "atencion", "agente", agentes[1], 30,
+            "Consulta clinica general")
+        p_odonto_sala = await asegurar_prestacion(
+            db, "Atencion - Sala de Odontologia", "atencion", "espacio", id_atendido, 45,
+            "Atencion odontologica en la sala municipal (varios profesionales)")
+        p_sum = await asegurar_prestacion(
+            db, "Reserva - Salon de Usos Multiples", "reserva_espacio", "espacio", id_desatendido, 60,
+            "Reserva del salon para actividades comunitarias")
+        prestaciones = {
+            "odonto_ag": (p_odonto_ag, "agente", agentes[0], 30),
+            "clinica": (p_clinica, "agente", agentes[1], 30),
+            "odonto_sala": (p_odonto_sala, "espacio", id_atendido, 45),
+            "sum": (p_sum, "espacio", id_desatendido, 60),
+        }
+        print(f"Prestaciones aseguradas: {[v[0] for v in prestaciones.values()]}")
+
+        # --- 5) Ciudadanos ----------------------------------------------------
         otros = [int(r[0]) for r in (await db.execute(text("""
             SELECT id_ciudadano FROM ciudadanos WHERE activo = TRUE AND id_ciudadano <> :m
             ORDER BY id_ciudadano LIMIT 3
         """), {"m": CIUDADANO_MODELO})).all()]
         ciudadanos = [CIUDADANO_MODELO] + otros
 
-        # --- 4) Turnos demo: mezcla agente / lugar, dias habiles proximos -----
+        # --- 6) Limpiar turnos demo viejos (apuntaban a tipos planos) ---------
+        # Soft-delete de turnos demo previos + sus ocupaciones espejo, para
+        # recrearlos contra las prestaciones nuevas sin duplicar por dia.
+        await db.execute(text("""
+            UPDATE ocupaciones SET activo = FALSE, fecha_modificacion = NOW()
+            WHERE activo = TRUE AND tipo = 'turno' AND id_ocupacion IN (
+                SELECT id_ocupacion FROM turnos
+                WHERE observaciones = 'Turno demo' AND id_ocupacion IS NOT NULL
+            )
+        """))
+        res_t = await db.execute(text("""
+            UPDATE turnos SET activo = FALSE, estado = 'cancelado', fecha_modificacion = NOW()
+            WHERE activo = TRUE AND observaciones = 'Turno demo'
+        """))
+        if res_t.rowcount:
+            print(f"Turnos demo viejos desactivados: {res_t.rowcount}")
+
+        # --- 7) Turnos demo: eligiendo prestacion (recurso sale de ella) ------
         hoy = date.today()
-        # Plan: (ciudadano, recurso_tipo, id_recurso, offset_dia_habil, hora)
+        # (ciudadano, clave_prestacion, offset_dia_habil, hora)
         plan = [
-            (ciudadanos[0], "agente",  agentes[0],     0, time(9, 0)),   # modelo -> agente
-            (ciudadanos[0], "espacio", id_atendido,    1, time(10, 0)),  # modelo -> lugar atendido
-            (ciudadanos[1], "agente",  agentes[1],     0, time(11, 0)),
-            (ciudadanos[1], "espacio", id_desatendido, 2, time(9, 30)),
-            (ciudadanos[2], "espacio", id_atendido,    0, time(12, 0)),
-            (ciudadanos[2], "agente",  agentes[2] if len(agentes) > 2 else agentes[0], 1, time(13, 0)),
-            (ciudadanos[3] if len(ciudadanos) > 3 else ciudadanos[1], "espacio", id_desatendido, 3, time(10, 30)),
+            (ciudadanos[0], "odonto_ag",   0, time(9, 0)),    # modelo -> odontologia (agente)
+            (ciudadanos[0], "odonto_sala", 1, time(10, 0)),   # modelo -> sala odonto (espacio)
+            (ciudadanos[1] if len(ciudadanos) > 1 else ciudadanos[0], "clinica", 0, time(11, 0)),
+            (ciudadanos[1] if len(ciudadanos) > 1 else ciudadanos[0], "sum",     2, time(9, 0)),
+            (ciudadanos[2] if len(ciudadanos) > 2 else ciudadanos[0], "odonto_sala", 0, time(12, 0)),
+            (ciudadanos[2] if len(ciudadanos) > 2 else ciudadanos[0], "clinica", 1, time(13, 0)),
+            (ciudadanos[3] if len(ciudadanos) > 3 else ciudadanos[0], "sum",     3, time(10, 0)),
         ]
         creados = 0
-        for (ic, tr, ir, off, hi) in plan:
+        for (ic, clave, off, hi) in plan:
+            pid, tr, ir, dur = prestaciones[clave]
             f = proximo_dia_habil(hoy, off)
-            if await crear_turno_demo(db, ic, tr, ir, id_tipo, dur, f, hi):
+            if await crear_turno_demo(db, ic, pid, tr, ir, dur, f, hi):
                 creados += 1
         print(f"Turnos demo creados: {creados} (sobre {len(plan)} planeados; el resto ya existian)")
 
