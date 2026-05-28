@@ -157,14 +157,17 @@ export function useEliminarCampo() {
   })
 }
 
-/** Reordena dos campos intercambiando su `orden` (BUG-05: botones ↑↓).
- *  Reusa el PUT de campo: 2 requests, 1 sola invalidación. */
+/** Reordena campos reasignando `orden` secuencial 1..N según el array de IDs
+ *  recibido (el orden final deseado). Robusto ante órdenes duplicados en DB
+ *  (caso real: dos campos con orden=1 → el swap viejo no movía nada). Solo
+ *  hace PUT de los campos cuyo orden efectivamente cambia. */
 export function useReordenarCampo() {
   const inv = useInvalidarCatalogo()
   return useMutation({
-    mutationFn: async (args: { aId: number; aOrden: number; bId: number; bOrden: number }) => {
-      await actualizarCampo(args.aId, { orden: args.bOrden })
-      await actualizarCampo(args.bId, { orden: args.aOrden })
+    mutationFn: async (idsEnOrden: number[]) => {
+      for (let i = 0; i < idsEnOrden.length; i++) {
+        await actualizarCampo(idsEnOrden[i], { orden: i + 1 })
+      }
     },
     onSuccess: () => inv(),
   })
@@ -250,6 +253,20 @@ export function useEliminarDocReq() {
   const inv = useInvalidarCatalogo()
   return useMutation({
     mutationFn: (idDoc: number) => eliminarDocRequerido(idDoc),
+    onSuccess: () => inv(),
+  })
+}
+
+/** Reordena documentos requeridos reasignando `orden` 1..N según el array de IDs
+ *  (orden final deseado). Mismo patrón robusto que useReordenarCampo (BUG-02). */
+export function useReordenarDocReq() {
+  const inv = useInvalidarCatalogo()
+  return useMutation({
+    mutationFn: async (idsEnOrden: number[]) => {
+      for (let i = 0; i < idsEnOrden.length; i++) {
+        await actualizarDocRequerido(idsEnOrden[i], { orden: i + 1 })
+      }
+    },
     onSuccess: () => inv(),
   })
 }

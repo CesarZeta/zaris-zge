@@ -1471,10 +1471,12 @@ async def transicionar_tramite(
     if destino_cambio and not es_final:
         await svc_notif.notificar_tramite_a_bandeja(db, id_tramite, "transicion", background_tasks)
 
-    # Si llego a estado final, notificar al iniciador interno (si lo es).
-    if es_final:
+    # Si llego a estado final, notificar al iniciador (interno in-app, o
+    # ciudadano/empresa por email). Solo si la transicion lo pide (BUG-05).
+    if es_final and trans.get("notifica_iniciador"):
         await svc_notif.notificar_estado_final_a_iniciador(
             db, id_tramite, etiqueta_destino, background_tasks,
+            mensaje_custom=trans.get("mensaje_iniciador"),
         )
 
     return await _tramite_detalle_out(id_tramite, db)

@@ -17,6 +17,7 @@ import {
   useEliminarEstado,
   useEliminarTransicion,
   useEliminarDocReq,
+  useReordenarDocReq,
 } from '../hooks'
 import { EditarTipoModal } from '../modals/EditarTipoModal'
 import { CampoModal } from '../modals/CampoModal'
@@ -80,6 +81,7 @@ export function ConfigTramiteDetalle() {
   const eliminarEstadoM = useEliminarEstado()
   const eliminarTransM = useEliminarTransicion()
   const eliminarDocM = useEliminarDocReq()
+  const reordenarDocM = useReordenarDocReq()
 
   if (tipo.isLoading) {
     return <Skeleton height={300} />
@@ -116,6 +118,12 @@ export function ConfigTramiteDetalle() {
 
   async function handlePublicar() {
     if (!versionElegida) return
+    // Guardia: solo se publica un borrador. Si el estado cacheado quedó stale
+    // (p. ej. ya se publicó en otra pestaña), evitamos el 409 del backend.
+    if (versionActiva?.estado !== 'borrador') {
+      alert('Esta versión ya está publicada. Para cambiar el circuito creá un nuevo borrador.')
+      return
+    }
     if (!confirm('¿Publicar esta versión? El tipo quedará disponible en «Nuevo trámite» y se archivará la versión anterior (si la hay).')) return
     try {
       await publicar.mutateAsync(versionElegida)
@@ -203,8 +211,13 @@ export function ConfigTramiteDetalle() {
             Nuevo borrador
           </Button>
           {versionActiva?.estado === 'borrador' && (
-            <Button variant="accent" icon={<Send size={14} />} onClick={handlePublicar}>
-              Publicar
+            <Button
+              variant="accent"
+              icon={<Send size={14} />}
+              onClick={handlePublicar}
+              disabled={publicar.isPending}
+            >
+              {publicar.isPending ? 'Publicando…' : 'Publicar'}
             </Button>
           )}
           {(versionActiva?.estado === 'publicado' || versionActiva?.estado === 'borrador') && (
@@ -259,6 +272,31 @@ export function ConfigTramiteDetalle() {
           </div>
         )
       })()}
+
+      {/* Guía cuando la versión ya está publicada: no hay nada para "publicar",
+          los cambios de circuito van por un nuevo borrador (BUG-01). */}
+      {versionActiva?.estado === 'publicado' && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+          padding: '12px 16px', borderRadius: 'var(--radius-lg, 12px)',
+          background: 'rgba(31,138,101,.08)', border: '1px solid rgba(31,138,101,.35)',
+        }}>
+          <Send size={18} strokeWidth={1.5} color="var(--color-success)" />
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <strong style={{ display: 'block', fontSize: 14, color: 'var(--fg-1)' }}>
+              Esta versión ya está publicada
+            </strong>
+            <span style={{ fontSize: 13, color: 'var(--fg-2)' }}>
+              {(versionData?.cant_tramites ?? 0) > 0
+                ? 'Tiene trámites instanciados, así que es inmutable. Para cambiar el circuito creá un nuevo borrador.'
+                : 'Para cambiar el circuito creá un nuevo borrador; al publicarlo reemplazará a esta versión.'}
+            </span>
+          </div>
+          <Button icon={<FilePlus size={14} />} onClick={handleNuevoBorrador} disabled={tieneBorradorAbierto}>
+            Nuevo borrador
+          </Button>
+        </div>
+      )}
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 8, borderBottom: '1px solid var(--border-primary)' }}>
@@ -356,14 +394,17 @@ export function ConfigTramiteDetalle() {
               </tr>
             </thead>
             <tbody>
-              {[...versionData.campos].sort((a, b) => a.orden - b.orden).map((c, idx, arr) => (
+              {[...versionData.campos]
+                .sort((a, b) => a.orden - b.orden || a.id_tipo_tramite_campo - b.id_tipo_tramite_campo)
+                .map((c, idx, arr) => (
                 <tr key={c.id_tipo_tramite_campo} style={{ borderBottom: '1px solid var(--border-primary)' }}>
                   <td style={td}>
                     <div style={{ display: 'inline-flex', flexDirection: 'column', verticalAlign: 'middle' }}>
                       <button
                         onClick={() => {
-                          const prev = arr[idx - 1]
-                          reordenarCampoM.mutate({ aId: c.id_tipo_tramite_campo, aOrden: c.orden, bId: prev.id_tipo_tramite_campo, bOrden: prev.orden })
+                          const ids = arr.map((x) => x.id_tipo_tramite_campo)
+                          ;[ids[idx - 1], ids[idx]] = [ids[idx], ids[idx - 1]]
+                          reordenarCampoM.mutate(ids)
                         }}
                         disabled={!editable || idx === 0 || reordenarCampoM.isPending}
                         title="Subir" style={btnOrden}
@@ -372,8 +413,9 @@ export function ConfigTramiteDetalle() {
                       </button>
                       <button
                         onClick={() => {
-                          const next = arr[idx + 1]
-                          reordenarCampoM.mutate({ aId: c.id_tipo_tramite_campo, aOrden: c.orden, bId: next.id_tipo_tramite_campo, bOrden: next.orden })
+                          const ids = arr.map((x) => x.id_tipo_tramite_campo)
+                          ;[ids[idx + 1], ids[idx]] = [ids[idx], ids[idx + 1]]
+                          reordenarCampoM.mutate(ids)
                         }}
                         disabled={!editable || idx === arr.length - 1 || reordenarCampoM.isPending}
                         title="Bajar" style={btnOrden}
@@ -489,7 +531,16 @@ export function ConfigTramiteDetalle() {
                   <tr key={t.id_tipo_tramite_transicion} style={{ borderBottom: '1px solid var(--border-primary)' }}>
                     <td style={td}>{ori?.etiqueta ?? `#${t.id_estado_origen}`}</td>
                     <td style={td}>→ {dst?.etiqueta ?? `#${t.id_estado_destino}`}</td>
-                    <td style={td}>{t.etiqueta_accion}</td>
+                    <td style={td}>
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '2px 10px', borderRadius: 'var(--radius-pill)',
+                        background: colorAccion(t.tipo_accion), color: 'white',
+                        fontSize: 12, fontWeight: 600,
+                      }}>
+                        {t.etiqueta_accion}
+                      </span>
+                    </td>
                     <td style={td}>
                       {t.requiere_comentario && <Badge kind="neutral">comentario</Badge>}{' '}
                       {t.requiere_adjunto && <Badge kind="neutral">adjunto</Badge>}
@@ -527,24 +578,55 @@ export function ConfigTramiteDetalle() {
           <table style={{ width: '100%', fontSize: 14 }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border-primary)' }}>
+                <th style={th}>Orden</th>
                 <th style={th}>Nombre</th>
                 <th style={th}>Estado</th>
                 <th style={th}>Aporta</th>
+                <th style={th}>Máx. archivos</th>
                 <th style={th}>Obligatorio</th>
                 <th style={th}>Firma</th>
                 <th style={th}></th>
               </tr>
             </thead>
             <tbody>
-              {versionData.documentos_requeridos.map((d) => {
+              {[...versionData.documentos_requeridos]
+                .sort((a, b) => a.orden - b.orden || a.id_tipo_tramite_documento_requerido - b.id_tipo_tramite_documento_requerido)
+                .map((d, idx, arr) => {
                 const estadoVinc = d.id_tipo_tramite_estado
                   ? versionData.estados.find((e) => e.id_tipo_tramite_estado === d.id_tipo_tramite_estado)
                   : null
                 return (
                   <tr key={d.id_tipo_tramite_documento_requerido} style={{ borderBottom: '1px solid var(--border-primary)' }}>
+                    <td style={td}>
+                      <div style={{ display: 'inline-flex', flexDirection: 'column', verticalAlign: 'middle' }}>
+                        <button
+                          onClick={() => {
+                            const ids = arr.map((x) => x.id_tipo_tramite_documento_requerido)
+                            ;[ids[idx - 1], ids[idx]] = [ids[idx], ids[idx - 1]]
+                            reordenarDocM.mutate(ids)
+                          }}
+                          disabled={!editable || idx === 0 || reordenarDocM.isPending}
+                          title="Subir" style={btnOrden}
+                        >
+                          <ChevronUp size={13} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            const ids = arr.map((x) => x.id_tipo_tramite_documento_requerido)
+                            ;[ids[idx + 1], ids[idx]] = [ids[idx], ids[idx + 1]]
+                            reordenarDocM.mutate(ids)
+                          }}
+                          disabled={!editable || idx === arr.length - 1 || reordenarDocM.isPending}
+                          title="Bajar" style={btnOrden}
+                        >
+                          <ChevronDown size={13} />
+                        </button>
+                      </div>
+                    </td>
                     <td style={td}>{d.nombre}</td>
                     <td style={td}>{estadoVinc?.etiqueta ?? '(al iniciar)'}</td>
                     <td style={td}>{d.quien_debe_adjuntar}</td>
+                    <td style={td}>{d.cantidad_max_archivos ?? 1}</td>
                     <td style={td}>{d.obligatorio ? 'Sí' : 'No'}</td>
                     <td style={td}>{d.requiere_firma ? 'Sí' : 'No'}</td>
                     <td style={{ ...td, textAlign: 'right' }}>
@@ -616,6 +698,17 @@ export function ConfigTramiteDetalle() {
       />
     </div>
   )
+}
+
+// Color del badge de transición según su tipo de acción (BUG-04).
+function colorAccion(tipo?: string): string {
+  switch (tipo) {
+    case 'aprobar': return 'var(--color-success)'
+    case 'rechazar': return 'var(--color-error)'
+    case 'derivar': return '#6a1b9a'
+    case 'otro': return 'var(--fg-3)'
+    default: return 'var(--fg-2)' // avanzar / sin definir
+  }
 }
 
 function FilaInfo({ label, valor, mono = false }: { label: string; valor: string; mono?: boolean }) {
