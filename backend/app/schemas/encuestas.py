@@ -123,7 +123,10 @@ class EncuestaOpcionOut(EncuestaOpcionBase):
 class EncuestaEnvioBase(BaseModel):
     id_plantilla: int
     id_ciudadano: int
-    id_reclamo: int
+    # mig 72: el envio es polimorfico (reclamo XOR turno). Exactamente uno
+    # poblado. id_reclamo dejo de ser obligatorio.
+    id_reclamo: Optional[int] = None
+    id_turno: Optional[int] = None
     email_destino_snapshot: str = Field(max_length=150)
     fecha_expiracion: datetime
 
@@ -156,6 +159,11 @@ class EncuestaEnvioOut(EncuestaEnvioBase):
     activo: bool
     fecha_alta: datetime
     fecha_modificacion: datetime
+    # Derivados (mig 72): tipo de la plantilla + referencia legible del origen.
+    # Solo los llenan los endpoints que hacen el LEFT JOIN; opcionales por compat.
+    tipo: Optional[str] = None              # reclamos | turnos | tramites
+    referencia: Optional[str] = None        # nro_reclamo o nombre de prestacion
+    nro_reclamo: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -245,7 +253,9 @@ class EncuestaEnvioConRespuestaOut(EncuestaEnvioOut):
 
 
 class DispararEncuestaIn(BaseModel):
-    id_reclamo: int
+    # Disparo manual: exactamente uno de los dos (mig 72).
+    id_reclamo: Optional[int] = None
+    id_turno: Optional[int] = None
 
 
 # --- Pendientes de contacto (incluye datos del ciudadano + reclamo) ---
@@ -259,9 +269,12 @@ class RespuestaPendienteContactoOut(BaseModel):
     rama_seguida: str
     fecha_respuesta: Optional[datetime] = None  # = encuesta_respuesta.fecha_alta
     atendida: bool
-    # contexto del reclamo
-    id_reclamo: int
+    # contexto del origen (mig 72: reclamo XOR turno)
+    id_reclamo: Optional[int] = None
     nro_reclamo: Optional[str] = None
+    id_turno: Optional[int] = None
+    tipo: Optional[str] = None          # reclamos | turnos
+    referencia: Optional[str] = None    # nro_reclamo o nombre de prestacion del turno
     # contexto del ciudadano (para que el agente lo contacte)
     id_ciudadano: int
     ciudadano_nombre: Optional[str] = None

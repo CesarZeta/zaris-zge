@@ -4,6 +4,7 @@ import { TurnosLayout } from './TurnosLayout'
 import { Overview } from './pages/Overview'
 import { Atendidos } from './pages/Atendidos'
 import { Prestaciones } from './pages/Prestaciones'
+import { AgendaTurnos } from './pages/AgendaTurnos'
 
 // Modulo Turnos (replanteado mig 71): los turnos cumplen PRESTACIONES. Una
 // prestacion define el recurso fijo (un agente o un lugar de atencion), su
@@ -23,8 +24,9 @@ export const turnosModule: ModuleManifest = {
   icon:  Clock,
   moduloCodigo: 'turnos',
   routes: [
-    { index: true,           element: Wrap(Overview),     handle: { breadcrumb: 'turnos' } },
-    { path: 'atendidos',     element: Wrap(Atendidos),    handle: { breadcrumb: 'turnos · atendidos' } },
-    { path: 'prestaciones',  element: Wrap(Prestaciones),  handle: { breadcrumb: 'turnos · prestaciones' } },
+    { index: true,           element: Wrap(Overview),       handle: { breadcrumb: 'turnos' } },
+    { path: 'agenda',        element: Wrap(AgendaTurnos),    handle: { breadcrumb: 'turnos · agenda' } },
+    { path: 'atendidos',     element: Wrap(Atendidos),      handle: { breadcrumb: 'turnos · atendidos' } },
+    { path: 'prestaciones',  element: Wrap(Prestaciones),    handle: { breadcrumb: 'turnos · prestaciones' } },
   ],
 }

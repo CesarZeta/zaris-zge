@@ -14,6 +14,27 @@ const ESTADO_COLOR: Record<string, { bg: string; fg: string }> = {
 
 const ESTADOS: EstadoEnvio[] = ['pendiente', 'enviada', 'abierta', 'completada', 'expirada']
 
+const TIPO_LABEL: Record<string, string> = {
+  reclamos: 'Reclamo',
+  turnos: 'Turno',
+  tramites: 'Trámite',
+}
+const TIPO_COLOR: Record<string, { bg: string; fg: string }> = {
+  reclamos: { bg: 'rgba(245,78,0,0.12)',   fg: '#b3380a' },
+  turnos:   { bg: 'rgba(31,138,101,0.16)', fg: '#1f8a65' },
+  tramites: { bg: 'rgba(106,27,154,0.12)', fg: '#6a1b9a' },
+}
+
+function tipoBadge(tipo: string | null) {
+  const t = tipo ?? ''
+  const c = TIPO_COLOR[t] ?? { bg: 'var(--surface-400)', fg: 'var(--fg-2)' }
+  return (
+    <span style={{ background: c.bg, color: c.fg, fontSize: '0.72rem', fontWeight: 600, padding: '2px 9px', borderRadius: 999 }}>
+      {TIPO_LABEL[t] ?? (t || '—')}
+    </span>
+  )
+}
+
 function fmt(d: string | null): string {
   if (!d) return '—'
   return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -21,9 +42,11 @@ function fmt(d: string | null): string {
 
 export function EnviosView() {
   const [estado, setEstado] = useState<string>('')
+  const [tipo, setTipo] = useState<string>('')
   const [detalleId, setDetalleId] = useState<number | null>(null)
   const { data, isLoading, isError, error, refetch, isFetching } = useEnvios({
     estado: estado || undefined,
+    tipo: tipo || undefined,
     limit: 200,
   })
 
@@ -32,6 +55,14 @@ export function EnviosView() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={toolbar}>
+        <div style={field}>
+          <label style={lbl}>Tipo</label>
+          <select value={tipo} onChange={(e) => setTipo(e.target.value)} style={inp}>
+            <option value="">Todos</option>
+            <option value="reclamos">Reclamos</option>
+            <option value="turnos">Turnos</option>
+          </select>
+        </div>
         <div style={field}>
           <label style={lbl}>Estado</label>
           <select value={estado} onChange={(e) => setEstado(e.target.value)} style={inp}>
@@ -51,7 +82,8 @@ export function EnviosView() {
           <thead>
             <tr>
               <th style={th}>Envío</th>
-              <th style={th}>Reclamo</th>
+              <th style={th}>Tipo</th>
+              <th style={th}>Referencia</th>
               <th style={th}>Email destino</th>
               <th style={th}>Estado</th>
               <th style={th}>Enviada</th>
@@ -60,16 +92,17 @@ export function EnviosView() {
             </tr>
           </thead>
           <tbody>
-            {isLoading && <tr><td colSpan={7} style={empty}>Cargando…</td></tr>}
+            {isLoading && <tr><td colSpan={8} style={empty}>Cargando…</td></tr>}
             {!isLoading && envios.length === 0 && (
-              <tr><td colSpan={7} style={empty}>No hay envíos para el filtro seleccionado.</td></tr>
+              <tr><td colSpan={8} style={empty}>No hay envíos para el filtro seleccionado.</td></tr>
             )}
             {envios.map((e) => {
               const c = ESTADO_COLOR[e.estado] ?? ESTADO_COLOR.pendiente
               return (
                 <tr key={e.id_encuesta_envio} style={{ cursor: 'pointer' }} onClick={() => setDetalleId(e.id_encuesta_envio)}>
                   <td style={{ ...td, fontFamily: 'var(--font-mono)' }}>#{e.id_encuesta_envio}</td>
-                  <td style={{ ...td, fontFamily: 'var(--font-mono)', color: 'var(--fg-2)' }}>{e.id_reclamo}</td>
+                  <td style={td}>{tipoBadge(e.tipo)}</td>
+                  <td style={{ ...td, color: 'var(--fg-2)' }}>{e.referencia ?? '—'}</td>
                   <td style={{ ...td, color: 'var(--fg-2)' }}>{e.email_destino_snapshot}</td>
                   <td style={td}>
                     <span style={{ background: c.bg, color: c.fg, fontSize: '0.72rem', fontWeight: 600, padding: '2px 9px', borderRadius: 999 }}>
@@ -109,7 +142,8 @@ function DetalleEnvio({ id, onClose }: { id: number; onClose: () => void }) {
         {isLoading ? <p style={{ color: 'var(--fg-3)' }}>Cargando…</p> : data ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: '0.86rem' }}>
             <Row k="Estado" v={data.estado} />
-            <Row k="Reclamo" v={`#${data.id_reclamo}`} />
+            <Row k="Tipo" v={tipoBadge(data.tipo)} />
+            <Row k="Referencia" v={data.referencia ?? '—'} />
             <Row k="Email destino" v={data.email_destino_snapshot} />
             <Row k="Enviada" v={fmt(data.fecha_envio)} />
             <Row k="Abierta" v={fmt(data.fecha_apertura)} />

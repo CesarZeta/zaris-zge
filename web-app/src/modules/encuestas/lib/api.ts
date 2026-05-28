@@ -6,6 +6,8 @@ import type {
   DashboardResumen,
   EncuestaEnvio,
   EncuestaEnvioConRespuesta,
+  EncuestaPlantilla,
+  EncuestaPlantillaDetalle,
   EncuestaRespuesta,
   RespuestaPendienteContacto,
 } from './types'
@@ -19,6 +21,7 @@ export interface ResumenParams {
   desde?: string // 'YYYY-MM-DD'
   hasta?: string
   id_area?: number
+  tipo?: string // reclamos | turnos | tramites
 }
 
 export const encuestasApi = {
@@ -43,9 +46,16 @@ export const encuestasApi = {
   atender: (idRespuesta: number) =>
     api.patch<EncuestaRespuesta>(`${BASE}/respuestas/${idRespuesta}/atender`),
 
-  envios: (p: { estado?: string; limit?: number; offset?: number } = {}) =>
+  envios: (p: { estado?: string; tipo?: string; id_plantilla?: number; limit?: number; offset?: number } = {}) =>
     api.get<EncuestaEnvio[]>(`${BASE}/envios`, { params: { ...p } }),
 
   envioDetalle: (idEnvio: number) =>
     api.get<EncuestaEnvioConRespuesta>(`${BASE}/envios/${idEnvio}`),
+
+  // Catálogo de plantillas (encuestas configuradas). Lectura: cualquier autenticado.
+  plantillas: () =>
+    api.get<EncuestaPlantilla[]>(`${BASE}/plantillas`),
+
+  plantillaDetalle: (idPlantilla: number) =>
+    api.get<EncuestaPlantillaDetalle>(`${BASE}/plantillas/${idPlantilla}`),
 }

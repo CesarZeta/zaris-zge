@@ -7,9 +7,10 @@ import { shellGoInicio } from '../../lib/shellNav'
 // resolveria contra la ruta actual completa y caeria al catch-all → dashboard
 // (bug §41). Siempre `/encuestas/<tab>`.
 const TABS: { to: string; label: string }[] = [
-  { to: '/encuestas',          label: 'Resumen' },
-  { to: '/encuestas/contacto', label: 'Pedidos de contacto' },
-  { to: '/encuestas/envios',   label: 'Envíos' },
+  { to: '/encuestas',            label: 'Resumen' },
+  { to: '/encuestas/contacto',   label: 'Pedidos de contacto' },
+  { to: '/encuestas/envios',     label: 'Envíos' },
+  { to: '/encuestas/plantillas', label: 'Encuestas' },
 ]
 
 export function EncuestasLayout({ children }: { children: ReactNode }) {
