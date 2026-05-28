@@ -8,11 +8,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   getTiposServicioTurno,
-  getAgentesTurno,
+  getRecursosTurno,
   getSlotsTurno,
   postTurnoPublico,
   type TipoServicioTurno,
-  type AgenteDisponible,
+  type RecursoDisponible,
   type SlotLibre,
 } from './api'
 import { layoutStyles as s, ZarisMark } from './shared'
@@ -33,12 +33,12 @@ export function TurnosPage() {
 
   // Catalogos
   const [tipos, setTipos] = useState<TipoServicioTurno[]>([])
-  const [agentes, setAgentes] = useState<AgenteDisponible[]>([])
+  const [recursos, setRecursos] = useState<RecursoDisponible[]>([])
   const [slots, setSlots] = useState<SlotLibre[]>([])
 
   // Seleccion
   const [tipo, setTipo] = useState<TipoServicioTurno | null>(null)
-  const [agente, setAgente] = useState<AgenteDisponible | null>(null) // null = cualquiera
+  const [recurso, setRecurso] = useState<RecursoDisponible | null>(null) // null = cualquiera
   const [slot, setSlot] = useState<SlotLibre | null>(null)
 
   // Datos del ciudadano
@@ -56,11 +56,11 @@ export function TurnosPage() {
   useEffect(() => {
     let cancel = false
     setLoading(true); setError(null)
-    Promise.all([getTiposServicioTurno(), getAgentesTurno()])
-      .then(([t, a]) => {
+    Promise.all([getTiposServicioTurno(), getRecursosTurno()])
+      .then(([t, r]) => {
         if (cancel) return
         setTipos(t)
-        setAgentes(a)
+        setRecursos(r)
       })
       .catch((e: Error) => { if (!cancel) setError(e.message) })
       .finally(() => { if (!cancel) setLoading(false) })
@@ -74,14 +74,15 @@ export function TurnosPage() {
     setLoading(true); setError(null); setSlots([])
     getSlotsTurno({
       id_tipo_servicio_turno: tipo.id_tipo_servicio_turno,
-      id_agente: agente?.id_agente,
+      tipo_recurso: recurso?.tipo_recurso,
+      id_recurso: recurso?.id_recurso,
       dias: 14,
     })
       .then((sl) => { if (!cancel) setSlots(sl) })
       .catch((e: Error) => { if (!cancel) setError(e.message) })
       .finally(() => { if (!cancel) setLoading(false) })
     return () => { cancel = true }
-  }, [paso, tipo, agente])
+  }, [paso, tipo, recurso])
 
   // Slots agrupados por fecha para render
   const slotsPorFecha = useMemo(() => {
@@ -100,7 +101,9 @@ export function TurnosPage() {
     try {
       const turno = await postTurnoPublico({
         id_tipo_servicio_turno: tipo.id_tipo_servicio_turno,
-        id_agente: slot.id_agente,
+        ...(slot.tipo_recurso === 'espacio'
+          ? { id_espacio: slot.id_recurso }
+          : { id_agente: slot.id_recurso }),
         fecha: slot.fecha,
         hora_inicio: slot.hora_inicio,
         dni: dni.trim(),
@@ -138,7 +141,7 @@ export function TurnosPage() {
               <button
                 key={t.id_tipo_servicio_turno}
                 style={optionBtn}
-                onClick={() => { setTipo(t); setAgente(null); setSlot(null); setPaso('agente') }}
+                onClick={() => { setTipo(t); setRecurso(null); setSlot(null); setPaso('agente') }}
               >
                 <div style={{ fontWeight: 600, fontSize: 15 }}>{t.nombre}</div>
                 {t.descripcion && <div style={{ fontSize: 13, color: 'var(--fg-2)', marginTop: 2 }}>{t.descripcion}</div>}
@@ -151,23 +154,26 @@ export function TurnosPage() {
         </div>
       )}
 
-      {/* PASO 2: agente */}
+      {/* PASO 2: recurso (agente o lugar de atencion) */}
       {!loading && paso === 'agente' && tipo && (
         <div>
-          <h2 style={s.h2}>&iquest;Con qui&eacute;n quer&eacute;s ser atendido?</h2>
+          <h2 style={s.h2}>&iquest;D&oacute;nde o con qui&eacute;n quer&eacute;s ser atendido?</h2>
           <p style={{ ...s.desc, marginBottom: 12 }}>Tr&aacute;mite: <strong>{tipo.nombre}</strong></p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <button style={optionBtn} onClick={() => { setAgente(null); setSlot(null); setPaso('slot') }}>
-              <div style={{ fontWeight: 600, fontSize: 15 }}>Cualquier agente disponible</div>
+            <button style={optionBtn} onClick={() => { setRecurso(null); setSlot(null); setPaso('slot') }}>
+              <div style={{ fontWeight: 600, fontSize: 15 }}>Cualquier disponible</div>
               <div style={{ fontSize: 13, color: 'var(--fg-2)', marginTop: 2 }}>Te mostramos todos los horarios libres</div>
             </button>
-            {agentes.map((a) => (
+            {recursos.map((r) => (
               <button
-                key={a.id_agente}
+                key={`${r.tipo_recurso}-${r.id_recurso}`}
                 style={optionBtn}
-                onClick={() => { setAgente(a); setSlot(null); setPaso('slot') }}
+                onClick={() => { setRecurso(r); setSlot(null); setPaso('slot') }}
               >
-                <div style={{ fontWeight: 600, fontSize: 15 }}>{a.nombre}</div>
+                <div style={{ fontWeight: 600, fontSize: 15 }}>{r.nombre}</div>
+                <div style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 2 }}>
+                  {r.tipo_recurso === 'espacio' ? 'Lugar de atención' : 'Agente'}
+                </div>
               </button>
             ))}
           </div>
@@ -194,10 +200,10 @@ export function TurnosPage() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {sl.map((slk) => (
                     <button
-                      key={`${slk.id_agente}-${slk.hora_inicio}`}
+                      key={`${slk.tipo_recurso}-${slk.id_recurso}-${slk.hora_inicio}`}
                       style={slotBtn}
                       onClick={() => { setSlot(slk); setPaso('datos') }}
-                      title={agente ? undefined : slk.agente_nombre}
+                      title={recurso ? undefined : slk.recurso_nombre}
                     >
                       {formatHora(slk.hora_inicio)}
                     </button>
@@ -206,7 +212,7 @@ export function TurnosPage() {
               </div>
             ))}
           </div>
-          <button style={backBtn} onClick={() => setPaso('agente')}>&larr; Cambiar agente</button>
+          <button style={backBtn} onClick={() => setPaso('agente')}>&larr; Cambiar selecci&oacute;n</button>
         </div>
       )}
 
@@ -228,8 +234,8 @@ export function TurnosPage() {
               <div style={s.metaValue}>{formatHora(slot.hora_inicio)} &ndash; {formatHora(slot.hora_fin)}</div>
             </div>
             <div style={s.metaCell}>
-              <div style={s.metaLabel}>Agente</div>
-              <div style={s.metaValue}>{slot.agente_nombre}</div>
+              <div style={s.metaLabel}>{slot.tipo_recurso === 'espacio' ? 'Lugar' : 'Agente'}</div>
+              <div style={s.metaValue}>{slot.recurso_nombre}</div>
             </div>
           </div>
 

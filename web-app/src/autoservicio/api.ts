@@ -89,9 +89,19 @@ export interface AgenteDisponible {
   nombre: string
 }
 
+export interface RecursoDisponible {
+  tipo_recurso: 'agente' | 'espacio'
+  id_recurso: number
+  nombre: string
+}
+
 export interface SlotLibre {
-  id_agente: number
-  agente_nombre: string
+  tipo_recurso: 'agente' | 'espacio'
+  id_recurso: number
+  recurso_nombre: string
+  // compat retro
+  id_agente: number | null
+  agente_nombre: string | null
   fecha: string
   hora_inicio: string
   hora_fin: string
@@ -99,7 +109,9 @@ export interface SlotLibre {
 
 export interface TurnoPublicoCreate {
   id_tipo_servicio_turno: number
-  id_agente: number
+  // exactamente uno
+  id_agente?: number
+  id_espacio?: number
   fecha: string
   hora_inicio: string
   dni: string
@@ -119,6 +131,8 @@ export interface TurnoPublico {
   hora_fin: string
   tipo_servicio_nombre: string | null
   agente_nombre: string | null
+  espacio_nombre: string | null
+  recurso_nombre: string | null
   ciudadano_apellido: string | null
   ciudadano_nombre: string | null
   ciudadano_dni: string | null
@@ -132,15 +146,21 @@ export function getAgentesTurno() {
   return jsonFetch<AgenteDisponible[]>('/api/v1/turnos/publico/agentes')
 }
 
+export function getRecursosTurno() {
+  return jsonFetch<RecursoDisponible[]>('/api/v1/turnos/publico/recursos')
+}
+
 export function getSlotsTurno(params: {
   id_tipo_servicio_turno: number
-  id_agente?: number
+  tipo_recurso?: 'agente' | 'espacio'
+  id_recurso?: number
   fecha_desde?: string
   dias?: number
 }) {
   const qs = new URLSearchParams()
   qs.set('id_tipo_servicio_turno', String(params.id_tipo_servicio_turno))
-  if (params.id_agente != null) qs.set('id_agente', String(params.id_agente))
+  if (params.tipo_recurso) qs.set('tipo_recurso', params.tipo_recurso)
+  if (params.id_recurso != null) qs.set('id_recurso', String(params.id_recurso))
   if (params.fecha_desde) qs.set('fecha_desde', params.fecha_desde)
   if (params.dias != null) qs.set('dias', String(params.dias))
   return jsonFetch<SlotLibre[]>(`/api/v1/turnos/publico/slots?${qs.toString()}`)

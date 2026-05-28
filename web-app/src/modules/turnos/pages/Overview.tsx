@@ -39,7 +39,7 @@ export function Overview() {
     const txt = fTexto.trim().toLowerCase()
     if (!txt) return turnos
     return turnos.filter((t) =>
-      [t.ciudadano_nombre, t.ciudadano_dni, t.agente_nombre, t.tipo_servicio_nombre, t.observaciones]
+      [t.ciudadano_nombre, t.ciudadano_dni, t.recurso_nombre, t.agente_nombre, t.tipo_servicio_nombre, t.observaciones]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
@@ -140,7 +140,7 @@ export function Overview() {
             <tr>
               <th style={th}>Fecha / Hora</th>
               <th style={th}>Ciudadano</th>
-              <th style={th}>Agente</th>
+              <th style={th}>Atiende</th>
               <th style={th}>Servicio</th>
               <th style={th}>Estado</th>
               <th style={th}>Observaciones</th>
@@ -164,7 +164,12 @@ export function Overview() {
                   {t.ciudadano_nombre ?? '—'}
                   {t.ciudadano_dni && <div style={{ fontSize: '0.72rem', color: 'var(--fg-3)' }}>DNI {t.ciudadano_dni}</div>}
                 </td>
-                <td style={td}>{t.agente_nombre ?? '—'}</td>
+                <td style={td}>
+                  {t.recurso_nombre ?? t.agente_nombre ?? '—'}
+                  <div style={{ fontSize: '0.7rem', color: 'var(--fg-3)' }}>
+                    {t.id_espacio != null ? 'Lugar de atención' : 'Agente'}
+                  </div>
+                </td>
                 <td style={td}>{t.tipo_servicio_nombre ?? '—'}</td>
                 <td style={td}><EstadoBadge estado={t.estado} /></td>
                 <td style={{ ...td, maxWidth: 200, color: 'var(--fg-3)' }}>{t.observaciones ?? ''}</td>

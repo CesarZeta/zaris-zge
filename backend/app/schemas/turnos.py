@@ -33,7 +33,9 @@ class TipoServicioTurnoOut(BaseModel):
 # =============================================================================
 class TurnoCreate(BaseModel):
     id_ciudadano: int
-    id_agente: int
+    # Recurso polimorfico: exactamente uno de id_agente / id_espacio (mig 70).
+    id_agente: Optional[int] = None
+    id_espacio: Optional[int] = None
     id_tipo_servicio_turno: int
     fecha: date
     hora_inicio: time
@@ -49,6 +51,8 @@ class TurnoCreate(BaseModel):
     def _validar(self) -> "TurnoCreate":
         if self.hora_fin is not None and self.hora_fin <= self.hora_inicio:
             raise ValueError("hora_fin debe ser mayor que hora_inicio")
+        if (self.id_agente is None) == (self.id_espacio is None):
+            raise ValueError("Indicar exactamente uno de id_agente o id_espacio")
         return self
 
 
@@ -68,8 +72,12 @@ class TurnoOut(BaseModel):
     id_ciudadano: int
     ciudadano_nombre: Optional[str] = None
     ciudadano_dni: Optional[str] = None
-    id_agente: int
+    id_agente: Optional[int] = None
     agente_nombre: Optional[str] = None
+    id_espacio: Optional[int] = None
+    espacio_nombre: Optional[str] = None
+    recurso_tipo: Optional[str] = None  # 'agente' | 'espacio'
+    recurso_nombre: Optional[str] = None
     id_tipo_servicio_turno: int
     tipo_servicio_nombre: Optional[str] = None
     id_ocupacion: Optional[int] = None
@@ -89,25 +97,39 @@ class TurnoOut(BaseModel):
 # Autoservicio publico (sin JWT) — el ciudadano elige tipo de servicio, dia y
 # slot libre. El backend cruza disponibilidad_recurso con ocupaciones.
 # =============================================================================
+class RecursoDisponibleOut(BaseModel):
+    """Recurso (agente o espacio atendido) que puede atender turnos.
+    Vista publica minima para el autoservicio."""
+    tipo_recurso: str  # 'agente' | 'espacio'
+    id_recurso: int
+    nombre: str
+
+
+# Alias retro-compat: el autoservicio viejo listaba solo agentes.
 class AgenteDisponibleOut(BaseModel):
-    """Agente que atiende un tipo de servicio (vista publica minima)."""
     id_agente: int
     nombre: str
 
 
 class SlotLibreOut(BaseModel):
-    """Un slot horario libre para reservar un turno."""
-    id_agente: int
-    agente_nombre: str
+    """Un slot horario libre para reservar un turno (agente o espacio)."""
+    tipo_recurso: str = "agente"   # 'agente' | 'espacio'
+    id_recurso: int
+    recurso_nombre: str
+    # Compat retro: campos viejos para el frontend que aun mira id_agente.
+    id_agente: Optional[int] = None
+    agente_nombre: Optional[str] = None
     fecha: date
     hora_inicio: time
     hora_fin: time
 
 
 class TurnoPublicoCreate(BaseModel):
-    """Reserva de turno por autoservicio. Busca/crea ciudadano por DNI."""
+    """Reserva de turno por autoservicio. Busca/crea ciudadano por DNI.
+    Recurso polimorfico: exactamente uno de id_agente / id_espacio."""
     id_tipo_servicio_turno: int
-    id_agente: int
+    id_agente: Optional[int] = None
+    id_espacio: Optional[int] = None
     fecha: date
     hora_inicio: time
     dni: str = Field(..., min_length=6, max_length=20)
@@ -116,6 +138,12 @@ class TurnoPublicoCreate(BaseModel):
     telefono: Optional[str] = None
     email: Optional[str] = None
     observaciones: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _validar_recurso(self) -> "TurnoPublicoCreate":
+        if (self.id_agente is None) == (self.id_espacio is None):
+            raise ValueError("Indicar exactamente uno de id_agente o id_espacio")
+        return self
 
 
 class TurnoPublicoOut(BaseModel):
@@ -129,6 +157,8 @@ class TurnoPublicoOut(BaseModel):
     hora_fin: time
     tipo_servicio_nombre: Optional[str] = None
     agente_nombre: Optional[str] = None
+    espacio_nombre: Optional[str] = None
+    recurso_nombre: Optional[str] = None
     ciudadano_apellido: Optional[str] = None
     ciudadano_nombre: Optional[str] = None
     ciudadano_dni: Optional[str] = None
