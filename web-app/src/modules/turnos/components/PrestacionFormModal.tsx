@@ -1,0 +1,229 @@
+import { useEffect, useState } from 'react'
+import { Modal } from '../../agenda/components/Modal'
+import { RecursoPicker } from '../../agenda/components/RecursoPicker'
+import { Button } from '../../../ui'
+import { useNotificationsStore } from '../../../stores/notifications'
+import { useEspacios } from '../../agenda/hooks/useEspacios'
+import { useCrearPrestacion, useEditarPrestacion } from '../hooks/useTurnos'
+import type { ClasePrestacion, TipoPrestacion, TipoRecurso } from '../types/turno'
+
+interface Props {
+  open: boolean
+  onClose: () => void
+  /** Si viene, el modal edita esa prestación en lugar de crear una nueva. */
+  prestacion?: TipoPrestacion | null
+}
+
+export function PrestacionFormModal({ open, onClose, prestacion }: Props) {
+  const push = useNotificationsStore((s) => s.push)
+  const esEdicion = prestacion != null
+  const crear = useCrearPrestacion()
+  const editar = useEditarPrestacion()
+  const espacios = useEspacios({})
+
+  const [nombre, setNombre] = useState('')
+  const [descripcion, setDescripcion] = useState('')
+  const [clase, setClase] = useState<ClasePrestacion>('atencion')
+  const [duracionMin, setDuracionMin] = useState(30)
+  const [tipoRecurso, setTipoRecurso] = useState<TipoRecurso>('agente')
+  const [idAgente, setIdAgente] = useState<number | ''>('')
+  const [idEspacio, setIdEspacio] = useState<number | ''>('')
+
+  useEffect(() => {
+    if (!open) return
+    if (prestacion) {
+      setNombre(prestacion.nombre)
+      setDescripcion(prestacion.descripcion ?? '')
+      setClase(prestacion.clase)
+      setDuracionMin(prestacion.duracion_min)
+      setTipoRecurso(prestacion.tipo_recurso ?? 'agente')
+      setIdAgente(prestacion.id_agente ?? '')
+      setIdEspacio(prestacion.id_espacio ?? '')
+    } else {
+      setNombre('')
+      setDescripcion('')
+      setClase('atencion')
+      setDuracionMin(30)
+      setTipoRecurso('agente')
+      setIdAgente('')
+      setIdEspacio('')
+    }
+  }, [open, prestacion])
+
+  // 'reserva_espacio' fuerza recurso = espacio.
+  function cambiarClase(c: ClasePrestacion) {
+    setClase(c)
+    if (c === 'reserva_espacio') {
+      setTipoRecurso('espacio')
+      setIdAgente('')
+    }
+  }
+
+  async function onSubmit() {
+    if (!nombre.trim()) {
+      push({ kind: 'error', title: 'Ingresá un nombre' }); return
+    }
+    if (tipoRecurso === 'agente' && idAgente === '') {
+      push({ kind: 'error', title: 'Elegí un agente' }); return
+    }
+    if (tipoRecurso === 'espacio' && idEspacio === '') {
+      push({ kind: 'error', title: 'Elegí un lugar de atención' }); return
+    }
+    const body = {
+      nombre: nombre.trim(),
+      descripcion: descripcion.trim() || null,
+      clase,
+      duracion_min: duracionMin,
+      tipo_recurso: tipoRecurso,
+      id_agente: tipoRecurso === 'agente' ? (idAgente as number) : null,
+      id_espacio: tipoRecurso === 'espacio' ? (idEspacio as number) : null,
+    }
+    try {
+      if (esEdicion && prestacion) {
+        await editar.mutateAsync({ id: prestacion.id_tipo_prestacion, body })
+        push({ kind: 'success', title: 'Prestación actualizada' })
+      } else {
+        await crear.mutateAsync(body)
+        push({ kind: 'success', title: 'Prestación creada' })
+      }
+      onClose()
+    } catch (e) {
+      push({ kind: 'error', title: esEdicion ? 'No se pudo actualizar' : 'No se pudo crear', body: (e as Error).message })
+    }
+  }
+
+  const pending = crear.isPending || editar.isPending
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={esEdicion ? `Editar prestación #${prestacion?.id_tipo_prestacion}` : 'Nueva prestación'}
+      width={560}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button variant="accent" onClick={onSubmit} disabled={pending}>
+            {esEdicion ? 'Guardar cambios' : 'Crear prestación'}
+          </Button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {/* Nombre */}
+        <div>
+          <label style={lbl}>Nombre</label>
+          <input
+            type="text"
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+            placeholder="Ej. Atención médica - Odontología"
+            style={inp}
+          />
+        </div>
+
+        {/* Clase */}
+        <div>
+          <label style={lbl}>Tipo de prestación</label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button type="button" onClick={() => cambiarClase('atencion')} style={toggleBtn(clase === 'atencion')}>
+              Atención de personas
+            </button>
+            <button type="button" onClick={() => cambiarClase('reserva_espacio')} style={toggleBtn(clase === 'reserva_espacio')}>
+              Reserva de un espacio
+            </button>
+          </div>
+          <div style={hint}>
+            {clase === 'atencion'
+              ? 'Un ciudadano se atiende con un agente o en un lugar de atención.'
+              : 'Se reserva el uso de un espacio físico (ej. salón). Siempre apunta a un lugar.'}
+          </div>
+        </div>
+
+        {/* Recurso */}
+        <div>
+          <label style={lbl}>Atendido por</label>
+          {clase === 'atencion' && (
+            <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+              <button type="button" onClick={() => { setTipoRecurso('agente'); setIdEspacio('') }} style={toggleBtn(tipoRecurso === 'agente')}>
+                Un agente
+              </button>
+              <button type="button" onClick={() => { setTipoRecurso('espacio'); setIdAgente('') }} style={toggleBtn(tipoRecurso === 'espacio')}>
+                Un lugar de atención
+              </button>
+            </div>
+          )}
+          {tipoRecurso === 'agente' ? (
+            <RecursoPicker
+              tipo="agente"
+              value={idAgente === '' ? null : idAgente}
+              onChange={(id) => setIdAgente(id ?? '')}
+            />
+          ) : (
+            <>
+              <select
+                value={idEspacio}
+                onChange={(e) => setIdEspacio(e.target.value === '' ? '' : Number(e.target.value))}
+                style={inp}
+              >
+                <option value="">Elegí un lugar…</option>
+                {(espacios.data ?? []).map((e) => (
+                  <option key={e.id_espacio} value={e.id_espacio}>
+                    {e.nombre} {e.atendido ? '(atendido)' : '(sin atención)'}
+                  </option>
+                ))}
+              </select>
+              {(espacios.data ?? []).length === 0 && !espacios.isLoading && (
+                <div style={hint}>No hay lugares cargados. Crealos en Agenda → Disponibilidad → Espacios.</div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Duración */}
+        <div>
+          <label style={lbl}>Duración del turno (minutos)</label>
+          <input
+            type="number"
+            min={5}
+            step={5}
+            value={duracionMin}
+            onChange={(e) => setDuracionMin(Math.max(5, Number(e.target.value) || 0))}
+            style={{ ...inp, maxWidth: 160 }}
+          />
+          <div style={hint}>Define el tamaño de cada slot que se ofrece al reservar.</div>
+        </div>
+
+        {/* Descripción */}
+        <div>
+          <label style={lbl}>Descripción (opcional)</label>
+          <textarea
+            value={descripcion}
+            onChange={(e) => setDescripcion(e.target.value)}
+            rows={2}
+            style={{ ...inp, resize: 'vertical', fontFamily: 'var(--font-display)' }}
+          />
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+const lbl: React.CSSProperties = {
+  display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', marginBottom: 4,
+}
+const inp: React.CSSProperties = {
+  width: '100%', fontFamily: 'var(--font-display)', fontSize: 13,
+  padding: '7px 10px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-primary)',
+  background: 'var(--surface-100)', outline: 'none', boxSizing: 'border-box',
+}
+const hint: React.CSSProperties = { fontSize: 11, color: 'var(--fg-3)', marginTop: 4 }
+function toggleBtn(active: boolean): React.CSSProperties {
+  return {
+    flex: 1, fontFamily: 'var(--font-display)', fontSize: 12, cursor: 'pointer',
+    padding: '7px 10px', borderRadius: 'var(--radius-md)', fontWeight: 500,
+    border: '1px solid ' + (active ? 'var(--zaris-orange)' : 'var(--border-medium)'),
+    background: active ? 'var(--zaris-orange)' : 'transparent',
+    color: active ? 'white' : 'var(--fg-2)',
+  }
+}

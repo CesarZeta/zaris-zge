@@ -64,7 +64,7 @@ export function MiTurnoPage() {
 
   return (
     <Shell>
-      <h1 style={s.h1}>{turno.tipo_servicio_nombre ?? 'Turno'}</h1>
+      <h1 style={s.h1}>{turno.prestacion_nombre ?? 'Turno'}</h1>
       <p style={s.desc}>
         {cancelado
           ? 'Tu turno fue cancelado.'
@@ -83,8 +83,8 @@ export function MiTurnoPage() {
           <div style={s.metaValue}>{formatHora(turno.hora_inicio)} &ndash; {formatHora(turno.hora_fin)}</div>
         </div>
         <div style={s.metaCell}>
-          <div style={s.metaLabel}>{turno.espacio_nombre ? 'Lugar' : 'Agente'}</div>
-          <div style={s.metaValue}>{turno.recurso_nombre ?? turno.agente_nombre ?? '-'}</div>
+          <div style={s.metaLabel}>Atiende</div>
+          <div style={s.metaValue}>{turno.recurso_nombre ?? '-'}</div>
         </div>
         <div style={s.metaCell}>
           <div style={s.metaLabel}>Estado</div>
