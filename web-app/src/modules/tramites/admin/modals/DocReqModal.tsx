@@ -33,7 +33,8 @@ export function DocReqModal({
   const [tamanoMax, setTamanoMax] = useState(doc?.tamano_max_mb ?? 10)
   const [requiereFirma, setRequiereFirma] = useState(doc?.requiere_firma ?? false)
   const [aporta, setAporta] = useState(doc?.quien_debe_adjuntar ?? 'iniciador')
-  const [orden, setOrden] = useState(1)
+  const [cantidadMax, setCantidadMax] = useState(doc?.cantidad_max_archivos ?? 1)
+  const [orden, setOrden] = useState(doc?.orden ?? 1)
   const [error, setError] = useState('')
 
   const crear = useCrearDocReq()
@@ -47,36 +48,26 @@ export function DocReqModal({
     setError('')
     if (!nombre.trim()) { setError('Nombre obligatorio'); return }
     if (formatos.length === 0) { setError('Elegí al menos un formato permitido'); return }
+    if (cantidadMax < 1 || cantidadMax > 20) { setError('La cantidad máxima de archivos debe estar entre 1 y 20'); return }
     try {
+      const bodyComun = {
+        nombre: nombre.trim(),
+        descripcion: descripcion.trim() || null,
+        id_tipo_tramite_estado: idEstado,
+        obligatorio,
+        formatos_permitidos: formatos,
+        tamano_max_mb: tamanoMax,
+        requiere_firma: requiereFirma,
+        aporta_quien: aporta,
+        cantidad_max_archivos: cantidadMax,
+        orden,
+      }
       if (esNuevo) {
-        await crear.mutateAsync({
-          idVersion,
-          body: {
-            nombre: nombre.trim(),
-            descripcion: descripcion.trim() || null,
-            id_tipo_tramite_estado: idEstado,
-            obligatorio,
-            formatos_permitidos: formatos,
-            tamano_max_mb: tamanoMax,
-            requiere_firma: requiereFirma,
-            aporta_quien: aporta,
-            orden,
-          },
-        })
+        await crear.mutateAsync({ idVersion, body: bodyComun })
       } else {
         await actualizar.mutateAsync({
           idDoc: doc!.id_tipo_tramite_documento_requerido,
-          body: {
-            nombre: nombre.trim(),
-            descripcion: descripcion.trim() || null,
-            id_tipo_tramite_estado: idEstado,
-            obligatorio,
-            formatos_permitidos: formatos,
-            tamano_max_mb: tamanoMax,
-            requiere_firma: requiereFirma,
-            aporta_quien: aporta,
-            orden,
-          },
+          body: bodyComun,
         })
       }
       onCerrar()
@@ -130,15 +121,29 @@ export function DocReqModal({
       </div>
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
-        <div style={{ flex: 1 }}>
+        <div>
           <label style={label}>Tamaño máx (MB)</label>
           <Input type="number" value={tamanoMax} onChange={(e) => setTamanoMax(Number(e.target.value) || 10)} style={{ width: 100 }} />
+        </div>
+        <div>
+          <label style={label}>Cant. máx. archivos</label>
+          <Input
+            type="number"
+            min={1}
+            max={20}
+            value={cantidadMax}
+            onChange={(e) => setCantidadMax(Number(e.target.value) || 1)}
+            style={{ width: 110 }}
+          />
         </div>
         <div style={{ width: 100 }}>
           <label style={label}>Orden</label>
           <Input type="number" value={orden} onChange={(e) => setOrden(Number(e.target.value) || 0)} />
         </div>
       </div>
+      <p style={{ fontSize: 11, color: 'var(--fg-3)', margin: '-4px 0 12px' }}>
+        Cuántos archivos puede subir el ciudadano para este documento (ej. DNI = 2 frente/dorso, fotos = 5).
+      </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, cursor: 'pointer' }}>

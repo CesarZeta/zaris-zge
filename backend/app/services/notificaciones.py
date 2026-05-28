@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.services.email import enviar_mail
+from app.utils.log_helpers import mask_email
 
 logger = logging.getLogger("zaris.notificaciones")
 
@@ -39,10 +40,16 @@ async def _datos_tramite(db: AsyncSession, id_tramite: int) -> dict | None:
                    t.destinatario_actual_tipo,
                    COALESCE(t.id_subarea_actual, t.id_equipo_actual, t.id_agente_actual) AS destinatario_actual_id,
                    t.iniciador_tipo, t.id_subarea_iniciadora, t.id_agente_tomado_por,
+                   t.id_ciudadano_iniciador, t.id_empresa_iniciadora,
+                   ci.email AS email_ciudadano_ini,
+                   (ci.nombre || ' ' || ci.apellido) AS nombre_ciudadano_ini,
+                   em.email AS email_empresa_ini, em.nombre AS nombre_empresa_ini,
                    tt.nombre AS tipo_nombre
               FROM tramite t
               JOIN tipo_tramite_version ttv ON ttv.id_tipo_tramite_version = t.id_tipo_tramite_version
               JOIN tipo_tramite tt ON tt.id_tipo_tramite = ttv.id_tipo_tramite
+              LEFT JOIN ciudadanos ci ON ci.id_ciudadano = t.id_ciudadano_iniciador
+              LEFT JOIN empresas em ON em.id_empresa = t.id_empresa_iniciadora
              WHERE t.id_tramite = :tid AND t.activo = TRUE
         """),
         {"tid": id_tramite},
@@ -505,11 +512,20 @@ async def notificar_estado_final_a_iniciador(
     id_tramite: int,
     estado_etiqueta: str,
     background_tasks: Optional[BackgroundTasks] = None,
+    mensaje_custom: Optional[str] = None,
 ) -> int:
     """
     Cuando un tramite llega a un estado final (es_final=TRUE), notifica al
-    iniciador. Solo aplica para iniciador_tipo='area_interna' — los iniciadores
-    ciudadano/empresa no tienen cuenta en el sistema.
+    iniciador.
+
+    - Iniciador 'area_interna': notificacion in-app + email a los usuarios de la
+      subarea iniciadora.
+    - Iniciador 'ciudadano' / 'empresa': email al iniciador (no tiene cuenta
+      in-app). Es el caso del vecino — BUG-05.
+
+    `mensaje_custom` es el texto que el admin configuro en la transicion
+    (tipo_tramite_transicion.mensaje_iniciador). Si viene, reemplaza el mensaje
+    generico ("Tu tramite fue aprobado/rechazado" en vez de "llego al estado X").
 
     Fail-safe: cualquier error se logea pero NO levanta.
     """
@@ -517,36 +533,78 @@ async def notificar_estado_final_a_iniciador(
         tramite = await _datos_tramite(db, id_tramite)
         if not tramite:
             return 0
-        if tramite.get("iniciador_tipo") != "area_interna":
-            return 0
-        id_subarea_ini = tramite.get("id_subarea_iniciadora")
-        if not id_subarea_ini:
-            return 0
-        usuarios = await _usuarios_por_subarea(db, id_subarea_ini)
-        if not usuarios:
-            return 0
 
         numero = tramite["numero_expediente"]
-        titulo = f"Tramite {numero} cerrado: {estado_etiqueta}"
-        mensaje = (
+        tipo_nombre = tramite.get("tipo_nombre") or "tramite"
+        mensaje = (mensaje_custom or "").strip() or (
             f"El tramite {numero} que iniciaste llego al estado final "
             f"'{estado_etiqueta}'."
         )
 
-        creadas = await _emitir_a_usuarios(
-            db, usuarios,
-            tramite=tramite,
-            tipo_notif="tramite_estado_final",
-            titulo=titulo,
-            mensaje=mensaje,
-            url_destino=_url_destino_tramite(numero),
-            background_tasks=background_tasks,
-        )
-        logger.info(
-            "notificar_estado_final %s [%s]: %d notif a subarea/%s",
-            numero, estado_etiqueta, creadas, id_subarea_ini,
-        )
-        return creadas
+        iniciador = tramite.get("iniciador_tipo")
+
+        # --- Iniciador interno: in-app + email a la subarea ---
+        if iniciador == "area_interna":
+            id_subarea_ini = tramite.get("id_subarea_iniciadora")
+            if not id_subarea_ini:
+                return 0
+            usuarios = await _usuarios_por_subarea(db, id_subarea_ini)
+            if not usuarios:
+                return 0
+            titulo = f"Tramite {numero} cerrado: {estado_etiqueta}"
+            creadas = await _emitir_a_usuarios(
+                db, usuarios,
+                tramite=tramite,
+                tipo_notif="tramite_estado_final",
+                titulo=titulo,
+                mensaje=mensaje,
+                url_destino=_url_destino_tramite(numero),
+                background_tasks=background_tasks,
+            )
+            logger.info(
+                "notificar_estado_final %s [%s]: %d notif a subarea/%s",
+                numero, estado_etiqueta, creadas, id_subarea_ini,
+            )
+            return creadas
+
+        # --- Iniciador vecino (ciudadano/empresa): solo email ---
+        if iniciador in ("ciudadano", "empresa"):
+            if iniciador == "ciudadano":
+                destinatario = tramite.get("email_ciudadano_ini")
+                nombre_dest = tramite.get("nombre_ciudadano_ini")
+            else:
+                destinatario = tramite.get("email_empresa_ini")
+                nombre_dest = tramite.get("nombre_empresa_ini")
+            if not destinatario:
+                logger.info(
+                    "notificar_estado_final %s: iniciador %s sin email, no se envia",
+                    numero, iniciador,
+                )
+                return 0
+
+            asunto = f"Tu tramite {numero} — {estado_etiqueta}"
+            cuerpo_html = (
+                f"<p>Hola {nombre_dest or ''},</p>"
+                f"<p>{mensaje}</p>"
+                f"<p>Numero de expediente: <strong>{numero}</strong><br>"
+                f"Tipo: {tipo_nombre}<br>Estado: {estado_etiqueta}</p>"
+            )
+            cuerpo_text = f"{mensaje}\n\nExpediente: {numero}\nEstado: {estado_etiqueta}"
+
+            async def _enviar() -> None:
+                await enviar_mail(destinatario, asunto, cuerpo_html, cuerpo_text)
+
+            if background_tasks is not None:
+                background_tasks.add_task(_enviar)
+            else:
+                await _enviar()
+            logger.info(
+                "notificar_estado_final %s [%s]: email a %s (%s)",
+                numero, estado_etiqueta, iniciador, mask_email(destinatario),
+            )
+            return 1
+
+        return 0
     except Exception as e:
         logger.error(
             "notificar_estado_final_a_iniciador FALLO (tramite=%s): %s",

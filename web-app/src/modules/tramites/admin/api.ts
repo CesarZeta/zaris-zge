@@ -169,24 +169,28 @@ export interface TransicionCreateBody {
   id_estado_origen: number
   id_estado_destino: number
   etiqueta_accion: string
+  tipo_accion?: string
   orden?: number
   quien_puede_jsonb?: unknown
   requiere_comentario?: boolean
   requiere_adjunto?: boolean
   destino_automatico_jsonb?: unknown
   notifica_iniciador?: boolean
+  mensaje_iniciador?: string | null
 }
 
 export interface TransicionUpdateBody {
   id_estado_origen?: number
   id_estado_destino?: number
   etiqueta_accion?: string
+  tipo_accion?: string
   orden?: number
   quien_puede_jsonb?: unknown
   requiere_comentario?: boolean
   requiere_adjunto?: boolean
   destino_automatico_jsonb?: unknown
   notifica_iniciador?: boolean
+  mensaje_iniciador?: string | null
 }
 
 export const crearTransicion = (idVersion: number, body: TransicionCreateBody) =>
@@ -210,6 +214,7 @@ export interface DocReqCreateBody {
   requiere_firma?: boolean
   firmantes_jsonb?: unknown
   aporta_quien?: string
+  cantidad_max_archivos?: number
   orden?: number
 }
 
@@ -223,6 +228,7 @@ export interface DocReqUpdateBody {
   requiere_firma?: boolean
   firmantes_jsonb?: unknown
   aporta_quien?: string
+  cantidad_max_archivos?: number
   orden?: number
 }
 

@@ -211,9 +211,9 @@ async def _copiar_estructura(
     # Transiciones (re-mapeando estado_origen/destino)
     transiciones = (await db.execute(
         text("""
-            SELECT id_estado_origen, id_estado_destino, etiqueta_accion, orden,
+            SELECT id_estado_origen, id_estado_destino, etiqueta_accion, tipo_accion, orden,
                    quien_puede_jsonb, requiere_comentario, requiere_adjunto,
-                   destino_automatico_jsonb, notifica_iniciador
+                   destino_automatico_jsonb, notifica_iniciador, mensaje_iniciador
             FROM tipo_tramite_transicion
             WHERE id_tipo_tramite_version = :src AND activo = TRUE
         """),
@@ -226,22 +226,22 @@ async def _copiar_estructura(
             text("""
                 INSERT INTO tipo_tramite_transicion
                     (id_tipo_tramite_version, id_estado_origen, id_estado_destino,
-                     etiqueta_accion, orden, quien_puede_jsonb,
+                     etiqueta_accion, tipo_accion, orden, quien_puede_jsonb,
                      requiere_comentario, requiere_adjunto,
-                     destino_automatico_jsonb, notifica_iniciador,
+                     destino_automatico_jsonb, notifica_iniciador, mensaje_iniciador,
                      activo, id_municipio)
-                VALUES (:v, :ori, :dst, :eti, :ord, CAST(:qp AS jsonb),
-                        :rc, :ra, CAST(:da AS jsonb), :ni, TRUE, :mun)
+                VALUES (:v, :ori, :dst, :eti, :ta, :ord, CAST(:qp AS jsonb),
+                        :rc, :ra, CAST(:da AS jsonb), :ni, :mi, TRUE, :mun)
             """),
             {
                 "v": id_version_destino,
                 "ori": mapa_estados[t.id_estado_origen],
                 "dst": mapa_estados[t.id_estado_destino],
-                "eti": t.etiqueta_accion, "ord": t.orden,
+                "eti": t.etiqueta_accion, "ta": t.tipo_accion, "ord": t.orden,
                 "qp": json.dumps(t.quien_puede_jsonb) if t.quien_puede_jsonb else "{}",
                 "rc": t.requiere_comentario, "ra": t.requiere_adjunto,
                 "da": json.dumps(t.destino_automatico_jsonb) if t.destino_automatico_jsonb else None,
-                "ni": t.notifica_iniciador, "mun": id_municipio,
+                "ni": t.notifica_iniciador, "mi": t.mensaje_iniciador, "mun": id_municipio,
             },
         )
 
@@ -250,7 +250,7 @@ async def _copiar_estructura(
         text("""
             SELECT id_tipo_tramite_estado, nombre, descripcion, obligatorio,
                    formatos_permitidos, tamano_max_mb, requiere_firma,
-                   firmantes_jsonb, aporta_quien, orden
+                   firmantes_jsonb, aporta_quien, cantidad_max_archivos, orden
             FROM tipo_tramite_documento_requerido
             WHERE id_tipo_tramite_version = :src AND activo = TRUE
         """),
@@ -263,10 +263,10 @@ async def _copiar_estructura(
                 INSERT INTO tipo_tramite_documento_requerido
                     (id_tipo_tramite_version, id_tipo_tramite_estado, nombre,
                      descripcion, obligatorio, formatos_permitidos, tamano_max_mb,
-                     requiere_firma, firmantes_jsonb, aporta_quien, orden,
-                     activo, id_municipio)
+                     requiere_firma, firmantes_jsonb, aporta_quien,
+                     cantidad_max_archivos, orden, activo, id_municipio)
                 VALUES (:v, :est, :nom, :desc, :obl, :for, :tam, :rf,
-                        CAST(:fj AS jsonb), :aq, :ord, TRUE, :mun)
+                        CAST(:fj AS jsonb), :aq, :cma, :ord, TRUE, :mun)
             """),
             {
                 "v": id_version_destino,
@@ -275,7 +275,8 @@ async def _copiar_estructura(
                 "for": list(d.formatos_permitidos or []),
                 "tam": d.tamano_max_mb, "rf": d.requiere_firma,
                 "fj": json.dumps(d.firmantes_jsonb) if d.firmantes_jsonb else None,
-                "aq": d.aporta_quien, "ord": d.orden, "mun": id_municipio,
+                "aq": d.aporta_quien, "cma": d.cantidad_max_archivos,
+                "ord": d.orden, "mun": id_municipio,
             },
         )
 
