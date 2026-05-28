@@ -13,8 +13,12 @@ export interface Turno {
   id_ciudadano: number
   ciudadano_nombre: string | null
   ciudadano_dni: string | null
-  id_agente: number
+  id_agente: number | null
   agente_nombre: string | null
+  id_espacio: number | null
+  espacio_nombre: string | null
+  recurso_tipo: 'agente' | 'espacio' | null
+  recurso_nombre: string | null
   id_tipo_servicio_turno: number
   tipo_servicio_nombre: string | null
   id_ocupacion: number | null
@@ -32,7 +36,9 @@ export interface Turno {
 
 export interface CrearTurnoBody {
   id_ciudadano: number
-  id_agente: number
+  // Exactamente uno de id_agente / id_espacio.
+  id_agente?: number
+  id_espacio?: number
   id_tipo_servicio_turno: number
   fecha: string
   hora_inicio: string

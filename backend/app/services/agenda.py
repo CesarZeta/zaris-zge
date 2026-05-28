@@ -43,7 +43,15 @@ async def disponibilidad_efectiva(
     Cada item devuelto: {hora_inicio: time, hora_fin: time, etiqueta: str|None}.
     Los rangos vienen ya resueltos para esa fecha y no se solapan entre si
     (cuando hay solapes los unimos).
+
+    Resta feriados (dia completo) y novedades de agentes (inasistencias/licencias,
+    totales o parciales). Para un espacio atendido, las novedades de cada agente
+    vinculado ya se restan al armar la union.
     """
+    # Feriado: ningun recurso atiende ese dia.
+    if await _es_feriado(session, fecha, None):
+        return []
+
     if tipo_recurso in ("agente", "equipo"):
         return await _disponibilidad_directa(session, tipo_recurso, id_recurso, fecha)
 
@@ -120,6 +128,10 @@ async def _disponibilidad_directa(
     # Si hay multiples filas que se solapan o son contiguas, las unimos.
     triples = [(r["hora_inicio"], r["hora_fin"], r["etiqueta"]) for r in rows]
     merged = _merge_rangos(triples)
+    # Para agentes, restar sus novedades (inasistencias/licencias) del dia.
+    if tipo_recurso == "agente":
+        bloqueos = await _bloqueos_novedades_agente(session, id_recurso, fecha)
+        merged = _merge_rangos(_restar_intervalos(merged, bloqueos))
     return [{"hora_inicio": hi, "hora_fin": hf, "etiqueta": et} for (hi, hf, et) in merged]
 
 
@@ -139,6 +151,72 @@ def _merge_rangos(
             out[-1] = (prev_hi, max(prev_hf, hf), prev_et)
         else:
             out.append((hi, hf, et))
+    return out
+
+
+def _restar_intervalos(
+    rangos: list[tuple[dtime, dtime, Optional[str]]],
+    bloqueos: list[tuple[dtime, dtime]],
+) -> list[tuple[dtime, dtime, Optional[str]]]:
+    """Resta a cada rango disponible los intervalos de `bloqueos` (feriados/novedades).
+    Un bloqueo (None, None) ya viene normalizado a (00:00, 23:59:59) por el caller.
+    Puede partir un rango en dos si el bloqueo cae en el medio."""
+    if not bloqueos:
+        return rangos
+    out: list[tuple[dtime, dtime, Optional[str]]] = []
+    for (ri, rf, et) in rangos:
+        # Fragmentos vivos del rango tras restar todos los bloqueos.
+        vivos: list[tuple[dtime, dtime]] = [(ri, rf)]
+        for (bi, bf) in bloqueos:
+            nuevos: list[tuple[dtime, dtime]] = []
+            for (vi, vf) in vivos:
+                if bf <= vi or bi >= vf:
+                    nuevos.append((vi, vf))  # sin solape
+                    continue
+                if bi > vi:
+                    nuevos.append((vi, bi))   # queda la izquierda
+                if bf < vf:
+                    nuevos.append((bf, vf))   # queda la derecha
+            vivos = nuevos
+        for (vi, vf) in vivos:
+            if vi < vf:
+                out.append((vi, vf, et))
+    return out
+
+
+_DIA_COMPLETO: tuple[dtime, dtime] = (dtime(0, 0, 0), dtime(23, 59, 59))
+
+
+async def _es_feriado(session: AsyncSession, fecha: date, id_municipio: Optional[int]) -> bool:
+    """True si la fecha es feriado activo (ámbito nacional/provincial/municipal).
+    Por ahora cualquier feriado activo bloquea (no se filtra por municipio porque
+    los feriados nacionales/provinciales aplican a todos)."""
+    n = await session.scalar(text("""
+        SELECT 1 FROM agenda_feriado
+        WHERE activo = TRUE AND fecha = (:f)::date
+        LIMIT 1
+    """), {"f": fecha})
+    return bool(n)
+
+
+async def _bloqueos_novedades_agente(
+    session: AsyncSession, id_agente: int, fecha: date,
+) -> list[tuple[dtime, dtime]]:
+    """Intervalos bloqueados por novedades (inasistencia/licencia) del agente en
+    esa fecha. (None, None) = todo el día -> 00:00-23:59:59."""
+    rows = (await session.execute(text("""
+        SELECT hora_inicio, hora_fin
+        FROM agente_novedad
+        WHERE activo = TRUE
+          AND id_agente = :ia
+          AND (:f)::date BETWEEN fecha_desde AND fecha_hasta
+    """), {"ia": id_agente, "f": fecha})).mappings().all()
+    out: list[tuple[dtime, dtime]] = []
+    for r in rows:
+        if r["hora_inicio"] is None or r["hora_fin"] is None:
+            out.append(_DIA_COMPLETO)
+        else:
+            out.append((r["hora_inicio"], r["hora_fin"]))
     return out
 
 
@@ -184,6 +262,47 @@ async def disponibilidad_efectiva_batch(
         for ag_id in ag_ids:
             pares_disp.add(("agente", ag_id))
 
+    # Feriados del rango de fechas (1 query). Dia feriado -> nadie atiende.
+    feriados: set[date] = set()
+    rows_fer = (await session.execute(text("""
+        SELECT DISTINCT fecha FROM agenda_feriado
+        WHERE activo = TRUE AND fecha = ANY(:fs)
+    """), {"fs": list(fechas)})).mappings().all()
+    for r in rows_fer:
+        feriados.add(r["fecha"])
+
+    # Novedades de los agentes involucrados, en el rango de fechas (1 query).
+    # Resolvemos el set de agentes: los pedidos directamente + los vinculados a
+    # espacios atendidos. Indexamos por (id_agente, fecha) -> lista de bloqueos.
+    agentes_para_novedades: set[int] = {
+        id_r for (t, id_r, _a) in recursos if t == "agente"
+    }
+    for ag_ids in espacio_a_agentes.values():
+        agentes_para_novedades.update(ag_ids)
+
+    novedades_por_agente: dict[int, list[dict[str, Any]]] = {}
+    if agentes_para_novedades and fechas:
+        fmin, fmax = min(fechas), max(fechas)
+        rows_nov = (await session.execute(text("""
+            SELECT id_agente, fecha_desde, fecha_hasta, hora_inicio, hora_fin
+            FROM agente_novedad
+            WHERE activo = TRUE
+              AND id_agente = ANY(:ids)
+              AND fecha_desde <= :fmax AND fecha_hasta >= :fmin
+        """), {"ids": list(agentes_para_novedades), "fmin": fmin, "fmax": fmax})).mappings().all()
+        for r in rows_nov:
+            novedades_por_agente.setdefault(int(r["id_agente"]), []).append(dict(r))
+
+    def bloqueos_agente(id_ag: int, f: date) -> list[tuple[dtime, dtime]]:
+        out: list[tuple[dtime, dtime]] = []
+        for nov in novedades_por_agente.get(id_ag, []):
+            if nov["fecha_desde"] <= f <= nov["fecha_hasta"]:
+                if nov["hora_inicio"] is None or nov["hora_fin"] is None:
+                    out.append(_DIA_COMPLETO)
+                else:
+                    out.append((nov["hora_inicio"], nov["hora_fin"]))
+        return out
+
     # Una query bulk para todas las filas activas de disponibilidad_recurso
     # que matcheen esos pares.
     disp_rows_por_par: dict[tuple[str, int], list[dict[str, Any]]] = {}
@@ -207,6 +326,7 @@ async def disponibilidad_efectiva_batch(
                 disp_rows_por_par.setdefault(par, []).append(dict(r))
 
     # Helper local: resuelve un par (tipo, id) en una fecha aplicando bitmask + vigencia.
+    # Para agentes, ademas resta sus novedades del dia.
     def rangos_directos(tipo: str, id_r: int, f: date) -> list[tuple[dtime, dtime, Optional[str]]]:
         rows = disp_rows_por_par.get((tipo, id_r), [])
         if not rows:
@@ -224,12 +344,21 @@ async def disponibilidad_efectiva_batch(
             if vh is not None and f > vh:
                 continue
             out.append((r["hora_inicio"], r["hora_fin"], r["etiqueta"]))
-        return _merge_rangos(out)
+        merged = _merge_rangos(out)
+        if tipo == "agente":
+            bloqueos = bloqueos_agente(id_r, f)
+            if bloqueos:
+                merged = _merge_rangos(_restar_intervalos(merged, bloqueos))
+        return merged
 
     # Construir el output final.
     resultado: dict[tuple[str, int, date], list[dict[str, Any]]] = {}
     for (t, id_r, atend) in recursos:
         for f in fechas:
+            # Feriado: ningun recurso atiende ese dia.
+            if f in feriados:
+                resultado[(t, id_r, f)] = []
+                continue
             if t in ("agente", "equipo"):
                 merged = rangos_directos(t, id_r, f)
             elif t == "espacio":
@@ -446,6 +575,19 @@ async def subarea_del_usuario(session: AsyncSession, id_usuario: int) -> Optiona
         LIMIT 1
     """), {"u": id_usuario})
     return int(row) if row is not None else None
+
+
+async def turnos_respeta_disponibilidad(session: AsyncSession) -> bool:
+    """Switch global (mig 69). True (default seguro) = los turnos solo se reservan
+    dentro de la disponibilidad efectiva del recurso. False = modo libre."""
+    valor = await session.scalar(text("""
+        SELECT valor FROM configuracion_general
+        WHERE clave = 'turnos_respeta_disponibilidad' AND activo = TRUE
+        LIMIT 1
+    """))
+    if valor is None:
+        return True
+    return str(valor).strip().lower() not in ("false", "0", "no", "off")
 
 
 async def lookup_estado_evento(session: AsyncSession, codigo: str) -> Optional[int]:

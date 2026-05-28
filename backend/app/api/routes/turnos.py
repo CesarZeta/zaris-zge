@@ -33,6 +33,10 @@ from app.schemas.turnos import (
     TurnoOut,
     TurnoUpdate,
 )
+from app.services.agenda import (
+    disponibilidad_efectiva,
+    turnos_respeta_disponibilidad,
+)
 
 
 router = APIRouter(prefix="/api/v1/turnos", tags=["turnos"])
@@ -50,7 +54,12 @@ async def _turno_to_out(db: AsyncSession, id_turno: int) -> Optional[dict[str, A
                COALESCE(c.apellido, '') || ', ' || COALESCE(c.nombre, '') AS ciudadano_nombre,
                c.doc_nro AS ciudadano_dni,
                t.id_agente,
-               COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') AS agente_nombre,
+               CASE WHEN t.id_agente IS NOT NULL
+                    THEN COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') END AS agente_nombre,
+               t.id_espacio, e.nombre AS espacio_nombre,
+               CASE WHEN t.id_espacio IS NOT NULL THEN 'espacio' ELSE 'agente' END AS recurso_tipo,
+               CASE WHEN t.id_espacio IS NOT NULL THEN e.nombre
+                    ELSE COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') END AS recurso_nombre,
                t.id_tipo_servicio_turno, ts.nombre AS tipo_servicio_nombre,
                t.id_ocupacion, t.fecha, t.hora_inicio, t.hora_fin, t.estado,
                t.observaciones, t.activo, t.id_municipio, t.id_subarea,
@@ -58,6 +67,7 @@ async def _turno_to_out(db: AsyncSession, id_turno: int) -> Optional[dict[str, A
         FROM turnos t
         LEFT JOIN ciudadanos          c  ON c.id_ciudadano           = t.id_ciudadano
         LEFT JOIN agentes             a  ON a.id_agente              = t.id_agente
+        LEFT JOIN espacios_agenda     e  ON e.id_espacio             = t.id_espacio
         LEFT JOIN tipo_servicio_turno ts ON ts.id_tipo_servicio_turno = t.id_tipo_servicio_turno
         WHERE t.id_turno = :id
     """), {"id": id_turno})).mappings().first()
@@ -95,6 +105,7 @@ async def listar_turnos(
     response: Response,
     estado: Optional[str] = Query(None, description="reservado|cumplido|cancelado"),
     id_agente: Optional[int] = None,
+    id_espacio: Optional[int] = None,
     id_ciudadano: Optional[int] = None,
     fecha_desde: Optional[date] = None,
     fecha_hasta: Optional[date] = None,
@@ -110,6 +121,8 @@ async def listar_turnos(
         where.append("t.estado = :e"); params["e"] = estado
     if id_agente is not None:
         where.append("t.id_agente = :ia"); params["ia"] = id_agente
+    if id_espacio is not None:
+        where.append("t.id_espacio = :ie"); params["ie"] = id_espacio
     if id_ciudadano is not None:
         where.append("t.id_ciudadano = :ic"); params["ic"] = id_ciudadano
     if fecha_desde:
@@ -124,7 +137,12 @@ async def listar_turnos(
                COALESCE(c.apellido, '') || ', ' || COALESCE(c.nombre, '') AS ciudadano_nombre,
                c.doc_nro AS ciudadano_dni,
                t.id_agente,
-               COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') AS agente_nombre,
+               CASE WHEN t.id_agente IS NOT NULL
+                    THEN COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') END AS agente_nombre,
+               t.id_espacio, e.nombre AS espacio_nombre,
+               CASE WHEN t.id_espacio IS NOT NULL THEN 'espacio' ELSE 'agente' END AS recurso_tipo,
+               CASE WHEN t.id_espacio IS NOT NULL THEN e.nombre
+                    ELSE COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') END AS recurso_nombre,
                t.id_tipo_servicio_turno, ts.nombre AS tipo_servicio_nombre,
                t.id_ocupacion, t.fecha, t.hora_inicio, t.hora_fin, t.estado,
                t.observaciones, t.activo, t.id_municipio, t.id_subarea,
@@ -132,6 +150,7 @@ async def listar_turnos(
         FROM turnos t
         LEFT JOIN ciudadanos          c  ON c.id_ciudadano           = t.id_ciudadano
         LEFT JOIN agentes             a  ON a.id_agente              = t.id_agente
+        LEFT JOIN espacios_agenda     e  ON e.id_espacio             = t.id_espacio
         LEFT JOIN tipo_servicio_turno ts ON ts.id_tipo_servicio_turno = t.id_tipo_servicio_turno
         WHERE {where_sql}
         ORDER BY t.fecha DESC, t.hora_inicio
@@ -160,8 +179,13 @@ async def crear_turno(
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    """Crea un turno + su ocupacion espejo en la grilla de Agenda."""
+    """Crea un turno + su ocupacion espejo en la grilla de Agenda.
+    El turno se reserva contra un agente O un espacio atendido (mig 70)."""
     _require_gestion(user)
+
+    # Resolver el recurso (agente o espacio). El schema garantiza exactamente uno.
+    tipo_recurso = "espacio" if payload.id_espacio is not None else "agente"
+    id_recurso = payload.id_espacio if tipo_recurso == "espacio" else payload.id_agente
 
     # Validar FKs
     ciu = (await db.execute(text(
@@ -169,11 +193,18 @@ async def crear_turno(
     ), {"id": payload.id_ciudadano})).first()
     if not ciu:
         raise HTTPException(404, "Ciudadano no encontrado o inactivo")
-    ag = (await db.execute(text(
-        "SELECT 1 FROM agentes WHERE id_agente = :id AND activo = TRUE"
-    ), {"id": payload.id_agente})).first()
-    if not ag:
-        raise HTTPException(404, "Agente no encontrado o inactivo")
+    if tipo_recurso == "agente":
+        rec = (await db.execute(text(
+            "SELECT 1 FROM agentes WHERE id_agente = :id AND activo = TRUE"
+        ), {"id": id_recurso})).first()
+        if not rec:
+            raise HTTPException(404, "Agente no encontrado o inactivo")
+    else:
+        rec = (await db.execute(text(
+            "SELECT 1 FROM espacios_agenda WHERE id_espacio = :id AND activo = TRUE"
+        ), {"id": id_recurso})).first()
+        if not rec:
+            raise HTTPException(404, "Espacio no encontrado o inactivo")
     tipo = (await db.execute(text(
         "SELECT duracion_min FROM tipo_servicio_turno WHERE id_tipo_servicio_turno = :id AND activo = TRUE"
     ), {"id": payload.id_tipo_servicio_turno})).mappings().first()
@@ -188,16 +219,28 @@ async def crear_turno(
         if hora_fin <= payload.hora_inicio:
             raise HTTPException(422, "La duracion del tipo de servicio excede el dia")
 
-    # Solapamiento con otro turno reservado/cumplido del mismo agente
+    # Switch global (mig 69): el turno debe caer dentro de la disponibilidad
+    # efectiva del recurso (horario - feriados - novedades). Apagable.
+    if await turnos_respeta_disponibilidad(db):
+        rangos = await disponibilidad_efectiva(db, tipo_recurso, id_recurso, payload.fecha)
+        dentro = any(
+            r["hora_inicio"] <= payload.hora_inicio and hora_fin <= r["hora_fin"]
+            for r in rangos
+        )
+        if not dentro:
+            que = "del espacio" if tipo_recurso == "espacio" else "del agente"
+            raise HTTPException(409, f"El horario no esta dentro de la disponibilidad {que} (feriado, inasistencia o fuera de horario)")
+
+    # Solapamiento contra la ocupacion del mismo recurso.
     solapado = await db.scalar(text("""
-        SELECT 1 FROM turnos
-        WHERE id_agente = :ia AND fecha = :f AND activo = TRUE
-          AND estado <> 'cancelado'
-          AND hora_inicio < :hf AND hora_fin > :hi
+        SELECT 1 FROM ocupaciones
+        WHERE activo = TRUE AND tipo_recurso = :tr AND id_recurso = :ir
+          AND fecha = :f AND hora_inicio < :hf AND hora_fin > :hi
         LIMIT 1
-    """), {"ia": payload.id_agente, "f": payload.fecha, "hi": payload.hora_inicio, "hf": hora_fin})
+    """), {"tr": tipo_recurso, "ir": id_recurso, "f": payload.fecha, "hi": payload.hora_inicio, "hf": hora_fin})
     if solapado:
-        raise HTTPException(409, "El agente ya tiene un turno en ese horario")
+        que = "El espacio" if tipo_recurso == "espacio" else "El agente"
+        raise HTTPException(409, f"{que} ya tiene una ocupacion en ese horario")
 
     # Ocupacion espejo en la grilla de Agenda
     id_ocupacion = await db.scalar(text("""
@@ -205,12 +248,12 @@ async def crear_turno(
             tipo, tipo_recurso, id_recurso, fecha, hora_inicio, hora_fin,
             id_ciudadano, motivo, id_municipio, id_usuario_alta
         ) VALUES (
-            'turno', 'agente', :ia, :f, :hi, :hf,
+            'turno', :tr, :ir, :f, :hi, :hf,
             :ic, :mot, :mun, :uid
         )
         RETURNING id_ocupacion
     """), {
-        "ia": payload.id_agente, "f": payload.fecha,
+        "tr": tipo_recurso, "ir": id_recurso, "f": payload.fecha,
         "hi": payload.hora_inicio, "hf": hora_fin,
         "ic": payload.id_ciudadano,
         "mot": f"Turno: {payload.observaciones}" if payload.observaciones else "Turno",
@@ -219,17 +262,18 @@ async def crear_turno(
 
     id_turno = await db.scalar(text("""
         INSERT INTO turnos (
-            id_ciudadano, id_agente, id_tipo_servicio_turno, id_ocupacion,
+            id_ciudadano, id_agente, id_espacio, id_tipo_servicio_turno, id_ocupacion,
             fecha, hora_inicio, hora_fin, estado, observaciones,
             id_municipio, id_subarea, id_usuario_alta, id_usuario_modificacion
         ) VALUES (
-            :ic, :ia, :its, :iocup,
+            :ic, :ia, :ie, :its, :iocup,
             :f, :hi, :hf, 'reservado', :obs,
             :mun, :isa, :uid, :uid
         )
         RETURNING id_turno
     """), {
-        "ic": payload.id_ciudadano, "ia": payload.id_agente,
+        "ic": payload.id_ciudadano,
+        "ia": payload.id_agente, "ie": payload.id_espacio,
         "its": payload.id_tipo_servicio_turno, "iocup": id_ocupacion,
         "f": payload.fecha, "hi": payload.hora_inicio, "hf": hora_fin,
         "obs": payload.observaciones,
@@ -253,7 +297,7 @@ async def reprogramar_turno(
     """Reprograma un turno en estado 'reservado'. Sincroniza la ocupacion espejo."""
     _require_gestion(user)
     turno = (await db.execute(text("""
-        SELECT id_turno, id_agente, id_ocupacion, fecha, hora_inicio, hora_fin, estado
+        SELECT id_turno, id_agente, id_espacio, id_ocupacion, fecha, hora_inicio, hora_fin, estado
         FROM turnos WHERE id_turno = :id AND activo = TRUE
     """), {"id": id_turno})).mappings().first()
     if not turno:
@@ -296,16 +340,28 @@ async def reprogramar_turno(
         if not tipo:
             raise HTTPException(404, "Tipo de servicio no encontrado o inactivo")
 
-    # Solapamiento (excluyendo el propio turno)
+    # Resolver el recurso real del turno (agente o espacio).
+    tipo_recurso = "espacio" if turno["id_espacio"] is not None else "agente"
+    id_recurso = turno["id_espacio"] if tipo_recurso == "espacio" else turno["id_agente"]
+
+    # Switch global: el nuevo horario debe caer en la disponibilidad efectiva.
+    if await turnos_respeta_disponibilidad(db):
+        rangos = await disponibilidad_efectiva(db, tipo_recurso, id_recurso, fecha)
+        if not any(r["hora_inicio"] <= hora_inicio and hora_fin <= r["hora_fin"] for r in rangos):
+            raise HTTPException(409, "El nuevo horario no esta dentro de la disponibilidad del recurso")
+
+    # Solapamiento contra la ocupacion del mismo recurso (excluyendo la propia).
     solapado = await db.scalar(text("""
-        SELECT 1 FROM turnos
-        WHERE id_agente = :ia AND fecha = :f AND activo = TRUE
-          AND estado <> 'cancelado' AND id_turno <> :id
-          AND hora_inicio < :hf AND hora_fin > :hi
+        SELECT 1 FROM ocupaciones
+        WHERE activo = TRUE AND tipo_recurso = :tr AND id_recurso = :ir
+          AND fecha = :f AND hora_inicio < :hf AND hora_fin > :hi
+          AND (:io IS NULL OR id_ocupacion <> :io)
         LIMIT 1
-    """), {"ia": turno["id_agente"], "f": fecha, "hi": hora_inicio, "hf": hora_fin, "id": id_turno})
+    """), {"tr": tipo_recurso, "ir": id_recurso, "f": fecha, "hi": hora_inicio, "hf": hora_fin,
+           "io": turno["id_ocupacion"]})
     if solapado:
-        raise HTTPException(409, "El agente ya tiene un turno en ese horario")
+        que = "El espacio" if tipo_recurso == "espacio" else "El agente"
+        raise HTTPException(409, f"{que} ya tiene una ocupacion en ese horario")
 
     sets = ["fecha = :f", "hora_inicio = :hi", "hora_fin = :hf",
             "fecha_modificacion = NOW()", "id_usuario_modificacion = :uid"]

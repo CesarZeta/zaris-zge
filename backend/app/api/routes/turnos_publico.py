@@ -35,6 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.schemas.turnos import (
     AgenteDisponibleOut,
+    RecursoDisponibleOut,
     SlotLibreOut,
     TipoServicioTurnoOut,
     TurnoPublicoCreate,
@@ -43,6 +44,7 @@ from app.schemas.turnos import (
 from app.services.agenda import (
     buscar_o_crear_ciudadano_por_dni,
     disponibilidad_efectiva,
+    turnos_respeta_disponibilidad,
 )
 
 
@@ -105,8 +107,8 @@ async def listar_agentes_publico(
     id_municipio: int = 1,
     db: AsyncSession = Depends(get_db),
 ):
-    """Agentes activos que tienen al menos un rango de disponibilidad cargado.
-    Sin disponibilidad no hay slots posibles, asi que no se ofrecen."""
+    """[Compat retro] Agentes activos con disponibilidad cargada. El frontend
+    nuevo usa /recursos (que ademas incluye espacios atendidos)."""
     rows = (await db.execute(text("""
         SELECT DISTINCT a.id_agente,
                COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') AS nombre
@@ -120,32 +122,69 @@ async def listar_agentes_publico(
     return [dict(r) for r in rows]
 
 
+@router.get("/recursos", response_model=list[RecursoDisponibleOut])
+async def listar_recursos_publico(
+    id_municipio: int = 1,
+    db: AsyncSession = Depends(get_db),
+):
+    """Recursos que pueden atender turnos: agentes con disponibilidad propia +
+    espacios atendidos (su capacidad sale de los agentes vinculados). Sin
+    disponibilidad efectiva no hay slots, asi que no se ofrecen."""
+    rows = (await db.execute(text("""
+        SELECT 'agente' AS tipo_recurso, a.id_agente AS id_recurso,
+               COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') AS nombre
+        FROM agentes a
+        JOIN disponibilidad_recurso d
+          ON d.tipo_recurso = 'agente' AND d.id_recurso = a.id_agente AND d.activo = TRUE
+        WHERE a.activo = TRUE AND (a.id_municipio IS NULL OR a.id_municipio = :m)
+        GROUP BY a.id_agente, a.apellido, a.nombre
+
+        UNION ALL
+
+        -- Espacio atendido: ofrece turnos si tiene al menos un agente vinculado
+        -- con disponibilidad propia.
+        SELECT 'espacio' AS tipo_recurso, e.id_espacio AS id_recurso, e.nombre AS nombre
+        FROM espacios_agenda e
+        WHERE e.activo = TRUE AND e.atendido = TRUE
+          AND (e.id_municipio IS NULL OR e.id_municipio = :m)
+          AND EXISTS (
+            SELECT 1 FROM espacio_agentes ea
+            JOIN disponibilidad_recurso d
+              ON d.tipo_recurso = 'agente' AND d.id_recurso = ea.id_agente AND d.activo = TRUE
+            WHERE ea.id_espacio = e.id_espacio AND ea.activo = TRUE
+          )
+
+        ORDER BY nombre
+    """), {"m": id_municipio})).mappings().all()
+    return [dict(r) for r in rows]
+
+
 # =============================================================================
 # 3. Slots libres
 # =============================================================================
-async def _slots_libres_agente(
+async def _slots_libres_recurso(
     db: AsyncSession,
-    id_agente: int,
-    agente_nombre: str,
+    tipo_recurso: str,
+    id_recurso: int,
+    recurso_nombre: str,
     duracion_min: int,
     fecha: date,
 ) -> list[dict[str, Any]]:
-    """Slots libres de un agente para una fecha: parte su disponibilidad
-    efectiva en bloques de `duracion_min` y descarta los que se solapan con
-    una ocupacion existente."""
-    rangos = await disponibilidad_efectiva(db, "agente", id_agente, fecha)
+    """Slots libres de un recurso (agente o espacio) para una fecha: parte su
+    disponibilidad efectiva en bloques de `duracion_min` y descarta los que se
+    solapan con una ocupacion existente del mismo recurso."""
+    rangos = await disponibilidad_efectiva(db, tipo_recurso, id_recurso, fecha)
     if not rangos:
         return []
 
-    # Ocupaciones del agente ese dia (incluye turnos espejo + OTs + lo que sea).
     ocup = (await db.execute(text("""
         SELECT hora_inicio, hora_fin
         FROM ocupaciones
         WHERE activo = TRUE
-          AND tipo_recurso = 'agente'
-          AND id_recurso = :ia
+          AND tipo_recurso = :tr
+          AND id_recurso = :ir
           AND fecha = :f
-    """), {"ia": id_agente, "f": fecha})).mappings().all()
+    """), {"tr": tipo_recurso, "ir": id_recurso, "f": fecha})).mappings().all()
     ocupadas = [(o["hora_inicio"], o["hora_fin"]) for o in ocup]
 
     out: list[dict[str, Any]] = []
@@ -154,8 +193,12 @@ async def _slots_libres_agente(
             if any(_solapa(s_ini, s_fin, o_ini, o_fin) for (o_ini, o_fin) in ocupadas):
                 continue
             out.append({
-                "id_agente": id_agente,
-                "agente_nombre": agente_nombre,
+                "tipo_recurso": tipo_recurso,
+                "id_recurso": id_recurso,
+                "recurso_nombre": recurso_nombre,
+                # Compat retro: el frontend viejo aun lee id_agente.
+                "id_agente": id_recurso if tipo_recurso == "agente" else None,
+                "agente_nombre": recurso_nombre if tipo_recurso == "agente" else None,
                 "fecha": fecha,
                 "hora_inicio": s_ini,
                 "hora_fin": s_fin,
@@ -166,13 +209,15 @@ async def _slots_libres_agente(
 @router.get("/slots", response_model=list[SlotLibreOut])
 async def listar_slots_publico(
     id_tipo_servicio_turno: int = Query(..., description="Define la duracion del slot"),
-    id_agente: Optional[int] = Query(None, description="Si se omite, busca en todos los agentes"),
+    tipo_recurso: Optional[str] = Query(None, description="'agente'|'espacio'. Default: ambos"),
+    id_recurso: Optional[int] = Query(None, description="Si se da junto a tipo_recurso, filtra a ese recurso"),
+    id_agente: Optional[int] = Query(None, description="[Compat retro] equivale a tipo_recurso=agente"),
     fecha_desde: Optional[date] = Query(None, description="Default: hoy"),
     dias: int = Query(DIAS_VENTANA_DEFAULT, ge=1, le=DIAS_VENTANA_MAX),
     id_municipio: int = 1,
     db: AsyncSession = Depends(get_db),
 ):
-    """Slots libres para un tipo de servicio, opcionalmente filtrando por agente,
+    """Slots libres para un tipo de servicio, opcionalmente filtrando por recurso,
     en una ventana de `dias` a partir de `fecha_desde` (default hoy)."""
     tipo = (await db.execute(text("""
         SELECT duracion_min FROM tipo_servicio_turno
@@ -182,35 +227,41 @@ async def listar_slots_publico(
         raise HTTPException(404, "Tipo de servicio no encontrado o inactivo")
     duracion_min = int(tipo["duracion_min"])
 
-    # Resolver el set de agentes a consultar.
-    if id_agente is not None:
+    # Compat retro: id_agente => tipo_recurso=agente + id_recurso.
+    if id_agente is not None and tipo_recurso is None:
+        tipo_recurso, id_recurso = "agente", id_agente
+
+    # Resolver el set de recursos a consultar.
+    recursos: list[dict[str, Any]] = []
+    if tipo_recurso == "agente" and id_recurso is not None:
         ag = (await db.execute(text("""
-            SELECT id_agente,
+            SELECT 'agente' AS tipo_recurso, id_agente AS id_recurso,
                    COALESCE(apellido, '') || ', ' || COALESCE(nombre, '') AS nombre
             FROM agentes WHERE id_agente = :id AND activo = TRUE
-        """), {"id": id_agente})).mappings().first()
+        """), {"id": id_recurso})).mappings().first()
         if not ag:
             raise HTTPException(404, "Agente no encontrado o inactivo")
-        agentes = [dict(ag)]
+        recursos = [dict(ag)]
+    elif tipo_recurso == "espacio" and id_recurso is not None:
+        es = (await db.execute(text("""
+            SELECT 'espacio' AS tipo_recurso, id_espacio AS id_recurso, nombre
+            FROM espacios_agenda WHERE id_espacio = :id AND activo = TRUE
+        """), {"id": id_recurso})).mappings().first()
+        if not es:
+            raise HTTPException(404, "Espacio no encontrado o inactivo")
+        recursos = [dict(es)]
     else:
-        agentes = [dict(r) for r in (await db.execute(text("""
-            SELECT DISTINCT a.id_agente,
-                   COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') AS nombre
-            FROM agentes a
-            JOIN disponibilidad_recurso d
-              ON d.tipo_recurso = 'agente' AND d.id_recurso = a.id_agente AND d.activo = TRUE
-            WHERE a.activo = TRUE
-              AND (a.id_municipio IS NULL OR a.id_municipio = :m)
-            ORDER BY nombre
-        """), {"m": id_municipio})).mappings().all()]
+        # Sin filtro de recurso puntual: traer todos los recursos disponibles.
+        recursos = await listar_recursos_publico(id_municipio=id_municipio, db=db)
+        recursos = [dict(r) for r in recursos]
 
     desde = fecha_desde or date.today()
     out: list[dict[str, Any]] = []
     for offset in range(dias):
         f = desde + timedelta(days=offset)
-        for ag in agentes:
-            out.extend(await _slots_libres_agente(
-                db, int(ag["id_agente"]), ag["nombre"], duracion_min, f,
+        for rec in recursos:
+            out.extend(await _slots_libres_recurso(
+                db, rec["tipo_recurso"], int(rec["id_recurso"]), rec["nombre"], duracion_min, f,
             ))
     return out
 
@@ -223,13 +274,18 @@ async def _turno_publico_out(db: AsyncSession, id_turno: int) -> Optional[dict[s
         SELECT t.id_turno, CAST(t.token_turno AS TEXT) AS token_turno,
                t.estado, t.fecha, t.hora_inicio, t.hora_fin,
                ts.nombre AS tipo_servicio_nombre,
-               COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') AS agente_nombre,
+               CASE WHEN t.id_agente IS NOT NULL
+                    THEN COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') END AS agente_nombre,
+               e.nombre AS espacio_nombre,
+               CASE WHEN t.id_espacio IS NOT NULL THEN e.nombre
+                    ELSE COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') END AS recurso_nombre,
                c.apellido AS ciudadano_apellido,
                c.nombre   AS ciudadano_nombre,
                c.doc_nro  AS ciudadano_dni
         FROM turnos t
         LEFT JOIN tipo_servicio_turno ts ON ts.id_tipo_servicio_turno = t.id_tipo_servicio_turno
         LEFT JOIN agentes             a  ON a.id_agente               = t.id_agente
+        LEFT JOIN espacios_agenda     e  ON e.id_espacio              = t.id_espacio
         LEFT JOIN ciudadanos          c  ON c.id_ciudadano            = t.id_ciudadano
         WHERE t.id_turno = :id
     """), {"id": id_turno})).mappings().first()
@@ -241,7 +297,8 @@ async def reservar_turno_publico(
     payload: TurnoPublicoCreate,
     db: AsyncSession = Depends(get_db),
 ):
-    """Crea un turno por autoservicio. Busca/crea el ciudadano por DNI."""
+    """Crea un turno por autoservicio. Busca/crea el ciudadano por DNI.
+    El recurso puede ser un agente o un espacio atendido (mig 70)."""
     # Validar tipo de servicio
     tipo = (await db.execute(text("""
         SELECT duracion_min FROM tipo_servicio_turno
@@ -251,14 +308,25 @@ async def reservar_turno_publico(
         raise HTTPException(404, "Tipo de servicio no encontrado o inactivo")
     duracion_min = int(tipo["duracion_min"])
 
-    # Validar agente
-    ag = (await db.execute(text("""
-        SELECT id_agente, id_subarea,
-               COALESCE(apellido, '') || ', ' || COALESCE(nombre, '') AS nombre
-        FROM agentes WHERE id_agente = :id AND activo = TRUE
-    """), {"id": payload.id_agente})).mappings().first()
-    if not ag:
-        raise HTTPException(404, "Agente no encontrado o inactivo")
+    # Resolver recurso (el schema garantiza exactamente uno).
+    tipo_recurso = "espacio" if payload.id_espacio is not None else "agente"
+    id_recurso = payload.id_espacio if tipo_recurso == "espacio" else payload.id_agente
+
+    id_subarea = None
+    if tipo_recurso == "agente":
+        rec = (await db.execute(text("""
+            SELECT id_subarea FROM agentes WHERE id_agente = :id AND activo = TRUE
+        """), {"id": id_recurso})).mappings().first()
+        if not rec:
+            raise HTTPException(404, "Agente no encontrado o inactivo")
+        id_subarea = rec["id_subarea"]
+    else:
+        rec = (await db.execute(text("""
+            SELECT id_subarea FROM espacios_agenda WHERE id_espacio = :id AND activo = TRUE
+        """), {"id": id_recurso})).mappings().first()
+        if not rec:
+            raise HTTPException(404, "Espacio no encontrado o inactivo")
+        id_subarea = rec["id_subarea"]
 
     if payload.fecha < date.today():
         raise HTTPException(422, "No se puede reservar un turno en una fecha pasada")
@@ -269,23 +337,26 @@ async def reservar_turno_publico(
     if hora_fin <= hora_inicio:
         raise HTTPException(422, "La duracion del tipo de servicio excede el dia")
 
-    # El slot debe caer dentro de la disponibilidad efectiva del agente.
-    rangos = await disponibilidad_efectiva(db, "agente", payload.id_agente, payload.fecha)
-    dentro = any(
-        r["hora_inicio"] <= hora_inicio and hora_fin <= r["hora_fin"]
-        for r in rangos
-    )
-    if not dentro:
-        raise HTTPException(409, "El horario solicitado no esta dentro de la disponibilidad del agente")
+    # El slot debe caer dentro de la disponibilidad efectiva del recurso
+    # (horario - feriados - novedades). El switch global (mig 69) puede apagar
+    # esta validacion para permitir reservar cualquier horario.
+    if await turnos_respeta_disponibilidad(db):
+        rangos = await disponibilidad_efectiva(db, tipo_recurso, id_recurso, payload.fecha)
+        dentro = any(
+            r["hora_inicio"] <= hora_inicio and hora_fin <= r["hora_fin"]
+            for r in rangos
+        )
+        if not dentro:
+            raise HTTPException(409, "El horario solicitado no esta dentro de la disponibilidad del recurso")
 
-    # El slot no se debe solapar con una ocupacion existente.
+    # El slot no se debe solapar con una ocupacion existente del recurso.
     solapado = await db.scalar(text("""
         SELECT 1 FROM ocupaciones
-        WHERE activo = TRUE AND tipo_recurso = 'agente'
-          AND id_recurso = :ia AND fecha = :f
+        WHERE activo = TRUE AND tipo_recurso = :tr
+          AND id_recurso = :ir AND fecha = :f
           AND hora_inicio < :hf AND hora_fin > :hi
         LIMIT 1
-    """), {"ia": payload.id_agente, "f": payload.fecha, "hi": hora_inicio, "hf": hora_fin})
+    """), {"tr": tipo_recurso, "ir": id_recurso, "f": payload.fecha, "hi": hora_inicio, "hf": hora_fin})
     if solapado:
         raise HTTPException(409, "El horario solicitado ya no esta disponible")
 
@@ -318,32 +389,33 @@ async def reservar_turno_publico(
             tipo, tipo_recurso, id_recurso, fecha, hora_inicio, hora_fin,
             id_ciudadano, motivo, id_municipio, id_usuario_alta
         ) VALUES (
-            'turno', 'agente', :ia, :f, :hi, :hf,
+            'turno', :tr, :ir, :f, :hi, :hf,
             :ic, :mot, 1, NULL
         )
         RETURNING id_ocupacion
     """), {
-        "ia": payload.id_agente, "f": payload.fecha,
+        "tr": tipo_recurso, "ir": id_recurso, "f": payload.fecha,
         "hi": hora_inicio, "hf": hora_fin, "ic": int(ciu["id_ciudadano"]),
         "mot": f"Turno (autoservicio): {payload.observaciones}" if payload.observaciones else "Turno (autoservicio)",
     })
 
     row = (await db.execute(text("""
         INSERT INTO turnos (
-            id_ciudadano, id_agente, id_tipo_servicio_turno, id_ocupacion,
+            id_ciudadano, id_agente, id_espacio, id_tipo_servicio_turno, id_ocupacion,
             fecha, hora_inicio, hora_fin, estado, observaciones,
             origen, id_municipio, id_subarea
         ) VALUES (
-            :ic, :ia, :its, :iocup,
+            :ic, :ia, :ie, :its, :iocup,
             :f, :hi, :hf, 'reservado', :obs,
             'autoservicio', 1, :isa
         )
         RETURNING id_turno, CAST(token_turno AS TEXT) AS token_turno
     """), {
-        "ic": int(ciu["id_ciudadano"]), "ia": payload.id_agente,
+        "ic": int(ciu["id_ciudadano"]),
+        "ia": payload.id_agente, "ie": payload.id_espacio,
         "its": payload.id_tipo_servicio_turno, "iocup": id_ocupacion,
         "f": payload.fecha, "hi": hora_inicio, "hf": hora_fin,
-        "obs": payload.observaciones, "isa": ag["id_subarea"],
+        "obs": payload.observaciones, "isa": id_subarea,
     })).mappings().first()
     await db.commit()
 
@@ -363,13 +435,18 @@ async def _turno_por_token(db: AsyncSession, token: str) -> Optional[dict[str, A
                t.id_ocupacion, t.estado, t.fecha, t.hora_inicio, t.hora_fin,
                t.activo,
                ts.nombre AS tipo_servicio_nombre,
-               COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') AS agente_nombre,
+               CASE WHEN t.id_agente IS NOT NULL
+                    THEN COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') END AS agente_nombre,
+               e.nombre AS espacio_nombre,
+               CASE WHEN t.id_espacio IS NOT NULL THEN e.nombre
+                    ELSE COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') END AS recurso_nombre,
                c.apellido AS ciudadano_apellido,
                c.nombre   AS ciudadano_nombre,
                c.doc_nro  AS ciudadano_dni
         FROM turnos t
         LEFT JOIN tipo_servicio_turno ts ON ts.id_tipo_servicio_turno = t.id_tipo_servicio_turno
         LEFT JOIN agentes             a  ON a.id_agente               = t.id_agente
+        LEFT JOIN espacios_agenda     e  ON e.id_espacio              = t.id_espacio
         LEFT JOIN ciudadanos          c  ON c.id_ciudadano            = t.id_ciudadano
         WHERE t.token_turno = CAST(:t AS UUID)
     """), {"t": token})).mappings().first()

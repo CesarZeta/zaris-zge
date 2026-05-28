@@ -5,6 +5,7 @@ import { VistasView } from './views/VistasView'
 import { EventListView } from './views/EventListView'
 import { ConflictsView } from './views/ConflictsView'
 import { ConfigView } from './views/ConfigView'
+import { DisponibilidadView } from './views/DisponibilidadView'
 
 const WithLayout = (Component: React.FC) => () => (
   <AgendaLayout>
@@ -24,6 +25,7 @@ export const agendaModule: ModuleManifest = {
     { path: 'timeline',    element: WithLayout(VistasView),     handle: { breadcrumb: 'agenda · vistas' } },
     { path: 'mensual',     element: WithLayout(VistasView),     handle: { breadcrumb: 'agenda · vistas' } },
     { path: 'eventos',     element: WithLayout(EventListView),  handle: { breadcrumb: 'agenda · eventos' } },
+    { path: 'disponibilidad', element: WithLayout(DisponibilidadView), handle: { breadcrumb: 'agenda · disponibilidad' } },
     { path: 'conflictos',  element: WithLayout(ConflictsView),  handle: { breadcrumb: 'agenda · conflictos' } },
     { path: 'config',      element: WithLayout(ConfigView),     handle: { breadcrumb: 'agenda · config' } },
   ],

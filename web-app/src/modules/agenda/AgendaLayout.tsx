@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
-import { CalendarDays, ListChecks, AlertTriangle, Settings } from 'lucide-react'
+import { CalendarDays, ListChecks, AlertTriangle, Settings, CalendarOff } from 'lucide-react'
 
 const tabs = [
-  { to: '/agenda',             label: 'vistas',     icon: CalendarDays,   end: true  },
-  { to: '/agenda/eventos',     label: 'eventos',    icon: ListChecks,     end: false },
-  { to: '/agenda/conflictos',  label: 'conflictos', icon: AlertTriangle,  end: false },
-  { to: '/agenda/config',      label: 'config',     icon: Settings,       end: false },
+  { to: '/agenda',                label: 'vistas',         icon: CalendarDays,   end: true  },
+  { to: '/agenda/eventos',        label: 'eventos',        icon: ListChecks,     end: false },
+  { to: '/agenda/disponibilidad', label: 'disponibilidad', icon: CalendarOff,    end: false },
+  { to: '/agenda/conflictos',     label: 'conflictos',     icon: AlertTriangle,  end: false },
+  { to: '/agenda/config',         label: 'config',         icon: Settings,       end: false },
 ]
 
 export function AgendaLayout({ children }: { children: ReactNode }) {
