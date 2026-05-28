@@ -31,8 +31,8 @@ export const crearTurno = (body: CrearTurnoBody) =>
 export const reprogramarTurno = (id_turno: number, body: ReprogramarTurnoBody) =>
   api.put<Turno>(`/api/v1/turnos/${id_turno}`, body)
 
-export const cumplirTurno = (id_turno: number) =>
-  api.patch<Turno>(`/api/v1/turnos/${id_turno}/cumplir`)
+export const cumplirTurno = (id_turno: number, body?: { observaciones?: string | null }) =>
+  api.patch<Turno>(`/api/v1/turnos/${id_turno}/cumplir`, body ?? {})
 
 export const cancelarTurno = (id_turno: number) =>
   api.patch<Turno>(`/api/v1/turnos/${id_turno}/cancelar`)

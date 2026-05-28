@@ -38,6 +38,7 @@ from app.schemas.turnos import (
     TipoPrestacionOut,
     TipoPrestacionUpdate,
     TurnoCreate,
+    TurnoCumplir,
     TurnoOut,
     TurnoUpdate,
 )
@@ -45,6 +46,7 @@ from app.services.agenda import (
     disponibilidad_efectiva,
     turnos_respeta_disponibilidad,
 )
+from app.services import encuestas_service
 
 
 router = APIRouter(prefix="/api/v1/turnos", tags=["turnos"])
@@ -60,6 +62,25 @@ def _require_supervisor(user: dict) -> None:
     """Nivel 1-2 (admin/supervisor) puede gestionar el catalogo de prestaciones."""
     if int(user.get("nivel_acceso", 99)) > 2:
         raise HTTPException(403, "Permiso insuficiente (requiere nivel <= 2)")
+
+
+async def _scope_turnos_para_usuario(db: AsyncSession, user: dict) -> Optional[dict[str, Any]]:
+    """Resuelve el alcance de visibilidad de turnos del usuario.
+
+    - Nivel <= 2 (admin/supervisor): None -> ve TODOS los turnos.
+    - Nivel 3-4 (operador/consultor): dict con su id_agente + id_subarea.
+      Solo ve los turnos donde es el agente involucrado, o los de un lugar de
+      atencion (espacio) de su misma subarea. Si el usuario no esta vinculado a
+      un agente, queda con id_agente=-1 y id_subarea=None (no ve nada propio).
+    """
+    if int(user.get("nivel_acceso", 99)) <= 2:
+        return None
+    row = (await db.execute(text(
+        "SELECT id_agente, id_subarea FROM agentes WHERE id_usuario = :u AND activo = TRUE LIMIT 1"
+    ), {"u": user["id_usuario"]})).mappings().first()
+    if not row:
+        return {"id_agente": -1, "id_subarea": None}
+    return {"id_agente": row["id_agente"], "id_subarea": row["id_subarea"]}
 
 
 # =============================================================================
@@ -260,10 +281,22 @@ async def listar_turnos(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
-    _user: dict = Depends(get_current_user),
+    user: dict = Depends(get_current_user),
 ):
     where = ["t.activo = TRUE", "t.id_municipio = :m"]
     params: dict[str, Any] = {"m": id_municipio}
+
+    # Scope por nivel: el operador solo ve sus turnos + los de lugares de su
+    # subarea; supervisor+ ve todo. El guard es backend (no evadible por curl).
+    scope = await _scope_turnos_para_usuario(db, user)
+    if scope is not None:
+        where.append(
+            "(t.id_agente = :scope_agente OR t.id_espacio IN "
+            "(SELECT id_espacio FROM espacios_agenda WHERE id_subarea = :scope_subarea AND activo = TRUE))"
+        )
+        params["scope_agente"] = scope["id_agente"]
+        params["scope_subarea"] = scope["id_subarea"]
+
     if estado:
         where.append("t.estado = :e"); params["e"] = estado
     if id_agente is not None:
@@ -314,12 +347,29 @@ async def listar_turnos(
 async def detalle_turno(
     id_turno: int,
     db: AsyncSession = Depends(get_db),
-    _user: dict = Depends(get_current_user),
+    user: dict = Depends(get_current_user),
 ):
     out = await _turno_to_out(db, id_turno)
     if out is None:
         raise HTTPException(404, "Turno no encontrado")
+    # Scope por nivel: operador no puede ver turnos fuera de su alcance.
+    scope = await _scope_turnos_para_usuario(db, user)
+    if scope is not None and not await _turno_en_scope(db, out, scope):
+        raise HTTPException(404, "Turno no encontrado")
     return out
+
+
+async def _turno_en_scope(db: AsyncSession, turno: dict[str, Any], scope: dict[str, Any]) -> bool:
+    """True si el turno cae dentro del alcance del usuario (agente propio o
+    espacio de su subarea)."""
+    if turno.get("id_agente") is not None and turno["id_agente"] == scope["id_agente"]:
+        return True
+    if turno.get("id_espacio") is not None and scope.get("id_subarea") is not None:
+        ok = (await db.execute(text(
+            "SELECT 1 FROM espacios_agenda WHERE id_espacio = :ie AND id_subarea = :sub AND activo = TRUE"
+        ), {"ie": turno["id_espacio"], "sub": scope["id_subarea"]})).first()
+        return bool(ok)
+    return False
 
 
 @router.post("", response_model=TurnoOut, status_code=201)
@@ -536,13 +586,18 @@ async def reprogramar_turno(
 @router.patch("/{id_turno}/cumplir", response_model=TurnoOut)
 async def cumplir_turno(
     id_turno: int,
+    payload: Optional[TurnoCumplir] = None,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    """Marca el turno como cumplido (el ciudadano se presento y se atendio)."""
+    """Marca el turno como cumplido (el ciudadano se presento y se atendio).
+
+    Acepta una observacion opcional de la atencion (se anexa a la observacion
+    del turno). Al cumplir dispara la encuesta de satisfaccion de turnos
+    (best-effort, no bloquea el cumplimiento)."""
     _require_gestion(user)
     turno = (await db.execute(text(
-        "SELECT estado FROM turnos WHERE id_turno = :id AND activo = TRUE"
+        "SELECT estado, observaciones FROM turnos WHERE id_turno = :id AND activo = TRUE"
     ), {"id": id_turno})).mappings().first()
     if not turno:
         raise HTTPException(404, "Turno no encontrado")
@@ -551,12 +606,24 @@ async def cumplir_turno(
         return out  # type: ignore
     if turno["estado"] != "reservado":
         raise HTTPException(409, f"Solo se puede cumplir un turno 'reservado' (estado actual: '{turno['estado']}')")
-    await db.execute(text("""
-        UPDATE turnos
-        SET estado = 'cumplido', fecha_modificacion = NOW(), id_usuario_modificacion = :uid
-        WHERE id_turno = :id
-    """), {"id": id_turno, "uid": user["id_usuario"]})
+
+    obs_nueva = (payload.observaciones or "").strip() if payload else ""
+    sets = ["estado = 'cumplido'", "fecha_modificacion = NOW()", "id_usuario_modificacion = :uid"]
+    params: dict[str, Any] = {"id": id_turno, "uid": user["id_usuario"]}
+    if obs_nueva:
+        prev = (turno["observaciones"] or "").strip()
+        obs_final = f"{prev}\nAtención: {obs_nueva}" if prev else obs_nueva
+        sets.append("observaciones = :obs"); params["obs"] = obs_final
+    await db.execute(text(f"UPDATE turnos SET {', '.join(sets)} WHERE id_turno = :id"), params)
     await db.commit()
+
+    # Dispara la encuesta de turnos (delay 24h lo maneja el dispatcher).
+    # Best-effort: el cumplimiento del turno nunca falla por la encuesta.
+    try:
+        await encuestas_service.crear_envio_para_turno(db, id_turno)
+    except Exception:
+        pass
+
     out = await _turno_to_out(db, id_turno)
     return out  # type: ignore
 
