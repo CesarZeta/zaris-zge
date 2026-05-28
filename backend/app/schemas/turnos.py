@@ -116,6 +116,11 @@ class TurnoUpdate(BaseModel):
     observaciones: Optional[str] = None
 
 
+class TurnoCumplir(BaseModel):
+    """Body opcional al cumplir un turno: observacion de la atencion."""
+    observaciones: Optional[str] = None
+
+
 class TurnoOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

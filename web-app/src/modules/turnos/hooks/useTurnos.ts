@@ -89,7 +89,8 @@ export function useReprogramarTurno() {
 export function useCumplirTurno() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id_turno: number) => cumplirTurno(id_turno),
+    mutationFn: ({ id_turno, observaciones }: { id_turno: number; observaciones?: string | null }) =>
+      cumplirTurno(id_turno, { observaciones }),
     onSuccess: () => invalidar(qc),
   })
 }

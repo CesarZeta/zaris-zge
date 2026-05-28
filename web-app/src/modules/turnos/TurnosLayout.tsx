@@ -19,7 +19,11 @@ export function TurnosLayout({ children }: { children: ReactNode }) {
   const hasPermission = useAuthStore((s) => s.hasPermission)
   const puedeGestionarPrestaciones = hasPermission(2) // nivel <= 2 (Admin o Supervisor)
 
-  const isPrestaciones = partes[1] === 'prestaciones'
+  const sub = partes[1] // 'atendidos' | 'prestaciones' | undefined (turnos)
+  const isAtendidos = sub === 'atendidos'
+  const isPrestaciones = sub === 'prestaciones'
+  const isTurnos = !isAtendidos && !isPrestaciones
+  const subLabel = isAtendidos ? 'Atendidos' : isPrestaciones ? 'Prestaciones' : null
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, maxWidth: 1400, margin: '0 auto', width: '100%', padding: '0 8px' }}>
@@ -27,48 +31,45 @@ export function TurnosLayout({ children }: { children: ReactNode }) {
         <a href="#" onClick={goInicio} style={bcLinkStyle}>INICIO</a>
         <span style={bcSepStyle}>›</span>
         <span
-          style={{ ...bcCurrentStyle, cursor: isPrestaciones ? 'pointer' : 'default' }}
-          onClick={isPrestaciones ? () => navigate('/turnos') : undefined}
+          style={{ ...bcCurrentStyle, cursor: subLabel ? 'pointer' : 'default' }}
+          onClick={subLabel ? () => navigate('/turnos') : undefined}
         >
           Turnos
         </span>
-        {isPrestaciones && (
+        {subLabel && (
           <>
             <span style={bcSepStyle}>›</span>
-            <span style={bcCurrentStyle}>Prestaciones</span>
+            <span style={bcCurrentStyle}>{subLabel}</span>
           </>
         )}
       </nav>
 
       <div style={tabsBar}>
-        <button
-          onClick={() => navigate('/turnos')}
-          style={{
-            ...tabBtn,
-            borderBottom: !isPrestaciones ? '2px solid var(--zaris-orange)' : '2px solid transparent',
-            color: !isPrestaciones ? 'var(--fg-1)' : 'var(--fg-3)',
-            fontWeight: !isPrestaciones ? 600 : 400,
-          }}
-        >
-          Turnos
-        </button>
+        <Tab label="Turnos" active={isTurnos} onClick={() => navigate('/turnos')} />
+        <Tab label="Atendidos" active={isAtendidos} onClick={() => navigate('/turnos/atendidos')} />
         {puedeGestionarPrestaciones && (
-          <button
-            onClick={() => navigate('/turnos/prestaciones')}
-            style={{
-              ...tabBtn,
-              borderBottom: isPrestaciones ? '2px solid var(--zaris-orange)' : '2px solid transparent',
-              color: isPrestaciones ? 'var(--fg-1)' : 'var(--fg-3)',
-              fontWeight: isPrestaciones ? 600 : 400,
-            }}
-          >
-            Prestaciones
-          </button>
+          <Tab label="Prestaciones" active={isPrestaciones} onClick={() => navigate('/turnos/prestaciones')} />
         )}
       </div>
 
       <div style={{ paddingTop: 16 }}>{children}</div>
     </div>
+  )
+}
+
+function Tab({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        ...tabBtn,
+        borderBottom: active ? '2px solid var(--zaris-orange)' : '2px solid transparent',
+        color: active ? 'var(--fg-1)' : 'var(--fg-3)',
+        fontWeight: active ? 600 : 400,
+      }}
+    >
+      {label}
+    </button>
   )
 }
 

@@ -1,0 +1,225 @@
+import { useMemo, useState } from 'react'
+import { Download, RefreshCw } from 'lucide-react'
+import { useTurnos } from '../hooks/useTurnos'
+import { RecursoPicker } from '../../agenda/components/RecursoPicker'
+import { useEspacios } from '../../agenda/hooks/useEspacios'
+import { useAuthStore } from '../../../stores/auth'
+import { useNotificationsStore } from '../../../stores/notifications'
+import { exportarAtendidosPdf, type TurnoPdfRow } from '../lib/exportPdf'
+
+export function Atendidos() {
+  const push = useNotificationsStore((s) => s.push)
+  const hasPermission = useAuthStore((s) => s.hasPermission)
+  const esSupervisor = hasPermission(2) // nivel <= 2 ve filtros por agente/lugar
+
+  const [fTexto, setFTexto] = useState('')
+  const [fDesde, setFDesde] = useState('')
+  const [fHasta, setFHasta] = useState('')
+  const [fAgente, setFAgente] = useState<number | null>(null)
+  const [fEspacio, setFEspacio] = useState<number | ''>('')
+
+  const espacios = useEspacios({})
+
+  const { data, isLoading, isError, error, refetch, isFetching } = useTurnos({
+    estado: 'cumplido',
+    fecha_desde: fDesde || undefined,
+    fecha_hasta: fHasta || undefined,
+    id_agente: esSupervisor && fAgente != null ? fAgente : undefined,
+    id_espacio: esSupervisor && fEspacio !== '' ? (fEspacio as number) : undefined,
+  })
+
+  const turnos = data ?? []
+
+  const filtrados = useMemo(() => {
+    const txt = fTexto.trim().toLowerCase()
+    if (!txt) return turnos
+    return turnos.filter((t) =>
+      [t.ciudadano_nombre, t.ciudadano_dni, t.recurso_nombre, t.prestacion_nombre, t.observaciones]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(txt),
+    )
+  }, [turnos, fTexto])
+
+  function doExport() {
+    if (filtrados.length === 0) {
+      push({ kind: 'error', title: 'No hay turnos para exportar' })
+      return
+    }
+    const rows: TurnoPdfRow[] = filtrados.map((t) => ({
+      fecha: t.fecha,
+      hora: `${t.hora_inicio.slice(0, 5)}-${t.hora_fin.slice(0, 5)}`,
+      ciudadano: t.ciudadano_nombre ?? '',
+      dni: t.ciudadano_dni ?? '',
+      atiende: t.recurso_nombre ?? t.agente_nombre ?? '',
+      prestacion: t.prestacion_nombre ?? '',
+      observaciones: t.observaciones ?? '',
+    }))
+    exportarAtendidosPdf(rows, { desde: fDesde, hasta: fHasta })
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div>
+        <h1 style={titulo}>atendidos</h1>
+        <p style={{ margin: '6px 0 0', color: 'var(--fg-3)', fontSize: 'var(--size-btn)' }}>
+          turnos cumplidos. {esSupervisor ? 'Filtrá por agente o lugar y exportá a PDF.' : 'Mostrás solo los turnos que atendiste.'}
+        </p>
+      </div>
+
+      <div style={toolbar}>
+        <div style={field}>
+          <label style={lbl}>Buscar</label>
+          <input
+            type="text"
+            value={fTexto}
+            onChange={(e) => setFTexto(e.target.value)}
+            placeholder="Ciudadano, DNI o servicio"
+            style={{ ...inp, minWidth: 200 }}
+          />
+        </div>
+        <div style={field}>
+          <label style={lbl}>Desde</label>
+          <input type="date" value={fDesde} onChange={(e) => setFDesde(e.target.value)} style={inp} />
+        </div>
+        <div style={field}>
+          <label style={lbl}>Hasta</label>
+          <input type="date" value={fHasta} onChange={(e) => setFHasta(e.target.value)} style={inp} />
+        </div>
+        {esSupervisor && (
+          <>
+            <div style={{ ...field, minWidth: 200 }}>
+              <label style={lbl}>Agente</label>
+              <RecursoPicker tipo="agente" value={fAgente} onChange={setFAgente} placeholder="Todos los agentes" />
+            </div>
+            <div style={field}>
+              <label style={lbl}>Lugar de atención</label>
+              <select value={fEspacio} onChange={(e) => setFEspacio(e.target.value === '' ? '' : Number(e.target.value))} style={inp}>
+                <option value="">Todos los lugares</option>
+                {(espacios.data ?? []).map((e) => (
+                  <option key={e.id_espacio} value={e.id_espacio}>{e.nombre}</option>
+                ))}
+              </select>
+            </div>
+          </>
+        )}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+          <button onClick={() => refetch()} style={btnGhost} title="Refrescar">
+            <RefreshCw size={14} strokeWidth={1.5} style={{ animation: isFetching ? 'spin 1s linear infinite' : undefined }} />
+          </button>
+          <button onClick={doExport} style={btnPrimary}>
+            <Download size={14} strokeWidth={1.5} /> Exportar PDF
+          </button>
+        </div>
+      </div>
+
+      <div style={{ fontSize: '0.82rem', color: 'var(--fg-3)' }}>
+        {filtrados.length} turno{filtrados.length === 1 ? '' : 's'} atendido{filtrados.length === 1 ? '' : 's'}
+      </div>
+
+      {isError && <div style={errorBanner}>{(error as Error)?.message ?? 'Error al cargar turnos'}</div>}
+
+      <div style={card}>
+        <table style={table}>
+          <thead>
+            <tr>
+              <th style={th}>Fecha / Hora</th>
+              <th style={th}>Ciudadano</th>
+              <th style={th}>Atendió</th>
+              <th style={th}>Prestación</th>
+              <th style={th}>Observaciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading && <tr><td colSpan={5} style={empty}>Cargando…</td></tr>}
+            {!isLoading && !isError && filtrados.length === 0 && (
+              <tr><td colSpan={5} style={empty}>No hay turnos atendidos para los filtros seleccionados.</td></tr>
+            )}
+            {filtrados.map((t) => (
+              <tr key={t.id_turno}>
+                <td style={td}>
+                  <div style={mono}>{t.fecha}</div>
+                  <div style={{ ...mono, fontSize: '0.74rem', color: 'var(--fg-3)' }}>
+                    {t.hora_inicio.slice(0, 5)}–{t.hora_fin.slice(0, 5)}
+                  </div>
+                </td>
+                <td style={td}>
+                  {t.ciudadano_nombre ?? '—'}
+                  {t.ciudadano_dni && <div style={{ fontSize: '0.72rem', color: 'var(--fg-3)' }}>DNI {t.ciudadano_dni}</div>}
+                </td>
+                <td style={td}>
+                  {t.recurso_nombre ?? t.agente_nombre ?? '—'}
+                  <div style={{ fontSize: '0.7rem', color: 'var(--fg-3)' }}>
+                    {t.id_espacio != null ? 'Lugar de atención' : 'Agente'}
+                  </div>
+                </td>
+                <td style={td}>{t.prestacion_nombre ?? '—'}</td>
+                <td style={{ ...td, maxWidth: 280, color: 'var(--fg-3)', whiteSpace: 'pre-wrap' }}>{t.observaciones ?? ''}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  )
+}
+
+const titulo: React.CSSProperties = {
+  margin: 0, fontFamily: 'var(--font-display)', fontSize: 'var(--size-section)',
+  fontWeight: 400, letterSpacing: 'var(--track-section)', color: 'var(--fg-1)',
+}
+const toolbar: React.CSSProperties = {
+  display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end',
+  background: 'var(--surface-100)', border: '1px solid var(--border-primary)',
+  borderRadius: 12, padding: 14,
+}
+const field: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4 }
+const lbl: React.CSSProperties = {
+  fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--fg-3)',
+}
+const inp: React.CSSProperties = {
+  fontFamily: 'var(--font-display)', fontSize: 13, padding: '6px 10px',
+  borderRadius: 'var(--radius-md)', border: '1px solid var(--border-primary)',
+  background: 'var(--surface-100)', outline: 'none',
+}
+const btnBase: React.CSSProperties = {
+  fontFamily: 'var(--font-display)', fontSize: '0.82rem', cursor: 'pointer',
+  borderRadius: 8, padding: '7px 12px', border: '1px solid transparent', fontWeight: 500,
+  display: 'inline-flex', alignItems: 'center', gap: 6,
+}
+const btnPrimary: React.CSSProperties = {
+  ...btnBase, background: 'var(--zaris-orange)', color: 'white', borderColor: 'var(--zaris-orange)',
+}
+const btnGhost: React.CSSProperties = {
+  ...btnBase, background: 'transparent', color: 'var(--fg-2)', border: '1px solid var(--border-medium)',
+}
+const card: React.CSSProperties = {
+  background: 'var(--surface-100)', border: '1px solid var(--border-primary)',
+  borderRadius: 12, overflowX: 'auto',
+}
+const table: React.CSSProperties = {
+  width: '100%', borderCollapse: 'separate', borderSpacing: 0,
+  fontSize: '0.84rem', minWidth: 780,
+}
+const th: React.CSSProperties = {
+  textAlign: 'left', fontWeight: 600, fontSize: '0.72rem',
+  textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--fg-3)',
+  padding: '9px 12px', borderBottom: '1px solid var(--border-primary)',
+  background: 'var(--surface-300)', whiteSpace: 'nowrap',
+}
+const td: React.CSSProperties = {
+  padding: '10px 12px', borderBottom: '1px solid var(--border-primary)',
+  verticalAlign: 'middle', background: 'var(--surface-100)',
+}
+const mono: React.CSSProperties = {
+  fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--fg-2)', whiteSpace: 'nowrap',
+}
+const empty: React.CSSProperties = {
+  padding: 36, textAlign: 'center', color: 'var(--fg-3)', fontSize: '0.88rem',
+}
+const errorBanner: React.CSSProperties = {
+  background: '#ffebee', border: '1px solid #ffcdd2', borderLeft: '4px solid var(--color-error)',
+  borderRadius: 8, padding: '12px 16px', color: '#c62828', fontSize: '0.86rem',
+}

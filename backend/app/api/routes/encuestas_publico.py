@@ -78,9 +78,13 @@ async def cargar_encuesta(token: str, db: AsyncSession = Depends(get_db)):
 
     env = (await db.execute(text("""
         SELECT ee.id_encuesta_envio, ee.id_plantilla, ee.estado, ee.fecha_expiracion,
-               r.nro_reclamo, r.id_reclamo, r.fecha_alta AS reclamo_fecha
+               ee.id_reclamo, ee.id_turno,
+               r.nro_reclamo, r.fecha_alta AS reclamo_fecha,
+               t.fecha AS turno_fecha, tp.nombre AS prestacion_nombre
           FROM encuesta_envio ee
-          JOIN reclamos r ON r.id_reclamo = ee.id_reclamo
+          LEFT JOIN reclamos r        ON r.id_reclamo = ee.id_reclamo
+          LEFT JOIN turnos t          ON t.id_turno = ee.id_turno
+          LEFT JOIN tipo_prestacion tp ON tp.id_tipo_prestacion = t.id_tipo_prestacion
          WHERE ee.token_unico = CAST(:t AS uuid) AND ee.activo = TRUE
          LIMIT 1
     """), {"t": token})).fetchone()
@@ -146,11 +150,17 @@ async def cargar_encuesta(token: str, db: AsyncSession = Depends(get_db)):
     } for p in preguntas]
 
     brand = await _branding(db)
-    nro = env["nro_reclamo"] or f"#{env['id_reclamo']}"
-    fecha = env["reclamo_fecha"]
-    ref = f"Reclamo {nro}"
-    if fecha:
-        ref += f" del {fecha.strftime('%d/%m/%Y')}"
+    if env["id_turno"] is not None:
+        ref = env["prestacion_nombre"] or "Atención"
+        fecha = env["turno_fecha"]
+        if fecha:
+            ref += f" del {fecha.strftime('%d/%m/%Y')}"
+    else:
+        nro = env["nro_reclamo"] or f"#{env['id_reclamo']}"
+        ref = f"Reclamo {nro}"
+        fecha = env["reclamo_fecha"]
+        if fecha:
+            ref += f" del {fecha.strftime('%d/%m/%Y')}"
 
     return {
         "encuesta": {
