@@ -50,8 +50,12 @@ export interface RespuestaPendienteContacto {
   rama_seguida: string
   fecha_respuesta: string | null
   atendida: boolean
-  id_reclamo: number
+  // origen polimorfico (mig 72): reclamo XOR turno
+  id_reclamo: number | null
   nro_reclamo: string | null
+  id_turno: number | null
+  tipo: string | null            // reclamos | turnos
+  referencia: string | null      // nro_reclamo o nombre de prestacion del turno
   id_ciudadano: number
   ciudadano_nombre: string | null
   ciudadano_apellido: string | null
@@ -71,7 +75,9 @@ export interface EncuestaEnvio {
   id_encuesta_envio: number
   id_plantilla: number
   id_ciudadano: number
-  id_reclamo: number
+  // origen polimorfico (mig 72): reclamo XOR turno
+  id_reclamo: number | null
+  id_turno: number | null
   email_destino_snapshot: string
   fecha_expiracion: string
   token_unico: string
@@ -84,6 +90,10 @@ export interface EncuestaEnvio {
   activo: boolean
   fecha_alta: string
   fecha_modificacion: string
+  // derivados del backend (LEFT JOIN)
+  tipo: string | null            // reclamos | turnos | tramites
+  referencia: string | null      // nro_reclamo o nombre de prestacion
+  nro_reclamo: string | null
 }
 
 export interface EncuestaRespuesta {
@@ -115,4 +125,44 @@ export interface EncuestaRespuestaDetalle {
 export interface EncuestaEnvioConRespuesta extends EncuestaEnvio {
   respuesta: EncuestaRespuesta | null
   detalles_respuesta: EncuestaRespuestaDetalle[]
+}
+
+// --- Plantillas (catálogo de encuestas) ---
+
+export interface EncuestaPlantilla {
+  id_encuesta_plantilla: number
+  nombre: string
+  descripcion: string | null
+  version: string
+  tipo: string // reclamos | turnos | tramites
+  activo: boolean
+  id_municipio: number | null
+  id_subarea: number | null
+  fecha_alta: string
+  fecha_modificacion: string
+}
+
+export interface EncuestaOpcion {
+  id_encuesta_opcion: number
+  id_pregunta: number
+  texto: string
+  valor: string
+  orden: number
+  activo: boolean
+}
+
+export interface EncuestaPregunta {
+  id_encuesta_pregunta: number
+  id_plantilla: number
+  texto: string
+  tipo: string // likert5 | texto_libre | si_no | multiple
+  orden: number
+  rama: string // todos | satisfechos | neutrales | insatisfechos
+  obligatoria: boolean
+  activo: boolean
+  opciones: EncuestaOpcion[]
+}
+
+export interface EncuestaPlantillaDetalle extends EncuestaPlantilla {
+  preguntas: EncuestaPregunta[]
 }

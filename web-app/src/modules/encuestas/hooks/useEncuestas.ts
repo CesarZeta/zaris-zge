@@ -52,7 +52,7 @@ export function useAtenderContacto() {
   })
 }
 
-export function useEnvios(p: { estado?: string; limit?: number } = {}) {
+export function useEnvios(p: { estado?: string; tipo?: string; id_plantilla?: number; limit?: number } = {}) {
   return useQuery({
     queryKey: ['encuestas', 'envios', p],
     queryFn: () => encuestasApi.envios(p),
@@ -64,5 +64,20 @@ export function useEnvioDetalle(idEnvio: number | null) {
     queryKey: ['encuestas', 'envio', idEnvio],
     queryFn: () => encuestasApi.envioDetalle(idEnvio as number),
     enabled: idEnvio != null,
+  })
+}
+
+export function usePlantillas() {
+  return useQuery({
+    queryKey: ['encuestas', 'plantillas'],
+    queryFn: () => encuestasApi.plantillas(),
+  })
+}
+
+export function usePlantillaDetalle(idPlantilla: number | null) {
+  return useQuery({
+    queryKey: ['encuestas', 'plantilla', idPlantilla],
+    queryFn: () => encuestasApi.plantillaDetalle(idPlantilla as number),
+    enabled: idPlantilla != null,
   })
 }

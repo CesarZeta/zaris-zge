@@ -150,6 +150,9 @@ async def detalle_plantilla(
 async def listar_envios(
     response: Response,
     id_reclamo: Optional[int] = Query(None),
+    id_turno: Optional[int] = Query(None),
+    tipo: Optional[str] = Query(None, description="reclamos | turnos | tramites"),
+    id_plantilla: Optional[int] = Query(None),
     estado: Optional[str] = Query(None),
     desde: Optional[date] = Query(None),
     hasta: Optional[date] = Query(None),
@@ -161,10 +164,18 @@ async def listar_envios(
     if estado is not None and estado not in ESTADOS_ENVIO:
         raise HTTPException(422, f"estado inválido. Valores: {sorted(ESTADOS_ENVIO)}")
 
+    # LEFT JOIN a reclamos/turnos/prestacion: el envio es polimorfico (mig 72).
+    # Inner JOIN excluiria silenciosamente los envios de turno.
     conds = ["ee.activo = TRUE", "(ee.id_municipio = :mun OR ee.id_municipio IS NULL)"]
     params: dict = {"mun": id_municipio, "limit": limit, "offset": offset}
     if id_reclamo is not None:
         conds.append("ee.id_reclamo = :rid"); params["rid"] = id_reclamo
+    if id_turno is not None:
+        conds.append("ee.id_turno = :tid"); params["tid"] = id_turno
+    if tipo is not None:
+        conds.append("pl.tipo = :tipo"); params["tipo"] = tipo
+    if id_plantilla is not None:
+        conds.append("ee.id_plantilla = :pid"); params["pid"] = id_plantilla
     if estado is not None:
         conds.append("ee.estado = :est"); params["est"] = estado
     if desde is not None:
@@ -173,15 +184,27 @@ async def listar_envios(
         conds.append("ee.fecha_envio < :hasta_excl"); params["hasta_excl"] = hasta + timedelta(days=1)
     where = " AND ".join(conds)
 
+    join = """
+          JOIN encuesta_plantilla pl   ON pl.id_encuesta_plantilla = ee.id_plantilla
+          LEFT JOIN reclamos r         ON r.id_reclamo = ee.id_reclamo
+          LEFT JOIN turnos t           ON t.id_turno = ee.id_turno
+          LEFT JOIN tipo_prestacion tp ON tp.id_tipo_prestacion = t.id_tipo_prestacion
+    """
+
     total = (await db.execute(text(
-        f"SELECT COUNT(*) FROM encuesta_envio ee WHERE {where}"), params)).scalar() or 0
+        f"SELECT COUNT(*) FROM encuesta_envio ee {join} WHERE {where}"), params)).scalar() or 0
 
     rows = (await db.execute(text(f"""
         SELECT ee.id_encuesta_envio, ee.id_plantilla, ee.id_ciudadano, ee.id_reclamo,
-               ee.token_unico, ee.email_destino_snapshot, ee.fecha_envio, ee.fecha_apertura,
-               ee.fecha_completada, ee.fecha_expiracion, ee.estado, ee.intentos_envio,
-               ee.ultimo_error_envio, ee.activo, ee.fecha_alta, ee.fecha_modificacion
+               ee.id_turno, ee.token_unico, ee.email_destino_snapshot, ee.fecha_envio,
+               ee.fecha_apertura, ee.fecha_completada, ee.fecha_expiracion, ee.estado,
+               ee.intentos_envio, ee.ultimo_error_envio, ee.activo, ee.fecha_alta,
+               ee.fecha_modificacion,
+               pl.tipo AS tipo,
+               r.nro_reclamo AS nro_reclamo,
+               COALESCE(r.nro_reclamo, tp.nombre) AS referencia
           FROM encuesta_envio ee
+          {join}
          WHERE {where}
          ORDER BY ee.fecha_alta DESC
          LIMIT :limit OFFSET :offset
@@ -200,10 +223,18 @@ async def detalle_envio(
 ):
     env = (await db.execute(text("""
         SELECT ee.id_encuesta_envio, ee.id_plantilla, ee.id_ciudadano, ee.id_reclamo,
-               ee.token_unico, ee.email_destino_snapshot, ee.fecha_envio, ee.fecha_apertura,
-               ee.fecha_completada, ee.fecha_expiracion, ee.estado, ee.intentos_envio,
-               ee.ultimo_error_envio, ee.activo, ee.fecha_alta, ee.fecha_modificacion
+               ee.id_turno, ee.token_unico, ee.email_destino_snapshot, ee.fecha_envio,
+               ee.fecha_apertura, ee.fecha_completada, ee.fecha_expiracion, ee.estado,
+               ee.intentos_envio, ee.ultimo_error_envio, ee.activo, ee.fecha_alta,
+               ee.fecha_modificacion,
+               pl.tipo AS tipo,
+               r.nro_reclamo AS nro_reclamo,
+               COALESCE(r.nro_reclamo, tp.nombre) AS referencia
           FROM encuesta_envio ee
+          JOIN encuesta_plantilla pl   ON pl.id_encuesta_plantilla = ee.id_plantilla
+          LEFT JOIN reclamos r         ON r.id_reclamo = ee.id_reclamo
+          LEFT JOIN turnos t           ON t.id_turno = ee.id_turno
+          LEFT JOIN tipo_prestacion tp ON tp.id_tipo_prestacion = t.id_tipo_prestacion
          WHERE ee.id_encuesta_envio = :id AND ee.activo = TRUE
            AND (ee.id_municipio = :mun OR ee.id_municipio IS NULL)
          LIMIT 1
@@ -254,18 +285,26 @@ async def pendientes_contacto(
     total = (await db.execute(text(
         f"SELECT COUNT(*) FROM encuesta_respuesta rsp WHERE {where}"), params)).scalar() or 0
 
+    # LEFT JOIN a reclamos + turnos/prestacion: el envio es polimorfico (mig 72).
+    # El inner JOIN a reclamos excluia silenciosamente los pedidos de contacto
+    # provenientes de encuestas de turno.
     rows = (await db.execute(text(f"""
         SELECT rsp.id_encuesta_respuesta, rsp.id_envio AS id_encuesta_envio,
                rsp.clasificacion_inicial, rsp.rama_seguida,
                rsp.fecha_alta AS fecha_respuesta, rsp.atendida,
                ee.id_reclamo, r.nro_reclamo,
+               ee.id_turno, pl.tipo AS tipo,
+               COALESCE(r.nro_reclamo, tp.nombre) AS referencia,
                c.id_ciudadano, c.nombre AS ciudadano_nombre,
                c.apellido AS ciudadano_apellido, c.email AS ciudadano_email,
                c.telefono AS ciudadano_telefono
           FROM encuesta_respuesta rsp
-          JOIN encuesta_envio ee ON ee.id_encuesta_envio = rsp.id_envio
-          JOIN reclamos r        ON r.id_reclamo = ee.id_reclamo
-          JOIN ciudadanos c      ON c.id_ciudadano = ee.id_ciudadano
+          JOIN encuesta_envio ee   ON ee.id_encuesta_envio = rsp.id_envio
+          JOIN encuesta_plantilla pl ON pl.id_encuesta_plantilla = ee.id_plantilla
+          LEFT JOIN reclamos r     ON r.id_reclamo = ee.id_reclamo
+          LEFT JOIN turnos t       ON t.id_turno = ee.id_turno
+          LEFT JOIN tipo_prestacion tp ON tp.id_tipo_prestacion = t.id_tipo_prestacion
+          JOIN ciudadanos c        ON c.id_ciudadano = ee.id_ciudadano
          WHERE {where}
          ORDER BY rsp.fecha_alta ASC
          LIMIT :limit OFFSET :offset
@@ -285,6 +324,7 @@ async def dashboard_resumen(
     desde: Optional[date] = Query(None),
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
+    tipo: Optional[str] = Query(None, description="reclamos | turnos | tramites"),
     id_municipio: int = Query(ID_MUNICIPIO_DEFAULT),
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -294,27 +334,38 @@ async def dashboard_resumen(
     desde = desde or (hasta - timedelta(days=30))
 
     params: dict = {"mun": id_municipio, "desde": desde,
-                    "hasta_excl": hasta + timedelta(days=1), "id_area": id_area}
-    # filtro de area opcional, via tipo_reclamo -> subarea -> area
+                    "hasta_excl": hasta + timedelta(days=1), "id_area": id_area,
+                    "tipo": tipo}
+    # filtro de area opcional, via tipo_reclamo -> subarea -> area.
+    # LEFT JOIN (no inner) para no excluir envios de turno cuando NO se filtra
+    # por area: el resumen general debe contar reclamos Y turnos (mig 72).
     join_area = ""
     cond_area = ""
     if id_area is not None:
         join_area = """
-            JOIN reclamos r        ON r.id_reclamo = ee.id_reclamo
+            LEFT JOIN reclamos r        ON r.id_reclamo = ee.id_reclamo
             LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
             LEFT JOIN subarea s    ON s.id_subarea = COALESCE(tr.id_subarea, r.id_subarea)
         """
         cond_area = " AND s.id_area = :id_area"
+    # filtro por tipo de plantilla (separa CSAT de reclamos vs turnos)
+    join_tipo = ""
+    cond_tipo = ""
+    if tipo is not None:
+        join_tipo = " JOIN encuesta_plantilla pl ON pl.id_encuesta_plantilla = ee.id_plantilla "
+        cond_tipo = " AND pl.tipo = :tipo"
 
     # total enviadas en el periodo (por fecha_envio)
     total_enviadas = (await db.execute(text(f"""
         SELECT COUNT(*)
           FROM encuesta_envio ee
+          {join_tipo}
           {join_area}
          WHERE ee.activo = TRUE
            AND (ee.id_municipio = :mun OR ee.id_municipio IS NULL)
            AND ee.fecha_envio >= :desde AND ee.fecha_envio < :hasta_excl
            {cond_area}
+           {cond_tipo}
     """), params)).scalar() or 0
 
     # metricas de respuestas completadas en el periodo (por fecha de respuesta)
@@ -324,11 +375,13 @@ async def dashboard_resumen(
                COALESCE(SUM(CASE WHEN rsp.clasificacion_inicial <= 2 THEN 1 ELSE 0 END), 0) AS insat
           FROM encuesta_respuesta rsp
           JOIN encuesta_envio ee ON ee.id_encuesta_envio = rsp.id_envio
+          {join_tipo}
           {join_area}
          WHERE rsp.activo = TRUE
            AND (rsp.id_municipio = :mun OR rsp.id_municipio IS NULL)
            AND rsp.fecha_alta >= :desde AND rsp.fecha_alta < :hasta_excl
            {cond_area}
+           {cond_tipo}
     """), params)).fetchone()._mapping
 
     total_completadas = int(agg["total_completadas"])
@@ -342,11 +395,13 @@ async def dashboard_resumen(
         SELECT rsp.clasificacion_inicial AS clasificacion, COUNT(*) AS count
           FROM encuesta_respuesta rsp
           JOIN encuesta_envio ee ON ee.id_encuesta_envio = rsp.id_envio
+          {join_tipo}
           {join_area}
          WHERE rsp.activo = TRUE
            AND (rsp.id_municipio = :mun OR rsp.id_municipio IS NULL)
            AND rsp.fecha_alta >= :desde AND rsp.fecha_alta < :hasta_excl
            {cond_area}
+           {cond_tipo}
          GROUP BY rsp.clasificacion_inicial
     """), params)).fetchall()
     dist_map = {int(r._mapping["clasificacion"]): int(r._mapping["count"]) for r in dist_rows}
@@ -509,20 +564,36 @@ async def disparar_encuesta(
     body: DispararEncuestaIn,
     db: AsyncSession = Depends(get_db),
 ):
-    envio, motivo = await svc.crear_envio_para_reclamo(db, body.id_reclamo)
+    # Exactamente uno de los dos (mig 72: reclamo XOR turno).
+    if (body.id_reclamo is None) == (body.id_turno is None):
+        raise HTTPException(422, "Indicá exactamente uno: id_reclamo o id_turno")
+
+    if body.id_reclamo is not None:
+        envio, motivo = await svc.crear_envio_para_reclamo(db, body.id_reclamo)
+    else:
+        envio, motivo = await svc.crear_envio_para_turno(db, body.id_turno)
     if envio is None:
         # 422 con el motivo concreto. MOTIVO_ERROR -> 500.
         if motivo == svc.MOTIVO_ERROR:
             raise HTTPException(500, motivo)
         raise HTTPException(422, motivo)
-    # crear_envio_para_reclamo devuelve solo algunas columnas (RETURNING acotado);
-    # releer la fila completa para el response.
+    # crear_envio_* devuelve solo algunas columnas (RETURNING acotado);
+    # releer la fila completa (con tipo + referencia) para el response.
     row = (await db.execute(text("""
-        SELECT id_encuesta_envio, id_plantilla, id_ciudadano, id_reclamo,
-               token_unico, email_destino_snapshot, fecha_envio, fecha_apertura,
-               fecha_completada, fecha_expiracion, estado, intentos_envio,
-               ultimo_error_envio, activo, fecha_alta, fecha_modificacion
-          FROM encuesta_envio WHERE id_encuesta_envio = :id
+        SELECT ee.id_encuesta_envio, ee.id_plantilla, ee.id_ciudadano, ee.id_reclamo,
+               ee.id_turno, ee.token_unico, ee.email_destino_snapshot, ee.fecha_envio,
+               ee.fecha_apertura, ee.fecha_completada, ee.fecha_expiracion, ee.estado,
+               ee.intentos_envio, ee.ultimo_error_envio, ee.activo, ee.fecha_alta,
+               ee.fecha_modificacion,
+               pl.tipo AS tipo,
+               r.nro_reclamo AS nro_reclamo,
+               COALESCE(r.nro_reclamo, tp.nombre) AS referencia
+          FROM encuesta_envio ee
+          JOIN encuesta_plantilla pl   ON pl.id_encuesta_plantilla = ee.id_plantilla
+          LEFT JOIN reclamos r         ON r.id_reclamo = ee.id_reclamo
+          LEFT JOIN turnos t           ON t.id_turno = ee.id_turno
+          LEFT JOIN tipo_prestacion tp ON tp.id_tipo_prestacion = t.id_tipo_prestacion
+         WHERE ee.id_encuesta_envio = :id
     """), {"id": envio["id_encuesta_envio"]})).fetchone()
     return EncuestaEnvioOut.model_validate(row._mapping)
 

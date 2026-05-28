@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { PhoneCall, Mail, FileText, Check, RefreshCw } from 'lucide-react'
+import { PhoneCall, Mail, FileText, CalendarClock, Check, RefreshCw } from 'lucide-react'
 import { usePendientesContacto, useAtenderContacto } from '../hooks/useEncuestas'
 import { ConfirmModal } from '../../agenda/components/ConfirmModal'
 import { useNotificationsStore } from '../../../stores/notifications'
@@ -77,9 +77,12 @@ export function ContactoView() {
                       <Mail size={13} strokeWidth={1.5} /> {i.ciudadano_email}
                     </a>
                   )}
-                  {i.nro_reclamo && (
+                  {i.referencia && (
                     <span style={{ ...dato, color: 'var(--fg-3)' }}>
-                      <FileText size={13} strokeWidth={1.5} /> {i.nro_reclamo}
+                      {i.tipo === 'turnos'
+                        ? <CalendarClock size={13} strokeWidth={1.5} />
+                        : <FileText size={13} strokeWidth={1.5} />}
+                      {' '}{i.referencia}
                     </span>
                   )}
                   {i.fecha_respuesta && (

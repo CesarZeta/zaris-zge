@@ -118,7 +118,7 @@ export function Overview() {
           <button onClick={() => refetch()} style={btnGhost} title="Refrescar">
             <RefreshCw size={14} strokeWidth={1.5} style={{ animation: isFetching ? 'spin 1s linear infinite' : undefined }} />
           </button>
-          <button onClick={() => navigate('/agenda')} style={btnGhost} title="Ver turnos en la agenda (día/semana/mes)">
+          <button onClick={() => navigate('/turnos/agenda')} style={btnGhost} title="Ver los turnos en la agenda (día/semana)">
             <CalendarDays size={14} strokeWidth={1.5} /> Ver en agenda
           </button>
           <button onClick={() => { setEditTurno(null); setModalOpen(true) }} style={btnPrimary}>
