@@ -5,8 +5,11 @@ import { RecursoPicker } from '../../agenda/components/RecursoPicker'
 import { Button } from '../../../ui'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { useCrearTurno, useReprogramarTurno, useTiposServicio } from '../hooks/useTurnos'
+import { useEspacios } from '../../agenda/hooks/useEspacios'
 import type { CiudadanoMinimo } from '../../agenda/types/agenda'
 import type { Turno } from '../types/turno'
+
+type TipoRecurso = 'agente' | 'espacio'
 
 interface Props {
   open: boolean
@@ -25,11 +28,15 @@ export function TurnoFormModal({ open, onClose, turno }: Props) {
   const reprogramar = useReprogramarTurno()
 
   const [cid, setCid] = useState<CiudadanoMinimo | null>(null)
+  const [tipoRecurso, setTipoRecurso] = useState<TipoRecurso>('agente')
   const [idAgente, setIdAgente] = useState<number | ''>('')
+  const [idEspacio, setIdEspacio] = useState<number | ''>('')
   const [idTipo, setIdTipo] = useState<number | ''>('')
   const [fecha, setFecha] = useState(HOY())
   const [horaInicio, setHoraInicio] = useState('09:00')
   const [observaciones, setObservaciones] = useState('')
+
+  const espacios = useEspacios({ atendido: true })
 
   // Reset / hidratacion al abrir. Separado del resto de deps para no pisar
   // lo que el usuario tipea (patron CLAUDE.md §29).
@@ -37,14 +44,18 @@ export function TurnoFormModal({ open, onClose, turno }: Props) {
     if (!open) return
     if (turno) {
       setCid(null)
-      setIdAgente(turno.id_agente)
+      setTipoRecurso(turno.id_espacio != null ? 'espacio' : 'agente')
+      setIdAgente(turno.id_agente ?? '')
+      setIdEspacio(turno.id_espacio ?? '')
       setIdTipo(turno.id_tipo_servicio_turno)
       setFecha(turno.fecha)
       setHoraInicio(turno.hora_inicio.slice(0, 5))
       setObservaciones(turno.observaciones ?? '')
     } else {
       setCid(null)
+      setTipoRecurso('agente')
       setIdAgente('')
+      setIdEspacio('')
       setIdTipo('')
       setFecha(HOY())
       setHoraInicio('09:00')
@@ -59,9 +70,17 @@ export function TurnoFormModal({ open, onClose, turno }: Props) {
       push({ kind: 'error', title: 'Elegí un ciudadano' })
       return
     }
-    if (idAgente === '' || idTipo === '') {
-      push({ kind: 'error', title: 'Completá agente y tipo de servicio' })
+    if (idTipo === '') {
+      push({ kind: 'error', title: 'Elegí un tipo de servicio' })
       return
+    }
+    if (!esEdicion) {
+      if (tipoRecurso === 'agente' && idAgente === '') {
+        push({ kind: 'error', title: 'Elegí un agente' }); return
+      }
+      if (tipoRecurso === 'espacio' && idEspacio === '') {
+        push({ kind: 'error', title: 'Elegí un lugar de atención' }); return
+      }
     }
     try {
       if (esEdicion && turno) {
@@ -78,7 +97,9 @@ export function TurnoFormModal({ open, onClose, turno }: Props) {
       } else {
         await crear.mutateAsync({
           id_ciudadano: cid!.id_ciudadano,
-          id_agente: idAgente,
+          ...(tipoRecurso === 'espacio'
+            ? { id_espacio: idEspacio as number }
+            : { id_agente: idAgente as number }),
           id_tipo_servicio_turno: idTipo,
           fecha,
           hora_inicio: `${horaInicio}:00`,
@@ -132,22 +153,51 @@ export function TurnoFormModal({ open, onClose, turno }: Props) {
           )}
         </div>
 
-        {/* Agente */}
+        {/* Recurso: agente o lugar de atencion */}
         <div>
-          <label style={lbl}>Agente</label>
+          <label style={lbl}>Atiende</label>
           {esEdicion ? (
             <>
               <div style={{ ...inp, background: 'var(--surface-200)', color: 'var(--fg-2)', display: 'flex', alignItems: 'center' }}>
-                {turno?.agente_nombre ?? '—'}
+                {turno?.recurso_nombre ?? turno?.agente_nombre ?? '—'}
+                <span style={{ color: 'var(--fg-3)', fontSize: 11, marginLeft: 6 }}>
+                  ({turno?.id_espacio != null ? 'lugar' : 'agente'})
+                </span>
               </div>
-              <div style={hint}>El agente no se puede cambiar al reprogramar.</div>
+              <div style={hint}>El recurso no se puede cambiar al reprogramar.</div>
             </>
           ) : (
-            <RecursoPicker
-              tipo="agente"
-              value={idAgente === '' ? null : idAgente}
-              onChange={(id) => setIdAgente(id ?? '')}
-            />
+            <>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                <button type="button" onClick={() => { setTipoRecurso('agente'); setIdEspacio('') }} style={toggleBtn(tipoRecurso === 'agente')}>
+                  Agente
+                </button>
+                <button type="button" onClick={() => { setTipoRecurso('espacio'); setIdAgente('') }} style={toggleBtn(tipoRecurso === 'espacio')}>
+                  Lugar de atención
+                </button>
+              </div>
+              {tipoRecurso === 'agente' ? (
+                <RecursoPicker
+                  tipo="agente"
+                  value={idAgente === '' ? null : idAgente}
+                  onChange={(id) => setIdAgente(id ?? '')}
+                />
+              ) : (
+                <select
+                  value={idEspacio}
+                  onChange={(e) => setIdEspacio(e.target.value === '' ? '' : Number(e.target.value))}
+                  style={inp}
+                >
+                  <option value="">Elegí un lugar atendido…</option>
+                  {(espacios.data ?? []).map((e) => (
+                    <option key={e.id_espacio} value={e.id_espacio}>{e.nombre}</option>
+                  ))}
+                </select>
+              )}
+              {tipoRecurso === 'espacio' && (espacios.data ?? []).length === 0 && !espacios.isLoading && (
+                <div style={hint}>No hay lugares de atención atendidos cargados. Crealos en Agenda → Config → Espacios.</div>
+              )}
+            </>
           )}
         </div>
 
@@ -217,4 +267,14 @@ const readonlyBox: React.CSSProperties = {
 
 const hint: React.CSSProperties = {
   fontSize: 11, color: 'var(--fg-3)', marginTop: 4,
+}
+
+function toggleBtn(active: boolean): React.CSSProperties {
+  return {
+    flex: 1, fontFamily: 'var(--font-display)', fontSize: 12, cursor: 'pointer',
+    padding: '7px 10px', borderRadius: 'var(--radius-md)', fontWeight: 500,
+    border: '1px solid ' + (active ? 'var(--zaris-orange)' : 'var(--border-medium)'),
+    background: active ? 'var(--zaris-orange)' : 'transparent',
+    color: active ? 'white' : 'var(--fg-2)',
+  }
 }
