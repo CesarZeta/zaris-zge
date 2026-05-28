@@ -4,6 +4,7 @@ import { EncuestasLayout } from './EncuestasLayout'
 import { ResumenView } from './views/ResumenView'
 import { ContactoView } from './views/ContactoView'
 import { EnviosView } from './views/EnviosView'
+import { PlantillasView } from './views/PlantillasView'
 import { useAuthStore } from '../../stores/auth'
 
 // Módulo Encuestas (CSAT): resultados de las encuestas de satisfacción que se
@@ -46,8 +47,9 @@ export const encuestasModule: ModuleManifest = {
   icon: BarChart3,
   moduloCodigo: 'encuestas',
   routes: [
-    { index: true,        element: Wrap(ResumenView),  handle: { breadcrumb: 'Encuestas' } },
-    { path: 'contacto',   element: Wrap(ContactoView),  handle: { breadcrumb: 'Encuestas · Contacto' } },
-    { path: 'envios',     element: Wrap(EnviosView),    handle: { breadcrumb: 'Encuestas · Envíos' } },
+    { index: true,        element: Wrap(ResumenView),     handle: { breadcrumb: 'Encuestas' } },
+    { path: 'contacto',   element: Wrap(ContactoView),    handle: { breadcrumb: 'Encuestas · Contacto' } },
+    { path: 'envios',     element: Wrap(EnviosView),      handle: { breadcrumb: 'Encuestas · Envíos' } },
+    { path: 'plantillas', element: Wrap(PlantillasView),  handle: { breadcrumb: 'Encuestas · Plantillas' } },
   ],
 }
