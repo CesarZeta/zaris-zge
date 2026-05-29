@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
 import { useTurnos } from '../hooks/useTurnos'
+import { useTurnoFiltros, TurnoFiltrosBar } from '../lib/turnoFiltros'
 import {
   toIsoDate, hoy, sumarDias, lunesDeSemana,
   nombreDia, etiquetaFechaCorta, etiquetaFechaLarga, mismaFecha,
@@ -50,14 +51,19 @@ export function AgendaTurnos() {
     [data],
   )
 
+  // Filtros Prestación / Recurso / Ciudadano (opciones derivadas de los turnos
+  // del rango visible). Mismo helper que la vista de Turnos.
+  const { filtros, setFiltros, opciones, filtrar, hayActivos, limpiar } = useTurnoFiltros(turnos)
+  const visibles = useMemo(() => filtrar(turnos), [turnos, filtrar])
+
   const turnosPorDia = useMemo(() => {
     const m = new Map<string, Turno[]>()
-    for (const t of turnos) {
+    for (const t of visibles) {
       if (!m.has(t.fecha)) m.set(t.fecha, [])
       m.get(t.fecha)!.push(t)
     }
     return m
-  }, [turnos])
+  }, [visibles])
 
   function navegar(dir: -1 | 1) {
     setAncla((a) => sumarDias(a, dir * (modo === 'dia' ? 1 : 7)))
@@ -106,6 +112,17 @@ export function AgendaTurnos() {
           <RefreshCw size={14} strokeWidth={1.5} style={{ animation: isFetching ? 'spin 1s linear infinite' : undefined }} />
         </button>
       </div>
+
+      {turnos.length > 0 && (
+        <div style={filtrosBar}>
+          <TurnoFiltrosBar opciones={opciones} filtros={filtros} setFiltros={setFiltros} />
+          {hayActivos && (
+            <button onClick={limpiar} style={{ ...navBtn, alignSelf: 'flex-end' }} title="Limpiar filtros">
+              Limpiar
+            </button>
+          )}
+        </div>
+      )}
 
       {isError && <div style={errorBanner}>{(error as Error)?.message ?? 'Error al cargar la agenda'}</div>}
 
@@ -213,6 +230,10 @@ function Leyenda({ color, label }: { color: string; label: string }) {
 
 const toolbar: React.CSSProperties = {
   display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center',
+  background: 'var(--surface-100)', border: '1px solid var(--border-primary)', borderRadius: 12, padding: 12,
+}
+const filtrosBar: React.CSSProperties = {
+  display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end',
   background: 'var(--surface-100)', border: '1px solid var(--border-primary)', borderRadius: 12, padding: 12,
 }
 const toggleBtn: React.CSSProperties = {
