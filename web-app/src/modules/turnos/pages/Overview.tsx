@@ -6,6 +6,7 @@ import { TurnoFormModal } from '../components/TurnoFormModal'
 import { CumplirTurnoModal } from '../components/CumplirTurnoModal'
 import { ConfirmModal } from '../../agenda/components/ConfirmModal'
 import { useNotificationsStore } from '../../../stores/notifications'
+import { useTurnoFiltros, TurnoFiltrosBar } from '../lib/turnoFiltros'
 import type { EstadoTurno, Turno } from '../types/turno'
 
 type FiltroEstado = EstadoTurno | ''
@@ -37,18 +38,22 @@ export function Overview() {
   const cancelar = useCancelarTurno()
 
   const turnos = data ?? []
+  const { filtros, setFiltros, opciones, filtrar, hayActivos, limpiar } = useTurnoFiltros(turnos)
 
   const filtrados = useMemo(() => {
+    let res = filtrar(turnos)
     const txt = fTexto.trim().toLowerCase()
-    if (!txt) return turnos
-    return turnos.filter((t) =>
-      [t.ciudadano_nombre, t.ciudadano_dni, t.recurso_nombre, t.agente_nombre, t.prestacion_nombre, t.observaciones]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-        .includes(txt),
-    )
-  }, [turnos, fTexto])
+    if (txt) {
+      res = res.filter((t) =>
+        [t.ciudadano_nombre, t.ciudadano_dni, t.recurso_nombre, t.agente_nombre, t.prestacion_nombre, t.observaciones]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+          .includes(txt),
+      )
+    }
+    return res
+  }, [turnos, fTexto, filtrar])
 
   const counts = useMemo(() => {
     const c = { reservado: 0, cumplido: 0, cancelado: 0 }
@@ -114,6 +119,12 @@ export function Overview() {
           <label style={lbl}>Hasta</label>
           <input type="date" value={fHasta} onChange={(e) => setFHasta(e.target.value)} style={inp} />
         </div>
+        <TurnoFiltrosBar opciones={opciones} filtros={filtros} setFiltros={setFiltros} />
+        {hayActivos && (
+          <button onClick={limpiar} style={{ ...btnGhost, alignSelf: 'flex-end' }} title="Limpiar filtros de prestación, recurso y ciudadano">
+            Limpiar
+          </button>
+        )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
           <button onClick={() => refetch()} style={btnGhost} title="Refrescar">
             <RefreshCw size={14} strokeWidth={1.5} style={{ animation: isFetching ? 'spin 1s linear infinite' : undefined }} />
