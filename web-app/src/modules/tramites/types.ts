@@ -278,16 +278,21 @@ export interface TransicionesPermitidas {
   transiciones: TransicionPermitida[]
 }
 
+// Shape exacta que espera el backend (TramiteCreateIn): iniciador anidado +
+// `datos` (no `datos_jsonb`). El backend deriva la versión publicada del tipo,
+// así que NO se manda id_tipo_tramite_version.
 export interface CrearTramiteBody {
   id_tipo_tramite: number
-  id_tipo_tramite_version: number
   asunto: string
-  iniciador_tipo: IniciadorTipo
-  id_ciudadano_iniciador?: number | null
-  id_empresa_iniciadora?: number | null
-  id_subarea_iniciadora?: number | null
-  id_ciudadano_representante?: number | null
-  datos_jsonb: Record<string, unknown>
+  iniciador: {
+    tipo: IniciadorTipo
+    id_ciudadano?: number | null
+    id_empresa?: number | null
+    id_subarea?: number | null
+    id_ciudadano_representante?: number | null
+  }
+  datos: Record<string, unknown>
+  id_municipio?: number
 }
 
 export interface BandejaParams {
