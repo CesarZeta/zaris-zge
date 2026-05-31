@@ -69,8 +69,12 @@ export function CrearTramite() {
       push({ kind: 'error', title: 'Asunto requerido', body: 'Ingresá el asunto del trámite.' })
       return
     }
+    if (!tipo.version) {
+      push({ kind: 'error', title: 'Tipo no publicado', body: 'Este tipo de trámite no tiene una versión publicada.' })
+      return
+    }
 
-    const campos = tipo.version.campos
+    const campos = tipo.campos ?? []
     const errs = validarDatos(campos, datos)
     if (Object.keys(errs).length > 0) {
       setErrores(errs)
@@ -108,7 +112,7 @@ export function CrearTramite() {
   }
 
   const tiposItems = tipos.data?.items ?? []
-  const camposOrdenados = tipoDetalle.data?.version.campos ?? []
+  const camposOrdenados = tipoDetalle.data?.campos ?? []
   const tipoActual = tiposItems.find((t) => t.id_tipo_tramite === idTipoSeleccionado)
   const iniciadoresPermitidos = tipoActual?.iniciadores_permitidos ?? []
   const permiteRepresentante = tipoActual?.permite_representante ?? false

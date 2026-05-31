@@ -90,14 +90,19 @@ export interface TipoTramiteDocRequerido {
 }
 
 export interface TipoTramiteDetalle extends TipoTramite {
+  // El backend (GET /tramites/tipos/{id}, TipoTramiteDetalleOut) devuelve
+  // `version` solo como metadata de la versión publicada, y la estructura del
+  // formulario (campos/estados/transiciones/docs) a NIVEL RAÍZ — no anidada.
   version: {
     id_tipo_tramite_version: number
     version_num: number
-    campos: TipoTramiteCampo[]
-    estados: TipoTramiteEstado[]
-    transiciones: TipoTramiteTransicion[]
-    documentos_requeridos: TipoTramiteDocRequerido[]
-  }
+    estado: string
+    publicada_en: string | null
+  } | null
+  campos: TipoTramiteCampo[]
+  estados: TipoTramiteEstado[]
+  transiciones: TipoTramiteTransicion[]
+  documentos_requeridos: TipoTramiteDocRequerido[]
 }
 
 /* ── Admin del catalogo (CRUD de tipos) ───────────────── */
