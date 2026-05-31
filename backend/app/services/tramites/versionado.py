@@ -280,6 +280,42 @@ async def _copiar_estructura(
             },
         )
 
+    # Aprobaciones por etapa (re-mapeando id_tipo_tramite_estado via mapa_estados).
+    # El FK opcional a documento requerido se deja NULL: no mantenemos mapeo de
+    # ids de docs al copiar y el vinculo es informativo (no afecta el guard).
+    aprobaciones = (await db.execute(
+        text("""
+            SELECT id_tipo_tramite_estado, aprobador_tipo,
+                   id_subarea_aprobadora, id_equipo_aprobador, id_agente_aprobador,
+                   etiqueta, bloqueante, orden
+            FROM tipo_tramite_aprobacion_requerida
+            WHERE id_tipo_tramite_version = :src AND activo = TRUE
+        """),
+        {"src": id_version_origen},
+    )).fetchall()
+
+    for a in aprobaciones:
+        await db.execute(
+            text("""
+                INSERT INTO tipo_tramite_aprobacion_requerida
+                    (id_tipo_tramite_version, id_tipo_tramite_estado, aprobador_tipo,
+                     id_subarea_aprobadora, id_equipo_aprobador, id_agente_aprobador,
+                     etiqueta, bloqueante, id_tipo_tramite_documento_requerido,
+                     orden, activo, id_municipio)
+                VALUES (:v, :est, :tipo, :sa, :eq, :ag, :eti, :blo, NULL,
+                        :ord, TRUE, :mun)
+            """),
+            {
+                "v": id_version_destino,
+                "est": mapa_estados[a.id_tipo_tramite_estado],
+                "tipo": a.aprobador_tipo,
+                "sa": a.id_subarea_aprobadora, "eq": a.id_equipo_aprobador,
+                "ag": a.id_agente_aprobador,
+                "eti": a.etiqueta, "blo": a.bloqueante, "ord": a.orden,
+                "mun": id_municipio,
+            },
+        )
+
 
 async def publicar_version(
     db: AsyncSession,

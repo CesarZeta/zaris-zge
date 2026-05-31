@@ -66,6 +66,19 @@ export const detalleTipoAdmin = (id: number) =>
 export const listarTiposAdmin = () =>
   api.get<{ items: TipoTramiteAdminListItem[]; total: number }>(`${BASE}/tipos`)
 
+export interface TipoTramiteAprobReq {
+  id_tipo_tramite_aprobacion_requerida: number
+  id_tipo_tramite_estado: number
+  aprobador_tipo: string // subarea | equipo | agente
+  id_subarea_aprobadora: number | null
+  id_equipo_aprobador: number | null
+  id_agente_aprobador: number | null
+  etiqueta: string
+  bloqueante: boolean
+  id_tipo_tramite_documento_requerido: number | null
+  orden: number
+}
+
 /* ── Versiones ──────────────────────────────────────────── */
 
 export interface DetalleVersion {
@@ -79,6 +92,7 @@ export interface DetalleVersion {
   estados: TipoTramiteEstado[]
   transiciones: TipoTramiteTransicion[]
   documentos_requeridos: TipoTramiteDocRequerido[]
+  aprobaciones_requeridas?: TipoTramiteAprobReq[]
 }
 
 export const detalleVersion = (idVersion: number) =>
@@ -240,3 +254,26 @@ export const actualizarDocRequerido = (idDoc: number, body: DocReqUpdateBody) =>
 
 export const eliminarDocRequerido = (idDoc: number) =>
   api.delete(`${BASE}/documentos-requeridos/${idDoc}`)
+
+/* ── Aprobaciones por etapa (visados) ──────────────────── */
+
+export interface AprobReqBody {
+  id_tipo_tramite_estado: number
+  aprobador_tipo: string // subarea | equipo | agente
+  id_subarea_aprobadora?: number | null
+  id_equipo_aprobador?: number | null
+  id_agente_aprobador?: number | null
+  etiqueta: string
+  bloqueante?: boolean
+  id_tipo_tramite_documento_requerido?: number | null
+  orden?: number
+}
+
+export const crearAprobRequerida = (idVersion: number, body: AprobReqBody) =>
+  api.post<{ id_tipo_tramite_aprobacion_requerida: number }>(`${BASE}/versiones/${idVersion}/aprobaciones-requeridas`, body)
+
+export const actualizarAprobRequerida = (idAprob: number, body: AprobReqBody) =>
+  api.put(`${BASE}/aprobaciones-requeridas/${idAprob}`, body)
+
+export const eliminarAprobRequerida = (idAprob: number) =>
+  api.delete(`${BASE}/aprobaciones-requeridas/${idAprob}`)
