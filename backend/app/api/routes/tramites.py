@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_user
 from app.core.database import get_db
 from app.schemas.tramites import (
+    AprobacionOut,
     ComentarioIn,
     DocumentoConFirmasOut,
     DocumentoOut,
@@ -36,6 +37,7 @@ from app.schemas.tramites import (
     RechazarFirmaIn,
     RelacionOut,
     RelacionarIn,
+    ResolverAprobacionIn,
     TipoTramiteDetalleOut,
     TipoTramiteListItem,
     TipoTramiteListOut,
@@ -52,6 +54,7 @@ from app.schemas.tramites import (
     VersionOut,
 )
 from app.services.tramites import auth as svc_auth
+from app.services.tramites import aprobaciones as svc_aprob
 from app.services.tramites import autorizacion as svc_autorizacion
 from app.services.tramites import creacion as svc_creacion
 from app.services.tramites import documentos as svc_docs
@@ -1001,6 +1004,8 @@ async def _tramite_detalle_out(id_tramite: int, db: AsyncSession) -> TramiteDeta
         WHERE (tr.id_tramite_a=:id OR tr.id_tramite_b=:id) AND tr.activo=TRUE
     """), {"id": id_tramite})).fetchall()
 
+    aprob_rows = await svc_aprob.aprobaciones_de_tramite(db, id_tramite)
+
     return TramiteDetalleOut(
         id_tramite=row.id_tramite, numero_expediente=row.numero_expediente,
         asunto=row.asunto, datos_jsonb=row.datos_jsonb,
@@ -1027,6 +1032,7 @@ async def _tramite_detalle_out(id_tramite: int, db: AsyncSession) -> TramiteDeta
                 tipo_relacion=r.tipo_relacion, fecha_alta=r.fecha_alta,
             ) for r in rel_rows
         ],
+        aprobaciones=[AprobacionOut(**a) for a in aprob_rows],
         fecha_alta=row.fecha_alta, id_municipio=row.id_municipio,
     )
 
@@ -1171,6 +1177,12 @@ async def crear_tramite(
         db, id_tramite, "numeracion", id_usuario, agente["id_agente"],
         body.id_municipio, request,
         metadata_jsonb={"numero_expediente": numero_expediente, "correlativo": correlativo, "anio": anio},
+    )
+
+    # Instanciar las aprobaciones requeridas del estado inicial (idempotente)
+    await svc_aprob.instanciar_aprobaciones_de_estado(
+        db, id_tramite, tipo_row.id_version_publicada,
+        estado_inicial.id_tipo_tramite_estado,
     )
 
     await db.commit()
@@ -1392,6 +1404,19 @@ async def transicionar_tramite(
         if not tiene_doc:
             raise HTTPException(400, "Esta transicion requiere adjuntar al menos un documento en el estado actual")
 
+    # Aprobaciones por etapa: no se puede avanzar si hay marcas BLOQUEANTES del
+    # estado actual sin aprobar (pendientes o rechazadas). Espeja requiere_adjunto.
+    pendientes_aprob = await svc_aprob.aprobaciones_bloqueantes_pendientes(
+        db, id_tramite, tramite["id_tipo_tramite_estado_actual"]
+    )
+    if pendientes_aprob:
+        etiquetas = ", ".join(p["etiqueta"] for p in pendientes_aprob)
+        raise HTTPException(
+            422,
+            f"Faltan aprobaciones de la etapa actual: {etiquetas}. "
+            "El tramite no puede avanzar hasta que esten aprobadas.",
+        )
+
     id_estado_origen = tramite["id_tipo_tramite_estado_actual"]
     id_estado_destino = trans["id_estado_destino"]
 
@@ -1448,6 +1473,11 @@ async def transicionar_tramite(
         update_params,
     )
 
+    # Instanciar aprobaciones requeridas del estado destino (idempotente)
+    await svc_aprob.instanciar_aprobaciones_de_estado(
+        db, id_tramite, tramite["id_tipo_tramite_version"], id_estado_destino
+    )
+
     orig_jsonb = {"tipo": tramite.get("destinatario_actual_tipo"), "id": tramite.get("id_subarea_actual") or tramite.get("id_equipo_actual") or tramite.get("id_agente_actual")}
     dest_jsonb = {"tipo": nuevo_dest_tipo, "id": nuevo_dest_sa or nuevo_dest_eq or nuevo_dest_ag}
 
@@ -1479,6 +1509,93 @@ async def transicionar_tramite(
             mensaje_custom=trans.get("mensaje_iniciador"),
         )
 
+    return await _tramite_detalle_out(id_tramite, db)
+
+
+# ---------------------------------------------------------------------------
+# POST /{tramite_ref}/aprobaciones/{id_aprob}/resolver
+# Aprobar/rechazar una marca de etapa (visado). El path es especifico
+# (sufijo /aprobaciones/...) asi que no choca con /{numero_o_id}.
+# ---------------------------------------------------------------------------
+
+@router.post("/{tramite_ref}/aprobaciones/{id_aprob}/resolver", response_model=TramiteDetalleOut)
+async def resolver_aprobacion(
+    tramite_ref: str,
+    id_aprob: int,
+    body: ResolverAprobacionIn,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Resuelve una aprobacion de etapa (aprobada|rechazada).
+
+    Solo quien pertenece al area aprobadora (subarea/equipo/agente) o un admin
+    (nivel <= 2) puede resolverla. Registra un movimiento 'aprobacion' en el
+    timeline. NO dispara transiciones: el rechazo deja el tramite trabado con
+    motivo visible (el area subsana y re-resuelve).
+    """
+    decision = (body.decision or "").strip().lower()
+    if decision not in ("aprobada", "rechazada"):
+        raise HTTPException(400, "decision debe ser 'aprobada' o 'rechazada'")
+
+    agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
+    if not agente:
+        raise HTTPException(403, "El usuario no tiene un agente asociado")
+
+    id_tramite, _ = await _resolver_tramite(tramite_ref, db)
+
+    # Lock pesimista del tramite (la marca cuelga de el)
+    tramite = dict((await db.execute(
+        text("SELECT * FROM tramite WHERE id_tramite=:id AND activo=TRUE FOR UPDATE"),
+        {"id": id_tramite},
+    )).fetchone()._mapping)
+
+    requisito = await svc_aprob.requisito_de_aprobacion(db, id_aprob)
+    if not requisito or requisito["id_tramite"] != id_tramite:
+        raise HTTPException(404, "Aprobacion no encontrada para este tramite")
+
+    if not svc_aprob.agente_puede_resolver(requisito, agente):
+        raise HTTPException(403, "No perteneces al area que debe resolver esta aprobacion")
+
+    # Validar documento opcional pertenece al tramite
+    if body.id_tramite_documento is not None:
+        doc_ok = (await db.execute(
+            text("SELECT 1 FROM tramite_documento WHERE id_tramite_documento=:d AND id_tramite=:t AND activo=TRUE"),
+            {"d": body.id_tramite_documento, "t": id_tramite},
+        )).fetchone()
+        if not doc_ok:
+            raise HTTPException(400, "El documento indicado no pertenece a este tramite")
+
+    await db.execute(
+        text("""
+            UPDATE tramite_aprobacion SET
+                estado=:est,
+                resuelto_por_agente=:ag,
+                resuelto_en=NOW(),
+                comentario=:com,
+                id_tramite_documento=:doc,
+                fecha_modificacion=NOW(),
+                id_usuario_modificacion=:uid
+            WHERE id_tramite_aprobacion=:id AND activo=TRUE
+        """),
+        {
+            "est": decision, "ag": agente["id_agente"], "com": body.comentario,
+            "doc": body.id_tramite_documento, "uid": current_user["id_usuario"],
+            "id": id_aprob,
+        },
+    )
+
+    await svc_mov.registrar_movimiento(
+        db, id_tramite, "aprobacion", current_user["id_usuario"], agente["id_agente"],
+        tramite["id_municipio"], request,
+        comentario=body.comentario,
+        metadata_jsonb={
+            "id_tramite_aprobacion": id_aprob,
+            "etiqueta": requisito["etiqueta"],
+            "decision": decision,
+        },
+    )
+    await db.commit()
     return await _tramite_detalle_out(id_tramite, db)
 
 

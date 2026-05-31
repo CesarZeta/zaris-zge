@@ -15,6 +15,9 @@ import {
   crearEstado,
   crearTipo,
   crearTransicion,
+  crearAprobRequerida,
+  actualizarAprobRequerida,
+  eliminarAprobRequerida,
   detalleTipoAdmin,
   detalleVersion,
   eliminarCampo,
@@ -33,6 +36,7 @@ import {
   type TipoUpdateBody,
   type TransicionCreateBody,
   type TransicionUpdateBody,
+  type AprobReqBody,
 } from './api'
 import { listarTiposAdmin } from './api'
 
@@ -267,6 +271,34 @@ export function useReordenarDocReq() {
         await actualizarDocRequerido(idsEnOrden[i], { orden: i + 1 })
       }
     },
+    onSuccess: () => inv(),
+  })
+}
+
+/* ── Aprobaciones por etapa (visados) ────────────────── */
+
+export function useCrearAprobReq() {
+  const inv = useInvalidarCatalogo()
+  return useMutation({
+    mutationFn: ({ idVersion, body }: { idVersion: number; body: AprobReqBody }) =>
+      crearAprobRequerida(idVersion, body),
+    onSuccess: () => inv(),
+  })
+}
+
+export function useActualizarAprobReq() {
+  const inv = useInvalidarCatalogo()
+  return useMutation({
+    mutationFn: ({ idAprob, body }: { idAprob: number; body: AprobReqBody }) =>
+      actualizarAprobRequerida(idAprob, body),
+    onSuccess: () => inv(),
+  })
+}
+
+export function useEliminarAprobReq() {
+  const inv = useInvalidarCatalogo()
+  return useMutation({
+    mutationFn: (idAprob: number) => eliminarAprobRequerida(idAprob),
     onSuccess: () => inv(),
   })
 }

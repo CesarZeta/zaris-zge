@@ -166,6 +166,24 @@ class RelacionOut(BaseModel):
     fecha_alta: datetime
 
 
+class AprobacionOut(BaseModel):
+    """Marca de aprobacion/visado de etapa instanciada en un tramite."""
+    id_tramite_aprobacion: int
+    id_tipo_tramite_aprobacion_requerida: int
+    etiqueta: str
+    estado: str  # pendiente | aprobada | rechazada
+    bloqueante: bool
+    comentario: Optional[str] = None
+    resuelto_en: Optional[datetime] = None
+    resuelto_por_nombre: Optional[str] = None
+    id_tipo_tramite_estado: int
+    estado_codigo: Optional[str] = None
+    estado_etiqueta: Optional[str] = None
+    aprobador_tipo: str  # subarea | equipo | agente
+    aprobador_nombre: Optional[str] = None
+    id_tramite_documento: Optional[int] = None
+
+
 class TramiteDetalleOut(BaseModel):
     id_tramite: int
     numero_expediente: str
@@ -193,6 +211,7 @@ class TramiteDetalleOut(BaseModel):
     cant_documentos: int
     cant_firmas_pendientes: int
     relaciones: list[RelacionOut] = []
+    aprobaciones: list[AprobacionOut] = []
     fecha_alta: datetime
     id_municipio: int
 
@@ -293,6 +312,25 @@ class PaseIn(BaseModel):
     destinatario_tipo: str  # subarea | equipo | agente
     destinatario_id: int
     comentario: Optional[str] = None
+
+
+class ResolverAprobacionIn(BaseModel):
+    decision: str  # aprobada | rechazada
+    comentario: Optional[str] = None
+    id_tramite_documento: Optional[int] = None
+
+
+class AprobacionRequeridaIn(BaseModel):
+    """Alta/edicion de un visado requerido por etapa (builder de tipos)."""
+    id_tipo_tramite_estado: int
+    aprobador_tipo: str  # subarea | equipo | agente
+    id_subarea_aprobadora: Optional[int] = None
+    id_equipo_aprobador: Optional[int] = None
+    id_agente_aprobador: Optional[int] = None
+    etiqueta: str
+    bloqueante: bool = True
+    id_tipo_tramite_documento_requerido: Optional[int] = None
+    orden: int = 1
 
 
 class ComentarioIn(BaseModel):
