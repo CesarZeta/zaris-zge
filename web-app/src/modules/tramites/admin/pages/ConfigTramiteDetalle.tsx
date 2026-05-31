@@ -407,7 +407,8 @@ export function ConfigTramiteDetalle() {
                           reordenarCampoM.mutate(ids)
                         }}
                         disabled={!editable || idx === 0 || reordenarCampoM.isPending}
-                        title="Subir" style={btnOrden}
+                        title={!editable ? 'Versión no editable' : 'Subir'}
+                        style={btnOrdenStyle(!editable || idx === 0 || reordenarCampoM.isPending)}
                       >
                         <ChevronUp size={13} />
                       </button>
@@ -418,7 +419,8 @@ export function ConfigTramiteDetalle() {
                           reordenarCampoM.mutate(ids)
                         }}
                         disabled={!editable || idx === arr.length - 1 || reordenarCampoM.isPending}
-                        title="Bajar" style={btnOrden}
+                        title={!editable ? 'Versión no editable' : 'Bajar'}
+                        style={btnOrdenStyle(!editable || idx === arr.length - 1 || reordenarCampoM.isPending)}
                       >
                         <ChevronDown size={13} />
                       </button>
@@ -606,7 +608,8 @@ export function ConfigTramiteDetalle() {
                             reordenarDocM.mutate(ids)
                           }}
                           disabled={!editable || idx === 0 || reordenarDocM.isPending}
-                          title="Subir" style={btnOrden}
+                          title={!editable ? 'Versión no editable' : 'Subir'}
+                          style={btnOrdenStyle(!editable || idx === 0 || reordenarDocM.isPending)}
                         >
                           <ChevronUp size={13} />
                         </button>
@@ -617,7 +620,8 @@ export function ConfigTramiteDetalle() {
                             reordenarDocM.mutate(ids)
                           }}
                           disabled={!editable || idx === arr.length - 1 || reordenarDocM.isPending}
-                          title="Bajar" style={btnOrden}
+                          title={!editable ? 'Versión no editable' : 'Bajar'}
+                          style={btnOrdenStyle(!editable || idx === arr.length - 1 || reordenarDocM.isPending)}
                         >
                           <ChevronDown size={13} />
                         </button>
@@ -797,4 +801,11 @@ const toggleBtn: React.CSSProperties = {
 const btnOrden: React.CSSProperties = {
   background: 'transparent', border: 'none', cursor: 'pointer',
   color: 'var(--fg-2)', padding: 0, lineHeight: 0, height: 16,
+}
+
+/** Estilo del botón de orden ↑/↓ con feedback visual de deshabilitado. */
+function btnOrdenStyle(disabled: boolean): React.CSSProperties {
+  return disabled
+    ? { ...btnOrden, cursor: 'not-allowed', opacity: 0.35 }
+    : btnOrden
 }
