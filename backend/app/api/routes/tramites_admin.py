@@ -391,6 +391,19 @@ async def detalle_version(
         {"v": id_version},
     )).fetchall()
 
+    aprobaciones = (await db.execute(
+        text("""
+            SELECT id_tipo_tramite_aprobacion_requerida, id_tipo_tramite_estado,
+                   aprobador_tipo, id_subarea_aprobadora, id_equipo_aprobador,
+                   id_agente_aprobador, etiqueta, bloqueante,
+                   id_tipo_tramite_documento_requerido, orden
+            FROM tipo_tramite_aprobacion_requerida
+            WHERE id_tipo_tramite_version = :v AND activo = TRUE
+            ORDER BY orden, id_tipo_tramite_aprobacion_requerida
+        """),
+        {"v": id_version},
+    )).fetchall()
+
     return {
         "id_tipo_tramite_version": ver["id_tipo_tramite_version"],
         "id_tipo_tramite": ver["id_tipo_tramite"],
@@ -402,6 +415,7 @@ async def detalle_version(
         "estados": [dict(r._mapping) for r in estados],
         "transiciones": [dict(r._mapping) for r in transiciones],
         "documentos_requeridos": [dict(r._mapping) for r in docs],
+        "aprobaciones_requeridas": [dict(r._mapping) for r in aprobaciones],
     }
 
 
@@ -1030,3 +1044,137 @@ async def _doc_req_out(db: AsyncSession, id_doc: int) -> DocumentoRequeridoOut:
         cantidad_max_archivos=r.cantidad_max_archivos,
         orden=r.orden,
     )
+
+
+# ===========================================================================
+# Aprobaciones por etapa (visados) — catalogo versionado (mig 73)
+# ===========================================================================
+
+def _aprob_fks(body: AprobacionRequeridaIn) -> dict:
+    """Valida que exactamente la FK del aprobador_tipo este presente; devuelve
+    las 3 FKs normalizadas (la elegida + las otras dos en None)."""
+    tipo = body.aprobador_tipo
+    if tipo not in ("subarea", "equipo", "agente"):
+        raise HTTPException(400, "aprobador_tipo debe ser 'subarea', 'equipo' o 'agente'")
+    elegida = {
+        "subarea": body.id_subarea_aprobadora,
+        "equipo": body.id_equipo_aprobador,
+        "agente": body.id_agente_aprobador,
+    }[tipo]
+    if elegida is None:
+        raise HTTPException(400, f"Falta el id del aprobador para tipo '{tipo}'")
+    return {
+        "sa": elegida if tipo == "subarea" else None,
+        "eq": elegida if tipo == "equipo" else None,
+        "ag": elegida if tipo == "agente" else None,
+    }
+
+
+@router.post("/versiones/{id_version}/aprobaciones-requeridas", status_code=201)
+async def crear_aprobacion_requerida(
+    id_version: int,
+    body: AprobacionRequeridaIn,
+    user: dict = Depends(_require_admin_supervisor),
+    db: AsyncSession = Depends(get_db),
+):
+    ver = await svc_ver.asegurar_editable(db, id_version)
+    # Validar que el estado pertenezca a la version
+    ok = (await db.execute(
+        text("""
+            SELECT 1 FROM tipo_tramite_estado
+            WHERE id_tipo_tramite_estado = :e AND id_tipo_tramite_version = :v AND activo = TRUE
+        """),
+        {"e": body.id_tipo_tramite_estado, "v": id_version},
+    )).fetchone()
+    if not ok:
+        raise HTTPException(422, "El estado referenciado no pertenece a esta version o esta inactivo")
+
+    fks = _aprob_fks(body)
+    new_id = (await db.execute(
+        text("""
+            INSERT INTO tipo_tramite_aprobacion_requerida
+                (id_tipo_tramite_version, id_tipo_tramite_estado, aprobador_tipo,
+                 id_subarea_aprobadora, id_equipo_aprobador, id_agente_aprobador,
+                 etiqueta, bloqueante, id_tipo_tramite_documento_requerido,
+                 orden, activo, id_municipio)
+            VALUES (:v, :est, :tipo, :sa, :eq, :ag, :eti, :blo, :doc,
+                    :ord, TRUE, :mun)
+            RETURNING id_tipo_tramite_aprobacion_requerida
+        """),
+        {
+            "v": id_version, "est": body.id_tipo_tramite_estado,
+            "tipo": body.aprobador_tipo, "sa": fks["sa"], "eq": fks["eq"], "ag": fks["ag"],
+            "eti": body.etiqueta, "blo": body.bloqueante,
+            "doc": body.id_tipo_tramite_documento_requerido, "ord": body.orden,
+            "mun": ver["id_municipio"],
+        },
+    )).scalar_one()
+    await db.commit()
+    return {"id_tipo_tramite_aprobacion_requerida": int(new_id)}
+
+
+@router.put("/aprobaciones-requeridas/{id_aprob_req}")
+async def actualizar_aprobacion_requerida(
+    id_aprob_req: int,
+    body: AprobacionRequeridaIn,
+    user: dict = Depends(_require_admin_supervisor),
+    db: AsyncSession = Depends(get_db),
+):
+    fila = (await db.execute(
+        text("SELECT id_tipo_tramite_version FROM tipo_tramite_aprobacion_requerida WHERE id_tipo_tramite_aprobacion_requerida = :id"),
+        {"id": id_aprob_req},
+    )).fetchone()
+    if not fila:
+        raise HTTPException(404, "Aprobacion requerida no encontrada")
+    await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version)
+
+    ok = (await db.execute(
+        text("""
+            SELECT 1 FROM tipo_tramite_estado
+            WHERE id_tipo_tramite_estado = :e AND id_tipo_tramite_version = :v AND activo = TRUE
+        """),
+        {"e": body.id_tipo_tramite_estado, "v": fila.id_tipo_tramite_version},
+    )).fetchone()
+    if not ok:
+        raise HTTPException(422, "El estado referenciado no pertenece a esta version")
+
+    fks = _aprob_fks(body)
+    await db.execute(
+        text("""
+            UPDATE tipo_tramite_aprobacion_requerida SET
+                id_tipo_tramite_estado = :est, aprobador_tipo = :tipo,
+                id_subarea_aprobadora = :sa, id_equipo_aprobador = :eq, id_agente_aprobador = :ag,
+                etiqueta = :eti, bloqueante = :blo,
+                id_tipo_tramite_documento_requerido = :doc, orden = :ord,
+                fecha_modificacion = NOW()
+            WHERE id_tipo_tramite_aprobacion_requerida = :id
+        """),
+        {
+            "id": id_aprob_req, "est": body.id_tipo_tramite_estado,
+            "tipo": body.aprobador_tipo, "sa": fks["sa"], "eq": fks["eq"], "ag": fks["ag"],
+            "eti": body.etiqueta, "blo": body.bloqueante,
+            "doc": body.id_tipo_tramite_documento_requerido, "ord": body.orden,
+        },
+    )
+    await db.commit()
+    return {"ok": True}
+
+
+@router.delete("/aprobaciones-requeridas/{id_aprob_req}", status_code=204)
+async def eliminar_aprobacion_requerida(
+    id_aprob_req: int,
+    user: dict = Depends(_require_admin_supervisor),
+    db: AsyncSession = Depends(get_db),
+):
+    fila = (await db.execute(
+        text("SELECT id_tipo_tramite_version FROM tipo_tramite_aprobacion_requerida WHERE id_tipo_tramite_aprobacion_requerida = :id AND activo = TRUE"),
+        {"id": id_aprob_req},
+    )).fetchone()
+    if not fila:
+        raise HTTPException(404, "Aprobacion requerida no encontrada o ya inactiva")
+    await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version)
+    await db.execute(
+        text("UPDATE tipo_tramite_aprobacion_requerida SET activo = FALSE, fecha_modificacion = NOW() WHERE id_tipo_tramite_aprobacion_requerida = :id"),
+        {"id": id_aprob_req},
+    )
+    await db.commit()

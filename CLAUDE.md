@@ -2343,6 +2343,21 @@ Fix:
 
 **Smoke E2E validado:** crear tipo → 3 estados → 2 transiciones → campo → doc requerido → publicar → instanciar trámite → editar v1 publicada con trámites = 409 → crear v2 borrador (copia estructura). Cleanup completo (test data borrada, agente del admin restaurado).
 
+### Aprobaciones por etapa (visados) — backend ✅ + builder frontend ✅; detalle frontend PENDIENTE (2026-05-31, mig 73, SIN commitear/pushear al cierre)
+
+Marca paralela a los estados FSM: un área **aprueba/rechaza** una etapa; las marcas **bloqueantes impiden avanzar** hasta estar aprobadas. Modelo nuevo, separado de `tramite_firma` (firma digital con evidencia hash/IP) — conviven. Patrón catálogo+instancia.
+
+**DB (mig 73 `73_tramites_aprobaciones_por_etapa.sql`, aplicada local + prod, verificado por MCP):**
+- `tipo_tramite_aprobacion_requerida` (catálogo **versionado**): `id_tipo_tramite_version`, `id_tipo_tramite_estado` (la etapa), aprobador **polimórfico** (`aprobador_tipo` ∈ subarea|equipo|agente + CHECK `ck_ttar_aprobador_exactamente_uno`), `etiqueta`, `bloqueante BOOL` default TRUE, `id_tipo_tramite_documento_requerido` NULL (opcional), `orden`, + estándar §10.
+- `tramite_aprobacion` (instancia): `id_tramite`, FK al requisito, `id_tipo_tramite_estado` (desnorm para guard rápido), `estado` pendiente|aprobada|rechazada, `resuelto_por_agente`/`resuelto_en`/`comentario`, `id_tramite_documento` NULL, + estándar §10. UNIQUE `(id_tramite, id_tipo_tramite_aprobacion_requerida)` = idempotencia.
+- `'aprobacion'` agregado al CHECK `tramite_movimiento_tipo_check` (timeline).
+
+**Backend — COMPLETO y verificado E2E API** (en disco; `versionado.py` + `admin/api.ts` ya en commit `e10723f`, el resto sin commitear): `services/tramites/aprobaciones.py` (instanciar al entrar a etapa idempotente, `aprobaciones_bloqueantes_pendientes`, `agente_puede_resolver` polimórfico, `aprobaciones_de_tramite`). En `routes/tramites.py`: instanciación en crear/transicionar; **guard 422** tras el bloque `requiere_adjunto` (espeja su patrón); endpoint `POST /tramites/{ref}/aprobaciones/{id_aprob}/resolver`; el **rechazo NO dispara transición** (deja el trámite trabado con motivo visible). 3 CRUD `/aprobaciones-requeridas` + `_aprob_fks` + bloque en `detalle_version` en `tramites_admin.py`. Copia en `versionado._copiar_estructura`. Schemas `AprobacionOut`/`ResolverAprobacionIn`/`AprobacionRequeridaIn` + campo `aprobaciones` en `TramiteDetalleOut`. Verificado: block 422 → resolve 200 → unblock 200→final, timeline `aprobacion`.
+
+**Builder frontend — HECHO** (compila): tab "Aprobaciones" en `ConfigTramiteDetalle.tsx` (`SeccionLista` + `AprobReqModal.tsx`, reusa `listarDestinatariosPase`) + `admin/api.ts` (`TipoTramiteAprobReq`, `AprobReqBody`, 3 fns, campo en `DetalleVersion`) + `admin/hooks.ts` (3 hooks).
+
+**Detalle frontend — PENDIENTE** (Fase 4, no escrito; el árbol compila igual porque nada lo referencia aún): falta `tramites/types.ts` (`TramiteAprobacion` + campo en `TramiteDetalle` — OJO el archivo real es `tramites/types.ts`, NO `lib/types.ts`), `lib/api.ts resolverAprobacion`, `hooks/useTramites.ts useResolverAprobacion`, `components/PanelAprobaciones.tsx` (panel verde/rojo/gris + Resolver + aviso de bloqueo) montado en `pages/DetalleTramite.tsx`. Paso-a-paso en [[project_tramites_aprobaciones_por_etapa]] / [[project_estado_sesion_y_pendientes]].
+
 
 ## 36. Generación de manuales operativos (HTML autocontenidos)
 
