@@ -18,12 +18,14 @@ import {
   useEliminarTransicion,
   useEliminarDocReq,
   useReordenarDocReq,
+  useEliminarAprobReq,
 } from '../hooks'
 import { EditarTipoModal } from '../modals/EditarTipoModal'
 import { CampoModal } from '../modals/CampoModal'
 import { EstadoModal } from '../modals/EstadoModal'
 import { TransicionModal } from '../modals/TransicionModal'
 import { DocReqModal } from '../modals/DocReqModal'
+import { AprobReqModal } from '../modals/AprobReqModal'
 import { PreviewFormulario } from '../components/PreviewFormulario'
 import { ConfirmModal } from '../../../agenda/components/ConfirmModal'
 import type {
@@ -32,8 +34,9 @@ import type {
   TipoTramiteTransicion,
   TipoTramiteDocRequerido,
 } from '../../types'
+import type { TipoTramiteAprobReq } from '../api'
 
-type TabKey = 'general' | 'campos' | 'estados' | 'transiciones' | 'documentos'
+type TabKey = 'general' | 'campos' | 'estados' | 'transiciones' | 'documentos' | 'aprobaciones'
 
 export function ConfigTramiteDetalle() {
   const { idTipo } = useParams<{ idTipo: string }>()
@@ -68,6 +71,7 @@ export function ConfigTramiteDetalle() {
   const [estadoEditando, setEstadoEditando] = useState<TipoTramiteEstado | 'nuevo' | null>(null)
   const [transEditando, setTransEditando] = useState<TipoTramiteTransicion | 'nuevo' | null>(null)
   const [docEditando, setDocEditando] = useState<TipoTramiteDocRequerido | 'nuevo' | null>(null)
+  const [aprobEditando, setAprobEditando] = useState<TipoTramiteAprobReq | 'nuevo' | null>(null)
 
   // Pop-up de confirmación genérico para todos los borrados de esta pantalla (§29).
   const [confirmar, setConfirmar] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null)
@@ -82,6 +86,7 @@ export function ConfigTramiteDetalle() {
   const eliminarTransM = useEliminarTransicion()
   const eliminarDocM = useEliminarDocReq()
   const reordenarDocM = useReordenarDocReq()
+  const eliminarAprobM = useEliminarAprobReq()
 
   if (tipo.isLoading) {
     return <Skeleton height={300} />
@@ -655,6 +660,54 @@ export function ConfigTramiteDetalle() {
         </SeccionLista>
       )}
 
+      {tab === 'aprobaciones' && versionData && (
+        <SeccionLista
+          titulo="Aprobaciones por etapa (visados)"
+          editable={editable}
+          onNuevo={() => setAprobEditando('nuevo')}
+          vacio={(versionData.aprobaciones_requeridas ?? []).length === 0}
+          vacioMsg="No hay aprobaciones por etapa. Agregá los visados que un área debe resolver en una etapa; las bloqueantes impiden avanzar hasta estar aprobadas."
+        >
+          <table style={{ width: '100%', fontSize: 14 }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--border-primary)' }}>
+                <th style={th}>Etiqueta</th>
+                <th style={th}>Etapa</th>
+                <th style={th}>Aprueba</th>
+                <th style={th}>Efecto</th>
+                <th style={th}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...(versionData.aprobaciones_requeridas ?? [])].sort((a,b)=>a.orden-b.orden).map((a) => (
+                <tr key={a.id_tipo_tramite_aprobacion_requerida} style={{ borderBottom: '1px solid var(--border-primary)' }}>
+                  <td style={td}>{a.etiqueta}</td>
+                  <td style={td}>{versionData.estados.find((e) => e.id_tipo_tramite_estado === a.id_tipo_tramite_estado)?.etiqueta ?? '—'}</td>
+                  <td style={td}>{a.aprobador_tipo === 'subarea' ? 'Subárea' : a.aprobador_tipo === 'equipo' ? 'Mesa/Equipo' : 'Agente'}</td>
+                  <td style={td}>
+                    {a.bloqueante ? <Badge kind="warn">Bloqueante</Badge> : <Badge kind="neutral">Informativa</Badge>}
+                  </td>
+                  <td style={{ ...td, textAlign: 'right' }}>
+                    <Accion
+                      editable={editable}
+                      onEdit={() => setAprobEditando(a)}
+                      onDel={() => setConfirmar({
+                        title: 'Eliminar aprobación por etapa',
+                        message: `¿Eliminar la aprobación "${a.etiqueta}"?`,
+                        onConfirm: async () => {
+                          try { await eliminarAprobM.mutateAsync(a.id_tipo_tramite_aprobacion_requerida) }
+                          catch (er) { alert(er instanceof Error ? er.message : 'Error') }
+                        },
+                      })}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </SeccionLista>
+      )}
+
       {/* Modales */}
       {editarTipoAbierto && (
         <EditarTipoModal tipo={tipoData} onCerrar={() => setEditarTipoAbierto(false)} />
@@ -687,6 +740,14 @@ export function ConfigTramiteDetalle() {
           doc={docEditando === 'nuevo' ? null : docEditando}
           estados={versionData.estados}
           onCerrar={() => setDocEditando(null)}
+        />
+      )}
+      {aprobEditando && versionData && (
+        <AprobReqModal
+          idVersion={versionData.id_tipo_tramite_version}
+          aprob={aprobEditando === 'nuevo' ? null : aprobEditando}
+          estados={versionData.estados}
+          onCerrar={() => setAprobEditando(null)}
         />
       )}
 
