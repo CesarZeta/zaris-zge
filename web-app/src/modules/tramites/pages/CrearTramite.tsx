@@ -95,14 +95,15 @@ export function CrearTramite() {
     try {
       const result = await crearMutation.mutateAsync({
         id_tipo_tramite: idTipoSeleccionado,
-        id_tipo_tramite_version: tipo.version.id_tipo_tramite_version,
         asunto: asunto.trim(),
-        iniciador_tipo: iniciadorTipo,
-        id_ciudadano_iniciador: iniciadorTipo === 'ciudadano' ? idCiudadano : null,
-        id_empresa_iniciadora: iniciadorTipo === 'empresa' ? idEmpresa : null,
-        id_subarea_iniciadora: iniciadorTipo === 'area_interna' ? idSubareaIniciadora : null,
-        id_ciudadano_representante: idRepresentante ?? null,
-        datos_jsonb: datos,
+        iniciador: {
+          tipo: iniciadorTipo,
+          id_ciudadano: iniciadorTipo === 'ciudadano' ? idCiudadano : null,
+          id_empresa: iniciadorTipo === 'empresa' ? idEmpresa : null,
+          id_subarea: iniciadorTipo === 'area_interna' ? idSubareaIniciadora : null,
+          id_ciudadano_representante: idRepresentante ?? null,
+        },
+        datos,
       })
       push({ kind: 'success', title: 'Trámite creado', body: result.numero_expediente })
       navigate(`/tramites/${result.numero_expediente}`)
