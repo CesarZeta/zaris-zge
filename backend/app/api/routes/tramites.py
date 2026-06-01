@@ -1409,18 +1409,24 @@ async def transicionar_tramite(
         if not tiene_doc:
             raise HTTPException(400, "Esta transicion requiere adjuntar al menos un documento en el estado actual")
 
-    # Aprobaciones por etapa: no se puede avanzar si hay marcas BLOQUEANTES del
+    # Aprobaciones por etapa: no se puede AVANZAR si hay marcas BLOQUEANTES del
     # estado actual sin aprobar (pendientes o rechazadas). Espeja requiere_adjunto.
-    pendientes_aprob = await svc_aprob.aprobaciones_bloqueantes_pendientes(
-        db, id_tramite, tramite["id_tipo_tramite_estado_actual"]
-    )
-    if pendientes_aprob:
-        etiquetas = ", ".join(p["etiqueta"] for p in pendientes_aprob)
-        raise HTTPException(
-            422,
-            f"Faltan aprobaciones de la etapa actual: {etiquetas}. "
-            "El tramite no puede avanzar hasta que esten aprobadas.",
+    # EXCEPCION: las transiciones de tipo 'derivar' (devolver a subsanacion) SI se
+    # permiten con bloqueantes sin aprobar — justamente sirven para destrabar el
+    # tramite cuando un visado fue rechazado. El guard solo aplica a transiciones
+    # que hacen progresar el circuito (avanzar/aprobar/etc.), no a las que lo
+    # devuelven hacia atras para corregir.
+    if trans.get("tipo_accion") != "derivar":
+        pendientes_aprob = await svc_aprob.aprobaciones_bloqueantes_pendientes(
+            db, id_tramite, tramite["id_tipo_tramite_estado_actual"]
         )
+        if pendientes_aprob:
+            etiquetas = ", ".join(p["etiqueta"] for p in pendientes_aprob)
+            raise HTTPException(
+                422,
+                f"Faltan aprobaciones de la etapa actual: {etiquetas}. "
+                "El tramite no puede avanzar hasta que esten aprobadas.",
+            )
 
     id_estado_origen = tramite["id_tipo_tramite_estado_actual"]
     id_estado_destino = trans["id_estado_destino"]
