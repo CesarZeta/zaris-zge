@@ -684,13 +684,37 @@ async def buscar_o_crear_ciudadano_por_dni(
 def descripcion_corta_sql() -> str:
     """SQL CASE que arma una descripcion legible de la ocupacion segun su tipo.
     Diseñado para usar en JOINs - referencias a tablas: o (ocupaciones),
-    ev (eventos), ot (ordenes_trabajo), ci (ciudadanos)."""
+    ev (eventos), ot (ordenes_trabajo), ci (ciudadanos).
+
+    Para que al hacer click en una franja de la agenda se vea QUE la ocupa:
+    - OT: nro de OT + el RECLAMO de origen (nro + tipo de reclamo), no solo el nro de OT.
+    - Turno: la PRESTACION + el ciudadano, no solo el ciudadano.
+    El reclamo y la prestacion se traen con subqueries escalares correlacionadas
+    (no como JOIN) para no tener que tocar los ~5 SELECT que usan este helper.
+    El turno se resuelve via turnos.id_ocupacion = o.id_ocupacion (espejo, §33)."""
     return """
         CASE o.tipo
             WHEN 'evento' THEN COALESCE('Evento: ' || ev.nombre, 'Evento')
-            WHEN 'ot'     THEN COALESCE('OT '      || ot.nro_ot || ' - ' || LEFT(ot.observaciones, 60),
-                                        'OT '      || ot.nro_ot,
-                                        'OT')
-            WHEN 'turno'  THEN COALESCE('Turno: '  || ci.apellido || ', ' || ci.nombre, 'Turno')
+            WHEN 'ot'     THEN COALESCE(
+                'OT ' || ot.nro_ot || ' · ' || (
+                    SELECT COALESCE(r_oc.nro_reclamo || ' - ' || tr_oc.nombre,
+                                    r_oc.nro_reclamo,
+                                    LEFT(ot.observaciones, 60))
+                    FROM reclamos r_oc
+                    LEFT JOIN tipo_reclamo tr_oc ON tr_oc.id_tipo_reclamo = r_oc.id_tipo_reclamo
+                    WHERE r_oc.id_reclamo = ot.id_reclamo
+                ),
+                'OT ' || ot.nro_ot || ' - ' || LEFT(ot.observaciones, 60),
+                'OT ' || ot.nro_ot,
+                'OT')
+            WHEN 'turno'  THEN COALESCE(
+                (
+                    SELECT tp_oc.nombre || ' · ' || ci.apellido || ', ' || ci.nombre
+                    FROM turnos t_oc
+                    JOIN tipo_prestacion tp_oc ON tp_oc.id_tipo_prestacion = t_oc.id_tipo_prestacion
+                    WHERE t_oc.id_ocupacion = o.id_ocupacion
+                ),
+                'Turno: ' || ci.apellido || ', ' || ci.nombre,
+                'Turno')
         END
     """
