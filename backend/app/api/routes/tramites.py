@@ -738,6 +738,10 @@ async def detalle_tramite(
         for r in rel_rows
     ]
 
+    # Aprobaciones de etapa (visados) — mismo set que arma _tramite_detalle_out
+    # tras las mutaciones; este handler GET es el que carga la pantalla al entrar.
+    aprob_rows = await svc_aprob.aprobaciones_de_tramite(db, row.id_tramite)
+
     return TramiteDetalleOut(
         id_tramite=row.id_tramite,
         numero_expediente=row.numero_expediente,
@@ -765,6 +769,7 @@ async def detalle_tramite(
         cant_documentos=cant_docs,
         cant_firmas_pendientes=cant_firmas,
         relaciones=relaciones,
+        aprobaciones=[AprobacionOut(**a) for a in aprob_rows],
         fecha_alta=row.fecha_alta,
         id_municipio=row.id_municipio,
     )

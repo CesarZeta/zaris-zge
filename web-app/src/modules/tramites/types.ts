@@ -203,6 +203,7 @@ export interface TramiteDetalle {
   cant_documentos: number
   cant_firmas_pendientes: number
   relaciones: TramiteRelacion[]
+  aprobaciones: TramiteAprobacion[]
   fecha_alta: string
   id_municipio: number
 }
@@ -269,6 +270,26 @@ export interface TramiteRelacion {
   tipo_relacion: 'asociacion_simple' | 'conjunta' | 'fusion'
   comentario: string | null
   fecha_alta: string
+}
+
+export type EstadoAprobacion = 'pendiente' | 'aprobada' | 'rechazada'
+
+// Visado de etapa instanciado en el trámite (shape = AprobacionOut del backend).
+export interface TramiteAprobacion {
+  id_tramite_aprobacion: number
+  id_tipo_tramite_aprobacion_requerida: number
+  etiqueta: string
+  estado: EstadoAprobacion
+  bloqueante: boolean
+  comentario: string | null
+  resuelto_en: string | null
+  resuelto_por_nombre: string | null
+  id_tipo_tramite_estado: number
+  estado_codigo: string | null
+  estado_etiqueta: string | null
+  aprobador_tipo: DestinatarioTipo
+  aprobador_nombre: string | null
+  id_tramite_documento: number | null
 }
 
 export interface TransicionesPermitidas {
