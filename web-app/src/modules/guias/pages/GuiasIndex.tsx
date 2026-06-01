@@ -1,4 +1,4 @@
-import { FileText, ClipboardList, Settings, BarChart3, ExternalLink } from 'lucide-react'
+import { FileText, ClipboardList, Settings, BarChart3, Clock, Ticket, ExternalLink } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 interface Guia {
@@ -50,6 +50,22 @@ const GUIAS: Guia[] = [
     htmlName: 'manual_encuestas.html',
     audiencia: 'Supervisor o Admin',
     tags: ['Operativo', '6 secciones'],
+  },
+  {
+    titulo: 'TURNOS',
+    descripcion: 'Cómo dar turnos a los ciudadanos y gestionarlos hasta su cumplimiento: lista de trabajo, agenda, turnos atendidos con export PDF, prestaciones y autoservicio.',
+    icon: Clock,
+    htmlName: 'manual_turnos.html',
+    audiencia: 'Operador o superior',
+    tags: ['Operativo', '6 capturas', '11 secciones'],
+  },
+  {
+    titulo: 'ENTRADAS',
+    descripcion: 'Cómo crear eventos con cupo en espacios físicos, administrar sus entradas, acreditar el ingreso por QR y compartir el autoservicio con los ciudadanos.',
+    icon: Ticket,
+    htmlName: 'manual_entradas.html',
+    audiencia: 'Operador o superior',
+    tags: ['Operativo', '4 capturas', '10 secciones'],
   },
 ]
 
@@ -127,7 +143,7 @@ export function GuiasIndex() {
       </div>
 
       <footer style={footerStyle}>
-        Más guías próximamente para Agenda, Turnos, Entradas y Padrones.
+        Más guías próximamente para Agenda y Padrones.
       </footer>
     </div>
   )
