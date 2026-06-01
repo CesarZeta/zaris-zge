@@ -342,6 +342,7 @@ export function ConfigTramiteDetalle() {
               <FilaInfo label="Correlativo reinicia anual" valor={tipoData.correlativo_reinicia_anual ? 'Sí' : 'No'} />
               <FilaInfo label="Iniciadores permitidos" valor={tipoData.iniciadores_permitidos.join(', ')} />
               <FilaInfo label="Permite representante" valor={tipoData.permite_representante ? 'Sí' : 'No'} />
+              <FilaInfo label="Nunca depurar adjuntos" valor={tipoData.retencion_nunca_depurar ? 'Sí (retención permanente)' : 'No (política por antigüedad)'} />
               <FilaInfo label="Descripción" valor={tipoData.descripcion ?? '(sin descripción)'} />
             </tbody>
           </table>

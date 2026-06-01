@@ -18,6 +18,7 @@ export function NuevoTipoModal({
   const [descripcion, setDescripcion] = useState('')
   const [iniciadores, setIniciadores] = useState<IniciadorTipo[]>(['ciudadano'])
   const [permiteRep, setPermiteRep] = useState(false)
+  const [nuncaDepurar, setNuncaDepurar] = useState(false)
   const [largoCorr, setLargoCorr] = useState(4)
   const [error, setError] = useState('')
 
@@ -49,6 +50,7 @@ export function NuevoTipoModal({
         descripcion: descripcion.trim() || null,
         iniciadores_permitidos: iniciadores,
         permite_representante: permiteRep,
+        retencion_nunca_depurar: nuncaDepurar,
         largo_correlativo: largoCorr,
       })
       onCreado(res.id_tipo_tramite)
@@ -108,6 +110,15 @@ export function NuevoTipoModal({
         <input type="checkbox" checked={permiteRep} onChange={(e) => setPermiteRep(e.target.checked)} />
         Permitir representante (ciudadano apoderado)
       </label>
+
+      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 14, cursor: 'pointer', marginBottom: 4 }}>
+        <input type="checkbox" checked={nuncaDepurar} onChange={(e) => setNuncaDepurar(e.target.checked)} style={{ marginTop: 3 }} />
+        Nunca depurar adjuntos de este tipo
+      </label>
+      <p style={{ fontSize: 11, color: 'var(--fg-3)', margin: '0 0 12px 24px' }}>
+        Conserva los archivos indefinidamente (excepción a la política de retención por antigüedad).
+        Recomendado para Habilitaciones u otros trámites con valor permanente.
+      </p>
 
       <div style={formRow}>
         <label style={label}>Descripción</label>

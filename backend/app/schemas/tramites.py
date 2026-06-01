@@ -201,6 +201,8 @@ class TramiteDetalleOut(BaseModel):
     estado_etiqueta: str
     estado_color: Optional[str] = None
     resultado: str = "pendiente"  # pendiente | aprobado | rechazado (mig 74)
+    fecha_archivado: Optional[datetime] = None   # mig 75: archivado (manual o por inactividad)
+    archivado_motivo: Optional[str] = None        # mig 75: 'inactividad' | 'manual'
     fecha_entrada_estado_actual: datetime
     destinatario_actual_tipo: Optional[str] = None
     destinatario_actual_nombre: Optional[str] = None
@@ -266,6 +268,7 @@ class DocumentoOut(BaseModel):
     requiere_firma: bool
     estado_firma: str
     posicion_orden: int
+    binario_purgado: bool = False  # mig 75: TRUE = archivo depurado del bucket (registro se conserva)
     firmas: list[FirmaOut] = []
     fecha_alta: datetime
 
@@ -464,6 +467,7 @@ class TipoTramiteCreateIn(BaseModel):
     correlativo_reinicia_anual: bool = True
     icono: Optional[str] = None
     color: Optional[str] = None
+    retencion_nunca_depurar: bool = False  # mig 75: si True, los binarios de este tipo nunca se purgan
     id_municipio: int = 1
 
     @field_validator("codigo", "nombre", "prefijo")
@@ -513,6 +517,7 @@ class TipoTramiteUpdateIn(BaseModel):
     correlativo_reinicia_anual: Optional[bool] = None
     icono: Optional[str] = None
     color: Optional[str] = None
+    retencion_nunca_depurar: Optional[bool] = None  # mig 75
 
     @field_validator("iniciadores_permitidos")
     @classmethod
@@ -721,6 +726,7 @@ class TipoTramiteAdminOut(BaseModel):
     color: Optional[str] = None
     activo: bool
     es_sistema: bool = False
+    retencion_nunca_depurar: bool = False  # mig 75: override politica de retencion
     id_version_publicada: Optional[int] = None
     versiones: list[VersionOut] = []
 

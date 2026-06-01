@@ -31,6 +31,7 @@ export interface TipoCreateBody {
   correlativo_reinicia_anual?: boolean
   icono?: string | null
   color?: string | null
+  retencion_nunca_depurar?: boolean
   id_municipio?: number
 }
 
@@ -47,6 +48,7 @@ export interface TipoUpdateBody {
   correlativo_reinicia_anual?: boolean
   icono?: string | null
   color?: string | null
+  retencion_nunca_depurar?: boolean
 }
 
 export const crearTipo = (body: TipoCreateBody) =>

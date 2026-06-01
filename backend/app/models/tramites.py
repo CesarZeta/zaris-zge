@@ -43,6 +43,7 @@ class TipoTramite(Base):
     id_version_publicada      = Column(Integer, ForeignKey("tipo_tramite_version.id_tipo_tramite_version", deferrable=True, initially="DEFERRED"))
     icono                     = Column(String(50))
     color                     = Column(String(7))
+    retencion_nunca_depurar   = Column(Boolean, nullable=False, default=False)  # mig 75: override politica de retencion
     activo                    = Column(Boolean, nullable=False, default=True)
     id_municipio              = Column(Integer, ForeignKey("municipios.id_municipio"), nullable=False)
     fecha_alta                = Column(TIMESTAMPTZ, nullable=False, server_default=func.now())
@@ -197,6 +198,10 @@ class Tramite(Base):
     id_agente_tomado_por             = Column(Integer, ForeignKey("agentes.id_agente"))
     tomado_en                        = Column(TIMESTAMPTZ)
 
+    resultado                        = Column(String(15), nullable=False, default='pendiente')  # mig 74
+    fecha_archivado                  = Column(TIMESTAMPTZ)   # mig 75: archivado (manual o por inactividad)
+    archivado_motivo                 = Column(String(30))    # mig 75: 'inactividad' | 'manual'
+
     activo                           = Column(Boolean, nullable=False, default=True)
     id_municipio                     = Column(Integer, ForeignKey("municipios.id_municipio"), nullable=False)
     fecha_alta                       = Column(TIMESTAMPTZ, nullable=False, server_default=func.now())
@@ -244,6 +249,8 @@ class TramiteDocumento(Base):
     estado_firma                 = Column(String(20), nullable=False, default='no_requiere')
     posicion_orden               = Column(Integer, nullable=False)
     id_agente_subio              = Column(Integer, ForeignKey("agentes.id_agente"), nullable=False)
+    binario_purgado              = Column(Boolean, nullable=False, default=False)  # mig 75: archivo fisico depurado del bucket
+    fecha_purga_binario          = Column(TIMESTAMPTZ)  # mig 75: cuando se purgo
     activo                       = Column(Boolean, nullable=False, default=True)
     id_municipio                 = Column(Integer, ForeignKey("municipios.id_municipio"), nullable=False)
     fecha_alta                   = Column(TIMESTAMPTZ, nullable=False, server_default=func.now())
