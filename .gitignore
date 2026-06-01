@@ -54,5 +54,14 @@ backend/uploads/
 # Documentos archivados con info sensible (no versionar)
 docs/archivo/
 
-# Config local de Claude Code (no versionar)
-.claude/
+# Config local de Claude Code (no versionar), EXCEPTO skills y commands del proyecto.
+# Hay que re-incluir cada nivel de directorio: si .claude/ está ignorado, git no
+# desciende y las re-inclusiones de subcarpetas no aplican sin esto.
+.claude/*
+!.claude/skills/
+!.claude/commands/
+
+CLAUDE.md.bak
+_secmap.txt
+_probe.txt
+_sec31.txt
