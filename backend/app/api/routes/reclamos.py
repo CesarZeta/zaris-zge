@@ -784,9 +784,14 @@ async def cancelar_reclamo(
     """), {"id_est": id_estado_cancelada, "id_r": id_reclamo,
            "uid": current_user["id_usuario"]})
 
+    # fecha_cierre se setea al pasar a estado final, Resuelto O Cancelado (§22).
+    # Antes solo se seteaba en las OTs en cascada y en el pase a Resuelto via
+    # cambiar_estado; el cancelar dejaba reclamos.fecha_cierre en NULL, rompiendo
+    # las metricas de cierre/SLA. COALESCE para no pisar si ya estaba seteada.
     await db.execute(text("""
         UPDATE reclamos
         SET estado = 'Cancelado', fecha_modificacion = NOW(),
+            fecha_cierre = COALESCE(fecha_cierre, NOW()),
             observaciones = :motivo, id_usuario_modificacion = :uid
         WHERE id_reclamo = :id
     """), {"motivo": motivo, "id": id_reclamo, "uid": current_user["id_usuario"]})
