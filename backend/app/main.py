@@ -29,6 +29,7 @@ from app.api.routes.activos import router as activos_router
 from app.api.routes.config_identidad import router as config_identidad_router
 from app.api.routes.tramites import router as tramites_router
 from app.api.routes.tramites_admin import router as tramites_admin_router
+from app.api.routes.tramites_mantenimiento import router as tramites_mantenimiento_router
 from app.api.routes.encuestas_admin import router as encuestas_admin_router
 from app.api.routes.encuestas_admin import dispatcher_router as encuestas_dispatcher_router
 from app.api.routes.encuestas_publico import router as encuestas_publico_router
@@ -99,6 +100,10 @@ app.include_router(agenda_novedades_router)
 # turnos_publico ANTES de turnos: /turnos/publico/* lo atraparia /turnos/{id_turno} (int) -> 422
 app.include_router(turnos_publico_router)
 app.include_router(turnos_router)
+# tramites_mantenimiento: /tramites/mantenimiento/ejecutar (segmento fijo, sin
+# guard JWT — auth por X-Dispatcher-Token). DEBE ir ANTES de tramites_router o
+# el /{numero_o_id} greedy lo atrapa como numero_o_id='mantenimiento' (S5).
+app.include_router(tramites_mantenimiento_router)
 # tramites_router ANTES de admin_tablas (que tiene /{tabla} greedy).
 # /tramites/* no colisiona con otros routers pero lo dejamos arriba por convención.
 app.include_router(tramites_router)

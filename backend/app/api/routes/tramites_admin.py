@@ -161,9 +161,10 @@ async def crear_tipo_tramite(
                 (codigo, nombre, descripcion, prefijo, incluye_municipio, incluye_anio,
                  largo_correlativo, separador, correlativo_reinicia_anual,
                  iniciadores_permitidos, permite_representante, icono, color,
+                 retencion_nunca_depurar,
                  activo, id_municipio)
             VALUES (:cod, :nom, :desc, :pre, :imun, :ian, :lc, :sep, :cra,
-                    :ini, :pr, :ico, :col, TRUE, :mun)
+                    :ini, :pr, :ico, :col, :rnd, TRUE, :mun)
             RETURNING id_tipo_tramite
         """),
         {
@@ -172,7 +173,9 @@ async def crear_tipo_tramite(
             "ian": body.incluye_anio, "lc": body.largo_correlativo,
             "sep": body.separador, "cra": body.correlativo_reinicia_anual,
             "ini": body.iniciadores_permitidos, "pr": body.permite_representante,
-            "ico": body.icono, "col": body.color, "mun": body.id_municipio,
+            "ico": body.icono, "col": body.color,
+            "rnd": body.retencion_nunca_depurar,
+            "mun": body.id_municipio,
         },
     )).scalar_one()
 
@@ -209,7 +212,8 @@ async def actualizar_tipo_tramite(
     params: dict[str, Any] = {"id": id_tipo_tramite}
     for field in ("nombre", "descripcion", "prefijo", "permite_representante",
                   "incluye_municipio", "incluye_anio", "largo_correlativo",
-                  "separador", "correlativo_reinicia_anual", "icono", "color"):
+                  "separador", "correlativo_reinicia_anual", "icono", "color",
+                  "retencion_nunca_depurar"):
         val = getattr(body, field)
         if val is not None:
             sets.append(f"{field} = :{field}")
@@ -282,6 +286,7 @@ async def _detalle_tipo_admin(db: AsyncSession, id_tipo_tramite: int) -> TipoTra
                    incluye_municipio, incluye_anio, largo_correlativo, separador,
                    correlativo_reinicia_anual, icono, color, activo,
                    COALESCE(es_sistema, FALSE) AS es_sistema,
+                   COALESCE(retencion_nunca_depurar, FALSE) AS retencion_nunca_depurar,
                    id_version_publicada
             FROM tipo_tramite WHERE id_tipo_tramite = :id
         """),
@@ -313,6 +318,7 @@ async def _detalle_tipo_admin(db: AsyncSession, id_tipo_tramite: int) -> TipoTra
         correlativo_reinicia_anual=tipo.correlativo_reinicia_anual,
         icono=tipo.icono, color=tipo.color, activo=tipo.activo,
         es_sistema=bool(tipo.es_sistema),
+        retencion_nunca_depurar=bool(tipo.retencion_nunca_depurar),
         id_version_publicada=tipo.id_version_publicada,
         versiones=[
             VersionOut(

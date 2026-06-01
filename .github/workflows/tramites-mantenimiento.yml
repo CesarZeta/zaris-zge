@@ -1,0 +1,62 @@
+name: Tramites mantenimiento (cron diario)
+
+# Llama una vez al dia al endpoint de mantenimiento de Tramites en prod (Railway):
+#   1. Archiva tramites sin movimiento hace >= tramite_inactividad_dias dias
+#      (los marca resultado='rechazado' por inactividad).
+#   2. Depura el archivo fisico de documentos cuyo plazo de retencion vencio
+#      (aprobado -> retencion_dias_aprobado; rechazado -> retencion_dias_rechazado).
+#      DRY-RUN por default: solo reporta que purgaria, NO borra del bucket, hasta
+#      que se active configuracion_general.tramite_purga_binarios_real = 'true'.
+#      El REGISTRO de cada documento (metadatos + hash) NUNCA se borra.
+#
+# El endpoint NO usa JWT: se autentica con el header X-Dispatcher-Token, que
+# debe coincidir EXACTAMENTE con la env var DISPATCHER_TOKEN de Railway (la misma
+# que usa el dispatcher de Encuestas). compare_digest — cuidado con espacios/
+# newline al pegar el secret (ver CLAUDE.md). Secrets en el repo (Settings >
+# Secrets > Actions):
+#   - ENCUESTAS_DISPATCHER_TOKEN  : mismo valor que Railway DISPATCHER_TOKEN
+#   - ZARIS_API_URL (opcional)    : base de la API; default abajo
+#
+# Disparo manual: pestaña Actions > este workflow > Run workflow.
+
+on:
+  schedule:
+    # Una vez al dia, 04:10 UTC (madrugada en AR). El endpoint es idempotente.
+    - cron: '10 4 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: tramites-mantenimiento
+  cancel-in-progress: false
+
+jobs:
+  mantenimiento:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Llamar al endpoint de mantenimiento
+        env:
+          API_URL: ${{ secrets.ZARIS_API_URL || 'https://zaris-api-production-bf0b.up.railway.app' }}
+          TOKEN: ${{ secrets.ENCUESTAS_DISPATCHER_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Falta el secret ENCUESTAS_DISPATCHER_TOKEN en el repo."
+            exit 1
+          fi
+
+          URL="$API_URL/api/v1/tramites/mantenimiento/ejecutar"
+          echo "POST $URL"
+
+          BODY=$(mktemp)
+          CODE=$(curl -sS -o "$BODY" -w '%{http_code}' \
+            -X POST "$URL" \
+            -H "X-Dispatcher-Token: $TOKEN" \
+            -H "Content-Type: application/json")
+
+          echo "HTTP $CODE"
+          echo "Respuesta:"
+          cat "$BODY"; echo
+
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Mantenimiento devolvio HTTP $CODE (esperado 200)."
+            exit 1
+          fi

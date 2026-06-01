@@ -764,6 +764,8 @@ async def detalle_tramite(
         estado_etiqueta=row.estado_etiqueta,
         estado_color=row.estado_color,
         resultado=row.resultado,
+        fecha_archivado=row.fecha_archivado,
+        archivado_motivo=row.archivado_motivo,
         fecha_entrada_estado_actual=row.fecha_entrada_estado_actual,
         destinatario_actual_tipo=row.destinatario_actual_tipo,
         destinatario_actual_nombre=row.destinatario_actual_nombre,
@@ -913,6 +915,7 @@ async def documentos_tramite(
             requiere_firma=d.requiere_firma,
             estado_firma=d.estado_firma,
             posicion_orden=d.posicion_orden,
+            binario_purgado=bool(getattr(d, "binario_purgado", False)),
             firmas=firmas,
             fecha_alta=d.fecha_alta,
         ))
@@ -1026,6 +1029,7 @@ async def _tramite_detalle_out(id_tramite: int, db: AsyncSession) -> TramiteDeta
         id_tipo_tramite_version=row.id_tipo_tramite_version, version_num=row.version_num,
         estado_codigo=row.estado_codigo, estado_etiqueta=row.estado_etiqueta,
         estado_color=row.estado_color, resultado=row.resultado,
+        fecha_archivado=row.fecha_archivado, archivado_motivo=row.archivado_motivo,
         fecha_entrada_estado_actual=row.fecha_entrada_estado_actual,
         destinatario_actual_tipo=row.destinatario_actual_tipo,
         destinatario_actual_nombre=row.destinatario_actual_nombre,
@@ -1997,6 +2001,15 @@ async def descargar_documento(
     )).fetchone()
     if not doc:
         raise HTTPException(404, "Documento no encontrado")
+
+    # mig 75: el archivo fisico pudo haberse depurado por antiguedad (politica de
+    # retencion). El registro y su hash se conservan, pero el binario ya no esta.
+    if getattr(doc, "binario_purgado", False):
+        raise HTTPException(
+            410,
+            "El archivo fisico fue depurado por la politica de retencion. "
+            "El registro del documento y su huella digital se conservan en el expediente.",
+        )
 
     contenido = await svc_docs.descargar_bytes(doc.storage_path)  # 404 si no existe en bucket
     return Response(
