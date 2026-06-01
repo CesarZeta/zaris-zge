@@ -16,6 +16,7 @@ import {
   pasarTramite,
   comentarTramite,
   relacionarTramite,
+  resolverAprobacion,
 } from '../lib/api'
 import type { BandejaParams, CrearTramiteBody } from '../types'
 
@@ -154,6 +155,22 @@ export function useRelacionarTramite(numero: string) {
   return useMutation({
     mutationFn: (body: { id_tramite_b: number; comentario?: string }) =>
       relacionarTramite(numero, body),
+  })
+}
+
+export function useResolverAprobacion(numero: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: {
+      idAprob: number
+      decision: 'aprobada' | 'rechazada'
+      comentario?: string
+    }) => resolverAprobacion(numero, vars.idAprob, { decision: vars.decision, comentario: vars.comentario }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['tramites', 'detalle', numero] })
+      void qc.invalidateQueries({ queryKey: ['tramites', 'movimientos', numero] })
+      void qc.invalidateQueries({ queryKey: ['tramites', 'transiciones', numero] })
+    },
   })
 }
 

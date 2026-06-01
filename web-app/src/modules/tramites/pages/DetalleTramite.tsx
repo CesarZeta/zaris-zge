@@ -8,6 +8,7 @@ import { EstadoBadge } from '../components/EstadoBadge'
 import { Timeline } from '../components/Timeline'
 import { ListaDocumentos } from '../components/ListaDocumentos'
 import { PanelAcciones } from '../components/PanelAcciones'
+import { PanelAprobaciones } from '../components/PanelAprobaciones'
 import { FileUploader } from '../components/FileUploader'
 
 export function DetalleTramite() {
@@ -175,6 +176,11 @@ export function DetalleTramite() {
                 : true,
             )}
             idUsuarioActual={user?.id_usuario}
+            onActualizar={() => { void refetch() }}
+          />
+          <PanelAprobaciones
+            numero={data.numero_expediente}
+            aprobaciones={data.aprobaciones ?? []}
             onActualizar={() => { void refetch() }}
           />
         </div>

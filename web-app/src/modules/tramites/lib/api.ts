@@ -96,6 +96,14 @@ export const relacionarTramite = (
   body: { id_tramite_b: number; comentario?: string },
 ) => api.post<TramiteRelacion>(`${BASE}/${numero}/relacionar`, body)
 
+/* ── Aprobaciones por etapa (visados) ────────────────────── */
+
+export const resolverAprobacion = (
+  numero: string,
+  idAprob: number,
+  body: { decision: 'aprobada' | 'rechazada'; comentario?: string; id_tramite_documento?: number },
+) => api.post<TramiteDetalle>(`${BASE}/${numero}/aprobaciones/${idAprob}/resolver`, body)
+
 /* ── Documentos ──────────────────────────────────────────── */
 
 export function adjuntarDocumento(
