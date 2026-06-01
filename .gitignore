@@ -65,3 +65,10 @@ CLAUDE.md.bak
 _secmap.txt
 _probe.txt
 _sec31.txt
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+.env*
+!.env.example
