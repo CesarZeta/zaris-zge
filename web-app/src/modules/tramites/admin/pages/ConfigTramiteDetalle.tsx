@@ -311,6 +311,7 @@ export function ConfigTramiteDetalle() {
           ['estados', 'Estados'],
           ['transiciones', 'Transiciones'],
           ['documentos', 'Docs requeridos'],
+          ['aprobaciones', 'Aprobaciones'],
         ] as Array<[TabKey, string]>).map(([k, label]) => (
           <button
             key={k}
