@@ -27,7 +27,11 @@ Receta probada para producir `docs/manual_<modulo>.html` autocontenido (capturas
    ```js
    async function shot(name, url, prepFn) {
      const page = await ctx.newPage()
-     await page.goto(url, { waitUntil: 'networkidle' })
+     // NO usar 'networkidle': los modulos React mantienen conexiones abiertas
+     // (polling/notificaciones) y nunca llega a idle -> timeout 30s. Usar
+     // domcontentloaded + espera fija + waitFor del primer elemento real.
+     await page.goto(url, { waitUntil: 'domcontentloaded' })
+     await page.waitForTimeout(2500)
      if (prepFn) try { await prepFn(page) } catch (e) { console.warn(e.message) }
      await page.screenshot({ path: path.join(OUT, name) })
      await page.close()
@@ -35,6 +39,18 @@ Receta probada para producir `docs/manual_<modulo>.html` autocontenido (capturas
    ```
 5. **Build HTML** con `dataUrl(filename)` → `data:image/png;base64,...` y look ZARIS (tokens del DS: `--zaris-orange`, `--zaris-cream`, etc.).
 6. **Cleanup OBLIGATORIO al final:** borrar data demo, restaurar flags tocados (ej. `es_auditor`), eliminar carpeta `_<modulo>_caps/`, bajar servers.
+
+## Capturar un MÓDULO REACT (leer ANTES de empezar — cuesta 4 iteraciones si no)
+
+El `web-app/dist/` commiteado se compila contra **prod (Railway)** — `VITE_API_BASE` apunta a `zaris-api-production`. Esto define todo el approach:
+
+- **Logueate en PROD, no en local.** Un token de login local da **401 en todas las requests** del módulo (el bundle pega a Railway, que no conoce ese token) → el handler de 401 redirige y la captura sale en login/dashboard. Credencial prod admin: `cesar@municipio.gob.ar` / `123456`. Usá entidades reales de prod para los deep-links (`GET /api/v1/tramites?limit=8` y elegí un nº de expediente real). *(Alternativa si necesitás datos locales controlados: rebuildear `pnpm build --mode development` y NO commitear ese dist — ver memoria `proxy-local-zaris-zge`. Para un manual, prod suele alcanzar.)*
+- **Cargá el módulo DENTRO del iframe del shell vanilla** (modo embebido: `self !== top` ⇒ AppShell sin guard de login, igual que producción). Dos trampas que NO funcionan:
+  - Navegar directo a `http://localhost:8080/web-app/dist/index.html#/...` → el script standalone de `web-app/index.html` hace `location.replace` al shell (path con `/web-app/dist/`), y si lo neutralizás, el AppShell standalone redirige a `/login`.
+  - `window.parent.shellNavigate(...)` sobre un iframe ya montado → cambia el hash pero el HashRouter NO re-rutea.
+  - **Lo que SÍ funciona:** abrir el shell (`localhost:8080/index.html`), esperar, y setear `document.getElementById('module-frame').src = 'web-app/dist/index.html?_cb='+Date.now()+'#/<ruta>'` (cache-bust fuerza remount en el hash). Capturar contra `page.frameLocator('#module-frame')`. La sesión se inyecta con `addInitScript` (ambos shapes, §29) ANTES de navegar.
+- **Verificar antes de juzgar:** si la captura sale en login/dashboard, mirá `page.on('response')` por 401 contra Railway (= token de entorno equivocado) y `page.frames().map(f=>f.url())` (= el iframe quedó en `#/dashboard` porque el `?modulo=` del shell cayó al default). Ambos son síntomas del environment, no del script.
+- **Las capturas del uploader NO ensucian prod:** `input.setInputFiles([...])` solo stagea client-side; mientras no cliquees "Subir", nada llega al backend. Igual, no clickees acciones que muten.
 
 ## Convenciones del HTML
 - **Tamaño esperado:** 1-3 MB con 9-12 capturas embebidas. Si pasa de 5 MB, revisar (probable capturas gigantes o demasiadas).
