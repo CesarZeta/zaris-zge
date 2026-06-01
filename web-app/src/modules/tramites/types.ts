@@ -1,5 +1,7 @@
 export type IniciadorTipo = 'ciudadano' | 'empresa' | 'area_interna'
 export type DestinatarioTipo = 'subarea' | 'equipo' | 'agente'
+// Marca de resultado del tramite, paralela al estado FSM (mig 74).
+export type TramiteResultado = 'pendiente' | 'aprobado' | 'rechazado'
 export type EstadoFirma = 'no_requiere' | 'pendiente' | 'firmado' | 'rechazado'
 export type RolIntervencion = 'firma' | 'visado' | 'notificacion'
 export type TipoMovimiento =
@@ -192,6 +194,7 @@ export interface TramiteDetalle {
   estado_codigo: string
   estado_etiqueta: string
   estado_color: string | null
+  resultado: TramiteResultado
   fecha_entrada_estado_actual: string
   destinatario_actual_tipo: string | null
   destinatario_actual_nombre: string | null

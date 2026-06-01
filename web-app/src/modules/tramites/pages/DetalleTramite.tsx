@@ -5,6 +5,7 @@ import { Skeleton } from '../../../ui'
 import { useAuthStore } from '../../../stores/auth'
 import { useTramite } from '../hooks/useTramites'
 import { EstadoBadge } from '../components/EstadoBadge'
+import { ResultadoChip } from '../components/ResultadoChip'
 import { Timeline } from '../components/Timeline'
 import { ListaDocumentos } from '../components/ListaDocumentos'
 import { PanelAcciones } from '../components/PanelAcciones'
@@ -58,6 +59,7 @@ export function DetalleTramite() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <h1 style={h1Style}>{data.numero_expediente}</h1>
             <EstadoBadge etiqueta={data.estado_etiqueta} color={data.estado_color} />
+            <ResultadoChip numero={data.numero_expediente} resultado={data.resultado} />
           </div>
           <p style={{ margin: 0, fontSize: 13, fontFamily: 'var(--font-display)', color: 'var(--fg-2)' }}>
             {data.tipo_nombre}

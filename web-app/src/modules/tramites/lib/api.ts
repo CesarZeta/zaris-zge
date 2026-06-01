@@ -10,6 +10,7 @@ import type {
   TransicionesPermitidas,
   CrearTramiteBody,
   BandejaParams,
+  TramiteResultado,
 } from '../types'
 
 const BASE = '/api/v1/tramites'
@@ -95,6 +96,13 @@ export const relacionarTramite = (
   numero: string,
   body: { id_tramite_b: number; comentario?: string },
 ) => api.post<TramiteRelacion>(`${BASE}/${numero}/relacionar`, body)
+
+// Marca el resultado del tramite (aprobado/rechazado/pendiente, mig 74).
+// Solo supervisor/admin (nivel <= 2) — el backend rechaza el resto con 403.
+export const marcarResultadoTramite = (
+  numero: string,
+  body: { resultado: TramiteResultado; comentario?: string },
+) => api.post<TramiteDetalle>(`${BASE}/${numero}/resultado`, body)
 
 /* ── Aprobaciones por etapa (visados) ────────────────────── */
 

@@ -17,8 +17,9 @@ import {
   comentarTramite,
   relacionarTramite,
   resolverAprobacion,
+  marcarResultadoTramite,
 } from '../lib/api'
-import type { BandejaParams, CrearTramiteBody } from '../types'
+import type { BandejaParams, CrearTramiteBody, TramiteResultado } from '../types'
 
 const MIN = 60 * 1000
 const HORA = 60 * MIN
@@ -170,6 +171,18 @@ export function useResolverAprobacion(numero: string) {
       void qc.invalidateQueries({ queryKey: ['tramites', 'detalle', numero] })
       void qc.invalidateQueries({ queryKey: ['tramites', 'movimientos', numero] })
       void qc.invalidateQueries({ queryKey: ['tramites', 'transiciones', numero] })
+    },
+  })
+}
+
+export function useMarcarResultado(numero: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { resultado: TramiteResultado; comentario?: string }) =>
+      marcarResultadoTramite(numero, vars),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['tramites', 'detalle', numero] })
+      void qc.invalidateQueries({ queryKey: ['tramites', 'movimientos', numero] })
     },
   })
 }

@@ -38,6 +38,7 @@ from app.schemas.tramites import (
     RelacionOut,
     RelacionarIn,
     ResolverAprobacionIn,
+    ResultadoIn,
     TipoTramiteDetalleOut,
     TipoTramiteListItem,
     TipoTramiteListOut,
@@ -762,6 +763,7 @@ async def detalle_tramite(
         estado_codigo=row.estado_codigo,
         estado_etiqueta=row.estado_etiqueta,
         estado_color=row.estado_color,
+        resultado=row.resultado,
         fecha_entrada_estado_actual=row.fecha_entrada_estado_actual,
         destinatario_actual_tipo=row.destinatario_actual_tipo,
         destinatario_actual_nombre=row.destinatario_actual_nombre,
@@ -1023,7 +1025,7 @@ async def _tramite_detalle_out(id_tramite: int, db: AsyncSession) -> TramiteDeta
         tipo_codigo=row.tipo_codigo, tipo_nombre=row.tipo_nombre, tipo_prefijo=row.tipo_prefijo,
         id_tipo_tramite_version=row.id_tipo_tramite_version, version_num=row.version_num,
         estado_codigo=row.estado_codigo, estado_etiqueta=row.estado_etiqueta,
-        estado_color=row.estado_color,
+        estado_color=row.estado_color, resultado=row.resultado,
         fecha_entrada_estado_actual=row.fecha_entrada_estado_actual,
         destinatario_actual_tipo=row.destinatario_actual_tipo,
         destinatario_actual_nombre=row.destinatario_actual_nombre,
@@ -1716,6 +1718,62 @@ async def pase_tramite(
 
     # Notificar al nuevo destinatario (siempre, el pase es explicito)
     await svc_notif.notificar_tramite_a_bandeja(db, id_tramite, "pase", background_tasks)
+
+    return await _tramite_detalle_out(id_tramite, db)
+
+
+# ---------------------------------------------------------------------------
+# POST /{tramite_ref}/resultado  (marca aprobado/rechazado/pendiente, mig 74)
+# ---------------------------------------------------------------------------
+
+@router.post("/{tramite_ref}/resultado", response_model=TramiteDetalleOut)
+async def marcar_resultado_tramite(
+    tramite_ref: str,
+    body: ResultadoIn,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Marca el resultado del tramite (aprobado/rechazado/pendiente).
+
+    Paralelo al estado FSM (mig 74): el estado es del flujo, el resultado dice
+    como concluyo. Decide la retencion de binarios (aprobado=10 anios,
+    rechazado/descarte=1 anio). Solo supervisor/admin (nivel <= 2).
+    """
+    agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
+    if not agente:
+        raise HTTPException(403, "El usuario no tiene un agente asociado")
+    if not svc_auth.es_admin(agente["nivel_acceso"]):
+        raise HTTPException(403, "Solo un supervisor o administrador puede marcar el resultado del tramite")
+
+    id_tramite, _ = await _resolver_tramite(tramite_ref, db)
+    tramite = dict((await db.execute(
+        text("SELECT * FROM tramite WHERE id_tramite=:id AND activo=TRUE FOR UPDATE"),
+        {"id": id_tramite},
+    )).fetchone()._mapping)
+
+    anterior = tramite.get("resultado") or "pendiente"
+    if anterior == body.resultado:
+        # No-op: ya esta en ese resultado. Devolver el detalle sin movimiento.
+        return await _tramite_detalle_out(id_tramite, db)
+
+    await db.execute(
+        text("""
+            UPDATE tramite SET
+                resultado = :res,
+                fecha_modificacion = NOW(),
+                id_usuario_modificacion = :uid
+            WHERE id_tramite = :id
+        """),
+        {"res": body.resultado, "uid": current_user["id_usuario"], "id": id_tramite},
+    )
+    await svc_mov.registrar_movimiento(
+        db, id_tramite, "resultado", current_user["id_usuario"], agente["id_agente"],
+        tramite["id_municipio"], request,
+        comentario=body.comentario,
+        metadata_jsonb={"resultado_anterior": anterior, "resultado_nuevo": body.resultado},
+    )
+    await db.commit()
 
     return await _tramite_detalle_out(id_tramite, db)
 
