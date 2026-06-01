@@ -200,6 +200,7 @@ class TramiteDetalleOut(BaseModel):
     estado_codigo: str
     estado_etiqueta: str
     estado_color: Optional[str] = None
+    resultado: str = "pendiente"  # pendiente | aprobado | rechazado (mig 74)
     fecha_entrada_estado_actual: datetime
     destinatario_actual_tipo: Optional[str] = None
     destinatario_actual_nombre: Optional[str] = None
@@ -318,6 +319,24 @@ class ResolverAprobacionIn(BaseModel):
     decision: str  # aprobada | rechazada
     comentario: Optional[str] = None
     id_tramite_documento: Optional[int] = None
+
+
+class ResultadoIn(BaseModel):
+    """Marca el resultado del tramite (paralela al estado FSM, mig 74).
+
+    'aprobado'/'rechazado' los setea un supervisor/admin; 'pendiente' permite
+    revertir la marca. Decide la politica de retencion de los binarios.
+    """
+    resultado: str  # pendiente | aprobado | rechazado
+    comentario: Optional[str] = None
+
+    @field_validator("resultado")
+    @classmethod
+    def resultado_valido(cls, v: str) -> str:
+        v = (v or "").strip().lower()
+        if v not in ("pendiente", "aprobado", "rechazado"):
+            raise ValueError("resultado debe ser 'pendiente', 'aprobado' o 'rechazado'")
+        return v
 
 
 class AprobacionRequeridaIn(BaseModel):
