@@ -23,7 +23,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import storage
 
 TRAMITES_BUCKET = "tramites-documentos"
-UPLOADS_MAX_SIZE_MB = 25
+# Tope por defecto para adjuntar (sin documento requerido). Un documento
+# requerido puede definir su propio tamano_max_mb (tiene prioridad). 10 MB es
+# suficiente para documentacion administrativa; evita binarios pesados en el
+# bucket. La UI espeja este valor (FileUploader) — si lo cambias, actualizar
+# tambien el hint del front y docs/manual_tramites.html S10.
+UPLOADS_MAX_SIZE_MB = 10
 
 ALLOWED_MIME_MAP: dict[str, str] = {
     "pdf": "application/pdf",

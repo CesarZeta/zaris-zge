@@ -16,6 +16,31 @@ interface FileItem {
   idDocumento?: string
 }
 
+// Espeja la validacion del backend (services/tramites/documentos.py:
+// ALLOWED_MIME_MAP + UPLOADS_MAX_SIZE_MB). El backend sigue siendo la fuente
+// de verdad; esto evita que el usuario espere una subida que va a ser
+// rechazada. Si cambian alla, actualizar aca.
+const MAX_MB = 10
+const EXTENSIONES_PERMITIDAS = ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx', 'xls', 'xlsx']
+const ACCEPT_ATTR = '.pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx'
+
+function extensionDe(nombre: string): string {
+  const i = nombre.lastIndexOf('.')
+  return i >= 0 ? nombre.slice(i + 1).toLowerCase() : ''
+}
+
+/** Devuelve el motivo de rechazo, o null si el archivo es valido. */
+function validarArchivo(f: File): string | null {
+  const ext = extensionDe(f.name)
+  if (!EXTENSIONES_PERMITIDAS.includes(ext)) {
+    return `Formato .${ext || '?'} no permitido (solo ${EXTENSIONES_PERMITIDAS.join(', ')})`
+  }
+  if (f.size > MAX_MB * 1024 * 1024) {
+    return `Supera el máximo de ${MAX_MB} MB (${(f.size / 1024 / 1024).toFixed(1)} MB)`
+  }
+  return null
+}
+
 export function FileUploader({ numeroExpediente, onExito, onCerrar }: FileUploaderProps) {
   const [archivos, setArchivos] = useState<FileItem[]>([])
   const [subiendo, setSubiendo] = useState(false)
@@ -27,7 +52,15 @@ export function FileUploader({ numeroExpediente, onExito, onCerrar }: FileUpload
     if (!files) return
     const nuevos: FileItem[] = Array.from(files)
       .filter((f) => !archivos.some((a) => a.file.name === f.name && a.file.size === f.size))
-      .map((f) => ({ file: f, status: 'pendiente', progreso: 0 }))
+      .map((f) => {
+        // Validacion client-side antes de subir: un archivo invalido entra a la
+        // lista marcado como 'error' (no 'pendiente'), asi no se intenta subir y
+        // el usuario ve el motivo concreto. El backend revalida igual.
+        const motivo = validarArchivo(f)
+        return motivo
+          ? { file: f, status: 'error' as const, progreso: 0, mensaje: motivo }
+          : { file: f, status: 'pendiente' as const, progreso: 0 }
+      })
     setArchivos((prev) => [...prev, ...nuevos])
   }
 
@@ -106,13 +139,14 @@ export function FileUploader({ numeroExpediente, onExito, onCerrar }: FileUpload
               Arrastrá archivos aquí o hacé click para seleccionar
             </p>
             <p style={{ margin: 0, fontSize: 12, color: 'var(--fg-3)', fontFamily: 'var(--font-display)' }}>
-              PDF, imágenes, Word, Excel — máx. 10 MB por archivo
+              Formatos: PDF, JPG, PNG, Word (.doc/.docx), Excel (.xls/.xlsx) · máx. {MAX_MB} MB por archivo
             </p>
           </div>
           <input
             ref={inputRef}
             type="file"
             multiple
+            accept={ACCEPT_ATTR}
             style={{ display: 'none' }}
             onChange={(e) => agregarArchivos(e.target.files)}
           />
