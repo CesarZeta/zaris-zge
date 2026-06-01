@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import hashlib
 
-from app.services.tramites.auth import es_admin
 from app.services.tramites.documentos import descargar_bytes
 
 
@@ -21,18 +20,29 @@ async def agente_puede_firmar(
     firma: dict,
 ) -> tuple[bool, str | None]:
     """
-    Reglas:
+    Reglas (politica del municipio): la firma la hace un agente de la subarea
+    asignada que ademas sea supervisor.
     - estado debe ser 'pendiente'
-    - Si firma.id_agente_asignado: solo ese agente (o admin)
-    - Si firma.id_subarea_asignada: agente de esa subarea (o admin)
-    - Si firma.id_equipo_asignado: agente de ese equipo (o admin)
+    - Admin (nivel 1): puede firmar siempre.
+    - Operador/Consultor (nivel >= 3): nunca pueden firmar.
+    - Supervisor (nivel 2): solo si pertenece al colectivo asignado a la firma
+      (agente/subarea/equipo). Firma sin asignacion -> bloqueada (fail-closed):
+      solo admin pasa.
     """
     if firma.get("estado") != "pendiente":
         return False, f"La firma ya esta en estado '{firma['estado']}'"
 
-    if es_admin(agente_info["nivel_acceso"]):
+    nivel = agente_info["nivel_acceso"]
+
+    # Admin del sistema: acceso total al modulo.
+    if nivel <= 1:
         return True, None
 
+    # Operador/Consultor no firman, aunque pertenezcan al colectivo asignado.
+    if nivel > 2:
+        return False, "Solo un supervisor (o admin) puede firmar este documento"
+
+    # A partir de aca: supervisor (nivel 2). Debe pertenecer al colectivo asignado.
     id_ag_asig = firma.get("id_agente_asignado")
     id_sa_asig = firma.get("id_subarea_asignada")
     id_eq_asig = firma.get("id_equipo_asignado")
@@ -52,9 +62,12 @@ async def agente_puede_firmar(
             return False, "Tu equipo no esta asignado para firmar este documento"
         return True, None
 
-    # Sin restriccion especifica: cualquiera puede firmar (no deberia pasar
-    # con firmantes_jsonb bien configurado, pero fail-open)
-    return True, None
+    # Firma sin asignacion especifica (firmantes_jsonb mal configurado):
+    # fail-closed. Solo el admin (arriba) la podria firmar.
+    return False, (
+        "Esta firma no tiene un firmante asignado; pedile a un administrador "
+        "que la configure"
+    )
 
 
 async def marcar_firma(

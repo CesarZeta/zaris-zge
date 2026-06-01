@@ -6,6 +6,7 @@ import { EstadoFirmaBadge } from './EstadoFirmaBadge'
 import { ModalFirma } from './ModalFirma'
 import { VisorDocumento } from './VisorDocumento'
 import { useNotificationsStore } from '../../../stores/notifications'
+import { useAuthStore } from '../../../stores/auth'
 
 interface ListaDocumentosProps {
   tramiteNumero: string
@@ -15,6 +16,10 @@ interface ListaDocumentosProps {
 
 export function ListaDocumentos({ tramiteNumero, documentos, onCambio }: ListaDocumentosProps) {
   const push = useNotificationsStore((s) => s.push)
+  // Solo supervisor/admin (nivel <= 2) puede firmar o rechazar firmas.
+  // El backend es la fuente de verdad (agente_puede_firmar); esto evita
+  // mostrar acciones que igual fallarian con 403.
+  const puedeFirmar = useAuthStore((s) => s.hasPermission(2))
   const [firmaAbierta, setFirmaAbierta] = useState<{ doc: TramiteDocumento; firma: TramiteFirma } | null>(null)
   const [visorAbierto, setVisorAbierto] = useState<TramiteDocumento | null>(null)
   const [descargandoId, setDescargandoId] = useState<number | null>(null)
@@ -184,7 +189,7 @@ export function ListaDocumentos({ tramiteNumero, documentos, onCambio }: ListaDo
                         </span>
                       </span>
                       <FirmaBadge estado={firma.estado} firmado_en={firma.firmado_en} />
-                      {firma.estado === 'pendiente' && (
+                      {firma.estado === 'pendiente' && puedeFirmar && (
                         <div style={{ display: 'flex', gap: 4 }}>
                           <button
                             type="button"
