@@ -1535,8 +1535,8 @@ Backend + builder + detalle operativo, todo verificado E2E navegando en prod. **
 
 > **Receta completa en la skill `generar-manual`** (`.claude/skills/generar-manual/`): setup Playwright, patrón de captura, convenciones del HTML, regenerar capturas tras cambio de UI, cleanup. Invocarla al crear/regenerar un `docs/manual_<modulo>.html`.
 
-### Manuales actuales (al 2026-05-26)
-`manual_reclamos.html` (Operador+, 10 caps) · `manual_ot.html` (Sup/Agente/Auditor, 9) · `manual_tramites.html` (Operador+, 8) · `manual_admin_tramites.html` (Admin/Sup, 12) · `manual_encuestas.html` (Sup/Admin, texto sin caps). Próximos sugeridos (no obligatorios): Agenda, Turnos+Entradas, Padrones.
+### Manuales actuales (al 2026-06-01)
+`manual_reclamos.html` (Operador+, 10 caps) · `manual_ot.html` (Sup/Agente/Auditor, 9) · `manual_tramites.html` (Operador+, 8) · `manual_admin_tramites.html` (Admin/Sup, 12) · `manual_encuestas.html` (Sup/Admin, texto sin caps) · `manual_turnos.html` (Operador+, 6 caps, 11 secc.) · `manual_entradas.html` (Operador+, 4 caps, 10 secc.). Los 7 registrados en el módulo Guías (§37). Próximos sugeridos (no obligatorios): Agenda, Padrones.
 
 ### Reglas de criterio (no las olvides)
 - **El manual es parte del entregable cuando cambia la UI que documenta.** Antes de cerrar un cambio de UI/flujo, chequear si ese módulo tiene `docs/manual_<modulo>.html`. Si lo tiene, actualizar texto + capturas afectadas es parte del mismo entregable — un manual que describe la UI vieja miente al usuario. (Cómo detectar el desfasaje y regenerar solo lo afectado: en la skill.)
