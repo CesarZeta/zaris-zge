@@ -9,6 +9,8 @@ export type TipoMovimiento =
   | 'cambio_estado' | 'transicion' | 'adjunto'
   | 'firma_solicitada' | 'firma_realizada' | 'firma_rechazada'
   | 'comentario' | 'relacion' | 'desistido' | 'reapertura'
+  | 'aprobacion' | 'resultado'
+  | 'archivado_inactividad' | 'purga_binario'
 
 export type TipoDatoCampo =
   | 'texto' | 'texto_largo' | 'numero' | 'decimal' | 'fecha' | 'fecha_hora'
@@ -138,6 +140,7 @@ export interface TipoTramiteAdmin {
   color: string | null
   activo: boolean
   es_sistema: boolean
+  retencion_nunca_depurar: boolean
   id_version_publicada: number | null
   versiones: Array<{
     id_tipo_tramite_version: number
@@ -195,6 +198,8 @@ export interface TramiteDetalle {
   estado_etiqueta: string
   estado_color: string | null
   resultado: TramiteResultado
+  fecha_archivado: string | null   // mig 75: archivado (manual o por inactividad)
+  archivado_motivo: 'inactividad' | 'manual' | null  // mig 75
   fecha_entrada_estado_actual: string
   destinatario_actual_tipo: string | null
   destinatario_actual_nombre: string | null
@@ -238,6 +243,7 @@ export interface TramiteDocumento {
   requiere_firma: boolean
   estado_firma: EstadoFirma
   posicion_orden: number
+  binario_purgado?: boolean   // mig 75: TRUE = archivo depurado del bucket (registro conservado)
   agente_subio_nombre?: string
   fecha_alta: string
   firmas: TramiteFirma[]

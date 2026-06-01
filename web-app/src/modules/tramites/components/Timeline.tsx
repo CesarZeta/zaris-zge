@@ -2,7 +2,8 @@ import { useState } from 'react'
 import {
   ClipboardList, Hash, ArrowRight, Hand, LockOpen, RefreshCw, Zap,
   Paperclip, PenLine, Check, X, MessageSquare, Link2, Ban, RotateCcw,
-  Circle, ChevronUp, ChevronDown, type LucideIcon,
+  Circle, ChevronUp, ChevronDown, BadgeCheck, Flag, Archive, Trash2,
+  type LucideIcon,
 } from 'lucide-react'
 import type { TramiteMovimiento, TipoMovimiento } from '../types'
 
@@ -27,6 +28,10 @@ const TIPO_CONFIG: Record<
   relacion:       { icon: Link2,         color: '#00838f', etiqueta: (m) => `Asoció con ${String(m.metadata_jsonb?.numero_relacionado ?? '')}` },
   desistido:      { icon: Ban,           color: 'var(--color-error)', etiqueta: () => 'Trámite desistido' },
   reapertura:     { icon: RotateCcw,     color: '#f57f17', etiqueta: () => 'Reapertura del trámite' },
+  aprobacion:     { icon: BadgeCheck,    color: '#1f8a65', etiqueta: (m) => `Visado: ${String(m.metadata_jsonb?.estado ?? m.comentario ?? 'resuelto')}` },
+  resultado:      { icon: Flag,          color: '#6a1b9a', etiqueta: (m) => `Resultado: ${String(m.metadata_jsonb?.resultado_nuevo ?? '—')}` },
+  archivado_inactividad: { icon: Archive, color: '#78909c', etiqueta: () => 'Archivado automático por inactividad' },
+  purga_binario:  { icon: Trash2,        color: '#90a4ae', etiqueta: () => 'Archivo físico depurado por antigüedad' },
 }
 
 function formatFechaRelativa(iso: string): string {

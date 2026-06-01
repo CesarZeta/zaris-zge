@@ -17,6 +17,7 @@ export function EditarTipoModal({
   const [descripcion, setDescripcion] = useState(tipo.descripcion ?? '')
   const [iniciadores, setIniciadores] = useState<IniciadorTipo[]>(tipo.iniciadores_permitidos)
   const [permiteRep, setPermiteRep] = useState(tipo.permite_representante)
+  const [nuncaDepurar, setNuncaDepurar] = useState(tipo.retencion_nunca_depurar ?? false)
   const [error, setError] = useState('')
 
   const actualizar = useActualizarTipo(tipo.id_tipo_tramite)
@@ -37,6 +38,7 @@ export function EditarTipoModal({
         descripcion: descripcion.trim() || null,
         iniciadores_permitidos: iniciadores,
         permite_representante: permiteRep,
+        retencion_nunca_depurar: nuncaDepurar,
       })
       onCerrar()
     } catch (e) {
@@ -85,6 +87,16 @@ export function EditarTipoModal({
         <input type="checkbox" checked={permiteRep} onChange={(e) => setPermiteRep(e.target.checked)} />
         Permitir representante
       </label>
+
+      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 14, cursor: 'pointer', marginBottom: 4 }}>
+        <input type="checkbox" checked={nuncaDepurar} onChange={(e) => setNuncaDepurar(e.target.checked)} style={{ marginTop: 3 }} />
+        Nunca depurar adjuntos de este tipo
+      </label>
+      <p style={{ fontSize: 11, color: 'var(--fg-3)', margin: '0 0 12px 24px' }}>
+        Si está marcado, los archivos de los expedientes de este tipo se conservan indefinidamente
+        (excepción a la política de retención por antigüedad). Útil para Habilitaciones u otros
+        trámites con valor permanente.
+      </p>
 
       <div style={formRow}>
         <label style={label}>Descripción</label>

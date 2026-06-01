@@ -127,23 +127,37 @@ export function ListaDocumentos({ tramiteNumero, documentos, onCambio }: ListaDo
                   </p>
                 </div>
                 <EstadoFirmaBadge estado={doc.estado_firma} />
-                <button
-                  type="button"
-                  onClick={() => setVisorAbierto(doc)}
-                  style={iconBtnStyle}
-                  title="Ver documento"
-                >
-                  <Eye size={16} strokeWidth={1.5} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { void handleDescargar(doc) }}
-                  disabled={descargandoId === doc.id_tramite_documento}
-                  style={iconBtnStyle}
-                  title="Descargar"
-                >
-                  <Download size={16} strokeWidth={1.5} />
-                </button>
+                {doc.binario_purgado ? (
+                  <span
+                    title="El archivo físico fue depurado por la política de retención. El registro y su huella digital se conservan."
+                    style={{
+                      fontSize: 11, color: 'var(--fg-3)', fontStyle: 'italic',
+                      padding: '2px 8px', cursor: 'help', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Archivo depurado
+                  </span>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setVisorAbierto(doc)}
+                      style={iconBtnStyle}
+                      title="Ver documento"
+                    >
+                      <Eye size={16} strokeWidth={1.5} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { void handleDescargar(doc) }}
+                      disabled={descargandoId === doc.id_tramite_documento}
+                      style={iconBtnStyle}
+                      title="Descargar"
+                    >
+                      <Download size={16} strokeWidth={1.5} />
+                    </button>
+                  </>
+                )}
                 {doc.firmas.length > 0 && (
                   <button
                     type="button"
