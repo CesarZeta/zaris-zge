@@ -46,6 +46,45 @@ async def instanciar_aprobaciones_de_estado(
     return len(res.fetchall())
 
 
+async def rependientizar_rechazadas_de_estado(
+    db: AsyncSession, id_tramite: int, id_estado: Optional[int]
+) -> list[Mapping]:
+    """Vuelve a 'pendiente' los visados RECHAZADOS de un estado al re-entrar a él.
+
+    Cuando un trámite vuelve a la etapa del visado (típicamente tras una
+    subsanación: el visado se rechazó, el trámite fue a 'subsanacion' y luego
+    se reenvió a la etapa de revisión), las marcas que habían quedado
+    'rechazada' deben re-evaluarse desde cero. Se limpia la resolución anterior
+    (comentario/documento/quién/cuándo) para que el área vise de nuevo el
+    material corregido. Las 'aprobada' NO se tocan (ya estaban OK).
+
+    Devuelve las marcas reseteadas (para registrar movimiento/notificar).
+    No commitea (lo hace el caller).
+    """
+    if id_estado is None:
+        return []
+    res = await db.execute(
+        text("""
+            UPDATE tramite_aprobacion ta SET
+                estado = 'pendiente',
+                comentario = NULL,
+                id_tramite_documento = NULL,
+                resuelto_por_agente = NULL,
+                resuelto_en = NULL,
+                fecha_modificacion = NOW()
+            FROM tipo_tramite_aprobacion_requerida ttar
+            WHERE ta.id_tipo_tramite_aprobacion_requerida = ttar.id_tipo_tramite_aprobacion_requerida
+              AND ta.id_tramite = :t
+              AND ta.id_tipo_tramite_estado = :e
+              AND ta.activo = TRUE
+              AND ta.estado = 'rechazada'
+            RETURNING ta.id_tramite_aprobacion, ttar.etiqueta
+        """),
+        {"t": id_tramite, "e": id_estado},
+    )
+    return res.mappings().all()
+
+
 async def aprobaciones_bloqueantes_pendientes(
     db: AsyncSession, id_tramite: int, id_estado: Optional[int]
 ) -> list[Mapping]:
