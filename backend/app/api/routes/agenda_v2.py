@@ -143,6 +143,7 @@ async def listar_recursos_agenda(
     q: Optional[str] = Query(None, max_length=80),
     id_municipio: Optional[int] = Query(None),
     limit: int = Query(100, ge=1, le=500),
+    solo_cuadrillas: bool = Query(False, description="Si True, lista solo equipos con tipo_grupo='trabajo_reclamos' (cuadrillas que atienden reclamos/OT). Usado por el Planificador de OT para no ofrecer mesas de tramites como destinatario de una OT. No afecta a los agentes."),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
 ):
@@ -173,6 +174,8 @@ async def listar_recursos_agenda(
         if id_municipio is not None:
             conds.append("id_municipio = :im")
             params["im"] = id_municipio
+        if solo_cuadrillas:
+            conds.append("tipo_grupo = 'trabajo_reclamos'")
         where = " AND ".join(conds)
         rows = (await db.execute(text(f"""
             SELECT id_equipo AS id, nombre

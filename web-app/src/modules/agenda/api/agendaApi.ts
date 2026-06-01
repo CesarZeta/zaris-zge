@@ -192,7 +192,7 @@ export function listarSubareasAgenda(q?: string, limit = 50) {
   return api.get<SubareaItem[]>(`${BASE}/catalogos/subareas`, { params: { q, limit } })
 }
 
-export function listarRecursosAgenda(opts?: { tipo?: TipoRecurso; q?: string; id_municipio?: number; limit?: number }) {
+export function listarRecursosAgenda(opts?: { tipo?: TipoRecurso; q?: string; id_municipio?: number; limit?: number; solo_cuadrillas?: boolean }) {
   return api.get<RecursoItem[]>(`${BASE}/catalogos/recursos`, { params: opts })
 }
 

@@ -14,6 +14,9 @@ interface Props {
   onChange: (id: number | null) => void
   idMunicipio?: number
   placeholder?: string
+  // Si true y tipo='equipo', solo lista cuadrillas de reclamos (tipo_grupo=
+  // 'trabajo_reclamos'), no las mesas de tramites. Lo usa el Planificador de OT.
+  soloCuadrillas?: boolean
 }
 
 /**
@@ -25,7 +28,9 @@ interface Props {
  * puntual (sin q) para mostrarlo en el input. Si el consumidor cambia `tipo`,
  * tambien resetea `value` a null (patron en EventoEncargadosModal/OcupacionModal).
  */
-export function RecursoPicker({ tipo, value, onChange, idMunicipio, placeholder }: Props) {
+export function RecursoPicker({ tipo, value, onChange, idMunicipio, placeholder, soloCuadrillas }: Props) {
+  // El filtro solo aplica a equipos; para agentes es siempre false.
+  const filtroCuadrillas = tipo === 'equipo' ? !!soloCuadrillas : false
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -39,8 +44,8 @@ export function RecursoPicker({ tipo, value, onChange, idMunicipio, placeholder 
   // Resuelve el nombre del recurso ya seleccionado (value) para mostrarlo en el
   // input cuando el componente monta o el value cambia desde afuera.
   const seleccionado = useQuery<RecursoItem[]>({
-    queryKey: ['agenda', 'recursos', 'lookup', tipo, idMunicipio ?? null],
-    queryFn: () => listarRecursosAgenda({ tipo, id_municipio: idMunicipio, limit: 200 }),
+    queryKey: ['agenda', 'recursos', 'lookup', tipo, idMunicipio ?? null, filtroCuadrillas],
+    queryFn: () => listarRecursosAgenda({ tipo, id_municipio: idMunicipio, limit: 200, solo_cuadrillas: filtroCuadrillas }),
     staleTime: 60_000,
     enabled: value != null,
   })
@@ -82,7 +87,7 @@ export function RecursoPicker({ tipo, value, onChange, idMunicipio, placeholder 
     setLoading(true); setOpen(true)
     const t = setTimeout(async () => {
       try {
-        const rows = await listarRecursosAgenda({ tipo, q: q.trim(), id_municipio: idMunicipio, limit: 20 })
+        const rows = await listarRecursosAgenda({ tipo, q: q.trim(), id_municipio: idMunicipio, limit: 20, solo_cuadrillas: filtroCuadrillas })
         if (myId === reqIdRef.current) setResults(rows)
       } catch {
         if (myId === reqIdRef.current) setResults([])
@@ -91,7 +96,7 @@ export function RecursoPicker({ tipo, value, onChange, idMunicipio, placeholder 
       }
     }, 250)
     return () => clearTimeout(t)
-  }, [q, tipo, idMunicipio])
+  }, [q, tipo, idMunicipio, filtroCuadrillas])
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {

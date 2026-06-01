@@ -147,11 +147,15 @@ export function PlanificadorOT({ reclamo, onDone }: Props) {
         </label>
       </div>
 
-      <Field label={modo === 'agente' ? 'Agente' : 'Equipo'}>
+      <Field
+        label={modo === 'agente' ? 'Agente' : 'Equipo'}
+        hint={modo === 'equipo' ? 'Solo cuadrillas de trabajo (las mesas de trámites no atienden OT).' : undefined}
+      >
         <RecursoPicker
           tipo={modo}
           value={idRecurso !== '' ? (idRecurso as number) : null}
           onChange={(id) => setIdRecurso(id ?? '')}
+          soloCuadrillas
         />
       </Field>
 
