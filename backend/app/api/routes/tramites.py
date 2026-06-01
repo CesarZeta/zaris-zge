@@ -1489,6 +1489,24 @@ async def transicionar_tramite(
         db, id_tramite, tramite["id_tipo_tramite_version"], id_estado_destino
     )
 
+    # Re-pendientizar visados RECHAZADOS al re-entrar a la etapa del visado.
+    # Caso tipico: el visado se rechazo -> el tramite fue a 'subsanacion' -> se
+    # corrigio el material -> se reenvia a la etapa de revision. Las marcas que
+    # quedaron 'rechazada' vuelven a 'pendiente' para que el area vise de nuevo
+    # automaticamente (sin que el agente tenga que re-resolver la marca a mano).
+    if id_estado_destino != id_estado_origen:
+        reseteadas = await svc_aprob.rependientizar_rechazadas_de_estado(
+            db, id_tramite, id_estado_destino
+        )
+        if reseteadas:
+            etiquetas_reset = ", ".join(r["etiqueta"] for r in reseteadas)
+            await svc_mov.registrar_movimiento(
+                db, id_tramite, "aprobacion", current_user["id_usuario"], agente["id_agente"],
+                tramite["id_municipio"], request,
+                comentario=f"Visados reabiertos para nueva revision: {etiquetas_reset}",
+                metadata_jsonb={"reabiertas": [r["id_tramite_aprobacion"] for r in reseteadas]},
+            )
+
     orig_jsonb = {"tipo": tramite.get("destinatario_actual_tipo"), "id": tramite.get("id_subarea_actual") or tramite.get("id_equipo_actual") or tramite.get("id_agente_actual")}
     dest_jsonb = {"tipo": nuevo_dest_tipo, "id": nuevo_dest_sa or nuevo_dest_eq or nuevo_dest_ag}
 
