@@ -71,6 +71,7 @@ export function DetalleTramite() {
             type="button"
             onClick={() => setShowUploader(true)}
             style={btnOutlineStyle}
+            title="Adjuntar documentos — PDF, JPG, PNG, Word, Excel · máx. 10 MB por archivo"
           >
             <Paperclip size={14} strokeWidth={1.5} />
             Adjuntar
@@ -121,7 +122,12 @@ export function DetalleTramite() {
               <h2 style={{ ...cardTitleStyle, margin: 0 }}>
                 Documentos ({docsData.length})
               </h2>
-              <button type="button" onClick={() => setShowUploader(true)} style={btnSmallStyle}>
+              <button
+                type="button"
+                onClick={() => setShowUploader(true)}
+                style={btnSmallStyle}
+                title="Adjuntar documentos — PDF, JPG, PNG, Word, Excel · máx. 10 MB por archivo"
+              >
                 <Paperclip size={13} strokeWidth={1.5} /> Adjuntar
               </button>
             </div>
