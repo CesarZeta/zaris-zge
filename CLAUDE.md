@@ -193,34 +193,19 @@ Tablas con horario de atención (`equipos`, `servicios`, etc.) deben incluir:
 
 ## 12. Agregar un módulo React al producto
 
-Los módulos React viven en `web-app/src/modules/<nombre>/`. Se publican como build estático de Vite a GitHub Pages y el shell vanilla los carga en su iframe. **Antes de empezar leer §4 y §14** para entender el contexto.
+Módulos React en `web-app/src/modules/<nombre>/`, build Vite → GH Pages → cargados en el iframe del shell vanilla. **Antes de empezar leer §4 y §14.**
 
-### Crear el módulo
+> **Procedimiento de alta (pasos mecánicos: crear manifest, registrarlo, exponerlo en el sidebar, build/publish) en la skill `nuevo-modulo-react`** (`.claude/skills/nuevo-modulo-react/`).
 
-1. `web-app/src/modules/<nombre>/index.ts` exporta un `ModuleManifest` (ver `web-app/src/lib/types.ts`).
-2. Importar el manifest en `web-app/src/modules/index.ts` (array `modules`).
-3. El AppShell del shell React contenedor (solo visible en `localhost:5173` durante desarrollo) lee el array y lo agrega al sidebar y al router. Esto **NO** afecta producción.
-4. Para que el módulo sea accesible en producción, agregar un `<a class="nav-flat__item" href="web-app/dist/index.html#/<nombre>/<ruta>" data-modulo="<codigo>">` en `index.html` (raíz, dentro del `nav-flat`).
-5. **Si el ítem lleva `data-modulo="<codigo>"`, ese código DEBE existir como fila en la tabla `modulos` (catálogo de permisos §30) — sino el ítem queda OCULTO para TODOS los usuarios (incluido admin), porque `modulos_permitidos` nunca lo incluye.** `menu.js` filtra cada `data-modulo` contra `user.modulos_permitidos`; un código sin fila en `modulos` no se resuelve y queda `a.hidden=true`. Insertar la fila con migración formal (`INSERT INTO modulos (modulo_codigo, nombre, min_nivel_acceso, ...) ... ON CONFLICT DO NOTHING`), aplicada en local Y prod (§24). Si el módulo es informativo y debe verlo cualquiera, NO le pongas `data-modulo` (ej. Guías). El gating por nivel del propio módulo React (ej. `WrapNivel`) es independiente de esto: un admin entra por nivel aunque su sesión cacheada no tenga el código todavía — pero el ítem del sidebar igual se oculta hasta que la fila exista y la sesión se refresque. Cazado 2026-05-26 con Encuestas (mig 61). Ver [[feedback_modulo_react_necesita_fila_en_modulos]].
+### Reglas que un módulo React DEBE respetar (criterio — no se delegan a la skill)
 
-### Cómo se publica a producción
-
-- **Build:** `pnpm build` en `web-app/` genera `web-app/dist/` con assets que apuntan a `/zaris-zge/web-app/dist/` (configurado en `web-app/vite.config.ts` con `base`).
-- **GitHub Pages:** sirve el repo entero desde la raíz; `web-app/dist/index.html` queda accesible en `https://cesarzeta.github.io/zaris-zge/web-app/dist/index.html`.
-- **Workflow automático:** `.github/workflows/deploy-web-app.yml` rebuildea `web-app/dist/` y commitea el resultado en cada push a main que toque `web-app/**`.
-- **Primer deploy:** ya está commiteado (`web-app/dist/` versionado, ver `.gitignore` con excepción explícita).
-
-### Reglas que un módulo React DEBE respetar
-
-- **Router:** `createHashRouter` (no `createBrowserRouter`). GitHub Pages no soporta HTML5 routing sin server-side rewrites; el F5 sobre `/agenda/timeline` daría 404. Las URLs quedan `…/web-app/dist/index.html#/agenda/timeline`.
-- **API base:** leer de `import.meta.env.VITE_API_BASE`. Variables:
-  - `web-app/.env.development` → `http://127.0.0.1:8000`
-  - `web-app/.env.production` → URL Railway prod
-- **Sesión:** usar `useAuthStore` (`web-app/src/stores/auth.ts`) que ya implementa `dualShapeStorage` (mantiene `zaris_session` con `access_token` plano + `state.accessToken`, ver §29).
-- **Iframe:** el `AppShell` ya detecta `window.self !== window.top` y se auto-oculta. **No agregar UI propia de navegación** (sidebar, topbar, notificaciones globales) al shell React — esa UI vive en el shell vanilla (`index.html` + `frontend/css/menu.css`).
-- **Comunicación con el shell vanilla:** `window.parent?.shellNavigate?.('frontend/<otro-modulo>.html')` para mover el iframe a otro módulo desde el código React.
-- **`hideFromSidebar?: boolean`** en el `ModuleManifest` (`web-app/src/lib/types.ts`): si está en `true`, el módulo se registra (rutas activas, deep-links del shell vanilla funcionan, links inter-módulo siguen funcionando) **pero NO aparece como ítem en el sidebar del shell React standalone** (`localhost:5173`). Útil cuando un módulo es accesible solo desde una landing agrupadora — ej: `ciudadanosModule` y `empresasModule` lo setean porque se entra via la landing del módulo `contactosModule`. El filtro vive en `web-app/src/shell/Sidebar/Sidebar.tsx` y corre antes que el filtro de permisos §30.
-- **Estilos:** usar tokens del DS (`var(--zaris-orange)`, `var(--fg-1)`, etc.) en lugar de colores hardcodeados — el shell vanilla los inyecta vía `design-system/colors_and_type.css` y el shell React los importa también (`web-app/src/styles/tokens.css`).
+- **Router:** `createHashRouter`, NUNCA `createBrowserRouter`. GH Pages no soporta HTML5 routing; el F5 daría 404. URLs quedan `…/web-app/dist/index.html#/<ruta>`.
+- **API base:** `import.meta.env.VITE_API_BASE` (`.env.development` → `127.0.0.1:8000`, `.env.production` → Railway).
+- **Sesión:** usar `useAuthStore` (`web-app/src/stores/auth.ts`, `dualShapeStorage`, §29). No leer `localStorage` a mano.
+- **Iframe:** el `AppShell` se auto-oculta cuando `window.self !== window.top`. **NO agregar UI de navegación propia** (sidebar/topbar/notificaciones) al shell React — eso vive en el shell vanilla (§14).
+- **Navegar a otro módulo:** `window.parent?.shellNavigate?.('frontend/<otro>.html')`. Nunca `window.location.href` absoluto (rompe bajo `/zaris-zge/`, §32).
+- **Estilos:** tokens del DS (`var(--zaris-orange)`, `var(--fg-1)`…), nunca hex hardcodeado. El shell React solo importa tokens, NO los componentes `*-zaris` (§13).
+- **`data-modulo="<codigo>"` exige fila en la tabla `modulos`** (§30) o el ítem queda oculto para TODOS. Migración formal en local Y prod. Módulo informativo para cualquiera → sin `data-modulo` (ej. Guías). Cazado con Encuestas (mig 61), [[feedback_modulo_react_necesita_fila_en_modulos]].
 
 ## 13. Design System Visual — Obligatorio
 
@@ -989,114 +974,13 @@ Reglas:
 
 ## 24. Workflow de seed desde CSVs en `Tablas Iniciales/`
 
-Los CSVs en `Tablas Iniciales/` son la **fuente autoritativa** de catálogos (subáreas, tipos de reclamo, agentes, cargos, ciudadanos, actividades, nacionalidades). Reglas para escribir scripts de seed:
+> **Recetas para escribir scripts de seed en la skill `seed-csv`** (`.claude/skills/seed-csv/`). Invocarla al crear/modificar un `backend/seed_*.py` o poblar catálogos desde CSV. Cubre idempotencia, encoding Windows, resolución de IDs por nombre, inspección previa del CSV, mapping de IDs legacy y la lista de scripts disponibles.
 
-### Idempotencia obligatoria
-Todo seed debe poder correrse múltiples veces sin duplicar ni romper. Patrón:
-1. Soft-delete (`activo=FALSE`) lo activo previo.
-2. Para cada row del CSV: buscar por nombre (case-insensitive, trim) — si existe, `UPDATE activo=TRUE` + actualizar campos. Si no, `INSERT`.
-3. Soft-delete entidades padre que quedaron huérfanas tras el seed.
+### REGLA CRÍTICA (aplica a TODO backend, no solo seeds): verificar el estado real de prod con `execute_sql` ANTES de codear
 
-### Encoding
-- Lectura del CSV: `open(path, encoding="utf-8-sig")` (incluye BOM removal).
-- Output del script en Windows: setear `$env:PYTHONIOENCODING="utf-8"` antes de correr Python, sino `cp1252` rompe en `print` con caracteres unicode (✓, →, ñ, tildes).
-- Evitar caracteres unicode decorativos (━, →, ❌) en `print()` de scripts; usar ASCII (`-`, `->`, `[FAIL]`).
+**No confiar en §21 ni en la simetría con local.** La doc queda atrás Y local puede tener cambios manuales sin migración formal. Antes de aplicar/re-aplicar una migración, codear un endpoint que referencie una columna/filas, o un INSERT que omita columnas: chequear en prod **existencia + NOT NULL + DEFAULT + CHECK + seeds dependientes**. Lo que local acepta puede explotar en prod (casos reales: `agentes.es_auditor` solo en local → crash; `activo NOT NULL` sin default en prod → 500; `ciudadanos_sexo_check` exige uppercase solo en prod → 500). Comandos: `to_regclass`, `information_schema.columns` (is_nullable, column_default), `pg_constraint` (CHECKs). Detalle en [[feedback_verificar_drift_completo_prod]].
 
-### NO hardcodear IDs entre entornos
-Local y prod tienen IDs distintos para las mismas entidades (ej: en local `id_area=1` puede ser "Salud" mientras en prod es "Gobierno"). Resolver siempre **por nombre** dentro del script:
-```python
-# Buscar por keyword case-insensitive, reactivar si está inactiva, crear si no existe
-row = await conn.fetchrow(
-    "SELECT id_area, activo FROM area WHERE LOWER(nombre) LIKE $1 ORDER BY activo DESC, id_area LIMIT 1",
-    "%gobierno%"
-)
-```
-Esto vale para áreas, tipos de usuario, cargos, nacionalidades, actividades — cualquier catálogo cuyos IDs no estén garantizados estables entre entornos.
-
-### Aplicar en local Y prod en la misma sesión
-Una migración aplicada solo en uno desincroniza los entornos. Si aplicaste en prod via MCP, corré también el script en local (o viceversa) antes de cerrar la tarea. Documentar el paso en el commit.
-
-### Antes de aplicar (o de codear backend), verificar el estado real con `execute_sql`
-**No confiar en CLAUDE.md §21 ni en la simetría con local.** Antes de:
-- **Aplicar/re-aplicar una migración:** chequear si la tabla/columna/seeds ya existen.
-- **Codear un endpoint backend que referencie una columna o filas:** chequear que existan en prod, no solo en local.
-- **Codear un INSERT que omita columnas:** chequear NOT NULL + DEFAULT + CHECK constraints en prod. Lo que local acepta puede explotar en prod.
-
-**Por qué:** la doc queda atrás Y local puede tener cambios manuales sin migración formal. Casos reales:
-- Mig 22 figuraba como pendiente en CLAUDE.md cuando ya estaba aplicada con 1000 activos seedeados (2026-05-09).
-- `agentes.es_auditor` existía en local (cambio manual viejo) pero no en prod. Backend `/ot/auditor/me` referenciaba la columna; en prod habría crasheado (2026-05-10).
-- `agentes` tenía 3 filas en local pero 0 en prod. Las mesas Agente/Auditoría habrían estado inútiles silenciosamente (2026-05-10).
-- **Sesión 2026-05-12 cazó 3 drifts en una sola pasada de E2E:** (a) tablas Agenda con `activo NOT NULL` SIN default en prod (local sí tenía), backend `INSERT` confiaba en default → 500. (b) catálogos `municipios`/`estado_evento`/`estado_reserva` vacíos en prod aunque las migs 30+31 los creaban. (c) `ciudadanos_sexo_check` solo en prod requiere uppercase (`HOMBRE|MUJER|OTROS`), backend insertaba `'otro'` → 500. **Cada uno costó un round-trip de debugging que un `execute_sql` de 5 segundos hubiera evitado.**
-
-**Comandos de verificación:**
-```sql
--- Existencia de tabla y conteo
-SELECT to_regclass('public.tabla') AS existe,
-       (SELECT COUNT(*) FROM tabla WHERE activo) AS filas_activas;
-
--- Columnas que voy a referenciar en backend
-SELECT column_name FROM information_schema.columns
-WHERE table_name='tabla' AND column_name IN ('col1','col2');
-
--- Defaults y NOT NULL (drift entre local y prod ataca acá)
-SELECT column_name, is_nullable, column_default
-  FROM information_schema.columns
- WHERE table_name='tabla'
-   AND column_name IN ('activo','col2','col3');
-
--- CHECKs (valores aceptados)
-SELECT conname, pg_get_constraintdef(oid)
-  FROM pg_constraint
- WHERE conrelid='tabla'::regclass AND contype='c';
-
--- Seeds del catálogo
-SELECT COUNT(*) FROM catalogo WHERE activo;
-```
-
-**Regla operativa:** si codeo backend que dependa de `tabla.columna_nueva`, o que haga un INSERT que omita columnas (confiando en defaults), verifico que TODO el contrato (existencia + defaults + CHECKs + seeds dependientes) coincida en prod via `execute_sql` ANTES de pushear. Si no, crear migración formal aunque "ya esté en local".
-
-### Backup antes de operaciones destructivas en prod
-Para `UPDATE`/`DELETE` masivos en prod: snapshot previo en tabla `_backup_<tabla>_YYYY_MM_DD`. Permite revert manual sin necesidad de point-in-time recovery.
-
-### Antes de codear un seed, inspeccionar el CSV
-Los CSVs en `Tablas Iniciales/` no son confiables ciegamente:
-- Pueden estar **mal/duplicados**: `agente.csv` era idéntico a `cargo.csv` hasta 2026-05-12 (cargos por área, NO personas). Si el script lo usaba para insertar agentes, hubiera creado basura.
-- Pueden estar **vacíos** o tener columnas distintas a las esperadas.
-- Pueden referenciar IDs legacy que no existen en otros CSVs.
-
-**Antes de escribir el seed, mirar:**
-```bash
-head -3 "Tablas Iniciales/<nombre>.csv"     # columnas reales + sample
-wc -l    "Tablas Iniciales/<nombre>.csv"     # ¿está vacío?
-```
-
-Si los datos no son lo que esperabas, **avisar al usuario inmediatamente** en lugar de improvisar mapeos. Los CSVs reales los conoce el municipio; un placeholder mal hecho es deuda nueva.
-
-### CSVs y mapping de IDs legacy
-- Los CSVs traen IDs del sistema legacy (ej: `id_area_servicio=6361`) que **no se usan** en la DB nueva. El mapeo es por nombre.
-- Los CSVs pueden tener referencias a IDs huérfanos (ej: `tipo_reclamo.id_area_servicio=7984` que no está en `subarea.csv`). Inferir nombres del contenido de los tipos que las usan, agregar como subáreas extra.
-- `subarea.csv` viene con `id_area=1` genérico. La asignación real de área se hace por **heurística por keyword** sobre el nombre de la subárea (ver `seed_subareas_tipos_csv.py`).
-- **Agentes con cargo huérfano:** si el `id_cargo` legacy no matchea con `cargo.csv` y no hay info real, NO inventar nombre de cargo. Distribuir entre cargos genéricos (id 1-5: Director/Coordinador/Técnico/Administrativo/Operario) via hash determinístico de `apellido||nombre` para que sea reproducible. Patrón usado en sesión 2026-05-12 con 71/84 agentes.
-
-### Idempotencia de seeds — patrón obligatorio
-Todo script de seed debe poder correrse N veces sin duplicar. Patrón mínimo:
-1. **Dedupe sobre lo existente, no por contador**: leer `SELECT key FROM tabla` al inicio y descartar filas del CSV cuya key ya esté en DB. Anti-patrón: `if existing > 0: return` (lo que hace `seed_inicial.py` — se saltea TODO si hay 1 fila, incluso si faltan 499).
-2. **`--confirm-prod` flag** cuando la conexión apunta a Supabase. Default a local.
-3. **`--limite N`** parametrizable. No hardcodear 500/1000 en el código.
-4. **Defaults compatibles con prod**: ver bloque anterior sobre CHECKs y NOT NULL. Pasar **siempre** todos los campos NOT NULL aunque tengan default — el default puede no existir en prod aunque sí en local.
-
-Ejemplos canónicos: `backend/seed_ciudadanos_csv.py` y `backend/seed_agentes_csv.py` (sesión 2026-05-12).
-
-### Comandos de seed disponibles
-| Script | Tablas | Origen |
-|---|---|---|
-| `seed_geo_argentina.py` | provincias, partidos, localidades | hardcoded AR |
-| `seed_subareas_tipos_csv.py` | subarea, tipo_reclamo | `Tablas Iniciales/*.csv` |
-| `seed_activos_local.py` | tipos_activo, activos | `Tablas Iniciales/Activos.csv` |
-| `seed_ciudadanos_csv.py` | ciudadanos | `Tablas Iniciales/ciudadano.csv` |
-| `seed_agentes_csv.py` | agentes | `Tablas Iniciales/agente.csv` + `cargo.csv` |
-| `seed_auth.py` | usuarios | hardcoded dev |
-| `seed_demo.py` / `seed_prod.py` | varios | hardcoded mínimo |
+**Aplicar en local Y prod en la misma sesión** (sino se desincronizan). **Backup antes de UPDATE/DELETE masivos en prod**: snapshot en `_backup_<tabla>_YYYY_MM_DD`.
 
 ## 26. Adjuntos de Reclamos (Supabase Storage)
 
@@ -1390,130 +1274,9 @@ Cada módulo declara su **nivel mínimo de acceso** (default). Si el `nivel_acce
 - Fila con `permitido = FALSE` → el usuario NO ve el módulo aunque su nivel sí lo permitiría (bloquea acceso).
 - Sin fila → cae al default por nivel.
 
-### Schema futuro (cuando se implemente)
+### Implementación (mig 38 + 44, local + prod)
 
-```sql
--- Migración futura (a definir cuando se decida implementar)
-CREATE TABLE usuario_modulos (
-  id_usuario_modulo   SERIAL PRIMARY KEY,
-  id_usuario          INTEGER NOT NULL REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
-  modulo_codigo       VARCHAR(50) NOT NULL,   -- 'reclamos', 'agenda', 'admin_tablas', etc.
-  permitido           BOOLEAN NOT NULL,        -- TRUE = override que otorga, FALSE = override que bloquea
-  motivo              TEXT,                    -- opcional, registro de por qué
-  -- estándar §10
-  activo                  BOOLEAN DEFAULT TRUE,
-  id_municipio            INTEGER,
-  id_subarea              INTEGER,
-  fecha_alta              TIMESTAMPTZ DEFAULT NOW(),
-  fecha_modificacion      TIMESTAMPTZ DEFAULT NOW(),
-  id_usuario_alta         INTEGER REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
-  id_usuario_modificacion INTEGER REFERENCES usuarios(id_usuario) ON DELETE SET NULL,
-  UNIQUE (id_usuario, modulo_codigo)
-);
-
--- Catálogo de módulos. Permite que el admin gestione defaults via UI.
-CREATE TABLE modulos (
-  modulo_codigo       VARCHAR(50) PRIMARY KEY,
-  nombre              VARCHAR(100) NOT NULL,
-  descripcion         TEXT,
-  min_nivel_acceso    SMALLINT NOT NULL DEFAULT 4,  -- default: nivel 4 = todos pueden
-  -- estándar §10
-  activo              BOOLEAN DEFAULT TRUE
-);
-
-INSERT INTO modulos (modulo_codigo, nombre, min_nivel_acceso) VALUES
-  ('reclamos', 'Reclamos', 4),
-  ('ot', 'Órdenes de trabajo', 3),
-  ('agenda', 'Agenda', 3),
-  ('buc', 'Ciudadanos', 4),
-  ('empresas', 'Empresas', 4),
-  ('usuarios', 'Usuarios', 1),       -- solo admin
-  ('admin_tablas', 'Admin tablas', 1) -- solo admin
-;
-```
-
-### Endpoints futuros
-
-- `GET /api/v1/auth/me` → devolver además `modulos_permitidos: ['reclamos', 'agenda', ...]` ya resuelto por el backend aplicando la regla híbrida.
-- `GET /api/v1/admin/usuarios/{id}/modulos` → para la UI de gestión.
-- `PUT /api/v1/admin/usuarios/{id}/modulos` → set bulk de overrides.
-- `GET /api/v1/admin/modulos` / `PUT /api/v1/admin/modulos/{codigo}` → gestión de `min_nivel_acceso`.
-
-### Resolución en el backend (pseudocódigo)
-
-```python
-async def modulos_permitidos(db, id_usuario: int, nivel: int) -> list[str]:
-    # 1. Defaults: todos los modulos con min_nivel_acceso >= nivel
-    defaults = await db.execute(text("""
-        SELECT modulo_codigo FROM modulos
-        WHERE activo = TRUE AND min_nivel_acceso >= :nivel
-    """), {"nivel": nivel})
-    permitidos = {r.modulo_codigo for r in defaults.fetchall()}
-
-    # 2. Overrides del usuario
-    overrides = await db.execute(text("""
-        SELECT modulo_codigo, permitido FROM usuario_modulos
-        WHERE id_usuario = :uid AND activo = TRUE
-    """), {"uid": id_usuario})
-    for r in overrides.fetchall():
-        if r.permitido:
-            permitidos.add(r.modulo_codigo)
-        else:
-            permitidos.discard(r.modulo_codigo)
-
-    return sorted(permitidos)
-```
-
-### Resolución en el frontend
-
-**Shell vanilla (`frontend/js/menu.js`):** al cargar el shell, llamar `/auth/me`, leer `modulos_permitidos`, ocultar items del sidebar cuyos `data-modulo` no estén en la lista.
-
-```html
-<!-- Sidebar plano (estilo nav-flat, post 2026-05-12 jornada 4) -->
-<a class="nav-flat__item" href="web-app/dist/index.html#/reclamos" data-modulo="reclamos">
-  <svg ...></svg><span>reclamos</span>
-</a>
-
-<!-- Item que cubre MULTIPLES moduloCodigos (data-modulo-fallback CSV) -->
-<a class="nav-flat__item"
-   href="web-app/dist/index.html#/ot/supervisor"
-   data-modulo="ot_supervisor"
-   data-modulo-fallback="ot_agente,ot_auditoria">
-  <svg ...></svg><span>OT</span>
-</a>
-```
-
-```js
-// menu.js: si CUALQUIERA de los codigos (principal + fallback) esta permitido,
-// el item se muestra. Util cuando un modulo cubre varios sub-permisos (OT con
-// 3 mesas) o cuando supervisor/agente/auditoria viven en el mismo bundle.
-const permitidos = new Set((session.user.modulos_permitidos ?? []))
-document.querySelectorAll('.nav-flat__item[data-modulo], .nav__link[data-modulo]').forEach(a => {
-  const principal = a.dataset.modulo
-  const fallback = (a.dataset.moduloFallback || '').split(',').map(s => s.trim()).filter(Boolean)
-  const algunoPermitido = [principal, ...fallback].some(m => permitidos.has(m))
-  if (!algunoPermitido) a.hidden = true
-})
-```
-
-**Sin `data-modulo-fallback` declarado, OT desaparece** del sidebar para usuarios con `ot_agente` pero sin `ot_supervisor` — caso real cazado en sesión 2026-05-12 jornada 4. Cuando un manifest React cubre múltiples permisos backend, exponer todos los códigos en el HTML del shell.
-
-**Shell React (`web-app/src/app/AppShell.tsx`):** el array `modules` ya tiene `permissions?: string[]` declarado en `ModuleManifest`. Convertirlo en `modulo_codigo: string` y filtrar el sidebar leyendo `user.modulos_permitidos`. El campo `permissions` actual queda deprecado.
-
-**Guard a nivel endpoint backend:** además del filtro UI, cada endpoint sensible debe validar que el usuario tenga el módulo. Helper futuro:
-
-```python
-async def require_modulo(modulo: str, current_user, db):
-    permitidos = await modulos_permitidos(db, current_user["id_usuario"], current_user["nivel_acceso"])
-    if modulo not in permitidos:
-        raise HTTPException(403, f"Sin acceso al modulo '{modulo}'")
-```
-
-Sin esta validación backend, la restricción UI sería evadible (basta llamar al endpoint directo).
-
-### Estado actual (2026-05-12) — IMPLEMENTADO
-
-**Migración 38 (`backend/migrations/38_permisos_por_modulo.sql`) aplicada en local y prod.** Tablas `modulos` + `usuario_modulos` siguiendo §10. **Migración 44 (2026-05-14) separó el código `turnos` en tres** (`agenda` / `turnos` / `entradas`). Catálogo actual — 10 módulos:
+Tablas `modulos` (catálogo: `modulo_codigo` PK, `nombre`, `descripcion`, `min_nivel_acceso` SMALLINT default 4) + `usuario_modulos` (override por usuario: `(id_usuario, modulo_codigo)` UNIQUE, `permitido` BOOL, §10). Catálogo actual — 10 módulos:
 
 | Código | Nombre | min_nivel_acceso | Cubre |
 |---|---|---|---|
@@ -1528,318 +1291,46 @@ Sin esta validación backend, la restricción UI sería evadible (basta llamar a
 | `usuarios` | Usuarios | 1 | `frontend/usuarios.html` (pantalla propia — admin_tablas no hashea password) |
 | `admin_tablas` | Maestros | 1 | resto de `frontend/admin_tablas.html?tabla=*` |
 
-> **Migración 44** (`44_permisos_separar_agenda_turnos_entradas.sql`, aplicada local + prod 2026-05-14): la fila `turnos` ("Turnos y eventos") se reconvirtió en `agenda` ("Agenda") vía `UPDATE` de la PK — seguro porque no había overrides en `usuario_modulos`. Se insertaron `turnos` y `entradas`. Los scaffolds React `web-app/src/modules/turnos/` y `entradas/` son landings mínimas; la lógica (backoffice + autoservicio) es sub-fase futura.
+**Backend (`core/auth.py`):** `modulos_permitidos(db, id_usuario, nivel) -> list[str]` (defaults por nivel + overrides) · `require_modulo(modulo)` dependency factory (devuelve `current_user`, 403 si falta). `POST /auth/login` y `GET /auth/me` incluyen `modulos_permitidos`.
 
-**Backend (`backend/app/core/auth.py`):**
-- `modulos_permitidos(db, id_usuario, nivel) -> list[str]` — resuelve defaults por nivel + overrides activos.
-- `require_modulo(modulo: str)` — dependency factory para guard de endpoints (devuelve `current_user` igual que `get_current_user`).
+**Endpoints (`admin_permisos.py`, `/api/v1/admin/permisos`):** GET `/modulos` · PUT `/modulos/{codigo}` (editar `min_nivel_acceso`) · GET `/usuarios/{id}/modulos` · PUT `/usuarios/{id}/modulos` (set bulk overrides). **Orden crítico**: `admin_permisos_router` ANTES de `admin_tablas_router` en `main.py` (sino `/{tabla}` greedy atrapa `/permisos/*` → 422 `int_parsing`, §5).
 
-**Endpoints (`backend/app/api/routes/admin_permisos.py`, prefix `/api/v1/admin/permisos`):**
-- `GET /modulos` — catálogo
-- `PUT /modulos/{codigo}` — editar `min_nivel_acceso`
-- `GET /usuarios/{id}/modulos` — resolución + overrides
-- `PUT /usuarios/{id}/modulos` — set bulk de overrides (reemplaza activos)
+**Frontend vanilla (`menu.js`):** filtra items por `data-modulo` ∉ `modulos_permitidos`. **`data-modulo-fallback="cod1,cod2"`** (CSV): el item se muestra si CUALQUIER código (principal + fallback) está permitido — necesario cuando un bundle cubre varios sub-permisos (OT supervisor/agente/auditoría). Sin fallback, OT desaparecía para el operador (cazado 2026-05-12). Sesión vieja sin `modulos_permitidos` cacheado → refresca contra `/me`, fail-open en UI (el guard real está en backend).
 
-**Orden de routers crítico:** `admin_permisos_router` se registra en `main.py` **antes** de `admin_tablas_router`. `admin_tablas` usa `/api/v1/admin/{tabla}` y `/api/v1/admin/{tabla}/{id}` que sin orden explícito atraparían `/api/v1/admin/permisos/*` como si `{tabla}='permisos'`. Devuelve 422 (`int_parsing` sobre `id='modulos'`).
+**Frontend React (`localhost:5173`):** `ModuleManifest.moduloCodigo?: string` (lo usan agenda/turnos/entradas/padrones); `Sidebar.tsx` filtra, fail-open; `useAuthStore.refreshSession()` rehidrata desde `/me`.
 
-**Auth endpoints ampliados:**
-- `POST /api/v1/auth/login` — el `user` ahora incluye `modulos_permitidos: list[str]`.
-- `GET /api/v1/auth/me` — idem.
-
-**Frontend vanilla (`frontend/js/menu.js`):**
-- Cada `<a class="nav__link">` en `index.html` tiene `data-modulo="<codigo>"`.
-- `menu.js` filtra al cargar: oculta links cuyo `data-modulo` no esté en `user.modulos_permitidos`. Si un grupo (`.nav__panel` o `.nav__subpanel`) queda sin links visibles, se oculta el grupo entero.
-- Para sesiones cargadas antes del feature (sin `modulos_permitidos` en cache), `menu.js` refresca contra `/auth/me` y persiste la nueva shape sin re-loguear. Si `/me` falla → fail-open en UI (el guard real está en backend).
-
-**Frontend React (shell standalone `localhost:5173`):**
-- `ModuleManifest` extendido con `moduloCodigo?: string`. Lo usan `agendaModule` (`agenda`), `turnosModule` (`turnos`), `entradasModule` (`entradas`), `contactosModule` (`padrones`); `dashboardModule` queda sin filtro (es stub demo, no se filtra).
-- `Sidebar.tsx` filtra por `user.modulos_permitidos`. Fail-open si falta.
-- `useAuthStore` agregó `refreshSession()` que llama a `/me` y actualiza el user; `AppShell` lo invoca cuando detecta que `user.modulos_permitidos` no está.
-
-**Guard a nivel endpoint backend (uso opcional):**
-```python
-from app.core.auth import require_modulo
-
-@router.get("/algo-sensible")
-async def algo(current: dict = Depends(require_modulo("reclamos"))):
-    ...
-```
-Devuelve 403 si el usuario no tiene el módulo. **`require_modulo` casi no se usa** — la mayoría de routers aplican su propio criterio de nivel con helpers locales (`_require_gestion` en reclamos, `_require_supervisor` en OT). La UI filtra el sidebar por módulo, pero eso NO impone nada en el backend.
-
-> **OJO — esto es una trampa de seguridad recurrente.** Que el sidebar oculte un módulo NO protege sus endpoints. Hasta 2026-05-20, el router OT (`POST /ot`, `/ot/con-agenda`, `GET /mesa/supervisor`) NO chequeaba nivel: un operador con JWT válido los llamaba directo y creaba/asignaba OT (hallazgo QA #2). **Antes de asumir que "el router ya valida nivel", verificalo** — leé el handler y confirmá que invoca un `_require_*` o `require_modulo` como primera línea. Si no, es bug aunque la UI lo oculte. Ver memoria [[guard_nivel_endpoint_no_solo_ui]].
-
-**Smoke verificado (2026-05-12):**
-- Login admin nivel 1 → 8 módulos. Login supervisor nivel 2 → 6. Operador nivel 3 → 4.
-- PUT override `reclamos:permitido=FALSE` al usuario id=2 → siguiente login pierde `reclamos`. PUT con `overrides=[]` lo restaura. PUT con `modulo_codigo` inexistente → 422.
-- `/admin/permisos/modulos`: admin=200, supervisor=403, sin auth=401.
-- Verificado que `/admin/agentes` (admin_tablas) sigue funcionando tras reordenar routers.
+> **TRAMPA DE SEGURIDAD recurrente:** que el sidebar oculte un módulo NO protege sus endpoints. `require_modulo` casi no se usa — la mayoría de routers aplican su nivel con helpers locales (`_require_gestion`, `_require_supervisor`). Hasta 2026-05-20 el router OT no chequeaba nivel y un operador con JWT creaba OT por curl (QA #2). **Antes de asumir "el router ya valida nivel", leé el handler.** Ver [[guard_nivel_endpoint_no_solo_ui]].
 
 ## 31. Limpieza de estilos legacy — CERRADA (2026-05-12)
 
-**Bloque completado.** El DS v1.0 (`--z-*`, `.z-*`, `frontend/styles.css`) fue eliminado del repo. Los módulos vanilla cargan ahora componentes oficiales `*-zaris` definidos en `design-system/components/*.css`.
-
-### Avance del bloque
-
-| Paso | Estado | Notas |
-|---|---|---|
-| 1. Unificar `LoginPage.tsx` con look del vanilla | ✅ | Card sobre `surface-100`, SVG ZARIS inline (currentColor), labels uppercase, botón `fg-1`. |
-| 2. Borrar `frontend/agenda.html` + `agenda.css` + `agenda.js` | ✅ | Reemplazados por módulo React. |
-| 3. Borrar `frontend/shell.html` | ✅ | Huérfano. |
-| 4. Promover componentes a `design-system/components/*.css` + migrar `usuarios`, `ciudadano`, `empresa` (HTML+JS) | ✅ | 10 archivos CSS nuevos (button, card, form, modal, alert, toast, badge, spinner, menu-card, misc) + agregador `components.css`. Naming `*-zaris` siguiendo lo que el DS ya tenía (`btn-zaris`, `card-zaris`, `input-zaris`). |
-| 5. Borrar `frontend/styles.css` | ✅ | Cero referencias antes de borrar. |
-| 6. Borrar `frontend/menu.html` + `frontend/mainconfig.html` | ✅ | Dead code legacy del shell viejo. Hrefs y `window.location.href` reemplazados por `_zarisGoInicio()` en `config.js` (helper que usa `shellNavigate('frontend/welcome.html')` en iframe o `../index.html` standalone). |
-
-### Estado actual del codebase
-
-| Archivo | `var(--z-*)` | `.z-*` | DS nuevo |
-|---|---|---|---|
-| `frontend/usuarios.html` + `usuarios.js` | 0 | 0 | ✅ |
-| `frontend/js/config.js` + `validaciones.js` | 0 | 0 | ✅ |
-| `frontend/admin_tablas.html` | 0 (desde `951232a`) | 5 (solo `z-header*` oculto en iframe) | ✅ tokens DS directos. Clases internas (`.btn-primary`, `.field`, `.modal`) se conservan a propósito — ver §15. |
-| `frontend/login.html`, `welcome.html` | 0 | 0 | ✅ |
-
-> **Nota 2026-05-12:** los HTMLs `ciudadano.html`, `empresa.html`, `reclamos.html` (y sus JS) fueron eliminados al migrar a React (commits `a61ec9d`, `6aa3fdc`, `3e4a532`-`deae0bc`). Las equivalencias de tokens/clases listadas más abajo siguen siendo útiles si en algún momento se reintroduce un módulo vanilla nuevo.
->
-> **Nota 2026-05-13:** los HTMLs `ot_supervisor.html`, `ot_agente.html`, `ot_auditoria.html` también fueron eliminados — el módulo OT vive 100% en React (`web-app/src/modules/ot/`) desde antes; la entrada en esta tabla quedó como residuo histórico. Los códigos de permiso `ot_supervisor`/`ot_agente`/`ot_auditoria` siguen activos a nivel sidebar vanilla, pero el destino del link es el bundle React, no un HTML.
-
-### Equivalencias usadas en la migración (referencia)
-
-| Legacy | DS nuevo |
-|---|---|
-| `--z-bg-card` | `--surface-100` |
-| `--z-bg-card-alt` | `--surface-200` |
-| `--z-text` | `--fg-1` |
-| `--z-text2` | `--fg-2` |
-| `--z-text3` | `--fg-3` |
-| `--z-border` | `--border-primary` |
-| `--z-border-focus` | `--border-medium` |
-| `--z-accent` | `--zaris-orange` |
-| `--z-text-error` | `--color-error` |
-| `--z-text-success` | `--color-success` |
-| `--z-radius` | `--radius-lg` |
-| `--z-radius-sm` | `--radius-md` |
-| `--z-radius-lg` | `--radius-xl` |
-| `--z-font` | `--font-display` |
-| `--z-font-mono` | `--font-mono` |
-| `.z-btn .z-btn--primary` | `.btn-zaris .btn-zaris--primary` |
-| `.z-card .z-card__body` | `.card-zaris .card-zaris__body` |
-| `.z-input` / `.z-select` / `.z-textarea` | `.input-zaris` / `.select-zaris` / `.textarea-zaris` |
-| `.z-form-group` / `.z-form-row` | `.form-zaris-group` / `.form-zaris-row` |
-| `.z-label` / `.z-label--required` | `.label-zaris` / `.label-zaris--required` |
-| `.z-checkbox` / `.z-checkbox__label` | `.checkbox-zaris` / `.checkbox-zaris__label` |
-| `.z-input-error` / `.z-input-hint` | `.input-error-zaris` / `.input-hint-zaris` |
-| `.z-modal-overlay` / `.z-modal` | `.modal-zaris-overlay` / `.modal-zaris` |
-| `.z-toast-container` / `.z-toast` | `.toast-zaris-container` / `.toast-zaris` |
-| `.z-badge` | `.badge-zaris` |
-| `.z-spinner` | `.spinner-zaris` |
-| `.z-section-title` | `.section-title-zaris` |
-| `.z-search-box` | `.search-box-zaris` |
-| `.z-search-panel` | `.search-panel-zaris` |
-| `.z-form-state` (local) | `.form-state` (local del HTML, sin prefijo) |
-| `.z-preview-row*` (local) | `.preview-row*` (local del HTML) |
-| `.z-listado-wrap` / `.z-tbl-btn` (local) | `.listado-wrap` / `.tbl-btn` (local) |
-| `.z-badge-activo` / `.z-badge-inactivo` (local) | `.badge-activo` / `.badge-inactivo` (local) |
-
-> **Patrón importado:** las clases compartidas viven en `design-system/components/`. Las clases específicas del HTML (search-result, form-state, preview-row, filter-bar, listado-wrap, tbl-btn, badge-activo/inactivo, print-header, validate-group, check-validate, cuil-group, empresa-panel) viven inline en el `<style>` de cada HTML, sin prefijo `z-`. Es la convención: si una clase se usa en >1 archivo, va al DS; si es de una vista puntual, queda local.
-
-### Deuda futura — cerrada
-
-`admin_tablas.html` fue migrado a tokens DS directos en commit `951232a` (2026-05-13): 0 `var(--z-*)` remanentes. Las clases internas (`.btn-primary`, `.field`, `.modal`) se conservan a propósito (renombrarlas a `*-zaris` colisionaría con el DS sin ganancia funcional). No queda deuda de estilos legacy en el repo.
+DS v1.0 (`--z-*`, `.z-*`, `frontend/styles.css`, `frontend/menu.html`, `frontend/mainconfig.html`, `frontend/agenda.*`, `shell.html`) eliminado del repo. Los módulos vanilla cargan componentes `*-zaris` de `design-system/components/*.css` (§13). `admin_tablas.html` usa tokens DS directos (0 `var(--z-*)`, solo conserva `.z-header*` oculto en iframe + clases internas `.btn-primary`/`.field`/`.modal` a propósito, §15). **Cero deuda de estilos legacy.** Bitácora completa (pasos + tabla de equivalencias `--z-*`→DS, útil solo si reaparece un módulo vanilla) en `HISTORIAL_MIGRACIONES.md`.
 
 ## 32. Build de `web-app/dist/` y testing local del shell vanilla + bundle
 
-Reglas operativas verificadas en sesión 2026-05-12 cuando se intentó probar la integración shell vanilla + módulo Agenda React **en local**.
+> **Recetas operativas en la skill `win-quirks`** (`.claude/skills/win-quirks/`). Invocarla al buildear/commitear `web-app/dist/`, levantar servers locales (http.server/uvicorn/pnpm dev), correr psql, lanzar procesos detached con `Start-Process`, o diagnosticar redirects rotos bajo `/zaris-zge/`. Cubre los 14 quirks que rompen silenciosamente en Windows.
 
-### Quirk 1: `pnpm build` toma las env vars del shell
-
-`web-app/vite.config.ts` lee `VITE_API_BASE` de `.env.development` o `.env.production` según el modo. **Pero si la variable está exportada en el shell al ejecutar `pnpm build`, esa gana sobre los `.env` files** — comportamiento estándar de Vite, fácil de pasar por alto.
-
-Consecuencia real (sesión 2026-05-12): se hizo `VITE_API_BASE=http://127.0.0.1:8000 pnpm build --mode development` para probar local. El bundle resultante apuntaba a `127.0.0.1:8000` (correcto para esa prueba). **Si ese dist se commitea, prod queda roto** (apunta a un origen local desde Pages).
-
-**Regla:** antes de commitear `web-app/dist/`, ejecutar `pnpm build` **sin variables seteadas en el shell**, en una terminal limpia, modo prod (default). Verificar con `grep "zaris-api" dist/assets/index-*.js` que el bundle apunte a Railway, no a localhost. Si dudás, abrir el archivo y mirar el primer hit del string `zaris-api`.
-
-### Quirk 2: `web-app/dist/index.html` tiene `base: '/zaris-zge/...'`
-
-Configurado en `vite.config.ts` para GitHub Pages (Pages sirve el repo bajo `/zaris-zge/`). Local:
-- `http://localhost:8080/web-app/dist/index.html` → carga el HTML pero **los assets quedan 404** porque buscan `/zaris-zge/web-app/dist/assets/...` y el server raíz no tiene ese prefijo.
-- En prod (Pages) no hay problema: la URL real es `https://cesarzeta.github.io/zaris-zge/web-app/dist/...`.
-
-**Cómo probar local la integración shell vanilla + bundle:** levantar un server alternativo que sirva el repo bajo `/zaris-zge/`. Receta en memoria `project_proxy_local_zaris_zge.md`.
-
-### Quirk 3: CORS de FastAPI hay que actualizar si agregás un nuevo origen local
-
-`backend/app/main.py` tiene allowlist explícita. Si levantás un nuevo server local (ej. `localhost:8090` para el proxy), agregalo a `allow_origins` y **reiniciá uvicorn** (los cambios en main.py no entran con autoreload de uvicorn si no usás `--reload`).
-
-### Quirk 4: levantar uvicorn local — chequear si ya hay uno corriendo
-
-`Get-NetTCPConnection -LocalPort 8000` o `curl 127.0.0.1:8000/health` antes de `python -m uvicorn ...`. Si ya hay uno, se va a chocar con error `[Errno 10048] solo se permite un uso de cada dirección de socket`. Bajarlo con `Stop-Process` (puede pedir UAC si lo lanzó otro user) o pedir al usuario que lo baje desde su terminal.
-
-### Quirk 5: PNG/QR en bundle React — solo render cliente
-
-Lib `qrcode` (~26KB gzipped) sobre `<canvas>`. No agregar deps de QR al backend a menos que se necesite imprimir/firmar. El backend solo genera el string identificador (`EVT<id>-RES<id>-<ts>`) en `services/agenda.py`; el frontend lo renderiza visualmente. Patrón implementado en `web-app/src/modules/agenda/components/QRDisplay.tsx`.
-
-### Quirk 6: usar `node_modules/.bin/vite`, no `npx vite`
-
-`npx vite build` puede descargar una versión distinta a la que tiene fijada el proyecto y eso introduce bugs que el repo no ve. Caso 2026-05-12: `npx vite` bajó vite 8 latest que fallaba con error PostCSS resolviendo `@import url("../fonts/fonts.css")` de `design-system/colors_and_type.css`; `node_modules/.bin/vite` (también 8.0.10) compila sin problema. Diagnóstico costó 10 min hasta detectar que `npx` no usaba el binario local.
-
-**Regla:** siempre `cd web-app && node_modules/.bin/vite build` (o `pnpm build` que también respeta el local). Nunca `npx vite`.
-
-### Quirk 7: favicon + title del scaffold de Vite quedan invisibles hasta que un módulo entra a prod
-
-Cuando se crea un módulo React con `pnpm create vite`, el scaffold deja `<title>web-app</title>` + `<link rel="icon" href="/vite.svg">` (rayo violeta). En desarrollo nadie mira la pestaña — y queda olvidado.
-
-**Antes de pushear un módulo React por primera vez a producción**, verificar `web-app/index.html`:
-- `<title>` debe decir "ZARIS · ..." (no "web-app", "Vite App", "React App").
-- `<link rel="icon">` debe apuntar a `/zaris-favicon.svg` (no `/favicon.svg`, `/vite.svg`).
-- `web-app/public/` solo debe tener `zaris-favicon.svg` (y `icons.svg` si aplica). NO debe haber `favicon.svg` (default Vite) ni `zaris-mark.svg` (variante eliminada del DS en sesión 2026-05-12).
-
-Vite reescribe el `href="/zaris-favicon.svg"` durante el build aplicando `base: '/zaris-zge/web-app/dist/'`, así que funciona en local (`localhost:5173`) y en GH Pages (`/zaris-zge/...`) sin tocar nada.
-
-### Quirk 8: `localhost` ≠ `127.0.0.1` para CORS del browser (no para Node/PS)
-
-Para servidores locales que el browser MCP o el navegador del usuario vayan a usar, **abrir el HTML desde `http://localhost:<port>`, no `http://127.0.0.1:<port>`** — aunque resuelven a la misma IP, son orígenes CORS distintos. El allowlist en `backend/app/main.py` tiene `http://localhost:8080` y `http://localhost:8090` explícitos; `127.0.0.1` NO está. Si lo necesitás, lo agregás y reiniciás uvicorn.
-
-Curl, psql, `Invoke-WebRequest` etc. no tienen este problema (sin origin/preflight). Es exclusivo del browser.
-
-### Quirk 9: `python -m http.server` debe lanzarse detached con `Start-Process` desde PowerShell
-
-`Bash run_in_background=true` con `python -m http.server` queda zombie en Windows: el proceso existe pero no escucha. Receta verificada:
-
-```powershell
-Start-Process -FilePath python `
-  -ArgumentList "-m","http.server","8080" `
-  -WorkingDirectory "c:\Users\Cesar\Documents\ZARIS\Desarrollo\ZGE" `
-  -WindowStyle Hidden
-```
-
-Después `Invoke-WebRequest -UseBasicParsing -Method Head http://localhost:8080/...` valida que sirve. Para matar zombies: `Get-Process python | Where-Object { $_.StartTime -gt (Get-Date).AddMinutes(-30) } | Stop-Process -Force`.
-
-### Quirk 10: credenciales dev en local — admin es `ciudadanovl@`, no `admin@`
-
-Los emails dev son `<username>@municipio.gob.ar` donde `<username>` viene del campo `usuarios.username`, no del rol. En local el admin (nivel 1) tiene username `ciudadanovl` (Cesar Zeta). Probar con `admin@municipio.gob.ar` → 401. Antes de smoke con login:
-
-```powershell
-$env:PGPASSWORD="145236"
-& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -h 127.0.0.1 -U postgres -d zaris_dev `
-  -c "SELECT email, nombre, nivel_acceso FROM usuarios WHERE activo ORDER BY nivel_acceso;"
-```
-
-En prod: lo mismo via `execute_sql` Supabase MCP. Password de todos los devs: `123456` (set por `seed_auth.py`).
-
-### Quirk 11: `Start-Process pnpm/npm/npx/yarn` falla — son `.cmd`, no `.exe`
-
-Tirar `Start-Process -FilePath "pnpm" -ArgumentList "dev"` desde PowerShell devuelve `"%1 no es una aplicación Win32 válida"`. En Windows, `pnpm`/`npm`/`npx`/`yarn`/`tsc` (y cualquier CLI instalado por Node) son shims `.cmd`, no binarios PE. `Start-Process` quiere un ejecutable.
-
-**Receta verificada (sesión 2026-05-12):**
-
-```powershell
-Start-Process -FilePath "cmd.exe" `
-  -ArgumentList "/c","pnpm dev > _dev.log 2> _dev.err.log" `
-  -WorkingDirectory "c:\Users\Cesar\Documents\ZARIS\Desarrollo\ZGE\web-app" `
-  -WindowStyle Hidden
-```
-
-Es decir: `cmd.exe /c "<comando>"` como wrapper. La redirección dentro del string queda manejada por cmd, no por PowerShell — útil para no perder stdout/stderr.
-
-Esta es la contraparte node-de [[Quirk 9: `python -m http.server`]]. Para Python alcanzaba con `Start-Process python ...` porque `python.exe` sí es un ejecutable. Para herramientas Node hay que pasar por cmd.
-
-**Alternativa:** ejecutar el binario directo desde `node_modules/.bin/` (que sí es un script Node con shebang, pero PowerShell lo ejecuta vía `node`). Ej: `Start-Process node -ArgumentList "$cwd/node_modules/.bin/vite","build"`. Menos legible.
-
-Para foreground (no detached) PowerShell ejecuta `pnpm dev` sin Start-Process y funciona perfecto — el problema es solo con `Start-Process`.
-
-### Quirk 12: bundle React standalone en prod debe redirigir al shell vanilla
-
-`web-app/dist/index.html` se sirve en GH Pages bajo `/zaris-zge/web-app/dist/`. Si un usuario abre esa URL directo (compartiendo link, marcador viejo, o "abrir en nueva pestaña"), ve el `AppShell` React **standalone con su propio sidebar** — viola la regla §14 (un solo shell en producción) y desconcierta porque la nav es distinta a la del shell vanilla.
-
-**Fix**: script inline en `<head>` de `web-app/index.html` (NO en main.tsx — necesita correr ANTES de que React monte y pueda redirigir sin destellar el AppShell):
-
-```html
-<script>
-  (function () {
-    try {
-      if (window.self !== window.top) return;                   // OK: embebido en iframe
-      var p = window.location.pathname || '';
-      if (p.indexOf('/zaris-zge/web-app/dist/') === -1) return; // dev local: dejar pasar
-      var hash = window.location.hash || '';
-      var target = '/zaris-zge/index.html';
-      if (hash && hash.length > 1) {
-        target += '?modulo=' + encodeURIComponent('web-app/dist/index.html' + hash);
-      }
-      window.location.replace(target);
-    } catch (e) { /* fail-open */ }
-  })();
-</script>
-```
-
-**Complemento obligatorio** en `frontend/js/menu.js`: la whitelist de `?modulo=` debe aceptar paths del bundle React además de los HTMLs vanilla, sino el shell descarta el redirect silenciosamente:
-
-```js
-const isVanilla = /^frontend\/[a-z0-9_-]+\.html(\?.*)?$/i.test(mod || '')
-const isReact   = /^web-app\/dist\/index\.html(#\/.*)?$/i.test(mod || '')
-if (mod && (isVanilla || isReact)) {
-  document.getElementById('module-frame').src = mod
-}
-```
-
-**Por qué necesita ambas piezas**: si solo aplicas el guard sin actualizar la whitelist, el redirect funciona pero el shell descarta el `?modulo=` y queda mostrando welcome. Si solo aplicas la whitelist sin el guard, el bundle sigue accesible standalone.
-
-Cazado en sesión 2026-05-12 jornada 4 — el usuario reportó "veo un shell con sidebar dashboard/agenda/ciudadanos que no es el shell normal". Verificar en prod abriendo `https://cesarzeta.github.io/zaris-zge/web-app/dist/index.html#/reclamos` en pestaña nueva: debe redirigir a `index.html?modulo=...` automáticamente.
-
-### Quirk 13: redirects absolutos del bundle React rompen bajo subpath `/zaris-zge/`
-
-En prod el shell vive en `cesarzeta.github.io/zaris-zge/index.html` y el bundle React vive en `cesarzeta.github.io/zaris-zge/web-app/dist/index.html`. Cualquier `window.location.href = '/foo'` desde dentro del bundle (o desde JS del shell) salta a `cesarzeta.github.io/foo` **sin** el prefijo `/zaris-zge/`. En GH Pages eso devuelve el 404 genérico ("There isn't a GitHub Pages site here.") porque no existe un proyecto `cesarzeta.github.io/foo`.
-
-Casos en los que vas a tropezar:
-- Handler 401 en `web-app/src/lib/api.ts` redirigiendo a `/login`.
-- Botones "Cerrar sesión" haciendo `window.location.href = '/login.html'`.
-- Cualquier `<a href="/...">` que el bundle tenga hardcoded.
-
-**Patrón correcto** desde el bundle React (que vive en iframe en prod):
-```ts
-// Detectar el subpath del shell padre y redirigir el parent, no el iframe.
-if (typeof window !== 'undefined' && window.self !== window.top) {
-  const subpath = window.parent.location.pathname.match(/^\/[^/]+\//)?.[0] ?? '/'
-  ;(window.parent as Window).location.href = subpath + 'frontend/login.html'
-} else {
-  // standalone (localhost:5173 dev)
-  window.location.href = '/login'
-}
-```
-
-**Síntoma visual del bug**: el shell vanilla carga OK (topbar + sidebar normales), pero **dentro del iframe** aparece el 404 de GitHub Pages con logo de GitHub y "There isn't a GitHub Pages site here.". Aplica a cualquier asset/ruta que el bundle pida con path absoluto desde la raíz.
-
-Cazado 2026-05-13 cuando dashboard pasó a ser home: el handler 401 hacía `window.location.href = '/login'`. Antes con welcome.html como home no se notaba porque welcome.html no hace requests al backend, así que nunca se gatillaba el 401 → redirect mal.
-
-### Quirk 14: `web-app/dist/` y commits — qué compila Vite y en qué orden commitear
-
-`vite build` compila **todo lo que esté en el working tree en ese momento**, no lo que está staged. Dos consecuencias operativas al commitear:
-
-1. **No rebuildees `dist/` para commit con trabajo ajeno sin commitear en el working tree.** Si hay cambios a medias de otra tarea (común en este repo), Vite los mete en el bundle y el commit queda con un `dist/` que incluye fuentes que todavía no se commitearon (o que van en otro commit). El HEAD final puede quedar consistente, pero el commit intermedio tiene dist cruzado — malo para `git bisect` / revisar PRs / `git checkout <ese commit>`. Orden correcto: **commitear los fuentes primero, rebuildear el dist con el working tree ya acotado, commitear el dist** (o incluirlo en el mismo commit que sus fuentes). Si no podés acotar el working tree, stasheá lo ajeno antes de rebuildear. Detalle: memoria `feedback_rebuild_dist_working_tree_limpio`.
-
-2. **Antes de commitear `dist/`, rebuildear sin `VITE_API_BASE` en el shell y verificar que apunte a Railway.** Si rebuildeaste en modo dev para verificación local (`vite build --mode development` → apunta a `127.0.0.1:8000`), ese dist NO debe commitearse. `grep -o 'zaris-api-production' web-app/dist/assets/index-*.js` debe dar match antes del commit. Ver Quirk 1.
+**Reglas que NO podés olvidar (las recetas para cumplirlas están en la skill):**
+- Antes de commitear `dist/`: buildear modo prod (sin `VITE_API_BASE` en el shell) y verificar que apunte a Railway, no a `127.0.0.1`.
+- `vite build` compila el WORKING TREE, no lo staged — commitear fuentes primero o stashear lo ajeno antes de rebuildear.
+- El bundle standalone en prod debe redirigir al shell vanilla (script en `web-app/index.html` + whitelist en `menu.js`, §14). Nunca `window.location.href='/...'` absoluto desde el bundle (rompe bajo `/zaris-zge/`, [[feedback_redirect_iframe_subpath]]).
 
 ## 33. Módulos Turnos y Entradas
 
 Dos módulos React que se apoyan en el sustrato de Agenda. Implementados al 2026-05-14 (backoffice completo). Ver §27 para el modelo de agenda subyacente.
 
-### Turnos — los turnos cumplen PRESTACIONES (replanteo mig 71, 2026-05-28)
+### Turnos — los turnos cumplen PRESTACIONES (modelo mig 71)
 
-> **Cambio de modelo (mig 71).** Antes el "tipo de servicio" (`tipo_servicio_turno`) definía solo la **duración**, y al reservar se elegían por separado recurso (agente/espacio) + tipo + slot. **Ahora una PRESTACIÓN define de una vez el recurso fijo, su duración y su clase.** La reserva elige **prestación + slot**; el recurso ya viene determinado por la prestación. Ej: "Atención médica - Odontología" puede ser atendida por un agente (Dr. Pérez) o en un espacio (Sala Municipal de Odontología) — son dos prestaciones distintas. La disponibilidad de los slots sale del recurso de la prestación.
+Una **PRESTACIÓN** define recurso fijo + duración + clase. La reserva elige **prestación + slot**; el recurso ya viene determinado (ej. "Odontología por Dr. Pérez" vs "Odontología en Sala Municipal" = dos prestaciones). Un turno reserva un bloque de la disponibilidad efectiva del recurso de la prestación para un ciudadano. Estados: `reservado` → `cumplido` | `cancelado`.
 
-Un turno reserva un bloque de la disponibilidad efectiva del **recurso de la prestación** (un agente o un lugar de atención) para un ciudadano. Estados: `reservado` → `cumplido` | `cancelado`.
+**`tipo_prestacion`** (mig 71 renombró `tipo_servicio_turno`): `id_tipo_prestacion` PK + `nombre` + `duracion_min` + **`clase`** ∈ `{atencion, reserva_espacio}` + **`tipo_recurso`** ∈ `{agente, espacio}` + `id_agente`/`id_espacio` (FK, exactamente uno por CHECK `ck_tipo_prestacion_recurso` **NOT VALID**). CHECK `ck_tipo_prestacion_reserva_espacio`: `reserva_espacio` ⇒ `tipo_recurso='espacio'`. Los NOT VALID aplican a filas nuevas; el seed soft-deletea las viejas sin recurso ([[feedback_check_not_valid_se_evalua_al_update]]).
 
-> **`tipo_prestacion` (mig 71 renombró+amplió `tipo_servicio_turno`):** `id_tipo_prestacion` (PK, ex `id_tipo_servicio_turno`) + `nombre` + `duracion_min` + **`clase`** ∈ `{atencion, reserva_espacio}` + **`tipo_recurso`** ∈ `{agente, espacio}` + `id_agente`/`id_espacio` (FK, exactamente uno por CHECK `ck_tipo_prestacion_recurso`, NOT VALID). CHECK `ck_tipo_prestacion_reserva_espacio`: `reserva_espacio` ⇒ `tipo_recurso='espacio'`. `turnos.id_tipo_servicio_turno` se renombró a `turnos.id_tipo_prestacion` (FK intacta). Los CHECKs de recurso son **NOT VALID** (aplican a filas nuevas, no a las viejas sin recurso); el seed soft-deletea esas viejas.
+**El recurso se COPIA al turno al reservar** (`turnos.id_agente`/`id_espacio`, mig 70, CHECK `ck_turnos_recurso` exactamente uno) → turno autocontenido aunque la prestación cambie después. Ocupación espejo `tipo_recurso='agente'|'espacio'`. `TurnoOut` expone `recurso_tipo`/`recurso_nombre`/`prestacion_nombre`/`prestacion_clase`.
 
-> **El recurso de la prestación se COPIA al turno al reservar** (`turnos.id_agente`/`id_espacio`, mig 70, CHECK `ck_turnos_recurso` exactamente uno). El turno queda autocontenido aunque la prestación cambie de recurso después. La ocupación espejo usa `tipo_recurso='agente'|'espacio'`. `TurnoOut` expone `recurso_tipo`/`recurso_nombre`/`prestacion_nombre`/`prestacion_clase` derivados.
+**Switch global `turnos_respeta_disponibilidad`** (`configuracion_general`, mig 69, default `true`): con `true` el alta (backoffice + autoservicio) exige caer en la disponibilidad efectiva (horario − feriados − novedades §27); `false` = modo libre. Helper `services/agenda.py::turnos_respeta_disponibilidad(db)`. El anti-solapamiento contra `ocupaciones` siempre aplica. Ver [[project_turnos_disponibilidad_novedades_feriados]].
 
-> **Switch global `turnos_respeta_disponibilidad`** (`configuracion_general`, mig 69, default `true`): con `true` el alta (backoffice + autoservicio) exige que caiga en la **disponibilidad efectiva** del recurso (horario − feriados − novedades §27); con `false`, modo libre. Helper `services/agenda.py::turnos_respeta_disponibilidad(db)`. El anti-solapamiento contra `ocupaciones` siempre aplica.
+**DB** (migs 45 + 46 autoservicio + 69 switch/novedades + 70 recurso polimórfico + 71 prestaciones, local + prod): `tipo_prestacion` (catálogo §10, gestionado desde tab "Prestaciones" React **NO admin_tablas** — polimorfismo + form condicional) · `turnos` (transaccional §10, FKs ciudadanos/agentes-null/espacios-null/tipo_prestacion, `estado` CHECK, `id_ocupacion` → espejo). Seed `backend/seed_turnos_demo.py` (idempotente).
 
-**DB (mig 45 `45_turnos.sql` + 46 autoservicio + 70 recurso polimórfico + 71 prestaciones; todas en local + prod):**
-- `tipo_prestacion`: catálogo (estándar §10). Gestionado desde **pantalla propia React** (tab "Prestaciones" del módulo Turnos), **NO admin_tablas** (no maneja polimorfismo ni form condicional por clase — se quitó de `TABLE_CONFIG` en mig 71).
-- `turnos`: tabla transaccional (estándar §10). FKs a `ciudadanos`, `agentes` (nullable), `espacios_agenda` (nullable), `tipo_prestacion`. `estado` CHECK `reservado|cumplido|cancelado`. `id_ocupacion` → fila espejo en `ocupaciones`.
-- **Seed demo:** `backend/seed_turnos_demo.py` (idempotente) siembra disponibilidad de agentes, 1 lugar atendido (Odontología) + 1 desatendido (SUM), las 4 prestaciones de ejemplo (2 agente + 1 espacio atendido + 1 reserva_espacio) y turnos demo. Soft-deletea los tipos planos viejos sin recurso (con placeholder para cumplir el CHECK NOT VALID) y recrea los turnos demo contra las prestaciones nuevas.
-
-**Patrón clave — ocupación espejo:** cada turno mantiene una fila en `ocupaciones` (tipo='turno', tipo_recurso=`agente`|`espacio`) para aparecer en la grilla del módulo Agenda. El backend (`routes/turnos.py`) sincroniza ambas tablas:
+**Ocupación espejo:** cada turno mantiene fila en `ocupaciones` (tipo='turno') para aparecer en la grilla de Agenda. `routes/turnos.py` sincroniza:
 - crear turno → resuelve recurso+duración de la prestación → INSERT turno (recurso copiado) + INSERT ocupación espejo
 - reprogramar → UPDATE ambas; si cambia la prestación re-resuelve recurso+duración
 - cumplir → UPDATE turno.estado (la ocupación se mantiene como histórico en la grilla) + observación opcional **anexada** a `observaciones` + dispara la encuesta de turnos (§42, best-effort tras el commit)
@@ -1884,19 +1375,11 @@ Flujo público sin JWT para que el ciudadano reserve un turno sin pasar por mesa
 | Consultar turno por token | GET | `/turno/{token_turno}` |
 | Cancelar turno por token | DELETE | `/turno/{token_turno}` |
 
-> **Mig 71 eliminó los endpoints públicos `/tipos-servicio`, `/agentes` y `/recursos`** — el ciudadano ya no elige recurso, lo determina la prestación. `/slots` ya no acepta `tipo_recurso`/`id_recurso`/`id_agente`.
+> **Orden de routers crítico (main.py):** `turnos_publico_router` ANTES de `turnos_router` (sino `/turnos/publico/*` cae en `{id_turno}='publico'` → 422, §5). Mig 71 eliminó `/tipos-servicio`, `/agentes`, `/recursos` públicos (el recurso lo trae la prestación).
 
-> **Orden de routers crítico (main.py):** `turnos_publico_router` se registra **ANTES** de `turnos_router`. `turnos_router` tiene `/api/v1/turnos/{id_turno}` con `{id_turno}` int; sin el orden explícito `/turnos/publico/*` sería atrapado como `{id_turno}='publico'` → 422. Mismo quirk §5. (Las rutas `/turnos/prestaciones` del router con auth no chocan porque van por path fijo antes del `/{id_turno}`.)
+**Slots (`_slots_libres_recurso`):** recurso de la prestación → `disponibilidad_efectiva(tipo, id, fecha)` partido en bloques de `duracion_min` (descarta el último incompleto), filtrando solapamientos con `ocupaciones`. **POST /reservar**: valida slot dentro de disponibilidad + sin solape, busca/crea ciudadano por DNI (`buscar_o_crear_ciudadano_por_dni`), rechaza si ya tiene turno no-cancelado ese día, crea turno `origen='autoservicio'` + ocupación espejo, devuelve `token_turno`.
 
-**Cálculo de slots (`_slots_libres_recurso`):** resuelve el recurso de la prestación → `services/agenda.py::disponibilidad_efectiva(tipo_recurso, id_recurso, fecha)`, parte cada rango en bloques de `duracion_min` de la prestación (descarta el último si no entra completo), y filtra los que se solapan con cualquier fila activa de `ocupaciones` (mismo recurso, misma fecha).
-
-**POST /reservar:** resuelve la prestación (recurso + duración), valida que el slot caiga dentro de la disponibilidad efectiva, que no se solape con ocupaciones, busca/crea ciudadano por DNI (`buscar_o_crear_ciudadano_por_dni`), rechaza si el ciudadano ya tiene turno no-cancelado ese día. Crea turno (`origen='autoservicio'`, recurso copiado de la prestación) + ocupación espejo. Devuelve `token_turno`.
-
-**Frontend público (`web-app/src/autoservicio/`):**
-- `TurnosPage.tsx` — path `/turnos-autoservicio`. Flujo de **3 pasos (prestación → slot → datos)** con `StepIndicator`. El paso "elegir agente" desapareció (el recurso lo trae la prestación). Al reservar redirige a `/turno/:tokenTurno`.
-- `MiTurnoPage.tsx` — path `/turno/:tokenTurno`. Muestra `prestacion_nombre` + `recurso_nombre`. Ver/cancelar el turno.
-- `api.ts`: `getPrestacionesTurno/getSlotsTurno(id_tipo_prestacion)/postTurnoPublico/getTurnoPublico/deleteTurnoPublico`.
-- El backoffice de Turnos muestra un banner "Autoservicio para ciudadanos" con el link fijo `#/turnos-autoservicio` + botón copiar — el ciudadano arranca eligiendo la prestación.
+**Frontend público (`web-app/src/autoservicio/`):** `TurnosPage.tsx` (`/turnos-autoservicio`, 3 pasos prestación→slot→datos) · `MiTurnoPage.tsx` (`/turno/:tokenTurno`, ver/cancelar). El backoffice muestra banner con el link público + copiar.
 
 ## 34. Módulo OT — frontend dedicado del Supervisor (crear OT + agendar en una pasada)
 
@@ -1964,482 +1447,89 @@ El #4 que quedó diferido en el commit `2110263`. Las OT ahora tienen adjuntos p
 
 ## 35. Módulo Trámites / Expedientes
 
-Gestión de expedientes administrativos tipo "ventanilla" (entrada de documentación → circuito interno → resolución). Diseñado para flujos multi-área, firmas digitales y numeración correlativa por tipo.
+Expedientes administrativos tipo "ventanilla" (entrada → circuito interno → resolución). Multi-área, firmas digitales, numeración correlativa por tipo. Frontend React `web-app/src/modules/tramites/`, backend `routes/tramites.py` + `routes/tramites_admin.py` + `services/tramites/`. **Bitácora de fases (1/2/3), smokes, verificaciones E2E y repasos de Roy en `HISTORIAL_MIGRACIONES.md`.**
 
 ### Filosofía de diseño
 
-- **Separación catálogo / instancia**: el catálogo (`tipo_tramite`, `tipo_tramite_version`, `_campo`, `_estado`, `_transicion`, `_documento_requerido`) define el FSM y los campos de cada tipo de trámite. Las instancias (`tramite`, `tramite_movimiento`, `tramite_documento`, `tramite_firma`) son los expedientes reales.
-- **Versionado del circuito**: cada tipo tiene versiones numeradas (`tipo_tramite_version`). Un trámite instanciado queda vinculado a la versión que estaba publicada al momento de crearse — cambiar el circuito no altera trámites en curso.
-- **FK circular diferida**: `tipo_tramite.id_version_publicada → tipo_tramite_version` y `tipo_tramite_version.id_tipo_tramite → tipo_tramite` se resuelven con `DEFERRABLE INITIALLY DEFERRED`.
-- **Numeración atómica**: `tipo_tramite_numerador` con `INSERT ... ON CONFLICT DO UPDATE SET ultimo_numero + 1 RETURNING` evita race conditions. Formato: `{prefijo}{sep}{codigo_municipio}{sep}{anio}{sep}{correlativo_padded}` → ej. `POD-LPL-2026-0001`.
-- **Ledger append-only**: `tramite_movimiento` registra cada acción (creacion, pase, cambio_estado, firma, etc.) como fila nueva. Nunca se modifica.
-- **Iniciador polimórfico**: `iniciador_tipo ∈ {ciudadano, empresa, area_interna}` + CHECK que enforce exactamente una de `{id_ciudadano_iniciador, id_empresa_iniciadora, id_subarea_iniciadora}` según el tipo.
-- **Destinatario polimórfico**: `destinatario_actual_tipo ∈ {subarea, equipo, agente}` + CHECK `ck_tramite_destinatario` con 4 ramas (NULL / subarea / equipo / agente), exactamente una de `{id_subarea_actual, id_equipo_actual, id_agente_actual}` poblada según el tipo. **`agente` = destinatario directo a una persona** (mig 66, sesión 2026-05-27): pasar a un agente le asigna el trámite a esa persona (aparece en SU bandeja, nadie más lo toma). Fiel al modelo Mesa Digital de VL (origin/destination con tipo `user|area|subarea|group`). **Si agregás una ruta nueva que cambie el destinatario o lleve a estado final, el UPDATE DEBE setear las 3 FKs (`id_subarea_actual`/`id_equipo_actual`/`id_agente_actual`) coherente con el tipo, o viola el CHECK** — cazado en `transicionar_tramite`, que omitía `id_agente_actual` y habría tirado 500 al transicionar un trámite ya asignado a un agente. Ver [[project_tramites_destinatario_agente_y_mi_bandeja]].
+- **Catálogo / instancia separados**: catálogo (`tipo_tramite`, `tipo_tramite_version`, `_campo`, `_estado`, `_transicion`, `_documento_requerido`) define el FSM y los campos. Instancias (`tramite`, `tramite_movimiento`, `tramite_documento`, `tramite_firma`, `tramite_relacion`) son los expedientes reales.
+- **Versionado del circuito**: un trámite queda atado a la versión publicada al crearse — cambiar el circuito NO altera trámites en curso. `tipo_tramite_version.publicada=TRUE` = activa.
+- **FK circular diferida**: `tipo_tramite.id_version_publicada ↔ tipo_tramite_version.id_tipo_tramite` con `DEFERRABLE INITIALLY DEFERRED`.
+- **Numeración atómica**: `tipo_tramite_numerador` PK `(id_tipo_tramite, anio, id_municipio)` con `INSERT ... ON CONFLICT DO UPDATE SET ultimo_numero+1 RETURNING`. Formato `{prefijo}-{cod_muni}-{anio}-{correlativo}` → `POD-LPL-2026-0001`.
+- **Ledger append-only**: `tramite_movimiento` (UNIQUE `(id_tramite, orden_secuencial)`); cada acción es fila nueva, nunca UPDATE.
+- **Iniciador polimórfico**: `iniciador_tipo ∈ {ciudadano, empresa, area_interna}` + CHECK que exige exactamente una de `{id_ciudadano_iniciador, id_empresa_iniciadora, id_subarea_iniciadora}`.
+- **Destinatario polimórfico**: `destinatario_actual_tipo ∈ {subarea, equipo, agente}` + CHECK `ck_tramite_destinatario` con 4 ramas (NULL/subarea/equipo/agente), exactamente una de `{id_subarea_actual, id_equipo_actual, id_agente_actual}`. **`agente` = destinatario directo a una persona** (mig 66): aparece en SU bandeja, nadie más lo toma. **CRÍTICO: toda ruta que cambie destinatario o lleve a estado final DEBE setear las 3 FKs coherente con el tipo, o viola el CHECK** (cazado en `transicionar_tramite` que omitía `id_agente_actual`). Ver [[project_tramites_destinatario_agente_y_mi_bandeja]].
 
 ### Tablas
 
-**Catálogo (7 tablas):**
+Catálogo (7): `tipo_tramite` (código único, prefijo, iniciadores permitidos), `tipo_tramite_version`, `tipo_tramite_campo` (tipo_dato, orden, opciones_jsonb), `tipo_tramite_estado` (codigo, etiqueta, color, es_inicial/es_final), `tipo_tramite_transicion` (origen→destino, quien_puede_jsonb, requiere_comentario/adjunto, **tipo_accion** aprobar/rechazar/derivar/avanzar/otro mig 68, **mensaje_iniciador** mig 68, **notifica_iniciador**), `tipo_tramite_documento_requerido` (obligatorio, formatos, requiere_firma, **cantidad_max_archivos** 1-20 mig 68), `tipo_tramite_numerador`.
 
-| Tabla | PK | Rol |
-|---|---|---|
-| `tipo_tramite` | `id_tipo_tramite` | Catálogo maestro con código único, prefijo de numeración, iniciadores permitidos, config de número |
-| `tipo_tramite_version` | `id_tipo_tramite_version` | Versión del circuito (v1, v2…). FK circular deferida. `publicada=TRUE` = activa |
-| `tipo_tramite_campo` | `id_tipo_tramite_campo` | Campos del formulario de inicio (tipo_dato, orden, opciones_jsonb) |
-| `tipo_tramite_estado` | `id_tipo_tramite_estado` | Estados del FSM (codigo, etiqueta, color, es_inicial/es_final) |
-| `tipo_tramite_transicion` | `id_tipo_tramite_transicion` | Arco del FSM (origen→destino, quien_puede_jsonb, requiere_comentario/adjunto) |
-| `tipo_tramite_documento_requerido` | `id_tipo_tramite_documento_requerido` | Docs que el iniciador/área debe adjuntar (obligatorio, formatos, requiere_firma) |
-| `tipo_tramite_numerador` | `(id_tipo_tramite, anio, id_municipio)` | Contador correlativo atómico |
+Instancias (5): `tramite` (`numero_expediente` único, polimorfismo iniciador+destinatario, `id_agente_tomado_por`), `tramite_movimiento`, `tramite_documento` (storage_path, sha256, mime_type, size_bytes), `tramite_firma` (polimórfico agente/subarea/equipo), `tramite_relacion`.
 
-**Instancias (5 tablas):**
+Aprobaciones por etapa (visados, mig 73, separadas de `tramite_firma`): `tipo_tramite_aprobacion_requerida` (catálogo versionado: estado/etapa + aprobador polimórfico subarea|equipo|agente + `bloqueante` default TRUE) y `tramite_aprobacion` (instancia: estado pendiente|aprobada|rechazada, UNIQUE `(id_tramite, id_requisito)`). Las bloqueantes impiden avanzar; el rechazo NO transiciona (deja el trámite trabado con motivo visible).
 
-| Tabla | PK | Rol |
-|---|---|---|
-| `tramite` | `id_tramite` | Expediente instanciado. `numero_expediente` único. Polimorfismo iniciador + destinatario |
-| `tramite_movimiento` | `id_tramite_movimiento` | Ledger append-only. UNIQUE `(id_tramite, orden_secuencial)` |
-| `tramite_documento` | `id_tramite_documento` | Adjunto real (storage_path, sha256, mime_type, size_bytes) |
-| `tramite_firma` | `id_tramite_firma` | Firma digital solicitada/aplicada. Polimorfismo: agente / subarea / equipo |
-| `tramite_relacion` | `id_tramite_relacion` | Vínculo entre trámites (asociacion_simple, derivacion, sustitución) |
+Todas siguen §10. **El catálogo `tipo_tramite` NO tiene `id_usuario_alta`** ([[reference_tipo_tramite_sin_usuario_alta]]); la auditoría de usuario vive solo en las instancias. `es_sistema` (mig 56) distingue seed (TRUE) de custom (FALSE).
 
-Todas siguen estándar §10: `activo BOOLEAN NOT NULL DEFAULT TRUE`, `id_municipio INT NOT NULL`, `fecha_alta TIMESTAMPTZ NOT NULL DEFAULT NOW()`, `fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT NOW()`, `id_usuario_alta`, `id_usuario_modificacion`.
-
-### Migraciones
-
-| # | Archivo | Contenido |
-|---|---|---|
-| 47 | `47_tramites_catalogos.sql` | Agrega `codigo_corto` a `municipios` si falta. Crea las 7 tablas catálogo. FK circular deferida. |
-| 48 | `48_tramites_instancias.sql` | Crea las 5 tablas instancia con todos los CHECK constraints. |
-| 49 | `49_tramites_indices.sql` | 12 índices (destinatario, estado actual, número, movimientos, firmas pendientes). |
-
-**Aplicadas en local (zaris_dev) y en prod (Supabase) al 2026-05-16.** Las 5 tablas catálogo + 5 instancia + columnas de auditoría (mig 50) están en ambos entornos. Verificable con `to_regclass('public.tramite')` + chequeo de `id_usuario_alta/modificacion` en `information_schema.columns`.
+### Migraciones (todas local + prod)
+47 catálogos · 48 instancias · 49 índices · 50 auditoría en instancias · 56 `es_sistema` · 66 destinatario=agente · 68 tipo_accion/mensaje_iniciador/cantidad_max_archivos · 73 aprobaciones por etapa. Detalle en HISTORIAL/§21.
 
 ### Seeds
+`backend/seed_tramites.py` (idempotente): 7 subáreas del circuito, 9 tipos con versión publicada v1 (poda-arbol POD, pedido-informe INF, licencia-ordinaria LIC, habilitacion-comercial HAB, cambio-domicilio-comercial CDC, transferencia-habilitacion THC, inspeccion-bromatologica BRO, cartel-publicitario CAR, recurso-administrativo REA) + ~21 trámites demo. `$env:ENV_FILE=".env.local"; python seed_tramites.py`.
 
-`backend/seed_tramites.py` — idempotente, crea:
-- 7 subareas del circuito (Mesa de Entradas, Habilitaciones, Bromatología, Obras Particulares, Legales, RRHH, Espacios Verdes)
-- 9 tipos de trámite con versión publicada v1 (campos, estados, transiciones, docs requeridos):
-  - `poda-arbol` (POD) — ciudadano/empresa, 5 estados, 5 transiciones
-  - `pedido-informe` (INF) — area_interna, 4 estados, 3 transiciones
-  - `licencia-ordinaria` (LIC) — ciudadano, 5 estados, 4 transiciones
-  - `habilitacion-comercial` (HAB) — empresa, 6 estados, 6 transiciones
-  - `cambio-domicilio-comercial` (CDC) — empresa, 4 estados, 3 transiciones
-  - `transferencia-habilitacion` (THC) — empresa, 5 estados, 4 transiciones
-  - `inspeccion-bromatologica` (BRO) — ciudadano/empresa, 4 estados, 3 transiciones
-  - `cartel-publicitario` (CAR) — ciudadano/empresa, 5 estados, 4 transiciones
-  - `recurso-administrativo` (REA) — ciudadano/empresa, 5 estados, 4 transiciones
-- 20 trámites instanciados en estados variados con movimientos, documentos y 2 relaciones entre trámites
+### Endpoints (`/api/v1/tramites`, JWT a nivel router)
 
-Comando:
-```powershell
-cd backend
-$env:ENV_FILE=".env.local"; python seed_tramites.py
-```
+Registrado **ANTES de `admin_tablas_router`** (evita `/{tabla}` greedy, §5). Las rutas de segmento fijo (`/mi-bandeja`, `/destinatarios`, `/tipos`) van **ANTES de `/{numero_o_id}`** (param greedy).
 
-### Endpoints (Fase 1 — solo consulta)
-
-`APIRouter(prefix="/api/v1/tramites", tags=["tramites"])`. Router registrado ANTES de `admin_tablas_router` (evita colisión con `/{tabla}` greedy).
-
-| Método | Path | Descripción |
+| Verbo | Path | Notas |
 |---|---|---|
-| GET | `/tipos` | Listar tipos activos. Filtros: `iniciador`, `q` (ILIKE nombre/codigo). Devuelve `{total, items}`. |
-| GET | `/tipos/{id_tipo_tramite}` | Detalle completo: campos, estados, transiciones, docs requeridos. |
-| GET | `` (bandeja) | Listar trámites. Filtros: `estado_codigo`, `id_tipo_tramite`, `iniciador_tipo`, `iniciador_id`, `destinatario_tipo` (`subarea`\|`equipo`), `destinatario_id`, `numero`, `q`, `desde`, `hasta`, `solo_activos`, `limit`, `offset`. `X-Total-Count` + `Access-Control-Expose-Headers`. |
-| GET | `/{numero_o_id}` | Detalle del trámite (acepta número de expediente `POD-LPL-2026-0001` o id int). Incluye últimos 5 movimientos. |
-| GET | `/{numero_o_id}/movimientos` | Historial completo de movimientos con paginación. |
-| GET | `/{numero_o_id}/documentos` | Documentos adjuntos del trámite. |
-
-Todos los endpoints requieren JWT (`Depends(get_current_user)`).
-
-### Servicios
-
-`backend/app/services/tramites/numerador.py`:
-- `proximo_numero(db, id_tipo_tramite, id_municipio, anio) -> int` — atómico via INSERT ON CONFLICT DO UPDATE RETURNING.
-- `formatear_numero(prefijo, separador, incluye_municipio, incluye_anio, codigo_municipio, anio, correlativo, largo_correlativo) -> str`
-
-### JSONB en asyncpg — quirk crítico (Fase 1)
-
-asyncpg no acepta `dict` Python ni el shorthand `::jsonb` en prepared statements vía SQLAlchemy `text()`. Dos patrones verificados:
-
-```python
-# Mal — falla en asyncpg:
-conn.execute(text("INSERT INTO t (col) VALUES (:v::jsonb)"), {"v": {"key": "val"}})
-
-# Bien — serializar a string + CAST SQL estándar:
-conn.execute(
-    text("INSERT INTO t (col) VALUES (CAST(:v AS jsonb))"),
-    {"v": json.dumps({"key": "val"}) if val is not None else None}
-)
-```
-
-Aplica a cualquier columna JSONB en `tramites` (campos, transiciones, movimientos). Documentado porque el `::jsonb` funciona en `psql` y en scripts que van por `asyncpg_conn.execute()` directo (§5 multi-statement), pero no en prepared statements de SQLAlchemy + asyncpg.
-
-### Fase 2 — Backend mutaciones (✅ ENTREGADA 2026-05-16)
-
-Implementa el ciclo de vida operacional completo via API. Smoke test §9 pasado: trámite `POD-LPL-2026-0009` creado → tomado → adjunto → transicionado → 6 movimientos en ledger.
-
-**Migración 050 (`50_tramites_auditoria.sql`, aplicada local + prod 2026-05-16):** agrega `id_usuario_alta` e `id_usuario_modificacion` a las 5 tablas de instancias (`tramite`, `tramite_movimiento`, `tramite_documento`, `tramite_firma`, `tramite_relacion`). Idempotente (`ADD COLUMN IF NOT EXISTS`).
-
-**Servicios en `backend/app/services/tramites/`:**
-
-| Módulo | Función principal |
-|---|---|
-| `auth.py` | `resolver_agente_desde_usuario` → `{id_agente, id_subarea, ids_equipos, id_municipio, nivel_acceso}`. `es_admin(nivel)=nivel<=2`. `agente_puede_tomar/operar` con reglas de toma exclusiva. |
-| `autorizacion.py` | `quien_puede_actuar(quien_puede_jsonb, agente_info)` — OR entre `subareas/equipos/iniciador/roles`. `listar_transiciones_permitidas` anota cada transición con `disponible + motivo_no_disponible`. |
-| `movimientos.py` | `registrar_movimiento(db, id_tramite, tipo, ...)` — append-only al ledger con `COALESCE(MAX, 0)+1` y `CAST(:v AS jsonb)` para todos los JSONB. |
-| `creacion.py` | `validar_campos_contra_tipo` — todos los `tipo_dato` incluyendo seleccion_multiple, FKs, archivo (ignorado en creación). `resolver_iniciador` — polimórfico ciudadano/empresa/area_interna. `determinar_destinatario_inicial` — v1: subarea del agente creador. |
-| `documentos.py` | Sube a Supabase Storage (bucket `tramites-documentos`, path `tramites/{anio}/{expediente}/{uuid}.{ext}`). SHA256 sobre los bytes. `crear_firmas_pendientes` desde `firmantes_jsonb`. |
-| `firmas.py` | `agente_puede_firmar` — polimórfico agente/subarea/equipo asignado. `marcar_firma` captura `ip_firma`, `user_agent_firma`, `hash_documento_firmado`. `actualizar_estado_firma_documento` — solo rol `'firma'` bloquea; `visado/notificacion` son informativos. `verificar_integridad_documento` — recomputa SHA256 del disco. |
-
-**12 endpoints nuevos (`routes/tramites.py`):**
-
-| Verbo | Path | Descripción |
-|---|---|---|
-| POST | `/api/v1/tramites` | Crear trámite (201). Numerador atómico, estado inicial FSM, 2 movimientos (creacion + numeracion). |
-| GET | `/{ref}/transiciones-permitidas` | Transiciones del estado actual anotadas con `disponible + motivo`. |
-| POST | `/{ref}/tomar` | Pessimistic lock (`SELECT FOR UPDATE`). Valida colectivo destinatario. |
-| POST | `/{ref}/liberar` | Libera toma. Solo el tomador o admin. |
-| POST | `/{ref}/transicionar` | Valida `quien_puede_jsonb`, `requiere_adjunto` (count docs desde `fecha_entrada_estado_actual`), aplica `destino_automatico_jsonb`, libera toma. |
-| POST | `/{ref}/pase` | Pase manual a subarea/equipo. Libera toma automáticamente. |
-| POST | `/{ref}/comentar` | Comentario libre (201). Cualquier agente autenticado. |
-| POST | `/{ref}/documentos` | Upload multipart. Validación extensión + tamaño. `crear_firmas_pendientes` si el doc_requerido lo indica. (201) |
-| GET | `/{ref}/documentos/{id}/contenido` | `Response` con el binario descargado del bucket Supabase (inline). |
-| POST | `/{ref}/documentos/{id}/firmar` | Verifica integridad SHA256 + registra evidencia de firma auditable. |
-| POST | `/{ref}/documentos/{id}/rechazar-firma` | Marca rechazado + recalcula `estado_firma` del documento. |
-| POST | `/{ref}/relacionar` | Vincula dos trámites (sorted para UNIQUE). Registra movimiento `relacion` en ambos. (201) |
-
-**Reglas operativas críticas:**
-- Toda mutación abre transacción y hace `SELECT ... FOR UPDATE` sobre `tramite` antes de modificar.
-- `pase` y transición a estado final auto-liberan la toma (`id_agente_tomado_por = NULL`).
-- `requiere_adjunto` se valida contando `tramite_documento.activo=TRUE` con `fecha_alta >= fecha_entrada_estado_actual`.
-- El parámetro `iniciador_fks` de `resolver_iniciador` devuelve claves largas (`id_ciudadano_iniciador`, etc.); el INSERT las mapea explícitamente a `:cid`, `:eid`, `:crep`, `:sub_ini`.
-- **Storage: Supabase Storage** (bucket privado `tramites-documentos`, migrado 2026-05-27 desde el mock local efímero). El backend recibe el archivo en multipart, calcula el SHA256 sobre los bytes (clave para firmas) y hace PUT al bucket con service_role (`storage.subir_objeto`). La descarga streamea desde el bucket (`storage.descargar_objeto`). `verificar_integridad_documento` recomputa el SHA256 descargando del bucket. `storage_path` es relativo al bucket: `tramites/{anio}/{expediente}/{uuid}.{ext}`. Reusa `app/core/storage.py` como Reclamos (§26) y OT (§34).
-
-**Quirk resuelto — mapeo de parámetros iniciador:** el spread `**iniciador_fks` sobre el dict del INSERT falla porque las claves largas no coinciden con los `:alias` del SQL. Siempre mapear explícitamente: `"cid": iniciador_fks.get("id_ciudadano_iniciador")`, etc. (sesión 2026-05-16).
-
-**Smoke test §9 — resultados (local, 2026-05-16):**
-- Login: 200 — `ciudadanovl@municipio.gob.ar` (nivel 1, agente 1, subarea 1)
-- Crear trámite: 201 — `POD-LPL-2026-0009` (tipo 3, `id_tipo_tramite` empieza en 3 en local por cómo los creó el seed)
-- Transiciones: 200 — 1 transición disponible: "Derivar a Espacios Verdes" (id=1)
-- Tomar: 200 — agente 1 tomó el trámite
-- Adjuntar: 201 — doc 17, `estado_firma: no_requiere`
-- Transicionar: 200 — `en_evaluacion`, destinatario `Espacios Verdes`, toma liberada
-- Comentar: 201
-- Timeline: 6 movimientos (creacion, numeracion, toma, adjunto, transicion, comentario)
-
-### Fase 3 — Frontend React (✅ ENTREGADA 2026-05-16)
-
-Módulo completo en `web-app/src/modules/tramites/`. Pusheado en commit `e2234de`.
-
-**Páginas y componentes:**
-
-| Archivo | Rol |
-|---|---|
-| `pages/BandejaTramites.tsx` | Lista de trámites con filtros (estado, tipo, texto) + chips de conteo |
-| `pages/DetalleTramite.tsx` | Vista detalle: metadatos, documentos, historial (Timeline), relaciones, panel acciones |
-| `pages/CrearTramite.tsx` | Alta de trámite desde la UI: selector de tipo + formulario dinámico generado desde `tipo_tramite_campo` + resolución de iniciador (ciudadano/empresa/area_interna) |
-| `components/FormularioDinamico.tsx` + `CampoDinamico.tsx` | Render del formulario derivado del catálogo del tipo (todos los `tipo_dato` soportados) |
-| `components/EntitySelect.tsx` | Buscador con autocompletar para FKs (ciudadano/empresa). Recibe `path`, NO URL completa (ver memoria [[feedback_entityselect_path_no_url]]) |
-| `components/DatosTramite.tsx` | Panel de datos/campos del trámite en el detalle |
-| `components/EstadoBadge.tsx` | Badge de color dinámico con `estado_etiqueta` + `estado_color` del FSM |
-| `components/EstadoFirmaBadge.tsx` | Badge del estado de firma de un documento |
-| `components/Timeline.tsx` | Historial append-only de movimientos (tipo, actor, fecha, comentario, campos_modificados) |
-| `components/ListaDocumentos.tsx` | Lista de adjuntos del trámite con descarga |
-| `components/PanelAcciones.tsx` | Botones de acción según transiciones permitidas: transicionar, tomar/liberar, pasar, relacionar, comentar |
-| `components/FileUploader.tsx` | Modal drag&drop para adjuntar documentos (multi-archivo, progreso, observación) |
-| `components/VisorDocumento.tsx` | Modal full-screen para previsualizar adjuntos: PDFs (react-pdf 10.4 + pdfjs-dist 5.4.296, navegación páginas + zoom + teclado ←/→/Esc), imágenes (PNG/JPG/WEBP/GIF/HEIC con `<img>` + zoom), fallback a descarga para otros mimes. Carga via `descargarDocumentoBlob` (fetch con Bearer header + `cache: 'no-store'`) y `URL.createObjectURL`, revoke al cerrar |
-| `components/ModalTransicion.tsx` | Modal para aplicar una transición FSM con comentario y adjuntos requeridos |
-| `components/ModalFirma.tsx` | Modal para firmar/rechazar firma de un documento (captura evidencia auditable) |
-| `components/ModalPase.tsx` | Modal para pase manual a subárea o equipo con selector + comentario |
-| `components/ModalRelacionar.tsx` | Modal para vincular trámites por número de expediente (resuelve número → id via bandeja) |
-| `hooks/useTramites.ts` | react-query hooks: `useTramite`, `useBandeja`, `useTransicionesPermitidas` |
-| `lib/api.ts` | Funciones tipadas para todos los endpoints de trámites |
-| `lib/types.ts` | Tipos TypeScript: `TramiteBandejaItem`, `TramiteDetalle`, `TramiteMovimiento`, `TramiteRelacion`, etc. |
-
-**Rutas:** `/tramites` (bandeja) + `/tramites/mi-bandeja` (Mi bandeja) + `/tramites/nuevo` (alta) + `/tramites/:numero` (detalle). Hash router compatible con GH Pages. La ruta `mi-bandeja` va ANTES de `:numero` (param greedy).
-
-**Módulo en catálogo DB:** `modulos (modulo_codigo='tramites', min_nivel_acceso=3)` — insertado en prod 2026-05-16.
-
-### Mi bandeja + pases a agente (✅ ENTREGADO 2026-05-27)
-
-Vista "Mi bandeja" (tab nuevo en `TramitesLayout`, NO ítem de sidebar — comparte el permiso `tramites`) donde el agente ve sus trámites y hace pases/toma inline. Dos endpoints nuevos en `routes/tramites.py`, ambos registrados **ANTES** de `GET /{numero_o_id}` (param greedy, §5):
-
-- **`GET /api/v1/tramites/mi-bandeja`**: resuelve server-side los colectivos del agente (mi subárea + mis equipos/mesas + asignado a mí como `agente` + tomado por mí). El `GET /tramites` general NO sirve para esto: solo filtra `destinatario_tipo`+`id` único, no "cualquiera de mis colectivos". **El tab viejo "Mis trámites"/"Mi subárea" de `BandejaTramites` mandaba `mis_tramites:true`/`mi_subarea:true` que el backend IGNORA silenciosamente — nunca filtró; se quitaron esos tabs.** Filtros: `estado_codigo`, `tipo_codigo`, `sin_tomar`, `q`.
-- **`GET /api/v1/tramites/destinatarios?q=`**: opciones de pase agrupadas (agentes / equipos / subáreas). Quirk asyncpg: `:q IS NULL` → `AmbiguousParameterError`; usar `CAST(:q AS text) IS NULL`.
-
-Frontend: `pages/MiBandeja.tsx` (tomar + pasar por fila) + `ModalPase` ampliado a 3 solapas (Agente / Mesa(equipo) / Subárea) con buscador sobre `/destinatarios`. `usePasarTramite`, `pasarTramite`, `PaseIn.destinatario_tipo` y el type `DestinatarioTipo` ahora aceptan `'agente'`. La mesa = `equipos` existente (no hay concepto nuevo de "grupo de mesa"). Ver [[project_tramites_destinatario_agente_y_mi_bandeja]].
-
-> **Fix colateral mismo commit:** `admin/modals/_modalShell.tsx` (los 6 modales del editor de tipos) no scrolleaba — caja `maxHeight:90vh; overflow:hidden` pero body sin `overflow-y`, dejando inaccesibles los botones de abajo en forms largos. Fix: body `flex:1; minHeight:0; overflowY:auto` (header fijo, body scrollea). Patrón a replicar en cualquier modal con cap de altura.
-
-**Seed prod:** 9 tipos, 21 trámites demo. Seed idempotente en `backend/seed_tramites.py`.
-
-### Visor de documentos (✅ ENTREGADO 2026-05-18)
-
-`VisorDocumento.tsx` reemplaza el `<a target=_blank>` que estaba roto en `ListaDocumentos.tsx` (el endpoint `/documentos/{id}/contenido` solo acepta auth por header `Authorization`, no por `?token=` query param). Botones nuevos: **Ver** (abre visor inline) y **Descargar** (fetch + anchor con `URL.createObjectURL`).
-
-**Dependencias:** `react-pdf@10.4.1` + `pdfjs-dist@5.4.296` (pin obligatorio — `react-pdf` 10.4 declara `pdfjs-dist@5.4.296` exacto; pnpm puede instalar `5.7.x` que falla con `UnknownErrorException: API version "5.4.296" does not match the Worker version "5.7.284"`). Worker importado con `import pdfWorkerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url'` y asignado a `pdfjs.GlobalWorkerOptions.workerSrc`.
-
-**Quirks resueltos al implementar:**
-- **Bug pre-existente en `DetalleTramite.tsx`:** la página pasaba `documentos={[]}` hardcoded a `ListaDocumentos`, NUNCA llamaba a `obtenerDocumentos`. Además `obtenerDocumentos` esperaba `TramiteDocumento[]` plano pero el endpoint devuelve `{numero_expediente, documentos:[], total}`. Fix: tipar el wrapper + agregar `documentos` al hook `useTramite` + pasar `docsData` real.
-- **Shape de respuesta `/documentos`:** el endpoint NO devuelve `hash_sha256`, `nombre_archivo_original`, `agente_subio_nombre` ni `asignado_a.{tipo,id,nombre}` rico — solo `asignado_nombre` plano. `types.ts` los marcó opcionales y `ListaDocumentos`/`ModalFirma` ya soportan ambos shapes con `?? '—'`.
-- **HTTP cache cazó el binario viejo durante la verificación:** `fetch()` default usa el cache del browser; con `Last-Modified` de FastAPI puede devolver 304 + body cacheado. Fix: `cache: 'no-store'` en `descargarDocumentoBlob`. Si en el futuro agregás otro helper que sirva binarios autenticados, replicar.
-- **Path de `services/tramites/documentos.py` (fix 2026-05-19):** `UPLOADS_BASE` se resuelve desde `Path(__file__).resolve().parents[3] / "uploads"`, independiente del cwd. `storage_path` es relativo a `UPLOADS_BASE` (sin prefijo `uploads/` ni `backend/`). Si aparece carpeta `backend/backend/` en `git status`, es artefacto de uploads previos al fix — borrar con `rm -rf backend/backend`.
-
-### Notificaciones a la bandeja (✅ ENTREGADO 2026-05-18)
-
-Sistema in-app + email cuando un trámite entra a la bandeja del destinatario (creación, pase, transición que cambia destinatario).
-
-**Migración 51 (`51_notificaciones.sql`):** crea `notificacion` (estándar §10 + columnas in-app: `id_usuario`, `tipo`, `titulo`, `mensaje`, `url_destino`, `recurso_tipo`/`recurso_id` polimórfica, `leida`/`leida_en`, `enviada_mail`/`enviada_mail_en`). Índices: `(id_usuario, leida, fecha_alta DESC)` parcial sobre `activo=TRUE` y `(recurso_tipo, recurso_id)`. **Aplicada en local y prod al 2026-05-18.**
-
-**Backend nuevo:**
-- `app/core/config.py` aporta las vars de email (hoy `RESEND_API_KEY`/`RESEND_FROM` — ver §42; originalmente `SMTP_*`, ya migrado a Resend) + `APP_BASE_URL`. Sin key configurada, el sender corre en modo MOCK (log a stdout, no rompe el flow).
-- `app/services/email.py::enviar_mail(to, subject, body_html, body_text)` — usa `smtplib` de stdlib (síncrono, OK en threadpool de BackgroundTasks de FastAPI). Sin nueva dep.
-- `app/services/notificaciones.py::notificar_tramite_a_bandeja(db, id_tramite, evento, background_tasks)` — resuelve destinatarios (todos los agentes activos con email del subarea/equipo destinatario actual del trámite), inserta una fila por usuario en `notificacion` y dispara mail async via `background_tasks.add_task`. Fail-safe: cualquier error se logea pero no levanta. **CRITICAL: hace `await db.commit()` adentro** porque el caller ya commiteó antes y la sesión queda lista para nueva transacción; sin commit las filas se descartaban silenciosamente.
-- Hooks en `routes/tramites.py`: `crear_tramite` (siempre), `pase_tramite` (siempre), `transicionar_tramite` (solo cuando el destinatario cambia y no es estado final). Los tres signatures suman `background_tasks: BackgroundTasks`.
-- Router nuevo `routes/notificaciones.py` (prefix `/api/v1/notificaciones`): `GET ""`, `GET /count`, `PATCH /{id}/leer`, `PATCH /leer-todas`. Solo del usuario logueado. `X-Total-Count` expuesto via `Access-Control-Expose-Headers`.
-
-**Frontend nuevo:**
-- `web-app/src/lib/notificacionesBackend.ts` — cliente tipado + hooks react-query (`useNotificaciones`, `useNotificacionesCount` con `refetchInterval: 30_000`, `useMarcarLeida`, `useMarcarTodasLeidas`). **Separado de `stores/notifications`** que sigue usándose para toasts efímeros.
-- `web-app/src/shell/TopBar/NotificacionesDropdown.tsx` — componente nuevo de campana + dropdown. Reemplaza el botón Bell estático del TopBar. Maneja iframe/standalone: en iframe usa `window.parent.shellNavigate('web-app/dist/index.html#/tramites/...')`; standalone usa `useNavigate(hash)`. Cierra con click-outside + Escape. Click en notif: marca leída + navega + cierra.
-- `web-app/src/shell/TopBar/TopBar.tsx` simplificado: importa el nuevo dropdown, ya no necesita el contador del store local.
-
-**Verificación visual (2026-05-18):**
-1. Login como `ciudadanovl@municipio.gob.ar` (admin, nivel 1).
-2. Para que el admin pueda crear trámites necesité crearle un agente: `INSERT INTO agentes (nombre,apellido,id_usuario,id_subarea,id_municipio,activo) VALUES ('Cesar','Zeta',1,1,1,TRUE)` — quedó como agente 9. CONSERVAR esta fila para sesiones futuras.
-3. POST /tramites con `id_tipo_tramite=4` (pedido-informe), iniciador `area_interna`/subarea=1, destinatario subarea=1 → `INF-LPL-2026-0009` creado.
-4. Backend insertó 2 notificaciones (Cesar Zeta + Roberto Filad, ambos agentes activos de subarea 1).
-5. Email logueado en MOCK con HTML + body text + link a `https://zge.zaris.com.ar/#/tramites/INF-LPL-2026-0009`.
-6. Topbar polling → badge "1" rojo en la campana.
-7. Click campana → dropdown con la notif. Click notif → URL cambió a `#/tramites/INF-LPL-2026-0009` + DB confirma `leida=true, leida_en=NOW()`.
-
-**Quirks cazados durante implementación:**
-- **`tramite` no tiene `id_tipo_tramite` directo, va via `tipo_tramite_version`.** Mi JOIN inicial `tt ON tt.id_tipo_tramite = t.id_tipo_tramite` rompía con `UndefinedColumnError`. Fix: `JOIN tipo_tramite_version ttv ON ttv.id_tipo_tramite_version = t.id_tipo_tramite_version JOIN tipo_tramite tt ON tt.id_tipo_tramite = ttv.id_tipo_tramite`.
-- **`db.flush()` no persiste si el endpoint no commitea después.** El caller ya hizo su commit, dejando la sesión SQLAlchemy lista para nueva transacción. Sin un commit nuevo dentro del service, las filas insertadas se descartan al cerrar la sesión. Fix: `db.commit()` adentro del service (no flush).
-- **`subarea.id_municipio` está NULL en muchas filas del seed local** (mig 22 lo dejó sin backfill). Cualquier endpoint que filtre `WHERE id_municipio = :mun` no las matchea. Para que el smoke pase: `UPDATE subarea SET id_municipio=1 WHERE id_subarea=1`. NO replicar en prod sin diagnóstico — puede haber filas históricas con NULL intencional.
-
-**Envío de email — migrado de SMTP Zoho a Resend (API HTTP) el 2026-05-24.** El setup SMTP Zoho original quedó OBSOLETO (Railway bloquea egress SMTP). Toda la config de email vive ahora en **§42 "Email vía Resend"**: vars `RESEND_API_KEY`/`RESEND_FROM`, remitente `notificaciones@zaris.com.ar` (dominio raíz verificado), modo MOCK cuando falta la key. NO usar `SMTP_*` ni `smtp.zoho.com` — esas vars se borraron del config.
-
-> **Quirk vigente (no específico de email):** reinicio de uvicorn obligatorio al cambiar `.env.local`. Las settings se cargan UNA VEZ al startup. `Start-Process python` sin matar el proceso anterior puede dejarlo corriendo con vars viejas (verificar `Get-Process python ... StartTime` antes del smoke). Memoria [[feedback_uvicorn_settings_no_recarga]].
-
-**Campana en shell vanilla (✅ ENTREGADA 2026-05-18 — bug cazado en smoke prod):**
-
-Durante el smoke end-to-end en prod del 2026-05-18 se confirmó que la campana React (`NotificacionesDropdown.tsx`) vive en `TopBar.tsx` que **se auto-oculta en iframe** (regla §14). Como en prod los usuarios viven embebidos en el shell vanilla, **la campana React es invisible**. Solo aparece en `localhost:5173` standalone (dev). El backend insertaba notifs OK y mandaba mails reales, pero el usuario nunca veía el badge.
-
-Fix: campana funcional implementada en el shell vanilla, consumiendo los mismos endpoints `/api/v1/notificaciones`:
-
-- `index.html`: bell + dropdown HTML (IDs: `topbar-bell`, `topbar-bell-badge`, `notif-menu-dropdown`, `notif-menu-list`, `notif-menu-mark-all`).
-- `frontend/css/menu.css`: estilos `.notif-menu__*` (badge naranja, dropdown card, item con dot para no-leídas, hover).
-- `frontend/js/menu.js`: bloque "Campana de notificaciones" con `_refrescarNotifBadge` (polling 30s), `_cargarNotifLista` (al abrir), `_onClickNotif` (marca leída + navega via `shellNavigate('web-app/dist/index.html#/tramites/...')`). Cierra con click-outside + Escape. Refresh extra en `visibilitychange` (volver de background).
-- Cache-bust `?v=2026-05-18a` en menu.css/menu.js.
-
-**Las DOS campanas conviven sin colisión** porque viven en DOMs distintos (shell vanilla vs shell React standalone). El bundle React mantiene su `NotificacionesDropdown` para devs que trabajan en `localhost:5173`.
-
-> **Quirk crítico CSS (cazado 2026-05-20, commits `5dfe00c` + `fda6c01`):** tanto `.topbar__bell-badge` como `.notif-menu__dropdown` tienen `display:flex/block` en `menu.css`, que **pisa el atributo HTML `hidden`** por especificidad. Sin una regla `.<clase>[hidden]{display:none}`, el elemento se ve aunque tenga `hidden` — el badge mostraba "0" siempre, y el dropdown arrancaba ABIERTO y no se cerraba (el JS hacía `el.hidden=true` pero el CSS lo ignoraba). **Cualquier componente nuevo del shell vanilla que use `display:` explícito + toggle por atributo `hidden` DEBE incluir la regla `[hidden]{display:none}`.** Ver memoria [[reference_css_display_pisa_hidden]]. El cierre del dropdown al clickear afuera usa un overlay full-screen en el body + elevación del `.topbar` por encima (no del `.notif-menu`, que queda confinado en el stacking context del topbar `z-index:100`).
-
-**Notificaciones extendidas a más eventos (✅ ENTREGADO 2026-05-19):**
-
-Tres notifs nuevas que se suman a `tramite_bandeja_{creacion,pase,transicion}` (que ya existían). Todas reusan el helper `_emitir_a_usuarios()` que centraliza INSERT con RETURNING + commit + encolado del background task. Fail-safe (try/except global, log + return 0).
-
-| Trigger | Función | Destinatarios | Tipo notif |
-|---|---|---|---|
-| `POST /{ref}/comentar` | `notificar_comentario_a_tomador` | Usuario del `tramite.id_agente_tomado_por`, excluyendo al que comentó (`id_usuario_que_comento`) | `tramite_comentario` |
-| `POST /{ref}/transicionar` cuando `es_final=TRUE` | `notificar_estado_final_a_iniciador` | Usuarios de la `id_subarea_iniciadora` (solo si `iniciador_tipo='area_interna'`; ciudadano/empresa no se notifican porque no tienen cuenta) | `tramite_estado_final` |
-| `POST /{ref}/documentos` con `requiere_firma=TRUE` y firmantes definidos | `notificar_firma_pendiente` (loop por cada `id_tramite_firma`) | Polimórfico: usuarios del agente/subarea/equipo asignado a la firma | `tramite_firma_pendiente` |
-
-**Helpers nuevos en `services/notificaciones.py`:**
-- `_datos_tramite(db, id_tramite)` — SELECT base compartido por los 4 notificadores. Trae `numero_expediente`, `asunto`, `tipo_nombre`, destinatario actual, iniciador, `id_agente_tomado_por`.
-- `_usuarios_por_subarea`, `_usuarios_por_equipo`, `_usuarios_por_agente` — resuelven destinatarios con email activo.
-- `_emitir_a_usuarios(...)` — inserta filas con RETURNING, commitea, encola sends. Acepta `excluir_usuario` para casos como comentario (no notificar al autor).
-
-**Quirk de comentario:** se exige `BackgroundTasks` en la signature del endpoint `/comentar` (antes no lo tenía). El notificador corre después del commit del movimiento, idéntico patrón a creación/pase/transición.
-
-**Smoke E2E verificado (2026-05-19):** 3 trámites pedido-informe (`INF-LPL-2026-0017/0018/0019`):
-- Comentario al tomador: 1 notif a admin, excluyendo correctamente al user "administrativo" que comentó.
-- Estado final: trámite avanzado por `Solicitado → Respondiendo → Respondido → Archivado` (final). 2 notifs `tramite_estado_final` a la subarea iniciadora.
-- Firma pendiente: doc requerido con `firmantes_jsonb=[{tipo:subarea,id:1}]` → 2 notifs `tramite_firma_pendiente` a los users de la subarea 1.
-- Todas con `enviada_mail=TRUE` (email real via Zoho). Cleanup completo.
-
-**Pendientes futuros (no críticos):**
-- (vacío al 2026-05-19)
-
-**Marcar `enviada_mail=TRUE` tras send exitoso (✅ ENTREGADO 2026-05-19):**
-
-Patrón usado: el INSERT en `notificacion` ahora hace `RETURNING id_notificacion`. Por cada usuario destinatario, en lugar de encolar `enviar_mail` directo como background task, se encola un wrapper `_enviar_mail_y_marcar(id_notif, to, subj, html, text)` que:
-1. Llama a `enviar_mail(...)`. Si devuelve `False`, sale (deja la fila con `enviada_mail=FALSE` para reintento manual o auditoría).
-2. Si `True`, abre una sesión SQL nueva via `AsyncSessionLocal()` (la sesión del request ya está cerrada cuando esto corre en background), hace `UPDATE notificacion SET enviada_mail=TRUE, enviada_mail_en=NOW() WHERE id_notificacion=:nid AND activo=TRUE AND enviada_mail=FALSE`, commitea, cierra.
-
-**Por qué abrir sesión nueva:** los `BackgroundTasks` de FastAPI corren *después* de cerrar la respuesta HTTP, fuera del contexto del request. Reusar `db` del request da `InterfaceError: cannot operate on a closed database`.
-
-**Por qué el `for` de sends va después del `await db.commit()`:** si el background task levanta antes de que el commit persista la fila, el `UPDATE` no encuentra nada que actualizar. Commitear primero, encolar después.
-
-**Smoke verificado (2026-05-19):** crear trámite → 2 destinatarios → 2 mails reales enviados via Zoho → 2 filas con `enviada_mail=TRUE` + timestamp.
-
-### Editor admin de tipos custom (✅ ENTREGADO 2026-05-18, commit `65b6ac2`)
-
-CRUD completo del catálogo de tipos vía UI React. Antes solo se podía vía `seed_tramites.py`. Ahora cualquier Admin/Supervisor puede crear/editar tipos desde `/tramites/config`.
-
-**Decisiones de diseño acordadas (sesión 2026-05-18):**
-- **Versionado:** v1 editable in-place si NO tiene trámites instanciados. Con trámites, fuerza crear v2 borrador (UI copia estructura automáticamente).
-- **Borrado:** soft-delete siempre (`activo=FALSE`). Coherente con §5.
-- **Permisos:** nivel ≤ 2 (Admin + Supervisor) para todas las mutaciones del catálogo.
-
-**Backend nuevo:**
-- `routes/tramites_admin.py` — 19 endpoints CRUD bajo `/api/v1/admin/tramites`. Registrado **ANTES** de `admin_tablas_router` para evitar colisión con `/api/v1/admin/{tabla}` greedy (§5 quirk).
-- `services/tramites/versionado.py` — helpers `asegurar_editable`, `crear_borrador_desde_publicada` (copia campos+estados+transiciones+docs con re-mapeo de IDs), `publicar_version` (valida 1 inicial + ≥1 final).
-- `schemas/tramites.py` — 11 schemas In/Out nuevos (TipoTramiteCreateIn, CampoIn, EstadoIn, TransicionIn2, DocumentoRequeridoIn, etc.).
-
-**Endpoints (19 total bajo `/api/v1/admin/tramites`):**
-
-| Recurso | Endpoints |
-|---|---|
-| `tipos` | POST · PUT `/{id}` · DELETE `/{id}` · GET `/{id}/admin` |
-| `versiones` | GET `/{id}` (detalle completo, no solo publicada) · POST `/tipos/{id}/versiones` (crear borrador) · POST `/versiones/{id}/publicar` · POST `/versiones/{id}/archivar` |
-| `campos` | POST `/versiones/{id}/campos` · PUT `/campos/{id}` · DELETE `/campos/{id}` |
-| `estados` | POST `/versiones/{id}/estados` · PUT `/estados/{id}` · DELETE `/estados/{id}` |
-| `transiciones` | POST `/versiones/{id}/transiciones` · PUT `/transiciones/{id}` · DELETE `/transiciones/{id}` |
-| `documentos-requeridos` | POST `/versiones/{id}/documentos-requeridos` · PUT `/documentos-requeridos/{id}` · DELETE `/documentos-requeridos/{id}` |
-
-**Frontend nuevo (`web-app/src/modules/tramites/admin/`):**
-- `pages/ConfigTramites.tsx` — lista de tipos con badge de versión publicada y botón "Nuevo tipo".
-- `pages/ConfigTramiteDetalle.tsx` — editor con selector de versiones + 5 tabs (General/Campos/Estados/Transiciones/Docs requeridos) + botones Publicar/Archivar/Nuevo borrador + mensaje de editable.
-- `modals/` — 6 modales: NuevoTipoModal, EditarTipoModal, CampoModal, EstadoModal, TransicionModal, DocReqModal + `_modalShell.tsx` (helper compartido).
-- `api.ts` + `hooks.ts` — 19 hooks react-query con invalidación automática.
-
-**UI integrada como tab "Tipos de trámite"** en `TramitesLayout` (visible solo `nivel <= 2` vía `useAuthStore.hasPermission(2)`). La pestaña se llamó "Configuración" hasta 2026-05-22, pero ese nombre sugería config del sistema; renombrada a "Tipos de trámite" (pestaña + breadcrumb + título). Las rutas internas siguen siendo `/tramites/config` por compat (solo cambió el label visible).
-
-**Acceso:** `/tramites/config` (lista) + `/tramites/config/:idTipo` (editor).
-
-**Mejoras de UX del editor de campos (hallazgos QA 2026-05-27, commits `32e0ed6`+`4b967a5`):** el `CampoModal` autocompleta el nombre interno desde la etiqueta visible (auto-slug, ver §23), valida en vivo con indicador ✓/✕, edita las opciones de `seleccion`/`seleccion_multiple` con filas {Etiqueta, Valor} en vez del textarea `valor|Etiqueta`, y `_modalShell` ya no cierra al arrastrar texto fuera del modal (click-outside exige mousedown+mouseup sobre el overlay). La lista de campos tiene botones ↑↓ (`useReordenarCampo` — ver issues 2026-05-28 abajo: reasigna `orden` 1..N por posición, NO swap). BUG-01 "Failed to fetch" del reporte era blip transitorio de Railway (§9), no código.
-
-**Vista previa del formulario en vivo (BUG-06, 2026-05-27, commit `f049296`):** la tab Campos tiene un toggle **Editar / Vista previa**. En "Vista previa", `admin/components/PreviewFormulario.tsx` renderiza el formulario de inicio reusando el **mismo** `FormularioDinamico` de la pantalla de alta real (`CrearTramite`) — interactivo (botón "Probar validación") pero no guarda. Se actualiza solo al editar campos (react-query invalida la versión). **Quirk cazado:** `CampoDinamico` ahora normaliza `opciones_jsonb` tolerando el shape legacy `{opciones:[...]}` de los tipos seedeados viejos (antes `.map` reventaba); esto **también protege el alta real**. Ver [[feedback_normalizar_jsonb_de_seeds_viejos]]. El manual `docs/manual_admin_tramites.html` quedó actualizado a esta UI (commit `aec2d11`).
-
-**Issues del editor de tipos — repaso de Roy (2026-05-28, mig 68, commit `a132e8f`):** 6 hallazgos del editor de "Tipos de trámite", todos resueltos y verificados en navegador (local + prod):
-- **BUG-01 (publicar versión publicada):** el botón "Publicar" suelto solo aparece en `borrador`; en `publicado` se muestra un banner verde "Esta versión ya está publicada" que guía a "Nuevo borrador". `handlePublicar` además aborta si el estado cacheado ya no es borrador (evita el 409 del backend por stale). En `ConfigTramiteDetalle.tsx`.
-- **BUG-02 (orden en Docs requeridos):** la tabla de docs ahora tiene columna **Orden** con ↑↓ (`useReordenarDocReq`) + columna **Máx. archivos**.
-- **BUG-03 (reorden de Campos fallaba):** raíz = órdenes **duplicados** en los seeds (varios campos con `orden=1`), el swap viejo no movía nada. `useReordenarCampo` ahora recibe el array de IDs en el orden deseado y **reasigna `orden` 1..N por posición** (no swap). El sort de la tabla desempata por id. Backfill de órdenes (campos + docs) corrido en local y prod.
-- **BUG-04 (acción de transición ambigua):** columna nueva `tipo_tramite_transicion.tipo_accion` (`aprobar`/`rechazar`/`derivar`/`avanzar`/`otro`). El `TransicionModal` la edita con **pills de color** y el listado pinta el badge de la transición según ella (verde aprobar, rojo rechazar, violeta derivar). La etiqueta sigue siendo texto libre, pero ahora hay una intención semántica explícita.
-- **BUG-05 (mensaje al vecino según resultado):** columna nueva `tipo_tramite_transicion.mensaje_iniciador` (TEXT). El modal lo edita (textarea, visible si "Notifica al iniciador"). `notificar_estado_final_a_iniciador` (notificaciones.py) acepta `mensaje_custom` y se extendió para **enviar email al iniciador ciudadano/empresa** (antes solo notificaba in-app al área interna). El handler de transición solo notifica si `trans.notifica_iniciador`. Alcance acotado (mensaje por transición, NO sistema de plantillas).
-- **BUG-06 (límite de archivos por doc):** columna nueva `tipo_tramite_documento_requerido.cantidad_max_archivos` (SMALLINT 1-20, default 1) + campo en `DocReqModal`.
-- **Quirk cazado (importante):** `detalle_version` en `tramites_admin.py` arma la respuesta con SELECTs de **lista explícita de columnas** (uno por campos/estados/transiciones/docs). Agregar las columnas a la migración + schemas + INSERT/UPDATE + `_copiar_estructura` NO basta: hay que sumarlas también a esos SELECT o el endpoint las devuelve sin ellas (silencioso, el frontend las ve `undefined`). Se cazó leyendo el JSON crudo del endpoint, no el código. Ver [[feedback_columna_nueva_auditar_todos_los_select]].
-
-**Issues del ALTA de trámite — repaso de Roy (2026-05-29, commits `8204a59`+`fe9a10f`, solo frontend):** el alta (`CrearTramite.tsx`) estaba rota por **dos mismatches de contrato frontend↔backend**, ambos verificados en vivo contra prod (Aviso de Obra):
-- **Campos del builder no aparecían en el paso 4 (BUG-02/03) + botón "Crear trámite" mudo (BUG-01, capa 1):** `GET /tramites/tipos/{id}` (`TipoTramiteDetalleOut`) devuelve `campos`/`estados`/`transiciones`/`documentos_requeridos` **a NIVEL RAÍZ**, y `version` es SOLO metadata (`{id_tipo_tramite_version, version_num, estado, publicada_en}`). El frontend los leía en `tipo.version.campos` → `undefined` → paso 4 mostraba "no requiere datos adicionales" + `validarDatos(undefined,…)` tiraba TypeError **antes** del try/catch (el botón parecía muerto, sin toast). Fix: `TipoTramiteDetalle` (types.ts) refleja la shape real; `CrearTramite` lee `tipo.campos`. **El `PreviewFormulario` del editor SÍ mostraba los campos** porque consume el endpoint admin con shape plana — por eso confundía (en el builder se veían, en el alta no).
-- **POST siempre daba 422 (BUG-01, capa 2, descubierto al verificar):** el frontend mandaba el body con shape **plana** (`iniciador_tipo`, `id_ciudadano_iniciador`, `datos_jsonb`, `id_tipo_tramite_version`) pero `TramiteCreateIn` espera `iniciador` **anidado** (`{tipo, id_ciudadano, id_empresa, id_subarea, id_ciudadano_representante}`) + `datos` (NO `datos_jsonb`) + `id_municipio`, y deriva la versión publicada del tipo (NO se manda `id_tipo_tramite_version`). Sin este fix, aunque los campos se renderizaran, el alta nunca completaba. Fix: `CrearTramiteBody` + `handleCrear` arman la shape anidada. Verificado E2E en prod desde la UI: alta de `AVO-LPL-2026-0001` OK → redirige al detalle (luego limpiado, numerador reseteado).
-- **BUG-04 (flechas de orden no funcionan):** era **comportamiento correcto** — versión publicada con trámites instanciados es inmutable (`editable=false`), las flechas quedaban `disabled`. El bug real: se veían idénticas a las activas (el estilo inline `btnOrden` no tenía estado disabled). Fix: helper `btnOrdenStyle(disabled)` (opacidad 0.35 + `cursor:not-allowed`) + tooltip "Versión no editable" en los 4 botones (campos + docs). Lección: estilo inline no soporta `:disabled` — derivar el estilo condicionalmente.
-
-### Listado admin de tipos + leyenda Sistema/Custom + Publicado/Borrador (2026-05-22)
-
-**Bug de fondo corregido:** la pantalla "Tipos de trámite" reusaba el endpoint **público** `GET /api/v1/tramites/tipos`, que SOLO devuelve tipos con versión publicada (`id_version_publicada IS NOT NULL`). Consecuencia: un tipo custom en **borrador no aparecía en ningún lado** — ni en "Nuevo trámite" (correcto) ni en la lista de administración (bug: el admin no podía volver a editarlo/publicarlo si recargaba).
-
-Fix:
-- **Endpoint nuevo `GET /api/v1/admin/tramites/tipos`** (en `tramites_admin.py`, ahora 20 endpoints): lista TODOS los tipos activos (publicados + borradores + sin estados) con `es_sistema` y `estado_version` derivado (`publicado` / `borrador` / `sin_estados` / `archivado`). Es el que consume la pantalla admin (`useTiposCatalogo`), NO el público.
-- **`ConfigTramites.tsx`** muestra dos badges por fila: **Origen** (`Sistema` neutral / `Custom` success) y **Estado** (`Publicado` / `Borrador` / `Borrador (sin estados)` / `Archivado`). El borrador ahora SÍ aparece en la lista.
-- **`ConfigTramiteDetalle.tsx`** tiene un **banner de publicación** cuando la versión es borrador: "Listo para publicar" (botón "Publicar y habilitar" activo) o "Todavía no se puede publicar" listando qué falta (estado inicial/final). Conecta crear el tipo con disponerlo para usar.
-- `es_sistema` distingue seed (`TRUE`) de custom (`FALSE`) — ver mig 56 §21 y memoria [[reference_tipo_tramite_sin_usuario_alta]].
-
-> **Regla del flujo:** un tipo custom recién creado nace en borrador y NO está disponible en "Nuevo trámite". El alta lista solo publicados. Hay que ir al editor → agregar estados inicial+final → "Publicar y habilitar". Recién ahí aparece en el selector de alta.
-
-**Tipos custom seedeados en prod (2026-05-22):** `exencion-tasas` (EXT) y `permiso-espacio-publico` (PEP) publicados + `solicitud-arbolado` (ARB) dejado como borrador de ejemplo (no aparece en alta hasta publicarlo).
-
-**Manual de uso:** `docs/manual_admin_tramites.html` (autocontenido, 12 capturas reales — regenerado 2026-05-22 con la UI nueva) o vía módulo Guías (`/guias` → card "TRÁMITES (CREACIÓN)"). El manual operativo es `docs/manual_tramites.html` (card "TRÁMITES (USO OPERATIVO)").
-
-**Smoke E2E validado:** crear tipo → 3 estados → 2 transiciones → campo → doc requerido → publicar → instanciar trámite → editar v1 publicada con trámites = 409 → crear v2 borrador (copia estructura). Cleanup completo (test data borrada, agente del admin restaurado).
-
-### Aprobaciones por etapa (visados) — backend ✅ + builder frontend ✅; detalle frontend PENDIENTE (2026-05-31, mig 73, SIN commitear/pushear al cierre)
-
-Marca paralela a los estados FSM: un área **aprueba/rechaza** una etapa; las marcas **bloqueantes impiden avanzar** hasta estar aprobadas. Modelo nuevo, separado de `tramite_firma` (firma digital con evidencia hash/IP) — conviven. Patrón catálogo+instancia.
-
-**DB (mig 73 `73_tramites_aprobaciones_por_etapa.sql`, aplicada local + prod, verificado por MCP):**
-- `tipo_tramite_aprobacion_requerida` (catálogo **versionado**): `id_tipo_tramite_version`, `id_tipo_tramite_estado` (la etapa), aprobador **polimórfico** (`aprobador_tipo` ∈ subarea|equipo|agente + CHECK `ck_ttar_aprobador_exactamente_uno`), `etiqueta`, `bloqueante BOOL` default TRUE, `id_tipo_tramite_documento_requerido` NULL (opcional), `orden`, + estándar §10.
-- `tramite_aprobacion` (instancia): `id_tramite`, FK al requisito, `id_tipo_tramite_estado` (desnorm para guard rápido), `estado` pendiente|aprobada|rechazada, `resuelto_por_agente`/`resuelto_en`/`comentario`, `id_tramite_documento` NULL, + estándar §10. UNIQUE `(id_tramite, id_tipo_tramite_aprobacion_requerida)` = idempotencia.
-- `'aprobacion'` agregado al CHECK `tramite_movimiento_tipo_check` (timeline).
-
-**Backend — COMPLETO y verificado E2E API** (en disco; `versionado.py` + `admin/api.ts` ya en commit `e10723f`, el resto sin commitear): `services/tramites/aprobaciones.py` (instanciar al entrar a etapa idempotente, `aprobaciones_bloqueantes_pendientes`, `agente_puede_resolver` polimórfico, `aprobaciones_de_tramite`). En `routes/tramites.py`: instanciación en crear/transicionar; **guard 422** tras el bloque `requiere_adjunto` (espeja su patrón); endpoint `POST /tramites/{ref}/aprobaciones/{id_aprob}/resolver`; el **rechazo NO dispara transición** (deja el trámite trabado con motivo visible). 3 CRUD `/aprobaciones-requeridas` + `_aprob_fks` + bloque en `detalle_version` en `tramites_admin.py`. Copia en `versionado._copiar_estructura`. Schemas `AprobacionOut`/`ResolverAprobacionIn`/`AprobacionRequeridaIn` + campo `aprobaciones` en `TramiteDetalleOut`. Verificado: block 422 → resolve 200 → unblock 200→final, timeline `aprobacion`.
-
-**Builder frontend — HECHO** (compila): tab "Aprobaciones" en `ConfigTramiteDetalle.tsx` (`SeccionLista` + `AprobReqModal.tsx`, reusa `listarDestinatariosPase`) + `admin/api.ts` (`TipoTramiteAprobReq`, `AprobReqBody`, 3 fns, campo en `DetalleVersion`) + `admin/hooks.ts` (3 hooks).
-
-**Detalle frontend — PENDIENTE** (Fase 4, no escrito; el árbol compila igual porque nada lo referencia aún): falta `tramites/types.ts` (`TramiteAprobacion` + campo en `TramiteDetalle` — OJO el archivo real es `tramites/types.ts`, NO `lib/types.ts`), `lib/api.ts resolverAprobacion`, `hooks/useTramites.ts useResolverAprobacion`, `components/PanelAprobaciones.tsx` (panel verde/rojo/gris + Resolver + aviso de bloqueo) montado en `pages/DetalleTramite.tsx`. Paso-a-paso en [[project_tramites_aprobaciones_por_etapa]] / [[project_estado_sesion_y_pendientes]].
+| GET | `/tipos` · `/tipos/{id}` | Tipos activos publicados; detalle con campos/estados/transiciones/docs **a nivel raíz** (`version` es solo metadata) |
+| GET | `` (bandeja) | Filtros estado/tipo/iniciador/destinatario/numero/q/fechas; `X-Total-Count` |
+| GET | `/{numero_o_id}` (+ `/movimientos`, `/documentos`) | Acepta `POD-LPL-2026-0001` o id int |
+| GET | `/mi-bandeja` | Colectivos del agente resueltos server-side (subárea + equipos/mesas + asignado a mí + tomado por mí). El `GET ""` general NO sirve (filtra un destinatario único). Filtros estado/tipo/sin_tomar/q |
+| GET | `/destinatarios?q=` | Opciones de pase agrupadas (agentes/equipos/subáreas). Quirk: `CAST(:q AS text) IS NULL` (sino `AmbiguousParameterError`) |
+| POST | `` | Crear (201). Numerador atómico, estado inicial, 2 movimientos. **Body: `iniciador` ANIDADO** `{tipo, id_ciudadano, id_empresa, id_subarea, id_ciudadano_representante}` + `datos` (NO `datos_jsonb`) + `id_municipio`; la versión se deriva del tipo |
+| POST | `/{ref}/tomar` · `/liberar` · `/transicionar` · `/pase` · `/comentar` · `/relacionar` + GET `/transiciones-permitidas` | `tomar`=`SELECT FOR UPDATE`. `pase`/transición-final auto-liberan toma. `transicionar` valida `quien_puede_jsonb` + `requiere_adjunto` + guard de aprobaciones bloqueantes (422). `relacionar` ordena ids para UNIQUE |
+| POST/GET | `/{ref}/documentos` (+ `/{id}/contenido`, `/firmar`, `/rechazar-firma`) | Upload multipart; SHA256 sobre bytes; firma captura ip/user_agent/hash. `contenido` solo auth por header (no `?token=`), fetch con `cache:'no-store'` |
+| POST | `/{ref}/aprobaciones/{id_aprob}/resolver` | Aprobar/rechazar visado de etapa (mig 73) |
+
+Admin (`/api/v1/admin/tramites`, nivel ≤ 2, registrado antes de admin_tablas): CRUD de tipos/versiones/campos/estados/transiciones/docs-requeridos/aprobaciones-requeridas (~20 endpoints) + `GET /tipos` admin (lista TODOS: publicados+borradores+sin-estados, con `es_sistema` y `estado_version`). Versionado: v1 editable in-place sin trámites; con trámites fuerza v2 borrador (copia estructura via `versionado.crear_borrador_desde_publicada`). Publicar valida 1 inicial + ≥1 final.
+
+### Servicios (`backend/app/services/tramites/`)
+`numerador.py` (`proximo_numero` atómico, `formatear_numero`) · `auth.py` (`resolver_agente_desde_usuario` → `{id_agente, id_subarea, ids_equipos, id_municipio, nivel_acceso}`, `es_admin(nivel)=nivel<=2`) · `autorizacion.py` (`quien_puede_actuar` OR entre subareas/equipos/iniciador/roles) · `movimientos.py` (append-only, `COALESCE(MAX,0)+1`) · `creacion.py` (`validar_campos_contra_tipo`, `resolver_iniciador`, `determinar_destinatario_inicial`) · `documentos.py` (Supabase Storage + SHA256) · `firmas.py` (polimórfico, captura evidencia) · `versionado.py` · `aprobaciones.py`.
+
+### Reglas operativas críticas
+- Toda mutación: transacción + `SELECT FOR UPDATE` sobre `tramite`.
+- `requiere_adjunto` cuenta `tramite_documento.activo` con `fecha_alta >= fecha_entrada_estado_actual`.
+- **Storage = Supabase Storage** (bucket privado `tramites-documentos`, paths `tramites/{anio}/{expediente}/{uuid}.{ext}`). Backend recibe multipart, calcula SHA256, PUT con service_role (`app/core/storage.py`, reusado por Reclamos §26 y OT §34). `verificar_integridad_documento` recomputa SHA256 descargando del bucket. Ver [[project_tramites_storage_efimero_deuda]].
+- **Notificaciones**: in-app + email cuando un trámite entra a una bandeja (creación/pase/transición que cambia destinatario), comentario al tomador, estado final al iniciador (incluye email a ciudadano/empresa con `mensaje_iniciador` custom mig 68 si `notifica_iniciador`), firma pendiente. Ver §51-notificaciones (mig 51) y [[project_notificaciones_in_app_email]]. La campana vive en el shell vanilla (`menu.js`) porque el TopBar React se auto-oculta en iframe ([[feedback_features_topbar_react_invisibles_en_prod]]).
+- **Flujo de tipos custom**: nace en borrador, NO disponible en "Nuevo trámite" hasta tener estado inicial+final y "Publicar y habilitar". El alta lista solo publicados.
+
+### Quirks (vigentes)
+- **JSONB en asyncpg**: NO `:v::jsonb` ni `dict` en prepared statements de SQLAlchemy `text()`. Usar `VALUES (CAST(:v AS jsonb))` con `json.dumps(val) if val is not None else None`. (El `::jsonb` sí funciona en psql y en `asyncpg_conn.execute()` directo, §5.)
+- **Mapeo de params iniciador**: `**iniciador_fks` sobre el dict del INSERT falla (claves largas ≠ `:alias`). Mapear explícito ([[feedback_mapeo_alias_sql_vs_claves_dict]]).
+- **`tramite` no tiene `id_tipo_tramite` directo** — va via `id_tipo_tramite_version → tipo_tramite_version → tipo_tramite` ([[reference_tramite_no_tiene_id_tipo_tramite_directo]]).
+- **`opciones_jsonb` de seeds viejos** puede venir como `{opciones:[...]}` en vez de `[...]` — normalizar antes de `.map` ([[feedback_normalizar_jsonb_de_seeds_viejos]]).
+- **Columna nueva del catálogo**: sumarla también a los SELECT de lista explícita de `detalle_version` (tramites_admin.py), no solo a migración/schema/INSERT — sino el endpoint la devuelve `undefined` silencioso ([[feedback_columna_nueva_auditar_todos_los_select]]).
+- **VisorDocumento**: `react-pdf@10.4.1` + `pdfjs-dist@5.4.296` (pin exacto, [[feedback_react_pdf_pin_pdfjs_version]]).
+- **Modal de carga larga** (`admin/modals/_modalShell.tsx`): body `flex:1; minHeight:0; overflowY:auto` (header fijo, body scrollea) + click-outside exige mousedown+mouseup sobre el overlay. Estilo inline no soporta `:disabled` → derivar el estilo condicionalmente (botones de orden).
+- **Reorden de campos/docs** (`useReordenarCampo`/`useReordenarDocReq`): reasigna `orden` 1..N por posición (NO swap — los seeds tenían órdenes duplicados).
+
+### Aprobaciones por etapa — detalle frontend PENDIENTE (2026-05-31, mig 73)
+Backend + builder frontend (tab "Aprobaciones" en `ConfigTramiteDetalle.tsx`) HECHOS y verificados E2E API. **Falta (Fase 4)**: `tramites/types.ts` (`TramiteAprobacion` + campo en `TramiteDetalle` — el archivo es `tramites/types.ts`, NO `lib/types.ts`), `lib/api.ts resolverAprobacion`, `hooks/useTramites.ts useResolverAprobacion`, `components/PanelAprobaciones.tsx` montado en `pages/DetalleTramite.tsx`. Paso-a-paso en [[project_tramites_aprobaciones_por_etapa]] / [[project_estado_sesion_y_pendientes]].
+
+### Manuales
+`docs/manual_tramites.html` (uso operativo) · `docs/manual_admin_tramites.html` (creación de tipos, admin). Vía módulo Guías §37.
 
 
 ## 36. Generación de manuales operativos (HTML autocontenidos)
 
-Receta probada (sesión 2026-05-18, 3 manuales generados). Reusable para cualquier módulo nuevo.
-
-### Patrón fundamental
-
-1. **Carpeta temporal `_<modulo>_caps/`** (gitignored, manual al final) con:
-   - `package.json` mínimo con `"type": "module"`
-   - `_token.txt` y `_user.json` (auth para inyectar en localStorage)
-   - `_id<entidad>.txt` (ids de demo para deep-links)
-   - `capture.mjs` (script Playwright)
-   - `build_html.mjs` (ensambla HTML con base64 inline)
-2. **Setup Playwright local sin contaminar** `package.json` del web-app:
-   ```bash
-   cd _modulo_caps
-   echo '{"name":"caps","type":"module","private":true}' > package.json
-   npm install playwright --no-save --no-package-lock
-   npx --yes -p playwright@latest playwright install chromium
-   ```
-3. **Datos demo** en DB para que las capturas tengan contenido rico. Sembrar vía API (no SQL crudo) para respetar reglas de negocio.
-4. **Script Playwright** con UNA página fresca por captura para evitar estado residual de modales:
-   ```js
-   async function shot(name, url, prepFn) {
-     const page = await ctx.newPage()
-     await page.goto(url, { waitUntil: 'networkidle' })
-     if (prepFn) try { await prepFn(page) } catch (e) { console.warn(e.message) }
-     await page.screenshot({ path: path.join(OUT, name) })
-     await page.close()
-   }
-   ```
-5. **Build HTML** con `dataUrl(filename)` → `data:image/png;base64,...` y look ZARIS (tokens del DS: `--zaris-orange`, `--zaris-cream`, etc.).
-6. **Cleanup OBLIGATORIO al final:** borrar data demo, restaurar flags tocados (ej. `es_auditor`), eliminar carpeta `_<modulo>_caps/`, bajar servers.
-
-### Convenciones del HTML
-
-- **Tamaño esperado:** 1-3 MB con 9-12 capturas embebidas. Si pasa de 5 MB, revisar (probable capturas gigantes o demasiadas).
-- **Estructura:** hero con borde naranja izquierdo + breadcrumb tag + h1, índice con anchors, secciones numeradas (1-N), tablas de errores comunes + glosario al final.
-- **Componentes:** `blockquote` con variantes `.warn` (ámbar), `.danger` (rojo), `.info` (azul). `.badge` con clases por estado. `.flow` para diagramas tipo "paso 1 → paso 2".
-- **Footer:** "Manual generado el YYYY-MM-DD · ZARIS · Gestión Estatal · Capturas reales del entorno local".
-
-### Almacenamiento y serving
-
-- Los HTMLs viven en **`docs/`** en la raíz del repo (junto al `flujos_operativos_zge.md` legacy).
-- GH Pages los sirve automáticamente como `https://zge.zaris.com.ar/docs/manual_X.html`.
-- En dev local accesibles vía `http://localhost:8080/docs/manual_X.html` (servidos por el `python -m http.server 8080` raíz).
-- **NO embeber en iframe** (lento + pierde sidebar). Servir como pestaña nueva vía `target="_blank"`. Ver [[feedback_acortar_alcance_html_autocontenido]].
-
-### Quirks operativos a recordar
-
-- **`browser_screenshot` del MCP NO persiste el PNG.** Solo Playwright headless guarda en disco. Ver [[feedback_screenshots_no_persisten_browser_mcp]].
-- **PowerShell `Out-File -NoNewline` encoding:** strings cortos = UTF-8 con BOM, strings largos = UTF-16 LE con BOM. Leer en Node con `replace(/^﻿/, '').trim()` cubre el caso UTF-8; UTF-16 requiere `Buffer.toString('utf16le').replace(...)`.
-- **El `addInitScript` de Playwright** debe inyectar la sesión ANTES de navegar, no después, para que el guard React no redirija a `/login`.
-- **Sembrar data con API, NO con SQL crudo:** SQL crudo puede saltarse triggers, validaciones de negocio y dejar la DB en estado inconsistente. La API ya respeta todo.
+> **Receta completa en la skill `generar-manual`** (`.claude/skills/generar-manual/`): setup Playwright, patrón de captura, convenciones del HTML, regenerar capturas tras cambio de UI, cleanup. Invocarla al crear/regenerar un `docs/manual_<modulo>.html`.
 
 ### Manuales actuales (al 2026-05-26)
+`manual_reclamos.html` (Operador+, 10 caps) · `manual_ot.html` (Sup/Agente/Auditor, 9) · `manual_tramites.html` (Operador+, 8) · `manual_admin_tramites.html` (Admin/Sup, 12) · `manual_encuestas.html` (Sup/Admin, texto sin caps). Próximos sugeridos (no obligatorios): Agenda, Turnos+Entradas, Padrones.
 
-| Manual | Audiencia | Capturas | Secciones |
-|---|---|---|---|
-| `manual_reclamos.html` | Operador o superior | 10 | 11 |
-| `manual_ot.html` | Supervisor / Agente / Auditor | 9 | 11 |
-| `manual_tramites.html` | Operador o superior | 8 | 13 |
-| `manual_admin_tramites.html` | Admin o Supervisor | 12 | 11 |
-| `manual_encuestas.html` | Supervisor o Admin | 0 (texto) | 6 |
-
-> **Variante sin capturas (válida):** `manual_encuestas.html` se generó SIN capturas embebidas. La receta full de §36 usa Playwright para capturas reales, pero el `browser_screenshot` del MCP integrado no persiste el PNG ([[feedback_screenshots_no_persisten_browser_mcp]]) y montar Playwright es setup pesado. Para módulos **analíticos/simples** (dashboards de lectura, pocas pantallas), un manual de texto + tablas + diagramas de flujo con el estilo ZARIS canónico es claro y suficiente — entregable sin el setup de capturas. Reservar el manual con capturas para flujos operativos multi-paso donde "ver la pantalla" agrega valor real (Reclamos, OT, Trámites).
-
-### El manual es parte del entregable cuando cambia la UI que documenta
-
-**Antes de cerrar un cambio de UI/flujo, chequear si ese módulo tiene manual en `docs/` (`manual_<modulo>.html`).** Si lo tiene, actualizar el texto + las capturas afectadas es parte del mismo entregable, no un paso opcional para "otra sesión". Un manual que describe la UI vieja miente al usuario y nadie lo nota hasta que alguien lo lee.
-
-- **Cómo detectar el desfasaje rápido:** extraer el texto del HTML (quitar los `data:image/...;base64` con regex, después los tags) y grepear los términos que tu cambio tocó (nombres de botones, tabs, tipos de opción). Si el manual nombra algo que renombraste/quitaste/agregaste, está desfasado.
-- **Regenerar capturas afectadas, no todas:** identificá qué `<figure>` corresponde a la pantalla que cambió (por el `<figcaption>`/heading que la precede) y regenerá solo esas + insertá las nuevas. El resto de capturas siguen válidas.
-- **Patch del HTML con guardas:** para swaps de base64 y ediciones de texto, un script Node/Python con `assert`/`must()` sobre cada anchor antes de escribir es más seguro que editar a mano un archivo de 3 MB. **Al anclar texto que vive dentro de markup, incluí los tags inline** (`El pase <strong>libera la toma</strong>...`, no `El pase libera la toma...`) o el match falla. Verificá el resultado en el browser (imágenes no rotas, secciones nuevas presentes) antes de commitear.
-- **Una sola fuente por manual.** No mantener `.md` + `.html` del mismo manual: el HTML es el canónico (es lo que se publica en `docs/` y lo que el usuario abre vía Guías §37). Un `.md` paralelo se desincroniza en silencio (caso real: `manual_admin_tramites.md` quedó 5 días atrás del HTML/UH — se eliminó 2026-05-27). Si querés fuente editable, que sea el propio HTML.
-
-### Próximos manuales sugeridos (no obligatorios)
-
-- Agenda (calendario + espacios + disponibilidad)
-- Turnos + Entradas (autoservicio + backoffice)
-- Padrones (Ciudadanos + Empresas vía Contactos)
-
+### Reglas de criterio (no las olvides)
+- **El manual es parte del entregable cuando cambia la UI que documenta.** Antes de cerrar un cambio de UI/flujo, chequear si ese módulo tiene `docs/manual_<modulo>.html`. Si lo tiene, actualizar texto + capturas afectadas es parte del mismo entregable — un manual que describe la UI vieja miente al usuario. (Cómo detectar el desfasaje y regenerar solo lo afectado: en la skill.)
+- **Una sola fuente por manual.** El HTML es el canónico (es lo que se publica en `docs/` y abre el módulo Guías §37). NO mantener un `.md` paralelo — se desincroniza en silencio (`manual_admin_tramites.md` quedó 5 días atrás, eliminado 2026-05-27).
 
 ## 37. Módulo Guías (catálogo de manuales)
 
@@ -2556,48 +1646,19 @@ Backend mínimo para la PWA `zaris-vecinos` que permite a los ciudadanos enviar 
 - `get_current_user` rechaza tokens con `scope != 'agente'` (default a `'agente'` para tokens viejos sin el claim).
 - `get_current_ciudadano` rechaza tokens con `scope != 'publico'`, valida que el ciudadano + credencial estén `activo=TRUE` y `activado=TRUE`. Devuelve dict con `id_ciudadano, doc_nro (dni), nombre, apellido, email, estado_validacion`.
 
-### Email — display name del municipio sobre address ZARIS
+### Email + env vars
+- Remitente real `RESEND_FROM` (`notificaciones@zaris.com.ar`, §42) con header `From:` = **display name del municipio** (`"MUNICIPALIDAD … <notificaciones@zaris.com.ar>"`) vía `enviar_mail(..., from_override=...)`. La marca ZARIS no aparece al vecino. Funciones `enviar_mail_activacion_ciudadano`/`enviar_mail_recovery_ciudadano` (`services/email.py`), template sobrio con logo del municipio, sin emojis.
+- **Env vars**: `APP_VECINOS_FRONTEND_URL` (default `http://localhost:5174`, prod `https://vecinos.zaris.com.ar` — arma los links de los mails) · `JWT_PUBLICO_EXPIRA_DIAS` (default 30).
+- **CORS**: `vecinos.zaris.com.ar` + `zaris-vecinos.vercel.app` + `localhost:5174` en `allow_origins`.
 
-El remitente real es siempre el address de `RESEND_FROM` (`notificaciones@zaris.com.ar`, dominio raíz verificado en Resend — §42; antes `noreply@zaris.com.ar` por SMTP), pero el header `From:` lleva el **display name del municipio**: `"MUNICIPALIDAD DE SAN ANDRÉS <notificaciones@zaris.com.ar>"`. Implementado vía `enviar_mail(..., from_override="...")`. La marca ZARIS no aparece en el body al vecino.
+### Estado / alcance
+Backend Etapa 0 (8 endpoints) en prod, verificado. PWA en repo separado `CesarZeta/zaris-vecinos` (Vercel, `vecinos.zaris.com.ar`) — **no documentar la PWA acá** (otro repo). **Fuera de alcance**: `POST /publico/reclamos` + adjuntos públicos (Etapa 2), push (Etapa 5, `ciudadano_push_subscription` sin endpoint aún), autoregistro público + bandeja `vinculado_pendiente` (futuro), panel admin de branding (producto separado).
 
-Funciones nuevas en `services/email.py`: `enviar_mail_activacion_ciudadano` y `enviar_mail_recovery_ciudadano`. Template HTML sobrio con logo del municipio (si está en `municipio_logo_url`), botón CTA naranja `var(--zaris-orange)`, link de fallback. Sin emojis.
-
-### Variables de entorno
-
-| Var | Default | Notas |
-|---|---|---|
-| `APP_VECINOS_FRONTEND_URL` | `http://localhost:5174` | URL del frontend PWA. En Railway prod debe apuntar a `https://vecinos.zaris.com.ar`. Se usa para armar los links de los mails de activación/recovery. |
-| `JWT_PUBLICO_EXPIRA_DIAS` | `30` | Vigencia del JWT scope publico. |
-
-### Estado de deploy (2026-05-20)
-
-- **Backend Etapa 0 deployado en prod** (commit `553b0a3`). Los 8 endpoints (`/api/v1/publico/auth/*` + `/api/v1/publico/identidad-municipio`) responden en Railway. Verificado: `/identidad-municipio` → 200 con branding de San Andrés (nombre + logo cargados; `descripcion`/colores aún `null`, pendiente carga desde panel admin).
-- **PWA scaffold (Etapa 1)** creada en repo separado `CesarZeta/zaris-vecinos`, deployada en Vercel → `https://vecinos.zaris.com.ar`. Verificada local end-to-end (build, SW activado, branding consumido desde prod, routing). Detalle de la PWA en su propio README; **no documentar la PWA en este CLAUDE.md** (es otro repo).
-- **CORS**: el origen `https://vecinos.zaris.com.ar` (+ `http://` y `https://zaris-vecinos.vercel.app`) agregado a `allow_origins` en `backend/app/main.py` (commit `5d70425`). `http://localhost:5174` ya estaba para dev.
-
-### Quirks operativos
-
-- **DNI digit-only**: el endpoint `_solo_digitos()` normaliza el DNI a string sin puntos antes de comparar con `ciudadanos.doc_nro`. La PWA puede mandar "12.345.678" o "12345678" indistintamente.
-- **CUIL placeholder**: el alta desde `/registrar` genera `cuil = '20' + dni.zfill(8) + '9'` (formato digit-only, prefijo masculino default). El ciudadano puede actualizarlo desde la PWA en una etapa futura. `ciudadanos.cuil` es UNIQUE NOT NULL.
-- **Defaults pragmáticos en `ciudadanos`**: `doc_tipo='DNI'`, `sexo='OTROS'`, `fecha_nac='1900-01-01'` (sentinela), `id_nacionalidad=1` (Argentina), `ren_chk=FALSE`, `email_chk=FALSE`, `emp_chk=FALSE`. El agente NO los carga al alta para minimizar fricción; quedan pendientes de completar por el ciudadano.
-- **CAST en lugar de `::uuid`** en queries con `text()`: `WHERE cc.token_activacion = CAST(:token AS uuid)`. sqlalchemy parsea `:token::uuid` mal porque confunde el `::` del cast con el prefijo `::` del parameter binding.
-- **`INTERVAL` con duraciones variables**: en queries con duraciones (`INTERVAL '7 days'`), construir el SQL con f-string para que el número quede literal antes de pasar a `text()`. No usar `:dias` como bind param porque asyncpg no le pone comillas correctamente alrededor del INTERVAL.
-- **Mail de activación**: el `BackgroundTask` corre después del commit del endpoint, sigue el patrón estándar de notificaciones (§35). Si SMTP no está configurado, `enviar_mail()` cae a modo MOCK (log a stdout, no rompe el flow).
-
-### Smoke test
-
-`backend/smoke_publico_auth.py` cubre los 15 pasos del prompt de Etapa 0: cleanup → login agente → registrar → verificar DB (ciudadanos + credencial + canal_preferido) → activar → /me con scope publico → /me con scope agente debe dar 401 → login → 5 fallidos → lockout → recovery → resetear-password → login con nuevo pass → /identidad-municipio → cleanup. Ejecutar con `$env:PYTHONIOENCODING="utf-8"; python smoke_publico_auth.py` desde `backend/`. Levantar uvicorn antes (`$env:ENV_FILE=".env.local"; uvicorn app.main:app --host 127.0.0.1 --port 8000`).
-
-**Validado el 2026-05-19**: 15/15 OK en local con mails reales enviados via Zoho SMTP (display name "MUNICIPALIDAD DE SAN ANDRÉS").
-
-### Fuera de alcance de Etapa 0
-
-- `POST /api/v1/publico/reclamos` — Etapa 2.
-- Adjuntos públicos (fotos del reclamo) — Etapa 2.
-- Push notifications (envío) — Etapa 5. La tabla `ciudadano_push_subscription` queda sin endpoint hasta entonces.
-- Flow público de autoregistro (reemplaza el alta del agente) — etapa futura.
-- Bandeja de revisión de ciudadanos `vinculado_pendiente` — etapa futura.
-- Panel admin ZARIS para configurar el branding del municipio — producto separado.
+### Quirks
+- **DNI digit-only** (`_solo_digitos()` normaliza antes de comparar con `ciudadanos.doc_nro`). **CUIL placeholder** en `/registrar`: `'20'+dni.zfill(8)+'9'` (`cuil` es UNIQUE NOT NULL). **Defaults pragmáticos** del alta: `doc_tipo='DNI'`, `sexo='OTROS'`, `fecha_nac='1900-01-01'`, `id_nacionalidad=1`, `*_chk=FALSE`.
+- **SQL con `text()`**: `CAST(:token AS uuid)` no `:token::uuid` ([[feedback_sqlalchemy_cast_uuid]]); `INTERVAL` con duración variable → f-string literal, no bind param ([[feedback_asyncpg_extract_cast_date]]).
+- Mail de activación corre en `BackgroundTask` post-commit (patrón §35); sin Resend key → modo MOCK.
+- Smoke: `backend/smoke_publico_auth.py` (15 pasos, 15/15 OK 2026-05-19).
 
 ## 39. Módulo Usuarios — estado y deuda crítica (QA 2026-05-19)
 
@@ -2689,9 +1750,7 @@ La tabla `configuracion_general` tiene columna `descripcion` con texto útil por
 
 ## 42. Módulo Encuestas (CSAT) — Reglas de negocio
 
-Encuestas de satisfacción disparadas al cierre de reclamos **y al cumplir turnos** (encuesta diferenciada, mig 72, sesión 2026-05-28). Encuesta estándar ZARIS (no editable por municipio en v1), con ramificación condicional según la satisfacción inicial. DB: mig 57 (6 tablas + toggle) + mig 58 (tracking de atención) + mig 72 (soporte turnos en `encuesta_envio`). Aplicadas en local y prod.
-
-**Estado al 2026-05-28:** todas las fases entregadas — auditoría email (2A), `services/encuestas_service.py` (2B), router admin `encuestas_admin.py` (2C), form público del ciudadano (2D, `frontend/encuesta.html`), dispatcher (2E, `POST /admin/encuestas/dispatcher/ejecutar` + hook de cierre), email vía Resend (§42 abajo) y **encuesta diferenciada de turnos (mig 72)**. Verificado end-to-end en navegador (cumplir turno → envío → form público → respuesta persistida) el 2026-05-28.
+Encuestas de satisfacción disparadas al cierre de reclamos (Resuelto) **y al cumplir turnos** (mig 72). Encuesta estándar ZARIS (no editable por municipio en v1), ramificación condicional según satisfacción inicial. DB: mig 57 (6 tablas + toggle) + 58 (tracking atención) + 72 (turnos). Todas las fases entregadas y verificadas E2E (auditoría email, services, router admin, form público, dispatcher, encuesta de turnos). Backoffice React `web-app/src/modules/encuestas/`.
 
 ### Tablas (mig 57 + 58 + 72)
 `encuesta_plantilla` → `encuesta_pregunta` → `encuesta_opcion` (catálogo); `encuesta_envio` → `encuesta_respuesta` (1:1) → `encuesta_respuesta_detalle`. PKs estilo `id_<tabla>`, estándar §10 completo, RLS habilitado sin políticas (deny-all, service_role bypassa, §26). Mig 58 sumó a `encuesta_respuesta`: `atendida`/`atendida_por`/`fecha_atendida` + índice parcial `idx_encuesta_respuesta_pendientes`.
@@ -2761,41 +1820,19 @@ Hook no-bloqueante que crea el `encuesta_envio` al pasar un reclamo a 'Resuelto'
 - **Logo URL absoluta** (`b5d9162`): `municipio_logo_url` puede ser ruta relativa (`/design-system/...`) → `<img>` roto en clientes de email. Helper `_absolutizar_url()` en `encuestas_service.py` la prefija con `FRONTEND_BASE_URL` si no es http(s). URL del bucket Supabase (ya absoluta) queda intacta. **En prod el logo sale del bucket `config-assets`; el `/design-system/...` es solo el placeholder de local.**
 - **`fecha_cierre`** (`938e7f5`): `cambiar_estado` y `_resolver_reclamo` no seteaban `reclamos.fecha_cierre` al pasar a estado final (§22 lo exige) → el email mostraba "cerrado el ." vacío. Fix: `fecha_cierre=NOW()` al pasar a Resuelto/Cancelado (CASE en `cambiar_estado` para no pisar en transiciones intermedias).
 
-### Email vía Resend (API HTTP) — migrado desde SMTP Zoho (RESUELTO 2026-05-24, commit `139332e`)
-**Por qué se migró:** Railway bloquea el egress SMTP saliente (587 Y 465 dan `timed out` desde prod; verificado 2026-05-23 con logs de Railway). En local SMTP funcionaba — engañoso. Resend usa HTTPS (puerto 443), que Railway no bloquea.
-
-`services/email.py` fue **reescrito completo** (sin smtplib/email.mime). Usa `httpx.AsyncClient` directo contra `POST https://api.resend.com/emails` (NO la lib oficial `resend` — el backend es async, un solo endpoint). Detalle:
-
-- **`enviar_mail(to, subject, body_html, body_text=None, from_override=None) -> bool` es ahora ASYNC.** Misma firma pública (no rompió los 4 clientes), pero los 3 callers async ganaron `await`: `notificaciones.py`, `encuestas_service.py` (×2 llamadas), y las 2 funciones App Vecinos (`enviar_mail_activacion_ciudadano`/`enviar_mail_recovery_ciudadano` pasaron a `async def` — se siguen encolando con `add_task`, Starlette await-ea corutinas).
-- **`enviar_mail_raise(...) -> str` (NUEVA):** devuelve el `message_id` de Resend, levanta `ResendError(status_code, body)` ante 4xx/5xx o fallo de transporte. `enviar_mail` la envuelve y captura, devolviendo bool (contrato histórico). El dispatcher de encuestas sigue consumiendo el bool — **NO conectada al dispatcher todavía** (queda lista para distinguir 5xx-reintentar de 4xx-fallar).
-- **Modo MOCK:** si `RESEND_API_KEY` vacía (`resend_configurado()` False), loggea y devuelve True sin enviar. Reemplaza al viejo `smtp_configurado()`.
-- **Logging:** cada envío exitoso loggea el `message_id` (trazabilidad en Resend → Logs). Destinatario siempre enmascarado con `mask_email`. **El `message_id` NO se persiste en DB** (`encuesta_envio` no tiene columna) — vive solo en logs.
-- **Timeouts:** `httpx.Timeout(30.0, connect=10.0)`.
-
-**Config (`core/config.py`):** se borraron las 6 vars `SMTP_*`. Nuevas: `RESEND_API_KEY` (env var, NO commitear) y `RESEND_FROM` (default `notificaciones@zaris.com.ar`). Se agregó `extra = "ignore"` al `Config` de pydantic-settings — sin esto el backend **no arranca** mientras `.env.local`/Railway aún tengan las `SMTP_*` viejas (esta versión está en `extra_forbidden` por default; cazado al importar). `_from_municipio` en encuestas lee `RESEND_FROM`.
-
-> **El remitente es `@zaris.com.ar` (dominio raíz), NO `@send.zaris.com.ar`.** El subdominio daba 403 `not authorized to send from send.zaris.com.ar` — lo verificado en Resend es el dominio raíz (`send.zaris.com.ar` es solo Return-Path interno de SES, no dominio de envío). El `from` debe usar EXACTAMENTE el dominio verificado.
-
-**Verificado LOCAL (2026-05-24):** 3 mails reales a `cesarzarini@hotmail.com` vía `enviar_mail_raise` (message_id `f48d01b6-...`) y `enviar_mail` (`9d5618bd-...`). El 403 inicial (subdominio mal) confirmó de paso el manejo de errores: `ResendError` con status+body, `enviar_mail` → False, sin silenciar.
-
-**Verificado PROD end-to-end (2026-05-24):** se disparó el dispatcher de encuestas en Railway (`POST /api/v1/admin/encuestas/dispatcher/ejecutar` con header `X-Dispatcher-Token`) → `{"procesados":1,"exitosos":1,"fallidos":0}`. El envío `id=3` (que venía con **2 intentos fallidos bajo SMTP** — los timeouts) pasó a `estado='enviada'` + `fecha_envio` poblada en el 3er intento, ya con Resend. Mail recibido OK. **El bloqueo SMTP de Railway quedó resuelto.** `ultimo_error_envio` NO se limpia al tener éxito (queda el texto del último fallo como histórico — no es bug). Ver memoria [[reference_railway_bloquea_egress_smtp]].
+### Email vía Resend (API HTTP) — RESUELTO 2026-05-24
+Railway bloquea egress SMTP (587/465 timeout); Resend usa HTTPS/443. `services/email.py` reescrito con `httpx.AsyncClient` contra `POST https://api.resend.com/emails`.
+- **`enviar_mail(to, subject, body_html, body_text=None, from_override=None) -> bool` es ASYNC** (los 3 callers async ganaron `await`; las 2 fns de App Vecinos pasaron a `async def`). **`enviar_mail_raise(...) -> str`** devuelve `message_id`, levanta `ResendError`; `enviar_mail` la envuelve a bool. Modo MOCK si `RESEND_API_KEY` vacía. `message_id` solo en logs (no en DB).
+- **Config**: `RESEND_API_KEY` (NO commitear) + `RESEND_FROM` (default `notificaciones@zaris.com.ar`). `extra="ignore"` en pydantic-settings (sino el backend no arranca con `SMTP_*` viejas residuales, [[feedback_pydantic_extra_forbidden_al_borrar_settings]]).
+- **El remitente debe ser EXACTAMENTE el dominio verificado en Resend: `@zaris.com.ar` (raíz), NO `@send.zaris.com.ar`** (subdominio da 403). Ver [[reference_railway_bloquea_egress_smtp]].
 
 ### Sanitización de PII en logs (Ley 25.326)
-- Helper centralizado: `app.utils.log_helpers.mask_email()`
-- Formato: `<primer_char>***@<dominio>` (3 asteriscos fijos para no leakear longitud)
-- Aplicado en `services/email.py` (sender central usado por encuestas, notificaciones, trámites y App Vecinos — los 4 logs de `to=` enmascarados)
-- Tokens de encuestas: helper local `_tok()` en `encuestas_service.py` (consistente con el patrón)
-- Smoke test: `backend/scripts/test_mask_email.py`
+`app.utils.log_helpers.mask_email()` → `<char>***@<dominio>` (3 asteriscos fijos), aplicado en los 4 logs `to=` de `services/email.py`. Tokens: helper `_tok()` (8 chars). Smoke `backend/scripts/test_mask_email.py`.
 
-### Encuestas + agenda de turnos — soporte de turnos (✅ ENTREGADO 2026-05-28 j2/j3)
-
-El backoffice de encuestas (`web-app/src/modules/encuestas/`) y su router (`encuestas_admin.py`) ya contemplan los envíos de turno (mig 72). Lo entregado:
-
-1. **Vista de plantillas (`views/PlantillasView.tsx`, tab "Encuestas" en `/encuestas/plantillas`):** lista las plantillas activas (reclamos/turnos) y muestra las preguntas agrupadas por rama (todos/insatisfechos/neutrales/satisfechos) con tipo y opciones. Consume `GET /admin/encuestas/plantillas` + `/{id}`.
-2. **Filtro por TIPO (reclamos|turnos) + `id_plantilla`** en `GET /admin/encuestas/envios` y `GET /admin/encuestas/dashboard/resumen`. La UI (`EnviosView`) tiene columnas Tipo/Referencia + selector de tipo.
-3. **Trap polimórfico RESUELTO** ([[encuesta_envio_polimorfico_left_join]]): `pendientes-contacto`, `dashboard/resumen` y `/envios` ahora usan **LEFT JOIN reclamos + turnos + tipo_prestacion** (antes inner a reclamos excluía los envíos de turno). `referencia` = `COALESCE(nro_reclamo, prestacion_nombre)`. `dashboard/por-area` queda solo-reclamos (inner intencional: turnos no tienen área de reclamo). `POST /disparar` acepta `id_turno` además de `id_reclamo` (exactamente uno). Verificado en prod (los 3 endpoints → 200 con envíos de turno).
-4. **Agenda solo-turnos embebida (`turnos/pages/AgendaTurnos.tsx`, tab "Agenda" en `/turnos/agenda`):** vista PROPIA día/semana, grilla simple sobre `GET /turnos` — **NO reusa la grilla Gantt de Agenda** (decisión acordada) y por eso **NO hizo falta tocar `/calendario`/`/mes`/`/semana` de agenda_v2**: `GET /turnos` ya trae fecha/hora/recurso/ciudadano/prestación y ya está scopeado por nivel/subárea (§33). Excluye cancelados. El CTA "Ver en agenda" del Overview apunta acá (antes saltaba al módulo Agenda completo, que mezcla OTs+eventos+turnos).
-5. **Filtros Prestación / Atiende(agente|lugar) / Ciudadano** en la vista de Turnos (`Overview`) **y** en la Agenda de turnos. Helper compartido `turnos/lib/turnoFiltros.tsx` (`useTurnoFiltros` + `TurnoFiltrosBar`): opciones **derivadas de los turnos cargados** (no catálogos completos — select de 85 agentes/miles de ciudadanos es inusable, §23), filtrado client-side combinable + botón Limpiar.
+### UI backoffice + agenda de turnos
+- `views/PlantillasView.tsx` (tab "Encuestas" en `/encuestas/plantillas`): plantillas activas (reclamos/turnos) + preguntas por rama. Filtro TIPO + `id_plantilla` en `/envios` y `/dashboard/resumen` (columnas Tipo/Referencia).
+- **Trap polimórfico** ([[encuesta_envio_polimorfico_left_join]]): `pendientes-contacto`/`dashboard/resumen`/`/envios` usan LEFT JOIN reclamos+turnos+tipo_prestacion (inner a reclamos excluía turnos). `referencia`=`COALESCE(nro_reclamo, prestacion_nombre)`. `dashboard/por-area` solo-reclamos. `POST /disparar` acepta `id_turno`.
+- La **agenda solo-turnos** vive en §33 (`turnos/pages/AgendaTurnos.tsx`), no reusa la Gantt de Agenda.
 
 ## 43. Módulo Datos (BI — Análisis de datos)
 
