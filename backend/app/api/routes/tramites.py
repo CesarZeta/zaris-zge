@@ -322,7 +322,11 @@ async def mi_bandeja(
 
     conditions = [
         "t.activo = TRUE",
-        "t.id_municipio = :mun",
+        # Mono-municipio (§38): tolerar agente sin municipio y tramite sin
+        # municipio. Filtrar con "= :mun" estricto cuando el agente tiene
+        # id_municipio NULL vaciaba la bandeja en silencio (NULL no matchea
+        # nada) — bug que dejaba al agente sin ver ningun tramite.
+        "(:mun IS NULL OR t.id_municipio = :mun OR t.id_municipio IS NULL)",
         "(" + " OR ".join(bandeja_conds) + ")",
     ]
     params["mun"] = agente["id_municipio"]
