@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { Input } from '../../../ui'
 import type { TipoTramiteCampo } from '../types'
 import { EntitySelect } from './EntitySelect'
-import { geoBuscar, type GeoBuscarResult } from '../../../lib/geoNominatim'
+import { geoBuscar, geoReverse, type GeoBuscarResult } from '../../../lib/geoNominatim'
+import { MapaPicker } from '../../reclamos/components/MapaPicker'
 
 interface CampoDinamicoProps {
   campo: TipoTramiteCampo
@@ -278,6 +279,10 @@ function DireccionOSMInput({ value, onChange }: { value: string; onChange: (v: s
   const [resultados, setResultados] = useState<GeoBuscarResult[]>([])
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  // Coordenadas del pin. Son ayuda visual para confirmar/corregir la dirección;
+  // el valor que se persiste en `datos[nombre]` sigue siendo el TEXTO (string),
+  // así no cambia el shape del JSONB ni rompe trámites/detalle existentes.
+  const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null)
   const skipRef = useRef(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -309,6 +314,34 @@ function DireccionOSMInput({ value, onChange }: { value: string; onChange: (v: s
     setOpen(false)
     setResultados([])
     onChange(r.display_name)
+    if (r.lat != null && r.lon != null) setCoords({ lat: r.lat, lon: r.lon })
+  }
+
+  // Geocodifica el texto actual y abre el mapa (para corregir el pin cuando la
+  // dirección se tipeó a mano o vino precargada, sin elegir una sugerencia).
+  async function verEnMapa() {
+    if (query.trim().length < 3) return
+    setLoading(true)
+    try {
+      const res = await geoBuscar(query, 1, true)
+      if (res[0]?.lat != null && res[0]?.lon != null) {
+        setCoords({ lat: res[0].lat, lon: res[0].lon })
+      }
+    } catch { /* sin resultado, no abre el mapa */ } finally { setLoading(false) }
+  }
+
+  // Al arrastrar/clickear el pin: geocoding inverso → reescribe el texto con la
+  // dirección corregida. Best-effort: si falla, deja el pin movido y el texto previo.
+  async function onPinChange(lat: number, lon: number) {
+    setCoords({ lat, lon })
+    try {
+      const rev = await geoReverse(lat, lon)
+      if (rev.display_name) {
+        skipRef.current = true
+        setQuery(rev.display_name)
+        onChange(rev.display_name)
+      }
+    } catch { /* sin reverse, conserva el texto actual */ }
   }
 
   return (
@@ -338,6 +371,28 @@ function DireccionOSMInput({ value, onChange }: { value: string; onChange: (v: s
           ))}
         </div>
       )}
+      {!coords && query.trim().length >= 3 && (
+        <button
+          type="button"
+          onClick={() => { void verEnMapa() }}
+          style={verMapaBtnStyle}
+        >
+          Ver en el mapa para ajustar la ubicación
+        </button>
+      )}
+      {coords && (
+        <div style={{ marginTop: 8 }}>
+          <MapaPicker
+            lat={coords.lat}
+            lon={coords.lon}
+            onChange={(la, lo) => { void onPinChange(la, lo) }}
+            height={240}
+          />
+          <p style={{ fontSize: 11, color: 'var(--fg-3)', margin: '6px 0 0', fontFamily: 'var(--font-display)' }}>
+            Si la ubicación no es correcta, arrastrá el pin o hacé clic en el mapa para ajustarla.
+          </p>
+        </div>
+      )}
     </div>
   )
 }
@@ -355,6 +410,20 @@ const osmDropdownStyle: React.CSSProperties = {
   zIndex: 100,
   maxHeight: 240,
   overflowY: 'auto',
+}
+
+const verMapaBtnStyle: React.CSSProperties = {
+  marginTop: 6,
+  alignSelf: 'flex-start',
+  background: 'transparent',
+  border: 'none',
+  padding: 0,
+  color: 'var(--zaris-orange)',
+  fontSize: 12,
+  fontFamily: 'var(--font-display)',
+  fontWeight: 500,
+  cursor: 'pointer',
+  textDecoration: 'underline',
 }
 
 const osmOptionStyle: React.CSSProperties = {

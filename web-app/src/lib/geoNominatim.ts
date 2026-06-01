@@ -36,6 +36,18 @@ export const geoBuscar = (q: string, limit = 5, soloDirecciones = false) =>
     params: { q, limit, solo_direcciones: soloDirecciones },
   })
 
+export interface GeoReverseResult {
+  display_name: string | null
+  address: NominatimAddress
+  lat: number
+  lon: number
+}
+
+// Geocoding inverso: lat/lon → dirección. Usado al arrastrar el pin del mapa
+// para reescribir el texto de la dirección con la ubicación corregida.
+export const geoReverse = (lat: number, lon: number) =>
+  api.get<GeoReverseResult>(`/api/v1/geo/reverse`, { params: { lat, lon } })
+
 export interface DireccionNormalizada {
   calle: string
   localidad: string
