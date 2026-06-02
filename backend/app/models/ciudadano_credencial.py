@@ -96,6 +96,47 @@ class CiudadanoCanalPreferido(Base):
     id_usuario_modificacion = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
 
 
+class EmpresaCredencial(Base):
+    """1:1 con empresas — verificación de email del alta pública de vecinos (mig 76).
+
+    A diferencia de ciudadano_credencial, NO tiene password_hash: la empresa no loguea
+    por ahora, solo se verifica su email. Si más adelante necesita login propio, se le
+    agrega password_hash.
+    """
+    __tablename__ = "empresa_credencial"
+
+    id_empresa_credencial = Column(Integer, primary_key=True, autoincrement=True)
+    id_empresa = Column(
+        Integer,
+        ForeignKey("empresas.id_empresa", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+
+    # Verificación de email
+    token_verificacion = Column(UUID(as_uuid=True), nullable=True)
+    token_verificacion_expira = Column(DateTime(timezone=True), nullable=True)
+    verificado = Column(Boolean, nullable=False, default=False)
+    verificado_en = Column(DateTime(timezone=True), nullable=True)
+
+    # Anti-abuso de reenvíos
+    fecha_ultimo_email_verificacion = Column(DateTime(timezone=True), nullable=True)
+
+    # Estándar §10
+    activo = Column(Boolean, nullable=False, default=True)
+    id_municipio = Column(Integer, nullable=True)
+    id_subarea = Column(Integer, nullable=True)
+    fecha_alta = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    fecha_modificacion = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    id_usuario_alta = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
+    id_usuario_modificacion = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
+
+    __table_args__ = (
+        Index("idx_empresa_credencial_token_verificacion", "token_verificacion",
+              postgresql_where=token_verificacion.isnot(None)),
+    )
+
+
 class CiudadanoPushSubscription(Base):
     """Placeholder Web Push. No se consume todavia (Etapa 5)."""
     __tablename__ = "ciudadano_push_subscription"

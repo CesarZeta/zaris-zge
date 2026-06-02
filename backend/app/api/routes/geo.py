@@ -118,22 +118,12 @@ async def listar_localidades(
 
 # ── Proxy Nominatim ──────────────────────────────────────────────────────────
 
-@router.get("/buscar")
-async def buscar_direccion(
-    q: str = Query(..., min_length=3, description="Texto a geocodificar"),
-    limit: int = Query(5, ge=1, le=10),
-    solo_direcciones: bool = Query(
-        False,
-        description="Si True, excluye POIs (comercios, oficinas, etc.) y devuelve solo calles/edificios.",
-    ),
-    current_user: dict = Depends(get_current_user),
-):
-    """Geocoding directo: texto → candidatos con lat/lon.
+async def geocodificar_direccion(q: str, limit: int = 5, solo_direcciones: bool = False) -> list:
+    """Geocoding directo (texto → candidatos con lat/lon) SIN dependencia de auth.
 
-    Cuando `solo_direcciones=True`, pasa `layer=address` a Nominatim y filtra el
-    response para excluir resultados con `class` de POI (amenity/shop/office/etc.).
-    Útil para formularios de domicilio: el ciudadano vive en una calle, no en
-    un bar/oficina/local.
+    Extraído del handler `/buscar` para poder reutilizarlo desde un endpoint público
+    (alta de vecinos) sin duplicar la lógica de filtrado de POIs. El rate-limit hacia
+    Nominatim es global (`_nominatim_get`), así que no se vulnera la política de uso.
     """
     # Cuando solo_direcciones=True pedimos el máximo que Nominatim acepta (40)
     # porque algunas queries devuelven decenas de POIs antes de las calles
@@ -242,6 +232,24 @@ async def buscar_direccion(
         if len(out) >= limit:
             break
     return out
+
+
+@router.get("/buscar")
+async def buscar_direccion(
+    q: str = Query(..., min_length=3, description="Texto a geocodificar"),
+    limit: int = Query(5, ge=1, le=10),
+    solo_direcciones: bool = Query(
+        False,
+        description="Si True, excluye POIs (comercios, oficinas, etc.) y devuelve solo calles/edificios.",
+    ),
+    current_user: dict = Depends(get_current_user),
+):
+    """Geocoding directo: texto → candidatos con lat/lon. Requiere JWT (backoffice).
+
+    Para la versión pública (alta de vecinos), ver `/api/v1/publico/alta/geo/buscar`,
+    que reutiliza la misma `geocodificar_direccion`.
+    """
+    return await geocodificar_direccion(q, limit, solo_direcciones)
 
 
 @router.get("/reverse")

@@ -35,6 +35,7 @@ from app.api.routes.encuestas_admin import dispatcher_router as encuestas_dispat
 from app.api.routes.encuestas_publico import router as encuestas_publico_router
 from app.api.routes.notificaciones import router as notificaciones_router
 from app.api.routes.publico_auth import router as publico_auth_router
+from app.api.routes.publico_alta import router as publico_alta_router
 from app.api.routes.publico_identidad import router as publico_identidad_router
 from app.init_db import create_tables
 
@@ -135,6 +136,8 @@ app.include_router(activos_router)
 app.include_router(config_identidad_router)
 # App Vecinos (PWA publica de ciudadanos)
 app.include_router(publico_auth_router)
+# Alta publica de vecinos (autoregistro desde URL publica por municipio, sin JWT, rate-limited)
+app.include_router(publico_alta_router)
 app.include_router(publico_identidad_router)
 # Encuestas publicas (form del ciudadano, sin JWT, rate-limited por IP)
 app.include_router(encuestas_publico_router)
