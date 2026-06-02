@@ -19,12 +19,15 @@ observaciones internas (eso es del backoffice u otra etapa).
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_ciudadano
 from app.core.database import get_db
+from app.middleware.rate_limit import check_rate_limit
+from app.utils.request_helpers import get_real_ip
+from app.api.routes.geo import geocodificar_direccion
 
 logger = logging.getLogger("zaris.publico_reclamos")
 
@@ -69,6 +72,23 @@ async def catalogo_tipos_publico(
         LIMIT :lim
     """), params)
     return [_to_dict(r) for r in result.fetchall()]
+
+
+# ─── GET /publico/reclamos/geo/buscar ────────────────────────────────────────
+
+@router.get("/geo/buscar")
+async def geo_buscar_vecino(
+    request: Request,
+    q: str = Query(..., min_length=3, description="Texto a geocodificar"),
+    limit: int = Query(5, ge=1, le=10),
+    current: dict = Depends(get_current_ciudadano),
+):
+    """Geocoding OSM para el buscador de domicilio del reclamo del vecino logueado.
+    Reusa la lógica de filtrado de POIs de geo.py (solo_direcciones=True). El vecino
+    geocodifica su propia dirección; scope 'publico' (no 'agente'). Rate-limit por IP
+    además del rate-limit global de Nominatim."""
+    check_rate_limit(get_real_ip(request), max_requests=20, window_seconds=60)
+    return await geocodificar_direccion(q, limit, solo_direcciones=True)
 
 
 # ─── GET /publico/reclamos ───────────────────────────────────────────────────
@@ -157,28 +177,36 @@ async def crear_mi_reclamo(
     db: AsyncSession = Depends(get_db),
     current: dict = Depends(get_current_ciudadano),
 ):
-    """El vecino crea un reclamo a su propio nombre. id_ciudadano sale del token."""
+    """El vecino crea un reclamo a su propio nombre. id_ciudadano sale del token.
+
+    Paridad de obligatoriedad con el alta del backoffice + piso elevado para
+    autoservicio: el reclamo del vecino DEBE traer tipo y dirección (decisión del
+    municipio — sin clasificación ni ubicación una cuadrilla no puede actuar). El
+    backoffice los acepta opcionales, pero la autogestión no afloja esos campos."""
     descripcion = (body.get("descripcion") or "").strip()
-    if not descripcion:
-        raise HTTPException(status_code=422, detail="Campo requerido: descripcion")
+    if len(descripcion) < 5:
+        raise HTTPException(status_code=422, detail="La descripción debe tener al menos 5 caracteres")
 
     id_ciudadano = current["id_ciudadano"]
     id_tipo = body.get("id_tipo_reclamo")
-    direccion = body.get("direccion") or ""
+    direccion = (body.get("direccion") or "").strip()
+
+    if not id_tipo:
+        raise HTTPException(status_code=422, detail="Campo requerido: id_tipo_reclamo")
+    if not direccion:
+        raise HTTPException(status_code=422, detail="Campo requerido: direccion")
 
     # Validar tipo (debe existir y estar activo) + derivar id_area de subarea.id_area.
-    id_area = None
-    if id_tipo:
-        r_tipo = await db.execute(text("""
-            SELECT s.id_area
-            FROM tipo_reclamo tr
-            LEFT JOIN subarea s ON s.id_subarea = tr.id_subarea
-            WHERE tr.id_tipo_reclamo = :id_tr AND tr.activo = TRUE
-        """), {"id_tr": id_tipo})
-        row_tipo = r_tipo.fetchone()
-        if not row_tipo:
-            raise HTTPException(status_code=422, detail="Tipo de reclamo inválido")
-        id_area = row_tipo.id_area
+    r_tipo = await db.execute(text("""
+        SELECT s.id_area
+        FROM tipo_reclamo tr
+        LEFT JOIN subarea s ON s.id_subarea = tr.id_subarea
+        WHERE tr.id_tipo_reclamo = :id_tr AND tr.activo = TRUE
+    """), {"id_tr": id_tipo})
+    row_tipo = r_tipo.fetchone()
+    if not row_tipo:
+        raise HTTPException(status_code=422, detail="Tipo de reclamo inválido")
+    id_area = row_tipo.id_area
 
     data = {
         "id_ciudadano":  id_ciudadano,
