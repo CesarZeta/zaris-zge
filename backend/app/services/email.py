@@ -324,6 +324,77 @@ async def enviar_mail_activacion_ciudadano(
     return await enviar_mail(to=to, subject=subject, body_html=html, body_text=text, from_override=from_header)
 
 
+# ────────────────────────────────────────────────────────────────────────────
+# Templates de ALTA PÚBLICA de vecinos (autoregistro desde URL pública)
+# ────────────────────────────────────────────────────────────────────────────
+
+async def enviar_mail_verificacion_alta_ciudadano(
+    to: str,
+    nombre: str,
+    apellido: str,
+    cta_url: str,
+    municipio_nombre: str,
+    municipio_logo_url: str | None = None,
+) -> bool:
+    """
+    Mail de verificación del alta pública de un ciudadano (autoregistro).
+    El link `cta_url` (ya armado por el caller, con el slug del municipio) verifica el
+    email: al clickearlo el ciudadano queda email_chk=TRUE, estado_validacion='verificado'
+    y su cuenta activada.
+    """
+    saludo_nombre = (nombre or "").strip() or apellido or "vecino"
+    subject = f"Verificá tu alta en {municipio_nombre}"
+
+    html, text = _build_template_app_vecinos(
+        titulo="Verificá tu alta",
+        saludo=f"Hola {saludo_nombre},",
+        parrafo_principal=(
+            f"Recibimos tu solicitud de alta como vecino de {municipio_nombre}. "
+            f"Para confirmar que este correo es tuyo y activar tu cuenta, hacé clic en el siguiente botón."
+        ),
+        cta_texto="Verificar mi alta",
+        cta_url=cta_url,
+        parrafo_extra="Este enlace es válido por 7 días. Si no fuiste vos, podés ignorar este mensaje.",
+        municipio_nombre=municipio_nombre,
+        municipio_logo_url=municipio_logo_url,
+    )
+
+    from_header = formatear_remitente(municipio_nombre, _from_address_base())
+    return await enviar_mail(to=to, subject=subject, body_html=html, body_text=text, from_override=from_header)
+
+
+async def enviar_mail_verificacion_alta_empresa(
+    to: str,
+    razon_social: str,
+    cta_url: str,
+    municipio_nombre: str,
+    municipio_logo_url: str | None = None,
+) -> bool:
+    """
+    Mail de verificación del alta pública de una empresa (autoregistro, vinculada a un
+    ciudadano). El link verifica el email de la empresa: empresa.email_chk=TRUE.
+    """
+    nombre_mostrado = (razon_social or "").strip() or "tu empresa"
+    subject = f"Verificá el alta de {nombre_mostrado} en {municipio_nombre}"
+
+    html, text = _build_template_app_vecinos(
+        titulo="Verificá el alta de tu empresa",
+        saludo="Hola,",
+        parrafo_principal=(
+            f"Se solicitó el alta de <strong>{nombre_mostrado}</strong> en {municipio_nombre}. "
+            f"Para confirmar que esta casilla de correo pertenece a la empresa, hacé clic en el botón."
+        ),
+        cta_texto="Verificar el alta de la empresa",
+        cta_url=cta_url,
+        parrafo_extra="Este enlace es válido por 7 días. Si no esperabas este correo, podés ignorarlo.",
+        municipio_nombre=municipio_nombre,
+        municipio_logo_url=municipio_logo_url,
+    )
+
+    from_header = formatear_remitente(municipio_nombre, _from_address_base())
+    return await enviar_mail(to=to, subject=subject, body_html=html, body_text=text, from_override=from_header)
+
+
 async def enviar_mail_recovery_ciudadano(
     to: str,
     nombre: str,
