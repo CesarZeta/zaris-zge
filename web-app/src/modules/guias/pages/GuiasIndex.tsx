@@ -1,4 +1,4 @@
-import { FileText, ClipboardList, Settings, BarChart3, Clock, Ticket, UserPlus, UserCheck, ExternalLink } from 'lucide-react'
+import { FileText, ClipboardList, Settings, BarChart3, Clock, Ticket, UserPlus, ExternalLink } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 interface Guia {
@@ -13,19 +13,11 @@ interface Guia {
 const GUIAS: Guia[] = [
   {
     titulo: 'ALTA DE CIUDADANOS',
-    descripcion: 'Las dos vías de alta de un vecino: por un agente (desde Contactos) y autoregistro. Cómo el alta crea la cuenta de App Vecinos y el correo de activación, y el botón "Nuevo" desde reclamos, turnos y entradas.',
+    descripcion: 'Las dos vías de alta de un vecino: por un agente (desde Contactos) y autogestión del propio ciudadano. Cómo el alta crea la cuenta de App Vecinos y el correo de activación, y el botón "Nuevo" desde reclamos, turnos y entradas. Sirve también para asesorar al vecino que se autogestiona.',
     icon: UserPlus,
     htmlName: 'manual_alta_ciudadanos.html',
     audiencia: 'Operador o superior',
     tags: ['Operativo', '2 capturas', '7 secciones'],
-  },
-  {
-    titulo: 'ALTA DE VECINO (GUÍA PÚBLICA)',
-    descripcion: 'Guía pensada para el vecino, en lenguaje sencillo: cómo darse de alta por su cuenta desde el enlace público, o terminar de activar la cuenta si lo dio de alta el municipio. Compartible junto con el enlace.',
-    icon: UserCheck,
-    htmlName: 'manual_alta_vecino.html',
-    audiencia: 'Vecino (material para compartir)',
-    tags: ['Público', '5 secciones'],
   },
   {
     titulo: 'RECLAMOS',
