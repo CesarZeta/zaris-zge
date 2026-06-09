@@ -1725,6 +1725,16 @@ Detalle en [reporte_pruebas_usuarios_2026-05-19.md](reporte_pruebas_usuarios_202
 
 > **Patrón**: para proteger un router entero (todos los verbos, incluido GET, + endpoints futuros), usar `APIRouter(prefix=..., dependencies=[Depends(get_current_user)])` en vez de `Depends` por-handler. Más robusto contra regresiones. Solo dejar endpoints sin guard si son genuinamente públicos (entonces van en un router separado, como `/publico/*`).
 
+### Integridad de cuentas — todo `usuario` tiene un agente O un ciudadano (mig 77, roadmap en curso 2026-06-09)
+
+**Invariante:** todo `usuario` activo debe estar vinculado a un **agente** (interno) o un **ciudadano** (vecino). Un usuario "pelado" (sin ninguno de los dos) no es un estado válido permanente — típicamente es un alta a medias. El módulo Trámites lo exige de hecho: `tramite.id_agente_iniciador` es **NOT NULL** y todos los endpoints de operación llaman `resolver_agente_desde_usuario` → 403 si no hay agente. **Origen:** informe QA Roy 2026-06-09 ("El usuario no tiene un agente asociado") — admins/operadores viejos sin fila en `agentes`.
+
+- **Alta interna ya garantiza el agente** (§39 mig 64): `POST /buc/usuarios` con `es_externo=FALSE` crea el agente vinculado en la misma tx. El `es_externo=TRUE` NO crea agente (categoría legítima sin subárea) — ese caso lo cubre el cron.
+- **Mensaje del guard (Fase 1, 2026-06-09):** el 403 de los 13 endpoints de `tramites.py` pasó de `"El usuario no tiene un agente asociado"` (técnico) a uno accionable: *"Tu usuario no tiene un perfil de agente municipal… Pedile a un administrador que lo configure desde Maestros → Usuarios."* El `detail` viaja por `lib/api.ts` (`err.detail`→`Error.message`) hasta el toast de `CrearTramite.tsx` — lo que escribas en el `HTTPException` es lo que ve el usuario.
+- **Cron de integridad (Fase 2, mig 77):** `POST /api/v1/usuarios/mantenimiento/integridad-cuentas` (router `usuarios_mantenimiento.py`, SIN JWT, auth `X-Dispatcher-Token` — mismo patrón que §35/§42; soporta `?dry_run=true`). Motor `services/integridad_cuentas.py::suspender_usuarios_sin_vinculo`: usuarios **activos, nivel_acceso > 1 (admin EXENTO** para evitar lockout total**), sin agente activo y sin ciudadano vinculado por email, creados hace > 24h (gracia)** → `activo=FALSE` + `suspendido_motivo='sin_vinculo'` + `fecha_suspension=NOW()`. Reversible: un admin crea el agente/ciudadano faltante y reactiva. Vínculo a ciudadano = por email (igual que el backfill y que `/auth/login`, que loguea por email). Cron diario `.github/workflows/integridad-cuentas.yml` (04:25 UTC, desfasado del de Trámites).
+- **`usuarios.fecha_alta` es `timestamp without time zone`** (legacy §5): comparar contra `(NOW() AT TIME ZONE 'UTC')` para la gracia, no contra `NOW()` directo.
+- **Pendiente del roadmap:** Fase 3 (password aleatoria + cambio forzado en 1er ingreso, internos), Fase 4 (alta pública 2-pasos usuario→ciudadano — requiere decidir antes si el vecino se unifica en `usuarios` o sigue separado en `ciudadanos`+credencial §38, [[project_usuario_vs_ciudadano_modelo]]).
+
 ## 40. Reportes vs guías de QA — qué se versiona y qué no
 
 **Distinguir dos artefactos distintos:**

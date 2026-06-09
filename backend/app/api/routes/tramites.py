@@ -304,7 +304,7 @@ async def mi_bandeja(
     """
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "El usuario no tiene un agente asociado")
+        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
 
     # Colectivos a los que pertenece el agente
     bandeja_conds = [
@@ -1072,7 +1072,7 @@ async def crear_tramite(
     id_usuario = current_user["id_usuario"]
     agente = await svc_auth.resolver_agente_desde_usuario(id_usuario, db)
     if not agente:
-        raise HTTPException(403, "El usuario no tiene un agente asociado")
+        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
 
     # Cargar tipo de tramite y version publicada
     tipo_row = (await db.execute(
@@ -1275,7 +1275,7 @@ async def tomar_tramite(
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "El usuario no tiene un agente asociado")
+        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
 
     id_tramite, _ = await _resolver_tramite(tramite_ref, db)
 
@@ -1318,7 +1318,7 @@ async def liberar_tramite(
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "El usuario no tiene un agente asociado")
+        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
 
     id_tramite, _ = await _resolver_tramite(tramite_ref, db)
     tramite = dict((await db.execute(
@@ -1363,7 +1363,7 @@ async def transicionar_tramite(
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "El usuario no tiene un agente asociado")
+        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
 
     id_tramite, _ = await _resolver_tramite(tramite_ref, db)
     tramite = dict((await db.execute(
@@ -1579,7 +1579,7 @@ async def resolver_aprobacion(
 
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "El usuario no tiene un agente asociado")
+        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
 
     id_tramite, _ = await _resolver_tramite(tramite_ref, db)
 
@@ -1653,7 +1653,7 @@ async def pase_tramite(
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "El usuario no tiene un agente asociado")
+        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
 
     id_tramite, _ = await _resolver_tramite(tramite_ref, db)
     tramite = dict((await db.execute(
@@ -1746,7 +1746,7 @@ async def marcar_resultado_tramite(
     """
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "El usuario no tiene un agente asociado")
+        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
     if not svc_auth.es_admin(agente["nivel_acceso"]):
         raise HTTPException(403, "Solo un supervisor o administrador puede marcar el resultado del tramite")
 
@@ -1797,7 +1797,7 @@ async def comentar_tramite(
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "El usuario no tiene un agente asociado")
+        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
 
     id_tramite, _ = await _resolver_tramite(tramite_ref, db)
     tramite = dict((await db.execute(
@@ -1839,7 +1839,7 @@ async def adjuntar_documento(
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "El usuario no tiene un agente asociado")
+        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
 
     id_tramite, _ = await _resolver_tramite(tramite_ref, db)
     tramite = dict((await db.execute(
@@ -2036,7 +2036,7 @@ async def firmar_documento(
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "El usuario no tiene un agente asociado")
+        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
 
     id_tramite, _ = await _resolver_tramite(tramite_ref, db)
     doc = (await db.execute(
@@ -2100,7 +2100,7 @@ async def rechazar_firma_documento(
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "El usuario no tiene un agente asociado")
+        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
 
     id_tramite, _ = await _resolver_tramite(tramite_ref, db)
     doc = (await db.execute(
@@ -2163,7 +2163,7 @@ async def relacionar_tramites(
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "El usuario no tiene un agente asociado")
+        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
 
     id_tramite_a, num_a = await _resolver_tramite(tramite_ref, db)
     tramite_a = dict((await db.execute(
