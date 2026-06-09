@@ -24,6 +24,8 @@ Recetas operativas verificadas. Muchas tienen memoria asociada (`[[...]]`) con e
 - **Q10 — credenciales dev local**: admin es `ciudadanovl@municipio.gob.ar` (no `admin@`); pass `123456`. Listar usuarios con psql antes de smoke. [[feedback_smoke_credenciales_dev]].
 - **Q11 — `Start-Process pnpm/npm/npx` falla** (son `.cmd`): usar `Start-Process cmd.exe -ArgumentList "/c","pnpm dev > log 2> err"`. [[feedback_ps_quirks_startprocess_psql]].
 - **Q5 — QR**: solo render cliente (`qrcode` ~26KB sobre canvas); el backend solo genera el string `EVT<id>-RES<id>-<ts>`.
+- **Q14 — git commit multilínea (Bash tool)**: el here-string `git commit -m @'...'@` mete un `@` LITERAL al inicio del subject (`@ feat(...)`). Verificar con `git log -1 --format='%s'`; si quedó el `@`, amendar con archivo: `cat > /tmp/cmsg.txt <<'EOF' ... EOF` + `git commit --amend -F /tmp/cmsg.txt`. Default: para commits con cuerpo, escribir el mensaje a archivo y usar `-F`, no here-string. (verif. 2026-06-09)
+- **Q15 — `& "C:\Program Files\...\psql.exe"` lo bloquea el PowerShell tool** como falso positivo "Remove-Item path protegido" (parsea mal ruta-con-espacios + `&`). Para DB LOCAL en smokes usar script Python+psycopg2 (`@"...import psycopg2..."@ | python`), no `& $psql`. Prod = `execute_sql`/`apply_migration` MCP. [[feedback_ps_quirks_startprocess_psql]] (Quirk 3).
 
 ## Q12/Q13 — redirects bajo subpath `/zaris-zge/` (reglas con código)
 
