@@ -7,13 +7,15 @@ interface Props {
   form: FormState
   errores: Record<string, string>
   readonly: boolean
+  /** true en alta nueva: al guardar se crea la cuenta de App Vecinos y se manda el mail. */
+  esAlta?: boolean
   nacionalidades: Nacionalidad[]
   onChange: <K extends keyof FormState>(key: K, value: FormState[K]) => void
   onCuilBlur: () => void
   onEmpChkChange: (checked: boolean) => void
 }
 
-export function CiudadanoForm({ form, errores, readonly, nacionalidades, onChange, onCuilBlur, onEmpChkChange }: Props) {
+export function CiudadanoForm({ form, errores, readonly, esAlta = false, nacionalidades, onChange, onCuilBlur, onEmpChkChange }: Props) {
   return (
     <form autoComplete="off" onSubmit={(e) => e.preventDefault()} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* ── Identificacion ── */}
@@ -197,7 +199,12 @@ export function CiudadanoForm({ form, errores, readonly, nacionalidades, onChang
               style={inputStyle(readonly)}
             />
           </Field>
-          <Field label="Email" required error={errores.email}>
+          <Field
+            label="Email"
+            required
+            error={errores.email}
+            hint={esAlta ? 'Obligatorio: a este correo se enviará el enlace para que el vecino active su cuenta de App Vecinos.' : undefined}
+          >
             <input
               type="email"
               value={form.email}
@@ -209,6 +216,23 @@ export function CiudadanoForm({ form, errores, readonly, nacionalidades, onChang
             />
           </Field>
         </Row>
+        {esAlta && (
+          <div style={{
+            display: 'flex', gap: 8, alignItems: 'flex-start',
+            padding: '10px 12px', marginTop: 4,
+            background: 'rgba(96,165,200,.08)',
+            border: '1px solid var(--border-primary)',
+            borderRadius: 'var(--radius-md)',
+            fontSize: 'var(--size-caption)', color: 'var(--fg-2)', lineHeight: 1.5,
+          }}>
+            <span aria-hidden="true" style={{ color: 'var(--zaris-orange)', fontWeight: 700 }}>i</span>
+            <span>
+              Al guardar, además de registrar al ciudadano, el sistema le crea automáticamente
+              una <strong>cuenta de App Vecinos</strong> y le envía un correo de activación.
+              El vecino abre ese correo, ingresa y define su propia contraseña.
+            </span>
+          </div>
+        )}
       </Section>
 
       {/* ── Representacion empresarial ── */}

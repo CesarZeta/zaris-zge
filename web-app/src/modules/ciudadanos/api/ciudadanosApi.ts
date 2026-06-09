@@ -52,6 +52,10 @@ export const cambiarEstadoCiudadano = (id: number, activo: boolean) =>
 export const empresasVinculadas = (id: number) =>
   api.get<EmpresaVinculada[]>(`${BASE}/ciudadanos/${id}/empresas-vinculadas`)
 
+// Nota: el alta de ciudadano (crearCiudadano → POST /buc/ciudadanos) ya crea
+// automáticamente la cuenta de App Vecinos + el mail de activación en el backend.
+// No hay un endpoint frontend separado para "crear cuenta".
+
 // ── Empresa (solo lo necesario para sub-form vinculada) ──
 export const crearEmpresa = (data: EmpresaCreate) =>
   api.post<{ id_empresa: number }>(`${BASE}/empresas`, data)
