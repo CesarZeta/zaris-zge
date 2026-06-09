@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cómo darte de alta como vecino</title>
+<style>
+  :root{
+    --zaris-orange:#f54e00; --zaris-cream:#f2f1ed;
+    --surface-100:#f7f7f4; --surface-300:#ebeae5; --surface-400:#e6e5e0;
+    --fg-1:#26251e; --fg-2:rgba(38,37,30,.72); --fg-3:rgba(38,37,30,.55);
+    --border:rgba(38,37,30,.12); --border-med:rgba(38,37,30,.2);
+    --ok:#1f8a65; --warn:#b8860b; --err:#cf2d56; --info:#1565c0;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--zaris-cream);color:var(--fg-1);
+    font-family:'Inter',-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.65;}
+  .wrap{max-width:780px;margin:0 auto;padding:0 24px 80px;}
+  header.hero{border-left:6px solid var(--zaris-orange);padding:32px 0 28px 28px;margin:40px 0 8px;}
+  .tag{display:inline-block;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;
+    font-weight:700;color:var(--zaris-orange);background:rgba(245,78,0,.08);
+    padding:4px 10px;border-radius:4px;margin-bottom:14px;}
+  h1{font-size:2.1rem;margin:0 0 6px;letter-spacing:-.01em;font-weight:800;}
+  .lede{color:var(--fg-2);font-size:1.08rem;margin:6px 0 0;}
+  .meta{color:var(--fg-3);font-size:.85rem;margin-top:14px;}
+  nav.toc{background:var(--surface-100);border:1px solid var(--border);border-radius:12px;
+    padding:20px 26px;margin:28px 0;}
+  nav.toc h2{margin:0 0 10px;font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-3);}
+  nav.toc ol{margin:0;padding-left:20px;}
+  nav.toc a{color:var(--fg-1);text-decoration:none;}
+  nav.toc a:hover{color:var(--zaris-orange);text-decoration:underline;}
+  section{margin:42px 0;}
+  h2.sec{font-size:1.4rem;border-bottom:2px solid var(--surface-400);padding-bottom:8px;
+    margin:0 0 16px;display:flex;gap:10px;align-items:baseline;}
+  h2.sec .num{color:var(--zaris-orange);font-weight:800;}
+  h3{font-size:1.08rem;margin:24px 0 8px;}
+  p{margin:10px 0;}
+  blockquote{margin:16px 0;padding:12px 18px;border-radius:8px;border-left:4px solid var(--info);
+    background:rgba(21,101,192,.06);font-size:.95rem;}
+  blockquote.warn{border-color:var(--warn);background:rgba(184,134,11,.08);}
+  blockquote.danger{border-color:var(--err);background:rgba(207,45,86,.07);}
+  blockquote.ok{border-color:var(--ok);background:rgba(31,138,101,.07);}
+  blockquote strong{display:block;margin-bottom:2px;}
+  code{background:var(--surface-300);padding:1px 6px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:.88em;}
+  .flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:18px 0;font-size:.92rem;}
+  .flow .step{background:var(--surface-100);border:1px solid var(--border-med);border-radius:8px;
+    padding:8px 14px;font-weight:600;}
+  .flow .arrow{color:var(--zaris-orange);font-weight:800;}
+  ul,ol.pasos{margin:10px 0;padding-left:22px;} li{margin:8px 0;}
+  ol.pasos{counter-reset:step;list-style:none;padding-left:0;}
+  ol.pasos>li{position:relative;padding:14px 16px 14px 56px;margin:12px 0;
+    background:var(--surface-100);border:1px solid var(--border);border-radius:10px;}
+  ol.pasos>li::before{counter-increment:step;content:counter(step);
+    position:absolute;left:14px;top:14px;width:28px;height:28px;border-radius:50%;
+    background:var(--zaris-orange);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:.95rem;}
+  ol.pasos>li h3{margin:0 0 4px;font-size:1.02rem;}
+  footer{margin-top:60px;padding-top:20px;border-top:1px solid var(--border);
+    color:var(--fg-3);font-size:.82rem;text-align:center;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <span class="tag">Guía para el vecino</span>
+    <h1>Cómo darte de alta como vecino</h1>
+    <p class="lede">Creá tu cuenta desde el celular o la computadora para hacer reclamos, sacar turnos
+      y reservar entradas del municipio, sin tener que ir hasta una oficina.</p>
+    <p class="meta">Para: vecinos y vecinas del municipio · No necesitás conocimientos técnicos</p>
+  </header>
+
+  <nav class="toc">
+    <h2>Contenido</h2>
+    <ol>
+      <li><a href="#dos-formas">Dos formas de darte de alta</a></li>
+      <li><a href="#por-tu-cuenta">Darte de alta por tu cuenta (paso a paso)</a></li>
+      <li><a href="#por-municipio">Si te dio de alta el municipio</a></li>
+      <li><a href="#listo">Una vez que tenés cuenta</a></li>
+      <li><a href="#problemas">Si algo no funciona</a></li>
+    </ol>
+  </nav>
+
+  <section id="dos-formas">
+    <h2 class="sec"><span class="num">1.</span> Dos formas de darte de alta</h2>
+    <p>Hay dos caminos para tener tu cuenta de vecino. <strong>Solo necesitás uno de los dos.</strong></p>
+    <ul>
+      <li><strong>Por tu cuenta:</strong> entrás al enlace que comparte tu municipio y creás la cuenta vos mismo.
+        Es lo que se explica en la sección 2.</li>
+      <li><strong>Te da de alta el municipio:</strong> un empleado municipal carga tus datos y te llega un correo
+        para que termines de activar la cuenta. Se explica en la sección 3.</li>
+    </ul>
+    <blockquote>
+      <strong>En los dos casos vas a recibir un correo electrónico.</strong>
+      Tener a mano tu casilla de correo es imprescindible: ahí llega el enlace para confirmar tu cuenta.
+    </blockquote>
+  </section>
+
+  <section id="por-tu-cuenta">
+    <h2 class="sec"><span class="num">2.</span> Darte de alta por tu cuenta</h2>
+    <p>El municipio comparte un enlace (por su página web, redes sociales o un código QR). Al abrirlo vas a
+      ver una pantalla con el nombre y el logo de tu municipio. El proceso tiene <strong>tres pasos</strong>:</p>
+
+    <div class="flow">
+      <span class="step">1 · Crear cuenta</span>
+      <span class="arrow">→</span>
+      <span class="step">2 · Verificar tu correo</span>
+      <span class="arrow">→</span>
+      <span class="step">3 · Completar tus datos</span>
+    </div>
+
+    <ol class="pasos">
+      <li>
+        <h3>Crear la cuenta</h3>
+        <p>Completá el formulario con tu <strong>DNI</strong>, <strong>nombre</strong>, <strong>apellido</strong>,
+          tu <strong>correo electrónico</strong> y una <strong>contraseña</strong> (mínimo 8 caracteres, la
+          elegís vos). Después tocá <em>"Crear mi cuenta"</em>.</p>
+        <p>Vas a usar el correo y la contraseña cada vez que ingreses, así que anotalos en un lugar seguro.</p>
+      </li>
+      <li>
+        <h3>Verificar tu correo</h3>
+        <p>El sistema te envía un correo. Abrilo y hacé clic en el enlace que dice <strong>verificar tu correo</strong>.
+          Con eso confirmás que la dirección es tuya.</p>
+        <blockquote class="warn">
+          <strong>¿No te llegó el correo?</strong>
+          Esperá unos minutos y revisá la carpeta de <strong>correo no deseado</strong> (spam). El correo viene
+          a nombre de tu municipio.
+        </blockquote>
+      </li>
+      <li>
+        <h3>Iniciar sesión y completar tus datos</h3>
+        <p>Después de verificar, iniciá sesión con tu DNI y tu contraseña. La primera vez te vamos a pedir que
+          <strong>completes tus datos</strong>: CUIL, fecha de nacimiento, domicilio y teléfono. Para el domicilio,
+          empezá a escribir tu calle y elegí la opción correcta de la lista que aparece.</p>
+        <p>Cuando guardás, ¡listo! Tu cuenta ya está activa.</p>
+      </li>
+    </ol>
+  </section>
+
+  <section id="por-municipio">
+    <h2 class="sec"><span class="num">3.</span> Si te dio de alta el municipio</h2>
+    <p>A veces es un empleado municipal quien carga tus datos (por ejemplo, cuando vas a hacer un trámite en
+      una oficina). En ese caso <strong>no tenés que crear la cuenta vos</strong>: el sistema la crea por vos y
+      te envía un correo.</p>
+
+    <div class="flow">
+      <span class="step">El municipio carga tus datos</span>
+      <span class="arrow">→</span>
+      <span class="step">Te llega un correo</span>
+      <span class="arrow">→</span>
+      <span class="step">Elegís tu contraseña</span>
+      <span class="arrow">→</span>
+      <span class="step">¡Listo!</span>
+    </div>
+
+    <ol class="pasos">
+      <li>
+        <h3>Revisá tu correo</h3>
+        <p>Vas a recibir un correo de tu municipio con un enlace para <strong>activar tu cuenta</strong>.
+          Si no lo ves, mirá la carpeta de correo no deseado (spam).</p>
+      </li>
+      <li>
+        <h3>Elegí tu contraseña</h3>
+        <p>Al hacer clic en el enlace, vas a poder <strong>elegir tu propia contraseña</strong> (mínimo 8
+          caracteres). Esa contraseña, junto con tu DNI, es la que vas a usar para ingresar.</p>
+      </li>
+      <li>
+        <h3>Ingresá</h3>
+        <p>Listo. Como el municipio ya cargó tus datos, entrás directamente: no hace falta que completes nada más.</p>
+      </li>
+    </ol>
+
+    <blockquote>
+      <strong>El correo y la contraseña son tuyos.</strong>
+      El municipio cargó tus datos para agilizarte el trámite, pero la contraseña la elegís vos al activar
+      la cuenta: nadie del municipio la conoce.
+    </blockquote>
+  </section>
+
+  <section id="listo">
+    <h2 class="sec"><span class="num">4.</span> Una vez que tenés cuenta</h2>
+    <p>Con tu cuenta activa podés, desde el celular o la computadora:</p>
+    <ul>
+      <li><strong>Hacer reclamos</strong> (un bache, una luminaria que no anda, basura sin recolectar…) y
+        seguir cómo avanzan.</li>
+      <li><strong>Sacar turnos</strong> de atención.</li>
+      <li><strong>Reservar entradas</strong> para eventos del municipio.</li>
+    </ul>
+    <p>Cada vez que entres, usá tu <strong>DNI</strong> y la <strong>contraseña</strong> que elegiste.</p>
+  </section>
+
+  <section id="problemas">
+    <h2 class="sec"><span class="num">5.</span> Si algo no funciona</h2>
+    <ul>
+      <li><strong>No me llegó el correo.</strong> Esperá unos minutos y revisá la carpeta de correo no deseado
+        (spam). Verificá que hayas escrito bien tu dirección de correo.</li>
+      <li><strong>Olvidé mi contraseña.</strong> En la pantalla de ingreso hay una opción para recuperarla:
+        te llega un correo para elegir una nueva.</li>
+      <li><strong>El enlace dice que venció.</strong> Los enlaces de verificación tienen una validez limitada.
+        Si venció, volvé a empezar el alta o pedile al municipio que te reenvíe el correo.</li>
+      <li><strong>La página dice que falta el municipio.</strong> El enlace para darte de alta tiene que ser el
+        que comparte tu municipio (incluye un identificador del municipio al final). Usá ese enlace, no uno genérico.</li>
+    </ul>
+    <blockquote class="ok">
+      <strong>Tus datos están protegidos.</strong>
+      Tu información se usa únicamente para gestionar tus reclamos, turnos y entradas con el municipio.
+    </blockquote>
+  </section>
+
+  <footer>
+    Guía para el vecino · ZARIS · Gestión Estatal
+  </footer>
+</div>
+</body>
+</html>
