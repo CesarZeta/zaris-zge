@@ -27,6 +27,7 @@ from app.schemas.buc import (
     EmpresaCreate, EmpresaUpdate, EmpresaOut, EmpresaConActividad,
     CiudadanoEmpresaCreate, CiudadanoEmpresaOut
 )
+from app.services.cuenta_vecino import asegurar_cuenta_vecino
 
 # Guard a nivel router: TODO endpoint del módulo BUC exige JWT válido (scope agente).
 # Esto cubre los GET de búsqueda/catálogo además de las mutaciones — ningún
@@ -488,9 +489,17 @@ async def verificar_duplicado_ciudadano(
 @router.post("/ciudadanos", response_model=CiudadanoOut, status_code=201)
 async def crear_ciudadano(
     data: CiudadanoCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
-    """Alta de ciudadano."""
+    """Alta de ciudadano.
+
+    Además de crear la persona en el padrón (BUC), crea automáticamente su CUENTA
+    de App Vecinos (credencial sin password + token de activación) y dispara el mail
+    de activación al email cargado. El vecino abre el mail, se loguea y elige su
+    propia clave (§38 Camino B). El email es obligatorio (lo exige CiudadanoCreate).
+    """
     existing = await db.execute(
         select(Ciudadano).where(
             Ciudadano.doc_tipo == data.doc_tipo,
@@ -509,15 +518,55 @@ async def crear_ciudadano(
     if existing_cuil.scalars().first():
         raise HTTPException(status_code=409, detail=f"Ya existe un ciudadano con CUIL {data.cuil}")
 
+    # El email debe ser único entre cuentas de App Vecinos activas (lo exige la
+    # cuenta de portal que vamos a crear). Mismo criterio que POST /publico/auth/registrar.
+    email_norm = (data.email or "").lower().strip()
+    dup_email = await db.execute(
+        text("""
+            SELECT cc.id_ciudadano FROM ciudadano_credencial cc
+              JOIN ciudadanos c ON c.id_ciudadano = cc.id_ciudadano
+             WHERE LOWER(c.email) = :email AND cc.activo = TRUE AND c.activo = TRUE
+             LIMIT 1
+        """),
+        {"email": email_norm},
+    )
+    if dup_email.fetchone():
+        raise HTTPException(
+            status_code=409,
+            detail="Ya existe una cuenta de App Vecinos con ese email.",
+        )
+
     ciudadano = Ciudadano(**data.model_dump())
     db.add(ciudadano)
+    await db.flush()  # obtener id_ciudadano sin cerrar la tx (la cuenta va en la misma)
+
+    # El agente cargó la ficha completa en el form → el vecino NO pasa por el paso 2
+    # (completar ficha) al loguearse: entra directo al portal. ficha_completa NO está
+    # mapeada en el modelo ORM, por eso UPDATE directo (igual que estado_validacion).
+    await db.execute(
+        text("UPDATE ciudadanos SET ficha_completa = TRUE WHERE id_ciudadano = :id"),
+        {"id": ciudadano.id_ciudadano},
+    )
+
+    # Crear la cuenta de App Vecinos + encolar mail de activación (idempotente).
+    await asegurar_cuenta_vecino(
+        db,
+        id_ciudadano=ciudadano.id_ciudadano,
+        nombre=ciudadano.nombre,
+        apellido=ciudadano.apellido,
+        email=email_norm,
+        id_municipio=getattr(ciudadano, "id_municipio", None) or current_user.get("id_municipio") or 1,
+        id_usuario_alta=current_user.get("id_usuario"),
+        background_tasks=background_tasks,
+    )
+
     await db.commit()
     await db.refresh(ciudadano)
 
     logger.info(
-        "ALTA ciudadano | id=%s | doc=%s %s | cuil=%s | nombre=%s %s",
+        "ALTA ciudadano + cuenta vecino | id=%s | doc=%s %s | cuil=%s | nombre=%s %s | email=%s",
         ciudadano.id_ciudadano, ciudadano.doc_tipo, ciudadano.doc_nro,
-        ciudadano.cuil, ciudadano.apellido, ciudadano.nombre
+        ciudadano.cuil, ciudadano.apellido, ciudadano.nombre, email_norm
     )
     return ciudadano
 

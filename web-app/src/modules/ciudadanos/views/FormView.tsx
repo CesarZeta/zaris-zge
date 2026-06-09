@@ -327,6 +327,7 @@ export function FormView() {
             form={form}
             errores={errores}
             readonly={readonly}
+            esAlta={modo === 'new'}
             nacionalidades={nacionalidades.data ?? []}
             onChange={handleChange}
             onCuilBlur={handleCuilBlur}
