@@ -1,0 +1,62 @@
+name: Integridad de cuentas (cron diario)
+
+# Llama una vez al dia al endpoint de integridad de cuentas en prod (Railway):
+#   Suspende (baja logica + marca suspendido_motivo='sin_vinculo') los usuarios
+#   activos, nivel > 1 (admin exento), sin agente ni ciudadano asociado, creados
+#   hace mas de 24h (periodo de gracia). Idempotente.
+#
+# Invariante: todo usuario debe tener un agente (interno) o un ciudadano (vecino).
+# Un usuario "pelado" suele ser un alta a medias.
+#
+# El endpoint NO usa JWT: se autentica con el header X-Dispatcher-Token, que debe
+# coincidir EXACTAMENTE con la env var DISPATCHER_TOKEN de Railway (la misma que
+# usa el dispatcher de Encuestas y el de mantenimiento de Tramites). compare_digest
+# — cuidado con espacios/newline al pegar el secret (ver CLAUDE.md). Secrets en el
+# repo (Settings > Secrets > Actions):
+#   - ENCUESTAS_DISPATCHER_TOKEN  : mismo valor que Railway DISPATCHER_TOKEN
+#   - ZARIS_API_URL (opcional)    : base de la API; default abajo
+#
+# Disparo manual: pestaña Actions > este workflow > Run workflow.
+
+on:
+  schedule:
+    # Una vez al dia, 04:25 UTC (madrugada AR). Desfasado del cron de Tramites
+    # (04:10) para no solaparlos. El endpoint es idempotente.
+    - cron: '25 4 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: integridad-cuentas
+  cancel-in-progress: false
+
+jobs:
+  integridad:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Llamar al endpoint de integridad de cuentas
+        env:
+          API_URL: ${{ secrets.ZARIS_API_URL || 'https://zaris-api-production-bf0b.up.railway.app' }}
+          TOKEN: ${{ secrets.ENCUESTAS_DISPATCHER_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Falta el secret ENCUESTAS_DISPATCHER_TOKEN en el repo."
+            exit 1
+          fi
+
+          URL="$API_URL/api/v1/usuarios/mantenimiento/integridad-cuentas"
+          echo "POST $URL"
+
+          BODY=$(mktemp)
+          CODE=$(curl -sS -o "$BODY" -w '%{http_code}' \
+            -X POST "$URL" \
+            -H "X-Dispatcher-Token: $TOKEN" \
+            -H "Content-Type: application/json")
+
+          echo "HTTP $CODE"
+          echo "Respuesta:"
+          cat "$BODY"; echo
+
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Integridad de cuentas devolvio HTTP $CODE (esperado 200)."
+            exit 1
+          fi

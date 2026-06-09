@@ -30,6 +30,7 @@ from app.api.routes.config_identidad import router as config_identidad_router
 from app.api.routes.tramites import router as tramites_router
 from app.api.routes.tramites_admin import router as tramites_admin_router
 from app.api.routes.tramites_mantenimiento import router as tramites_mantenimiento_router
+from app.api.routes.usuarios_mantenimiento import router as usuarios_mantenimiento_router
 from app.api.routes.encuestas_admin import router as encuestas_admin_router
 from app.api.routes.encuestas_admin import dispatcher_router as encuestas_dispatcher_router
 from app.api.routes.encuestas_publico import router as encuestas_publico_router
@@ -91,6 +92,8 @@ app.add_middleware(
 # Rutas
 app.include_router(auth_router)
 app.include_router(buc_router)
+# usuarios_mantenimiento: /usuarios/mantenimiento/integridad-cuentas (cron, sin JWT)
+app.include_router(usuarios_mantenimiento_router)
 app.include_router(agenda_v2_router)
 app.include_router(agenda_publico_router)
 # Orden: los routers especificos (/agenda/espacios, /agenda/disponibilidad)
