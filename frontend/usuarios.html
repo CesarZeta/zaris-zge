@@ -370,10 +370,10 @@
 
                     <div class="form-zaris-row form-zaris-row--2">
                         <div class="form-zaris-group">
-                            <label class="label-zaris" for="usr-email">Email</label>
+                            <label class="label-zaris label-zaris--required" for="usr-email">Email</label>
                             <input type="email" class="input-zaris" id="usr-email"
                                    placeholder="usuario@municipio.gob.ar" maxlength="150">
-                            <div class="input-hint-zaris">Se usa para iniciar sesión. Si lo dejás vacío, se genera <code>usuario@municipio.gob.ar</code>.</div>
+                            <div class="input-hint-zaris">Se usa para iniciar sesión y para enviarle sus credenciales. Debe ser un correo real.</div>
                             <div class="input-error-zaris" id="err-email"></div>
                         </div>
                     </div>
@@ -414,7 +414,14 @@
 
                     <div class="section-title-zaris" style="margin-top:1rem;">Contraseña</div>
 
-                    <div class="form-zaris-row form-zaris-row--2">
+                    <!-- Modo ALTA: el sistema genera la clave temporal y la manda por mail. -->
+                    <div id="password-aviso-alta" class="alert-zaris alert-zaris--info" style="display:none;">
+                        Se generará una contraseña temporal y se enviará al email del usuario.
+                        Deberá cambiarla en su primer ingreso.
+                    </div>
+
+                    <!-- Modo EDICIÓN: el admin puede resetear la contraseña manualmente. -->
+                    <div id="password-campos" class="form-zaris-row form-zaris-row--2">
                         <div class="form-zaris-group">
                             <label class="label-zaris" id="lbl-password" for="usr-password">
                                 Nueva contraseña
@@ -423,7 +430,7 @@
                             <input type="password" class="input-zaris" id="usr-password"
                                    placeholder="Mínimo 8 caracteres" maxlength="100"
                                    autocomplete="new-password">
-                            <div class="input-hint-zaris" id="password-hint">Mínimo 8 caracteres.</div>
+                            <div class="input-hint-zaris" id="password-hint">Dejar vacío para no cambiar la contraseña.</div>
                             <div class="input-error-zaris" id="err-password"></div>
                         </div>
                         <div class="form-zaris-group">
@@ -494,6 +501,6 @@
 
     <script src="js/config.js?v=20260526d"></script>
     <script src="js/validaciones.js?v=20260512"></script>
-    <script src="js/usuarios.js?v=20260526f"></script>
+    <script src="js/usuarios.js?v=20260609a"></script>
 </body>
 </html>

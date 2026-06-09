@@ -429,3 +429,105 @@ async def enviar_mail_recovery_ciudadano(
     from_header = formatear_remitente(municipio_nombre, _from_address_base())
 
     return await enviar_mail(to=to, subject=subject, body_html=html, body_text=text, from_override=from_header)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Template de credenciales de USUARIO INTERNO (backoffice ZARIS)
+# Se usa al dar de alta un empleado municipal: se le manda usuario + clave
+# temporal generada por el sistema. En su primer ingreso el sistema lo fuerza a
+# cambiarla (Fase 3, debe_cambiar_password). NO reusa el template de App Vecinos:
+# acá no hay link de activación, las credenciales van en el cuerpo y el CTA va al
+# login del backoffice.
+# ────────────────────────────────────────────────────────────────────────────
+
+async def enviar_mail_credenciales_usuario_interno(
+    to: str,
+    username: str,
+    password_temporal: str,
+    login_url: str,
+    municipio_nombre: str,
+    municipio_logo_url: str | None = None,
+) -> bool:
+    """
+    Mail al empleado municipal recién dado de alta con su clave temporal.
+    Deberá cambiarla en su primer ingreso. Modo MOCK si Resend no está configurado.
+    """
+    subject = f"Tu acceso a ZARIS — {municipio_nombre}"
+
+    logo_html = ""
+    if municipio_logo_url:
+        logo_html = (
+            f'<img src="{municipio_logo_url}" alt="{municipio_nombre}" '
+            f'style="max-height:64px;max-width:240px;display:block;margin:0 auto 16px;">'
+        )
+
+    html = f"""\
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:32px 16px;background:#f2f1ed;font-family:'Helvetica Neue',Arial,sans-serif;color:#26251e;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid rgba(38,37,30,.1);border-radius:8px;">
+    <tr><td style="padding:32px 32px 24px 32px;text-align:center;border-bottom:1px solid rgba(38,37,30,.08);">
+      {logo_html}
+      <div style="font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:rgba(38,37,30,.6);">
+        {municipio_nombre} · GESTION ESTADO
+      </div>
+    </td></tr>
+    <tr><td style="padding:32px;">
+      <h1 style="margin:0 0 16px 0;font-size:22px;font-weight:600;color:#26251e;line-height:1.3;">
+        Se creó tu cuenta en ZARIS
+      </h1>
+      <p style="margin:0 0 16px 0;font-size:15px;line-height:1.55;color:#26251e;">
+        Hola,
+      </p>
+      <p style="margin:0 0 20px 0;font-size:15px;line-height:1.55;color:rgba(38,37,30,.85);">
+        Un administrador te dio de alta en el sistema de gestión municipal.
+        Estas son tus credenciales de acceso. Por seguridad, el sistema te pedirá
+        elegir una contraseña nueva la primera vez que ingreses.
+      </p>
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 24px 0;background:#f7f7f4;border:1px solid rgba(38,37,30,.1);border-radius:6px;">
+        <tr><td style="padding:18px 20px;">
+          <div style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:rgba(38,37,30,.55);margin-bottom:4px;">Usuario (email)</div>
+          <div style="font-size:16px;font-weight:600;color:#26251e;margin-bottom:14px;word-break:break-all;">{to}</div>
+          <div style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:rgba(38,37,30,.55);margin-bottom:4px;">Contraseña temporal</div>
+          <div style="font-size:18px;font-weight:700;color:#f54e00;font-family:'Courier New',monospace;letter-spacing:.02em;">{password_temporal}</div>
+        </td></tr>
+      </table>
+      <div style="margin:24px 0;text-align:center;">
+        <a href="{login_url}" style="display:inline-block;padding:14px 28px;background:#f54e00;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;border-radius:6px;">
+          Ingresar a ZARIS
+        </a>
+      </div>
+      <p style="margin:24px 0 0 0;font-size:13px;line-height:1.5;color:rgba(38,37,30,.6);">
+        Esta contraseña es temporal y de un solo uso para tu primer ingreso.
+        Si no esperabas este correo, contactá al administrador del sistema.
+      </p>
+    </td></tr>
+    <tr><td style="padding:16px 32px;text-align:center;border-top:1px solid rgba(38,37,30,.08);font-size:11px;color:rgba(38,37,30,.5);">
+      Este mensaje fue enviado por {municipio_nombre}.
+    </td></tr>
+  </table>
+</body>
+</html>"""
+
+    text = f"""\
+{municipio_nombre} · GESTION ESTADO
+
+Se creó tu cuenta en ZARIS
+
+Un administrador te dio de alta en el sistema de gestión municipal.
+Estas son tus credenciales de acceso:
+
+  Usuario (email):       {to}
+  Contraseña temporal:   {password_temporal}
+
+Ingresá en: {login_url}
+
+Por seguridad, el sistema te pedirá elegir una contraseña nueva la primera
+vez que ingreses. Esta contraseña es temporal.
+
+Si no esperabas este correo, contactá al administrador del sistema.
+"""
+
+    from_header = formatear_remitente(municipio_nombre, _from_address_base())
+    return await enviar_mail(to=to, subject=subject, body_html=html, body_text=text, from_override=from_header)

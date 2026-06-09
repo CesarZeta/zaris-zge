@@ -3,12 +3,15 @@ ZARIS API — Rutas del módulo BUC (Base Única de Ciudadanos).
 Endpoints: /api/v1/buc/
 """
 import logging
+import secrets
+import string
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 from sqlalchemy import select, or_, and_, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.auth import get_current_user
 from app.models.buc import (
@@ -47,6 +50,7 @@ _USUARIO_SELECT = """
     SELECT u.id_usuario, u.nombre, u.nivel_acceso, u.username, u.email, u.id_cargo,
            u.id_municipio, u.activo, u.cuil, u.buc_acceso,
            u.id_subarea, s.nombre AS subarea_nombre, u.es_externo,
+           u.debe_cambiar_password,
            u.fecha_alta, u.fecha_modif, u.fecha_ultimo_login
     FROM usuarios u
     LEFT JOIN subarea s ON s.id_subarea = u.id_subarea
@@ -178,27 +182,70 @@ async def buscar_subareas(
     return [dict(row._mapping) for row in r.fetchall()]
 
 
+def _generar_password_temporal(largo: int = 10) -> str:
+    """Clave temporal legible y segura: sin caracteres ambiguos (0/O, 1/l/I).
+    Garantiza al menos una mayúscula, una minúscula y un dígito."""
+    minus = "abcdefghijkmnpqrstuvwxyz"   # sin l
+    mayus = "ABCDEFGHJKLMNPQRSTUVWXYZ"   # sin I, O
+    digs = "23456789"                     # sin 0, 1
+    alfabeto = minus + mayus + digs
+    while True:
+        clave = "".join(secrets.choice(alfabeto) for _ in range(largo))
+        if (any(c in minus for c in clave) and any(c in mayus for c in clave)
+                and any(c in digs for c in clave)):
+            return clave
+
+
+async def _branding_municipio(db: AsyncSession) -> dict:
+    """Nombre y logo del municipio desde configuracion_general (para los mails)."""
+    res = await db.execute(text("""
+        SELECT clave, valor FROM configuracion_general
+         WHERE clave IN ('municipio_nombre','municipio_logo_url')
+    """))
+    cfg = {r.clave: (r.valor or None) for r in res.fetchall()}
+    return cfg
+
+
 @router.post("/usuarios", response_model=UsuarioOut, status_code=201)
 async def crear_usuario(
     data: UsuarioCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
-    """Alta de usuario con contraseña hasheada (bcrypt)."""
+    """Alta de usuario interno.
+
+    El sistema genera una contraseña temporal aleatoria, la manda por email y marca
+    `debe_cambiar_password=TRUE` (Fase 3): el usuario deberá elegir una nueva en su
+    primer ingreso. Si el cliente igualmente manda `password` (seeds/compat), se
+    respeta y NO se fuerza el cambio.
+    """
     existing = await db.execute(select(Usuario).where(Usuario.username == data.username))
     if existing.scalars().first():
         raise HTTPException(status_code=409, detail=f"Ya existe un usuario con username '{data.username}'")
 
     data_dict = data.model_dump()
-    data_dict["password_hash"] = bcrypt.hashpw(data_dict.pop("password").encode(), bcrypt.gensalt()).decode()
+
+    # Password: si el cliente la mandó (seeds/compat), se respeta sin forzar cambio.
+    # Si no, el sistema genera una temporal y marca debe_cambiar_password=TRUE.
+    password_explicita = data_dict.pop("password", None)
+    password_temporal = None
+    if password_explicita:
+        clave = password_explicita
+        data_dict["debe_cambiar_password"] = False
+    else:
+        password_temporal = _generar_password_temporal()
+        clave = password_temporal
+        data_dict["debe_cambiar_password"] = True
+    data_dict["password_hash"] = bcrypt.hashpw(clave.encode(), bcrypt.gensalt()).decode()
 
     # `nombre` es NOT NULL en la DB pero el form ya no lo captura: el usuario ES
     # la identidad. Si no vino, lo igualamos al username.
     if not (data_dict.get("nombre") or "").strip():
         data_dict["nombre"] = data.username
 
-    # Email: si no viene, autogenerar <username>@municipio.gob.ar. /auth/login busca
-    # por email, así que un usuario sin email nunca podría loguearse (BUG-USU-03).
-    email = (data_dict.get("email") or "").strip() or f"{data.username}@municipio.gob.ar"
+    # Email obligatorio (validado en el schema). /auth/login busca por email y es
+    # el canal por el que se entrega la clave temporal.
+    email = (data_dict.get("email") or "").strip()
     data_dict["email"] = email
     dup_email = await db.execute(select(Usuario).where(Usuario.email == email))
     if dup_email.scalars().first():
@@ -223,10 +270,31 @@ async def crear_usuario(
             "id_usuario": usuario.id_usuario,
         })
 
+    # Branding del municipio para el mail (mientras la sesión sigue abierta).
+    cfg = await _branding_municipio(db) if password_temporal else {}
+
     await db.commit()
     await db.refresh(usuario)
-    logger.info("ALTA usuario | id=%s | username=%s | externo=%s | agente_creado=%s",
-                usuario.id_usuario, usuario.username, usuario.es_externo, not usuario.es_externo)
+    logger.info("ALTA usuario | id=%s | username=%s | externo=%s | agente_creado=%s | pass_temporal=%s",
+                usuario.id_usuario, usuario.username, usuario.es_externo,
+                not usuario.es_externo, password_temporal is not None)
+
+    # Mail con la clave temporal (solo si el sistema la generó). Best-effort,
+    # post-commit, en BackgroundTasks — un fallo de mail no debe abortar el alta.
+    if password_temporal:
+        from app.services.email import enviar_mail_credenciales_usuario_interno
+        login_url = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/frontend/login.html"
+        municipio_nombre = cfg.get("municipio_nombre") or "Tu municipio"
+        background_tasks.add_task(
+            enviar_mail_credenciales_usuario_interno,
+            to=email,
+            username=usuario.username,
+            password_temporal=password_temporal,
+            login_url=login_url,
+            municipio_nombre=municipio_nombre,
+            municipio_logo_url=cfg.get("municipio_logo_url"),
+        )
+
     return usuario
 
 

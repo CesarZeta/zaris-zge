@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Alta de vecino</title>
+  <title>Crear cuenta de vecino</title>
   <link rel="icon" type="image/svg+xml" href="../design-system/assets/zaris-favicon.svg">
   <link rel="stylesheet" href="../design-system/fonts/fonts.css">
   <link rel="stylesheet" href="../design-system/colors_and_type.css">
@@ -14,17 +14,16 @@
       font-family: var(--font-display), Arial, sans-serif;
       min-height: 100vh; padding: 24px 16px;
     }
-    .wrap { max-width: 640px; margin: 0 auto; }
+    .wrap { max-width: 520px; margin: 0 auto; }
     .brand { text-align: center; padding-bottom: 8px; }
     .brand img { max-height: 64px; max-width: 240px; margin: 0 auto 10px; display: block; }
     .brand__name { font-size: 0.86rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-2); }
     .card { background: var(--surface-100); border: 1px solid var(--border-primary); border-radius: 14px; padding: 28px 24px; margin-top: 16px; }
     h1 { font-size: 1.4rem; margin: 0 0 8px; line-height: 1.25; }
     .intro { font-size: 0.95rem; color: var(--fg-2); line-height: 1.55; margin: 0 0 8px; }
-    .section-title {
-      font-size: 0.78rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-      color: var(--fg-3); margin: 26px 0 4px; padding-top: 18px; border-top: 1px solid var(--border-primary);
-    }
+    .steps { display: flex; gap: 8px; margin: 6px 0 18px; font-size: 0.78rem; color: var(--fg-3); }
+    .steps .step { flex: 1; padding: 8px 10px; border: 1px solid var(--border-primary); border-radius: 8px; text-align: center; }
+    .steps .step.now { border-color: var(--zaris-orange); color: var(--fg-1); font-weight: 600; }
     .field { margin: 14px 0; }
     .field label { display: block; font-size: 0.9rem; font-weight: 600; margin: 0 0 6px; }
     .field .req { color: var(--zaris-orange); margin-left: 3px; }
@@ -34,35 +33,10 @@
       border: 1.5px solid var(--border-medium); border-radius: 10px;
     }
     .field input:focus, .field select:focus { outline: none; border-color: var(--zaris-orange); }
-    .field input[readonly] { background: var(--surface-300); color: var(--fg-2); cursor: default; }
     .row { display: grid; gap: 12px; }
     .row.c2 { grid-template-columns: 1fr 1fr; }
-    .row.c3 { grid-template-columns: 1fr 1fr 1fr; }
     .hint { font-size: 0.8rem; color: var(--fg-3); margin-top: 4px; }
     .field-err { color: var(--color-error); font-size: 0.8rem; margin-top: 4px; }
-    /* Buscador OSM */
-    .addr { position: relative; }
-    .addr-results {
-      position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 1000;
-      background: var(--surface-100); border: 1px solid var(--border-primary); border-radius: 10px;
-      box-shadow: 0 8px 24px rgba(38,37,30,.12); max-height: 280px; overflow-y: auto;
-    }
-    .addr-results button {
-      display: block; width: 100%; text-align: left; padding: 10px 12px; background: transparent;
-      border: none; border-bottom: 1px solid var(--border-primary); cursor: pointer; font-family: inherit;
-    }
-    .addr-results button:hover { background: var(--surface-400); }
-    .addr-results .muted { padding: 10px 12px; font-size: 0.85rem; color: var(--fg-3); }
-    /* Toggle empresa */
-    .toggle {
-      display: flex; align-items: center; gap: 12px; margin: 22px 0 0; padding: 14px 16px;
-      border: 1.5px solid var(--border-primary); border-radius: 10px; cursor: pointer;
-    }
-    .toggle:hover { border-color: var(--border-medium); }
-    .toggle.on { border-color: var(--zaris-orange); background: var(--surface-400); }
-    .toggle input { width: 20px; height: 20px; accent-color: var(--zaris-orange); flex: none; }
-    .toggle__txt { font-size: 0.95rem; font-weight: 600; }
-    .toggle__sub { font-size: 0.82rem; color: var(--fg-3); font-weight: 400; }
     .btn {
       display: block; width: 100%; margin-top: 24px; padding: 15px; background: var(--zaris-orange);
       color: #fff; border: none; border-radius: 10px; font-family: inherit; font-size: 1.02rem;
@@ -97,133 +71,59 @@
     </div>
 
     <div class="card hidden" id="state-form">
-      <h1>Darme de alta como vecino</h1>
-      <p class="intro">Completá tus datos para registrarte. Vas a poder enviar reclamos y hacer gestiones municipales desde tu cuenta.</p>
-      <p class="intro">Después de guardar te enviaremos un <strong>correo para verificar tu alta</strong>. Es obligatorio: sin esa verificación tu cuenta queda pendiente.</p>
+      <h1>Crear mi cuenta de vecino</h1>
+      <div class="steps">
+        <div class="step now">1 · Crear cuenta</div>
+        <div class="step">2 · Verificar correo</div>
+        <div class="step">3 · Completar datos</div>
+      </div>
+      <p class="intro">Creá tu cuenta con tu correo y una contraseña. Después te pediremos verificar el correo y completar tus datos.</p>
 
       <form id="form" autocomplete="off" novalidate>
-        <!-- Identificación -->
-        <div class="section-title">Identificación</div>
-        <div class="row c3">
-          <div class="field">
-            <label>Tipo de documento <span class="req">*</span></label>
-            <select id="f-doctipo">
-              <option value="DNI">DNI</option>
-              <option value="PASAPORTE">Pasaporte</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Nº documento <span class="req">*</span></label>
-            <input id="f-docnro" maxlength="15" placeholder="Sin puntos" />
-            <div class="field-err hidden" id="e-docnro"></div>
-          </div>
-          <div class="field">
-            <label>CUIL <span class="req">*</span></label>
-            <input id="f-cuil" maxlength="13" placeholder="XX-XXXXXXXX-X" />
-            <div class="field-err hidden" id="e-cuil"></div>
-          </div>
+        <!-- Identificación mínima -->
+        <div class="field">
+          <label>Nº de DNI <span class="req">*</span></label>
+          <input id="f-docnro" maxlength="10" inputmode="numeric" placeholder="Sin puntos" />
+          <div class="field-err hidden" id="e-docnro"></div>
         </div>
-
-        <!-- Datos personales -->
-        <div class="section-title">Datos personales</div>
         <div class="row c2">
           <div class="field"><label>Apellido <span class="req">*</span></label><input id="f-apellido" maxlength="100" /></div>
           <div class="field"><label>Nombre <span class="req">*</span></label><input id="f-nombre" maxlength="100" /></div>
         </div>
-        <div class="row c3">
-          <div class="field">
-            <label>Sexo <span class="req">*</span></label>
-            <select id="f-sexo">
-              <option value="">Seleccionar…</option>
-              <option value="HOMBRE">Hombre</option>
-              <option value="MUJER">Mujer</option>
-              <option value="OTROS">Otros</option>
-            </select>
-          </div>
-          <div class="field"><label>Fecha de nacimiento <span class="req">*</span></label><input id="f-fechanac" type="date" /></div>
-          <div class="field">
-            <label>Nacionalidad <span class="req">*</span></label>
-            <select id="f-nacionalidad"><option value="">Cargando…</option></select>
-          </div>
-        </div>
-
-        <!-- Domicilio (OSM) -->
-        <div class="section-title">Domicilio</div>
-        <div class="field addr">
-          <label>Buscar dirección (OpenStreetMap)</label>
-          <input id="f-addr-search" placeholder="Ej. Av. Maipú 1500 Vicente López" autocomplete="off" />
-          <div class="hint">Tipeá calle, altura y localidad y elegí una sugerencia. Calle, Localidad y Provincia se completan solos desde el mapa.</div>
-          <div class="addr-results hidden" id="addr-results"></div>
-        </div>
-        <div class="row c2">
-          <div class="field"><label>Calle y altura <span class="req">*</span></label><input id="f-calle" readonly tabindex="-1" placeholder="(se completa desde el mapa)" /><div class="field-err hidden" id="e-calle"></div></div>
-          <div class="field"><label>Localidad / barrio <span class="req">*</span></label><input id="f-localidad" readonly tabindex="-1" placeholder="(se completa desde el mapa)" /></div>
-        </div>
-        <div class="field"><label>Provincia <span class="req">*</span></label><input id="f-provincia" readonly tabindex="-1" placeholder="(se completa desde el mapa)" /><div class="hint" id="coords-hint"></div></div>
-
-        <!-- Contacto -->
-        <div class="section-title">Contacto</div>
-        <div class="row c2">
-          <div class="field"><label>Teléfono <span class="req">*</span></label><input id="f-telefono" inputmode="tel" maxlength="20" placeholder="Cód. área + número" /></div>
-          <div class="field"><label>Correo electrónico <span class="req">*</span></label><input id="f-email" type="email" maxlength="150" placeholder="tu@correo.com" /><div class="field-err hidden" id="e-email"></div></div>
-        </div>
 
         <!-- Cuenta -->
-        <div class="section-title">Tu cuenta de acceso</div>
-        <div class="field"><label>Contraseña <span class="req">*</span></label><input id="f-password" type="password" maxlength="72" /><div class="hint">Mínimo 8 caracteres. La vas a usar para iniciar sesión.</div><div class="field-err hidden" id="e-password"></div></div>
-
-        <!-- Observaciones -->
-        <div class="field" style="margin-top:14px"><label>Observaciones</label><input id="f-observaciones" maxlength="500" placeholder="Opcional" /></div>
-
-        <!-- Toggle empresa -->
-        <label class="toggle" id="toggle-empresa">
-          <input type="checkbox" id="f-es-empresa" />
-          <span><span class="toggle__txt">También quiero dar de alta una empresa</span><br><span class="toggle__sub">Quedará vinculada a vos como representante.</span></span>
-        </label>
-
-        <div id="empresa-fields" class="hidden">
-          <div class="section-title">Datos de la empresa</div>
-          <div class="row c2">
-            <div class="field"><label>CUIT <span class="req">*</span></label><input id="f-cuit" maxlength="13" placeholder="XX-XXXXXXXX-X" /><div class="field-err hidden" id="e-cuit"></div></div>
-            <div class="field"><label>Razón social <span class="req">*</span></label><input id="f-razon" maxlength="200" /></div>
-          </div>
-          <div class="field">
-            <label>Actividad <span class="req">*</span></label>
-            <input id="f-act-filtro" placeholder="Filtrar actividades…" style="margin-bottom:6px" />
-            <select id="f-actividad"><option value="">Cargando…</option></select>
-          </div>
-          <div class="field addr">
-            <label>Buscar dirección de la empresa (OpenStreetMap)</label>
-            <input id="f-addr-search-emp" placeholder="Ej. Av. Maipú 1500 Vicente López" autocomplete="off" />
-            <div class="hint">Calle, Localidad y Provincia se completan solos desde el mapa.</div>
-            <div class="addr-results hidden" id="addr-results-emp"></div>
-          </div>
-          <div class="row c2">
-            <div class="field"><label>Calle y altura <span class="req">*</span></label><input id="f-calle-emp" readonly tabindex="-1" placeholder="(desde el mapa)" /><div class="field-err hidden" id="e-calle-emp"></div></div>
-            <div class="field"><label>Localidad / barrio <span class="req">*</span></label><input id="f-localidad-emp" readonly tabindex="-1" placeholder="(desde el mapa)" /></div>
-          </div>
-          <div class="field"><label>Provincia <span class="req">*</span></label><input id="f-provincia-emp" readonly tabindex="-1" placeholder="(desde el mapa)" /></div>
-          <div class="row c2">
-            <div class="field"><label>Teléfono de la empresa <span class="req">*</span></label><input id="f-telefono-emp" inputmode="tel" maxlength="20" /></div>
-            <div class="field"><label>Correo de la empresa <span class="req">*</span></label><input id="f-email-emp" type="email" maxlength="150" placeholder="empresa@correo.com" /><div class="field-err hidden" id="e-email-emp"></div></div>
-          </div>
-          <div class="field"><label>Observaciones</label><input id="f-observaciones-emp" maxlength="500" placeholder="Opcional" /></div>
+        <div class="field">
+          <label>Correo electrónico <span class="req">*</span></label>
+          <input id="f-email" type="email" maxlength="150" placeholder="tu@correo.com" />
+          <div class="hint">Lo vas a usar para iniciar sesión y para verificar tu alta.</div>
+          <div class="field-err hidden" id="e-email"></div>
+        </div>
+        <div class="field">
+          <label>Contraseña <span class="req">*</span></label>
+          <input id="f-password" type="password" maxlength="72" />
+          <div class="hint">Mínimo 8 caracteres.</div>
+          <div class="field-err hidden" id="e-password"></div>
+        </div>
+        <div class="field">
+          <label>Repetir contraseña <span class="req">*</span></label>
+          <input id="f-password2" type="password" maxlength="72" />
+          <div class="field-err hidden" id="e-password2"></div>
         </div>
 
         <div class="err hidden" id="form-err"></div>
-        <button type="submit" class="btn" id="submit-btn">Guardar mi alta</button>
+        <button type="submit" class="btn" id="submit-btn">Crear mi cuenta</button>
       </form>
     </div>
 
     <div class="card hidden" id="state-done">
       <div class="aviso">
         <div class="aviso__icon">&#10003;</div>
-        <h2 id="done-title">¡Alta registrada!</h2>
+        <h2 id="done-title">¡Cuenta creada!</h2>
         <p id="done-text"></p>
         <div class="spam">
-          Revisá tu casilla de correo y hacé clic en el enlace para <strong>verificar tu alta</strong>.
-          Si no lo ves en unos minutos, mirá la carpeta de <strong>correo no deseado / spam</strong>:
-          es muy importante que lo encuentres para completar la verificación.
+          Revisá tu casilla de correo y hacé clic en el enlace para <strong>verificar tu correo</strong>.
+          Si no lo ves en unos minutos, mirá la carpeta de <strong>correo no deseado / spam</strong>.
+          Después de verificar vas a poder iniciar sesión y completar tus datos.
         </div>
       </div>
     </div>
@@ -240,28 +140,14 @@
     const slug = (new URLSearchParams(window.location.search).get('m') || '').trim();
 
     const $ = (id) => document.getElementById(id);
-    const esc = (s) => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const digits = (s) => (s || '').replace(/\D/g, '');
-    let actividadesAll = [];
 
     function show(stateId) {
       ['loading', 'state-error', 'state-form', 'state-done'].forEach((id) => $(id).classList.toggle('hidden', id !== stateId));
     }
     function showError(title, text) { $('error-title').textContent = title; if (text) $('error-text').textContent = text; show('state-error'); }
     function setFieldErr(id, msg) { const el = $(id); if (!el) return; if (msg) { el.textContent = msg; el.classList.remove('hidden'); } else { el.textContent = ''; el.classList.add('hidden'); } }
-    function clearErrors() { ['e-docnro','e-cuil','e-email','e-password','e-calle','e-cuit','e-email-emp','e-calle-emp'].forEach((id) => setFieldErr(id, '')); $('form-err').classList.add('hidden'); $('form-err').textContent = ''; }
-
-    // CUIL/CUIT módulo 11 (espeja el backend; el server revalida igual)
-    function validaModulo11(v) {
-      const limpio = (v || '').replace(/[-\s]/g, '');
-      if (!/^\d{11}$/.test(limpio)) return false;
-      const d = limpio.split('').map(Number);
-      const m = [5,4,3,2,7,6,5,4,3,2];
-      let suma = 0; for (let i = 0; i < 10; i++) suma += d[i] * m[i];
-      const resto = suma % 11;
-      const esperado = resto === 0 ? 0 : resto === 1 ? 9 : 11 - resto;
-      return d[10] === esperado;
-    }
+    function clearErrors() { ['e-docnro','e-email','e-password','e-password2'].forEach((id) => setFieldErr(id, '')); $('form-err').classList.add('hidden'); $('form-err').textContent = ''; }
 
     async function cargarIdentidad() {
       if (!slug) { showError('Página no disponible', 'Falta el identificador del municipio en la dirección.'); return; }
@@ -271,7 +157,6 @@
         if (!res.ok) { showError('No se pudo cargar', 'Intentá nuevamente en unos minutos.'); return; }
         const data = await res.json();
         pintarBranding(data);
-        await Promise.all([cargarNacionalidades(), cargarActividades()]);
         show('state-form');
       } catch (e) { showError('Sin conexión', 'No pudimos contactar al servidor. Revisá tu conexión.'); }
     }
@@ -280,178 +165,55 @@
       const nombre = data.municipio_nombre || 'Tu municipio';
       $('brand-name').textContent = nombre;
       if (data.municipio_logo_url) { const img = document.createElement('img'); img.src = data.municipio_logo_url; img.alt = nombre; $('brand').insertBefore(img, $('brand-name')); }
-      $('foot').textContent = nombre; document.title = 'Alta de vecino · ' + nombre;
+      $('foot').textContent = nombre; document.title = 'Crear cuenta · ' + nombre;
     }
-
-    async function cargarNacionalidades() {
-      try {
-        const res = await fetch(`${API_BASE}/api/v1/publico/alta/nacionalidades?m=${encodeURIComponent(slug)}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        const sel = $('f-nacionalidad');
-        sel.innerHTML = '<option value="">Seleccionar…</option>';
-        (data.nacionalidades || []).forEach((n) => { const o = document.createElement('option'); o.value = n.id; o.textContent = n.pais; sel.appendChild(o); });
-      } catch (e) {}
-    }
-
-    async function cargarActividades() {
-      try {
-        const res = await fetch(`${API_BASE}/api/v1/publico/alta/actividades?m=${encodeURIComponent(slug)}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        actividadesAll = data.actividades || [];
-        pintarActividades('');
-      } catch (e) {}
-    }
-    function pintarActividades(filtro) {
-      const sel = $('f-actividad'); const f = (filtro || '').toLowerCase().trim();
-      const lista = f ? actividadesAll.filter((a) => a.descripcion.toLowerCase().includes(f)) : actividadesAll;
-      const prev = sel.value;
-      sel.innerHTML = '<option value="">Elegí una actividad…</option>';
-      lista.forEach((a) => { const o = document.createElement('option'); o.value = a.id; o.textContent = a.descripcion; sel.appendChild(o); });
-      if (prev && lista.some((a) => String(a.id) === prev)) sel.value = prev;
-    }
-    $('f-act-filtro').addEventListener('input', (e) => pintarActividades(e.target.value));
-
-    // ── Buscador OSM reutilizable (debounce + dropdown + skip-post-pick §29) ──
-    function montarBuscadorOSM(inputId, resultsId, onPick) {
-      const input = $(inputId), box = $(resultsId);
-      let timer = null, skipNext = false;
-      input.addEventListener('input', () => {
-        if (skipNext) { skipNext = false; return; }
-        clearTimeout(timer);
-        const q = input.value.trim();
-        if (q.length < 3) { box.classList.add('hidden'); box.innerHTML = ''; return; }
-        timer = setTimeout(async () => {
-          box.classList.remove('hidden');
-          box.innerHTML = '<div class="muted">Buscando…</div>';
-          try {
-            const res = await fetch(`${API_BASE}/api/v1/publico/alta/geo/buscar?m=${encodeURIComponent(slug)}&q=${encodeURIComponent(q)}&limit=5`);
-            if (!res.ok) { box.innerHTML = '<div class="muted">No se pudo buscar.</div>'; return; }
-            const data = await res.json();
-            if (!data.length) { box.innerHTML = '<div class="muted">Sin resultados. Refiná la búsqueda.</div>'; return; }
-            box.innerHTML = '';
-            data.forEach((r) => {
-              const btn = document.createElement('button');
-              btn.type = 'button';
-              btn.innerHTML = '<div style="font-size:.92rem;color:var(--fg-1)">' + esc(r.display_name) + '</div>';
-              btn.addEventListener('click', () => {
-                skipNext = true;
-                onPick(r);
-                box.classList.add('hidden'); box.innerHTML = '';
-                input.value = r.display_name || '';
-              });
-              box.appendChild(btn);
-            });
-          } catch (e) { box.innerHTML = '<div class="muted">Sin conexión.</div>'; }
-        }, 500);
-      });
-      document.addEventListener('mousedown', (e) => { if (!input.closest('.addr').contains(e.target)) box.classList.add('hidden'); });
-    }
-
-    function parseAddr(r) {
-      const a = r.address || {};
-      const calle = [a.house_number, a.road || a.pedestrian || a.footway].filter(Boolean).join(' ').trim();
-      const localidad = a.suburb || a.neighbourhood || a.city || a.town || a.village || '';
-      const provincia = a.state || '';
-      return { calle, localidad, provincia, lat: r.lat ?? null, lon: r.lon ?? null };
-    }
-
-    montarBuscadorOSM('f-addr-search', 'addr-results', (r) => {
-      const p = parseAddr(r);
-      $('f-calle').value = p.calle || (r.display_name || '').split(',')[0];
-      $('f-localidad').value = p.localidad;
-      $('f-provincia').value = p.provincia;
-      $('f-calle').dataset.lat = p.lat ?? ''; $('f-calle').dataset.lon = p.lon ?? '';
-      $('coords-hint').textContent = (p.lat != null && p.lon != null) ? ('Coordenadas: ' + p.lat + ', ' + p.lon) : '';
-    });
-    montarBuscadorOSM('f-addr-search-emp', 'addr-results-emp', (r) => {
-      const p = parseAddr(r);
-      $('f-calle-emp').value = p.calle || (r.display_name || '').split(',')[0];
-      $('f-localidad-emp').value = p.localidad;
-      $('f-provincia-emp').value = p.provincia;
-      $('f-calle-emp').dataset.lat = p.lat ?? ''; $('f-calle-emp').dataset.lon = p.lon ?? '';
-    });
-
-    $('toggle-empresa').addEventListener('change', () => {
-      const on = $('f-es-empresa').checked;
-      $('toggle-empresa').classList.toggle('on', on);
-      $('empresa-fields').classList.toggle('hidden', !on);
-    });
 
     function validar() {
       clearErrors();
       let ok = true;
-      const doc = $('f-docnro').value.trim();
-      if (!doc) { setFieldErr('e-docnro', 'Ingresá el número de documento.'); ok = false; }
-      if (!validaModulo11($('f-cuil').value)) { setFieldErr('e-cuil', 'CUIL inválido (revisá el dígito verificador).'); ok = false; }
+      const doc = digits($('f-docnro').value);
+      if (doc.length < 7 || doc.length > 8) { setFieldErr('e-docnro', 'Ingresá un DNI válido (7 u 8 dígitos).'); ok = false; }
       if (!$('f-apellido').value.trim() || !$('f-nombre').value.trim()) ok = false;
-      if (!$('f-sexo').value) ok = false;
-      if (!$('f-fechanac').value) ok = false;
-      if (!$('f-nacionalidad').value) ok = false;
-      if (!$('f-calle').value.trim()) { setFieldErr('e-calle', 'Elegí tu domicilio desde el buscador.'); ok = false; }
-      if (!$('f-localidad').value.trim() || !$('f-provincia').value.trim()) { setFieldErr('e-calle', 'Elegí tu domicilio desde el buscador.'); ok = false; }
-      if (digits($('f-telefono').value).length < 6) ok = false;
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test($('f-email').value.trim())) { setFieldErr('e-email', 'Ingresá un correo válido.'); ok = false; }
       if ($('f-password').value.length < 8) { setFieldErr('e-password', 'Mínimo 8 caracteres.'); ok = false; }
-      if ($('f-es-empresa').checked) {
-        if (!validaModulo11($('f-cuit').value)) { setFieldErr('e-cuit', 'CUIT inválido (revisá el dígito verificador).'); ok = false; }
-        if (!$('f-razon').value.trim() || !$('f-actividad').value) ok = false;
-        if (!$('f-calle-emp').value.trim() || !$('f-localidad-emp').value.trim() || !$('f-provincia-emp').value.trim()) { setFieldErr('e-calle-emp', 'Elegí el domicilio de la empresa desde el buscador.'); ok = false; }
-        if (digits($('f-telefono-emp').value).length < 6) ok = false;
-        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test($('f-email-emp').value.trim())) { setFieldErr('e-email-emp', 'Ingresá un correo válido.'); ok = false; }
-      }
+      if ($('f-password').value !== $('f-password2').value) { setFieldErr('e-password2', 'Las contraseñas no coinciden.'); ok = false; }
       return ok;
     }
 
-    async function postJson(path, body) {
-      const res = await fetch(`${API_BASE}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      let data = null; try { data = await res.json(); } catch (e) {}
-      return { res, data };
+    function mostrarErrorForm(msg) {
+      const el = $('form-err'); el.textContent = msg; el.classList.remove('hidden');
+      $('submit-btn').disabled = false; $('submit-btn').textContent = 'Crear mi cuenta';
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
     }
 
     $('form').addEventListener('submit', async (ev) => {
       ev.preventDefault();
-      if (!validar()) { window.scrollTo({ top: document.querySelector('.field-err:not(.hidden)') ? 0 : 0, behavior: 'smooth' }); return; }
-      const btn = $('submit-btn'); btn.disabled = true; btn.textContent = 'Guardando…';
+      if (!validar()) return;
+      const btn = $('submit-btn'); btn.disabled = true; btn.textContent = 'Creando…';
       try {
-        const ciudadano = {
-          municipio_slug: slug, doc_tipo: $('f-doctipo').value, doc_nro: $('f-docnro').value.trim(),
-          cuil: $('f-cuil').value.trim(), apellido: $('f-apellido').value.trim(), nombre: $('f-nombre').value.trim(),
-          sexo: $('f-sexo').value, fecha_nac: $('f-fechanac').value, id_nacionalidad: parseInt($('f-nacionalidad').value, 10),
-          calle: $('f-calle').value.trim(), localidad: $('f-localidad').value.trim(), provincia: $('f-provincia').value.trim(),
-          latitud: $('f-calle').dataset.lat ? parseFloat($('f-calle').dataset.lat) : null,
-          longitud: $('f-calle').dataset.lon ? parseFloat($('f-calle').dataset.lon) : null,
-          telefono: $('f-telefono').value.trim(), email: $('f-email').value.trim(), password: $('f-password').value,
-          observaciones: $('f-observaciones').value.trim() || null,
+        const body = {
+          municipio_slug: slug,
+          doc_nro: digits($('f-docnro').value),
+          nombre: $('f-nombre').value.trim(),
+          apellido: $('f-apellido').value.trim(),
+          email: $('f-email').value.trim(),
+          password: $('f-password').value,
         };
-        const r1 = await postJson('/api/v1/publico/alta/ciudadano', ciudadano);
-        if (r1.res.status === 429) { return mostrarErrorForm('Demasiados intentos. Esperá un momento e intentá de nuevo.'); }
-        if (!r1.res.ok) { return mostrarErrorForm((r1.data && r1.data.detail) || 'No se pudo completar el alta. Revisá los datos.'); }
-        const idCiudadano = r1.data.id_ciudadano;
-
-        let empresaMsg = '';
-        if ($('f-es-empresa').checked) {
-          const empresa = {
-            municipio_slug: slug, id_ciudadano: idCiudadano, cuit: $('f-cuit').value.trim(),
-            razon_social: $('f-razon').value.trim(), id_actividad: parseInt($('f-actividad').value, 10),
-            calle: $('f-calle-emp').value.trim(), localidad: $('f-localidad-emp').value.trim(), provincia: $('f-provincia-emp').value.trim(),
-            latitud: $('f-calle-emp').dataset.lat ? parseFloat($('f-calle-emp').dataset.lat) : null,
-            longitud: $('f-calle-emp').dataset.lon ? parseFloat($('f-calle-emp').dataset.lon) : null,
-            telefono: $('f-telefono-emp').value.trim(), email: $('f-email-emp').value.trim(),
-            observaciones: $('f-observaciones-emp').value.trim() || null, id_tipo_representacion: 1,
-          };
-          const r2 = await postJson('/api/v1/publico/alta/empresa', empresa);
-          empresaMsg = r2.res.ok ? ' También enviamos un correo de verificación a la casilla de la empresa.'
-            : ' Tu alta personal se registró, pero no pudimos dar de alta la empresa' + ((r2.data && r2.data.detail) ? ': ' + r2.data.detail : '. Podés intentarlo más tarde.');
+        const res = await fetch(`${API_BASE}/api/v1/publico/alta/cuenta`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        });
+        let data = null; try { data = await res.json(); } catch (e) {}
+        if (res.status === 429) { return mostrarErrorForm('Demasiados intentos. Esperá un momento e intentá de nuevo.'); }
+        if (!res.ok) {
+          let msg = (data && data.detail) || 'No se pudo crear la cuenta. Revisá los datos.';
+          if (Array.isArray(msg)) msg = 'Revisá los datos ingresados.';
+          return mostrarErrorForm(msg);
         }
-        $('done-text').textContent = 'Te enviamos un correo a ' + ciudadano.email + ' para verificar tu alta.' + empresaMsg;
+        $('done-text').textContent = 'Te enviamos un correo a ' + body.email + ' para verificar tu cuenta.';
         show('state-done'); window.scrollTo({ top: 0, behavior: 'smooth' });
       } catch (e) { mostrarErrorForm('No pudimos contactar al servidor. Revisá tu conexión e intentá de nuevo.'); }
-      finally { btn.disabled = false; btn.textContent = 'Guardar mi alta'; }
+      finally { btn.disabled = false; btn.textContent = 'Crear mi cuenta'; }
     });
-
-    function mostrarErrorForm(msg) { const el = $('form-err'); el.textContent = msg; el.classList.remove('hidden'); $('submit-btn').disabled = false; $('submit-btn').textContent = 'Guardar mi alta'; window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }
 
     cargarIdentidad();
   })();

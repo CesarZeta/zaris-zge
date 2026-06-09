@@ -83,7 +83,9 @@ async def get_current_user(
         raise unauthorized
 
     result = await db.execute(
-        text("SELECT id_usuario, nombre, email, nivel_acceso, activo FROM usuarios WHERE id_usuario = :id"),
+        text("""SELECT id_usuario, nombre, email, nivel_acceso, activo,
+                       debe_cambiar_password
+                FROM usuarios WHERE id_usuario = :id"""),
         {"id": int(user_id)},
     )
     user = result.fetchone()
@@ -127,7 +129,7 @@ async def get_current_ciudadano(
     result = await db.execute(
         text("""
             SELECT c.id_ciudadano, c.doc_nro, c.nombre, c.apellido, c.email,
-                   c.estado_validacion, c.activo,
+                   c.estado_validacion, c.ficha_completa, c.activo,
                    cc.activado, cc.activo AS credencial_activa
               FROM ciudadanos c
               JOIN ciudadano_credencial cc ON cc.id_ciudadano = c.id_ciudadano
