@@ -162,7 +162,7 @@
     <span class="brand__app">Gestión Estado</span>
   </div>
 
-  <h1 class="login-title">Iniciar sesión</h1>
+  <h1 class="login-title" id="login-title">Iniciar sesión</h1>
 
   <form id="login-form">
     <div class="field">
@@ -177,6 +177,26 @@
     </div>
     <button type="submit" class="btn-submit" id="btn-submit">Ingresar</button>
     <div class="error-msg" id="error-msg"></div>
+  </form>
+
+  <!-- Cambio de contraseña forzado en primer ingreso (clave temporal, Fase 3).
+       Oculto por default; se muestra cuando el login devuelve debe_cambiar_password. -->
+  <form id="cambio-form" style="display:none;">
+    <p style="font-size:13.5px;color:var(--fg-3);line-height:1.5;margin:0 0 18px;">
+      Tu contraseña es temporal. Por seguridad, elegí una nueva para terminar de ingresar.
+    </p>
+    <div class="field">
+      <label for="pass-nueva">Nueva contraseña</label>
+      <input type="password" id="pass-nueva" autocomplete="new-password"
+             placeholder="Mínimo 8 caracteres" required />
+    </div>
+    <div class="field">
+      <label for="pass-confirma">Repetir contraseña</label>
+      <input type="password" id="pass-confirma" autocomplete="new-password"
+             placeholder="••••••••" required />
+    </div>
+    <button type="submit" class="btn-submit" id="btn-cambio">Guardar y entrar</button>
+    <div class="error-msg" id="cambio-error"></div>
   </form>
 
   <p class="login-foot">zaris-zge · v0.1</p>
@@ -197,6 +217,14 @@
   const btn     = document.getElementById('btn-submit');
   const errorEl = document.getElementById('error-msg');
 
+  // Cambio forzado de contraseña (Fase 3)
+  const cambioForm  = document.getElementById('cambio-form');
+  const cambioError = document.getElementById('cambio-error');
+  const btnCambio   = document.getElementById('btn-cambio');
+  const loginTitle  = document.getElementById('login-title');
+  let _tokenTemporal = null;   // token del login con clave temporal
+  let _userTemporal  = null;
+
   function showError(msg) {
     errorEl.textContent = msg;
     errorEl.classList.add('visible');
@@ -204,6 +232,25 @@
 
   function hideError() {
     errorEl.classList.remove('visible');
+  }
+
+  function persistirSesion(token, user) {
+    // Publica AMBAS shapes en la misma clave (§29).
+    localStorage.setItem('zaris_session', JSON.stringify({
+      access_token: token,
+      user: user,
+      state: { accessToken: token, user: user },
+      version: 0,
+    }));
+  }
+
+  function mostrarCambioForzado(token, user) {
+    _tokenTemporal = token;
+    _userTemporal = user;
+    form.style.display = 'none';
+    loginTitle.textContent = 'Cambiá tu contraseña';
+    cambioForm.style.display = 'block';
+    document.getElementById('pass-nueva').focus();
   }
 
   form.addEventListener('submit', async function (e) {
@@ -229,17 +276,15 @@
         return;
       }
 
-      // Publicamos AMBAS shapes en la misma clave para que tanto los modulos
-      // vanilla (que leen access_token/user planos) como el shell React
-      // (zustand-persist con state.accessToken) funcionen con un solo login.
-      // Ver CLAUDE.md §29 "Shape zaris_session".
-      localStorage.setItem('zaris_session', JSON.stringify({
-        access_token: data.access_token,
-        user: data.user,
-        state: { accessToken: data.access_token, user: data.user },
-        version: 0,
-      }));
+      // Primer ingreso con clave temporal: NO guardamos sesión todavía, forzamos
+      // el cambio de contraseña antes de dejar entrar (Fase 3).
+      if (data.user && data.user.debe_cambiar_password) {
+        mostrarCambioForzado(data.access_token, data.user);
+        return;
+      }
 
+      // Login normal: persistir sesión (ambas shapes, §29) y entrar al shell.
+      persistirSesion(data.access_token, data.user);
       window.location.href = '../index.html';
 
     } catch (err) {
@@ -247,6 +292,55 @@
     } finally {
       btn.disabled = false;
       btn.textContent = 'Ingresar';
+    }
+  });
+
+  // Handler del cambio forzado de contraseña.
+  cambioForm.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    cambioError.classList.remove('visible');
+    const nueva    = document.getElementById('pass-nueva').value;
+    const confirma = document.getElementById('pass-confirma').value;
+
+    if (nueva.length < 8) {
+      cambioError.textContent = 'La contraseña debe tener al menos 8 caracteres.';
+      cambioError.classList.add('visible');
+      return;
+    }
+    if (nueva !== confirma) {
+      cambioError.textContent = 'Las contraseñas no coinciden.';
+      cambioError.classList.add('visible');
+      return;
+    }
+
+    btnCambio.disabled = true;
+    btnCambio.textContent = 'Guardando…';
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/auth/cambiar-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${_tokenTemporal}`,
+        },
+        body: JSON.stringify({ password_nueva: nueva }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        cambioError.textContent = data.detail || 'No se pudo cambiar la contraseña.';
+        cambioError.classList.add('visible');
+        return;
+      }
+      // Cambio OK: la marca ya quedó en FALSE. Persistimos la sesión (el token
+      // sigue siendo válido) y entramos al shell.
+      const userOk = Object.assign({}, _userTemporal, { debe_cambiar_password: false });
+      persistirSesion(_tokenTemporal, userOk);
+      window.location.href = '../index.html';
+    } catch (err) {
+      cambioError.textContent = 'No se pudo conectar con el servidor.';
+      cambioError.classList.add('visible');
+    } finally {
+      btnCambio.disabled = false;
+      btnCambio.textContent = 'Guardar y entrar';
     }
   });
 </script>

@@ -11,7 +11,7 @@ Todos bajo /api/v1/publico/auth/*. Modelo:
 - Anti-enumeracion: /reenviar-activacion y /recuperar-password siempre 200 OK.
 """
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import text
@@ -44,6 +44,7 @@ from app.schemas.publico_auth import (
     CiudadanoBasicoOut,
     GenericoOkOut,
 )
+from app.schemas.publico_alta import CompletarFichaIn, CompletarFichaOut
 
 router = APIRouter(prefix="/api/v1/publico/auth", tags=["publico-auth"])
 
@@ -86,6 +87,7 @@ def _ciudadano_a_basico(row) -> CiudadanoBasicoOut:
         apellido=row.apellido,
         email=row.email,
         estado_validacion=row.estado_validacion,
+        ficha_completa=bool(getattr(row, "ficha_completa", False)),
     )
 
 
@@ -160,12 +162,12 @@ async def registrar_ciudadano(
             INSERT INTO ciudadanos
                 (doc_tipo, doc_nro, cuil, nombre, apellido, sexo, fecha_nac,
                  id_nacionalidad, ren_chk, telefono, email, email_chk, emp_chk,
-                 activo, estado_validacion, id_municipio,
+                 activo, estado_validacion, ficha_completa, id_municipio,
                  id_usuario_alta, fecha_alta, fecha_modificacion)
             VALUES
                 ('DNI', :dni, :cuil, :nombre, :apellido, 'OTROS', DATE '1900-01-01',
                  1, FALSE, :telefono, :email, FALSE, FALSE,
-                 TRUE, 'verificado', :id_municipio,
+                 TRUE, 'verificado', FALSE, :id_municipio,
                  :id_usuario_alta, NOW(), NOW())
             RETURNING id_ciudadano
         """),
@@ -377,7 +379,8 @@ async def login_ciudadano(data: LoginCiudadanoIn, db: AsyncSession = Depends(get
             SELECT cc.id_ciudadano_credencial, cc.id_ciudadano,
                    cc.password_hash, cc.activado, cc.intentos_fallidos, cc.bloqueada_hasta,
                    cc.activo AS cc_activo,
-                   c.doc_nro, c.nombre, c.apellido, c.email, c.estado_validacion, c.activo AS c_activo
+                   c.doc_nro, c.nombre, c.apellido, c.email, c.estado_validacion,
+                   c.ficha_completa, c.activo AS c_activo
               FROM ciudadano_credencial cc
               JOIN ciudadanos c ON c.id_ciudadano = cc.id_ciudadano
              WHERE c.doc_nro = :dni
@@ -450,6 +453,7 @@ async def me(current: dict = Depends(get_current_ciudadano)):
         apellido=current["apellido"],
         email=current["email"],
         estado_validacion=current["estado_validacion"],
+        ficha_completa=bool(current.get("ficha_completa", False)),
     )
 
 
@@ -522,7 +526,8 @@ async def resetear_password(data: ResetearPasswordIn, db: AsyncSession = Depends
     res = await db.execute(
         text("""
             SELECT cc.id_ciudadano_credencial, cc.id_ciudadano,
-                   c.doc_nro, c.nombre, c.apellido, c.email, c.estado_validacion, c.activo AS c_activo
+                   c.doc_nro, c.nombre, c.apellido, c.email, c.estado_validacion,
+                   c.ficha_completa, c.activo AS c_activo
               FROM ciudadano_credencial cc
               JOIN ciudadanos c ON c.id_ciudadano = cc.id_ciudadano
              WHERE cc.token_recovery = CAST(:token AS uuid)
@@ -555,3 +560,89 @@ async def resetear_password(data: ResetearPasswordIn, db: AsyncSession = Depends
 
     token = crear_token_ciudadano(row.id_ciudadano)
     return ResetearPasswordOut(access_token=token, ciudadano=_ciudadano_a_basico(row))
+
+
+@router.post("/completar-ficha", response_model=CompletarFichaOut)
+async def completar_ficha(
+    data: CompletarFichaIn,
+    current: dict = Depends(get_current_ciudadano),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    PASO 2 del alta pública. El vecino YA verificado y logueado completa su ficha real
+    (CUIL, sexo, fecha nac, nacionalidad, domicilio, teléfono). Reemplaza los placeholders
+    cargados en el paso 1 y marca ficha_completa=TRUE.
+
+    El id_ciudadano SIEMPRE sale del token (get_current_ciudadano), nunca del body: el
+    vecino solo puede completar SU propia ficha.
+    """
+    id_ciudadano = current["id_ciudadano"]
+
+    # Fecha de nacimiento
+    try:
+        fecha_nac = date.fromisoformat(data.fecha_nac)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Fecha de nacimiento inválida (formato YYYY-MM-DD)")
+    if fecha_nac >= date.today():
+        raise HTTPException(status_code=400, detail="La fecha de nacimiento debe ser anterior a hoy.")
+
+    cuil = data.cuil  # validado módulo 11 por el schema
+    telefono = _solo_digitos(data.telefono) or "0"
+
+    # Nacionalidad debe existir
+    res = await db.execute(
+        text("SELECT id FROM nacionalidades WHERE id = :id LIMIT 1"),
+        {"id": data.id_nacionalidad},
+    )
+    if not res.fetchone():
+        raise HTTPException(status_code=400, detail="La nacionalidad seleccionada no es válida.")
+
+    # CUIL real no debe chocar con OTRO ciudadano (es UNIQUE). El placeholder propio sí
+    # se puede pisar (es de este mismo id_ciudadano).
+    res = await db.execute(
+        text("""
+            SELECT id_ciudadano FROM ciudadanos
+             WHERE cuil = :cuil AND activo = TRUE AND id_ciudadano <> :id
+             LIMIT 1
+        """),
+        {"cuil": cuil, "id": id_ciudadano},
+    )
+    if res.fetchone():
+        raise HTTPException(status_code=409, detail="Ese CUIL ya está registrado por otra persona.")
+
+    await db.execute(
+        text("""
+            UPDATE ciudadanos
+               SET cuil = :cuil,
+                   sexo = :sexo,
+                   fecha_nac = :fecha_nac,
+                   id_nacionalidad = :id_nac,
+                   calle = :calle,
+                   localidad = :localidad,
+                   provincia = :provincia,
+                   latitud = :latitud,
+                   longitud = :longitud,
+                   telefono = :telefono,
+                   observaciones = :observaciones,
+                   ficha_completa = TRUE,
+                   fecha_modificacion = NOW()
+             WHERE id_ciudadano = :id
+        """),
+        {
+            "cuil": cuil,
+            "sexo": data.sexo,
+            "fecha_nac": fecha_nac,
+            "id_nac": data.id_nacionalidad,
+            "calle": data.calle.strip(),
+            "localidad": data.localidad.strip(),
+            "provincia": data.provincia.strip(),
+            "latitud": data.latitud,
+            "longitud": data.longitud,
+            "telefono": telefono,
+            "observaciones": (data.observaciones or "").strip() or None,
+            "id": id_ciudadano,
+        },
+    )
+    await db.commit()
+
+    return CompletarFichaOut(id_ciudadano=id_ciudadano, ficha_completa=True)

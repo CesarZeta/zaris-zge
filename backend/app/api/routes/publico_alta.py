@@ -40,8 +40,8 @@ from app.services.email import (
 )
 from app.schemas.publico_alta import (
     IdentidadAltaOut,
-    AltaCiudadanoIn,
-    AltaCiudadanoOut,
+    AltaCuentaIn,
+    AltaCuentaOut,
     AltaEmpresaIn,
     AltaEmpresaOut,
 )
@@ -207,35 +207,36 @@ async def geo_buscar_publico(
     return await geocodificar_direccion(q, limit, solo_direcciones=True)
 
 
-@router.post("/ciudadano", response_model=AltaCiudadanoOut, status_code=201)
-async def alta_ciudadano(
-    data: AltaCiudadanoIn,
+@router.post("/cuenta", response_model=AltaCuentaOut, status_code=201)
+async def alta_cuenta(
+    data: AltaCuentaIn,
     request: Request,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Autoregistro de un vecino. Crea ciudadano (estado_validacion='auto_registrado',
-    email_chk=FALSE) + ciudadano_credencial con su password + token de verificación.
-    Manda mail. Queda NO verificado hasta clickear el link.
+    PASO 1 del autoregistro (Camino A). Crea la CUENTA del vecino con el mínimo real:
+    email + password + DNI + nombre + apellido. El resto de la ficha (CUIL real, sexo,
+    fecha nac, nacionalidad, domicilio) se completa en el PASO 2 (POST
+    /publico/auth/completar-ficha), ya verificado y logueado.
+
+    El ciudadano se crea con placeholders en los campos NOT NULL que aún no tenemos
+    (cuil derivado del DNI, sexo='OTROS', fecha_nac='1900-01-01', nacionalidad=1,
+    telefono='0'), estado_validacion='auto_registrado', email_chk=FALSE,
+    ficha_completa=FALSE. La credencial guarda el password elegido + token de
+    verificación; activado=FALSE hasta confirmar el email.
     """
     check_rate_limit(get_real_ip(request), max_requests=RATE_MAX, window_seconds=RATE_WINDOW)
 
     muni = await _resolver_municipio(db, data.municipio_slug)
     id_municipio = muni["id_municipio"]
-    doc_nro = _solo_digitos(data.doc_nro) if data.doc_tipo == "DNI" else data.doc_nro.strip()
-    cuil = data.cuil  # ya validado/normalizado (módulo 11) por el schema
+    doc_nro = _solo_digitos(data.doc_nro)
     email = data.email.lower().strip()
-    telefono = _solo_digitos(data.telefono) or "0"
 
-    if not doc_nro:
-        raise HTTPException(status_code=400, detail="Número de documento inválido")
-
-    # Fecha de nacimiento: validar formato YYYY-MM-DD
-    try:
-        fecha_nac = date.fromisoformat(data.fecha_nac)
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail="Fecha de nacimiento inválida (formato YYYY-MM-DD)")
+    doc_nro = _validar_dni(doc_nro)  # 7-8 dígitos; 400 si no
+    # CUIL placeholder digit-only basado en el DNI (UNIQUE NOT NULL). El vecino carga
+    # el CUIL real en el paso 2; ahí se valida módulo 11 y se reemplaza este placeholder.
+    cuil_placeholder = "20" + doc_nro.zfill(8) + "9"
 
     # Documento ya existe en BUC -> no creamos duplicado
     res = await db.execute(
@@ -247,14 +248,6 @@ async def alta_ciudadano(
             status_code=409,
             detail="Ya existe un registro con ese documento. Si sos vos, recuperá el acceso desde el inicio de sesión.",
         )
-
-    # CUIL ya registrado (es UNIQUE en la tabla)
-    res = await db.execute(
-        text("SELECT id_ciudadano FROM ciudadanos WHERE cuil = :cuil AND activo = TRUE LIMIT 1"),
-        {"cuil": cuil},
-    )
-    if res.fetchone():
-        raise HTTPException(status_code=409, detail="Ya existe un registro con ese CUIL.")
 
     # Email ya usado por otra credencial activa
     res = await db.execute(
@@ -269,64 +262,44 @@ async def alta_ciudadano(
     if res.fetchone():
         raise HTTPException(status_code=409, detail="Ya hay una cuenta registrada con ese correo.")
 
-    # Nacionalidad debe existir
-    res = await db.execute(
-        text("SELECT id FROM nacionalidades WHERE id = :id LIMIT 1"),
-        {"id": data.id_nacionalidad},
-    )
-    if not res.fetchone():
-        raise HTTPException(status_code=400, detail="La nacionalidad seleccionada no es válida.")
-
     ins = await db.execute(
         text("""
             INSERT INTO ciudadanos
                 (doc_tipo, doc_nro, cuil, nombre, apellido, sexo, fecha_nac,
-                 id_nacionalidad, ren_chk, calle, altura, localidad, provincia,
-                 latitud, longitud, telefono, email, email_chk, emp_chk,
-                 activo, estado_validacion, observaciones, id_municipio,
+                 id_nacionalidad, ren_chk, telefono, email, email_chk, emp_chk,
+                 activo, estado_validacion, ficha_completa, id_municipio,
                  fecha_alta, fecha_modificacion)
             VALUES
-                (:doc_tipo, :doc_nro, :cuil, :nombre, :apellido, :sexo, :fecha_nac,
-                 :id_nacionalidad, FALSE, :calle, NULL, :localidad, :provincia,
-                 :latitud, :longitud, :telefono, :email, FALSE, FALSE,
-                 TRUE, 'auto_registrado', :observaciones, :id_municipio,
+                ('DNI', :doc_nro, :cuil, :nombre, :apellido, 'OTROS', DATE '1900-01-01',
+                 1, FALSE, '0', :email, FALSE, FALSE,
+                 TRUE, 'auto_registrado', FALSE, :id_municipio,
                  NOW(), NOW())
             RETURNING id_ciudadano
         """),
         {
-            "doc_tipo": data.doc_tipo,
             "doc_nro": doc_nro,
-            "cuil": cuil,
+            "cuil": cuil_placeholder,
             "nombre": data.nombre.strip(),
             "apellido": data.apellido.strip(),
-            "sexo": data.sexo,
-            "fecha_nac": fecha_nac,
-            "id_nacionalidad": data.id_nacionalidad,
-            "calle": data.calle.strip(),
-            "localidad": data.localidad.strip(),
-            "provincia": data.provincia.strip(),
-            "latitud": data.latitud,
-            "longitud": data.longitud,
-            "telefono": telefono,
             "email": email,
-            "observaciones": (data.observaciones or "").strip() or None,
             "id_municipio": id_municipio,
         },
     )
     id_ciudadano = ins.fetchone().id_ciudadano
 
     # Credencial con password elegido + token de verificación. activado=FALSE: la cuenta
-    # se habilita recién al verificar el email.
+    # se habilita recién al verificar el email. debe_cambiar_password=FALSE (el vecino
+    # eligió su clave; el Camino B sí la deja TRUE).
     hashed = hash_password(data.password)
     res = await db.execute(
         text(f"""
             INSERT INTO ciudadano_credencial
                 (id_ciudadano, password_hash, token_activacion, token_activacion_expira,
-                 activado, fecha_ultimo_email_activacion,
+                 activado, debe_cambiar_password, fecha_ultimo_email_activacion,
                  activo, id_municipio, fecha_alta, fecha_modificacion)
             VALUES
                 (:id_ciudadano, :ph, gen_random_uuid(), NOW() + INTERVAL '{DIAS_VERIFICACION} days',
-                 FALSE, NOW(),
+                 FALSE, FALSE, NOW(),
                  TRUE, :id_municipio, NOW(), NOW())
             RETURNING token_activacion
         """),
@@ -361,7 +334,7 @@ async def alta_ciudadano(
         cfg.get("municipio_logo_url"),
     )
 
-    return AltaCiudadanoOut(id_ciudadano=id_ciudadano, email=email, verificacion_enviada=True)
+    return AltaCuentaOut(id_ciudadano=id_ciudadano, email=email, verificacion_enviada=True)
 
 
 @router.post("/empresa", response_model=AltaEmpresaOut, status_code=201)
@@ -535,8 +508,9 @@ async def verificar(token: str, m: str | None = None, db: AsyncSession = Depends
         await db.commit()
         nombre = (row.nombre or "").strip() or row.apellido or "vecino"
         return HTMLResponse(_pagina_confirmacion(
-            "¡Alta verificada!",
-            f"Listo, {nombre}. Tu alta quedó verificada. Ya podés iniciar sesión y empezar a usar el servicio.",
+            "¡Correo verificado!",
+            f"Listo, {nombre}. Tu correo quedó verificado. Ya podés iniciar sesión; al entrar te pediremos "
+            f"completar tus datos para terminar tu alta como vecino.",
             ok=True, municipio_nombre=municipio_nombre,
         ))
 

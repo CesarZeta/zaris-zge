@@ -12,6 +12,9 @@ class CiudadanoBasicoOut(BaseModel):
     apellido: str
     email: str
     estado_validacion: str
+    # TRUE = el vecino ya completó su ficha real (paso 2). FALSE = solo el mínimo del
+    # paso 1 → el portal lo lleva a completar la ficha al ingresar (Fase 4).
+    ficha_completa: bool = False
 
 
 class RegistroCiudadanoIn(BaseModel):
