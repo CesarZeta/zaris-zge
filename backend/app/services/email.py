@@ -7,7 +7,8 @@ no bloquea. Un solo endpoint: POST https://api.resend.com/emails.
 
 Diseno (decidido con Cesar):
   - httpx.AsyncClient directo (el backend es async, evitamos la lib oficial `resend`).
-  - Remitente por defecto: notificaciones@send.zaris.com.ar (subdominio verificado en Resend).
+  - Remitente por defecto: no-reply@zaris.com.ar (dominio RAIZ verificado en Resend; el
+    subdominio send.* da 403 — ver memoria reference_railway_bloquea_egress_smtp).
   - `enviar_mail(...) -> bool` mantiene su firma publica (no rompe los 4 modulos clientes).
     Es ASYNC: se encola en BackgroundTasks (Starlette await-ea corutinas encoladas).
   - Modo MOCK cuando RESEND_API_KEY no esta configurada: logea el mail a stdout y devuelve
@@ -64,7 +65,7 @@ async def enviar_mail_raise(
     el caller quiere manejar el error explicitamente).
 
     from_override: reemplaza el remitente (util para que el display name sea el del
-    municipio, ej. "MUNICIPALIDAD DE SAN ANDRES <notificaciones@send.zaris.com.ar>").
+    municipio, ej. "MUNICIPALIDAD DE SAN ANDRES <no-reply@zaris.com.ar>").
     Si no se pasa, usa settings.RESEND_FROM.
 
     Raises:
@@ -133,7 +134,7 @@ async def enviar_mail(
     Es ASYNC y se encola en BackgroundTasks de FastAPI (Starlette await-ea corutinas).
 
     from_override: reemplaza el remitente (display name del municipio sobre el address
-    notificaciones@send.zaris.com.ar). Si no se pasa, usa settings.RESEND_FROM.
+    no-reply@zaris.com.ar). Si no se pasa, usa settings.RESEND_FROM.
 
     Returns:
         True si el envio fue exitoso (o mock). False si Resend esta configurado pero fallo
@@ -196,7 +197,7 @@ def formatear_remitente(nombre: str, email: str) -> str:
 
 def _from_address_base() -> str:
     """Address base del remitente (settings.RESEND_FROM, sin display name)."""
-    raw = settings.RESEND_FROM or "notificaciones@zaris.com.ar"
+    raw = settings.RESEND_FROM or "no-reply@zaris.com.ar"
     if "<" in raw and ">" in raw:
         return raw.split("<", 1)[1].split(">", 1)[0].strip()
     return raw.strip()

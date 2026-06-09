@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     # bloquea el egress SMTP saliente (587/465 dan timeout). Si RESEND_API_KEY queda vacia,
     # el sender corre en modo MOCK (log a stdout, no envia). Ver app/services/email.py.
     RESEND_API_KEY: str = ""         # API key de Resend (empieza con "re_"). Set via env var; NO commitear.
-    RESEND_FROM: str = "notificaciones@zaris.com.ar"  # Remitente por defecto. Debe usar el dominio VERIFICADO en Resend (zaris.com.ar raíz).
+    RESEND_FROM: str = "no-reply@zaris.com.ar"  # Remitente por defecto. Debe usar el dominio VERIFICADO en Resend (zaris.com.ar raíz, NO el subdominio send.*). Override via env var en Railway.
     APP_BASE_URL: str = "https://zge.zaris.com.ar"  # URL para links en mails (apunta al shell vanilla en prod)
 
     # App Vecinos (PWA publica de ciudadanos)
