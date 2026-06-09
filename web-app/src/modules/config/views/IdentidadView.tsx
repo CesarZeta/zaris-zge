@@ -1,7 +1,28 @@
 import { useEffect, useRef, useState } from 'react'
-import { Upload, X, Check } from 'lucide-react'
+import { Upload, X, Check, Copy, ExternalLink } from 'lucide-react'
 import { useIdentidad, useUpdateIdentidad } from '../hooks/useConfig'
 import { crearLogoUploadUrl, type IdentidadValues } from '../api/configApi'
+
+/**
+ * Base pública del producto (donde vive el shell vanilla + frontend/).
+ * En iframe del shell, usamos el origin+path del padre (prod: zge.zaris.com.ar/...).
+ * Standalone dev (localhost:5173) cae al shell vanilla local (8080).
+ */
+function basePublica(): string {
+  if (typeof window !== 'undefined' && window.self !== window.top) {
+    try {
+      const loc = window.parent.location
+      const path = loc.pathname.replace(/[^/]*$/, '') // recorta index.html
+      return `${loc.origin}${path}`.replace(/\/$/, '')
+    } catch {
+      /* cross-origin: cae al fallback */
+    }
+  }
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost' && window.location.port === '5173') {
+    return 'http://localhost:8080'
+  }
+  return typeof window !== 'undefined' ? window.location.origin : ''
+}
 
 const MIME_OK = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']
 const MAX_BYTES = 2 * 1024 * 1024
@@ -188,6 +209,9 @@ export function IdentidadView() {
         </div>
       </div>
 
+      {/* Enlaces públicos del municipio (solo lectura) */}
+      <EnlacesPublicos slug={identidad.data?.municipio_slug ?? null} />
+
       <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
         <button
           type="button"
@@ -209,6 +233,111 @@ export function IdentidadView() {
       </div>
     </div>
   )
+}
+
+// ── Enlaces públicos del municipio ───────────────────────────────
+interface EnlaceDef {
+  titulo: string
+  descripcion: string
+  /** Ruta relativa a la base pública, con {slug} interpolado. */
+  ruta: (slug: string) => string
+}
+
+const ENLACES: EnlaceDef[] = [
+  {
+    titulo: 'Alta de vecinos',
+    descripcion: 'El vecino crea su cuenta desde el celular. Compartí este enlace en la web del municipio, redes o QR.',
+    ruta: (slug) => `/frontend/alta-vecino.html?m=${encodeURIComponent(slug)}`,
+  },
+]
+
+function EnlacesPublicos({ slug }: { slug: string | null }) {
+  const base = basePublica()
+  return (
+    <div style={enlacesWrap}>
+      <div style={labelStyle}>Enlaces públicos del municipio</div>
+      <span style={hintStyle}>
+        URLs que pueden compartirse con los vecinos. Cambian según el código del municipio.
+      </span>
+      {!slug ? (
+        <div style={{ ...notifStyle('error'), marginTop: 4 }}>
+          <X size={16} /> No hay un código de municipio configurado. Asigná uno en Maestros → Municipios
+          (campo "código corto") para habilitar los enlaces públicos.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
+          {ENLACES.map((e) => (
+            <EnlacePublico key={e.titulo} def={e} url={`${base}${e.ruta(slug)}`} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function EnlacePublico({ def, url }: { def: EnlaceDef; url: string }) {
+  const [copiado, setCopiado] = useState(false)
+
+  async function copiar() {
+    try {
+      await navigator.clipboard.writeText(url)
+    } catch {
+      // fallback para contextos sin clipboard API
+      const ta = document.createElement('textarea')
+      ta.value = url
+      document.body.appendChild(ta)
+      ta.select()
+      try { document.execCommand('copy') } catch { /* noop */ }
+      document.body.removeChild(ta)
+    }
+    setCopiado(true)
+    setTimeout(() => setCopiado(false), 2000)
+  }
+
+  return (
+    <div style={enlaceCard}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+        <span style={enlaceTitulo}>{def.titulo}</span>
+        <span style={enlaceDesc}>{def.descripcion}</span>
+        <code style={enlaceUrl} title={url}>{url}</code>
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+        <button type="button" onClick={copiar} style={btnStyle(copiado ? 'primary' : 'ghost')} title="Copiar enlace">
+          {copiado ? <Check size={14} /> : <Copy size={14} />}
+          {copiado ? 'Copiado' : 'Copiar'}
+        </button>
+        <a href={url} target="_blank" rel="noopener noreferrer" style={{ ...btnStyle('ghost'), textDecoration: 'none' }} title="Abrir en pestaña nueva">
+          <ExternalLink size={14} />
+          Abrir
+        </a>
+      </div>
+    </div>
+  )
+}
+
+const enlacesWrap: React.CSSProperties = {
+  display: 'flex', flexDirection: 'column', gap: 6,
+  padding: 14,
+  background: 'var(--surface-100)',
+  border: '1px solid var(--border-primary)',
+  borderRadius: 10,
+}
+const enlaceCard: React.CSSProperties = {
+  display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
+  padding: '12px 14px',
+  background: 'var(--surface-300)',
+  border: '1px solid var(--border-primary)',
+  borderRadius: 8,
+}
+const enlaceTitulo: React.CSSProperties = {
+  fontFamily: 'var(--font-display)', fontSize: '0.88rem', fontWeight: 600, color: 'var(--fg-1)',
+}
+const enlaceDesc: React.CSSProperties = {
+  fontSize: '0.78rem', color: 'var(--fg-3)', lineHeight: 1.4,
+}
+const enlaceUrl: React.CSSProperties = {
+  fontFamily: 'var(--font-mono)', fontSize: '0.74rem', color: 'var(--fg-2)',
+  marginTop: 2, wordBreak: 'break-all',
 }
 
 // ── styles ───────────────────────────────────────────────────────

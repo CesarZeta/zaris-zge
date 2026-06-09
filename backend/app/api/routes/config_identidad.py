@@ -56,6 +56,10 @@ class IdentidadOut(BaseModel):
     app_nombre: str  # constante del producto, devuelto por compat con shell vanilla
     municipio_nombre: str
     municipio_logo_url: str
+    # Slug (codigo_corto) del unico municipio activo del deploy (mono-tenant §38).
+    # Lo usa Config -> Identidad para previsualizar las URLs publicas del municipio
+    # (ej. el alta de vecinos: .../frontend/alta-vecino.html?m=<slug>). None si no hay.
+    municipio_slug: Optional[str] = None
 
 
 class IdentidadUpdate(BaseModel):
@@ -84,11 +88,19 @@ async def _leer_claves(db: AsyncSession) -> dict[str, str]:
         "SELECT clave, valor FROM configuracion_general WHERE clave = ANY(:claves)"
     ), {"claves": list(CLAVES)})
     data = {r.clave: r.valor for r in rows.fetchall()}
+    # Slug del unico municipio activo (mono-tenant). Si hay >1 fila activa (no deberia),
+    # tomamos el de menor id_municipio para ser deterministas.
+    slug_row = await db.execute(text(
+        "SELECT codigo_corto FROM municipios WHERE activo = TRUE "
+        "ORDER BY id_municipio LIMIT 1"
+    ))
+    slug = slug_row.scalar()
     # Defaults para claves faltantes (no deberian faltar tras seed, pero por las dudas)
     return {
         "app_nombre": APP_NOMBRE,
         "municipio_nombre": data.get("municipio_nombre", "MUNICIPALIDAD"),
         "municipio_logo_url": data.get("municipio_logo_url", ""),
+        "municipio_slug": slug,
     }
 
 

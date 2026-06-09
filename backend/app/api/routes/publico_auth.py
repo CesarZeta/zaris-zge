@@ -457,6 +457,24 @@ async def me(current: dict = Depends(get_current_ciudadano)):
     )
 
 
+@router.get("/nacionalidades")
+async def listar_nacionalidades_publico(
+    current: dict = Depends(get_current_ciudadano),
+    db: AsyncSession = Depends(get_db),
+):
+    """Catálogo de nacionalidades para el PASO 2 (completar ficha) del vecino logueado.
+
+    A diferencia de /publico/alta/nacionalidades (sin JWT, valida slug), este lo consume
+    el vecino YA logueado con su token scope 'publico' — la PWA mono-deploy no maneja slug.
+    Espeja el patrón del geocoding del vecino (/publico/reclamos/geo/buscar).
+    PK real de la tabla es `id` (no `id_nacionalidad`, §5 PK legacy).
+    """
+    res = await db.execute(
+        text("SELECT id, pais FROM nacionalidades WHERE activo IS NOT FALSE ORDER BY pais")
+    )
+    return {"nacionalidades": [{"id": r.id, "pais": r.pais} for r in res.fetchall()]}
+
+
 @router.post("/recuperar-password", response_model=GenericoOkOut)
 async def recuperar_password(
     data: RecuperarPasswordIn,

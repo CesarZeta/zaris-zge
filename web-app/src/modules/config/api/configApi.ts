@@ -38,6 +38,9 @@ export interface IdentidadValues {
   app_nombre: string
   municipio_nombre: string
   municipio_logo_url: string
+  // Slug (codigo_corto) del municipio del deploy. Solo lectura — sirve para
+  // previsualizar las URLs públicas del municipio (alta de vecinos, §38).
+  municipio_slug: string | null
 }
 
 export interface IdentidadUpdate {

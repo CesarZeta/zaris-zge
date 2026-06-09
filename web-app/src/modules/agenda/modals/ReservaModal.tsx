@@ -74,6 +74,14 @@ export function ReservaModal({ open, onClose, idEvento }: Props) {
     }
   }
 
+  // Reglas de UI derivadas del detalle del evento:
+  //  - cupo lleno → no se puede reservar (el backend igual lo rechaza, esto es UX).
+  //  - tipo_qr 'ninguno' → el evento no usa QR, no mostramos la sección de acreditar.
+  const cupoDisponible = detalle.data?.cupo_disponible ?? null
+  const cupoLleno = cupoDisponible !== null && cupoDisponible <= 0
+  const usaQR = detalle.data ? detalle.data.tipo_qr !== 'ninguno' : false
+  const puedeReservar = !!cid && !cupoLleno && !crear.isPending
+
   return (
     <Modal
       open={open}
@@ -103,8 +111,21 @@ export function ReservaModal({ open, onClose, idEvento }: Props) {
             <option value="backoffice">backoffice</option>
             <option value="autoservicio">autoservicio</option>
           </select>
-          <Button variant="accent" onClick={onCrear} style={{ marginLeft: 'auto' }}>Reservar</Button>
+          <Button
+            variant="accent"
+            onClick={onCrear}
+            disabled={!puedeReservar}
+            style={{ marginLeft: 'auto' }}
+            title={cupoLleno ? 'El evento no tiene cupo disponible' : (!cid ? 'Elegí un ciudadano' : undefined)}
+          >
+            Reservar
+          </Button>
         </div>
+        {cupoLleno && (
+          <div style={{ marginTop: 8, fontSize: 12, color: 'var(--color-error)' }}>
+            Este evento no tiene cupo disponible. No se pueden crear más reservas hasta que se cancele alguna.
+          </div>
+        )}
         {qr && (
           <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 12 }}>
             <QRDisplay value={qr} size={120} />
@@ -115,27 +136,29 @@ export function ReservaModal({ open, onClose, idEvento }: Props) {
         )}
       </div>
 
-      <div style={{ padding: 12, background: 'var(--surface-200)', borderRadius: 'var(--radius-md)', marginBottom: 16 }}>
-        <h3 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 500, color: 'var(--fg-1)', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <QrCode size={14} strokeWidth={1.5} /> Acreditar por QR
-        </h3>
-        <div style={{ fontSize: 12, color: 'var(--fg-3)', marginBottom: 8 }}>
-          Escane&aacute; el QR del ciudadano con el lector (o peg&aacute; el c&oacute;digo) y se marca la asistencia.
+      {usaQR && (
+        <div style={{ padding: 12, background: 'var(--surface-200)', borderRadius: 'var(--radius-md)', marginBottom: 16 }}>
+          <h3 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 500, color: 'var(--fg-1)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <QrCode size={14} strokeWidth={1.5} /> Acreditar por QR
+          </h3>
+          <div style={{ fontSize: 12, color: 'var(--fg-3)', marginBottom: 8 }}>
+            Escane&aacute; el QR del ciudadano con el lector (o peg&aacute; el c&oacute;digo) y se marca la asistencia.
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              value={qrAcreditar}
+              onChange={(e) => setQrAcreditar(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') onAcreditarQR() }}
+              placeholder="EVT…-RES…-…"
+              style={{ ...inp, flex: 1, fontFamily: 'var(--font-mono)' }}
+              autoComplete="off"
+            />
+            <Button variant="accent" onClick={onAcreditarQR} disabled={!qrAcreditar.trim() || acreditarQR.isPending}>
+              {acreditarQR.isPending ? 'Acreditando…' : 'Acreditar'}
+            </Button>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input
-            value={qrAcreditar}
-            onChange={(e) => setQrAcreditar(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') onAcreditarQR() }}
-            placeholder="EVT…-RES…-…"
-            style={{ ...inp, flex: 1, fontFamily: 'var(--font-mono)' }}
-            autoComplete="off"
-          />
-          <Button variant="accent" onClick={onAcreditarQR} disabled={!qrAcreditar.trim() || acreditarQR.isPending}>
-            {acreditarQR.isPending ? 'Acreditando…' : 'Acreditar'}
-          </Button>
-        </div>
-      </div>
+      )}
 
       <h3 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 500, color: 'var(--fg-1)' }}>Reservas activas</h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
