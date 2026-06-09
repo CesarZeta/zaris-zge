@@ -29,6 +29,7 @@ class Usuario(Base):
     buc_acceso    = Column(Boolean, nullable=False, default=False)
     id_subarea    = Column(Integer)              # FK lógica → subarea.id_subarea (obligatoria salvo es_externo)
     es_externo    = Column(Boolean, nullable=False, default=False)
+    debe_cambiar_password = Column(Boolean, nullable=False, default=False)  # clave temporal → forzar cambio en 1er ingreso (mig 78)
     fecha_alta    = Column(DateTime, nullable=False, server_default=func.now())
     fecha_modif   = Column(DateTime, nullable=False, server_default=func.now())
     fecha_ultimo_login = Column(DateTime(timezone=True), nullable=True)

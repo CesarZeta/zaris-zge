@@ -63,16 +63,25 @@ class UsuarioCreate(BaseModel):
     nombre:       Optional[str] = Field(None, max_length=150)
     nivel_acceso: int = Field(..., ge=1, le=4)
     username:     str = Field(..., max_length=50, pattern=r"^[a-zA-Z0-9_.\-]+$")
-    password:     str = Field(..., min_length=8, max_length=100)
-    # Opcional: si no viene, el endpoint autogenera <username>@municipio.gob.ar.
-    # Necesario porque /auth/login busca por email (un user sin email no puede loguear).
-    email:        Optional[str] = Field(None, max_length=150)
+    # El alta YA NO recibe password del form: el sistema genera una clave temporal
+    # aleatoria, la manda por email, y marca debe_cambiar_password=TRUE (Fase 3).
+    # `password` queda opcional solo por compat con clientes viejos / seeds; si
+    # viene se respeta (sin forzar cambio), si no viene el endpoint la genera.
+    password:     Optional[str] = Field(None, min_length=8, max_length=100)
+    # Email OBLIGATORIO: es el canal por donde se entrega la clave temporal y el
+    # identificador con el que /auth/login busca al usuario.
+    email:        str = Field(..., max_length=150)
     id_cargo:     Optional[str] = Field(None, max_length=100)
     id_municipio: int = Field(1)
     cuil:         Optional[str] = Field(None, max_length=11)
     buc_acceso:   bool = False
     id_subarea:   Optional[int] = None
     es_externo:   bool = False
+
+    @field_validator("email")
+    @classmethod
+    def _email_valido(cls, v: str) -> str:
+        return _validar_email_fmt(v.strip())
 
     @model_validator(mode="after")
     def _subarea_obligatoria_salvo_externo(self):
@@ -125,6 +134,7 @@ class UsuarioOut(BaseModel):
     id_subarea:   Optional[int]
     subarea_nombre: Optional[str] = None
     es_externo:   bool
+    debe_cambiar_password: bool = False
     fecha_alta:   datetime
     fecha_modif:  datetime
     fecha_ultimo_login: Optional[datetime] = None

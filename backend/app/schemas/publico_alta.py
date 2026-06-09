@@ -35,7 +35,62 @@ class IdentidadAltaOut(BaseModel):
     municipio_color_accent: str | None = None
 
 
-# ─── Alta de ciudadano (paridad con el alta oficial) ─────────────────────────
+# ─── Alta en DOS PASOS (Fase 4) ──────────────────────────────────────────────
+# Paso 1: crear CUENTA con el mínimo real (email + password + DNI + nombre + apellido).
+# El resto de la ficha se completa en el paso 2 (CompletarFichaIn), ya verificado/logueado.
+
+class AltaCuentaIn(BaseModel):
+    municipio_slug: str = Field(..., min_length=1, max_length=20)
+    doc_nro: str = Field(..., min_length=6, max_length=15)   # DNI (digit-only se normaliza en el endpoint)
+    nombre: str = Field(..., min_length=1, max_length=100)
+    apellido: str = Field(..., min_length=1, max_length=100)
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=72)
+
+
+class AltaCuentaOut(BaseModel):
+    id_ciudadano: int
+    email: str
+    verificacion_enviada: bool = True
+    mensaje: str = (
+        "Te creamos la cuenta. Te enviamos un correo para verificar tu dirección: "
+        "revisá tu casilla (y la carpeta de correo no deseado / spam) y hacé clic en el enlace. "
+        "Después de verificar vas a poder completar tus datos."
+    )
+
+
+# Paso 2: completar la ficha real del vecino ya verificado y logueado (JWT scope publico).
+# El id_ciudadano sale SIEMPRE del token, nunca del body (no puede editar a terceros).
+class CompletarFichaIn(BaseModel):
+    cuil: str = Field(..., min_length=10, max_length=15)  # acepta guiones, se valida módulo 11
+    sexo: Literal["HOMBRE", "MUJER", "OTROS"]
+    fecha_nac: str = Field(..., description="YYYY-MM-DD")
+    id_nacionalidad: int
+
+    # Domicilio (lo completa el buscador OSM en el front)
+    calle: str = Field(..., min_length=1, max_length=200)
+    localidad: str = Field(..., min_length=1, max_length=100)
+    provincia: str = Field(..., min_length=1, max_length=100)
+    latitud: float | None = None
+    longitud: float | None = None
+
+    telefono: str = Field(..., min_length=6, max_length=20)
+    observaciones: str | None = Field(None, max_length=500)
+
+    @field_validator("cuil")
+    @classmethod
+    def _val_cuil(cls, v: str) -> str:
+        return _validar_modulo11(v)
+
+
+class CompletarFichaOut(BaseModel):
+    id_ciudadano: int
+    ficha_completa: bool = True
+    mensaje: str = "Tus datos quedaron guardados."
+
+
+# ─── Alta de ciudadano de una sola pantalla (DEPRECADO por el flujo 2-pasos) ──
+# Se conserva el schema por compat; el endpoint /ciudadano fue reemplazado por /cuenta.
 
 class AltaCiudadanoIn(BaseModel):
     municipio_slug: str = Field(..., min_length=1, max_length=20)

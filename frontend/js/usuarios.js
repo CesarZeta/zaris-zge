@@ -194,8 +194,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const pwd = $('usr-password').value;
             const cf  = $('usr-password-confirm').value;
             if (state.modo === 'nuevo') {
-                if (!pwd || pwd.length < 8) return false;
-                if (pwd !== cf) return false;
+                // El alta ya no pide contraseña (la genera el sistema y la manda
+                // por mail), pero el email pasa a ser obligatorio y real.
+                const email = $('usr-email').value.trim();
+                if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return false;
             } else if (state.modo === 'edicion' && pwd) {
                 if (pwd.length < 8) return false;
                 if (pwd !== cf) return false;
@@ -229,6 +231,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     $('usr-password').addEventListener('input', pistaPassword);
     $('usr-password-confirm').addEventListener('input', pistaPassword);
+    // En alta el email es obligatorio y gobierna el botón Guardar → revalidar al tipear.
+    $('usr-email').addEventListener('input', () => { if (state.modo === 'nuevo') _guardarBtn.check(); });
 
     // Al cambiar el nivel en alta nueva, refrescar los módulos que otorgaría.
     $('usr-nivel').addEventListener('change', () => {
@@ -365,8 +369,10 @@ document.addEventListener('DOMContentLoaded', () => {
         $('form-state').className        = 'form-state form-state--new';
         $('activo-row').style.display    = 'none';
         $('usr-username').readOnly       = false;
-        $('password-req-star').style.display = 'inline';
-        $('password-hint').textContent   = 'Requerida. Mínimo 8 caracteres.';
+        // Alta: el sistema genera la clave temporal y la manda por mail → ocultar
+        // los campos de contraseña y mostrar el aviso.
+        $('password-aviso-alta').style.display = 'block';
+        $('password-campos').style.display     = 'none';
         setFieldsDisabled(false);
         $('btn-guardar').style.display   = 'inline-flex';
         $('btn-editar').style.display    = 'none';
@@ -387,6 +393,9 @@ document.addEventListener('DOMContentLoaded', () => {
         $('form-state').className        = 'form-state form-state--edit';
         $('activo-row').style.display    = 'block';
         $('usr-username').readOnly       = true;
+        // Edición: el admin puede resetear la contraseña manualmente → mostrar campos.
+        $('password-aviso-alta').style.display = 'none';
+        $('password-campos').style.display     = 'flex';
         $('password-req-star').style.display = 'none';
         $('password-hint').textContent   = 'Dejar vacío para no cambiar la contraseña.';
         setFieldsDisabled(false);
@@ -404,6 +413,8 @@ document.addEventListener('DOMContentLoaded', () => {
         $('form-state').textContent      = 'CONSULTA';
         $('form-state').className        = 'form-state form-state--view';
         $('activo-row').style.display    = 'block';
+        $('password-aviso-alta').style.display = 'none';
+        $('password-campos').style.display     = 'flex';
         setFieldsDisabled(true);
         $('btn-guardar').style.display   = 'none';
         $('btn-baja').style.display      = 'none';
@@ -466,14 +477,21 @@ document.addEventListener('DOMContentLoaded', () => {
             showErr('err-subarea', 'La subárea es obligatoria (o marcá "Usuario externo")'); ok=false;
         }
 
-        const pass = $('usr-password').value;
-        const cf   = $('usr-password-confirm').value;
+        // En alta el email es obligatorio (canal de entrega de la clave temporal).
         if (state.modo === 'nuevo') {
-            if (!pass)            { showErr('err-password', 'La contraseña es requerida'); ok=false; }
-            else if (pass.length < 8) { showErr('err-password', 'Mínimo 8 caracteres'); ok=false; }
-        } else if (pass && pass.length < 8) { showErr('err-password', 'Mínimo 8 caracteres'); ok=false; }
+            const email = $('usr-email').value.trim();
+            if (!email)                                         { showErr('err-email', 'El email es requerido'); ok=false; }
+            else if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { showErr('err-email', 'Formato de email inválido'); ok=false; }
+        }
 
-        if (pass && pass !== cf) { showErr('err-password-confirm', 'Las contraseñas no coinciden'); ok=false; }
+        // La contraseña solo se valida en EDICIÓN (reset manual por admin). En alta
+        // la genera el sistema, no hay campos que validar.
+        if (state.modo === 'edicion') {
+            const pass = $('usr-password').value;
+            const cf   = $('usr-password-confirm').value;
+            if (pass && pass.length < 8) { showErr('err-password', 'Mínimo 8 caracteres'); ok=false; }
+            if (pass && pass !== cf)     { showErr('err-password-confirm', 'Las contraseñas no coinciden'); ok=false; }
+        }
 
         return ok;
     }
@@ -490,8 +508,10 @@ document.addEventListener('DOMContentLoaded', () => {
             id_subarea:   externo ? null : (parseInt($('usr-subarea').value) || null),
         };
         const emailVal = $('usr-email').value.trim();
-        if (emailVal) payload.email = emailVal;  // vacío → backend autogenera <username>@municipio.gob.ar
-        if ($('usr-password').value) payload.password = $('usr-password').value;
+        if (emailVal) payload.email = emailVal;  // obligatorio en alta; el backend rechaza alta sin email
+        // En alta NO se manda password (la genera el sistema). En edición, solo si
+        // el admin quiere resetearla.
+        if (state.modo !== 'nuevo' && $('usr-password').value) payload.password = $('usr-password').value;
 
         try {
             $('btn-guardar').disabled    = true;
@@ -503,7 +523,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 cargarVistaPrevia();
                 ZUtils.modalGuardado(
                     'Usuario creado',
-                    `El usuario ${u.username} fue registrado correctamente.`,
+                    `El usuario ${u.username} fue registrado. Se le envió una contraseña temporal a ${u.email}; deberá cambiarla en su primer ingreso.`,
                     activarModoNuevo
                     // onSalir omitido: usa _zarisGoInicio() (shell vanilla → dashboard)
                 );
