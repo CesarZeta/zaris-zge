@@ -602,7 +602,7 @@ def _from_municipio(nombre: str) -> Optional[str]:
     base = settings.RESEND_FROM
     if not base:
         return None
-    # extraer el address de RESEND_FROM ("ZARIS <notificaciones@x>" o "notificaciones@x")
+    # extraer el address de RESEND_FROM ("ZARIS <no-reply@x>" o "no-reply@x")
     addr = base.split("<")[-1].rstrip(">").strip() if "<" in base else base.strip()
     return f"{nombre} <{addr}>"
 
