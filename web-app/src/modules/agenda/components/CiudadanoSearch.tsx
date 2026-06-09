@@ -1,14 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
-import { Search } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Search, UserPlus } from 'lucide-react'
 import { buscarCiudadanos } from '../api/agendaApi'
 import type { CiudadanoMinimo } from '../types/agenda'
 
 interface Props {
   onSelect: (c: CiudadanoMinimo) => void
   placeholder?: string
+  /** Muestra el botón "+ Nuevo" que dirige al alta de ciudadano. Default true.
+   *  Se puede ocultar (false) en contextos donde no aplica crear uno nuevo. */
+  permitirNuevo?: boolean
 }
 
-export function CiudadanoSearch({ onSelect, placeholder = 'DNI, CUIL, telefono o nombre...' }: Props) {
+export function CiudadanoSearch({ onSelect, placeholder = 'DNI, CUIL, telefono o nombre...', permitirNuevo = true }: Props) {
+  const navigate = useNavigate()
   const [q, setQ] = useState('')
   const [results, setResults] = useState<CiudadanoMinimo[]>([])
   const [loading, setLoading] = useState(false)
@@ -51,22 +56,46 @@ export function CiudadanoSearch({ onSelect, placeholder = 'DNI, CUIL, telefono o
     return () => document.removeEventListener('mousedown', onClick)
   }, [])
 
+  function irAltaCiudadano() {
+    // El alta de ciudadano vive en el mismo bundle React (módulo Ciudadanos).
+    // Navegamos dentro del HashRouter; el agente vuelve y busca al recién creado.
+    navigate('/ciudadanos/nuevo')
+  }
+
   return (
     <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
-      <div style={{ position: 'relative' }}>
-        <Search size={14} strokeWidth={1.5} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-3)' }} />
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={placeholder}
-          onFocus={() => q.length >= 2 && setOpen(true)}
-          style={{
-            fontFamily: 'var(--font-display)', fontSize: 'var(--size-ui)', width: '100%',
-            padding: '9px 12px 9px 32px', borderRadius: 'var(--radius-lg)',
-            border: '1px solid var(--border-primary)', background: 'transparent',
-            outline: 'none', color: 'var(--fg-1)',
-          }}
-        />
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ position: 'relative', flex: 1 }}>
+          <Search size={14} strokeWidth={1.5} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-3)' }} />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={placeholder}
+            onFocus={() => q.length >= 2 && setOpen(true)}
+            style={{
+              fontFamily: 'var(--font-display)', fontSize: 'var(--size-ui)', width: '100%',
+              padding: '9px 12px 9px 32px', borderRadius: 'var(--radius-lg)',
+              border: '1px solid var(--border-primary)', background: 'transparent',
+              outline: 'none', color: 'var(--fg-1)',
+            }}
+          />
+        </div>
+        {permitirNuevo && (
+          <button
+            type="button"
+            onClick={irAltaCiudadano}
+            title="Dar de alta un ciudadano nuevo"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
+              padding: '9px 12px', borderRadius: 'var(--radius-lg)',
+              border: '1px solid var(--border-primary)', background: 'var(--surface-100)',
+              color: 'var(--fg-1)', cursor: 'pointer',
+              fontFamily: 'var(--font-display)', fontSize: 'var(--size-btn)', fontWeight: 500,
+            }}
+          >
+            <UserPlus size={14} strokeWidth={1.5} /> Nuevo
+          </button>
+        )}
       </div>
       {open && (
         <div style={{
@@ -79,7 +108,23 @@ export function CiudadanoSearch({ onSelect, placeholder = 'DNI, CUIL, telefono o
             <div style={{ padding: 12, color: 'var(--fg-3)', fontSize: 13 }}>Buscando...</div>
           )}
           {!loading && results.length === 0 && (
-            <div style={{ padding: 12, color: 'var(--fg-3)', fontSize: 13 }}>Sin resultados.</div>
+            <div style={{ padding: 12, fontSize: 13 }}>
+              <div style={{ color: 'var(--fg-3)', marginBottom: permitirNuevo ? 8 : 0 }}>Sin resultados.</div>
+              {permitirNuevo && (
+                <button
+                  type="button"
+                  onClick={irAltaCiudadano}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '6px 10px', borderRadius: 'var(--radius-md)',
+                    border: 'none', background: 'var(--zaris-orange)', color: '#fff',
+                    cursor: 'pointer', fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 600,
+                  }}
+                >
+                  <UserPlus size={13} strokeWidth={1.5} /> Dar de alta un ciudadano
+                </button>
+              )}
+            </div>
           )}
           {results.map((c) => (
             <button
