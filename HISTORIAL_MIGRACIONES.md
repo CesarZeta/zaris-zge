@@ -160,6 +160,10 @@ Resultado prod: 19 reclamos legacy de "Servicios Públicos" sin tilde (id=9, ya 
 
 **Aplicada en local y prod al 2026-05-25.** Seed de la clave `encuestas_antifatiga_activo` (boolean, default `'true'`) en `configuracion_general`. Hasta entonces la regla anti-fatiga (no reenviar encuesta al mismo ciudadano/subárea dentro de 30 días) estaba hardcodeada. Ahora `encuestas_service.antifatiga_esta_activo(db)` la lee; `'false'` la desactiva (default seguro TRUE ante clave ausente/error). Editable desde Config → Sistema (§41). Idempotente.
 
+### Migración 80 — RLS en catálogos legacy (`backend/migrations/80_rls_catalogos_legacy.sql`)
+
+**Aplicada en local y prod al 2026-06-09.** Disparada por el mail del advisor de Supabase `rls_disabled_in_public` (08-jun): `actividades`, `nacionalidades` y `tipos_representacion` eran las únicas tablas de `public` sin Row-Level Security — legibles/escribibles por cualquiera con la URL del proyecto + anon key vía PostgREST. Fix: RLS habilitado SIN políticas (patrón deny-all de mig 57 / §26). El backend no se afecta (conecta como `postgres`, dueño de las tablas, que bypassea RLS — verificado post-fix con `GET /publico/alta/nacionalidades` 200 en prod). El DO block tolera el drift local/prod del nombre (`tipo_representacion` singular en local, `tipos_representacion` plural en prod). Verificado: 0 tablas sin RLS en ambos entornos. En la misma sesión se habilitó RLS en `used_photos` del proyecto Supabase `zaris-news-bot` (otro proyecto, sin repo acá).
+
 
 ---
 
