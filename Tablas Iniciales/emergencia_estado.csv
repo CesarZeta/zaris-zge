@@ -1,0 +1,8 @@
+codigo;nombre;descripcion;es_inicial;es_terminal;es_terminal_positivo;orden_visual
+PENDIENTE;Recibido, en triage;Evento recibido, pendiente de clasificación y despacho;true;false;false;1
+EN_PREPARACION;Preparando recurso para despacho;Se está preparando el recurso a despachar;false;false;false;2
+EN_CAMINO;Recurso despachado;El recurso está en camino al lugar del evento;false;false;false;3
+EN_SITIO;Recurso en el lugar del evento;El recurso arribó al lugar (marca el tiempo de respuesta);false;false;false;4
+DERIVADO;Derivado a organismo externo;El evento fue derivado a un organismo externo o municipal;false;false;false;5
+RESUELTO;Cerrado con resolución;Cierre positivo del evento;false;true;true;6
+DESESTIMADO;Cerrado: falsa alarma / no emergencia;Cierre sin intervención: falsa alarma o no constituye emergencia;false;true;false;7

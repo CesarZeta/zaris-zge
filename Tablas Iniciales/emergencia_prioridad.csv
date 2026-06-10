@@ -1,0 +1,4 @@
+codigo;nombre;descripcion;sla_minutos_arribo;color_token;orden_visual
+P1;Vida en riesgo o delito en curso;Respuesta inmediata: riesgo de vida o delito en curso;5;prio-p1;1
+P2;Daño material en curso o inminente;Respuesta rápida: daño material en curso o inminente;15;prio-p2;2
+P3;Prevención / información;Respuesta programable: prevención, información o trámite;60;prio-p3;3
