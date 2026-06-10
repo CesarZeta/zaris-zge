@@ -54,6 +54,9 @@ backend/uploads/
 # Documentos archivados con info sensible (no versionar)
 docs/archivo/
 
+# Folletos comerciales locales (no publicar en GH Pages)
+folletos/
+
 # Config local de Claude Code (no versionar), EXCEPTO skills y commands del proyecto.
 # Hay que re-incluir cada nivel de directorio: si .claude/ está ignorado, git no
 # desciende y las re-inclusiones de subcarpetas no aplican sin esto.
