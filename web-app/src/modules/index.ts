@@ -1,5 +1,6 @@
 import type { ModuleManifest } from '../lib/types'
 import { dashboardModule } from './dashboard'
+import { emergenciasModule } from './emergencias'
 import { reclamosModule } from './reclamos'
 import { agendaModule } from './agenda'
 import { turnosModule } from './turnos'
@@ -23,6 +24,7 @@ import { guiasModule } from './guias'
 // internos desde otros modulos.
 export const modules: ModuleManifest[] = [
   dashboardModule,
+  emergenciasModule,   // primero del sidebar (pedido del usuario 2026-06-10)
   reclamosModule,
   turnosModule,
   entradasModule,

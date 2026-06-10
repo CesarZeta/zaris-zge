@@ -26,6 +26,11 @@
   --color-success: #1f8a65;       /* muted teal-green */
   --color-accent:  var(--zaris-orange);
 
+  /* Prioridades de Emergencias (modulo COM). Lejos del naranja del brand. */
+  --prio-p1: #c62828;             /* P1: vida en riesgo / delito en curso */
+  --prio-p2: #f57f17;             /* P2: dano material en curso o inminente */
+  --prio-p3: #1f8a65;             /* P3: prevencion / informacion */
+
   /* Timeline / Feature palette */
   --timeline-thinking: #dfa88f;   /* peach */
   --timeline-grep:     #9fc9a2;   /* sage */
