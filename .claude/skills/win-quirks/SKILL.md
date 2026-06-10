@@ -24,8 +24,13 @@ Recetas operativas verificadas. Muchas tienen memoria asociada (`[[...]]`) con e
 - **Q10 — credenciales dev local**: admin es `ciudadanovl@municipio.gob.ar` (no `admin@`); pass `123456`. Listar usuarios con psql antes de smoke. [[feedback_smoke_credenciales_dev]].
 - **Q11 — `Start-Process pnpm/npm/npx` falla** (son `.cmd`): usar `Start-Process cmd.exe -ArgumentList "/c","pnpm dev > log 2> err"`. [[feedback_ps_quirks_startprocess_psql]].
 - **Q5 — QR**: solo render cliente (`qrcode` ~26KB sobre canvas); el backend solo genera el string `EVT<id>-RES<id>-<ts>`.
-- **Q14 — git commit multilínea (Bash tool)**: el here-string `git commit -m @'...'@` mete un `@` LITERAL al inicio del subject (`@ feat(...)`). Verificar con `git log -1 --format='%s'`; si quedó el `@`, amendar con archivo: `cat > /tmp/cmsg.txt <<'EOF' ... EOF` + `git commit --amend -F /tmp/cmsg.txt`. Default: para commits con cuerpo, escribir el mensaje a archivo y usar `-F`, no here-string. (verif. 2026-06-09)
+- **Q16 — git commit multilínea (Bash tool)**: el here-string `git commit -m @'...'@` mete un `@` LITERAL al inicio del subject (`@ feat(...)`). Verificar con `git log -1 --format='%s'`; si quedó el `@`, amendar con archivo: `cat > /tmp/cmsg.txt <<'EOF' ... EOF` + `git commit --amend -F /tmp/cmsg.txt`. Default: para commits con cuerpo, escribir el mensaje a archivo y usar `-F`, no here-string. (verif. 2026-06-09)
 - **Q15 — `& "C:\Program Files\...\psql.exe"` lo bloquea el PowerShell tool** como falso positivo "Remove-Item path protegido" (parsea mal ruta-con-espacios + `&`). Para DB LOCAL en smokes usar script Python+psycopg2 (`@"...import psycopg2..."@ | python`), no `& $psql`. Prod = `execute_sql`/`apply_migration` MCP. [[feedback_ps_quirks_startprocess_psql]] (Quirk 3).
+- **Q17 — uvicorn detached con `ENV_FILE` (receta canónica, verif. 2026-05-16)**: `Start-Process` en PS 5.1 **NO hereda env vars del shell padre** (`$env:ENV_FILE` seteado antes NO llega al hijo) y `-Environment` no existe. La única forma confiable:
+  ```powershell
+  Start-Process cmd.exe -ArgumentList "/c","set ENV_FILE=.env.local && python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > _uvicorn.log 2> _uvicorn.err.log" -WorkingDirectory "...\backend" -WindowStyle Hidden
+  ```
+  Sin `ENV_FILE`, `config.py` usa el default (puede apuntar a PROD). Si no hace falta env var, `Start-Process python` directo con `-WorkingDirectory` + `-RedirectStandardOutput/Error` es más simple (python es .exe, no necesita el rodeo `cmd /c` de Q11). Si el log queda vacío tras lanzar, probar primero en foreground para ver el error real. Tras lanzar, verificar entorno correcto: un request a algo que solo exista en local debe dar 200. Para matar/reiniciar (código viejo en memoria), matar **por puerto**: ver [[feedback_uvicorn_restart_tras_registrar_routers]].
 
 ## Q12/Q13 — redirects bajo subpath `/zaris-zge/` (reglas con código)
 
