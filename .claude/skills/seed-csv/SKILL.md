@@ -61,6 +61,15 @@ Si los datos no son lo que esperabas, **avisar al usuario inmediatamente** en lu
 - `subarea.csv` viene con `id_area=1` genérico. La asignación real de área se hace por **heurística por keyword** sobre el nombre de la subárea (ver `seed_subareas_tipos_csv.py`).
 - **Agentes con cargo huérfano:** si el `id_cargo` legacy no matchea con `cargo.csv` y no hay info real, NO inventar nombre de cargo. Distribuir entre cargos genéricos (id 1-5: Director/Coordinador/Técnico/Administrativo/Operario) via hash determinístico de `apellido||nombre` para que sea reproducible.
 
+## Aplicar el seed en PROD sin conexión directa (patrón `--emit-sql`, 2026-06-10)
+
+No hay credenciales de la DB de Supabase en local: el seed de prod va por MCP (`execute_sql`). Para eso el script debe poder **emitir el SQL en vez de ejecutarlo** (`--emit-sql archivo.sql`), generando SQL idempotente y **environment-independent**: las FKs se resuelven con subqueries por código/nombre normalizado dentro del propio SQL, nunca con IDs.
+
+- **Forma COMPACTA obligatoria**: un solo `INSERT INTO t (...) SELECT ... FROM (VALUES (...),(...)) AS v(...) [JOIN catálogos por codigo] ON CONFLICT (...) DO UPDATE` por tabla. La primera versión de `seed_catalogos_emergencias.py` emitía un statement por fila (221 upserts = 130KB, impasable por MCP); la compacta quedó en 22KB. Para mapear claves CSV → ids reales usar un CTE (`WITH sa AS (SELECT 'CLAVE' AS k, (subquery) AS id ...)`) y `JOIN sa ON sa.k = v.col`.
+- En modo ejecución local, el mismo SQL corre por la conexión cruda asyncpg (multi-statement, §5), envuelto en `BEGIN;/COMMIT;`.
+- Guard al inicio del SQL: `DO $$ ... RAISE EXCEPTION ... $$;` si falta una dependencia (ej. subáreas de mig previa) — falla fuerte en vez de insertar mitades.
+- Referencia canónica: `backend/seed_catalogos_emergencias.py` (módulo Emergencias, migs 81-84).
+
 ## Scripts de seed disponibles
 | Script | Tablas | Origen |
 |---|---|---|
@@ -71,5 +80,6 @@ Si los datos no son lo que esperabas, **avisar al usuario inmediatamente** en lu
 | `seed_agentes_csv.py` | agentes | `Tablas Iniciales/agente.csv` + `cargo.csv` |
 | `seed_auth.py` | usuarios | hardcoded dev |
 | `seed_demo.py` / `seed_prod.py` | varios | hardcoded mínimo |
+| `seed_catalogos_emergencias.py` | emergencia_* (6 catálogos) | `Tablas Iniciales/emergencia_*.csv` — patrón `--emit-sql` |
 
 > **CRÍTICO antes de codear cualquier seed/backend**: verificar el estado real de prod (existencia + NOT NULL + DEFAULT + CHECKs + seeds) con `execute_sql`, NO confiar en la doc ni en la simetría con local. Detalle y casos reales en CLAUDE.md §24 + [[feedback_verificar_drift_completo_prod]].
