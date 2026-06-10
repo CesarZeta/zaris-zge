@@ -851,8 +851,18 @@ Vista de tablero para supervisor/dispatcher.
 - **Quirk PS 5.1 en el smoke**: `(pipeline | Where-Object).Count` sobre un unico resultado da NULL — envolver en `@(...)`.
 - En PROD solo se verifico lectura (sin sembrar eventos de prueba); el ciclo de escritura completo quedo validado en local con el smoke.
 
-### Fase 4
-- (pendiente)
+### Fase 4 (cerrada 2026-06-10)
+
+- **Stack: modulo React, NO 3 paginas vanilla.** El plan (seccion 5) pedia HTML vanilla, pero CLAUDE.md §4 manda React para modulos nuevos complejos (form con estado + tablero con polling + detalle con timeline = el caso exacto) y §28 da prioridad al proyecto. Vive en `web-app/src/modules/emergencias/` embebido en el iframe del shell vanilla, como Reclamos/Turnos. Las "3 paginas" del plan son 3 rutas: `/emergencias` (Tablero/dispatcher), `/emergencias/recepcion`, `/emergencias/evento/:id`.
+- **Item "Emergencias" PRIMERO en el sidebar** (pedido del usuario 2026-06-10): primer `<a class="nav-flat__item">` del nav en `index.html` (shell vanilla), icono Lucide `siren` SVG inline, label "Emergencias". En el shell React dev va segundo despues de dashboard (dashboard es HOME y no aparece en el sidebar vanilla).
+- **Migracion 84**: fila `emergencias` en `modulos` con `min_nivel_acceso=3` (espeja el guard nivel<=3 del backend; sin la fila el item se oculta para todos, §12/§30). Local + prod.
+- **Tokens de prioridad: `--prio-p1` `#c62828` / `--prio-p2` `#f57f17` / `--prio-p3` `#1f8a65`**, agregados a `design-system/colors_and_type.css` y espejados en `web-app/src/styles/tokens.css`. NO se uso el namespace `--z-prio-*` del plan (DS legacy eliminado §31). Colores lejos del naranja brand (regla §4). `emergencia_prioridad.color_token` guarda el nombre sin `--` (`prio-p1`); el front hace `var(--${token})`.
+- **Dispatcher** (`pages/Dispatcher.tsx`): polling de 30s via `refetchInterval` de react-query (NO WebSocket, plan 0.3), orden prioridad+fecha lo da el backend, "hace Xm" en vivo con tick local de 30s, filtros subarea/prioridad/estado (estado client-side sobre los abiertos), acciones rapidas con los MISMOS modales del detalle (`components/EventoAccionModals.tsx`).
+- **Cierre y derivacion SIEMPRE con modal propio** (veracidad obligatoria / organismo obligatorio) — espeja la regla de Fase 3 de que esos pasos no van por `cambiar-estado`. `window.confirm` prohibido (§29): todo con `Modal`/`ConfirmModal` de Agenda (cross-module import permitido).
+- **Recepcion**: cronometro mm:ss desde el mount; prioridad autocompletada subtipo.override > tipo.default y editable (flag `prioridadTocada`); aviso rojo si el tipo `requiere_911`; canal hardcodeado `LLAMADA_TEL` (la recepcion ES el canal telefonico; APP_VECINO entra por la Fase 5); boton Crear deshabilitado hasta minimos completos. El form de contacto eventual aparece inline cuando la busqueda da `origen=NUEVO`, con el DNI/telefono buscado pre-llenado.
+- **Promocion a BUC desde el detalle** (tab Denunciante): modal que pide apellido/nombre/email (los exige el backend para crear; si el DNI ya esta en BUC vincula solo).
+- **Verificado navegando (§41)** en `localhost:5173` + backend local: tablero con los eventos del smoke, flujo completo recepcion (buscar DNI BUC -> usar -> Defensa Civil/Incendio/Forestal -> prioridad auto P1 -> crear `EM-2026-000025` -> detalle) -> EN_PREPARACION via modal -> historial con CREACION + CAMBIO ESTADO. Trampa cazada: el router es `createHashRouter` — navegar `localhost:5173/emergencias` (pathname) cae al catch-all y muestra dashboard; la URL real es `/#/emergencias`.
+- Lat/lon y mapa NO se incluyeron en el form (plan 5.1 los marca "futuro mapa"; el backend ya los acepta).
 
 ### Fase 5
 - (pendiente)
