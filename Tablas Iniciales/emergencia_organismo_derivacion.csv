@@ -1,0 +1,13 @@
+codigo;nombre;descripcion;telefono_contacto;es_municipal
+POLICIA_911_PBA;911 Policía de la Provincia de Buenos Aires;;911;false
+SAME_107;Sistema de Atención Médica de Emergencias;;107;false
+BOMBEROS;Bomberos Voluntarios;;100;false
+DEFENSA_CIVIL_PROV;Defensa Civil Provincial;;;false
+PREFECTURA;Prefectura Naval Argentina;;106;false
+PATRULLA_URB_MUN;Patrulla Urbana Municipal;;;true
+TRANSITO_MUN;Dirección de Tránsito Municipal;;;true
+DEFENSA_CIVIL_MUN;Defensa Civil Municipal;;;true
+SERV_PUB_MUN;Servicios Públicos Municipales;;;true
+ZOONOSIS_MUN;Zoonosis Municipal;;;true
+SERV_SOCIAL_MUN;Políticas de Género / Servicio Social;;;true
+FISCALIA;Ministerio Público Fiscal;;;false
