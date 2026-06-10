@@ -78,6 +78,7 @@ No suponer paridad entre stacks. Hoy:
 | **OT (3 mesas)** | — (borrado, era `ot_supervisor.html`/`ot_agente.html`/`ot_auditoria.html`) | **`modules/ot/`** (Supervisor / Agente / Auditoría + drawer detalle compartido) | **React** (publicado) |
 | **Trámites** | — | **`modules/tramites/`** (backend Fase 1+2 + frontend Fase 3 completo — bandeja, detalle, acciones, timeline, adjuntos, pase, relacionar; 2026-05-16) | **React** (publicado) |
 | **Datos (BI)** | — | **`modules/bi/`** (landing DATOS → Operativo + Ejecutivo. Operativo: 4 tabs Resumen/Resueltos-SLA/Pendientes+mapa/Subreclamos. Ejecutivo: placeholder. 2026-05-26) | **React** (publicado) |
+| **Emergencias (COM)** | — | **`modules/emergencias/`** (Tablero dispatcher polling 30s + Recepción de llamado + Detalle FSM/historial; 2026-06-10, §44) | **React** (publicado — **PRIMER ítem del sidebar**) |
 | Config (permisos/identidad/etc.) | — | `modules/config/` | React |
 
 **Implicaciones:**
@@ -787,7 +788,7 @@ class Equipo(Base):
 
 > **El detalle histórico de cada migración (qué hace, cuándo se aplicó, snapshots de backup) vive en [`HISTORIAL_MIGRACIONES.md`](HISTORIAL_MIGRACIONES.md)** (raíz del repo). Acá queda solo el resumen vigente. **No confiar en esta doc como fuente de verdad** — antes de codear algo schema-dependent, verificar el estado real con `execute_sql` (regla §24).
 
-**Estado general:** migraciones 20-80 aplicadas en local Y prod (Supabase) sin divergencia conocida al 2026-06-09. La numeración 51 está duplicada (`51_notificaciones.sql` + `51_tramites_tipo_dato_direccion.sql`, ambas aplicadas) — **cualquier mig nueva debe usar 81+**.
+**Estado general:** migraciones 20-84 aplicadas en local Y prod (Supabase) sin divergencia conocida al 2026-06-10. La numeración 51 está duplicada (`51_notificaciones.sql` + `51_tramites_tipo_dato_direccion.sql`, ambas aplicadas) — **cualquier mig nueva debe usar 85+**.
 
 **Reglas vivas de migración:**
 - **Toda tabla nueva debe nacer con `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`** (sin políticas = deny-all §26; el backend conecta como `postgres` dueño y bypassea RLS). Sino el advisor de Supabase la marca (`rls_disabled_in_public`, caso mig 80).
@@ -795,7 +796,7 @@ class Equipo(Base):
 - **CHECK `NOT VALID` igual se evalúa al UPDATE de filas viejas** — backfillar en el mismo UPDATE ([[feedback_check_not_valid_se_evalua_al_update]], caso mig 71).
 - En prod no hay `.env.prod`: aplicar por MCP (`apply_migration`/`execute_sql`).
 
-**Dónde vive la regla de cada mig reciente:** 62-64 y 77-78 (usuarios/agentes/integridad) §39 · 65 (BI) §43 · 66/68/73/74/75 (Trámites) §35 · 67 (tipo_grupo equipos) §15 · 69-71 (Turnos) §33 · 72 (encuesta de turnos) §42 · 76/79 (alta vecinos) §38. Bitácora por mig en `HISTORIAL_MIGRACIONES.md` ("Migraciones 61-79 — resumen consolidado" + entradas propias).
+**Dónde vive la regla de cada mig reciente:** 62-64 y 77-78 (usuarios/agentes/integridad) §39 · 65 (BI) §43 · 66/68/73/74/75 (Trámites) §35 · 67 (tipo_grupo equipos) §15 · 69-71 (Turnos) §33 · 72 (encuesta de turnos) §42 · 76/79 (alta vecinos) §38 · **81-84 (Emergencias) §44**. Bitácora por mig en `HISTORIAL_MIGRACIONES.md` ("Migraciones 61-79 — resumen consolidado" + entradas propias).
 
 **Tablas que YA existen en prod y NO deben re-crearse:** `reclamos`, `reclamo_historial`, `tipo_reclamo`, `estado_reclamo`, `ordenes_trabajo`, `estado_ot` (5 seeds), `equipo_agentes`, `configuracion_general`, todas las de Agenda (migs 30-43), Turnos (45-46), permisos (38/44), trámites (47-50, 56), notificaciones (51), encuestas (57-58, 60-61), auth público de ciudadanos (52-53), adjuntos de OT (54), `usuarios.id_subarea`/`es_externo` (55), `usuario_login_log` (62). Detalle por mig en `HISTORIAL_MIGRACIONES.md`. Ver memoria [[project_supabase_estado_schema]].
 
@@ -1287,10 +1288,11 @@ Cada módulo declara su **nivel mínimo de acceso** (default). Si el `nivel_acce
 
 ### Implementación (mig 38 + 44, local + prod)
 
-Tablas `modulos` (catálogo: `modulo_codigo` PK, `nombre`, `descripcion`, `min_nivel_acceso` SMALLINT default 4) + `usuario_modulos` (override por usuario: `(id_usuario, modulo_codigo)` UNIQUE, `permitido` BOOL, §10). Catálogo actual — 10 módulos:
+Tablas `modulos` (catálogo: `modulo_codigo` PK, `nombre`, `descripcion`, `min_nivel_acceso` SMALLINT default 4) + `usuario_modulos` (override por usuario: `(id_usuario, modulo_codigo)` UNIQUE, `permitido` BOOL, §10). Catálogo (filas principales — la fuente real es la tabla `modulos`, que además tiene `tramites`, `encuestas`, `bi`):
 
 | Código | Nombre | min_nivel_acceso | Cubre |
 |---|---|---|---|
+| `emergencias` | Emergencias | 3 | módulo React `emergencias` — COM (mig 84, §44) |
 | `reclamos` | Reclamos | 4 | módulo React `reclamos` |
 | `padrones` | Padrones | 4 | módulos React `ciudadanos` + `empresas` |
 | `ot_agente` | OT - Agente | 3 | módulo React `ot` (vista Agente) |
@@ -1909,4 +1911,16 @@ Endpoints por vista en `bi.py`. Convenciones críticas:
 
 ### Datos demo (prod, 2026-05-26)
 Los 30 reclamos de prod fueron poblados con `fecha_cierre` (resueltos) y `latitud/longitud` (todos) para que el BI tenga contenido. Backups `_backup_reclamos_fecha_cierre_2026_05_26` y `_backup_reclamos_geo_demo_2026_05_26`.
+
+## 44. Módulo Emergencias (COM)
+
+Atención de eventos de emergencia (Centro de Operaciones Municipales): triage por prioridad, despacho, derivación a organismos externos (911 PBA, SAME, Bomberos). **Plan completo + registro de decisiones por fase en [`PLAN_MODULO_EMERGENCIAS.md`](PLAN_MODULO_EMERGENCIAS.md) (sección 7)** — Fases 1-4 cerradas 2026-06-10; **Fase 5 (endpoint público App Vecinos) PENDIENTE**. Bitácora de migs 81-84 en `HISTORIAL_MIGRACIONES.md`.
+
+- **DB (migs 81-84):** subáreas "Policía Municipal"/"Defensa Civil" bajo el área "Secretaría de Seguridad" **activa** de cada entorno (duplicada con drift invertido por mig 26: local id 8 / prod id 28 — resolver SIEMPRE por nombre normalizado `translate(lower(nombre),'áéíóú','aeiou')`, nunca por ID) · 6 catálogos `emergencia_*` (34 tipos Policía RESO-2022-166 + 16 DC + 147 subtipos + 12 organismos + 7 estados + 3 prioridades + 2 canales; seed `backend/seed_catalogos_emergencias.py` con `--emit-sql` para prod) · `emergencia_evento` + `emergencia_contacto_eventual` + **`emergencia_log` APPEND-ONLY** (sin `activo`/`fecha_modificacion`; triggers que rechazan UPDATE/DELETE — NO tocarlos, hay responsabilidad civil sobre el registro de tiempos) · fila `emergencias` en `modulos` (nivel ≤ 3).
+- **`numero_operativo` `EM-YYYY-NNNNNN` lo genera la DB** (secuencia + trigger BEFORE INSERT `trg_numero_emergencia`, patrón `trg_nro_reclamo` §18). El backend nunca lo manda. Reset anual de la secuencia: pendiente.
+- **FSM en backend** (`TRANSICIONES` en `routes/emergencias.py`): PENDIENTE→EN_PREPARACION→EN_CAMINO→EN_SITIO→RESUELTO, con DERIVADO lateral y DESESTIMADO solo desde PENDIENTE/EN_PREPARACION. **Cierres SOLO via `POST /eventos/{id}/cerrar`** (exige `veracidad` ∈ CONFIRMADA/FALSA_ALARMA/NO_VERIFICABLE) y **derivación SOLO via `/derivar`** (exige organismo) — `cambiar-estado` los rechaza 422. Timestamps de KPI con `COALESCE` (despacho→EN_CAMINO, arribo→EN_SITIO/`marcar-en-sitio`, cierre→terminal). Si tocás el grafo, espejarlo en `pages/Dispatcher.tsx` + `DetalleEvento.tsx` (botones por estado).
+- **Denunciante:** CHECK anónimo XOR ciudadano BUC XOR contacto eventual. Búsqueda unificada `GET /denunciantes/buscar?dni|telefono|nombre=` (cascada BUC → eventual → `origen=NUEVO`). **Promoción a BUC** (`POST /contactos-eventuales/{id}/promover-a-buc`): id explícito > auto-vínculo por DNI ya en BUC > crear (exige apellido+nombre+email; placeholders §38; NO crea cuenta App Vecinos); reasigna TODOS los eventos del contacto + log `PROMOCION_BUC`.
+- **Permisos:** todos los endpoints de eventos/contactos exigen nivel ≤ 3 (catálogos: cualquier autenticado). Operador nivel 3 con `usuarios.id_subarea` queda scopeado a su subárea (listados filtran, detalle/mutaciones 403); nivel ≤ 2 exento; sin subárea fail-open (§27).
+- **Frontend React** `web-app/src/modules/emergencias/`: Tablero (polling 30s `refetchInterval`, NO WebSocket) + Recepción (cronómetro, prioridad autocompletada subtipo>tipo, aviso `requiere_911`, canal fijo LLAMADA_TEL) + Detalle (tabs + panel de acciones). Ítem **PRIMERO** del sidebar vanilla. Tokens `--prio-p1/p2/p3` en DS + `tokens.css`; `emergencia_prioridad.color_token` guarda el nombre sin `--`.
+- **Smoke:** `smoke_emergencias.ps1` (raíz, 43 asserts) — genera DNI/teléfono/nombre random por corrida (las corridas previas promueven a BUC y la búsqueda prioriza BUC).
 
