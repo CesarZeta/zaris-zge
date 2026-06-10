@@ -27,6 +27,7 @@ from app.api.routes.ot_adjuntos import router as ot_adjuntos_router
 from app.api.routes.geo import router as geo_router
 from app.api.routes.activos import router as activos_router
 from app.api.routes.config_identidad import router as config_identidad_router
+from app.api.routes.emergencias import router as emergencias_router
 from app.api.routes.tramites import router as tramites_router
 from app.api.routes.tramites_admin import router as tramites_admin_router
 from app.api.routes.tramites_mantenimiento import router as tramites_mantenimiento_router
@@ -139,6 +140,9 @@ app.include_router(ot_router)
 app.include_router(geo_router)
 app.include_router(activos_router)
 app.include_router(config_identidad_router)
+# Emergencias (COM): /api/v1/emergencias/* — prefijo propio, sin colisiones.
+# Fase 3 sumara rutas con {id} greedy: las de segmento fijo deberan ir antes (§5).
+app.include_router(emergencias_router)
 # App Vecinos (PWA publica de ciudadanos)
 app.include_router(publico_auth_router)
 # Alta publica de vecinos (autoregistro desde URL publica por municipio, sin JWT, rate-limited)

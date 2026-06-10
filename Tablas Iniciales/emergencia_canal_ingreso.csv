@@ -1,0 +1,3 @@
+codigo;nombre;descripcion;requiere_operador
+LLAMADA_TEL;Llamada telefónica al COM;Llamado entrante atendido por un operador del Centro de Operaciones Municipales;true
+APP_VECINO;Aplicación móvil del vecino;Evento reportado por el ciudadano desde la App Vecinos (sin operador);false
