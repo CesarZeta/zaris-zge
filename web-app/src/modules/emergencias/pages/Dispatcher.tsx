@@ -1,9 +1,12 @@
 // Tablero del dispatcher (plan 5.2): KPIs arriba (abiertos + por subarea +
 // por estado, con rango temporal), mapa de eventos coloreado por estado,
 // lista de abiertos ordenada por prioridad con acciones rapidas y polling 30s.
-// Modo "Maximizar tablero": mapa a pantalla completa del modulo con las
-// tarjetas KPI flotando arriba (pedido del usuario 2026-06-11).
-import { useEffect, useMemo, useState } from 'react'
+// Modo "Maximizar tablero": fullscreen NATIVO del navegador (estilo F11, para
+// monitor de guardia — desaparecen sidebar y topbar del shell) con las
+// tarjetas KPI flotando sobre el mapa. Necesita allowfullscreen en el iframe
+// del shell (index.html); si el navegador lo rechaza, cae al overlay fixed
+// que cubre el lienzo del modulo.
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, EmptyState, Skeleton } from '../../../ui'
 import { useNotificationsStore } from '../../../stores/notifications'
@@ -37,15 +40,32 @@ export function Dispatcher() {
   const [fNro, setFNro] = useState<string>('')
   const [horasKpi, setHorasKpi] = useState<number | undefined>(24)
   const [fullscreen, setFullscreen] = useState(false)
+  const fsRef = useRef<HTMLDivElement>(null)
   const [accion, setAccion] = useState<Accion | null>(null)
 
-  // Esc sale del modo maximizado.
+  // Al abrir el modo maximizado, pedir fullscreen nativo sobre el overlay.
+  // El user-activation del click sigue vigente cuando corre el effect.
+  // fullscreenchange sincroniza el estado si el navegador sale solo (Esc/F11).
   useEffect(() => {
     if (!fullscreen) return
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') setFullscreen(false) }
-    document.addEventListener('keydown', h)
-    return () => document.removeEventListener('keydown', h)
+    if (fsRef.current && document.fullscreenEnabled && !document.fullscreenElement) {
+      fsRef.current.requestFullscreen().catch(() => { /* fallback: overlay fixed */ })
+    }
+    const onFsChange = () => { if (!document.fullscreenElement) setFullscreen(false) }
+    document.addEventListener('fullscreenchange', onFsChange)
+    // Esc tambien cierra en el modo fallback (sin fullscreen nativo).
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setFullscreen(false) }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('fullscreenchange', onFsChange)
+      document.removeEventListener('keydown', onKey)
+    }
   }, [fullscreen])
+
+  const salirFullscreen = () => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
+    setFullscreen(false)
+  }
 
   const abiertos = useEventosAbiertos({ id_subarea: fSubarea === '' ? undefined : fSubarea })
   const tipos = useTiposEmergencia()
@@ -137,7 +157,7 @@ export function Dispatcher() {
 
       {/* modo maximizado: mapa a pantalla completa + tarjetas flotantes */}
       {fullscreen && (
-        <div style={fsOverlay}>
+        <div ref={fsRef} style={fsOverlay}>
           <EmergenciasMap
             eventos={eventos}
             onMarkerClick={(ev) => navigate(`/emergencias/evento/${ev.id_emergencia_evento}`)}
@@ -155,7 +175,7 @@ export function Dispatcher() {
           </div>
           {/* Salir: discreto (la vista prioriza tarjetas y geoposiciones) —
               chico, blanco y negro, abajo a la derecha junto al zoom. */}
-          <button style={fsSalirBtn} onClick={() => setFullscreen(false)}>
+          <button style={fsSalirBtn} onClick={salirFullscreen}>
             Salir de pantalla completa
           </button>
         </div>
