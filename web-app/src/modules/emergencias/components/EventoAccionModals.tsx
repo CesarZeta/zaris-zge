@@ -1,6 +1,6 @@
 // Modales de acciones sobre un evento, compartidos por Tablero y Detalle.
 // ConfirmModal explicito (no window.confirm) segun CLAUDE.md s29.
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Modal } from '../../agenda/components/Modal'
 import { Button } from '../../../ui'
 import { useOrganismosEmergencia } from '../hooks/useEmergencias'
@@ -116,6 +116,14 @@ export function CerrarModal({
   const [positivo, setPositivo] = useState(permiteResuelto)
   const [veracidad, setVeracidad] = useState('CONFIRMADA')
   const [obs, setObs] = useState('')
+  // El modal vive montado con open=false: re-sincronizar el resultado default
+  // al abrir, segun el estado del evento elegido. Sin esto el radio queda con
+  // el valor del PRIMER mount y ofrece un cierre que el FSM va a rechazar
+  // (cazado en QA navegador prod 2026-06-10: "Cerrar como DESESTIMADO" sobre
+  // un evento EN_SITIO -> 422 del backend).
+  useEffect(() => {
+    if (open) { setPositivo(permiteResuelto); setVeracidad('CONFIRMADA'); setObs('') }
+  }, [open, permiteResuelto])
   return (
     <Modal
       open={open}
