@@ -837,7 +837,7 @@ class Equipo(Base):
 
 ### Servicio externo: OpenStreetMap / Nominatim
 
-- **Geocoding directo:** `GET https://nominatim.openstreetmap.org/search?q=<calle+altura+localidad>&format=json&limit=5&countrycodes=ar`
+- **Geocoding directo:** `GET https://nominatim.openstreetmap.org/search?q=<calle+altura+localidad>&format=json&limit=5&countrycodes=ar` + **`viewbox` y `bounded=1`** (zona del municipio, ver regla §23 — sin esto trae homónimos de otras provincias)
 - **Geocoding inverso:** `GET https://nominatim.openstreetmap.org/reverse?lat=<>&lon=<>&format=json`
 - **Política de uso:** máx 1 req/seg, enviar `User-Agent: ZARIS-API/1.0 (cesar@zaris.dev)`. Para producción real, considerar Photon o Nominatim self-hosted.
 - **Mapas en frontend:** Leaflet + tiles de OSM (gratis, sin API key).
@@ -904,6 +904,8 @@ Estos patrones se decidieron en sesiones anteriores y **deben reutilizarse** en 
 2. **Mapa con pin manual**: `MapaPicker` de Reclamos (tile OSM Standard, §4) debajo del buscador. Click en el mapa o drag del pin fija/ajusta las coordenadas.
 
 El input de dirección queda **editable sin borrar las coordenadas** (el pin del mapa es la fuente geo explícita y sigue visible), con hint mono que muestra las coords y botón "Quitar pin". Pedido explícito del usuario (test de uso humano, 2026-06-11). Implementado en Reclamos (`FormView`) y Emergencias (Recepción de llamado §44). Cualquier form nuevo con dirección georreferenciable replica este bloque.
+
+**Sesgo geográfico OBLIGATORIO (2026-06-11):** el geocoding está **restringido a la zona del municipio** — buscar "Avenida Maipú" NO debe traer la de Mendoza. Implementado UNA sola vez en `backend/app/api/routes/geo.py::geocodificar_direccion` con `viewbox` + `bounded=1` de Nominatim (bbox = centro del municipio ± ~28 km, constantes `GEO_BBOX_*`; cubre el partido + CABA + linderos). Como TODOS los buscadores de dirección (backoffice `/geo/buscar`, alta pública, reclamos del vecino) pasan por ese helper, cualquier form nuevo lo hereda gratis — **no llamar a Nominatim por fuera del helper**. Si un deploy es de otro municipio, ajustar las constantes.
 
 ### Buscador con autocompletar (≥ ~30 opciones)
 Para selectores con muchas opciones (`tipo_reclamo` tiene 282, `ciudadanos` tiene miles), un `<select>` es inusable. Usar siempre **input + dropdown de resultados** consultando un endpoint con `?q=<texto>` y filtro `ILIKE`.
