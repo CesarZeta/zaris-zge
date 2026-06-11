@@ -152,14 +152,12 @@ export function Dispatcher() {
                 onSelectSubarea={setFSubarea}
               />
             </div>
-            <Button
-              variant="accent"
-              style={{ pointerEvents: 'auto', flexShrink: 0 }}
-              onClick={() => setFullscreen(false)}
-            >
-              Salir de pantalla completa
-            </Button>
           </div>
+          {/* Salir: discreto (la vista prioriza tarjetas y geoposiciones) —
+              chico, blanco y negro, abajo a la derecha junto al zoom. */}
+          <button style={fsSalirBtn} onClick={() => setFullscreen(false)}>
+            Salir de pantalla completa
+          </button>
         </div>
       )}
 
@@ -308,4 +306,14 @@ const fsOverlay: React.CSSProperties = {
 const fsCardsWrap: React.CSSProperties = {
   position: 'absolute', top: 12, left: 12, right: 12, zIndex: 1000,
   display: 'flex', gap: 12, alignItems: 'flex-start', pointerEvents: 'none',
+}
+// Boton salir minimo, blanco y negro, corrido a la izquierda del control de
+// zoom (bottomright) y por encima de la atribucion de Leaflet.
+const fsSalirBtn: React.CSSProperties = {
+  position: 'absolute', bottom: 30, right: 56, zIndex: 1000,
+  padding: '4px 10px', borderRadius: 7, cursor: 'pointer',
+  background: 'var(--surface-100)', color: 'var(--fg-2)',
+  border: '1px solid var(--border-medium)',
+  fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 600,
+  letterSpacing: '0.03em',
 }
