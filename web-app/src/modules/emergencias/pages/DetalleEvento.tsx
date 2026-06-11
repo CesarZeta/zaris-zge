@@ -16,7 +16,7 @@ import {
   usePromoverABuc,
 } from '../hooks/useEmergencias'
 import type { ContactoEventual } from '../types'
-import { EstadoBadge, PrioridadPill, formatFechaHora, transcurridoDesde, useAhora } from '../lib/ui'
+import { CanalAppVecinoBadge, EstadoBadge, PrioridadPill, formatFechaHora, transcurridoDesde, useAhora } from '../lib/ui'
 import { CambiarEstadoModal, CerrarModal, DerivarModal } from '../components/EventoAccionModals'
 
 type TabId = 'datos' | 'denunciante' | 'historial'
@@ -77,6 +77,7 @@ export function DetalleEvento() {
               {ev.numero_operativo}
             </span>
             <EstadoBadge codigo={ev.estado_codigo} nombre={ev.estado_nombre} />
+            <CanalAppVecinoBadge canalCodigo={ev.canal_codigo} />
             <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
               hace {transcurridoDesde(ev.fecha_hora_recepcion, ahora)}
             </span>

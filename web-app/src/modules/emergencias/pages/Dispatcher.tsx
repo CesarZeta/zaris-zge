@@ -14,7 +14,7 @@ import {
   useTiposEmergencia,
 } from '../hooks/useEmergencias'
 import type { EmergenciaEvento } from '../types'
-import { EstadoBadge, PrioridadPill, formatFechaHora, transcurridoDesde, useAhora } from '../lib/ui'
+import { CanalAppVecinoBadge, EstadoBadge, PrioridadPill, formatFechaHora, transcurridoDesde, useAhora } from '../lib/ui'
 import { CambiarEstadoModal, CerrarModal, DerivarModal } from '../components/EventoAccionModals'
 
 type Accion =
@@ -124,6 +124,7 @@ export function Dispatcher() {
                 {ev.numero_operativo}
               </button>
               <EstadoBadge codigo={ev.estado_codigo} nombre={ev.estado_nombre} />
+              <CanalAppVecinoBadge canalCodigo={ev.canal_codigo} />
               <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, color: 'var(--fg-1)' }}>
                 {ev.tipo_nombre}{ev.subtipo_nombre ? ` · ${ev.subtipo_nombre}` : ''}
               </span>
