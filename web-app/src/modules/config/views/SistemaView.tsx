@@ -11,18 +11,19 @@ interface Atajo {
 
 // Atajos a pantallas de catálogos/maestros que NO son ajustes booleanos del
 // sistema (viven en admin_tablas vanilla o en la pantalla de usuarios).
+// Usuarios va primero: es el único acceso a esa pantalla desde el menú.
 const ATAJOS: Atajo[] = [
-  {
-    icon: Landmark,
-    titulo: 'Municipios',
-    descripcion: 'Datos del/los municipios donde opera el sistema.',
-    href: 'frontend/admin_tablas.html?tabla=municipios',
-  },
   {
     icon: Users,
     titulo: 'Usuarios del sistema',
     descripcion: 'Alta, baja y edición de cuentas de usuario.',
     href: 'frontend/usuarios.html',
+  },
+  {
+    icon: Landmark,
+    titulo: 'Municipios',
+    descripcion: 'Datos del/los municipios donde opera el sistema.',
+    href: 'frontend/admin_tablas.html?tabla=municipios',
   },
   {
     icon: Database,
@@ -40,10 +41,8 @@ function irA(href: string, e: React.MouseEvent) {
 export function SistemaView() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
-      {/* Ajustes reales del sistema, agrupados y con controles tipados. */}
-      <ParametrosSistemaView />
-
-      {/* Accesos a catálogos/maestros (secundario). */}
+      {/* Accesos a catálogos/maestros — primero, para que Usuarios sea
+          alcanzable sin scrollear (es su único acceso desde el menú). */}
       <div>
         <div style={{
           fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.95rem',
@@ -85,6 +84,9 @@ export function SistemaView() {
         })}
         </div>
       </div>
+
+      {/* Ajustes reales del sistema, agrupados y con controles tipados. */}
+      <ParametrosSistemaView />
     </div>
   )
 }
