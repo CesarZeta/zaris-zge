@@ -590,11 +590,14 @@ async def reprogramar_turno(
             raise HTTPException(409, "El nuevo horario no esta dentro de la disponibilidad del recurso")
 
     # Solapamiento contra la ocupacion del mismo recurso (excluyendo la propia).
+    # CAST obligatorio: asyncpg no infiere el tipo de :io usado en "IS NULL"
+    # (AmbiguousParameterError -> 500; bug de Roy "Failed to fetch", 2026-06-11).
+    # Familia de feedback_asyncpg_extract_cast_date.
     solapado = await db.scalar(text("""
         SELECT 1 FROM ocupaciones
         WHERE activo = TRUE AND tipo_recurso = :tr AND id_recurso = :ir
           AND fecha = :f AND hora_inicio < :hf AND hora_fin > :hi
-          AND (:io IS NULL OR id_ocupacion <> :io)
+          AND (CAST(:io AS integer) IS NULL OR id_ocupacion <> CAST(:io AS integer))
         LIMIT 1
     """), {"tr": tipo_recurso, "ir": int(id_recurso), "f": fecha, "hi": hora_inicio, "hf": hora_fin,
            "io": turno["id_ocupacion"]})

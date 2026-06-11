@@ -14,6 +14,7 @@ const CLASE_LABEL: Record<ClasePrestacion, string> = {
 export function Prestaciones() {
   const push = useNotificationsStore((s) => s.push)
   const [fClase, setFClase] = useState<ClasePrestacion | ''>('')
+  const [fRecurso, setFRecurso] = useState('')
   const [fTexto, setFTexto] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editPrest, setEditPrest] = useState<TipoPrestacion | null>(null)
@@ -24,12 +25,30 @@ export function Prestaciones() {
   const eliminar = useEliminarPrestacion()
 
   const prestaciones = data ?? []
+
+  // Filtro por recurso (informe QA 2026-06, hallazgo 3): opciones derivadas de
+  // las prestaciones cargadas (§23 — no catálogos completos), client-side.
+  const recursos = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const p of prestaciones) {
+      const key = p.tipo_recurso === 'espacio' ? `espacio:${p.id_espacio}` : `agente:${p.id_agente}`
+      if (p.recurso_nombre) m.set(key, p.recurso_nombre)
+    }
+    return [...m.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label))
+  }, [prestaciones])
+
   const filtradas = useMemo(() => {
+    let res = prestaciones
+    if (fRecurso) {
+      res = res.filter((p) => (p.tipo_recurso === 'espacio' ? `espacio:${p.id_espacio}` : `agente:${p.id_agente}`) === fRecurso)
+    }
     const txt = fTexto.trim().toLowerCase()
-    if (!txt) return prestaciones
-    return prestaciones.filter((p) =>
-      [p.nombre, p.recurso_nombre, p.descripcion].filter(Boolean).join(' ').toLowerCase().includes(txt))
-  }, [prestaciones, fTexto])
+    if (txt) {
+      res = res.filter((p) =>
+        [p.nombre, p.recurso_nombre, p.descripcion].filter(Boolean).join(' ').toLowerCase().includes(txt))
+    }
+    return res
+  }, [prestaciones, fTexto, fRecurso])
 
   async function doBaja(p: TipoPrestacion) {
     setConfirmBaja(null)
@@ -67,6 +86,13 @@ export function Prestaciones() {
             <option value="">Todas</option>
             <option value="atencion">Atención de personas</option>
             <option value="reserva_espacio">Reserva de espacio</option>
+          </select>
+        </div>
+        <div style={field}>
+          <label style={lbl}>Recurso</label>
+          <select value={fRecurso} onChange={(e) => setFRecurso(e.target.value)} style={inp}>
+            <option value="">Todos</option>
+            {recursos.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
