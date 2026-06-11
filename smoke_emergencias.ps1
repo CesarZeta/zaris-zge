@@ -1,9 +1,13 @@
-# smoke_emergencias.ps1 - Smoke del modulo Emergencias Fase 3 (local).
-# Cubre las validaciones de cierre del plan PLAN_MODULO_EMERGENCIAS.md Fase 3:
+# smoke_emergencias.ps1 - Smoke del modulo Emergencias Fases 3 + 5 (local).
+# Cubre las validaciones de cierre del plan PLAN_MODULO_EMERGENCIAS.md:
 # contacto eventual, busqueda unificada, evento + numero EM-YYYY-NNNNNN,
-# FSM de estados, log append-only, promocion a BUC.
-# Uso: backend local corriendo en 127.0.0.1:8000 con mig 81-83 aplicadas.
+# FSM de estados, log append-only, promocion a BUC, scoping de operador
+# nivel 3 por subarea, y endpoint publico App Vecinos (Fase 5).
+# Uso: backend local corriendo en 127.0.0.1:8000 con mig 81-85 aplicadas.
 #   powershell -File smoke_emergencias.ps1
+# Requiere datos de QA (idempotentes, ver historial de sesion 2026-06-10):
+#   - usuario operadorcom@municipio.gob.ar (nivel 3, id_subarea=90 Policia, pass 123456)
+#   - vecino DNI 28547123 con ciudadano_credencial activada (pass 123456)
 
 $ErrorActionPreference = "Stop"
 $base = "http://127.0.0.1:8000"
@@ -182,9 +186,82 @@ Assert (($lista | Where-Object { $_.estado_codigo -ne 'RESUELTO' }).Count -eq 0)
 $ev4c = Invoke-Api PATCH "/api/v1/emergencias/eventos/$($ev4.id_emergencia_evento)" $H @{ id_prioridad = ($subPol[0].id_prioridad_default); referencia_ubicacion = "frente a la plaza" }
 Assert ($ev4c.referencia_ubicacion -eq 'frente a la plaza') "PATCH campos editables"
 
+# ---- scoping nivel 3: operador con subarea Policia (90) ----
+$loginOp = Invoke-Api POST "/api/v1/auth/login" $null @{ email = "operadorcom@municipio.gob.ar"; password = "123456" }
+$HOp = @{ Authorization = "Bearer $($loginOp.access_token)" }
+Assert ($null -ne $loginOp.access_token) "login operador COM (nivel 3, subarea Policia)"
+
+# evento DC pendiente (creado por admin) para probar los 403 del operador
+$evDc = Invoke-Api POST "/api/v1/emergencias/eventos" $H @{
+    id_subarea = 91; id_tipo = $tipoDc.id_emergencia_tipo
+    id_canal_ingreso = $canalTel.id_emergencia_canal_ingreso
+    denunciante_anonimo = $true
+    direccion_evento = "Calle 122 y 60, Berisso"
+}
+$abOp = Invoke-Api GET "/api/v1/emergencias/eventos/abiertos" $HOp $null
+Assert (@($abOp).Count -ge 1 -and @($abOp | Where-Object { $_.id_subarea -ne 90 }).Count -eq 0) "operador: /abiertos solo muestra su subarea"
+$listaOp = Invoke-Api GET "/api/v1/emergencias/eventos?id_subarea=91" $HOp $null
+Assert (@($listaOp).Count -eq 0) "operador: pedir explicitamente otra subarea -> vacio"
+$code = Get-StatusCode { Invoke-Api GET "/api/v1/emergencias/eventos/$($evDc.id_emergencia_evento)" $HOp $null }
+Assert ($code -eq 403) "operador: detalle de evento de otra subarea -> 403"
+$code = Get-StatusCode { Invoke-Api POST "/api/v1/emergencias/eventos/$($evDc.id_emergencia_evento)/cambiar-estado" $HOp @{ nuevo_estado = "EN_PREPARACION" } }
+Assert ($code -eq 403) "operador: mutar evento de otra subarea -> 403"
+$code = Get-StatusCode { Invoke-Api GET "/api/v1/emergencias/eventos/$($evDc.id_emergencia_evento)/log" $HOp $null }
+Assert ($code -eq 403) "operador: log de evento de otra subarea -> 403"
+$evP = Invoke-Api POST "/api/v1/emergencias/eventos/$($ev4.id_emergencia_evento)/cambiar-estado" $HOp @{ nuevo_estado = "EN_PREPARACION"; observaciones = "tomado por operador COM" }
+Assert ($evP.estado_codigo -eq 'EN_PREPARACION') "operador: opera evento de SU subarea OK"
+# admin sigue viendo todo (exento de scope)
+$abAdm = Invoke-Api GET "/api/v1/emergencias/eventos/abiertos" $H $null
+Assert (@($abAdm | Where-Object { $_.id_subarea -eq 91 }).Count -ge 1) "admin: sigue viendo ambas subareas"
+# cleanup: cerrar el evento DC residual
+Invoke-Api POST "/api/v1/emergencias/eventos/$($evDc.id_emergencia_evento)/cerrar" $H @{ veracidad = "NO_VERIFICABLE"; terminal_positivo = $false; observaciones_cierre = "cleanup smoke" } | Out-Null
+
+# ---- Fase 5: endpoint publico App Vecinos ----
+$loginVec = Invoke-Api POST "/api/v1/publico/auth/login" $null @{ dni = "28547123"; password = "123456" }
+$HVec = @{ Authorization = "Bearer $($loginVec.access_token)" }
+Assert ($null -ne $loginVec.access_token) "login vecino (JWT scope publico)"
+$idCiuVec = $loginVec.ciudadano.id_ciudadano
+
+$tiposPub = Invoke-Api GET "/api/v1/publico/emergencias/tipos" $HVec $null
+Assert (@($tiposPub).Count -eq 50) "vecino: catalogo publico de tipos (50)"
+$tipoIncendio = $tiposPub | Where-Object { $_.codigo -eq 'INCENDIO' }
+$subtiposPub = Invoke-Api GET "/api/v1/publico/emergencias/tipos/$($tipoIncendio.id_emergencia_tipo)/subtipos" $HVec $null
+$stForestal = $subtiposPub | Where-Object { $_.codigo -eq 'FORESTAL' }
+Assert ($null -ne $stForestal) "vecino: subtipos publicos del tipo"
+
+# reportar emergencia (canal/operador/denunciante NO negociables desde el body)
+$evVec = Invoke-Api POST "/api/v1/publico/emergencias/eventos" $HVec @{
+    id_tipo = $tipoIncendio.id_emergencia_tipo
+    id_subtipo = $stForestal.id_emergencia_subtipo
+    direccion_evento = "Camino Gral Belgrano y 514"
+    descripcion = "Humo visible desde la ruta, reporte del vecino"
+    id_canal_ingreso = $canalTel.id_emergencia_canal_ingreso   # debe ser IGNORADO
+}
+Assert ($evVec.numero_operativo -match '^EM-\d{4}-\d{6}$' -and $evVec.estado_codigo -eq 'PENDIENTE') "vecino: POST publico crea evento PENDIENTE"
+$evVecAdm = Invoke-Api GET "/api/v1/emergencias/eventos/$($evVec.id_emergencia_evento)" $H $null
+Assert ($evVecAdm.canal_codigo -eq 'APP_VECINO') "evento publico: canal forzado APP_VECINO (ignora el del body)"
+Assert ($null -eq $evVecAdm.id_operador_receptor) "evento publico: sin operador receptor"
+Assert ($evVecAdm.id_ciudadano_buc -eq $idCiuVec) "evento publico: denunciante = vecino del token"
+$logVec = Invoke-Api GET "/api/v1/emergencias/eventos/$($evVec.id_emergencia_evento)/log" $H $null
+Assert ($logVec[0].tipo_accion -eq 'CREACION' -and $null -eq $logVec[0].id_usuario -and $logVec[0].payload_json.origen -eq 'app_vecinos') "log CREACION con id_usuario NULL + vecino en payload"
+
+$misEv = Invoke-Api GET "/api/v1/publico/emergencias/eventos" $HVec $null
+Assert (@($misEv | Where-Object { $_.numero_operativo -eq $evVec.numero_operativo }).Count -eq 1) "vecino: GET mis eventos lo incluye"
+Assert ($null -eq ($misEv[0].PSObject.Properties.Name | Where-Object { $_ -in @('id_operador_receptor','prioridad_codigo','organismo_codigo') })) "vecino: mis eventos sin datos de triage interno"
+
+# aislamiento de scopes
+$code = Get-StatusCode { Invoke-Api GET "/api/v1/emergencias/eventos/abiertos" $HVec $null }
+Assert ($code -eq 401) "JWT publico en endpoint de agente -> 401"
+$code = Get-StatusCode { Invoke-Api POST "/api/v1/publico/emergencias/eventos" $H @{ id_tipo = $tipoIncendio.id_emergencia_tipo; direccion_evento = "x y z" } }
+Assert ($code -eq 401) "JWT agente en endpoint publico -> 401"
+# cleanup: cerrar el evento del vecino para no acumular abiertos
+Invoke-Api POST "/api/v1/emergencias/eventos/$($evVec.id_emergencia_evento)/cerrar" $H @{ veracidad = "NO_VERIFICABLE"; terminal_positivo = $false; observaciones_cierre = "cleanup smoke" } | Out-Null
+
 # ---- sin JWT ----
 $code = Get-StatusCode { Invoke-RestMethod -Uri "$base/api/v1/emergencias/eventos" -TimeoutSec 10 }
 Assert ($code -eq 401) "GET /eventos sin JWT -> 401"
+$code = Get-StatusCode { Invoke-RestMethod -Uri "$base/api/v1/publico/emergencias/eventos" -TimeoutSec 10 }
+Assert ($code -eq 401) "GET publico sin JWT -> 401"
 
 Write-Host ""
 Write-Host "==== RESULTADO: $pass OK / $fail FAIL ===="

@@ -41,6 +41,7 @@ from app.api.routes.publico_alta import router as publico_alta_router
 from app.api.routes.publico_identidad import router as publico_identidad_router
 from app.api.routes.publico_reclamos import router as publico_reclamos_router
 from app.api.routes.publico_portal import router as publico_portal_router
+from app.api.routes.publico_emergencias import router as publico_emergencias_router
 from app.init_db import create_tables
 
 # ── Logging ──────────────────────────────────────────────────────
@@ -150,6 +151,8 @@ app.include_router(publico_alta_router)
 app.include_router(publico_identidad_router)
 app.include_router(publico_reclamos_router)
 app.include_router(publico_portal_router)
+# Emergencias del vecino (App Vecinos, scope publico — plan COM Fase 5)
+app.include_router(publico_emergencias_router)
 # Encuestas publicas (form del ciudadano, sin JWT, rate-limited por IP)
 app.include_router(encuestas_publico_router)
 

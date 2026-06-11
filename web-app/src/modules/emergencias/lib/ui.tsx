@@ -41,6 +41,26 @@ export function EstadoBadge({ codigo, nombre }: { codigo: string; nombre?: strin
   )
 }
 
+/** Marca de origen App Vecinos (plan Fase 5): el evento NO entro por un
+ * operador del COM sino por el reporte del vecino desde la PWA. */
+export function CanalAppVecinoBadge({ canalCodigo }: { canalCodigo?: string | null }) {
+  if (canalCodigo !== 'APP_VECINO') return null
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 5,
+      fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 700,
+      color: 'var(--zaris-cream)', background: 'var(--fg-1)',
+      borderRadius: 999, padding: '3px 10px', letterSpacing: '0.05em',
+      textTransform: 'uppercase', whiteSpace: 'nowrap',
+    }}>
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect width="14" height="20" x="5" y="2" rx="2" ry="2" /><path d="M12 18h.01" />
+      </svg>
+      App Vecinos
+    </span>
+  )
+}
+
 export function formatFechaHora(iso?: string | null): string {
   if (!iso) return '—'
   const d = new Date(iso)

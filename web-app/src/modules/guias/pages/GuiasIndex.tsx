@@ -1,4 +1,4 @@
-import { FileText, ClipboardList, Settings, BarChart3, Clock, Ticket, UserPlus, ExternalLink } from 'lucide-react'
+import { FileText, ClipboardList, Settings, BarChart3, Clock, Ticket, UserPlus, Siren, ExternalLink } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 interface Guia {
@@ -11,6 +11,14 @@ interface Guia {
 }
 
 const GUIAS: Guia[] = [
+  {
+    titulo: 'EMERGENCIAS (COM)',
+    descripcion: 'Cómo atender eventos de emergencia desde el COM: recepción del llamado, triage por prioridad, despacho con tiempos de SLA, derivación a organismos externos, cierre con veracidad y reportes que llegan desde la App Vecinos.',
+    icon: Siren,
+    htmlName: 'manual_emergencias.html',
+    audiencia: 'Operador o superior',
+    tags: ['Operativo', '10 capturas', '10 secciones'],
+  },
   {
     titulo: 'ALTA DE CIUDADANOS',
     descripcion: 'Las dos vías de alta de un vecino: por un agente (desde Contactos) y autogestión del propio ciudadano. Cómo el alta crea la cuenta de App Vecinos y el correo de activación, y el botón "Nuevo" desde reclamos, turnos y entradas. Sirve también para asesorar al vecino que se autogestiona.',
