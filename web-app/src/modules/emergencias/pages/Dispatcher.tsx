@@ -1,7 +1,9 @@
 // Tablero del dispatcher (plan 5.2): KPIs arriba (abiertos + por subarea +
 // por estado, con rango temporal), mapa de eventos coloreado por estado,
 // lista de abiertos ordenada por prioridad con acciones rapidas y polling 30s.
-import { useMemo, useState } from 'react'
+// Modo "Maximizar tablero": mapa a pantalla completa del modulo con las
+// tarjetas KPI flotando arriba (pedido del usuario 2026-06-11).
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, EmptyState, Skeleton } from '../../../ui'
 import { useNotificationsStore } from '../../../stores/notifications'
@@ -16,7 +18,7 @@ import {
 import type { EmergenciaEvento } from '../types'
 import { CanalAppVecinoBadge, EstadoBadge, PrioridadPill, formatFechaHora, transcurridoDesde, useAhora } from '../lib/ui'
 import { CambiarEstadoModal, CerrarModal, DerivarModal } from '../components/EventoAccionModals'
-import { StatsEmergenciasBar } from '../components/StatsEmergenciasBar'
+import { RANGOS, StatsEmergenciasBar } from '../components/StatsEmergenciasBar'
 import { EmergenciasMap } from '../components/EmergenciasMap'
 
 type Accion =
@@ -34,7 +36,16 @@ export function Dispatcher() {
   const [fEstado, setFEstado] = useState<string>('')
   const [fNro, setFNro] = useState<string>('')
   const [horasKpi, setHorasKpi] = useState<number | undefined>(24)
+  const [fullscreen, setFullscreen] = useState(false)
   const [accion, setAccion] = useState<Accion | null>(null)
+
+  // Esc sale del modo maximizado.
+  useEffect(() => {
+    if (!fullscreen) return
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') setFullscreen(false) }
+    document.addEventListener('keydown', h)
+    return () => document.removeEventListener('keydown', h)
+  }, [fullscreen])
 
   const abiertos = useEventosAbiertos({ id_subarea: fSubarea === '' ? undefined : fSubarea })
   const tipos = useTiposEmergencia()
@@ -88,23 +99,69 @@ export function Dispatcher() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {/* KPIs (abiertos en rojo + subareas + estados, rango configurable) */}
+      {/* KPIs (abiertos en rojo + subareas + estados) */}
       <StatsEmergenciasBar
         horas={horasKpi}
-        onHoras={setHorasKpi}
         estadoActivo={fEstado}
         onSelectEstado={setFEstado}
         subareaActiva={fSubarea}
         onSelectSubarea={setFSubarea}
       />
 
-      {/* mapa de eventos abiertos, coloreado por estado; click abre el evento */}
-      <div style={mapaWrap}>
-        <EmergenciasMap
-          eventos={eventos}
-          onMarkerClick={(ev) => navigate(`/emergencias/evento/${ev.id_emergencia_evento}`)}
-        />
+      {/* periodo de los totales + maximizar, debajo de las tarjetas */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <label style={{ fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 600, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          Período de los totales
+        </label>
+        <select
+          style={selectStyle}
+          value={horasKpi ?? ''}
+          onChange={(e) => setHorasKpi(e.target.value === '' ? undefined : Number(e.target.value))}
+        >
+          {RANGOS.map((r) => <option key={r.label} value={r.horas ?? ''}>{r.label}</option>)}
+        </select>
+        <Button style={{ marginLeft: 'auto' }} onClick={() => setFullscreen(true)}>
+          Maximizar tablero
+        </Button>
       </div>
+
+      {/* mapa de eventos abiertos, coloreado por estado; click abre el evento */}
+      {!fullscreen && (
+        <div style={mapaWrap}>
+          <EmergenciasMap
+            eventos={eventos}
+            onMarkerClick={(ev) => navigate(`/emergencias/evento/${ev.id_emergencia_evento}`)}
+          />
+        </div>
+      )}
+
+      {/* modo maximizado: mapa a pantalla completa + tarjetas flotantes */}
+      {fullscreen && (
+        <div style={fsOverlay}>
+          <EmergenciasMap
+            eventos={eventos}
+            onMarkerClick={(ev) => navigate(`/emergencias/evento/${ev.id_emergencia_evento}`)}
+          />
+          <div style={fsCardsWrap}>
+            <div style={{ pointerEvents: 'auto', flex: 1, minWidth: 0 }}>
+              <StatsEmergenciasBar
+                horas={horasKpi}
+                estadoActivo={fEstado}
+                onSelectEstado={setFEstado}
+                subareaActiva={fSubarea}
+                onSelectSubarea={setFSubarea}
+              />
+            </div>
+            <Button
+              variant="accent"
+              style={{ pointerEvents: 'auto', flexShrink: 0 }}
+              onClick={() => setFullscreen(false)}
+            >
+              Salir de pantalla completa
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* filtros */}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -240,4 +297,15 @@ const nroBtn: React.CSSProperties = {
 const mapaWrap: React.CSSProperties = {
   position: 'relative', height: 300, borderRadius: 12, overflow: 'hidden',
   border: '1px solid var(--border-primary)',
+}
+// Overlay del modo maximizado: cubre el lienzo del modulo (en prod, el area
+// del iframe — sidebar y topbar del shell quedan visibles, s14).
+const fsOverlay: React.CSSProperties = {
+  position: 'fixed', inset: 0, zIndex: 5000, background: 'var(--zaris-cream)',
+}
+// Tarjetas flotando sobre el mapa: el wrapper no captura pointer (el mapa se
+// arrastra entre tarjetas); cada hijo interactivo rehabilita pointerEvents.
+const fsCardsWrap: React.CSSProperties = {
+  position: 'absolute', top: 12, left: 12, right: 12, zIndex: 1000,
+  display: 'flex', gap: 12, alignItems: 'flex-start', pointerEvents: 'none',
 }
