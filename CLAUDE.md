@@ -929,6 +929,9 @@ Para listados de tablas padre cuyo dataset cabe en pantalla (ej: ≤ 50 áreas, 
 ### Modal anidado para alta inline
 Cuando un form requiere referenciar una entidad que podría no existir aún (ej: ciudadano en reclamo), **modal anidado completo** con todos los campos requeridos por el `Create` schema. Z-index mayor al modal padre. ESC y click-fuera priorizan cerrar el modal anidado primero. No "form rápido relajado" — respetar siempre el schema completo.
 
+### Modales de mutación: cerrar AL CONFIRMAR, no en `onSuccess`
+La latencia Railway↔Supabase (~2s, §27) hace que un modal que espera el `onSuccess` para cerrarse se perciba como "apreté Guardar y no hace nada" (queja real del test de uso humano de Emergencias, 2026-06-11). Patrón obligatorio: al confirmar, **cerrar el modal inmediatamente** y disparar la mutación; el resultado (éxito o error) llega por toast. Además, **resetear los campos del modal al abrir** (`useEffect(open)`) — los modales viven montados con `open=false` y un cancelar deja texto residual para el próximo uso (variante de §29). Implementado en los modales de Emergencias (`EventoAccionModals.tsx`, Dispatcher y Detalle); replicar en módulos nuevos. Excepción razonable: si el modal necesita datos de la respuesta para decidir qué mostrar (no para un toast), evaluar caso a caso.
+
 ### Identificador técnico se autocompleta desde la etiqueta visible (auto-slug)
 Cuando un form pide al usuario cargar **un identificador técnico** (snake_case, código, slug — cosas que el usuario municipal no conoce) **junto a** una etiqueta visible/legible, el identificador **debe autocompletarse desde la etiqueta** y no exigir que el usuario lo tipee a mano.
 
