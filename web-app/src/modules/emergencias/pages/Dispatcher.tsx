@@ -1,5 +1,6 @@
-// Tablero del dispatcher (plan 5.2): eventos abiertos ordenados por prioridad
-// y fecha, tiempo transcurrido en vivo, acciones rapidas y polling de 30s.
+// Tablero del dispatcher (plan 5.2): KPIs arriba (abiertos + por subarea +
+// por estado, con rango temporal), mapa de eventos coloreado por estado,
+// lista de abiertos ordenada por prioridad con acciones rapidas y polling 30s.
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, EmptyState, Skeleton } from '../../../ui'
@@ -10,12 +11,13 @@ import {
   useDerivarEvento,
   useEstadosEmergencia,
   useEventosAbiertos,
-  useMarcarEnSitio,
   useTiposEmergencia,
 } from '../hooks/useEmergencias'
 import type { EmergenciaEvento } from '../types'
 import { CanalAppVecinoBadge, EstadoBadge, PrioridadPill, formatFechaHora, transcurridoDesde, useAhora } from '../lib/ui'
 import { CambiarEstadoModal, CerrarModal, DerivarModal } from '../components/EventoAccionModals'
+import { StatsEmergenciasBar } from '../components/StatsEmergenciasBar'
+import { EmergenciasMap } from '../components/EmergenciasMap'
 
 type Accion =
   | { tipo: 'estado'; destino: string; evento: EmergenciaEvento }
@@ -30,6 +32,8 @@ export function Dispatcher() {
   const [fSubarea, setFSubarea] = useState<number | ''>('')
   const [fPrioridad, setFPrioridad] = useState<string>('')
   const [fEstado, setFEstado] = useState<string>('')
+  const [fNro, setFNro] = useState<string>('')
+  const [horasKpi, setHorasKpi] = useState<number | undefined>(24)
   const [accion, setAccion] = useState<Accion | null>(null)
 
   const abiertos = useEventosAbiertos({ id_subarea: fSubarea === '' ? undefined : fSubarea })
@@ -39,8 +43,7 @@ export function Dispatcher() {
   const cambiar = useCambiarEstado()
   const derivar = useDerivarEvento()
   const cerrar = useCerrarEvento()
-  const enSitio = useMarcarEnSitio()
-  const busy = cambiar.isPending || derivar.isPending || cerrar.isPending || enSitio.isPending
+  const busy = cambiar.isPending || derivar.isPending || cerrar.isPending
 
   const subareas = useMemo(() => {
     const m = new Map<number, string>()
@@ -52,23 +55,29 @@ export function Dispatcher() {
     let lista = abiertos.data ?? []
     if (fPrioridad) lista = lista.filter((e) => e.prioridad_codigo === fPrioridad)
     if (fEstado) lista = lista.filter((e) => e.estado_codigo === fEstado)
+    if (fNro.trim()) {
+      const q = fNro.trim().toLowerCase()
+      lista = lista.filter((e) => e.numero_operativo.toLowerCase().includes(q))
+    }
     return lista
-  }, [abiertos.data, fPrioridad, fEstado])
+  }, [abiertos.data, fPrioridad, fEstado, fNro])
 
   const onError = (e: unknown) =>
     push({ kind: 'error', title: 'No se pudo aplicar la acción', body: e instanceof Error ? e.message : String(e) })
 
   const ejecutarAccion = (obsOrBody?: string | { veracidad: string; terminal_positivo: boolean; observaciones_cierre?: string }, idOrg?: number) => {
     if (!accion) return
-    const id = accion.evento.id_emergencia_evento
-    const done = (msg: string) => () => {
-      push({ kind: 'success', title: msg, body: accion.evento.numero_operativo })
-      setAccion(null)
-    }
-    if (accion.tipo === 'estado') {
-      cambiar.mutate({ id, nuevo_estado: accion.destino, observaciones: obsOrBody as string | undefined },
-        { onSuccess: done(`Evento ${accion.destino.replace(/_/g, ' ')}`), onError })
-    } else if (accion.tipo === 'derivar') {
+    const acc = accion
+    // Cerrar el modal YA: la mutacion tarda ~2s (latencia Railway, s27) y dejar
+    // el modal abierto hasta el onSuccess se percibe como "no cierra" (QA humano
+    // 2026-06-11). El resultado se notifica por toast.
+    setAccion(null)
+    const id = acc.evento.id_emergencia_evento
+    const done = (msg: string) => () => push({ kind: 'success', title: msg, body: acc.evento.numero_operativo })
+    if (acc.tipo === 'estado') {
+      cambiar.mutate({ id, nuevo_estado: acc.destino, observaciones: obsOrBody as string | undefined },
+        { onSuccess: done(`Evento ${acc.destino.replace(/_/g, ' ')}`), onError })
+    } else if (acc.tipo === 'derivar') {
       derivar.mutate({ id, id_organismo: idOrg as number, observaciones: obsOrBody as string | undefined },
         { onSuccess: done('Evento derivado'), onError })
     } else {
@@ -78,9 +87,31 @@ export function Dispatcher() {
   }
 
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* KPIs (abiertos en rojo + subareas + estados, rango configurable) */}
+      <StatsEmergenciasBar
+        horas={horasKpi}
+        onHoras={setHorasKpi}
+        estadoActivo={fEstado}
+        onSelectEstado={setFEstado}
+      />
+
+      {/* mapa de eventos abiertos, coloreado por estado; click abre el evento */}
+      <div style={mapaWrap}>
+        <EmergenciasMap
+          eventos={eventos}
+          onMarkerClick={(ev) => navigate(`/emergencias/evento/${ev.id_emergencia_evento}`)}
+        />
+      </div>
+
       {/* filtros */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input
+          style={{ ...selectStyle, width: 180, fontFamily: 'var(--font-mono)' }}
+          value={fNro}
+          onChange={(e) => setFNro(e.target.value)}
+          placeholder="Nº operativo (EM-…)"
+        />
         <select style={selectStyle} value={fSubarea} onChange={(e) => setFSubarea(e.target.value ? Number(e.target.value) : '')}>
           <option value="">Todas las subáreas</option>
           {subareas.map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}
@@ -97,10 +128,9 @@ export function Dispatcher() {
             <option key={s.codigo} value={s.codigo}>{s.nombre}</option>
           ))}
         </select>
-        <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
-          {eventos.length} abiertos · refresco cada 30s
-        </span>
-        <Button variant="accent" onClick={() => navigate('/emergencias/recepcion')}>+ Recibir llamado</Button>
+        <Button variant="accent" style={{ marginLeft: 'auto' }} onClick={() => navigate('/emergencias/recepcion')}>
+          + Recibir llamado
+        </Button>
       </div>
 
       {abiertos.isLoading && <Skeleton height={220} />}
@@ -147,12 +177,12 @@ export function Dispatcher() {
                 <Button onClick={() => setAccion({ tipo: 'estado', destino: 'EN_CAMINO', evento: ev })}>En camino</Button>
               )}
               {(ev.estado_codigo === 'EN_CAMINO' || ev.estado_codigo === 'DERIVADO') && (
-                <Button disabled={busy} onClick={() =>
-                  enSitio.mutate(ev.id_emergencia_evento, {
-                    onSuccess: () => push({ kind: 'success', title: 'Arribo registrado', body: ev.numero_operativo }),
-                    onError,
-                  })
-                }>En sitio</Button>
+                // EN_SITIO tambien abre el modal de observaciones (QA humano
+                // 2026-06-11): va por cambiar-estado, que setea fecha_hora_arribo
+                // igual que marcar-en-sitio.
+                <Button disabled={busy} onClick={() => setAccion({ tipo: 'estado', destino: 'EN_SITIO', evento: ev })}>
+                  En sitio
+                </Button>
               )}
               {ev.estado_codigo !== 'DERIVADO' && (
                 <Button onClick={() => setAccion({ tipo: 'derivar', evento: ev })}>Derivar</Button>
@@ -204,4 +234,8 @@ const nroBtn: React.CSSProperties = {
   fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700,
   color: 'var(--zaris-orange)', background: 'transparent', border: 'none',
   cursor: 'pointer', padding: 0, textDecoration: 'underline',
+}
+const mapaWrap: React.CSSProperties = {
+  position: 'relative', height: 300, borderRadius: 12, overflow: 'hidden',
+  border: '1px solid var(--border-primary)',
 }

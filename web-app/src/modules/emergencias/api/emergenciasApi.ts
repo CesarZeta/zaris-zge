@@ -14,6 +14,7 @@ import type {
   EmergenciaTipo,
   EventoCreateBody,
   ListarEventosFiltros,
+  StatsEmergencias,
 } from '../types'
 
 const P = '/api/v1/emergencias'
@@ -49,6 +50,8 @@ export const crearEvento = (body: EventoCreateBody) =>
   api.post<EmergenciaEvento>(`${P}/eventos`, body)
 export const listarEventosAbiertos = (params: { id_subarea?: number; id_prioridad?: number } = {}) =>
   api.get<EmergenciaEvento[]>(`${P}/eventos/abiertos`, { params })
+export const statsEventos = (horas?: number) =>
+  api.get<StatsEmergencias>(`${P}/eventos/stats`, { params: { horas } })
 export const listarEventos = (filtros: ListarEventosFiltros = {}) =>
   api.get<EmergenciaEvento[]>(`${P}/eventos`, { params: { ...filtros } })
 export const detalleEvento = (id: number) =>

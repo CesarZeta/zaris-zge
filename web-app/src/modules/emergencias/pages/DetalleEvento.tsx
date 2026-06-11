@@ -12,7 +12,6 @@ import {
   useDerivarEvento,
   useEventoDetalle,
   useEventoLog,
-  useMarcarEnSitio,
   usePromoverABuc,
 } from '../hooks/useEmergencias'
 import type { ContactoEventual } from '../types'
@@ -41,10 +40,9 @@ export function DetalleEvento() {
   const cambiar = useCambiarEstado()
   const derivar = useDerivarEvento()
   const cerrar = useCerrarEvento()
-  const enSitio = useMarcarEnSitio()
   const agregarNota = useAgregarNota()
   const promover = usePromoverABuc()
-  const busy = cambiar.isPending || derivar.isPending || cerrar.isPending || enSitio.isPending || agregarNota.isPending || promover.isPending
+  const busy = cambiar.isPending || derivar.isPending || cerrar.isPending || agregarNota.isPending || promover.isPending
 
   if (detalle.isLoading) return <Skeleton height={300} />
   if (detalle.isError || !detalle.data) {
@@ -55,10 +53,10 @@ export function DetalleEvento() {
 
   const onError = (e: unknown) =>
     push({ kind: 'error', title: 'No se pudo aplicar la acción', body: e instanceof Error ? e.message : String(e) })
-  const ok = (titulo: string) => () => {
-    push({ kind: 'success', title: titulo, body: ev.numero_operativo })
-    setModal(null)
-  }
+  // Los modales se cierran AL CONFIRMAR (no en onSuccess): la mutacion tarda
+  // ~2s (latencia Railway) y dejarlos abiertos se percibe como "no cierra"
+  // (QA humano 2026-06-11). El resultado llega por toast.
+  const ok = (titulo: string) => () => push({ kind: 'success', title: titulo, body: ev.numero_operativo })
 
   const abrirEstado = (destino: string) => { setDestinoEstado(destino); setModal('estado') }
 
@@ -187,7 +185,9 @@ export function DetalleEvento() {
             {estado === 'PENDIENTE' && <Button onClick={() => abrirEstado('EN_PREPARACION')}>Pasar a EN PREPARACIÓN</Button>}
             {estado === 'EN_PREPARACION' && <Button onClick={() => abrirEstado('EN_CAMINO')}>Despachar (EN CAMINO)</Button>}
             {(estado === 'EN_CAMINO' || estado === 'DERIVADO') && (
-              <Button disabled={busy} onClick={() => enSitio.mutate(idEvento, { onSuccess: ok('Arribo registrado'), onError })}>
+              // EN_SITIO abre el modal de observaciones (QA humano 2026-06-11):
+              // va por cambiar-estado, que setea fecha_hora_arribo igual.
+              <Button disabled={busy} onClick={() => abrirEstado('EN_SITIO')}>
                 Marcar EN SITIO
               </Button>
             )}
@@ -214,13 +214,13 @@ export function DetalleEvento() {
         destino={destinoEstado}
         titulo={`${ev.numero_operativo} → ${destinoEstado.replace(/_/g, ' ')}`}
         busy={busy}
-        onConfirm={(obs) => cambiar.mutate({ id: idEvento, nuevo_estado: destinoEstado, observaciones: obs }, { onSuccess: ok('Estado actualizado'), onError })}
+        onConfirm={(obs) => { setModal(null); cambiar.mutate({ id: idEvento, nuevo_estado: destinoEstado, observaciones: obs }, { onSuccess: ok('Estado actualizado'), onError }) }}
         onCancel={() => setModal(null)}
       />
       <DerivarModal
         open={modal === 'derivar'}
         busy={busy}
-        onConfirm={(idOrg, obs) => derivar.mutate({ id: idEvento, id_organismo: idOrg, observaciones: obs }, { onSuccess: ok('Evento derivado'), onError })}
+        onConfirm={(idOrg, obs) => { setModal(null); derivar.mutate({ id: idEvento, id_organismo: idOrg, observaciones: obs }, { onSuccess: ok('Evento derivado'), onError }) }}
         onCancel={() => setModal(null)}
       />
       <CerrarModal
@@ -228,7 +228,7 @@ export function DetalleEvento() {
         busy={busy}
         permiteResuelto={['EN_SITIO', 'DERIVADO'].includes(estado)}
         permiteDesestimado={['PENDIENTE', 'EN_PREPARACION'].includes(estado)}
-        onConfirm={(body) => cerrar.mutate({ id: idEvento, ...body }, { onSuccess: ok('Evento cerrado'), onError })}
+        onConfirm={(body) => { setModal(null); cerrar.mutate({ id: idEvento, ...body }, { onSuccess: ok('Evento cerrado'), onError }) }}
         onCancel={() => setModal(null)}
       />
       <Modal
@@ -239,9 +239,10 @@ export function DetalleEvento() {
         footer={
           <>
             <Button variant="ghost" onClick={() => setModal(null)}>Cancelar</Button>
-            <Button variant="accent" disabled={busy || !nota.trim()} onClick={() =>
+            <Button variant="accent" disabled={busy || !nota.trim()} onClick={() => {
+              setModal(null)
               agregarNota.mutate({ id: idEvento, observaciones: nota.trim() }, { onSuccess: () => { ok('Nota agregada')(); setNota('') }, onError })
-            }>Guardar nota</Button>
+            }}>Guardar nota</Button>
           </>
         }
       >
@@ -263,18 +264,17 @@ export function DetalleEvento() {
             <Button
               variant="accent"
               disabled={busy || !prom.apellido.trim() || !prom.nombre.trim() || !prom.email.trim()}
-              onClick={() =>
+              onClick={() => {
+                setModal(null)
                 promover.mutate(
                   { id: ev.id_contacto_eventual as number, apellido: prom.apellido.trim(), nombre: prom.nombre.trim(), email: prom.email.trim() },
                   {
-                    onSuccess: (r) => {
-                      push({ kind: 'success', title: r.ciudadano_creado ? 'Ciudadano creado en la BUC' : 'Contacto vinculado a la BUC', body: `${r.eventos_reasignados} evento(s) reasignado(s)` })
-                      setModal(null)
-                    },
+                    onSuccess: (r) =>
+                      push({ kind: 'success', title: r.ciudadano_creado ? 'Ciudadano creado en la BUC' : 'Contacto vinculado a la BUC', body: `${r.eventos_reasignados} evento(s) reasignado(s)` }),
                     onError,
                   },
                 )
-              }
+              }}
             >
               Promover
             </Button>
