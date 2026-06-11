@@ -1,12 +1,13 @@
 // Recepcion de llamado (plan 5.1): carga rapida con cronometro, identificacion
 // del denunciante (anonimo / BUC / contacto eventual / alta al vuelo) y datos
 // del evento con prioridad autocompletada por tipo/subtipo.
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../../../ui'
 import { AddressSearch } from '../../../ui/AddressSearch'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { GeocodingSearch } from '../../reclamos/components/GeocodingSearch'
+import { MapaPicker } from '../../reclamos/components/MapaPicker'
 import { buscarDenunciante } from '../api/emergenciasApi'
 import {
   useCanalesEmergencia,
@@ -16,7 +17,7 @@ import {
   useSubtiposDeTipo,
   useTiposEmergencia,
 } from '../hooks/useEmergencias'
-import type { CiudadanoBucMatch, ContactoEventual, DenuncianteBusqueda } from '../types'
+import type { CiudadanoBucMatch, ContactoEventual, DenuncianteBusqueda, EmergenciaTipo } from '../types'
 import { useCronometro } from '../lib/ui'
 
 type DenuncianteSel =
@@ -56,6 +57,7 @@ export function Recepcion() {
   const [referencia, setReferencia] = useState('')
   const [obs, setObs] = useState('')
   const [grabarAudio, setGrabarAudio] = useState(false)
+  const [intentoGuardar, setIntentoGuardar] = useState(false)
   const subtipos = useSubtiposDeTipo(idTipo === '' ? null : idTipo)
   const crear = useCrearEvento()
 
@@ -118,18 +120,37 @@ export function Recepcion() {
   }
 
   const canalLlamada = (canales.data ?? []).find((c) => c.codigo === 'LLAMADA_TEL')
-  const minimosCompletos =
-    idSubarea !== '' && idTipo !== '' && prioridadEfectiva !== '' && direccion.trim().length >= 3 &&
-    (anonimo || sel != null) && canalLlamada != null
+
+  // Validacion secuencial con avisos (QA humano 2026-06-11): el bloque Evento
+  // se habilita recien con el denunciante resuelto, y el boton Crear NUNCA
+  // queda deshabilitado en silencio — al click lista que falta.
+  const bloque1Completo = anonimo || sel != null
+  const faltantes = useMemo(() => {
+    const f: string[] = []
+    if (!bloque1Completo) f.push('Denunciante: seleccioná un ciudadano o contacto, o marcá "Denunciante anónimo"')
+    if (idSubarea === '') f.push('Subárea del evento')
+    if (idTipo === '') f.push('Tipo de emergencia')
+    if (prioridadEfectiva === '') f.push('Prioridad')
+    if (direccion.trim().length < 3) f.push('Dirección del evento')
+    return f
+  }, [bloque1Completo, idSubarea, idTipo, prioridadEfectiva, direccion])
 
   const crearEvento = () => {
-    if (!minimosCompletos || !canalLlamada) return
+    setIntentoGuardar(true)
+    if (faltantes.length > 0) {
+      push({ kind: 'error', title: 'Faltan datos para crear el evento', body: faltantes.join(' · ') })
+      return
+    }
+    if (!canalLlamada) {
+      push({ kind: 'error', title: 'Catálogo de canales no disponible', body: 'No se encontró el canal LLAMADA_TEL. Recargá la página.' })
+      return
+    }
     crear.mutate(
       {
         id_subarea: idSubarea as number,
         id_tipo: idTipo as number,
         id_subtipo: idSubtipo === '' ? undefined : idSubtipo,
-        id_prioridad: prioridadEfectiva as number,   // el guard minimosCompletos ya lo exige
+        id_prioridad: prioridadEfectiva as number,   // ya validado en faltantes
         id_canal_ingreso: canalLlamada.id_emergencia_canal_ingreso,
         denunciante_anonimo: anonimo,
         id_ciudadano_buc: !anonimo && sel?.clase === 'buc' ? sel.ciudadano.id_ciudadano : undefined,
@@ -257,9 +278,16 @@ export function Recepcion() {
         )}
       </section>
 
-      {/* BLOQUE 2 - EVENTO */}
+      {/* BLOQUE 2 - EVENTO (habilitado recien con el denunciante resuelto) */}
       <section style={bloque}>
         <div style={bloqueTitulo}>2 · Evento</div>
+        {!bloque1Completo && (
+          <div style={avisoBloqueo}>
+            Primero resolvé el denunciante: buscá y seleccioná un ciudadano o contacto,
+            o marcá «Denunciante anónimo». Después se habilita esta sección.
+          </div>
+        )}
+        <div style={bloque1Completo ? undefined : { opacity: 0.45, pointerEvents: 'none' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
           <div>
             <label style={lbl}>Subárea *</label>
@@ -273,13 +301,12 @@ export function Recepcion() {
           </div>
           <div>
             <label style={lbl}>Tipo *</label>
-            <select style={inp} value={idTipo} disabled={idSubarea === ''} onChange={(e) => {
-              setIdTipo(e.target.value ? Number(e.target.value) : '')
-              setIdSubtipo(''); setPrioridadTocada(false)
-            }}>
-              <option value="">Elegir...</option>
-              {tiposDeSubarea.map((t) => <option key={t.id_emergencia_tipo} value={t.id_emergencia_tipo}>{t.nombre}</option>)}
-            </select>
+            <ComboTipo
+              tipos={tiposDeSubarea}
+              value={idTipo}
+              disabled={idSubarea === ''}
+              onPick={(id) => { setIdTipo(id); setIdSubtipo(''); setPrioridadTocada(false) }}
+            />
           </div>
           <div>
             <label style={lbl}>Subtipo</label>
@@ -324,6 +351,17 @@ export function Recepcion() {
               setLongitud(r.lon)
             }}
           />
+          <div style={{ fontSize: 11, color: 'var(--fg-3)', margin: '6px 0' }}>
+            También podés hacer clic en el mapa (o arrastrar el pin) para fijar el punto exacto.
+          </div>
+          {/* Mapa con pin manual — regla de diseño del proyecto (s23): todo form
+              con dirección normaliza por OSM Y geoposiciona con mapa, como Reclamos. */}
+          <MapaPicker
+            lat={latitud}
+            lon={longitud}
+            onChange={(la, lo) => { setLatitud(la); setLongitud(lo) }}
+            height={260}
+          />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10, marginTop: 10 }}>
           <div>
@@ -331,13 +369,24 @@ export function Recepcion() {
             <input
               style={inp}
               value={direccion}
-              onChange={(e) => { setDireccion(e.target.value); setLatitud(null); setLongitud(null) }}
+              onChange={(e) => setDireccion(e.target.value)}
               placeholder="Calle y altura / intersección"
             />
-            <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 3, fontFamily: 'var(--font-mono)' }}>
-              {latitud != null && longitud != null
-                ? `Coordenadas OSM: ${latitud.toFixed(6)}, ${longitud.toFixed(6)}`
-                : 'Sin coordenadas — buscá arriba para normalizar y georreferenciar'}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11, color: 'var(--fg-3)', marginTop: 3, fontFamily: 'var(--font-mono)' }}>
+              {latitud != null && longitud != null ? (
+                <>
+                  <span>{`Coordenadas: ${latitud.toFixed(6)}, ${longitud.toFixed(6)}`}</span>
+                  <button
+                    type="button"
+                    style={{ ...quitarBtn, marginLeft: 0 }}
+                    onClick={() => { setLatitud(null); setLongitud(null) }}
+                  >
+                    Quitar pin
+                  </button>
+                </>
+              ) : (
+                'Sin coordenadas — buscá arriba o marcá el punto en el mapa'
+              )}
             </div>
           </div>
           <div>
@@ -353,11 +402,21 @@ export function Recepcion() {
           <input type="checkbox" checked={grabarAudio} onChange={(e) => setGrabarAudio(e.target.checked)} disabled />
           Grabar audio del llamado (integración futura)
         </label>
+        </div>
       </section>
+
+      {intentoGuardar && faltantes.length > 0 && (
+        <div style={avisoFaltantes}>
+          <strong>Para crear el evento falta completar:</strong>
+          <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+            {faltantes.map((f) => <li key={f}>{f}</li>)}
+          </ul>
+        </div>
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
         <Button variant="ghost" onClick={() => navigate('/emergencias')}>Cancelar</Button>
-        <Button variant="accent" disabled={!minimosCompletos || crear.isPending} onClick={crearEvento}>
+        <Button variant="accent" disabled={crear.isPending} onClick={crearEvento}>
           Crear evento
         </Button>
       </div>
@@ -366,6 +425,83 @@ export function Recepcion() {
 }
 
 // ---- piezas locales ----
+
+/** Autocompletar de tipo de emergencia (s23): los catalogos tienen 34/16 tipos
+ * por subarea y el <select> era inusable bajo presion de un llamado. Filtra
+ * client-side (la lista ya esta cargada), sin debounce ni fetch. */
+function ComboTipo({ tipos, value, onPick, disabled }: {
+  tipos: EmergenciaTipo[]
+  value: number | ''
+  disabled: boolean
+  onPick: (id: number | '') => void
+}) {
+  const [q, setQ] = useState('')
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const sel = tipos.find((t) => t.id_emergencia_tipo === value)
+
+  // Si la seleccion se resetea desde afuera (cambio de subarea), limpiar el texto.
+  useEffect(() => { if (value === '') setQ('') }, [value])
+
+  // click-outside cierra el dropdown (s23)
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+
+  const norm = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+  const filtrados = q.trim() ? tipos.filter((t) => norm(t.nombre).includes(norm(q.trim()))) : tipos
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative' }}>
+      <input
+        style={inp}
+        disabled={disabled}
+        value={sel ? sel.nombre : q}
+        placeholder={disabled ? 'Elegí primero la subárea' : 'Tipeá para filtrar...'}
+        onFocus={() => setOpen(true)}
+        onChange={(e) => { setQ(e.target.value); if (sel) onPick(''); setOpen(true) }}
+      />
+      {open && !disabled && (
+        <div style={comboDrop}>
+          {filtrados.length === 0 && (
+            <div style={{ padding: '8px 12px', fontSize: 13, color: 'var(--fg-3)' }}>Sin coincidencias</div>
+          )}
+          {filtrados.map((t) => (
+            <button
+              key={t.id_emergencia_tipo}
+              type="button"
+              style={comboItem}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-400)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+              onClick={() => { onPick(t.id_emergencia_tipo); setQ(t.nombre); setOpen(false) }}
+            >
+              <span>{t.nombre}</span>
+              {t.requiere_911 && <span style={{ color: '#c62828', fontSize: 11, fontWeight: 700, marginLeft: 'auto' }}>911</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const comboDrop: React.CSSProperties = {
+  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30,
+  maxHeight: 260, overflowY: 'auto', marginTop: 4,
+  background: 'var(--surface-100)', border: '1px solid var(--border-medium)',
+  borderRadius: 8, boxShadow: '0 6px 18px rgba(38,37,30,.12)',
+}
+const comboItem: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+  padding: '8px 12px', border: 'none', background: 'transparent',
+  cursor: 'pointer', textAlign: 'left',
+  fontFamily: 'var(--font-display)', fontSize: 14, color: 'var(--fg-1)',
+}
+
 function CampoBusqueda({ label, value, onChange, onBuscar, busy }: {
   label: string; value: string; onChange: (v: string) => void; onBuscar: () => void; busy: boolean
 }) {
@@ -439,6 +575,16 @@ const inp: React.CSSProperties = {
   border: '1px solid var(--border-medium)', borderRadius: 8,
   background: 'var(--zaris-cream)', color: 'var(--fg-1)',
   fontFamily: 'var(--font-display)', fontSize: 14,
+}
+const avisoBloqueo: React.CSSProperties = {
+  marginBottom: 12, padding: '10px 14px', borderRadius: 8, fontSize: 13,
+  color: '#8a5800', border: '1px solid #f57f17', background: 'var(--surface-100)',
+  fontFamily: 'var(--font-display)', fontWeight: 600,
+}
+const avisoFaltantes: React.CSSProperties = {
+  padding: '10px 14px', borderRadius: 8, fontSize: 13,
+  color: '#c62828', border: '1px solid #c62828', background: 'var(--surface-100)',
+  fontFamily: 'var(--font-display)',
 }
 const seleccionado: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 8, marginTop: 12,

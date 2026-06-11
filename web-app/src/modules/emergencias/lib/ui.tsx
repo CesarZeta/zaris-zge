@@ -16,7 +16,7 @@ export function PrioridadPill({ codigo, colorToken }: { codigo: string; colorTok
   )
 }
 
-const ESTADO_COLOR: Record<string, string> = {
+export const ESTADO_COLOR: Record<string, string> = {
   PENDIENTE: '#c62828',
   EN_PREPARACION: '#f57f17',
   EN_CAMINO: '#1565c0',
