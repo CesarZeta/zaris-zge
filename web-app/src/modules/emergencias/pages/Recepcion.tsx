@@ -4,7 +4,9 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../../../ui'
+import { AddressSearch } from '../../../ui/AddressSearch'
 import { useNotificationsStore } from '../../../stores/notifications'
+import { GeocodingSearch } from '../../reclamos/components/GeocodingSearch'
 import { buscarDenunciante } from '../api/emergenciasApi'
 import {
   useCanalesEmergencia,
@@ -49,6 +51,8 @@ export function Recepcion() {
   const [idPrioridad, setIdPrioridad] = useState<number | ''>('')
   const [prioridadTocada, setPrioridadTocada] = useState(false)
   const [direccion, setDireccion] = useState('')
+  const [latitud, setLatitud] = useState<number | null>(null)
+  const [longitud, setLongitud] = useState<number | null>(null)
   const [referencia, setReferencia] = useState('')
   const [obs, setObs] = useState('')
   const [grabarAudio, setGrabarAudio] = useState(false)
@@ -131,6 +135,8 @@ export function Recepcion() {
         id_ciudadano_buc: !anonimo && sel?.clase === 'buc' ? sel.ciudadano.id_ciudadano : undefined,
         id_contacto_eventual: !anonimo && sel?.clase === 'eventual' ? sel.contacto.id_emergencia_contacto_eventual : undefined,
         direccion_evento: direccion.trim(),
+        latitud: latitud ?? undefined,
+        longitud: longitud ?? undefined,
         referencia_ubicacion: referencia.trim() || undefined,
         observaciones_recepcion: obs.trim() || undefined,
       },
@@ -224,9 +230,21 @@ export function Recepcion() {
                   <CampoTexto label="DNI *" value={nuevo.dni} onChange={(v) => setNuevo({ ...nuevo, dni: v })} />
                   <CampoTexto label="Nombre y apellido *" value={nuevo.nombre_apellido} onChange={(v) => setNuevo({ ...nuevo, nombre_apellido: v })} />
                   <CampoTexto label="Teléfono *" value={nuevo.telefono} onChange={(v) => setNuevo({ ...nuevo, telefono: v })} />
-                  <CampoTexto label="Dirección *" value={nuevo.direccion} onChange={(v) => setNuevo({ ...nuevo, direccion: v })} />
                   <CampoTexto label="Contacto alternativo (nombre)" value={nuevo.contacto_alt_nombre} onChange={(v) => setNuevo({ ...nuevo, contacto_alt_nombre: v })} />
                   <CampoTexto label="Contacto alternativo (teléfono)" value={nuevo.contacto_alt_telefono} onChange={(v) => setNuevo({ ...nuevo, contacto_alt_telefono: v })} />
+                </div>
+                <div style={{ marginTop: 10 }}>
+                  <label style={lbl}>Dirección * — buscar en OpenStreetMap</label>
+                  <AddressSearch
+                    placeholder="Tipeá calle, altura y localidad y elegí una sugerencia"
+                    onPick={(_norm, raw) => setNuevo((n) => ({ ...n, direccion: raw.display_name ?? '' }))}
+                  />
+                  <input
+                    style={{ ...inp, marginTop: 6 }}
+                    value={nuevo.direccion}
+                    onChange={(e) => setNuevo({ ...nuevo, direccion: e.target.value })}
+                    placeholder="Dirección normalizada (editable si OSM no la encuentra)"
+                  />
                 </div>
                 <div style={{ marginTop: 10 }}>
                   <Button variant="accent" disabled={crearContacto.isPending} onClick={registrarYUsar}>
@@ -296,10 +314,31 @@ export function Recepcion() {
           </div>
         )}
 
+        <div style={{ marginTop: 10 }}>
+          <label style={lbl}>Buscar dirección del evento (OpenStreetMap)</label>
+          <GeocodingSearch
+            placeholder="Tipeá calle y altura (o un lugar: club, plaza, comercio) y elegí una sugerencia"
+            onPick={(r) => {
+              setDireccion(r.display_name ?? '')
+              setLatitud(r.lat)
+              setLongitud(r.lon)
+            }}
+          />
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10, marginTop: 10 }}>
           <div>
             <label style={lbl}>Dirección del evento *</label>
-            <input style={inp} value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Calle y altura / intersección" />
+            <input
+              style={inp}
+              value={direccion}
+              onChange={(e) => { setDireccion(e.target.value); setLatitud(null); setLongitud(null) }}
+              placeholder="Calle y altura / intersección"
+            />
+            <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 3, fontFamily: 'var(--font-mono)' }}>
+              {latitud != null && longitud != null
+                ? `Coordenadas OSM: ${latitud.toFixed(6)}, ${longitud.toFixed(6)}`
+                : 'Sin coordenadas — buscá arriba para normalizar y georreferenciar'}
+            </div>
           </div>
           <div>
             <label style={lbl}>Referencia de ubicación</label>
