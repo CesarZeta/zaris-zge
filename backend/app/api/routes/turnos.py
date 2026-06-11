@@ -92,10 +92,14 @@ _PRESTACION_SELECT = """
            tp.duracion_min, tp.tipo_recurso, tp.id_agente, tp.id_espacio,
            CASE WHEN tp.tipo_recurso = 'espacio' THEN e.nombre
                 ELSE COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') END AS recurso_nombre,
-           tp.id_subarea, tp.registra_atencion, tp.activo
+           tp.id_subarea, sa.nombre AS subarea_nombre,
+           ar.id_area, ar.nombre AS area_nombre,
+           tp.registra_atencion, tp.activo
     FROM tipo_prestacion tp
-    LEFT JOIN agentes         a ON a.id_agente  = tp.id_agente
-    LEFT JOIN espacios_agenda e ON e.id_espacio = tp.id_espacio
+    LEFT JOIN agentes         a  ON a.id_agente   = tp.id_agente
+    LEFT JOIN espacios_agenda e  ON e.id_espacio  = tp.id_espacio
+    LEFT JOIN subarea         sa ON sa.id_subarea = tp.id_subarea
+    LEFT JOIN area            ar ON ar.id_area    = sa.id_area
 """
 
 
@@ -256,6 +260,7 @@ async def _turno_to_out(db: AsyncSession, id_turno: int) -> Optional[dict[str, A
                     ELSE COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') END AS recurso_nombre,
                t.id_tipo_prestacion, tp.nombre AS prestacion_nombre, tp.clase AS prestacion_clase,
                tp.registra_atencion,
+               pa.id_area AS prestacion_id_area, pa.nombre AS prestacion_area_nombre,
                t.id_ocupacion, t.fecha, t.hora_inicio, t.hora_fin, t.estado,
                t.observaciones, t.activo, t.id_municipio, t.id_subarea,
                t.fecha_alta, t.fecha_modificacion
@@ -264,6 +269,8 @@ async def _turno_to_out(db: AsyncSession, id_turno: int) -> Optional[dict[str, A
         LEFT JOIN agentes         a  ON a.id_agente           = t.id_agente
         LEFT JOIN espacios_agenda e  ON e.id_espacio          = t.id_espacio
         LEFT JOIN tipo_prestacion tp ON tp.id_tipo_prestacion = t.id_tipo_prestacion
+        LEFT JOIN subarea         ps ON ps.id_subarea         = tp.id_subarea
+        LEFT JOIN area            pa ON pa.id_area            = ps.id_area
         WHERE t.id_turno = :id
     """), {"id": id_turno})).mappings().first()
     return dict(row) if row else None
@@ -332,6 +339,7 @@ async def listar_turnos(
                     ELSE COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') END AS recurso_nombre,
                t.id_tipo_prestacion, tp.nombre AS prestacion_nombre, tp.clase AS prestacion_clase,
                tp.registra_atencion,
+               pa.id_area AS prestacion_id_area, pa.nombre AS prestacion_area_nombre,
                t.id_ocupacion, t.fecha, t.hora_inicio, t.hora_fin, t.estado,
                t.observaciones, t.activo, t.id_municipio, t.id_subarea,
                t.fecha_alta, t.fecha_modificacion
@@ -340,6 +348,8 @@ async def listar_turnos(
         LEFT JOIN agentes         a  ON a.id_agente           = t.id_agente
         LEFT JOIN espacios_agenda e  ON e.id_espacio          = t.id_espacio
         LEFT JOIN tipo_prestacion tp ON tp.id_tipo_prestacion = t.id_tipo_prestacion
+        LEFT JOIN subarea         ps ON ps.id_subarea         = tp.id_subarea
+        LEFT JOIN area            pa ON pa.id_area            = ps.id_area
         WHERE {where_sql}
         ORDER BY t.fecha DESC, t.hora_inicio
         LIMIT :lim OFFSET :off

@@ -13,6 +13,9 @@ export interface TipoPrestacion {
   id_espacio: number | null
   recurso_nombre: string | null
   id_subarea: number | null
+  subarea_nombre: string | null
+  id_area: number | null
+  area_nombre: string | null
   registra_atencion: boolean
   activo: boolean
 }
@@ -44,6 +47,8 @@ export interface Turno {
   prestacion_nombre: string | null
   prestacion_clase: string | null
   registra_atencion: boolean | null
+  prestacion_id_area: number | null
+  prestacion_area_nombre: string | null
   id_ocupacion: number | null
   fecha: string
   hora_inicio: string

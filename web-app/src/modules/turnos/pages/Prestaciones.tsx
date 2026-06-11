@@ -26,13 +26,22 @@ export function Prestaciones() {
 
   const prestaciones = data ?? []
 
-  // Filtro por recurso (informe QA 2026-06, hallazgo 3): opciones derivadas de
-  // las prestaciones cargadas (§23 — no catálogos completos), client-side.
+  // Filtros por recurso y área de servicio (informe QA 2026-06, hallazgos 3 y 4):
+  // opciones derivadas de las prestaciones cargadas (§23 — no catálogos
+  // completos), client-side.
+  const [fArea, setFArea] = useState('')
   const recursos = useMemo(() => {
     const m = new Map<string, string>()
     for (const p of prestaciones) {
       const key = p.tipo_recurso === 'espacio' ? `espacio:${p.id_espacio}` : `agente:${p.id_agente}`
       if (p.recurso_nombre) m.set(key, p.recurso_nombre)
+    }
+    return [...m.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label))
+  }, [prestaciones])
+  const areas = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const p of prestaciones) {
+      if (p.id_area != null && p.area_nombre) m.set(String(p.id_area), p.area_nombre)
     }
     return [...m.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label))
   }, [prestaciones])
@@ -42,13 +51,16 @@ export function Prestaciones() {
     if (fRecurso) {
       res = res.filter((p) => (p.tipo_recurso === 'espacio' ? `espacio:${p.id_espacio}` : `agente:${p.id_agente}`) === fRecurso)
     }
+    if (fArea) {
+      res = res.filter((p) => String(p.id_area ?? '') === fArea)
+    }
     const txt = fTexto.trim().toLowerCase()
     if (txt) {
       res = res.filter((p) =>
-        [p.nombre, p.recurso_nombre, p.descripcion].filter(Boolean).join(' ').toLowerCase().includes(txt))
+        [p.nombre, p.recurso_nombre, p.descripcion, p.area_nombre, p.subarea_nombre].filter(Boolean).join(' ').toLowerCase().includes(txt))
     }
     return res
-  }, [prestaciones, fTexto, fRecurso])
+  }, [prestaciones, fTexto, fRecurso, fArea])
 
   async function doBaja(p: TipoPrestacion) {
     setConfirmBaja(null)
@@ -95,6 +107,15 @@ export function Prestaciones() {
             {recursos.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>
         </div>
+        {areas.length > 0 && (
+          <div style={field}>
+            <label style={lbl}>Área de servicio</label>
+            <select value={fArea} onChange={(e) => setFArea(e.target.value)} style={inp}>
+              <option value="">Todas</option>
+              {areas.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+            </select>
+          </div>
+        )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
           <button onClick={() => refetch()} style={btnGhost} title="Refrescar">
             <RefreshCw size={14} strokeWidth={1.5} style={{ animation: isFetching ? 'spin 1s linear infinite' : undefined }} />
@@ -114,14 +135,15 @@ export function Prestaciones() {
               <th style={th}>Nombre</th>
               <th style={th}>Tipo</th>
               <th style={th}>Recurso</th>
+              <th style={th}>Área de servicio</th>
               <th style={th}>Duración</th>
               <th style={{ ...th, textAlign: 'right' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {isLoading && <tr><td colSpan={5} style={empty}>Cargando…</td></tr>}
+            {isLoading && <tr><td colSpan={6} style={empty}>Cargando…</td></tr>}
             {!isLoading && !isError && filtradas.length === 0 && (
-              <tr><td colSpan={5} style={empty}>No hay prestaciones para los filtros seleccionados.</td></tr>
+              <tr><td colSpan={6} style={empty}>No hay prestaciones para los filtros seleccionados.</td></tr>
             )}
             {filtradas.map((p) => (
               <tr key={p.id_tipo_prestacion}>
@@ -142,6 +164,10 @@ export function Prestaciones() {
                   <div style={{ fontSize: '0.7rem', color: 'var(--fg-3)' }}>
                     {p.tipo_recurso === 'espacio' ? 'Lugar de atención' : 'Agente'}
                   </div>
+                </td>
+                <td style={td}>
+                  {p.area_nombre ?? '—'}
+                  {p.subarea_nombre && <div style={{ fontSize: '0.7rem', color: 'var(--fg-3)' }}>{p.subarea_nombre}</div>}
                 </td>
                 <td style={td}>{p.duracion_min} min</td>
                 <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Modal } from '../../agenda/components/Modal'
 import { RecursoPicker } from '../../agenda/components/RecursoPicker'
+import { EntitySelect } from '../../tramites/components/EntitySelect'
 import { Button } from '../../../ui'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { useEspacios } from '../../agenda/hooks/useEspacios'
@@ -29,6 +30,8 @@ export function PrestacionFormModal({ open, onClose, prestacion }: Props) {
   const [idAgente, setIdAgente] = useState<number | ''>('')
   const [idEspacio, setIdEspacio] = useState<number | ''>('')
   const [registraAtencion, setRegistraAtencion] = useState(false)
+  const [idSubarea, setIdSubarea] = useState<number | null>(null)
+  const [subareaActual, setSubareaActual] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -41,6 +44,10 @@ export function PrestacionFormModal({ open, onClose, prestacion }: Props) {
       setIdAgente(prestacion.id_agente ?? '')
       setIdEspacio(prestacion.id_espacio ?? '')
       setRegistraAtencion(prestacion.registra_atencion ?? false)
+      setIdSubarea(prestacion.id_subarea ?? null)
+      setSubareaActual(prestacion.subarea_nombre
+        ? `${prestacion.subarea_nombre}${prestacion.area_nombre ? ` (${prestacion.area_nombre})` : ''}`
+        : null)
     } else {
       setNombre('')
       setDescripcion('')
@@ -50,6 +57,8 @@ export function PrestacionFormModal({ open, onClose, prestacion }: Props) {
       setIdAgente('')
       setIdEspacio('')
       setRegistraAtencion(false)
+      setIdSubarea(null)
+      setSubareaActual(null)
     }
   }, [open, prestacion])
 
@@ -82,6 +91,7 @@ export function PrestacionFormModal({ open, onClose, prestacion }: Props) {
       id_agente: tipoRecurso === 'agente' ? (idAgente as number) : null,
       id_espacio: tipoRecurso === 'espacio' ? (idEspacio as number) : null,
       registra_atencion: clase === 'atencion' && registraAtencion,
+      id_subarea: idSubarea,
     }
     try {
       if (esEdicion && prestacion) {
@@ -207,6 +217,24 @@ export function PrestacionFormModal({ open, onClose, prestacion }: Props) {
             </label>
           </div>
         )}
+
+        {/* Área de servicio (subárea de Maestros) */}
+        <div>
+          <label style={lbl}>Área de servicio (opcional)</label>
+          <EntitySelect
+            endpoint="/api/v1/buc/subareas/buscar"
+            idField="id_subarea"
+            labelField="nombre"
+            value={idSubarea}
+            onChange={(id) => { setIdSubarea(id); if (id == null) setSubareaActual(null) }}
+            placeholder="Buscá la subárea que presta el servicio…"
+          />
+          <div style={hint}>
+            {idSubarea != null && subareaActual
+              ? `Actual: ${subareaActual}`
+              : 'Agrupa la prestación por el área municipal que la presta (habilita el filtro "Área de servicio").'}
+          </div>
+        </div>
 
         {/* Duración */}
         <div>
