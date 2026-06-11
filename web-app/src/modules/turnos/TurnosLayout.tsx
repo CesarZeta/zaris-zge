@@ -19,12 +19,13 @@ export function TurnosLayout({ children }: { children: ReactNode }) {
   const hasPermission = useAuthStore((s) => s.hasPermission)
   const puedeGestionarPrestaciones = hasPermission(2) // nivel <= 2 (Admin o Supervisor)
 
-  const sub = partes[1] // 'agenda' | 'atendidos' | 'prestaciones' | undefined (turnos)
+  const sub = partes[1] // 'agenda' | 'atendidos' | 'consultas' | 'prestaciones' | undefined (turnos)
   const isAgenda = sub === 'agenda'
   const isAtendidos = sub === 'atendidos'
+  const isConsultas = sub === 'consultas'
   const isPrestaciones = sub === 'prestaciones'
-  const isTurnos = !isAgenda && !isAtendidos && !isPrestaciones
-  const subLabel = isAgenda ? 'Agenda' : isAtendidos ? 'Atendidos' : isPrestaciones ? 'Prestaciones' : null
+  const isTurnos = !isAgenda && !isAtendidos && !isConsultas && !isPrestaciones
+  const subLabel = isAgenda ? 'Agenda' : isAtendidos ? 'Atendidos' : isConsultas ? 'Consultas' : isPrestaciones ? 'Prestaciones' : null
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, maxWidth: 1400, margin: '0 auto', width: '100%', padding: '0 8px' }}>
@@ -49,6 +50,7 @@ export function TurnosLayout({ children }: { children: ReactNode }) {
         <Tab label="Turnos" active={isTurnos} onClick={() => navigate('/turnos')} />
         <Tab label="Agenda" active={isAgenda} onClick={() => navigate('/turnos/agenda')} />
         <Tab label="Atendidos" active={isAtendidos} onClick={() => navigate('/turnos/atendidos')} />
+        <Tab label="Consultas" active={isConsultas} onClick={() => navigate('/turnos/consultas')} />
         {puedeGestionarPrestaciones && (
           <Tab label="Prestaciones" active={isPrestaciones} onClick={() => navigate('/turnos/prestaciones')} />
         )}

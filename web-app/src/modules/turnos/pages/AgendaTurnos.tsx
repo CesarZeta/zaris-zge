@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
 import { useTurnos } from '../hooks/useTurnos'
+import { TurnoDetalleModal } from '../components/TurnoDetalleModal'
 import { useTurnoFiltros, TurnoFiltrosBar } from '../lib/turnoFiltros'
 import {
   toIsoDate, hoy, sumarDias, lunesDeSemana,
@@ -31,6 +32,7 @@ const ESTADO_COLOR: Record<EstadoTurno, { bg: string; border: string; fg: string
 export function AgendaTurnos() {
   const [modo, setModo] = useState<Modo>('dia')
   const [ancla, setAncla] = useState<Date>(hoy())
+  const [detalle, setDetalle] = useState<Turno | null>(null)
 
   const dias = useMemo<Date[]>(() => {
     if (modo === 'dia') return [ancla]
@@ -126,6 +128,16 @@ export function AgendaTurnos() {
 
       {isError && <div style={errorBanner}>{(error as Error)?.message ?? 'Error al cargar la agenda'}</div>}
 
+      {/* Leyenda de estados ARRIBA de la grilla (pedido del usuario 2026-06-11:
+          abajo quedaba fuera de vista al scrollear). */}
+      <div style={leyendaBar}>
+        <Leyenda color={ESTADO_COLOR.reservado.border} label="Reservado" />
+        <Leyenda color={ESTADO_COLOR.cumplido.border} label="Cumplido" />
+        <span style={{ color: 'var(--fg-3)' }}>
+          Los turnos cancelados no se muestran (se gestionan en la pestaña Turnos). Clic en un turno para ver su detalle.
+        </span>
+      </div>
+
       <div style={card}>
         {isLoading ? (
           <p style={vacio}>Cargando…</p>
@@ -160,7 +172,9 @@ export function AgendaTurnos() {
                         <div key={h} style={{ position: 'absolute', top: i * PX_POR_HORA, left: 0, right: 0, borderTop: '1px solid var(--border-primary)', opacity: 0.5 }} />
                       ))}
                       {/* bloques de turno */}
-                      {items.map((t) => <BloqueTurno key={t.id_turno} t={t} compacto={modo === 'semana'} />)}
+                      {items.map((t) => (
+                        <BloqueTurno key={t.id_turno} t={t} compacto={modo === 'semana'} onClick={() => setDetalle(t)} />
+                      ))}
                       {items.length === 0 && (
                         <div style={sinTurnos}>—</div>
                       )}
@@ -173,18 +187,14 @@ export function AgendaTurnos() {
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '0.78rem', color: 'var(--fg-3)' }}>
-        <Leyenda color={ESTADO_COLOR.reservado.border} label="Reservado" />
-        <Leyenda color={ESTADO_COLOR.cumplido.border} label="Cumplido" />
-        <span>Los turnos cancelados no se muestran. Para gestionarlos, usá la pestaña Turnos.</span>
-      </div>
+      <TurnoDetalleModal turno={detalle} onClose={() => setDetalle(null)} />
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }
 
-function BloqueTurno({ t, compacto }: { t: Turno; compacto: boolean }) {
+function BloqueTurno({ t, compacto, onClick }: { t: Turno; compacto: boolean; onClick: () => void }) {
   const ini = timeToMinutes(t.hora_inicio)
   const fin = timeToMinutes(t.hora_fin || t.hora_inicio)
   const topMin = Math.max(0, ini - HORA_INI * 60)
@@ -196,12 +206,14 @@ function BloqueTurno({ t, compacto }: { t: Turno; compacto: boolean }) {
 
   return (
     <div
-      title={`${horaTxt} · ${t.prestacion_nombre ?? ''} · ${t.ciudadano_nombre ?? ''}${t.recurso_nombre ? ' · ' + t.recurso_nombre : ''}`}
+      onClick={onClick}
+      title={`${horaTxt} · ${t.prestacion_nombre ?? ''} · ${t.ciudadano_nombre ?? ''}${t.recurso_nombre ? ' · ' + t.recurso_nombre : ''} — clic para ver detalle`}
       style={{
         position: 'absolute', top, left: 3, right: 3, height: alto,
         background: c.bg, borderLeft: `3px solid ${c.border}`, borderRadius: 5,
         padding: compacto ? '2px 4px' : '3px 7px', overflow: 'hidden',
         fontSize: compacto ? '0.68rem' : '0.74rem', lineHeight: 1.2, color: c.fg,
+        cursor: 'pointer',
       }}
     >
       <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -235,6 +247,12 @@ const toolbar: React.CSSProperties = {
 const filtrosBar: React.CSSProperties = {
   display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end',
   background: 'var(--surface-100)', border: '1px solid var(--border-primary)', borderRadius: 12, padding: 12,
+}
+const leyendaBar: React.CSSProperties = {
+  display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center',
+  fontSize: '0.78rem', color: 'var(--fg-2)',
+  background: 'var(--surface-100)', border: '1px solid var(--border-primary)',
+  borderRadius: 12, padding: '8px 14px',
 }
 const toggleBtn: React.CSSProperties = {
   fontFamily: 'var(--font-display)', fontSize: 13, cursor: 'pointer', border: 'none',

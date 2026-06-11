@@ -21,11 +21,12 @@ import type {
 
 const HORA = 60 * 60 * 1000
 
-export function useTurnos(filtros: ListarTurnosFiltros) {
+export function useTurnos(filtros: ListarTurnosFiltros, opts: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ['turnos', 'lista', filtros],
     queryFn: () => listarTurnos(filtros),
     staleTime: 15 * 1000,
+    enabled: opts.enabled ?? true,
   })
 }
 

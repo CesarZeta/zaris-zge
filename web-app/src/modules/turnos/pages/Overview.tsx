@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CalendarDays, Plus, RefreshCw } from 'lucide-react'
+import { CalendarDays, Download, Plus, RefreshCw } from 'lucide-react'
 import { useTurnos, useCumplirTurno, useCancelarTurno } from '../hooks/useTurnos'
 import { TurnoFormModal } from '../components/TurnoFormModal'
 import { CumplirTurnoModal } from '../components/CumplirTurnoModal'
+import { TurnoDetalleModal } from '../components/TurnoDetalleModal'
 import { ConfirmModal } from '../../agenda/components/ConfirmModal'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { useTurnoFiltros, TurnoFiltrosBar } from '../lib/turnoFiltros'
+import { exportarTurnosPdf, type TurnoPdfRow } from '../lib/exportPdf'
 import type { CumplirTurnoBody, EstadoTurno, Turno } from '../types/turno'
 
 type FiltroEstado = EstadoTurno | ''
@@ -28,6 +30,7 @@ export function Overview() {
   const [editTurno, setEditTurno] = useState<Turno | null>(null)
   const [confirmCumplir, setConfirmCumplir] = useState<Turno | null>(null)
   const [confirmCancelar, setConfirmCancelar] = useState<Turno | null>(null)
+  const [detalle, setDetalle] = useState<Turno | null>(null)
 
   const { data, isLoading, isError, error, refetch, isFetching } = useTurnos({
     estado: fEstado || undefined,
@@ -72,6 +75,24 @@ export function Overview() {
     } catch (e) {
       push({ kind: 'error', title: 'No se pudo cumplir', body: (e as Error).message })
     }
+  }
+
+  function doExport() {
+    if (filtrados.length === 0) {
+      push({ kind: 'error', title: 'No hay turnos para exportar' })
+      return
+    }
+    const rows: TurnoPdfRow[] = filtrados.map((t) => ({
+      fecha: t.fecha,
+      hora: `${t.hora_inicio.slice(0, 5)}-${t.hora_fin.slice(0, 5)}`,
+      ciudadano: t.ciudadano_nombre ?? '',
+      dni: t.ciudadano_dni ?? '',
+      atiende: t.recurso_nombre ?? t.agente_nombre ?? '',
+      prestacion: t.prestacion_nombre ?? '',
+      estado: t.estado,
+      observaciones: t.observaciones ?? '',
+    }))
+    exportarTurnosPdf(rows, { titulo: 'Turnos', conEstado: true, desde: fDesde, hasta: fHasta })
   }
 
   async function doCancelar(t: Turno) {
@@ -135,6 +156,9 @@ export function Overview() {
           <button onClick={() => navigate('/turnos/agenda')} style={btnGhost} title="Ver los turnos en la agenda (día/semana)">
             <CalendarDays size={14} strokeWidth={1.5} /> Ver en agenda
           </button>
+          <button onClick={doExport} style={btnGhost} title="Exportar a PDF los turnos visibles (según filtros)">
+            <Download size={14} strokeWidth={1.5} /> Exportar PDF
+          </button>
           <button onClick={() => { setEditTurno(null); setModalOpen(true) }} style={btnPrimary}>
             <Plus size={14} strokeWidth={1.5} /> Nuevo turno
           </button>
@@ -173,7 +197,12 @@ export function Overview() {
               <tr><td colSpan={7} style={empty}>No hay turnos para los filtros seleccionados.</td></tr>
             )}
             {filtrados.map((t) => (
-              <tr key={t.id_turno}>
+              <tr
+                key={t.id_turno}
+                onClick={() => setDetalle(t)}
+                style={{ cursor: 'pointer' }}
+                title="Ver detalle del turno"
+              >
                 <td style={td}>
                   <div style={mono}>{t.fecha}</div>
                   <div style={{ ...mono, fontSize: '0.74rem', color: 'var(--fg-3)' }}>
@@ -193,7 +222,7 @@ export function Overview() {
                 <td style={td}>{t.prestacion_nombre ?? '—'}</td>
                 <td style={td}><EstadoBadge estado={t.estado} /></td>
                 <td style={{ ...td, maxWidth: 200, color: 'var(--fg-3)' }}>{t.observaciones ?? ''}</td>
-                <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
                   {t.estado === 'reservado' ? (
                     <>
                       <button onClick={() => { setEditTurno(t); setModalOpen(true) }} style={btnGhostSm}>Reprogramar</button>
@@ -211,6 +240,7 @@ export function Overview() {
       </div>
 
       <TurnoFormModal open={modalOpen} onClose={() => setModalOpen(false)} turno={editTurno} />
+      <TurnoDetalleModal turno={detalle} onClose={() => setDetalle(null)} />
       <CumplirTurnoModal
         turno={confirmCumplir}
         onConfirm={(body) => confirmCumplir && doCumplir(confirmCumplir, body)}
