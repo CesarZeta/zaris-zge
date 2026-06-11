@@ -78,3 +78,20 @@ Para módulos **analíticos/simples** (dashboards de lectura, pocas pantallas), 
 - **Detectar desfasaje:** extraer el texto del HTML (quitar `data:image/...;base64` con regex, luego tags) y grepear los términos que tu cambio tocó (botones, tabs, tipos). Si el manual nombra algo que renombraste/quitaste, está desfasado.
 - **Regenerar solo las capturas afectadas:** identificá qué `<figure>` corresponde a la pantalla cambiada (por su `<figcaption>`/heading) y regenerá esas + insertá nuevas. El resto siguen válidas.
 - **Patch con guardas:** para swaps de base64 y ediciones de texto en un archivo de ~3 MB, usar un script Node/Python con `assert`/`must()` sobre cada anchor antes de escribir. **Al anclar texto dentro de markup, incluí los tags inline** (`El pase <strong>libera la toma</strong>...`, no el texto pelado) o el match falla. Verificar en el browser (imágenes no rotas, secciones nuevas) antes de commitear.
+- **Alternativa al patch (verificada 2×, Emergencias 2026-06-10/11): extraer las capturas del manual existente y RE-ENSAMBLAR completo.** Si conservás el template (`build_html.mjs`), no hace falta re-capturar las pantallas que no cambiaron: un `extract.mjs` saca los base64 del HTML publicado (`[...html.matchAll(/data:image\/png;base64,([A-Za-z0-9+/=]+)/g)]`) y los guarda con sus nombres **en el orden de aparición de los `{{IMG:}}` del template** (mantené esa lista en el extract). Después: re-capturás solo las afectadas (pisan los archivos extraídos), tocás el template y re-ensamblás. Más simple y verificable que el patch in-place.
+
+## Tablas de referencia (taxonomías/catálogos) — generarlas desde la DB
+Cuando el manual incluye tablas de referencia (tipos, subtipos, organismos, estados), **NO transcribirlas a mano** (se desfasan y meten typos): generarlas con una query que emita las `<tr>` directamente y un placeholder `{{ROWS:archivo}}` en el template.
+
+```powershell
+$env:PGPASSWORD='145236'; $env:PGCLIENTENCODING='UTF8'   # sin UTF8, las tildes salen rotas
+@"
+SELECT '<tr><td>' || col1 || '</td><td>' || COALESCE(col2,'&mdash;') || '</td></tr>'
+FROM tabla WHERE activo ORDER BY nombre;
+"@ | & $psql -h 127.0.0.1 -U postgres -d zaris_dev -t -A -o fragmento.html
+```
+
+- Joins útiles: `string_agg(s.nombre || COALESCE(' (' || override.codigo || ')', ''), ' &middot; ')` vía LATERAL para listas compactas de hijos (subtipos) con sus excepciones.
+- `Get-Content` sin `-Encoding UTF8` MUESTRA mojibake ("MÃ³vil") pero el archivo está bien — verificar con `-Encoding UTF8` o directo en Node, no "arreglar" el archivo.
+- En el build: `html.replace(/\{\{ROWS:([^}]+)\}\}/g, (_, f) => fs.readFileSync(f, 'utf8').trim())`.
+- Footer del manual: agregar "Taxonomía generada desde la base de datos".
