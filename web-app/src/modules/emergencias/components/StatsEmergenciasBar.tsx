@@ -13,14 +13,15 @@ export const RANGOS: { label: string; horas?: number }[] = [
 
 interface Props {
   horas?: number
-  onHoras: (h?: number) => void
   estadoActivo: string
   onSelectEstado: (codigo: string) => void
   subareaActiva: number | ''
   onSelectSubarea: (id: number | '') => void
 }
 
-export function StatsEmergenciasBar({ horas, onHoras, estadoActivo, onSelectEstado, subareaActiva, onSelectSubarea }: Props) {
+// El selector de período vive en el Dispatcher (fila debajo de las tarjetas,
+// pedido del usuario 2026-06-11) — esta barra solo consume `horas`.
+export function StatsEmergenciasBar({ horas, estadoActivo, onSelectEstado, subareaActiva, onSelectSubarea }: Props) {
   const stats = useStatsEmergencias(horas)
   const d = stats.data
 
@@ -57,20 +58,6 @@ export function StatsEmergenciasBar({ horas, onHoras, estadoActivo, onSelectEsta
             </button>
           )
         })}
-        <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4 }}>
-          <label style={{ fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 600, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Período de los totales
-          </label>
-          <select
-            style={selectRango}
-            value={horas ?? ''}
-            onChange={(e) => onHoras(e.target.value === '' ? undefined : Number(e.target.value))}
-          >
-            {RANGOS.map((r) => (
-              <option key={r.label} value={r.horas ?? ''}>{r.label}</option>
-            ))}
-          </select>
-        </div>
       </div>
 
       {/* fila 2: totales del rango por estado (los no terminales filtran la lista) */}
@@ -128,9 +115,4 @@ const kpiValor: React.CSSProperties = {
 }
 const kpiSub: React.CSSProperties = {
   fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--fg-3)', marginTop: 2,
-}
-const selectRango: React.CSSProperties = {
-  padding: '7px 10px', border: '1px solid var(--border-medium)', borderRadius: 8,
-  background: 'var(--surface-100)', color: 'var(--fg-1)',
-  fontFamily: 'var(--font-display)', fontSize: 13,
 }
