@@ -13,11 +13,11 @@ interface Guia {
 const GUIAS: Guia[] = [
   {
     titulo: 'EMERGENCIAS (COM)',
-    descripcion: 'Cómo atender eventos de emergencia desde el COM: recepción del llamado, triage por prioridad, despacho con tiempos de SLA, derivación a organismos externos, cierre con veracidad y reportes que llegan desde la App Vecinos.',
+    descripcion: 'El circuito completo de seguridad (Policía Municipal) y Defensa Civil: recepción del llamado, triage por prioridad, despacho con SLA, derivación, cierre con veracidad y App Vecinos. Con la taxonomía completa: 34 tipos de seguridad + 16 de Defensa Civil con subtipos, prioridades y los 12 organismos de derivación.',
     icon: Siren,
     htmlName: 'manual_emergencias.html',
     audiencia: 'Operador o superior',
-    tags: ['Operativo', '10 capturas', '10 secciones'],
+    tags: ['Operativo', '10 capturas', '10 secciones + 3 anexos'],
   },
   {
     titulo: 'ALTA DE CIUDADANOS',
