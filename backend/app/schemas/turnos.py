@@ -36,6 +36,9 @@ class TipoPrestacionOut(BaseModel):
     id_espacio: Optional[int] = None
     recurso_nombre: Optional[str] = None
     id_subarea: Optional[int] = None
+    subarea_nombre: Optional[str] = None
+    id_area: Optional[int] = None
+    area_nombre: Optional[str] = None
     registra_atencion: bool = False
     activo: bool
 
@@ -162,6 +165,8 @@ class TurnoOut(BaseModel):
     prestacion_nombre: Optional[str] = None
     prestacion_clase: Optional[str] = None
     registra_atencion: Optional[bool] = None
+    prestacion_id_area: Optional[int] = None       # area de servicio (via subarea de la prestacion)
+    prestacion_area_nombre: Optional[str] = None
     id_ocupacion: Optional[int] = None
     fecha: date
     hora_inicio: time

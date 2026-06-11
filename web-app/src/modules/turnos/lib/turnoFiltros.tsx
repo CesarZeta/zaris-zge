@@ -14,9 +14,10 @@ export interface TurnoFiltrosState {
   prestacion: string  // id_tipo_prestacion (string) | ''
   recurso: string     // "agente:ID" | "espacio:ID" | ''
   ciudadano: string   // id_ciudadano (string) | ''
+  area: string        // prestacion_id_area (string) | '' — area de servicio (informe QA H4)
 }
 
-const VACIO: TurnoFiltrosState = { prestacion: '', recurso: '', ciudadano: '' }
+const VACIO: TurnoFiltrosState = { prestacion: '', recurso: '', ciudadano: '', area: '' }
 
 function recursoKey(t: Turno): string | null {
   if (t.recurso_tipo === 'agente' && t.id_agente != null) return `agente:${t.id_agente}`
@@ -37,15 +38,19 @@ export function useTurnoFiltros(turnos: Turno[]) {
     const prest = new Map<string, string>()
     const rec = new Map<string, string>()
     const ciud = new Map<string, string>()
+    const areas = new Map<string, string>()
     for (const t of turnos) {
       if (t.prestacion_nombre) prest.set(String(t.id_tipo_prestacion), t.prestacion_nombre)
       const rk = recursoKey(t)
       if (rk && t.recurso_nombre) rec.set(rk, t.recurso_nombre)
       if (t.ciudadano_nombre) ciud.set(String(t.id_ciudadano), t.ciudadano_nombre)
+      if (t.prestacion_id_area != null && t.prestacion_area_nombre) {
+        areas.set(String(t.prestacion_id_area), t.prestacion_area_nombre)
+      }
     }
     const sort = (m: Map<string, string>): Opcion[] =>
       [...m.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label))
-    return { prestaciones: sort(prest), recursos: sort(rec), ciudadanos: sort(ciud) }
+    return { prestaciones: sort(prest), recursos: sort(rec), ciudadanos: sort(ciud), areas: sort(areas) }
   }, [turnos])
 
   const filtrar = useMemo(() => (lista: Turno[]): Turno[] => {
@@ -53,11 +58,12 @@ export function useTurnoFiltros(turnos: Turno[]) {
       if (filtros.prestacion && String(t.id_tipo_prestacion) !== filtros.prestacion) return false
       if (filtros.recurso && recursoKey(t) !== filtros.recurso) return false
       if (filtros.ciudadano && String(t.id_ciudadano) !== filtros.ciudadano) return false
+      if (filtros.area && String(t.prestacion_id_area ?? '') !== filtros.area) return false
       return true
     })
   }, [filtros])
 
-  const hayActivos = !!(filtros.prestacion || filtros.recurso || filtros.ciudadano)
+  const hayActivos = !!(filtros.prestacion || filtros.recurso || filtros.ciudadano || filtros.area)
   const limpiar = () => setFiltros(VACIO)
 
   return { filtros, setFiltros, opciones, filtrar, hayActivos, limpiar }
@@ -68,7 +74,7 @@ export function useTurnoFiltros(turnos: Turno[]) {
 export function TurnoFiltrosBar({
   opciones, filtros, setFiltros,
 }: {
-  opciones: { prestaciones: Opcion[]; recursos: Opcion[]; ciudadanos: Opcion[] }
+  opciones: { prestaciones: Opcion[]; recursos: Opcion[]; ciudadanos: Opcion[]; areas: Opcion[] }
   filtros: TurnoFiltrosState
   setFiltros: (f: TurnoFiltrosState) => void
 }) {
@@ -95,6 +101,17 @@ export function TurnoFiltrosBar({
         options={opciones.ciudadanos}
         allLabel="Todos"
       />
+      {/* Area de servicio (informe QA H4): solo se muestra si las prestaciones
+          de los turnos cargados tienen area asignada. */}
+      {opciones.areas.length > 0 && (
+        <Select
+          label="Área de servicio"
+          value={filtros.area}
+          onChange={(v) => setFiltros({ ...filtros, area: v })}
+          options={opciones.areas}
+          allLabel="Todas"
+        />
+      )}
     </>
   )
 }
