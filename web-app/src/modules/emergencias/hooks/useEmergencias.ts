@@ -18,6 +18,7 @@ import {
   logEvento,
   marcarEnSitio,
   promoverContactoABuc,
+  statsEventos,
 } from '../api/emergenciasApi'
 import type { ContactoEventualCreateBody, EventoCreateBody, ListarEventosFiltros } from '../types'
 
@@ -61,6 +62,15 @@ export const useEventosAbiertos = (params: { id_subarea?: number; id_prioridad?:
     staleTime: 10 * 1000,
   })
 
+/** KPIs del tablero: mismo ritmo de polling que la lista de abiertos. */
+export const useStatsEmergencias = (horas?: number) =>
+  useQuery({
+    queryKey: ['emergencias', 'stats', horas ?? 'todo'],
+    queryFn: () => statsEventos(horas),
+    refetchInterval: 30 * 1000,
+    staleTime: 10 * 1000,
+  })
+
 export const useEventos = (filtros: ListarEventosFiltros) =>
   useQuery({
     queryKey: ['emergencias', 'eventos', filtros],
@@ -85,6 +95,7 @@ export const useEventoLog = (id: number | null) =>
 function invalidarEventos(qc: ReturnType<typeof useQueryClient>, id?: number) {
   qc.invalidateQueries({ queryKey: ['emergencias', 'abiertos'] })
   qc.invalidateQueries({ queryKey: ['emergencias', 'eventos'] })
+  qc.invalidateQueries({ queryKey: ['emergencias', 'stats'] })
   if (id != null) {
     qc.invalidateQueries({ queryKey: ['emergencias', 'evento', id] })
     qc.invalidateQueries({ queryKey: ['emergencias', 'log', id] })

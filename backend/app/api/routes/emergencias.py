@@ -862,6 +862,76 @@ async def listar_eventos_abiertos(
     return [dict(r) for r in rows]
 
 
+@router.get("/eventos/stats")
+async def stats_eventos(
+    horas: Optional[int] = Query(None, ge=1, le=8760,
+                                 description="ventana hacia atras en horas (NULL = historico completo)"),
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Any:
+    """KPIs del tablero del dispatcher: abiertos AHORA (sin rango) + totales
+    del rango por subarea y por estado. Agregacion 100% en SQL (s43).
+    Registrado ANTES de /eventos/{id_evento} por el param greedy (s5)."""
+    _require_operador(user)
+    scope = await _filtro_scope_subarea(db, user)
+
+    # 1) abiertos ahora: no terminales, sin filtro temporal
+    abiertos_rows = (await db.execute(text("""
+        SELECT e.id_subarea, s.nombre AS subarea_nombre, count(*) AS total
+        FROM emergencia_evento e
+        JOIN emergencia_estado est ON est.id_emergencia_estado = e.id_estado
+        JOIN subarea s ON s.id_subarea = e.id_subarea
+        WHERE e.activo AND NOT est.es_terminal
+          AND (CAST(:scope AS integer) IS NULL OR e.id_subarea = :scope)
+        GROUP BY e.id_subarea, s.nombre
+        ORDER BY s.nombre
+    """), {"scope": scope})).mappings().all()
+
+    # 2) eventos del rango, por estado (todos, incluidos terminales)
+    #    make_interval con CAST explicito: asyncpg no castea bind params (s5)
+    filtro_rango = """
+          AND (CAST(:h AS integer) IS NULL
+               OR e.fecha_hora_recepcion >= NOW() - make_interval(hours => CAST(:h AS integer)))
+    """
+    por_estado = (await db.execute(text(f"""
+        SELECT est.codigo, est.nombre, est.es_terminal, est.orden_visual,
+               count(e.id_emergencia_evento) AS total
+        FROM emergencia_estado est
+        LEFT JOIN emergencia_evento e
+               ON e.id_estado = est.id_emergencia_estado AND e.activo
+              AND (CAST(:scope AS integer) IS NULL OR e.id_subarea = :scope)
+              {filtro_rango}
+        WHERE est.activo
+        GROUP BY est.codigo, est.nombre, est.es_terminal, est.orden_visual
+        ORDER BY est.orden_visual
+    """), {"scope": scope, "h": horas})).mappings().all()
+
+    # 3) eventos del rango, por subarea
+    por_subarea = (await db.execute(text(f"""
+        SELECT e.id_subarea, s.nombre AS subarea_nombre, count(*) AS total
+        FROM emergencia_evento e
+        JOIN subarea s ON s.id_subarea = e.id_subarea
+        WHERE e.activo
+          AND (CAST(:scope AS integer) IS NULL OR e.id_subarea = :scope)
+          {filtro_rango}
+        GROUP BY e.id_subarea, s.nombre
+        ORDER BY s.nombre
+    """), {"scope": scope, "h": horas})).mappings().all()
+
+    return {
+        "abiertos": {
+            "total": sum(r["total"] for r in abiertos_rows),
+            "por_subarea": [dict(r) for r in abiertos_rows],
+        },
+        "rango": {
+            "horas": horas,
+            "total": sum(r["total"] for r in por_subarea),
+            "por_estado": [dict(r) for r in por_estado],
+            "por_subarea": [dict(r) for r in por_subarea],
+        },
+    }
+
+
 @router.get("/eventos")
 async def listar_eventos(
     response: Response,

@@ -194,3 +194,28 @@ export interface ListarEventosFiltros {
   limit?: number
   offset?: number
 }
+
+// --- stats del tablero (GET /eventos/stats) ---
+export interface StatsSubarea {
+  id_subarea: number
+  subarea_nombre: string
+  total: number
+}
+
+export interface StatsEstado {
+  codigo: string
+  nombre: string
+  es_terminal: boolean
+  orden_visual: number
+  total: number
+}
+
+export interface StatsEmergencias {
+  abiertos: { total: number; por_subarea: StatsSubarea[] }
+  rango: {
+    horas: number | null
+    total: number
+    por_estado: StatsEstado[]
+    por_subarea: StatsSubarea[]
+  }
+}

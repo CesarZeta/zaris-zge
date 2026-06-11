@@ -27,6 +27,9 @@ export function CambiarEstadoModal({
   onCancel: () => void
 }) {
   const [obs, setObs] = useState('')
+  // Modal montado con open=false: limpiar la observacion al abrir para no
+  // arrastrar texto de un uso anterior (variante del patron s29).
+  useEffect(() => { if (open) setObs('') }, [open])
   return (
     <Modal
       open={open}
@@ -36,7 +39,7 @@ export function CambiarEstadoModal({
       footer={
         <>
           <Button variant="ghost" onClick={onCancel}>Cancelar</Button>
-          <Button variant="accent" disabled={busy} onClick={() => { onConfirm(obs.trim() || undefined); setObs('') }}>
+          <Button variant="accent" disabled={busy} onClick={() => onConfirm(obs.trim() || undefined)}>
             Confirmar {destino.replace(/_/g, ' ')}
           </Button>
         </>
@@ -64,6 +67,7 @@ export function DerivarModal({
   const organismos = useOrganismosEmergencia()
   const [idOrg, setIdOrg] = useState<number | ''>('')
   const [obs, setObs] = useState('')
+  useEffect(() => { if (open) { setIdOrg(''); setObs('') } }, [open])
   return (
     <Modal
       open={open}
@@ -76,7 +80,7 @@ export function DerivarModal({
           <Button
             variant="accent"
             disabled={busy || idOrg === ''}
-            onClick={() => { onConfirm(idOrg as number, obs.trim() || undefined); setObs('') }}
+            onClick={() => onConfirm(idOrg as number, obs.trim() || undefined)}
           >
             Derivar
           </Button>
