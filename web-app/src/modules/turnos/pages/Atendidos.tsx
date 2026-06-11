@@ -1,17 +1,20 @@
 import { useMemo, useState } from 'react'
 import { Download, RefreshCw } from 'lucide-react'
 import { useTurnos } from '../hooks/useTurnos'
+import { TurnoDetalleModal } from '../components/TurnoDetalleModal'
 import { RecursoPicker } from '../../agenda/components/RecursoPicker'
 import { useEspacios } from '../../agenda/hooks/useEspacios'
 import { useAuthStore } from '../../../stores/auth'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { exportarAtendidosPdf, type TurnoPdfRow } from '../lib/exportPdf'
+import type { Turno } from '../types/turno'
 
 export function Atendidos() {
   const push = useNotificationsStore((s) => s.push)
   const hasPermission = useAuthStore((s) => s.hasPermission)
   const esSupervisor = hasPermission(2) // nivel <= 2 ve filtros por agente/lugar
 
+  const [detalle, setDetalle] = useState<Turno | null>(null)
   const [fTexto, setFTexto] = useState('')
   const [fDesde, setFDesde] = useState('')
   const [fHasta, setFHasta] = useState('')
@@ -137,7 +140,7 @@ export function Atendidos() {
               <tr><td colSpan={5} style={empty}>No hay turnos atendidos para los filtros seleccionados.</td></tr>
             )}
             {filtrados.map((t) => (
-              <tr key={t.id_turno}>
+              <tr key={t.id_turno} onClick={() => setDetalle(t)} style={{ cursor: 'pointer' }} title="Ver detalle y atención registrada">
                 <td style={td}>
                   <div style={mono}>{t.fecha}</div>
                   <div style={{ ...mono, fontSize: '0.74rem', color: 'var(--fg-3)' }}>
@@ -161,6 +164,7 @@ export function Atendidos() {
           </tbody>
         </table>
       </div>
+      <TurnoDetalleModal turno={detalle} onClose={() => setDetalle(null)} />
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )

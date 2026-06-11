@@ -3,6 +3,7 @@ import type { ModuleManifest } from '../../lib/types'
 import { TurnosLayout } from './TurnosLayout'
 import { Overview } from './pages/Overview'
 import { Atendidos } from './pages/Atendidos'
+import { Consultas } from './pages/Consultas'
 import { Prestaciones } from './pages/Prestaciones'
 import { AgendaTurnos } from './pages/AgendaTurnos'
 
@@ -27,6 +28,7 @@ export const turnosModule: ModuleManifest = {
     { index: true,           element: Wrap(Overview),       handle: { breadcrumb: 'turnos' } },
     { path: 'agenda',        element: Wrap(AgendaTurnos),    handle: { breadcrumb: 'turnos · agenda' } },
     { path: 'atendidos',     element: Wrap(Atendidos),      handle: { breadcrumb: 'turnos · atendidos' } },
+    { path: 'consultas',     element: Wrap(Consultas),      handle: { breadcrumb: 'turnos · consultas' } },
     { path: 'prestaciones',  element: Wrap(Prestaciones),    handle: { breadcrumb: 'turnos · prestaciones' } },
   ],
 }
