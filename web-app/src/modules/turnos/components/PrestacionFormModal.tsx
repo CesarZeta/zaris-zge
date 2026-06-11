@@ -28,6 +28,7 @@ export function PrestacionFormModal({ open, onClose, prestacion }: Props) {
   const [tipoRecurso, setTipoRecurso] = useState<TipoRecurso>('agente')
   const [idAgente, setIdAgente] = useState<number | ''>('')
   const [idEspacio, setIdEspacio] = useState<number | ''>('')
+  const [registraAtencion, setRegistraAtencion] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -39,6 +40,7 @@ export function PrestacionFormModal({ open, onClose, prestacion }: Props) {
       setTipoRecurso(prestacion.tipo_recurso ?? 'agente')
       setIdAgente(prestacion.id_agente ?? '')
       setIdEspacio(prestacion.id_espacio ?? '')
+      setRegistraAtencion(prestacion.registra_atencion ?? false)
     } else {
       setNombre('')
       setDescripcion('')
@@ -47,15 +49,17 @@ export function PrestacionFormModal({ open, onClose, prestacion }: Props) {
       setTipoRecurso('agente')
       setIdAgente('')
       setIdEspacio('')
+      setRegistraAtencion(false)
     }
   }, [open, prestacion])
 
-  // 'reserva_espacio' fuerza recurso = espacio.
+  // 'reserva_espacio' fuerza recurso = espacio (y no registra atencion).
   function cambiarClase(c: ClasePrestacion) {
     setClase(c)
     if (c === 'reserva_espacio') {
       setTipoRecurso('espacio')
       setIdAgente('')
+      setRegistraAtencion(false)
     }
   }
 
@@ -77,6 +81,7 @@ export function PrestacionFormModal({ open, onClose, prestacion }: Props) {
       tipo_recurso: tipoRecurso,
       id_agente: tipoRecurso === 'agente' ? (idAgente as number) : null,
       id_espacio: tipoRecurso === 'espacio' ? (idEspacio as number) : null,
+      registra_atencion: clase === 'atencion' && registraAtencion,
     }
     try {
       if (esEdicion && prestacion) {
@@ -179,6 +184,29 @@ export function PrestacionFormModal({ open, onClose, prestacion }: Props) {
             </>
           )}
         </div>
+
+        {/* Historia de atención (solo clase 'atencion') */}
+        {clase === 'atencion' && (
+          <div>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={registraAtencion}
+                onChange={(e) => setRegistraAtencion(e.target.checked)}
+                style={{ marginTop: 2, accentColor: 'var(--zaris-orange)' }}
+              />
+              <span>
+                <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-1)' }}>
+                  Registra historia de atención (ej. atención médica)
+                </span>
+                <span style={{ display: 'block', fontSize: 11, color: 'var(--fg-3)', marginTop: 2 }}>
+                  Al cumplir cada turno se exige registrar la intervención realizada y las
+                  recomendaciones, y quien atiende ve las atenciones anteriores del ciudadano.
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
 
         {/* Duración */}
         <div>

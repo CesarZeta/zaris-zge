@@ -13,6 +13,7 @@ export interface TipoPrestacion {
   id_espacio: number | null
   recurso_nombre: string | null
   id_subarea: number | null
+  registra_atencion: boolean
   activo: boolean
 }
 
@@ -25,6 +26,7 @@ export interface PrestacionInput {
   id_agente?: number | null
   id_espacio?: number | null
   id_subarea?: number | null
+  registra_atencion?: boolean
 }
 
 export interface Turno {
@@ -41,6 +43,7 @@ export interface Turno {
   id_tipo_prestacion: number
   prestacion_nombre: string | null
   prestacion_clase: string | null
+  registra_atencion: boolean | null
   id_ocupacion: number | null
   fecha: string
   hora_inicio: string
@@ -71,6 +74,28 @@ export interface ReprogramarTurnoBody {
   hora_inicio?: string
   hora_fin?: string
   observaciones?: string | null
+}
+
+/** Body de PATCH /turnos/{id}/cumplir. Si la prestación registra historia de
+ *  atención, `intervencion` es obligatoria (el backend rechaza con 422). */
+export interface CumplirTurnoBody {
+  observaciones?: string | null
+  intervencion?: string | null
+  recomendaciones?: string | null
+}
+
+/** Una atención registrada al cumplir un turno (historia del ciudadano). */
+export interface TurnoAtencion {
+  id_turno_atencion: number
+  id_turno: number
+  id_ciudadano: number
+  fecha: string
+  prestacion_nombre: string | null
+  recurso_nombre: string | null
+  intervencion: string
+  recomendaciones: string | null
+  atendido_por: string | null
+  fecha_alta: string
 }
 
 export interface ListarTurnosFiltros {

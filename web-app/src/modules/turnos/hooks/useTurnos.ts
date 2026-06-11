@@ -6,12 +6,14 @@ import {
   cumplirTurno,
   editarPrestacion,
   eliminarPrestacion,
+  listarAtenciones,
   listarPrestaciones,
   listarTurnos,
   reprogramarTurno,
 } from '../api/turnosApi'
 import type {
   CrearTurnoBody,
+  CumplirTurnoBody,
   ListarTurnosFiltros,
   PrestacionInput,
   ReprogramarTurnoBody,
@@ -89,9 +91,23 @@ export function useReprogramarTurno() {
 export function useCumplirTurno() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id_turno, observaciones }: { id_turno: number; observaciones?: string | null }) =>
-      cumplirTurno(id_turno, { observaciones }),
-    onSuccess: () => invalidar(qc),
+    mutationFn: ({ id_turno, ...body }: { id_turno: number } & CumplirTurnoBody) =>
+      cumplirTurno(id_turno, body),
+    onSuccess: () => {
+      invalidar(qc)
+      qc.invalidateQueries({ queryKey: ['turnos', 'atenciones'] })
+    },
+  })
+}
+
+/** Historia de atenciones de un ciudadano (turnos con registra_atencion).
+ *  Scopeada por nivel en el backend (mismo alcance que los turnos). */
+export function useAtencionesCiudadano(id_ciudadano: number | null) {
+  return useQuery({
+    queryKey: ['turnos', 'atenciones', id_ciudadano],
+    queryFn: () => listarAtenciones(id_ciudadano as number),
+    enabled: id_ciudadano != null,
+    staleTime: 15 * 1000,
   })
 }
 
