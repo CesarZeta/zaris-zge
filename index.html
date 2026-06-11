@@ -268,7 +268,9 @@
 
     <!-- ── Canvas ── -->
     <main class="canvas" id="canvas">
-      <iframe id="module-frame" src="web-app/dist/index.html#/dashboard" title="Módulo activo"></iframe>
+      <!-- allowfullscreen: el modo "Maximizar tablero" de Emergencias pide
+           fullscreen nativo del navegador desde adentro del iframe -->
+      <iframe id="module-frame" src="web-app/dist/index.html#/dashboard" title="Módulo activo" allowfullscreen allow="fullscreen"></iframe>
     </main>
 
   </div>
