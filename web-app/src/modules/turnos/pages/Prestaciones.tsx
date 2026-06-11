@@ -103,7 +103,14 @@ export function Prestaciones() {
                   {p.nombre}
                   {p.descripcion && <div style={{ fontSize: '0.72rem', color: 'var(--fg-3)' }}>{p.descripcion}</div>}
                 </td>
-                <td style={td}><ClaseBadge clase={p.clase} /></td>
+                <td style={td}>
+                  <ClaseBadge clase={p.clase} />
+                  {p.registra_atencion && (
+                    <span style={badgeHistoria} title="Al cumplir cada turno se registra la intervención y las recomendaciones en la historia del ciudadano">
+                      Historia de atención
+                    </span>
+                  )}
+                </td>
                 <td style={td}>
                   {p.recurso_nombre ?? '—'}
                   <div style={{ fontSize: '0.7rem', color: 'var(--fg-3)' }}>
@@ -134,6 +141,11 @@ export function Prestaciones() {
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
+}
+
+const badgeHistoria: React.CSSProperties = {
+  marginLeft: 6, background: 'rgba(245,78,0,0.12)', color: 'var(--zaris-orange)',
+  fontSize: '0.72rem', fontWeight: 600, padding: '2px 9px', borderRadius: 999,
 }
 
 function ClaseBadge({ clase }: { clase: ClasePrestacion }) {

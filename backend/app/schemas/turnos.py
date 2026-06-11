@@ -36,6 +36,7 @@ class TipoPrestacionOut(BaseModel):
     id_espacio: Optional[int] = None
     recurso_nombre: Optional[str] = None
     id_subarea: Optional[int] = None
+    registra_atencion: bool = False
     activo: bool
 
 
@@ -70,6 +71,7 @@ class TipoPrestacionCreate(_PrestacionRecursoMixin):
     id_espacio: Optional[int] = None
     id_municipio: int = 1
     id_subarea: Optional[int] = None
+    registra_atencion: bool = False
 
 
 class TipoPrestacionUpdate(_PrestacionRecursoMixin):
@@ -81,6 +83,7 @@ class TipoPrestacionUpdate(_PrestacionRecursoMixin):
     id_agente: Optional[int] = None
     id_espacio: Optional[int] = None
     id_subarea: Optional[int] = None
+    registra_atencion: bool = False
 
 
 # =============================================================================
@@ -117,8 +120,29 @@ class TurnoUpdate(BaseModel):
 
 
 class TurnoCumplir(BaseModel):
-    """Body opcional al cumplir un turno: observacion de la atencion."""
+    """Body opcional al cumplir un turno: observacion de la atencion.
+
+    Si la prestacion del turno tiene registra_atencion=TRUE (mig 86), la
+    intervencion es OBLIGATORIA (el backend rechaza con 422 si falta) y se
+    registra una fila en turno_atencion (historia de atenciones del ciudadano).
+    """
     observaciones: Optional[str] = None
+    intervencion: Optional[str] = None
+    recomendaciones: Optional[str] = None
+
+
+class TurnoAtencionOut(BaseModel):
+    """Una atencion registrada al cumplir un turno (historia del ciudadano)."""
+    id_turno_atencion: int
+    id_turno: int
+    id_ciudadano: int
+    fecha: date                      # fecha del turno atendido
+    prestacion_nombre: Optional[str] = None
+    recurso_nombre: Optional[str] = None
+    intervencion: str
+    recomendaciones: Optional[str] = None
+    atendido_por: Optional[str] = None   # nombre del usuario que registro la atencion
+    fecha_alta: datetime
 
 
 class TurnoOut(BaseModel):
@@ -137,6 +161,7 @@ class TurnoOut(BaseModel):
     id_tipo_prestacion: int
     prestacion_nombre: Optional[str] = None
     prestacion_clase: Optional[str] = None
+    registra_atencion: Optional[bool] = None
     id_ocupacion: Optional[int] = None
     fecha: date
     hora_inicio: time

@@ -1,11 +1,13 @@
 import { api } from '../../../lib/api'
 import type {
   CrearTurnoBody,
+  CumplirTurnoBody,
   ListarTurnosFiltros,
   PrestacionInput,
   ReprogramarTurnoBody,
   TipoPrestacion,
   Turno,
+  TurnoAtencion,
 } from '../types/turno'
 
 // --- Prestaciones (catalogo) ---
@@ -31,8 +33,11 @@ export const crearTurno = (body: CrearTurnoBody) =>
 export const reprogramarTurno = (id_turno: number, body: ReprogramarTurnoBody) =>
   api.put<Turno>(`/api/v1/turnos/${id_turno}`, body)
 
-export const cumplirTurno = (id_turno: number, body?: { observaciones?: string | null }) =>
+export const cumplirTurno = (id_turno: number, body?: CumplirTurnoBody) =>
   api.patch<Turno>(`/api/v1/turnos/${id_turno}/cumplir`, body ?? {})
+
+export const listarAtenciones = (id_ciudadano: number) =>
+  api.get<TurnoAtencion[]>('/api/v1/turnos/atenciones', { params: { id_ciudadano } })
 
 export const cancelarTurno = (id_turno: number) =>
   api.patch<Turno>(`/api/v1/turnos/${id_turno}/cancelar`)
