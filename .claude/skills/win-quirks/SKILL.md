@@ -14,18 +14,28 @@ Recetas operativas verificadas. Muchas tienen memoria asociada (`[[...]]`) con e
 - **Q6 — usar `node_modules/.bin/vite` o `pnpm build`, NUNCA `npx vite`** (baja otra versión y rompe el build PostCSS).
 - **Q7 — favicon/title del scaffold Vite**: antes del 1er push a prod de un módulo React, en `web-app/index.html` `<title>` = "ZARIS · …" y `<link rel="icon">` = `/zaris-favicon.svg`; `web-app/public/` solo `zaris-favicon.svg` (sin `vite.svg`/`favicon.svg`).
 - **Q14 — `vite build` compila el WORKING TREE, no lo staged.** Commitear fuentes primero, rebuildear con el tree acotado, commitear dist (o todo junto). Stash lo ajeno antes de rebuildear. [[feedback_rebuild_dist_working_tree_limpio]].
+- **Q18 — conflicto de rebase en `dist/index.html` con el bot de CI (receta, cazado 2× 2026-06-11).** Si entre tu commit y tu push el workflow `deploy-web-app.yml` metió su `build(web-app): publicar dist [skip ci]`, el `git pull --rebase` conflictúa en `web-app/dist/index.html` (archivo GENERADO, ambos lo tocaron). Resolución: quedarse con TU versión — en rebase tu commit es "theirs":
+  ```powershell
+  git checkout --theirs web-app/dist/index.html
+  git add web-app/dist/index.html
+  $env:GIT_EDITOR = "true"; git rebase --continue
+  git push origin main
+  ```
+  Tu dist es el correcto (compilado con tus fuentes); el del bot era rebuild del commit anterior. Si tu commit NO toca dist, el rebase pasa solo.
 
 ## Levantar servers local (Windows/PowerShell)
 
 - **Q3 — CORS**: nuevo origen local → agregar a `allow_origins` en `main.py` + reiniciar uvicorn (sin `--reload` no toma cambios).
 - **Q4 — uvicorn**: chequear puerto 8000 libre antes de levantar (`[Errno 10048]` si choca).
 - **Q8 — `localhost` ≠ `127.0.0.1` para CORS del browser** (orígenes distintos); el allowlist tiene `localhost`. Curl/psql/IWR no se afectan. [[feedback_localhost_vs_127_cors]].
+  - **Corolario (2026-06-11): vite dev bindea IPv6 (`::1`)** — `Test-NetConnection 127.0.0.1 -Port 5173` da **False con vite corriendo** (y si relanzás, vite salta a 5175 con "Port 5173 is in use"). Chequear con `Invoke-WebRequest http://localhost:5173` en su lugar.
 - **Q9 — `python -m http.server`**: lanzar detached con `Start-Process -WindowStyle Hidden` (Bash bg queda zombie en Windows). [[feedback_http_server_detached]].
 - **Q10 — credenciales dev local**: admin es `ciudadanovl@municipio.gob.ar` (no `admin@`); pass `123456`. Listar usuarios con psql antes de smoke. [[feedback_smoke_credenciales_dev]].
 - **Q11 — `Start-Process pnpm/npm/npx` falla** (son `.cmd`): usar `Start-Process cmd.exe -ArgumentList "/c","pnpm dev > log 2> err"`. [[feedback_ps_quirks_startprocess_psql]].
 - **Q5 — QR**: solo render cliente (`qrcode` ~26KB sobre canvas); el backend solo genera el string `EVT<id>-RES<id>-<ts>`.
 - **Q16 — git commit multilínea (Bash tool)**: el here-string `git commit -m @'...'@` mete un `@` LITERAL al inicio del subject (`@ feat(...)`). Verificar con `git log -1 --format='%s'`; si quedó el `@`, amendar con archivo: `cat > /tmp/cmsg.txt <<'EOF' ... EOF` + `git commit --amend -F /tmp/cmsg.txt`. Default: para commits con cuerpo, escribir el mensaje a archivo y usar `-F`, no here-string. (verif. 2026-06-09)
-- **Q15 — `& "C:\Program Files\...\psql.exe"` lo bloquea el PowerShell tool** como falso positivo "Remove-Item path protegido" (parsea mal ruta-con-espacios + `&`). Para DB LOCAL en smokes usar script Python+psycopg2 (`@"...import psycopg2..."@ | python`), no `& $psql`. Prod = `execute_sql`/`apply_migration` MCP. [[feedback_ps_quirks_startprocess_psql]] (Quirk 3).
+- **Q15 — `& "C:\Program Files\...\psql.exe"` lo bloquea el PowerShell tool** como falso positivo "Remove-Item path protegido" (parsea mal ruta-con-espacios + `&`). Para DB LOCAL en smokes usar script Python+psycopg2 (`@"...import psycopg2..."@ | python`), no `& $psql`. Prod = `execute_sql`/`apply_migration` MCP. [[feedback_ps_quirks_startprocess_psql]] (Quirk 3). *(Nota 2026-06-11: en esta instalación `& $psql` SÍ corre desde el PowerShell tool — si lo bloquea, caer al fallback Python.)*
+  - **Q15b — SQL con tildes: NUNCA inline en `-c` desde PowerShell** (llega Latin-1 aunque setees `PGCLIENTENCODING=UTF8` → `ERROR: secuencia de bytes no válida para UTF8`). Escribir el SQL a archivo con el tool Write (UTF-8 sin BOM) y correr `psql -f archivo.sql`. Cazado sembrando subáreas con tildes 2026-06-11.
 - **Q17 — uvicorn detached con `ENV_FILE` (receta canónica, verif. 2026-05-16)**: `Start-Process` en PS 5.1 **NO hereda env vars del shell padre** (`$env:ENV_FILE` seteado antes NO llega al hijo) y `-Environment` no existe. La única forma confiable:
   ```powershell
   Start-Process cmd.exe -ArgumentList "/c","set ENV_FILE=.env.local && python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > _uvicorn.log 2> _uvicorn.err.log" -WorkingDirectory "...\backend" -WindowStyle Hidden
