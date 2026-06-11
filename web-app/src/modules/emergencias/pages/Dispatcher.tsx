@@ -94,6 +94,8 @@ export function Dispatcher() {
         onHoras={setHorasKpi}
         estadoActivo={fEstado}
         onSelectEstado={setFEstado}
+        subareaActiva={fSubarea}
+        onSelectSubarea={setFSubarea}
       />
 
       {/* mapa de eventos abiertos, coloreado por estado; click abre el evento */}

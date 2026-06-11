@@ -16,29 +16,47 @@ interface Props {
   onHoras: (h?: number) => void
   estadoActivo: string
   onSelectEstado: (codigo: string) => void
+  subareaActiva: number | ''
+  onSelectSubarea: (id: number | '') => void
 }
 
-export function StatsEmergenciasBar({ horas, onHoras, estadoActivo, onSelectEstado }: Props) {
+export function StatsEmergenciasBar({ horas, onHoras, estadoActivo, onSelectEstado, subareaActiva, onSelectSubarea }: Props) {
   const stats = useStatsEmergencias(horas)
   const d = stats.data
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {/* fila 1: abiertos ahora (rojo) + totales generales por subarea + rango */}
+      {/* fila 1: abiertos ahora (rojo, limpia filtros) + por subarea (filtran) + rango */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'stretch' }}>
-        <div style={cardRoja}>
+        <button
+          style={{ ...cardRoja, cursor: 'pointer' }}
+          title="Ver todos los abiertos (limpia los filtros)"
+          onClick={() => { onSelectEstado(''); onSelectSubarea('') }}
+        >
           <div style={{ ...kpiLabel, color: 'rgba(255,255,255,.85)' }}>Abiertos ahora</div>
           <div style={{ ...kpiValor, color: '#fff' }}>{d ? d.abiertos.total : '—'}</div>
-        </div>
-        {(d?.rango.por_subarea ?? []).map((s) => (
-          <div key={s.id_subarea} style={card}>
-            <div style={kpiLabel}>{s.subarea_nombre}</div>
-            <div style={{ ...kpiValor, color: 'var(--fg-1)' }}>{s.total}</div>
-            <div style={kpiSub}>
-              {d?.abiertos.por_subarea.find((a) => a.id_subarea === s.id_subarea)?.total ?? 0} abiertos
-            </div>
-          </div>
-        ))}
+        </button>
+        {(d?.rango.por_subarea ?? []).map((s) => {
+          const activa = subareaActiva === s.id_subarea
+          return (
+            <button
+              key={s.id_subarea}
+              style={{
+                ...card, cursor: 'pointer', textAlign: 'left',
+                border: `1px solid ${activa ? 'var(--zaris-orange)' : 'var(--border-primary)'}`,
+                background: activa ? 'var(--surface-400)' : 'var(--surface-100)',
+              }}
+              title="Filtrar lista y mapa por esta subárea"
+              onClick={() => onSelectSubarea(activa ? '' : s.id_subarea)}
+            >
+              <div style={kpiLabel}>{s.subarea_nombre}</div>
+              <div style={{ ...kpiValor, color: 'var(--fg-1)' }}>{s.total}</div>
+              <div style={kpiSub}>
+                {d?.abiertos.por_subarea.find((a) => a.id_subarea === s.id_subarea)?.total ?? 0} abiertos
+              </div>
+            </button>
+          )
+        })}
         <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4 }}>
           <label style={{ fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 600, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Período de los totales

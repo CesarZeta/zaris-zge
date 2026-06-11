@@ -30,6 +30,26 @@ _NOMINATIM_LOCK = asyncio.Lock()
 _NOMINATIM_LAST_CALL = 0.0
 _NOMINATIM_MIN_INTERVAL = 1.05  # margen sobre el 1 req/s
 
+# Sesgo geográfico del geocoding (regla de diseño §23, pedido del usuario
+# 2026-06-11): el municipio opera en una zona acotada — una búsqueda de
+# "Avenida Maipú" NO debe traer la de Mendoza. Restringimos los resultados a
+# un bounding box centrado en el municipio (± ~28 km: cubre el partido, CABA
+# y los partidos linderos; el operador puede cargar direcciones cercanas de
+# la otra jurisdicción). Aplica a TODOS los consumidores porque viven sobre
+# `geocodificar_direccion`. Si el deploy cambia de municipio, ajustar acá.
+GEO_BBOX_CENTRO_LAT = -34.5305   # Vicente López (demo)
+GEO_BBOX_CENTRO_LON = -58.4779
+GEO_BBOX_DELTA_GRADOS = 0.27     # ~28 km en lat; suficiente para AMBA norte
+
+def _viewbox_municipio() -> str:
+    """Formato Nominatim: lon1,lat1,lon2,lat2 (dos esquinas opuestas)."""
+    return (
+        f"{GEO_BBOX_CENTRO_LON - GEO_BBOX_DELTA_GRADOS},"
+        f"{GEO_BBOX_CENTRO_LAT - GEO_BBOX_DELTA_GRADOS},"
+        f"{GEO_BBOX_CENTRO_LON + GEO_BBOX_DELTA_GRADOS},"
+        f"{GEO_BBOX_CENTRO_LAT + GEO_BBOX_DELTA_GRADOS}"
+    )
+
 
 async def _nominatim_get(path: str, params: dict) -> list | dict:
     """GET a Nominatim respetando rate-limit global de la app."""
@@ -136,6 +156,11 @@ async def geocodificar_direccion(q: str, limit: int = 5, solo_direcciones: bool 
         "limit": str(upstream_limit),
         "countrycodes": "ar",
         "addressdetails": "1",
+        # bounded=1 EXCLUYE lo que cae fuera del viewbox (no es solo un bias):
+        # sin esto, "Avenida Maipú" devuelve resultados de Mendoza/otras
+        # provincias que son ruido para un operador municipal.
+        "viewbox": _viewbox_municipio(),
+        "bounded": "1",
     }
     data = await _nominatim_get("/search", params)
     if not isinstance(data, list):
