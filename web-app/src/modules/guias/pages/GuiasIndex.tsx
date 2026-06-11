@@ -69,11 +69,11 @@ const GUIAS: Guia[] = [
   },
   {
     titulo: 'TURNOS',
-    descripcion: 'Cómo dar turnos a los ciudadanos y gestionarlos hasta su cumplimiento: lista de trabajo, agenda, turnos atendidos con export PDF, prestaciones y autoservicio.',
+    descripcion: 'Cómo dar turnos a los ciudadanos y gestionarlos hasta su cumplimiento: historia de atención, consultas por ciudadano, agenda, atendidos con export PDF, prestaciones y autoservicio.',
     icon: Clock,
     htmlName: 'manual_turnos.html',
     audiencia: 'Operador o superior',
-    tags: ['Operativo', '6 capturas', '11 secciones'],
+    tags: ['Operativo', '9 capturas', '13 secciones'],
   },
   {
     titulo: 'ENTRADAS',
