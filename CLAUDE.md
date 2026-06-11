@@ -1236,6 +1236,8 @@ useEffect(() => {
 
 Caso real: BUG-A-001 (commit `365b5ea`, 2026-05-11). El usuario marcó autoservicio=ON, fecha del Timeline cambió por una invalidate de query, el effect re-corrió y pisó el checkbox. Backend persistía OK; el bug era que el form mandaba `false` en submit.
 
+**Variante: modal siempre montado con default derivado de props.** Un modal que vive montado con `open=false` y deriva su estado inicial de props (`useState(permiteX)`) congela el valor del PRIMER render (cuando todavía no había entidad elegida) y nunca lo re-deriva — y ofrece una acción que el backend rechaza. Fix: `useEffect(() => { if (open) { setEstado(permiteX); /* + reset de campos */ } }, [open, permiteX])`. Caso real: `CerrarModal` de Emergencias ofrecía "Cerrar como DESESTIMADO" sobre un evento EN_SITIO → 422 del FSM (cazado en QA navegador prod 2026-06-10).
+
 ### Confirmaciones de acciones destructivas
 
 `window.confirm()` nativo se ve perfecto en navegadores reales pero **agentes QA y headless browsers tienden a auto-aceptarlo sin renderizar nada**, así que no se ve en screenshots ni se puede inspeccionar por DOM. Para apps que se testean con agentes IA (o para mejor UX consistente con el resto del producto), usar un componente `ConfirmModal` explícito — vive en `web-app/src/modules/agenda/components/ConfirmModal.tsx`. Promoverlo a `src/ui/` cuando lo use otro módulo.
@@ -1326,6 +1328,7 @@ DS v1.0 (`--z-*`, `.z-*`, `frontend/styles.css`, `frontend/menu.html`, `frontend
 - Antes de commitear `dist/`: buildear modo prod (sin `VITE_API_BASE` en el shell) y verificar que apunte a Railway, no a `127.0.0.1`.
 - `vite build` compila el WORKING TREE, no lo staged — commitear fuentes primero o stashear lo ajeno antes de rebuildear.
 - El bundle standalone en prod debe redirigir al shell vanilla (script en `web-app/index.html` + whitelist en `menu.js`, §14). Nunca `window.location.href='/...'` absoluto desde el bundle (rompe bajo `/zaris-zge/`, [[feedback_redirect_iframe_subpath]]).
+- **Tras pushear un commit que toca `web-app/**` SIN `[skip ci]`, el workflow `deploy-web-app.yml` rebuildea el dist en CI y puede commitear `build(web-app): publicar dist [skip ci]` a `main` ~1-2 min después** (el build Linux normaliza los line endings del index.html buildeado en Windows — diff de ~38 líneas, no funcional). Consecuencia: `git fetch` + `git pull --rebase` ANTES del próximo push o rebota con non-fast-forward (cazado 2026-06-10/11, commits `fe8722a`/`73bc3d0`).
 
 ## 33. Módulos Turnos y Entradas
 
