@@ -37,6 +37,7 @@ from app.schemas.turnos import (
     TipoPrestacionCreate,
     TipoPrestacionOut,
     TipoPrestacionUpdate,
+    TurnoAtencionOut,
     TurnoCreate,
     TurnoCumplir,
     TurnoOut,
@@ -91,7 +92,7 @@ _PRESTACION_SELECT = """
            tp.duracion_min, tp.tipo_recurso, tp.id_agente, tp.id_espacio,
            CASE WHEN tp.tipo_recurso = 'espacio' THEN e.nombre
                 ELSE COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') END AS recurso_nombre,
-           tp.id_subarea, tp.activo
+           tp.id_subarea, tp.registra_atencion, tp.activo
     FROM tipo_prestacion tp
     LEFT JOIN agentes         a ON a.id_agente  = tp.id_agente
     LEFT JOIN espacios_agenda e ON e.id_espacio = tp.id_espacio
@@ -166,16 +167,17 @@ async def crear_prestacion(
     id_prestacion = await db.scalar(text("""
         INSERT INTO tipo_prestacion (
             nombre, descripcion, clase, duracion_min, tipo_recurso,
-            id_agente, id_espacio, id_municipio, id_subarea,
+            id_agente, id_espacio, id_municipio, id_subarea, registra_atencion,
             id_usuario_alta, id_usuario_modificacion
         ) VALUES (
-            :nom, :desc, :clase, :dur, :tr, :ia, :ie, :mun, :isa, :uid, :uid
+            :nom, :desc, :clase, :dur, :tr, :ia, :ie, :mun, :isa, :reg, :uid, :uid
         ) RETURNING id_tipo_prestacion
     """), {
         "nom": payload.nombre, "desc": payload.descripcion, "clase": payload.clase,
         "dur": payload.duracion_min, "tr": payload.tipo_recurso,
         "ia": payload.id_agente, "ie": payload.id_espacio,
         "mun": payload.id_municipio, "isa": payload.id_subarea,
+        "reg": payload.registra_atencion and payload.clase == "atencion",
         "uid": user["id_usuario"],
     })
     await db.commit()
@@ -204,12 +206,14 @@ async def editar_prestacion(
         UPDATE tipo_prestacion SET
             nombre = :nom, descripcion = :desc, clase = :clase, duracion_min = :dur,
             tipo_recurso = :tr, id_agente = :ia, id_espacio = :ie, id_subarea = :isa,
+            registra_atencion = :reg,
             fecha_modificacion = NOW(), id_usuario_modificacion = :uid
         WHERE id_tipo_prestacion = :id
     """), {
         "id": id_prestacion, "nom": payload.nombre, "desc": payload.descripcion,
         "clase": payload.clase, "dur": payload.duracion_min, "tr": payload.tipo_recurso,
         "ia": payload.id_agente, "ie": payload.id_espacio, "isa": payload.id_subarea,
+        "reg": payload.registra_atencion and payload.clase == "atencion",
         "uid": user["id_usuario"],
     })
     await db.commit()
@@ -251,6 +255,7 @@ async def _turno_to_out(db: AsyncSession, id_turno: int) -> Optional[dict[str, A
                CASE WHEN t.id_espacio IS NOT NULL THEN e.nombre
                     ELSE COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') END AS recurso_nombre,
                t.id_tipo_prestacion, tp.nombre AS prestacion_nombre, tp.clase AS prestacion_clase,
+               tp.registra_atencion,
                t.id_ocupacion, t.fecha, t.hora_inicio, t.hora_fin, t.estado,
                t.observaciones, t.activo, t.id_municipio, t.id_subarea,
                t.fecha_alta, t.fecha_modificacion
@@ -326,6 +331,7 @@ async def listar_turnos(
                CASE WHEN t.id_espacio IS NOT NULL THEN e.nombre
                     ELSE COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') END AS recurso_nombre,
                t.id_tipo_prestacion, tp.nombre AS prestacion_nombre, tp.clase AS prestacion_clase,
+               tp.registra_atencion,
                t.id_ocupacion, t.fecha, t.hora_inicio, t.hora_fin, t.estado,
                t.observaciones, t.activo, t.id_municipio, t.id_subarea,
                t.fecha_alta, t.fecha_modificacion
@@ -340,6 +346,50 @@ async def listar_turnos(
     """), params_page)).mappings().all()
     response.headers["X-Total-Count"] = str(int(total or 0))
     response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
+    return [dict(r) for r in rows]
+
+
+# Segmento fijo: registrado ANTES de GET /{id_turno} (param greedy, §5).
+@router.get("/atenciones", response_model=list[TurnoAtencionOut])
+async def historial_atenciones(
+    id_ciudadano: int = Query(..., description="Ciudadano cuya historia de atenciones se consulta"),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """Historia de atenciones registradas de un ciudadano (turnos cumplidos de
+    prestaciones con registra_atencion, mig 86). Dato de salud sensible (Ley
+    25.326): aplica el mismo scope por nivel que los turnos — supervisor+ ve
+    todo; el operador solo las atenciones de turnos a su alcance (agente propio
+    o espacio de su subarea)."""
+    where = ["ta.activo = TRUE", "ta.id_ciudadano = :ic"]
+    params: dict[str, Any] = {"ic": id_ciudadano, "lim": limit}
+    scope = await _scope_turnos_para_usuario(db, user)
+    if scope is not None:
+        where.append(
+            "(t.id_agente = :scope_agente OR t.id_espacio IN "
+            "(SELECT id_espacio FROM espacios_agenda WHERE id_subarea = :scope_subarea AND activo = TRUE))"
+        )
+        params["scope_agente"] = scope["id_agente"]
+        params["scope_subarea"] = scope["id_subarea"]
+    rows = (await db.execute(text(f"""
+        SELECT ta.id_turno_atencion, ta.id_turno, ta.id_ciudadano,
+               t.fecha, tp.nombre AS prestacion_nombre,
+               CASE WHEN t.id_espacio IS NOT NULL THEN e.nombre
+                    ELSE COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') END AS recurso_nombre,
+               ta.intervencion, ta.recomendaciones,
+               u.nombre AS atendido_por,
+               ta.fecha_alta
+        FROM turno_atencion ta
+        JOIN turnos t ON t.id_turno = ta.id_turno
+        LEFT JOIN tipo_prestacion tp ON tp.id_tipo_prestacion = t.id_tipo_prestacion
+        LEFT JOIN agentes         a  ON a.id_agente           = t.id_agente
+        LEFT JOIN espacios_agenda e  ON e.id_espacio          = t.id_espacio
+        LEFT JOIN usuarios        u  ON u.id_usuario          = ta.id_usuario_alta
+        WHERE {' AND '.join(where)}
+        ORDER BY t.fecha DESC, t.hora_inicio DESC
+        LIMIT :lim
+    """), params)).mappings().all()
     return [dict(r) for r in rows]
 
 
@@ -593,12 +643,19 @@ async def cumplir_turno(
     """Marca el turno como cumplido (el ciudadano se presento y se atendio).
 
     Acepta una observacion opcional de la atencion (se anexa a la observacion
-    del turno). Al cumplir dispara la encuesta de satisfaccion de turnos
-    (best-effort, no bloquea el cumplimiento)."""
+    del turno). Si la prestacion del turno tiene registra_atencion=TRUE
+    (mig 86), exige `intervencion` (422 si falta) y registra la atencion en
+    turno_atencion (historia del ciudadano) en la misma transaccion.
+    Al cumplir dispara la encuesta de satisfaccion de turnos (best-effort,
+    no bloquea el cumplimiento)."""
     _require_gestion(user)
-    turno = (await db.execute(text(
-        "SELECT estado, observaciones FROM turnos WHERE id_turno = :id AND activo = TRUE"
-    ), {"id": id_turno})).mappings().first()
+    turno = (await db.execute(text("""
+        SELECT t.estado, t.observaciones, t.id_ciudadano, t.id_municipio, t.id_subarea,
+               COALESCE(tp.registra_atencion, FALSE) AS registra_atencion
+        FROM turnos t
+        LEFT JOIN tipo_prestacion tp ON tp.id_tipo_prestacion = t.id_tipo_prestacion
+        WHERE t.id_turno = :id AND t.activo = TRUE
+    """), {"id": id_turno})).mappings().first()
     if not turno:
         raise HTTPException(404, "Turno no encontrado")
     if turno["estado"] == "cumplido":
@@ -606,6 +663,13 @@ async def cumplir_turno(
         return out  # type: ignore
     if turno["estado"] != "reservado":
         raise HTTPException(409, f"Solo se puede cumplir un turno 'reservado' (estado actual: '{turno['estado']}')")
+
+    # Prestacion con historia de atencion: la intervencion es OBLIGATORIA
+    # (decidido con el usuario 2026-06-11 — la historia nunca queda con huecos).
+    intervencion = (payload.intervencion or "").strip() if payload else ""
+    recomendaciones = (payload.recomendaciones or "").strip() if payload else ""
+    if turno["registra_atencion"] and not intervencion:
+        raise HTTPException(422, "Esta prestación registra historia de atención: la intervención es obligatoria para cumplir el turno")
 
     obs_nueva = (payload.observaciones or "").strip() if payload else ""
     sets = ["estado = 'cumplido'", "fecha_modificacion = NOW()", "id_usuario_modificacion = :uid"]
@@ -615,6 +679,19 @@ async def cumplir_turno(
         obs_final = f"{prev}\nAtención: {obs_nueva}" if prev else obs_nueva
         sets.append("observaciones = :obs"); params["obs"] = obs_final
     await db.execute(text(f"UPDATE turnos SET {', '.join(sets)} WHERE id_turno = :id"), params)
+
+    if turno["registra_atencion"]:
+        await db.execute(text("""
+            INSERT INTO turno_atencion (
+                id_turno, id_ciudadano, intervencion, recomendaciones,
+                id_municipio, id_subarea, id_usuario_alta, id_usuario_modificacion
+            ) VALUES (:it, :ic, :inter, :reco, :mun, :isa, :uid, :uid)
+            ON CONFLICT (id_turno) DO NOTHING
+        """), {
+            "it": id_turno, "ic": turno["id_ciudadano"], "inter": intervencion,
+            "reco": recomendaciones or None, "mun": turno["id_municipio"],
+            "isa": turno["id_subarea"], "uid": user["id_usuario"],
+        })
     await db.commit()
 
     # Dispara la encuesta de turnos (delay 24h lo maneja el dispatcher).

@@ -7,7 +7,7 @@ import { CumplirTurnoModal } from '../components/CumplirTurnoModal'
 import { ConfirmModal } from '../../agenda/components/ConfirmModal'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { useTurnoFiltros, TurnoFiltrosBar } from '../lib/turnoFiltros'
-import type { EstadoTurno, Turno } from '../types/turno'
+import type { CumplirTurnoBody, EstadoTurno, Turno } from '../types/turno'
 
 type FiltroEstado = EstadoTurno | ''
 
@@ -61,11 +61,14 @@ export function Overview() {
     return c
   }, [turnos])
 
-  async function doCumplir(t: Turno, observaciones: string) {
+  async function doCumplir(t: Turno, body: CumplirTurnoBody) {
     setConfirmCumplir(null)
     try {
-      await cumplir.mutateAsync({ id_turno: t.id_turno, observaciones: observaciones || undefined })
-      push({ kind: 'success', title: 'Turno marcado como cumplido' })
+      await cumplir.mutateAsync({ id_turno: t.id_turno, ...body })
+      push({
+        kind: 'success',
+        title: body.intervencion ? 'Atención registrada y turno cumplido' : 'Turno marcado como cumplido',
+      })
     } catch (e) {
       push({ kind: 'error', title: 'No se pudo cumplir', body: (e as Error).message })
     }
@@ -210,7 +213,7 @@ export function Overview() {
       <TurnoFormModal open={modalOpen} onClose={() => setModalOpen(false)} turno={editTurno} />
       <CumplirTurnoModal
         turno={confirmCumplir}
-        onConfirm={(obs) => confirmCumplir && doCumplir(confirmCumplir, obs)}
+        onConfirm={(body) => confirmCumplir && doCumplir(confirmCumplir, body)}
         onCancel={() => setConfirmCumplir(null)}
       />
       <ConfirmModal
