@@ -288,17 +288,42 @@ export function Recepcion() {
           </div>
         )}
         <div style={bloque1Completo ? undefined : { opacity: 0.45, pointerEvents: 'none' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
-          <div>
-            <label style={lbl}>Subárea *</label>
-            <select style={inp} value={idSubarea} onChange={(e) => {
-              setIdSubarea(e.target.value ? Number(e.target.value) : '')
-              setIdTipo(''); setIdSubtipo(''); setPrioridadTocada(false)
-            }}>
-              <option value="">Elegir...</option>
-              {subareas.map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}
-            </select>
+        {/* Subárea: dos botones grandes con el color de la fuerza (pedido del
+            usuario 2026-06-11) — verde Defensa Civil, rojo seguridad/policía. */}
+        <div style={{ marginBottom: 12 }}>
+          <label style={lbl}>Subárea *</label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+            {subareas.map(([id, nombre]) => {
+              const esDC = nombre.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().includes('defensa')
+              const color = esDC ? '#1f8a65' : '#c62828'
+              const activa = idSubarea === id
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  style={{
+                    padding: '13px 14px', borderRadius: 10, cursor: 'pointer',
+                    fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 700,
+                    textTransform: 'uppercase', letterSpacing: '0.04em',
+                    border: `2px solid ${color}`,
+                    background: activa ? color : 'var(--surface-100)',
+                    color: activa ? '#fff' : color,
+                    transition: 'background 120ms, color 120ms',
+                  }}
+                  onClick={() => {
+                    setIdSubarea(id)
+                    setIdTipo(''); setIdSubtipo(''); setPrioridadTocada(false)
+                  }}
+                >
+                  {nombre}
+                </button>
+              )
+            })}
           </div>
+        </div>
+
+        {/* Tipo + subtipo en una fila */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
           <div>
             <label style={lbl}>Tipo *</label>
             <ComboTipo
@@ -317,18 +342,46 @@ export function Recepcion() {
               {(subtipos.data ?? []).map((s) => <option key={s.id_emergencia_subtipo} value={s.id_emergencia_subtipo}>{s.nombre}</option>)}
             </select>
           </div>
-          <div>
-            <label style={lbl}>Prioridad * {!prioridadTocada && tipoSel ? '(auto)' : ''}</label>
-            <select style={inp} value={prioridadEfectiva} onChange={(e) => {
-              setPrioridadTocada(true); setIdPrioridad(e.target.value ? Number(e.target.value) : '')
-            }}>
-              <option value="">Elegir...</option>
-              {(prioridades.data ?? []).map((p) => (
-                <option key={p.id_emergencia_prioridad} value={p.id_emergencia_prioridad}>
-                  {p.codigo} — {p.nombre} (SLA {p.sla_minutos_arribo} min)
-                </option>
-              ))}
-            </select>
+        </div>
+
+        {/* Prioridad: tres botones con descripción y SLA. Sigue autocompletada
+            por subtipo>tipo; tocar uno la pisa (prioridadTocada). */}
+        <div style={{ marginTop: 12 }}>
+          <label style={lbl}>
+            Prioridad * {!prioridadTocada && tipoSel ? '(sugerida por el tipo — tocá otra para cambiarla)' : ''}
+          </label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 }}>
+            {(prioridades.data ?? []).map((p) => {
+              const activa = prioridadEfectiva === p.id_emergencia_prioridad
+              const color = `var(--${p.color_token || `prio-${p.codigo.toLowerCase()}`}, var(--fg-2))`
+              return (
+                <button
+                  key={p.id_emergencia_prioridad}
+                  type="button"
+                  style={{
+                    textAlign: 'left', padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
+                    border: `2px solid ${activa ? color : 'var(--border-primary)'}`,
+                    background: activa ? 'var(--surface-400)' : 'var(--surface-100)',
+                    fontFamily: 'var(--font-display)',
+                    transition: 'border-color 120ms, background 120ms',
+                  }}
+                  onClick={() => { setPrioridadTocada(true); setIdPrioridad(p.id_emergencia_prioridad) }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{
+                      fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 12,
+                      color: '#f7f7f4', background: color, borderRadius: 999, padding: '2px 9px',
+                    }}>
+                      {p.codigo}
+                    </span>
+                    <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--fg-1)' }}>{p.nombre}</span>
+                  </div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--fg-3)', marginTop: 5 }}>
+                    SLA de arribo: {p.sla_minutos_arribo} min
+                  </div>
+                </button>
+              )
+            })}
           </div>
         </div>
 
