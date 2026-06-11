@@ -2,48 +2,47 @@ import { useMemo, useState } from 'react'
 import { Download, RefreshCw } from 'lucide-react'
 import { useTurnos } from '../hooks/useTurnos'
 import { TurnoDetalleModal } from '../components/TurnoDetalleModal'
-import { RecursoPicker } from '../../agenda/components/RecursoPicker'
-import { useEspacios } from '../../agenda/hooks/useEspacios'
-import { useAuthStore } from '../../../stores/auth'
 import { useNotificationsStore } from '../../../stores/notifications'
+import { useTurnoFiltros, TurnoFiltrosBar } from '../lib/turnoFiltros'
 import { exportarAtendidosPdf, type TurnoPdfRow } from '../lib/exportPdf'
 import type { Turno } from '../types/turno'
 
 export function Atendidos() {
   const push = useNotificationsStore((s) => s.push)
-  const hasPermission = useAuthStore((s) => s.hasPermission)
-  const esSupervisor = hasPermission(2) // nivel <= 2 ve filtros por agente/lugar
 
   const [detalle, setDetalle] = useState<Turno | null>(null)
   const [fTexto, setFTexto] = useState('')
   const [fDesde, setFDesde] = useState('')
   const [fHasta, setFHasta] = useState('')
-  const [fAgente, setFAgente] = useState<number | null>(null)
-  const [fEspacio, setFEspacio] = useState<number | ''>('')
-
-  const espacios = useEspacios({})
 
   const { data, isLoading, isError, error, refetch, isFetching } = useTurnos({
     estado: 'cumplido',
     fecha_desde: fDesde || undefined,
     fecha_hasta: fHasta || undefined,
-    id_agente: esSupervisor && fAgente != null ? fAgente : undefined,
-    id_espacio: esSupervisor && fEspacio !== '' ? (fEspacio as number) : undefined,
   })
 
   const turnos = data ?? []
 
+  // Barra de filtros unificada del modulo (Prestacion / Atiende / Ciudadano),
+  // la misma de Turnos y Agenda (informe QA 2026-06, hallazgo 2). Reemplaza a
+  // los antiguos selects de agente/lugar solo-supervisor: las opciones se
+  // derivan de los turnos cargados, ya scopeados por nivel en el backend.
+  const { filtros, setFiltros, opciones, filtrar, hayActivos, limpiar } = useTurnoFiltros(turnos)
+
   const filtrados = useMemo(() => {
+    let res = filtrar(turnos)
     const txt = fTexto.trim().toLowerCase()
-    if (!txt) return turnos
-    return turnos.filter((t) =>
-      [t.ciudadano_nombre, t.ciudadano_dni, t.recurso_nombre, t.prestacion_nombre, t.observaciones]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-        .includes(txt),
-    )
-  }, [turnos, fTexto])
+    if (txt) {
+      res = res.filter((t) =>
+        [t.ciudadano_nombre, t.ciudadano_dni, t.recurso_nombre, t.prestacion_nombre, t.observaciones]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+          .includes(txt),
+      )
+    }
+    return res
+  }, [turnos, fTexto, filtrar])
 
   function doExport() {
     if (filtrados.length === 0) {
@@ -67,7 +66,7 @@ export function Atendidos() {
       <div>
         <h1 style={titulo}>atendidos</h1>
         <p style={{ margin: '6px 0 0', color: 'var(--fg-3)', fontSize: 'var(--size-btn)' }}>
-          turnos cumplidos. {esSupervisor ? 'Filtrá por agente o lugar y exportá a PDF.' : 'Mostrás solo los turnos que atendiste.'}
+          turnos cumplidos. Filtrá por fecha, prestación, quién atiende o ciudadano, y exportá a PDF. Clic en una fila para ver la atención registrada.
         </p>
       </div>
 
@@ -90,22 +89,11 @@ export function Atendidos() {
           <label style={lbl}>Hasta</label>
           <input type="date" value={fHasta} onChange={(e) => setFHasta(e.target.value)} style={inp} />
         </div>
-        {esSupervisor && (
-          <>
-            <div style={{ ...field, minWidth: 200 }}>
-              <label style={lbl}>Agente</label>
-              <RecursoPicker tipo="agente" value={fAgente} onChange={setFAgente} placeholder="Todos los agentes" />
-            </div>
-            <div style={field}>
-              <label style={lbl}>Lugar de atención</label>
-              <select value={fEspacio} onChange={(e) => setFEspacio(e.target.value === '' ? '' : Number(e.target.value))} style={inp}>
-                <option value="">Todos los lugares</option>
-                {(espacios.data ?? []).map((e) => (
-                  <option key={e.id_espacio} value={e.id_espacio}>{e.nombre}</option>
-                ))}
-              </select>
-            </div>
-          </>
+        <TurnoFiltrosBar opciones={opciones} filtros={filtros} setFiltros={setFiltros} />
+        {hayActivos && (
+          <button onClick={limpiar} style={{ ...btnGhost, alignSelf: 'flex-end' }} title="Limpiar filtros de prestación, recurso y ciudadano">
+            Limpiar
+          </button>
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
           <button onClick={() => refetch()} style={btnGhost} title="Refrescar">
