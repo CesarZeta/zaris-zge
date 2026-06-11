@@ -1,8 +1,8 @@
 # PLAN DE IMPLEMENTACION - MODULO EMERGENCIAS (ZGE)
 
 **Ubicacion canonica:** `docs/modulos/emergencias/PLAN_MODULO_EMERGENCIAS.md`
-**Estado:** Borrador para ejecucion fase a fase
-**Ultima revision:** Inicial
+**Estado:** Fases 1-5 CERRADAS (modulo completo en produccion). Iteraciones futuras en seccion 8.
+**Ultima revision:** 2026-06-10 (cierre Fase 5 + pendientes menores + normalizacion OSM)
 
 ---
 
@@ -864,8 +864,23 @@ Vista de tablero para supervisor/dispatcher.
 - **Verificado navegando (§41)** en `localhost:5173` + backend local: tablero con los eventos del smoke, flujo completo recepcion (buscar DNI BUC -> usar -> Defensa Civil/Incendio/Forestal -> prioridad auto P1 -> crear `EM-2026-000025` -> detalle) -> EN_PREPARACION via modal -> historial con CREACION + CAMBIO ESTADO. Trampa cazada: el router es `createHashRouter` — navegar `localhost:5173/emergencias` (pathname) cae al catch-all y muestra dashboard; la URL real es `/#/emergencias`.
 - Lat/lon y mapa NO se incluyeron en el form (plan 5.1 los marca "futuro mapa"; el backend ya los acepta).
 
-### Fase 5
-- (pendiente)
+### Fase 5 (cerrada 2026-06-10)
+
+- **Router publico SEPARADO** (`backend/app/api/routes/publico_emergencias.py`, prefijo `/api/v1/publico/emergencias/*`, guard `get_current_ciudadano`), NO el `POST /eventos/publico` del plan dentro del router de agentes: `emergencias.py` tiene guard JWT-agente a NIVEL ROUTER (patron s39) y un endpoint publico adentro lo contradeciria. Sigue la convencion `publico_*` del proyecto (espejo de `publico_reclamos.py`).
+- **El body del POST no puede elegir canal ni denunciante**: `id_canal_ingreso` no existe en el schema (APP_VECINO forzado server-side; si el cliente lo manda, pydantic lo ignora — verificado por smoke), `id_ciudadano_buc` sale SIEMPRE del token, `id_operador_receptor=NULL`, `id_usuario_alta=NULL`. Subarea/prioridad/organismo default derivados del tipo (el vecino no clasifica triage).
+- **Endpoints extra no pedidos por el plan** (justificados): GET `/tipos` + `/tipos/{id}/subtipos` publicos (sin datos de triage interno — la PWA los necesita para el form) y GET `/eventos` "mis reportes" (seguimiento del vecino; excluye prioridad/organismo/operador). Rate limit 5/min por IP en el POST.
+- **Log CREACION** con `id_usuario=NULL` y el vecino identificado en `payload_json` (`{origen:'app_vecinos', id_ciudadano, canal}`) — punto 3 del plan, sin columna nueva.
+- **Marca visual**: badge "App Vecinos" (chip oscuro `--fg-1`, componente `CanalAppVecinoBadge` en `lib/ui.tsx`) en tarjeta del tablero y cabecera del detalle cuando `canal_codigo='APP_VECINO'`.
+- **Validaciones de cierre: todas cumplidas** — smoke local 64/64 (13 asserts de Fase 5: canal forzado, scopes aislados 401 en ambas direcciones, payload del log) + smoke prod 10/10 + E2E real en prod: vecino demo (DNI 30555444, credencial sembrada) creo `EM-2026-000008` via el endpoint publico y aparece en el tablero con el badge.
+
+### Pendientes menores cerrados en la misma sesion (2026-06-10)
+
+- **Reset anual del numero operativo (mig 85)**: NO se uso cron. La secuencia global se reemplazo por **`emergencia_numerador (anio PK, ultimo_numero)`** con UPSERT atomico dentro de `fn_generar_numero_emergencia` (patron `tipo_tramite_numerador` s35): anio nuevo => fila nueva que arranca en 1, reset implicito sin piezas moviles. Backfill idempotente con GREATEST desde los eventos existentes; `emergencia_evento_numero_seq` dropeada. Verificado: local continuo en 26+, prod arranco en `EM-2026-000001`.
+- **QA del scoping nivel 3**: smoke ampliado (8 asserts — /abiertos solo subarea propia, pedir otra subarea explicita devuelve vacio, detalle/mutacion/log cross-subarea 403, admin exento) + verificacion en navegador prod (tablero del operador solo Policia; deep-link a evento DC muestra "El evento pertenece a otra subarea"). Usuario QA/demo `operadorcom@municipio.gob.ar` (nivel 3, subarea Policia) creado en local y prod **con fila `agentes` vinculada** para sobrevivir al cron de integridad de cuentas (mig 77 suspenderia un usuario sin agente ni ciudadano).
+- **Manual operativo**: `docs/manual_emergencias.html` (10 capturas reales, 10 secciones, receta s36) + card "EMERGENCIAS (COM)" primera en el modulo Guias.
+- **Normalizacion OSM de direcciones** (pedido del usuario al cierre): direccion del EVENTO con `GeocodingSearch` (patron Reclamos — POIs validos: "incendio en el club X"; normaliza display_name + captura lat/lon que el backend ya persistia desde mig 83; editar a mano limpia las coordenadas) y domicilio del CONTACTO EVENTUAL con `AddressSearch` (patron Ciudadanos, `solo_direcciones=true`) pero **editable como fallback** — a diferencia de Ciudadanos (solo-OSM readonly), una emergencia no se frena porque el geocodificador no encuentre el punto. Manual regenerado (capturas 02/04/05 + texto).
+- **Bug UX cazado por el QA en navegador prod**: `CerrarModal` inicializaba el radio Resuelto/Desestimado con `useState(permiteResuelto)` del PRIMER mount (el modal vive montado con `open=false`) y ofrecia un cierre que el FSM rechazaba (422 real contra prod). Fix: `useEffect` que re-sincroniza resultado/veracidad/observaciones al abrir. El 422 confirmo de paso que la defensa backend funciona.
+- **Datos demo permanentes en prod** (para consulta): eventos `EM-2026-000001..11` cubriendo TODOS los estados (EN_CAMINO, EN_PREPARACION, DERIVADO, PENDIENTE, EN_SITIO, RESUELTO x3, DESESTIMADO x2, APP_VECINO pendiente), contacto eventual promovido a BUC con historial completo, vecino demo `30555444` (pass 123456) y operador COM (pass 123456).
 
 ---
 
@@ -877,8 +892,8 @@ Fuera del alcance de este plan, para iteraciones futuras:
 - **Mapa real:** integracion Leaflet o Mapbox para visualizar eventos georeferenciados en el dispatcher.
 - **WebSockets / push real-time:** reemplazar polling de 30s por notificacion server-sent.
 - **Grabacion de audio:** integracion con un servicio (Twilio, S3, otro) para guardar el audio del llamado y vincularlo al evento via `audio_grabacion_url`.
-- **Reset anual de secuencia:** cron o trigger que resetee `emergencia_evento_numero_seq` a 1 cada 1 de enero.
 - **KPIs y dashboard:** tiempos promedio de despacho/arribo/cierre por tipo, por subarea, por operador. Mapa de calor de eventos.
+- **UI de reporte de emergencia en la PWA `zaris-vecinos`:** el backend publico (Fase 5) ya esta en prod; falta la pantalla en el repo de la PWA (consume `GET /publico/emergencias/tipos` + `POST /publico/emergencias/eventos` + `GET /publico/emergencias/eventos`).
 - **Integracion con camaras municipales:** canal `CAMARA` para alertas automaticas.
 - **Notificacion automatica al vecino:** SMS/email/push cuando cambia el estado de su evento (si fue creado via App Vecinos).
 - **Reportes para autoridades:** export PDF/CSV de eventos por rango de fecha.
