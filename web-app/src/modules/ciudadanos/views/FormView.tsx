@@ -9,6 +9,7 @@ import {
   useNacionalidades,
   verificarDuplicadoCiudadano,
 } from '../hooks/useCiudadanos'
+import { crearCuentaVecino } from '../api/ciudadanosApi'
 import { CiudadanoForm } from '../components/CiudadanoForm'
 import { EmpresaVinculadaPanel } from '../components/EmpresaVinculadaPanel'
 import {
@@ -276,6 +277,25 @@ export function FormView() {
     }
   }
 
+  // ── Cuenta App Vecinos para ciudadano existente (vía de mostrador) ──
+  const [enviandoCuenta, setEnviandoCuenta] = useState(false)
+  async function handleCuentaVecino() {
+    if (!id || enviandoCuenta) return
+    setEnviandoCuenta(true)
+    try {
+      const r = await crearCuentaVecino(id)
+      if (r.ya_activada) {
+        push({ kind: 'info', title: 'La cuenta ya está activa', body: `Este vecino ya usa la App Vecinos (${r.email})` })
+      } else {
+        push({ kind: 'success', title: 'Mail de activación enviado', body: `Le llega a ${r.email} para que elija su contraseña` })
+      }
+    } catch (err) {
+      push({ kind: 'error', title: 'No se pudo crear la cuenta', body: (err as Error).message })
+    } finally {
+      setEnviandoCuenta(false)
+    }
+  }
+
   // ── Toggle emp_chk ──
   function handleEmpChk(checked: boolean) {
     handleChange('emp_chk', checked)
@@ -339,6 +359,16 @@ export function FormView() {
           <button onClick={() => navigate('/ciudadanos')} style={btnGhost}>
             {readonly ? '← Volver' : 'Cancelar'}
           </button>
+          {modo !== 'new' && id ? (
+            <button
+              onClick={handleCuentaVecino}
+              disabled={enviandoCuenta}
+              style={{ ...btnGhost, marginRight: 'auto' }}
+              title="Crea la cuenta del portal del vecino y le manda el mail de activación al email de la ficha"
+            >
+              {enviandoCuenta ? 'Enviando…' : 'Crear cuenta App Vecinos'}
+            </button>
+          ) : null}
           {!readonly && (
             <button onClick={handleGuardar} disabled={crear.isPending || modificar.isPending || bloqueoEmpresaGuardar} style={btnPrimary}>
               {(crear.isPending || modificar.isPending) ? 'Guardando...' : 'Guardar ciudadano'}

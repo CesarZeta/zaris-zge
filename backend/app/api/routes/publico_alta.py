@@ -38,10 +38,13 @@ from app.services.email import (
     enviar_mail_verificacion_alta_ciudadano,
     enviar_mail_verificacion_alta_empresa,
 )
+from app.services.cuenta_vecino import asegurar_cuenta_vecino
 from app.schemas.publico_alta import (
     IdentidadAltaOut,
     AltaCuentaIn,
     AltaCuentaOut,
+    ActivarExistenteIn,
+    ActivarExistenteOut,
     AltaEmpresaIn,
     AltaEmpresaOut,
 )
@@ -215,30 +218,42 @@ async def alta_cuenta(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    PASO 1 del autoregistro (Camino A). Crea la CUENTA del vecino con el mínimo real:
-    email + password + DNI + nombre + apellido. El resto de la ficha (CUIL real, sexo,
-    fecha nac, nacionalidad, domicilio) se completa en el PASO 2 (POST
-    /publico/auth/completar-ficha), ya verificado y logueado.
+    Autoregistro del vecino en UN PASO con la ficha COMPLETA (decisión 2026-06-12,
+    reemplaza al modelo de 2 pasos de la Fase 4). El registro BUC nace completo y
+    válido: NUNCA se escriben placeholders falsos (fecha 1900, CUIL inventado).
 
-    El ciudadano se crea con placeholders en los campos NOT NULL que aún no tenemos
-    (cuil derivado del DNI, sexo='OTROS', fecha_nac='1900-01-01', nacionalidad=1,
-    telefono='0'), estado_validacion='auto_registrado', email_chk=FALSE,
-    ficha_completa=FALSE. La credencial guarda el password elegido + token de
-    verificación; activado=FALSE hasta confirmar el email.
+    Validaciones canónicas del ciudadano: CUIL módulo 11 (schema), fecha de nacimiento
+    plausible, nacionalidad existente, DNI/CUIL/email sin duplicar contra activos.
+    La credencial guarda el password elegido + token de verificación; activado=FALSE
+    hasta confirmar el email. ficha_completa=TRUE desde el origen.
     """
     check_rate_limit(get_real_ip(request), max_requests=RATE_MAX, window_seconds=RATE_WINDOW)
 
     muni = await _resolver_municipio(db, data.municipio_slug)
     id_municipio = muni["id_municipio"]
-    doc_nro = _solo_digitos(data.doc_nro)
+    doc_nro = _validar_dni(_solo_digitos(data.doc_nro))
     email = data.email.lower().strip()
+    cuil = data.cuil  # validado módulo 11 por el schema (digit-only)
+    telefono = _solo_digitos(data.telefono) or "0"
 
-    doc_nro = _validar_dni(doc_nro)  # 7-8 dígitos; 400 si no
-    # CUIL placeholder digit-only basado en el DNI (UNIQUE NOT NULL). El vecino carga
-    # el CUIL real en el paso 2; ahí se valida módulo 11 y se reemplaza este placeholder.
-    cuil_placeholder = "20" + doc_nro.zfill(8) + "9"
+    # Fecha de nacimiento plausible
+    try:
+        fecha_nac = date.fromisoformat(data.fecha_nac)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Fecha de nacimiento inválida (formato YYYY-MM-DD)")
+    if fecha_nac >= date.today() or fecha_nac.year < 1900:
+        raise HTTPException(status_code=400, detail="La fecha de nacimiento no es válida.")
 
-    # Documento ya existe en BUC -> no creamos duplicado
+    # Nacionalidad debe existir
+    res = await db.execute(
+        text("SELECT id FROM nacionalidades WHERE id = :id LIMIT 1"),
+        {"id": data.id_nacionalidad},
+    )
+    if not res.fetchone():
+        raise HTTPException(status_code=400, detail="La nacionalidad seleccionada no es válida.")
+
+    # Documento ya existe en BUC -> no creamos duplicado: la vía correcta es
+    # "activar cuenta existente" (POST /alta/activar-existente).
     res = await db.execute(
         text("SELECT id_ciudadano FROM ciudadanos WHERE doc_nro = :doc AND activo = TRUE LIMIT 1"),
         {"doc": doc_nro},
@@ -246,8 +261,17 @@ async def alta_cuenta(
     if res.fetchone():
         raise HTTPException(
             status_code=409,
-            detail="Ya existe un registro con ese documento. Si sos vos, recuperá el acceso desde el inicio de sesión.",
+            detail="Ya existe un registro con ese documento. Si sos vos, usá la opción "
+                   "\"Ya estoy registrado en el municipio\" para activar tu cuenta.",
         )
+
+    # CUIL ya registrado por otro ciudadano activo (es UNIQUE)
+    res = await db.execute(
+        text("SELECT id_ciudadano FROM ciudadanos WHERE cuil = :cuil AND activo = TRUE LIMIT 1"),
+        {"cuil": cuil},
+    )
+    if res.fetchone():
+        raise HTTPException(status_code=409, detail="Ese CUIL ya está registrado.")
 
     # Email ya usado por otra credencial activa
     res = await db.execute(
@@ -266,22 +290,34 @@ async def alta_cuenta(
         text("""
             INSERT INTO ciudadanos
                 (doc_tipo, doc_nro, cuil, nombre, apellido, sexo, fecha_nac,
-                 id_nacionalidad, ren_chk, telefono, email, email_chk, emp_chk,
-                 activo, estado_validacion, ficha_completa, id_municipio,
+                 id_nacionalidad, ren_chk, calle, localidad, provincia,
+                 latitud, longitud, telefono, email, email_chk, emp_chk,
+                 observaciones, activo, estado_validacion, ficha_completa, id_municipio,
                  fecha_alta, fecha_modificacion)
             VALUES
-                ('DNI', :doc_nro, :cuil, :nombre, :apellido, 'OTROS', DATE '1900-01-01',
-                 1, FALSE, '0', :email, FALSE, FALSE,
-                 TRUE, 'auto_registrado', FALSE, :id_municipio,
+                ('DNI', :doc_nro, :cuil, :nombre, :apellido, :sexo, :fecha_nac,
+                 :id_nacionalidad, FALSE, :calle, :localidad, :provincia,
+                 :latitud, :longitud, :telefono, :email, FALSE, FALSE,
+                 :observaciones, TRUE, 'auto_registrado', TRUE, :id_municipio,
                  NOW(), NOW())
             RETURNING id_ciudadano
         """),
         {
             "doc_nro": doc_nro,
-            "cuil": cuil_placeholder,
+            "cuil": cuil,
             "nombre": data.nombre.strip(),
             "apellido": data.apellido.strip(),
+            "sexo": data.sexo,
+            "fecha_nac": fecha_nac,
+            "id_nacionalidad": data.id_nacionalidad,
+            "calle": data.calle.strip(),
+            "localidad": data.localidad.strip(),
+            "provincia": data.provincia.strip(),
+            "latitud": data.latitud,
+            "longitud": data.longitud,
+            "telefono": telefono,
             "email": email,
+            "observaciones": (data.observaciones or "").strip() or None,
             "id_municipio": id_municipio,
         },
     )
@@ -335,6 +371,57 @@ async def alta_cuenta(
     )
 
     return AltaCuentaOut(id_ciudadano=id_ciudadano, email=email, verificacion_enviada=True)
+
+
+@router.post("/activar-existente", response_model=ActivarExistenteOut)
+async def activar_cuenta_existente(
+    data: ActivarExistenteIn,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Vecino que YA figura en la BUC (cargado por el municipio o por un agente) pide su
+    cuenta de portal: se crea la credencial sobre el MISMO registro (nunca duplica) y
+    se manda el mail de activación al email que YA figura en la BUC — el click en ese
+    mail prueba la identidad y ahí elige su contraseña.
+
+    Anti-enumeración: SIEMPRE devuelve 200 con el mismo mensaje (exista o no el DNI,
+    tenga o no email, esté o no ya activada la cuenta). Reusa asegurar_cuenta_vecino
+    (idempotente: cuenta activada -> no toca nada; sin activar -> regenera token).
+    """
+    check_rate_limit(get_real_ip(request), max_requests=RATE_MAX, window_seconds=RATE_WINDOW)
+    muni = await _resolver_municipio(db, data.municipio_slug)
+
+    doc_nro = _solo_digitos(data.doc_nro)
+    if not (7 <= len(doc_nro) <= 8):
+        return ActivarExistenteOut()  # DNI inválido: misma respuesta genérica
+
+    res = await db.execute(
+        text("""
+            SELECT id_ciudadano, nombre, apellido, email
+              FROM ciudadanos
+             WHERE doc_nro = :doc AND activo = TRUE
+             LIMIT 1
+        """),
+        {"doc": doc_nro},
+    )
+    row = res.fetchone()
+    if not row or not (row.email or "").strip():
+        return ActivarExistenteOut()  # no existe o no tiene email: silencio
+
+    await asegurar_cuenta_vecino(
+        db,
+        id_ciudadano=row.id_ciudadano,
+        nombre=row.nombre or "",
+        apellido=row.apellido or "",
+        email=row.email.strip(),
+        id_municipio=muni["id_municipio"],
+        id_usuario_alta=None,
+        background_tasks=background_tasks,
+    )
+    await db.commit()
+    return ActivarExistenteOut()
 
 
 @router.post("/empresa", response_model=AltaEmpresaOut, status_code=201)
@@ -509,8 +596,8 @@ async def verificar(token: str, m: str | None = None, db: AsyncSession = Depends
         nombre = (row.nombre or "").strip() or row.apellido or "vecino"
         return HTMLResponse(_pagina_confirmacion(
             "¡Correo verificado!",
-            f"Listo, {nombre}. Tu correo quedó verificado. Ya podés iniciar sesión; al entrar te pediremos "
-            f"completar tus datos para terminar tu alta como vecino.",
+            f"Listo, {nombre}. Tu correo quedó verificado. Ya podés iniciar sesión en el "
+            f"Portal del Ciudadano con tu DNI y la contraseña que elegiste.",
             ok=True, municipio_nombre=municipio_nombre,
         ))
 

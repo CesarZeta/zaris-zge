@@ -35,6 +35,14 @@ export const buscarCiudadanos = (params: { q: string; tipo?: 'numero' | 'texto' 
 export const obtenerCiudadano = (id: number) =>
   api.get<CiudadanoConNacionalidad>(`${BASE}/ciudadanos/${id}`)
 
+/** Crea (o reenvía la activación de) la cuenta de App Vecinos de un ciudadano existente.
+ *  Idempotente: ya_activada=true si la cuenta ya estaba activa (no se manda nada). */
+export const crearCuentaVecino = (id: number) =>
+  api.post<{ enviado: boolean; ya_activada: boolean; email: string }>(
+    `${BASE}/ciudadanos/${id}/cuenta-vecino`,
+    {},
+  )
+
 export const verificarDuplicadoCiudadano = (campo: string, valor: string, excluir_id?: number | null) =>
   api.get<VerificarDuplicadoResp>(`${BASE}/ciudadanos/verificar-duplicado`, {
     params: { campo, valor, excluir_id: excluir_id ?? undefined },

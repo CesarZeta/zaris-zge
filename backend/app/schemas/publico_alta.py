@@ -35,17 +35,44 @@ class IdentidadAltaOut(BaseModel):
     municipio_color_accent: str | None = None
 
 
-# ─── Alta en DOS PASOS (Fase 4) ──────────────────────────────────────────────
-# Paso 1: crear CUENTA con el mínimo real (email + password + DNI + nombre + apellido).
-# El resto de la ficha se completa en el paso 2 (CompletarFichaIn), ya verificado/logueado.
+# ─── Alta en UN PASO con ficha COMPLETA (decisión 2026-06-12) ─────────────────
+# El vecino carga TODA su ficha (con las validaciones canónicas del ciudadano) en la
+# página pública. NUNCA se escriben placeholders falsos en la BUC (fecha 1900, CUIL
+# inventado): el registro nace completo y válido. Reemplaza al modelo de 2 pasos de la
+# Fase 4 (paso 2 "completar ficha" en la app, eliminado).
 
 class AltaCuentaIn(BaseModel):
     municipio_slug: str = Field(..., min_length=1, max_length=20)
+
+    # Identificación
     doc_nro: str = Field(..., min_length=6, max_length=15)   # DNI (digit-only se normaliza en el endpoint)
+    cuil: str = Field(..., min_length=10, max_length=15)     # acepta guiones, se valida módulo 11
+
+    # Datos personales
     nombre: str = Field(..., min_length=1, max_length=100)
     apellido: str = Field(..., min_length=1, max_length=100)
+    sexo: Literal["HOMBRE", "MUJER", "OTROS"]
+    fecha_nac: str = Field(..., description="YYYY-MM-DD")
+    id_nacionalidad: int
+
+    # Domicilio (lo completa el buscador OSM en el front; lat/lon opcionales)
+    calle: str = Field(..., min_length=1, max_length=200)
+    localidad: str = Field(..., min_length=1, max_length=100)
+    provincia: str = Field(..., min_length=1, max_length=100)
+    latitud: float | None = None
+    longitud: float | None = None
+
+    # Contacto + cuenta
+    telefono: str = Field(..., min_length=6, max_length=20)
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=72)
+
+    observaciones: str | None = Field(None, max_length=500)
+
+    @field_validator("cuil")
+    @classmethod
+    def _val_cuil(cls, v: str) -> str:
+        return _validar_modulo11(v)
 
 
 class AltaCuentaOut(BaseModel):
@@ -53,9 +80,29 @@ class AltaCuentaOut(BaseModel):
     email: str
     verificacion_enviada: bool = True
     mensaje: str = (
-        "Te creamos la cuenta. Te enviamos un correo para verificar tu dirección: "
+        "Tu alta quedó registrada. Te enviamos un correo para verificar tu dirección: "
         "revisá tu casilla (y la carpeta de correo no deseado / spam) y hacé clic en el enlace. "
-        "Después de verificar vas a poder completar tus datos."
+        "Después de verificar ya podés iniciar sesión con tu DNI y la contraseña que elegiste."
+    )
+
+
+# ─── Activar cuenta de un vecino que YA existe en la BUC ─────────────────────
+# El alta pública rechaza DNIs ya registrados (no duplica). Esta vía le permite al
+# vecino pre-existente pedir su cuenta de portal: se le manda el mail de activación
+# al email que YA figura en la BUC, creando la credencial sobre el MISMO registro.
+# Anti-enumeración: SIEMPRE responde 200 con el mismo mensaje, exista o no el DNI.
+
+class ActivarExistenteIn(BaseModel):
+    municipio_slug: str = Field(..., min_length=1, max_length=20)
+    doc_nro: str = Field(..., min_length=6, max_length=15)
+
+
+class ActivarExistenteOut(BaseModel):
+    enviado: bool = True
+    mensaje: str = (
+        "Si tus datos figuran en el registro del municipio, te enviamos un correo a la "
+        "casilla que tenemos registrada para que actives tu cuenta. Si no te llega, "
+        "acercate a una oficina de atención para actualizar tu email."
     )
 
 
@@ -87,57 +134,6 @@ class CompletarFichaOut(BaseModel):
     id_ciudadano: int
     ficha_completa: bool = True
     mensaje: str = "Tus datos quedaron guardados."
-
-
-# ─── Alta de ciudadano de una sola pantalla (DEPRECADO por el flujo 2-pasos) ──
-# Se conserva el schema por compat; el endpoint /ciudadano fue reemplazado por /cuenta.
-
-class AltaCiudadanoIn(BaseModel):
-    municipio_slug: str = Field(..., min_length=1, max_length=20)
-
-    # Identificación
-    doc_tipo: Literal["DNI", "PASAPORTE"] = "DNI"
-    doc_nro: str = Field(..., min_length=6, max_length=15)
-    cuil: str = Field(..., min_length=10, max_length=15)  # acepta guiones, se valida módulo 11
-
-    # Datos personales
-    nombre: str = Field(..., min_length=1, max_length=100)
-    apellido: str = Field(..., min_length=1, max_length=100)
-    sexo: Literal["HOMBRE", "MUJER", "OTROS"]
-    fecha_nac: str = Field(..., description="YYYY-MM-DD")
-    id_nacionalidad: int
-
-    # Domicilio (lo completa el buscador OSM en el front)
-    calle: str = Field(..., min_length=1, max_length=200)
-    localidad: str = Field(..., min_length=1, max_length=100)
-    provincia: str = Field(..., min_length=1, max_length=100)
-    latitud: float | None = None
-    longitud: float | None = None
-
-    # Contacto
-    telefono: str = Field(..., min_length=6, max_length=20)
-    email: EmailStr
-
-    # Cuenta
-    password: str = Field(..., min_length=8, max_length=72)
-
-    # Opcional
-    observaciones: str | None = Field(None, max_length=500)
-
-    @field_validator("cuil")
-    @classmethod
-    def _val_cuil(cls, v: str) -> str:
-        return _validar_modulo11(v)
-
-
-class AltaCiudadanoOut(BaseModel):
-    id_ciudadano: int
-    email: str
-    verificacion_enviada: bool = True
-    mensaje: str = (
-        "Te enviamos un correo para verificar tu alta. "
-        "Revisá tu casilla (y la carpeta de correo no deseado / spam) y hacé clic en el enlace."
-    )
 
 
 # ─── Alta de empresa (requiere ciudadano ya creado) ──────────────────────────
