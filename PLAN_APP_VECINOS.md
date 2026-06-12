@@ -27,8 +27,8 @@
 | **2 — Backend reclamos públicos** | 🟡 Parcial | `publico_reclamos.py` ✅ (POST/GET/detalle/catálogo/geo, guards "solo lo mío") + `publico_portal.py` ✅ (`/mi-resumen`). **Faltan:** adjuntos públicos y routers de push. |
 | **3 — PWA auth + home + mis reclamos** | ✅ Completa | Pages: Login/Activar/Recuperar/Resetear/Home/MisReclamos/ReclamoDetalle/CompletarFicha. Alta pública en 2 pasos (mig 79) — superó al plan original. |
 | **4 — Wizard nuevo reclamo** | 🟡 Parcial | `NuevoReclamoPage` ✅ con búsqueda de dirección (geocoding OSM con sesgo geográfico). **Faltan:** foto/cámara (depende de adjuntos públicos) y mapa con pin (no hay Leaflet en la PWA). |
-| **5 — Push end-to-end** | ❌ Pendiente | Solo existe la tabla placeholder `ciudadano_push_subscription` (mig 53). Sin endpoints, sin pywebpush, sin SW handler. |
-| **6 — Deploy + piloto** | 🟡 Parcial | Dominio + CORS + env vars ✅. **Faltan:** E2E en prod con vecino real (`ciudadano_credencial` en prod está vacía), branding del piloto, README municipio #2. |
+| **5 — Push end-to-end** | ✅ Completa (2026-06-12) | Router `publico_push` + `services/push.py` + hooks en todas las vías + SW handler + toggle `/configuracion`. Falta SOLO la prueba de entrega en Android real. |
+| **6 — Deploy + piloto** | ✅ Construible completo (2026-06-12) | Dominio + CORS + env vars + primer login real (cuenta del usuario) + CTA de mails brandeado + README municipio #2. Resta validación del usuario en dispositivo real. |
 
 **Alcance nuevo pedido por el usuario (2026-06-11):** sumar a la PWA las demás interacciones — **emergencias** (backend público YA listo, §44 Fase 5), **turnos** y **entradas**.
 
@@ -89,7 +89,7 @@ Hoy el autoservicio de turnos es **anónimo por token** (§33, `turnos_publico`)
 
 ---
 
-### ETAPA D — Entradas del vecino logueado ⏳
+### ETAPA D — Entradas del vecino logueado ✅ (2026-06-12, en prod)
 
 Espejo de la Etapa C para eventos con cupo (§33 Entradas: reusa `eventos` + `evento_reservas` de Agenda).
 
@@ -104,7 +104,7 @@ Espejo de la Etapa C para eventos con cupo (§33 Entradas: reusa `eventos` + `ev
 
 ---
 
-### ETAPA E — Push notifications end-to-end ⏳
+### ETAPA E — Push notifications end-to-end ✅ (2026-06-12, en prod — falta SOLO la prueba en Android real)
 
 La etapa más frágil (navegador + SW + VAPID + permisos del SO). Se hace al final porque para entonces hay 4 fuentes de notificación: reclamos, emergencias, turnos, entradas.
 
@@ -125,7 +125,7 @@ La etapa más frágil (navegador + SW + VAPID + permisos del SO). Se hace al fin
 
 ---
 
-### ETAPA F — Cierre del piloto ⏳
+### ETAPA F — Cierre del piloto 🟡 (2026-06-12 — construible hecho; resta validación en dispositivo real)
 
 - **Primer login real en prod:** `ciudadano_credencial` en prod está vacía — hacer el E2E completo de autoregistro (alta en 2 pasos → verificar email → login → completar ficha → crear reclamo) con un vecino/tester real, en prod.
 - Branding del municipio piloto en `configuracion_general` (logo en bucket `config-assets`, nombre, descripción, colores) — editable desde Config → Identidad del backoffice.
@@ -177,4 +177,14 @@ La etapa más frágil (navegador + SW + VAPID + permisos del SO). Se hace al fin
   - *Frontends:* `alta-vecino.html` reescrita (ficha completa por secciones, CUIL validado en vivo con ✓/✕, errores por campo, OSM con fallback manual, vía "Ya estoy registrado") · PWA sin `CompletarFichaPage` ni gate · botón "Crear cuenta App Vecinos" en FormView de Ciudadanos (backoffice).
   - *Verificado navegando:* alta completa local (ciudadana demo 540 sin placeholders, con geo), ya-registrado, botón backoffice con toast; prod sirve la página nueva y el smoke dejó el ciudadano demo 1616.
   - *Caso del usuario resuelto:* su ciudadano (DNI 18003762) recibió credencial por la vía real (token entregado en chat; expira 19/6) — era el caso testigo del hueco "ya estoy en BUC sin cuenta", ahora cubierto por las dos vías nuevas.
-  - **⚠️ Deuda abierta:** `docs/manual_alta_vecino.html` y la card correspondiente en Guías describen el flujo VIEJO de 2 pasos — regenerarlo (texto + capturas, skill `generar-manual`) es parte del entregable §36 y quedó para la próxima sesión. También revisar `manual_alta_ciudadanos.html` (menciona el paso 2 del autoregistro).
+  - **Deuda de manuales SALDADA (2026-06-12, commit ZGE `ac0b39a`):** `manual_alta_vecino.html` reescrito al flujo de un paso (6 secciones, suma la vía "ya estoy registrado") y `manual_alta_ciudadanos.html` patcheado (sección 5 + botón "Crear cuenta App Vecinos" + footer sin fecha). La card de Guías ya era precisa.
+- **2026-06-12 — ETAPA D implementada, verificada E2E en LOCAL y PROD.** ZGE `c6667e5` + PWA `612fbb1`:
+  - *Backend:* router `publico_entradas_vecino.py` (`/api/v1/publico/entradas`, scope publico): `GET /eventos` cartelera (eventos próximos con `admite_autoservicio`, **cupo calculado en un solo SQL** con LATERAL + flag `ya_reservado`) · `POST /eventos/{id}/reservar` (identidad del token, validaciones del autoservicio anónimo, QR según `tipo_qr`, rate-limit `entrvec:` 5/min) · `GET ""` mis entradas con `qr_codigo` · `PATCH /{id}/cancelar` (solo propias en `reservada`, ajena→404 genérico). Smoke `backend/smoke_publico_entradas.py` **16/16 local y 14/14 prod** (siembra evento demo vía API admin si la cartelera está vacía).
+  - *PWA:* `EventosPage` (cartelera con cupo / "Ya tenés tu entrada" / "Sin cupo") + `MisEntradasPage` (estados Reservada/Utilizada/Cancelada, **QR renderizado con lib `qrcode`** sobre fondo blanco pleno, cancelar con confirm inline) + card Home activada con conteos de `/mi-resumen`.
+  - *Criterio de cierre E2E en PROD:* evento "Noche de los Museos (demo App Vecinos)" con QR nominal → vecino demo reservó (EVT12-RES32) → operador acreditó vía `POST /agenda/reservas/acreditar-qr` → `asistio`. Quedan de demo: entrada 31 reservada (Capacitación PyMEs) + 32 utilizada.
+- **2026-06-12 — ETAPA E implementada y desplegada (backend + PWA).** ZGE `4e59888` + PWA `db3c4da`:
+  - *Backend:* `services/push.py` (`enviar_push_ciudadano` best-effort SIEMPRE — sesión propia, respeta `canal_push`, 404/410 del push service → auto-baja §19, catch por-suscripción; `vapid_config` con cache; helpers `notificar_estado_reclamo`/`notificar_estado_emergencia` que leen el estado post-commit) + router `publico_push.py` (`GET /public-key` · `POST /subscribe` UPSERT + `canal_push=TRUE` · `POST /unsubscribe`) + `pywebpush==2.0.3`. **Hooks post-commit en TODAS las vías de cambio de estado**: reclamos (cambiar_estado, cancelar), OT (crear ×2, cierre operativo, aprobar, rechazar) y emergencias (cambiar-estado, derivar, cerrar, marcar-en-sitio).
+  - **Claves VAPID por entorno en `configuracion_general`** (`vapid_public_key`/`vapid_private_key`/`vapid_claims_email`; par distinto local/prod, sembradas por SQL directo — NUNCA en el repo, es público; env vars `VAPID_*` = override). Rotar las claves invalida las suscripciones.
+  - *PWA:* `public/sw-push.js` (handlers push/notificationclick) importado por el SW generado vía `workbox.importScripts` (el precaching de vite-plugin-pwa queda intacto, sin migrar a injectManifest) · `lib/push.ts` (subscribe/unsubscribe; **timeout defensivo sobre `serviceWorker.ready`**, que nunca rechaza y colgaba la página) · `ConfiguracionPage` (`/configuracion`, toggle con estados no-soportado/denegado/activo/inactivo; el permiso se pide tras la acción del usuario, nunca al loguear) · acceso desde Home.
+  - *Verificado:* endpoints + toggle `canal_push` + 401 (local); cambio de estado con suscripción rota devuelve 200 y la vencida (404 FCM real) se da de baja sola; SW `activated` con handlers en build+preview. **El navegador embebido de VS Code no tiene push service (sin FCM)** → la ENTREGA real del push (criterio de cierre: notificación con la PWA cerrada) queda pendiente de la prueba del usuario en Android Chrome.
+- **2026-06-12 — ETAPA F (cierre piloto), lo construible hecho.** CTA de los 4 mails del vecino con `municipio_color_primary` + fallback neutro (ZGE `1e34c68`, cache TTL 5 min) · README de `zaris-vecinos` reescrito al estado real con **checklist de replicación para municipio #2** (PWA `2f5ab4c`: branding, geo_bbox, claves VAPID propias, env vars Railway, CORS, verificación E2E) · "primer login real en prod" ya cubierto (cuenta propia del usuario DNI 18003762 activada + vecino demo E2E). Quedan del lado del usuario: prueba Android real (fotos+pin de A, push de E) y, si el piloto lo pide, dominio por municipio.
