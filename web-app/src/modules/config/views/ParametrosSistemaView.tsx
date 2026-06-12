@@ -132,7 +132,12 @@ const SECCIONES: Seccion[] = [
 
 // Claves que se gestionan en OTRAS pantallas y no deben aparecer acá para no
 // duplicar edición (nombre/logo del municipio viven en la pestaña Identidad).
-const CLAVES_OCULTAS = new Set(['municipio_nombre', 'municipio_logo_url'])
+// Las vapid_* son material criptográfico del Web Push (etapa E App Vecinos):
+// editarlas rompe las suscripciones y la privada no debe mostrarse ni al admin.
+const CLAVES_OCULTAS = new Set([
+  'municipio_nombre', 'municipio_logo_url',
+  'vapid_public_key', 'vapid_private_key', 'vapid_claims_email',
+])
 
 const CLAVES_CONOCIDAS = new Set(
   SECCIONES.flatMap((s) => s.claves.map((c) => c.clave)),
