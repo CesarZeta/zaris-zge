@@ -21,7 +21,7 @@
 
   <link rel="stylesheet" href="design-system/fonts/fonts.css">
   <link rel="stylesheet" href="design-system/colors_and_type.css">
-  <link rel="stylesheet" href="frontend/css/menu.css?v=2026-05-20e">
+  <link rel="stylesheet" href="frontend/css/menu.css?v=2026-06-12a">
 
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 </head>
@@ -54,11 +54,6 @@
           <img class="muni__logo" id="topbar-muni-logo" alt="Logo municipio" hidden>
           <span class="muni__nombre" id="topbar-muni-nombre">MUNICIPALIDAD</span>
         </div>
-      </div>
-
-      <div class="topbar__center">
-        <!-- Fecha y hora del cliente. menu.js la inicializa y refresca cada 30s. -->
-        <time class="topbar__clock" id="topbar-clock" datetime="">—</time>
       </div>
 
       <div class="topbar__right">
@@ -147,7 +142,7 @@
             <line x1="16" y1="17" x2="8" y2="17"/>
             <polyline points="10 9 9 9 8 9"/>
           </svg>
-          <span>reclamos</span>
+          <span>Reclamos</span>
         </a>
 
         <!-- Turnos: modulo propio (scaffold). Ocupa disponibilidad de agentes. -->
@@ -156,7 +151,7 @@
             <circle cx="12" cy="12" r="9"/>
             <polyline points="12 7 12 12 15 14"/>
           </svg>
-          <span>turnos</span>
+          <span>Turnos</span>
         </a>
 
         <!-- Entradas: modulo propio (scaffold). Reservas a eventos en espacios. -->
@@ -166,7 +161,7 @@
             <path d="M3 7l9-4 9 4"/>
             <path d="M9 12h6"/>
           </svg>
-          <span>entradas</span>
+          <span>Entradas</span>
         </a>
 
         <!-- Agenda: sustrato de disponibilidad horaria de agentes y espacios. -->
@@ -175,7 +170,7 @@
             <rect x="3" y="4" width="18" height="18" rx="2"/>
             <path d="M16 2v4M8 2v4M3 10h18"/>
           </svg>
-          <span>agenda</span>
+          <span>Agenda</span>
         </a>
 
         <!-- OT: link plano (lleva por default a supervisor). Las 3 mesas se eligen
@@ -199,7 +194,7 @@
             <line x1="16" y1="17" x2="8" y2="17"/>
             <polyline points="10 9 9 9 8 9"/>
           </svg>
-          <span>trámites</span>
+          <span>Trámites</span>
         </a>
 
         <!-- Encuestas: resultados CSAT. data-modulo="encuestas" (min_nivel_acceso=2). -->
@@ -209,7 +204,7 @@
             <line x1="12" y1="20" x2="12" y2="4"/>
             <line x1="6" y1="20" x2="6" y2="14"/>
           </svg>
-          <span>encuestas</span>
+          <span>Encuestas</span>
         </a>
 
         <!-- Datos (análisis operativo + ejecutivo). data-modulo="bi" (min_nivel_acceso=2, mig 65). -->
@@ -219,7 +214,7 @@
             <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
             <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>
           </svg>
-          <span>datos</span>
+          <span>Datos</span>
         </a>
 
         <!-- Contactos: landing con tarjetas a Ciudadanos / Empresas. -->
@@ -230,7 +225,7 @@
             <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
             <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
           </svg>
-          <span>contactos</span>
+          <span>Contactos</span>
         </a>
 
         <a class="nav-flat__item" href="frontend/admin_tablas.html?tabla=agentes" data-modulo="admin_tablas">
@@ -239,7 +234,7 @@
             <path d="M3 5v6c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
             <path d="M3 11v6c0 1.66 4 3 9 3s9-1.34 9-3v-6"/>
           </svg>
-          <span>maestros</span>
+          <span>Maestros</span>
         </a>
 
         <!-- "usuarios" se quitó del sidebar: la gestión de usuarios es parte de
@@ -249,7 +244,7 @@
             <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
             <circle cx="12" cy="12" r="3"/>
           </svg>
-          <span>configuración</span>
+          <span>Configuración</span>
         </a>
 
         <!-- Guías: material informativo. Sin data-modulo -> visible para cualquier usuario autenticado. -->
@@ -258,12 +253,10 @@
             <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
             <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
           </svg>
-          <span>guías</span>
+          <span>Guías</span>
         </a>
 
       </nav>
-
-      <footer class="sidebar__foot">zaris-zge · v0.1</footer>
     </aside>
 
     <!-- ── Canvas ── -->
@@ -273,8 +266,29 @@
       <iframe id="module-frame" src="web-app/dist/index.html#/dashboard" title="Módulo activo" allowfullscreen allow="fullscreen"></iframe>
     </main>
 
+    <!-- ── Barra de estado inferior ──
+         Espejo de la topbar al pie. Contenido actual: estado del servidor
+         (sugerencia, ping a /api/health cada 60s), fecha/hora (movida desde
+         el centro de la topbar) y versión (movida del pie del sidebar).
+         Pensada para crecer con otros indicadores de estado. -->
+    <footer class="statusbar" role="contentinfo">
+      <div class="statusbar__left">
+        <span class="statusbar__api" id="statusbar-api" title="Estado del servidor">
+          <span class="statusbar__dot" aria-hidden="true"></span>
+          <span id="statusbar-api-label">Verificando servidor…</span>
+        </span>
+      </div>
+      <div class="statusbar__center">
+        <!-- Fecha y hora del cliente. menu.js la inicializa y refresca cada 30s. -->
+        <time class="statusbar__clock" id="statusbar-clock" datetime="">—</time>
+      </div>
+      <div class="statusbar__right">
+        <span class="statusbar__version">zaris-zge · v0.1</span>
+      </div>
+    </footer>
+
   </div>
 
-  <script src="frontend/js/menu.js?v=2026-05-26a"></script>
+  <script src="frontend/js/menu.js?v=2026-06-12a"></script>
 </body>
 </html>

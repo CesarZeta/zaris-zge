@@ -8,7 +8,7 @@
 .app {
   display: grid;
   grid-template-columns: 232px 1fr;
-  grid-template-rows: 52px 1fr;
+  grid-template-rows: 52px 1fr 26px;
   height: 100vh;
   overflow: hidden;
 }
@@ -113,26 +113,8 @@
   text-overflow: ellipsis;
 }
 
-.topbar__center {
-  flex: 1;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-width: 0;
-}
-
-.topbar__clock {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--fg-2);
-  letter-spacing: 0.02em;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
 @media (max-width: 900px) {
-  .brand__app, .muni__nombre, .topbar__clock { display: none; }
+  .brand__app, .muni__nombre { display: none; }
 }
 
 .topbar__right {
@@ -439,13 +421,80 @@
   padding: 16px 12px 0;
 }
 
-.sidebar__foot {
-  margin-top: auto;
-  padding: 10px 6px 12px;
+/* .sidebar__foot eliminado: la versión vive ahora en la statusbar inferior. */
+
+/* ── Statusbar inferior — espejo de la topbar al pie ──────── */
+.statusbar {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 20px;
+  background: rgba(242,241,237,.88);
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  border-top: 1px solid var(--border-primary);
+  font-size: 11px;
+  color: var(--fg-3);
+  user-select: none;
+}
+
+.statusbar__left,
+.statusbar__right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.statusbar__center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 0;
+}
+
+.statusbar__clock {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--fg-2);
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.statusbar__api {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.statusbar__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--fg-3);          /* gris: verificando */
+  flex-shrink: 0;
+}
+
+.statusbar__api.ok .statusbar__dot  { background: var(--color-success); }
+.statusbar__api.err .statusbar__dot { background: var(--color-error); }
+.statusbar__api.err                 { color: var(--color-error); }
+
+.statusbar__version {
   font-family: var(--font-mono);
   font-size: 10.5px;
-  color: var(--fg-4);
-  border-top: 1px solid var(--border-primary);
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .statusbar__version { display: none; }
 }
 
 /* ── Nav — nivel 1 ──────────────────────────────────────── */
@@ -671,7 +720,7 @@
 
 /* ── Print ──────────────────────────────────────────────── */
 @media print {
-  .topbar, .sidebar { display: none !important; }
+  .topbar, .sidebar, .statusbar { display: none !important; }
   .app { display: block; }
   .canvas { padding: 0; overflow: visible; }
 }

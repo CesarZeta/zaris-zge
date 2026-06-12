@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guía del vecino · Todo lo que podés hacer con tu municipio</title>
+<style>
+  :root{
+    --zaris-orange:#f54e00; --zaris-cream:#f2f1ed;
+    --surface-100:#f7f7f4; --surface-300:#ebeae5; --surface-400:#e6e5e0;
+    --fg-1:#26251e; --fg-2:rgba(38,37,30,.72); --fg-3:rgba(38,37,30,.55);
+    --border:rgba(38,37,30,.12); --border-med:rgba(38,37,30,.2);
+    --ok:#1f8a65; --warn:#b8860b; --err:#cf2d56; --info:#1565c0;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--zaris-cream);color:var(--fg-1);
+    font-family:'Inter',-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.65;}
+  .wrap{max-width:780px;margin:0 auto;padding:0 24px 80px;}
+  header.hero{border-left:6px solid var(--zaris-orange);padding:32px 0 28px 28px;margin:40px 0 8px;}
+  .tag{display:inline-block;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;
+    font-weight:700;color:var(--zaris-orange);background:rgba(245,78,0,.08);
+    padding:4px 10px;border-radius:4px;margin-bottom:14px;}
+  h1{font-size:2.1rem;margin:0 0 6px;letter-spacing:-.01em;font-weight:800;}
+  .lede{color:var(--fg-2);font-size:1.08rem;margin:6px 0 0;}
+  .meta{color:var(--fg-3);font-size:.85rem;margin-top:14px;}
+  nav.toc{background:var(--surface-100);border:1px solid var(--border);border-radius:12px;
+    padding:20px 26px;margin:28px 0;}
+  nav.toc h2{margin:0 0 10px;font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-3);}
+  nav.toc ol{margin:0;padding-left:20px;}
+  nav.toc a{color:var(--fg-1);text-decoration:none;}
+  nav.toc a:hover{color:var(--zaris-orange);text-decoration:underline;}
+  section{margin:42px 0;}
+  h2.sec{font-size:1.4rem;border-bottom:2px solid var(--surface-400);padding-bottom:8px;
+    margin:0 0 16px;display:flex;gap:10px;align-items:baseline;}
+  h2.sec .num{color:var(--zaris-orange);font-weight:800;}
+  h3{font-size:1.08rem;margin:24px 0 8px;}
+  p{margin:10px 0;}
+  blockquote{margin:16px 0;padding:12px 18px;border-radius:8px;border-left:4px solid var(--info);
+    background:rgba(21,101,192,.06);font-size:.95rem;}
+  blockquote.warn{border-color:var(--warn);background:rgba(184,134,11,.08);}
+  blockquote.danger{border-color:var(--err);background:rgba(207,45,86,.07);}
+  blockquote.ok{border-color:var(--ok);background:rgba(31,138,101,.07);}
+  blockquote strong{display:block;margin-bottom:2px;}
+  code{background:var(--surface-300);padding:1px 6px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:.88em;}
+  .flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:18px 0;font-size:.92rem;}
+  .flow .step{background:var(--surface-100);border:1px solid var(--border-med);border-radius:8px;
+    padding:8px 14px;font-weight:600;}
+  .flow .arrow{color:var(--zaris-orange);font-weight:800;}
+  ul,ol.pasos{margin:10px 0;padding-left:22px;} li{margin:8px 0;}
+  ol.pasos{counter-reset:step;list-style:none;padding-left:0;}
+  ol.pasos>li{position:relative;padding:14px 16px 14px 56px;margin:12px 0;
+    background:var(--surface-100);border:1px solid var(--border);border-radius:10px;}
+  ol.pasos>li::before{counter-increment:step;content:counter(step);
+    position:absolute;left:14px;top:14px;width:28px;height:28px;border-radius:50%;
+    background:var(--zaris-orange);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:.95rem;}
+  ol.pasos>li h3{margin:0 0 4px;font-size:1.02rem;}
+  table{width:100%;border-collapse:collapse;margin:16px 0;background:var(--surface-100);
+    border:1px solid var(--border);border-radius:10px;overflow:hidden;font-size:.95rem;}
+  th{background:var(--surface-300);text-align:left;padding:10px 14px;font-size:.78rem;
+    letter-spacing:.06em;text-transform:uppercase;color:var(--fg-2);}
+  td{padding:10px 14px;border-top:1px solid var(--border);vertical-align:top;}
+  .badge{display:inline-block;padding:2px 10px;border-radius:99px;font-size:.78rem;font-weight:700;}
+  .badge.ok{background:rgba(31,138,101,.12);color:var(--ok);}
+  .badge.warn{background:rgba(184,134,11,.12);color:var(--warn);}
+  .badge.info{background:rgba(21,101,192,.1);color:var(--info);}
+  footer{margin-top:60px;padding-top:20px;border-top:1px solid var(--border);
+    color:var(--fg-3);font-size:.82rem;text-align:center;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <span class="tag">Guía para el vecino</span>
+    <h1>Todo lo que podés hacer con tu municipio</h1>
+    <p class="lede">Reclamos, emergencias, turnos, entradas a eventos y trámites: esta guía explica
+      cada cosa que podés gestionar desde tu celular o computadora, y cómo hacerla paso a paso.</p>
+    <p class="meta">Para: vecinos y vecinas del municipio · No necesitás conocimientos técnicos</p>
+  </header>
+
+  <nav class="toc">
+    <h2>Contenido</h2>
+    <ol>
+      <li><a href="#mapa">¿Qué podés hacer? — el mapa completo</a></li>
+      <li><a href="#cuenta">Tu cuenta de vecino: crearla e ingresar</a></li>
+      <li><a href="#reclamos">Hacer un reclamo y seguirlo</a></li>
+      <li><a href="#emergencias">Reportar una emergencia</a></li>
+      <li><a href="#turnos">Sacar un turno (y cancelarlo)</a></li>
+      <li><a href="#entradas">Reservar entradas para eventos</a></li>
+      <li><a href="#tramites">Hacer un trámite (expedientes)</a></li>
+      <li><a href="#avisos">Cómo te avisa el municipio (correos y notificaciones)</a></li>
+      <li><a href="#encuestas">La encuesta de satisfacción</a></li>
+      <li><a href="#problemas">Si algo no funciona</a></li>
+    </ol>
+  </nav>
+
+  <section id="mapa">
+    <h2 class="sec"><span class="num">1.</span> ¿Qué podés hacer? — el mapa completo</h2>
+    <p>El municipio te ofrece varias vías de gestión. Algunas funcionan <strong>con tu cuenta de vecino</strong>
+      (el portal del ciudadano, desde el celular o la computadora), otras con <strong>enlaces públicos</strong>
+      que el municipio comparte (sin necesidad de cuenta), y otras siguen siendo presenciales o telefónicas.</p>
+
+    <table>
+      <tr><th>Qué querés hacer</th><th>Con tu cuenta (portal)</th><th>Sin cuenta</th><th>Presencial / teléfono</th></tr>
+      <tr>
+        <td><strong>Reclamo</strong> (bache, luminaria, basura…)</td>
+        <td><span class="badge ok">Sí</span> con fotos, mapa y seguimiento</td>
+        <td>—</td>
+        <td><span class="badge ok">Sí</span> en oficinas o por teléfono</td>
+      </tr>
+      <tr>
+        <td><strong>Emergencia</strong> (árbol caído, fuga de gas…)</td>
+        <td><span class="badge ok">Sí</span> con seguimiento</td>
+        <td>—</td>
+        <td><span class="badge ok">Sí</span> por teléfono · <strong>riesgo de vida: 911</strong></td>
+      </tr>
+      <tr>
+        <td><strong>Turno</strong> de atención</td>
+        <td><span class="badge ok">Sí</span> "Mis turnos"</td>
+        <td><span class="badge ok">Sí</span> con el enlace público y tu DNI</td>
+        <td><span class="badge ok">Sí</span> en mostrador</td>
+      </tr>
+      <tr>
+        <td><strong>Entrada</strong> a un evento</td>
+        <td><span class="badge ok">Sí</span> cartelera + QR</td>
+        <td><span class="badge ok">Sí</span> con el enlace del evento</td>
+        <td><span class="badge ok">Sí</span> en mostrador</td>
+      </tr>
+      <tr>
+        <td><strong>Trámite</strong> (expediente: habilitación, poda…)</td>
+        <td><span class="badge info">Seguimiento por correo</span></td>
+        <td>—</td>
+        <td><span class="badge ok">Sí</span> se inicia en mesa de entradas</td>
+      </tr>
+      <tr>
+        <td><strong>Opinar</strong> sobre la atención recibida</td>
+        <td colspan="2"><span class="badge ok">Sí</span> con la encuesta que llega por correo</td>
+        <td>—</td>
+      </tr>
+    </table>
+
+    <blockquote>
+      <strong>El portal del ciudadano es la vía más completa.</strong>
+      Con una sola cuenta hacés reclamos con fotos, reportás emergencias, sacás turnos, reservás entradas
+      y seguís todo desde un mismo lugar. Crear la cuenta lleva unos minutos (sección 2).
+    </blockquote>
+  </section>
+
+  <section id="cuenta">
+    <h2 class="sec"><span class="num">2.</span> Tu cuenta de vecino: crearla e ingresar</h2>
+    <p>El portal del ciudadano es una aplicación web: funciona en el navegador del celular o de la
+      computadora, sin instalar nada (y si querés, el navegador te ofrece agregarla a tu pantalla de
+      inicio como una app). La dirección del portal y el enlace para crear tu cuenta los comparte tu
+      municipio en su página web y redes sociales.</p>
+
+    <h3>Crear la cuenta</h3>
+    <p>Hay tres caminos — solo necesitás uno:</p>
+    <ul>
+      <li><strong>Por tu cuenta:</strong> abrís el enlace de alta del municipio, completás un único
+        formulario con tus datos (DNI, CUIL, domicilio, correo) y elegís tu contraseña. Te llega un
+        correo para verificar tu casilla y listo.</li>
+      <li><strong>Si ya figurás en el registro municipal</strong> (alguna vez te atendieron en una
+        oficina): en la misma página de alta usá la opción <em>"Activá tu cuenta acá"</em> con tu DNI,
+        y te llega el correo de activación a la casilla que el municipio tiene registrada.</li>
+      <li><strong>Si te dan de alta en una oficina:</strong> el empleado carga tus datos y te llega un
+        correo para activar la cuenta eligiendo tu propia contraseña.</li>
+    </ul>
+    <blockquote>
+      <strong>El paso a paso completo del alta tiene su propia guía.</strong>
+      Si todavía no tenés cuenta, mirá <a href="manual_alta_vecino.html">Cómo darte de alta como vecino</a>:
+      explica cada campo del formulario y qué hacer si algo falla.
+    </blockquote>
+
+    <h3>Ingresar</h3>
+    <p>En el portal tocá <em>"Ingresar"</em> y usá tu <strong>DNI</strong> (sin puntos) y tu
+      <strong>contraseña</strong>. La sesión queda guardada en tu dispositivo, así no tenés que
+      ingresar cada vez.</p>
+
+    <h3>Si olvidaste la contraseña</h3>
+    <div class="flow">
+      <span class="step">"Olvidé mi contraseña"</span>
+      <span class="arrow">→</span>
+      <span class="step">Ingresás tu DNI</span>
+      <span class="arrow">→</span>
+      <span class="step">Te llega un correo</span>
+      <span class="arrow">→</span>
+      <span class="step">Elegís una nueva</span>
+    </div>
+    <p>El enlace del correo tiene validez limitada (un día): si venció, pedí otro desde la misma pantalla.</p>
+
+    <h3>Tu pantalla de inicio</h3>
+    <p>Al entrar ves un resumen de tu actividad: cuántos reclamos, turnos y entradas tenés vigentes.
+      Desde ahí accedés a cada sección y a <em>"Configuración y notificaciones"</em>.</p>
+  </section>
+
+  <section id="reclamos">
+    <h2 class="sec"><span class="num">3.</span> Hacer un reclamo y seguirlo</h2>
+    <p>Un reclamo es un pedido de arreglo o atención sobre algo del espacio público o de los servicios
+      del municipio: un bache, una luminaria que no funciona, basura sin recolectar, un árbol que hay que
+      podar. Desde el portal lo cargás en un minuto y después seguís cómo avanza.</p>
+
+    <div class="flow">
+      <span class="step">Elegí el tipo</span>
+      <span class="arrow">→</span>
+      <span class="step">Contá qué pasa</span>
+      <span class="arrow">→</span>
+      <span class="step">Fotos (opcional)</span>
+      <span class="arrow">→</span>
+      <span class="step">Dirección y mapa</span>
+      <span class="arrow">→</span>
+      <span class="step">Enviar</span>
+    </div>
+
+    <ol class="pasos">
+      <li>
+        <h3>Tocá "+ Nuevo reclamo"</h3>
+        <p>Desde la pantalla de inicio o desde <em>"Mis reclamos"</em>.</p>
+      </li>
+      <li>
+        <h3>Elegí el tipo de reclamo</h3>
+        <p>Empezá a escribir qué pasa (por ejemplo <code>bache</code>, <code>luminaria</code>,
+          <code>poda</code>) y elegí la opción de la lista que mejor describa el problema. La lista
+          te muestra también el área municipal que lo atiende.</p>
+      </li>
+      <li>
+        <h3>Describí el problema</h3>
+        <p>Contá qué ves, desde cuándo pasa y cualquier detalle que ayude a la cuadrilla
+          (mínimo unas palabras).</p>
+      </li>
+      <li>
+        <h3>Agregá fotos si tenés (hasta 5)</h3>
+        <p>Podés <strong>sacar una foto en el momento</strong> o <strong>elegirlas de la galería</strong>.
+          Una buena foto acelera muchísimo el diagnóstico. Es opcional.</p>
+      </li>
+      <li>
+        <h3>Indicá dónde es</h3>
+        <p>Escribí la <strong>calle y altura</strong> y elegí la dirección de la lista que aparece.
+          Si querés afinar el punto exacto, <strong>marcalo en el mapa</strong> (tocás y se clava un pin,
+          que podés arrastrar) o usá <em>"Usar mi ubicación actual"</em> si estás parado en el lugar.</p>
+      </li>
+      <li>
+        <h3>Enviá y guardá tu número</h3>
+        <p>Al enviar, el sistema te da un <strong>número de reclamo</strong> (con la forma
+          <code>REC-AAAA-NNNNNN</code>). Lo ves en el detalle y en <em>"Mis reclamos"</em>.</p>
+      </li>
+    </ol>
+
+    <h3>Seguir tu reclamo</h3>
+    <p>En <em>"Mis reclamos"</em> ves cada reclamo con su estado y, al tocarlo, el detalle completo con
+      la línea de tiempo de lo que fue pasando. Los estados que vas a ver:</p>
+    <table>
+      <tr><th>Estado</th><th>Qué significa</th></tr>
+      <tr><td><span class="badge warn">Sin asignar</span></td><td>Tu reclamo ingresó y está esperando que el área lo tome.</td></tr>
+      <tr><td><span class="badge info">En gestión</span></td><td>Hay una orden de trabajo en marcha: alguien lo está atendiendo.</td></tr>
+      <tr><td><span class="badge warn">En espera</span></td><td>Está momentáneamente frenado por otra tarea relacionada.</td></tr>
+      <tr><td><span class="badge info">En auditoría</span></td><td>El trabajo terminó y se está verificando que haya quedado bien.</td></tr>
+      <tr><td><span class="badge ok">Resuelto</span></td><td>El problema quedó solucionado.</td></tr>
+      <tr><td><span class="badge warn">Cancelado</span></td><td>El reclamo se cerró sin intervención (por ejemplo, estaba duplicado).</td></tr>
+    </table>
+    <blockquote>
+      <strong>Te avisamos cuando cambia de estado.</strong>
+      Si activás las notificaciones (sección 8), te llega un aviso al celular cada vez que tu reclamo
+      avanza. También vas a recibir correos del municipio.
+    </blockquote>
+  </section>
+
+  <section id="emergencias">
+    <h2 class="sec"><span class="num">4.</span> Reportar una emergencia</h2>
+    <blockquote class="danger">
+      <strong>Si hay riesgo de vida o necesitás ayuda inmediata, llamá al 911.</strong>
+      El reporte desde el portal es para que el Centro de Operaciones del municipio atienda situaciones
+      urgentes de su competencia (un árbol caído, cables cortados, una pérdida de gas en la vía pública),
+      no reemplaza a los servicios de emergencia.
+    </blockquote>
+
+    <p>A diferencia del reclamo (que puede esperar unos días), la emergencia entra a un tablero de
+      guardia que el municipio mira en tiempo real y se atiende <strong>según su prioridad</strong>.</p>
+
+    <ol class="pasos">
+      <li>
+        <h3>Entrá a "Emergencias" y tocá "+ Reportar emergencia"</h3>
+      </li>
+      <li>
+        <h3>Indicá qué está pasando</h3>
+        <p>Escribí unas letras (<code>incendio</code>, <code>choque</code>, <code>árbol</code>…) y elegí
+          el tipo de la lista. Cada tipo ya tiene asignada su prioridad y el área que lo atiende.</p>
+      </li>
+      <li>
+        <h3>Indicá dónde es</h3>
+        <p>Calle y altura (elegila de la lista para que quede georreferenciada), el pin en el mapa si querés
+          precisar, y una <strong>referencia del lugar</strong> si ayuda ("esquina", "frente a la plaza").</p>
+      </li>
+      <li>
+        <h3>Contá más (opcional) y enviá</h3>
+        <p>¿Qué ves? ¿Hay personas involucradas? Al enviar te da un <strong>número de seguimiento</strong>
+          (<code>EM-AAAA-NNNNNN</code>).</p>
+      </li>
+    </ol>
+
+    <p>En <em>"Mis emergencias"</em> seguís cada reporte: vas a ver estados como
+      <span class="badge warn">Recibido, en triage</span> (lo está evaluando el operador),
+      en camino / en el lugar, <span class="badge ok">Cerrado con resolución</span>, o derivado a un
+      organismo externo (por ejemplo bomberos) cuando corresponde.</p>
+  </section>
+
+  <section id="turnos">
+    <h2 class="sec"><span class="num">5.</span> Sacar un turno (y cancelarlo)</h2>
+    <p>Los turnos sirven para la atención con día y hora: una consulta en la sala de salud municipal,
+      la reserva del salón de usos múltiples, una atención con un profesional. Cada municipio publica
+      sus propias <strong>prestaciones</strong> con su duración y su agenda real de disponibilidad.</p>
+
+    <h3>Desde tu cuenta (recomendado)</h3>
+    <ol class="pasos">
+      <li>
+        <h3>Entrá a "Mis turnos" y tocá "+ Nuevo turno"</h3>
+      </li>
+      <li>
+        <h3>Elegí la prestación</h3>
+        <p>La lista muestra qué es, cuánto dura y quién o dónde te atiende.</p>
+      </li>
+      <li>
+        <h3>Elegí día y horario</h3>
+        <p>Solo se ofrecen los <strong>horarios realmente libres</strong> de la agenda (descontando
+          feriados y licencias). Los horarios que ya pasaron no se ofrecen.</p>
+      </li>
+      <li>
+        <h3>Confirmá</h3>
+        <p>Revisá el resumen (prestación, día, hora, quién te atiende) y tocá <em>"Confirmar turno"</em>.
+          El turno queda en <em>"Mis turnos"</em> como <span class="badge ok">Reservado</span>.</p>
+      </li>
+    </ol>
+    <blockquote class="warn">
+      <strong>Un turno por día.</strong>
+      Para que la agenda alcance para todos, no podés tener más de un turno reservado para el mismo día.
+    </blockquote>
+
+    <h3>Sin cuenta (enlace público)</h3>
+    <p>El municipio también comparte un <strong>enlace de turnos por autoservicio</strong>. Ahí elegís la
+      prestación, el horario y cargás tu DNI y tus datos básicos. Al reservar, el sistema te da un
+      <strong>enlace propio de tu turno</strong>: guardalo, porque con ese enlace después lo consultás o
+      lo cancelás sin necesidad de cuenta.</p>
+
+    <h3>Cancelar un turno</h3>
+    <p>Si no podés ir, cancelalo: liberás el lugar para otro vecino. En <em>"Mis turnos"</em> tocá
+      <em>"Cancelar turno"</em> y confirmá. Solo se pueden cancelar los turnos que todavía están en
+      <span class="badge ok">Reservado</span>.</p>
+  </section>
+
+  <section id="entradas">
+    <h2 class="sec"><span class="num">6.</span> Reservar entradas para eventos</h2>
+    <p>El municipio organiza actividades con cupo: charlas, talleres, espectáculos, jornadas de salud.
+      Desde el portal ves la cartelera y reservás tu lugar sin hacer cola.</p>
+
+    <ol class="pasos">
+      <li>
+        <h3>Entrá a "Mis entradas" → "Ver eventos disponibles"</h3>
+        <p>La cartelera muestra cada evento con fecha, hora, lugar y los <strong>lugares disponibles</strong>.
+          Si un evento está completo vas a ver <em>"Sin cupo disponible"</em>.</p>
+      </li>
+      <li>
+        <h3>Tocá "Reservar entrada"</h3>
+        <p>La entrada queda a tu nombre al instante, en <em>"Mis entradas"</em> como
+          <span class="badge ok">Reservada</span>. Solo podés tener una entrada por evento.</p>
+      </li>
+      <li>
+        <h3>El día del evento, mostrá tu QR</h3>
+        <p>Si el evento acredita por código QR, en tu entrada vas a ver el botón
+          <em>"Mostrar mi QR"</em>: en la puerta lo escanean y entrás. Subí el brillo de la pantalla para
+          que el lector lo tome bien. Si el evento no usa QR, alcanza con tu DNI en la entrada.</p>
+      </li>
+    </ol>
+
+    <p><strong>Si no vas a ir, cancelá la entrada</strong> (botón <em>"Cancelar entrada"</em>): liberás el
+      cupo para otro vecino. Después del evento, tu entrada queda como
+      <span class="badge info">Utilizada</span> en tu historial.</p>
+
+    <blockquote>
+      <strong>También hay eventos con enlace público.</strong>
+      Para algunos eventos el municipio comparte un enlace directo (en redes, con un código QR impreso).
+      Abrís el enlace, cargás tu DNI y tus datos, y reservás sin necesidad de cuenta.
+    </blockquote>
+  </section>
+
+  <section id="tramites">
+    <h2 class="sec"><span class="num">7.</span> Hacer un trámite (expedientes)</h2>
+    <p>Los trámites con expediente — una habilitación comercial, un pedido de poda, un cambio de domicilio
+      comercial, un recurso administrativo — <strong>se inician en forma presencial</strong> en la mesa de
+      entradas del municipio. Ahí te indican la documentación necesaria según el tipo de trámite.</p>
+
+    <div class="flow">
+      <span class="step">Vas a mesa de entradas</span>
+      <span class="arrow">→</span>
+      <span class="step">Te dan tu nº de expediente</span>
+      <span class="arrow">→</span>
+      <span class="step">El expediente circula por las áreas</span>
+      <span class="arrow">→</span>
+      <span class="step">Te avisan por correo al resolverse</span>
+    </div>
+
+    <ul>
+      <li><strong>Tu número de expediente</strong> tiene una forma como <code>POD-XXX-AAAA-0001</code>.
+        Guardalo: es tu referencia para cualquier consulta.</li>
+      <li><strong>El seguimiento te llega a vos:</strong> cuando el expediente avanza a su resolución,
+        el municipio te <strong>notifica por correo electrónico</strong> al correo que dejaste al iniciarlo,
+        con el resultado y los pasos a seguir si los hay.</li>
+      <li><strong>Mantené tu correo actualizado</strong> en el municipio: es el canal por el que te llegan
+        las novedades del expediente.</li>
+    </ul>
+
+    <blockquote>
+      <strong>¿Y por qué no se inicia desde el portal?</strong>
+      Los expedientes suelen requerir documentación firmada y verificación de identidad presencial.
+      El municipio va incorporando trámites a distancia gradualmente; consultá en mesa de entradas
+      cuáles ya admiten inicio remoto.
+    </blockquote>
+  </section>
+
+  <section id="avisos">
+    <h2 class="sec"><span class="num">8.</span> Cómo te avisa el municipio</h2>
+    <p>El municipio te mantiene al tanto por dos canales:</p>
+    <ul>
+      <li><strong>Correo electrónico:</strong> recibís correos a nombre de tu municipio cuando tu reclamo
+        cambia de estado, cuando un expediente se resuelve, para activar o recuperar tu cuenta, y con la
+        encuesta de satisfacción. Revisá también la carpeta de correo no deseado (spam).</li>
+      <li><strong>Notificaciones en el celular:</strong> si activás las notificaciones del portal, te llega
+        un aviso al instante cuando tus reclamos o reportes de emergencia avanzan, incluso con la app cerrada.</li>
+    </ul>
+    <h3>Activar las notificaciones</h3>
+    <ol class="pasos">
+      <li>
+        <h3>Entrá a "Configuración y notificaciones"</h3>
+        <p>Desde la pantalla de inicio del portal.</p>
+      </li>
+      <li>
+        <h3>Activá el interruptor de notificaciones</h3>
+        <p>El navegador te va a pedir permiso: aceptalo. Las notificaciones se activan
+          <strong>por dispositivo</strong> (si usás el portal en el celular y en la computadora,
+          activalas en cada uno).</p>
+      </li>
+    </ol>
+  </section>
+
+  <section id="encuestas">
+    <h2 class="sec"><span class="num">9.</span> La encuesta de satisfacción</h2>
+    <p>Cuando un reclamo tuyo se resuelve o te atienden en un turno, el municipio te puede enviar por
+      correo una <strong>encuesta breve</strong> para conocer tu experiencia: cuán satisfecho quedaste,
+      si el tiempo de espera fue razonable, y un espacio para comentarios.</p>
+    <ul>
+      <li>El correo llega <strong>un día después</strong> del cierre, para que puedas comprobar que la
+        solución se mantuvo.</li>
+      <li>El enlace tiene una <strong>validez de unos 15 días</strong>; pasado ese tiempo, vence.</li>
+      <li>Si tu experiencia fue mala y querés que te contacten, la encuesta te lo pregunta: el área
+        correspondiente recibe el aviso para comunicarse con vos.</li>
+    </ul>
+    <blockquote class="ok">
+      <strong>Tu opinión llega de verdad.</strong>
+      Las respuestas alimentan los tableros que las áreas municipales revisan para mejorar el servicio.
+    </blockquote>
+  </section>
+
+  <section id="problemas">
+    <h2 class="sec"><span class="num">10.</span> Si algo no funciona</h2>
+    <ul>
+      <li><strong>No puedo ingresar.</strong> Verificá que el DNI vaya sin puntos. Si la contraseña no es,
+        usá <em>"Olvidé mi contraseña"</em>. Tras varios intentos fallidos seguidos la cuenta se bloquea
+        unos minutos por seguridad: esperá y volvé a intentar.</li>
+      <li><strong>No me llegan los correos.</strong> Revisá la carpeta de correo no deseado (spam). Si el
+        problema persiste, puede que el municipio tenga registrada una casilla vieja: acercate a una
+        oficina de atención para actualizarla.</li>
+      <li><strong>El buscador de direcciones no encuentra la mía.</strong> Probá con la calle y la altura
+        sin abreviaturas ("Avenida" en vez de "Av."). En los formularios donde la dirección es de texto
+        libre, podés escribirla igual y continuar.</li>
+      <li><strong>No encuentro el tipo de reclamo que necesito.</strong> Probá con otras palabras
+        ("luminaria" en vez de "farol", "poda" en vez de "rama"). Si no existe un tipo que encaje,
+        llamá o acercate al municipio para canalizarlo.</li>
+      <li><strong>No hay horarios disponibles para el turno.</strong> La agenda muestra solo los lugares
+        realmente libres. Probá con otros días: la ventana de reserva se va abriendo a medida que corre
+        el calendario.</li>
+      <li><strong>El evento no tiene cupo.</strong> Los cupos se liberan si otros vecinos cancelan:
+        volvé a mirar la cartelera más cerca de la fecha.</li>
+      <li><strong>Cargué mal un reclamo.</strong> No podés editarlo desde el portal, pero podés cargar
+        uno nuevo con los datos correctos o avisar al municipio citando tu número
+        <code>REC-AAAA-NNNNNN</code>.</li>
+      <li><strong>Quiero dejar de recibir notificaciones.</strong> Desactivá el interruptor en
+        <em>"Configuración y notificaciones"</em> en cada dispositivo donde las hayas activado.</li>
+    </ul>
+    <blockquote class="ok">
+      <strong>Tus datos están protegidos.</strong>
+      Tu información se usa únicamente para gestionar tus reclamos, turnos, entradas y trámites con el
+      municipio, conforme a la Ley de Protección de Datos Personales.
+    </blockquote>
+  </section>
+
+  <footer>
+    Guía para el vecino · ZARIS · Gestión Estatal
+  </footer>
+</div>
+</body>
+</html>
