@@ -43,6 +43,8 @@
   --surface-300: #ebeae5;
   --surface-400: #e6e5e0;
   --surface-500: #e1e0db;
+  /* Overlay semitransparente sobre mapas/imagenes (cards flotantes) */
+  --surface-overlay: rgba(247, 247, 244, 0.92);
 
   /* Foreground scale (text emphasis) */
   --fg-1: #26251e;                            /* primary */
@@ -140,6 +142,57 @@
   --track-title:   -0.11px;   /* 22 */
   --track-mono-sm: -0.275px;
   --track-micro:   0.048px;
+}
+
+/* ============================================================
+ * DARK MODE — [data-theme="dark"] sobre <html>
+ * ------------------------------------------------------------
+ * Paleta cálida espejo del modo claro (mismo undertone amarillo,
+ * mismo naranja de marca). Se activa desde el menú de usuario del
+ * shell; persiste en localStorage clave `zaris_theme` y cada
+ * documento (shell, bundle React, módulos vanilla) la lee en un
+ * script inline de <head> para evitar flash. Solo se invierten
+ * superficies, foregrounds, bordes y sombras — los tokens de
+ * marca (--zaris-orange, --color-*, --prio-*) no cambian.
+ * ============================================================ */
+:root[data-theme="dark"] {
+  --zaris-cream: #1d1c19;          /* page background */
+  --zaris-light: #2c2b27;          /* card fill, secondary surface */
+
+  --surface-100: #262522;          /* cards, modales */
+  --surface-200: #21201d;
+  --surface-300: #181714;          /* sidebar / nav */
+  --surface-400: #2c2b27;          /* superficie sutil / item activo */
+  --surface-500: #33322d;
+  --surface-overlay: rgba(38, 37, 34, 0.92);
+
+  --fg-1: #edece7;
+  --fg-2: rgba(237, 236, 231, 0.72);
+  --fg-3: rgba(237, 236, 231, 0.55);
+  --fg-4: rgba(237, 236, 231, 0.40);
+  --fg-5: rgba(237, 236, 231, 0.22);
+
+  --border-primary: rgba(237, 236, 231, 0.10);
+  --border-medium:  rgba(237, 236, 231, 0.22);
+  --border-strong:  rgba(237, 236, 231, 0.55);
+  --border-solid:   #edece7;
+  --border-light:   #1d1c19;
+
+  --shadow-ambient:
+    rgba(0, 0, 0, 0.25) 0px 0px 16px,
+    rgba(0, 0, 0, 0.12) 0px 0px 8px;
+  --shadow-card:
+    rgba(0, 0, 0, 0.50) 0px 28px 70px,
+    rgba(0, 0, 0, 0.35) 0px 14px 32px,
+    rgba(237, 236, 231, 0.08) 0px 0px 0px 1px;
+  --shadow-focus:
+    rgba(0, 0, 0, 0.35) 0px 4px 12px;
+
+  color-scheme: dark;              /* form controls y scrollbars nativos oscuros */
+}
+
+:root[data-theme="dark"] ::selection {
+  background: rgba(245, 78, 0, 0.35);
 }
 
 /* ============================================================
