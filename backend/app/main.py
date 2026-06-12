@@ -40,6 +40,7 @@ from app.api.routes.publico_auth import router as publico_auth_router
 from app.api.routes.publico_alta import router as publico_alta_router
 from app.api.routes.publico_identidad import router as publico_identidad_router
 from app.api.routes.publico_reclamos import router as publico_reclamos_router
+from app.api.routes.publico_reclamos_adjuntos import router as publico_reclamos_adjuntos_router
 from app.api.routes.publico_portal import router as publico_portal_router
 from app.api.routes.publico_emergencias import router as publico_emergencias_router
 from app.init_db import create_tables
@@ -149,6 +150,8 @@ app.include_router(publico_auth_router)
 # Alta publica de vecinos (autoregistro desde URL publica por municipio, sin JWT, rate-limited)
 app.include_router(publico_alta_router)
 app.include_router(publico_identidad_router)
+# Adjuntos publicos ANTES del router de reclamos publicos (su GET /{id_reclamo} es greedy, §5)
+app.include_router(publico_reclamos_adjuntos_router)
 app.include_router(publico_reclamos_router)
 app.include_router(publico_portal_router)
 # Emergencias del vecino (App Vecinos, scope publico — plan COM Fase 5)
