@@ -16,6 +16,7 @@ from app.core.database import get_db
 from app.core.auth import get_current_user
 from app.services.agenda import disponibilidad_efectiva
 from app.services import encuestas_service as svc_encuestas
+from app.services import push as svc_push
 
 router = APIRouter(prefix="/api/v1/ot", tags=["Órdenes de Trabajo"])
 logger = logging.getLogger("zaris.ordenes_trabajo")
@@ -632,6 +633,8 @@ async def crear_ot_con_agenda(
         })).mappings().all()
 
         await db.commit()
+        # Hook push App Vecinos (etapa E) — post-commit, best-effort.
+        await svc_push.notificar_estado_reclamo(id_reclamo)
         return {
             "id_ot": id_ot, "nro_ot": nro_ot, "id_reclamo": id_reclamo,
             "id_ocupacion": id_ocupacion,
@@ -804,6 +807,9 @@ async def crear_ot(
                                            current_user["id_usuario"])
         await db.commit()
 
+        # Hook push App Vecinos (etapa E) — post-commit, best-effort.
+        await svc_push.notificar_estado_reclamo(id_reclamo)
+
         return {"id_ot": id_ot, "nro_ot": nro_ot, "id_reclamo": id_reclamo}
     except HTTPException:
         raise
@@ -975,6 +981,9 @@ async def cambiar_estado_ot(
         # reclamo (no si pasó a 'En auditoría' por audit=true — el service lo filtra).
         if nuevo_estado == "Terminada" and not ot.es_auditoria:
             await _disparar_encuesta(db, ot.id_reclamo)
+            # Hook push App Vecinos (etapa E) — el reclamo cambió de estado
+            # (Resuelto o En auditoría según audit del tipo). Best-effort.
+            await svc_push.notificar_estado_reclamo(ot.id_reclamo)
 
         return {"ok": True, "id_ot": id_ot, "estado": nuevo_estado}
     except HTTPException:
@@ -1099,6 +1108,8 @@ async def aprobar_ot(
 
         # Hook encuestas tras el commit — la aprobación siempre resuelve el reclamo.
         await _disparar_encuesta(db, ot.id_reclamo)
+        # Hook push App Vecinos (etapa E) — reclamo pasó a Resuelto. Best-effort.
+        await svc_push.notificar_estado_reclamo(ot.id_reclamo)
 
         return {"ok": True, "id_ot": id_ot, "resultado": "aprobada"}
     except HTTPException:
@@ -1169,6 +1180,8 @@ async def rechazar_ot(
                                            ot.reclamo_estado, "En gestión",
                                            observaciones, current_user["id_usuario"])
         await db.commit()
+        # Hook push App Vecinos (etapa E) — reclamo volvió a En gestión. Best-effort.
+        await svc_push.notificar_estado_reclamo(ot.id_reclamo)
         return {"ok": True, "id_ot": id_ot, "resultado": "rechazada"}
     except HTTPException:
         raise
