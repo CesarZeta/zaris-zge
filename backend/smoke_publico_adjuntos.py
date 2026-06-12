@@ -15,6 +15,8 @@ import httpx
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
 ES_PROD = "railway" in BASE or "zaris.com.ar" in BASE
 ADMIN_EMAIL = "cesar@municipio.gob.ar" if ES_PROD else "ciudadanovl@municipio.gob.ar"
+# Vecino demo: local 28547123 / prod 30555444 (ambos pass 123456). Override por argv[2].
+DNI_VECINO = sys.argv[2] if len(sys.argv) > 2 else ("30555444" if ES_PROD else "28547123")
 
 PNG_1PX = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
@@ -38,7 +40,7 @@ def main() -> int:
     c = httpx.Client(timeout=30)
 
     # 1. Login vecino
-    r = c.post(f"{BASE}/api/v1/publico/auth/login", json={"dni": "28547123", "password": "123456"})
+    r = c.post(f"{BASE}/api/v1/publico/auth/login", json={"dni": DNI_VECINO, "password": "123456"})
     check("1. login vecino", r.status_code == 200, f"({r.status_code})")
     if r.status_code != 200:
         return 1
