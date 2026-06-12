@@ -30,6 +30,8 @@
   --surface-300: #ebeae5;
   --surface-400: #e6e5e0;
   --surface-500: #e1e0db;
+  /* Overlay semitransparente sobre mapas/imagenes (cards flotantes del Dashboard) */
+  --surface-overlay: rgba(247, 247, 244, 0.92);
 
   --fg-1: #26251e;
   --fg-2: rgba(38, 37, 30, 0.7);
@@ -101,4 +103,45 @@
   --track-subhead: -0.325px;
   --track-title:   -0.11px;
   --track-micro:   0.048px;
+}
+
+/* Dark mode — espejo de design-system/colors_and_type.css [data-theme="dark"].
+   El data-theme lo setea un script inline en web-app/index.html leyendo
+   localStorage `zaris_theme` (el toggle vive en el shell vanilla). */
+:root[data-theme="dark"] {
+  --zaris-cream: #1d1c19;
+  --zaris-light: #2c2b27;
+
+  --surface-100: #262522;
+  --surface-200: #21201d;
+  --surface-300: #181714;
+  --surface-400: #2c2b27;
+  --surface-500: #33322d;
+  --surface-overlay: rgba(38, 37, 34, 0.92);
+
+  --fg-1: #edece7;
+  --fg-2: rgba(237, 236, 231, 0.72);
+  --fg-3: rgba(237, 236, 231, 0.55);
+  --fg-4: rgba(237, 236, 231, 0.40);
+  --fg-5: rgba(237, 236, 231, 0.22);
+
+  --border-primary: rgba(237, 236, 231, 0.10);
+  --border-medium:  rgba(237, 236, 231, 0.22);
+  --border-strong:  rgba(237, 236, 231, 0.55);
+  --border-solid:   #edece7;
+
+  --shadow-ambient:
+    rgba(0, 0, 0, 0.25) 0px 0px 16px,
+    rgba(0, 0, 0, 0.12) 0px 0px 8px;
+  --shadow-card:
+    rgba(0, 0, 0, 0.50) 0px 28px 70px,
+    rgba(0, 0, 0, 0.35) 0px 14px 32px,
+    rgba(237, 236, 231, 0.08) 0px 0px 0px 1px;
+  --shadow-focus:   rgba(0, 0, 0, 0.35) 0px 4px 12px;
+
+  color-scheme: dark;
+}
+
+:root[data-theme="dark"] ::selection {
+  background: rgba(245, 78, 0, 0.35);
 }

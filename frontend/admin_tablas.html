@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ZARIS — Gestión de Tablas</title>
   <script>
+    // Tema claro/oscuro: mismo localStorage del shell (zaris_theme). Antes de los CSS.
+    try { if (localStorage.getItem('zaris_theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch (e) {}
+  </script>
+  <script>
     // Standalone → redirigir al shell con ?modulo= para mostrar sidebar.
     if (window.self === window.top) {
       var p = window.location.pathname.replace(/^.*\//, 'frontend/');

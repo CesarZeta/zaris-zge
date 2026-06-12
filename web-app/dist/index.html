@@ -35,10 +35,20 @@
         } catch (e) { /* fail-open */ }
       })();
     </script>
-    <script type="module" crossorigin src="/web-app/dist/assets/index-B338ExY4.js"></script>
-    <link rel="stylesheet" crossorigin href="/web-app/dist/assets/index-CpKlSD8i.css">
+    <script>
+      // Tema (claro/oscuro): mismo localStorage que el shell vanilla
+      // (`zaris_theme`, same-origin). Leer ANTES de montar React para no
+      // flashear el tema claro. Los tokens dark viven en src/styles/tokens.css.
+      try {
+        if (localStorage.getItem('zaris_theme') === 'dark') {
+          document.documentElement.dataset.theme = 'dark';
+        }
+      } catch (e) { /* sin storage: tema claro */ }
+    </script>
+    <script type="module" crossorigin src="/web-app/dist/assets/index-SbUu-sPe.js"></script>
+    <link rel="stylesheet" crossorigin href="/web-app/dist/assets/index-CXm5Kfb8.css">
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"></div>
   </body>
 </html>
