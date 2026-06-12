@@ -79,6 +79,10 @@ class IdentidadMunicipioOut(BaseModel):
     municipio_descripcion: str | None
     municipio_color_primary: str | None
     municipio_color_accent: str | None
+    # URL de la pagina publica de alta de vecinos (FRONTEND_BASE_URL + slug).
+    # La PWA la linkea en la bienvenida ("¿No tenes cuenta?"). None si el
+    # deploy no tiene municipio activo con codigo_corto.
+    url_alta_publica: str | None = None
 
 
 class GenericoOkOut(BaseModel):

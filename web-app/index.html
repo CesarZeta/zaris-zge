@@ -20,6 +20,10 @@
           var isProd = p.indexOf('/web-app/dist/') !== -1;
           if (!isProd) return;                                     // dev local: dejar pasar
           var hash = window.location.hash || '';                   // ej '#/ot/agente'
+          // Rutas PUBLICAS de autoservicio (sin sesion): el ciudadano las abre
+          // standalone via link compartido (QR / WhatsApp / email). NO redirigir
+          // al shell — terminaria en el login del backoffice (BUG cazado 2026-06-12).
+          if (/^#\/(autoservicio(\/|$)|turnos-autoservicio|turno\/)/.test(hash)) return;
           // Detectar si estamos bajo un subpath (/zaris-zge/) o en raiz del dominio
           var subpath = p.match(/^(\/[^/]+)\/web-app\/dist\//);
           var base = subpath ? subpath[1] + '/index.html' : '/index.html';
