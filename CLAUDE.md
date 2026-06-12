@@ -1423,7 +1423,9 @@ Flujo público sin JWT para que el ciudadano reserve un turno sin pasar por mesa
 
 **Slots (`_slots_libres_recurso`):** recurso de la prestación → `disponibilidad_efectiva(tipo, id, fecha)` partido en bloques de `duracion_min` (descarta el último incompleto), filtrando solapamientos con `ocupaciones`. **POST /reservar**: valida slot dentro de disponibilidad + sin solape, busca/crea ciudadano por DNI (`buscar_o_crear_ciudadano_por_dni`), rechaza si ya tiene turno no-cancelado ese día, crea turno `origen='autoservicio'` + ocupación espejo, devuelve `token_turno`.
 
-**Frontend público (`web-app/src/autoservicio/`):** `TurnosPage.tsx` (`/turnos-autoservicio`, 3 pasos prestación→slot→datos) · `MiTurnoPage.tsx` (`/turno/:tokenTurno`, ver/cancelar). El backoffice muestra banner con el link público + copiar.
+> **Pasado se valida con hora LOCAL del municipio, NO con `date.today()` del server (fix 2026-06-12).** Railway corre UTC (AR = UTC-3): validar solo la FECHA dejaba reservar slots de hoy ya pasados (cazado en prod: reserva de 08:00 a las 10:43), y `date.today()` UTC corre el día entre las 21:00 y las 00:00 locales. Helper `app/utils/fechas.py` (`ahora_local()`/`hoy_local()`, offset fijo -3 — AR no tiene DST; sin ZoneInfo porque tzdata puede faltar en Windows local). `_slots_libres_recurso` descarta slots de hoy con inicio ≤ ahora local; los POST `/reservar` (anónimo `turnos_publico.py` + vecino logueado `publico_turnos_vecino.py`) rechazan 422 fecha u hora en el pasado. Toda validación nueva de "ya pasó" sobre TIME naive local usa este helper.
+
+**Frontend público (`web-app/src/autoservicio/`):** `TurnosPage.tsx` (`/turnos-autoservicio`, 3 pasos prestación→slot→datos) · `MiTurnoPage.tsx` (`/turno/:tokenTurno`, ver/cancelar). El backoffice muestra banner con el link público + copiar. **Las 4 rutas públicas del bundle están eximidas del guard standalone** (whitelist en `web-app/index.html`, BUG cazado 2026-06-12 — ver skill `win-quirks` Q12): ruta pública nueva ⇒ sumarla a la regex o el link compartido rebota al login.
 
 ## 34. Módulo OT — frontend dedicado del Supervisor (crear OT + agendar en una pasada)
 
