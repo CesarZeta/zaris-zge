@@ -258,7 +258,8 @@ async def activar_cuenta(data: ActivarIn, db: AsyncSession = Depends(get_db)):
     res = await db.execute(
         text("""
             SELECT cc.id_ciudadano_credencial, cc.id_ciudadano,
-                   c.doc_nro, c.nombre, c.apellido, c.email, c.estado_validacion, c.activo AS c_activo
+                   c.doc_nro, c.nombre, c.apellido, c.email, c.estado_validacion,
+                   c.ficha_completa, c.activo AS c_activo
               FROM ciudadano_credencial cc
               JOIN ciudadanos c ON c.id_ciudadano = cc.id_ciudadano
              WHERE cc.token_activacion = CAST(:token AS uuid)
