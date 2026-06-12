@@ -701,6 +701,7 @@ Caso de uso: reclamo que se resuelve sin generar OT (consulta, duplicado, sin in
 | `ot_pendiente_dias_vencimiento` | integer | Días máximos que una OT Pendiente puede estar sin reasignarse |
 | `municipio_nombre` | string | Nombre del municipio que se muestra en el topbar (ej. "MUNICIPALIDAD DE SAN ANDRÉS"). Editable desde Config → Identidad. |
 | `municipio_logo_url` | string | URL pública del logo del municipio (servida desde bucket `config-assets` de Supabase Storage). Vacía = sin logo. Editable desde Config → Identidad. |
+| `geo_bbox_centro_lat` / `geo_bbox_centro_lon` / `geo_bbox_delta_grados` | string (decimales) | Zona del municipio para el buscador de direcciones (mig 87, §23). Editables en Config → Sistema; `geo.py` las lee con cache TTL 5 min y fallback a constantes (VL demo). |
 
 > La clave `app_nombre` **no existe** (se intentó en 2026-05-13 y se borró). "GESTION ESTADO" es interno del producto, hardcoded en el HTML del shell. Ver §14 (topbar layout).
 
@@ -789,7 +790,7 @@ class Equipo(Base):
 
 > **El detalle histórico de cada migración (qué hace, cuándo se aplicó, snapshots de backup) vive en [`HISTORIAL_MIGRACIONES.md`](HISTORIAL_MIGRACIONES.md)** (raíz del repo). Acá queda solo el resumen vigente. **No confiar en esta doc como fuente de verdad** — antes de codear algo schema-dependent, verificar el estado real con `execute_sql` (regla §24).
 
-**Estado general:** migraciones 20-86 aplicadas en local Y prod (Supabase) sin divergencia conocida al 2026-06-11. La numeración 51 está duplicada (`51_notificaciones.sql` + `51_tramites_tipo_dato_direccion.sql`, ambas aplicadas) — **cualquier mig nueva debe usar 87+**.
+**Estado general:** migraciones 20-87 aplicadas en local Y prod (Supabase) sin divergencia conocida al 2026-06-12. La numeración 51 está duplicada (`51_notificaciones.sql` + `51_tramites_tipo_dato_direccion.sql`, ambas aplicadas) — **cualquier mig nueva debe usar 88+**.
 
 **Reglas vivas de migración:**
 - **Toda tabla nueva debe nacer con `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`** (sin políticas = deny-all §26; el backend conecta como `postgres` dueño y bypassea RLS). Sino el advisor de Supabase la marca (`rls_disabled_in_public`, caso mig 80).
@@ -906,7 +907,7 @@ Estos patrones se decidieron en sesiones anteriores y **deben reutilizarse** en 
 
 El input de dirección queda **editable sin borrar las coordenadas** (el pin del mapa es la fuente geo explícita y sigue visible), con hint mono que muestra las coords y botón "Quitar pin". Pedido explícito del usuario (test de uso humano, 2026-06-11). Implementado en Reclamos (`FormView`) y Emergencias (Recepción de llamado §44). Cualquier form nuevo con dirección georreferenciable replica este bloque.
 
-**Sesgo geográfico OBLIGATORIO (2026-06-11):** el geocoding está **restringido a la zona del municipio** — buscar "Avenida Maipú" NO debe traer la de Mendoza. Implementado UNA sola vez en `backend/app/api/routes/geo.py::geocodificar_direccion` con `viewbox` + `bounded=1` de Nominatim (bbox = centro del municipio ± ~28 km, constantes `GEO_BBOX_*`; cubre el partido + CABA + linderos). Como TODOS los buscadores de dirección (backoffice `/geo/buscar`, alta pública, reclamos del vecino) pasan por ese helper, cualquier form nuevo lo hereda gratis — **no llamar a Nominatim por fuera del helper**. Si un deploy es de otro municipio, ajustar las constantes.
+**Sesgo geográfico OBLIGATORIO (2026-06-11):** el geocoding está **restringido a la zona del municipio** — buscar "Avenida Maipú" NO debe traer la de Mendoza. Implementado UNA sola vez en `backend/app/api/routes/geo.py::geocodificar_direccion` con `viewbox` + `bounded=1` de Nominatim (bbox = centro del municipio ± ~28 km; cubre el partido + CABA + linderos). Como TODOS los buscadores de dirección (backoffice `/geo/buscar`, alta pública, reclamos del vecino) pasan por ese helper, cualquier form nuevo lo hereda gratis — **no llamar a Nominatim por fuera del helper**. **Desde mig 87 el bbox es configurable** en `configuracion_general` (`geo_bbox_centro_lat`/`geo_bbox_centro_lon`/`geo_bbox_delta_grados`, editables en Config → Sistema §41; cache TTL 5 min en `geo.py::_bbox_municipio`, sesión propia `AsyncSessionLocal` porque corre también desde routers públicos). Las constantes `GEO_BBOX_*` quedan como fallback (claves ausentes/ inválidas/DB caída → Vicente López demo, el geocoding nunca se rompe por config). Deploy de otro municipio → ajustar las claves, no el código.
 
 ### Buscador con autocompletar (≥ ~30 opciones)
 Para selectores con muchas opciones (`tipo_reclamo` tiene 282, `ciudadanos` tiene miles), un `<select>` es inusable. Usar siempre **input + dropdown de resultados** consultando un endpoint con `?q=<texto>` y filtro `ILIKE`.
