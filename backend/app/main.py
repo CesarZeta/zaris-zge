@@ -45,6 +45,7 @@ from app.api.routes.publico_portal import router as publico_portal_router
 from app.api.routes.publico_turnos_vecino import router as publico_turnos_vecino_router
 from app.api.routes.publico_entradas_vecino import router as publico_entradas_vecino_router
 from app.api.routes.publico_emergencias import router as publico_emergencias_router
+from app.api.routes.publico_push import router as publico_push_router
 from app.init_db import create_tables
 
 # ── Logging ──────────────────────────────────────────────────────
@@ -162,6 +163,8 @@ app.include_router(publico_turnos_vecino_router)
 app.include_router(publico_entradas_vecino_router)
 # Emergencias del vecino (App Vecinos, scope publico — plan COM Fase 5)
 app.include_router(publico_emergencias_router)
+# Suscripciones Web Push del vecino (App Vecinos etapa E, scope publico)
+app.include_router(publico_push_router)
 # Encuestas publicas (form del ciudadano, sin JWT, rate-limited por IP)
 app.include_router(encuestas_publico_router)
 
