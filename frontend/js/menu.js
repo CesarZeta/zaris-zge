@@ -13,9 +13,10 @@
   let user      = session?.user;
 
   // Si la sesion fue cargada antes del feature de permisos por modulo
-  // (sin modulos_permitidos), refresheamos contra /auth/me. Asi un usuario
-  // logueado desde antes del deploy ve el sidebar filtrado sin re-loguear.
-  if (user && !Array.isArray(user.modulos_permitidos)) {
+  // (sin modulos_permitidos) o antes del cargo/foto (2026-06-12), refresheamos
+  // contra /auth/me. Asi un usuario con sesion vieja ve sidebar filtrado,
+  // cargo y foto sin re-loguear.
+  if (user && (!Array.isArray(user.modulos_permitidos) || user.cargo_nombre === undefined)) {
     try {
       const token = session?.access_token || session?.state?.accessToken;
       if (token) {
@@ -24,16 +25,14 @@
         });
         if (res.ok) {
           const me = await res.json();
-          if (Array.isArray(me.modulos_permitidos)) {
-            user = { ...user, modulos_permitidos: me.modulos_permitidos };
-            // Persistir mantiene ambas shapes (§29)
-            const updated = {
-              ...(session || {}),
-              user,
-              state: { ...(session?.state || {}), user },
-            };
-            localStorage.setItem('zaris_session', JSON.stringify(updated));
-          }
+          user = { ...user, ...me };
+          // Persistir mantiene ambas shapes (§29)
+          const updated = {
+            ...(session || {}),
+            user,
+            state: { ...(session?.state || {}), user },
+          };
+          localStorage.setItem('zaris_session', JSON.stringify(updated));
         }
       }
     } catch (e) { /* fail-open: si no responde, no filtro */ }
@@ -49,17 +48,45 @@
   // XSS (alta sin sanitizar). NUNCA interpolar datos de usuario en innerHTML sin esto.
   const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-  if (user) {
+  // Persiste `user` en localStorage manteniendo las dos shapes (§29).
+  function _persistUser() {
+    try {
+      const s = JSON.parse(localStorage.getItem('zaris_session') || 'null') || {};
+      const updated = { ...s, user, state: { ...(s.state || {}), user } };
+      localStorage.setItem('zaris_session', JSON.stringify(updated));
+    } catch (e) { /* ignorar */ }
+  }
+
+  // Render del usuario en topbar + dropdown. Función (no bloque inline) para
+  // poder re-renderizar tras subir la foto sin recargar el shell.
+  function _renderUserUI() {
+    if (!user) return;
     const name     = user.nombre || user.username || '';
     const initials = name.split(' ').slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || 'ZG';
     const nivel    = NIVELES[user.nivel_acceso] || 'Usuario';
+    const cargo    = user.cargo_nombre || '';
+    const foto     = user.foto_url || '';
 
-    if (avatarEl)  avatarEl.textContent = initials;
-    if (contextEl) contextEl.innerHTML  = `<strong>${esc(name.split(' ')[0])}</strong> · ${esc(nivel)}`;
-    if (infoEl)    infoEl.innerHTML     = `
-      <div class="user-menu__info-name">${esc(name)}</div>
-      <div class="user-menu__info-role">${esc(nivel)}</div>`;
+    // Avatar: foto si hay (mig 88), sino iniciales.
+    const avatarHtml = foto ? `<img src="${esc(foto)}" alt="">` : esc(initials);
+
+    if (avatarEl)  avatarEl.innerHTML = avatarHtml;
+    if (contextEl) {
+      contextEl.innerHTML =
+        `<span><strong>${esc(name.split(' ')[0])}</strong> · ${esc(nivel)}</span>` +
+        (cargo ? `<span class="topbar__context-cargo">Cargo: ${esc(cargo)}</span>` : '');
+    }
+    if (infoEl) {
+      infoEl.innerHTML = `
+        <div class="user-menu__info-avatar">${avatarHtml}</div>
+        <div>
+          <div class="user-menu__info-name">${esc(name)}</div>
+          <div class="user-menu__info-role">${esc(nivel)}</div>
+          ${cargo ? `<div class="user-menu__info-cargo">Cargo: ${esc(cargo)}</div>` : ''}
+        </div>`;
+    }
   }
+  _renderUserUI();
 
   // ── User menu dropdown ──────────────────────────────────────
   const trigger  = document.getElementById('user-menu-trigger');
@@ -89,6 +116,125 @@
 
   if (btnLogout) {
     btnLogout.addEventListener('click', _cerrarSesion);
+  }
+
+  // ── Foto de perfil (dropdown → "Cambiar foto…") ──────────────
+  // Flujo espejo del logo del municipio (§26): el backend firma la URL de
+  // upload, el navegador hace PUT del binario directo a Supabase Storage y
+  // después se persiste la URL pública en usuarios.foto_url.
+  const btnFoto      = document.getElementById('btn-foto');
+  const btnFotoLabel = document.getElementById('btn-foto-label');
+  const inputFoto    = document.getElementById('input-foto');
+
+  function _setFotoLabel(txt) { if (btnFotoLabel) btnFotoLabel.textContent = txt; }
+  function _resetFotoLabel()  { setTimeout(function () { _setFotoLabel('Cambiar foto…'); }, 3000); }
+
+  if (btnFoto && inputFoto) {
+    btnFoto.addEventListener('click', function (e) {
+      e.stopPropagation();
+      inputFoto.click();
+    });
+    inputFoto.addEventListener('change', async function () {
+      const file = inputFoto.files && inputFoto.files[0];
+      inputFoto.value = '';
+      if (!file) return;
+      if (file.type !== 'image/png' && file.type !== 'image/jpeg') {
+        _setFotoLabel('Solo PNG o JPG'); _resetFotoLabel(); return;
+      }
+      if (file.size > 2 * 1024 * 1024) {
+        _setFotoLabel('Máximo 2 MB'); _resetFotoLabel(); return;
+      }
+      _setFotoLabel('Subiendo…');
+      try {
+        const r1 = await fetch(`${API}/api/v1/auth/me/foto-upload-url`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ..._authHeaders() },
+          body: JSON.stringify({ mime_type: file.type, tamano_bytes: file.size }),
+        });
+        if (!r1.ok) throw new Error('upload-url ' + r1.status);
+        const signed = await r1.json();
+
+        const r2 = await fetch(signed.upload_url, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type, 'x-upsert': 'true' },
+          body: file,
+        });
+        if (!r2.ok) throw new Error('storage ' + r2.status);
+
+        const r3 = await fetch(`${API}/api/v1/auth/me/foto`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', ..._authHeaders() },
+          body: JSON.stringify({ foto_url: signed.public_url }),
+        });
+        if (!r3.ok) throw new Error('persist ' + r3.status);
+
+        user = { ...user, foto_url: signed.public_url };
+        _persistUser();
+        _renderUserUI();
+        _setFotoLabel('Foto actualizada');
+      } catch (err) {
+        _setFotoLabel('Error al subir la foto');
+      } finally {
+        _resetFotoLabel();
+      }
+    });
+  }
+
+  // ── Modo oscuro (dropdown → toggle) ──────────────────────────
+  // El data-theme inicial lo setea el script inline del <head> (sin flash).
+  // Acá solo se maneja el toggle + la propagación al iframe del módulo.
+  // Cada documento (shell, bundle React, módulos vanilla) también lee
+  // localStorage al cargar, así el tema sobrevive a navegaciones del iframe.
+  const THEME_KEY   = 'zaris_theme';
+  const btnTheme    = document.getElementById('btn-theme');
+  const themeSwitch = document.getElementById('theme-switch');
+
+  function _temaActual() {
+    try { return localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light'; }
+    catch (e) { return 'light'; }
+  }
+  function _aplicarTemaDoc(doc, tema) {
+    try {
+      if (!doc) return;
+      if (tema === 'dark') doc.documentElement.dataset.theme = 'dark';
+      else delete doc.documentElement.dataset.theme;
+    } catch (e) { /* cross-origin: el doc se auto-aplica via su propio <head> */ }
+  }
+  function _aplicarTema(tema) {
+    try { localStorage.setItem(THEME_KEY, tema); } catch (e) { /* ignorar */ }
+    _aplicarTemaDoc(document, tema);
+    const fr = document.getElementById('module-frame');
+    try { _aplicarTemaDoc(fr && fr.contentWindow && fr.contentWindow.document, tema); } catch (e) { /* ignorar */ }
+    if (themeSwitch) themeSwitch.classList.toggle('on', tema === 'dark');
+  }
+
+  if (btnTheme) {
+    btnTheme.addEventListener('click', function (e) {
+      e.stopPropagation();
+      _aplicarTema(_temaActual() === 'dark' ? 'light' : 'dark');
+    });
+  }
+  if (themeSwitch) themeSwitch.classList.toggle('on', _temaActual() === 'dark');
+
+  // Re-aplicar el tema cada vez que el iframe navega (belt & suspenders: el
+  // documento nuevo ya lo lee de localStorage, pero un HTML viejo cacheado
+  // sin el bootstrap quedaría claro sin esto).
+  (function () {
+    const fr = document.getElementById('module-frame');
+    if (!fr) return;
+    fr.addEventListener('load', function () {
+      try { _aplicarTemaDoc(fr.contentWindow && fr.contentWindow.document, _temaActual()); }
+      catch (e) { /* ignorar */ }
+    });
+  })();
+
+  // ── Guías de uso (dropdown → módulo Guías) ───────────────────
+  const btnGuias = document.getElementById('btn-guias');
+  if (btnGuias) {
+    btnGuias.addEventListener('click', function () {
+      closeMenu();
+      window.shellNavigate('web-app/dist/index.html#/guias');
+    });
   }
 
   // ── Auto-logout por inactividad (10 min) ─────────────────────

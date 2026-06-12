@@ -157,7 +157,7 @@ const statsLayerStyle: React.CSSProperties = {
 }
 
 const headerStyle: React.CSSProperties = {
-  background: 'rgba(247,247,244,0.92)',  // surface-100 semi
+  background: 'var(--surface-overlay)',  // claro u oscuro segun data-theme
   backdropFilter: 'blur(8px)',
   WebkitBackdropFilter: 'blur(8px)',
   border: '1px solid var(--border-primary)',
@@ -182,7 +182,7 @@ const cardsGridStyle: React.CSSProperties = {
 }
 
 const cardStyle: React.CSSProperties = {
-  background: 'rgba(247,247,244,0.92)',
+  background: 'var(--surface-overlay)',
   backdropFilter: 'blur(8px)',
   WebkitBackdropFilter: 'blur(8px)',
   border: '1px solid var(--border-primary)',
@@ -192,7 +192,7 @@ const cardStyle: React.CSSProperties = {
 }
 
 const legendStyle: React.CSSProperties = {
-  background: 'rgba(247,247,244,0.92)',
+  background: 'var(--surface-overlay)',
   backdropFilter: 'blur(8px)',
   WebkitBackdropFilter: 'blur(8px)',
   border: '1px solid var(--border-primary)',

@@ -17,11 +17,22 @@
     }
   </script>
 
+  <!-- Tema (claro/oscuro): leer ANTES de los CSS para no flashear el tema
+       claro. El toggle vive en el menú de usuario (menu.js); persiste en
+       localStorage `zaris_theme`. Los tokens dark están en colors_and_type.css. -->
+  <script>
+    try {
+      if (localStorage.getItem('zaris_theme') === 'dark') {
+        document.documentElement.dataset.theme = 'dark';
+      }
+    } catch (e) { /* sin storage: tema claro */ }
+  </script>
+
   <link rel="icon" type="image/svg+xml" href="design-system/assets/zaris-favicon.svg">
 
   <link rel="stylesheet" href="design-system/fonts/fonts.css">
   <link rel="stylesheet" href="design-system/colors_and_type.css">
-  <link rel="stylesheet" href="frontend/css/menu.css?v=2026-06-12a">
+  <link rel="stylesheet" href="frontend/css/menu.css?v=2026-06-12b">
 
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 </head>
@@ -96,6 +107,28 @@
           </button>
           <div class="user-menu__dropdown" id="user-menu-dropdown" hidden>
             <div class="user-menu__info" id="user-menu-info"></div>
+            <div class="user-menu__divider"></div>
+
+            <!-- Cambiar foto de perfil (PNG/JPG, 2MB → bucket config-assets) -->
+            <button class="user-menu__item" id="btn-foto">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3"/></svg>
+              <span id="btn-foto-label">Cambiar foto…</span>
+            </button>
+            <input type="file" id="input-foto" accept="image/png,image/jpeg" hidden>
+
+            <!-- Modo oscuro (toggle, persiste en localStorage zaris_theme) -->
+            <button class="user-menu__item" id="btn-theme">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9"/></svg>
+              Modo oscuro
+              <span class="user-menu__switch" id="theme-switch" aria-hidden="true"></span>
+            </button>
+
+            <!-- Ayuda: link al módulo Guías -->
+            <button class="user-menu__item" id="btn-guias">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+              Guías de uso
+            </button>
+
             <div class="user-menu__divider"></div>
             <button class="user-menu__item user-menu__item--danger" id="btn-logout">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -289,6 +322,6 @@
 
   </div>
 
-  <script src="frontend/js/menu.js?v=2026-06-12a"></script>
+  <script src="frontend/js/menu.js?v=2026-06-12b"></script>
 </body>
 </html>

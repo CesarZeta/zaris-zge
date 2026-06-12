@@ -35,6 +35,16 @@
         } catch (e) { /* fail-open */ }
       })();
     </script>
+    <script>
+      // Tema (claro/oscuro): mismo localStorage que el shell vanilla
+      // (`zaris_theme`, same-origin). Leer ANTES de montar React para no
+      // flashear el tema claro. Los tokens dark viven en src/styles/tokens.css.
+      try {
+        if (localStorage.getItem('zaris_theme') === 'dark') {
+          document.documentElement.dataset.theme = 'dark';
+        }
+      } catch (e) { /* sin storage: tema claro */ }
+    </script>
   </head>
   <body>
     <div id="root"></div>

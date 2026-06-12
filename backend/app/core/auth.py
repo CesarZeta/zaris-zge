@@ -84,7 +84,7 @@ async def get_current_user(
 
     result = await db.execute(
         text("""SELECT id_usuario, nombre, email, nivel_acceso, activo,
-                       debe_cambiar_password
+                       debe_cambiar_password, foto_url
                 FROM usuarios WHERE id_usuario = :id"""),
         {"id": int(user_id)},
     )

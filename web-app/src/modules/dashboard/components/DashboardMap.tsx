@@ -83,9 +83,11 @@ export function DashboardMap({ reclamos, onMarkerClick }: Props) {
       zoomControl: false,
     })
     L.control.zoom({ position: 'bottomright' }).addTo(map)
-    // Tile gris claro (CartoDB Positron, gratis sin API key). Pensado para
-    // dashboards: minimal, no compite visualmente con los markers de estado.
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    // Tile CartoDB minimal (gratis sin API key): Positron en tema claro,
+    // Dark Matter en modo oscuro (zaris_theme, leído al montar — si el usuario
+    // togglea el tema, el modulo se remonta al navegar y toma el tile correcto).
+    const esDark = document.documentElement.dataset.theme === 'dark'
+    L.tileLayer(`https://{s}.basemaps.cartocdn.com/${esDark ? 'dark_all' : 'light_all'}/{z}/{x}/{y}{r}.png`, {
       attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
       subdomains: 'abcd',
       maxZoom: 20,

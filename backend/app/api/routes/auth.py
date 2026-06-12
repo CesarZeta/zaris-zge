@@ -4,12 +4,15 @@ POST /api/v1/auth/login  → JWT
 GET  /api/v1/auth/me     → usuario actual
 """
 import logging
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core import storage
 from app.core.auth import (
     verify_password,
     hash_password,
@@ -38,12 +41,43 @@ class CambiarPasswordRequest(BaseModel):
     password_actual: str | None = None  # obligatoria salvo cambio forzado (clave temporal)
 
 
+class FotoUploadRequest(BaseModel):
+    mime_type: str
+    tamano_bytes: int = Field(ge=1)
+
+
+class FotoUpdateRequest(BaseModel):
+    # URL pública del avatar ya subido al bucket. Vacía = quitar la foto.
+    foto_url: str = Field(max_length=500)
+
+
+# Foto de perfil: mismo bucket público que el logo del municipio (config-assets,
+# 2MB, ver §26). Solo formatos de foto (sin svg/webp: pedido del usuario PNG/JPG).
+FOTO_BUCKET = "config-assets"
+FOTO_MIME_OK = {"image/png": "png", "image/jpeg": "jpg"}
+FOTO_MAX_BYTES = 2 * 1024 * 1024  # 2 MB
+
+
+async def _cargo_del_usuario(db: AsyncSession, id_usuario: int) -> str | None:
+    """Cargo del agente vinculado al usuario (regla 1:1 §39). NULL si el usuario
+    no tiene agente (externo) o el agente no tiene cargo asignado."""
+    result = await db.execute(
+        text("""SELECT c.nombre
+                FROM agentes a
+                JOIN cargos c ON c.id_cargo = a.id_cargo
+                WHERE a.id_usuario = :id AND a.activo = TRUE
+                LIMIT 1"""),
+        {"id": id_usuario},
+    )
+    return result.scalar()
+
+
 @router.post("/login", response_model=LoginResponse)
 async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         text("""
             SELECT id_usuario, nombre, email, nivel_acceso, password_hash, activo,
-                   debe_cambiar_password
+                   debe_cambiar_password, foto_url
             FROM usuarios
             WHERE email = :email
         """),
@@ -80,12 +114,17 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
 
     token = create_access_token({"sub": str(user.id_usuario)})
     modulos = await modulos_permitidos(db, user.id_usuario, user.nivel_acceso)
+    cargo = await _cargo_del_usuario(db, user.id_usuario)
     user_data = {
         "id_usuario": user.id_usuario,
         "nombre": user.nombre,
         "email": user.email,
         "nivel_acceso": user.nivel_acceso,
         "modulos_permitidos": modulos,
+        # Cargo del agente vinculado (None si externo/sin cargo) — lo muestra
+        # el topbar del shell debajo de "Nombre · Rol".
+        "cargo_nombre": cargo,
+        "foto_url": user.foto_url,
         # Si TRUE, el frontend debe forzar el cambio de contraseña antes de
         # dejar usar el sistema (Fase 3, clave temporal en primer ingreso).
         "debe_cambiar_password": bool(user.debe_cambiar_password),
@@ -101,7 +140,8 @@ async def me(
     modulos = await modulos_permitidos(
         db, current_user["id_usuario"], current_user["nivel_acceso"]
     )
-    return {**current_user, "modulos_permitidos": modulos}
+    cargo = await _cargo_del_usuario(db, current_user["id_usuario"])
+    return {**current_user, "modulos_permitidos": modulos, "cargo_nombre": cargo}
 
 
 @router.post("/cambiar-password")
@@ -157,3 +197,44 @@ async def cambiar_password(
     logger.info("CAMBIO PASSWORD self-service | id=%s | forzado=%s",
                 current_user["id_usuario"], forzado)
     return {"ok": True, "debe_cambiar_password": False}
+
+
+@router.post("/me/foto-upload-url")
+async def crear_upload_url_foto(
+    body: FotoUploadRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """URL firmada para que el usuario suba SU foto de perfil directo a Storage
+    (mismo flujo que el logo del municipio, §26). El backend no recibe el binario."""
+    if body.mime_type not in FOTO_MIME_OK:
+        raise HTTPException(422, "Formato no permitido. Subí una imagen PNG o JPG.")
+    if body.tamano_bytes > FOTO_MAX_BYTES:
+        raise HTTPException(422, "La imagen excede el máximo de 2 MB.")
+    ext = FOTO_MIME_OK[body.mime_type]
+    path = f"usuarios/{current_user['id_usuario']}/avatar-{uuid.uuid4()}.{ext}"
+    signed = await storage.crear_signed_upload_url(path, bucket=FOTO_BUCKET)
+    return {
+        "upload_url": signed["upload_url"],
+        "public_url": storage.url_publica(path, FOTO_BUCKET),
+        "path": path,
+        "bucket": FOTO_BUCKET,
+    }
+
+
+@router.put("/me/foto")
+async def actualizar_foto(
+    body: FotoUpdateRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Persiste la URL del avatar subido (o la limpia si viene vacía).
+    Solo afecta al propio usuario del token."""
+    url = (body.foto_url or "").strip()
+    if url and not url.startswith(("http://", "https://")):
+        raise HTTPException(422, "foto_url debe ser una URL http(s) o vacía.")
+    await db.execute(
+        text("UPDATE usuarios SET foto_url = :u WHERE id_usuario = :id"),
+        {"u": url or None, "id": current_user["id_usuario"]},
+    )
+    await db.commit()
+    return {"ok": True, "foto_url": url or None}

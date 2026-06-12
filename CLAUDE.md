@@ -220,6 +220,16 @@ El estilo oficial de ZARIS vive en `design-system/`. Tokens en `colors_and_type.
 
 > **Antes de crear un componente nuevo del DS o adoptar un naming nuevo:** `grep -rn "<naming-propuesto>" design-system/` para evitar dos namings paralelos. Sesión 2026-05-12 evitó duplicar `btn-zaris` con un hipotético `ds-btn` al detectar 3 huérfanos pre-existentes en `colors_and_type.css`. Aplica también a variables CSS (`--<nombre>`).
 
+### Modo oscuro — `[data-theme="dark"]` (desde 2026-06-12)
+
+El DS tiene paleta dark: overrides de superficies/foregrounds/bordes/sombras bajo `:root[data-theme="dark"]` en `colors_and_type.css` (espejados en `web-app/src/styles/tokens.css`). Los tokens de marca (`--zaris-orange`, `--color-*`, `--prio-*`) NO cambian. Reglas:
+
+- **Persistencia**: `localStorage` clave **`zaris_theme`** (`'dark'` | `'light'`/ausente). El toggle vive SOLO en el dropdown de usuario del shell (`menu.js`), que además propaga el cambio en vivo al documento del iframe.
+- **Todo documento del backoffice lee el tema en un script inline de `<head>`, ANTES de los CSS** (evita flash claro): `index.html`, `web-app/index.html`, `frontend/{login,usuarios,admin_tablas}.html`. **HTML interno nuevo ⇒ copiar ese snippet.** Las páginas públicas del vecino (`alta-vecino.html`, `encuesta.html`) quedan SIEMPRE claras a propósito.
+- **No hardcodear superficies claras**: usar tokens. Para overlays semitransparentes sobre mapas/imágenes existe `--surface-overlay` (claro u oscuro según tema — caso Dashboard). Los rgba claros que el shell necesita literales tienen su override en el bloque `[data-theme="dark"]` al final de `menu.css`.
+- **Mapas Leaflet**: en dark usar tile CartoDB `dark_all` (mismo subdominio/attribution que Positron). `DashboardMap.tsx` lo elige leyendo `document.documentElement.dataset.theme` al montar.
+- El avatar del topbar usa texto `#26251e` fijo (no `--fg-1`) porque el fondo durazno no cambia entre temas.
+
 ### CSS a incluir en todo HTML frontend (vanilla)
 
 La ruta depende de dónde vive el archivo:
@@ -455,12 +465,12 @@ Desde 2026-05-12 jornada 4, el sidebar del shell vanilla (`index.html`) usa dise
 
 ### Topbar — layout (izquierda · derecha) + Statusbar inferior
 
-Desde 2026-05-13 el topbar tiene bloques fijos; desde 2026-06-12 hay además una **statusbar inferior** (espejo del topbar al pie, fila 3 del grid `52px 1fr 26px`):
+Desde 2026-05-13 el topbar tiene bloques fijos; desde 2026-06-12 hay además una **statusbar inferior** (espejo del topbar al pie, fila 3 del grid `52px 1fr 30px`). **El shell NUNCA scrollea**: `menu.css` resetea `html, body { margin:0; overflow:hidden }` (el margin default de 8px del body corría el grid 100vh y la statusbar caía bajo el borde — fix 2026-06-12; scrollean solo los módulos dentro del iframe):
 
 | Barra · Posición | Contenido | IDs/clases |
 |---|---|---|
 | **Topbar · Izquierda** | `ZARIS` (logo+wordmark, link a inicio) · "GESTION ESTADO" (hardcoded, NO editable) · separador vertical · logo municipio (opcional, `<img>` hidden si no hay URL) · nombre municipio | `.brand` `.brand__name` `.brand__app` `.topbar__sep` `.muni` `#topbar-muni-logo` `#topbar-muni-nombre` |
-| **Topbar · Derecha** | Campana de notificaciones · dropdown usuario con nombre+rol+logout | `.topbar__bell` `.user-menu` |
+| **Topbar · Derecha** | Campana de notificaciones · contexto de usuario en 2 líneas ("Nombre · Rol" + "Cargo: X" si el agente vinculado tiene cargo, via `cargo_nombre` de login/me) · avatar (foto `usuarios.foto_url` mig 88, o iniciales) · dropdown usuario (ver abajo) | `.topbar__bell` `.topbar__context-cargo` `.topbar__avatar` `.user-menu` |
 | **Statusbar · Izquierda** | Estado del servidor: dot gris/verde/rojo + label ("Servidor operativo" / "Sin conexión…"), ping `GET /api/health` cada 60s + al volver de background | `.statusbar__api` `#statusbar-api` `#statusbar-api-label` |
 | **Statusbar · Centro** | Fecha+hora "mar 13 may, 14:32", refresca cada 30s (**movida desde el centro del topbar**) | `.statusbar__clock` `#statusbar-clock` |
 | **Statusbar · Derecha** | Versión `zaris-zge · v0.1` (movida del pie del sidebar — `.sidebar__foot` eliminado) | `.statusbar__version` |
@@ -473,15 +483,17 @@ La statusbar está pensada para crecer con más indicadores de estado (contenido
 
 **Cache-bust `?v=`:** los assets del shell (`menu.css`, `menu.js`) se cargan con `?v=YYYY-MM-DDx`. Bumpear ese sufijo cuando los edites o el navegador puede servir la versión vieja por días. Aplica también a JS/CSS de cualquier módulo vanilla.
 
-### Topbar — menú de usuario con cerrar sesión
+### Topbar — menú de usuario (foto · modo oscuro · guías · logout)
 
-El topbar del shell (`index.html`) tiene un dropdown al hacer clic en el nombre/avatar:
-- Muestra nombre completo y rol del usuario logueado
-- Botón **Cerrar sesión** que llama a `localStorage.removeItem('zaris_session')` y redirige a `frontend/login.html`
-- CSS en `frontend/css/menu.css` bajo `.user-menu*`
-- Lógica en `frontend/js/menu.js`
+El topbar del shell (`index.html`) tiene un dropdown al hacer clic en el nombre/avatar (rediseñado 2026-06-12):
+- **Header**: avatar grande (foto o iniciales) + nombre completo + rol + "Cargo: X" (si el agente vinculado tiene cargo).
+- **Cambiar foto…**: file picker PNG/JPG ≤2MB → `POST /auth/me/foto-upload-url` (URL firmada, bucket público `config-assets`, paths `usuarios/{id}/avatar-{uuid}.{ext}`) → PUT del binario directo a Storage → `PUT /auth/me/foto` persiste `usuarios.foto_url` (mig 88). Mismo flujo que el logo del municipio (§26). El feedback (Subiendo…/Foto actualizada/error) se muestra en el label del propio botón.
+- **Modo oscuro**: toggle con switch — ver "Modo oscuro" en §13.
+- **Guías de uso**: `shellNavigate('web-app/dist/index.html#/guias')` (módulo Guías §37).
+- **Cerrar sesión**: `localStorage.removeItem('zaris_session')` + redirect a `frontend/login.html`.
+- CSS en `frontend/css/menu.css` bajo `.user-menu*`; lógica en `frontend/js/menu.js` (`_renderUserUI()` re-renderiza topbar+dropdown tras subir foto; el refresh contra `/me` también se dispara si la sesión vieja no trae `cargo_nombre`).
 
-IDs relevantes: `#user-menu-trigger`, `#user-menu-dropdown`, `#btn-logout`, `#topbar-avatar`, `#topbar-context`, `#user-menu-info`.
+IDs relevantes: `#user-menu-trigger`, `#user-menu-dropdown`, `#btn-logout`, `#btn-foto`, `#input-foto`, `#btn-theme`, `#theme-switch`, `#btn-guias`, `#topbar-avatar`, `#topbar-context`, `#user-menu-info`.
 
 ### Login vanilla
 El shell redirige a `frontend/login.html` si no hay `zaris_session` en localStorage.  
@@ -794,7 +806,7 @@ class Equipo(Base):
 
 > **El detalle histórico de cada migración (qué hace, cuándo se aplicó, snapshots de backup) vive en [`HISTORIAL_MIGRACIONES.md`](HISTORIAL_MIGRACIONES.md)** (raíz del repo). Acá queda solo el resumen vigente. **No confiar en esta doc como fuente de verdad** — antes de codear algo schema-dependent, verificar el estado real con `execute_sql` (regla §24).
 
-**Estado general:** migraciones 20-87 aplicadas en local Y prod (Supabase) sin divergencia conocida al 2026-06-12. La numeración 51 está duplicada (`51_notificaciones.sql` + `51_tramites_tipo_dato_direccion.sql`, ambas aplicadas) — **cualquier mig nueva debe usar 88+**.
+**Estado general:** migraciones 20-88 aplicadas en local Y prod (Supabase) sin divergencia conocida al 2026-06-12 (88 = `usuarios.foto_url`, avatar del topbar §14). La numeración 51 está duplicada (`51_notificaciones.sql` + `51_tramites_tipo_dato_direccion.sql`, ambas aplicadas) — **cualquier mig nueva debe usar 89+**.
 
 **Reglas vivas de migración:**
 - **Toda tabla nueva debe nacer con `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`** (sin políticas = deny-all §26; el backend conecta como `postgres` dueño y bypassea RLS). Sino el advisor de Supabase la marca (`rls_disabled_in_public`, caso mig 80).
