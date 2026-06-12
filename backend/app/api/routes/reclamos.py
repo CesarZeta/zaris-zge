@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.auth import get_current_user
 from app.services import encuestas_service as svc_encuestas
+from app.services import push as svc_push
 
 router = APIRouter(prefix="/api/v1/reclamos", tags=["Reclamos"])
 logger = logging.getLogger("zaris.reclamos")
@@ -636,6 +637,9 @@ async def cambiar_estado(
                            id_reclamo, e)
             # NO re-raise — el cierre del reclamo ya pasó, encuestas es accesorio
 
+    # Hook push App Vecinos (etapa E) — post-commit, best-effort (nunca levanta).
+    await svc_push.notificar_estado_reclamo(id_reclamo)
+
     return {"ok": True, "id_reclamo": id_reclamo, "estado": nuevo_estado}
 
 
@@ -800,6 +804,8 @@ async def cancelar_reclamo(
                                estado_anterior, "Cancelado", motivo,
                                current_user["id_usuario"])
     await db.commit()
+    # Hook push App Vecinos (etapa E) — post-commit, best-effort.
+    await svc_push.notificar_estado_reclamo(id_reclamo)
     return {"ok": True, "id_reclamo": id_reclamo, "estado": "Cancelado"}
 
 

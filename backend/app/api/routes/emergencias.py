@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
+from app.services import push as svc_push
 
 router = APIRouter(
     prefix="/api/v1/emergencias",
@@ -1138,6 +1139,8 @@ async def cambiar_estado_evento(
     await _check_scope_subarea(db, user, ev["id_subarea"])
     await _aplicar_cambio_estado(db, ev, user, destino, body.observaciones)
     await db.commit()
+    # Hook push App Vecinos (etapa E) — post-commit, best-effort.
+    await svc_push.notificar_estado_emergencia(id_evento)
     return await _evento_out(db, id_evento)
 
 
@@ -1165,6 +1168,7 @@ async def derivar_evento(
         extra_params={"org": body.id_organismo},
         payload={"id_organismo": body.id_organismo, "organismo": org["codigo"]})
     await db.commit()
+    await svc_push.notificar_estado_emergencia(id_evento)
     return await _evento_out(db, id_evento)
 
 
@@ -1186,6 +1190,7 @@ async def cerrar_evento(
         extra_params={"ver": body.veracidad, "oc": body.observaciones_cierre},
         payload={"veracidad": body.veracidad, "terminal_positivo": body.terminal_positivo})
     await db.commit()
+    await svc_push.notificar_estado_emergencia(id_evento)
     return await _evento_out(db, id_evento)
 
 
@@ -1200,6 +1205,7 @@ async def marcar_en_sitio(
     await _check_scope_subarea(db, user, ev["id_subarea"])
     await _aplicar_cambio_estado(db, ev, user, "EN_SITIO", None)
     await db.commit()
+    await svc_push.notificar_estado_emergencia(id_evento)
     return await _evento_out(db, id_evento)
 
 
