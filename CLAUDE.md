@@ -453,15 +453,19 @@ Desde 2026-05-12 jornada 4, el sidebar del shell vanilla (`index.html`) usa dise
 
 **JS:** `frontend/js/menu.js` selecciona ambos (`.nav-flat__item, .nav__link`) por compat retro.
 
-### Topbar — layout (izquierda · centro · derecha)
+### Topbar — layout (izquierda · derecha) + Statusbar inferior
 
-Desde 2026-05-13 el topbar tiene 3 bloques fijos:
+Desde 2026-05-13 el topbar tiene bloques fijos; desde 2026-06-12 hay además una **statusbar inferior** (espejo del topbar al pie, fila 3 del grid `52px 1fr 26px`):
 
-| Posición | Contenido | IDs/clases |
+| Barra · Posición | Contenido | IDs/clases |
 |---|---|---|
-| **Izquierda** | `ZARIS` (logo+wordmark, link a inicio) · "GESTION ESTADO" (hardcoded, NO editable) · separador vertical · logo municipio (opcional, `<img>` hidden si no hay URL) · nombre municipio | `.brand` `.brand__name` `.brand__app` `.topbar__sep` `.muni` `#topbar-muni-logo` `#topbar-muni-nombre` |
-| **Centro** | Fecha+hora "mar 13 may, 14:32", refresca cada 30s | `.topbar__center` `#topbar-clock` |
-| **Derecha** | Campana de notificaciones (placeholder) · dropdown usuario con nombre+rol+logout | `.topbar__bell` `.user-menu` |
+| **Topbar · Izquierda** | `ZARIS` (logo+wordmark, link a inicio) · "GESTION ESTADO" (hardcoded, NO editable) · separador vertical · logo municipio (opcional, `<img>` hidden si no hay URL) · nombre municipio | `.brand` `.brand__name` `.brand__app` `.topbar__sep` `.muni` `#topbar-muni-logo` `#topbar-muni-nombre` |
+| **Topbar · Derecha** | Campana de notificaciones · dropdown usuario con nombre+rol+logout | `.topbar__bell` `.user-menu` |
+| **Statusbar · Izquierda** | Estado del servidor: dot gris/verde/rojo + label ("Servidor operativo" / "Sin conexión…"), ping `GET /api/health` cada 60s + al volver de background | `.statusbar__api` `#statusbar-api` `#statusbar-api-label` |
+| **Statusbar · Centro** | Fecha+hora "mar 13 may, 14:32", refresca cada 30s (**movida desde el centro del topbar**) | `.statusbar__clock` `#statusbar-clock` |
+| **Statusbar · Derecha** | Versión `zaris-zge · v0.1` (movida del pie del sidebar — `.sidebar__foot` eliminado) | `.statusbar__version` |
+
+La statusbar está pensada para crecer con más indicadores de estado (contenido a definir). **Los labels del sidebar van con mayúscula inicial** ("Reclamos", "Trámites" — pedido del usuario 2026-06-12); no hay `text-transform`, la capitalización vive en el HTML.
 
 **"GESTION ESTADO" es interno del producto.** Vive hardcoded en el HTML como `<span class="brand__app">GESTION ESTADO</span>`. NO se puede editar desde UI ni se persiste en DB. Backend lo expone en `GET /api/v1/config/identidad` solo por compat con el shell vanilla. Si en el futuro alguien tiene que cambiar el nombre del producto, edita `index.html` y `backend/app/api/routes/config_identidad.py` (constante `APP_NOMBRE`).
 
@@ -1575,8 +1579,8 @@ Backend + builder + detalle operativo, todo verificado E2E navegando en prod. **
 
 > **Receta completa en la skill `generar-manual`** (`.claude/skills/generar-manual/`): setup Playwright, patrón de captura, convenciones del HTML, regenerar capturas tras cambio de UI, cleanup. Invocarla al crear/regenerar un `docs/manual_<modulo>.html`.
 
-### Manuales actuales (al 2026-06-11)
-**Todos viven en `docs/` (carpeta única, pedido del usuario).** `manual_reclamos.html` (Operador+, 10 caps) · `manual_ot.html` (Sup/Agente/Auditor, 9) · `manual_tramites.html` (Operador+, 8) · `manual_admin_tramites.html` (Admin/Sup, 12) · `manual_encuestas.html` (Sup/Admin, texto sin caps) · `manual_turnos.html` (Operador+, 9 caps, 13 secc. — incluye historia de atención, detalle de turno y consultas por ciudadano, 2026-06-11) · `manual_entradas.html` (Operador+, 4 caps, 10 secc.) · **`manual_alta_ciudadanos.html`** (Operador+, 3 caps, 7 secc. — alta por agente + autogestión + URL pública/Config; actualizado 2026-06-12 al alta en un paso §38) · **`manual_emergencias.html`** (Operador+, 10 caps, 10 secc. — COM: recepción, triage, FSM, derivación, App Vecinos, 2026-06-10) · **`manual_alta_vecino.html`** (público, para el vecino, sin caps, 6 secc. — un paso + vía "ya registrado", 2026-06-12). **9 registrados en el módulo Guías (§37); el `manual_alta_vecino.html` NO va en Guías** — es la guía pública del vecino, se abre desde el enlace "¿Cómo me doy de alta?" en `frontend/alta-vecino.html` (no es material de backoffice). Próximos sugeridos (no obligatorios): Agenda, Padrones.
+### Manuales actuales (al 2026-06-12)
+**Todos viven en `docs/` (carpeta única, pedido del usuario).** `manual_reclamos.html` (Operador+, 10 caps) · `manual_ot.html` (Sup/Agente/Auditor, 9) · `manual_tramites.html` (Operador+, 8) · `manual_admin_tramites.html` (Admin/Sup, 12) · `manual_encuestas.html` (Sup/Admin, texto sin caps) · `manual_turnos.html` (Operador+, 9 caps, 13 secc. — incluye historia de atención, detalle de turno y consultas por ciudadano, 2026-06-11) · `manual_entradas.html` (Operador+, 4 caps, 10 secc.) · **`manual_alta_ciudadanos.html`** (Operador+, 3 caps, 7 secc. — alta por agente + autogestión + URL pública/Config; actualizado 2026-06-12 al alta en un paso §38) · **`manual_emergencias.html`** (Operador+, 10 caps, 10 secc. — COM: recepción, triage, FSM, derivación, App Vecinos, 2026-06-10) · **`manual_alta_vecino.html`** (público, para el vecino, sin caps, 6 secc. — un paso + vía "ya registrado", 2026-06-12) · **`manual_ciudadano.html`** (público, para el vecino, sin caps, 10 secc. — TODAS las interacciones del ciudadano: cuenta/portal, reclamos, emergencias, turnos con y sin cuenta, entradas+QR, trámites presenciales, notificaciones push, encuesta CSAT, troubleshooting; cross-linkeado desde `manual_alta_vecino.html` §5, 2026-06-12). **9 registrados en el módulo Guías (§37); `manual_alta_vecino.html` y `manual_ciudadano.html` NO van en Guías** — son guías públicas del vecino (no material de backoffice); el primero se abre desde "¿Cómo me doy de alta?" en `frontend/alta-vecino.html`, el segundo es para compartir en web/redes del municipio. Próximos sugeridos (no obligatorios): Agenda, Padrones.
 
 ### Reglas de criterio (no las olvides)
 - **Sin fechas ni nombres personales (mandatorio, 2026-06-11).** Los manuales NO llevan fecha (ni encabezado, ni pie, ni "generado el…") ni el nombre del usuario — solo aplicación, módulo y audiencia. Ver memoria [[feedback_manuales_sin_fechas_ni_nombres]].

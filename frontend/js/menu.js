@@ -432,7 +432,10 @@
     return `${dia} ${num} ${mes}, ${hh}:${mm}`;
   }
   function _refrescarReloj() {
-    const el = document.getElementById('topbar-clock');
+    // El reloj vive en la statusbar inferior (movido desde el centro de la
+    // topbar, 2026-06-12). Se mantiene el fallback al id viejo por si algún
+    // HTML cacheado sigue sirviendo la topbar con reloj.
+    const el = document.getElementById('statusbar-clock') || document.getElementById('topbar-clock');
     if (!el) return;
     const d = new Date();
     el.textContent = _fmtFechaHora(d);
@@ -440,6 +443,38 @@
   }
   _refrescarReloj();
   setInterval(_refrescarReloj, 30000);
+
+  // ── Statusbar: estado del servidor (ping /api/health cada 60s) ──
+  function _setEstadoApi(estado, label) {
+    const wrap = document.getElementById('statusbar-api');
+    const txt = document.getElementById('statusbar-api-label');
+    if (!wrap || !txt) return;
+    wrap.classList.remove('ok', 'err');
+    if (estado) wrap.classList.add(estado);
+    txt.textContent = label;
+  }
+  async function _refrescarEstadoApi() {
+    if (!document.getElementById('statusbar-api')) return;
+    const ctrl = new AbortController();
+    const timer = setTimeout(function () { ctrl.abort(); }, 8000);
+    try {
+      const res = await fetch(API + '/api/health', { cache: 'no-store', signal: ctrl.signal });
+      if (res.ok) {
+        _setEstadoApi('ok', 'Servidor operativo');
+      } else {
+        _setEstadoApi('err', 'Servidor con problemas (' + res.status + ')');
+      }
+    } catch (e) {
+      _setEstadoApi('err', 'Sin conexión con el servidor');
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  void _refrescarEstadoApi();
+  setInterval(_refrescarEstadoApi, 60000);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) void _refrescarEstadoApi();
+  });
 
   // ── Auto-cargar módulo desde ?modulo=<ruta> ───────────────────
   // Permite que un acceso standalone (vanilla o bundle React) sea
