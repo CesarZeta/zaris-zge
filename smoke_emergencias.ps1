@@ -7,7 +7,9 @@
 #   powershell -File smoke_emergencias.ps1
 # Requiere datos de QA (idempotentes, ver historial de sesion 2026-06-10):
 #   - usuario operadorcom@municipio.gob.ar (nivel 3, id_subarea=90 Policia, pass 123456)
-#   - vecino DNI 28547123 con ciudadano_credencial activada (pass 123456)
+#   - vecino demo con credencial activada (pass 123456). OJO: el DNI difiere por
+#     entorno — LOCAL 28547123 / PROD 30555444 (cazado 2026-06-11; este script usa
+#     el de local: si lo corres contra prod, cambia el DNI del login publico).
 
 $ErrorActionPreference = "Stop"
 $base = "http://127.0.0.1:8000"
