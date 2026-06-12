@@ -571,6 +571,49 @@ async def crear_ciudadano(
     return ciudadano
 
 
+@router.post("/ciudadanos/{id}/cuenta-vecino")
+async def crear_cuenta_vecino_existente(
+    id: int,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Crea (o reenvía la activación de) la cuenta de App Vecinos para un ciudadano YA
+    existente en la BUC. Es la vía de mostrador para vecinos pre-existentes que no
+    pasaron por el alta unificada (que ya crea la cuenta automáticamente).
+
+    Idempotente vía asegurar_cuenta_vecino: cuenta ya activada -> no toca nada
+    (enviado=False); credencial sin activar -> regenera el token y reenvía el mail.
+    """
+    result = await db.execute(
+        select(Ciudadano).where(Ciudadano.id_ciudadano == id, Ciudadano.activo == True)
+    )
+    ciudadano = result.scalars().first()
+    if not ciudadano:
+        raise HTTPException(status_code=404, detail="Ciudadano no encontrado")
+
+    email = (ciudadano.email or "").strip()
+    if not email:
+        raise HTTPException(
+            status_code=422,
+            detail="El ciudadano no tiene email cargado. Cargale el email primero (es el canal de activación).",
+        )
+
+    enviado = await asegurar_cuenta_vecino(
+        db,
+        id_ciudadano=ciudadano.id_ciudadano,
+        nombre=ciudadano.nombre or "",
+        apellido=ciudadano.apellido or "",
+        email=email,
+        id_municipio=getattr(ciudadano, "id_municipio", None) or current_user.get("id_municipio") or 1,
+        id_usuario_alta=current_user.get("id_usuario"),
+        background_tasks=background_tasks,
+    )
+    await db.commit()
+    return {"enviado": enviado, "ya_activada": not enviado, "email": email}
+
+
 @router.get("/ciudadanos/{id}", response_model=CiudadanoConNacionalidad)
 async def obtener_ciudadano(id: int, db: AsyncSession = Depends(get_db)):
     """Obtener ciudadano por ID con datos de nacionalidad."""
