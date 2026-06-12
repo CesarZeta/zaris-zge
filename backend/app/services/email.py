@@ -203,6 +203,41 @@ def _from_address_base() -> str:
     return raw.strip()
 
 
+_CTA_COLOR_DEFAULT = "#f54e00"
+_CTA_COLOR_TTL_SEG = 300.0
+_cta_color_cache: dict = {"ts": 0.0, "color": _CTA_COLOR_DEFAULT}
+
+
+async def _color_cta_municipio() -> str:
+    """Color del boton CTA de los mails al vecino: `municipio_color_primary`
+    de configuracion_general (branding del piloto, etapa F del plan App
+    Vecinos), con fallback neutro al naranja default si la clave falta, esta
+    vacia o no es un hex valido. Cache TTL 5 min, sesion propia (los mails
+    corren en BackgroundTasks sin sesion de request)."""
+    import re
+    import time as _time
+
+    now = _time.monotonic()
+    if now - _cta_color_cache["ts"] < _CTA_COLOR_TTL_SEG:
+        return _cta_color_cache["color"]
+    color = _CTA_COLOR_DEFAULT
+    try:
+        from sqlalchemy import text as _text
+
+        from app.core.database import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            valor = await db.scalar(_text(
+                "SELECT valor FROM configuracion_general WHERE clave = 'municipio_color_primary'"
+            ))
+        if valor and re.fullmatch(r"#[0-9a-fA-F]{6}", valor.strip()):
+            color = valor.strip()
+    except Exception as e:  # noqa: BLE001 — el mail nunca se cae por branding
+        logger.warning("color CTA: no pude leer municipio_color_primary (%s)", e)
+    _cta_color_cache.update(ts=now, color=color)
+    return color
+
+
 def _build_template_app_vecinos(
     titulo: str,
     saludo: str,
@@ -212,6 +247,7 @@ def _build_template_app_vecinos(
     parrafo_extra: str,
     municipio_nombre: str,
     municipio_logo_url: str | None = None,
+    cta_color: str = _CTA_COLOR_DEFAULT,
 ) -> tuple[str, str]:
     """Arma (html, text) con el look App Vecinos: sobrio, sin emojis, sin marca ZARIS."""
     logo_html = ""
@@ -244,7 +280,7 @@ def _build_template_app_vecinos(
         {parrafo_principal}
       </p>
       <div style="margin:24px 0;text-align:center;">
-        <a href="{cta_url}" style="display:inline-block;padding:14px 28px;background:#f54e00;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;border-radius:6px;">
+        <a href="{cta_url}" style="display:inline-block;padding:14px 28px;background:{cta_color};color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;border-radius:6px;">
           {cta_texto}
         </a>
       </div>
@@ -253,7 +289,7 @@ def _build_template_app_vecinos(
       </p>
       <p style="margin:0;font-size:12px;line-height:1.5;color:rgba(38,37,30,.5);word-break:break-all;">
         Si el boton no funciona, copia y pega este enlace en tu navegador:<br>
-        <span style="color:#f54e00;">{cta_url}</span>
+        <span style="color:{cta_color};">{cta_url}</span>
       </p>
     </td></tr>
     <tr><td style="padding:16px 32px;text-align:center;border-top:1px solid rgba(38,37,30,.08);font-size:11px;color:rgba(38,37,30,.5);">
@@ -317,6 +353,7 @@ async def enviar_mail_activacion_ciudadano(
         parrafo_extra="Este enlace es valido por 7 dias. Si expira, podes pedir un nuevo correo desde la app.",
         municipio_nombre=municipio_nombre,
         municipio_logo_url=municipio_logo_url,
+        cta_color=await _color_cta_municipio(),
     )
 
     # Display name del municipio + address del subdominio Resend (decision sesion 2026-05-19).
@@ -358,6 +395,7 @@ async def enviar_mail_verificacion_alta_ciudadano(
         parrafo_extra="Este enlace es válido por 7 días. Si no fuiste vos, podés ignorar este mensaje.",
         municipio_nombre=municipio_nombre,
         municipio_logo_url=municipio_logo_url,
+        cta_color=await _color_cta_municipio(),
     )
 
     from_header = formatear_remitente(municipio_nombre, _from_address_base())
@@ -390,6 +428,7 @@ async def enviar_mail_verificacion_alta_empresa(
         parrafo_extra="Este enlace es válido por 7 días. Si no esperabas este correo, podés ignorarlo.",
         municipio_nombre=municipio_nombre,
         municipio_logo_url=municipio_logo_url,
+        cta_color=await _color_cta_municipio(),
     )
 
     from_header = formatear_remitente(municipio_nombre, _from_address_base())
@@ -425,6 +464,7 @@ async def enviar_mail_recovery_ciudadano(
         parrafo_extra="Este enlace es valido por 24 horas. Si no pediste este cambio, ignora este mensaje.",
         municipio_nombre=municipio_nombre,
         municipio_logo_url=municipio_logo_url,
+        cta_color=await _color_cta_municipio(),
     )
 
     from_header = formatear_remitente(municipio_nombre, _from_address_base())
