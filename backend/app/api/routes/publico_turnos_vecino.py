@@ -34,6 +34,7 @@ from app.middleware.rate_limit import check_rate_limit
 from app.utils.request_helpers import get_real_ip
 from app.api.routes.turnos_publico import _resolver_prestacion
 from app.services.agenda import disponibilidad_efectiva, turnos_respeta_disponibilidad
+from app.utils.fechas import ahora_local
 
 router = APIRouter(prefix="/api/v1/publico/turnos", tags=["publico-turnos"])
 logger = logging.getLogger("zaris.publico_turnos")
@@ -99,8 +100,11 @@ async def reservar_turno_vecino(
     id_recurso = prest["id_recurso"]
     duracion_min = prest["duracion_min"]
 
-    if payload.fecha < date.today():
-        raise HTTPException(422, "No se puede reservar un turno en una fecha pasada")
+    ahora = ahora_local()
+    if payload.fecha < ahora.date() or (
+        payload.fecha == ahora.date() and payload.hora_inicio <= ahora.time()
+    ):
+        raise HTTPException(422, "No se puede reservar un turno en el pasado")
 
     hora_inicio = payload.hora_inicio
     hora_fin = (datetime.combine(payload.fecha, hora_inicio)

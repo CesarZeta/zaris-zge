@@ -42,6 +42,7 @@ from app.services.agenda import (
     disponibilidad_efectiva,
     turnos_respeta_disponibilidad,
 )
+from app.utils.fechas import ahora_local, hoy_local
 
 
 router = APIRouter(prefix="/api/v1/turnos/publico", tags=["turnos-publico"])
@@ -165,7 +166,13 @@ async def _slots_libres_recurso(
 ) -> list[dict[str, Any]]:
     """Slots libres de un recurso para una fecha: parte su disponibilidad
     efectiva en bloques de `duracion_min` y descarta los que se solapan con una
-    ocupacion existente del mismo recurso."""
+    ocupacion existente del mismo recurso. Para HOY descarta ademas los slots
+    cuyo inicio ya paso (hora local del municipio, no UTC del server)."""
+    ahora = ahora_local()
+    if fecha < ahora.date():
+        return []
+    hora_corte = ahora.time() if fecha == ahora.date() else None
+
     rangos = await disponibilidad_efectiva(db, tipo_recurso, id_recurso, fecha)
     if not rangos:
         return []
@@ -180,6 +187,8 @@ async def _slots_libres_recurso(
     out: list[dict[str, Any]] = []
     for r in rangos:
         for (s_ini, s_fin) in _slots_de_rango(r["hora_inicio"], r["hora_fin"], duracion_min):
+            if hora_corte is not None and s_ini <= hora_corte:
+                continue
             if any(_solapa(s_ini, s_fin, o_ini, o_fin) for (o_ini, o_fin) in ocupadas):
                 continue
             out.append({
@@ -249,8 +258,11 @@ async def reservar_turno_publico(
     duracion_min = prest["duracion_min"]
     id_subarea = prest["id_subarea"]
 
-    if payload.fecha < date.today():
-        raise HTTPException(422, "No se puede reservar un turno en una fecha pasada")
+    ahora = ahora_local()
+    if payload.fecha < ahora.date() or (
+        payload.fecha == ahora.date() and payload.hora_inicio <= ahora.time()
+    ):
+        raise HTTPException(422, "No se puede reservar un turno en el pasado")
 
     hora_inicio = payload.hora_inicio
     hora_fin = (datetime.combine(payload.fecha, hora_inicio)
