@@ -44,17 +44,23 @@ Recetas operativas verificadas. Muchas tienen memoria asociada (`[[...]]`) con e
 
 ## Q12/Q13 — redirects bajo subpath `/zaris-zge/` (reglas con código)
 
-**Q12 — el bundle standalone en prod debe redirigir al shell vanilla.** Si alguien abre `…/web-app/dist/index.html` directo ve el AppShell React standalone (viola §14). Script inline en `<head>` de `web-app/index.html` (antes de que React monte):
+**Q12 — el bundle standalone en prod debe redirigir al shell vanilla, EXCEPTO las rutas públicas de autoservicio.** Si alguien abre `…/web-app/dist/index.html` directo ve el AppShell React standalone (viola §14). Script inline en `<head>` de `web-app/index.html` (antes de que React monte) — **la fuente de verdad es ese archivo** (soporta dominio propio y subpath GH Pages); este snippet es orientativo:
 
 ```html
 <script>(function(){try{
   if (window.self !== window.top) return;                   // OK embebido
-  if ((window.location.pathname||'').indexOf('/zaris-zge/web-app/dist/') === -1) return; // dev local
-  var hash = window.location.hash || '', target = '/zaris-zge/index.html';
+  if ((window.location.pathname||'').indexOf('/web-app/dist/') === -1) return; // dev local
+  var hash = window.location.hash || '';
+  // Rutas PUBLICAS de autoservicio (sin sesion): NO redirigir — el ciudadano
+  // las abre standalone via link compartido y el shell lo mandaria al login.
+  if (/^#\/(autoservicio(\/|$)|turnos-autoservicio|turno\/)/.test(hash)) return;
+  var sub = (window.location.pathname||'').match(/^(\/[^/]+)\/web-app\/dist\//);
+  var target = sub ? sub[1] + '/index.html' : '/index.html';
   if (hash.length > 1) target += '?modulo=' + encodeURIComponent('web-app/dist/index.html' + hash);
   window.location.replace(target);
 }catch(e){}})();</script>
 ```
 **Complemento obligatorio** en `menu.js`: la whitelist de `?modulo=` debe aceptar el bundle React (`/^web-app\/dist\/index\.html(#\/.*)?$/i`) además de los HTML vanilla, sino el shell descarta el redirect. Hacen falta las DOS piezas.
+**Ruta pública nueva ⇒ sumarla a la regex del guard** o el link compartido rebota al login del backoffice (cazado 2026-06-12: las 4 rutas de autoservicio estuvieron rotas en prod casi un mes porque el guard nació 2 días antes que ellas).
 
 **Q13 — `window.location.href='/foo'` desde el bundle salta a `cesarzeta.github.io/foo` SIN `/zaris-zge/`** → 404 de GH Pages dentro del iframe (shell padre OK, iframe roto). Aplica a handler 401 de `api.ts`, "Cerrar sesión", `<a href="/...">`. Patrón correcto: detectar subpath del parent y redirigirlo. Ver helper `shellNav.ts` (§41 de CLAUDE.md) y [[feedback_redirect_iframe_subpath]].
