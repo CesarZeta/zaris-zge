@@ -69,7 +69,7 @@ Cierra los restos de las etapas 2 y 4 del plan viejo.
 
 ---
 
-### ETAPA C — Turnos del vecino logueado ⏳
+### ETAPA C — Turnos del vecino logueado ✅ (2026-06-11, en prod)
 
 Hoy el autoservicio de turnos es **anónimo por token** (§33, `turnos_publico`): pide DNI a mano y el comprobante vive en un link. Esta etapa lo integra a la cuenta del vecino.
 
@@ -164,3 +164,8 @@ La etapa más frágil (navegador + SW + VAPID + permisos del SO). Se hace al fin
 - **2026-06-11 — ETAPA B implementada, verificada E2E en local y desplegada.** Solo PWA (el backend `publico_emergencias` ya estaba en prod desde COM Fase 5). Commit `453cf96`:
   - `lib/emergencias.ts` (tipos/subtipos/mis eventos/reportar + `ESTADO_EMERGENCIA_COLOR` espejo del backoffice) · `NuevaEmergenciaPage` (aviso 911 fijo con `tel:911`, tipo con autocompletar **insensible a tildes** — bug cazado navegando: "arbol" no encontraba "Árbol caído"; catálogo completo client-side porque `GET /tipos` no tiene `?q=`; subtipo opcional en select nativo; dirección editable + `MapaPicker` + referencia + descripción opcional; éxito con `numero_operativo` prominente) · `MisEmergenciasPage` (badge por `estado_codigo` con colores del backoffice, sin detalle porque el backend público no expone GET por id) · card "Emergencias" en Home (`metaFija`, sin conteos — `mi-resumen` no incluye emergencias, extenderlo queda opcional).
   - *Verificado navegando (local):* reporte `EM-2026-000042` → DB con canal `APP_VECINO` forzado, prioridad derivada del subtipo, subárea Defensa Civil, operador NULL, vecino del token, log `CREACION` con `id_usuario=NULL`; visible en "Mis emergencias" con estado "Recibido, en triage".
+- **2026-06-11 — DIRECTIVA NUEVA del usuario: los datos de prueba se CONSERVAN como seed de demos** (ya no se limpian los smokes; memoria `smoke-cleanup-prod-inmediato` reescrita). El reclamo REC-2026-000041 de prod fue restaurado (`activo=TRUE`).
+- **2026-06-11 — ETAPA C implementada, verificada E2E y desplegada en prod.** ZGE `57c51f1` + PWA `0e5ecc7`:
+  - *Backend:* router `publico_turnos_vecino.py` (`/api/v1/publico/turnos`, scope publico): `GET ""` mis turnos · `POST /reservar` (identidad del token, sin DNI; reusa `_resolver_prestacion` + validaciones de `turnos_publico`: disponibilidad efectiva, anti-solape, un-turno-por-día; ocupación espejo) · `PATCH /{id}/cancelar` (solo propios en `reservado`, libera la ocupación, ajeno→404 genérico). **Prestaciones y slots NO se duplicaron**: la PWA reusa los endpoints anónimos `GET /turnos/publico/prestaciones` y `/slots`. Smoke `backend/smoke_publico_turnos.py` **12/12 local Y prod** — deja a propósito un turno reservado de demo (prod: turno 22, Sala de Odontología 16/6; el 21 quedó cancelado, también demo).
+  - *PWA:* `NuevoTurnoPage` (prestación → chips de día → chips de horario → confirmación con "Te atiende"/"Lugar" + observaciones; 409 refresca slots) · `MisTurnosPage` (badges Reservado/Atendido/Cancelado, cancelar con **confirmación inline**, sin `window.confirm`) · card "Mis turnos" del Home activada con conteos reales de `/mi-resumen` · `apiPatch` nuevo en `lib/api.ts`.
+  - *Verificado:* E2E local navegando (reserva Clínica general 23/6 con la Dra. Villalba + confirm inline) y prod navegando (card "1 vigente · 2 en total" → lista con los turnos del smoke).
