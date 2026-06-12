@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
+from app.core.database import get_db, AsyncSessionLocal
 from app.core.auth import get_current_user
 
 router = APIRouter(prefix="/api/v1/geo", tags=["Geo"])
@@ -36,19 +36,54 @@ _NOMINATIM_MIN_INTERVAL = 1.05  # margen sobre el 1 req/s
 # un bounding box centrado en el municipio (± ~28 km: cubre el partido, CABA
 # y los partidos linderos; el operador puede cargar direcciones cercanas de
 # la otra jurisdicción). Aplica a TODOS los consumidores porque viven sobre
-# `geocodificar_direccion`. Si el deploy cambia de municipio, ajustar acá.
-GEO_BBOX_CENTRO_LAT = -34.5305   # Vicente López (demo)
+# `geocodificar_direccion`.
+#
+# Desde mig 87 el bbox es CONFIGURABLE en `configuracion_general` (claves
+# geo_bbox_centro_lat / geo_bbox_centro_lon / geo_bbox_delta_grados, editables
+# en Config → Sistema §41). Estas constantes quedan como FALLBACK si las claves
+# faltan o son inválidas. Se leen con cache TTL 5 min (la función corre también
+# desde routers públicos sin sesión DB inyectada → sesión propia).
+GEO_BBOX_CENTRO_LAT = -34.5305   # Vicente López (demo) — fallback
 GEO_BBOX_CENTRO_LON = -58.4779
 GEO_BBOX_DELTA_GRADOS = 0.27     # ~28 km en lat; suficiente para AMBA norte
 
-def _viewbox_municipio() -> str:
+_BBOX_TTL_SEG = 300.0
+_bbox_cache: dict = {"ts": 0.0, "lat": GEO_BBOX_CENTRO_LAT,
+                     "lon": GEO_BBOX_CENTRO_LON, "delta": GEO_BBOX_DELTA_GRADOS}
+
+
+async def _bbox_municipio() -> tuple[float, float, float]:
+    """(lat, lon, delta) del bbox, desde configuracion_general con cache.
+
+    Cualquier error (DB caída, clave ausente, valor no numérico) cae a las
+    constantes de arriba — el geocoding nunca se rompe por configuración.
+    """
+    now = time.monotonic()
+    if now - _bbox_cache["ts"] < _BBOX_TTL_SEG:
+        return _bbox_cache["lat"], _bbox_cache["lon"], _bbox_cache["delta"]
+    lat, lon, delta = GEO_BBOX_CENTRO_LAT, GEO_BBOX_CENTRO_LON, GEO_BBOX_DELTA_GRADOS
+    try:
+        async with AsyncSessionLocal() as db:
+            r = await db.execute(text(
+                "SELECT clave, valor FROM configuracion_general "
+                "WHERE clave IN ('geo_bbox_centro_lat','geo_bbox_centro_lon','geo_bbox_delta_grados')"
+            ))
+            vals = {row.clave: row.valor for row in r.fetchall()}
+        lat = float(vals["geo_bbox_centro_lat"])
+        lon = float(vals["geo_bbox_centro_lon"])
+        delta = float(vals["geo_bbox_delta_grados"])
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180 and 0 < delta <= 5):
+            raise ValueError(f"bbox fuera de rango: {lat},{lon} ±{delta}")
+    except Exception as e:  # noqa: BLE001 — fallback deliberado a constantes
+        logger.warning("geo_bbox config no disponible (%s) — uso fallback Vicente López", e)
+        lat, lon, delta = GEO_BBOX_CENTRO_LAT, GEO_BBOX_CENTRO_LON, GEO_BBOX_DELTA_GRADOS
+    _bbox_cache.update(ts=now, lat=lat, lon=lon, delta=delta)
+    return lat, lon, delta
+
+
+def _viewbox_municipio(lat: float, lon: float, delta: float) -> str:
     """Formato Nominatim: lon1,lat1,lon2,lat2 (dos esquinas opuestas)."""
-    return (
-        f"{GEO_BBOX_CENTRO_LON - GEO_BBOX_DELTA_GRADOS},"
-        f"{GEO_BBOX_CENTRO_LAT - GEO_BBOX_DELTA_GRADOS},"
-        f"{GEO_BBOX_CENTRO_LON + GEO_BBOX_DELTA_GRADOS},"
-        f"{GEO_BBOX_CENTRO_LAT + GEO_BBOX_DELTA_GRADOS}"
-    )
+    return f"{lon - delta},{lat - delta},{lon + delta},{lat + delta}"
 
 
 async def _nominatim_get(path: str, params: dict) -> list | dict:
@@ -150,6 +185,7 @@ async def geocodificar_direccion(q: str, limit: int = 5, solo_direcciones: bool 
     # válidas. No usamos `layer=address` porque excluye `highway/secondary` que
     # sí son direcciones válidas (calle sin número exacto).
     upstream_limit = 40 if solo_direcciones else limit
+    bbox_lat, bbox_lon, bbox_delta = await _bbox_municipio()
     params: dict = {
         "q": q,
         "format": "json",
@@ -159,7 +195,7 @@ async def geocodificar_direccion(q: str, limit: int = 5, solo_direcciones: bool 
         # bounded=1 EXCLUYE lo que cae fuera del viewbox (no es solo un bias):
         # sin esto, "Avenida Maipú" devuelve resultados de Mendoza/otras
         # provincias que son ruido para un operador municipal.
-        "viewbox": _viewbox_municipio(),
+        "viewbox": _viewbox_municipio(bbox_lat, bbox_lon, bbox_delta),
         "bounded": "1",
     }
     data = await _nominatim_get("/search", params)

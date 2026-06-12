@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  BellRing, Check, ClipboardCheck, Loader2, Palette, Settings2,
+  BellRing, Check, ClipboardCheck, Loader2, MapPin, Palette, Settings2,
 } from 'lucide-react'
 import { useConfigGeneral, useActualizarConfigParam } from '../hooks/useConfig'
 import type { ConfigParam } from '../api/configApi'
@@ -73,6 +73,32 @@ const SECCIONES: Seccion[] = [
         ayuda: 'Días máximos que una orden de trabajo en estado Pendiente puede quedar sin reasignarse.',
         control: 'number',
         sufijo: 'días',
+      },
+    ],
+  },
+  {
+    id: 'geocoding',
+    titulo: 'Búsqueda de direcciones (zona del municipio)',
+    descripcion: 'Acotan el buscador de direcciones (OpenStreetMap) a la zona del municipio: lo que cae afuera se descarta. Aplica a reclamos, emergencias, padrones y al alta pública de vecinos. Los cambios toman efecto en ~5 minutos.',
+    icon: MapPin,
+    claves: [
+      {
+        clave: 'geo_bbox_centro_lat',
+        label: 'Latitud del centro del municipio',
+        ayuda: 'Coordenada decimal WGS84 (ej: -34.5305). Es el centro de la zona de búsqueda.',
+        control: 'text',
+      },
+      {
+        clave: 'geo_bbox_centro_lon',
+        label: 'Longitud del centro del municipio',
+        ayuda: 'Coordenada decimal WGS84 (ej: -58.4779). Es el centro de la zona de búsqueda.',
+        control: 'text',
+      },
+      {
+        clave: 'geo_bbox_delta_grados',
+        label: 'Radio de la zona (en grados)',
+        ayuda: 'Semi-lado del recuadro de búsqueda, en grados. 0.27 ≈ 28 km: cubre el partido y los linderos. Si el municipio es más extenso, subirlo.',
+        control: 'text',
       },
     ],
   },
