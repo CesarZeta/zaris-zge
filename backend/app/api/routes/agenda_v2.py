@@ -75,6 +75,22 @@ router = APIRouter(prefix="/api/v1/agenda", tags=["agenda-v2"])
 logger = logging.getLogger("zaris.agenda_v2")
 
 
+def _require_operador(user: dict) -> None:
+    """Mutaciones de agenda (eventos/encargados/reservas/ocupaciones/conflictos)
+    exigen nivel <= 3 — espejo de modulos.agenda.min_nivel_acceso. El Consultor
+    (nivel 4) queda solo-lectura. Config de espacios/disponibilidad/novedades
+    sigue exigiendo <= 2 en sus routers propios (ver guard_nivel_endpoint_no_solo_ui)."""
+    if int(user.get("nivel_acceso", 99)) > 3:
+        raise HTTPException(403, "Permiso insuficiente (requiere nivel <= 3)")
+
+
+async def require_operador(current_user: dict = Depends(get_current_user)) -> dict:
+    """Dependency: identidad + nivel <= 3. La usan TODAS las mutaciones de este
+    router (los GET siguen con get_current_user pelado via `_user`)."""
+    _require_operador(current_user)
+    return current_user
+
+
 # =============================================================================
 # Catalogos
 # =============================================================================
@@ -315,7 +331,7 @@ async def _evento_to_out(db: AsyncSession, id_evento: int) -> Optional[dict[str,
 async def crear_evento(
     payload: EventoCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_operador),
 ):
     """Crea un evento con estado inicial = `activo`."""
     id_estado = await lookup_estado_evento(db, "activo")
@@ -436,7 +452,7 @@ async def actualizar_evento(
     id_evento: int,
     payload: EventoUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_operador),
 ):
     """Actualiza campos editables. Si vienen ambas horas, valida horario."""
     actual = await _evento_to_out(db, id_evento)
@@ -484,7 +500,7 @@ async def actualizar_evento(
 async def cancelar_evento(
     id_evento: int,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_operador),
 ):
     """Cambia el estado del evento a `cancelado`. NO cancela reservas (decision del operador)."""
     actual = await _evento_to_out(db, id_evento)
@@ -515,7 +531,7 @@ async def cancelar_evento(
 async def eliminar_evento(
     id_evento: int,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_operador),
 ):
     """Baja logica (activo=FALSE). DELETE semantico = baja, NO borra fila."""
     actual = await _evento_to_out(db, id_evento)
@@ -559,7 +575,7 @@ async def asignar_encargado(
     id_evento: int,
     payload: EventoEncargadoCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_operador),
 ):
     """Asigna un recurso (agente|equipo) como encargado del evento.
     Crea ademas la ocupacion `tipo='evento'` correspondiente.
@@ -665,7 +681,7 @@ async def desasignar_encargado(
     id_evento: int,
     id_evento_encargado: int,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_operador),
 ):
     """Baja logica del encargado + baja logica de la ocupacion de evento asociada."""
     enc = (await db.execute(text("""
@@ -722,7 +738,7 @@ async def crear_reserva(
     id_evento: int,
     payload: ReservaCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_operador),
 ):
     """Crea una reserva si hay cupo + el evento no esta cancelado/finalizado."""
     ev = await _evento_to_out(db, id_evento)
@@ -843,7 +859,7 @@ async def _patch_reserva_estado(
 async def acreditar_reserva_qr(
     payload: AcreditarQRIn,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_operador),
 ):
     """Acredita asistencia escaneando el QR fisico de una reserva.
 
@@ -883,7 +899,7 @@ async def acreditar_reserva_qr(
 async def reserva_asistio(
     id_evento_reserva: int,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_operador),
 ):
     """Marca la reserva como `asistio`."""
     nueva = await _patch_reserva_estado(db, id_evento_reserva, "asistio", current_user["id_usuario"])
@@ -896,7 +912,7 @@ async def reserva_asistio(
 async def reserva_cancelar(
     id_evento_reserva: int,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_operador),
 ):
     """Marca la reserva como `cancelada`. Libera cupo automaticamente."""
     nueva = await _patch_reserva_estado(db, id_evento_reserva, "cancelada", current_user["id_usuario"])
@@ -928,7 +944,7 @@ async def _ocupacion_to_out(db: AsyncSession, id_ocupacion: int) -> Optional[dic
 async def crear_ocupacion(
     payload: OcupacionCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_operador),
 ):
     """Crea una ocupacion. Detecta conflictos de agenda y los registra en
     conflictos_log sin bloquear."""
@@ -990,11 +1006,11 @@ async def crear_ocupacion(
 @router.get("/ocupaciones", response_model=list[OcupacionOut])
 async def listar_ocupaciones(
     response: Response,
-    tipo_recurso: Optional[Literal["agente", "equipo"]] = None,
+    tipo_recurso: Optional[Literal["agente", "equipo", "espacio"]] = None,
     id_recurso: Optional[int] = None,
     fecha_desde: Optional[date] = None,
     fecha_hasta: Optional[date] = None,
-    tipo: Optional[Literal["ot", "evento", "turno"]] = None,
+    tipo: Optional[Literal["ot", "evento", "turno", "bloqueo"]] = None,
     id_municipio: Optional[int] = None,
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
@@ -1043,7 +1059,7 @@ async def actualizar_ocupacion(
     id_ocupacion: int,
     payload: OcupacionUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_operador),
 ):
     """Actualiza fecha/horas/atributos. Re-detecta conflictos excluyendo self."""
     actual = await _ocupacion_to_out(db, id_ocupacion)
@@ -1101,7 +1117,7 @@ async def actualizar_ocupacion(
 async def eliminar_ocupacion(
     id_ocupacion: int,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_operador),
 ):
     """Baja logica (activo=FALSE)."""
     actual = await _ocupacion_to_out(db, id_ocupacion)
@@ -1714,7 +1730,7 @@ async def resolver_conflicto(
     id_conflicto: int,
     payload: ConflictoResolverIn,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_operador),
 ):
     """Marca el conflicto como resuelto y agrega observaciones."""
     existe = await db.scalar(text(

@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { useAgendaStore } from '../store/agendaStore'
+import { useAuthStore } from '../../../stores/auth'
 import { RecursoTogglePills } from '../components/RecursoTogglePills'
 import { VistaToggle } from '../components/VistaToggle'
 import { TimelineView } from './TimelineView'
@@ -15,6 +16,19 @@ import { Button } from '../../../ui'
 export function VistasView() {
   const vistaGrilla = useAgendaStore((s) => s.vistaGrilla)
   const fecha = useAgendaStore((s) => s.fechaActiva)
+  const pillInicialAplicada = useAgendaStore((s) => s.pillInicialAplicada)
+  const marcarPillInicial = useAgendaStore((s) => s.marcarPillInicial)
+  const setFiltroRecurso = useAgendaStore((s) => s.setFiltroRecurso)
+  const nivel = useAuthStore((s) => s.user?.nivel_acceso)
+
+  // Pill inicial por rol (una vez por carga): el supervisor (nivel 2) vive
+  // asignando OT, asi que aterriza en "Equipos · OT". Admin y operadores
+  // mantienen el default "Agentes". Despues manda lo que el usuario clickee.
+  useEffect(() => {
+    if (pillInicialAplicada || nivel == null) return
+    marcarPillInicial()
+    if (nivel === 2) setFiltroRecurso('equipos')
+  }, [pillInicialAplicada, nivel, marcarPillInicial, setFiltroRecurso])
 
   // Modales de alta "global" — disponibles desde cualquier vista (dia/semana/mes).
   // El alta contextual desde la grilla (click en slot, drag de OT) la maneja

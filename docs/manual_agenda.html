@@ -203,14 +203,15 @@
 <p><strong>Un espacio atendido sin agentes vinculados tampoco tiene disponibilidad</strong>, aunque tenga horario propio: necesita al menos un agente que lo atienda.</p></blockquote>
 
 <h2 id="ocupaciones">6. Ocupaciones: los bloques de la agenda</h2>
-<p>Una <strong>ocupación</strong> es un bloque de tiempo asignado a un recurso. Hay tres tipos, y cada tipo referencia a la entidad que lo origina:</p>
+<p>Una <strong>ocupación</strong> es un bloque de tiempo asignado a un recurso. Hay cuatro tipos:</p>
 <table>
   <tr><th>Tipo</th><th>Qué representa</th><th>Sobre qué recursos</th><th>Quién lo crea normalmente</th></tr>
   <tr><td><span class="badge neutral">OT</span></td><td>Una orden de trabajo planificada (ligada a un reclamo)</td><td>Agente o equipo</td><td>El módulo OT (Planificar) o el botón <em>Planificar OT</em> de la Agenda</td></tr>
   <tr><td><span class="badge neutral">Turno</span></td><td>Un turno de atención a un ciudadano</td><td>Agente o espacio atendido</td><td>El módulo Turnos (automático: cada turno crea su bloque espejo)</td></tr>
   <tr><td><span class="badge neutral">Evento</span></td><td>La participación de un encargado en un evento</td><td>Agente o equipo encargado</td><td>El módulo Agenda al asignar encargados a un evento</td></tr>
+  <tr><td><span class="badge neutral">Bloqueo</span></td><td>Un cierre manual del recurso, sin entidad asociada (mantenimiento, recurso afectado a otra tarea)</td><td>Agente, equipo o espacio</td><td>A mano, con <em>Nueva ocupación</em>. Requiere indicar el motivo</td></tr>
 </table>
-<p>Además del flujo automático, el botón <strong>Nueva ocupación</strong> permite cargar a mano un bloque de OT o turno sobre un agente o equipo (por ejemplo, para registrar una asignación excepcional).</p>
+<p>Además del flujo automático, el botón <strong>Nueva ocupación</strong> permite cargar a mano un bloque de turno o evento sobre un agente o equipo, y un <strong>bloqueo</strong> sobre cualquier recurso. El bloqueo es la forma de marcar, por ejemplo, un salón cerrado por mantenimiento: elegís tipo <em>bloqueo</em>, el recurso (incluidos los espacios), la fecha y el horario, y un motivo. El bloque aparece en gris en la grilla y ese horario deja de ofrecerse como libre para OT y turnos.</p>
 <blockquote><p><strong>Cancelar o reprogramar:</strong> al cancelar un turno o quitar un encargado, el bloque espejo desaparece de la grilla y el horario queda libre de nuevo. Al reprogramar, el bloque se mueve.</p></blockquote>
 <blockquote class="warn"><p><strong>Las superposiciones no se bloquean, se registran.</strong> Si una ocupación se crea encima de otra, el sistema la acepta pero deja un <a href="#conflictos">conflicto</a> pendiente en la pestaña correspondiente. La excepción son los <strong>turnos</strong>: el módulo Turnos sí rechaza un turno que se superpone con otra ocupación del mismo recurso.</p></blockquote>
 
@@ -314,6 +315,7 @@
   <tr><td>Aparece un conflicto tras asignar un encargado</td><td>El encargado ya tenía una ocupación en el horario del evento</td><td>Revisar la pestaña conflictos; reprogramar una de las dos cosas y marcar resuelto</td></tr>
   <tr><td>Una reserva pública no se puede crear</td><td>Evento sin cupo, cancelado, finalizado, o el ciudadano ya tiene reserva activa en ese evento</td><td>Verificar el estado y cupo del evento en la pestaña eventos</td></tr>
   <tr><td>La vista Equipos muestra menos equipos de los esperados</td><td>La vista se acota a la subárea del supervisor</td><td>Es el comportamiento previsto; un administrador ve todos</td></tr>
+  <tr><td>Hay que cerrar un espacio (o sacar de servicio un recurso) por un rato o un día</td><td>Mantenimiento, refacción, recurso afectado a otra tarea</td><td><em>Nueva ocupación</em> → tipo <em>bloqueo</em> → elegir el recurso, horario y motivo. Para inasistencias de agentes usar <em>novedades</em>; para días sin actividad general, <em>feriados</em></td></tr>
 </table>
 
 <h2 id="glosario">13. Glosario</h2>
@@ -321,7 +323,8 @@
   <tr><th>Término</th><th>Definición</th></tr>
   <tr><td><strong>Disponibilidad efectiva</strong></td><td>Horario real en que un recurso puede recibir asignaciones: sus franjas menos feriados y novedades.</td></tr>
   <tr><td><strong>Franja</strong></td><td>Regla de horario de un recurso: días de la semana + hora de inicio y fin (ej.: Lun a Vie 08:00–15:00).</td></tr>
-  <tr><td><strong>Ocupación</strong></td><td>Bloque de tiempo asignado a un recurso (una OT, un turno o la participación en un evento).</td></tr>
+  <tr><td><strong>Ocupación</strong></td><td>Bloque de tiempo asignado a un recurso (una OT, un turno, la participación en un evento o un bloqueo manual).</td></tr>
+  <tr><td><strong>Bloqueo</strong></td><td>Ocupación manual sin entidad asociada que saca de servicio un recurso por un rango horario (ej.: espacio en mantenimiento). Siempre lleva motivo.</td></tr>
   <tr><td><strong>Bloque espejo</strong></td><td>La ocupación que un turno crea automáticamente en la agenda de su recurso. Se libera al cancelar el turno.</td></tr>
   <tr><td><strong>Encargado</strong></td><td>Agente o equipo responsable de un evento; queda ocupado durante el horario del evento.</td></tr>
   <tr><td><strong>Espacio atendido</strong></td><td>Lugar físico con agentes que atienden al público; ofrece turnos.</td></tr>

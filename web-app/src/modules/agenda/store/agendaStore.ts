@@ -12,12 +12,16 @@ interface AgendaState {
   filtroSubarea: number | null
   vista: VistaAgenda
   vistaGrilla: VistaGrilla       // sub-toggle dentro de 'vistas'
+  // Pill inicial por rol: se aplica UNA vez por carga del bundle (VistasView).
+  // Despues manda lo que el usuario clickee.
+  pillInicialAplicada: boolean
   setFechaActiva: (f: string) => void
   setIdMunicipio: (n: number) => void
   setFiltroRecurso: (r: FiltroRecursoUI) => void
   setFiltroSubarea: (id: number | null) => void
   setVista: (v: VistaAgenda) => void
   setVistaGrilla: (v: VistaGrilla) => void
+  marcarPillInicial: () => void
   irAHoy: () => void
 }
 
@@ -28,12 +32,14 @@ export const useAgendaStore = create<AgendaState>()((set) => ({
   filtroSubarea: null,
   vista: 'vistas',
   vistaGrilla: 'dia',
+  pillInicialAplicada: false,
   setFechaActiva:    (f) => set({ fechaActiva: f }),
   setIdMunicipio:    (n) => set({ idMunicipio: n }),
   setFiltroRecurso:  (r) => set({ filtroRecurso: r }),
   setFiltroSubarea:  (id) => set({ filtroSubarea: id }),
   setVista:          (v) => set({ vista: v }),
   setVistaGrilla:    (v) => set({ vistaGrilla: v }),
+  marcarPillInicial: () => set({ pillInicialAplicada: true }),
   irAHoy:            () => set({ fechaActiva: toIsoDate(hoy()) }),
 }))
 

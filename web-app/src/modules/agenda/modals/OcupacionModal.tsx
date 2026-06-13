@@ -5,6 +5,7 @@ import { Button } from '../../../ui'
 import { CiudadanoSearch } from '../components/CiudadanoSearch'
 import { EventoSearch } from '../components/EventoSearch'
 import { RecursoPicker } from '../components/RecursoPicker'
+import { useEspacios } from '../hooks/useEspacios'
 import { useCrearOcupacion, useEliminarOcupacion } from '../hooks/useOcupaciones'
 import { useNotificationsStore } from '../../../stores/notifications'
 import type { CiudadanoMinimo, EventoBusquedaItem, Ocupacion, OcupacionCreatePayload, TipoOcupacion, TipoRecurso } from '../types/agenda'
@@ -20,7 +21,7 @@ interface Props {
 
 function emptyOcup(d?: Partial<OcupacionCreatePayload>): OcupacionCreatePayload {
   // Las ocupaciones tipo 'ot' se crean desde OcupacionOTModal (modal dedicado);
-  // este modal generico solo crea turno/evento. Si llega un default tipo='ot'
+  // este modal generico crea turno/evento/bloqueo. Si llega un default tipo='ot'
   // lo degradamos a 'turno' para no quedar en un estado sin selector.
   return {
     tipo: d?.tipo === 'ot' ? 'turno' : (d?.tipo ?? 'turno'),
@@ -47,6 +48,8 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
   const [ciudadano, setCiudadano] = useState<CiudadanoMinimo | null>(null)
   const [evSel, setEvSel] = useState<EventoBusquedaItem | null>(null)
   const [confirmDel, setConfirmDel] = useState(false)
+  // Para recurso espacio: son ~pocos, un select alcanza (RecursoPicker no los soporta).
+  const espacios = useEspacios({ id_municipio: form.id_municipio })
 
   useEffect(() => {
     if (open) {
@@ -61,12 +64,13 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
   }
 
   async function submit() {
-    // Limpiar FKs segun tipo (este modal solo crea turno/evento; ot va por OcupacionOTModal)
+    // Limpiar FKs segun tipo (este modal crea turno/evento/bloqueo; ot va por OcupacionOTModal)
     const payload: OcupacionCreatePayload = { ...form }
-    if (payload.tipo === 'evento') { payload.id_orden_trabajo = null; payload.id_ciudadano = null }
-    if (payload.tipo === 'turno')  { payload.id_orden_trabajo = null; payload.id_evento = null }
+    if (payload.tipo === 'evento')  { payload.id_orden_trabajo = null; payload.id_ciudadano = null }
+    if (payload.tipo === 'turno')   { payload.id_orden_trabajo = null; payload.id_evento = null }
+    if (payload.tipo === 'bloqueo') { payload.id_orden_trabajo = null; payload.id_evento = null; payload.id_ciudadano = null }
     if (!payload.id_recurso) {
-      push({ kind: 'error', title: 'Falta el recurso', body: 'Selecciona un agente o equipo.' })
+      push({ kind: 'error', title: 'Falta el recurso', body: 'Selecciona un agente, equipo o espacio.' })
       return
     }
     if (payload.tipo === 'evento' && !payload.id_evento) {
@@ -75,6 +79,10 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
     }
     if (payload.tipo === 'turno' && !payload.id_ciudadano) {
       push({ kind: 'error', title: 'Falta el ciudadano', body: 'Busca y selecciona un ciudadano.' })
+      return
+    }
+    if (payload.tipo === 'bloqueo' && !(payload.motivo ?? '').trim()) {
+      push({ kind: 'error', title: 'Falta el motivo', body: 'El bloqueo requiere un motivo (ej: "Cerrado por mantenimiento").' })
       return
     }
     if (payload.hora_fin <= payload.hora_inicio) {
@@ -132,21 +140,45 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
             <select value={form.tipo} onChange={(e) => update('tipo', e.target.value as TipoOcupacion)} style={inp}>
               <option value="turno">turno</option>
               <option value="evento">evento</option>
+              <option value="bloqueo">bloqueo (mantenimiento / no disponible)</option>
             </select>
           </Field>
           <Field label="Tipo de recurso">
-            <select value={form.tipo_recurso} onChange={(e) => update('tipo_recurso', e.target.value as TipoRecurso)} style={inp}>
+            <select
+              value={form.tipo_recurso}
+              onChange={(e) => {
+                // Reset del recurso al cambiar de tipo: un id de agente no es un id de espacio.
+                setForm((f) => ({ ...f, tipo_recurso: e.target.value as TipoRecurso, id_recurso: 0 }))
+              }}
+              style={inp}
+            >
               <option value="agente">agente</option>
               <option value="equipo">equipo</option>
+              <option value="espacio">espacio</option>
             </select>
           </Field>
-          <Field label={form.tipo_recurso === 'agente' ? 'Agente' : 'Equipo'}>
-            <RecursoPicker
-              tipo={form.tipo_recurso as 'agente' | 'equipo'}
-              value={form.id_recurso || null}
-              onChange={(id) => update('id_recurso', id ?? 0)}
-              idMunicipio={form.id_municipio}
-            />
+          <Field label={form.tipo_recurso === 'agente' ? 'Agente' : form.tipo_recurso === 'equipo' ? 'Equipo' : 'Espacio'}>
+            {form.tipo_recurso === 'espacio' ? (
+              <select
+                value={form.id_recurso || ''}
+                onChange={(e) => update('id_recurso', Number(e.target.value) || 0)}
+                style={inp}
+              >
+                <option value="">Elegir espacio…</option>
+                {(espacios.data ?? []).map((esp) => (
+                  <option key={esp.id_espacio} value={esp.id_espacio}>
+                    {esp.nombre} ({esp.atendido ? 'atendido' : 'desatendido'})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <RecursoPicker
+                tipo={form.tipo_recurso as 'agente' | 'equipo'}
+                value={form.id_recurso || null}
+                onChange={(id) => update('id_recurso', id ?? 0)}
+                idMunicipio={form.id_municipio}
+              />
+            )}
           </Field>
           <Field label="Fecha">
             <input type="date" value={form.fecha} onChange={(e) => update('fecha', e.target.value)} style={inp} />
@@ -188,6 +220,17 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
                 <textarea value={form.motivo ?? ''} rows={2} onChange={(e) => update('motivo', e.target.value)} style={{ ...inp, resize: 'vertical' }} />
               </Field>
             </>
+          )}
+          {form.tipo === 'bloqueo' && (
+            <Field label="Motivo (requerido)" full>
+              <textarea
+                value={form.motivo ?? ''}
+                rows={2}
+                placeholder="Ej: Cerrado por mantenimiento"
+                onChange={(e) => update('motivo', e.target.value)}
+                style={{ ...inp, resize: 'vertical' }}
+              />
+            </Field>
           )}
         </div>
       )}
