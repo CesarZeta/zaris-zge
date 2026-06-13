@@ -710,6 +710,14 @@
     <div class="sidebar-item" data-tabla="estado_reclamo"    onclick="selectTabla(this)"><i data-lucide="circle-dot"      class="si"></i>Estado de Reclamos</div>
     <div class="sidebar-item" data-tabla="estado_ot"         onclick="selectTabla(this)"><i data-lucide="briefcase"       class="si"></i>Estado OT</div>
 
+    <div class="sidebar-group">Emergencias</div>
+    <div class="sidebar-item" data-tabla="emergencia_tipo"                 onclick="selectTabla(this)"><i data-lucide="bar-chart-3"  class="si"></i>Tipos de Emergencia</div>
+    <div class="sidebar-item" data-tabla="emergencia_subtipo"              onclick="selectTabla(this)"><i data-lucide="git-branch"   class="si"></i>Subtipos de Emergencia</div>
+    <div class="sidebar-item" data-tabla="emergencia_prioridad"            onclick="selectTabla(this)"><i data-lucide="alert-triangle" class="si"></i>Prioridades</div>
+    <div class="sidebar-item" data-tabla="emergencia_estado"              onclick="selectTabla(this)"><i data-lucide="circle-dot"   class="si"></i>Estados de Emergencia</div>
+    <div class="sidebar-item" data-tabla="emergencia_organismo_derivacion" onclick="selectTabla(this)"><i data-lucide="shield"      class="si"></i>Organismos de Derivación</div>
+    <div class="sidebar-item" data-tabla="emergencia_canal_ingreso"        onclick="selectTabla(this)"><i data-lucide="phone-call"  class="si"></i>Canales de Ingreso</div>
+
     <div class="sidebar-group">Agenda y Turnos</div>
     <div class="sidebar-item" data-tabla="lugares_atencion"    onclick="selectTabla(this)"><i data-lucide="map-pin"       class="si"></i>Lugares de Atención</div>
     <div class="sidebar-item" data-tabla="agenda_clase"        onclick="selectTabla(this)"><i data-lucide="calendar-range" class="si"></i>Clases de Agenda</div>
@@ -840,6 +848,7 @@ const SCHEMAS = {
       { field: 'descripcion', label: 'Descripción', type: 'textarea', required: false },
       { field: 'id_area',     label: 'Área',        type: 'select',   fk: 'area', fkLabel: 'nombre', fkPk: 'id_area', required: false },
     ],
+    filtros: ['id_area'],
     display: ['id_subarea', 'nombre', 'descripcion', 'id_area'],
   },
   tipo_usuario: {
@@ -870,6 +879,8 @@ const SCHEMAS = {
       { field: 'nombre',     label: 'Nombre',    type: 'text',   required: true },
       { field: 'apellido',   label: 'Apellido',  type: 'text',   required: true },
       { field: 'legajo',     label: 'Legajo',    type: 'text',   required: false },
+      { field: 'dni',        label: 'DNI',       type: 'text',   required: false,
+        hint: 'Documento del agente. Permite recuperar el usuario por número de documento desde el login.' },
       { field: 'cuil',       label: 'CUIL',      type: 'text',   required: false },
       { field: 'email',      label: 'Email',     type: 'text',   required: false },
       { field: 'telefono',   label: 'Teléfono',  type: 'text',   required: false },
@@ -878,7 +889,7 @@ const SCHEMAS = {
       { field: 'id_usuario', label: 'Usuario vinculado', type: 'select', fk: 'usuarios', fkLabel: 'nombre', fkPk: 'id_usuario', required: false },
       { field: 'es_auditor', label: 'Auditor',   type: 'checkbox', required: false },
     ],
-    display: ['id_agente', 'apellido', 'nombre', 'legajo', 'cuil', 'id_cargo', 'id_subarea', 'id_usuario', 'es_auditor'],
+    display: ['id_agente', 'apellido', 'nombre', 'legajo', 'dni', 'cuil', 'id_cargo', 'id_subarea', 'id_usuario', 'es_auditor'],
   },
   equipos: {
     label: 'Equipo', titulo: 'Maestro de Equipos',
@@ -952,6 +963,7 @@ const SCHEMAS = {
       { field: 'descripcion', label: 'Descripción', type: 'textarea', required: false },
       { field: 'id_subarea',  label: 'Subárea',     type: 'select',   fk: 'subarea', fkLabel: 'nombre', fkPk: 'id_subarea', required: false },
     ],
+    filtros: ['id_subarea'],
     display: ['id_tipo_reclamo', 'nombre', 'descripcion', 'id_subarea'],
   },
 
@@ -1045,6 +1057,99 @@ const SCHEMAS = {
     ],
     display: ['id_config', 'clave', 'valor', 'tipo', 'descripcion'],
   },
+
+  // ── Catálogos del módulo Emergencias (taxonomía de incidentes) ──
+  emergencia_prioridad: {
+    label: 'Prioridad de emergencia', titulo: 'Prioridades de Emergencia',
+    pk: 'id_emergencia_prioridad',
+    cols: [
+      { field: 'codigo',             label: 'Código',          type: 'text',   required: true,
+        hint: 'Identificador corto, ej: P1, P2, P3.' },
+      { field: 'nombre',             label: 'Nombre',          type: 'text',   required: true },
+      { field: 'descripcion',        label: 'Descripción',     type: 'textarea', required: false },
+      { field: 'sla_minutos_arribo', label: 'SLA arribo (min)', type: 'number', required: true,
+        hint: 'Minutos objetivo para llegar al sitio.' },
+      { field: 'color_token',        label: 'Color (token DS)', type: 'text',  required: true,
+        hint: 'Nombre del token del Design System, ej: prio-p1. Sin el prefijo --.' },
+      { field: 'orden_visual',       label: 'Orden',           type: 'number', required: true },
+    ],
+    display: ['id_emergencia_prioridad', 'codigo', 'nombre', 'sla_minutos_arribo', 'orden_visual'],
+  },
+  emergencia_estado: {
+    label: 'Estado de emergencia', titulo: 'Estados de Emergencia',
+    pk: 'id_emergencia_estado',
+    cols: [
+      { field: 'codigo',               label: 'Código',           type: 'text',   required: true },
+      { field: 'nombre',               label: 'Nombre',           type: 'text',   required: true },
+      { field: 'descripcion',          label: 'Descripción',      type: 'textarea', required: false },
+      { field: 'es_inicial',           label: 'Es estado inicial',  type: 'checkbox', required: false },
+      { field: 'es_terminal',          label: 'Es estado terminal', type: 'checkbox', required: false },
+      { field: 'es_terminal_positivo', label: 'Terminal positivo',  type: 'checkbox', required: false,
+        hint: 'Marca si el cierre se considera resolución exitosa.' },
+      { field: 'orden_visual',         label: 'Orden',            type: 'number', required: true },
+    ],
+    display: ['id_emergencia_estado', 'codigo', 'nombre', 'es_inicial', 'es_terminal', 'orden_visual'],
+  },
+  emergencia_canal_ingreso: {
+    label: 'Canal de ingreso', titulo: 'Canales de Ingreso de Emergencias',
+    pk: 'id_emergencia_canal_ingreso',
+    cols: [
+      { field: 'codigo',            label: 'Código',           type: 'text',   required: true },
+      { field: 'nombre',            label: 'Nombre',           type: 'text',   required: true },
+      { field: 'descripcion',       label: 'Descripción',      type: 'textarea', required: false },
+      { field: 'requiere_operador', label: 'Requiere operador', type: 'checkbox', required: false,
+        hint: 'Si el llamado lo recibe un operador del COM (vs. autoservicio).' },
+    ],
+    display: ['id_emergencia_canal_ingreso', 'codigo', 'nombre', 'requiere_operador'],
+  },
+  emergencia_organismo_derivacion: {
+    label: 'Organismo de derivación', titulo: 'Organismos de Derivación',
+    pk: 'id_emergencia_organismo_derivacion',
+    cols: [
+      { field: 'codigo',            label: 'Código',            type: 'text', required: true },
+      { field: 'nombre',            label: 'Nombre',            type: 'text', required: true,
+        hint: 'Ej: 911 PBA, SAME, Bomberos.' },
+      { field: 'descripcion',       label: 'Descripción',       type: 'textarea', required: false },
+      { field: 'telefono_contacto', label: 'Teléfono',          type: 'text', required: false },
+      { field: 'es_municipal',      label: 'Es municipal',      type: 'checkbox', required: false },
+    ],
+    display: ['id_emergencia_organismo_derivacion', 'codigo', 'nombre', 'telefono_contacto', 'es_municipal'],
+  },
+  emergencia_tipo: {
+    label: 'Tipo de emergencia', titulo: 'Tipos de Emergencia',
+    pk: 'id_emergencia_tipo',
+    cols: [
+      { field: 'id_subarea',    label: 'Subárea',       type: 'select', fk: 'subarea', fkLabel: 'nombre', fkPk: 'id_subarea', required: true,
+        hint: 'Subárea responsable (ej: Policía Municipal, Defensa Civil).' },
+      { field: 'codigo',        label: 'Código',        type: 'text',   required: true,
+        hint: 'snake_case en mayúsculas, único dentro de la subárea.' },
+      { field: 'nombre',        label: 'Nombre',        type: 'text',   required: true },
+      { field: 'codigo_oficial', label: 'Código oficial', type: 'number', required: false,
+        hint: 'Número oficial (ej: MinSeg PBA) si aplica.' },
+      { field: 'descripcion',   label: 'Descripción',   type: 'textarea', required: false },
+      { field: 'id_prioridad_default', label: 'Prioridad por defecto', type: 'select', fk: 'emergencia_prioridad', fkLabel: 'nombre', fkPk: 'id_emergencia_prioridad', required: true },
+      { field: 'id_organismo_derivacion_default', label: 'Organismo de derivación', type: 'select', fk: 'emergencia_organismo_derivacion', fkLabel: 'nombre', fkPk: 'id_emergencia_organismo_derivacion', required: false },
+      { field: 'requiere_911',  label: 'Requiere 911',  type: 'checkbox', required: false },
+      { field: 'es_emergencia', label: 'Es emergencia', type: 'checkbox', required: false,
+        hint: 'Distingue emergencia real de incidente menor.' },
+    ],
+    filtros: ['id_subarea', 'id_prioridad_default'],
+    display: ['id_emergencia_tipo', 'codigo', 'nombre', 'id_subarea', 'id_prioridad_default', 'requiere_911', 'es_emergencia'],
+  },
+  emergencia_subtipo: {
+    label: 'Subtipo de emergencia', titulo: 'Subtipos de Emergencia',
+    pk: 'id_emergencia_subtipo',
+    cols: [
+      { field: 'id_tipo',     label: 'Tipo de emergencia', type: 'select', fk: 'emergencia_tipo', fkLabel: 'nombre', fkPk: 'id_emergencia_tipo', required: true },
+      { field: 'codigo',      label: 'Código',             type: 'text',   required: true },
+      { field: 'nombre',      label: 'Nombre',             type: 'text',   required: true },
+      { field: 'descripcion', label: 'Descripción',        type: 'textarea', required: false },
+      { field: 'id_prioridad_override', label: 'Prioridad (override)', type: 'select', fk: 'emergencia_prioridad', fkLabel: 'nombre', fkPk: 'id_emergencia_prioridad', required: false,
+        hint: 'Si se setea, pisa la prioridad del tipo para este subtipo.' },
+    ],
+    filtros: ['id_tipo'],
+    display: ['id_emergencia_subtipo', 'codigo', 'nombre', 'id_tipo', 'id_prioridad_override'],
+  },
 };
 
 // ── Toast ─────────────────────────────────────────────────────
@@ -1082,6 +1187,13 @@ const TABLA_META = {
   nacionalidades:    { icon: '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',  sub: 'Países y regiones de origen' },
   municipios:        { icon: '<line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/>',  sub: 'Municipios donde opera el sistema' },
   configuracion_general: { icon: '<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',  sub: 'Parámetros del sistema (key/value)' },
+  // Emergencias
+  emergencia_prioridad:            { icon: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',  sub: 'Niveles de prioridad y SLA de arribo (P1, P2, P3)' },
+  emergencia_estado:               { icon: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',  sub: 'Estados del ciclo de vida de una emergencia' },
+  emergencia_canal_ingreso:        { icon: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>',  sub: 'Vías por las que ingresa un llamado de emergencia' },
+  emergencia_organismo_derivacion: { icon: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',  sub: 'Organismos externos de derivación (911, SAME, Bomberos)' },
+  emergencia_tipo:                 { icon: '<path d="M2 18h20"/><path d="M5 18V9.5a2.5 2.5 0 0 1 5 0V18"/><path d="M14 18v-7a2 2 0 0 1 4 0v7"/><circle cx="7.5" cy="5.5" r="1.5"/>',  sub: 'Tipos de incidente / emergencia por subárea' },
+  emergencia_subtipo:              { icon: '<line x1="6" y1="3" x2="6" y2="15"/><path d="M21 6H8"/><path d="M21 12H8"/><path d="M21 18H8"/>',  sub: 'Subtipos dentro de cada tipo de emergencia' },
 };
 
 function tablaIcon(tabla) {
@@ -1377,6 +1489,7 @@ async function abrirListado() {
         <label>Buscar texto</label>
         <input type="text" id="flt-texto" placeholder="Filtrar por nombre..." style="min-width:180px;">
       </div>
+      <span id="filtros-fk-wrap"></span>
       <div class="filter-group">
         <label>Ordenar</label>
         <select id="flt-orden">
@@ -1410,6 +1523,11 @@ async function abrirListado() {
     if (tablaActual === 'area') await loadFkOptions('subarea', 'id_subarea', 'nombre');
     if (tablaActual === 'subarea') await loadFkOptions('area', 'id_area', 'nombre');
 
+    // Filtros por FK declarados en schema.filtros (ej: subáreas por área, tipos
+    // de reclamo por subárea, emergencias por subárea/tipo). Render dinámico de un
+    // <select> por cada filtro, poblado desde el fkCache.
+    await renderFiltrosFk(schema);
+
     const res = await fetch(`${API}/${tablaActual}`, { headers: _authHeaders() });
     if (res.status === 401) { _handleUnauth(); return; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1417,6 +1535,40 @@ async function abrirListado() {
     aplicarFiltros();
   } catch (e) {
     main.innerHTML += `<div class="empty">Error al cargar datos: ${e.message}</div>`;
+  }
+}
+
+// Renderiza un <select> por cada FK declarada en schema.filtros. Cada opción usa
+// el fkCache (ya cargado). El label del filtro se toma de la columna del schema
+// (si está) o del FK_DISPLAY_MAP. Al cambiar cualquiera, re-filtra en vivo.
+async function renderFiltrosFk(schema) {
+  const wrap = document.getElementById('filtros-fk-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  const filtros = schema.filtros || [];
+  for (const campo of filtros) {
+    // Resolver la tabla FK destino: primero desde la col del schema, sino del mapa.
+    const colDef = (schema.cols || []).find(c => c.field === campo);
+    const fkInfo = colDef && colDef.fk
+      ? { fk: colDef.fk, fkPk: colDef.fkPk, fkLabel: colDef.fkLabel, label: colDef.label }
+      : (FK_DISPLAY_MAP[campo]
+          ? { fk: FK_DISPLAY_MAP[campo].fk, fkPk: FK_DISPLAY_MAP[campo].pk, fkLabel: FK_DISPLAY_MAP[campo].label, label: campo }
+          : null);
+    if (!fkInfo) continue;
+    await loadFkOptions(fkInfo.fk, fkInfo.fkPk, fkInfo.fkLabel);
+    const opts = (fkCache[fkInfo.fk] || [])
+      .slice()
+      .sort((a, b) => String(a.label).localeCompare(String(b.label), 'es'))
+      .map(o => `<option value="${o.value}">${String(o.label).replace(/</g,'&lt;')}</option>`)
+      .join('');
+    const g = document.createElement('div');
+    g.className = 'filter-group';
+    g.innerHTML = `<label>${fkInfo.label}</label>
+      <select class="flt-fk" data-campo="${campo}">
+        <option value="">Todas</option>${opts}
+      </select>`;
+    wrap.appendChild(g);
+    g.querySelector('select').addEventListener('change', aplicarFiltros);
   }
 }
 
@@ -1429,6 +1581,14 @@ function aplicarFiltros() {
   const orden  = document.getElementById('flt-orden')?.value  || 'reciente';
   const desde  = document.getElementById('flt-desde')?.value  || '';
   const hasta  = document.getElementById('flt-hasta')?.value  || '';
+
+  // Filtros por FK (selects dinámicos): cada uno restringe por su columna.
+  document.querySelectorAll('.flt-fk').forEach(sel => {
+    const val = sel.value;
+    if (!val) return;
+    const campo = sel.dataset.campo;
+    rows = rows.filter(r => String(r[campo]) === String(val));
+  });
 
   if (txt) {
     rows = rows.filter(r => {
@@ -1465,6 +1625,7 @@ function limpiarFiltros() {
   });
   const orden = document.getElementById('flt-orden');
   if (orden) orden.value = 'reciente';
+  document.querySelectorAll('.flt-fk').forEach(sel => { sel.value = ''; });
   aplicarFiltros();
 }
 
@@ -1614,6 +1775,11 @@ const FK_DISPLAY_MAP = {
   id_tipo_usuario: { fk: 'tipo_usuario', pk: 'id_tipo_usuario', label: 'nombre' },
   id_cargo: { fk: 'cargos', pk: 'id_cargo', label: 'nombre' },
   id_usuario: { fk: 'usuarios', pk: 'id_usuario', label: 'nombre' },
+  // Emergencias
+  id_prioridad_default: { fk: 'emergencia_prioridad', pk: 'id_emergencia_prioridad', label: 'nombre' },
+  id_prioridad_override: { fk: 'emergencia_prioridad', pk: 'id_emergencia_prioridad', label: 'nombre' },
+  id_organismo_derivacion_default: { fk: 'emergencia_organismo_derivacion', pk: 'id_emergencia_organismo_derivacion', label: 'nombre' },
+  id_tipo: { fk: 'emergencia_tipo', pk: 'id_emergencia_tipo', label: 'nombre' },
 };
 
 // Valores legibles para columnas enum conocidas (no FK).

@@ -140,6 +140,48 @@
 
     .error-msg.visible { display: block; }
 
+    .ok-msg {
+      display: none;
+      margin-top: 14px;
+      padding: 10px 12px;
+      background: rgba(31,138,101,.08);
+      border: 1px solid rgba(31,138,101,.25);
+      border-radius: 7px;
+      font-size: 13px;
+      line-height: 1.45;
+      color: #1f8a65;
+    }
+
+    .ok-msg.visible { display: block; }
+
+    .recovery-links {
+      margin-top: 18px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-display);
+      font-size: 12.5px;
+      color: var(--fg-3);
+    }
+
+    .recovery-links a {
+      color: var(--zaris-orange);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .recovery-links a:hover { text-decoration: underline; }
+    /* Links de recovery apilados (uno por línea): el separador ya no aplica. */
+    .recovery-links__sep { display: none; }
+
+    .recovery-intro {
+      font-size: 13.5px;
+      color: var(--fg-3);
+      line-height: 1.5;
+      margin-bottom: 20px;
+    }
+
     .login-foot {
       margin-top: 24px;
       font-family: var(--font-mono);
@@ -181,6 +223,72 @@
     </div>
     <button type="submit" class="btn-submit" id="btn-submit">Ingresar</button>
     <div class="error-msg" id="error-msg"></div>
+    <div class="recovery-links">
+      <a href="#" id="link-olvide-pass">¿Olvidaste tu contraseña?</a>
+      <span class="recovery-links__sep">·</span>
+      <a href="#" id="link-olvide-user">¿Olvidaste tu usuario?</a>
+    </div>
+  </form>
+
+  <!-- Olvidé mi contraseña: ingresa el email, se manda link de reseteo. -->
+  <form id="recuperar-pass-form" style="display:none;">
+    <p class="recovery-intro">
+      Ingresá el correo con el que entrás al sistema. Si existe una cuenta, te vamos a
+      enviar un enlace para restablecer tu contraseña.
+    </p>
+    <div class="field">
+      <label for="rec-email">Correo electrónico</label>
+      <input type="email" id="rec-email" autocomplete="username"
+             placeholder="usuario@municipio.gob.ar" required />
+    </div>
+    <button type="submit" class="btn-submit" id="btn-rec-pass">Enviar enlace</button>
+    <div class="ok-msg" id="rec-pass-ok"></div>
+    <div class="error-msg" id="rec-pass-error"></div>
+    <div class="recovery-links">
+      <a href="#" class="link-volver">← Volver al inicio de sesión</a>
+    </div>
+  </form>
+
+  <!-- Olvidé mi usuario: ingresa el documento, se manda recordatorio del email. -->
+  <form id="recuperar-user-form" style="display:none;">
+    <p class="recovery-intro">
+      Ingresá tu número de documento (DNI). Si está registrado, te vamos a enviar a tu
+      casilla de correo un recordatorio con el usuario con el que ingresás.
+    </p>
+    <div class="field">
+      <label for="rec-doc">Número de documento</label>
+      <input type="text" id="rec-doc" inputmode="numeric"
+             placeholder="Ej: 12345678" required />
+    </div>
+    <button type="submit" class="btn-submit" id="btn-rec-user">Enviar recordatorio</button>
+    <div class="ok-msg" id="rec-user-ok"></div>
+    <div class="error-msg" id="rec-user-error"></div>
+    <div class="recovery-links">
+      <a href="#" class="link-volver">← Volver al inicio de sesión</a>
+    </div>
+  </form>
+
+  <!-- Resetear contraseña: se muestra cuando se entra con ?recovery=<token>. -->
+  <form id="resetear-pass-form" style="display:none;">
+    <p class="recovery-intro">
+      Elegí tu nueva contraseña para terminar de restablecer el acceso.
+    </p>
+    <div class="field">
+      <label for="reset-pass-nueva">Nueva contraseña</label>
+      <input type="password" id="reset-pass-nueva" autocomplete="new-password"
+             placeholder="Mínimo 8 caracteres" required />
+    </div>
+    <div class="field">
+      <label for="reset-pass-confirma">Repetir contraseña</label>
+      <input type="password" id="reset-pass-confirma" autocomplete="new-password"
+             placeholder="••••••••" required />
+    </div>
+    <button type="submit" class="btn-submit" id="btn-reset-pass">Guardar contraseña</button>
+    <div class="ok-msg" id="reset-pass-ok"></div>
+    <div class="error-msg" id="reset-pass-error"></div>
+    <div class="recovery-links">
+      <a href="#" class="link-volver">← Volver al inicio de sesión</a>
+    </div>
   </form>
 
   <!-- Cambio de contraseña forzado en primer ingreso (clave temporal, Fase 3).
@@ -212,8 +320,12 @@
     ? 'http://127.0.0.1:8000'
     : 'https://zaris-api-production-bf0b.up.railway.app';
 
-  // Si ya hay sesión, ir al shell
-  if (localStorage.getItem('zaris_session')) {
+  // ¿Llega con un token de recovery en la URL? (link del mail de "olvidé mi contraseña")
+  const _recoveryToken = new URLSearchParams(window.location.search).get('recovery');
+
+  // Si ya hay sesión, ir al shell — SALVO que venga a resetear su contraseña por
+  // recovery (en ese caso queremos mostrarle el form de reset, no rebotarlo).
+  if (localStorage.getItem('zaris_session') && !_recoveryToken) {
     window.location.href = '../index.html';
   }
 
@@ -347,6 +459,132 @@
       btnCambio.textContent = 'Guardar y entrar';
     }
   });
+
+  // ─── Recuperación de credenciales ──────────────────────────────────────────
+  const recPassForm   = document.getElementById('recuperar-pass-form');
+  const recUserForm   = document.getElementById('recuperar-user-form');
+  const resetPassForm = document.getElementById('resetear-pass-form');
+
+  // Muestra UNA de las vistas (login / recuperar-pass / recuperar-user / reset),
+  // oculta el resto. Limpia los mensajes al cambiar.
+  function mostrarVista(cual) {
+    [form, recPassForm, recUserForm, resetPassForm].forEach(f => f.style.display = 'none');
+    document.querySelectorAll('.ok-msg, .error-msg').forEach(el => el.classList.remove('visible'));
+    const titulos = {
+      login: 'Iniciar sesión',
+      pass: 'Recuperar contraseña',
+      user: 'Recuperar usuario',
+      reset: 'Nueva contraseña',
+    };
+    loginTitle.textContent = titulos[cual] || 'Iniciar sesión';
+    if (cual === 'pass')  recPassForm.style.display = 'block';
+    else if (cual === 'user')  recUserForm.style.display = 'block';
+    else if (cual === 'reset') resetPassForm.style.display = 'block';
+    else form.style.display = 'block';
+  }
+
+  function setMsg(el, texto, visible) {
+    el.textContent = texto;
+    if (visible) el.classList.add('visible'); else el.classList.remove('visible');
+  }
+
+  document.getElementById('link-olvide-pass').addEventListener('click', e => {
+    e.preventDefault(); mostrarVista('pass'); document.getElementById('rec-email').focus();
+  });
+  document.getElementById('link-olvide-user').addEventListener('click', e => {
+    e.preventDefault(); mostrarVista('user'); document.getElementById('rec-doc').focus();
+  });
+  document.querySelectorAll('.link-volver').forEach(a => {
+    a.addEventListener('click', e => { e.preventDefault(); mostrarVista('login'); });
+  });
+
+  // Olvidé mi contraseña → POST /auth/recuperar-password (siempre OK, anti-enumeración).
+  recPassForm.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const okEl = document.getElementById('rec-pass-ok');
+    const errEl = document.getElementById('rec-pass-error');
+    const b = document.getElementById('btn-rec-pass');
+    setMsg(okEl, '', false); setMsg(errEl, '', false);
+    const email = document.getElementById('rec-email').value.trim();
+    b.disabled = true; b.textContent = 'Enviando…';
+    try {
+      await fetch(`${API_BASE}/api/v1/auth/recuperar-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      setMsg(okEl, 'Si el correo está registrado, te enviamos un enlace para restablecer tu contraseña. Revisá tu casilla (y la carpeta de spam).', true);
+    } catch (err) {
+      setMsg(errEl, 'No se pudo conectar con el servidor.', true);
+    } finally {
+      b.disabled = false; b.textContent = 'Enviar enlace';
+    }
+  });
+
+  // Olvidé mi usuario → POST /auth/recuperar-usuario (siempre OK, anti-enumeración).
+  recUserForm.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const okEl = document.getElementById('rec-user-ok');
+    const errEl = document.getElementById('rec-user-error');
+    const b = document.getElementById('btn-rec-user');
+    setMsg(okEl, '', false); setMsg(errEl, '', false);
+    const documento = document.getElementById('rec-doc').value.trim();
+    b.disabled = true; b.textContent = 'Enviando…';
+    try {
+      await fetch(`${API_BASE}/api/v1/auth/recuperar-usuario`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documento }),
+      });
+      setMsg(okEl, 'Si el documento está registrado, te enviamos a tu correo un recordatorio con el usuario con el que ingresás.', true);
+    } catch (err) {
+      setMsg(errEl, 'No se pudo conectar con el servidor.', true);
+    } finally {
+      b.disabled = false; b.textContent = 'Enviar recordatorio';
+    }
+  });
+
+  // Resetear contraseña → POST /auth/resetear-password (token del mail).
+  resetPassForm.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const okEl = document.getElementById('reset-pass-ok');
+    const errEl = document.getElementById('reset-pass-error');
+    const b = document.getElementById('btn-reset-pass');
+    setMsg(okEl, '', false); setMsg(errEl, '', false);
+    const nueva = document.getElementById('reset-pass-nueva').value;
+    const confirma = document.getElementById('reset-pass-confirma').value;
+    if (nueva.length < 8) { setMsg(errEl, 'La contraseña debe tener al menos 8 caracteres.', true); return; }
+    if (nueva !== confirma) { setMsg(errEl, 'Las contraseñas no coinciden.', true); return; }
+    b.disabled = true; b.textContent = 'Guardando…';
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/auth/resetear-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: _recoveryToken, password_nueva: nueva }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMsg(errEl, data.detail || 'No se pudo restablecer la contraseña.', true);
+        return;
+      }
+      // Reset OK: limpiamos cualquier sesión vieja y volvemos al login para entrar
+      // con la clave nueva. Quitamos el token de la URL.
+      localStorage.removeItem('zaris_session');
+      setMsg(okEl, 'Tu contraseña se actualizó. Ya podés iniciar sesión con la nueva.', true);
+      window.history.replaceState({}, '', window.location.pathname);
+      setTimeout(() => mostrarVista('login'), 1800);
+    } catch (err) {
+      setMsg(errEl, 'No se pudo conectar con el servidor.', true);
+    } finally {
+      b.disabled = false; b.textContent = 'Guardar contraseña';
+    }
+  });
+
+  // Si se entró con ?recovery=<token>, mostrar directo el form de nueva contraseña.
+  if (_recoveryToken) {
+    mostrarVista('reset');
+    document.getElementById('reset-pass-nueva').focus();
+  }
 </script>
 
 </body>

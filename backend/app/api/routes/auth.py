@@ -4,13 +4,16 @@ POST /api/v1/auth/login  → JWT
 GET  /api/v1/auth/me     → usuario actual
 """
 import logging
+import re
 import uuid
+from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core import storage
 from app.core.auth import (
@@ -20,9 +23,17 @@ from app.core.auth import (
     get_current_user,
     modulos_permitidos,
 )
+from app.services.email import (
+    enviar_mail_recovery_usuario_interno,
+    enviar_mail_recordatorio_usuario_interno,
+)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
 logger = logging.getLogger("zaris.auth")
+
+# Recuperación de credenciales del usuario interno (espejo del vecino, §38).
+HORAS_RECOVERY_INTERNO = 24
+COOLDOWN_RECOVERY_MINUTOS = 5
 
 
 class LoginRequest(BaseModel):
@@ -39,6 +50,27 @@ class LoginResponse(BaseModel):
 class CambiarPasswordRequest(BaseModel):
     password_nueva: str
     password_actual: str | None = None  # obligatoria salvo cambio forzado (clave temporal)
+
+
+class RecuperarPasswordRequest(BaseModel):
+    """Olvidé mi contraseña: ingresa el correo con el que entra al sistema."""
+    email: str
+
+
+class RecuperarUsuarioRequest(BaseModel):
+    """Olvidé mi usuario: ingresa su número de documento (DNI). El sistema resuelve
+    el agente vinculado y le manda un mail recordándole con qué correo entra."""
+    documento: str
+
+
+class ResetearPasswordInternoRequest(BaseModel):
+    """Aplica la nueva contraseña usando el token de recovery recibido por mail."""
+    token: str
+    password_nueva: str
+
+
+class GenericoOkResponse(BaseModel):
+    ok: bool = True
 
 
 class FotoUploadRequest(BaseModel):
@@ -197,6 +229,163 @@ async def cambiar_password(
     logger.info("CAMBIO PASSWORD self-service | id=%s | forzado=%s",
                 current_user["id_usuario"], forzado)
     return {"ok": True, "debe_cambiar_password": False}
+
+
+# ─── Recuperación de credenciales del usuario interno ─────────────────────────
+# Espejo del flujo del vecino (publico_auth.py) para el login del shell vanilla.
+# Anti-enumeración: los endpoints de "pedir" siempre responden 200 OK aunque el
+# email/documento no exista, para no filtrar qué cuentas hay.
+
+def _solo_digitos(s: str) -> str:
+    return re.sub(r"\D", "", s or "")
+
+
+async def _branding_municipio(db: AsyncSession) -> tuple[str, str | None]:
+    """(municipio_nombre, municipio_logo_url) desde configuracion_general."""
+    res = await db.execute(
+        text("SELECT clave, valor FROM configuracion_general "
+             "WHERE clave IN ('municipio_nombre','municipio_logo_url')")
+    )
+    cfg = {r.clave: r.valor for r in res.fetchall()}
+    return (cfg.get("municipio_nombre") or "Tu municipio", cfg.get("municipio_logo_url") or None)
+
+
+def _login_url() -> str:
+    """URL del login del shell vanilla (CTA de los mails internos)."""
+    return f"{settings.FRONTEND_BASE_URL.rstrip('/')}/frontend/login.html"
+
+
+@router.post("/recuperar-password", response_model=GenericoOkResponse)
+async def recuperar_password(
+    body: RecuperarPasswordRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    """Olvidé mi contraseña (interno): manda link de reseteo al correo del usuario.
+    Anti-enumeración + cooldown silencioso de 5 minutos."""
+    email = (body.email or "").strip().lower()
+    if not email or "@" not in email:
+        # No revelamos validación: respondemos OK igual.
+        return GenericoOkResponse()
+
+    res = await db.execute(
+        text("""SELECT id_usuario, nombre, email, fecha_ultimo_email_recovery
+                FROM usuarios
+                WHERE LOWER(email) = :email AND activo = TRUE
+                LIMIT 1"""),
+        {"email": email},
+    )
+    row = res.fetchone()
+    if not row:
+        return GenericoOkResponse()  # anti-enumeración
+
+    # Cooldown 5 min
+    if row.fecha_ultimo_email_recovery is not None:
+        delta = datetime.now(timezone.utc) - row.fecha_ultimo_email_recovery
+        if delta < timedelta(minutes=COOLDOWN_RECOVERY_MINUTOS):
+            return GenericoOkResponse()
+
+    res = await db.execute(
+        text(f"""UPDATE usuarios
+                    SET token_recovery = gen_random_uuid(),
+                        token_recovery_expira = NOW() + INTERVAL '{HORAS_RECOVERY_INTERNO} hours',
+                        fecha_ultimo_email_recovery = NOW()
+                  WHERE id_usuario = :id
+                  RETURNING token_recovery"""),
+        {"id": row.id_usuario},
+    )
+    token = str(res.fetchone().token_recovery)
+    await db.commit()
+
+    municipio_nombre, municipio_logo_url = await _branding_municipio(db)
+    background_tasks.add_task(
+        enviar_mail_recovery_usuario_interno,
+        row.email, row.nombre, token, _login_url(),
+        municipio_nombre, municipio_logo_url,
+    )
+    return GenericoOkResponse()
+
+
+@router.post("/recuperar-usuario", response_model=GenericoOkResponse)
+async def recuperar_usuario(
+    body: RecuperarUsuarioRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    """Olvidé mi usuario (interno): el empleado ingresa su DNI. Se resuelve el agente
+    vinculado (regla 1:1 §39) → su usuario → su email, y se manda un recordatorio a
+    esa casilla. Anti-enumeración: siempre 200 OK; el email nunca se muestra en pantalla."""
+    dni = _solo_digitos(body.documento)
+    if not (7 <= len(dni) <= 8):
+        return GenericoOkResponse()  # documento inválido → no filtramos nada
+
+    # agentes.dni → su usuario vinculado activo → email del usuario (fallback al del agente)
+    res = await db.execute(
+        text("""SELECT u.id_usuario, u.nombre,
+                       COALESCE(NULLIF(u.email, ''), a.email) AS email_destino
+                FROM agentes a
+                JOIN usuarios u ON u.id_usuario = a.id_usuario
+                WHERE a.dni = :dni AND a.activo = TRUE AND u.activo = TRUE
+                LIMIT 1"""),
+        {"dni": dni},
+    )
+    row = res.fetchone()
+    if not row or not row.email_destino:
+        return GenericoOkResponse()  # anti-enumeración / sin email donde mandar
+
+    municipio_nombre, municipio_logo_url = await _branding_municipio(db)
+    background_tasks.add_task(
+        enviar_mail_recordatorio_usuario_interno,
+        row.email_destino, row.nombre, _login_url(),
+        municipio_nombre, municipio_logo_url,
+    )
+    return GenericoOkResponse()
+
+
+@router.post("/resetear-password")
+async def resetear_password_interno(
+    body: ResetearPasswordInternoRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Aplica la nueva contraseña usando el token de recovery (válido 24h).
+    Limpia la marca debe_cambiar_password y el token. NO devuelve sesión: el
+    usuario vuelve al login y entra con la clave nueva."""
+    nueva = body.password_nueva or ""
+    if len(nueva) < 8:
+        raise HTTPException(status_code=422, detail="La contraseña debe tener al menos 8 caracteres.")
+    if len(nueva) > 100:
+        raise HTTPException(status_code=422, detail="La contraseña es demasiado larga.")
+
+    res = await db.execute(
+        text("""SELECT id_usuario, password_hash
+                FROM usuarios
+                WHERE token_recovery = CAST(:token AS uuid)
+                  AND token_recovery_expira > NOW()
+                  AND activo = TRUE
+                LIMIT 1"""),
+        {"token": body.token},
+    )
+    row = res.fetchone()
+    if not row:
+        raise HTTPException(status_code=400, detail="El enlace es inválido o expiró. Pedí uno nuevo.")
+
+    if verify_password(nueva, row.password_hash):
+        raise HTTPException(status_code=422, detail="La contraseña nueva debe ser distinta de la actual.")
+
+    nuevo_hash = hash_password(nueva)
+    await db.execute(
+        text("""UPDATE usuarios
+                   SET password_hash = :h,
+                       debe_cambiar_password = FALSE,
+                       token_recovery = NULL,
+                       token_recovery_expira = NULL,
+                       fecha_modif = NOW()
+                 WHERE id_usuario = :id"""),
+        {"h": nuevo_hash, "id": row.id_usuario},
+    )
+    await db.commit()
+    logger.info("RESET PASSWORD por recovery | id=%s", row.id_usuario)
+    return {"ok": True}
 
 
 @router.post("/me/foto-upload-url")
