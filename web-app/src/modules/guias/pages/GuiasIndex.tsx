@@ -1,4 +1,4 @@
-import { FileText, ClipboardList, Settings, BarChart3, Clock, Ticket, UserPlus, Siren, ExternalLink } from 'lucide-react'
+import { FileText, ClipboardList, Settings, BarChart3, Clock, Ticket, UserPlus, Siren, CalendarDays, ExternalLink } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 interface Guia {
@@ -66,6 +66,14 @@ const GUIAS: Guia[] = [
     htmlName: 'manual_encuestas.html',
     audiencia: 'Supervisor o Admin',
     tags: ['Operativo', '6 secciones'],
+  },
+  {
+    titulo: 'AGENDA',
+    descripcion: 'El calendario único del municipio: disponibilidad y asignaciones de agentes, equipos y espacios. Las 4 vistas de recursos, las vistas Día/Semana/Mes, eventos con reservas y QR, feriados y novedades, conflictos, espacios atendidos/desatendidos y cómo la usan OT, Turnos y Entradas.',
+    icon: CalendarDays,
+    htmlName: 'manual_agenda.html',
+    audiencia: 'Supervisor o superior (config) · Operador (consulta)',
+    tags: ['Operativo', '12 capturas', '13 secciones'],
   },
   {
     titulo: 'TURNOS',
