@@ -101,7 +101,9 @@ class EventoDetalleOut(EventoOut):
 # Encargados de evento
 # =============================================================================
 class EventoEncargadoCreate(BaseModel):
-    tipo_recurso: Literal["agente", "equipo", "espacio"]
+    # Solo agente|equipo: el espacio de un evento va en eventos.id_espacio,
+    # no como encargado (alineado con el docstring de asignar_encargado).
+    tipo_recurso: Literal["agente", "equipo"]
     id_recurso: int
 
 
@@ -159,7 +161,9 @@ class ReservaOut(BaseModel):
 # Ocupaciones
 # =============================================================================
 class OcupacionCreate(BaseModel):
-    tipo: Literal["ot", "evento", "turno"]
+    # 'bloqueo' (mig 89): cierre manual de un recurso sin entidad asociada
+    # (espacio en mantenimiento, agente afectado a otra tarea). Exige motivo.
+    tipo: Literal["ot", "evento", "turno", "bloqueo"]
     tipo_recurso: Literal["agente", "equipo", "espacio"]
     id_recurso: int
     fecha: date
@@ -187,6 +191,11 @@ class OcupacionCreate(BaseModel):
         elif self.tipo == "turno":
             if not self.id_ciudadano or self.id_evento or self.id_orden_trabajo:
                 raise ValueError("tipo='turno' requiere id_ciudadano y excluye id_evento/id_orden_trabajo")
+        elif self.tipo == "bloqueo":
+            if self.id_orden_trabajo or self.id_evento or self.id_ciudadano:
+                raise ValueError("tipo='bloqueo' no admite id_orden_trabajo/id_evento/id_ciudadano")
+            if not (self.motivo or "").strip():
+                raise ValueError("tipo='bloqueo' requiere motivo (ej: 'Cerrado por mantenimiento')")
         return self
 
 

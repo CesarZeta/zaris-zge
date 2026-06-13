@@ -13,9 +13,11 @@ interface Props {
 }
 
 const COLORES: Record<Ocupacion['tipo'], { bg: string; border: string; text: string }> = {
-  ot:     { bg: 'rgba(245,78,0,.16)',   border: 'var(--zaris-orange)',   text: 'var(--fg-1)' },
-  evento: { bg: 'rgba(159,187,224,.30)', border: '#5a8fb8',              text: 'var(--fg-1)' },
-  turno:  { bg: 'rgba(31,138,101,.16)', border: 'var(--color-success)', text: 'var(--fg-1)' },
+  ot:      { bg: 'rgba(245,78,0,.16)',   border: 'var(--zaris-orange)',   text: 'var(--fg-1)' },
+  evento:  { bg: 'rgba(159,187,224,.30)', border: '#5a8fb8',              text: 'var(--fg-1)' },
+  turno:   { bg: 'rgba(31,138,101,.16)', border: 'var(--color-success)', text: 'var(--fg-1)' },
+  // Bloqueo manual (mantenimiento, recurso afectado a otra tarea): gris neutro.
+  bloqueo: { bg: 'rgba(38,37,30,.14)',   border: 'var(--fg-3)',          text: 'var(--fg-1)' },
 }
 
 export function GanttOccupationBlock({ ocupacion, hourStart, pxPerHour, rowHeight, enConflicto, onClick }: Props) {

@@ -546,7 +546,7 @@ async def registrar_audit(
 # Helpers de validacion
 # =============================================================================
 async def existe_recurso(session: AsyncSession, tipo_recurso: str, id_recurso: int) -> bool:
-    """Confirma que el agente/equipo existe y esta activo."""
+    """Confirma que el agente/equipo/espacio existe y esta activo."""
     if tipo_recurso == "agente":
         n = await session.scalar(text(
             "SELECT 1 FROM agentes WHERE id_agente = :i AND activo = TRUE"
@@ -554,6 +554,10 @@ async def existe_recurso(session: AsyncSession, tipo_recurso: str, id_recurso: i
     elif tipo_recurso == "equipo":
         n = await session.scalar(text(
             "SELECT 1 FROM equipos WHERE id_equipo = :i AND activo = TRUE"
+        ), {"i": id_recurso})
+    elif tipo_recurso == "espacio":
+        n = await session.scalar(text(
+            "SELECT 1 FROM espacios_agenda WHERE id_espacio = :i AND activo = TRUE"
         ), {"i": id_recurso})
     else:
         return False
@@ -716,5 +720,6 @@ def descripcion_corta_sql() -> str:
                 ),
                 'Turno: ' || ci.apellido || ', ' || ci.nombre,
                 'Turno')
+            WHEN 'bloqueo' THEN COALESCE('Bloqueo: ' || LEFT(o.motivo, 60), 'Bloqueo')
         END
     """
