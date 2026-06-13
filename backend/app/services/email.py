@@ -572,3 +572,178 @@ Si no esperabas este correo, contactá al administrador del sistema.
 
     from_header = formatear_remitente(municipio_nombre, _from_address_base())
     return await enviar_mail(to=to, subject=subject, body_html=html, body_text=text, from_override=from_header)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Templates de RECUPERACIÓN de credenciales del USUARIO INTERNO (backoffice).
+# Espejo del recovery del vecino (publico_auth.py) pero para el login del shell
+# (frontend/login.html). Usa el look del shell (marca ZARIS · GESTION ESTADO),
+# no el de App Vecinos. El CTA va al login del backoffice.
+# ────────────────────────────────────────────────────────────────────────────
+
+def _build_template_interno(
+    titulo: str,
+    cuerpo_html: str,
+    cta_texto: str | None,
+    cta_url: str | None,
+    municipio_nombre: str,
+    municipio_logo_url: str | None = None,
+) -> str:
+    """Arma el HTML del shell interno (header con marca, CTA naranja opcional).
+    `cuerpo_html` ya viene formateado (puede traer <p>, <table>, etc.)."""
+    logo_html = ""
+    if municipio_logo_url:
+        logo_html = (
+            f'<img src="{municipio_logo_url}" alt="{municipio_nombre}" '
+            f'style="max-height:64px;max-width:240px;display:block;margin:0 auto 16px;">'
+        )
+    cta_html = ""
+    if cta_texto and cta_url:
+        cta_html = f"""\
+      <div style="margin:24px 0;text-align:center;">
+        <a href="{cta_url}" style="display:inline-block;padding:14px 28px;background:#f54e00;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;border-radius:6px;">
+          {cta_texto}
+        </a>
+      </div>
+      <p style="margin:0;font-size:12px;line-height:1.5;color:rgba(38,37,30,.5);word-break:break-all;">
+        Si el botón no funciona, copiá y pegá este enlace en tu navegador:<br>
+        <span style="color:#f54e00;">{cta_url}</span>
+      </p>"""
+
+    return f"""\
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:32px 16px;background:#f2f1ed;font-family:'Helvetica Neue',Arial,sans-serif;color:#26251e;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid rgba(38,37,30,.1);border-radius:8px;">
+    <tr><td style="padding:32px 32px 24px 32px;text-align:center;border-bottom:1px solid rgba(38,37,30,.08);">
+      {logo_html}
+      <div style="font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:rgba(38,37,30,.6);">
+        {municipio_nombre} · GESTION ESTADO
+      </div>
+    </td></tr>
+    <tr><td style="padding:32px;">
+      <h1 style="margin:0 0 16px 0;font-size:22px;font-weight:600;color:#26251e;line-height:1.3;">
+        {titulo}
+      </h1>
+      {cuerpo_html}
+      {cta_html}
+    </td></tr>
+    <tr><td style="padding:16px 32px;text-align:center;border-top:1px solid rgba(38,37,30,.08);font-size:11px;color:rgba(38,37,30,.5);">
+      Este mensaje fue enviado por {municipio_nombre}.<br>
+      Si no esperabas este correo, podés ignorarlo.
+    </td></tr>
+  </table>
+</body>
+</html>"""
+
+
+async def enviar_mail_recovery_usuario_interno(
+    to: str,
+    nombre: str,
+    token: str,
+    login_url: str,
+    municipio_nombre: str,
+    municipio_logo_url: str | None = None,
+) -> bool:
+    """
+    Mail de recuperación de contraseña para un usuario INTERNO (empleado municipal).
+    Link: {login_url}?recovery={token} — válido 24 horas. El login del shell detecta
+    el query param y muestra el form de "elegir nueva contraseña".
+    Modo MOCK si Resend no está configurado.
+    """
+    cta_url = f"{login_url}?recovery={token}"
+    saludo_nombre = (nombre or "").strip() or "equipo"
+    subject = f"Restablecé tu contraseña — ZARIS {municipio_nombre}"
+
+    cuerpo = f"""\
+      <p style="margin:0 0 16px 0;font-size:15px;line-height:1.55;color:#26251e;">
+        Hola {saludo_nombre},
+      </p>
+      <p style="margin:0 0 16px 0;font-size:15px;line-height:1.55;color:rgba(38,37,30,.85);">
+        Recibimos un pedido para restablecer la contraseña de tu cuenta en el sistema de
+        gestión municipal. Hacé clic en el botón para elegir una nueva.
+      </p>
+      <p style="margin:0 0 8px 0;font-size:13px;line-height:1.5;color:rgba(38,37,30,.6);">
+        Recordá que ingresás al sistema con tu correo: <strong>{to}</strong>
+      </p>
+      <p style="margin:0 0 8px 0;font-size:13px;line-height:1.5;color:rgba(38,37,30,.6);">
+        Este enlace es válido por 24 horas. Si no pediste este cambio, ignorá este mensaje.
+      </p>"""
+
+    html = _build_template_interno(
+        titulo="Restablecé tu contraseña",
+        cuerpo_html=cuerpo,
+        cta_texto="Elegir nueva contraseña",
+        cta_url=cta_url,
+        municipio_nombre=municipio_nombre,
+        municipio_logo_url=municipio_logo_url,
+    )
+    text = (
+        f"{municipio_nombre} · GESTION ESTADO\n\n"
+        f"Restablecé tu contraseña\n\n"
+        f"Hola {saludo_nombre},\n\n"
+        f"Recibimos un pedido para restablecer la contraseña de tu cuenta.\n"
+        f"Ingresás al sistema con tu correo: {to}\n\n"
+        f"Elegí una nueva contraseña en: {cta_url}\n\n"
+        f"Este enlace es válido por 24 horas. Si no pediste este cambio, ignorá este mensaje.\n"
+    )
+
+    from_header = formatear_remitente(municipio_nombre, _from_address_base())
+    return await enviar_mail(to=to, subject=subject, body_html=html, body_text=text, from_override=from_header)
+
+
+async def enviar_mail_recordatorio_usuario_interno(
+    to: str,
+    nombre: str,
+    login_url: str,
+    municipio_nombre: str,
+    municipio_logo_url: str | None = None,
+) -> bool:
+    """
+    Mail que le recuerda al usuario INTERNO con qué correo ingresa al sistema.
+    Lo dispara "Olvidé mi usuario": el empleado tipea su número de documento, el
+    sistema resuelve el agente -> usuario -> email y manda este recordatorio a esa
+    casilla. NO revela el email en pantalla (anti-enumeración): se entera por el mail.
+    Modo MOCK si Resend no está configurado.
+    """
+    saludo_nombre = (nombre or "").strip() or "equipo"
+    subject = f"Tu usuario de acceso — ZARIS {municipio_nombre}"
+
+    cuerpo = f"""\
+      <p style="margin:0 0 16px 0;font-size:15px;line-height:1.55;color:#26251e;">
+        Hola {saludo_nombre},
+      </p>
+      <p style="margin:0 0 20px 0;font-size:15px;line-height:1.55;color:rgba(38,37,30,.85);">
+        Pediste recuperar tu usuario de acceso al sistema de gestión municipal.
+        Ingresás con este correo electrónico:
+      </p>
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 20px 0;background:#f7f7f4;border:1px solid rgba(38,37,30,.1);border-radius:6px;">
+        <tr><td style="padding:18px 20px;">
+          <div style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:rgba(38,37,30,.55);margin-bottom:4px;">Usuario (email)</div>
+          <div style="font-size:16px;font-weight:600;color:#26251e;word-break:break-all;">{to}</div>
+        </td></tr>
+      </table>
+      <p style="margin:0;font-size:13px;line-height:1.5;color:rgba(38,37,30,.6);">
+        Si olvidaste también tu contraseña, desde el login podés pedir restablecerla.
+      </p>"""
+
+    html = _build_template_interno(
+        titulo="Tu usuario de acceso",
+        cuerpo_html=cuerpo,
+        cta_texto="Ir al login",
+        cta_url=login_url,
+        municipio_nombre=municipio_nombre,
+        municipio_logo_url=municipio_logo_url,
+    )
+    text = (
+        f"{municipio_nombre} · GESTION ESTADO\n\n"
+        f"Tu usuario de acceso\n\n"
+        f"Hola {saludo_nombre},\n\n"
+        f"Pediste recuperar tu usuario de acceso. Ingresás con este correo: {to}\n\n"
+        f"Ir al login: {login_url}\n\n"
+        f"Si olvidaste también tu contraseña, desde el login podés pedir restablecerla.\n"
+    )
+
+    from_header = formatear_remitente(municipio_nombre, _from_address_base())
+    return await enviar_mail(to=to, subject=subject, body_html=html, body_text=text, from_override=from_header)

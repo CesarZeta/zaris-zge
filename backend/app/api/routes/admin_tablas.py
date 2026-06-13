@@ -52,7 +52,7 @@ TABLE_CONFIG: dict[str, dict] = {
     },
     "agentes": {
         "pk": "id_agente",
-        "cols": ["nombre", "apellido", "legajo", "cuil", "email", "telefono", "id_cargo", "id_subarea", "id_usuario", "es_auditor"],
+        "cols": ["nombre", "apellido", "legajo", "dni", "cuil", "email", "telefono", "id_cargo", "id_subarea", "id_usuario", "es_auditor"],
         "fecha_mod": "fecha_modificacion",
     },
     "equipos": {
@@ -142,6 +142,39 @@ TABLE_CONFIG: dict[str, dict] = {
     "nacionalidades": {
         "pk": "id",
         "cols": ["pais", "region"],
+        "fecha_mod": "fecha_modificacion",
+    },
+    # ── Catálogos del módulo Emergencias (mig 82). La taxonomía de incidentes es
+    # propia del módulo COM pero se administra desde Maestros (pedido del usuario).
+    "emergencia_prioridad": {
+        "pk": "id_emergencia_prioridad",
+        "cols": ["codigo", "nombre", "descripcion", "sla_minutos_arribo", "color_token", "orden_visual"],
+        "fecha_mod": "fecha_modificacion",
+    },
+    "emergencia_estado": {
+        "pk": "id_emergencia_estado",
+        "cols": ["codigo", "nombre", "descripcion", "es_inicial", "es_terminal", "es_terminal_positivo", "orden_visual"],
+        "fecha_mod": "fecha_modificacion",
+    },
+    "emergencia_canal_ingreso": {
+        "pk": "id_emergencia_canal_ingreso",
+        "cols": ["codigo", "nombre", "descripcion", "requiere_operador"],
+        "fecha_mod": "fecha_modificacion",
+    },
+    "emergencia_organismo_derivacion": {
+        "pk": "id_emergencia_organismo_derivacion",
+        "cols": ["codigo", "nombre", "descripcion", "telefono_contacto", "es_municipal"],
+        "fecha_mod": "fecha_modificacion",
+    },
+    "emergencia_tipo": {
+        "pk": "id_emergencia_tipo",
+        "cols": ["id_subarea", "codigo_oficial", "codigo", "nombre", "descripcion",
+                 "id_prioridad_default", "id_organismo_derivacion_default", "requiere_911", "es_emergencia"],
+        "fecha_mod": "fecha_modificacion",
+    },
+    "emergencia_subtipo": {
+        "pk": "id_emergencia_subtipo",
+        "cols": ["id_tipo", "codigo", "nombre", "descripcion", "id_prioridad_override"],
         "fecha_mod": "fecha_modificacion",
     },
 }
