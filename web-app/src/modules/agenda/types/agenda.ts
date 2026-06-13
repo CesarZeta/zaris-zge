@@ -1,7 +1,7 @@
 // Tipos del modulo Agenda - matchean los schemas Pydantic v2 del backend.
 
 export type TipoRecurso = 'agente' | 'equipo' | 'espacio'
-export type TipoOcupacion = 'ot' | 'evento' | 'turno'
+export type TipoOcupacion = 'ot' | 'evento' | 'turno' | 'bloqueo'
 export type TipoQR = 'nominal' | 'generico' | 'ninguno'
 export type OrigenReserva = 'backoffice' | 'autoservicio'
 
