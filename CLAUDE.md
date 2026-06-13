@@ -1076,7 +1076,7 @@ Para sumar adjuntos a otra entidad (ej: OTs), replicar el patrón: nueva tabla `
 ### Estructura del módulo (cierre B2, 2026-05-14)
 
 - **5 tabs** en `AgendaLayout`: **Vistas / Eventos / Disponibilidad / Conflictos / Config**. Dentro de Vistas, sub-toggle **Día / Semana / Mes** (persistido en `agendaStore.vistaGrilla`). URLs viejas `/agenda/timeline`, `/agenda/mensual` redirigen a Vistas. El tab **Disponibilidad** (`DisponibilidadView.tsx`, 2026-05-28) gestiona **Feriados** (`agenda_feriado`) y **Novedades de agentes** (`agente_novedad`: inasistencias/licencias, mig 69) — ambos restan disponibilidad efectiva. CRUD vía router `agenda_novedades.py` (`/api/v1/agenda/novedades` + `/feriados`, nivel ≤ 2). API client en `agenda/api/novedadesApi.ts`.
-- **Pills de tipo de recurso** (4, con conteo desde `/recursos/conteos`): Agentes / Equipos·OT / Esp. atendidos·Turnos / Esp. eventos·Entradas. **NO hay opción "Todos"** (ver Performance). **Las pills NO son intercambiables** — cada una sirve a un módulo distinto: Equipos→asignación de OT, Esp. atendidos→Turnos, Esp. eventos→Entradas.
+- **Pills de tipo de recurso** (4, con conteo desde `/recursos/conteos`): Agentes / Equipos·OT / Esp. atendidos·Turnos / Esp. eventos·Entradas. **NO hay opción "Todos"** (ver Performance). **Las pills NO son intercambiables** — cada una sirve a un módulo distinto: Equipos→asignación de OT, Esp. atendidos→Turnos, Esp. eventos→Entradas. **Pill inicial por rol (2026-06-12):** supervisor (nivel 2) aterriza en Equipos·OT; el resto en Agentes. Una vez por carga del bundle (flag `pillInicialAplicada` en `agendaStore` + effect en `VistasView`); después manda el click del usuario.
 - **DnD solo en Vista Día y Semana** (`@dnd-kit/core@6.3.1`, PointerSensor + KeyboardSensor). Bloques tipo `evento` no son arrastrables (se editan desde el modal del evento).
 
 ### Convenciones del módulo
@@ -1132,6 +1132,7 @@ Mezclan PUT con PATCH. Antes de scriptear un smoke o codear un cliente, `grep "@
 
 **Router `agenda_espacios.py`** (`/api/v1/agenda/espacios`): GET listado (filtros `atendido`/`q`), POST, GET `/{id}` (con `agentes_vinculados` + `cant_agentes`), PUT, DELETE (soft + cascade N:M), GET/POST/DELETE `/{id}/agentes[/{id_ea}]`.
 **Router `agenda_disponibilidad.py`** (`/api/v1/agenda/disponibilidad`): GET (filtros tipo/id), POST, PUT `/{id}`, DELETE `/{id}` (soft), GET `/efectiva?tipo_recurso=&id_recurso=&fecha=`.
+**Router `agenda_publico.py`** (`/api/v1/agenda/publico`, SIN auth — autoservicio de eventos §33): GET `/evento/{token_publico}` · POST `/evento/{token_publico}/reservar` (busca/crea ciudadano por DNI) · GET/DELETE `/reserva/{token_reserva}`. Tokens UUID, 404 genérico anti-enumeración.
 Permisos: `nivel_acceso <= 2` muta (espacios/disponibilidad/novedades); cualquier autenticado lee. **Las mutaciones de `agenda_v2.py`** (eventos/encargados/reservas/ocupaciones/resolver-conflictos) **exigen nivel ≤ 3** vía dependency `require_operador` (desde 2026-06-12 — antes solo pedían JWT y un Consultor nivel 4 podía mutar por curl; espejo de [[guard_nivel_endpoint_no_solo_ui]]). Los GET de agenda_v2 siguen con `get_current_user` pelado.
 
 Smoke reproducible: `smoke_agenda.ps1` (raíz), 15 endpoints clave.
