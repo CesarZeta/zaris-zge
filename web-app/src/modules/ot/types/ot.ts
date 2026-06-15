@@ -165,6 +165,17 @@ export interface SlotsRecursoResponse {
   slots: SlotLibre[]
 }
 
+// GET /ot/auto-asignar-sugerencia — primer recurso disponible de la subarea
+export interface AutoAsignarSugerencia {
+  sugerencia: {
+    tipo_recurso: TipoRecursoOT
+    id_recurso: number
+    nombre: string
+    slot: SlotLibre
+  } | null
+  motivo?: string
+}
+
 // POST /ot/con-agenda — crea OT + ocupacion en la agenda en una transaccion
 export interface CrearOTConAgendaBody {
   id_reclamo: number
