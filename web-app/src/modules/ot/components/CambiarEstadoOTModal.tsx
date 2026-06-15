@@ -11,19 +11,29 @@ interface Props {
   onSuccess?: () => void
 }
 
-const ESTADOS: EstadoOT[] = ['En gestión', 'En espera', 'Pendiente', 'Terminada']
+// Grafo de transiciones permitidas de OT. Espeja TRANSICIONES_OT del backend
+// (ordenes_trabajo.py). El dropdown solo ofrece destinos alcanzables desde el
+// estado actual; el backend es la fuente de verdad y rechaza el resto.
+const TRANSICIONES_OT: Record<EstadoOT, EstadoOT[]> = {
+  'En gestión': ['En espera', 'Pendiente', 'Terminada'],
+  'En espera':  ['En gestión', 'Terminada'],
+  'Pendiente':  ['En gestión'],
+  'Terminada':  [],
+  'Cancelada':  [],
+}
 
 export function CambiarEstadoOTModal({ open, ot, onClose, onSuccess }: Props) {
   const push = useNotificationsStore((s) => s.push)
   const mut = useCambiarEstadoOT()
 
-  const [estadoNuevo, setEstadoNuevo] = useState<EstadoOT>('En gestión')
+  const alcanzables = ot ? (TRANSICIONES_OT[ot.estado_nombre] ?? []) : []
+  const [estadoNuevo, setEstadoNuevo] = useState<EstadoOT>(alcanzables[0] ?? 'En gestión')
   const [obs, setObs] = useState('')
 
   useEffect(() => {
     if (open && ot) {
-      // Sugerencia por defecto: si está En gestión, ofrecer En espera; sino, En gestión.
-      setEstadoNuevo(ot.estado_nombre === 'En gestión' ? 'En espera' : 'En gestión')
+      const opciones = TRANSICIONES_OT[ot.estado_nombre] ?? []
+      setEstadoNuevo(opciones[0] ?? ot.estado_nombre)
       setObs('')
     }
   }, [open, ot])
@@ -63,7 +73,7 @@ export function CambiarEstadoOTModal({ open, ot, onClose, onSuccess }: Props) {
       footer={
         <>
           <button onClick={onClose} disabled={mut.isPending} style={btnGhost}>Cancelar</button>
-          <button onClick={confirmar} disabled={mut.isPending} style={btnPrimary}>
+          <button onClick={confirmar} disabled={mut.isPending || alcanzables.length === 0} style={btnPrimary}>
             {mut.isPending ? 'Aplicando…' : 'Confirmar'}
           </button>
         </>
@@ -89,17 +99,28 @@ export function CambiarEstadoOTModal({ open, ot, onClose, onSuccess }: Props) {
           </div>
         )}
 
-        <Field label="Nuevo estado">
-          <select
-            value={estadoNuevo}
-            onChange={(e) => setEstadoNuevo(e.target.value as EstadoOT)}
-            style={inputStyle}
-          >
-            {ESTADOS.map((e) => (
-              <option key={e} value={e}>{e === 'Terminada' ? 'Terminada (cerrar OT)' : e}</option>
-            ))}
-          </select>
-        </Field>
+        {alcanzables.length === 0 ? (
+          <div style={{
+            padding: '10px 13px', background: 'var(--surface-300)',
+            border: '1px solid var(--border-primary)', borderRadius: 8,
+            color: 'var(--fg-2)', fontSize: '0.82rem', lineHeight: 1.5,
+          }}>
+            La OT está en estado <strong>{ot.estado_nombre}</strong> (final). No admite
+            cambios de estado.
+          </div>
+        ) : (
+          <Field label="Nuevo estado">
+            <select
+              value={estadoNuevo}
+              onChange={(e) => setEstadoNuevo(e.target.value as EstadoOT)}
+              style={inputStyle}
+            >
+              {alcanzables.map((e) => (
+                <option key={e} value={e}>{e === 'Terminada' ? 'Terminada (cerrar OT)' : e}</option>
+              ))}
+            </select>
+          </Field>
+        )}
 
         <Field label="Observaciones" hint="Opcional. Queda en el detalle de la OT.">
           <textarea
