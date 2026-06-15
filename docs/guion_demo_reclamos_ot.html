@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guión de demo — Reclamos y Órdenes de Trabajo · ZARIS</title>
+<style>
+  :root {
+    --zaris-orange: #f54e00;
+    --zaris-cream: #f2f1ed;
+    --fg-1: #26251e;
+    --fg-2: rgba(38,37,30,.72);
+    --fg-3: rgba(38,37,30,.55);
+    --surface-100: #f7f7f4;
+    --surface-300: #ebeae5;
+    --border: rgba(38,37,30,.12);
+    --ok: #1f8a65;
+    --warn: #b8860b;
+    --danger: #cf2d56;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--zaris-cream); color: var(--fg-1);
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    line-height: 1.6; font-size: 15px;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 32px 24px 80px; }
+  .hero {
+    border-left: 5px solid var(--zaris-orange);
+    background: var(--surface-100); border-radius: 0 12px 12px 0;
+    padding: 22px 26px; margin-bottom: 28px;
+  }
+  .tag {
+    display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--zaris-orange);
+    background: rgba(245,78,0,.1); padding: 3px 10px; border-radius: 999px; margin-bottom: 10px;
+  }
+  h1 { margin: 0 0 6px; font-size: 26px; }
+  h2 {
+    margin: 36px 0 12px; font-size: 20px; padding-bottom: 6px;
+    border-bottom: 2px solid var(--border);
+  }
+  h3 { margin: 22px 0 8px; font-size: 16px; color: var(--fg-1); }
+  p { margin: 8px 0; }
+  a { color: var(--zaris-orange); }
+  code {
+    font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 13px;
+    background: var(--surface-300); padding: 1px 6px; border-radius: 5px;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--surface-300); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-3); }
+  ol, ul { margin: 8px 0; padding-left: 22px; }
+  li { margin: 5px 0; }
+  blockquote {
+    margin: 14px 0; padding: 12px 16px; border-radius: 8px;
+    background: rgba(96,165,200,.1); border-left: 4px solid #3b82a8;
+  }
+  blockquote.warn { background: rgba(184,134,11,.1); border-left-color: var(--warn); }
+  blockquote.ok { background: rgba(31,138,101,.1); border-left-color: var(--ok); }
+  blockquote p { margin: 4px 0; }
+  .ticket { font-family: "JetBrains Mono", ui-monospace, monospace; font-weight: 700; color: var(--zaris-orange); }
+  .badge {
+    display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 9px;
+    border-radius: 999px; text-transform: uppercase; letter-spacing: .03em;
+  }
+  .b-sa { background: rgba(207,45,86,.14); color: var(--danger); }
+  .b-eg { background: rgba(31,138,101,.14); color: var(--ok); }
+  .b-ee { background: rgba(184,134,11,.16); color: var(--warn); }
+  .b-au { background: rgba(106,27,154,.14); color: #6a1b9a; }
+  .b-re { background: rgba(38,37,30,.1); color: var(--fg-2); }
+  .flow {
+    background: var(--surface-100); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 16px; margin: 12px 0; font-size: 14px;
+  }
+  .flow b { color: var(--zaris-orange); }
+  .step-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 999px; background: var(--zaris-orange);
+    color: #fff; font-size: 12px; font-weight: 700; margin-right: 8px; flex-shrink: 0;
+  }
+  footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--fg-3); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <span class="tag">Guión de demostración · Uso interno</span>
+    <h1>Demo del circuito de Reclamos y Órdenes de Trabajo</h1>
+    <p style="margin:0;color:var(--fg-2)">Recorrido paso a paso para mostrar en vivo cómo nace un reclamo, se genera la orden de trabajo, se planifica en la agenda y se cierra — incluyendo subreclamos y auditoría. Pensado para una presentación o capacitación.</p>
+  </div>
+
+  <blockquote class="warn">
+    <p><strong>Esto NO es el manual operativo.</strong> Es un guión de demo con datos de ejemplo ya cargados. Los manuales de uso de cada módulo están en el módulo <strong>Guías</strong> del sistema (Reclamos, OT, Agenda, etc.).</p>
+  </blockquote>
+
+  <h2>Antes de empezar</h2>
+  <table>
+    <tr><th>Qué</th><th>Detalle</th></tr>
+    <tr><td>Entorno</td><td>Producción — <code>zge.zaris.com.ar</code></td></tr>
+    <tr><td>Usuario</td><td>Administrador (ve todas las subáreas y todas las mesas)</td></tr>
+    <tr><td>Día del demo</td><td><strong>Un día de semana (lunes a viernes).</strong> La disponibilidad de los recursos de la demo es L–V de 08:00 a 16:00. En fin de semana la agenda sale vacía y no aparecen horarios para asignar.</td></tr>
+    <tr><td>Subárea usada</td><td><strong>Mantenimiento general</strong> — tiene una cuadrilla con 3 agentes y varios agentes individuales con horario cargado.</td></tr>
+  </table>
+
+  <h2>1. Tickets ya cargados para la demo</h2>
+  <p>Estos tres reclamos ya están creados en estado <span class="badge b-sa">Sin asignar</span>, listos para arrancar desde la generación de la orden de trabajo. No hace falta crearlos.</p>
+  <table>
+    <tr><th>Ticket</th><th>Tipo de reclamo</th><th>Auditoría</th><th>Para qué sirve en la demo</th></tr>
+    <tr><td><span class="ticket">REC-2026-000048</span></td><td>Corte de pasto y poda básica</td><td>No</td><td>OT a un <strong>agente</strong> → cierre <strong>directo</strong> a Resuelto</td></tr>
+    <tr><td><span class="ticket">REC-2026-000049</span></td><td>Corte de pasto y poda básica</td><td>No</td><td>OT a una <strong>cuadrilla</strong> + botón <strong>Auto-asignar</strong></td></tr>
+    <tr><td><span class="ticket">REC-2026-000050</span></td><td>Ejecución y reparación de revoques</td><td><strong>Sí</strong></td><td>OT → <strong>Mesa de Auditoría</strong> + <strong>subreclamo</strong></td></tr>
+  </table>
+
+  <h3>Recursos de la subárea Mantenimiento general</h3>
+  <ul>
+    <li><strong>Cuadrilla Mantenimiento General</strong> — 3 agentes — disponible L–V 08:00–16:00.</li>
+    <li><strong>Agentes individuales</strong> con horario: Ybarra, Echeverría, Huanca — L–V 08:00–16:00.</li>
+  </ul>
+
+  <h2>2. (Opcional) Generar un reclamo desde cero</h2>
+  <p>Si querés mostrar el alta además de los tickets ya cargados:</p>
+  <ol>
+    <li><span class="step-num">1</span>Módulo <strong>Reclamos</strong> → botón <strong>+ Nuevo reclamo</strong>.</li>
+    <li><span class="step-num">2</span>Buscar al ciudadano por DNI o apellido (autocompletado). Si no existe, alta inline con <strong>+ Nuevo</strong>.</li>
+    <li><span class="step-num">3</span>Elegir <strong>tipo</strong> (autocompletado: tipear "corte de pasto"), prioridad y descripción.</li>
+    <li><span class="step-num">4</span><strong>Ubicación</strong>: tipear la dirección en el buscador del mapa o picar el pin directamente.</li>
+    <li><span class="step-num">5</span>Guardar → el reclamo nace en <span class="badge b-sa">Sin asignar</span> con su número <span class="ticket">REC-2026-0000XX</span>.</li>
+  </ol>
+
+  <h2>3. OT a un agente + cierre directo <span class="ticket" style="font-size:14px">(REC-2026-000048)</span></h2>
+  <div class="flow">Sin asignar → <b>generar OT a agente</b> → En gestión → <b>OT Terminada</b> → Resuelto</div>
+  <ol>
+    <li><span class="step-num">1</span>Módulo <strong>OT</strong> → tab <strong>Asignar</strong>. Aparece la bandeja de reclamos sin asignar.</li>
+    <li><span class="step-num">2</span>Click en <span class="ticket">REC-2026-000048</span> → se abre el <strong>Planificador</strong> a la derecha.</li>
+    <li><span class="step-num">3</span>Modo <strong>Agente</strong> → elegir <strong>Ybarra</strong> (buscador con autocompletado).</li>
+    <li><span class="step-num">4</span>Elegir una <strong>fecha</strong> (día de semana) → aparecen los <strong>slots libres</strong> como chips (08:00, 09:00, … hasta 15:00).</li>
+    <li><span class="step-num">5</span>Click en un slot → botón <strong>Crear OT y agendar</strong>. El reclamo pasa a <span class="badge b-eg">En gestión</span> y la OT queda como bloque en la Agenda del agente.</li>
+    <li><span class="step-num">6</span>Ir a <strong>OT → Mesa del Agente</strong> → la OT aparece en "Mis OTs" → <strong>Cambiar estado → Terminada</strong>.</li>
+    <li><span class="step-num">7</span>Como el tipo <strong>no</strong> tiene auditoría, el reclamo pasa <strong>directo</strong> a <span class="badge b-re">Resuelto</span>.</li>
+  </ol>
+
+  <h2>4. OT a una cuadrilla + Auto-asignar <span class="ticket" style="font-size:14px">(REC-2026-000049)</span></h2>
+  <ol>
+    <li><span class="step-num">1</span><strong>OT → Asignar</strong> → click en <span class="ticket">REC-2026-000049</span> → Planificador.</li>
+    <li><span class="step-num">2</span>Mostrar el botón <strong>Auto-asignar al primero disponible</strong>: el sistema recorre la subárea y <strong>preselecciona la Cuadrilla Mantenimiento + el primer slot libre</strong> (prioriza cuadrillas sobre agentes). Se revisa la sugerencia y se confirma.</li>
+    <li><span class="step-num">3</span>O de forma manual: modo <strong>Equipo</strong> → <strong>Cuadrilla Mantenimiento General</strong> → fecha → slots.</li>
+    <li><span class="step-num">4</span>Crear OT y agendar.</li>
+    <li><span class="step-num">5</span>Verificar en el módulo <strong>Agenda</strong> (pastilla <strong>Equipos · OT</strong>) que la ocupación aparece en la grilla de la cuadrilla.</li>
+  </ol>
+  <blockquote class="ok">
+    <p><strong>Punto a destacar:</strong> la disponibilidad de la cuadrilla es la <strong>unión de los horarios de sus agentes</strong>. Lo que muestra la Agenda y lo que ofrece el Planificador <strong>coinciden</strong> (mismos slots). Una cuadrilla sin agentes no ofrece horarios, salvo que se active el ajuste de override en Configuración → Sistema.</p>
+  </blockquote>
+
+  <h2>5. Subreclamo + Mesa de Auditoría <span class="ticket" style="font-size:14px">(REC-2026-000050)</span></h2>
+  <p>El caso más completo: muestra subreclamos, el bloqueo del padre y la auditoría.</p>
+  <div class="flow">Sin asignar → <b>subreclamo</b> (padre En espera) → resolver subreclamo (padre vuelve a En gestión) → OT → Terminada → <b>En auditoría</b> → aprobar/rechazar → Resuelto</div>
+  <ol>
+    <li><span class="step-num">1</span>Abrir el detalle de <span class="ticket">REC-2026-000050</span> → botón <strong>Generar subreclamo</strong> (ej.: "Falta comprar pintura"). El reclamo padre pasa a <span class="badge b-ee">En espera</span>.</li>
+    <li><span class="step-num">2</span>Resolver el subreclamo (cambiar estado → En gestión → Resuelto). Al cerrar el último subreclamo, <strong>el padre vuelve solo a</strong> <span class="badge b-eg">En gestión</span>.</li>
+    <li><span class="step-num">3</span><strong>OT → Asignar</strong> → asignar el reclamo a un agente de Mantenimiento, agendar, y marcar la OT como <strong>Terminada</strong>.</li>
+    <li><span class="step-num">4</span>Como este tipo <strong>sí tiene auditoría</strong>, el reclamo pasa a <span class="badge b-au">En auditoría</span> y se crea automáticamente una <strong>OT de auditoría</strong>.</li>
+    <li><span class="step-num">5</span><strong>OT → Mesa de Auditoría</strong> → aparece la OT de auditoría → <strong>Aprobar</strong> (el reclamo pasa a Resuelto) o <strong>Rechazar</strong> (genera retrabajo: vuelve a En gestión con una OT Pendiente).</li>
+  </ol>
+
+  <h2>6. Qué mirar en cada pantalla</h2>
+  <table>
+    <tr><th>Pantalla</th><th>Qué mostrar</th></tr>
+    <tr><td>Búsqueda de Reclamos</td><td>Filtros por estado, área, prioridad y texto. Hay casos cargados en los seis estados.</td></tr>
+    <tr><td>Mesa Supervisor (OT)</td><td>Tab <strong>Asignar</strong> (reclamos sin asignar) y tab <strong>Reasignar</strong> (reclamos con OT activa).</td></tr>
+    <tr><td>Agenda</td><td>Pastillas <strong>Agentes</strong> y <strong>Equipos · OT</strong>. Las órdenes de trabajo aparecen como bloques de ocupación.</td></tr>
+    <tr><td>Detalle del reclamo</td><td>El <strong>historial</strong> deja registrado cada paso: ingresado, OT generada, en espera, reactivado, resuelto…</td></tr>
+  </table>
+
+  <h2>7. Estados — referencia rápida</h2>
+  <p>
+    <span class="badge b-sa">Sin asignar</span>
+    <span class="badge b-eg">En gestión</span>
+    <span class="badge b-ee">En espera</span>
+    <span class="badge b-au">En auditoría</span>
+    <span class="badge b-re">Resuelto</span>
+  </p>
+  <ul>
+    <li><strong>Sin asignar</strong>: reclamo ingresado, todavía sin orden de trabajo.</li>
+    <li><strong>En gestión</strong>: tiene una OT en ejecución.</li>
+    <li><strong>En espera</strong>: bloqueado por un subreclamo activo.</li>
+    <li><strong>En auditoría</strong>: la OT operativa se cerró y está pendiente de revisión.</li>
+    <li><strong>Resuelto / Cancelado</strong>: estados finales.</li>
+  </ul>
+
+  <footer>
+    ZARIS · Gestión Estatal — Guión de demostración del circuito de Reclamos y Órdenes de Trabajo. Documento de uso interno (no es el manual operativo).
+  </footer>
+
+</div>
+</body>
+</html>
