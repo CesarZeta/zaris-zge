@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
-import { ClipboardList, CalendarClock } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ClipboardList, CalendarClock, Wand2 } from 'lucide-react'
 import { useNotificationsStore } from '../../../stores/notifications'
 import {
   useSlotsRecurso,
   useCrearOT, useCrearOTConAgenda,
 } from '../hooks/useOT'
+import { getAutoAsignarSugerencia } from '../api/otApi'
 import type { MesaSupervisorRow, SlotLibre, TipoRecursoOT } from '../types/ot'
 import { BadgePrioridad } from '../lib/format'
 // Reuso del RecursoPicker de Agenda (cross-module import OK: comparten
@@ -35,18 +36,33 @@ export function PlanificadorOT({ reclamo, onDone }: Props) {
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10))
   const [slotSel, setSlotSel] = useState<SlotLibre | null>(null)
   const [obs, setObs] = useState('')
+  const [autoBuscando, setAutoBuscando] = useState(false)
+
+  // El auto-asignar setea recurso Y slot a la vez; sin esta ref el effect que
+  // limpia el slot al cambiar el recurso borraria el slot sugerido.
+  const slotSugeridoRef = useRef<SlotLibre | null>(null)
 
   // Reset al cambiar de reclamo.
   useEffect(() => {
+    slotSugeridoRef.current = null
     setModo('agente')
     setIdRecurso('')
     setFecha(new Date().toISOString().slice(0, 10))
     setSlotSel(null)
     setObs('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reclamo?.id_reclamo])
 
-  // Al cambiar recurso o fecha, el slot elegido deja de ser valido.
-  useEffect(() => { setSlotSel(null) }, [modo, idRecurso, fecha])
+  // Al cambiar recurso o fecha, el slot elegido deja de ser valido — salvo que
+  // venga de una sugerencia de auto-asignar (entonces lo respetamos una vez).
+  useEffect(() => {
+    if (slotSugeridoRef.current) {
+      setSlotSel(slotSugeridoRef.current)
+      slotSugeridoRef.current = null
+    } else {
+      setSlotSel(null)
+    }
+  }, [modo, idRecurso, fecha])
 
   const slotsQ = useSlotsRecurso(
     idRecurso !== '' ? modo : null,
@@ -67,6 +83,32 @@ export function PlanificadorOT({ reclamo, onDone }: Props) {
         </div>
       </div>
     )
+  }
+
+  async function autoAsignar() {
+    if (!reclamo) return
+    setAutoBuscando(true)
+    try {
+      const r = await getAutoAsignarSugerencia(reclamo.id_reclamo, fecha, DURACION_MIN)
+      if (!r.sugerencia) {
+        push({ kind: 'info', title: 'Sin recurso disponible',
+          body: r.motivo ?? 'Ningún equipo ni agente de la subárea tiene horario libre ese día.' })
+        return
+      }
+      const s = r.sugerencia
+      // Aplicar modo + recurso + slot. El slot va por la ref para que el effect
+      // de reset no lo borre cuando cambie idRecurso.
+      slotSugeridoRef.current = s.slot
+      setModo(s.tipo_recurso)
+      setIdRecurso(s.id_recurso)
+      push({ kind: 'success',
+        title: `Sugerido: ${s.tipo_recurso === 'equipo' ? 'equipo' : 'agente'} ${s.nombre}`,
+        body: `Slot ${s.slot.hora_inicio.slice(0, 5)}–${s.slot.hora_fin.slice(0, 5)}. Revisá y confirmá.` })
+    } catch (e) {
+      push({ kind: 'error', title: 'No se pudo auto-asignar', body: (e as Error).message })
+    } finally {
+      setAutoBuscando(false)
+    }
   }
 
   async function crearAgendado() {
@@ -136,6 +178,17 @@ export function PlanificadorOT({ reclamo, onDone }: Props) {
           </div>
         )}
       </div>
+
+      {/* Auto-asignar: primer recurso de la subarea con hueco en la fecha */}
+      <button
+        onClick={autoAsignar}
+        disabled={autoBuscando || pendiente}
+        style={btnAuto}
+        title="Busca el primer equipo o agente de la subárea con horario libre en la fecha elegida y lo preselecciona para que confirmes."
+      >
+        <Wand2 size={14} strokeWidth={1.75} />
+        {autoBuscando ? 'Buscando recurso…' : 'Auto-asignar al primero disponible'}
+      </button>
 
       {/* Recurso */}
       <div style={{ display: 'flex', gap: 14 }}>
@@ -295,4 +348,11 @@ const btnGhostLink: React.CSSProperties = {
   padding: '6px 12px', background: 'transparent', color: 'var(--fg-2)',
   border: '1px solid var(--border-medium)', borderRadius: 8,
   fontFamily: 'var(--font-display)', fontSize: '0.8rem', cursor: 'pointer',
+}
+
+const btnAuto: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+  padding: '8px 12px', background: 'var(--surface-300)', color: 'var(--fg-1)',
+  border: '1px dashed var(--zaris-orange)', borderRadius: 8,
+  fontFamily: 'var(--font-display)', fontSize: '0.82rem', fontWeight: 500, cursor: 'pointer',
 }
