@@ -221,16 +221,17 @@
   <figcaption>Figura 3 — Planificador inline: elegí agente o equipo, fecha y horario, generá la OT</figcaption>
 </figure>
 
+<blockquote class="info"><p><strong>Atajo — Auto-asignar al primero disponible:</strong> el botón <strong>“Auto-asignar al primero disponible”</strong> (arriba del selector de recurso) recorre las cuadrillas y agentes de la subárea del reclamo y <strong>preselecciona el primero con un horario libre</strong> en la fecha elegida (prioriza cuadrillas sobre agentes). Revisás la sugerencia y confirmás. Útil cuando la subárea tiene muchos recursos y no querés probar uno por uno.</p></blockquote>
 <p>Desde el panel hacés todo en un solo lugar:</p>
 <ol>
   <li><span class="step-num">1</span><strong>Confirmás el reclamo elegido</strong> (resumen arriba del panel con tipo, prioridad, descripción).</li>
   <li><span class="step-num">2</span><strong>Elegís a quién asignar</strong>:
     <ul>
       <li><em>Agente individual</em>: buscador con autocompletado (escribís parte del apellido).</li>
-      <li><em>Equipo</em>: selector de equipos del municipio.</li>
+      <li><em>Equipo (cuadrilla)</em>: selector de cuadrillas de la subárea. La disponibilidad de la cuadrilla es la <strong>unión de los horarios de sus agentes</strong>: los slots que se ofrecen salen de sumar las agendas de todos sus integrantes. Una cuadrilla sin agentes no ofrece slots (salvo el ajuste de override en Configuración → Sistema).</li>
     </ul>
   </li>
-  <li><span class="step-num">3</span><strong>Opcionalmente reservás horario en agenda</strong>: fecha + hora desde/hasta. El sistema valida que el agente esté disponible en ese rango (no choca con otra OT).</li>
+  <li><span class="step-num">3</span><strong>Elegís fecha y un slot libre</strong>: al elegir recurso y fecha, el panel muestra los <strong>slots libres</strong> (los huecos de la disponibilidad efectiva del recurso menos lo que ya tiene ocupado). Hacés click en uno para reservar ese horario. También podés <em>Crear OT sin agendar</em> y planificarla más tarde desde la Agenda.</li>
   <li><span class="step-num">4</span><strong>Observaciones</strong> para que el agente sepa qué hacer.</li>
   <li><span class="step-num">5</span>Click <strong>Generar OT</strong>. La OT queda creada y el reclamo pasa a <span class="badge en-gestion">En gestión</span>.</li>
 </ol>
