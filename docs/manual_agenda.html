@@ -190,7 +190,7 @@
 <table>
   <tr><th>Recurso</th><th>Dónde se cargan sus franjas</th><th>Particularidad</th></tr>
   <tr><td>Agente</td><td>Maestros → Agentes → sección <em>Horario de atención</em></td><td>Varias franjas posibles (ej.: turno mañana y turno tarde), cada una con días de la semana y rango horario</td></tr>
-  <tr><td>Equipo (cuadrilla)</td><td>Maestros → Equipos → misma sección de horario</td><td>Solo los grupos de tipo <em>trabajo de reclamos</em> llevan horario</td></tr>
+  <tr><td>Equipo (cuadrilla)</td><td>No se carga directo: surge de sus agentes</td><td>La disponibilidad de una cuadrilla es la <strong>unión de los horarios de sus agentes</strong> activos. Una cuadrilla sin agentes no tiene disponibilidad (salvo el ajuste de override, ver abajo)</td></tr>
   <tr><td>Espacio desatendido</td><td>Agenda → config → el espacio</td><td>Usa su horario propio (es un lugar que se reserva, sin personal fijo)</td></tr>
   <tr><td>Espacio atendido</td><td>Agenda → config → el espacio + agentes vinculados</td><td>Su disponibilidad es la <strong>intersección</strong> entre el horario del espacio y el horario de los agentes que lo atienden</td></tr>
 </table>
@@ -201,6 +201,7 @@
 </figure>
 <blockquote class="warn"><p><strong>Un recurso sin franjas no tiene disponibilidad:</strong> aparece todo rayado en la grilla y no ofrece slots para OT ni turnos. Si un agente o espacio se ve “todo gris”, lo primero a revisar es si tiene franjas cargadas.</p>
 <p><strong>Un espacio atendido sin agentes vinculados tampoco tiene disponibilidad</strong>, aunque tenga horario propio: necesita al menos un agente que lo atienda.</p></blockquote>
+<blockquote class="info"><p><strong>Cuadrillas sin agentes (ajuste opcional):</strong> normalmente una cuadrilla sin agentes no tiene disponibilidad. Si el municipio lo necesita, en <em>Configuración → Sistema</em> existe el ajuste <strong>“Equipos sin agentes usan su horario propio”</strong>: al activarlo, una cuadrilla sin agentes pasa a usar el horario cargado en el propio equipo. Por defecto está desactivado.</p></blockquote>
 
 <h2 id="ocupaciones">6. Ocupaciones: los bloques de la agenda</h2>
 <p>Una <strong>ocupación</strong> es un bloque de tiempo asignado a un recurso. Hay cuatro tipos:</p>
