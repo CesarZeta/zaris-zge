@@ -52,8 +52,14 @@ async def disponibilidad_efectiva(
     if await _es_feriado(session, fecha, None):
         return []
 
-    if tipo_recurso in ("agente", "equipo"):
-        return await _disponibilidad_directa(session, tipo_recurso, id_recurso, fecha)
+    if tipo_recurso == "agente":
+        return await _disponibilidad_directa(session, "agente", id_recurso, fecha)
+
+    if tipo_recurso == "equipo":
+        # La disponibilidad de un equipo es la UNION de sus agentes (mig 91),
+        # NO su horario propio. Unifica la grilla de Agenda con el planificador
+        # de OT, que ya lo calculaba asi.
+        return await _disponibilidad_equipo_union(session, id_recurso, fecha)
 
     if tipo_recurso == "espacio":
         # 1) Es atendido?
@@ -187,6 +193,48 @@ def _restar_intervalos(
 _DIA_COMPLETO: tuple[dtime, dtime] = (dtime(0, 0, 0), dtime(23, 59, 59))
 
 
+async def _override_equipo_horario_propio(session: AsyncSession) -> bool:
+    """True si la config global habilita que un equipo SIN agentes use su propio
+    horario (override, mig 91). Default False: la disponibilidad de un equipo es
+    la union de sus agentes, y un equipo sin agentes no tiene disponibilidad.
+    Fail-safe: clave ausente / error -> False (comportamiento por agentes)."""
+    try:
+        v = await session.scalar(text(
+            "SELECT valor FROM configuracion_general "
+            "WHERE clave = 'equipos_sin_agentes_usan_horario_propio' AND activo = TRUE"
+        ))
+        return str(v).strip().lower() == "true" if v is not None else False
+    except Exception:
+        return False
+
+
+async def _disponibilidad_equipo_union(
+    session: AsyncSession, id_equipo: int, fecha: date,
+) -> list[dict[str, Any]]:
+    """Disponibilidad de un equipo = UNION de los horarios de sus agentes activos
+    (decision de modelo 2026-06-15). Cada agente ya trae restadas sus novedades
+    via _disponibilidad_directa. Si el equipo no tiene agentes:
+      - override ON  -> usa el horario propio del equipo (disponibilidad_recurso).
+      - override OFF -> [] (sin disponibilidad).
+    """
+    agentes_ids = [int(r["id_agente"]) for r in (await session.execute(text("""
+        SELECT id_agente FROM equipo_agentes
+        WHERE id_equipo = :id AND activo = TRUE
+    """), {"id": id_equipo})).mappings().all()]
+
+    if not agentes_ids:
+        if await _override_equipo_horario_propio(session):
+            return await _disponibilidad_directa(session, "equipo", id_equipo, fecha)
+        return []
+
+    union: list[tuple[dtime, dtime, Optional[str]]] = []
+    for ag_id in agentes_ids:
+        for r in await _disponibilidad_directa(session, "agente", ag_id, fecha):
+            union.append((r["hora_inicio"], r["hora_fin"], r.get("etiqueta")))
+    merged = _merge_rangos(union)
+    return [{"hora_inicio": hi, "hora_fin": hf, "etiqueta": et} for (hi, hf, et) in merged]
+
+
 async def _es_feriado(session: AsyncSession, fecha: date, id_municipio: Optional[int]) -> bool:
     """True si la fecha es feriado activo (ámbito nacional/provincial/municipal).
     Por ahora cualquier feriado activo bloquea (no se filtra por municipio porque
@@ -253,12 +301,31 @@ async def disponibilidad_efectiva_batch(
         for r in rows:
             espacio_a_agentes.setdefault(int(r["id_espacio"]), []).append(int(r["id_agente"]))
 
+    # Equipos pedidos: resolver sus agentes en bulk. La disponibilidad de un
+    # equipo es la union de sus agentes (mig 91), no su horario propio.
+    equipos_ids: list[int] = [id_r for (t, id_r, _a) in recursos if t == "equipo"]
+    equipo_a_agentes: dict[int, list[int]] = {}
+    if equipos_ids:
+        rows = (await session.execute(text("""
+            SELECT id_equipo, id_agente
+            FROM equipo_agentes
+            WHERE activo = TRUE AND id_equipo = ANY(:ids)
+        """), {"ids": equipos_ids})).mappings().all()
+        for r in rows:
+            equipo_a_agentes.setdefault(int(r["id_equipo"]), []).append(int(r["id_agente"]))
+    # Override: equipo sin agentes usa su horario propio (una sola lectura de config).
+    override_equipo = await _override_equipo_horario_propio(session)
+
     # Identificar set de (tipo, id) que necesitamos en disponibilidad_recurso:
     # los recursos pedidos directamente + los agentes vinculados a espacios atendidos.
     pares_disp: set[tuple[str, int]] = set()
     for (t, id_r, _atend) in recursos:
         pares_disp.add((t, id_r))
     for ag_ids in espacio_a_agentes.values():
+        for ag_id in ag_ids:
+            pares_disp.add(("agente", ag_id))
+    # Agentes de los equipos: necesitamos su disponibilidad para la union.
+    for ag_ids in equipo_a_agentes.values():
         for ag_id in ag_ids:
             pares_disp.add(("agente", ag_id))
 
@@ -278,6 +345,8 @@ async def disponibilidad_efectiva_batch(
         id_r for (t, id_r, _a) in recursos if t == "agente"
     }
     for ag_ids in espacio_a_agentes.values():
+        agentes_para_novedades.update(ag_ids)
+    for ag_ids in equipo_a_agentes.values():
         agentes_para_novedades.update(ag_ids)
 
     novedades_por_agente: dict[int, list[dict[str, Any]]] = {}
@@ -359,8 +428,19 @@ async def disponibilidad_efectiva_batch(
             if f in feriados:
                 resultado[(t, id_r, f)] = []
                 continue
-            if t in ("agente", "equipo"):
-                merged = rangos_directos(t, id_r, f)
+            if t == "agente":
+                merged = rangos_directos("agente", id_r, f)
+            elif t == "equipo":
+                # Union de los agentes del equipo (mig 91). Sin agentes: override
+                # -> horario propio del equipo; sino -> [].
+                ag_ids = equipo_a_agentes.get(id_r, [])
+                if not ag_ids:
+                    merged = rangos_directos("equipo", id_r, f) if override_equipo else []
+                else:
+                    union_eq: list[tuple[dtime, dtime, Optional[str]]] = []
+                    for ag_id in ag_ids:
+                        union_eq.extend(rangos_directos("agente", ag_id, f))
+                    merged = _merge_rangos(union_eq)
             elif t == "espacio":
                 if atend is False:
                     merged = rangos_directos("espacio", id_r, f)

@@ -88,21 +88,20 @@ async def _slots_libres_recurso(
         """), {"ir": id_recurso, "f": fecha})).mappings().all()
         ocupadas = [(o["hora_inicio"], o["hora_fin"]) for o in ocup]
     elif tipo_recurso == "equipo":
-        # Agentes del equipo.
+        # Disponibilidad del equipo = union de sus agentes + override de equipo
+        # sin agentes (mig 91). Delegamos en disponibilidad_efectiva para NO
+        # duplicar la logica (esta duplicacion era la que hacia divergir la
+        # grilla de Agenda del planificador de OT). Equipo sin agentes y sin
+        # override -> [] (lo resuelve disponibilidad_efectiva).
+        rangos_raw = await disponibilidad_efectiva(db, "equipo", id_recurso, fecha)
+        rangos = [(r["hora_inicio"], r["hora_fin"]) for r in rangos_raw]
+        if not rangos:
+            return []
+        # Agentes del equipo, para sumar sus ocupaciones individuales.
         agentes = (await db.execute(text("""
             SELECT id_agente FROM equipo_agentes
             WHERE id_equipo = :ie AND activo = TRUE
         """), {"ie": id_recurso})).scalars().all()
-        if not agentes:
-            return []
-        # Union de disponibilidades de todos los agentes.
-        rangos_all: list[tuple[time, time]] = []
-        for id_ag in agentes:
-            for r in await disponibilidad_efectiva(db, "agente", id_ag, fecha):
-                rangos_all.append((r["hora_inicio"], r["hora_fin"]))
-        rangos = _merge_rangos(rangos_all)
-        if not rangos:
-            return []
         # Ocupaciones: las del equipo + las de cualquiera de sus agentes.
         ocup = (await db.execute(text("""
             SELECT hora_inicio, hora_fin FROM ocupaciones
@@ -111,7 +110,7 @@ async def _slots_libres_recurso(
                 (tipo_recurso = 'equipo' AND id_recurso = :ie)
                 OR (tipo_recurso = 'agente' AND id_recurso = ANY(:ags))
               )
-        """), {"f": fecha, "ie": id_recurso, "ags": list(agentes)})).mappings().all()
+        """), {"f": fecha, "ie": id_recurso, "ags": list(agentes) or [-1]})).mappings().all()
         ocupadas = [(o["hora_inicio"], o["hora_fin"]) for o in ocup]
     else:
         raise HTTPException(422, "tipo_recurso debe ser 'agente' o 'equipo'")
@@ -544,6 +543,66 @@ async def slots_recurso(
     slots = await _slots_libres_recurso(db, tipo_recurso, id_recurso, fecha, duracion_min)
     return {"tipo_recurso": tipo_recurso, "id_recurso": id_recurso,
             "fecha": fecha.isoformat(), "duracion_min": duracion_min, "slots": slots}
+
+
+# ── GET /ot/auto-asignar-sugerencia — primer recurso disponible de la subarea ─
+# Segmento fijo: DEBE ir antes de GET /{id_ot}.
+
+@router.get("/auto-asignar-sugerencia")
+async def auto_asignar_sugerencia(
+    id_reclamo: int = Query(...),
+    fecha: date = Query(...),
+    duracion_min: int = Query(60, ge=15, le=480),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Recorre los recursos de la subarea del reclamo (cuadrillas de trabajo +
+    agentes) y devuelve el PRIMERO con un slot libre en la fecha, para que el
+    supervisor confirme. Prioriza equipos (cuadrillas) sobre agentes; dentro de
+    cada grupo, el slot mas temprano. Si ninguno tiene hueco, devuelve null.
+
+    Solo supervisor/admin (es la accion de asignacion de la Mesa del Supervisor)."""
+    _require_supervisor(current_user)
+
+    # Subarea del reclamo: derivada del tipo (fuente unica, r.id_subarea suele ser NULL).
+    sub = (await db.execute(text("""
+        SELECT tr.id_subarea
+        FROM reclamos r
+        LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
+        WHERE r.id_reclamo = :id AND r.activo = TRUE
+    """), {"id": id_reclamo})).fetchone()
+    if not sub:
+        raise HTTPException(404, f"Reclamo {id_reclamo} no encontrado")
+    id_subarea = sub.id_subarea
+
+    # Candidatos: cuadrillas de trabajo de la subarea + agentes de la subarea.
+    # Si el reclamo no tiene subarea (tipo sin subarea), no podemos acotar:
+    # devolvemos sin sugerencia para no recorrer todo el padron.
+    if id_subarea is None:
+        return {"sugerencia": None, "motivo": "El tipo de reclamo no tiene subarea asociada."}
+
+    equipos = [(int(r.id_equipo), r.nombre) for r in (await db.execute(text("""
+        SELECT id_equipo, nombre FROM equipos
+        WHERE activo = TRUE AND tipo_grupo = 'trabajo_reclamos' AND id_subarea = :s
+        ORDER BY id_equipo
+    """), {"s": id_subarea})).fetchall()]
+    agentes = [(int(r.id_agente), (r.apellido or "") + ", " + (r.nombre or "")) for r in (await db.execute(text("""
+        SELECT id_agente, nombre, apellido FROM agentes
+        WHERE activo = TRUE AND id_subarea = :s
+        ORDER BY apellido, nombre
+    """), {"s": id_subarea})).fetchall()]
+
+    # Prioriza equipos, luego agentes. Primer recurso con slot libre.
+    for (tipo, candidatos) in (("equipo", equipos), ("agente", agentes)):
+        for (id_rec, nombre) in candidatos:
+            slots = await _slots_libres_recurso(db, tipo, id_rec, fecha, duracion_min)
+            if slots:
+                return {"sugerencia": {
+                    "tipo_recurso": tipo, "id_recurso": id_rec, "nombre": nombre.strip(", "),
+                    "slot": slots[0],
+                }}
+    return {"sugerencia": None,
+            "motivo": "Ningun equipo ni agente de la subarea tiene horario libre ese dia."}
 
 
 # ── POST /ot/con-agenda — crear OT + ocupacion en una transaccion ────────────

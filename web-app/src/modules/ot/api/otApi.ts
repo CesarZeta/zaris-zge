@@ -12,6 +12,7 @@ import type {
   MesaSupervisorRow,
   ReasignarOTBody,
   SlotsRecursoResponse,
+  AutoAsignarSugerencia,
   TipoRecursoOT,
 } from '../types/ot'
 
@@ -48,6 +49,14 @@ export const getSlotsRecurso = (
 ) =>
   api.get<SlotsRecursoResponse>(`${BASE}/slots-recurso`, {
     params: { tipo_recurso, id_recurso, fecha, duracion_min },
+  })
+
+// Auto-asignar: primer recurso de la subarea con slot libre en la fecha
+export const getAutoAsignarSugerencia = (
+  id_reclamo: number, fecha: string, duracion_min = 60,
+) =>
+  api.get<AutoAsignarSugerencia>(`${BASE}/auto-asignar-sugerencia`, {
+    params: { id_reclamo, fecha, duracion_min },
   })
 
 // Mutations
