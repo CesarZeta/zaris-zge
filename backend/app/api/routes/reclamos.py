@@ -169,6 +169,50 @@ async def _insertar_historial(db: AsyncSession, id_reclamo: int, accion: str,
     })
 
 
+async def desbloquear_padre_si_corresponde(db: AsyncSession, id_hijo: int, id_usuario: int):
+    """Devuelve el reclamo padre de 'En espera' a 'En gestión' cuando se cierra el
+    último subreclamo vivo.
+
+    Se llama tras cerrar un hijo (Resuelto/Cancelado) por cualquiera de las 3 vías:
+    cambio manual de estado, cancelación, o cierre vía OT. Si el reclamo recibido no
+    es subreclamo, o el padre no está 'En espera', o todavía quedan hermanos vivos,
+    no hace nada. NO commitea: lo hace el caller dentro de su misma transacción.
+    """
+    fila = (await db.execute(text(
+        "SELECT id_reclamo_padre FROM reclamos WHERE id_reclamo = :id AND activo = TRUE"
+    ), {"id": id_hijo})).fetchone()
+    if not fila or fila.id_reclamo_padre is None:
+        return  # no es subreclamo
+    id_padre = fila.id_reclamo_padre
+
+    padre = (await db.execute(text(
+        "SELECT estado FROM reclamos WHERE id_reclamo = :id AND activo = TRUE"
+    ), {"id": id_padre})).fetchone()
+    if not padre or padre.estado != "En espera":
+        return  # el padre no está esperando este desbloqueo
+
+    # ¿Quedan hermanos vivos (no resueltos ni cancelados)?
+    vivos = (await db.execute(text("""
+        SELECT 1 FROM reclamos
+        WHERE id_reclamo_padre = :id_padre AND activo = TRUE
+          AND estado NOT IN ('Resuelto', 'Cancelado')
+        LIMIT 1
+    """), {"id_padre": id_padre})).fetchone()
+    if vivos:
+        return  # todavía hay subreclamos abiertos
+
+    await db.execute(text("""
+        UPDATE reclamos SET estado = 'En gestión', fecha_modificacion = NOW(),
+            id_usuario_modificacion = :uid
+        WHERE id_reclamo = :id AND estado = 'En espera'
+    """), {"id": id_padre, "uid": id_usuario})
+    await _insertar_historial(
+        db, id_padre, "Reclamo reactivado",
+        "En espera", "En gestión",
+        "Todos los subreclamos fueron resueltos o cancelados", id_usuario,
+    )
+
+
 # ── GET /reclamos/stats ──────────────────────────────────────────────────────
 
 @router.get("/stats")
@@ -532,6 +576,13 @@ async def cambiar_estado(
     if not nuevo_estado:
         raise HTTPException(status_code=422, detail="Campo 'estado' requerido")
 
+    # Cancelar tiene su propio endpoint (PUT /{id}/cancelar) que exige motivo y
+    # hace cascade a las OTs activas. Por /estado se colaba un cancelar SIN motivo
+    # (puerta de atrás). Redirigir.
+    if nuevo_estado == "Cancelado":
+        raise HTTPException(status_code=422,
+            detail="Para cancelar un reclamo usá el endpoint dedicado (requiere motivo).")
+
     estados_validos = await _estados_desde_db(db)
     if nuevo_estado not in estados_validos:
         raise HTTPException(status_code=422, detail=f"Estado inválido: {nuevo_estado}")
@@ -621,6 +672,12 @@ async def cambiar_estado(
     await _insertar_historial(db, id_reclamo, f"Cambio de estado a {nuevo_estado}",
                                estado_anterior, nuevo_estado, nota,
                                current_user["id_usuario"])
+
+    # Si este reclamo es un subreclamo y acaba de cerrarse, desbloquear el padre
+    # 'En espera' cuando ya no quedan hermanos vivos (misma transacción — integridad).
+    if nuevo_estado in ("Resuelto", "Cancelado"):
+        await desbloquear_padre_si_corresponde(db, id_reclamo, current_user["id_usuario"])
+
     await db.commit()
 
     # Hook encuestas — disparo no-bloqueante (§42). El cierre del reclamo ya commiteó;
@@ -803,6 +860,11 @@ async def cancelar_reclamo(
     await _insertar_historial(db, id_reclamo, "Reclamo cancelado",
                                estado_anterior, "Cancelado", motivo,
                                current_user["id_usuario"])
+
+    # Si este reclamo es un subreclamo, desbloquear el padre 'En espera' cuando ya
+    # no quedan hermanos vivos (misma transacción — integridad).
+    await desbloquear_padre_si_corresponde(db, id_reclamo, current_user["id_usuario"])
+
     await db.commit()
     # Hook push App Vecinos (etapa E) — post-commit, best-effort.
     await svc_push.notificar_estado_reclamo(id_reclamo)
@@ -818,6 +880,11 @@ async def crear_subreclamo(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    # Crear subreclamo es una acción de gestión (nivel ≤ 3). El frontend ya lo
+    # oculta al Consultor (DetailView), pero el backend es la fuente de verdad
+    # (guard_nivel_endpoint_no_solo_ui).
+    _require_gestion(current_user)
+
     # Validar que el padre existe y no es él mismo un subreclamo
     r = await db.execute(text("""
         SELECT id_reclamo, id_ciudadano, id_empresa, id_reclamo_padre, estado
@@ -837,6 +904,21 @@ async def crear_subreclamo(
 
     direccion = body.get("direccion") or body.get("domicilio_reclamo") or ""
 
+    # id_area: derivar de tipo_reclamo → subarea → area (igual que crear_reclamo).
+    # No tomar body.get("id_area") crudo: el subreclamo debe nacer con el área
+    # coherente con su tipo (fuente única: subarea.id_area, §27).
+    id_area_sub = body.get("id_area")
+    if not id_area_sub and body.get("id_tipo_reclamo"):
+        r_area = await db.execute(text("""
+            SELECT s.id_area
+            FROM tipo_reclamo tr
+            LEFT JOIN subarea s ON s.id_subarea = tr.id_subarea
+            WHERE tr.id_tipo_reclamo = :id_tr
+        """), {"id_tr": body["id_tipo_reclamo"]})
+        row_area = r_area.fetchone()
+        if row_area:
+            id_area_sub = row_area.id_area
+
     # id_empresa: por defecto hereda del padre. Si el body lo trae, valida.
     id_ciudadano_sub = body.get("id_ciudadano") or padre.id_ciudadano
     if "id_empresa" in body:
@@ -855,7 +937,7 @@ async def crear_subreclamo(
     data = {
         "id_ciudadano":     id_ciudadano_sub,
         "id_tipo_reclamo":  body["id_tipo_reclamo"],
-        "id_area":          body.get("id_area"),
+        "id_area":          id_area_sub,
         "descripcion":      body["descripcion"],
         "direccion":        direccion,
         "prioridad":        body.get("prioridad", "Media"),

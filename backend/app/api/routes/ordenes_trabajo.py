@@ -21,6 +21,19 @@ from app.services import push as svc_push
 router = APIRouter(prefix="/api/v1/ot", tags=["Órdenes de Trabajo"])
 logger = logging.getLogger("zaris.ordenes_trabajo")
 
+# Grafo de transiciones permitidas del estado de una OT operativa (estados reales
+# de estado_ot en prod). Las transiciones de auditoría (Terminada via aprobar/
+# rechazar) van por endpoints dedicados (/aprobar, /rechazar), no por /estado.
+# - Pendiente: retrabajo tras rechazo de auditoría; debe re-tomarse (-> En gestión).
+# - Terminada / Cancelada: finales.
+TRANSICIONES_OT: dict[str, set[str]] = {
+    "En gestión": {"En espera", "Pendiente", "Terminada", "Cancelada"},
+    "En espera":  {"En gestión", "Terminada", "Cancelada"},
+    "Pendiente":  {"En gestión", "Cancelada"},
+    "Terminada":  set(),
+    "Cancelada":  set(),
+}
+
 
 # ── Helpers de slots (planificacion de OT sobre la agenda) ───────────────────
 def _slots_de_rango(rango_ini: time, rango_fin: time, duracion_min: int) -> list[tuple[time, time]]:
@@ -182,7 +195,10 @@ async def mesa_supervisor(
     conds = ["r.activo = TRUE", "r.estado NOT IN ('Resuelto','Cancelado')"]
     params: dict = {}
     if id_subarea:
-        conds.append("r.id_subarea = :id_subarea")
+        # Subarea fuente unica: tr.id_subarea derivada del tipo (§27). r.id_subarea
+        # esta NULL en el 100% de los reclamos (filtrar por ahi vaciaba la bandeja
+        # en silencio — feedback_filtro_igual_null_vacia_listado).
+        conds.append("tr.id_subarea = :id_subarea")
         params["id_subarea"] = id_subarea
 
     result = await db.execute(text(f"""
@@ -360,7 +376,7 @@ async def mesa_auditoria(
     subarea_filter = ""
     if not misma_subarea_ok:
         subarea_filter = """
-            AND (r.id_subarea IS NULL OR r.id_subarea NOT IN (
+            AND (tr.id_subarea IS NULL OR tr.id_subarea NOT IN (
                 SELECT id_subarea FROM agentes WHERE id_agente = :id_agente
                 UNION
                 SELECT eq.id_subarea FROM equipo_agentes ea
@@ -457,7 +473,7 @@ async def mesa_auditor_me(
     subarea_filter = ""
     if not misma_subarea_ok:
         subarea_filter = """
-            AND (r.id_subarea IS NULL OR r.id_subarea NOT IN (
+            AND (tr.id_subarea IS NULL OR tr.id_subarea NOT IN (
                 SELECT id_subarea FROM agentes WHERE id_agente = :id_agente
                 UNION
                 SELECT eq.id_subarea FROM equipo_agentes ea
@@ -909,6 +925,24 @@ async def tomar_ot(
     if not id_agente:
         raise HTTPException(status_code=422, detail="Campo requerido: id_agente")
 
+    # Guard de nivel: tomar una OT es gestión (nivel ≤ 3). El Consultor no opera.
+    if current_user.get("nivel_acceso", 99) > 3:
+        raise HTTPException(status_code=403,
+            detail="No tenés permisos para tomar OTs (requiere nivel Operador o superior).")
+
+    # Identidad: un agente solo puede tomar una OT PARA SÍ MISMO. Admin/supervisor
+    # (nivel ≤ 2) pueden tomar en nombre de otro agente (delegación). Sin esto, el
+    # id_agente del body permitía tomar OTs en nombre de cualquiera vía API
+    # (guard_nivel_endpoint_no_solo_ui).
+    if current_user.get("nivel_acceso", 99) > 2:
+        id_agente_propio = await _resolver_id_agente_por_usuario(db, current_user["id_usuario"])
+        if id_agente_propio is None:
+            raise HTTPException(status_code=404,
+                detail="Tu usuario no está vinculado a ningún agente activo.")
+        if int(id_agente) != int(id_agente_propio):
+            raise HTTPException(status_code=403,
+                detail="Solo podés tomar una OT para vos mismo.")
+
     r = await db.execute(text(
         "SELECT id_agente, id_equipo FROM ordenes_trabajo WHERE id_ot = :id AND activo = TRUE"
     ), {"id": id_ot})
@@ -936,6 +970,12 @@ async def cambiar_estado_ot(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    # Guard de nivel: cambiar el estado de una OT es gestión (nivel ≤ 3). El
+    # Consultor (4) no opera (guard_nivel_endpoint_no_solo_ui).
+    if current_user.get("nivel_acceso", 99) > 3:
+        raise HTTPException(status_code=403,
+            detail="No tenés permisos para cambiar el estado de OTs (requiere nivel Operador o superior).")
+
     nuevo_estado = body.get("estado")
     if not nuevo_estado:
         raise HTTPException(status_code=422, detail="Campo 'estado' requerido")
@@ -958,6 +998,20 @@ async def cambiar_estado_ot(
     ot = r.fetchone()
     if not ot:
         raise HTTPException(status_code=404, detail=f"OT {id_ot} no encontrada")
+
+    # Validación del grafo FSM de la OT: no permitir saltos arbitrarios (ej.
+    # reactivar una OT Terminada). No-op (mismo estado) se acepta sin chequear.
+    if nuevo_estado != ot.estado_actual:
+        permitidos = TRANSICIONES_OT.get(ot.estado_actual, set())
+        if nuevo_estado not in permitidos:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Transición de OT no permitida: '{ot.estado_actual}' → '{nuevo_estado}'. "
+                    f"Desde '{ot.estado_actual}' solo se puede pasar a: "
+                    f"{sorted(permitidos) if permitidos else 'ningún estado (es final)'}."
+                ),
+            )
 
     observaciones = body.get("observaciones", "")
 
@@ -1048,6 +1102,13 @@ async def _resolver_reclamo(db: AsyncSession, id_reclamo: int, id_usuario: int):
     """), {"id": id_reclamo, "uid": id_usuario})
     await _insertar_historial_reclamo(db, id_reclamo, "Reclamo resuelto",
                                        estado_ant, "Resuelto", "OT cerrada sin auditoría", id_usuario)
+
+    # Si este reclamo es un subreclamo, desbloquear el padre 'En espera' cuando ya
+    # no quedan hermanos vivos. Import local para evitar acoplamiento de módulo
+    # (reclamos.py y ordenes_trabajo.py solo se cruzan acá). Misma transacción que
+    # el cierre — el caller commitea.
+    from app.api.routes.reclamos import desbloquear_padre_si_corresponde
+    await desbloquear_padre_si_corresponde(db, id_reclamo, id_usuario)
 
 
 async def _disparar_encuesta(db: AsyncSession, id_reclamo: int):
