@@ -50,17 +50,38 @@ cd ..
 
 ## 4. Base de datos local
 
+La forma soportada de arrancar la DB local es **restaurar un dump** que te pasa
+el admin del proyecto (por fuera del repo — un `.sql` o `.dump` no se commitea).
+Las migraciones de `backend/migrations/` (20→91) son **incrementales**: asumen un
+schema base previo, así que **no** sirven para construir la base desde cero por
+sí solas. Sirven para entender qué cambió y para replicar en prod, no como
+bootstrap.
+
 ```bash
 # Crear la base (una vez)
 psql -U postgres -c "CREATE DATABASE zaris_dev;"
 
-# Aplicar las migraciones de migrations/ en orden, o restaurar un dump local.
-# Luego sembrar auth (passwords dev = 123456):
+# Restaurar el dump que te pasó el admin:
+#   formato .sql (texto):
+psql -U postgres -d zaris_dev -f zaris_dev_dump.sql
+#   formato .dump (custom, comprimido):
+# pg_restore -U postgres -d zaris_dev --no-owner zaris_dev_dump.dump
+
+# Sembrar/asegurar auth (passwords dev = 123456):
 cd backend
 ENV_FILE=".env.local" python seed_auth.py
-# Datos demo opcionales:
+# Datos demo opcionales (idempotente):
 ENV_FILE=".env.local" python seed_demo.py
 ```
+
+> **Para el admin — generar el dump que se le pasa al colaborador** (desde la
+> raíz, con tu `zaris_dev` poblada). El dump NO va al repo; se comparte por un
+> canal privado:
+> ```bash
+> pg_dump -U postgres -d zaris_dev --no-owner --no-privileges -f zaris_dev_dump.sql
+> ```
+> Si querés excluir datos sensibles de prueba antes de compartir, hacelo sobre
+> una copia. Para la última migración aplicada, ver CLAUDE.md §21 (hoy: **91**).
 
 ## 5. Levantar los tres procesos
 
@@ -115,4 +136,6 @@ PWA local (`http://localhost:5174`).
 - [ ] Verificaste el cambio **navegando en `localhost:8080`** (no solo leyendo
       el código — CLAUDE.md §41).
 - [ ] No agregaste ningún `.env` con secretos al commit (`git status`).
-- [ ] Migraciones nuevas numeradas **92+** (la 91 es la última usada).
+- [ ] Migraciones nuevas en `backend/migrations/`, numeradas **92+** (la 91 es
+      la última usada). Aplicar en local **y** prod en la misma sesión (CLAUDE.md §24).
+- [ ] Reportes de QA con PoCs **no** se commitean (CLAUDE.md §40).
