@@ -362,6 +362,59 @@ async def enviar_mail_activacion_ciudadano(
     return await enviar_mail(to=to, subject=subject, body_html=html, body_text=text, from_override=from_header)
 
 
+async def enviar_mail_confirmacion_reclamo_ciudadano(
+    to: str,
+    nombre: str,
+    apellido: str,
+    nro_reclamo: str,
+    descripcion: str,
+    direccion: str,
+    municipio_nombre: str,
+    frontend_url: str,
+    municipio_logo_url: str | None = None,
+) -> bool:
+    """
+    Mail de confirmacion al vecino cuando registra un reclamo desde la app.
+    No requiere accion: solo confirma la recepcion y deja un CTA para seguirlo.
+    El CTA abre la PWA en la lista de reclamos del vecino. Modo MOCK si Resend
+    no esta configurado.
+    """
+    cta_url = f"{frontend_url.rstrip('/')}/reclamos"
+    saludo_nombre = (nombre or "").strip() or apellido or "vecino"
+    subject = f"Recibimos tu reclamo {nro_reclamo} - {municipio_nombre}"
+
+    # Recorte defensivo de la descripcion para el cuerpo del mail.
+    desc = (descripcion or "").strip()
+    if len(desc) > 280:
+        desc = desc[:277] + "..."
+    dir_txt = (direccion or "").strip() or "(sin direccion)"
+
+    parrafo = (
+        f"Registramos tu reclamo <strong>{nro_reclamo}</strong> en {municipio_nombre}. "
+        f"Lo recibimos correctamente y ya esta en cola para ser gestionado.<br><br>"
+        f"<strong>Ubicacion:</strong> {dir_txt}<br>"
+        f"<strong>Detalle:</strong> {desc}"
+    )
+
+    html, text = _build_template_app_vecinos(
+        titulo="Recibimos tu reclamo",
+        saludo=f"Hola {saludo_nombre},",
+        parrafo_principal=parrafo,
+        cta_texto="Ver mis reclamos",
+        cta_url=cta_url,
+        parrafo_extra=(
+            "Te avisaremos por notificacion cuando tu reclamo cambie de estado. "
+            "No hace falta que respondas este correo."
+        ),
+        municipio_nombre=municipio_nombre,
+        municipio_logo_url=municipio_logo_url,
+        cta_color=await _color_cta_municipio(),
+    )
+
+    from_header = formatear_remitente(municipio_nombre, _from_address_base())
+    return await enviar_mail(to=to, subject=subject, body_html=html, body_text=text, from_override=from_header)
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # Templates de ALTA PÚBLICA de vecinos (autoregistro desde URL pública)
 # ────────────────────────────────────────────────────────────────────────────

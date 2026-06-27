@@ -19,15 +19,18 @@ observaciones internas (eso es del backoffice u otra etapa).
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_ciudadano
+from app.core.config import settings
 from app.core.database import get_db
 from app.middleware.rate_limit import check_rate_limit
 from app.utils.request_helpers import get_real_ip
 from app.api.routes.geo import geocodificar_direccion
+from app.services.email import enviar_mail_confirmacion_reclamo_ciudadano
+from app.services.cuenta_vecino import _municipio_branding
 
 logger = logging.getLogger("zaris.publico_reclamos")
 
@@ -174,6 +177,7 @@ async def obtener_mi_reclamo(
 @router.post("", status_code=201)
 async def crear_mi_reclamo(
     body: dict,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current: dict = Depends(get_current_ciudadano),
 ):
@@ -256,6 +260,27 @@ async def crear_mi_reclamo(
                     'Reclamo registrado por el vecino desde la app', NOW(), NULL)
         """), {"id_r": id_reclamo})
         await db.commit()
+
+        # Mail de confirmacion al vecino (best-effort, post-commit). No bloquea ni
+        # rompe la creacion: si falta email o el branding no se puede leer, se omite.
+        email_vecino = (current.get("email") or "").strip()
+        if email_vecino:
+            try:
+                municipio_nombre, municipio_logo_url = await _municipio_branding(db)
+                background_tasks.add_task(
+                    enviar_mail_confirmacion_reclamo_ciudadano,
+                    to=email_vecino,
+                    nombre=current.get("nombre") or "",
+                    apellido=current.get("apellido") or "",
+                    nro_reclamo=nro_reclamo,
+                    descripcion=descripcion,
+                    direccion=direccion,
+                    municipio_nombre=municipio_nombre,
+                    frontend_url=settings.APP_VECINOS_FRONTEND_URL,
+                    municipio_logo_url=municipio_logo_url,
+                )
+            except Exception:
+                logger.warning("No se pudo encolar el mail de confirmacion del reclamo %s", nro_reclamo)
 
         return {"id_reclamo": id_reclamo, "nro_reclamo": nro_reclamo, "estado": "Sin asignar"}
     except HTTPException:
