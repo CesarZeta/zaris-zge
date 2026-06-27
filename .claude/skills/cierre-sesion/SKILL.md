@@ -1,6 +1,6 @@
 ---
 name: cierre-sesion
-description: Rutina de cierre de sesión de trabajo en ZARIS (modo colaboración con Roy). Corre el chequeo de estado del proyecto (repo + deploys + Actions), verifica el sync con el equipo (commits sin pushear, main local detrás del remoto si Roy pusheó, working tree sucio), resume qué se hizo en la sesión y qué quedó pendiente, y actualiza la bitácora de sesión en memoria para que la próxima arranque al día. Invocar cuando el usuario dice "cerremos la sesión", "cierre de sesión", "dejemos esto cerrado", "antes de terminar", o al final de una jornada de trabajo.
+description: Rutina de cierre de sesión de trabajo en ZARIS (modo colaboración con Roy). Corre el chequeo de estado del proyecto (repo + deploys + Actions), verifica el sync con el equipo (commits sin pushear, main local detrás del remoto si Roy pusheó, working tree sucio), resume qué se hizo en la sesión y qué quedó pendiente, hace una reflexión de hallazgos/bugs/correcciones y dónde anotarlos (CLAUDE.md, skills, memorias, verificaciones pendientes), y actualiza la bitácora de sesión en memoria para que la próxima arranque al día. Invocar cuando el usuario dice "cerremos la sesión", "cierre de sesión", "dejemos esto cerrado", "antes de terminar", o al final de una jornada de trabajo.
 ---
 
 # Cierre de sesión ZARIS (modo colaboración)
@@ -9,7 +9,7 @@ Rutina de fin de jornada. Trabajamos **en colaboración** (Cesar `CesarZeta` + R
 
 > No declarar nada "cerrado/sincronizado" sin verificarlo con git/gh/curl. Familia de `feedback_verificar_siempre_antes_de_opinar`.
 
-Ejecutar los 4 pasos en orden y reportar al final.
+Ejecutar los 5 pasos en orden y reportar al final.
 
 ## 1. Chequeo de estado
 
@@ -59,6 +59,27 @@ Volcar el resumen del paso 3 a la memoria **`project_estado_sesion_y_pendientes`
 - Actualizar el cuerpo con el estado de cierre de HOY (reemplazar lo viejo si ya no aplica; no acumular infinito — mantenerlo como foto del estado actual, no log histórico).
 - Gestión de memorias **autorizada sin pedir permiso** (CLAUDE.md, header de gestión autónoma): puedo editar/reescribir y ajustar `MEMORY.md`, informando qué cambié.
 - Si en la sesión surgió un patrón reutilizable (no un incidente puntual), considerar una memoria `feedback`/`reference` propia además de la bitácora.
+
+## 5. Reflexión de cierre — hallazgos y aprendizajes
+
+Antes de cerrar, repasar la sesión y plantearse explícitamente:
+
+> Vamos a cerrar la sesión. ¿Encontraste inconsistencias, bugs, debiste corregir
+> algo? ¿Tomaste nota de hallazgos para no repetir el error y adoptar nuevos
+> criterios? ¿Cosas para anotar en `CLAUDE.md`, en skills o en guías de
+> referencia? ¿Verificaciones pendientes?
+
+Para cada hallazgo, decidir **dónde** vive (no dejarlo solo en la cabeza):
+- **Regla mandatoria del proyecto** (qué hacer siempre) → `CLAUDE.md` (sección
+  correspondiente; respetar la numeración `§N`, no renumerar).
+- **Patrón/aprendizaje reutilizable o corrección de criterio** → memoria
+  `feedback`/`reference` (+ línea en `MEMORY.md`). Gestión de memorias autorizada
+  sin pedir permiso (informar qué se creó/editó).
+- **Receta operativa de una tarea** → la skill correspondiente.
+- **Verificación pendiente** (algo que no se pudo confirmar hoy) → anotarla en la
+  bitácora del paso 4 como pendiente explícito, no como hecho.
+
+Si no hubo hallazgos, decirlo — pero recién después de pensarlo, no por defecto.
 
 ## Reporte final al usuario
 

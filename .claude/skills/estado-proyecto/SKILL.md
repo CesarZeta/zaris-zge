@@ -1,6 +1,6 @@
 ---
 name: estado-proyecto
-description: Reporte de estado del proyecto ZARIS en colaboración — colaboradores del repo GitHub e invitaciones pendientes, último deploy de GH Pages, salud del API en Railway (CR=Centro de cómputo / backend), deploy de la PWA en Vercel, y estado de los workflows de GitHub Actions (deploy + 3 crons). Incluye el procedimiento de onboarding de un colaborador nuevo (GitHub automatizado por gh CLI + pasos manuales de Railway y Vercel). Invocar cuando el usuario pide "estado del proyecto/repo", "cómo está todo", "quién tiene acceso", o quiere agregar un colaborador.
+description: Reporte de estado del proyecto ZARIS en colaboración — revisa memorias para verificar pendientes y CLAUDE.md para los lineamientos mandatorios, luego colaboradores del repo GitHub e invitaciones pendientes, último deploy de GH Pages, salud del API en Railway (CR=Centro de cómputo / backend), deploy de la PWA en Vercel, y estado de los workflows de GitHub Actions (deploy + 3 crons). Incluye el procedimiento de onboarding de un colaborador nuevo (GitHub automatizado por gh CLI + pasos manuales de Railway y Vercel). Invocar cuando el usuario pide "estado del proyecto/repo", "cómo está todo", "quién tiene acceso", o quiere agregar un colaborador.
 ---
 
 # Estado del proyecto ZARIS (modo colaboración)
@@ -12,6 +12,20 @@ Datos fijos del proyecto:
 - **API prod (Railway):** `https://zaris-api-production-bf0b.up.railway.app` — proyecto `inspiring-empathy`, servicio `zaris-api`, branch `main`, root `/backend`.
 - **Shell del producto (GH Pages):** `https://cesarzeta.github.io/zaris-zge/index.html` (dominio propio `https://zge.zaris.com.ar`).
 - **PWA App Vecinos (Vercel):** `https://vecinos.zaris.com.ar` — repo SEPARADO `CesarZeta/zaris-vecinos`.
+
+## Contexto del proyecto — antes del estado técnico
+
+Antes de mirar servicios/repo, revisar el estado conceptual del proyecto:
+
+- **Revisar memorias para verificar pendientes.** Leer `MEMORY.md` (índice) y, en
+  particular, la bitácora `project_estado_sesion_y_pendientes` — qué quedó a
+  medias o sin verificar de la sesión anterior. Surfacear esos pendientes en el
+  reporte.
+- **Revisar `CLAUDE.md` para verificar lineamientos mandatorios del proyecto.**
+  Es el contrato de cómo se trabaja (verificar drift en prod §24, migraciones
+  92+ §21, guards de seguridad en backend no solo UI §30, etc.). Si la tarea en
+  curso toca alguna de esas áreas, traer la regla aplicable al reporte para no
+  violarla.
 
 ## Reporte de estado — comandos
 
