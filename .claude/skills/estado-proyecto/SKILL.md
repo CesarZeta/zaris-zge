@@ -19,15 +19,23 @@ Datos fijos del proyecto:
 
 Antes de mirar servicios/repo, revisar el estado conceptual del proyecto:
 
-- **Revisar memorias para verificar pendientes.** Leer `MEMORY.md` (índice) y, en
-  particular, la bitácora `project_estado_sesion_y_pendientes` — qué quedó a
-  medias o sin verificar de la sesión anterior. Surfacear esos pendientes en el
-  reporte.
+- **PRIMERO: leer el hilo conductor común `ESTADO.md`** (raíz de cada repo —
+  `ZGE/ESTADO.md` y, si aplica al trabajo, `zaris-vecinos/ESTADO.md`). Es la
+  **fuente de verdad COMPARTIDA** del estado de avance y pendientes (CLAUDE.md
+  §45) — lo que escribió quien cerró la última sesión, sea Cesar o Roy. Tiene
+  prioridad sobre la memoria privada, porque la memoria privada de cada
+  colaborador puede estar atrasada respecto de lo que el otro pusheó. Surfacear
+  "En curso" y "Pendientes" de ahí en el reporte.
+- **Revisar memorias privadas para detalle adicional** (solo Cesar las tiene).
+  Leer `MEMORY.md` (índice) y la bitácora `project_estado_sesion_y_pendientes` —
+  amplía lo del `ESTADO.md` con contexto personal. Si el `ESTADO.md` y la memoria
+  divergen, **gana el `ESTADO.md`** (es lo compartido y versionado) y conviene
+  resincronizar la memoria.
 - **Revisar `CLAUDE.md` para verificar lineamientos mandatorios del proyecto.**
   Es el contrato de cómo se trabaja (verificar drift en prod §24, migraciones
-  92+ §21, guards de seguridad en backend no solo UI §30, etc.). Si la tarea en
-  curso toca alguna de esas áreas, traer la regla aplicable al reporte para no
-  violarla.
+  92+ §21, guards de seguridad en backend no solo UI §30, hilo conductor §45,
+  etc.). Si la tarea en curso toca alguna de esas áreas, traer la regla aplicable
+  al reporte para no violarla.
 
 ## Reporte de estado — comandos
 

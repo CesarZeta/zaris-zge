@@ -1977,3 +1977,16 @@ Atención de eventos de emergencia (Centro de Operaciones Municipales): triage p
 - **Endpoint público App Vecinos (Fase 5):** router separado `publico_emergencias.py` (`/api/v1/publico/emergencias/*`, guard `get_current_ciudadano`, patrón `publico_reclamos` §38): GET `/tipos` + `/tipos/{id}/subtipos` (sin datos de triage) · GET `/eventos` (mis reportes) · POST `/eventos` (rate-limit 5/min/IP). Canal APP_VECINO **forzado server-side** (el body no lo puede elegir), denunciante = vecino del token, `id_operador_receptor`/`id_usuario_alta` NULL, log CREACION con vecino en `payload_json`. Badge "App Vecinos" (`CanalAppVecinoBadge`) en tablero y detalle.
 - **Smoke:** `smoke_emergencias.ps1` (raíz, 64 asserts: Fase 3 + scoping nivel 3 + Fase 5) — genera DNI/teléfono/nombre random por corrida; requiere los datos QA del header (operador COM nivel 3 subárea Policía + vecino demo con credencial, sembrados en local Y prod, pass 123456).
 
+## 45. Hilo conductor común — `ESTADO.md` versionado (sincronización Cesar ↔ Roy)
+
+Trabajamos **dos personas con Claude Code separados** (Cesar `CesarZeta` admin + Roy `roymanrafael` write). La memoria privada de Claude Code de cada uno **NO la ve el otro** — por eso el estado de avance y los pendientes **NO pueden vivir solo ahí**. La única superficie compartida es el **repo git**. Por eso existe un archivo **`ESTADO.md` versionado en la raíz de cada repo** (`zaris-zge` y `zaris-vecinos`): es el **hilo conductor común**, lo PRIMERO que se lee al retomar y lo que se ACTUALIZA al cerrar sesión.
+
+- **Qué es:** documento **vivo y corto** — foto del estado actual (En curso / Pendientes / Hecho reciente / mapa de fuentes de verdad). NO es bitácora histórica (eso vive en `HISTORIAL_MIGRACIONES.md`, `PLAN_*.md` y la memoria privada de cada uno).
+- **Un `ESTADO.md` por repo:** el de `zaris-zge` cubre backoffice/backend; el de `zaris-vecinos` cubre la PWA. Cada uno linkea al otro. El que trabaja en un repo lee/edita el `ESTADO.md` de ESE repo.
+- **Regla de oro (la que evita la desincronización que motivó esto):** **todo pendiente o avance que el otro colaborador necesite saber va al `ESTADO.md` (o al `PLAN_*.md` correspondiente), NO solo a la memoria privada.** Si un pendiente vive únicamente en tu memoria de Claude Code, el otro NO lo ve y va a chocar. La memoria privada es complemento personal, nunca la fuente de verdad compartida.
+- **Cuándo se actualiza:**
+  - **Al cerrar sesión** (skill `/cierre-sesion`, paso 4): actualizar el/los `ESTADO.md` afectados **ANTES** de volcar a la memoria privada. Si la sesión tocó la PWA, actualizar también `zaris-vecinos/ESTADO.md`.
+  - **Al iniciar / pedir estado** (skill `/estado-proyecto`): leer el/los `ESTADO.md` como primer insumo del estado conceptual (antes que la memoria privada, que puede estar atrasada respecto de lo que pusheó el otro).
+- **Mantenerlo corto:** "Hecho reciente" se poda (máx ~10 líneas); lo viejo se borra (ya está en el historial). Verificar contra git/prod antes de declarar algo hecho (`feedback_verificar_siempre_antes_de_opinar`).
+- **Roadmaps detallados** siguen en `PLAN_APP_VECINOS.md` / `PLAN_MODULO_EMERGENCIAS.md`; el `ESTADO.md` los apunta, no los duplica.
+
