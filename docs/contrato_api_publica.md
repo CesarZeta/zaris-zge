@@ -1,0 +1,152 @@
+# Contrato de API pública — App Vecinos (y autoservicio anónimo)
+
+Referencia de los endpoints que consume la PWA `zaris-vecinos` (repo separado).
+Todos viven en el backend de **`zaris-zge`** bajo `/api/v1/publico/*` (+ algunos
+autoservicios anónimos por token bajo `/api/v1/turnos/publico/*` y
+`/api/v1/agenda/publico/*`).
+
+> **Esta tabla es el contrato.** Si la PWA necesita un campo o endpoint nuevo,
+> el cambio es backend (este repo), se acuerda el shape acá y se mergea primero.
+> Generado leyendo los routers reales — ante la duda, la fuente de verdad es el
+> código en `backend/app/api/routes/publico_*.py` y `/docs` (Swagger).
+
+## Prod
+
+- API: `https://zaris-api-production-bf0b.up.railway.app`
+- Swagger (todos los schemas): `…/docs`
+- PWA: `https://vecinos.zaris.com.ar`
+
+## Dos clases de autenticación
+
+| Guard | Cómo se obtiene | Qué protege |
+|---|---|---|
+| **`scope: publico`** (vecino logueado) | JWT del `POST /publico/auth/login` o de activar/resetear. Header `Authorization: Bearer <token>`. Vigencia 30 días. | Todo lo que opera sobre los datos del vecino. El `id_ciudadano` SIEMPRE sale del token, nunca del body/URL. |
+| **Sin auth** (anónimo) | — | Identidad del municipio, alta pública, autoservicios por token UUID (eventos/turnos compartidos por link). |
+
+---
+
+## 1. Auth del vecino — `/api/v1/publico/auth`
+
+| Verbo | Ruta | Auth | Para qué |
+|---|---|---|---|
+| POST | `/login` | — | DNI + password → JWT scope publico. Lockout: 5 fallidos → 15 min. |
+| GET | `/me` | publico | Datos del vecino logueado (incluye `ficha_completa`). |
+| POST | `/activar` | — | Activa con `token_activacion` (7d), setea password → JWT. |
+| POST | `/reenviar-activacion` | — | Reenvía mail. Anti-enumeración: siempre 200. |
+| POST | `/recuperar-password` | — | Pide mail de recovery. Anti-enumeración: siempre 200. |
+| POST | `/resetear-password` | — | Aplica nuevo pass con `token_recovery` (24h) → JWT. |
+| GET | `/nacionalidades` | publico | Catálogo para la ficha. |
+| POST | `/registrar` | **agente** (nivel ≤3) | Alta por mostrador. NO lo usa la PWA. |
+| POST | `/completar-ficha` | publico | Compat (el alta nuevo es en un paso, ver §38). |
+
+## 2. Alta pública (autoregistro) — `/api/v1/publico/alta`
+
+Todas validan el slug `?m=<codigo_corto>` contra el único municipio del deploy.
+
+| Verbo | Ruta | Auth | Para qué |
+|---|---|---|---|
+| GET | `/identidad` | — | Nombre/logo/colores del municipio. |
+| GET | `/actividades` · `/nacionalidades` | — | Catálogos para el form. |
+| GET | `/geo/buscar?m=&q=` | — | Geocoding OSM sesgado a la zona del municipio. |
+| POST | `/cuenta` | — | Alta en UN PASO con ficha completa (CUIL real, domicilio, etc.). |
+| POST | `/activar-existente` | — | Vecino ya en la BUC pide cuenta. Anti-enumeración: 200. |
+| POST | `/empresa` | publico | El vecino logueado da de alta su empresa. |
+| GET | `/verificar?token=&m=` | — | Link del mail; devuelve página HTML. |
+
+## 3. Identidad del municipio — `/api/v1/publico/identidad-municipio`
+
+| Verbo | Ruta | Auth | Para qué |
+|---|---|---|---|
+| GET | `` | — | Nombre/logo/descripción/colores. Lo lee la PWA antes de tener token. |
+
+## 4. Reclamos del vecino — `/api/v1/publico/reclamos`
+
+| Verbo | Ruta | Auth | Para qué |
+|---|---|---|---|
+| GET | `/catalogo/tipos` | publico | Tipos de reclamo activos. |
+| GET | `/geo/buscar` | publico | Geocoding para el vecino logueado. |
+| GET | `` | publico | Lista SOLO los reclamos del vecino. |
+| GET | `/{id_reclamo}` | publico | Detalle. **404 si no es suyo** (no filtra terceros). |
+| POST | `` | publico | Crea reclamo a nombre propio. Exige `id_tipo_reclamo` + `direccion` + `descripcion≥5`. |
+
+### Adjuntos — `/api/v1/publico/reclamos/{id_reclamo}/adjuntos`
+
+| Verbo | Ruta | Auth | Para qué |
+|---|---|---|---|
+| POST | `/upload-url` | publico | URL firmada para subir foto directo a Storage. |
+| POST | `/{id_adjunto}/confirm` | publico | Confirma la subida. |
+| GET | `` | publico | Lista adjuntos con URLs firmadas (TTL 1h). |
+
+## 5. Portal (home) — `/api/v1/publico/portal`
+
+| Verbo | Ruta | Auth | Para qué |
+|---|---|---|---|
+| GET | `/mi-resumen` | publico | Conteos `{vigentes,total}` de reclamos/turnos/entradas en 1 request. |
+
+## 6. Turnos del vecino — `/api/v1/publico/turnos`
+
+| Verbo | Ruta | Auth | Para qué |
+|---|---|---|---|
+| GET | `` | publico | Mis turnos. |
+| POST | `/reservar` | publico | Reserva un slot. Valida disponibilidad + sin solape + no pasado (hora local AR). |
+| PATCH | `/{id_turno}/cancelar` | publico | Cancela un turno propio. |
+
+## 7. Entradas del vecino — `/api/v1/publico/entradas`
+
+| Verbo | Ruta | Auth | Para qué |
+|---|---|---|---|
+| GET | `` | publico | Mis reservas. |
+| GET | `/eventos` | publico | Cartelera con cupo disponible. |
+| POST | `/eventos/{id_evento}/reservar` | publico | Reserva entrada → genera QR. |
+| PATCH | `/{id_evento_reserva}/cancelar` | publico | Cancela una reserva. |
+
+## 8. Emergencias del vecino — `/api/v1/publico/emergencias`
+
+| Verbo | Ruta | Auth | Para qué |
+|---|---|---|---|
+| GET | `/tipos` | publico | Tipos de emergencia (sin datos de triage). |
+| GET | `/tipos/{id_tipo}/subtipos` | publico | Subtipos. |
+| GET | `/eventos` | publico | Mis reportes. |
+| POST | `/eventos` | publico | Reporta emergencia. Canal `APP_VECINO` forzado server-side. Rate-limit 5/min/IP. |
+
+## 9. Web Push — `/api/v1/publico/push`
+
+| Verbo | Ruta | Auth | Para qué |
+|---|---|---|---|
+| GET | `/public-key` | publico | Clave VAPID pública para suscribir. |
+| POST | `/subscribe` | publico | Registra la suscripción (UPSERT, activa `canal_push`). |
+| POST | `/unsubscribe` | publico | Da de baja la suscripción. |
+
+---
+
+## Autoservicios ANÓNIMOS por token UUID (no requieren login)
+
+Para compartir por link sin que el ciudadano tenga cuenta.
+
+### Turnos — `/api/v1/turnos/publico`
+- GET `/prestaciones` · GET `/slots?id_tipo_prestacion=&fecha_desde=&dias=`
+- POST `/reservar` (busca/crea ciudadano por DNI) → `token_turno`
+- GET `/turno/{token_turno}` · DELETE `/turno/{token_turno}`
+
+### Eventos/Entradas — `/api/v1/agenda/publico`
+- GET `/evento/{token_publico}` · POST `/evento/{token_publico}/reservar`
+- GET `/reserva/{token_reserva}` · DELETE `/reserva/{token_reserva}`
+
+### Encuestas CSAT — `/api/v1/publico/encuesta` (rate-limited 5/min/IP)
+- GET `/{token}` · POST `/{token}/responder`
+- Token inválido → 404; completada/expirada → 410.
+
+---
+
+## Reglas que la PWA debe respetar
+
+- **El `id_ciudadano` nunca viaja en el body ni en la URL** en endpoints scope
+  publico — sale del token. La PWA no puede operar sobre terceros.
+- **CORS:** los orígenes de la PWA (`vecinos.zaris.com.ar`,
+  `zaris-vecinos.vercel.app`, `localhost:5174`) deben estar en `allow_origins`
+  de `backend/app/main.py`. Origen nuevo → agregarlo ahí (CORS de FastAPI no
+  acepta wildcards).
+- **Sesión propia de la PWA:** `localStorage` key `zaris_vecino_session` (NO
+  `zaris_session` del backoffice — son apps distintas).
+- Anti-enumeración: los endpoints de reenvío/recovery siempre devuelven 200, no
+  reveles al usuario si el DNI existe.
