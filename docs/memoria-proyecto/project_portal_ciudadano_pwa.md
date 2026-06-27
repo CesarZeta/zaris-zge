@@ -20,4 +20,4 @@ La PWA `zaris-vecinos` (repo `CesarZeta/zaris-vecinos`, Vercel `vecinos.zaris.co
 
 **NO incluye (decisión vigente)**: cambiar estado / cancelar reclamo propio. El autoregistro vive en el shell ZGE (`frontend/alta-vecino.html`), NO en esta PWA (§38).
 
-**Pendiente del usuario (no de código)**: prueba en Android real — fotos+pin (etapa A) y entrega del push con la app cerrada (etapa E; el navegador embebido de VS Code no tiene push service, no se puede verificar desde acá). Vecino demo: local DNI <DNI-DEMO> / prod <DNI-DEMO> (pass <PASS-DEMO>). Ver [[project_usuario_vs_ciudadano_modelo]].
+**Verificaciones en Android real completadas (2026-06-27, confirmado por Roy):** fotos+pin en Android Chrome instalado como PWA ✅ · notificación push en navegador (app cerrada) ✅ · email de confirmación al crear reclamo ✅. **Etapas A y E CERRADAS.** Resta de Etapa F: dominio por municipio (si el piloto lo pide) + smoke E2E con tester externo real. Vecino demo: local DNI <DNI-DEMO> / prod <DNI-DEMO> (pass <PASS-DEMO>). Ver [[project_usuario_vs_ciudadano_modelo]].
