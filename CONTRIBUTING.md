@@ -4,21 +4,26 @@ Convenciones para que dos o más personas trabajen en paralelo sin pisarse.
 El arranque del entorno está en [`ONBOARDING.md`](ONBOARDING.md); las reglas de
 código en [`CLAUDE.md`](CLAUDE.md).
 
-## Ramas y PRs
+## Ramas y push
 
-- **`main` es la rama de producción.** No se pushea directo: todo entra por
-  **Pull Request**.
-- Una rama por unidad de trabajo, con prefijo de tipo + módulo:
+- **`main` es la rama de producción.** Push directo a `main` está permitido
+  **con todo en verde**: typecheck pasa, probado navegando, sin secretos en el
+  diff. Si hay un error, un test rojo o algo que requiera criterio de otro,
+  **PARÁ** y abrí un PR o avisá por el canal del equipo (memoria
+  `feedback_push_directo_a_main`).
+- Para trabajo grande, riesgoso, o que querés que otro mire antes de mergear,
+  usá una **rama + PR**. No es obligatorio para cambios chicos y verificados,
+  pero siempre es una opción válida.
+- Si usás rama, una por unidad de trabajo con prefijo de tipo + módulo:
   ```
   feat/<modulo>-<descripcion-corta>      feat/vecinos-reclamo-fotos
   fix/<modulo>-<descripcion-corta>       fix/tramites-pase-destinatario
   docs/<descripcion>                     docs/onboarding
   ```
-- Mantené la rama chica y cerca de `main`: `git fetch && git rebase origin/main`
-  seguido, así el PR no acumula conflictos.
-- En el PR: descripción de qué cambia, cómo se probó, y si tocó backend cuál
-  endpoint/migración. Quien revisa mira que pase typecheck y que no haya `.env`
-  ni secretos en el diff.
+  Mantenela chica y cerca de `main`: `git fetch && git rebase origin/main`.
+- **Antes de cada push a `main`:** `git fetch && git pull --rebase origin main`
+  — el otro (o el bot de CI que rebuildea `dist`) pudo haber pusheado. Sin esto
+  rebota por non-fast-forward.
 
 ## Coordinación entre repos
 
@@ -41,9 +46,9 @@ contrato (shape del JSON) antes de implementar las dos puntas.
    por non-fast-forward (CLAUDE.md §32).
 
 2. **Numeración de migraciones.** Cada migración nueva es un archivo en
-   `migrations/` con número correlativo. **La última usada es la 91; usá 92+.**
-   Si dos ramas crean la 92, una tiene que renumerar al mergear. Avisá en el PR
-   qué número tomaste, o reservá el número antes de empezar.
+   `backend/migrations/` con número correlativo. **La última usada es la 91;
+   usá 92+.** Si dos personas crean la 92 en paralelo, una tiene que renumerar.
+   Avisá qué número tomaste, o reservalo antes de empezar.
 
 3. **Aplicá migraciones en local Y prod en la misma sesión** (CLAUDE.md §24),
    nunca solo en una — se desincronizan. Backup antes de UPDATE/DELETE masivos
@@ -62,10 +67,11 @@ contrato (shape del JSON) antes de implementar las dos puntas.
 - Datos reales de los municipios (DNIs, domicilios, salud) están bajo Ley
   25.326. No los copies a local ni los pegues en chats/issues.
 
-## Antes de abrir el PR
+## Antes de pushear a `main` (o abrir el PR)
 
 - [ ] `cd web-app && pnpm typecheck` pasa (si tocaste React).
 - [ ] Probado navegando, no solo leído.
 - [ ] Sin secretos ni `.env` en el diff.
 - [ ] Migración (si la hay) numerada 92+ y aplicada en local + prod.
-- [ ] Rama rebaseada sobre `origin/main`.
+- [ ] `git pull --rebase origin main` hecho (estás al día con el otro y con CI).
+- [ ] Si algo está rojo o requiere criterio ajeno: PARÁ, no pushees a `main`.
