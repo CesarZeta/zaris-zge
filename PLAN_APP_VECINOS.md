@@ -34,7 +34,7 @@
 
 ## 2. Etapas restantes
 
-Orden recomendado: **A → B → C → D → E → F**. A primero (mayor valor para reclamos, cierra la deuda del plan viejo); B es la más barata (backend ya hecho); E (push) al final de las features porque es la más frágil y para entonces hay 4 tipos de contenido que notificar; F cierra el piloto.
+Orden recomendado: **A → B → C → D → E → F → G**. A primero (mayor valor para reclamos, cierra la deuda del plan viejo); B es la más barata (backend ya hecho); E (push) al final de las features porque es la más frágil y para entonces hay 4 tipos de contenido que notificar; F cierra el piloto. **G** es el rediseño de UX (home + topbar + instalabilidad) que el usuario pidió tras probar la app en su Android real — es **la única etapa abierta al 2026-06-27** y NO toca backend.
 
 ---
 
@@ -137,6 +137,25 @@ La etapa más frágil (navegador + SW + VAPID + permisos del SO). Se hace al fin
 
 ---
 
+### ETAPA G — Rediseño de home + topbar + instalabilidad 🔴 ABIERTA (pedida 2026-06-27, tras probar la app en Android real)
+
+**Única etapa abierta del plan.** Surgió después de cerrar A-F: el usuario probó la PWA en su Android y detectó problemas de UX que el desarrollo "feature por feature" no había atacado. **NO toca backend** — es 100% PWA (`zaris-vecinos`). **Arrancar con un MOCKUP throwaway (HTML/CSS) para aprobar el diseño ANTES de tocar el código React** (decisión del usuario).
+
+Pedidos concretos (verificados contra el código real el 2026-06-27 — todo sigue vigente, nada implementado):
+
+1. **Emergencias arriba.** Hoy va 2ª en el array `cards` de `HomePage.tsx`. Subirla al primer lugar (es urgencia, no trámite — debe ser lo más accesible).
+2. **Menú de usuario en la topbar.** Hoy `AppLayout.tsx` solo tiene logo + nombre + un botón "Salir" suelto. Reemplazarlo por un menú (avatar/nombre desplegable) con: nombre del vecino, **cerrar sesión**, **cambiar tema claro/oscuro**, **datos de mi cuenta**, y **notificaciones/config**. (Referencia conceptual: el dropdown de usuario del shell del backoffice, §14 CLAUDE.md — pero adaptado a mobile, sin copiar su CSS.)
+3. **Cada card (reclamos/turnos/entradas) con conteo + dos acciones: botón `(+)` (crear) y lupa 🔍 (ver existentes).** Hoy las cards solo navegan al listado y hay un único botón grande "+ Nuevo reclamo" al pie de la home. Quitar ese botón único y mover el "crear" a cada card. (Emergencias: misma idea — `(+)` reportar / lupa ver mis reportes.)
+4. **Configuración VISIBLE.** Hoy es el link gris deslavado `auth-link--muted` al pie de la home ("⚙️ Configuración y notificaciones") — el usuario literalmente no lo encontraba en su cel. Integrarla al menú de usuario (punto 2) y/o darle presencia real, no un link de pie de página.
+5. **PWA instalable — falta SOLO el prompt in-app, NO el manifest** (verificado en `vite.config.ts` el 2026-06-27). El manifest YA existe y está completo (`VitePWA({ manifest: { name, short_name, display:'standalone', icons 192/512 + maskable, theme_color } })`, `registerType:'autoUpdate'`) → **Chrome en Android ya ofrece "Agregar a pantalla de inicio"**. Lo que falta es el **prompt de instalación dentro de la app**: capturar `beforeinstallprompt`, guardarlo y mostrar un botón "Instalar app" (en el menú de usuario o la home) que dispare `prompt()`. Sin esto la app igual es instalable, pero el vecino tiene que descubrir la opción del menú del navegador. NO recrear el manifest ni los íconos (`public/icons/` + `pnpm generate-icons` ya están). TWA/Play Store queda como opcional futuro (sección 0).
+6. **Quitar emojis.** `HomePage.tsx` usa 📋🚨🗓️🎟️⚙️ como íconos de card y de Configuración. **CLAUDE.md §13 prohíbe emoji en la UI del producto** → reemplazar por iconos Lucide (o SVG inline `stroke-width=1.5`, `currentColor`). Esto aplica a toda la PWA, no solo la home.
+
+**Backend:** **ninguno.** Todos los datos ya los sirve `/mi-resumen` (conteos por card) y los routers `publico_*` existentes (crear/listar por tipo). El tema claro/oscuro y la instalabilidad son puramente cliente.
+
+**Criterio de cierre:** desde Android Chrome, (a) la home muestra Emergencias primero, cada card con conteo + `(+)` + lupa, sin emojis; (b) la topbar tiene un menú de usuario con logout + tema + cuenta + config; (c) la app se instala a la pantalla de inicio con su ícono y abre en modo standalone; (d) el toggle de tema persiste y se ve coherente en claro y oscuro. Mockup aprobado por el usuario antes de codear.
+
+---
+
 ## 3. Reglas transversales (aplican a TODAS las etapas)
 
 1. **El `id_ciudadano` SIEMPRE sale del JWT**, nunca del body/param. Recurso ajeno → 404 con el mismo cuerpo que "no existe" (no filtrar existencia de terceros). Patrón ya vigente en `publico_reclamos`.
@@ -188,3 +207,4 @@ La etapa más frágil (navegador + SW + VAPID + permisos del SO). Se hace al fin
   - *PWA:* `public/sw-push.js` (handlers push/notificationclick) importado por el SW generado vía `workbox.importScripts` (el precaching de vite-plugin-pwa queda intacto, sin migrar a injectManifest) · `lib/push.ts` (subscribe/unsubscribe; **timeout defensivo sobre `serviceWorker.ready`**, que nunca rechaza y colgaba la página) · `ConfiguracionPage` (`/configuracion`, toggle con estados no-soportado/denegado/activo/inactivo; el permiso se pide tras la acción del usuario, nunca al loguear) · acceso desde Home.
   - *Verificado:* endpoints + toggle `canal_push` + 401 (local); cambio de estado con suscripción rota devuelve 200 y la vencida (404 FCM real) se da de baja sola; SW `activated` con handlers en build+preview. **El navegador embebido de VS Code no tiene push service (sin FCM)** → la ENTREGA real del push (criterio de cierre: notificación con la PWA cerrada) queda pendiente de la prueba del usuario en Android Chrome.
 - **2026-06-12 — ETAPA F (cierre piloto), lo construible hecho.** CTA de los 4 mails del vecino con `municipio_color_primary` + fallback neutro (ZGE `1e34c68`, cache TTL 5 min) · README de `zaris-vecinos` reescrito al estado real con **checklist de replicación para municipio #2** (PWA `2f5ab4c`: branding, geo_bbox, claves VAPID propias, env vars Railway, CORS, verificación E2E) · "primer login real en prod" ya cubierto (cuenta propia del usuario DNI 18003762 activada + vecino demo E2E). Quedan del lado del usuario: prueba Android real (fotos+pin de A, push de E) y, si el piloto lo pide, dominio por municipio.
+- **2026-06-27 — Prueba en Android real (fotos+pin y push) PASARON en prod** con el cel del usuario (REC-2026-000053 con foto+geo reales; push recibido con la app cerrada). Esto **cierra el grueso de la validación en dispositivo de las etapas A y E**. En la misma prueba surgió el pedido de UX que se registra como **ETAPA G** (arriba): la app funciona pero la home/topbar no son las óptimas para mobile (Configuración invisible, sin menú de usuario, un solo botón de "crear", emojis, no instalable). Se sumó también el mail de confirmación al crear reclamo (ZGE `a4ab19d`, en prod). **Etapa G queda como la única abierta del plan** y arranca con un mockup throwaway a aprobar antes de codear.
