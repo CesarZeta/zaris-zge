@@ -53,14 +53,29 @@ Redactar un resumen breve (para que Roy o el propio usuario retomen):
 
 Convertir fechas relativas a absolutas (hoy es la fecha de `currentDate`).
 
-## 4. Actualizar la bitácora
+## 4. Actualizar el hilo conductor común (`ESTADO.md`) — ANTES que la memoria privada
 
-Volcar el resumen del paso 3 a la memoria **`project_estado_sesion_y_pendientes`** (el índice `MEMORY.md` ya la lista como bitácora — "LEER al preguntar por pendientes"):
+> **El orden importa (CLAUDE.md §45):** primero el `ESTADO.md` versionado (lo ve el otro colaborador), después la memoria privada (solo la veo yo). Un pendiente que solo quede en la memoria privada el otro NO lo ve → desincronización.
 
-- Leer el archivo actual en `…/memory/project_estado_sesion_y_pendientes.md`.
-- Actualizar el cuerpo con el estado de cierre de HOY (reemplazar lo viejo si ya no aplica; no acumular infinito — mantenerlo como foto del estado actual, no log histórico).
-- Gestión de memorias **autorizada sin pedir permiso** (CLAUDE.md, header de gestión autónoma): puedo editar/reescribir y ajustar `MEMORY.md`, informando qué cambié.
-- Si en la sesión surgió un patrón reutilizable (no un incidente puntual), considerar una memoria `feedback`/`reference` propia además de la bitácora.
+**4.A — `ESTADO.md` del/los repo(s) afectado(s) (FUENTE DE VERDAD COMPARTIDA):**
+
+- Abrir `ESTADO.md` en la raíz del repo (`ZGE/ESTADO.md`; si la sesión tocó la PWA, **también** `zaris-vecinos/ESTADO.md`).
+- Actualizar las secciones **En curso / Pendientes / Hecho reciente** con el estado de cierre de HOY:
+  - Lo terminado y pusheado → mover a "Hecho reciente" (podar lo viejo de ahí, máx ~10 líneas).
+  - Lo nuevo que quedó abierto → agregar a "Pendientes" con contexto para retomar (archivo, función, próximo paso).
+  - Lo que se está trabajando a medias → "En curso".
+- Bumpear "Última actualización" (fecha absoluta + quién).
+- **Roadmaps detallados** (Etapas de la PWA, fases de un módulo) van a `PLAN_*.md`, no al `ESTADO.md` — el `ESTADO.md` los apunta.
+- Estos cambios se **commitean y pushean** (son del repo, no de la memoria) — ver paso 2 / reporte final.
+
+**4.B — Memoria privada (complemento personal, solo Cesar):**
+
+Volcar el mismo resumen a la memoria **`project_estado_sesion_y_pendientes`** (índice `MEMORY.md`). Es el detalle ampliado/personal — NO reemplaza al `ESTADO.md`, lo complementa.
+
+- Leer y actualizar `…/memory/project_estado_sesion_y_pendientes.md` (foto del estado actual, no log infinito).
+- Gestión de memorias **autorizada sin pedir permiso** (CLAUDE.md, header de gestión autónoma): editar/reescribir y ajustar `MEMORY.md`, informando qué cambié.
+- Si surgió un patrón reutilizable (no un incidente puntual), considerar una memoria `feedback`/`reference` propia.
+- **Roy (`write`) corre esta skill sin memoria privada de Cesar** — para él el paso 4.B no aplica (su Claude Code tiene su propia memoria); su hilo conductor con el equipo es el `ESTADO.md` del 4.A. Por eso 4.A es obligatorio y 4.B es opcional según quién cierra.
 
 ## 5. Reflexión de cierre — hallazgos y aprendizajes
 
@@ -89,6 +104,7 @@ Cerrar con un bloque compacto:
 - ✅/⚠️ Estado: repo, deploys, Actions.
 - 🔄 Sync: pusheado / pendiente / si hay que traer commits de Roy.
 - 📝 Resumen de lo hecho + pendientes.
-- 🗂️ Bitácora actualizada (sí/no).
+- 🧵 `ESTADO.md` actualizado y pusheado (cuál/es repos) — el hilo conductor común.
+- 🗂️ Bitácora privada actualizada (sí/no — solo Cesar).
 
 Si algo quedó sin resolver (un push que el usuario no autorizó, un workflow en rojo), **dejarlo explícito como pendiente para la próxima** — no maquillarlo como cerrado.

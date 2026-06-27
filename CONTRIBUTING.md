@@ -50,6 +50,27 @@ pedíselo. Mismo modelo para el backend (`zaris-zge` deploya en Railway al pushe
 para cualquier app nueva a futuro: repo → deploy automático, sin sumar a todos a la
 plataforma de hosting.
 
+## Hilo conductor común — `ESTADO.md` (lee esto al empezar y al terminar)
+
+Para que nadie pierda de vista qué está hecho y qué falta, cada repo tiene un
+**`ESTADO.md` en su raíz** (`zaris-zge/ESTADO.md` y `zaris-vecinos/ESTADO.md`).
+Es la **fuente de verdad COMPARTIDA** del estado de avance: En curso / Pendientes
+/ Hecho reciente. Reglas (CLAUDE.md §45):
+
+- **Al empezar una sesión:** leé el `ESTADO.md` del repo en que vas a trabajar —
+  ahí está lo último que dejó quien cerró antes (vos o el otro).
+- **Al cerrar:** actualizalo (mové lo terminado a "Hecho reciente", agregá lo que
+  quedó abierto a "Pendientes") y **pushealo**. Es un archivo del repo, no una
+  nota personal.
+- **Todo pendiente que el otro necesite saber va al `ESTADO.md`** (o al
+  `PLAN_*.md` del módulo), nunca solo en tu cabeza o en notas locales. Lo que no
+  está en el repo, el otro no lo ve → choque garantizado.
+- Es **corto y vivo** (foto del estado, no historia). El roadmap detallado de un
+  módulo vive en su `PLAN_*.md`; el detalle histórico en `HISTORIAL_MIGRACIONES.md`.
+
+Si usás Claude Code, las skills `/estado-proyecto` (al abrir) y `/cierre-sesion`
+(al terminar) ya leen y actualizan el `ESTADO.md` por vos.
+
 ## Evitar choques (lo que más duele con varias personas)
 
 1. **`web-app/dist/` lo rebuildea CI.** No edites el `dist` a mano salvo
