@@ -7,6 +7,8 @@ description: Reporte de estado del proyecto ZARIS en colaboración — revisa me
 
 > Trabajamos **en colaboración** (al menos Cesar `CesarZeta` + Roy `roymanrafael`). Antes de afirmar nada sobre el estado, **verificar contra la fuente real** (gh API, curl, git) — nunca reportar de memoria. Familia de `feedback_verificar_siempre_antes_de_opinar`.
 
+> **Esta skill la corre cualquier colaborador, pero algunos pasos exigen rol `admin` del repo.** Cesar (`CesarZeta`) es `admin`; Roy (`roymanrafael`) es `write`. Pasos que **requieren admin** y le darán error/vacío a un colaborador `write` — **no es un bug, es el rol**: ver invitaciones pendientes (`gh api .../invitations`), y TODO el bloque "Onboarding de un colaborador nuevo" (alta/baja con `gh api -X PUT/DELETE .../collaborators`). Lo que un `write` SÍ puede correr: salud/deploys (curl), Actions y lista de colaboradores (`gh api .../collaborators`), sync de git. Si un paso admin falla por permisos, reportarlo como "requiere admin (tarea de Cesar)", no como caída del servicio.
+
 Datos fijos del proyecto:
 - **Repo:** `CesarZeta/zaris-zge` (público, sirve GH Pages).
 - **API prod (Railway):** `https://zaris-api-production-bf0b.up.railway.app` — proyecto `inspiring-empathy`, servicio `zaris-api`, branch `main`, root `/backend`.
