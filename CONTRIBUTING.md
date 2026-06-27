@@ -37,6 +37,19 @@ cambio en la PWA necesita un endpoint nuevo o un campo nuevo en la respuesta,
 ese cambio es **backend, va en `zaris-zge`** y se mergea primero. Coordinar el
 contrato (shape del JSON) antes de implementar las dos puntas.
 
+### Deploy: no hace falta tocar Vercel
+
+La PWA (`zaris-vecinos`) deploya en **Vercel automáticamente** al pushear a `main`
+del repo. **No necesitás ser miembro de Vercel para desarrollar** — tu acceso
+`write` al repo de GitHub alcanza: codeás en local, pusheás, y Vercel deploya solo.
+Sumar miembros a Vercel tiene costo (plan pago) y no aporta al desarrollo, así que
+**no se hace por defecto**. Las tareas que sí requieren Vercel (ver logs de runtime,
+cambiar env vars como `VITE_API_URL`, tocar dominio/config del proyecto) las hace el
+dueño del proyecto Vercel; si necesitás un log de prod o un cambio de env var,
+pedíselo. Mismo modelo para el backend (`zaris-zge` deploya en Railway al pushear) y
+para cualquier app nueva a futuro: repo → deploy automático, sin sumar a todos a la
+plataforma de hosting.
+
 ## Evitar choques (lo que más duele con varias personas)
 
 1. **`web-app/dist/` lo rebuildea CI.** No edites el `dist` a mano salvo
