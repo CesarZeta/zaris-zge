@@ -9,6 +9,8 @@ Rutina de fin de jornada. Trabajamos **en colaboración** (Cesar `CesarZeta` + R
 
 > No declarar nada "cerrado/sincronizado" sin verificarlo con git/gh/curl. Familia de `feedback_verificar_siempre_antes_de_opinar`.
 
+> **La corre cualquier colaborador, pero algunos chequeos exigen rol `admin`.** Cesar (`CesarZeta`) es `admin`; Roy (`roymanrafael`) es `write`. Si el paso 1 reusa `estado-proyecto`, los pasos admin-only (invitaciones pendientes, alta de colaboradores) le darán error/vacío a un `write` — es el rol, no un bug; reportarlos como "requiere admin (tarea de Cesar)". El resto del cierre (sync de git, resumen, bitácora, reflexión) funciona igual para cualquiera.
+
 Ejecutar los 5 pasos en orden y reportar al final.
 
 ## 1. Chequeo de estado
