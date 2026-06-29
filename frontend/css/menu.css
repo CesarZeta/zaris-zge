@@ -816,6 +816,30 @@ html, body {
   color: currentColor;
 }
 
+/* Encabezado de sección del sidebar (Atención / Supervisión / Común / Admin).
+   Agrupa los ítems por rol según el nivel de acceso (CLAUDE.md §30). No es
+   clickeable: solo rotula el bloque que sigue. El primero no lleva margen
+   superior para no separarse del borde del sidebar. */
+.nav-flat__section {
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  padding: 6px 12px 4px;
+  margin-top: 10px;
+  user-select: none;
+}
+.nav-flat__section:first-child {
+  margin-top: 2px;
+}
+/* Si todos los ítems del bloque quedaron ocultos por permisos, el JS de
+   menu.js marca la sección con [hidden] para no dejar un título huérfano. */
+.nav-flat__section[hidden] {
+  display: none;
+}
+
 /* ── Dark mode — overrides de los rgba claros hardcodeados ──
    Los tokens del DS ya se invierten via [data-theme="dark"] en
    colors_and_type.css; acá solo van los valores literales del shell

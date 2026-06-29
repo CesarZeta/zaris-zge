@@ -31,32 +31,52 @@ export function Sidebar() {
 
       {/* Nav */}
       <nav className={s.nav} aria-label="Navegación principal">
-        {modules.filter((mod) => {
-          // Manifest puede pedir que el modulo no aparezca en sidebar (ej:
-          // ciudadanos/empresas viven detras de la landing de Contactos).
-          if (mod.hideFromSidebar) return false
-          // CLAUDE.md §30. Si el manifest declara moduloCodigo y el usuario tiene
-          // modulos_permitidos, ocultar si no esta en la lista. Si no hay info,
-          // fail-open (el guard real esta en el backend).
-          if (!mod.moduloCodigo) return true
-          const permitidos = user?.modulos_permitidos
-          if (!Array.isArray(permitidos)) return true
-          return permitidos.includes(mod.moduloCodigo)
-        }).map((mod) => {
-          const Icon = mod.icon
-          const isActive = location.pathname.startsWith(`/${mod.id}`)
-          return (
-            <NavLink
-              key={mod.id}
-              to={`/${mod.id}`}
-              className={`${s.navItem} ${isActive ? s.active : ''}`}
-              title={sidebarCollapsed ? mod.label : undefined}
-            >
-              <Icon size={16} strokeWidth={1.5} />
-              {!sidebarCollapsed && <span>{mod.label}</span>}
-            </NavLink>
-          )
-        })}
+        {(() => {
+          // Sección de cada módulo (espeja .nav-flat__section del shell vanilla,
+          // §30). El encabezado se renderiza solo cuando empieza una sección
+          // nueva Y tiene al menos un ítem visible — así no queda título huérfano.
+          const SECCION: Record<string, string> = {
+            emergencias: 'Atención', reclamos: 'Atención', turnos: 'Atención',
+            entradas: 'Atención', tramites: 'Atención',
+            ot: 'Supervisión',
+            agenda: 'Común', contactos: 'Común',
+            bi: 'Administración', encuestas: 'Administración',
+            config: 'Administración', guias: 'Administración',
+          }
+          const visibles = modules.filter((mod) => {
+            // Manifest puede pedir que el modulo no aparezca en sidebar (ej:
+            // ciudadanos/empresas viven detras de la landing de Contactos).
+            if (mod.hideFromSidebar) return false
+            // CLAUDE.md §30. Si el manifest declara moduloCodigo y el usuario tiene
+            // modulos_permitidos, ocultar si no esta en la lista. Si no hay info,
+            // fail-open (el guard real esta en el backend).
+            if (!mod.moduloCodigo) return true
+            const permitidos = user?.modulos_permitidos
+            if (!Array.isArray(permitidos)) return true
+            return permitidos.includes(mod.moduloCodigo)
+          })
+          let seccionActual = ''
+          return visibles.map((mod) => {
+            const Icon = mod.icon
+            const isActive = location.pathname.startsWith(`/${mod.id}`)
+            const seccion = SECCION[mod.id]
+            const mostrarHeader = !sidebarCollapsed && seccion && seccion !== seccionActual
+            if (seccion) seccionActual = seccion
+            return (
+              <div key={mod.id} style={{ display: 'contents' }}>
+                {mostrarHeader && <div className={s.section}>{seccion}</div>}
+                <NavLink
+                  to={`/${mod.id}`}
+                  className={`${s.navItem} ${isActive ? s.active : ''}`}
+                  title={sidebarCollapsed ? mod.label : undefined}
+                >
+                  <Icon size={16} strokeWidth={1.5} />
+                  {!sidebarCollapsed && <span>{mod.label}</span>}
+                </NavLink>
+              </div>
+            )
+          })
+        })()}
       </nav>
 
       {/* Footer */}

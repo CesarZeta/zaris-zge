@@ -313,6 +313,23 @@
       const algunoPermitido = todos.some(m => modulosPermitidos.has(m));
       if (!algunoPermitido) link.hidden = true;
     });
+    // Ocultar encabezados de sección (.nav-flat__section) cuyos ítems quedaron
+    // todos ocultos por permisos — sino el título queda huérfano sobre un bloque
+    // vacío. Cada sección "posee" los .nav-flat__item que la siguen hasta el
+    // próximo encabezado de sección. Guías no tiene data-modulo (siempre visible),
+    // así que la sección Administración nunca queda vacía para un usuario logueado.
+    document.querySelectorAll('.nav-flat__section').forEach(section => {
+      let algunoVisible = false;
+      let el = section.nextElementSibling;
+      while (el && !el.classList.contains('nav-flat__section')) {
+        if (el.classList.contains('nav-flat__item') && !el.hidden) {
+          algunoVisible = true;
+          break;
+        }
+        el = el.nextElementSibling;
+      }
+      if (!algunoVisible) section.hidden = true;
+    });
     // Legacy: ocultar grupos vacios del sidebar viejo
     document.querySelectorAll('.nav__panel, .nav__subpanel').forEach(panel => {
       const visible = panel.querySelectorAll('.nav__link:not([hidden])').length;
