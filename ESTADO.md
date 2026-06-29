@@ -9,7 +9,7 @@
 > - Verificar contra git/prod antes de declarar algo hecho (`feedback_verificar_siempre_antes_de_opinar`).
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 
-**Última actualización:** 2026-06-29 (Cesar) · rama `main`
+**Última actualización:** 2026-06-29 (Cesar) · rama `main` — sesión "roles por nivel" (Fase 1+2)
 
 ---
 
@@ -23,6 +23,8 @@ _(nada en curso ahora mismo — backoffice estable, todo lo abierto es de la PWA
 
 > El grueso del trabajo abierto del proyecto hoy está en la **PWA** (ver `zaris-vecinos/ESTADO.md` → Etapa G). Acá quedan solo cosas de backoffice/infra.
 
+- **🟠 Fase 3 roles — UX de supervisión (NO empezada).** Las vistas de gestión (OT / Gestión de Turnos / Gestión de Trámites) deben dar al supervisor: ver lo de su **subárea + agentes a cargo**, y **búsqueda por número** individual *y* por **rango desde/hasta** (y/o fechas) para trabajar desde el listado. Falta definir con el usuario el modelo "supervisor→agentes" (¿por subárea compartida, o relación explícita?) — quedó pendiente de una `AskUserQuestion` que no se respondió. Es el pedido original de la sesión que todavía no se atacó.
+- **🟠 Fase 3 — "Avisar al supervisor" desde Reclamos (NO empezada).** El operador (nivel 3) ya NO cambia estado de reclamos (Fase 1); falta darle la acción de **generar un aviso/notificación al supervisor** de la subárea para que gestione el cambio. Funcionalidad nueva (usa el sistema de notificaciones in-app/email, mig 51).
 - **🟡 BI Ejecutivo** — pendiente de PRODUCTO. El usuario define las visualizaciones (como hizo con el Operativo); NO inventarlas. Tarjeta "Ejecutivo" en `DatosLanding.tsx` es placeholder. (CLAUDE.md §43.)
 - **🟡 Barrido visual modo oscuro** de módulos React restantes. Solo Dashboard y Guías verificados en dark. Literales claros conocidos (1 c/u): `bi/views/{Resumen,Resueltos,Pendientes,Subreclamos}View.tsx`, `emergencias/pages/Recepcion.tsx`, `config/views/IdentidadView.tsx` → reemplazar por tokens/`--surface-overlay` cuando se los vea en dark. Vanilla (admin_tablas/usuarios) tienen el bootstrap pero sin verificación visual dark.
 - **🟢 Higiene (requiere al usuario, no se puede desde Claude Code):** rotar `DISPATCHER_TOKEN` (visible en historial git): valor nuevo → Railway env var → GitHub secret (lo usan 3 crons: encuestas, trámites, integridad) → borrar el secret sobrante `ZARIS_DISPATCHER_TOKEN`.
@@ -31,11 +33,15 @@ _(nada en curso ahora mismo — backoffice estable, todo lo abierto es de la PWA
 
 ## ✅ Hecho reciente (últimas sesiones)
 
-- **2026-06-29** — **Refactor `CLAUDE.md` → skills on-demand** (`b1f8117`…`9cb4c8f`, en `main`). La referencia por módulo (§15/18/22/26/27/30/33/34/35/36/37/38/39/41/42/43/44) se movió a **14 skills `.claude/skills/modulo-*`** que cargan solas cuando trabajás ese módulo. CLAUDE.md pasó de 1992→1024 líneas (−48.6%); solo quedan las reglas transversales (always-on). **Las anclas `## N.` y todas las refs `§N` se conservan** — nada se rompe. Plan/decisiones en `PLAN_REFACTOR_SKILLS.md`. **Roy:** al tocar un módulo, su skill se invoca automáticamente; si editás CLAUDE.md, recordá que el detalle de cada módulo ya NO está ahí sino en su skill.
-- **2026-06-27** — Mail de confirmación al crear reclamo del vecino (`a4ab19d`, en prod, verificado con mail real). Onboarding de Roy redondeado. Etapa G de la PWA documentada en `PLAN_APP_VECINOS.md` (`f4ad557`).
-- **2026-06-13** — Recovery de credenciales usuarios internos (mig 90) + 6 catálogos Emergencias en Maestros + filtros FK en listado admin_tablas (`5d81080`, prod).
-- **2026-06-12** — Shell: menú de usuario + foto de perfil (mig 88) + modo oscuro + statusbar inferior. Revisión integral de Agenda (mig 89/91) + manual.
-- **2026-06-10/11** — Módulo Emergencias (COM) completo, Fases 1-5 (migs 81-85), en prod.
+- **2026-06-29** — **Sidebar reagrupado por rol + permisos finos (Fase 1+2, en prod).** Modelo de roles según nivel: 🟢 Atención (n3) · 🟣 Supervisión (n2) · 🔵 Común · ⚫ Administración (n1). Cambios:
+  - Niveles en tabla `modulos` (local+prod): `reclamos` 1→**3** (ahora lo ve el operador), `bi`(Datos)+`encuestas` 2→**1** (solo admin). Sidebar vanilla (`index.html`) + React (`shell/Sidebar`) con secciones `.nav-flat__section`; `menu.js` oculta secciones vacías por permisos (`d266dc0`/`68356a2`).
+  - **Reclamos: el operador NO cambia estado** — guard `_require_supervisor` (nivel ≤2) en `PUT /reclamos/{id}/estado`, `/cancelar`, `POST /subreclamo` (`reclamos.py`). El operador crea/consulta/edita datos+observaciones+adjuntos; el cambio de estado es Supervisión (la gestión = Órdenes de Trabajo). UI `DetailView.tsx` espeja (Editar vs acciones de estado). Smoke: op→403, sup→200.
+  - **Fase 2:** ítems "Gestión de Turnos" → vista nueva `MisTurnos.tsx` (`/turnos/mis-turnos`, tabs Pendientes/Hoy/Todos, scopeada por backend) y "Gestión de Trámites" → `/tramites/mi-bandeja` (reusa lo existente). NO hay "Gestión de Reclamos" (= OT). (`d823bd0`.)
+  - **Bugfix:** `/tramites/mi-bandeja` daba 500 (`AmbiguousParameterError` en `:mun IS NULL`) → `CAST(:mun AS integer)` (`327e863`, en prod, verificado 200). Quedó expuesto al darle entrada directa desde el sidebar; bug latente previo.
+- **2026-06-29** — **Refactor `CLAUDE.md` → skills on-demand** (`b1f8117`…`9cb4c8f`). Detalle por módulo (§15/18/22/26/27/30/33/34/35/36/37/38/39/41/42/43/44) → **14 skills `.claude/skills/modulo-*`**. CLAUDE.md 1992→1024 líneas. Anclas `## N.` y refs `§N` se conservan. Plan en `PLAN_REFACTOR_SKILLS.md`.
+- **2026-06-27** — Mail de confirmación al crear reclamo del vecino (`a4ab19d`, prod, verificado). Onboarding de Roy. Etapa G de la PWA en `PLAN_APP_VECINOS.md` (`f4ad557`).
+- **2026-06-13** — Recovery de credenciales usuarios internos (mig 90) + 6 catálogos Emergencias en Maestros + filtros FK en admin_tablas (`5d81080`, prod).
+- **2026-06-12** — Shell: menú de usuario + foto de perfil (mig 88) + modo oscuro + statusbar inferior. Revisión integral de Agenda (mig 89/91).
 
 > Detalle histórico completo: `HISTORIAL_MIGRACIONES.md` + tabla "Histórico breve" de la bitácora.
 
