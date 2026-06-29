@@ -8,7 +8,7 @@
 
 - **Fase 0 (inventario + plan):** ✅ completada — commit `b1f8117`.
 - **Fase 1 (piloto §44 Emergencias):** ✅ **migrado** — skill `modulo-emergencias` creada, puntero en CLAUDE.md, ancla `## 44.` conservada. CLAUDE.md 1992→1981 líneas. **Pendiente: validación manual del usuario (auto-invocación en sesión nueva).**
-- **Fase 2 (replicar):** en curso. Piloto validado (auto-invocó en sesión nueva). Bloque 1 (§42, §43, §34) y bloque 2 (§39, §41, §33) migrados. CLAUDE.md 1981→1691 líneas. §41 split: el "Estándar OBLIGATORIO de verificación UI" quedó en CLAUDE.md (transversal).
+- **Fase 2 (replicar):** en curso. Piloto validado. Bloques 1 (§42/§43/§34), 2 (§39/§41/§33) y 3 (§35/§38/§30) migrados. CLAUDE.md 1981→1476 líneas. Splits: §41 (estándar UI transversal queda) y §30 (trampa de seguridad transversal queda en el puntero). Faltan: §27 Agenda, §18+§22+§26 Reclamos, §15 Admin Tablas (split), §36+§37 Guías.
 
 ## Reglas inviolables del refactor
 
@@ -71,9 +71,9 @@
 | §36 | Generación de manuales | (ver nota↓) | 4 / 2 / 2 | propuesto |
 | §34 | Módulo OT | `modulo-ot` | 5 / 2 / 3 | **migrado** ✅ |
 | §33 | Módulos Turnos y Entradas | `modulo-turnos-entradas` | 17 / 7 / 10 | **migrado** ✅ |
-| §35 | Módulo Trámites / Expedientes | `modulo-tramites` | 33 / 6 / 27 | propuesto |
-| §38 | Auth público de ciudadanos (App Vecinos) | `modulo-app-vecinos` | 23 / 8 / 15 | propuesto |
-| §30 | Permisos por módulo | `modulo-permisos` | 18 / 3 / 15 | propuesto |
+| §35 | Módulo Trámites / Expedientes | `modulo-tramites` | 33 / 6 / 27 | **migrado** ✅ |
+| §38 | Auth público de ciudadanos (App Vecinos) | `modulo-app-vecinos` | 23 / 8 / 15 | **migrado** ✅ |
+| §30 | Permisos por módulo | `modulo-permisos` | 18 / 3 / 15 | **migrado (split)** ✅ |
 | §27 | Módulo Agenda | `modulo-agenda` | 26 / 14 / 12 | propuesto |
 | §26 | Adjuntos de Reclamos (Storage) | `modulo-reclamos` (junto con §18/§22) | 12 / 6 / 6 | propuesto |
 | §22 | Geolocalización, Activos y Adjuntos | `modulo-reclamos` | 8 / 4 / 4 | propuesto |

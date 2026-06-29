@@ -1317,43 +1317,9 @@ Si una fila de grilla es `useDroppable` (de `@dnd-kit/core`) **y** además quier
 
 ## 30. Permisos por módulo
 
-§3 define `nivel_acceso ∈ {1=Admin, 2=Supervisor, 3=Operador, 4=Consultor}` — un rol único, jerárquico. Para control fino del tipo "Juan es supervisor pero solo de Reclamos, no debe ver Agenda ni Admin Tablas" se aplica el modelo híbrido descripto acá. **Implementado** en mig 38 (2026-05-12) + mig 44 (2026-05-14 separa `agenda`/`turnos`/`entradas`). Las subsecciones que mencionan "schema futuro" o "cuando se implemente" son textos heredados del diseño; el "Estado actual" al final de la sección es la referencia operativa.
-
-### Modelo: nivel mínimo por módulo + override por usuario
-
-Cada módulo declara su **nivel mínimo de acceso** (default). Si el `nivel_acceso` del usuario lo alcanza, ve el módulo. Adicionalmente, una tabla nueva `usuario_modulos` permite **override** explícito por usuario:
-
-- Fila con `permitido = TRUE` → el usuario ve el módulo aunque su nivel sea más alto que el mínimo (otorga acceso).
-- Fila con `permitido = FALSE` → el usuario NO ve el módulo aunque su nivel sí lo permitiría (bloquea acceso).
-- Sin fila → cae al default por nivel.
-
-### Implementación (mig 38 + 44, local + prod)
-
-Tablas `modulos` (catálogo: `modulo_codigo` PK, `nombre`, `descripcion`, `min_nivel_acceso` SMALLINT default 4) + `usuario_modulos` (override por usuario: `(id_usuario, modulo_codigo)` UNIQUE, `permitido` BOOL, §10). Catálogo (filas principales — la fuente real es la tabla `modulos`, que además tiene `tramites`, `encuestas`, `bi`):
-
-| Código | Nombre | min_nivel_acceso | Cubre |
-|---|---|---|---|
-| `emergencias` | Emergencias | 3 | módulo React `emergencias` — COM (mig 84, §44) |
-| `reclamos` | Reclamos | 4 | módulo React `reclamos` |
-| `padrones` | Padrones | 4 | módulos React `ciudadanos` + `empresas` |
-| `ot_agente` | OT - Agente | 3 | módulo React `ot` (vista Agente) |
-| `agenda` | Agenda | 3 | módulo React `agenda` — sustrato de disponibilidad horaria de agentes/espacios |
-| `turnos` | Turnos | 3 | módulo React `turnos` — backoffice de turnos de atención (tabla `turnos`, mig 45) |
-| `entradas` | Entradas | 3 | módulo React `entradas` — backoffice de eventos con cupo en espacios físicos |
-| `ot_supervisor` | OT - Supervisor | 2 | módulo React `ot` (vista Supervisor) |
-| `ot_auditoria` | OT - Auditoría | 2 | módulo React `ot` (vista Auditoría) |
-| `usuarios` | Usuarios | 1 | `frontend/usuarios.html` (pantalla propia — admin_tablas no hashea password) |
-| `admin_tablas` | Maestros | 1 | resto de `frontend/admin_tablas.html?tabla=*` |
-
-**Backend (`core/auth.py`):** `modulos_permitidos(db, id_usuario, nivel) -> list[str]` (defaults por nivel + overrides) · `require_modulo(modulo)` dependency factory (devuelve `current_user`, 403 si falta). `POST /auth/login` y `GET /auth/me` incluyen `modulos_permitidos`.
-
-**Endpoints (`admin_permisos.py`, `/api/v1/admin/permisos`):** GET `/modulos` · PUT `/modulos/{codigo}` (editar `min_nivel_acceso`) · GET `/usuarios/{id}/modulos` · PUT `/usuarios/{id}/modulos` (set bulk overrides). **Orden crítico**: `admin_permisos_router` ANTES de `admin_tablas_router` en `main.py` (sino `/{tabla}` greedy atrapa `/permisos/*` → 422 `int_parsing`, §5).
-
-**Frontend vanilla (`menu.js`):** filtra items por `data-modulo` ∉ `modulos_permitidos`. **`data-modulo-fallback="cod1,cod2"`** (CSV): el item se muestra si CUALQUIER código (principal + fallback) está permitido — necesario cuando un bundle cubre varios sub-permisos (OT supervisor/agente/auditoría). Sin fallback, OT desaparecía para el operador (cazado 2026-05-12). Sesión vieja sin `modulos_permitidos` cacheado → refresca contra `/me`, fail-open en UI (el guard real está en backend).
-
-**Frontend React (`localhost:5173`):** `ModuleManifest.moduloCodigo?: string` (lo usan agenda/turnos/entradas/padrones); `Sidebar.tsx` filtra, fail-open; `useAuthStore.refreshSession()` rehidrata desde `/me`.
-
-> **TRAMPA DE SEGURIDAD recurrente:** que el sidebar oculte un módulo NO protege sus endpoints. `require_modulo` casi no se usa — la mayoría de routers aplican su nivel con helpers locales (`_require_gestion`, `_require_supervisor`). Hasta 2026-05-20 el router OT no chequeaba nivel y un operador con JWT creaba OT por curl (QA #2). **Antes de asumir "el router ya valida nivel", leé el handler.** Ver [[guard_nivel_endpoint_no_solo_ui]].
+> **Movido a la skill `modulo-permisos`** (`.claude/skills/modulo-permisos/SKILL.md`), que carga on-demand. Modelo híbrido (nivel mínimo por módulo + override por usuario), tablas `modulos`/`usuario_modulos`, catálogo, `modulos_permitidos`/`require_modulo`, endpoints `/admin/permisos` y filtrado del sidebar (`data-modulo`/`data-modulo-fallback`) viven ahí. Ancla §30 conservada para las refs cruzadas.
+>
+> **TRAMPA DE SEGURIDAD recurrente (transversal — no la olvides):** que el sidebar oculte un módulo NO protege sus endpoints. `require_modulo` casi no se usa — la mayoría de routers aplican su nivel con helpers locales. **Antes de asumir "el router ya valida nivel", leé el handler.** Ver [[guard_nivel_endpoint_no_solo_ui]].
 
 ## 31. Limpieza de estilos legacy — CERRADA (2026-05-12)
 
@@ -1379,89 +1345,7 @@ DS v1.0 (`--z-*`, `.z-*`, `frontend/styles.css`, `frontend/menu.html`, `frontend
 
 ## 35. Módulo Trámites / Expedientes
 
-Expedientes administrativos tipo "ventanilla" (entrada → circuito interno → resolución). Multi-área, firmas digitales, numeración correlativa por tipo. Frontend React `web-app/src/modules/tramites/`, backend `routes/tramites.py` + `routes/tramites_admin.py` + `services/tramites/`. **Bitácora de fases (1/2/3), smokes, verificaciones E2E y repasos de Roy en `HISTORIAL_MIGRACIONES.md`.**
-
-### Filosofía de diseño
-
-- **Catálogo / instancia separados**: catálogo (`tipo_tramite`, `tipo_tramite_version`, `_campo`, `_estado`, `_transicion`, `_documento_requerido`) define el FSM y los campos. Instancias (`tramite`, `tramite_movimiento`, `tramite_documento`, `tramite_firma`, `tramite_relacion`) son los expedientes reales.
-- **Versionado del circuito**: un trámite queda atado a la versión publicada al crearse — cambiar el circuito NO altera trámites en curso. `tipo_tramite_version.publicada=TRUE` = activa.
-- **FK circular diferida**: `tipo_tramite.id_version_publicada ↔ tipo_tramite_version.id_tipo_tramite` con `DEFERRABLE INITIALLY DEFERRED`.
-- **Numeración atómica**: `tipo_tramite_numerador` PK `(id_tipo_tramite, anio, id_municipio)` con `INSERT ... ON CONFLICT DO UPDATE SET ultimo_numero+1 RETURNING`. Formato `{prefijo}-{cod_muni}-{anio}-{correlativo}` → `POD-LPL-2026-0001`.
-- **Ledger append-only**: `tramite_movimiento` (UNIQUE `(id_tramite, orden_secuencial)`); cada acción es fila nueva, nunca UPDATE.
-- **Iniciador polimórfico**: `iniciador_tipo ∈ {ciudadano, empresa, area_interna}` + CHECK que exige exactamente una de `{id_ciudadano_iniciador, id_empresa_iniciadora, id_subarea_iniciadora}`.
-- **Destinatario polimórfico**: `destinatario_actual_tipo ∈ {subarea, equipo, agente}` + CHECK `ck_tramite_destinatario` con 4 ramas (NULL/subarea/equipo/agente), exactamente una de `{id_subarea_actual, id_equipo_actual, id_agente_actual}`. **`agente` = destinatario directo a una persona** (mig 66): aparece en SU bandeja, nadie más lo toma. **CRÍTICO: toda ruta que cambie destinatario o lleve a estado final DEBE setear las 3 FKs coherente con el tipo, o viola el CHECK** (cazado en `transicionar_tramite` que omitía `id_agente_actual`). Ver [[project_tramites_destinatario_agente_y_mi_bandeja]].
-
-### Tablas
-
-Catálogo (7): `tipo_tramite` (código único, prefijo, iniciadores permitidos), `tipo_tramite_version`, `tipo_tramite_campo` (tipo_dato, orden, opciones_jsonb), `tipo_tramite_estado` (codigo, etiqueta, color, es_inicial/es_final), `tipo_tramite_transicion` (origen→destino, quien_puede_jsonb, requiere_comentario/adjunto, **tipo_accion** aprobar/rechazar/derivar/avanzar/otro mig 68, **mensaje_iniciador** mig 68, **notifica_iniciador**), `tipo_tramite_documento_requerido` (obligatorio, formatos, requiere_firma, **cantidad_max_archivos** 1-20 mig 68), `tipo_tramite_numerador`.
-
-Instancias (5): `tramite` (`numero_expediente` único, polimorfismo iniciador+destinatario, `id_agente_tomado_por`), `tramite_movimiento`, `tramite_documento` (storage_path, sha256, mime_type, size_bytes), `tramite_firma` (polimórfico agente/subarea/equipo), `tramite_relacion`.
-
-Aprobaciones por etapa (visados, mig 73, separadas de `tramite_firma`): `tipo_tramite_aprobacion_requerida` (catálogo versionado: estado/etapa + aprobador polimórfico subarea|equipo|agente + `bloqueante` default TRUE) y `tramite_aprobacion` (instancia: estado pendiente|aprobada|rechazada, UNIQUE `(id_tramite, id_requisito)`). Las bloqueantes impiden avanzar; el rechazo NO transiciona (deja el trámite trabado con motivo visible). **Circuito de subsanación (2026-06-01):** una bloqueante pendiente/rechazada bloquea TODAS las transiciones salientes **salvo las de `tipo_accion='derivar'`** (devolución a subsanación) — sin esa excepción un visado rechazado dejaba el trámite trabado sin salida. Y al **re-entrar** a la etapa del visado (reenvío post-subsanación) los visados `rechazada` **se re-pendientizan solos** (`svc_aprob.rependientizar_rechazadas_de_estado`, limpia comentario/doc/quién/cuándo + movimiento `aprobacion` "Visados reabiertos"). Ambos en `transicionar_tramite`. Ver [[project_tramites_aprobaciones_por_etapa]].
-
-Todas siguen §10. **El catálogo `tipo_tramite` NO tiene `id_usuario_alta`** ([[reference_tipo_tramite_sin_usuario_alta]]); la auditoría de usuario vive solo en las instancias. `es_sistema` (mig 56) distingue seed (TRUE) de custom (FALSE).
-
-### Migraciones (todas local + prod)
-47 catálogos · 48 instancias · 49 índices · 50 auditoría en instancias · 56 `es_sistema` · 66 destinatario=agente · 68 tipo_accion/mensaje_iniciador/cantidad_max_archivos · 73 aprobaciones por etapa · 74 `resultado` (Fase 1 retención) · 75 retención Fases 2-5 (`retencion_nunca_depurar`, `fecha_archivado`/`archivado_motivo`, `binario_purgado`/`fecha_purga_binario`, ledger `archivado_inactividad`/`purga_binario` + claves config en `75b`). Detalle en HISTORIAL/§21.
-
-### Seeds
-`backend/seed_tramites.py` (idempotente): 7 subáreas del circuito, 9 tipos con versión publicada v1 (poda-arbol POD, pedido-informe INF, licencia-ordinaria LIC, habilitacion-comercial HAB, cambio-domicilio-comercial CDC, transferencia-habilitacion THC, inspeccion-bromatologica BRO, cartel-publicitario CAR, recurso-administrativo REA) + ~21 trámites demo. `$env:ENV_FILE=".env.local"; python seed_tramites.py`.
-
-### Endpoints (`/api/v1/tramites`, JWT a nivel router)
-
-Registrado **ANTES de `admin_tablas_router`** (evita `/{tabla}` greedy, §5). Las rutas de segmento fijo (`/mi-bandeja`, `/destinatarios`, `/tipos`) van **ANTES de `/{numero_o_id}`** (param greedy).
-
-| Verbo | Path | Notas |
-|---|---|---|
-| GET | `/tipos` · `/tipos/{id}` | Tipos activos publicados; detalle con campos/estados/transiciones/docs **a nivel raíz** (`version` es solo metadata) |
-| GET | `` (bandeja) | Filtros estado/tipo/iniciador/destinatario/numero/q/fechas; `X-Total-Count` |
-| GET | `/{numero_o_id}` (+ `/movimientos`, `/documentos`) | Acepta `POD-LPL-2026-0001` o id int |
-| GET | `/mi-bandeja` | Colectivos del agente resueltos server-side (subárea + equipos/mesas + asignado a mí + tomado por mí). El `GET ""` general NO sirve (filtra un destinatario único). Filtros estado/tipo/sin_tomar/q |
-| GET | `/destinatarios?q=` | Opciones de pase agrupadas (agentes/equipos/subáreas). Quirk: `CAST(:q AS text) IS NULL` (sino `AmbiguousParameterError`) |
-| POST | `` | Crear (201). Numerador atómico, estado inicial, 2 movimientos. **Body: `iniciador` ANIDADO** `{tipo, id_ciudadano, id_empresa, id_subarea, id_ciudadano_representante}` + `datos` (NO `datos_jsonb`) + `id_municipio`; la versión se deriva del tipo |
-| POST | `/{ref}/tomar` · `/liberar` · `/transicionar` · `/pase` · `/comentar` · `/relacionar` + GET `/transiciones-permitidas` | `tomar`=`SELECT FOR UPDATE`. `pase`/transición-final auto-liberan toma. `transicionar` valida `quien_puede_jsonb` + `requiere_adjunto` + guard de aprobaciones bloqueantes (422). `relacionar` ordena ids para UNIQUE |
-| POST/GET | `/{ref}/documentos` (+ `/{id}/contenido`, `/firmar`, `/rechazar-firma`) | Upload multipart; SHA256 sobre bytes; firma captura ip/user_agent/hash. `contenido` solo auth por header (no `?token=`), fetch con `cache:'no-store'` |
-| POST | `/{ref}/aprobaciones/{id_aprob}/resolver` | Aprobar/rechazar visado de etapa (mig 73) |
-
-Admin (`/api/v1/admin/tramites`, nivel ≤ 2, registrado antes de admin_tablas): CRUD de tipos/versiones/campos/estados/transiciones/docs-requeridos/aprobaciones-requeridas (~20 endpoints) + `GET /tipos` admin (lista TODOS: publicados+borradores+sin-estados, con `es_sistema` y `estado_version`). Versionado: v1 editable in-place sin trámites; con trámites fuerza v2 borrador (copia estructura via `versionado.crear_borrador_desde_publicada`). Publicar valida 1 inicial + ≥1 final.
-
-### Servicios (`backend/app/services/tramites/`)
-`numerador.py` (`proximo_numero` atómico, `formatear_numero`) · `auth.py` (`resolver_agente_desde_usuario` → `{id_agente, id_subarea, ids_equipos, id_municipio, nivel_acceso}`, `es_admin(nivel)=nivel<=2`) · `autorizacion.py` (`quien_puede_actuar` OR entre subareas/equipos/iniciador/roles) · `movimientos.py` (append-only, `COALESCE(MAX,0)+1`) · `creacion.py` (`validar_campos_contra_tipo`, `resolver_iniciador`, `determinar_destinatario_inicial`) · `documentos.py` (Supabase Storage + SHA256) · `firmas.py` (polimórfico, captura evidencia) · `versionado.py` · `aprobaciones.py` · `retencion.py` (mig 75: `archivar_inactivos` + `purgar_binarios` dry-run, helpers de config; lo dispara `routes/tramites_mantenimiento.py` vía cron).
-
-### Reglas operativas críticas
-- Toda mutación: transacción + `SELECT FOR UPDATE` sobre `tramite`.
-- `requiere_adjunto` cuenta `tramite_documento.activo` con `fecha_alta >= fecha_entrada_estado_actual`.
-- **Firma de documentos (`firmas.py::agente_puede_firmar`, política del municipio):** admin (n1) firma siempre; **operador/consultor (n≥3) NUNCA**; supervisor (n2) solo si pertenece al colectivo asignado a la firma (agente/subárea/equipo); firma SIN asignación → **fail-CLOSED** (solo admin). Era fail-open antes (cualquiera firmaba). Frontend `ListaDocumentos.tsx` gatea los botones firmar/rechazar a `hasPermission(2)` — el backend sigue siendo la fuente de verdad (403 al resto).
-- **`GET /tramites/mi-bandeja` filtra municipio tolerando NULL:** `(:mun IS NULL OR t.id_municipio = :mun OR t.id_municipio IS NULL)`. Filtrar con `= :mun` estricto vaciaba la bandeja en silencio cuando `agente.id_municipio` era NULL (drift de datos; `= NULL` no matchea nada en SQL). Si agregás un filtro por municipio sobre datos que pueden venir NULL, tolerá NULL (§38 mono-municipio). Ver [[feedback_filtro_igual_null_vacia_listado]].
-
-### Marca `resultado` del trámite + política de retención de documentos (migs 74 + 75, COMPLETA 2026-06-01)
-`tramite.resultado` (`pendiente|aprobado|rechazado`, CHECK `ck_tramite_resultado`) es una marca **paralela al estado FSM**, NO un estado: el estado es del flujo del circuito, el resultado dice cómo concluyó el trámite (se consulta junto al estado, "archivado, aprobado/rechazado"). Endpoint `POST /tramites/{ref}/resultado` (nivel ≤ 2, `ResultadoIn`) + movimiento `'resultado'` en el ledger. Expuesto en `TramiteDetalleOut.resultado` — **setearlo en los DOS builders del detalle** (`_tramite_detalle_out` + el GET handler `detalle_tramite`, [[feedback_columna_nueva_auditar_todos_los_select]]). Frontend: `ResultadoChip` (chip + dropdown, solo nivel ≤2).
-- **Política de retención (Fases 2-5, mig 75 — toda implementada).** El **registro** de cada documento (metadatos + `hash_sha256`) NUNCA se borra; solo se depura el **binario físico** del bucket por antigüedad, marcando `tramite_documento.binario_purgado=TRUE` + `fecha_purga_binario`. Plazos **configurables** en `configuracion_general` (Config → Sistema §41): `retencion_dias_aprobado` (3650 = 10 años), `retencion_dias_rechazado` (365 = 1 año), `tramite_inactividad_dias` (180), `tramite_purga_binarios_real` (`false` = dry-run, red de seguridad — arranca apagado).
-  - **Fase 2 (excepción por tipo):** `tipo_tramite.retencion_nunca_depurar` (BOOL). Si `TRUE`, los binarios de ese tipo nunca se purgan (ej. Habilitaciones). Editable en el builder de tipos (`NuevoTipoModal`/`EditarTipoModal`, checkbox) + visible en el detalle del tipo.
-  - **Fase 3 (auto-archivado):** trámite sin movimiento ≥ `tramite_inactividad_dias` y NO en estado final → `fecha_archivado=NOW()`, `archivado_motivo='inactividad'`, `resultado='rechazado'`, movimiento `'archivado_inactividad'`. El archivado es una marca de mantenimiento **paralela al estado del FSM** (no fuerza un estado "archivado" que el circuito puede no tener), igual que `resultado`.
-  - **Fase 4 (purga):** documentos de trámites ya concluidos (archivados o `resultado≠pendiente`), vencido el plazo según resultado, EXCEPTO tipos con `retencion_nunca_depurar`. Plazo contado desde `COALESCE(fecha_archivado, último movimiento, fecha_alta)`. **Dry-run por default** (solo reporta; el switch `tramite_purga_binarios_real='true'` la activa). Borra del bucket + marca `binario_purgado` + movimiento `'purga_binario'`. `GET /documentos/{id}/contenido` devuelve **410 Gone** si el binario fue purgado (no 404); el front muestra "Archivo depurado" en vez del botón descargar.
-  - **Fase 5 (cron):** endpoint `POST /api/v1/tramites/mantenimiento/ejecutar` (router `tramites_mantenimiento.py`, SIN guard JWT — auth por header `X-Dispatcher-Token`, mismo `DISPATCHER_TOKEN` de Railway que encuestas §42; **registrado ANTES de `tramites_router`** por el `/{numero_o_id}` greedy §5). Corre `archivar_inactivos` + `purgar_binarios`. Query param `forzar_purga_real=true` ignora el dry-run para una corrida controlada. Disparado diario por `.github/workflows/tramites-mantenimiento.yml` (04:10 UTC). Motores en `services/tramites/retencion.py`. Movimientos del cron usan `id_agente_iniciador` del trámite (la columna es NOT NULL; no hay "agente sistema") + `id_usuario=None`.
-  - **Quirk asyncpg:** `make_interval(days => CAST(:p AS integer))`; dentro de un `CASE` castear **cada bind param** (`CASE WHEN ... THEN CAST(:da AS integer) ELSE CAST(:dr AS integer) END`), no el CASE entero (sino asyncpg infiere `text` y falla). Familia de [[feedback_asyncpg_extract_cast_date]].
-- **Storage = Supabase Storage** (bucket privado `tramites-documentos`, paths `tramites/{anio}/{expediente}/{uuid}.{ext}`). Backend recibe multipart, calcula SHA256, PUT con service_role (`app/core/storage.py`, reusado por Reclamos §26 y OT §34). `verificar_integridad_documento` recomputa SHA256 descargando del bucket. Ver [[project_tramites_storage_efimero_deuda]].
-- **Notificaciones**: in-app + email cuando un trámite entra a una bandeja (creación/pase/transición que cambia destinatario), comentario al tomador, estado final al iniciador (incluye email a ciudadano/empresa con `mensaje_iniciador` custom mig 68 si `notifica_iniciador`), firma pendiente. Ver §51-notificaciones (mig 51) y [[project_notificaciones_in_app_email]]. La campana vive en el shell vanilla (`menu.js`) porque el TopBar React se auto-oculta en iframe ([[feedback_features_topbar_react_invisibles_en_prod]]).
-- **Flujo de tipos custom**: nace en borrador, NO disponible en "Nuevo trámite" hasta tener estado inicial+final y "Publicar y habilitar". El alta lista solo publicados.
-
-### Quirks (vigentes)
-- **JSONB en asyncpg**: NO `:v::jsonb` ni `dict` en prepared statements de SQLAlchemy `text()`. Usar `VALUES (CAST(:v AS jsonb))` con `json.dumps(val) if val is not None else None`. (El `::jsonb` sí funciona en psql y en `asyncpg_conn.execute()` directo, §5.)
-- **Mapeo de params iniciador**: `**iniciador_fks` sobre el dict del INSERT falla (claves largas ≠ `:alias`). Mapear explícito ([[feedback_mapeo_alias_sql_vs_claves_dict]]).
-- **`tramite` no tiene `id_tipo_tramite` directo** — va via `id_tipo_tramite_version → tipo_tramite_version → tipo_tramite` ([[reference_tramite_no_tiene_id_tipo_tramite_directo]]).
-- **`opciones_jsonb` de seeds viejos** puede venir como `{opciones:[...]}` en vez de `[...]` — normalizar antes de `.map` ([[feedback_normalizar_jsonb_de_seeds_viejos]]).
-- **Columna nueva del catálogo**: sumarla también a los SELECT de lista explícita de `detalle_version` (tramites_admin.py), no solo a migración/schema/INSERT — sino el endpoint la devuelve `undefined` silencioso ([[feedback_columna_nueva_auditar_todos_los_select]]).
-- **VisorDocumento**: `react-pdf@10.4.1` + `pdfjs-dist@5.4.296` (pin exacto, [[feedback_react_pdf_pin_pdfjs_version]]).
-- **Modal de carga larga** (`admin/modals/_modalShell.tsx`): body `flex:1; minHeight:0; overflowY:auto` (header fijo, body scrollea) + click-outside exige mousedown+mouseup sobre el overlay. Estilo inline no soporta `:disabled` → derivar el estilo condicionalmente (botones de orden).
-- **Reorden de campos/docs** (`useReordenarCampo`/`useReordenarDocReq`): reasigna `orden` 1..N por posición (NO swap — los seeds tenían órdenes duplicados).
-
-### Aprobaciones por etapa — COMPLETA en prod (2026-06-01, mig 73)
-Backend + builder + detalle operativo, todo verificado E2E navegando en prod. **Frontend:** `components/PanelAprobaciones.tsx` (verde/rojo/gris + Aprobar/Rechazar con comentario + aviso de bloqueo) montado en `pages/DetalleTramite.tsx`; `resolverAprobacion` (lib/api.ts), `useResolverAprobacion` (hooks/useTramites.ts), `TramiteAprobacion` (en `tramites/types.ts`, NO `lib/types.ts`). El tab **"Aprobaciones" del builder** (`ConfigTramiteDetalle.tsx`) se configura desde la barra de tabs (estaba implementado pero faltaba el botón en la barra hasta el 2026-06-01). **Trap recurrente cazado:** el handler GET `/{numero_o_id}` arma su propio `TramiteDetalleOut` — al sumar `aprobaciones` hubo que tocarlo además de `_tramite_detalle_out` (helper de mutaciones); dos rutas construyen el mismo response ([[feedback_columna_nueva_auditar_todos_los_select]]). Modelo/flujo en [[project_tramites_aprobaciones_por_etapa]].
-
-### Manuales
-`docs/manual_tramites.html` (uso operativo) · `docs/manual_admin_tramites.html` (creación de tipos, admin). Vía módulo Guías §37.
-
+> **Movido a la skill `modulo-tramites`** (`.claude/skills/modulo-tramites/SKILL.md`), que carga on-demand. Filosofía catálogo/instancia, tablas (catálogo + instancias + aprobaciones por etapa), migraciones, seeds, endpoints (operativo + admin builder), servicios, reglas críticas (firma, retención/purga, cron), storage Supabase y todos los quirks viven ahí. Ancla §35 conservada para las refs cruzadas.
 
 ## 36. Generación de manuales operativos (HTML autocontenidos)
 
@@ -1529,106 +1413,7 @@ function urlDocs(htmlName: string): string {
 
 ## 38. Auth público de ciudadanos (App Vecinos)
 
-Backend mínimo para la PWA `zaris-vecinos` que permite a los ciudadanos enviar reclamos desde el celular. Etapa 0 entrega **solo auth + identidad del municipio**. Reclamos/adjuntos/push son etapas posteriores.
-
-### Modelo
-
-- **Login con DNI + password.** El alta la puede hacer un agente municipal (nivel ≤ 3, `/registrar` protegido) **o el propio vecino vía autoregistro público** (`/publico/alta/*`, ya entregado — ver "Alta pública de vecinos" más abajo).
-- **Activación en dos pasos:** el agente carga al ciudadano + email → backend genera `token_activacion` UUID (vigencia 7 días) y manda mail → el ciudadano clickea el link `{APP_VECINOS_FRONTEND_URL}/activar?token=<uuid>`, elige password y queda logueado.
-- **Recovery análogo:** el ciudadano pide reseteo desde la PWA → mail con `token_recovery` UUID (24h) → setea nuevo pass → JWT directo.
-- **Scope JWT:** todos los tokens llevan claim `scope`. `"agente"` para los usuarios internos (`usuarios`), `"publico"` para ciudadanos (`ciudadanos` + `ciudadano_credencial`). Cada guard del backend rechaza el scope opuesto con 401.
-- **Multi-canal preparado pero NO conectado:** tabla `ciudadano_canal_preferido` con flags `canal_email/push/whatsapp/sms`. Solo `email` se usa en el MVP. WhatsApp/SMS son columnas reservadas.
-- **Multi-municipio:** cada deploy Railway es de un municipio. El endpoint público de identidad no necesita slug porque lee la única config del proyecto. Cuando consolidemos a multi-tenant compartido (etapa futura), agregar header `X-Municipio-Slug`.
-
-### Tablas (migraciones 52 y 53)
-
-| Tabla | Rol |
-|---|---|
-| `configuracion_general` (3 claves nuevas) | `municipio_descripcion`, `municipio_color_primary`, `municipio_color_accent`. La carga real se hace desde el panel admin ZARIS (etapa futura). |
-| `ciudadanos.estado_validacion` (columna nueva) | `'auto_registrado' \| 'vinculado_pendiente' \| 'verificado'`. Default `auto_registrado` para no romper inserts existentes. Los altas del agente quedan `verificado`. |
-| `ciudadano_credencial` | 1:1 con `ciudadanos`. `password_hash` (NULL hasta activar), `token_activacion`/`token_recovery` UUID + expiración, lockout (`intentos_fallidos`, `bloqueada_hasta`), `activado_en`, `fecha_ultimo_login`, `fecha_ultimo_cambio_password`. Estándar §10 completo. Índices parciales sobre los dos tokens cuando NOT NULL. |
-| `ciudadano_canal_preferido` | 1:1 con `ciudadanos`. `canal_email=TRUE`, `canal_push=TRUE` por default. `canal_whatsapp` y `canal_sms` por default `FALSE`. |
-| `ciudadano_push_subscription` | Web Push (`endpoint`, `p256dh`, `auth_secret`, `user_agent`). UNIQUE `(id_ciudadano, endpoint)`. **Desde 2026-06-12 (etapa E) la consumen** el router `publico_push.py` (`GET /publico/push/public-key` · `POST /subscribe` UPSERT+`canal_push=TRUE` · `POST /unsubscribe`) y `services/push.py::enviar_push_ciudadano` (best-effort SIEMPRE; 404/410 del push service → auto-baja; respeta `canal_push`). Hooks post-commit en TODAS las vías de cambio de estado de reclamos (reclamos.py + ordenes_trabajo.py) y emergencias. **Claves VAPID por entorno en `configuracion_general`** (`vapid_*`, NUNCA en el repo — es público; env vars `VAPID_*` = override; ocultas de la UI Config). `pywebpush==2.0.3`. |
-
-**Aplicadas en local Y prod al 2026-05-19.** Idempotentes (`ADD COLUMN IF NOT EXISTS` + `CREATE TABLE IF NOT EXISTS` + `INSERT ON CONFLICT DO NOTHING`).
-
-### Endpoints (`/api/v1/publico/auth/*`)
-
-| Verbo | Path | Auth | Descripción |
-|---|---|---|---|
-| POST | `/registrar` | JWT scope `agente` (nivel ≤ 3) | Alta ciudadano + credencial + canal_preferido. Manda mail de activación via `BackgroundTasks`. 409 si DNI ya existe en `ciudadanos` activos o email duplicado en credencial activa. |
-| POST | `/activar` | sin auth | Activa con `token_activacion` (vigencia 7d). Setea password (min 8 chars). Devuelve JWT scope `publico`. |
-| POST | `/reenviar-activacion` | sin auth | Regenera token + reenvía mail. **Anti-enumeración**: siempre 200 OK aunque el DNI no exista o la cuenta ya esté activada. Cooldown silencioso de 5 minutos. |
-| POST | `/login` | sin auth | Login con DNI + password. Lockout: 5 intentos fallidos → bloqueo 15 min. |
-| GET | `/me` | JWT scope `publico` | Devuelve datos básicos del ciudadano logueado. |
-| POST | `/recuperar-password` | sin auth | Pide email de recovery. Misma política anti-enumeración + cooldown 5 min. |
-| POST | `/resetear-password` | sin auth | Aplica nuevo pass con `token_recovery` (vigencia 24h). Resetea lockout. Devuelve JWT scope `publico` para que el ciudadano quede logueado. |
-
-### Endpoint público de identidad (`/api/v1/publico/identidad-municipio`)
-
-- **Sin auth** (la PWA lo lee antes de tener token, en la pantalla de login).
-- Lee de `configuracion_general` las 5 claves: `municipio_nombre`, `municipio_logo_url`, `municipio_descripcion`, `municipio_color_primary`, `municipio_color_accent`. Claves ausentes/vacías → `null`.
-
-### Vigencia de tokens
-
-- `token_activacion`: 7 días. Renovable con `/reenviar-activacion`.
-- `token_recovery`: 24 horas (más corto que activación porque la cuenta ya está activa).
-- JWT scope `publico`: 30 días por default. Configurable via `JWT_PUBLICO_EXPIRA_DIAS`. **Más largo que el JWT scope `agente` (24h)** porque la PWA debe minimizar fricción de re-login.
-
-### Lockout
-
-5 intentos fallidos consecutivos → `bloqueada_hasta = NOW() + 15 minutes`, `intentos_fallidos` reseteado a 0. Durante el bloqueo, `/login` devuelve 401 "Cuenta bloqueada temporalmente". Al hacer reset password o login exitoso, `bloqueada_hasta` se limpia.
-
-### Anti-enumeración
-
-`/reenviar-activacion` y `/recuperar-password` siempre devuelven 200 OK con `{"enviado": true}` independientemente de si el DNI existe, si la cuenta ya está activada, o si el cooldown está activo. No se revela al cliente nada sobre la existencia/estado de la cuenta. El mail se manda (o no) silenciosamente en `BackgroundTasks`.
-
-### Scope check en `core/auth.py`
-
-- `create_access_token(data)` ahora setea `scope='agente'` por default (retrocompat con tokens existentes).
-- `crear_token_ciudadano(id_ciudadano, expira_dias=None)` emite scope `publico` con vigencia `JWT_PUBLICO_EXPIRA_DIAS`.
-- `get_current_user` rechaza tokens con `scope != 'agente'` (default a `'agente'` para tokens viejos sin el claim).
-- `get_current_ciudadano` rechaza tokens con `scope != 'publico'`, valida que el ciudadano + credencial estén `activo=TRUE` y `activado=TRUE`. Devuelve dict con `id_ciudadano, doc_nro (dni), nombre, apellido, email, estado_validacion`.
-
-### Email + env vars
-- Remitente real `RESEND_FROM` (`notificaciones@zaris.com.ar`, §42) con header `From:` = **display name del municipio** (`"MUNICIPALIDAD … <notificaciones@zaris.com.ar>"`) vía `enviar_mail(..., from_override=...)`. La marca ZARIS no aparece al vecino. Funciones `enviar_mail_activacion_ciudadano`/`enviar_mail_recovery_ciudadano` (`services/email.py`), template sobrio con logo del municipio, sin emojis.
-- **Env vars**: `APP_VECINOS_FRONTEND_URL` (default `http://localhost:5174`, prod `https://vecinos.zaris.com.ar` — arma los links de los mails) · `JWT_PUBLICO_EXPIRA_DIAS` (default 30).
-- **CORS**: `vecinos.zaris.com.ar` + `zaris-vecinos.vercel.app` + `localhost:5174` en `allow_origins`.
-
-### Estado / alcance
-Backend en prod, verificado. PWA en repo separado `CesarZeta/zaris-vecinos` (Vercel, `vecinos.zaris.com.ar`) — **no documentar la PWA acá** (otro repo; su README tiene el checklist para replicar en municipio #2). **Etapas A-E del plan CERRADAS al 2026-06-12** (reclamos con fotos+pin, emergencias, turnos, entradas con QR, push — ver `PLAN_APP_VECINOS.md`). **Fuera de alcance**: bandeja `vinculado_pendiente` (futuro), panel admin de branding (producto separado).
-
-### Alta pública de vecinos (autoregistro) — UN PASO con ficha COMPLETA (replanteo 2026-06-12)
-Página pública `frontend/alta-vecino.html?m=<slug>` (vanilla, DS ZARIS) donde el **vecino crea su cuenta** (sin agente, sin JWT). Router `routes/publico_alta.py` (`/api/v1/publico/alta/*`, sin JWT, rate-limited por IP). **Tenancy mono-tenant validado**: el slug `?m=<codigo_corto>` se valida contra el ÚNICO municipio del deploy (`municipios.codigo_corto`, ej. `lpl`) → 404 si no coincide. URL preparada para multi-deploy sin reescribir a multi-tenant.
-
-> **Replanteo 2026-06-12 (decisión del usuario, reemplaza al modelo de 2 pasos de la Fase 4):** el alta es en **UN PASO con la ficha completa** y **la BUC NUNCA recibe placeholders falsos** (fecha 1900-01-01, CUIL inventado, sexo OTROS — eso era lo que escribía el paso 1 viejo y fue rechazado de plano). **La app (PWA) no pide datos de ficha bajo ninguna circunstancia**: el alta vive solo en la página pública. Se eliminaron `CompletarFichaPage` + el gate de `ficha_completa` en `RutaProtegida` (PWA `0e97a3e`) y los schemas `AltaCiudadanoIn/Out`. El endpoint `POST /publico/auth/completar-ficha` queda por compat (sin frontend que lo use). `ciudadanos.ficha_completa` sigue existiendo: todas las altas nuevas la setean TRUE de origen.
-
-- **Alta (Camino A, autogestión):** `POST /alta/cuenta` (`AltaCuentaIn` = ficha completa: slug + DNI + **CUIL real (módulo 11)** + nombre/apellido + sexo + fecha_nac + nacionalidad + domicilio OSM (calle/localidad/provincia + lat/lon opcional) + teléfono + email + password). Validaciones canónicas en backend (CUIL mód-11, fecha plausible 1900..hoy, nacionalidad existente, DNI/CUIL/email sin duplicar vs activos). Crea `ciudadanos` con datos reales, `ficha_completa=TRUE`, `estado_validacion='auto_registrado'`, `email_chk=FALSE` + `ciudadano_credencial` (password elegido + `token_activacion`, `activado=FALSE`). Manda mail de verificación. El vecino NO es `usuarios` (scope `publico`, [[project_usuario_vs_ciudadano_modelo]]). El front (`alta-vecino.html`) valida en vivo (CUIL mód-11 + correspondencia con DNI, errores por campo, OSM con fallback manual — no se frena por el geocodificador).
-- **VERIFICAR email:** `GET /alta/verificar?token=&m=` → `email_chk=TRUE`, `estado_validacion='verificado'`, credencial `activado=TRUE`. La página de confirmación invita a iniciar sesión con DNI + la contraseña elegida.
-- **Vecino que YA existe en la BUC (sin duplicar):** `POST /alta/activar-existente` (`{slug, doc_nro}`, **anti-enumeración: SIEMPRE 200 genérico**) → si el DNI figura con email, reusa `asegurar_cuenta_vecino` (credencial sobre el MISMO registro + mail de activación al email de la BUC; el vecino elige su clave vía `/activar` de la PWA). En la página pública: link "Ya estoy registrado en el municipio". **Vía de mostrador:** `POST /buc/ciudadanos/{id}/cuenta-vecino` (JWT agente) + botón **"Crear cuenta App Vecinos"** en el FormView de Ciudadanos (consulta/edición) — 422 si el ciudadano no tiene email, `ya_activada=true` si ya usaba la app. Smoke `backend/smoke_alta_un_paso.py` (12 casos, corre local y prod).
-- **Camino B (alta por agente) — UNIFICADO en el alta de ciudadano del backoffice (2026-06-09 j4):** el alta del frontend de Ciudadanos (`POST /api/v1/buc/ciudadanos`, módulo React `ciudadanos`/`FormView`) **crea automáticamente la cuenta de App Vecinos** + mail de activación. Ya **NO hay alta de padrón separada de la cuenta de portal**; el agente carga la ficha y al guardar se hace todo. Detalle:
-  - **`email` obligatorio** (ya lo era en `CiudadanoCreate`, schema `buc.py`). Rechaza email duplicado en credencial activa (409, mismo criterio que `/publico/auth/registrar`).
-  - **Servicio `services/cuenta_vecino.py::asegurar_cuenta_vecino`** (reutilizable, idempotente): crea `ciudadano_credencial` (sin password + `token_activacion`) + `ciudadano_canal_preferido` + encola el mail de activación (BackgroundTasks). Si ya hay credencial activada, no toca nada; si existe sin activar, regenera token. `crear_ciudadano` en `buc.py` lo llama tras `db.flush()`.
-  - **El agente cargó la ficha completa → `ficha_completa=TRUE` + `estado_validacion='verificado'`** (ambas columnas NO mapeadas en el modelo ORM `Ciudadano` → se setean con UPDATE SQL directo, NO con setattr). El vecino **entra directo, SIN el paso 2** (a diferencia del autoregistro Camino A, que sí pasa por completar-ficha). El vecino recibe mail, clickea ACTIVAR y **elige su propia clave** (activación-por-token; NO clave-temporal+cambio-forzado).
-  - **Botón "+ Nuevo" en el buscador de ciudadano** (`CiudadanoSearch` de `agenda/components`, **compartido** por reclamos/turnos/entradas/agenda): si la búsqueda no encuentra al vecino, `navigate('/ciudadanos/nuevo')` lleva al alta. El `CiudadanoForm` muestra un aviso (prop `esAlta`) de que se crea la cuenta + se manda el mail.
-  - El endpoint `/publico/auth/registrar` (alta por agente con scope agente, sin pantalla propia) **sigue existiendo** pero la vía operativa real es el alta del módulo Ciudadanos. Verificado E2E (alta→credencial+canal+verificado+ficha_completa→vecino activa eligiendo clave→login). [[project_usuario_vs_ciudadano_modelo]].
-- **`ficha_completa` en login/me:** `CiudadanoBasicoOut.ficha_completa` lo exponen `/publico/auth/login`, `/me` y `/resetear-password` → el portal decide si mandar al vecino a completar la ficha. `get_current_ciudadano` (core/auth) trae la columna.
-- **Empresa NO se da de alta desde la página pública** (decisión 2026-06-09): se quitó el toggle de empresa de `alta-vecino.html`. La empresa la carga el vecino YA logueado y con ficha completa, desde el portal (PWA), reusando el endpoint `POST /alta/empresa` que queda en backend. **Empresa exige ciudadano previo** (BUC §2): `empresas` + `ciudadano_empresa` + `empresa_credencial` (mig 76, solo verificación de email, SIN password). Verificar → `empresas.email_chk=TRUE` + `empresa_credencial.verificado=TRUE`.
-- **Geocoding OSM público**: `GET /publico/alta/geo/buscar?m=&q=` reusa `geocodificar_direccion()` extraída de `geo.py`. Lo usa el paso 2 (domicilio del vecino). El `/geo/buscar` del backoffice SIGUE exigiendo JWT — solo el público es abierto.
-- Endpoints: GET `/identidad` · `/actividades` · `/nacionalidades` · `/geo/buscar` (todos validan slug) + POST `/alta/cuenta` (paso 1) · `/alta/empresa` + GET `/alta/verificar` (devuelve **página HTML**, la abre el navegador) + POST `/publico/auth/completar-ficha` (paso 2, JWT). Link del mail = `FRONTEND_BASE_URL/api/v1/publico/alta/verificar`. Templates `enviar_mail_verificacion_alta_ciudadano/_empresa` en `services/email.py`. Verificado E2E navegando (local) + smoke API (paso1→verificar→login→paso2 + bordes 401/409/404).
-- **Permisos del vecino**: acciones de autoservicio acotadas a SUS datos (paridad con operador "en su nombre", NO backoffice). El `id_ciudadano` SIEMPRE sale del JWT, nunca del body/param → no puede operar sobre terceros. Ver [[project_usuario_vs_ciudadano_modelo]].
-- **Autoservicio del vecino logueado (Etapa 2, 2026-06-02, commit `53edc28`, en prod):** dos routers nuevos con guard `get_current_ciudadano` (scope `publico`), SIN migración (reusan columnas existentes):
-  - **`publico_reclamos.py` (`/api/v1/publico/reclamos`):** POST crea reclamo a nombre propio (`id_ciudadano` del token; `id_usuario_alta=NULL` — no es `usuarios`, columna nullable; `canal_origen='app_movil'`; estado inicial 'Sin asignar'; deriva `id_area` de `subarea.id_area` vía el tipo §27; valida tipo activo). **Desde 2026-06-02 el POST exige `id_tipo_reclamo` + `direccion` + `descripcion≥5`** — el backoffice los acepta opcionales pero la autogestión NO afloja datos obligatorios (regla del municipio, [[feedback_autogestion_no_afloja_obligatorios]]); no evadible por curl (422). + GET lista SOLO los suyos (`WHERE id_ciudadano=<token>`) + GET `/{id}` detalle con **guard duro 404 si no es suyo** (mismo cuerpo que "no existe", no filtra terceros; historial sin identidad del agente) + GET `/catalogo/tipos` + **GET `/geo/buscar` (scope publico, geocoding del vecino logueado — [[reference_geocoding_vecino_endpoint_scope_publico]])**, todos declarados ANTES de `/{id_reclamo}` por el param greedy §5.
-  - **`publico_portal.py` (`/api/v1/publico/portal`):** GET `/mi-resumen` — conteos `{vigentes,total}` de reclamos/turnos/entradas del vecino en 1 round-trip (home del portal). Vigente = reclamos activos no-final, turnos `estado='reservado'`, reservas con `estado_reserva.codigo='reservada'`.
-  - Ambos registrados junto a los `publico_*` en `main.py` (prefijos no colisionan con `reclamos_router` ni `publico_alta`). Smoke local 9/9 + deploy prod verificado (`/openapi.json` + 401 sin token). **NO incluye:** cambiar estado / cancelar reclamo propio (decisión vigente). Lo que ANTES faltaba ya se entregó: adjuntos públicos de reclamos (`publico_reclamos_adjuntos.py`, etapa A), mis-turnos logueados (`publico_turnos_vecino.py`, etapa C), **mis-entradas logueadas (`publico_entradas_vecino.py`, etapa D 2026-06-12: cartelera con cupo en un SQL + reservar del token + QR + cancelar; smoke `smoke_publico_entradas.py`)** y push (etapa E, ver tabla mig 53 arriba). Los autoservicios anónimos por token (§33) siguen vigentes en paralelo.
-- **URLs públicas en Config → Identidad (ENTREGADO 2026-06-09 j3/j4):** `GET /config/identidad` expone `municipio_slug` (= `municipios.codigo_corto` del único municipio activo). `IdentidadView.tsx` muestra la sección "Enlaces públicos del municipio" (solo lectura, helper `basePublica()` resuelve el origin del shell padre en iframe) con la URL del alta `…/frontend/alta-vecino.html?m=<slug>` + Copiar/Abrir. La URL **cambia por municipio en DOS partes** (dominio + `?m=código`) — mono-tenant por deploy, NO hay URL genérica. El array `ENLACES` es extensible para futuras URLs públicas.
-  - **Frontend del autoservicio — PWA "Portal del Ciudadano" (`zaris-vecinos`, repo separado, Vercel):** las pantallas del flujo logueado (auth scope publico, home con `mi-resumen`, mis reclamos lista/detalle, alta de reclamo con geocoding) se construyeron 2026-06-02 (commit `0b85205`, deploy Vercel Ready). Verificado E2E contra backend LOCAL (sembré credencial + cleanup). **Verificación E2E del happy-path logueado en PROD PENDIENTE: `ciudadano_credencial` en prod está VACÍA** — el primer login real será cuando alguien se autoregistre. Detalle de la PWA (estado, contrato de endpoints, shape de sesión propio `zaris_vecino_session`) en [[project_portal_ciudadano_pwa]]. NO documentar la PWA acá (otro repo).
-
-### Quirks
-- **DNI digit-only** (`_solo_digitos()` normaliza antes de comparar con `ciudadanos.doc_nro`). **CUIL placeholder** en `/registrar`: `'20'+dni.zfill(8)+'9'` (`cuil` es UNIQUE NOT NULL). **Defaults pragmáticos** del alta: `doc_tipo='DNI'`, `sexo='OTROS'`, `fecha_nac='1900-01-01'`, `id_nacionalidad=1`, `*_chk=FALSE`.
-- **SQL con `text()`**: `CAST(:token AS uuid)` no `:token::uuid` ([[feedback_sqlalchemy_cast_uuid]]); `INTERVAL` con duración variable → f-string literal, no bind param ([[feedback_asyncpg_extract_cast_date]]).
-- Mail de activación corre en `BackgroundTask` post-commit (patrón §35); sin Resend key → modo MOCK.
-- Smoke: `backend/smoke_publico_auth.py` (15 pasos, 15/15 OK 2026-05-19).
+> **Movido a la skill `modulo-app-vecinos`** (`.claude/skills/modulo-app-vecinos/SKILL.md`), que carga on-demand. Modelo scope `publico` vs `agente`, tablas (credencial/canal/push), endpoints de auth, activación/recovery/lockout/anti-enumeración, alta pública en UN PASO (ficha completa), alta por agente, autoservicio logueado del vecino, push y quirks viven ahí. La PWA `zaris-vecinos` NO se documenta acá (repo separado). Ancla §38 (y sub-refs §38 mono-municipio) conservada para las refs cruzadas.
 
 ## 39. Módulo Usuarios — estado y deuda crítica (QA 2026-05-19)
 
