@@ -1371,76 +1371,7 @@ DS v1.0 (`--z-*`, `.z-*`, `frontend/styles.css`, `frontend/menu.html`, `frontend
 
 ## 33. Módulos Turnos y Entradas
 
-Dos módulos React que se apoyan en el sustrato de Agenda. Implementados al 2026-05-14 (backoffice completo). Ver §27 para el modelo de agenda subyacente.
-
-### Turnos — los turnos cumplen PRESTACIONES (modelo mig 71)
-
-Una **PRESTACIÓN** define recurso fijo + duración + clase. La reserva elige **prestación + slot**; el recurso ya viene determinado (ej. "Odontología por Dr. Pérez" vs "Odontología en Sala Municipal" = dos prestaciones). Un turno reserva un bloque de la disponibilidad efectiva del recurso de la prestación para un ciudadano. Estados: `reservado` → `cumplido` | `cancelado`.
-
-**`tipo_prestacion`** (mig 71 renombró `tipo_servicio_turno`): `id_tipo_prestacion` PK + `nombre` + `duracion_min` + **`clase`** ∈ `{atencion, reserva_espacio}` + **`tipo_recurso`** ∈ `{agente, espacio}` + `id_agente`/`id_espacio` (FK, exactamente uno por CHECK `ck_tipo_prestacion_recurso` **NOT VALID**). CHECK `ck_tipo_prestacion_reserva_espacio`: `reserva_espacio` ⇒ `tipo_recurso='espacio'`. Los NOT VALID aplican a filas nuevas; el seed soft-deletea las viejas sin recurso ([[feedback_check_not_valid_se_evalua_al_update]]).
-
-**El recurso se COPIA al turno al reservar** (`turnos.id_agente`/`id_espacio`, mig 70, CHECK `ck_turnos_recurso` exactamente uno) → turno autocontenido aunque la prestación cambie después. Ocupación espejo `tipo_recurso='agente'|'espacio'`. `TurnoOut` expone `recurso_tipo`/`recurso_nombre`/`prestacion_nombre`/`prestacion_clase`.
-
-**Switch global `turnos_respeta_disponibilidad`** (`configuracion_general`, mig 69, default `true`): con `true` el alta (backoffice + autoservicio) exige caer en la disponibilidad efectiva (horario − feriados − novedades §27); `false` = modo libre. Helper `services/agenda.py::turnos_respeta_disponibilidad(db)`. El anti-solapamiento contra `ocupaciones` siempre aplica. Ver [[project_turnos_disponibilidad_novedades_feriados]].
-
-**Historia de atención (mig 86, 2026-06-11).** `tipo_prestacion.registra_atencion` (BOOL, checkbox en el form de Prestaciones, solo visible si `clase='atencion'`) marca **a nivel prestación** (decidido con el usuario — NO en el espacio, así cubre prestaciones por agente Y por espacio) que al cumplir cada turno se registra una atención. Tabla `turno_atencion` (1:1 con turno por UNIQUE `id_turno`, §10 + RLS): `intervencion` (NOT NULL) + `recomendaciones`. Es un registro **genérico** (sirve para atención médica o regular), append-only de hecho (se crea al cumplir, sin endpoint de edición). Flujo: `PATCH /turnos/{id}/cumplir` con prestación marcada **exige `intervencion`** (422 si falta — backend, no solo UI) e inserta la fila en la misma tx; el `CumplirTurnoModal` se transforma (historial de atenciones previas del ciudadano + form intervención obligatoria/recomendaciones); prestación sin marca → modal/flujo histórico sin cambios. Historia: `GET /turnos/atenciones?id_ciudadano=` (segmento fijo ANTES de `/{id_turno}` §5) — **dato de salud sensible (Ley 25.326): aplica el mismo scope por nivel de turnos** (nivel ≤2 todo; operador solo atenciones de turnos a su alcance). `TurnoOut`/`TipoPrestacionOut` exponen `registra_atencion` (recordar [[feedback_columna_nueva_auditar_todos_los_select]] si sumás otro SELECT). Prestaciones demo marcadas: las dos de Odontología (local + prod, por nombre).
-
-**DB** (migs 45 + 46 autoservicio + 69 switch/novedades + 70 recurso polimórfico + 71 prestaciones, local + prod): `tipo_prestacion` (catálogo §10, gestionado desde tab "Prestaciones" React **NO admin_tablas** — polimorfismo + form condicional) · `turnos` (transaccional §10, FKs ciudadanos/agentes-null/espacios-null/tipo_prestacion, `estado` CHECK, `id_ocupacion` → espejo). Seed `backend/seed_turnos_demo.py` (idempotente).
-
-**Ocupación espejo:** cada turno mantiene fila en `ocupaciones` (tipo='turno') para aparecer en la grilla de Agenda. `routes/turnos.py` sincroniza:
-- crear turno → resuelve recurso+duración de la prestación → INSERT turno (recurso copiado) + INSERT ocupación espejo
-- reprogramar → UPDATE ambas; si cambia la prestación re-resuelve recurso+duración
-- cumplir → UPDATE turno.estado (la ocupación se mantiene como histórico en la grilla) + observación opcional **anexada** a `observaciones` + dispara la encuesta de turnos (§42, best-effort tras el commit)
-- cancelar → UPDATE turno.estado + soft-delete de la ocupación espejo (libera la grilla)
-
-**Scoping por nivel (sesión 2026-05-28, backend, no evadible por curl):** `GET /turnos` y `GET /turnos/{id}` aplican `_scope_turnos_para_usuario`. **Nivel ≤ 2 (admin/supervisor) ve TODO**; **nivel 3-4 (operador/consultor) ve solo** los turnos donde es el agente involucrado (`t.id_agente` = su `agentes.id_agente`) **O** los de un lugar de atención (espacio) de su misma subárea (`t.id_espacio IN (espacios_agenda WHERE id_subarea = su_subarea)`). El usuario sin fila en `agentes` no ve nada propio. Los filtros por query (`id_agente`/`id_espacio`) se combinan con el scope (el operador no puede ver fuera de su alcance pidiendo otro id). **OJO:** los lugares de atención necesitan `id_subarea` cargada (Agenda → Config → Espacios) para que el operador vea turnos de espacio; sin eso solo ve sus turnos como agente. `get_current_user` NO trae `id_agente`/`id_subarea` — se resuelven con un SELECT puntual a `agentes` (patrón espejo de `resolver_agente_desde_usuario` §35).
-
-**Endpoints (`/api/v1/turnos`):**
-- **Prestaciones (CRUD):** GET `/prestaciones` (filtros `clase`/`q`; lectura: cualquier autenticado), GET `/prestaciones/{id}`, POST `/prestaciones`, PUT `/prestaciones/{id}`, DELETE `/prestaciones/{id}` (soft). **Mutar prestaciones exige nivel ≤ 2 (supervisor/admin)** — helper `_require_supervisor`. Reemplaza al viejo `GET /catalogo/tipos-servicio`.
-- **Turnos:** GET `` (filtros estado/agente/espacio/ciudadano/prestación/fecha; **scopeado por nivel**, ver arriba), GET `/atenciones?id_ciudadano=` (historia de atenciones mig 86, segmento fijo ANTES de `/{id}` §5, mismo scope), GET `/{id}` (mismo scope), POST `` (recurso+duración salen de la prestación; calcula `hora_fin`), PUT `/{id}` (reprograma — solo `reservado`), PATCH `/{id}/cumplir` (body opcional `{observaciones, intervencion, recomendaciones}` → schema `TurnoCumplir`; anexa la observación, registra la atención si la prestación lo exige y dispara la encuesta), PATCH `/{id}/cancelar`. Mutar turnos: nivel ≤ 3.
-
-**Frontend:** `web-app/src/modules/turnos/` — `TurnosLayout` con **5 tabs** (**Turnos** = lista/alta/reprogramar/cumplir/cancelar + Exportar PDF de lo filtrado; **Agenda** = grilla día/semana solo-turnos, ver abajo; **Atendidos** = turnos cumplidos + export PDF; **Consultas** = búsqueda por ciudadano con sub-solapas "Consulta de turnos" y "Consulta de prestaciones realizadas" + export PDF; **Prestaciones** = ABM del catálogo, **visible solo nivel ≤ 2** vía `hasPermission(2)`). **Todo turno es clickeable en las 4 vistas de lectura** → `TurnoDetalleModal` (solapas Turno con su atención registrada / Historia de atenciones del ciudadano). `TurnoFormModal` elige prestación (sin selector de recurso, read-only de la prestación). `PrestacionFormModal` tiene form condicional: clase `atencion` → toggle agente/espacio + checkbox `registra_atencion`; `reserva_espacio` → solo espacio. **`CumplirTurnoModal`**: si la prestación registra historia → panel `HistorialAtenciones` (componente compartido) + intervención OBLIGATORIA + recomendaciones; sino, textarea de observación opcional (flujo histórico). **`pages/Atendidos.tsx`**: lista `useTurnos({estado:'cumplido'})` (ya scopeada por backend), filtros por **agente + lugar solo para `hasPermission(2)`** (el operador no los ve), **export PDF** vía `lib/exportPdf.ts` (`exportarTurnosPdf` genérico con `titulo`/`conEstado`; `jspdf` + `jspdf-autotable`, encabezado ZARIS naranja `#f54e00`). Reusa `Modal`, `ConfirmModal`, `RecursoPicker`, `useEspacios`, `CiudadanoSearch` de Agenda.
-- **Tab "Agenda" (`pages/AgendaTurnos.tsx`):** grilla PROPIA día/semana sobre `GET /turnos` (NO reusa la grilla Gantt del módulo Agenda; ver §42). Hereda el scoping por nivel/subárea del backend. Excluye cancelados. **Leyenda de estados SIEMPRE arriba de la grilla** (debajo de los filtros — abajo quedaba fuera de vista al scrollear, pedido del usuario). Bloques clickeables → detalle. El CTA **"Ver en agenda"** del Overview navega acá (`navigate('/turnos/agenda')`), NO al módulo Agenda completo.
-- **Filtros Prestación / Atiende(agente|lugar) / Ciudadano / Área de servicio** en Turnos (`Overview`), Agenda y **Atendidos** (informe QA 2026-06 H2 — en Atendidos la barra REEMPLAZÓ los selects server-side de agente/lugar solo-supervisor), vía helper compartido `lib/turnoFiltros.tsx` — opciones derivadas de los turnos cargados (no catálogos completos, §23), client-side, combinables, con botón Limpiar. Prestaciones filtra por Buscar/Tipo/**Recurso**/**Área de servicio** (H3; "Ciudadano" no aplica a un catálogo). **No hay botón "Buscar"**: los filtros aplican en vivo y el Exportar PDF exporta lo visible.
-- **Área de servicio (informe QA H4, 2026-06-11):** `tipo_prestacion.id_subarea` (columna que ya existía, mig 45) ahora se carga desde el form de Prestaciones (`EntitySelect` contra `GET /buc/subareas/buscar`, opcional) y se expone derivada: `TipoPrestacionOut.subarea_nombre/id_area/area_nombre` y `TurnoOut.prestacion_id_area/prestacion_area_nombre` (JOIN `tipo_prestacion → subarea → area` en TODOS los SELECT de turnos — [[feedback_columna_nueva_auditar_todos_los_select]]). El filtro "Área de servicio" **solo se muestra si lo cargado trae área asignada** (fail-silent con datos viejos). Datos demo: área "Secretaría de Salud" + subáreas Odontología/Clínica médica + "Espacios comunitarios" bajo Gobierno, sembradas por nombre en local Y prod; las 5 prestaciones demo quedaron asignadas.
-- **Reprogramar (`PUT /turnos/{id}`) estuvo 500 SIEMPRE hasta 2026-06-11** (informe QA H1, "Failed to fetch"): la query de solapamiento usaba `(:io IS NULL OR id_ocupacion <> :io)` → `AmbiguousParameterError` de asyncpg. Fix: `CAST(:io AS integer)` en ambos usos. Si reaparece un "Failed to fetch" en una mutación, grep `IS NULL OR` antes de sospechar CORS/red ([[feedback_asyncpg_extract_cast_date]] variante 5).
-
-### Entradas — eventos con cupo en espacios físicos
-
-**No tiene tablas ni migración propias.** Reusa la entidad `eventos` + `evento_reservas` del backend de Agenda. Un "evento con entradas" es simplemente un `evento` con `id_espacio` no nulo.
-
-**Cambios backend en `agenda_v2.py` (compat-retro, campos opcionales):**
-- `EventoOut` y `EventoBase`/`EventoUpdate` ahora incluyen `id_espacio`.
-- `_evento_to_out` y `listar_eventos` devuelven `id_espacio`; `crear_evento`/`actualizar_evento` lo persisten.
-- `GET /agenda/eventos` acepta query param `con_espacio` (True=solo con espacio, False=solo sin, omitir=todos). El módulo Entradas filtra con `con_espacio=true`.
-
-**Frontend:** `web-app/src/modules/entradas/` — grilla de cards de eventos con espacio + `EventoEntradaFormModal` (alta, con selector de espacio vía `useEspacios` de Agenda). La gestión de reservas reusa **directamente el `ReservaModal` de Agenda** (`modules/agenda/modals/ReservaModal.tsx`).
-
-**Autoservicio:** Entradas YA tiene autoservicio funcionando — un evento con `admite_autoservicio=true` tiene `token_publico` y la página pública `/autoservicio/:tokenPublico` (que ya existía para eventos) lo gestiona sin cambios. La card de Entradas muestra el link público.
-
-### Turnos autoservicio — ENTREGADO (2026-05-14)
-
-Flujo público sin JWT para que el ciudadano reserve un turno sin pasar por mesa. A diferencia de eventos (fecha/hora fija), el ciudadano elige un slot libre que el backend calcula cruzando `disponibilidad_recurso` con `ocupaciones`.
-
-**DB (migración 46 `46_turnos_autoservicio.sql`, aplicada local + prod 2026-05-14):** agrega `turnos.token_turno UUID` (no enumerable, único, default `gen_random_uuid()`, backfill de filas viejas — espeja `evento_reservas.token_reserva`) y `turnos.origen VARCHAR(15)` CHECK `backoffice|autoservicio` default `backoffice`. Requiere `pgcrypto` (ya creada en mig 35). Idempotente.
-
-**Router `backend/app/api/routes/turnos_publico.py` (prefix `/api/v1/turnos/publico`, sin auth):**
-
-| Acción | Verbo | Path |
-|---|---|---|
-| Listar prestaciones publicables | GET | `/prestaciones` (activas con recurso que tenga disponibilidad) |
-| Slots libres | GET | `/slots?id_tipo_prestacion=&fecha_desde=&dias=` |
-| Reservar turno | POST | `/reservar` (body sin recurso — lo trae la prestación) |
-| Consultar turno por token | GET | `/turno/{token_turno}` |
-| Cancelar turno por token | DELETE | `/turno/{token_turno}` |
-
-> **Orden de routers crítico (main.py):** `turnos_publico_router` ANTES de `turnos_router` (sino `/turnos/publico/*` cae en `{id_turno}='publico'` → 422, §5). Mig 71 eliminó `/tipos-servicio`, `/agentes`, `/recursos` públicos (el recurso lo trae la prestación).
-
-**Slots (`_slots_libres_recurso`):** recurso de la prestación → `disponibilidad_efectiva(tipo, id, fecha)` partido en bloques de `duracion_min` (descarta el último incompleto), filtrando solapamientos con `ocupaciones`. **POST /reservar**: valida slot dentro de disponibilidad + sin solape, busca/crea ciudadano por DNI (`buscar_o_crear_ciudadano_por_dni`), rechaza si ya tiene turno no-cancelado ese día, crea turno `origen='autoservicio'` + ocupación espejo, devuelve `token_turno`.
-
-> **Pasado se valida con hora LOCAL del municipio, NO con `date.today()` del server (fix 2026-06-12).** Railway corre UTC (AR = UTC-3): validar solo la FECHA dejaba reservar slots de hoy ya pasados (cazado en prod: reserva de 08:00 a las 10:43), y `date.today()` UTC corre el día entre las 21:00 y las 00:00 locales. Helper `app/utils/fechas.py` (`ahora_local()`/`hoy_local()`, offset fijo -3 — AR no tiene DST; sin ZoneInfo porque tzdata puede faltar en Windows local). `_slots_libres_recurso` descarta slots de hoy con inicio ≤ ahora local; los POST `/reservar` (anónimo `turnos_publico.py` + vecino logueado `publico_turnos_vecino.py`) rechazan 422 fecha u hora en el pasado. Toda validación nueva de "ya pasó" sobre TIME naive local usa este helper.
-
-**Frontend público (`web-app/src/autoservicio/`):** `TurnosPage.tsx` (`/turnos-autoservicio`, 3 pasos prestación→slot→datos) · `MiTurnoPage.tsx` (`/turno/:tokenTurno`, ver/cancelar). El backoffice muestra banner con el link público + copiar. **Las 4 rutas públicas del bundle están eximidas del guard standalone** (whitelist en `web-app/index.html`, BUG cazado 2026-06-12 — ver skill `win-quirks` Q12): ruta pública nueva ⇒ sumarla a la regex o el link compartido rebota al login.
+> **Movido a la skill `modulo-turnos-entradas`** (`.claude/skills/modulo-turnos-entradas/SKILL.md`), que carga on-demand. Modelo de prestaciones (mig 71), recurso copiado al turno, ocupación espejo, historia de atención (`turno_atencion`), scoping por nivel, endpoints, frontend (5 tabs), Entradas (eventos con `id_espacio`) y los autoservicios públicos viven ahí. Ancla §33 conservada para las refs cruzadas.
 
 ## 34. Módulo OT — frontend dedicado del Supervisor (crear OT + agendar en una pasada)
 
@@ -1701,40 +1632,7 @@ Página pública `frontend/alta-vecino.html?m=<slug>` (vanilla, DS ZARIS) donde 
 
 ## 39. Módulo Usuarios — estado y deuda crítica (QA 2026-05-19)
 
-**Stack**: vanilla puro. HTML en [frontend/usuarios.html](frontend/usuarios.html), JS en [frontend/js/usuarios.js](frontend/js/usuarios.js). Endpoints en [backend/app/api/routes/buc.py](backend/app/api/routes/buc.py) prefix `/api/v1/buc/usuarios/*`.
-
-> **Ampliado 2026-05-22 (mig 55, §21):** el form ahora tiene **campo subárea predictivo + checkbox "usuario externo"** (subárea obligatoria salvo externo, validado en `schemas/buc.py`). Listado/preview muestran subárea + hay filtro por subárea. Buscador principal y filtro de listado pasan a predictivo en-vivo (debounce). `UsuarioOut` suma `id_subarea`/`subarea_nombre`/`es_externo`. Endpoint nuevo `GET /buc/subareas/buscar` (predictivo).
-
-> **Rediseño 2026-05-26 (en prod, verificado navegando):**
-> - **Form sin nombre/cargo/CUIL**: el username ES la identidad. `UsuarioCreate.nombre` es opcional; el backend lo iguala al username si no viene (la columna es NOT NULL). El form quedó: usuario, nivel, email, subárea, contraseña. Cargo y CUIL ya NO existen en Usuarios (sí en Agentes).
-> - **Módulos a los que accede**: `UsuarioOut.modulos_permitidos` (resuelto en batch, `_modulos_permitidos_batch` en `buc.py`), mostrados como chips **al lado del Nivel** en el form (no en la previa). En alta nueva derivan del nivel + catálogo (`GET /admin/permisos/modulos`); en consulta/edición son los reales del usuario.
-> - **Auditoría de login** (mig 62): `usuarios.fecha_ultimo_login` + tabla append-only `usuario_login_log` (timestamp + IP + user agent). `POST /auth/login` los escribe (best-effort, no bloquea login; usa `get_real_ip`). Último login se muestra en la previa y en la sección "Actividad" del form. Endpoint `GET /buc/usuarios/{id}/login-log` + modal "Ver historial de accesos". La auditoría se lleva por usuario y, vía la regla 1:1, se audita por agente.
-> - **Regla 1:1 agente↔usuario** (mig 64): el alta de usuario **interno** crea automáticamente su agente vinculado (datos mínimos, en la misma tx de `POST /buc/usuarios`); el **externo** NO. Índice UNIQUE parcial `agentes.id_usuario WHERE NOT NULL` lo refuerza en DB.
-> - **Auto-logout 10 min** (shell `menu.js`): timer global que se reinicia con actividad del shell y del iframe; a los 10 min sin actividad limpia `zaris_session` y va a login.
-> - **Fix flash de login**: el guard de sesión se movió a ser lo PRIMERO del `<head>` de `index.html` (antes de CSS y del script de lucide), para no pintar el shell antes del redirect.
-
-### Deuda conocida — CERRADA
-
-Los 8 hallazgos del QA 2026-05-19 (router sin auth, 2 XSS, email, sidebar, modal confirm, botón Guardar gris ×2) están **resueltos y verificados al 2026-05-26** (smoke backend + navegador + DB). Detalle en [reporte_pruebas_usuarios_2026-05-19.md](reporte_pruebas_usuarios_2026-05-19.md) (untracked, ver §40). Reglas vivas que dejaron:
-- **TODO el router `buc.py` exige JWT** — guard a nivel router (`APIRouter(..., dependencies=[Depends(get_current_user)])`), endpoints nuevos protegidos por defecto. `UsuarioOut` NO expone `password_hash`.
-- `ZUtils.confirm(title, msg, opts)` acepta `cancelLabel`/`confirmLabel`/`danger` y escapa title/msg.
-- Botón Guardar atado a validación reactiva: al poblar el form por código, llamar `revalidarGuardar()` ([[feedback_validacion_reactiva_cambios_programaticos]]).
-- **El módulo Usuarios/BUC queda sin deuda conocida.**
-
-> **Cambio de contraseña funciona** (verificado E2E 2026-05-26: PUT → hash bcrypt nuevo → login OK con la clave nueva). **Login busca por email exacto, NO por username** — el email real del usuario puede no seguir el patrón `<username>@municipio.gob.ar` (en prod `ciudadanovl` es `cesarzarini@hotmail.com`). Ver [[reference_login_email_prod_no_es_patron_doc]]. Reseteo de password admin en prod: hash bcrypt directo + `UPDATE usuarios` + verificar contra el API de Railway con el email real.
-
-> **Patrón**: para proteger un router entero (todos los verbos, incluido GET, + endpoints futuros), usar `APIRouter(prefix=..., dependencies=[Depends(get_current_user)])` en vez de `Depends` por-handler. Más robusto contra regresiones. Solo dejar endpoints sin guard si son genuinamente públicos (entonces van en un router separado, como `/publico/*`).
-
-### Integridad de cuentas — todo `usuario` tiene un agente O un ciudadano (mig 77, roadmap en curso 2026-06-09)
-
-**Invariante:** todo `usuario` activo debe estar vinculado a un **agente** (interno) o un **ciudadano** (vecino). Un usuario "pelado" (sin ninguno de los dos) no es un estado válido permanente — típicamente es un alta a medias. El módulo Trámites lo exige de hecho: `tramite.id_agente_iniciador` es **NOT NULL** y todos los endpoints de operación llaman `resolver_agente_desde_usuario` → 403 si no hay agente. **Origen:** informe QA Roy 2026-06-09 ("El usuario no tiene un agente asociado") — admins/operadores viejos sin fila en `agentes`.
-
-- **Alta interna ya garantiza el agente** (§39 mig 64): `POST /buc/usuarios` con `es_externo=FALSE` crea el agente vinculado en la misma tx. El `es_externo=TRUE` NO crea agente (categoría legítima sin subárea) — ese caso lo cubre el cron.
-- **Mensaje del guard (Fase 1, 2026-06-09):** el 403 de los 13 endpoints de `tramites.py` pasó de `"El usuario no tiene un agente asociado"` (técnico) a uno accionable: *"Tu usuario no tiene un perfil de agente municipal… Pedile a un administrador que lo configure desde Maestros → Usuarios."* El `detail` viaja por `lib/api.ts` (`err.detail`→`Error.message`) hasta el toast de `CrearTramite.tsx` — lo que escribas en el `HTTPException` es lo que ve el usuario.
-- **Cron de integridad (Fase 2, mig 77):** `POST /api/v1/usuarios/mantenimiento/integridad-cuentas` (router `usuarios_mantenimiento.py`, SIN JWT, auth `X-Dispatcher-Token` — mismo patrón que §35/§42; soporta `?dry_run=true`). Motor `services/integridad_cuentas.py::suspender_usuarios_sin_vinculo`: usuarios **activos, nivel_acceso > 1 (admin EXENTO** para evitar lockout total**), sin agente activo y sin ciudadano vinculado por email, creados hace > 24h (gracia)** → `activo=FALSE` + `suspendido_motivo='sin_vinculo'` + `fecha_suspension=NOW()`. Reversible: un admin crea el agente/ciudadano faltante y reactiva. Vínculo a ciudadano = por email (igual que el backfill y que `/auth/login`, que loguea por email). Cron diario `.github/workflows/integridad-cuentas.yml` (04:25 UTC, desfasado del de Trámites).
-- **`usuarios.fecha_alta` es `timestamp without time zone`** (legacy §5): comparar contra `(NOW() AT TIME ZONE 'UTC')` para la gracia, no contra `NOW()` directo.
-- **Fase 3 — ENTREGADA (2026-06-09, mig 78).** Clave temporal + cambio forzado en 1er ingreso para usuarios INTERNOS. `usuarios.debe_cambiar_password` (BOOL). El alta (`POST /buc/usuarios`) **ya no recibe password del form**: el sistema genera una clave temporal, la marca `debe_cambiar_password=TRUE` y la **manda por email** (`enviar_mail_credenciales_usuario_interno` en `services/email.py`, marca del municipio + CTA al login del shell). **Email ahora OBLIGATORIO en el alta** (`UsuarioCreate.email` requerido — es el canal de entrega). `POST /auth/login` devuelve `debe_cambiar_password`; el **login vanilla** (`frontend/login.html`) lo detecta y muestra una pantalla de "Cambiá tu contraseña" ANTES de entrar al shell (no persiste sesión hasta cambiar). Endpoint self-service `POST /auth/cambiar-password` (forzado: no pide la actual porque ya validó la temporal al loguear; voluntario: exige y verifica la actual; rechaza nueva==actual; limpia la marca). El form de alta de `usuarios.html` oculta los campos de password y muestra un aviso ("se genera y se manda por mail"); en EDICIÓN conserva el reset manual por admin. Si el cliente igual manda `password` (seeds/compat) se respeta sin forzar cambio. Verificado smoke backend (8 bordes) + navegación E2E.
-- **Fase 4 — ENTREGADA (2026-06-09, mig 79) y REPLANTEADA (2026-06-12).** El modelo de DOS PASOS de la Fase 4 fue reemplazado por **alta en UN PASO con ficha completa** (sin placeholders en la BUC; el paso 2 in-app fue eliminado). Modelo separado se mantiene (vecino sigue en `ciudadanos`+`ciudadano_credencial`, NO se unifica en `usuarios`). Detalle completo en §38 ("Alta pública de vecinos — UN PASO").
+> **Movido a la skill `modulo-usuarios`** (`.claude/skills/modulo-usuarios/SKILL.md`), que carga on-demand. Stack vanilla, form (subárea/externo), módulos permitidos, auditoría de login (`usuario_login_log`), regla 1:1 agente↔usuario, invariante de integridad de cuentas (cron sin-vínculo mig 77), clave temporal + cambio forzado (mig 78) y login por email exacto viven ahí. Ancla §39 conservada para las refs cruzadas.
 
 ## 40. Reportes vs guías de QA — qué se versiona y qué no
 
@@ -1753,28 +1651,7 @@ Los 8 hallazgos del QA 2026-05-19 (router sin auth, 2 XSS, email, sidebar, modal
 
 ## 41. Módulo Config (React) + estándar de verificación en la interfaz
 
-Módulo React `web-app/src/modules/config/` (ítem "configuración" del sidebar, `data-modulo="admin_tablas"` desde §39). Es admin-only — el backend exige `nivel_acceso=1` en `require_admin` (los endpoints de identidad y permisos). 4 tabs en `ConfigLayout`:
-
-| Tab | Vista | Endpoint backend | Qué hace |
-|---|---|---|---|
-| Identidad | `IdentidadView` | `GET/PUT /api/v1/config/identidad` (+ `/logo-upload-url`) | Nombre y logo del municipio en el topbar. `app_nombre` ('GESTION ESTADO') es interno, NO editable (§14) — el PUT lo ignora. |
-| Permisos por usuario | `UsuariosPermisosView` | `GET /api/v1/admin/permisos/usuarios/{id}/modulos` + `PUT` | Matriz de overrides por módulo (§30). Lista usuarios vía `GET /api/v1/admin/usuarios` (handler genérico admin_tablas). |
-| Catálogo de módulos | `CatalogoModulosView` | `GET /api/v1/admin/permisos/modulos` + `PUT /{codigo}` | Editar `min_nivel_acceso` de cada módulo. |
-| Sistema | `SistemaView` + `ParametrosSistemaView` | `GET /api/v1/admin/configuracion_general` + `PUT /{id_config}` | **Desde 2026-05-25:** pantalla de ajustes agrupada y tipada (toggle/number/text/color) sobre `configuracion_general`, secciones Encuestas / Reclamos y OT / App Vecinos / Otros. Debajo, atajos a Municipios/Maestros. Ver [[reference_config_sistema_pantalla_tipada]]. Clave nueva: seed (mig) + leer backend + sumar a `SECCIONES`. **`configuracion_general.tipo` es NOT NULL en PROD (`string`/`boolean`/`integer`) pero NO existe en local** (drift cazado 2026-06-01, §24) — al insertar una clave nueva en prod, **incluir `tipo`** o el INSERT falla con `null value in column "tipo"`; el seed que corra en ambos entornos debe detectar la columna (`information_schema.columns`) y armar el INSERT con/sin `tipo` según exista (patrón en `migrations/75b_tramites_retencion_config.sql`). `municipio_nombre`/`logo` ocultos acá (se editan en Identidad). El item "usuarios" se quitó del sidebar del shell (sigue accesible acá vía atajo "Usuarios del sistema"). |
-
-**Cliente API:** `web-app/src/modules/config/api/configApi.ts` + hooks en `hooks/useConfig.ts`. Los 3 endpoints existen, están registrados en `main.py` y las shapes coinciden. Verificado end-to-end en navegador 2026-05-22.
-
-### Bugs de navegación cazados y resueltos (2026-05-22) — referencia para módulos React en iframe
-
-Tres bugs distintos en este módulo, todos de **navegación**, ninguno detectable leyendo el código solo (ver estándar abajo):
-
-1. **`window.location.href` absoluto rompe bajo `/zaris-zge/`** (commit `3ea2847`). `SistemaView` e `ConfigLayout` (botón INICIO) caían a `window.location.href = '/${href}'` en el fallback → salta a `cesarzeta.github.io/${href}` SIN el subpath → 404 de GH Pages en el iframe (§32 Quirk 13). **Fix:** helper compartido `web-app/src/lib/shellNav.ts` (`shellNavigate` + `shellGoInicio`) que delega en `window.parent.shellNavigate` y solo en standalone dev resuelve el subpath. **Reusar este helper en cualquier módulo React que navegue al shell** en vez de reinventar el patrón.
-2. **`NavLink to="x"` relativo expulsa al dashboard** (commit `9105dbf`). Los tabs usaban `to="permisos"` (relativo): estando en `/config/identidad`, React Router lo resolvía a `/config/identidad/permisos` (ruta inexistente) → catch-all `path:'*'` en `routes.tsx` → redirect a `/dashboard`. Solo se notaba **al clickear una tab** (la primera carga directa por URL funcionaba). **Fix:** paths ABSOLUTOS `to="/config/<tab>"`. **Regla:** en layouts con tabs internas usar paths absolutos, no relativos — el relativo anida contra la ruta actual completa.
-3. **Tipos del API mentían** (commit `a04878c`, deuda menor): `app_nombre` figuraba en `IdentidadUpdate` (lo ignora el PUT) y `listarUsuarios` mandaba `?limit=200` que el handler genérico ignora. Alineados con el backend real.
-
-### `admin_tablas` configuracion_general — mostrar `descripcion` en la preview (2026-05-22)
-
-La tabla `configuracion_general` tiene columna `descripcion` con texto útil por parámetro, pero la vista previa de `admin_tablas.html` mostraba solo `clave` + `valor` (vía `composeLabel`/`composeMeta` genéricos). El admin veía claves crudas sin saber qué hacen. **Fix** (commit `b32b71f`): caso especial en `renderVistaPrevia` para `tablaActual === 'configuracion_general'` que renderiza clave + descripción en gris debajo + valor a la derecha. `configuracion_general` **no tiene columna `activo`** (sin baja lógica) — borrar registros de basura es DELETE físico, no soft-delete.
+> **Cuerpo del módulo movido a la skill `modulo-config`** (`.claude/skills/modulo-config/SKILL.md`), que carga on-demand. Los 4 tabs (Identidad, Permisos por usuario, Catálogo de módulos, Sistema tipado), los bugs de navegación en iframe (`window.location` absoluto, `NavLink` relativo) y el quirk de `configuracion_general.tipo` NOT NULL en prod viven ahí. Ancla §41 conservada para las refs cruzadas. **El "Estándar OBLIGATORIO: verificar navegación/UI en la interfaz" de abajo es transversal y QUEDA acá** (aplica a cualquier módulo React, no solo Config).
 
 ### Estándar OBLIGATORIO: verificar navegación/UI en la interfaz, no en el código
 
