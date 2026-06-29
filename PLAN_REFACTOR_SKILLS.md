@@ -8,7 +8,7 @@
 
 - **Fase 0 (inventario + plan):** ✅ completada — commit `b1f8117`.
 - **Fase 1 (piloto §44 Emergencias):** ✅ **migrado** — skill `modulo-emergencias` creada, puntero en CLAUDE.md, ancla `## 44.` conservada. CLAUDE.md 1992→1981 líneas. **Pendiente: validación manual del usuario (auto-invocación en sesión nueva).**
-- **Fase 2 (replicar):** en curso. Piloto validado. Bloques 1 (§42/§43/§34), 2 (§39/§41/§33) y 3 (§35/§38/§30) migrados. CLAUDE.md 1981→1476 líneas. Splits: §41 (estándar UI transversal queda) y §30 (trampa de seguridad transversal queda en el puntero). Faltan: §27 Agenda, §18+§22+§26 Reclamos, §15 Admin Tablas (split), §36+§37 Guías.
+- **Fase 2 (replicar):** ✅ **COMPLETA**. 17 secciones movidas a 14 skills `modulo-*`. CLAUDE.md **1992→1024 líneas (−968, −48.6%)**. Las 17 anclas conservadas, numeración intacta (42 secciones únicas, 0 renumeradas), 0 cuerpos huérfanos. Splits: §41 (estándar verificación UI), §30 (trampa de seguridad), §15 (panel de búsqueda) — sus partes transversales quedaron en CLAUDE.md. §18+§22+§26 → una skill `modulo-reclamos`; §36+§37 → `modulo-guias`.
 
 ## Reglas inviolables del refactor
 
@@ -67,18 +67,18 @@
 | §43 | Módulo Datos (BI) | `modulo-bi` | 5 / 2 / 3 | **migrado** ✅ |
 | §39 | Módulo Usuarios | `modulo-usuarios` | 11 / 5 / 6 | **migrado** ✅ |
 | §41 | Módulo Config (React) | `modulo-config` | 10 / 2 / 8 | **migrado (split)** ✅ |
-| §37 | Módulo Guías | `modulo-guias` | 6 / 6 / 0 | propuesto |
-| §36 | Generación de manuales | (ver nota↓) | 4 / 2 / 2 | propuesto |
+| §37 | Módulo Guías | `modulo-guias` | 6 / 6 / 0 | **migrado** ✅ |
+| §36 | Generación de manuales | `modulo-guias` | 4 / 2 / 2 | **migrado** ✅ |
 | §34 | Módulo OT | `modulo-ot` | 5 / 2 / 3 | **migrado** ✅ |
 | §33 | Módulos Turnos y Entradas | `modulo-turnos-entradas` | 17 / 7 / 10 | **migrado** ✅ |
 | §35 | Módulo Trámites / Expedientes | `modulo-tramites` | 33 / 6 / 27 | **migrado** ✅ |
 | §38 | Auth público de ciudadanos (App Vecinos) | `modulo-app-vecinos` | 23 / 8 / 15 | **migrado** ✅ |
 | §30 | Permisos por módulo | `modulo-permisos` | 18 / 3 / 15 | **migrado (split)** ✅ |
-| §27 | Módulo Agenda | `modulo-agenda` | 26 / 14 / 12 | propuesto |
-| §26 | Adjuntos de Reclamos (Storage) | `modulo-reclamos` (junto con §18/§22) | 12 / 6 / 6 | propuesto |
-| §22 | Geolocalización, Activos y Adjuntos | `modulo-reclamos` | 8 / 4 / 4 | propuesto |
-| §18 | Módulo Reclamos | `modulo-reclamos` | 6 / 1 / 5 | propuesto |
-| §15 | Admin Tablas — CRUD Genérico | (ver nota↓ — split) | 7 / 3 / 4 | propuesto |
+| §27 | Módulo Agenda | `modulo-agenda` | 26 / 14 / 12 | **migrado** ✅ |
+| §26 | Adjuntos de Reclamos (Storage) | `modulo-reclamos` (junto con §18/§22) | 12 / 6 / 6 | **migrado** ✅ |
+| §22 | Geolocalización, Activos y Adjuntos | `modulo-reclamos` | 8 / 4 / 4 | **migrado** ✅ |
+| §18 | Módulo Reclamos | `modulo-reclamos` | 6 / 1 / 5 | **migrado** ✅ |
+| §15 | Admin Tablas — CRUD Genérico | `modulo-admin-tablas` (split) | 7 / 3 / 4 | **migrado (split)** ✅ |
 
 **Notas de criterio (discrepancias / matices vs la propuesta original):**
 
