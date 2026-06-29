@@ -32,7 +32,7 @@
 
   <link rel="stylesheet" href="design-system/fonts/fonts.css">
   <link rel="stylesheet" href="design-system/colors_and_type.css">
-  <link rel="stylesheet" href="frontend/css/menu.css?v=2026-06-12b">
+  <link rel="stylesheet" href="frontend/css/menu.css?v=2026-06-29a">
 
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 </head>
@@ -153,6 +153,18 @@
              migracion 44: agenda / turnos / entradas.
              Emergencias PRIMERO al tope (pedido del usuario 2026-06-10, mig 84). -->
 
+        <!-- ═══════════════════════════════════════════════════════════════
+             Sidebar reagrupado por rol (CLAUDE.md §30). Las secciones espejan
+             los niveles de acceso: Atención = Operador (nivel 3), Supervisión =
+             Supervisor (nivel 2), Común = ambos, Administración = Admin (nivel 1).
+             Los encabezados .nav-flat__section solo rotulan; menu.js los oculta
+             si todos sus ítems quedaron filtrados por permisos.
+             Pendiente Fase 2: ítems "Gestión de Reclamos/Turnos/Trámites" (vista
+             del agente) — todavía no tienen ruta dedicada, no se agregan acá. -->
+
+        <!-- ── 🟢 Atención (nivel 3 — Operador) ── -->
+        <div class="nav-flat__section" data-section="atencion">Atención</div>
+
         <a class="nav-flat__item" href="web-app/dist/index.html#/emergencias" data-modulo="emergencias">
           <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M7 18v-6a5 5 0 1 1 10 0v6"/>
@@ -197,27 +209,6 @@
           <span>Entradas</span>
         </a>
 
-        <!-- Agenda: sustrato de disponibilidad horaria de agentes y espacios. -->
-        <a class="nav-flat__item" href="web-app/dist/index.html#/agenda" data-modulo="agenda">
-          <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect x="3" y="4" width="18" height="18" rx="2"/>
-            <path d="M16 2v4M8 2v4M3 10h18"/>
-          </svg>
-          <span>Agenda</span>
-        </a>
-
-        <!-- OT: link plano (lleva por default a supervisor). Las 3 mesas se eligen
-             dentro del módulo OT via tabs internas en futura sub-fase. Por ahora,
-             el shell vanilla mantiene 3 data-modulo via JS si necesita filtrar. -->
-        <a class="nav-flat__item" href="web-app/dist/index.html#/ot" data-modulo="ot_supervisor" data-modulo-fallback="ot_agente,ot_auditoria">
-          <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M9 2h6a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v0a2 2 0 0 1 2-2z"/>
-            <path d="M9 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3"/>
-            <path d="M9 12h6M9 16h6"/>
-          </svg>
-          <span>OT</span>
-        </a>
-
         <!-- Trámites: expedientes administrativos con flujo de estados. -->
         <a class="nav-flat__item" href="web-app/dist/index.html#/tramites" data-modulo="tramites">
           <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -230,24 +221,31 @@
           <span>Trámites</span>
         </a>
 
-        <!-- Encuestas: resultados CSAT. data-modulo="encuestas" (min_nivel_acceso=2). -->
-        <a class="nav-flat__item" href="web-app/dist/index.html#/encuestas" data-modulo="encuestas">
+        <!-- ── 🟣 Supervisión (nivel 2 — Supervisor) ── -->
+        <div class="nav-flat__section" data-section="supervision">Supervisión</div>
+
+        <!-- OT: link plano (lleva por default a supervisor). Las 3 mesas se eligen
+             dentro del módulo OT via tabs internas. data-modulo-fallback permite
+             que el item se muestre si el usuario tiene CUALQUIER permiso de OT. -->
+        <a class="nav-flat__item" href="web-app/dist/index.html#/ot" data-modulo="ot_supervisor" data-modulo-fallback="ot_agente,ot_auditoria">
           <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <line x1="18" y1="20" x2="18" y2="10"/>
-            <line x1="12" y1="20" x2="12" y2="4"/>
-            <line x1="6" y1="20" x2="6" y2="14"/>
+            <path d="M9 2h6a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v0a2 2 0 0 1 2-2z"/>
+            <path d="M9 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3"/>
+            <path d="M9 12h6M9 16h6"/>
           </svg>
-          <span>Encuestas</span>
+          <span>Órdenes de Trabajo</span>
         </a>
 
-        <!-- Datos (análisis operativo + ejecutivo). data-modulo="bi" (min_nivel_acceso=2, mig 65). -->
-        <a class="nav-flat__item" href="web-app/dist/index.html#/bi" data-modulo="bi">
+        <!-- ── 🔵 Común (Atención + Supervisión) ── -->
+        <div class="nav-flat__section" data-section="comun">Común</div>
+
+        <!-- Agenda: sustrato de disponibilidad horaria de agentes y espacios. -->
+        <a class="nav-flat__item" href="web-app/dist/index.html#/agenda" data-modulo="agenda">
           <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <ellipse cx="12" cy="5" rx="9" ry="3"/>
-            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
-            <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>
+            <rect x="3" y="4" width="18" height="18" rx="2"/>
+            <path d="M16 2v4M8 2v4M3 10h18"/>
           </svg>
-          <span>Datos</span>
+          <span>Agenda</span>
         </a>
 
         <!-- Contactos: landing con tarjetas a Ciudadanos / Empresas. -->
@@ -259,6 +257,29 @@
             <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
           </svg>
           <span>Contactos</span>
+        </a>
+
+        <!-- ── ⚫ Administración (nivel 1 — Administrador) ── -->
+        <div class="nav-flat__section" data-section="admin">Administración</div>
+
+        <!-- Datos (análisis operativo + ejecutivo). data-modulo="bi" (min_nivel_acceso=1). -->
+        <a class="nav-flat__item" href="web-app/dist/index.html#/bi" data-modulo="bi">
+          <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <ellipse cx="12" cy="5" rx="9" ry="3"/>
+            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+            <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>
+          </svg>
+          <span>Datos</span>
+        </a>
+
+        <!-- Encuestas: resultados CSAT. data-modulo="encuestas" (min_nivel_acceso=1). -->
+        <a class="nav-flat__item" href="web-app/dist/index.html#/encuestas" data-modulo="encuestas">
+          <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="20" x2="18" y2="10"/>
+            <line x1="12" y1="20" x2="12" y2="4"/>
+            <line x1="6" y1="20" x2="6" y2="14"/>
+          </svg>
+          <span>Encuestas</span>
         </a>
 
         <a class="nav-flat__item" href="frontend/admin_tablas.html?tabla=agentes" data-modulo="admin_tablas">
@@ -322,6 +343,6 @@
 
   </div>
 
-  <script src="frontend/js/menu.js?v=2026-06-12b"></script>
+  <script src="frontend/js/menu.js?v=2026-06-29a"></script>
 </body>
 </html>
