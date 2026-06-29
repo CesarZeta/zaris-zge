@@ -48,6 +48,24 @@ def _require_gestion(current_user: dict):
 NIVELES_SUPERVISOR = {1, 2}  # Admin, Supervisor
 
 
+def _require_supervisor(current_user: dict):
+    """Acciones que cambian el ESTADO de un reclamo (cambiar estado, cancelar,
+    desglosar en subreclamo) son exclusivas de Supervisión (CLAUDE.md §30).
+
+    El operador (nivel 3 / Atención) genera y consulta reclamos, edita datos y
+    deja observaciones, pero NO cambia su estado: toma nota o avisa al supervisor
+    para que lo haga. La gestión del reclamo es Órdenes de Trabajo (supervisor).
+    El guard de UI (sidebar/botones) NO alcanza — esto cierra la vía por curl
+    (trampa recurrente §30: ocultar en UI ≠ proteger el endpoint).
+    """
+    if current_user.get("nivel_acceso") not in NIVELES_SUPERVISOR:
+        raise HTTPException(
+            status_code=403,
+            detail="Cambiar el estado de un reclamo requiere nivel Supervisor o "
+                   "Administrador. Tomá nota o avisá a tu supervisor para que lo gestione.",
+        )
+
+
 async def _validar_cierre_directo_sin_ot(db, id_reclamo: int, id_tipo_reclamo, current_user: dict):
     """Reglas para resolver un reclamo 'Sin asignar' sin generar OT:
 
@@ -570,7 +588,7 @@ async def cambiar_estado(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    _require_gestion(current_user)
+    _require_supervisor(current_user)  # cambio de estado = supervisión (§30)
 
     nuevo_estado = body.get("estado")
     if not nuevo_estado:
@@ -808,7 +826,7 @@ async def cancelar_reclamo(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    _require_gestion(current_user)
+    _require_supervisor(current_user)  # cancelar = cambio de estado a final (§30)
     motivo = body.get("motivo", "").strip()
     if not motivo:
         raise HTTPException(status_code=422, detail="Campo 'motivo' requerido")
@@ -880,10 +898,10 @@ async def crear_subreclamo(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    # Crear subreclamo es una acción de gestión (nivel ≤ 3). El frontend ya lo
-    # oculta al Consultor (DetailView), pero el backend es la fuente de verdad
-    # (guard_nivel_endpoint_no_solo_ui).
-    _require_gestion(current_user)
+    # Crear subreclamo desglosa el reclamo y pasa el padre a 'En espera' — es un
+    # cambio de estado, exclusivo de Supervisión (§30). El operador toma nota o
+    # avisa al supervisor. El backend es la fuente de verdad (§30, no solo la UI).
+    _require_supervisor(current_user)
 
     # Validar que el padre existe y no es él mismo un subreclamo
     r = await db.execute(text("""
