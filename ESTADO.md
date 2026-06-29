@@ -9,7 +9,7 @@
 > - Verificar contra git/prod antes de declarar algo hecho (`feedback_verificar_siempre_antes_de_opinar`).
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 
-**Última actualización:** 2026-06-27 (Cesar) · rama `main`
+**Última actualización:** 2026-06-29 (Cesar) · rama `main`
 
 ---
 
@@ -31,6 +31,7 @@ _(nada en curso ahora mismo — backoffice estable, todo lo abierto es de la PWA
 
 ## ✅ Hecho reciente (últimas sesiones)
 
+- **2026-06-29** — **Refactor `CLAUDE.md` → skills on-demand** (`b1f8117`…`9cb4c8f`, en `main`). La referencia por módulo (§15/18/22/26/27/30/33/34/35/36/37/38/39/41/42/43/44) se movió a **14 skills `.claude/skills/modulo-*`** que cargan solas cuando trabajás ese módulo. CLAUDE.md pasó de 1992→1024 líneas (−48.6%); solo quedan las reglas transversales (always-on). **Las anclas `## N.` y todas las refs `§N` se conservan** — nada se rompe. Plan/decisiones en `PLAN_REFACTOR_SKILLS.md`. **Roy:** al tocar un módulo, su skill se invoca automáticamente; si editás CLAUDE.md, recordá que el detalle de cada módulo ya NO está ahí sino en su skill.
 - **2026-06-27** — Mail de confirmación al crear reclamo del vecino (`a4ab19d`, en prod, verificado con mail real). Onboarding de Roy redondeado. Etapa G de la PWA documentada en `PLAN_APP_VECINOS.md` (`f4ad557`).
 - **2026-06-13** — Recovery de credenciales usuarios internos (mig 90) + 6 catálogos Emergencias en Maestros + filtros FK en listado admin_tablas (`5d81080`, prod).
 - **2026-06-12** — Shell: menú de usuario + foto de perfil (mig 88) + modo oscuro + statusbar inferior. Revisión integral de Agenda (mig 89/91) + manual.
@@ -44,7 +45,8 @@ _(nada en curso ahora mismo — backoffice estable, todo lo abierto es de la PWA
 
 | Querés saber… | Mirá… |
 |---|---|
-| Reglas de cómo se trabaja (mandatorias) | [`CLAUDE.md`](CLAUDE.md) |
+| Reglas de cómo se trabaja (mandatorias, transversales) | [`CLAUDE.md`](CLAUDE.md) |
+| Detalle de UN módulo (tablas/endpoints/FSM/quirks) | la skill `.claude/skills/modulo-<nombre>/` — carga sola al tocar ese módulo (ver `PLAN_REFACTOR_SKILLS.md`) |
 | Estado de avance / pendientes HOY (backoffice) | **este archivo** |
 | Estado de avance / pendientes HOY (PWA) | `zaris-vecinos/ESTADO.md` |
 | Roadmap detallado de la App Vecinos | [`PLAN_APP_VECINOS.md`](PLAN_APP_VECINOS.md) |
