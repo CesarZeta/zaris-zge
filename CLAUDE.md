@@ -1444,68 +1444,7 @@ Flujo público sin JWT para que el ciudadano reserve un turno sin pasar por mesa
 
 ## 34. Módulo OT — frontend dedicado del Supervisor (crear OT + agendar en una pasada)
 
-Implementado 2026-05-14 jornada 5. El bullet "OT" del menú es el frontend donde el supervisor, desde la bandeja de reclamos de su subárea, crea la OT **y** la planifica en la agenda de agentes/equipos en un solo flujo. Antes eran dos pasos en dos módulos (crear OT en `modules/ot`, agendarla en `modules/agenda`).
-
-### Vista Supervisor — layout 2 columnas (tab "Asignar")
-
-`web-app/src/modules/ot/views/SupervisorView.tsx`: el tab Asignar usa grid `minmax(0,1fr) 340px` — bandeja de reclamos a la izquierda, `PlanificadorOT` a la derecha. Click en una fila (o en el botón "Planificar") selecciona el reclamo en el panel. El flujo de **lote** (checkboxes + `AsignarModal`) se mantiene intacto: agendar 10 OTs distintas en un panel no tiene sentido, el lote sigue siendo asignación simple sin agenda. El tab "Reasignar" no cambió.
-
-### `PlanificadorOT.tsx` — panel de planificación
-
-`web-app/src/modules/ot/components/PlanificadorOT.tsx`: muestra contexto del reclamo → selector agente/equipo → fecha → **slots libres como chips clickeables** → dos acciones:
-- **"Crear OT y agendar"** → `POST /ot/con-agenda` (crea OT + ocupación espejo en una transacción).
-- **"Crear OT sin agendar"** → `POST /ot` normal. La OT queda sin ocupación; igual registra al supervisor en `id_supervisor_asigna`.
-
-Valida FK antes de enviar (ver memoria `feedback_validar_fk_antes_submit`).
-
-### Backend nuevo en `ordenes_trabajo.py`
-
-| Acción | Verbo | Path | Notas |
-|---|---|---|---|
-| Slots libres de un recurso | GET | `/api/v1/ot/slots-recurso?tipo_recurso=&id_recurso=&fecha=&duracion_min=` | **Segmento fijo: registrado ANTES de `GET /{id_ot}`** (§5). Agente: disponibilidad efectiva menos sus ocupaciones. Equipo: **delega en `disponibilidad_efectiva('equipo')`** (§27 — unión de agentes + override) menos las ocupaciones del equipo y de sus agentes. |
-| Crear OT + agenda | POST | `/api/v1/ot/con-agenda` | Crea OT y ocupación tipo `'ot'` en una transacción. Body `dict` → convierte fecha/hora con `date.fromisoformat`/`time.fromisoformat` (asyncpg no castea strings, ver memoria `feedback_asyncpg_extract_cast_date`). Detecta conflictos de solapamiento y los devuelve, pero la OT igual se crea. `id_supervisor_asigna` = usuario logueado. |
-| **Auto-asignar al primero disponible** | GET | `/api/v1/ot/auto-asignar-sugerencia?id_reclamo=&fecha=&duracion_min=` | **Segmento fijo ANTES de `/{id_ot}`** (§5). Nivel ≤ 2. Recorre cuadrillas + agentes de la **subárea del reclamo** (derivada del tipo) y devuelve el **primero con slot libre** (prioriza equipos sobre agentes). `{sugerencia: {tipo_recurso, id_recurso, nombre, slot} \| null, motivo?}`. El botón "Auto-asignar al primero disponible" del `PlanificadorOT` lo consume y preselecciona recurso+slot para confirmar. |
-
-`GET /ot/mesa/supervisor` ahora expone **`ot_activa_agendada`** (boolean): el CTE `ot_activa` agrega un `EXISTS` sobre `ocupaciones` tipo `'ot'` activas ligadas a la OT. Permite distinguir en la bandeja las OTs creadas sin agendar. **El filtro `id_subarea` de la mesa usa `tr.id_subarea` derivado del tipo, NO `r.id_subarea`** (que está NULL en el 100% de los reclamos — filtrar por ahí vaciaba la bandeja, [[feedback_filtro_igual_null_vacia_listado]]). Mismo criterio en las dos mesas de auditoría.
-
-Helpers compartidos en `ordenes_trabajo.py`: `_slots_de_rango`, `_solapa`, `_merge_rangos`, `_slots_libres_recurso`. **El caso equipo de `_slots_libres_recurso` delega en `services/agenda.py::disponibilidad_efectiva('equipo')`** para no duplicar la lógica de unión/override (esa duplicación divergía de la grilla de Agenda — bug cerrado 2026-06-15).
-
-### Hooks `useOT.ts`
-
-`useSlotsRecurso(tipo, id, fecha, duracion)` — query de slots, `enabled` solo con recurso+fecha elegidos. `useCrearOTConAgenda()` — mutation que invalida mesas de OT **y** queries de agenda (`['agenda']`), porque la ocupación nueva debe aparecer en la grilla del módulo Agenda.
-
-### Estado de los 3 módulos del menú (confirmado 2026-05-14)
-
-- **OT** → frontend dedicado del supervisor (esta sección). Crea OT relacionada al reclamo + la agenda.
-- **Turnos** → ligado a **agentes**, turnos de atención al ciudadano (§33). NO se tocó.
-- **Entradas** → ligado a **espacios** + eventos con cupo (§33). NO se tocó.
-
-`OcupacionOTModal` en el módulo Agenda (§ ver jornada anterior) se mantiene: sigue siendo válido planificar en la Agenda una OT ya creada. El flujo nuevo de OT no lo reemplaza, lo complementa.
-
-### Mesa Auditoría — admin (nivel 1) bypassea `es_auditor`
-
-Desde 2026-05-19: el check `agentes.es_auditor=TRUE` en `GET /api/v1/ot/auditor/me` se saltea cuando `current_user.nivel_acceso <= 1`. Admin por definición tiene acceso total al módulo y no necesita el flag explícito en DB. La regla "no auditar lo propio" se preserva via el filtro existente `(ot.id_agente IS NULL OR ot.id_agente = :id_agente)` del listado, que excluye las OTs operativas asignadas al mismo agente. Niveles 2-4 siguen requiriendo `es_auditor=TRUE` en su fila de `agentes`. El endpoint legacy `GET /mesa/auditoria?id_agente=` nunca chequeó `es_auditor` (recibía el id por query), así que no necesitó cambio.
-
-### Guard de nivel — Mesa Supervisor y asignación de OT exigen nivel ≤ 2 (hallazgo QA #2, 2026-05-20)
-
-Antes, los endpoints de asignación de OT solo usaban `get_current_user` sin chequear nivel — un Operador (nivel 3) podía crear/asignar OT desde la Mesa Supervisor. Fix:
-
-- **Backend:** helper `_require_supervisor(current_user)` en `ordenes_trabajo.py` (403 si `nivel_acceso > 2`), aplicado como primera línea de `GET /ot/mesa/supervisor`, `POST /ot`, `POST /ot/con-agenda`. `PUT /ot/{id}/reasignar` ya lo tenía inline. Espeja `modulos.ot_supervisor.min_nivel_acceso = 2`.
-- **Frontend (bundle React):** gate `WrapNivel` en `web-app/src/modules/ot/index.tsx` — `/ot/supervisor` y `/ot/auditoria` exigen nivel ≤ 2; el operador ve "Acceso restringido". El redirect de `/ot` (sin sub-ruta) es por rol: nivel ≤ 2 → `/ot/supervisor`, resto → `/ot/agente`.
-- **Sidebar vanilla:** el link OT en `index.html` apunta a `#/ot` (no `#/ot/supervisor`) para que el redirect por rol decida la mesa. Conserva `data-modulo-fallback="ot_agente,ot_auditoria"` para que el item siga visible al operador (que aterriza en su Mesa de Agente).
-
-Defensa en profundidad: aunque un operador deep-linkee a `/ot/supervisor`, el frontend muestra el mensaje y el backend rechaza con 403. Ver memoria [[guard_nivel_endpoint_no_solo_ui]].
-
-### Adjuntos de OT — evidencia del trabajo (hallazgo QA Royman #4, 2026-05-20)
-
-El #4 que quedó diferido en el commit `2110263`. Las OT ahora tienen adjuntos propios (fotos de la evidencia del trabajo: bache reparado, luminaria cambiada). **Independientes de los adjuntos del reclamo** (§26): el drawer muestra ambas secciones — "ADJUNTOS" (del reclamo) y "EVIDENCIA DE LA OT" (de la OT resaltada).
-
-- **Tabla `ot_adjuntos`** (mig 54, ver §21): espejo de `reclamo_adjuntos` pero FK a `ordenes_trabajo(id_ot) ON DELETE CASCADE`. Reusa el bucket privado `reclamos-adjuntos` (paths bajo `ot/{id_ot}/{uuid}.{ext}`). Modelo `OrdenTrabajoAdjunto` en `backend/app/models/reclamos.py`.
-- **Router `ot_adjuntos.py`** (prefix `/api/v1/ot/{id_ot}/adjuntos`): mismo flujo que reclamo_adjuntos — `POST /upload-url` → PUT directo al storage → `POST /{id_adj}/confirm`; `GET ""` (URLs firmadas TTL 1h); `DELETE /{id_adj}` (soft-delete + remove del bucket). Reusa `app/core/storage.py` (que ya aceptaba `bucket`/`path` arbitrarios).
-- **Registrado en `main.py` ANTES de `ot_router`** (§5): `/ot/{id_ot}/adjuntos` no debe ser atrapado por el `/{id_ot}` greedy del router de OT.
-- **Permiso SUBIR/BORRAR**: agente asignado a la OT (`ordenes_trabajo.id_agente` = `agentes.id_agente` del usuario, resuelto vía `agentes.id_usuario`) **o** nivel ≤ 2 (admin/supervisor). Helper `_require_puede_gestionar`. **VER (listar) lo puede cualquier autenticado** — todas las mesas ven la evidencia.
-- **Frontend**: `web-app/src/modules/ot/` → `api/otAdjuntosApi.ts`, `hooks/useOTAdjuntos.ts`, `components/UploadAdjuntosOTPanel.tsx` (clon del de reclamos apuntando a la API de OT + queryKey `['ot','adjuntos',idOt]`). La sección vive en `OTDetalleDrawer.tsx` (`OTAdjuntosSection`), se muestra cuando `idOTResaltada != null`. El drawer recibe prop `puedeGestionarAdjuntos`: AgenteView lo pasa `true` si `scope ∈ {'mia','disponible_equipo'}`; Supervisor/Auditoría lo pasan `user.nivel_acceso <= 2`. El gate solo gobierna la UI — el backend igual hace cumplir el guard (un operador no-asignado recibe 403).
-- **Verificado end-to-end (2026-05-20)**: smoke backend 5/5 (agente asignado sube OK, no-asignado 403, admin OK, listar, OT inexistente 404) + verificación visual en navegador (subir PNG real al storage Supabase → galería → borrar → vuelve a "Sin evidencia adjunta").
+> **Movido a la skill `modulo-ot`** (`.claude/skills/modulo-ot/SKILL.md`), que carga on-demand. Flujo del supervisor (crear OT + agendar), `PlanificadorOT`, slots libres por recurso, auto-asignar, las 3 mesas (Supervisor/Agente/Auditoría), guard de nivel ≤2, bypass `es_auditor` de admin y adjuntos de evidencia de OT (`ot_adjuntos`) viven ahí. Ancla §34 conservada para las refs cruzadas.
 
 ## 35. Módulo Trámites / Expedientes
 
@@ -1850,117 +1789,11 @@ La tabla `configuracion_general` tiene columna `descripcion` con texto útil por
 
 ## 42. Módulo Encuestas (CSAT) — Reglas de negocio
 
-Encuestas de satisfacción disparadas al cierre de reclamos (Resuelto) **y al cumplir turnos** (mig 72). Encuesta estándar ZARIS (no editable por municipio en v1), ramificación condicional según satisfacción inicial. DB: mig 57 (6 tablas + toggle) + 58 (tracking atención) + 72 (turnos). Todas las fases entregadas y verificadas E2E (auditoría email, services, router admin, form público, dispatcher, encuesta de turnos). Backoffice React `web-app/src/modules/encuestas/`.
-
-### Tablas (mig 57 + 58 + 72)
-`encuesta_plantilla` → `encuesta_pregunta` → `encuesta_opcion` (catálogo); `encuesta_envio` → `encuesta_respuesta` (1:1) → `encuesta_respuesta_detalle`. PKs estilo `id_<tabla>`, estándar §10 completo, RLS habilitado sin políticas (deny-all, service_role bypassa, §26). Mig 58 sumó a `encuesta_respuesta`: `atendida`/`atendida_por`/`fecha_atendida` + índice parcial `idx_encuesta_respuesta_pendientes`.
-
-> **`encuesta_envio` es polimórfico desde mig 72:** FK física a `ciudadanos` (siempre) + **exactamente uno** de `id_reclamo` / `id_turno` (CHECK `ck_encuesta_envio_origen` NOT VALID). `encuesta_plantilla.tipo` ∈ `{reclamos, tramites, turnos}` selecciona qué preguntas se sirven. Hay 1 plantilla activa `tipo='reclamos'` y 1 `tipo='turnos'` (ambas en local + prod). **Cualquier query que toque `encuesta_envio` debe hacer LEFT JOIN a reclamos/turnos (NO inner), y ramificar por origen** — los 3 puntos que lo hacían con inner JOIN (`enviar_email_encuesta`, `registrar_respuesta`, `cargar_encuesta` del router público) se corrigieron en la mig 72.
-
-### Disparo automático
-- **Reclamos:** se disparan **solo al cerrar con estado `'Resuelto'`** (NO `'Cancelado'`). Service `encuestas_service.crear_envio_para_reclamo(db, id_reclamo) -> tuple[mapping|None, motivo]`.
-- **Turnos (mig 72):** se disparan **al cumplir un turno** (`PATCH /turnos/{id}/cumplir`, §33). Service `crear_envio_para_turno(db, id_turno) -> tuple[mapping|None, motivo]` — espejo del de reclamos pero usa la plantilla `tipo='turnos'` y la FK `id_turno`; la subárea para anti-fatiga sale de `turnos.id_subarea` o, en su defecto, de la prestación (`tipo_prestacion.id_subarea`). El hook está en `routes/turnos.py::cumplir_turno`, **tras el commit**, best-effort (`try/except`, no rompe el cumplimiento). El **email lo manda el dispatcher existente con delay 24h** (`procesar_envios_pendientes`, que es genérico — recorre envíos `pendiente` sin asumir origen); `enviar_email_encuesta` ramifica el render: `_render_email_turno` (asunto "Tu opinión sobre la atención…", referencia = nombre de la prestación + fecha) vs `_render_email_encuesta` (reclamo). El form público es genérico por token → carga la encuesta de turno sin cambios de UI.
-- El segundo elemento del tuple es una constante `MOTIVO_*` (string legible) que el endpoint `POST /disparar` mapea a 422. Constantes nuevas: `MOTIVO_SIN_PLANTILLA_TURNO`, `MOTIVO_NO_CUMPLIDO`.
-
-### Toggle de activación
-- Clave `encuestas_activas` (boolean) en `configuracion_general`. Si `'false'`, el service no crea envíos (ni de reclamos ni de turnos). Default tras mig 57: `'true'`.
-
-### Resolución de subárea
-- La subárea del envío se deriva de `tipo_reclamo.id_subarea` (vía `reclamos.id_tipo_reclamo`), con fallback a `reclamos.id_subarea` (legacy puede ser NULL, §27). Aplica al anti-fatiga, a la notificación al área cuando el vecino solicita contacto, y a los dashboards por-área.
-
-### Anti-fatiga
-- Un ciudadano no recibe más de una encuesta de la misma subárea (derivada) en los últimos 30 días. El dashboard agrupa por área.
-- **Desactivable (desde 2026-05-25, mig 60):** la regla se puede apagar con la clave `encuestas_antifatiga_activo` en `configuracion_general` (toggle en Config → Sistema). `encuestas_service.antifatiga_esta_activo(db)` la lee; default seguro TRUE (clave ausente/error → regla activa). Con `'false'` se encuesta en cada cierre. `DIAS_ANTIFATIGA=30` sigue hardcodeado (solo el on/off es configurable).
-
-### Delay de envío
-- El email se envía 24 h después del cierre (no inmediato): dar tiempo a verificar que la solución persistió. El dispatcher procesa envíos `'pendiente'` con `fecha_alta < NOW() - 24h`.
-
-### Expiración
-- Los links expiran 15 días después del envío. `expirar_envios_vencidos()` marca `'expirada'` los `'enviada'/'abierta'` vencidos. El form público (2D) devolverá 410 Gone para tokens expirados.
-
-### Email
-- Reutiliza el sender central `app.services.email.enviar_mail(...) -> bool` (NO existe `email_service.enviar_email`; ver auditoría 2A). Template inline en `encuestas_service._render_email_encuesta`. `from_override` con display name del municipio sobre `RESEND_FROM` (§38, §42). Si el vecino solicita contacto (rama insatisfechos, P7=Sí), se notifica por email a los usuarios de la subárea.
-
-### Datos personales / logs
-- Los endpoints de dashboard NO devuelven datos personales del ciudadano. Solo `/envios/{id}` y `/respuestas/pendientes-contacto` los incluyen (para que el agente contacte). El form público (2D) NO devolverá nombre/email/DNI.
-- Logs del módulo: nunca email completo, nunca texto libre de respuestas, nunca token completo (truncar a 8 chars con `_tok()`).
-
-### Quirks SQL del módulo (asyncpg)
-- INTERVAL parametrizado: usar `make_interval(days => :p)` / `make_interval(months => :p)`, NO `(:p || ' days')::interval` (rompe con int).
-- Fin de rango de fecha: pasar `hasta_excl = hasta + timedelta(days=1)` como objeto `date` y comparar `< :hasta_excl`, NO `(:hasta::date + 1)` (el `::date` rompe el parser de bind params de asyncpg). Familia de [[feedback_asyncpg_extract_cast_date]].
-
-### Router admin (`/api/v1/admin/encuestas`, fase 2C)
-Auth a nivel router (`dependencies=[Depends(get_current_user)]`, §39). Registrado en `main.py` **ANTES** de `admin_tablas_router` (evita el `/{tabla}` greedy que atraparía `'encuestas'`, §5). Mono-municipio (§38): filtra por query param `id_municipio` (default 1), NO por un `user.id_municipio` inexistente (`get_current_user` no lo expone).
-
-| Verbo | Path | Notas |
-|---|---|---|
-| GET | `/plantillas` · `/plantillas/{id}` | Detalle con preguntas + opciones anidadas |
-| GET | `/envios` · `/envios/{id}` | Filtros estado/reclamo/fecha; `X-Total-Count`. Detalle incluye respuesta anidada |
-| GET | `/respuestas/pendientes-contacto` | `solicita_contacto=TRUE AND atendida=FALSE`, orden FIFO, con datos del ciudadano |
-| GET | `/dashboard/resumen` · `/por-area` · `/evolucion` · `/comentarios` | DB vacía → ceros, no rompe |
-| POST | `/disparar` | 201 o 422 con motivo concreto |
-| PATCH | `/respuestas/{id}/atender` | nivel ≤ 2; 422 si ya atendida |
-
-### Niveles de acceso al módulo
-- Listados (envíos, plantillas, disparar): cualquier usuario autenticado.
-- Dashboards (resumen, por-area, evolucion, comentarios, pendientes-contacto): admin/supervisor (`nivel_acceso <= 2`), vía helper `_require_supervisor(user)` en `encuestas_admin.py`.
-- Atender respuestas (`PATCH /respuestas/{id}/atender`): admin/supervisor.
-- Endpoints públicos `/api/v1/publico/encuesta/*`: SIN auth, validados por token UUID + rate limiting 5/min por IP (in-memory, `app/middleware/rate_limit.py`). Router separado (§39). Nunca devuelven datos personales del ciudadano ni descripción del reclamo (§40). Token inválido/inexistente → 404; completada → 410; expirada → 410 (y marca `estado='expirada'`). IP real vía `app/utils/request_helpers.py::get_real_ip` (lee `X-Forwarded-For` por el proxy de Railway). `valor_texto` se trunca a 1000 chars (no se rechaza); body máx 4 KB.
-
-### Dispatcher (fase 2E — endpoint ENTREGADO, cron pendiente)
-Endpoint `POST /api/v1/admin/encuestas/dispatcher/ejecutar` (commit `bb51749`) con override de auth (header `X-Dispatcher-Token` en vez de JWT — máquina, no humano), token en `settings.DISPATCHER_TOKEN` (Railway env var, NO commitear). Llama a `procesar_envios_pendientes()` (envíos `pendiente` con `fecha_alta < NOW()-24h`) + `expirar_envios_vencidos()`. **El token de `.env.local` es de DEV (≠ el de Railway) — usar el de Railway para disparar prod, sino 401.** Cron horario via GitHub Actions (`.github/workflows/encuestas-dispatcher.yml`) = **sub-bloque D, NO implementado**.
-
-### Hook de cierre (fase 2E.C — ENTREGADO 2026-05-23)
-Hook no-bloqueante que crea el `encuesta_envio` al pasar un reclamo a 'Resuelto'. En 2 puntos, **tras el `db.commit()`** (nunca antes): `cambiar_estado` en `reclamos.py` (cierre manual, condicionado a `nuevo_estado=='Resuelto'`) y helper `_disparar_encuesta()` en `ordenes_trabajo.py` (llamado tras los commits de `cambiar_estado_ot` y `aprobar_ot`). Defensivo: `try/except` con log warning, sin re-raise — el cierre del reclamo nunca falla por encuestas (verificado V6). `crear_envio_para_reclamo` devuelve **tupla** `(fila_mapping|None, motivo)`, NO un objeto — acceso por key `envio["id_encuesta_envio"]`. `_resolver_reclamo` NO commitea (lo hacen sus callers).
-
-### Form público del ciudadano (fase 2D frontend — ENTREGADO 2026-05-23)
-`frontend/encuesta.html` (vanilla público, sin sesión, auth por token UUID). Consume `GET/POST /api/v1/publico/encuesta/{token}` (backend 2D ya existía). Ramificación condicional client-side: P1 likert 1-5 → rama visible (`<=2 insatisfechos`, `3 neutrales`, `>=4 satisfechos`); el backend recalcula `rama_seguida` server-side. Verificado en navegador (local + prod). Link del email apunta a `{FRONTEND_BASE_URL}/frontend/encuesta.html?token=...` (default prod `zge.zaris.com.ar`).
-
-### Fixes del email (2026-05-23)
-- **Logo URL absoluta** (`b5d9162`): `municipio_logo_url` puede ser ruta relativa (`/design-system/...`) → `<img>` roto en clientes de email. Helper `_absolutizar_url()` en `encuestas_service.py` la prefija con `FRONTEND_BASE_URL` si no es http(s). URL del bucket Supabase (ya absoluta) queda intacta. **En prod el logo sale del bucket `config-assets`; el `/design-system/...` es solo el placeholder de local.**
-- **`fecha_cierre`** (`938e7f5`): `cambiar_estado` y `_resolver_reclamo` no seteaban `reclamos.fecha_cierre` al pasar a estado final (§22 lo exige) → el email mostraba "cerrado el ." vacío. Fix: `fecha_cierre=NOW()` al pasar a Resuelto/Cancelado (CASE en `cambiar_estado` para no pisar en transiciones intermedias).
-
-### Email vía Resend (API HTTP) — RESUELTO 2026-05-24
-Railway bloquea egress SMTP (587/465 timeout); Resend usa HTTPS/443. `services/email.py` reescrito con `httpx.AsyncClient` contra `POST https://api.resend.com/emails`.
-- **`enviar_mail(to, subject, body_html, body_text=None, from_override=None) -> bool` es ASYNC** (los 3 callers async ganaron `await`; las 2 fns de App Vecinos pasaron a `async def`). **`enviar_mail_raise(...) -> str`** devuelve `message_id`, levanta `ResendError`; `enviar_mail` la envuelve a bool. Modo MOCK si `RESEND_API_KEY` vacía. `message_id` solo en logs (no en DB).
-- **Config**: `RESEND_API_KEY` (NO commitear) + `RESEND_FROM` (default `notificaciones@zaris.com.ar`). `extra="ignore"` en pydantic-settings (sino el backend no arranca con `SMTP_*` viejas residuales, [[feedback_pydantic_extra_forbidden_al_borrar_settings]]).
-- **El remitente debe ser EXACTAMENTE el dominio verificado en Resend: `@zaris.com.ar` (raíz), NO `@send.zaris.com.ar`** (subdominio da 403). Ver [[reference_railway_bloquea_egress_smtp]].
-
-### Sanitización de PII en logs (Ley 25.326)
-`app.utils.log_helpers.mask_email()` → `<char>***@<dominio>` (3 asteriscos fijos), aplicado en los 4 logs `to=` de `services/email.py`. Tokens: helper `_tok()` (8 chars). Smoke `backend/scripts/test_mask_email.py`.
-
-### UI backoffice + agenda de turnos
-- `views/PlantillasView.tsx` (tab "Encuestas" en `/encuestas/plantillas`): plantillas activas (reclamos/turnos) + preguntas por rama. Filtro TIPO + `id_plantilla` en `/envios` y `/dashboard/resumen` (columnas Tipo/Referencia).
-- **Trap polimórfico** ([[encuesta_envio_polimorfico_left_join]]): `pendientes-contacto`/`dashboard/resumen`/`/envios` usan LEFT JOIN reclamos+turnos+tipo_prestacion (inner a reclamos excluía turnos). `referencia`=`COALESCE(nro_reclamo, prestacion_nombre)`. `dashboard/por-area` solo-reclamos. `POST /disparar` acepta `id_turno`.
-- La **agenda solo-turnos** vive en §33 (`turnos/pages/AgendaTurnos.tsx`), no reusa la Gantt de Agenda.
+> **Movido a la skill `modulo-encuestas`** (`.claude/skills/modulo-encuestas/SKILL.md`), que carga on-demand. Tablas, disparo automático (reclamos + turnos), `encuesta_envio` polimórfico, anti-fatiga, delay/expiración, dispatcher (`X-Dispatcher-Token`), form público por token, email vía Resend, sanitización PII y quirks SQL viven ahí. Ancla §42 conservada para las refs cruzadas.
 
 ## 43. Módulo Datos (BI — Análisis de datos)
 
-Tableros analíticos sobre `reclamos`. Módulo React `web-app/src/modules/bi/` (sidebar "datos", `moduloCodigo='bi'`, mig 65, nivel ≤ 2). Router backend `backend/app/api/routes/bi.py` (`/api/v1/bi/*`, guard JWT a nivel router). Entregado 2026-05-26.
-
-### Estructura
-- **Landing DATOS** (`/bi`, `pages/DatosLanding.tsx`): 2 tarjetas estilo Contactos → **Operativo** (activo) + **Ejecutivo** (placeholder "Próximamente", contenido a definir por el usuario).
-- **Operativo** (`/bi/operativo/*`, `BiLayout` con 4 tabs): Resumen, Resueltos/SLA, Pendientes (+ mapa geo), Subreclamos.
-
-### Reglas de visualización (OBLIGATORIAS para toda viz nueva del módulo)
-Ver memoria `reference_bi_lineamientos_visualizaciones`. Resumen:
-- **Recharts 2.15, NO 3.x** — la 3.8 trae `es-toolkit` que rompe con Vite 8 (`require_isUnsafeProperty`; root vacío sin error en consola del browser, el error vive en el log de Vite).
-- **Toda viz lleva etiqueta de total** (barras: valor en segmento + total afuera; donas: `%` + valor). Pastilla de fondo **OSCURA** `rgba(38,37,30,0.78)` + texto claro `#f7f7f4` (el usuario pidió oscuro explícitamente).
-- **Histogramas temporales: toggle Mes/Día + drill-down** (clic en barra de mes → días de ese mes). Componente genérico `components/HistogramaTemporal.tsx` (series + fetchers inyectados).
-- **Toda tabla de detalle lleva botón "Exportar CSV"** (helper `components/exportCsv.ts`, BOM UTF-8 para Excel).
-- **Estilo ZARIS** (tokens DS), NO la paleta de los tableros Power BI de referencia.
-- **Agregación 100% en SQL** (`GROUP BY`/`date_trunc`/`FILTER`); el frontend solo dibuja. Diseñado para escalar.
-
-### Backend
-Endpoints por vista en `bi.py`. Convenciones críticas:
-- **Área vía subárea** (§27): JOIN `reclamos → tipo_reclamo → subarea → area`. `reclamos.id_area` legacy es NULL.
-- **Mono-municipio**: filtro `(id_municipio = :m OR id_municipio IS NULL)` — los reclamos reales tienen `id_municipio` NULL (local Y prod). Filtrar estricto = BI vacío.
-- Tiempo de cierre = `fecha_cierre - fecha_alta`; demora pendiente = `NOW() - fecha_alta`. Tramos 0-3 / 4-7 / +7 días.
-- Subreclamos = `id_reclamo_padre IS NOT NULL` ("intervenciones" en la jerga de los tableros de referencia).
-- El mapa de Pendientes reusa `modules/dashboard/components/DashboardMap.tsx` (Leaflet vanilla) — endpoint `/bi/pendientes-geo`.
-
-### Datos demo (prod, 2026-05-26)
-Los 30 reclamos de prod fueron poblados con `fecha_cierre` (resueltos) y `latitud/longitud` (todos) para que el BI tenga contenido. Backups `_backup_reclamos_fecha_cierre_2026_05_26` y `_backup_reclamos_geo_demo_2026_05_26`.
+> **Movido a la skill `modulo-bi`** (`.claude/skills/modulo-bi/SKILL.md`), que carga on-demand. Estructura Landing→Operativo, reglas obligatorias de visualización (Recharts 2.15, etiqueta de total + pastilla oscura, drill-down, Exportar CSV), convenciones de backend (área vía subárea, mono-municipio con `id_municipio` NULL, agregación 100% en SQL) y datos demo viven ahí. Ancla §43 conservada para las refs cruzadas.
 
 ## 44. Módulo Emergencias (COM)
 
