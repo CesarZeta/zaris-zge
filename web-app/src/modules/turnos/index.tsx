@@ -2,6 +2,7 @@ import { Clock } from 'lucide-react'
 import type { ModuleManifest } from '../../lib/types'
 import { TurnosLayout } from './TurnosLayout'
 import { Overview } from './pages/Overview'
+import { MisTurnos } from './pages/MisTurnos'
 import { Atendidos } from './pages/Atendidos'
 import { Consultas } from './pages/Consultas'
 import { Prestaciones } from './pages/Prestaciones'
@@ -26,6 +27,10 @@ export const turnosModule: ModuleManifest = {
   moduloCodigo: 'turnos',
   routes: [
     { index: true,           element: Wrap(Overview),       handle: { breadcrumb: 'turnos' } },
+    // "Mis turnos" = vista de gestión del agente (sidebar "Gestión de Turnos").
+    // Reusa GET /turnos scopeado por nivel; no es una tab del layout, es ruta
+    // directa enfocada en cumplir lo propio.
+    { path: 'mis-turnos',    element: Wrap(MisTurnos),       handle: { breadcrumb: 'mis turnos' } },
     { path: 'agenda',        element: Wrap(AgendaTurnos),    handle: { breadcrumb: 'turnos · agenda' } },
     { path: 'atendidos',     element: Wrap(Atendidos),      handle: { breadcrumb: 'turnos · atendidos' } },
     { path: 'consultas',     element: Wrap(Consultas),      handle: { breadcrumb: 'turnos · consultas' } },
