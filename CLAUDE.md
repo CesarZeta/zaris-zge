@@ -503,28 +503,7 @@ Credenciales dev: email `<username>@municipio.gob.ar`, password `123456` (genera
 
 `frontend/admin_tablas.html` es el módulo genérico para todas las tablas de configuración. Se activa via `?tabla=<nombre>` en la URL.
 
-### Agregar una tabla nueva a admin_tablas
-
-1. **Backend** — agregar entrada en `TABLE_CONFIG` en `backend/app/api/routes/admin_tablas.py`:
-```python
-"nombre_tabla": {
-    "pk": "id_campo",           # columna PK
-    "cols": ["col1", "col2"],   # columnas editables (nunca pk, activo, audit)
-    "fecha_mod": "fecha_modificacion",  # columna de timestamp de edición, o None
-    "has_audit": True,          # False si la tabla no tiene id_usuario_alta/modificacion
-    "has_activo": True,         # False si la tabla no tiene columna activo
-    "col_types": {              # solo si hay columnas TIME o DATE
-        "hora_inicio": "time",
-        "fecha": "date",
-    },
-}
-```
-   - El backend agrega `activo=True` automáticamente en INSERT cuando `has_activo=True`.
-   - Columnas `TIME`/`DATE` deben declararse en `col_types` — asyncpg requiere objetos Python (`datetime.time`/`datetime.date`), no strings.
-
-2. **Frontend** — agregar `<div class="sidebar-item">` en `admin_tablas.html` y entrada en `SCHEMAS` (JS).
-
-3. **Shell** — agregar `<a class="nav__link" href="frontend/admin_tablas.html?tabla=nombre_tabla">` en la sección Maestros de `index.html`.
+> **Cuerpo del módulo movido a la skill `modulo-admin-tablas`** (`.claude/skills/modulo-admin-tablas/SKILL.md`), que carga on-demand. El procedimiento "Agregar una tabla nueva" (`TABLE_CONFIG` + sidebar + `SCHEMAS` + shell), las tablas configuradas, el READ-ONLY de `usuarios` y los forms INLINE de `agentes`/`equipos` (`tipo_grupo`, horario, integrantes) viven ahí. Ancla §15 conservada para las refs cruzadas. **El "Estándar visual obligatorio — panel de búsqueda" de abajo es transversal y QUEDA acá** (aplica a TODO frontend de tabla maestra, no solo admin_tablas).
 
 ### Estándar visual obligatorio — panel de búsqueda
 
@@ -543,18 +522,6 @@ Todo frontend de tabla maestro (admin_tablas y módulos independientes como usua
 ```
 
 Debajo del panel van los últimos registros ingresados (vista previa). El patrón está implementado en `admin_tablas.html` (`renderVistaPrevia`) y en `usuarios.html`. **No** usar solo botones sueltos — siempre agrupar en el panel celeste.
-
-### Tablas actualmente configuradas
-`agentes`, `equipos`, `equipo_usuarios`, `equipo_agentes`, `servicios`, `tipo_usuario`, `cargos`, `area`, `subarea`, `tipo_reclamo`, `tipo_representacion`, `actividades`, `nacionalidades`, `estado_reclamo`, `estado_ot`, `configuracion_general`, `lugares_atencion`, `agenda_clase`, `agenda_feriado`.
-
-> `reclamos_area` y `reclamos_subarea` fueron eliminadas de admin_tablas en migración 20. El módulo Reclamos usa las tablas generales `area` y `subarea`.
-
-> **`usuarios` es READ-ONLY en admin_tablas (sesión 2026-05-26).** GET sigue habilitado (selects FK de otras tablas: `agentes.id_usuario`), pero POST/PUT/DELETE devuelven **403** (`READ_ONLY_TABLES` en `admin_tablas.py`). Usuarios se administra SOLO desde su pantalla propia `frontend/usuarios.html` (hashea password + audita login). El ítem "Usuarios" se quitó del sidebar de Maestros y el `SCHEMAS.usuarios` del front.
-
-> **Forms `agentes` y `equipos` son INLINE, no modal.** `INLINE_FORM_TABLES = {agentes, equipos}` en `admin_tablas.html`: el form se renderiza en el flujo de la página (`#inlineForm`, fuera de `#main` para sobrevivir el re-render de `cargarTabla`), no en el modal genérico. El resto de tablas siguen con el modal genérico.
-> - **`agentes`** (sesión 2026-05-26): sección "Horario de atención" (título real del `#horarioSec` en la UI — verificado 2026-06-12; franjas Lun-Dom bitmask + hora inicio/fin) que escribe en `disponibilidad_recurso` (tipo_recurso=agente) vía `/api/v1/agenda/disponibilidad` — alimenta la disponibilidad efectiva del agente en Agenda (§27).
-> - **`equipos`** (sesión 2026-05-27): sección "Integrantes del grupo" — buscador de agentes con autocompletar (filtro en cliente sobre `GET /admin/agentes`, debounce; un `<select>` de 85 agentes es inusable §23) + lista editable con "Quitar". Sincroniza con `equipo_agentes` tras guardar el equipo (re-lee relaciones reales, soft-delete las quitadas, INSERT las nuevas), espejo de cómo agentes sincroniza sus franjas. Sin backend nuevo — usa el CRUD genérico de admin_tablas (`equipos` + `equipo_agentes`). Seed de mesas demo: `backend/seed_equipos_demo.py` (idempotente, resuelve subárea+agentes por nombre; 5 mesas en prod al 2026-05-27).
->   - **`equipos.tipo_grupo`** (mig 67): distingue **`mesa_tramites`** (recibe pases de Trámites §35: los integrantes ven en "Mi bandeja" lo pasado a esa mesa y cualquiera lo toma; **subárea opcional, SIN horario**) de **`trabajo_reclamos`** (cuadrilla que atiende reclamos/OT y se agenda; **subárea OBLIGATORIA** vía CHECK `ck_equipo_subarea_reclamos`, + sección de franjas igual que agentes que escribe en `disponibilidad_recurso(tipo_recurso='equipo')`; los 3 campos legacy `dias_semana/hora_inicio/hora_fin` de la tabla NO los lee la Agenda, por eso se sacaron del form. **OJO — desde mig 91 la Agenda NO lee la disponibilidad propia del equipo por defecto: usa la unión de sus agentes (§27); las franjas propias del equipo solo se usan con el override `equipos_sin_agentes_usan_horario_propio`.**). El form muestra/oculta la sección horario y marca la subárea requerida según el tipo (`_recursoHorario`/`_bindTipoGrupo`). Las franjas reusan `renderHorarioSeccion`/`_cargarFranjas`/`_sincronizarFranjas` parametrizados por `tipo_recurso`. Listado/preview: cuadrillas muestran "Grupo de trabajo · <subárea>", mesas "Mesa de entrada de trámites" (sin subárea) + badge "N integrantes".
 
 ## 17. Slash Commands del Proyecto
 
@@ -584,172 +551,7 @@ Comandos disponibles en `.claude/commands/` — invocar con `/nombre`:
 
 ## 18. Módulo Reclamos
 
-### Tablas
-
-| Tabla | Rol |
-|---|---|
-| `reclamos` | Transaccional principal — un registro por reclamo |
-| `reclamo_historial` | Timeline de cambios de estado (INSERT solo, nunca UPDATE) |
-| `reclamo_adjuntos` | Adjuntos del reclamo (§22) — binarios en Supabase Storage, metadatos acá |
-| `tipo_reclamo` | Maestro con `id_area`, `id_subarea`, `sla_dias`, `audit` (FK → `area`, `subarea`) |
-| `estado_reclamo` | Maestro de estados válidos — PK **`id_estado_reclamo`** (no `id_estado`) |
-| `ordenes_trabajo` | OT operativa o de auditoría asociada a un reclamo |
-| `estado_ot` | Estados de OT: `En gestión`, `En espera`, `Pendiente`, `Terminada`, `Cancelada` |
-| `equipo_agentes` | Relación equipo ↔ agente (reemplaza `equipo_usuarios` en lógica de OTs) |
-| `configuracion_general` | Key/value de parámetros del sistema |
-| `provincias` / `partidos` / `localidades` | Árbol geo AR (§22) — `reclamos.id_localidad` apunta al nivel más fino |
-| `tipos_activo` / `activos` | Catálogo de activos físicos georreferenciados (§22) |
-
-`nro_reclamo` se genera automáticamente vía trigger `trg_nro_reclamo` → `REC-YYYY-XXXXXX`.
-`nro_ot` se genera automáticamente vía trigger `trg_nro_ot` → `OT-YYYY-XXXXXX`. **Ojo (cazado 2026-05-25):** este trigger NO existía en prod pese a estar documentado acá — las OT salían con `nro_ot` NULL. Lo creó **mig 59** (`fn_generar_nro_ot` + trigger BEFORE INSERT, espejo de `fn_generar_nro_reclamo`) + backfill. Si tocás numeración de OT, verificá el trigger con `pg_trigger` (ver [[feedback_verificar_trigger_existe_no_confiar_doc]]).
-
-### CHECK constraints en `reclamos` (verificado prod 2026-05-12)
-
-| Campo | CHECK | Valores aceptados |
-|---|---|---|
-| `prioridad` | `reclamos_prioridad_check` | **`Alta`, `Media`, `Baja`** — NO acepta `Crítica`, `Urgente`, etc. Agregar valor nuevo requiere migración del CHECK ANTES de exponerlo en UI. |
-| `estado` | `ck_reclamo_estado` | `Sin asignar`, `En gestión`, `En espera`, `En auditoría`, `Resuelto`, `Cancelado` (con tildes). |
-
-Antes de modificar selects de UI o tipos TypeScript que mapean estos campos, correr:
-```sql
-SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
-WHERE conrelid = 'reclamos'::regclass AND contype = 'c';
-```
-Caso real sesión 2026-05-12: introducir `'Crítica'` en `type Prioridad` costó un commit de fix (`4efcacb`) cuando el smoke API explotó con IntegrityError. La doc puede estar atrás; el CHECK es el contrato real.
-
-### Estados de reclamo (v1.2)
-
-`Sin asignar` → `En gestión` → `En espera` → `En auditoría` → `Resuelto` / `Cancelado`
-
-- **Sin asignar:** reclamo ingresado, sin OT asignada.
-- **En gestión:** OT generada y en ejecución.
-- **En espera:** bloqueado por subreclamo activo.
-- **En auditoría:** OT operativa cerrada, pendiente de auditoría.
-- **Resuelto / Cancelado:** estados finales.
-
-### Endpoints reclamos
-
-```
-GET  /api/v1/reclamos                      → lista con filtros (estado, id_area, prioridad, texto, limit, offset)
-GET  /api/v1/reclamos/stats                → conteos por estado
-GET  /api/v1/reclamos/catalogo/areas       → áreas activas
-GET  /api/v1/reclamos/catalogo/tipos       → tipos de reclamo activos
-GET  /api/v1/reclamos/{id}                 → detalle con historial, OTs y subreclamos
-POST /api/v1/reclamos                      → crear reclamo (requiere id_ciudadano BUC)
-PUT  /api/v1/reclamos/{id}                 → editar reclamo (alcance variable según estado)
-PUT  /api/v1/reclamos/{id}/estado          → cambiar estado + insertar entrada en historial
-PUT  /api/v1/reclamos/{id}/cancelar        → cancelar reclamo + cascade a OTs activas (requiere motivo)
-POST /api/v1/reclamos/{id}/subreclamo      → crear subreclamo (max 1 nivel; padre pasa a En espera)
-```
-
-### Edición de reclamos — alcance por estado
-
-`PUT /reclamos/{id}` aplica una allowlist de campos según el estado actual del reclamo (helper `_require_gestion` exige `nivel_acceso ∈ {1,2,3}`):
-
-| Estado | Campos editables |
-|---|---|
-| `Sin asignar` | tipo, prioridad, canal, dirección, lat/lon, localidad, activo, empresa, fuente_geo, ciudadano, descripción, **observaciones** |
-| `En gestión` / `En espera` / `En auditoría` | **observaciones** (único). Body opcional: `nota_historial` para custom-text en `reclamo_historial.nota` (default: lista de campos modificados). |
-| `Resuelto` / `Cancelado` | ninguno → 422 |
-
-Toda edición inserta entrada `Reclamo editado` en `reclamo_historial` preservando estado anterior/nuevo (= estado actual). Si el body trae un campo prohibido para el estado actual: 422 con detalle de campos rechazados vs permitidos. Cambio de tipo re-deriva `id_area` desde `subarea.id_area` (fuente única desde mig 27). Cambio de empresa valida vínculo activo en `ciudadano_empresa`.
-
-Mismo guard `_require_gestion` aplica también a `PUT /{id}/cancelar`.
-
-### Endpoints adjuntos (§26)
-
-```
-POST   /api/v1/reclamos/{id}/adjuntos/upload-url        → backend valida + crea fila pre-upload + URL firmada PUT (TTL 5min)
-POST   /api/v1/reclamos/{id}/adjuntos/{id_adj}/confirm  → marca activo=TRUE tras subida exitosa
-GET    /api/v1/reclamos/{id}/adjuntos                   → lista activos con URLs firmadas GET (TTL 1h)
-DELETE /api/v1/reclamos/{id}/adjuntos/{id_adj}          → soft-delete + remove del bucket
-```
-
-### Endpoints ordenes_trabajo
-
-```
-GET  /api/v1/ot/catalogo/estados           → estados de OT activos
-GET  /api/v1/ot/mesa/supervisor            → reclamos activos para asignación
-GET  /api/v1/ot/mesa/agente                → OTs del agente autenticado
-GET  /api/v1/ot/mesa/auditoria             → OTs en auditoría (respeta config auditor_misma_subarea)
-GET  /api/v1/ot                            → lista OTs con filtros
-GET  /api/v1/ot/{id_ot}                    → detalle OT
-POST /api/v1/ot                            → crear OT (supervisor asigna a agente/equipo)
-PUT  /api/v1/ot/{id_ot}/tomar              → agente toma OT sin asignar
-PUT  /api/v1/ot/{id_ot}/estado             → cambiar estado OT
-PUT  /api/v1/ot/{id_ot}/aprobar            → auditor aprueba OT → reclamo Resuelto
-PUT  /api/v1/ot/{id_ot}/rechazar           → auditor rechaza OT → nueva OT Pendiente con id_ot_origen
-```
-
-### Validación de estados
-
-`PUT /{id}/estado` consulta `estado_reclamo WHERE activo=TRUE`. Fallback hardcoded a `{"Sin asignar", "En gestión", "En espera", "En auditoría", "Resuelto", "Cancelado"}` si la tabla está vacía.
-
-**FSM de transiciones (desde 2026-05-20, hallazgo QA #3).** `PUT /{id}/estado` valida el grafo `TRANSICIONES_PERMITIDAS` en `reclamos.py` además de exigir `_require_gestion` (nivel ≤ 3). No se permiten saltos arbitrarios (antes el endpoint aceptaba cualquier estado→cualquier estado). Grafo:
-
-| Desde | Puede ir a |
-|---|---|
-| `Sin asignar` | `En gestión`, `Cancelado` |
-| `En gestión` | `En espera`, `En auditoría`, `Resuelto`, `Cancelado` |
-| `En espera` | `En gestión`, `En auditoría`, `Cancelado` |
-| `En auditoría` | `En gestión`, `Resuelto`, `Cancelado` |
-| `Resuelto` / `Cancelado` | (final — ninguno) |
-
-- Transición fuera del grafo → 422 listando los alcanzables.
-- Mismo estado (no-op) se acepta sin chequear el grafo.
-- El frontend espeja el grafo en `web-app/src/modules/reclamos/components/CambiarEstadoModal.tsx` (sin `Cancelado`, que va por el endpoint dedicado `/cancelar`): el dropdown solo muestra estados alcanzables; reclamo en estado final muestra mensaje "no admite cambios". **Si modificás el grafo, tocá los DOS lugares** (backend `reclamos.py` + modal frontend) o se desincronizan.
-
-**Integridad padre/hijo (hallazgo QA #1).** `PUT /{id}/estado` a `Resuelto` o `En auditoría` se bloquea con 422 si el reclamo (que no es subreclamo) tiene subreclamos activos con estado distinto a `Resuelto`/`Cancelado`. El mensaje enumera los pendientes. Antes se podía cerrar el padre dejando hijos huérfanos activos.
-
-**Cierre directo sin OT (desde 2026-05-22).** Excepción al grafo FSM: `Sin asignar → Resuelto` (que el grafo normal NO permite) se habilita SOLO cuando se cumplen las 3 condiciones (helper `_validar_cierre_directo_sin_ot` en `reclamos.py`):
-1. el usuario es **supervisor o admin** (`nivel_acceso ≤ 2`);
-2. el reclamo **no tiene OT activa** (`ordenes_trabajo WHERE id_reclamo=:id AND activo` vacío → sino 422);
-3. la **subárea del usuario** (`usuarios.id_subarea`, mig 55 §21) **== subárea del tipo de reclamo** (`tipo_reclamo.id_subarea`, derivada vía `reclamos.id_tipo_reclamo`; NO usar `reclamos.id_subarea` que puede ser NULL). Si no coincide → 403.
-Caso de uso: reclamo que se resuelve sin generar OT (consulta, duplicado, sin info). El frontend (`CambiarEstadoModal.tsx`) ofrece "Resuelto" desde "Sin asignar" solo a `hasPermission(2)` y muestra un pop-up de confirmación; **el backend es la fuente de verdad de la subárea** (el modal no la conoce, así que un supervisor de otra subárea ve la opción pero recibe 403 con mensaje claro al confirmar). Es una **3ª rama** del handler `cambiar_estado`, exenta del chequeo del grafo (`es_cierre_directo` se valida antes del `elif` del grafo).
-
-**Bloqueo cierre cross-subárea por la vía normal (desde 2026-05-25).** El chequeo de subárea de arriba SOLO cubría el atajo `Sin asignar → Resuelto`. Pero un reclamo ya en `En gestión` podía pasar a `Resuelto`/`En auditoría` por la vía normal del FSM sin chequear subárea — un supervisor de otra subárea cerraba reclamos ajenos. Fix: helper `_require_misma_subarea` aplicado también al pase manual a `Resuelto`/`En auditoría` (admin nivel 1 exento). **El cierre vía OT (`ordenes_trabajo.py` actualiza `reclamos.estado` directo, NO pasa por `cambiar_estado`) no se afecta** — el agente que cierra pertenece a la subárea por construcción. Si agregás otra ruta que lleve un reclamo a estado final, recordá el guard (ver [[feedback_guard_subarea_cubre_todas_las_vias]]).
-
-### Configuración general
-
-| Clave | Tipo | Descripción |
-|---|---|---|
-| `auditor_misma_subarea_permitido` | boolean | Si `false`, auditor no puede pertenecer a la subárea del reclamo |
-| `ot_pendiente_dias_vencimiento` | integer | Días máximos que una OT Pendiente puede estar sin reasignarse |
-| `municipio_nombre` | string | Nombre del municipio que se muestra en el topbar (ej. "MUNICIPALIDAD DE SAN ANDRÉS"). Editable desde Config → Identidad. |
-| `municipio_logo_url` | string | URL pública del logo del municipio (servida desde bucket `config-assets` de Supabase Storage). Vacía = sin logo. Editable desde Config → Identidad. |
-| `geo_bbox_centro_lat` / `geo_bbox_centro_lon` / `geo_bbox_delta_grados` | string (decimales) | Zona del municipio para el buscador de direcciones (mig 87, §23). Editables en Config → Sistema; `geo.py` las lee con cache TTL 5 min y fallback a constantes (VL demo). |
-
-> La clave `app_nombre` **no existe** (se intentó en 2026-05-13 y se borró). "GESTION ESTADO" es interno del producto, hardcoded en el HTML del shell. Ver §14 (topbar layout).
-
-### Ciudadano en reclamos
-
-Todo reclamo requiere `id_ciudadano` válido de la BUC. El frontend busca ciudadanos vía `GET /api/v1/buc/ciudadanos/buscar?q=<texto>` con debounce de 300ms antes de permitir el submit.
-
-### Patrón XSS — resultados de búsqueda BUC en vanilla JS
-
-Cuando se renderizan resultados donde el usuario puede hacer clic para seleccionar, **nunca** interpolar datos del servidor en handlers `onclick`. Usar `data-attrs` + event delegation:
-
-```js
-// Guardar datos en un objeto auxiliar
-let _bucResultados = {};
-data.forEach(c => { _bucResultados[c.id_ciudadano] = c; });
-
-// Renderizar con data-id, escapar HTML en texto visible
-res.innerHTML = data.map(c => {
-    const nombre = (c.nombre || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    return `<div class="buc-item" data-id="${c.id_ciudadano}">${nombre}</div>`;
-}).join('');
-
-// Attach listeners después del render
-res.querySelectorAll('.buc-item[data-id]').forEach(el => {
-    el.addEventListener('click', () => {
-        const c = _bucResultados[parseInt(el.dataset.id)];
-        if (c) seleccionarCiudadano(c.id_ciudadano, c.apellido, c.nombre, c.cuil);
-    });
-});
-```
-
-**Implementado en:** módulos vanilla legacy. Patrón vigente para cualquier nuevo módulo vanilla que rendere resultados clickeables desde la BUC. Los módulos Reclamos / Ciudadanos / Empresas ya migrados a React resuelven el mismo issue via JSX (sin interpolar HTML), por lo que no aplica ahí.
+> **Movido a la skill `modulo-reclamos`** (`.claude/skills/modulo-reclamos/SKILL.md`), que carga on-demand junto con §22 y §26 (mismo módulo). Tablas y triggers, CHECK constraints, FSM de estados (grafo + cierre directo sin OT + guard de subárea), endpoints de reclamos/OT/adjuntos, configuración general y el patrón XSS BUC viven ahí. Ancla §18 conservada para las refs cruzadas.
 
 ## 19. Patrón de Baja Lógica — API y Frontend
 
@@ -827,88 +629,7 @@ class Equipo(Base):
 
 ## 22. Geolocalización, Activos y Adjuntos (Reclamos)
 
-### Árbol geográfico (provincia → partido → localidad)
-
-- `provincias`: 24 entidades (23 provincias AR + CABA).
-- `partidos`: 135 partidos PBA + 15 comunas CABA + capitales del resto. Único `(id_provincia, nombre)`.
-- `localidades`: nivel más fino. Único `(id_partido, nombre)`.
-- `reclamos.id_localidad` y `activos.id_localidad` apuntan al nivel más fino. Para agregar por partido o provincia, hacer JOIN.
-- Seed: `backend/seed_geo_argentina.py` (idempotente vía UPSERT). Comando local: `$env:DATABASE_URL="postgresql+asyncpg://postgres:145236@127.0.0.1:5432/zaris_dev"; python backend/seed_geo_argentina.py`.
-
-### Activos (físicos del municipio)
-
-- `tipos_activo`: catálogo (luminaria, semáforo, contenedor, etc.). Campo `requiere_ciudadano` (boolean) marca si el activo necesita asociar a un ciudadano.
-- `activos`: cada ítem físico con `codigo_unico`, `id_tipo_activo`, `direccion`, `id_localidad`, `latitud`, `longitud`.
-- `reclamos.id_activo` permite vincular un reclamo a un activo específico (ej. luminaria `cod_00007`). Cuando se setea, se sugiere también poblar `lat/lon` del activo en el reclamo y marcar `fuente_geolocalizacion = 'activo_referenciado'`.
-- Sample anonimizado en `Tablas Iniciales/Activos.csv` (49.360 activos con lat/lon dentro del bbox de Vicente López).
-
-### Geolocalización en `reclamos`
-
-| Campo | Tipo | Notas |
-|---|---|---|
-| `latitud` / `longitud` | NUMERIC(10,7) | WGS84. Index compuesto `idx_reclamos_lat_lon`. |
-| `id_localidad` | FK | nivel más fino. |
-| `direccion` | VARCHAR(300) | Texto normalizado (resultado de OSM o input manual). Reemplaza al deprecado `domicilio_reclamo`. |
-| `fuente_geolocalizacion` | VARCHAR(20) | `pin_manual` / `geocoding_osm` / `gps_dispositivo` / `activo_referenciado`. |
-
-**OT vs reclamo:** la OT usa la misma lat/lon del reclamo (no tiene columnas geo propias). Para queries con lat/lon de OTs, hacer JOIN con `reclamos`.
-
-### Servicio externo: OpenStreetMap / Nominatim
-
-- **Geocoding directo:** `GET https://nominatim.openstreetmap.org/search?q=<calle+altura+localidad>&format=json&limit=5&countrycodes=ar` + **`viewbox` y `bounded=1`** (zona del municipio, ver regla §23 — sin esto trae homónimos de otras provincias)
-- **Geocoding inverso:** `GET https://nominatim.openstreetmap.org/reverse?lat=<>&lon=<>&format=json`
-- **Política de uso:** máx 1 req/seg, enviar `User-Agent: ZARIS-API/1.0 (cesar@zaris.dev)`. Para producción real, considerar Photon o Nominatim self-hosted.
-- **Mapas en frontend:** Leaflet + tiles de OSM (gratis, sin API key).
-- En el formulario de alta de reclamo, al pickear desde mapa setear `fuente_geolocalizacion = 'pin_manual'`; al elegir sugerencia de Nominatim, `geocoding_osm`.
-
-#### Endpoint `GET /api/v1/geo/buscar` — proxy a Nominatim
-
-| Param | Default | Notas |
-|---|---|---|
-| `q` | requerido (≥3 chars) | Texto libre a geocodificar. |
-| `limit` | 5 (1-10) | Cantidad de resultados a devolver. |
-| `solo_direcciones` | `false` | Si `true`, filtra POIs (comercios, hoteles, restaurantes, oficinas, escuelas, hospitales, etc.) y devuelve solo calles/edificios residenciales. Usado por el buscador OSM de Ciudadanos y Empresas. Reclamos lo deja en `false` porque ahí sí tiene sentido pickear un POI ("hay un bache frente al McDonalds"). |
-
-**Lógica de `solo_direcciones=true`** (implementada 2026-05-15 en `backend/app/api/routes/geo.py::buscar_direccion`):
-
-1. Pide `limit=40` upstream a Nominatim (no `limit*3`). Algunas queries genéricas tienen 15+ POIs antes del primer resultado válido — con limit bajo se devuelven 0 falsos negativos.
-2. NO usar `layer=address` de Nominatim — es demasiado restrictivo, excluye `highway/secondary` (calle sin número exacto) que sí son direcciones válidas.
-3. Blacklist por `class` POI puro: `amenity`, `shop`, `office`, `tourism`, `leisure`, `craft`, `healthcare`, `club`, `emergency`, `man_made` → descartar siempre.
-4. Cuando `class=building` con `type` no residencial (`commercial`, `retail`, `industrial`, `office`, `hotel`, `restaurant`, `school`, `hospital`, etc.) **pero** tiene `address.road` válido → **mantener** y **reescribir `display_name` desde `address`**. Caso real: Nominatim devuelve "Warner Chappell Music, 1351, Avenida Córdoba, Retiro, CABA" → mostrar "1351 Avenida Córdoba, Retiro, Comuna 1, CABA". El edificio aloja un comercio, pero la calle+altura es la dirección postal real.
-5. Cortar la iteración al alcanzar `limit` aceptados.
-
-Response: agrega `class` al output anterior. Compat retro con `solo_direcciones=false` (default).
-
-Detalles del aprendizaje (incluyendo trampas que NO funcionaron) en memoria [[feedback_nominatim_filtrar_pois]].
-
-### Sub-reclamos
-
-- Sigue como auto-referencia en `reclamos` (campo `id_reclamo_padre`).
-- **Profundidad máxima: 1 nivel.** Validado en `POST /api/v1/reclamos/{id}/subreclamo`: si el padre ya tiene `id_reclamo_padre`, rechaza.
-- No hay límite de cantidad de sub-reclamos por reclamo.
-
-### Adjuntos (Supabase Storage)
-
-- Tabla `reclamo_adjuntos`: solo metadatos (`storage_path`, `mime_type`, `tamano_bytes`).
-- Bucket: `reclamos-adjuntos` con políticas RLS que requieren JWT válido.
-- Path convention: `reclamos/{id_reclamo}/{uuid}.{ext}`.
-- **Flujo de upload (a implementar):** frontend pide URL firmada al backend → sube directo a Storage → backend inserta fila en `reclamo_adjuntos`. La URL firmada tiene TTL corto.
-- Solo imágenes en V1. Adjuntos desde web app o app móvil futura.
-
-### Campos extras en reclamos (CRM)
-
-| Campo | Tipo | Notas |
-|---|---|---|
-| `canal_origen` | VARCHAR(20) | `web` / `whatsapp` / `telefono` / `presencial` / `oficio` / `app_movil` / `otro`. |
-| `fecha_primer_asignacion` | TIMESTAMPTZ | Set al pasar a `En gestión` (medición de SLA real). **Hasta 2026-05-25 NO se seteaba** (bug); ahora se hace vía `COALESCE(fecha_primer_asignacion, NOW())` en `cambiar_estado` (reclamos.py) y en `crear_ot`/`crear_ot_con_agenda` (ordenes_trabajo.py). El COALESCE evita pisarla al volver a En gestión. |
-| `fecha_cierre` | TIMESTAMPTZ | Set al pasar a estado final (`Resuelto` o `Cancelado`). Lo setean **las 3 vías** que llevan a estado final: `cambiar_estado` (pase manual), `_resolver_reclamo`/cierre vía OT, y `PUT /{id}/cancelar` (este último se quedó afuera del fix de mayo y se corrigió el 2026-06-01 con `fecha_cierre=COALESCE(fecha_cierre, NOW())`, commit `00f06a7`). Si agregás otra ruta a estado final, setearla ahí también — un fix que cubre una vía no cubre las otras (ver memoria `feedback_guard_subarea_cubre_todas_las_vias`). |
-| `sla_vencimiento` | TIMESTAMPTZ | Calculado por trigger `trg_sla_reclamo` = `fecha_alta + tipo_reclamo.sla_dias`. |
-
-### Estado (FK vs VARCHAR — transición)
-
-- **Migración 22 introduce `id_estado_fk`** como FK a `estado_reclamo(id_estado_reclamo)`.
-- La columna `estado` (VARCHAR con CHECK) se mantiene poblada en paralelo durante el período de transición. Endpoints existentes que leen/escriben `estado` siguen funcionando.
-- Nuevos consumidores deben usar `id_estado_fk`. Cuando frontend y endpoints migren 100%, se removerá el VARCHAR en una migración futura.
+> **Movido a la skill `modulo-reclamos`** (`.claude/skills/modulo-reclamos/SKILL.md`), que carga on-demand. Árbol geo AR (provincias/partidos/localidades), activos físicos, geolocalización en `reclamos`, el proxy Nominatim `/geo/buscar` (filtrado de POIs), subreclamos, campos CRM (SLA/fechas) y adjuntos viven ahí. Ancla §22 conservada para las refs cruzadas.
 
 ## 23. Patrones de UI ya validados — usar como default
 
@@ -1032,128 +753,11 @@ Reglas:
 
 ## 26. Adjuntos de Reclamos (Supabase Storage)
 
-**Implementado al 2026-05-10.** El frontend nunca habla con Storage con auth de usuario — el backend firma URLs con la `service_role` key.
-
-### Configuración
-- Buckets:
-  - `reclamos-adjuntos` (**privado**, 10 MB, image/jpeg|png|webp|gif|heic|heif) — fotos de reclamos.
-  - `config-assets` (**público**, 2 MB, image/png|jpeg|webp|svg+xml) — logo del municipio. Endpoint `/api/v1/config/identidad/logo-upload-url` (ver §14).
-- Tabla `reclamo_adjuntos` (existía desde migración 22): metadatos + `storage_bucket` + `storage_path`. Audit completa.
-- Vars de entorno backend (`backend/.env.local` y **Railway**):
-  - `SUPABASE_URL` — URL del proyecto Supabase (`https://<id>.supabase.co`)
-  - `SUPABASE_SERVICE_KEY` — `service_role` (legacy `eyJ...`) o `sb_secret_...` (nueva). Ambas funcionan; **nunca** la `anon`/`publishable`.
-  - `SUPABASE_ADJUNTOS_BUCKET` — default `reclamos-adjuntos`. El bucket `config-assets` está hardcoded en `config_identidad.py` (no usa esta var).
-
-> **Quirk operativo cazado 2026-05-13:** las 3 env vars Supabase tienen que estar **explícitamente seteadas en Railway**. La sub-fase B5 de Reclamos pasó el smoke local (con `.env.local` válido) y se pusheó como cerrada, pero los adjuntos en prod estaban devolviendo 503 desde el deploy hasta la sesión del 13/5 porque Railway nunca tuvo esas vars. Si pusheás una feature nueva que usa Storage (o vas a modificar `storage.py`), después del deploy testeá un POST `/upload-url` contra prod, no solo contra local.
-
-### Flujo de upload (modal nuevo reclamo)
-1. Usuario elige imágenes (drag&drop o file picker) — se acumulan en memoria con preview base64.
-2. Al guardar el reclamo: primero `POST /reclamos`, después por cada archivo:
-   - `POST /reclamos/{id}/adjuntos/upload-url` con `{nombre_archivo, mime_type, tamano_bytes}` → backend valida, inserta fila con `activo=FALSE`, devuelve `{id_adjunto, upload_url, storage_path, bucket}`.
-   - `PUT` directo a `upload_url` con header `Content-Type: <mime>` y `x-upsert: true`, body = binario.
-   - `POST /reclamos/{id}/adjuntos/{id_adj}/confirm` → marca `activo=TRUE`.
-3. Si algún upload falla, el reclamo queda creado y el toast informa cuántos subieron.
-
-### Flujo de visualización (drawer detalle)
-- `cargarAdjuntosDrawer(idReclamo)` se invoca desde `abrirDetalle()` después del render.
-- `GET /reclamos/{id}/adjuntos` devuelve `[{id_adjunto, storage_path, nombre_archivo, mime_type, tamano_bytes, fecha_alta, url}]` — `url` es firmada con TTL 1h.
-- Galería en grid; click abre lightbox (overlay full-screen con la imagen, ESC o click cierra).
-- Hover muestra botón `×` para borrar (soft-delete + `DELETE` del binario en bucket).
-
-### Diseño
-- **Bucket privado** + URL firmada al servir. Los paths siguen `reclamos/{id_reclamo}/{uuid}.{ext}`.
-- **No hay policies RLS sobre `storage.objects`**: el backend usa `service_role` que las bypassa. Toda autorización vive en endpoints FastAPI (validación JWT + scope al reclamo).
-- **Filas pre-upload con `activo=FALSE`**: si el cliente abandona entre `upload-url` y `confirm`, queda una fila huérfana sin binario, invisible para el GET. Limpieza opcional en sesión futura via cron o batch.
-- **Best-effort delete del binario**: si Storage falla al borrar, la fila queda soft-deleted igual y se loggea — el usuario nunca ve el adjunto.
-
-### Frontend en otros módulos
-Para sumar adjuntos a otra entidad (ej: OTs), replicar el patrón: nueva tabla `<entidad>_adjuntos` con mismos campos, nuevo bucket si conviene aislar, y reutilizar `app/core/storage.py` (las funciones reciben `path` arbitrario y leen el bucket de settings — extraer a parámetro si se usan múltiples buckets). **Ya hecho para OT** (`ot_adjuntos`, mig 54, ver §34) — reusa el mismo bucket `reclamos-adjuntos` con paths bajo `ot/{id_ot}/`. Es la referencia canónica para clonar a futuras entidades.
+> **Movido a la skill `modulo-reclamos`** (`.claude/skills/modulo-reclamos/SKILL.md`), que carga on-demand. Configuración de buckets (`reclamos-adjuntos` privado + `config-assets` público), env vars Supabase, flujo de upload (URL firmada → PUT → confirm), visualización, diseño (bucket privado + service_role) y el patrón para clonar a otras entidades viven ahí. Ancla §26 conservada para las refs cruzadas.
 
 ## 27. Módulo Agenda
 
-> **Bitácora de implementación** (migraciones 30-43, seeds demo, sub-fases entregadas, pendientes cerrados) en [`HISTORIAL_MIGRACIONES.md`](HISTORIAL_MIGRACIONES.md). Acá quedan las reglas vivas. Estado: backend (22 endpoints `agenda_v2.py` + espacios + disponibilidad) y frontend React (`web-app/src/modules/agenda/`) en producción. Ver memoria [[project_agenda_espacios_disponibilidad]].
-
-### Estructura del módulo (cierre B2, 2026-05-14)
-
-- **5 tabs** en `AgendaLayout`: **Vistas / Eventos / Disponibilidad / Conflictos / Config**. Dentro de Vistas, sub-toggle **Día / Semana / Mes** (persistido en `agendaStore.vistaGrilla`). URLs viejas `/agenda/timeline`, `/agenda/mensual` redirigen a Vistas. El tab **Disponibilidad** (`DisponibilidadView.tsx`, 2026-05-28) gestiona **Feriados** (`agenda_feriado`) y **Novedades de agentes** (`agente_novedad`: inasistencias/licencias, mig 69) — ambos restan disponibilidad efectiva. CRUD vía router `agenda_novedades.py` (`/api/v1/agenda/novedades` + `/feriados`, nivel ≤ 2). API client en `agenda/api/novedadesApi.ts`.
-- **Pills de tipo de recurso** (4, con conteo desde `/recursos/conteos`): Agentes / Equipos·OT / Esp. atendidos·Turnos / Esp. eventos·Entradas. **NO hay opción "Todos"** (ver Performance). **Las pills NO son intercambiables** — cada una sirve a un módulo distinto: Equipos→asignación de OT, Esp. atendidos→Turnos, Esp. eventos→Entradas. **Pill inicial por rol (2026-06-12):** supervisor (nivel 2) aterriza en Equipos·OT; el resto en Agentes. Una vez por carga del bundle (flag `pillInicialAplicada` en `agendaStore` + effect en `VistasView`); después manda el click del usuario.
-- **DnD solo en Vista Día y Semana** (`@dnd-kit/core@6.3.1`, PointerSensor + KeyboardSensor). Bloques tipo `evento` no son arrastrables (se editan desde el modal del evento).
-
-### Convenciones del módulo
-
-**FKs a las PKs reales:** `eventos.id_subarea`→`subarea.id_subarea`, `eventos.id_estado_evento`→`estado_evento.id_estado_evento`, `evento_reservas.id_ciudadano`→`ciudadanos.id_ciudadano`, `ocupaciones.id_orden_trabajo`→`ordenes_trabajo.id_ot`. `evento_encargados.id_recurso` y `ocupaciones.id_recurso` → `agentes`/`equipos`/`espacios_agenda` (sin FK física; polimórfica por `tipo_recurso`, validación en backend).
-
-**Tabla única `ocupaciones`** con CHECK `ck_ocupacion_consistencia`: solo se popula la FK del `tipo` (`ot`→`id_orden_trabajo`, `evento`→`id_evento`, `turno`→`id_ciudadano`, **`bloqueo`→ninguna** — mig 89). El tipo `bloqueo` es el cierre manual de un recurso sin entidad asociada (espacio en mantenimiento, agente afectado a otra tarea): exige `motivo` (schema `OcupacionCreate`), vale para los 3 tipos de recurso y se renderiza gris en la grilla. `existe_recurso` (services/agenda.py) valida agente/equipo/**espacio** desde 2026-06-12 — antes espacio devolvía False y el POST manual de ocupación sobre espacio daba 404. No usar tablas separadas por tipo.
-
-**`equipo_agentes` (no `equipo_usuarios`):** pivot equipo↔agente. `equipo_usuarios` solo existe vacío en local; en prod no existe.
-
-**`asignacion_a` en `tipo_reclamo`:** define si las OTs del tipo bloquean agenda de `agente` o `equipo`. `duracion_estimada_min` es lo que bloquea el calendario (distinto de `sla_dias`, deadline del reclamo).
-
-**Tres tipos de recurso:** `agente`, `equipo`, `espacio`. Espacio puede ser `atendido` (necesita agentes vinculados vía `espacio_agentes`) o desatendido.
-
-### Convención bitmask `dias_semana`
-
-`dias_semana SMALLINT` con bitmask, NO TEXT. Lunes=bit0=1, Martes=2, Miércoles=4, Jueves=8, Viernes=16, Sábado=32, Domingo=64. Ejemplos: L-V=`31`, fin de semana=`96`, todos=`127`. CHECK `BETWEEN 0 AND 127`.
-
-**Helper UI obligatorio:** `frontend/js/dias-semana.js` (vanilla) o `web-app/src/lib/diasSemana.ts` (React) con `serialize/deserialize/togglearDia/format`. `format(31)`→`Lun a Vie`, `format(96)`→`Sab y Dom`, `format(127)`→`Todos los dias`.
-
-### Lógica `disponibilidad_efectiva(db, tipo_recurso, id_recurso, fecha)`
-
-Resuelve los rangos horarios efectivos para una fecha aplicando bitmask `dias_semana` + ventana `vigente_desde/hasta`. **Desde 2026-05-28 además resta feriados y novedades de agentes** (helpers `_es_feriado`, `_bloqueos_novedades_agente`, `_restar_intervalos` en `services/agenda.py`): día feriado (`agenda_feriado`) → `[]`; novedad de agente (`agente_novedad`) total → `[]`, parcial → recorta el rango. La versión `_batch` (la que usan `/calendario` y `/semana`) lo hace en 2 queries extra para no romper la perf §27. Para espacio atendido, las novedades de cada agente vinculado ya se restan al armar la unión. Para `tipo_recurso='espacio'`:
-- **Desatendido:** horario propio del espacio.
-- **Atendido:** intersecta el horario del espacio con la **unión** de horarios de los agentes vinculados activos. Sin horario propio → la unión sola. Sin agentes vinculados → `[]` (la mig 40 NO enforce "atendido ⇒ ≥1 agente"; síntoma: grilla toda gris).
-
-**Para `tipo_recurso='equipo'` (decisión 2026-06-15, mig 91):** la disponibilidad de una cuadrilla es la **UNIÓN de los horarios de sus agentes** activos (`equipo_agentes`), NO su horario propio. Helper `_disponibilidad_equipo_union` (espejo del caso "espacio atendido"). Equipo sin agentes → `[]`, **salvo override**: clave `configuracion_general.equipos_sin_agentes_usan_horario_propio` (default `false`, editable en Config → Sistema) — con `true` usa el horario propio del equipo. **Antes (≤ mig 67) la Agenda leía el horario propio del equipo y divergía del planificador de OT** (que ya hacía la unión); ahora ambos usan esta misma función. Aplica en `disponibilidad_efectiva` Y en `disponibilidad_efectiva_batch` (la batch pre-resuelve los agentes de cada equipo, igual que con espacios atendidos). Los 3 campos legacy `dias_semana/hora_inicio/hora_fin` de `equipos` y las franjas propias `disponibilidad_recurso(tipo_recurso='equipo')` **NO se usan** salvo override.
-
-`_merge_rangos()` une rangos solapados/contiguos. **Quirk:** cast inline `(:f)::date` — asyncpg pasa DATE como `unknown` y Postgres no resuelve `EXTRACT(ISODOW FROM ...)` sin el cast. Ver [[feedback_asyncpg_extract_cast_date]].
-
-**Scope por subárea del supervisor:** `/calendario` y `/semana` aceptan `scope_subarea_propia`. Si `true`, filtra recursos a la subárea del usuario (`usuarios → agentes.id_subarea`). **Admin (nivel 1) NO se scopea.** **Fail-open** si no se puede resolver la subárea. La pill "Equipos·OT" lo manda automáticamente. Helper `_resolver_scope_subarea` en `agenda_v2.py`: `id_subarea` explícito > scope propio > None.
-
-### Sistemas de auditoría coexistentes
-
-Dos sistemas con vocabularios distintos — **no unificar sin decisión explícita**:
-- `reclamo_historial` (Reclamos + OT): cambios de estado y notas custom, append-only.
-- `agenda_audit_log` (Agenda): `entidad` ∈ {evento,ocupacion,reserva} con `accion` ∈ {crear,modificar,cancelar,asignar} y diffs JSONB.
-
-### Verbos HTTP del router agenda_v2 (referencia obligatoria)
-
-Mezclan PUT con PATCH. Antes de scriptear un smoke o codear un cliente, `grep "@router\." backend/app/api/routes/agenda_v2.py` para confirmar.
-
-| Acción | Verbo | Path |
-|---|---|---|
-| Crear / Editar full / Cancelar / Eliminar evento | POST / PUT / **PATCH** `/cancelar` / DELETE | `/eventos`, `/eventos/{id}` |
-| Asignar / Quitar encargado | POST / DELETE | `/eventos/{id}/encargados[/{id_ee}]` |
-| Crear reserva | POST | `/eventos/{id}/reservas` |
-| Marcar asistió / Cancelar reserva | **PATCH** | `/reservas/{id}/asistio`, `/reservas/{id}/cancelar` |
-| Acreditar por QR | **POST** | `/reservas/acreditar-qr` |
-| Crear / Editar / Cancelar ocupación | POST / PUT / DELETE | `/ocupaciones[/{id}]` |
-| Calendario día / mes / semana | GET | `/calendario` (NO `/calendario/dia`), `/mes`, `/semana?desde=&dias=` |
-| Conflictos / Resolver | GET / **PATCH** | `/conflictos?resuelto=false`, `/conflictos/{id}/resolver` |
-| Recurso | GET | `/recurso/{tipo_recurso}/{id_recurso}` |
-| Conteos de recursos por tipo (pills) | GET | `/recursos/conteos?id_municipio=` |
-
-**Router `agenda_espacios.py`** (`/api/v1/agenda/espacios`): GET listado (filtros `atendido`/`q`), POST, GET `/{id}` (con `agentes_vinculados` + `cant_agentes`), PUT, DELETE (soft + cascade N:M), GET/POST/DELETE `/{id}/agentes[/{id_ea}]`.
-**Router `agenda_disponibilidad.py`** (`/api/v1/agenda/disponibilidad`): GET (filtros tipo/id), POST, PUT `/{id}`, DELETE `/{id}` (soft), GET `/efectiva?tipo_recurso=&id_recurso=&fecha=`.
-**Router `agenda_publico.py`** (`/api/v1/agenda/publico`, SIN auth — autoservicio de eventos §33): GET `/evento/{token_publico}` · POST `/evento/{token_publico}/reservar` (busca/crea ciudadano por DNI) · GET/DELETE `/reserva/{token_reserva}`. Tokens UUID, 404 genérico anti-enumeración.
-Permisos: `nivel_acceso <= 2` muta (espacios/disponibilidad/novedades); cualquier autenticado lee. **Las mutaciones de `agenda_v2.py`** (eventos/encargados/reservas/ocupaciones/resolver-conflictos) **exigen nivel ≤ 3** vía dependency `require_operador` (desde 2026-06-12 — antes solo pedían JWT y un Consultor nivel 4 podía mutar por curl; espejo de [[guard_nivel_endpoint_no_solo_ui]]). Los GET de agenda_v2 siguen con `get_current_user` pelado.
-
-Smoke reproducible: `smoke_agenda.ps1` (raíz), 15 endpoints clave.
-
-### QR físico de reservas
-
-`evento_reservas.qr_codigo` es un **identificador opaco** (`EVT{id}-RES{id}-{ts}`, generado por `services/agenda.py::generar_qr_codigo`), no una URL. El operador lo escanea y acredita vía `POST /api/v1/agenda/reservas/acreditar-qr` con body `{qr_codigo}` → marca `asistio`. 404 si no es reserva activa, 409 si cancelada. Registrado **antes** que `/reservas/{id}/...` (anti-greedy). UI: sección "Acreditar por QR" en `ReservaModal.tsx`. El PNG se renderiza solo en cliente (`QRDisplay.tsx`, lib `qrcode` ~26KB) — el backend solo genera el string.
-
-### Performance — patrón batch (optimización 2026-05-14)
-
-Con 84 agentes en prod, los endpoints B1 originales eran inusables (`/calendario` 23s→2.2s, `/semana` 7d timeout→2.6s). El patrón que lo arregló:
-
-1. **`disponibilidad_efectiva_batch(session, recursos, fechas)`** — 2 queries totales (`WHERE tipo=ANY AND id=ANY`), bitmask/vigencia/intersección resueltos en Python. La singular `disponibilidad_efectiva` queda para `/disponibilidad/efectiva` (compat retro).
-2. **`_eventos_del_rango(db, fd, fh, mun)`** — 1 query base + 1 bulk de encargados. `_eventos_del_dia` queda como wrapper.
-3. `/calendario` y `/semana` llaman a los batch. Compat retro verificado byte-a-byte.
-
-**Latencia base Railway↔Supabase ~2-3s** con JOINs sobre 84 filas — piso físico sin tocar arquitectura. Ver [[reference_agenda_latencia_base_railway_supabase]]. Patrón generalizable para loops N×M: [[feedback_patron_batch_helper_singular_wrapper]].
-
-**Quirk de clave:** `disponibilidad_por_recurso` en `/semana` usa formato `"{tipo}:{id}"` con dos puntos. Ver [[reference_agenda_semana_disponibilidad_key]].
+> **Movido a la skill `modulo-agenda`** (`.claude/skills/modulo-agenda/SKILL.md`), que carga on-demand. Estructura (5 tabs), convenciones (FKs, `ocupaciones` polimórficas, bitmask `dias_semana`), `disponibilidad_efectiva` (+batch, equipo=unión de agentes), verbos HTTP del router, QR de reservas, scope por subárea y el patrón batch de performance viven ahí. Es el sustrato de disponibilidad que usan OT/Turnos/Entradas. Ancla §27 conservada para las refs cruzadas.
 
 ## 28. Recibir prompts armados afuera del proyecto
 
@@ -1349,67 +953,11 @@ DS v1.0 (`--z-*`, `.z-*`, `frontend/styles.css`, `frontend/menu.html`, `frontend
 
 ## 36. Generación de manuales operativos (HTML autocontenidos)
 
-> **Receta completa en la skill `generar-manual`** (`.claude/skills/generar-manual/`): setup Playwright, patrón de captura, convenciones del HTML, regenerar capturas tras cambio de UI, cleanup. Invocarla al crear/regenerar un `docs/manual_<modulo>.html`.
-
-### Manuales actuales (al 2026-06-12)
-**Todos viven en `docs/` (carpeta única, pedido del usuario).** `manual_reclamos.html` (Operador+, 10 caps) · `manual_ot.html` (Sup/Agente/Auditor, 9) · `manual_tramites.html` (Operador+, 8) · `manual_admin_tramites.html` (Admin/Sup, 12) · `manual_encuestas.html` (Sup/Admin, texto sin caps) · `manual_turnos.html` (Operador+, 9 caps, 13 secc. — incluye historia de atención, detalle de turno y consultas por ciudadano, 2026-06-11) · `manual_entradas.html` (Operador+, 4 caps, 10 secc.) · **`manual_alta_ciudadanos.html`** (Operador+, 3 caps, 7 secc. — alta por agente + autogestión + URL pública/Config; actualizado 2026-06-12 al alta en un paso §38) · **`manual_emergencias.html`** (Operador+, 10 caps, 10 secc. — COM: recepción, triage, FSM, derivación, App Vecinos, 2026-06-10) · **`manual_alta_vecino.html`** (público, para el vecino, sin caps, 6 secc. — un paso + vía "ya registrado", 2026-06-12) · **`manual_ciudadano.html`** (público, para el vecino, sin caps, 10 secc. — TODAS las interacciones del ciudadano: cuenta/portal, reclamos, emergencias, turnos con y sin cuenta, entradas+QR, trámites presenciales, notificaciones push, encuesta CSAT, troubleshooting; cross-linkeado desde `manual_alta_vecino.html` §5, 2026-06-12) · **`manual_agenda.html`** (Sup+ config / Operador+ consulta, 12 caps, 13 secc. — calendario único: 4 vistas de recurso, Día/Semana/Mes, disponibilidad efectiva, eventos+reservas+QR, feriados/novedades, conflictos, espacios, circuitos OT/Turnos/Entradas; 2026-06-12). **10 registrados en el módulo Guías (§37); `manual_alta_vecino.html` y `manual_ciudadano.html` NO van en Guías** — son guías públicas del vecino (no material de backoffice); el primero se abre desde "¿Cómo me doy de alta?" en `frontend/alta-vecino.html`, el segundo es para compartir en web/redes del municipio. Próximos sugeridos (no obligatorios): Padrones.
-
-### Reglas de criterio (no las olvides)
-- **Sin fechas ni nombres personales (mandatorio, 2026-06-11).** Los manuales NO llevan fecha (ni encabezado, ni pie, ni "generado el…") ni el nombre del usuario — solo aplicación, módulo y audiencia. Ver memoria [[feedback_manuales_sin_fechas_ni_nombres]].
-- **El manual es parte del entregable cuando cambia la UI que documenta.** Antes de cerrar un cambio de UI/flujo, chequear si ese módulo tiene `docs/manual_<modulo>.html`. Si lo tiene, actualizar texto + capturas afectadas es parte del mismo entregable — un manual que describe la UI vieja miente al usuario. (Cómo detectar el desfasaje y regenerar solo lo afectado: en la skill.)
-- **Una sola fuente por manual.** El HTML es el canónico (es lo que se publica en `docs/` y abre el módulo Guías §37). NO mantener un `.md` paralelo — se desincroniza en silencio (`manual_admin_tramites.md` quedó 5 días atrás, eliminado 2026-05-27).
+> **Movido a la skill `modulo-guias`** (`.claude/skills/modulo-guias/SKILL.md`), que carga on-demand. Inventario de manuales actuales y reglas de criterio (sin fechas/nombres, manual como entregable cuando cambia la UI, una sola fuente HTML) viven ahí. La receta mecánica de generación (Playwright, capturas) sigue en la skill `generar-manual`. Ancla §36 conservada para las refs cruzadas.
 
 ## 37. Módulo Guías (catálogo de manuales)
 
-Módulo React `/guias` registrado en sidebar después de Configuración. Es el front-end de los manuales generados según §36. **Sin `moduloCodigo` → visible para todos los usuarios autenticados** (es material informativo, no datos protegidos).
-
-**Archivos (`web-app/src/modules/guias/`):**
-- `index.tsx` — ModuleManifest (icon: BookOpen).
-- `GuiasLayout.tsx` — Layout con breadcrumb INICIO › Guías.
-- `pages/GuiasIndex.tsx` — Grid de cards (auto-fill minmax 320px). Cada card abre el HTML correspondiente en pestaña nueva vía `target="_blank"` + `rel="noopener noreferrer"`.
-
-**Sidebar vanilla (`index.html`):** item "guías" sin `data-modulo` para que sea visible para todos. Ícono SVG inline (libro abierto, `stroke-width="1.5"`).
-
-### Cómo agregar una guía nueva
-
-1. Generar `docs/manual_X.html` siguiendo la receta de §36.
-2. Agregar una entrada al array `GUIAS` en `GuiasIndex.tsx`:
-   ```ts
-   {
-     titulo: 'NOMBRE EN UPPERCASE',
-     descripcion: 'Una frase larga (~150 chars) explicando qué cubre el manual.',
-     icon: SomeLucideIcon,
-     htmlName: 'manual_X.html',
-     audiencia: 'Operador o superior',
-     tags: ['Operativo', 'N capturas', 'N secciones'],
-   }
-   ```
-3. **No requiere tocar:** module manifest, sidebar vanilla, typecheck, ni rebuild manual del shell.
-
-### Helper `urlDocs(htmlName)` — quirk de resolución de URL
-
-El componente vive en el bundle React (`/web-app/dist/index.html#/guias`) pero los HTMLs están 2 niveles arriba en `/docs/`. El helper detecta entorno:
-
-```ts
-function urlDocs(htmlName: string): string {
-  // 1. Iframe del shell vanilla (prod o local 8080): usa parent location
-  if (window.self !== window.top) {
-    try {
-      const parentLoc = window.parent.location
-      const base = parentLoc.pathname.replace(/[^/]*$/, '')
-      return `${parentLoc.origin}${base}docs/${htmlName}`
-    } catch { /* cross-origin fallback */ }
-  }
-  // 2. Standalone localhost:5173 (dev React aislado): apunta al shell vanilla local
-  if (window.location.hostname === 'localhost' && window.location.port === '5173') {
-    return `http://localhost:8080/docs/${htmlName}`
-  }
-  // 3. Standalone otros (degenerado)
-  return `${window.location.origin}/docs/${htmlName}`
-}
-```
-
-**Verificado en navegador** (sesión 2026-05-18) que los 3 casos resuelven correcto y los HTMLs cargan en pestaña nueva sin errores.
+> **Movido a la skill `modulo-guias`** (`.claude/skills/modulo-guias/SKILL.md`), que carga on-demand. El módulo React `/guias` (catálogo de cards), cómo registrar una guía nueva en el array `GUIAS` y el helper `urlDocs` de resolución de URL en iframe viven ahí. Ancla §37 conservada para las refs cruzadas.
 
 ## 38. Auth público de ciudadanos (App Vecinos)
 
