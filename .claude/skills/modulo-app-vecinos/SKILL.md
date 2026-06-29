@@ -1,0 +1,107 @@
+---
+name: modulo-app-vecinos
+description: "Usar al trabajar en el auth público de ciudadanos / App Vecinos (backend del portal del vecino) de ZARIS (archivos: backend/app/api/routes/publico_auth.py, publico_alta.py, publico_reclamos.py, publico_portal.py, publico_turnos_vecino.py, publico_entradas_vecino.py, publico_push.py, services/cuenta_vecino.py, services/push.py, frontend/alta-vecino.html; tablas: ciudadano_credencial, ciudadano_canal_preferido, ciudadano_push_subscription, ciudadanos.estado_validacion/ficha_completa, empresa_credencial). Cubre el modelo scope publico vs agente, activación/recovery por token, lockout, anti-enumeración, alta pública en UN PASO (ficha completa), alta por agente, autoservicio logueado del vecino y push. NO documenta la PWA (repo zaris-vecinos separado). Invocar ANTES de tocar cualquier endpoint /publico/*, credencial de ciudadano o flujo de alta de vecinos."
+---
+
+# Auth público de ciudadanos (App Vecinos) — §38
+
+Backend mínimo para la PWA `zaris-vecinos` que permite a los ciudadanos enviar reclamos desde el celular. Etapa 0 entrega **solo auth + identidad del municipio**. Reclamos/adjuntos/push son etapas posteriores.
+
+### Modelo
+
+- **Login con DNI + password.** El alta la puede hacer un agente municipal (nivel ≤ 3, `/registrar` protegido) **o el propio vecino vía autoregistro público** (`/publico/alta/*`, ya entregado — ver "Alta pública de vecinos" más abajo).
+- **Activación en dos pasos:** el agente carga al ciudadano + email → backend genera `token_activacion` UUID (vigencia 7 días) y manda mail → el ciudadano clickea el link `{APP_VECINOS_FRONTEND_URL}/activar?token=<uuid>`, elige password y queda logueado.
+- **Recovery análogo:** el ciudadano pide reseteo desde la PWA → mail con `token_recovery` UUID (24h) → setea nuevo pass → JWT directo.
+- **Scope JWT:** todos los tokens llevan claim `scope`. `"agente"` para los usuarios internos (`usuarios`), `"publico"` para ciudadanos (`ciudadanos` + `ciudadano_credencial`). Cada guard del backend rechaza el scope opuesto con 401.
+- **Multi-canal preparado pero NO conectado:** tabla `ciudadano_canal_preferido` con flags `canal_email/push/whatsapp/sms`. Solo `email` se usa en el MVP. WhatsApp/SMS son columnas reservadas.
+- **Multi-municipio:** cada deploy Railway es de un municipio. El endpoint público de identidad no necesita slug porque lee la única config del proyecto. Cuando consolidemos a multi-tenant compartido (etapa futura), agregar header `X-Municipio-Slug`.
+
+### Tablas (migraciones 52 y 53)
+
+| Tabla | Rol |
+|---|---|
+| `configuracion_general` (3 claves nuevas) | `municipio_descripcion`, `municipio_color_primary`, `municipio_color_accent`. La carga real se hace desde el panel admin ZARIS (etapa futura). |
+| `ciudadanos.estado_validacion` (columna nueva) | `'auto_registrado' \| 'vinculado_pendiente' \| 'verificado'`. Default `auto_registrado` para no romper inserts existentes. Los altas del agente quedan `verificado`. |
+| `ciudadano_credencial` | 1:1 con `ciudadanos`. `password_hash` (NULL hasta activar), `token_activacion`/`token_recovery` UUID + expiración, lockout (`intentos_fallidos`, `bloqueada_hasta`), `activado_en`, `fecha_ultimo_login`, `fecha_ultimo_cambio_password`. Estándar §10 completo. Índices parciales sobre los dos tokens cuando NOT NULL. |
+| `ciudadano_canal_preferido` | 1:1 con `ciudadanos`. `canal_email=TRUE`, `canal_push=TRUE` por default. `canal_whatsapp` y `canal_sms` por default `FALSE`. |
+| `ciudadano_push_subscription` | Web Push (`endpoint`, `p256dh`, `auth_secret`, `user_agent`). UNIQUE `(id_ciudadano, endpoint)`. **Desde 2026-06-12 (etapa E) la consumen** el router `publico_push.py` (`GET /publico/push/public-key` · `POST /subscribe` UPSERT+`canal_push=TRUE` · `POST /unsubscribe`) y `services/push.py::enviar_push_ciudadano` (best-effort SIEMPRE; 404/410 del push service → auto-baja; respeta `canal_push`). Hooks post-commit en TODAS las vías de cambio de estado de reclamos (reclamos.py + ordenes_trabajo.py) y emergencias. **Claves VAPID por entorno en `configuracion_general`** (`vapid_*`, NUNCA en el repo — es público; env vars `VAPID_*` = override; ocultas de la UI Config). `pywebpush==2.0.3`. |
+
+**Aplicadas en local Y prod al 2026-05-19.** Idempotentes (`ADD COLUMN IF NOT EXISTS` + `CREATE TABLE IF NOT EXISTS` + `INSERT ON CONFLICT DO NOTHING`).
+
+### Endpoints (`/api/v1/publico/auth/*`)
+
+| Verbo | Path | Auth | Descripción |
+|---|---|---|---|
+| POST | `/registrar` | JWT scope `agente` (nivel ≤ 3) | Alta ciudadano + credencial + canal_preferido. Manda mail de activación via `BackgroundTasks`. 409 si DNI ya existe en `ciudadanos` activos o email duplicado en credencial activa. |
+| POST | `/activar` | sin auth | Activa con `token_activacion` (vigencia 7d). Setea password (min 8 chars). Devuelve JWT scope `publico`. |
+| POST | `/reenviar-activacion` | sin auth | Regenera token + reenvía mail. **Anti-enumeración**: siempre 200 OK aunque el DNI no exista o la cuenta ya esté activada. Cooldown silencioso de 5 minutos. |
+| POST | `/login` | sin auth | Login con DNI + password. Lockout: 5 intentos fallidos → bloqueo 15 min. |
+| GET | `/me` | JWT scope `publico` | Devuelve datos básicos del ciudadano logueado. |
+| POST | `/recuperar-password` | sin auth | Pide email de recovery. Misma política anti-enumeración + cooldown 5 min. |
+| POST | `/resetear-password` | sin auth | Aplica nuevo pass con `token_recovery` (vigencia 24h). Resetea lockout. Devuelve JWT scope `publico` para que el ciudadano quede logueado. |
+
+### Endpoint público de identidad (`/api/v1/publico/identidad-municipio`)
+
+- **Sin auth** (la PWA lo lee antes de tener token, en la pantalla de login).
+- Lee de `configuracion_general` las 5 claves: `municipio_nombre`, `municipio_logo_url`, `municipio_descripcion`, `municipio_color_primary`, `municipio_color_accent`. Claves ausentes/vacías → `null`.
+
+### Vigencia de tokens
+
+- `token_activacion`: 7 días. Renovable con `/reenviar-activacion`.
+- `token_recovery`: 24 horas (más corto que activación porque la cuenta ya está activa).
+- JWT scope `publico`: 30 días por default. Configurable via `JWT_PUBLICO_EXPIRA_DIAS`. **Más largo que el JWT scope `agente` (24h)** porque la PWA debe minimizar fricción de re-login.
+
+### Lockout
+
+5 intentos fallidos consecutivos → `bloqueada_hasta = NOW() + 15 minutes`, `intentos_fallidos` reseteado a 0. Durante el bloqueo, `/login` devuelve 401 "Cuenta bloqueada temporalmente". Al hacer reset password o login exitoso, `bloqueada_hasta` se limpia.
+
+### Anti-enumeración
+
+`/reenviar-activacion` y `/recuperar-password` siempre devuelven 200 OK con `{"enviado": true}` independientemente de si el DNI existe, si la cuenta ya está activada, o si el cooldown está activo. No se revela al cliente nada sobre la existencia/estado de la cuenta. El mail se manda (o no) silenciosamente en `BackgroundTasks`.
+
+### Scope check en `core/auth.py`
+
+- `create_access_token(data)` ahora setea `scope='agente'` por default (retrocompat con tokens existentes).
+- `crear_token_ciudadano(id_ciudadano, expira_dias=None)` emite scope `publico` con vigencia `JWT_PUBLICO_EXPIRA_DIAS`.
+- `get_current_user` rechaza tokens con `scope != 'agente'` (default a `'agente'` para tokens viejos sin el claim).
+- `get_current_ciudadano` rechaza tokens con `scope != 'publico'`, valida que el ciudadano + credencial estén `activo=TRUE` y `activado=TRUE`. Devuelve dict con `id_ciudadano, doc_nro (dni), nombre, apellido, email, estado_validacion`.
+
+### Email + env vars
+- Remitente real `RESEND_FROM` (`notificaciones@zaris.com.ar`, §42) con header `From:` = **display name del municipio** (`"MUNICIPALIDAD … <notificaciones@zaris.com.ar>"`) vía `enviar_mail(..., from_override=...)`. La marca ZARIS no aparece al vecino. Funciones `enviar_mail_activacion_ciudadano`/`enviar_mail_recovery_ciudadano` (`services/email.py`), template sobrio con logo del municipio, sin emojis.
+- **Env vars**: `APP_VECINOS_FRONTEND_URL` (default `http://localhost:5174`, prod `https://vecinos.zaris.com.ar` — arma los links de los mails) · `JWT_PUBLICO_EXPIRA_DIAS` (default 30).
+- **CORS**: `vecinos.zaris.com.ar` + `zaris-vecinos.vercel.app` + `localhost:5174` en `allow_origins`.
+
+### Estado / alcance
+Backend en prod, verificado. PWA en repo separado `CesarZeta/zaris-vecinos` (Vercel, `vecinos.zaris.com.ar`) — **no documentar la PWA acá** (otro repo; su README tiene el checklist para replicar en municipio #2). **Etapas A-E del plan CERRADAS al 2026-06-12** (reclamos con fotos+pin, emergencias, turnos, entradas con QR, push — ver `PLAN_APP_VECINOS.md`). **Fuera de alcance**: bandeja `vinculado_pendiente` (futuro), panel admin de branding (producto separado).
+
+### Alta pública de vecinos (autoregistro) — UN PASO con ficha COMPLETA (replanteo 2026-06-12)
+Página pública `frontend/alta-vecino.html?m=<slug>` (vanilla, DS ZARIS) donde el **vecino crea su cuenta** (sin agente, sin JWT). Router `routes/publico_alta.py` (`/api/v1/publico/alta/*`, sin JWT, rate-limited por IP). **Tenancy mono-tenant validado**: el slug `?m=<codigo_corto>` se valida contra el ÚNICO municipio del deploy (`municipios.codigo_corto`, ej. `lpl`) → 404 si no coincide. URL preparada para multi-deploy sin reescribir a multi-tenant.
+
+> **Replanteo 2026-06-12 (decisión del usuario, reemplaza al modelo de 2 pasos de la Fase 4):** el alta es en **UN PASO con la ficha completa** y **la BUC NUNCA recibe placeholders falsos** (fecha 1900-01-01, CUIL inventado, sexo OTROS — eso era lo que escribía el paso 1 viejo y fue rechazado de plano). **La app (PWA) no pide datos de ficha bajo ninguna circunstancia**: el alta vive solo en la página pública. Se eliminaron `CompletarFichaPage` + el gate de `ficha_completa` en `RutaProtegida` (PWA `0e97a3e`) y los schemas `AltaCiudadanoIn/Out`. El endpoint `POST /publico/auth/completar-ficha` queda por compat (sin frontend que lo use). `ciudadanos.ficha_completa` sigue existiendo: todas las altas nuevas la setean TRUE de origen.
+
+- **Alta (Camino A, autogestión):** `POST /alta/cuenta` (`AltaCuentaIn` = ficha completa: slug + DNI + **CUIL real (módulo 11)** + nombre/apellido + sexo + fecha_nac + nacionalidad + domicilio OSM (calle/localidad/provincia + lat/lon opcional) + teléfono + email + password). Validaciones canónicas en backend (CUIL mód-11, fecha plausible 1900..hoy, nacionalidad existente, DNI/CUIL/email sin duplicar vs activos). Crea `ciudadanos` con datos reales, `ficha_completa=TRUE`, `estado_validacion='auto_registrado'`, `email_chk=FALSE` + `ciudadano_credencial` (password elegido + `token_activacion`, `activado=FALSE`). Manda mail de verificación. El vecino NO es `usuarios` (scope `publico`, [[project_usuario_vs_ciudadano_modelo]]). El front (`alta-vecino.html`) valida en vivo (CUIL mód-11 + correspondencia con DNI, errores por campo, OSM con fallback manual — no se frena por el geocodificador).
+- **VERIFICAR email:** `GET /alta/verificar?token=&m=` → `email_chk=TRUE`, `estado_validacion='verificado'`, credencial `activado=TRUE`. La página de confirmación invita a iniciar sesión con DNI + la contraseña elegida.
+- **Vecino que YA existe en la BUC (sin duplicar):** `POST /alta/activar-existente` (`{slug, doc_nro}`, **anti-enumeración: SIEMPRE 200 genérico**) → si el DNI figura con email, reusa `asegurar_cuenta_vecino` (credencial sobre el MISMO registro + mail de activación al email de la BUC; el vecino elige su clave vía `/activar` de la PWA). En la página pública: link "Ya estoy registrado en el municipio". **Vía de mostrador:** `POST /buc/ciudadanos/{id}/cuenta-vecino` (JWT agente) + botón **"Crear cuenta App Vecinos"** en el FormView de Ciudadanos (consulta/edición) — 422 si el ciudadano no tiene email, `ya_activada=true` si ya usaba la app. Smoke `backend/smoke_alta_un_paso.py` (12 casos, corre local y prod).
+- **Camino B (alta por agente) — UNIFICADO en el alta de ciudadano del backoffice (2026-06-09 j4):** el alta del frontend de Ciudadanos (`POST /api/v1/buc/ciudadanos`, módulo React `ciudadanos`/`FormView`) **crea automáticamente la cuenta de App Vecinos** + mail de activación. Ya **NO hay alta de padrón separada de la cuenta de portal**; el agente carga la ficha y al guardar se hace todo. Detalle:
+  - **`email` obligatorio** (ya lo era en `CiudadanoCreate`, schema `buc.py`). Rechaza email duplicado en credencial activa (409, mismo criterio que `/publico/auth/registrar`).
+  - **Servicio `services/cuenta_vecino.py::asegurar_cuenta_vecino`** (reutilizable, idempotente): crea `ciudadano_credencial` (sin password + `token_activacion`) + `ciudadano_canal_preferido` + encola el mail de activación (BackgroundTasks). Si ya hay credencial activada, no toca nada; si existe sin activar, regenera token. `crear_ciudadano` en `buc.py` lo llama tras `db.flush()`.
+  - **El agente cargó la ficha completa → `ficha_completa=TRUE` + `estado_validacion='verificado'`** (ambas columnas NO mapeadas en el modelo ORM `Ciudadano` → se setean con UPDATE SQL directo, NO con setattr). El vecino **entra directo, SIN el paso 2** (a diferencia del autoregistro Camino A, que sí pasa por completar-ficha). El vecino recibe mail, clickea ACTIVAR y **elige su propia clave** (activación-por-token; NO clave-temporal+cambio-forzado).
+  - **Botón "+ Nuevo" en el buscador de ciudadano** (`CiudadanoSearch` de `agenda/components`, **compartido** por reclamos/turnos/entradas/agenda): si la búsqueda no encuentra al vecino, `navigate('/ciudadanos/nuevo')` lleva al alta. El `CiudadanoForm` muestra un aviso (prop `esAlta`) de que se crea la cuenta + se manda el mail.
+  - El endpoint `/publico/auth/registrar` (alta por agente con scope agente, sin pantalla propia) **sigue existiendo** pero la vía operativa real es el alta del módulo Ciudadanos. Verificado E2E (alta→credencial+canal+verificado+ficha_completa→vecino activa eligiendo clave→login). [[project_usuario_vs_ciudadano_modelo]].
+- **`ficha_completa` en login/me:** `CiudadanoBasicoOut.ficha_completa` lo exponen `/publico/auth/login`, `/me` y `/resetear-password` → el portal decide si mandar al vecino a completar la ficha. `get_current_ciudadano` (core/auth) trae la columna.
+- **Empresa NO se da de alta desde la página pública** (decisión 2026-06-09): se quitó el toggle de empresa de `alta-vecino.html`. La empresa la carga el vecino YA logueado y con ficha completa, desde el portal (PWA), reusando el endpoint `POST /alta/empresa` que queda en backend. **Empresa exige ciudadano previo** (BUC §2): `empresas` + `ciudadano_empresa` + `empresa_credencial` (mig 76, solo verificación de email, SIN password). Verificar → `empresas.email_chk=TRUE` + `empresa_credencial.verificado=TRUE`.
+- **Geocoding OSM público**: `GET /publico/alta/geo/buscar?m=&q=` reusa `geocodificar_direccion()` extraída de `geo.py`. Lo usa el paso 2 (domicilio del vecino). El `/geo/buscar` del backoffice SIGUE exigiendo JWT — solo el público es abierto.
+- Endpoints: GET `/identidad` · `/actividades` · `/nacionalidades` · `/geo/buscar` (todos validan slug) + POST `/alta/cuenta` (paso 1) · `/alta/empresa` + GET `/alta/verificar` (devuelve **página HTML**, la abre el navegador) + POST `/publico/auth/completar-ficha` (paso 2, JWT). Link del mail = `FRONTEND_BASE_URL/api/v1/publico/alta/verificar`. Templates `enviar_mail_verificacion_alta_ciudadano/_empresa` en `services/email.py`. Verificado E2E navegando (local) + smoke API (paso1→verificar→login→paso2 + bordes 401/409/404).
+- **Permisos del vecino**: acciones de autoservicio acotadas a SUS datos (paridad con operador "en su nombre", NO backoffice). El `id_ciudadano` SIEMPRE sale del JWT, nunca del body/param → no puede operar sobre terceros. Ver [[project_usuario_vs_ciudadano_modelo]].
+- **Autoservicio del vecino logueado (Etapa 2, 2026-06-02, commit `53edc28`, en prod):** dos routers nuevos con guard `get_current_ciudadano` (scope `publico`), SIN migración (reusan columnas existentes):
+  - **`publico_reclamos.py` (`/api/v1/publico/reclamos`):** POST crea reclamo a nombre propio (`id_ciudadano` del token; `id_usuario_alta=NULL` — no es `usuarios`, columna nullable; `canal_origen='app_movil'`; estado inicial 'Sin asignar'; deriva `id_area` de `subarea.id_area` vía el tipo §27; valida tipo activo). **Desde 2026-06-02 el POST exige `id_tipo_reclamo` + `direccion` + `descripcion≥5`** — el backoffice los acepta opcionales pero la autogestión NO afloja datos obligatorios (regla del municipio, [[feedback_autogestion_no_afloja_obligatorios]]); no evadible por curl (422). + GET lista SOLO los suyos (`WHERE id_ciudadano=<token>`) + GET `/{id}` detalle con **guard duro 404 si no es suyo** (mismo cuerpo que "no existe", no filtra terceros; historial sin identidad del agente) + GET `/catalogo/tipos` + **GET `/geo/buscar` (scope publico, geocoding del vecino logueado — [[reference_geocoding_vecino_endpoint_scope_publico]])**, todos declarados ANTES de `/{id_reclamo}` por el param greedy §5.
+  - **`publico_portal.py` (`/api/v1/publico/portal`):** GET `/mi-resumen` — conteos `{vigentes,total}` de reclamos/turnos/entradas del vecino en 1 round-trip (home del portal). Vigente = reclamos activos no-final, turnos `estado='reservado'`, reservas con `estado_reserva.codigo='reservada'`.
+  - Ambos registrados junto a los `publico_*` en `main.py` (prefijos no colisionan con `reclamos_router` ni `publico_alta`). Smoke local 9/9 + deploy prod verificado (`/openapi.json` + 401 sin token). **NO incluye:** cambiar estado / cancelar reclamo propio (decisión vigente). Lo que ANTES faltaba ya se entregó: adjuntos públicos de reclamos (`publico_reclamos_adjuntos.py`, etapa A), mis-turnos logueados (`publico_turnos_vecino.py`, etapa C), **mis-entradas logueadas (`publico_entradas_vecino.py`, etapa D 2026-06-12: cartelera con cupo en un SQL + reservar del token + QR + cancelar; smoke `smoke_publico_entradas.py`)** y push (etapa E, ver tabla mig 53 arriba). Los autoservicios anónimos por token (§33) siguen vigentes en paralelo.
+- **URLs públicas en Config → Identidad (ENTREGADO 2026-06-09 j3/j4):** `GET /config/identidad` expone `municipio_slug` (= `municipios.codigo_corto` del único municipio activo). `IdentidadView.tsx` muestra la sección "Enlaces públicos del municipio" (solo lectura, helper `basePublica()` resuelve el origin del shell padre en iframe) con la URL del alta `…/frontend/alta-vecino.html?m=<slug>` + Copiar/Abrir. La URL **cambia por municipio en DOS partes** (dominio + `?m=código`) — mono-tenant por deploy, NO hay URL genérica. El array `ENLACES` es extensible para futuras URLs públicas.
+  - **Frontend del autoservicio — PWA "Portal del Ciudadano" (`zaris-vecinos`, repo separado, Vercel):** las pantallas del flujo logueado (auth scope publico, home con `mi-resumen`, mis reclamos lista/detalle, alta de reclamo con geocoding) se construyeron 2026-06-02 (commit `0b85205`, deploy Vercel Ready). Verificado E2E contra backend LOCAL (sembré credencial + cleanup). **Verificación E2E del happy-path logueado en PROD PENDIENTE: `ciudadano_credencial` en prod está VACÍA** — el primer login real será cuando alguien se autoregistre. Detalle de la PWA (estado, contrato de endpoints, shape de sesión propio `zaris_vecino_session`) en [[project_portal_ciudadano_pwa]]. NO documentar la PWA acá (otro repo).
+
+### Quirks
+- **DNI digit-only** (`_solo_digitos()` normaliza antes de comparar con `ciudadanos.doc_nro`). **CUIL placeholder** en `/registrar`: `'20'+dni.zfill(8)+'9'` (`cuil` es UNIQUE NOT NULL). **Defaults pragmáticos** del alta: `doc_tipo='DNI'`, `sexo='OTROS'`, `fecha_nac='1900-01-01'`, `id_nacionalidad=1`, `*_chk=FALSE`.
+- **SQL con `text()`**: `CAST(:token AS uuid)` no `:token::uuid` ([[feedback_sqlalchemy_cast_uuid]]); `INTERVAL` con duración variable → f-string literal, no bind param ([[feedback_asyncpg_extract_cast_date]]).
+- Mail de activación corre en `BackgroundTask` post-commit (patrón §35); sin Resend key → modo MOCK.
+- Smoke: `backend/smoke_publico_auth.py` (15 pasos, 15/15 OK 2026-05-19).

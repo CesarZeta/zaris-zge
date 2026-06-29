@@ -1,0 +1,89 @@
+---
+name: modulo-tramites
+description: "Usar al trabajar en el módulo Trámites / Expedientes de ZARIS (archivos: backend/app/api/routes/tramites.py, tramites_admin.py, tramites_mantenimiento.py, services/tramites/, web-app/src/modules/tramites/; tablas: tipo_tramite, tipo_tramite_version/_campo/_estado/_transicion/_documento_requerido/_numerador/_aprobacion_requerida, tramite, tramite_movimiento, tramite_documento, tramite_firma, tramite_relacion, tramite_aprobacion). Expedientes ventanilla con catálogo/instancia versionado, FSM, iniciador y destinatario polimórficos, ledger append-only, numeración atómica, aprobaciones por etapa, firmas, storage Supabase, retención/purga y cron. Invocar ANTES de tocar cualquier endpoint, tabla, builder, FSM o quirk de Trámites."
+---
+
+# Módulo Trámites / Expedientes — §35
+
+Expedientes administrativos tipo "ventanilla" (entrada → circuito interno → resolución). Multi-área, firmas digitales, numeración correlativa por tipo. Frontend React `web-app/src/modules/tramites/`, backend `routes/tramites.py` + `routes/tramites_admin.py` + `services/tramites/`. **Bitácora de fases (1/2/3), smokes, verificaciones E2E y repasos de Roy en `HISTORIAL_MIGRACIONES.md`.**
+
+### Filosofía de diseño
+
+- **Catálogo / instancia separados**: catálogo (`tipo_tramite`, `tipo_tramite_version`, `_campo`, `_estado`, `_transicion`, `_documento_requerido`) define el FSM y los campos. Instancias (`tramite`, `tramite_movimiento`, `tramite_documento`, `tramite_firma`, `tramite_relacion`) son los expedientes reales.
+- **Versionado del circuito**: un trámite queda atado a la versión publicada al crearse — cambiar el circuito NO altera trámites en curso. `tipo_tramite_version.publicada=TRUE` = activa.
+- **FK circular diferida**: `tipo_tramite.id_version_publicada ↔ tipo_tramite_version.id_tipo_tramite` con `DEFERRABLE INITIALLY DEFERRED`.
+- **Numeración atómica**: `tipo_tramite_numerador` PK `(id_tipo_tramite, anio, id_municipio)` con `INSERT ... ON CONFLICT DO UPDATE SET ultimo_numero+1 RETURNING`. Formato `{prefijo}-{cod_muni}-{anio}-{correlativo}` → `POD-LPL-2026-0001`.
+- **Ledger append-only**: `tramite_movimiento` (UNIQUE `(id_tramite, orden_secuencial)`); cada acción es fila nueva, nunca UPDATE.
+- **Iniciador polimórfico**: `iniciador_tipo ∈ {ciudadano, empresa, area_interna}` + CHECK que exige exactamente una de `{id_ciudadano_iniciador, id_empresa_iniciadora, id_subarea_iniciadora}`.
+- **Destinatario polimórfico**: `destinatario_actual_tipo ∈ {subarea, equipo, agente}` + CHECK `ck_tramite_destinatario` con 4 ramas (NULL/subarea/equipo/agente), exactamente una de `{id_subarea_actual, id_equipo_actual, id_agente_actual}`. **`agente` = destinatario directo a una persona** (mig 66): aparece en SU bandeja, nadie más lo toma. **CRÍTICO: toda ruta que cambie destinatario o lleve a estado final DEBE setear las 3 FKs coherente con el tipo, o viola el CHECK** (cazado en `transicionar_tramite` que omitía `id_agente_actual`). Ver [[project_tramites_destinatario_agente_y_mi_bandeja]].
+
+### Tablas
+
+Catálogo (7): `tipo_tramite` (código único, prefijo, iniciadores permitidos), `tipo_tramite_version`, `tipo_tramite_campo` (tipo_dato, orden, opciones_jsonb), `tipo_tramite_estado` (codigo, etiqueta, color, es_inicial/es_final), `tipo_tramite_transicion` (origen→destino, quien_puede_jsonb, requiere_comentario/adjunto, **tipo_accion** aprobar/rechazar/derivar/avanzar/otro mig 68, **mensaje_iniciador** mig 68, **notifica_iniciador**), `tipo_tramite_documento_requerido` (obligatorio, formatos, requiere_firma, **cantidad_max_archivos** 1-20 mig 68), `tipo_tramite_numerador`.
+
+Instancias (5): `tramite` (`numero_expediente` único, polimorfismo iniciador+destinatario, `id_agente_tomado_por`), `tramite_movimiento`, `tramite_documento` (storage_path, sha256, mime_type, size_bytes), `tramite_firma` (polimórfico agente/subarea/equipo), `tramite_relacion`.
+
+Aprobaciones por etapa (visados, mig 73, separadas de `tramite_firma`): `tipo_tramite_aprobacion_requerida` (catálogo versionado: estado/etapa + aprobador polimórfico subarea|equipo|agente + `bloqueante` default TRUE) y `tramite_aprobacion` (instancia: estado pendiente|aprobada|rechazada, UNIQUE `(id_tramite, id_requisito)`). Las bloqueantes impiden avanzar; el rechazo NO transiciona (deja el trámite trabado con motivo visible). **Circuito de subsanación (2026-06-01):** una bloqueante pendiente/rechazada bloquea TODAS las transiciones salientes **salvo las de `tipo_accion='derivar'`** (devolución a subsanación) — sin esa excepción un visado rechazado dejaba el trámite trabado sin salida. Y al **re-entrar** a la etapa del visado (reenvío post-subsanación) los visados `rechazada` **se re-pendientizan solos** (`svc_aprob.rependientizar_rechazadas_de_estado`, limpia comentario/doc/quién/cuándo + movimiento `aprobacion` "Visados reabiertos"). Ambos en `transicionar_tramite`. Ver [[project_tramites_aprobaciones_por_etapa]].
+
+Todas siguen §10. **El catálogo `tipo_tramite` NO tiene `id_usuario_alta`** ([[reference_tipo_tramite_sin_usuario_alta]]); la auditoría de usuario vive solo en las instancias. `es_sistema` (mig 56) distingue seed (TRUE) de custom (FALSE).
+
+### Migraciones (todas local + prod)
+47 catálogos · 48 instancias · 49 índices · 50 auditoría en instancias · 56 `es_sistema` · 66 destinatario=agente · 68 tipo_accion/mensaje_iniciador/cantidad_max_archivos · 73 aprobaciones por etapa · 74 `resultado` (Fase 1 retención) · 75 retención Fases 2-5 (`retencion_nunca_depurar`, `fecha_archivado`/`archivado_motivo`, `binario_purgado`/`fecha_purga_binario`, ledger `archivado_inactividad`/`purga_binario` + claves config en `75b`). Detalle en HISTORIAL/§21.
+
+### Seeds
+`backend/seed_tramites.py` (idempotente): 7 subáreas del circuito, 9 tipos con versión publicada v1 (poda-arbol POD, pedido-informe INF, licencia-ordinaria LIC, habilitacion-comercial HAB, cambio-domicilio-comercial CDC, transferencia-habilitacion THC, inspeccion-bromatologica BRO, cartel-publicitario CAR, recurso-administrativo REA) + ~21 trámites demo. `$env:ENV_FILE=".env.local"; python seed_tramites.py`.
+
+### Endpoints (`/api/v1/tramites`, JWT a nivel router)
+
+Registrado **ANTES de `admin_tablas_router`** (evita `/{tabla}` greedy, §5). Las rutas de segmento fijo (`/mi-bandeja`, `/destinatarios`, `/tipos`) van **ANTES de `/{numero_o_id}`** (param greedy).
+
+| Verbo | Path | Notas |
+|---|---|---|
+| GET | `/tipos` · `/tipos/{id}` | Tipos activos publicados; detalle con campos/estados/transiciones/docs **a nivel raíz** (`version` es solo metadata) |
+| GET | `` (bandeja) | Filtros estado/tipo/iniciador/destinatario/numero/q/fechas; `X-Total-Count` |
+| GET | `/{numero_o_id}` (+ `/movimientos`, `/documentos`) | Acepta `POD-LPL-2026-0001` o id int |
+| GET | `/mi-bandeja` | Colectivos del agente resueltos server-side (subárea + equipos/mesas + asignado a mí + tomado por mí). El `GET ""` general NO sirve (filtra un destinatario único). Filtros estado/tipo/sin_tomar/q |
+| GET | `/destinatarios?q=` | Opciones de pase agrupadas (agentes/equipos/subáreas). Quirk: `CAST(:q AS text) IS NULL` (sino `AmbiguousParameterError`) |
+| POST | `` | Crear (201). Numerador atómico, estado inicial, 2 movimientos. **Body: `iniciador` ANIDADO** `{tipo, id_ciudadano, id_empresa, id_subarea, id_ciudadano_representante}` + `datos` (NO `datos_jsonb`) + `id_municipio`; la versión se deriva del tipo |
+| POST | `/{ref}/tomar` · `/liberar` · `/transicionar` · `/pase` · `/comentar` · `/relacionar` + GET `/transiciones-permitidas` | `tomar`=`SELECT FOR UPDATE`. `pase`/transición-final auto-liberan toma. `transicionar` valida `quien_puede_jsonb` + `requiere_adjunto` + guard de aprobaciones bloqueantes (422). `relacionar` ordena ids para UNIQUE |
+| POST/GET | `/{ref}/documentos` (+ `/{id}/contenido`, `/firmar`, `/rechazar-firma`) | Upload multipart; SHA256 sobre bytes; firma captura ip/user_agent/hash. `contenido` solo auth por header (no `?token=`), fetch con `cache:'no-store'` |
+| POST | `/{ref}/aprobaciones/{id_aprob}/resolver` | Aprobar/rechazar visado de etapa (mig 73) |
+
+Admin (`/api/v1/admin/tramites`, nivel ≤ 2, registrado antes de admin_tablas): CRUD de tipos/versiones/campos/estados/transiciones/docs-requeridos/aprobaciones-requeridas (~20 endpoints) + `GET /tipos` admin (lista TODOS: publicados+borradores+sin-estados, con `es_sistema` y `estado_version`). Versionado: v1 editable in-place sin trámites; con trámites fuerza v2 borrador (copia estructura via `versionado.crear_borrador_desde_publicada`). Publicar valida 1 inicial + ≥1 final.
+
+### Servicios (`backend/app/services/tramites/`)
+`numerador.py` (`proximo_numero` atómico, `formatear_numero`) · `auth.py` (`resolver_agente_desde_usuario` → `{id_agente, id_subarea, ids_equipos, id_municipio, nivel_acceso}`, `es_admin(nivel)=nivel<=2`) · `autorizacion.py` (`quien_puede_actuar` OR entre subareas/equipos/iniciador/roles) · `movimientos.py` (append-only, `COALESCE(MAX,0)+1`) · `creacion.py` (`validar_campos_contra_tipo`, `resolver_iniciador`, `determinar_destinatario_inicial`) · `documentos.py` (Supabase Storage + SHA256) · `firmas.py` (polimórfico, captura evidencia) · `versionado.py` · `aprobaciones.py` · `retencion.py` (mig 75: `archivar_inactivos` + `purgar_binarios` dry-run, helpers de config; lo dispara `routes/tramites_mantenimiento.py` vía cron).
+
+### Reglas operativas críticas
+- Toda mutación: transacción + `SELECT FOR UPDATE` sobre `tramite`.
+- `requiere_adjunto` cuenta `tramite_documento.activo` con `fecha_alta >= fecha_entrada_estado_actual`.
+- **Firma de documentos (`firmas.py::agente_puede_firmar`, política del municipio):** admin (n1) firma siempre; **operador/consultor (n≥3) NUNCA**; supervisor (n2) solo si pertenece al colectivo asignado a la firma (agente/subárea/equipo); firma SIN asignación → **fail-CLOSED** (solo admin). Era fail-open antes (cualquiera firmaba). Frontend `ListaDocumentos.tsx` gatea los botones firmar/rechazar a `hasPermission(2)` — el backend sigue siendo la fuente de verdad (403 al resto).
+- **`GET /tramites/mi-bandeja` filtra municipio tolerando NULL:** `(:mun IS NULL OR t.id_municipio = :mun OR t.id_municipio IS NULL)`. Filtrar con `= :mun` estricto vaciaba la bandeja en silencio cuando `agente.id_municipio` era NULL (drift de datos; `= NULL` no matchea nada en SQL). Si agregás un filtro por municipio sobre datos que pueden venir NULL, tolerá NULL (§38 mono-municipio). Ver [[feedback_filtro_igual_null_vacia_listado]].
+
+### Marca `resultado` del trámite + política de retención de documentos (migs 74 + 75, COMPLETA 2026-06-01)
+`tramite.resultado` (`pendiente|aprobado|rechazado`, CHECK `ck_tramite_resultado`) es una marca **paralela al estado FSM**, NO un estado: el estado es del flujo del circuito, el resultado dice cómo concluyó el trámite (se consulta junto al estado, "archivado, aprobado/rechazado"). Endpoint `POST /tramites/{ref}/resultado` (nivel ≤ 2, `ResultadoIn`) + movimiento `'resultado'` en el ledger. Expuesto en `TramiteDetalleOut.resultado` — **setearlo en los DOS builders del detalle** (`_tramite_detalle_out` + el GET handler `detalle_tramite`, [[feedback_columna_nueva_auditar_todos_los_select]]). Frontend: `ResultadoChip` (chip + dropdown, solo nivel ≤2).
+- **Política de retención (Fases 2-5, mig 75 — toda implementada).** El **registro** de cada documento (metadatos + `hash_sha256`) NUNCA se borra; solo se depura el **binario físico** del bucket por antigüedad, marcando `tramite_documento.binario_purgado=TRUE` + `fecha_purga_binario`. Plazos **configurables** en `configuracion_general` (Config → Sistema §41): `retencion_dias_aprobado` (3650 = 10 años), `retencion_dias_rechazado` (365 = 1 año), `tramite_inactividad_dias` (180), `tramite_purga_binarios_real` (`false` = dry-run, red de seguridad — arranca apagado).
+  - **Fase 2 (excepción por tipo):** `tipo_tramite.retencion_nunca_depurar` (BOOL). Si `TRUE`, los binarios de ese tipo nunca se purgan (ej. Habilitaciones). Editable en el builder de tipos (`NuevoTipoModal`/`EditarTipoModal`, checkbox) + visible en el detalle del tipo.
+  - **Fase 3 (auto-archivado):** trámite sin movimiento ≥ `tramite_inactividad_dias` y NO en estado final → `fecha_archivado=NOW()`, `archivado_motivo='inactividad'`, `resultado='rechazado'`, movimiento `'archivado_inactividad'`. El archivado es una marca de mantenimiento **paralela al estado del FSM** (no fuerza un estado "archivado" que el circuito puede no tener), igual que `resultado`.
+  - **Fase 4 (purga):** documentos de trámites ya concluidos (archivados o `resultado≠pendiente`), vencido el plazo según resultado, EXCEPTO tipos con `retencion_nunca_depurar`. Plazo contado desde `COALESCE(fecha_archivado, último movimiento, fecha_alta)`. **Dry-run por default** (solo reporta; el switch `tramite_purga_binarios_real='true'` la activa). Borra del bucket + marca `binario_purgado` + movimiento `'purga_binario'`. `GET /documentos/{id}/contenido` devuelve **410 Gone** si el binario fue purgado (no 404); el front muestra "Archivo depurado" en vez del botón descargar.
+  - **Fase 5 (cron):** endpoint `POST /api/v1/tramites/mantenimiento/ejecutar` (router `tramites_mantenimiento.py`, SIN guard JWT — auth por header `X-Dispatcher-Token`, mismo `DISPATCHER_TOKEN` de Railway que encuestas §42; **registrado ANTES de `tramites_router`** por el `/{numero_o_id}` greedy §5). Corre `archivar_inactivos` + `purgar_binarios`. Query param `forzar_purga_real=true` ignora el dry-run para una corrida controlada. Disparado diario por `.github/workflows/tramites-mantenimiento.yml` (04:10 UTC). Motores en `services/tramites/retencion.py`. Movimientos del cron usan `id_agente_iniciador` del trámite (la columna es NOT NULL; no hay "agente sistema") + `id_usuario=None`.
+  - **Quirk asyncpg:** `make_interval(days => CAST(:p AS integer))`; dentro de un `CASE` castear **cada bind param** (`CASE WHEN ... THEN CAST(:da AS integer) ELSE CAST(:dr AS integer) END`), no el CASE entero (sino asyncpg infiere `text` y falla). Familia de [[feedback_asyncpg_extract_cast_date]].
+- **Storage = Supabase Storage** (bucket privado `tramites-documentos`, paths `tramites/{anio}/{expediente}/{uuid}.{ext}`). Backend recibe multipart, calcula SHA256, PUT con service_role (`app/core/storage.py`, reusado por Reclamos §26 y OT §34). `verificar_integridad_documento` recomputa SHA256 descargando del bucket. Ver [[project_tramites_storage_efimero_deuda]].
+- **Notificaciones**: in-app + email cuando un trámite entra a una bandeja (creación/pase/transición que cambia destinatario), comentario al tomador, estado final al iniciador (incluye email a ciudadano/empresa con `mensaje_iniciador` custom mig 68 si `notifica_iniciador`), firma pendiente. Ver §51-notificaciones (mig 51) y [[project_notificaciones_in_app_email]]. La campana vive en el shell vanilla (`menu.js`) porque el TopBar React se auto-oculta en iframe ([[feedback_features_topbar_react_invisibles_en_prod]]).
+- **Flujo de tipos custom**: nace en borrador, NO disponible en "Nuevo trámite" hasta tener estado inicial+final y "Publicar y habilitar". El alta lista solo publicados.
+
+### Quirks (vigentes)
+- **JSONB en asyncpg**: NO `:v::jsonb` ni `dict` en prepared statements de SQLAlchemy `text()`. Usar `VALUES (CAST(:v AS jsonb))` con `json.dumps(val) if val is not None else None`. (El `::jsonb` sí funciona en psql y en `asyncpg_conn.execute()` directo, §5.)
+- **Mapeo de params iniciador**: `**iniciador_fks` sobre el dict del INSERT falla (claves largas ≠ `:alias`). Mapear explícito ([[feedback_mapeo_alias_sql_vs_claves_dict]]).
+- **`tramite` no tiene `id_tipo_tramite` directo** — va via `id_tipo_tramite_version → tipo_tramite_version → tipo_tramite` ([[reference_tramite_no_tiene_id_tipo_tramite_directo]]).
+- **`opciones_jsonb` de seeds viejos** puede venir como `{opciones:[...]}` en vez de `[...]` — normalizar antes de `.map` ([[feedback_normalizar_jsonb_de_seeds_viejos]]).
+- **Columna nueva del catálogo**: sumarla también a los SELECT de lista explícita de `detalle_version` (tramites_admin.py), no solo a migración/schema/INSERT — sino el endpoint la devuelve `undefined` silencioso ([[feedback_columna_nueva_auditar_todos_los_select]]).
+- **VisorDocumento**: `react-pdf@10.4.1` + `pdfjs-dist@5.4.296` (pin exacto, [[feedback_react_pdf_pin_pdfjs_version]]).
+- **Modal de carga larga** (`admin/modals/_modalShell.tsx`): body `flex:1; minHeight:0; overflowY:auto` (header fijo, body scrollea) + click-outside exige mousedown+mouseup sobre el overlay. Estilo inline no soporta `:disabled` → derivar el estilo condicionalmente (botones de orden).
+- **Reorden de campos/docs** (`useReordenarCampo`/`useReordenarDocReq`): reasigna `orden` 1..N por posición (NO swap — los seeds tenían órdenes duplicados).
+
+### Aprobaciones por etapa — COMPLETA en prod (2026-06-01, mig 73)
+Backend + builder + detalle operativo, todo verificado E2E navegando en prod. **Frontend:** `components/PanelAprobaciones.tsx` (verde/rojo/gris + Aprobar/Rechazar con comentario + aviso de bloqueo) montado en `pages/DetalleTramite.tsx`; `resolverAprobacion` (lib/api.ts), `useResolverAprobacion` (hooks/useTramites.ts), `TramiteAprobacion` (en `tramites/types.ts`, NO `lib/types.ts`). El tab **"Aprobaciones" del builder** (`ConfigTramiteDetalle.tsx`) se configura desde la barra de tabs (estaba implementado pero faltaba el botón en la barra hasta el 2026-06-01). **Trap recurrente cazado:** el handler GET `/{numero_o_id}` arma su propio `TramiteDetalleOut` — al sumar `aprobaciones` hubo que tocarlo además de `_tramite_detalle_out` (helper de mutaciones); dos rutas construyen el mismo response ([[feedback_columna_nueva_auditar_todos_los_select]]). Modelo/flujo en [[project_tramites_aprobaciones_por_etapa]].
+
+### Manuales
+`docs/manual_tramites.html` (uso operativo) · `docs/manual_admin_tramites.html` (creación de tipos, admin). Vía módulo Guías §37.
