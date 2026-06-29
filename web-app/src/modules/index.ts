@@ -22,20 +22,27 @@ import { guiasModule } from './guias'
 // en el sidebar; se llega via la landing de Contactos), pero siguen exportando
 // sus rutas /ciudadanos y /empresas para deep-links del shell vanilla y links
 // internos desde otros modulos.
+// El orden y la agrupación espejan el sidebar reagrupado por rol del shell
+// vanilla (index.html, secciones .nav-flat__section, CLAUDE.md §30):
+//   Atención (nivel 3) · Supervisión (nivel 2) · Común · Administración (nivel 1)
 export const modules: ModuleManifest[] = [
-  dashboardModule,
+  dashboardModule,     // HOME — no aparece en sidebar
+  // ── Atención (nivel 3) ──
   emergenciasModule,   // primero del sidebar (pedido del usuario 2026-06-10)
   reclamosModule,
   turnosModule,
   entradasModule,
-  agendaModule,
-  otModule,
-  contactosModule,
-  ciudadanosModule,
-  empresasModule,
   tramitesModule,
-  encuestasModule,
+  // ── Supervisión (nivel 2) ──
+  otModule,
+  // ── Común (atención + supervisión) ──
+  agendaModule,
+  contactosModule,
+  ciudadanosModule,    // detrás de Contactos (sin item top-level)
+  empresasModule,      // detrás de Contactos (sin item top-level)
+  // ── Administración (nivel 1) ──
   biModule,
+  encuestasModule,
   configModule,
   guiasModule,
 ]

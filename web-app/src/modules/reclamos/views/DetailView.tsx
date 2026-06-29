@@ -45,12 +45,19 @@ export function DetailView() {
 
   const r = detalle.data
   const esFinal = r.estado === 'Resuelto' || r.estado === 'Cancelado'
-  // Gestion solo nivel 1/2/3 (admin/supervisor/operador). Nivel 4 (consultor) solo lee.
-  const puedeGestionar = !!user && user.nivel_acceso <= 3
-  const accionesVisibles = !esFinal && puedeGestionar
+  // Dos niveles de permiso (CLAUDE.md §30):
+  //  - EDITAR datos/observaciones: Atención (operador, nivel ≤ 3). El operador
+  //    genera y consulta reclamos, corrige datos y toma nota.
+  //  - CAMBIAR ESTADO (cambiar estado / cancelar / subreclamo): Supervisión
+  //    (nivel ≤ 2). La gestión del reclamo es Órdenes de Trabajo. El backend
+  //    rechaza con 403 si un operador lo intenta (no solo la UI, §30).
+  const puedeEditar = !!user && user.nivel_acceso <= 3
+  const puedeGestionarEstado = !!user && user.nivel_acceso <= 2
+  const editarVisible = !esFinal && puedeEditar
+  const accionesEstadoVisibles = !esFinal && puedeGestionarEstado
   // Subreclamo: solo sobre reclamos vivos que no sean ellos mismos un subreclamo
   // (el backend rechaza anidar > 1 nivel).
-  const puedeSubreclamar = accionesVisibles && r.id_reclamo_padre == null
+  const puedeSubreclamar = accionesEstadoVisibles && r.id_reclamo_padre == null
 
   return (
     <>
@@ -65,10 +72,16 @@ export function DetailView() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {accionesVisibles && (
+          {/* Cambiar estado / cancelar / subreclamo: solo Supervisión (nivel ≤ 2). */}
+          {accionesEstadoVisibles && (
+            <button onClick={() => setOpenEstado(true)} style={btnPrimary}>Cambiar estado</button>
+          )}
+          {/* Editar datos/observaciones: también Atención (operador, nivel ≤ 3). */}
+          {editarVisible && (
+            <button onClick={() => navigate(`/reclamos/${r.id_reclamo}/editar`)} style={btnGhost}>Editar</button>
+          )}
+          {accionesEstadoVisibles && (
             <>
-              <button onClick={() => setOpenEstado(true)} style={btnPrimary}>Cambiar estado</button>
-              <button onClick={() => navigate(`/reclamos/${r.id_reclamo}/editar`)} style={btnGhost}>Editar</button>
               {puedeSubreclamar && (
                 <button onClick={() => setOpenSubreclamo(true)} style={btnGhost}>Generar subreclamo</button>
               )}
@@ -157,7 +170,9 @@ export function DetailView() {
 
       <UbicacionSection r={r} />
 
-      <AdjuntosSection idReclamo={r.id_reclamo} puedeGestionar={accionesVisibles} />
+      {/* Adjuntos = evidencia del reclamo. El operador (nivel ≤ 3) puede aportar
+          fotos: es documentar el reclamo, no cambiar su estado. */}
+      <AdjuntosSection idReclamo={r.id_reclamo} puedeGestionar={editarVisible} />
 
       {r.subreclamos.length > 0 && <SubreclamosSection items={r.subreclamos} />}
 
