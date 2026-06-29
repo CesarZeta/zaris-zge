@@ -8,7 +8,7 @@
 
 - **Fase 0 (inventario + plan):** ✅ completada — commit `b1f8117`.
 - **Fase 1 (piloto §44 Emergencias):** ✅ **migrado** — skill `modulo-emergencias` creada, puntero en CLAUDE.md, ancla `## 44.` conservada. CLAUDE.md 1992→1981 líneas. **Pendiente: validación manual del usuario (auto-invocación en sesión nueva).**
-- **Fase 2 (replicar):** en curso. Piloto validado (auto-invocó en sesión nueva). Bloque 1 (§42, §43, §34) migrado. CLAUDE.md 1981→1814 líneas.
+- **Fase 2 (replicar):** en curso. Piloto validado (auto-invocó en sesión nueva). Bloque 1 (§42, §43, §34) y bloque 2 (§39, §41, §33) migrados. CLAUDE.md 1981→1691 líneas. §41 split: el "Estándar OBLIGATORIO de verificación UI" quedó en CLAUDE.md (transversal).
 
 ## Reglas inviolables del refactor
 
@@ -65,12 +65,12 @@
 | §44 | Módulo Emergencias (COM) | `modulo-emergencias` | 7 / 5 / 2 | **PILOTO — migrado** ✅ |
 | §42 | Módulo Encuestas (CSAT) | `modulo-encuestas` | 18 / 8 / 10 | **migrado** ✅ |
 | §43 | Módulo Datos (BI) | `modulo-bi` | 5 / 2 / 3 | **migrado** ✅ |
-| §39 | Módulo Usuarios | `modulo-usuarios` | 11 / 5 / 6 | propuesto |
-| §41 | Módulo Config (React) | `modulo-config` | 10 / 2 / 8 | propuesto |
+| §39 | Módulo Usuarios | `modulo-usuarios` | 11 / 5 / 6 | **migrado** ✅ |
+| §41 | Módulo Config (React) | `modulo-config` | 10 / 2 / 8 | **migrado (split)** ✅ |
 | §37 | Módulo Guías | `modulo-guias` | 6 / 6 / 0 | propuesto |
 | §36 | Generación de manuales | (ver nota↓) | 4 / 2 / 2 | propuesto |
 | §34 | Módulo OT | `modulo-ot` | 5 / 2 / 3 | **migrado** ✅ |
-| §33 | Módulos Turnos y Entradas | `modulo-turnos-entradas` | 17 / 7 / 10 | propuesto |
+| §33 | Módulos Turnos y Entradas | `modulo-turnos-entradas` | 17 / 7 / 10 | **migrado** ✅ |
 | §35 | Módulo Trámites / Expedientes | `modulo-tramites` | 33 / 6 / 27 | propuesto |
 | §38 | Auth público de ciudadanos (App Vecinos) | `modulo-app-vecinos` | 23 / 8 / 15 | propuesto |
 | §30 | Permisos por módulo | `modulo-permisos` | 18 / 3 / 15 | propuesto |
