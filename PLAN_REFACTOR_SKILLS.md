@@ -6,8 +6,8 @@
 
 ## Estado de fases
 
-- **Fase 0 (inventario + plan):** en curso — este documento.
-- **Fase 1 (piloto):** pendiente de OK del usuario. Módulo piloto elegido: **§44 Emergencias**.
+- **Fase 0 (inventario + plan):** ✅ completada — commit `b1f8117`.
+- **Fase 1 (piloto §44 Emergencias):** ✅ **migrado** — skill `modulo-emergencias` creada, puntero en CLAUDE.md, ancla `## 44.` conservada. CLAUDE.md 1992→1981 líneas. **Pendiente: validación manual del usuario (auto-invocación en sesión nueva).**
 - **Fase 2+ (replicar):** pendiente de confirmar que el piloto auto-invoca.
 
 ## Reglas inviolables del refactor
@@ -62,7 +62,7 @@
 
 | § | Título | Skill | Refs entrantes (total / interna CLAUDE.md / externa otros .md) | Estado |
 |---|---|---|---|---|
-| §44 | Módulo Emergencias (COM) | `modulo-emergencias` | 7 / 5 / 2 | **PILOTO** — propuesto |
+| §44 | Módulo Emergencias (COM) | `modulo-emergencias` | 7 / 5 / 2 | **PILOTO — migrado** ✅ |
 | §42 | Módulo Encuestas (CSAT) | `modulo-encuestas` | 18 / 8 / 10 | propuesto |
 | §43 | Módulo Datos (BI) | `modulo-bi` | 5 / 2 / 3 | propuesto |
 | §39 | Módulo Usuarios | `modulo-usuarios` | 11 / 5 / 6 | propuesto |
