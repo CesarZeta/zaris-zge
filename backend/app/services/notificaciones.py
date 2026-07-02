@@ -95,26 +95,41 @@ async def _emitir_a_usuarios(
     db: AsyncSession,
     usuarios: list[dict],
     *,
-    tramite: dict,
+    tramite: Optional[dict] = None,
     tipo_notif: str,
     titulo: str,
     mensaje: str,
     url_destino: str,
     background_tasks: Optional[BackgroundTasks],
     excluir_usuario: Optional[int] = None,
+    # Modo generico (Fase 3 roles): cuando la notificacion NO es de un tramite,
+    # el caller pasa estos campos en vez de `tramite`. Los callers de tramites
+    # quedan como estaban (derivamos todo del dict `tramite`).
+    recurso_tipo: str = "tramite",
+    recurso_id: Optional[int] = None,
+    id_municipio: Optional[int] = None,
+    url_absoluta: Optional[str] = None,
+    cta_label: Optional[str] = None,
 ) -> int:
     """
     Inserta una fila en `notificacion` por cada usuario (excepto `excluir_usuario`)
     y encola el envio de email. Commitea al final. Devuelve la cantidad creada.
 
     Para usar despues de armar la lista de destinatarios concreta. Asume que el
-    caller ya hizo el SELECT del tramite y armo el contenido del mensaje.
+    caller ya hizo el SELECT del recurso y armo el contenido del mensaje.
     """
     if not usuarios:
         return 0
 
-    url_abs = _url_absoluta_tramite(tramite["numero_expediente"])
-    html_body, text_body = _mail_body(titulo, mensaje, tramite["numero_expediente"], url_abs)
+    if tramite is not None:
+        recurso_id = tramite["id_tramite"]
+        id_municipio = tramite.get("id_municipio")
+        url_absoluta = _url_absoluta_tramite(tramite["numero_expediente"])
+        cta_label = f"Abrir tramite {tramite['numero_expediente']}"
+    if recurso_id is None or url_absoluta is None:
+        logger.error("_emitir_a_usuarios sin recurso_id/url_absoluta (tipo=%s)", tipo_notif)
+        return 0
+    html_body, text_body = _mail_body(titulo, mensaje, cta_label or "Abrir en ZARIS", url_absoluta)
 
     creadas = 0
     envios_pendientes: list[tuple[int, str]] = []
@@ -128,7 +143,7 @@ async def _emitir_a_usuarios(
                     recurso_tipo, recurso_id, id_municipio
                 ) VALUES (
                     :uid, :tipo, :tit, :msg, :url,
-                    'tramite', :rid, :mun
+                    :rtipo, :rid, :mun
                 )
                 RETURNING id_notificacion
             """),
@@ -138,8 +153,9 @@ async def _emitir_a_usuarios(
                 "tit": titulo,
                 "msg": mensaje,
                 "url": url_destino,
-                "rid": tramite["id_tramite"],
-                "mun": tramite.get("id_municipio"),
+                "rtipo": recurso_tipo,
+                "rid": recurso_id,
+                "mun": id_municipio,
             },
         )).fetchone()
         creadas += 1
@@ -284,8 +300,9 @@ def _titulo_y_mensaje(evento: EventoTramite, tramite: dict) -> tuple[str, str]:
     return titulo, mensaje
 
 
-def _mail_body(titulo: str, mensaje: str, numero: str, url_abs: str) -> tuple[str, str]:
-    """Devuelve (html, text)."""
+def _mail_body(titulo: str, mensaje: str, cta_label: str, url_abs: str) -> tuple[str, str]:
+    """Devuelve (html, text). `cta_label` es el texto del boton (ej. "Abrir
+    tramite EXP-...", "Ver reclamo REC-...")."""
     html = f"""\
 <!DOCTYPE html>
 <html><body style="font-family:Arial,sans-serif;color:#26251e;line-height:1.5;max-width:560px;margin:auto;padding:24px">
@@ -294,11 +311,11 @@ def _mail_body(titulo: str, mensaje: str, numero: str, url_abs: str) -> tuple[st
   <p style="margin:0 0 24px">
     <a href="{url_abs}"
        style="background:#f54e00;color:#fff;text-decoration:none;padding:10px 20px;border-radius:8px;display:inline-block;font-weight:500">
-       Abrir tramite {numero}
+       {cta_label}
     </a>
   </p>
   <p style="margin:24px 0 0;font-size:12px;color:#999">
-    Recibis este mail porque sos miembro activo del destinatario de este tramite en ZARIS.
+    Recibis este mail por tu rol en ZARIS sobre este movimiento.
   </p>
 </body></html>"""
     text_body = f"{titulo}\n\n{mensaje}\n\nAbrir: {url_abs}\n"
@@ -609,5 +626,107 @@ async def notificar_estado_final_a_iniciador(
         logger.error(
             "notificar_estado_final_a_iniciador FALLO (tramite=%s): %s",
             id_tramite, e, exc_info=True,
+        )
+        return 0
+
+
+async def notificar_aviso_reclamo_a_supervision(
+    db: AsyncSession,
+    id_reclamo: int,
+    id_usuario_operador: int,
+    accion_sugerida: str,
+    comentario: str,
+    background_tasks: Optional[BackgroundTasks] = None,
+) -> int:
+    """
+    Fase 3 roles — "Avisar al supervisor" desde Reclamos: el operador (nivel 3)
+    no cambia estados; genera un aviso con la accion que pide. Destinatarios:
+    los SUPERVISORES (nivel 2) con agente activo en la subarea del reclamo
+    (derivada del tipo, §27/mig 27). Si la subarea no tiene ningun supervisor,
+    FALLBACK: se notifica a los ADMINS (nivel 1) para que el pedido nunca se
+    pierda (decision del usuario 2026-07-02).
+
+    Fail-safe: cualquier error se logea pero NO levanta (el aviso ya quedo en
+    reclamo_historial; perder el mail no debe romper el endpoint).
+    """
+    try:
+        reclamo = (await db.execute(text("""
+            SELECT r.id_reclamo, r.nro_reclamo, r.id_municipio,
+                   tr.id_subarea, s.nombre AS subarea_nombre,
+                   u.nombre AS operador_nombre
+              FROM reclamos r
+              LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
+              LEFT JOIN subarea s ON s.id_subarea = tr.id_subarea
+              LEFT JOIN usuarios u ON u.id_usuario = :uid
+             WHERE r.id_reclamo = :rid AND r.activo = TRUE
+        """), {"rid": id_reclamo, "uid": id_usuario_operador})).fetchone()
+        if not reclamo:
+            logger.warning("notificar_aviso_reclamo: reclamo %s no encontrado", id_reclamo)
+            return 0
+
+        usuarios: list[dict] = []
+        destino = "sin destinatarios"
+        if reclamo.id_subarea:
+            rows = (await db.execute(text("""
+                SELECT DISTINCT u.id_usuario, u.nombre, u.email
+                  FROM agentes a
+                  JOIN usuarios u ON u.id_usuario = a.id_usuario AND u.activo = TRUE
+                 WHERE a.id_subarea = :did AND a.activo = TRUE
+                   AND u.nivel_acceso = 2
+                   AND u.email IS NOT NULL AND u.email <> ''
+            """), {"did": reclamo.id_subarea})).fetchall()
+            usuarios = [dict(r._mapping) for r in rows]
+            destino = f"supervisores subarea/{reclamo.id_subarea}"
+        if not usuarios:
+            rows = (await db.execute(text("""
+                SELECT u.id_usuario, u.nombre, u.email
+                  FROM usuarios u
+                 WHERE u.activo = TRUE AND u.nivel_acceso = 1
+                   AND u.email IS NOT NULL AND u.email <> ''
+            """))).fetchall()
+            usuarios = [dict(r._mapping) for r in rows]
+            destino = "admins (fallback: subarea sin supervisor)"
+        if not usuarios:
+            logger.warning(
+                "notificar_aviso_reclamo %s: sin supervisores NI admins con email",
+                reclamo.nro_reclamo,
+            )
+            return 0
+
+        nro = reclamo.nro_reclamo or f"#{id_reclamo}"
+        operador = reclamo.operador_nombre or "Un operador"
+        titulo = f"Aviso del operador — {nro}"
+        mensaje = f"{operador} pide \"{accion_sugerida}\" para el reclamo {nro}"
+        if reclamo.subarea_nombre:
+            mensaje += f" ({reclamo.subarea_nombre})"
+        mensaje += "."
+        comentario = (comentario or "").strip()
+        if comentario:
+            mensaje += f" Comentario: \"{comentario}\""
+
+        base = settings.APP_BASE_URL.rstrip("/")
+        creadas = await _emitir_a_usuarios(
+            db, usuarios,
+            tipo_notif="reclamo_aviso_supervisor",
+            titulo=titulo,
+            mensaje=mensaje,
+            url_destino=f"#/reclamos/{id_reclamo}",
+            background_tasks=background_tasks,
+            excluir_usuario=id_usuario_operador,
+            recurso_tipo="reclamo",
+            recurso_id=id_reclamo,
+            id_municipio=reclamo.id_municipio,
+            url_absoluta=f"{base}/#/reclamos/{id_reclamo}",
+            cta_label=f"Ver reclamo {nro}",
+        )
+        logger.info(
+            "notificar_aviso_reclamo %s: %d notif a %s (accion=%s)",
+            nro, creadas, destino, accion_sugerida,
+        )
+        return creadas
+    except Exception as e:
+        logger.error(
+            "notificar_aviso_reclamo_a_supervision FALLO (reclamo=%s): %s",
+            id_reclamo, e, exc_info=True,
         )
         return 0

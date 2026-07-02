@@ -54,9 +54,10 @@ router = APIRouter(prefix="/api/v1/turnos", tags=["turnos"])
 
 
 def _require_gestion(user: dict) -> None:
-    """Nivel 1-3 puede gestionar turnos. Nivel 4 (consultor) solo lee."""
-    if int(user.get("nivel_acceso", 99)) > 3:
-        raise HTTPException(403, "Permiso insuficiente (requiere nivel <= 3)")
+    """Nivel 1-4 puede gestionar turnos (mig 92: 4=Gestión, agente que atiende).
+    Nivel 5 (consultor) solo lee."""
+    if int(user.get("nivel_acceso", 99)) > 4:
+        raise HTTPException(403, "Permiso insuficiente (requiere nivel <= 4)")
 
 
 def _require_supervisor(user: dict) -> None:

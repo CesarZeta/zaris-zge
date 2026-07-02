@@ -7,6 +7,10 @@ export interface User {
   email: string
   nivel_acceso: 1 | 2 | 3 | 4
   modulos_permitidos?: string[]   // CLAUDE.md §30. Opcional para retro-compat con sesiones viejas.
+  // Subárea del agente vinculado (Fase 3 roles): scopea pickers/bandejas del
+  // supervisor. Opcionales: sesiones viejas no los traen (el backend igual impone).
+  id_subarea?: number | null
+  subarea_nombre?: string | null
 }
 
 export interface SubNavItem {

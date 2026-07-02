@@ -42,7 +42,7 @@
   const contextEl = document.getElementById('topbar-context');
   const infoEl    = document.getElementById('user-menu-info');
 
-  const NIVELES = { 1: 'Administrador', 2: 'Supervisor', 3: 'Operador', 4: 'Consultor' };
+  const NIVELES = { 1: 'Administrador', 2: 'Supervisor', 3: 'Atención', 4: 'Gestión', 5: 'Consultor' };
 
   // Escape HTML — el nombre/username viene de la DB y puede contener payloads
   // XSS (alta sin sanitizar). NUNCA interpolar datos de usuario en innerHTML sin esto.

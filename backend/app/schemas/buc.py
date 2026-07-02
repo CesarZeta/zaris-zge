@@ -61,7 +61,7 @@ class UsuarioCreate(BaseModel):
     # un "nombre completo" aparte. `nombre` es opcional: si no viene, el endpoint
     # lo iguala al username (la columna es NOT NULL en la DB).
     nombre:       Optional[str] = Field(None, max_length=150)
-    nivel_acceso: int = Field(..., ge=1, le=4)
+    nivel_acceso: int = Field(..., ge=1, le=5)
     username:     str = Field(..., max_length=50, pattern=r"^[a-zA-Z0-9_.\-]+$")
     # El alta YA NO recibe password del form: el sistema genera una clave temporal
     # aleatoria, la manda por email, y marca debe_cambiar_password=TRUE (Fase 3).
@@ -94,7 +94,7 @@ class UsuarioCreate(BaseModel):
 
 class UsuarioUpdate(BaseModel):
     nombre:       Optional[str] = Field(None, max_length=150)
-    nivel_acceso: Optional[int] = Field(None, ge=1, le=4)
+    nivel_acceso: Optional[int] = Field(None, ge=1, le=5)
     id_cargo:     Optional[str] = Field(None, max_length=100)
     id_municipio: Optional[int] = None
     cuil:         Optional[str] = Field(None, max_length=11)

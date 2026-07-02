@@ -35,7 +35,9 @@ class Usuario(Base):
     fecha_ultimo_login = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
-        CheckConstraint("nivel_acceso BETWEEN 1 AND 4", name="ck_usuarios_nivel"),
+        # Mig 92: 1=Admin, 2=Supervisor, 3=Atención, 4=Gestión, 5=Consultor.
+        # En prod el constraint se llama usuarios_nivel_acceso_check.
+        CheckConstraint("nivel_acceso BETWEEN 1 AND 5", name="ck_usuarios_nivel"),
         Index("idx_usuarios_username", "username"),
     )
 

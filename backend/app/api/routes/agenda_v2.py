@@ -77,11 +77,12 @@ logger = logging.getLogger("zaris.agenda_v2")
 
 def _require_operador(user: dict) -> None:
     """Mutaciones de agenda (eventos/encargados/reservas/ocupaciones/conflictos)
-    exigen nivel <= 3 — espejo de modulos.agenda.min_nivel_acceso. El Consultor
-    (nivel 4) queda solo-lectura. Config de espacios/disponibilidad/novedades
-    sigue exigiendo <= 2 en sus routers propios (ver guard_nivel_endpoint_no_solo_ui)."""
-    if int(user.get("nivel_acceso", 99)) > 3:
-        raise HTTPException(403, "Permiso insuficiente (requiere nivel <= 3)")
+    exigen nivel <= 4 — espejo de modulos.agenda.min_nivel_acceso (mig 92:
+    4=Gestión). El Consultor (nivel 5) queda solo-lectura. Config de espacios/
+    disponibilidad/novedades sigue exigiendo <= 2 en sus routers propios
+    (ver guard_nivel_endpoint_no_solo_ui)."""
+    if int(user.get("nivel_acceso", 99)) > 4:
+        raise HTTPException(403, "Permiso insuficiente (requiere nivel <= 4)")
 
 
 async def require_operador(current_user: dict = Depends(get_current_user)) -> dict:
@@ -158,6 +159,7 @@ async def listar_recursos_agenda(
     tipo: Optional[Literal["agente", "equipo"]] = Query(None),
     q: Optional[str] = Query(None, max_length=80),
     id_municipio: Optional[int] = Query(None),
+    id_subarea: Optional[int] = Query(None, description="Filtra agentes y equipos por su subárea. Usado por el Planificador de OT para scopear el picker al supervisor (Fase 3 roles). La imposición dura vive en los POST de OT."),
     limit: int = Query(100, ge=1, le=500),
     solo_cuadrillas: bool = Query(False, description="Si True, lista solo equipos con tipo_grupo='trabajo_reclamos' (cuadrillas que atienden reclamos/OT). Usado por el Planificador de OT para no ofrecer mesas de tramites como destinatario de una OT. No afecta a los agentes."),
     db: AsyncSession = Depends(get_db),
@@ -174,6 +176,9 @@ async def listar_recursos_agenda(
         if id_municipio is not None:
             conds.append("id_municipio = :im")
             params["im"] = id_municipio
+        if id_subarea is not None:
+            conds.append("id_subarea = :isub")
+            params["isub"] = id_subarea
         where = " AND ".join(conds)
         rows = (await db.execute(text(f"""
             SELECT id_agente AS id, apellido || ', ' || nombre AS nombre
@@ -190,6 +195,9 @@ async def listar_recursos_agenda(
         if id_municipio is not None:
             conds.append("id_municipio = :im")
             params["im"] = id_municipio
+        if id_subarea is not None:
+            conds.append("id_subarea = :isub")
+            params["isub"] = id_subarea
         if solo_cuadrillas:
             conds.append("tipo_grupo = 'trabajo_reclamos'")
         where = " AND ".join(conds)

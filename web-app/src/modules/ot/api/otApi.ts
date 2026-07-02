@@ -22,10 +22,18 @@ const BASE = '/api/v1/ot'
 export const getCatalogoEstadosOT = () =>
   api.get<CatalogoEstadoOT[]>(`${BASE}/catalogo/estados`)
 
-// Mesa supervisor — reclamos activos
-export const getMesaSupervisor = (id_subarea?: number) =>
+// Mesa supervisor — reclamos activos. Para nivel 2 el backend fuerza la
+// subárea del supervisor (Fase 3 roles); id_subarea solo tiene efecto en admin.
+export interface MesaSupervisorFiltros {
+  id_subarea?: number
+  nro_desde?: number   // parte secuencial: 56 matchea REC-2026-000056
+  nro_hasta?: number
+  fecha_desde?: string // YYYY-MM-DD sobre fecha_alta del reclamo
+  fecha_hasta?: string // inclusivo
+}
+export const getMesaSupervisor = (filtros?: MesaSupervisorFiltros) =>
   api.get<MesaSupervisorRow[]>(`${BASE}/mesa/supervisor`, {
-    params: { id_subarea },
+    params: { ...filtros },
   })
 
 // Mesa agente — resuelve id_agente del usuario logueado
