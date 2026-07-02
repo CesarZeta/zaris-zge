@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Modal } from '../../agenda/components/Modal'
 import { useNotificationsStore } from '../../../stores/notifications'
+import { useAuthStore } from '../../../stores/auth'
 import { useAgentesActivos, useCrearOT, useEquiposActivos } from '../hooks/useOT'
 import type { MesaSupervisorRow } from '../types/ot'
 import { nombreAgente } from '../lib/format'
@@ -42,8 +43,14 @@ export function AsignarModal({ open, reclamos, onClose, onSuccess }: Props) {
     ? 'Mismo agente o equipo se asignará a todos los seleccionados.'
     : r ? `${r.nro_reclamo ?? ''} — ${r.tipo_nombre ?? ''} (${r.subarea_nombre ?? ''})` : '—'
 
-  const agentes = agentesQ.data?.filter((a) => a.activo) ?? []
-  const equipos = equiposQ.data?.filter((e) => e.activo) ?? []
+  // Fase 3 roles: el supervisor (nivel 2) solo asigna recursos de su subárea.
+  // El backend igual lo impone (403); esto evita ofrecer opciones inválidas.
+  const user = useAuthStore((s) => s.user)
+  const subareaScope = user?.nivel_acceso === 2 ? (user.id_subarea ?? null) : null
+  const agentes = (agentesQ.data?.filter((a) => a.activo) ?? [])
+    .filter((a) => subareaScope == null || a.id_subarea === subareaScope)
+  const equipos = (equiposQ.data?.filter((e) => e.activo) ?? [])
+    .filter((e) => subareaScope == null || e.id_subarea === subareaScope)
 
   const puedeConfirmar =
     !mut.isPending && reclamos.length > 0 &&

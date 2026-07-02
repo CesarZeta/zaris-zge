@@ -34,7 +34,7 @@ export function CatalogoModulosView() {
     <div style={{ background: 'var(--surface-100)', border: '1px solid var(--border-primary)', borderRadius: 12, padding: 18 }}>
       <div style={{ fontSize: '0.86rem', color: 'var(--fg-3)', marginBottom: 12 }}>
         Cada módulo declara un <strong>nivel mínimo de acceso</strong>. Un usuario con nivel ≤ ese valor ve el módulo por default.
-        Por ejemplo, si <code>min_nivel_acceso = 3</code>, lo ven Admin (1), Supervisor (2) y Operador (3) — pero no Consultor (4).
+        Por ejemplo, si <code>min_nivel_acceso = 3</code>, lo ven Admin (1), Supervisor (2) y Atención (3) — pero no Gestión (4) ni Consultor (5).
         Los overrides por usuario (pestaña anterior) sobreescriben esto.
       </div>
 
@@ -81,8 +81,9 @@ export function CatalogoModulosView() {
               >
                 <option value={1}>1 — Admin</option>
                 <option value={2}>2 — Supervisor</option>
-                <option value={3}>3 — Operador</option>
-                <option value={4}>4 — Consultor</option>
+                <option value={3}>3 — Atención</option>
+                <option value={4}>4 — Gestión</option>
+                <option value={5}>5 — Consultor</option>
               </select>
               {cambio && (
                 <button onClick={() => guardar(m.modulo_codigo)} disabled={mut.isPending} style={btnSmPrimary}>

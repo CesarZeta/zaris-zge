@@ -4,14 +4,16 @@ Prefijo: /api/v1/reclamos/
 """
 import logging
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.auth import get_current_user
 from app.services import encuestas_service as svc_encuestas
+from app.services import notificaciones as svc_notif
 from app.services import push as svc_push
+from app.services.tramites.auth import resolver_agente_desde_usuario
 
 router = APIRouter(prefix="/api/v1/reclamos", tags=["Reclamos"])
 logger = logging.getLogger("zaris.reclamos")
@@ -36,7 +38,13 @@ TRANSICIONES_PERMITIDAS: dict[str, set[str]] = {
     "Cancelado":    set(),
 }
 
-NIVELES_GESTION = {1, 2, 3}  # Admin, Supervisor, Operador (CLAUDE.md §3)
+# Niveles (mig 92): 1=Admin, 2=Supervisor, 3=Atención (ve todo, crea/edita),
+# 4=Gestión (agente de OT, scopeado a su subárea), 5=Consultor (solo lectura).
+NIVELES_GESTION = {1, 2, 3}  # crear/editar reclamos: Admin, Supervisor, Atención
+NIVELES_AVISO = {1, 2, 3, 4}  # avisar al supervisor: también Gestión
+# Niveles cuyo LISTADO de reclamos queda scopeado a la subárea de su agente
+# (Fase 3 roles — Atención ve todo para consultas de vecinos; admin ve todo).
+NIVELES_SCOPE_SUBAREA = {2, 4}
 
 
 def _require_gestion(current_user: dict):
@@ -173,6 +181,24 @@ async def _estados_desde_db(db: AsyncSession) -> set:
     return {row.nombre for row in rows} if rows else ESTADOS_VALIDOS
 
 
+async def _subarea_scope_listado(db: AsyncSession, current_user: dict) -> Optional[int]:
+    """Fase 3 roles: Supervisor (2) y Gestión (4) ven el LISTADO de reclamos
+    scopeado a la subárea de su agente vinculado. Devuelve esa id_subarea, o
+    None si el nivel no scopea (1 admin, 3 atención, 5 consultor). El DETALLE
+    por id queda sin scope a propósito (subreclamos cross-área, consultas por
+    número). Si el usuario scopeado no tiene agente/subárea → 403 accionable."""
+    if current_user.get("nivel_acceso") not in NIVELES_SCOPE_SUBAREA:
+        return None
+    perfil = await resolver_agente_desde_usuario(current_user["id_usuario"], db)
+    if not perfil or not perfil.get("id_subarea"):
+        raise HTTPException(
+            status_code=403,
+            detail="Tu usuario no tiene una subárea asignada en su perfil de agente. "
+                   "Pedile a un administrador que la configure desde Maestros → Usuarios.",
+        )
+    return perfil["id_subarea"]
+
+
 async def _insertar_historial(db: AsyncSession, id_reclamo: int, accion: str,
                                estado_anterior: Optional[str], estado_nuevo: Optional[str],
                                nota: str, id_usuario: int):
@@ -238,12 +264,24 @@ async def stats_reclamos(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    result = await db.execute(text("""
-        SELECT estado, COUNT(*) AS total
-        FROM reclamos
-        WHERE activo = TRUE
-        GROUP BY estado
-    """))
+    # Mismo scope que el listado (Fase 3): Supervisor/Gestión cuentan solo su
+    # subárea (derivada del tipo, §27); Atención/Admin cuentan todo.
+    sub_scope = await _subarea_scope_listado(db, current_user)
+    if sub_scope is not None:
+        result = await db.execute(text("""
+            SELECT r.estado, COUNT(*) AS total
+            FROM reclamos r
+            JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
+            WHERE r.activo = TRUE AND tr.id_subarea = :sub
+            GROUP BY r.estado
+        """), {"sub": sub_scope})
+    else:
+        result = await db.execute(text("""
+            SELECT estado, COUNT(*) AS total
+            FROM reclamos
+            WHERE activo = TRUE
+            GROUP BY estado
+        """))
     return {r.estado: r.total for r in result.fetchall()}
 
 
@@ -336,6 +374,13 @@ async def listar_reclamos(
 ):
     conds = ["r.activo = TRUE"]
     params: dict = {}
+
+    # Supervisor (2) y Gestión (4): el backend fuerza la subárea de su agente
+    # y pisa cualquier filtro que venga por query (Fase 3 roles).
+    sub_scope = await _subarea_scope_listado(db, current_user)
+    if sub_scope is not None:
+        id_subarea = sub_scope
+        id_area = None
 
     if estado:
         conds.append("r.estado = :estado")
@@ -487,7 +532,14 @@ async def crear_reclamo(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    for f in ["id_ciudadano", "descripcion"]:
+    # Crear reclamos es Atención/Supervisión/Admin (niveles 1-3). Gestión (4)
+    # trabaja OTs y Consultor (5) solo lee. Cazado 2026-07-02: este POST no
+    # tenía guard de nivel (cualquier autenticado creaba).
+    _require_gestion(current_user)
+    # id_tipo_reclamo obligatorio (cazado 2026-07-02): un reclamo sin tipo no
+    # tiene subárea → queda fuera del scoping del supervisor y del ruteo del
+    # aviso (Fase 3). El form React ya lo exige; esto cierra la vía por API.
+    for f in ["id_ciudadano", "descripcion", "id_tipo_reclamo"]:
         if not body.get(f):
             raise HTTPException(status_code=422, detail=f"Campo requerido: {f}")
 
@@ -887,6 +939,78 @@ async def cancelar_reclamo(
     # Hook push App Vecinos (etapa E) — post-commit, best-effort.
     await svc_push.notificar_estado_reclamo(id_reclamo)
     return {"ok": True, "id_reclamo": id_reclamo, "estado": "Cancelado"}
+
+
+# ── POST /reclamos/{id}/avisar-supervisor — aviso del operador (Fase 3) ──────
+
+# Acciones que el operador puede pedirle al supervisor. El supervisor decide;
+# esto solo estructura el pedido. El frontend (AvisarSupervisorModal) espeja
+# esta lista — si la modificás, tocá los DOS lugares.
+ACCIONES_AVISO_SUPERVISOR = {
+    "Generar OT", "Pasar a En espera", "Resolver", "Cancelar", "Revisar",
+}
+
+
+@router.post("/{id_reclamo}/avisar-supervisor", status_code=201)
+async def avisar_supervisor(
+    id_reclamo: int,
+    body: dict,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Fase 3 roles: el operador (nivel 3) NO cambia estados — genera un aviso
+    a los supervisores (nivel 2) de la subárea del reclamo con la acción que
+    pide + comentario opcional. Si la subárea no tiene supervisor, el aviso va
+    a los admins (fallback, decisión 2026-07-02). Queda registrado en
+    reclamo_historial y llega por notificación in-app + mail (mig 51).
+
+    Body: {accion_sugerida: str, comentario?: str}."""
+    # Avisar pueden Atención (3) Y Gestión (4) — Consultor (5) no (mig 92).
+    if current_user.get("nivel_acceso") not in NIVELES_AVISO:
+        raise HTTPException(status_code=403,
+            detail="No tenés permisos para avisar al supervisor (requiere nivel Gestión o superior)")
+
+    accion = (body.get("accion_sugerida") or "").strip()
+    comentario = (body.get("comentario") or "").strip()
+    if accion not in ACCIONES_AVISO_SUPERVISOR:
+        raise HTTPException(422, "accion_sugerida invalida. Validas: "
+                                 + ", ".join(sorted(ACCIONES_AVISO_SUPERVISOR)))
+    if len(comentario) > 500:
+        raise HTTPException(422, "comentario: maximo 500 caracteres")
+
+    r = (await db.execute(text(
+        "SELECT estado, nro_reclamo FROM reclamos WHERE id_reclamo = :id AND activo = TRUE"
+    ), {"id": id_reclamo})).fetchone()
+    if not r:
+        raise HTTPException(404, f"Reclamo {id_reclamo} no encontrado")
+    if r.estado in ("Resuelto", "Cancelado"):
+        raise HTTPException(422, f"El reclamo está {r.estado}; no admite avisos")
+
+    # Anti-spam: un aviso por usuario+reclamo cada 30 minutos.
+    reciente = (await db.execute(text("""
+        SELECT 1 FROM reclamo_historial
+        WHERE id_reclamo = :id AND accion = 'Aviso al supervisor'
+          AND id_usuario_alta = :uid
+          AND fecha_alta > NOW() - INTERVAL '30 minutes'
+        LIMIT 1
+    """), {"id": id_reclamo, "uid": current_user["id_usuario"]})).fetchone()
+    if reciente:
+        raise HTTPException(422, "Ya enviaste un aviso por este reclamo hace menos "
+                                 "de 30 minutos. El supervisor ya fue notificado.")
+
+    nota = f"Pide: {accion}." + (f" {comentario}" if comentario else "")
+    await _insertar_historial(db, id_reclamo, "Aviso al supervisor",
+                              r.estado, r.estado, nota, current_user["id_usuario"])
+    await db.commit()
+
+    # Fail-safe: si la notificación falla, el aviso igual quedó en el historial.
+    notificadas = await svc_notif.notificar_aviso_reclamo_a_supervision(
+        db, id_reclamo, current_user["id_usuario"], accion, comentario,
+        background_tasks=background_tasks,
+    )
+    return {"ok": True, "nro_reclamo": r.nro_reclamo,
+            "notificaciones_creadas": notificadas}
 
 
 # ── POST /reclamos/{id}/subreclamo — crear subreclamo (nivel 1) ──────────────

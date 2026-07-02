@@ -28,7 +28,9 @@ Todo módulo con individuos (pacientes, clientes, solicitantes) **debe** referen
 
 ## 3. Roles y Permisos
 
-`nivel_acceso` en `usuarios`: 1 = Administrador, 2 = Supervisor, 3 = Operador, 4 = Consultor.
+`nivel_acceso` en `usuarios` (mig 92, 2026-07-02): 1 = Administrador (ve todo) · 2 = Supervisor (gestiona, **scopeado a la subárea de su agente**) · 3 = **Atención** (ex Operador — ventanilla: ve TODOS los reclamos para consultas de vecinos, crea/edita, avisa al supervisor, no cambia estados) · 4 = **Gestión** (agente de OT — listados de reclamos **solo de su subárea**, trabaja sus OTs, avisa al supervisor, NO crea reclamos) · 5 = Consultor (solo lectura, ex nivel 4).
+
+El scoping por subárea lo impone el **backend** (`_subarea_scope_listado` en `reclamos.py`; `_subarea_forzada_supervisor` + `_validar_scope_supervisor_ot` en `ordenes_trabajo.py`) leyendo `agentes.id_subarea` vía la regla 1:1 (§39) — **NO `usuarios.id_subarea`** (pueden divergir; el agente es la fuente). El detalle por id queda sin scope a propósito (subreclamos cross-área, consulta por número). Guards de nivel: crear/editar reclamos = `NIVELES_GESTION {1,2,3}` · avisar = `{1,2,3,4}` · operar OT/turnos/agenda = `≤ 4` · Consultor (5) solo lectura.
 
 Usar `get_current_user` de `app/core/auth.py` en todo endpoint que requiera identidad o permisos.
 
@@ -610,7 +612,7 @@ class Equipo(Base):
 
 > **El detalle histórico de cada migración (qué hace, cuándo se aplicó, snapshots de backup) vive en [`HISTORIAL_MIGRACIONES.md`](HISTORIAL_MIGRACIONES.md)** (raíz del repo). Acá queda solo el resumen vigente. **No confiar en esta doc como fuente de verdad** — antes de codear algo schema-dependent, verificar el estado real con `execute_sql` (regla §24).
 
-**Estado general:** migraciones 20-91 aplicadas en local Y prod (Supabase) sin divergencia conocida al 2026-06-15 (90 = recovery interno + DNI agente; 91 = clave config `equipos_sin_agentes_usan_horario_propio` §27). La numeración 51 está duplicada (`51_notificaciones.sql` + `51_tramites_tipo_dato_direccion.sql`, ambas aplicadas) — **cualquier mig nueva debe usar 92+**.
+**Estado general:** migraciones 20-92 aplicadas en local Y prod (Supabase) sin divergencia conocida al 2026-07-02 (92 = niveles 1-5: nivel 4 Gestión + consultores→5 + min_nivel de módulos, §3). La numeración 51 está duplicada (`51_notificaciones.sql` + `51_tramites_tipo_dato_direccion.sql`, ambas aplicadas) — **cualquier mig nueva debe usar 93+**.
 
 **Reglas vivas de migración:**
 - **Toda tabla nueva debe nacer con `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`** (sin políticas = deny-all §26; el backend conecta como `postgres` dueño y bypassea RLS). Sino el advisor de Supabase la marca (`rls_disabled_in_public`, caso mig 80).

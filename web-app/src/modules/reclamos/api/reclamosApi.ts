@@ -55,6 +55,13 @@ export const cambiarEstadoReclamo = (id: number, body: { estado: string; nota?: 
 export const cancelarReclamo = (id: number, body: { motivo: string }) =>
   api.put<{ ok: boolean; id_reclamo: number; estado: string }>(`${BASE}/${id}/cancelar`, body)
 
+// Aviso del operador al supervisor (Fase 3 roles): pide una acción sobre el
+// reclamo. Notifica a los supervisores de la subárea (fallback: admins).
+export const avisarSupervisor = (id: number, body: { accion_sugerida: string; comentario?: string }) =>
+  api.post<{ ok: boolean; nro_reclamo: string | null; notificaciones_creadas: number }>(
+    `${BASE}/${id}/avisar-supervisor`, body,
+  )
+
 // Crea un subreclamo del reclamo {id}. Hereda ciudadano/empresa del padre;
 // solo requiere descripcion + id_tipo_reclamo. El backend pone el padre "En espera".
 export const crearSubreclamo = (

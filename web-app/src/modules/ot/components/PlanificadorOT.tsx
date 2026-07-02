@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ClipboardList, CalendarClock, Wand2 } from 'lucide-react'
 import { useNotificationsStore } from '../../../stores/notifications'
+import { useAuthStore } from '../../../stores/auth'
 import {
   useSlotsRecurso,
   useCrearOT, useCrearOTConAgenda,
@@ -28,6 +29,11 @@ const DURACION_MIN = 60
  */
 export function PlanificadorOT({ reclamo, onDone }: Props) {
   const push = useNotificationsStore((s) => s.push)
+  const user = useAuthStore((s) => s.user)
+  // Fase 3 roles (modelo subárea compartida): el supervisor (nivel 2) solo ve
+  // recursos de su subárea en el picker. El backend igual impone el scope en
+  // los POST de OT; sesiones viejas sin id_subarea caen al listado completo.
+  const subareaScope = user?.nivel_acceso === 2 ? (user.id_subarea ?? undefined) : undefined
   const crearConAgenda = useCrearOTConAgenda()
   const crearSimple = useCrearOT()
 
@@ -209,6 +215,7 @@ export function PlanificadorOT({ reclamo, onDone }: Props) {
           value={idRecurso !== '' ? (idRecurso as number) : null}
           onChange={(id) => setIdRecurso(id ?? '')}
           soloCuadrillas
+          idSubarea={subareaScope}
         />
       </Field>
 
