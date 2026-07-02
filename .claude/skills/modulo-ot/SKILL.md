@@ -29,6 +29,8 @@ Valida FK antes de enviar (ver memoria `feedback_validar_fk_antes_submit`).
 
 `GET /ot/mesa/supervisor` ahora expone **`ot_activa_agendada`** (boolean): el CTE `ot_activa` agrega un `EXISTS` sobre `ocupaciones` tipo `'ot'` activas ligadas a la OT. Permite distinguir en la bandeja las OTs creadas sin agendar. **El filtro `id_subarea` de la mesa usa `tr.id_subarea` derivado del tipo, NO `r.id_subarea`** (que está NULL en el 100% de los reclamos — filtrar por ahí vaciaba la bandeja, [[feedback_filtro_igual_null_vacia_listado]]). Mismo criterio en las dos mesas de auditoría.
 
+> **GAP verificado (2026-07-02, no asumir que scopea):** ese filtro `id_subarea` es un **query param opcional** — el backend NO lo impone según la subárea del supervisor logueado; hoy cualquier supervisor ve la bandeja de TODAS las subáreas. Ídem el selector manual de agentes del `PlanificadorOT` (`RecursoPicker` → `GET /agenda/catalogos/recursos`): lista todos los agentes sin filtro de subárea. Solo `auto-asignar-sugerencia` scopea (por la subárea del RECLAMO). El scoping por subárea del supervisor es pendiente de Fase 3 roles (ver `ESTADO.md`).
+
 Helpers compartidos en `ordenes_trabajo.py`: `_slots_de_rango`, `_solapa`, `_merge_rangos`, `_slots_libres_recurso`. **El caso equipo de `_slots_libres_recurso` delega en `services/agenda.py::disponibilidad_efectiva('equipo')`** para no duplicar la lógica de unión/override (esa duplicación divergía de la grilla de Agenda — bug cerrado 2026-06-15).
 
 ### Hooks `useOT.ts`
