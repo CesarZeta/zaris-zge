@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  avisarSupervisor,
   cambiarEstadoReclamo,
   cancelarReclamo,
   crearReclamo,
@@ -120,6 +121,19 @@ export function useCancelarReclamo(id: number | null) {
   return useMutation({
     mutationFn: (body: { motivo: string }) =>
       cancelarReclamo(id as number, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['reclamos'] })
+    },
+  })
+}
+
+// Aviso del operador al supervisor (Fase 3 roles). Invalida el detalle para
+// que el historial muestre la entrada "Aviso al supervisor".
+export function useAvisarSupervisor(id: number | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { accion_sugerida: string; comentario?: string }) =>
+      avisarSupervisor(id as number, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['reclamos'] })
     },

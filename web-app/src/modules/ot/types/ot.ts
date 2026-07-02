@@ -133,12 +133,16 @@ export interface AgenteLite {
   apellido: string | null
   legajo: string | null
   activo: boolean
+  // Subárea del agente (viene del SELECT * de /admin/agentes). Fase 3 roles:
+  // los modales de asignación filtran por acá cuando el usuario es supervisor.
+  id_subarea?: number | null
 }
 
 export interface EquipoLite {
   id_equipo: number
   nombre: string | null
   activo: boolean
+  id_subarea?: number | null
 }
 
 // POST /ot — supervisor crea OT

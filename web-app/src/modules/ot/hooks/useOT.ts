@@ -14,6 +14,7 @@ import {
   reasignarOT,
   tomarOT,
 } from '../api/otApi'
+import type { MesaSupervisorFiltros } from '../api/otApi'
 import type {
   CambiarEstadoOTBody, CrearOTBody, CrearOTConAgendaBody, ReasignarOTBody, TipoRecursoOT,
 } from '../types/ot'
@@ -21,12 +22,13 @@ import type {
 const HORA = 60 * 60 * 1000
 
 // ── Mesas ──
-export function useMesaSupervisor(id_subarea?: number) {
+export function useMesaSupervisor(filtros?: MesaSupervisorFiltros) {
   return useQuery({
-    queryKey: ['ot', 'mesa-supervisor', id_subarea ?? 'all'],
-    queryFn: () => getMesaSupervisor(id_subarea),
+    queryKey: ['ot', 'mesa-supervisor', filtros ?? {}],
+    queryFn: () => getMesaSupervisor(filtros),
     staleTime: 15 * 1000,
     refetchInterval: 30 * 1000,
+    placeholderData: (prev) => prev, // no vaciar la tabla al cambiar filtros
   })
 }
 

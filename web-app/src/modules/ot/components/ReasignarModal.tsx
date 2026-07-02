@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Modal } from '../../agenda/components/Modal'
 import { useNotificationsStore } from '../../../stores/notifications'
+import { useAuthStore } from '../../../stores/auth'
 import { useAgentesActivos, useEquiposActivos, useReasignarOT } from '../hooks/useOT'
 import type { MesaSupervisorRow } from '../types/ot'
 import { nombreAgente } from '../lib/format'
@@ -16,6 +17,7 @@ type Modo = 'agente' | 'equipo'
 
 export function ReasignarModal({ open, reclamo, onClose, onSuccess }: Props) {
   const push = useNotificationsStore((s) => s.push)
+  const user = useAuthStore((s) => s.user)
   const mut = useReasignarOT()
   const agentesQ = useAgentesActivos(open)
   const equiposQ = useEquiposActivos(open)
@@ -43,8 +45,13 @@ export function ReasignarModal({ open, reclamo, onClose, onSuccess }: Props) {
       ? <>Asignado actualmente al <strong>equipo {reclamo.ot_equipo_nombre}</strong> (OT {reclamo.ot_activa_nro ?? ''})</>
       : <>OT {reclamo.ot_activa_nro ?? ''} — sin destinatario</>
 
-  const agentes = agentesQ.data?.filter((a) => a.activo) ?? []
-  const equipos = equiposQ.data?.filter((e) => e.activo) ?? []
+  // Fase 3 roles: el supervisor (nivel 2) solo reasigna a recursos de su
+  // subárea. El backend igual lo impone (403).
+  const subareaScope = user?.nivel_acceso === 2 ? (user.id_subarea ?? null) : null
+  const agentes = (agentesQ.data?.filter((a) => a.activo) ?? [])
+    .filter((a) => subareaScope == null || a.id_subarea === subareaScope)
+  const equipos = (equiposQ.data?.filter((e) => e.activo) ?? [])
+    .filter((e) => subareaScope == null || e.id_subarea === subareaScope)
 
   const puedeConfirmar =
     !mut.isPending && nota.trim().length > 0 &&

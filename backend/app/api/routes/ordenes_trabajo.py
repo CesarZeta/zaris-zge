@@ -17,6 +17,7 @@ from app.core.auth import get_current_user
 from app.services.agenda import disponibilidad_efectiva
 from app.services import encuestas_service as svc_encuestas
 from app.services import push as svc_push
+from app.services.tramites.auth import resolver_agente_desde_usuario
 
 router = APIRouter(prefix="/api/v1/ot", tags=["Órdenes de Trabajo"])
 logger = logging.getLogger("zaris.ordenes_trabajo")
@@ -147,6 +148,77 @@ def _require_supervisor(current_user: dict):
         )
 
 
+async def _subarea_forzada_supervisor(db: AsyncSession, current_user: dict) -> Optional[int]:
+    """Fase 3 roles — modelo "subárea compartida": el Supervisor (nivel 2) queda
+    SIEMPRE restringido a la subárea de su agente vinculado (regla 1:1 §39).
+    Devuelve esa id_subarea para nivel 2, o None para nivel 1 (admin ve todo).
+    403 accionable si el supervisor no tiene agente o subárea (cuenta a medias)."""
+    if current_user.get("nivel_acceso", 99) != 2:
+        return None
+    perfil = await resolver_agente_desde_usuario(current_user["id_usuario"], db)
+    if not perfil or not perfil.get("id_subarea"):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Tu usuario supervisor no tiene una subárea asignada en su perfil "
+                "de agente. Pedile a un administrador que la configure desde "
+                "Maestros → Usuarios."
+            ),
+        )
+    return perfil["id_subarea"]
+
+
+async def _validar_scope_supervisor_ot(
+    db: AsyncSession,
+    current_user: dict,
+    *,
+    id_reclamo: Optional[int] = None,
+    id_agente: Optional[int] = None,
+    id_equipo: Optional[int] = None,
+):
+    """Fase 3 roles — un Supervisor (nivel 2) solo gestiona reclamos de su subárea
+    y solo asigna recursos (agentes/equipos) de su subárea. Admin pasa sin
+    restricción. La subárea del reclamo es tr.id_subarea derivada del tipo (§27).
+    Si el reclamo no existe, no corta acá: el 404 lo da el handler."""
+    sub = await _subarea_forzada_supervisor(db, current_user)
+    if sub is None:
+        return
+    if id_reclamo is not None:
+        row = (await db.execute(text("""
+            SELECT tr.id_subarea
+            FROM reclamos r
+            LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
+            WHERE r.id_reclamo = :id AND r.activo = TRUE
+        """), {"id": id_reclamo})).fetchone()
+        if row is not None and row.id_subarea != sub:
+            raise HTTPException(
+                status_code=403,
+                detail="El reclamo pertenece a otra subárea. Solo podés gestionar reclamos de tu subárea.",
+            )
+    if id_agente is not None:
+        row = (await db.execute(text(
+            "SELECT id_subarea FROM agentes WHERE id_agente = :id AND activo = TRUE"
+        ), {"id": id_agente})).fetchone()
+        if not row:
+            raise HTTPException(status_code=422, detail=f"Agente {id_agente} inexistente o inactivo")
+        if row.id_subarea != sub:
+            raise HTTPException(
+                status_code=403,
+                detail="El agente pertenece a otra subárea. Solo podés asignar agentes de tu subárea.",
+            )
+    if id_equipo is not None:
+        row = (await db.execute(text(
+            "SELECT id_subarea FROM equipos WHERE id_equipo = :id AND activo = TRUE"
+        ), {"id": id_equipo})).fetchone()
+        if not row:
+            raise HTTPException(status_code=422, detail=f"Equipo {id_equipo} inexistente o inactivo")
+        if row.id_subarea != sub:
+            raise HTTPException(
+                status_code=403,
+                detail="El equipo pertenece a otra subárea. Solo podés asignar equipos de tu subárea.",
+            )
+
+
 async def _id_estado_ot(db: AsyncSession, nombre: str) -> int:
     r = await db.execute(text(
         "SELECT id_estado_ot FROM estado_ot WHERE nombre = :n AND activo = TRUE"
@@ -186,11 +258,21 @@ async def catalogo_estados_ot(
 @router.get("/mesa/supervisor")
 async def mesa_supervisor(
     id_subarea: Optional[int] = Query(None),
+    nro: Optional[str] = Query(None, max_length=30, description="Número de reclamo, parcial o completo (ILIKE)"),
+    nro_desde: Optional[int] = Query(None, ge=0, description="Parte secuencial del nro (ej. 56 para REC-2026-000056)"),
+    nro_hasta: Optional[int] = Query(None, ge=0),
+    fecha_desde: Optional[date] = Query(None, description="fecha_alta del reclamo >= (YYYY-MM-DD)"),
+    fecha_hasta: Optional[date] = Query(None, description="fecha_alta del reclamo <= (YYYY-MM-DD, inclusivo)"),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     """Vista del supervisor: reclamos activos (Sin asignar, En gestión, En espera, En auditoría)."""
     _require_supervisor(current_user)
+    # Nivel 2: la subárea del supervisor pisa cualquier query param (Fase 3 roles).
+    # Nivel 1 (admin) sigue filtrando libre.
+    sub_forzada = await _subarea_forzada_supervisor(db, current_user)
+    if sub_forzada is not None:
+        id_subarea = sub_forzada
     conds = ["r.activo = TRUE", "r.estado NOT IN ('Resuelto','Cancelado')"]
     params: dict = {}
     if id_subarea:
@@ -199,6 +281,25 @@ async def mesa_supervisor(
         # en silencio — feedback_filtro_igual_null_vacia_listado).
         conds.append("tr.id_subarea = :id_subarea")
         params["id_subarea"] = id_subarea
+    if nro:
+        conds.append("r.nro_reclamo ILIKE :nro")
+        params["nro"] = f"%{nro.strip()}%"
+    # Rango por la parte secuencial del nro (formato REC-YYYY-NNNNNN, verificado
+    # 57/57 en prod). El CASE con regex evita un 500 si aparece un formato raro.
+    _nro_seq = r"(CASE WHEN r.nro_reclamo ~ '^REC-\d{4}-\d{6}$' THEN split_part(r.nro_reclamo, '-', 3)::int END)"
+    if nro_desde is not None:
+        conds.append(f"{_nro_seq} >= :nro_desde")
+        params["nro_desde"] = nro_desde
+    if nro_hasta is not None:
+        conds.append(f"{_nro_seq} <= :nro_hasta")
+        params["nro_hasta"] = nro_hasta
+    if fecha_desde is not None:
+        conds.append("r.fecha_alta >= CAST(:fecha_desde AS date)")
+        params["fecha_desde"] = fecha_desde
+    if fecha_hasta is not None:
+        # Inclusivo: < día siguiente (fecha_alta es TIMESTAMPTZ).
+        conds.append("r.fecha_alta < CAST(:fecha_hasta AS date) + 1")
+        params["fecha_hasta"] = fecha_hasta
 
     result = await db.execute(text(f"""
         WITH ot_activa AS (
@@ -563,6 +664,8 @@ async def auto_asignar_sugerencia(
 
     Solo supervisor/admin (es la accion de asignacion de la Mesa del Supervisor)."""
     _require_supervisor(current_user)
+    # Nivel 2: solo sobre reclamos de su subárea (Fase 3 roles).
+    await _validar_scope_supervisor_ot(db, current_user, id_reclamo=id_reclamo)
 
     # Subarea del reclamo: derivada del tipo (fuente unica, r.id_subarea suele ser NULL).
     sub = (await db.execute(text("""
@@ -639,6 +742,8 @@ async def crear_ot_con_agenda(
     id_recurso = body["id_recurso"]
     id_agente = id_recurso if tipo_recurso == "agente" else None
     id_equipo = id_recurso if tipo_recurso == "equipo" else None
+    await _validar_scope_supervisor_ot(db, current_user, id_reclamo=id_reclamo,
+                                       id_agente=id_agente, id_equipo=id_equipo)
 
     # asyncpg requiere objetos date/time, no strings. El body llega como dict crudo.
     try:
@@ -844,6 +949,9 @@ async def crear_ot(
     if reclamo.estado in ("Cancelado", "Resuelto"):
         raise HTTPException(status_code=422, detail=f"No se puede asignar OT a un reclamo {reclamo.estado}")
 
+    await _validar_scope_supervisor_ot(db, current_user, id_reclamo=id_reclamo,
+                                       id_agente=body.get("id_agente"),
+                                       id_equipo=body.get("id_equipo"))
     id_estado_en_gestion = await _id_estado_ot(db, "En gestión")
 
     try:
@@ -933,6 +1041,9 @@ async def reasignar_ot(
     if ot.es_final:
         raise HTTPException(status_code=422, detail=f"OT en estado final ({ot.estado_actual}) no se puede reasignar")
 
+    await _validar_scope_supervisor_ot(db, current_user, id_reclamo=ot.id_reclamo,
+                                       id_agente=nuevo_id_agente,
+                                       id_equipo=nuevo_id_equipo)
     asignado_antes = (
         f"agente {ot.ag_apellido}, {ot.ag_nombre}" if ot.id_agente
         else (f"equipo {ot.eq_nombre}" if ot.id_equipo else "sin asignar")
@@ -984,10 +1095,11 @@ async def tomar_ot(
     if not id_agente:
         raise HTTPException(status_code=422, detail="Campo requerido: id_agente")
 
-    # Guard de nivel: tomar una OT es gestión (nivel ≤ 3). El Consultor no opera.
-    if current_user.get("nivel_acceso", 99) > 3:
+    # Guard de nivel: tomar una OT es operar (nivel ≤ 4, incluye Gestión mig 92).
+    # El Consultor (5) no opera.
+    if current_user.get("nivel_acceso", 99) > 4:
         raise HTTPException(status_code=403,
-            detail="No tenés permisos para tomar OTs (requiere nivel Operador o superior).")
+            detail="No tenés permisos para tomar OTs (requiere nivel Gestión o superior).")
 
     # Identidad: un agente solo puede tomar una OT PARA SÍ MISMO. Admin/supervisor
     # (nivel ≤ 2) pueden tomar en nombre de otro agente (delegación). Sin esto, el
@@ -1029,11 +1141,11 @@ async def cambiar_estado_ot(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    # Guard de nivel: cambiar el estado de una OT es gestión (nivel ≤ 3). El
-    # Consultor (4) no opera (guard_nivel_endpoint_no_solo_ui).
-    if current_user.get("nivel_acceso", 99) > 3:
+    # Guard de nivel: cambiar el estado de una OT es operar (nivel ≤ 4, incluye
+    # Gestión mig 92). El Consultor (5) no opera (guard_nivel_endpoint_no_solo_ui).
+    if current_user.get("nivel_acceso", 99) > 4:
         raise HTTPException(status_code=403,
-            detail="No tenés permisos para cambiar el estado de OTs (requiere nivel Operador o superior).")
+            detail="No tenés permisos para cambiar el estado de OTs (requiere nivel Gestión o superior).")
 
     nuevo_estado = body.get("estado")
     if not nuevo_estado:

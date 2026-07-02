@@ -90,18 +90,26 @@ FOTO_MIME_OK = {"image/png": "png", "image/jpeg": "jpg"}
 FOTO_MAX_BYTES = 2 * 1024 * 1024  # 2 MB
 
 
-async def _cargo_del_usuario(db: AsyncSession, id_usuario: int) -> str | None:
-    """Cargo del agente vinculado al usuario (regla 1:1 §39). NULL si el usuario
-    no tiene agente (externo) o el agente no tiene cargo asignado."""
+async def _perfil_agente_del_usuario(db: AsyncSession, id_usuario: int) -> dict:
+    """Cargo y subárea del agente vinculado al usuario (regla 1:1 §39). Valores
+    None si el usuario no tiene agente (externo) o el agente no los tiene.
+    La subárea la usan los módulos React para scopear pickers del supervisor
+    (Fase 3 roles); la imposición dura vive en el backend de cada módulo."""
     result = await db.execute(
-        text("""SELECT c.nombre
+        text("""SELECT c.nombre AS cargo_nombre,
+                       a.id_subarea, s.nombre AS subarea_nombre
                 FROM agentes a
-                JOIN cargos c ON c.id_cargo = a.id_cargo
+                LEFT JOIN cargos c ON c.id_cargo = a.id_cargo
+                LEFT JOIN subarea s ON s.id_subarea = a.id_subarea
                 WHERE a.id_usuario = :id AND a.activo = TRUE
                 LIMIT 1"""),
         {"id": id_usuario},
     )
-    return result.scalar()
+    row = result.fetchone()
+    if not row:
+        return {"cargo_nombre": None, "id_subarea": None, "subarea_nombre": None}
+    return {"cargo_nombre": row.cargo_nombre, "id_subarea": row.id_subarea,
+            "subarea_nombre": row.subarea_nombre}
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -146,7 +154,7 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
 
     token = create_access_token({"sub": str(user.id_usuario)})
     modulos = await modulos_permitidos(db, user.id_usuario, user.nivel_acceso)
-    cargo = await _cargo_del_usuario(db, user.id_usuario)
+    perfil = await _perfil_agente_del_usuario(db, user.id_usuario)
     user_data = {
         "id_usuario": user.id_usuario,
         "nombre": user.nombre,
@@ -155,7 +163,11 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
         "modulos_permitidos": modulos,
         # Cargo del agente vinculado (None si externo/sin cargo) — lo muestra
         # el topbar del shell debajo de "Nombre · Rol".
-        "cargo_nombre": cargo,
+        "cargo_nombre": perfil["cargo_nombre"],
+        # Subárea del agente vinculado — los módulos React la usan para scopear
+        # pickers cuando el usuario es supervisor (nivel 2, Fase 3 roles).
+        "id_subarea": perfil["id_subarea"],
+        "subarea_nombre": perfil["subarea_nombre"],
         "foto_url": user.foto_url,
         # Si TRUE, el frontend debe forzar el cambio de contraseña antes de
         # dejar usar el sistema (Fase 3, clave temporal en primer ingreso).
@@ -172,8 +184,8 @@ async def me(
     modulos = await modulos_permitidos(
         db, current_user["id_usuario"], current_user["nivel_acceso"]
     )
-    cargo = await _cargo_del_usuario(db, current_user["id_usuario"])
-    return {**current_user, "modulos_permitidos": modulos, "cargo_nombre": cargo}
+    perfil = await _perfil_agente_del_usuario(db, current_user["id_usuario"])
+    return {**current_user, "modulos_permitidos": modulos, **perfil}
 
 
 @router.post("/cambiar-password")

@@ -5,6 +5,7 @@ import { useReclamoAdjuntos, useReclamoDetalle } from '../hooks/useReclamos'
 import { useAuthStore } from '../../../stores/auth'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { Badge } from '../components/Badge'
+import { AvisarSupervisorModal } from '../components/AvisarSupervisorModal'
 import { CambiarEstadoModal } from '../components/CambiarEstadoModal'
 import { CancelarReclamoModal } from '../components/CancelarReclamoModal'
 import { SubreclamoModal } from '../components/SubreclamoModal'
@@ -34,6 +35,7 @@ export function DetailView() {
   const [openEstado, setOpenEstado] = useState(false)
   const [openCancelar, setOpenCancelar] = useState(false)
   const [openSubreclamo, setOpenSubreclamo] = useState(false)
+  const [openAviso, setOpenAviso] = useState(false)
 
   if (detalle.isLoading) {
     return <div style={{ color: 'var(--fg-3)', padding: 20 }}>Cargando reclamo...</div>
@@ -55,6 +57,9 @@ export function DetailView() {
   const puedeGestionarEstado = !!user && user.nivel_acceso <= 2
   const editarVisible = !esFinal && puedeEditar
   const accionesEstadoVisibles = !esFinal && puedeGestionarEstado
+  // Fase 3 roles: el operador (nivel 3, sin acciones de estado) puede AVISAR
+  // al supervisor de la subárea qué acción pide sobre el reclamo.
+  const avisoVisible = !esFinal && !!user && (user.nivel_acceso === 3 || user.nivel_acceso === 4)
   // Subreclamo: solo sobre reclamos vivos que no sean ellos mismos un subreclamo
   // (el backend rechaza anidar > 1 nivel).
   const puedeSubreclamar = accionesEstadoVisibles && r.id_reclamo_padre == null
@@ -75,6 +80,10 @@ export function DetailView() {
           {/* Cambiar estado / cancelar / subreclamo: solo Supervisión (nivel ≤ 2). */}
           {accionesEstadoVisibles && (
             <button onClick={() => setOpenEstado(true)} style={btnPrimary}>Cambiar estado</button>
+          )}
+          {/* El operador (nivel 3) pide la gestión vía aviso al supervisor. */}
+          {avisoVisible && (
+            <button onClick={() => setOpenAviso(true)} style={btnPrimary}>Avisar al supervisor</button>
           )}
           {/* Editar datos/observaciones: también Atención (operador, nivel ≤ 3). */}
           {editarVisible && (
@@ -113,6 +122,13 @@ export function DetailView() {
         nroReclamo={r.nro_reclamo}
         onClose={() => setOpenSubreclamo(false)}
         onSuccess={() => { setOpenSubreclamo(false); detalle.refetch() }}
+      />
+      <AvisarSupervisorModal
+        open={openAviso}
+        idReclamo={r.id_reclamo}
+        nroReclamo={r.nro_reclamo}
+        onClose={() => setOpenAviso(false)}
+        onSuccess={() => detalle.refetch()}
       />
 
       <ReclamoSection title="Estado">

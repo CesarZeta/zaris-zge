@@ -3,7 +3,7 @@
  */
 document.addEventListener('DOMContentLoaded', () => {
 
-    const NIVELES = { 1: 'Administrador', 2: 'Supervisor', 3: 'Operador', 4: 'Consultor' };
+    const NIVELES = { 1: 'Administrador', 2: 'Supervisor', 3: 'Atención', 4: 'Gestión', 5: 'Consultor' };
 
     // Etiquetas legibles para los códigos de módulo (catálogo §30).
     const MODULO_LABEL = {

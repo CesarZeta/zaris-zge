@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMesaSupervisor } from '../hooks/useOT'
+import type { MesaSupervisorFiltros } from '../api/otApi'
 import type { MesaSupervisorRow } from '../types/ot'
 import { BadgeEstadoReclamo, BadgePrioridad, SLACell, nombreCiudadano } from '../lib/format'
 import { Field, StatsChips, Toolbar, inputStyle } from '../components/Toolbar'
@@ -12,14 +13,37 @@ import { useAuthStore } from '../../../stores/auth'
 type Tab = 'asignar' | 'reasignar'
 
 export function SupervisorView() {
-  const puedeGestionarAdjuntos = useAuthStore((s) => s.user != null && s.user.nivel_acceso <= 2)
-  const { data, isLoading, isError, error, refetch, isFetching } = useMesaSupervisor()
-  const reclamos = data ?? []
+  const user = useAuthStore((s) => s.user)
+  const puedeGestionarAdjuntos = user != null && user.nivel_acceso <= 2
+  // Fase 3 roles: para nivel 2 el backend fuerza la subárea del supervisor;
+  // acá solo lo comunicamos en la UI.
+  const esScopeado = user?.nivel_acceso === 2
 
   const [tab, setTab] = useState<Tab>('asignar')
   const [fTexto, setFTexto] = useState('')
   const [fEstado, setFEstado] = useState('')
   const [fPrioridad, setFPrioridad] = useState('')
+  // Búsqueda server-side por rango de número y de fechas (Fase 3).
+  const [fNroDesde, setFNroDesde] = useState('')
+  const [fNroHasta, setFNroHasta] = useState('')
+  const [fFechaDesde, setFFechaDesde] = useState('')
+  const [fFechaHasta, setFFechaHasta] = useState('')
+  const [filtrosServer, setFiltrosServer] = useState<MesaSupervisorFiltros>({})
+  // Debounce: un request por pausa de tipeo, no por tecla.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setFiltrosServer({
+        nro_desde: fNroDesde !== '' ? Number(fNroDesde) : undefined,
+        nro_hasta: fNroHasta !== '' ? Number(fNroHasta) : undefined,
+        fecha_desde: fFechaDesde || undefined,
+        fecha_hasta: fFechaHasta || undefined,
+      })
+    }, 400)
+    return () => clearTimeout(t)
+  }, [fNroDesde, fNroHasta, fFechaDesde, fFechaHasta])
+
+  const { data, isLoading, isError, error, refetch, isFetching } = useMesaSupervisor(filtrosServer)
+  const reclamos = data ?? []
   const [seleccionados, setSeleccionados] = useState<Set<number>>(new Set())
 
   const [modalAsignarReclamos, setModalAsignarReclamos] = useState<MesaSupervisorRow[]>([])
@@ -138,6 +162,13 @@ export function SupervisorView() {
         </TabButton>
       </div>
 
+      {esScopeado && (
+        <div style={scopeChipStyle}>
+          Bandeja de tu subárea:{' '}
+          <strong>{user?.subarea_nombre ?? 'la asignada a tu perfil de agente'}</strong>
+        </div>
+      )}
+
       <Toolbar onRefresh={() => refetch()} refreshing={isFetching}>
         <Field label="Nº reclamo o tipo" wide>
           <input
@@ -148,6 +179,32 @@ export function SupervisorView() {
             autoComplete="off"
             style={inputStyle}
           />
+        </Field>
+        <Field label="Nº desde">
+          <input
+            type="number"
+            min={1}
+            value={fNroDesde}
+            onChange={(e) => setFNroDesde(e.target.value)}
+            placeholder="Ej: 40"
+            style={inputStyle}
+          />
+        </Field>
+        <Field label="Nº hasta">
+          <input
+            type="number"
+            min={1}
+            value={fNroHasta}
+            onChange={(e) => setFNroHasta(e.target.value)}
+            placeholder="Ej: 60"
+            style={inputStyle}
+          />
+        </Field>
+        <Field label="Fecha desde">
+          <input type="date" value={fFechaDesde} onChange={(e) => setFFechaDesde(e.target.value)} style={inputStyle} />
+        </Field>
+        <Field label="Fecha hasta">
+          <input type="date" value={fFechaHasta} onChange={(e) => setFFechaHasta(e.target.value)} style={inputStyle} />
         </Field>
         {tab === 'reasignar' && (
           <Field label="Estado">
@@ -450,6 +507,14 @@ const checkboxStyle: React.CSSProperties = {
 
 const emptyStyle: React.CSSProperties = {
   padding: 36, textAlign: 'center', color: 'var(--fg-3)', fontSize: '0.88rem',
+}
+
+// Chip informativo del scope del supervisor (Fase 3 roles).
+const scopeChipStyle: React.CSSProperties = {
+  display: 'inline-block', marginBottom: 10,
+  background: 'var(--surface-300)', border: '1px solid var(--border-primary)',
+  borderRadius: 999, padding: '4px 14px',
+  fontSize: '0.78rem', color: 'var(--fg-2)',
 }
 
 const selbarStyle: React.CSSProperties = {
