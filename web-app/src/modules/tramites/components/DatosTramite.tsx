@@ -93,6 +93,28 @@ function renderValor(tipoDato: string, valor: unknown): React.ReactNode {
     )
   }
 
+  // Direccion shape nuevo {texto, lat, lon} (los tramites viejos guardan string
+  // plano y caen al String(valor) final). Muestra el texto + coords en mono.
+  // Se detecta por shape ademas de por tipoDato: cuando el detalle no tiene el
+  // catalogo de campos a mano (campos=[]), tipoDato cae al default 'texto'.
+  const esShapeDireccion = valor !== null && typeof valor === 'object' && !Array.isArray(valor)
+    && typeof (valor as { texto?: unknown }).texto === 'string'
+  if ((tipoDato === 'direccion' || esShapeDireccion) && valor !== null && typeof valor === 'object' && !Array.isArray(valor)) {
+    const dir = valor as { texto?: unknown; lat?: unknown; lon?: unknown }
+    const texto = typeof dir.texto === 'string' ? dir.texto : '—'
+    const tieneCoords = typeof dir.lat === 'number' && typeof dir.lon === 'number'
+    return (
+      <span>
+        {texto}
+        {tieneCoords && (
+          <span style={{ display: 'block', fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
+            {(dir.lat as number).toFixed(6)}, {(dir.lon as number).toFixed(6)}
+          </span>
+        )}
+      </span>
+    )
+  }
+
   if (tipoDato === 'texto_largo' && typeof valor === 'string') {
     return (
       <span style={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-display)', fontSize: 13, color: 'var(--fg-1)' }}>
@@ -100,6 +122,9 @@ function renderValor(tipoDato: string, valor: unknown): React.ReactNode {
       </span>
     )
   }
+
+  // Objeto/array no contemplado: JSON legible, nunca "[object Object]".
+  if (typeof valor === 'object') return JSON.stringify(valor)
 
   return String(valor)
 }

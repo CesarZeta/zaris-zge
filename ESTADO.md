@@ -9,13 +9,13 @@
 > - Verificar contra git/prod antes de declarar algo hecho (`feedback_verificar_siempre_antes_de_opinar`).
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 
-**Última actualización:** 2026-07-02 (Cesar) · rama `main` — sesión "Fase 3 roles: scoping supervisor/gestión + aviso al supervisor + mig 92"
+**Última actualización:** 2026-07-02 (Cesar) · rama `main` — sesión "Dashboard Resumen de actividad municipal (mig 93)"
 
 ---
 
 ## 🔵 En curso
 
-_(nada en curso ahora mismo — backoffice estable, todo lo abierto es de la PWA, ver su ESTADO.md)_
+- **Dashboard "Resumen de actividad municipal" — CODEADO Y VERIFICADO EN LOCAL (2026-07-02), falta commit + push + rebuild dist.** Rediseño de la home: título con logo/nombre del municipio + 6 tarjetas nuevas (emergencias activas · reclamos activos · espacios de atención · turnos otorgados vigentes · entradas emitidas de eventos vigentes · trámites abiertos) + mapa multicapa con markers-icono (mismos Lucide de las tarjetas) y toggles por capa. Piezas: mig 93 (`espacios_agenda.latitud/longitud`, **aplicada en local Y prod**), router nuevo `backend/app/api/routes/dashboard.py` (`GET /api/v1/dashboard/resumen`), espacios con lat/lon en schemas+router, form de espacios con bloque §23 (`DireccionGeoField` nuevo en `reclamos/components/`), campo `direccion` de Trámites persiste `{texto, lat, lon}` (retro-compat string; validador backend + `DireccionOSMInput` + detalle ahora muestra los datos del form — gap pre-existente: `DatosTramite` estaba escrito pero sin montar). Datos demo: espacio 4 y trámite POD-LPL-2026-0010 georreferenciados en LOCAL (prod aún sin pins de espacios/trámites — se cargan usando los forms).
 
 ---
 

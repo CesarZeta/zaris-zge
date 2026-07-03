@@ -1,95 +1,95 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../../lib/api'
-import type { ReclamoListado } from '../../reclamos/types/reclamo'
 
-// Tipos minimos de cada endpoint (no traemos los completos para no acoplarnos).
-interface StatsReclamos { [estado: string]: number }
-interface UsuarioLite { id_usuario: number; activo: boolean }
-interface AgenteLite  { id_agente: number; activo: boolean }
-interface EmpresaLite { id_empresa: number; activo: boolean }
+// Un solo endpoint agregado (GET /api/v1/dashboard/resumen) devuelve conteos
+// de las 6 tarjetas + capas geo en una pasada — evita 6 requests sueltas
+// contra la latencia Railway<->Supabase (~2s por round trip).
 
 const MINUTO = 60 * 1000
 
-// Reclamos activos (excluye Resuelto/Cancelado) — base para el mapa.
-async function getReclamosActivos(): Promise<ReclamoListado[]> {
-  // El endpoint acepta filtros opcionales; sin filtros trae todos.
-  const todos = await api.get<ReclamoListado[]>('/api/v1/reclamos', { params: { limit: 500 } })
-  return todos.filter((r) => r.estado !== 'Resuelto' && r.estado !== 'Cancelado')
+export interface DashboardTarjetas {
+  emergencias_activas: number
+  reclamos_activos: number
+  espacios_disponibles: number
+  turnos_otorgados: number
+  entradas_emitidas: number
+  tramites_abiertos: number
 }
 
-// Conteo de ciudadanos via header X-Total-Count.
-async function getCountCiudadanos(): Promise<number> {
-  const { headers } = await api.getWithHeaders<unknown[]>('/api/v1/buc/ciudadanos/buscar', {
-    params: { q: 'a', limit: 1 },
-  })
-  const total = headers.get('X-Total-Count')
-  return total ? Number(total) : 0
+export interface GeoReclamo {
+  id_reclamo: number
+  nro_reclamo: string | null
+  estado: string
+  prioridad: string | null
+  descripcion: string | null
+  latitud: number
+  longitud: number
+  tipo_nombre: string | null
 }
 
-// Conteo de empresas: no expone X-Total-Count, traemos limit=500 y contamos.
-// Aceptable porque tipicamente < 100 empresas en municipio chico.
-async function getCountEmpresas(): Promise<number> {
-  const data = await api.get<EmpresaLite[]>('/api/v1/buc/empresas/buscar', {
-    params: { q: 'a', limit: 500 },
-  })
-  return data.length
+export interface GeoEmergencia {
+  id_emergencia_evento: number
+  numero_operativo: string | null
+  direccion_evento: string | null
+  latitud: number
+  longitud: number
+  tipo_nombre: string | null
+  estado_codigo: string
+  estado_nombre: string
 }
 
-// Conteos via /admin/* (limit 500).
-async function getCountUsuarios(): Promise<number> {
-  const data = await api.get<UsuarioLite[]>('/api/v1/admin/usuarios', { params: { limit: 500 } })
-  return data.filter((u) => u.activo).length
+export interface GeoEspacio {
+  id_espacio: number
+  nombre: string
+  direccion: string | null
+  latitud: number
+  longitud: number
+  atendido: boolean
+  turnos_vigentes: number
+  entradas_vigentes: number
 }
 
-async function getCountAgentes(): Promise<number> {
-  const data = await api.get<AgenteLite[]>('/api/v1/admin/agentes', { params: { limit: 500 } })
-  return data.filter((a) => a.activo).length
+export interface GeoTramite {
+  id_tramite: number
+  numero_expediente: string
+  asunto: string | null
+  tipo_nombre: string | null
+  estado_etiqueta: string | null
+  direccion: string | null
+  latitud: number
+  longitud: number
 }
 
-export function useReclamosActivos() {
+export interface DashboardResumen {
+  tarjetas: DashboardTarjetas
+  geo: {
+    reclamos: GeoReclamo[]
+    emergencias: GeoEmergencia[]
+    espacios: GeoEspacio[]
+    tramites: GeoTramite[]
+  }
+}
+
+export function useDashboardResumen() {
   return useQuery({
-    queryKey: ['dashboard', 'reclamos-activos'],
-    queryFn: getReclamosActivos,
+    queryKey: ['dashboard', 'resumen'],
+    queryFn: () => api.get<DashboardResumen>('/api/v1/dashboard/resumen'),
     staleTime: MINUTO,
   })
 }
 
-export function useStatsReclamos() {
-  return useQuery({
-    queryKey: ['dashboard', 'stats-reclamos'],
-    queryFn: () => api.get<StatsReclamos>('/api/v1/reclamos/stats'),
-    staleTime: MINUTO,
-  })
+// Identidad del municipio (nombre + logo) para el titulo del tablero.
+// Endpoint publico, mismo que consume el topbar del shell vanilla.
+export interface IdentidadMunicipio {
+  app_nombre: string
+  municipio_nombre: string
+  municipio_logo_url: string
 }
 
-export function useCountCiudadanos() {
+export function useIdentidadMunicipio() {
   return useQuery({
-    queryKey: ['dashboard', 'count-ciudadanos'],
-    queryFn: getCountCiudadanos,
-    staleTime: 5 * MINUTO,
-  })
-}
-
-export function useCountEmpresas() {
-  return useQuery({
-    queryKey: ['dashboard', 'count-empresas'],
-    queryFn: getCountEmpresas,
-    staleTime: 5 * MINUTO,
-  })
-}
-
-export function useCountUsuarios() {
-  return useQuery({
-    queryKey: ['dashboard', 'count-usuarios'],
-    queryFn: getCountUsuarios,
-    staleTime: 5 * MINUTO,
-  })
-}
-
-export function useCountAgentes() {
-  return useQuery({
-    queryKey: ['dashboard', 'count-agentes'],
-    queryFn: getCountAgentes,
-    staleTime: 5 * MINUTO,
+    queryKey: ['config', 'identidad'],
+    queryFn: () => api.get<IdentidadMunicipio>('/api/v1/config/identidad'),
+    staleTime: 10 * MINUTO,
   })
 }

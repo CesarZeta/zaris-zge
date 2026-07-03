@@ -73,6 +73,7 @@ Admin (`/api/v1/admin/tramites`, nivel ≤ 2, registrado antes de admin_tablas):
 - **Flujo de tipos custom**: nace en borrador, NO disponible en "Nuevo trámite" hasta tener estado inicial+final y "Publicar y habilitar". El alta lista solo publicados.
 
 ### Quirks (vigentes)
+- **Campo `direccion` tiene DOS shapes en `datos_jsonb`** (2026-07-02): string plano (trámites viejos) u objeto `{texto, lat, lon}` (form OSM+pin — permite geoposicionar el trámite en el mapa del Dashboard). Validador en `services/tramites/creacion.py` acepta ambos (objeto exige `texto` no vacío y lat/lon juntos o ninguno). Frontend: `DireccionOSMInput` (CampoDinamico.tsx) emite string sin pin y objeto con pin; `DatosTramite.tsx` renderiza ambos (detecta el shape además del tipo_dato). Cualquier consumer nuevo de un valor `direccion` DEBE tolerar ambos shapes.
 - **JSONB en asyncpg**: NO `:v::jsonb` ni `dict` en prepared statements de SQLAlchemy `text()`. Usar `VALUES (CAST(:v AS jsonb))` con `json.dumps(val) if val is not None else None`. (El `::jsonb` sí funciona en psql y en `asyncpg_conn.execute()` directo, §5.)
 - **Mapeo de params iniciador**: `**iniciador_fks` sobre el dict del INSERT falla (claves largas ≠ `:alias`). Mapear explícito ([[feedback_mapeo_alias_sql_vs_claves_dict]]).
 - **`tramite` no tiene `id_tipo_tramite` directo** — va via `id_tipo_tramite_version → tipo_tramite_version → tipo_tramite` ([[reference_tramite_no_tiene_id_tipo_tramite_directo]]).

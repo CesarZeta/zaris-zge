@@ -21,6 +21,7 @@ from app.api.routes.admin_tablas import router as admin_tablas_router
 from app.api.routes.admin_permisos import router as admin_permisos_router
 from app.api.routes.reclamos import router as reclamos_router
 from app.api.routes.bi import router as bi_router
+from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.reclamo_adjuntos import router as reclamo_adjuntos_router
 from app.api.routes.ordenes_trabajo import router as ot_router
 from app.api.routes.ot_adjuntos import router as ot_adjuntos_router
@@ -137,6 +138,8 @@ app.include_router(admin_tablas_router, prefix="/api/v1/admin")
 app.include_router(reclamos_router)
 # BI: /api/v1/bi/* (agregaciones de analisis). No colisiona con otros prefijos.
 app.include_router(bi_router)
+# Dashboard home: /api/v1/dashboard/resumen (conteos + capas geo). Prefijo propio.
+app.include_router(dashboard_router)
 app.include_router(reclamo_adjuntos_router)
 # ot_adjuntos ANTES de ot_router: /ot/{id_ot}/adjuntos no debe ser atrapado por
 # el /{id_ot} greedy del router de OT (mismo quirk §5 de orden de routers).

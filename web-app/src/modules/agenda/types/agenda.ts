@@ -308,6 +308,8 @@ export interface EspacioAgenda {
   nombre: string
   descripcion: string | null
   direccion: string | null
+  latitud: number | null
+  longitud: number | null
   capacidad_personas: number | null
   atendido: boolean
   id_subarea: number | null
@@ -324,6 +326,8 @@ export interface EspacioAgendaCreatePayload {
   nombre: string
   descripcion?: string | null
   direccion?: string | null
+  latitud?: number | null
+  longitud?: number | null
   capacidad_personas?: number | null
   atendido: boolean
   id_subarea?: number | null
