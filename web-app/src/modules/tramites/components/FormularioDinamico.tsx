@@ -39,7 +39,9 @@ export function validarDatos(
       v === null ||
       v === undefined ||
       v === '' ||
-      (Array.isArray(v) && v.length === 0)
+      (Array.isArray(v) && v.length === 0) ||
+      // direccion shape nuevo {texto, lat, lon}: vacio si el texto esta vacio.
+      (c.tipo_dato === 'direccion' && typeof v === 'object' && !Array.isArray(v) && !(v as { texto?: unknown }).texto)
     if (vacio) errs[c.nombre_interno] = 'Campo obligatorio'
   }
   return errs

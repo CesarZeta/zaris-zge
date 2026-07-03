@@ -4,6 +4,7 @@ import { ArrowLeft, RefreshCw, Paperclip } from 'lucide-react'
 import { Skeleton } from '../../../ui'
 import { useAuthStore } from '../../../stores/auth'
 import { useTramite } from '../hooks/useTramites'
+import { DatosTramite } from '../components/DatosTramite'
 import { EstadoBadge } from '../components/EstadoBadge'
 import { ResultadoChip } from '../components/ResultadoChip'
 import { Timeline } from '../components/Timeline'
@@ -114,6 +115,14 @@ export function DetalleTramite() {
               )}
               <MetaDato label="Tipo" valor={`${data.tipo_nombre} (v${data.version_num})`} />
             </div>
+            {/* Datos cargados en el formulario dinamico (datos_jsonb). Sin el
+                catalogo de campos a mano: DatosTramite resuelve etiquetas desde
+                las claves y detecta el shape de direccion {texto, lat, lon}. */}
+            {data.datos_jsonb && Object.keys(data.datos_jsonb).length > 0 && (
+              <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border-primary)' }}>
+                <DatosTramite datos={data.datos_jsonb} campos={[]} />
+              </div>
+            )}
           </section>
 
           {/* Documentos */}

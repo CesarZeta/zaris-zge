@@ -483,6 +483,8 @@ class EspacioAgendaBase(BaseModel):
     nombre: str = Field(..., min_length=1, max_length=150)
     descripcion: Optional[str] = None
     direccion: Optional[str] = Field(None, max_length=300)
+    latitud: Optional[float] = Field(None, ge=-90, le=90)
+    longitud: Optional[float] = Field(None, ge=-180, le=180)
     capacidad_personas: Optional[int] = Field(None, ge=0)
     atendido: bool = True
     id_subarea: Optional[int] = None
@@ -496,6 +498,8 @@ class EspacioAgendaUpdate(BaseModel):
     nombre: Optional[str] = Field(None, min_length=1, max_length=150)
     descripcion: Optional[str] = None
     direccion: Optional[str] = Field(None, max_length=300)
+    latitud: Optional[float] = Field(None, ge=-90, le=90)
+    longitud: Optional[float] = Field(None, ge=-180, le=180)
     capacidad_personas: Optional[int] = Field(None, ge=0)
     atendido: Optional[bool] = None
     id_subarea: Optional[int] = None
@@ -509,6 +513,8 @@ class EspacioAgendaOut(BaseModel):
     nombre: str
     descripcion: Optional[str] = None
     direccion: Optional[str] = None
+    latitud: Optional[float] = None
+    longitud: Optional[float] = None
     capacidad_personas: Optional[int] = None
     atendido: bool
     id_subarea: Optional[int] = None

@@ -78,6 +78,36 @@ def _validar_escalar(nombre: str, valor: Any, tipo_dato: str, validacion: dict |
             return f"'{nombre}' debe ser un numero decimal"
         return None
 
+    if tipo_dato == "direccion":
+        # Shape nuevo (2026-07-02): objeto {texto, lat, lon} — el form OSM+pin
+        # guarda la direccion normalizada + coordenadas para el mapa del
+        # Dashboard. Retro-compat: el string plano legacy sigue siendo valido.
+        if isinstance(valor, dict):
+            texto = valor.get("texto")
+            if not isinstance(texto, str) or not texto.strip():
+                return f"'{nombre}' debe incluir 'texto' con la direccion"
+            claves_extra = set(valor.keys()) - {"texto", "lat", "lon"}
+            if claves_extra:
+                return f"'{nombre}' tiene claves no permitidas: {sorted(claves_extra)}"
+            lat, lon = valor.get("lat"), valor.get("lon")
+            # lat/lon van juntos o ninguno (un pin sin una de las dos no ubica nada).
+            if (lat is None) != (lon is None):
+                return f"'{nombre}' debe incluir lat y lon juntos (o ninguno)"
+            if lat is not None:
+                if not isinstance(lat, (int, float)) or isinstance(lat, bool) or not (-90 <= lat <= 90):
+                    return f"'{nombre}': lat invalida"
+                if not isinstance(lon, (int, float)) or isinstance(lon, bool) or not (-180 <= lon <= 180):
+                    return f"'{nombre}': lon invalida"
+            if validacion:
+                if "min" in validacion and len(texto) < validacion["min"]:
+                    return f"'{nombre}' tiene menos de {validacion['min']} caracteres"
+                if "max" in validacion and len(texto) > validacion["max"]:
+                    return f"'{nombre}' supera los {validacion['max']} caracteres"
+            return None
+        if not isinstance(valor, str):
+            return f"'{nombre}' debe ser texto o un objeto {{texto, lat, lon}}"
+        # String plano legacy: cae a la validacion de texto de abajo.
+
     if tipo_dato in ("texto", "texto_largo", "direccion"):
         if not isinstance(valor, str):
             return f"'{nombre}' debe ser texto"

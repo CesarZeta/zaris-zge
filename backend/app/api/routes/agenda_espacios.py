@@ -39,7 +39,8 @@ def _require_admin(user: dict) -> None:
 
 async def _espacio_to_out(db: AsyncSession, id_espacio: int, incluir_agentes: bool = True) -> Optional[dict[str, Any]]:
     row = (await db.execute(text("""
-        SELECT e.id_espacio, e.nombre, e.descripcion, e.direccion, e.capacidad_personas,
+        SELECT e.id_espacio, e.nombre, e.descripcion, e.direccion, e.latitud, e.longitud,
+               e.capacidad_personas,
                e.atendido, e.id_subarea, s.nombre AS subarea_nombre,
                e.activo, e.id_municipio, e.fecha_alta, e.fecha_modificacion
         FROM espacios_agenda e
@@ -91,7 +92,8 @@ async def listar_espacios(
         params["q"] = f"%{q}%"
     where_sql = " AND ".join(where)
     rows = (await db.execute(text(f"""
-        SELECT e.id_espacio, e.nombre, e.descripcion, e.direccion, e.capacidad_personas,
+        SELECT e.id_espacio, e.nombre, e.descripcion, e.direccion, e.latitud, e.longitud,
+               e.capacidad_personas,
                e.atendido, e.id_subarea, s.nombre AS subarea_nombre,
                e.activo, e.id_municipio, e.fecha_alta, e.fecha_modificacion,
                (SELECT COUNT(*) FROM espacio_agentes ea
@@ -121,10 +123,10 @@ async def crear_espacio(
     _require_admin(user)
     row = (await db.execute(text("""
         INSERT INTO espacios_agenda (
-            nombre, descripcion, direccion, capacidad_personas, atendido,
+            nombre, descripcion, direccion, latitud, longitud, capacidad_personas, atendido,
             id_subarea, id_municipio, id_usuario_alta, id_usuario_modificacion
         ) VALUES (
-            :nombre, :descripcion, :direccion, :capacidad, :atendido,
+            :nombre, :descripcion, :direccion, :latitud, :longitud, :capacidad, :atendido,
             :id_sa, :id_mun, :uid, :uid
         )
         RETURNING id_espacio
@@ -132,6 +134,8 @@ async def crear_espacio(
         "nombre": payload.nombre,
         "descripcion": payload.descripcion,
         "direccion": payload.direccion,
+        "latitud": payload.latitud,
+        "longitud": payload.longitud,
         "capacidad": payload.capacidad_personas,
         "atendido": payload.atendido,
         "id_sa": payload.id_subarea,
@@ -172,7 +176,7 @@ async def actualizar_espacio(
     sets = []
     params: dict[str, Any] = {"id": id_espacio, "uid": user["id_usuario"]}
     data = payload.model_dump(exclude_unset=True)
-    for col in ("nombre", "descripcion", "direccion", "capacidad_personas", "atendido", "id_subarea", "activo"):
+    for col in ("nombre", "descripcion", "direccion", "latitud", "longitud", "capacidad_personas", "atendido", "id_subarea", "activo"):
         if col in data:
             sets.append(f"{col} = :{col}")
             params[col] = data[col]

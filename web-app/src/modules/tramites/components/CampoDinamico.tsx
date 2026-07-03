@@ -243,7 +243,7 @@ export function CampoDinamico({ campo, value, onChange, error }: CampoDinamicoPr
       <div style={fieldWrapStyle}>
         {labelEl}
         <DireccionOSMInput
-          value={typeof value === 'string' ? value : ''}
+          value={value}
           onChange={set}
         />
         {hintEl}
@@ -274,17 +274,39 @@ export function CampoDinamico({ campo, value, onChange, error }: CampoDinamicoPr
 
 /* ── Buscador de dirección OSM ────────────────────────────────────────────── */
 
-function DireccionOSMInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [query, setQuery] = useState(value)
+// Shape nuevo del valor persistido para tipo_dato='direccion' (2026-07-02):
+// {texto, lat, lon} — permite geoposicionar el trámite en el mapa del Dashboard.
+// Retro-compat: los trámites viejos guardan string plano; este input lo acepta
+// y emite string mientras NO haya pin, y el objeto completo cuando lo hay.
+interface DireccionValor { texto: string; lat: number; lon: number }
+
+function parseDireccion(value: unknown): { texto: string; coords: { lat: number; lon: number } | null } {
+  if (typeof value === 'string') return { texto: value, coords: null }
+  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    const v = value as Partial<DireccionValor>
+    const texto = typeof v.texto === 'string' ? v.texto : ''
+    const coords = typeof v.lat === 'number' && typeof v.lon === 'number'
+      ? { lat: v.lat, lon: v.lon }
+      : null
+    return { texto, coords }
+  }
+  return { texto: '', coords: null }
+}
+
+function DireccionOSMInput({ value, onChange }: { value: unknown; onChange: (v: string | DireccionValor) => void }) {
+  const inicial = parseDireccion(value)
+  const [query, setQuery] = useState(inicial.texto)
   const [resultados, setResultados] = useState<GeoBuscarResult[]>([])
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
-  // Coordenadas del pin. Son ayuda visual para confirmar/corregir la dirección;
-  // el valor que se persiste en `datos[nombre]` sigue siendo el TEXTO (string),
-  // así no cambia el shape del JSONB ni rompe trámites/detalle existentes.
-  const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null)
+  const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(inicial.coords)
   const skipRef = useRef(false)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // Con pin → objeto {texto, lat, lon}; sin pin → string plano (retro-compat).
+  function emit(texto: string, c: { lat: number; lon: number } | null) {
+    onChange(c ? { texto, lat: c.lat, lon: c.lon } : texto)
+  }
 
   useEffect(() => {
     if (skipRef.current) { skipRef.current = false; return }
@@ -313,8 +335,9 @@ function DireccionOSMInput({ value, onChange }: { value: string; onChange: (v: s
     setQuery(r.display_name)
     setOpen(false)
     setResultados([])
-    onChange(r.display_name)
-    if (r.lat != null && r.lon != null) setCoords({ lat: r.lat, lon: r.lon })
+    const c = r.lat != null && r.lon != null ? { lat: r.lat, lon: r.lon } : null
+    if (c) setCoords(c)
+    emit(r.display_name, c ?? coords)
   }
 
   // Geocodifica el texto actual y abre el mapa (para corregir el pin cuando la
@@ -325,7 +348,9 @@ function DireccionOSMInput({ value, onChange }: { value: string; onChange: (v: s
     try {
       const res = await geoBuscar(query, 1, true)
       if (res[0]?.lat != null && res[0]?.lon != null) {
-        setCoords({ lat: res[0].lat, lon: res[0].lon })
+        const c = { lat: res[0].lat, lon: res[0].lon }
+        setCoords(c)
+        emit(query, c)
       }
     } catch { /* sin resultado, no abre el mapa */ } finally { setLoading(false) }
   }
@@ -333,15 +358,18 @@ function DireccionOSMInput({ value, onChange }: { value: string; onChange: (v: s
   // Al arrastrar/clickear el pin: geocoding inverso → reescribe el texto con la
   // dirección corregida. Best-effort: si falla, deja el pin movido y el texto previo.
   async function onPinChange(lat: number, lon: number) {
-    setCoords({ lat, lon })
+    const c = { lat, lon }
+    setCoords(c)
     try {
       const rev = await geoReverse(lat, lon)
       if (rev.display_name) {
         skipRef.current = true
         setQuery(rev.display_name)
-        onChange(rev.display_name)
+        emit(rev.display_name, c)
+        return
       }
     } catch { /* sin reverse, conserva el texto actual */ }
+    emit(query, c)
   }
 
   return (
@@ -349,7 +377,7 @@ function DireccionOSMInput({ value, onChange }: { value: string; onChange: (v: s
       <Input
         type="text"
         value={query}
-        onChange={(e) => { setQuery(e.target.value); onChange(e.target.value) }}
+        onChange={(e) => { setQuery(e.target.value); emit(e.target.value, coords) }}
         placeholder="Escribí la dirección..."
       />
       {loading && (
