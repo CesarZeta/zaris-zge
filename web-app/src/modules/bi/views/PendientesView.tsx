@@ -26,7 +26,7 @@ import {
   usePendientesResumen,
 } from '../hooks/useBi'
 import { DashboardMap } from '../../dashboard/components/DashboardMap'
-import type { ReclamoListado } from '../../reclamos/types/reclamo'
+import type { GeoReclamo } from '../../dashboard/hooks/useDashboardData'
 import type { BiFiltros } from '../lib/types'
 import {
   COLOR_TRAMO_0_3,
@@ -235,7 +235,13 @@ export function PendientesView() {
           <CenterMsg>No hay reclamos pendientes con ubicación geográfica.</CenterMsg>
         ) : (
           <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: 8, overflow: 'hidden' }}>
-            <DashboardMap reclamos={geo.data as unknown as ReclamoListado[]} />
+            <DashboardMap
+              reclamos={geo.data as unknown as GeoReclamo[]}
+              emergencias={[]}
+              espacios={[]}
+              tramites={[]}
+              visibles={{ reclamos: true, emergencias: false, espacios: false, tramites: false }}
+            />
           </div>
         )}
       </ChartCard>

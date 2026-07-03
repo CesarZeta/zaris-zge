@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Modal } from '../Modal'
 import { Button } from '../../../../ui'
+import { DireccionGeoField } from '../../../reclamos/components/DireccionGeoField'
 import { useActualizarEspacio, useCrearEspacio } from '../../hooks/useEspacios'
 import type { EspacioAgenda, EspacioAgendaCreatePayload } from '../../types/agenda'
 
@@ -14,6 +15,8 @@ interface FormState {
   nombre: string
   descripcion: string
   direccion: string
+  latitud: number | null
+  longitud: number | null
   capacidad_personas: string  // string para input, parsea en submit
   atendido: boolean
   id_subarea: string
@@ -23,6 +26,8 @@ const emptyForm: FormState = {
   nombre: '',
   descripcion: '',
   direccion: '',
+  latitud: null,
+  longitud: null,
   capacidad_personas: '',
   atendido: true,
   id_subarea: '',
@@ -33,6 +38,8 @@ function fromEspacio(e: EspacioAgenda): FormState {
     nombre: e.nombre,
     descripcion: e.descripcion ?? '',
     direccion: e.direccion ?? '',
+    latitud: e.latitud ?? null,
+    longitud: e.longitud ?? null,
     capacidad_personas: e.capacidad_personas != null ? String(e.capacidad_personas) : '',
     atendido: e.atendido,
     id_subarea: e.id_subarea != null ? String(e.id_subarea) : '',
@@ -59,6 +66,8 @@ export function EspacioFormModal({ open, onClose, espacio }: Props) {
       nombre: form.nombre.trim(),
       descripcion: form.descripcion.trim() || null,
       direccion: form.direccion.trim() || null,
+      latitud: form.latitud,
+      longitud: form.longitud,
       capacidad_personas: form.capacidad_personas ? Number(form.capacidad_personas) : null,
       atendido: form.atendido,
       id_subarea: form.id_subarea ? Number(form.id_subarea) : null,
@@ -113,14 +122,12 @@ export function EspacioFormModal({ open, onClose, espacio }: Props) {
             style={{ ...inputStyle, resize: 'vertical', minHeight: 56 }}
           />
         </Field>
-        <Field label="Direccion">
-          <input
-            value={form.direccion}
-            onChange={(e) => setForm((f) => ({ ...f, direccion: e.target.value }))}
-            maxLength={300}
-            style={inputStyle}
-          />
-        </Field>
+        {/* Direccion normalizada + pin en mapa (regla §23): buscador OSM + MapaPicker. */}
+        <DireccionGeoField
+          value={{ texto: form.direccion, lat: form.latitud, lon: form.longitud }}
+          onChange={(v) => setForm((f) => ({ ...f, direccion: v.texto, latitud: v.lat, longitud: v.lon }))}
+          mapHeight={220}
+        />
         <div style={{ display: 'flex', gap: 12 }}>
           <Field label="Capacidad personas" style={{ flex: 1 }}>
             <input
