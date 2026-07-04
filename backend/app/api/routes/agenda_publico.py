@@ -17,7 +17,10 @@ import logging
 import re
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+
+from app.utils.request_helpers import get_real_ip
+from app.middleware.rate_limit import check_rate_limit
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -110,10 +113,13 @@ async def obtener_evento_publico(
 async def reservar_publico(
     token_publico: str,
     payload: ReservaPublicaCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Crea una reserva por autoservicio.
     Busca ciudadano por DNI; si no existe lo crea con datos minimos."""
+    # Rate limit anónimo: evita creación masiva de reservas/ciudadanos por abuso.
+    check_rate_limit(f"agendapub:{get_real_ip(request)}", max_requests=10, window_seconds=60)
     ev = await _evento_publico_por_token(db, token_publico)
     if not ev or not ev["activo"] or not ev["admite_autoservicio"]:
         raise HTTPException(404, "Evento no encontrado o no disponible")
