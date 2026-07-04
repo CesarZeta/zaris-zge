@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, require_admin
 from app.models.buc import (
     Usuario, Nacionalidad, TipoRepresentacion, Actividad,
     Ciudadano, Empresa, CiudadanoEmpresa
@@ -100,8 +100,18 @@ async def historial_logins(
     id: int,
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
-    """Historial de accesos (auditoría) de un usuario, más reciente primero."""
+    """Historial de accesos (auditoría) de un usuario, más reciente primero.
+
+    IDOR guard: solo el Administrador (nivel 1) puede ver logs ajenos; el resto
+    solo el propio (IP + user-agent son datos sensibles de trazabilidad).
+    """
+    if current_user.get("nivel_acceso") != 1 and current_user.get("id_usuario") != id:
+        raise HTTPException(
+            status_code=403,
+            detail="Sin permiso para ver este historial de accesos",
+        )
     r = await db.execute(text("""
         SELECT id_login_log, fecha_login, ip, user_agent
         FROM usuario_login_log
@@ -212,6 +222,7 @@ async def crear_usuario(
     data: UsuarioCreate,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    _admin: dict = Depends(require_admin),
 ):
     """Alta de usuario interno.
 
@@ -304,6 +315,7 @@ async def modificar_usuario(
     id: int,
     data: UsuarioUpdate,
     db: AsyncSession = Depends(get_db),
+    _admin: dict = Depends(require_admin),
 ):
     """Modificar datos de usuario. Si se envía 'password', se re-hashea."""
     result = await db.execute(select(Usuario).where(Usuario.id_usuario == id))
@@ -331,6 +343,7 @@ async def cambiar_estado_usuario(
     id: int,
     activo: bool = Query(..., description="true para reactivar, false para dar de baja"),
     db: AsyncSession = Depends(get_db),
+    _admin: dict = Depends(require_admin),
 ):
     """Dar de alta o de baja a un usuario (soft delete)."""
     result = await db.execute(select(Usuario).where(Usuario.id_usuario == id))

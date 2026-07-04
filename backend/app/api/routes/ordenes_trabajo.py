@@ -1308,6 +1308,14 @@ async def aprobar_ot(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    # Guard: solo auditor (o admin) resuelve auditorías. Sin esto, cualquier
+    # agente autenticado (incluido Consultor read-only) cerraba reclamos ajenos
+    # y disparaba la encuesta CSAT. Espeja el check de mesa_auditor_me.
+    _id_agente = await _resolver_id_agente_por_usuario(db, current_user["id_usuario"])
+    _es_admin = (current_user.get("nivel_acceso") or 99) <= 1
+    if not _es_admin and (_id_agente is None or not await _verificar_es_auditor(db, _id_agente)):
+        raise HTTPException(status_code=403, detail="No tenés permisos de auditor.")
+
     r = await db.execute(text("""
         SELECT ot.id_reclamo, ot.es_auditoria, ot.id_estado,
                eot.nombre AS estado_actual, r.estado AS reclamo_estado
@@ -1361,6 +1369,13 @@ async def rechazar_ot(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    # Guard: solo auditor (o admin) rechaza auditorías. Sin esto, cualquier
+    # agente autenticado reabría reclamos ajenos generando retrabajo espurio.
+    _id_agente = await _resolver_id_agente_por_usuario(db, current_user["id_usuario"])
+    _es_admin = (current_user.get("nivel_acceso") or 99) <= 1
+    if not _es_admin and (_id_agente is None or not await _verificar_es_auditor(db, _id_agente)):
+        raise HTTPException(status_code=403, detail="No tenés permisos de auditor.")
+
     observaciones = (body.get("observaciones") or "").strip()
     if not observaciones:
         raise HTTPException(status_code=422, detail="Campo 'observaciones' obligatorio en rechazo")

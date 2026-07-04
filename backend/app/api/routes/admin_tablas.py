@@ -10,7 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, require_admin
 
 router = APIRouter(tags=["Admin Tablas"])
 logger = logging.getLogger("zaris.admin_tablas")
@@ -203,6 +203,23 @@ def _get_config(tabla: str) -> dict:
     return TABLE_CONFIG[tabla]
 
 
+# Columnas PII de agentes que solo el Administrador (nivel 1) puede leer por el
+# CRUD genérico. El GET de agentes lo usan también el RecursoPicker de OT y otros
+# selects (nivel 2/4), que solo necesitan id/nombre/apellido/legajo/subárea — por
+# eso NO guardamos el endpoint entero (rompería esos pickers), sino que ocultamos
+# el DNI/CUIL/email/teléfono a quien no sea admin. El form de Maestros → Agentes
+# corre como admin y sigue viendo todo para prefillar la edición.
+_PII_AGENTES = ["dni", "cuil", "email", "telefono"]
+
+
+def _exclude_efectivo(tabla: str, cfg: dict, current_user: dict) -> list[str]:
+    """exclude base de la tabla + PII de agentes si el llamador no es admin."""
+    exclude = list(cfg.get("exclude", []))
+    if tabla == "agentes" and current_user.get("nivel_acceso") != 1:
+        exclude += _PII_AGENTES
+    return exclude
+
+
 def _row_to_dict(row: Any, exclude: list[str]) -> dict:
     """Convierte un Row de SQLAlchemy a dict, omitiendo columnas sensibles."""
     d = dict(row._mapping)
@@ -240,7 +257,7 @@ async def listar(
 ):
     cfg = _get_config(tabla)
     pk = cfg["pk"]
-    exclude = cfg.get("exclude", [])
+    exclude = _exclude_efectivo(tabla, cfg, current_user)
     where = "WHERE activo = TRUE" if cfg.get("has_activo", True) else ""
     stmt = text(f"SELECT * FROM {tabla} {where} ORDER BY {pk}")
     result = await db.execute(stmt)
@@ -259,7 +276,7 @@ async def obtener(
 ):
     cfg = _get_config(tabla)
     pk = cfg["pk"]
-    exclude = cfg.get("exclude", [])
+    exclude = _exclude_efectivo(tabla, cfg, current_user)
     stmt = text(f"SELECT * FROM {tabla} WHERE {pk} = :id")
     result = await db.execute(stmt, {"id": id})
     row = result.fetchone()
@@ -275,7 +292,7 @@ async def crear(
     tabla: str,
     body: dict,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     cfg = _get_config(tabla)
     _bloquear_si_read_only(tabla)
@@ -317,7 +334,7 @@ async def editar(
     id: int,
     body: dict,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     cfg = _get_config(tabla)
     _bloquear_si_read_only(tabla)
@@ -402,7 +419,7 @@ async def baja_logica(
     tabla: str,
     id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
 ):
     cfg = _get_config(tabla)
     _bloquear_si_read_only(tabla)
