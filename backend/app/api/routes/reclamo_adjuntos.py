@@ -32,6 +32,20 @@ EXT_POR_MIME = {
 }
 MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 
+# Mutar adjuntos = editar el reclamo → niveles de gestión (§3: Admin/Supervisor/
+# Atención). Consultor (5, solo lectura) y Gestión-OT (4) no crean/borran adjuntos
+# del reclamo (la evidencia de OT tiene su propio ot_adjuntos). Espeja
+# reclamos.py::NIVELES_GESTION. El GET de listado queda abierto a todo autenticado.
+NIVELES_GESTION_ADJUNTOS = {1, 2, 3}
+
+
+def _require_gestion(current_user: dict) -> None:
+    if current_user.get("nivel_acceso") not in NIVELES_GESTION_ADJUNTOS:
+        raise HTTPException(
+            status_code=403,
+            detail="No tenés permisos para modificar adjuntos (requiere nivel Atención o superior).",
+        )
+
 
 def _safe_filename(nombre: str) -> str:
     nombre = (nombre or "").strip() or "archivo"
@@ -55,6 +69,7 @@ async def crear_upload_url(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    _require_gestion(current_user)
     nombre_archivo = _safe_filename(body.get("nombre_archivo", ""))
     mime_type = (body.get("mime_type") or "").lower()
     tamano = int(body.get("tamano_bytes") or 0)
@@ -110,6 +125,7 @@ async def confirmar_subida(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    _require_gestion(current_user)
     r = await db.execute(text("""
         SELECT id_adjunto, activo FROM reclamo_adjuntos
         WHERE id_adjunto = :id AND id_reclamo = :id_r
@@ -168,6 +184,7 @@ async def borrar_adjunto(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    _require_gestion(current_user)
     r = await db.execute(text("""
         SELECT storage_path, activo FROM reclamo_adjuntos
         WHERE id_adjunto = :id AND id_reclamo = :id_r

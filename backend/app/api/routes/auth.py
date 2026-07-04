@@ -114,6 +114,19 @@ async def _perfil_agente_del_usuario(db: AsyncSession, id_usuario: int) -> dict:
 
 @router.post("/login", response_model=LoginResponse)
 async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    # Anti brute-force online: limitar intentos por IP y por cuenta ANTES de
+    # tocar la DB o verificar bcrypt. Claves prefijadas por flujo (§5) para no
+    # compartir bucket con otros endpoints. In-memory single-replica (limitación
+    # conocida de rate_limit.py): mitiga el ataque online, no reemplaza un lockout
+    # persistente en DB (pendiente, requiere migración de columnas en usuarios).
+    from app.utils.request_helpers import get_real_ip
+    from app.middleware.rate_limit import check_rate_limit
+    _ip = get_real_ip(request)
+    _mail = (body.email or "").strip().lower()
+    check_rate_limit(f"loginint-ip:{_ip}", max_requests=10, window_seconds=60)
+    if _mail:
+        check_rate_limit(f"loginint-mail:{_mail}", max_requests=5, window_seconds=60)
+
     result = await db.execute(
         text("""
             SELECT id_usuario, nombre, email, nivel_acceso, password_hash, activo,

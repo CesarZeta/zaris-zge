@@ -94,6 +94,24 @@ async def get_current_user(
     return dict(user._mapping)
 
 
+async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
+    """Guard de nivel Administrador (nivel_acceso == 1). Encadena get_current_user
+    (autentica + valida scope agente + usuario activo) y ADEMÁS exige nivel 1.
+
+    Usar en mutaciones sensibles que solo el administrador debe poder ejecutar
+    (alta/edición/baja de usuarios, CRUD de maestros, config del sistema). El
+    router de BUC/admin_tablas es transversal, así que este guard va POR ENDPOINT
+    en las mutaciones, no a nivel router (los GET de búsqueda/catálogo los usan
+    todos los niveles). Espeja el require_admin local de admin_permisos.py.
+    """
+    if current_user.get("nivel_acceso") != 1:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Requiere nivel administrador",
+        )
+    return current_user
+
+
 async def get_current_ciudadano(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db),
