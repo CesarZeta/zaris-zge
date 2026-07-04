@@ -13,7 +13,10 @@ Todos bajo /api/v1/publico/auth/*. Modelo:
 import re
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+
+from app.utils.request_helpers import get_real_ip
+from app.middleware.rate_limit import check_rate_limit
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -301,12 +304,16 @@ async def activar_cuenta(data: ActivarIn, db: AsyncSession = Depends(get_db)):
 async def reenviar_activacion(
     data: ReenviarActivacionIn,
     background_tasks: BackgroundTasks,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """
     Reenvia mail de activacion. Cooldown 5 minutos.
     Anti-enumeracion: si el DNI no existe O ya esta activada, devuelve 200 igual.
     """
+    # Rate limit por IP: frena el mail-bombing (aunque haya cooldown por cuenta,
+    # una IP podría rotar DNIs para spamear mails de activación).
+    check_rate_limit(f"vecinoreenvio:{get_real_ip(request)}", max_requests=8, window_seconds=60)
     dni = _validar_dni(data.dni)
 
     res = await db.execute(
@@ -370,8 +377,14 @@ async def reenviar_activacion(
 
 
 @router.post("/login", response_model=LoginCiudadanoOut)
-async def login_ciudadano(data: LoginCiudadanoIn, db: AsyncSession = Depends(get_db)):
+async def login_ciudadano(data: LoginCiudadanoIn, request: Request, db: AsyncSession = Depends(get_db)):
     """Login con DNI + password. Lockout 5 intentos = 15 minutos."""
+    # Rate limit por IP y por DNI ANTES de tocar la DB/bcrypt: complementa el
+    # lockout por-cuenta (que no frena un ataque distribuido por muchas cuentas
+    # desde una IP). Claves prefijadas por flujo (§5).
+    _ip = get_real_ip(request)
+    check_rate_limit(f"vecinologin-ip:{_ip}", max_requests=10, window_seconds=60)
+    check_rate_limit(f"vecinologin-dni:{(data.dni or '').strip()}", max_requests=6, window_seconds=60)
     dni = _validar_dni(data.dni)
     invalido = HTTPException(status_code=401, detail="Credenciales invalidas")
 
@@ -480,9 +493,12 @@ async def listar_nacionalidades_publico(
 async def recuperar_password(
     data: RecuperarPasswordIn,
     background_tasks: BackgroundTasks,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Pide email de recovery. Anti-enumeracion + cooldown silencioso de 5 minutos."""
+    # Rate limit por IP: frena el mail-bombing de recovery (cooldown es por cuenta).
+    check_rate_limit(f"vecinorecovery:{get_real_ip(request)}", max_requests=8, window_seconds=60)
     dni = _validar_dni(data.dni)
 
     res = await db.execute(

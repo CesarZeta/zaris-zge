@@ -26,7 +26,10 @@ import re
 from datetime import date, datetime, time, timedelta
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+
+from app.utils.request_helpers import get_real_ip
+from app.middleware.rate_limit import check_rate_limit
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -248,10 +251,14 @@ async def _turno_publico_out(db: AsyncSession, id_turno: int) -> Optional[dict[s
 @router.post("/reservar", response_model=TurnoPublicoOut, status_code=201)
 async def reservar_turno_publico(
     payload: TurnoPublicoCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Crea un turno por autoservicio. El recurso lo trae la prestacion.
     Busca/crea el ciudadano por DNI."""
+    # Rate limit anónimo: evita que un script cree turnos/ciudadanos en masa.
+    # Clave prefijada por flujo (§5) para no compartir bucket con otros endpoints.
+    check_rate_limit(f"turnopub:{get_real_ip(request)}", max_requests=10, window_seconds=60)
     prest = await _resolver_prestacion(db, payload.id_tipo_prestacion)
     tipo_recurso = prest["tipo_recurso"]
     id_recurso = prest["id_recurso"]

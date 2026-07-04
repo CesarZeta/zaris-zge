@@ -34,7 +34,7 @@ MAX_BODY_BYTES = 4096
 
 
 def _rate_limit_publico(request: Request) -> None:
-    check_rate_limit(get_real_ip(request), max_requests=5, window_seconds=60)
+    check_rate_limit(f"encpub:{get_real_ip(request)}", max_requests=5, window_seconds=60)
 
 
 router = APIRouter(

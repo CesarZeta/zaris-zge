@@ -122,7 +122,7 @@ async def reportar_emergencia(
 ) -> Any:
     """El vecino reporta una emergencia desde la App Vecinos. Devuelve el
     numero_operativo para seguimiento (lo genera el trigger de la DB)."""
-    check_rate_limit(get_real_ip(request), max_requests=5, window_seconds=60)
+    check_rate_limit(f"emergpub:{get_real_ip(request)}", max_requests=5, window_seconds=60)
 
     tipo = (await db.execute(text("""
         SELECT id_emergencia_tipo, id_subarea, id_prioridad_default,
