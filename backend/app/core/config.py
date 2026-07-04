@@ -80,3 +80,25 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+
+def _es_entorno_local() -> bool:
+    """Local si el ENV_FILE es de dev o si la DB apunta a localhost. En Railway
+    (prod) ENV_FILE queda en '.env' y la DB es remota → NO es local."""
+    env = os.getenv("ENV_FILE", ".env")
+    if env.endswith(".local") or env.endswith(".development"):
+        return True
+    uri = settings.ASYNC_DATABASE_URI
+    return "localhost" in uri or "127.0.0.1" in uri
+
+
+# Fail-fast de seguridad: si en un entorno NO-local sigue el SECRET_KEY default
+# público del repo, un atacante puede forjar JWT de admin. Preferimos que el
+# arranque falle ruidosamente a servir auth forjable en silencio. En Railway,
+# setear la env var SECRET_KEY (openssl rand -hex 32) antes de deployar.
+if not _es_entorno_local() and settings.SECRET_KEY == "dev-secret-key-change-in-production":
+    raise RuntimeError(
+        "SECRET_KEY usa el valor default público en un entorno no-local. "
+        "Setear la env var SECRET_KEY con un secreto aleatorio fuerte "
+        "(ej: openssl rand -hex 32) antes de arrancar."
+    )
+
