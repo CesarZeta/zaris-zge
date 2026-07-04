@@ -90,7 +90,7 @@ async def geo_buscar_vecino(
     Reusa la lógica de filtrado de POIs de geo.py (solo_direcciones=True). El vecino
     geocodifica su propia dirección; scope 'publico' (no 'agente'). Rate-limit por IP
     además del rate-limit global de Nominatim."""
-    check_rate_limit(get_real_ip(request), max_requests=20, window_seconds=60)
+    check_rate_limit(f"reclpub:{get_real_ip(request)}", max_requests=20, window_seconds=60)
     return await geocodificar_direccion(q, limit, solo_direcciones=True)
 
 
