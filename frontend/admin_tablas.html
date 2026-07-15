@@ -1041,10 +1041,12 @@ const SCHEMAS = {
     label: 'Municipio', titulo: 'Municipios',
     pk: 'id_municipio',
     cols: [
-      { field: 'nombre',    label: 'Nombre',    type: 'text', required: true },
-      { field: 'provincia', label: 'Provincia', type: 'text', required: false },
+      { field: 'nombre',       label: 'Nombre',            type: 'text', required: true },
+      { field: 'provincia',    label: 'Provincia',         type: 'text', required: false },
+      { field: 'pais',         label: 'País',              type: 'text', required: false, hint: 'Ej: Argentina.' },
+      { field: 'codigo_corto', label: 'Prefijo (3 letras)', type: 'text', required: false, hint: 'Código de 3 letras usado como prefijo en la numeración de trámites y en los enlaces públicos del municipio (ej. SAN).' },
     ],
-    display: ['id_municipio', 'nombre', 'provincia'],
+    display: ['id_municipio', 'nombre', 'provincia', 'pais', 'codigo_corto'],
   },
   configuracion_general: {
     label: 'Parámetro', titulo: 'Configuración general',

@@ -209,6 +209,147 @@ html, body {
   display: none;
 }
 
+/* ── Botón "Alta vecino" del topbar (IT-05) ── */
+.topbar__altavecino {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px 0 10px;
+  background: none;
+  border: 1px solid var(--border-medium);
+  border-radius: 99px;
+  cursor: pointer;
+  color: var(--fg-2);
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 500;
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+.topbar__altavecino:hover {
+  background: rgba(245,78,0,.08);
+  border-color: var(--zaris-orange);
+  color: var(--zaris-orange);
+}
+.topbar__altavecino[hidden] { display: none; }
+/* En pantallas angostas, dejar solo el ícono. */
+@media (max-width: 720px) {
+  .topbar__altavecino-label { display: none; }
+  .topbar__altavecino { padding: 0; width: 32px; justify-content: center; }
+}
+:root[data-theme="dark"] .topbar__altavecino:hover {
+  background: rgba(245,78,0,.14);
+}
+
+/* ── Modal compartir alta de vecino (IT-05) ── */
+.altavecino-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(38,37,30,.45);
+  backdrop-filter: blur(2px);
+}
+.altavecino-overlay[hidden] { display: none; }
+.altavecino-modal {
+  width: min(92vw, 380px);
+  background: var(--surface-100);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 40px rgba(0,0,0,.22);
+  overflow: hidden;
+}
+.altavecino-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-primary);
+}
+.altavecino-modal__title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.98rem;
+  color: var(--fg-1);
+}
+.altavecino-modal__close {
+  background: none; border: none; cursor: pointer;
+  font-size: 1.4rem; line-height: 1; color: var(--fg-3);
+  padding: 0 4px;
+}
+.altavecino-modal__close:hover { color: var(--fg-1); }
+.altavecino-modal__body {
+  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.altavecino-modal__desc {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--fg-3);
+  line-height: 1.45;
+  text-align: center;
+}
+.altavecino-modal__qr {
+  padding: 8px;
+  background: #fff;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-primary);
+}
+.altavecino-modal__qr canvas { display: block; }
+.altavecino-modal__url {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--fg-2);
+  word-break: break-all;
+  text-align: center;
+  max-width: 100%;
+}
+.altavecino-modal__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 4px;
+}
+/* Botones locales (el shell vanilla no carga components.css del DS — usamos
+   tokens del DS con estilos locales, patrón "tokens sí, componentes locales"). */
+.altavecino-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 14px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+.altavecino-btn--primary {
+  background: var(--zaris-orange);
+  color: #fff;
+}
+.altavecino-btn--primary:hover { background: #d94500; }
+.altavecino-btn--outline {
+  background: transparent;
+  border-color: var(--border-medium);
+  color: var(--fg-1);
+}
+.altavecino-btn--outline:hover { border-color: var(--zaris-orange); color: var(--zaris-orange); }
+.altavecino-btn--ghost {
+  background: transparent;
+  color: var(--fg-2);
+}
+.altavecino-btn--ghost:hover { background: rgba(38,37,30,.07); color: var(--fg-1); }
+:root[data-theme="dark"] .altavecino-btn--ghost:hover { background: rgba(237,236,231,.08); }
+
 .notif-menu__dropdown {
   position: absolute;
   top: calc(100% + 6px);

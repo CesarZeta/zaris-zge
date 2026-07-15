@@ -125,7 +125,7 @@ TABLE_CONFIG: dict[str, dict] = {
     },
     "municipios": {
         "pk": "id_municipio",
-        "cols": ["nombre", "provincia"],
+        "cols": ["nombre", "provincia", "pais", "codigo_corto"],
         "fecha_mod": "fecha_modificacion",
     },
     # ── Tablas BUC — ahora con auditoría y baja lógica
