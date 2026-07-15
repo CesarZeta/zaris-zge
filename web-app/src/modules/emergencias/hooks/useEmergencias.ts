@@ -71,11 +71,12 @@ export const useStatsEmergencias = (horas?: number) =>
     staleTime: 10 * 1000,
   })
 
-export const useEventos = (filtros: ListarEventosFiltros) =>
+export const useEventos = (filtros: ListarEventosFiltros, enabled = true) =>
   useQuery({
     queryKey: ['emergencias', 'eventos', filtros],
     queryFn: () => listarEventos(filtros),
     staleTime: 15 * 1000,
+    enabled,
   })
 
 export const useEventoDetalle = (id: number | null) =>

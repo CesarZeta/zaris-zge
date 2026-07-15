@@ -60,6 +60,7 @@ export function CancelarReclamoModal({ open, idReclamo, nroReclamo, onClose, onS
         <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--fg-1)', lineHeight: 1.5 }}>
           Esta acción marca el reclamo <strong>{nroReclamo ?? `#${idReclamo}`}</strong> como <strong>Cancelado</strong>
           {' '}y cierra en cascada las órdenes de trabajo activas asociadas. Se registra en el historial.
+          {' '}Si el reclamo tiene sub-reclamos activos, primero resolvelos o cancelalos.
         </p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

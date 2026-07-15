@@ -15,6 +15,7 @@ import {
   useCerrarEvento,
   useDerivarEvento,
   useEstadosEmergencia,
+  useEventos,
   useEventosAbiertos,
   useTiposEmergencia,
 } from '../hooks/useEmergencias'
@@ -38,6 +39,11 @@ export function Dispatcher() {
   const [fPrioridad, setFPrioridad] = useState<string>('')
   const [fEstado, setFEstado] = useState<string>('')
   const [fNro, setFNro] = useState<string>('')
+  // Rango de fechas (EM002): vacío = tablero en vivo (solo abiertos, polling 30s).
+  // Con al menos una fecha, el tablero pasa a "búsqueda histórica" e incluye los
+  // eventos cerrados dentro del rango (usa el listado general, no /abiertos).
+  const [fDesde, setFDesde] = useState<string>('')
+  const [fHasta, setFHasta] = useState<string>('')
   const [horasKpi, setHorasKpi] = useState<number | undefined>(24)
   const [fullscreen, setFullscreen] = useState(false)
   const fsRef = useRef<HTMLDivElement>(null)
@@ -67,7 +73,20 @@ export function Dispatcher() {
     setFullscreen(false)
   }
 
+  // Modo histórico cuando hay al menos una fecha del rango cargada.
+  const modoHistorico = fDesde !== '' || fHasta !== ''
   const abiertos = useEventosAbiertos({ id_subarea: fSubarea === '' ? undefined : fSubarea })
+  const historico = useEventos(
+    {
+      id_subarea: fSubarea === '' ? undefined : fSubarea,
+      fecha_desde: fDesde || undefined,
+      fecha_hasta: fHasta || undefined,
+      limit: 200,
+    },
+    modoHistorico,
+  )
+  // Fuente de datos activa según el modo. En histórico no hay polling en vivo.
+  const fuente = modoHistorico ? historico : abiertos
   const tipos = useTiposEmergencia()
   const estados = useEstadosEmergencia()
 
@@ -83,7 +102,7 @@ export function Dispatcher() {
   }, [tipos.data])
 
   const eventos = useMemo(() => {
-    let lista = abiertos.data ?? []
+    let lista = fuente.data ?? []
     if (fPrioridad) lista = lista.filter((e) => e.prioridad_codigo === fPrioridad)
     if (fEstado) lista = lista.filter((e) => e.estado_codigo === fEstado)
     if (fNro.trim()) {
@@ -91,7 +110,7 @@ export function Dispatcher() {
       lista = lista.filter((e) => e.numero_operativo.toLowerCase().includes(q))
     }
     return lista
-  }, [abiertos.data, fPrioridad, fEstado, fNro])
+  }, [fuente.data, fPrioridad, fEstado, fNro])
 
   const onError = (e: unknown) =>
     push({ kind: 'error', title: 'No se pudo aplicar la acción', body: e instanceof Error ? e.message : String(e) })
@@ -200,24 +219,48 @@ export function Dispatcher() {
           <option value="P3">P3</option>
         </select>
         <select style={selectStyle} value={fEstado} onChange={(e) => setFEstado(e.target.value)}>
-          <option value="">Todo estado abierto</option>
-          {(estados.data ?? []).filter((s) => !s.es_terminal).map((s) => (
+          <option value="">{modoHistorico ? 'Todo estado' : 'Todo estado abierto'}</option>
+          {(estados.data ?? []).filter((s) => modoHistorico || !s.es_terminal).map((s) => (
             <option key={s.codigo} value={s.codigo}>{s.nombre}</option>
           ))}
         </select>
+        {/* Rango de fechas (EM002). Con una fecha, el tablero pasa a histórico
+            (incluye cerrados). Sin fechas, sigue en vivo con solo abiertos. */}
+        <label style={dateLabelStyle}>
+          Desde
+          <input type="date" style={dateInputStyle} value={fDesde} max={fHasta || undefined}
+            onChange={(e) => setFDesde(e.target.value)} />
+        </label>
+        <label style={dateLabelStyle}>
+          Hasta
+          <input type="date" style={dateInputStyle} value={fHasta} min={fDesde || undefined}
+            onChange={(e) => setFHasta(e.target.value)} />
+        </label>
+        {modoHistorico && (
+          <button style={limpiarRangoStyle} onClick={() => { setFDesde(''); setFHasta('') }}>
+            Limpiar rango
+          </button>
+        )}
         <Button variant="accent" style={{ marginLeft: 'auto' }} onClick={() => navigate('/emergencias/recepcion')}>
           + Recibir llamado
         </Button>
       </div>
-
-      {abiertos.isLoading && <Skeleton height={220} />}
-      {abiertos.isError && (
-        <EmptyState title="No se pudo cargar el tablero" description={String(abiertos.error)} />
+      {modoHistorico && (
+        <div style={{ fontSize: 12, color: 'var(--fg-3)', fontFamily: 'var(--font-display)', marginTop: -4 }}>
+          Mostrando eventos (abiertos y cerrados) en el rango seleccionado — sin actualización automática.
+        </div>
       )}
-      {!abiertos.isLoading && !abiertos.isError && eventos.length === 0 && (
+
+      {fuente.isLoading && <Skeleton height={220} />}
+      {fuente.isError && (
+        <EmptyState title="No se pudo cargar el tablero" description={String(fuente.error)} />
+      )}
+      {!fuente.isLoading && !fuente.isError && eventos.length === 0 && (
         <EmptyState
-          title="Sin eventos abiertos"
-          description="Cuando se reciba un llamado o un reporte de la App Vecinos, aparece acá."
+          title={modoHistorico ? 'Sin eventos en el rango' : 'Sin eventos abiertos'}
+          description={modoHistorico
+            ? 'No hay eventos entre las fechas seleccionadas. Ajustá o limpiá el rango.'
+            : 'Cuando se reciba un llamado o un reporte de la App Vecinos, aparece acá.'}
           action={<Button variant="accent" onClick={() => navigate('/emergencias/recepcion')}>Recibir llamado</Button>}
         />
       )}
@@ -302,6 +345,21 @@ const selectStyle: React.CSSProperties = {
   padding: '7px 10px', border: '1px solid var(--border-medium)', borderRadius: 8,
   background: 'var(--surface-100)', color: 'var(--fg-1)',
   fontFamily: 'var(--font-display)', fontSize: 13,
+}
+const dateLabelStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 6,
+  fontFamily: 'var(--font-display)', fontSize: 12, color: 'var(--fg-3)',
+  textTransform: 'uppercase', letterSpacing: '0.04em',
+}
+const dateInputStyle: React.CSSProperties = {
+  padding: '6px 9px', border: '1px solid var(--border-medium)', borderRadius: 8,
+  background: 'var(--surface-100)', color: 'var(--fg-1)',
+  fontFamily: 'var(--font-display)', fontSize: 13,
+}
+const limpiarRangoStyle: React.CSSProperties = {
+  padding: '7px 12px', border: '1px solid var(--border-medium)', borderRadius: 8,
+  background: 'transparent', color: 'var(--fg-2)',
+  fontFamily: 'var(--font-display)', fontSize: 13, cursor: 'pointer',
 }
 const cardStyle: React.CSSProperties = {
   background: 'var(--surface-100)', border: '1px solid var(--border-primary)',
