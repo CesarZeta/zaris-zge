@@ -884,13 +884,37 @@ async def cancelar_reclamo(
         raise HTTPException(status_code=422, detail="Campo 'motivo' requerido")
 
     r = await db.execute(text(
-        "SELECT estado FROM reclamos WHERE id_reclamo = :id AND activo = TRUE"
+        "SELECT estado, id_reclamo_padre FROM reclamos WHERE id_reclamo = :id AND activo = TRUE"
     ), {"id": id_reclamo})
     row = r.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail=f"Reclamo {id_reclamo} no encontrado")
     if row.estado == "Cancelado":
         raise HTTPException(status_code=422, detail="El reclamo ya está cancelado")
+
+    # Integridad padre/hijo (REC-001): no cancelar un reclamo padre si tiene
+    # subreclamos activos sin resolver — quedarían huérfanos vivos (el cancelar
+    # NO cascadea a los hijos, solo a las OTs). Mismo criterio que el guard de
+    # 'Resuelto'/'En auditoría' en cambiar_estado. Solo aplica si NO es subreclamo.
+    if row.id_reclamo_padre is None:
+        hijos = await db.execute(text("""
+            SELECT nro_reclamo, estado
+            FROM reclamos
+            WHERE id_reclamo_padre = :id AND activo = TRUE
+              AND estado NOT IN ('Resuelto', 'Cancelado')
+            ORDER BY id_reclamo
+        """), {"id": id_reclamo})
+        pendientes = hijos.fetchall()
+        if pendientes:
+            detalle = ", ".join(f"{h.nro_reclamo} ({h.estado})" for h in pendientes)
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"No se puede cancelar: hay {len(pendientes)} "
+                    f"subreclamo(s) activo(s): {detalle}. "
+                    "Resolvé o cancelá los subreclamos primero."
+                ),
+            )
 
     estado_anterior = row.estado
 
