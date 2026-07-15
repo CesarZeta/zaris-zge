@@ -9,7 +9,7 @@
 > - Verificar contra git/prod antes de declarar algo hecho (`feedback_verificar_siempre_antes_de_opinar`).
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 
-**Última actualización:** 2026-07-15 (Cesar) · rama `main` — sesión "Fix seguridad: IDOR en alta de empresa (App Vecinos) cerrado y en prod"
+**Última actualización:** 2026-07-15 (Cesar) · rama `main` — sesión "Alta de empresa: IDOR cerrado + regla 'empresa exige vecino' forzada en las 2 vías (público y backoffice)"
 
 ---
 
@@ -17,12 +17,14 @@
 
 _(nada en curso ahora mismo — backoffice estable, todo lo abierto es de la PWA, ver su ESTADO.md)_
 
-> ### 📣 AVISO PARA ROY (PWA `zaris-vecinos`) — CAMBIO DE CONTRATO en `POST /api/v1/publico/alta/empresa` (2026-07-15)
-> Se cerró un IDOR: el endpoint de **alta de empresa** era anónimo y tomaba `id_ciudadano` del body → cualquiera podía vincular una empresa a un vecino ajeno. **Ahora exige el vecino logueado** y el representante sale del JWT, no del body.
+> ### 📣 AVISO PARA ROY (PWA `zaris-vecinos`) — 2 CAMBIOS DE CONTRATO en alta de empresa (2026-07-15)
+> **1) `POST /api/v1/publico/alta/empresa` (el que usa la PWA) — se cerró un IDOR.** Era anónimo y tomaba `id_ciudadano` del body → cualquiera podía vincular una empresa a un vecino ajeno. **Ahora exige el vecino logueado** y el representante sale del JWT, no del body.
 > - **La PWA DEBE mandar `Authorization: Bearer <token scope publico>`** al llamar a `/alta/empresa`. Sin token → **401**.
-> - **`id_ciudadano` ya NO va en el body** (se ignora; el backend usa el ciudadano del token). Podés quitarlo del payload.
+> - **`id_ciudadano` ya NO va en el body** (se ignora; el backend usa el ciudadano del token). Quitalo del payload.
 > - El resto del contrato (`municipio_slug`, `cuit`, `razon_social`, `id_actividad`, domicilio, contacto…) queda **igual**.
-> - Ya estaba previsto por diseño (2026-06-09: "la empresa la carga el vecino logueado desde el portal"), así que si tu request ya iba autenticado, no tenés que tocar nada más que sacar `id_ciudadano`. Si iba anónimo, hay que autenticarlo.
+> - Ya estaba previsto por diseño (2026-06-09: "la empresa la carga el vecino logueado desde el portal"), así que si tu request ya iba autenticado, solo sacá `id_ciudadano`. Si iba anónimo, autenticalo.
+>
+> **2) Regla de negocio reforzada: toda empresa nace con un vecino.** Esto NO afecta a la PWA (el vecino logueado ES el representante), pero por si tocás el alta de empresa del backoffice: `POST /api/v1/buc/empresas` (agente) **ahora exige `id_ciudadano` + `id_tipo_representacion`** y crea empresa + vínculo en una transacción. Sin representante → **422**. El endpoint `POST /buc/ciudadano-empresa` sigue existiendo pero ya no hace falta llamarlo tras el alta (el vínculo se crea solo).
 
 ---
 
@@ -49,7 +51,10 @@ _(nada en curso ahora mismo — backoffice estable, todo lo abierto es de la PWA
 
 ## ✅ Hecho reciente (últimas sesiones)
 
-- **2026-07-15** — **Fix de seguridad: IDOR en alta de empresa (App Vecinos) CERRADO y EN PROD.** El hallazgo abierto de auditoría [09]: `POST /api/v1/publico/alta/empresa` era anónimo y tomaba `id_ciudadano` del body → cualquiera podía vincular una empresa a un vecino ajeno (IDs secuenciales, enumerables). **Fix:** el endpoint ahora exige `get_current_ciudadano` (JWT scope `publico`) y el representante sale del token, no del body; se quitó `id_ciudadano` de `AltaEmpresaIn`. Alineado con la decisión de diseño 2026-06-09 (la empresa la carga el vecino logueado desde la PWA). Verificado in-process (`httpx.ASGITransport`): sin token→401, token scope agente→401, vecino logueado con `id_ciudadano:999` en el body→201 con vínculo al ciudadano del token (no al 999). **⚠️ Cambio de contrato para la PWA de Roy → ver el aviso destacado en "En curso".** Archivos: `backend/app/api/routes/publico_alta.py` + `backend/app/schemas/publico_alta.py`.
+- **2026-07-15** — **Alta de empresa: IDOR cerrado + regla "empresa exige vecino" forzada en las 2 vías — EN PROD.** Dos frentes del mismo tema:
+  - **(a) IDOR en la vía pública (App Vecinos) — hallazgo de auditoría [09].** `POST /api/v1/publico/alta/empresa` era anónimo y tomaba `id_ciudadano` del body → cualquiera podía vincular una empresa a un vecino ajeno (IDs secuenciales). **Fix:** exige `get_current_ciudadano` (scope `publico`); el representante sale del token, no del body; se quitó `id_ciudadano` de `AltaEmpresaIn`. Verificado in-process: sin token→401, scope agente→401, vecino logueado con `id_ciudadano:999` en body→201 con vínculo al ciudadano del token. Archivos: `publico_alta.py` + `schemas/publico_alta.py`.
+  - **(b) Regla de negocio "toda empresa nace con un vecino" (BUC §2), pedida por César.** Se descubrió que la vía de backoffice `POST /buc/empresas` (agente/call center) creaba la empresa **suelta** (el vínculo era un 2º endpoint separado que el frontend podía omitir). En prod hay **500 empresas huérfanas** pero son un **seed de padrón** (lote único 14/05, todas sin `id_usuario_alta`) → NO se backfillean (regla `no_backfill_sobre_datos_sinteticos`). **Fix:** `POST /buc/empresas` ahora exige `id_ciudadano` + `id_tipo_representacion` y crea empresa + vínculo `ciudadano_empresa` en **una transacción** (sin representante → 422). Frontend módulo Empresas (`FormView`) suma selector de vecino (`CiudadanoSearch`) + tipo de representación obligatorios en el alta; el flujo desde Ciudadano (`EmpresaVinculadaPanel`) se simplificó a 1 request. Verificado: smoke backend (422/201+vínculo) + navegación local (alta sin vecino bloquea con error, pick OK, catálogo tipos OK). Archivos: `buc.py`, `schemas/buc.py`, módulos React `empresas/` + `ciudadanos/`.
+  - **⚠️ 2 cambios de contrato para la PWA de Roy → ver el aviso destacado en "En curso".**
 - **2026-07-15** — **Testing traspapelado de Roy (ClickUp) revisado + resuelto lo vivo — TODO EN PROD.** Roy había dejado ~1 mes atrás informes de testing como PDFs adjuntos en las tareas de ClickUp (workspace ZARIS ZGE; conectado por MCP `@taazkareem/clickup-mcp-server`, token en `~/.claude.json` user scope). Se revisaron los 7 bugs reproducibles verificando cada uno contra código + prod (no a ciegas):
   - **VIVOS, corregidos y verificados en prod:** **REC-001** (cancelar reclamo padre dejaba subreclamos huérfanos → guard 422 en `PUT /reclamos/{id}/cancelar` + reparado dato huérfano `REC-2026-000052`; backup `_backup_reclamos_rec001_2026_07_15`) y **EM002** (faltaba filtro DESDE-HASTA en el tablero Emergencias → date pickers + modo histórico vía `useEventos`; el backend ya lo soportaba).
   - **Ya resueltos / no reproducían:** TR-04, TR-05, OT-001, EM003. **EM001** = decisión de diseño (se mantiene). Commits `1b9b0d3` (+ auto-dist `d6c741f`).

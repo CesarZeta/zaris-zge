@@ -12,9 +12,8 @@ import {
   modificarCiudadano,
   obtenerCiudadano,
   verificarDuplicadoCiudadano,
-  vincularCiudadanoEmpresa,
 } from '../api/ciudadanosApi'
-import type { CiudadanoCreate, CiudadanoUpdate, EmpresaCreate, CiudadanoEmpresaCreate } from '../types/ciudadano'
+import type { CiudadanoCreate, CiudadanoUpdate, EmpresaCreate } from '../types/ciudadano'
 
 const HORA = 60 * 60 * 1000
 
@@ -102,19 +101,15 @@ export function useCambiarEstadoCiudadano() {
 export function useCrearEmpresaYVincular() {
   const qc = useQueryClient()
   return useMutation({
+    // El backend crea empresa + vínculo ciudadano_empresa en una sola transacción
+    // (ya no hay dos requests separados que podían dejar una empresa huérfana si el
+    // segundo fallaba). El vecino representante viaja dentro del payload de empresa.
     mutationFn: async ({ empresa, id_ciudadano, id_tipo_representacion }: {
-      empresa: EmpresaCreate
+      empresa: Omit<EmpresaCreate, 'id_ciudadano' | 'id_tipo_representacion'>
       id_ciudadano: number
       id_tipo_representacion: number
     }) => {
-      const emp = await crearEmpresa(empresa)
-      const vinc: CiudadanoEmpresaCreate = {
-        id_ciudadano,
-        id_empresa: emp.id_empresa,
-        id_tipo_representacion,
-      }
-      await vincularCiudadanoEmpresa(vinc)
-      return emp
+      return await crearEmpresa({ ...empresa, id_ciudadano, id_tipo_representacion })
     },
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ['buc', 'ciudadanos', vars.id_ciudadano, 'empresas-vinculadas'] })

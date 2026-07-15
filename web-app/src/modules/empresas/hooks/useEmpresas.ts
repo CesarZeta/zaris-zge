@@ -3,6 +3,7 @@ import {
   buscarEmpresas,
   cambiarEstadoEmpresa,
   crearEmpresa,
+  getTiposRepresentacion,
   listarEmpresas,
   modificarEmpresa,
   obtenerEmpresa,
@@ -66,6 +67,15 @@ export function useCambiarEstadoEmpresa() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['buc', 'empresas'] })
     },
+  })
+}
+
+// ── Catálogo tipos de representación ──
+export function useTiposRepresentacion() {
+  return useQuery({
+    queryKey: ['buc', 'tipo-representacion'],
+    queryFn: getTiposRepresentacion,
+    staleTime: 5 * 60 * 1000,
   })
 }
 

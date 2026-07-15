@@ -114,6 +114,10 @@ export interface EmpresaCreate {
   telefono: string
   email: string
   observaciones?: string | null
+  // Toda empresa nace con su vecino representante (BUC §2): el backend crea
+  // empresa + vínculo ciudadano_empresa en una sola transacción.
+  id_ciudadano: number
+  id_tipo_representacion: number
 }
 
 export interface CiudadanoEmpresaCreate {
