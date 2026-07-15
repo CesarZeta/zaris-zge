@@ -351,7 +351,11 @@ class EmpresaBase(BaseModel):
 
 
 class EmpresaCreate(EmpresaBase):
-    pass
+    # Regla de negocio: toda empresa DEBE nacer con un vecino (persona física)
+    # como representante/contacto. El alta crea empresa + vínculo ciudadano_empresa
+    # en una sola transacción. Sin representante no hay alta (422).
+    id_ciudadano: int = Field(..., description="Vecino representante/contacto (obligatorio)")
+    id_tipo_representacion: int = Field(1, description="Tipo de representación (default: Representante Legal)")
 
 
 class EmpresaUpdate(BaseModel):

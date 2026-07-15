@@ -4,10 +4,14 @@ import type {
   EmpresaConActividad,
   EmpresaCreate,
   EmpresaUpdate,
+  TipoRepresentacion,
   VerificarDuplicadoEmpresaResp,
 } from '../types/empresa'
 
 const BASE = '/api/v1/buc'
+
+export const getTiposRepresentacion = () =>
+  api.get<TipoRepresentacion[]>(`${BASE}/tipo-representacion`)
 
 export const listarEmpresas = (params: { solo_activos?: boolean; limit?: number; offset?: number } = {}) =>
   api.get<Empresa[]>(`${BASE}/empresas`, { params })
