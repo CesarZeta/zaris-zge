@@ -140,7 +140,9 @@ class CompletarFichaOut(BaseModel):
 
 class AltaEmpresaIn(BaseModel):
     municipio_slug: str = Field(..., min_length=1, max_length=20)
-    id_ciudadano: int  # el ciudadano que la da de alta (representante)
+    # NOTA: id_ciudadano (el representante) NO viene del cliente — sale del JWT scope
+    # 'publico' del vecino logueado. Antes se tomaba del body y era un IDOR: cualquiera
+    # podía vincular una empresa a un id_ciudadano ajeno enumerando IDs secuenciales.
 
     cuit: str = Field(..., min_length=10, max_length=15)  # acepta guiones, se valida módulo 11
     razon_social: str = Field(..., min_length=1, max_length=200)

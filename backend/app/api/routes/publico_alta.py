@@ -28,7 +28,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import hash_password
+from app.core.auth import hash_password, get_current_ciudadano
 from app.core.config import settings
 from app.core.database import get_db
 from app.middleware.rate_limit import check_rate_limit
@@ -430,27 +430,26 @@ async def alta_empresa(
     request: Request,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    ciudadano: dict = Depends(get_current_ciudadano),
 ):
     """
-    Alta de empresa vinculada a un ciudadano ya creado (BUC §2). Crea empresa +
-    ciudadano_empresa + empresa_credencial con token de verificación. Manda mail a la
-    casilla de la empresa.
+    Alta de empresa por el vecino LOGUEADO (JWT scope 'publico'). La empresa se vincula
+    al ciudadano del token — NUNCA a un id que venga del cliente (BUC §2 + regla "el
+    id_ciudadano SIEMPRE sale del JWT": el vecino no puede operar sobre terceros).
+
+    Crea empresa + ciudadano_empresa + empresa_credencial con token de verificación y
+    manda mail a la casilla de la empresa.
     """
     check_rate_limit(get_real_ip(request), max_requests=RATE_MAX, window_seconds=RATE_WINDOW)
 
     muni = await _resolver_municipio(db, data.municipio_slug)
     id_municipio = muni["id_municipio"]
+    # El representante es el ciudadano del token — get_current_ciudadano ya garantizó
+    # que existe, está activo y su credencial está activada.
+    id_ciudadano = ciudadano["id_ciudadano"]
     cuit = data.cuit  # ya validado/normalizado (módulo 11) por el schema
     email = data.email.lower().strip()
     telefono = _solo_digitos(data.telefono) or "0"
-
-    # El ciudadano representante DEBE existir y estar activo
-    res = await db.execute(
-        text("SELECT id_ciudadano FROM ciudadanos WHERE id_ciudadano = :id AND activo = TRUE LIMIT 1"),
-        {"id": data.id_ciudadano},
-    )
-    if not res.fetchone():
-        raise HTTPException(status_code=400, detail="El ciudadano representante no existe o está inactivo.")
 
     # Actividad debe existir (la PK de `actividades` es `id`, no `id_actividad` — tabla legacy)
     res = await db.execute(
@@ -505,7 +504,7 @@ async def alta_empresa(
             ON CONFLICT (id_ciudadano, id_empresa, id_tipo_representacion) DO NOTHING
         """),
         {
-            "id_ciudadano": data.id_ciudadano,
+            "id_ciudadano": id_ciudadano,
             "id_empresa": id_empresa,
             "id_tipo": data.id_tipo_representacion or 1,
         },
