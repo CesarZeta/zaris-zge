@@ -374,8 +374,74 @@
         // Si la imagen falla al cargar, la ocultamos para no mostrar el icono roto.
         muniLogoEl.addEventListener('error', () => { muniLogoEl.hidden = true; }, { once: true });
       }
+      // IT-05: el slug del municipio habilita el botón "Alta vecino" del topbar.
+      _initAltaVecino(data.municipio_slug);
     } catch (e) { /* fail-open: defaults del HTML */ }
   })();
+
+  // ── Compartir alta de vecino (URL + QR) — IT-05 ───────────────────
+  // El botón del topbar abre un modal con el enlace público de alta y su QR.
+  // La URL depende del slug (codigo_corto) del municipio; sin slug, el botón
+  // se oculta (no hay enlace válido para compartir).
+  function _initAltaVecino(slug) {
+    const btn = document.getElementById('topbar-altavecino');
+    if (!btn) return;
+    if (!slug) { btn.hidden = true; return; }
+
+    // Base pública: en prod es el origin del shell (GH Pages / dominio propio).
+    const base = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '');
+    const url = `${base}/frontend/alta-vecino.html?m=${encodeURIComponent(slug)}`;
+
+    const overlay = document.getElementById('altavecino-overlay');
+    const urlEl = document.getElementById('altavecino-url');
+    const canvas = document.getElementById('altavecino-canvas');
+    const abrir = document.getElementById('altavecino-abrir');
+    const copiar = document.getElementById('altavecino-copiar');
+    const descargar = document.getElementById('altavecino-descargar');
+    const cerrar = document.getElementById('altavecino-close');
+    if (!overlay || !urlEl || !canvas) return;
+
+    urlEl.textContent = url;
+    if (abrir) abrir.href = url;
+    let qrPintado = false;
+
+    function abrirModal() {
+      overlay.hidden = false;
+      // Pintar el QR una sola vez (la lib ZarisQR viene de qrcode.bundle.js).
+      if (!qrPintado && window.ZarisQR) {
+        try { window.ZarisQR.toCanvas(canvas, url, { width: 200, margin: 2 }); qrPintado = true; }
+        catch (e) { /* si falla el QR, el enlace + copiar siguen sirviendo */ }
+      }
+    }
+    function cerrarModal() { overlay.hidden = true; }
+
+    btn.addEventListener('click', abrirModal);
+    if (cerrar) cerrar.addEventListener('click', cerrarModal);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) cerrarModal(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !overlay.hidden) cerrarModal(); });
+
+    if (copiar) copiar.addEventListener('click', async () => {
+      const prev = copiar.textContent;
+      try { await navigator.clipboard.writeText(url); }
+      catch (e) {
+        const ta = document.createElement('textarea');
+        ta.value = url; document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); } catch (_) {}
+        document.body.removeChild(ta);
+      }
+      copiar.textContent = 'Copiado';
+      setTimeout(() => { copiar.textContent = prev; }, 1800);
+    });
+
+    if (descargar) descargar.addEventListener('click', () => {
+      try {
+        const a = document.createElement('a');
+        a.href = canvas.toDataURL('image/png');
+        a.download = `alta-vecino-${slug}.png`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      } catch (e) { /* noop */ }
+    });
+  }
 
   // ── Campana de notificaciones ─────────────────────────────────
   // Conectada a /api/v1/notificaciones (entregado 2026-05-18).

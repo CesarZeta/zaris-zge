@@ -1,9 +1,9 @@
-import { Database, Landmark, Users } from 'lucide-react'
+import { Landmark, Users } from 'lucide-react'
 import { shellNavigate } from '../../../lib/shellNav'
 import { ParametrosSistemaView } from './ParametrosSistemaView'
 
 interface Atajo {
-  icon: typeof Database
+  icon: typeof Landmark
   titulo: string
   descripcion: string
   href: string
@@ -24,12 +24,6 @@ const ATAJOS: Atajo[] = [
     titulo: 'Municipios',
     descripcion: 'Datos del/los municipios donde opera el sistema.',
     href: 'frontend/admin_tablas.html?tabla=municipios',
-  },
-  {
-    icon: Database,
-    titulo: 'Todos los maestros',
-    descripcion: 'Catálogos completos: áreas, subáreas, agentes, tipos de reclamo, etc.',
-    href: 'frontend/admin_tablas.html?tabla=area',
   },
 ]
 

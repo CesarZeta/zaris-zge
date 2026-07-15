@@ -32,7 +32,7 @@
 
   <link rel="stylesheet" href="design-system/fonts/fonts.css">
   <link rel="stylesheet" href="design-system/colors_and_type.css">
-  <link rel="stylesheet" href="frontend/css/menu.css?v=2026-06-29a">
+  <link rel="stylesheet" href="frontend/css/menu.css?v=2026-07-15a">
 
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 </head>
@@ -68,6 +68,23 @@
       </div>
 
       <div class="topbar__right">
+        <!-- Compartir alta de vecino: URL + QR (logica en menu.js, IT-05) -->
+        <button
+          class="topbar__altavecino"
+          id="topbar-altavecino"
+          type="button"
+          aria-label="Compartir alta de vecino"
+          title="Compartir link/QR de alta de vecino"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <line x1="19" y1="8" x2="19" y2="14"/>
+            <line x1="22" y1="11" x2="16" y2="11"/>
+          </svg>
+          <span class="topbar__altavecino-label">Alta vecino</span>
+        </button>
+
         <!-- Campana de notificaciones (logica en menu.js) -->
         <div class="notif-menu" id="notif-menu">
           <button
@@ -368,6 +385,32 @@
 
   </div>
 
-  <script src="frontend/js/menu.js?v=2026-07-02a"></script>
+  <!-- Modal: compartir alta de vecino (URL + QR). Lo abre #topbar-altavecino. -->
+  <div class="altavecino-overlay" id="altavecino-overlay" hidden role="dialog" aria-modal="true" aria-label="Compartir alta de vecino">
+    <div class="altavecino-modal">
+      <header class="altavecino-modal__header">
+        <span class="altavecino-modal__title">Alta de vecino</span>
+        <button type="button" class="altavecino-modal__close" id="altavecino-close" aria-label="Cerrar">&times;</button>
+      </header>
+      <div class="altavecino-modal__body">
+        <p class="altavecino-modal__desc">
+          Compartí este enlace con el vecino para que cree su cuenta desde el celular.
+          Puede escanear el QR o abrir el link directamente.
+        </p>
+        <div class="altavecino-modal__qr" id="altavecino-qr">
+          <canvas id="altavecino-canvas" aria-label="Código QR de alta de vecino"></canvas>
+        </div>
+        <code class="altavecino-modal__url" id="altavecino-url" title="Enlace de alta">—</code>
+        <div class="altavecino-modal__actions">
+          <button type="button" class="altavecino-btn altavecino-btn--primary" id="altavecino-copiar">Copiar enlace</button>
+          <button type="button" class="altavecino-btn altavecino-btn--outline" id="altavecino-descargar">Descargar QR</button>
+          <a class="altavecino-btn altavecino-btn--ghost" id="altavecino-abrir" href="#" target="_blank" rel="noopener noreferrer">Abrir</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="frontend/js/qrcode.bundle.js?v=2026-07-15a"></script>
+  <script src="frontend/js/menu.js?v=2026-07-15a"></script>
 </body>
 </html>
