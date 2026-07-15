@@ -33,7 +33,7 @@ export interface EmpresaConActividad extends Empresa {
   } | null
 }
 
-export interface EmpresaCreate {
+export interface EmpresaDatos {
   cuit: string
   nombre: string
   id_actividad: number
@@ -48,8 +48,20 @@ export interface EmpresaCreate {
   observaciones?: string | null
 }
 
-export type EmpresaUpdate = Partial<EmpresaCreate> & {
+export interface EmpresaCreate extends EmpresaDatos {
+  // Toda empresa nace con su vecino representante (BUC §2). El backend crea
+  // empresa + vínculo ciudadano_empresa en una sola transacción.
+  id_ciudadano: number
+  id_tipo_representacion: number
+}
+
+export type EmpresaUpdate = Partial<EmpresaDatos> & {
   modificado_por?: number | null
+}
+
+export interface TipoRepresentacion {
+  id: number
+  tipo: string
 }
 
 export interface VerificarDuplicadoEmpresaResp {

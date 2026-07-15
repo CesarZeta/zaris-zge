@@ -804,21 +804,54 @@ async def crear_empresa(
     data: EmpresaCreate,
     db: AsyncSession = Depends(get_db),
 ):
-    """Alta de empresa."""
+    """
+    Alta de empresa CON su vecino representante, en una sola transacción.
+
+    Regla de negocio (BUC §2): toda empresa DEBE nacer vinculada a un vecino (persona
+    física) como representante/contacto — no existen empresas huérfanas. El vínculo
+    ciudadano_empresa se crea en la misma transacción que la empresa: si algo falla,
+    no queda ni empresa suelta ni vínculo colgado.
+    """
+    # El vecino representante DEBE existir y estar activo
+    cid = await db.execute(
+        select(Ciudadano).where(
+            Ciudadano.id_ciudadano == data.id_ciudadano, Ciudadano.activo == True
+        )
+    )
+    if not cid.scalars().first():
+        raise HTTPException(
+            status_code=422,
+            detail="La empresa requiere un vecino representante/contacto válido y activo.",
+        )
+
     existing = await db.execute(
         select(Empresa).where(Empresa.cuit == data.cuit)
     )
     if existing.scalars().first():
         raise HTTPException(status_code=409, detail=f"Ya existe una empresa con CUIT {data.cuit}")
 
-    empresa = Empresa(**data.model_dump())
+    # Separar los campos del vínculo (no son columnas de Empresa)
+    payload = data.model_dump()
+    id_ciudadano = payload.pop("id_ciudadano")
+    id_tipo_representacion = payload.pop("id_tipo_representacion")
+
+    empresa = Empresa(**payload)
     db.add(empresa)
+    await db.flush()  # obtiene empresa.id_empresa sin cerrar la transacción
+
+    vinculo = CiudadanoEmpresa(
+        id_ciudadano=id_ciudadano,
+        id_empresa=empresa.id_empresa,
+        id_tipo_representacion=id_tipo_representacion,
+    )
+    db.add(vinculo)
+
     await db.commit()
     await db.refresh(empresa)
 
     logger.info(
-        "ALTA empresa | id=%s | cuit=%s | nombre=%s",
-        empresa.id_empresa, empresa.cuit, empresa.nombre
+        "ALTA empresa | id=%s | cuit=%s | nombre=%s | representante=%s | tipo_rep=%s",
+        empresa.id_empresa, empresa.cuit, empresa.nombre, id_ciudadano, id_tipo_representacion
     )
     return empresa
 
