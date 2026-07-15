@@ -9,13 +9,20 @@
 > - Verificar contra git/prod antes de declarar algo hecho (`feedback_verificar_siempre_antes_de_opinar`).
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 
-**Última actualización:** 2026-07-15 (Cesar) · rama `main` — sesión "Testing traspapelado de Roy en ClickUp: bugs REC/OT/Emergencias/Trámites + ajustes acotados de Config/UX (todo en prod)"
+**Última actualización:** 2026-07-15 (Cesar) · rama `main` — sesión "Fix seguridad: IDOR en alta de empresa (App Vecinos) cerrado y en prod"
 
 ---
 
 ## 🔵 En curso
 
 _(nada en curso ahora mismo — backoffice estable, todo lo abierto es de la PWA, ver su ESTADO.md)_
+
+> ### 📣 AVISO PARA ROY (PWA `zaris-vecinos`) — CAMBIO DE CONTRATO en `POST /api/v1/publico/alta/empresa` (2026-07-15)
+> Se cerró un IDOR: el endpoint de **alta de empresa** era anónimo y tomaba `id_ciudadano` del body → cualquiera podía vincular una empresa a un vecino ajeno. **Ahora exige el vecino logueado** y el representante sale del JWT, no del body.
+> - **La PWA DEBE mandar `Authorization: Bearer <token scope publico>`** al llamar a `/alta/empresa`. Sin token → **401**.
+> - **`id_ciudadano` ya NO va en el body** (se ignora; el backend usa el ciudadano del token). Podés quitarlo del payload.
+> - El resto del contrato (`municipio_slug`, `cuit`, `razon_social`, `id_actividad`, domicilio, contacto…) queda **igual**.
+> - Ya estaba previsto por diseño (2026-06-09: "la empresa la carga el vecino logueado desde el portal"), así que si tu request ya iba autenticado, no tenés que tocar nada más que sacar `id_ciudadano`. Si iba anónimo, hay que autenticarlo.
 
 ---
 
@@ -42,6 +49,7 @@ _(nada en curso ahora mismo — backoffice estable, todo lo abierto es de la PWA
 
 ## ✅ Hecho reciente (últimas sesiones)
 
+- **2026-07-15** — **Fix de seguridad: IDOR en alta de empresa (App Vecinos) CERRADO y EN PROD.** El hallazgo abierto de auditoría [09]: `POST /api/v1/publico/alta/empresa` era anónimo y tomaba `id_ciudadano` del body → cualquiera podía vincular una empresa a un vecino ajeno (IDs secuenciales, enumerables). **Fix:** el endpoint ahora exige `get_current_ciudadano` (JWT scope `publico`) y el representante sale del token, no del body; se quitó `id_ciudadano` de `AltaEmpresaIn`. Alineado con la decisión de diseño 2026-06-09 (la empresa la carga el vecino logueado desde la PWA). Verificado in-process (`httpx.ASGITransport`): sin token→401, token scope agente→401, vecino logueado con `id_ciudadano:999` en el body→201 con vínculo al ciudadano del token (no al 999). **⚠️ Cambio de contrato para la PWA de Roy → ver el aviso destacado en "En curso".** Archivos: `backend/app/api/routes/publico_alta.py` + `backend/app/schemas/publico_alta.py`.
 - **2026-07-15** — **Testing traspapelado de Roy (ClickUp) revisado + resuelto lo vivo — TODO EN PROD.** Roy había dejado ~1 mes atrás informes de testing como PDFs adjuntos en las tareas de ClickUp (workspace ZARIS ZGE; conectado por MCP `@taazkareem/clickup-mcp-server`, token en `~/.claude.json` user scope). Se revisaron los 7 bugs reproducibles verificando cada uno contra código + prod (no a ciegas):
   - **VIVOS, corregidos y verificados en prod:** **REC-001** (cancelar reclamo padre dejaba subreclamos huérfanos → guard 422 en `PUT /reclamos/{id}/cancelar` + reparado dato huérfano `REC-2026-000052`; backup `_backup_reclamos_rec001_2026_07_15`) y **EM002** (faltaba filtro DESDE-HASTA en el tablero Emergencias → date pickers + modo histórico vía `useEventos`; el backend ya lo soportaba).
   - **Ya resueltos / no reproducían:** TR-04, TR-05, OT-001, EM003. **EM001** = decisión de diseño (se mantiene). Commits `1b9b0d3` (+ auto-dist `d6c741f`).
