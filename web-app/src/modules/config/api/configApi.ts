@@ -38,6 +38,11 @@ export interface IdentidadValues {
   app_nombre: string
   municipio_nombre: string
   municipio_logo_url: string
+  // Marca de la App Vecinos (PWA): texto de bienvenida + colores hex #RRGGBB
+  // ('' = sin definir, la PWA usa sus defaults). Unificados acá desde Sistema.
+  municipio_descripcion: string
+  municipio_color_primary: string
+  municipio_color_accent: string
   // Slug (codigo_corto) del municipio del deploy. Solo lectura — sirve para
   // previsualizar las URLs públicas del municipio (alta de vecinos, §38).
   municipio_slug: string | null
@@ -46,6 +51,9 @@ export interface IdentidadValues {
 export interface IdentidadUpdate {
   municipio_nombre?: string
   municipio_logo_url?: string
+  municipio_descripcion?: string
+  municipio_color_primary?: string
+  municipio_color_accent?: string
 }
 
 export interface LogoUploadResponse {
