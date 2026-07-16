@@ -30,7 +30,7 @@ Tablas `modulos` (catálogo: `modulo_codigo` PK, `nombre`, `descripcion`, `min_n
 | `entradas` | Entradas | 3 | módulo React `entradas` — backoffice de eventos con cupo en espacios físicos |
 | `ot_supervisor` | OT - Supervisor | 2 | módulo React `ot` (vista Supervisor) |
 | `ot_auditoria` | OT - Auditoría | 2 | módulo React `ot` (vista Auditoría) |
-| `usuarios` | Usuarios | 1 | `frontend/usuarios.html` (pantalla propia — admin_tablas no hashea password) |
+| `usuarios` | Usuarios | 1 | `web-app/dist/index.html#/usuarios` (módulo React desde 2026-07-16: maestro + permisos + catálogo de módulos) |
 | `admin_tablas` | Maestros | 1 | resto de `frontend/admin_tablas.html?tabla=*` |
 
 **Backend (`core/auth.py`):** `modulos_permitidos(db, id_usuario, nivel) -> list[str]` (defaults por nivel + overrides) · `require_modulo(modulo)` dependency factory (devuelve `current_user`, 403 si falta). `POST /auth/login` y `GET /auth/me` incluyen `modulos_permitidos`.

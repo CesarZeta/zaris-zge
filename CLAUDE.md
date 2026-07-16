@@ -73,7 +73,7 @@ No suponer paridad entre stacks. Hoy:
 | **BUC ciudadanos** | — (borrado 2026-05-12) | **`modules/ciudadanos/`** | **React** (publicado) |
 | **Empresas** | — (borrado 2026-05-12) | **`modules/empresas/`** | **React** (publicado) |
 | **Reclamos** | — (borrado 2026-05-12) | **`modules/reclamos/`** (Fases A + B1+B2 + B3) | **React** (publicado) |
-| Usuarios | `usuarios.html` | — | vanilla |
+| **Usuarios** | — (borrado 2026-07-16) | **`modules/usuarios/`** (3 tabs: Maestro de cuentas + Permisos por usuario + Catálogo de módulos — las 2 últimas movidas desde Config) | **React** (publicado) |
 | Admin tablas | `admin_tablas.html` | — | vanilla |
 | **Agenda** | — (legacy borrado 2026-05-12) | **`modules/agenda/`** (Fase 3.A + 3.B drag&drop + B1+B2 espacios/disponibilidad) | **React** (publicado) |
 | **Turnos** | — | **`modules/turnos/`** (5 tabs: Turnos / Agenda solo-turnos / Atendidos+PDF / Consultas por ciudadano / Prestaciones; historia de atención mig 86; autoservicio público; filtros prestación/recurso/ciudadano; scoping por nivel; cumplir dispara encuesta CSAT de turnos §42) | **React** (publicado) |
@@ -83,7 +83,7 @@ No suponer paridad entre stacks. Hoy:
 | **Trámites** | — | **`modules/tramites/`** (backend Fase 1+2 + frontend Fase 3 completo — bandeja, detalle, acciones, timeline, adjuntos, pase, relacionar; 2026-05-16) | **React** (publicado) |
 | **Datos (BI)** | — | **`modules/bi/`** (landing DATOS → Operativo + Ejecutivo. Operativo: 4 tabs Resumen/Resueltos-SLA/Pendientes+mapa/Subreclamos. Ejecutivo: placeholder. 2026-05-26) | **React** (publicado) |
 | **Emergencias (COM)** | — | **`modules/emergencias/`** (Tablero dispatcher polling 30s + Recepción de llamado + Detalle FSM/historial; 2026-06-10, §44) | **React** (publicado — **PRIMER ítem del sidebar**) |
-| Config (permisos/identidad/etc.) | — | `modules/config/` | React |
+| Config (sistema/identidad — permisos y catálogo de módulos se mudaron a Usuarios 2026-07-16) | — | `modules/config/` | React |
 
 **Implicaciones:**
 - Si te piden "imitar el módulo X en React", verificar primero si existe ahí. Hoy **Dashboard, Agenda, Ciudadanos, Empresas, Reclamos, OT, Trámites y Config** están en React en producción. Usuarios y Admin Tablas siguen en vanilla.
@@ -525,7 +525,7 @@ Todo frontend de tabla maestro (admin_tablas y módulos independientes como usua
 </div>
 ```
 
-Debajo del panel van los últimos registros ingresados (vista previa). El patrón está implementado en `admin_tablas.html` (`renderVistaPrevia`) y en `usuarios.html`. **No** usar solo botones sueltos — siempre agrupar en el panel celeste.
+Debajo del panel van los últimos registros ingresados (vista previa). El patrón está implementado en `admin_tablas.html` (`renderVistaPrevia`) y, en React, en `web-app/src/modules/usuarios/views/MaestroView.tsx`. **No** usar solo botones sueltos — siempre agrupar en el panel celeste.
 
 ## 17. Slash Commands del Proyecto
 
