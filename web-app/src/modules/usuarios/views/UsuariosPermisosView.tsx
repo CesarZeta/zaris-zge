@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNotificationsStore } from '../../../stores/notifications'
+// Hooks/API de permisos siguen viviendo en el módulo config (cross-module
+// import permitido §29) — esta vista se movió acá porque los permisos son
+// parte del maestro de Usuarios (pedido 2026-07-16).
 import {
   useModulosCatalogo,
   usePermisosUsuario,
   useSetPermisosUsuario,
   useUsuarios,
-} from '../hooks/useConfig'
-import type { OverrideIn } from '../types/config'
+} from '../../config/hooks/useConfig'
+import type { OverrideIn } from '../../config/types/config'
 
 // Estado por modulo: 'default' (sigue por nivel), 'allow' (override true), 'deny' (override false)
 type EstadoModulo = 'default' | 'allow' | 'deny'

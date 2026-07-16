@@ -12,10 +12,9 @@ function goInicio(e: React.MouseEvent) {
 // actual completa (ej. estando en /config/identidad daría /config/identidad/permisos,
 // ruta inexistente → catch-all '*' → dashboard). Con '/config/...' siempre apunta bien.
 // Orden pedido por el usuario (2026-07-16): lo cross del software primero,
-// Identidad (marca del municipio + App Vecinos) al final.
+// Identidad (marca del municipio + App Vecinos) al final. Permisos y Catálogo
+// de módulos se mudaron al módulo Usuarios.
 const TABS = [
-  { to: '/config/permisos',  slug: 'permisos',  label: 'Permisos por usuario' },
-  { to: '/config/modulos',   slug: 'modulos',   label: 'Catálogo de módulos' },
   { to: '/config/sistema',   slug: 'sistema',   label: 'Sistema' },
   { to: '/config/identidad', slug: 'identidad', label: 'Identidad' },
 ]
@@ -64,7 +63,7 @@ export function ConfigLayout({ children }: { children: ReactNode }) {
             Configuración
           </h1>
           <p style={{ fontSize: '0.82rem', color: 'var(--fg-3)', margin: '2px 0 0' }}>
-            Permisos, catálogo de módulos y ajustes generales del sistema.
+            Ajustes generales del sistema e identidad del municipio.
           </p>
         </div>
       </div>
