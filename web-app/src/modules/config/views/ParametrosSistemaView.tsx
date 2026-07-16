@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  BellRing, Check, ClipboardCheck, Loader2, MapPin, Palette, Settings2,
+  BellRing, Check, ClipboardCheck, Loader2, MapPin, Settings2,
 } from 'lucide-react'
 import { useConfigGeneral, useActualizarConfigParam } from '../hooks/useConfig'
 import type { ConfigParam } from '../api/configApi'
@@ -102,40 +102,17 @@ const SECCIONES: Seccion[] = [
       },
     ],
   },
-  {
-    id: 'app_vecinos',
-    titulo: 'App Vecinos (PWA)',
-    descripcion: 'Marca y textos que ven los vecinos en la app pública.',
-    icon: Palette,
-    claves: [
-      {
-        clave: 'municipio_descripcion',
-        label: 'Texto de bienvenida (login App Vecinos)',
-        ayuda: 'Frase corta que aparece en la pantalla de inicio de sesión de la PWA. Ej: "Servicio oficial de atención al vecino".',
-        control: 'text',
-      },
-      {
-        clave: 'municipio_color_primary',
-        label: 'Color primario',
-        ayuda: 'Color principal de la App Vecinos (botones y énfasis). Formato hex #RRGGBB.',
-        control: 'color',
-      },
-      {
-        clave: 'municipio_color_accent',
-        label: 'Color de acento',
-        ayuda: 'Color secundario opcional (badges y links) de la App Vecinos. Formato hex #RRGGBB.',
-        control: 'color',
-      },
-    ],
-  },
 ]
 
 // Claves que se gestionan en OTRAS pantallas y no deben aparecer acá para no
-// duplicar edición (nombre/logo del municipio viven en la pestaña Identidad).
-// Las vapid_* son material criptográfico del Web Push (etapa E App Vecinos):
-// editarlas rompe las suscripciones y la privada no debe mostrarse ni al admin.
+// duplicar edición (la identidad del municipio COMPLETA — nombre, logo,
+// descripción y colores de la App Vecinos — vive en la pestaña Identidad
+// desde 2026-07-16). Las vapid_* son material criptográfico del Web Push
+// (etapa E App Vecinos): editarlas rompe las suscripciones y la privada no
+// debe mostrarse ni al admin.
 const CLAVES_OCULTAS = new Set([
   'municipio_nombre', 'municipio_logo_url',
+  'municipio_descripcion', 'municipio_color_primary', 'municipio_color_accent',
   'vapid_public_key', 'vapid_private_key', 'vapid_claims_email',
 ])
 
