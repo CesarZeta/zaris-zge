@@ -10,9 +10,11 @@ function goInicio(e: React.MouseEvent) {
 
 // Paths ABSOLUTOS (regla del módulo Config §41): un `to` relativo se resuelve
 // contra la ruta actual completa y cae al catch-all '*' → dashboard.
+// Merge UX 2026-07-16: los permisos por usuario se editan DENTRO del detalle
+// de cada usuario (sub-tab Datos|Permisos del maestro), no en solapa propia.
+// El catálogo de módulos queda aparte porque es configuración GLOBAL.
 const TABS = [
   { to: '/usuarios/maestro', slug: 'maestro', label: 'Usuarios' },
-  { to: '/usuarios/permisos', slug: 'permisos', label: 'Permisos por usuario' },
   { to: '/usuarios/modulos', slug: 'modulos', label: 'Catálogo de módulos' },
 ]
 
@@ -60,7 +62,7 @@ export function UsuariosLayout({ children }: { children: ReactNode }) {
             Usuarios
           </h1>
           <p style={{ fontSize: '0.82rem', color: 'var(--fg-3)', margin: '2px 0 0' }}>
-            Maestro de cuentas, permisos por usuario y catálogo de módulos.
+            Cuentas del sistema con sus permisos, y catálogo de módulos.
           </p>
         </div>
       </div>

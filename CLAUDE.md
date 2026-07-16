@@ -73,7 +73,7 @@ No suponer paridad entre stacks. Hoy:
 | **BUC ciudadanos** | — (borrado 2026-05-12) | **`modules/ciudadanos/`** | **React** (publicado) |
 | **Empresas** | — (borrado 2026-05-12) | **`modules/empresas/`** | **React** (publicado) |
 | **Reclamos** | — (borrado 2026-05-12) | **`modules/reclamos/`** (Fases A + B1+B2 + B3) | **React** (publicado) |
-| **Usuarios** | — (borrado 2026-07-16) | **`modules/usuarios/`** (3 tabs: Maestro de cuentas + Permisos por usuario + Catálogo de módulos — las 2 últimas movidas desde Config) | **React** (publicado) |
+| **Usuarios** | — (borrado 2026-07-16) | **`modules/usuarios/`** (Maestro de cuentas con los permisos por usuario integrados en el detalle — sub-tab Datos\|Permisos — + tab Catálogo de módulos; movidos desde Config) | **React** (publicado) |
 | Admin tablas | `admin_tablas.html` | — | vanilla |
 | **Agenda** | — (legacy borrado 2026-05-12) | **`modules/agenda/`** (Fase 3.A + 3.B drag&drop + B1+B2 espacios/disponibilidad) | **React** (publicado) |
 | **Turnos** | — | **`modules/turnos/`** (5 tabs: Turnos / Agenda solo-turnos / Atendidos+PDF / Consultas por ciudadano / Prestaciones; historia de atención mig 86; autoservicio público; filtros prestación/recurso/ciudadano; scoping por nivel; cumplir dispara encuesta CSAT de turnos §42) | **React** (publicado) |

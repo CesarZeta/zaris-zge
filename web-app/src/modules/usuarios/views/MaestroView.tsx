@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { ConfirmModal } from '../../agenda/components/ConfirmModal'
 import { useModulosCatalogo } from '../../config/hooks/useConfig'
+import { PermisosPanel } from '../components/PermisosPanel'
 import { buscarSubareas, buscarUsuarios } from '../api/usuariosApi'
 import {
   useActualizarUsuario,
@@ -66,6 +67,9 @@ export function MaestroView() {
   const [form, setForm] = useState<FormState>(FORM_VACIO)
   const [confirmar, setConfirmar] = useState<null | 'baja' | 'reactivar' | 'cancelar'>(null)
   const [historialAbierto, setHistorialAbierto] = useState(false)
+  // Sub-tab del detalle: los permisos del usuario se gestionan ACÁ, en contexto
+  // (merge UX 2026-07-16 — antes eran una solapa aparte del módulo).
+  const [subTab, setSubTab] = useState<'datos' | 'permisos'>('datos')
   const formRef = useRef<HTMLDivElement>(null)
 
   // ── Búsqueda predictiva (debounce 280ms, igual que el vanilla) ────────────
@@ -89,7 +93,7 @@ export function MaestroView() {
     return [...data].sort((a, b) => ts(b) - ts(a)).slice(0, 5)
   }, [lista.data])
 
-  function abrirUsuario(u: Usuario, modoNuevo: Modo) {
+  function abrirUsuario(u: Usuario, modoNuevo: Modo, tab: 'datos' | 'permisos' = 'datos') {
     setUsuario(u)
     setForm({
       username: u.username, email: u.email ?? '', nivel: String(u.nivel_acceso),
@@ -98,6 +102,7 @@ export function MaestroView() {
       password: '', passwordConfirm: '',
     })
     setModo(modoNuevo)
+    setSubTab(tab)
     setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
   }
 
@@ -105,6 +110,7 @@ export function MaestroView() {
     setUsuario(null)
     setForm(FORM_VACIO)
     setModo('nuevo')
+    setSubTab('datos')
     setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
   }
 
@@ -281,6 +287,33 @@ export function MaestroView() {
             <span style={chipModo(modo)}>{modo === 'nuevo' ? 'NUEVO' : modo === 'edicion' ? 'EDICIÓN' : 'CONSULTA'}</span>
           </div>
 
+          {/* Sub-tabs del detalle: Datos | Permisos (permisos recién cuando el usuario existe) */}
+          {modo !== 'nuevo' && usuario && (
+            <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border-primary)' }}>
+              {([['datos', 'Datos'], ['permisos', 'Permisos']] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setSubTab(id)}
+                  style={{
+                    background: 'transparent', border: 'none', cursor: 'pointer',
+                    fontFamily: 'var(--font-display)', fontSize: '0.88rem',
+                    fontWeight: subTab === id ? 600 : 500,
+                    padding: '8px 16px',
+                    color: subTab === id ? 'var(--zaris-orange)' : 'var(--fg-3)',
+                    borderBottom: `2px solid ${subTab === id ? 'var(--zaris-orange)' : 'transparent'}`,
+                    marginBottom: -1,
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {subTab === 'permisos' && usuario ? (
+            <PermisosPanel idUsuario={usuario.id_usuario} />
+          ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={seccionTitulo}>Identificación</div>
             <div style={filaCampos}>
@@ -304,7 +337,11 @@ export function MaestroView() {
                     <option key={n} value={n}>{n} — {label}</option>
                   ))}
                 </select>
-                <ChipsModulos usuario={usuario} nivel={form.nivel ? parseInt(form.nivel, 10) : null} />
+                <ChipsModulos
+                  usuario={usuario}
+                  nivel={form.nivel ? parseInt(form.nivel, 10) : null}
+                  onGestionar={modo !== 'nuevo' && usuario ? () => setSubTab('permisos') : undefined}
+                />
               </Campo>
             </div>
             <div style={filaCampos}>
@@ -390,29 +427,35 @@ export function MaestroView() {
               </>
             )}
           </div>
+          )}
 
           <div style={formFooter}>
             <button type="button" style={btn('ghost')} onClick={pedirCancelar}>
               {modo === 'nuevo' ? 'Cancelar' : 'Salir'}
             </button>
-            {modo === 'edicion' && usuario?.activo && (
-              <button type="button" style={btn('danger')} onClick={() => setConfirmar('baja')}>Dar de baja</button>
-            )}
-            {modo === 'edicion' && usuario && !usuario.activo && (
-              <button type="button" style={btn('success')} onClick={() => setConfirmar('reactivar')}>Reactivar</button>
-            )}
-            {modo === 'consulta' && (
-              <button type="button" style={btn('outline')} onClick={() => setModo('edicion')}>Editar</button>
-            )}
-            {modo !== 'consulta' && (
-              <button
-                type="button"
-                style={btn('primary', undefined, !puedeGuardar || crear.isPending || actualizar.isPending)}
-                disabled={!puedeGuardar || crear.isPending || actualizar.isPending}
-                onClick={guardar}
-              >
-                {crear.isPending || actualizar.isPending ? 'Guardando…' : 'Guardar usuario'}
-              </button>
+            {/* Las acciones de Datos no aplican en la sub-tab Permisos (tiene su propio Guardar). */}
+            {subTab === 'datos' && (
+              <>
+                {modo === 'edicion' && usuario?.activo && (
+                  <button type="button" style={btn('danger')} onClick={() => setConfirmar('baja')}>Dar de baja</button>
+                )}
+                {modo === 'edicion' && usuario && !usuario.activo && (
+                  <button type="button" style={btn('success')} onClick={() => setConfirmar('reactivar')}>Reactivar</button>
+                )}
+                {modo === 'consulta' && (
+                  <button type="button" style={btn('outline')} onClick={() => setModo('edicion')}>Editar</button>
+                )}
+                {modo !== 'consulta' && (
+                  <button
+                    type="button"
+                    style={btn('primary', undefined, !puedeGuardar || crear.isPending || actualizar.isPending)}
+                    disabled={!puedeGuardar || crear.isPending || actualizar.isPending}
+                    onClick={guardar}
+                  >
+                    {crear.isPending || actualizar.isPending ? 'Guardando…' : 'Guardar usuario'}
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -454,7 +497,11 @@ export function MaestroView() {
 // Usuario cargado → sus modulos_permitidos reales. Alta nueva → derivados del
 // nivel elegido + catálogo (min_nivel_acceso >= nivel, §30). El catálogo trae
 // el nombre legible (reemplaza el MODULO_LABEL hardcodeado del vanilla).
-function ChipsModulos({ usuario, nivel }: { usuario: Usuario | null; nivel: number | null }) {
+function ChipsModulos({ usuario, nivel, onGestionar }: {
+  usuario: Usuario | null
+  nivel: number | null
+  onGestionar?: () => void
+}) {
   const catalogo = useModulosCatalogo()
   const porCodigo = useMemo(
     () => new Map((catalogo.data ?? []).map((m) => [m.modulo_codigo, m.nombre])),
@@ -479,6 +526,19 @@ function ChipsModulos({ usuario, nivel }: { usuario: Usuario | null; nivel: numb
         <span style={chipMod(true)}>sin acceso</span>
       ) : (
         codigos.map((c) => <span key={c} style={chipMod(false)}>{porCodigo.get(c) ?? c}</span>)
+      )}
+      {onGestionar && (
+        <button
+          type="button"
+          onClick={onGestionar}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+            fontFamily: 'var(--font-display)', fontSize: '0.76rem', fontWeight: 600,
+            color: 'var(--zaris-orange)',
+          }}
+        >
+          Gestionar permisos →
+        </button>
       )}
     </div>
   )

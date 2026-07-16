@@ -38,7 +38,13 @@ export const useLoginLog = (id: number | null, abierto: boolean) =>
 
 function useInvalidarUsuarios() {
   const qc = useQueryClient()
-  return () => qc.invalidateQueries({ queryKey: KEY })
+  return () => {
+    qc.invalidateQueries({ queryKey: KEY })
+    // Cambiar nivel/estado de un usuario altera los defaults de su matriz de
+    // permisos (PermisosPanel usa los hooks de config con key ['config',...]).
+    qc.invalidateQueries({ queryKey: ['config', 'permisos'] })
+    qc.invalidateQueries({ queryKey: ['config', 'usuarios'] })
+  }
 }
 
 export function useCrearUsuario() {
