@@ -13,11 +13,12 @@ Las 3 claves viven en `configuracion_general`:
 El bucket es `config-assets` (publico, 2MB, image/png|jpeg|webp|svg+xml).
 La URL persistida es la URL publica directa (no firmada) - el bucket es public.
 """
+import re
 import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,7 +32,17 @@ BUCKET = "config-assets"
 # `app_nombre` ('GESTION ESTADO') es hardcoded del producto, no editable.
 # Solo persistimos lo que el municipio puede personalizar.
 APP_NOMBRE = "GESTION ESTADO"
-CLAVES = ("municipio_nombre", "municipio_logo_url")
+# Identidad completa del municipio (2026-07-16): nombre/logo del topbar +
+# descripcion y colores de marca de la App Vecinos (antes se editaban en
+# Config -> Sistema; se unificaron aca — las claves existen desde mig 52).
+CLAVES = (
+    "municipio_nombre",
+    "municipio_logo_url",
+    "municipio_descripcion",
+    "municipio_color_primary",
+    "municipio_color_accent",
+)
+HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 MIME_OK = {"image/png", "image/jpeg", "image/webp", "image/svg+xml"}
 MIME_EXT = {
     "image/png": "png",
@@ -56,6 +67,9 @@ class IdentidadOut(BaseModel):
     app_nombre: str  # constante del producto, devuelto por compat con shell vanilla
     municipio_nombre: str
     municipio_logo_url: str
+    municipio_descripcion: str
+    municipio_color_primary: str
+    municipio_color_accent: str
     # Slug (codigo_corto) del unico municipio activo del deploy (mono-tenant §38).
     # Lo usa Config -> Identidad para previsualizar las URLs publicas del municipio
     # (ej. el alta de vecinos: .../frontend/alta-vecino.html?m=<slug>). None si no hay.
@@ -65,6 +79,19 @@ class IdentidadOut(BaseModel):
 class IdentidadUpdate(BaseModel):
     municipio_nombre: Optional[str] = Field(default=None, max_length=120)
     municipio_logo_url: Optional[str] = Field(default=None, max_length=500)
+    municipio_descripcion: Optional[str] = Field(default=None, max_length=300)
+    municipio_color_primary: Optional[str] = Field(default=None, max_length=7)
+    municipio_color_accent: Optional[str] = Field(default=None, max_length=7)
+
+    @field_validator("municipio_color_primary", "municipio_color_accent")
+    @classmethod
+    def _hex_valido(cls, v: Optional[str]) -> Optional[str]:
+        # '' es valido (= quitar el color, la PWA cae a su default).
+        if v is None or v == "":
+            return v
+        if not HEX_RE.match(v):
+            raise ValueError("Color invalido: usar formato #RRGGBB")
+        return v
 
 
 class LogoUploadRequest(BaseModel):
@@ -100,6 +127,9 @@ async def _leer_claves(db: AsyncSession) -> dict[str, str]:
         "app_nombre": APP_NOMBRE,
         "municipio_nombre": data.get("municipio_nombre", "MUNICIPALIDAD"),
         "municipio_logo_url": data.get("municipio_logo_url", ""),
+        "municipio_descripcion": data.get("municipio_descripcion", ""),
+        "municipio_color_primary": data.get("municipio_color_primary", ""),
+        "municipio_color_accent": data.get("municipio_color_accent", ""),
         "municipio_slug": slug,
     }
 

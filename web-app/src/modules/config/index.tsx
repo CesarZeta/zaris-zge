@@ -13,7 +13,8 @@ const Wrap = (Component: React.FC) => () => (
   </ConfigLayout>
 )
 
-const RedirectIdentidad = () => <Navigate to="/config/identidad" replace />
+// La tab por defecto es la primera del layout (Permisos); Identidad va última.
+const RedirectPermisos = () => <Navigate to="/config/permisos" replace />
 
 export const configModule: ModuleManifest = {
   id: 'config',
@@ -23,7 +24,7 @@ export const configModule: ModuleManifest = {
   // tenes acceso a configuracion. Backend `require_admin` exige nivel=1 igual.
   moduloCodigo: 'usuarios',
   routes: [
-    { index: true,           element: RedirectIdentidad,          handle: { breadcrumb: 'config' } },
+    { index: true,           element: RedirectPermisos,           handle: { breadcrumb: 'config' } },
     { path: 'identidad',     element: Wrap(IdentidadView),        handle: { breadcrumb: 'config · identidad' } },
     { path: 'permisos',      element: Wrap(UsuariosPermisosView), handle: { breadcrumb: 'config · permisos' } },
     { path: 'modulos',       element: Wrap(CatalogoModulosView),  handle: { breadcrumb: 'config · módulos' } },

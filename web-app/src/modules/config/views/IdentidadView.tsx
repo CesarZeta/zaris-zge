@@ -26,16 +26,25 @@ function basePublica(): string {
 
 const MIME_OK = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']
 const MAX_BYTES = 2 * 1024 * 1024
+// '' = color sin definir (la PWA usa su default); si hay valor debe ser #RRGGBB.
+const HEX_RE = /^#[0-9a-fA-F]{6}$/
+const hexValido = (v: string) => v === '' || HEX_RE.test(v)
 
 interface FormState {
   municipio_nombre: string
   municipio_logo_url: string
+  municipio_descripcion: string
+  municipio_color_primary: string
+  municipio_color_accent: string
 }
 
 function toForm(d: IdentidadValues | undefined): FormState {
   return {
     municipio_nombre: d?.municipio_nombre ?? '',
     municipio_logo_url: d?.municipio_logo_url ?? '',
+    municipio_descripcion: d?.municipio_descripcion ?? '',
+    municipio_color_primary: d?.municipio_color_primary ?? '',
+    municipio_color_accent: d?.municipio_color_accent ?? '',
   }
 }
 
@@ -55,7 +64,11 @@ export function IdentidadView() {
 
   const dirty = identidad.data
     && (form.municipio_nombre !== identidad.data.municipio_nombre
-      || form.municipio_logo_url !== identidad.data.municipio_logo_url)
+      || form.municipio_logo_url !== identidad.data.municipio_logo_url
+      || form.municipio_descripcion !== identidad.data.municipio_descripcion
+      || form.municipio_color_primary !== identidad.data.municipio_color_primary
+      || form.municipio_color_accent !== identidad.data.municipio_color_accent)
+  const coloresValidos = hexValido(form.municipio_color_primary) && hexValido(form.municipio_color_accent)
 
   async function handleArchivo(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -100,6 +113,9 @@ export function IdentidadView() {
       await update.mutateAsync({
         municipio_nombre: form.municipio_nombre.trim(),
         municipio_logo_url: form.municipio_logo_url.trim(),
+        municipio_descripcion: form.municipio_descripcion.trim(),
+        municipio_color_primary: form.municipio_color_primary.trim(),
+        municipio_color_accent: form.municipio_color_accent.trim(),
       })
       setOkMsg('Cambios guardados.')
       setTimeout(() => setOkMsg(null), 3000)
@@ -209,6 +225,41 @@ export function IdentidadView() {
         </div>
       </div>
 
+      {/* Marca de la App Vecinos (PWA) — unificado acá desde Sistema (2026-07-16) */}
+      <div style={enlacesWrap}>
+        <div style={labelStyle}>App Vecinos (PWA) — marca y bienvenida</div>
+        <span style={hintStyle}>
+          Colores y texto que ven los vecinos en la app pública ({'vecinos.zaris.com.ar'}).
+          El color primario pinta la barra superior, la barra inferior y el marco de la app.
+        </span>
+        <div style={{ ...fieldGroup, marginTop: 8 }}>
+          <label style={labelStyle}>Texto de bienvenida</label>
+          <input
+            type="text"
+            value={form.municipio_descripcion}
+            maxLength={300}
+            onChange={(e) => setForm((f) => ({ ...f, municipio_descripcion: e.target.value }))}
+            style={inputStyle}
+            placeholder="Servicio oficial de atención al vecino"
+          />
+          <span style={hintStyle}>Frase corta de la pantalla de inicio de sesión de la app.</span>
+        </div>
+        <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap', marginTop: 8 }}>
+          <ColorCampo
+            label="Color primario"
+            hint="Botones, barras y marco de la app."
+            value={form.municipio_color_primary}
+            onChange={(v) => setForm((f) => ({ ...f, municipio_color_primary: v }))}
+          />
+          <ColorCampo
+            label="Color de acento"
+            hint="Badges y links (opcional)."
+            value={form.municipio_color_accent}
+            onChange={(v) => setForm((f) => ({ ...f, municipio_color_accent: v }))}
+          />
+        </div>
+      </div>
+
       {/* Enlaces públicos del municipio (solo lectura) */}
       <EnlacesPublicos slug={identidad.data?.municipio_slug ?? null} />
 
@@ -216,8 +267,9 @@ export function IdentidadView() {
         <button
           type="button"
           onClick={handleGuardar}
-          disabled={!dirty || update.isPending}
-          style={btnStyle('primary', !dirty || update.isPending)}
+          disabled={!dirty || !coloresValidos || update.isPending}
+          style={btnStyle('primary', !dirty || !coloresValidos || update.isPending)}
+          title={coloresValidos ? undefined : 'Hay un color con formato inválido (usar #RRGGBB)'}
         >
           {update.isPending ? 'Guardando…' : 'Guardar cambios'}
         </button>
@@ -231,6 +283,51 @@ export function IdentidadView() {
           </button>
         )}
       </div>
+    </div>
+  )
+}
+
+// ── Color de marca (picker + hex editable) ───────────────────────
+function ColorCampo({ label, hint, value, onChange }: {
+  label: string
+  hint: string
+  value: string
+  onChange: (v: string) => void
+}) {
+  const valido = hexValido(value)
+  return (
+    <div style={fieldGroup}>
+      <label style={labelStyle}>{label}</label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <input
+          type="color"
+          value={valido && value !== '' ? value : '#888888'}
+          onChange={(e) => onChange(e.target.value)}
+          style={{ width: 36, height: 32, padding: 2, border: '1px solid var(--border-primary)', borderRadius: 6, background: 'var(--surface-100)', cursor: 'pointer' }}
+          title="Elegir color"
+        />
+        <input
+          type="text"
+          value={value}
+          maxLength={7}
+          onChange={(e) => onChange(e.target.value.trim())}
+          placeholder="sin definir"
+          style={{
+            ...inputStyle,
+            maxWidth: 110,
+            fontFamily: 'var(--font-mono)',
+            borderColor: valido ? 'var(--border-primary)' : 'var(--color-error)',
+          }}
+        />
+        {value !== '' && (
+          <button type="button" onClick={() => onChange('')} style={btnStyle('ghost')} title="Quitar color (la app usa su color por defecto)">
+            Quitar
+          </button>
+        )}
+      </div>
+      <span style={{ ...hintStyle, color: valido ? 'var(--fg-3)' : 'var(--color-error)' }}>
+        {valido ? hint : 'Formato inválido: usar #RRGGBB (ej. #1f8a65).'}
+      </span>
     </div>
   )
 }

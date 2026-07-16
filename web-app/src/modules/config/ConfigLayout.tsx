@@ -11,11 +11,13 @@ function goInicio(e: React.MouseEvent) {
 // Paths ABSOLUTOS: `to="permisos"` (relativo) se resolvería contra la ruta
 // actual completa (ej. estando en /config/identidad daría /config/identidad/permisos,
 // ruta inexistente → catch-all '*' → dashboard). Con '/config/...' siempre apunta bien.
+// Orden pedido por el usuario (2026-07-16): lo cross del software primero,
+// Identidad (marca del municipio + App Vecinos) al final.
 const TABS = [
-  { to: '/config/identidad', slug: 'identidad', label: 'Identidad' },
   { to: '/config/permisos',  slug: 'permisos',  label: 'Permisos por usuario' },
   { to: '/config/modulos',   slug: 'modulos',   label: 'Catálogo de módulos' },
   { to: '/config/sistema',   slug: 'sistema',   label: 'Sistema' },
+  { to: '/config/identidad', slug: 'identidad', label: 'Identidad' },
 ]
 
 export function ConfigLayout({ children }: { children: ReactNode }) {
