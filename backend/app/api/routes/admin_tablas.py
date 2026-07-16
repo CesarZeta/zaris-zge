@@ -183,7 +183,7 @@ ALLOWED_TABLES = set(TABLE_CONFIG.keys())
 
 # Tablas que se pueden LEER por el CRUD genérico (para poblar selects FK de otras
 # tablas) pero NO mutar desde acá. `usuarios` tiene su propia pantalla
-# (frontend/usuarios.html) que hashea password y registra auditoría de login; el
+# (módulo React Usuarios, web-app #/usuarios) que hashea password y registra auditoría de login; el
 # alta/edición/baja genérico de admin_tablas dejaría usuarios sin login funcional.
 READ_ONLY_TABLES = {"usuarios"}
 

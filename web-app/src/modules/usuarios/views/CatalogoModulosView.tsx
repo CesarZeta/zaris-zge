@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
-import { useActualizarModulo, useModulosCatalogo } from '../hooks/useConfig'
+// Hooks/API de permisos siguen viviendo en el módulo config (cross-module
+// import permitido §29) — esta vista se movió acá porque los permisos son
+// parte del maestro de Usuarios (pedido 2026-07-16).
+import { useActualizarModulo, useModulosCatalogo } from '../../config/hooks/useConfig'
 import { useNotificationsStore } from '../../../stores/notifications'
 
 export function CatalogoModulosView() {

@@ -1,4 +1,5 @@
 import { Landmark, Users } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { shellNavigate } from '../../../lib/shellNav'
 import { ParametrosSistemaView } from './ParametrosSistemaView'
 
@@ -7,17 +8,20 @@ interface Atajo {
   titulo: string
   descripcion: string
   href: string
+  /** Ruta interna del bundle React (react-router) en vez de página del shell. */
+  interna?: boolean
 }
 
 // Atajos a pantallas de catálogos/maestros que NO son ajustes booleanos del
-// sistema (viven en admin_tablas vanilla o en la pantalla de usuarios).
-// Usuarios va primero: es el único acceso a esa pantalla desde el menú.
+// sistema. Usuarios es un módulo React propio desde 2026-07-16 (tiene ítem
+// en el sidebar); el atajo queda como acceso alternativo.
 const ATAJOS: Atajo[] = [
   {
     icon: Users,
     titulo: 'Usuarios del sistema',
-    descripcion: 'Alta, baja y edición de cuentas de usuario.',
-    href: 'frontend/usuarios.html',
+    descripcion: 'Alta, baja y edición de cuentas, permisos y catálogo de módulos.',
+    href: '/usuarios/maestro',
+    interna: true,
   },
   {
     icon: Landmark,
@@ -27,12 +31,15 @@ const ATAJOS: Atajo[] = [
   },
 ]
 
-function irA(href: string, e: React.MouseEvent) {
-  e.preventDefault()
-  shellNavigate(href)
-}
-
 export function SistemaView() {
+  const navigate = useNavigate()
+
+  function irA(a: Atajo, e: React.MouseEvent) {
+    e.preventDefault()
+    if (a.interna) navigate(a.href)
+    else shellNavigate(a.href)
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
       {/* Accesos a catálogos/maestros — primero, para que Usuarios sea
@@ -57,7 +64,7 @@ export function SistemaView() {
             <a
               key={a.href}
               href={a.href}
-              onClick={(e) => irA(a.href, e)}
+              onClick={(e) => irA(a, e)}
               style={cardStyle}
               onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = 'var(--surface-400)' }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = 'var(--surface-100)' }}

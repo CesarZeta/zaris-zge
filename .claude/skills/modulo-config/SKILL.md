@@ -1,13 +1,13 @@
 ---
 name: modulo-config
-description: "Usar al trabajar en el módulo Config (React, admin-only) de ZARIS (archivos: web-app/src/modules/config/ — IdentidadView, UsuariosPermisosView, CatalogoModulosView, SistemaView, ParametrosSistemaView, api/configApi.ts, hooks/useConfig.ts, lib/shellNav.ts; endpoints: /api/v1/config/identidad, /api/v1/admin/permisos/*, /api/v1/admin/configuracion_general). Cubre los 4 tabs (Identidad, Permisos por usuario, Catálogo de módulos, Sistema tipado), los bugs de navegación en iframe (window.location absoluto, NavLink relativo) y el quirk de configuracion_general.tipo NOT NULL en prod. Invocar ANTES de tocar cualquier tab, endpoint o navegación del módulo Config."
+description: "Usar al trabajar en el módulo Config (React, admin-only) de ZARIS (archivos: web-app/src/modules/config/ — IdentidadView, SistemaView, ParametrosSistemaView, api/configApi.ts, hooks/useConfig.ts, lib/shellNav.ts; endpoints: /api/v1/config/identidad, /api/v1/admin/permisos/*, /api/v1/admin/configuracion_general). Cubre los 2 tabs (Sistema tipado, Identidad — permisos/catálogo de módulos se mudaron al módulo Usuarios 2026-07-16), los bugs de navegación en iframe (window.location absoluto, NavLink relativo) y el quirk de configuracion_general.tipo NOT NULL en prod. Invocar ANTES de tocar cualquier tab, endpoint o navegación del módulo Config."
 ---
 
 # Módulo Config (React) + estándar de verificación en la interfaz — §41
 
 > **Nota:** el "Estándar OBLIGATORIO: verificar navegación/UI en la interfaz" (parte de §41) es una regla **transversal** y permanece en CLAUDE.md §41 — aplica a cualquier módulo React, no solo Config. Acá vive solo lo específico del módulo Config.
 
-Módulo React `web-app/src/modules/config/` (ítem "configuración" del sidebar, `data-modulo="admin_tablas"` desde §39). Es admin-only — el backend exige `nivel_acceso=1` en `require_admin` (los endpoints de identidad y permisos). 4 tabs en `ConfigLayout`:
+Módulo React `web-app/src/modules/config/` (ítem "configuración" del sidebar, `data-modulo="admin_tablas"` desde §39). Es admin-only — el backend exige `nivel_acceso=1` en `require_admin` (los endpoints de identidad y permisos). **Desde 2026-07-16 son 2 tabs** (Sistema · Identidad, en ese orden): "Permisos por usuario" y "Catálogo de módulos" se mudaron al módulo **Usuarios** (`web-app/src/modules/usuarios/`, ítem propio del sidebar); los paths viejos `/config/permisos` y `/config/modulos` redirigen. La tab Identidad ahora incluye también descripción + colores de marca de la App Vecinos (antes en Sistema). Tabla histórica de las 4 tabs (endpoints siguen válidos):
 
 | Tab | Vista | Endpoint backend | Qué hace |
 |---|---|---|---|

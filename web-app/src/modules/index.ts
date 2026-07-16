@@ -10,6 +10,7 @@ import { contactosModule } from './contactos'
 import { ciudadanosModule } from './ciudadanos'
 import { empresasModule } from './empresas'
 import { configModule } from './config'
+import { usuariosModule } from './usuarios'
 import { tramitesModule } from './tramites'
 import { encuestasModule } from './encuestas'
 import { biModule } from './bi'
@@ -43,6 +44,7 @@ export const modules: ModuleManifest[] = [
   // ── Administración (nivel 1) ──
   biModule,
   encuestasModule,
+  usuariosModule,      // maestro de cuentas + permisos + catálogo de módulos
   configModule,
   guiasModule,
 ]

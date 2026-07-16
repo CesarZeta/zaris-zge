@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { Settings } from 'lucide-react'
+import { Users } from 'lucide-react'
 import { shellGoInicio } from '../../lib/shellNav'
 
 function goInicio(e: React.MouseEvent) {
@@ -8,18 +8,15 @@ function goInicio(e: React.MouseEvent) {
   shellGoInicio()
 }
 
-// Paths ABSOLUTOS: `to="permisos"` (relativo) se resolvería contra la ruta
-// actual completa (ej. estando en /config/identidad daría /config/identidad/permisos,
-// ruta inexistente → catch-all '*' → dashboard). Con '/config/...' siempre apunta bien.
-// Orden pedido por el usuario (2026-07-16): lo cross del software primero,
-// Identidad (marca del municipio + App Vecinos) al final. Permisos y Catálogo
-// de módulos se mudaron al módulo Usuarios.
+// Paths ABSOLUTOS (regla del módulo Config §41): un `to` relativo se resuelve
+// contra la ruta actual completa y cae al catch-all '*' → dashboard.
 const TABS = [
-  { to: '/config/sistema',   slug: 'sistema',   label: 'Sistema' },
-  { to: '/config/identidad', slug: 'identidad', label: 'Identidad' },
+  { to: '/usuarios/maestro', slug: 'maestro', label: 'Usuarios' },
+  { to: '/usuarios/permisos', slug: 'permisos', label: 'Permisos por usuario' },
+  { to: '/usuarios/modulos', slug: 'modulos', label: 'Catálogo de módulos' },
 ]
 
-export function ConfigLayout({ children }: { children: ReactNode }) {
+export function UsuariosLayout({ children }: { children: ReactNode }) {
   const location = useLocation()
   const partes = location.pathname.split('/').filter(Boolean)
   const subtitulo = TABS.find((t) => partes[1] === t.slug)?.label
@@ -44,8 +41,8 @@ export function ConfigLayout({ children }: { children: ReactNode }) {
           INICIO
         </a>
         <span style={{ color: 'var(--fg-3)' }}>›</span>
-        <span style={{ color: 'var(--fg-2)', fontWeight: 600 }}>Configuración</span>
-        {subtitulo && (
+        <span style={{ color: 'var(--fg-2)', fontWeight: 600 }}>Usuarios</span>
+        {subtitulo && subtitulo !== 'Usuarios' && (
           <>
             <span style={{ color: 'var(--fg-3)' }}>›</span>
             <span style={{ color: 'var(--fg-2)', fontWeight: 600 }}>{subtitulo}</span>
@@ -54,16 +51,16 @@ export function ConfigLayout({ children }: { children: ReactNode }) {
       </nav>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <Settings size={32} strokeWidth={1.5} color="var(--zaris-orange)" />
+        <Users size={32} strokeWidth={1.5} color="var(--zaris-orange)" />
         <div>
           <h1 style={{
             fontSize: '1.55rem', fontWeight: 600, letterSpacing: '-0.5px',
             color: 'var(--fg-1)', lineHeight: 1.1, margin: 0,
           }}>
-            Configuración
+            Usuarios
           </h1>
           <p style={{ fontSize: '0.82rem', color: 'var(--fg-3)', margin: '2px 0 0' }}>
-            Ajustes generales del sistema e identidad del municipio.
+            Maestro de cuentas, permisos por usuario y catálogo de módulos.
           </p>
         </div>
       </div>
