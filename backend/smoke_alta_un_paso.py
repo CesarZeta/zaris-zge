@@ -7,7 +7,10 @@ Local:  python smoke_alta_un_paso.py
 Prod:   python smoke_alta_un_paso.py https://zaris-api-production-bf0b.up.railway.app
 
 Los datos creados QUEDAN como demo (directiva 2026-06-11, no se limpian).
+Passwords: en local usa la clave dev estandar; contra prod exige ZARIS_QA_PASS
+(credenciales en credenciales-testing/, FUERA del repo — §40).
 """
+import os
 import random
 import sys
 
@@ -16,6 +19,9 @@ import httpx
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
 ES_PROD = "railway" in BASE or "zaris.com.ar" in BASE
 ADMIN_EMAIL = "cesar@municipio.gob.ar" if ES_PROD else "ciudadanovl@municipio.gob.ar"
+QA_PASS = os.environ.get("ZARIS_QA_PASS") or ("123456" if not ES_PROD else None)
+if ES_PROD and not QA_PASS:
+    sys.exit("Contra prod setea ZARIS_QA_PASS (credenciales en credenciales-testing/, fuera del repo)")
 
 ok_count = 0
 fail_count = 0
@@ -90,7 +96,7 @@ def main() -> int:
     print(f"       -> id_ciudadano {id_nuevo} (DNI {dni})")
 
     # 2. La ficha quedó completa y SIN placeholders (login admin + GET ciudadano)
-    r = c.post(f"{BASE}/api/v1/auth/login", json={"email": ADMIN_EMAIL, "password": "123456"})
+    r = c.post(f"{BASE}/api/v1/auth/login", json={"email": ADMIN_EMAIL, "password": QA_PASS})
     check("2a. login admin", r.status_code == 200)
     HA = {"Authorization": f"Bearer {r.json()['access_token']}"}
     r = c.get(f"{BASE}/api/v1/buc/ciudadanos/{id_nuevo}", headers=HA)

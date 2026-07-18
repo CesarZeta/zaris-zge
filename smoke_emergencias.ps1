@@ -6,13 +6,16 @@
 # Uso: backend local corriendo en 127.0.0.1:8000 con mig 81-85 aplicadas.
 #   powershell -File smoke_emergencias.ps1
 # Requiere datos de QA (idempotentes, ver historial de sesion 2026-06-10):
-#   - usuario operadorcom@municipio.gob.ar (nivel 3, id_subarea=90 Policia, pass 123456)
-#   - vecino demo con credencial activada (pass 123456). OJO: el DNI difiere por
-#     entorno — LOCAL 28547123 / PROD 30555444 (cazado 2026-06-11; este script usa
-#     el de local: si lo corres contra prod, cambia el DNI del login publico).
+#   - usuario operadorcom@municipio.gob.ar (nivel 3, id_subarea=90 Policia)
+#   - vecino demo con credencial activada. OJO: el DNI difiere por entorno —
+#     LOCAL 28547123 / PROD 30555444 (cazado 2026-06-11; este script usa el de
+#     local: si lo corres contra prod, cambia el DNI del login publico).
+# Passwords: clave dev estandar en local; contra prod setear ZARIS_QA_PASS
+# (credenciales en credenciales-testing/, FUERA del repo — §40).
 
 $ErrorActionPreference = "Stop"
 $base = "http://127.0.0.1:8000"
+$qaPass = if ($env:ZARIS_QA_PASS) { $env:ZARIS_QA_PASS } else { "123456" }
 $pass = 0; $fail = 0
 
 function Assert($cond, $msg) {
@@ -36,7 +39,7 @@ function Get-StatusCode($scriptblock) {
 }
 
 # ---- login ----
-$login = Invoke-Api POST "/api/v1/auth/login" $null @{ email = "ciudadanovl@municipio.gob.ar"; password = "123456" }
+$login = Invoke-Api POST "/api/v1/auth/login" $null @{ email = "ciudadanovl@municipio.gob.ar"; password = $qaPass }
 $H = @{ Authorization = "Bearer $($login.access_token)" }
 Assert ($null -ne $login.access_token) "login admin local"
 
@@ -189,7 +192,7 @@ $ev4c = Invoke-Api PATCH "/api/v1/emergencias/eventos/$($ev4.id_emergencia_event
 Assert ($ev4c.referencia_ubicacion -eq 'frente a la plaza') "PATCH campos editables"
 
 # ---- scoping nivel 3: operador con subarea Policia (90) ----
-$loginOp = Invoke-Api POST "/api/v1/auth/login" $null @{ email = "operadorcom@municipio.gob.ar"; password = "123456" }
+$loginOp = Invoke-Api POST "/api/v1/auth/login" $null @{ email = "operadorcom@municipio.gob.ar"; password = $qaPass }
 $HOp = @{ Authorization = "Bearer $($loginOp.access_token)" }
 Assert ($null -ne $loginOp.access_token) "login operador COM (nivel 3, subarea Policia)"
 
@@ -219,7 +222,7 @@ Assert (@($abAdm | Where-Object { $_.id_subarea -eq 91 }).Count -ge 1) "admin: s
 Invoke-Api POST "/api/v1/emergencias/eventos/$($evDc.id_emergencia_evento)/cerrar" $H @{ veracidad = "NO_VERIFICABLE"; terminal_positivo = $false; observaciones_cierre = "cleanup smoke" } | Out-Null
 
 # ---- Fase 5: endpoint publico App Vecinos ----
-$loginVec = Invoke-Api POST "/api/v1/publico/auth/login" $null @{ dni = "28547123"; password = "123456" }
+$loginVec = Invoke-Api POST "/api/v1/publico/auth/login" $null @{ dni = "28547123"; password = $qaPass }
 $HVec = @{ Authorization = "Bearer $($loginVec.access_token)" }
 Assert ($null -ne $loginVec.access_token) "login vecino (JWT scope publico)"
 $idCiuVec = $loginVec.ciudadano.id_ciudadano

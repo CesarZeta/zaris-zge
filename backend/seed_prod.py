@@ -1,10 +1,19 @@
-"""Seed demo data into Railway prod (idempotent — skips populated tables)."""
+"""Seed demo data into Railway prod (idempotent — skips populated tables).
+
+Credenciales: exige env vars ZARIS_SEED_EMAIL + ZARIS_QA_PASS (es un script
+100% prod — las credenciales viven en credenciales-testing/, FUERA del repo, §40).
+"""
 import asyncio
+import os
+import sys
+
 import httpx
 
 BASE = "https://zaris-api-production-bf0b.up.railway.app/api/v1/admin"
 LOGIN_URL = "https://zaris-api-production-bf0b.up.railway.app/api/v1/auth/login"
-CREDENTIALS = {"email": "administrativo@municipio.gob.ar", "password": "123456"}
+if not os.environ.get("ZARIS_SEED_EMAIL") or not os.environ.get("ZARIS_QA_PASS"):
+    sys.exit("Setea ZARIS_SEED_EMAIL y ZARIS_QA_PASS (credenciales en credenciales-testing/, fuera del repo)")
+CREDENTIALS = {"email": os.environ["ZARIS_SEED_EMAIL"], "password": os.environ["ZARIS_QA_PASS"]}
 
 SEED_DATA = {
     "area": [

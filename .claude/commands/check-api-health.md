@@ -12,9 +12,9 @@ Verifica que la API de producción está respondiendo correctamente y que los en
 2. Hacer login para obtener un token de prueba:
    ```
    POST https://zaris-api-production-bf0b.up.railway.app/api/v1/auth/login
-   { "email": "ciudadanovl@municipio.gob.ar", "password": "123456" }
+   { "email": "<admin de prod>", "password": "<ver credenciales-testing/>" }
    ```
-   (admin nivel 1 — ver CLAUDE.md §32 quirk 10. Los emails dev son `<username>@municipio.gob.ar` con username viniendo de `usuarios.username`, no del rol.)
+   (Las credenciales de PROD viven en `credenciales-testing/` FUERA del repo — §40, nunca incrustarlas acá. El login de prod es por email EXACTO de `usuarios.email`, que puede no seguir el patrón `<username>@municipio.gob.ar` — ver memoria `reference_login_email_prod_no_es_patron_doc`.)
 
 3. Con el token obtenido, verificar los endpoints críticos:
    - `GET /api/v1/buc/ciudadanos` — BUC ciudadanos

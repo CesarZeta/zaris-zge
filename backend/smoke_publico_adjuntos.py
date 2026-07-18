@@ -4,10 +4,13 @@ Smoke — adjuntos públicos de reclamos (App Vecinos, Etapa A).
 Corre contra local por default: python smoke_publico_adjuntos.py
 Contra prod: python smoke_publico_adjuntos.py https://zaris-api-production-bf0b.up.railway.app
 
-Requiere: vecino demo DNI 28547123 con credencial activada (pass 123456) y,
-para el paso 10 (reclamo ajeno), el admin ciudadanovl (local) / cesar (prod).
+Requiere: vecino demo DNI 28547123 con credencial activada y, para el paso 10
+(reclamo ajeno), el admin ciudadanovl (local) / cesar (prod). Passwords: en
+local usa la clave dev estandar; contra prod exige ZARIS_QA_PASS (credenciales
+en credenciales-testing/, FUERA del repo — §40).
 """
 import base64
+import os
 import sys
 
 import httpx
@@ -15,8 +18,11 @@ import httpx
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
 ES_PROD = "railway" in BASE or "zaris.com.ar" in BASE
 ADMIN_EMAIL = "cesar@municipio.gob.ar" if ES_PROD else "ciudadanovl@municipio.gob.ar"
-# Vecino demo: local 28547123 / prod 30555444 (ambos pass 123456). Override por argv[2].
+# Vecino demo: local 28547123 / prod 30555444. Override por argv[2].
 DNI_VECINO = sys.argv[2] if len(sys.argv) > 2 else ("30555444" if ES_PROD else "28547123")
+QA_PASS = os.environ.get("ZARIS_QA_PASS") or ("123456" if not ES_PROD else None)
+if ES_PROD and not QA_PASS:
+    sys.exit("Contra prod setea ZARIS_QA_PASS (credenciales en credenciales-testing/, fuera del repo)")
 
 PNG_1PX = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
@@ -40,7 +46,7 @@ def main() -> int:
     c = httpx.Client(timeout=30)
 
     # 1. Login vecino
-    r = c.post(f"{BASE}/api/v1/publico/auth/login", json={"dni": DNI_VECINO, "password": "123456"})
+    r = c.post(f"{BASE}/api/v1/publico/auth/login", json={"dni": DNI_VECINO, "password": QA_PASS})
     check("1. login vecino", r.status_code == 200, f"({r.status_code})")
     if r.status_code != 200:
         return 1
@@ -100,7 +106,7 @@ def main() -> int:
     check("9. sin token 401", r.status_code == 401, f"({r.status_code})")
 
     # 10. Reclamo ajeno → 404 (mismo cuerpo que inexistente)
-    r = c.post(f"{BASE}/api/v1/auth/login", json={"email": ADMIN_EMAIL, "password": "123456"})
+    r = c.post(f"{BASE}/api/v1/auth/login", json={"email": ADMIN_EMAIL, "password": QA_PASS})
     if r.status_code == 200:
         HA = {"Authorization": f"Bearer {r.json()['access_token']}"}
         todos = c.get(f"{BASE}/api/v1/reclamos", params={"limit": 50}, headers=HA).json()

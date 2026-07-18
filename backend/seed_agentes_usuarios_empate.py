@@ -21,6 +21,12 @@ DB_URL = os.environ.get(
     "DATABASE_URL",
     "postgresql://postgres:145236@127.0.0.1:5432/zaris_dev",
 )
+# Password de usuarios nuevos: clave dev en local; contra DB remota exige env
+# (§40 — sin credenciales de prod en artefactos trackeados; credenciales-testing/).
+_ES_DB_LOCAL = "127.0.0.1" in DB_URL or "localhost" in DB_URL
+SEED_USERS_PASS = os.environ.get("ZARIS_SEED_USERS_PASS") or ("123456" if _ES_DB_LOCAL else None)
+if not SEED_USERS_PASS:
+    sys.exit("Contra una DB remota setea ZARIS_SEED_USERS_PASS (ver credenciales-testing/, fuera del repo)")
 
 # Mapa de transformaciones para agentes existentes:
 # (nombre, apellido_actual_like) -> (apellido_nuevo, email_nuevo, id_usuario_a_vincular)
@@ -103,9 +109,8 @@ async def run():
                 nuevo_id_usuario = existing_user["id_usuario"]
                 print(f"  Usuario '{NUEVO_USUARIO['username']}' ya existe (id={nuevo_id_usuario}), omitiendo INSERT")
             else:
-                # Hash de password '123456' con bcrypt
                 import bcrypt
-                hashed = bcrypt.hashpw(b"123456", bcrypt.gensalt()).decode()
+                hashed = bcrypt.hashpw(SEED_USERS_PASS.encode(), bcrypt.gensalt()).decode()
                 nuevo_id_usuario = await conn.fetchval(
                     """INSERT INTO usuarios
                          (nombre, username, email, nivel_acceso, password_hash,

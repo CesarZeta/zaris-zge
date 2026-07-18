@@ -4,13 +4,15 @@ Smoke — entradas del vecino logueado (App Vecinos, Etapa D).
 Local:  python smoke_publico_entradas.py
 Prod:   python smoke_publico_entradas.py https://zaris-api-production-bf0b.up.railway.app
 
-Requiere vecino demo con credencial (local DNI 28547123 / prod 30555444, pass 123456)
-y un admin (cesar@municipio.gob.ar / 123456) para sembrar un evento si la cartelera
-esta vacia.
+Requiere vecino demo con credencial (local DNI 28547123 / prod 30555444) y un
+admin para sembrar un evento si la cartelera esta vacia. Passwords: en local usa
+la clave dev estandar; contra prod exige la env var ZARIS_QA_PASS (las
+credenciales de prod viven en credenciales-testing/, FUERA del repo — §40).
 
 NOTA: por directiva del usuario (2026-06-11) los datos creados NO se limpian —
 quedan como seed de demos. El smoke deja una entrada RESERVADA del vecino demo.
 """
+import os
 import sys
 from datetime import date, timedelta
 
@@ -19,6 +21,9 @@ import httpx
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
 ES_PROD = "railway" in BASE or "zaris.com.ar" in BASE
 DNI_VECINO = sys.argv[2] if len(sys.argv) > 2 else ("30555444" if ES_PROD else "28547123")
+QA_PASS = os.environ.get("ZARIS_QA_PASS") or ("123456" if not ES_PROD else None)
+if ES_PROD and not QA_PASS:
+    sys.exit("Contra prod setea ZARIS_QA_PASS (credenciales en credenciales-testing/, fuera del repo)")
 
 ok_count = 0
 fail_count = 0
@@ -42,7 +47,7 @@ def sembrar_evento_demo(c: httpx.Client) -> bool:
     admin (respeta reglas de negocio — no SQL crudo)."""
     h = None
     for email in ADMINS:
-        r = c.post(f"{BASE}/api/v1/auth/login", json={"email": email, "password": "123456"})
+        r = c.post(f"{BASE}/api/v1/auth/login", json={"email": email, "password": QA_PASS})
         if r.status_code == 200:
             h = {"Authorization": f"Bearer {r.json()['access_token']}"}
             break
@@ -65,7 +70,7 @@ def main() -> int:
     c = httpx.Client(timeout=60)
 
     # 1. Login vecino
-    r = c.post(f"{BASE}/api/v1/publico/auth/login", json={"dni": DNI_VECINO, "password": "123456"})
+    r = c.post(f"{BASE}/api/v1/publico/auth/login", json={"dni": DNI_VECINO, "password": QA_PASS})
     check("1. login vecino", r.status_code == 200, f"({r.status_code})")
     if r.status_code != 200:
         return 1

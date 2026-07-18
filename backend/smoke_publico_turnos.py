@@ -4,12 +4,15 @@ Smoke — turnos del vecino logueado (App Vecinos, Etapa C).
 Local:  python smoke_publico_turnos.py
 Prod:   python smoke_publico_turnos.py https://zaris-api-production-bf0b.up.railway.app
 
-Requiere vecino demo con credencial (local DNI 28547123 / prod 30555444, pass 123456).
+Requiere vecino demo con credencial (local DNI 28547123 / prod 30555444).
+Passwords: en local usa la clave dev estandar; contra prod exige ZARIS_QA_PASS
+(credenciales en credenciales-testing/, FUERA del repo — §40).
 
 NOTA: por directiva del usuario (2026-06-11) los datos creados NO se limpian —
 quedan como seed de demos. El smoke reserva 2 turnos en días distintos: cancela
 uno (probar la cancelación es parte del flujo) y deja el otro RESERVADO.
 """
+import os
 import sys
 from collections import OrderedDict
 
@@ -18,6 +21,9 @@ import httpx
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000"
 ES_PROD = "railway" in BASE or "zaris.com.ar" in BASE
 DNI_VECINO = sys.argv[2] if len(sys.argv) > 2 else ("30555444" if ES_PROD else "28547123")
+QA_PASS = os.environ.get("ZARIS_QA_PASS") or ("123456" if not ES_PROD else None)
+if ES_PROD and not QA_PASS:
+    sys.exit("Contra prod setea ZARIS_QA_PASS (credenciales en credenciales-testing/, fuera del repo)")
 
 ok_count = 0
 fail_count = 0
@@ -37,7 +43,7 @@ def main() -> int:
     c = httpx.Client(timeout=60)
 
     # 1. Login vecino
-    r = c.post(f"{BASE}/api/v1/publico/auth/login", json={"dni": DNI_VECINO, "password": "123456"})
+    r = c.post(f"{BASE}/api/v1/publico/auth/login", json={"dni": DNI_VECINO, "password": QA_PASS})
     check("1. login vecino", r.status_code == 200, f"({r.status_code})")
     if r.status_code != 200:
         return 1
