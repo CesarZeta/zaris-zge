@@ -52,7 +52,7 @@ cd ..
 
 La forma soportada de arrancar la DB local es **restaurar un dump** que te pasa
 el admin del proyecto (por fuera del repo — un `.sql` o `.dump` no se commitea).
-Las migraciones de `backend/migrations/` (20→91) son **incrementales**: asumen un
+Las migraciones de `backend/migrations/` (20→94) son **incrementales**: asumen un
 schema base previo, así que **no** sirven para construir la base desde cero por
 sí solas. Sirven para entender qué cambió y para replicar en prod, no como
 bootstrap.
@@ -67,7 +67,7 @@ psql -U postgres -d zaris_dev -f zaris_dev_dump.sql
 #   formato .dump (custom, comprimido):
 # pg_restore -U postgres -d zaris_dev --no-owner zaris_dev_dump.dump
 
-# Sembrar/asegurar auth (passwords dev = [redactado]):
+# Sembrar/asegurar auth (passwords dev = 123456):
 cd backend
 ENV_FILE=".env.local" python seed_auth.py
 # Datos demo opcionales (idempotente):
@@ -81,7 +81,7 @@ ENV_FILE=".env.local" python seed_demo.py
 > pg_dump -U postgres -d zaris_dev --no-owner --no-privileges -f zaris_dev_dump.sql
 > ```
 > Si querés excluir datos sensibles de prueba antes de compartir, hacelo sobre
-> una copia. Para la última migración aplicada, ver CLAUDE.md §21 (hoy: **91**).
+> una copia. Para la última migración aplicada, ver CLAUDE.md §21 (o mirá el último archivo de `backend/migrations/` — hoy: **94**).
 
 ## 5. Levantar los tres procesos
 
@@ -102,7 +102,7 @@ cd web-app && pnpm dev
 - **Para ver el producto real** (shell vanilla cargando módulos React en iframe):
   usá `http://localhost:8080/index.html`. El `localhost:5173` es solo andamiaje
   de desarrollo (su sidebar/topbar NO son los de producción — CLAUDE.md §4).
-- Login dev: `<usuario>@municipio.gob.ar` / `[redactado]`.
+- Login dev: `<usuario>@municipio.gob.ar` / `123456`.
 
 ## 6. Hook de typecheck (obligatorio)
 
@@ -136,6 +136,7 @@ PWA local (`http://localhost:5174`).
 - [ ] Verificaste el cambio **navegando en `localhost:8080`** (no solo leyendo
       el código — CLAUDE.md §41).
 - [ ] No agregaste ningún `.env` con secretos al commit (`git status`).
-- [ ] Migraciones nuevas en `backend/migrations/`, numeradas **92+** (la 91 es
-      la última usada). Aplicar en local **y** prod en la misma sesión (CLAUDE.md §24).
+- [ ] Migraciones nuevas en `backend/migrations/`, numeradas como el siguiente al
+      último archivo del directorio (hoy: **95+**, la 94 es la última usada). Aplicar
+      en local **y** prod en la misma sesión (CLAUDE.md §24).
 - [ ] Reportes de QA con PoCs **no** se commitean (CLAUDE.md §40).
