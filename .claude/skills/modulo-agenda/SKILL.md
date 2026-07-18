@@ -88,3 +88,14 @@ Con 84 agentes en prod, los endpoints B1 originales eran inusables (`/calendario
 **Latencia base Railway↔Supabase ~2-3s** con JOINs sobre 84 filas — piso físico sin tocar arquitectura. Ver [[reference_agenda_latencia_base_railway_supabase]]. Patrón generalizable para loops N×M: [[feedback_patron_batch_helper_singular_wrapper]].
 
 **Quirk de clave:** `disponibilidad_por_recurso` en `/semana` usa formato `"{tipo}:{id}"` con dos puntos. Ver [[reference_agenda_semana_disponibilidad_key]].
+
+### Anti-carrera en reservas de eventos (mig 95, 2026-07-18) — OBLIGATORIO en toda vía nueva
+
+Las 3 vías que insertan `evento_reservas` (backoffice `agenda_v2.crear_reserva`, autoservicio anónimo `agenda_publico.reservar_publico`, vecino `publico_entradas_vecino.reservar_entrada_vecino`) siguen el mismo protocolo — **cualquier vía nueva debe replicarlo o la carrera se reabre por esa puerta**:
+
+1. **`lock_evento_row(db, id_evento)`** (`services/agenda.py`, `SELECT ... FOR UPDATE` de la fila de `eventos`) ANTES de `cupo_disponible` — serializa cupo + duplicado entre las 3 vías (anti-sobrecupo). Cancelar NO necesita el lock (liberar cupo nunca sobrevende).
+2. **Regla global (decisión César 2026-07-18): máximo UNA reserva no-cancelada por (evento, ciudadano)** — UNIQUE parcial `uq_evento_reservas_ciudadano_vigente` `WHERE activo AND id_estado_reserva <> <cancelada>` (id resuelto dinámicamente en la mig; es 3 en local y prod). El predicado NO puede ser `WHERE activo` a secas: cancelar deja `activo=TRUE` y el flujo cancelar→re-reservar debe seguir andando. Las 3 vías tienen además el check amigable 409 ("ya tiene una reserva activa").
+3. **`IntegrityError` → `await db.rollback()` + 409** alrededor de INSERT+commit en las 3 vías (y en `_patch_reserva_estado`, porque revivir una cancelada puede violar el UNIQUE vía UPDATE).
+4. **CAS de estado** en `_patch_reserva_estado` (WHERE exige el `id_estado_reserva` leído + rowcount→409) y en los cancelar públicos — cancelar∥acreditar-QR ya no se pisan. **Guard nuevo:** `PATCH /reservas/{id}/asistio` rechaza 409 sobre una reserva cancelada (antes esa vía numérica bypasseaba el guard de la vía QR y revivía la reserva re-consumiendo cupo). El cancelar del backoffice sigue permitiendo cancelar una `asistio` (corrección de mesa); los cancelar públicos exigen `reservada`.
+
+El helper `buscar_o_crear_ciudadano_por_dni` toma `advisory_lock_tx('ciudadano_dni:{dni}')` (evita ciudadanos duplicados por DNI en autoservicios concurrentes). Los locks de turnos viven en la skill `modulo-turnos-entradas`.
