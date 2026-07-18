@@ -26,6 +26,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_ciudadano
@@ -35,6 +36,7 @@ from app.utils.request_helpers import get_real_ip
 from app.services.agenda import (
     cupo_disponible,
     generar_qr_codigo,
+    lock_evento_row,
     lookup_estado_reserva,
     registrar_audit,
 )
@@ -146,6 +148,10 @@ async def reservar_entrada_vecino(
     if ev["estado_codigo"] != "activo":
         raise HTTPException(409, "El evento no acepta reservas en este momento")
 
+    # Anti-sobrecupo (mig 95): row-lock del evento antes de contar el cupo
+    # (misma serializacion que agenda_v2 y agenda_publico).
+    await lock_evento_row(db, id_evento)
+
     cupo = await cupo_disponible(db, id_evento)
     if cupo <= 0:
         raise HTTPException(409, "Sin cupo disponible para este evento")
@@ -164,36 +170,41 @@ async def reservar_entrada_vecino(
     if not id_reservada:
         raise HTTPException(500, "Falta seed de estado_reserva (codigo='reservada').")
 
-    row = (await db.execute(text("""
-        INSERT INTO evento_reservas (
-            id_evento, id_ciudadano, id_estado_reserva, origen,
-            token_reserva, id_municipio, id_usuario_alta
-        ) VALUES (
-            :e, :c, :er, 'autoservicio', gen_random_uuid(), 1, NULL
+    # UNIQUE parcial (mig 95) respalda el check de duplicado -> 409, no 500.
+    try:
+        row = (await db.execute(text("""
+            INSERT INTO evento_reservas (
+                id_evento, id_ciudadano, id_estado_reserva, origen,
+                token_reserva, id_municipio, id_usuario_alta
+            ) VALUES (
+                :e, :c, :er, 'autoservicio', gen_random_uuid(), 1, NULL
+            )
+            RETURNING id_evento_reserva
+        """), {"e": id_evento, "c": id_ciudadano, "er": id_reservada})).first()
+        new_id = int(row[0])
+
+        qr = None
+        if ev["tipo_qr"] != "ninguno":
+            qr = generar_qr_codigo(id_evento, new_id)
+            await db.execute(text(
+                "UPDATE evento_reservas SET qr_codigo = :q WHERE id_evento_reserva = :i"
+            ), {"q": qr, "i": new_id})
+
+        await registrar_audit(
+            db, None, "reserva", new_id, "crear",
+            None,
+            {
+                "id_evento": id_evento,
+                "id_ciudadano": id_ciudadano,
+                "origen": "app_vecinos",
+                "qr_codigo": qr,
+            },
+            1,
         )
-        RETURNING id_evento_reserva
-    """), {"e": id_evento, "c": id_ciudadano, "er": id_reservada})).first()
-    new_id = int(row[0])
-
-    qr = None
-    if ev["tipo_qr"] != "ninguno":
-        qr = generar_qr_codigo(id_evento, new_id)
-        await db.execute(text(
-            "UPDATE evento_reservas SET qr_codigo = :q WHERE id_evento_reserva = :i"
-        ), {"q": qr, "i": new_id})
-
-    await registrar_audit(
-        db, None, "reserva", new_id, "crear",
-        None,
-        {
-            "id_evento": id_evento,
-            "id_ciudadano": id_ciudadano,
-            "origen": "app_vecinos",
-            "qr_codigo": qr,
-        },
-        1,
-    )
-    await db.commit()
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(409, "Ya tenes una entrada reservada para este evento")
 
     return {
         "id_evento_reserva": new_id,
@@ -217,7 +228,7 @@ async def cancelar_mi_entrada(
     """Cancela una entrada PROPIA en estado 'reservada' (libera el cupo).
     Reserva ajena o inexistente -> 404 generico."""
     r = (await db.execute(text("""
-        SELECT r.id_evento_reserva, er.codigo AS estado_codigo
+        SELECT r.id_evento_reserva, r.id_estado_reserva, er.codigo AS estado_codigo
         FROM evento_reservas r
         LEFT JOIN estado_reserva er ON er.id_estado_reserva = r.id_estado_reserva
         WHERE r.id_evento_reserva = :id AND r.activo = TRUE AND r.id_ciudadano = :c
@@ -232,11 +243,15 @@ async def cancelar_mi_entrada(
     id_cancelada = await lookup_estado_reserva(db, "cancelada")
     if not id_cancelada:
         raise HTTPException(500, "Falta seed de estado_reserva (codigo='cancelada').")
-    await db.execute(text("""
+    # CAS de estado (mig 95): no pisar un acreditar-QR concurrente del backoffice.
+    res = await db.execute(text("""
         UPDATE evento_reservas
            SET id_estado_reserva = :er, fecha_modificacion = NOW()
-         WHERE id_evento_reserva = :i
-    """), {"er": id_cancelada, "i": id_evento_reserva})
+         WHERE id_evento_reserva = :i AND id_estado_reserva = :er_prev
+    """), {"er": id_cancelada, "i": id_evento_reserva, "er_prev": r["id_estado_reserva"]})
+    if res.rowcount == 0:
+        await db.rollback()
+        raise HTTPException(409, "La entrada ya fue utilizada y no se puede cancelar")
     await registrar_audit(
         db, None, "reserva", id_evento_reserva, "cancelar",
         {"estado_codigo": r["estado_codigo"]},

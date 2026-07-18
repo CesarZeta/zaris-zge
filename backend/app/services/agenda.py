@@ -570,6 +570,36 @@ async def cupo_disponible(session: AsyncSession, id_evento: int) -> int:
 
 
 # =============================================================================
+# Locks anti-carrera (mig 95, auditoria 2026-07)
+# =============================================================================
+async def advisory_lock_tx(session: AsyncSession, clave: str) -> None:
+    """pg_advisory_xact_lock por clave string (hash 64-bit, hashtextextended).
+    Se libera solo al commit/rollback de la transaccion del caller — tomarlo
+    ANTES del check TOCTOU (anti-solape / duplicado) garantiza que el segundo
+    request concurrente espere y su check vea lo que el primero comiteo.
+
+    Claves prefijadas por flujo (espejo del criterio de check_rate_limit, §5):
+      'turno:{tipo_recurso}:{id_recurso}:{fecha}' -> reservas del recurso ese dia
+      'turnodia:{id_ciudadano}:{fecha}'           -> regla "1 turno por dia"
+      'ciudadano_dni:{dni}'                       -> alta por DNI del autoservicio
+    Orden de adquisicion fijo (recurso -> dni -> ciudadano-dia) para no armar
+    deadlocks entre las vias."""
+    await session.execute(text(
+        "SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))"
+    ), {"k": clave})
+
+
+async def lock_evento_row(session: AsyncSession, id_evento: int) -> bool:
+    """SELECT ... FOR UPDATE de la fila del evento: serializa el check de cupo
+    y de reserva duplicada con el INSERT en evento_reservas (anti-sobrecupo).
+    Patron espejo de _evento_for_update de Emergencias. False si no existe."""
+    row = await session.scalar(text(
+        "SELECT 1 FROM eventos WHERE id_evento = :e FOR UPDATE"
+    ), {"e": id_evento})
+    return row is not None
+
+
+# =============================================================================
 # QR
 # =============================================================================
 def generar_qr_codigo(id_evento: int, id_evento_reserva: int) -> str:
@@ -721,6 +751,11 @@ async def buscar_o_crear_ciudadano_por_dni(
     dni_clean = re.sub(r"[^\d]", "", dni or "")
     if len(dni_clean) < 6:
         raise ValueError("DNI debe tener al menos 6 digitos numericos")
+
+    # Anti-carrera (mig 95): dos requests concurrentes con el mismo DNI nuevo
+    # crearian DOS ciudadanos (viola BUC §2). Serializa por DNI normalizado;
+    # el lock se libera al commit/rollback de la tx del caller.
+    await advisory_lock_tx(session, f"ciudadano_dni:{dni_clean}")
 
     # Buscar primero (activos y dados de baja — si esta dado de baja, no recrear)
     row = (await session.execute(text("""
