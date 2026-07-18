@@ -86,7 +86,7 @@ No suponer paridad entre stacks. Hoy:
 | Config (sistema/identidad — permisos y catálogo de módulos se mudaron a Usuarios 2026-07-16) | — | `modules/config/` | React |
 
 **Implicaciones:**
-- Si te piden "imitar el módulo X en React", verificar primero si existe ahí. Hoy **Dashboard, Agenda, Ciudadanos, Empresas, Reclamos, OT, Trámites y Config** están en React en producción. Usuarios y Admin Tablas siguen en vanilla.
+- Si te piden "imitar el módulo X en React", verificar primero si existe ahí. Hoy casi todo el producto está en React en producción (ver la tabla de arriba: Dashboard, Agenda, Ciudadanos, Empresas, Reclamos, OT, Trámites, Config, **Usuarios**, Turnos, Entradas, Emergencias, Datos/BI). **El único módulo que sigue en vanilla es Admin Tablas** (`frontend/admin_tablas.html`); Usuarios se migró a React el 2026-07-16 (`frontend/usuarios.html` fue borrado).
 - Componentes UI compartidos React: `web-app/src/ui/index.tsx` (Button, IconButton, Pill, Badge, Input, Card, EmptyState, Skeleton, Table). **No hay** modal base, datepicker, dropdown, drawer — se construyen en cada módulo o se promueven a `ui/` cuando son maduros.
 - Helper `web-app/src/lib/api.ts` soporta GET/POST/PUT/PATCH/DELETE + opciones `{ params, withHeaders }`. `getWithHeaders` devuelve `{ data, headers }` para leer `X-Total-Count`.
 
@@ -229,7 +229,7 @@ El estilo oficial de ZARIS vive en `design-system/`. Tokens en `colors_and_type.
 El DS tiene paleta dark: overrides de superficies/foregrounds/bordes/sombras bajo `:root[data-theme="dark"]` en `colors_and_type.css` (espejados en `web-app/src/styles/tokens.css`). Los tokens de marca (`--zaris-orange`, `--color-*`, `--prio-*`) NO cambian. Reglas:
 
 - **Persistencia**: `localStorage` clave **`zaris_theme`** (`'dark'` | `'light'`/ausente). El toggle vive SOLO en el dropdown de usuario del shell (`menu.js`), que además propaga el cambio en vivo al documento del iframe.
-- **Todo documento del backoffice lee el tema en un script inline de `<head>`, ANTES de los CSS** (evita flash claro): `index.html`, `web-app/index.html`, `frontend/{login,usuarios,admin_tablas}.html`. **HTML interno nuevo ⇒ copiar ese snippet.** Las páginas públicas del vecino (`alta-vecino.html`, `encuesta.html`) quedan SIEMPRE claras a propósito.
+- **Todo documento del backoffice lee el tema en un script inline de `<head>`, ANTES de los CSS** (evita flash claro): `index.html`, `web-app/index.html`, `frontend/{login,admin_tablas}.html`. **HTML interno nuevo ⇒ copiar ese snippet.** Las páginas públicas del vecino (`alta-vecino.html`, `encuesta.html`) quedan SIEMPRE claras a propósito.
 - **No hardcodear superficies claras**: usar tokens. Para overlays semitransparentes sobre mapas/imágenes existe `--surface-overlay` (claro u oscuro según tema — caso Dashboard). Los rgba claros que el shell necesita literales tienen su override en el bloque `[data-theme="dark"]` al final de `menu.css`.
 - **Mapas Leaflet**: en dark usar tile CartoDB `dark_all` (mismo subdominio/attribution que Positron). `DashboardMap.tsx` lo elige leyendo `document.documentElement.dataset.theme` al montar.
 - El avatar del topbar usa texto `#26251e` fijo (no `--fg-1`) porque el fondo durazno no cambia entre temas.
@@ -247,7 +247,10 @@ La ruta depende de dónde vive el archivo:
 <!-- Archivos en la raíz (index.html): -->
 <link rel="stylesheet" href="design-system/fonts/fonts.css">
 <link rel="stylesheet" href="design-system/colors_and_type.css">
-<link rel="stylesheet" href="design-system/components.css">
+<!-- OJO: el shell raíz (index.html) carga SOLO fonts + tokens, NO components.css.
+     Sus componentes (sidebar/topbar/dropdown) se estilan en frontend/css/menu.css.
+     Un HTML de MÓDULO nuevo en la raíz que use clases *-zaris del DS sí debe sumar:
+     <link rel="stylesheet" href="design-system/components.css"> -->
 ```
 
 > `welcome.html` fue borrado el 2026-05-13. La home del shell ahora es el módulo Dashboard React, cargado directamente en el iframe. Cualquier referencia legacy a `shellNavigate('frontend/welcome.html')` debe usar `shellNavigate('web-app/dist/index.html#/dashboard')`. Lo mismo aplica al `src` por defecto del iframe.
@@ -542,6 +545,7 @@ Comandos disponibles en `.claude/commands/` — invocar con `/nombre`:
 | `/verify-prod-schema` | Preflight: chequea que tablas/columnas existan en prod antes de codear |
 | `/qa-report-template` | Convención y plantilla para reportes QA (`reporte_pruebas_<bloque>_YYYY-MM-DD.md` en raíz) |
 | `/migrate-vanilla-to-react` | Receta de 10 pasos para migrar un módulo vanilla a React embebido. Validada con Agenda + Ciudadanos. |
+| `/backup-prod` | Dump completo de la DB de prod (Supabase Free sin backups automáticos) a `backups/*.sql` local |
 
 ### Scripts de mantenimiento
 
@@ -612,7 +616,7 @@ class Equipo(Base):
 
 > **El detalle histórico de cada migración (qué hace, cuándo se aplicó, snapshots de backup) vive en [`HISTORIAL_MIGRACIONES.md`](HISTORIAL_MIGRACIONES.md)** (raíz del repo). Acá queda solo el resumen vigente. **No confiar en esta doc como fuente de verdad** — antes de codear algo schema-dependent, verificar el estado real con `execute_sql` (regla §24).
 
-**Estado general:** migraciones 20-93 aplicadas en local Y prod (Supabase) sin divergencia conocida al 2026-07-02 (93 = `latitud`/`longitud` en `espacios_agenda` para el Dashboard geoposicionado). La numeración 51 está duplicada (`51_notificaciones.sql` + `51_tramites_tipo_dato_direccion.sql`, ambas aplicadas) — **cualquier mig nueva debe usar 94+**.
+**Estado general:** migraciones 20-94 aplicadas en local Y prod (Supabase) sin divergencia conocida (93 = `latitud`/`longitud` en `espacios_agenda` para el Dashboard geoposicionado; 94 = `municipios.pais` + prefijo, IT-02, aplicada 2026-07-15 — verificado en prod que `municipios.pais` existe). La numeración 51 está duplicada (`51_notificaciones.sql` + `51_tramites_tipo_dato_direccion.sql`, ambas aplicadas) — **cualquier mig nueva debe usar 95+**.
 
 **Reglas vivas de migración:**
 - **Toda tabla nueva debe nacer con `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`** (sin políticas = deny-all §26; el backend conecta como `postgres` dueño y bypassea RLS). Sino el advisor de Supabase la marca (`rls_disabled_in_public`, caso mig 80).
@@ -622,7 +626,7 @@ class Equipo(Base):
 
 **Dónde vive la regla de cada mig reciente:** 62-64 y 77-78 (usuarios/agentes/integridad) §39 · 65 (BI) §43 · 66/68/73/74/75 (Trámites) §35 · 67 (tipo_grupo equipos) §15 · 69-71 y 86 (Turnos) §33 · 72 (encuesta de turnos) §42 · 76/79 (alta vecinos) §38 · **81-85 (Emergencias) §44** · 93 (espacios lat/lon, Dashboard) §27-espacios/§4. Bitácora por mig en `HISTORIAL_MIGRACIONES.md` ("Migraciones 61-79 — resumen consolidado" + entradas propias).
 
-**Tablas que YA existen en prod y NO deben re-crearse:** `reclamos`, `reclamo_historial`, `tipo_reclamo`, `estado_reclamo`, `ordenes_trabajo`, `estado_ot` (5 seeds), `equipo_agentes`, `configuracion_general`, todas las de Agenda (migs 30-43), Turnos (45-46), permisos (38/44), trámites (47-50, 56), notificaciones (51), encuestas (57-58, 60-61), auth público de ciudadanos (52-53), adjuntos de OT (54), `usuarios.id_subarea`/`es_externo` (55), `usuario_login_log` (62). Detalle por mig en `HISTORIAL_MIGRACIONES.md`. Ver memoria [[project_supabase_estado_schema]].
+**Tablas que YA existen en prod y NO deben re-crearse:** `reclamos`, `reclamo_historial`, `tipo_reclamo`, `estado_reclamo`, `ordenes_trabajo`, `estado_ot` (5 seeds), `equipo_agentes`, `configuracion_general`, todas las de Agenda (migs 30-43), Turnos (45-46), permisos (38/44), trámites (47-50, 56), notificaciones (51), encuestas (57-58, 60-61), auth público de ciudadanos (52-53), adjuntos de OT (54), `usuarios.id_subarea`/`es_externo` (55), `usuario_login_log` (62). Detalle por mig en `HISTORIAL_MIGRACIONES.md`.
 
 **Estados de reclamos en prod** (migrados 2026-05-04): `Ingresado→Sin asignar`, `En revisión→En gestión`, `Cerrado→Resuelto`, `Rechazado→Cancelado`. CHECK `ck_reclamo_estado`: `('Sin asignar','En gestión','En espera','En auditoría','Resuelto','Cancelado')`.
 
@@ -658,7 +662,7 @@ Para selectores con muchas opciones (`tipo_reclamo` tiene 282, `ciudadanos` tien
 - **Backend:** endpoint debe aceptar `q` (ILIKE) y `limit`. Ej: `GET /api/v1/reclamos/catalogo/tipos?q=bache&limit=20`.
 - **Click-outside:** cerrar todos los dropdowns al click fuera del `.buc-search`.
 - **XSS:** escapar HTML del nombre con `.replace(/</g,'&lt;')` siempre. Usar `data-id` + event delegation, **nunca** interpolar IDs en `onclick` inline.
-- **Implementado en (vanilla):** patrón vigente para cualquier módulo vanilla nuevo. La versión React del autocompletar BUC vive en `web-app/src/modules/ciudadanos/components/CiudadanoSearch.tsx` (también usado por Reclamos y Agenda) — misma idea (debounce + dropdown + skipNextRef post-pick, ver §29) pero con JSX en lugar de innerHTML.
+- **Implementado en (vanilla):** patrón vigente para cualquier módulo vanilla nuevo. La versión React del autocompletar BUC vive en `web-app/src/modules/agenda/components/CiudadanoSearch.tsx` (compartido: lo importan Agenda, Empresas, Reclamos y Turnos) — misma idea (debounce + dropdown + skipNextRef post-pick, ver §29) pero con JSX en lugar de innerHTML.
 
 ### Drill-down jerárquico inline (sin botón)
 Para listados de tablas padre cuyo dataset cabe en pantalla (ej: ≤ 50 áreas, ≤ 50 subáreas), **mostrar siempre los hijos asociados debajo de cada fila** con sangría e indicador naranja. Sin botón "Ver hijos".
@@ -774,7 +778,7 @@ Cuando el usuario pega un prompt generado fuera de la sesión (ChatGPT, otro Cla
 3. **Tablas deprecadas:** prompts viejos usan `equipo_usuarios` que ya no existe en prod (reemplazada por `equipo_agentes`). Revisar §18 + §21 antes de codear.
 4. **Convenciones del proyecto vs prompt:** §10 (campos estándar), §5 (quirks de auditoría), §13 (DS) suelen contradecir lo que un prompt externo asume. Por defecto gana el proyecto, no el prompt.
 5. **Librerías del stack:** verificar `package.json`, `requirements.txt` antes de aceptar imports. Si el prompt dice "usar date-fns" y no está, decidir entre instalarlo o reemplazar por Date nativo. Ej: web-app no tiene date-fns ni dayjs.
-6. **Módulos asumidos:** "imitar el módulo X" requiere que X exista. La web-app React solo tiene `dashboard` y `agenda` — Reclamos/OT/BUC viven en `frontend/` vanilla (§4).
+6. **Módulos asumidos:** "imitar el módulo X" requiere que X exista. **Verificá en la tabla de §4 qué módulos existen y en qué stack** (hoy casi todo el producto es React; el único vanilla es Admin Tablas). No asumir el estado congelado de mayo 2026.
 7. **Decisiones previas pendientes:** si en sesiones anteriores se acordó algo (ej: `dias_semana` bitmask en §27), un prompt externo puede pedir lo contrario (TEXT). Detectarlo y preguntar.
 8. **Si el prompt va a involucrar agente externo de QA (Claude Chrome u otro):** antes de pasarle el prompt al usuario, **simular las preconditions** que el agente va a verificar. Especialmente: si el cambio toca schemas backend, hacer `curl /openapi.json` y confirmar que el server runtime ya tiene el código nuevo. Si toca prod, verificar que el deploy llegó (hash de bundle, fecha del último commit servido). El agente externo es caro: una verificación previa de 5 segundos evita un ida y vuelta de varios minutos. Caso real: sesión 2026-05-11, el agente Chrome frenó porque uvicorn corría código viejo — el chequeo previo lo hubiera detectado.
 
@@ -927,7 +931,7 @@ Si una fila de grilla es `useDroppable` (de `@dnd-kit/core`) **y** además quier
 
 > **Movido a la skill `modulo-permisos`** (`.claude/skills/modulo-permisos/SKILL.md`), que carga on-demand. Modelo híbrido (nivel mínimo por módulo + override por usuario), tablas `modulos`/`usuario_modulos`, catálogo, `modulos_permitidos`/`require_modulo`, endpoints `/admin/permisos` y filtrado del sidebar (`data-modulo`/`data-modulo-fallback`) viven ahí. Ancla §30 conservada para las refs cruzadas.
 >
-> **TRAMPA DE SEGURIDAD recurrente (transversal — no la olvides):** que el sidebar oculte un módulo NO protege sus endpoints. `require_modulo` casi no se usa — la mayoría de routers aplican su nivel con helpers locales. **Antes de asumir "el router ya valida nivel", leé el handler.** Ver [[guard_nivel_endpoint_no_solo_ui]].
+> **TRAMPA DE SEGURIDAD recurrente (transversal — no la olvides):** que el sidebar oculte un módulo NO protege sus endpoints. `require_modulo` casi no se usa — la mayoría de routers aplican su nivel con helpers locales. **Antes de asumir "el router ya valida nivel", leé el handler.** Ver [[feedback_guard_nivel_endpoint_no_solo_ui]].
 
 ## 31. Limpieza de estilos legacy — CERRADA (2026-05-12)
 
@@ -969,7 +973,7 @@ DS v1.0 (`--z-*`, `.z-*`, `frontend/styles.css`, `frontend/menu.html`, `frontend
 
 ## 39. Módulo Usuarios — estado y deuda crítica (QA 2026-05-19)
 
-> **Movido a la skill `modulo-usuarios`** (`.claude/skills/modulo-usuarios/SKILL.md`), que carga on-demand. Stack vanilla, form (subárea/externo), módulos permitidos, auditoría de login (`usuario_login_log`), regla 1:1 agente↔usuario, invariante de integridad de cuentas (cron sin-vínculo mig 77), clave temporal + cambio forzado (mig 78) y login por email exacto viven ahí. Ancla §39 conservada para las refs cruzadas.
+> **Movido a la skill `modulo-usuarios`** (`.claude/skills/modulo-usuarios/SKILL.md`), que carga on-demand. Stack **React** (`web-app/src/modules/usuarios/`, migrado 2026-07-16; el vanilla `frontend/usuarios.html` fue borrado), maestro de cuentas con permisos por usuario integrados (`PermisosPanel`) + catálogo de módulos, form (subárea/externo), auditoría de login (`usuario_login_log`), regla 1:1 agente↔usuario, invariante de integridad de cuentas (cron sin-vínculo mig 77), clave temporal + cambio forzado (mig 78) y login por email exacto viven ahí. Ancla §39 conservada para las refs cruzadas.
 
 ## 40. Reportes vs guías de QA — qué se versiona y qué no
 
@@ -985,10 +989,11 @@ DS v1.0 (`--z-*`, `.z-*`, `frontend/styles.css`, `frontend/menu.html`, `frontend
 - `.gitignore` no excluye los reportes — quedan visibles en `git status` como recordatorio de deuda.
 - Antes de versionar cualquier `.md`/`.html` de QA: `grep` de payloads + confirmar hallazgos resueltos.
 - Nunca incluir reportes con PoCs activos en commits ni en mensajes de PR.
+- **NINGÚN artefacto trackeado lleva credenciales de PROD (email + password, o URL-de-prod + credencial), ni siquiera los que "se sienten internos": guías QA HTML, skills de `.claude/`, smokes `.ps1`, scripts `seed_*.py`.** Todo lo trackeado es público vía GH Pages ([[reference_gh_pages_publica_todo_lo_commiteado]]). Las credenciales de testing viven en `credenciales-testing/` (fuera del repo); las guías/skills las **referencian**, no las incrustan. Antes de commitear uno de esos archivos, grepear `email + password` de prod. Cazado en la auditoría 2026-07-18 (`123456` de 12 cuentas, incl. admins, publicado) — ver [[feedback_credenciales_prod_en_artefactos_internos]].
 
 ## 41. Módulo Config (React) + estándar de verificación en la interfaz
 
-> **Cuerpo del módulo movido a la skill `modulo-config`** (`.claude/skills/modulo-config/SKILL.md`), que carga on-demand. Los 4 tabs (Identidad, Permisos por usuario, Catálogo de módulos, Sistema tipado), los bugs de navegación en iframe (`window.location` absoluto, `NavLink` relativo) y el quirk de `configuracion_general.tipo` NOT NULL en prod viven ahí. Ancla §41 conservada para las refs cruzadas. **El "Estándar OBLIGATORIO: verificar navegación/UI en la interfaz" de abajo es transversal y QUEDA acá** (aplica a cualquier módulo React, no solo Config).
+> **Cuerpo del módulo movido a la skill `modulo-config`** (`.claude/skills/modulo-config/SKILL.md`), que carga on-demand. Los 2 tabs (Sistema tipado, Identidad — permisos por usuario y catálogo de módulos se mudaron al módulo Usuarios el 2026-07-16), los bugs de navegación en iframe (`window.location` absoluto, `NavLink` relativo) y el quirk de `configuracion_general.tipo` NOT NULL en prod viven ahí. Ancla §41 conservada para las refs cruzadas. **El "Estándar OBLIGATORIO: verificar navegación/UI en la interfaz" de abajo es transversal y QUEDA acá** (aplica a cualquier módulo React, no solo Config).
 
 ### Estándar OBLIGATORIO: verificar navegación/UI en la interfaz, no en el código
 

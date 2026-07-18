@@ -146,4 +146,4 @@ Si el bundle apunta a localhost, abortar y rebuildar en terminal limpia.
 - 2026-05-10: Agenda migrada a React. Primer caso del patrón.
 - 2026-05-12: Ciudadanos migrado. Refinó el patrón con: doble shape de session, testing via API + navegación, listado client-side, sub-form anidado (empresa vinculada).
 
-Memorias relacionadas: [[project_patron_deploy_modulo_react]], [[feedback_browser_mcp_react_setup]], [[feedback_calibrar_alcance_migracion]], [[project_proxy_local_zaris_zge]].
+Relacionado: CLAUDE.md §12/§14 + skill `nuevo-modulo-react` (patrón de despliegue de módulo React embebido), [[feedback_browser_mcp_react_setup]], [[feedback_calibrar_alcance_migracion]], [[project_proxy_local_zaris_zge]].
