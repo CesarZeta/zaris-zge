@@ -87,7 +87,7 @@ Setters via `dispatchEvent` NO disparan re-render de React (ver `feedback_browse
 // 1. Login imperativo via fetch directo
 const r = await fetch('http://localhost:8000/api/v1/auth/login', {
   method: 'POST', headers: {'Content-Type':'application/json'},
-  body: JSON.stringify({email:'ciudadanovl@municipio.gob.ar', password:'[redactado]'})
+  body: JSON.stringify({email:'ciudadanovl@municipio.gob.ar', password:'123456'})
 });
 const data = await r.json();
 // Doble shape para que tanto api.ts como helpers vanilla lo lean
@@ -106,7 +106,7 @@ const cre = await fetch('http://localhost:8000/api/v1/<endpoint>', {
 // 4. Verificar hidratación con browser_eval (querySelectorAll de inputs)
 ```
 
-Credenciales dev locales: `ciudadanovl@municipio.gob.ar / [redactado]` (admin nivel 1). Ver `feedback_smoke_credenciales_dev`.
+Credenciales dev locales: `ciudadanovl@municipio.gob.ar / 123456` (admin nivel 1). Ver `feedback_smoke_credenciales_dev`.
 
 ### 7. Build prod limpio
 
@@ -146,4 +146,4 @@ Si el bundle apunta a localhost, abortar y rebuildar en terminal limpia.
 - 2026-05-10: Agenda migrada a React. Primer caso del patrón.
 - 2026-05-12: Ciudadanos migrado. Refinó el patrón con: doble shape de session, testing via API + navegación, listado client-side, sub-form anidado (empresa vinculada).
 
-Memorias relacionadas: [[project_patron_deploy_modulo_react]], [[feedback_browser_mcp_react_setup]], [[feedback_calibrar_alcance_migracion]], [[project_proxy_local_zaris_zge]].
+Relacionado: CLAUDE.md §12/§14 + skill `nuevo-modulo-react` (patrón de despliegue de módulo React embebido), [[feedback_browser_mcp_react_setup]], [[feedback_calibrar_alcance_migracion]], [[project_proxy_local_zaris_zge]].

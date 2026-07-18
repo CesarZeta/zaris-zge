@@ -80,9 +80,11 @@ Si usás Claude Code, las skills `/estado-proyecto` (al abrir) y `/cierre-sesion
    por non-fast-forward (CLAUDE.md §32).
 
 2. **Numeración de migraciones.** Cada migración nueva es un archivo en
-   `backend/migrations/` con número correlativo. **La última usada es la 91;
-   usá 92+.** Si dos personas crean la 92 en paralelo, una tiene que renumerar.
-   Avisá qué número tomaste, o reservalo antes de empezar.
+   `backend/migrations/` con número correlativo. **Mirá el último archivo del
+   directorio y usá el siguiente** (al 2026-07-17 la última es la 94, así que
+   la próxima es la 95). No hardcodees un número de memoria — verificá.
+   Si dos personas crean el mismo número en paralelo, una tiene que renumerar:
+   avisá qué número tomaste, o reservalo antes de empezar.
 
 3. **Aplicá migraciones en local Y prod en la misma sesión** (CLAUDE.md §24),
    nunca solo en una — se desincronizan. Backup antes de UPDATE/DELETE masivos
@@ -106,6 +108,6 @@ Si usás Claude Code, las skills `/estado-proyecto` (al abrir) y `/cierre-sesion
 - [ ] `cd web-app && pnpm typecheck` pasa (si tocaste React).
 - [ ] Probado navegando, no solo leído.
 - [ ] Sin secretos ni `.env` en el diff.
-- [ ] Migración (si la hay) numerada 92+ y aplicada en local + prod.
+- [ ] Migración (si la hay) numerada como el siguiente al último archivo de `backend/migrations/` (hoy: 95+) y aplicada en local + prod.
 - [ ] `git pull --rebase origin main` hecho (estás al día con el otro y con CI).
 - [ ] Si algo está rojo o requiere criterio ajeno: PARÁ, no pushees a `main`.
