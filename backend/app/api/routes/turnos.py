@@ -29,6 +29,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
@@ -44,6 +45,7 @@ from app.schemas.turnos import (
     TurnoUpdate,
 )
 from app.services.agenda import (
+    advisory_lock_tx,
     disponibilidad_efectiva,
     turnos_respeta_disponibilidad,
 )
@@ -471,6 +473,11 @@ async def crear_turno(
         if hora_fin <= payload.hora_inicio:
             raise HTTPException(422, "La duracion de la prestacion excede el dia")
 
+    # Anti-carrera (mig 95): serializa las reservas concurrentes del mismo
+    # recurso+dia ANTES de los checks — el segundo request espera el commit del
+    # primero y su anti-solape ya ve la ocupacion nueva. Se libera al commit.
+    await advisory_lock_tx(db, f"turno:{tipo_recurso}:{int(id_recurso)}:{payload.fecha}")
+
     # Switch global (mig 69): el turno debe caer dentro de la disponibilidad
     # efectiva del recurso (horario - feriados - novedades). Apagable.
     if await turnos_respeta_disponibilidad(db):
@@ -494,45 +501,51 @@ async def crear_turno(
         que = "El espacio" if tipo_recurso == "espacio" else "El agente"
         raise HTTPException(409, f"{que} ya tiene una ocupacion en ese horario")
 
-    # Ocupacion espejo en la grilla de Agenda
-    id_ocupacion = await db.scalar(text("""
-        INSERT INTO ocupaciones (
-            tipo, tipo_recurso, id_recurso, fecha, hora_inicio, hora_fin,
-            id_ciudadano, motivo, id_municipio, id_usuario_alta
-        ) VALUES (
-            'turno', :tr, :ir, :f, :hi, :hf, :ic, :mot, :mun, :uid
-        )
-        RETURNING id_ocupacion
-    """), {
-        "tr": tipo_recurso, "ir": int(id_recurso), "f": payload.fecha,
-        "hi": payload.hora_inicio, "hf": hora_fin, "ic": payload.id_ciudadano,
-        "mot": f"Turno: {payload.observaciones}" if payload.observaciones else "Turno",
-        "mun": payload.id_municipio, "uid": user["id_usuario"],
-    })
-
     # Copiar el recurso de la prestacion al turno (turno autocontenido).
     id_agente_turno = int(id_recurso) if tipo_recurso == "agente" else None
     id_espacio_turno = int(id_recurso) if tipo_recurso == "espacio" else None
 
-    id_turno = await db.scalar(text("""
-        INSERT INTO turnos (
-            id_ciudadano, id_agente, id_espacio, id_tipo_prestacion, id_ocupacion,
-            fecha, hora_inicio, hora_fin, estado, observaciones,
-            id_municipio, id_subarea, id_usuario_alta, id_usuario_modificacion
-        ) VALUES (
-            :ic, :ia, :ie, :itp, :iocup,
-            :f, :hi, :hf, 'reservado', :obs,
-            :mun, :isa, :uid, :uid
-        )
-        RETURNING id_turno
-    """), {
-        "ic": payload.id_ciudadano, "ia": id_agente_turno, "ie": id_espacio_turno,
-        "itp": payload.id_tipo_prestacion, "iocup": id_ocupacion,
-        "f": payload.fecha, "hi": payload.hora_inicio, "hf": hora_fin,
-        "obs": payload.observaciones, "mun": payload.id_municipio, "isa": payload.id_subarea,
-        "uid": user["id_usuario"],
-    })
-    await db.commit()
+    # UNIQUE parcial de slot (mig 95): si otra reserva gano la carrera pese al
+    # lock (p.ej. una via futura sin lock), el INSERT viola el indice -> 409.
+    try:
+        # Ocupacion espejo en la grilla de Agenda
+        id_ocupacion = await db.scalar(text("""
+            INSERT INTO ocupaciones (
+                tipo, tipo_recurso, id_recurso, fecha, hora_inicio, hora_fin,
+                id_ciudadano, motivo, id_municipio, id_usuario_alta
+            ) VALUES (
+                'turno', :tr, :ir, :f, :hi, :hf, :ic, :mot, :mun, :uid
+            )
+            RETURNING id_ocupacion
+        """), {
+            "tr": tipo_recurso, "ir": int(id_recurso), "f": payload.fecha,
+            "hi": payload.hora_inicio, "hf": hora_fin, "ic": payload.id_ciudadano,
+            "mot": f"Turno: {payload.observaciones}" if payload.observaciones else "Turno",
+            "mun": payload.id_municipio, "uid": user["id_usuario"],
+        })
+
+        id_turno = await db.scalar(text("""
+            INSERT INTO turnos (
+                id_ciudadano, id_agente, id_espacio, id_tipo_prestacion, id_ocupacion,
+                fecha, hora_inicio, hora_fin, estado, observaciones,
+                id_municipio, id_subarea, id_usuario_alta, id_usuario_modificacion
+            ) VALUES (
+                :ic, :ia, :ie, :itp, :iocup,
+                :f, :hi, :hf, 'reservado', :obs,
+                :mun, :isa, :uid, :uid
+            )
+            RETURNING id_turno
+        """), {
+            "ic": payload.id_ciudadano, "ia": id_agente_turno, "ie": id_espacio_turno,
+            "itp": payload.id_tipo_prestacion, "iocup": id_ocupacion,
+            "f": payload.fecha, "hi": payload.hora_inicio, "hf": hora_fin,
+            "obs": payload.observaciones, "mun": payload.id_municipio, "isa": payload.id_subarea,
+            "uid": user["id_usuario"],
+        })
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(409, "El horario acaba de ser tomado por otra reserva")
     out = await _turno_to_out(db, int(id_turno))
     if out is None:
         raise HTTPException(500, "Turno creado pero no se pudo releer")
@@ -594,6 +607,10 @@ async def reprogramar_turno(
     if hora_fin <= hora_inicio:
         raise HTTPException(422, "hora_fin debe ser mayor que hora_inicio")
 
+    # Anti-carrera (mig 95): lock sobre el recurso NUEVO resuelto de la
+    # prestacion (si cambio la prestacion, cambia el recurso a serializar).
+    await advisory_lock_tx(db, f"turno:{tipo_recurso}:{int(id_recurso)}:{fecha}")
+
     # Switch global: el nuevo horario debe caer en la disponibilidad efectiva.
     if await turnos_respeta_disponibilidad(db):
         rangos = await disponibilidad_efectiva(db, tipo_recurso, int(id_recurso), fecha)
@@ -629,20 +646,32 @@ async def reprogramar_turno(
     }
     if "observaciones" in data:
         sets.append("observaciones = :obs"); params["obs"] = data["observaciones"]
-    await db.execute(text(f"UPDATE turnos SET {', '.join(sets)} WHERE id_turno = :id"), params)
+    try:
+        # CAS de estado (mig 95): el WHERE repite estado='reservado' para que un
+        # cancelar/cumplir concurrente no quede pisado (el SELECT de arriba pudo
+        # leer un estado ya viejo). rowcount 0 => el estado cambio en el medio.
+        res = await db.execute(text(
+            f"UPDATE turnos SET {', '.join(sets)} WHERE id_turno = :id AND estado = 'reservado'"
+        ), params)
+        if res.rowcount == 0:
+            await db.rollback()
+            raise HTTPException(409, "El turno cambio de estado mientras se reprogramaba; actualiza la lista")
 
-    # Sincronizar ocupacion espejo (recurso puede haber cambiado).
-    if turno["id_ocupacion"]:
-        await db.execute(text("""
-            UPDATE ocupaciones
-            SET tipo_recurso = :tr, id_recurso = :ir,
-                fecha = :f, hora_inicio = :hi, hora_fin = :hf,
-                fecha_modificacion = NOW(), id_usuario_modificacion = :uid
-            WHERE id_ocupacion = :io
-        """), {"tr": tipo_recurso, "ir": int(id_recurso), "f": fecha,
-               "hi": hora_inicio, "hf": hora_fin,
-               "uid": user["id_usuario"], "io": turno["id_ocupacion"]})
-    await db.commit()
+        # Sincronizar ocupacion espejo (recurso puede haber cambiado).
+        if turno["id_ocupacion"]:
+            await db.execute(text("""
+                UPDATE ocupaciones
+                SET tipo_recurso = :tr, id_recurso = :ir,
+                    fecha = :f, hora_inicio = :hi, hora_fin = :hf,
+                    fecha_modificacion = NOW(), id_usuario_modificacion = :uid
+                WHERE id_ocupacion = :io
+            """), {"tr": tipo_recurso, "ir": int(id_recurso), "f": fecha,
+                   "hi": hora_inicio, "hf": hora_fin,
+                   "uid": user["id_usuario"], "io": turno["id_ocupacion"]})
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(409, "El horario acaba de ser tomado por otra reserva")
     out = await _turno_to_out(db, id_turno)
     return out  # type: ignore
 
@@ -692,7 +721,20 @@ async def cumplir_turno(
         prev = (turno["observaciones"] or "").strip()
         obs_final = f"{prev}\nAtención: {obs_nueva}" if prev else obs_nueva
         sets.append("observaciones = :obs"); params["obs"] = obs_final
-    await db.execute(text(f"UPDATE turnos SET {', '.join(sets)} WHERE id_turno = :id"), params)
+    # CAS de estado (mig 95): sin repetir estado='reservado' en el WHERE, un
+    # cancelar concurrente quedaba pisado (last-write-wins).
+    res = await db.execute(text(
+        f"UPDATE turnos SET {', '.join(sets)} WHERE id_turno = :id AND estado = 'reservado'"
+    ), params)
+    if res.rowcount == 0:
+        await db.rollback()
+        estado_actual = await db.scalar(text(
+            "SELECT estado FROM turnos WHERE id_turno = :id"
+        ), {"id": id_turno})
+        if estado_actual == "cumplido":
+            out = await _turno_to_out(db, id_turno)
+            return out  # type: ignore
+        raise HTTPException(409, f"Solo se puede cumplir un turno 'reservado' (estado actual: '{estado_actual}')")
 
     if turno["registra_atencion"]:
         await db.execute(text("""
@@ -737,11 +779,21 @@ async def cancelar_turno(
         return out  # type: ignore
     if turno["estado"] != "reservado":
         raise HTTPException(409, f"Solo se puede cancelar un turno 'reservado' (estado actual: '{turno['estado']}')")
-    await db.execute(text("""
+    # CAS de estado (mig 95): un cumplir concurrente no debe quedar pisado.
+    res = await db.execute(text("""
         UPDATE turnos
         SET estado = 'cancelado', fecha_modificacion = NOW(), id_usuario_modificacion = :uid
-        WHERE id_turno = :id
+        WHERE id_turno = :id AND estado = 'reservado'
     """), {"id": id_turno, "uid": user["id_usuario"]})
+    if res.rowcount == 0:
+        await db.rollback()
+        estado_actual = await db.scalar(text(
+            "SELECT estado FROM turnos WHERE id_turno = :id"
+        ), {"id": id_turno})
+        if estado_actual == "cancelado":
+            out = await _turno_to_out(db, id_turno)
+            return out  # type: ignore
+        raise HTTPException(409, f"Solo se puede cancelar un turno 'reservado' (estado actual: '{estado_actual}')")
     if turno["id_ocupacion"]:
         await db.execute(text("""
             UPDATE ocupaciones
