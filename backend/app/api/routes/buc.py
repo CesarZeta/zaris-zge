@@ -343,13 +343,38 @@ async def cambiar_estado_usuario(
     id: int,
     activo: bool = Query(..., description="true para reactivar, false para dar de baja"),
     db: AsyncSession = Depends(get_db),
-    _admin: dict = Depends(require_admin),
+    admin: dict = Depends(require_admin),
 ):
-    """Dar de alta o de baja a un usuario (soft delete)."""
+    """Dar de alta o de baja a un usuario (soft delete).
+
+    Guards anti-lockout (hallazgo 2026-07-16, pasó en QA local): un admin se
+    desactivó a sí mismo y quedó afuera (401 en el próximo request, reactivado
+    por DB). Ni auto-baja ni dejar el sistema sin administradores activos.
+    """
     result = await db.execute(select(Usuario).where(Usuario.id_usuario == id))
     usuario = result.scalars().first()
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    if not activo:
+        if usuario.id_usuario == admin["id_usuario"]:
+            raise HTTPException(
+                status_code=422,
+                detail="No podés desactivar tu propio usuario (te quedarías sin acceso). Pedile a otro administrador que lo haga.",
+            )
+        if usuario.activo and usuario.nivel_acceso == 1:
+            otros_admins = await db.scalar(
+                select(func.count()).select_from(Usuario).where(
+                    Usuario.nivel_acceso == 1,
+                    Usuario.activo == True,  # noqa: E712
+                    Usuario.id_usuario != id,
+                )
+            )
+            if not otros_admins:
+                raise HTTPException(
+                    status_code=422,
+                    detail="No se puede desactivar al último administrador activo del sistema.",
+                )
 
     usuario.activo = activo
     await db.commit()
