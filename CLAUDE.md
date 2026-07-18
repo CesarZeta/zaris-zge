@@ -616,7 +616,7 @@ class Equipo(Base):
 
 > **El detalle histórico de cada migración (qué hace, cuándo se aplicó, snapshots de backup) vive en [`HISTORIAL_MIGRACIONES.md`](HISTORIAL_MIGRACIONES.md)** (raíz del repo). Acá queda solo el resumen vigente. **No confiar en esta doc como fuente de verdad** — antes de codear algo schema-dependent, verificar el estado real con `execute_sql` (regla §24).
 
-**Estado general:** migraciones 20-94 aplicadas en local Y prod (Supabase) sin divergencia conocida (93 = `latitud`/`longitud` en `espacios_agenda` para el Dashboard geoposicionado; 94 = `municipios.pais` + prefijo, IT-02, aplicada 2026-07-15 — verificado en prod que `municipios.pais` existe). La numeración 51 está duplicada (`51_notificaciones.sql` + `51_tramites_tipo_dato_direccion.sql`, ambas aplicadas) — **cualquier mig nueva debe usar 95+**.
+**Estado general:** migraciones 20-95 aplicadas en local Y prod (Supabase) sin divergencia conocida (93 = `latitud`/`longitud` en `espacios_agenda` para el Dashboard geoposicionado; 94 = `municipios.pais` + prefijo, IT-02, aplicada 2026-07-15; 95 = anti-carrera turnos/reservas — 3 índices UNIQUE parciales + locks en backend, aplicada 2026-07-18). La numeración 51 está duplicada (`51_notificaciones.sql` + `51_tramites_tipo_dato_direccion.sql`, ambas aplicadas) — **cualquier mig nueva debe usar 96+**.
 
 **Reglas vivas de migración:**
 - **Toda tabla nueva debe nacer con `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`** (sin políticas = deny-all §26; el backend conecta como `postgres` dueño y bypassea RLS). Sino el advisor de Supabase la marca (`rls_disabled_in_public`, caso mig 80).
@@ -624,7 +624,7 @@ class Equipo(Base):
 - **CHECK `NOT VALID` igual se evalúa al UPDATE de filas viejas** — backfillar en el mismo UPDATE ([[feedback_check_not_valid_se_evalua_al_update]], caso mig 71).
 - En prod no hay `.env.prod`: aplicar por MCP (`apply_migration`/`execute_sql`).
 
-**Dónde vive la regla de cada mig reciente:** 62-64 y 77-78 (usuarios/agentes/integridad) §39 · 65 (BI) §43 · 66/68/73/74/75 (Trámites) §35 · 67 (tipo_grupo equipos) §15 · 69-71 y 86 (Turnos) §33 · 72 (encuesta de turnos) §42 · 76/79 (alta vecinos) §38 · **81-85 (Emergencias) §44** · 93 (espacios lat/lon, Dashboard) §27-espacios/§4. Bitácora por mig en `HISTORIAL_MIGRACIONES.md` ("Migraciones 61-79 — resumen consolidado" + entradas propias).
+**Dónde vive la regla de cada mig reciente:** 62-64 y 77-78 (usuarios/agentes/integridad) §39 · 65 (BI) §43 · 66/68/73/74/75 (Trámites) §35 · 67 (tipo_grupo equipos) §15 · 69-71 y 86 (Turnos) §33 · 72 (encuesta de turnos) §42 · 76/79 (alta vecinos) §38 · **81-85 (Emergencias) §44** · 93 (espacios lat/lon, Dashboard) §27-espacios/§4 · **95 (anti-carrera turnos/reservas) → skills `modulo-turnos-entradas` y `modulo-agenda`** (locks obligatorios + IntegrityError→409 en toda vía nueva de escritura). Bitácora por mig en `HISTORIAL_MIGRACIONES.md` ("Migraciones 61-79 — resumen consolidado" + entradas propias).
 
 **Tablas que YA existen en prod y NO deben re-crearse:** `reclamos`, `reclamo_historial`, `tipo_reclamo`, `estado_reclamo`, `ordenes_trabajo`, `estado_ot` (5 seeds), `equipo_agentes`, `configuracion_general`, todas las de Agenda (migs 30-43), Turnos (45-46), permisos (38/44), trámites (47-50, 56), notificaciones (51), encuestas (57-58, 60-61), auth público de ciudadanos (52-53), adjuntos de OT (54), `usuarios.id_subarea`/`es_externo` (55), `usuario_login_log` (62). Detalle por mig en `HISTORIAL_MIGRACIONES.md`.
 
