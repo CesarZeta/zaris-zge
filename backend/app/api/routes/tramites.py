@@ -78,6 +78,30 @@ def _dias_entre(desde: datetime, hasta: datetime | None = None) -> int:
     return max(0, delta.days)
 
 
+def _require_no_consultor(agente: dict) -> None:
+    """Gate anti-consultor (scope-subarea 2026-07-18): el nivel 5 (Consultor)
+    es de solo lectura por definicion (§3), no puede ejecutar mutaciones."""
+    if agente["nivel_acceso"] >= 5:
+        raise HTTPException(403, "El perfil Consultor es de solo lectura: no puede operar trámites.")
+
+
+async def _pertenece_al_colectivo_actual(agente: dict, tramite: dict) -> bool:
+    """Scope-subarea 2026-07-18: True si el agente pertenece al colectivo
+    destinatario actual del tramite (subarea | equipo | agente directo).
+    Misma resolucion del destinatario que svc_auth.agente_puede_tomar."""
+    dest_tipo = tramite.get("destinatario_actual_tipo")
+    if not dest_tipo:
+        return False
+    dest_id = {
+        "subarea": tramite.get("id_subarea_actual"),
+        "equipo": tramite.get("id_equipo_actual"),
+        "agente": tramite.get("id_agente_actual"),
+    }.get(dest_tipo)
+    if dest_id is None:
+        return False
+    return await svc_auth.agente_pertenece_al_colectivo(agente, dest_tipo, dest_id)
+
+
 # ---------------------------------------------------------------------------
 # GET /api/v1/tramites/tipos
 # ---------------------------------------------------------------------------
@@ -1078,6 +1102,8 @@ async def crear_tramite(
     agente = await svc_auth.resolver_agente_desde_usuario(id_usuario, db)
     if not agente:
         raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
+    # Gate anti-consultor (scope-subarea 2026-07-18): crear es mutacion.
+    _require_no_consultor(agente)
 
     # Cargar tipo de tramite y version publicada
     tipo_row = (await db.execute(
@@ -1281,6 +1307,8 @@ async def tomar_tramite(
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
         raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
+    # Gate anti-consultor (scope-subarea 2026-07-18).
+    _require_no_consultor(agente)
 
     id_tramite, _ = await _resolver_tramite(tramite_ref, db)
 
@@ -1324,6 +1352,8 @@ async def liberar_tramite(
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
         raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
+    # Gate anti-consultor (scope-subarea 2026-07-18).
+    _require_no_consultor(agente)
 
     id_tramite, _ = await _resolver_tramite(tramite_ref, db)
     tramite = dict((await db.execute(
@@ -1334,8 +1364,16 @@ async def liberar_tramite(
     tomado_por = tramite.get("id_agente_tomado_por")
     if not tomado_por:
         raise HTTPException(400, "El tramite no esta tomado")
-    if tomado_por != agente["id_agente"] and not svc_auth.es_admin(agente["nivel_acceso"]):
-        raise HTTPException(403, "Solo el agente que tomo el tramite o un admin puede liberarlo")
+    # Scope-subarea 2026-07-18: pueden liberar el tomador, un administrador
+    # (nivel 1), o un supervisor (nivel 2) SOLO si pertenece al colectivo
+    # destinatario actual del tramite.
+    if tomado_por != agente["id_agente"]:
+        nivel = agente["nivel_acceso"]
+        autorizado = nivel <= 1 or (
+            nivel == 2 and await _pertenece_al_colectivo_actual(agente, tramite)
+        )
+        if not autorizado:
+            raise HTTPException(403, "Solo el agente que tomó el trámite, un supervisor de su área o un administrador puede liberarlo")
 
     await db.execute(
         text("""
@@ -1369,6 +1407,8 @@ async def transicionar_tramite(
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
         raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
+    # Gate anti-consultor (scope-subarea 2026-07-18).
+    _require_no_consultor(agente)
 
     id_tramite, _ = await _resolver_tramite(tramite_ref, db)
     tramite = dict((await db.execute(
@@ -1585,6 +1625,8 @@ async def resolver_aprobacion(
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
         raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
+    # Gate anti-consultor (scope-subarea 2026-07-18).
+    _require_no_consultor(agente)
 
     id_tramite, _ = await _resolver_tramite(tramite_ref, db)
 
@@ -1659,6 +1701,8 @@ async def pase_tramite(
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
         raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
+    # Gate anti-consultor (scope-subarea 2026-07-18).
+    _require_no_consultor(agente)
 
     id_tramite, _ = await _resolver_tramite(tramite_ref, db)
     tramite = dict((await db.execute(
@@ -1747,19 +1791,32 @@ async def marcar_resultado_tramite(
 
     Paralelo al estado FSM (mig 74): el estado es del flujo, el resultado dice
     como concluyo. Decide la retencion de binarios (aprobado=10 anios,
-    rechazado/descarte=1 anio). Solo supervisor/admin (nivel <= 2).
+    rechazado/descarte=1 anio). Scope-subarea 2026-07-18: nivel 1 sin
+    restriccion; nivel 2 solo si pertenece al colectivo destinatario actual
+    o es el tomador; niveles 3+ nunca.
     """
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
         raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
-    if not svc_auth.es_admin(agente["nivel_acceso"]):
-        raise HTTPException(403, "Solo un supervisor o administrador puede marcar el resultado del tramite")
+    # Scope-subarea 2026-07-18: niveles 3+ nunca marcan resultado. El scope
+    # del nivel 2 se valida mas abajo, con el tramite ya cargado.
+    if agente["nivel_acceso"] > 2:
+        raise HTTPException(403, "Solo un supervisor del área del trámite o un administrador puede marcar el resultado.")
 
     id_tramite, _ = await _resolver_tramite(tramite_ref, db)
     tramite = dict((await db.execute(
         text("SELECT * FROM tramite WHERE id_tramite=:id AND activo=TRUE FOR UPDATE"),
         {"id": id_tramite},
     )).fetchone()._mapping)
+
+    # Scope-subarea 2026-07-18: el resultado gobierna la retencion de binarios;
+    # un supervisor ajeno al tramite podia acortar 9 anios la retencion. El
+    # nivel 2 solo puede marcarlo si pertenece al colectivo destinatario
+    # actual o es el tomador del tramite.
+    if agente["nivel_acceso"] == 2:
+        es_tomador = tramite.get("id_agente_tomado_por") == agente["id_agente"]
+        if not es_tomador and not await _pertenece_al_colectivo_actual(agente, tramite):
+            raise HTTPException(403, "Solo un supervisor del área del trámite o un administrador puede marcar el resultado.")
 
     anterior = tramite.get("resultado") or "pendiente"
     if anterior == body.resultado:
@@ -1803,12 +1860,37 @@ async def comentar_tramite(
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
         raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
+    # Gate anti-consultor (scope-subarea 2026-07-18).
+    _require_no_consultor(agente)
 
     id_tramite, _ = await _resolver_tramite(tramite_ref, db)
+    # El SELECT t.* ya trae destinatario_actual_tipo / id_subarea_actual /
+    # id_equipo_actual / id_agente_actual / id_agente_iniciador /
+    # id_agente_tomado_por, que usa el guard de pertenencia de abajo.
     tramite = dict((await db.execute(
         text("SELECT t.*, tte.permite_comentar FROM tramite t JOIN tipo_tramite_estado tte ON tte.id_tipo_tramite_estado=t.id_tipo_tramite_estado_actual WHERE t.id_tramite=:id AND t.activo=TRUE"),
         {"id": id_tramite},
     )).fetchone()._mapping)
+
+    # Guard de pertenencia (scope-subarea 2026-07-18): antes cualquier nivel
+    # con agente escribia en el ledger de cualquier expediente. Pueden comentar
+    # el tomador, quien pertenece al colectivo destinatario actual, el
+    # iniciador, quien ya registro un movimiento en el expediente, o un
+    # administrador (nivel 1).
+    puede_comentar = (
+        tramite.get("id_agente_tomado_por") == agente["id_agente"]
+        or tramite.get("id_agente_iniciador") == agente["id_agente"]
+        or agente["nivel_acceso"] <= 1
+        or await _pertenece_al_colectivo_actual(agente, tramite)
+    )
+    if not puede_comentar:
+        intervino = (await db.execute(
+            text("SELECT 1 FROM tramite_movimiento WHERE id_tramite=:t AND id_agente=:a LIMIT 1"),
+            {"t": id_tramite, "a": agente["id_agente"]},
+        )).fetchone()
+        puede_comentar = intervino is not None
+    if not puede_comentar:
+        raise HTTPException(403, "Solo pueden comentar el tomador, el área destinataria, el iniciador o quien ya intervino en el expediente.")
 
     if not tramite.get("permite_comentar", True):
         raise HTTPException(400, "El estado actual no permite comentar")
@@ -1845,6 +1927,8 @@ async def adjuntar_documento(
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
         raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
+    # Gate anti-consultor (scope-subarea 2026-07-18).
+    _require_no_consultor(agente)
 
     id_tramite, _ = await _resolver_tramite(tramite_ref, db)
     tramite = dict((await db.execute(
@@ -2169,6 +2253,8 @@ async def relacionar_tramites(
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
         raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
+    # Gate anti-consultor (scope-subarea 2026-07-18).
+    _require_no_consultor(agente)
 
     id_tramite_a, num_a = await _resolver_tramite(tramite_ref, db)
     tramite_a = dict((await db.execute(

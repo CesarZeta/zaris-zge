@@ -94,6 +94,84 @@ async def require_operador(current_user: dict = Depends(get_current_user)) -> di
     return current_user
 
 
+async def _subarea_scope_mutacion(db: AsyncSession, user: dict) -> Optional[int]:
+    """Scope-subarea 2026-07-18 (hallazgos [17][18]) — subarea que acota las
+    mutaciones de agenda del usuario. Devuelve None si no hay scope:
+    Admin (1) ve todo y Atencion (3, ventanilla) opera cross-subarea A
+    PROPOSITO (§3). Para Supervisor (2) y Gestion (4) devuelve la subarea de
+    su agente vinculado (regla 1:1 §39, via subarea_del_usuario — NUNCA
+    usuarios.id_subarea, pueden divergir). Fail-closed: nivel scopeado sin
+    subarea resoluble => 403 accionable (espejo de _subarea_forzada_supervisor
+    de ordenes_trabajo.py)."""
+    if int(user.get("nivel_acceso", 99)) in (1, 3):
+        return None
+    sub = await subarea_del_usuario(db, int(user["id_usuario"]))
+    if sub is None:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Tu usuario no tiene una subárea asignada en su perfil de agente. "
+                "Pedile a un administrador que la configure desde Maestros → Usuarios."
+            ),
+        )
+    return sub
+
+
+async def _validar_scope_recurso(
+    db: AsyncSession, user: dict, tipo_recurso: str, id_recurso: int,
+) -> None:
+    """Scope-subarea 2026-07-18 — un usuario scopeado (nivel 2/4) solo opera
+    recursos (agente/equipo/espacio) de su propia subarea. Recurso inexistente
+    NO corta aca (el 404/422 lo da el handler). Recurso con subarea NULL =
+    recurso compartido => fail-open."""
+    sub = await _subarea_scope_mutacion(db, user)
+    if sub is None:
+        return
+    tabla_pk = {
+        "agente": ("agentes", "id_agente"),
+        "equipo": ("equipos", "id_equipo"),
+        "espacio": ("espacios_agenda", "id_espacio"),
+    }.get(tipo_recurso)
+    if tabla_pk is None:
+        return
+    tabla, pk = tabla_pk
+    row = (await db.execute(text(
+        f"SELECT id_subarea FROM {tabla} WHERE {pk} = :i"
+    ), {"i": id_recurso})).fetchone()
+    if row is None or row.id_subarea is None:
+        return
+    if int(row.id_subarea) != sub:
+        raise HTTPException(
+            status_code=403,
+            detail="El recurso pertenece a otra subárea. Solo podés operar recursos de tu subárea.",
+        )
+
+
+async def _validar_scope_evento(db: AsyncSession, user: dict, id_evento: int) -> None:
+    """Scope-subarea 2026-07-18 — un usuario scopeado (nivel 2/4) solo gestiona
+    eventos de su subarea. eventos.id_subarea NULL = evento institucional
+    (NULLs legitimos verificados en prod): lo gestiona el Supervisor (2,
+    fail-open) o un admin; Gestion (4) no. Evento inexistente NO corta aca
+    (el 404 lo da el handler)."""
+    sub = await _subarea_scope_mutacion(db, user)
+    if sub is None:
+        return
+    row = (await db.execute(text(
+        "SELECT id_subarea FROM eventos WHERE id_evento = :i"
+    ), {"i": id_evento})).fetchone()
+    if row is None:
+        return
+    if row.id_subarea is None:
+        if int(user.get("nivel_acceso", 99)) == 2:
+            return
+        raise HTTPException(
+            status_code=403,
+            detail="Los eventos institucionales (sin subárea) los gestiona un supervisor o administrador.",
+        )
+    if int(row.id_subarea) != sub:
+        raise HTTPException(status_code=403, detail="El evento pertenece a otra subárea.")
+
+
 # =============================================================================
 # Catalogos
 # =============================================================================
@@ -347,6 +425,17 @@ async def crear_evento(
     id_estado = await lookup_estado_evento(db, "activo")
     if not id_estado:
         raise HTTPException(500, "Falta seed de estado_evento (codigo='activo').")
+    # Scope-subarea 2026-07-18: nivel 2/4 solo crea eventos de su subarea.
+    # Nivel 4 sin subarea en el payload => se fuerza la propia (no puede crear
+    # institucionales); nivel 2 sin subarea => evento institucional permitido.
+    sub_scope = await _subarea_scope_mutacion(db, current_user)
+    id_subarea_evento = payload.id_subarea
+    if sub_scope is not None:
+        if payload.id_subarea is None:
+            if int(current_user.get("nivel_acceso", 99)) == 4:
+                id_subarea_evento = sub_scope
+        elif payload.id_subarea != sub_scope:
+            raise HTTPException(403, "No podés crear eventos de otra subárea.")
     row = (await db.execute(text("""
         INSERT INTO eventos (
             nombre, descripcion, id_subarea, fecha, hora_inicio, hora_fin,
@@ -361,7 +450,7 @@ async def crear_evento(
         )
         RETURNING id_evento
     """), {
-        "n": payload.nombre, "d": payload.descripcion, "sa": payload.id_subarea,
+        "n": payload.nombre, "d": payload.descripcion, "sa": id_subarea_evento,
         "f": payload.fecha, "hi": payload.hora_inicio, "hf": payload.hora_fin,
         "cap": payload.capacidad_ciudadanos, "enc": payload.cantidad_encargados,
         "qr": payload.tipo_qr, "auto": payload.admite_autoservicio,
@@ -468,10 +557,29 @@ async def actualizar_evento(
     actual = await _evento_to_out(db, id_evento)
     if not actual:
         raise HTTPException(404, f"Evento {id_evento} no encontrado")
+    # Scope-subarea 2026-07-18: solo eventos del alcance del usuario.
+    await _validar_scope_evento(db, current_user, id_evento)
 
     cambios = payload.model_dump(exclude_unset=True)
     if not cambios:
         return actual  # type: ignore[return-value]
+
+    # Scope-subarea 2026-07-18: un usuario scopeado tampoco puede MOVER el
+    # evento fuera de su subarea via PUT (EventoUpdate admite id_subarea).
+    # Mismo criterio que el POST: nivel 2 puede dejarlo institucional (NULL),
+    # nivel 4 no; ninguno puede asignarlo a otra subarea.
+    if "id_subarea" in cambios:
+        sub_scope = await _subarea_scope_mutacion(db, current_user)
+        if sub_scope is not None:
+            nuevo_sa = cambios["id_subarea"]
+            if nuevo_sa is None:
+                if int(current_user.get("nivel_acceso", 99)) == 4:
+                    raise HTTPException(
+                        403,
+                        "Los eventos institucionales (sin subárea) los gestiona un supervisor o administrador.",
+                    )
+            elif nuevo_sa != sub_scope:
+                raise HTTPException(403, "No podés asignar el evento a otra subárea.")
 
     # Validar horario si vienen ambas horas
     new_hi = cambios.get("hora_inicio", actual["hora_inicio"])
@@ -516,6 +624,8 @@ async def cancelar_evento(
     actual = await _evento_to_out(db, id_evento)
     if not actual:
         raise HTTPException(404, f"Evento {id_evento} no encontrado")
+    # Scope-subarea 2026-07-18: solo eventos del alcance del usuario.
+    await _validar_scope_evento(db, current_user, id_evento)
     if actual["estado_codigo"] == "cancelado":
         return actual  # type: ignore[return-value]
     id_cancelado = await lookup_estado_evento(db, "cancelado")
@@ -547,6 +657,8 @@ async def eliminar_evento(
     actual = await _evento_to_out(db, id_evento)
     if not actual:
         raise HTTPException(404, f"Evento {id_evento} no encontrado")
+    # Scope-subarea 2026-07-18: solo eventos del alcance del usuario.
+    await _validar_scope_evento(db, current_user, id_evento)
     if not actual["activo"]:
         return Response(status_code=204)
     await db.execute(text("""
@@ -598,6 +710,13 @@ async def asignar_encargado(
         raise HTTPException(409, "Evento dado de baja")
     if not await existe_recurso(db, payload.tipo_recurso, payload.id_recurso):
         raise HTTPException(404, f"{payload.tipo_recurso} {payload.id_recurso} no encontrado o inactivo")
+
+    # Scope-subarea 2026-07-18: el evento debe estar en el alcance del usuario.
+    await _validar_scope_evento(db, current_user, id_evento)
+    # Y el recurso convocado tambien, SALVO evento institucional (sin subarea)
+    # gestionado por un supervisor: puede convocar encargados de varias subareas.
+    if not (ev["id_subarea"] is None and int(current_user.get("nivel_acceso", 99)) == 2):
+        await _validar_scope_recurso(db, current_user, payload.tipo_recurso, payload.id_recurso)
 
     # Idempotencia: ya existe encargado activo con ese recurso?
     existe = await db.scalar(text("""
@@ -702,6 +821,15 @@ async def desasignar_encargado(
         raise HTTPException(404, "Encargado no encontrado")
     if enc["id_evento"] != id_evento:
         raise HTTPException(409, "El encargado pertenece a otro evento")
+    # Scope-subarea 2026-07-18: mismo criterio que el POST de encargados —
+    # evento en el alcance del usuario; el recurso (de la fila ya leida)
+    # tambien, salvo evento institucional gestionado por un supervisor.
+    await _validar_scope_evento(db, current_user, id_evento)
+    ev_sub = await db.scalar(text(
+        "SELECT id_subarea FROM eventos WHERE id_evento = :i"
+    ), {"i": id_evento})
+    if not (ev_sub is None and int(current_user.get("nivel_acceso", 99)) == 2):
+        await _validar_scope_recurso(db, current_user, enc["tipo_recurso"], enc["id_recurso"])
     if not enc["activo"]:
         return Response(status_code=204)
     await db.execute(text("""
@@ -1001,6 +1129,9 @@ async def crear_ocupacion(
     if not await existe_recurso(db, payload.tipo_recurso, payload.id_recurso):
         raise HTTPException(404, f"{payload.tipo_recurso} {payload.id_recurso} no encontrado o inactivo")
 
+    # Scope-subarea 2026-07-18: solo recursos de la subarea del usuario.
+    await _validar_scope_recurso(db, current_user, payload.tipo_recurso, payload.id_recurso)
+
     conflictos = await detectar_conflictos(
         db, payload.tipo_recurso, payload.id_recurso,
         payload.fecha, payload.hora_inicio, payload.hora_fin,
@@ -1129,6 +1260,12 @@ async def actualizar_ocupacion(
     if new_hf <= new_hi:
         raise HTTPException(422, "hora_fin debe ser mayor que hora_inicio")
 
+    # Scope-subarea 2026-07-18: la ocupacion actual debe ser de un recurso del
+    # alcance del usuario; si el payload cambia el recurso, el nuevo tambien.
+    await _validar_scope_recurso(db, current_user, actual["tipo_recurso"], actual["id_recurso"])
+    if (new_tr, new_ir) != (actual["tipo_recurso"], actual["id_recurso"]):
+        await _validar_scope_recurso(db, current_user, new_tr, new_ir)
+
     sets = [f"{k} = :{k}" for k in cambios.keys()]
     sets.append("fecha_modificacion = NOW()")
     sets.append("id_usuario_modificacion = :uid")
@@ -1173,6 +1310,8 @@ async def eliminar_ocupacion(
     actual = await _ocupacion_to_out(db, id_ocupacion)
     if not actual:
         raise HTTPException(404, "Ocupacion no encontrada")
+    # Scope-subarea 2026-07-18: solo ocupaciones de recursos del alcance del usuario.
+    await _validar_scope_recurso(db, current_user, actual["tipo_recurso"], actual["id_recurso"])
     if not actual["activo"]:
         return Response(status_code=204)
     await db.execute(text("""
@@ -1783,11 +1922,13 @@ async def resolver_conflicto(
     current_user: dict = Depends(require_operador),
 ):
     """Marca el conflicto como resuelto y agrega observaciones."""
-    existe = await db.scalar(text(
-        "SELECT 1 FROM conflictos_log WHERE id_conflicto = :i"
-    ), {"i": id_conflicto})
-    if not existe:
+    cl = (await db.execute(text(
+        "SELECT tipo_recurso, id_recurso FROM conflictos_log WHERE id_conflicto = :i"
+    ), {"i": id_conflicto})).mappings().first()
+    if not cl:
         raise HTTPException(404, "Conflicto no encontrado")
+    # Scope-subarea 2026-07-18: solo se resuelven conflictos de recursos propios.
+    await _validar_scope_recurso(db, current_user, cl["tipo_recurso"], cl["id_recurso"])
     await db.execute(text("""
         UPDATE conflictos_log
         SET resuelto = TRUE,

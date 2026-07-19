@@ -256,9 +256,16 @@ def _require_operador(user: dict) -> None:
 
 
 async def _subarea_usuario(db: AsyncSession, id_usuario: int) -> Optional[int]:
-    return (await db.execute(text(
-        "SELECT id_subarea FROM usuarios WHERE id_usuario = :id"
-    ), {"id": id_usuario})).scalar()
+    """Subarea del usuario derivada de su AGENTE (regla de oro §3: la fuente es
+    agentes.id_subarea via la regla 1:1, NUNCA usuarios.id_subarea — divergen en
+    prod para 37/87 usuarios; fix scope-subarea 2026-07-18, hallazgos [23][25]).
+    Verificado antes de aplicar: en nivel 3 (el unico scopeado aca) la
+    divergencia era 0, el cambio es neutro hoy y correcto ante futuras altas."""
+    return (await db.execute(text("""
+        SELECT id_subarea FROM agentes
+        WHERE id_usuario = :id AND activo = TRUE AND id_subarea IS NOT NULL
+        LIMIT 1
+    """), {"id": id_usuario})).scalar()
 
 
 async def _check_scope_subarea(db: AsyncSession, user: dict, id_subarea_evento: int) -> None:
