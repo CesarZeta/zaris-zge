@@ -435,6 +435,20 @@ async def _turno_en_scope(db: AsyncSession, turno: dict[str, Any], scope: dict[s
     return False
 
 
+async def _validar_turno_en_scope(db: AsyncSession, user: dict, turno: dict[str, Any]) -> None:
+    """Guard de MUTACION (scope-subarea 2026-07-18, pendiente (d) de Fase 3):
+    las escrituras respetan el MISMO alcance que la lectura — nivel <= 2 sin
+    limite; nivel 3-4 solo turnos donde es el agente involucrado o de espacios
+    de su subarea (_scope_turnos_para_usuario + _turno_en_scope, los helpers que
+    ya scopean los GET). Antes, un nivel 3/4 podia reprogramar/cumplir/cancelar
+    por id turnos ajenos que ni siquiera podia LISTAR (ids secuenciales), y al
+    cumplir insertaba historia de atencion cross-subarea (dato sensible §33).
+    404 identico al GET /{id} para no filtrar existencia."""
+    scope = await _scope_turnos_para_usuario(db, user)
+    if scope is not None and not await _turno_en_scope(db, turno, scope):
+        raise HTTPException(404, "Turno no encontrado")
+
+
 @router.post("", response_model=TurnoOut, status_code=201)
 async def crear_turno(
     payload: TurnoCreate,
@@ -464,6 +478,15 @@ async def crear_turno(
     if id_recurso is None:
         raise HTTPException(422, "La prestacion no tiene un recurso valido asignado")
     await _validar_recurso_activo(db, tipo_recurso, int(id_recurso))
+
+    # Scope de escritura (2026-07-18): nivel 3-4 solo reserva sobre recursos de
+    # su alcance (mismo criterio que la lectura). Nivel <= 2 sin limite.
+    scope = await _scope_turnos_para_usuario(db, user)
+    if scope is not None and not await _turno_en_scope(db, {
+        "id_agente": int(id_recurso) if tipo_recurso == "agente" else None,
+        "id_espacio": int(id_recurso) if tipo_recurso == "espacio" else None,
+    }, scope):
+        raise HTTPException(403, "La prestacion elegida atiende con un recurso fuera de tu alcance (otra subarea)")
 
     # hora_fin: usa la del payload o la calcula con la duracion de la prestacion.
     hora_fin = payload.hora_fin
@@ -570,6 +593,7 @@ async def reprogramar_turno(
     """), {"id": id_turno})).mappings().first()
     if not turno:
         raise HTTPException(404, "Turno no encontrado")
+    await _validar_turno_en_scope(db, user, dict(turno))
     if turno["estado"] != "reservado":
         raise HTTPException(409, f"Solo se puede reprogramar un turno 'reservado' (estado actual: '{turno['estado']}')")
 
@@ -594,6 +618,17 @@ async def reprogramar_turno(
     id_recurso = prest["id_agente"] if tipo_recurso == "agente" else prest["id_espacio"]
     if id_recurso is None:
         raise HTTPException(422, "La prestacion no tiene un recurso valido asignado")
+
+    # Scope de escritura (2026-07-18): si cambia la prestacion, el recurso
+    # DESTINO tambien debe caer en el alcance del usuario (guard en las dos
+    # puntas — feedback_guard_subarea_cubre_todas_las_vias).
+    if cambia_prest:
+        scope_dest = await _scope_turnos_para_usuario(db, user)
+        if scope_dest is not None and not await _turno_en_scope(db, {
+            "id_agente": int(id_recurso) if tipo_recurso == "agente" else None,
+            "id_espacio": int(id_recurso) if tipo_recurso == "espacio" else None,
+        }, scope_dest):
+            raise HTTPException(403, "La prestacion nueva atiende con un recurso fuera de tu alcance (otra subarea)")
 
     # hora_fin: explicita, o recalculada con la duracion de la prestacion cuando
     # cambio algo que la afecta (prestacion, fecha u hora).
@@ -694,6 +729,7 @@ async def cumplir_turno(
     _require_gestion(user)
     turno = (await db.execute(text("""
         SELECT t.estado, t.observaciones, t.id_ciudadano, t.id_municipio, t.id_subarea,
+               t.id_agente, t.id_espacio,
                COALESCE(tp.registra_atencion, FALSE) AS registra_atencion
         FROM turnos t
         LEFT JOIN tipo_prestacion tp ON tp.id_tipo_prestacion = t.id_tipo_prestacion
@@ -701,6 +737,7 @@ async def cumplir_turno(
     """), {"id": id_turno})).mappings().first()
     if not turno:
         raise HTTPException(404, "Turno no encontrado")
+    await _validar_turno_en_scope(db, user, dict(turno))
     if turno["estado"] == "cumplido":
         out = await _turno_to_out(db, id_turno)
         return out  # type: ignore
@@ -770,10 +807,11 @@ async def cancelar_turno(
     """Cancela el turno y soft-deletea su ocupacion espejo (libera la grilla)."""
     _require_gestion(user)
     turno = (await db.execute(text(
-        "SELECT id_ocupacion, estado FROM turnos WHERE id_turno = :id AND activo = TRUE"
+        "SELECT id_ocupacion, estado, id_agente, id_espacio FROM turnos WHERE id_turno = :id AND activo = TRUE"
     ), {"id": id_turno})).mappings().first()
     if not turno:
         raise HTTPException(404, "Turno no encontrado")
+    await _validar_turno_en_scope(db, user, dict(turno))
     if turno["estado"] == "cancelado":
         out = await _turno_to_out(db, id_turno)
         return out  # type: ignore

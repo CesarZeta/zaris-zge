@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
+from app.services.agenda import subarea_del_usuario
 
 
 router = APIRouter(prefix="/api/v1/agenda", tags=["agenda-novedades"])
@@ -28,6 +29,42 @@ router = APIRouter(prefix="/api/v1/agenda", tags=["agenda-novedades"])
 def _require_admin(user: dict) -> None:
     if int(user.get("nivel_acceso", 99)) > 2:
         raise HTTPException(403, "Permiso insuficiente (requiere nivel <= 2)")
+
+
+async def _subarea_scope_nivel2(db: AsyncSession, user: dict) -> Optional[int]:
+    """Scope-subarea 2026-07-18 (hallazgo [18]) — espejo de agenda_v2/_espacios
+    (duplicado local para no acoplar routers). None para nivel 1 (admin sin
+    scope); para nivel 2 la subarea del agente vinculado (regla 1:1 §39, via
+    subarea_del_usuario — NUNCA usuarios.id_subarea). Fail-closed: supervisor
+    sin subarea resoluble => 403 accionable."""
+    if int(user.get("nivel_acceso", 99)) != 2:
+        return None
+    sub = await subarea_del_usuario(db, int(user["id_usuario"]))
+    if sub is None:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Tu usuario no tiene una subárea asignada en su perfil de agente. "
+                "Pedile a un administrador que la configure desde Maestros → Usuarios."
+            ),
+        )
+    return sub
+
+
+async def _validar_scope_agente(db: AsyncSession, user: dict, id_agente: int) -> None:
+    """Scope-subarea 2026-07-18 — el supervisor solo carga/edita novedades de
+    agentes de su propia subarea. Agente inexistente NO corta aca (el 404 lo da
+    el handler); agente con subarea NULL => fail-open (sin subarea seedeada)."""
+    sub = await _subarea_scope_nivel2(db, user)
+    if sub is None:
+        return
+    row = (await db.execute(text(
+        "SELECT id_subarea FROM agentes WHERE id_agente = :id"
+    ), {"id": id_agente})).first()
+    if row is None or row.id_subarea is None:
+        return
+    if int(row.id_subarea) != sub:
+        raise HTTPException(403, "El agente pertenece a otra subárea.")
 
 
 # =============================================================================
@@ -160,6 +197,8 @@ async def crear_novedad(
     ), {"id": payload.id_agente})).first()
     if not ag:
         raise HTTPException(404, "Agente no encontrado o inactivo")
+    # Scope-subarea 2026-07-18: solo agentes de la subarea del supervisor.
+    await _validar_scope_agente(db, user, payload.id_agente)
     id_nov = await db.scalar(text("""
         INSERT INTO agente_novedad (
             id_agente, tipo, fecha_desde, fecha_hasta, hora_inicio, hora_fin,
@@ -190,12 +229,16 @@ async def actualizar_novedad(
     user: dict = Depends(get_current_user),
 ):
     _require_admin(user)
+    # SELECT ampliado (scope-subarea 2026-07-18): trae tambien id_agente para
+    # validar la subarea del agente de la fila actual.
     cur = (await db.execute(text("""
-        SELECT fecha_desde, fecha_hasta, hora_inicio, hora_fin
+        SELECT fecha_desde, fecha_hasta, hora_inicio, hora_fin, id_agente
         FROM agente_novedad WHERE id_agente_novedad = :id
     """), {"id": id_agente_novedad})).mappings().first()
     if not cur:
         raise HTTPException(404, "Novedad no encontrada")
+    # Scope-subarea 2026-07-18: solo agentes de la subarea del supervisor.
+    await _validar_scope_agente(db, user, int(cur["id_agente"]))
     data = payload.model_dump(exclude_unset=True)
     fd = data.get("fecha_desde", cur["fecha_desde"])
     fh = data.get("fecha_hasta", cur["fecha_hasta"])
@@ -222,11 +265,14 @@ async def eliminar_novedad(
     user: dict = Depends(get_current_user),
 ):
     _require_admin(user)
+    # SELECT ampliado (scope-subarea 2026-07-18): trae id_agente para validar subarea.
     row = (await db.execute(text(
-        "SELECT 1 FROM agente_novedad WHERE id_agente_novedad = :id AND activo = TRUE"
+        "SELECT id_agente FROM agente_novedad WHERE id_agente_novedad = :id AND activo = TRUE"
     ), {"id": id_agente_novedad})).first()
     if not row:
         raise HTTPException(404, "Novedad no encontrada o ya inactiva")
+    # Scope-subarea 2026-07-18: solo agentes de la subarea del supervisor.
+    await _validar_scope_agente(db, user, int(row.id_agente))
     await db.execute(text("""
         UPDATE agente_novedad
         SET activo = FALSE, fecha_modificacion = NOW(), id_usuario_modificacion = :uid

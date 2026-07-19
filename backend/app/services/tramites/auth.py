@@ -71,16 +71,24 @@ async def agente_puede_tomar(
     tramite: dict,
 ) -> tuple[bool, str | None]:
     """
-    Reglas:
-    - Trámite ya tomado por OTRO agente -> no (salvo admin)
-    - Trámite no tomado: agente debe pertenecer al colectivo destinatario actual
-    - Sin destinatario actual -> no se puede tomar
+    Reglas (scope-subarea 2026-07-18):
+    - Nivel 1 (admin): bypass total.
+    - Nivel 2 (supervisor): puede desplazar una toma ajena y tomar sin ser el
+      destinatario directo, pero SOLO si pertenece al colectivo destinatario
+      actual (antes bypasseaba todo, incluido tomar cross-subarea).
+    - Nivel 3+: tramite tomado por OTRO agente -> no; debe pertenecer al
+      colectivo destinatario actual.
+    - Sin destinatario actual -> no se puede tomar.
     """
-    if es_admin(agente_info["nivel_acceso"]):
+    # Scope-subarea 2026-07-18: el bypass total queda solo para nivel 1.
+    nivel = agente_info["nivel_acceso"]
+    if nivel <= 1:
         return True, None
 
     tomado_por = tramite.get("id_agente_tomado_por")
-    if tomado_por and tomado_por != agente_info["id_agente"]:
+    # El supervisor (nivel 2) conserva la capacidad de desplazar una toma
+    # ajena; los niveles 3+ no pueden tomar un tramite tomado por otro.
+    if nivel >= 3 and tomado_por and tomado_por != agente_info["id_agente"]:
         return False, "El tramite ya fue tomado por otro agente"
 
     dest_tipo = tramite.get("destinatario_actual_tipo")
@@ -97,6 +105,10 @@ async def agente_puede_tomar(
         return False, "El tramite no tiene destinatario asignado"
 
     if not await agente_pertenece_al_colectivo(agente_info, dest_tipo, dest_id):
+        # Scope-subarea 2026-07-18: el nivel 2 ya no bypassea el scope — solo
+        # puede tomar tramites destinados a su propio colectivo.
+        if nivel == 2:
+            return False, "El trámite está destinado a otra área. Solo podés gestionarlo si pertenece a tu subárea o equipos."
         return False, "No perteneces al colectivo destinatario del tramite"
 
     return True, None
