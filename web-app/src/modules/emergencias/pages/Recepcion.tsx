@@ -307,6 +307,8 @@ export function Recepcion() {
                     textTransform: 'uppercase', letterSpacing: '0.04em',
                     border: `2px solid ${color}`,
                     background: activa ? color : 'var(--surface-100)',
+                    // #fff fijo a proposito: el fondo activo es el color de la
+                    // subarea (fijo entre temas), como el avatar del topbar §13.
                     color: activa ? '#fff' : color,
                     transition: 'background 120ms, color 120ms',
                   }}
@@ -370,6 +372,8 @@ export function Recepcion() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{
                       fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 12,
+                      // texto claro fijo a proposito: el fondo es el color de
+                      // prioridad (--prio-*, fijo entre temas) — caso avatar §13.
                       color: '#f7f7f4', background: color, borderRadius: 999, padding: '2px 9px',
                     }}>
                       {p.codigo}
