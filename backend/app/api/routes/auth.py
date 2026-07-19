@@ -165,6 +165,35 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
         await db.rollback()
         logger.warning("No se pudo registrar auditoría de login id=%s: %s", user.id_usuario, exc)
 
+    # Politica de renovacion de credenciales (mig 96): si la clave supera la
+    # vigencia configurada (password_renovacion_dias, 0 = desactivado), se
+    # fuerza el cambio reutilizando el gate existente de debe_cambiar_password.
+    debe_cambiar = bool(user.debe_cambiar_password)
+    if not debe_cambiar:
+        try:
+            _vig = await db.scalar(text(
+                "SELECT valor FROM configuracion_general "
+                "WHERE clave = 'password_renovacion_dias' AND activo = TRUE LIMIT 1"
+            ))
+            _dias = int(str(_vig).strip()) if _vig is not None else 0
+        except (TypeError, ValueError):
+            _dias = 0
+        if _dias > 0:
+            vencida = await db.scalar(text("""
+                SELECT 1 FROM usuarios
+                WHERE id_usuario = :id
+                  AND password_actualizada_en IS NOT NULL
+                  AND password_actualizada_en < NOW() - make_interval(days => CAST(:d AS integer))
+            """), {"id": user.id_usuario, "d": _dias})
+            if vencida:
+                await db.execute(text(
+                    "UPDATE usuarios SET debe_cambiar_password = TRUE WHERE id_usuario = :id"
+                ), {"id": user.id_usuario})
+                await db.commit()
+                debe_cambiar = True
+                logger.info("RENOVACION PASSWORD forzada por vigencia | id=%s | dias=%s",
+                            user.id_usuario, _dias)
+
     token = create_access_token({"sub": str(user.id_usuario)})
     modulos = await modulos_permitidos(db, user.id_usuario, user.nivel_acceso)
     perfil = await _perfil_agente_del_usuario(db, user.id_usuario)
@@ -183,8 +212,9 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
         "subarea_nombre": perfil["subarea_nombre"],
         "foto_url": user.foto_url,
         # Si TRUE, el frontend debe forzar el cambio de contraseña antes de
-        # dejar usar el sistema (Fase 3, clave temporal en primer ingreso).
-        "debe_cambiar_password": bool(user.debe_cambiar_password),
+        # dejar usar el sistema (clave temporal en primer ingreso, o clave
+        # vencida por la politica de renovacion mig 96).
+        "debe_cambiar_password": debe_cambiar,
     }
     return LoginResponse(access_token=token, user=user_data)
 
@@ -246,7 +276,8 @@ async def cambiar_password(
     nuevo_hash = hash_password(nueva)
     await db.execute(
         text("""UPDATE usuarios
-                   SET password_hash = :h, debe_cambiar_password = FALSE
+                   SET password_hash = :h, debe_cambiar_password = FALSE,
+                       password_actualizada_en = NOW()
                  WHERE id_usuario = :id"""),
         {"h": nuevo_hash, "id": current_user["id_usuario"]},
     )
@@ -402,6 +433,7 @@ async def resetear_password_interno(
         text("""UPDATE usuarios
                    SET password_hash = :h,
                        debe_cambiar_password = FALSE,
+                       password_actualizada_en = NOW(),
                        token_recovery = NULL,
                        token_recovery_expira = NULL,
                        fecha_modif = NOW()
