@@ -56,6 +56,7 @@ from app.schemas.agenda_v2 import (
     ReservaOut,
     SubareaOut,
 )
+from app.services import encuestas_service
 from app.services.agenda import (
     cupo_disponible,
     descripcion_corta_sql,
@@ -1021,6 +1022,17 @@ async def _patch_reserva_estado(
         # ciudadano ya volvio a reservar el mismo evento violaria el indice.
         await db.rollback()
         raise HTTPException(409, "El ciudadano ya tiene otra reserva activa de este evento")
+
+    # Encuesta CSAT de entradas (mig 98): al acreditar (asistio) se dispara el
+    # envio. Best-effort DESPUES del commit exitoso y fuera del try de
+    # IntegrityError (patron de turnos.py::cumplir_turno): la acreditacion
+    # nunca falla por la encuesta. Cubre el PATCH /reservas/{id}/asistio y el
+    # POST /reservas/acreditar-qr, que comparten este helper.
+    if nuevo_codigo == "asistio":
+        try:
+            await encuestas_service.crear_envio_para_entrada(db, id_evento_reserva)
+        except Exception:
+            pass
     return nueva
 
 
