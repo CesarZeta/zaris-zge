@@ -13,6 +13,7 @@ const TIPO_META: Record<string, { label: string; icon: typeof FileText; color: s
   reclamos: { label: 'Reclamos', icon: FileText, color: '#b3380a' },
   turnos: { label: 'Turnos', icon: CalendarClock, color: '#1f8a65' },
   tramites: { label: 'Trámites', icon: FileText, color: '#6a1b9a' },
+  entradas: { label: 'Entradas', icon: CalendarClock, color: '#b25c00' },
 }
 
 const RAMA_LABEL: Record<string, string> = {

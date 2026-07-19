@@ -123,10 +123,11 @@ class EncuestaOpcionOut(EncuestaOpcionBase):
 class EncuestaEnvioBase(BaseModel):
     id_plantilla: int
     id_ciudadano: int
-    # mig 72: el envio es polimorfico (reclamo XOR turno). Exactamente uno
-    # poblado. id_reclamo dejo de ser obligatorio.
+    # mig 72 + 98: el envio es polimorfico (reclamo XOR turno XOR entrada).
+    # Exactamente uno poblado. id_reclamo dejo de ser obligatorio.
     id_reclamo: Optional[int] = None
     id_turno: Optional[int] = None
+    id_evento_reserva: Optional[int] = None
     email_destino_snapshot: str = Field(max_length=150)
     fecha_expiracion: datetime
 
@@ -159,10 +160,10 @@ class EncuestaEnvioOut(EncuestaEnvioBase):
     activo: bool
     fecha_alta: datetime
     fecha_modificacion: datetime
-    # Derivados (mig 72): tipo de la plantilla + referencia legible del origen.
+    # Derivados (mig 72 + 98): tipo de la plantilla + referencia legible del origen.
     # Solo los llenan los endpoints que hacen el LEFT JOIN; opcionales por compat.
-    tipo: Optional[str] = None              # reclamos | turnos | tramites
-    referencia: Optional[str] = None        # nro_reclamo o nombre de prestacion
+    tipo: Optional[str] = None              # reclamos | turnos | tramites | entradas
+    referencia: Optional[str] = None        # nro_reclamo, prestacion o nombre del evento
     nro_reclamo: Optional[str] = None
 
 
@@ -253,9 +254,10 @@ class EncuestaEnvioConRespuestaOut(EncuestaEnvioOut):
 
 
 class DispararEncuestaIn(BaseModel):
-    # Disparo manual: exactamente uno de los dos (mig 72).
+    # Disparo manual: exactamente uno de los tres (mig 72 + 98).
     id_reclamo: Optional[int] = None
     id_turno: Optional[int] = None
+    id_evento_reserva: Optional[int] = None
 
 
 # --- Pendientes de contacto (incluye datos del ciudadano + reclamo) ---
@@ -269,12 +271,13 @@ class RespuestaPendienteContactoOut(BaseModel):
     rama_seguida: str
     fecha_respuesta: Optional[datetime] = None  # = encuesta_respuesta.fecha_alta
     atendida: bool
-    # contexto del origen (mig 72: reclamo XOR turno)
+    # contexto del origen (mig 72 + 98: reclamo XOR turno XOR entrada)
     id_reclamo: Optional[int] = None
     nro_reclamo: Optional[str] = None
     id_turno: Optional[int] = None
-    tipo: Optional[str] = None          # reclamos | turnos
-    referencia: Optional[str] = None    # nro_reclamo o nombre de prestacion del turno
+    id_evento_reserva: Optional[int] = None
+    tipo: Optional[str] = None          # reclamos | turnos | entradas
+    referencia: Optional[str] = None    # nro_reclamo, prestacion del turno o nombre del evento
     # contexto del ciudadano (para que el agente lo contacte)
     id_ciudadano: int
     ciudadano_nombre: Optional[str] = None

@@ -18,11 +18,13 @@ const TIPO_LABEL: Record<string, string> = {
   reclamos: 'Reclamo',
   turnos: 'Turno',
   tramites: 'Trámite',
+  entradas: 'Entrada',
 }
 const TIPO_COLOR: Record<string, { bg: string; fg: string }> = {
   reclamos: { bg: 'rgba(245,78,0,0.12)',   fg: '#b3380a' },
   turnos:   { bg: 'rgba(31,138,101,0.16)', fg: '#1f8a65' },
   tramites: { bg: 'rgba(106,27,154,0.12)', fg: '#6a1b9a' },
+  entradas: { bg: 'rgba(245,127,23,0.14)', fg: '#b25c00' },
 }
 
 function tipoBadge(tipo: string | null) {
@@ -61,6 +63,7 @@ export function EnviosView() {
             <option value="">Todos</option>
             <option value="reclamos">Reclamos</option>
             <option value="turnos">Turnos</option>
+            <option value="entradas">Entradas</option>
           </select>
         </div>
         <div style={field}>
