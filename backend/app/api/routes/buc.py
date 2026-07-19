@@ -331,6 +331,14 @@ async def modificar_usuario(
     for field, value in update_data.items():
         setattr(usuario, field, value)
 
+    # Politica de renovacion (mig 96): un reset de password por admin tambien
+    # reinicia el reloj de vigencia. UPDATE crudo porque el modelo ORM puede no
+    # mapear la columna nueva (reference_columna_db_no_mapeada_en_orm).
+    if "password_hash" in update_data:
+        await db.execute(text(
+            "UPDATE usuarios SET password_actualizada_en = NOW() WHERE id_usuario = :id"
+        ), {"id": id})
+
     await db.commit()
     await db.refresh(usuario)
     logger.info("MODIFICACION usuario | id=%s | username=%s | campos=%s",
