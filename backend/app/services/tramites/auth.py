@@ -47,7 +47,12 @@ async def resolver_agente_desde_usuario(
 
 
 def es_admin(nivel_acceso: int) -> bool:
-    return nivel_acceso <= 2
+    """Nivel 1 = Administrador (§3). Hasta 2026-07-19 devolvia nivel <= 2 (el
+    Supervisor bypasseaba operar y quien_puede_jsonb en todo el modulo); el
+    cierre del residuo de la auditoria 2026-07 lo bajo a nivel 1 — el
+    supervisor ahora opera solo dentro de su colectivo (agente_puede_operar).
+    Fail-closed ante nivel NULL."""
+    return (nivel_acceso or 99) <= 1
 
 
 async def agente_pertenece_al_colectivo(
@@ -66,21 +71,66 @@ async def agente_pertenece_al_colectivo(
     return False
 
 
+def _destinatario_actual(tramite: dict) -> tuple[str | None, int | None]:
+    """Resuelve (tipo, id) del destinatario actual del tramite, o (None, None)."""
+    dest_tipo = tramite.get("destinatario_actual_tipo")
+    if not dest_tipo:
+        return None, None
+    dest_id = {
+        "subarea": tramite.get("id_subarea_actual"),
+        "equipo": tramite.get("id_equipo_actual"),
+        "agente": tramite.get("id_agente_actual"),
+    }.get(dest_tipo)
+    return dest_tipo, dest_id
+
+
+async def pertenece_al_colectivo_actual(
+    agente_info: dict,
+    tramite: dict,
+    db: AsyncSession,
+) -> bool:
+    """FUENTE UNICA de "¿el agente pertenece al colectivo destinatario actual?".
+
+    La usan tomar/operar (aca) y los guards de liberar/resultado/comentar en
+    routes/tramites.py — no duplicar la resolucion: las copias divergen en
+    silencio. Reglas:
+    - subarea: la subarea del agente coincide
+    - equipo: el agente integra el equipo
+    - agente (bandeja personal): identidad; ademas el supervisor (nivel 2)
+      califica si el agente destinatario pertenece a SU subarea (rescate de
+      bandejas personales — sin esto un tramite destinado a un agente de
+      licencia queda destrabable solo por nivel 1).
+    """
+    dest_tipo, dest_id = _destinatario_actual(tramite)
+    if dest_tipo is None or dest_id is None:
+        return False
+    if await agente_pertenece_al_colectivo(agente_info, dest_tipo, dest_id):
+        return True
+    if dest_tipo == "agente" and (agente_info.get("nivel_acceso") or 99) == 2:
+        sub_dest = (await db.execute(
+            text("SELECT id_subarea FROM agentes WHERE id_agente = :ag AND activo = TRUE"),
+            {"ag": dest_id},
+        )).scalar()
+        return sub_dest is not None and sub_dest == agente_info.get("id_subarea")
+    return False
+
+
 async def agente_puede_tomar(
     agente_info: dict,
     tramite: dict,
+    db: AsyncSession,
 ) -> tuple[bool, str | None]:
     """
     Reglas (scope-subarea 2026-07-18):
     - Nivel 1 (admin): bypass total.
     - Nivel 2 (supervisor): puede desplazar una toma ajena y tomar sin ser el
       destinatario directo, pero SOLO si pertenece al colectivo destinatario
-      actual (antes bypasseaba todo, incluido tomar cross-subarea).
+      actual (incluye bandeja personal de un agente de su subarea, ver
+      pertenece_al_colectivo_actual).
     - Nivel 3+: tramite tomado por OTRO agente -> no; debe pertenecer al
       colectivo destinatario actual.
     - Sin destinatario actual -> no se puede tomar.
     """
-    # Scope-subarea 2026-07-18: el bypass total queda solo para nivel 1.
     nivel = agente_info["nivel_acceso"]
     if nivel <= 1:
         return True, None
@@ -91,22 +141,11 @@ async def agente_puede_tomar(
     if nivel >= 3 and tomado_por and tomado_por != agente_info["id_agente"]:
         return False, "El tramite ya fue tomado por otro agente"
 
-    dest_tipo = tramite.get("destinatario_actual_tipo")
-
-    if not dest_tipo:
+    dest_tipo, dest_id = _destinatario_actual(tramite)
+    if dest_tipo is None or dest_id is None:
         return False, "El tramite no tiene destinatario asignado"
 
-    dest_id = {
-        "subarea": tramite.get("id_subarea_actual"),
-        "equipo": tramite.get("id_equipo_actual"),
-        "agente": tramite.get("id_agente_actual"),
-    }.get(dest_tipo)
-    if dest_id is None:
-        return False, "El tramite no tiene destinatario asignado"
-
-    if not await agente_pertenece_al_colectivo(agente_info, dest_tipo, dest_id):
-        # Scope-subarea 2026-07-18: el nivel 2 ya no bypassea el scope — solo
-        # puede tomar tramites destinados a su propio colectivo.
+    if not await pertenece_al_colectivo_actual(agente_info, tramite, db):
         if nivel == 2:
             return False, "El trámite está destinado a otra área. Solo podés gestionarlo si pertenece a tu subárea o equipos."
         return False, "No perteneces al colectivo destinatario del tramite"
@@ -117,12 +156,18 @@ async def agente_puede_tomar(
 async def agente_puede_operar(
     agente_info: dict,
     tramite: dict,
+    db: AsyncSession,
 ) -> tuple[bool, str | None]:
     """
-    Operar = ejecutar transiciones, pasar, adjuntar, firmar, liberar.
-    - Trámite tomado por el agente -> si
-    - Trámite tomado por otro -> solo admin
-    - Trámite no tomado -> no (tomar primero)
+    Operar = ejecutar transiciones, pasar, adjuntar documentos, relacionar.
+    (Firmar tiene politica propia en firmas.py y liberar guard propio en routes.)
+    - Tramite tomado por el agente -> si
+    - Nivel 1 (admin) -> si (bypass total)
+    - Nivel 2 (supervisor) -> solo si pertenece al colectivo destinatario
+      actual (puede operar sin toma o sobre toma ajena, igual que en
+      tomar/liberar). Cierre del residuo de la auditoria 2026-07: antes
+      bypasseaba todo con nivel <= 2.
+    - Nivel 3+: tomado por otro -> no; no tomado -> no (tomar primero)
     """
     tomado_por = tramite.get("id_agente_tomado_por")
 
@@ -131,6 +176,11 @@ async def agente_puede_operar(
 
     if es_admin(agente_info["nivel_acceso"]):
         return True, None
+
+    if (agente_info.get("nivel_acceso") or 99) == 2:
+        if await pertenece_al_colectivo_actual(agente_info, tramite, db):
+            return True, None
+        return False, "El trámite está destinado a otra área. Solo podés gestionarlo si pertenece a tu subárea o equipos."
 
     if tomado_por is None:
         return False, "Debes tomar el tramite antes de operarlo"
