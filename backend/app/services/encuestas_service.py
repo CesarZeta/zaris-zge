@@ -51,9 +51,12 @@ MOTIVO_ANTIFATIGA = "Anti-fatiga: ya recibió encuesta del área en últimos 30 
 MOTIVO_SIN_PLANTILLA = "No hay plantilla de encuesta activa para reclamos"
 MOTIVO_SIN_PLANTILLA_TURNO = "No hay plantilla de encuesta activa para turnos"
 MOTIVO_NO_CUMPLIDO = "Turno no existe o no está cumplido"
+MOTIVO_SIN_PLANTILLA_ENTRADA = "No hay plantilla de encuesta activa para entradas"
+MOTIVO_NO_ASISTIO = "Reserva no existe o no está acreditada (asistió)"
 MOTIVO_ERROR = "Error interno al crear el envío"
 
 ESTADO_CUMPLIDO_TURNO = "cumplido"
+ESTADO_ASISTIO_RESERVA = "asistio"
 
 
 def _tok(token) -> str:
@@ -316,6 +319,108 @@ async def crear_envio_para_turno(db: AsyncSession, id_turno: int):
         return None, MOTIVO_ERROR
 
 
+async def crear_envio_para_entrada(db: AsyncSession, id_evento_reserva: int):
+    """
+    Crea un encuesta_envio 'pendiente' para una entrada acreditada (reserva de
+    evento en estado 'asistio'). Espeja a crear_envio_para_turno pero usando la
+    plantilla tipo='entradas' y la FK id_evento_reserva (mig 98). Devuelve
+    tuple (fila_mapping | None, motivo).
+
+    La subarea para el anti-fatiga sale del evento (eventos.id_subarea).
+    Idempotente: si ya hay envio para la reserva, devuelve (None, MOTIVO_YA_EXISTE).
+    """
+    try:
+        if not await encuestas_estan_activas(db):
+            logger.info("crear_envio_entrada: encuestas desactivadas, skip reserva=%s",
+                        id_evento_reserva)
+            return None, MOTIVO_DESACTIVADAS
+
+        # Reserva activa + estado 'asistio' (via catalogo estado_reserva).
+        r = (await db.execute(text("""
+            SELECT r.id_evento_reserva, er.codigo AS estado_codigo,
+                   r.id_ciudadano, r.id_municipio,
+                   ev.id_subarea, c.email AS email_ciudadano
+              FROM evento_reservas r
+              JOIN ciudadanos c ON c.id_ciudadano = r.id_ciudadano
+              JOIN eventos ev ON ev.id_evento = r.id_evento
+              LEFT JOIN estado_reserva er ON er.id_estado_reserva = r.id_estado_reserva
+             WHERE r.id_evento_reserva = :id AND r.activo = TRUE
+             LIMIT 1
+        """), {"id": id_evento_reserva})).fetchone()
+
+        if r is None:
+            logger.info("crear_envio_entrada: reserva=%s no existe", id_evento_reserva)
+            return None, MOTIVO_NO_ASISTIO
+        r = r._mapping
+        if r["estado_codigo"] != ESTADO_ASISTIO_RESERVA:
+            logger.info("crear_envio_entrada: reserva=%s no esta acreditada (estado=%s)",
+                        id_evento_reserva, r["estado_codigo"])
+            return None, MOTIVO_NO_ASISTIO
+
+        ya = (await db.execute(text("""
+            SELECT 1 FROM encuesta_envio
+             WHERE id_evento_reserva = :id AND activo = TRUE LIMIT 1
+        """), {"id": id_evento_reserva})).fetchone()
+        if ya:
+            logger.info("crear_envio_entrada: reserva=%s ya tiene envio, skip", id_evento_reserva)
+            return None, MOTIVO_YA_EXISTE
+
+        email = (r["email_ciudadano"] or "").strip()
+        if not email or "@" not in email:
+            logger.info("crear_envio_entrada: ciudadano de la reserva=%s sin email valido",
+                        id_evento_reserva)
+            return None, MOTIVO_SIN_EMAIL
+
+        id_subarea = r["id_subarea"]
+        if id_subarea is not None and await antifatiga_esta_activo(db):
+            reciente = (await db.execute(text("""
+                SELECT 1 FROM encuesta_envio ee
+                 WHERE ee.id_ciudadano = :cid AND ee.id_subarea = :sub AND ee.activo = TRUE
+                   AND ee.fecha_alta > NOW() - make_interval(days => :dias)
+                 LIMIT 1
+            """), {"cid": r["id_ciudadano"], "sub": id_subarea, "dias": DIAS_ANTIFATIGA})).fetchone()
+            if reciente:
+                logger.info("crear_envio_entrada: anti-fatiga ciudadano=%s subarea=%s",
+                            r["id_ciudadano"], id_subarea)
+                return None, MOTIVO_ANTIFATIGA
+
+        plantilla = (await db.execute(text("""
+            SELECT id_encuesta_plantilla FROM encuesta_plantilla
+             WHERE tipo = 'entradas' AND activo = TRUE
+             ORDER BY id_encuesta_plantilla LIMIT 1
+        """))).fetchone()
+        if plantilla is None:
+            logger.warning("crear_envio_entrada: no hay plantilla activa tipo='entradas'")
+            return None, MOTIVO_SIN_PLANTILLA_ENTRADA
+
+        token = uuid.uuid4()
+        fecha_exp = _now() + timedelta(days=DIAS_EXPIRACION_ENVIO)
+
+        nuevo = (await db.execute(text("""
+            INSERT INTO encuesta_envio (
+                id_plantilla, id_ciudadano, id_evento_reserva, token_unico,
+                email_destino_snapshot, fecha_expiracion, estado,
+                id_municipio, id_subarea
+            ) VALUES (
+                :pid, :cid, :rid, :token, :email, :fexp, 'pendiente', :mun, :sub
+            )
+            RETURNING id_encuesta_envio, token_unico, estado, id_evento_reserva
+        """), {
+            "pid": plantilla[0], "cid": r["id_ciudadano"], "rid": id_evento_reserva,
+            "token": str(token), "email": email, "fexp": fecha_exp,
+            "mun": r["id_municipio"], "sub": id_subarea,
+        })).fetchone()
+        await db.commit()
+
+        logger.info("crear_envio_entrada: OK reserva=%s envio=%s token=%s",
+                    id_evento_reserva, nuevo[0], _tok(nuevo[1]))
+        return nuevo._mapping, MOTIVO_OK
+    except Exception as e:
+        await db.rollback()
+        logger.error("crear_envio_para_entrada fallo (reserva=%s): %s", id_evento_reserva, e)
+        return None, MOTIVO_ERROR
+
+
 # =============================================================================
 # Branding del municipio (header del email)
 # =============================================================================
@@ -477,6 +582,69 @@ def _render_email_turno(
     return asunto, html, texto
 
 
+def _render_email_entrada(
+    *, nombre_ciudadano: str, evento_nombre: str,
+    fecha_evento, fecha_expiracion: Optional[datetime],
+    url: str, municipio_nombre: str, municipio_logo_url: str,
+) -> tuple[str, str, str]:
+    """Devuelve (asunto, html, texto_plano) para la encuesta de una entrada
+    (asistencia acreditada a un evento). `fecha_evento` es DATE (eventos.fecha)."""
+    asunto = "Tu opinión sobre el evento al que asististe nos importa"
+
+    evento_esc = _esc(evento_nombre or "el evento")
+    nombre_esc = _esc(nombre_ciudadano or "")
+    muni_esc = _esc(municipio_nombre)
+    f_evento = _fmt_fecha(fecha_evento)
+    f_exp = _fmt_fecha(fecha_expiracion)
+
+    logo_html = (
+        f'<img src="{_esc(municipio_logo_url)}" alt="{muni_esc}" '
+        f'style="max-height:48px;margin-bottom:8px;">'
+        if municipio_logo_url else ""
+    )
+    del_dia = f" del {f_evento}" if f_evento else ""
+
+    html = f"""\
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"></head>
+<body style="margin:0;background:#f2f1ed;font-family:Arial,Helvetica,sans-serif;color:#26251e;">
+  <div style="max-width:560px;margin:0 auto;padding:24px;">
+    <div style="text-align:center;padding-bottom:16px;border-bottom:1px solid rgba(38,37,30,.1);">
+      {logo_html}
+      <div style="font-size:14px;font-weight:bold;letter-spacing:.04em;text-transform:uppercase;color:#26251e;">{muni_esc}</div>
+    </div>
+    <div style="background:#f7f7f4;border-radius:12px;padding:24px;margin-top:16px;">
+      <p style="font-size:16px;margin:0 0 12px;">Hola {nombre_esc},</p>
+      <p style="font-size:15px;line-height:1.5;margin:0 0 12px;">
+        Gracias por asistir a &ldquo;{evento_esc}&rdquo;{del_dia}.
+        Nos gustaría saber qué te pareció el evento.
+        La encuesta toma menos de 1 minuto.
+      </p>
+      <div style="text-align:center;margin:24px 0;">
+        <a href="{_esc(url)}" style="display:inline-block;background:#f54e00;color:#fff;
+           text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:bold;
+           font-size:15px;letter-spacing:.03em;">RESPONDER ENCUESTA</a>
+      </div>
+      <p style="font-size:13px;color:rgba(38,37,30,.55);margin:0;">
+        Este link expira el {f_exp}. Gracias por ayudarnos a mejorar.
+      </p>
+    </div>
+    <p style="text-align:center;font-size:13px;color:rgba(38,37,30,.55);margin-top:16px;">{muni_esc}</p>
+  </div>
+</body></html>"""
+
+    texto = (
+        f"Hola {nombre_ciudadano or ''},\n\n"
+        f"Gracias por asistir a \"{evento_nombre or 'el evento'}\"{del_dia}.\n"
+        f"Nos gustaría saber qué te pareció el evento. "
+        f"La encuesta toma menos de 1 minuto.\n\n"
+        f"Responder encuesta:\n{url}\n\n"
+        f"Este link expira el {f_exp}. Gracias por ayudarnos a mejorar.\n\n"
+        f"{municipio_nombre}\n"
+    )
+    return asunto, html, texto
+
+
 def _esc(s: str) -> str:
     return (
         (s or "")
@@ -494,21 +662,25 @@ def _esc(s: str) -> str:
 async def enviar_email_encuesta(db: AsyncSession, id_encuesta_envio: int) -> bool:
     """Toma un envio 'pendiente', arma y manda el email. Actualiza estado/intentos.
 
-    Soporta envios de reclamo (id_reclamo) y de turno (id_turno, mig 72): los
-    JOIN a reclamos/turnos son LEFT y el render se ramifica segun el origen."""
+    Soporta envios de reclamo (id_reclamo), de turno (id_turno, mig 72) y de
+    entrada (id_evento_reserva, mig 98): los JOIN a las entidades origen son
+    LEFT y el render se ramifica segun el origen."""
     try:
         env = (await db.execute(text("""
             SELECT ee.id_encuesta_envio, ee.token_unico, ee.estado,
                    ee.email_destino_snapshot, ee.fecha_expiracion, ee.intentos_envio,
-                   ee.id_reclamo, ee.id_turno,
+                   ee.id_reclamo, ee.id_turno, ee.id_evento_reserva,
                    r.nro_reclamo, r.descripcion, r.fecha_cierre,
                    t.fecha AS turno_fecha, tp.nombre AS prestacion_nombre,
+                   ev.nombre AS evento_nombre, ev.fecha AS evento_fecha,
                    c.nombre AS nombre_ciudadano
               FROM encuesta_envio ee
               JOIN ciudadanos c ON c.id_ciudadano = ee.id_ciudadano
               LEFT JOIN reclamos r        ON r.id_reclamo = ee.id_reclamo
               LEFT JOIN turnos t          ON t.id_turno = ee.id_turno
               LEFT JOIN tipo_prestacion tp ON tp.id_tipo_prestacion = t.id_tipo_prestacion
+              LEFT JOIN evento_reservas evr ON evr.id_evento_reserva = ee.id_evento_reserva
+              LEFT JOIN eventos ev        ON ev.id_evento = evr.id_evento
              WHERE ee.id_encuesta_envio = :id AND ee.activo = TRUE
              LIMIT 1
         """), {"id": id_encuesta_envio})).fetchone()
@@ -528,7 +700,17 @@ async def enviar_email_encuesta(db: AsyncSession, id_encuesta_envio: int) -> boo
         # (ej. '/design-system/assets/...'). En un cliente de email NO hay origen,
         # así que hay que entregar una URL absoluta o el <img> queda roto.
         logo_url = _absolutizar_url(brand["logo_url"])
-        if env["id_turno"] is not None:
+        if env["id_evento_reserva"] is not None:
+            asunto, html, texto = _render_email_entrada(
+                nombre_ciudadano=env["nombre_ciudadano"],
+                evento_nombre=env["evento_nombre"] or "el evento",
+                fecha_evento=env["evento_fecha"],
+                fecha_expiracion=env["fecha_expiracion"],
+                url=url,
+                municipio_nombre=brand["nombre"],
+                municipio_logo_url=logo_url,
+            )
+        elif env["id_turno"] is not None:
             asunto, html, texto = _render_email_turno(
                 nombre_ciudadano=env["nombre_ciudadano"],
                 prestacion_nombre=env["prestacion_nombre"] or "tu atención",
@@ -683,12 +865,15 @@ async def registrar_respuesta(
         # 2. Token apto
         env = (await db.execute(text("""
             SELECT ee.id_encuesta_envio, ee.id_plantilla, ee.estado, ee.fecha_expiracion,
-                   ee.id_reclamo, ee.id_turno, ee.id_ciudadano, ee.id_municipio, ee.id_subarea,
-                   r.nro_reclamo,
+                   ee.id_reclamo, ee.id_turno, ee.id_evento_reserva,
+                   ee.id_ciudadano, ee.id_municipio, ee.id_subarea,
+                   r.nro_reclamo, ev.nombre AS evento_nombre,
                    COALESCE(ee.id_subarea, tr.id_subarea, r.id_subarea) AS subarea_origen
               FROM encuesta_envio ee
               LEFT JOIN reclamos r ON r.id_reclamo = ee.id_reclamo
               LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
+              LEFT JOIN evento_reservas evr ON evr.id_evento_reserva = ee.id_evento_reserva
+              LEFT JOIN eventos ev ON ev.id_evento = evr.id_evento
              WHERE ee.token_unico = CAST(:t AS uuid) AND ee.activo = TRUE
              LIMIT 1
         """), {"t": token})).fetchone()
@@ -778,10 +963,17 @@ async def registrar_respuesta(
 
         # 5. Notificar al area si solicita contacto (best-effort, no rompe la respuesta)
         if solicita_contacto:
-            referencia = (
-                f"Reclamo #{env['nro_reclamo']}" if env["id_reclamo"] is not None
-                else f"Turno #{env['id_turno']}"
-            )
+            if env["id_reclamo"] is not None:
+                referencia = f"Reclamo #{env['nro_reclamo']}"
+            elif env["id_turno"] is not None:
+                referencia = f"Turno #{env['id_turno']}"
+            else:
+                # entrada (mig 98): referencia legible con el nombre del evento
+                referencia = (
+                    f"Evento {env['evento_nombre']} (reserva #{env['id_evento_reserva']})"
+                    if env["evento_nombre"]
+                    else f"Reserva de evento #{env['id_evento_reserva']}"
+                )
             await _notificar_solicitud_contacto(
                 db, id_subarea=env["subarea_origen"], referencia=referencia,
             )
