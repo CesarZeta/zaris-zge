@@ -99,3 +99,12 @@ Las 3 vías que insertan `evento_reservas` (backoffice `agenda_v2.crear_reserva`
 4. **CAS de estado** en `_patch_reserva_estado` (WHERE exige el `id_estado_reserva` leído + rowcount→409) y en los cancelar públicos — cancelar∥acreditar-QR ya no se pisan. **Guard nuevo:** `PATCH /reservas/{id}/asistio` rechaza 409 sobre una reserva cancelada (antes esa vía numérica bypasseaba el guard de la vía QR y revivía la reserva re-consumiendo cupo). El cancelar del backoffice sigue permitiendo cancelar una `asistio` (corrección de mesa); los cancelar públicos exigen `reservada`.
 
 El helper `buscar_o_crear_ciudadano_por_dni` toma `advisory_lock_tx('ciudadano_dni:{dni}')` (evita ciudadanos duplicados por DNI en autoservicios concurrentes). Los locks de turnos viven en la skill `modulo-turnos-entradas`.
+
+### Scope-subárea en mutaciones (2026-07-18, hallazgos [17][18]) — OBLIGATORIO en toda mutación nueva
+
+Guards en `agenda_v2.py` (imitan `_validar_scope_supervisor_ot` de OT), aplican a **niveles 2 y 4** (nivel 1 y 3 sin scope — Atención ve todo por diseño; fail-closed 403 accionable si el usuario 2/4 no tiene agente/subárea; la fuente es SIEMPRE `agentes.id_subarea` vía `subarea_del_usuario`):
+
+- **`_subarea_scope_mutacion`** (resuelve el scope) · **`_validar_scope_recurso`** (polimórfico agente/equipo/espacio; subárea NULL del recurso → fail-open) · **`_validar_scope_evento`** (evento con `id_subarea` NULL = institucional: fail-open nivel 2, 403 nivel 4).
+- Aplicados en las 10 mutaciones de `agenda_v2` (eventos CRUD+cancelar, encargados asignar/quitar — en evento institucional el nivel 2 saltea el check del recurso —, ocupaciones CRUD incl. recurso NUEVO del PUT, conflictos resolver). El POST de eventos FUERZA la subárea propia al nivel 4 y el PUT bloquea mover el evento de subárea.
+- `agenda_espacios` / `agenda_disponibilidad` / `agenda_novedades` (nivel ≤ 2): el SUPERVISOR queda scopeado — espacios de su subárea (NULL = compartido → solo admin; el PUT no permite reasignar la subárea), franjas y novedades solo de recursos/agentes de su subárea. **`espacio_agentes` scopea SOLO por el espacio** (los espacios atendidos se atienden con agentes de varias subáreas POR DISEÑO — no validar la subárea del agente vinculado). **Feriados sin scope** (entidad municipal; subirlos a nivel 1 es decisión de producto pendiente).
+- Verificado con smoke multi-subárea (bloqueo/cancelar/borrar cross → 403; admin OK). Reservas de eventos: su protección es el anti-carrera (sección previa), no el scope.
