@@ -25,15 +25,18 @@ BEGIN
     IF EXISTS (SELECT 1 FROM configuracion_general WHERE clave = 'password_renovacion_dias') THEN
         RETURN;
     END IF;
+    -- activo explicito: en prod la columna es NOT NULL SIN default (drift §24
+    -- cazado al aplicar 2026-07-18); en local tiene default TRUE.
     IF EXISTS (SELECT 1 FROM information_schema.columns
                WHERE table_name = 'configuracion_general' AND column_name = 'tipo') THEN
-        INSERT INTO configuracion_general (clave, valor, descripcion, tipo)
+        INSERT INTO configuracion_general (clave, valor, descripcion, tipo, activo)
         VALUES ('password_renovacion_dias', '365',
                 'Dias de vigencia de la password de usuarios internos antes de forzar la renovacion en el proximo login (0 = desactivado)',
-                'integer');
+                'integer', TRUE);
     ELSE
-        INSERT INTO configuracion_general (clave, valor, descripcion)
+        INSERT INTO configuracion_general (clave, valor, descripcion, activo)
         VALUES ('password_renovacion_dias', '365',
-                'Dias de vigencia de la password de usuarios internos antes de forzar la renovacion en el proximo login (0 = desactivado)');
+                'Dias de vigencia de la password de usuarios internos antes de forzar la renovacion en el proximo login (0 = desactivado)',
+                TRUE);
     END IF;
 END $$;
