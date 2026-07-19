@@ -41,6 +41,29 @@ export function EstadoBadge({ codigo, nombre }: { codigo: string; nombre?: strin
   )
 }
 
+/** Chip de ALERTA DE PANICO (mig 97): marca los eventos creados por el boton
+ * "Seguridad" de la App Vecinos. El texto va #fff FIJO a proposito (no un
+ * token --fg-*): el fondo --prio-p1 rojo no cambia entre temas claro/oscuro,
+ * igual que el texto fijo del avatar del topbar (s13). */
+export function PanicoChip({ esPanico }: { esPanico?: boolean }) {
+  if (!esPanico) return null
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 5,
+      fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700,
+      color: '#fff', background: 'var(--prio-p1, #c62828)',
+      borderRadius: 999, padding: '3px 10px', letterSpacing: '0.06em',
+      whiteSpace: 'nowrap',
+    }}>
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+        <path d="M12 9v4" /><path d="M12 17h.01" />
+      </svg>
+      PÁNICO
+    </span>
+  )
+}
+
 /** Marca de origen App Vecinos (plan Fase 5): el evento NO entro por un
  * operador del COM sino por el reporte del vecino desde la PWA. */
 export function CanalAppVecinoBadge({ canalCodigo }: { canalCodigo?: string | null }) {

@@ -20,7 +20,7 @@ import {
   useTiposEmergencia,
 } from '../hooks/useEmergencias'
 import type { EmergenciaEvento } from '../types'
-import { CanalAppVecinoBadge, EstadoBadge, PrioridadPill, formatFechaHora, transcurridoDesde, useAhora } from '../lib/ui'
+import { CanalAppVecinoBadge, EstadoBadge, PanicoChip, PrioridadPill, formatFechaHora, transcurridoDesde, useAhora } from '../lib/ui'
 import { CambiarEstadoModal, CerrarModal, DerivarModal } from '../components/EventoAccionModals'
 import { RANGOS, StatsEmergenciasBar } from '../components/StatsEmergenciasBar'
 import { EmergenciasMap } from '../components/EmergenciasMap'
@@ -29,6 +29,37 @@ type Accion =
   | { tipo: 'estado'; destino: string; evento: EmergenciaEvento }
   | { tipo: 'derivar'; evento: EmergenciaEvento }
   | { tipo: 'cerrar'; evento: EmergenciaEvento }
+
+// Beep de alerta de panico: 3 pulsos de ~150ms a 880Hz con Web Audio API.
+// try/catch silencioso: el navegador puede bloquear audio sin gesto previo
+// del usuario y el tablero no debe romperse por eso.
+function beepPanico() {
+  try {
+    const Ctx = window.AudioContext
+      ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!Ctx) return
+    const ctx = new Ctx()
+    const t0 = ctx.currentTime
+    for (let i = 0; i < 3; i++) {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.value = 880
+      // envolvente corta para evitar clicks al cortar la onda
+      const inicio = t0 + i * 0.25
+      gain.gain.setValueAtTime(0.0001, inicio)
+      gain.gain.exponentialRampToValueAtTime(0.2, inicio + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, inicio + 0.15)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(inicio)
+      osc.stop(inicio + 0.16)
+    }
+    window.setTimeout(() => { ctx.close().catch(() => {}) }, 1000)
+  } catch {
+    // silencioso a proposito
+  }
+}
 
 export function Dispatcher() {
   const navigate = useNavigate()
@@ -48,6 +79,12 @@ export function Dispatcher() {
   const [fullscreen, setFullscreen] = useState(false)
   const fsRef = useRef<HTMLDivElement>(null)
   const [accion, setAccion] = useState<Accion | null>(null)
+  // Filtro "solo alertas de panico" (mig 97), activado desde el banner rojo.
+  // Mismo mecanismo client-side que los filtros por click de los KPIs.
+  const [soloPanico, setSoloPanico] = useState(false)
+  // Ids de alertas de panico ya vistas por el polling: null hasta el primer
+  // dato (el primer render NUNCA suena; solo las alertas NUEVAS).
+  const panicoVistasRef = useRef<Set<number> | null>(null)
 
   // Al abrir el modo maximizado, pedir fullscreen nativo sobre el overlay.
   // El user-activation del click sigue vigente cuando corre el effect.
@@ -90,6 +127,41 @@ export function Dispatcher() {
   const tipos = useTiposEmergencia()
   const estados = useEstadosEmergencia()
 
+  // Alertas de pánico ABIERTAS, siempre desde la fuente en vivo (/abiertos,
+  // polling 30s) aunque el tablero esté en modo histórico: el banner y el
+  // sonido son de guardia, no de búsqueda.
+  const alertasPanico = useMemo(
+    () => (abiertos.data ?? []).filter((e) => e.es_panico && !e.es_terminal),
+    [abiertos.data],
+  )
+
+  // Sonido al detectar por polling una alerta abierta NUEVA. El Set del ref
+  // acumula ids ya vistos: no re-suena por la misma alerta, y en el primer
+  // render (ref todavía null) solo siembra el set sin sonar.
+  useEffect(() => {
+    if (!abiertos.data) return
+    if (panicoVistasRef.current === null) {
+      panicoVistasRef.current = new Set(alertasPanico.map((e) => e.id_emergencia_evento))
+      return
+    }
+    const vistas = panicoVistasRef.current
+    let hayNueva = false
+    for (const ev of alertasPanico) {
+      if (!vistas.has(ev.id_emergencia_evento)) {
+        vistas.add(ev.id_emergencia_evento)
+        hayNueva = true
+      }
+    }
+    if (hayNueva) beepPanico()
+  }, [abiertos.data, alertasPanico])
+
+  // Auto-curación del filtro: si la última alerta se cierra, el banner (único
+  // control del filtro) desaparece — soltamos el filtro para no dejar el
+  // tablero vacío sin vía de escape (regla de pantallas-gate, s23).
+  useEffect(() => {
+    if (soloPanico && abiertos.data && alertasPanico.length === 0) setSoloPanico(false)
+  }, [soloPanico, abiertos.data, alertasPanico])
+
   const cambiar = useCambiarEstado()
   const derivar = useDerivarEvento()
   const cerrar = useCerrarEvento()
@@ -103,6 +175,7 @@ export function Dispatcher() {
 
   const eventos = useMemo(() => {
     let lista = fuente.data ?? []
+    if (soloPanico) lista = lista.filter((e) => e.es_panico)
     if (fPrioridad) lista = lista.filter((e) => e.prioridad_codigo === fPrioridad)
     if (fEstado) lista = lista.filter((e) => e.estado_codigo === fEstado)
     if (fNro.trim()) {
@@ -110,7 +183,7 @@ export function Dispatcher() {
       lista = lista.filter((e) => e.numero_operativo.toLowerCase().includes(q))
     }
     return lista
-  }, [fuente.data, fPrioridad, fEstado, fNro])
+  }, [fuente.data, soloPanico, fPrioridad, fEstado, fNro])
 
   const onError = (e: unknown) =>
     push({ kind: 'error', title: 'No se pudo aplicar la acción', body: e instanceof Error ? e.message : String(e) })
@@ -138,6 +211,30 @@ export function Dispatcher() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* BANNER de alertas de pánico activas (mig 97): franja roja fija arriba
+          del tablero, clickeable para filtrar la lista a solo-pánico. Texto
+          #fff fijo sobre --prio-p1 a propósito (caso avatar, s13). */}
+      {alertasPanico.length > 0 && (
+        <button
+          style={bannerPanico}
+          onClick={() => setSoloPanico((v) => !v)}
+          title={soloPanico ? 'Quitar el filtro de alertas' : 'Ver solo las alertas de pánico'}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+            <path d="M12 9v4" /><path d="M12 17h.01" />
+          </svg>
+          <span>
+            {alertasPanico.length === 1
+              ? '1 ALERTA DE PÁNICO ACTIVA'
+              : `${alertasPanico.length} ALERTAS DE PÁNICO ACTIVAS`}
+          </span>
+          <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 600, opacity: 0.85, textTransform: 'none', letterSpacing: 0 }}>
+            {soloPanico ? 'Mostrando solo alertas — click para ver todo' : 'Click para ver solo las alertas'}
+          </span>
+        </button>
+      )}
+
       {/* KPIs (abiertos en rojo + subareas + estados) */}
       <StatsEmergenciasBar
         horas={horasKpi}
@@ -267,8 +364,15 @@ export function Dispatcher() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {eventos.map((ev) => (
-          <div key={ev.id_emergencia_evento} style={cardStyle}>
+          // Card DESTACADA para alertas de pánico abiertas (mig 97): borde y
+          // tinte rojos de --prio-p1. En eventos cerrados (modo histórico)
+          // queda solo el chip, sin destacar.
+          <div
+            key={ev.id_emergencia_evento}
+            style={ev.es_panico && !ev.es_terminal ? { ...cardStyle, ...cardPanicoStyle } : cardStyle}
+          >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <PanicoChip esPanico={ev.es_panico} />
               <PrioridadPill codigo={ev.prioridad_codigo} colorToken={ev.prioridad_color_token} />
               <button style={nroBtn} onClick={() => navigate(`/emergencias/evento/${ev.id_emergencia_evento}`)}>
                 {ev.numero_operativo}
@@ -364,6 +468,23 @@ const limpiarRangoStyle: React.CSSProperties = {
 const cardStyle: React.CSSProperties = {
   background: 'var(--surface-100)', border: '1px solid var(--border-primary)',
   borderRadius: 12, padding: '12px 16px',
+}
+// Card destacada de alerta de pánico (mig 97). El tinte de fondo usa el rgba
+// literal del token --prio-p1 (#c62828): un color-mix() inválido en inline
+// style dejaría la card SIN fondo en navegadores sin soporte, así que se usa
+// directamente el fallback rgba del token.
+const cardPanicoStyle: React.CSSProperties = {
+  border: '3px solid var(--prio-p1, #c62828)',
+  background: 'rgba(198, 40, 40, 0.07)',
+}
+// Banner de alertas activas: franja --prio-p1 con texto #fff fijo (caso
+// avatar, s13 — el fondo rojo no cambia entre temas).
+const bannerPanico: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+  background: 'var(--prio-p1, #c62828)', color: '#fff', border: 'none',
+  borderRadius: 10, padding: '10px 16px', cursor: 'pointer',
+  fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700,
+  letterSpacing: '0.06em', textAlign: 'left',
 }
 const nroBtn: React.CSSProperties = {
   fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700,

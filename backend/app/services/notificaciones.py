@@ -730,3 +730,130 @@ async def notificar_aviso_reclamo_a_supervision(
             id_reclamo, e, exc_info=True,
         )
         return 0
+
+
+async def notificar_alerta_panico(
+    id_evento: int,
+    background_tasks: Optional[BackgroundTasks] = None,
+) -> int:
+    """
+    ALERTA DE PANICO (boton "Seguridad" de la App Vecinos, mig 97): avisa al
+    COM apenas queda creado el evento de emergencias marcado es_panico.
+
+    Se llama POST-COMMIT desde publico_emergencias.py, por eso NO recibe la
+    sesion del request: abre la SUYA con AsyncSessionLocal (la del request ya
+    cerro su transaccion — feedback_background_tasks_sesion_nueva; mismo
+    criterio que _enviar_mail_y_marcar y push.notificar_estado_emergencia).
+
+    Destinatarios: usuarios activos nivel_acceso <= 3 cuyo AGENTE activo
+    pertenece a la subarea del evento (agentes.id_usuario / agentes.id_subarea,
+    regla 1:1 §39 — NO usuarios.id_subarea). Si la subarea no tiene ninguno,
+    FALLBACK a los admins (nivel 1) para que la alerta nunca se pierda (mismo
+    criterio que notificar_aviso_reclamo_a_supervision).
+
+    In-app SIEMPRE (una alerta de panico no se descarta porque el usuario no
+    tenga email cargado); email best-effort solo a los que tienen.
+    Fail-safe: cualquier error se logea pero NO levanta.
+    """
+    try:
+        envios_pendientes: list[tuple[int, str]] = []
+        async with AsyncSessionLocal() as db:
+            evento = (await db.execute(text("""
+                SELECT e.id_emergencia_evento, e.numero_operativo, e.id_subarea,
+                       e.id_municipio, e.direccion_evento, e.referencia_ubicacion,
+                       s.nombre AS subarea_nombre,
+                       CASE
+                         WHEN e.denunciante_anonimo THEN NULL
+                         WHEN e.id_ciudadano_buc IS NOT NULL THEN c.apellido || ', ' || c.nombre
+                         WHEN e.id_contacto_eventual IS NOT NULL THEN ce.nombre_apellido
+                       END AS denunciante_nombre
+                  FROM emergencia_evento e
+                  JOIN subarea s ON s.id_subarea = e.id_subarea
+                  LEFT JOIN ciudadanos c ON c.id_ciudadano = e.id_ciudadano_buc
+                  LEFT JOIN emergencia_contacto_eventual ce
+                       ON ce.id_emergencia_contacto_eventual = e.id_contacto_eventual
+                 WHERE e.id_emergencia_evento = :id AND e.activo = TRUE
+            """), {"id": id_evento})).fetchone()
+            if not evento:
+                logger.warning("notificar_alerta_panico: evento %s no encontrado", id_evento)
+                return 0
+
+            rows = (await db.execute(text("""
+                SELECT DISTINCT u.id_usuario, u.nombre, u.email
+                  FROM agentes a
+                  JOIN usuarios u ON u.id_usuario = a.id_usuario AND u.activo = TRUE
+                 WHERE a.id_subarea = :sub AND a.activo = TRUE
+                   AND u.nivel_acceso <= 3
+            """), {"sub": evento.id_subarea})).fetchall()
+            usuarios = [dict(r._mapping) for r in rows]
+            destino = f"operadores subarea/{evento.id_subarea}"
+            if not usuarios:
+                rows = (await db.execute(text("""
+                    SELECT u.id_usuario, u.nombre, u.email
+                      FROM usuarios u
+                     WHERE u.activo = TRUE AND u.nivel_acceso = 1
+                """))).fetchall()
+                usuarios = [dict(r._mapping) for r in rows]
+                destino = "admins (fallback: subarea sin operadores)"
+            if not usuarios:
+                logger.warning(
+                    "notificar_alerta_panico %s: sin operadores NI admins activos",
+                    evento.numero_operativo,
+                )
+                return 0
+
+            numero = evento.numero_operativo or f"#{id_evento}"
+            titulo = f"ALERTA DE PÁNICO — {numero}"
+            mensaje = f"Alerta de pánico en {evento.direccion_evento}"
+            if evento.referencia_ubicacion:
+                mensaje += f" ({evento.referencia_ubicacion})"
+            mensaje += "."
+            if evento.denunciante_nombre:
+                mensaje += f" Denunciante: {evento.denunciante_nombre}."
+            mensaje += f" Subárea: {evento.subarea_nombre}."
+
+            base = settings.APP_BASE_URL.rstrip("/")
+            url_abs = f"{base}/#/emergencias/evento/{id_evento}"
+            html_body, text_body = _mail_body(titulo, mensaje, f"Ver evento {numero}", url_abs)
+
+            creadas = 0
+            for u in usuarios:
+                row_n = (await db.execute(text("""
+                    INSERT INTO notificacion (
+                        id_usuario, tipo, titulo, mensaje, url_destino,
+                        recurso_tipo, recurso_id, id_municipio
+                    ) VALUES (
+                        :uid, 'emergencia_alerta_panico', :tit, :msg, :url,
+                        'emergencia_evento', :rid, :mun
+                    )
+                    RETURNING id_notificacion
+                """), {
+                    "uid": u["id_usuario"], "tit": titulo, "msg": mensaje,
+                    "url": f"#/emergencias/evento/{id_evento}",
+                    "rid": id_evento, "mun": evento.id_municipio,
+                })).fetchone()
+                creadas += 1
+                if u.get("email"):
+                    envios_pendientes.append((row_n.id_notificacion, u["email"]))
+            await db.commit()
+
+        # Emails fuera de la sesion: _enviar_mail_y_marcar es fail-safe y abre
+        # su propia sesion para marcar enviada_mail.
+        for id_notif, to in envios_pendientes:
+            if background_tasks is not None:
+                background_tasks.add_task(
+                    _enviar_mail_y_marcar, id_notif, to, titulo, html_body, text_body,
+                )
+            else:
+                await _enviar_mail_y_marcar(id_notif, to, titulo, html_body, text_body)
+        logger.info(
+            "notificar_alerta_panico %s: %d notificaciones a %s (%d con email)",
+            numero, creadas, destino, len(envios_pendientes),
+        )
+        return creadas
+    except Exception as e:
+        logger.error(
+            "notificar_alerta_panico FALLO (evento=%s): %s",
+            id_evento, e, exc_info=True,
+        )
+        return 0
