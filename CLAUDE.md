@@ -172,6 +172,8 @@ Cazado 2026-05-20: se pushearon dos commits backend a `main` y prod siguió sirv
 
 **Cómo distinguir "deploy viejo en prod" de "mi test CORS está mal hecho"**: usar un origen que YA estaba permitido hace tiempo (`https://zge.zaris.com.ar`) como control. Si el preflight `OPTIONS` con ese origen devuelve `Access-Control-Allow-Origin` pero el origen nuevo no, es deploy viejo (no test roto). Comando: `curl -s -i -X OPTIONS -H "Origin: https://zge.zaris.com.ar" -H "Access-Control-Request-Method: GET" <url> | grep -i access-control-allow-origin`.
 
+**Commit de solo-comportamiento (sin rutas nuevas): dejar un marker verificable en OpenAPI.** Sumar al decorador de un endpoint tocado un `responses={409: {"description": "..."}}` (o 403) — es documentación OpenAPI pura, no cambia comportamiento, y aparece en `/openapi.json` público → el poller post-push confirma que el commit aplicó chequeando ese marker. Usado 2026-07-18 (migs 95 y 97: `/turnos/publico/reservar` 409 y `/emergencias/eventos/{id}/cerrar` 403).
+
 > **CORS de FastAPI no acepta wildcards** — `allow_origins` es lista de strings exactos. `*.vercel.app` NO funciona; hay que poner la URL exacta del deploy. Ver §6 (App Vecinos).
 
 ## 10. Campos Estándar por Tabla
@@ -622,6 +624,7 @@ class Equipo(Base):
 - **Toda tabla nueva debe nacer con `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`** (sin políticas = deny-all §26; el backend conecta como `postgres` dueño y bypassea RLS). Sino el advisor de Supabase la marca (`rls_disabled_in_public`, caso mig 80).
 - **Seeds/INSERTs separados del DDL** en archivo aparte (`75b` es el patrón): `apply_migration` es atómico — un INSERT que falla revierte también los CREATE ([[feedback_apply_migration_parcial_aborta_todo]], incidente mig 69).
 - **CHECK `NOT VALID` igual se evalúa al UPDATE de filas viejas** — backfillar en el mismo UPDATE ([[feedback_check_not_valid_se_evalua_al_update]], caso mig 71).
+- **INSERT a `configuracion_general` SIEMPRE con `activo` (y `tipo`, si la columna existe) explícitos** — prod las tiene NOT NULL SIN default (`tipo` ∈ string|boolean|integer; local sí tiene default en `activo`). Drift §24 que ya mordió en las migs 75b y 96 (2026-07-18).
 - En prod no hay `.env.prod`: aplicar por MCP (`apply_migration`/`execute_sql`).
 
 **Dónde vive la regla de cada mig reciente:** 62-64 y 77-78 (usuarios/agentes/integridad) §39 · 65 (BI) §43 · 66/68/73/74/75 (Trámites) §35 · 67 (tipo_grupo equipos) §15 · 69-71 y 86 (Turnos) §33 · 72 (encuesta de turnos) §42 · 76/79 (alta vecinos) §38 · **81-85 (Emergencias) §44** · 93 (espacios lat/lon, Dashboard) §27-espacios/§4 · **95 (anti-carrera turnos/reservas) → skills `modulo-turnos-entradas` y `modulo-agenda`** (locks obligatorios + IntegrityError→409 en toda vía nueva de escritura) · 96 (renovación de credenciales) → skill `modulo-usuarios` · 97 (alerta de pánico) → skill `modulo-emergencias` · 98 (encuestas de Entradas) → skill `modulo-encuestas`. Bitácora por mig en `HISTORIAL_MIGRACIONES.md` ("Migraciones 61-79 — resumen consolidado" + entradas propias).
