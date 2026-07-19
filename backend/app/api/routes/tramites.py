@@ -85,21 +85,13 @@ def _require_no_consultor(agente: dict) -> None:
         raise HTTPException(403, "El perfil Consultor es de solo lectura: no puede operar trámites.")
 
 
-async def _pertenece_al_colectivo_actual(agente: dict, tramite: dict) -> bool:
-    """Scope-subarea 2026-07-18: True si el agente pertenece al colectivo
-    destinatario actual del tramite (subarea | equipo | agente directo).
-    Misma resolucion del destinatario que svc_auth.agente_puede_tomar."""
-    dest_tipo = tramite.get("destinatario_actual_tipo")
-    if not dest_tipo:
-        return False
-    dest_id = {
-        "subarea": tramite.get("id_subarea_actual"),
-        "equipo": tramite.get("id_equipo_actual"),
-        "agente": tramite.get("id_agente_actual"),
-    }.get(dest_tipo)
-    if dest_id is None:
-        return False
-    return await svc_auth.agente_pertenece_al_colectivo(agente, dest_tipo, dest_id)
+async def _pertenece_al_colectivo_actual(agente: dict, tramite: dict, db: AsyncSession) -> bool:
+    """Scope-subarea: True si el agente pertenece al colectivo destinatario
+    actual del tramite. Delegado a svc_auth.pertenece_al_colectivo_actual —
+    FUENTE UNICA de esta resolucion (2026-07-19), compartida con tomar/operar.
+    Incluye el rescate de bandeja personal: el supervisor califica si el
+    agente destinatario es de SU subarea."""
+    return await svc_auth.pertenece_al_colectivo_actual(agente, tramite, db)
 
 
 # ---------------------------------------------------------------------------
@@ -1268,7 +1260,7 @@ async def transiciones_permitidas(
     )
     puedo_operar = False
     if agente:
-        puede, _ = await svc_auth.agente_puede_operar(agente, tramite)
+        puede, _ = await svc_auth.agente_puede_operar(agente, tramite, db)
         puedo_operar = puede
 
     return TransicionesPermitidasOut(
@@ -1318,7 +1310,7 @@ async def tomar_tramite(
         {"id": id_tramite},
     )).fetchone()._mapping)
 
-    puede, motivo = await svc_auth.agente_puede_tomar(agente, tramite)
+    puede, motivo = await svc_auth.agente_puede_tomar(agente, tramite, db)
     if not puede:
         raise HTTPException(409 if tramite.get("id_agente_tomado_por") else 403, motivo)
 
@@ -1370,7 +1362,7 @@ async def liberar_tramite(
     if tomado_por != agente["id_agente"]:
         nivel = agente["nivel_acceso"]
         autorizado = nivel <= 1 or (
-            nivel == 2 and await _pertenece_al_colectivo_actual(agente, tramite)
+            nivel == 2 and await _pertenece_al_colectivo_actual(agente, tramite, db)
         )
         if not autorizado:
             raise HTTPException(403, "Solo el agente que tomó el trámite, un supervisor de su área o un administrador puede liberarlo")
@@ -1395,7 +1387,13 @@ async def liberar_tramite(
 # POST /{tramite_ref}/transicionar
 # ---------------------------------------------------------------------------
 
-@router.post("/{tramite_ref}/transicionar", response_model=TramiteDetalleOut)
+@router.post(
+    "/{tramite_ref}/transicionar",
+    response_model=TramiteDetalleOut,
+    # Marker OpenAPI (§9): verifica que el deploy del cierre del bypass
+    # nivel-2 (auditoria 2026-07) aplico en prod — documentacion pura.
+    responses={403: {"description": "Fuera de tu colectivo destinatario o no cumplis quien_puede de la transicion (scope-subarea 2026-07-19)"}},
+)
 async def transicionar_tramite(
     tramite_ref: str,
     body: TransicionIn,
@@ -1432,10 +1430,10 @@ async def transicionar_tramite(
         raise HTTPException(400, "La transicion no aplica al estado actual del tramite")
 
     # Permisos
-    puede_op, motivo = await svc_auth.agente_puede_operar(agente, tramite)
+    puede_op, motivo = await svc_auth.agente_puede_operar(agente, tramite, db)
     if not puede_op:
         raise HTTPException(403, motivo)
-    puede_trans, motivo_t = await svc_autorizacion.agente_puede_ejecutar_transicion(agente, trans, tramite)
+    puede_trans, motivo_t = await svc_autorizacion.agente_puede_ejecutar_transicion(agente, trans, tramite, db)
     if not puede_trans:
         raise HTTPException(403, motivo_t)
 
@@ -1614,9 +1612,12 @@ async def resolver_aprobacion(
     """Resuelve una aprobacion de etapa (aprobada|rechazada).
 
     Solo quien pertenece al area aprobadora (subarea/equipo/agente) o un admin
-    (nivel <= 2) puede resolverla. Registra un movimiento 'aprobacion' en el
-    timeline. NO dispara transiciones: el rechazo deja el tramite trabado con
-    motivo visible (el area subsana y re-resuelve).
+    (nivel 1) puede resolverla — el supervisor (nivel 2) resuelve solo por
+    membresia del aprobador desde el cierre del residuo de la auditoria
+    2026-07. No exige tomar/operar el tramite (tercero no-destinatario).
+    Registra un movimiento 'aprobacion' en el timeline. NO dispara
+    transiciones: el rechazo deja el tramite trabado con motivo visible (el
+    area subsana y re-resuelve).
     """
     decision = (body.decision or "").strip().lower()
     if decision not in ("aprobada", "rechazada"):
@@ -1710,7 +1711,7 @@ async def pase_tramite(
         {"id": id_tramite},
     )).fetchone()._mapping)
 
-    puede, motivo = await svc_auth.agente_puede_operar(agente, tramite)
+    puede, motivo = await svc_auth.agente_puede_operar(agente, tramite, db)
     if not puede:
         raise HTTPException(403, motivo)
 
@@ -1815,7 +1816,7 @@ async def marcar_resultado_tramite(
     # actual o es el tomador del tramite.
     if agente["nivel_acceso"] == 2:
         es_tomador = tramite.get("id_agente_tomado_por") == agente["id_agente"]
-        if not es_tomador and not await _pertenece_al_colectivo_actual(agente, tramite):
+        if not es_tomador and not await _pertenece_al_colectivo_actual(agente, tramite, db):
             raise HTTPException(403, "Solo un supervisor del área del trámite o un administrador puede marcar el resultado.")
 
     anterior = tramite.get("resultado") or "pendiente"
@@ -1881,7 +1882,7 @@ async def comentar_tramite(
         tramite.get("id_agente_tomado_por") == agente["id_agente"]
         or tramite.get("id_agente_iniciador") == agente["id_agente"]
         or agente["nivel_acceso"] <= 1
-        or await _pertenece_al_colectivo_actual(agente, tramite)
+        or await _pertenece_al_colectivo_actual(agente, tramite, db)
     )
     if not puede_comentar:
         intervino = (await db.execute(
@@ -1941,7 +1942,7 @@ async def adjuntar_documento(
         {"id": id_tramite},
     )).fetchone()._mapping)
 
-    puede, motivo = await svc_auth.agente_puede_operar(agente, tramite)
+    puede, motivo = await svc_auth.agente_puede_operar(agente, tramite, db)
     if not puede:
         raise HTTPException(403, motivo)
     if not tramite.get("permite_adjuntar", True):
@@ -2271,7 +2272,7 @@ async def relacionar_tramites(
     if tramite_b.id_municipio != tramite_a["id_municipio"]:
         raise HTTPException(400, "Los tramites deben pertenecer al mismo municipio")
 
-    puede, motivo = await svc_auth.agente_puede_operar(agente, tramite_a)
+    puede, motivo = await svc_auth.agente_puede_operar(agente, tramite_a, db)
     if not puede:
         raise HTTPException(403, motivo)
 

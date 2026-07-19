@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.tramites.auth import (
     es_admin,
     agente_puede_operar,
-    agente_pertenece_al_colectivo,
 )
 
 
@@ -20,6 +19,7 @@ async def agente_puede_ejecutar_transicion(
     agente_info: dict,
     transicion: dict,
     tramite: dict,
+    db: AsyncSession,
 ) -> tuple[bool, str | None]:
     """
     Valida quien_puede_jsonb contra el agente.
@@ -32,9 +32,11 @@ async def agente_puede_ejecutar_transicion(
       {"roles": ["supervisor"]} -> nivel_acceso <= 2
 
     Combinaciones se interpretan como OR.
-    Admin siempre puede.
+    Admin (nivel 1) siempre puede; el supervisor (nivel 2) evalua
+    quien_puede_jsonb como cualquier operador desde el cierre del residuo de
+    la auditoria 2026-07 (antes bypasseaba con nivel <= 2).
     """
-    puede_op, motivo_op = await agente_puede_operar(agente_info, tramite)
+    puede_op, motivo_op = await agente_puede_operar(agente_info, tramite, db)
     if not puede_op:
         return False, motivo_op
 
@@ -65,10 +67,14 @@ async def agente_puede_ejecutar_transicion(
 
     if "roles" in quien:
         roles = quien["roles"]
-        # Mapeo rol -> nivel_acceso máximo (§3): el agente cumple si su nivel
-        # alcanza (<=) el de ALGUNO de los roles pedidos. Ej: roles=["supervisor"]
-        # lo cumple admin(1) y supervisor(2); roles=["operador"] lo cumple 1,2,3.
-        ROL_NIVEL = {"administrador": 1, "admin": 1, "supervisor": 2, "operador": 3, "consultor": 4}
+        # Mapeo rol -> nivel_acceso máximo (§3, post-mig 92): el agente cumple
+        # si su nivel alcanza (<=) el de ALGUNO de los roles pedidos. Ej:
+        # roles=["supervisor"] lo cumple admin(1) y supervisor(2). Aliases
+        # legacy: "operador" (hoy Atencion=3) y "consultor" (hoy nivel 5).
+        ROL_NIVEL = {
+            "administrador": 1, "admin": 1, "supervisor": 2,
+            "atencion": 3, "operador": 3, "gestion": 4, "consultor": 5,
+        }
         niveles_pedidos = [ROL_NIVEL[r] for r in roles if r in ROL_NIVEL]
         ok = bool(niveles_pedidos) and agente_info["nivel_acceso"] <= max(niveles_pedidos)
         checks.append((ok, f"Tu rol no alcanza el requerido {roles}"))
@@ -130,7 +136,7 @@ async def listar_transiciones_permitidas(
             motivo = "Sin agente asociado al usuario"
         else:
             disponible, motivo = await agente_puede_ejecutar_transicion(
-                agente_info, trans, tramite
+                agente_info, trans, tramite, db
             )
 
         resultado.append({
