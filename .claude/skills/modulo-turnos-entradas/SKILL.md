@@ -85,3 +85,7 @@ Los checks de solape/duplicado son check-then-insert: sin lock, dos requests con
 3. **CAS de estado**: los UPDATE de cancelar/cumplir/reprogramar repiten el estado esperado en el WHERE (`AND estado = 'reservado'`) y chequean `rowcount` — si 0, rollback + releer + idempotencia o 409. Sin esto, cancelar∥cumplir concurrentes se pisaban en silencio (last-write-wins).
 
 El solape por RANGO entre prestaciones de duración distinta lo cierra el lock (1), no el UNIQUE (2) — un `EXCLUDE gist` sobre `ocupaciones` se descartó porque la tabla es polimórfica (turno|evento|ot|bloqueo) y afectaría los otros flujos. Smoke reproducible: `scratchpad smoke_races.py` de la sesión 2026-07-18 (13/13; patrón httpx ASGI + asyncio.gather).
+
+### Scope-subárea en mutaciones de turnos (2026-07-18, pendiente (d) Fase 3)
+
+Las escrituras respetan el **MISMO alcance que la lectura**: `_validar_turno_en_scope` (reusa `_scope_turnos_para_usuario` + `_turno_en_scope`) en reprogramar/cumplir/cancelar (404 idéntico al GET para no filtrar existencia) y el chequeo del recurso resuelto de la prestación en crear (+ el recurso DESTINO si el reprogramar cambia la prestación → 403). Nivel ≤ 2 sin límite (espejo del modelo de lectura del módulo — el supervisor de Turnos ve todo, decisión distinta a OT); nivel 3-4 solo turnos propios o de espacios de su subárea. Antes un nivel 3/4 podía cumplir por id un turno ajeno e insertar historia de atención cross-subárea (dato sensible) que ni siquiera podía LEER. Toda mutación nueva de turnos llama al guard.
