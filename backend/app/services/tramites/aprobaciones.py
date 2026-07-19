@@ -115,9 +115,12 @@ async def aprobaciones_bloqueantes_pendientes(
 def agente_puede_resolver(requisito: Mapping, info: dict) -> bool:
     """¿El agente logueado pertenece al área aprobadora de la marca?
 
-    Polimórfico (subarea/equipo/agente). Admin (nivel ≤ 2) siempre puede.
+    Polimórfico (subarea/equipo/agente). Admin (nivel 1) siempre puede; el
+    supervisor (nivel 2) resuelve SOLO por membresía del aprobador desde el
+    cierre del residuo de la auditoría 2026-07 (antes bypasseaba con <= 2).
+    El aprobador NO necesita operar/tomar el trámite (tercero no-destinatario).
     """
-    if (info.get("nivel_acceso") or 99) <= 2:
+    if (info.get("nivel_acceso") or 99) <= 1:
         return True
     tipo = requisito.get("aprobador_tipo")
     if tipo == "subarea":
