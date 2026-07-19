@@ -220,9 +220,10 @@ function pieLabel(props: {
   const rx = anchorStart ? x - 4 : x - w + 4
   return (
     <g>
-      <rect x={rx} y={y - 9} width={w} height={17} rx={5} fill="rgba(38,37,30,0.78)" />
+      {/* Pastilla de contraste invertible: fg-1/surface-100 se dan vuelta en dark (§13) */}
+      <rect x={rx} y={y - 9} width={w} height={17} rx={5} fill="var(--fg-1)" fillOpacity={0.82} />
       <text x={x} y={y} textAnchor={anchorStart ? 'start' : 'end'} dominantBaseline="central"
-        fontFamily="var(--font-display)" fontSize={11} fontWeight={600} fill="#f7f7f4">
+        fontFamily="var(--font-display)" fontSize={11} fontWeight={600} fill="var(--surface-100)">
         {txt}
       </text>
     </g>

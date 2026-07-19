@@ -481,6 +481,7 @@ function btnStyle(variant: 'primary' | 'ghost', disabled = false): React.CSSProp
     transition: 'background 150ms ease',
   }
   if (variant === 'primary') {
+    // #fff fijo a proposito: --zaris-orange no cambia entre temas (caso avatar §13).
     return { ...base, background: 'var(--zaris-orange)', color: '#fff', borderColor: 'var(--zaris-orange)' }
   }
   return { ...base, background: 'transparent', color: 'var(--fg-2)', borderColor: 'var(--border-primary)' }

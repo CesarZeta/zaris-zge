@@ -253,9 +253,10 @@ function LineLabel(p: { x?: string | number; y?: string | number; value?: string
   const w = txt.length * 7 + 10
   return (
     <g>
-      <rect x={x - w / 2} y={y - 22} width={w} height={16} rx={5} fill="rgba(38,37,30,0.78)" />
+      {/* Pastilla de contraste invertible: fg-1/surface-100 se dan vuelta en dark (§13) */}
+      <rect x={x - w / 2} y={y - 22} width={w} height={16} rx={5} fill="var(--fg-1)" fillOpacity={0.82} />
       <text x={x} y={y - 14} textAnchor="middle" dominantBaseline="central"
-        fontFamily="var(--font-display)" fontSize={11} fontWeight={700} fill="#f7f7f4">
+        fontFamily="var(--font-display)" fontSize={11} fontWeight={700} fill="var(--surface-100)">
         {txt}
       </text>
     </g>
