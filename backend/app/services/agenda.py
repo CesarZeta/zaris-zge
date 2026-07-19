@@ -679,10 +679,11 @@ async def subarea_del_usuario(session: AsyncSession, id_usuario: int) -> Optiona
     (usuarios.id_usuario -> agentes.id_usuario -> agentes.id_subarea).
 
     Devuelve None si el usuario no tiene agente asociado o el agente no tiene
-    subarea seteada. El caller decide el comportamiento ante None: el patron
-    usado en /calendario y /semana es fail-open (sin subarea resoluble => no
-    se aplica el scope, ve todos los recursos). Esto es necesario porque en
-    prod hoy los agentes no tienen id_subarea seedeada (drift de datos)."""
+    subarea seteada. El caller decide el comportamiento ante None: los GET
+    /calendario y /semana son fail-open (sin subarea resoluble => sin scope);
+    los guards de MUTACION (scope-subarea 2026-07-18) son fail-closed con 403
+    accionable. Nota: el drift historico "agentes sin id_subarea en prod" ya
+    NO existe (verificado 2026-07-18: 90/90 agentes activos con subarea)."""
     row = await session.scalar(text("""
         SELECT id_subarea FROM agentes
         WHERE id_usuario = :u AND activo = TRUE AND id_subarea IS NOT NULL
