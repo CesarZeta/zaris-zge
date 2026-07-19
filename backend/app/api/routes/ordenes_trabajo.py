@@ -219,6 +219,107 @@ async def _validar_scope_supervisor_ot(
             )
 
 
+async def _validar_scope_operar_ot(
+    db: AsyncSession,
+    current_user: dict,
+    id_ot: int,
+    *,
+    id_agente_delegado: Optional[int] = None,
+) -> None:
+    """Scope-subarea en mutaciones de OT (2026-07-18, hallazgos [33][34] de la
+    auditoria). Aplica a /tomar y /estado sobre OTs OPERATIVAS:
+
+      - nivel 3/4: la OT debe caer en su alcance — es el agente asignado, es
+        miembro del EQUIPO asignado (la mesa del agente ofrece OTs por membresia
+        de equipo SIN condicion de subarea: la excepcion es obligatoria o se
+        rompe el boton Tomar de AgenteView), o el reclamo es de su subarea
+        (tr.id_subarea derivada del tipo §27; NULL = tipo sin subarea, no
+        acotable → se permite, espejo del criterio de auto-asignar).
+      - nivel 2: _validar_scope_supervisor_ot sobre el reclamo de la OT (y el
+        agente destino en la delegacion de /tomar — antes la delegacion
+        salteaba el helper y asignaba cross-subarea sin limite).
+      - nivel 1: sin restriccion.
+      - OTs es_auditoria=TRUE: EXENTAS del guard de misma-subarea (la
+        auditoria es cross-subarea POR DISEÑO — su guard es el inverso, ver
+        _validar_scope_auditor)."""
+    nivel = current_user.get("nivel_acceso", 99)
+    if nivel <= 1:
+        return
+    row = (await db.execute(text("""
+        SELECT ot.es_auditoria, ot.id_agente, ot.id_equipo, ot.id_reclamo,
+               tr.id_subarea
+        FROM ordenes_trabajo ot
+        JOIN reclamos r ON r.id_reclamo = ot.id_reclamo
+        LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
+        WHERE ot.id_ot = :id AND ot.activo = TRUE
+    """), {"id": id_ot})).fetchone()
+    if not row or row.es_auditoria:
+        return  # 404 lo da el handler; auditoria exenta
+    if nivel == 2:
+        await _validar_scope_supervisor_ot(
+            db, current_user,
+            id_reclamo=row.id_reclamo,
+            id_agente=id_agente_delegado,
+        )
+        return
+    perfil = await resolver_agente_desde_usuario(current_user["id_usuario"], db)
+    if not perfil:
+        raise HTTPException(status_code=404,
+            detail="Tu usuario no está vinculado a ningún agente activo.")
+    if row.id_agente is not None and row.id_agente == perfil.get("id_agente"):
+        return
+    if row.id_equipo is not None and row.id_equipo in (perfil.get("ids_equipos") or []):
+        return
+    if row.id_subarea is None or row.id_subarea == perfil.get("id_subarea"):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail="La OT pertenece a otra subárea. Solo podés operar OTs propias, de tus cuadrillas o de tu subárea.",
+    )
+
+
+async def _validar_scope_auditor(db: AsyncSession, id_agente_auditor: int, id_ot: int) -> None:
+    """Guard espejo de la mesa de auditoria para las MUTACIONES /aprobar y
+    /rechazar (2026-07-18): re-valida sobre UNA OT el mismo filtro que arma el
+    listado — antes el filtro vivia solo en la mesa y por id se podia aprobar
+    (1) una auditoria ASIGNADA a otro auditor y (2) una de la PROPIA subarea
+    aunque auditor_misma_subarea_permitido=false. La asignacion al propio
+    auditor PREVALECE sobre el filtro de subarea (una OT ya tomada sigue
+    aprobable aunque la config cambie). Admin (nivel 1) no pasa por aca."""
+    row = (await db.execute(text("""
+        SELECT ot.id_agente, tr.id_subarea
+        FROM ordenes_trabajo ot
+        JOIN reclamos r ON r.id_reclamo = ot.id_reclamo
+        LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
+        WHERE ot.id_ot = :id AND ot.activo = TRUE
+    """), {"id": id_ot})).fetchone()
+    if not row:
+        return  # 404 lo da el handler
+    if row.id_agente is not None:
+        if row.id_agente != id_agente_auditor:
+            raise HTTPException(status_code=403,
+                detail="Esta auditoría está asignada a otro auditor.")
+        return  # asignada a mi: prevalece sobre el filtro de subarea
+    cfg = (await db.execute(text(
+        "SELECT valor FROM configuracion_general WHERE clave = 'auditor_misma_subarea_permitido'"
+    ))).fetchone()
+    misma_subarea_ok = (cfg.valor.lower() == "true") if cfg else False
+    if misma_subarea_ok or row.id_subarea is None:
+        return
+    propia = (await db.execute(text("""
+        SELECT 1 WHERE :sub IN (
+            SELECT id_subarea FROM agentes WHERE id_agente = :id_agente
+            UNION
+            SELECT eq.id_subarea FROM equipo_agentes ea
+            JOIN equipos eq ON eq.id_equipo = ea.id_equipo
+            WHERE ea.id_agente = :id_agente AND ea.activo = TRUE
+        )
+    """), {"sub": row.id_subarea, "id_agente": id_agente_auditor})).fetchone()
+    if propia:
+        raise HTTPException(status_code=403,
+            detail="No podés auditar trabajos de tu propia subárea (regla de auditoría cruzada).")
+
+
 async def _id_estado_ot(db: AsyncSession, nombre: str) -> int:
     r = await db.execute(text(
         "SELECT id_estado_ot FROM estado_ot WHERE nombre = :n AND activo = TRUE"
@@ -1123,6 +1224,11 @@ async def tomar_ot(
     if ot.id_agente is not None:
         raise HTTPException(status_code=422, detail="La OT ya tiene agente asignado")
 
+    # Scope-subarea (2026-07-18, hallazgo [33]): nivel 3/4 solo toma OTs de su
+    # alcance; nivel 2 delega solo dentro de su subarea (reclamo Y agente destino).
+    await _validar_scope_operar_ot(db, current_user, id_ot,
+                                   id_agente_delegado=int(id_agente))
+
     await db.execute(text("""
         UPDATE ordenes_trabajo
         SET id_agente = :id_agente, fecha_modificacion = NOW(), id_usuario_modificacion = :uid
@@ -1169,6 +1275,11 @@ async def cambiar_estado_ot(
     ot = r.fetchone()
     if not ot:
         raise HTTPException(status_code=404, detail=f"OT {id_ot} no encontrada")
+
+    # Scope-subarea (2026-07-18, hallazgo [34]): un nivel 2/3/4 no puede
+    # terminar/cancelar/mover OTs operativas fuera de su alcance (terminar
+    # resolvia el reclamo ajeno de punta a punta, con CSAT y push incluidos).
+    await _validar_scope_operar_ot(db, current_user, id_ot)
 
     # Validación del grafo FSM de la OT: no permitir saltos arbitrarios (ej.
     # reactivar una OT Terminada). No-op (mismo estado) se acepta sin chequear.
@@ -1330,6 +1441,11 @@ async def aprobar_ot(
     if not ot.es_auditoria:
         raise HTTPException(status_code=422, detail="Esta OT no es de auditoría")
 
+    # Guard espejo de la mesa (2026-07-18): asignacion + regla de subarea
+    # cruzada re-validadas en la mutacion, no solo en el listado.
+    if not _es_admin:
+        await _validar_scope_auditor(db, int(_id_agente), id_ot)
+
     id_terminada = await _id_estado_ot(db, "Terminada")
     observaciones = body.get("observaciones", "")
 
@@ -1392,6 +1508,11 @@ async def rechazar_ot(
         raise HTTPException(status_code=404, detail=f"OT {id_ot} no encontrada")
     if not ot.es_auditoria:
         raise HTTPException(status_code=422, detail="Esta OT no es de auditoría")
+
+    # Guard espejo de la mesa (2026-07-18): asignacion + regla de subarea
+    # cruzada re-validadas en la mutacion, no solo en el listado.
+    if not _es_admin:
+        await _validar_scope_auditor(db, int(_id_agente), id_ot)
 
     id_terminada = await _id_estado_ot(db, "Terminada")
     id_pendiente  = await _id_estado_ot(db, "Pendiente")
