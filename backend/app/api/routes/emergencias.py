@@ -729,7 +729,7 @@ _SELECT_EVENTO = """
            e.direccion_evento, e.latitud, e.longitud, e.referencia_ubicacion,
            e.audio_grabacion_url, e.observaciones_recepcion, e.observaciones_cierre,
            e.veracidad, e.fecha_hora_recepcion, e.fecha_hora_despacho,
-           e.fecha_hora_arribo, e.fecha_hora_cierre, e.activo
+           e.fecha_hora_arribo, e.fecha_hora_cierre, e.es_panico, e.activo
     FROM emergencia_evento e
     JOIN subarea s ON s.id_subarea = e.id_subarea
     JOIN emergencia_tipo t ON t.id_emergencia_tipo = e.id_tipo
@@ -865,7 +865,7 @@ async def listar_eventos_abiertos(
           AND (CAST(:sub AS integer) IS NULL OR e.id_subarea = :sub)
           AND (CAST(:prio AS integer) IS NULL OR e.id_prioridad = :prio)
           AND (CAST(:scope AS integer) IS NULL OR e.id_subarea = :scope)
-        ORDER BY p.orden_visual ASC, e.fecha_hora_recepcion DESC
+        ORDER BY e.es_panico DESC, p.orden_visual ASC, e.fecha_hora_recepcion DESC
     """), {"sub": id_subarea, "prio": id_prioridad, "scope": scope})).mappings().all()
     return [dict(r) for r in rows]
 
@@ -976,9 +976,10 @@ async def listar_eventos(
         JOIN emergencia_estado est ON est.id_emergencia_estado = e.id_estado
         {where}
     """), params)).scalar()
+    # Las alertas de panico encabezan el listado (mig 97), luego lo mas reciente.
     rows = (await db.execute(text(
         _SELECT_EVENTO + where +
-        " ORDER BY e.fecha_hora_recepcion DESC LIMIT :limit OFFSET :offset"
+        " ORDER BY e.es_panico DESC, e.fecha_hora_recepcion DESC LIMIT :limit OFFSET :offset"
     ), {**params, "limit": limit, "offset": offset})).mappings().all()
     response.headers["X-Total-Count"] = str(total)
     response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
@@ -1179,7 +1180,12 @@ async def derivar_evento(
     return await _evento_out(db, id_evento)
 
 
-@router.post("/eventos/{id_evento}/cerrar")
+# responses: solo documentacion OpenAPI (deploy-verification), no cambia
+# comportamiento — el 403 real lo levanta _check_scope_subarea.
+@router.post(
+    "/eventos/{id_evento}/cerrar",
+    responses={403: {"description": "Fuera del alcance del operador (scope-subarea) o alerta ajena"}},
+)
 async def cerrar_evento(
     id_evento: int,
     body: CerrarIn,

@@ -15,7 +15,7 @@ import {
   usePromoverABuc,
 } from '../hooks/useEmergencias'
 import type { ContactoEventual } from '../types'
-import { CanalAppVecinoBadge, EstadoBadge, PrioridadPill, formatFechaHora, transcurridoDesde, useAhora } from '../lib/ui'
+import { CanalAppVecinoBadge, EstadoBadge, PanicoChip, PrioridadPill, formatFechaHora, transcurridoDesde, useAhora } from '../lib/ui'
 import { CambiarEstadoModal, CerrarModal, DerivarModal } from '../components/EventoAccionModals'
 
 type TabId = 'datos' | 'denunciante' | 'historial'
@@ -70,6 +70,8 @@ export function DetalleEvento() {
         {/* cabecera */}
         <div style={cabecera}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            {/* chip PÁNICO también en el detalle (mig 97) */}
+            <PanicoChip esPanico={ev.es_panico} />
             <PrioridadPill codigo={ev.prioridad_codigo} colorToken={ev.prioridad_color_token} />
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 700, color: 'var(--fg-1)' }}>
               {ev.numero_operativo}
