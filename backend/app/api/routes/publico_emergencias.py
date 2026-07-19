@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,11 +30,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_ciudadano
 from app.core.database import get_db
 from app.middleware.rate_limit import check_rate_limit
+from app.services.notificaciones import notificar_alerta_panico
 from app.utils.request_helpers import get_real_ip
 
 router = APIRouter(prefix="/api/v1/publico/emergencias", tags=["publico-emergencias"])
 
 CANAL_VECINO = "APP_VECINO"
+
+# Prefijo con el que la PWA arma la descripcion del boton "Seguridad".
+# La comparacion normaliza (strip + upper + sin tildes) porque el texto puede
+# venir con tilde y casing variable. es_panico lo setea SOLO el backend: el
+# body publico no tiene ese campo (mig 97).
+_PREFIJO_PANICO = "ALERTA DE PANICO"
+_SIN_TILDES = str.maketrans("ÁÉÍÓÚ", "AEIOU")
+
+
+def _es_alerta_panico(descripcion: Optional[str]) -> bool:
+    if not descripcion:
+        return False
+    normalizado = descripcion.strip().upper().translate(_SIN_TILDES)
+    return normalizado.startswith(_PREFIJO_PANICO)
 
 
 class EmergenciaPublicaCreate(BaseModel):
@@ -117,6 +132,7 @@ async def listar_mis_emergencias(
 async def reportar_emergencia(
     body: EmergenciaPublicaCreate,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current: dict = Depends(get_current_ciudadano),
 ) -> Any:
@@ -158,15 +174,19 @@ async def reportar_emergencia(
     if not estado:
         raise HTTPException(503, "Estado PENDIENTE no configurado")
 
+    # Deteccion server-side de la alerta de panico del boton "Seguridad" de la
+    # PWA (mig 97). El body NO puede setear es_panico directo.
+    es_panico = _es_alerta_panico(body.descripcion)
+
     id_evento = (await db.execute(text("""
         INSERT INTO emergencia_evento
             (id_subarea, id_tipo, id_subtipo, id_prioridad, id_estado,
              id_canal_ingreso, id_organismo_derivacion, id_operador_receptor,
              denunciante_anonimo, id_ciudadano_buc, id_contacto_eventual,
              direccion_evento, latitud, longitud, referencia_ubicacion,
-             observaciones_recepcion, activo)
+             observaciones_recepcion, es_panico, activo)
         VALUES (:sub, :tipo, :stipo, :prio, :est, :canal, :org, NULL,
-                FALSE, :ciu, NULL, :dir, :lat, :lon, :ref, :obs, TRUE)
+                FALSE, :ciu, NULL, :dir, :lat, :lon, :ref, :obs, :panico, TRUE)
         RETURNING id_emergencia_evento
     """), {
         "sub": tipo["id_subarea"], "tipo": body.id_tipo, "stipo": body.id_subtipo,
@@ -176,6 +196,7 @@ async def reportar_emergencia(
         "dir": body.direccion_evento.strip(), "lat": body.latitud,
         "lon": body.longitud, "ref": body.referencia_ubicacion,
         "obs": (body.descripcion or "").strip() or None,
+        "panico": es_panico,
     })).scalar()
 
     # log CREACION: id_usuario NULL (no es usuario interno); el vecino emisor
@@ -194,6 +215,16 @@ async def reportar_emergencia(
         "o": (body.descripcion or "").strip() or None,
     })
     await db.commit()
+
+    # Alerta de panico: aviso in-app + email al COM de la subarea, best-effort
+    # post-commit (patron del hook de encuestas en turnos.py — la creacion del
+    # evento NUNCA falla por la notificacion). El service abre su propia
+    # sesion SQL (feedback_background_tasks_sesion_nueva).
+    if es_panico:
+        try:
+            await notificar_alerta_panico(id_evento, background_tasks)
+        except Exception:
+            pass
 
     row = (await db.execute(text("""
         SELECT e.id_emergencia_evento, e.numero_operativo,
