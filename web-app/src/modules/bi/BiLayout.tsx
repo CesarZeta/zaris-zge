@@ -3,10 +3,14 @@ import { Activity } from 'lucide-react'
 import { shellGoInicio } from '../../lib/shellNav'
 import { shellNavigate } from '../../lib/shellNav'
 
-// Layout del tablero OPERATIVO: breadcrumb + título. Desde 2026-08-30 el
-// Operativo es UNA página (Resumen → Respuesta → Pendientes → Subreclamos) con
-// índice fijo y filtros globales dentro de OperativoPage — ya no hay tabs.
-export function BiLayout({ children }: { children: ReactNode }) {
+// Layout compartido de los tableros (breadcrumb + título). Cada tablero pasa
+// su título/subtítulo; el default es el Operativo, que desde 2026-08-30 es UNA
+// página (Resumen → Respuesta → Pendientes → Subreclamos) sin tabs.
+export function BiLayout({
+  children,
+  titulo = 'Análisis de datos Operativo',
+  subtitulo = 'Tablero por área de servicio: resumen, tiempos de respuesta, pendientes y subreclamos, con exportación de los tickets filtrados.',
+}: { children: ReactNode; titulo?: string; subtitulo?: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 1400, margin: '0 auto', width: '100%', padding: '0 8px' }}>
       <nav
@@ -29,17 +33,17 @@ export function BiLayout({ children }: { children: ReactNode }) {
           DATOS
         </a>
         <span style={{ color: 'var(--fg-3)' }}>›</span>
-        <span style={{ color: 'var(--fg-2)', fontWeight: 600 }}>Análisis de datos Operativo</span>
+        <span style={{ color: 'var(--fg-2)', fontWeight: 600 }}>{titulo}</span>
       </nav>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <Activity size={32} strokeWidth={1.5} color="var(--zaris-orange)" />
         <div>
           <h1 style={{ fontSize: '1.55rem', fontWeight: 600, letterSpacing: '-0.5px', color: 'var(--fg-1)', lineHeight: 1.1, margin: 0 }}>
-            Análisis de datos Operativo
+            {titulo}
           </h1>
           <p style={{ fontSize: '0.82rem', color: 'var(--fg-3)', margin: '2px 0 0' }}>
-            Tablero por área de servicio: resumen, tiempos de respuesta, pendientes y subreclamos, con exportación de los tickets filtrados.
+            {subtitulo}
           </p>
         </div>
       </div>
