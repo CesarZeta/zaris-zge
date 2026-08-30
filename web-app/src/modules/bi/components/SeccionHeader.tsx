@@ -30,7 +30,8 @@ export function Seccion({
   return (
     // scroll-margin = alto real de la barra fija (var que setea OperativoPage) para
     // que, al saltar desde el índice, el título de la sección quede visible debajo.
-    <section id={id} data-seccion style={{ scrollMarginTop: 'calc(var(--bi-sticky, 200px) + 10px)', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    // gap 32 = el doble entre visualizaciones (César); la fila de KPIs mantiene su gap interno.
+    <section id={id} data-seccion style={{ scrollMarginTop: 'calc(var(--bi-sticky, 200px) + 10px)', display: 'flex', flexDirection: 'column', gap: 32 }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', borderBottom: '2px solid var(--zaris-orange)', paddingBottom: 6 }}>
         <div>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.15rem', fontWeight: 600, letterSpacing: '-0.3px', color: 'var(--fg-1)', margin: 0 }}>
@@ -68,6 +69,10 @@ export const tooltipStyle: React.CSSProperties = {
 }
 export const legendStyle: React.CSSProperties = { fontFamily: 'var(--font-display)', fontSize: '0.78rem' }
 
+export function totalDe(xs: ReadonlyArray<{ total: number }>): number {
+  return xs.reduce((a, x) => a + (x.total ?? 0), 0)
+}
+
 export function fmt(n: number | undefined): string {
   return n == null ? '—' : n.toLocaleString('es-AR')
 }
@@ -91,6 +96,29 @@ export function KpisComparativos({ c, etiqueta }: { c?: Comparativo; etiqueta: s
         sub={c ? `${pos ? '+' : ''}${var_}% vs. ${c.periodo_anterior}` : undefined}
       />
     </>
+  )
+}
+
+// Total (en cantidad, no %) en el centro de cada dona (César 2026-08-30). Se usa
+// como <Label content={DonaCentro} position="center" /> dentro del <Pie>; recharts
+// pasa el viewBox {cx, cy} del centro. El valor viene por `value`.
+// (viewBox tipado laxo: recharts pasa CartesianViewBox | PolarViewBox; acá solo importa el polar.)
+export function DonaCentro(props: { viewBox?: unknown; value?: unknown }) {
+  const { cx = 0, cy = 0 } = (props.viewBox ?? {}) as { cx?: number; cy?: number }
+  const v = props.value as number | string | undefined
+  if (v == null) return null
+  const txt = typeof v === 'number' ? v.toLocaleString('es-AR') : String(v)
+  return (
+    <g>
+      <text x={cx} y={cy - 6} textAnchor="middle" dominantBaseline="central"
+        fontFamily="var(--font-display)" fontSize={26} fontWeight={700} fill="var(--fg-1)">
+        {txt}
+      </text>
+      <text x={cx} y={cy + 16} textAnchor="middle" dominantBaseline="central"
+        fontFamily="var(--font-display)" fontSize={11} fontWeight={600} fill="var(--fg-3)" letterSpacing="0.06em">
+        TOTAL
+      </text>
+    </g>
   )
 }
 
