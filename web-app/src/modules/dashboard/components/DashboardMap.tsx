@@ -122,11 +122,14 @@ export function DashboardMap({
       zoomControl: false,
     })
     L.control.zoom({ position: 'bottomright' }).addTo(map)
-    // Tile CartoDB minimal (gratis sin API key): Positron claro / Dark Matter oscuro.
+    // Tile minimal gris claro/oscuro SIN API key: Esri Gray Canvas. CARTO
+    // (Positron/Dark Matter) empezo a servir tiles con marca "API KEY REQUIRED"
+    // (cazado en prod 2026-08-30). Esri no tiene tiles nativos mas alla de
+    // z16 en la zona -> maxNativeZoom escala en vez de dejar huecos.
     const esDark = document.documentElement.dataset.theme === 'dark'
-    L.tileLayer(`https://{s}.basemaps.cartocdn.com/${esDark ? 'dark_all' : 'light_all'}/{z}/{x}/{y}{r}.png`, {
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: 'abcd',
+    L.tileLayer(`https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_${esDark ? 'Dark_Gray' : 'Light_Gray'}_Base/MapServer/tile/{z}/{y}/{x}`, {
+      attribution: '© <a href="https://www.esri.com">Esri</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxNativeZoom: 16,
       maxZoom: 20,
     }).addTo(map)
     markersLayerRef.current = L.layerGroup().addTo(map)
