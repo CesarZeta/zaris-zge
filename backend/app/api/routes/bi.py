@@ -1590,7 +1590,7 @@ def _hace_meses(d: date, n: int) -> date:
     return date(y, m, 1)
 
 
-@router.get("/comparativo")
+@router.get("/comparativo", responses={422: {"description": "Parámetros de período inválidos (anio/meses)"}})  # marker OpenAPI §9
 async def bi_comparativo(
     seccion: str = Query("resumen", description="resumen | respuesta | pendientes | subreclamos"),
     desde: Optional[date] = Query(None),
@@ -1644,10 +1644,13 @@ async def bi_comparativo(
     if anio:
         anterior = await contar(None, None, anio - 1, meses_l)
         comparable = total
-        lbl_act, lbl_ant = str(anio), str(anio - 1)
+        # Etiqueta legible (Cesar): "2026 · año completo" / "2026 · mes 5" / "2026 · meses 5, 6".
         if meses_l:
-            lbl_act += f" · meses {','.join(map(str, meses_l))}"
-            lbl_ant += f" · meses {','.join(map(str, meses_l))}"
+            suf = (" · año completo" if len(meses_l) == 12
+                   else f" · {'mes' if len(meses_l) == 1 else 'meses'} {', '.join(map(str, meses_l))}")
+        else:
+            suf = ""
+        lbl_act, lbl_ant = f"{anio}{suf}", f"{anio - 1}{suf}"
     elif desde or hasta:
         d2 = _hace_anios(desde, 1) if desde else None
         h2 = _hace_anios(hasta, 1) if hasta else None

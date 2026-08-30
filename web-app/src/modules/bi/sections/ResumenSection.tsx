@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import {
-  Bar, BarChart, CartesianGrid, Cell, LabelList, Legend, Pie, PieChart,
+  Bar, BarChart, CartesianGrid, Cell, LabelList, Label, Legend, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { HistogramaTemporal } from '../components/HistogramaTemporal'
 import { SegLabelH, TotalLabelH } from '../components/barLabels'
 import { ChartCard, CenterMsg, KpiCard, KpiRow } from '../components/ui'
-import { AXIS, KpisComparativos, Seccion, fmt, legendStyle, pieLabel, tooltipStyle } from '../components/SeccionHeader'
+import { AXIS, DonaCentro, KpisComparativos, Seccion, totalDe, fmt, legendStyle, pieLabel, tooltipStyle } from '../components/SeccionHeader'
 import { exportarCsv, hoyISO } from '../components/exportCsv'
 import { biApi } from '../lib/api'
 import { useComparativo, usePorArea, usePorCanal, usePorEstado, useResumen } from '../hooks/useBi'
@@ -102,6 +102,7 @@ export function ResumenSection({ filtros }: { filtros: BiFiltros }) {
             <ResponsiveContainer>
               <PieChart>
                 <Pie data={porEstado.data} dataKey="total" nameKey="estado" innerRadius="50%" outerRadius="78%" paddingAngle={2} label={pieLabel} labelLine={false}>
+                  <Label content={DonaCentro} position="center" value={totalDe(porEstado.data)} />
                   {porEstado.data.map((e) => <Cell key={e.estado} fill={colorEstado(e.estado)} />)}
                 </Pie>
                 <Tooltip contentStyle={tooltipStyle} />
@@ -123,6 +124,7 @@ export function ResumenSection({ filtros }: { filtros: BiFiltros }) {
                   data={porCanal.data.map((c) => ({ ...c, label: labelCanal(c.canal) }))}
                   dataKey="total" nameKey="label" innerRadius="50%" outerRadius="78%" paddingAngle={2} label={pieLabel} labelLine={false}
                 >
+                  <Label content={DonaCentro} position="center" value={totalDe(porCanal.data)} />
                   {porCanal.data.map((_, i) => <Cell key={i} fill={PALETA_CATEGORICA[i % PALETA_CATEGORICA.length]} />)}
                 </Pie>
                 <Tooltip contentStyle={tooltipStyle} />
