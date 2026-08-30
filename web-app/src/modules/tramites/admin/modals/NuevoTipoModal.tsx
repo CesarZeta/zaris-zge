@@ -19,6 +19,7 @@ export function NuevoTipoModal({
   const [iniciadores, setIniciadores] = useState<IniciadorTipo[]>(['ciudadano'])
   const [permiteRep, setPermiteRep] = useState(false)
   const [nuncaDepurar, setNuncaDepurar] = useState(false)
+  const [slaDias, setSlaDias] = useState(0)
   const [largoCorr, setLargoCorr] = useState(4)
   const [error, setError] = useState('')
 
@@ -51,6 +52,7 @@ export function NuevoTipoModal({
         iniciadores_permitidos: iniciadores,
         permite_representante: permiteRep,
         retencion_nunca_depurar: nuncaDepurar,
+        sla_dias: slaDias > 0 ? slaDias : null,
         largo_correlativo: largoCorr,
       })
       onCreado(res.id_tipo_tramite)
@@ -119,6 +121,15 @@ export function NuevoTipoModal({
         Conserva los archivos indefinidamente (excepción a la política de retención por antigüedad).
         Recomendado para Habilitaciones u otros trámites con valor permanente.
       </p>
+
+      <div style={{ width: 220, marginBottom: 12 }}>
+        <label style={label}>SLA del trámite (días)</label>
+        <Input type="number" min={0} value={slaDias} onChange={(e) => setSlaDias(Math.max(0, Number(e.target.value) || 0))} />
+        <p style={{ fontSize: 11, color: 'var(--fg-3)', margin: '4px 0 0' }}>
+          Plazo esperado de resolución. 0 = usa el valor global (Config → Sistema). Vencido el SLA,
+          en los estados que esperan al vecino arrancan los avisos de desistimiento.
+        </p>
+      </div>
 
       <div style={formRow}>
         <label style={label}>Descripción</label>

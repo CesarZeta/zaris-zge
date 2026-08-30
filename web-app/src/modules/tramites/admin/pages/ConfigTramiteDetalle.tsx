@@ -343,6 +343,7 @@ export function ConfigTramiteDetalle() {
               <FilaInfo label="Iniciadores permitidos" valor={tipoData.iniciadores_permitidos.join(', ')} />
               <FilaInfo label="Permite representante" valor={tipoData.permite_representante ? 'Sí' : 'No'} />
               <FilaInfo label="Nunca depurar adjuntos" valor={tipoData.retencion_nunca_depurar ? 'Sí (retención permanente)' : 'No (política por antigüedad)'} />
+              <FilaInfo label="SLA (días)" valor={tipoData.sla_dias ? `${tipoData.sla_dias} días` : 'Global (Config → Sistema)'} />
               <FilaInfo label="Descripción" valor={tipoData.descripcion ?? '(sin descripción)'} />
             </tbody>
           </table>

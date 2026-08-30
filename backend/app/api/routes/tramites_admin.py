@@ -27,6 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
+from pydantic import BaseModel
+
 from app.schemas.tramites import (
     AprobacionRequeridaIn,
     CampoIn,
@@ -161,10 +163,10 @@ async def crear_tipo_tramite(
                 (codigo, nombre, descripcion, prefijo, incluye_municipio, incluye_anio,
                  largo_correlativo, separador, correlativo_reinicia_anual,
                  iniciadores_permitidos, permite_representante, icono, color,
-                 retencion_nunca_depurar,
+                 retencion_nunca_depurar, sla_dias,
                  activo, id_municipio)
             VALUES (:cod, :nom, :desc, :pre, :imun, :ian, :lc, :sep, :cra,
-                    :ini, :pr, :ico, :col, :rnd, TRUE, :mun)
+                    :ini, :pr, :ico, :col, :rnd, :sla, TRUE, :mun)
             RETURNING id_tipo_tramite
         """),
         {
@@ -175,6 +177,7 @@ async def crear_tipo_tramite(
             "ini": body.iniciadores_permitidos, "pr": body.permite_representante,
             "ico": body.icono, "col": body.color,
             "rnd": body.retencion_nunca_depurar,
+            "sla": body.sla_dias or None,
             "mun": body.id_municipio,
         },
     )).scalar_one()
@@ -218,6 +221,11 @@ async def actualizar_tipo_tramite(
         if val is not None:
             sets.append(f"{field} = :{field}")
             params[field] = val
+
+    # mig 101: sla_dias; 0 = volver al default global (se guarda NULL).
+    if body.sla_dias is not None:
+        sets.append("sla_dias = :sla_dias")
+        params["sla_dias"] = body.sla_dias if body.sla_dias > 0 else None
 
     if body.iniciadores_permitidos is not None:
         sets.append("iniciadores_permitidos = :iniciadores_permitidos")
@@ -287,6 +295,7 @@ async def _detalle_tipo_admin(db: AsyncSession, id_tipo_tramite: int) -> TipoTra
                    correlativo_reinicia_anual, icono, color, activo,
                    COALESCE(es_sistema, FALSE) AS es_sistema,
                    COALESCE(retencion_nunca_depurar, FALSE) AS retencion_nunca_depurar,
+                   sla_dias,
                    id_version_publicada
             FROM tipo_tramite WHERE id_tipo_tramite = :id
         """),
@@ -319,6 +328,7 @@ async def _detalle_tipo_admin(db: AsyncSession, id_tipo_tramite: int) -> TipoTra
         icono=tipo.icono, color=tipo.color, activo=tipo.activo,
         es_sistema=bool(tipo.es_sistema),
         retencion_nunca_depurar=bool(tipo.retencion_nunca_depurar),
+        sla_dias=tipo.sla_dias,
         id_version_publicada=tipo.id_version_publicada,
         versiones=[
             VersionOut(
@@ -366,7 +376,7 @@ async def detalle_version(
         text("""
             SELECT id_tipo_tramite_estado, codigo, etiqueta, descripcion, color,
                    orden, es_inicial, es_final, permite_adjuntar, permite_comentar,
-                   oculto_para_iniciador
+                   oculto_para_iniciador, espera_iniciador
             FROM tipo_tramite_estado
             WHERE id_tipo_tramite_version = :v AND activo = TRUE
             ORDER BY orden, id_tipo_tramite_estado
@@ -658,8 +668,8 @@ async def crear_estado(
             INSERT INTO tipo_tramite_estado
                 (id_tipo_tramite_version, codigo, etiqueta, descripcion, color,
                  orden, es_inicial, es_final, permite_adjuntar, permite_comentar,
-                 oculto_para_iniciador, activo, id_municipio)
-            VALUES (:v, :c, :e, :d, :col, :o, :ei, :ef, :pa, :pc, :opi, TRUE, :mun)
+                 oculto_para_iniciador, espera_iniciador, activo, id_municipio)
+            VALUES (:v, :c, :e, :d, :col, :o, :ei, :ef, :pa, :pc, :opi, :esp, TRUE, :mun)
             RETURNING id_tipo_tramite_estado
         """),
         {
@@ -667,7 +677,8 @@ async def crear_estado(
             "d": body.descripcion, "col": body.color, "o": body.orden,
             "ei": body.es_inicial, "ef": body.es_final,
             "pa": body.permite_adjuntar, "pc": body.permite_comentar,
-            "opi": body.oculto_para_iniciador, "mun": ver["id_municipio"],
+            "opi": body.oculto_para_iniciador, "esp": body.espera_iniciador,
+            "mun": ver["id_municipio"],
         },
     )).scalar_one()
     await db.commit()
@@ -706,7 +717,7 @@ async def actualizar_estado(
     params: dict[str, Any] = {"id": id_estado}
     for field in ("etiqueta", "descripcion", "color", "orden", "es_inicial",
                   "es_final", "permite_adjuntar", "permite_comentar",
-                  "oculto_para_iniciador"):
+                  "oculto_para_iniciador", "espera_iniciador"):
         val = getattr(body, field)
         if val is not None:
             sets.append(f"{field} = :{field}")
@@ -716,6 +727,37 @@ async def actualizar_estado(
         raise HTTPException(422, "No hay campos para actualizar")
     sets.append("fecha_modificacion = NOW()")
     await db.execute(text(f"UPDATE tipo_tramite_estado SET {', '.join(sets)} WHERE id_tipo_tramite_estado = :id"), params)
+    await db.commit()
+    return await _estado_out(db, id_estado)
+
+
+class EsperaIniciadorIn(BaseModel):
+    espera_iniciador: bool
+
+
+@router.patch("/estados/{id_estado}/espera-iniciador", response_model=EstadoOut)
+async def marcar_espera_iniciador(
+    id_estado: int,
+    body: EsperaIniciadorIn,
+    user: dict = Depends(_require_admin_supervisor),
+    db: AsyncSession = Depends(get_db),
+):
+    """mig 101: marca/desmarca "este estado espera al iniciador" (timer de
+    desistimiento). Es METADATA del estado, no estructura del circuito: se
+    edita in-place tambien en versiones publicadas con tramites (a diferencia
+    del PUT, que exige version editable). No cambia FSM ni transiciones."""
+    fila = (await db.execute(
+        text("SELECT 1 FROM tipo_tramite_estado WHERE id_tipo_tramite_estado = :id AND activo = TRUE"),
+        {"id": id_estado},
+    )).fetchone()
+    if not fila:
+        raise HTTPException(404, "Estado no encontrado")
+    await db.execute(
+        text("""UPDATE tipo_tramite_estado
+                   SET espera_iniciador = :esp, fecha_modificacion = NOW()
+                 WHERE id_tipo_tramite_estado = :id"""),
+        {"esp": body.espera_iniciador, "id": id_estado},
+    )
     await db.commit()
     return await _estado_out(db, id_estado)
 
@@ -762,6 +804,7 @@ async def _estado_out(db: AsyncSession, id_estado: int) -> EstadoOut:
         codigo=r.codigo, etiqueta=r.etiqueta, orden=r.orden,
         es_inicial=r.es_inicial, es_final=r.es_final, color=r.color,
         oculto_para_iniciador=r.oculto_para_iniciador,
+        espera_iniciador=bool(getattr(r, "espera_iniciador", False)),
     )
 
 

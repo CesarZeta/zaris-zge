@@ -78,16 +78,20 @@ async def cargar_encuesta(token: str, db: AsyncSession = Depends(get_db)):
 
     env = (await db.execute(text("""
         SELECT ee.id_encuesta_envio, ee.id_plantilla, ee.estado, ee.fecha_expiracion,
-               ee.id_reclamo, ee.id_turno, ee.id_evento_reserva,
+               ee.id_reclamo, ee.id_turno, ee.id_evento_reserva, ee.id_tramite,
                r.nro_reclamo, r.fecha_alta AS reclamo_fecha,
                t.fecha AS turno_fecha, tp.nombre AS prestacion_nombre,
-               ev.nombre AS evento_nombre, ev.fecha AS evento_fecha
+               ev.nombre AS evento_nombre, ev.fecha AS evento_fecha,
+               trm.numero_expediente AS tramite_numero, ttx.nombre AS tramite_tipo
           FROM encuesta_envio ee
           LEFT JOIN reclamos r        ON r.id_reclamo = ee.id_reclamo
           LEFT JOIN turnos t          ON t.id_turno = ee.id_turno
           LEFT JOIN tipo_prestacion tp ON tp.id_tipo_prestacion = t.id_tipo_prestacion
           LEFT JOIN evento_reservas evr ON evr.id_evento_reserva = ee.id_evento_reserva
           LEFT JOIN eventos ev        ON ev.id_evento = evr.id_evento
+          LEFT JOIN tramite trm       ON trm.id_tramite = ee.id_tramite
+          LEFT JOIN tipo_tramite_version tv ON tv.id_tipo_tramite_version = trm.id_tipo_tramite_version
+          LEFT JOIN tipo_tramite ttx  ON ttx.id_tipo_tramite = tv.id_tipo_tramite
          WHERE ee.token_unico = CAST(:t AS uuid) AND ee.activo = TRUE
          LIMIT 1
     """), {"t": token})).fetchone()
@@ -153,7 +157,13 @@ async def cargar_encuesta(token: str, db: AsyncSession = Depends(get_db)):
     } for p in preguntas]
 
     brand = await _branding(db)
-    if env["id_evento_reserva"] is not None:
+    if env["id_tramite"] is not None:
+        # tramite (mig 101): contexto = numero de expediente + tipo. Sin datos
+        # del expediente ni del ciudadano.
+        ref = f"Trámite {env['tramite_numero'] or ''}".strip()
+        if env["tramite_tipo"]:
+            ref += f" ({env['tramite_tipo']})"
+    elif env["id_evento_reserva"] is not None:
         # entrada (mig 98): contexto = nombre del evento + fecha. Sin datos
         # personales del ciudadano, como el resto de las ramas.
         ref = env["evento_nombre"] or "Evento"
