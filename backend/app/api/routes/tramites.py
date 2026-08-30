@@ -62,6 +62,7 @@ from app.services.tramites import documentos as svc_docs
 from app.services.tramites import firmas as svc_firmas
 from app.services.tramites import movimientos as svc_mov
 from app.services.tramites import numerador as svc_num
+from app.services.tramites import ciclo_vida as svc_ciclo
 from app.services import notificaciones as svc_notif
 
 router = APIRouter(prefix="/api/v1/tramites", tags=["tramites"])
@@ -231,6 +232,7 @@ async def detalle_tipo_tramite(
                 es_final=r.es_final,
                 color=r.color,
                 oculto_para_iniciador=r.oculto_para_iniciador,
+                espera_iniciador=bool(getattr(r, "espera_iniciador", False)),
             )
             for r in estados_rows
         ]
@@ -1524,6 +1526,8 @@ async def transicionar_tramite(
             UPDATE tramite SET
                 id_tipo_tramite_estado_actual=:estado,
                 fecha_entrada_estado_actual=NOW(),
+                desist_aviso_nivel=0,
+                desist_aviso_en=NULL,
                 destinatario_actual_tipo=:dest_tipo,
                 id_subarea_actual=:dest_sa,
                 id_equipo_actual=:dest_eq,
@@ -1573,6 +1577,13 @@ async def transicionar_tramite(
         destino_jsonb=dest_jsonb if dest_auto else None,
         comentario=body.comentario,
     )
+    # mig 101: la transicion FINAL con tipo_accion aprobar/rechazar sella el
+    # resultado sola (decision de Cesar 2026-08-30). Misma transaccion.
+    if es_final:
+        await svc_ciclo.derivar_resultado_por_transicion(
+            db, id_tramite, tramite, trans.get("tipo_accion"),
+            current_user["id_usuario"], agente["id_agente"], request,
+        )
     await db.commit()
 
     # Notificar solo si el destinatario cambio (transicion con dest_auto a otro recurso)
@@ -1590,6 +1601,10 @@ async def transicionar_tramite(
             db, id_tramite, etiqueta_destino, background_tasks,
             mensaje_custom=trans.get("mensaje_iniciador"),
         )
+    # mig 101: "termino y fue aprobado/rechazado" al vecino (bandeja PWA + push;
+    # el mail sigue gobernado por notifica_iniciador arriba) + encuesta CSAT.
+    if es_final:
+        await svc_ciclo.al_terminar(id_tramite, con_email=False)
 
     return await _tramite_detalle_out(id_tramite, db)
 
@@ -1824,10 +1839,17 @@ async def marcar_resultado_tramite(
         # No-op: ya esta en ese resultado. Devolver el detalle sin movimiento.
         return await _tramite_detalle_out(id_tramite, db)
 
+    # mig 101: 'desistido' manual = marca paralela + archivado por desistimiento
+    # (mismo par que el timer automatico), sin tocar el estado del circuito.
+    extra_desist = ""
+    if body.resultado == "desistido":
+        extra_desist = ("fecha_archivado = COALESCE(fecha_archivado, NOW()), "
+                        "archivado_motivo = 'desistimiento', ")
     await db.execute(
-        text("""
+        text(f"""
             UPDATE tramite SET
                 resultado = :res,
+                {extra_desist}
                 fecha_modificacion = NOW(),
                 id_usuario_modificacion = :uid
             WHERE id_tramite = :id
@@ -1835,12 +1857,26 @@ async def marcar_resultado_tramite(
         {"res": body.resultado, "uid": current_user["id_usuario"], "id": id_tramite},
     )
     await svc_mov.registrar_movimiento(
-        db, id_tramite, "resultado", current_user["id_usuario"], agente["id_agente"],
+        db, id_tramite, "desistido" if body.resultado == "desistido" else "resultado",
+        current_user["id_usuario"], agente["id_agente"],
         tramite["id_municipio"], request,
         comentario=body.comentario,
         metadata_jsonb={"resultado_anterior": anterior, "resultado_nuevo": body.resultado},
     )
     await db.commit()
+
+    # mig 101: comunicar al iniciador (bandeja PWA + push + mail) y disparar la
+    # encuesta si aprobado/rechazado. Solo si el tramite ya TERMINO (estado
+    # final) o se desiste: marcar resultado en un expediente en curso no avisa.
+    if body.resultado in ("aprobado", "rechazado", "desistido"):
+        es_final_actual = await db.scalar(text("""
+            SELECT COALESCE(e.es_final, FALSE)
+              FROM tramite t
+              JOIN tipo_tramite_estado e ON e.id_tipo_tramite_estado = t.id_tipo_tramite_estado_actual
+             WHERE t.id_tramite = :id
+        """), {"id": id_tramite})
+        if es_final_actual or body.resultado == "desistido":
+            await svc_ciclo.al_terminar(id_tramite, con_email=True)
 
     return await _tramite_detalle_out(id_tramite, db)
 

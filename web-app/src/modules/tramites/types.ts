@@ -1,7 +1,7 @@
 export type IniciadorTipo = 'ciudadano' | 'empresa' | 'area_interna'
 export type DestinatarioTipo = 'subarea' | 'equipo' | 'agente'
 // Marca de resultado del tramite, paralela al estado FSM (mig 74).
-export type TramiteResultado = 'pendiente' | 'aprobado' | 'rechazado'
+export type TramiteResultado = 'pendiente' | 'aprobado' | 'rechazado' | 'desistido'
 export type EstadoFirma = 'no_requiere' | 'pendiente' | 'firmado' | 'rechazado'
 export type RolIntervencion = 'firma' | 'visado' | 'notificacion'
 export type TipoMovimiento =
@@ -10,7 +10,7 @@ export type TipoMovimiento =
   | 'firma_solicitada' | 'firma_realizada' | 'firma_rechazada'
   | 'comentario' | 'relacion' | 'desistido' | 'reapertura'
   | 'aprobacion' | 'resultado'
-  | 'archivado_inactividad' | 'purga_binario'
+  | 'archivado_inactividad' | 'purga_binario' | 'aviso_iniciador'
 
 export type TipoDatoCampo =
   | 'texto' | 'texto_largo' | 'numero' | 'decimal' | 'fecha' | 'fecha_hora'
@@ -54,6 +54,8 @@ export interface TipoTramiteEstado {
   es_final: boolean
   permite_adjuntar: boolean
   permite_comentar: boolean
+  // mig 101: el expediente espera al iniciador en este estado (timer de desistimiento)
+  espera_iniciador?: boolean
 }
 
 export type TipoAccionTransicion = 'aprobar' | 'rechazar' | 'derivar' | 'avanzar' | 'otro'
@@ -141,6 +143,7 @@ export interface TipoTramiteAdmin {
   activo: boolean
   es_sistema: boolean
   retencion_nunca_depurar: boolean
+  sla_dias: number | null  // mig 101: null = default global (Config → Sistema)
   id_version_publicada: number | null
   versiones: Array<{
     id_tipo_tramite_version: number

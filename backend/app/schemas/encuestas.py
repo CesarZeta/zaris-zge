@@ -128,6 +128,7 @@ class EncuestaEnvioBase(BaseModel):
     id_reclamo: Optional[int] = None
     id_turno: Optional[int] = None
     id_evento_reserva: Optional[int] = None
+    id_tramite: Optional[int] = None  # mig 101: cuarta rama (tramite terminado)
     email_destino_snapshot: str = Field(max_length=150)
     fecha_expiracion: datetime
 
@@ -258,6 +259,7 @@ class DispararEncuestaIn(BaseModel):
     id_reclamo: Optional[int] = None
     id_turno: Optional[int] = None
     id_evento_reserva: Optional[int] = None
+    id_tramite: Optional[int] = None  # mig 101: cuarta rama (tramite terminado)
 
 
 # --- Pendientes de contacto (incluye datos del ciudadano + reclamo) ---
@@ -276,6 +278,7 @@ class RespuestaPendienteContactoOut(BaseModel):
     nro_reclamo: Optional[str] = None
     id_turno: Optional[int] = None
     id_evento_reserva: Optional[int] = None
+    id_tramite: Optional[int] = None  # mig 101: cuarta rama (tramite terminado)
     tipo: Optional[str] = None          # reclamos | turnos | entradas
     referencia: Optional[str] = None    # nro_reclamo, prestacion del turno o nombre del evento
     # contexto del ciudadano (para que el agente lo contacte)

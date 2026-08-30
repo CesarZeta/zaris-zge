@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button, Input } from '../../../../ui'
-import { useActualizarEstado, useCrearEstado } from '../hooks'
+import { useActualizarEstado, useCrearEstado, useSetEsperaIniciador } from '../hooks'
 import { ModalShell, label, requiredMark, errorMsg, formRow } from './_modalShell'
 import type { TipoTramiteEstado } from '../../types'
 
@@ -23,10 +23,12 @@ export function EstadoModal({
   const [esFinal, setEsFinal] = useState(estado?.es_final ?? false)
   const [permiteAdjuntar, setPermiteAdjuntar] = useState(estado?.permite_adjuntar ?? true)
   const [permiteComentar, setPermiteComentar] = useState(estado?.permite_comentar ?? true)
+  const [esperaIniciador, setEsperaIniciador] = useState(estado?.espera_iniciador ?? false)
   const [error, setError] = useState('')
 
   const crear = useCrearEstado()
   const actualizar = useActualizarEstado()
+  const setEspera = useSetEsperaIniciador()
 
   async function handleGuardar() {
     setError('')
@@ -46,20 +48,38 @@ export function EstadoModal({
             es_inicial: esInicial, es_final: esFinal,
             permite_adjuntar: permiteAdjuntar,
             permite_comentar: permiteComentar,
+            espera_iniciador: esperaIniciador,
           },
         })
       } else {
-        await actualizar.mutateAsync({
-          idEstado: estado!.id_tipo_tramite_estado,
-          body: {
-            etiqueta: etiqueta.trim(),
-            descripcion: descripcion.trim() || null,
-            color, orden,
-            es_inicial: esInicial, es_final: esFinal,
-            permite_adjuntar: permiteAdjuntar,
-            permite_comentar: permiteComentar,
-          },
-        })
+        // mig 101: el flag "espera al iniciador" va por su PATCH propio, que NO
+        // exige versión editable (es metadata). Así se puede marcar en circuitos
+        // publicados con trámites en curso. El resto sigue por el PUT.
+        if (esperaIniciador !== (estado!.espera_iniciador ?? false)) {
+          await setEspera.mutateAsync({ idEstado: estado!.id_tipo_tramite_estado, espera: esperaIniciador })
+        }
+        const otrosCambios =
+          etiqueta.trim() !== estado!.etiqueta ||
+          color !== (estado!.color ?? '#6b7280') ||
+          orden !== estado!.orden ||
+          esInicial !== estado!.es_inicial ||
+          esFinal !== estado!.es_final ||
+          permiteAdjuntar !== estado!.permite_adjuntar ||
+          permiteComentar !== estado!.permite_comentar ||
+          descripcion.trim() !== ''
+        if (otrosCambios) {
+          await actualizar.mutateAsync({
+            idEstado: estado!.id_tipo_tramite_estado,
+            body: {
+              etiqueta: etiqueta.trim(),
+              descripcion: descripcion.trim() || null,
+              color, orden,
+              es_inicial: esInicial, es_final: esFinal,
+              permite_adjuntar: permiteAdjuntar,
+              permite_comentar: permiteComentar,
+            },
+          })
+        }
       }
       onCerrar()
     } catch (e) {
@@ -67,7 +87,7 @@ export function EstadoModal({
     }
   }
 
-  const pending = crear.isPending || actualizar.isPending
+  const pending = crear.isPending || actualizar.isPending || setEspera.isPending
 
   return (
     <ModalShell titulo={esNuevo ? 'Nuevo estado del circuito' : `Editar estado · ${estado!.codigo}`} onCerrar={onCerrar}>
@@ -124,6 +144,16 @@ export function EstadoModal({
           <input type="checkbox" checked={permiteComentar} onChange={(e) => setPermiteComentar(e.target.checked)} />
           Permite comentar
         </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, cursor: 'pointer' }}>
+          <input type="checkbox" checked={esperaIniciador} onChange={(e) => setEsperaIniciador(e.target.checked)} />
+          Espera al iniciador (vecino) — corre el timer de desistimiento
+        </label>
+        <p style={{ fontSize: 11, color: 'var(--fg-3)', margin: '0 0 4px 22px' }}>
+          Marcá los estados donde el expediente queda a la espera de documentación o respuesta del vecino.
+          Vencido el SLA del tipo se le envían avisos (a los 30 y 60 días, y 72 h antes) y a los 90 días
+          el trámite se da por desistido solo (plazos en Config → Sistema). Se puede cambiar aunque la
+          versión esté publicada.
+        </p>
       </div>
 
       {error && <p style={errorMsg}>{error}</p>}

@@ -32,6 +32,7 @@ export interface TipoCreateBody {
   icono?: string | null
   color?: string | null
   retencion_nunca_depurar?: boolean
+  sla_dias?: number | null
   id_municipio?: number
 }
 
@@ -49,6 +50,7 @@ export interface TipoUpdateBody {
   icono?: string | null
   color?: string | null
   retencion_nunca_depurar?: boolean
+  sla_dias?: number | null  // 0 = volver al default global
 }
 
 export const crearTipo = (body: TipoCreateBody) =>
@@ -156,6 +158,7 @@ export interface EstadoCreateBody {
   permite_adjuntar?: boolean
   permite_comentar?: boolean
   oculto_para_iniciador?: boolean
+  espera_iniciador?: boolean
 }
 
 export interface EstadoUpdateBody {
@@ -168,6 +171,7 @@ export interface EstadoUpdateBody {
   permite_adjuntar?: boolean
   permite_comentar?: boolean
   oculto_para_iniciador?: boolean
+  espera_iniciador?: boolean
 }
 
 export const crearEstado = (idVersion: number, body: EstadoCreateBody) =>
@@ -175,6 +179,11 @@ export const crearEstado = (idVersion: number, body: EstadoCreateBody) =>
 
 export const actualizarEstado = (idEstado: number, body: EstadoUpdateBody) =>
   api.put<TipoTramiteEstado>(`${BASE}/estados/${idEstado}`, body)
+
+/** mig 101: flag "espera al iniciador" — metadata editable in-place aunque la
+ *  versión esté publicada con trámites (el PUT genérico exige versión editable). */
+export const setEsperaIniciador = (idEstado: number, espera: boolean) =>
+  api.patch<TipoTramiteEstado>(`${BASE}/estados/${idEstado}/espera-iniciador`, { espera_iniciador: espera })
 
 export const eliminarEstado = (idEstado: number) =>
   api.delete(`${BASE}/estados/${idEstado}`)

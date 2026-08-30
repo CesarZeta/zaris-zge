@@ -76,6 +76,9 @@ class EstadoOut(BaseModel):
     es_final: bool
     color: Optional[str] = None
     oculto_para_iniciador: bool
+    # mig 101: en este estado el expediente espera al iniciador -> corre el
+    # timer de desistimiento (services/tramites/ciclo_vida.py).
+    espera_iniciador: bool = False
 
 
 class TransicionOut(BaseModel):
@@ -330,15 +333,15 @@ class ResultadoIn(BaseModel):
     'aprobado'/'rechazado' los setea un supervisor/admin; 'pendiente' permite
     revertir la marca. Decide la politica de retencion de los binarios.
     """
-    resultado: str  # pendiente | aprobado | rechazado
+    resultado: str  # pendiente | aprobado | rechazado | desistido (mig 101)
     comentario: Optional[str] = None
 
     @field_validator("resultado")
     @classmethod
     def resultado_valido(cls, v: str) -> str:
         v = (v or "").strip().lower()
-        if v not in ("pendiente", "aprobado", "rechazado"):
-            raise ValueError("resultado debe ser 'pendiente', 'aprobado' o 'rechazado'")
+        if v not in ("pendiente", "aprobado", "rechazado", "desistido"):
+            raise ValueError("resultado debe ser 'pendiente', 'aprobado', 'rechazado' o 'desistido'")
         return v
 
 
@@ -468,6 +471,7 @@ class TipoTramiteCreateIn(BaseModel):
     icono: Optional[str] = None
     color: Optional[str] = None
     retencion_nunca_depurar: bool = False  # mig 75: si True, los binarios de este tipo nunca se purgan
+    sla_dias: Optional[int] = None  # mig 101: NULL/0 = usa tramite_sla_dias_default
     id_municipio: int = 1
 
     @field_validator("codigo", "nombre", "prefijo")
@@ -518,6 +522,7 @@ class TipoTramiteUpdateIn(BaseModel):
     icono: Optional[str] = None
     color: Optional[str] = None
     retencion_nunca_depurar: Optional[bool] = None  # mig 75
+    sla_dias: Optional[int] = None  # mig 101 (0 = volver al default global)
 
     @field_validator("iniciadores_permitidos")
     @classmethod
@@ -594,6 +599,7 @@ class EstadoIn(BaseModel):
     permite_adjuntar: bool = True
     permite_comentar: bool = True
     oculto_para_iniciador: bool = False
+    espera_iniciador: bool = False  # mig 101
 
     @field_validator("codigo")
     @classmethod
@@ -617,6 +623,7 @@ class EstadoUpdateIn(BaseModel):
     permite_adjuntar: Optional[bool] = None
     permite_comentar: Optional[bool] = None
     oculto_para_iniciador: Optional[bool] = None
+    espera_iniciador: Optional[bool] = None  # mig 101
 
 
 class TransicionIn2(BaseModel):
@@ -727,6 +734,7 @@ class TipoTramiteAdminOut(BaseModel):
     activo: bool
     es_sistema: bool = False
     retencion_nunca_depurar: bool = False  # mig 75: override politica de retencion
+    sla_dias: Optional[int] = None  # mig 101
     id_version_publicada: Optional[int] = None
     versiones: list[VersionOut] = []
 

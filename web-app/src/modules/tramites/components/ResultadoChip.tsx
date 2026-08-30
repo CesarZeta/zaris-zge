@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CheckCircle2, XCircle, CircleDashed, ChevronDown } from 'lucide-react'
+import { CheckCircle2, XCircle, CircleDashed, ChevronDown, Ban } from 'lucide-react'
 import type { TramiteResultado } from '../types'
 import { useAuthStore } from '../../../stores/auth'
 import { useMarcarResultado } from '../hooks/useTramites'
@@ -14,9 +14,11 @@ const META: Record<TramiteResultado, { label: string; color: string; bg: string;
   pendiente: { label: 'Sin resolver', color: 'var(--fg-2)', bg: 'var(--surface-400)', icon: CircleDashed },
   aprobado: { label: 'Aprobado', color: '#1f8a65', bg: 'rgba(31,138,101,0.12)', icon: CheckCircle2 },
   rechazado: { label: 'Rechazado', color: 'var(--color-error)', bg: 'rgba(207,45,86,0.12)', icon: XCircle },
+  // mig 101: desistido = el iniciador no respondió (automático por timer o manual).
+  desistido: { label: 'Desistido', color: '#78909c', bg: 'rgba(120,144,156,0.18)', icon: Ban },
 }
 
-const OPCIONES: TramiteResultado[] = ['aprobado', 'rechazado', 'pendiente']
+const OPCIONES: TramiteResultado[] = ['aprobado', 'rechazado', 'desistido', 'pendiente']
 
 /**
  * Chip que muestra el resultado del tramite (aprobado/rechazado/sin resolver),
