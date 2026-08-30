@@ -8,6 +8,10 @@ name: Datos demo BI (cron semanal)
 # Solo toca datos atribuidos al usuario 'generador.demo' (inactivo). El volumen
 # semanal sale de la banda mensual 300-500 escalada a 7 dias (~70-115).
 #
+# ALCANCE (definicion de Cesar 2026-08-30): este cron aplica datos SOLO al
+# municipio DEMO (San Andres). Cuando llegue multi-tenant (IT-01), el generador
+# debe quedar acotado al tenant demo — JAMAS generar datos en tenants reales.
+#
 # Auth: header X-Dispatcher-Token == env var DISPATCHER_TOKEN de Railway (el
 # mismo token que usan los otros crons). Secrets del repo:
 #   - ENCUESTAS_DISPATCHER_TOKEN  : mismo valor que Railway DISPATCHER_TOKEN
