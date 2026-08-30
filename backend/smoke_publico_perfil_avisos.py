@@ -116,6 +116,44 @@ def main() -> int:
     check("12. perfil restaurado", r.status_code == 200 and r.json().get("telefono") == (orig["telefono"] or r.json().get("telefono")),
           f"({r.status_code})")
 
+    # ── 12b-12g. Foto de perfil (mig 102) ───────────────────────────────────
+    try:
+        import io
+        import random
+        from PIL import Image
+        img = Image.new("RGB", (120, 120))
+        px = img.load()
+        rnd = random.Random(7)
+        for x in range(120):
+            for y in range(120):
+                px[x, y] = (rnd.randrange(256), rnd.randrange(256), rnd.randrange(256))  # ruido → > 1 KB
+        buf = io.BytesIO(); img.save(buf, format="JPEG", quality=90); jpg = buf.getvalue()
+        buf2 = io.BytesIO(); Image.new("RGB", (50, 50), (200, 30, 30)).save(buf2, format="JPEG"); jpg_chico = buf2.getvalue()
+        buf3 = io.BytesIO(); Image.new("RGB", (120, 120), (30, 30, 200)).save(buf3, format="PNG"); png = buf3.getvalue()
+    except Exception as e:  # noqa: BLE001
+        jpg = jpg_chico = png = None
+        skip("12b-12g. foto de perfil", f"no se pudo generar la imagen ({e})")
+    if jpg:
+        r = c.post(f"{BASE}{P}/perfil/foto", headers=H, files={"archivo": ("foto.jpg", jpg, "image/jpeg")})
+        pf = r.json() if r.status_code == 200 else {}
+        check("12b. POST /perfil/foto JPEG 120x120 -> 200 con foto_url firmada",
+              r.status_code == 200 and str(pf.get("foto_url") or "").startswith("http") and pf.get("foto_actualizada_en"),
+              f"({r.status_code} {len(jpg)} bytes {r.text[:80] if r.status_code != 200 else ''})")
+        if r.status_code == 200:
+            rr = c.get(pf["foto_url"])
+            check("12c. la URL firmada sirve el JPEG subido", rr.status_code == 200 and rr.content[:2] == b"\xff\xd8", f"({rr.status_code})")
+        r = c.get(f"{BASE}{P}/perfil", headers=H)
+        check("12d. GET /perfil trae foto_url", r.status_code == 200 and bool(r.json().get("foto_url")))
+        r = c.post(f"{BASE}{P}/perfil/foto", headers=H, files={"archivo": ("foto.jpg", jpg, "image/jpeg")})
+        check("12e. re-subir (upsert, mismo path) -> 200", r.status_code == 200, f"({r.status_code})")
+        r = c.post(f"{BASE}{P}/perfil/foto", headers=H, files={"archivo": ("foto.png", png, "image/png")})
+        r2 = c.post(f"{BASE}{P}/perfil/foto", headers=H, files={"archivo": ("chica.jpg", jpg_chico, "image/jpeg")})
+        check("12f. PNG -> 422 y JPEG 50x50 -> 422", r.status_code == 422 and r2.status_code == 422, f"({r.status_code}/{r2.status_code})")
+        r = c.delete(f"{BASE}{P}/perfil/foto", headers=H)
+        check("12g. DELETE /perfil/foto -> 200 y foto_url null", r.status_code == 200 and r.json().get("foto_url") is None, f"({r.status_code})")
+        r = c.post(f"{BASE}{P}/perfil/foto", files={"archivo": ("foto.jpg", jpg, "image/jpeg")})
+        check("12h. POST /perfil/foto sin token -> 401", r.status_code == 401, f"({r.status_code})")
+
     # ── 13. Avisos: baseline ────────────────────────────────────────────────
     r = c.get(f"{BASE}{P}/avisos", headers=H)
     base = r.json() if r.status_code == 200 else {}
