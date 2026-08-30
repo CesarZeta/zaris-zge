@@ -16,8 +16,9 @@ import { useAuthStore } from '../../../stores/auth'
 //    Supervisor la de su agente (regla §3); para un Administrador la última usada
 //    (localStorage) o la sugerida por el backend; "Todas las áreas" solo admin;
 //  - sin tablas de detalle: cada sección exporta los tickets filtrados;
-//  - (ajuste) al saltar desde el índice la sección queda debajo de la barra y la
-//    barra muestra SIEMPRE en qué sección se está (scroll-spy).
+//  - al saltar desde el índice la sección queda debajo de la barra y la barra
+//    muestra SIEMPRE en qué sección se está (scroll-spy por posición);
+//  - el panel de filtros se puede contraer.
 const SECCIONES = [
   { id: 'resumen', label: 'Resumen', desc: 'Volumen y composición de los reclamos del período' },
   { id: 'respuesta', label: 'Respuesta', desc: 'Reclamos cerrados y tiempos de respuesta' },
@@ -27,6 +28,7 @@ const SECCIONES = [
 type SeccionId = (typeof SECCIONES)[number]['id']
 
 const AREA_KEY = 'zaris_bi_area'
+const FILTROS_KEY = 'zaris_bi_filtros_colapsados'
 
 function leerAreaGuardada(): number | undefined {
   try {
@@ -50,6 +52,11 @@ export function OperativoPage({ seccion }: { seccion?: string }) {
   const stickyRef = useRef<HTMLDivElement>(null)
   const [stickyH, setStickyH] = useState(200)
   const [activa, setActiva] = useState<SeccionId>('resumen')
+  const lockHastaRef = useRef(0) // ms: mientras dura el scroll suave del índice, el spy no pisa la elección
+  const calcularRef = useRef<() => void>(() => {})
+  const [colapsado, setColapsado] = useState<boolean>(() => {
+    try { return localStorage.getItem(FILTROS_KEY) === '1' } catch { return false }
+  })
 
   // Área por defecto (una sola vez, cuando catálogo y backend contestaron).
   // Candidatas en orden; se descarta cualquiera que no esté en el catálogo de
@@ -75,6 +82,10 @@ export function OperativoPage({ seccion }: { seccion?: string }) {
     } catch { /* sin persistencia: no pasa nada */ }
   }, [filtros])
 
+  useEffect(() => {
+    try { localStorage.setItem(FILTROS_KEY, colapsado ? '1' : '0') } catch { /* nada */ }
+  }, [colapsado])
+
   // Alto real de la barra fija → CSS var que usan las secciones como scroll-margin.
   useEffect(() => {
     const el = stickyRef.current
@@ -83,31 +94,68 @@ export function OperativoPage({ seccion }: { seccion?: string }) {
     ro.observe(el)
     setStickyH(el.offsetHeight)
     return () => ro.disconnect()
-  }, [filtros])
+  }, [filtros, colapsado])
 
-  // Scroll-spy: la sección cuyo encabezado pasó por debajo de la barra es la activa.
+  // Scroll-spy por POSICIÓN: la sección activa es la ÚLTIMA cuyo encabezado ya
+  // pasó por debajo de la barra fija (IntersectionObserver marcaba la anterior
+  // porque las secciones son más altas que el viewport). Escucha en captura:
+  // el contenedor que scrollea es el documento del iframe en prod o <main> en dev.
   useEffect(() => {
-    if (!filtros || typeof IntersectionObserver === 'undefined') return
-    const secs = SECCIONES.map((s) => document.getElementById(s.id)).filter((x): x is HTMLElement => !!x)
-    if (!secs.length) return
-    const io = new IntersectionObserver(
-      (entries) => {
-        // De las secciones visibles bajo la barra, la más cercana al tope.
-        const visibles = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
-        if (visibles.length) setActiva(visibles[0].target.id as SeccionId)
-      },
-      { rootMargin: `-${stickyH + 4}px 0px -55% 0px`, threshold: [0, 0.01] },
-    )
-    secs.forEach((s) => io.observe(s))
-    return () => io.disconnect()
+    if (!filtros) return
+    let raf = 0
+    let timer: number | undefined
+    const calcular = () => {
+      raf = 0
+      if (Date.now() < lockHastaRef.current) return
+      // Borde inferior REAL de la barra en coordenadas del viewport (en dev la
+      // barra arranca debajo del topbar del AppShell; en prod, en 0). Las secciones
+      // aterrizan a scroll-margin = alto + 10 de ese borde, así que el umbral va
+      // un poco más abajo (+24) para que la recién saltada cuente como activa.
+      const rect = stickyRef.current?.getBoundingClientRect()
+      const limite = (rect ? rect.bottom : stickyH) + 24
+      let actual: SeccionId = SECCIONES[0].id
+      for (const s of SECCIONES) {
+        const el = document.getElementById(s.id)
+        if (el && el.getBoundingClientRect().top <= limite) actual = s.id
+      }
+      setActiva((prev) => (prev === actual ? prev : actual))
+    }
+    calcularRef.current = calcular
+    // rAF coalesce + trailing debounce: el último evento de un scroll suave puede
+    // caer mientras hay un rAF pendiente (se descartaría) → el timer garantiza
+    // una evaluación con la posición FINAL.
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(calcular)
+      window.clearTimeout(timer)
+      timer = window.setTimeout(calcular, 120)
+    }
+    window.addEventListener('scroll', onScroll, true)
+    window.addEventListener('resize', onScroll)
+    calcular()
+    return () => {
+      window.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('resize', onScroll)
+      if (raf) cancelAnimationFrame(raf)
+      window.clearTimeout(timer)
+    }
   }, [filtros, stickyH])
+
+  const irA = (id: SeccionId) => {
+    setActiva(id)
+    lockHastaRef.current = Date.now() + 900 // el scroll suave tarda < 1s
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    // Al vencer el lock, re-evaluar con la posición final (no depende de que
+    // llegue otro evento de scroll).
+    window.setTimeout(() => calcularRef.current(), 1000)
+  }
 
   // Compat con las rutas viejas por tab (/bi/operativo/pendientes → ancla).
   useEffect(() => {
     if (!seccion || !filtros) return
-    const t = setTimeout(() => irA(seccion), 300)
+    const t = setTimeout(() => irA(seccion as SeccionId), 300)
     return () => clearTimeout(t)
-  }, [seccion, filtros])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seccion, filtros === null])
 
   const nombreArea = filtros?.id_area
     ? (areas.data ?? []).find((a) => a.id_area === filtros.id_area)?.nombre
@@ -120,8 +168,10 @@ export function OperativoPage({ seccion }: { seccion?: string }) {
   const secActiva = SECCIONES.find((s) => s.id === activa) ?? SECCIONES[0]
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 28, ['--bi-sticky' as string]: `${stickyH}px` } as React.CSSProperties}>
-      {/* Barra fija: índice de secciones + filtros globales + sección activa */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 48, ['--bi-sticky' as string]: `${stickyH}px` } as React.CSSProperties}>
+      {/* Barra fija: índice de secciones + filtros globales + sección activa.
+          z-index por encima de los panes/controles de Leaflet (400/1000) para
+          que el mapa de Pendientes no la tape al scrollear. */}
       <div ref={stickyRef} style={stickyStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
           <nav aria-label="Secciones del tablero" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -129,7 +179,7 @@ export function OperativoPage({ seccion }: { seccion?: string }) {
               <button
                 key={s.id}
                 type="button"
-                onClick={() => { setActiva(s.id); irA(s.id) }}
+                onClick={() => irA(s.id)}
                 aria-current={activa === s.id ? 'true' : undefined}
                 style={indiceBtnStyle(activa === s.id)}
               >
@@ -150,6 +200,8 @@ export function OperativoPage({ seccion }: { seccion?: string }) {
           areas={areas.data ?? []}
           areaDefault={areaDefault}
           permiteTodas={esAdmin}
+          colapsado={colapsado}
+          onColapsar={setColapsado}
         />
         {/* Título de la sección que se está viendo (pedido de César) */}
         <div style={seccionActivaStyle} aria-live="polite">
@@ -167,12 +219,8 @@ export function OperativoPage({ seccion }: { seccion?: string }) {
   )
 }
 
-function irA(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-}
-
 const stickyStyle: React.CSSProperties = {
-  position: 'sticky', top: 0, zIndex: 30,
+  position: 'sticky', top: 0, zIndex: 1100,
   background: 'var(--zaris-cream)',
   padding: '8px 0 0',
   borderBottom: '1px solid var(--border-primary)',
