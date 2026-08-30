@@ -28,7 +28,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.middleware.rate_limit import check_rate_limit
 from app.utils.request_helpers import get_real_ip
-from app.api.routes.geo import geocodificar_direccion
+from app.api.routes.geo import geocodificar_direccion, reverse_geocodificar
 from app.services.email import enviar_mail_confirmacion_reclamo_ciudadano
 from app.services.cuenta_vecino import _municipio_branding
 
@@ -92,6 +92,25 @@ async def geo_buscar_vecino(
     además del rate-limit global de Nominatim."""
     check_rate_limit(f"reclpub:{get_real_ip(request)}", max_requests=20, window_seconds=60)
     return await geocodificar_direccion(q, limit, solo_direcciones=True)
+
+
+# ─── GET /publico/reclamos/geo/reverse ───────────────────────────────────────
+
+@router.get("/geo/reverse",
+            responses={502: {"description": "Nominatim no disponible"}})
+async def geo_reverse_vecino(
+    request: Request,
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+    current: dict = Depends(get_current_ciudadano),
+):
+    """Geocoding INVERSO (GPS del celular → dirección legible) para autocompletar
+    el domicilio de los tickets rápidos de emergencia y del form de reclamos de
+    la PWA. Antes la app le pegaba directo a Nominatim desde el cliente; ahora
+    pasa por el mismo helper (rate-limit global + User-Agent de ZARIS, §22).
+    Scope 'publico'. Bucket propio de rate-limit por IP (§5)."""
+    check_rate_limit(f"georevpub:{get_real_ip(request)}", max_requests=20, window_seconds=60)
+    return await reverse_geocodificar(lat, lon)
 
 
 # ─── GET /publico/reclamos ───────────────────────────────────────────────────
