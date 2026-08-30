@@ -1,57 +1,33 @@
 import { useState } from 'react'
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  LabelList,
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
+  Bar, BarChart, CartesianGrid, LabelList, Legend, Line, LineChart,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
-import { FiltrosBar } from '../components/FiltrosBar'
 import { SegLabel, SegLabelH, TotalLabel, TotalLabelH } from '../components/barLabels'
 import { ChartCard, CenterMsg, KpiCard } from '../components/ui'
+import { AXIS, Seccion, fmt, legendStyle, tooltipStyle } from '../components/SeccionHeader'
 import { exportarCsv, hoyISO } from '../components/exportCsv'
 import { biApi } from '../lib/api'
-import {
-  useEvolucionDias,
-  useResueltosDetalle,
-  useSlaResumen,
-  useTiemposMensual,
-  useTiemposPorTipo,
-} from '../hooks/useBi'
+import { useEvolucionDias, useSlaResumen, useTiemposMensual, useTiemposPorTipo } from '../hooks/useBi'
 import type { BiFiltros } from '../lib/types'
-import { COLOR_TRAMO_0_3, COLOR_TRAMO_4_7, COLOR_TRAMO_MAS7, labelMes } from '../lib/theme'
+import { COLOR_TRAMO_0_3, COLOR_TRAMO_4_7, COLOR_TRAMO_MAS7, labelCanal, labelMes } from '../lib/theme'
 
-const AXIS = { fontFamily: 'var(--font-display)', fontSize: 11, fill: 'var(--fg-3)' as const }
-const tooltipStyle: React.CSSProperties = {
-  fontFamily: 'var(--font-display)', fontSize: '0.8rem', background: 'var(--surface-100)',
-  border: '1px solid var(--border-medium)', borderRadius: 8, color: 'var(--fg-1)',
-}
-const legendStyle: React.CSSProperties = { fontFamily: 'var(--font-display)', fontSize: '0.78rem' }
-
-export function ResueltosView() {
-  const [filtros, setFiltros] = useState<BiFiltros>({})
-
+// Sección RESPUESTA: los reclamos CERRADOS (resueltos con fecha de cierre) y sus
+// tiempos — equivale al tablero "Tiempos de respuesta" de Power BI.
+export function RespuestaSection({ filtros }: { filtros: BiFiltros }) {
   const sla = useSlaResumen(filtros)
   const tMes = useTiemposMensual(filtros)
   const tTipo = useTiemposPorTipo(filtros, 10)
   const evol = useEvolucionDias(filtros)
-  const detalle = useResueltosDetalle(filtros, 50, 0)
   const [exportando, setExportando] = useState(false)
 
   const s = sla.data
   const difPos = (s?.dif_pct ?? 0) >= 0
 
-  // Exporta TODO el detalle del filtro actual (no solo la página visible).
   async function handleExport() {
     setExportando(true)
     try {
-      const { data } = await biApi.resueltosDetalle(filtros, 5000, 0)
+      const { data } = await biApi.resueltosDetalle(filtros, 10000, 0)
       exportarCsv(
         `reclamos_resueltos_${hoyISO()}.csv`,
         [
@@ -60,7 +36,7 @@ export function ResueltosView() {
           { header: 'Tipo', value: (r) => r.tipo },
           { header: 'Prioridad', value: (r) => r.prioridad },
           { header: 'Días de cierre', value: (r) => r.dias },
-          { header: 'Canal', value: (r) => r.canal },
+          { header: 'Canal', value: (r) => labelCanal(r.canal) },
           { header: 'Área', value: (r) => r.area },
         ],
         data,
@@ -71,9 +47,15 @@ export function ResueltosView() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <FiltrosBar filtros={filtros} onChange={setFiltros} />
-
+    <Seccion
+      id="respuesta"
+      titulo="Respuesta"
+      subtitulo="Reclamos cerrados: cuántos se resolvieron y en cuánto tiempo (por fecha de cierre)."
+      onExport={handleExport}
+      exportando={exportando}
+      exportDisabled={!s?.total_resueltos}
+      exportLabel="Exportar resueltos"
+    >
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
         <KpiCard label="Resueltos último mes" value={fmt(s?.resueltos_mes_actual)} accent={COLOR_TRAMO_0_3} />
@@ -83,22 +65,13 @@ export function ResueltosView() {
           accent={difPos ? COLOR_TRAMO_0_3 : COLOR_TRAMO_MAS7}
           sub="vs. mes anterior"
         />
-        <KpiCard
-          label="Tiempo cierre promedio"
-          value={s?.dias_cierre_promedio != null ? `${s.dias_cierre_promedio} d` : '—'}
-          accent="var(--zaris-orange)"
-        />
-        <KpiCard
-          label="% Dentro de SLA"
-          value={s?.pct_dentro_sla != null ? `${s.pct_dentro_sla}%` : '—'}
-          accent={COLOR_TRAMO_0_3}
-          sub="cierre ≤ SLA del tipo"
-        />
+        <KpiCard label="Tiempo cierre promedio" value={s?.dias_cierre_promedio != null ? `${s.dias_cierre_promedio} d` : '—'} accent="var(--zaris-orange)" />
+        <KpiCard label="% Dentro de SLA" value={s?.pct_dentro_sla != null ? `${s.pct_dentro_sla}%` : '—'} accent={COLOR_TRAMO_0_3} sub="cierre ≤ SLA del tipo" />
         <KpiCard label="Total resueltos" value={fmt(s?.total_resueltos)} sub="con fecha de cierre" />
       </div>
 
       {/* Tiempos de respuesta por mes (apiladas por tramo) */}
-      <ChartCard title="Tiempos de respuesta por mes" height={300}>
+      <ChartCard title="Tiempos de respuesta por mes de cierre" height={300}>
         {tMes.isLoading ? (
           <CenterMsg>Cargando…</CenterMsg>
         ) : !tMes.data?.length ? (
@@ -126,12 +99,9 @@ export function ResueltosView() {
         )}
       </ChartCard>
 
-      {/* Fila: tiempos por tipo (horizontal) + evolución días (línea) */}
+      {/* Tiempos por tipo + evolución */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
-        <ChartCard
-          title="Tiempos por tipo de reclamo"
-          height={Math.max(240, (tTipo.data?.length ?? 1) * 42 + 60)}
-        >
+        <ChartCard title="Tiempos por tipo de reclamo" height={Math.max(240, (tTipo.data?.length ?? 1) * 42 + 60)}>
           {tTipo.isLoading ? (
             <CenterMsg>Cargando…</CenterMsg>
           ) : !tTipo.data?.length ? (
@@ -171,14 +141,7 @@ export function ResueltosView() {
                 <XAxis dataKey="label" tick={AXIS} />
                 <YAxis tick={AXIS} allowDecimals={false} />
                 <Tooltip contentStyle={tooltipStyle} />
-                <Line
-                  type="monotone"
-                  dataKey="dias_prom"
-                  name="Días promedio"
-                  stroke="var(--zaris-orange)"
-                  strokeWidth={2.5}
-                  dot={{ r: 4, fill: 'var(--zaris-orange)' }}
-                >
+                <Line type="monotone" dataKey="dias_prom" name="Días promedio" stroke="var(--zaris-orange)" strokeWidth={2.5} dot={{ r: 4, fill: 'var(--zaris-orange)' }}>
                   <LabelList dataKey="dias_prom" position="top" content={LineLabel} />
                 </Line>
               </LineChart>
@@ -186,66 +149,11 @@ export function ResueltosView() {
           )}
         </ChartCard>
       </div>
-
-      {/* Tabla detalle */}
-      <ChartCard
-        title="Detalle de reclamos resueltos"
-        height={undefined}
-        action={
-          <button
-            onClick={handleExport}
-            disabled={exportando || !detalle.data?.data?.length}
-            style={exportBtnStyle(exportando || !detalle.data?.data?.length)}
-          >
-            {exportando ? 'Exportando…' : '↓ Exportar CSV'}
-          </button>
-        }
-      >
-        {detalle.isLoading ? (
-          <CenterMsg>Cargando…</CenterMsg>
-        ) : !detalle.data?.data?.length ? (
-          <CenterMsg>Sin reclamos resueltos con fecha de cierre.</CenterMsg>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  {['N° Reclamo', 'Cierre', 'Tipo', 'Prioridad', 'Días', 'Área'].map((h) => (
-                    <th key={h} style={thStyle}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {detalle.data.data.map((r, i) => (
-                  <tr key={i} style={{ borderTop: '1px solid var(--border-primary)' }}>
-                    <td style={tdStyle}>{r.nro_reclamo ?? '—'}</td>
-                    <td style={tdStyle}>{r.fecha_cierre ? r.fecha_cierre.slice(0, 10) : '—'}</td>
-                    <td style={tdStyle}>{r.tipo}</td>
-                    <td style={tdStyle}>{r.prioridad}</td>
-                    <td style={{ ...tdStyle, fontWeight: 700, color: diasColor(r.dias) }}>{r.dias}</td>
-                    <td style={tdStyle}>{r.area}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </ChartCard>
-    </div>
+    </Seccion>
   )
 }
 
-function fmt(n: number | undefined): string {
-  return n == null ? '—' : n.toLocaleString('es-AR')
-}
-
-function diasColor(d: number): string {
-  if (d <= 3) return COLOR_TRAMO_0_3
-  if (d <= 7) return '#b58900'
-  return COLOR_TRAMO_MAS7
-}
-
-// Label de punto de línea con pastilla.
+// Label de punto de línea con pastilla de contraste invertible (§13).
 function LineLabel(p: { x?: string | number; y?: string | number; value?: string | number }) {
   const x = Number(p.x ?? 0), y = Number(p.y ?? 0), value = p.value
   if (value == null) return null
@@ -253,32 +161,10 @@ function LineLabel(p: { x?: string | number; y?: string | number; value?: string
   const w = txt.length * 7 + 10
   return (
     <g>
-      {/* Pastilla de contraste invertible: fg-1/surface-100 se dan vuelta en dark (§13) */}
       <rect x={x - w / 2} y={y - 22} width={w} height={16} rx={5} fill="var(--fg-1)" fillOpacity={0.82} />
-      <text x={x} y={y - 14} textAnchor="middle" dominantBaseline="central"
-        fontFamily="var(--font-display)" fontSize={11} fontWeight={700} fill="var(--surface-100)">
+      <text x={x} y={y - 14} textAnchor="middle" dominantBaseline="central" fontFamily="var(--font-display)" fontSize={11} fontWeight={700} fill="var(--surface-100)">
         {txt}
       </text>
     </g>
   )
-}
-
-const tableStyle: React.CSSProperties = {
-  width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-display)', fontSize: '0.82rem',
-}
-const thStyle: React.CSSProperties = {
-  textAlign: 'left', padding: '8px 10px', color: 'var(--fg-3)', fontWeight: 600,
-  textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.03em', borderBottom: '1px solid var(--border-medium)',
-}
-const tdStyle: React.CSSProperties = { padding: '8px 10px', color: 'var(--fg-1)' }
-
-function exportBtnStyle(disabled: boolean): React.CSSProperties {
-  return {
-    fontFamily: 'var(--font-display)', fontSize: '0.78rem', fontWeight: 600,
-    padding: '5px 12px', borderRadius: 8,
-    border: `1px solid ${disabled ? 'var(--border-medium)' : 'var(--zaris-orange)'}`,
-    background: 'transparent',
-    color: disabled ? 'var(--fg-3)' : 'var(--zaris-orange)',
-    cursor: disabled ? 'default' : 'pointer',
-  }
 }

@@ -1,47 +1,24 @@
 import { useState } from 'react'
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  LabelList,
-  Legend,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
+  Bar, BarChart, CartesianGrid, Cell, LabelList, Legend, Pie, PieChart,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
-import { FiltrosBar } from '../components/FiltrosBar'
 import { HistogramaTemporal } from '../components/HistogramaTemporal'
 import { TotalLabelH } from '../components/barLabels'
 import { ChartCard, CenterMsg, KpiCard } from '../components/ui'
+import { AXIS, Seccion, fmt, legendStyle, pieLabel, tooltipStyle } from '../components/SeccionHeader'
 import { exportarCsv, hoyISO } from '../components/exportCsv'
 import { biApi } from '../lib/api'
-import {
-  useSubreclamosDetalle,
-  useSubreclamosPorTipo,
-  useSubreclamosResumen,
-} from '../hooks/useBi'
+import { useSubreclamosPorTipo, useSubreclamosResumen } from '../hooks/useBi'
 import type { BiFiltros } from '../lib/types'
 import { colorEstado } from '../lib/theme'
 
-const AXIS = { fontFamily: 'var(--font-display)', fontSize: 11, fill: 'var(--fg-3)' as const }
-const tooltipStyle: React.CSSProperties = {
-  fontFamily: 'var(--font-display)', fontSize: '0.8rem', background: 'var(--surface-100)',
-  border: '1px solid var(--border-medium)', borderRadius: 8, color: 'var(--fg-1)',
-}
-const legendStyle: React.CSSProperties = { fontFamily: 'var(--font-display)', fontSize: '0.78rem' }
-
-export function SubreclamosView() {
-  const [filtros, setFiltros] = useState<BiFiltros>({})
-  const [exportando, setExportando] = useState(false)
-
+// Sección SUBRECLAMOS (breve, al pie): reclamos con id_reclamo_padre —
+// "intervenciones" en la jerga de los tableros de referencia. No existe en Power BI.
+export function SubreclamosSection({ filtros }: { filtros: BiFiltros }) {
   const resumen = useSubreclamosResumen(filtros)
   const porTipo = useSubreclamosPorTipo(filtros, 10)
-  const detalle = useSubreclamosDetalle(filtros, 50, 0)
-
+  const [exportando, setExportando] = useState(false)
   const r = resumen.data
 
   async function handleExport() {
@@ -68,16 +45,20 @@ export function SubreclamosView() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <FiltrosBar filtros={filtros} onChange={setFiltros} />
-
-      {/* KPIs */}
+    <Seccion
+      id="subreclamos"
+      titulo="Subreclamos"
+      subtitulo="Intervenciones derivadas de un reclamo padre (cross-área)."
+      onExport={handleExport}
+      exportando={exportando}
+      exportDisabled={!r?.total}
+      exportLabel="Exportar subreclamos"
+    >
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
         <KpiCard label="Total subreclamos" value={fmt(r?.total)} accent="var(--zaris-orange)" />
         <KpiCard label="Reclamos padre" value={fmt(r?.padres)} sub="con subreclamos asociados" />
       </div>
 
-      {/* Histograma temporal — toggle Mes/Día + total + drill (estándar) */}
       <HistogramaTemporal
         tituloBase="Subreclamos ingresados"
         cacheKey="subreclamos"
@@ -94,7 +75,6 @@ export function SubreclamosView() {
         fetchDiario={(mes, f) => biApi.subreclamosDiario(mes, f)}
       />
 
-      {/* Donas: subreclamos por estado + reclamos padre por estado */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
         <ChartCard title="Subreclamos por estado">
           {resumen.isLoading ? (
@@ -133,7 +113,6 @@ export function SubreclamosView() {
         </ChartCard>
       </div>
 
-      {/* Ranking por tipo */}
       <ChartCard title="Ranking de subreclamos por tipo" height={Math.max(220, (porTipo.data?.length ?? 1) * 42 + 60)}>
         {porTipo.isLoading ? (
           <CenterMsg>Cargando…</CenterMsg>
@@ -153,96 +132,6 @@ export function SubreclamosView() {
           </ResponsiveContainer>
         )}
       </ChartCard>
-
-      {/* Tabla detalle con incidente padre + export */}
-      <ChartCard
-        title="Detalle de subreclamos"
-        height={undefined}
-        action={
-          <button onClick={handleExport} disabled={exportando || !detalle.data?.data?.length} style={exportBtnStyle(exportando || !detalle.data?.data?.length)}>
-            {exportando ? 'Exportando…' : '↓ Exportar CSV'}
-          </button>
-        }
-      >
-        {detalle.isLoading ? (
-          <CenterMsg>Cargando…</CenterMsg>
-        ) : !detalle.data?.data?.length ? (
-          <CenterMsg>No hay subreclamos en el período.</CenterMsg>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  {['N° Subreclamo', 'Alta', 'Tipo', 'Estado', 'Área', 'Reclamo padre', 'Estado padre'].map((h) => (
-                    <th key={h} style={thStyle}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {detalle.data.data.map((d, i) => (
-                  <tr key={i} style={{ borderTop: '1px solid var(--border-primary)' }}>
-                    <td style={tdStyle}>{d.nro_reclamo ?? '—'}</td>
-                    <td style={tdStyle}>{d.fecha_alta ? d.fecha_alta.slice(0, 10) : '—'}</td>
-                    <td style={tdStyle}>{d.tipo}</td>
-                    <td style={tdStyle}><span style={{ color: colorEstado(d.estado), fontWeight: 600 }}>{d.estado}</span></td>
-                    <td style={tdStyle}>{d.area}</td>
-                    <td style={tdStyle}>{d.nro_padre ?? '—'}</td>
-                    <td style={tdStyle}>
-                      {d.estado_padre ? <span style={{ color: colorEstado(d.estado_padre), fontWeight: 600 }}>{d.estado_padre}</span> : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </ChartCard>
-    </div>
+    </Seccion>
   )
-}
-
-function fmt(n: number | undefined): string {
-  return n == null ? '—' : n.toLocaleString('es-AR')
-}
-
-function pieLabel(props: {
-  cx?: number; cy?: number; midAngle?: number; outerRadius?: number; percent?: number; value?: number
-}) {
-  const { cx = 0, cy = 0, midAngle = 0, outerRadius = 0, percent = 0, value } = props
-  if (percent < 0.04) return null
-  const RAD = Math.PI / 180
-  const rr = outerRadius + 22
-  const x = cx + rr * Math.cos(-midAngle * RAD)
-  const y = cy + rr * Math.sin(-midAngle * RAD)
-  const txt = `${(percent * 100).toFixed(1)}% (${value})`
-  const anchorStart = x > cx
-  const w = txt.length * 6.2 + 8
-  const rx = anchorStart ? x - 4 : x - w + 4
-  return (
-    <g>
-      {/* Pastilla de contraste invertible: fg-1/surface-100 se dan vuelta en dark (§13) */}
-      <rect x={rx} y={y - 9} width={w} height={17} rx={5} fill="var(--fg-1)" fillOpacity={0.82} />
-      <text x={x} y={y} textAnchor={anchorStart ? 'start' : 'end'} dominantBaseline="central"
-        fontFamily="var(--font-display)" fontSize={11} fontWeight={600} fill="var(--surface-100)">
-        {txt}
-      </text>
-    </g>
-  )
-}
-
-const tableStyle: React.CSSProperties = { width: '100%', borderCollapse: 'collapse', fontFamily: 'var(--font-display)', fontSize: '0.82rem' }
-const thStyle: React.CSSProperties = {
-  textAlign: 'left', padding: '8px 10px', color: 'var(--fg-3)', fontWeight: 600,
-  textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.03em', borderBottom: '1px solid var(--border-medium)',
-}
-const tdStyle: React.CSSProperties = { padding: '8px 10px', color: 'var(--fg-1)' }
-
-function exportBtnStyle(disabled: boolean): React.CSSProperties {
-  return {
-    fontFamily: 'var(--font-display)', fontSize: '0.78rem', fontWeight: 600,
-    padding: '5px 12px', borderRadius: 8,
-    border: `1px solid ${disabled ? 'var(--border-medium)' : 'var(--zaris-orange)'}`,
-    background: 'transparent', color: disabled ? 'var(--fg-3)' : 'var(--zaris-orange)',
-    cursor: disabled ? 'default' : 'pointer',
-  }
 }

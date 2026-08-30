@@ -1,66 +1,77 @@
 import { useState } from 'react'
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  LabelList,
-  Legend,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
+  Bar, BarChart, CartesianGrid, Cell, LabelList, Legend, Pie, PieChart,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
-import { FiltrosBar } from '../components/FiltrosBar'
 import { HistogramaTemporal } from '../components/HistogramaTemporal'
 import { SegLabelH, TotalLabelH } from '../components/barLabels'
 import { ChartCard, CenterMsg, KpiCard } from '../components/ui'
-import { usePorArea, usePorCanal, usePorEstado, useResumen } from '../hooks/useBi'
+import { AXIS, Seccion, fmt, legendStyle, pieLabel, tooltipStyle } from '../components/SeccionHeader'
+import { exportarCsv, hoyISO } from '../components/exportCsv'
 import { biApi } from '../lib/api'
+import { usePorArea, usePorCanal, usePorEstado, useResumen } from '../hooks/useBi'
 import type { BiFiltros } from '../lib/types'
 import {
-  COLOR_CANCELADO,
-  COLOR_PENDIENTE,
-  COLOR_RESUELTO,
-  PALETA_CATEGORICA,
-  colorEstado,
-  labelCanal,
+  COLOR_CANCELADO, COLOR_PENDIENTE, COLOR_RESUELTO, PALETA_CATEGORICA, colorEstado, labelCanal,
 } from '../lib/theme'
 
-const AXIS = { fontFamily: 'var(--font-display)', fontSize: 11, fill: 'var(--fg-3)' as const }
-
-export function ResumenView() {
-  const [filtros, setFiltros] = useState<BiFiltros>({})
-
+// Sección RESUMEN de la página única del Operativo: volumen y composición del
+// universo filtrado (todos los estados). Export = todos los tickets del filtro.
+export function ResumenSection({ filtros }: { filtros: BiFiltros }) {
   const resumen = useResumen(filtros)
   const porEstado = usePorEstado(filtros)
   const porCanal = usePorCanal(filtros)
   const porArea = usePorArea(filtros)
-
+  const [exportando, setExportando] = useState(false)
   const r = resumen.data
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <FiltrosBar filtros={filtros} onChange={setFiltros} />
+  async function handleExport() {
+    setExportando(true)
+    try {
+      const { data } = await biApi.reclamosDetalle(filtros, 10000, 0)
+      exportarCsv(
+        `reclamos_${hoyISO()}.csv`,
+        [
+          { header: 'N° Reclamo', value: (d) => d.nro_reclamo },
+          { header: 'Fecha alta', value: (d) => (d.fecha_alta ? d.fecha_alta.slice(0, 10) : '') },
+          { header: 'Tipo', value: (d) => d.tipo },
+          { header: 'Prioridad', value: (d) => d.prioridad },
+          { header: 'Estado', value: (d) => d.estado },
+          { header: 'Canal', value: (d) => labelCanal(d.canal) },
+          { header: 'Área', value: (d) => d.area },
+          { header: 'Subárea', value: (d) => d.subarea },
+          { header: 'Dirección', value: (d) => d.direccion },
+          { header: 'Fecha cierre', value: (d) => (d.fecha_cierre ? d.fecha_cierre.slice(0, 10) : '') },
+          { header: 'Días (cierre o demora)', value: (d) => d.dias },
+          { header: 'Subreclamo', value: (d) => (d.es_subreclamo ? 'Sí' : 'No') },
+        ],
+        data,
+      )
+    } finally {
+      setExportando(false)
+    }
+  }
 
+  return (
+    <Seccion
+      id="resumen"
+      titulo="Resumen"
+      subtitulo="Volumen y composición de los reclamos del período (todos los estados)."
+      onExport={handleExport}
+      exportando={exportando}
+      exportDisabled={!r?.total}
+    >
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
         <KpiCard label="Reclamos totales" value={fmt(r?.total)} />
         <KpiCard label="Resueltos" value={fmt(r?.resueltos)} accent={COLOR_RESUELTO} />
         <KpiCard label="Pendientes" value={fmt(r?.pendientes)} accent={COLOR_PENDIENTE} />
         <KpiCard label="Cancelados" value={fmt(r?.cancelados)} accent={COLOR_CANCELADO} />
-        <KpiCard
-          label="% Cumplimiento"
-          value={r ? `${r.pct_cumplido}%` : '—'}
-          accent="var(--zaris-orange)"
-          sub="resueltos / cerrados"
-        />
+        <KpiCard label="% Cumplimiento" value={r ? `${r.pct_cumplido}%` : '—'} accent="var(--zaris-orange)" sub="resueltos / cerrados" />
         <KpiCard label="Subreclamos" value={fmt(r?.subreclamos)} />
       </div>
 
-      {/* Fila 1: histograma temporal con toggle Mes/Día + drill-down */}
+      {/* Histórico: toggle Estado / Tipo (como el "Histórico de reclamos" de Power BI) + Mes/Día + drill */}
       <HistogramaTemporal
         tituloBase="Reclamos ingresados"
         cacheKey="resumen"
@@ -72,9 +83,15 @@ export function ResumenView() {
         ]}
         fetchMensual={(f) => biApi.mensual(f)}
         fetchDiario={(mes, f) => biApi.diario(mes, f)}
+        alterno={{
+          labelBase: 'Estado',
+          label: 'Tipo',
+          fetchMensual: (f) => biApi.mensualPorTipo(f),
+          fetchDiario: (mes, f) => biApi.diarioPorTipo(mes, f),
+        }}
       />
 
-      {/* Fila 2: dona estado + dona canal */}
+      {/* Donas: estado + canal */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
         <ChartCard title="Composición por estado">
           {porEstado.isLoading ? (
@@ -84,19 +101,8 @@ export function ResumenView() {
           ) : (
             <ResponsiveContainer>
               <PieChart>
-                <Pie
-                  data={porEstado.data}
-                  dataKey="total"
-                  nameKey="estado"
-                  innerRadius="50%"
-                  outerRadius="78%"
-                  paddingAngle={2}
-                  label={pieLabel}
-                  labelLine={false}
-                >
-                  {porEstado.data.map((e) => (
-                    <Cell key={e.estado} fill={colorEstado(e.estado)} />
-                  ))}
+                <Pie data={porEstado.data} dataKey="total" nameKey="estado" innerRadius="50%" outerRadius="78%" paddingAngle={2} label={pieLabel} labelLine={false}>
+                  {porEstado.data.map((e) => <Cell key={e.estado} fill={colorEstado(e.estado)} />)}
                 </Pie>
                 <Tooltip contentStyle={tooltipStyle} />
                 <Legend wrapperStyle={legendStyle} />
@@ -105,7 +111,7 @@ export function ResumenView() {
           )}
         </ChartCard>
 
-        <ChartCard title="Reclamos por canal de origen">
+        <ChartCard title="Composición por canal de origen">
           {porCanal.isLoading ? (
             <CenterMsg>Cargando…</CenterMsg>
           ) : !porCanal.data?.length ? (
@@ -115,17 +121,9 @@ export function ResumenView() {
               <PieChart>
                 <Pie
                   data={porCanal.data.map((c) => ({ ...c, label: labelCanal(c.canal) }))}
-                  dataKey="total"
-                  nameKey="label"
-                  innerRadius="50%"
-                  outerRadius="78%"
-                  paddingAngle={2}
-                  label={pieLabel}
-                  labelLine={false}
+                  dataKey="total" nameKey="label" innerRadius="50%" outerRadius="78%" paddingAngle={2} label={pieLabel} labelLine={false}
                 >
-                  {porCanal.data.map((_, i) => (
-                    <Cell key={i} fill={PALETA_CATEGORICA[i % PALETA_CATEGORICA.length]} />
-                  ))}
+                  {porCanal.data.map((_, i) => <Cell key={i} fill={PALETA_CATEGORICA[i % PALETA_CATEGORICA.length]} />)}
                 </Pie>
                 <Tooltip contentStyle={tooltipStyle} />
                 <Legend wrapperStyle={legendStyle} />
@@ -135,8 +133,8 @@ export function ResumenView() {
         </ChartCard>
       </div>
 
-      {/* Fila 3: barras horizontales por área */}
-      <ChartCard title="Reclamos por área y estado" height={Math.max(220, (porArea.data?.length ?? 1) * 48 + 60)}>
+      {/* Barras horizontales por área (con un área filtrada muestra solo esa barra) */}
+      <ChartCard title="Reclamos por área y estado" height={Math.max(160, (porArea.data?.length ?? 1) * 48 + 60)}>
         {porArea.isLoading ? (
           <CenterMsg>Cargando…</CenterMsg>
         ) : !porArea.data?.length ? (
@@ -163,49 +161,6 @@ export function ResumenView() {
           </ResponsiveContainer>
         )}
       </ChartCard>
-    </div>
+    </Seccion>
   )
-}
-
-function fmt(n: number | undefined): string {
-  return n == null ? '—' : n.toLocaleString('es-AR')
-}
-
-// ── Label de dona (porcentaje + valor) ──────────────────────────────────────────
-function pieLabel(props: {
-  cx?: number; cy?: number; midAngle?: number; outerRadius?: number; percent?: number; value?: number
-}) {
-  const { cx = 0, cy = 0, midAngle = 0, outerRadius = 0, percent = 0, value } = props
-  if (percent < 0.04) return null // ocultar tajadas < 4%
-  const RAD = Math.PI / 180
-  const r = outerRadius + 22
-  const x = cx + r * Math.cos(-midAngle * RAD)
-  const y = cy + r * Math.sin(-midAngle * RAD)
-  const txt = `${(percent * 100).toFixed(1)}% (${value})`
-  const anchorStart = x > cx
-  const w = txt.length * 6.2 + 8
-  const rx = anchorStart ? x - 4 : x - w + 4
-  return (
-    <g>
-      {/* Pastilla de contraste invertible: fg-1/surface-100 se dan vuelta en dark (§13) */}
-      <rect x={rx} y={y - 9} width={w} height={17} rx={5} fill="var(--fg-1)" fillOpacity={0.82} />
-      <text x={x} y={y} textAnchor={anchorStart ? 'start' : 'end'} dominantBaseline="central"
-        fontFamily="var(--font-display)" fontSize={11} fontWeight={600} fill="var(--surface-100)">
-        {txt}
-      </text>
-    </g>
-  )
-}
-
-const tooltipStyle: React.CSSProperties = {
-  fontFamily: 'var(--font-display)',
-  fontSize: '0.8rem',
-  background: 'var(--surface-100)',
-  border: '1px solid var(--border-medium)',
-  borderRadius: 8,
-  color: 'var(--fg-1)',
-}
-const legendStyle: React.CSSProperties = {
-  fontFamily: 'var(--font-display)',
-  fontSize: '0.78rem',
 }

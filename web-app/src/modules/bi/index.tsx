@@ -2,16 +2,16 @@ import { Database } from 'lucide-react'
 import type { ModuleManifest } from '../../lib/types'
 import { BiLayout } from './BiLayout'
 import { DatosLanding } from './pages/DatosLanding'
-import { ResumenView } from './views/ResumenView'
-import { ResueltosView } from './views/ResueltosView'
-import { PendientesView } from './views/PendientesView'
-import { SubreclamosView } from './views/SubreclamosView'
+import { OperativoPage } from './pages/OperativoPage'
 import { useAuthStore } from '../../stores/auth'
 
 // Módulo DATOS: landing con dos tableros analíticos sobre reclamos.
-//   /bi               → landing (tarjetas Operativo / Ejecutivo)
-//   /bi/operativo/*   → tablero Operativo (Resumen / Resueltos-SLA / Pendientes / Subreclamos)
-//   /bi/ejecutivo     → (futuro) tablero Ejecutivo — placeholder en la landing por ahora
+//   /bi                        → landing (tarjetas Operativo / Ejecutivo)
+//   /bi/operativo              → tablero Operativo en UNA página (2026-08-30):
+//                                Resumen → Respuesta → Pendientes → Subreclamos
+//   /bi/operativo/<seccion>    → misma página, desplazada a esa sección (compat
+//                                con las rutas de los tabs viejos)
+//   /bi/ejecutivo              → (futuro) tablero Ejecutivo — placeholder en la landing
 // Consume /api/v1/bi/* (router con guard JWT). moduloCodigo='bi' (catálogo
 // `modulos`, mig 65, min_nivel_acceso=2). Gateamos la UI a nivel <= 2.
 
@@ -21,13 +21,13 @@ function useNivelOk() {
   return useAuthStore((s) => (s.user?.nivel_acceso ?? 99) <= MIN_NIVEL)
 }
 
-// Vistas operativas: envueltas en el BiLayout (con tabs).
-const WrapOperativo = (Component: React.FC) => () => {
+// Operativo: envuelto en el BiLayout (breadcrumb + título).
+const WrapOperativo = (seccion?: string) => () => {
   const ok = useNivelOk()
-  return <BiLayout>{ok ? <Component /> : <SinAcceso />}</BiLayout>
+  return <BiLayout>{ok ? <OperativoPage seccion={seccion} /> : <SinAcceso />}</BiLayout>
 }
 
-// Landing: sin el BiLayout (no tiene tabs operativas).
+// Landing: sin el BiLayout.
 function WrapLanding() {
   const ok = useNivelOk()
   return ok ? <DatosLanding /> : <SinAcceso />
@@ -57,9 +57,10 @@ export const biModule: ModuleManifest = {
   moduloCodigo: 'bi',
   routes: [
     { index: true, element: WrapLanding, handle: { breadcrumb: 'Datos' } },
-    { path: 'operativo', element: WrapOperativo(ResumenView), handle: { breadcrumb: 'Datos · Operativo' } },
-    { path: 'operativo/resueltos', element: WrapOperativo(ResueltosView), handle: { breadcrumb: 'Datos · Operativo · Resueltos / SLA' } },
-    { path: 'operativo/pendientes', element: WrapOperativo(PendientesView), handle: { breadcrumb: 'Datos · Operativo · Pendientes' } },
-    { path: 'operativo/subreclamos', element: WrapOperativo(SubreclamosView), handle: { breadcrumb: 'Datos · Operativo · Subreclamos' } },
+    { path: 'operativo', element: WrapOperativo(), handle: { breadcrumb: 'Datos · Operativo' } },
+    // Compat con las rutas de los tabs viejos: misma página, desplazada a la sección.
+    { path: 'operativo/resueltos', element: WrapOperativo('respuesta'), handle: { breadcrumb: 'Datos · Operativo · Respuesta' } },
+    { path: 'operativo/pendientes', element: WrapOperativo('pendientes'), handle: { breadcrumb: 'Datos · Operativo · Pendientes' } },
+    { path: 'operativo/subreclamos', element: WrapOperativo('subreclamos'), handle: { breadcrumb: 'Datos · Operativo · Subreclamos' } },
   ],
 }

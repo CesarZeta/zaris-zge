@@ -25,6 +25,8 @@ export interface GeoReclamo {
   latitud: number
   longitud: number
   tipo_nombre: string | null
+  // Solo en el BI de pendientes (/bi/pendientes-geo): días desde el alta.
+  dias_demora?: number | null
 }
 
 export interface GeoEmergencia {

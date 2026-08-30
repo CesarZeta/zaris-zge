@@ -1,21 +1,12 @@
 import type { ReactNode } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
 import { Activity } from 'lucide-react'
 import { shellGoInicio } from '../../lib/shellNav'
 import { shellNavigate } from '../../lib/shellNav'
 
-// Layout del tablero OPERATIVO. Tabs con paths ABSOLUTOS bajo /bi/operativo
-// (un `to` relativo caería al catch-all → dashboard, bug §41).
-const TABS: { to: string; label: string }[] = [
-  { to: '/bi/operativo', label: 'Resumen' },
-  { to: '/bi/operativo/resueltos', label: 'Resueltos / SLA' },
-  { to: '/bi/operativo/pendientes', label: 'Pendientes' },
-  { to: '/bi/operativo/subreclamos', label: 'Subreclamos' },
-]
-
+// Layout del tablero OPERATIVO: breadcrumb + título. Desde 2026-08-30 el
+// Operativo es UNA página (Resumen → Respuesta → Pendientes → Subreclamos) con
+// índice fijo y filtros globales dentro de OperativoPage — ya no hay tabs.
 export function BiLayout({ children }: { children: ReactNode }) {
-  const location = useLocation()
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 1400, margin: '0 auto', width: '100%', padding: '0 8px' }}>
       <nav
@@ -48,33 +39,9 @@ export function BiLayout({ children }: { children: ReactNode }) {
             Análisis de datos Operativo
           </h1>
           <p style={{ fontSize: '0.82rem', color: 'var(--fg-3)', margin: '2px 0 0' }}>
-            Tableros del día a día: volumen, estados, áreas, canales, SLA, pendientes y subreclamos.
+            Tablero por área de servicio: resumen, tiempos de respuesta, pendientes y subreclamos, con exportación de los tickets filtrados.
           </p>
         </div>
-      </div>
-
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border-primary)', flexWrap: 'wrap' }}>
-        {TABS.map((t) => {
-          const active = t.to === '/bi/operativo'
-            ? location.pathname === '/bi/operativo' || location.pathname === '/bi/operativo/'
-            : location.pathname.startsWith(t.to)
-          return (
-            <NavLink
-              key={t.to}
-              to={t.to}
-              style={{
-                fontFamily: 'var(--font-display)', fontSize: '0.86rem', fontWeight: 500,
-                padding: '8px 14px', textDecoration: 'none',
-                color: active ? 'var(--fg-1)' : 'var(--fg-3)',
-                borderBottom: `2px solid ${active ? 'var(--zaris-orange)' : 'transparent'}`,
-                marginBottom: -1,
-              }}
-            >
-              {t.label}
-            </NavLink>
-          )
-        })}
       </div>
 
       {children}
