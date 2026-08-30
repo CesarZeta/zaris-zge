@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 
 // ── KpiCard ───────────────────────────────────────────────────────────────────
-// Tarjeta de número grande con etiqueta. `accent` colorea el valor.
+// Tarjeta de número grande con etiqueta. `accent` colorea el valor. Compacta
+// (2026-08-30): la fila de KPIs de cada sección debe entrar en UNA línea.
 export function KpiCard({
   label,
   value,
@@ -19,29 +20,46 @@ export function KpiCard({
         background: 'var(--surface-100)',
         border: '1px solid var(--border-primary)',
         borderRadius: 12,
-        padding: '16px 18px',
+        padding: '12px 14px',
         display: 'flex',
         flexDirection: 'column',
-        gap: 4,
+        gap: 3,
         minWidth: 0,
       }}
     >
       <span
         style={{
           fontFamily: 'var(--font-display)',
-          fontSize: '0.72rem',
+          fontSize: '0.68rem',
           textTransform: 'uppercase',
           letterSpacing: '0.05em',
           color: 'var(--fg-3)',
           fontWeight: 600,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
         }}
+        title={label}
       >
         {label}
       </span>
-      <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.9rem', fontWeight: 700, lineHeight: 1.05, color: accent }}>
+      <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.6rem', fontWeight: 700, lineHeight: 1.05, color: accent, whiteSpace: 'nowrap' }}>
         {value}
       </span>
-      {sub && <span style={{ fontSize: '0.74rem', color: 'var(--fg-3)' }}>{sub}</span>}
+      {sub && (
+        <span style={{ fontSize: '0.7rem', color: 'var(--fg-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={sub}>
+          {sub}
+        </span>
+      )}
+    </div>
+  )
+}
+
+// Fila ÚNICA de KPIs (no envuelve): N columnas iguales.
+export function KpiRow({ n, children }: { n: number; children: ReactNode }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap: 10 }}>
+      {children}
     </div>
   )
 }

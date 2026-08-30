@@ -6,8 +6,13 @@ import type { BiFiltros } from '../lib/types'
 // Incluye TODOS los campos que viajan al backend: si se agrega un filtro nuevo a
 // BiFiltros hay que sumarlo acá o las vistas muestran datos viejos.
 export const filtrosKey = (f: BiFiltros) =>
-  [f.desde, f.hasta, f.id_area, f.prioridad, f.estado, f.id_tipo_reclamo, f.canal] as const
+  [f.desde, f.hasta, f.anio, (f.meses ?? []).join(','), f.id_area, f.prioridad, f.estado, f.id_tipo_reclamo, f.canal] as const
 const key = (sub: string, f: BiFiltros) => ['bi', sub, ...filtrosKey(f)] as const
+
+// KPIs comparativos de la fila única de cada sección.
+export function useComparativo(seccion: 'resumen' | 'respuesta' | 'pendientes' | 'subreclamos', f: BiFiltros) {
+  return useQuery({ queryKey: key(`comparativo-${seccion}`, f), queryFn: () => biApi.comparativo(seccion, f) })
+}
 
 export function useResumen(f: BiFiltros) {
   return useQuery({ queryKey: key('resumen', f), queryFn: () => biApi.resumen(f) })
@@ -41,7 +46,7 @@ export function useMiArea() {
 export function useSlaResumen(f: BiFiltros) {
   // Sin fechas a propósito: los KPIs "último mes / mes anterior" usan el mes calendario.
   return useQuery({
-    queryKey: ['bi', 'sla-resumen', f.id_area, f.prioridad, f.estado, f.id_tipo_reclamo, f.canal],
+    queryKey: ['bi', 'sla-resumen', f.id_area, f.prioridad, f.estado, f.id_tipo_reclamo, f.canal, f.anio, (f.meses ?? []).join(',')],
     queryFn: () => biApi.slaResumen(f),
   })
 }

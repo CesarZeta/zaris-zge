@@ -5,11 +5,11 @@ import {
 } from 'recharts'
 import { HistogramaTemporal } from '../components/HistogramaTemporal'
 import { TotalLabelH } from '../components/barLabels'
-import { ChartCard, CenterMsg, KpiCard } from '../components/ui'
-import { AXIS, Seccion, fmt, legendStyle, pieLabel, tooltipStyle } from '../components/SeccionHeader'
+import { ChartCard, CenterMsg, KpiCard, KpiRow } from '../components/ui'
+import { AXIS, KpisComparativos, Seccion, fmt, legendStyle, pieLabel, tooltipStyle } from '../components/SeccionHeader'
 import { exportarCsv, hoyISO } from '../components/exportCsv'
 import { biApi } from '../lib/api'
-import { usePendientesGeo, usePendientesPorTipo, usePendientesResumen } from '../hooks/useBi'
+import { useComparativo, usePendientesGeo, usePendientesPorTipo, usePendientesResumen } from '../hooks/useBi'
 import { DashboardMap } from '../../dashboard/components/DashboardMap'
 import type { GeoReclamo } from '../../dashboard/hooks/useDashboardData'
 import type { BiFiltros, PendienteGeo } from '../lib/types'
@@ -21,6 +21,7 @@ export function PendientesSection({ filtros }: { filtros: BiFiltros }) {
   const resumen = usePendientesResumen(filtros)
   const porTipo = usePendientesPorTipo(filtros, 10)
   const geo = usePendientesGeo(filtros)
+  const comp = useComparativo('pendientes', filtros)
   const [exportando, setExportando] = useState(false)
   const r = resumen.data
 
@@ -65,14 +66,14 @@ export function PendientesSection({ filtros }: { filtros: BiFiltros }) {
       exportDisabled={!r?.total}
       exportLabel="Exportar pendientes"
     >
-      {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
-        <KpiCard label="Total pendientes" value={fmt(r?.total)} accent="var(--zaris-orange)" />
-        <KpiCard label="Demora promedio" value={r?.dias_demora_promedio != null ? `${r.dias_demora_promedio} d` : '—'} accent={COLOR_TRAMO_4_7} sub="desde el ingreso" />
+      {/* KPIs — UNA fila: totalizador + comparativos + demora */}
+      <KpiRow n={6}>
+        <KpiCard label="Pendientes" value={fmt(r?.total)} accent="var(--zaris-orange)" sub={comp.data ? comp.data.periodo_actual : 'abiertos hoy'} />
+        <KpisComparativos c={comp.data} etiqueta="ingresados aún abiertos" />
+        <KpiCard label="Demora promedio" value={r?.dias_demora_promedio != null ? `${r.dias_demora_promedio} d` : '—'} accent={COLOR_TRAMO_4_7} sub="días desde el ingreso" />
+        <KpiCard label="Más de 7 días" value={fmt(r?.tmas7)} accent={COLOR_TRAMO_MAS7} sub={r ? `4 a 7: ${fmt(r.t4_7)}` : undefined} />
         <KpiCard label="Hasta 3 días" value={fmt(r?.t0_3)} accent={COLOR_TRAMO_0_3} />
-        <KpiCard label="4 a 7 días" value={fmt(r?.t4_7)} accent={COLOR_TRAMO_4_7} />
-        <KpiCard label="Más de 7 días" value={fmt(r?.tmas7)} accent={COLOR_TRAMO_MAS7} />
-      </div>
+      </KpiRow>
 
       {/* Pendientes por mes de alta — histograma por estado con Mes/Día + drill */}
       <HistogramaTemporal
