@@ -34,8 +34,30 @@ Endpoints por vista en `bi.py`. Convenciones críticas:
 - Subreclamos = `id_reclamo_padre IS NOT NULL` ("intervenciones" en la jerga de los tableros de referencia).
 - El mapa de Pendientes reusa `modules/dashboard/components/DashboardMap.tsx` (Leaflet vanilla) — endpoint `/bi/pendientes-geo`.
 
-### Datos demo (prod, 2026-05-26)
-Los 30 reclamos de prod fueron poblados con `fecha_cierre` (resueltos) y `latitud/longitud` (todos) para que el BI tenga contenido. Backups `_backup_reclamos_fecha_cierre_2026_05_26` y `_backup_reclamos_geo_demo_2026_05_26`.
+### Datos demo (generador, 2026-08-30 — reemplaza al poblado manual de 2026-05-26)
+
+El grueso de los datos que alimentan los tableros es SINTETICO, producido por el
+**generador demo** `backend/app/services/demo_datos.py` (+ `demo_datos_ref.py`,
+distribuciones derivadas de datasets reales de VL que viven en `SMOKE/`,
+carpeta **gitignoreada** — datos personales, jamas versionar):
+
+- ~300-500 reclamos/mes desde abril 2026, con historial coherente, subreclamos
+  (~4%), localidad+coords por centroide, y encuestas CSAT (~85% de los
+  resueltos, ~30% respondidas, %sat ~68%). Catalogos resueltos POR NOMBRE en
+  runtime (nunca por id — divergen local/prod).
+- **Todo atribuido al usuario INACTIVO `generador.demo`** (`id_usuario_alta`) y
+  vecinos demo con email `@vecinos-demo.zaris.com.ar` → borrar/migrar a un
+  tenant (IT-01) = filtrar por eso. NO borrar a mano sin decision de Cesar.
+- **Regla critica:** los `encuesta_envio` demo JAMAS nacen `pendiente` (el
+  dispatcher horario los mandaria por mail). Solo enviada/completada/expirada.
+- Refresco: cron semanal `.github/workflows/demo-datos.yml` (lunes 08:20 UTC) →
+  `POST /api/v1/demo/poblar` (auth X-Dispatcher-Token o JWT admin nivel 1;
+  genera la semana + `avanzar_pendientes` que envejece SOLO lo demo). Carga
+  manual por rango: dispatch del workflow con inputs `desde`/`hasta` (max 45
+  dias por llamada) o `backend/seed_demo_bi.py` en local.
+- Backups pre-seed en prod: `_backup_reclamos_pre_demo_2026_08_30` y
+  `_backup_encuesta_envio_pre_demo_2026_08_30` (+ los viejos
+  `_backup_reclamos_fecha_cierre_2026_05_26` / `_backup_reclamos_geo_demo_2026_05_26`).
 
 
 ## Tablero EJECUTIVO — "Análisis de demanda ciudadana" (2026-08-30)
