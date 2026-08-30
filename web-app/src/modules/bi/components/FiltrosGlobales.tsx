@@ -3,20 +3,18 @@ import { TipoSearch } from './TipoSearch'
 import type { AreaCatalogo, BiFiltros } from '../lib/types'
 import { LABEL_CANAL } from '../lib/theme'
 
-// Barra de filtros GLOBALES del Operativo (2026-08-30). Una sola barra gobierna
+// Panel "Filtrado de análisis" del Operativo (2026-08-30). UNA barra gobierna
 // todas las secciones y las exportaciones. Decisiones de César:
 //  - el ÁREA DE SERVICIO es el selector principal (estas vistas son "para cada
-//    área"): va primero, resaltado, con una por defecto; "Todas las áreas" queda
-//    como opción explícita.
-//  - atajos de AÑO y MES como en Power BI (setean desde/hasta), además del rango
-//    manual; y filtros de Estado, Tipo de reclamo (buscador) y Canal.
+//    área"): va primero, resaltado, con una por defecto; "Todas las áreas" solo admin.
+//  - AÑO en chips (uno a la vez) y MESES como tildes independientes (se marcan y
+//    desmarcan) + casilla "Seleccionar año completo" que marca/desmarca los 12.
+//    Los chips viajan como `anio` + `meses`; el rango manual (desde/hasta) es la
+//    otra vía: usar una limpia la otra.
+//  - Estado, prioridad, canal y tipo de reclamo (buscador).
 export const ESTADOS = ['Sin asignar', 'En gestión', 'En espera', 'En auditoría', 'Resuelto', 'Cancelado'] as const
 const CANALES = ['web', 'app_movil', 'whatsapp', 'telefono', 'presencial', 'oficio', 'otro', 'sin_dato'] as const
-
-const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
-
-const pad = (n: number) => String(n).padStart(2, '0')
-const ultimoDia = (y: number, m: number) => new Date(y, m, 0).getDate() // m 1..12
+const TODOS_LOS_MESES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
 export function FiltrosGlobales({
   filtros,
@@ -35,44 +33,54 @@ export function FiltrosGlobales({
 }) {
   const set = (patch: Partial<BiFiltros>) => onChange({ ...filtros, ...patch })
 
-  const hoy = new Date()
-  const anios = useMemo(() => [hoy.getFullYear() - 2, hoy.getFullYear() - 1, hoy.getFullYear()], [hoy])
+  const anioActual = new Date().getFullYear()
+  const anios = useMemo(() => [anioActual - 2, anioActual - 1, anioActual], [anioActual])
+  const meses = filtros.meses ?? []
+  const anioCompleto = meses.length === 12
 
-  // Año/mes "activos" se derivan del rango: año = rango 01-01..12-31; mes = rango
-  // completo de ese mes. Así los chips reflejan lo que el rango manual diga.
-  const anioActivo = anios.find((y) => filtros.desde === `${y}-01-01` && filtros.hasta === `${y}-12-31`)
-    ?? anios.find((y) => filtros.desde?.startsWith(`${y}-`) && filtros.hasta?.startsWith(`${y}-`))
-  const mesActivo = (() => {
-    if (!filtros.desde || !filtros.hasta) return undefined
-    const [y, m, d] = filtros.desde.split('-').map(Number)
-    const [y2, m2, d2] = filtros.hasta.split('-').map(Number)
-    if (y === y2 && m === m2 && d === 1 && d2 === ultimoDia(y, m)) return m
-    return undefined
-  })()
-  const anioBase = anioActivo ?? hoy.getFullYear()
-
+  // Chips → limpian el rango manual. Rango manual → limpia los chips.
   const elegirAnio = (y: number) => {
-    if (anioActivo === y && !mesActivo) set({ desde: undefined, hasta: undefined })
-    else set({ desde: `${y}-01-01`, hasta: `${y}-12-31` })
+    if (filtros.anio === y) set({ anio: undefined, desde: undefined, hasta: undefined })
+    else set({ anio: y, desde: undefined, hasta: undefined })
   }
-  const elegirMes = (m: number) => {
-    if (mesActivo === m && anioActivo === anioBase) { elegirAnio(anioBase); return }
-    set({ desde: `${anioBase}-${pad(m)}-01`, hasta: `${anioBase}-${pad(m)}-${pad(ultimoDia(anioBase, m))}` })
+  const toggleMes = (m: number) => {
+    const nuevo = meses.includes(m) ? meses.filter((x) => x !== m) : [...meses, m].sort((a, b) => a - b)
+    set({ meses: nuevo.length ? nuevo : undefined, anio: filtros.anio ?? anioActual, desde: undefined, hasta: undefined })
   }
+  const toggleAnioCompleto = () => {
+    if (anioCompleto) set({ meses: undefined })
+    else set({ meses: TODOS_LOS_MESES, anio: filtros.anio ?? anioActual, desde: undefined, hasta: undefined })
+  }
+  const setRango = (patch: { desde?: string; hasta?: string }) =>
+    set({ ...patch, anio: undefined, meses: undefined })
 
-  const hayFiltros = !!(filtros.desde || filtros.hasta || filtros.prioridad || filtros.estado || filtros.id_tipo_reclamo || filtros.canal
+  const hayFiltros = !!(filtros.desde || filtros.hasta || filtros.anio || meses.length || filtros.prioridad
+    || filtros.estado || filtros.id_tipo_reclamo || filtros.canal
     || (filtros.id_area ?? undefined) !== (areaDefault ?? undefined))
 
   return (
     <div style={wrapStyle}>
-      {/* Fila 1: área (principal) + atajos de año/mes */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <h2 style={tituloStyle}>Filtrado de análisis</h2>
+        {hayFiltros && (
+          <button
+            type="button"
+            onClick={() => onChange({ id_area: areaDefault })}
+            style={{ ...inputStyle, cursor: 'pointer', color: 'var(--zaris-orange)', borderColor: 'var(--zaris-orange)', background: 'var(--surface-100)', fontWeight: 600 }}
+          >
+            Limpiar filtros
+          </button>
+        )}
+      </div>
+
+      {/* Fila 1: área (principal) + año + meses */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-end' }}>
         <div>
           <label style={labelStyle}>Área de servicio</label>
           <select
             value={filtros.id_area ?? ''}
             onChange={(e) => set({ id_area: e.target.value ? Number(e.target.value) : undefined, id_tipo_reclamo: undefined, tipo_nombre: undefined })}
-            style={{ ...inputStyle, minWidth: 240, fontWeight: 600, borderColor: 'var(--zaris-orange)' }}
+            style={{ ...inputStyle, minWidth: 250, fontWeight: 600, borderColor: 'var(--zaris-orange)', borderWidth: 2 }}
           >
             {permiteTodas && <option value="">Todas las áreas</option>}
             {areas.map((a) => (
@@ -84,16 +92,30 @@ export function FiltrosGlobales({
           <label style={labelStyle}>Año</label>
           <div style={chipsStyle}>
             {anios.map((y) => (
-              <button key={y} type="button" onClick={() => elegirAnio(y)} style={chipStyle(anioActivo === y)}>{y}</button>
+              <button key={y} type="button" onClick={() => elegirAnio(y)} style={chipStyle(filtros.anio === y)}>{y}</button>
             ))}
           </div>
         </div>
         <div>
-          <label style={labelStyle}>Mes {anioActivo ? `(${anioActivo})` : `(${anioBase})`}</label>
-          <div style={chipsStyle}>
-            {MESES.map((m, i) => (
-              <button key={m} type="button" onClick={() => elegirMes(i + 1)} style={chipStyle(mesActivo === i + 1 && anioBase === (anioActivo ?? anioBase))}>{i + 1}</button>
+          <label style={labelStyle}>Meses {filtros.anio ? `de ${filtros.anio}` : `(${anioActual})`}</label>
+          <div style={{ ...chipsStyle, alignItems: 'center' }}>
+            {TODOS_LOS_MESES.map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="checkbox"
+                aria-checked={meses.includes(m)}
+                onClick={() => toggleMes(m)}
+                style={chipStyle(meses.includes(m))}
+                title={meses.includes(m) ? 'Desmarcar mes' : 'Marcar mes'}
+              >
+                {meses.includes(m) ? '✓ ' : ''}{m}
+              </button>
             ))}
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 6, fontFamily: 'var(--font-display)', fontSize: '0.78rem', color: 'var(--fg-1)', cursor: 'pointer', fontWeight: 600 }}>
+              <input type="checkbox" checked={anioCompleto} onChange={toggleAnioCompleto} />
+              Seleccionar año completo
+            </label>
           </div>
         </div>
       </div>
@@ -102,11 +124,11 @@ export function FiltrosGlobales({
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-end' }}>
         <div>
           <label style={labelStyle}>Desde</label>
-          <input type="date" value={filtros.desde ?? ''} onChange={(e) => set({ desde: e.target.value || undefined })} style={inputStyle} />
+          <input type="date" value={filtros.desde ?? ''} onChange={(e) => setRango({ desde: e.target.value || undefined, hasta: filtros.hasta })} style={inputStyle} />
         </div>
         <div>
           <label style={labelStyle}>Hasta</label>
-          <input type="date" value={filtros.hasta ?? ''} onChange={(e) => set({ hasta: e.target.value || undefined })} style={inputStyle} />
+          <input type="date" value={filtros.hasta ?? ''} onChange={(e) => setRango({ desde: filtros.desde, hasta: e.target.value || undefined })} style={inputStyle} />
         </div>
         <div>
           <label style={labelStyle}>Estado</label>
@@ -140,24 +162,21 @@ export function FiltrosGlobales({
             inputStyle={inputStyle}
           />
         </div>
-        {hayFiltros && (
-          <button
-            type="button"
-            onClick={() => onChange({ id_area: areaDefault })}
-            style={{ ...inputStyle, cursor: 'pointer', color: 'var(--zaris-orange)', borderColor: 'var(--zaris-orange)', background: 'transparent', fontWeight: 600 }}
-          >
-            Limpiar
-          </button>
-        )}
       </div>
     </div>
   )
 }
 
+// Panel naranja (pedido de César): tinte del brand con borde naranja; los
+// controles mantienen su fondo claro para leerse.
 const wrapStyle: React.CSSProperties = {
   display: 'flex', flexDirection: 'column', gap: 10,
-  background: 'var(--surface-300)', border: '1px solid var(--border-primary)',
-  borderRadius: 12, padding: '12px 16px',
+  background: 'rgba(245, 78, 0, 0.10)', border: '2px solid var(--zaris-orange)',
+  borderRadius: 12, padding: '10px 16px 14px',
+}
+const tituloStyle: React.CSSProperties = {
+  fontFamily: 'var(--font-display)', fontSize: '0.98rem', fontWeight: 700,
+  color: 'var(--zaris-orange)', margin: 0, letterSpacing: '0.02em', textTransform: 'uppercase',
 }
 const inputStyle: React.CSSProperties = {
   fontFamily: 'var(--font-display)', fontSize: '0.82rem', padding: '6px 10px',
@@ -166,7 +185,7 @@ const inputStyle: React.CSSProperties = {
 }
 const labelStyle: React.CSSProperties = {
   fontFamily: 'var(--font-display)', fontSize: '0.7rem', textTransform: 'uppercase',
-  letterSpacing: '0.04em', color: 'var(--fg-3)', fontWeight: 600, marginBottom: 3, display: 'block',
+  letterSpacing: '0.04em', color: 'var(--fg-2)', fontWeight: 700, marginBottom: 3, display: 'block',
 }
 const chipsStyle: React.CSSProperties = { display: 'flex', gap: 4, flexWrap: 'wrap' }
 function chipStyle(active: boolean): React.CSSProperties {

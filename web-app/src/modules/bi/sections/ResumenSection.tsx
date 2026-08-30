@@ -5,11 +5,11 @@ import {
 } from 'recharts'
 import { HistogramaTemporal } from '../components/HistogramaTemporal'
 import { SegLabelH, TotalLabelH } from '../components/barLabels'
-import { ChartCard, CenterMsg, KpiCard } from '../components/ui'
-import { AXIS, Seccion, fmt, legendStyle, pieLabel, tooltipStyle } from '../components/SeccionHeader'
+import { ChartCard, CenterMsg, KpiCard, KpiRow } from '../components/ui'
+import { AXIS, KpisComparativos, Seccion, fmt, legendStyle, pieLabel, tooltipStyle } from '../components/SeccionHeader'
 import { exportarCsv, hoyISO } from '../components/exportCsv'
 import { biApi } from '../lib/api'
-import { usePorArea, usePorCanal, usePorEstado, useResumen } from '../hooks/useBi'
+import { useComparativo, usePorArea, usePorCanal, usePorEstado, useResumen } from '../hooks/useBi'
 import type { BiFiltros } from '../lib/types'
 import {
   COLOR_CANCELADO, COLOR_PENDIENTE, COLOR_RESUELTO, PALETA_CATEGORICA, colorEstado, labelCanal,
@@ -22,6 +22,7 @@ export function ResumenSection({ filtros }: { filtros: BiFiltros }) {
   const porEstado = usePorEstado(filtros)
   const porCanal = usePorCanal(filtros)
   const porArea = usePorArea(filtros)
+  const comp = useComparativo('resumen', filtros)
   const [exportando, setExportando] = useState(false)
   const r = resumen.data
 
@@ -61,15 +62,14 @@ export function ResumenSection({ filtros }: { filtros: BiFiltros }) {
       exportando={exportando}
       exportDisabled={!r?.total}
     >
-      {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
-        <KpiCard label="Reclamos totales" value={fmt(r?.total)} />
+      {/* KPIs — UNA fila: totalizador de lo filtrado + comparativos + composición */}
+      <KpiRow n={6}>
+        <KpiCard label="Reclamos ingresados" value={fmt(r?.total)} sub={comp.data ? comp.data.periodo_actual : 'período filtrado'} />
+        <KpisComparativos c={comp.data} etiqueta="reclamos" />
         <KpiCard label="Resueltos" value={fmt(r?.resueltos)} accent={COLOR_RESUELTO} />
-        <KpiCard label="Pendientes" value={fmt(r?.pendientes)} accent={COLOR_PENDIENTE} />
-        <KpiCard label="Cancelados" value={fmt(r?.cancelados)} accent={COLOR_CANCELADO} />
+        <KpiCard label="Pendientes" value={fmt(r?.pendientes)} accent={COLOR_PENDIENTE} sub={r ? `cancelados: ${fmt(r.cancelados)}` : undefined} />
         <KpiCard label="% Cumplimiento" value={r ? `${r.pct_cumplido}%` : '—'} accent="var(--zaris-orange)" sub="resueltos / cerrados" />
-        <KpiCard label="Subreclamos" value={fmt(r?.subreclamos)} />
-      </div>
+      </KpiRow>
 
       {/* Histórico: toggle Estado / Tipo (como el "Histórico de reclamos" de Power BI) + Mes/Día + drill */}
       <HistogramaTemporal

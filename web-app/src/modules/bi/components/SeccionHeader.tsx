@@ -1,4 +1,7 @@
 import type { ReactNode } from 'react'
+import { KpiCard } from './ui'
+import type { Comparativo } from '../lib/types'
+import { COLOR_TRAMO_0_3, COLOR_TRAMO_MAS7 } from '../lib/theme'
 
 // Encabezado de cada sección de la página única del Operativo (2026-08-30):
 // ancla para el índice fijo, título, subtítulo y el botón "Exportar tickets"
@@ -25,7 +28,9 @@ export function Seccion({
 }) {
   const disabled = !!exportando || !!exportDisabled
   return (
-    <section id={id} style={{ scrollMarginTop: 150, display: 'flex', flexDirection: 'column', gap: 16 }}>
+    // scroll-margin = alto real de la barra fija (var que setea OperativoPage) para
+    // que, al saltar desde el índice, el título de la sección quede visible debajo.
+    <section id={id} data-seccion style={{ scrollMarginTop: 'calc(var(--bi-sticky, 200px) + 10px)', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', borderBottom: '2px solid var(--zaris-orange)', paddingBottom: 6 }}>
         <div>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.15rem', fontWeight: 600, letterSpacing: '-0.3px', color: 'var(--fg-1)', margin: 0 }}>
@@ -65,6 +70,28 @@ export const legendStyle: React.CSSProperties = { fontFamily: 'var(--font-displa
 
 export function fmt(n: number | undefined): string {
   return n == null ? '—' : n.toLocaleString('es-AR')
+}
+
+// Los dos KPIs comparativos que llevan TODAS las secciones (César 2026-08-30):
+// promedio mensual del último año y el mismo valor del período del año anterior.
+export function KpisComparativos({ c, etiqueta }: { c?: Comparativo; etiqueta: string }) {
+  const var_ = c?.var_pct ?? 0
+  const pos = var_ >= 0
+  return (
+    <>
+      <KpiCard
+        label={`Prom. mensual últ. año`}
+        value={c ? c.prom_mensual_12m.toLocaleString('es-AR') : '—'}
+        sub={c ? `${etiqueta}/mes · ${c.total_12m.toLocaleString('es-AR')} en 12 meses` : undefined}
+      />
+      <KpiCard
+        label="Mismo período año anterior"
+        value={c ? c.anio_anterior.toLocaleString('es-AR') : '—'}
+        accent={c ? (pos ? COLOR_TRAMO_0_3 : COLOR_TRAMO_MAS7) : 'var(--fg-1)'}
+        sub={c ? `${pos ? '+' : ''}${var_}% vs. ${c.periodo_anterior}` : undefined}
+      />
+    </>
+  )
 }
 
 // Label de dona (porcentaje + valor) con pastilla de contraste invertible (§13).
