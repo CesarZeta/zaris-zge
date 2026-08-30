@@ -313,24 +313,70 @@ async def buscar_direccion(
     return await geocodificar_direccion(q, limit, solo_direcciones)
 
 
+async def reverse_geocodificar(lat: float, lon: float) -> dict:
+    """Geocoding inverso (lat/lon → dirección legible) SIN dependencia de auth.
+
+    Extraído del handler `/reverse` para reutilizarlo desde la vía pública del
+    vecino (`/publico/reclamos/geo/reverse`: autocompletado por GPS de la PWA).
+    Devuelve SIEMPRE 200 con `encontrado`: Nominatim responde HTTP 200 con
+    `{"error": "Unable to geocode"}` para el mar o zonas sin datos; el caller
+    (PWA) cae a las coordenadas crudas como dirección de respaldo.
+
+    `direccion` es la forma corta "Calle Altura, Localidad" que la app usa en el
+    campo de domicilio; `display_name`/`address` son los crudos de Nominatim.
+    """
+    data = await _nominatim_get("/reverse", {
+        "lat": f"{lat:.7f}",
+        "lon": f"{lon:.7f}",
+        "format": "jsonv2",
+        "addressdetails": "1",
+        "zoom": "18",   # nivel edificio/calle (default 18; explícito por claridad)
+    })
+    if not isinstance(data, dict) or data.get("error") or not data.get("display_name"):
+        return {
+            "encontrado": False, "direccion": None, "display_name": None,
+            "calle": None, "altura": None, "localidad": None, "provincia": None,
+            "lat": lat, "lon": lon, "address": {},
+        }
+    a = data.get("address") or {}
+    calle = (a.get("road") or a.get("pedestrian") or a.get("footway")
+             or a.get("cycleway") or a.get("path") or "")
+    altura = str(a.get("house_number") or "")
+    localidad = (a.get("city") or a.get("town") or a.get("village")
+                 or a.get("suburb") or a.get("city_district") or a.get("municipality") or "")
+    provincia = a.get("state") or ""
+    if calle:
+        direccion = f"{calle} {altura}".strip() + (f", {localidad}" if localidad else "")
+    else:
+        direccion = data.get("display_name")
+    return {
+        "encontrado": True,
+        "direccion": direccion,
+        "display_name": data.get("display_name"),
+        "calle": calle or None,
+        "altura": altura or None,
+        "localidad": localidad or None,
+        "provincia": provincia or None,
+        "lat": float(data["lat"]) if data.get("lat") else lat,
+        "lon": float(data["lon"]) if data.get("lon") else lon,
+        "address": a,
+    }
+
+
 @router.get("/reverse")
 async def reverse_geocode(
     lat: float = Query(..., ge=-90, le=90),
     lon: float = Query(..., ge=-180, le=180),
     current_user: dict = Depends(get_current_user),
 ):
-    """Geocoding inverso: lat/lon → dirección normalizada."""
-    data = await _nominatim_get("/reverse", {
-        "lat": str(lat),
-        "lon": str(lon),
-        "format": "json",
-        "addressdetails": "1",
-    })
-    if not isinstance(data, dict):
+    """Geocoding inverso: lat/lon → dirección normalizada. Requiere JWT (backoffice).
+
+    Compat: conserva `display_name`/`address`/`lat`/`lon` y suma `encontrado`,
+    `direccion` (corta) y las piezas (`calle`/`altura`/`localidad`/`provincia`).
+    Sin resultado → 404 (comportamiento histórico de esta ruta; la pública
+    devuelve 200 con `encontrado=false`).
+    """
+    out = await reverse_geocodificar(lat, lon)
+    if not out["encontrado"]:
         raise HTTPException(status_code=404, detail="Sin resultados")
-    return {
-        "display_name": data.get("display_name"),
-        "address": data.get("address") or {},
-        "lat": float(data["lat"]) if data.get("lat") else lat,
-        "lon": float(data["lon"]) if data.get("lon") else lon,
-    }
+    return out
