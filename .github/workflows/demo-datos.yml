@@ -1,0 +1,75 @@
+name: Datos demo BI (cron semanal)
+
+# Mantiene viva la demo del municipio ficticio San Andres: una vez por semana
+# genera los reclamos de los ultimos 7 dias (con historial y encuestas CSAT) y
+# avanza el ciclo de vida de los pendientes demo (asigna/resuelve/cancela,
+# madura encuestas). Endpoint: POST /api/v1/demo/poblar (body default).
+#
+# Solo toca datos atribuidos al usuario 'generador.demo' (inactivo). El volumen
+# semanal sale de la banda mensual 300-500 escalada a 7 dias (~70-115).
+#
+# Auth: header X-Dispatcher-Token == env var DISPATCHER_TOKEN de Railway (el
+# mismo token que usan los otros crons). Secrets del repo:
+#   - ENCUESTAS_DISPATCHER_TOKEN  : mismo valor que Railway DISPATCHER_TOKEN
+#   - ZARIS_API_URL (opcional)    : base de la API; default abajo
+#
+# Disparo manual: pestana Actions > este workflow > Run workflow.
+
+on:
+  schedule:
+    # Lunes 08:20 UTC (05:20 en AR). Cada corrida agrega la semana nueva.
+    - cron: '20 8 * * 1'
+  workflow_dispatch:
+    inputs:
+      desde:
+        description: 'Inicio del rango YYYY-MM-DD (vacio = ultimos 7 dias)'
+        required: false
+        default: ''
+      hasta:
+        description: 'Fin del rango YYYY-MM-DD (vacio = hoy)'
+        required: false
+        default: ''
+
+concurrency:
+  group: demo-datos
+  cancel-in-progress: false
+
+jobs:
+  poblar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Llamar al endpoint de datos demo
+        env:
+          API_URL: ${{ secrets.ZARIS_API_URL || 'https://zaris-api-production-bf0b.up.railway.app' }}
+          TOKEN: ${{ secrets.ENCUESTAS_DISPATCHER_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Falta el secret ENCUESTAS_DISPATCHER_TOKEN en el repo."
+            exit 1
+          fi
+
+          URL="$API_URL/api/v1/demo/poblar"
+
+          DESDE='${{ github.event.inputs.desde }}'
+          HASTA='${{ github.event.inputs.hasta }}'
+          PAYLOAD='{}'
+          if [ -n "$DESDE" ] && [ -n "$HASTA" ]; then
+            PAYLOAD=$(printf '{"desde":"%s","hasta":"%s"}' "$DESDE" "$HASTA")
+          fi
+          echo "POST $URL body=$PAYLOAD"
+
+          BODY=$(mktemp)
+          CODE=$(curl -sS -o "$BODY" -w '%{http_code}' \
+            -X POST "$URL" \
+            -H "X-Dispatcher-Token: $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+
+          echo "HTTP $CODE"
+          echo "Respuesta:"
+          cat "$BODY"; echo
+
+          if [ "$CODE" != "200" ]; then
+            echo "::error::demo/poblar devolvio HTTP $CODE (esperado 200)."
+            exit 1
+          fi
