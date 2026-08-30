@@ -31,7 +31,14 @@ const WrapOperativo = (seccion?: string) => () => {
 // Ejecutivo: página única con 5 secciones (2026-08-30).
 function WrapEjecutivo() {
   const ok = useNivelOk()
-  return <BiLayout>{ok ? <EjecutivoPage /> : <SinAcceso />}</BiLayout>
+  return (
+    <BiLayout
+      titulo="Análisis de datos Ejecutivo"
+      subtitulo="Análisis de demanda ciudadana: score del período, evolución, histórico, mayores incidentes y satisfacción por subárea."
+    >
+      {ok ? <EjecutivoPage /> : <SinAcceso />}
+    </BiLayout>
+  )
 }
 
 // Landing: sin el BiLayout.
