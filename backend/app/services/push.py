@@ -26,6 +26,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
+from app.services.avisos import registrar_aviso_ciudadano
 
 logger = logging.getLogger("zaris.push")
 
@@ -174,12 +175,17 @@ async def notificar_estado_reclamo(id_reclamo: int) -> None:
             """), {"id": id_reclamo})).mappings().first()
         if not r or not r["id_ciudadano"]:
             return
-        await enviar_push_ciudadano(
-            int(r["id_ciudadano"]),
-            titulo=f"Tu reclamo {r['nro_reclamo'] or ''}".strip(),
-            cuerpo=f"Cambio de estado: {r['estado']}.",
-            url=f"/reclamos/{id_reclamo}",
+        id_c = int(r["id_ciudadano"])
+        titulo = f"Tu reclamo {r['nro_reclamo'] or ''}".strip()
+        cuerpo = f"Cambio de estado: {r['estado']}."
+        url = f"/reclamos/{id_reclamo}"
+        # Bandeja persistente (mig 99) ANTES del push: queda aunque no haya
+        # suscripcion. Mismo texto/URL que la notificacion.
+        await registrar_aviso_ciudadano(
+            id_c, "reclamo_estado", titulo, cuerpo, url,
+            recurso_tipo="reclamo", recurso_id=id_reclamo,
         )
+        await enviar_push_ciudadano(id_c, titulo=titulo, cuerpo=cuerpo, url=url)
     except Exception as e:  # noqa: BLE001
         logger.warning("notificar_estado_reclamo(%s) fallo: %s", id_reclamo, e)
 
@@ -199,11 +205,15 @@ async def notificar_estado_emergencia(id_evento: int) -> None:
             """), {"id": id_evento})).mappings().first()
         if not r or not r["id_ciudadano_buc"]:
             return
-        await enviar_push_ciudadano(
-            int(r["id_ciudadano_buc"]),
-            titulo=f"Tu reporte {r['numero_operativo'] or ''}".strip(),
-            cuerpo=f"Estado: {r['estado_nombre'] or 'actualizado'}.",
-            url="/emergencias",
+        id_c = int(r["id_ciudadano_buc"])
+        titulo = f"Tu reporte {r['numero_operativo'] or ''}".strip()
+        cuerpo = f"Estado: {r['estado_nombre'] or 'actualizado'}."
+        url = "/emergencias"
+        # Bandeja persistente (mig 99) ANTES del push — ver notificar_estado_reclamo.
+        await registrar_aviso_ciudadano(
+            id_c, "emergencia_estado", titulo, cuerpo, url,
+            recurso_tipo="emergencia", recurso_id=id_evento,
         )
+        await enviar_push_ciudadano(id_c, titulo=titulo, cuerpo=cuerpo, url=url)
     except Exception as e:  # noqa: BLE001
         logger.warning("notificar_estado_emergencia(%s) fallo: %s", id_evento, e)

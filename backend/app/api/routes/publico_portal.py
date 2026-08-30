@@ -61,7 +61,11 @@ async def mi_resumen(
              WHERE er.id_ciudadano = :id_c AND er.activo = TRUE
                AND es.codigo = 'reservada')                           AS entradas_vigentes,
           (SELECT COUNT(*) FROM evento_reservas
-             WHERE id_ciudadano = :id_c AND activo = TRUE)             AS entradas_total
+             WHERE id_ciudadano = :id_c AND activo = TRUE)             AS entradas_total,
+          -- Avisos (bandeja mig 99) — badge de la campana
+          (SELECT COUNT(*) FROM ciudadano_aviso
+             WHERE id_ciudadano = :id_c AND activo = TRUE
+               AND leido = FALSE)                                     AS avisos_no_leidos
     """), {"id_c": id_c})).fetchone()
 
     return {
@@ -73,4 +77,5 @@ async def mi_resumen(
         "reclamos": {"vigentes": row.reclamos_vigentes, "total": row.reclamos_total},
         "turnos":   {"vigentes": row.turnos_vigentes,   "total": row.turnos_total},
         "entradas": {"vigentes": row.entradas_vigentes, "total": row.entradas_total},
+        "avisos":   {"no_leidos": row.avisos_no_leidos},
     }
