@@ -109,6 +109,8 @@ Todas validan el slug `?m=<codigo_corto>` contra el único municipio del deploy.
 | GET | `/eventos` | publico | Mis reportes. |
 | POST | `/eventos` | publico | Reporta emergencia. Canal `APP_VECINO` forzado server-side. Rate-limit 5/min/IP. |
 
+> **Alerta de pánico (botón «Seguridad» de la PWA — mig 97).** El body de `POST /eventos` **no tiene** campo `es_panico`: el backend lo deriva **únicamente** del prefijo de `descripcion`. Si `descripcion` empieza con **`ALERTA DE PANICO`** (se compara con `strip` + mayúsculas + sin tildes, así que `"Alerta de pánico: …"` también cuenta), el evento se guarda con `es_panico=true`, se notifica in-app + mail a los operadores COM de la subárea del tipo (fallback: admins) y el tablero de Emergencias lo muestra primero, con card destacada, banner rojo y sonido. **Ese prefijo es el mecanismo formal** — cualquier otro texto crea un evento común. `GET /eventos` no expone `es_panico` (el vecino ve su reporte como uno más). Fuente: `publico_emergencias.py` (`_PREFIJO_PANICO`, `_es_alerta_panico`).
+
 ## 9. Web Push — `/api/v1/publico/push`
 
 | Verbo | Ruta | Auth | Para qué |
