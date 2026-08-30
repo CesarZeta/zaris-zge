@@ -4,11 +4,11 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { SegLabel, SegLabelH, TotalLabel, TotalLabelH } from '../components/barLabels'
-import { ChartCard, CenterMsg, KpiCard } from '../components/ui'
-import { AXIS, Seccion, fmt, legendStyle, tooltipStyle } from '../components/SeccionHeader'
+import { ChartCard, CenterMsg, KpiCard, KpiRow } from '../components/ui'
+import { AXIS, KpisComparativos, Seccion, fmt, legendStyle, tooltipStyle } from '../components/SeccionHeader'
 import { exportarCsv, hoyISO } from '../components/exportCsv'
 import { biApi } from '../lib/api'
-import { useEvolucionDias, useSlaResumen, useTiemposMensual, useTiemposPorTipo } from '../hooks/useBi'
+import { useComparativo, useEvolucionDias, useSlaResumen, useTiemposMensual, useTiemposPorTipo } from '../hooks/useBi'
 import type { BiFiltros } from '../lib/types'
 import { COLOR_TRAMO_0_3, COLOR_TRAMO_4_7, COLOR_TRAMO_MAS7, labelCanal, labelMes } from '../lib/theme'
 
@@ -19,6 +19,7 @@ export function RespuestaSection({ filtros }: { filtros: BiFiltros }) {
   const tMes = useTiemposMensual(filtros)
   const tTipo = useTiemposPorTipo(filtros, 10)
   const evol = useEvolucionDias(filtros)
+  const comp = useComparativo('respuesta', filtros)
   const [exportando, setExportando] = useState(false)
 
   const s = sla.data
@@ -53,22 +54,22 @@ export function RespuestaSection({ filtros }: { filtros: BiFiltros }) {
       subtitulo="Reclamos cerrados: cuántos se resolvieron y en cuánto tiempo (por fecha de cierre)."
       onExport={handleExport}
       exportando={exportando}
-      exportDisabled={!s?.total_resueltos}
+      exportDisabled={!comp.data?.total}
       exportLabel="Exportar resueltos"
     >
-      {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
-        <KpiCard label="Resueltos último mes" value={fmt(s?.resueltos_mes_actual)} accent={COLOR_TRAMO_0_3} />
-        <KpiCard
-          label="Variación mensual"
-          value={s ? `${difPos ? '+' : ''}${s.dif_pct}%` : '—'}
-          accent={difPos ? COLOR_TRAMO_0_3 : COLOR_TRAMO_MAS7}
-          sub="vs. mes anterior"
-        />
-        <KpiCard label="Tiempo cierre promedio" value={s?.dias_cierre_promedio != null ? `${s.dias_cierre_promedio} d` : '—'} accent="var(--zaris-orange)" />
+      {/* KPIs — UNA fila: totalizador + comparativos + tiempos */}
+      <KpiRow n={6}>
+        <KpiCard label="Resueltos" value={fmt(comp.data?.total)} accent={COLOR_TRAMO_0_3} sub={comp.data ? comp.data.periodo_actual : 'período filtrado'} />
+        <KpisComparativos c={comp.data} etiqueta="resueltos" />
+        <KpiCard label="Tiempo cierre promedio" value={s?.dias_cierre_promedio != null ? `${s.dias_cierre_promedio} d` : '—'} accent="var(--zaris-orange)" sub="días entre alta y cierre" />
         <KpiCard label="% Dentro de SLA" value={s?.pct_dentro_sla != null ? `${s.pct_dentro_sla}%` : '—'} accent={COLOR_TRAMO_0_3} sub="cierre ≤ SLA del tipo" />
-        <KpiCard label="Total resueltos" value={fmt(s?.total_resueltos)} sub="con fecha de cierre" />
-      </div>
+        <KpiCard
+          label="Resueltos último mes"
+          value={fmt(s?.resueltos_mes_actual)}
+          accent={difPos ? COLOR_TRAMO_0_3 : COLOR_TRAMO_MAS7}
+          sub={s ? `${difPos ? '+' : ''}${s.dif_pct}% vs. mes anterior (${fmt(s.resueltos_mes_anterior)})` : undefined}
+        />
+      </KpiRow>
 
       {/* Tiempos de respuesta por mes (apiladas por tramo) */}
       <ChartCard title="Tiempos de respuesta por mes de cierre" height={300}>

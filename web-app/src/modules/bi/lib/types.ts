@@ -220,10 +220,27 @@ export interface TipoReclamoCatalogo {
 export interface BiFiltros {
   desde?: string // 'YYYY-MM-DD'
   hasta?: string
+  // Chips de año + tildes de meses (2026-08-30). Se combinan con desde/hasta por AND;
+  // la UI limpia unos cuando se usan los otros.
+  anio?: number
+  meses?: number[]
   id_area?: number
   prioridad?: string
   estado?: string
   id_tipo_reclamo?: number
   tipo_nombre?: string
   canal?: string
+}
+
+// KPIs comparativos de la fila única de cada sección (GET /bi/comparativo).
+export interface Comparativo {
+  seccion: string
+  total: number
+  prom_mensual_12m: number
+  total_12m: number
+  anio_anterior: number
+  comparable_actual: number
+  var_pct: number
+  periodo_actual: string
+  periodo_anterior: string
 }

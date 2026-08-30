@@ -4,6 +4,7 @@ import type {
   AreaCatalogo,
   BiFiltros,
   BiResumen,
+  Comparativo,
   EvolucionDiasItem,
   HistogramaDinamico,
   ItemTemporal,
@@ -30,15 +31,20 @@ import type {
 const BASE = '/api/v1/bi'
 
 // Filtros globales → query params. `tipo_nombre` es solo UI, no viaja.
+// `meses` viaja como '1,3,12'.
 function qp(f: BiFiltros) {
   return {
-    desde: f.desde, hasta: f.hasta, id_area: f.id_area, prioridad: f.prioridad,
+    desde: f.desde, hasta: f.hasta,
+    anio: f.anio, meses: f.meses?.length ? f.meses.join(',') : undefined,
+    id_area: f.id_area, prioridad: f.prioridad,
     estado: f.estado, id_tipo_reclamo: f.id_tipo_reclamo, canal: f.canal,
   }
 }
-// Sin el rango de fechas (drill a un mes concreto).
+// Sin el rango de fechas (drill a un mes concreto). Los chips de año/meses sí
+// viajan: el mes drillado siempre está dentro de ellos.
 function qpSinFechas(f: BiFiltros) {
   return {
+    anio: f.anio, meses: f.meses?.length ? f.meses.join(',') : undefined,
     id_area: f.id_area, prioridad: f.prioridad,
     estado: f.estado, id_tipo_reclamo: f.id_tipo_reclamo, canal: f.canal,
   }
@@ -79,6 +85,10 @@ export const biApi = {
   // Export del universo filtrado (sección Resumen).
   reclamosDetalle: (f: BiFiltros = {}, limit = 50, offset = 0) =>
     api.getWithHeaders<ReclamoDetalle[]>(`${BASE}/reclamos-detalle`, { params: { ...qp(f), limit, offset } }),
+
+  // KPIs comparativos (total · promedio mensual 12m · mismo período año anterior).
+  comparativo: (seccion: 'resumen' | 'respuesta' | 'pendientes' | 'subreclamos', f: BiFiltros = {}) =>
+    api.get<Comparativo>(`${BASE}/comparativo`, { params: { seccion, ...qp(f) } }),
 
   catalogoAreas: () =>
     api.get<AreaCatalogo[]>(`${BASE}/catalogo/areas`),

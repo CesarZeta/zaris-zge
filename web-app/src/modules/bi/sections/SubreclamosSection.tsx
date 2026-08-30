@@ -5,11 +5,11 @@ import {
 } from 'recharts'
 import { HistogramaTemporal } from '../components/HistogramaTemporal'
 import { TotalLabelH } from '../components/barLabels'
-import { ChartCard, CenterMsg, KpiCard } from '../components/ui'
-import { AXIS, Seccion, fmt, legendStyle, pieLabel, tooltipStyle } from '../components/SeccionHeader'
+import { ChartCard, CenterMsg, KpiCard, KpiRow } from '../components/ui'
+import { AXIS, KpisComparativos, Seccion, fmt, legendStyle, pieLabel, tooltipStyle } from '../components/SeccionHeader'
 import { exportarCsv, hoyISO } from '../components/exportCsv'
 import { biApi } from '../lib/api'
-import { useSubreclamosPorTipo, useSubreclamosResumen } from '../hooks/useBi'
+import { useComparativo, useSubreclamosPorTipo, useSubreclamosResumen } from '../hooks/useBi'
 import type { BiFiltros } from '../lib/types'
 import { colorEstado } from '../lib/theme'
 
@@ -18,6 +18,7 @@ import { colorEstado } from '../lib/theme'
 export function SubreclamosSection({ filtros }: { filtros: BiFiltros }) {
   const resumen = useSubreclamosResumen(filtros)
   const porTipo = useSubreclamosPorTipo(filtros, 10)
+  const comp = useComparativo('subreclamos', filtros)
   const [exportando, setExportando] = useState(false)
   const r = resumen.data
 
@@ -54,10 +55,12 @@ export function SubreclamosSection({ filtros }: { filtros: BiFiltros }) {
       exportDisabled={!r?.total}
       exportLabel="Exportar subreclamos"
     >
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-        <KpiCard label="Total subreclamos" value={fmt(r?.total)} accent="var(--zaris-orange)" />
+      {/* KPIs — UNA fila: totalizador + comparativos + padres */}
+      <KpiRow n={4}>
+        <KpiCard label="Subreclamos" value={fmt(r?.total)} accent="var(--zaris-orange)" sub={comp.data ? comp.data.periodo_actual : 'período filtrado'} />
+        <KpisComparativos c={comp.data} etiqueta="subreclamos" />
         <KpiCard label="Reclamos padre" value={fmt(r?.padres)} sub="con subreclamos asociados" />
-      </div>
+      </KpiRow>
 
       <HistogramaTemporal
         tituloBase="Subreclamos ingresados"
