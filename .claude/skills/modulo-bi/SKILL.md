@@ -36,3 +36,62 @@ Endpoints por vista en `bi.py`. Convenciones críticas:
 
 ### Datos demo (prod, 2026-05-26)
 Los 30 reclamos de prod fueron poblados con `fecha_cierre` (resueltos) y `latitud/longitud` (todos) para que el BI tenga contenido. Backups `_backup_reclamos_fecha_cierre_2026_05_26` y `_backup_reclamos_geo_demo_2026_05_26`.
+
+
+## Tablero EJECUTIVO — "Análisis de demanda ciudadana" (2026-08-30)
+
+Réplica ZARIS de los 5 tableros Power BI de VL sobre reclamos. Ruta `/bi/ejecutivo`
+(`pages/EjecutivoPage.tsx` + `sections/*EjSection.tsx` + `components/FiltrosEjecutivo.tsx`);
+backend `backend/app/api/routes/bi_ejecutivo.py` (router propio `/api/v1/bi/ejecutivo/*`,
+guard JWT a nivel router, registrado en main.py después de `bi_router`). Decisiones de César:
+
+- **Filtros = PERÍODO + ÁREA (+ localidad)** — sin estado/tipo/canal (eso es composición,
+  se VE en las visualizaciones). `FiltrosEjecutivo` es un componente aparte; NO tocar
+  `FiltrosGlobales` del Operativo para esto.
+- **El desglose de TODAS las vistas es por SUBÁREA**: las "áreas de servicio" de los
+  tableros VL (Alumbrado, Arbolado, Calles…) son nuestras subáreas de Servicios Públicos.
+  Replicar "por área" a nivel secretaría daría una sola barra.
+- **5 secciones** (página única, mismo patrón sticky/scroll-spy del Operativo, keys
+  localStorage propias `zaris_bi_ej_*`): Resumen (score %cierre/%SLA/%sat + niveles +
+  **matriz subárea → tipo expandible**, export CSV client-side de la matriz) · Evolución
+  (altas vs cierres, indicadores mensuales, dona Cumplido/Auditado) · Histórico (apilados
+  mensuales por subárea/canal/localidad + donas) · Mayores (top 10 por cantidad y por
+  demora + donas por subárea) · Satisfacción (barras %sat vs %cierre por subárea y
+  localidad + 2 mapas `DashboardMap` con `colorReclamo` por lookup id→clasificación/cerrado).
+
+### Convenciones del backend Ejecutivo
+
+- **GROUP BY POSICIONAL obligatorio en `_agregado`/`_encuestas`**: los strings de agrupación
+  llevan alias `AS` (para el SELECT) y un alias en GROUP BY es **error de sintaxis** de
+  Postgres. Se agrupa por posición (`GROUP BY 1, 2…`, param `n_grp`). Cazado en el smoke
+  local (500 en /matriz y /top-tipos).
+- **Satisfacción**: `encuesta_envio.id_reclamo` (JOIN `_JOIN_ENC`) + `encuesta_respuesta.
+  clasificacion_inicial` 1-5; satisfecho = **>= 4** (regla del módulo Encuestas, `_rama_desde_
+  clasificacion`). `%Sat` = satisfechos/respuestas · `%Rep` = respuestas/enviadas. Niveles
+  sin emoji (§13): etiquetas Muy insatisfecho…Muy satisfecho + semáforo.
+- **`% Var` = período anterior equivalente** (`_rango_anterior`): rango manual → mismo largo
+  inmediatamente anterior; chips año/meses → mismos meses del año-1; sin filtro temporal →
+  sin comparación (None). En demanda **bajar es verde, subir es rojo**.
+- **Cumplido vs Auditado**: resueltos con EXISTS en `reclamo_historial.estado_nuevo='En auditoría'`.
+- **`/historico?dim=subarea|canal|localidad`** devuelve `{series, items}` (pivot Python top N +
+  Otros, keys `g_<slug>`/`g_otros`) — compatible con el modo dinámico de las visualizaciones;
+  para `dim=canal` las series llegan con el valor CRUDO (`app_movil`) → el front mapea con
+  `labelCanal` al renderizar.
+- **Smoke**: `scratchpad/smoke_bi_ejecutivo.py` (18 checks; login admin local + shapes + 401).
+
+### Dimensión LOCALIDAD (2026-08-30)
+
+- `reclamos.id_localidad` estaba 0/65 en prod → **backfill por reverse geocoding** (Nominatim
+  vía helper §23, match por NOMBRE contra `localidades` — NUNCA por id: los ids de partido
+  divergen entre entornos; local id_partido 46 = Luján, prod 46 = Vicente López). Prod: 39/45
+  asignados (Olivos 14 · Florida 13 · Vicente López 9 · La Lucila 2 · Munro 1); los 6 restantes
+  caen fuera del partido y quedan NULL a propósito. Backups `_backup_reclamos_localidad_2026_08_30`
+  en local y prod.
+- **Derivación automática al crear**: `geo.py::localidad_desde_coords(db, lat, lon)` (best-effort,
+  nunca levanta; prioridad de campos BARRIO-primero — distinta de la `localidad` city-primero
+  del reverse legible) inyectada en los 3 creates (backoffice, subreclamo, vecino PWA) cuando
+  hay lat/lon sin id_localidad. `GET /geo/reverse` (backoffice) ahora devuelve `id_localidad`/
+  `localidad_catalogo`; el FormView de Reclamos muestra la localidad derivada (campo readonly,
+  se limpia con "Quitar pin"). Detalle del form en la skill `modulo-reclamos`.
+- `GET /bi/ejecutivo/catalogo/localidades` puebla el filtro SOLO con localidades presentes en
+  reclamos (no el catálogo nacional).

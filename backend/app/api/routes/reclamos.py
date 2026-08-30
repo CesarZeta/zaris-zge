@@ -14,6 +14,7 @@ from app.services import encuestas_service as svc_encuestas
 from app.services import notificaciones as svc_notif
 from app.services import push as svc_push
 from app.services.tramites.auth import resolver_agente_desde_usuario
+from app.api.routes.geo import localidad_desde_coords
 
 router = APIRouter(prefix="/api/v1/reclamos", tags=["Reclamos"])
 logger = logging.getLogger("zaris.reclamos")
@@ -589,6 +590,13 @@ async def crear_reclamo(
         "id_usuario_alta":  current_user["id_usuario"],
     }
 
+    # Derivación automática de localidad (2026-08-30): si vienen coordenadas y no
+    # vino id_localidad, matchear contra el catálogo (best-effort, nunca falla).
+    if data["id_localidad"] is None and data["latitud"] is not None and data["longitud"] is not None:
+        loc = await localidad_desde_coords(db, data["latitud"], data["longitud"])
+        if loc:
+            data["id_localidad"] = loc["id_localidad"]
+
     try:
         # Resolver id_estado_fk de "Sin asignar" para nuevos reclamos
         r_est = await db.execute(text(
@@ -1118,6 +1126,12 @@ async def crear_subreclamo(
         "id_reclamo_padre": id_reclamo,
         "id_usuario_alta":  current_user["id_usuario"],
     }
+
+    # Derivación automática de localidad (2026-08-30), igual que el alta principal.
+    if data["id_localidad"] is None and data["latitud"] is not None and data["longitud"] is not None:
+        loc = await localidad_desde_coords(db, data["latitud"], data["longitud"])
+        if loc:
+            data["id_localidad"] = loc["id_localidad"]
 
     try:
         r_est = await db.execute(text(

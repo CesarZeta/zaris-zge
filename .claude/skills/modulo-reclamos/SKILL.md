@@ -305,3 +305,20 @@ Detalles del aprendizaje (incluyendo trampas que NO funcionaron) en memoria [[fe
 
 ### Frontend en otros módulos
 Para sumar adjuntos a otra entidad (ej: OTs), replicar el patrón: nueva tabla `<entidad>_adjuntos` con mismos campos, nuevo bucket si conviene aislar, y reutilizar `app/core/storage.py` (las funciones reciben `path` arbitrario y leen el bucket de settings — extraer a parámetro si se usan múltiples buckets). **Ya hecho para OT** (`ot_adjuntos`, mig 54, ver §34) — reusa el mismo bucket `reclamos-adjuntos` con paths bajo `ot/{id_ot}/`. Es la referencia canónica para clonar a futuras entidades.
+
+
+## Localidad derivada de las coordenadas (2026-08-30, para el BI Ejecutivo)
+
+- `reclamos.id_localidad` se **deriva automáticamente** cuando el alta trae lat/lon y no trae
+  id_localidad: `geo.py::localidad_desde_coords(db, lat, lon)` = reverse Nominatim (helper §23)
+  + match **por nombre** (sin tildes, lower) contra el catálogo `localidades`. Best-effort: si
+  Nominatim falla o el punto cae fuera del catálogo queda NULL, jamás rompe el create. Inyectada
+  en `crear_reclamo`, `crear_subreclamo` (reclamos.py) y `crear_mi_reclamo` (publico_reclamos.py).
+  OJO: suma ~1 llamada Nominatim (rate-limit global 1/s) al create con geo.
+- `GET /geo/reverse` (backoffice, JWT) devuelve además `id_localidad` + `localidad_catalogo`.
+- **FormView**: campo "Localidad" readonly autocompletado vía `derivarLocalidad()` (se dispara
+  en el pick del buscador y en el pin del mapa; guard de coords vigentes para no pisar con una
+  respuesta vieja); "Quitar pin" también limpia la localidad. `id_localidad` viaja en create y
+  update full. La hidratación usa `localidad_nombre` del GET detalle.
+- Backfill histórico 2026-08-30 (39/45 prod, 5/6 local) + regla "match por nombre, nunca por id
+  de partido/localidad entre entornos": detalle en la skill `modulo-bi` (dimensión LOCALIDAD).

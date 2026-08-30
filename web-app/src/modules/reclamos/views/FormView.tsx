@@ -6,6 +6,7 @@ import type { CiudadanoMinimo } from '../../agenda/types/agenda'
 import { TipoReclamoPicker } from '../components/TipoReclamoPicker'
 import { MapaPicker } from '../components/MapaPicker'
 import { GeocodingSearch } from '../components/GeocodingSearch'
+import { geoReverse } from '../api/reclamosApi'
 import {
   useCrearReclamo,
   useEditarReclamo,
@@ -38,6 +39,9 @@ interface FormState {
   latitud: number | null
   longitud: number | null
   fuente_geolocalizacion: FuenteGeo | null
+  // Localidad del catálogo, derivada de la ubicación (2026-08-30, BI Ejecutivo)
+  id_localidad: number | null
+  localidad_nombre: string | null
   descripcion: string
   observaciones: string
   // Modo edit: nota libre para historial (solo si no estamos en Sin asignar)
@@ -50,6 +54,7 @@ const emptyForm: FormState = {
   prioridad: 'Media', canal_origen: '',
   direccion: '',
   latitud: null, longitud: null, fuente_geolocalizacion: null,
+  id_localidad: null, localidad_nombre: null,
   descripcion: '',
   observaciones: '', nota_historial: '',
 }
@@ -125,6 +130,8 @@ export function FormView() {
       latitud: r.latitud ?? null,
       longitud: r.longitud ?? null,
       fuente_geolocalizacion: (r.fuente_geolocalizacion as FuenteGeo | null) ?? null,
+      id_localidad: r.id_localidad ?? null,
+      localidad_nombre: r.localidad_nombre ?? null,
       descripcion: r.descripcion ?? '',
       observaciones: r.observaciones ?? '',
       nota_historial: '',
@@ -135,6 +142,20 @@ export function FormView() {
     setForm((prev) => ({ ...prev, [k]: v }))
     if (errores[k as string]) {
       setErrores((prev) => { const n = { ...prev }; delete n[k as string]; return n })
+    }
+  }
+
+  // Deriva la localidad del catálogo desde coordenadas (backend /geo/reverse).
+  // Best-effort: si Nominatim no responde o el punto cae fuera del catálogo, la
+  // localidad queda vacía y el backend reintenta la derivación al guardar.
+  async function derivarLocalidad(la: number, lo: number) {
+    try {
+      const r = await geoReverse(la, lo)
+      setForm((p) => (p.latitud === la && p.longitud === lo
+        ? { ...p, id_localidad: r.id_localidad ?? null, localidad_nombre: r.localidad_catalogo ?? null }
+        : p))
+    } catch {
+      /* accesorio: sin match no bloquea el form */
     }
   }
 
@@ -157,6 +178,7 @@ export function FormView() {
       canal_origen: form.canal_origen || null,
       latitud: form.latitud,
       longitud: form.longitud,
+      id_localidad: form.id_localidad,
       fuente_geolocalizacion: form.latitud != null && form.longitud != null
         ? (form.fuente_geolocalizacion ?? 'pin_manual')
         : null,
@@ -198,6 +220,7 @@ export function FormView() {
       canal_origen: form.canal_origen || null,
       latitud: form.latitud,
       longitud: form.longitud,
+      id_localidad: form.id_localidad,
       fuente_geolocalizacion: form.latitud != null && form.longitud != null
         ? (form.fuente_geolocalizacion ?? 'pin_manual')
         : null,
@@ -380,6 +403,7 @@ export function FormView() {
                     fuente_geolocalizacion: 'geocoding_osm',
                     direccion: r.display_name ?? p.direccion,
                   }))
+                  void derivarLocalidad(r.lat, r.lon)
                 }}
               />
             </Field>
@@ -389,6 +413,7 @@ export function FormView() {
               lon={form.longitud}
               onChange={(la, lo, fuente) => {
                 setForm((p) => ({ ...p, latitud: la, longitud: lo, fuente_geolocalizacion: fuente }))
+                if (la != null && lo != null) void derivarLocalidad(la, lo)
               }}
               height={320}
             />
@@ -408,10 +433,22 @@ export function FormView() {
               />
             </Field>
 
+            <Field
+              label="Localidad"
+              hint="Se deriva automáticamente de la ubicación (catálogo de localidades del partido)."
+            >
+              <input
+                value={form.localidad_nombre ?? ''}
+                readOnly
+                placeholder="Sin localidad — buscá una dirección o fijá el pin"
+                style={{ ...inputStyle(false), background: 'var(--surface-400)' }}
+              />
+            </Field>
+
             {form.latitud != null && form.longitud != null && (
               <button
                 type="button"
-                onClick={() => setForm((p) => ({ ...p, latitud: null, longitud: null, fuente_geolocalizacion: null }))}
+                onClick={() => setForm((p) => ({ ...p, latitud: null, longitud: null, fuente_geolocalizacion: null, id_localidad: null, localidad_nombre: null }))}
                 style={btnXsGhost}
               >
                 Quitar pin

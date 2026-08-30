@@ -10,6 +10,7 @@ Provee:
 import asyncio
 import logging
 import time
+import unicodedata
 from typing import Optional
 
 import httpx
@@ -363,20 +364,70 @@ async def reverse_geocodificar(lat: float, lon: float) -> dict:
     }
 
 
+def _norm_localidad(s: str) -> str:
+    """lower + sin tildes, para matchear nombres de Nominatim contra el catálogo."""
+    s = unicodedata.normalize("NFD", s or "")
+    return "".join(c for c in s if not unicodedata.combining(c)).lower().strip()
+
+
+# Campos de `address` de Nominatim en orden BARRIO-primero. OJO: distinto del
+# orden de `localidad` en reverse_geocodificar (city-primero, para la dirección
+# legible): acá queremos la localidad fina ("Olivos", "Florida"), no el partido
+# ("Vicente López" es a la vez partido y localidad).
+_CAMPOS_LOCALIDAD = ("suburb", "neighbourhood", "quarter", "city_district",
+                     "town", "village", "city", "municipality")
+
+
+async def localidad_desde_coords(db: AsyncSession, lat: float, lon: float) -> Optional[dict]:
+    """Deriva la localidad del catálogo (`localidades`) desde lat/lon.
+
+    Reverse geocoding (helper §23) + match POR NOMBRE contra el catálogo — nunca
+    por id (los ids de partido/localidad divergen entre entornos). Devuelve
+    {"id_localidad", "nombre"} o None (punto fuera del catálogo, Nominatim caído,
+    etc.). Best-effort: NUNCA levanta — los creates de reclamos la usan como
+    derivación automática y no deben fallar por geocoding (2026-08-30, backfill
+    y regla de captura de localidad para el BI Ejecutivo).
+    """
+    try:
+        out = await reverse_geocodificar(float(lat), float(lon))
+        addr = out.get("address") or {}
+        candidatos = [addr.get(c) for c in _CAMPOS_LOCALIDAD if addr.get(c)]
+        if not candidatos:
+            return None
+        r = await db.execute(text(
+            "SELECT id_localidad, nombre FROM localidades WHERE activo = TRUE"
+        ))
+        catalogo = {_norm_localidad(row.nombre): row for row in r.fetchall()}
+        for cand in candidatos:
+            hit = catalogo.get(_norm_localidad(cand))
+            if hit:
+                return {"id_localidad": hit.id_localidad, "nombre": hit.nombre}
+        return None
+    except Exception as e:  # noqa: BLE001 — derivación accesoria, jamás rompe el caller
+        logger.warning("localidad_desde_coords(%s, %s) falló: %s", lat, lon, e)
+        return None
+
+
 @router.get("/reverse")
 async def reverse_geocode(
     lat: float = Query(..., ge=-90, le=90),
     lon: float = Query(..., ge=-180, le=180),
+    db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     """Geocoding inverso: lat/lon → dirección normalizada. Requiere JWT (backoffice).
 
     Compat: conserva `display_name`/`address`/`lat`/`lon` y suma `encontrado`,
     `direccion` (corta) y las piezas (`calle`/`altura`/`localidad`/`provincia`).
+    Desde 2026-08-30 suma `id_localidad`/`localidad_catalogo` (match del catálogo
+    `localidades`, o None) para que el form de Reclamos autocomplete la localidad.
     Sin resultado → 404 (comportamiento histórico de esta ruta; la pública
     devuelve 200 con `encontrado=false`).
     """
     out = await reverse_geocodificar(lat, lon)
     if not out["encontrado"]:
         raise HTTPException(status_code=404, detail="Sin resultados")
+    loc = await localidad_desde_coords(db, lat, lon)
+    out["id_localidad"] = loc["id_localidad"] if loc else None
+    out["localidad_catalogo"] = loc["nombre"] if loc else None
     return out

@@ -28,7 +28,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.middleware.rate_limit import check_rate_limit
 from app.utils.request_helpers import get_real_ip
-from app.api.routes.geo import geocodificar_direccion, reverse_geocodificar
+from app.api.routes.geo import geocodificar_direccion, localidad_desde_coords, reverse_geocodificar
 from app.services.email import enviar_mail_confirmacion_reclamo_ciudadano
 from app.services.cuenta_vecino import _municipio_branding
 
@@ -242,6 +242,13 @@ async def crear_mi_reclamo(
         "id_localidad":  body.get("id_localidad"),
         "fuente_geolocalizacion": body.get("fuente_geolocalizacion"),
     }
+
+    # Derivación automática de localidad (2026-08-30): la PWA no la manda; si hay
+    # coordenadas, matchear contra el catálogo (best-effort, nunca falla).
+    if data["id_localidad"] is None and data["latitud"] is not None and data["longitud"] is not None:
+        loc = await localidad_desde_coords(db, data["latitud"], data["longitud"])
+        if loc:
+            data["id_localidad"] = loc["id_localidad"]
 
     try:
         # Estado inicial 'Sin asignar' (FK + VARCHAR en paralelo, §22).

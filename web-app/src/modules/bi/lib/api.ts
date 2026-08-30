@@ -25,6 +25,15 @@ import type {
   TiemposMensualItem,
   TiemposPorTipoItem,
   TipoReclamoCatalogo,
+  EjAltasCierresItem,
+  EjEvolucionItem,
+  EjGeoPunto,
+  EjLocalidadCatalogo,
+  EjMatriz,
+  EjPorLocalidadItem,
+  EjSatCierreItem,
+  EjScore,
+  EjTopTipo,
 } from './types'
 
 // Endpoints de agregación. Router con guard JWT (§39); la UI gatea nivel <= 2.
@@ -38,6 +47,7 @@ function qp(f: BiFiltros) {
     anio: f.anio, meses: f.meses?.length ? f.meses.join(',') : undefined,
     id_area: f.id_area, prioridad: f.prioridad,
     estado: f.estado, id_tipo_reclamo: f.id_tipo_reclamo, canal: f.canal,
+    id_localidad: f.id_localidad,
   }
 }
 // Sin el rango de fechas (drill a un mes concreto). Los chips de año/meses sí
@@ -47,6 +57,7 @@ function qpSinFechas(f: BiFiltros) {
     anio: f.anio, meses: f.meses?.length ? f.meses.join(',') : undefined,
     id_area: f.id_area, prioridad: f.prioridad,
     estado: f.estado, id_tipo_reclamo: f.id_tipo_reclamo, canal: f.canal,
+    id_localidad: f.id_localidad,
   }
 }
 
@@ -155,6 +166,41 @@ export const biApi = {
 
   subreclamosDetalle: (f: BiFiltros = {}, limit = 50, offset = 0) =>
     api.getWithHeaders<SubreclamoDetalle[]>(`${BASE}/subreclamos-detalle`, { params: { ...qp(f), limit, offset } }),
+
+  // ── Ejecutivo ("Análisis de demanda ciudadana", 2026-08-30) ──────────────
+  ejScore: (f: BiFiltros = {}) =>
+    api.get<EjScore>(`${BASE}/ejecutivo/score`, { params: qp(f) }),
+
+  ejMatriz: (f: BiFiltros = {}) =>
+    api.get<EjMatriz>(`${BASE}/ejecutivo/matriz`, { params: qp(f) }),
+
+  ejTopTipos: (f: BiFiltros = {}, orden: 'cantidad' | 'demora' = 'cantidad', limit = 10) =>
+    api.get<EjTopTipo[]>(`${BASE}/ejecutivo/top-tipos`, { params: { ...qp(f), orden, limit } }),
+
+  ejAltasCierres: (f: BiFiltros = {}) =>
+    api.get<EjAltasCierresItem[]>(`${BASE}/ejecutivo/altas-cierres`, { params: qp(f) }),
+
+  ejEvolucion: (f: BiFiltros = {}) =>
+    api.get<EjEvolucionItem[]>(`${BASE}/ejecutivo/evolucion-indicadores`, { params: qp(f) }),
+
+  ejCierresPorEstado: (f: BiFiltros = {}) =>
+    api.get<PorEstadoItem[]>(`${BASE}/ejecutivo/cierres-por-estado`, { params: qp(f) }),
+
+  // Serie mensual apilada por dimensión (shape {series, items} de HistogramaTemporal).
+  ejHistorico: (dim: 'subarea' | 'canal' | 'localidad', f: BiFiltros = {}) =>
+    api.get<HistogramaDinamico>(`${BASE}/ejecutivo/historico`, { params: { ...qp(f), dim } }),
+
+  ejPorLocalidad: (f: BiFiltros = {}) =>
+    api.get<EjPorLocalidadItem[]>(`${BASE}/ejecutivo/por-localidad`, { params: qp(f) }),
+
+  ejSatCierre: (por: 'subarea' | 'localidad', f: BiFiltros = {}) =>
+    api.get<EjSatCierreItem[]>(`${BASE}/ejecutivo/sat-cierre`, { params: { ...qp(f), por } }),
+
+  ejGeo: (f: BiFiltros = {}) =>
+    api.get<EjGeoPunto[]>(`${BASE}/ejecutivo/geo`, { params: qp(f) }),
+
+  ejCatalogoLocalidades: () =>
+    api.get<EjLocalidadCatalogo[]>(`${BASE}/ejecutivo/catalogo/localidades`),
 }
 
 export type { ApiResponseWithHeaders }

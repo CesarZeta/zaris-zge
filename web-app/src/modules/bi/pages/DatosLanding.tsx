@@ -5,8 +5,8 @@ import s from './DatosLanding.module.css'
 
 // Landing del módulo DATOS: dos tarjetas hacia los tableros analíticos.
 //  - Operativo: tableros del día a día (el que ya está). Ruta /bi/operativo.
-//  - Ejecutivo: vista estratégica de alto nivel. Placeholder por ahora (las
-//    visualizaciones las define el usuario en una fase siguiente).
+//  - Ejecutivo: "Análisis de demanda ciudadana" (2026-08-30) — réplica ZARIS de
+//    los 5 tableros Power BI de referencia. Ruta /bi/ejecutivo.
 export function DatosLanding() {
   const navigate = useNavigate()
 
@@ -36,14 +36,13 @@ export function DatosLanding() {
           </span>
         </button>
 
-        <button type="button" className={`${s.card} ${s.cardDisabled}`} disabled aria-disabled="true">
+        <button type="button" className={s.card} onClick={() => navigate('/bi/ejecutivo')}>
           <Crown className={s.icon} aria-hidden="true" />
           <span className={s.cardTitle}>Análisis de datos Ejecutivo</span>
           <span className={s.cardDesc}>
-            Vista estratégica de alto nivel para la conducción: indicadores agregados, tendencias y
-            comparativos por área.
+            Demanda ciudadana para la conducción: score de cierre, SLA y satisfacción, matriz por
+            subárea, evolución de indicadores, históricos por canal y localidad, y mapas.
           </span>
-          <span className={s.badge}>Próximamente</span>
         </button>
       </div>
     </div>
