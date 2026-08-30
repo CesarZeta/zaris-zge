@@ -630,6 +630,59 @@ async def notificar_estado_final_a_iniciador(
         return 0
 
 
+async def notificar_tramite_pendiente_vecino(
+    db: AsyncSession,
+    id_tramite: int,
+    nivel: int,
+    dias: int,
+    background_tasks: Optional[BackgroundTasks] = None,
+) -> int:
+    """
+    Aviso INTERNO (in-app + email) al colectivo destinatario actual: el tramite
+    lleva `dias` dias esperando al iniciador y se le acaba de mandar el aviso
+    `nivel` del timer de desistimiento (mig 101). Recomienda contactarlo para
+    reactivar el expediente antes de que se de por desistido.
+
+    Fail-safe: cualquier error se logea pero NO levanta.
+    """
+    try:
+        tramite = await _datos_tramite(db, id_tramite)
+        if not tramite:
+            return 0
+        dest_tipo = tramite.get("destinatario_actual_tipo")
+        dest_id = tramite.get("destinatario_actual_id")
+        if not dest_tipo or not dest_id:
+            return 0
+        usuarios = await _resolver_destinatarios_usuarios(db, dest_tipo, dest_id)
+        if not usuarios:
+            return 0
+
+        numero = tramite["numero_expediente"]
+        etiqueta = {1: "1er aviso", 2: "2do aviso"}.get(nivel, "último aviso")
+        titulo = f"Trámite {numero} pendiente del vecino ({etiqueta})"
+        mensaje = (
+            f"El trámite {numero} lleva {dias} días esperando una respuesta del iniciador; "
+            f"se le envió el {etiqueta} de desistimiento. Si corresponde, contactalo para "
+            "reactivar el expediente antes de que se dé por desistido automáticamente."
+        )
+        creadas = await _emitir_a_usuarios(
+            db, usuarios,
+            tramite=tramite,
+            tipo_notif="tramite_pendiente_vecino",
+            titulo=titulo,
+            mensaje=mensaje,
+            url_destino=_url_destino_tramite(numero),
+            background_tasks=background_tasks,
+        )
+        logger.info("notificar_tramite_pendiente_vecino %s nivel=%s: %d notif a %s/%s",
+                    numero, nivel, creadas, dest_tipo, dest_id)
+        return creadas
+    except Exception as e:
+        logger.error("notificar_tramite_pendiente_vecino FALLO (tramite=%s): %s",
+                     id_tramite, e, exc_info=True)
+        return 0
+
+
 async def notificar_aviso_reclamo_a_supervision(
     db: AsyncSession,
     id_reclamo: int,

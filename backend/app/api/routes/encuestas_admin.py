@@ -152,6 +152,7 @@ async def listar_envios(
     id_reclamo: Optional[int] = Query(None),
     id_turno: Optional[int] = Query(None),
     id_evento_reserva: Optional[int] = Query(None),
+    id_tramite: Optional[int] = Query(None),
     tipo: Optional[str] = Query(None, description="reclamos | turnos | tramites | entradas"),
     id_plantilla: Optional[int] = Query(None),
     estado: Optional[str] = Query(None),
@@ -175,6 +176,8 @@ async def listar_envios(
         conds.append("ee.id_turno = :tid"); params["tid"] = id_turno
     if id_evento_reserva is not None:
         conds.append("ee.id_evento_reserva = :evrid"); params["evrid"] = id_evento_reserva
+    if id_tramite is not None:
+        conds.append("ee.id_tramite = :trid"); params["trid"] = id_tramite
     if tipo is not None:
         conds.append("pl.tipo = :tipo"); params["tipo"] = tipo
     if id_plantilla is not None:
@@ -194,6 +197,7 @@ async def listar_envios(
           LEFT JOIN tipo_prestacion tp ON tp.id_tipo_prestacion = t.id_tipo_prestacion
           LEFT JOIN evento_reservas evr ON evr.id_evento_reserva = ee.id_evento_reserva
           LEFT JOIN eventos ev         ON ev.id_evento = evr.id_evento
+          LEFT JOIN tramite trm        ON trm.id_tramite = ee.id_tramite
     """
 
     total = (await db.execute(text(
@@ -201,14 +205,14 @@ async def listar_envios(
 
     rows = (await db.execute(text(f"""
         SELECT ee.id_encuesta_envio, ee.id_plantilla, ee.id_ciudadano, ee.id_reclamo,
-               ee.id_turno, ee.id_evento_reserva, ee.token_unico,
+               ee.id_turno, ee.id_evento_reserva, ee.id_tramite, ee.token_unico,
                ee.email_destino_snapshot, ee.fecha_envio,
                ee.fecha_apertura, ee.fecha_completada, ee.fecha_expiracion, ee.estado,
                ee.intentos_envio, ee.ultimo_error_envio, ee.activo, ee.fecha_alta,
                ee.fecha_modificacion,
                pl.tipo AS tipo,
                r.nro_reclamo AS nro_reclamo,
-               COALESCE(r.nro_reclamo, tp.nombre, ev.nombre) AS referencia
+               COALESCE(r.nro_reclamo, tp.nombre, ev.nombre, trm.numero_expediente) AS referencia
           FROM encuesta_envio ee
           {join}
          WHERE {where}
@@ -229,14 +233,14 @@ async def detalle_envio(
 ):
     env = (await db.execute(text("""
         SELECT ee.id_encuesta_envio, ee.id_plantilla, ee.id_ciudadano, ee.id_reclamo,
-               ee.id_turno, ee.id_evento_reserva, ee.token_unico,
+               ee.id_turno, ee.id_evento_reserva, ee.id_tramite, ee.token_unico,
                ee.email_destino_snapshot, ee.fecha_envio,
                ee.fecha_apertura, ee.fecha_completada, ee.fecha_expiracion, ee.estado,
                ee.intentos_envio, ee.ultimo_error_envio, ee.activo, ee.fecha_alta,
                ee.fecha_modificacion,
                pl.tipo AS tipo,
                r.nro_reclamo AS nro_reclamo,
-               COALESCE(r.nro_reclamo, tp.nombre, ev.nombre) AS referencia
+               COALESCE(r.nro_reclamo, tp.nombre, ev.nombre, trm.numero_expediente) AS referencia
           FROM encuesta_envio ee
           JOIN encuesta_plantilla pl   ON pl.id_encuesta_plantilla = ee.id_plantilla
           LEFT JOIN reclamos r         ON r.id_reclamo = ee.id_reclamo
@@ -244,6 +248,7 @@ async def detalle_envio(
           LEFT JOIN tipo_prestacion tp ON tp.id_tipo_prestacion = t.id_tipo_prestacion
           LEFT JOIN evento_reservas evr ON evr.id_evento_reserva = ee.id_evento_reserva
           LEFT JOIN eventos ev         ON ev.id_evento = evr.id_evento
+          LEFT JOIN tramite trm        ON trm.id_tramite = ee.id_tramite
          WHERE ee.id_encuesta_envio = :id AND ee.activo = TRUE
            AND (ee.id_municipio = :mun OR ee.id_municipio IS NULL)
          LIMIT 1
@@ -302,8 +307,8 @@ async def pendientes_contacto(
                rsp.clasificacion_inicial, rsp.rama_seguida,
                rsp.fecha_alta AS fecha_respuesta, rsp.atendida,
                ee.id_reclamo, r.nro_reclamo,
-               ee.id_turno, ee.id_evento_reserva, pl.tipo AS tipo,
-               COALESCE(r.nro_reclamo, tp.nombre, ev.nombre) AS referencia,
+               ee.id_turno, ee.id_evento_reserva, ee.id_tramite, pl.tipo AS tipo,
+               COALESCE(r.nro_reclamo, tp.nombre, ev.nombre, trm.numero_expediente) AS referencia,
                c.id_ciudadano, c.nombre AS ciudadano_nombre,
                c.apellido AS ciudadano_apellido, c.email AS ciudadano_email,
                c.telefono AS ciudadano_telefono
@@ -315,6 +320,7 @@ async def pendientes_contacto(
           LEFT JOIN tipo_prestacion tp ON tp.id_tipo_prestacion = t.id_tipo_prestacion
           LEFT JOIN evento_reservas evr ON evr.id_evento_reserva = ee.id_evento_reserva
           LEFT JOIN eventos ev     ON ev.id_evento = evr.id_evento
+          LEFT JOIN tramite trm    ON trm.id_tramite = ee.id_tramite
           JOIN ciudadanos c        ON c.id_ciudadano = ee.id_ciudadano
          WHERE {where}
          ORDER BY rsp.fecha_alta ASC
@@ -576,16 +582,18 @@ async def disparar_encuesta(
     db: AsyncSession = Depends(get_db),
 ):
     # Exactamente uno de los tres (mig 72 + 98: reclamo XOR turno XOR entrada).
-    provistos = [x for x in (body.id_reclamo, body.id_turno, body.id_evento_reserva)
+    provistos = [x for x in (body.id_reclamo, body.id_turno, body.id_evento_reserva, body.id_tramite)
                  if x is not None]
     if len(provistos) != 1:
         raise HTTPException(
-            422, "Indicá exactamente uno: id_reclamo, id_turno o id_evento_reserva")
+            422, "Indicá exactamente uno: id_reclamo, id_turno, id_evento_reserva o id_tramite")
 
     if body.id_reclamo is not None:
         envio, motivo = await svc.crear_envio_para_reclamo(db, body.id_reclamo)
     elif body.id_turno is not None:
         envio, motivo = await svc.crear_envio_para_turno(db, body.id_turno)
+    elif body.id_tramite is not None:
+        envio, motivo = await svc.crear_envio_para_tramite(db, body.id_tramite)
     else:
         envio, motivo = await svc.crear_envio_para_entrada(db, body.id_evento_reserva)
     if envio is None:
@@ -597,14 +605,14 @@ async def disparar_encuesta(
     # releer la fila completa (con tipo + referencia) para el response.
     row = (await db.execute(text("""
         SELECT ee.id_encuesta_envio, ee.id_plantilla, ee.id_ciudadano, ee.id_reclamo,
-               ee.id_turno, ee.id_evento_reserva, ee.token_unico,
+               ee.id_turno, ee.id_evento_reserva, ee.id_tramite, ee.token_unico,
                ee.email_destino_snapshot, ee.fecha_envio,
                ee.fecha_apertura, ee.fecha_completada, ee.fecha_expiracion, ee.estado,
                ee.intentos_envio, ee.ultimo_error_envio, ee.activo, ee.fecha_alta,
                ee.fecha_modificacion,
                pl.tipo AS tipo,
                r.nro_reclamo AS nro_reclamo,
-               COALESCE(r.nro_reclamo, tp.nombre, ev.nombre) AS referencia
+               COALESCE(r.nro_reclamo, tp.nombre, ev.nombre, trm.numero_expediente) AS referencia
           FROM encuesta_envio ee
           JOIN encuesta_plantilla pl   ON pl.id_encuesta_plantilla = ee.id_plantilla
           LEFT JOIN reclamos r         ON r.id_reclamo = ee.id_reclamo
@@ -612,6 +620,7 @@ async def disparar_encuesta(
           LEFT JOIN tipo_prestacion tp ON tp.id_tipo_prestacion = t.id_tipo_prestacion
           LEFT JOIN evento_reservas evr ON evr.id_evento_reserva = ee.id_evento_reserva
           LEFT JOIN eventos ev         ON ev.id_evento = evr.id_evento
+          LEFT JOIN tramite trm        ON trm.id_tramite = ee.id_tramite
          WHERE ee.id_encuesta_envio = :id
     """), {"id": envio["id_encuesta_envio"]})).fetchone()
     return EncuestaEnvioOut.model_validate(row._mapping)

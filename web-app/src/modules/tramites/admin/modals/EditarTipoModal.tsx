@@ -18,6 +18,7 @@ export function EditarTipoModal({
   const [iniciadores, setIniciadores] = useState<IniciadorTipo[]>(tipo.iniciadores_permitidos)
   const [permiteRep, setPermiteRep] = useState(tipo.permite_representante)
   const [nuncaDepurar, setNuncaDepurar] = useState(tipo.retencion_nunca_depurar ?? false)
+  const [slaDias, setSlaDias] = useState(tipo.sla_dias ?? 0)
   const [error, setError] = useState('')
 
   const actualizar = useActualizarTipo(tipo.id_tipo_tramite)
@@ -39,6 +40,7 @@ export function EditarTipoModal({
         iniciadores_permitidos: iniciadores,
         permite_representante: permiteRep,
         retencion_nunca_depurar: nuncaDepurar,
+        sla_dias: slaDias,  // 0 = el backend vuelve al default global
       })
       onCerrar()
     } catch (e) {
@@ -97,6 +99,15 @@ export function EditarTipoModal({
         (excepción a la política de retención por antigüedad). Útil para Habilitaciones u otros
         trámites con valor permanente.
       </p>
+
+      <div style={{ width: 220, marginBottom: 12 }}>
+        <label style={label}>SLA del trámite (días)</label>
+        <Input type="number" min={0} value={slaDias} onChange={(e) => setSlaDias(Math.max(0, Number(e.target.value) || 0))} />
+        <p style={{ fontSize: 11, color: 'var(--fg-3)', margin: '4px 0 0' }}>
+          Plazo esperado de resolución. 0 = usa el valor global (Config → Sistema). Vencido el SLA,
+          en los estados que esperan al vecino arrancan los avisos de desistimiento.
+        </p>
+      </div>
 
       <div style={formRow}>
         <label style={label}>Descripción</label>

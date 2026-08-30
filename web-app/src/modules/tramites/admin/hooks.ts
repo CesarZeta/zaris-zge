@@ -6,6 +6,7 @@ import {
   actualizarCampo,
   actualizarDocRequerido,
   actualizarEstado,
+  setEsperaIniciador,
   actualizarTipo,
   actualizarTransicion,
   archivarVersion,
@@ -193,6 +194,15 @@ export function useActualizarEstado() {
   return useMutation({
     mutationFn: ({ idEstado, body }: { idEstado: number; body: EstadoUpdateBody }) =>
       actualizarEstado(idEstado, body),
+    onSuccess: () => inv(),
+  })
+}
+
+export function useSetEsperaIniciador() {
+  const inv = useInvalidarCatalogo()
+  return useMutation({
+    mutationFn: ({ idEstado, espera }: { idEstado: number; espera: boolean }) =>
+      setEsperaIniciador(idEstado, espera),
     onSuccess: () => inv(),
   })
 }

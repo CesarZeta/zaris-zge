@@ -2,7 +2,7 @@ import { useState } from 'react'
 import {
   ClipboardList, Hash, ArrowRight, Hand, LockOpen, RefreshCw, Zap,
   Paperclip, PenLine, Check, X, MessageSquare, Link2, Ban, RotateCcw,
-  Circle, ChevronUp, ChevronDown, BadgeCheck, Flag, Archive, Trash2,
+  Circle, ChevronUp, ChevronDown, BadgeCheck, Flag, Archive, Trash2, AlarmClock,
   type LucideIcon,
 } from 'lucide-react'
 import type { TramiteMovimiento, TipoMovimiento } from '../types'
@@ -32,6 +32,7 @@ const TIPO_CONFIG: Record<
   resultado:      { icon: Flag,          color: '#6a1b9a', etiqueta: (m) => `Resultado: ${String(m.metadata_jsonb?.resultado_nuevo ?? '—')}` },
   archivado_inactividad: { icon: Archive, color: '#78909c', etiqueta: () => 'Archivado automático por inactividad' },
   purga_binario:  { icon: Trash2,        color: '#90a4ae', etiqueta: () => 'Archivo físico depurado por antigüedad' },
+  aviso_iniciador: { icon: AlarmClock,   color: '#f57f17', etiqueta: (m) => `Aviso ${String(m.metadata_jsonb?.nivel ?? '')} de desistimiento al iniciador (trámite pendiente)` },
 }
 
 function formatFechaRelativa(iso: string): string {

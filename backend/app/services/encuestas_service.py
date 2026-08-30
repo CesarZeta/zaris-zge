@@ -53,6 +53,8 @@ MOTIVO_SIN_PLANTILLA_TURNO = "No hay plantilla de encuesta activa para turnos"
 MOTIVO_NO_CUMPLIDO = "Turno no existe o no está cumplido"
 MOTIVO_SIN_PLANTILLA_ENTRADA = "No hay plantilla de encuesta activa para entradas"
 MOTIVO_NO_ASISTIO = "Reserva no existe o no está acreditada (asistió)"
+MOTIVO_SIN_PLANTILLA_TRAMITE = "No hay plantilla de encuesta activa para trámites"
+MOTIVO_NO_TERMINADO = "Trámite no existe, no lo inició un ciudadano o no terminó con resultado aprobado/rechazado"
 MOTIVO_ERROR = "Error interno al crear el envío"
 
 ESTADO_CUMPLIDO_TURNO = "cumplido"
@@ -421,6 +423,97 @@ async def crear_envio_para_entrada(db: AsyncSession, id_evento_reserva: int):
         return None, MOTIVO_ERROR
 
 
+async def crear_envio_para_tramite(db: AsyncSession, id_tramite: int):
+    """
+    Crea un encuesta_envio 'pendiente' para un tramite TERMINADO con resultado
+    aprobado/rechazado, iniciado por un ciudadano (mig 101, cuarta rama del
+    polimorfismo: FK id_tramite). Lo dispara services/tramites/ciclo_vida.al_terminar
+    post-commit. Devuelve tuple (fila_mapping | None, motivo).
+
+    La subarea para el anti-fatiga: subarea destinataria actual o, si el
+    destinatario es un agente, la de ese agente. Idempotente por tramite.
+    """
+    try:
+        if not await encuestas_estan_activas(db):
+            logger.info("crear_envio_tramite: encuestas desactivadas, skip tramite=%s", id_tramite)
+            return None, MOTIVO_DESACTIVADAS
+
+        r = (await db.execute(text("""
+            SELECT t.id_tramite, t.resultado, t.iniciador_tipo,
+                   t.id_ciudadano_iniciador AS id_ciudadano, t.id_municipio,
+                   COALESCE(t.id_subarea_actual, ag.id_subarea) AS id_subarea,
+                   c.email AS email_ciudadano
+              FROM tramite t
+              LEFT JOIN ciudadanos c ON c.id_ciudadano = t.id_ciudadano_iniciador
+              LEFT JOIN agentes ag ON ag.id_agente = t.id_agente_actual
+             WHERE t.id_tramite = :id AND t.activo = TRUE
+             LIMIT 1
+        """), {"id": id_tramite})).fetchone()
+        if r is None:
+            return None, MOTIVO_NO_TERMINADO
+        r = r._mapping
+        if r["iniciador_tipo"] != "ciudadano" or not r["id_ciudadano"] \
+                or r["resultado"] not in ("aprobado", "rechazado"):
+            logger.info("crear_envio_tramite: tramite=%s no aplica (iniciador=%s resultado=%s)",
+                        id_tramite, r["iniciador_tipo"], r["resultado"])
+            return None, MOTIVO_NO_TERMINADO
+
+        ya = (await db.execute(text(
+            "SELECT 1 FROM encuesta_envio WHERE id_tramite = :id AND activo = TRUE LIMIT 1"
+        ), {"id": id_tramite})).fetchone()
+        if ya:
+            return None, MOTIVO_YA_EXISTE
+
+        email = (r["email_ciudadano"] or "").strip()
+        if not email or "@" not in email:
+            return None, MOTIVO_SIN_EMAIL
+
+        id_subarea = r["id_subarea"]
+        if id_subarea is not None and await antifatiga_esta_activo(db):
+            reciente = (await db.execute(text("""
+                SELECT 1 FROM encuesta_envio ee
+                 WHERE ee.id_ciudadano = :cid AND ee.id_subarea = :sub AND ee.activo = TRUE
+                   AND ee.fecha_alta > NOW() - make_interval(days => :dias)
+                 LIMIT 1
+            """), {"cid": r["id_ciudadano"], "sub": id_subarea, "dias": DIAS_ANTIFATIGA})).fetchone()
+            if reciente:
+                return None, MOTIVO_ANTIFATIGA
+
+        plantilla = (await db.execute(text("""
+            SELECT id_encuesta_plantilla FROM encuesta_plantilla
+             WHERE tipo = 'tramites' AND activo = TRUE
+             ORDER BY id_encuesta_plantilla LIMIT 1
+        """))).fetchone()
+        if plantilla is None:
+            logger.warning("crear_envio_tramite: no hay plantilla activa tipo='tramites'")
+            return None, MOTIVO_SIN_PLANTILLA_TRAMITE
+
+        token = uuid.uuid4()
+        fecha_exp = _now() + timedelta(days=DIAS_EXPIRACION_ENVIO)
+        nuevo = (await db.execute(text("""
+            INSERT INTO encuesta_envio (
+                id_plantilla, id_ciudadano, id_tramite, token_unico,
+                email_destino_snapshot, fecha_expiracion, estado,
+                id_municipio, id_subarea
+            ) VALUES (
+                :pid, :cid, :tid, :token, :email, :fexp, 'pendiente', :mun, :sub
+            )
+            RETURNING id_encuesta_envio, token_unico, estado, id_tramite
+        """), {
+            "pid": plantilla[0], "cid": r["id_ciudadano"], "tid": id_tramite,
+            "token": str(token), "email": email, "fexp": fecha_exp,
+            "mun": r["id_municipio"], "sub": id_subarea,
+        })).fetchone()
+        await db.commit()
+        logger.info("crear_envio_tramite: OK tramite=%s envio=%s token=%s",
+                    id_tramite, nuevo[0], _tok(nuevo[1]))
+        return nuevo._mapping, MOTIVO_OK
+    except Exception as e:
+        await db.rollback()
+        logger.error("crear_envio_para_tramite fallo (tramite=%s): %s", id_tramite, e)
+        return None, MOTIVO_ERROR
+
+
 # =============================================================================
 # Branding del municipio (header del email)
 # =============================================================================
@@ -645,6 +738,66 @@ def _render_email_entrada(
     return asunto, html, texto
 
 
+def _render_email_tramite(
+    *, nombre_ciudadano: str, numero_expediente: str, tipo_nombre: str,
+    resultado: str, fecha_expiracion: Optional[datetime],
+    url: str, municipio_nombre: str, municipio_logo_url: str,
+) -> tuple[str, str, str]:
+    """(asunto, html, texto_plano) para la encuesta de un tramite terminado
+    (mig 101). Sin datos del expediente mas alla del numero, tipo y resultado."""
+    asunto = "Tu opinión sobre la gestión de tu trámite nos importa"
+
+    nombre_esc = _esc(nombre_ciudadano or "")
+    muni_esc = _esc(municipio_nombre)
+    num_esc = _esc(numero_expediente or "")
+    tipo_esc = _esc(tipo_nombre or "tu trámite")
+    res_txt = {"aprobado": "aprobado", "rechazado": "rechazado"}.get(resultado or "", "finalizado")
+    f_exp = _fmt_fecha(fecha_expiracion)
+
+    logo_html = (
+        f'<img src="{_esc(municipio_logo_url)}" alt="{muni_esc}" '
+        f'style="max-height:48px;margin-bottom:8px;">'
+        if municipio_logo_url else ""
+    )
+    html = f"""\
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"></head>
+<body style="margin:0;background:#f2f1ed;font-family:Arial,Helvetica,sans-serif;color:#26251e;">
+  <div style="max-width:560px;margin:0 auto;padding:24px;">
+    <div style="text-align:center;padding-bottom:16px;border-bottom:1px solid rgba(38,37,30,.1);">
+      {logo_html}
+      <div style="font-size:14px;font-weight:bold;letter-spacing:.04em;text-transform:uppercase;color:#26251e;">{muni_esc}</div>
+    </div>
+    <div style="background:#f7f7f4;border-radius:12px;padding:24px;margin-top:16px;">
+      <p style="font-size:16px;margin:0 0 12px;">Hola {nombre_esc},</p>
+      <p style="font-size:15px;line-height:1.5;margin:0 0 12px;">
+        Tu trámite <strong>{num_esc}</strong> ({tipo_esc}) terminó y fue {res_txt}.
+        Nos gustaría saber cómo fue la gestión. La encuesta toma menos de 1 minuto.
+      </p>
+      <div style="text-align:center;margin:24px 0;">
+        <a href="{_esc(url)}" style="display:inline-block;background:#f54e00;color:#fff;
+           text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:bold;
+           font-size:15px;letter-spacing:.03em;">RESPONDER ENCUESTA</a>
+      </div>
+      <p style="font-size:13px;color:rgba(38,37,30,.55);margin:0;">
+        Este link expira el {f_exp}. Gracias por ayudarnos a mejorar.
+      </p>
+    </div>
+    <p style="text-align:center;font-size:13px;color:rgba(38,37,30,.55);margin-top:16px;">{muni_esc}</p>
+  </div>
+</body></html>"""
+
+    texto = (
+        f"Hola {nombre_ciudadano or ''},\n\n"
+        f"Tu trámite {numero_expediente} ({tipo_nombre or 'trámite'}) terminó y fue {res_txt}.\n"
+        f"Nos gustaría saber cómo fue la gestión. La encuesta toma menos de 1 minuto.\n\n"
+        f"Responder encuesta:\n{url}\n\n"
+        f"Este link expira el {f_exp}. Gracias por ayudarnos a mejorar.\n\n"
+        f"{municipio_nombre}\n"
+    )
+    return asunto, html, texto
+
+
 def _esc(s: str) -> str:
     return (
         (s or "")
@@ -669,10 +822,12 @@ async def enviar_email_encuesta(db: AsyncSession, id_encuesta_envio: int) -> boo
         env = (await db.execute(text("""
             SELECT ee.id_encuesta_envio, ee.token_unico, ee.estado,
                    ee.email_destino_snapshot, ee.fecha_expiracion, ee.intentos_envio,
-                   ee.id_reclamo, ee.id_turno, ee.id_evento_reserva,
+                   ee.id_reclamo, ee.id_turno, ee.id_evento_reserva, ee.id_tramite,
                    r.nro_reclamo, r.descripcion, r.fecha_cierre,
                    t.fecha AS turno_fecha, tp.nombre AS prestacion_nombre,
                    ev.nombre AS evento_nombre, ev.fecha AS evento_fecha,
+                   trm.numero_expediente AS tramite_numero, trm.resultado AS tramite_resultado,
+                   ttx.nombre AS tramite_tipo,
                    c.nombre AS nombre_ciudadano
               FROM encuesta_envio ee
               JOIN ciudadanos c ON c.id_ciudadano = ee.id_ciudadano
@@ -681,6 +836,9 @@ async def enviar_email_encuesta(db: AsyncSession, id_encuesta_envio: int) -> boo
               LEFT JOIN tipo_prestacion tp ON tp.id_tipo_prestacion = t.id_tipo_prestacion
               LEFT JOIN evento_reservas evr ON evr.id_evento_reserva = ee.id_evento_reserva
               LEFT JOIN eventos ev        ON ev.id_evento = evr.id_evento
+              LEFT JOIN tramite trm       ON trm.id_tramite = ee.id_tramite
+              LEFT JOIN tipo_tramite_version tv ON tv.id_tipo_tramite_version = trm.id_tipo_tramite_version
+              LEFT JOIN tipo_tramite ttx  ON ttx.id_tipo_tramite = tv.id_tipo_tramite
              WHERE ee.id_encuesta_envio = :id AND ee.activo = TRUE
              LIMIT 1
         """), {"id": id_encuesta_envio})).fetchone()
@@ -700,7 +858,18 @@ async def enviar_email_encuesta(db: AsyncSession, id_encuesta_envio: int) -> boo
         # (ej. '/design-system/assets/...'). En un cliente de email NO hay origen,
         # así que hay que entregar una URL absoluta o el <img> queda roto.
         logo_url = _absolutizar_url(brand["logo_url"])
-        if env["id_evento_reserva"] is not None:
+        if env["id_tramite"] is not None:
+            asunto, html, texto = _render_email_tramite(
+                nombre_ciudadano=env["nombre_ciudadano"],
+                numero_expediente=env["tramite_numero"] or str(env["id_tramite"]),
+                tipo_nombre=env["tramite_tipo"] or "trámite",
+                resultado=env["tramite_resultado"] or "",
+                fecha_expiracion=env["fecha_expiracion"],
+                url=url,
+                municipio_nombre=brand["nombre"],
+                municipio_logo_url=logo_url,
+            )
+        elif env["id_evento_reserva"] is not None:
             asunto, html, texto = _render_email_entrada(
                 nombre_ciudadano=env["nombre_ciudadano"],
                 evento_nombre=env["evento_nombre"] or "el evento",
@@ -865,15 +1034,17 @@ async def registrar_respuesta(
         # 2. Token apto
         env = (await db.execute(text("""
             SELECT ee.id_encuesta_envio, ee.id_plantilla, ee.estado, ee.fecha_expiracion,
-                   ee.id_reclamo, ee.id_turno, ee.id_evento_reserva,
+                   ee.id_reclamo, ee.id_turno, ee.id_evento_reserva, ee.id_tramite,
                    ee.id_ciudadano, ee.id_municipio, ee.id_subarea,
                    r.nro_reclamo, ev.nombre AS evento_nombre,
+                   trm.numero_expediente AS tramite_numero,
                    COALESCE(ee.id_subarea, tr.id_subarea, r.id_subarea) AS subarea_origen
               FROM encuesta_envio ee
               LEFT JOIN reclamos r ON r.id_reclamo = ee.id_reclamo
               LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
               LEFT JOIN evento_reservas evr ON evr.id_evento_reserva = ee.id_evento_reserva
               LEFT JOIN eventos ev ON ev.id_evento = evr.id_evento
+              LEFT JOIN tramite trm ON trm.id_tramite = ee.id_tramite
              WHERE ee.token_unico = CAST(:t AS uuid) AND ee.activo = TRUE
              LIMIT 1
         """), {"t": token})).fetchone()

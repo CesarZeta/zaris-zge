@@ -112,6 +112,9 @@ async def archivar_inactivos(db: AsyncSession, limite: int = 500) -> dict[str, A
          WHERE t.activo = TRUE
            AND t.fecha_archivado IS NULL
            AND COALESCE(e.es_final, FALSE) = FALSE
+           -- mig 101: los estados que esperan al vecino los gobierna el timer
+           -- de desistimiento (ciclo_vida.py), no el archivado por inactividad.
+           AND COALESCE(e.espera_iniciador, FALSE) = FALSE
            AND COALESCE(
                  (SELECT MAX(m.fecha_alta) FROM tramite_movimiento m WHERE m.id_tramite = t.id_tramite),
                  t.fecha_alta
