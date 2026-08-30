@@ -65,6 +65,7 @@ Todas validan el slug `?m=<codigo_corto>` contra el único municipio del deploy.
 |---|---|---|---|
 | GET | `/catalogo/tipos` | publico | Tipos de reclamo activos. |
 | GET | `/geo/buscar` | publico | Geocoding para el vecino logueado. |
+| GET | `/geo/reverse?lat=&lon=` | publico | **Nuevo 2026-08-30.** Geocoding INVERSO (GPS → dirección) para autocompletar el domicilio de los tickets rápidos de emergencia y del form de reclamos. Reemplaza la llamada directa a Nominatim desde el cliente. Siempre 200: `{encontrado, direccion, display_name, calle, altura, localidad, provincia, lat, lon, address}` — con `encontrado=false` (mar / sin datos) la PWA cae a las coordenadas crudas. Rate-limit 20/min/IP. |
 | GET | `` | publico | Lista SOLO los reclamos del vecino. |
 | GET | `/{id_reclamo}` | publico | Detalle. **404 si no es suyo** (no filtra terceros). |
 | POST | `` | publico | Crea reclamo a nombre propio. Exige `id_tipo_reclamo` + `direccion` + `descripcion≥5`. |
@@ -81,7 +82,7 @@ Todas validan el slug `?m=<codigo_corto>` contra el único municipio del deploy.
 
 | Verbo | Ruta | Auth | Para qué |
 |---|---|---|---|
-| GET | `/mi-resumen` | publico | Conteos `{vigentes,total}` de reclamos/turnos/entradas en 1 request. |
+| GET | `/mi-resumen` | publico | Conteos `{vigentes,total}` de reclamos/turnos/entradas en 1 request. **Desde 2026-08-30** suma `avisos: {no_leidos}` (badge de la campana, ver §11). |
 
 ## 6. Turnos del vecino — `/api/v1/publico/turnos`
 
@@ -118,6 +119,27 @@ Todas validan el slug `?m=<codigo_corto>` contra el único municipio del deploy.
 | GET | `/public-key` | publico | Clave VAPID pública para suscribir. |
 | POST | `/subscribe` | publico | Registra la suscripción (UPSERT, activa `canal_push`). |
 | POST | `/unsubscribe` | publico | Da de baja la suscripción. |
+
+## 10. Perfil del vecino — `/api/v1/publico/perfil` (nuevo 2026-08-30)
+
+| Verbo | Ruta | Auth | Para qué |
+|---|---|---|---|
+| GET | `` | publico | Ficha completa de la BUC del vecino logueado: `id_ciudadano, dni, doc_tipo, cuil, cuil_es_placeholder, nombre, apellido, sexo, fecha_nac (YYYY-MM-DD), id_nacionalidad, nacionalidad, calle, altura, localidad, provincia, latitud, longitud, telefono, email, email_verificado, estado_validacion, ficha_completa, canal_email, canal_push, fecha_alta, fecha_modificacion`. |
+| PUT | `` | publico | Update **parcial** (solo los campos presentes en el body). Editables: `telefono` (≥6 dígitos), `calle`, `altura`, `localidad`, `provincia`, `latitud`, `longitud` (mandar `null` explícito limpia lat/lon). Devuelve el perfil completo. Body vacío o inválido → 422. Rate-limit 10/min/IP. |
+
+> **CUIL placeholder:** el alta por agente inventa `20 + DNI + 9` porque la columna es NOT NULL. En ese caso `cuil` viene `null` y `cuil_es_placeholder=true` — no mostrar el dato inventado.
+>
+> **NO editables desde la app** (se ignoran si vienen en el body): DNI, CUIL, nombre, apellido, sexo, fecha_nac, nacionalidad (datos de identidad → mostrador) y **email** (es la credencial de recovery; cambiarlo exige re-verificación, flujo aparte pendiente de definir).
+
+## 11. Avisos del vecino (bandeja "Alertas") — `/api/v1/publico/avisos` (nuevo 2026-08-30, mig 99)
+
+Los avisos los escribe el **backend** en los mismos hooks post-commit que disparan el push (cambio de estado de un reclamo — todas las vías, incluidas las OT — y de un reporte de emergencia). Quedan persistidos haya o no suscripción push, así la bandeja nunca depende del dispositivo. La PWA solo lee y marca leído.
+
+| Verbo | Ruta | Auth | Para qué |
+|---|---|---|---|
+| GET | `?solo_no_leidos=&limit=&offset=` | publico | `{avisos: [...], no_leidos, total}`, del más nuevo al más viejo. Cada aviso: `{id_aviso, tipo ('reclamo_estado' \| 'emergencia_estado' \| 'municipio'), titulo, mensaje, url (ruta RELATIVA en la PWA, misma que el push: "/reclamos/123", "/emergencias"), recurso_tipo, recurso_id, leido, leido_en, fecha}`. |
+| PATCH | `/{id_aviso}/leer` | publico | Marca UN aviso leído. Idempotente. **404 si no existe o no es del vecino** (mismo cuerpo). Devuelve `{ok, id_aviso, leido, leido_en, no_leidos}`. |
+| POST | `/leer-todos` | publico | Marca todos los pendientes. `{ok, marcados, no_leidos: 0}`. |
 
 ---
 
