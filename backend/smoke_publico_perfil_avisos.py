@@ -95,10 +95,11 @@ def main() -> int:
              "latitud": -34.5265, "longitud": -58.4729}
     r = c.put(f"{BASE}{P}/perfil", headers=H, json=nuevo)
     p2 = r.json() if r.status_code == 200 else {}
-    check("9. PUT /perfil contacto+domicilio -> 200 y persiste",
-          r.status_code == 200 and p2.get("telefono") == nuevo["telefono"] and p2.get("calle") == nuevo["calle"]
+    # el telefono se guarda normalizado a digitos (regla BUC §2: "11 5555-0000" -> "1155550000")
+    check("9. PUT /perfil contacto+domicilio -> 200 y persiste (telefono digit-only)",
+          r.status_code == 200 and p2.get("telefono") == "1155550000" and p2.get("calle") == nuevo["calle"]
           and abs((p2.get("latitud") or 0) - nuevo["latitud"]) < 1e-6,
-          f"({r.status_code})")
+          f"({r.status_code} tel={p2.get('telefono')})")
     # identidad intacta (el PUT no puede tocarla ni por accidente)
     check("10. PUT no toca identidad (dni/nombre/email)",
           p2.get("dni") == perfil.get("dni") and p2.get("nombre") == perfil.get("nombre")

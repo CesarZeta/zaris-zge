@@ -28,11 +28,13 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
+from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_ciudadano
 from app.core.database import get_db
 from app.middleware.rate_limit import check_rate_limit
+from app.schemas.buc import _validar_telefono_arg
 from app.utils.request_helpers import get_real_ip
 
 logger = logging.getLogger("zaris.publico_perfil")
@@ -86,13 +88,13 @@ class PerfilUpdateIn(BaseModel):
     @field_validator("telefono")
     @classmethod
     def _val_telefono(cls, v: Optional[str]) -> Optional[str]:
+        # Misma regla que el backoffice (schemas/buc.py): 10 dígitos sin el 0 de
+        # área, y se GUARDA normalizado a dígitos ("11 5555-0000" -> "1155550000",
+        # BUC §2). Cazado 2026-08-30: prod tenía la columna en VARCHAR(10) (mig 100
+        # la llevó a 15 como local) y el texto con espacios/guiones daba 500.
         if v is None:
             return v
-        v = v.strip()
-        digitos = "".join(ch for ch in v if ch.isdigit())
-        if len(digitos) < 6:
-            raise ValueError("El teléfono debe tener al menos 6 dígitos")
-        return v
+        return _validar_telefono_arg(v.strip())
 
     @field_validator("calle", "altura", "localidad", "provincia")
     @classmethod
@@ -191,7 +193,8 @@ _EDITABLES = ("telefono", "calle", "altura", "localidad", "provincia", "latitud"
 
 
 @router.put("", response_model=PerfilOut,
-            responses={422: {"description": "Body vacío o campo inválido"}})
+            responses={422: {"description": "Body vacío, campo inválido o rechazado por el padrón"},
+                       404: {"description": "Ciudadano no encontrado o inactivo"}})
 async def actualizar_mi_perfil(
     body: PerfilUpdateIn,
     request: Request,
@@ -209,11 +212,18 @@ async def actualizar_mi_perfil(
     sets = ", ".join(f"{k} = :{k}" for k in cambios)
     params = dict(cambios)
     params["id"] = current["id_ciudadano"]
-    res = await db.execute(text(f"""
-        UPDATE ciudadanos
-           SET {sets}, fecha_modificacion = NOW()
-         WHERE id_ciudadano = :id AND activo = TRUE
-    """), params)
+    try:
+        res = await db.execute(text(f"""
+            UPDATE ciudadanos
+               SET {sets}, fecha_modificacion = NOW()
+             WHERE id_ciudadano = :id AND activo = TRUE
+        """), params)
+    except (DataError, IntegrityError) as e:
+        # Largo de columna / CHECK de la DB (drift §24): 422 con mensaje, no 500.
+        await db.rollback()
+        logger.warning("perfil: UPDATE rechazado por la DB (ciudadano %s): %s",
+                       current["id_ciudadano"], getattr(e, "orig", e))
+        raise HTTPException(422, "Alguno de los datos no es válido para el padrón (largo o formato)")
     if res.rowcount == 0:
         await db.rollback()
         raise HTTPException(404, "Ciudadano no encontrado")
