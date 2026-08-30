@@ -111,6 +111,12 @@ export interface GeoReverseResult {
   address: Record<string, string>
   lat: number
   lon: number
+  // Piezas normalizadas que suma el backend (§22) + match del catálogo de
+  // localidades (2026-08-30): para autocompletar la localidad en el form.
+  direccion?: string | null
+  localidad?: string | null
+  id_localidad?: number | null
+  localidad_catalogo?: string | null
 }
 
 export const geoBuscar = (q: string, limit = 5) =>

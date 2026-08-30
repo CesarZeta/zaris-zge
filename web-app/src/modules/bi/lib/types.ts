@@ -230,6 +230,8 @@ export interface BiFiltros {
   id_tipo_reclamo?: number
   tipo_nombre?: string
   canal?: string
+  // Filtro del Ejecutivo (2026-08-30): localidad del catalogo.
+  id_localidad?: number
 }
 
 // KPIs comparativos de la fila única de cada sección (GET /bi/comparativo).
@@ -243,4 +245,106 @@ export interface Comparativo {
   var_pct: number
   periodo_actual: string
   periodo_anterior: string
+}
+
+// ── Ejecutivo ("Análisis de demanda ciudadana", 2026-08-30) ──────────────────
+// Shapes de /api/v1/bi/ejecutivo/*.
+
+export interface EjNivel {
+  clasificacion: number // 1..5 (1-2 insatisfecho · 3 neutro · 4-5 satisfecho)
+  total: number
+}
+
+export interface EjScore {
+  total: number
+  abiertos: number
+  total_anterior: number | null
+  var_pct: number | null
+  prom_dias: number | null
+  pct_cierre: number | null
+  pct_sla: number | null
+  pct_sat: number | null
+  tasa_respuesta: number | null
+  encuestas_enviadas: number
+  encuestas_respondidas: number
+  niveles: EjNivel[]
+}
+
+// Métricas comunes de la matriz y los tops (por subárea o por tipo).
+export interface EjFilaBase {
+  total: number
+  var_pct: number | null
+  prom_dias: number | null
+  pct_cierre: number | null
+  pct_sla: number | null
+  pct_sat: number | null
+  pct_rep: number | null
+}
+
+export interface EjTipoFila extends EjFilaBase {
+  id_tipo: number | null
+  tipo: string
+}
+
+export interface EjSubareaFila extends EjFilaBase {
+  id_subarea: number | null
+  subarea: string
+  tipos: EjTipoFila[]
+}
+
+export interface EjMatriz {
+  filas: EjSubareaFila[]
+  total: EjFilaBase
+}
+
+export interface EjTopTipo extends EjFilaBase {
+  id_tipo: number | null
+  tipo: string
+  subarea: string
+}
+
+export interface EjAltasCierresItem {
+  mes: string
+  altas: number
+  cierres: number
+}
+
+export interface EjEvolucionItem {
+  mes: string
+  total: number
+  pct_cierre: number | null
+  pct_sla: number | null
+  pct_sat: number | null
+}
+
+export interface EjPorLocalidadItem {
+  id_localidad: number | null
+  localidad: string
+  total: number
+}
+
+export interface EjSatCierreItem {
+  nombre: string
+  total: number
+  pct_cierre: number | null
+  pct_sat: number | null
+}
+
+export interface EjGeoPunto {
+  id_reclamo: number
+  nro_reclamo: string | null
+  estado: string
+  prioridad: string | null
+  tipo_nombre: string
+  descripcion: string | null
+  latitud: number
+  longitud: number
+  cerrado: boolean
+  clasificacion: number | null
+}
+
+export interface EjLocalidadCatalogo {
+  id_localidad: number
+  nombre: string
+  total: number
 }
