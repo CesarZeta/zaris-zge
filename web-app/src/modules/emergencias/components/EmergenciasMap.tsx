@@ -69,9 +69,10 @@ export function EmergenciasMap({ eventos, onMarkerClick }: Props) {
       zoomControl: false,
     })
     L.control.zoom({ position: 'bottomright' }).addTo(map)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: 'abcd',
+    // Esri Gray Canvas sin API key (CARTO paso a exigir key, 2026-08-30).
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+      attribution: '© <a href="https://www.esri.com">Esri</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxNativeZoom: 16,
       maxZoom: 20,
     }).addTo(map)
     markersLayerRef.current = L.layerGroup().addTo(map)
