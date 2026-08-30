@@ -16,6 +16,11 @@ Todo lo insertado queda atribuido al usuario 'generador.demo' (se crea INACTIVO
 si no existe): identificar/borrar/migrar a un tenant = filtrar por ese
 id_usuario_alta.
 
+ALCANCE MULTI-TENANT (definicion de Cesar 2026-08-30): el generador y su cron
+aplican datos SOLO al municipio DEMO (San Andres). Al implementar IT-01 este
+modulo debe recibir/derivar el id_municipio del tenant demo y quedar acotado a
+el — JAMAS generar datos en tenants reales.
+
 REGLA CRITICA: jamas crear encuesta_envio en estado 'pendiente' — el dispatcher
 horario de encuestas MANDA MAIL a los pendientes. Solo estados 'enviada',
 'completada' o 'expirada'.
