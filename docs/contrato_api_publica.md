@@ -137,7 +137,7 @@ Los avisos los escribe el **backend** en los mismos hooks post-commit que dispar
 
 | Verbo | Ruta | Auth | Para qué |
 |---|---|---|---|
-| GET | `?solo_no_leidos=&limit=&offset=` | publico | `{avisos: [...], no_leidos, total}`, del más nuevo al más viejo. Cada aviso: `{id_aviso, tipo ('reclamo_estado' \| 'emergencia_estado' \| 'municipio'), titulo, mensaje, url (ruta RELATIVA en la PWA, misma que el push: "/reclamos/123", "/emergencias"), recurso_tipo, recurso_id, leido, leido_en, fecha}`. |
+| GET | `?solo_no_leidos=&limit=&offset=` | publico | `{avisos: [...], no_leidos, total}`, del más nuevo al más viejo. Cada aviso: `{id_aviso, tipo ('reclamo_estado' \| 'emergencia_estado' \| 'tramite_estado' \| 'tramite_pendiente' \| 'municipio'), titulo, mensaje, url (ruta RELATIVA en la PWA, misma que el push: "/reclamos/123", "/emergencias"; los de trámites traen "/alertas"), recurso_tipo ('reclamo' \| 'emergencia' \| 'tramite'), recurso_id, leido, leido_en, fecha}`. **Trámites (desde 2026-08-30):** `tramite_estado` = "tu trámite terminó: APROBADO/RECHAZADO" (o desistido); `tramite_pendiente` = avisos escalonados cuando el expediente espera documentación del vecino (30/60 días y 72 h antes de darlo por desistido). La PWA solo los muestra; no hay endpoint público de trámites. |
 | PATCH | `/{id_aviso}/leer` | publico | Marca UN aviso leído. Idempotente. **404 si no existe o no es del vecino** (mismo cuerpo). Devuelve `{ok, id_aviso, leido, leido_en, no_leidos}`. |
 | POST | `/leer-todos` | publico | Marca todos los pendientes. `{ok, marcados, no_leidos: 0}`. |
 
