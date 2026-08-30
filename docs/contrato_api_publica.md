@@ -125,7 +125,11 @@ Todas validan el slug `?m=<codigo_corto>` contra el único municipio del deploy.
 | Verbo | Ruta | Auth | Para qué |
 |---|---|---|---|
 | GET | `` | publico | Ficha completa de la BUC del vecino logueado: `id_ciudadano, dni, doc_tipo, cuil, cuil_es_placeholder, nombre, apellido, sexo, fecha_nac (YYYY-MM-DD), id_nacionalidad, nacionalidad, calle, altura, localidad, provincia, latitud, longitud, telefono, email, email_verificado, estado_validacion, ficha_completa, canal_email, canal_push, fecha_alta, fecha_modificacion`. |
-| PUT | `` | publico | Update **parcial** (solo los campos presentes en el body). Editables: `telefono` (≥6 dígitos), `calle`, `altura`, `localidad`, `provincia`, `latitud`, `longitud` (mandar `null` explícito limpia lat/lon). Devuelve el perfil completo. Body vacío o inválido → 422. Rate-limit 10/min/IP. |
+| PUT | `` | publico | Update **parcial** (solo los campos presentes en el body). Editables: `telefono` (10 dígitos sin el 0 de área; se guarda digit-only), `calle`, `altura`, `localidad`, `provincia`, `latitud`, `longitud` (mandar `null` explícito limpia lat/lon). Devuelve el perfil completo. Body vacío o inválido → 422. Rate-limit 10/min/IP. |
+| POST | `/foto` | publico | **Nuevo 2026-08-30 (mig 102).** Sube/reemplaza la foto de perfil: multipart, campo `archivo`, **solo JPEG**, 1 KB a 512 KB, mínimo 100×100 px (la PWA ya reduce a 256 px). Path fijo por vecino con upsert (1 foto, sin huérfanos). Devuelve el perfil con `foto_url` (URL firmada, **TTL 1 h** — no cachearla más que eso) y `foto_actualizada_en`. 422 si no cumple; rate-limit 5/min/IP. |
+| DELETE | `/foto` | publico | Quita la foto (bucket + columnas). Idempotente. Devuelve el perfil con `foto_url: null`. |
+
+> `GET /perfil` también trae `foto_url` (firmada, TTL 1 h) y `foto_actualizada_en`, o `null` sin foto. La foto deja de vivir en `localStorage` del dispositivo: sigue al vecino entre dispositivos.
 
 > **CUIL placeholder:** el alta por agente inventa `20 + DNI + 9` porque la columna es NOT NULL. En ese caso `cuil` viene `null` y `cuil_es_placeholder=true` — no mostrar el dato inventado.
 >

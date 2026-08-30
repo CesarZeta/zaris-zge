@@ -25,12 +25,13 @@ import logging
 from datetime import date, datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import storage
 from app.core.auth import get_current_ciudadano
 from app.core.database import get_db
 from app.middleware.rate_limit import check_rate_limit
@@ -40,6 +41,48 @@ from app.utils.request_helpers import get_real_ip
 logger = logging.getLogger("zaris.publico_perfil")
 
 router = APIRouter(prefix="/api/v1/publico/perfil", tags=["publico-perfil"])
+
+# ─── Foto de perfil (mig 102, esquema de Roy aprobado por Cesar 2026-08-30) ──
+# Bucket privado de adjuntos (default de storage.py), path FIJO por vecino con
+# upsert: 1 foto por ciudadano, re-subir pisa la anterior, sin huerfanos.
+FOTO_MIN_BYTES = 1024
+FOTO_MAX_BYTES = 512 * 1024
+FOTO_MIN_PX = 100
+FOTO_URL_TTL_SEG = 3600
+
+
+def _foto_path(id_ciudadano: int) -> str:
+    return f"perfiles/{int(id_ciudadano)}.jpg"
+
+
+def _dimensiones_jpeg(data: bytes) -> tuple[int, int]:
+    """(ancho, alto) leyendo el marker SOF del JPEG. Sin Pillow (no esta en
+    requirements): recorre los segmentos hasta el primer SOFn. ValueError si
+    no es un JPEG valido."""
+    if len(data) < 4 or data[0:2] != b"\xff\xd8":
+        raise ValueError("no es JPEG")
+    i, n = 2, len(data)
+    sof = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
+    while i + 4 <= n:
+        if data[i] != 0xFF:
+            i += 1
+            continue
+        marker = data[i + 1]
+        if marker == 0xFF:
+            i += 1
+            continue
+        if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
+            i += 2
+            continue
+        seg_len = (data[i + 2] << 8) | data[i + 3]
+        if marker in sof:
+            if i + 9 > n:
+                break
+            alto = (data[i + 5] << 8) | data[i + 6]
+            ancho = (data[i + 7] << 8) | data[i + 8]
+            return ancho, alto
+        i += 2 + seg_len
+    raise ValueError("JPEG sin SOF")
 
 
 # ─── Schemas ─────────────────────────────────────────────────────────────────
@@ -72,6 +115,9 @@ class PerfilOut(BaseModel):
     canal_push: bool = True
     fecha_alta: Optional[str] = None         # ISO 8601
     fecha_modificacion: Optional[str] = None
+    # mig 102: URL firmada (TTL 1 h) de la foto de perfil, o null sin foto.
+    foto_url: Optional[str] = None
+    foto_actualizada_en: Optional[str] = None
 
 
 class PerfilUpdateIn(BaseModel):
@@ -134,6 +180,7 @@ async def _perfil_out(db: AsyncSession, id_ciudadano: int) -> PerfilOut:
                c.latitud, c.longitud, c.telefono, c.email, c.email_chk,
                c.estado_validacion, c.ficha_completa,
                c.fecha_alta, c.fecha_modificacion,
+               c.foto_path, c.foto_actualizada_en,
                cp.canal_email, cp.canal_push
           FROM ciudadanos c
           LEFT JOIN nacionalidades n ON n.id = c.id_nacionalidad
@@ -144,7 +191,15 @@ async def _perfil_out(db: AsyncSession, id_ciudadano: int) -> PerfilOut:
         raise HTTPException(404, "Ciudadano no encontrado")
 
     placeholder = _cuil_es_placeholder(row["cuil"], row["doc_nro"])
+    foto_url = None
+    if row["foto_path"]:
+        try:
+            foto_url = await storage.crear_signed_download_url(row["foto_path"], ttl_sec=FOTO_URL_TTL_SEG)
+        except Exception as e:  # noqa: BLE001 — la foto nunca rompe el perfil
+            logger.warning("perfil: no se pudo firmar la foto de %s: %s", id_ciudadano, e)
     return PerfilOut(
+        foto_url=foto_url,
+        foto_actualizada_en=_iso(row["foto_actualizada_en"]),
         id_ciudadano=row["id_ciudadano"],
         dni=row["doc_nro"],
         doc_tipo=row["doc_tipo"],
@@ -230,3 +285,65 @@ async def actualizar_mi_perfil(
     await db.commit()
     logger.info("perfil: ciudadano %s actualizó %s", current["id_ciudadano"], sorted(cambios))
     return await _perfil_out(db, current["id_ciudadano"])
+
+
+@router.post("/foto", response_model=PerfilOut,
+             responses={422: {"description": "No es JPEG, tamaño fuera de 1 KB..512 KB o menor a 100x100 px"},
+                        503: {"description": "Storage no configurado"}})
+async def subir_foto_perfil(
+    request: Request,
+    archivo: UploadFile = File(..., description="JPEG, 1 KB a 512 KB, mínimo 100x100 px"),
+    db: AsyncSession = Depends(get_db),
+    current: dict = Depends(get_current_ciudadano),
+):
+    """Sube/reemplaza la foto de perfil del vecino logueado (multipart `archivo`).
+    Solo JPEG (la PWA ya reduce a 256 px JPEG). Path fijo por ciudadano con
+    upsert → 1 foto por vecino, sin huérfanos. Devuelve el perfil con `foto_url`."""
+    check_rate_limit(f"perfilfoto:{get_real_ip(request)}", max_requests=5, window_seconds=60)
+    id_c = int(current["id_ciudadano"])
+
+    data = await archivo.read(FOTO_MAX_BYTES + 1)
+    if len(data) > FOTO_MAX_BYTES:
+        raise HTTPException(422, f"La foto supera el máximo de {FOTO_MAX_BYTES // 1024} KB")
+    if len(data) < FOTO_MIN_BYTES:
+        raise HTTPException(422, "El archivo es demasiado chico para ser una foto válida (mínimo 1 KB)")
+    try:
+        ancho, alto = _dimensiones_jpeg(data)
+    except ValueError:
+        raise HTTPException(422, "La foto debe ser un JPEG válido")
+    if ancho < FOTO_MIN_PX or alto < FOTO_MIN_PX:
+        raise HTTPException(422, f"La foto debe tener al menos {FOTO_MIN_PX}x{FOTO_MIN_PX} px (tiene {ancho}x{alto})")
+
+    path = _foto_path(id_c)
+    await storage.subir_objeto(path, data, "image/jpeg")  # x-upsert: pisa la anterior
+    await db.execute(text("""
+        UPDATE ciudadanos
+           SET foto_path = :p, foto_actualizada_en = NOW(), fecha_modificacion = NOW()
+         WHERE id_ciudadano = :id AND activo = TRUE
+    """), {"p": path, "id": id_c})
+    await db.commit()
+    logger.info("perfil: ciudadano %s subió foto (%s bytes, %sx%s)", id_c, len(data), ancho, alto)
+    return await _perfil_out(db, id_c)
+
+
+@router.delete("/foto", response_model=PerfilOut)
+async def borrar_foto_perfil(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: dict = Depends(get_current_ciudadano),
+):
+    """Quita la foto de perfil (borra el objeto del bucket, best-effort, y limpia
+    las columnas). Idempotente: sin foto también devuelve 200."""
+    check_rate_limit(f"perfilfoto:{get_real_ip(request)}", max_requests=5, window_seconds=60)
+    id_c = int(current["id_ciudadano"])
+    try:
+        await storage.borrar_objeto(_foto_path(id_c))
+    except Exception as e:  # noqa: BLE001 — si el bucket falla, igual se desvincula
+        logger.warning("perfil: no se pudo borrar la foto de %s del bucket: %s", id_c, e)
+    await db.execute(text("""
+        UPDATE ciudadanos
+           SET foto_path = NULL, foto_actualizada_en = NULL, fecha_modificacion = NOW()
+         WHERE id_ciudadano = :id AND activo = TRUE
+    """), {"id": id_c})
+    await db.commit()
+    return await _perfil_out(db, id_c)
