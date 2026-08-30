@@ -110,28 +110,9 @@ export function ResumenEjSection({ filtros }: { filtros: BiFiltros }) {
         />
       </KpiRow>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) minmax(0, 2fr)', gap: 16 }}>
-        {/* Niveles de satisfacción (dona; sin emojis, §13) */}
-        <ChartCard title="Niveles de satisfacción" height={300}>
-          {score.isLoading ? (
-            <CenterMsg>Cargando…</CenterMsg>
-          ) : !niveles.length ? (
-            <CenterMsg>Sin respuestas de encuestas en el período.</CenterMsg>
-          ) : (
-            <ResponsiveContainer>
-              <PieChart>
-                <Pie data={niveles} dataKey="total" nameKey="label" innerRadius="50%" outerRadius="78%" paddingAngle={2} label={pieLabel} labelLine={false}>
-                  <Label content={DonaCentro} position="center" value={totalDe(niveles)} />
-                  {niveles.map((n) => <Cell key={n.clasificacion} fill={NIVEL_COLOR[n.clasificacion] ?? '#9e9e9e'} />)}
-                </Pie>
-                <Tooltip contentStyle={tooltipStyle} />
-                <Legend wrapperStyle={legendStyle} />
-              </PieChart>
-            </ResponsiveContainer>
-          )}
-        </ChartCard>
-
-        {/* Matriz subárea → tipo (la tabla central del tablero de referencia) */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
+        {/* Matriz subárea → tipo (la tabla central del tablero de referencia).
+            A lo ancho completo: compartir fila con la dona le imponía scroll horizontal. */}
         <div style={cardStyle}>
           <h3 style={h3Style}>Indicadores por subárea y tipo</h3>
           {matriz.isLoading ? (
@@ -173,6 +154,26 @@ export function ResumenEjSection({ filtros }: { filtros: BiFiltros }) {
             </div>
           )}
         </div>
+
+        {/* Niveles de satisfacción (dona; sin emojis, §13) */}
+        <ChartCard title="Niveles de satisfacción" height={300}>
+          {score.isLoading ? (
+            <CenterMsg>Cargando…</CenterMsg>
+          ) : !niveles.length ? (
+            <CenterMsg>Sin respuestas de encuestas en el período.</CenterMsg>
+          ) : (
+            <ResponsiveContainer>
+              <PieChart>
+                <Pie data={niveles} dataKey="total" nameKey="label" innerRadius="50%" outerRadius="78%" paddingAngle={2} label={pieLabel} labelLine={false}>
+                  <Label content={DonaCentro} position="center" value={totalDe(niveles)} />
+                  {niveles.map((n) => <Cell key={n.clasificacion} fill={NIVEL_COLOR[n.clasificacion] ?? '#9e9e9e'} />)}
+                </Pie>
+                <Tooltip contentStyle={tooltipStyle} />
+                <Legend wrapperStyle={legendStyle} />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
       </div>
     </Seccion>
   )
