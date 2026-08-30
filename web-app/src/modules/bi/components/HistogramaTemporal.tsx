@@ -12,8 +12,9 @@ import {
 } from 'recharts'
 import { useQuery } from '@tanstack/react-query'
 import { ChartCard, CenterMsg } from './ui'
-import type { BiFiltros, ItemTemporal } from '../lib/types'
-import { labelDia, labelMes, labelMesLargo } from '../lib/theme'
+import { filtrosKey } from '../hooks/useBi'
+import type { BiFiltros, HistogramaDinamico, ItemTemporal } from '../lib/types'
+import { COLOR_OTROS, PALETA_CATEGORICA, labelDia, labelMes, labelMesLargo } from '../lib/theme'
 import { SegLabel, TotalLabel } from './barLabels'
 
 const AXIS = { fontFamily: 'var(--font-display)', fontSize: 11, fill: 'var(--fg-3)' as const }
@@ -32,10 +33,21 @@ export interface SerieHistograma {
   color: string
 }
 
+// Modo alterno con series DINÁMICAS (ej. apilado por tipo de reclamo: el backend
+// devuelve las series junto a los items). Toggle "Estado | Tipo" en el card.
+export interface ModoAlterno {
+  /** Etiqueta del pill del modo base (ej. "Estado"). */
+  labelBase: string
+  /** Etiqueta del pill del modo alterno (ej. "Tipo"). */
+  label: string
+  fetchMensual: (f: BiFiltros) => Promise<HistogramaDinamico>
+  fetchDiario: (mes: string | null, f: BiFiltros) => Promise<HistogramaDinamico>
+}
+
 interface Props {
   /** Título base (sin el sufijo de granularidad). Ej: "Reclamos ingresados". */
   tituloBase: string
-  /** Series apiladas (orden = orden de apilado, de abajo hacia arriba). */
+  /** Series apiladas del modo base (orden = orden de apilado, de abajo hacia arriba). */
   series: SerieHistograma[]
   /** Fetch de la serie mensual. */
   fetchMensual: (f: BiFiltros) => Promise<ItemTemporal[]>
@@ -44,28 +56,37 @@ interface Props {
   /** Clave única para react-query (distinta por cada uso del componente). */
   cacheKey: string
   filtros: BiFiltros
+  /** Modo alterno opcional (series dinámicas). */
+  alterno?: ModoAlterno
 }
 
 // Histograma temporal con toggle Mes/Día + drill-down. Genérico: las series y los
 // fetchers se inyectan, así sirve a Resumen (resuelto/pendiente/cancelado) y a
 // Pendientes (por estado). ESTÁNDAR del módulo: etiqueta de total arriba +
 // toggle Mes/Día + drill por clic. Ver memoria reference_bi_lineamientos_visualizaciones.
-export function HistogramaTemporal({ tituloBase, series, fetchMensual, fetchDiario, cacheKey, filtros }: Props) {
+export function HistogramaTemporal({ tituloBase, series, fetchMensual, fetchDiario, cacheKey, filtros, alterno }: Props) {
   const [gran, setGran] = useState<Gran>('mes')
   const [mesDrill, setMesDrill] = useState<string | null>(null)
+  const [modo, setModo] = useState<'base' | 'alterno'>('base')
+  const enAlterno = modo === 'alterno' && !!alterno
 
-  const fkey = [cacheKey, filtros.desde, filtros.hasta, filtros.id_area, filtros.prioridad] as const
-  const mensual = useQuery({ queryKey: ['bi-hist', ...fkey, 'mes'], queryFn: () => fetchMensual(filtros) })
+  const fkey = [cacheKey, ...filtrosKey(filtros), modo] as const
+  const mensual = useQuery({
+    queryKey: ['bi-hist', ...fkey, 'mes'],
+    queryFn: async (): Promise<HistogramaDinamico> =>
+      enAlterno ? alterno!.fetchMensual(filtros) : { series: [], items: await fetchMensual(filtros) },
+  })
 
   const mostrandoDias = gran === 'dia' || !!mesDrill
   const diario = useQuery({
     queryKey: ['bi-hist', ...fkey, 'dia', mesDrill],
-    queryFn: () => fetchDiario(mesDrill, filtros),
+    queryFn: async (): Promise<HistogramaDinamico> =>
+      enAlterno ? alterno!.fetchDiario(mesDrill, filtros) : { series: [], items: await fetchDiario(mesDrill, filtros) },
     enabled: mostrandoDias,
   })
 
   // Si cambian los filtros y el mes drillado ya no existe, salir del drill.
-  const mesesDisponibles = new Set((mensual.data ?? []).map((m) => m.mes))
+  const mesesDisponibles = new Set((mensual.data?.items ?? []).map((m) => m.mes))
   if (mesDrill && mensual.data && !mesesDisponibles.has(mesDrill)) {
     setMesDrill(null)
   }
@@ -76,9 +97,18 @@ export function HistogramaTemporal({ tituloBase, series, fetchMensual, fetchDiar
       ? `${tituloBase} por día`
       : `${tituloBase} por mes`
 
+  const activo = mostrandoDias ? diario.data : mensual.data
   const data: (ItemTemporal & { label: string })[] = mostrandoDias
-    ? (diario.data ?? []).map((d) => ({ ...d, label: labelDia(d.dia!) }))
-    : (mensual.data ?? []).map((m) => ({ ...m, label: labelMes(m.mes!) }))
+    ? (activo?.items ?? []).map((d) => ({ ...d, label: labelDia(d.dia!) }))
+    : (activo?.items ?? []).map((m) => ({ ...m, label: labelMes(m.mes!) }))
+
+  // Series a dibujar: fijas (modo base) o las que trajo el backend (modo alterno).
+  const seriesActivas: SerieHistograma[] = enAlterno
+    ? (activo?.series ?? []).map((s, i) => ({
+        key: s.key, name: s.name,
+        color: s.key === 'otros' ? COLOR_OTROS : PALETA_CATEGORICA[i % PALETA_CATEGORICA.length],
+      }))
+    : series
 
   const cargando = mostrandoDias ? diario.isLoading : mensual.isLoading
   const clickeable = gran === 'mes' && !mesDrill
@@ -92,12 +122,18 @@ export function HistogramaTemporal({ tituloBase, series, fetchMensual, fetchDiar
       title={titulo}
       height={300}
       action={
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {mesDrill && (
             <button onClick={() => setMesDrill(null)} style={backBtnStyle}>← Volver</button>
           )}
           {clickeable && (
             <span style={{ fontSize: '0.72rem', color: 'var(--fg-3)' }}>Click en un mes para ver sus días</span>
+          )}
+          {alterno && (
+            <div style={toggleWrapStyle} title="Cómo apilar las barras">
+              <button onClick={() => setModo('base')} style={pillStyle(modo === 'base')}>{alterno.labelBase}</button>
+              <button onClick={() => setModo('alterno')} style={pillStyle(modo === 'alterno')}>{alterno.label}</button>
+            </div>
           )}
           <div style={toggleWrapStyle}>
             <button onClick={() => { setGran('mes'); setMesDrill(null) }} style={pillStyle(gran === 'mes')}>Mes</button>
@@ -118,8 +154,8 @@ export function HistogramaTemporal({ tituloBase, series, fetchMensual, fetchDiar
             <YAxis tick={AXIS} allowDecimals={false} />
             <Tooltip contentStyle={tooltipStyle} cursor={{ fill: 'rgba(245,78,0,0.06)' }} />
             <Legend wrapperStyle={legendStyle} />
-            {series.map((s, i) => {
-              const ultima = i === series.length - 1
+            {seriesActivas.map((s, i) => {
+              const ultima = i === seriesActivas.length - 1
               return (
                 <Bar
                   key={s.key}
