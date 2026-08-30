@@ -71,3 +71,6 @@ _sec31.txt
 
 _caps/
 _*_caps/
+
+# Datasets de referencia reales (VL) para el seed demo - NUNCA versionar (datos personales)
+SMOKE/
