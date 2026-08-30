@@ -96,6 +96,17 @@ export interface ItemTemporal {
   [k: string]: string | number | undefined
 }
 
+// Histograma con series DINÁMICAS (apilado por tipo de reclamo: top 6 + Otros).
+// El backend devuelve las series junto con los items (2026-08-30).
+export interface SerieDinamica {
+  key: string
+  name: string
+}
+export interface HistogramaDinamico {
+  series: SerieDinamica[]
+  items: ItemTemporal[]
+}
+
 // ── Fase 3: Pendientes ──────────────────────────────────────────────────────
 export interface PendientesResumen {
   total: number
@@ -165,6 +176,8 @@ export interface PendienteGeo {
   descripcion: string | null
   latitud: number | null
   longitud: number | null
+  // Días desde el alta (semáforo del mapa: 0-3 / 4-7 / +7). 2026-08-30.
+  dias_demora?: number | null
 }
 
 export interface AreaCatalogo {
@@ -172,10 +185,45 @@ export interface AreaCatalogo {
   nombre: string
 }
 
-// Filtros comunes que la UI pasa a los endpoints.
+// Área de servicio por defecto del usuario (GET /bi/mi-area, 2026-08-30).
+export interface MiArea {
+  id_area: number | null
+  nombre: string | null
+  origen: 'agente' | 'sugerida' | null
+}
+
+// Detalle del universo filtrado (export de la sección Resumen).
+export interface ReclamoDetalle {
+  nro_reclamo: string | null
+  fecha_alta: string | null
+  fecha_cierre: string | null
+  tipo: string
+  prioridad: string
+  estado: string
+  canal: string
+  area: string
+  subarea: string
+  direccion: string
+  dias: number
+  es_subreclamo: boolean
+}
+
+// Tipo de reclamo del catálogo (buscador del filtro global).
+export interface TipoReclamoCatalogo {
+  id_tipo_reclamo: number
+  nombre: string
+}
+
+// Filtros GLOBALES del Operativo (una sola barra gobierna todas las secciones
+// y las exportaciones, 2026-08-30). `tipo_nombre` es solo para mostrar en la UI
+// (no viaja al backend).
 export interface BiFiltros {
   desde?: string // 'YYYY-MM-DD'
   hasta?: string
   id_area?: number
   prioridad?: string
+  estado?: string
+  id_tipo_reclamo?: number
+  tipo_nombre?: string
+  canal?: string
 }

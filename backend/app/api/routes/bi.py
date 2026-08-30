@@ -55,6 +55,9 @@ def _filtros_comunes(
     *,
     alias: str = "r",
     incluye_subreclamos: bool = True,
+    estado: Optional[str] = None,
+    id_tipo_reclamo: Optional[int] = None,
+    canal: Optional[str] = None,
 ) -> tuple[list[str], dict]:
     """
     Arma las condiciones WHERE compartidas por los endpoints de BI.
@@ -90,6 +93,7 @@ def _filtros_comunes(
         params["prioridad"] = prioridad
     if not incluye_subreclamos:
         cond.append(f"{alias}.id_reclamo_padre IS NULL")
+    _aplicar_extras(cond, params, estado, id_tipo_reclamo, canal, alias=alias)
 
     return cond, params
 
@@ -102,6 +106,34 @@ _JOIN_AREA = """
 """
 
 
+# Canal "sin dato" del filtro global: los reclamos del seed y muchos reales
+# tienen canal_origen NULL (verificado en prod 2026-08-30: 34 de 59).
+CANAL_SIN_DATO = "sin_dato"
+
+
+def _aplicar_extras(
+    cond: list[str], params: dict,
+    estado: Optional[str], id_tipo_reclamo: Optional[int], canal: Optional[str],
+    *, alias: str = "r",
+) -> None:
+    """Filtros GLOBALES del Operativo (2026-08-30): estado, tipo de reclamo y
+    canal de origen. Se suman a TODAS las secciones y a las exportaciones —
+    una seccion cuyo universo choca con el filtro (ej. Pendientes con
+    estado=Resuelto) simplemente queda vacia, como en Power BI."""
+    if estado:
+        cond.append(f"{alias}.estado = :estado")
+        params["estado"] = estado
+    if id_tipo_reclamo:
+        cond.append(f"{alias}.id_tipo_reclamo = :id_tipo_reclamo")
+        params["id_tipo_reclamo"] = id_tipo_reclamo
+    if canal:
+        if canal == CANAL_SIN_DATO:
+            cond.append(f"{alias}.canal_origen IS NULL")
+        else:
+            cond.append(f"{alias}.canal_origen = :canal")
+            params["canal"] = canal
+
+
 # ── GET /bi/resumen ───────────────────────────────────────────────────────────
 @router.get("/resumen")
 async def bi_resumen(
@@ -109,11 +141,14 @@ async def bi_resumen(
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtro global de estado (CHECK ck_reclamo_estado)"),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
     """KPIs de cabecera: totales, resueltos, pendientes, cancelados, % cumplido."""
-    cond, params = _filtros_comunes(desde, hasta, id_area, prioridad, id_municipio)
+    cond, params = _filtros_comunes(desde, hasta, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
     where = " AND ".join(cond)
 
     result = await db.execute(text(f"""
@@ -150,11 +185,14 @@ async def bi_por_estado(
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtro global de estado (CHECK ck_reclamo_estado)"),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
     """Composicion por estado (dona). [{estado, total}]"""
-    cond, params = _filtros_comunes(desde, hasta, id_area, prioridad, id_municipio)
+    cond, params = _filtros_comunes(desde, hasta, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
     where = " AND ".join(cond)
     result = await db.execute(text(f"""
         SELECT r.estado, COUNT(*) AS total
@@ -174,11 +212,14 @@ async def bi_por_canal(
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtro global de estado (CHECK ck_reclamo_estado)"),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
     """Reclamos por canal de origen (dona). NULL se reporta como 'sin_dato'."""
-    cond, params = _filtros_comunes(desde, hasta, id_area, prioridad, id_municipio)
+    cond, params = _filtros_comunes(desde, hasta, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
     where = " AND ".join(cond)
     result = await db.execute(text(f"""
         SELECT COALESCE(r.canal_origen, 'sin_dato') AS canal, COUNT(*) AS total
@@ -198,6 +239,9 @@ async def bi_por_area(
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtro global de estado (CHECK ck_reclamo_estado)"),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
@@ -206,7 +250,7 @@ async def bi_por_area(
     [{id_area, area, total, resueltos, cancelados, pendientes}]
     Areas sin reclamos no aparecen. Reclamos sin area derivable -> 'Sin area'.
     """
-    cond, params = _filtros_comunes(desde, hasta, id_area, prioridad, id_municipio)
+    cond, params = _filtros_comunes(desde, hasta, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
     where = " AND ".join(cond)
     result = await db.execute(text(f"""
         SELECT
@@ -243,6 +287,9 @@ async def bi_mensual(
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtro global de estado (CHECK ck_reclamo_estado)"),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
@@ -251,7 +298,7 @@ async def bi_mensual(
     [{mes: 'YYYY-MM', total, resueltos, cancelados, pendientes}]
     Ordenado cronologico ascendente. El frontend dibuja barras apiladas.
     """
-    cond, params = _filtros_comunes(desde, hasta, id_area, prioridad, id_municipio)
+    cond, params = _filtros_comunes(desde, hasta, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
     where = " AND ".join(cond)
     result = await db.execute(text(f"""
         SELECT
@@ -287,6 +334,9 @@ async def bi_diario(
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtro global de estado (CHECK ck_reclamo_estado)"),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
@@ -335,6 +385,7 @@ async def bi_diario(
     if prioridad:
         cond.append("r.prioridad = :prioridad")
         params["prioridad"] = prioridad
+    _aplicar_extras(cond, params, estado, id_tipo_reclamo, canal)
     where = " AND ".join(cond)
 
     result = await db.execute(text(f"""
@@ -385,6 +436,8 @@ _TRAMO = f"""
 def _filtros_resueltos(
     desde: Optional[date], hasta: Optional[date],
     id_area: Optional[int], prioridad: Optional[str], id_municipio: int,
+    *, estado: Optional[str] = None, id_tipo_reclamo: Optional[int] = None,
+    canal: Optional[str] = None,
 ) -> tuple[str, dict]:
     """WHERE para reclamos resueltos con fecha_cierre (base de los tiempos)."""
     cond = [
@@ -407,6 +460,7 @@ def _filtros_resueltos(
     if prioridad:
         cond.append("r.prioridad = :prioridad")
         params["prioridad"] = prioridad
+    _aplicar_extras(cond, params, estado, id_tipo_reclamo, canal)
     return " AND ".join(cond), params
 
 
@@ -415,6 +469,9 @@ def _filtros_resueltos(
 async def bi_sla_resumen(
     id_area: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtro global de estado (CHECK ck_reclamo_estado)"),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
@@ -424,7 +481,7 @@ async def bi_sla_resumen(
       - dias_cierre_promedio (sobre todos los resueltos con fecha_cierre)
       - pct_dentro_sla (dias_cierre <= tipo_reclamo.sla_dias)
     """
-    base_where, base_params = _filtros_resueltos(None, None, id_area, prioridad, id_municipio)
+    base_where, base_params = _filtros_resueltos(None, None, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
 
     # Resueltos del mes actual y del anterior (por fecha_cierre).
     result = await db.execute(text(f"""
@@ -465,6 +522,9 @@ async def bi_tiempos_mensual(
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtro global de estado (CHECK ck_reclamo_estado)"),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
@@ -472,7 +532,7 @@ async def bi_tiempos_mensual(
     Por mes de cierre, conteo de resueltos en cada tramo de demora.
     [{mes, t0_3, t4_7, tmas7, total}]
     """
-    where, params = _filtros_resueltos(desde, hasta, id_area, prioridad, id_municipio)
+    where, params = _filtros_resueltos(desde, hasta, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
     result = await db.execute(text(f"""
         SELECT
           to_char(date_trunc('month', r.fecha_cierre), 'YYYY-MM')     AS mes,
@@ -499,6 +559,9 @@ async def bi_tiempos_por_tipo(
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtro global de estado (CHECK ck_reclamo_estado)"),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     id_municipio: int = Query(1),
     limit: int = Query(10, ge=1, le=30),
     db: AsyncSession = Depends(get_db),
@@ -507,7 +570,7 @@ async def bi_tiempos_por_tipo(
     Por tipo de reclamo, conteo de resueltos en cada tramo de demora.
     Top `limit` tipos por total. [{tipo, t0_3, t4_7, tmas7, total}]
     """
-    where, params = _filtros_resueltos(desde, hasta, id_area, prioridad, id_municipio)
+    where, params = _filtros_resueltos(desde, hasta, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
     params["lim"] = limit
     result = await db.execute(text(f"""
         SELECT
@@ -536,11 +599,14 @@ async def bi_evolucion_dias(
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtro global de estado (CHECK ck_reclamo_estado)"),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
     """Dias promedio de cierre por mes (linea). [{mes, dias_prom, total}]"""
-    where, params = _filtros_resueltos(desde, hasta, id_area, prioridad, id_municipio)
+    where, params = _filtros_resueltos(desde, hasta, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
     result = await db.execute(text(f"""
         SELECT
           to_char(date_trunc('month', r.fecha_cierre), 'YYYY-MM')     AS mes,
@@ -565,6 +631,9 @@ async def bi_resueltos_detalle(
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtro global de estado (CHECK ck_reclamo_estado)"),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     id_municipio: int = Query(1),
     limit: int = Query(50, ge=1, le=10000),  # tope alto para soportar exportacion CSV
     offset: int = Query(0, ge=0),
@@ -576,7 +645,7 @@ async def bi_resueltos_detalle(
     [{nro_reclamo, fecha_cierre, tipo, prioridad, dias, canal, area}]
     Header X-Total-Count para paginacion del frontend.
     """
-    where, params = _filtros_resueltos(desde, hasta, id_area, prioridad, id_municipio)
+    where, params = _filtros_resueltos(desde, hasta, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
 
     total_res = await db.execute(text(f"""
         SELECT COUNT(*) FROM reclamos r {_JOIN_AREA} WHERE {where}
@@ -632,6 +701,8 @@ _ESTADOS_PEND_SQL = "('Sin asignar','En gestión','En espera','En auditoría')"
 def _filtros_pendientes(
     desde: Optional[date], hasta: Optional[date],
     id_area: Optional[int], prioridad: Optional[str], id_municipio: int,
+    *, estado: Optional[str] = None, id_tipo_reclamo: Optional[int] = None,
+    canal: Optional[str] = None,
 ) -> tuple[str, dict]:
     """WHERE para reclamos pendientes (estados no finales)."""
     cond = [
@@ -653,6 +724,7 @@ def _filtros_pendientes(
     if prioridad:
         cond.append("r.prioridad = :prioridad")
         params["prioridad"] = prioridad
+    _aplicar_extras(cond, params, estado, id_tipo_reclamo, canal)
     return " AND ".join(cond), params
 
 
@@ -663,6 +735,9 @@ async def bi_pendientes_resumen(
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtro global de estado (CHECK ck_reclamo_estado)"),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
@@ -670,7 +745,7 @@ async def bi_pendientes_resumen(
     KPIs de pendientes: total, demora promedio, y conteo por tramo de demora.
     Tambien la composicion por estado (para la dona).
     """
-    where, params = _filtros_pendientes(desde, hasta, id_area, prioridad, id_municipio)
+    where, params = _filtros_pendientes(desde, hasta, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
     result = await db.execute(text(f"""
         SELECT
           COUNT(*)                                            AS total,
@@ -708,11 +783,14 @@ async def bi_pendientes_por_mes(
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtro global de estado (CHECK ck_reclamo_estado)"),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
     """Pendientes por mes de alta, desglosados por estado. [{mes, <estado>:n, total}]"""
-    where, params = _filtros_pendientes(desde, hasta, id_area, prioridad, id_municipio)
+    where, params = _filtros_pendientes(desde, hasta, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
     result = await db.execute(text(f"""
         SELECT
           to_char(date_trunc('month', r.fecha_alta), 'YYYY-MM') AS mes,
@@ -744,6 +822,9 @@ async def bi_pendientes_mensual(
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtro global de estado (CHECK ck_reclamo_estado)"),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
@@ -751,7 +832,7 @@ async def bi_pendientes_mensual(
     Pendientes por mes de alta, desglosados por estado (para el histograma temporal
     con toggle Mes/Día + total). [{mes, sin_asignar, en_gestion, en_espera, en_auditoria, total}]
     """
-    where, params = _filtros_pendientes(desde, hasta, id_area, prioridad, id_municipio)
+    where, params = _filtros_pendientes(desde, hasta, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
     result = await db.execute(text(f"""
         SELECT
           to_char(date_trunc('month', r.fecha_alta), 'YYYY-MM') AS mes,
@@ -780,12 +861,15 @@ async def bi_pendientes_diario(
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtro global de estado (CHECK ck_reclamo_estado)"),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
     """Pendientes por día de alta, desglosados por estado. Modo drill (mes) o global."""
     from datetime import datetime, timedelta
-    where, params = _filtros_pendientes(None, None, id_area, prioridad, id_municipio)
+    where, params = _filtros_pendientes(None, None, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
     # _filtros_pendientes ya armó activo+municipio+estado+area+prioridad; agregamos rango.
     if mes:
         try:
@@ -831,12 +915,15 @@ async def bi_pendientes_por_tipo(
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtro global de estado (CHECK ck_reclamo_estado)"),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     id_municipio: int = Query(1),
     limit: int = Query(10, ge=1, le=30),
     db: AsyncSession = Depends(get_db),
 ):
     """Ranking de pendientes por tipo. [{tipo, total}]"""
-    where, params = _filtros_pendientes(desde, hasta, id_area, prioridad, id_municipio)
+    where, params = _filtros_pendientes(desde, hasta, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
     params["lim"] = limit
     result = await db.execute(text(f"""
         SELECT COALESCE(tr.nombre, 'Sin tipo') AS tipo, COUNT(*) AS total
@@ -854,6 +941,9 @@ async def bi_pendientes_geo(
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtro global de estado (CHECK ck_reclamo_estado)"),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
@@ -862,7 +952,7 @@ async def bi_pendientes_geo(
     coordenadas. Shape compatible con el DashboardMap (reclamos).
     [{id_reclamo, nro_reclamo, tipo_nombre, estado, prioridad, descripcion, latitud, longitud}]
     """
-    where, params = _filtros_pendientes(desde, hasta, id_area, prioridad, id_municipio)
+    where, params = _filtros_pendientes(desde, hasta, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
     where += " AND r.latitud IS NOT NULL AND r.longitud IS NOT NULL"
     result = await db.execute(text(f"""
         SELECT
@@ -870,7 +960,8 @@ async def bi_pendientes_geo(
           COALESCE(tr.nombre, 'Sin tipo') AS tipo_nombre,
           r.estado, r.prioridad, r.descripcion,
           r.latitud::float8  AS latitud,
-          r.longitud::float8 AS longitud
+          r.longitud::float8 AS longitud,
+          {_DIAS_DEMORA}::int AS dias_demora
         FROM reclamos r {_JOIN_AREA}
         WHERE {where}
         ORDER BY r.fecha_alta DESC
@@ -885,6 +976,7 @@ async def bi_pendientes_geo(
             "descripcion": r.descripcion,
             "latitud": r.latitud,
             "longitud": r.longitud,
+            "dias_demora": r.dias_demora,
         }
         for r in result.fetchall()
     ]
@@ -897,6 +989,9 @@ async def bi_pendientes_detalle(
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtro global de estado (CHECK ck_reclamo_estado)"),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     id_municipio: int = Query(1),
     limit: int = Query(50, ge=1, le=10000),
     offset: int = Query(0, ge=0),
@@ -907,7 +1002,7 @@ async def bi_pendientes_detalle(
     Tabla detalle de pendientes con su demora (dias desde el alta).
     [{nro_reclamo, fecha_alta, tipo, prioridad, estado, dias_demora, canal, area}]
     """
-    where, params = _filtros_pendientes(desde, hasta, id_area, prioridad, id_municipio)
+    where, params = _filtros_pendientes(desde, hasta, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
 
     total_res = await db.execute(text(f"SELECT COUNT(*) FROM reclamos r {_JOIN_AREA} WHERE {where}"), params)
     total = total_res.scalar() or 0
@@ -956,6 +1051,8 @@ async def bi_pendientes_detalle(
 def _filtros_subreclamos(
     desde: Optional[date], hasta: Optional[date],
     id_area: Optional[int], prioridad: Optional[str], id_municipio: int,
+    *, estado: Optional[str] = None, id_tipo_reclamo: Optional[int] = None,
+    canal: Optional[str] = None,
 ) -> tuple[str, dict]:
     """WHERE para subreclamos (id_reclamo_padre NOT NULL)."""
     cond = [
@@ -977,6 +1074,7 @@ def _filtros_subreclamos(
     if prioridad:
         cond.append("r.prioridad = :prioridad")
         params["prioridad"] = prioridad
+    _aplicar_extras(cond, params, estado, id_tipo_reclamo, canal)
     return " AND ".join(cond), params
 
 
@@ -987,6 +1085,9 @@ async def bi_subreclamos_resumen(
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtro global de estado (CHECK ck_reclamo_estado)"),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
@@ -994,7 +1095,7 @@ async def bi_subreclamos_resumen(
     KPIs de subreclamos: total, padres distintos con subreclamos, composición por
     estado (de los subreclamos) y por estado de los padres.
     """
-    where, params = _filtros_subreclamos(desde, hasta, id_area, prioridad, id_municipio)
+    where, params = _filtros_subreclamos(desde, hasta, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
 
     tot = await db.execute(text(f"""
         SELECT COUNT(*) AS total,
@@ -1038,11 +1139,14 @@ async def bi_subreclamos_mensual(
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtro global de estado (CHECK ck_reclamo_estado)"),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
     """Subreclamos por mes de alta, desglosados por estado (para histograma)."""
-    where, params = _filtros_subreclamos(desde, hasta, id_area, prioridad, id_municipio)
+    where, params = _filtros_subreclamos(desde, hasta, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
     result = await db.execute(text(f"""
         SELECT
           to_char(date_trunc('month', r.fecha_alta), 'YYYY-MM') AS mes,
@@ -1069,12 +1173,15 @@ async def bi_subreclamos_diario(
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtro global de estado (CHECK ck_reclamo_estado)"),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
     """Subreclamos por día de alta, desglosados por estado. Drill (mes) o global."""
     from datetime import datetime, timedelta
-    where, params = _filtros_subreclamos(None, None, id_area, prioridad, id_municipio)
+    where, params = _filtros_subreclamos(None, None, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
     if mes:
         try:
             ini = datetime.strptime(mes + "-01", "%Y-%m-%d").date()
@@ -1117,12 +1224,15 @@ async def bi_subreclamos_por_tipo(
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtro global de estado (CHECK ck_reclamo_estado)"),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     id_municipio: int = Query(1),
     limit: int = Query(10, ge=1, le=30),
     db: AsyncSession = Depends(get_db),
 ):
     """Ranking de subreclamos por tipo. [{tipo, total}]"""
-    where, params = _filtros_subreclamos(desde, hasta, id_area, prioridad, id_municipio)
+    where, params = _filtros_subreclamos(desde, hasta, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
     params["lim"] = limit
     result = await db.execute(text(f"""
         SELECT COALESCE(tr.nombre, 'Sin tipo') AS tipo, COUNT(*) AS total
@@ -1140,6 +1250,9 @@ async def bi_subreclamos_detalle(
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtro global de estado (CHECK ck_reclamo_estado)"),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     id_municipio: int = Query(1),
     limit: int = Query(50, ge=1, le=10000),
     offset: int = Query(0, ge=0),
@@ -1150,7 +1263,7 @@ async def bi_subreclamos_detalle(
     Tabla detalle de subreclamos con su reclamo padre.
     [{nro_reclamo, fecha_alta, tipo, prioridad, estado, area, nro_padre, estado_padre}]
     """
-    where, params = _filtros_subreclamos(desde, hasta, id_area, prioridad, id_municipio)
+    where, params = _filtros_subreclamos(desde, hasta, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
 
     total_res = await db.execute(text(f"SELECT COUNT(*) FROM reclamos r {_JOIN_AREA} WHERE {where}"), params)
     total = total_res.scalar() or 0
@@ -1186,6 +1299,198 @@ async def bi_subreclamos_detalle(
         response.headers["X-Total-Count"] = str(total)
         response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
     return rows
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# OPERATIVO EN UNA PAGINA (2026-08-30) — histograma por TIPO, export del universo,
+# area por defecto del usuario.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_TOP_TIPOS = 6
+
+
+async def _histograma_por_tipo(db: AsyncSession, gran: str, where: str, params: dict) -> dict:
+    """Serie temporal apilada por TIPO de reclamo (los `_TOP_TIPOS` mas frecuentes
+    del universo filtrado + 'Otros'), como el "Historico de reclamos" de Power BI.
+    Devuelve {series: [{key, name}], items: [{mes|dia, total, <key>: n, ...}]}.
+    El pivot se hace en Python sobre un GROUP BY periodo x tipo (agregado en SQL)."""
+    trunc = "month" if gran == "mes" else "day"
+    fmt = "YYYY-MM" if gran == "mes" else "YYYY-MM-DD"
+    top = (await db.execute(text(f"""
+        SELECT COALESCE(tr.id_tipo_reclamo, 0) AS id_tipo, COALESCE(tr.nombre, 'Sin tipo') AS nombre,
+               COUNT(*) AS n
+        FROM reclamos r {_JOIN_AREA}
+        WHERE {where}
+        GROUP BY tr.id_tipo_reclamo, tr.nombre
+        ORDER BY n DESC, nombre
+        LIMIT {_TOP_TIPOS}
+    """), params)).fetchall()
+    top_ids = [int(t.id_tipo) for t in top]
+    series = [{"key": f"t_{t.id_tipo}", "name": t.nombre} for t in top]
+    rows = (await db.execute(text(f"""
+        SELECT to_char(date_trunc('{trunc}', r.fecha_alta), '{fmt}') AS periodo,
+               COALESCE(tr.id_tipo_reclamo, 0) AS id_tipo,
+               COUNT(*) AS n
+        FROM reclamos r {_JOIN_AREA}
+        WHERE {where}
+        GROUP BY date_trunc('{trunc}', r.fecha_alta), tr.id_tipo_reclamo
+        ORDER BY date_trunc('{trunc}', r.fecha_alta)
+    """), params)).fetchall()
+    items: dict[str, dict] = {}
+    hay_otros = False
+    for r in rows:
+        it = items.setdefault(r.periodo, {gran: r.periodo, "total": 0, **{sr["key"]: 0 for sr in series}, "otros": 0})
+        it["total"] += r.n
+        if int(r.id_tipo) in top_ids:
+            it[f"t_{int(r.id_tipo)}"] += r.n
+        else:
+            it["otros"] += r.n
+            hay_otros = True
+    if hay_otros:
+        series.append({"key": "otros", "name": "Otros"})
+    else:
+        for it in items.values():
+            it.pop("otros", None)
+    return {"series": series, "items": list(items.values())}
+
+
+# ── GET /bi/mensual-por-tipo ──────────────────────────────────────────────────
+@router.get("/mensual-por-tipo")
+async def bi_mensual_por_tipo(
+    desde: Optional[date] = Query(None),
+    hasta: Optional[date] = Query(None),
+    id_area: Optional[int] = Query(None),
+    prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None),
+    id_municipio: int = Query(1),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reclamos ingresados por mes apilados por tipo (top 6 + Otros)."""
+    cond, params = _filtros_comunes(desde, hasta, id_area, prioridad, id_municipio,
+                                    estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
+    return await _histograma_por_tipo(db, "mes", " AND ".join(cond), params)
+
+
+# ── GET /bi/diario-por-tipo ───────────────────────────────────────────────────
+@router.get("/diario-por-tipo")
+async def bi_diario_por_tipo(
+    mes: Optional[str] = Query(None, description="Drill a un mes 'YYYY-MM' (prioridad sobre desde/hasta)"),
+    desde: Optional[date] = Query(None),
+    hasta: Optional[date] = Query(None),
+    id_area: Optional[int] = Query(None),
+    prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None),
+    id_municipio: int = Query(1),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reclamos ingresados por dia apilados por tipo. Modo drill (mes) o global."""
+    from datetime import datetime, timedelta
+    if mes:
+        try:
+            ini = datetime.strptime(mes + "-01", "%Y-%m-%d").date()
+        except ValueError:
+            from fastapi import HTTPException
+            raise HTTPException(422, "Parámetro 'mes' inválido. Formato esperado: YYYY-MM.")
+        fin = (ini.replace(day=28) + timedelta(days=4)).replace(day=1)
+        desde, hasta = ini, fin - timedelta(days=1)
+    cond, params = _filtros_comunes(desde, hasta, id_area, prioridad, id_municipio,
+                                    estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
+    return await _histograma_por_tipo(db, "dia", " AND ".join(cond), params)
+
+
+# ── GET /bi/reclamos-detalle ──────────────────────────────────────────────────
+@router.get("/reclamos-detalle")
+async def bi_reclamos_detalle(
+    desde: Optional[date] = Query(None),
+    hasta: Optional[date] = Query(None),
+    id_area: Optional[int] = Query(None),
+    prioridad: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None),
+    id_tipo_reclamo: Optional[int] = Query(None),
+    canal: Optional[str] = Query(None),
+    id_municipio: int = Query(1),
+    limit: int = Query(50, ge=1, le=10000),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    response: Response = None,  # type: ignore[assignment]
+):
+    """Detalle del UNIVERSO filtrado (todos los estados) — es lo que exporta la
+    seccion Resumen. [{nro_reclamo, fecha_alta, tipo, prioridad, estado, canal,
+    area, subarea, direccion, fecha_cierre, dias, es_subreclamo}] (dias = cierre
+    si cerro, demora si sigue abierto)."""
+    cond, params = _filtros_comunes(desde, hasta, id_area, prioridad, id_municipio,
+                                    estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal)
+    where = " AND ".join(cond)
+    total = (await db.execute(text(f"SELECT COUNT(*) FROM reclamos r {_JOIN_AREA} WHERE {where}"), params)).scalar() or 0
+    params["lim"] = limit
+    params["off"] = offset
+    result = await db.execute(text(f"""
+        SELECT r.nro_reclamo, r.fecha_alta, r.fecha_cierre,
+               COALESCE(tr.nombre, 'Sin tipo') AS tipo,
+               r.prioridad, r.estado,
+               COALESCE(r.canal_origen, 'sin_dato') AS canal,
+               COALESCE(a.nombre, 'Sin área') AS area,
+               COALESCE(s.nombre, '') AS subarea,
+               COALESCE(r.direccion, r.domicilio_reclamo, '') AS direccion,
+               CASE WHEN r.fecha_cierre IS NOT NULL THEN {_DIAS_CIERRE}::int ELSE {_DIAS_DEMORA}::int END AS dias,
+               (r.id_reclamo_padre IS NOT NULL) AS es_subreclamo
+        FROM reclamos r {_JOIN_AREA}
+        WHERE {where}
+        ORDER BY r.fecha_alta DESC
+        LIMIT :lim OFFSET :off
+    """), params)
+    rows = [
+        {
+            "nro_reclamo": r.nro_reclamo,
+            "fecha_alta": r.fecha_alta.isoformat() if r.fecha_alta else None,
+            "fecha_cierre": r.fecha_cierre.isoformat() if r.fecha_cierre else None,
+            "tipo": r.tipo, "prioridad": r.prioridad, "estado": r.estado,
+            "canal": r.canal, "area": r.area, "subarea": r.subarea,
+            "direccion": r.direccion, "dias": r.dias, "es_subreclamo": bool(r.es_subreclamo),
+        }
+        for r in result.fetchall()
+    ]
+    if response is not None:
+        response.headers["X-Total-Count"] = str(total)
+        response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
+    return rows
+
+
+# ── GET /bi/mi-area ───────────────────────────────────────────────────────────
+@router.get("/mi-area")
+async def bi_mi_area(
+    id_municipio: int = Query(1),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Area de servicio por defecto del usuario para el Operativo (Cesar 2026-08-30:
+    "estas vistas son para cada area"). Fuente: el AGENTE vinculado
+    (agentes.id_subarea -> subarea.id_area, regla §3 — NO usuarios.id_subarea).
+    Sin agente/subarea -> se sugiere el area con mas reclamos (origen 'sugerida').
+    {id_area, nombre, origen: 'agente'|'sugerida'|null}"""
+    row = (await db.execute(text("""
+        SELECT a.id_area, a.nombre
+          FROM agentes ag
+          JOIN subarea s ON s.id_subarea = ag.id_subarea
+          JOIN area a ON a.id_area = s.id_area
+         WHERE ag.id_usuario = :uid AND ag.activo = TRUE AND a.activo = TRUE
+         ORDER BY ag.id_agente LIMIT 1
+    """), {"uid": current_user["id_usuario"]})).fetchone()
+    if row:
+        return {"id_area": row.id_area, "nombre": row.nombre, "origen": "agente"}
+    row = (await db.execute(text(f"""
+        SELECT a.id_area, a.nombre, COUNT(*) AS n
+          FROM reclamos r {_JOIN_AREA}
+         WHERE r.activo = TRUE AND (r.id_municipio = :m OR r.id_municipio IS NULL) AND a.id_area IS NOT NULL AND a.activo = TRUE
+         GROUP BY a.id_area, a.nombre ORDER BY n DESC LIMIT 1
+    """), {"m": id_municipio})).fetchone()
+    if row:
+        return {"id_area": row.id_area, "nombre": row.nombre, "origen": "sugerida"}
+    return {"id_area": None, "nombre": None, "origen": None}
 
 
 # ── GET /bi/catalogo/areas ────────────────────────────────────────────────────

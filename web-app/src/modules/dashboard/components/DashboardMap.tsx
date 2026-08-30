@@ -89,21 +89,27 @@ interface Props {
   onReclamoClick?: (r: GeoReclamo) => void
   onEmergenciaClick?: (e: GeoEmergencia) => void
   onTramiteClick?: (t: GeoTramite) => void
+  /** Color del marker de reclamo. Default: por estado. El BI de pendientes lo
+   *  usa para el semáforo de demora (0-3 / 4-7 / +7 días), 2026-08-30. */
+  colorReclamo?: (r: GeoReclamo) => string
 }
 
 export function DashboardMap({
   reclamos, emergencias, espacios, tramites, visibles,
-  onReclamoClick, onEmergenciaClick, onTramiteClick,
+  onReclamoClick, onEmergenciaClick, onTramiteClick, colorReclamo,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const markersLayerRef = useRef<L.LayerGroup | null>(null)
   const clicksRef = useRef({ onReclamoClick, onEmergenciaClick, onTramiteClick })
+  // Ref (no dep del effect de markers): una lambda nueva por render no debe redibujar.
+  const colorReclamoRef = useRef(colorReclamo)
   const fittedRef = useRef(false)
 
   useEffect(() => {
     clicksRef.current = { onReclamoClick, onEmergenciaClick, onTramiteClick }
-  }, [onReclamoClick, onEmergenciaClick, onTramiteClick])
+    colorReclamoRef.current = colorReclamo
+  }, [onReclamoClick, onEmergenciaClick, onTramiteClick, colorReclamo])
 
   // Init mapa una sola vez.
   useEffect(() => {
@@ -162,7 +168,8 @@ export function DashboardMap({
     if (visibles.reclamos) {
       for (const r of reclamos) {
         if (r.latitud == null || r.longitud == null) continue
-        const m = L.marker([r.latitud, r.longitud], { icon: iconBadge(colorEstadoReclamo(r.estado), CAPA_ICON_SVG.reclamo) })
+        const color = colorReclamoRef.current ? colorReclamoRef.current(r) : colorEstadoReclamo(r.estado)
+        const m = L.marker([r.latitud, r.longitud], { icon: iconBadge(color, CAPA_ICON_SVG.reclamo) })
           .bindPopup(`
             <div style="font-family: var(--font-display, sans-serif); min-width: 200px;">
               <div style="font-weight: 600; margin-bottom: 4px;">${esc(r.nro_reclamo ?? '—')}</div>
