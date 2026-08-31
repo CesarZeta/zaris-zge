@@ -73,6 +73,19 @@ function iconBadge(color: string, svgPaths: string) {
   })
 }
 
+// Marker mínimo tipo scatter para los mapas analíticos del BI Ejecutivo
+// (César 2026-08-31: "los puntos deben tener el tamaño de un píxel"). Un 1px
+// literal es invisible en pantallas retina; este es el punto mínimo legible.
+const PUNTO_PX = 5
+function iconPunto(color: string) {
+  return L.divIcon({
+    className: 'dashboard-marker',
+    html: `<div style="width:${PUNTO_PX}px;height:${PUNTO_PX}px;background:${color};border-radius:50%;"></div>`,
+    iconSize: [PUNTO_PX, PUNTO_PX],
+    iconAnchor: [PUNTO_PX / 2, PUNTO_PX / 2],
+  })
+}
+
 export interface CapasVisibles {
   reclamos: boolean
   emergencias: boolean
@@ -92,11 +105,14 @@ interface Props {
   /** Color del marker de reclamo. Default: por estado. El BI de pendientes lo
    *  usa para el semáforo de demora (0-3 / 4-7 / +7 días), 2026-08-30. */
   colorReclamo?: (r: GeoReclamo) => string
+  /** Reclamos como puntos mínimos de color (scatter) en lugar del badge de
+   *  26px. Lo usan los mapas de Satisfacción del BI Ejecutivo (2026-08-31). */
+  marcadorPunto?: boolean
 }
 
 export function DashboardMap({
   reclamos, emergencias, espacios, tramites, visibles,
-  onReclamoClick, onEmergenciaClick, onTramiteClick, colorReclamo,
+  onReclamoClick, onEmergenciaClick, onTramiteClick, colorReclamo, marcadorPunto,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -172,7 +188,8 @@ export function DashboardMap({
       for (const r of reclamos) {
         if (r.latitud == null || r.longitud == null) continue
         const color = colorReclamoRef.current ? colorReclamoRef.current(r) : colorEstadoReclamo(r.estado)
-        const m = L.marker([r.latitud, r.longitud], { icon: iconBadge(color, CAPA_ICON_SVG.reclamo) })
+        const icon = marcadorPunto ? iconPunto(color) : iconBadge(color, CAPA_ICON_SVG.reclamo)
+        const m = L.marker([r.latitud, r.longitud], { icon })
           .bindPopup(`
             <div style="font-family: var(--font-display, sans-serif); min-width: 200px;">
               <div style="font-weight: 600; margin-bottom: 4px;">${esc(r.nro_reclamo ?? '—')}</div>
@@ -233,7 +250,7 @@ export function DashboardMap({
         mapRef.current.setView(bounds[0], 15)
       }
     }
-  }, [reclamos, emergencias, espacios, tramites, visibles])
+  }, [reclamos, emergencias, espacios, tramites, visibles, marcadorPunto])
 
   return (
     <div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />

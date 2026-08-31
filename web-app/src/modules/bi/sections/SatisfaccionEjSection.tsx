@@ -18,10 +18,13 @@ const COLOR_ABIERTO = '#c62828'
 const COLOR_CERRADO = '#1f8a65'
 
 const pctLabel = { fontFamily: 'var(--font-display)', fontSize: 10, fill: 'var(--fg-2)' }
-const fmtPct = (v: unknown) => (v == null || v === '' ? '' : `${v}%`)
+// Valor 0 NO se etiqueta (César 2026-08-31: "si los valores son ceros no debe
+// mostrar ningún valor").
+const fmtPct = (v: unknown) => (v == null || v === '' || v === 0 ? '' : `${v}%`)
 
 function BarrasSatCierre({ data, titulo }: { data: EjSatCierreItem[] | undefined; titulo: string }) {
-  const rows = data ?? []
+  // Filas con AMBOS indicadores en cero (o sin dato) no se muestran (César 2026-08-31).
+  const rows = (data ?? []).filter((r) => (r.pct_sat ?? 0) > 0 || (r.pct_cierre ?? 0) > 0)
   return (
     <ChartCard title={titulo} height={Math.max(220, rows.length * 52 + 70)}>
       {!rows.length ? (
@@ -44,6 +47,26 @@ function BarrasSatCierre({ data, titulo }: { data: EjSatCierreItem[] | undefined
         </ResponsiveContainer>
       )}
     </ChartCard>
+  )
+}
+
+// Leyenda de colores en RECUADRO debajo de cada mapa (César 2026-08-31: la
+// línea de corrido única para los dos mapas confundía).
+function LeyendaMapa({ items }: { items: { color: string; label: string }[] }) {
+  return (
+    <div style={{
+      display: 'flex', flexWrap: 'wrap', gap: '4px 16px', alignItems: 'center',
+      border: '1px solid var(--border-primary)', borderRadius: 8,
+      background: 'var(--surface-300)', padding: '6px 12px',
+      fontFamily: 'var(--font-display)', fontSize: '0.76rem', color: 'var(--fg-2)',
+    }}>
+      {items.map((it) => (
+        <span key={it.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ width: 10, height: 10, borderRadius: '50%', background: it.color, display: 'inline-block', flexShrink: 0 }} />
+          {it.label}
+        </span>
+      ))}
+    </div>
   )
 }
 
@@ -80,50 +103,60 @@ export function SatisfaccionEjSection({ filtros }: { filtros: BiFiltros }) {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
-        <ChartCard title="Satisfacción geolocalizada (según encuestas)" height={380}>
+        <ChartCard title="Satisfacción geolocalizada (según encuestas)" height={420}>
           {geo.isLoading ? (
             <CenterMsg>Cargando…</CenterMsg>
           ) : !encuestados.length ? (
             <CenterMsg>Sin encuestas respondidas con ubicación en el período.</CenterMsg>
           ) : (
-            // isolation + zIndex: el mapa Leaflet no debe dibujarse sobre la barra fija (§ modulo-bi).
-            <div style={{ height: '100%', borderRadius: 8, overflow: 'hidden', isolation: 'isolate', zIndex: 0, position: 'relative' }}>
-              <DashboardMap
-                reclamos={encuestados as unknown as GeoReclamo[]}
-                emergencias={[]}
-                espacios={[]}
-                tramites={[]}
-                visibles={{ reclamos: true, emergencias: false, espacios: false, tramites: false }}
-                colorReclamo={colorClasif}
-              />
+            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {/* isolation + zIndex: el mapa Leaflet no debe dibujarse sobre la barra fija (§ modulo-bi). */}
+              <div style={{ flex: 1, minHeight: 0, borderRadius: 8, overflow: 'hidden', isolation: 'isolate', zIndex: 0, position: 'relative' }}>
+                <DashboardMap
+                  reclamos={encuestados as unknown as GeoReclamo[]}
+                  emergencias={[]}
+                  espacios={[]}
+                  tramites={[]}
+                  visibles={{ reclamos: true, emergencias: false, espacios: false, tramites: false }}
+                  colorReclamo={colorClasif}
+                  marcadorPunto
+                />
+              </div>
+              <LeyendaMapa items={[
+                { color: '#1f8a65', label: 'Satisfecho (4-5)' },
+                { color: '#f57f17', label: 'Neutro (3)' },
+                { color: '#c62828', label: 'Insatisfecho (1-2)' },
+              ]} />
             </div>
           )}
         </ChartCard>
 
-        <ChartCard title="Cierres sobre incidentes (abierto / cerrado)" height={380}>
+        <ChartCard title="Cierres sobre incidentes (abierto / cerrado)" height={420}>
           {geo.isLoading ? (
             <CenterMsg>Cargando…</CenterMsg>
           ) : !puntos.length ? (
             <CenterMsg>Sin incidentes con ubicación en el período.</CenterMsg>
           ) : (
-            <div style={{ height: '100%', borderRadius: 8, overflow: 'hidden', isolation: 'isolate', zIndex: 0, position: 'relative' }}>
-              <DashboardMap
-                reclamos={puntos as unknown as GeoReclamo[]}
-                emergencias={[]}
-                espacios={[]}
-                tramites={[]}
-                visibles={{ reclamos: true, emergencias: false, espacios: false, tramites: false }}
-                colorReclamo={colorCierre}
-              />
+            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ flex: 1, minHeight: 0, borderRadius: 8, overflow: 'hidden', isolation: 'isolate', zIndex: 0, position: 'relative' }}>
+                <DashboardMap
+                  reclamos={puntos as unknown as GeoReclamo[]}
+                  emergencias={[]}
+                  espacios={[]}
+                  tramites={[]}
+                  visibles={{ reclamos: true, emergencias: false, espacios: false, tramites: false }}
+                  colorReclamo={colorCierre}
+                  marcadorPunto
+                />
+              </div>
+              <LeyendaMapa items={[
+                { color: COLOR_CERRADO, label: 'Cerrado' },
+                { color: COLOR_ABIERTO, label: 'Abierto' },
+              ]} />
             </div>
           )}
         </ChartCard>
       </div>
-
-      <p style={{ fontSize: '0.76rem', color: 'var(--fg-3)', margin: 0, fontFamily: 'var(--font-display)' }}>
-        Mapa de satisfacción: verde = satisfecho (4-5) · ámbar = neutro (3) · rojo = insatisfecho (1-2).
-        Mapa de cierres: verde = cerrado · rojo = abierto.
-      </p>
     </Seccion>
   )
 }
