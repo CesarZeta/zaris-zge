@@ -1,135 +1,242 @@
+/* Topbar del shell DEV — clon del topbar del shell vanilla de producción
+   (frontend/css/menu.css). Fila 1 del grid del AppShell (52px, ancho completo).
+   Fondo sólido (no rgba+blur como prod): acá es una fila del grid, nada
+   scrollea debajo, el resultado visual es idéntico y es theme-safe. */
+
 .topbar {
-  height: 56px;
-  flex-shrink: 0;
-  background: rgba(242, 241, 237, 0.85);
-  backdrop-filter: blur(12px) saturate(1.2);
-  border-bottom: 1px solid var(--border-primary);
+  grid-column: 1 / -1;
+  grid-row: 1;
+  height: 52px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 0 20px;
-  gap: 16px;
-  position: sticky;
-  top: 0;
-  z-index: 50;
+  background: var(--zaris-cream);
+  border-bottom: 1px solid var(--border-primary);
+  position: relative;
+  /* Sobre cualquier sticky interno de los módulos (barra de filtros del BI usa
+     1100): los dropdowns del topbar cuelgan hacia el contenido. */
+  z-index: 1500;
 }
 
-/* Breadcrumb */
-.breadcrumb {
+.left {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 28px;
+  min-width: 0;
+  flex-shrink: 1;
+  overflow: hidden;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--fg-1);
+}
+
+.brandMark {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  color: var(--fg-1);
+}
+
+.brandName {
   font-family: var(--font-display);
-  font-size: 13.5px;
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.8px;
+  color: var(--fg-1);
+  transition: color 150ms ease;
+}
+
+.brand:hover .brandName { color: var(--color-error); }
+
+.brandApp {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  padding-left: 8px;
+  border-left: 1px solid var(--border-primary);
+  white-space: nowrap;
+}
+
+.sep {
+  width: 1px;
+  height: 28px;
+  background: var(--border-medium);
   flex-shrink: 0;
 }
 
-.crumbGroup { display: flex; align-items: center; gap: 4px; }
-
-.sep { color: var(--fg-4); }
-
-.crumb { color: var(--fg-3); }
-
-.crumbCurrent { color: var(--fg-1); }
-
-/* Search */
-.searchBtn {
-  flex: 1;
-  max-width: 320px;
+.muni {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--surface-300);
-  color: var(--fg-3);
+  min-width: 0;
+}
+
+.muniLogo {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  flex-shrink: 0;
+  border-radius: 4px;
+}
+
+.muniNombre {
   font-family: var(--font-display);
-  font-size: 13px;
-  border: none;
-  padding: 6px 8px 6px 10px;
-  border-radius: var(--radius-lg);
-  box-shadow: var(--ring-border);
-  cursor: pointer;
-  transition: color 150ms ease;
-  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.searchBtn:hover { color: var(--fg-1); }
-.searchBtn span  { flex: 1; }
-
-.kbd {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  background: var(--surface-500);
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-}
-
-/* Right */
 .right {
-  margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
-.iconBtn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border: none;
-  background: transparent;
-  border-radius: var(--radius-lg);
-  color: var(--fg-3);
-  cursor: pointer;
-  transition: color 150ms ease;
+/* ── Menú de usuario (contexto en 2 líneas + avatar + dropdown) ── */
+
+.userMenu {
   position: relative;
 }
 
-.iconBtn:hover { color: var(--color-error); }
-
-.badge {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  min-width: 14px;
-  height: 14px;
-  background: var(--color-error);
-  color: white;
-  font-size: 9px;
-  font-family: var(--font-mono);
-  border-radius: 99px;
+.userTrigger {
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 0 3px;
+  gap: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 8px;
+  transition: background 150ms ease;
 }
 
-/* User pill */
-.userPill {
+.userTrigger:hover { background: var(--surface-400); }
+
+.context {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 10px 4px 4px;
-  border-radius: var(--radius-pill);
-  background: var(--surface-400);
-  box-shadow: var(--ring-border);
+  flex-direction: column;
+  align-items: flex-end;
+  font-family: var(--font-display);
+  font-size: 13px;
+  line-height: 1.25;
+  color: var(--fg-3);
+}
+
+.context strong {
+  color: var(--fg-2);
+  font-weight: 500;
+}
+
+.contextCargo {
+  font-size: 10.5px;
+  color: var(--fg-3);
+  white-space: nowrap;
 }
 
 .avatar {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: var(--timeline-thinking);
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  background: #dfa88f;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10.5px;
-  font-weight: 600;
-  color: var(--zaris-dark);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 500;
+  /* Fijo (no var(--fg-1)): el fondo durazno es igual en ambos temas. */
+  color: #26251e;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  overflow: hidden;
 }
 
-.userName {
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 240px;
+  background: var(--surface-100);
+  border: 1px solid var(--border-medium);
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.16);
+  z-index: 2000;
+  padding: 6px;
+}
+
+.dropdownInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+}
+
+.dropdownNombre {
   font-family: var(--font-display);
-  font-size: 12.5px;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--fg-1);
+}
+
+.dropdownEmail {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--fg-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdownDivider {
+  height: 1px;
+  background: var(--border-primary);
+  margin: 4px 0;
+}
+
+.dropdownItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: var(--fg-2);
+  text-align: left;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.dropdownItem:hover {
+  background: var(--surface-400);
+  color: var(--fg-1);
+}
+
+.dropdownItemDanger:hover { color: var(--color-error); }
+
+@media (max-width: 900px) {
+  .brandApp, .muniNombre { display: none; }
 }

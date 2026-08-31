@@ -1,0 +1,71 @@
+/* Statusbar del shell DEV — clon de .statusbar de frontend/css/menu.css.
+   Fila 3 del grid del AppShell (30px, ancho completo). */
+
+.statusbar {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 20px;
+  background: var(--zaris-cream);
+  border-top: 1px solid var(--border-primary);
+  font-size: 11px;
+  font-family: var(--font-display);
+  color: var(--fg-3);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.left,
+.right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 0;
+}
+
+.clock {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--fg-2);
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.api {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--fg-3); /* gris: verificando */
+  flex-shrink: 0;
+}
+
+.api.ok .dot { background: var(--color-success); }
+.api.err .dot { background: var(--color-error); }
+.api.err { color: var(--color-error); }
+
+.version {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  white-space: nowrap;
+}

@@ -121,6 +121,7 @@ export function DashboardMap({
   // Ref (no dep del effect de markers): una lambda nueva por render no debe redibujar.
   const colorReclamoRef = useRef(colorReclamo)
   const fittedRef = useRef(false)
+  const reclamosPrevRef = useRef<GeoReclamo[] | null>(null)
 
   useEffect(() => {
     clicksRef.current = { onReclamoClick, onEmergenciaClick, onTramiteClick }
@@ -150,8 +151,26 @@ export function DashboardMap({
     }).addTo(map)
     markersLayerRef.current = L.layerGroup().addTo(map)
     mapRef.current = map
+    // Mapa NUEVO ⇒ necesita su propio fit inicial. Sin este reset, el doble
+    // montaje de StrictMode (dev) dejaba fittedRef=true del primer mapa y el
+    // segundo quedaba clavado en el center/zoom default, recortando puntos
+    // (cazado 2026-08-31 con el tablero Ejecutivo).
+    fittedRef.current = false
+    // Hook de QA por navegador (§41): permite leer bounds/zoom reales del mapa
+    // desde browser_eval sin exponer nada en la UI.
+    ;(containerRef.current as unknown as { _mapDebug?: L.Map })._mapDebug = map
+
+    // El contenedor puede cambiar de tamaño después del init (layout flex que
+    // asienta, filtros que se colapsan): sin invalidateSize, Leaflet renderiza
+    // con el viewport viejo y el encuadre recorta puntos (César 2026-08-31).
+    let ro: ResizeObserver | undefined
+    if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
+      ro = new ResizeObserver(() => map.invalidateSize())
+      ro.observe(containerRef.current)
+    }
 
     return () => {
+      ro?.disconnect()
       map.off()
       map.remove()
       mapRef.current = null
@@ -241,14 +260,31 @@ export function DashboardMap({
     }
 
     // Fit inicial una sola vez (que un toggle de capa no re-encuadre el mapa
-    // mientras el usuario esta navegando).
-    if (!fittedRef.current && bounds.length > 0) {
+    // mientras el usuario esta navegando). En modo punto (mapas analíticos del
+    // BI, sin toggles) se re-encuadra también cuando CAMBIA el dataset (nuevo
+    // filtro ⇒ nueva nube de puntos, César 2026-08-31). invalidateSize antes
+    // del fit + re-fit diferido: si el layout todavía no asentó, el primer fit
+    // calcula con un viewport errado y deja puntos fuera de cuadro.
+    const datosCambiaron = reclamosPrevRef.current !== reclamos
+    reclamosPrevRef.current = reclamos
+    const debeFit = !fittedRef.current || (marcadorPunto && datosCambiaron)
+    if (debeFit && bounds.length > 0) {
       fittedRef.current = true
-      if (bounds.length >= 2) {
-        mapRef.current.fitBounds(L.latLngBounds(bounds), { padding: [60, 60], maxZoom: 15 })
-      } else {
-        mapRef.current.setView(bounds[0], 15)
+      const map = mapRef.current
+      const fit = () => {
+        if (bounds.length >= 2) {
+          map.fitBounds(L.latLngBounds(bounds), { padding: [60, 60], maxZoom: 15 })
+        } else {
+          map.setView(bounds[0], 15)
+        }
       }
+      map.invalidateSize()
+      fit()
+      window.setTimeout(() => {
+        if (mapRef.current !== map) return // ya desmontado
+        map.invalidateSize()
+        fit()
+      }, 300)
     }
   }, [reclamos, emergencias, espacios, tramites, visibles, marcadorPunto])
 
