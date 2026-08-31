@@ -54,10 +54,22 @@ carpeta **gitignoreada** — datos personales, jamas versionar):
   `POST /api/v1/demo/poblar` (auth X-Dispatcher-Token o JWT admin nivel 1;
   genera la semana + `avanzar_pendientes` que envejece SOLO lo demo). Carga
   manual por rango: dispatch del workflow con inputs `desde`/`hasta` (max 45
-  dias por llamada) o `backend/seed_demo_bi.py` en local.
+  dias por llamada) o `backend/seed_demo_bi.py` en local. Ventana default del
+  endpoint: `[hoy-6, hoy]` — los crones de lunes consecutivos NO se solapan.
+- **REGLA (incidente 2026-08-31): el generador NO es idempotente y el cron de
+  GitHub puede demorar HORAS.** Cada llamada a `/demo/poblar` inserta un lote
+  nuevo aunque el rango ya tenga datos. Si el cron del lunes "no aparece",
+  ANTES de re-dispatchar: (1) buscar un run `event=schedule` tardio en el dia
+  (`gh api .../workflows/demo-datos.yml/runs`, el 2026-08-31 corrio 8 hs tarde)
+  y (2) verificar los conteos por dia del periodo en la DB. Caso real: cron
+  demorado + dispatch manual = semana con capas duplicadas → limpieza
+  transaccional por DB directa (los lotes son bloques CONTIGUOS de id_reclamo
+  del uid `generador.demo`; los conteos exactos salen del JSON en los logs del
+  run). Filas borradas en `_backup_*_dup_2026_08_31`.
 - Backups pre-seed en prod: `_backup_reclamos_pre_demo_2026_08_30` y
   `_backup_encuesta_envio_pre_demo_2026_08_30` (+ los viejos
-  `_backup_reclamos_fecha_cierre_2026_05_26` / `_backup_reclamos_geo_demo_2026_05_26`).
+  `_backup_reclamos_fecha_cierre_2026_05_26` / `_backup_reclamos_geo_demo_2026_05_26`;
+  limpieza del 2026-08-31: `_backup_{reclamos,reclamo_historial,encuesta_envio,encuesta_respuesta,encuesta_resp_det}_dup_2026_08_31`).
 
 
 ## Tablero EJECUTIVO — "Análisis de demanda ciudadana" (2026-08-30)
@@ -121,6 +133,33 @@ guard JWT a nivel router, registrado en main.py después de `bi_router`). Decisi
   para `dim=canal` las series llegan con el valor CRUDO (`app_movil`) → el front mapea con
   `labelCanal` al renderizar.
 - **Smoke**: `scratchpad/smoke_bi_ejecutivo.py` (18 checks; login admin local + shapes + 401).
+
+### 3ª y 4ª tanda del Ejecutivo (César, 2026-08-31) — reglas vigentes
+
+- **Defaults del tablero (SIEMPRE al abrir, no se restaura de localStorage):** año en
+  curso + MES ANTERIOR tildado (`periodo.ts::periodoEjecutivoDefault`, enero → dic año-1)
+  y "Todas las áreas" para admin ("Todas" sigue admin-only; el supervisor n2 arranca con
+  su área). "Limpiar filtros" vuelve a ESE default (período incluido) y `hayFiltros`
+  compara contra él.
+- **Series mensuales (2 líneas de Evolución + 3 apilados de Histórico): ventana FIJA de
+  últimos 12 meses** que ignora el filtro de período (respeta área/subárea/localidad) —
+  `filtros12m` + `ultimos12MesesRango()`. **Se muestran solo los meses CON datos**
+  (corrección de César: tope 12, del primer al último mes con datos, huecos intermedios
+  en cero — `mesesEjeSerie()`). Nota `nota="últimos 12 meses"` en minúscula al lado del
+  título (`ChartCard` prop `nota`). XAxis con `interval={0}`.
+- **Las 2 donas viven JUNTAS en el Resumen** (Niveles de satisfacción + Cierres por
+  estado, lado a lado en grid `minmax(320px,1fr)`); Evolución quedó solo con las líneas.
+- **Barras % Sat vs % Cierre**: filas con AMBOS indicadores en cero se filtran; etiquetas
+  de valor 0 no se muestran (`fmtPct`).
+- **Mapas de Satisfacción**: `DashboardMap` con `marcadorPunto` (punto de 5px, sin badge)
+  y `LeyendaMapa` en RECUADRO debajo de cada mapa (no línea de corrido compartida).
+  **Fit**: en modo punto el mapa se RE-ENCUADRA cuando cambia el dataset (cambio de
+  filtros); `fittedRef` se resetea al crear el mapa (StrictMode dev lo dejaba en el
+  encuadre default) + `invalidateSize` con ResizeObserver + re-fit diferido 300ms.
+  Hook de QA: el container guarda `_mapDebug` (instancia Leaflet) para leer
+  bounds/zoom desde `browser_eval`.
+- **Shell dev**: el dropdown de notificaciones lleva z2000 (la barra sticky del BI usa
+  1100 y lo tapaba); el topbar del AppShell standalone va z1500.
 
 ### Dimensión LOCALIDAD (2026-08-30)
 
