@@ -71,11 +71,14 @@ export function ChartCard({
   children,
   height,
   action,
+  nota,
 }: {
   title: string
   children: ReactNode
   height?: number
   action?: ReactNode
+  /** Aclaración en minúscula al lado del título (ej. "últimos 12 meses"). */
+  nota?: string
 }) {
   return (
     <div
@@ -90,17 +93,24 @@ export function ChartCard({
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, margin: '0 0 10px' }}>
-        <h3
-          style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: '0.92rem',
-            fontWeight: 600,
-            color: 'var(--fg-1)',
-            margin: 0,
-          }}
-        >
-          {title}
-        </h3>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0, flexWrap: 'wrap' }}>
+          <h3
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: '0.92rem',
+              fontWeight: 600,
+              color: 'var(--fg-1)',
+              margin: 0,
+            }}
+          >
+            {title}
+          </h3>
+          {nota && (
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.74rem', color: 'var(--fg-3)', textTransform: 'lowercase' }}>
+              {nota}
+            </span>
+          )}
+        </div>
         {action}
       </div>
       <div style={{ height: height ?? 280, width: '100%' }}>{children}</div>

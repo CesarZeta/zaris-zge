@@ -1,10 +1,11 @@
+import { useMemo } from 'react'
 import { Bar, BarChart, CartesianGrid, Cell, Label, LabelList, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { UseQueryResult } from '@tanstack/react-query'
 import { ChartCard, CenterMsg } from '../components/ui'
 import { AXIS, DonaCentro, Seccion, legendStyle, pieLabel, tooltipStyle, totalDe } from '../components/SeccionHeader'
 import { SegLabel, TotalLabel } from '../components/barLabels'
 import { useEjHistorico, useEjPorLocalidad, usePorCanal } from '../hooks/useBi'
-import { periodoEnLetras } from '../lib/periodo'
+import { mesesUlt12, periodoEnLetras, ultimos12MesesRango } from '../lib/periodo'
 import type { BiFiltros, HistogramaDinamico } from '../lib/types'
 import { COLOR_OTROS, PALETA_CATEGORICA, labelCanal, labelMes } from '../lib/theme'
 
@@ -22,18 +23,22 @@ function HistoricoChart({
   /** Etiqueta legible de cada serie (ej. canales crudos → labelCanal). */
   mapNombre?: (name: string) => string
 }) {
-  const data = (query.data?.items ?? []).map((m) => ({ ...m, label: labelMes(m.mes!) }))
+  // El backend solo devuelve meses CON datos: completar los 12 del eje.
+  const items = query.data?.items ?? []
+  const porMes = new Map(items.map((m) => [m.mes, m]))
+  const data = (items.length ? mesesUlt12().map((mes) => porMes.get(mes) ?? { mes, total: 0 }) : [])
+    .map((m) => ({ ...m, label: labelMes(m.mes!) }))
   const series = (query.data?.series ?? []).map((s, i) => ({
     key: s.key,
     name: mapNombre ? mapNombre(s.name) : s.name,
     color: s.key === 'g_otros' ? COLOR_OTROS : PALETA_CATEGORICA[i % PALETA_CATEGORICA.length],
   }))
   return (
-    <ChartCard title={titulo} height={300}>
+    <ChartCard title={titulo} nota="últimos 12 meses" height={300}>
       {query.isLoading ? (
         <CenterMsg>Cargando…</CenterMsg>
       ) : !data.length ? (
-        <CenterMsg>Sin datos en el período seleccionado.</CenterMsg>
+        <CenterMsg>Sin datos en los últimos 12 meses.</CenterMsg>
       ) : (
         <ResponsiveContainer>
           <BarChart data={data} margin={{ top: 24, right: 12, left: 0, bottom: 0 }}>
@@ -59,9 +64,15 @@ function HistoricoChart({
 }
 
 export function HistoricoEjSection({ filtros }: { filtros: BiFiltros }) {
-  const porSubarea = useEjHistorico(filtros, 'subarea')
-  const porCanalHist = useEjHistorico(filtros, 'canal')
-  const porLocalidadHist = useEjHistorico(filtros, 'localidad')
+  // Apilados mensuales SIEMPRE con ventana fija de últimos 12 meses (César
+  // 2026-08-31); las donas de composición sí respetan el período filtrado.
+  const filtros12m = useMemo<BiFiltros>(
+    () => ({ ...filtros, anio: undefined, meses: undefined, ...ultimos12MesesRango() }),
+    [filtros],
+  )
+  const porSubarea = useEjHistorico(filtros12m, 'subarea')
+  const porCanalHist = useEjHistorico(filtros12m, 'canal')
+  const porLocalidadHist = useEjHistorico(filtros12m, 'localidad')
   const donaCanal = usePorCanal(filtros)
   const donaLocalidad = useEjPorLocalidad(filtros)
 

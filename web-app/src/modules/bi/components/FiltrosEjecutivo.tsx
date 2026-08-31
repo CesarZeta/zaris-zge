@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import type { AreaCatalogo, BiFiltros, EjLocalidadCatalogo, EjSubareaCatalogo } from '../lib/types'
+import { periodoEjecutivoDefault } from '../lib/periodo'
 import { labelPeriodo } from './FiltrosGlobales'
 
 // Panel "Filtrado de análisis" del EJECUTIVO (2026-08-30). Decisión de César:
@@ -57,9 +58,14 @@ export function FiltrosEjecutivo({
   const setRango = (patch: { desde?: string; hasta?: string }) =>
     set({ ...patch, anio: undefined, meses: undefined })
 
-  const hayFiltros = !!(filtros.desde || filtros.hasta || filtros.anio || meses.length
+  // Default del tablero (César 2026-08-31): área default + año en curso con el
+  // mes anterior tildado. "Limpiar" vuelve a ESO, no a un tablero sin período.
+  const def: BiFiltros = useMemo(() => ({ id_area: areaDefault, ...periodoEjecutivoDefault() }), [areaDefault])
+  const hayFiltros = !!(filtros.desde || filtros.hasta
+    || (filtros.anio ?? undefined) !== def.anio
+    || meses.join(',') !== (def.meses ?? []).join(',')
     || filtros.id_localidad || filtros.id_subarea
-    || (filtros.id_area ?? undefined) !== (areaDefault ?? undefined))
+    || (filtros.id_area ?? undefined) !== (def.id_area ?? undefined))
 
   const nombreArea = filtros.id_area ? areas.find((a) => a.id_area === filtros.id_area)?.nombre : 'Todas las áreas'
   const nombreSub = filtros.id_subarea
@@ -86,7 +92,7 @@ export function FiltrosEjecutivo({
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           {hayFiltros && (
-            <button type="button" onClick={() => onChange({ id_area: areaDefault })} style={btnOutlineStyle}>
+            <button type="button" onClick={() => onChange(def)} style={btnOutlineStyle}>
               Limpiar filtros
             </button>
           )}
