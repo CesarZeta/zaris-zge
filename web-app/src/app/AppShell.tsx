@@ -2,6 +2,7 @@ import { Outlet, useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { Sidebar } from '../shell/Sidebar/Sidebar'
 import { TopBar } from '../shell/TopBar/TopBar'
+import { StatusBar } from '../shell/StatusBar/StatusBar'
 import { CommandMenu } from '../shell/CommandMenu/CommandMenu'
 import { Notifications } from '../shell/Notifications/Notifications'
 import { useAuthStore } from '../stores/auth'
@@ -57,15 +58,17 @@ export function AppShell() {
     )
   }
 
+  // Modo standalone (dev, localhost:5173): grid clonado del shell vanilla de
+  // producción (§14) — topbar 52px arriba, sidebar 232px, statusbar 30px abajo.
+  // Cada pieza se ubica en el grid desde su propio module.css.
   return (
     <div className={s.shell}>
+      <TopBar />
       <Sidebar />
-      <div className={s.main}>
-        <TopBar />
-        <main className={s.content}>
-          <Outlet />
-        </main>
-      </div>
+      <main className={s.content}>
+        <Outlet />
+      </main>
+      <StatusBar />
       <CommandMenu />
       <Notifications />
     </div>

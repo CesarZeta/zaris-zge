@@ -5,12 +5,15 @@ export interface User {
   id_usuario: number
   nombre: string
   email: string
-  nivel_acceso: 1 | 2 | 3 | 4
+  nivel_acceso: 1 | 2 | 3 | 4 | 5
   modulos_permitidos?: string[]   // CLAUDE.md §30. Opcional para retro-compat con sesiones viejas.
   // Subárea del agente vinculado (Fase 3 roles): scopea pickers/bandejas del
   // supervisor. Opcionales: sesiones viejas no los traen (el backend igual impone).
   id_subarea?: number | null
   subarea_nombre?: string | null
+  // Los trae login/me (§14); el shell dev los muestra en el topbar clonado de prod.
+  cargo_nombre?: string | null
+  foto_url?: string | null
 }
 
 export interface SubNavItem {

@@ -3,7 +3,7 @@ import { Cell, Label, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from
 import { ChartCard, CenterMsg, KpiCard, KpiRow } from '../components/ui'
 import { DonaCentro, Seccion, fmt, legendStyle, pieLabel, tooltipStyle, totalDe } from '../components/SeccionHeader'
 import { exportarCsv, hoyISO } from '../components/exportCsv'
-import { useEjMatriz, useEjScore } from '../hooks/useBi'
+import { useEjCierresPorEstado, useEjMatriz, useEjScore } from '../hooks/useBi'
 import { periodoEnLetras } from '../lib/periodo'
 import type { BiFiltros, EjFilaBase } from '../lib/types'
 
@@ -65,6 +65,8 @@ function Tri({ actual, anterior, invertir }: {
 export function ResumenEjSection({ filtros }: { filtros: BiFiltros }) {
   const score = useEjScore(filtros)
   const matriz = useEjMatriz(filtros)
+  const cierres = useEjCierresPorEstado(filtros)
+  const totalCierres = totalDe(cierres.data ?? [])
   const [abiertas, setAbiertas] = useState<Set<number | null>>(new Set())
   const [exportando, setExportando] = useState(false)
   const s = score.data
@@ -148,7 +150,9 @@ export function ResumenEjSection({ filtros }: { filtros: BiFiltros }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
         {/* Matriz subárea → tipo (la tabla central del tablero de referencia).
-            A lo ancho completo: compartir fila con la dona le imponía scroll horizontal. */}
+            A lo ancho completo: compartir fila con la dona le imponía scroll horizontal.
+            Debajo, las DOS donas lado a lado (César 2026-08-31): Niveles de
+            satisfacción + Cierres por estado (movida desde Evolución). */}
         <div style={cardStyle}>
           <h3 style={h3Style}>Indicadores por subárea y tipo</h3>
           <p style={notaStyle}>
@@ -193,34 +197,58 @@ export function ResumenEjSection({ filtros }: { filtros: BiFiltros }) {
           )}
         </div>
 
-        {/* Niveles de satisfacción (dona; sin emojis, §13). El total del centro
-            son ENCUESTAS RESPONDIDAS, no incidentes (aclaración pedida por César). */}
-        <ChartCard
-          title="Niveles de satisfacción"
-          height={300}
-          action={
-            <span style={notaStyle}>
-              El total son las {fmt(s?.encuestas_respondidas)} encuestas respondidas del período, no los {fmt(s?.total)} incidentes
-            </span>
-          }
-        >
-          {score.isLoading ? (
-            <CenterMsg>Cargando…</CenterMsg>
-          ) : !niveles.length ? (
-            <CenterMsg>Sin respuestas de encuestas en el período.</CenterMsg>
-          ) : (
-            <ResponsiveContainer>
-              <PieChart>
-                <Pie data={niveles} dataKey="total" nameKey="label" innerRadius="50%" outerRadius="78%" paddingAngle={2} label={pieLabel} labelLine={false}>
-                  <Label content={DonaCentro} position="center" value={totalDe(niveles)} />
-                  {niveles.map((n) => <Cell key={n.clasificacion} fill={NIVEL_COLOR[n.clasificacion] ?? '#9e9e9e'} />)}
-                </Pie>
-                <Tooltip contentStyle={tooltipStyle} />
-                <Legend wrapperStyle={legendStyle} />
-              </PieChart>
-            </ResponsiveContainer>
-          )}
-        </ChartCard>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+          {/* Niveles de satisfacción (dona; sin emojis, §13). El total del centro
+              son ENCUESTAS RESPONDIDAS, no incidentes (aclaración pedida por César). */}
+          <ChartCard
+            title="Niveles de satisfacción"
+            height={300}
+            action={
+              <span style={notaStyle}>
+                El total son las {fmt(s?.encuestas_respondidas)} encuestas respondidas del período, no los {fmt(s?.total)} incidentes
+              </span>
+            }
+          >
+            {score.isLoading ? (
+              <CenterMsg>Cargando…</CenterMsg>
+            ) : !niveles.length ? (
+              <CenterMsg>Sin respuestas de encuestas en el período.</CenterMsg>
+            ) : (
+              <ResponsiveContainer>
+                <PieChart>
+                  <Pie data={niveles} dataKey="total" nameKey="label" innerRadius="50%" outerRadius="78%" paddingAngle={2} label={pieLabel} labelLine={false}>
+                    <Label content={DonaCentro} position="center" value={totalDe(niveles)} />
+                    {niveles.map((n) => <Cell key={n.clasificacion} fill={NIVEL_COLOR[n.clasificacion] ?? '#9e9e9e'} />)}
+                  </Pie>
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Legend wrapperStyle={legendStyle} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </ChartCard>
+
+          {/* Cierres por estado (Cumplido vs Auditado). */}
+          <ChartCard title="Cierres por estado" height={300}>
+            {cierres.isLoading ? (
+              <CenterMsg>Cargando…</CenterMsg>
+            ) : !totalCierres ? (
+              <CenterMsg>Sin cierres en el período.</CenterMsg>
+            ) : (
+              <ResponsiveContainer>
+                <PieChart>
+                  <Pie data={cierres.data} dataKey="total" nameKey="estado" innerRadius="50%" outerRadius="78%" paddingAngle={2} label={pieLabel} labelLine={false}>
+                    <Label content={DonaCentro} position="center" value={totalCierres} />
+                    {(cierres.data ?? []).map((c) => (
+                      <Cell key={c.estado} fill={c.estado === 'Auditado' ? '#6a1b9a' : '#1f8a65'} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Legend wrapperStyle={legendStyle} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </ChartCard>
+        </div>
       </div>
     </Seccion>
   )

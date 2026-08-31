@@ -1,23 +1,22 @@
 import { useMemo } from 'react'
-import { Cell, CartesianGrid, Label, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { ChartCard, CenterMsg } from '../components/ui'
-import { AXIS, DonaCentro, Seccion, legendStyle, pieLabel, tooltipStyle, totalDe } from '../components/SeccionHeader'
-import { useEjAltasCierres, useEjCierresPorEstado, useEjEvolucion } from '../hooks/useBi'
+import { AXIS, Seccion, legendStyle, tooltipStyle } from '../components/SeccionHeader'
+import { useEjAltasCierres, useEjEvolucion } from '../hooks/useBi'
 import { mesesEjeSerie, periodoEnLetras, ultimos12MesesRango } from '../lib/periodo'
 import type { BiFiltros } from '../lib/types'
 import { labelMes } from '../lib/theme'
 
 // Sección EVOLUCIÓN del tablero Ejecutivo (VL "Evolución de indicadores"):
-// relación altas vs cierres por mes, evolución de % cierre / % SLA / % sat,
-// y cierres por estado (Cumplido vs Auditado).
+// los dos gráficos de líneas (altas vs cierres, y % cierre / % SLA / % sat).
+// La dona "Cierres por estado" se movió al Resumen, junto a la de niveles
+// (César 2026-08-31: las dos donas lado a lado y abajo las líneas).
 
 const COLOR_ALTAS = '#2f7fd1'
 const COLOR_CIERRES = '#1f8a65'
 const COLOR_PCT_CIERRE = '#2f7fd1'
 const COLOR_PCT_SLA = '#1f8a65'
 const COLOR_PCT_SAT = '#6a1b9a'
-const COLOR_CUMPLIDO = '#1f8a65'
-const COLOR_AUDITADO = '#6a1b9a'
 
 const lineaLabel = { fontFamily: 'var(--font-display)', fontSize: 10, fill: 'var(--fg-3)' }
 
@@ -30,7 +29,6 @@ export function EvolucionEjSection({ filtros }: { filtros: BiFiltros }) {
   )
   const altasCierres = useEjAltasCierres(filtros12m)
   const evolucion = useEjEvolucion(filtros12m)
-  const cierres = useEjCierresPorEstado(filtros)
 
   // Eje: del primer al último mes CON datos dentro de la ventana de 12
   // (huecos intermedios en cero; sin ceros al inicio si los datos no llegan).
@@ -42,8 +40,6 @@ export function EvolucionEjSection({ filtros }: { filtros: BiFiltros }) {
     const por = new Map((evolucion.data ?? []).map((x) => [x.mes, x]))
     return mesesEjeSerie([...por.keys()]).map((mes) => por.get(mes) ?? { mes, total: 0, pct_cierre: null, pct_sla: null, pct_sat: null })
   }, [evolucion.data])
-
-  const totalCierres = totalDe(cierres.data ?? [])
 
   return (
     <Seccion
@@ -93,26 +89,6 @@ export function EvolucionEjSection({ filtros }: { filtros: BiFiltros }) {
           )}
         </ChartCard>
 
-        <ChartCard title="Cierres por estado" height={300}>
-          {cierres.isLoading ? (
-            <CenterMsg>Cargando…</CenterMsg>
-          ) : !totalCierres ? (
-            <CenterMsg>Sin cierres en el período.</CenterMsg>
-          ) : (
-            <ResponsiveContainer>
-              <PieChart>
-                <Pie data={cierres.data} dataKey="total" nameKey="estado" innerRadius="50%" outerRadius="78%" paddingAngle={2} label={pieLabel} labelLine={false}>
-                  <Label content={DonaCentro} position="center" value={totalCierres} />
-                  {(cierres.data ?? []).map((c) => (
-                    <Cell key={c.estado} fill={c.estado === 'Auditado' ? COLOR_AUDITADO : COLOR_CUMPLIDO} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={tooltipStyle} />
-                <Legend wrapperStyle={legendStyle} />
-              </PieChart>
-            </ResponsiveContainer>
-          )}
-        </ChartCard>
       </div>
     </Seccion>
   )
