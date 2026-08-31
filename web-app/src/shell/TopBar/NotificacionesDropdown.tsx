@@ -151,7 +151,9 @@ const panelStyle: React.CSSProperties = {
   border: '1px solid var(--border-primary)',
   borderRadius: 'var(--radius-lg)',
   boxShadow: '0 8px 32px rgba(0,0,0,.18)',
-  zIndex: 100,
+  // Sobre CUALQUIER contenido del módulo, incluida la barra sticky de filtros
+  // del BI (zIndex 1100) — la tapaba (César 2026-08-31).
+  zIndex: 2000,
   display: 'flex', flexDirection: 'column',
 }
 

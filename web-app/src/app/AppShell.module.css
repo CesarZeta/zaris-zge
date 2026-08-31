@@ -1,20 +1,21 @@
+/* Grid clonado del shell vanilla de producción (.app de menu.css):
+   topbar 52px a lo ancho · sidebar 232px · contenido · statusbar 30px. */
 .shell {
-  display: flex;
+  display: grid;
+  grid-template-columns: 232px 1fr;
+  grid-template-rows: 52px 1fr 30px;
   height: 100%;
   overflow: hidden;
 }
 
-.main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
 .content {
-  flex: 1;
+  grid-column: 2;
+  grid-row: 2;
   overflow-y: auto;
   background: var(--zaris-cream);
+  /* El shell vanilla mete los módulos en un iframe sin padding propio; el
+     embeddedContent les da 16/24 — replicarlo acá para la misma vista. */
+  padding: 16px 24px;
 }
 
 /* Modo embebido en iframe del shell vanilla (regla §14): sin sidebar/topbar,
