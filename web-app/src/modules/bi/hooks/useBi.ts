@@ -6,7 +6,7 @@ import type { BiFiltros } from '../lib/types'
 // Incluye TODOS los campos que viajan al backend: si se agrega un filtro nuevo a
 // BiFiltros hay que sumarlo acá o las vistas muestran datos viejos.
 export const filtrosKey = (f: BiFiltros) =>
-  [f.desde, f.hasta, f.anio, (f.meses ?? []).join(','), f.id_area, f.prioridad, f.estado, f.id_tipo_reclamo, f.canal, f.id_localidad] as const
+  [f.desde, f.hasta, f.anio, (f.meses ?? []).join(','), f.id_area, f.id_subarea, f.prioridad, f.estado, f.id_tipo_reclamo, f.canal, f.id_localidad] as const
 const key = (sub: string, f: BiFiltros) => ['bi', sub, ...filtrosKey(f)] as const
 
 // KPIs comparativos de la fila única de cada sección.
@@ -128,4 +128,8 @@ export function useEjGeo(f: BiFiltros) {
 
 export function useEjCatalogoLocalidades() {
   return useQuery({ queryKey: ['bi', 'ej-catalogo-localidades'], queryFn: () => biApi.ejCatalogoLocalidades(), staleTime: 5 * 60_000 })
+}
+
+export function useEjCatalogoSubareas(id_area?: number) {
+  return useQuery({ queryKey: ['bi', 'ej-catalogo-subareas', id_area], queryFn: () => biApi.ejCatalogoSubareas(id_area), staleTime: 5 * 60_000 })
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { FiltrosEjecutivo } from '../components/FiltrosEjecutivo'
-import { useCatalogoAreas, useEjCatalogoLocalidades, useMiArea } from '../hooks/useBi'
+import { useCatalogoAreas, useEjCatalogoLocalidades, useEjCatalogoSubareas, useMiArea } from '../hooks/useBi'
 import { ResumenEjSection } from '../sections/ResumenEjSection'
 import { EvolucionEjSection } from '../sections/EvolucionEjSection'
 import { HistoricoEjSection } from '../sections/HistoricoEjSection'
@@ -43,6 +43,7 @@ export function EjecutivoPage() {
   const miArea = useMiArea()
   const localidades = useEjCatalogoLocalidades()
   const [filtros, setFiltros] = useState<BiFiltros | null>(null)
+  const subareas = useEjCatalogoSubareas(filtros?.id_area)
   const [areaInicial, setAreaInicial] = useState<number | undefined>(undefined)
   const stickyRef = useRef<HTMLDivElement>(null)
   const [stickyH, setStickyH] = useState(200)
@@ -169,6 +170,7 @@ export function EjecutivoPage() {
           filtros={filtros}
           onChange={setFiltros}
           areas={areas.data ?? []}
+          subareas={subareas.data ?? []}
           localidades={localidades.data ?? []}
           areaDefault={areaDefault}
           permiteTodas={esAdmin}

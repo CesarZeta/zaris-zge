@@ -2,6 +2,7 @@ import { Cell, CartesianGrid, Label, Legend, Line, LineChart, Pie, PieChart, Res
 import { ChartCard, CenterMsg } from '../components/ui'
 import { AXIS, DonaCentro, Seccion, legendStyle, pieLabel, tooltipStyle, totalDe } from '../components/SeccionHeader'
 import { useEjAltasCierres, useEjCierresPorEstado, useEjEvolucion } from '../hooks/useBi'
+import { periodoEnLetras } from '../lib/periodo'
 import type { BiFiltros } from '../lib/types'
 import { labelMes } from '../lib/theme'
 
@@ -30,7 +31,7 @@ export function EvolucionEjSection({ filtros }: { filtros: BiFiltros }) {
     <Seccion
       id="evolucion"
       titulo="Evolución"
-      subtitulo="Relación entre incidentes ingresados y cerrados, y evolución mensual de los indicadores."
+      periodo={periodoEnLetras(filtros).actual}
     >
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16 }}>
         <ChartCard title="Incidentes ingresados vs. cerrados por mes" height={300}>

@@ -5,6 +5,7 @@ import { AXIS, Seccion, legendStyle, tooltipStyle } from '../components/SeccionH
 import { DashboardMap } from '../../dashboard/components/DashboardMap'
 import type { GeoReclamo } from '../../dashboard/hooks/useDashboardData'
 import { useEjGeo, useEjSatCierre } from '../hooks/useBi'
+import { periodoEnLetras } from '../lib/periodo'
 import type { BiFiltros, EjSatCierreItem } from '../lib/types'
 
 // Sección SATISFACCIÓN del tablero Ejecutivo (VL "Satisfacción vs cierre del
@@ -71,7 +72,7 @@ export function SatisfaccionEjSection({ filtros }: { filtros: BiFiltros }) {
     <Seccion
       id="satisfaccion"
       titulo="Satisfacción vs cierre"
-      subtitulo="Cómo se relacionan la resolución y la percepción del vecino, por subárea, localidad y en el mapa."
+      periodo={periodoEnLetras(filtros).actual}
     >
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
         <BarrasSatCierre data={porSubarea.data} titulo="% Satisfacción vs % Cierre por subárea" />

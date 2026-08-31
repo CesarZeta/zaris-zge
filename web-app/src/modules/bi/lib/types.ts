@@ -232,6 +232,8 @@ export interface BiFiltros {
   canal?: string
   // Filtro del Ejecutivo (2026-08-30): localidad del catalogo.
   id_localidad?: number
+  // Filtro del Ejecutivo (2026-08-30, 2ª tanda): subárea dentro del área.
+  id_subarea?: number
 }
 
 // KPIs comparativos de la fila única de cada sección (GET /bi/comparativo).
@@ -270,6 +272,15 @@ export interface EjScore {
   niveles: EjNivel[]
 }
 
+// Indicadores del período anterior (para los triangulitos de variación).
+export interface EjIndicadoresAnt {
+  total: number
+  prom_dias: number | null
+  pct_cierre: number | null
+  pct_sla: number | null
+  pct_sat: number | null
+}
+
 // Métricas comunes de la matriz y los tops (por subárea o por tipo).
 export interface EjFilaBase {
   total: number
@@ -279,6 +290,7 @@ export interface EjFilaBase {
   pct_sla: number | null
   pct_sat: number | null
   pct_rep: number | null
+  ant?: EjIndicadoresAnt | null
 }
 
 export interface EjTipoFila extends EjFilaBase {
@@ -345,6 +357,12 @@ export interface EjGeoPunto {
 
 export interface EjLocalidadCatalogo {
   id_localidad: number
+  nombre: string
+  total: number
+}
+
+export interface EjSubareaCatalogo {
+  id_subarea: number
   nombre: string
   total: number
 }
