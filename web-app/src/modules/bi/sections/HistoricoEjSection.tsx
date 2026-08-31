@@ -5,7 +5,7 @@ import { ChartCard, CenterMsg } from '../components/ui'
 import { AXIS, DonaCentro, Seccion, legendStyle, pieLabel, tooltipStyle, totalDe } from '../components/SeccionHeader'
 import { SegLabel, TotalLabel } from '../components/barLabels'
 import { useEjHistorico, useEjPorLocalidad, usePorCanal } from '../hooks/useBi'
-import { mesesUlt12, periodoEnLetras, ultimos12MesesRango } from '../lib/periodo'
+import { mesesEjeSerie, periodoEnLetras, ultimos12MesesRango } from '../lib/periodo'
 import type { BiFiltros, HistogramaDinamico } from '../lib/types'
 import { COLOR_OTROS, PALETA_CATEGORICA, labelCanal, labelMes } from '../lib/theme'
 
@@ -23,10 +23,12 @@ function HistoricoChart({
   /** Etiqueta legible de cada serie (ej. canales crudos → labelCanal). */
   mapNombre?: (name: string) => string
 }) {
-  // El backend solo devuelve meses CON datos: completar los 12 del eje.
+  // Eje: del primer al último mes CON datos dentro de la ventana de 12
+  // (huecos intermedios en cero; sin ceros al inicio si los datos no llegan).
   const items = query.data?.items ?? []
   const porMes = new Map(items.map((m) => [m.mes, m]))
-  const data = (items.length ? mesesUlt12().map((mes) => porMes.get(mes) ?? { mes, total: 0 }) : [])
+  const data = mesesEjeSerie([...porMes.keys()])
+    .map((mes) => porMes.get(mes) ?? { mes, total: 0 })
     .map((m) => ({ ...m, label: labelMes(m.mes!) }))
   const series = (query.data?.series ?? []).map((s, i) => ({
     key: s.key,
