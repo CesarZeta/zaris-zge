@@ -3,7 +3,7 @@ import { Cell, CartesianGrid, Label, Legend, Line, LineChart, Pie, PieChart, Res
 import { ChartCard, CenterMsg } from '../components/ui'
 import { AXIS, DonaCentro, Seccion, legendStyle, pieLabel, tooltipStyle, totalDe } from '../components/SeccionHeader'
 import { useEjAltasCierres, useEjCierresPorEstado, useEjEvolucion } from '../hooks/useBi'
-import { mesesUlt12, periodoEnLetras, ultimos12MesesRango } from '../lib/periodo'
+import { mesesEjeSerie, periodoEnLetras, ultimos12MesesRango } from '../lib/periodo'
 import type { BiFiltros } from '../lib/types'
 import { labelMes } from '../lib/theme'
 
@@ -32,14 +32,15 @@ export function EvolucionEjSection({ filtros }: { filtros: BiFiltros }) {
   const evolucion = useEjEvolucion(filtros12m)
   const cierres = useEjCierresPorEstado(filtros)
 
-  // El backend solo devuelve meses CON datos: completar los 12 del eje.
+  // Eje: del primer al último mes CON datos dentro de la ventana de 12
+  // (huecos intermedios en cero; sin ceros al inicio si los datos no llegan).
   const altasCierres12 = useMemo(() => {
     const por = new Map((altasCierres.data ?? []).map((x) => [x.mes, x]))
-    return mesesUlt12().map((mes) => por.get(mes) ?? { mes, altas: 0, cierres: 0 })
+    return mesesEjeSerie([...por.keys()]).map((mes) => por.get(mes) ?? { mes, altas: 0, cierres: 0 })
   }, [altasCierres.data])
   const evolucion12 = useMemo(() => {
     const por = new Map((evolucion.data ?? []).map((x) => [x.mes, x]))
-    return mesesUlt12().map((mes) => por.get(mes) ?? { mes, total: 0, pct_cierre: null, pct_sla: null, pct_sat: null })
+    return mesesEjeSerie([...por.keys()]).map((mes) => por.get(mes) ?? { mes, total: 0, pct_cierre: null, pct_sla: null, pct_sat: null })
   }, [evolucion.data])
 
   const totalCierres = totalDe(cierres.data ?? [])

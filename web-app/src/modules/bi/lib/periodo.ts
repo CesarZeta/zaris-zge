@@ -29,9 +29,7 @@ export function ultimos12MesesRango(): { desde: string; hasta: string } {
   return { desde: iso(desde), hasta: iso(hoy) }
 }
 
-/** Claves 'YYYY-MM' de los últimos 12 meses en orden cronológico. El backend
- *  solo devuelve los meses CON datos; las series del Ejecutivo completan los
- *  que faltan (con ceros/null) para que el eje muestre siempre 12 meses. */
+/** Claves 'YYYY-MM' de los últimos 12 meses en orden cronológico. */
 export function mesesUlt12(): string[] {
   const hoy = new Date()
   const out: string[] = []
@@ -40,6 +38,18 @@ export function mesesUlt12(): string[] {
     out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
   }
   return out
+}
+
+/** Eje de una serie mensual del Ejecutivo (corrección de César 2026-08-31):
+ *  la ventana de 12 meses es el TOPE, pero si los datos no la llenan se
+ *  muestran solo los meses que hay — del primero al último mes CON datos,
+ *  rellenando con cero únicamente los huecos intermedios. */
+export function mesesEjeSerie(mesesConDatos: Array<string | undefined>): string[] {
+  const keys = mesesUlt12()
+  const set = new Set(mesesConDatos)
+  const idx = keys.map((k, i) => (set.has(k) ? i : -1)).filter((i) => i >= 0)
+  if (!idx.length) return []
+  return keys.slice(idx[0], idx[idx.length - 1] + 1)
 }
 
 function listaEnLetras(xs: string[]): string {
