@@ -29,6 +29,7 @@ import type {
   EjEvolucionItem,
   EjGeoPunto,
   EjLocalidadCatalogo,
+  EjSubareaCatalogo,
   EjMatriz,
   EjPorLocalidadItem,
   EjSatCierreItem,
@@ -45,7 +46,7 @@ function qp(f: BiFiltros) {
   return {
     desde: f.desde, hasta: f.hasta,
     anio: f.anio, meses: f.meses?.length ? f.meses.join(',') : undefined,
-    id_area: f.id_area, prioridad: f.prioridad,
+    id_area: f.id_area, id_subarea: f.id_subarea, prioridad: f.prioridad,
     estado: f.estado, id_tipo_reclamo: f.id_tipo_reclamo, canal: f.canal,
     id_localidad: f.id_localidad,
   }
@@ -55,7 +56,7 @@ function qp(f: BiFiltros) {
 function qpSinFechas(f: BiFiltros) {
   return {
     anio: f.anio, meses: f.meses?.length ? f.meses.join(',') : undefined,
-    id_area: f.id_area, prioridad: f.prioridad,
+    id_area: f.id_area, id_subarea: f.id_subarea, prioridad: f.prioridad,
     estado: f.estado, id_tipo_reclamo: f.id_tipo_reclamo, canal: f.canal,
     id_localidad: f.id_localidad,
   }
@@ -201,6 +202,9 @@ export const biApi = {
 
   ejCatalogoLocalidades: () =>
     api.get<EjLocalidadCatalogo[]>(`${BASE}/ejecutivo/catalogo/localidades`),
+
+  ejCatalogoSubareas: (id_area?: number) =>
+    api.get<EjSubareaCatalogo[]>(`${BASE}/ejecutivo/catalogo/subareas`, { params: { id_area } }),
 }
 
 export type { ApiResponseWithHeaders }

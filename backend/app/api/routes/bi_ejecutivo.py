@@ -60,10 +60,12 @@ def _where_ej(
     id_area: Optional[int], prioridad: Optional[str],
     id_localidad: Optional[int], id_municipio: int,
     *, anio: Optional[int] = None, meses: Optional[list[int]] = None,
+    id_subarea: Optional[int] = None, pares: Optional[list[int]] = None,
     campo_fecha: str = "fecha_alta",
 ) -> tuple[list[str], dict]:
     """Condiciones WHERE del Ejecutivo. El área via s.id_area (la query debe
-    incluir _JOIN_AREA). Mismo criterio mono-municipio que bi.py."""
+    incluir _JOIN_AREA). Mismo criterio mono-municipio que bi.py.
+    `pares` = lista de año*100+mes (bloque contiguo del período anterior)."""
     cond = [
         "r.activo = TRUE",
         "(r.id_municipio = :id_municipio OR r.id_municipio IS NULL)",
@@ -81,9 +83,17 @@ def _where_ej(
     if meses:
         cond.append(f"EXTRACT(MONTH FROM r.{campo_fecha})::int = ANY(CAST(:meses AS int[]))")
         params["meses"] = [int(m) for m in meses]
+    if pares:
+        cond.append(
+            f"(EXTRACT(YEAR FROM r.{campo_fecha})::int * 100 + EXTRACT(MONTH FROM r.{campo_fecha})::int)"
+            " = ANY(CAST(:pares AS int[]))")
+        params["pares"] = [int(p) for p in pares]
     if id_area:
         cond.append("s.id_area = :id_area")
         params["id_area"] = id_area
+    if id_subarea:
+        cond.append("s.id_subarea = :id_subarea")
+        params["id_subarea"] = id_subarea
     if prioridad:
         cond.append("r.prioridad = :prioridad")
         params["prioridad"] = prioridad
@@ -97,12 +107,24 @@ def _rango_anterior(
     desde: Optional[date], hasta: Optional[date],
     anio: Optional[int], meses: Optional[list[int]],
 ) -> Optional[dict]:
-    """Período anterior equivalente para el % Var (como el "% Var M" de VL pero
-    generalizado al filtro elegido): mismo largo inmediatamente anterior para un
-    rango manual; mismos meses del año anterior para chips. Sin filtro temporal
-    no hay comparación (None)."""
+    """Período inmediatamente anterior de igual longitud (pedido de César
+    2026-08-30: agosto se compara con julio, NO con agosto del año pasado):
+      - meses elegidos (1-11): los N meses contiguos que terminan justo antes
+        del primero seleccionado, cruzando de año si hace falta ({"pares"});
+      - año completo (chip solo o los 12 meses): el año anterior;
+      - rango manual: mismo largo inmediatamente anterior.
+    Sin filtro temporal no hay comparación (None)."""
+    if anio and meses and len(meses) < 12:
+        a, m = int(anio), min(int(x) for x in meses)
+        pares = []
+        for _ in range(len(meses)):
+            m -= 1
+            if m == 0:
+                a, m = a - 1, 12
+            pares.append(a * 100 + m)
+        return {"pares": pares}
     if anio:
-        return {"anio": anio - 1, "meses": meses}
+        return {"anio": int(anio) - 1}
     if desde and hasta:
         largo = (hasta - desde) + timedelta(days=1)
         return {"desde": desde - largo, "hasta": desde - timedelta(days=1)}
@@ -171,18 +193,32 @@ async def _encuestas(
     return out
 
 
-def _fila(base: dict, enc: Optional[dict], total_ant: Optional[int]) -> dict:
-    """Arma la fila estándar de la matriz/tops a partir de los agregados."""
+def _indicadores(base: dict, enc: Optional[dict]) -> dict:
+    """Indicadores comparables de un agregado (también se calcula para el
+    período anterior: alimenta los triangulitos de variación de la matriz)."""
+    return {
+        "total": base["total"],
+        "prom_dias": base["prom_dias"],
+        "pct_cierre": _pct(base["resueltos"], base["total"]),
+        "pct_sla": _pct(base["dentro_sla"], base["con_sla"]),
+        "pct_sat": _pct((enc or {}).get("satisfechos") or 0, (enc or {}).get("respuestas") or 0),
+    }
+
+
+def _fila(base: dict, enc: Optional[dict], ant: Optional[dict]) -> dict:
+    """Arma la fila estándar de la matriz/tops a partir de los agregados.
+    `ant` = indicadores del período anterior (dict de _indicadores) o None."""
     respuestas = (enc or {}).get("respuestas") or 0
     enviadas = (enc or {}).get("enviadas") or 0
     return {
         "total": base["total"],
-        "var_pct": _var_pct(base["total"], total_ant),
+        "var_pct": _var_pct(base["total"], (ant or {}).get("total")),
         "prom_dias": base["prom_dias"],
         "pct_cierre": _pct(base["resueltos"], base["total"]),
         "pct_sla": _pct(base["dentro_sla"], base["con_sla"]),
         "pct_sat": _pct((enc or {}).get("satisfechos") or 0, respuestas),
         "pct_rep": _pct(respuestas, enviadas),
+        "ant": ant,
     }
 
 
@@ -192,14 +228,16 @@ def _fila(base: dict, enc: Optional[dict], total_ant: Optional[int]) -> dict:
 async def ej_score(
     desde: Optional[date] = Query(None), hasta: Optional[date] = Query(None),
     anio: Optional[int] = Query(None), meses: Optional[str] = Query(None),
-    id_area: Optional[int] = Query(None), prioridad: Optional[str] = Query(None),
+    id_area: Optional[int] = Query(None), id_subarea: Optional[int] = Query(None),
+    prioridad: Optional[str] = Query(None),
     id_localidad: Optional[int] = Query(None), id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
     """Tarjetas de arriba: total vs período anterior, score (% cierre / % SLA /
     % satisfacción), tasa de respuesta de encuestas y niveles 1-5."""
     meses_l = _parse_meses(meses)
-    cond, params = _where_ej(desde, hasta, id_area, prioridad, id_localidad, id_municipio, anio=anio, meses=meses_l)
+    cond, params = _where_ej(desde, hasta, id_area, prioridad, id_localidad, id_municipio,
+                             anio=anio, meses=meses_l, id_subarea=id_subarea)
 
     r = await db.execute(text(f"""
         SELECT COUNT(*) AS total,
@@ -238,7 +276,7 @@ async def ej_score(
     if ant:
         cond_a, params_a = _where_ej(
             ant.get("desde"), ant.get("hasta"), id_area, prioridad, id_localidad,
-            id_municipio, anio=ant.get("anio"), meses=ant.get("meses"))
+            id_municipio, anio=ant.get("anio"), pares=ant.get("pares"), id_subarea=id_subarea)
         ra = await db.execute(text(
             f"SELECT COUNT(*) AS total FROM reclamos r {_JOIN_AREA} WHERE {' AND '.join(cond_a)}"), params_a)
         total_ant = int(ra.scalar() or 0)
@@ -265,47 +303,71 @@ async def ej_score(
 async def ej_matriz(
     desde: Optional[date] = Query(None), hasta: Optional[date] = Query(None),
     anio: Optional[int] = Query(None), meses: Optional[str] = Query(None),
-    id_area: Optional[int] = Query(None), prioridad: Optional[str] = Query(None),
+    id_area: Optional[int] = Query(None), id_subarea: Optional[int] = Query(None),
+    prioridad: Optional[str] = Query(None),
     id_localidad: Optional[int] = Query(None), id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
     """La tabla central del tablero VL: una fila por SUBÁREA (expandible a tipo)
-    con Total · %Var · Prom días · %Cierre · %SLA · %Sat · %Rep."""
+    con Total · %Var · Prom días · %Cierre · %SLA · %Sat, cada indicador con su
+    valor del período anterior (`ant`) para los triangulitos de variación."""
     meses_l = _parse_meses(meses)
-    cond, params = _where_ej(desde, hasta, id_area, prioridad, id_localidad, id_municipio, anio=anio, meses=meses_l)
+    cond, params = _where_ej(desde, hasta, id_area, prioridad, id_localidad, id_municipio,
+                             anio=anio, meses=meses_l, id_subarea=id_subarea)
 
     g_sub = "s.id_subarea AS id_subarea, COALESCE(s.nombre, 'Sin subárea') AS subarea"
     g_tipo = ("s.id_subarea AS id_subarea, tr.id_tipo_reclamo AS id_tipo, "
               "COALESCE(tr.nombre, 'Sin tipo') AS tipo")
+    ge_sub = "s.id_subarea AS id_subarea, COALESCE(s.nombre,'') AS subarea"
+    ge_tipo = "s.id_subarea AS id_subarea, tr.id_tipo_reclamo AS id_tipo, COALESCE(tr.nombre,'') AS tipo"
     base_sub = await _agregado(db, g_sub, 2, cond, params)
     base_tipo = await _agregado(db, g_tipo, 3, cond, params)
-    enc_sub = await _encuestas(db, "s.id_subarea AS id_subarea, COALESCE(s.nombre,'') AS subarea", 2, cond, params)
-    enc_tipo = await _encuestas(db, "s.id_subarea AS id_subarea, tr.id_tipo_reclamo AS id_tipo, COALESCE(tr.nombre,'') AS tipo", 3, cond, params)
-    enc_sub = {k[0]: v for k, v in enc_sub.items()}
-    enc_tipo = {(k[0], k[1]): v for k, v in enc_tipo.items()}
+    enc_sub = {k[0]: v for k, v in (await _encuestas(db, ge_sub, 2, cond, params)).items()}
+    enc_tipo = {(k[0], k[1]): v for k, v in (await _encuestas(db, ge_tipo, 3, cond, params)).items()}
 
+    # Período anterior: mismos agregados + encuestas para comparar TODOS los
+    # indicadores (no solo el total).
     ant_sub: dict = {}
     ant_tipo: dict = {}
+    ant_tot: Optional[dict] = None
     ant = _rango_anterior(desde, hasta, anio, meses_l)
     if ant:
         cond_a, params_a = _where_ej(
             ant.get("desde"), ant.get("hasta"), id_area, prioridad, id_localidad,
-            id_municipio, anio=ant.get("anio"), meses=ant.get("meses"))
-        for b in await _agregado(db, g_sub, 2, cond_a, params_a):
-            ant_sub[b["id_subarea"]] = b["total"]
-        for b in await _agregado(db, g_tipo, 3, cond_a, params_a):
-            ant_tipo[(b["id_subarea"], b["id_tipo"])] = b["total"]
+            id_municipio, anio=ant.get("anio"), pares=ant.get("pares"), id_subarea=id_subarea)
+        base_sub_a = await _agregado(db, g_sub, 2, cond_a, params_a)
+        base_tipo_a = await _agregado(db, g_tipo, 3, cond_a, params_a)
+        enc_sub_a = {k[0]: v for k, v in (await _encuestas(db, ge_sub, 2, cond_a, params_a)).items()}
+        enc_tipo_a = {(k[0], k[1]): v for k, v in (await _encuestas(db, ge_tipo, 3, cond_a, params_a)).items()}
+        for b in base_sub_a:
+            ant_sub[b["id_subarea"]] = _indicadores(b, enc_sub_a.get(b["id_subarea"]))
+        for b in base_tipo_a:
+            clave = (b["id_subarea"], b["id_tipo"])
+            ant_tipo[clave] = _indicadores(b, enc_tipo_a.get(clave))
+        if base_sub_a:
+            tot_a = {
+                "total": sum(b["total"] for b in base_sub_a),
+                "resueltos": sum(b["resueltos"] for b in base_sub_a),
+                "dentro_sla": sum(b["dentro_sla"] for b in base_sub_a),
+                "con_sla": sum(b["con_sla"] for b in base_sub_a),
+                "prom_dias": None,
+            }
+            enc_tot_a = {
+                "respuestas": sum((v.get("respuestas") or 0) for v in enc_sub_a.values()),
+                "satisfechos": sum((v.get("satisfechos") or 0) for v in enc_sub_a.values()),
+            }
+            ant_tot = _indicadores(tot_a, enc_tot_a)
 
     tipos_por_sub: dict = {}
     for b in sorted(base_tipo, key=lambda x: -x["total"]):
         clave = (b["id_subarea"], b["id_tipo"])
-        fila = _fila(b, enc_tipo.get(clave), ant_tipo.get(clave) if ant else None)
+        fila = _fila(b, enc_tipo.get(clave), ant_tipo.get(clave))
         fila.update({"id_tipo": b["id_tipo"], "tipo": b["tipo"]})
         tipos_por_sub.setdefault(b["id_subarea"], []).append(fila)
 
     filas = []
     for b in sorted(base_sub, key=lambda x: -x["total"]):
-        fila = _fila(b, enc_sub.get(b["id_subarea"]), ant_sub.get(b["id_subarea"]) if ant else None)
+        fila = _fila(b, enc_sub.get(b["id_subarea"]), ant_sub.get(b["id_subarea"]))
         fila.update({
             "id_subarea": b["id_subarea"], "subarea": b["subarea"],
             "tipos": tipos_por_sub.get(b["id_subarea"], []),
@@ -325,7 +387,7 @@ async def ej_matriz(
         "respuestas": sum((v.get("respuestas") or 0) for v in enc_sub.values()),
         "satisfechos": sum((v.get("satisfechos") or 0) for v in enc_sub.values()),
     }
-    total_fila = _fila(tot, enc_tot, sum(ant_sub.values()) if ant_sub else None)
+    total_fila = _fila(tot, enc_tot, ant_tot)
 
     return {"filas": filas, "total": total_fila}
 
@@ -338,7 +400,8 @@ async def ej_top_tipos(
     limit: int = Query(10, ge=1, le=50),
     desde: Optional[date] = Query(None), hasta: Optional[date] = Query(None),
     anio: Optional[int] = Query(None), meses: Optional[str] = Query(None),
-    id_area: Optional[int] = Query(None), prioridad: Optional[str] = Query(None),
+    id_area: Optional[int] = Query(None), id_subarea: Optional[int] = Query(None),
+    prioridad: Optional[str] = Query(None),
     id_localidad: Optional[int] = Query(None), id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
@@ -347,7 +410,8 @@ async def ej_top_tipos(
     if orden not in ("cantidad", "demora"):
         raise HTTPException(status_code=422, detail="orden debe ser cantidad|demora")
     meses_l = _parse_meses(meses)
-    cond, params = _where_ej(desde, hasta, id_area, prioridad, id_localidad, id_municipio, anio=anio, meses=meses_l)
+    cond, params = _where_ej(desde, hasta, id_area, prioridad, id_localidad, id_municipio,
+                             anio=anio, meses=meses_l, id_subarea=id_subarea)
 
     g = ("tr.id_tipo_reclamo AS id_tipo, COALESCE(tr.nombre,'Sin tipo') AS tipo, "
          "COALESCE(s.nombre,'Sin subárea') AS subarea")
@@ -375,7 +439,8 @@ async def ej_top_tipos(
 async def ej_altas_cierres(
     desde: Optional[date] = Query(None), hasta: Optional[date] = Query(None),
     anio: Optional[int] = Query(None), meses: Optional[str] = Query(None),
-    id_area: Optional[int] = Query(None), prioridad: Optional[str] = Query(None),
+    id_area: Optional[int] = Query(None), id_subarea: Optional[int] = Query(None),
+    prioridad: Optional[str] = Query(None),
     id_localidad: Optional[int] = Query(None), id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
@@ -385,7 +450,8 @@ async def ej_altas_cierres(
 
     async def serie(campo: str) -> dict[str, int]:
         cond, params = _where_ej(desde, hasta, id_area, prioridad, id_localidad,
-                                 id_municipio, anio=anio, meses=meses_l, campo_fecha=campo)
+                                 id_municipio, anio=anio, meses=meses_l,
+                                 id_subarea=id_subarea, campo_fecha=campo)
         if campo == "fecha_cierre":
             cond.append("r.fecha_cierre IS NOT NULL")
             cond.append("r.estado = 'Resuelto'")
@@ -407,14 +473,16 @@ async def ej_altas_cierres(
 async def ej_evolucion_indicadores(
     desde: Optional[date] = Query(None), hasta: Optional[date] = Query(None),
     anio: Optional[int] = Query(None), meses: Optional[str] = Query(None),
-    id_area: Optional[int] = Query(None), prioridad: Optional[str] = Query(None),
+    id_area: Optional[int] = Query(None), id_subarea: Optional[int] = Query(None),
+    prioridad: Optional[str] = Query(None),
     id_localidad: Optional[int] = Query(None), id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
     """% Cierre, % SLA y % Satisfacción por mes (cohorte de ingreso: los reclamos
     de cada mes por fecha_alta, como la 'Evolución de indicadores' de VL)."""
     meses_l = _parse_meses(meses)
-    cond, params = _where_ej(desde, hasta, id_area, prioridad, id_localidad, id_municipio, anio=anio, meses=meses_l)
+    cond, params = _where_ej(desde, hasta, id_area, prioridad, id_localidad, id_municipio,
+                             anio=anio, meses=meses_l, id_subarea=id_subarea)
 
     r = await db.execute(text(f"""
         SELECT to_char(date_trunc('month', r.fecha_alta), 'YYYY-MM') AS mes,
@@ -457,14 +525,16 @@ async def ej_evolucion_indicadores(
 async def ej_cierres_por_estado(
     desde: Optional[date] = Query(None), hasta: Optional[date] = Query(None),
     anio: Optional[int] = Query(None), meses: Optional[str] = Query(None),
-    id_area: Optional[int] = Query(None), prioridad: Optional[str] = Query(None),
+    id_area: Optional[int] = Query(None), id_subarea: Optional[int] = Query(None),
+    prioridad: Optional[str] = Query(None),
     id_localidad: Optional[int] = Query(None), id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
     """Cierres del período: Auditado = el reclamo pasó por 'En auditoría' en su
     historial (espejo del 'Cumplido/Auditado' de VL)."""
     meses_l = _parse_meses(meses)
-    cond, params = _where_ej(desde, hasta, id_area, prioridad, id_localidad, id_municipio, anio=anio, meses=meses_l)
+    cond, params = _where_ej(desde, hasta, id_area, prioridad, id_localidad, id_municipio,
+                             anio=anio, meses=meses_l, id_subarea=id_subarea)
     cond.append("r.estado = 'Resuelto'")
     r = await db.execute(text(f"""
         SELECT COUNT(*) FILTER (WHERE EXISTS (
@@ -497,7 +567,8 @@ async def ej_historico(
     dim: str = Query("subarea", description="subarea | canal | localidad"),
     desde: Optional[date] = Query(None), hasta: Optional[date] = Query(None),
     anio: Optional[int] = Query(None), meses: Optional[str] = Query(None),
-    id_area: Optional[int] = Query(None), prioridad: Optional[str] = Query(None),
+    id_area: Optional[int] = Query(None), id_subarea: Optional[int] = Query(None),
+    prioridad: Optional[str] = Query(None),
     id_localidad: Optional[int] = Query(None), id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
@@ -507,7 +578,8 @@ async def ej_historico(
         raise HTTPException(status_code=422, detail="dim debe ser subarea|canal|localidad")
     expr, top_n = _DIMS[dim]
     meses_l = _parse_meses(meses)
-    cond, params = _where_ej(desde, hasta, id_area, prioridad, id_localidad, id_municipio, anio=anio, meses=meses_l)
+    cond, params = _where_ej(desde, hasta, id_area, prioridad, id_localidad, id_municipio,
+                             anio=anio, meses=meses_l, id_subarea=id_subarea)
     join = _JOIN_AREA + (_JOIN_LOC if dim == "localidad" else "")
 
     r = await db.execute(text(f"""
@@ -546,13 +618,15 @@ async def ej_historico(
 async def ej_por_localidad(
     desde: Optional[date] = Query(None), hasta: Optional[date] = Query(None),
     anio: Optional[int] = Query(None), meses: Optional[str] = Query(None),
-    id_area: Optional[int] = Query(None), prioridad: Optional[str] = Query(None),
+    id_area: Optional[int] = Query(None), id_subarea: Optional[int] = Query(None),
+    prioridad: Optional[str] = Query(None),
     id_localidad: Optional[int] = Query(None), id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
     """Composición del período por localidad (dona)."""
     meses_l = _parse_meses(meses)
-    cond, params = _where_ej(desde, hasta, id_area, prioridad, id_localidad, id_municipio, anio=anio, meses=meses_l)
+    cond, params = _where_ej(desde, hasta, id_area, prioridad, id_localidad, id_municipio,
+                             anio=anio, meses=meses_l, id_subarea=id_subarea)
     r = await db.execute(text(f"""
         SELECT r.id_localidad, COALESCE(loc.nombre, 'Sin localidad') AS localidad, COUNT(*) AS total
         FROM reclamos r {_JOIN_AREA} {_JOIN_LOC}
@@ -569,7 +643,8 @@ async def ej_sat_cierre(
     por: str = Query("subarea", description="subarea | localidad"),
     desde: Optional[date] = Query(None), hasta: Optional[date] = Query(None),
     anio: Optional[int] = Query(None), meses: Optional[str] = Query(None),
-    id_area: Optional[int] = Query(None), prioridad: Optional[str] = Query(None),
+    id_area: Optional[int] = Query(None), id_subarea: Optional[int] = Query(None),
+    prioridad: Optional[str] = Query(None),
     id_localidad: Optional[int] = Query(None), id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
@@ -579,7 +654,8 @@ async def ej_sat_cierre(
     expr = "COALESCE(s.nombre, 'Sin subárea')" if por == "subarea" else "COALESCE(loc.nombre, 'Sin localidad')"
     join = _JOIN_AREA + (_JOIN_LOC if por == "localidad" else "")
     meses_l = _parse_meses(meses)
-    cond, params = _where_ej(desde, hasta, id_area, prioridad, id_localidad, id_municipio, anio=anio, meses=meses_l)
+    cond, params = _where_ej(desde, hasta, id_area, prioridad, id_localidad, id_municipio,
+                             anio=anio, meses=meses_l, id_subarea=id_subarea)
 
     r = await db.execute(text(f"""
         SELECT {expr} AS nombre, COUNT(*) AS total,
@@ -618,7 +694,8 @@ async def ej_sat_cierre(
 async def ej_geo(
     desde: Optional[date] = Query(None), hasta: Optional[date] = Query(None),
     anio: Optional[int] = Query(None), meses: Optional[str] = Query(None),
-    id_area: Optional[int] = Query(None), prioridad: Optional[str] = Query(None),
+    id_area: Optional[int] = Query(None), id_subarea: Optional[int] = Query(None),
+    prioridad: Optional[str] = Query(None),
     id_localidad: Optional[int] = Query(None), id_municipio: int = Query(1),
     limit: int = Query(5000, ge=1, le=20000),
     db: AsyncSession = Depends(get_db),
@@ -626,7 +703,8 @@ async def ej_geo(
     """Puntos del período con coordenadas: abierto/cerrado + clasificación CSAT
     (si el vecino respondió). Un dataset para los dos mapas del tablero."""
     meses_l = _parse_meses(meses)
-    cond, params = _where_ej(desde, hasta, id_area, prioridad, id_localidad, id_municipio, anio=anio, meses=meses_l)
+    cond, params = _where_ej(desde, hasta, id_area, prioridad, id_localidad, id_municipio,
+                             anio=anio, meses=meses_l, id_subarea=id_subarea)
     cond.append("r.latitud IS NOT NULL AND r.longitud IS NOT NULL")
     params["lim"] = limit
     r = await db.execute(text(f"""
@@ -642,6 +720,30 @@ async def ej_geo(
         WHERE {' AND '.join(cond)}
         ORDER BY r.fecha_alta DESC
         LIMIT :lim
+    """), params)
+    return [dict(row._mapping) for row in r.fetchall()]
+
+
+# ── Catálogo de subáreas con reclamos (para el filtro del tablero) ───────────
+
+@router.get("/catalogo/subareas")
+async def ej_catalogo_subareas(
+    id_area: Optional[int] = Query(None),
+    id_municipio: int = Query(1),
+    db: AsyncSession = Depends(get_db),
+):
+    """Subáreas presentes en reclamos (vía tipo), para el filtro del tablero.
+    Con id_area se acota a las del área elegida."""
+    cond = ["r.activo = TRUE", "(r.id_municipio = :m OR r.id_municipio IS NULL)"]
+    params: dict = {"m": id_municipio}
+    if id_area:
+        cond.append("s.id_area = :id_area")
+        params["id_area"] = id_area
+    r = await db.execute(text(f"""
+        SELECT s.id_subarea, s.nombre, COUNT(*) AS total
+        FROM reclamos r {_JOIN_AREA}
+        WHERE {' AND '.join(cond)}
+        GROUP BY 1, 2 ORDER BY s.nombre
     """), params)
     return [dict(row._mapping) for row in r.fetchall()]
 

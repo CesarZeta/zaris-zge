@@ -4,6 +4,7 @@ import { ChartCard, CenterMsg, KpiCard, KpiRow } from '../components/ui'
 import { DonaCentro, Seccion, fmt, legendStyle, pieLabel, tooltipStyle, totalDe } from '../components/SeccionHeader'
 import { exportarCsv, hoyISO } from '../components/exportCsv'
 import { useEjMatriz, useEjScore } from '../hooks/useBi'
+import { periodoEnLetras } from '../lib/periodo'
 import type { BiFiltros, EjFilaBase } from '../lib/types'
 
 // Sección RESUMEN del tablero Ejecutivo (VL "Resumen de incidentes del mes"):
@@ -32,12 +33,42 @@ function varTxt(v: number | null | undefined): string {
   return `${v > 0 ? '+' : ''}${v}%`
 }
 
+// Triangulito de variación vs período anterior (César 2026-08-30): dirección
+// real (▲ subió / ▼ bajó), color por VALORACIÓN (verde mejora / rojo empeora;
+// `invertir` para "menos es mejor", ej. días de demora). Sin variación o sin
+// dato previo → cuadradito gris.
+function Tri({ actual, anterior, invertir }: {
+  actual: number | null | undefined
+  anterior: number | null | undefined
+  invertir?: boolean
+}) {
+  const base: React.CSSProperties = { marginLeft: 5, fontSize: '0.6rem', verticalAlign: 'middle' }
+  if (actual == null || anterior == null) {
+    return <span aria-hidden="true" style={{ ...base, color: 'var(--fg-3)', opacity: 0.55 }} title="Sin dato del período anterior">■</span>
+  }
+  const delta = actual - anterior
+  if (Math.abs(delta) < 0.05) {
+    return <span aria-hidden="true" style={{ ...base, color: 'var(--fg-3)' }} title={`Sin variación (anterior: ${anterior})`}>■</span>
+  }
+  const mejora = invertir ? delta < 0 : delta > 0
+  return (
+    <span
+      aria-hidden="true"
+      style={{ ...base, color: mejora ? '#1f8a65' : '#cf2d56' }}
+      title={`Período anterior: ${anterior}`}
+    >
+      {delta > 0 ? '▲' : '▼'}
+    </span>
+  )
+}
+
 export function ResumenEjSection({ filtros }: { filtros: BiFiltros }) {
   const score = useEjScore(filtros)
   const matriz = useEjMatriz(filtros)
   const [abiertas, setAbiertas] = useState<Set<number | null>>(new Set())
   const [exportando, setExportando] = useState(false)
   const s = score.data
+  const periodo = periodoEnLetras(filtros)
 
   const niveles = (s?.niveles ?? []).map((n) => ({
     ...n,
@@ -72,7 +103,6 @@ export function ResumenEjSection({ filtros }: { filtros: BiFiltros }) {
           { header: '% Cierre', value: (d) => d.pct_cierre ?? '' },
           { header: '% SLA', value: (d) => d.pct_sla ?? '' },
           { header: '% Satisfacción', value: (d) => d.pct_sat ?? '' },
-          { header: '% Respuesta', value: (d) => d.pct_rep ?? '' },
         ],
         filas,
       )
@@ -85,7 +115,7 @@ export function ResumenEjSection({ filtros }: { filtros: BiFiltros }) {
     <Seccion
       id="resumen"
       titulo="Resumen"
-      subtitulo="Score del período: demanda, cierre, SLA y satisfacción, con la matriz por subárea y tipo."
+      periodo={periodo.actual}
       onExport={handleExport}
       exportando={exportando}
       exportDisabled={!matriz.data?.filas.length}
@@ -93,11 +123,17 @@ export function ResumenEjSection({ filtros }: { filtros: BiFiltros }) {
     >
       {/* Score en una fila (regla del módulo: KPIs en UNA línea) */}
       <KpiRow n={6}>
-        <KpiCard label="Incidentes del período" value={fmt(s?.total)} sub={s?.total_anterior != null ? `anterior: ${fmt(s.total_anterior)}` : 'período filtrado'} />
+        <KpiCard
+          label="Incidentes del período"
+          value={fmt(s?.total)}
+          sub={s?.total_anterior != null && periodo.anterior ? `${periodo.anterior}: ${fmt(s.total_anterior)}` : 'período filtrado'}
+        />
         <KpiCard
           label="Variación vs anterior"
           value={<span style={{ color: varColor(s?.var_pct) }}>{varTxt(s?.var_pct)}</span>}
-          sub={s?.var_pct != null ? 'vs período anterior equivalente' : 'sin período comparable'}
+          sub={periodo.anterior
+            ? (s?.var_pct != null ? `vs ${periodo.anterior}` : `sin datos en ${periodo.anterior}`)
+            : 'sin período comparable'}
         />
         <KpiCard label="Prom. días de cierre" value={dias(s?.prom_dias)} />
         <KpiCard label="% Cierre" value={pct(s?.pct_cierre)} accent="#2f7fd1" sub="resueltos / ingresados" />
@@ -115,6 +151,9 @@ export function ResumenEjSection({ filtros }: { filtros: BiFiltros }) {
             A lo ancho completo: compartir fila con la dona le imponía scroll horizontal. */}
         <div style={cardStyle}>
           <h3 style={h3Style}>Indicadores por subárea y tipo</h3>
+          <p style={notaStyle}>
+            ▲▼ variación de cada indicador vs {periodo.anterior ?? 'el período anterior'} (verde mejora, rojo empeora) · ■ sin variación o sin dato previo
+          </p>
           {matriz.isLoading ? (
             <div style={{ padding: 24 }}><CenterMsg>Cargando…</CenterMsg></div>
           ) : !matriz.data?.filas.length ? (
@@ -131,7 +170,6 @@ export function ResumenEjSection({ filtros }: { filtros: BiFiltros }) {
                     <th style={thStyle}>% Cierre</th>
                     <th style={thStyle}>% SLA</th>
                     <th style={thStyle}>% Sat</th>
-                    <th style={thStyle}>% Resp</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -155,8 +193,17 @@ export function ResumenEjSection({ filtros }: { filtros: BiFiltros }) {
           )}
         </div>
 
-        {/* Niveles de satisfacción (dona; sin emojis, §13) */}
-        <ChartCard title="Niveles de satisfacción" height={300}>
+        {/* Niveles de satisfacción (dona; sin emojis, §13). El total del centro
+            son ENCUESTAS RESPONDIDAS, no incidentes (aclaración pedida por César). */}
+        <ChartCard
+          title="Niveles de satisfacción"
+          height={300}
+          action={
+            <span style={notaStyle}>
+              El total son las {fmt(s?.encuestas_respondidas)} encuestas respondidas del período, no los {fmt(s?.total)} incidentes
+            </span>
+          }
+        >
           {score.isLoading ? (
             <CenterMsg>Cargando…</CenterMsg>
           ) : !niveles.length ? (
@@ -181,15 +228,23 @@ export function ResumenEjSection({ filtros }: { filtros: BiFiltros }) {
 
 function Celdas({ fila, bold }: { fila: EjFilaBase; bold?: boolean }) {
   const w = bold ? 700 : 500
+  const ant = fila.ant
   return (
     <>
       <td style={{ ...tdStyle, fontWeight: w }}>{fmt(fila.total)}</td>
       <td style={{ ...tdStyle, color: varColor(fila.var_pct), fontWeight: w }}>{varTxt(fila.var_pct)}</td>
-      <td style={{ ...tdStyle, fontWeight: w }}>{fila.prom_dias ?? '—'}</td>
-      <td style={{ ...tdStyle, color: '#2f7fd1', fontWeight: w }}>{pct(fila.pct_cierre)}</td>
-      <td style={{ ...tdStyle, color: '#1f8a65', fontWeight: w }}>{pct(fila.pct_sla)}</td>
-      <td style={{ ...tdStyle, color: '#6a1b9a', fontWeight: w }}>{pct(fila.pct_sat)}</td>
-      <td style={{ ...tdStyle, fontWeight: w }}>{pct(fila.pct_rep)}</td>
+      <td style={{ ...tdStyle, fontWeight: w }}>
+        {fila.prom_dias ?? '—'}<Tri actual={fila.prom_dias} anterior={ant?.prom_dias} invertir />
+      </td>
+      <td style={{ ...tdStyle, color: '#2f7fd1', fontWeight: w }}>
+        {pct(fila.pct_cierre)}<Tri actual={fila.pct_cierre} anterior={ant?.pct_cierre} />
+      </td>
+      <td style={{ ...tdStyle, color: '#1f8a65', fontWeight: w }}>
+        {pct(fila.pct_sla)}<Tri actual={fila.pct_sla} anterior={ant?.pct_sla} />
+      </td>
+      <td style={{ ...tdStyle, color: '#6a1b9a', fontWeight: w }}>
+        {pct(fila.pct_sat)}<Tri actual={fila.pct_sat} anterior={ant?.pct_sat} />
+      </td>
     </>
   )
 }
@@ -231,7 +286,11 @@ const cardStyle: React.CSSProperties = {
 }
 const h3Style: React.CSSProperties = {
   fontFamily: 'var(--font-display)', fontSize: '0.92rem', fontWeight: 600,
-  color: 'var(--fg-1)', margin: '0 0 10px',
+  color: 'var(--fg-1)', margin: '0 0 4px',
+}
+const notaStyle: React.CSSProperties = {
+  fontFamily: 'var(--font-display)', fontSize: '0.72rem', color: 'var(--fg-3)',
+  margin: '0 0 10px',
 }
 const tableStyle: React.CSSProperties = {
   width: '100%', borderCollapse: 'collapse',

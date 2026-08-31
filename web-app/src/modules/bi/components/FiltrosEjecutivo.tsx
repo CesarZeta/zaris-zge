@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import type { AreaCatalogo, BiFiltros, EjLocalidadCatalogo } from '../lib/types'
+import type { AreaCatalogo, BiFiltros, EjLocalidadCatalogo, EjSubareaCatalogo } from '../lib/types'
 import { labelPeriodo } from './FiltrosGlobales'
 
 // Panel "Filtrado de análisis" del EJECUTIVO (2026-08-30). Decisión de César:
@@ -13,6 +13,7 @@ export function FiltrosEjecutivo({
   filtros,
   onChange,
   areas,
+  subareas,
   localidades,
   areaDefault,
   permiteTodas,
@@ -22,6 +23,8 @@ export function FiltrosEjecutivo({
   filtros: BiFiltros
   onChange: (f: BiFiltros) => void
   areas: AreaCatalogo[]
+  /** Subáreas con reclamos del área elegida (catálogo del Ejecutivo). */
+  subareas: EjSubareaCatalogo[]
   /** Localidades con reclamos (catálogo del Ejecutivo). */
   localidades: EjLocalidadCatalogo[]
   /** Área que se restaura al "Limpiar". */
@@ -55,15 +58,19 @@ export function FiltrosEjecutivo({
     set({ ...patch, anio: undefined, meses: undefined })
 
   const hayFiltros = !!(filtros.desde || filtros.hasta || filtros.anio || meses.length
-    || filtros.id_localidad
+    || filtros.id_localidad || filtros.id_subarea
     || (filtros.id_area ?? undefined) !== (areaDefault ?? undefined))
 
   const nombreArea = filtros.id_area ? areas.find((a) => a.id_area === filtros.id_area)?.nombre : 'Todas las áreas'
+  const nombreSub = filtros.id_subarea
+    ? subareas.find((s) => s.id_subarea === filtros.id_subarea)?.nombre
+    : undefined
   const nombreLoc = filtros.id_localidad
     ? localidades.find((l) => l.id_localidad === filtros.id_localidad)?.nombre
     : undefined
   const resumen = [
     nombreArea ?? '—',
+    nombreSub,
     labelPeriodo(filtros) ?? 'todo el período',
     nombreLoc,
   ].filter(Boolean).join(' · ')
@@ -95,12 +102,25 @@ export function FiltrosEjecutivo({
             <label style={labelStyle}>Área de servicio</label>
             <select
               value={filtros.id_area ?? ''}
-              onChange={(e) => set({ id_area: e.target.value ? Number(e.target.value) : undefined })}
+              onChange={(e) => set({ id_area: e.target.value ? Number(e.target.value) : undefined, id_subarea: undefined })}
               style={{ ...inputStyle, minWidth: 250, fontWeight: 600, borderColor: 'var(--zaris-orange)', borderWidth: 2 }}
             >
               {permiteTodas && <option value="">Todas las áreas</option>}
               {areas.map((a) => (
                 <option key={a.id_area} value={a.id_area}>{a.nombre}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Subárea</label>
+            <select
+              value={filtros.id_subarea ?? ''}
+              onChange={(e) => set({ id_subarea: e.target.value ? Number(e.target.value) : undefined })}
+              style={{ ...inputStyle, minWidth: 180 }}
+            >
+              <option value="">Todas</option>
+              {subareas.map((s) => (
+                <option key={s.id_subarea} value={s.id_subarea}>{s.nombre}</option>
               ))}
             </select>
           </div>
