@@ -2,6 +2,7 @@ import { Cell, Label, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from
 import { ChartCard, CenterMsg } from '../components/ui'
 import { DonaCentro, Seccion, fmt, legendStyle, pieLabel, tooltipStyle } from '../components/SeccionHeader'
 import { useEjTopTipos } from '../hooks/useBi'
+import { periodoEnLetras } from '../lib/periodo'
 import type { BiFiltros, EjTopTipo } from '../lib/types'
 import { PALETA_CATEGORICA } from '../lib/theme'
 
@@ -82,7 +83,7 @@ export function MayoresEjSection({ filtros }: { filtros: BiFiltros }) {
     <Seccion
       id="mayores"
       titulo="Mayores incidentes"
-      subtitulo="Los 10 tipos con más volumen y los 10 con mayor tiempo de respuesta, agrupados por subárea."
+      periodo={periodoEnLetras(filtros).actual}
     >
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 3fr) minmax(300px, 2fr)', gap: 16 }}>
         <ChartCard title="Mayores incidentes por cantidad" height={430}>

@@ -4,6 +4,7 @@ import { ChartCard, CenterMsg } from '../components/ui'
 import { AXIS, DonaCentro, Seccion, legendStyle, pieLabel, tooltipStyle, totalDe } from '../components/SeccionHeader'
 import { SegLabel, TotalLabel } from '../components/barLabels'
 import { useEjHistorico, useEjPorLocalidad, usePorCanal } from '../hooks/useBi'
+import { periodoEnLetras } from '../lib/periodo'
 import type { BiFiltros, HistogramaDinamico } from '../lib/types'
 import { COLOR_OTROS, PALETA_CATEGORICA, labelCanal, labelMes } from '../lib/theme'
 
@@ -68,7 +69,7 @@ export function HistoricoEjSection({ filtros }: { filtros: BiFiltros }) {
     <Seccion
       id="historico"
       titulo="Histórico"
-      subtitulo="Series mensuales por subárea, canal de origen y localidad."
+      periodo={periodoEnLetras(filtros).actual}
     >
       <HistoricoChart titulo="Incidentes mensuales por subárea" query={porSubarea} />
 

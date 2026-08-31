@@ -11,6 +11,7 @@ export function Seccion({
   id,
   titulo,
   subtitulo,
+  periodo,
   onExport,
   exportando,
   exportDisabled,
@@ -20,6 +21,9 @@ export function Seccion({
   id: string
   titulo: string
   subtitulo?: string
+  /** Período analizado EN LETRAS al costado del título (Ejecutivo, César
+   *  2026-08-30); reemplaza al subtítulo descriptivo. */
+  periodo?: string
   onExport?: () => void
   exportando?: boolean
   exportDisabled?: boolean
@@ -34,9 +38,16 @@ export function Seccion({
     <section id={id} data-seccion style={{ scrollMarginTop: 'calc(var(--bi-sticky, 200px) + 10px)', display: 'flex', flexDirection: 'column', gap: 32 }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', borderBottom: '2px solid var(--zaris-orange)', paddingBottom: 6 }}>
         <div>
-          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.15rem', fontWeight: 600, letterSpacing: '-0.3px', color: 'var(--fg-1)', margin: 0 }}>
-            {titulo}
-          </h2>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.15rem', fontWeight: 600, letterSpacing: '-0.3px', color: 'var(--fg-1)', margin: 0 }}>
+              {titulo}
+            </h2>
+            {periodo && (
+              <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.88rem', color: 'var(--fg-2)' }}>
+                — período analizado: <strong style={{ color: 'var(--fg-1)' }}>{periodo}</strong>
+              </span>
+            )}
+          </div>
           {subtitulo && <p style={{ fontSize: '0.8rem', color: 'var(--fg-3)', margin: '2px 0 0' }}>{subtitulo}</p>}
         </div>
         {onExport && (

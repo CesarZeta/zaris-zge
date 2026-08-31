@@ -67,9 +67,12 @@ Réplica ZARIS de los 5 tableros Power BI de VL sobre reclamos. Ruta `/bi/ejecut
 backend `backend/app/api/routes/bi_ejecutivo.py` (router propio `/api/v1/bi/ejecutivo/*`,
 guard JWT a nivel router, registrado en main.py después de `bi_router`). Decisiones de César:
 
-- **Filtros = PERÍODO + ÁREA (+ localidad)** — sin estado/tipo/canal (eso es composición,
-  se VE en las visualizaciones). `FiltrosEjecutivo` es un componente aparte; NO tocar
-  `FiltrosGlobales` del Operativo para esto.
+- **Filtros = PERÍODO + ÁREA + SUBÁREA (+ localidad)** — sin estado/tipo/canal (eso es
+  composición, se VE en las visualizaciones). `FiltrosEjecutivo` es un componente aparte;
+  NO tocar `FiltrosGlobales` del Operativo para esto. La subárea (2ª tanda 2026-08-30) se
+  puebla con `GET /bi/ejecutivo/catalogo/subareas?id_area=` (solo subáreas presentes en
+  reclamos) y se resetea al cambiar de área; viaja como `id_subarea` y la aplican TODOS
+  los endpoints del router vía `_where_ej`.
 - **El desglose de TODAS las vistas es por SUBÁREA**: las "áreas de servicio" de los
   tableros VL (Alumbrado, Arbolado, Calles…) son nuestras subáreas de Servicios Públicos.
   Replicar "por área" a nivel secretaría daría una sola barra.
@@ -91,9 +94,27 @@ guard JWT a nivel router, registrado en main.py después de `bi_router`). Decisi
   clasificacion_inicial` 1-5; satisfecho = **>= 4** (regla del módulo Encuestas, `_rama_desde_
   clasificacion`). `%Sat` = satisfechos/respuestas · `%Rep` = respuestas/enviadas. Niveles
   sin emoji (§13): etiquetas Muy insatisfecho…Muy satisfecho + semáforo.
-- **`% Var` = período anterior equivalente** (`_rango_anterior`): rango manual → mismo largo
-  inmediatamente anterior; chips año/meses → mismos meses del año-1; sin filtro temporal →
-  sin comparación (None). En demanda **bajar es verde, subir es rojo**.
+- **`% Var` = período INMEDIATAMENTE anterior** (`_rango_anterior`, redefinido en la 2ª
+  tanda 2026-08-30 a pedido de César: "agosto se compara con julio, no con agosto del año
+  pasado"): meses elegidos (1-11) → el bloque contiguo de N meses que termina antes del
+  primero seleccionado, cruzando de año (`pares` = año*100+mes en `_where_ej`); año
+  completo → año-1; rango manual → mismo largo hacia atrás; sin filtro temporal → None.
+  En demanda **bajar es verde, subir es rojo**. **El front ESPEJA esta regla en
+  `web-app/src/modules/bi/lib/periodo.ts` (`periodoEnLetras`)** — nombra el período y su
+  anterior en letras; si se cambia una punta hay que cambiar la otra.
+- **Período EN LETRAS en el título de cada sección del Ejecutivo** (2ª tanda): las 5
+  secciones pasan `periodo={periodoEnLetras(filtros).actual}` a `Seccion` (prop nueva,
+  reemplaza a los subtítulos descriptivos ahí); "agosto de 2026", "año 2026 completo",
+  "01/05/2026 al 15/06/2026", "todo el histórico".
+- **Matriz (2ª tanda):** SIN columna % Resp en la UI/CSV (pedido de César; el backend
+  sigue devolviendo `pct_rep`). Cada indicador (prom días / % cierre / % SLA / % sat)
+  lleva **triangulito de variación** contra `fila.ant` (indicadores del período anterior
+  que `/matriz` calcula con los mismos agregados): dirección real ▲/▼, color por
+  valoración (verde mejora, rojo empeora; días de demora invertido), ■ gris sin variación
+  o sin dato previo. Componente `Tri` en `ResumenEjSection.tsx`.
+- **Dona "Niveles de satisfacción"**: lleva la aclaración de que el total del centro son
+  las ENCUESTAS RESPONDIDAS del período, no los incidentes (via prop `action` del
+  `ChartCard`).
 - **Cumplido vs Auditado**: resueltos con EXISTS en `reclamo_historial.estado_nuevo='En auditoría'`.
 - **`/historico?dim=subarea|canal|localidad`** devuelve `{series, items}` (pivot Python top N +
   Otros, keys `g_<slug>`/`g_otros`) — compatible con el modo dinámico de las visualizaciones;
