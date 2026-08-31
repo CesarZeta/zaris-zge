@@ -316,6 +316,14 @@ const statsLayerStyle: React.CSSProperties = {
   maxWidth: 'min(880px, calc(100% - 32px))',
   maxHeight: 'calc(100% - 32px)',
   overflowY: 'auto',
+  // Bug 2026-08-31 (César): arrastrar el mapa arrancando sobre el panel
+  // seleccionaba el texto de TODAS las tarjetas (selección nativa del browser)
+  // y no paneaba. El panel no captura eventos (los huecos entre tarjetas
+  // panean el mapa); cada caja interactiva los re-habilita con
+  // pointerEvents: 'auto'. userSelect corta la selección en las cajas mismas.
+  pointerEvents: 'none',
+  userSelect: 'none',
+  WebkitUserSelect: 'none',
 }
 
 const headerStyle: React.CSSProperties = {
@@ -333,6 +341,7 @@ const headerStyle: React.CSSProperties = {
   // texto envuelve. Sino el header empuja a la leyenda debajo (flexWrap).
   maxWidth: TILE * 3 + 20,
   boxSizing: 'border-box',
+  pointerEvents: 'auto', // re-habilita eventos dentro del statsLayer (ver ahi)
 }
 
 const titleStyle: React.CSSProperties = {
@@ -366,6 +375,7 @@ const cardStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   justifyContent: 'space-between',
+  pointerEvents: 'auto', // el azulejo es clickeable (ver statsLayerStyle)
 }
 
 const legendStyle: React.CSSProperties = {
@@ -376,6 +386,7 @@ const legendStyle: React.CSSProperties = {
   borderRadius: 10,
   padding: '8px 12px',
   boxShadow: '0 4px 20px rgba(38,37,30,0.08)',
+  pointerEvents: 'auto', // los toggles de capa son clickeables (ver statsLayerStyle)
 }
 
 const legendTitle: React.CSSProperties = {

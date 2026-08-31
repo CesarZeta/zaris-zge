@@ -10,6 +10,38 @@ import type { BiFiltros } from './types'
 const MES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
   'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
 
+/** Período por defecto del tablero Ejecutivo (César 2026-08-31): SIEMPRE el año
+ *  en curso con el MES ANTERIOR tildado. En enero cae a diciembre del año pasado. */
+export function periodoEjecutivoDefault(): { anio: number; meses: number[] } {
+  const hoy = new Date()
+  const m = hoy.getMonth() // 0..11 → número (1..12) del mes anterior; 0 = enero → diciembre año-1
+  return m === 0 ? { anio: hoy.getFullYear() - 1, meses: [12] } : { anio: hoy.getFullYear(), meses: [m] }
+}
+
+/** Rango fijo de los últimos 12 meses calendario (incluye el mes en curso).
+ *  Las series mensuales del Ejecutivo lo usan SIEMPRE, ignorando el filtro de
+ *  período (César 2026-08-31: "los histogramas muestran los últimos 12 meses"). */
+export function ultimos12MesesRango(): { desde: string; hasta: string } {
+  const hoy = new Date()
+  const desde = new Date(hoy.getFullYear(), hoy.getMonth() - 11, 1)
+  const iso = (x: Date) =>
+    `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
+  return { desde: iso(desde), hasta: iso(hoy) }
+}
+
+/** Claves 'YYYY-MM' de los últimos 12 meses en orden cronológico. El backend
+ *  solo devuelve los meses CON datos; las series del Ejecutivo completan los
+ *  que faltan (con ceros/null) para que el eje muestre siempre 12 meses. */
+export function mesesUlt12(): string[] {
+  const hoy = new Date()
+  const out: string[] = []
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1)
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+  return out
+}
+
 function listaEnLetras(xs: string[]): string {
   if (xs.length <= 1) return xs[0] ?? ''
   return `${xs.slice(0, -1).join(', ')} y ${xs[xs.length - 1]}`

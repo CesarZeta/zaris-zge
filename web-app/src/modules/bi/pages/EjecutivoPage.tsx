@@ -7,6 +7,7 @@ import { HistoricoEjSection } from '../sections/HistoricoEjSection'
 import { MayoresEjSection } from '../sections/MayoresEjSection'
 import { SatisfaccionEjSection } from '../sections/SatisfaccionEjSection'
 import type { BiFiltros } from '../lib/types'
+import { periodoEjecutivoDefault } from '../lib/periodo'
 import { useAuthStore } from '../../../stores/auth'
 
 // Tablero EJECUTIVO — "Análisis de demanda ciudadana" (2026-08-30). Decisiones
@@ -54,17 +55,19 @@ export function EjecutivoPage() {
     try { return localStorage.getItem(FILTROS_KEY) === '1' } catch { return false }
   })
 
-  // Área por defecto: mismas reglas que el Operativo (admin → última usada o la
-  // del agente, con "Todas" permitida; supervisor → la de su agente).
+  // Defaults del Ejecutivo (César 2026-08-31): SIEMPRE arranca con el año en
+  // curso + mes anterior tildado, y con "Todas las áreas" (admin). El área
+  // guardada en localStorage NO se restaura al boot (el "siempre" manda); para
+  // el supervisor (sin "Todas" permitida) queda la de su agente.
   useEffect(() => {
     if (filtros !== null || miArea.isLoading || areas.isLoading) return
     const catalogo = areas.data ?? []
     const valida = (id?: number | null) => (id != null && catalogo.some((a) => a.id_area === id) ? id : undefined)
     const inicial = esAdmin
-      ? (valida(leerAreaGuardada()) ?? valida(miArea.data?.id_area) ?? undefined)
+      ? undefined // Todas las áreas
       : (valida(miArea.data?.id_area) ?? valida(leerAreaGuardada()) ?? catalogo[0]?.id_area)
     setAreaInicial(inicial)
-    setFiltros({ id_area: inicial })
+    setFiltros({ id_area: inicial, ...periodoEjecutivoDefault() })
   }, [filtros, miArea.isLoading, areas.isLoading, miArea.data, areas.data, esAdmin])
   const areaDefault = areaInicial
 

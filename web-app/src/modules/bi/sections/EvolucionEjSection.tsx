@@ -1,8 +1,9 @@
+import { useMemo } from 'react'
 import { Cell, CartesianGrid, Label, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { ChartCard, CenterMsg } from '../components/ui'
 import { AXIS, DonaCentro, Seccion, legendStyle, pieLabel, tooltipStyle, totalDe } from '../components/SeccionHeader'
 import { useEjAltasCierres, useEjCierresPorEstado, useEjEvolucion } from '../hooks/useBi'
-import { periodoEnLetras } from '../lib/periodo'
+import { mesesUlt12, periodoEnLetras, ultimos12MesesRango } from '../lib/periodo'
 import type { BiFiltros } from '../lib/types'
 import { labelMes } from '../lib/theme'
 
@@ -21,9 +22,25 @@ const COLOR_AUDITADO = '#6a1b9a'
 const lineaLabel = { fontFamily: 'var(--font-display)', fontSize: 10, fill: 'var(--fg-3)' }
 
 export function EvolucionEjSection({ filtros }: { filtros: BiFiltros }) {
-  const altasCierres = useEjAltasCierres(filtros)
-  const evolucion = useEjEvolucion(filtros)
+  // Series mensuales SIEMPRE con ventana fija de últimos 12 meses (César
+  // 2026-08-31): ignoran el filtro de período (respetan área/subárea/localidad).
+  const filtros12m = useMemo<BiFiltros>(
+    () => ({ ...filtros, anio: undefined, meses: undefined, ...ultimos12MesesRango() }),
+    [filtros],
+  )
+  const altasCierres = useEjAltasCierres(filtros12m)
+  const evolucion = useEjEvolucion(filtros12m)
   const cierres = useEjCierresPorEstado(filtros)
+
+  // El backend solo devuelve meses CON datos: completar los 12 del eje.
+  const altasCierres12 = useMemo(() => {
+    const por = new Map((altasCierres.data ?? []).map((x) => [x.mes, x]))
+    return mesesUlt12().map((mes) => por.get(mes) ?? { mes, altas: 0, cierres: 0 })
+  }, [altasCierres.data])
+  const evolucion12 = useMemo(() => {
+    const por = new Map((evolucion.data ?? []).map((x) => [x.mes, x]))
+    return mesesUlt12().map((mes) => por.get(mes) ?? { mes, total: 0, pct_cierre: null, pct_sla: null, pct_sat: null })
+  }, [evolucion.data])
 
   const totalCierres = totalDe(cierres.data ?? [])
 
@@ -34,16 +51,16 @@ export function EvolucionEjSection({ filtros }: { filtros: BiFiltros }) {
       periodo={periodoEnLetras(filtros).actual}
     >
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16 }}>
-        <ChartCard title="Incidentes ingresados vs. cerrados por mes" height={300}>
+        <ChartCard title="Incidentes ingresados vs. cerrados por mes" nota="últimos 12 meses" height={300}>
           {altasCierres.isLoading ? (
             <CenterMsg>Cargando…</CenterMsg>
           ) : !altasCierres.data?.length ? (
             <CenterMsg>Sin datos.</CenterMsg>
           ) : (
             <ResponsiveContainer>
-              <LineChart data={altasCierres.data} margin={{ top: 18, right: 18, left: 0 }}>
+              <LineChart data={altasCierres12} margin={{ top: 18, right: 18, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-primary)" />
-                <XAxis dataKey="mes" tick={AXIS} tickFormatter={labelMes} />
+                <XAxis dataKey="mes" tick={AXIS} tickFormatter={labelMes} interval={0} />
                 <YAxis tick={AXIS} allowDecimals={false} />
                 <Tooltip contentStyle={tooltipStyle} labelFormatter={(m) => labelMes(String(m))} />
                 <Legend wrapperStyle={legendStyle} />
@@ -54,16 +71,16 @@ export function EvolucionEjSection({ filtros }: { filtros: BiFiltros }) {
           )}
         </ChartCard>
 
-        <ChartCard title="Evolución de indicadores (%)" height={300}>
+        <ChartCard title="Evolución de indicadores (%)" nota="últimos 12 meses" height={300}>
           {evolucion.isLoading ? (
             <CenterMsg>Cargando…</CenterMsg>
           ) : !evolucion.data?.length ? (
             <CenterMsg>Sin datos.</CenterMsg>
           ) : (
             <ResponsiveContainer>
-              <LineChart data={evolucion.data} margin={{ top: 18, right: 18, left: 0 }}>
+              <LineChart data={evolucion12} margin={{ top: 18, right: 18, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-primary)" />
-                <XAxis dataKey="mes" tick={AXIS} tickFormatter={labelMes} />
+                <XAxis dataKey="mes" tick={AXIS} tickFormatter={labelMes} interval={0} />
                 <YAxis tick={AXIS} domain={[0, 100]} />
                 <Tooltip contentStyle={tooltipStyle} labelFormatter={(m) => labelMes(String(m))} />
                 <Legend wrapperStyle={legendStyle} />
