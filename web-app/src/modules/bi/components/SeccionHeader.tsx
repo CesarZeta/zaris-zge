@@ -89,10 +89,19 @@ export function fmt(n: number | undefined): string {
 }
 
 // Los dos KPIs comparativos que llevan TODAS las secciones (César 2026-08-30):
-// promedio mensual del último año y el mismo valor del período del año anterior.
-export function KpisComparativos({ c, etiqueta }: { c?: Comparativo; etiqueta: string }) {
+// promedio mensual del último año y el valor del período INMEDIATAMENTE anterior
+// (César 2026-09-01, misma regla que el Ejecutivo: agosto se compara con julio,
+// no con agosto del año pasado — el backend /bi/comparativo espeja _rango_anterior).
+export function KpisComparativos({ c, etiqueta, positivoEsBueno }: {
+  c?: Comparativo
+  etiqueta: string
+  /** Respuesta (resueltos): subir es verde. Default (demanda/pendientes): bajar es verde. */
+  positivoEsBueno?: boolean
+}) {
   const var_ = c?.var_pct ?? 0
   const pos = var_ >= 0
+  const bueno = positivoEsBueno ? pos : !pos
+  const sinPrevio = !!c && c.anio_anterior === 0
   return (
     <>
       <KpiCard
@@ -101,10 +110,12 @@ export function KpisComparativos({ c, etiqueta }: { c?: Comparativo; etiqueta: s
         sub={c ? `${etiqueta}/mes · ${c.total_12m.toLocaleString('es-AR')} en 12 meses` : undefined}
       />
       <KpiCard
-        label="Mismo período año anterior"
+        label="Período anterior"
         value={c ? c.anio_anterior.toLocaleString('es-AR') : '—'}
-        accent={c ? (pos ? COLOR_TRAMO_0_3 : COLOR_TRAMO_MAS7) : 'var(--fg-1)'}
-        sub={c ? `${pos ? '+' : ''}${var_}% vs. ${c.periodo_anterior}` : undefined}
+        accent={c && !sinPrevio ? (bueno ? COLOR_TRAMO_0_3 : COLOR_TRAMO_MAS7) : 'var(--fg-1)'}
+        sub={c
+          ? (sinPrevio ? `sin datos en ${c.periodo_anterior}` : `${pos ? '+' : ''}${var_}% vs. ${c.periodo_anterior}`)
+          : undefined}
       />
     </>
   )

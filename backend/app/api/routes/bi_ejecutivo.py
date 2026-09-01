@@ -419,6 +419,17 @@ async def ej_top_tipos(
     enc = await _encuestas(db, "tr.id_tipo_reclamo AS id_tipo", 1, cond, params)
     enc = {k[0]: v for k, v in enc.items()}
 
+    # Totales del período inmediatamente anterior por tipo, para % Var (antes
+    # iba None fijo y la columna % Var de los tops mostraba siempre "—").
+    ant_map: dict = {}
+    ant = _rango_anterior(desde, hasta, anio, meses_l)
+    if ant:
+        cond_a, params_a = _where_ej(
+            ant.get("desde"), ant.get("hasta"), id_area, prioridad, id_localidad,
+            id_municipio, anio=ant.get("anio"), pares=ant.get("pares"), id_subarea=id_subarea)
+        base_a = await _agregado(db, "tr.id_tipo_reclamo AS id_tipo", 1, cond_a, params_a)
+        ant_map = {b["id_tipo"]: {"total": b["total"]} for b in base_a}
+
     if orden == "demora":
         base = [b for b in base if b["prom_dias"] is not None]
         base.sort(key=lambda x: (-(x["prom_dias"] or 0), -x["total"]))
@@ -427,7 +438,7 @@ async def ej_top_tipos(
 
     out = []
     for b in base[:limit]:
-        fila = _fila(b, enc.get(b["id_tipo"]), None)
+        fila = _fila(b, enc.get(b["id_tipo"]), ant_map.get(b["id_tipo"]))
         fila.update({"id_tipo": b["id_tipo"], "tipo": b["tipo"], "subarea": b["subarea"]})
         out.append(fila)
     return out

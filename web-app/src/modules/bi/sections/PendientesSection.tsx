@@ -10,6 +10,7 @@ import { AXIS, DonaCentro, KpisComparativos, Seccion, totalDe, fmt, legendStyle,
 import { exportarCsv, hoyISO } from '../components/exportCsv'
 import { biApi } from '../lib/api'
 import { useComparativo, usePendientesGeo, usePendientesPorTipo, usePendientesResumen } from '../hooks/useBi'
+import { periodoEnLetras } from '../lib/periodo'
 import { DashboardMap } from '../../dashboard/components/DashboardMap'
 import type { GeoReclamo } from '../../dashboard/hooks/useDashboardData'
 import type { BiFiltros, PendienteGeo } from '../lib/types'
@@ -60,7 +61,7 @@ export function PendientesSection({ filtros }: { filtros: BiFiltros }) {
     <Seccion
       id="pendientes"
       titulo="Pendientes"
-      subtitulo="Reclamos abiertos: cuántos, cuánto llevan esperando y dónde están."
+      periodo={periodoEnLetras(filtros).actual}
       onExport={handleExport}
       exportando={exportando}
       exportDisabled={!r?.total}

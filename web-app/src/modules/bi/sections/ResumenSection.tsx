@@ -10,6 +10,7 @@ import { AXIS, DonaCentro, KpisComparativos, Seccion, totalDe, fmt, legendStyle,
 import { exportarCsv, hoyISO } from '../components/exportCsv'
 import { biApi } from '../lib/api'
 import { useComparativo, usePorArea, usePorCanal, usePorEstado, useResumen } from '../hooks/useBi'
+import { periodoEnLetras } from '../lib/periodo'
 import type { BiFiltros } from '../lib/types'
 import {
   COLOR_CANCELADO, COLOR_PENDIENTE, COLOR_RESUELTO, PALETA_CATEGORICA, colorEstado, labelCanal,
@@ -57,7 +58,7 @@ export function ResumenSection({ filtros }: { filtros: BiFiltros }) {
     <Seccion
       id="resumen"
       titulo="Resumen"
-      subtitulo="Volumen y composición de los reclamos del período (todos los estados)."
+      periodo={periodoEnLetras(filtros).actual}
       onExport={handleExport}
       exportando={exportando}
       exportDisabled={!r?.total}

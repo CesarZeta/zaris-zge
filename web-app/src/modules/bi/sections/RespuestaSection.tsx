@@ -9,6 +9,7 @@ import { AXIS, KpisComparativos, Seccion, fmt, legendStyle, tooltipStyle } from 
 import { exportarCsv, hoyISO } from '../components/exportCsv'
 import { biApi } from '../lib/api'
 import { useComparativo, useEvolucionDias, useSlaResumen, useTiemposMensual, useTiemposPorTipo } from '../hooks/useBi'
+import { periodoEnLetras } from '../lib/periodo'
 import type { BiFiltros } from '../lib/types'
 import { COLOR_TRAMO_0_3, COLOR_TRAMO_4_7, COLOR_TRAMO_MAS7, labelCanal, labelMes } from '../lib/theme'
 
@@ -51,7 +52,7 @@ export function RespuestaSection({ filtros }: { filtros: BiFiltros }) {
     <Seccion
       id="respuesta"
       titulo="Respuesta"
-      subtitulo="Reclamos cerrados: cuántos se resolvieron y en cuánto tiempo (por fecha de cierre)."
+      periodo={periodoEnLetras(filtros).actual}
       onExport={handleExport}
       exportando={exportando}
       exportDisabled={!comp.data?.total}
@@ -60,7 +61,7 @@ export function RespuestaSection({ filtros }: { filtros: BiFiltros }) {
       {/* KPIs — UNA fila: totalizador + comparativos + tiempos */}
       <KpiRow n={6}>
         <KpiCard label="Resueltos" value={fmt(comp.data?.total)} accent={COLOR_TRAMO_0_3} sub={comp.data ? comp.data.periodo_actual : 'período filtrado'} />
-        <KpisComparativos c={comp.data} etiqueta="resueltos" />
+        <KpisComparativos c={comp.data} etiqueta="resueltos" positivoEsBueno />
         <KpiCard label="Tiempo cierre promedio" value={s?.dias_cierre_promedio != null ? `${s.dias_cierre_promedio} d` : '—'} accent="var(--zaris-orange)" sub="días entre alta y cierre" />
         <KpiCard label="% Dentro de SLA" value={s?.pct_dentro_sla != null ? `${s.pct_dentro_sla}%` : '—'} accent={COLOR_TRAMO_0_3} sub="cierre ≤ SLA del tipo" />
         <KpiCard

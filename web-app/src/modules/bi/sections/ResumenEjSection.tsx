@@ -163,11 +163,11 @@ export function ResumenEjSection({ filtros }: { filtros: BiFiltros }) {
           ) : !matriz.data?.filas.length ? (
             <div style={{ padding: 24 }}><CenterMsg>Sin datos para el filtro elegido.</CenterMsg></div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
+            <div>
               <table style={tableStyle}>
                 <thead>
                   <tr>
-                    <th style={{ ...thStyle, textAlign: 'left' }}>Subárea / tipo</th>
+                    <th style={{ ...thStyle, textAlign: 'left', width: 'auto' }}>Subárea / tipo</th>
                     <th style={thStyle}>Total</th>
                     <th style={thStyle}>% Var</th>
                     <th style={thStyle}>Prom. días</th>
@@ -188,7 +188,7 @@ export function ResumenEjSection({ filtros }: { filtros: BiFiltros }) {
                     />
                   ))}
                   <tr style={{ background: 'var(--surface-400)' }}>
-                    <td style={{ ...tdStyle, textAlign: 'left', fontWeight: 700 }}>Total</td>
+                    <td style={{ ...tdNombreStyle, fontWeight: 700 }}>Total</td>
                     <Celdas fila={matriz.data.total} bold />
                   </tr>
                 </tbody>
@@ -289,7 +289,7 @@ function FilaGrupo({
   return (
     <>
       <tr style={{ borderTop: '1px solid var(--border-primary)' }}>
-        <td style={{ ...tdStyle, textAlign: 'left' }}>
+        <td style={tdNombreStyle}>
           <button type="button" onClick={onToggle} style={expandBtnStyle} aria-expanded={abierta}>
             <span aria-hidden="true" style={{ display: 'inline-block', width: 14 }}>{abierta ? '▾' : '▸'}</span>
             <span style={{ fontWeight: 600 }}>{nombre}</span>
@@ -300,7 +300,7 @@ function FilaGrupo({
       </tr>
       {abierta && tipos.map((t) => (
         <tr key={t.id_tipo ?? 'sin'} style={{ background: 'var(--surface-100)' }}>
-          <td style={{ ...tdStyle, textAlign: 'left', paddingLeft: 34, color: 'var(--fg-2)' }}>{t.tipo}</td>
+          <td style={{ ...tdNombreStyle, paddingLeft: 34, color: 'var(--fg-2)' }}>{t.tipo}</td>
           <Celdas fila={t} />
         </tr>
       ))}
@@ -320,6 +320,9 @@ const notaStyle: React.CSSProperties = {
   fontFamily: 'var(--font-display)', fontSize: '0.72rem', color: 'var(--fg-3)',
   margin: '0 0 10px',
 }
+// Sin scroll horizontal (César 2026-09-01): las columnas numéricas van a su
+// ancho mínimo (width 1% + nowrap) y la PRIMERA columna (nombres) absorbe el
+// resto envolviendo el texto. Vale para toda tabla del módulo.
 const tableStyle: React.CSSProperties = {
   width: '100%', borderCollapse: 'collapse',
   fontFamily: 'var(--font-display)', fontSize: '0.8rem', color: 'var(--fg-1)',
@@ -327,11 +330,14 @@ const tableStyle: React.CSSProperties = {
 const thStyle: React.CSSProperties = {
   textAlign: 'right', padding: '6px 10px', fontSize: '0.68rem', textTransform: 'uppercase',
   letterSpacing: '0.05em', color: 'var(--fg-3)', fontWeight: 700,
-  borderBottom: '2px solid var(--zaris-orange)', whiteSpace: 'nowrap',
+  borderBottom: '2px solid var(--zaris-orange)', whiteSpace: 'nowrap', width: '1%',
 }
 const tdStyle: React.CSSProperties = {
   textAlign: 'right', padding: '6px 10px', whiteSpace: 'nowrap',
   borderBottom: '1px solid var(--border-primary)',
+}
+const tdNombreStyle: React.CSSProperties = {
+  ...tdStyle, textAlign: 'left', whiteSpace: 'normal', overflowWrap: 'break-word',
 }
 const expandBtnStyle: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'baseline', gap: 4,
