@@ -29,12 +29,12 @@ function agruparPorSubarea(rows: EjTopTipo[], metrica: (r: EjTopTipo) => number)
 
 function TablaTop({ rows, demora }: { rows: EjTopTipo[]; demora?: boolean }) {
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div>
       <table style={tableStyle}>
         <thead>
           <tr>
-            <th style={{ ...thStyle, textAlign: 'left' }}>Tipo de incidente</th>
-            <th style={{ ...thStyle, textAlign: 'left' }}>Subárea</th>
+            <th style={{ ...thStyle, textAlign: 'left', width: 'auto' }}>Tipo de incidente</th>
+            <th style={{ ...thStyle, textAlign: 'left', width: 'auto' }}>Subárea</th>
             <th style={thStyle}>Total</th>
             <th style={thStyle}>% Var</th>
             <th style={thStyle}>% Cierre</th>
@@ -45,8 +45,8 @@ function TablaTop({ rows, demora }: { rows: EjTopTipo[]; demora?: boolean }) {
         <tbody>
           {rows.map((r) => (
             <tr key={r.id_tipo ?? r.tipo}>
-              <td style={{ ...tdStyle, textAlign: 'left', maxWidth: 260, whiteSpace: 'normal' }}>{r.tipo}</td>
-              <td style={{ ...tdStyle, textAlign: 'left', color: 'var(--fg-2)' }}>{r.subarea}</td>
+              <td style={{ ...tdStyle, textAlign: 'left', whiteSpace: 'normal', overflowWrap: 'break-word' }}>{r.tipo}</td>
+              <td style={{ ...tdStyle, textAlign: 'left', whiteSpace: 'normal', overflowWrap: 'break-word', color: 'var(--fg-2)' }}>{r.subarea}</td>
               <td style={{ ...tdStyle, fontWeight: 600 }}>{fmt(r.total)}</td>
               <td style={{ ...tdStyle, color: varColor(r.var_pct) }}>{varTxt(r.var_pct)}</td>
               <td style={{ ...tdStyle, color: '#2f7fd1' }}>{pct(r.pct_cierre)}</td>
@@ -92,7 +92,7 @@ export function MayoresEjSection({ filtros }: { filtros: BiFiltros }) {
           ) : !porCantidad.data?.length ? (
             <CenterMsg>Sin datos.</CenterMsg>
           ) : (
-            <div style={{ height: '100%', overflowY: 'auto' }}>
+            <div style={{ height: '100%', overflowY: 'auto', overflowX: 'hidden' }}>
               <TablaTop rows={porCantidad.data} />
             </div>
           )}
@@ -113,7 +113,7 @@ export function MayoresEjSection({ filtros }: { filtros: BiFiltros }) {
           ) : !porDemora.data?.length ? (
             <CenterMsg>Sin cierres en el período (el promedio de días requiere reclamos resueltos).</CenterMsg>
           ) : (
-            <div style={{ height: '100%', overflowY: 'auto' }}>
+            <div style={{ height: '100%', overflowY: 'auto', overflowX: 'hidden' }}>
               <TablaTop rows={porDemora.data} demora />
             </div>
           )}
@@ -136,13 +136,17 @@ const tableStyle: React.CSSProperties = {
   width: '100%', borderCollapse: 'collapse',
   fontFamily: 'var(--font-display)', fontSize: '0.8rem', color: 'var(--fg-1)',
 }
+// Sin scroll horizontal (César 2026-09-01): numéricas a ancho mínimo (width 1%);
+// las columnas de nombres (Tipo/Subárea) absorben el resto y envuelven. Los
+// encabezados NO llevan nowrap: en cards angostas ("Cierre prom. días") se parten
+// en dos líneas en vez de imponer un mínimo que desborda.
 const thStyle: React.CSSProperties = {
-  textAlign: 'right', padding: '6px 10px', fontSize: '0.68rem', textTransform: 'uppercase',
+  textAlign: 'right', padding: '6px 6px', fontSize: '0.68rem', textTransform: 'uppercase',
   letterSpacing: '0.05em', color: 'var(--fg-3)', fontWeight: 700,
-  borderBottom: '2px solid var(--zaris-orange)', whiteSpace: 'nowrap',
+  borderBottom: '2px solid var(--zaris-orange)', width: '1%',
   position: 'sticky', top: 0, background: 'var(--surface-100)',
 }
 const tdStyle: React.CSSProperties = {
-  textAlign: 'right', padding: '6px 10px', whiteSpace: 'nowrap',
+  textAlign: 'right', padding: '6px 6px', whiteSpace: 'nowrap',
   borderBottom: '1px solid var(--border-primary)',
 }

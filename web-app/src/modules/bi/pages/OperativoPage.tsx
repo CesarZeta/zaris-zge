@@ -6,6 +6,7 @@ import { RespuestaSection } from '../sections/RespuestaSection'
 import { PendientesSection } from '../sections/PendientesSection'
 import { SubreclamosSection } from '../sections/SubreclamosSection'
 import type { BiFiltros } from '../lib/types'
+import { periodoEjecutivoDefault } from '../lib/periodo'
 import { useAuthStore } from '../../../stores/auth'
 
 // Página ÚNICA del Operativo (2026-08-30, reemplaza los 4 tabs). Decisiones de César:
@@ -13,8 +14,10 @@ import { useAuthStore } from '../../../stores/auth'
 //    (+ Subreclamos al pie), con índice fijo arriba;
 //  - filtros GLOBALES que gobiernan todas las visualizaciones y las exportaciones;
 //  - el ÁREA DE SERVICIO es el selector principal, con una por defecto: para un
-//    Supervisor la de su agente (regla §3); para un Administrador la última usada
-//    (localStorage) o la sugerida por el backend; "Todas las áreas" solo admin;
+//    Supervisor la de su agente (regla §3); el Administrador arranca en "Todas
+//    las áreas" (César 2026-09-01, mismo default que el Ejecutivo);
+//  - preseleccionado de período (César 2026-09-01, igual al Ejecutivo): año en
+//    curso + mes anterior tildado; "Limpiar" vuelve a ese default completo;
 //  - sin tablas de detalle: cada sección exporta los tickets filtrados;
 //  - al saltar desde el índice la sección queda debajo de la barra y la barra
 //    muestra SIEMPRE en qué sección se está (scroll-spy por posición);
@@ -58,19 +61,20 @@ export function OperativoPage({ seccion }: { seccion?: string }) {
     try { return localStorage.getItem(FILTROS_KEY) === '1' } catch { return false }
   })
 
-  // Área por defecto (una sola vez, cuando catálogo y backend contestaron).
-  // Candidatas en orden; se descarta cualquiera que no esté en el catálogo de
-  // áreas activas (ej. agente vinculado a un área dada de baja). Si ninguna
-  // sirve: el admin cae a "Todas", el supervisor a la primera del catálogo.
+  // Defaults del tablero (César 2026-09-01, mismo tratamiento que el Ejecutivo):
+  // SIEMPRE arranca con el año en curso + mes anterior tildado, y el admin con
+  // "Todas las áreas" (el área guardada en localStorage NO se restaura al boot).
+  // El supervisor (sin "Todas" permitida) arranca con la de su agente; se
+  // descarta cualquier candidata fuera del catálogo de áreas activas.
   useEffect(() => {
     if (filtros !== null || miArea.isLoading || areas.isLoading) return
     const catalogo = areas.data ?? []
     const valida = (id?: number | null) => (id != null && catalogo.some((a) => a.id_area === id) ? id : undefined)
     const inicial = esAdmin
-      ? (valida(leerAreaGuardada()) ?? valida(miArea.data?.id_area) ?? undefined)
+      ? undefined // Todas las áreas
       : (valida(miArea.data?.id_area) ?? valida(leerAreaGuardada()) ?? catalogo[0]?.id_area)
     setAreaInicial(inicial)
-    setFiltros({ id_area: inicial })
+    setFiltros({ id_area: inicial, ...periodoEjecutivoDefault() })
   }, [filtros, miArea.isLoading, areas.isLoading, miArea.data, areas.data, esAdmin])
   const areaDefault = areaInicial
 

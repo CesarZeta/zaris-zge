@@ -242,6 +242,8 @@ export interface Comparativo {
   total: number
   prom_mensual_12m: number
   total_12m: number
+  /** Total del período INMEDIATAMENTE anterior (regla del Ejecutivo, César
+   *  2026-09-01). El nombre es legacy del contrato: ya no es "año anterior". */
   anio_anterior: number
   comparable_actual: number
   var_pct: number

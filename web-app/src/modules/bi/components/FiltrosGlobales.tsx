@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { TipoSearch } from './TipoSearch'
 import type { AreaCatalogo, BiFiltros } from '../lib/types'
+import { periodoEjecutivoDefault } from '../lib/periodo'
 import { LABEL_CANAL } from '../lib/theme'
 
 // Panel "Filtrado de análisis" del Operativo (2026-08-30). UNA barra gobierna
@@ -72,8 +73,13 @@ export function FiltrosGlobales({
   const setRango = (patch: { desde?: string; hasta?: string }) =>
     set({ ...patch, anio: undefined, meses: undefined })
 
-  const hayFiltros = !!(filtros.desde || filtros.hasta || filtros.anio || meses.length || filtros.prioridad
-    || filtros.estado || filtros.id_tipo_reclamo || filtros.canal
+  // Default del tablero (César 2026-09-01, igual al Ejecutivo): área default +
+  // año en curso con el mes anterior tildado. "Limpiar" vuelve a ESO.
+  const def: BiFiltros = useMemo(() => ({ id_area: areaDefault, ...periodoEjecutivoDefault() }), [areaDefault])
+  const hayFiltros = !!(filtros.desde || filtros.hasta
+    || (filtros.anio ?? undefined) !== def.anio
+    || meses.join(',') !== (def.meses ?? []).join(',')
+    || filtros.prioridad || filtros.estado || filtros.id_tipo_reclamo || filtros.canal
     || (filtros.id_area ?? undefined) !== (areaDefault ?? undefined))
 
   // Resumen de lo aplicado (se muestra contraído).
@@ -97,7 +103,7 @@ export function FiltrosGlobales({
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           {hayFiltros && (
-            <button type="button" onClick={() => onChange({ id_area: areaDefault })} style={btnOutlineStyle}>
+            <button type="button" onClick={() => onChange(def)} style={btnOutlineStyle}>
               Limpiar filtros
             </button>
           )}
