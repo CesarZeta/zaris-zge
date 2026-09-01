@@ -181,6 +181,21 @@ guard JWT a nivel router, registrado en main.py después de `bi_router`). Decisi
   Tocar una ⇒ tocar las tres.
 - **`/bi/ejecutivo/top-tipos` calcula `% Var` por tipo** contra el período contiguo
   anterior (antes pasaba `ant=None` fijo y la columna de los tops mostraba siempre "—").
+- **2ª vuelta (mismo día, QA de César sobre prod):** (a) en columnas de texto de tablas
+  usar `overflowWrap: 'anywhere'`, NO `'break-word'` — es el único valor que reduce el
+  min-content de la columna; con break-word la tabla puede medir más que la card y quedar
+  RECORTADA a la derecha sin aviso (con `overflowX: hidden`). Los wrappers `overflowY`
+  de los tops llevan `paddingRight: 10` para que el scrollbar no pegue contra la última
+  columna. (b) **Las pastillas de `pieLabel` se CLAMPEAN al área del chart** (aprox
+  `2·cx / 2·cy`, válido porque el pie va centrado) — antes los labels laterales se
+  cortaban contra el borde de la visualización; valores no enteros a 1 decimal (sin eso
+  imprimía "28.400000000000002"). (c) **La barra sticky lleva un COVER absoluto**
+  (`top:-24, height:24`, fondo crema) como primer hijo: el scroller embebido
+  (`main.embeddedContent`, `overflow-y:auto` + `padding:16px`) pega la sticky al borde
+  del CONTENIDO y en la franja del padding-top se veía pasar la página; el overflow del
+  main recorta el cover en el borde del scrollport, así que nunca pisa nada. Aplica a
+  las DOS páginas (Operativo + Ejecutivo); toda barra sticky nueva bajo ese scroller
+  repite el patrón.
 
 - `reclamos.id_localidad` estaba 0/65 en prod → **backfill por reverse geocoding** (Nominatim
   vía helper §23, match por NOMBRE contra `localidades` — NUNCA por id: los ids de partido

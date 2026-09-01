@@ -145,6 +145,9 @@ export function DonaCentro(props: { viewBox?: unknown; value?: unknown }) {
 }
 
 // Label de dona (porcentaje + valor) con pastilla de contraste invertible (§13).
+// La pastilla se CLAMPEA al área del chart (César 2026-09-01: en prod los labels
+// de los costados se cortaban contra el borde de la visualización). El pie va
+// centrado en nuestras donas, así que 2·cx / 2·cy aproximan el ancho/alto del svg.
 export function pieLabel(props: {
   cx?: number; cy?: number; midAngle?: number; outerRadius?: number; percent?: number; value?: number
 }) {
@@ -154,14 +157,20 @@ export function pieLabel(props: {
   const r = outerRadius + 22
   const x = cx + r * Math.cos(-midAngle * RAD)
   const y = cy + r * Math.sin(-midAngle * RAD)
-  const txt = `${(percent * 100).toFixed(1)}% (${value})`
+  // Valores no enteros (ej. suma de promedios de días) a 1 decimal — sin esto
+  // la pastilla imprimía el float crudo ("28.400000000000002").
+  const v = typeof value === 'number' && !Number.isInteger(value) ? value.toFixed(1) : value
+  const txt = `${(percent * 100).toFixed(1)}% (${v})`
   const anchorStart = x > cx
   const w = txt.length * 6.2 + 8
-  const rx = anchorStart ? x - 4 : x - w + 4
+  let rx = anchorStart ? x - 4 : x - w + 4
+  rx = Math.min(Math.max(rx, 2), Math.max(2, cx * 2 - w - 2))
+  const ty = Math.min(Math.max(y, 12), cy * 2 - 8)
+  const tx = anchorStart ? rx + 4 : rx + w - 4
   return (
     <g>
-      <rect x={rx} y={y - 9} width={w} height={17} rx={5} fill="var(--fg-1)" fillOpacity={0.82} />
-      <text x={x} y={y} textAnchor={anchorStart ? 'start' : 'end'} dominantBaseline="central"
+      <rect x={rx} y={ty - 9} width={w} height={17} rx={5} fill="var(--fg-1)" fillOpacity={0.82} />
+      <text x={tx} y={ty} textAnchor={anchorStart ? 'start' : 'end'} dominantBaseline="central"
         fontFamily="var(--font-display)" fontSize={11} fontWeight={600} fill="var(--surface-100)">
         {txt}
       </text>

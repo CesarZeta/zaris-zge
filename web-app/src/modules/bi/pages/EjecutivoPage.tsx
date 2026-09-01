@@ -148,6 +148,8 @@ export function EjecutivoPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 48, ['--bi-sticky' as string]: `${stickyH}px` } as React.CSSProperties}>
       <div ref={stickyRef} style={stickyStyle}>
+        {/* Cover de la franja del padding-top del scroller embebido (ver OperativoPage). */}
+        <div aria-hidden="true" style={coverStyle} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
           <nav aria-label="Secciones del tablero" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
             {SECCIONES.map((s) => (
@@ -201,6 +203,11 @@ const stickyStyle: React.CSSProperties = {
   background: 'var(--zaris-cream)',
   padding: '8px 0 0',
   borderBottom: '1px solid var(--border-primary)',
+}
+// Tapa el padding-top del scroll container por encima de la barra pegada (hasta 24px).
+const coverStyle: React.CSSProperties = {
+  position: 'absolute', top: -24, left: 0, right: 0, height: 24,
+  background: 'var(--zaris-cream)',
 }
 const seccionActivaStyle: React.CSSProperties = {
   display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap',

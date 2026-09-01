@@ -45,8 +45,8 @@ function TablaTop({ rows, demora }: { rows: EjTopTipo[]; demora?: boolean }) {
         <tbody>
           {rows.map((r) => (
             <tr key={r.id_tipo ?? r.tipo}>
-              <td style={{ ...tdStyle, textAlign: 'left', whiteSpace: 'normal', overflowWrap: 'break-word' }}>{r.tipo}</td>
-              <td style={{ ...tdStyle, textAlign: 'left', whiteSpace: 'normal', overflowWrap: 'break-word', color: 'var(--fg-2)' }}>{r.subarea}</td>
+              <td style={{ ...tdStyle, textAlign: 'left', whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{r.tipo}</td>
+              <td style={{ ...tdStyle, textAlign: 'left', whiteSpace: 'normal', overflowWrap: 'anywhere', color: 'var(--fg-2)' }}>{r.subarea}</td>
               <td style={{ ...tdStyle, fontWeight: 600 }}>{fmt(r.total)}</td>
               <td style={{ ...tdStyle, color: varColor(r.var_pct) }}>{varTxt(r.var_pct)}</td>
               <td style={{ ...tdStyle, color: '#2f7fd1' }}>{pct(r.pct_cierre)}</td>
@@ -92,7 +92,7 @@ export function MayoresEjSection({ filtros }: { filtros: BiFiltros }) {
           ) : !porCantidad.data?.length ? (
             <CenterMsg>Sin datos.</CenterMsg>
           ) : (
-            <div style={{ height: '100%', overflowY: 'auto', overflowX: 'hidden' }}>
+            <div style={{ height: '100%', overflowY: 'auto', overflowX: 'hidden', paddingRight: 10 }}>
               <TablaTop rows={porCantidad.data} />
             </div>
           )}
@@ -113,7 +113,7 @@ export function MayoresEjSection({ filtros }: { filtros: BiFiltros }) {
           ) : !porDemora.data?.length ? (
             <CenterMsg>Sin cierres en el período (el promedio de días requiere reclamos resueltos).</CenterMsg>
           ) : (
-            <div style={{ height: '100%', overflowY: 'auto', overflowX: 'hidden' }}>
+            <div style={{ height: '100%', overflowY: 'auto', overflowX: 'hidden', paddingRight: 10 }}>
               <TablaTop rows={porDemora.data} demora />
             </div>
           )}
