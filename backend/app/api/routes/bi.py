@@ -1590,7 +1590,7 @@ def _hace_meses(d: date, n: int) -> date:
     return date(y, m, 1)
 
 
-@router.get("/comparativo", responses={422: {"description": "Parámetros de período inválidos (anio/meses)"}})  # marker OpenAPI §9
+@router.get("/comparativo", responses={422: {"description": "Parámetros de período inválidos (anio/meses) — comparativa vs período contiguo anterior"}})  # marker OpenAPI §9
 async def bi_comparativo(
     seccion: str = Query("resumen", description="resumen | respuesta | pendientes | subreclamos"),
     desde: Optional[date] = Query(None),
@@ -1609,9 +1609,13 @@ async def bi_comparativo(
       - total: el totalizador de lo que se esta viendo (todos los filtros).
       - prom_mensual_12m: promedio mensual del ultimo anio (12 meses calendario
         cerrados hasta hoy), con los filtros NO temporales.
-      - anio_anterior: el mismo valor en el mismo periodo del anio anterior
-        (anio-1 con los mismos meses; o desde/hasta corridos un anio; sin filtro
-        temporal: los 12 meses previos a los ultimos 12), y var_pct.
+      - anio_anterior (nombre legacy): el mismo valor en el periodo INMEDIATAMENTE
+        anterior (Cesar 2026-09-01, misma regla que _rango_anterior del Ejecutivo:
+        agosto se compara con julio, no con agosto del anio pasado). Meses elegidos
+        (<12) → el bloque contiguo de N meses que termina antes del primero, como
+        rango de fechas (puede cruzar de anio); anio completo → anio-1; desde/hasta
+        → mismo largo hacia atras; sin filtro temporal: los 12 meses previos a los
+        ultimos 12. El front ESPEJA la regla en lib/periodo.ts (periodoEnLetras).
     Universo por seccion: resumen = todos los reclamos (fecha_alta) · respuesta =
     resueltos con fecha_cierre (fecha_cierre) · pendientes = estados no finales
     (fecha_alta) · subreclamos = con padre (fecha_alta)."""
@@ -1641,17 +1645,34 @@ async def bi_comparativo(
     n_12 = await contar(ini_12, hoy, None, None)
     prom_12 = round(n_12 / 12.0, 1)
 
-    if anio:
+    if anio and meses_l and len(meses_l) < 12:
+        # Bloque contiguo de N meses que termina justo antes del primero elegido
+        # (regla del Ejecutivo). Como rango de fechas porque puede cruzar de anio
+        # (ej. meses 2-3 → dic anio-1 + ene) y anio+meses no lo expresa.
+        primero = date(anio, min(meses_l), 1)
+        d2 = _hace_meses(primero, len(meses_l))
+        h2 = primero - timedelta(days=1)
+        anterior = await contar(d2, h2, None, None)
+        comparable = total
+        lbl_act = f"{anio} · {'mes' if len(meses_l) == 1 else 'meses'} {', '.join(map(str, meses_l))}"
+        lbl_ant = (d2.strftime("%m/%Y") if (d2.year, d2.month) == (h2.year, h2.month)
+                   else f"{d2.strftime('%m/%Y')}–{h2.strftime('%m/%Y')}")
+    elif anio:
+        # Anio completo (chip solo o los 12 meses) → anio-1 completo.
         anterior = await contar(None, None, anio - 1, meses_l)
         comparable = total
-        # Etiqueta legible (Cesar): "2026 · año completo" / "2026 · mes 5" / "2026 · meses 5, 6".
-        if meses_l:
-            suf = (" · año completo" if len(meses_l) == 12
-                   else f" · {'mes' if len(meses_l) == 1 else 'meses'} {', '.join(map(str, meses_l))}")
-        else:
-            suf = ""
+        suf = " · año completo" if meses_l else ""
         lbl_act, lbl_ant = f"{anio}{suf}", f"{anio - 1}{suf}"
+    elif desde and hasta:
+        # Mismo largo INMEDIATAMENTE anterior (era: corrido un anio).
+        largo = (hasta - desde) + timedelta(days=1)
+        d2, h2 = desde - largo, desde - timedelta(days=1)
+        anterior = await contar(d2, h2, None, None)
+        comparable = total
+        lbl_act = f"{desde} a {hasta}"
+        lbl_ant = f"{d2} a {h2}"
     elif desde or hasta:
+        # Rango abierto: no hay bloque de igual largo definible → corrido un anio.
         d2 = _hace_anios(desde, 1) if desde else None
         h2 = _hace_anios(hasta, 1) if hasta else None
         anterior = await contar(d2, h2, None, meses_l)

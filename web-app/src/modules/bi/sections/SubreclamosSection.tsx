@@ -10,6 +10,7 @@ import { AXIS, DonaCentro, KpisComparativos, Seccion, totalDe, fmt, legendStyle,
 import { exportarCsv, hoyISO } from '../components/exportCsv'
 import { biApi } from '../lib/api'
 import { useComparativo, useSubreclamosPorTipo, useSubreclamosResumen } from '../hooks/useBi'
+import { periodoEnLetras } from '../lib/periodo'
 import type { BiFiltros } from '../lib/types'
 import { colorEstado } from '../lib/theme'
 
@@ -49,7 +50,7 @@ export function SubreclamosSection({ filtros }: { filtros: BiFiltros }) {
     <Seccion
       id="subreclamos"
       titulo="Subreclamos"
-      subtitulo="Intervenciones derivadas de un reclamo padre (cross-área)."
+      periodo={periodoEnLetras(filtros).actual}
       onExport={handleExport}
       exportando={exportando}
       exportDisabled={!r?.total}
