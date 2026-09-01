@@ -177,6 +177,11 @@ export function OperativoPage({ seccion }: { seccion?: string }) {
           z-index por encima de los panes/controles de Leaflet (400/1000) para
           que el mapa de Pendientes no la tape al scrollear. */}
       <div ref={stickyRef} style={stickyStyle}>
+        {/* El scroller embebido (main.embeddedContent) tiene padding-top: la barra
+            sticky se pega al borde del CONTENIDO y en esa franja superior se ve
+            pasar la página (César 2026-09-01). Este cover la tapa; el overflow
+            del main lo recorta en el borde del scrollport, así que no pisa nada. */}
+        <div aria-hidden="true" style={coverStyle} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
           <nav aria-label="Secciones del tablero" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
             {SECCIONES.map((s) => (
@@ -228,6 +233,11 @@ const stickyStyle: React.CSSProperties = {
   background: 'var(--zaris-cream)',
   padding: '8px 0 0',
   borderBottom: '1px solid var(--border-primary)',
+}
+// Tapa el padding-top del scroll container por encima de la barra pegada (hasta 24px).
+const coverStyle: React.CSSProperties = {
+  position: 'absolute', top: -24, left: 0, right: 0, height: 24,
+  background: 'var(--zaris-cream)',
 }
 const seccionActivaStyle: React.CSSProperties = {
   display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap',

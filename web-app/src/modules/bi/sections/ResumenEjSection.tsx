@@ -337,7 +337,10 @@ const tdStyle: React.CSSProperties = {
   borderBottom: '1px solid var(--border-primary)',
 }
 const tdNombreStyle: React.CSSProperties = {
-  ...tdStyle, textAlign: 'left', whiteSpace: 'normal', overflowWrap: 'break-word',
+  // 'anywhere' (no 'break-word'): es el único valor que reduce el min-content
+  // de la columna — con break-word la tabla puede seguir midiendo más que la
+  // card y quedar recortada a la derecha (cazado por César en prod, zoom alto).
+  ...tdStyle, textAlign: 'left', whiteSpace: 'normal', overflowWrap: 'anywhere',
 }
 const expandBtnStyle: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'baseline', gap: 4,
