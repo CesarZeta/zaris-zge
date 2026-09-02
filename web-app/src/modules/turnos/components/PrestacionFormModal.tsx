@@ -29,6 +29,7 @@ export function PrestacionFormModal({ open, onClose, prestacion }: Props) {
   const [tipoRecurso, setTipoRecurso] = useState<TipoRecurso>('agente')
   const [idAgente, setIdAgente] = useState<number | ''>('')
   const [idEspacio, setIdEspacio] = useState<number | ''>('')
+  const [idUbicacion, setIdUbicacion] = useState<number | ''>('')
   const [registraAtencion, setRegistraAtencion] = useState(false)
   const [idSubarea, setIdSubarea] = useState<number | null>(null)
   const [subareaActual, setSubareaActual] = useState<string | null>(null)
@@ -43,6 +44,7 @@ export function PrestacionFormModal({ open, onClose, prestacion }: Props) {
       setTipoRecurso(prestacion.tipo_recurso ?? 'agente')
       setIdAgente(prestacion.id_agente ?? '')
       setIdEspacio(prestacion.id_espacio ?? '')
+      setIdUbicacion(prestacion.id_espacio_ubicacion ?? '')
       setRegistraAtencion(prestacion.registra_atencion ?? false)
       setIdSubarea(prestacion.id_subarea ?? null)
       setSubareaActual(prestacion.subarea_nombre
@@ -56,6 +58,7 @@ export function PrestacionFormModal({ open, onClose, prestacion }: Props) {
       setTipoRecurso('agente')
       setIdAgente('')
       setIdEspacio('')
+      setIdUbicacion('')
       setRegistraAtencion(false)
       setIdSubarea(null)
       setSubareaActual(null)
@@ -82,6 +85,10 @@ export function PrestacionFormModal({ open, onClose, prestacion }: Props) {
     if (tipoRecurso === 'espacio' && idEspacio === '') {
       push({ kind: 'error', title: 'Elegí un lugar de atención' }); return
     }
+    // Regla de negocio (2026-09-01): toda prestación declara dónde se atiende.
+    if (tipoRecurso === 'agente' && idUbicacion === '') {
+      push({ kind: 'error', title: 'Elegí la ubicación de atención', body: 'Toda prestación debe declarar dónde se atiende.' }); return
+    }
     const body = {
       nombre: nombre.trim(),
       descripcion: descripcion.trim() || null,
@@ -90,6 +97,10 @@ export function PrestacionFormModal({ open, onClose, prestacion }: Props) {
       tipo_recurso: tipoRecurso,
       id_agente: tipoRecurso === 'agente' ? (idAgente as number) : null,
       id_espacio: tipoRecurso === 'espacio' ? (idEspacio as number) : null,
+      // Ubicación (mig 103): para recurso=espacio el backend usa ese mismo
+      // espacio; para recurso=agente va la elegida acá (o null = sin ubicación).
+      id_espacio_ubicacion:
+        tipoRecurso === 'agente' && idUbicacion !== '' ? (idUbicacion as number) : null,
       registra_atencion: clase === 'atencion' && registraAtencion,
       id_subarea: idSubarea,
     }
@@ -191,6 +202,36 @@ export function PrestacionFormModal({ open, onClose, prestacion }: Props) {
               {(espacios.data ?? []).length === 0 && !espacios.isLoading && (
                 <div style={hint}>No hay lugares cargados. Crealos en Agenda → Disponibilidad → Espacios.</div>
               )}
+            </>
+          )}
+        </div>
+
+        {/* Ubicación de atención (mig 103). Para recurso=espacio es ese mismo
+            espacio (se muestra fijo); para recurso=agente se elige acá. */}
+        <div>
+          <label style={lbl}>Ubicación de atención</label>
+          {tipoRecurso === 'espacio' ? (
+            <div style={{ ...hint, marginTop: 0 }}>
+              {idEspacio !== ''
+                ? 'Es el mismo lugar de atención elegido arriba.'
+                : 'Elegí el lugar de atención arriba: será también la ubicación.'}
+            </div>
+          ) : (
+            <>
+              <select
+                value={idUbicacion}
+                onChange={(e) => setIdUbicacion(e.target.value === '' ? '' : Number(e.target.value))}
+                style={inp}
+              >
+                <option value="">Elegí la ubicación…</option>
+                {(espacios.data ?? []).map((e) => (
+                  <option key={e.id_espacio} value={e.id_espacio}>{e.nombre}</option>
+                ))}
+              </select>
+              <div style={hint}>
+                Edificio o sala donde se atiende esta prestación. Agrupa los turnos por
+                ubicación y alimenta la pantalla de sala de espera.
+              </div>
             </>
           )}
         </div>

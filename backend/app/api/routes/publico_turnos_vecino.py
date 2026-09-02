@@ -169,11 +169,12 @@ async def reservar_turno_vecino(
 
         row = (await db.execute(text("""
             INSERT INTO turnos (
-                id_ciudadano, id_agente, id_espacio, id_tipo_prestacion, id_ocupacion,
+                id_ciudadano, id_agente, id_espacio, id_espacio_ubicacion,
+                id_tipo_prestacion, id_ocupacion,
                 fecha, hora_inicio, hora_fin, estado, observaciones,
                 origen, id_municipio, id_subarea
             ) VALUES (
-                :ic, :ia, :ie, :itp, :iocup,
+                :ic, :ia, :ie, :iu, :itp, :iocup,
                 :f, :hi, :hf, 'reservado', :obs,
                 'autoservicio', 1, :isa
             )
@@ -182,6 +183,7 @@ async def reservar_turno_vecino(
             "ic": id_ciudadano,
             "ia": id_recurso if tipo_recurso == "agente" else None,
             "ie": id_recurso if tipo_recurso == "espacio" else None,
+            "iu": prest["id_espacio_ubicacion"],
             "itp": payload.id_tipo_prestacion, "iocup": id_ocupacion,
             "f": payload.fecha, "hi": hora_inicio, "hf": hora_fin,
             "obs": payload.observaciones, "isa": prest["id_subarea"],

@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { MapPin, X } from 'lucide-react'
 import { useAuthStore } from '../../stores/auth'
+import { useUbicacionTurnosStore } from './stores/ubicacionTurnos'
 
 function goInicio(e: React.MouseEvent) {
   e.preventDefault()
@@ -18,14 +20,21 @@ export function TurnosLayout({ children }: { children: ReactNode }) {
   const partes = location.pathname.split('/').filter(Boolean)
   const hasPermission = useAuthStore((s) => s.hasPermission)
   const puedeGestionarPrestaciones = hasPermission(2) // nivel <= 2 (Admin o Supervisor)
+  const ubicacion = useUbicacionTurnosStore((s) => s.ubicacion)
+  const setUbicacion = useUbicacionTurnosStore((s) => s.setUbicacion)
 
-  const sub = partes[1] // 'agenda' | 'atendidos' | 'consultas' | 'prestaciones' | undefined (turnos)
+  // F2 plan ATENCION (2026-09-01): el módulo se navega ubicación-primero.
+  // index = landing de ubicaciones; 'mesa' = mesa del día; 'lista' = listado.
+  const sub = partes[1] // 'mesa' | 'lista' | 'agenda' | 'atendidos' | 'consultas' | 'prestaciones' | undefined
+  const isMesa = sub === 'mesa'
+  const isLista = sub === 'lista'
   const isAgenda = sub === 'agenda'
   const isAtendidos = sub === 'atendidos'
   const isConsultas = sub === 'consultas'
   const isPrestaciones = sub === 'prestaciones'
-  const isTurnos = !isAgenda && !isAtendidos && !isConsultas && !isPrestaciones
-  const subLabel = isAgenda ? 'Agenda' : isAtendidos ? 'Atendidos' : isConsultas ? 'Consultas' : isPrestaciones ? 'Prestaciones' : null
+  const isUbicaciones = !isMesa && !isLista && !isAgenda && !isAtendidos && !isConsultas && !isPrestaciones
+  const subLabel = isMesa ? 'Mesa del día' : isLista ? 'Turnos' : isAgenda ? 'Agenda'
+    : isAtendidos ? 'Atendidos' : isConsultas ? 'Consultas' : isPrestaciones ? 'Prestaciones' : null
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, maxWidth: 1400, margin: '0 auto', width: '100%', padding: '0 8px' }}>
@@ -47,7 +56,9 @@ export function TurnosLayout({ children }: { children: ReactNode }) {
       </nav>
 
       <div style={tabsBar}>
-        <Tab label="Turnos" active={isTurnos} onClick={() => navigate('/turnos')} />
+        <Tab label="Ubicaciones" active={isUbicaciones} onClick={() => navigate('/turnos')} />
+        <Tab label="Mesa del día" active={isMesa} onClick={() => navigate('/turnos/mesa')} />
+        <Tab label="Turnos" active={isLista} onClick={() => navigate('/turnos/lista')} />
         <Tab label="Agenda" active={isAgenda} onClick={() => navigate('/turnos/agenda')} />
         <Tab label="Atendidos" active={isAtendidos} onClick={() => navigate('/turnos/atendidos')} />
         <Tab label="Consultas" active={isConsultas} onClick={() => navigate('/turnos/consultas')} />
@@ -55,6 +66,24 @@ export function TurnosLayout({ children }: { children: ReactNode }) {
           <Tab label="Prestaciones" active={isPrestaciones} onClick={() => navigate('/turnos/prestaciones')} />
         )}
       </div>
+
+      {/* Contexto de ubicación: scopea Mesa, Turnos, Agenda y Atendidos. */}
+      {ubicacion && !isUbicaciones && !isConsultas && !isPrestaciones && (
+        <div style={ctxBar}>
+          <MapPin size={13} strokeWidth={1.5} style={{ color: 'var(--zaris-orange)' }} />
+          <span>
+            Ubicación: <strong style={{ color: 'var(--fg-1)' }}>{ubicacion.nombre}</strong>
+          </span>
+          <button onClick={() => navigate('/turnos')} style={ctxBtn}>Cambiar</button>
+          <button
+            onClick={() => setUbicacion(null)}
+            style={ctxBtn}
+            title="Quitar el filtro de ubicación (ver todas)"
+          >
+            <X size={12} strokeWidth={1.5} /> Quitar
+          </button>
+        </div>
+      )}
 
       <div style={{ paddingTop: 16 }}>{children}</div>
     </div>
@@ -89,10 +118,21 @@ const bcSepStyle: React.CSSProperties = { color: 'var(--fg-3)' }
 const bcCurrentStyle: React.CSSProperties = { color: 'var(--fg-2)', fontWeight: 600 }
 
 const tabsBar: React.CSSProperties = {
-  display: 'flex', gap: 4, borderBottom: '1px solid var(--border-primary)',
+  display: 'flex', gap: 4, borderBottom: '1px solid var(--border-primary)', flexWrap: 'wrap',
 }
 const tabBtn: React.CSSProperties = {
   fontFamily: 'var(--font-display)', fontSize: '0.88rem', cursor: 'pointer',
   background: 'transparent', border: 'none', padding: '10px 16px',
   marginBottom: -1,
+}
+const ctxBar: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+  fontFamily: 'var(--font-display)', fontSize: '0.78rem', color: 'var(--fg-2)',
+  background: 'var(--surface-300)', border: '1px solid var(--border-primary)', borderTop: 'none',
+  borderRadius: '0 0 10px 10px', padding: '6px 12px',
+}
+const ctxBtn: React.CSSProperties = {
+  fontFamily: 'var(--font-display)', fontSize: '0.74rem', cursor: 'pointer',
+  background: 'transparent', color: 'var(--zaris-orange)', border: 'none', fontWeight: 600,
+  display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 4px',
 }

@@ -89,7 +89,7 @@ async def _resolver_prestacion(
     """Devuelve la prestacion activa con su recurso resuelto, o 404."""
     prest = (await db.execute(text("""
         SELECT tp.id_tipo_prestacion, tp.tipo_recurso, tp.id_agente, tp.id_espacio,
-               tp.duracion_min,
+               tp.duracion_min, tp.id_espacio_ubicacion,
                CASE WHEN tp.tipo_recurso = 'espacio' THEN e.nombre
                     ELSE COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') END AS recurso_nombre,
                tp.id_subarea
@@ -104,12 +104,18 @@ async def _resolver_prestacion(
     id_recurso = prest["id_agente"] if tr == "agente" else prest["id_espacio"]
     if id_recurso is None:
         raise HTTPException(422, "La prestacion no tiene un recurso valido asignado")
+    # Ubicacion de atencion (mig 103): la de la prestacion o, si el recurso es
+    # un espacio, ese mismo espacio. Se copia al turno en TODAS las vias.
+    id_ubicacion = prest["id_espacio_ubicacion"]
+    if id_ubicacion is None and tr == "espacio":
+        id_ubicacion = int(id_recurso)
     return {
         "tipo_recurso": tr,
         "id_recurso": int(id_recurso),
         "recurso_nombre": prest["recurso_nombre"],
         "duracion_min": int(prest["duracion_min"]),
         "id_subarea": prest["id_subarea"],
+        "id_espacio_ubicacion": id_ubicacion,
     }
 
 
@@ -354,17 +360,19 @@ async def reservar_turno_publico(
 
         row = (await db.execute(text("""
             INSERT INTO turnos (
-                id_ciudadano, id_agente, id_espacio, id_tipo_prestacion, id_ocupacion,
+                id_ciudadano, id_agente, id_espacio, id_espacio_ubicacion,
+                id_tipo_prestacion, id_ocupacion,
                 fecha, hora_inicio, hora_fin, estado, observaciones,
                 origen, id_municipio, id_subarea
             ) VALUES (
-                :ic, :ia, :ie, :itp, :iocup,
+                :ic, :ia, :ie, :iu, :itp, :iocup,
                 :f, :hi, :hf, 'reservado', :obs,
                 'autoservicio', 1, :isa
             )
             RETURNING id_turno, CAST(token_turno AS TEXT) AS token_turno
         """), {
             "ic": int(ciu["id_ciudadano"]), "ia": id_agente_turno, "ie": id_espacio_turno,
+            "iu": prest["id_espacio_ubicacion"],
             "itp": payload.id_tipo_prestacion, "iocup": id_ocupacion,
             "f": payload.fecha, "hi": hora_inicio, "hf": hora_fin,
             "obs": payload.observaciones, "isa": id_subarea,

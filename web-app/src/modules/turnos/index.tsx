@@ -7,6 +7,8 @@ import { Atendidos } from './pages/Atendidos'
 import { Consultas } from './pages/Consultas'
 import { Prestaciones } from './pages/Prestaciones'
 import { AgendaTurnos } from './pages/AgendaTurnos'
+import { Ubicaciones } from './pages/Ubicaciones'
+import { MesaUbicacion } from './pages/MesaUbicacion'
 
 // Modulo Turnos (replanteado mig 71): los turnos cumplen PRESTACIONES. Una
 // prestacion define el recurso fijo (un agente o un lugar de atencion), su
@@ -26,7 +28,13 @@ export const turnosModule: ModuleManifest = {
   icon:  Clock,
   moduloCodigo: 'turnos',
   routes: [
-    { index: true,           element: Wrap(Overview),       handle: { breadcrumb: 'turnos' } },
+    // F2 plan ATENCION (2026-09-01): el módulo se navega UBICACIÓN-primero.
+    // index = landing de ubicaciones; 'mesa' = mesa del día de la ubicación
+    // elegida; 'lista' = el listado histórico de turnos (scopeado por la
+    // ubicación seleccionada, si hay).
+    { index: true,           element: Wrap(Ubicaciones),     handle: { breadcrumb: 'turnos' } },
+    { path: 'mesa',          element: Wrap(MesaUbicacion),   handle: { breadcrumb: 'turnos · mesa' } },
+    { path: 'lista',         element: Wrap(Overview),        handle: { breadcrumb: 'turnos · lista' } },
     // "Mis turnos" = vista de gestión del agente (sidebar "Gestión de Turnos").
     // Reusa GET /turnos scopeado por nivel; no es una tab del layout, es ruta
     // directa enfocada en cumplir lo propio.

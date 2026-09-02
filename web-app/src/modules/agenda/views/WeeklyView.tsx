@@ -43,7 +43,11 @@ export function WeeklyView() {
   const idMun = useAgendaStore((s) => s.idMunicipio)
   const filtroRec = useAgendaStore((s) => s.filtroRecurso)
   const filtroSubarea = useAgendaStore((s) => s.filtroSubarea)
+  const filtroUbicacion = useAgendaStore((s) => s.filtroUbicacion)
   const { tipo_recurso, atendido, scopeSubareaPropia } = filtroUIaBackend(filtroRec)
+  // Modo UBICACION (F2b): la grilla muestra el espacio + sus agentes.
+  const modoUbicacion = filtroRec === 'ubicacion'
+  const idUbicacion = modoUbicacion ? filtroUbicacion?.id ?? null : null
   const { moverOcupacion } = useDragMutations()
 
   // Empezamos la semana en el lunes de la semana de la fecha activa.
@@ -54,7 +58,7 @@ export function WeeklyView() {
     return toIsoDate(sumarDias(d, -restar))
   }, [fecha])
 
-  const sem = useCalendarioSemana(desde, 7, idMun, tipo_recurso, filtroSubarea, atendido, scopeSubareaPropia)
+  const sem = useCalendarioSemana(desde, 7, idMun, tipo_recurso, filtroSubarea, atendido, scopeSubareaPropia, idUbicacion)
   const [eventoOpen, setEventoOpen] = useState<{ id: number | null } | null>(null)
   const [ocupOpen,   setOcupOpen]   = useState<{ ocupacion: Ocupacion | null } | null>(null)
   const [activeDrag, setActiveDrag] = useState<WeeklyDragPayload | null>(null)
@@ -121,6 +125,20 @@ export function WeeklyView() {
       },
     })
     setPendingMove(null)
+  }
+
+  // Modo ubicación sin ubicación elegida: pedirla antes de mostrar la grilla.
+  if (modoUbicacion && !filtroUbicacion) {
+    return (
+      <div style={{
+        background: 'var(--surface-100)', border: '1px solid var(--border-primary)',
+        borderRadius: 12, padding: 40, textAlign: 'center',
+        color: 'var(--fg-2)', fontFamily: 'var(--font-display)', fontSize: '0.88rem',
+      }}>
+        Elegí una ubicación en el selector de arriba para ver su agenda
+        (el lugar + los agentes que atienden ahí).
+      </div>
+    )
   }
 
   if (sem.isLoading) return <><AgendaFilters /><Skeleton height={400} /></>

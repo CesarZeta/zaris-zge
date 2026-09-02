@@ -33,6 +33,7 @@ import type {
   ReservaCreatePayload,
   SubareaItem,
   TipoRecurso,
+  UbicacionAtencionItem,
 } from '../types/agenda'
 
 const BASE = '/api/v1/agenda'
@@ -137,11 +138,14 @@ export function getCalendarioDia(
   id_subarea: number | null = null,
   atendido: boolean | null = null,
   scope_subarea_propia = false,
+  id_espacio_ubicacion: number | null = null,
 ) {
   const params: Record<string, string | number | boolean | null | undefined> = { fecha, id_municipio, tipo_recurso }
   if (id_subarea != null) params.id_subarea = id_subarea
   if (atendido != null) params.atendido = atendido
   if (scope_subarea_propia) params.scope_subarea_propia = true
+  // Modo UBICACION (F2b): el backend ignora tipo_recurso/atendido/subarea.
+  if (id_espacio_ubicacion != null) params.id_espacio_ubicacion = id_espacio_ubicacion
   return api.get<CalendarioDia>(`${BASE}/calendario`, { params })
 }
 export function getCalendarioSemana(
@@ -152,12 +156,21 @@ export function getCalendarioSemana(
   id_subarea: number | null = null,
   atendido: boolean | null = null,
   scope_subarea_propia = false,
+  id_espacio_ubicacion: number | null = null,
 ) {
   const params: Record<string, string | number | boolean | null | undefined> = { desde, dias, id_municipio, tipo_recurso }
   if (id_subarea != null) params.id_subarea = id_subarea
   if (atendido != null) params.atendido = atendido
   if (scope_subarea_propia) params.scope_subarea_propia = true
+  if (id_espacio_ubicacion != null) params.id_espacio_ubicacion = id_espacio_ubicacion
   return api.get<CalendarioSemana>(`${BASE}/semana`, { params })
+}
+
+// ----- Ubicaciones de atencion (F2b plan ATENCION) -------------------------
+// URL directa al endpoint del modulo Turnos (NO se importa codigo de ese
+// modulo para no armar dependencia circular agenda <-> turnos).
+export function listarUbicacionesAtencion() {
+  return api.get<UbicacionAtencionItem[]>('/api/v1/turnos/ubicaciones')
 }
 export function getCalendarioMes(
   anio: number,
