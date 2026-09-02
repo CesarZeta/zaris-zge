@@ -9,6 +9,7 @@ import { ConfirmModal } from '../../agenda/components/ConfirmModal'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { useTurnoFiltros, TurnoFiltrosBar } from '../lib/turnoFiltros'
 import { exportarTurnosPdf, type TurnoPdfRow } from '../lib/exportPdf'
+import { useUbicacionTurnosStore } from '../stores/ubicacionTurnos'
 import type { CumplirTurnoBody, EstadoTurno, Turno } from '../types/turno'
 
 type FiltroEstado = EstadoTurno | ''
@@ -32,10 +33,14 @@ export function Overview() {
   const [confirmCancelar, setConfirmCancelar] = useState<Turno | null>(null)
   const [detalle, setDetalle] = useState<Turno | null>(null)
 
+  // Contexto ubicación-primero (F2): si hay ubicación elegida, el listado
+  // muestra solo sus turnos (el filtro lo aplica el backend).
+  const ubicacion = useUbicacionTurnosStore((s) => s.ubicacion)
   const { data, isLoading, isError, error, refetch, isFetching } = useTurnos({
     estado: fEstado || undefined,
     fecha_desde: fDesde || undefined,
     fecha_hasta: fHasta || undefined,
+    id_espacio_ubicacion: ubicacion?.id_espacio,
   })
   const cumplir = useCumplirTurno()
   const cancelar = useCancelarTurno()

@@ -5,6 +5,7 @@ import { TurnoDetalleModal } from '../components/TurnoDetalleModal'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { useTurnoFiltros, TurnoFiltrosBar } from '../lib/turnoFiltros'
 import { exportarAtendidosPdf, type TurnoPdfRow } from '../lib/exportPdf'
+import { useUbicacionTurnosStore } from '../stores/ubicacionTurnos'
 import type { Turno } from '../types/turno'
 
 export function Atendidos() {
@@ -15,10 +16,13 @@ export function Atendidos() {
   const [fDesde, setFDesde] = useState('')
   const [fHasta, setFHasta] = useState('')
 
+  // Contexto ubicación-primero (F2): respeta la ubicación elegida en el módulo.
+  const ubicacion = useUbicacionTurnosStore((s) => s.ubicacion)
   const { data, isLoading, isError, error, refetch, isFetching } = useTurnos({
     estado: 'cumplido',
     fecha_desde: fDesde || undefined,
     fecha_hasta: fHasta || undefined,
+    id_espacio_ubicacion: ubicacion?.id_espacio,
   })
 
   const turnos = data ?? []

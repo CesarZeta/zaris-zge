@@ -5,6 +5,7 @@ import {
   getCalendarioMes,
   getCalendarioSemana,
   getRecursosConteos,
+  listarUbicacionesAtencion,
 } from '../api/agendaApi'
 import type { TipoRecurso } from '../types/agenda'
 
@@ -15,10 +16,11 @@ export function useCalendarioDia(
   idSubarea: number | null = null,
   atendido: boolean | null = null,
   scopeSubareaPropia = false,
+  idEspacioUbicacion: number | null = null,
 ) {
   return useQuery({
-    queryKey: ['agenda', 'calendario', fecha, idMunicipio, tipoRecurso, idSubarea, atendido, scopeSubareaPropia],
-    queryFn:  () => getCalendarioDia(fecha, idMunicipio, tipoRecurso, idSubarea, atendido, scopeSubareaPropia),
+    queryKey: ['agenda', 'calendario', fecha, idMunicipio, tipoRecurso, idSubarea, atendido, scopeSubareaPropia, idEspacioUbicacion],
+    queryFn:  () => getCalendarioDia(fecha, idMunicipio, tipoRecurso, idSubarea, atendido, scopeSubareaPropia, idEspacioUbicacion),
   })
 }
 
@@ -30,10 +32,21 @@ export function useCalendarioSemana(
   idSubarea: number | null = null,
   atendido: boolean | null = null,
   scopeSubareaPropia = false,
+  idEspacioUbicacion: number | null = null,
 ) {
   return useQuery({
-    queryKey: ['agenda', 'semana', desde, dias, idMunicipio, tipoRecurso, idSubarea, atendido, scopeSubareaPropia],
-    queryFn:  () => getCalendarioSemana(desde, dias, idMunicipio, tipoRecurso, idSubarea, atendido, scopeSubareaPropia),
+    queryKey: ['agenda', 'semana', desde, dias, idMunicipio, tipoRecurso, idSubarea, atendido, scopeSubareaPropia, idEspacioUbicacion],
+    queryFn:  () => getCalendarioSemana(desde, dias, idMunicipio, tipoRecurso, idSubarea, atendido, scopeSubareaPropia, idEspacioUbicacion),
+  })
+}
+
+/** Ubicaciones de atención para el modo 'ubicacion' de la grilla (F2b). */
+export function useUbicacionesAtencion(enabled = true) {
+  return useQuery({
+    queryKey: ['agenda', 'ubicaciones-atencion'],
+    queryFn:  () => listarUbicacionesAtencion(),
+    staleTime: 60_000,
+    enabled,
   })
 }
 

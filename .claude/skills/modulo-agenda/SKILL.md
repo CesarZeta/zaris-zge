@@ -43,6 +43,13 @@ Resuelve los rangos horarios efectivos para una fecha aplicando bitmask `dias_se
 
 **Scope por subárea del supervisor:** `/calendario` y `/semana` aceptan `scope_subarea_propia`. Si `true`, filtra recursos a la subárea del usuario (`usuarios → agentes.id_subarea`). **Admin (nivel 1) NO se scopea.** **Fail-open** si no se puede resolver la subárea. La pill "Equipos·OT" lo manda automáticamente. Helper `_resolver_scope_subarea` en `agenda_v2.py`: `id_subarea` explícito > scope propio > None.
 
+### Modo UBICACIÓN en la grilla (F2b plan ATENCION, 2026-09-01)
+
+`/calendario` y `/semana` aceptan **`id_espacio_ubicacion`**: la grilla muestra los recursos de UNA ubicación de atención — el espacio + los agentes que atienden ahí (helper `_recursos_de_ubicacion`: `espacio_agentes` activos ∪ `tipo_prestacion.id_espacio_ubicacion`, mismo shape que `_listar_recursos_para_calendario`, así el pipeline ocupaciones/ausencias/disponibilidad batch no cambia). En ese modo se **ignoran** `tipo_recurso`/`atendido`/`id_subarea`/`scope_subarea_propia`; espacio inexistente/inactivo → 404. Compat retro: sin el parámetro todo sigue igual.
+
+- **Frontend**: pill "Por ubicación" (PRIMERA del toggle, `FiltroRecursoUI` sumó `'ubicacion'`) + select agrupado por gestión que consume `GET /api/v1/turnos/ubicaciones` **por URL directa desde `agendaApi.ts`** — NO importar código del módulo Turnos (Turnos ya importa componentes de Agenda; un import inverso arma dependencia circular). Estado en `agendaStore.filtroUbicacion` (no persistido); `filtroUIaBackend` tiene un case `'ubicacion'` fallback inocuo por exhaustividad del switch. Sin ubicación elegida, Día/Semana muestran prompt. Vista **Mes queda fuera** del modo (muestra eventos).
+- A diferencia de la Mesa de Turnos, esta grilla **NO enmascara** las ocupaciones del agente en otra ubicación: es la agenda del recurso y siempre mostró todas sus ocupaciones (comportamiento histórico del módulo).
+
 ### Sistemas de auditoría coexistentes
 
 Dos sistemas con vocabularios distintos — **no unificar sin decisión explícita**:

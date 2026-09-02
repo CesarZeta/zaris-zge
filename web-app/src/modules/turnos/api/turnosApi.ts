@@ -3,11 +3,13 @@ import type {
   CrearTurnoBody,
   CumplirTurnoBody,
   ListarTurnosFiltros,
+  MesaUbicacion,
   PrestacionInput,
   ReprogramarTurnoBody,
   TipoPrestacion,
   Turno,
   TurnoAtencion,
+  UbicacionTurnos,
 } from '../types/turno'
 
 // --- Prestaciones (catalogo) ---
@@ -41,3 +43,13 @@ export const listarAtenciones = (id_ciudadano: number) =>
 
 export const cancelarTurno = (id_turno: number) =>
   api.patch<Turno>(`/api/v1/turnos/${id_turno}/cancelar`)
+
+export const obtenerTurno = (id_turno: number) =>
+  api.get<Turno>(`/api/v1/turnos/${id_turno}`)
+
+// --- Ubicaciones de atencion (F2 plan ATENCION) ---
+export const listarUbicaciones = (fecha?: string) =>
+  api.get<UbicacionTurnos[]>('/api/v1/turnos/ubicaciones', { params: fecha ? { fecha } : {} })
+
+export const mesaUbicacion = (id_espacio: number, fecha?: string) =>
+  api.get<MesaUbicacion>(`/api/v1/turnos/ubicaciones/${id_espacio}/mesa`, { params: fecha ? { fecha } : {} })

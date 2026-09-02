@@ -1,20 +1,24 @@
-import { Users, UsersRound, Building2, DoorClosed } from 'lucide-react'
+import { Users, UsersRound, Building2, DoorClosed, MapPin } from 'lucide-react'
 import { useAgendaStore } from '../store/agendaStore'
-import { useRecursosConteos } from '../hooks/useAgenda'
-import type { FiltroRecursoUI } from '../types/agenda'
+import { useRecursosConteos, useUbicacionesAtencion } from '../hooks/useAgenda'
+import type { FiltroRecursoUI, UbicacionAtencionItem } from '../types/agenda'
 
 type Pill = {
   value: FiltroRecursoUI
   label: string
   icon: typeof Users
-  conteoKey: 'agentes' | 'equipos' | 'espacios_atendidos' | 'espacios_desatendidos'
+  conteoKey: 'agentes' | 'equipos' | 'espacios_atendidos' | 'espacios_desatendidos' | null
   // Para qué sirve esta vista — se muestra como subtítulo al seleccionarla.
   proposito: string
 }
 
-// Las 4 vistas de Agenda no son intercambiables: cada tipo de recurso sirve a
-// un módulo distinto. Las pills lo comunican en el label + el subtítulo.
+// Las vistas de Agenda no son intercambiables: cada una sirve a un módulo
+// distinto. Las pills lo comunican en el label + el subtítulo.
 const PILLS: Pill[] = [
+  {
+    value: 'ubicacion', label: 'Por ubicación', icon: MapPin, conteoKey: null,
+    proposito: 'La agenda de una ubicación de atención: el lugar + los agentes que atienden ahí (mismo enfoque que el módulo Turnos).',
+  },
   {
     value: 'agentes', label: 'Agentes', icon: Users, conteoKey: 'agentes',
     proposito: 'Disponibilidad individual de agentes. Base para asignar OT y turnos.',
@@ -36,8 +40,12 @@ const PILLS: Pill[] = [
 export function RecursoTogglePills() {
   const filtro = useAgendaStore((s) => s.filtroRecurso)
   const setFiltro = useAgendaStore((s) => s.setFiltroRecurso)
+  const ubicacion = useAgendaStore((s) => s.filtroUbicacion)
+  const setUbicacion = useAgendaStore((s) => s.setFiltroUbicacion)
   const idMun = useAgendaStore((s) => s.idMunicipio)
   const conteos = useRecursosConteos(idMun)
+  // Las ubicaciones se cargan solo cuando el modo 'ubicacion' está activo.
+  const ubicaciones = useUbicacionesAtencion(filtro === 'ubicacion')
 
   const pillActiva = PILLS.find((p) => p.value === filtro)
 
@@ -47,7 +55,7 @@ export function RecursoTogglePills() {
         {PILLS.map((p) => {
           const Icon = p.icon
           const active = filtro === p.value
-          const n = conteos.data?.[p.conteoKey]
+          const n = p.conteoKey ? conteos.data?.[p.conteoKey] : undefined
           return (
             <button
               key={p.value}
@@ -79,6 +87,42 @@ export function RecursoTogglePills() {
           )
         })}
       </div>
+      {/* Selector de ubicación (solo modo 'ubicacion'): agrupado por gestión. */}
+      {filtro === 'ubicacion' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <select
+            value={ubicacion?.id ?? ''}
+            onChange={(e) => {
+              const id = e.target.value === '' ? null : Number(e.target.value)
+              const u = (ubicaciones.data ?? []).find((x) => x.id_espacio === id)
+              setUbicacion(u ? { id: u.id_espacio, nombre: u.nombre } : null)
+            }}
+            style={{
+              fontFamily: 'var(--font-display)', fontSize: 13, padding: '6px 10px',
+              borderRadius: 'var(--radius-md)', border: '1px solid var(--border-medium)',
+              background: 'var(--surface-100)', color: 'var(--fg-1)', outline: 'none',
+              minWidth: 260,
+            }}
+          >
+            <option value="">Elegí la ubicación…</option>
+            {agruparPorGestion(ubicaciones.data ?? []).map(([gestion, items]) => (
+              <optgroup key={gestion} label={gestion}>
+                {items.map((u) => (
+                  <option key={u.id_espacio} value={u.id_espacio}>
+                    {u.nombre}{u.agentes > 0 ? ` (${u.agentes} agentes)` : ''}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          {ubicaciones.isLoading && <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>Cargando ubicaciones…</span>}
+          {!ubicaciones.isLoading && (ubicaciones.data ?? []).length === 0 && (
+            <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>
+              No hay ubicaciones de atención (una ubicación aparece cuando alguna prestación la declara o tiene agentes vinculados).
+            </span>
+          )}
+        </div>
+      )}
       {pillActiva && (
         <p style={{
           margin: 0, fontSize: 11, color: 'var(--fg-3)',
@@ -89,4 +133,14 @@ export function RecursoTogglePills() {
       )}
     </div>
   )
+}
+
+function agruparPorGestion(items: UbicacionAtencionItem[]): [string, UbicacionAtencionItem[]][] {
+  const m = new Map<string, UbicacionAtencionItem[]>()
+  for (const u of items) {
+    const g = u.area_nombre ?? 'Sin gestión asignada'
+    if (!m.has(g)) m.set(g, [])
+    m.get(g)!.push(u)
+  }
+  return [...m.entries()]
 }

@@ -9,6 +9,8 @@ import {
   listarAtenciones,
   listarPrestaciones,
   listarTurnos,
+  listarUbicaciones,
+  mesaUbicacion,
   reprogramarTurno,
 } from '../api/turnosApi'
 import type {
@@ -27,6 +29,24 @@ export function useTurnos(filtros: ListarTurnosFiltros, opts: { enabled?: boolea
     queryFn: () => listarTurnos(filtros),
     staleTime: 15 * 1000,
     enabled: opts.enabled ?? true,
+  })
+}
+
+// --- Ubicaciones de atencion (F2 plan ATENCION) ---
+export function useUbicaciones(fecha?: string) {
+  return useQuery({
+    queryKey: ['turnos', 'ubicaciones', fecha ?? 'hoy'],
+    queryFn: () => listarUbicaciones(fecha),
+    staleTime: 30 * 1000,
+  })
+}
+
+export function useMesaUbicacion(id_espacio: number | null, fecha?: string) {
+  return useQuery({
+    queryKey: ['turnos', 'mesa', id_espacio, fecha ?? 'hoy'],
+    queryFn: () => mesaUbicacion(id_espacio as number, fecha),
+    enabled: id_espacio != null,
+    staleTime: 15 * 1000,
   })
 }
 
@@ -70,6 +90,9 @@ export function useEliminarPrestacion() {
 // --- Turnos ---
 function invalidar(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['turnos', 'lista'] })
+  // La mesa y los contadores de la landing muestran los mismos turnos.
+  qc.invalidateQueries({ queryKey: ['turnos', 'mesa'] })
+  qc.invalidateQueries({ queryKey: ['turnos', 'ubicaciones'] })
 }
 
 export function useCrearTurno() {

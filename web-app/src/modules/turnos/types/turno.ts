@@ -12,6 +12,9 @@ export interface TipoPrestacion {
   id_agente: number | null
   id_espacio: number | null
   recurso_nombre: string | null
+  /** Ubicación donde se atiende (mig 103). Para recurso=espacio es ese espacio. */
+  id_espacio_ubicacion: number | null
+  ubicacion_nombre: string | null
   id_subarea: number | null
   subarea_nombre: string | null
   id_area: number | null
@@ -28,6 +31,9 @@ export interface PrestacionInput {
   tipo_recurso: TipoRecurso
   id_agente?: number | null
   id_espacio?: number | null
+  /** Ubicación donde se atiende. Si el recurso es un espacio y se omite,
+   *  el backend usa ese mismo espacio. */
+  id_espacio_ubicacion?: number | null
   id_subarea?: number | null
   registra_atencion?: boolean
 }
@@ -43,6 +49,9 @@ export interface Turno {
   espacio_nombre: string | null
   recurso_tipo: 'agente' | 'espacio' | null
   recurso_nombre: string | null
+  /** Ubicación donde se atiende, copiada de la prestación al reservar (mig 103). */
+  id_espacio_ubicacion: number | null
+  ubicacion_nombre: string | null
   id_tipo_prestacion: number
   prestacion_nombre: string | null
   prestacion_clase: string | null
@@ -103,10 +112,65 @@ export interface TurnoAtencion {
   fecha_alta: string
 }
 
+/** Una ubicación de atención (espacio con prestaciones o agentes vinculados),
+ *  con su gestión (área vía subárea) y los contadores de turnos del día. */
+export interface UbicacionTurnos {
+  id_espacio: number
+  nombre: string
+  direccion: string | null
+  id_subarea: number | null
+  subarea_nombre: string | null
+  id_area: number | null
+  area_nombre: string | null
+  prestaciones: number
+  agentes: number
+  reservados: number
+  cumplidos: number
+  cancelados: number
+}
+
+export interface MesaRango {
+  hora_inicio: string
+  hora_fin: string
+}
+
+export interface MesaOcupacion {
+  id_ocupacion: number
+  tipo: string // 'turno' | 'evento' | 'ot' | 'bloqueo'
+  hora_inicio: string
+  hora_fin: string
+  motivo: string | null
+  id_turno: number | null
+  turno_estado: string | null
+  ciudadano_nombre: string | null
+  prestacion_nombre: string | null
+  /** Turno del mismo agente pero en OTRA ubicación: viene enmascarado (solo
+   *  el bloque horario) — muestra al agente ocupado sin exponer la otra mesa. */
+  de_otra_ubicacion: boolean
+}
+
+export interface MesaRecurso {
+  tipo: 'espacio' | 'agente'
+  id_recurso: number
+  nombre: string
+  disponibilidad: MesaRango[]
+  ocupaciones: MesaOcupacion[]
+}
+
+/** Mesa del día de una ubicación: disponibilidad + ocupación por recurso. */
+export interface MesaUbicacion {
+  id_espacio: number
+  nombre: string
+  direccion: string | null
+  fecha: string
+  recursos: MesaRecurso[]
+}
+
 export interface ListarTurnosFiltros {
   estado?: EstadoTurno
   id_agente?: number
   id_espacio?: number
+  id_espacio_ubicacion?: number
   id_ciudadano?: number
   id_tipo_prestacion?: number
   fecha_desde?: string

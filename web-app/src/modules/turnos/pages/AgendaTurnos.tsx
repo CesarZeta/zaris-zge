@@ -8,6 +8,7 @@ import {
   nombreDia, etiquetaFechaCorta, etiquetaFechaLarga, mismaFecha,
   rangoDias, timeToMinutes,
 } from '../../../lib/dates'
+import { useUbicacionTurnosStore } from '../stores/ubicacionTurnos'
 import type { EstadoTurno, Turno } from '../types/turno'
 
 // Agenda de SOLO turnos, embebida en el módulo Turnos. NO reusa la grilla de
@@ -42,9 +43,12 @@ export function AgendaTurnos() {
   const desde = toIsoDate(dias[0])
   const hasta = toIsoDate(dias[dias.length - 1])
 
+  // Contexto ubicación-primero (F2): la agenda respeta la ubicación elegida.
+  const ubicacion = useUbicacionTurnosStore((s) => s.ubicacion)
   const { data, isLoading, isError, error, refetch, isFetching } = useTurnos({
     fecha_desde: desde,
     fecha_hasta: hasta,
+    id_espacio_ubicacion: ubicacion?.id_espacio,
   })
 
   // Excluir cancelados de la grilla (ocupan lugar sin sentido). Se ven en la tab Turnos.
