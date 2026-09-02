@@ -291,7 +291,21 @@ export interface EventoBusquedaItem {
 
 // 4 valores que mapean a los pills del toggle. NO se manda 'todos' al backend
 // (por performance: /semana con todos es O(n*7)). El frontend siempre elige uno.
-export type FiltroRecursoUI = 'agentes' | 'equipos' | 'espacios_atendidos' | 'espacios_desatendidos'
+// 'ubicacion' (F2b plan ATENCION, 2026-09-01): la grilla muestra una ubicación
+// de atención = el espacio + los agentes que atienden ahí.
+export type FiltroRecursoUI = 'agentes' | 'equipos' | 'espacios_atendidos' | 'espacios_desatendidos' | 'ubicacion'
+
+/** Ubicación de atención (viene de GET /api/v1/turnos/ubicaciones — se consume
+ *  por URL directa para no importar código del módulo Turnos). */
+export interface UbicacionAtencionItem {
+  id_espacio: number
+  nombre: string
+  direccion: string | null
+  area_nombre: string | null
+  subarea_nombre: string | null
+  agentes: number
+  prestaciones: number
+}
 
 // Vistas de la sub-pestana 'Vistas' del AgendaLayout.
 export type VistaGrilla = 'dia' | 'semana' | 'mes'

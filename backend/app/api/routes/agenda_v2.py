@@ -1426,6 +1426,7 @@ async def calendario_dia(
     id_subarea: Optional[int] = Query(None, description="Filtra recursos cuyo id_subarea coincida"),
     scope_subarea_propia: bool = Query(False, description="Si True, limita los recursos a la subarea del usuario logueado (resuelta via su agente). Fail-open: si no se puede resolver, no filtra. Pensado para la vista por equipos del supervisor (ver §33 CLAUDE.md)."),
     atendido: Optional[bool] = Query(None, description="Solo aplica a tipo_recurso='espacio'. None=todos, True=atendidos, False=desatendidos"),
+    id_espacio_ubicacion: Optional[int] = Query(None, description="Modo UBICACION (F2b plan ATENCION): la grilla muestra el espacio + los agentes que atienden ahi. Ignora tipo_recurso/atendido/subarea."),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
 ):
@@ -1436,8 +1437,11 @@ async def calendario_dia(
     Sub-fase B1: agrega tipo_recurso='espacio', filtro 'atendido', disponibilidad
     horaria y eventos en grilla. Compat retro: con defaults se comporta como antes
     salvo que ahora tambien devuelve disponibilidad + eventos."""
-    id_subarea = await _resolver_scope_subarea(db, _user, id_subarea, scope_subarea_propia)
-    recursos = await _listar_recursos_para_calendario(db, id_municipio, tipo_recurso, id_subarea, atendido)
+    if id_espacio_ubicacion is not None:
+        recursos = await _recursos_de_ubicacion(db, id_espacio_ubicacion)
+    else:
+        id_subarea = await _resolver_scope_subarea(db, _user, id_subarea, scope_subarea_propia)
+        recursos = await _listar_recursos_para_calendario(db, id_municipio, tipo_recurso, id_subarea, atendido)
     eventos_dia = await _eventos_del_dia(db, fecha, id_municipio)
 
     if not recursos:
@@ -1530,6 +1534,41 @@ async def _resolver_scope_subarea(
     if int(user.get("nivel_acceso", 99)) <= 1:
         return None  # admin ve todo
     return await subarea_del_usuario(db, int(user["id_usuario"]))
+
+
+async def _recursos_de_ubicacion(db: AsyncSession, id_espacio: int) -> list[dict[str, Any]]:
+    """Modo UBICACION de la grilla (F2b plan ATENCION, 2026-09-01): los recursos
+    de una ubicacion de atencion son el espacio mismo + los agentes que atienden
+    ahi (vinculados via espacio_agentes o via prestaciones de Turnos cuya
+    ubicacion es este espacio). Mismo shape que _listar_recursos_para_calendario
+    para que el resto del pipeline (ocupaciones/ausencias/disponibilidad batch)
+    no cambie."""
+    esp = (await db.execute(text("""
+        SELECT id_espacio, nombre, atendido FROM espacios_agenda
+        WHERE id_espacio = :id AND activo = TRUE
+    """), {"id": id_espacio})).mappings().first()
+    if not esp:
+        raise HTTPException(status_code=404, detail="Ubicacion no encontrada")
+    recursos: list[dict[str, Any]] = [{
+        "tipo": "espacio", "id_recurso": int(esp["id_espacio"]),
+        "nombre": esp["nombre"], "atendido": bool(esp["atendido"]),
+    }]
+    ag_rows = (await db.execute(text("""
+        SELECT DISTINCT a.id_agente, a.apellido || ', ' || a.nombre AS nombre
+        FROM agentes a
+        WHERE a.activo = TRUE AND (
+            a.id_agente IN (SELECT id_agente FROM espacio_agentes
+                             WHERE activo = TRUE AND id_espacio = :ie)
+            OR a.id_agente IN (SELECT id_agente FROM tipo_prestacion
+                                WHERE activo = TRUE AND id_espacio_ubicacion = :ie
+                                  AND tipo_recurso = 'agente' AND id_agente IS NOT NULL)
+        )
+        ORDER BY nombre
+    """), {"ie": id_espacio})).mappings().all()
+    recursos.extend({
+        "tipo": "agente", "id_recurso": int(r["id_agente"]), "nombre": r["nombre"], "atendido": None,
+    } for r in ag_rows)
+    return recursos
 
 
 async def _listar_recursos_para_calendario(
@@ -1772,6 +1811,7 @@ async def calendario_semana(
     id_subarea: Optional[int] = Query(None),
     scope_subarea_propia: bool = Query(False, description="Si True, limita los recursos a la subarea del usuario logueado. Fail-open. Ver /calendario."),
     atendido: Optional[bool] = Query(None),
+    id_espacio_ubicacion: Optional[int] = Query(None, description="Modo UBICACION (F2b plan ATENCION): la grilla muestra el espacio + los agentes que atienden ahi. Ignora tipo_recurso/atendido/subarea."),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
 ):
@@ -1783,8 +1823,11 @@ async def calendario_semana(
     pase por (recurso, dia) por el bitmask + vigencia)."""
     hasta = desde + timedelta(days=dias - 1)
 
-    id_subarea = await _resolver_scope_subarea(db, _user, id_subarea, scope_subarea_propia)
-    recursos = await _listar_recursos_para_calendario(db, id_municipio, tipo_recurso, id_subarea, atendido)
+    if id_espacio_ubicacion is not None:
+        recursos = await _recursos_de_ubicacion(db, id_espacio_ubicacion)
+    else:
+        id_subarea = await _resolver_scope_subarea(db, _user, id_subarea, scope_subarea_propia)
+        recursos = await _listar_recursos_para_calendario(db, id_municipio, tipo_recurso, id_subarea, atendido)
 
     # Ocupaciones de TODO el rango
     rows = (await db.execute(text(f"""

@@ -35,6 +35,8 @@ class TipoPrestacionOut(BaseModel):
     id_agente: Optional[int] = None
     id_espacio: Optional[int] = None
     recurso_nombre: Optional[str] = None
+    id_espacio_ubicacion: Optional[int] = None   # donde se atiende (mig 103)
+    ubicacion_nombre: Optional[str] = None
     id_subarea: Optional[int] = None
     subarea_nombre: Optional[str] = None
     id_area: Optional[int] = None
@@ -72,6 +74,11 @@ class TipoPrestacionCreate(_PrestacionRecursoMixin):
     tipo_recurso: TipoRecurso
     id_agente: Optional[int] = None
     id_espacio: Optional[int] = None
+    id_espacio_ubicacion: Optional[int] = Field(
+        None,
+        description="Ubicacion donde se atiende (mig 103). Si el recurso es un "
+                    "espacio y se omite, el backend usa ese mismo espacio.",
+    )
     id_municipio: int = 1
     id_subarea: Optional[int] = None
     registra_atencion: bool = False
@@ -85,6 +92,7 @@ class TipoPrestacionUpdate(_PrestacionRecursoMixin):
     tipo_recurso: TipoRecurso
     id_agente: Optional[int] = None
     id_espacio: Optional[int] = None
+    id_espacio_ubicacion: Optional[int] = None   # ver TipoPrestacionCreate
     id_subarea: Optional[int] = None
     registra_atencion: bool = False
 
@@ -161,6 +169,8 @@ class TurnoOut(BaseModel):
     espacio_nombre: Optional[str] = None
     recurso_tipo: Optional[str] = None  # 'agente' | 'espacio'
     recurso_nombre: Optional[str] = None
+    id_espacio_ubicacion: Optional[int] = None   # donde se atiende (mig 103)
+    ubicacion_nombre: Optional[str] = None
     id_tipo_prestacion: int
     prestacion_nombre: Optional[str] = None
     prestacion_clase: Optional[str] = None
@@ -178,6 +188,70 @@ class TurnoOut(BaseModel):
     id_subarea: Optional[int] = None
     fecha_alta: datetime
     fecha_modificacion: datetime
+
+
+# =============================================================================
+# Ubicaciones de atencion (F2 plan ATENCION, 2026-09-01) — el modulo Turnos se
+# navega ubicacion-primero: landing de ubicaciones con contadores del dia y
+# "mesa" por ubicacion (disponibilidad + ocupacion de sus recursos).
+# =============================================================================
+class UbicacionTurnosOut(BaseModel):
+    """Una ubicacion de atencion: espacio activo que es ubicacion de alguna
+    prestacion o tiene agentes vinculados. La 'gestion' es el area (via la
+    subarea del espacio)."""
+    id_espacio: int
+    nombre: str
+    direccion: Optional[str] = None
+    id_subarea: Optional[int] = None
+    subarea_nombre: Optional[str] = None
+    id_area: Optional[int] = None
+    area_nombre: Optional[str] = None
+    prestaciones: int = 0
+    agentes: int = 0
+    reservados: int = 0
+    cumplidos: int = 0
+    cancelados: int = 0
+
+
+class MesaRangoOut(BaseModel):
+    hora_inicio: time
+    hora_fin: time
+
+
+class MesaOcupacionOut(BaseModel):
+    """Una ocupacion del dia en la mesa (turno, evento, OT o bloqueo). Si es un
+    turno DE ESTA ubicacion trae ademas su estado, ciudadano y prestacion; un
+    turno del mismo agente pero en OTRA ubicacion viene enmascarado (solo el
+    bloque horario, `de_otra_ubicacion=True`) — muestra que el agente esta
+    ocupado sin exponer el detalle de la otra mesa."""
+    id_ocupacion: int
+    tipo: str
+    hora_inicio: time
+    hora_fin: time
+    motivo: Optional[str] = None
+    id_turno: Optional[int] = None
+    turno_estado: Optional[str] = None
+    ciudadano_nombre: Optional[str] = None
+    prestacion_nombre: Optional[str] = None
+    de_otra_ubicacion: bool = False
+
+
+class MesaRecursoOut(BaseModel):
+    """Un recurso de la ubicacion (el espacio mismo o un agente que atiende
+    ahi) con su disponibilidad efectiva y sus ocupaciones del dia."""
+    tipo: str  # 'espacio' | 'agente'
+    id_recurso: int
+    nombre: str
+    disponibilidad: list[MesaRangoOut] = []
+    ocupaciones: list[MesaOcupacionOut] = []
+
+
+class MesaUbicacionOut(BaseModel):
+    id_espacio: int
+    nombre: str
+    direccion: Optional[str] = None
+    fecha: date
+    recursos: list[MesaRecursoOut] = []
 
 
 # =============================================================================

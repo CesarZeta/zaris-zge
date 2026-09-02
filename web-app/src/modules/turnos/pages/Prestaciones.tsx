@@ -57,7 +57,7 @@ export function Prestaciones() {
     const txt = fTexto.trim().toLowerCase()
     if (txt) {
       res = res.filter((p) =>
-        [p.nombre, p.recurso_nombre, p.descripcion, p.area_nombre, p.subarea_nombre].filter(Boolean).join(' ').toLowerCase().includes(txt))
+        [p.nombre, p.recurso_nombre, p.ubicacion_nombre, p.descripcion, p.area_nombre, p.subarea_nombre].filter(Boolean).join(' ').toLowerCase().includes(txt))
     }
     return res
   }, [prestaciones, fTexto, fRecurso, fArea])
@@ -135,15 +135,16 @@ export function Prestaciones() {
               <th style={th}>Nombre</th>
               <th style={th}>Tipo</th>
               <th style={th}>Recurso</th>
+              <th style={th}>Ubicación</th>
               <th style={th}>Área de servicio</th>
               <th style={th}>Duración</th>
               <th style={{ ...th, textAlign: 'right' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {isLoading && <tr><td colSpan={6} style={empty}>Cargando…</td></tr>}
+            {isLoading && <tr><td colSpan={7} style={empty}>Cargando…</td></tr>}
             {!isLoading && !isError && filtradas.length === 0 && (
-              <tr><td colSpan={6} style={empty}>No hay prestaciones para los filtros seleccionados.</td></tr>
+              <tr><td colSpan={7} style={empty}>No hay prestaciones para los filtros seleccionados.</td></tr>
             )}
             {filtradas.map((p) => (
               <tr key={p.id_tipo_prestacion}>
@@ -164,6 +165,10 @@ export function Prestaciones() {
                   <div style={{ fontSize: '0.7rem', color: 'var(--fg-3)' }}>
                     {p.tipo_recurso === 'espacio' ? 'Lugar de atención' : 'Agente'}
                   </div>
+                </td>
+                <td style={td}>
+                  {p.ubicacion_nombre
+                    ?? <span style={{ color: 'var(--fg-3)' }} title="Cargá la ubicación editando la prestación">Sin ubicación</span>}
                 </td>
                 <td style={td}>
                   {p.area_nombre ?? '—'}

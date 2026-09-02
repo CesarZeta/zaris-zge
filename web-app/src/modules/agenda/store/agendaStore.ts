@@ -7,9 +7,12 @@ export type VistaAgenda = 'vistas' | 'eventos' | 'conflictos' | 'config'
 interface AgendaState {
   fechaActiva: string           // YYYY-MM-DD
   idMunicipio: number
-  // Sub-fase B2: 4 valores (agentes / equipos / espacios_atendidos / espacios_desatendidos).
+  // Sub-fase B2: 4 valores (agentes / equipos / espacios_atendidos /
+  // espacios_desatendidos) + 'ubicacion' (F2b plan ATENCION).
   filtroRecurso: FiltroRecursoUI
   filtroSubarea: number | null
+  // Ubicación elegida para el modo 'ubicacion' (espacio + sus agentes).
+  filtroUbicacion: { id: number; nombre: string } | null
   vista: VistaAgenda
   vistaGrilla: VistaGrilla       // sub-toggle dentro de 'vistas'
   // Pill inicial por rol: se aplica UNA vez por carga del bundle (VistasView).
@@ -19,6 +22,7 @@ interface AgendaState {
   setIdMunicipio: (n: number) => void
   setFiltroRecurso: (r: FiltroRecursoUI) => void
   setFiltroSubarea: (id: number | null) => void
+  setFiltroUbicacion: (u: { id: number; nombre: string } | null) => void
   setVista: (v: VistaAgenda) => void
   setVistaGrilla: (v: VistaGrilla) => void
   marcarPillInicial: () => void
@@ -30,6 +34,7 @@ export const useAgendaStore = create<AgendaState>()((set) => ({
   idMunicipio: 1,
   filtroRecurso: 'agentes',
   filtroSubarea: null,
+  filtroUbicacion: null,
   vista: 'vistas',
   vistaGrilla: 'dia',
   pillInicialAplicada: false,
@@ -37,6 +42,7 @@ export const useAgendaStore = create<AgendaState>()((set) => ({
   setIdMunicipio:    (n) => set({ idMunicipio: n }),
   setFiltroRecurso:  (r) => set({ filtroRecurso: r }),
   setFiltroSubarea:  (id) => set({ filtroSubarea: id }),
+  setFiltroUbicacion: (u) => set({ filtroUbicacion: u }),
   setVista:          (v) => set({ vista: v }),
   setVistaGrilla:    (v) => set({ vistaGrilla: v }),
   marcarPillInicial: () => set({ pillInicialAplicada: true }),
@@ -61,5 +67,8 @@ export function filtroUIaBackend(f: FiltroRecursoUI): {
     case 'equipos':               return { tipo_recurso: 'equipo',  atendido: null,  scopeSubareaPropia: true }
     case 'espacios_atendidos':    return { tipo_recurso: 'espacio', atendido: true,  scopeSubareaPropia: false }
     case 'espacios_desatendidos': return { tipo_recurso: 'espacio', atendido: false, scopeSubareaPropia: false }
+    // El modo 'ubicacion' no usa estos params (el backend recibe
+    // id_espacio_ubicacion y los ignora); fallback inocuo por exhaustividad.
+    case 'ubicacion':             return { tipo_recurso: 'agente',  atendido: null,  scopeSubareaPropia: false }
   }
 }
