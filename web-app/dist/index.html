@@ -23,7 +23,7 @@
           // Rutas PUBLICAS de autoservicio (sin sesion): el ciudadano las abre
           // standalone via link compartido (QR / WhatsApp / email). NO redirigir
           // al shell — terminaria en el login del backoffice (BUG cazado 2026-06-12).
-          if (/^#\/(autoservicio(\/|$)|turnos-autoservicio|turno\/)/.test(hash)) return;
+          if (/^#\/(autoservicio(\/|$)|turnos-autoservicio|turno\/|pantalla\/)/.test(hash)) return;
           // Detectar si estamos bajo un subpath (/zaris-zge/) o en raiz del dominio
           var subpath = p.match(/^(\/[^/]+)\/web-app\/dist\//);
           var base = subpath ? subpath[1] + '/index.html' : '/index.html';
@@ -45,7 +45,7 @@
         }
       } catch (e) { /* sin storage: tema claro */ }
     </script>
-    <script type="module" crossorigin src="/web-app/dist/assets/index-CJj1D4Yd.js"></script>
+    <script type="module" crossorigin src="/web-app/dist/assets/index-DBpvw3pX.js"></script>
     <link rel="stylesheet" crossorigin href="/web-app/dist/assets/index-Bh4Db-8H.css">
   </head>
   <body>
