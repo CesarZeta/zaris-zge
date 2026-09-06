@@ -682,6 +682,17 @@ Para listados de tablas padre cuyo dataset cabe en pantalla (ej: ≤ 50 áreas, 
 ### Modal anidado para alta inline
 Cuando un form requiere referenciar una entidad que podría no existir aún (ej: ciudadano en reclamo), **modal anidado completo** con todos los campos requeridos por el `Create` schema. Z-index mayor al modal padre. ESC y click-fuera priorizan cerrar el modal anidado primero. No "form rápido relajado" — respetar siempre el schema completo.
 
+### Pantallas de listado: SIN precarga al entrar — búsqueda diferida (regla de producto, 2026-09-06)
+
+**Entrar a una pantalla de listado/consulta NO dispara requests de datos.** La pantalla muestra los filtros con una leyenda ("Elegí qué querés ver y presioná Buscar") y un botón **Buscar** (o "Ver agenda"/"Ver mis turnos"); el request sale recién con ese clic, y **cambiar un filtro que viaja al backend tampoco dispara nada** hasta el próximo Buscar. Decisión de César tras probar Turnos en prod: el solo acceso pedía todo el historial sin que nadie lo hubiera solicitado (y a veces sin ubicación elegida), con la demora y los "Failed to fetch" a la vista.
+
+- **Qué se gatea:** listados, grillas y catálogos con filtros (en Turnos: Turnos, Agenda, Atendidos, Prestaciones, Mis turnos; Consultas ya esperaba al ciudadano).
+- **Qué NO se gatea:** la pantalla que ES el selector (landing de Ubicaciones: las opciones son los datos, una request liviana) y la pantalla operativa cuya selección ya se hizo (Mesa del día con ubicación elegida). Sin selección previa, esas pantallas piden elegir, no cargan.
+- **Los filtros client-side siguen en vivo** (texto, selects derivados de lo cargado): no hacen requests.
+- **Después de la primera búsqueda**, navegar (día anterior/siguiente en una grilla) sí re-pide: es una acción explícita.
+- **Implementación de referencia:** `web-app/src/modules/turnos/lib/busqueda.tsx` (`useBusquedaDiferida` = borrador/aplicado/version + `AvisoBuscar`); los hooks de listado aceptan `{ enabled, version }` (`version` en la queryKey para que Buscar con los mismos filtros vuelva a la red). El toolbar es un `<form onSubmit>` (Enter = Buscar) y todo botón que no busca lleva `type="button"`. Refrescar/Exportar quedan deshabilitados hasta la primera búsqueda.
+- **Alcance:** aplicado en Turnos; los demás módulos (Reclamos, OT, Trámites, Emergencias, Agenda) se migran módulo por módulo al tocarlos — **toda pantalla de listado NUEVA nace con este patrón.**
+
 ### Modales de mutación: cerrar AL CONFIRMAR, no en `onSuccess`
 La latencia Railway↔Supabase (~2s, §27) hace que un modal que espera el `onSuccess` para cerrarse se perciba como "apreté Guardar y no hace nada" (queja real del test de uso humano de Emergencias, 2026-06-11). Patrón obligatorio: al confirmar, **cerrar el modal inmediatamente** y disparar la mutación; el resultado (éxito o error) llega por toast. Además, **resetear los campos del modal al abrir** (`useEffect(open)`) — los modales viven montados con `open=false` y un cancelar deja texto residual para el próximo uso (variante de §29). Implementado en los modales de Emergencias (`EventoAccionModals.tsx`, Dispatcher y Detalle); replicar en módulos nuevos. Excepción razonable: si el modal necesita datos de la respuesta para decidir qué mostrar (no para un toast), evaluar caso a caso.
 

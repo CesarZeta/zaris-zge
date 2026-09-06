@@ -25,9 +25,18 @@ import type {
 
 const HORA = 60 * 60 * 1000
 
-export function useTurnos(filtros: ListarTurnosFiltros, opts: { enabled?: boolean } = {}) {
+/** Opciones de las queries de listado. `enabled: false` = búsqueda diferida
+ *  (§23: la pantalla no pide nada al entrar); `version` va a la queryKey para
+ *  que presionar Buscar con los mismos filtros vuelva a la red (ver
+ *  `lib/busqueda.tsx`). Los prefijos de invalidación siguen matcheando. */
+export interface OpcionesListado {
+  enabled?: boolean
+  version?: number
+}
+
+export function useTurnos(filtros: ListarTurnosFiltros, opts: OpcionesListado = {}) {
   return useQuery({
-    queryKey: ['turnos', 'lista', filtros],
+    queryKey: ['turnos', 'lista', filtros, opts.version ?? 0],
     queryFn: () => listarTurnos(filtros),
     staleTime: 15 * 1000,
     enabled: opts.enabled ?? true,
@@ -53,11 +62,15 @@ export function useMesaUbicacion(id_espacio: number | null, fecha?: string) {
 }
 
 // --- Prestaciones ---
-export function usePrestaciones(params: { clase?: string; q?: string } = {}) {
+export function usePrestaciones(
+  params: { clase?: string; q?: string } = {},
+  opts: OpcionesListado = {},
+) {
   return useQuery({
-    queryKey: ['turnos', 'prestaciones', params],
+    queryKey: ['turnos', 'prestaciones', params, opts.version ?? 0],
     queryFn: () => listarPrestaciones(params),
     staleTime: HORA,
+    enabled: opts.enabled ?? true,
   })
 }
 

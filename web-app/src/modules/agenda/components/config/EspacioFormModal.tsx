@@ -20,6 +20,7 @@ interface FormState {
   capacidad_personas: string  // string para input, parsea en submit
   atendido: boolean
   id_subarea: string
+  prefijo_colero: string  // 3 alfanumericos (mig 105) o '' = sin prefijo
 }
 
 const emptyForm: FormState = {
@@ -31,7 +32,13 @@ const emptyForm: FormState = {
   capacidad_personas: '',
   atendido: true,
   id_subarea: '',
+  prefijo_colero: '',
 }
+
+// Formato fijado por Cesar 2026-09-06: exactamente 3 letras/numeros, en
+// mayuscula, y despues el correlativo => "ODO-001". Espeja el validador del
+// backend (schemas/agenda_v2.py::normalizar_prefijo_colero).
+const PREFIJO_RE = /^[A-Z0-9]{3}$/
 
 function fromEspacio(e: EspacioAgenda): FormState {
   return {
@@ -43,6 +50,7 @@ function fromEspacio(e: EspacioAgenda): FormState {
     capacidad_personas: e.capacidad_personas != null ? String(e.capacidad_personas) : '',
     atendido: e.atendido,
     id_subarea: e.id_subarea != null ? String(e.id_subarea) : '',
+    prefijo_colero: e.prefijo_colero ?? '',
   }
 }
 
@@ -71,6 +79,7 @@ export function EspacioFormModal({ open, onClose, espacio }: Props) {
       capacidad_personas: form.capacidad_personas ? Number(form.capacidad_personas) : null,
       atendido: form.atendido,
       id_subarea: form.id_subarea ? Number(form.id_subarea) : null,
+      prefijo_colero: form.prefijo_colero.trim().toUpperCase() || null,
     }
   }
 
@@ -78,6 +87,11 @@ export function EspacioFormModal({ open, onClose, espacio }: Props) {
     e.preventDefault()
     setError(null)
     if (!form.nombre.trim()) { setError('El nombre es obligatorio.'); return }
+    const pref = form.prefijo_colero.trim().toUpperCase()
+    if (pref && !PREFIJO_RE.test(pref)) {
+      setError('El prefijo del colero debe tener exactamente 3 letras o numeros (ej. ODO).')
+      return
+    }
     try {
       if (isEdit && espacio) {
         await editar.mutateAsync({ id: espacio.id_espacio, payload: buildPayload() })
@@ -128,8 +142,11 @@ export function EspacioFormModal({ open, onClose, espacio }: Props) {
           onChange={(v) => setForm((f) => ({ ...f, direccion: v.texto, latitud: v.lat, longitud: v.lon }))}
           mapHeight={220}
         />
-        <div style={{ display: 'flex', gap: 12 }}>
-          <Field label="Capacidad personas" style={{ flex: 1 }}>
+        {/* flexWrap + minWidth: tres campos en una fila cuando entran; si no,
+            el tercero baja de línea en vez de desbordar el modal (el input no
+            se achica por debajo de su ancho intrínseco). */}
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <Field label="Capacidad personas" style={{ flex: 1, minWidth: 130 }}>
             <input
               type="number"
               min={0}
@@ -138,7 +155,7 @@ export function EspacioFormModal({ open, onClose, espacio }: Props) {
               style={inputStyle}
             />
           </Field>
-          <Field label="ID Subarea (opcional)" style={{ flex: 1 }}>
+          <Field label="ID Subarea (opcional)" style={{ flex: 1, minWidth: 130 }}>
             <input
               type="number"
               min={1}
@@ -146,6 +163,19 @@ export function EspacioFormModal({ open, onClose, espacio }: Props) {
               onChange={(e) => setForm((f) => ({ ...f, id_subarea: e.target.value }))}
               style={inputStyle}
             />
+          </Field>
+          <Field label="Prefijo colero" style={{ flex: 1, minWidth: 150 }}>
+            <input
+              value={form.prefijo_colero}
+              onChange={(e) => setForm((f) => ({ ...f, prefijo_colero: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3) }))}
+              maxLength={3}
+              placeholder="ODO"
+              title="Los numeros del colero de esta ubicacion salen con este prefijo: ODO-001, ODO-002. Vacio = sin prefijo (001)."
+              style={{ ...inputStyle, fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}
+            />
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: 11, color: 'var(--fg-3)' }}>
+              {form.prefijo_colero ? `Los numeros salen ${form.prefijo_colero}-001, ${form.prefijo_colero}-002…` : 'Vacio = sin prefijo (001, 002…)'}
+            </span>
           </Field>
         </div>
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-display)', fontSize: 13, color: 'var(--fg-1)' }}>

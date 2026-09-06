@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CalendarDays, Download, Plus, RefreshCw } from 'lucide-react'
+import { CalendarDays, Download, Plus, RefreshCw, Search } from 'lucide-react'
 import { useTurnos, useCumplirTurno, useCancelarTurno } from '../hooks/useTurnos'
 import { TurnoFormModal } from '../components/TurnoFormModal'
 import { CumplirTurnoModal } from '../components/CumplirTurnoModal'
@@ -8,6 +8,7 @@ import { TurnoDetalleModal } from '../components/TurnoDetalleModal'
 import { ConfirmModal } from '../../agenda/components/ConfirmModal'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { useTurnoFiltros, TurnoFiltrosBar } from '../lib/turnoFiltros'
+import { AvisoBuscar, useBusquedaDiferida } from '../lib/busqueda'
 import { exportarTurnosPdf, type TurnoPdfRow } from '../lib/exportPdf'
 import { useUbicacionTurnosStore } from '../stores/ubicacionTurnos'
 import type { CumplirTurnoBody, EstadoTurno, Turno } from '../types/turno'
@@ -25,10 +26,16 @@ const ESTADO_COLOR: Record<EstadoTurno, { bg: string; fg: string }> = {
 export function Overview() {
   const push = useNotificationsStore((s) => s.push)
   const navigate = useNavigate()
-  const [fEstado, setFEstado] = useState<FiltroEstado>('')
+  // Búsqueda diferida (§23): estado/desde/hasta viajan al backend recién al
+  // presionar Buscar; el texto y los selects derivados filtran lo cargado.
+  const busqueda = useBusquedaDiferida<{ estado: FiltroEstado; desde: string; hasta: string }>({
+    estado: '', desde: '', hasta: '',
+  })
+  const { estado: fEstado, desde: fDesde, hasta: fHasta } = busqueda.borrador
+  const setFEstado = (v: FiltroEstado) => busqueda.setBorrador({ ...busqueda.borrador, estado: v })
+  const setFDesde = (v: string) => busqueda.setBorrador({ ...busqueda.borrador, desde: v })
+  const setFHasta = (v: string) => busqueda.setBorrador({ ...busqueda.borrador, hasta: v })
   const [fTexto, setFTexto] = useState('')
-  const [fDesde, setFDesde] = useState('')
-  const [fHasta, setFHasta] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editTurno, setEditTurno] = useState<Turno | null>(null)
   const [confirmCumplir, setConfirmCumplir] = useState<Turno | null>(null)
@@ -39,11 +46,11 @@ export function Overview() {
   // muestra solo sus turnos (el filtro lo aplica el backend).
   const ubicacion = useUbicacionTurnosStore((s) => s.ubicacion)
   const { data, isLoading, isError, error, refetch, isFetching } = useTurnos({
-    estado: fEstado || undefined,
-    fecha_desde: fDesde || undefined,
-    fecha_hasta: fHasta || undefined,
+    estado: busqueda.aplicado?.estado || undefined,
+    fecha_desde: busqueda.aplicado?.desde || undefined,
+    fecha_hasta: busqueda.aplicado?.hasta || undefined,
     id_espacio_ubicacion: ubicacion?.id_espacio,
-  })
+  }, { enabled: busqueda.buscado, version: busqueda.version })
   const cumplir = useCumplirTurno()
   const cancelar = useCancelarTurno()
 
@@ -121,8 +128,8 @@ export function Overview() {
         </p>
       </div>
 
-      {/* Toolbar */}
-      <div style={toolbar}>
+      {/* Toolbar: es un form para que Enter en cualquier filtro dispare Buscar. */}
+      <form style={toolbar} onSubmit={(e) => { e.preventDefault(); busqueda.buscar() }}>
         <div style={field}>
           <label style={lbl}>Buscar</label>
           <input
@@ -138,7 +145,9 @@ export function Overview() {
           <select value={fEstado} onChange={(e) => setFEstado(e.target.value as FiltroEstado)} style={inp}>
             <option value="">Todos</option>
             <option value="reservado">Reservado</option>
+            <option value="llamado">Llamado</option>
             <option value="cumplido">Cumplido</option>
+            <option value="ausente">Ausente</option>
             <option value="cancelado">Cancelado</option>
           </select>
         </div>
@@ -152,40 +161,51 @@ export function Overview() {
         </div>
         <TurnoFiltrosBar opciones={opciones} filtros={filtros} setFiltros={setFiltros} />
         {hayActivos && (
-          <button onClick={limpiar} style={{ ...btnGhost, alignSelf: 'flex-end' }} title="Limpiar filtros de prestación, recurso y ciudadano">
+          <button type="button" onClick={limpiar} style={{ ...btnGhost, alignSelf: 'flex-end' }} title="Limpiar filtros de prestación, recurso y ciudadano">
             Limpiar
           </button>
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-          <button onClick={() => refetch()} style={btnGhost} title="Refrescar">
+          <button type="submit" style={btnPrimary} title="Traer los turnos con los filtros elegidos">
+            <Search size={14} strokeWidth={1.5} /> Buscar
+          </button>
+          <button type="button" onClick={() => refetch()} style={btnGhost} title="Refrescar" disabled={!busqueda.buscado}>
             <RefreshCw size={14} strokeWidth={1.5} style={{ animation: isFetching ? 'spin 1s linear infinite' : undefined }} />
           </button>
-          <button onClick={() => navigate('/turnos/agenda')} style={btnGhost} title="Ver los turnos en la agenda (día/semana)">
+          <button type="button" onClick={() => navigate('/turnos/agenda')} style={btnGhost} title="Ver los turnos en la agenda (día/semana)">
             <CalendarDays size={14} strokeWidth={1.5} /> Ver en agenda
           </button>
-          <button onClick={doExport} style={btnGhost} title="Exportar a PDF los turnos visibles (según filtros)">
+          <button type="button" onClick={doExport} style={btnGhost} title="Exportar a PDF los turnos visibles (según filtros)" disabled={!busqueda.buscado}>
             <Download size={14} strokeWidth={1.5} /> Exportar PDF
           </button>
-          <button onClick={() => { setEditTurno(null); setModalOpen(true) }} style={btnPrimary}>
+          <button type="button" onClick={() => { setEditTurno(null); setModalOpen(true) }} style={btnGhost}>
             <Plus size={14} strokeWidth={1.5} /> Nuevo turno
           </button>
         </div>
-      </div>
+      </form>
 
-      {/* Chips de conteo */}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <Chip label="Reservados" value={counts.reservado} color={ESTADO_COLOR.reservado} />
-        <Chip label="Cumplidos" value={counts.cumplido} color={ESTADO_COLOR.cumplido} />
-        <Chip label="Cancelados" value={counts.cancelado} color={ESTADO_COLOR.cancelado} />
-      </div>
+      {/* Chips de conteo (de lo que trajo la última búsqueda) */}
+      {busqueda.buscado && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Chip label="Reservados" value={counts.reservado} color={ESTADO_COLOR.reservado} />
+          <Chip label="Llamados" value={counts.llamado} color={ESTADO_COLOR.llamado} />
+          <Chip label="Cumplidos" value={counts.cumplido} color={ESTADO_COLOR.cumplido} />
+          <Chip label="Ausentes" value={counts.ausente} color={ESTADO_COLOR.ausente} />
+          <Chip label="Cancelados" value={counts.cancelado} color={ESTADO_COLOR.cancelado} />
+        </div>
+      )}
 
       {/* Link publico de autoservicio */}
       <LinkAutoservicio />
 
       {isError && <div style={errorBanner}>{(error as Error)?.message ?? 'Error al cargar turnos'}</div>}
 
-      {/* Tabla */}
-      <div style={card}>
+      {!busqueda.buscado && (
+        <AvisoBuscar texto="Elegí estado y fechas (o dejá Todos) y presioná Buscar para ver los turnos." />
+      )}
+
+      {/* Tabla: recién después de la primera búsqueda */}
+      {busqueda.buscado && <div style={card}>
         <table style={table}>
           <thead>
             <tr>
@@ -244,7 +264,7 @@ export function Overview() {
             ))}
           </tbody>
         </table>
-      </div>
+      </div>}
 
       <TurnoFormModal open={modalOpen} onClose={() => setModalOpen(false)} turno={editTurno} />
       <TurnoDetalleModal turno={detalle} onClose={() => setDetalle(null)} />

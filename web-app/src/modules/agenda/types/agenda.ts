@@ -328,6 +328,8 @@ export interface EspacioAgenda {
   atendido: boolean
   id_subarea: number | null
   subarea_nombre: string | null
+  /** Prefijo del número del colero (mig 105): 3 alfanuméricos, ej. "ODO" → "ODO-001". null = sin prefijo. */
+  prefijo_colero: string | null
   activo: boolean
   id_municipio: number
   fecha_alta: string
@@ -345,6 +347,7 @@ export interface EspacioAgendaCreatePayload {
   capacidad_personas?: number | null
   atendido: boolean
   id_subarea?: number | null
+  prefijo_colero?: string | null
   id_municipio?: number
 }
 

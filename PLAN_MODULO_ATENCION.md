@@ -245,11 +245,25 @@ Ausente + campo Puesto recordado + "Abrir pantalla"/"Copiar link" solo nivel <=2
   auth ya existente) en vez de `/turnos/pantalla/{token}`: abrir un hueco sin
   `get_current_user` en el router autenticado es fragil ante un guard futuro a
   nivel router, que ademas no se puede anular por handler.
-- **Sonido/chime**: sigue pendiente (el autoplay en TVs exige interaccion previa).
+- **Sonido/chime**: RESUELTO 2026-09-06 (decision de Cesar: "que se active con un
+  boton"). La pantalla `/pantalla/:token` tiene el boton "Activar sonido" (el
+  gesto destraba el AudioContext); a partir de ahi cada llamado nuevo (llamado_en
+  mas reciente que el ultimo visto) dispara un chime sintetizado con Web Audio.
+- **Prefijo del numero**: formato fijado por Cesar 2026-09-06 — EXACTAMENTE 3
+  alfanumericos + "-" + correlativo de 3 digitos (`ODO-001`). Validado en el
+  schema (`normalizar_prefijo_colero`: strip/upper, 422 si no son 3) y cargable
+  desde Agenda -> Config -> Espacios (campo "Prefijo del colero"). Vacio = `001`.
 
 ### F4 — Guardia + derivacion desde Emergencias
 
-- Mig 106 local + prod. Espacio "Guardia" (subarea de Salud) seed + clave de config.
+- **DEFINICION DE CESAR (2026-09-06): la Guardia vive en el area Secretaria de
+  Salud, bajo una subarea "Emergencias"** ("debe estar en el area de salud de
+  emergencias"). Verificado en prod: Secretaria de Salud (id 57, activa) tiene
+  hoy solo Odontologia (78) y Clinica medica (79) — la subarea Emergencias NO
+  existe y la crea la mig 106 (resolver el area POR NOMBRE, nunca por id: en
+  local Salud tiene otro id, §24). F4 queda destrabada.
+- Mig 106 local + prod. Subarea "Emergencias" (bajo Secretaria de Salud) +
+  espacio "Guardia" en esa subarea, seed + clave de config.
 - Emergencias: accion "Derivar a Guardia" en el detalle del evento (respeta
   FSM del modulo — invocar skill modulo-emergencias antes de tocar) -> crea
   `emergencia_atencion` + entrada en `emergencia_log`.
@@ -289,8 +303,8 @@ ubicacion Guardia). F5 depende de F4. F6 depende de F3 (llamados) y F4
 
 - Walk-in de guardia SIN evento de emergencia (vecino que llega solo): fuera
   de alcance por ahora; la demanda de guardia entra via Emergencias.
-- Sonido/chime en la pantalla colero al llamar: evaluar en F3 (autoplay de
-  audio en TVs suele requerir interaccion previa).
+- ~~Sonido/chime en la pantalla colero al llamar~~ **RESUELTO 2026-09-06**: se
+  activa con un boton en la pantalla (decision de Cesar); ver F3.
 - ~~Formato del numero diario~~ **RESUELTO en F3**: correlativo de 3 digitos por
   ubicacion + prefijo opcional configurable (`espacios_agenda.prefijo_colero`).
 - Reactivacion del area Cultura + subareas + ubicaciones reales: dato de

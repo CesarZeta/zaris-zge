@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
+import { ChevronLeft, ChevronRight, RefreshCw, Search } from 'lucide-react'
 import { useTurnos } from '../hooks/useTurnos'
 import { TurnoDetalleModal } from '../components/TurnoDetalleModal'
 import { useTurnoFiltros, TurnoFiltrosBar } from '../lib/turnoFiltros'
+import { AvisoBuscar } from '../lib/busqueda'
 import {
   toIsoDate, hoy, sumarDias, lunesDeSemana,
   nombreDia, etiquetaFechaCorta, etiquetaFechaLarga, mismaFecha,
@@ -36,6 +37,10 @@ export function AgendaTurnos() {
   const [modo, setModo] = useState<Modo>('dia')
   const [ancla, setAncla] = useState<Date>(hoy())
   const [detalle, setDetalle] = useState<Turno | null>(null)
+  // Búsqueda diferida (§23): la grilla no pide nada al entrar. "Ver agenda"
+  // habilita la query; después, cambiar de día/semana (acción explícita del
+  // usuario) vuelve a pedir el rango nuevo.
+  const [verAgenda, setVerAgenda] = useState(false)
 
   const dias = useMemo<Date[]>(() => {
     if (modo === 'dia') return [ancla]
@@ -51,7 +56,7 @@ export function AgendaTurnos() {
     fecha_desde: desde,
     fecha_hasta: hasta,
     id_espacio_ubicacion: ubicacion?.id_espacio,
-  })
+  }, { enabled: verAgenda })
 
   // Excluir cancelados de la grilla (ocupan lugar sin sentido). Se ven en la tab Turnos.
   const turnos = useMemo(
@@ -116,10 +121,21 @@ export function AgendaTurnos() {
           </span>
         </div>
 
-        <button onClick={() => refetch()} style={{ ...navBtn, marginLeft: 'auto' }} title="Refrescar">
-          <RefreshCw size={14} strokeWidth={1.5} style={{ animation: isFetching ? 'spin 1s linear infinite' : undefined }} />
-        </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          {!verAgenda && (
+            <button onClick={() => setVerAgenda(true)} style={btnPrimary} title="Traer los turnos del día o la semana elegida">
+              <Search size={14} strokeWidth={1.5} /> Ver agenda
+            </button>
+          )}
+          <button onClick={() => refetch()} style={navBtn} title="Refrescar" disabled={!verAgenda}>
+            <RefreshCw size={14} strokeWidth={1.5} style={{ animation: isFetching ? 'spin 1s linear infinite' : undefined }} />
+          </button>
+        </div>
       </div>
+
+      {!verAgenda && (
+        <AvisoBuscar texto="Elegí Día o Semana, ubicate en la fecha y presioná Ver agenda." />
+      )}
 
       {turnos.length > 0 && (
         <div style={filtrosBar}>
@@ -136,15 +152,15 @@ export function AgendaTurnos() {
 
       {/* Leyenda de estados ARRIBA de la grilla (pedido del usuario 2026-06-11:
           abajo quedaba fuera de vista al scrollear). */}
-      <div style={leyendaBar}>
+      {verAgenda && <div style={leyendaBar}>
         <Leyenda color={ESTADO_COLOR.reservado.border} label="Reservado" />
         <Leyenda color={ESTADO_COLOR.cumplido.border} label="Cumplido" />
         <span style={{ color: 'var(--fg-3)' }}>
           Los turnos cancelados no se muestran (se gestionan en la pestaña Turnos). Clic en un turno para ver su detalle.
         </span>
-      </div>
+      </div>}
 
-      <div style={card}>
+      {verAgenda && <div style={card}>
         {isLoading ? (
           <p style={vacio}>Cargando…</p>
         ) : (
@@ -191,7 +207,7 @@ export function AgendaTurnos() {
             </div>
           </div>
         )}
-      </div>
+      </div>}
 
       <TurnoDetalleModal turno={detalle} onClose={() => setDetalle(null)} />
 
@@ -268,6 +284,12 @@ const navBtn: React.CSSProperties = {
   fontFamily: 'var(--font-display)', cursor: 'pointer', borderRadius: 8, padding: '6px 8px',
   background: 'transparent', color: 'var(--fg-2)', border: '1px solid var(--border-medium)',
   display: 'inline-flex', alignItems: 'center',
+}
+const btnPrimary: React.CSSProperties = {
+  fontFamily: 'var(--font-display)', fontSize: '0.82rem', cursor: 'pointer',
+  borderRadius: 8, padding: '7px 12px', fontWeight: 500,
+  display: 'inline-flex', alignItems: 'center', gap: 6,
+  background: 'var(--zaris-orange)', color: 'white', border: '1px solid var(--zaris-orange)',
 }
 const hoyBtn: React.CSSProperties = {
   fontFamily: 'var(--font-display)', fontSize: 13, cursor: 'pointer', borderRadius: 8, padding: '6px 12px',

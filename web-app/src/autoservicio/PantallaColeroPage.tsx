@@ -13,6 +13,12 @@
  *
  * Privacidad: el backend ya proyecta "Nombre I." y nunca manda apellido completo,
  * DNI, prestación ni id de turno — acá no hay nada que ocultar de más.
+ *
+ * Sonido (decisión de César 2026-09-06): el chime al llamar se ACTIVA CON UN
+ * BOTÓN. Los navegadores (y las TVs con browser) bloquean el audio hasta que
+ * hay un gesto del usuario, así que quien enciende la pantalla toca "Activar
+ * sonido" una vez; a partir de ahí cada llamado nuevo suena. El chime se
+ * sintetiza con Web Audio (dos tonos), sin archivo de audio que cargar.
  */
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
@@ -29,6 +35,53 @@ export function PantallaColeroPage() {
   const [error, setError] = useState<string | null>(null)
   const [desactualizada, setDesactualizada] = useState(false)
   const fallosRef = useRef(0)
+  // Sonido: estado para el botón + ref para leerlo dentro del tick (closure).
+  const [sonido, setSonido] = useState(false)
+  const sonidoRef = useRef(false)
+  const audioRef = useRef<AudioContext | null>(null)
+  // Último llamado visto (ISO): un llamado_en mayor = llamado nuevo => chime.
+  const ultimoLlamadoRef = useRef<string | null>(null)
+
+  function chime() {
+    const ctx = audioRef.current
+    if (!ctx) return
+    const t0 = ctx.currentTime
+    // "Din-don": dos tonos cortos con envolvente para que no haga clic.
+    for (const [freq, ini, dur] of [[880, 0, 0.35], [660, 0.32, 0.55]] as const) {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.value = freq
+      gain.gain.setValueAtTime(0.0001, t0 + ini)
+      gain.gain.exponentialRampToValueAtTime(0.5, t0 + ini + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + ini + dur)
+      osc.connect(gain).connect(ctx.destination)
+      osc.start(t0 + ini)
+      osc.stop(t0 + ini + dur + 0.05)
+    }
+  }
+
+  async function toggleSonido() {
+    if (sonido) {
+      sonidoRef.current = false
+      setSonido(false)
+      return
+    }
+    // Crear/resumir el AudioContext DENTRO del gesto del usuario: es lo que
+    // destraba el autoplay. Suena una vez de confirmación.
+    try {
+      const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+      if (!Ctx) return
+      if (!audioRef.current) audioRef.current = new Ctx()
+      await audioRef.current.resume()
+      sonidoRef.current = true
+      setSonido(true)
+      chime()
+    } catch {
+      sonidoRef.current = false
+      setSonido(false)
+    }
+  }
 
   // El shell pinta el <body> de crema; esta vista ocupa la pantalla completa de
   // un monitor, así que también pintamos el body: sin esto se ve una franja
@@ -47,6 +100,16 @@ export function PantallaColeroPage() {
       try {
         const d = await pantallaColero(token as string)
         if (!vivo) return
+        // Detectar llamado nuevo por el llamado_en más reciente. La primera
+        // lectura solo fija la marca (no suena al encender la pantalla).
+        const masReciente = d.llamando.reduce<string | null>(
+          (acc, l) => (acc == null || l.llamado_en > acc ? l.llamado_en : acc), null,
+        )
+        if (masReciente != null) {
+          const previo = ultimoLlamadoRef.current
+          if (previo != null && masReciente > previo && sonidoRef.current) chime()
+          ultimoLlamadoRef.current = masReciente
+        }
         setData(d)
         setError(null)
         setDesactualizada(false)
@@ -77,9 +140,19 @@ export function PantallaColeroPage() {
     <div style={styles.pantalla}>
       <header style={styles.header}>
         <div style={styles.ubicacion}>{data?.ubicacion_nombre ?? 'Cargando…'}</div>
-        {desactualizada && (
-          <div style={styles.avisoDesact}>Sin conexión — mostrando el último dato</div>
-        )}
+        <div style={styles.headerDerecha}>
+          {desactualizada && (
+            <div style={styles.avisoDesact}>Sin conexión — mostrando el último dato</div>
+          )}
+          <button
+            type="button"
+            onClick={toggleSonido}
+            style={{ ...styles.btnSonido, ...(sonido ? styles.btnSonidoOn : {}) }}
+            title={sonido ? 'El chime suena en cada llamado. Clic para silenciar.' : 'Activar el chime de llamado (los navegadores exigen un clic para habilitar audio)'}
+          >
+            {sonido ? 'Sonido activado' : 'Activar sonido'}
+          </button>
+        </div>
       </header>
 
       {error ? (
@@ -87,7 +160,7 @@ export function PantallaColeroPage() {
       ) : destacado ? (
         <main style={styles.main}>
           <div style={styles.etiqueta}>Llamando</div>
-          <div style={styles.numero}>{destacado.numero ?? '—'}</div>
+          <div style={{ ...styles.numero, fontSize: tamanoNumero(destacado.numero) }}>{destacado.numero ?? '—'}</div>
           <div style={styles.nombre}>{destacado.nombre_display}</div>
           {destacado.puesto && <div style={styles.puesto}>{destacado.puesto}</div>}
         </main>
@@ -125,6 +198,16 @@ export function PantallaColeroPage() {
   )
 }
 
+/** Tamaño del número destacado según su largo: "014" entra a 26vw, pero con
+ *  prefijo ("ODO-014", 7 caracteres) a ese tamaño se partía en dos líneas.
+ *  Ancho aproximado de un glifo ≈ 0.62em → se busca que el número ocupe ~85vw
+ *  como máximo, con tope en 26vw. */
+function tamanoNumero(n: string | null): string {
+  const largo = Math.max(3, (n ?? '').length)
+  const vw = Math.min(26, 85 / (0.62 * largo))
+  return `clamp(80px, ${vw.toFixed(1)}vw, 420px)`
+}
+
 /* Estilos inline y paleta fija a propósito: la pantalla no vive dentro del shell
    ni sigue el tema del viewer — es un monitor de sala. Usa los tokens de marca
    (naranja ZARIS) para el acento. */
@@ -142,10 +225,17 @@ const styles: Record<string, React.CSSProperties> = {
   ubicacion: {
     fontSize: 'clamp(20px, 3vw, 46px)', fontWeight: 700, letterSpacing: '.01em',
   },
+  headerDerecha: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'flex-end' },
   avisoDesact: {
     fontSize: 'clamp(12px, 1.2vw, 18px)', color: '#f5b300',
     border: '1px solid #f5b300', borderRadius: 6, padding: '4px 10px', whiteSpace: 'nowrap',
   },
+  btnSonido: {
+    fontFamily: 'inherit', fontSize: 'clamp(12px, 1.2vw, 18px)', cursor: 'pointer',
+    background: 'transparent', color: 'rgba(247,247,244,.75)',
+    border: '1px solid rgba(247,247,244,.35)', borderRadius: 6, padding: '4px 12px', whiteSpace: 'nowrap',
+  },
+  btnSonidoOn: { color: '#f54e00', borderColor: '#f54e00' },
   main: {
     flex: 1, display: 'flex', flexDirection: 'column',
     alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: '1vh',
@@ -156,7 +246,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   numero: {
     fontSize: 'clamp(90px, 26vw, 420px)', fontWeight: 700, lineHeight: 1,
-    letterSpacing: '-.02em', fontVariantNumeric: 'tabular-nums',
+    letterSpacing: '-.02em', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
   },
   nombre: { fontSize: 'clamp(28px, 6vw, 96px)', fontWeight: 500 },
   puesto: {
