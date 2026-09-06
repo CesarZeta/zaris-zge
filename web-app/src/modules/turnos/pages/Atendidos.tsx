@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
-import { Download, RefreshCw } from 'lucide-react'
+import { Download, RefreshCw, Search } from 'lucide-react'
 import { useTurnos } from '../hooks/useTurnos'
 import { TurnoDetalleModal } from '../components/TurnoDetalleModal'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { useTurnoFiltros, TurnoFiltrosBar } from '../lib/turnoFiltros'
+import { AvisoBuscar, useBusquedaDiferida } from '../lib/busqueda'
 import { exportarAtendidosPdf, type TurnoPdfRow } from '../lib/exportPdf'
 import { useUbicacionTurnosStore } from '../stores/ubicacionTurnos'
 import type { Turno } from '../types/turno'
@@ -13,17 +14,20 @@ export function Atendidos() {
 
   const [detalle, setDetalle] = useState<Turno | null>(null)
   const [fTexto, setFTexto] = useState('')
-  const [fDesde, setFDesde] = useState('')
-  const [fHasta, setFHasta] = useState('')
+  // Búsqueda diferida (§23): las fechas viajan al backend recién al Buscar.
+  const busqueda = useBusquedaDiferida<{ desde: string; hasta: string }>({ desde: '', hasta: '' })
+  const { desde: fDesde, hasta: fHasta } = busqueda.borrador
+  const setFDesde = (v: string) => busqueda.setBorrador({ ...busqueda.borrador, desde: v })
+  const setFHasta = (v: string) => busqueda.setBorrador({ ...busqueda.borrador, hasta: v })
 
   // Contexto ubicación-primero (F2): respeta la ubicación elegida en el módulo.
   const ubicacion = useUbicacionTurnosStore((s) => s.ubicacion)
   const { data, isLoading, isError, error, refetch, isFetching } = useTurnos({
     estado: 'cumplido',
-    fecha_desde: fDesde || undefined,
-    fecha_hasta: fHasta || undefined,
+    fecha_desde: busqueda.aplicado?.desde || undefined,
+    fecha_hasta: busqueda.aplicado?.hasta || undefined,
     id_espacio_ubicacion: ubicacion?.id_espacio,
-  })
+  }, { enabled: busqueda.buscado, version: busqueda.version })
 
   const turnos = data ?? []
 
@@ -74,7 +78,7 @@ export function Atendidos() {
         </p>
       </div>
 
-      <div style={toolbar}>
+      <form style={toolbar} onSubmit={(e) => { e.preventDefault(); busqueda.buscar() }}>
         <div style={field}>
           <label style={lbl}>Buscar</label>
           <input
@@ -95,27 +99,36 @@ export function Atendidos() {
         </div>
         <TurnoFiltrosBar opciones={opciones} filtros={filtros} setFiltros={setFiltros} />
         {hayActivos && (
-          <button onClick={limpiar} style={{ ...btnGhost, alignSelf: 'flex-end' }} title="Limpiar filtros de prestación, recurso y ciudadano">
+          <button type="button" onClick={limpiar} style={{ ...btnGhost, alignSelf: 'flex-end' }} title="Limpiar filtros de prestación, recurso y ciudadano">
             Limpiar
           </button>
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-          <button onClick={() => refetch()} style={btnGhost} title="Refrescar">
+          <button type="submit" style={btnPrimary} title="Traer los turnos atendidos del rango elegido">
+            <Search size={14} strokeWidth={1.5} /> Buscar
+          </button>
+          <button type="button" onClick={() => refetch()} style={btnGhost} title="Refrescar" disabled={!busqueda.buscado}>
             <RefreshCw size={14} strokeWidth={1.5} style={{ animation: isFetching ? 'spin 1s linear infinite' : undefined }} />
           </button>
-          <button onClick={doExport} style={btnPrimary}>
+          <button type="button" onClick={doExport} style={btnGhost} disabled={!busqueda.buscado}>
             <Download size={14} strokeWidth={1.5} /> Exportar PDF
           </button>
         </div>
-      </div>
+      </form>
 
-      <div style={{ fontSize: '0.82rem', color: 'var(--fg-3)' }}>
-        {filtrados.length} turno{filtrados.length === 1 ? '' : 's'} atendido{filtrados.length === 1 ? '' : 's'}
-      </div>
+      {busqueda.buscado && (
+        <div style={{ fontSize: '0.82rem', color: 'var(--fg-3)' }}>
+          {filtrados.length} turno{filtrados.length === 1 ? '' : 's'} atendido{filtrados.length === 1 ? '' : 's'}
+        </div>
+      )}
 
       {isError && <div style={errorBanner}>{(error as Error)?.message ?? 'Error al cargar turnos'}</div>}
 
-      <div style={card}>
+      {!busqueda.buscado && (
+        <AvisoBuscar texto="Elegí el rango de fechas (o dejalo vacío para todo) y presioná Buscar para ver los turnos atendidos." />
+      )}
+
+      {busqueda.buscado && <div style={card}>
         <table style={table}>
           <thead>
             <tr>
@@ -155,7 +168,7 @@ export function Atendidos() {
             ))}
           </tbody>
         </table>
-      </div>
+      </div>}
       <TurnoDetalleModal turno={detalle} onClose={() => setDetalle(null)} />
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>

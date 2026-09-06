@@ -84,7 +84,7 @@ async def _espacio_to_out(db: AsyncSession, id_espacio: int, incluir_agentes: bo
     row = (await db.execute(text("""
         SELECT e.id_espacio, e.nombre, e.descripcion, e.direccion, e.latitud, e.longitud,
                e.capacidad_personas,
-               e.atendido, e.id_subarea, s.nombre AS subarea_nombre,
+               e.atendido, e.id_subarea, s.nombre AS subarea_nombre, e.prefijo_colero,
                e.activo, e.id_municipio, e.fecha_alta, e.fecha_modificacion
         FROM espacios_agenda e
         LEFT JOIN subarea s ON s.id_subarea = e.id_subarea
@@ -137,7 +137,7 @@ async def listar_espacios(
     rows = (await db.execute(text(f"""
         SELECT e.id_espacio, e.nombre, e.descripcion, e.direccion, e.latitud, e.longitud,
                e.capacidad_personas,
-               e.atendido, e.id_subarea, s.nombre AS subarea_nombre,
+               e.atendido, e.id_subarea, s.nombre AS subarea_nombre, e.prefijo_colero,
                e.activo, e.id_municipio, e.fecha_alta, e.fecha_modificacion,
                (SELECT COUNT(*) FROM espacio_agentes ea
                  WHERE ea.id_espacio = e.id_espacio AND ea.activo = TRUE) AS cant_agentes
@@ -174,10 +174,10 @@ async def crear_espacio(
     row = (await db.execute(text("""
         INSERT INTO espacios_agenda (
             nombre, descripcion, direccion, latitud, longitud, capacidad_personas, atendido,
-            id_subarea, id_municipio, id_usuario_alta, id_usuario_modificacion
+            id_subarea, prefijo_colero, id_municipio, id_usuario_alta, id_usuario_modificacion
         ) VALUES (
             :nombre, :descripcion, :direccion, :latitud, :longitud, :capacidad, :atendido,
-            :id_sa, :id_mun, :uid, :uid
+            :id_sa, :prefijo, :id_mun, :uid, :uid
         )
         RETURNING id_espacio
     """), {
@@ -189,6 +189,7 @@ async def crear_espacio(
         "capacidad": payload.capacidad_personas,
         "atendido": payload.atendido,
         "id_sa": payload.id_subarea,
+        "prefijo": payload.prefijo_colero,
         "id_mun": payload.id_municipio,
         "uid": user["id_usuario"],
     })).first()
@@ -232,7 +233,8 @@ async def actualizar_espacio(
     # subarea o a compartido/NULL) via este PUT.
     if sub is not None and "id_subarea" in data and data["id_subarea"] != sub:
         raise HTTPException(403, "Solo podés asignar el espacio a tu propia subárea.")
-    for col in ("nombre", "descripcion", "direccion", "latitud", "longitud", "capacidad_personas", "atendido", "id_subarea", "activo"):
+    # prefijo_colero (mig 105): ya viene normalizado/validado por el schema (3 alfanumericos o None).
+    for col in ("nombre", "descripcion", "direccion", "latitud", "longitud", "capacidad_personas", "atendido", "id_subarea", "prefijo_colero", "activo"):
         if col in data:
             sets.append(f"{col} = :{col}")
             params[col] = data[col]

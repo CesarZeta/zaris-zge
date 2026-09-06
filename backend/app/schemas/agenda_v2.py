@@ -6,10 +6,11 @@ schemas de tablas legacy. Cuando 1.B unifique todo, se puede consolidar.
 """
 from __future__ import annotations
 
+import re
 from datetime import date, time, datetime
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 # =============================================================================
@@ -479,6 +480,26 @@ class ReservaPublicaOut(BaseModel):
 # =============================================================================
 # Espacios de agenda (mig 40)
 # =============================================================================
+_PREFIJO_COLERO_RE = re.compile(r"^[A-Z0-9]{3}$")
+
+
+def normalizar_prefijo_colero(v: Any) -> Optional[str]:
+    """Prefijo del numero del colero (mig 105; formato fijado por Cesar
+    2026-09-06): EXACTAMENTE 3 alfanumericos en mayuscula, y despues el
+    correlativo de 3 digitos -> 'ODO-001'. Vacio/None = sin prefijo ('001').
+    Se normaliza (strip + upper) antes de validar para que 'odo ' valga."""
+    if v is None:
+        return None
+    s = str(v).strip().upper()
+    if s == "":
+        return None
+    if not _PREFIJO_COLERO_RE.match(s):
+        raise ValueError(
+            "El prefijo del colero debe tener exactamente 3 letras o numeros (ej. ODO -> ODO-001)"
+        )
+    return s
+
+
 class EspacioAgendaBase(BaseModel):
     nombre: str = Field(..., min_length=1, max_length=150)
     descripcion: Optional[str] = None
@@ -488,6 +509,15 @@ class EspacioAgendaBase(BaseModel):
     capacidad_personas: Optional[int] = Field(None, ge=0)
     atendido: bool = True
     id_subarea: Optional[int] = None
+    prefijo_colero: Optional[str] = Field(
+        None, max_length=4,
+        description="Prefijo del numero del colero (mig 105): 3 alfanumericos, ej. 'ODO' -> 'ODO-001'. Vacio = sin prefijo.",
+    )
+
+    @field_validator("prefijo_colero", mode="before")
+    @classmethod
+    def _prefijo_colero_norm(cls, v: Any) -> Optional[str]:
+        return normalizar_prefijo_colero(v)
 
 
 class EspacioAgendaCreate(EspacioAgendaBase):
@@ -503,7 +533,13 @@ class EspacioAgendaUpdate(BaseModel):
     capacidad_personas: Optional[int] = Field(None, ge=0)
     atendido: Optional[bool] = None
     id_subarea: Optional[int] = None
+    prefijo_colero: Optional[str] = Field(None, max_length=4)
     activo: Optional[bool] = None
+
+    @field_validator("prefijo_colero", mode="before")
+    @classmethod
+    def _prefijo_colero_norm(cls, v: Any) -> Optional[str]:
+        return normalizar_prefijo_colero(v)
 
 
 class EspacioAgendaOut(BaseModel):
@@ -519,6 +555,8 @@ class EspacioAgendaOut(BaseModel):
     atendido: bool
     id_subarea: Optional[int] = None
     subarea_nombre: Optional[str] = None
+    # Prefijo del numero del colero (mig 105): 3 alfanumericos o None.
+    prefijo_colero: Optional[str] = None
     activo: bool
     id_municipio: int
     fecha_alta: datetime

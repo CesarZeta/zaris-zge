@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
-import { RefreshCw } from 'lucide-react'
+import { RefreshCw, Search } from 'lucide-react'
 import { useTurnos, useCumplirTurno, useCancelarTurno } from '../hooks/useTurnos'
 import { TurnoFormModal } from '../components/TurnoFormModal'
 import { CumplirTurnoModal } from '../components/CumplirTurnoModal'
 import { TurnoDetalleModal } from '../components/TurnoDetalleModal'
 import { ConfirmModal } from '../../agenda/components/ConfirmModal'
 import { useNotificationsStore } from '../../../stores/notifications'
+import { AvisoBuscar } from '../lib/busqueda'
 import type { CumplirTurnoBody, EstadoTurno, Turno } from '../types/turno'
 
 // Fecha "hoy" en hora local del municipio (AR = UTC-3, sin DST). El
@@ -51,7 +52,9 @@ export function MisTurnos() {
   const [confirmCancelar, setConfirmCancelar] = useState<Turno | null>(null)
   const [detalle, setDetalle] = useState<Turno | null>(null)
 
-  const { data, isLoading, isError, error, refetch, isFetching } = useTurnos({})
+  // Búsqueda diferida (§23): nada viaja al backend hasta "Ver mis turnos".
+  const [verTurnos, setVerTurnos] = useState(false)
+  const { data, isLoading, isError, error, refetch, isFetching } = useTurnos({}, { enabled: verTurnos })
   const cumplir = useCumplirTurno()
   const cancelar = useCancelarTurno()
 
@@ -138,14 +141,25 @@ export function MisTurnos() {
             style={{ ...inp, minWidth: 240 }}
           />
         </div>
-        <button onClick={() => refetch()} style={{ ...btnGhost, marginLeft: 'auto' }} title="Refrescar">
-          <RefreshCw size={14} strokeWidth={1.5} style={{ animation: isFetching ? 'spin 1s linear infinite' : undefined }} />
-        </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          {!verTurnos && (
+            <button onClick={() => setVerTurnos(true)} style={btnPrimary} title="Traer los turnos a tu cargo">
+              <Search size={14} strokeWidth={1.5} /> Ver mis turnos
+            </button>
+          )}
+          <button onClick={() => refetch()} style={btnGhost} title="Refrescar" disabled={!verTurnos}>
+            <RefreshCw size={14} strokeWidth={1.5} style={{ animation: isFetching ? 'spin 1s linear infinite' : undefined }} />
+          </button>
+        </div>
       </div>
 
       {isError && <div style={errorBanner}>{(error as Error)?.message ?? 'Error al cargar turnos'}</div>}
 
-      <div style={card}>
+      {!verTurnos && (
+        <AvisoBuscar texto="Presioná Ver mis turnos para traer los turnos a tu cargo. Después filtrá por Pendientes, Hoy o Todos." />
+      )}
+
+      {verTurnos && <div style={card}>
         <table style={table}>
           <thead>
             <tr>
@@ -199,7 +213,7 @@ export function MisTurnos() {
             ))}
           </tbody>
         </table>
-      </div>
+      </div>}
 
       <TurnoFormModal open={editTurno != null} onClose={() => setEditTurno(null)} turno={editTurno} />
       <TurnoDetalleModal turno={detalle} onClose={() => setDetalle(null)} />
@@ -285,6 +299,10 @@ const btnBase: React.CSSProperties = {
 
 const btnGhost: React.CSSProperties = {
   ...btnBase, background: 'transparent', color: 'var(--fg-2)', border: '1px solid var(--border-medium)',
+}
+
+const btnPrimary: React.CSSProperties = {
+  ...btnBase, background: 'var(--zaris-orange)', color: 'white', borderColor: 'var(--zaris-orange)',
 }
 
 const btnSmBase: React.CSSProperties = { ...btnBase, fontSize: '0.76rem', padding: '4px 9px' }

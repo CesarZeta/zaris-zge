@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
-import { Plus, RefreshCw } from 'lucide-react'
+import { Plus, RefreshCw, Search } from 'lucide-react'
 import { usePrestaciones, useEliminarPrestacion } from '../hooks/useTurnos'
+import { AvisoBuscar, useBusquedaDiferida } from '../lib/busqueda'
 import { PrestacionFormModal } from '../components/PrestacionFormModal'
 import { ConfirmModal } from '../../agenda/components/ConfirmModal'
 import { useNotificationsStore } from '../../../stores/notifications'
@@ -13,15 +14,20 @@ const CLASE_LABEL: Record<ClasePrestacion, string> = {
 
 export function Prestaciones() {
   const push = useNotificationsStore((s) => s.push)
-  const [fClase, setFClase] = useState<ClasePrestacion | ''>('')
+  // Búsqueda diferida (§23): el catálogo no se pide al entrar, sino al Buscar.
+  const busqueda = useBusquedaDiferida<{ clase: ClasePrestacion | '' }>({ clase: '' })
+  const fClase = busqueda.borrador.clase
+  const setFClase = (v: ClasePrestacion | '') => busqueda.setBorrador({ clase: v })
   const [fRecurso, setFRecurso] = useState('')
   const [fTexto, setFTexto] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editPrest, setEditPrest] = useState<TipoPrestacion | null>(null)
   const [confirmBaja, setConfirmBaja] = useState<TipoPrestacion | null>(null)
 
-  const { data, isLoading, isError, error, refetch, isFetching } =
-    usePrestaciones({ clase: fClase || undefined })
+  const { data, isLoading, isError, error, refetch, isFetching } = usePrestaciones(
+    { clase: busqueda.aplicado?.clase || undefined },
+    { enabled: busqueda.buscado, version: busqueda.version },
+  )
   const eliminar = useEliminarPrestacion()
 
   const prestaciones = data ?? []
@@ -81,7 +87,7 @@ export function Prestaciones() {
         </p>
       </div>
 
-      <div style={toolbar}>
+      <form style={toolbar} onSubmit={(e) => { e.preventDefault(); busqueda.buscar() }}>
         <div style={field}>
           <label style={lbl}>Buscar</label>
           <input
@@ -117,18 +123,25 @@ export function Prestaciones() {
           </div>
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-          <button onClick={() => refetch()} style={btnGhost} title="Refrescar">
+          <button type="submit" style={btnPrimary} title="Traer el catálogo con el tipo elegido">
+            <Search size={14} strokeWidth={1.5} /> Buscar
+          </button>
+          <button type="button" onClick={() => refetch()} style={btnGhost} title="Refrescar" disabled={!busqueda.buscado}>
             <RefreshCw size={14} strokeWidth={1.5} style={{ animation: isFetching ? 'spin 1s linear infinite' : undefined }} />
           </button>
-          <button onClick={() => { setEditPrest(null); setModalOpen(true) }} style={btnPrimary}>
+          <button type="button" onClick={() => { setEditPrest(null); setModalOpen(true) }} style={btnGhost}>
             <Plus size={14} strokeWidth={1.5} /> Nueva prestación
           </button>
         </div>
-      </div>
+      </form>
 
       {isError && <div style={errorBanner}>{(error as Error)?.message ?? 'Error al cargar prestaciones'}</div>}
 
-      <div style={card}>
+      {!busqueda.buscado && (
+        <AvisoBuscar texto="Elegí el tipo de prestación que querés ver y presioná Buscar. Los filtros Recurso y Área de servicio se habilitan con lo que traiga la búsqueda." />
+      )}
+
+      {busqueda.buscado && <div style={card}>
         <table style={table}>
           <thead>
             <tr>
@@ -183,7 +196,7 @@ export function Prestaciones() {
             ))}
           </tbody>
         </table>
-      </div>
+      </div>}
 
       <PrestacionFormModal open={modalOpen} onClose={() => setModalOpen(false)} prestacion={editPrest} />
       <ConfirmModal
