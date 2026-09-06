@@ -100,7 +100,7 @@ Los turnos viejos por agente quedan `NULL` ("sin ubicacion") hasta que la
 prestacion tenga ubicacion cargada; el frontend los muestra en un bucket
 "Sin ubicacion" para que no desaparezcan (leccion filtros legacy mig 27).
 
-### 2.2 Mig 104 — Ciclo de llamado + colero (F3)
+### 2.2 Mig 105 — Ciclo de llamado + colero (F3)
 
 ```
 turnos.estado           += 'llamado', 'ausente'   (recrear CHECK)
@@ -116,7 +116,7 @@ FSM resultante: `reservado -> llamado -> cumplido | ausente`, con
 Cumplir/cancelar siguen funcionando desde `reservado` (mesa sin colero).
 CAS de estado en todos los UPDATE nuevos.
 
-### 2.3 Mig 105 — Guardia + atencion por emergencia (F4)
+### 2.3 Mig 106 — Guardia + atencion por emergencia (F4)
 
 ```
 emergencia_atencion (
@@ -139,6 +139,11 @@ completa al atender) y queda en el log del evento. Historia clinica =
 polimorfico LEFT JOIN, como encuesta_envio).
 
 ---
+
+> **Renumeracion (2026-09-06):** la **104** la tomo `tipo_tramite.id_subarea`
+> (gestion responsable del tipo de tramite, ordenamiento de Cesar para el smoke
+> de la demo — ver `HISTORIAL_MIGRACIONES.md`), que se aplico antes que F3.
+> Por eso el colero pasa a la **105** y la guardia a la **106**.
 
 ## 3. FASES
 
@@ -201,7 +206,7 @@ ven en "Todos los turnos" (sin seleccion); no hay bucket dedicado.
 
 ### F3 — Ciclo de llamado + Pantalla colero
 
-- Mig 104 local + prod.
+- Mig 105 local + prod.
 - Endpoints: `PATCH /turnos/{id}/llamar` (asigna numero_diario si falta,
   inserta turno_llamado, estado -> llamado; re-llamar = mismo endpoint),
   `PATCH /turnos/{id}/ausente`. Guard de scope + CAS.
@@ -218,7 +223,7 @@ ven en "Todos los turnos" (sin seleccion); no hay bucket dedicado.
 
 ### F4 — Guardia + derivacion desde Emergencias
 
-- Mig 105 local + prod. Espacio "Guardia" (subarea de Salud) seed + clave de config.
+- Mig 106 local + prod. Espacio "Guardia" (subarea de Salud) seed + clave de config.
 - Emergencias: accion "Derivar a Guardia" en el detalle del evento (respeta
   FSM del modulo — invocar skill modulo-emergencias antes de tocar) -> crea
   `emergencia_atencion` + entrada en `emergencia_log`.

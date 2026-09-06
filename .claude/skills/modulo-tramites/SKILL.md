@@ -106,5 +106,16 @@ Tres piezas, todas **paralelas al FSM** (no fuerzan estados en los circuitos):
 - Desistido manual: `POST /{ref}/resultado {"resultado":"desistido"}` → misma marca + movimiento `desistido` + aviso al vecino. `ResultadoChip` lo ofrece.
 - Smoke `backend/smoke_tramites_ciclo_vida.py` (23/23, **solo local**: viaja en el tiempo con SQL y restaura fixtures).
 
+### Gestión responsable del tipo (mig 104, ordenamiento de César 2026-09-06)
+
+`tipo_tramite.id_subarea` = **la gestión que tramita ese tipo**. NO es el destinatario del expediente (ese sigue siendo polimórfico en `tramite`: `id_subarea_actual` / `id_equipo_actual` / `id_agente_actual`) ni cambia el FSM ni el scoping de §3.
+
+- **El área NUNCA se guarda**: se deriva por JOIN `subarea → area`. Misma regla que `tipo_reclamo` ([[project_tipo_reclamo_area_inconsistencia]]). Si te piden "filtrar trámites por área", el filtro va sobre el JOIN, jamás sobre un `id_area` propio.
+- **Ordenamiento de negocio (decisión de César):** las 7 subáreas del circuito (Mesa de Entradas, Habilitaciones Comerciales, Bromatología e Inspecciones, Obras Particulares, Asesoría Legal y Técnica, Recursos Humanos, Espacios Verdes) cuelgan **TODAS de la Secretaría de Gobierno** — el expediente es de Gobierno aunque el tema sea de otra secretaría. Un tipo nuevo va a una subárea de Gobierno salvo que César diga lo contrario.
+- **Resolver el área por NOMBRE, nunca por id**: en prod el área de gobierno es la **1**, en local la **15** ("Secretaria de Gobierno y Legal Tecnica"). Hardcodear `id_area = 1` mandó las 7 subáreas a *Salud* en local (§24, cazado el 2026-09-06 porque se aplicó local primero).
+- **Superficies que hay que tocar al sumar un campo del catálogo** (la trampa recurrente, [[feedback_columna_nueva_auditar_todos_los_select]]): schema `TipoTramiteCreateIn` + `TipoTramiteUpdateIn` + `TipoTramiteAdminOut` + `TipoTramiteAdminListItem`, el INSERT del POST, la lista de `sets` del PUT, **y los DOS SELECT que arman la salida** (`_detalle_tipo_admin` y `listar_tipos_admin`). El PUT usa la convención de `sla_dias`: **0 = desasignar** (se guarda NULL).
+- **Frontend**: el selector de gestión (agrupado por área) consume `GET /agenda/catalogos/subareas` **por URL directa**, sin importar del módulo agenda — misma regla anti-dependencia-cruzada que el select de ubicaciones de Turnos ([[feedback_cross_module_imports_react]]).
+- **`seed_tramites.py` es el que fija el ordenamiento en cada demo**: `seed_subareas` manda las 7 al área de gobierno resuelta por nombre (y **falla ruidoso** si no existe), `upsert_subarea` **reencuadra el área de una subárea preexistente** (antes solo la reactivaba, y por eso el resultado dependía del estado previo de la base), y un bloque final asigna la gestión de los 15 tipos por mapa `codigo → subárea`. Si agregás un tipo al seed, sumalo a ese mapa o nace sin gestión.
+
 ### Manuales
 `docs/manual_tramites.html` (uso operativo) · `docs/manual_admin_tramites.html` (creación de tipos, admin). Vía módulo Guías §37.

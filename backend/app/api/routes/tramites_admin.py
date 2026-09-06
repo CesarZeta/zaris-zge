@@ -96,6 +96,8 @@ async def listar_tipos_admin(
             SELECT tt.id_tipo_tramite, tt.codigo, tt.nombre, tt.prefijo,
                    tt.iniciadores_permitidos,
                    COALESCE(tt.es_sistema, FALSE) AS es_sistema,
+                   -- mig 104: gestion responsable (area derivada por JOIN, nunca guardada)
+                   tt.id_subarea, s.nombre AS subarea_nombre, a.nombre AS area_nombre,
                    tt.id_version_publicada,
                    -- estado de la version mas alta activa
                    (SELECT v.estado
@@ -113,8 +115,10 @@ async def listar_tipos_admin(
                           WHERE v3.id_tipo_tramite = tt.id_tipo_tramite AND v3.activo = TRUE)
                        AND e.activo = TRUE) AS cant_estados
             FROM tipo_tramite tt
+            LEFT JOIN subarea s ON s.id_subarea = tt.id_subarea
+            LEFT JOIN area a ON a.id_area = s.id_area
             WHERE tt.activo = TRUE
-            ORDER BY tt.es_sistema DESC, tt.nombre
+            ORDER BY a.nombre NULLS LAST, s.nombre NULLS LAST, tt.es_sistema DESC, tt.nombre
         """),
     )).fetchall()
 
@@ -135,6 +139,9 @@ async def listar_tipos_admin(
             prefijo=f.prefijo,
             iniciadores_permitidos=list(f.iniciadores_permitidos or []),
             es_sistema=bool(f.es_sistema),
+            id_subarea=f.id_subarea,
+            subarea_nombre=f.subarea_nombre,
+            area_nombre=f.area_nombre,
             id_version_publicada=f.id_version_publicada,
             estado_version=estado,
         ))
@@ -163,10 +170,10 @@ async def crear_tipo_tramite(
                 (codigo, nombre, descripcion, prefijo, incluye_municipio, incluye_anio,
                  largo_correlativo, separador, correlativo_reinicia_anual,
                  iniciadores_permitidos, permite_representante, icono, color,
-                 retencion_nunca_depurar, sla_dias,
+                 retencion_nunca_depurar, sla_dias, id_subarea,
                  activo, id_municipio)
             VALUES (:cod, :nom, :desc, :pre, :imun, :ian, :lc, :sep, :cra,
-                    :ini, :pr, :ico, :col, :rnd, :sla, TRUE, :mun)
+                    :ini, :pr, :ico, :col, :rnd, :sla, :sub, TRUE, :mun)
             RETURNING id_tipo_tramite
         """),
         {
@@ -178,6 +185,7 @@ async def crear_tipo_tramite(
             "ico": body.icono, "col": body.color,
             "rnd": body.retencion_nunca_depurar,
             "sla": body.sla_dias or None,
+            "sub": body.id_subarea or None,   # mig 104
             "mun": body.id_municipio,
         },
     )).scalar_one()
@@ -226,6 +234,11 @@ async def actualizar_tipo_tramite(
     if body.sla_dias is not None:
         sets.append("sla_dias = :sla_dias")
         params["sla_dias"] = body.sla_dias if body.sla_dias > 0 else None
+
+    # mig 104: gestion responsable; 0 = desasignar (se guarda NULL).
+    if body.id_subarea is not None:
+        sets.append("id_subarea = :id_subarea")
+        params["id_subarea"] = body.id_subarea if body.id_subarea > 0 else None
 
     if body.iniciadores_permitidos is not None:
         sets.append("iniciadores_permitidos = :iniciadores_permitidos")
@@ -289,15 +302,20 @@ async def detalle_tipo_admin(
 async def _detalle_tipo_admin(db: AsyncSession, id_tipo_tramite: int) -> TipoTramiteAdminOut:
     tipo = (await db.execute(
         text("""
-            SELECT id_tipo_tramite, codigo, nombre, descripcion, prefijo,
-                   iniciadores_permitidos, permite_representante,
-                   incluye_municipio, incluye_anio, largo_correlativo, separador,
-                   correlativo_reinicia_anual, icono, color, activo,
-                   COALESCE(es_sistema, FALSE) AS es_sistema,
-                   COALESCE(retencion_nunca_depurar, FALSE) AS retencion_nunca_depurar,
-                   sla_dias,
-                   id_version_publicada
-            FROM tipo_tramite WHERE id_tipo_tramite = :id
+            SELECT tt.id_tipo_tramite, tt.codigo, tt.nombre, tt.descripcion, tt.prefijo,
+                   tt.iniciadores_permitidos, tt.permite_representante,
+                   tt.incluye_municipio, tt.incluye_anio, tt.largo_correlativo, tt.separador,
+                   tt.correlativo_reinicia_anual, tt.icono, tt.color, tt.activo,
+                   COALESCE(tt.es_sistema, FALSE) AS es_sistema,
+                   COALESCE(tt.retencion_nunca_depurar, FALSE) AS retencion_nunca_depurar,
+                   tt.sla_dias,
+                   -- mig 104: gestion responsable; el area SIEMPRE derivada por JOIN
+                   tt.id_subarea, s.nombre AS subarea_nombre, a.nombre AS area_nombre,
+                   tt.id_version_publicada
+            FROM tipo_tramite tt
+            LEFT JOIN subarea s ON s.id_subarea = tt.id_subarea
+            LEFT JOIN area a ON a.id_area = s.id_area
+            WHERE tt.id_tipo_tramite = :id
         """),
         {"id": id_tipo_tramite},
     )).fetchone()
@@ -329,6 +347,9 @@ async def _detalle_tipo_admin(db: AsyncSession, id_tipo_tramite: int) -> TipoTra
         es_sistema=bool(tipo.es_sistema),
         retencion_nunca_depurar=bool(tipo.retencion_nunca_depurar),
         sla_dias=tipo.sla_dias,
+        id_subarea=tipo.id_subarea,
+        subarea_nombre=tipo.subarea_nombre,
+        area_nombre=tipo.area_nombre,
         id_version_publicada=tipo.id_version_publicada,
         versiones=[
             VersionOut(

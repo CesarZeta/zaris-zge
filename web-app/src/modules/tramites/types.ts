@@ -144,6 +144,11 @@ export interface TipoTramiteAdmin {
   es_sistema: boolean
   retencion_nunca_depurar: boolean
   sla_dias: number | null  // mig 101: null = default global (Config → Sistema)
+  // mig 104: gestión responsable del tipo. El área no se guarda: la deriva el
+  // backend por JOIN subarea → area (fuente única, §27).
+  id_subarea: number | null
+  subarea_nombre: string | null
+  area_nombre: string | null
   id_version_publicada: number | null
   versiones: Array<{
     id_tipo_tramite_version: number
@@ -161,6 +166,9 @@ export interface TipoTramiteAdminListItem {
   prefijo: string
   iniciadores_permitidos: IniciadorTipo[]
   es_sistema: boolean
+  id_subarea: number | null       // mig 104
+  subarea_nombre: string | null
+  area_nombre: string | null
   id_version_publicada: number | null
   estado_version: 'publicado' | 'borrador' | 'sin_estados' | 'archivado'
 }
