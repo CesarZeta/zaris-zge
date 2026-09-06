@@ -26,7 +26,9 @@ const ALTO_GRILLA = (HORA_FIN - HORA_INI) * PX_POR_HORA
 
 const ESTADO_COLOR: Record<EstadoTurno, { bg: string; border: string; fg: string }> = {
   reservado: { bg: 'rgba(245,127,23,0.14)', border: '#f57f17', fg: '#8a5800' },
+  llamado:   { bg: 'rgba(245,78,0,0.16)', border: '#f54e00', fg: '#a33400' },
   cumplido:  { bg: 'rgba(31,138,101,0.16)', border: '#1f8a65', fg: '#15614a' },
+  ausente:   { bg: 'rgba(198,40,40,0.14)', border: '#c62828', fg: '#8f1d1d' },
   cancelado: { bg: 'rgba(38,37,30,0.07)',   border: 'var(--border-medium)', fg: 'var(--fg-3)' },
 }
 

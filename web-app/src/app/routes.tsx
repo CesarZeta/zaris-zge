@@ -7,6 +7,7 @@ import { AutoservicioPage } from '../autoservicio/AutoservicioPage'
 import { MiReservaPage } from '../autoservicio/MiReservaPage'
 import { TurnosPage } from '../autoservicio/TurnosPage'
 import { MiTurnoPage } from '../autoservicio/MiTurnoPage'
+import { PantallaColeroPage } from '../autoservicio/PantallaColeroPage'
 
 // HashRouter porque GitHub Pages no soporta HTML5 routing sin server-side rewrites.
 // URLs quedan tipo `/zaris-zge/web-app/#/agenda/timeline`. Funciona con F5.
@@ -34,6 +35,13 @@ export const router = createHashRouter([
   {
     path: '/turno/:tokenTurno',
     element: createElement(MiTurnoPage),
+  },
+  // Pantalla del colero (mig 105): la TV de la sala de espera. Publica, sin JWT
+  // — el monitor no tiene sesion. Va con las de autoservicio (sin AppShell) y
+  // DEBE estar en la whitelist de web-app/index.html o el link rebota al login.
+  {
+    path: '/pantalla/:token',
+    element: createElement(PantallaColeroPage),
   },
   {
     path: '/',

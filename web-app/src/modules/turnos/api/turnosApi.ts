@@ -4,6 +4,7 @@ import type {
   CumplirTurnoBody,
   ListarTurnosFiltros,
   MesaUbicacion,
+  PantallaColero,
   PrestacionInput,
   ReprogramarTurnoBody,
   TipoPrestacion,
@@ -43,6 +44,20 @@ export const listarAtenciones = (id_ciudadano: number) =>
 
 export const cancelarTurno = (id_turno: number) =>
   api.patch<Turno>(`/api/v1/turnos/${id_turno}/cancelar`)
+
+// --- Colero (mig 105, F3 plan ATENCION) ---
+
+/** Llama al turno en la mesa. **Re-llamar es el MISMO endpoint**: no cambia el
+ *  estado, suma una fila al log y refresca la pantalla de sala. */
+export const llamarTurno = (id_turno: number, puesto?: string | null) =>
+  api.patch<Turno>(`/api/v1/turnos/${id_turno}/llamar`, { puesto: puesto || null })
+
+export const marcarAusente = (id_turno: number, observaciones?: string | null) =>
+  api.patch<Turno>(`/api/v1/turnos/${id_turno}/ausente`, { observaciones: observaciones || null })
+
+/** Pantalla de sala — PÚBLICA, sin JWT (la TV no tiene sesión). */
+export const pantallaColero = (token: string) =>
+  api.get<PantallaColero>(`/api/v1/turnos/publico/pantalla/${token}`)
 
 export const obtenerTurno = (id_turno: number) =>
   api.get<Turno>(`/api/v1/turnos/${id_turno}`)

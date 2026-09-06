@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   cancelarTurno,
+  llamarTurno,
+  marcarAusente,
   crearPrestacion,
   crearTurno,
   cumplirTurno,
@@ -139,6 +141,28 @@ export function useCancelarTurno() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id_turno: number) => cancelarTurno(id_turno),
+    onSuccess: () => invalidar(qc),
+  })
+}
+
+/* ── Colero (mig 105, F3) ─────────────────────────────────────────────── */
+
+/** Llamar / re-llamar. Es el mismo endpoint: re-llamar no cambia el estado,
+ *  suma una fila al log y refresca la pantalla de sala. */
+export function useLlamarTurno() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id_turno, puesto }: { id_turno: number; puesto?: string | null }) =>
+      llamarTurno(id_turno, puesto),
+    onSuccess: () => invalidar(qc),
+  })
+}
+
+export function useMarcarAusente() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id_turno, observaciones }: { id_turno: number; observaciones?: string | null }) =>
+      marcarAusente(id_turno, observaciones),
     onSuccess: () => invalidar(qc),
   })
 }

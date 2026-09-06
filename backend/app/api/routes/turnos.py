@@ -40,8 +40,10 @@ from app.schemas.turnos import (
     TipoPrestacionOut,
     TipoPrestacionUpdate,
     TurnoAtencionOut,
+    TurnoAusenteIn,
     TurnoCreate,
     TurnoCumplir,
+    TurnoLlamarIn,
     TurnoOut,
     TurnoUpdate,
     UbicacionTurnosOut,
@@ -297,8 +299,22 @@ async def _turno_to_out(db: AsyncSession, id_turno: int) -> Optional[dict[str, A
                pa.id_area AS prestacion_id_area, pa.nombre AS prestacion_area_nombre,
                t.id_ocupacion, t.fecha, t.hora_inicio, t.hora_fin, t.estado,
                t.observaciones, t.activo, t.id_municipio, t.id_subarea,
+               -- Colero (mig 105): numero visible + rastro del ultimo llamado.
+               -- El log es append-only, asi que "ultimo" = el mas reciente.
+               t.numero_diario,
+               ll.llamado_en AS ultimo_llamado_en,
+               ll.puesto     AS ultimo_llamado_puesto,
+               COALESCE(ll.cant, 0) AS cant_llamados,
                t.fecha_alta, t.fecha_modificacion
         FROM turnos t
+        LEFT JOIN LATERAL (
+            SELECT l.llamado_en, l.puesto,
+                   COUNT(*) OVER () AS cant
+              FROM turno_llamado l
+             WHERE l.id_turno = t.id_turno AND l.activo = TRUE
+             ORDER BY l.llamado_en DESC
+             LIMIT 1
+        ) ll ON TRUE
         LEFT JOIN ciudadanos      c  ON c.id_ciudadano        = t.id_ciudadano
         LEFT JOIN agentes         a  ON a.id_agente           = t.id_agente
         LEFT JOIN espacios_agenda e  ON e.id_espacio          = t.id_espacio
@@ -317,7 +333,7 @@ async def _turno_to_out(db: AsyncSession, id_turno: int) -> Optional[dict[str, A
 @router.get("", response_model=list[TurnoOut])
 async def listar_turnos(
     response: Response,
-    estado: Optional[str] = Query(None, description="reservado|cumplido|cancelado"),
+    estado: Optional[str] = Query(None, description="reservado|llamado|cumplido|ausente|cancelado"),
     id_agente: Optional[int] = None,
     id_espacio: Optional[int] = None,
     id_espacio_ubicacion: Optional[int] = Query(None, description="Ubicacion de atencion (mig 103)"),
@@ -381,8 +397,22 @@ async def listar_turnos(
                pa.id_area AS prestacion_id_area, pa.nombre AS prestacion_area_nombre,
                t.id_ocupacion, t.fecha, t.hora_inicio, t.hora_fin, t.estado,
                t.observaciones, t.activo, t.id_municipio, t.id_subarea,
+               -- Colero (mig 105): numero visible + rastro del ultimo llamado.
+               -- El log es append-only, asi que "ultimo" = el mas reciente.
+               t.numero_diario,
+               ll.llamado_en AS ultimo_llamado_en,
+               ll.puesto     AS ultimo_llamado_puesto,
+               COALESCE(ll.cant, 0) AS cant_llamados,
                t.fecha_alta, t.fecha_modificacion
         FROM turnos t
+        LEFT JOIN LATERAL (
+            SELECT l.llamado_en, l.puesto,
+                   COUNT(*) OVER () AS cant
+              FROM turno_llamado l
+             WHERE l.id_turno = t.id_turno AND l.activo = TRUE
+             ORDER BY l.llamado_en DESC
+             LIMIT 1
+        ) ll ON TRUE
         LEFT JOIN ciudadanos      c  ON c.id_ciudadano        = t.id_ciudadano
         LEFT JOIN agentes         a  ON a.id_agente           = t.id_agente
         LEFT JOIN espacios_agenda e  ON e.id_espacio          = t.id_espacio
@@ -477,14 +507,18 @@ async def listar_ubicaciones_atencion(
                (SELECT COUNT(*) FROM espacio_agentes ea
                  WHERE ea.activo = TRUE AND ea.id_espacio = e.id_espacio) AS agentes,
                COALESCE(cnt.reservados, 0) AS reservados,
+               COALESCE(cnt.llamados, 0) AS llamados,
                COALESCE(cnt.cumplidos, 0) AS cumplidos,
+               COALESCE(cnt.ausentes, 0) AS ausentes,
                COALESCE(cnt.cancelados, 0) AS cancelados
         FROM espacios_agenda e
         LEFT JOIN subarea sa ON sa.id_subarea = e.id_subarea
         LEFT JOIN area    ar ON ar.id_area    = sa.id_area
         LEFT JOIN LATERAL (
             SELECT COUNT(*) FILTER (WHERE t.estado = 'reservado') AS reservados,
+                   COUNT(*) FILTER (WHERE t.estado = 'llamado') AS llamados,
                    COUNT(*) FILTER (WHERE t.estado = 'cumplido') AS cumplidos,
+                   COUNT(*) FILTER (WHERE t.estado = 'ausente') AS ausentes,
                    COUNT(*) FILTER (WHERE t.estado = 'cancelado') AS cancelados
             FROM turnos t
             WHERE t.activo = TRUE AND t.id_espacio_ubicacion = e.id_espacio
@@ -516,7 +550,8 @@ async def mesa_ubicacion(
     subarea o aquella donde figura como agente (404 identico para no filtrar
     existencia — la mesa expone nombres de ciudadanos)."""
     esp = (await db.execute(text("""
-        SELECT id_espacio, nombre, direccion, atendido, id_subarea
+        SELECT id_espacio, nombre, direccion, atendido, id_subarea,
+               token_pantalla::text AS token_pantalla
         FROM espacios_agenda WHERE id_espacio = :id AND activo = TRUE
     """), {"id": id_espacio})).mappings().first()
     if not esp:
@@ -601,7 +636,11 @@ async def mesa_ubicacion(
 
     return {
         "id_espacio": id_espacio, "nombre": esp["nombre"], "direccion": esp["direccion"],
-        "fecha": f, "recursos": recursos_out,
+        "fecha": f,
+        # El link de la pantalla es publico: solo se lo damos a quien administra
+        # la mesa (nivel <= 2), no a todo operador con acceso a la grilla.
+        "token_pantalla": esp["token_pantalla"] if int(user.get("nivel_acceso") or 9) <= 2 else None,
+        "recursos": recursos_out,
     }
 
 
@@ -954,8 +993,10 @@ async def cumplir_turno(
     if turno["estado"] == "cumplido":
         out = await _turno_to_out(db, id_turno)
         return out  # type: ignore
-    if turno["estado"] != "reservado":
-        raise HTTPException(409, f"Solo se puede cumplir un turno 'reservado' (estado actual: '{turno['estado']}')")
+    # mig 105: se cumple desde 'reservado' (mesa sin colero, flujo historico) o
+    # desde 'llamado' (el ciudadano fue llamado y se presento).
+    if turno["estado"] not in ("reservado", "llamado"):
+        raise HTTPException(409, f"Solo se puede cumplir un turno 'reservado' o 'llamado' (estado actual: '{turno['estado']}')")
 
     # Prestacion con historia de atencion: la intervencion es OBLIGATORIA
     # (decidido con el usuario 2026-06-11 — la historia nunca queda con huecos).
@@ -974,7 +1015,8 @@ async def cumplir_turno(
     # CAS de estado (mig 95): sin repetir estado='reservado' en el WHERE, un
     # cancelar concurrente quedaba pisado (last-write-wins).
     res = await db.execute(text(
-        f"UPDATE turnos SET {', '.join(sets)} WHERE id_turno = :id AND estado = 'reservado'"
+        f"UPDATE turnos SET {', '.join(sets)} "
+        f"WHERE id_turno = :id AND estado IN ('reservado', 'llamado')"
     ), params)
     if res.rowcount == 0:
         await db.rollback()
@@ -984,7 +1026,7 @@ async def cumplir_turno(
         if estado_actual == "cumplido":
             out = await _turno_to_out(db, id_turno)
             return out  # type: ignore
-        raise HTTPException(409, f"Solo se puede cumplir un turno 'reservado' (estado actual: '{estado_actual}')")
+        raise HTTPException(409, f"Solo se puede cumplir un turno 'reservado' o 'llamado' (estado actual: '{estado_actual}')")
 
     if turno["registra_atencion"]:
         await db.execute(text("""
@@ -1011,6 +1053,155 @@ async def cumplir_turno(
     return out  # type: ignore
 
 
+@router.patch("/{id_turno}/llamar", response_model=TurnoOut)
+async def llamar_turno(
+    id_turno: int,
+    payload: Optional[TurnoLlamarIn] = None,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """Llama al turno en la mesa de atencion (colero, mig 105).
+
+    - Asigna `numero_diario` la PRIMERA vez (secuencia diaria por ubicacion):
+      un turno que nunca se llama no consume numero.
+    - Inserta una fila en `turno_llamado` (log append-only): **re-llamar es el
+      MISMO endpoint** — no cambia el estado, suma una fila y actualiza la
+      pantalla.
+    - Pasa el estado a 'llamado' si venia de 'reservado'.
+    """
+    _require_gestion(user)
+    turno = (await db.execute(text("""
+        SELECT t.id_turno, t.estado, t.numero_diario, t.fecha,
+               t.id_espacio_ubicacion, t.id_agente, t.id_espacio,
+               COALESCE(NULLIF(TRIM(eu.prefijo_colero), ''), '') AS prefijo
+          FROM turnos t
+          LEFT JOIN espacios_agenda eu ON eu.id_espacio = t.id_espacio_ubicacion
+         WHERE t.id_turno = :id AND t.activo = TRUE
+    """), {"id": id_turno})).mappings().first()
+    if not turno:
+        raise HTTPException(404, "Turno no encontrado")
+    await _validar_turno_en_scope(db, user, dict(turno))
+    if turno["estado"] not in ("reservado", "llamado"):
+        raise HTTPException(
+            409,
+            f"Solo se puede llamar un turno 'reservado' o 'llamado' (estado actual: '{turno['estado']}')",
+        )
+
+    numero = turno["numero_diario"]
+    if not numero:
+        # Secuencia diaria por UBICACION. El advisory lock evita que dos
+        # operadores de la misma mesa saquen el mismo numero (mismo criterio
+        # anti-carrera que la mig 95; se libera al commit).
+        if not turno["id_espacio_ubicacion"]:
+            raise HTTPException(
+                422,
+                "El turno no tiene ubicacion de atencion: no se le puede asignar numero de colero. "
+                "Asigna la ubicacion en la prestacion (mig 103).",
+            )
+        await advisory_lock_tx(
+            db, f"colero:{int(turno['id_espacio_ubicacion'])}:{turno['fecha']}"
+        )
+        ultimo = await db.scalar(text("""
+            SELECT MAX(SUBSTRING(numero_diario FROM '[0-9]+$')::int)
+              FROM turnos
+             WHERE id_espacio_ubicacion = :iu AND fecha = CAST(:f AS date)
+               AND numero_diario IS NOT NULL
+        """), {"iu": turno["id_espacio_ubicacion"], "f": turno["fecha"]})
+        correlativo = int(ultimo or 0) + 1
+        prefijo = turno["prefijo"] or ""
+        numero = f"{prefijo}-{correlativo:03d}" if prefijo else f"{correlativo:03d}"
+
+    puesto = (payload.puesto or "").strip() if payload and payload.puesto else None
+
+    # CAS de estado: si alguien cumplio/cancelo el turno en el medio, no lo
+    # revivimos como 'llamado'.
+    res = await db.execute(text("""
+        UPDATE turnos
+           SET estado = 'llamado', numero_diario = :num,
+               fecha_modificacion = NOW(), id_usuario_modificacion = :uid
+         WHERE id_turno = :id AND estado IN ('reservado', 'llamado')
+    """), {"id": id_turno, "num": numero, "uid": user["id_usuario"]})
+    if res.rowcount == 0:
+        await db.rollback()
+        estado_actual = await db.scalar(text(
+            "SELECT estado FROM turnos WHERE id_turno = :id"
+        ), {"id": id_turno})
+        raise HTTPException(
+            409,
+            f"Solo se puede llamar un turno 'reservado' o 'llamado' (estado actual: '{estado_actual}')",
+        )
+
+    await db.execute(text("""
+        INSERT INTO turno_llamado (id_turno, puesto, id_usuario_llama,
+                                   id_usuario_alta, id_usuario_modificacion)
+        VALUES (:it, :pu, :uid, :uid, :uid)
+    """), {"it": id_turno, "pu": puesto, "uid": user["id_usuario"]})
+    await db.commit()
+
+    out = await _turno_to_out(db, id_turno)
+    return out  # type: ignore
+
+
+@router.patch("/{id_turno}/ausente", response_model=TurnoOut)
+async def marcar_ausente(
+    id_turno: int,
+    payload: Optional[TurnoAusenteIn] = None,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """Marca que el ciudadano no se presento (colero, mig 105).
+
+    Se acepta desde 'llamado' (lo llamamos y no vino) y tambien desde
+    'reservado' (la mesa cierra el turno sin haberlo llamado). La ocupacion
+    espejo se MANTIENE: el turno ocurrio y su slot es historico, igual que un
+    cumplido — solo cancelar libera la grilla.
+    """
+    _require_gestion(user)
+    turno = (await db.execute(text(
+        "SELECT estado, observaciones, id_agente, id_espacio FROM turnos "
+        " WHERE id_turno = :id AND activo = TRUE"
+    ), {"id": id_turno})).mappings().first()
+    if not turno:
+        raise HTTPException(404, "Turno no encontrado")
+    await _validar_turno_en_scope(db, user, dict(turno))
+    if turno["estado"] == "ausente":
+        out = await _turno_to_out(db, id_turno)
+        return out  # type: ignore
+    if turno["estado"] not in ("reservado", "llamado"):
+        raise HTTPException(
+            409,
+            f"Solo se puede marcar ausente un turno 'reservado' o 'llamado' (estado actual: '{turno['estado']}')",
+        )
+
+    sets = ["estado = 'ausente'", "fecha_modificacion = NOW()", "id_usuario_modificacion = :uid"]
+    params: dict[str, Any] = {"id": id_turno, "uid": user["id_usuario"]}
+    obs_nueva = (payload.observaciones or "").strip() if payload and payload.observaciones else ""
+    if obs_nueva:
+        prev = (turno["observaciones"] or "").strip()
+        sets.append("observaciones = :obs")
+        params["obs"] = f"{prev}\nAusente: {obs_nueva}" if prev else f"Ausente: {obs_nueva}"
+
+    res = await db.execute(text(
+        f"UPDATE turnos SET {', '.join(sets)} "
+        f"WHERE id_turno = :id AND estado IN ('reservado', 'llamado')"
+    ), params)
+    if res.rowcount == 0:
+        await db.rollback()
+        estado_actual = await db.scalar(text(
+            "SELECT estado FROM turnos WHERE id_turno = :id"
+        ), {"id": id_turno})
+        if estado_actual == "ausente":
+            out = await _turno_to_out(db, id_turno)
+            return out  # type: ignore
+        raise HTTPException(
+            409,
+            f"Solo se puede marcar ausente un turno 'reservado' o 'llamado' (estado actual: '{estado_actual}')",
+        )
+    await db.commit()
+    out = await _turno_to_out(db, id_turno)
+    return out  # type: ignore
+
+
 @router.patch("/{id_turno}/cancelar", response_model=TurnoOut)
 async def cancelar_turno(
     id_turno: int,
@@ -1028,13 +1219,14 @@ async def cancelar_turno(
     if turno["estado"] == "cancelado":
         out = await _turno_to_out(db, id_turno)
         return out  # type: ignore
-    if turno["estado"] != "reservado":
-        raise HTTPException(409, f"Solo se puede cancelar un turno 'reservado' (estado actual: '{turno['estado']}')")
+    # mig 105: tambien se cancela un turno ya llamado (el ciudadano se fue).
+    if turno["estado"] not in ("reservado", "llamado"):
+        raise HTTPException(409, f"Solo se puede cancelar un turno 'reservado' o 'llamado' (estado actual: '{turno['estado']}')")
     # CAS de estado (mig 95): un cumplir concurrente no debe quedar pisado.
     res = await db.execute(text("""
         UPDATE turnos
         SET estado = 'cancelado', fecha_modificacion = NOW(), id_usuario_modificacion = :uid
-        WHERE id_turno = :id AND estado = 'reservado'
+        WHERE id_turno = :id AND estado IN ('reservado', 'llamado')
     """), {"id": id_turno, "uid": user["id_usuario"]})
     if res.rowcount == 0:
         await db.rollback()
@@ -1044,7 +1236,7 @@ async def cancelar_turno(
         if estado_actual == "cancelado":
             out = await _turno_to_out(db, id_turno)
             return out  # type: ignore
-        raise HTTPException(409, f"Solo se puede cancelar un turno 'reservado' (estado actual: '{estado_actual}')")
+        raise HTTPException(409, f"Solo se puede cancelar un turno 'reservado' o 'llamado' (estado actual: '{estado_actual}')")
     if turno["id_ocupacion"]:
         await db.execute(text("""
             UPDATE ocupaciones

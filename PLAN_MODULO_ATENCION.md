@@ -204,7 +204,7 @@ autenticado). Vista Mes queda fuera del modo ubicacion (muestra eventos).
 Pendiente residual de F2: los turnos LEGACY por agente sin ubicacion solo se
 ven en "Todos los turnos" (sin seleccion); no hay bucket dedicado.
 
-### F3 — Ciclo de llamado + Pantalla colero
+### F3 — Ciclo de llamado + Pantalla colero (HECHA 2026-09-06 — smoke 18/19 + 12/12 + verificacion visual)
 
 - Mig 105 local + prod.
 - Endpoints: `PATCH /turnos/{id}/llamar` (asigna numero_diario si falta,
@@ -220,6 +220,32 @@ ven en "Todos los turnos" (sin seleccion); no hay bucket dedicado.
   tokens DS, dark-friendly), polling 5s, destacado del ultimo llamado +
   lista de previos. Whitelist en `web-app/index.html`. Boton "Abrir pantalla /
   copiar link" en la mesa (nivel <=2).
+
+**Entregado (2026-09-06):** mig 105 en local Y prod (estados `llamado`/`ausente`,
+`turnos.numero_diario`, tabla `turno_llamado` append-only, `espacios_agenda.token_pantalla`
++ `prefijo_colero`). Backend: `PATCH /turnos/{id}/llamar` (asigna numero con advisory
+lock `colero:{id_espacio}:{fecha}`, re-llamar = mismo endpoint, CAS de estado) y
+`PATCH /turnos/{id}/ausente`; cumplir/cancelar ahora aceptan tambien `llamado`;
+`GET /turnos/publico/pantalla/{token}` sin auth con rate limit `pantalla:`.
+Frontend: `PanelAtencion` en la Mesa del dia (numero + Llamar/Re-llamar/Atendido/
+Ausente + campo Puesto recordado + "Abrir pantalla"/"Copiar link" solo nivel <=2) y
+`/pantalla/:token` fullscreen con polling 5 s.
+
+**Decisiones tomadas en F3 (cerraban pendientes del §4):**
+- **Formato del numero**: correlativo diario de 3 digitos por ubicacion, con
+  prefijo OPCIONAL por ubicacion (`espacios_agenda.prefijo_colero`, VARCHAR(4)).
+  Sin prefijo cargado sale `014`; con prefijo `A`, sale `A-014`.
+- **El numero se asigna al PRIMER llamado**, no al reservar: un turno que nunca
+  se llama no consume numero (la numeracion del dia no queda con huecos).
+- **`ausente` NO libera el slot** (la ocupacion espejo se mantiene, igual que
+  cumplido): el turno ocurrio y su franja es historica. Solo cancelar libera.
+- **Ausente tambien se acepta desde `reservado`** (no solo desde `llamado`): la
+  mesa cierra turnos que nunca llego a llamar.
+- El endpoint publico quedo bajo `/turnos/publico/pantalla/{token}` (router sin
+  auth ya existente) en vez de `/turnos/pantalla/{token}`: abrir un hueco sin
+  `get_current_user` en el router autenticado es fragil ante un guard futuro a
+  nivel router, que ademas no se puede anular por handler.
+- **Sonido/chime**: sigue pendiente (el autoplay en TVs exige interaccion previa).
 
 ### F4 — Guardia + derivacion desde Emergencias
 
@@ -265,7 +291,8 @@ ubicacion Guardia). F5 depende de F4. F6 depende de F3 (llamados) y F4
   de alcance por ahora; la demanda de guardia entra via Emergencias.
 - Sonido/chime en la pantalla colero al llamar: evaluar en F3 (autoplay de
   audio en TVs suele requerir interaccion previa).
-- Formato del numero diario (prefijo por ubicacion configurable?): definir en F3.
+- ~~Formato del numero diario~~ **RESUELTO en F3**: correlativo de 3 digitos por
+  ubicacion + prefijo opcional configurable (`espacios_agenda.prefijo_colero`).
 - Reactivacion del area Cultura + subareas + ubicaciones reales: dato de
   negocio que carga Cesar cuando arranque F2/F6.
 - Ficha clinica ampliada (motivo, diagnostico, antecedentes): etapa 2 de F5.

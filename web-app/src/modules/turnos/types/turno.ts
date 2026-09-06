@@ -1,4 +1,5 @@
-export type EstadoTurno = 'reservado' | 'cumplido' | 'cancelado'
+// mig 105 (colero): reservado -> llamado -> cumplido | ausente; y -> cancelado
+export type EstadoTurno = 'reservado' | 'llamado' | 'cumplido' | 'ausente' | 'cancelado'
 export type ClasePrestacion = 'atencion' | 'reserva_espacio'
 export type TipoRecurso = 'agente' | 'espacio'
 
@@ -64,6 +65,11 @@ export interface Turno {
   hora_fin: string
   estado: EstadoTurno
   observaciones: string | null
+  /** Colero (mig 105): número visible, asignado al primer llamado. */
+  numero_diario: string | null
+  ultimo_llamado_en: string | null
+  ultimo_llamado_puesto: string | null
+  cant_llamados: number
   activo: boolean
   id_municipio: number
   id_subarea: number | null
@@ -125,7 +131,9 @@ export interface UbicacionTurnos {
   prestaciones: number
   agentes: number
   reservados: number
+  llamados: number
   cumplidos: number
+  ausentes: number
   cancelados: number
 }
 
@@ -163,6 +171,8 @@ export interface MesaUbicacion {
   nombre: string
   direccion: string | null
   fecha: string
+  /** Colero (mig 105): token de la pantalla de sala. Sólo llega a nivel <= 2. */
+  token_pantalla: string | null
   recursos: MesaRecurso[]
 }
 
@@ -175,4 +185,20 @@ export interface ListarTurnosFiltros {
   id_tipo_prestacion?: number
   fecha_desde?: string
   fecha_hasta?: string
+}
+
+/** Pantalla de sala del colero (mig 105). Respuesta PÚBLICA: sólo número y
+ *  "Nombre I." — nunca apellido completo, DNI, prestación ni id de turno. */
+export interface PantallaLlamado {
+  numero: string | null
+  nombre_display: string
+  puesto: string | null
+  llamado_en: string
+}
+
+export interface PantallaColero {
+  ubicacion_nombre: string
+  fecha: string
+  llamando: PantallaLlamado[]
+  previos: PantallaLlamado[]
 }

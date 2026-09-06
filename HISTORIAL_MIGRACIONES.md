@@ -179,6 +179,22 @@ Las reglas vivas de cada una están en la sección del módulo correspondiente d
 - **Mig 76** (sesión 2026-06-01, alta pública de vecinos §38): tabla `empresa_credencial` (1:1 con `empresas`, solo verificación de email — `token_verificacion`/`verificado`/`verificado_en`, SIN password) + índice parcial sobre el token. Local por psql, prod por `apply_migration`. El ciudadano reusa `ciudadano_credencial` (mig 53).
 - **Migs 77-79** (2026-06-09, integridad de cuentas + alta vecino en 2 pasos): 77 = `usuarios.suspendido_motivo`/`fecha_suspension` (cron de integridad §39). 78 = `usuarios.debe_cambiar_password` (clave temporal + cambio forzado §39 Fase 3). 79 = `ciudadanos.ficha_completa` + `ciudadano_credencial.debe_cambiar_password` (alta del vecino en dos pasos §38/§39 Fase 4).
 
+### Migración 105 — Ciclo de llamado + colero (`backend/migrations/105_turnos_llamado_colero.sql`)
+
+**Aplicada en local (asyncpg) y prod (`apply_migration`) al 2026-09-06.** F3 del proyecto ATENCIÓN (`PLAN_MODULO_ATENCION.md`). Era la "mig 104" del plan; la 104 la tomó `tipo_tramite.id_subarea` el mismo día, así que el colero corrió a la 105 y la guardia a la 106.
+
+DDL: `turnos.estado` += `llamado` y `ausente` (CHECK recreado) · `turnos.numero_diario` VARCHAR(10) + índice parcial · tabla **`turno_llamado`** (log append-only de llamados, §10 + RLS deny-all) · `espacios_agenda.token_pantalla` UUID UNIQUE (con backfill de los espacios existentes) y `espacios_agenda.prefijo_colero` VARCHAR(4).
+
+**FSM:** `reservado → llamado → cumplido | ausente`; `reservado|llamado → cancelado`; `llamado → llamado` (re-llamado). Cumplir directo desde `reservado` sigue funcionando (mesa sin colero). Decisiones tomadas al implementar: el número se asigna **al primer llamado, no al reservar** (un turno que nunca se llama no consume número); el formato es correlativo de 3 dígitos con **prefijo opcional por ubicación**; **`ausente` NO libera el slot** (la ocupación espejo se mantiene como en `cumplido` — solo cancelar libera); ausente se acepta también desde `reservado`.
+
+Backend: `PATCH /turnos/{id}/llamar` (advisory lock `colero:{id_espacio}:{fecha}` para la secuencia, re-llamar = mismo endpoint, CAS de estado, 422 si el turno no tiene ubicación) y `PATCH /turnos/{id}/ausente`; cumplir/cancelar ampliados a `llamado`; `GET /turnos/publico/pantalla/{token}` **sin auth** (en `turnos_publico.py`, no en el router autenticado) con rate limit de prefijo propio `pantalla:`. La pantalla proyecta **en SQL** solo número + "Nombre I." + puesto: apellido completo, DNI, prestación e id de turno nunca salen del backend.
+
+Frontend: `PanelAtencion` en la Mesa del día (número, Llamar/Re-llamar/Atendido/Ausente, campo Puesto recordado en `localStorage`, "Abrir pantalla"/"Copiar link" solo nivel ≤ 2) y `/pantalla/:token` fullscreen con polling 5 s, tolerante a cortes de red, sumada a la whitelist de `web-app/index.html`. Ampliar `EstadoTurno` disparó 6 errores de typecheck (todos los `Record<EstadoTurno,…>` del módulo): la red funcionando.
+
+**Bug cazado por verificar contra el backend y no contra el typecheck:** el panel filtraba con un param `fecha` que **`GET /turnos` no acepta** — FastAPI lo ignora en silencio y habría listado los turnos de todos los días. Corregido a `fecha_desde`/`fecha_hasta`.
+
+Smokes: 18/19 + 12/12 contra local (el único FAIL fue del dato de prueba, un turno de otra fecha, no del código) + verificación navegando la mesa y la pantalla en `localhost:5173`.
+
 ### Migración 104 — Gestión responsable del tipo de trámite (`backend/migrations/104_tipo_tramite_subarea.sql`)
 
 **Aplicada en local (asyncpg) y prod (`apply_migration`) al 2026-09-06.** Ordenamiento pedido por César para el smoke de datos de la demo: *"todo lo relacionado con trámites tiene que estar asociado a algo así como la Secretaría de Gobierno, esa sería el área, después la subárea tendrá que estar relacionada con el trámite"*. Tres decisiones suyas (AskUserQuestion): **(a)** las 7 subáreas del circuito cuelgan TODAS de la Secretaría de Gobierno (el expediente es de Gobierno aunque el tema sea de otra secretaría); **(b)** el área 1 pasa de `Gobierno` a `Secretaría de Gobierno` por consistencia con las otras cinco; **(c)** la relación tipo→subárea se hace explícita en vez de quedar implícita en el circuito.
