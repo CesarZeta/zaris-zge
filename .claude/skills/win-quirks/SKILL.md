@@ -45,6 +45,11 @@ Recetas operativas verificadas. Muchas tienen memoria asociada (`[[...]]`) con e
   ```
   Sin `ENV_FILE`, `config.py` usa el default (puede apuntar a PROD). Si no hace falta env var, `Start-Process python` directo con `-WorkingDirectory` + `-RedirectStandardOutput/Error` es más simple (python es .exe, no necesita el rodeo `cmd /c` de Q11). Si el log queda vacío tras lanzar, probar primero en foreground para ver el error real. Tras lanzar, verificar entorno correcto: un request a algo que solo exista en local debe dar 200. Para matar/reiniciar (código viejo en memoria), matar **por puerto**: ver [[feedback_uvicorn_restart_tras_registrar_routers]].
 
+- **Q19 — un `python -c` / heredoc que reescribe un archivo puede reportar ÉXITO y NO escribir nada** (cazado 2026-09-06 editando `backend/app/api/routes/turnos.py` con uvicorn corriendo sobre ese código). El script leyó, el `assert count == 1` pasó, el `write()` no tiró excepción y el `print('ok')` salió — **pero el archivo en disco quedó igual**, tres intentos seguidos. Es la falla más peligrosa de la sesión: si no compilás inmediatamente después, seguís trabajando sobre un cambio fantasma que creés aplicado.
+  - **Detección:** después de reescribir un archivo por script, **releerlo o compilarlo** (`python -c "import modulo"`, `pnpm typecheck`) — no confiar en el `print` del propio script. Es la regla global de César (verificación por otra vía) aplicada a la edición de archivos.
+  - **Fallback:** usar la herramienta **Edit** (o Write), que sí persiste y falla ruidosamente. No insistir con el mismo script esperando otro resultado.
+  - Sospechar especialmente cuando el archivo está **abierto por un proceso vivo** (uvicorn/vite sobre ese módulo) o recién tocado por otro comando.
+
 ## Q12/Q13 — redirects bajo subpath `/zaris-zge/` (reglas con código)
 
 **Q12 — el bundle standalone en prod debe redirigir al shell vanilla, EXCEPTO las rutas públicas de autoservicio.** Si alguien abre `…/web-app/dist/index.html` directo ve el AppShell React standalone (viola §14). Script inline en `<head>` de `web-app/index.html` (antes de que React monte) — **la fuente de verdad es ese archivo** (soporta dominio propio y subpath GH Pages); este snippet es orientativo:
