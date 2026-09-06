@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.schemas.turnos import (
+    PantallaColeroOut,
     PrestacionPublicaOut,
     SlotLibreOut,
     TurnoPublicoCreate,
@@ -457,3 +458,89 @@ async def cancelar_turno_publico(
 
     out = await _turno_por_token(db, token_turno)
     return out  # type: ignore
+
+
+# =============================================================================
+# Pantalla del colero (mig 105, F3 plan ATENCION) — TV de la sala de espera.
+#
+# Va en ESTE router (publico, sin auth y registrado ANTES de turnos_router en
+# main.py) y no como `/turnos/pantalla/{token}` dentro del router autenticado:
+# abrir un hueco sin `Depends(get_current_user)` ahi seria fragil ante un guard
+# futuro a nivel router, que ademas no se puede anular por handler
+# ([[reference_fastapi_router_dependencies_no_override]]).
+#
+# PRIVACIDAD (decision de Cesar 2026-09-01): la pantalla es un monitor a la
+# vista de cualquiera en la sala. Muestra SOLO numero + "Nombre I." — nunca
+# apellido completo, DNI, prestacion, agente ni id de turno. La proyeccion se
+# hace EN SQL para que no haya forma de que un campo sensible viaje al cliente.
+# =============================================================================
+@router.get("/pantalla/{token_pantalla}", response_model=PantallaColeroOut)
+async def pantalla_colero(
+    token_pantalla: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Estado del colero de una ubicacion, para la TV de la sala (sin auth).
+
+    La pantalla la refresca un polling corto, por eso el rate limit es mas
+    holgado que el de reservas y usa **prefijo propio** (`pantalla:`): sin el,
+    compartiria bucket por IP con los otros endpoints publicos y una TV
+    consumiria el cupo de las reservas de esa misma IP (§5).
+    """
+    check_rate_limit(f"pantalla:{get_real_ip(request)}", max_requests=60, window_seconds=60)
+
+    espacio = (await db.execute(text("""
+        SELECT id_espacio, nombre FROM espacios_agenda
+         WHERE token_pantalla = CAST(:tok AS uuid) AND activo = TRUE
+    """), {"tok": token_pantalla})).mappings().first()
+    if not espacio:
+        raise HTTPException(404, "Pantalla no encontrada")
+
+    hoy = hoy_local()
+
+    # Una sola pasada: el ultimo llamado de cada turno del dia con numero.
+    # `nombre_display` se arma en SQL (ver nota de privacidad arriba).
+    filas = (await db.execute(text("""
+        SELECT t.numero_diario AS numero,
+               TRIM(COALESCE(c.nombre, '')) ||
+                   CASE WHEN COALESCE(c.apellido, '') <> ''
+                        THEN ' ' || UPPER(LEFT(TRIM(c.apellido), 1)) || '.'
+                        ELSE '' END AS nombre_display,
+               ll.puesto, ll.llamado_en,
+               t.estado
+          FROM turnos t
+          JOIN LATERAL (
+              SELECT l.llamado_en, l.puesto FROM turno_llamado l
+               WHERE l.id_turno = t.id_turno AND l.activo = TRUE
+               ORDER BY l.llamado_en DESC LIMIT 1
+          ) ll ON TRUE
+          LEFT JOIN ciudadanos c ON c.id_ciudadano = t.id_ciudadano
+         WHERE t.id_espacio_ubicacion = :ie
+           AND t.fecha = CAST(:f AS date)
+           AND t.activo = TRUE
+           AND t.numero_diario IS NOT NULL
+         ORDER BY ll.llamado_en DESC
+         LIMIT 12
+    """), {"ie": espacio["id_espacio"], "f": hoy})).mappings().all()
+
+    llamando: list[dict[str, Any]] = []
+    previos: list[dict[str, Any]] = []
+    for f in filas:
+        item = {
+            "numero": f["numero"],
+            "nombre_display": (f["nombre_display"] or "").strip() or "—",
+            "puesto": f["puesto"],
+            "llamado_en": f["llamado_en"],
+        }
+        # "Llamando" = los que siguen en estado llamado (nadie los cerro aun).
+        if f["estado"] == "llamado" and len(llamando) < 3:
+            llamando.append(item)
+        elif len(previos) < 8:
+            previos.append(item)
+
+    return {
+        "ubicacion_nombre": espacio["nombre"],
+        "fecha": hoy,
+        "llamando": llamando,
+        "previos": previos,
+    }

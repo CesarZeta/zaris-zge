@@ -6,7 +6,7 @@ import { CumplirTurnoModal } from '../components/CumplirTurnoModal'
 import { TurnoDetalleModal } from '../components/TurnoDetalleModal'
 import { ConfirmModal } from '../../agenda/components/ConfirmModal'
 import { useNotificationsStore } from '../../../stores/notifications'
-import type { CumplirTurnoBody, Turno } from '../types/turno'
+import type { CumplirTurnoBody, EstadoTurno, Turno } from '../types/turno'
 
 // Fecha "hoy" en hora local del municipio (AR = UTC-3, sin DST). El
 // .toISOString() del navegador da UTC: entre las 21:00 y 00:00 locales adelanta
@@ -30,11 +30,15 @@ function hoy_local(): string {
 // atención si la prestación lo pide) o reprogramar/cancelar. No tiene "Nuevo
 // turno" (eso es de la mesa de atención) ni el link de autoservicio.
 
-const ESTADO_COLOR = {
+// Tipado contra EstadoTurno (no `as const` suelto): si mañana se suma otro
+// estado al union, el typecheck obliga a definirle color acá.
+const ESTADO_COLOR: Record<EstadoTurno, { bg: string; fg: string }> = {
   reservado: { bg: 'rgba(245,127,23,0.14)', fg: '#b35900' },
+  llamado: { bg: 'rgba(245,78,0,0.16)', fg: '#f54e00' },
   cumplido: { bg: 'rgba(31,138,101,0.16)', fg: '#1f8a65' },
+  ausente: { bg: 'rgba(198,40,40,0.14)', fg: '#c62828' },
   cancelado: { bg: 'rgba(198,40,40,0.12)', fg: '#c62828' },
-} as const
+}
 
 type FiltroTiempo = 'pendientes' | 'hoy' | 'todos'
 
@@ -244,7 +248,7 @@ function Pill({ children }: { children: React.ReactNode }) {
   )
 }
 
-function EstadoBadge({ estado }: { estado: keyof typeof ESTADO_COLOR }) {
+function EstadoBadge({ estado }: { estado: EstadoTurno }) {
   const c = ESTADO_COLOR[estado]
   return (
     <span style={{

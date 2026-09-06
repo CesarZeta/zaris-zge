@@ -16,7 +16,9 @@ type FiltroEstado = EstadoTurno | ''
 
 const ESTADO_COLOR: Record<EstadoTurno, { bg: string; fg: string }> = {
   reservado: { bg: 'rgba(245,127,23,0.14)', fg: '#b35900' },
+  llamado: { bg: 'rgba(245,78,0,0.16)', fg: '#f54e00' },
   cumplido: { bg: 'rgba(31,138,101,0.16)', fg: '#1f8a65' },
+  ausente: { bg: 'rgba(198,40,40,0.14)', fg: '#c62828' },
   cancelado: { bg: 'rgba(198,40,40,0.12)', fg: '#c62828' },
 }
 
@@ -64,7 +66,7 @@ export function Overview() {
   }, [turnos, fTexto, filtrar])
 
   const counts = useMemo(() => {
-    const c = { reservado: 0, cumplido: 0, cancelado: 0 }
+    const c = { reservado: 0, llamado: 0, cumplido: 0, ausente: 0, cancelado: 0 }
     turnos.forEach((t) => { c[t.estado] += 1 })
     return c
   }, [turnos])
