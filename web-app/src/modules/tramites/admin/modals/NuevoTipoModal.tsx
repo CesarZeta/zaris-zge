@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Button, Input } from '../../../../ui'
-import { useCrearTipo } from '../hooks'
+import { useCrearTipo, useSubareasCatalogo } from '../hooks'
+import type { SubareaCatalogoItem } from '../api'
 import { ModalShell, label, requiredMark, errorMsg, formRow } from './_modalShell'
 import type { IniciadorTipo } from '../../types'
 
@@ -21,7 +22,19 @@ export function NuevoTipoModal({
   const [nuncaDepurar, setNuncaDepurar] = useState(false)
   const [slaDias, setSlaDias] = useState(0)
   const [largoCorr, setLargoCorr] = useState(4)
+  const [idSubarea, setIdSubarea] = useState(0)
   const [error, setError] = useState('')
+  const subareas = useSubareasCatalogo()
+
+  // Agrupadas por área: el catálogo se ordena área → subárea → tipo (mig 104).
+  const porArea = new Map<string, SubareaCatalogoItem[]>()
+  for (const sa of subareas.data ?? []) {
+    const area = sa.area_nombre ?? 'Sin área'
+    const lista = porArea.get(area) ?? []
+    lista.push(sa)
+    porArea.set(area, lista)
+  }
+  const agrupadasPorArea = [...porArea.entries()].sort(([a], [b]) => a.localeCompare(b, 'es'))
 
   const crear = useCrearTipo()
 
@@ -53,6 +66,7 @@ export function NuevoTipoModal({
         permite_representante: permiteRep,
         retencion_nunca_depurar: nuncaDepurar,
         sla_dias: slaDias > 0 ? slaDias : null,
+        id_subarea: idSubarea > 0 ? idSubarea : null,  // mig 104
         largo_correlativo: largoCorr,
       })
       onCreado(res.id_tipo_tramite)
@@ -99,6 +113,32 @@ export function NuevoTipoModal({
             </label>
           ))}
         </div>
+      </div>
+
+      <div style={formRow}>
+        <label style={label}>Gestión responsable</label>
+        <select
+          value={idSubarea}
+          onChange={(e) => setIdSubarea(Number(e.target.value))}
+          style={{
+            width: '100%', padding: '8px 10px', fontSize: 14,
+            fontFamily: 'inherit', color: 'var(--fg-1)',
+            background: 'var(--surface-100)',
+            border: '1px solid var(--border-medium)', borderRadius: 6,
+          }}
+        >
+          <option value={0}>— Sin asignar —</option>
+          {agrupadasPorArea.map(([area, items]) => (
+            <optgroup key={area} label={area}>
+              {items.map((sa) => (
+                <option key={sa.id_subarea} value={sa.id_subarea}>{sa.nombre}</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+        <p style={{ fontSize: 11, color: 'var(--fg-3)', margin: '4px 0 0' }}>
+          Quién tramita este tipo. El área sale de la subárea. Se puede cambiar después.
+        </p>
       </div>
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>

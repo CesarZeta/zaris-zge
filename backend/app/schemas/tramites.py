@@ -472,6 +472,7 @@ class TipoTramiteCreateIn(BaseModel):
     color: Optional[str] = None
     retencion_nunca_depurar: bool = False  # mig 75: si True, los binarios de este tipo nunca se purgan
     sla_dias: Optional[int] = None  # mig 101: NULL/0 = usa tramite_sla_dias_default
+    id_subarea: Optional[int] = None  # mig 104: gestion responsable del tipo
     id_municipio: int = 1
 
     @field_validator("codigo", "nombre", "prefijo")
@@ -523,6 +524,7 @@ class TipoTramiteUpdateIn(BaseModel):
     color: Optional[str] = None
     retencion_nunca_depurar: Optional[bool] = None  # mig 75
     sla_dias: Optional[int] = None  # mig 101 (0 = volver al default global)
+    id_subarea: Optional[int] = None  # mig 104 (0 = desasignar la gestion)
 
     @field_validator("iniciadores_permitidos")
     @classmethod
@@ -735,6 +737,11 @@ class TipoTramiteAdminOut(BaseModel):
     es_sistema: bool = False
     retencion_nunca_depurar: bool = False  # mig 75: override politica de retencion
     sla_dias: Optional[int] = None  # mig 101
+    # mig 104: gestion responsable. El area NO se guarda, se deriva por JOIN
+    # subarea -> area (fuente unica, §27 / project_tipo_reclamo_area_inconsistencia).
+    id_subarea: Optional[int] = None
+    subarea_nombre: Optional[str] = None
+    area_nombre: Optional[str] = None
     id_version_publicada: Optional[int] = None
     versiones: list[VersionOut] = []
 
@@ -757,6 +764,10 @@ class TipoTramiteAdminListItem(BaseModel):
     prefijo: str
     iniciadores_permitidos: list[str]
     es_sistema: bool
+    # mig 104: gestion responsable (area derivada por JOIN subarea -> area)
+    id_subarea: Optional[int] = None
+    subarea_nombre: Optional[str] = None
+    area_nombre: Optional[str] = None
     id_version_publicada: Optional[int] = None
     # estado_version: 'publicado' | 'borrador' | 'sin_estados' — derivado de la ultima version
     estado_version: str

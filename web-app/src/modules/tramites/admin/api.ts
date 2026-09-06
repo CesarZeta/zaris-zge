@@ -33,6 +33,7 @@ export interface TipoCreateBody {
   color?: string | null
   retencion_nunca_depurar?: boolean
   sla_dias?: number | null
+  id_subarea?: number | null  // mig 104: gestión responsable
   id_municipio?: number
 }
 
@@ -51,6 +52,7 @@ export interface TipoUpdateBody {
   color?: string | null
   retencion_nunca_depurar?: boolean
   sla_dias?: number | null  // 0 = volver al default global
+  id_subarea?: number | null  // mig 104 (0 = desasignar)
 }
 
 export const crearTipo = (body: TipoCreateBody) =>
@@ -69,6 +71,21 @@ export const detalleTipoAdmin = (id: number) =>
  * pantalla de administración. Incluye es_sistema y estado_version. */
 export const listarTiposAdmin = () =>
   api.get<{ items: TipoTramiteAdminListItem[]; total: number }>(`${BASE}/tipos`)
+
+/** Subárea = gestión responsable del tipo (mig 104).
+ *
+ * Consume el catálogo de Agenda por URL directa a propósito: importar
+ * `listarSubareasAgenda` del módulo agenda armaría una dependencia cruzada
+ * entre módulos (mismo criterio que el select de ubicaciones de F2b).
+ */
+export interface SubareaCatalogoItem {
+  id_subarea: number
+  nombre: string
+  id_area: number | null
+  area_nombre: string | null
+}
+export const listarSubareasCatalogo = () =>
+  api.get<SubareaCatalogoItem[]>('/api/v1/agenda/catalogos/subareas', { params: { limit: 200 } })
 
 export interface TipoTramiteAprobReq {
   id_tipo_tramite_aprobacion_requerida: number
