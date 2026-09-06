@@ -6,6 +6,7 @@ import { obtenerTurno } from '../api/turnosApi'
 import { useUbicacionTurnosStore } from '../stores/ubicacionTurnos'
 import { TurnoDetalleModal } from '../components/TurnoDetalleModal'
 import { TurnoFormModal } from '../components/TurnoFormModal'
+import { PanelAtencion } from '../components/PanelAtencion'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { toIsoDate, hoy, sumarDias, etiquetaFechaLarga, mismaFecha, timeToMinutes } from '../../../lib/dates'
 import type { MesaOcupacion, MesaRecurso, Turno } from '../types/turno'
@@ -43,14 +44,18 @@ export function MesaUbicacion() {
 
   const resumen = useMemo(() => {
     let reservados = 0
+    let llamados = 0
     let cumplidos = 0
+    let ausentes = 0
     for (const r of data?.recursos ?? []) {
       for (const o of r.ocupaciones) {
         if (o.turno_estado === 'reservado') reservados += 1
+        if (o.turno_estado === 'llamado') llamados += 1
         if (o.turno_estado === 'cumplido') cumplidos += 1
+        if (o.turno_estado === 'ausente') ausentes += 1
       }
     }
-    return { reservados, cumplidos }
+    return { reservados, llamados, cumplidos, ausentes }
   }, [data])
 
   async function abrirTurno(o: MesaOcupacion) {
@@ -97,8 +102,14 @@ export function MesaUbicacion() {
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', alignItems: 'center' }}>
-          <span style={{ ...chip, background: 'rgba(245,127,23,0.14)', color: '#b35900' }}>{resumen.reservados} reservados</span>
-          <span style={{ ...chip, background: 'rgba(31,138,101,0.16)', color: '#1f8a65' }}>{resumen.cumplidos} cumplidos</span>
+          <span style={{ ...chip, background: 'rgba(245,127,23,0.14)', color: '#b35900' }}>{resumen.reservados} en espera</span>
+          {resumen.llamados > 0 && (
+            <span style={{ ...chip, background: 'rgba(245,78,0,0.16)', color: '#f54e00' }}>{resumen.llamados} llamados</span>
+          )}
+          <span style={{ ...chip, background: 'rgba(31,138,101,0.16)', color: '#1f8a65' }}>{resumen.cumplidos} atendidos</span>
+          {resumen.ausentes > 0 && (
+            <span style={{ ...chip, background: 'rgba(198,40,40,0.14)', color: '#c62828' }}>{resumen.ausentes} ausentes</span>
+          )}
           <button onClick={() => refetch()} style={navBtn} title="Refrescar">
             <RefreshCw size={14} strokeWidth={1.5} style={{ animation: isFetching ? 'spin 1s linear infinite' : undefined }} />
           </button>
@@ -116,6 +127,17 @@ export function MesaUbicacion() {
       </div>
 
       {isError && <div style={errorBanner}>{(error as Error)?.message ?? 'Error al cargar la mesa'}</div>}
+
+      {/* Colero (mig 105): el panel va ARRIBA de la grilla porque es lo que el
+          operador toca todo el día; la grilla queda como vista del día. */}
+      {ubicacion?.id_espacio != null && (
+        <PanelAtencion
+          idEspacioUbicacion={ubicacion.id_espacio}
+          fecha={fecha}
+          tokenPantalla={data?.token_pantalla ?? null}
+          onCambio={() => refetch()}
+        />
+      )}
 
       <div style={card}>
         {isLoading ? (

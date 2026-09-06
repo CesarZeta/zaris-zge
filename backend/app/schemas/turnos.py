@@ -181,13 +181,48 @@ class TurnoOut(BaseModel):
     fecha: date
     hora_inicio: time
     hora_fin: time
-    estado: Literal["reservado", "cumplido", "cancelado"]
+    estado: Literal["reservado", "llamado", "cumplido", "ausente", "cancelado"]
     observaciones: Optional[str] = None
+    # Colero (mig 105): numero visible + rastro del ultimo llamado.
+    numero_diario: Optional[str] = None
+    ultimo_llamado_en: Optional[datetime] = None
+    ultimo_llamado_puesto: Optional[str] = None
+    cant_llamados: int = 0
     activo: bool
     id_municipio: int
     id_subarea: Optional[int] = None
     fecha_alta: datetime
     fecha_modificacion: datetime
+
+
+class TurnoLlamarIn(BaseModel):
+    """Body opcional de PATCH /turnos/{id}/llamar (mig 105)."""
+    puesto: Optional[str] = Field(None, max_length=40,
+                                  description="Box/ventanilla al que se llama, ej. 'Box 3'")
+
+
+class TurnoAusenteIn(BaseModel):
+    """Body opcional de PATCH /turnos/{id}/ausente (mig 105)."""
+    observaciones: Optional[str] = Field(None, max_length=500)
+
+
+# =============================================================================
+# Pantalla del colero (mig 105) — publica por token de la ubicacion, sin auth.
+# NUNCA expone el nombre completo del ciudadano: solo "Nombre I." (decision de
+# Cesar 2026-09-01). Tampoco DNI, prestacion ni id de turno.
+# =============================================================================
+class PantallaLlamadoOut(BaseModel):
+    numero: Optional[str] = None
+    nombre_display: str                     # "Maria G." — nunca el apellido completo
+    puesto: Optional[str] = None
+    llamado_en: datetime
+
+
+class PantallaColeroOut(BaseModel):
+    ubicacion_nombre: str
+    fecha: date
+    llamando: list[PantallaLlamadoOut] = []   # ultimo(s) llamado(s), lo destacado
+    previos: list[PantallaLlamadoOut] = []    # historial reciente
 
 
 # =============================================================================
@@ -209,7 +244,9 @@ class UbicacionTurnosOut(BaseModel):
     prestaciones: int = 0
     agentes: int = 0
     reservados: int = 0
+    llamados: int = 0      # colero mig 105: en sala, ya llamados
     cumplidos: int = 0
+    ausentes: int = 0      # colero mig 105: llamados y no se presentaron
     cancelados: int = 0
 
 
@@ -251,6 +288,9 @@ class MesaUbicacionOut(BaseModel):
     nombre: str
     direccion: Optional[str] = None
     fecha: date
+    # Colero (mig 105): link de la pantalla de sala. Solo viaja a nivel <= 2
+    # (es una URL publica: quien la tiene puede proyectarla en cualquier lado).
+    token_pantalla: Optional[str] = None
     recursos: list[MesaRecursoOut] = []
 
 
