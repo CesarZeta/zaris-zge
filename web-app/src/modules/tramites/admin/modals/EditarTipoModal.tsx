@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Button, Input } from '../../../../ui'
-import { useActualizarTipo } from '../hooks'
+import { useActualizarTipo, useSubareasCatalogo } from '../hooks'
+import type { SubareaCatalogoItem } from '../api'
 import { ModalShell, label, errorMsg, formRow } from './_modalShell'
 import type { IniciadorTipo, TipoTramiteAdmin } from '../../types'
 
@@ -19,13 +20,25 @@ export function EditarTipoModal({
   const [permiteRep, setPermiteRep] = useState(tipo.permite_representante)
   const [nuncaDepurar, setNuncaDepurar] = useState(tipo.retencion_nunca_depurar ?? false)
   const [slaDias, setSlaDias] = useState(tipo.sla_dias ?? 0)
+  const [idSubarea, setIdSubarea] = useState(tipo.id_subarea ?? 0)
   const [error, setError] = useState('')
+  const subareas = useSubareasCatalogo()
 
   const actualizar = useActualizarTipo(tipo.id_tipo_tramite)
 
   function toggleIni(i: IniciadorTipo) {
     setIniciadores((prev) => prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i])
   }
+
+  // Agrupadas por área para que el select muestre la jerarquía gestión → área.
+  const porArea = new Map<string, SubareaCatalogoItem[]>()
+  for (const sa of subareas.data ?? []) {
+    const area = sa.area_nombre ?? 'Sin área'
+    const lista = porArea.get(area) ?? []
+    lista.push(sa)
+    porArea.set(area, lista)
+  }
+  const agrupadasPorArea = [...porArea.entries()].sort(([a], [b]) => a.localeCompare(b, 'es'))
 
   async function handleGuardar() {
     setError('')
@@ -41,6 +54,7 @@ export function EditarTipoModal({
         permite_representante: permiteRep,
         retencion_nunca_depurar: nuncaDepurar,
         sla_dias: slaDias,  // 0 = el backend vuelve al default global
+        id_subarea: idSubarea,  // 0 = el backend la desasigna (mig 104)
       })
       onCerrar()
     } catch (e) {
@@ -99,6 +113,33 @@ export function EditarTipoModal({
         (excepción a la política de retención por antigüedad). Útil para Habilitaciones u otros
         trámites con valor permanente.
       </p>
+
+      <div style={formRow}>
+        <label style={label}>Gestión responsable</label>
+        <select
+          value={idSubarea}
+          onChange={(e) => setIdSubarea(Number(e.target.value))}
+          style={{
+            width: '100%', padding: '8px 10px', fontSize: 14,
+            fontFamily: 'inherit', color: 'var(--fg-1)',
+            background: 'var(--surface-100)',
+            border: '1px solid var(--border-medium)', borderRadius: 6,
+          }}
+        >
+          <option value={0}>— Sin asignar —</option>
+          {agrupadasPorArea.map(([area, items]) => (
+            <optgroup key={area} label={area}>
+              {items.map((s) => (
+                <option key={s.id_subarea} value={s.id_subarea}>{s.nombre}</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+        <p style={{ fontSize: 11, color: 'var(--fg-3)', margin: '4px 0 0' }}>
+          Quién tramita este tipo. El área sale de la subárea, no se carga aparte.
+          Los expedientes siguen ruteándose por el circuito: esto es la gestión dueña del tipo.
+        </p>
+      </div>
 
       <div style={{ width: 220, marginBottom: 12 }}>
         <label style={label}>SLA del trámite (días)</label>

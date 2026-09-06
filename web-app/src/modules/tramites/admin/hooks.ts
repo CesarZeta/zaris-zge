@@ -39,7 +39,7 @@ import {
   type TransicionUpdateBody,
   type AprobReqBody,
 } from './api'
-import { listarTiposAdmin } from './api'
+import { listarTiposAdmin, listarSubareasCatalogo } from './api'
 
 const HORA = 60 * 60 * 1000
 
@@ -52,6 +52,15 @@ export function useTiposCatalogo() {
   return useQuery({
     queryKey: ['tramites', 'admin', 'tipos'],
     queryFn: () => listarTiposAdmin(),
+    staleTime: HORA,
+  })
+}
+
+/** Subáreas activas con su área, para elegir la gestión responsable (mig 104). */
+export function useSubareasCatalogo() {
+  return useQuery({
+    queryKey: ['tramites', 'admin', 'subareas'],
+    queryFn: () => listarSubareasCatalogo(),
     staleTime: HORA,
   })
 }

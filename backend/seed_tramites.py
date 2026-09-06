@@ -68,9 +68,12 @@ async def upsert_subarea(conn, nombre, id_area, id_municipio=ID_MUNICIPIO):
         "SELECT id_subarea FROM subarea WHERE LOWER(nombre) = LOWER(:n) AND id_municipio = :m LIMIT 1",
         {"n": nombre, "m": id_municipio})
     if row:
-        # Reactivar si estaba inactiva
+        # Reactivar si estaba inactiva Y reencuadrar el area: sin esto el seed no
+        # era deterministico (una subarea preexistente conservaba el area vieja,
+        # aunque el ordenamiento hubiera cambiado). Cazado 2026-09-06.
         await conn.execute(text(
-            "UPDATE subarea SET activo = TRUE WHERE id_subarea = :id"), {"id": row[0]})
+            "UPDATE subarea SET activo = TRUE, id_area = :a, fecha_modificacion = NOW() "
+            " WHERE id_subarea = :id"), {"id": row[0], "a": id_area})
         return row[0]
 
     r = await conn.execute(text("""
@@ -130,26 +133,39 @@ def ts(dias_atras=0):
 # =============================================================================
 
 async def seed_subareas(conn):
-    print("  Subáreas del circuito de trámites...")
+    """Las 7 subareas del circuito, TODAS bajo la Secretaria de Gobierno.
 
-    # id_area: 1=Gobierno, 22=Servicios Publicos, 15=Gobierno Legal Tecnica, 6=Planeamiento
+    Ordenamiento fijado por Cesar el 2026-09-06 (mig 104): el EXPEDIENTE es de
+    Gobierno aunque el tema sea de otra secretaria. Antes este seed las repartia
+    (bromatologia y espacios verdes a Servicios Publicos) y ademas `id_area_legal`
+    tenia un bug de precedencia (`LIKE '%legal%' OR LIKE '%gobierno%' AND activo`
+    se evalua como `A OR (B AND C)`), asi que el resultado dependia del estado
+    previo de la base. Para un smoke que corremos siempre, el ordenamiento tiene
+    que ser deterministico.
+    """
+    print("  Subáreas del circuito de trámites (todas bajo Secretaría de Gobierno)...")
+
+    # Nunca por id: en prod el area de gobierno es la 1, en local la 15 (§24).
     id_area_gobierno = await fetchval(conn,
-        "SELECT id_area FROM area WHERE LOWER(nombre) LIKE '%gobierno%' AND activo ORDER BY id_area LIMIT 1")
-    id_area_servicios = await fetchval(conn,
-        "SELECT id_area FROM area WHERE LOWER(nombre) LIKE '%servicios%publicos%' AND activo ORDER BY id_area LIMIT 1")
-    id_area_legal = await fetchval(conn,
-        "SELECT id_area FROM area WHERE LOWER(nombre) LIKE '%legal%' OR LOWER(nombre) LIKE '%gobierno%' AND activo ORDER BY id_area LIMIT 1")
-
-    fallback_area = id_area_gobierno or 1
+        "SELECT id_area FROM area WHERE LOWER(nombre) LIKE '%gobierno%' AND activo "
+        "ORDER BY id_area LIMIT 1")
+    if not id_area_gobierno:
+        raise RuntimeError(
+            "No hay un area activa cuyo nombre contenga 'gobierno'. El circuito de "
+            "tramites cuelga de la Secretaria de Gobierno (mig 104): creala antes "
+            "de correr este seed.")
 
     sa_ids = {}
-    sa_ids["mesa_entradas"] = await upsert_subarea(conn, "Mesa de Entradas", fallback_area)
-    sa_ids["habilitaciones"] = await upsert_subarea(conn, "Habilitaciones Comerciales", id_area_legal or fallback_area)
-    sa_ids["bromatologia"] = await upsert_subarea(conn, "Bromatologia e Inspecciones", id_area_servicios or fallback_area)
-    sa_ids["obras_particulares"] = await upsert_subarea(conn, "Obras Particulares", id_area_legal or fallback_area)
-    sa_ids["legales"] = await upsert_subarea(conn, "Asesoria Legal y Tecnica", id_area_legal or fallback_area)
-    sa_ids["rrhh"] = await upsert_subarea(conn, "Recursos Humanos", fallback_area)
-    sa_ids["espacios_verdes"] = await upsert_subarea(conn, "Espacios Verdes", id_area_servicios or fallback_area)
+    for clave, nombre in (
+        ("mesa_entradas",      "Mesa de Entradas"),
+        ("habilitaciones",     "Habilitaciones Comerciales"),
+        ("bromatologia",       "Bromatologia e Inspecciones"),
+        ("obras_particulares", "Obras Particulares"),
+        ("legales",            "Asesoria Legal y Tecnica"),
+        ("rrhh",               "Recursos Humanos"),
+        ("espacios_verdes",    "Espacios Verdes"),
+    ):
+        sa_ids[clave] = await upsert_subarea(conn, nombre, id_area_gobierno)
 
     print(f"    Mesa de Entradas: {sa_ids['mesa_entradas']}")
     print(f"    Habilitaciones: {sa_ids['habilitaciones']}")
@@ -613,6 +629,41 @@ async def seed_tipos(conn, sa):
     )
 
     print(f"    9 tipos de tramite listos.")
+    # -------------------------------------------------------------------------
+    # Gestion responsable de cada tipo (mig 104, ordenamiento de Cesar 2026-09-06).
+    # Se hace al final y por mapa para no cambiar la firma posicional de seed_tipo
+    # en las 9 llamadas. Idempotente: siempre reencuadra, asi el smoke deja el
+    # mismo ordenamiento corra sobre la base que corra.
+    # -------------------------------------------------------------------------
+    gestion_por_tipo = {
+        "poda-arbol":                 "espacios_verdes",
+        "solicitud-arbolado":         "espacios_verdes",
+        "licencia-ordinaria":         "rrhh",
+        "habilitacion-comercial":     "habilitaciones",
+        "cambio-domicilio-comercial": "habilitaciones",
+        "transferencia-habilitacion": "habilitaciones",
+        "inspeccion-bromatologica":   "bromatologia",
+        "cartel-publicitario":        "obras_particulares",
+        "aviso-obra":                 "obras_particulares",
+        "permiso-espacio-publico":    "obras_particulares",
+        "inscripcion-profesional":    "obras_particulares",
+        "recurso-administrativo":     "legales",
+        "pedido-informe":             "mesa_entradas",
+        "exencion-tasas":             "mesa_entradas",
+        "permiso-demo-e2e":           "mesa_entradas",
+    }
+    print("  Gestión responsable por tipo (mig 104)...")
+    for codigo, clave_sa in gestion_por_tipo.items():
+        id_sa = sa.get(clave_sa)
+        if not id_sa:
+            continue
+        await conn.execute(text("""
+            UPDATE tipo_tramite SET id_subarea = :s, fecha_modificacion = NOW()
+             WHERE codigo = :c AND id_municipio = :m
+               AND id_subarea IS DISTINCT FROM :s
+        """), {"s": id_sa, "c": codigo, "m": ID_MUNICIPIO})
+
+
     return tipos
 
 

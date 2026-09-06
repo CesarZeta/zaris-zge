@@ -67,6 +67,7 @@ export function ConfigTramites() {
                 <th style={cellHead}>Código</th>
                 <th style={cellHead}>Nombre</th>
                 <th style={cellHead}>Prefijo</th>
+                <th style={cellHead}>Gestión</th>
                 <th style={cellHead}>Origen</th>
                 <th style={cellHead}>Estado</th>
                 <th style={{ ...cellHead, width: 100, textAlign: 'right' }}>Acciones</th>
@@ -78,6 +79,20 @@ export function ConfigTramites() {
                   <td style={cellMono}>{t.codigo}</td>
                   <td style={cell}>{t.nombre}</td>
                   <td style={cellMono}>{t.prefijo}</td>
+                  {/* mig 104: gestión responsable. El área se muestra encima porque
+                      el ordenamiento del catálogo es área → subárea → tipo. */}
+                  <td style={cell}>
+                    {t.subarea_nombre ? (
+                      <>
+                        <div>{t.subarea_nombre}</div>
+                        {t.area_nombre && (
+                          <div style={{ fontSize: 11, color: 'var(--fg-3)' }}>{t.area_nombre}</div>
+                        )}
+                      </>
+                    ) : (
+                      <span style={{ color: 'var(--fg-3)' }}>—</span>
+                    )}
+                  </td>
                   <td style={cell}>
                     {t.es_sistema ? (
                       <Badge kind="neutral">Sistema</Badge>
