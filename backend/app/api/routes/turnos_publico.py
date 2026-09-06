@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import re
+import uuid
 from datetime import date, datetime, time, timedelta
 from typing import Any, Optional
 
@@ -488,6 +489,15 @@ async def pantalla_colero(
     consumiria el cupo de las reservas de esa misma IP (§5).
     """
     check_rate_limit(f"pantalla:{get_real_ip(request)}", max_requests=60, window_seconds=60)
+
+    # Un token que no es UUID hace explotar el CAST en Postgres (500). Es un
+    # endpoint publico: cualquiera puede pegarle con basura y llenar los logs de
+    # excepciones. Un token invalido y uno inexistente son el MISMO caso para
+    # quien mira: 404. (Cazado probando prod, 2026-09-06.)
+    try:
+        uuid.UUID(token_pantalla)
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(404, "Pantalla no encontrada")
 
     espacio = (await db.execute(text("""
         SELECT id_espacio, nombre FROM espacios_agenda
