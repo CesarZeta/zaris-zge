@@ -6,6 +6,7 @@ import {
   crearContactoEventual,
   crearEvento,
   derivarEvento,
+  derivarAGuardia,
   detalleEvento,
   listarCanales,
   listarEstados,
@@ -125,6 +126,15 @@ export function useDerivarEvento() {
   return useMutation({
     mutationFn: ({ id, id_organismo, observaciones }: { id: number; id_organismo: number; observaciones?: string }) =>
       derivarEvento(id, id_organismo, observaciones),
+    onSuccess: (_d, v) => invalidarEventos(qc, v.id),
+  })
+}
+
+export function useDerivarAGuardia() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: number; motivo: string; id_ciudadano?: number | null; paciente_nombre?: string | null }) =>
+      derivarAGuardia(id, body),
     onSuccess: (_d, v) => invalidarEventos(qc, v.id),
   })
 }

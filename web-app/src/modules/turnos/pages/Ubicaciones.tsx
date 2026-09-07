@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ListChecks, MapPin, RefreshCw, Users } from 'lucide-react'
+import { ListChecks, MapPin, RefreshCw, Siren, Users } from 'lucide-react'
 import { useUbicaciones } from '../hooks/useTurnos'
 import { useUbicacionTurnosStore } from '../stores/ubicacionTurnos'
 import type { UbicacionTurnos } from '../types/turno'
@@ -72,7 +72,14 @@ export function Ubicaciones() {
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                   <MapPin size={16} strokeWidth={1.5} style={{ color: 'var(--zaris-orange)', flexShrink: 0, marginTop: 2 }} />
                   <div style={{ minWidth: 0 }}>
-                    <div style={cardNombre}>{u.nombre}</div>
+                    <div style={{ ...cardNombre, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.nombre}</span>
+                      {u.es_guardia && (
+                        <span style={guardiaChip} title="Guardia de emergencias: recibe las derivaciones del COM, sin turnos">
+                          <Siren size={11} strokeWidth={1.5} /> Guardia
+                        </span>
+                      )}
+                    </div>
                     {u.direccion && <div style={cardMeta}>{u.direccion}</div>}
                     {u.subarea_nombre && <div style={cardMeta}>{u.subarea_nombre}</div>}
                   </div>
@@ -85,12 +92,23 @@ export function Ubicaciones() {
                     {u.prestaciones} prest.
                   </span>
                   <span style={{ flex: 1 }} />
-                  <span style={{ ...countChip, background: 'rgba(245,127,23,0.14)', color: '#b35900' }} title="Turnos reservados hoy">
-                    {u.reservados} res.
-                  </span>
-                  <span style={{ ...countChip, background: 'rgba(31,138,101,0.16)', color: '#1f8a65' }} title="Turnos cumplidos hoy">
-                    {u.cumplidos} cump.
-                  </span>
+                  {u.es_guardia ? (
+                    <span
+                      style={{ ...countChip, background: u.guardia_pendientes > 0 ? 'rgba(198,40,40,0.14)' : 'var(--surface-400)', color: u.guardia_pendientes > 0 ? '#c62828' : 'var(--fg-3)' }}
+                      title="Derivaciones del COM esperando atención"
+                    >
+                      {u.guardia_pendientes} derivación{u.guardia_pendientes === 1 ? '' : 'es'} pendiente{u.guardia_pendientes === 1 ? '' : 's'}
+                    </span>
+                  ) : (
+                    <>
+                      <span style={{ ...countChip, background: 'rgba(245,127,23,0.14)', color: '#b35900' }} title="Turnos reservados hoy">
+                        {u.reservados} res.
+                      </span>
+                      <span style={{ ...countChip, background: 'rgba(31,138,101,0.16)', color: '#1f8a65' }} title="Turnos cumplidos hoy">
+                        {u.cumplidos} cump.
+                      </span>
+                    </>
+                  )}
                 </div>
               </button>
             ))}
@@ -125,6 +143,12 @@ const cardNombre: React.CSSProperties = {
   whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
 }
 const cardMeta: React.CSSProperties = { fontSize: '0.74rem', color: 'var(--fg-3)', marginTop: 2 }
+const guardiaChip: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
+  background: 'rgba(198,40,40,0.12)', color: '#c62828',
+  fontSize: '0.68rem', fontWeight: 700, padding: '1px 7px', borderRadius: 999,
+  textTransform: 'uppercase', letterSpacing: '0.04em',
+}
 const cardFooter: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', width: '100%',
 }

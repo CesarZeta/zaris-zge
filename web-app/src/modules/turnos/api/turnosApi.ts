@@ -1,5 +1,7 @@
 import { api } from '../../../lib/api'
 import type {
+  GuardiaAtencion,
+  GuardiaAtenderBody,
   CrearTurnoBody,
   CumplirTurnoBody,
   ListarTurnosFiltros,
@@ -68,3 +70,14 @@ export const listarUbicaciones = (fecha?: string) =>
 
 export const mesaUbicacion = (id_espacio: number, fecha?: string) =>
   api.get<MesaUbicacion>(`/api/v1/turnos/ubicaciones/${id_espacio}/mesa`, { params: fecha ? { fecha } : {} })
+
+/* ── Guardia (mig 106, F4) — la mesa de la ubicación Guardia ─────────────── */
+
+export const listarAtencionesGuardia = (fecha?: string, estado?: string) =>
+  api.get<GuardiaAtencion[]>('/api/v1/turnos/guardia/atenciones', { params: { fecha, estado } })
+
+export const atenderGuardia = (id_atencion: number, body: GuardiaAtenderBody) =>
+  api.patch<GuardiaAtencion>(`/api/v1/turnos/guardia/atenciones/${id_atencion}/atender`, body)
+
+export const ausenteGuardia = (id_atencion: number, observaciones?: string | null) =>
+  api.patch<GuardiaAtencion>(`/api/v1/turnos/guardia/atenciones/${id_atencion}/ausente`, { observaciones: observaciones || null })

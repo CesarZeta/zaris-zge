@@ -1,10 +1,10 @@
 # PLAN DE IMPLEMENTACION - ATENCION POR UBICACION (Turnos reorganizados + Colero + Guardia + Historia Clinica + BI por gestion)
 
-**Estado:** F1 y F2 COMPLETAS y verificadas (2026-09-01): modelo ubicacion +
-regla obligatoria + modulo Turnos ubicacion-primero (landing/mesa/contexto) +
-modo "Por ubicacion" en la grilla del modulo Agenda (F2b). Nada
-commiteado/pusheado aun. Siguiente: F3 (llamado + colero).
-**Ultima revision:** 2026-09-01
+**Estado:** F1 + F2 + F2b (2026-09-01), F3 colero (2026-09-06, mig 105) y
+**F4 Guardia (2026-09-06, migs 106 + 106b) HECHAS, verificadas y en prod**.
+Siguiente: F5 (historia clinica minima viable: `turno_atencion` UNION
+`emergencia_atencion` por ciudadano, guard Salud + admin) y F6 (BI de atencion).
+**Ultima revision:** 2026-09-06
 
 ---
 
@@ -254,7 +254,34 @@ Ausente + campo Puesto recordado + "Abrir pantalla"/"Copiar link" solo nivel <=2
   schema (`normalizar_prefijo_colero`: strip/upper, 422 si no son 3) y cargable
   desde Agenda -> Config -> Espacios (campo "Prefijo del colero"). Vacio = `001`.
 
-### F4 — Guardia + derivacion desde Emergencias
+### F4 — Guardia + derivacion desde Emergencias (HECHA 2026-09-06 — smoke 23/23 + verificacion visual)
+
+**Entregado (2026-09-06):** mig **106** (DDL) + **106b** (seed) en local Y prod.
+`emergencia_atencion` con `estado` pendiente|atendida|ausente (el plan decia
+"intervencion NOT NULL": paso a NULL hasta atender, con CHECK `atendida =>
+intervencion + atendido_en`), `paciente_nombre` libre (el denunciante NO es
+necesariamente el paciente; evento anonimo => la Guardia lo identifica) y UNIQUE
+parcial "una pendiente por evento" (re-derivar => 409; cerrada => se puede volver
+a derivar). Seed por NOMBRE: subarea "Emergencias" bajo Secretaria de Salud
+(local 115 / prod 82), espacio "Guardia" (local 12 / prod 9, prefijo GUA,
+atendido) y clave `configuracion_general.id_espacio_guardia`.
+**Emergencias:** `POST /eventos/{id}/derivar-guardia` (motivo obligatorio,
+paciente BUC o nombre) — **NO es transicion del FSM**: el evento sigue su ciclo;
+solo DESESTIMADO no deriva (422). Log `DERIVACION_GUARDIA`; `_SELECT_EVENTO`
+expone `guardia_atencion_id/estado/derivado_en` (LATERAL: pendiente primero).
+Boton "Derivar a la Guardia" en el detalle (tambien en RESUELTO) con modal
+`DerivarGuardiaModal`; dato "Guardia" en la tab Datos.
+**Turnos:** la Guardia entra a la landing por la clave (badge GUARDIA + "N
+derivaciones pendientes") y su mesa muestra `PanelGuardia` (pendientes de
+cualquier dia + cerradas del dia, polling 30 s; Atender = modal con
+intervencion obligatoria, recomendaciones y vinculo opcional a BUC via
+`CiudadanoSearch`; "No se presento" = ausente). Endpoints
+`GET /turnos/guardia/atenciones?fecha=&estado=`, `PATCH .../{id}/atender`,
+`PATCH .../{id}/ausente` (segmentos fijos antes de `/{id_turno}`), guard = el
+mismo alcance que la mesa (nivel <= 2 todo; 3-4 solo subarea de la Guardia o
+agente vinculado; 404 generico). El log del evento recibe `ATENCION_GUARDIA`
+**sin el detalle clinico** (el COM lee ese log; la intervencion queda solo en
+la atencion — Ley 25.326). Servicio compartido `app/services/guardia.py`.
 
 - **DEFINICION DE CESAR (2026-09-06): la Guardia vive en el area Secretaria de
   Salud, bajo una subarea "Emergencias"** ("debe estar en el area de salud de

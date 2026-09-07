@@ -7,6 +7,7 @@ import { useUbicacionTurnosStore } from '../stores/ubicacionTurnos'
 import { TurnoDetalleModal } from '../components/TurnoDetalleModal'
 import { TurnoFormModal } from '../components/TurnoFormModal'
 import { PanelAtencion } from '../components/PanelAtencion'
+import { PanelGuardia } from '../components/PanelGuardia'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { toIsoDate, hoy, sumarDias, etiquetaFechaLarga, mismaFecha, timeToMinutes } from '../../../lib/dates'
 import type { MesaOcupacion, MesaRecurso, Turno } from '../types/turno'
@@ -130,7 +131,12 @@ export function MesaUbicacion() {
 
       {/* Colero (mig 105): el panel va ARRIBA de la grilla porque es lo que el
           operador toca todo el día; la grilla queda como vista del día. */}
-      {ubicacion?.id_espacio != null && (
+      {/* Guardia (mig 106, F4): en la ubicación Guardia el panel es el de las
+          derivaciones del COM (sin turnos); la grilla queda debajo por si tiene
+          agentes vinculados. */}
+      {data?.es_guardia ? (
+        <PanelGuardia fecha={fecha} onCambio={() => refetch()} />
+      ) : ubicacion?.id_espacio != null && (
         <PanelAtencion
           idEspacioUbicacion={ubicacion.id_espacio}
           fecha={fecha}

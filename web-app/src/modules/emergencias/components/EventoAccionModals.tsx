@@ -174,3 +174,70 @@ export function CerrarModal({
     </Modal>
   )
 }
+
+/** Guardia (mig 106, F4): deriva al vecino a la Guardia de Salud SIN cambiar el
+ *  estado del evento. El paciente por defecto es el denunciante (si tiene
+ *  nombre); se puede indicar otro. Motivo obligatorio: es lo que lee la Guardia. */
+export function DerivarGuardiaModal({
+  open, onConfirm, onCancel, busy, pacienteDefault,
+}: {
+  open: boolean
+  busy?: boolean
+  /** Nombre del denunciante del evento (BUC o contacto eventual), si lo hay. */
+  pacienteDefault: string | null
+  onConfirm: (motivo: string, paciente_nombre?: string) => void
+  onCancel: () => void
+}) {
+  const [motivo, setMotivo] = useState('')
+  const [otro, setOtro] = useState(false)
+  const [paciente, setPaciente] = useState('')
+  useEffect(() => { if (open) { setMotivo(''); setOtro(false); setPaciente('') } }, [open])
+  const pacienteFinal = otro || !pacienteDefault ? paciente.trim() : ''
+  return (
+    <Modal
+      open={open}
+      onClose={onCancel}
+      title="Derivar a la Guardia"
+      width={480}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel}>Cancelar</Button>
+          <Button
+            variant="accent"
+            disabled={busy || motivo.trim().length < 3}
+            onClick={() => onConfirm(motivo.trim(), pacienteFinal || undefined)}
+          >
+            Derivar a la Guardia
+          </Button>
+        </>
+      }
+    >
+      <p style={{ margin: '0 0 4px', fontSize: 13, color: 'var(--fg-2)', lineHeight: 1.5 }}>
+        La Guardia de Salud recibe la derivación en su mesa y registra la atención. El evento no cambia de estado.
+      </p>
+      <label style={label}>Motivo de la derivación *</label>
+      <textarea
+        style={{ ...inputBase, minHeight: 80, resize: 'vertical' }}
+        value={motivo}
+        onChange={(e) => setMotivo(e.target.value)}
+        placeholder="Qué tiene que saber la Guardia (lesión, síntomas, cómo llega)..."
+      />
+      <label style={label}>Paciente</label>
+      {pacienteDefault && !otro ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: 'var(--fg-1)' }}>
+          <span>{pacienteDefault} <span style={{ color: 'var(--fg-3)', fontSize: 12 }}>(denunciante del evento)</span></span>
+          <button type="button" onClick={() => setOtro(true)} style={{ background: 'none', border: 'none', color: 'var(--zaris-orange)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600 }}>
+            Es otra persona
+          </button>
+        </div>
+      ) : (
+        <input
+          style={inputBase}
+          value={paciente}
+          onChange={(e) => setPaciente(e.target.value.slice(0, 150))}
+          placeholder="Nombre del paciente (opcional; la Guardia lo puede completar)"
+        />
+      )}
+    </Modal>
+  )
+}

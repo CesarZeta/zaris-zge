@@ -23,6 +23,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
+from sqlalchemy.exc import IntegrityError
+from app.services.guardia import atencion_out as guardia_atencion_out, espacio_guardia, registrar_log_evento
 from app.core.database import get_db
 from app.services import push as svc_push
 
@@ -442,6 +444,17 @@ class NotaIn(BaseModel):
     observaciones: str = Field(..., min_length=1)
 
 
+class DerivarGuardiaIn(BaseModel):
+    """POST /eventos/{id}/derivar-guardia (F4, mig 106). El paciente no es
+    necesariamente el denunciante: si no se indica, se toma el ciudadano BUC del
+    evento; si el evento no tiene, el nombre del contacto eventual; si tampoco,
+    queda para que la Guardia lo complete."""
+    motivo: str = Field(..., min_length=3, max_length=2000,
+                        description="Por que se deriva (lo ve la Guardia)")
+    id_ciudadano: Optional[int] = Field(None, description="Paciente BUC (si difiere del denunciante)")
+    paciente_nombre: Optional[str] = Field(None, max_length=150, description="Paciente sin BUC")
+
+
 # =============================================================================
 # FASE 3 — Contactos eventuales (4.2)
 # =============================================================================
@@ -729,7 +742,10 @@ _SELECT_EVENTO = """
            e.direccion_evento, e.latitud, e.longitud, e.referencia_ubicacion,
            e.audio_grabacion_url, e.observaciones_recepcion, e.observaciones_cierre,
            e.veracidad, e.fecha_hora_recepcion, e.fecha_hora_despacho,
-           e.fecha_hora_arribo, e.fecha_hora_cierre, e.es_panico, e.activo
+           e.fecha_hora_arribo, e.fecha_hora_cierre, e.es_panico, e.activo,
+           ga.id_emergencia_atencion AS guardia_atencion_id,
+           ga.estado AS guardia_atencion_estado,
+           ga.derivado_en AS guardia_derivado_en
     FROM emergencia_evento e
     JOIN subarea s ON s.id_subarea = e.id_subarea
     JOIN emergencia_tipo t ON t.id_emergencia_tipo = e.id_tipo
@@ -742,6 +758,15 @@ _SELECT_EVENTO = """
     LEFT JOIN ciudadanos c ON c.id_ciudadano = e.id_ciudadano_buc
     LEFT JOIN emergencia_contacto_eventual ce
          ON ce.id_emergencia_contacto_eventual = e.id_contacto_eventual
+    -- Guardia (mig 106): la derivacion vigente del evento (pendiente primero,
+    -- si no la ultima cerrada). Deja al detalle mostrar "Derivado a Guardia".
+    LEFT JOIN LATERAL (
+        SELECT x.id_emergencia_atencion, x.estado, x.derivado_en
+          FROM emergencia_atencion x
+         WHERE x.id_emergencia_evento = e.id_emergencia_evento AND x.activo = TRUE
+         ORDER BY (x.estado = 'pendiente') DESC, x.derivado_en DESC
+         LIMIT 1
+    ) ga ON TRUE
 """
 
 
@@ -1178,6 +1203,87 @@ async def derivar_evento(
     await db.commit()
     await svc_push.notificar_estado_emergencia(id_evento)
     return await _evento_out(db, id_evento)
+
+
+@router.post(
+    "/eventos/{id_evento}/derivar-guardia",
+    status_code=201,
+    responses={
+        409: {"description": "Ya hay una derivacion pendiente a la Guardia para este evento"},
+        422: {"description": "Evento desestimado, paciente inexistente o Guardia no configurada"},
+    },
+)
+async def derivar_evento_a_guardia(
+    id_evento: int,
+    body: DerivarGuardiaIn,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Any:
+    """Deriva al vecino a la GUARDIA (proyecto Atencion F4, mig 106).
+
+    NO es una transicion del FSM: el evento sigue su ciclo (el movil puede
+    seguir EN_CAMINO / EN_SITIO / RESUELTO) y la derivacion vive en
+    `emergencia_atencion`, que la Guardia cierra desde su mesa
+    (Turnos -> Ubicaciones -> Guardia). Decision de Cesar: sin turno de por
+    medio. Solo un DESESTIMADO no deriva (no hubo emergencia).
+    Una derivacion PENDIENTE por evento: repetirla da 409 (UNIQUE parcial).
+    """
+    _require_operador(user)
+    ev = await _evento_for_update(db, id_evento)
+    await _check_scope_subarea(db, user, ev["id_subarea"])
+    if ev["estado_codigo"] == "DESESTIMADO":
+        raise HTTPException(422, "Un evento desestimado no se deriva a la Guardia")
+    guardia = await espacio_guardia(db)
+    if not guardia:
+        raise HTTPException(
+            422, "No hay una Guardia configurada (clave id_espacio_guardia en Config -> Sistema)")
+
+    id_ciudadano = body.id_ciudadano
+    if id_ciudadano is None and not ev.get("denunciante_anonimo") and ev.get("id_ciudadano_buc"):
+        id_ciudadano = int(ev["id_ciudadano_buc"])
+    if id_ciudadano is not None:
+        existe = await db.scalar(text(
+            "SELECT 1 FROM ciudadanos WHERE id_ciudadano = :c AND activo = TRUE"
+        ), {"c": id_ciudadano})
+        if not existe:
+            raise HTTPException(422, "El ciudadano indicado como paciente no existe")
+    paciente_nombre = (body.paciente_nombre or "").strip() or None
+    if id_ciudadano is None and paciente_nombre is None and ev.get("id_contacto_eventual"):
+        paciente_nombre = await db.scalar(text(
+            "SELECT nombre_apellido FROM emergencia_contacto_eventual "
+            "WHERE id_emergencia_contacto_eventual = :c"
+        ), {"c": ev["id_contacto_eventual"]})
+
+    try:
+        id_atencion = await db.scalar(text("""
+            INSERT INTO emergencia_atencion
+                (id_emergencia_evento, id_espacio_ubicacion, id_ciudadano, paciente_nombre,
+                 motivo_derivacion, id_usuario_deriva, id_municipio, id_subarea,
+                 id_usuario_alta, id_usuario_modificacion)
+            VALUES (:ev, :g, :c, :pn, :m, :u, :mun, :sa, :u, :u)
+            RETURNING id_emergencia_atencion
+        """), {
+            "ev": id_evento, "g": guardia["id_espacio"], "c": id_ciudadano,
+            "pn": paciente_nombre, "m": body.motivo.strip(), "u": user["id_usuario"],
+            "mun": ev.get("id_municipio"), "sa": guardia.get("id_subarea"),
+        })
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(409, "Ya hay una derivacion pendiente a la Guardia para este evento")
+
+    await registrar_log_evento(
+        db, id_evento, user["id_usuario"], "DERIVACION_GUARDIA",
+        estado=ev["estado_codigo"],
+        payload={"id_emergencia_atencion": int(id_atencion),
+                 "id_espacio_guardia": guardia["id_espacio"], "guardia": guardia["nombre"],
+                 "id_ciudadano": id_ciudadano, "paciente_nombre": paciente_nombre},
+        observaciones=body.motivo.strip(),
+        id_municipio=ev.get("id_municipio"))
+    await db.commit()
+    out = await guardia_atencion_out(db, int(id_atencion))
+    if out is None:
+        raise HTTPException(500, "Derivacion creada pero no se pudo releer")
+    return out
 
 
 # responses: solo documentacion OpenAPI (deploy-verification), no cambia

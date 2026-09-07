@@ -135,6 +135,10 @@ export interface UbicacionTurnos {
   cumplidos: number
   ausentes: number
   cancelados: number
+  /** Guardia (mig 106, F4): la ubicación señalada por `id_espacio_guardia`. Sus
+   *  "turnos" son las derivaciones pendientes del COM. */
+  es_guardia: boolean
+  guardia_pendientes: number
 }
 
 export interface MesaRango {
@@ -174,6 +178,46 @@ export interface MesaUbicacion {
   /** Colero (mig 105): token de la pantalla de sala. Sólo llega a nivel <= 2. */
   token_pantalla: string | null
   recursos: MesaRecurso[]
+  /** Guardia (mig 106, F4): la mesa muestra el panel de derivaciones del COM. */
+  es_guardia: boolean
+}
+
+/* ── Guardia (mig 106, F4): atenciones derivadas desde el COM, sin turno ──── */
+
+export type EstadoAtencionGuardia = 'pendiente' | 'atendida' | 'ausente'
+
+export interface GuardiaAtencion {
+  id_emergencia_atencion: number
+  id_emergencia_evento: number
+  id_espacio_ubicacion: number
+  numero_operativo: string
+  direccion_evento: string | null
+  tipo_nombre: string | null
+  subtipo_nombre: string | null
+  prioridad_codigo: string | null
+  prioridad_color_token: string | null
+  estado_evento: string | null
+  id_ciudadano: number | null
+  /** "Apellido, Nombre" (BUC) o el nombre libre que cargó el COM. */
+  paciente_nombre: string | null
+  ciudadano_dni: string | null
+  motivo_derivacion: string
+  estado: EstadoAtencionGuardia
+  derivado_en: string
+  derivado_por: string | null
+  id_agente_atiende: number | null
+  agente_atiende_nombre: string | null
+  intervencion: string | null
+  recomendaciones: string | null
+  atendido_en: string | null
+  fecha_modificacion: string | null
+}
+
+export interface GuardiaAtenderBody {
+  intervencion: string
+  recomendaciones?: string | null
+  id_ciudadano?: number | null
+  paciente_nombre?: string | null
 }
 
 export interface ListarTurnosFiltros {

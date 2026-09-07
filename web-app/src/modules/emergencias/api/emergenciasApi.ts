@@ -1,5 +1,6 @@
 import { api } from '../../../lib/api'
 import type {
+  GuardiaDerivacion,
   ContactoEventual,
   ContactoEventualCreateBody,
   DenuncianteBusqueda,
@@ -62,6 +63,9 @@ export const cambiarEstadoEvento = (id: number, nuevo_estado: string, observacio
   api.post<EmergenciaEvento>(`${P}/eventos/${id}/cambiar-estado`, { nuevo_estado, observaciones })
 export const derivarEvento = (id: number, id_organismo: number, observaciones?: string) =>
   api.post<EmergenciaEvento>(`${P}/eventos/${id}/derivar`, { id_organismo, observaciones })
+/** Guardia (mig 106, F4): NO es una transición del FSM — el evento sigue su ciclo. */
+export const derivarAGuardia = (id: number, body: { motivo: string; id_ciudadano?: number | null; paciente_nombre?: string | null }) =>
+  api.post<GuardiaDerivacion>(`${P}/eventos/${id}/derivar-guardia`, body)
 export const cerrarEvento = (
   id: number,
   body: { veracidad: string; terminal_positivo: boolean; observaciones_cierre?: string },

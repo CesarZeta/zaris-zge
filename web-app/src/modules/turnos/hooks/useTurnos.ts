@@ -12,11 +12,15 @@ import {
   listarPrestaciones,
   listarTurnos,
   listarUbicaciones,
+  listarAtencionesGuardia,
+  atenderGuardia,
+  ausenteGuardia,
   mesaUbicacion,
   reprogramarTurno,
 } from '../api/turnosApi'
 import type {
   CrearTurnoBody,
+  GuardiaAtenderBody,
   CumplirTurnoBody,
   ListarTurnosFiltros,
   PrestacionInput,
@@ -177,5 +181,44 @@ export function useMarcarAusente() {
     mutationFn: ({ id_turno, observaciones }: { id_turno: number; observaciones?: string | null }) =>
       marcarAusente(id_turno, observaciones),
     onSuccess: () => invalidar(qc),
+  })
+}
+
+/* ── Guardia (mig 106, F4) ───────────────────────────────────────────────── */
+
+/** Derivaciones del COM a la Guardia: pendientes (todas) + cerradas del día.
+ *  Polling 30 s: las derivaciones llegan desde otro puesto (el COM), como en
+ *  el tablero de Emergencias. La Mesa carga sola (regla §23: selección hecha). */
+export function useAtencionesGuardia(fecha?: string, opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: ['turnos', 'guardia', fecha ?? 'hoy'],
+    queryFn: () => listarAtencionesGuardia(fecha),
+    staleTime: 10 * 1000,
+    refetchInterval: 30 * 1000,
+    enabled: opts.enabled ?? true,
+  })
+}
+
+function invalidarGuardia(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ['turnos', 'guardia'] })
+  // La landing muestra el contador de derivaciones pendientes.
+  qc.invalidateQueries({ queryKey: ['turnos', 'ubicaciones'] })
+}
+
+export function useAtenderGuardia() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id_atencion, ...body }: { id_atencion: number } & GuardiaAtenderBody) =>
+      atenderGuardia(id_atencion, body),
+    onSuccess: () => invalidarGuardia(qc),
+  })
+}
+
+export function useAusenteGuardia() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id_atencion, observaciones }: { id_atencion: number; observaciones?: string | null }) =>
+      ausenteGuardia(id_atencion, observaciones),
+    onSuccess: () => invalidarGuardia(qc),
   })
 }
