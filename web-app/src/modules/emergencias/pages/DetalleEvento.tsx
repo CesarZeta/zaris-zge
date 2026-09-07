@@ -10,16 +10,17 @@ import {
   useCambiarEstado,
   useCerrarEvento,
   useDerivarEvento,
+  useDerivarAGuardia,
   useEventoDetalle,
   useEventoLog,
   usePromoverABuc,
 } from '../hooks/useEmergencias'
 import type { ContactoEventual } from '../types'
 import { CanalAppVecinoBadge, EstadoBadge, PanicoChip, PrioridadPill, formatFechaHora, transcurridoDesde, useAhora } from '../lib/ui'
-import { CambiarEstadoModal, CerrarModal, DerivarModal } from '../components/EventoAccionModals'
+import { CambiarEstadoModal, CerrarModal, DerivarGuardiaModal, DerivarModal } from '../components/EventoAccionModals'
 
 type TabId = 'datos' | 'denunciante' | 'historial'
-type ModalId = 'estado' | 'derivar' | 'cerrar' | 'nota' | 'promover' | null
+type ModalId = 'estado' | 'derivar' | 'guardia' | 'cerrar' | 'nota' | 'promover' | null
 
 export function DetalleEvento() {
   const { id } = useParams()
@@ -39,10 +40,11 @@ export function DetalleEvento() {
 
   const cambiar = useCambiarEstado()
   const derivar = useDerivarEvento()
+  const derivarGuardia = useDerivarAGuardia()
   const cerrar = useCerrarEvento()
   const agregarNota = useAgregarNota()
   const promover = usePromoverABuc()
-  const busy = cambiar.isPending || derivar.isPending || cerrar.isPending || agregarNota.isPending || promover.isPending
+  const busy = cambiar.isPending || derivar.isPending || derivarGuardia.isPending || cerrar.isPending || agregarNota.isPending || promover.isPending
 
   if (detalle.isLoading) return <Skeleton height={300} />
   if (detalle.isError || !detalle.data) {
@@ -63,6 +65,21 @@ export function DetalleEvento() {
   const contactoEventual = !ev.denunciante_anonimo && ev.id_contacto_eventual && ev.denunciante
     ? (ev.denunciante as ContactoEventual)
     : null
+
+  // Guardia (mig 106, F4): se puede derivar en cualquier estado salvo
+  // DESESTIMADO (no hubo emergencia), mientras no haya una derivación pendiente.
+  const pacienteDefault = ev.denunciante_anonimo || !ev.denunciante
+    ? null
+    : 'id_ciudadano' in ev.denunciante
+      ? `${ev.denunciante.apellido}, ${ev.denunciante.nombre}`
+      : (ev.denunciante as ContactoEventual).nombre_apellido
+  const guardiaPendiente = ev.guardia_atencion_estado === 'pendiente'
+  const GUARDIA_LABEL: Record<string, string> = { pendiente: 'pendiente en la Guardia', atendida: 'atendido en la Guardia', ausente: 'no se presentó en la Guardia' }
+  const botonGuardia = estado !== 'DESESTIMADO' && (
+    guardiaPendiente
+      ? <div style={{ fontSize: 12, color: 'var(--fg-2)', padding: '6px 0' }}>Derivado a la Guardia · pendiente de atención</div>
+      : <Button disabled={busy} onClick={() => setModal('guardia')}>Derivar a la Guardia</Button>
+  )
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 280px', gap: 16, alignItems: 'start' }}>
@@ -111,6 +128,7 @@ export function DetalleEvento() {
               <Dato label="Referencia" valor={ev.referencia_ubicacion} />
               <Dato label="Canal de ingreso" valor={ev.canal_codigo === 'APP_VECINO' ? 'App Vecinos' : 'Llamada telefónica'} />
               <Dato label="Organismo de derivación" valor={ev.organismo_nombre} />
+              <Dato label="Guardia" valor={ev.guardia_atencion_estado ? `Derivado ${formatFechaHora(ev.guardia_derivado_en)} · ${GUARDIA_LABEL[ev.guardia_atencion_estado] ?? ev.guardia_atencion_estado}` : null} />
               <Dato label="Observaciones de recepción" valor={ev.observaciones_recepcion} ancho />
               <Dato label="Observaciones de cierre" valor={ev.observaciones_cierre} ancho />
               <Dato label="Veracidad" valor={ev.veracidad?.replace(/_/g, ' ')} />
@@ -194,6 +212,7 @@ export function DetalleEvento() {
               </Button>
             )}
             {estado !== 'DERIVADO' && <Button onClick={() => setModal('derivar')}>Derivar a organismo</Button>}
+            {botonGuardia}
             {(estado === 'EN_SITIO' || estado === 'DERIVADO') && (
               <Button variant="accent" onClick={() => setModal('cerrar')}>Cerrar (RESUELTO)</Button>
             )}
@@ -204,7 +223,9 @@ export function DetalleEvento() {
           </div>
         )}
         {ev.es_terminal && (
-          <div style={{ marginTop: 10 }}>
+          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {/* Un RESUELTO todavía puede derivar (el móvil lo trajo y se registra después). */}
+            {botonGuardia}
             <Button variant="ghost" onClick={() => setModal('nota')}>Agregar nota</Button>
           </div>
         )}
@@ -223,6 +244,13 @@ export function DetalleEvento() {
         open={modal === 'derivar'}
         busy={busy}
         onConfirm={(idOrg, obs) => { setModal(null); derivar.mutate({ id: idEvento, id_organismo: idOrg, observaciones: obs }, { onSuccess: ok('Evento derivado'), onError }) }}
+        onCancel={() => setModal(null)}
+      />
+      <DerivarGuardiaModal
+        open={modal === 'guardia'}
+        busy={busy}
+        pacienteDefault={pacienteDefault}
+        onConfirm={(motivo, paciente) => { setModal(null); derivarGuardia.mutate({ id: idEvento, motivo, paciente_nombre: paciente ?? null }, { onSuccess: ok('Derivado a la Guardia'), onError }) }}
         onCancel={() => setModal(null)}
       />
       <CerrarModal

@@ -98,6 +98,11 @@ export type DenuncianteBusqueda =
   | { origen: 'NUEVO'; criterio: 'dni' | 'telefono' | 'nombre'; valor: string }
 
 export interface EmergenciaEvento {
+  /** Guardia (mig 106, F4): derivación vigente del evento (pendiente primero,
+   *  si no la última cerrada). null = nunca derivado. */
+  guardia_atencion_id?: number | null
+  guardia_atencion_estado?: 'pendiente' | 'atendida' | 'ausente' | null
+  guardia_derivado_en?: string | null
   id_emergencia_evento: number
   numero_operativo: string
   id_subarea: number
@@ -221,4 +226,13 @@ export interface StatsEmergencias {
     por_estado: StatsEstado[]
     por_subarea: StatsSubarea[]
   }
+}
+
+/** Respuesta de POST /eventos/{id}/derivar-guardia (mig 106, F4). */
+export interface GuardiaDerivacion {
+  id_emergencia_atencion: number
+  id_emergencia_evento: number
+  estado: 'pendiente' | 'atendida' | 'ausente'
+  paciente_nombre: string | null
+  derivado_en: string
 }

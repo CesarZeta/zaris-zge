@@ -207,6 +207,51 @@ class TurnoAusenteIn(BaseModel):
 
 
 # =============================================================================
+# GUARDIA (mig 106, F4): atenciones derivadas desde el COM, SIN turno.
+# =============================================================================
+class GuardiaAtencionOut(BaseModel):
+    """Una derivacion del COM a la Guardia y su resultado."""
+    id_emergencia_atencion: int
+    id_emergencia_evento: int
+    id_espacio_ubicacion: int
+    numero_operativo: str
+    direccion_evento: Optional[str] = None
+    tipo_nombre: Optional[str] = None
+    subtipo_nombre: Optional[str] = None
+    prioridad_codigo: Optional[str] = None
+    prioridad_color_token: Optional[str] = None
+    estado_evento: Optional[str] = None       # codigo del FSM del evento (informativo)
+    id_ciudadano: Optional[int] = None
+    paciente_nombre: Optional[str] = None     # "Apellido, Nombre" (BUC) o el nombre libre
+    ciudadano_dni: Optional[str] = None
+    motivo_derivacion: str
+    estado: str                               # pendiente | atendida | ausente
+    derivado_en: datetime
+    derivado_por: Optional[str] = None
+    id_agente_atiende: Optional[int] = None
+    agente_atiende_nombre: Optional[str] = None
+    intervencion: Optional[str] = None
+    recomendaciones: Optional[str] = None
+    atendido_en: Optional[datetime] = None
+    fecha_modificacion: Optional[datetime] = None
+
+
+class GuardiaAtenderIn(BaseModel):
+    """PATCH /turnos/guardia/atenciones/{id}/atender — cierra la derivacion
+    como atendida. La intervencion es obligatoria (registro clinico minimo,
+    mismo criterio que turno_atencion mig 86)."""
+    intervencion: str = Field(..., min_length=1)
+    recomendaciones: Optional[str] = None
+    id_ciudadano: Optional[int] = Field(None, description="Vincular el paciente a un ciudadano BUC (si la derivacion vino sin BUC)")
+    paciente_nombre: Optional[str] = Field(None, max_length=150)
+
+
+class GuardiaAusenteIn(BaseModel):
+    """PATCH /turnos/guardia/atenciones/{id}/ausente — el vecino no llego."""
+    observaciones: Optional[str] = Field(None, max_length=500)
+
+
+# =============================================================================
 # Pantalla del colero (mig 105) — publica por token de la ubicacion, sin auth.
 # NUNCA expone el nombre completo del ciudadano: solo "Nombre I." (decision de
 # Cesar 2026-09-01). Tampoco DNI, prestacion ni id de turno.
@@ -248,6 +293,11 @@ class UbicacionTurnosOut(BaseModel):
     cumplidos: int = 0
     ausentes: int = 0      # colero mig 105: llamados y no se presentaron
     cancelados: int = 0
+    # Guardia (mig 106, F4): la ubicacion senalada por `id_espacio_guardia` entra
+    # a la landing aunque no tenga prestaciones ni agentes; sus "turnos" son las
+    # derivaciones pendientes del COM.
+    es_guardia: bool = False
+    guardia_pendientes: int = 0
 
 
 class MesaRangoOut(BaseModel):
@@ -292,6 +342,8 @@ class MesaUbicacionOut(BaseModel):
     # (es una URL publica: quien la tiene puede proyectarla en cualquier lado).
     token_pantalla: Optional[str] = None
     recursos: list[MesaRecursoOut] = []
+    # Guardia (mig 106, F4): la mesa muestra el panel de derivaciones del COM.
+    es_guardia: bool = False
 
 
 # =============================================================================

@@ -41,6 +41,9 @@ from app.schemas.turnos import (
     TipoPrestacionUpdate,
     TurnoAtencionOut,
     TurnoAusenteIn,
+    GuardiaAtencionOut,
+    GuardiaAtenderIn,
+    GuardiaAusenteIn,
     TurnoCreate,
     TurnoCumplir,
     TurnoLlamarIn,
@@ -55,6 +58,10 @@ from app.services.agenda import (
     turnos_respeta_disponibilidad,
 )
 from app.utils.fechas import hoy_local
+from app.services.guardia import (
+    SELECT_ATENCION, atencion_out as guardia_atencion_out, espacio_guardia,
+    id_espacio_guardia, registrar_log_evento,
+)
 from app.services import encuestas_service
 
 
@@ -491,7 +498,9 @@ async def listar_ubicaciones_atencion(
     f = fecha or hoy_local()
     scope = await _scope_turnos_para_usuario(db, user)
     scope_sql = ""
-    params: dict[str, Any] = {"f": f}
+    # Guardia (mig 106): entra a la landing por la clave de config aunque no
+    # tenga prestaciones ni agentes; su contador es de derivaciones pendientes.
+    params: dict[str, Any] = {"f": f, "guardia": (await id_espacio_guardia(db)) or -1}
     if scope is not None:
         scope_sql = (
             " AND (t.id_agente = :scope_agente OR t.id_espacio IN "
@@ -510,7 +519,11 @@ async def listar_ubicaciones_atencion(
                COALESCE(cnt.llamados, 0) AS llamados,
                COALESCE(cnt.cumplidos, 0) AS cumplidos,
                COALESCE(cnt.ausentes, 0) AS ausentes,
-               COALESCE(cnt.cancelados, 0) AS cancelados
+               COALESCE(cnt.cancelados, 0) AS cancelados,
+               (e.id_espacio = :guardia) AS es_guardia,
+               (SELECT COUNT(*) FROM emergencia_atencion x
+                 WHERE x.activo = TRUE AND x.estado = 'pendiente'
+                   AND x.id_espacio_ubicacion = e.id_espacio) AS guardia_pendientes
         FROM espacios_agenda e
         LEFT JOIN subarea sa ON sa.id_subarea = e.id_subarea
         LEFT JOIN area    ar ON ar.id_area    = sa.id_area
@@ -529,6 +542,7 @@ async def listar_ubicaciones_atencion(
                      WHERE tp2.activo = TRUE AND tp2.id_espacio_ubicacion = e.id_espacio)
             OR EXISTS (SELECT 1 FROM espacio_agentes ea2
                         WHERE ea2.activo = TRUE AND ea2.id_espacio = e.id_espacio)
+            OR e.id_espacio = :guardia
         )
         ORDER BY ar.nombre NULLS LAST, e.nombre
     """), params)).mappings().all()
@@ -641,7 +655,168 @@ async def mesa_ubicacion(
         # la mesa (nivel <= 2), no a todo operador con acceso a la grilla.
         "token_pantalla": esp["token_pantalla"] if int(user.get("nivel_acceso") or 9) <= 2 else None,
         "recursos": recursos_out,
+        # Guardia (mig 106): la mesa muestra el panel de derivaciones del COM.
+        "es_guardia": (await id_espacio_guardia(db)) == id_espacio,
     }
+
+
+# =============================================================================
+# GUARDIA (mig 106, F4): atenciones derivadas desde el COM, SIN turno.
+# Segmentos fijos ANTES de /{id_turno} (§5). El COM deriva desde
+# emergencias.py (POST /eventos/{id}/derivar-guardia); aca la Guardia atiende.
+# =============================================================================
+async def _guardia_o_404(db: AsyncSession, user: dict) -> dict[str, Any]:
+    """La Guardia configurada, con el MISMO alcance que la mesa: nivel <= 2
+    siempre; nivel 3-4 solo si su subarea es la de la Guardia o figura como
+    agente vinculado. 404 generico (no filtra existencia: la mesa expone
+    pacientes)."""
+    g = await espacio_guardia(db)
+    if not g:
+        raise HTTPException(404, "No hay una Guardia configurada")
+    scope = await _scope_turnos_para_usuario(db, user)
+    if scope is not None:
+        en_subarea = scope.get("id_subarea") is not None and g["id_subarea"] == scope["id_subarea"]
+        es_agente = await db.scalar(text(
+            "SELECT 1 FROM espacio_agentes WHERE activo = TRUE AND id_espacio = :e AND id_agente = :a"
+        ), {"e": g["id_espacio"], "a": scope["id_agente"]})
+        if not en_subarea and not es_agente:
+            raise HTTPException(404, "No hay una Guardia configurada")
+    return g
+
+
+async def _atencion_for_update(db: AsyncSession, id_atencion: int, id_guardia: int) -> dict[str, Any]:
+    row = (await db.execute(text("""
+        SELECT ea.id_emergencia_atencion, ea.estado, ea.id_emergencia_evento,
+               ea.id_espacio_ubicacion, ea.id_municipio, est.codigo AS estado_evento
+          FROM emergencia_atencion ea
+          JOIN emergencia_evento ev ON ev.id_emergencia_evento = ea.id_emergencia_evento
+          JOIN emergencia_estado est ON est.id_emergencia_estado = ev.id_estado
+         WHERE ea.id_emergencia_atencion = :id AND ea.activo = TRUE
+         FOR UPDATE OF ea
+    """), {"id": id_atencion})).mappings().first()
+    if not row or int(row["id_espacio_ubicacion"]) != int(id_guardia):
+        raise HTTPException(404, "Derivacion no encontrada")
+    if row["estado"] != "pendiente":
+        raise HTTPException(409, f"La derivacion ya esta cerrada ({row['estado']})")
+    return dict(row)
+
+
+@router.get("/guardia/atenciones", response_model=list[GuardiaAtencionOut])
+async def listar_atenciones_guardia(
+    fecha: Optional[date] = Query(None, description="Dia de las atenciones cerradas (default: hoy local). Las pendientes salen siempre."),
+    estado: Optional[str] = Query(None, pattern="^(pendiente|atendida|ausente)$"),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """Mesa de la Guardia: todas las derivaciones PENDIENTES (de cualquier dia —
+    una derivacion de anoche sigue esperando) + las cerradas del dia pedido."""
+    g = await _guardia_o_404(db, user)
+    f = fecha or hoy_local()
+    # Dia local AR (UTC-3 fijo, mismo criterio que app/utils/fechas.py).
+    dia_cierre = "(COALESCE(ea.atendido_en, ea.fecha_modificacion) AT TIME ZONE 'UTC' - INTERVAL '3 hours')::date = CAST(:f AS date)"
+    where = ["ea.activo = TRUE", "ea.id_espacio_ubicacion = :g"]
+    params: dict[str, Any] = {"g": g["id_espacio"], "f": f}
+    if estado == "pendiente":
+        where.append("ea.estado = 'pendiente'")
+    elif estado:
+        where.append("ea.estado = :st"); params["st"] = estado
+        where.append(dia_cierre)
+    else:
+        where.append(f"(ea.estado = 'pendiente' OR {dia_cierre})")
+    rows = (await db.execute(text(
+        SELECT_ATENCION + " WHERE " + " AND ".join(where)
+        + " ORDER BY (ea.estado = 'pendiente') DESC, ea.derivado_en ASC"
+    ), params)).mappings().all()
+    return [dict(r) for r in rows]
+
+
+@router.patch("/guardia/atenciones/{id_atencion}/atender", response_model=GuardiaAtencionOut,
+              responses={409: {"description": "La derivacion ya estaba cerrada"}})
+async def atender_en_guardia(
+    id_atencion: int,
+    body: GuardiaAtenderIn,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """Cierra la derivacion como ATENDIDA con la intervencion (obligatoria) y
+    recomendaciones. Opcionalmente vincula el paciente a un ciudadano BUC.
+    Deja en el log del evento una entrada ATENCION_GUARDIA SIN el detalle
+    clinico (el log lo lee el COM; la intervencion queda en la atencion)."""
+    _require_gestion(user)
+    g = await _guardia_o_404(db, user)
+    at = await _atencion_for_update(db, id_atencion, g["id_espacio"])
+    if body.id_ciudadano is not None:
+        existe = await db.scalar(text(
+            "SELECT 1 FROM ciudadanos WHERE id_ciudadano = :c AND activo = TRUE"
+        ), {"c": body.id_ciudadano})
+        if not existe:
+            raise HTTPException(422, "El ciudadano indicado como paciente no existe")
+    id_agente = await db.scalar(text(
+        "SELECT id_agente FROM agentes WHERE id_usuario = :u AND activo = TRUE LIMIT 1"
+    ), {"u": user["id_usuario"]})
+    res = await db.execute(text("""
+        UPDATE emergencia_atencion
+           SET estado = 'atendida', intervencion = :i, recomendaciones = :r,
+               id_agente_atiende = :ag, atendido_en = NOW(),
+               id_ciudadano = COALESCE(:c, id_ciudadano),
+               paciente_nombre = COALESCE(:pn, paciente_nombre),
+               fecha_modificacion = NOW(), id_usuario_modificacion = :u
+         WHERE id_emergencia_atencion = :id AND estado = 'pendiente'
+    """), {
+        "i": body.intervencion.strip(), "r": (body.recomendaciones or "").strip() or None,
+        "ag": id_agente, "c": body.id_ciudadano,
+        "pn": (body.paciente_nombre or "").strip() or None,
+        "u": user["id_usuario"], "id": id_atencion,
+    })
+    if res.rowcount == 0:
+        await db.rollback()
+        raise HTTPException(409, "La derivacion ya estaba cerrada")
+    await registrar_log_evento(
+        db, int(at["id_emergencia_evento"]), user["id_usuario"], "ATENCION_GUARDIA",
+        estado=at["estado_evento"],
+        payload={"id_emergencia_atencion": id_atencion, "resultado": "atendida",
+                 "id_agente_atiende": id_agente},
+        observaciones="Atendido en la Guardia",
+        id_municipio=at.get("id_municipio"))
+    await db.commit()
+    out = await guardia_atencion_out(db, id_atencion)
+    if out is None:
+        raise HTTPException(500, "Atencion registrada pero no se pudo releer")
+    return out
+
+
+@router.patch("/guardia/atenciones/{id_atencion}/ausente", response_model=GuardiaAtencionOut,
+              responses={409: {"description": "La derivacion ya estaba cerrada"}})
+async def ausente_en_guardia(
+    id_atencion: int,
+    body: Optional[GuardiaAusenteIn] = None,
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """Cierra la derivacion como AUSENTE: el vecino no llego a la Guardia."""
+    _require_gestion(user)
+    g = await _guardia_o_404(db, user)
+    at = await _atencion_for_update(db, id_atencion, g["id_espacio"])
+    obs = ((body.observaciones if body else None) or "").strip() or None
+    res = await db.execute(text("""
+        UPDATE emergencia_atencion
+           SET estado = 'ausente', fecha_modificacion = NOW(), id_usuario_modificacion = :u
+         WHERE id_emergencia_atencion = :id AND estado = 'pendiente'
+    """), {"u": user["id_usuario"], "id": id_atencion})
+    if res.rowcount == 0:
+        await db.rollback()
+        raise HTTPException(409, "La derivacion ya estaba cerrada")
+    await registrar_log_evento(
+        db, int(at["id_emergencia_evento"]), user["id_usuario"], "ATENCION_GUARDIA",
+        estado=at["estado_evento"],
+        payload={"id_emergencia_atencion": id_atencion, "resultado": "ausente"},
+        observaciones="No se presento en la Guardia" + (f": {obs}" if obs else ""),
+        id_municipio=at.get("id_municipio"))
+    await db.commit()
+    out = await guardia_atencion_out(db, id_atencion)
+    if out is None:
+        raise HTTPException(500, "Atencion actualizada pero no se pudo releer")
+    return out
 
 
 @router.get("/{id_turno}", response_model=TurnoOut)
