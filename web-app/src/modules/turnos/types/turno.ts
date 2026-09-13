@@ -246,3 +246,42 @@ export interface PantallaColero {
   llamando: PantallaLlamado[]
   previos: PantallaLlamado[]
 }
+
+/* ── Historia clínica (F5, migs 107/107b) — espejo exacto de HistoriaClinica*Out ── */
+export type HistoriaClinicaContexto = 'turno' | 'guardia' | 'mesa' | 'consulta' | 'otro'
+export type HistoriaClinicaMotivo =
+  'admin' | 'admin_sin_config' | 'salud' | 'nivel' | 'sin_agente' | 'sin_subarea' | 'fuera_salud' | 'sin_config'
+
+export interface HistoriaClinicaPermiso { puede: boolean; motivo: HistoriaClinicaMotivo }
+
+export interface HistoriaClinicaCiudadano {
+  id_ciudadano: number
+  apellido: string | null; nombre: string | null
+  doc_tipo: string | null; doc_nro: string | null
+  fecha_nac: string | null; edad: number | null
+  activo: boolean
+}
+
+export interface HistoriaClinicaItem {
+  origen: 'turno' | 'emergencia'
+  id: number
+  fecha_hora: string                 // ISO timestamptz
+  estado: 'atendida' | 'ausente'
+  titulo: string
+  gestion_nombre: string | null
+  ubicacion_nombre: string | null
+  profesional_nombre: string | null
+  id_turno: number | null
+  id_emergencia_evento: number | null
+  numero_operativo: string | null
+  motivo_derivacion: string | null
+  intervencion: string | null
+  recomendaciones: string | null
+  registrado_en: string | null
+}
+
+export interface HistoriaClinica {
+  ciudadano: HistoriaClinicaCiudadano
+  total: number; limit: number; offset: number
+  items: HistoriaClinicaItem[]
+}

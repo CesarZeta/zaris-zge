@@ -252,6 +252,58 @@ class GuardiaAusenteIn(BaseModel):
 
 
 # =============================================================================
+# HISTORIA CLINICA (migs 107 + 107b, F5): union turno_atencion + emergencia_atencion.
+# =============================================================================
+class HistoriaClinicaPermisoOut(BaseModel):
+    """GET /turnos/atenciones/historia/permiso — capacidad del usuario actual."""
+    puede: bool
+    # admin | admin_sin_config | salud | nivel | sin_agente | sin_subarea | fuera_salud | sin_config
+    motivo: str
+
+
+class HistoriaClinicaCiudadanoOut(BaseModel):
+    """Encabezado identificatorio MINIMO del paciente (Ley 26.529 art. 15):
+    sin domicilio, telefono, email, CUIL ni sexo (minimizacion 25.326 art. 4;
+    viven en la BUC). Optional por robustez ante drift de prod (§24)."""
+    id_ciudadano: int
+    apellido: Optional[str] = None
+    nombre: Optional[str] = None
+    doc_tipo: Optional[str] = None
+    doc_nro: Optional[str] = None
+    fecha_nac: Optional[date] = None
+    edad: Optional[int] = None
+    activo: bool = True          # baja logica en la BUC NO borra hechos clinicos: se muestra con aviso
+
+
+class HistoriaClinicaItemOut(BaseModel):
+    """Un hecho clinico cerrado. origen='turno' (turno_atencion, mig 86) u
+    origen='emergencia' (emergencia_atencion atendida|ausente, mig 106)."""
+    origen: str                              # 'turno' | 'emergencia'
+    id: int                                  # id_turno_atencion | id_emergencia_atencion
+    fecha_hora: datetime                     # timestamptz comparable entre origenes (UTC-3 fijo del proyecto)
+    estado: str                              # 'atendida' | 'ausente'
+    titulo: str                              # prestacion | "tipo · subtipo" del evento
+    gestion_nombre: Optional[str] = None     # subarea de la prestacion / de la Guardia
+    ubicacion_nombre: Optional[str] = None
+    profesional_nombre: Optional[str] = None # agente del turno (o quien registro) | agente que atendio en Guardia
+    id_turno: Optional[int] = None           # solo turno
+    id_emergencia_evento: Optional[int] = None   # solo emergencia
+    numero_operativo: Optional[str] = None       # solo emergencia (EM-2026-000056)
+    motivo_derivacion: Optional[str] = None      # solo emergencia
+    intervencion: Optional[str] = None           # NULL en 'ausente'
+    recomendaciones: Optional[str] = None
+    registrado_en: Optional[datetime] = None
+
+
+class HistoriaClinicaOut(BaseModel):
+    ciudadano: HistoriaClinicaCiudadanoOut
+    total: int          # total de hechos, independiente de limit/offset
+    limit: int
+    offset: int
+    items: list[HistoriaClinicaItemOut]
+
+
+# =============================================================================
 # Pantalla del colero (mig 105) — publica por token de la ubicacion, sin auth.
 # NUNCA expone el nombre completo del ciudadano: solo "Nombre I." (decision de
 # Cesar 2026-09-01). Tampoco DNI, prestacion ni id de turno.

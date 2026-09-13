@@ -4,6 +4,9 @@ import type {
   GuardiaAtenderBody,
   CrearTurnoBody,
   CumplirTurnoBody,
+  HistoriaClinica,
+  HistoriaClinicaContexto,
+  HistoriaClinicaPermiso,
   ListarTurnosFiltros,
   MesaUbicacion,
   PantallaColero,
@@ -43,6 +46,13 @@ export const cumplirTurno = (id_turno: number, body?: CumplirTurnoBody) =>
 
 export const listarAtenciones = (id_ciudadano: number) =>
   api.get<TurnoAtencion[]>('/api/v1/turnos/atenciones', { params: { id_ciudadano } })
+
+/* ── Historia clínica (F5) ── */
+export const permisoHistoriaClinica = () =>
+  api.get<HistoriaClinicaPermiso>('/api/v1/turnos/atenciones/historia/permiso')
+
+export const obtenerHistoriaClinica = (id_ciudadano: number, contexto: HistoriaClinicaContexto, limit = 100, offset = 0) =>
+  api.get<HistoriaClinica>('/api/v1/turnos/atenciones/historia', { params: { id_ciudadano, contexto, limit, offset } })
 
 export const cancelarTurno = (id_turno: number) =>
   api.patch<Turno>(`/api/v1/turnos/${id_turno}/cancelar`)

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Modal } from '../../agenda/components/Modal'
 import { Button } from '../../../ui'
-import { useAtencionesCiudadano } from '../hooks/useTurnos'
+import { useAtencionesCiudadano, usePuedeHistoriaClinica } from '../hooks/useTurnos'
 import { HistorialAtenciones, AtencionItem } from './HistorialAtenciones'
+import { HistoriaClinicaPanel } from './HistoriaClinica'
 import type { EstadoTurno, Turno } from '../types/turno'
 
 const ESTADO_LABEL: Record<EstadoTurno, string> = {
@@ -20,15 +21,18 @@ const ESTADO_COLOR: Record<EstadoTurno, { bg: string; fg: string }> = {
   cancelado: { bg: 'rgba(198,40,40,0.12)', fg: '#c62828' },
 }
 
-type Solapa = 'turno' | 'historia'
+type Solapa = 'turno' | 'historia' | 'clinica'
 
 /**
  * Detalle de un turno (solo lectura). Se abre al clickear un turno en la lista,
  * la agenda o atendidos. Solapas: datos del turno (+ su atención registrada si
- * la tiene) e historia de atenciones del ciudadano (mig 86).
+ * la tiene), historia de atenciones del ciudadano (mig 86) y — solo si el
+ * backend lo permite (`/permiso`, F5) — la historia clínica unificada, que
+ * carga recién al clickear la solapa (cada lectura queda registrada).
  */
 export function TurnoDetalleModal({ turno, onClose }: { turno: Turno | null; onClose: () => void }) {
   const [solapa, setSolapa] = useState<Solapa>('turno')
+  const puedeHC = usePuedeHistoriaClinica()
 
   useEffect(() => {
     if (turno) setSolapa('turno')
@@ -47,18 +51,23 @@ export function TurnoDetalleModal({ turno, onClose }: { turno: Turno | null; onC
       open={turno != null}
       onClose={onClose}
       title={`Turno · ${turno.fecha} ${turno.hora_inicio.slice(0, 5)}`}
-      width={640}
+      width={solapa === 'clinica' ? 720 : 640}
       footer={<Button variant="ghost" onClick={onClose}>Cerrar</Button>}
     >
       {/* Solapas */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
         <button onClick={() => setSolapa('turno')} style={tabBtn(solapa === 'turno')}>Turno</button>
         <button onClick={() => setSolapa('historia')} style={tabBtn(solapa === 'historia')}>
           Historia de atenciones{atenciones.data ? ` (${atenciones.data.length})` : ''}
         </button>
+        {puedeHC && (
+          <button onClick={() => setSolapa('clinica')} style={tabBtn(solapa === 'clinica')}>Historia clínica</button>
+        )}
       </div>
 
-      {solapa === 'turno' ? (
+      {solapa === 'clinica' ? (
+        <HistoriaClinicaPanel idCiudadano={turno.id_ciudadano} contexto="turno" maxAlto={380} />
+      ) : solapa === 'turno' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={grid2}>
             <Dato label="Estado">

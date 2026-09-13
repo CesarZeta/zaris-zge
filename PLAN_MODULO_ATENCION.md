@@ -1,10 +1,10 @@
 # PLAN DE IMPLEMENTACION - ATENCION POR UBICACION (Turnos reorganizados + Colero + Guardia + Historia Clinica + BI por gestion)
 
-**Estado:** F1 + F2 + F2b (2026-09-01), F3 colero (2026-09-06, mig 105) y
-**F4 Guardia (2026-09-06, migs 106 + 106b) HECHAS, verificadas y en prod**.
-Siguiente: F5 (historia clinica minima viable: `turno_atencion` UNION
-`emergencia_atencion` por ciudadano, guard Salud + admin) y F6 (BI de atencion).
-**Ultima revision:** 2026-09-06
+**Estado:** F1 + F2 + F2b (2026-09-01), F3 colero (2026-09-06, mig 105),
+F4 Guardia (2026-09-06, migs 106 + 106b) y **F5 Historia clinica (2026-09-13,
+migs 107 + 107b) HECHAS, verificadas y en prod**.
+Siguiente: F6 (BI de atencion).
+**Ultima revision:** 2026-09-13
 
 ---
 
@@ -137,6 +137,35 @@ La accion "Derivar a Guardia" del evento COM crea la fila (intervencion se
 completa al atender) y queda en el log del evento. Historia clinica =
 `turno_atencion` UNION `emergencia_atencion` por `id_ciudadano` (patron
 polimorfico LEFT JOIN, como encuesta_envio).
+
+### 2.4 Migs 107 + 107b — Historia clinica (F5)
+
+```
+historia_clinica_acceso (
+  id_historia_clinica_acceso PK BIGSERIAL,
+  id_usuario     FK usuarios ON DELETE RESTRICT NOT NULL,
+  id_ciudadano   INTEGER NOT NULL,           -- SIN FK a ciudadanos: registra tambien ids inexistentes
+  fecha_hora     TIMESTAMPTZ DEFAULT NOW(),
+  origen         'historia' | 'export',      -- 'export' reservado para etapa 2
+  contexto       turno | guardia | mesa | consulta | otro,
+  resultado      ok | denegado | inexistente,
+  motivo         VARCHAR(20),                -- admin | admin_sin_config | salud | nivel | sin_agente | sin_subarea | fuera_salud | sin_config
+  n_registros    INTEGER NULL,               -- NULL si denegado
+  ip, user_agent, id_municipio
+)  -- append-only (triggers no_update/no_delete), RLS, indices por ciudadano y por usuario
+configuracion_general: clave 'id_area_salud' (integer, activo explicitos) —
+  area ACTIVA "Secretaria de Salud" resuelta POR NOMBRE (56 local / 57 prod)
+```
+
+Guard (`app/services/historia_clinica.py::permiso_historia_clinica`): nivel 1
+SIEMPRE (motivo `admin_sin_config` si falta la clave); niveles 2-4 solo si
+`agentes.id_subarea` (regla 1:1 §39, NO `usuarios.id_subarea`) cuelga del area
+de la clave con area + subarea + agente activos; nivel 5 nunca; 403 accionable
+evaluado ANTES de leer la BUC. `/turnos/atenciones` (mig 86) conserva su scope
+generico. Union = `turno_atencion` + `emergencia_atencion` atendida|ausente
+(`pendiente` es estado de mesa, no historia). Todo acceso (incluso denegado o
+sobre un id inexistente) se registra en `historia_clinica_acceso` dentro de la
+misma transaccion, antes de responder.
 
 ---
 
@@ -298,7 +327,67 @@ la atencion — Ley 25.326). Servicio compartido `app/services/guardia.py`.
   las atenciones derivadas pendientes + completar intervencion/recomendaciones.
 - SIN turnos de por medio (decision cerrada 0.2).
 
-### F5 — Historia clinica (minima viable)
+### F5 — Historia clinica (minima viable) (HECHA 2026-09-13 — smoke 61/61 + verificacion visual)
+
+**Entregado (2026-09-13):** migs **107** (log de accesos `historia_clinica_acceso`,
+append-only) + **107b** (clave `configuracion_general.id_area_salud` por nombre del
+area activa "Secretaria de Salud": 56 local / 57 prod) en local y prod.
+**Backend:** `GET /turnos/atenciones/historia?id_ciudadano=&contexto=&limit=&offset=`
+(+ `GET /turnos/atenciones/historia/permiso` para la UI) en `routes/turnos.py` junto
+a `/atenciones` (segmentos fijos de 2-3 niveles, inmunes al greedy `/{id_turno}`);
+servicio `app/services/historia_clinica.py` (unica fuente del permiso + SQL);
+`UNION ALL` de `turno_atencion` y `emergencia_atencion` (atendida|ausente) con
+`origen`, fecha normalizada a UTC-3, `COUNT(*) OVER ()` para el total; rate limit
+`hc:{id_usuario}` 60/min; markers OpenAPI 403/404/429; `id_ciudadano` acotado a
+int32 (`le=2147483647`, cazado por el smoke: un id mayor daba 500 y el intento no
+quedaba en el log). **Frontend:** `components/HistoriaClinica.tsx` (Panel embebible,
+Modal a nivel pagina y Boton, los tres gateados por `/permiso`); 3a solapa lazy
+"Historia clinica" en `TurnoDetalleModal`; boton por fila en `PanelGuardia` (solo
+pendientes con BUC) y en `PanelAtencion` (incluidas las cumplidas); `<details>`
+cerrado con el Panel compacto dentro de `AtenderGuardiaModal`; 3a solapa en
+`Consultas`; `ApiError` con `status` en `lib/api.ts` (retrocompatible) para el
+403 amigable; seccion "Atencion (Turnos, Guardia e historia clinica)" en Config →
+Sistema con `id_espacio_guardia` e `id_area_salud`. **Smoke** in-process
+`backend/smoke_atenciones_historia.py` (61 casos; fixtures `f5*@municipio.gob.ar`
+SOLO local; `--rate` para el 429).
+
+**Decisiones tomadas en F5:**
+- **Gestion Salud = clave de config `id_area_salud`** (no nombre en runtime ni
+  derivada de la Guardia): `ILIKE '%salud%'` pesca 4 areas en local (3 inactivas) y
+  hardcodea un string de negocio. Mismo patron que `id_espacio_guardia`. Sin la
+  clave, fail-closed para niveles 2-4 (`sin_config`); nivel 1 ve la historia con
+  motivo `admin_sin_config` y la UI le avisa que configure.
+- **Nivel 5 (Consultor) excluido** aunque su agente sea de Salud.
+- **Areas "Salud" inactivas excluidas**: el guard exige area + subarea + agente
+  activos y compara por id con la clave (caso `administrativo@` local → `fuera_salud`).
+- **`pendiente` fuera, `ausente` dentro** de la historia: la pendiente es la cola
+  viva de la Guardia; la ausencia es un hecho clinico (no se presento).
+- **403 accionable (no 404) evaluado ANTES de leer la BUC**: quien no es Salud
+  recibe el mismo 403 sea cual sea el id (no revela existencia). Los mensajes
+  dicen que falta (agente, subarea, clave, nivel).
+- **Ciudadano dado de baja en la BUC SI muestra su historia**, con
+  `ciudadano.activo=false` y aviso en la UI (la baja logica no borra hechos clinicos).
+- **Log NO best-effort**: INSERT + commit antes de responder, incluye 403
+  (`denegado`) y 404 (`inexistente`); si el registro falla, la lectura falla.
+  `/permiso`, 401, 422 y 429 no registran (no llegan a datos). Sin pantalla de
+  auditoria en F5 (consulta por SQL; `admin_tablas` NO la whitelistea).
+- **Sin export PDF de la historia clinica** (dato sensible fuera del sistema sin
+  registro: etapa 2 con `origen='export'`).
+- **Sin flag en login/`/me`**: la capacidad se pregunta a `/permiso` (misma
+  funcion que el guard, cero drift UI↔API, cache 5 min por usuario). Prohibido
+  derivar la visibilidad de `nivel_acceso`/`id_subarea` de la sesion.
+- **Nunca apilar dos `Modal` de Agenda** (comparten el listener de ESC): el modal
+  HC se abre solo desde tablas a nivel pagina; dentro de `TurnoDetalleModal`,
+  `AtenderGuardiaModal` y `Consultas` se embebe el Panel.
+- **Query key con `limit`** (`['turnos','historia','ciudadano',id,contexto,limit]`)
+  para que "Ver mas" dispare una lectura nueva (y una fila nueva en el log).
+- **En la solapa "Historia clinica" de Consultas el boton "Exportar PDF" no se
+  ofrece** (la HC no se exporta y exportar "otra cosa" desde ahi sorprende); en
+  las otras dos solapas sigue igual. Ver pendiente en §4.
+- `CumplirTurnoModal` y `DetalleEvento` (COM) NO son puntos de entrada (el COM no
+  ve detalle clinico; el camino critico del cumplir no se toca).
+
+Plan original de F5 (referencia):
 
 - Endpoint `GET /atenciones/historia?id_ciudadano=` unificando ambas fuentes,
   orden cronologico, con origen (turno/prestacion vs emergencia/evento).
@@ -337,3 +426,20 @@ ubicacion Guardia). F5 depende de F4. F6 depende de F3 (llamados) y F4
 - Reactivacion del area Cultura + subareas + ubicaciones reales: dato de
   negocio que carga Cesar cuando arranque F2/F6.
 - Ficha clinica ampliada (motivo, diagnostico, antecedentes): etapa 2 de F5.
+- Etapa 2 HC: vista admin de `historia_clinica_acceso` (hoy por SQL); export PDF
+  con log `origen='export'`; motivo obligatorio break-the-glass cuando quien
+  consulta no atendio nunca al paciente; aviso al vecino en la PWA; panel HC
+  dentro de `CumplirTurnoModal` si Salud lo pide.
+- Export PDF de Consultas → "Prestaciones realizadas" saca intervencion/
+  recomendaciones sin guard Salud ni registro (hereda el scope generico de
+  `/turnos/atenciones`): **DECISION DE CESAR pendiente** (quitar / gatear por
+  `/permiso` / dejar). Desde F5, estando en la solapa "Historia clinica" el boton
+  exporta el listado de turnos (no las prestaciones realizadas).
+- Canal lateral `turnos.observaciones`: prestaciones de Salud sin
+  `registra_atencion` (local: 6 Clinica general) pueden recibir texto clinico
+  visible al vecino; marcar `registra_atencion=true` en TODAS las prestaciones de
+  Salud (dato de negocio, prod no verificado).
+- Derivaciones de Guardia sin BUC (paciente por nombre libre) quedan fuera de la
+  HC hasta vincular el ciudadano (no hay listado de huerfanas).
+- Rate limit `hc:{id_usuario}` es in-memory por instancia (se resetea en cada
+  deploy): defensa en profundidad; la contramedida principal es el log.

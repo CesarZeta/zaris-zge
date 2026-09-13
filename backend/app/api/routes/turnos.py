@@ -27,7 +27,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,6 +44,8 @@ from app.schemas.turnos import (
     GuardiaAtencionOut,
     GuardiaAtenderIn,
     GuardiaAusenteIn,
+    HistoriaClinicaOut,
+    HistoriaClinicaPermisoOut,
     TurnoCreate,
     TurnoCumplir,
     TurnoLlamarIn,
@@ -62,6 +64,12 @@ from app.services.guardia import (
     SELECT_ATENCION, atencion_out as guardia_atencion_out, espacio_guardia,
     id_espacio_guardia, registrar_log_evento,
 )
+from app.services.historia_clinica import (
+    CONTEXTOS, DETALLE_403, SQL_CIUDADANO, SQL_HISTORIA,
+    permiso_historia_clinica, registrar_acceso,
+)
+from app.middleware.rate_limit import check_rate_limit
+from app.utils.request_helpers import get_real_ip
 from app.services import encuestas_service
 
 
@@ -478,6 +486,84 @@ async def historial_atenciones(
         LIMIT :lim
     """), params)).mappings().all()
     return [dict(r) for r in rows]
+
+
+# =============================================================================
+# HISTORIA CLINICA unificada (F5, migs 107 + 107b). Segmentos fijos de 2 y 3
+# niveles: no los atrapa GET /{id_turno} (un solo segmento) ni GET /atenciones
+# (regex exacta); igual quedan ANTES por convencion §5. NO reemplaza
+# /atenciones (mig 86), que conserva su scope generico para HistorialAtenciones.
+# =============================================================================
+@router.get("/atenciones/historia/permiso", response_model=HistoriaClinicaPermisoOut)
+async def permiso_historia(
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """Capacidad del usuario actual para consultar historias clinicas. Misma
+    funcion que el guard del GET de datos (una sola fuente). La UI oculta el
+    boton si puede=false; el backend igual rechaza con 403 (§30). No registra
+    acceso: no hay ciudadano involucrado."""
+    p = await permiso_historia_clinica(db, user)
+    return {"puede": p["puede"], "motivo": p["motivo"]}
+
+
+@router.get(
+    "/atenciones/historia",
+    response_model=HistoriaClinicaOut,
+    responses={
+        403: {"description": "Solo gestion Salud (agentes.id_subarea bajo id_area_salud) y nivel 1 (F5, mig 107)"},
+        404: {"description": "Ciudadano no encontrado"},
+        429: {"description": "Mas de 60 consultas de historia clinica por minuto para el mismo usuario"},
+    },
+)
+async def historia_clinica(
+    request: Request,
+    # le=int32: la columna historia_clinica_acceso.id_ciudadano es INTEGER y asyncpg tipa el
+    # bind como int4 -> un id mayor daba 500 en el INSERT del log y el intento NO quedaba
+    # registrado (rompia "todo acceso deja fila"). Con la cota es 422 antes del guard.
+    id_ciudadano: int = Query(..., ge=1, le=2_147_483_647, description="Ciudadano cuya historia clinica se consulta"),
+    # El enum de contexto tiene UNA fuente (CONTEXTOS del servicio = CHECK de la mig 107).
+    contexto: str = Query("otro", pattern="^(" + "|".join(CONTEXTOS) + ")$",
+                          description="Desde donde se abrio en la UI (queda en el registro de acceso)"),
+    limit: int = Query(100, ge=1, le=200),
+    offset: int = Query(0, ge=0, le=1_000_000),
+    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """Historia clinica minima viable (F5): turno_atencion (mig 86) UNION
+    emergencia_atencion atendida|ausente (mig 106), orden cronologico DESC, con
+    origen. Dato sensible (Ley 25.326 / 26.529): guard Salud + nivel 1 evaluado
+    ANTES de tocar la BUC (403 accionable), 404 si el ciudadano no existe, 200 con
+    items=[] si no tiene registros. TODO acceso (ok | denegado | inexistente) queda
+    en historia_clinica_acceso dentro de la misma transaccion, antes de responder."""
+    # Bucket POR USUARIO y con prefijo (§5): un humano no supera 60/min; un script si.
+    check_rate_limit(f"hc:{user['id_usuario']}", max_requests=60, window_seconds=60)
+    ip, ua = get_real_ip(request), request.headers.get("user-agent")
+
+    p = await permiso_historia_clinica(db, user)
+    if not p["puede"]:
+        await registrar_acceso(db, id_usuario=user["id_usuario"], id_ciudadano=id_ciudadano, contexto=contexto,
+                               resultado="denegado", motivo=p["motivo"], n_registros=None, ip=ip, user_agent=ua)
+        await db.commit()            # el intento se persiste ANTES del 403
+        raise HTTPException(status.HTTP_403_FORBIDDEN, DETALLE_403.get(p["motivo"], DETALLE_403["nivel"]))
+
+    ciud = (await db.execute(SQL_CIUDADANO, {"ic": id_ciudadano})).mappings().first()
+    if ciud is None:
+        # Con el guard ya pasado, el 404 no revela nada nuevo: la BUC expone existencia a
+        # cualquier autenticado via /buc/ciudadanos/buscar.
+        await registrar_acceso(db, id_usuario=user["id_usuario"], id_ciudadano=id_ciudadano, contexto=contexto,
+                               resultado="inexistente", motivo=p["motivo"], n_registros=0, ip=ip, user_agent=ua)
+        await db.commit()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ciudadano no encontrado")
+
+    rows = (await db.execute(SQL_HISTORIA, {"ic": id_ciudadano, "lim": limit, "off": offset})).mappings().all()
+    total = int(rows[0]["total"]) if rows else 0
+    items = [{k: v for k, v in r.items() if k != "total"} for r in rows]
+
+    await registrar_acceso(db, id_usuario=user["id_usuario"], id_ciudadano=id_ciudadano, contexto=contexto,
+                           resultado="ok", motivo=p["motivo"], n_registros=len(items), ip=ip, user_agent=ua)
+    await db.commit()   # get_db NO commitea solo (app/core/database.py): sin registro no hay acceso
+    return {"ciudadano": dict(ciud), "total": total, "limit": limit, "offset": offset, "items": items}
 
 
 # =============================================================================
