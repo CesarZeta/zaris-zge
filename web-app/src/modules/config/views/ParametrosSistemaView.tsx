@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  BellRing, Check, ClipboardCheck, Loader2, MapPin, Settings2,
+  BellRing, Check, ClipboardCheck, Loader2, MapPin, Settings2, Stethoscope,
 } from 'lucide-react'
 import { useConfigGeneral, useActualizarConfigParam } from '../hooks/useConfig'
 import type { ConfigParam } from '../api/configApi'
@@ -99,6 +99,26 @@ const SECCIONES: Seccion[] = [
         label: 'Radio de la zona (en grados)',
         ayuda: 'Semi-lado del recuadro de búsqueda, en grados. 0.27 ≈ 28 km: cubre el partido y los linderos. Si el municipio es más extenso, subirlo.',
         control: 'text',
+      },
+    ],
+  },
+  {
+    id: 'atencion',
+    titulo: 'Atención (Turnos, Guardia e historia clínica)',
+    descripcion: 'Qué ubicación actúa como Guardia y qué área es la gestión Salud (habilita la historia clínica a sus agentes; los administradores siempre la ven). Sin deploy.',
+    icon: Stethoscope,
+    claves: [
+      {
+        clave: 'id_espacio_guardia',
+        label: 'Ubicación que actúa como Guardia',
+        ayuda: 'espacios_agenda.id_espacio que recibe las derivaciones del COM.',
+        control: 'number',
+      },
+      {
+        clave: 'id_area_salud',
+        label: 'Área que actúa como gestión Salud',
+        ayuda: 'area.id_area. Sus agentes activos de niveles 2-4 pueden ver la historia clínica.',
+        control: 'number',
       },
     ],
   },

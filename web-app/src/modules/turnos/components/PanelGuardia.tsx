@@ -10,9 +10,10 @@
  */
 import { useEffect, useState } from 'react'
 import { Check, RefreshCw, Siren, UserX } from 'lucide-react'
-import { useAtencionesGuardia, useAtenderGuardia, useAusenteGuardia } from '../hooks/useTurnos'
+import { useAtencionesGuardia, useAtenderGuardia, useAusenteGuardia, usePuedeHistoriaClinica } from '../hooks/useTurnos'
 import { Modal } from '../../agenda/components/Modal'
 import { CiudadanoSearch } from '../../agenda/components/CiudadanoSearch'
+import { BotonHistoriaClinica, HistoriaClinicaModal, HistoriaClinicaPanel } from './HistoriaClinica'
 import { useNotificationsStore } from '../../../stores/notifications'
 import type { CiudadanoMinimo } from '../../agenda/types/agenda'
 import type { GuardiaAtencion, GuardiaAtenderBody } from '../types/turno'
@@ -43,6 +44,9 @@ export function PanelGuardia({ fecha, onCambio }: { fecha: string; onCambio?: ()
   const atender = useAtenderGuardia()
   const ausente = useAusenteGuardia()
   const [aAtender, setAAtender] = useState<GuardiaAtencion | null>(null)
+  // Historia clínica (F5): modal a NIVEL DE PÁGINA (nunca anidado en otro Modal).
+  const [hc, setHC] = useState<{ id: number; n?: string | null } | null>(null)
+  const puedeHC = usePuedeHistoriaClinica()
   // Re-render por minuto para que "hace N min" no quede congelado.
   const [, setTick] = useState(0)
   useEffect(() => { const id = window.setInterval(() => setTick((t) => t + 1), 60000); return () => window.clearInterval(id) }, [])
@@ -115,6 +119,13 @@ export function PanelGuardia({ fecha, onCambio }: { fecha: string; onCambio?: ()
                     <div style={meta}>{hora(a.derivado_en)}{a.derivado_por ? ` · ${a.derivado_por}` : ''}</div>
                   </td>
                   <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    {/* Devuelve null en "Sin identificar" (sin BUC) y si /permiso dice que no. */}
+                    <BotonHistoriaClinica
+                      idCiudadano={a.id_ciudadano}
+                      nombre={a.paciente_nombre}
+                      style={btnSec}
+                      onAbrir={(id, n) => setHC({ id, n })}
+                    />
                     <button onClick={() => setAAtender(a)} style={btnAccion} title="Registrar la atención">
                       <Check size={13} strokeWidth={1.5} /> Atender
                     </button>
@@ -172,6 +183,7 @@ export function PanelGuardia({ fecha, onCambio }: { fecha: string; onCambio?: ()
       <AtenderGuardiaModal
         atencion={aAtender}
         busy={atender.isPending}
+        puedeHC={puedeHC}
         onCancel={() => setAAtender(null)}
         onConfirm={(body) => {
           const id = aAtender?.id_emergencia_atencion
@@ -179,6 +191,7 @@ export function PanelGuardia({ fecha, onCambio }: { fecha: string; onCambio?: ()
           if (id != null) accion(() => atender.mutateAsync({ id_atencion: id, ...body }), 'Atención registrada')
         }}
       />
+      <HistoriaClinicaModal idCiudadano={hc?.id ?? null} nombre={hc?.n} contexto="guardia" onClose={() => setHC(null)} />
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
@@ -188,9 +201,11 @@ export function PanelGuardia({ fecha, onCambio }: { fecha: string; onCambio?: ()
  *  clínico mínimo, mismo criterio que la historia de atención de turnos). Si
  *  la derivación llegó sin ciudadano BUC, permite vincularlo acá. Cierra AL
  *  CONFIRMAR (§23); el resultado llega por toast. */
-function AtenderGuardiaModal({ atencion, busy, onConfirm, onCancel }: {
+function AtenderGuardiaModal({ atencion, busy, puedeHC = false, onConfirm, onCancel }: {
   atencion: GuardiaAtencion | null
   busy?: boolean
+  /** Capacidad de ver la historia clínica (viene de /permiso, F5). */
+  puedeHC?: boolean
   onConfirm: (body: GuardiaAtenderBody) => void
   onCancel: () => void
 }) {
@@ -260,6 +275,23 @@ function AtenderGuardiaModal({ atencion, busy, onConfirm, onCancel }: {
                 />
               )}
             </>
+          )}
+
+          {/* Historia clínica (F5) embebida como <details> cerrado: el modal no crece y
+              el fetch (registrado) sale solo al abrirlo. Al vincular BUC cambia la key
+              y se re-pide. SIN modal anidado (dos Modal comparten el ESC). */}
+          {puedeHC && (atencion.id_ciudadano ?? ciudadano?.id_ciudadano) != null && (
+            <details>
+              <summary style={{ ...lbl, cursor: 'pointer' }}>Historia clínica del paciente</summary>
+              <div style={{ marginTop: 8 }}>
+                <HistoriaClinicaPanel
+                  idCiudadano={(atencion.id_ciudadano ?? ciudadano?.id_ciudadano) as number}
+                  contexto="guardia"
+                  maxAlto={220}
+                  compacto
+                />
+              </div>
+            </details>
           )}
 
           <label style={lbl}>Intervención *</label>

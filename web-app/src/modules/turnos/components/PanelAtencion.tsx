@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react'
 import { Phone, RotateCw, Check, UserX, Monitor, Copy } from 'lucide-react'
 import { useTurnos, useLlamarTurno, useMarcarAusente, useCumplirTurno } from '../hooks/useTurnos'
 import { CumplirTurnoModal } from './CumplirTurnoModal'
+import { BotonHistoriaClinica, HistoriaClinicaModal } from './HistoriaClinica'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { useAuthStore } from '../../../stores/auth'
 import type { CumplirTurnoBody, EstadoTurno, Turno } from '../types/turno'
@@ -44,6 +45,9 @@ export function PanelAtencion({
     try { return localStorage.getItem(LS_PUESTO) ?? '' } catch { return '' }
   })
   const [aCumplir, setACumplir] = useState<Turno | null>(null)
+  // Historia clínica (F5): modal a NIVEL DE PÁGINA. Cuando se abre, CumplirTurnoModal
+  // está cerrado → nunca dos Modal de Agenda apilados.
+  const [hc, setHC] = useState<{ id: number; n?: string | null } | null>(null)
 
   useEffect(() => {
     try { localStorage.setItem(LS_PUESTO, puesto) } catch { /* sin storage: seguimos igual */ }
@@ -158,6 +162,13 @@ export function PanelAtencion({
                       )}
                     </td>
                     <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {/* Antes del ternario: las filas cumplidas también lo tienen. Null si /permiso dice que no. */}
+                      <BotonHistoriaClinica
+                        idCiudadano={t.id_ciudadano}
+                        nombre={t.ciudadano_nombre}
+                        style={btnSec}
+                        onAbrir={(id, n) => setHC({ id, n })}
+                      />
                       {abierto ? (
                         <>
                           <button
@@ -209,6 +220,7 @@ export function PanelAtencion({
           if (id != null) accion(() => cumplir.mutateAsync({ id_turno: id, ...body }), 'Turno cumplido')
         }}
       />
+      <HistoriaClinicaModal idCiudadano={hc?.id ?? null} nombre={hc?.n} contexto="mesa" onClose={() => setHC(null)} />
     </div>
   )
 }

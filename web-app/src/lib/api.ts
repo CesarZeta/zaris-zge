@@ -38,6 +38,20 @@ export interface ApiResponseWithHeaders<T> {
   headers: Headers
 }
 
+/** Error HTTP del backend con su `status`. Sigue siendo un `Error` con el mismo
+ *  `message` (el `detail` de FastAPI): los consumidores que hacen
+ *  `e instanceof Error` / `e.message` no cambian. Permite distinguir 403/404/429
+ *  en la UI (ej. historia clínica F5) sin parsear el texto. */
+export class ApiError extends Error {
+  readonly status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+export const httpStatus = (e: unknown): number | undefined => (e instanceof ApiError ? e.status : undefined)
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
@@ -78,7 +92,7 @@ async function request<T>(
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     const msg = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail ?? err)
-    throw new Error(msg || 'Error desconocido')
+    throw new ApiError(res.status, msg || 'Error desconocido')
   }
 
   const data = (await res.json()) as T

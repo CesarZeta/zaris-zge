@@ -16,12 +16,16 @@ import {
   atenderGuardia,
   ausenteGuardia,
   mesaUbicacion,
+  obtenerHistoriaClinica,
+  permisoHistoriaClinica,
   reprogramarTurno,
 } from '../api/turnosApi'
+import { useAuthStore } from '../../../stores/auth'
 import type {
   CrearTurnoBody,
   GuardiaAtenderBody,
   CumplirTurnoBody,
+  HistoriaClinicaContexto,
   ListarTurnosFiltros,
   PrestacionInput,
   ReprogramarTurnoBody,
@@ -139,6 +143,8 @@ export function useCumplirTurno() {
     onSuccess: () => {
       invalidar(qc)
       qc.invalidateQueries({ queryKey: ['turnos', 'atenciones'] })
+      // La historia clínica unificada (F5) también lista esta atención.
+      qc.invalidateQueries({ queryKey: ['turnos', 'historia', 'ciudadano'] })
     },
   })
 }
@@ -151,6 +157,49 @@ export function useAtencionesCiudadano(id_ciudadano: number | null) {
     queryFn: () => listarAtenciones(id_ciudadano as number),
     enabled: id_ciudadano != null,
     staleTime: 15 * 1000,
+  })
+}
+
+/* ── Historia clínica (F5, migs 107/107b) ──────────────────────────────── */
+
+/** Capacidad para ver historias clínicas: misma función que el guard del backend.
+ *  UNICA fuente para mostrar/ocultar el botón — NUNCA decidir por nivel/subárea local (§30).
+ *  Nivel 5 ni pregunta. Cache 5 min por usuario; sin retry (un 403/500 = no se muestra). */
+export function useHistoriaClinicaPermiso() {
+  const idUsuario = useAuthStore((s) => s.user?.id_usuario ?? null)
+  const nivel = useAuthStore((s) => s.user?.nivel_acceso ?? 9)
+  return useQuery({
+    queryKey: ['turnos', 'historia', 'permiso', idUsuario],
+    queryFn: permisoHistoriaClinica,
+    enabled: idUsuario != null && nivel <= 4,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  })
+}
+export function usePuedeHistoriaClinica(): boolean {
+  return useHistoriaClinicaPermiso().data?.puede === true
+}
+
+/** Historia clínica de un ciudadano. Lazy (el panel monta solo en solapa/details/modal
+ *  visible). El id va en la key: nunca se muestra la HC de otro. Sin placeholderData.
+ *  gcTime corto: dato sensible, no vive en memoria más de 1 min sin uso. Sin retry
+ *  (un 403 no se reintenta) ni refetch por foco (cada lectura queda registrada).
+ *  `limit` cierra la key (6º elemento): "Ver más" sube el límite y eso ES una lectura
+ *  nueva (queda registrada); el prefijo de invalidación no cambia. */
+export function useHistoriaClinica(
+  id_ciudadano: number | null,
+  contexto: HistoriaClinicaContexto,
+  enabled = true,
+  limit = 100,
+) {
+  return useQuery({
+    queryKey: ['turnos', 'historia', 'ciudadano', id_ciudadano, contexto, limit],
+    queryFn: () => obtenerHistoriaClinica(id_ciudadano as number, contexto, limit),
+    enabled: enabled && id_ciudadano != null,
+    staleTime: 30 * 1000,
+    gcTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+    retry: false,
   })
 }
 
@@ -203,6 +252,8 @@ function invalidarGuardia(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['turnos', 'guardia'] })
   // La landing muestra el contador de derivaciones pendientes.
   qc.invalidateQueries({ queryKey: ['turnos', 'ubicaciones'] })
+  // Una atención cerrada en la Guardia pasa a la historia clínica (F5).
+  qc.invalidateQueries({ queryKey: ['turnos', 'historia', 'ciudadano'] })
 }
 
 export function useAtenderGuardia() {

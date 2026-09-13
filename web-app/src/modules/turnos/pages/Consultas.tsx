@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
 import { Download, X } from 'lucide-react'
-import { useTurnos, useAtencionesCiudadano } from '../hooks/useTurnos'
+import { useTurnos, useAtencionesCiudadano, usePuedeHistoriaClinica } from '../hooks/useTurnos'
 import { CiudadanoSearch } from '../../agenda/components/CiudadanoSearch'
 import { TurnoDetalleModal } from '../components/TurnoDetalleModal'
 import { AtencionItem } from '../components/HistorialAtenciones'
+import { HistoriaClinicaPanel } from '../components/HistoriaClinica'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { exportarTurnosPdf, type TurnoPdfRow } from '../lib/exportPdf'
 import type { CiudadanoMinimo } from '../../agenda/types/agenda'
@@ -17,11 +18,13 @@ const ESTADO_COLOR: Record<EstadoTurno, { bg: string; fg: string }> = {
   cancelado: { bg: 'rgba(198,40,40,0.12)', fg: '#c62828' },
 }
 
-type Solapa = 'turnos' | 'realizadas'
+type Solapa = 'turnos' | 'realizadas' | 'clinica'
 
 /**
- * Consulta por ciudadano: todos sus turnos (cualquier estado) y las
- * prestaciones realizadas (turnos cumplidos + su atención registrada, mig 86).
+ * Consulta por ciudadano: todos sus turnos (cualquier estado), las
+ * prestaciones realizadas (turnos cumplidos + su atención registrada, mig 86)
+ * y — solo si el backend lo permite (`/permiso`, F5) — la historia clínica
+ * unificada (turnos + Guardia), que carga recién al elegir la solapa.
  * El alcance lo limita el backend con el scope por nivel de turnos (§33).
  */
 export function Consultas() {
@@ -29,6 +32,7 @@ export function Consultas() {
   const [ciudadano, setCiudadano] = useState<CiudadanoMinimo | null>(null)
   const [solapa, setSolapa] = useState<Solapa>('turnos')
   const [detalle, setDetalle] = useState<Turno | null>(null)
+  const puedeHC = usePuedeHistoriaClinica()
 
   const turnosQ = useTurnos(
     { id_ciudadano: ciudadano?.id_ciudadano ?? -1 },
@@ -46,7 +50,10 @@ export function Consultas() {
     : ''
 
   function doExport() {
-    const fuente = solapa === 'turnos' ? turnos : realizados
+    // La historia clínica NO se exporta en F5 (dato sensible sin registro de
+    // salida): desde esa solapa el PDF es el listado de turnos, no las realizadas.
+    const esRealizadas = solapa === 'realizadas'
+    const fuente = esRealizadas ? realizados : turnos
     if (!ciudadano || fuente.length === 0) {
       push({ kind: 'error', title: 'No hay datos para exportar' })
       return
@@ -61,14 +68,14 @@ export function Consultas() {
         atiende: t.recurso_nombre ?? t.agente_nombre ?? '',
         prestacion: t.prestacion_nombre ?? '',
         estado: t.estado,
-        observaciones: solapa === 'realizadas'
+        observaciones: esRealizadas
           ? (at ? `${at.intervencion}${at.recomendaciones ? ` | Recomendaciones: ${at.recomendaciones}` : ''}` : (t.observaciones ?? ''))
           : (t.observaciones ?? ''),
       }
     })
     exportarTurnosPdf(rows, {
-      titulo: solapa === 'turnos' ? `Turnos de ${nombreCiudadano}` : `Prestaciones realizadas de ${nombreCiudadano}`,
-      conEstado: solapa === 'turnos',
+      titulo: esRealizadas ? `Prestaciones realizadas de ${nombreCiudadano}` : `Turnos de ${nombreCiudadano}`,
+      conEstado: !esRealizadas,
     })
   }
 
@@ -90,14 +97,18 @@ export function Consultas() {
             </span>
             <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg-1)' }}>{nombreCiudadano}</span>
             {ciudadano.doc_nro && <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>DNI {ciudadano.doc_nro}</span>}
-            <button onClick={() => setCiudadano(null)} style={btnGhostSm} title="Buscar otro ciudadano">
+            <button onClick={() => { setCiudadano(null); setSolapa('turnos') }} style={btnGhostSm} title="Buscar otro ciudadano">
               <X size={12} strokeWidth={1.5} /> Cambiar
             </button>
-            <div style={{ marginLeft: 'auto' }}>
-              <button onClick={doExport} style={btnPrimary}>
-                <Download size={14} strokeWidth={1.5} /> Exportar PDF
-              </button>
-            </div>
+            {/* La historia clínica NO se exporta (F5: dato sensible fuera del sistema sin registro);
+                en esa solapa el botón no se ofrece para no exportar "otra cosa" por sorpresa. */}
+            {solapa !== 'clinica' && (
+              <div style={{ marginLeft: 'auto' }}>
+                <button onClick={doExport} style={btnPrimary}>
+                  <Download size={14} strokeWidth={1.5} /> Exportar PDF
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div style={{ maxWidth: 480 }}>
@@ -117,13 +128,23 @@ export function Consultas() {
             <button onClick={() => setSolapa('realizadas')} style={tabBtn(solapa === 'realizadas')}>
               Consulta de prestaciones realizadas ({realizados.length})
             </button>
+            {puedeHC && (
+              <button onClick={() => setSolapa('clinica')} style={tabBtn(solapa === 'clinica')}>
+                Historia clínica
+              </button>
+            )}
           </div>
 
           {turnosQ.isError && (
             <div style={errorBanner}>{(turnosQ.error as Error)?.message ?? 'Error al consultar turnos'}</div>
           )}
 
-          {solapa === 'turnos' ? (
+          {solapa === 'clinica' ? (
+            // La página ES el contexto: sin modal. Lazy: carga recién al elegir la solapa.
+            <div style={panel}>
+              <HistoriaClinicaPanel idCiudadano={ciudadano.id_ciudadano} contexto="consulta" maxAlto={520} />
+            </div>
+          ) : solapa === 'turnos' ? (
             <div style={card}>
               <table style={table}>
                 <thead>
