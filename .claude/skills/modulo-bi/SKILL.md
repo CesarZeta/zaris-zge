@@ -332,7 +332,12 @@ mismos vecinos demo (solo ellos: ningún turno demo cuelga de un vecino real).
   statement por lote de 300 con RETURNING (ocupaciones → turnos → llamados/atenciones/encuestas).
 - **Verificado en local 2026-09-19**: abril-septiembre = 2.706 turnos (0 fuera de la disponibilidad
   efectiva, 0 solapes propios, 0 números repetidos, 0 llamados de otro día, 0 encuestas pendientes),
-  176 derivaciones, 43 eventos; smoke del tablero 85/85 con ese volumen. **Prod se carga por
+  176 derivaciones, 43 eventos; smoke del tablero 85/85 con ese volumen. **Prod CARGADA el
+  2026-09-19** (4 runs del workflow con `modulos=atencion`, abril → 19/09): 2.943 turnos demo,
+  179 derivaciones, 45 eventos / 3.234 reservas, reclamos demo intactos, integridad 0/0/0/0/0.
+  **Idempotencia** (`f7b91db`): recurso/día con turnos demo se saltea (`recurso_dia_ya_demo`),
+  día con derivaciones demo se saltea (`dias_omitidos_con_demo`), eventos demo del rango
+  descuentan del objetivo (`ya_existian`) — re-generar un rango poblado agrega ~0. **Prod se carga por
   chunks ≤ 45 días con el workflow (`modulos=atencion`) — NUNCA con el default `reclamos,atencion`
   sobre meses ya poblados (duplicaría reclamos, incidente 2026-08-31).** Un deploy viejo del backend
   IGNORA `modulos` (Pydantic descarta campos desconocidos) y generaría reclamos: confirmar en
