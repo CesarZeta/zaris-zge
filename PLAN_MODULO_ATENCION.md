@@ -1,10 +1,11 @@
 # PLAN DE IMPLEMENTACION - ATENCION POR UBICACION (Turnos reorganizados + Colero + Guardia + Historia Clinica + BI por gestion)
 
 **Estado:** F1 + F2 + F2b (2026-09-01), F3 colero (2026-09-06, mig 105),
-F4 Guardia (2026-09-06, migs 106 + 106b) y **F5 Historia clinica (2026-09-13,
-migs 107 + 107b) HECHAS, verificadas y en prod**.
-Siguiente: F6 (BI de atencion).
-**Ultima revision:** 2026-09-13
+F4 Guardia (2026-09-06, migs 106 + 106b) y F5 Historia clinica (2026-09-13,
+migs 107 + 107b) HECHAS, verificadas y en prod. **F6 BI de atencion HECHA
+2026-09-19 (sin migracion; smoke 85/85 + verificacion visual local)** — queda
+el QA visual de Cesar en prod. **Las 6 fases del plan estan hechas.**
+**Ultima revision:** 2026-09-19
 
 ---
 
@@ -397,7 +398,7 @@ Plan original de F5 (referencia):
 - Vista React "Historia clinica" (timeline) accesible desde el detalle del
   turno/mesa de guardia y desde la consulta por ciudadano.
 
-### F6 — BI de Atencion por gestion
+### F6 — BI de Atencion por gestion (HECHA 2026-09-19 — smoke 85/85 + verificacion visual local)
 
 - Tablero nuevo en Datos (skill modulo-bi obligatoria): por gestion (area) y
   drill-down por ubicacion/prestacion/agente.
@@ -406,6 +407,26 @@ Plan original de F5 (referencia):
   por agente, ocupacion por ubicacion, origen (backoffice/autoservicio),
   atenciones de guardia por emergencia, CSAT de turnos (ya existe §42).
 - Cultura: reservas/asistencia de eventos y clases (entradas + agenda).
+
+**Entregado (2026-09-19):** tercer tablero de DATOS, ruta `/bi/atencion`
+(tarjeta "Analisis de datos de Atencion" en la landing). Backend
+`backend/app/api/routes/bi_atencion.py` (`/api/v1/bi/atencion/*`, 19 rutas,
+solo lectura, SIN migracion). Frontend `web-app/src/modules/bi/pages/
+AtencionPage.tsx` + 6 secciones (`sections/*AtSection.tsx`): Resumen (KPIs +
+matriz UBICACION -> PRESTACION + donas estado/origen/CSAT), Evolucion
+(histograma por estado + lineas 12 meses), Ubicaciones (barras + ocupacion +
+atencion por agente), Espera (tramos + por ubicacion), Guardia (derivaciones,
+demora, por medico/tipo/prioridad), Eventos (reservas, asistencia, cupo).
+Filtros = periodo + gestion + ubicacion + prestacion. Detalle de criterios
+(universo activo=TRUE, espera solo con llamados del mismo dia, % asistencia
+solo de eventos realizados, prestacion ignorada en Guardia/Eventos) en la
+skill `modulo-bi`. Smoke `backend/smoke_bi_atencion.py`.
+
+**Pendientes de F6:** QA visual de Cesar en prod; **decidir un generador de
+datos demo de turnos/guardia/eventos** (hoy `demo_datos.py` solo genera
+reclamos: local ~26 turnos y prod ~32, el tablero se ve ralo); ocupacion vs
+disponibilidad efectiva (hoy "ocupacion" = turnos otorgados + horas atendidas
+por ubicacion, no un % sobre la agenda disponible).
 
 ### Orden y dependencias
 

@@ -6,7 +6,7 @@ import type { BiFiltros } from '../lib/types'
 // Incluye TODOS los campos que viajan al backend: si se agrega un filtro nuevo a
 // BiFiltros hay que sumarlo acá o las vistas muestran datos viejos.
 export const filtrosKey = (f: BiFiltros) =>
-  [f.desde, f.hasta, f.anio, (f.meses ?? []).join(','), f.id_area, f.id_subarea, f.prioridad, f.estado, f.id_tipo_reclamo, f.canal, f.id_localidad] as const
+  [f.desde, f.hasta, f.anio, (f.meses ?? []).join(','), f.id_area, f.id_subarea, f.prioridad, f.estado, f.id_tipo_reclamo, f.canal, f.id_localidad, f.id_espacio_ubicacion, f.id_tipo_prestacion] as const
 const key = (sub: string, f: BiFiltros) => ['bi', sub, ...filtrosKey(f)] as const
 
 // KPIs comparativos de la fila única de cada sección.
@@ -132,4 +132,53 @@ export function useEjCatalogoLocalidades() {
 
 export function useEjCatalogoSubareas(id_area?: number) {
   return useQuery({ queryKey: ['bi', 'ej-catalogo-subareas', id_area], queryFn: () => biApi.ejCatalogoSubareas(id_area), staleTime: 5 * 60_000 })
+}
+
+// ── Atención ("BI de atención por gestión", F6 2026-09-19) ────────────────────
+export function useAtScore(f: BiFiltros) {
+  return useQuery({ queryKey: key('at-score', f), queryFn: () => biApi.atScore(f) })
+}
+
+export function useAtMatriz(f: BiFiltros) {
+  return useQuery({ queryKey: key('at-matriz', f), queryFn: () => biApi.atMatriz(f) })
+}
+
+export function useAtEvolucion(f: BiFiltros) {
+  return useQuery({ queryKey: key('at-evolucion', f), queryFn: () => biApi.atEvolucion(f) })
+}
+
+export function useAtPorUbicacion(f: BiFiltros) {
+  return useQuery({ queryKey: key('at-por-ubicacion', f), queryFn: () => biApi.atPorUbicacion(f) })
+}
+
+export function useAtPorAgente(f: BiFiltros, limit = 15) {
+  return useQuery({ queryKey: [...key('at-por-agente', f), limit], queryFn: () => biApi.atPorAgente(f, limit) })
+}
+
+export function useAtEspera(f: BiFiltros) {
+  return useQuery({ queryKey: key('at-espera', f), queryFn: () => biApi.atEspera(f) })
+}
+
+export function useAtGuardia(f: BiFiltros) {
+  return useQuery({ queryKey: key('at-guardia', f), queryFn: () => biApi.atGuardia(f) })
+}
+
+export function useAtEventos(f: BiFiltros, limit = 20) {
+  return useQuery({ queryKey: [...key('at-eventos', f), limit], queryFn: () => biApi.atEventos(f, limit) })
+}
+
+export function useAtCatalogoGestiones() {
+  return useQuery({ queryKey: ['bi', 'at-catalogo-gestiones'], queryFn: () => biApi.atCatalogoGestiones(), staleTime: 5 * 60_000 })
+}
+
+export function useAtCatalogoUbicaciones(id_area?: number) {
+  return useQuery({ queryKey: ['bi', 'at-catalogo-ubicaciones', id_area], queryFn: () => biApi.atCatalogoUbicaciones(id_area), staleTime: 5 * 60_000 })
+}
+
+export function useAtCatalogoPrestaciones(id_area?: number, id_espacio_ubicacion?: number) {
+  return useQuery({
+    queryKey: ['bi', 'at-catalogo-prestaciones', id_area, id_espacio_ubicacion],
+    queryFn: () => biApi.atCatalogoPrestaciones(id_area, id_espacio_ubicacion),
+    staleTime: 5 * 60_000,
+  })
 }

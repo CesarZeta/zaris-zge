@@ -234,6 +234,9 @@ export interface BiFiltros {
   id_localidad?: number
   // Filtro del Ejecutivo (2026-08-30, 2ª tanda): subárea dentro del área.
   id_subarea?: number
+  // Filtros del tablero de ATENCIÓN (F6, 2026-09-19): ubicación (espacio) y prestación.
+  id_espacio_ubicacion?: number
+  id_tipo_prestacion?: number
 }
 
 // KPIs comparativos de la fila única de cada sección (GET /bi/comparativo).
@@ -367,4 +370,214 @@ export interface EjSubareaCatalogo {
   id_subarea: number
   nombre: string
   total: number
+}
+
+// ── Atención ("BI de atención por gestión", F6 2026-09-19) ────────────────────
+// Shapes de /api/v1/bi/atencion/*. La jerarquía es GESTIÓN (área) → UBICACIÓN
+// (espacio) → prestación / agente → turnos.
+
+export interface AtIndicadores {
+  total: number
+  cumplidos: number
+  ausentes: number
+  cancelados: number
+  pendientes: number
+  autoservicio: number
+  llamados: number
+  re_llamados: number
+  a_tiempo: number
+  espera_prom_min: number | null
+  espera_max_min: number | null
+  atenciones_registradas: number
+  horas_atendidas: number | null
+  enviadas: number
+  respuestas: number
+  satisfechos: number
+  /** cumplidos / otorgados con desenlace (sin pendientes) */
+  pct_cumplimiento: number | null
+  /** ausentes / (cumplidos + ausentes): turnos caídos entre los que llegaron a su hora */
+  pct_ausentismo: number | null
+  pct_cancelacion: number | null
+  pct_a_tiempo: number | null
+  pct_autoservicio: number | null
+  pct_sat: number | null
+  tasa_respuesta: number | null
+}
+
+export interface AtScore extends AtIndicadores {
+  var_pct: number | null
+  anterior: AtIndicadores | null
+  por_estado: Array<{ estado: string; total: number }>
+  por_origen: Array<{ origen: string; total: number }>
+  niveles: EjNivel[]
+}
+
+export interface AtFila extends AtIndicadores {
+  var_pct: number | null
+  ant: AtIndicadores | null
+}
+export interface AtPrestacionFila extends AtFila {
+  id_tipo_prestacion: number | null
+  prestacion: string
+}
+export interface AtUbicacionFila extends AtFila {
+  id_espacio: number | null
+  ubicacion: string
+  gestion: string
+  prestaciones: AtPrestacionFila[]
+}
+export interface AtMatriz {
+  filas: AtUbicacionFila[]
+  total: AtFila
+}
+
+export interface AtEvolucionItem {
+  mes: string
+  total: number
+  cumplidos: number
+  ausentes: number
+  cancelados: number
+  pct_cumplimiento: number | null
+  pct_ausentismo: number | null
+  espera_prom_min: number | null
+  pct_sat: number | null
+}
+
+export interface AtPorUbicacion extends AtIndicadores {
+  id_espacio: number | null
+  ubicacion: string
+  gestion: string
+}
+export interface AtPorAgente extends AtIndicadores {
+  id_agente: number
+  agente: string
+  ubicaciones: string | null
+}
+
+export interface AtEsperaUbicacion {
+  id_espacio: number | null
+  ubicacion: string
+  gestion: string
+  llamados: number
+  re_llamados: number
+  a_tiempo: number
+  pct_a_tiempo: number | null
+  espera_prom_min: number | null
+  espera_max_min: number | null
+}
+export interface AtEspera {
+  llamados: number
+  re_llamados: number
+  a_tiempo: number
+  pct_a_tiempo: number | null
+  espera_prom_min: number | null
+  espera_max_min: number | null
+  tolerancia_min: number
+  tramos: Array<{ tramo: string; total: number }>
+  por_ubicacion: AtEsperaUbicacion[]
+}
+
+export interface AtGuardiaInd {
+  derivaciones: number
+  atendidas: number
+  ausentes: number
+  pendientes: number
+  con_ciudadano: number
+  pct_atendidas: number | null
+  pct_ausentes: number | null
+  demora_prom_min: number | null
+  demora_max_min: number | null
+}
+export interface AtGuardia extends AtGuardiaInd {
+  var_pct: number | null
+  anterior: AtGuardiaInd | null
+  por_estado: Array<{ estado: string; total: number }>
+  por_agente: Array<AtGuardiaInd & { id_agente: number; agente: string }>
+  por_tipo: Array<AtGuardiaInd & { id_tipo: number | null; tipo: string }>
+  por_prioridad: Array<AtGuardiaInd & { id_prioridad: number | null; prioridad: string }>
+}
+
+export interface AtEventosInd {
+  eventos: number
+  eventos_realizados: number
+  eventos_cancelados: number
+  cupo_total: number
+  reservas: number
+  vigentes: number
+  asistieron: number
+  canceladas: number
+  autoservicio: number
+  /** asistieron / reservas vigentes, SOLO de eventos ya realizados */
+  pct_asistencia: number | null
+  pct_cupo: number | null
+  pct_autoservicio: number | null
+}
+export interface AtEventoFila {
+  id_evento: number
+  evento: string
+  fecha: string
+  hora_inicio: string | null
+  estado: string
+  ubicacion: string
+  gestion: string
+  cupo: number | null
+  reservas: number
+  vigentes: number
+  asistieron: number
+  canceladas: number
+  autoservicio: number
+  realizado: boolean
+  pct_cupo: number | null
+  pct_asistencia: number | null
+}
+export interface AtEventos extends AtEventosInd {
+  var_pct: number | null
+  anterior: AtEventosInd | null
+  por_estado: Array<{ estado: string; total: number }>
+  por_evento: AtEventoFila[]
+}
+
+export interface AtTurnoDetalle {
+  id_turno: number
+  fecha: string
+  hora_inicio: string
+  hora_fin: string
+  numero_diario: string | null
+  estado: string
+  origen: string
+  gestion: string
+  ubicacion: string
+  prestacion: string
+  agente: string | null
+  primer_llamado: string | null
+  n_llamados: number
+  espera_min: number | null
+  atencion_registrada: boolean
+  csat: number | null
+}
+export interface AtGuardiaDetalle {
+  id_emergencia_atencion: number
+  numero_operativo: string | null
+  estado: string
+  derivado_en: string
+  atendido_en: string | null
+  demora_min: number | null
+  tipo: string
+  prioridad: string
+  ubicacion: string
+  agente: string | null
+  con_ciudadano: boolean
+}
+
+export interface AtUbicacionCatalogo {
+  id_espacio: number
+  nombre: string
+  id_area: number | null
+  gestion: string
+}
+export interface AtPrestacionCatalogo {
+  id_tipo_prestacion: number
+  nombre: string
+  activo: boolean
+  id_espacio_ubicacion: number | null
 }

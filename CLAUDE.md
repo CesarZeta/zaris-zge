@@ -81,7 +81,7 @@ No suponer paridad entre stacks. Hoy:
 | **Dashboard** | — | **`modules/dashboard/`** ("Resumen de actividad municipal" 2026-07-02: título con logo/nombre del municipio, 6 tarjetas — emergencias/reclamos/espacios/turnos/entradas/trámites — + mapa Leaflet multicapa con markers-icono y toggles; un solo endpoint agregado `GET /api/v1/dashboard/resumen`) | **React — HOME del iframe** desde 2026-05-13 (se carga al entrar al shell y al hacer click en INICIO desde cualquier módulo) |
 | **OT (3 mesas)** | — (borrado, era `ot_supervisor.html`/`ot_agente.html`/`ot_auditoria.html`) | **`modules/ot/`** (Supervisor / Agente / Auditoría + drawer detalle compartido) | **React** (publicado) |
 | **Trámites** | — | **`modules/tramites/`** (backend Fase 1+2 + frontend Fase 3 completo — bandeja, detalle, acciones, timeline, adjuntos, pase, relacionar; 2026-05-16) | **React** (publicado) |
-| **Datos (BI)** | — | **`modules/bi/`** (landing DATOS → Operativo + Ejecutivo. Operativo: 4 tabs Resumen/Resueltos-SLA/Pendientes+mapa/Subreclamos. Ejecutivo: placeholder. 2026-05-26) | **React** (publicado) |
+| **Datos (BI)** | — | **`modules/bi/`** (landing DATOS → Operativo + Ejecutivo sobre reclamos, páginas únicas 2026-08-30 + **Atención** — turnos/colero/Guardia/eventos por gestión, F6 2026-09-19. Detalle en la skill `modulo-bi`) | **React** (publicado) |
 | **Emergencias (COM)** | — | **`modules/emergencias/`** (Tablero dispatcher polling 30s + Recepción de llamado + Detalle FSM/historial; 2026-06-10, §44) | **React** (publicado — **PRIMER ítem del sidebar**) |
 | Config (sistema/identidad — permisos y catálogo de módulos se mudaron a Usuarios 2026-07-16) | — | `modules/config/` | React |
 

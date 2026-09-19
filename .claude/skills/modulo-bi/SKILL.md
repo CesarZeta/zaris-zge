@@ -1,6 +1,6 @@
 ---
 name: modulo-bi
-description: "Usar al trabajar en el módulo Datos / BI (Análisis de datos) de ZARIS (archivos: backend/app/api/routes/bi.py, web-app/src/modules/bi/, components/HistogramaTemporal.tsx, components/exportCsv.ts; sidebar 'datos', moduloCodigo='bi'). Tableros analíticos sobre reclamos. Cubre la estructura Landing→Operativo, las reglas OBLIGATORIAS de visualización (Recharts 2.15, etiquetas de total, pastilla oscura, drill-down, Exportar CSV), las convenciones de backend (área vía subárea, mono-municipio con id_municipio NULL, agregación 100% en SQL) y los datos demo. Invocar ANTES de tocar cualquier endpoint, visualización o vista del módulo Datos/BI."
+description: "Usar al trabajar en el módulo Datos / BI (Análisis de datos) de ZARIS (archivos: backend/app/api/routes/bi.py, bi_ejecutivo.py, bi_atencion.py, web-app/src/modules/bi/, components/HistogramaTemporal.tsx, components/exportCsv.ts; sidebar 'datos', moduloCodigo='bi'). Tableros analíticos sobre reclamos (Operativo, Ejecutivo) y sobre la atención al vecino (Atención: turnos, colero, Guardia, eventos; F6 2026-09-19). Cubre la estructura Landing→Operativo, las reglas OBLIGATORIAS de visualización (Recharts 2.15, etiquetas de total, pastilla oscura, drill-down, Exportar CSV), las convenciones de backend (área vía subárea, mono-municipio con id_municipio NULL, agregación 100% en SQL) y los datos demo. Invocar ANTES de tocar cualquier endpoint, visualización o vista del módulo Datos/BI."
 ---
 
 # Módulo Datos (BI — Análisis de datos) — §43
@@ -211,3 +211,82 @@ guard JWT a nivel router, registrado en main.py después de `bi_router`). Decisi
   se limpia con "Quitar pin"). Detalle del form en la skill `modulo-reclamos`.
 - `GET /bi/ejecutivo/catalogo/localidades` puebla el filtro SOLO con localidades presentes en
   reclamos (no el catálogo nacional).
+
+## Tablero de ATENCIÓN — "BI de atención por gestión" (proyecto ATENCIÓN F6, 2026-09-19)
+
+Tercer tablero de DATOS: **turnos + colero + Guardia + eventos**, sobre las tablas de F1-F5 del
+plan de Atención (`PLAN_MODULO_ATENCION.md`). Ruta `/bi/atencion` (`pages/AtencionPage.tsx` +
+`sections/{Resumen,Evolucion,Ubicaciones,Espera,Guardia,Eventos}AtSection.tsx` +
+`components/FiltrosAtencion.tsx` + `components/atUtils.tsx`); backend
+`backend/app/api/routes/bi_atencion.py` (router propio `/api/v1/bi/atencion/*`, 19 rutas, guard
+JWT a nivel router, registrado en `main.py` después de `bi_ejecutivo_router`). **Sin migración**
+(solo lectura). Smoke `backend/smoke_bi_atencion.py` (85 checks in-process, SOLO local; compara
+score/matriz/series/composición entre sí y contra la DB).
+
+- **Filtros = PERÍODO + GESTIÓN (área) + UBICACIÓN (espacio) + PRESTACIÓN** (`FiltrosAtencion`,
+  cascadeo gestión → ubicación → prestación). Campos nuevos de `BiFiltros`:
+  `id_espacio_ubicacion` / `id_tipo_prestacion`, sumados a `qp()`, `qpSinFechas()` y
+  `filtrosKey()` (regla del filtro nuevo). **La gestión de un turno se deriva de su UBICACIÓN**
+  (`COALESCE(t.id_espacio_ubicacion, tp.id_espacio_ubicacion, t.id_espacio) → espacios_agenda →
+  subarea → area`, `_JOIN_TURNOS`); los legacy sin ubicación caen a `tp.id_subarea` y, si no,
+  al bucket visible "Sin ubicación · Sin gestión" (lección de la mig 27: nada desaparece).
+  Catálogos propios: `/catalogo/gestiones` (áreas activas con espacio activo, prestación o
+  evento — NO las que solo tienen reclamos), `/catalogo/ubicaciones?id_area`,
+  `/catalogo/prestaciones?id_area&id_espacio_ubicacion` (activas o con turnos). Defaults = los
+  del Ejecutivo (año en curso + mes anterior; admin "Todas las gestiones"; supervisor la de su
+  agente vía `/bi/mi-area` si es gestión de atención, si no la primera del catálogo).
+  **Prestación NO aplica a Guardia ni a Eventos**: se ignora en el backend y la sección lo dice
+  con una nota (no se vacía como en Power BI, porque no es un choque de universo sino una
+  dimensión inexistente).
+- **Universo de turnos = `t.activo = TRUE`.** Cancelar (turnos.py) deja `activo=TRUE` +
+  `estado='cancelado'`; las filas `cancelado + activo=false` que hay en local (14) y prod (7)
+  son la limpieza de un smoke del 2026-05-28 (sin `id_usuario_modificacion`), NO cancelaciones,
+  y quedan fuera a propósito. Mono-municipio como el resto (`id_municipio = :m OR NULL`).
+- **Indicadores** (`_indicadores`, mismos en score / matriz / por ubicación / por agente):
+  `pct_cumplimiento` = cumplidos / otorgados con desenlace (sin pendientes) ·
+  `pct_ausentismo` = ausentes / (cumplidos + ausentes) (turnos caídos entre los que llegaron a su
+  hora — el KPI del plan) · `pct_cancelacion` = cancelados / otorgados · `pct_a_tiempo` =
+  llamados dentro de `TOLERANCIA_MIN` (5) / llamados · CSAT = `encuesta_envio.id_turno` +
+  `clasificacion_inicial >= 4` (LATERAL LIMIT 1 por turno) · `horas_atendidas` = duración de
+  los cumplidos · `atenciones_registradas` = `turno_atencion` (LATERAL LIMIT 1).
+- **Espera real** = primer `turno_llamado` − hora del turno. La hora del turno es `fecha +
+  hora_inicio` LOCAL naive (UTC-3 fijo) → `+ INTERVAL '3 hours' AT TIME ZONE 'UTC'` (mismo
+  criterio que `services/historia_clinica.py`); el promedio usa `GREATEST(0, delta)`. **Solo
+  cuentan los llamados del MISMO día local del turno** (LATERAL `ll`): un llamado de otro día
+  es una regularización tardía o un artefacto de prueba (en local había un turno del 02/09
+  llamado el 06/09 = 6.300 min de "espera"). Tramos: A tiempo / 5-15 / 15-30 / 30-60 / +60.
+- **Guardia** (`emergencia_atencion`, mig 106): fecha = `derivado_en` en local
+  (`(x AT TIME ZONE 'UTC') - 3h ::date`); demora = `atendido_en − derivado_en`; `%atendidas` =
+  atendidas / (atendidas + ausentes); desglose por médico (`id_agente_atiende`), tipo
+  (`emergencia_evento.id_tipo → emergencia_tipo`) y prioridad (`emergencia_prioridad`,
+  ordenada por `orden_visual`). **Eventos** (Cultura): universo `eventos.activo` por `ev.fecha`,
+  gestión vía `COALESCE(ev.id_subarea, espacio.id_subarea)`; reservas por LATERAL `rs` (no
+  multiplica el cupo); `% asistencia` = asistieron / vigentes SOLO de eventos ya realizados
+  (`fecha < hoy_local()`); `% cupo` = vigentes / `capacidad_ciudadanos`; series mensual/diaria
+  con `HAVING reservas > 0`; `por_estado` = asistió / reservada (vigentes − asistieron) /
+  cancelada.
+- **Período anterior**: reusa `_rango_anterior` del Ejecutivo (score, `ant` de la matriz,
+  guardia, eventos) y `periodoEnLetras` en el front — **4ª punta de la regla espejada** (tocar
+  una ⇒ tocar las cuatro). Las variaciones de VOLUMEN (otorgados, derivaciones, reservas) van
+  en color neutro (`VAR_NEUTRO`: más demanda no es ni buena ni mala); los indicadores con
+  valoración llevan el triangulito `Tri` (`invertir` para ausentismo / espera / demora).
+- **Secciones** (`AtencionPage`: mismo sticky + scroll-spy + cover del Ejecutivo, keys
+  `zaris_bi_at_area` / `zaris_bi_at_filtros_colapsados`): **Resumen** (6 KPIs + matriz
+  UBICACIÓN → PRESTACIÓN expandible + donas estado / origen / niveles CSAT; export
+  `/turnos-detalle` limit 10000) · **Evolución** (`HistogramaTemporal` por estado con drill +
+  2 líneas de 12 meses vía `/evolucion`) · **Ubicaciones** (barras horizontales apiladas
+  `SegLabelH`/`TotalLabelH`, alto = 70 + 38·filas, + tablas "Ocupación por ubicación" y
+  "Atención por agente" top 15) · **Espera** (4 KPIs + tramos + tabla por ubicación) ·
+  **Guardia** (6 KPIs + histograma + dona + tablas médico / tipo / prioridad; export
+  `/guardia-detalle`) · **Eventos** (6 KPIs + histograma de reservas + dona + tabla de los
+  últimos 30 eventos; CSV client-side). Tablas con `TablaAt` (`atUtils.tsx`: numéricas a
+  `width 1%`, columna `texto: true` con `overflowWrap: 'anywhere'`, scroll solo vertical).
+  Colores en `theme.ts` (`COLOR_TURNO` / `COLOR_GUARDIA` / `COLOR_RESERVA` + labels; sin
+  naranja para estados). **Las exportaciones NO llevan datos personales del vecino**
+  (Ley 25.326: el tablero es de gestión).
+- **Datos demo**: NO hay generador de turnos / guardia / eventos (`demo_datos.py` es solo de
+  reclamos): local ~26 turnos activos, prod ~32. El tablero se ve ralo hasta que César decida
+  un generador (pendiente en `ESTADO.md`). `/score?anio=2000` devuelve ceros/`null`, no 500.
+- Verificado 2026-09-19 navegando en `localhost:5173` (login admin → landing → tarjeta →
+  6 secciones con septiembre/julio, chips de mes, cascadeo gestión → ubicación → prestación,
+  "Limpiar filtros") + smoke 85/85 + `pnpm typecheck`. **Queda el QA visual de César en prod.**
