@@ -2,9 +2,10 @@
 
 **Estado:** F1 + F2 + F2b (2026-09-01), F3 colero (2026-09-06, mig 105),
 F4 Guardia (2026-09-06, migs 106 + 106b) y F5 Historia clinica (2026-09-13,
-migs 107 + 107b) HECHAS, verificadas y en prod. **F6 BI de atencion HECHA
-2026-09-19 (sin migracion; smoke 85/85 + verificacion visual local)** — queda
-el QA visual de Cesar en prod. **Las 6 fases del plan estan hechas.**
+migs 107 + 107b) HECHAS, verificadas y en prod. **F6 BI de atencion HECHA y
+EN PROD 2026-09-19 (commit 1b9b0c9 + dist e6441ac; sin migracion; smoke 85/85
++ verificacion visual local + API de prod verificada)** — queda el QA visual
+de Cesar en prod. **Las 6 fases del plan estan hechas.**
 **Ultima revision:** 2026-09-19
 
 ---
