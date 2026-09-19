@@ -392,14 +392,31 @@ def _desenlace(rnd: random.Random, cat: _Catalogos, t: dict, ahora: datetime) ->
         t["envio"] = envio
 
 
+async def _recursos_ya_demo(db: AsyncSession, uid: int, desde: date, hasta: date) -> set[tuple[str, int, date]]:
+    """(recurso, dia) que ya tienen turnos demo: se saltean al re-generar un
+    rango (idempotencia por dia — sin esto cada corrida vuelve a ocupar el
+    35-65 % de lo que quedo libre y la ocupacion tiende al 100 %)."""
+    r = await db.execute(text("""
+        SELECT DISTINCT CASE WHEN id_agente IS NOT NULL THEN 'agente' ELSE 'espacio' END AS tr,
+               COALESCE(id_agente, id_espacio) AS ir, fecha
+          FROM turnos WHERE id_usuario_alta = :uid AND fecha BETWEEN :d AND :h
+    """), {"uid": uid, "d": desde, "h": hasta})
+    return {(f.tr, int(f.ir), f.fecha) for f in r.fetchall()}
+
+
 def _armar_turnos_dia(rnd: random.Random, cat: _Catalogos, dia: date,
-                      disp: dict, ocupado: dict, ahora: datetime, ahora_loc: datetime) -> list[dict]:
+                      disp: dict, ocupado: dict, ahora: datetime, ahora_loc: datetime,
+                      ya_demo: set[tuple[str, int, date]], omitidos: dict) -> list[dict]:
     turnos: list[dict] = []
     for p in cat.prestaciones:
         rangos = disp.get((p.tipo_recurso, p.id_recurso, dia)) or []
         if not rangos:
             continue
         clave = (p.tipo_recurso, p.id_recurso, dia)
+        if clave in ya_demo:
+            omitidos["recurso_dia_ya_demo"] = omitidos.get("recurso_dia_ya_demo", 0) + 1
+            continue
+        ya_demo.add(clave)  # dos prestaciones del mismo recurso comparten el dia
         tomados = ocupado.setdefault(clave, [])
         libres = [s for s in _slots(rangos, p.duracion_min)
                   if not _solapa(tomados, s, _sumar(s, p.duracion_min))]
@@ -570,8 +587,22 @@ async def _generar_guardia(db: AsyncSession, cat: _Catalogos, rnd: random.Random
                         "sin tipos/canales de emergencia activos")
         return n
     est = cat.estados_emergencia
+    # Idempotencia por dia: si un dia ya tiene derivaciones demo (backfill +
+    # cron solapados, o cron demorado + dispatch manual), no se le agrega otra
+    # capa. Los turnos ya lo resuelven por slot; la guardia no tiene slot.
+    r = await db.execute(text("""
+        SELECT DISTINCT ((derivado_en AT TIME ZONE 'UTC') - INTERVAL '3 hours')::date AS d
+          FROM emergencia_atencion
+         WHERE id_usuario_alta = :uid AND activo IS DISTINCT FROM FALSE
+           AND derivado_en >= :d0 AND derivado_en < :d1
+    """), {"uid": cat.uid, "d0": _a_utc(min(dias), time(0, 0)), "d1": _a_utc(max(dias) + timedelta(days=1), time(0, 0))})
+    ya_con_demo = {f.d for f in r.fetchall()}
+    n["dias_omitidos_con_demo"] = 0
     for dia in dias:
         if dia > hoy:
+            continue
+        if dia in ya_con_demo:
+            n["dias_omitidos_con_demo"] += 1
             continue
         for _ in range(_elegir(rnd, GUARDIA_POR_DIA)):
             tipo = rnd.choice(cat.tipos_emergencia)
@@ -685,12 +716,17 @@ async def _generar_eventos(db: AsyncSession, cat: _Catalogos, rnd: random.Random
     dias = (hasta_futuro - desde).days + 1
     objetivo = max(1, round(rnd.randint(*EVENTOS_MENSUAL) * dias / 30.44))
     r = await db.execute(text("""
-        SELECT id_espacio, fecha, hora_inicio, hora_fin FROM eventos
+        SELECT id_espacio, fecha, hora_inicio, hora_fin, (id_usuario_alta = :uid) AS demo FROM eventos
          WHERE activo AND id_espacio IS NOT NULL AND fecha BETWEEN :d AND :h
-    """), {"d": desde, "h": hasta_futuro})
+    """), {"d": desde, "h": hasta_futuro, "uid": cat.uid})
     ocupado: dict[tuple[int, date], list[tuple[time, time]]] = {}
+    ya_demo = 0
     for f in r.fetchall():
         ocupado.setdefault((int(f.id_espacio), f.fecha), []).append((f.hora_inicio, f.hora_fin))
+        ya_demo += 1 if f.demo else 0
+    # Idempotencia: los eventos demo que ya hay en el rango descuentan del objetivo.
+    n["ya_existian"] = ya_demo
+    objetivo = max(0, objetivo - ya_demo)
     est_activo, est_final = cat.estado_evento.get("activo"), cat.estado_evento.get("finalizado")
     er = cat.estado_reserva
     intentos = 0
@@ -790,12 +826,14 @@ async def generar_periodo_atencion(db: AsyncSession, desde: date, hasta: date,
         disp = await disponibilidad_efectiva_batch(db, recursos, dias)
         ocupado = await _ocupado(db, cat.prestaciones, desde, hasta_futuro)
         maximos = await _max_numeros(db, desde, hasta_futuro)
+        ya_demo = await _recursos_ya_demo(db, cat.uid, desde, hasta_futuro)
+        omitidos: dict = {}
         turnos: list[dict] = []
         for dia in dias:
-            del_dia = _armar_turnos_dia(rnd, cat, dia, disp, ocupado, ahora, ahora_loc)
+            del_dia = _armar_turnos_dia(rnd, cat, dia, disp, ocupado, ahora, ahora_loc, ya_demo, omitidos)
             _numerar(del_dia, cat, maximos)
             turnos.extend(del_dia)
-        resultado["turnos"] = await _insertar_turnos(db, cat, turnos)
+        resultado["turnos"] = {**(await _insertar_turnos(db, cat, turnos)), **omitidos}
     else:
         resultado["turnos"] = {"omitido": "sin prestaciones activas"}
 
