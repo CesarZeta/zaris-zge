@@ -79,7 +79,7 @@ async def _autorizar(request: Request, db: AsyncSession) -> str:
 
 @router.post(
     "/poblar",
-    summary="Genera/avanza datos demo para los tableros BI",
+    summary="Genera/avanza datos demo para los tableros BI (reclamos + atencion)",
     description="Cron semanal o carga inicial. Auth: X-Dispatcher-Token o JWT admin.",
     responses={409: {"description": "Rango invalido (desde > hasta o mayor a 45 dias)"}},
 )
