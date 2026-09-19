@@ -22,6 +22,7 @@ from app.api.routes.admin_permisos import router as admin_permisos_router
 from app.api.routes.reclamos import router as reclamos_router
 from app.api.routes.bi import router as bi_router
 from app.api.routes.bi_ejecutivo import router as bi_ejecutivo_router
+from app.api.routes.bi_atencion import router as bi_atencion_router
 from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.reclamo_adjuntos import router as reclamo_adjuntos_router
 from app.api.routes.ordenes_trabajo import router as ot_router
@@ -146,6 +147,8 @@ app.include_router(reclamos_router)
 app.include_router(bi_router)
 # BI Ejecutivo: /api/v1/bi/ejecutivo/* (tablero de demanda ciudadana, 2026-08-30).
 app.include_router(bi_ejecutivo_router)
+# BI Atencion: /api/v1/bi/atencion/* (tablero de atencion por gestion, F6 2026-09-19).
+app.include_router(bi_atencion_router)
 # Dashboard home: /api/v1/dashboard/resumen (conteos + capas geo). Prefijo propio.
 app.include_router(dashboard_router)
 app.include_router(reclamo_adjuntos_router)

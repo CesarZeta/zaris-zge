@@ -4,6 +4,7 @@ import { BiLayout } from './BiLayout'
 import { DatosLanding } from './pages/DatosLanding'
 import { OperativoPage } from './pages/OperativoPage'
 import { EjecutivoPage } from './pages/EjecutivoPage'
+import { AtencionPage } from './pages/AtencionPage'
 import { useAuthStore } from '../../stores/auth'
 
 // Módulo DATOS: landing con dos tableros analíticos sobre reclamos.
@@ -41,6 +42,19 @@ function WrapEjecutivo() {
   )
 }
 
+// Atención: página única con 6 secciones (proyecto ATENCIÓN F6, 2026-09-19).
+function WrapAtencion() {
+  const ok = useNivelOk()
+  return (
+    <BiLayout
+      titulo="Análisis de datos de Atención"
+      subtitulo="Atención al vecino por gestión y ubicación: turnos otorgados, cumplidos y ausentes, espera real y llamados, atención por agente, Guardia y reservas de eventos."
+    >
+      {ok ? <AtencionPage /> : <SinAcceso />}
+    </BiLayout>
+  )
+}
+
 // Landing: sin el BiLayout.
 function WrapLanding() {
   const ok = useNivelOk()
@@ -73,6 +87,7 @@ export const biModule: ModuleManifest = {
     { index: true, element: WrapLanding, handle: { breadcrumb: 'Datos' } },
     { path: 'operativo', element: WrapOperativo(), handle: { breadcrumb: 'Datos · Operativo' } },
     { path: 'ejecutivo', element: WrapEjecutivo, handle: { breadcrumb: 'Datos · Ejecutivo' } },
+    { path: 'atencion', element: WrapAtencion, handle: { breadcrumb: 'Datos · Atención' } },
     // Compat con las rutas de los tabs viejos: misma página, desplazada a la sección.
     { path: 'operativo/resueltos', element: WrapOperativo('respuesta'), handle: { breadcrumb: 'Datos · Operativo · Respuesta' } },
     { path: 'operativo/pendientes', element: WrapOperativo('pendientes'), handle: { breadcrumb: 'Datos · Operativo · Pendientes' } },

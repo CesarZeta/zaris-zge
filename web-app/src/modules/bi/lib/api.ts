@@ -35,6 +35,18 @@ import type {
   EjSatCierreItem,
   EjScore,
   EjTopTipo,
+  AtEspera,
+  AtEventos,
+  AtEvolucionItem,
+  AtGuardia,
+  AtGuardiaDetalle,
+  AtMatriz,
+  AtPorAgente,
+  AtPorUbicacion,
+  AtPrestacionCatalogo,
+  AtScore,
+  AtTurnoDetalle,
+  AtUbicacionCatalogo,
 } from './types'
 
 // Endpoints de agregación. Router con guard JWT (§39); la UI gatea nivel <= 2.
@@ -49,6 +61,7 @@ function qp(f: BiFiltros) {
     id_area: f.id_area, id_subarea: f.id_subarea, prioridad: f.prioridad,
     estado: f.estado, id_tipo_reclamo: f.id_tipo_reclamo, canal: f.canal,
     id_localidad: f.id_localidad,
+    id_espacio_ubicacion: f.id_espacio_ubicacion, id_tipo_prestacion: f.id_tipo_prestacion,
   }
 }
 // Sin el rango de fechas (drill a un mes concreto). Los chips de año/meses sí
@@ -59,6 +72,7 @@ function qpSinFechas(f: BiFiltros) {
     id_area: f.id_area, id_subarea: f.id_subarea, prioridad: f.prioridad,
     estado: f.estado, id_tipo_reclamo: f.id_tipo_reclamo, canal: f.canal,
     id_localidad: f.id_localidad,
+    id_espacio_ubicacion: f.id_espacio_ubicacion, id_tipo_prestacion: f.id_tipo_prestacion,
   }
 }
 
@@ -205,6 +219,66 @@ export const biApi = {
 
   ejCatalogoSubareas: (id_area?: number) =>
     api.get<EjSubareaCatalogo[]>(`${BASE}/ejecutivo/catalogo/subareas`, { params: { id_area } }),
+
+  // ── Atención ("BI de atención por gestión", F6 2026-09-19) ────────────────
+  // Router /api/v1/bi/atencion/*: turnos + llamados + Guardia + eventos.
+  atScore: (f: BiFiltros = {}) =>
+    api.get<AtScore>(`${BASE}/atencion/score`, { params: qp(f) }),
+
+  atMatriz: (f: BiFiltros = {}) =>
+    api.get<AtMatriz>(`${BASE}/atencion/matriz`, { params: qp(f) }),
+
+  atMensual: (f: BiFiltros = {}) =>
+    api.get<ItemTemporal[]>(`${BASE}/atencion/mensual`, { params: qp(f) }),
+
+  atDiario: (mes: string | null, f: BiFiltros = {}) =>
+    api.get<ItemTemporal[]>(`${BASE}/atencion/diario`, { params: mes ? { mes, ...qpSinFechas(f) } : qp(f) }),
+
+  atEvolucion: (f: BiFiltros = {}) =>
+    api.get<AtEvolucionItem[]>(`${BASE}/atencion/evolucion`, { params: qp(f) }),
+
+  atPorUbicacion: (f: BiFiltros = {}) =>
+    api.get<AtPorUbicacion[]>(`${BASE}/atencion/por-ubicacion`, { params: qp(f) }),
+
+  atPorAgente: (f: BiFiltros = {}, limit = 15) =>
+    api.get<AtPorAgente[]>(`${BASE}/atencion/por-agente`, { params: { ...qp(f), limit } }),
+
+  atEspera: (f: BiFiltros = {}) =>
+    api.get<AtEspera>(`${BASE}/atencion/espera`, { params: qp(f) }),
+
+  atGuardia: (f: BiFiltros = {}) =>
+    api.get<AtGuardia>(`${BASE}/atencion/guardia`, { params: qp(f) }),
+
+  atGuardiaMensual: (f: BiFiltros = {}) =>
+    api.get<ItemTemporal[]>(`${BASE}/atencion/guardia/mensual`, { params: qp(f) }),
+
+  atGuardiaDiario: (mes: string | null, f: BiFiltros = {}) =>
+    api.get<ItemTemporal[]>(`${BASE}/atencion/guardia/diario`, { params: mes ? { mes, ...qpSinFechas(f) } : qp(f) }),
+
+  atEventos: (f: BiFiltros = {}, limit = 20) =>
+    api.get<AtEventos>(`${BASE}/atencion/eventos`, { params: { ...qp(f), limit } }),
+
+  atEventosMensual: (f: BiFiltros = {}) =>
+    api.get<ItemTemporal[]>(`${BASE}/atencion/eventos/mensual`, { params: qp(f) }),
+
+  atEventosDiario: (mes: string | null, f: BiFiltros = {}) =>
+    api.get<ItemTemporal[]>(`${BASE}/atencion/eventos/diario`, { params: mes ? { mes, ...qpSinFechas(f) } : qp(f) }),
+
+  // Exportaciones (sin datos personales del vecino).
+  atTurnosDetalle: (f: BiFiltros = {}, limit = 50, offset = 0) =>
+    api.getWithHeaders<AtTurnoDetalle[]>(`${BASE}/atencion/turnos-detalle`, { params: { ...qp(f), limit, offset } }),
+
+  atGuardiaDetalle: (f: BiFiltros = {}, limit = 50, offset = 0) =>
+    api.getWithHeaders<AtGuardiaDetalle[]>(`${BASE}/atencion/guardia-detalle`, { params: { ...qp(f), limit, offset } }),
+
+  atCatalogoGestiones: () =>
+    api.get<AreaCatalogo[]>(`${BASE}/atencion/catalogo/gestiones`),
+
+  atCatalogoUbicaciones: (id_area?: number) =>
+    api.get<AtUbicacionCatalogo[]>(`${BASE}/atencion/catalogo/ubicaciones`, { params: { id_area } }),
+
+  atCatalogoPrestaciones: (id_area?: number, id_espacio_ubicacion?: number) =>
+    api.get<AtPrestacionCatalogo[]>(`${BASE}/atencion/catalogo/prestaciones`, { params: { id_area, id_espacio_ubicacion } }),
 }
 
 export type { ApiResponseWithHeaders }

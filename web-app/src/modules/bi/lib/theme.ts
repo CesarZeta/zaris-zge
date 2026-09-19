@@ -93,3 +93,63 @@ export function labelMesLargo(ym: string): string {
   const mi = parseInt(m, 10) - 1
   return `${MESES_LARGO[mi] ?? m} ${y}`
 }
+
+// ── Tablero de ATENCIÓN (F6, 2026-09-19) ─────────────────────────────────────
+// Estados de TURNO (CHECK ck_turnos_estado, mig 105). Mismo criterio que los
+// reclamos: verde = cumplido, rojo = ausente (turno caído), gris = cancelado,
+// azul = pendiente (reservado + llamado). El naranja del brand no se usa.
+export const COLOR_TURNO: Record<string, string> = {
+  cumplido: '#1f8a65',
+  ausente: '#c62828',
+  cancelado: '#9e9e9e',
+  pendiente: '#2f7fd1',
+  reservado: '#2f7fd1',
+  llamado: '#f57f17',
+}
+export const LABEL_TURNO: Record<string, string> = {
+  cumplido: 'Cumplidos',
+  ausente: 'Ausentes',
+  cancelado: 'Cancelados',
+  pendiente: 'Pendientes',
+  reservado: 'Reservados',
+  llamado: 'Llamados',
+}
+export function colorTurno(estado: string): string {
+  return COLOR_TURNO[estado] ?? COLOR_ESTADO_FALLBACK
+}
+export function labelTurno(estado: string): string {
+  return LABEL_TURNO[estado] ?? estado
+}
+
+// Atenciones de GUARDIA (emergencia_atencion.estado, mig 106).
+export const COLOR_GUARDIA: Record<string, string> = {
+  atendida: '#1f8a65',
+  ausente: '#c62828',
+  pendiente: '#f57f17',
+}
+export const LABEL_GUARDIA: Record<string, string> = {
+  atendida: 'Atendidas',
+  ausente: 'Ausentes',
+  pendiente: 'Pendientes',
+}
+
+// Reservas de eventos (estado_reserva.codigo).
+export const COLOR_RESERVA: Record<string, string> = {
+  asistio: '#1f8a65',
+  reservada: '#2f7fd1',
+  cancelada: '#9e9e9e',
+}
+export const LABEL_RESERVA: Record<string, string> = {
+  asistio: 'Asistieron',
+  reservada: 'Reservadas (sin asistencia registrada)',
+  cancelada: 'Canceladas',
+}
+
+// Origen del turno / de la reserva (CHECK ck_turnos_origen).
+export const LABEL_ORIGEN: Record<string, string> = {
+  backoffice: 'Backoffice',
+  autoservicio: 'Autoservicio',
+}
+export function labelOrigen(origen: string): string {
+  return LABEL_ORIGEN[origen] ?? origen
+}

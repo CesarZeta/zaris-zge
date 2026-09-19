@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { Activity, Crown, Database } from 'lucide-react'
+import { Activity, CalendarCheck, Crown, Database } from 'lucide-react'
 import { shellGoInicio } from '../../../lib/shellNav'
 import s from './DatosLanding.module.css'
 
@@ -22,7 +22,7 @@ export function DatosLanding() {
         <Database size={32} strokeWidth={1.5} color="var(--zaris-orange)" />
         <div>
           <h1 className={s.title}>Datos</h1>
-          <p className={s.subtitle}>Análisis y tableros de gestión sobre los reclamos del municipio.</p>
+          <p className={s.subtitle}>Análisis y tableros de gestión sobre los reclamos y la atención al vecino del municipio.</p>
         </div>
       </div>
 
@@ -42,6 +42,15 @@ export function DatosLanding() {
           <span className={s.cardDesc}>
             Demanda ciudadana para la conducción: score de cierre, SLA y satisfacción, matriz por
             subárea, evolución de indicadores, históricos por canal y localidad, y mapas.
+          </span>
+        </button>
+
+        <button type="button" className={s.card} onClick={() => navigate('/bi/atencion')}>
+          <CalendarCheck className={s.icon} aria-hidden="true" />
+          <span className={s.cardTitle}>Análisis de datos de Atención</span>
+          <span className={s.cardDesc}>
+            Atención al vecino por gestión y ubicación: turnos otorgados, cumplidos y ausentes, espera
+            real y llamados del colero, atención por agente, Guardia y reservas de eventos.
           </span>
         </button>
       </div>
