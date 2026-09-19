@@ -1,9 +1,11 @@
 name: Datos demo BI (cron semanal)
 
 # Mantiene viva la demo del municipio ficticio San Andres: una vez por semana
-# genera los reclamos de los ultimos 7 dias (con historial y encuestas CSAT) y
-# avanza el ciclo de vida de los pendientes demo (asigna/resuelve/cancela,
-# madura encuestas). Endpoint: POST /api/v1/demo/poblar (body default).
+# genera los reclamos de los ultimos 7 dias (con historial y encuestas CSAT) y,
+# desde 2026-09-19, los turnos / llamados / Guardia / eventos demo de la semana
+# (+7 dias reservados hacia adelante), y avanza el ciclo de vida de los
+# pendientes demo (asigna/resuelve/cancela, madura encuestas, resuelve turnos
+# vencidos). Endpoint: POST /api/v1/demo/poblar con modulos=[reclamos,atencion].
 #
 # Solo toca datos atribuidos al usuario 'generador.demo' (inactivo). El volumen
 # semanal sale de la banda mensual 300-500 escalada a 7 dias (~70-115).
@@ -33,6 +35,10 @@ on:
         description: 'Fin del rango YYYY-MM-DD (vacio = hoy)'
         required: false
         default: ''
+      modulos:
+        description: 'Que generar: reclamos,atencion (default ambos). Carga inicial de atencion = atencion'
+        required: false
+        default: 'reclamos,atencion'
 
 concurrency:
   group: demo-datos
@@ -56,9 +62,13 @@ jobs:
 
           DESDE='${{ github.event.inputs.desde }}'
           HASTA='${{ github.event.inputs.hasta }}'
-          PAYLOAD='{}'
+          MODULOS='${{ github.event.inputs.modulos }}'
+          [ -z "$MODULOS" ] && MODULOS='reclamos,atencion'
+          # 'reclamos,atencion' -> ["reclamos","atencion"] (sin jq: awk)
+          MODS_JSON=$(printf '%s' "$MODULOS" | tr -d ' ' | awk -F, '{ for (i=1;i<=NF;i++) printf "%s\"%s\"", (i>1?",":""), $i }')
+          PAYLOAD=$(printf '{"modulos":[%s]}' "$MODS_JSON")
           if [ -n "$DESDE" ] && [ -n "$HASTA" ]; then
-            PAYLOAD=$(printf '{"desde":"%s","hasta":"%s"}' "$DESDE" "$HASTA")
+            PAYLOAD=$(printf '{"desde":"%s","hasta":"%s","modulos":[%s]}' "$DESDE" "$HASTA" "$MODS_JSON")
           fi
           echo "POST $URL body=$PAYLOAD"
 

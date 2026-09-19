@@ -19,7 +19,7 @@ import asyncio
 from datetime import date, timedelta
 
 from app.core.database import AsyncSessionLocal
-from app.services import demo_datos
+from app.services import demo_atencion, demo_datos
 
 
 def _meses(desde: date, hasta: date):
@@ -42,24 +42,38 @@ async def main() -> None:
     parser.add_argument("--max-mensual", type=int, default=500)
     parser.add_argument("--vecinos-nuevos", type=int, default=250)
     parser.add_argument("--semilla", type=int, default=None)
+    parser.add_argument("--modulos", default="reclamos,atencion",
+                        help="reclamos,atencion (default ambos); atencion = turnos/colero/Guardia/eventos")
+    parser.add_argument("--dias-futuro", type=int, default=7)
     args = parser.parse_args()
 
     desde = date.fromisoformat(args.desde)
     hasta = date.fromisoformat(args.hasta)
+    modulos = {m.strip() for m in args.modulos.split(',') if m.strip()}
 
     async with AsyncSessionLocal() as db:
         for i, (ini, fin) in enumerate(_meses(desde, hasta)):
             # Semilla desplazada por mes: con la misma semilla todos los meses
             # sortearian el mismo volumen y la misma secuencia.
             semilla = (args.semilla + i * 101) if args.semilla is not None else None
-            r = await demo_datos.generar_periodo(
-                db, ini, fin,
-                min_mensual=args.min_mensual, max_mensual=args.max_mensual,
-                vecinos_nuevos=args.vecinos_nuevos, semilla=semilla,
-            )
-            print(f"{ini} .. {fin}: {r}")
-        r = await demo_datos.avanzar_pendientes(db, semilla=args.semilla)
-        print(f"avanzar_pendientes: {r}")
+            if "reclamos" in modulos:
+                r = await demo_datos.generar_periodo(
+                    db, ini, fin,
+                    min_mensual=args.min_mensual, max_mensual=args.max_mensual,
+                    vecinos_nuevos=args.vecinos_nuevos, semilla=semilla,
+                )
+                print(f"{ini} .. {fin} reclamos: {r}")
+            if "atencion" in modulos:
+                r = await demo_atencion.generar_periodo_atencion(
+                    db, ini, fin, semilla=semilla, dias_futuro=args.dias_futuro,
+                )
+                print(f"{ini} .. {fin} atencion: {r}")
+        if "reclamos" in modulos:
+            r = await demo_datos.avanzar_pendientes(db, semilla=args.semilla)
+            print(f"avanzar_pendientes: {r}")
+        if "atencion" in modulos:
+            r = await demo_atencion.avanzar_pendientes_atencion(db, semilla=args.semilla)
+            print(f"avanzar_pendientes_atencion: {r}")
 
 
 if __name__ == "__main__":

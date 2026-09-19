@@ -423,11 +423,19 @@ Filtros = periodo + gestion + ubicacion + prestacion. Detalle de criterios
 solo de eventos realizados, prestacion ignorada en Guardia/Eventos) en la
 skill `modulo-bi`. Smoke `backend/smoke_bi_atencion.py`.
 
-**Pendientes de F6:** QA visual de Cesar en prod; **decidir un generador de
-datos demo de turnos/guardia/eventos** (hoy `demo_datos.py` solo genera
-reclamos: local ~26 turnos y prod ~32, el tablero se ve ralo); ocupacion vs
-disponibilidad efectiva (hoy "ocupacion" = turnos otorgados + horas atendidas
-por ubicacion, no un % sobre la agenda disponible).
+**Datos demo (decision de Cesar 2026-09-19, HECHO el mismo dia):** generador
+`backend/app/services/demo_atencion.py` sincronizado con el de reclamos
+(mismo usuario `generador.demo`, mismos vecinos demo, mismo endpoint
+`POST /api/v1/demo/poblar` con `modulos=[reclamos,atencion]`, mismo cron
+semanal; `seed_demo_bi.py --modulos atencion` en local). Genera turnos dentro
+de la disponibilidad efectiva real (con ocupacion espejo, colero, llamados,
+atenciones y CSAT), derivaciones a la Guardia (eventos de Emergencias
+completos) y eventos con reservas. Criterios y verificacion en la skill
+`modulo-bi`.
+
+**Pendientes de F6:** QA visual de Cesar en prod; ocupacion vs disponibilidad
+efectiva (hoy "ocupacion" = turnos otorgados + horas atendidas por ubicacion,
+no un % sobre la agenda disponible).
 
 ### Orden y dependencias
 
