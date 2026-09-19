@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """Poblado periodico de datos demo para los tableros BI (municipio San Andres).
 
-POST /api/v1/demo/poblar — genera reclamos/historial/encuestas demo en un rango
+POST /api/v1/demo/poblar — genera reclamos/historial/encuestas demo (y, desde
+2026-09-19, turnos/colero/Guardia/eventos demo via demo_atencion.py) en un rango
 y/o avanza el ciclo de vida de los pendientes demo existentes (servicio
 app/services/demo_datos.py). Lo llama el cron semanal de GitHub Actions
 (.github/workflows/demo-datos.yml) y sirve para la carga inicial por meses.
@@ -16,6 +17,7 @@ from __future__ import annotations
 import logging
 import secrets as stdlib_secrets
 from datetime import date, timedelta
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from jose import JWTError, jwt
@@ -26,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import ALGORITHM
 from app.core.config import settings
 from app.core.database import get_db
-from app.services import demo_datos
+from app.services import demo_atencion, demo_datos
 from app.utils.request_helpers import get_real_ip
 
 logger = logging.getLogger(__name__)
@@ -43,6 +45,12 @@ class PoblarIn(BaseModel):
     generar: bool = True
     avanzar: bool = True
     semilla: int | None = None
+    # Que generar/avanzar (2026-09-19): 'reclamos' = demo_datos.py, 'atencion' =
+    # demo_atencion.py (turnos + colero + Guardia + eventos, tablero Datos -> Atencion).
+    # El cron manda los dos; la carga inicial de atencion se dispara con ['atencion'].
+    modulos: list[Literal["reclamos", "atencion"]] = ["reclamos", "atencion"]
+    # Atencion: dias hacia adelante con turnos/eventos reservados (Mesa del dia, colero).
+    dias_futuro: int = Field(7, ge=0, le=30)
 
 
 async def _autorizar(request: Request, db: AsyncSession) -> str:
@@ -91,15 +99,23 @@ async def poblar_demo(
     if body.min_mensual > body.max_mensual:
         raise HTTPException(409, "min_mensual no puede superar a max_mensual")
 
-    resultado: dict = {"ejecutado_por": quien, "desde": str(desde), "hasta": str(hasta)}
-    if body.generar:
+    modulos = set(body.modulos or ["reclamos", "atencion"])
+    resultado: dict = {"ejecutado_por": quien, "desde": str(desde), "hasta": str(hasta),
+                       "modulos": sorted(modulos)}
+    if body.generar and "reclamos" in modulos:
         resultado["generado"] = await demo_datos.generar_periodo(
             db, desde, hasta,
             min_mensual=body.min_mensual, max_mensual=body.max_mensual,
             vecinos_nuevos=body.vecinos_nuevos, semilla=body.semilla,
         )
-    if body.avanzar:
+    if body.generar and "atencion" in modulos:
+        resultado["generado_atencion"] = await demo_atencion.generar_periodo_atencion(
+            db, desde, hasta, semilla=body.semilla, dias_futuro=body.dias_futuro,
+        )
+    if body.avanzar and "reclamos" in modulos:
         resultado["avanzado"] = await demo_datos.avanzar_pendientes(db, semilla=body.semilla)
+    if body.avanzar and "atencion" in modulos:
+        resultado["avanzado_atencion"] = await demo_atencion.avanzar_pendientes_atencion(db, semilla=body.semilla)
 
     logger.info("demo/poblar OK (%s): %s", quien, {k: v for k, v in resultado.items() if k != "ejecutado_por"})
     return resultado

@@ -8,6 +8,9 @@ chico) con distribuciones derivadas del set de referencia de gestion municipal
   - POST /api/v1/demo/poblar (routes/demo_datos.py) — carga inicial por rango
     y refresco semanal via GitHub Actions (X-Dispatcher-Token) o admin JWT.
   - backend/seed_demo_bi.py — driver local.
+  - Hermano: app/services/demo_atencion.py (turnos + colero + Guardia + eventos,
+    2026-09-19): mismo usuario generador, mismos vecinos demo, mismo endpoint y
+    cron (body.modulos). Sus encuestas de turnos las madura avanzar_pendientes.
 
 Disenio PARAMETRIZADO (pre-IT-01 multi-tenant): los catalogos (tipos, subareas,
 estados, localidades, plantilla de encuesta) se resuelven por NOMBRE en runtime

@@ -290,3 +290,50 @@ score/matriz/series/composición entre sí y contra la DB).
 - Verificado 2026-09-19 navegando en `localhost:5173` (login admin → landing → tarjeta →
   6 secciones con septiembre/julio, chips de mes, cascadeo gestión → ubicación → prestación,
   "Limpiar filtros") + smoke 85/85 + `pnpm typecheck`. **Queda el QA visual de César en prod.**
+
+### Datos demo de ATENCIÓN (generador, 2026-09-19 — hermano del de reclamos)
+
+`backend/app/services/demo_atencion.py` genera **turnos + ocupaciones espejo + colero + atenciones +
+CSAT de turnos + Guardia (eventos de Emergencias derivados y atendidos) + eventos con reservas**, y
+se dispara por las MISMAS vías que el de reclamos: `POST /api/v1/demo/poblar` (body
+`modulos: ["reclamos","atencion"]`, default ambos; `dias_futuro` 0-30, default 7), el cron semanal
+`.github/workflows/demo-datos.yml` (input `modulos`, default `reclamos,atencion`) y
+`backend/seed_demo_bi.py --modulos atencion`. Mismo usuario `generador.demo` en `id_usuario_alta`,
+mismos vecinos demo (solo ellos: ningún turno demo cuelga de un vecino real).
+
+- **Catálogos por nombre/código en runtime**: prestaciones activas con recurso, Guardia por la clave
+  `id_espacio_guardia` + sus médicos de `espacio_agentes` (sin médicos → se omite y lo dice el
+  resultado), tipos de emergencia preferidos por `codigo` (EMERGENCIA_SALUD, ACCIDENTE_VIA_PUBLICA…),
+  `estado_evento`/`estado_reserva`/`emergencia_estado` por `codigo` (los ids difieren local/prod:
+  estado_evento 1/2/3 vs 5/6/7), plantilla CSAT `tipo='turnos'`.
+- **Turnos dentro de la disponibilidad EFECTIVA** (`disponibilidad_efectiva_batch`, la misma que
+  valida la reserva real: feriados y novedades incluidos), sin pisar ocupaciones ni turnos
+  existentes (índices únicos de slot mig 95), ocupando 35-65 % de los slots libres. Desenlace de
+  los ya vencidos: cumplido 77 / ausente 11 / cancelado 12 %; número de colero = prefijo del espacio
+  + correlativo diario continuando el MAX existente (mismo formato que `PATCH /turnos/{id}/llamar`);
+  `turno_llamado` con espera realista (55 % a tiempo, colas hasta 120 min; re-llamado en 60 % de los
+  ausentes) SIEMPRE el mismo día del turno; `turno_atencion` solo si la prestación
+  `registra_atencion`; encuesta CSAT 85 % de los cumplidos (nunca `pendiente`). Cancelados = ocupación
+  `activo=FALSE` como la cancelación real. Si el rango llega a hoy, reserva `dias_futuro` hacia
+  adelante (Mesa del día / colero con turnos).
+- **Guardia**: por día 0-3 derivaciones (media ~1). Cada una = `emergencia_evento` (numerado por el
+  trigger `trg_numero_emergencia`, cerrado RESUELTO con `veracidad`, log CREACION → EN_CAMINO →
+  EN_SITIO → DERIVACION_GUARDIA → ATENCION_GUARDIA → CIERRE) + `emergencia_atencion` atendida 85 % /
+  ausente 15 % por un médico vinculado; las de hoy pueden quedar `pendiente`.
+- **Eventos**: 6-10/mes en los espacios con `capacidad_personas >= 20` (sin solapar el mismo espacio),
+  estado `finalizado` si ya pasaron; reservas 30-95 % del cupo, asistió 60 / reservada 25 / cancelada
+  15 % en los pasados, origen autoservicio 65 % (con `token_reserva`), QR nominal en la mitad.
+- **`avanzar_pendientes_atencion`** (cron): turnos demo vencidos que siguen reservados → desenlace
+  completo; derivaciones demo pendientes de más de un día → atendida/ausente (+ cierre del evento);
+  eventos demo pasados → finalizado (+65 % de reservas a asistió). Las encuestas de turnos las madura
+  `demo_datos.avanzar_pendientes` (filtra por el usuario generador, no por origen).
+- **Inserts masivos con `VALUES` + `CAST(:p AS tipo)` por columna** (`_values`/`_TIPOS`): sin el
+  CAST, Postgres tipa como `text` un VALUES hecho solo de parámetros y el INSERT falla. Un
+  statement por lote de 300 con RETURNING (ocupaciones → turnos → llamados/atenciones/encuestas).
+- **Verificado en local 2026-09-19**: abril-septiembre = 2.706 turnos (0 fuera de la disponibilidad
+  efectiva, 0 solapes propios, 0 números repetidos, 0 llamados de otro día, 0 encuestas pendientes),
+  176 derivaciones, 43 eventos; smoke del tablero 85/85 con ese volumen. **Prod se carga por
+  chunks ≤ 45 días con el workflow (`modulos=atencion`) — NUNCA con el default `reclamos,atencion`
+  sobre meses ya poblados (duplicaría reclamos, incidente 2026-08-31).** Un deploy viejo del backend
+  IGNORA `modulos` (Pydantic descarta campos desconocidos) y generaría reclamos: confirmar en
+  `/openapi.json` que `PoblarIn` tiene `modulos` antes de dispatchar.
