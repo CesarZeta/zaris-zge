@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Plus, RefreshCw, Search } from 'lucide-react'
 import { usePrestaciones, useEliminarPrestacion } from '../hooks/useTurnos'
-import { AvisoBuscar, useBusquedaDiferida } from '../lib/busqueda'
+import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
 import { PrestacionFormModal } from '../components/PrestacionFormModal'
 import { ConfirmModal } from '../../agenda/components/ConfirmModal'
 import { useNotificationsStore } from '../../../stores/notifications'

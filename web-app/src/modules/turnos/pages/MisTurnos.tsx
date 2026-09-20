@@ -6,7 +6,7 @@ import { CumplirTurnoModal } from '../components/CumplirTurnoModal'
 import { TurnoDetalleModal } from '../components/TurnoDetalleModal'
 import { ConfirmModal } from '../../agenda/components/ConfirmModal'
 import { useNotificationsStore } from '../../../stores/notifications'
-import { AvisoBuscar } from '../lib/busqueda'
+import { AvisoBuscar } from '../../../ui/busqueda'
 import type { CumplirTurnoBody, EstadoTurno, Turno } from '../types/turno'
 
 // Fecha "hoy" en hora local del municipio (AR = UTC-3, sin DST). El

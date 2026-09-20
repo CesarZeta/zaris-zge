@@ -58,11 +58,21 @@ export interface FiltrosReclamos {
   limit?: number
 }
 
-export function useReclamosListado(filtros: FiltrosReclamos) {
+/** Opciones de las queries de listado. `enabled: false` = búsqueda diferida
+ *  (§23: la pantalla no pide nada al entrar); `version` va a la queryKey para
+ *  que presionar Buscar con los mismos filtros vuelva a la red (ver
+ *  `ui/busqueda.tsx`). El prefijo de invalidación `['reclamos']` sigue matcheando. */
+export interface OpcionesListado {
+  enabled?: boolean
+  version?: number
+}
+
+export function useReclamosListado(filtros: FiltrosReclamos, opts: OpcionesListado = {}) {
   return useQuery({
-    queryKey: ['reclamos', 'listado', filtros],
+    queryKey: ['reclamos', 'listado', filtros, opts.version ?? 0],
     queryFn: () => listarReclamos({ ...filtros, limit: filtros.limit ?? 200 }),
     staleTime: 15 * 1000,
+    enabled: opts.enabled ?? true,
   })
 }
 

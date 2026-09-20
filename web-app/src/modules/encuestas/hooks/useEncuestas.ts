@@ -52,10 +52,22 @@ export function useAtenderContacto() {
   })
 }
 
-export function useEnvios(p: { estado?: string; tipo?: string; id_plantilla?: number; limit?: number } = {}) {
+/** Opciones del listado de envíos. `enabled: false` = búsqueda diferida (§23:
+ *  la pantalla no pide nada al entrar); `version` en la queryKey para que
+ *  Buscar con los mismos filtros vuelva a la red (ver `ui/busqueda.tsx`). */
+export interface OpcionesListado {
+  enabled?: boolean
+  version?: number
+}
+
+export function useEnvios(
+  p: { estado?: string; tipo?: string; id_plantilla?: number; limit?: number } = {},
+  opts: OpcionesListado = {},
+) {
   return useQuery({
-    queryKey: ['encuestas', 'envios', p],
+    queryKey: ['encuestas', 'envios', p, opts.version ?? 0],
     queryFn: () => encuestasApi.envios(p),
+    enabled: opts.enabled ?? true,
   })
 }
 

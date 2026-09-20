@@ -1,45 +1,74 @@
 import { useState } from 'react'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Search } from 'lucide-react'
 import { useConflictos } from '../hooks/useConflictos'
-import { Badge, Card, EmptyState, Skeleton } from '../../../ui'
+import { Badge, Button, Card, EmptyState, Skeleton } from '../../../ui'
+import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
 import { ConflictoModal } from '../modals/ConflictoModal'
 import type { Conflicto } from '../types/agenda'
 
+type FiltroResuelto = 'no' | 'si' | 'todos'
+
+function aResuelto(f: FiltroResuelto): boolean | undefined {
+  return f === 'todos' ? undefined : f === 'si'
+}
+
 export function ConflictsView() {
-  const [filtroResuelto, setFiltroResuelto] = useState<'no' | 'si' | 'todos'>('no')
-  const resuelto = filtroResuelto === 'todos' ? undefined : filtroResuelto === 'si'
-  const { data, isLoading, isError, error } = useConflictos(resuelto)
+  // Búsqueda diferida (§23): las pills marcan el filtro (borrador) pero no
+  // piden nada; "Ver conflictos" lo aplica y recién ahí sale el request.
+  // Resolver un conflicto invalida ['agenda'] y la lista ya buscada se refresca.
+  const busqueda = useBusquedaDiferida<{ resuelto: FiltroResuelto }>({ resuelto: 'no' })
+  const filtroResuelto = busqueda.borrador.resuelto
+  const aplicado = busqueda.aplicado?.resuelto ?? 'no'
+  const { data, isLoading, isError, error } = useConflictos(
+    aResuelto(aplicado),
+    { enabled: busqueda.buscado, version: busqueda.version },
+  )
   const [sel, setSel] = useState<Conflicto | null>(null)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: 'var(--size-subhead)', fontWeight: 400, letterSpacing: 'var(--track-subhead)', color: 'var(--fg-1)' }}>
           conflictos
         </h2>
-        <div style={{ display: 'flex', gap: 4 }}>
-          {(['no', 'si', 'todos'] as const).map((opt) => (
-            <button
-              key={opt}
-              onClick={() => setFiltroResuelto(opt)}
-              style={{
-                padding: '6px 12px', borderRadius: 'var(--radius-pill)',
-                border: 'none', cursor: 'pointer',
-                background: filtroResuelto === opt ? 'var(--zaris-dark)' : 'var(--surface-400)',
-                color: filtroResuelto === opt ? 'var(--zaris-cream)' : 'var(--fg-2)',
-                fontFamily: 'var(--font-display)', fontSize: 12,
-              }}
-            >
-              {opt === 'no' ? 'pendientes' : opt === 'si' ? 'resueltos' : 'todos'}
-            </button>
-          ))}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {(['no', 'si', 'todos'] as const).map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => busqueda.setBorrador({ resuelto: opt })}
+                style={{
+                  padding: '6px 12px', borderRadius: 'var(--radius-pill)',
+                  border: 'none', cursor: 'pointer',
+                  background: filtroResuelto === opt ? 'var(--zaris-dark)' : 'var(--surface-400)',
+                  color: filtroResuelto === opt ? 'var(--zaris-cream)' : 'var(--fg-2)',
+                  fontFamily: 'var(--font-display)', fontSize: 12,
+                }}
+              >
+                {opt === 'no' ? 'pendientes' : opt === 'si' ? 'resueltos' : 'todos'}
+              </button>
+            ))}
+          </div>
+          <Button
+            type="button"
+            variant="accent"
+            icon={<Search size={14} strokeWidth={1.5} />}
+            onClick={() => busqueda.buscar()}
+            title="Traer los conflictos del filtro elegido"
+          >
+            Ver conflictos
+          </Button>
         </div>
       </div>
 
-      {isLoading && <Skeleton height={200} />}
+      {!busqueda.buscado && (
+        <AvisoBuscar texto="Elegí pendientes, resueltos o todos y presioná Ver conflictos." />
+      )}
+      {busqueda.buscado && isLoading && <Skeleton height={200} />}
       {isError && <div style={{ color: 'var(--color-error)', fontSize: 13 }}>Error: {(error as Error).message}</div>}
       {data && data.length === 0 && (
-        <EmptyState title="No hay conflictos" description={filtroResuelto === 'no' ? 'Genial, no hay solapes pendientes.' : ''} />
+        <EmptyState title="No hay conflictos" description={aplicado === 'no' ? 'Genial, no hay solapes pendientes.' : ''} />
       )}
       {data && data.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -71,6 +100,7 @@ export function ConflictsView() {
                 </div>
                 <Badge kind={c.resuelto ? 'success' : 'error'}>{c.resuelto ? 'resuelto' : 'pendiente'}</Badge>
                 <button
+                  type="button"
                   onClick={() => setSel(c)}
                   style={{ background: 'var(--surface-300)', border: 'none', borderRadius: 'var(--radius-md)', padding: '6px 12px', cursor: 'pointer', fontFamily: 'var(--font-display)', fontSize: 13 }}
                 >

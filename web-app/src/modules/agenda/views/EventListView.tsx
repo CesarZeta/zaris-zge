@@ -1,22 +1,31 @@
 import { useState } from 'react'
-import { Plus, Users, Calendar } from 'lucide-react'
+import { Plus, Users, Calendar, Search } from 'lucide-react'
 import { useEventos } from '../hooks/useEventos'
 import { Badge, Button, Card, EmptyState, Skeleton, Table } from '../../../ui'
+import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
 import { EventoModal } from '../modals/EventoModal'
 import { ReservaModal } from '../modals/ReservaModal'
 import { EventoEncargadosModal } from '../modals/EventoEncargadosModal'
 import type { Evento } from '../types/agenda'
 
 export function EventListView() {
-  const [fechaDesde, setFechaDesde] = useState('')
-  const [fechaHasta, setFechaHasta] = useState('')
+  // Búsqueda diferida (§23): el rango de fechas es el borrador y el listado se
+  // pide recién al presionar Buscar. Paginar después re-pide (acción explícita).
+  const busqueda = useBusquedaDiferida<{ desde: string; hasta: string }>({ desde: '', hasta: '' })
+  const { desde: fechaDesde, hasta: fechaHasta } = busqueda.borrador
+  const setFechaDesde = (v: string) => busqueda.setBorrador((b) => ({ ...b, desde: v }))
+  const setFechaHasta = (v: string) => busqueda.setBorrador((b) => ({ ...b, hasta: v }))
   const [limit] = useState(50)
   const [offset, setOffset] = useState(0)
   const { data, isLoading, isError, error } = useEventos({
-    fecha_desde: fechaDesde || undefined,
-    fecha_hasta: fechaHasta || undefined,
+    fecha_desde: busqueda.aplicado?.desde || undefined,
+    fecha_hasta: busqueda.aplicado?.hasta || undefined,
     limit, offset,
-  })
+  }, { enabled: busqueda.buscado, version: busqueda.version })
+  function buscar() {
+    setOffset(0)
+    busqueda.buscar()
+  }
   const [editId, setEditId] = useState<number | null>(null)
   const [nuevo, setNuevo] = useState(false)
   const [reservasId, setReservasId] = useState<number | null>(null)
@@ -31,24 +40,33 @@ export function EventListView() {
         <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: 'var(--size-subhead)', fontWeight: 400, letterSpacing: 'var(--track-subhead)', color: 'var(--fg-1)' }}>
           eventos
         </h2>
-        <Button variant="accent" icon={<Plus size={14} strokeWidth={1.5} />} onClick={() => setNuevo(true)}>
+        <Button type="button" variant="accent" icon={<Plus size={14} strokeWidth={1.5} />} onClick={() => setNuevo(true)}>
           Nuevo evento
         </Button>
       </div>
 
       <Card variant="default">
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        {/* Form: Enter en una fecha = Buscar. */}
+        <form style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }} onSubmit={(e) => { e.preventDefault(); buscar() }}>
           <label style={lbl}>desde</label>
           <input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)} style={inp} />
           <label style={lbl}>hasta</label>
           <input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} style={inp} />
-          <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
-            total: {total}
-          </span>
-        </div>
+          <Button type="submit" variant="accent" icon={<Search size={14} strokeWidth={1.5} />} title="Traer los eventos del rango elegido">
+            Buscar
+          </Button>
+          {busqueda.buscado && (
+            <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
+              total: {total}
+            </span>
+          )}
+        </form>
       </Card>
 
-      {isLoading && <Skeleton height={200} />}
+      {!busqueda.buscado && (
+        <AvisoBuscar texto="Elegí el rango de fechas (o dejalo vacío) y presioná Buscar para ver los eventos." />
+      )}
+      {busqueda.buscado && isLoading && <Skeleton height={200} />}
       {isError && (
         <div style={{ padding: 16, color: 'var(--color-error)', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
           Error: {(error as Error).message}

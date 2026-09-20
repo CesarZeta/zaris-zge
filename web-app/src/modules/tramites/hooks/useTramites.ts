@@ -45,12 +45,22 @@ export function useTipoTramiteDetalle(id: number | null) {
 
 /* ── Bandeja ─────────────────────────────────────────────── */
 
-export function useBandeja(params: BandejaParams) {
+/** Opciones de las queries de bandeja. `enabled: false` = búsqueda diferida
+ *  (§23: la pantalla no pide nada al entrar); `version` va a la queryKey para
+ *  que presionar Buscar con los mismos filtros vuelva a la red (ver
+ *  `ui/busqueda.tsx`). Default `enabled: true` para otros consumidores. */
+export interface OpcionesListado {
+  enabled?: boolean
+  version?: number
+}
+
+export function useBandeja(params: BandejaParams, opts: OpcionesListado = {}) {
   return useQuery({
-    queryKey: ['tramites', 'bandeja', params],
+    queryKey: ['tramites', 'bandeja', params, opts.version ?? 0],
     queryFn: () => listarBandeja(params),
     staleTime: 15 * 1000,
     placeholderData: (prev) => prev,
+    enabled: opts.enabled ?? true,
   })
 }
 
@@ -63,12 +73,13 @@ export type MiBandejaParams = {
   offset?: number
 }
 
-export function useMiBandeja(params: MiBandejaParams) {
+export function useMiBandeja(params: MiBandejaParams, opts: OpcionesListado = {}) {
   return useQuery({
-    queryKey: ['tramites', 'mi-bandeja', params],
+    queryKey: ['tramites', 'mi-bandeja', params, opts.version ?? 0],
     queryFn: () => listarMiBandeja(params),
     staleTime: 15 * 1000,
     placeholderData: (prev) => prev,
+    enabled: opts.enabled ?? true,
   })
 }
 
