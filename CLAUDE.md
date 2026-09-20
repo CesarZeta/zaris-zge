@@ -15,7 +15,7 @@
 - **Guard módulos vanilla:** verificar `localStorage.getItem('zaris_session')` al inicio; si no existe, redirigir al login del shell vanilla.
 - **Guard módulos React:** `AppShell` redirige a `/login` (interno del shell React) si no hay sesión — útil solo en `localhost:5173` standalone. En producción, el módulo React vive en iframe del shell vanilla, que ya garantizó sesión antes de cargarlo.
 - **Hashing:** `bcrypt` 5.x directo — `bcrypt.hashpw(password.encode(), bcrypt.gensalt())`. No usar `passlib` (incompatible con bcrypt 4.x+ en Python 3.14+).
-- **Seed local:** `cd backend && $env:ENV_FILE=".env.local"; python seed_auth.py`. Password dev: `[redactado]`.
+- **Seed local:** `cd backend && $env:ENV_FILE=".env.local"; python seed_auth.py`. Password dev: `123456`.
 - **Prohibido:** endpoints de auth por módulo, passwords en texto plano.
 
 ## 2. Base Única de Ciudadanos (BUC)
@@ -177,6 +177,8 @@ Cazado 2026-05-20: se pushearon dos commits backend a `main` y prod siguió sirv
 **Cómo distinguir "deploy viejo en prod" de "mi test CORS está mal hecho"**: usar un origen que YA estaba permitido hace tiempo (`https://zge.zaris.com.ar`) como control. Si el preflight `OPTIONS` con ese origen devuelve `Access-Control-Allow-Origin` pero el origen nuevo no, es deploy viejo (no test roto). Comando: `curl -s -i -X OPTIONS -H "Origin: https://zge.zaris.com.ar" -H "Access-Control-Request-Method: GET" <url> | grep -i access-control-allow-origin`.
 
 **Commit de solo-comportamiento (sin rutas nuevas): dejar un marker verificable en OpenAPI.** Sumar al decorador de un endpoint tocado un `responses={409: {"description": "..."}}` (o 403) — es documentación OpenAPI pura, no cambia comportamiento, y aparece en `/openapi.json` público → el poller post-push confirma que el commit aplicó chequeando ese marker. Usado 2026-07-18 (migs 95 y 97: `/turnos/publico/reservar` 409 y `/emergencias/eventos/{id}/cerrar` 403).
+
+**Campo nuevo en el body que cambia QUÉ hace un endpoint (ej. `modulos` de `/demo/poblar`): un deploy viejo lo IGNORA en silencio** — Pydantic descarta los campos desconocidos y la llamada devuelve 200 haciendo lo de ANTES. Antes de disparar un cron/dispatch/script que dependa del campo nuevo, confirmar en `/openapi.json` que el schema del body ya lo incluye (`components.schemas.<Modelo>.properties`). Cazado 2026-09-19: sin ese chequeo, el backfill de atención habría regenerado seis meses de reclamos demo sobre los ya cargados.
 
 > **CORS de FastAPI no acepta wildcards** — `allow_origins` es lista de strings exactos. `*.vercel.app` NO funciona; hay que poner la URL exacta del deploy. Ver §6 (App Vecinos).
 
@@ -510,7 +512,7 @@ IDs relevantes: `#user-menu-trigger`, `#user-menu-dropdown`, `#btn-logout`, `#bt
 
 ### Login vanilla
 El shell redirige a `frontend/login.html` si no hay `zaris_session` en localStorage.  
-Credenciales dev: email `<username>@municipio.gob.ar`, password `[redactado]` (generadas con `seed_auth.py`).
+Credenciales dev: email `<username>@municipio.gob.ar`, password `123456` (generadas con `seed_auth.py`).
 
 ## 15. Admin Tablas — CRUD Genérico de Maestros
 
@@ -557,11 +559,12 @@ Comandos disponibles en `.claude/commands/` — invocar con `/nombre`:
 
 | Script | Uso |
 |---|---|
-| `backend/seed_auth.py` | Aplica migración 11 (email en usuarios) + setea passwords `[redactado]` |
+| `backend/seed_auth.py` | Aplica migración 11 (email en usuarios) + setea passwords `123456` |
 | `backend/seed_demo.py` | Seed local — tablas vacías contra `http://127.0.0.1:8000` |
 | `backend/seed_prod.py` | Seed prod — tablas vacías contra Railway (confirmar antes de usar) |
 | `backend/seed_reclamos_prod.py` | Inserta 20 reclamos demo en prod; detecta automáticamente si el constraint de estado usa tildes |
 | `backend/seed_geo_argentina.py` | Carga provincias / partidos / localidades AR (idempotente vía UPSERT) — usar tras migración 22 |
+| `backend/seed_demo_bi.py` | Datos demo de los tableros BI en LOCAL, mes a mes: reclamos (`services/demo_datos.py`) y atención (`services/demo_atencion.py`: turnos/colero/Guardia/eventos), `--modulos reclamos,atencion` `--semilla`. En prod NO se usa: `POST /api/v1/demo/poblar` por chunks ≤ 45 días vía el workflow `demo-datos.yml` (skill `modulo-bi`) |
 
 ## 18. Módulo Reclamos
 
@@ -1009,7 +1012,7 @@ DS v1.0 (`--z-*`, `.z-*`, `frontend/styles.css`, `frontend/menu.html`, `frontend
 - `.gitignore` no excluye los reportes — quedan visibles en `git status` como recordatorio de deuda.
 - Antes de versionar cualquier `.md`/`.html` de QA: `grep` de payloads + confirmar hallazgos resueltos.
 - Nunca incluir reportes con PoCs activos en commits ni en mensajes de PR.
-- **NINGÚN artefacto trackeado lleva credenciales de PROD (email + password, o URL-de-prod + credencial), ni siquiera los que "se sienten internos": guías QA HTML, skills de `.claude/`, smokes `.ps1`, scripts `seed_*.py`.** Todo lo trackeado es público vía GH Pages ([[reference_gh_pages_publica_todo_lo_commiteado]]). Las credenciales de testing viven en `credenciales-testing/` (fuera del repo); las guías/skills las **referencian**, no las incrustan. Antes de commitear uno de esos archivos, grepear `email + password` de prod. Cazado en la auditoría 2026-07-18 (`[redactado]` de 12 cuentas, incl. admins, publicado) — ver [[feedback_credenciales_prod_en_artefactos_internos]].
+- **NINGÚN artefacto trackeado lleva credenciales de PROD (email + password, o URL-de-prod + credencial), ni siquiera los que "se sienten internos": guías QA HTML, skills de `.claude/`, smokes `.ps1`, scripts `seed_*.py`.** Todo lo trackeado es público vía GH Pages ([[reference_gh_pages_publica_todo_lo_commiteado]]). Las credenciales de testing viven en `credenciales-testing/` (fuera del repo); las guías/skills las **referencian**, no las incrustan. Antes de commitear uno de esos archivos, grepear `email + password` de prod. Cazado en la auditoría 2026-07-18 (`123456` de 12 cuentas, incl. admins, publicado) — ver [[feedback_credenciales_prod_en_artefactos_internos]].
 
 ## 41. Módulo Config (React) + estándar de verificación en la interfaz
 
