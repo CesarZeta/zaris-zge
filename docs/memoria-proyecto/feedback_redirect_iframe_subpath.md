@@ -23,6 +23,6 @@ Cualquier redirect absoluto (`window.location.href = '/login'` u otros) desde el
   ```
 - Cuando edites cualquier `window.location.href = '/...'` del bundle, hacelo iframe-aware aunque hoy no se gatille — el día que se gatille, vas a ver un 404 raro y vas a tardar en relacionarlo.
 - **Síntoma diagnóstico clave:** el shell vanilla se ve OK (topbar + sidebar normales) pero el iframe muestra "There isn't a GitHub Pages site here." con logo de GitHub. Eso siempre es un redirect que saltó del subpath.
-- Caso real cazado 2026-05-13 cuando dashboard pasó a ser home (commit `d028e3e`). Con welcome.html como home no se notaba porque no hacía requests al backend → nunca se gatillaba 401 → nunca se gatillaba el redirect malo. Bug latente desde sub-fase B5.
+- Caso real cazado 2026-05-13 cuando dashboard pasó a ser home (commit `0547edf`). Con welcome.html como home no se notaba porque no hacía requests al backend → nunca se gatillaba 401 → nunca se gatillaba el redirect malo. Bug latente desde sub-fase B5.
 
 Relacionado: [[feedback_guard_sesion_en_head]] (la otra mitad del fix), [[project_zustand_persist_session_shape]] (shape del session), [[feedback_diagnosticar_redirect_login]] (cómo diagnosticar redirects mal en web-app).

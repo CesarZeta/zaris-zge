@@ -19,7 +19,7 @@ Fix: agregar la regla que devuelve la prioridad al atributo:
 ```
 
 **Casos reales en este repo (2026-05-20, MISMO bug dos veces):**
-- `.topbar__bell-badge` (badge "0" de notificaciones) — commit `5dfe00c`.
-- `.notif-menu__dropdown` (panel de notificaciones que "no cerraba / arrancaba abierto") — commit `fda6c01`.
+- `.topbar__bell-badge` (badge "0" de notificaciones) — commit `b5bff87`.
+- `.notif-menu__dropdown` (panel de notificaciones que "no cerraba / arrancaba abierto") — commit `075cef7`.
 
 Ambos en `frontend/css/menu.css`. Si agregás un componente del shell vanilla con `display:flex/grid/block` que también usa el atributo `hidden` para toggle, agregá la regla `[hidden]{display:none}` desde el principio. Ver [[feedback_sintoma_usuario_no_es_diagnostico]].

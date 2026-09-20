@@ -27,4 +27,4 @@ type: project
 - Helpers que leen `zaris_session` (ej. `getToken()` en `web-app/src/lib/api.ts`) deben probar `parsed?.state?.accessToken ?? parsed?.access_token ?? null` en ese orden.
 - Si vas a unificar las dos superficies en el futuro, decidir explícitamente una shape y migrar la otra. Hoy coexisten porque cada una resuelve su storage por su cuenta.
 - El nombre de la clave (`'zaris_session'`) está hardcoded en `auth.ts` (web-app) y en cada módulo vanilla. Si se cambia, cambiar en ambos lados.
-- El bug histórico: commit `46df578` (2026-05-10) — `getToken()` original solo soportaba la shape vanilla, las requests salían sin token en la web-app.
+- El bug histórico: commit `454a827` (2026-05-10) — `getToken()` original solo soportaba la shape vanilla, las requests salían sin token en la web-app.

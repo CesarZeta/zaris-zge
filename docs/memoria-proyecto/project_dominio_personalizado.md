@@ -26,7 +26,7 @@ metadata:
 
 - **`web-app/vite.config.ts`**: `base` cambiado de `/zaris-zge/web-app/dist/` a `/web-app/dist/`.
 - **`web-app/index.html`**: guard de redirect actualizado para detectar `/web-app/dist/` sin depender del subpath `/zaris-zge/`. Soporta ambos (dominio propio + legacy GH Pages por compat).
-- **`backend/app/main.py`** (commit `3e781eb`): agregados `http://zge.zaris.com.ar` y `https://zge.zaris.com.ar` a `allow_origins` de CORS.
+- **`backend/app/main.py`** (commit `41b1243`): agregados `http://zge.zaris.com.ar` y `https://zge.zaris.com.ar` a `allow_origins` de CORS.
 
 **Why:** sin actualizar el `base` de Vite, los assets (JS/CSS/fonts) daban 404 porque el bundle buscaba `/zaris-zge/web-app/dist/assets/...` pero el dominio propio sirve desde la raíz. Sin el CORS, el login fallaba silenciosamente con "No se pudo conectar con el servidor".
 

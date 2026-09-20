@@ -24,4 +24,4 @@ Cuando un endpoint /geo/buscar (proxy a Nominatim) tiene que servir como input d
 - Blacklist por `class` (amenity/shop/office/tourism/leisure/craft/healthcare/club/emergency/man_made) — esos siempre van afuera.
 - Blacklist por `type` cuando `class=building` (commercial/retail/office/hotel/restaurant/hospital/school/etc.) — solo si el resultado NO tiene `address.road` válido. Si tiene road+number, mantener.
 
-Referencia canónica: `backend/app/api/routes/geo.py::buscar_direccion` después del commit `164b817`.
+Referencia canónica: `backend/app/api/routes/geo.py::buscar_direccion` después del commit `fbd6924`.

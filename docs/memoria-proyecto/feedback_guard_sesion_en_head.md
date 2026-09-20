@@ -25,6 +25,6 @@ El guard de sesión del shell vanilla (`if (!localStorage.getItem('zaris_session
 - Si agregás un nuevo guard (por nivel de acceso, fecha de expiración del token, etc.), aplicá la misma regla: va en `<head>`, sincrónico.
 - Aplica solo al shell raíz (`index.html`). Los HTMLs vanilla individuales (`admin_tablas.html`, `usuarios.html`) tienen su propio guard interno por defensa en profundidad — ese puede ir en cualquier lado porque cuando el módulo ya está cargado el shell padre ya hizo su check.
 
-Cazado 2026-05-13 (commit `d028e3e`). Síntoma: shell vanilla OK con topbar+sidebar, iframe con 404 de GitHub Pages. Sin esto el bug del [[feedback_redirect_iframe_subpath]] se gatilla todas las veces que entrás sin sesión válida.
+Cazado 2026-05-13 (commit `0547edf`). Síntoma: shell vanilla OK con topbar+sidebar, iframe con 404 de GitHub Pages. Sin esto el bug del [[feedback_redirect_iframe_subpath]] se gatilla todas las veces que entrás sin sesión válida.
 
 Relacionado: [[feedback_redirect_iframe_subpath]] (la otra mitad del fix).

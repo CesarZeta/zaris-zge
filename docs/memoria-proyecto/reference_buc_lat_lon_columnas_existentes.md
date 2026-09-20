@@ -9,7 +9,7 @@ metadata:
 
 `ciudadanos.latitud`, `ciudadanos.longitud`, `empresas.latitud`, `empresas.longitud` existen en local (zaris_dev) y prod (Supabase) con tipo `numeric` y `is_nullable=YES`. Verificado 2026-05-15 via `execute_sql` MCP en prod y `psql` en local.
 
-Los **modelos SQLAlchemy** `Ciudadano` y `Empresa` (en `backend/app/models/buc.py` líneas 119-120 y 161-162) ya las exponen como `Column(Numeric(10, 7))`. Los **schemas Pydantic** `*Out` también las exponen. Lo que faltaba al 2026-05-15 era declararlas en `CiudadanoBase`/`Update` y `EmpresaBase`/`Update` para permitir Create/Update — agregado en commit 164b817.
+Los **modelos SQLAlchemy** `Ciudadano` y `Empresa` (en `backend/app/models/buc.py` líneas 119-120 y 161-162) ya las exponen como `Column(Numeric(10, 7))`. Los **schemas Pydantic** `*Out` también las exponen. Lo que faltaba al 2026-05-15 era declararlas en `CiudadanoBase`/`Update` y `EmpresaBase`/`Update` para permitir Create/Update — agregado en commit fbd6924.
 
 **Origen del drift:** ninguna migración numerada las crea. Posiblemente cambio manual viejo igual que `agentes.es_auditor` (caso documentado en [[feedback_verificar_drift_completo_prod]]). No documentadas en CLAUDE.md §21 hasta 2026-05-15.
 

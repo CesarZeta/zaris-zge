@@ -19,7 +19,7 @@ Cuando el usuario pregunta "qué pendientes hay" o elegís uno de un backlog, **
 |---|---|
 | Subreclamo UI no expuesto en Reclamos | `SubreclamoModal.tsx` ya existe |
 | Badge "⚠ falta vincular agentes" en Espacios | Ya en `EspaciosConfig.tsx:54-56` + backend con `cant_agentes` |
-| BUG-001 passlib local sin pushear | Pusheado en `43e310d` (memoria decía "solo en local") |
+| BUG-001 passlib local sin pushear | Pusheado en `d59572c` (memoria decía "solo en local") |
 | Permiso `'turnos'` cubre los 3 módulos | Mig 44 ya separó en `agenda`/`turnos`/`entradas` |
 | `frontend/usuarios.html` huérfano | No lo es — vive accesible desde Config>Sistema y `admin_tablas` |
 

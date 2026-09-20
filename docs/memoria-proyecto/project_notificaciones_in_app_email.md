@@ -18,7 +18,7 @@ Sistema transversal de notificaciones entregado 2026-05-18 (primera versión, 3 
   - `tramite_comentario` → al usuario del agente tomador, excluyendo al autor del comentario.
   - `tramite_estado_final` → a la subarea iniciadora (solo si `iniciador_tipo='area_interna'`).
   - `tramite_firma_pendiente` → polimórfico (agente / subarea / equipo) según firmantes definidos.
-- **Frontend campana en shell vanilla** (`index.html` + `frontend/js/menu.js` + `frontend/css/menu.css`, commit `c7833cc`). La versión React del TopBar es invisible en iframe (regla §14) — ambas conviven, la React queda solo para devs en `localhost:5173` standalone.
+- **Frontend campana en shell vanilla** (`index.html` + `frontend/js/menu.js` + `frontend/css/menu.css`, commit `bea8b91`). La versión React del TopBar es invisible en iframe (regla §14) — ambas conviven, la React queda solo para devs en `localhost:5173` standalone.
 
 **How to apply:**
 - Para sumar notif de otro evento: nueva función en `services/notificaciones.py` que reuse `_emitir_a_usuarios` (helper centralizado: INSERT con RETURNING + commit + encolado del background task con `_enviar_mail_y_marcar`). Hook en el endpoint backend, opcionalmente nuevo valor `tipo` para discriminar en frontend.
