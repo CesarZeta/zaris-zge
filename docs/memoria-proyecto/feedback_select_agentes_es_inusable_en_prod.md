@@ -16,6 +16,6 @@ Si vas a montar un selector de agente o equipo activo del municipio, NO uses `<s
 **How to apply:**
 - Crear/editar formularios que pidan agente o equipo: **siempre RecursoPicker** salvo que sea catalogo chico estable (<20 items) y nunca crezca.
 - Para readonly (edicion bloqueada): `<div>` con texto del nombre + hint, no `<select disabled>`.
-- Si `tipo` cambia entre 'agente' y 'equipo', el RecursoPicker resetea su `q` interno automaticamente (fix aplicado en commit `e2cf868`).
+- Si `tipo` cambia entre 'agente' y 'equipo', el RecursoPicker resetea su `q` interno automaticamente (fix aplicado en commit `abc5e68`).
 
 Aplica al patron analogo de **espacios**: hoy hay 2-3 espacios y un select va bien, pero si el municipio carga 50+ espacios hay que migrar `EventoEntradaFormModal` y el selector en `OcupacionModal`.

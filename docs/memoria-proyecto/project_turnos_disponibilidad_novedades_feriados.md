@@ -23,6 +23,6 @@ Sesión 2026-05-28: el módulo Turnos pasó a respetar la disponibilidad real de
 
 **Ciudadano modelo (vista 360°):** se eligió **Juan Pérez (id_ciudadano=1, DNI 12345678)** como eje. Ya tiene en prod: 2 turnos, 10 reclamos, 1 trámite. La pantalla 360° visual quedó **pendiente para otra sesión** (el usuario pidió "solo dejar datos sembrados" por ahora). Idea acordada: sección "Interacciones" en el detalle del ciudadano (Contactos/Padrones) vía endpoint `/buc/ciudadanos/{id}/interacciones`.
 
-**Commit:** `569dfa7` en main. Backend prod verificado (slots agente+espacio OK), bundle en GH Pages OK.
+**Commit:** `0cb55ce` en main. Backend prod verificado (slots agente+espacio OK), bundle en GH Pages OK.
 
 **Trampa cazada:** la mig 69 quedó a medias en prod (el INSERT falló y revirtió el CREATE TABLE) → 500 en /slots hasta crear `agente_novedad` a mano. Ver [[feedback_apply_migration_parcial_aborta_todo]].

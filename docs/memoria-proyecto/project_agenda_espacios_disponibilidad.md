@@ -8,10 +8,10 @@ metadata:
 ---
 
 **B1 (backend) + B2 (frontend) cerradas al 2026-05-14.** Commits clave:
-- `d3a7915` (2026-05-13) — B1 backend
-- `7186fe1` (2026-05-14) — B2 frontend + endpoint `/recursos/conteos` + fix drift conteos
-- `37d5034` (2026-05-14) — perf: `disponibilidad_efectiva_batch`
-- `8d047f5` (2026-05-14) — perf: `_eventos_del_rango` bulk
+- `18062ce` (2026-05-13) — B1 backend
+- `505c185` (2026-05-14) — B2 frontend + endpoint `/recursos/conteos` + fix drift conteos
+- `19f611d` (2026-05-14) — perf: `disponibilidad_efectiva_batch`
+- `87a5467` (2026-05-14) — perf: `_eventos_del_rango` bulk
 
 **Performance medida en prod (84 agentes):**
 
@@ -28,7 +28,7 @@ metadata:
 - **Latencia base Railway↔Supabase es ~2-3s** para queries no triviales con JOINs. Es el piso teórico de cualquier endpoint de agenda hasta que se cambie arquitectura (PgBouncer, mover backend a la misma región, etc.). No prometer sub-segundo sin tocar infra.
 - Si una sesión necesita medir perf en prod, usar polling con login dentro del loop ([[feedback_polling_login_dentro_del_loop]]).
 
-**Bug del drift de conteos (fix 7186fe1):** `/recursos/conteos` usaba `WHERE id_municipio = :im` mientras `/calendario` usa `WHERE id_municipio IS NULL OR id_municipio = :im`. En prod hay 3 agentes y 3 equipos legacy con id_municipio NULL. Pill decía "Agentes 1" pero grilla mostraba 4. Ahora ambas usan la regla NULL-friendly.
+**Bug del drift de conteos (fix 505c185):** `/recursos/conteos` usaba `WHERE id_municipio = :im` mientras `/calendario` usa `WHERE id_municipio IS NULL OR id_municipio = :im`. En prod hay 3 agentes y 3 equipos legacy con id_municipio NULL. Pill decía "Agentes 1" pero grilla mostraba 4. Ahora ambas usan la regla NULL-friendly.
 
 **Pendientes B2 chicos (no bloqueantes):**
 - Badge "⚠ falta vincular agentes" en `EspaciosConfig` cuando un espacio atendido tiene 0 agentes (sino la grilla queda toda gris sin razón obvia).
@@ -41,6 +41,6 @@ metadata:
 - KeyboardSensor en DnD.
 
 **Pendientes perf restantes (todos micro vs el ahorro ya logrado):**
-- En `/semana` el listado base de **ocupaciones** del rango ya es 1 query (BETWEEN), OK. **Ausencias** idem. **Recursos** idem. **Eventos+encargados** idem post-`8d047f5`. **Disponibilidad** idem post-`37d5034`. Lo que queda es latencia base Railway↔Supabase, no se gana más sin tocar infra.
+- En `/semana` el listado base de **ocupaciones** del rango ya es 1 query (BETWEEN), OK. **Ausencias** idem. **Recursos** idem. **Eventos+encargados** idem post-`87a5467`. **Disponibilidad** idem post-`19f611d`. Lo que queda es latencia base Railway↔Supabase, no se gana más sin tocar infra.
 
 Memorias relacionadas: [[reference_agenda_v2_verbos_http]], [[reference_agenda_semana_disponibilidad_key]], [[feedback_asyncpg_extract_cast_date]], [[feedback_polling_login_dentro_del_loop]], [[reference_agenda_latencia_base_railway_supabase]].

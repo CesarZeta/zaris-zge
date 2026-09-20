@@ -9,7 +9,7 @@ metadata:
 
 Cuando el usuario reporta un comportamiento ("el panel no se cierra"), ese es el **síntoma**, no la causa. Verificar el estado real del elemento ANTES de asumir qué mecanismo está roto.
 
-**Why:** Sesión 2026-05-20 — el usuario dijo "la ventana de notificaciones no se cierra". Asumí literalmente que el problema era el *cierre* y gasté 3 commits (`081929f`, `08bb47d`) en overlays, listeners de iframe y stacking-context, todos verificados como "funcionan" en mi navegador integrado. El bug real: el dropdown **nunca estuvo oculto** — `display:flex` pisaba el atributo `hidden` ([[reference_css_display_pisa_hidden]]). Lo destrabó el usuario con "cuando entro a la página ya está abierto". Un `getComputedStyle(dd).display` + `dd.hasAttribute('hidden')` al primer reporte lo hubiera cazado en 30 segundos.
+**Why:** Sesión 2026-05-20 — el usuario dijo "la ventana de notificaciones no se cierra". Asumí literalmente que el problema era el *cierre* y gasté 3 commits (`1c7ca84`, `351eb16`) en overlays, listeners de iframe y stacking-context, todos verificados como "funcionan" en mi navegador integrado. El bug real: el dropdown **nunca estuvo oculto** — `display:flex` pisaba el atributo `hidden` ([[reference_css_display_pisa_hidden]]). Lo destrabó el usuario con "cuando entro a la página ya está abierto". Un `getComputedStyle(dd).display` + `dd.hasAttribute('hidden')` al primer reporte lo hubiera cazado en 30 segundos.
 
 **How to apply:** ante "X no se cierra/abre/aparece/oculta", el primer paso es leer el estado computado real:
 - `getComputedStyle(el).display` vs `el.hasAttribute('hidden')` vs `el.hidden` — ¿coinciden? Si el atributo dice oculto pero el display dice visible, el CSS pisa al atributo.

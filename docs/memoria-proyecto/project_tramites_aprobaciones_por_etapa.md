@@ -7,9 +7,9 @@ metadata:
   originSessionId: 52bd7592-33b9-438e-a41e-b8b057b54f45
 ---
 
-**ESTADO: COMPLETA y pusheada a prod (2026-06-01, commit `5c31ec6`).** Las 4 fases entregadas y verificadas E2E. Nada pendiente. Lo de abajo queda como referencia del diseño/modelo.
+**ESTADO: COMPLETA y pusheada a prod (2026-06-01, commit `28a14ae`).** Las 4 fases entregadas y verificadas E2E. Nada pendiente. Lo de abajo queda como referencia del diseño/modelo.
 
-**Bug cazado al cerrar la Fase 4 (ya en código):** el commit `de6d6c9` (backend+builder) agregó `aprobaciones` a `_tramite_detalle_out` (helper de las MUTACIONES) pero **omitió el handler GET `/{numero_o_id}`** de `tramites.py`, que arma su propio `TramiteDetalleOut` y caía al default `[]`. La pantalla del detalle cargaba siempre sin visados aunque el frontend estuviera bien. Fix en `5c31ec6`: agregar `aprobaciones_de_tramite` al GET. Patrón [[feedback_el_backend_puede_mentir]] (cara 3) — dos rutas construyen el mismo response, auditar ambas. Solo se ve verificando navegando, no leyendo código ([[feedback_verificar_forms_navegando_mandatorio]]).
+**Bug cazado al cerrar la Fase 4 (ya en código):** el commit `ef567fc` (backend+builder) agregó `aprobaciones` a `_tramite_detalle_out` (helper de las MUTACIONES) pero **omitió el handler GET `/{numero_o_id}`** de `tramites.py`, que arma su propio `TramiteDetalleOut` y caía al default `[]`. La pantalla del detalle cargaba siempre sin visados aunque el frontend estuviera bien. Fix en `28a14ae`: agregar `aprobaciones_de_tramite` al GET. Patrón [[feedback_el_backend_puede_mentir]] (cara 3) — dos rutas construyen el mismo response, auditar ambas. Solo se ve verificando navegando, no leyendo código ([[feedback_verificar_forms_navegando_mandatorio]]).
 
 ---
 

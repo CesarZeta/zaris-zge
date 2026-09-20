@@ -116,7 +116,7 @@
 - **Tablas afectadas:** `agentes` (f_id_cargo, f_id_subarea), `servicios` (f_id_usuario_responsable), y potencialmente otras con SELECT de FK
 - **Descripción:** El form de admin_tablas lee los valores de los `<select>` como strings (`"1"`) en lugar de números (`1`). El backend rechaza con 400 cuando el campo es int en el schema Pydantic.
 - **Ya documentado en:** CLAUDE.md §32 `feedback_admin_tablas_select_fk_cast` — fix es detectar `col.fk || col.field.startsWith('id_')` y aplicar `Number()` en `readForm()`.
-- **Estado:** ✅ **Fix ya aplicado** en commit `f77a992` — `readForm()` ya castea a `Number()` cuando `col.fk || col.field.startsWith('id_')`. El flujo CREATE/EDIT desde frontend para `agentes` y `servicios` debería funcionar correctamente ahora.
+- **Estado:** ✅ **Fix ya aplicado** en commit `e4f8db8` — `readForm()` ya castea a `Number()` cuando `col.fk || col.field.startsWith('id_')`. El flujo CREATE/EDIT desde frontend para `agentes` y `servicios` debería funcionar correctamente ahora.
 
 ### BUG-003 — usuarios.html: id_municipio default=377 inexistente en local
 - **Severidad:** Baja (solo afecta entornos locales, prod tiene municipio 377)

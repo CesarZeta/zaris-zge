@@ -42,7 +42,7 @@ Antes de modificar selects de UI o tipos TypeScript que mapean estos campos, cor
 SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
 WHERE conrelid = 'reclamos'::regclass AND contype = 'c';
 ```
-Caso real sesión 2026-05-12: introducir `'Crítica'` en `type Prioridad` costó un commit de fix (`4efcacb`) cuando el smoke API explotó con IntegrityError. La doc puede estar atrás; el CHECK es el contrato real.
+Caso real sesión 2026-05-12: introducir `'Crítica'` en `type Prioridad` costó un commit de fix (`c21e8df`) cuando el smoke API explotó con IntegrityError. La doc puede estar atrás; el CHECK es el contrato real.
 
 ### Estados de reclamo (v1.2)
 
@@ -256,7 +256,7 @@ Detalles del aprendizaje (incluyendo trampas que NO funcionaron) en memoria [[fe
 |---|---|---|
 | `canal_origen` | VARCHAR(20) | `web` / `whatsapp` / `telefono` / `presencial` / `oficio` / `app_movil` / `otro`. |
 | `fecha_primer_asignacion` | TIMESTAMPTZ | Set al pasar a `En gestión` (medición de SLA real). **Hasta 2026-05-25 NO se seteaba** (bug); ahora se hace vía `COALESCE(fecha_primer_asignacion, NOW())` en `cambiar_estado` (reclamos.py) y en `crear_ot`/`crear_ot_con_agenda` (ordenes_trabajo.py). El COALESCE evita pisarla al volver a En gestión. |
-| `fecha_cierre` | TIMESTAMPTZ | Set al pasar a estado final (`Resuelto` o `Cancelado`). Lo setean **las 3 vías** que llevan a estado final: `cambiar_estado` (pase manual), `_resolver_reclamo`/cierre vía OT, y `PUT /{id}/cancelar` (este último se quedó afuera del fix de mayo y se corrigió el 2026-06-01 con `fecha_cierre=COALESCE(fecha_cierre, NOW())`, commit `00f06a7`). Si agregás otra ruta a estado final, setearla ahí también — un fix que cubre una vía no cubre las otras (ver memoria `feedback_guard_subarea_cubre_todas_las_vias`). |
+| `fecha_cierre` | TIMESTAMPTZ | Set al pasar a estado final (`Resuelto` o `Cancelado`). Lo setean **las 3 vías** que llevan a estado final: `cambiar_estado` (pase manual), `_resolver_reclamo`/cierre vía OT, y `PUT /{id}/cancelar` (este último se quedó afuera del fix de mayo y se corrigió el 2026-06-01 con `fecha_cierre=COALESCE(fecha_cierre, NOW())`, commit `2a0b133`). Si agregás otra ruta a estado final, setearla ahí también — un fix que cubre una vía no cubre las otras (ver memoria `feedback_guard_subarea_cubre_todas_las_vias`). |
 | `sla_vencimiento` | TIMESTAMPTZ | Calculado por trigger `trg_sla_reclamo` = `fecha_alta + tipo_reclamo.sla_dias`. |
 
 ### Estado (FK vs VARCHAR — transición)

@@ -3,7 +3,7 @@
 **Estado:** F1 + F2 + F2b (2026-09-01), F3 colero (2026-09-06, mig 105),
 F4 Guardia (2026-09-06, migs 106 + 106b) y F5 Historia clinica (2026-09-13,
 migs 107 + 107b) HECHAS, verificadas y en prod. **F6 BI de atencion HECHA y
-EN PROD 2026-09-19 (commit 1b9b0c9 + dist e6441ac; sin migracion; smoke 85/85
+EN PROD 2026-09-19 (commit 89b5382 + dist 522e34d; sin migracion; smoke 85/85
 + verificacion visual local + API de prod verificada)** — queda el QA visual
 de Cesar en prod. **Las 6 fases del plan estan hechas.**
 **Ultima revision:** 2026-09-19
@@ -433,8 +433,8 @@ atenciones y CSAT), derivaciones a la Guardia (eventos de Emergencias
 completos) y eventos con reservas. Criterios y verificacion en la skill
 `modulo-bi`.
 
-**Pendientes de F6:** QA visual de Cesar en prod; ocupacion vs disponibilidad
-efectiva (hoy "ocupacion" = turnos otorgados + horas atendidas por ubicacion,
+**Pendientes de F6:** ~~QA visual de Cesar en prod~~ (OK de Cesar 2026-09-20);
+ocupacion vs disponibilidad efectiva (hoy "ocupacion" = turnos otorgados + horas atendidas por ubicacion,
 no un % sobre la agenda disponible).
 
 ### Orden y dependencias

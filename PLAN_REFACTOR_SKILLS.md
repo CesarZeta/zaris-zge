@@ -6,7 +6,7 @@
 
 ## Estado de fases
 
-- **Fase 0 (inventario + plan):** ✅ completada — commit `b1f8117`.
+- **Fase 0 (inventario + plan):** ✅ completada — commit `079f8a1`.
 - **Fase 1 (piloto §44 Emergencias):** ✅ **migrado** — skill `modulo-emergencias` creada, puntero en CLAUDE.md, ancla `## 44.` conservada. CLAUDE.md 1992→1981 líneas. **Pendiente: validación manual del usuario (auto-invocación en sesión nueva).**
 - **Fase 2 (replicar):** ✅ **COMPLETA**. 17 secciones movidas a 14 skills `modulo-*`. CLAUDE.md **1992→1024 líneas (−968, −48.6%)**. Las 17 anclas conservadas, numeración intacta (42 secciones únicas, 0 renumeradas), 0 cuerpos huérfanos. Splits: §41 (estándar verificación UI), §30 (trampa de seguridad), §15 (panel de búsqueda) — sus partes transversales quedaron en CLAUDE.md. §18+§22+§26 → una skill `modulo-reclamos`; §36+§37 → `modulo-guias`.
 

@@ -9,7 +9,7 @@ metadata:
 
 **Why:** CLAUDE.md acumula doc entre sesiones sin commit. Cuando una sesión agrega 5 líneas al §X, el `git diff CLAUDE.md` muestra esas 5 líneas + las 100+ líneas de §Y/§Z que las sesiones de la semana pasada escribieron pero nunca commitearon. Si commiteás todo junto bajo `feat(X)`, mezclás scope y el historial pierde precisión: alguien buscando "cuándo se documentó §Y" cae en un commit que dice "fix path quirk".
 
-**Cazado sesión 2026-05-19:** mi cambio de §34 eran 4 líneas (admin bypass es_auditor); el diff total de CLAUDE.md eran ~165 líneas con §35-37 atrasadas (editor admin tipos, manuales operativos, módulo Guías) de los commits `65b6ac2`/`de79331`/`5fd72b9` pusheados días antes.
+**Cazado sesión 2026-05-19:** mi cambio de §34 eran 4 líneas (admin bypass es_auditor); el diff total de CLAUDE.md eran ~165 líneas con §35-37 atrasadas (editor admin tipos, manuales operativos, módulo Guías) de los commits `20a868b`/`d85274a`/`09a6822` pusheados días antes.
 
 **How to apply — protocolo al commitear CLAUDE.md:**
 
