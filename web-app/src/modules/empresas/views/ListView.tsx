@@ -1,13 +1,33 @@
-import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { Search } from 'lucide-react'
 import { useEmpresasListado } from '../hooks/useEmpresas'
+import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
 import type { Empresa } from '../types/empresa'
 
 type Orden = 'reciente' | 'antiguo' | 'az' | 'za'
 
 export function ListView() {
   const navigate = useNavigate()
-  const { data, isLoading, isError, error } = useEmpresasListado()
+  const location = useLocation()
+
+  // Búsqueda diferida (§23): el padrón (hasta 1000 filas) NO se pide al entrar;
+  // sale recién con "Ver listado". No hay filtros server: texto/orden/fechas
+  // filtran lo cargado, en vivo, sin volver a consultar.
+  const busqueda = useBusquedaDiferida({})
+  const { buscar, buscado } = busqueda
+  const { data, isLoading, isError, error } = useEmpresasListado({ enabled: buscado, version: busqueda.version })
+
+  // Intención explícita: el botón "Listado" de BuscarView navega con
+  // state { buscar: true } — ese clic YA es la búsqueda, así que arrancamos
+  // buscando. Por URL directa (sin state) se muestra el gate. El state se
+  // limpia (replace) para que un F5 o volver atrás no vuelvan a auto-buscar.
+  const autoBuscar = (location.state as { buscar?: boolean } | null)?.buscar === true
+  useEffect(() => {
+    if (!autoBuscar) return
+    buscar()
+    navigate(location.pathname, { replace: true, state: null })
+  }, [autoBuscar, buscar, navigate, location.pathname])
 
   const [texto, setTexto] = useState('')
   const [orden, setOrden] = useState<Orden>('reciente')
@@ -54,8 +74,19 @@ export function ListView() {
           Listado de empresas
         </h2>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => window.print()} style={btnGhost}>Imprimir</button>
-          <button onClick={() => navigate('/empresas')} style={btnGhost}>← Volver</button>
+          <button type="button" onClick={() => buscar()} style={btnBuscar} title="Traer las empresas (vuelve a consultar)">
+            <Search size={14} strokeWidth={1.5} /> Ver listado
+          </button>
+          <button
+            type="button"
+            onClick={() => window.print()}
+            style={buscado ? btnGhost : btnGhostOff}
+            disabled={!buscado}
+            title={buscado ? 'Imprimir el listado visible' : 'Primero presioná Ver listado'}
+          >
+            Imprimir
+          </button>
+          <button type="button" onClick={() => navigate('/empresas')} style={btnGhost}>← Volver</button>
         </div>
       </div>
 
@@ -66,41 +97,50 @@ export function ListView() {
         </p>
       </div>
 
-      <div className="no-print" style={filterBarStyle}>
-        <div style={filterGroup}>
-          <label style={filterLabel}>Buscar</label>
-          <input
-            value={texto}
-            onChange={(e) => setTexto(e.target.value)}
-            placeholder="Nombre o CUIT..."
-            style={filterInput}
-          />
-        </div>
-        <div style={filterGroup}>
-          <label style={filterLabel}>Ordenar</label>
-          <select value={orden} onChange={(e) => setOrden(e.target.value as Orden)} style={filterInput}>
-            <option value="reciente">Mas reciente primero</option>
-            <option value="az">Nombre A → Z</option>
-            <option value="za">Nombre Z → A</option>
-            <option value="antiguo">Mas antiguo primero</option>
-          </select>
-        </div>
-        <div style={filterGroup}>
-          <label style={filterLabel}>Fecha desde</label>
-          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} style={filterInput} />
-        </div>
-        <div style={filterGroup}>
-          <label style={filterLabel}>Fecha hasta</label>
-          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} style={filterInput} />
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignSelf: 'flex-end' }}>
-          <button onClick={limpiar} style={btnGhost}>Limpiar</button>
-        </div>
-      </div>
+      {!buscado && (
+        <AvisoBuscar texto="Presioná Ver listado para traer las empresas. Después filtrá por texto, fechas u orden sin volver a consultar." />
+      )}
 
-      <div style={{ fontSize: 'var(--size-ui)', color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
-        {filtrados.length} empresa{filtrados.length !== 1 ? 's' : ''} encontrada{filtrados.length !== 1 ? 's' : ''}
-      </div>
+      {/* Filtros client-side (en vivo sobre lo cargado): recién cuando hay listado */}
+      {buscado && (
+        <div className="no-print" style={filterBarStyle}>
+          <div style={filterGroup}>
+            <label style={filterLabel}>Buscar</label>
+            <input
+              value={texto}
+              onChange={(e) => setTexto(e.target.value)}
+              placeholder="Nombre o CUIT..."
+              style={filterInput}
+            />
+          </div>
+          <div style={filterGroup}>
+            <label style={filterLabel}>Ordenar</label>
+            <select value={orden} onChange={(e) => setOrden(e.target.value as Orden)} style={filterInput}>
+              <option value="reciente">Mas reciente primero</option>
+              <option value="az">Nombre A → Z</option>
+              <option value="za">Nombre Z → A</option>
+              <option value="antiguo">Mas antiguo primero</option>
+            </select>
+          </div>
+          <div style={filterGroup}>
+            <label style={filterLabel}>Fecha desde</label>
+            <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} style={filterInput} />
+          </div>
+          <div style={filterGroup}>
+            <label style={filterLabel}>Fecha hasta</label>
+            <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} style={filterInput} />
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignSelf: 'flex-end' }}>
+            <button type="button" onClick={limpiar} style={btnGhost}>Limpiar</button>
+          </div>
+        </div>
+      )}
+
+      {buscado && (
+        <div style={{ fontSize: 'var(--size-ui)', color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
+          {filtrados.length} empresa{filtrados.length !== 1 ? 's' : ''} encontrada{filtrados.length !== 1 ? 's' : ''}
+        </div>
+      )}
 
       {isLoading && <div style={{ color: 'var(--fg-3)', padding: 20 }}>Cargando...</div>}
       {isError && <div style={{ color: 'var(--color-error)', padding: 20 }}>Error: {(error as Error).message}</div>}
@@ -198,6 +238,14 @@ const btnGhost: React.CSSProperties = {
   border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-lg)',
   fontFamily: 'var(--font-display)', fontSize: 'var(--size-btn)', cursor: 'pointer',
 }
+// "Ver listado": acento del módulo (mismo que + Nuevo en BuscarView) + icono.
+const btnBuscar: React.CSSProperties = {
+  ...btnGhost, background: 'var(--zaris-orange)', color: 'var(--zaris-cream)',
+  border: '1px solid var(--zaris-orange)', fontWeight: 500,
+  display: 'inline-flex', alignItems: 'center', gap: 6,
+}
+// Ghost deshabilitado hasta la primera carga (Imprimir).
+const btnGhostOff: React.CSSProperties = { ...btnGhost, opacity: 0.5, cursor: 'not-allowed' }
 const tableWrap: React.CSSProperties = {
   overflowX: 'auto', borderRadius: 'var(--radius-lg)',
   border: '1px solid var(--border-primary)', background: 'var(--surface-100)',

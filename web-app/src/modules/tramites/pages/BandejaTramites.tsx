@@ -1,68 +1,96 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Plus, Search, RefreshCw } from 'lucide-react'
 import { Button, Input, Skeleton, EmptyState } from '../../../ui'
+import { AvisoBuscar } from '../../../ui/busqueda'
 import { useBandeja, useTiposTramite } from '../hooks/useTramites'
 import { EstadoBadge } from '../components/EstadoBadge'
 import type { TramiteBandejaItem, BandejaParams } from '../types'
 
 const LIMIT = 50
 
+/** Filtros que viajan al backend. Lo APLICADO vive en la URL (deep links y
+ *  paginación); lo que el usuario edita vive en un borrador local. */
+type FiltrosBandeja = { q: string; numero: string; tipo: string; iniciador: string; estado: string }
+
+const FILTROS_URL = ['q', 'numero', 'tipo', 'iniciador', 'estado'] as const
+
+const FILTROS_VACIOS: FiltrosBandeja = { q: '', numero: '', tipo: '', iniciador: '', estado: '' }
+
+function leerFiltros(sp: URLSearchParams): FiltrosBandeja {
+  return {
+    q: sp.get('q') ?? '',
+    numero: sp.get('numero') ?? '',
+    tipo: sp.get('tipo') ?? '',
+    iniciador: sp.get('iniciador') ?? '',
+    estado: sp.get('estado') ?? '',
+  }
+}
+
 export function BandejaTramites() {
   const navigate = useNavigate()
   const [sp, setSp] = useSearchParams()
 
-  // Filtros desde URL
-  const estadoCodigo = sp.get('estado') ?? ''
-  const idTipo = sp.get('tipo') ? Number(sp.get('tipo')) : undefined
-  const iniciadorTipo = sp.get('iniciador') ?? ''
-  const numero = sp.get('numero') ?? ''
-  const q = sp.get('q') ?? ''
-  const paginaActual = parseInt(sp.get('pagina') ?? '1', 10)
+  // Búsqueda diferida (§23): la URL es lo APLICADO (se escribe entera al
+  // presionar Buscar y la paginación la reusa); el borrador es lo que el
+  // usuario edita y NO dispara nada hasta el próximo Buscar. Un deep link con
+  // filtros (o con buscar=1) es intención explícita: se busca al montar.
+  const aplicado = leerFiltros(sp)
+  const [borrador, setBorrador] = useState<FiltrosBandeja>(() => leerFiltros(sp))
+  const [version, setVersion] = useState(0)
+  const hayFiltrosEnUrl = FILTROS_URL.some((k) => (sp.get(k) ?? '') !== '')
+  const buscado = sp.get('buscar') === '1' || hayFiltrosEnUrl
+  const paginaParam = parseInt(sp.get('pagina') ?? '1', 10)
+  const paginaActual = Number.isFinite(paginaParam) && paginaParam >= 1 ? paginaParam : 1
 
-  const [busquedaInput, setBusquedaInput] = useState(q)
-  const [numeroInput, setNumeroInput] = useState(numero)
+  const setB = (patch: Partial<FiltrosBandeja>) => setBorrador((b) => ({ ...b, ...patch }))
 
-  function setParam(key: string, value: string) {
-    setSp((prev) => {
-      const next = new URLSearchParams(prev)
-      if (value) { next.set(key, value) } else { next.delete(key) }
-      if (key !== 'pagina') next.delete('pagina')
-      return next
+  /** Escribe TODOS los filtros del borrador en la URL de una vez (vuelve a la
+   *  página 1) y sube `version` para que Buscar con los mismos filtros vuelva
+   *  a la red. */
+  function buscar() {
+    const next = new URLSearchParams()
+    FILTROS_URL.forEach((k) => {
+      const v = borrador[k].trim()
+      if (v) next.set(k, v)
     })
+    next.set('buscar', '1')
+    setSp(next)
+    setVersion((v) => v + 1)
   }
 
-  // Debounce búsqueda
-  useEffect(() => {
-    const t = setTimeout(() => setParam('q', busquedaInput), 400)
-    return () => clearTimeout(t)
-  }, [busquedaInput]) // eslint-disable-line react-hooks/exhaustive-deps
+  /** "Limpiar filtros" es una acción explícita: vacía el borrador y vuelve a
+   *  buscar sin filtros (como hacía antes, que mostraba toda la bandeja). */
+  function limpiar() {
+    setBorrador(FILTROS_VACIOS)
+    const next = new URLSearchParams()
+    next.set('buscar', '1')
+    setSp(next)
+    setVersion((v) => v + 1)
+  }
 
-  // Debounce número
-  useEffect(() => {
-    const t = setTimeout(() => setParam('numero', numeroInput), 400)
-    return () => clearTimeout(t)
-  }, [numeroInput]) // eslint-disable-line react-hooks/exhaustive-deps
-
+  const idTipo = aplicado.tipo ? Number(aplicado.tipo) : undefined
   const offset = (paginaActual - 1) * LIMIT
 
   const params: BandejaParams = {
     limit: LIMIT,
     offset,
-    ...(estadoCodigo ? { estado_codigo: estadoCodigo } : {}),
+    ...(aplicado.estado ? { estado_codigo: aplicado.estado } : {}),
     ...(idTipo ? { id_tipo_tramite: idTipo } : {}),
-    ...(iniciadorTipo ? { iniciador_tipo: iniciadorTipo } : {}),
-    ...(numero ? { numero } : {}),
-    ...(q ? { q } : {}),
+    ...(aplicado.iniciador ? { iniciador_tipo: aplicado.iniciador } : {}),
+    ...(aplicado.numero ? { numero: aplicado.numero } : {}),
+    ...(aplicado.q ? { q: aplicado.q } : {}),
   }
 
-  const { data, isLoading, error, refetch } = useBandeja(params)
+  const { data, isLoading, error, refetch } = useBandeja(params, { enabled: buscado, version })
+  // Opciones del select de tipo: catálogo liviano, sí carga al entrar.
   const tipos = useTiposTramite()
 
   const total = data?.total ?? 0
   const items = data?.items ?? []
   const totalPaginas = Math.ceil(total / LIMIT)
 
+  // Paginar es una acción explícita: re-pide (mantiene filtros y buscar=1).
   function irAPagina(p: number) {
     setSp((prev) => {
       const next = new URLSearchParams(prev)
@@ -76,35 +104,38 @@ export function BandejaTramites() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <h1 style={h1Style}>Trámites</h1>
-        <Button variant="accent" icon={<Plus size={16} strokeWidth={1.5} />} onClick={() => navigate('/tramites/nuevo')}>
+        <Button type="button" variant="accent" icon={<Plus size={16} strokeWidth={1.5} />} onClick={() => navigate('/tramites/nuevo')}>
           Nuevo trámite
         </Button>
       </div>
 
-      {/* Filtros */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+      {/* Filtros: form para que Enter en cualquier campo dispare Buscar (§23). */}
+      <form
+        style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}
+        onSubmit={(e) => { e.preventDefault(); buscar() }}
+      >
         <div style={{ flex: '1 1 200px', minWidth: 160 }}>
           <label style={filterLabelStyle}>Buscar</label>
           <Input
             icon={<Search size={14} />}
-            value={busquedaInput}
-            onChange={(e) => setBusquedaInput(e.target.value)}
+            value={borrador.q}
+            onChange={(e) => setB({ q: e.target.value })}
             placeholder="Asunto, descripción..."
           />
         </div>
         <div style={{ flex: '1 1 140px', minWidth: 120 }}>
           <label style={filterLabelStyle}>Número</label>
           <Input
-            value={numeroInput}
-            onChange={(e) => setNumeroInput(e.target.value)}
+            value={borrador.numero}
+            onChange={(e) => setB({ numero: e.target.value })}
             placeholder="POD-LPL-2026-0001"
           />
         </div>
         <div style={{ flex: '1 1 160px', minWidth: 120 }}>
           <label style={filterLabelStyle}>Tipo</label>
           <select
-            value={idTipo ?? ''}
-            onChange={(e) => setParam('tipo', e.target.value)}
+            value={borrador.tipo}
+            onChange={(e) => setB({ tipo: e.target.value })}
             style={selectStyle}
             disabled={tipos.isLoading}
           >
@@ -116,7 +147,7 @@ export function BandejaTramites() {
         </div>
         <div style={{ flex: '1 1 140px', minWidth: 120 }}>
           <label style={filterLabelStyle}>Iniciador</label>
-          <select value={iniciadorTipo} onChange={(e) => setParam('iniciador', e.target.value)} style={selectStyle}>
+          <select value={borrador.iniciador} onChange={(e) => setB({ iniciador: e.target.value })} style={selectStyle}>
             <option value="">Todos</option>
             <option value="ciudadano">Ciudadano</option>
             <option value="empresa">Empresa</option>
@@ -126,23 +157,29 @@ export function BandejaTramites() {
         <div style={{ flex: '1 1 140px', minWidth: 120 }}>
           <label style={filterLabelStyle}>Estado</label>
           <Input
-            value={estadoCodigo}
-            onChange={(e) => setParam('estado', e.target.value)}
+            value={borrador.estado}
+            onChange={(e) => setB({ estado: e.target.value })}
             placeholder="iniciado, revisión..."
           />
         </div>
+        <Button type="submit" variant="accent" icon={<Search size={15} strokeWidth={1.5} />} title="Traer la bandeja con los filtros elegidos">
+          Buscar
+        </Button>
         <button
           type="button"
           onClick={() => { void refetch() }}
           title="Actualizar"
-          style={iconBtnStyle}
+          style={{ ...iconBtnStyle, ...(buscado ? {} : iconBtnDisabledStyle) }}
+          disabled={!buscado}
         >
           <RefreshCw size={15} strokeWidth={1.5} />
         </button>
-      </div>
+      </form>
 
-      {/* Tabla */}
-      {error ? (
+      {/* Tabla: recién después de la primera búsqueda */}
+      {!buscado ? (
+        <AvisoBuscar texto="Elegí estado, tipo, iniciador o texto (o dejá todo en Todos) y presioná Buscar para ver la bandeja." />
+      ) : error ? (
         <div style={{ color: 'var(--color-error)', fontFamily: 'var(--font-display)', fontSize: 13 }}>
           Error al cargar: {(error as Error).message}
         </div>
@@ -153,7 +190,7 @@ export function BandejaTramites() {
           title="No hay trámites"
           description="No se encontraron trámites que coincidan con los filtros seleccionados."
           action={
-            <Button variant="ghost" onClick={() => setSp(new URLSearchParams())}>
+            <Button type="button" variant="ghost" onClick={limpiar}>
               Limpiar filtros
             </Button>
           }
@@ -184,6 +221,7 @@ export function BandejaTramites() {
           {totalPaginas > 1 && (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center' }}>
               <Button
+                type="button"
                 variant="ghost"
                 disabled={paginaActual <= 1}
                 onClick={() => irAPagina(paginaActual - 1)}
@@ -194,6 +232,7 @@ export function BandejaTramites() {
                 {paginaActual} / {totalPaginas}
               </span>
               <Button
+                type="button"
                 variant="ghost"
                 disabled={paginaActual >= totalPaginas}
                 onClick={() => irAPagina(paginaActual + 1)}
@@ -297,3 +336,4 @@ const iconBtnStyle: React.CSSProperties = {
   borderRadius: 'var(--radius-lg)', padding: '9px 10px',
   color: 'var(--fg-3)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center',
 }
+const iconBtnDisabledStyle: React.CSSProperties = { opacity: 0.5, cursor: 'not-allowed' }

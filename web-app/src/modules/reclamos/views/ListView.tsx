@@ -1,63 +1,89 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Search } from 'lucide-react'
 import { useAreasCatalogo, useSubareasCatalogo, useReclamosListado, type FiltrosReclamos } from '../hooks/useReclamos'
 import { StatsBar } from '../components/StatsBar'
 import { Badge } from '../components/Badge'
+import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
 
 const ESTADOS_VALIDOS = [
   'Sin asignar', 'En gestión', 'En espera', 'En auditoría', 'Resuelto', 'Cancelado',
 ] as const
 
+// Filtros que viajan al backend (§23): se editan en el `borrador` y se aplican
+// recién al presionar Buscar. El texto ya no tiene debounce: viaja con Buscar.
+interface FiltrosBorrador {
+  estado: string | null
+  idArea: number | null
+  idSubarea: number | null
+  texto: string
+}
+
+const FILTROS_INICIALES: FiltrosBorrador = { estado: null, idArea: null, idSubarea: null, texto: '' }
+
 export function ListView() {
   const navigate = useNavigate()
 
-  const [estado, setEstado] = useState<string | null>(null)
-  const [idArea, setIdArea] = useState<number | null>(null)
-  const [idSubarea, setIdSubarea] = useState<number | null>(null)
-  const [texto, setTexto] = useState('')
-  const [textoDebounced, setTextoDebounced] = useState('')
-
-  useEffect(() => {
-    const t = setTimeout(() => setTextoDebounced(texto.trim()), 300)
-    return () => clearTimeout(t)
-  }, [texto])
+  // Búsqueda diferida (§23): entrar NO pide reclamos ni stats. Los catálogos
+  // (áreas/subáreas) sí cargan al entrar: son las opciones del filtro.
+  const busqueda = useBusquedaDiferida<FiltrosBorrador>(FILTROS_INICIALES)
+  const { borrador, setBorrador, aplicado, buscar, buscado } = busqueda
+  const { estado, idArea, idSubarea, texto } = borrador
 
   const filtros: FiltrosReclamos = {
-    estado: estado ?? undefined,
-    id_area: idArea ?? undefined,
-    id_subarea: idSubarea ?? undefined,
-    texto: textoDebounced || undefined,
+    estado: aplicado?.estado ?? undefined,
+    id_area: aplicado?.idArea ?? undefined,
+    id_subarea: aplicado?.idSubarea ?? undefined,
+    texto: aplicado?.texto.trim() || undefined,
     limit: 200,
   }
 
   const areas = useAreasCatalogo()
   const subareas = useSubareasCatalogo(idArea ?? undefined)
-  const listado = useReclamosListado(filtros)
+  const listado = useReclamosListado(filtros, { enabled: buscado, version: busqueda.version })
 
-  // Si cambia el área y la subárea elegida ya no pertenece a ella, resetearla.
+  // Si cambia el área y la subárea elegida ya no pertenece a ella, resetearla
+  // (sobre el borrador; se aplica con el próximo Buscar).
   useEffect(() => {
     if (idSubarea == null || subareas.data == null) return
-    if (!subareas.data.some((s) => s.id_subarea === idSubarea)) setIdSubarea(null)
-  }, [subareas.data, idSubarea])
+    if (!subareas.data.some((s) => s.id_subarea === idSubarea)) setBorrador((b) => ({ ...b, idSubarea: null }))
+  }, [subareas.data, idSubarea, setBorrador])
+
+  // Clic en una tarjeta de StatsBar o en el badge de estado de una fila = filtro
+  // explícito, equivalente a Buscar: actualiza el borrador Y busca. Como
+  // `buscar()` toma el borrador del render actual, el disparo se difiere a un
+  // effect acotado que corre cuando `buscar` ya se rehizo con el borrador nuevo.
+  const buscarPendiente = useRef(false)
+  useEffect(() => {
+    if (!buscarPendiente.current) return
+    buscarPendiente.current = false
+    buscar()
+  }, [buscar])
+
+  function filtrarPorEstado(nuevo: string | null) {
+    buscarPendiente.current = true
+    setBorrador((b) => ({ ...b, estado: nuevo }))
+  }
 
   function limpiar() {
-    setEstado(null); setIdArea(null); setIdSubarea(null); setTexto('')
+    setBorrador(FILTROS_INICIALES)
   }
+
+  const cantidad = listado.data?.length ?? 0
 
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button onClick={() => navigate('/reclamos/nuevo')} style={btnAccent}>+ Nuevo reclamo</button>
+        <button type="button" onClick={() => navigate('/reclamos/nuevo')} style={btnAccent}>+ Nuevo reclamo</button>
       </div>
 
-      <StatsBar estadoActivo={estado} onSelectEstado={setEstado} />
-
-      <div style={filterBarStyle}>
+      {/* Toolbar: es un form para que Enter en cualquier filtro dispare Buscar. */}
+      <form style={filterBarStyle} onSubmit={(e) => { e.preventDefault(); buscar() }}>
         <div style={filterGroup}>
           <label style={filterLabel}>Buscar</label>
           <input
             value={texto}
-            onChange={(e) => setTexto(e.target.value)}
+            onChange={(e) => { const v = e.target.value; setBorrador((b) => ({ ...b, texto: v })) }}
             placeholder="Nro reclamo, ciudadano, DNI, descripción..."
             style={{ ...filterInput, minWidth: 240 }}
           />
@@ -66,7 +92,7 @@ export function ListView() {
           <label style={filterLabel}>Estado</label>
           <select
             value={estado ?? ''}
-            onChange={(e) => setEstado(e.target.value || null)}
+            onChange={(e) => { const v = e.target.value || null; setBorrador((b) => ({ ...b, estado: v })) }}
             style={filterInput}
           >
             <option value="">Todos</option>
@@ -77,7 +103,7 @@ export function ListView() {
           <label style={filterLabel}>Área</label>
           <select
             value={idArea ?? ''}
-            onChange={(e) => { setIdArea(e.target.value ? Number(e.target.value) : null); setIdSubarea(null) }}
+            onChange={(e) => { const v = e.target.value ? Number(e.target.value) : null; setBorrador((b) => ({ ...b, idArea: v, idSubarea: null })) }}
             disabled={areas.isLoading}
             style={filterInput}
           >
@@ -89,7 +115,7 @@ export function ListView() {
           <label style={filterLabel}>Subárea</label>
           <select
             value={idSubarea ?? ''}
-            onChange={(e) => setIdSubarea(e.target.value ? Number(e.target.value) : null)}
+            onChange={(e) => { const v = e.target.value ? Number(e.target.value) : null; setBorrador((b) => ({ ...b, idSubarea: v })) }}
             disabled={subareas.isLoading}
             style={filterInput}
           >
@@ -98,15 +124,28 @@ export function ListView() {
           </select>
         </div>
         <div style={{ display: 'flex', gap: 8, alignSelf: 'flex-end' }}>
-          <button onClick={limpiar} style={btnGhost}>Limpiar</button>
+          <button type="submit" style={btnBuscar} title="Traer los reclamos con los filtros elegidos">
+            <Search size={14} strokeWidth={1.5} /> Buscar
+          </button>
+          <button type="button" onClick={limpiar} style={btnGhost}>Limpiar</button>
         </div>
-      </div>
+      </form>
 
-      <div style={{ fontSize: 'var(--size-ui)', color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
-        {listado.isLoading
-          ? 'Cargando reclamos...'
-          : `${listado.data?.length ?? 0} reclamo${(listado.data?.length ?? 0) !== 1 ? 's' : ''} encontrado${(listado.data?.length ?? 0) !== 1 ? 's' : ''}`}
-      </div>
+      {/* Contadores por estado: consultan al backend, así que recién después de la
+          primera búsqueda. Clic en una tarjeta filtra por ese estado y busca. */}
+      {buscado && <StatsBar estadoActivo={estado} onSelectEstado={filtrarPorEstado} />}
+
+      {!buscado && (
+        <AvisoBuscar texto="Elegí estado, área o texto (o dejá Todos) y presioná Buscar para ver los reclamos." />
+      )}
+
+      {buscado && (
+        <div style={{ fontSize: 'var(--size-ui)', color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
+          {listado.isLoading
+            ? 'Cargando reclamos...'
+            : `${cantidad} reclamo${cantidad !== 1 ? 's' : ''} encontrado${cantidad !== 1 ? 's' : ''}`}
+        </div>
+      )}
 
       {listado.isError && (
         <div style={{ color: 'var(--color-error)', padding: 16 }}>
@@ -161,7 +200,7 @@ export function ListView() {
                   <Td>
                     {/* #6 — clic en el badge filtra el listado, no navega al detalle */}
                     <span
-                      onClick={(e) => { e.stopPropagation(); setEstado(r.estado) }}
+                      onClick={(e) => { e.stopPropagation(); filtrarPorEstado(r.estado) }}
                       title={`Filtrar por estado "${r.estado}"`}
                       style={badgeClickable}
                     >
@@ -247,6 +286,11 @@ const btnAccent: React.CSSProperties = {
   padding: '9px 16px', background: 'var(--zaris-orange)', color: '#fff',
   border: 'none', borderRadius: 'var(--radius-lg)', fontFamily: 'var(--font-display)',
   fontSize: 'var(--size-btn)', fontWeight: 500, cursor: 'pointer',
+}
+// Buscar de la barra de filtros: mismo acento, alto alineado con Limpiar + icono.
+const btnBuscar: React.CSSProperties = {
+  ...btnAccent, padding: '7px 14px',
+  display: 'inline-flex', alignItems: 'center', gap: 6,
 }
 const badgeClickable: React.CSSProperties = {
   display: 'inline-flex', cursor: 'pointer',

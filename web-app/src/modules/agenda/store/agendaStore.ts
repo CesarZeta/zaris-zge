@@ -18,6 +18,11 @@ interface AgendaState {
   // Pill inicial por rol: se aplica UNA vez por carga del bundle (VistasView).
   // Despues manda lo que el usuario clickee.
   pillInicialAplicada: boolean
+  // Búsqueda diferida (§23): las grillas Día/Semana/Mes no piden nada hasta el
+  // primer "Ver agenda". Vive en el store (en memoria, sin persist) para
+  // sobrevivir al cambio Día/Semana/Mes y al ir y volver de otra tab de Agenda
+  // dentro de la sesión; una recarga vuelve a pedir el clic.
+  agendaBuscada: boolean
   setFechaActiva: (f: string) => void
   setIdMunicipio: (n: number) => void
   setFiltroRecurso: (r: FiltroRecursoUI) => void
@@ -26,6 +31,7 @@ interface AgendaState {
   setVista: (v: VistaAgenda) => void
   setVistaGrilla: (v: VistaGrilla) => void
   marcarPillInicial: () => void
+  marcarAgendaBuscada: () => void
   irAHoy: () => void
 }
 
@@ -38,6 +44,7 @@ export const useAgendaStore = create<AgendaState>()((set) => ({
   vista: 'vistas',
   vistaGrilla: 'dia',
   pillInicialAplicada: false,
+  agendaBuscada: false,
   setFechaActiva:    (f) => set({ fechaActiva: f }),
   setIdMunicipio:    (n) => set({ idMunicipio: n }),
   setFiltroRecurso:  (r) => set({ filtroRecurso: r }),
@@ -46,6 +53,7 @@ export const useAgendaStore = create<AgendaState>()((set) => ({
   setVista:          (v) => set({ vista: v }),
   setVistaGrilla:    (v) => set({ vistaGrilla: v }),
   marcarPillInicial: () => set({ pillInicialAplicada: true }),
+  marcarAgendaBuscada: () => set({ agendaBuscada: true }),
   irAHoy:            () => set({ fechaActiva: toIsoDate(hoy()) }),
 }))
 

@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { RefreshCw, X } from 'lucide-react'
+import { RefreshCw, Search, X } from 'lucide-react'
 import { useEnvios, useEnvioDetalle } from '../hooks/useEncuestas'
+import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
 import { colorCsat } from '../components/charts'
 import type { EstadoEnvio } from '../lib/types'
 
@@ -43,20 +44,25 @@ function fmt(d: string | null): string {
 }
 
 export function EnviosView() {
-  const [estado, setEstado] = useState<string>('')
-  const [tipo, setTipo] = useState<string>('')
+  // Búsqueda diferida (§23): tipo/estado son el borrador; el request sale
+  // recién al presionar Buscar (o Enter en el form).
+  const busqueda = useBusquedaDiferida<{ estado: string; tipo: string }>({ estado: '', tipo: '' })
+  const { estado, tipo } = busqueda.borrador
+  const setEstado = (v: string) => busqueda.setBorrador((b) => ({ ...b, estado: v }))
+  const setTipo = (v: string) => busqueda.setBorrador((b) => ({ ...b, tipo: v }))
   const [detalleId, setDetalleId] = useState<number | null>(null)
   const { data, isLoading, isError, error, refetch, isFetching } = useEnvios({
-    estado: estado || undefined,
-    tipo: tipo || undefined,
+    estado: busqueda.aplicado?.estado || undefined,
+    tipo: busqueda.aplicado?.tipo || undefined,
     limit: 200,
-  })
+  }, { enabled: busqueda.buscado, version: busqueda.version })
 
   const envios = data ?? []
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={toolbar}>
+      {/* Form: Enter = Buscar. Refrescar es type="button". */}
+      <form style={toolbar} onSubmit={(e) => { e.preventDefault(); busqueda.buscar() }}>
         <div style={field}>
           <label style={lbl}>Tipo</label>
           <select value={tipo} onChange={(e) => setTipo(e.target.value)} style={inp}>
@@ -73,14 +79,23 @@ export function EnviosView() {
             {ESTADOS.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
-        <button onClick={() => refetch()} style={{ ...btnGhost, marginLeft: 'auto', alignSelf: 'flex-end' }} title="Refrescar">
-          <RefreshCw size={14} strokeWidth={1.5} style={{ animation: isFetching ? 'spin 1s linear infinite' : undefined }} />
-        </button>
-      </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignSelf: 'flex-end' }}>
+          <button type="submit" style={btnBuscar} title="Traer los envíos con el tipo y estado elegidos">
+            <Search size={14} strokeWidth={1.5} /> Buscar
+          </button>
+          <button type="button" onClick={() => refetch()} style={btnGhost} title="Refrescar" disabled={!busqueda.buscado}>
+            <RefreshCw size={14} strokeWidth={1.5} style={{ animation: isFetching ? 'spin 1s linear infinite' : undefined }} />
+          </button>
+        </div>
+      </form>
 
       {isError && <div style={errorBanner}>{(error as Error)?.message ?? 'Error al cargar envíos'}</div>}
 
-      <div style={card}>
+      {!busqueda.buscado && (
+        <AvisoBuscar texto="Elegí tipo y estado (o dejá Todos) y presioná Buscar para ver los envíos." />
+      )}
+
+      {busqueda.buscado && <div style={card}>
         <table style={table}>
           <thead>
             <tr>
@@ -120,7 +135,7 @@ export function EnviosView() {
             })}
           </tbody>
         </table>
-      </div>
+      </div>}
 
       {detalleId != null && <DetalleEnvio id={detalleId} onClose={() => setDetalleId(null)} />}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -204,6 +219,11 @@ const btnGhost: React.CSSProperties = {
   fontFamily: 'var(--font-display)', cursor: 'pointer', borderRadius: 8, padding: '6px 9px',
   background: 'transparent', color: 'var(--fg-2)', border: '1px solid var(--border-medium)',
   display: 'inline-flex', alignItems: 'center',
+}
+// Buscar del toolbar (submit del form de búsqueda diferida, §23).
+const btnBuscar: React.CSSProperties = {
+  ...btnGhost, gap: 6, padding: '6px 12px', fontSize: '0.84rem', fontWeight: 500,
+  background: 'var(--zaris-orange)', color: 'white', border: '1px solid var(--zaris-orange)',
 }
 const card: React.CSSProperties = {
   background: 'var(--surface-100)', border: '1px solid var(--border-primary)', borderRadius: 12, overflowX: 'auto',

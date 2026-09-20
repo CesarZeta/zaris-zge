@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Plus, RefreshCw, Ticket, ExternalLink } from 'lucide-react'
+import { Plus, RefreshCw, Search, Ticket, ExternalLink } from 'lucide-react'
+import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
 import { useEventosEntrada, useCancelarEventoEntrada } from '../hooks/useEntradas'
 import { EventoEntradaFormModal } from '../components/EventoEntradaFormModal'
 import { ReservaModal } from '../../agenda/modals/ReservaModal'
@@ -10,7 +11,12 @@ import type { Evento } from '../../agenda/types/agenda'
 
 export function Overview() {
   const push = useNotificationsStore((s) => s.push)
-  const { data, isLoading, isError, error, refetch, isFetching } = useEventosEntrada()
+  // Búsqueda diferida (§23): la lista no se pide al entrar; "Ver eventos" la
+  // trae. No hay filtros server: el texto filtra lo cargado, en vivo.
+  const busqueda = useBusquedaDiferida({})
+  const { data, isLoading, isError, error, refetch, isFetching } = useEventosEntrada(undefined, {
+    enabled: busqueda.buscado, version: busqueda.version,
+  })
   const espacios = useEspacios()
   const cancelar = useCancelarEventoEntrada()
 
@@ -64,21 +70,27 @@ export function Overview() {
       </div>
 
       <div style={toolbar}>
-        <div style={field}>
-          <label style={lbl}>Buscar</label>
-          <input
-            type="text"
-            value={fTexto}
-            onChange={(e) => setFTexto(e.target.value)}
-            placeholder="Nombre del evento o espacio"
-            style={{ ...inp, minWidth: 260 }}
-          />
-        </div>
+        {/* El texto filtra lo cargado: aparece recién cuando hay eventos que filtrar. */}
+        {busqueda.buscado && (
+          <div style={field}>
+            <label style={lbl}>Buscar</label>
+            <input
+              type="text"
+              value={fTexto}
+              onChange={(e) => setFTexto(e.target.value)}
+              placeholder="Nombre del evento o espacio"
+              style={{ ...inp, minWidth: 260 }}
+            />
+          </div>
+        )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-          <button onClick={() => refetch()} style={btnGhost} title="Refrescar">
+          <button type="button" onClick={() => busqueda.buscar()} style={btnPrimary} title="Traer los eventos con entradas (vuelve a consultar)">
+            <Search size={14} strokeWidth={1.5} /> Ver eventos
+          </button>
+          <button type="button" onClick={() => refetch()} style={btnGhost} title="Refrescar" disabled={!busqueda.buscado}>
             <RefreshCw size={14} strokeWidth={1.5} style={{ animation: isFetching ? 'spin 1s linear infinite' : undefined }} />
           </button>
-          <button onClick={() => setModalOpen(true)} style={btnPrimary}>
+          <button type="button" onClick={() => setModalOpen(true)} style={btnGhost}>
             <Plus size={14} strokeWidth={1.5} /> Nuevo evento
           </button>
         </div>
@@ -86,7 +98,11 @@ export function Overview() {
 
       {isError && <div style={errorBanner}>{(error as Error)?.message ?? 'Error al cargar eventos'}</div>}
 
-      {!isLoading && !isError && filtrados.length === 0 && (
+      {!busqueda.buscado && (
+        <AvisoBuscar texto="Presioná Ver eventos para traer los eventos con entradas. Después filtrá por texto sin volver a consultar." />
+      )}
+
+      {busqueda.buscado && !isLoading && !isError && filtrados.length === 0 && (
         <div style={emptyCard}>
           <Ticket size={28} strokeWidth={1.5} style={{ color: 'var(--fg-3)' }} />
           <p style={{ margin: '10px 0 4px', fontSize: '0.92rem', color: 'var(--fg-2)' }}>

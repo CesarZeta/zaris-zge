@@ -8,11 +8,16 @@ import {
   listarEventos,
 } from '../api/agendaApi'
 import type { EventoCreatePayload, EventoUpdatePayload } from '../types/agenda'
+import type { OpcionesListado } from './useAgenda'
 
-export function useEventos(params?: Parameters<typeof listarEventos>[0]) {
+/** Listado de eventos. `opts` (§23 búsqueda diferida): `enabled: false` hasta
+ *  el primer Buscar y `version` en la queryKey para que Buscar con los mismos
+ *  filtros vuelva a la red. Default `enabled: true` (comportamiento previo). */
+export function useEventos(params?: Parameters<typeof listarEventos>[0], opts: OpcionesListado = {}) {
   return useQuery({
-    queryKey: ['agenda', 'eventos', params],
+    queryKey: ['agenda', 'eventos', params, opts.version ?? 0],
     queryFn:  () => listarEventos(params),
+    enabled:  opts.enabled ?? true,
   })
 }
 

@@ -127,7 +127,9 @@ export function BuscarView() {
           <button onClick={() => navigate('/ciudadanos/nuevo')} style={btnAccent}>
             + Nuevo
           </button>
-          <button onClick={() => navigate('/ciudadanos/listado')} style={btnGhost}>
+          {/* Intención explícita (§23): este clic YA es la búsqueda del listado —
+              ListView lee `state.buscar` y arranca buscando en vez de mostrar el gate. */}
+          <button onClick={() => navigate('/ciudadanos/listado', { state: { buscar: true } })} style={btnGhost}>
             Listado
           </button>
         </div>

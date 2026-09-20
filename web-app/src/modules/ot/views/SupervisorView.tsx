@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Search } from 'lucide-react'
 import { useMesaSupervisor } from '../hooks/useOT'
 import type { MesaSupervisorFiltros } from '../api/otApi'
 import type { MesaSupervisorRow } from '../types/ot'
@@ -9,8 +10,12 @@ import { ReasignarModal } from '../components/ReasignarModal'
 import { OTDetalleDrawer } from '../components/OTDetalleDrawer'
 import { PlanificadorOT } from '../components/PlanificadorOT'
 import { useAuthStore } from '../../../stores/auth'
+import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
 
 type Tab = 'asignar' | 'reasignar'
+
+// Filtros que viajan al backend (borrador de la búsqueda diferida, §23).
+type BorradorServer = { nroDesde: string; nroHasta: string; fechaDesde: string; fechaHasta: string }
 
 export function SupervisorView() {
   const user = useAuthStore((s) => s.user)
@@ -23,26 +28,28 @@ export function SupervisorView() {
   const [fTexto, setFTexto] = useState('')
   const [fEstado, setFEstado] = useState('')
   const [fPrioridad, setFPrioridad] = useState('')
-  // Búsqueda server-side por rango de número y de fechas (Fase 3).
-  const [fNroDesde, setFNroDesde] = useState('')
-  const [fNroHasta, setFNroHasta] = useState('')
-  const [fFechaDesde, setFFechaDesde] = useState('')
-  const [fFechaHasta, setFFechaHasta] = useState('')
-  const [filtrosServer, setFiltrosServer] = useState<MesaSupervisorFiltros>({})
-  // Debounce: un request por pausa de tipeo, no por tecla.
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setFiltrosServer({
-        nro_desde: fNroDesde !== '' ? Number(fNroDesde) : undefined,
-        nro_hasta: fNroHasta !== '' ? Number(fNroHasta) : undefined,
-        fecha_desde: fFechaDesde || undefined,
-        fecha_hasta: fFechaHasta || undefined,
-      })
-    }, 400)
-    return () => clearTimeout(t)
-  }, [fNroDesde, fNroHasta, fFechaDesde, fFechaHasta])
+  // Búsqueda server-side por rango de número y de fechas (Fase 3), diferida
+  // (§23): los cuatro inputs son el borrador y el request sale recién al
+  // presionar Buscar (o Enter en el form). Texto/estado/prioridad son
+  // client-side y siguen filtrando en vivo sobre lo cargado.
+  const busqueda = useBusquedaDiferida<BorradorServer>({ nroDesde: '', nroHasta: '', fechaDesde: '', fechaHasta: '' })
+  const { nroDesde: fNroDesde, nroHasta: fNroHasta, fechaDesde: fFechaDesde, fechaHasta: fFechaHasta } = busqueda.borrador
+  const setBorrador = (patch: Partial<BorradorServer>) => busqueda.setBorrador({ ...busqueda.borrador, ...patch })
+  const filtrosServer = useMemo<MesaSupervisorFiltros>(() => {
+    const a = busqueda.aplicado
+    if (!a) return {}
+    return {
+      nro_desde: a.nroDesde !== '' ? Number(a.nroDesde) : undefined,
+      nro_hasta: a.nroHasta !== '' ? Number(a.nroHasta) : undefined,
+      fecha_desde: a.fechaDesde || undefined,
+      fecha_hasta: a.fechaHasta || undefined,
+    }
+  }, [busqueda.aplicado])
 
-  const { data, isLoading, isError, error, refetch, isFetching } = useMesaSupervisor(filtrosServer)
+  const { data, isLoading, isError, error, refetch, isFetching } = useMesaSupervisor(
+    filtrosServer,
+    { enabled: busqueda.buscado, version: busqueda.version },
+  )
   const reclamos = data ?? []
   const [seleccionados, setSeleccionados] = useState<Set<number>>(new Set())
 
@@ -155,10 +162,10 @@ export function SupervisorView() {
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border-primary)', marginBottom: 14 }}>
         <TabButton active={tab === 'asignar'} onClick={() => setTab('asignar')}>
-          Asignar <Count active={tab === 'asignar'}>{nAsignar}</Count>
+          Asignar {busqueda.buscado && <Count active={tab === 'asignar'}>{nAsignar}</Count>}
         </TabButton>
         <TabButton active={tab === 'reasignar'} onClick={() => setTab('reasignar')}>
-          Reasignar <Count active={tab === 'reasignar'}>{nReasignar}</Count>
+          Reasignar {busqueda.buscado && <Count active={tab === 'reasignar'}>{nReasignar}</Count>}
         </TabButton>
       </div>
 
@@ -169,7 +176,9 @@ export function SupervisorView() {
         </div>
       )}
 
-      <Toolbar onRefresh={() => refetch()} refreshing={isFetching}>
+      {/* Form: Enter en cualquier filtro = Buscar. Refrescar es type="button" y no dispara el submit. */}
+      <form onSubmit={(e) => { e.preventDefault(); busqueda.buscar() }}>
+      <Toolbar onRefresh={() => refetch()} refreshing={isFetching} refreshDisabled={!busqueda.buscado}>
         <Field label="Nº reclamo o tipo" wide>
           <input
             type="text"
@@ -185,7 +194,7 @@ export function SupervisorView() {
             type="number"
             min={1}
             value={fNroDesde}
-            onChange={(e) => setFNroDesde(e.target.value)}
+            onChange={(e) => setBorrador({ nroDesde: e.target.value })}
             placeholder="Ej: 40"
             style={inputStyle}
           />
@@ -195,16 +204,16 @@ export function SupervisorView() {
             type="number"
             min={1}
             value={fNroHasta}
-            onChange={(e) => setFNroHasta(e.target.value)}
+            onChange={(e) => setBorrador({ nroHasta: e.target.value })}
             placeholder="Ej: 60"
             style={inputStyle}
           />
         </Field>
         <Field label="Fecha desde">
-          <input type="date" value={fFechaDesde} onChange={(e) => setFFechaDesde(e.target.value)} style={inputStyle} />
+          <input type="date" value={fFechaDesde} onChange={(e) => setBorrador({ fechaDesde: e.target.value })} style={inputStyle} />
         </Field>
         <Field label="Fecha hasta">
-          <input type="date" value={fFechaHasta} onChange={(e) => setFFechaHasta(e.target.value)} style={inputStyle} />
+          <input type="date" value={fFechaHasta} onChange={(e) => setBorrador({ fechaHasta: e.target.value })} style={inputStyle} />
         </Field>
         {tab === 'reasignar' && (
           <Field label="Estado">
@@ -224,9 +233,13 @@ export function SupervisorView() {
             <option value="Baja">Baja</option>
           </select>
         </Field>
+        <button type="submit" style={btnBuscar} title="Traer la mesa con el rango de números y fechas elegido">
+          <Search size={14} strokeWidth={1.5} /> Buscar
+        </button>
       </Toolbar>
+      </form>
 
-      <StatsChips counts={stats} empty="Sin reclamos en esta vista" />
+      {busqueda.buscado && <StatsChips counts={stats} empty="Sin reclamos en esta vista" />}
 
       {tab === 'asignar' && seleccionados.size > 0 && (
         <div style={selbarStyle}>
@@ -241,6 +254,11 @@ export function SupervisorView() {
       )}
 
       <div style={tab === 'asignar' ? layoutAsignarStyle : undefined}>
+        {/* Hasta la primera búsqueda la leyenda ocupa el lugar de la bandeja;
+            el panel de planificación queda a la derecha con su placeholder. */}
+        {!busqueda.buscado ? (
+          <AvisoBuscar texto="Elegí rango de números o fechas (o dejá todo vacío para ver toda la mesa) y presioná Buscar." />
+        ) : (
         <div style={cardStyle}>
           <table style={tableStyle}>
             <thead>
@@ -347,6 +365,7 @@ export function SupervisorView() {
             </tbody>
           </table>
         </div>
+        )}
 
         {tab === 'asignar' && (
           <PlanificadorOT
@@ -541,6 +560,15 @@ const btnWarnSm: React.CSSProperties = {
 const btnGhostSm: React.CSSProperties = {
   ...btnBase, background: 'transparent', color: 'var(--fg-2)',
   border: '1px solid var(--border-medium)',
+}
+
+// Botón Buscar del toolbar (submit del form de búsqueda diferida, §23).
+// Misma geometría que el Refrescar del Toolbar para que alineen en la fila.
+const btnBuscar: React.CSSProperties = {
+  fontFamily: 'var(--font-display)', fontSize: '0.84rem', cursor: 'pointer',
+  borderRadius: 8, padding: '7px 14px', border: '1px solid var(--zaris-orange)',
+  background: 'var(--zaris-orange)', color: 'white', fontWeight: 500,
+  display: 'inline-flex', alignItems: 'center', gap: 6,
 }
 
 const selbarBtnPrimary: React.CSSProperties = {

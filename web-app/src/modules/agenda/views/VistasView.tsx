@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Plus, Search } from 'lucide-react'
 import { useAgendaStore } from '../store/agendaStore'
 import { useAuthStore } from '../../../stores/auth'
 import { RecursoTogglePills } from '../components/RecursoTogglePills'
 import { VistaToggle } from '../components/VistaToggle'
+import { AgendaFilters } from '../components/AgendaFilters'
 import { TimelineView } from './TimelineView'
 import { WeeklyView } from './WeeklyView'
 import { MonthlyView } from './MonthlyView'
@@ -12,6 +13,7 @@ import { EventoEncargadosModal } from '../modals/EventoEncargadosModal'
 import { OcupacionModal } from '../modals/OcupacionModal'
 import { OcupacionOTModal } from '../modals/OcupacionOTModal'
 import { Button } from '../../../ui'
+import { AvisoBuscar } from '../../../ui/busqueda'
 
 export function VistasView() {
   const vistaGrilla = useAgendaStore((s) => s.vistaGrilla)
@@ -19,6 +21,12 @@ export function VistasView() {
   const pillInicialAplicada = useAgendaStore((s) => s.pillInicialAplicada)
   const marcarPillInicial = useAgendaStore((s) => s.marcarPillInicial)
   const setFiltroRecurso = useAgendaStore((s) => s.setFiltroRecurso)
+  // Búsqueda diferida (§23): las grillas (y con ellas las queries de
+  // calendario, conflictos y OTs pendientes) se montan recién tras el primer
+  // "Ver agenda". Después, navegar fechas, cambiar de pill o de vista re-pide
+  // como siempre (acción explícita del usuario).
+  const agendaBuscada = useAgendaStore((s) => s.agendaBuscada)
+  const marcarAgendaBuscada = useAgendaStore((s) => s.marcarAgendaBuscada)
   const nivel = useAuthStore((s) => s.user?.nivel_acceso)
 
   // Pill inicial por rol (una vez por carga): el supervisor (nivel 2) vive
@@ -46,22 +54,45 @@ export function VistasView() {
       }}>
         <VistaToggle />
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Button variant="default" icon={<Plus size={14} strokeWidth={1.5} />} onClick={() => setEventoOpen(true)}>
+          <Button type="button" variant="default" icon={<Plus size={14} strokeWidth={1.5} />} onClick={() => setEventoOpen(true)}>
             Nuevo evento
           </Button>
-          <Button variant="default" icon={<Plus size={14} strokeWidth={1.5} />} onClick={() => setOcupOpen(true)}>
+          <Button type="button" variant="default" icon={<Plus size={14} strokeWidth={1.5} />} onClick={() => setOcupOpen(true)}>
             Nueva ocupacion
           </Button>
-          <Button variant="accent" icon={<Plus size={14} strokeWidth={1.5} />} onClick={() => setOcupOTOpen(true)}>
+          <Button type="button" variant="accent" icon={<Plus size={14} strokeWidth={1.5} />} onClick={() => setOcupOTOpen(true)}>
             Planificar OT
           </Button>
         </div>
       </div>
       <RecursoTogglePills />
 
-      {vistaGrilla === 'dia'    && <TimelineView />}
-      {vistaGrilla === 'semana' && <WeeklyView />}
-      {vistaGrilla === 'mes'    && <MonthlyView />}
+      {!agendaBuscada && (
+        <>
+          {/* Barra de fecha + subárea: acá SOLO en el estado "sin buscar".
+              Después la renderiza cada grilla (Día y Semana la traen adentro;
+              Mes tiene su propio encabezado), así no aparece dos veces. */}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <AgendaFilters />
+            </div>
+            <Button
+              type="button"
+              variant="accent"
+              icon={<Search size={14} strokeWidth={1.5} />}
+              onClick={marcarAgendaBuscada}
+              title="Traer la agenda de la fecha y el tipo de recurso elegidos"
+            >
+              Ver agenda
+            </Button>
+          </div>
+          <AvisoBuscar texto="Elegí Día, Semana o Mes, el tipo de recurso y la fecha, y presioná Ver agenda." />
+        </>
+      )}
+
+      {agendaBuscada && vistaGrilla === 'dia'    && <TimelineView />}
+      {agendaBuscada && vistaGrilla === 'semana' && <WeeklyView />}
+      {agendaBuscada && vistaGrilla === 'mes'    && <MonthlyView />}
 
       <EventoModal
         open={eventoOpen}

@@ -4,9 +4,12 @@ interface ToolbarProps {
   children: ReactNode
   onRefresh: () => void
   refreshing?: boolean
+  /** Búsqueda diferida (§23): Refrescar queda deshabilitado hasta la primera búsqueda. */
+  refreshDisabled?: boolean
 }
 
-export function Toolbar({ children, onRefresh, refreshing }: ToolbarProps) {
+export function Toolbar({ children, onRefresh, refreshing, refreshDisabled }: ToolbarProps) {
+  const inactivo = Boolean(refreshing || refreshDisabled)
   return (
     <div style={{
       background: '#e3f2fd', border: '1px solid #bbdefb',
@@ -21,13 +24,17 @@ export function Toolbar({ children, onRefresh, refreshing }: ToolbarProps) {
       <div style={{ display: 'flex', gap: 10, alignItems: 'end', flexWrap: 'wrap' }}>
         {children}
         <button
+          // Las vistas envuelven el toolbar en un <form>: sin type="button" este
+          // botón sería el submit implícito y cada Refrescar dispararía un Buscar.
+          type="button"
           onClick={onRefresh}
-          disabled={refreshing}
+          disabled={inactivo}
+          title={refreshDisabled ? 'Primero hacé una búsqueda' : 'Volver a consultar con los últimos filtros buscados'}
           style={{
-            fontFamily: 'var(--font-display)', fontSize: '0.84rem', cursor: 'pointer',
+            fontFamily: 'var(--font-display)', fontSize: '0.84rem', cursor: inactivo ? 'default' : 'pointer',
             borderRadius: 8, padding: '7px 14px', border: '1px solid var(--border-medium)',
             background: 'var(--surface-100)', color: 'var(--fg-1)',
-            opacity: refreshing ? 0.6 : 1,
+            opacity: inactivo ? 0.6 : 1,
           }}
         >
           {refreshing ? 'Actualizando…' : 'Refrescar'}

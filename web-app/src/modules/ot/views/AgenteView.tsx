@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
+import { Search } from 'lucide-react'
 import { useMesaAgente, useTomarOT } from '../hooks/useOT'
+import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
 import { useNotificationsStore } from '../../../stores/notifications'
 import type { EstadoOT, MesaAgenteRow } from '../types/ot'
 import { BadgeEstadoOT, BadgePrioridad, SLACell, nombreCiudadano } from '../lib/format'
@@ -9,8 +11,22 @@ import { OTDetalleDrawer } from '../components/OTDetalleDrawer'
 
 type Tab = 'mias' | 'disponibles'
 
+// Botón "Ver mis OT" del toolbar (submit del form de búsqueda diferida, §23).
+// Misma geometría que el Refrescar del Toolbar para que alineen en la fila.
+const btnBuscar: React.CSSProperties = {
+  fontFamily: 'var(--font-display)', fontSize: '0.84rem', cursor: 'pointer',
+  borderRadius: 8, padding: '7px 14px', border: '1px solid var(--zaris-orange)',
+  background: 'var(--zaris-orange)', color: 'white', fontWeight: 500,
+  display: 'inline-flex', alignItems: 'center', gap: 6,
+}
+
 export function AgenteView() {
-  const { data, isLoading, isError, error, refetch, isFetching } = useMesaAgente()
+  // Búsqueda diferida (§23): la mesa no pide nada al entrar; "Ver mis OT" trae
+  // las órdenes. No hay filtros server: estado/prioridad/texto filtran lo cargado.
+  const busqueda = useBusquedaDiferida({})
+  const { data, isLoading, isError, error, refetch, isFetching } = useMesaAgente({
+    enabled: busqueda.buscado, version: busqueda.version,
+  })
   const push = useNotificationsStore((s) => s.push)
   const mutTomar = useTomarOT()
 
@@ -71,7 +87,9 @@ export function AgenteView() {
     }
   }
 
-  const subtitle = isLoading
+  const subtitle = !busqueda.buscado
+    ? 'Presioná Ver mis OT para traer las órdenes a tu cargo y las disponibles de tu equipo.'
+    : isLoading
     ? 'Cargando tus órdenes asignadas...'
     : isError
       ? 'No pudimos cargar tus OTs.'
@@ -91,14 +109,16 @@ export function AgenteView() {
 
       <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border-primary)', marginBottom: 14 }}>
         <TabButton active={tab === 'mias'} onClick={() => setTab('mias')}>
-          Mis OTs <Count active={tab === 'mias'}>{counts.mias}</Count>
+          Mis OTs {busqueda.buscado && <Count active={tab === 'mias'}>{counts.mias}</Count>}
         </TabButton>
         <TabButton active={tab === 'disponibles'} onClick={() => setTab('disponibles')}>
-          Disponibles para tomar <Count active={tab === 'disponibles'}>{counts.disponibles}</Count>
+          Disponibles para tomar {busqueda.buscado && <Count active={tab === 'disponibles'}>{counts.disponibles}</Count>}
         </TabButton>
       </div>
 
-      <Toolbar onRefresh={() => refetch()} refreshing={isFetching}>
+      {/* Form: Enter en cualquier filtro = Ver mis OT. Refrescar es type="button". */}
+      <form onSubmit={(e) => { e.preventDefault(); busqueda.buscar() }}>
+      <Toolbar onRefresh={() => refetch()} refreshing={isFetching} refreshDisabled={!busqueda.buscado}>
         <Field label="Nº OT, reclamo o tipo" wide>
           <input
             type="text"
@@ -131,10 +151,18 @@ export function AgenteView() {
             <option value="Baja">Baja</option>
           </select>
         </Field>
+        <button type="submit" style={btnBuscar} title="Traer las órdenes a tu cargo y las disponibles de tu equipo">
+          <Search size={14} strokeWidth={1.5} /> Ver mis OT
+        </button>
       </Toolbar>
+      </form>
 
-      <StatsChips counts={statsCounts} empty="Sin OTs en esta vista" />
+      {busqueda.buscado && <StatsChips counts={statsCounts} empty="Sin OTs en esta vista" />}
 
+      {/* Hasta la primera carga la leyenda ocupa el lugar de la tabla. */}
+      {!busqueda.buscado ? (
+        <AvisoBuscar texto="Presioná Ver mis OT para traer las órdenes a tu cargo y las disponibles de tu equipo. Después filtrá por estado, prioridad o texto sin volver a consultar." />
+      ) : (
       <div style={cardStyle}>
         <table style={tableStyle}>
           <thead>
@@ -198,6 +226,7 @@ export function AgenteView() {
           </tbody>
         </table>
       </div>
+      )}
 
       <CambiarEstadoOTModal
         open={modalOT !== null}

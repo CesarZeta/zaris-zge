@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
+import { Search } from 'lucide-react'
 import { useMesaAuditoria } from '../hooks/useOT'
+import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
 import type { MesaAuditoriaRow } from '../types/ot'
 import { BadgePrioridad, SLACell, nombreAgente, nombreCiudadano } from '../lib/format'
 import { Field, Toolbar, inputStyle } from '../components/Toolbar'
@@ -9,9 +11,23 @@ import { useAuthStore } from '../../../stores/auth'
 
 type Kind = 'aprobar' | 'rechazar'
 
+// Botón "Ver OTs en auditoría" del toolbar (submit del form de búsqueda
+// diferida, §23). Misma geometría que el Refrescar del Toolbar.
+const btnBuscar: React.CSSProperties = {
+  fontFamily: 'var(--font-display)', fontSize: '0.84rem', cursor: 'pointer',
+  borderRadius: 8, padding: '7px 14px', border: '1px solid var(--zaris-orange)',
+  background: 'var(--zaris-orange)', color: 'white', fontWeight: 500,
+  display: 'inline-flex', alignItems: 'center', gap: 6,
+}
+
 export function AuditoriaView() {
   const puedeGestionarAdjuntos = useAuthStore((s) => s.user != null && s.user.nivel_acceso <= 2)
-  const { data, isLoading, isError, error, refetch, isFetching } = useMesaAuditoria()
+  // Búsqueda diferida (§23): la mesa no pide nada al entrar; "Ver OTs en
+  // auditoría" trae las órdenes. Prioridad/texto filtran lo cargado.
+  const busqueda = useBusquedaDiferida({})
+  const { data, isLoading, isError, error, refetch, isFetching } = useMesaAuditoria({
+    enabled: busqueda.buscado, version: busqueda.version,
+  })
   const idAgente = data?.id_agente ?? null
   const ots = data?.ots ?? []
 
@@ -38,7 +54,9 @@ export function AuditoriaView() {
     })
   }, [ots, fTexto, fPrioridad])
 
-  const subtitle = isLoading
+  const subtitle = !busqueda.buscado
+    ? 'Presioná Ver OTs en auditoría para traer las órdenes pendientes de auditar.'
+    : isLoading
     ? 'Cargando OTs pendientes de auditoría...'
     : isError
       ? 'Acceso denegado o sin agente auditor vinculado.'
@@ -56,7 +74,9 @@ export function AuditoriaView() {
         </div>
       )}
 
-      <Toolbar onRefresh={() => refetch()} refreshing={isFetching}>
+      {/* Form: Enter en cualquier filtro = Ver OTs en auditoría. Refrescar es type="button". */}
+      <form onSubmit={(e) => { e.preventDefault(); busqueda.buscar() }}>
+      <Toolbar onRefresh={() => refetch()} refreshing={isFetching} refreshDisabled={!busqueda.buscado}>
         <Field label="Nº OT, reclamo o tipo" wide>
           <input
             type="text"
@@ -75,15 +95,25 @@ export function AuditoriaView() {
             <option value="Baja">Baja</option>
           </select>
         </Field>
+        <button type="submit" style={btnBuscar} title="Traer las órdenes pendientes de auditar">
+          <Search size={14} strokeWidth={1.5} /> Ver OTs en auditoría
+        </button>
       </Toolbar>
+      </form>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-        <span style={chipStyle}><strong style={{ color: 'var(--fg-1)', marginRight: 4 }}>{ots.length}</strong> OTs en auditoría</span>
-        {filtrados.length !== ots.length && (
-          <span style={chipStyle}><strong style={{ color: 'var(--fg-1)', marginRight: 4 }}>{filtrados.length}</strong> visibles tras filtros</span>
-        )}
-      </div>
+      {busqueda.buscado && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+          <span style={chipStyle}><strong style={{ color: 'var(--fg-1)', marginRight: 4 }}>{ots.length}</strong> OTs en auditoría</span>
+          {filtrados.length !== ots.length && (
+            <span style={chipStyle}><strong style={{ color: 'var(--fg-1)', marginRight: 4 }}>{filtrados.length}</strong> visibles tras filtros</span>
+          )}
+        </div>
+      )}
 
+      {/* Hasta la primera carga la leyenda ocupa el lugar de la tabla. */}
+      {!busqueda.buscado ? (
+        <AvisoBuscar texto="Presioná Ver OTs en auditoría para traer las órdenes pendientes de auditar. Después filtrá por prioridad o texto sin volver a consultar." />
+      ) : (
       <div style={cardStyle}>
         <table style={tableStyle}>
           <thead>
@@ -142,6 +172,7 @@ export function AuditoriaView() {
           </tbody>
         </table>
       </div>
+      )}
 
       <AuditarModal
         open={modal !== null}

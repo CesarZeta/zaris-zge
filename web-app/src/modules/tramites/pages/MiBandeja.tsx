@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { RefreshCw, Search, Inbox, ArrowRightLeft, Hand } from 'lucide-react'
-import { Input, Skeleton, EmptyState } from '../../../ui'
+import { RefreshCw, Search, Inbox, ArrowRightLeft, Hand, User } from 'lucide-react'
+import { Button, Input, Skeleton, EmptyState } from '../../../ui'
+import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
 import { useMiBandeja } from '../hooks/useTramites'
 import { tomarTramite, pasarTramite } from '../lib/api'
 import { useNotificationsStore } from '../../../stores/notifications'
@@ -20,22 +21,19 @@ export function MiBandeja() {
   const navigate = useNavigate()
   const notify = useNotificationsStore((s) => s.push)
 
-  const [q, setQ] = useState('')
-  const [qDebounced, setQDebounced] = useState('')
-  const [soloSinTomar, setSoloSinTomar] = useState(false)
+  // Búsqueda diferida (§23): el texto y "solo sin tomar" viajan al backend
+  // recién al presionar "Ver mi bandeja"; hasta entonces no se pide nada.
+  const busqueda = useBusquedaDiferida<{ q: string; soloSinTomar: boolean }>({ q: '', soloSinTomar: false })
+  const { q, soloSinTomar } = busqueda.borrador
   const [pasando, setPasando] = useState<TramiteBandejaItem | null>(null)
   const [accionId, setAccionId] = useState<number | null>(null)
 
-  useEffect(() => {
-    const t = setTimeout(() => setQDebounced(q.trim()), 350)
-    return () => clearTimeout(t)
-  }, [q])
-
+  const qAplicado = busqueda.aplicado?.q.trim() ?? ''
   const { data, isLoading, error, refetch } = useMiBandeja({
     limit: LIMIT,
-    ...(qDebounced ? { q: qDebounced } : {}),
-    ...(soloSinTomar ? { sin_tomar: true } : {}),
-  })
+    ...(qAplicado ? { q: qAplicado } : {}),
+    ...(busqueda.aplicado?.soloSinTomar ? { sin_tomar: true } : {}),
+  }, { enabled: busqueda.buscado, version: busqueda.version })
 
   const items = data?.items ?? []
   const total = data?.total ?? 0
@@ -63,26 +61,44 @@ export function MiBandeja() {
         Trámites asignados a vos, a tus mesas o a tu subárea. Tomalos y hacé pases desde acá.
       </p>
 
-      {/* Filtros */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+      {/* Filtros: form para que Enter en el texto dispare la búsqueda (§23). */}
+      <form
+        style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}
+        onSubmit={(e) => { e.preventDefault(); busqueda.buscar() }}
+      >
         <div style={{ flex: '1 1 240px', minWidth: 180 }}>
           <Input
             icon={<Search size={14} />}
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => busqueda.setBorrador((b) => ({ ...b, q: e.target.value }))}
             placeholder="Buscar por asunto o número..."
           />
         </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-display)', fontSize: 13, color: 'var(--fg-2)', cursor: 'pointer' }}>
-          <input type="checkbox" checked={soloSinTomar} onChange={(e) => setSoloSinTomar(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={soloSinTomar}
+            onChange={(e) => busqueda.setBorrador((b) => ({ ...b, soloSinTomar: e.target.checked }))}
+          />
           Solo sin tomar
         </label>
-        <button type="button" onClick={() => { void refetch() }} title="Actualizar" style={iconBtnStyle}>
+        <Button type="submit" variant="accent" icon={<Search size={15} strokeWidth={1.5} />} title="Traer los trámites que te corresponden">
+          Ver mi bandeja
+        </Button>
+        <button
+          type="button"
+          onClick={() => { void refetch() }}
+          title="Actualizar"
+          style={{ ...iconBtnStyle, ...(busqueda.buscado ? {} : iconBtnDisabledStyle) }}
+          disabled={!busqueda.buscado}
+        >
           <RefreshCw size={15} strokeWidth={1.5} />
         </button>
-      </div>
+      </form>
 
-      {error ? (
+      {!busqueda.buscado ? (
+        <AvisoBuscar texto="Presioná Ver mi bandeja para traer los trámites que te corresponden. Podés acotar por texto o marcar solo sin tomar antes de buscar." />
+      ) : error ? (
         <div style={{ color: 'var(--color-error)', fontFamily: 'var(--font-display)', fontSize: 13 }}>
           Error al cargar: {(error as Error).message}
         </div>
@@ -126,7 +142,11 @@ export function MiBandeja() {
                       <td style={tdStyle}><EstadoBadge etiqueta={item.estado_etiqueta} color={item.estado_color} /></td>
                       <td style={{ ...tdStyle, fontSize: 12, color: 'var(--fg-2)', fontFamily: 'var(--font-display)' }}>
                         {item.destinatario_actual_tipo === 'agente'
-                          ? <span title="Asignado directo a un agente">👤 {item.destinatario_actual_nombre}</span>
+                          ? (
+                            <span title="Asignado directo a un agente" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              <User size={12} strokeWidth={1.5} /> {item.destinatario_actual_nombre}
+                            </span>
+                          )
                           : item.destinatario_actual_tipo === 'equipo'
                             ? <span title="Mesa (equipo)">{item.destinatario_actual_nombre} · mesa</span>
                             : (item.destinatario_actual_nombre ?? '—')}
@@ -209,6 +229,7 @@ const iconBtnStyle: React.CSSProperties = {
   background: 'var(--surface-300)', border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-lg)',
   padding: '9px 10px', color: 'var(--fg-3)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center',
 }
+const iconBtnDisabledStyle: React.CSSProperties = { opacity: 0.5, cursor: 'not-allowed' }
 const accionBtn: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px',
   borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-primary)',

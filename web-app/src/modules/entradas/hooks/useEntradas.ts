@@ -7,11 +7,20 @@ import {
 } from '../api/entradasApi'
 import type { EventoCreatePayload } from '../../agenda/types/agenda'
 
-export function useEventosEntrada(params?: ListarEventosEntradaParams) {
+/** Opciones del listado de eventos. `enabled: false` = búsqueda diferida (§23:
+ *  la pantalla no pide nada al entrar); `version` en la queryKey para que
+ *  "Ver eventos" vuelva a la red aunque no cambie nada (ver `ui/busqueda.tsx`). */
+export interface OpcionesListado {
+  enabled?: boolean
+  version?: number
+}
+
+export function useEventosEntrada(params?: ListarEventosEntradaParams, opts: OpcionesListado = {}) {
   return useQuery({
-    queryKey: ['entradas', 'eventos', params],
+    queryKey: ['entradas', 'eventos', params, opts.version ?? 0],
     queryFn: () => listarEventosEntrada(params),
     staleTime: 15 * 1000,
+    enabled: opts.enabled ?? true,
   })
 }
 

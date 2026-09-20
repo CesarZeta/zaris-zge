@@ -22,11 +22,22 @@ export function useEmpresasRecientes(limit = 5) {
 }
 
 // ── Listado completo ──
-export function useEmpresasListado() {
+/** Opciones de las queries de listado. `enabled: false` = búsqueda diferida
+ *  (§23: la pantalla no pide nada al entrar); `version` va a la queryKey para
+ *  que "Ver listado" vuelva a la red aunque no cambie nada (ver
+ *  `ui/busqueda.tsx`). El prefijo de invalidación `['buc','empresas']` sigue
+ *  matcheando. */
+export interface OpcionesListado {
+  enabled?: boolean
+  version?: number
+}
+
+export function useEmpresasListado(opts: OpcionesListado = {}) {
   return useQuery({
-    queryKey: ['buc', 'empresas', 'listado'],
+    queryKey: ['buc', 'empresas', 'listado', opts.version ?? 0],
     queryFn: () => listarEmpresas({ solo_activos: false, limit: 1000 }),
     staleTime: 30 * 1000,
+    enabled: opts.enabled ?? true,
   })
 }
 

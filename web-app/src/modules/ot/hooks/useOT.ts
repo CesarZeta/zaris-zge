@@ -22,33 +22,48 @@ import type {
 const HORA = 60 * 60 * 1000
 
 // ── Mesas ──
-export function useMesaSupervisor(filtros?: MesaSupervisorFiltros) {
+
+/** Opciones de las queries de mesa. `enabled: false` = búsqueda diferida
+ *  (§23: la mesa no pide nada al entrar; con la query deshabilitada react-query
+ *  tampoco pollea, el `refetchInterval` recién corre tras la primera búsqueda).
+ *  `version` va a la queryKey para que presionar Buscar con los mismos filtros
+ *  vuelva a la red (ver `ui/busqueda.tsx`). Los prefijos de invalidación
+ *  (`['ot']`) siguen matcheando. */
+export interface OpcionesMesa {
+  enabled?: boolean
+  version?: number
+}
+
+export function useMesaSupervisor(filtros?: MesaSupervisorFiltros, opts: OpcionesMesa = {}) {
   return useQuery({
-    queryKey: ['ot', 'mesa-supervisor', filtros ?? {}],
+    queryKey: ['ot', 'mesa-supervisor', filtros ?? {}, opts.version ?? 0],
     queryFn: () => getMesaSupervisor(filtros),
     staleTime: 15 * 1000,
     refetchInterval: 30 * 1000,
     placeholderData: (prev) => prev, // no vaciar la tabla al cambiar filtros
+    enabled: opts.enabled ?? true,
   })
 }
 
-export function useMesaAgente() {
+export function useMesaAgente(opts: OpcionesMesa = {}) {
   return useQuery({
-    queryKey: ['ot', 'mesa-agente'],
+    queryKey: ['ot', 'mesa-agente', opts.version ?? 0],
     queryFn: getMesaAgenteMe,
     staleTime: 15 * 1000,
     refetchInterval: 30 * 1000,
     retry: false,
+    enabled: opts.enabled ?? true,
   })
 }
 
-export function useMesaAuditoria() {
+export function useMesaAuditoria(opts: OpcionesMesa = {}) {
   return useQuery({
-    queryKey: ['ot', 'mesa-auditoria'],
+    queryKey: ['ot', 'mesa-auditoria', opts.version ?? 0],
     queryFn: getMesaAuditorMe,
     staleTime: 15 * 1000,
     refetchInterval: 30 * 1000,
     retry: false,
+    enabled: opts.enabled ?? true,
   })
 }
 

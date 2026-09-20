@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, RefreshCw, Search } from 'lucide-react'
 import { useTurnos } from '../hooks/useTurnos'
 import { TurnoDetalleModal } from '../components/TurnoDetalleModal'
 import { useTurnoFiltros, TurnoFiltrosBar } from '../lib/turnoFiltros'
-import { AvisoBuscar } from '../lib/busqueda'
+import { AvisoBuscar } from '../../../ui/busqueda'
 import {
   toIsoDate, hoy, sumarDias, lunesDeSemana,
   nombreDia, etiquetaFechaCorta, etiquetaFechaLarga, mismaFecha,
