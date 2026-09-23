@@ -1,6 +1,6 @@
 ---
 name: estado-proyecto
-description: Reporte de estado del proyecto ZARIS en colaboración — revisa memorias para verificar pendientes y CLAUDE.md para los lineamientos mandatorios, luego colaboradores del repo GitHub e invitaciones pendientes, último deploy de GH Pages, salud del API en Railway (CR=Centro de cómputo / backend), deploy de la PWA en Vercel, y estado de los workflows de GitHub Actions (deploy + 3 crons). Incluye el procedimiento de onboarding de un colaborador nuevo (GitHub automatizado por gh CLI + pasos manuales de Railway y Vercel). Invocar cuando el usuario pide "estado del proyecto/repo", "cómo está todo", "quién tiene acceso", o quiere agregar un colaborador.
+description: Reporte de estado del proyecto ZARIS en colaboración — revisa memorias para verificar pendientes y CLAUDE.md para los lineamientos mandatorios, luego colaboradores del repo GitHub e invitaciones pendientes, último deploy de GH Pages, salud del API en Railway (CR=Centro de cómputo / backend), deploy de la PWA en Vercel, y estado de los workflows de GitHub Actions (deploy + 4 crons: encuestas, integridad, trámites, datos demo). Incluye el procedimiento de onboarding de un colaborador nuevo (GitHub automatizado por gh CLI + pasos manuales de Railway y Vercel). Invocar cuando el usuario pide "estado del proyecto/repo", "cómo está todo", "quién tiene acceso", o quiere agregar un colaborador.
 ---
 
 # Estado del proyecto ZARIS (modo colaboración)
