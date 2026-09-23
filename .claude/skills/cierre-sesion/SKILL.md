@@ -24,7 +24,7 @@ gh api "repos/CesarZeta/zaris-zge/actions/runs?per_page=6" \
   --jq '.workflow_runs[] | "\(.name): \(.status)/\(.conclusion) @ \(.head_sha[0:7])"'
 ```
 
-⚠️ si un workflow (deploy o los 3 crons) cerró en `failure`, o si el health no responde.
+⚠️ si un workflow (deploy o los 4 crons: encuestas, integridad-cuentas, tramites-mantenimiento, datos demo BI) cerró en `failure`, o si el health no responde. Un `failure` del cron de datos demo NO implica que no escribió: verificar la DB antes de re-dispatchar (skill `estado-proyecto`).
 
 ## 2. Sync con el equipo (CRÍTICO en colaboración)
 

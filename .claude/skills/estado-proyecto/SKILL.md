@@ -114,7 +114,7 @@ git status --porcelain | head -20
 Reportar al usuario en bloques claros, marcando ✅/⚠️/❌:
 - **Repo & accesos:** colaboradores + roles, invitaciones pendientes.
 - **Deploys:** GH Pages (commit publicado), Railway (health + si aplicó el último push), Vercel (PWA viva).
-- **Actions:** último run de cada workflow (deploy + los 3 crons: encuestas, integridad-cuentas, tramites-mantenimiento). ⚠️ si alguno está en `failure`.
+- **Actions:** último run de cada workflow (deploy + los 4 crons: encuestas [horario], integridad-cuentas y tramites-mantenimiento [diarios], datos demo BI [lunes]). ⚠️ si alguno está en `failure`. **Ojo con "Datos demo BI": un `failure` por 502 a los 300 s es el edge de Railway cortando la respuesta, NO prueba que no generó datos** — desde 2026-09-22 el endpoint es asíncrono (202 + polling), pero ante cualquier rojo verificar los conteos por día en la DB antes de re-dispatchar (memoria `project_cron_demo_502_railway_timeout_5min`).
 - **Sync:** si hay commits sin pushear, si main local está detrás (Roy pusheó), o working tree sucio.
 
 Solo reportar lo que verificaste. Si un chequeo no se pudo correr, decirlo explícito — no rellenar.
