@@ -7,12 +7,22 @@ name: Datos demo BI (cron semanal)
 # pendientes demo (asigna/resuelve/cancela, madura encuestas, resuelve turnos
 # vencidos). Endpoint: POST /api/v1/demo/poblar con modulos=[reclamos,atencion].
 #
+# Desde 2026-09-22 el endpoint es ASINCRONO: responde 202 con id_corrida y este
+# job hace polling de GET /api/v1/demo/poblar/{id_corrida} cada 20 s (hasta 40
+# min) para volcar el JSON de conteos en el log. Motivo: el edge de Railway corta
+# toda respuesta a los ~300 s; con los dos modulos la semana tardo 14,5 min y el
+# run del 2026-09-21 quedo en failure (502) aunque el backend termino igual.
+# Si el backend todavia es el sincrono (deploy viejo), el 200 se acepta como antes.
+#
 # Solo toca datos atribuidos al usuario 'generador.demo' (inactivo). El volumen
 # semanal sale de la banda mensual 300-500 escalada a 7 dias (~70-115).
 #
 # ALCANCE (definicion de Cesar 2026-08-30): este cron aplica datos SOLO al
 # municipio DEMO (San Andres). Cuando llegue multi-tenant (IT-01), el generador
 # debe quedar acotado al tenant demo — JAMAS generar datos en tenants reales.
+#
+# ANTES DE RE-DISPATCHAR tras un failure: verificar los conteos por dia en la DB
+# (el generador de reclamos NO es idempotente; incidente 2026-08-31).
 #
 # Auth: header X-Dispatcher-Token == env var DISPATCHER_TOKEN de Railway (el
 # mismo token que usan los otros crons). Secrets del repo:
@@ -83,7 +93,57 @@ jobs:
           echo "Respuesta:"
           cat "$BODY"; echo
 
-          if [ "$CODE" != "200" ]; then
-            echo "::error::demo/poblar devolvio HTTP $CODE (esperado 200)."
+          # Backend sincrono (anterior al 2026-09-22): 200 con el resultado completo.
+          if [ "$CODE" = "200" ]; then
+            echo "Corrida sincrona terminada (backend anterior al flujo 202)."
+            exit 0
+          fi
+          if [ "$CODE" != "202" ]; then
+            echo "::error::demo/poblar devolvio HTTP $CODE (esperado 202). 409 = otra corrida en curso o rango invalido; 502 = el edge corto la respuesta. Verificar los conteos por dia en la DB ANTES de re-dispatchar."
             exit 1
           fi
+
+          # El id_corrida es la PRIMERA clave del JSON; sin jq: grep de la primera ocurrencia.
+          ID=$(grep -o '"id_corrida":[[:space:]]*"[0-9a-f]\{12\}"' "$BODY" | head -1 | sed 's/.*"\([0-9a-f]\{12\}\)"$/\1/')
+          if [ -z "$ID" ]; then
+            echo "::error::El 202 no trajo id_corrida."
+            exit 1
+          fi
+          echo "Corrida $ID encolada. Consultando $URL/$ID cada 20 s (maximo 40 min)..."
+
+          for i in $(seq 1 120); do
+            sleep 20
+            CODE=$(curl -sS -o "$BODY" -w '%{http_code}' \
+              -H "X-Dispatcher-Token: $TOKEN" "$URL/$ID")
+            if [ "$CODE" != "200" ]; then
+              echo "::error::La consulta de la corrida $ID devolvio HTTP $CODE. 404 = la instancia se reinicio a mitad: verificar los conteos por dia en la DB antes de re-dispatchar."
+              cat "$BODY"; echo
+              exit 1
+            fi
+            # 'estado' de la corrida es la segunda clave del JSON (antes de 'resultado'):
+            # la primera ocurrencia es la de la corrida, no la de un conteo anidado.
+            ESTADO=$(grep -o '"estado":[[:space:]]*"[a-z_]*"' "$BODY" | head -1 | sed 's/.*"\([a-z_]*\)"$/\1/')
+            case "$ESTADO" in
+              ok)
+                echo "Corrida $ID terminada OK (~$((i*20)) s). Resultado:"
+                cat "$BODY"; echo
+                exit 0
+                ;;
+              error)
+                echo "::error::La corrida $ID termino con error (los pasos previos al fallo quedaron aplicados: ver 'resultado'). Detalle:"
+                cat "$BODY"; echo
+                exit 1
+                ;;
+              en_curso)
+                echo "  ... en curso ($((i*20)) s)"
+                ;;
+              *)
+                echo "::error::Estado desconocido '$ESTADO' en la respuesta:"
+                cat "$BODY"; echo
+                exit 1
+                ;;
+            esac
+          done
+
+          echo "::error::La corrida $ID no termino en 40 min. Mirar los logs de Railway ('demo/poblar') y los conteos por dia en la DB antes de re-dispatchar."
+          exit 1

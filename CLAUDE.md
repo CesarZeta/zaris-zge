@@ -564,7 +564,7 @@ Comandos disponibles en `.claude/commands/` — invocar con `/nombre`:
 | `backend/seed_prod.py` | Seed prod — tablas vacías contra Railway (confirmar antes de usar) |
 | `backend/seed_reclamos_prod.py` | Inserta 20 reclamos demo en prod; detecta automáticamente si el constraint de estado usa tildes |
 | `backend/seed_geo_argentina.py` | Carga provincias / partidos / localidades AR (idempotente vía UPSERT) — usar tras migración 22 |
-| `backend/seed_demo_bi.py` | Datos demo de los tableros BI en LOCAL, mes a mes: reclamos (`services/demo_datos.py`) y atención (`services/demo_atencion.py`: turnos/colero/Guardia/eventos), `--modulos reclamos,atencion` `--semilla`. En prod NO se usa: `POST /api/v1/demo/poblar` por chunks ≤ 45 días vía el workflow `demo-datos.yml` (skill `modulo-bi`) |
+| `backend/seed_demo_bi.py` | Datos demo de los tableros BI en LOCAL, mes a mes: reclamos (`services/demo_datos.py`) y atención (`services/demo_atencion.py`: turnos/colero/Guardia/eventos), `--modulos reclamos,atencion` `--semilla`. En prod NO se usa: `POST /api/v1/demo/poblar` por chunks ≤ 45 días vía el workflow `demo-datos.yml` — desde 2026-09-22 responde **202** y el workflow hace polling de `GET /demo/poblar/{id_corrida}` porque el edge de Railway corta toda respuesta a los ~300 s (skill `modulo-bi`) |
 
 ## 18. Módulo Reclamos
 

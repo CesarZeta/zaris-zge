@@ -56,6 +56,20 @@ carpeta **gitignoreada** — datos personales, jamas versionar):
   manual por rango: dispatch del workflow con inputs `desde`/`hasta` (max 45
   dias por llamada) o `backend/seed_demo_bi.py` en local. Ventana default del
   endpoint: `[hoy-6, hoy]` — los crones de lunes consecutivos NO se solapan.
+- **Desde 2026-09-22 la corrida es ASINCRONA:** el POST valida, encola en un
+  `BackgroundTask` (sesion SQL propia, `AsyncSessionLocal`) y responde **202**
+  `{id_corrida, estado:'en_curso', consulta}`; el workflow hace polling de
+  `GET /api/v1/demo/poblar/{id_corrida}` cada 20 s (hasta 40 min) y vuelca el JSON
+  de conteos cuando `estado='ok'` (`error` = fallo con detalle y el resultado
+  PARCIAL de los pasos ya commiteados; 404 = la instancia se reinicio a mitad →
+  verificar la DB antes de re-disparar). **409 si ya hay una corrida en curso**
+  (anti doble capa). Motivo: el edge de Railway corta toda respuesta a los ~300 s;
+  con `reclamos,atencion` la semana tardo 14,5 min y el run del 2026-09-21 quedo
+  en `failure` (502 "upstream error") con el backend terminando igual. Las
+  corridas viven en memoria de la UNICA instancia (con replicas habria que
+  persistirlas). Smoke in-process: `backend/smoke_demo_poblar.py`. Un `failure`
+  del cron NO prueba que no se generaron datos: mirar los conteos por dia antes
+  de tocar nada (memoria `project_cron_demo_502_railway_timeout_5min`).
 - **REGLA (incidente 2026-08-31): el generador NO es idempotente y el cron de
   GitHub puede demorar HORAS.** Cada llamada a `/demo/poblar` inserta un lote
   nuevo aunque el rango ya tenga datos. Si el cron del lunes "no aparece",
