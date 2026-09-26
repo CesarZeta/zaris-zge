@@ -84,6 +84,7 @@ No suponer paridad entre stacks. Hoy:
 | **Datos (BI)** | — | **`modules/bi/`** (landing DATOS → Operativo + Ejecutivo sobre reclamos, páginas únicas 2026-08-30 + **Atención** — turnos/colero/Guardia/eventos por gestión, F6 2026-09-19. Detalle en la skill `modulo-bi`) | **React** (publicado) |
 | **Emergencias (COM)** | — | **`modules/emergencias/`** (Tablero dispatcher polling 30s + Recepción de llamado + Detalle FSM/historial; 2026-06-10, §44) | **React** (publicado — **PRIMER ítem del sidebar**) |
 | Config (sistema/identidad — permisos y catálogo de módulos se mudaron a Usuarios 2026-07-16) | — | `modules/config/` | React |
+| **Mi perfil** (usuario logueado: datos/foto, QR + link de la App del vecino, cambio voluntario de clave; 2026-09-26) | — | **`modules/perfil/`** (`#/perfil`, `hideFromSidebar`, **sin `moduloCodigo` ni `data-modulo`** — lo ve cualquier autenticado; se entra desde el menú del avatar §14) | **React** (publicado) |
 
 **Implicaciones:**
 - Si te piden "imitar el módulo X en React", verificar primero si existe ahí. Hoy casi todo el producto está en React en producción (ver la tabla de arriba: Dashboard, Agenda, Ciudadanos, Empresas, Reclamos, OT, Trámites, Config, **Usuarios**, Turnos, Entradas, Emergencias, Datos/BI). **El único módulo que sigue en vanilla es Admin Tablas** (`frontend/admin_tablas.html`); Usuarios se migró a React el 2026-07-16 (`frontend/usuarios.html` fue borrado).
@@ -507,14 +508,15 @@ La statusbar está pensada para crecer con más indicadores de estado (contenido
 ### Topbar — menú de usuario (foto · modo oscuro · guías · logout)
 
 El topbar del shell (`index.html`) tiene un dropdown al hacer clic en el nombre/avatar (rediseñado 2026-06-12):
-- **Header**: avatar grande (foto o iniciales) + nombre completo + rol + "Cargo: X" (si el agente vinculado tiene cargo).
+- **Header**: avatar grande (foto o iniciales) + nombre completo + rol + "Cargo: X" (si el agente vinculado tiene cargo). **Clickeable: lleva a «Mi perfil»** (2026-09-26).
+- **Mi perfil** (primer ítem, 2026-09-26): `shellNavigate('web-app/dist/index.html#/perfil')` — vista React con cabecera (foto/nombre/rol/cargo/gestión), tarjeta «Portal del Ciudadano» (QR ≥ 200 px + link + «Copiar link» + pasos de instalación Android/iPhone; la URL viene de `GET /config/identidad.app_vecinos_url` = `settings.APP_VECINOS_FRONTEND_URL`, env var en Railway), cambio **voluntario** de clave (`POST /auth/cambiar-password`, **fetch directo y NO `api.post`**: el helper trata todo 401 como sesión vencida y acá 401 = «la actual no coincide») y «Módulos a los que accedés» (solo lectura). **El shell escucha el evento `storage` de `zaris_session`** (`menu.js`) y re-renderiza topbar/dropdown cuando el iframe refresca la sesión (foto nueva sin recargar) — no es un canal iframe→shell nuevo, es el storage compartido §29.
 - **Cambiar foto…**: file picker PNG/JPG ≤2MB → `POST /auth/me/foto-upload-url` (URL firmada, bucket público `config-assets`, paths `usuarios/{id}/avatar-{uuid}.{ext}`) → PUT del binario directo a Storage → `PUT /auth/me/foto` persiste `usuarios.foto_url` (mig 88). Mismo flujo que el logo del municipio (§26). El feedback (Subiendo…/Foto actualizada/error) se muestra en el label del propio botón.
 - **Modo oscuro**: toggle con switch — ver "Modo oscuro" en §13.
 - **Guías de uso**: `shellNavigate('web-app/dist/index.html#/guias')` (módulo Guías §37).
 - **Cerrar sesión**: `localStorage.removeItem('zaris_session')` + redirect a `frontend/login.html`.
 - CSS en `frontend/css/menu.css` bajo `.user-menu*`; lógica en `frontend/js/menu.js` (`_renderUserUI()` re-renderiza topbar+dropdown tras subir foto; el refresh contra `/me` también se dispara si la sesión vieja no trae `cargo_nombre`).
 
-IDs relevantes: `#user-menu-trigger`, `#user-menu-dropdown`, `#btn-logout`, `#btn-foto`, `#input-foto`, `#btn-theme`, `#theme-switch`, `#btn-guias`, `#topbar-avatar`, `#topbar-context`, `#user-menu-info`.
+IDs relevantes: `#user-menu-trigger`, `#user-menu-dropdown`, `#btn-perfil`, `#btn-logout`, `#btn-foto`, `#input-foto`, `#btn-theme`, `#theme-switch`, `#btn-guias`, `#topbar-avatar`, `#topbar-context`, `#user-menu-info`.
 
 ### Login vanilla
 El shell redirige a `frontend/login.html` si no hay `zaris_session` en localStorage.  

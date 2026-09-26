@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { LogOut } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { LogOut, User } from 'lucide-react'
 import { useAuthStore } from '../../stores/auth'
 import { useIdentidadMunicipio } from '../../modules/dashboard/hooks/useDashboardData'
 import { NotificacionesDropdown } from './NotificacionesDropdown'
@@ -19,6 +19,7 @@ const ROL_LABEL: Record<number, string> = {
 export function TopBar() {
   const user = useAuthStore((st) => st.user)
   const logout = useAuthStore((st) => st.logout)
+  const navigate = useNavigate()
   const identidadQ = useIdentidadMunicipio()
   const [menuAbierto, setMenuAbierto] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -92,11 +93,25 @@ export function TopBar() {
             </button>
             {menuAbierto && (
               <div className={s.dropdown} role="menu">
-                <div className={s.dropdownInfo}>
+                {/* Espejo del shell vanilla (§14): el bloque de nombre y el ítem
+                    «Mi perfil» llevan a la vista de perfil (#/perfil). */}
+                <div
+                  className={s.dropdownInfo}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => { setMenuAbierto(false); navigate('/perfil') }}
+                >
                   <span className={s.dropdownNombre}>{user.nombre}</span>
                   <span className={s.dropdownEmail}>{user.email}</span>
                 </div>
                 <div className={s.dropdownDivider} />
+                <button
+                  type="button"
+                  className={s.dropdownItem}
+                  onClick={() => { setMenuAbierto(false); navigate('/perfil') }}
+                >
+                  <User size={14} strokeWidth={1.5} />
+                  Mi perfil
+                </button>
                 <button type="button" className={`${s.dropdownItem} ${s.dropdownItemDanger}`} onClick={logout}>
                   <LogOut size={14} strokeWidth={1.5} />
                   Cerrar sesión

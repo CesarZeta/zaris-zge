@@ -1,0 +1,298 @@
+/* Vista «Mi perfil» — tokens del DS (§13), sin hex propios salvo el avatar
+   durazno del shell (§14: fondo #dfa88f + texto #26251e fijos, no cambian con
+   el tema) y el QR (negro sobre blanco para que sea escaneable en dark). */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 0 8px 32px;
+}
+
+/* ── Breadcrumb (patrón §23) ── */
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  margin-bottom: 4px;
+}
+.breadcrumb a {
+  color: var(--zaris-orange);
+  text-decoration: none;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+.breadcrumb a:hover { text-decoration: underline; }
+.bcSep { color: var(--fg-3); }
+.bcCurrent { color: var(--fg-2); font-weight: 600; }
+
+.title {
+  font-family: var(--font-display);
+  font-size: var(--size-subhead);
+  font-weight: 400;
+  letter-spacing: var(--track-subhead);
+  color: var(--fg-1);
+  margin: 0;
+}
+.subtitle {
+  font-size: var(--size-btn);
+  color: var(--fg-3);
+  margin: 4px 0 0;
+}
+
+/* ── Grid de tarjetas ── */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.full { grid-column: 1 / -1; }
+
+.card {
+  background: var(--surface-100);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-xl);
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cardIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: var(--surface-400);
+  color: var(--zaris-orange);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.eyebrow {
+  font-family: var(--font-display);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-3);
+}
+.cardTitle {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg-1);
+  margin: 0;
+}
+.text {
+  font-size: var(--size-btn);
+  color: var(--fg-2);
+  line-height: 1.5;
+  margin: 0;
+}
+.muted { color: var(--fg-3); }
+
+/* ── Cabecera del usuario ── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.avatar {
+  width: 84px;
+  height: 84px;
+  border-radius: 9999px;
+  background: #dfa88f;
+  color: #26251e;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 500;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: var(--ring-border);
+}
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.who {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 260px;
+}
+.nombre {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--fg-1);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.email {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-3);
+  overflow-wrap: anywhere;
+}
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  background: var(--surface-400);
+  border: 1px solid var(--border-primary);
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: var(--fg-2);
+}
+.pillStrong {
+  background: var(--zaris-orange);
+  border-color: var(--zaris-orange);
+  color: var(--zaris-cream);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ── App del vecino ── */
+.appBody {
+  display: flex;
+  gap: 22px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.qrBox {
+  background: #ffffff;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  padding: 10px;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.qrCanvas { display: block; border-radius: 4px; }
+.appInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.link {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--zaris-orange);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.link:hover { text-decoration: underline; }
+.steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.steps li {
+  font-size: var(--size-btn);
+  color: var(--fg-2);
+  line-height: 1.45;
+  display: flex;
+  gap: 8px;
+}
+.steps strong {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--fg-1);
+  white-space: nowrap;
+}
+
+/* ── Seguridad (form) ── */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 420px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.label {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-2);
+}
+.hint {
+  font-size: 11.5px;
+  color: var(--fg-3);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 16px;
+}
+.hintOk  { color: var(--color-success); }
+.hintErr { color: var(--color-error); }
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--fg-3);
+  cursor: pointer;
+  user-select: none;
+}
+.error {
+  font-size: 12.5px;
+  color: var(--color-error);
+  background: rgba(207, 45, 86, 0.07);
+  border: 1px solid rgba(207, 45, 86, 0.25);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+}
+
+/* ── Módulos ── */
+.modulos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+@media (max-width: 560px) {
+  .card { padding: 16px; }
+  .appBody { flex-direction: column; }
+}

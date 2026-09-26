@@ -15,6 +15,7 @@ import { tramitesModule } from './tramites'
 import { encuestasModule } from './encuestas'
 import { biModule } from './bi'
 import { guiasModule } from './guias'
+import { perfilModule } from './perfil'
 
 // Registrar módulos nuevos acá — el shell los lee automáticamente.
 // El orden refleja el sidebar del shell vanilla (index.html). Ver §14 CLAUDE.md.
@@ -47,4 +48,5 @@ export const modules: ModuleManifest[] = [
   usuariosModule,      // maestro de cuentas + permisos + catálogo de módulos
   configModule,
   guiasModule,
+  perfilModule,        // «Mi perfil»: sin permiso, oculto del sidebar (se entra desde el menú del avatar §14)
 ]

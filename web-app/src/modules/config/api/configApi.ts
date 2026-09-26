@@ -46,6 +46,9 @@ export interface IdentidadValues {
   // Slug (codigo_corto) del municipio del deploy. Solo lectura — sirve para
   // previsualizar las URLs públicas del municipio (alta de vecinos, §38).
   municipio_slug: string | null
+  // URL pública de la App Vecinos (settings.APP_VECINOS_FRONTEND_URL). Solo
+  // lectura; la muestra «Mi perfil» con QR. Opcional: backend viejo no la manda.
+  app_vecinos_url?: string
 }
 
 export interface IdentidadUpdate {

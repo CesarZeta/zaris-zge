@@ -86,6 +86,9 @@ export interface IdentidadMunicipio {
   app_nombre: string
   municipio_nombre: string
   municipio_logo_url: string
+  // URL pública de la App Vecinos (la usa «Mi perfil»). Opcional: backends
+  // anteriores al 2026-09-26 no la mandan.
+  app_vecinos_url?: string
 }
 
 export function useIdentidadMunicipio() {
