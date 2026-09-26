@@ -547,7 +547,10 @@ html, body {
   gap: 12px;
   padding: 14px 14px 12px;
   font-family: var(--font-display);
+  cursor: pointer;                 /* lleva a «Mi perfil» (menu.js) */
+  transition: background 150ms ease;
 }
+.user-menu__info:hover { background: rgba(38,37,30,.05); }
 
 /* Avatar grande del panel (foto o iniciales) */
 .user-menu__info-avatar {
@@ -995,7 +998,8 @@ html, body {
   background: rgba(237,236,231,.08);
 }
 
-:root[data-theme="dark"] .user-menu__item:hover {
+:root[data-theme="dark"] .user-menu__item:hover,
+:root[data-theme="dark"] .user-menu__info:hover {
   background: rgba(237,236,231,.06);
 }
 

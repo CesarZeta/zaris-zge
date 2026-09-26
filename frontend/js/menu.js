@@ -228,6 +228,32 @@
     });
   })();
 
+  // ── Mi perfil (dropdown → módulo React #/perfil) ─────────────
+  // Datos del usuario, QR/link de la App del vecino y cambio de clave.
+  // Se entra desde el ítem «Mi perfil» y también clickeando el bloque de
+  // nombre/avatar del dropdown (#user-menu-info).
+  function _irAlPerfil() {
+    closeMenu();
+    window.shellNavigate('web-app/dist/index.html#/perfil');
+  }
+  const btnPerfil = document.getElementById('btn-perfil');
+  if (btnPerfil) btnPerfil.addEventListener('click', _irAlPerfil);
+  if (infoEl) infoEl.addEventListener('click', _irAlPerfil);
+
+  // Si el módulo del iframe (same-origin) actualiza la sesión — «Mi perfil»
+  // refresca /auth/me y cambia la foto — el navegador dispara `storage` en
+  // esta ventana: releemos `user` y re-renderizamos topbar + dropdown sin
+  // recargar el shell. No es un canal nuevo iframe→shell: es el storage
+  // compartido de siempre (§29).
+  window.addEventListener('storage', function (e) {
+    if (e.key !== 'zaris_session' || !e.newValue) return;
+    try {
+      const s = JSON.parse(e.newValue);
+      const u = s?.state?.user || s?.user;
+      if (u && typeof u === 'object') { user = u; _renderUserUI(); }
+    } catch (err) { /* ignorar */ }
+  });
+
   // ── Guías de uso (dropdown → módulo Guías) ───────────────────
   const btnGuias = document.getElementById('btn-guias');
   if (btnGuias) {

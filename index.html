@@ -32,7 +32,7 @@
 
   <link rel="stylesheet" href="design-system/fonts/fonts.css">
   <link rel="stylesheet" href="design-system/colors_and_type.css">
-  <link rel="stylesheet" href="frontend/css/menu.css?v=2026-07-15a">
+  <link rel="stylesheet" href="frontend/css/menu.css?v=2026-09-26a">
 
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 </head>
@@ -123,8 +123,14 @@
             <div class="topbar__avatar" id="topbar-avatar">—</div>
           </button>
           <div class="user-menu__dropdown" id="user-menu-dropdown" hidden>
-            <div class="user-menu__info" id="user-menu-info"></div>
+            <div class="user-menu__info" id="user-menu-info" title="Ver mi perfil"></div>
             <div class="user-menu__divider"></div>
+
+            <!-- Mi perfil: datos, QR/link de la App del vecino y cambio de clave (módulo React #/perfil) -->
+            <button class="user-menu__item" id="btn-perfil">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              Mi perfil
+            </button>
 
             <!-- Cambiar foto de perfil (PNG/JPG, 2MB → bucket config-assets) -->
             <button class="user-menu__item" id="btn-foto">
@@ -421,6 +427,6 @@
   </div>
 
   <script src="frontend/js/qrcode.bundle.js?v=2026-07-15a"></script>
-  <script src="frontend/js/menu.js?v=2026-07-15a"></script>
+  <script src="frontend/js/menu.js?v=2026-09-26a"></script>
 </body>
 </html>

@@ -23,6 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
+from app.core.config import settings
 from app.core.database import get_db
 from app.core import storage
 
@@ -74,6 +75,12 @@ class IdentidadOut(BaseModel):
     # Lo usa Config -> Identidad para previsualizar las URLs publicas del municipio
     # (ej. el alta de vecinos: .../frontend/alta-vecino.html?m=<slug>). None si no hay.
     municipio_slug: Optional[str] = None
+    # URL publica de la App Vecinos (PWA). La muestra la vista "Mi perfil" del
+    # backoffice (QR + link para que el vecino la instale desde el celular).
+    # Fuente unica con los mails de activacion: settings.APP_VECINOS_FRONTEND_URL
+    # (env var en Railway). Cuando llegue IT-01 (multi-municipio) se mueve a
+    # configuracion_general sin tocar la vista.
+    app_vecinos_url: str = ""
 
 
 class IdentidadUpdate(BaseModel):
@@ -131,6 +138,7 @@ async def _leer_claves(db: AsyncSession) -> dict[str, str]:
         "municipio_color_primary": data.get("municipio_color_primary", ""),
         "municipio_color_accent": data.get("municipio_color_accent", ""),
         "municipio_slug": slug,
+        "app_vecinos_url": (settings.APP_VECINOS_FRONTEND_URL or "").rstrip("/"),
     }
 
 
