@@ -50,6 +50,7 @@ from app.api.routes.publico_turnos_vecino import router as publico_turnos_vecino
 from app.api.routes.publico_entradas_vecino import router as publico_entradas_vecino_router
 from app.api.routes.publico_emergencias import router as publico_emergencias_router
 from app.api.routes.publico_push import router as publico_push_router
+from app.api.routes.usuario_push import router as usuario_push_router
 from app.api.routes.publico_perfil import router as publico_perfil_router
 from app.api.routes.publico_avisos import router as publico_avisos_router
 from app.init_db import create_tables
@@ -96,6 +97,11 @@ app.add_middleware(
         "http://vecinos.zaris.com.ar",
         "https://vecinos.zaris.com.ar",
         "https://zaris-vecinos.vercel.app",
+        # App de agentes (PWA en Vercel, repo zaris-agentes; 5175 = vite dev local)
+        "http://localhost:5175",
+        "http://agentes.zaris.com.ar",
+        "https://agentes.zaris.com.ar",
+        "https://zaris-agentes.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -103,6 +109,8 @@ app.add_middleware(
 )
 # Rutas
 app.include_router(auth_router)
+# usuario_push: /auth/push/* — Web Push de usuarios internos (App de agentes, mig 108)
+app.include_router(usuario_push_router)
 app.include_router(buc_router)
 # usuarios_mantenimiento: /usuarios/mantenimiento/integridad-cuentas (cron, sin JWT)
 app.include_router(usuarios_mantenimiento_router)

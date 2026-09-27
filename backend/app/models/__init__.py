@@ -7,3 +7,4 @@ from app.models.encuestas import (  # noqa: F401
     EncuestaRespuesta,
     EncuestaRespuestaDetalle,
 )
+from app.models.usuario_push import UsuarioPushSubscription  # noqa: F401  (mig 108, App de agentes)

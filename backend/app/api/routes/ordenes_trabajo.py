@@ -916,6 +916,8 @@ async def crear_ot_con_agenda(
         await db.commit()
         # Hook push App Vecinos (etapa E) — post-commit, best-effort.
         await svc_push.notificar_estado_reclamo(id_reclamo)
+        # Hook push App de agentes (mig 108): avisa al agente asignado, si lo hay.
+        await svc_push.notificar_ot_asignada(id_ot)
         return {
             "id_ot": id_ot, "nro_ot": nro_ot, "id_reclamo": id_reclamo,
             "id_ocupacion": id_ocupacion,
@@ -1093,6 +1095,8 @@ async def crear_ot(
 
         # Hook push App Vecinos (etapa E) — post-commit, best-effort.
         await svc_push.notificar_estado_reclamo(id_reclamo)
+        # Hook push App de agentes (mig 108): avisa al agente asignado, si lo hay.
+        await svc_push.notificar_ot_asignada(id_ot)
 
         return {"id_ot": id_ot, "nro_ot": nro_ot, "id_reclamo": id_reclamo}
     except HTTPException:
@@ -1180,6 +1184,8 @@ async def reasignar_ot(
         current_user["id_usuario"]
     )
     await db.commit()
+    # Hook push App de agentes (mig 108): el nuevo agente se entera en el celular.
+    await svc_push.notificar_ot_asignada(id_ot)
     return {"ok": True, "id_ot": id_ot, "asignado_a": asignado_despues}
 
 
