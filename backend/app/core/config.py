@@ -36,8 +36,10 @@ class Settings(BaseSettings):
     JWT_PUBLICO_EXPIRA_DIAS: int = 30  # Vigencia del JWT scope=publico (mas largo que el de agente)
 
     # App de agentes (PWA interna zaris-agentes, login con las credenciales de ZARIS).
-    # La muestra "Mi perfil" del backoffice (QR + link). Prod: https://agentes.zaris.com.ar
-    APP_AGENTES_FRONTEND_URL: str = "http://localhost:5175"
+    # La muestra "Mi perfil" del backoffice (QR + link). Default VACIO a proposito: sin
+    # la env var la tarjeta dice "no configurada" en vez de mostrar un QR a localhost.
+    # Local: .env.local -> http://localhost:5175 · Prod (Railway): https://agentes.zaris.com.ar
+    APP_AGENTES_FRONTEND_URL: str = ""
 
     # Web Push (App Vecinos etapa E). Si quedan vacias, services/push.py cae a
     # las claves vapid_* de configuracion_general (sembradas por entorno — NO
