@@ -140,6 +140,9 @@ Monorepo: `github.com/CesarZeta/zaris-zge`.
 | Local | Shell del producto + módulos vanilla | `http://localhost:8080` — `python -m http.server 8080` (raíz del repo) |
 | Prod | PWA App Vecinos | `https://vecinos.zaris.com.ar` (Vercel, repo `CesarZeta/zaris-vecinos`, branch `main`) |
 | Local | PWA App Vecinos | `http://localhost:5174` — `cd zaris-vecinos && pnpm dev` (repo separado, scaffold Etapa 1 creado 2026-05-19) |
+| Prod | App de agentes (PWA interna, login con credenciales de ZARIS) | `https://agentes.zaris.com.ar` (Vercel, proyecto `zaris-agentes`, repo privado `CesarZeta/zaris-agentes`, branch `main`; alias `zaris-agentes.vercel.app`). La URL que muestra «Mi perfil» sale de la env var `APP_AGENTES_FRONTEND_URL` de Railway (default vacío = tarjeta «no configurada») |
+| Local | App de agentes | `http://localhost:5175` — `cd zaris-agentes && pnpm dev` (repo separado, creado 2026-09-26) |
+| Prod | **DNS de `zaris.com.ar`** | **Cloudflare** (NS `aria`/`rajeev.ns.cloudflare.com`, verificado 2026-09-27). Cada subdominio (`zge`, `vecinos`, `agentes`) es un CNAME **DNS only** (nube gris; la naranja rompe el certificado de GH Pages). El login de Cloudflare NO funciona en el navegador integrado de VS Code (Turnstile no corre ahí): hacerlo desde Chrome/Edge o con un API token `Zone:DNS:Edit` guardado en `credenciales-testing/` |
 | Local | DB | `postgresql://postgres:145236@127.0.0.1:5432/zaris_dev` |
 
 ## 7. Workflow de Desarrollo
