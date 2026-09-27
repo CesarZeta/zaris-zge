@@ -75,12 +75,17 @@ class IdentidadOut(BaseModel):
     # Lo usa Config -> Identidad para previsualizar las URLs publicas del municipio
     # (ej. el alta de vecinos: .../frontend/alta-vecino.html?m=<slug>). None si no hay.
     municipio_slug: Optional[str] = None
-    # URL publica de la App Vecinos (PWA). La muestra la vista "Mi perfil" del
-    # backoffice (QR + link para que el vecino la instale desde el celular).
+    # URL publica de la App Vecinos (PWA). La consume la app de agentes (tenant) y
+    # queda por compat; desde el 2026-09-27 "Mi perfil" ya NO la muestra: el vecino
+    # instala su app desde el portal del vecino (decision de Cesar).
     # Fuente unica con los mails de activacion: settings.APP_VECINOS_FRONTEND_URL
     # (env var en Railway). Cuando llegue IT-01 (multi-municipio) se mueve a
     # configuracion_general sin tocar la vista.
     app_vecinos_url: str = ""
+    # URL publica de la App de agentes (PWA zaris-agentes). La muestra la vista
+    # "Mi perfil" del backoffice (QR + link para que el funcionario la instale en su
+    # celular). Fuente: settings.APP_AGENTES_FRONTEND_URL (env var en Railway).
+    app_agentes_url: str = ""
 
 
 class IdentidadUpdate(BaseModel):
@@ -139,6 +144,7 @@ async def _leer_claves(db: AsyncSession) -> dict[str, str]:
         "municipio_color_accent": data.get("municipio_color_accent", ""),
         "municipio_slug": slug,
         "app_vecinos_url": (settings.APP_VECINOS_FRONTEND_URL or "").rstrip("/"),
+        "app_agentes_url": (settings.APP_AGENTES_FRONTEND_URL or "").rstrip("/"),
     }
 
 
