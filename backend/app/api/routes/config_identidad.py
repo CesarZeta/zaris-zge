@@ -122,6 +122,17 @@ class LogoUploadResponse(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _url_publica(valor: Optional[str]) -> str:
+    """URL publica que la UI muestra como QR/link (Mi perfil). Fail-closed: si la
+    env var trae basura -espacios, sin esquema http(s), o la linea entera
+    "APP_X=https://..." pegada como valor (caso real en Railway 2026-09-27)-
+    devuelve "" y la vista dice "no configurada" en vez de publicar un QR invalido."""
+    v = (valor or "").strip()
+    if not re.match(r"^https?://[^\s]+$", v):
+        return ""
+    return v.rstrip("/")
+
+
 async def _leer_claves(db: AsyncSession) -> dict[str, str]:
     rows = await db.execute(text(
         "SELECT clave, valor FROM configuracion_general WHERE clave = ANY(:claves)"
@@ -143,8 +154,8 @@ async def _leer_claves(db: AsyncSession) -> dict[str, str]:
         "municipio_color_primary": data.get("municipio_color_primary", ""),
         "municipio_color_accent": data.get("municipio_color_accent", ""),
         "municipio_slug": slug,
-        "app_vecinos_url": (settings.APP_VECINOS_FRONTEND_URL or "").rstrip("/"),
-        "app_agentes_url": (settings.APP_AGENTES_FRONTEND_URL or "").rstrip("/"),
+        "app_vecinos_url": _url_publica(settings.APP_VECINOS_FRONTEND_URL),
+        "app_agentes_url": _url_publica(settings.APP_AGENTES_FRONTEND_URL),
     }
 
 
