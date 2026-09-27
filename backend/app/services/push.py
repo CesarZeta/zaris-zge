@@ -217,3 +217,98 @@ async def notificar_estado_emergencia(id_evento: int) -> None:
         await enviar_push_ciudadano(id_c, titulo=titulo, cuerpo=cuerpo, url=url)
     except Exception as e:  # noqa: BLE001
         logger.warning("notificar_estado_emergencia(%s) fallo: %s", id_evento, e)
+
+
+# ─── Push a USUARIOS INTERNOS (App de agentes `zaris-agentes`, mig 108) ─────
+# Mismo mecanismo que el del ciudadano pero sobre `usuario_push_subscription`.
+# Sin toggle de canal: la suscripcion activa ES el toggle (unsubscribe la apaga).
+
+async def enviar_push_usuario(
+    id_usuario: int,
+    titulo: str,
+    cuerpo: str,
+    url: str = "/inicio",
+) -> int:
+    """Notifica a TODAS las suscripciones activas del usuario interno. Best-effort:
+    loguea y devuelve cuantas se enviaron; jamas levanta excepcion. Sesion propia
+    (se llama post-commit)."""
+    try:
+        cfg = await vapid_config()
+        if not cfg["private"]:
+            logger.debug("push deshabilitado (sin claves VAPID) — usuario %s", id_usuario)
+            return 0
+
+        async with AsyncSessionLocal() as db:
+            subs = (await db.execute(text("""
+                SELECT id_usuario_push_subscription, endpoint, p256dh, auth_secret
+                FROM usuario_push_subscription
+                WHERE id_usuario = :u AND activo = TRUE
+            """), {"u": id_usuario})).mappings().all()
+        if not subs:
+            return 0
+
+        payload = json.dumps(
+            {"titulo": titulo, "cuerpo": cuerpo, "url": url}, ensure_ascii=False
+        )
+        enviadas = 0
+        vencidas: list[int] = []
+        for s in subs:
+            sub_info = {
+                "endpoint": s["endpoint"],
+                "keys": {"p256dh": s["p256dh"], "auth": s["auth_secret"]},
+            }
+            status = await asyncio.to_thread(
+                _webpush_sync, sub_info, payload, cfg["private"], cfg["claims_email"]
+            )
+            if status in (200, 201):
+                enviadas += 1
+            elif status in (404, 410):
+                vencidas.append(int(s["id_usuario_push_subscription"]))
+            else:
+                logger.warning("push a usuario %s fallo (status=%s)", id_usuario, status)
+
+        if vencidas:
+            async with AsyncSessionLocal() as db:
+                await db.execute(text("""
+                    UPDATE usuario_push_subscription
+                       SET activo = FALSE, fecha_modificacion = NOW()
+                     WHERE id_usuario_push_subscription = ANY(:ids)
+                """), {"ids": vencidas})
+                await db.commit()
+            logger.info("push: %s suscripciones vencidas dadas de baja (usuario %s)",
+                        len(vencidas), id_usuario)
+
+        return enviadas
+    except Exception as e:  # noqa: BLE001 — best-effort SIEMPRE
+        logger.warning("enviar_push_usuario(%s) fallo: %s", id_usuario, e)
+        return 0
+
+
+async def notificar_ot_asignada(id_ot: int) -> None:
+    """Push al agente asignado a una OT OPERATIVA (alta con agente, reasignacion).
+    Resuelve el usuario por agentes.id_usuario (regla 1:1 §39). Sin agente,
+    sin usuario vinculado, OT de auditoria o sin suscripcion: no-op.
+    Llamar POST-COMMIT, best-effort (cubre todas las vias de asignacion)."""
+    try:
+        async with AsyncSessionLocal() as db:
+            r = (await db.execute(text("""
+                SELECT ot.nro_ot, ot.es_auditoria, ag.id_usuario,
+                       tr.nombre AS tipo_nombre, r.direccion, r.prioridad
+                FROM ordenes_trabajo ot
+                JOIN reclamos r ON r.id_reclamo = ot.id_reclamo
+                LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
+                LEFT JOIN agentes ag ON ag.id_agente = ot.id_agente AND ag.activo = TRUE
+                WHERE ot.id_ot = :id AND ot.activo = TRUE
+            """), {"id": id_ot})).mappings().first()
+        if not r or r["es_auditoria"] or not r["id_usuario"]:
+            return
+        titulo = f"Nueva orden de trabajo {r['nro_ot'] or ''}".strip()
+        partes = [p for p in (r["tipo_nombre"], r["direccion"]) if p]
+        cuerpo = " · ".join(partes) or "Te asignaron una orden de trabajo."
+        if r["prioridad"] == "Alta":
+            cuerpo = f"Prioridad alta. {cuerpo}"
+        await enviar_push_usuario(
+            int(r["id_usuario"]), titulo=titulo, cuerpo=cuerpo, url=f"/ot/{id_ot}"
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("notificar_ot_asignada(%s) fallo: %s", id_ot, e)
