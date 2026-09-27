@@ -12,6 +12,9 @@ export interface IdentidadPerfil {
   // URL pública de la App Vecinos. Opcional: un backend anterior al 2026-09-26
   // no la manda (la vista muestra "no configurada" en ese caso).
   app_vecinos_url?: string
+  // URL pública de la App de agentes (zaris-agentes). Backends anteriores al
+  // 2026-09-27 no la mandan (la vista muestra "no configurada" en ese caso).
+  app_agentes_url?: string
 }
 
 export interface FotoUploadSigned {

@@ -10,8 +10,10 @@ import { useCambiarPassword, useIdentidadPerfil, useQuitarFoto, useSubirFoto } f
 import s from './PerfilPage.module.css'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Vista «Mi perfil»: datos del usuario logueado + tarjeta de la App del vecino
-// (QR + link para instalarla desde el celular) + cambio voluntario de clave.
+// Vista «Mi perfil»: datos del usuario logueado + tarjeta de la App de agentes
+// (QR + link para instalarla en el celular) + cambio voluntario de clave. La app
+// del vecino NO se ofrece acá: el vecino la instala desde su propio portal
+// (decisión de César 2026-09-27).
 // Sin permiso de módulo (solo toca datos propios). Se entra desde el menú del
 // avatar del shell (§14). Plan: PLAN_MI_PERFIL.md (2026-09-26).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -72,7 +74,7 @@ export function PerfilPage() {
 
       <div>
         <h1 className={s.title}>Mi perfil</h1>
-        <p className={s.subtitle}>Tus datos en ZARIS, la app del vecino para compartir y la seguridad de tu cuenta.</p>
+        <p className={s.subtitle}>Tus datos en ZARIS, la app de agentes para tu celular y la seguridad de tu cuenta.</p>
       </div>
 
       <div className={s.grid}>
@@ -81,7 +83,7 @@ export function PerfilPage() {
         </section>
 
         <section className={s.card} aria-labelledby="perfil-app">
-          <AppVecino />
+          <AppAgentes />
         </section>
 
         <section className={s.card} aria-labelledby="perfil-seguridad">
@@ -201,12 +203,14 @@ function Cabecera() {
   )
 }
 
-/* ── App del vecino: QR + link + pasos de instalación ─────────────────────── */
-function AppVecino() {
+/* ── App de agentes: QR + link + pasos de instalación ─────────────────────── */
+// El funcionario instala la app de agentes desde acá (decisión de César
+// 2026-09-27). La del vecino se ofrece en el portal del vecino, no en ZARIS.
+function AppAgentes() {
   const identidad = useIdentidadPerfil()
   const push = useNotificationsStore((st) => st.push)
   const [copiado, setCopiado] = useState(false)
-  const url = (identidad.data?.app_vecinos_url ?? '').trim()
+  const url = (identidad.data?.app_agentes_url ?? '').trim()
 
   async function copiar() {
     try {
@@ -223,21 +227,22 @@ function AppVecino() {
       <div className={s.cardHead}>
         <span className={s.cardIcon}><Smartphone size={16} strokeWidth={1.5} /></span>
         <div>
-          <div className={s.eyebrow}>App del vecino</div>
-          <h2 id="perfil-app" className={s.cardTitle}>Portal del Ciudadano</h2>
+          <div className={s.eyebrow}>App de agentes</div>
+          <h2 id="perfil-app" className={s.cardTitle}>ZARIS Agentes en tu celular</h2>
         </div>
       </div>
       <p className={s.text}>
-        Los vecinos la instalan desde el navegador del celular; no está en las tiendas.
-        Mostrales este código o pasales el link.
+        Tus órdenes de trabajo en la calle: el mapa del reclamo, «Cómo llegar», las fotos de
+        evidencia y el cambio de estado, desde el celular. Entrás con tu mismo usuario y
+        contraseña de ZARIS. No está en las tiendas: se instala desde el navegador.
       </p>
 
       {identidad.isLoading ? (
         <p className={`${s.text} ${s.muted}`}>Cargando…</p>
       ) : !url ? (
         <p className={`${s.text} ${s.muted}`}>
-          La URL de la app del vecino no está configurada en este servidor. Pedile al administrador
-          que la cargue (variable APP_VECINOS_FRONTEND_URL del backend).
+          La URL de la app de agentes no está configurada en este servidor. Pedile al administrador
+          que la cargue (variable APP_AGENTES_FRONTEND_URL del backend).
         </p>
       ) : (
         <div className={s.appBody}>
@@ -259,13 +264,13 @@ function AppVecino() {
               </Button>
             </div>
             <ul className={s.steps}>
-              <li><strong>Android:</strong><span>abrir el link en Chrome; la bienvenida ofrece «Instalar».</span></li>
-              <li><strong>iPhone:</strong><span>abrir el link en Safari, tocar Compartir y luego «Agregar a inicio».</span></li>
+              <li><strong>Android:</strong><span>escaneá el código con la cámara y abrí el link en Chrome; la bienvenida ofrece «Instalar la app».</span></li>
+              <li><strong>iPhone:</strong><span>abrí el link en Safari, tocá Compartir y luego «Agregar a inicio».</span></li>
+              <li><strong>Después:</strong><span>ingresá con tu email y contraseña de ZARIS. Si tenés clave temporal, la app te pide cambiarla.</span></li>
             </ul>
           </div>
         </div>
       )}
-      {/* Cuando exista la app de agentes (zaris-agentes) va una tarjeta gemela acá. */}
     </>
   )
 }

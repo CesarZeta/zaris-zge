@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     APP_VECINOS_FRONTEND_URL: str = "http://localhost:5174"  # URL del frontend PWA para links de activacion/recovery
     JWT_PUBLICO_EXPIRA_DIAS: int = 30  # Vigencia del JWT scope=publico (mas largo que el de agente)
 
+    # App de agentes (PWA interna zaris-agentes, login con las credenciales de ZARIS).
+    # La muestra "Mi perfil" del backoffice (QR + link). Prod: https://agentes.zaris.com.ar
+    APP_AGENTES_FRONTEND_URL: str = "http://localhost:5175"
+
     # Web Push (App Vecinos etapa E). Si quedan vacias, services/push.py cae a
     # las claves vapid_* de configuracion_general (sembradas por entorno — NO
     # viven en el repo porque es publico). Env vars = override.

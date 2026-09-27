@@ -39,13 +39,17 @@ dropdown → `navigate('/perfil')`), regla §4 «dev clona el shell».
    actualiza recién al recargar el shell (`menu.js` lee la sesión al boot); si molesta, sumar
    en `menu.js` un refresco contra `/auth/me` al recibir foco la ventana. No inventar un canal
    iframe→shell nuevo por esto.
-2. **App del vecino** — título «Portal del Ciudadano», texto «Los vecinos la instalan desde el
+2. **App de agentes** (desde el 2026-09-27; hasta entonces la tarjeta fue la del vecino, que
+   pasó al perfil del portal del vecino por decisión de César: cada quien instala su app desde
+   su propio lugar) — título «ZARIS Agentes en tu celular», URL `app_agentes_url` de
+   `/config/identidad` (env `APP_AGENTES_FRONTEND_URL`), QR + link + «Copiar link» + pasos.
+   Diseño original de la tarjeta (sigue vigente): título «Portal del Ciudadano», texto «Los vecinos la instalan desde el
    navegador del celular (no está en las tiendas)», **QR grande** (≥ 200 px) con la URL,
    la URL como link (abre en pestaña nueva), botón «Copiar link», y dos líneas de instalación:
    Android → Chrome ofrece «Instalar» en la bienvenida; iPhone → Compartir → «Agregar a inicio».
    Reusar `QRDisplay` de Agenda (import cross-module, memoria `feedback_cross_module_imports_react`)
-   o un canvas propio con `qrcode` si el tamaño/estilo no encaja. Preparado para una tarjeta
-   gemela «App de agentes» cuando exista (`zaris-agentes`).
+   o un canvas propio con `qrcode` si el tamaño/estilo no encaja. (La «tarjeta gemela» de
+   agentes terminó REEMPLAZANDO a la del vecino el 2026-09-27, no conviviendo.)
 3. **Seguridad** — cambio de contraseña voluntario: actual + nueva + repetir; validación en vivo
    (≥ 8, coinciden); `POST /auth/cambiar-password` con `{password_actual, password_nueva}`;
    toast de éxito; el 401/422 del backend se muestra tal cual (`detail`). No cierra sesión.
@@ -55,7 +59,7 @@ dropdown → `navigate('/perfil')`), regla §4 «dev clona el shell».
 `IdentidadOut` + `_leer_claves`). Una sola fuente con los mails; cuando llegue IT-01
 (multi-municipio) se mueve a `configuracion_general` sin tocar la vista.
 ⚠️ En Railway el valor lo da la env var (no verificable desde afuera): si tras el deploy la
-identidad devuelve `http://localhost:5174`, **César la setea en Railway → Variables**.
+identidad devuelve `http://localhost:5174` o `http://localhost:5175`, **César las setea en Railway → Variables** (`APP_VECINOS_FRONTEND_URL`, `APP_AGENTES_FRONTEND_URL`).
 
 ## 2. Pasos (orden)
 
