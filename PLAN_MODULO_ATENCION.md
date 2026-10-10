@@ -460,11 +460,16 @@ ubicacion Guardia). F5 depende de F4. F6 depende de F3 (llamados) y F4
   con log `origen='export'`; motivo obligatorio break-the-glass cuando quien
   consulta no atendio nunca al paciente; aviso al vecino en la PWA; panel HC
   dentro de `CumplirTurnoModal` si Salud lo pide.
-- Export PDF de Consultas → "Prestaciones realizadas" saca intervencion/
-  recomendaciones sin guard Salud ni registro (hereda el scope generico de
-  `/turnos/atenciones`): **DECISION DE CESAR pendiente** (quitar / gatear por
-  `/permiso` / dejar). Desde F5, estando en la solapa "Historia clinica" el boton
-  exporta el listado de turnos (no las prestaciones realizadas).
+- ~~Export PDF de Consultas → "Prestaciones realizadas" sin guard~~ **RESUELTO
+  2026-10-10 (decision de Cesar: gatear).** El guard quedo en el BACKEND, no solo
+  en el PDF: `GET /turnos/atenciones` (que alimentaba la pantalla, el detalle del
+  turno, `CumplirTurnoModal` y el PDF) aplica `permiso_historia_clinica`; sin
+  permiso las filas viajan con `intervencion`/`recomendaciones` NULL y
+  `reservado=true` (la UI dice "reservado a la gestion Salud"), con permiso cada
+  lectura queda en `historia_clinica_acceso` (`contexto` por query, default
+  `turno`) y el PDF re-pide con `exportar=true` → `origen='export'`. Sin migracion
+  (el CHECK de origen ya admitia `export`). En prod habia 1.301 atenciones
+  (Odontologia, Salud) legibles por cualquier nivel <= 2 de cualquier area.
 - Canal lateral `turnos.observaciones`: prestaciones de Salud sin
   `registra_atencion` (local: 6 Clinica general) pueden recibir texto clinico
   visible al vecino; marcar `registra_atencion=true` en TODAS las prestaciones de

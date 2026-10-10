@@ -112,8 +112,11 @@ export interface TurnoAtencion {
   fecha: string
   prestacion_nombre: string | null
   recurso_nombre: string | null
-  intervencion: string
+  /** null con `reservado=true` si el usuario no pasa el guard de historia clínica. */
+  intervencion: string | null
   recomendaciones: string | null
+  /** El backend ocultó el contenido clínico (solo gestión Salud y nivel 1 lo ven). */
+  reservado: boolean
   atendido_por: string | null
   fecha_alta: string
 }

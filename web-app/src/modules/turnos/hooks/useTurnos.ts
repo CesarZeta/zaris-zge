@@ -150,11 +150,12 @@ export function useCumplirTurno() {
 }
 
 /** Historia de atenciones de un ciudadano (turnos con registra_atencion).
- *  Scopeada por nivel en el backend (mismo alcance que los turnos). */
-export function useAtencionesCiudadano(id_ciudadano: number | null) {
+ *  Scopeada por nivel en el backend (mismo alcance que los turnos); el contenido
+ *  clínico llega `reservado` si el usuario no pasa el guard de historia clínica. */
+export function useAtencionesCiudadano(id_ciudadano: number | null, contexto: HistoriaClinicaContexto = 'turno') {
   return useQuery({
-    queryKey: ['turnos', 'atenciones', id_ciudadano],
-    queryFn: () => listarAtenciones(id_ciudadano as number),
+    queryKey: ['turnos', 'atenciones', id_ciudadano, contexto],
+    queryFn: () => listarAtenciones(id_ciudadano as number, contexto),
     enabled: id_ciudadano != null,
     staleTime: 15 * 1000,
   })
