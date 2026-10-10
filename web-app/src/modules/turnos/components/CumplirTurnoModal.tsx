@@ -120,6 +120,9 @@ export function CumplirTurnoModal({ turno, onConfirm, onCancel }: Props) {
             placeholder="Ej: Atendido en mostrador 3, sin demoras."
             style={txt}
           />
+          <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 4 }}>
+            Se suma a las observaciones del turno, que ve el vecino en su app. No anotes datos clínicos.
+          </div>
         </>
       )}
     </Modal>

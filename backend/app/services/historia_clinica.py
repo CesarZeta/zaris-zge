@@ -45,6 +45,22 @@ async def area_salud(db: AsyncSession) -> Optional[dict]:
     return dict(row) if row else None
 
 
+async def gestion_es_salud(db: AsyncSession, id_subarea: Optional[int],
+                           id_espacio_ubicacion: Optional[int] = None) -> bool:
+    """True si la gestion de una prestacion pertenece al area Salud de la clave.
+    Gestion = su id_subarea; si no la declara, la subarea de su ubicacion (mismo
+    fallback que SQL_HISTORIA). Sin clave configurada -> False (no se adivina)."""
+    salud = await area_salud(db)
+    if salud is None:
+        return False
+    id_area = await db.scalar(text("""
+        SELECT s.id_area FROM subarea s
+         WHERE s.id_subarea = COALESCE(CAST(:isa AS integer),
+                 (SELECT e.id_subarea FROM espacios_agenda e WHERE e.id_espacio = CAST(:iu AS integer)))
+    """), {"isa": id_subarea, "iu": id_espacio_ubicacion})
+    return id_area is not None and int(id_area) == int(salud["id_area"])
+
+
 async def permiso_historia_clinica(db: AsyncSession, user: dict) -> dict[str, Any]:
     """UNICA fuente de verdad del permiso (la usan el guard del GET de datos y el
     endpoint /permiso que consume la UI). Devuelve {"puede": bool, "motivo": str,

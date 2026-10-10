@@ -179,6 +179,14 @@ Las reglas vivas de cada una están en la sección del módulo correspondiente d
 - **Mig 76** (sesión 2026-06-01, alta pública de vecinos §38): tabla `empresa_credencial` (1:1 con `empresas`, solo verificación de email — `token_verificacion`/`verificado`/`verificado_en`, SIN password) + índice parcial sobre el token. Local por psql, prod por `apply_migration`. El ciudadano reusa `ciudadano_credencial` (mig 53).
 - **Migs 77-79** (2026-06-09, integridad de cuentas + alta vecino en 2 pasos): 77 = `usuarios.suspendido_motivo`/`fecha_suspension` (cron de integridad §39). 78 = `usuarios.debe_cambiar_password` (clave temporal + cambio forzado §39 Fase 3). 79 = `ciudadanos.ficha_completa` + `ciudadano_credencial.debe_cambiar_password` (alta del vecino en dos pasos §38/§39 Fase 4).
 
+### Migración 109 — Prestaciones de atención de Salud registran historia (`backend/migrations/109_prestaciones_salud_registran_atencion.sql`)
+
+**Solo datos, idempotente, 2026-10-10.** `UPDATE tipo_prestacion SET registra_atencion = TRUE` para toda prestación `clase='atencion'` cuya gestión (su `id_subarea`, o la subárea de su ubicación) pertenece al área de la clave `id_area_salud`. Cierra el residuo §4 del plan ATENCION «canal lateral `turnos.observaciones`»: sin la marca, lo anotado al cumplir iba al texto libre del turno, que ve cualquiera con alcance y el vecino en su app (`publico_turnos_vecino.py`). Afectó 1 fila en cada entorno: «Atención médica - Clínica general» (local id 6, prod id 5; en prod tenía 786 turnos cumplidos sin registro clínico).
+
+- **Código del mismo commit:** `turnos.py::_registra_atencion_efectivo` fuerza la marca al crear/editar prestaciones de Salud (helper `historia_clinica.gestion_es_salud`); `PATCH /turnos/{id}/cumplir` responde 422 si la prestación registra atención y llega `observaciones`.
+- **Local:** asyncpg (`UPDATE 1`). **Prod:** `apply_migration` (MCP) y verificado por SELECT aparte: las 3 prestaciones de Salud con la marca, las de Gobierno y Planeamiento sin cambios.
+- Datos viejos no tocados: 2 turnos demo en prod con «Atención: …» anexado en `observaciones` (anteriores a esta regla).
+
 ### Migración 108 — Web Push de usuarios internos: `usuario_push_subscription` (`backend/migrations/108_usuario_push_subscription.sql`)
 
 **Aplicada en local (asyncpg, script multi-statement) el 2026-09-26** para la **App de agentes** (`zaris-agentes`, repo nuevo; primer frente OT en la calle). Espejo de `ciudadano_push_subscription` (mig 53) clavado a `usuarios` (FK ON DELETE CASCADE), `UNIQUE (id_usuario, endpoint)`, índice parcial por usuario activo, §10 completo, RLS habilitado sin políticas (deny-all). Sin seed.

@@ -470,10 +470,13 @@ ubicacion Guardia). F5 depende de F4. F6 depende de F3 (llamados) y F4
   `turno`) y el PDF re-pide con `exportar=true` → `origen='export'`. Sin migracion
   (el CHECK de origen ya admitia `export`). En prod habia 1.301 atenciones
   (Odontologia, Salud) legibles por cualquier nivel <= 2 de cualquier area.
-- Canal lateral `turnos.observaciones`: prestaciones de Salud sin
-  `registra_atencion` (local: 6 Clinica general) pueden recibir texto clinico
-  visible al vecino; marcar `registra_atencion=true` en TODAS las prestaciones de
-  Salud (dato de negocio, prod no verificado).
+- ~~Canal lateral `turnos.observaciones`~~ **RESUELTO 2026-10-10 (mig 109).**
+  Toda prestacion de atencion de la gestion Salud registra historia (dato
+  corregido en local y prod: Clinica general; regla forzada al crear/editar en
+  `turnos.py::_registra_atencion_efectivo`), y cumplir una prestacion con
+  historia rechaza `observaciones` (422): lo clinico va a intervencion/
+  recomendaciones. Las observaciones de alta del turno siguen siendo texto
+  administrativo y la UI avisa que las ve el vecino.
 - Derivaciones de Guardia sin BUC (paciente por nombre libre) quedan fuera de la
   HC hasta vincular el ciudadano (no hay listado de huerfanas).
 - Rate limit `hc:{id_usuario}` es in-memory por instancia (se resetea en cada
