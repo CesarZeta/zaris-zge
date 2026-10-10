@@ -122,9 +122,10 @@ async def _branding(db: AsyncSession) -> dict:
 def _frontend_verificar_url(slug: str, token: str) -> str:
     """
     Link de verificación que se manda por mail. Apunta al endpoint público del backend
-    (que devuelve la página de confirmación). Usa FRONTEND_BASE_URL como dominio base.
+    (que devuelve la página de confirmación), así que la base es API_PUBLIC_BASE_URL.
+    Hasta 2026-10-10 usaba FRONTEND_BASE_URL (GitHub Pages) y el link daba 404.
     """
-    base = settings.FRONTEND_BASE_URL.rstrip("/")
+    base = settings.API_PUBLIC_BASE_URL.rstrip("/")
     return f"{base}/api/v1/publico/alta/verificar?token={token}&m={slug}"
 
 
