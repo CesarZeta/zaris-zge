@@ -150,8 +150,11 @@ class TurnoAtencionOut(BaseModel):
     fecha: date                      # fecha del turno atendido
     prestacion_nombre: Optional[str] = None
     recurso_nombre: Optional[str] = None
-    intervencion: str
+    # Contenido clinico: viaja NULL con reservado=True a quien no pasa el guard de
+    # historia clinica (gestion Salud + nivel 1, services/historia_clinica.py).
+    intervencion: Optional[str] = None
     recomendaciones: Optional[str] = None
+    reservado: bool = False
     atendido_por: Optional[str] = None   # nombre del usuario que registro la atencion
     fecha_alta: datetime
 

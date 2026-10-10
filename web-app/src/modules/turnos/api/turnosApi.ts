@@ -44,8 +44,12 @@ export const reprogramarTurno = (id_turno: number, body: ReprogramarTurnoBody) =
 export const cumplirTurno = (id_turno: number, body?: CumplirTurnoBody) =>
   api.patch<Turno>(`/api/v1/turnos/${id_turno}/cumplir`, body ?? {})
 
-export const listarAtenciones = (id_ciudadano: number) =>
-  api.get<TurnoAtencion[]>('/api/v1/turnos/atenciones', { params: { id_ciudadano } })
+/** Con permiso de historia clínica cada llamada queda en el registro de accesos
+ *  (`exportar` = los datos van a un PDF → origen 'export'). */
+export const listarAtenciones = (id_ciudadano: number, contexto: HistoriaClinicaContexto = 'turno', exportar = false) =>
+  api.get<TurnoAtencion[]>('/api/v1/turnos/atenciones', {
+    params: { id_ciudadano, contexto, ...(exportar ? { exportar: true } : {}) },
+  })
 
 /* ── Historia clínica (F5) ── */
 export const permisoHistoriaClinica = () =>

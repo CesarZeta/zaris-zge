@@ -91,15 +91,17 @@ async def permiso_historia_clinica(db: AsyncSession, user: dict) -> dict[str, An
 async def registrar_acceso(db: AsyncSession, *, id_usuario: int, id_ciudadano: int,
                            contexto: str, resultado: str, motivo: str,
                            n_registros: Optional[int], ip: Optional[str],
-                           user_agent: Optional[str]) -> None:
+                           user_agent: Optional[str], origen: str = "historia") -> None:
     """INSERT en historia_clinica_acceso (mig 107). Se llama DENTRO de la misma
     transaccion del GET y el handler hace commit antes de responder: si el
-    registro falla, la lectura falla ("sin registro no hay acceso")."""
+    registro falla, la lectura falla ("sin registro no hay acceso").
+    `origen` = 'historia' (lectura en pantalla) | 'export' (los datos salen en un
+    PDF) — CHECK ck_hc_acceso_origen de la mig 107."""
     await db.execute(text("""
         INSERT INTO historia_clinica_acceso
             (id_usuario, id_ciudadano, origen, contexto, resultado, motivo, n_registros, ip, user_agent)
-        VALUES (:u, :c, 'historia', :ctx, :r, :m, :n, :ip, :ua)
-    """), {"u": id_usuario, "c": id_ciudadano, "ctx": contexto, "r": resultado, "m": motivo,
+        VALUES (:u, :c, :o, :ctx, :r, :m, :n, :ip, :ua)
+    """), {"u": id_usuario, "c": id_ciudadano, "o": origen, "ctx": contexto, "r": resultado, "m": motivo,
            "n": n_registros, "ip": (ip or "")[:64] or None, "ua": (user_agent or "")[:255] or None})
 
 

@@ -7,8 +7,9 @@ import { AtencionItem } from '../components/HistorialAtenciones'
 import { HistoriaClinicaPanel } from '../components/HistoriaClinica'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { exportarTurnosPdf, type TurnoPdfRow } from '../lib/exportPdf'
+import { listarAtenciones } from '../api/turnosApi'
 import type { CiudadanoMinimo } from '../../agenda/types/agenda'
-import type { EstadoTurno, Turno } from '../types/turno'
+import type { EstadoTurno, Turno, TurnoAtencion } from '../types/turno'
 
 const ESTADO_COLOR: Record<EstadoTurno, { bg: string; fg: string }> = {
   reservado: { bg: 'rgba(245,127,23,0.14)', fg: '#b35900' },
@@ -43,23 +44,39 @@ export function Consultas() {
     [ciudadano, turnosQ.data],
   )
   const realizados = useMemo(() => turnos.filter((t) => t.estado === 'cumplido'), [turnos])
-  const atenciones = useAtencionesCiudadano(ciudadano?.id_ciudadano ?? null)
+  const atenciones = useAtencionesCiudadano(ciudadano?.id_ciudadano ?? null, 'consulta')
+  const [exportando, setExportando] = useState(false)
 
   const nombreCiudadano = ciudadano
     ? `${ciudadano.apellido ?? ''}${ciudadano.apellido && ciudadano.nombre ? ', ' : ''}${ciudadano.nombre ?? ''}`
     : ''
 
-  function doExport() {
-    // La historia clínica NO se exporta en F5 (dato sensible sin registro de
-    // salida): desde esa solapa el PDF es el listado de turnos, no las realizadas.
+  async function doExport() {
+    // La historia clínica unificada NO se exporta (F5); desde esa solapa el
+    // botón ni se ofrece. En "realizadas" el contenido clínico solo entra al PDF
+    // si el backend lo entrega (guard Salud + nivel 1): para eso se re-pide con
+    // exportar=true, que deja la salida en el registro de accesos (origen
+    // 'export'). Sin permiso, las filas vienen `reservado` y el PDF sale sin él.
     const esRealizadas = solapa === 'realizadas'
     const fuente = esRealizadas ? realizados : turnos
     if (!ciudadano || fuente.length === 0) {
       push({ kind: 'error', title: 'No hay datos para exportar' })
       return
     }
+    let delPdf: TurnoAtencion[] = []
+    if (esRealizadas) {
+      setExportando(true)
+      try {
+        delPdf = await listarAtenciones(ciudadano.id_ciudadano, 'consulta', true)
+      } catch (e) {
+        push({ kind: 'error', title: 'No se pudo exportar', body: (e as Error).message })
+        return
+      } finally {
+        setExportando(false)
+      }
+    }
     const rows: TurnoPdfRow[] = fuente.map((t) => {
-      const at = (atenciones.data ?? []).find((a) => a.id_turno === t.id_turno)
+      const at = delPdf.find((a) => a.id_turno === t.id_turno && !a.reservado)
       return {
         fecha: t.fecha,
         hora: `${t.hora_inicio.slice(0, 5)}-${t.hora_fin.slice(0, 5)}`,
@@ -104,8 +121,8 @@ export function Consultas() {
                 en esa solapa el botón no se ofrece para no exportar "otra cosa" por sorpresa. */}
             {solapa !== 'clinica' && (
               <div style={{ marginLeft: 'auto' }}>
-                <button onClick={doExport} style={btnPrimary}>
-                  <Download size={14} strokeWidth={1.5} /> Exportar PDF
+                <button onClick={doExport} style={btnPrimary} disabled={exportando}>
+                  <Download size={14} strokeWidth={1.5} /> {exportando ? 'Exportando…' : 'Exportar PDF'}
                 </button>
               </div>
             )}

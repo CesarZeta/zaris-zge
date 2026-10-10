@@ -445,18 +445,38 @@ async def listar_turnos(
 
 
 # Segmento fijo: registrado ANTES de GET /{id_turno} (param greedy, §5).
-@router.get("/atenciones", response_model=list[TurnoAtencionOut])
+@router.get(
+    "/atenciones",
+    response_model=list[TurnoAtencionOut],
+    responses={
+        200: {"description": "Sin permiso de historia clinica, intervencion/recomendaciones viajan NULL con reservado=true"},
+        429: {"description": "Mas de 60 lecturas de contenido clinico por minuto para el mismo usuario"},
+    },
+)
 async def historial_atenciones(
-    id_ciudadano: int = Query(..., description="Ciudadano cuya historia de atenciones se consulta"),
+    request: Request,
+    # le=int32: el id va al INSERT de historia_clinica_acceso (INTEGER), ver /atenciones/historia.
+    id_ciudadano: int = Query(..., ge=1, le=2_147_483_647, description="Ciudadano cuya historia de atenciones se consulta"),
+    contexto: str = Query("turno", pattern="^(" + "|".join(CONTEXTOS) + ")$",
+                          description="Desde donde se abrio en la UI (queda en el registro de acceso)"),
+    exportar: bool = Query(False, description="True si los datos van a un PDF: el acceso queda con origen='export'"),
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
     """Historia de atenciones registradas de un ciudadano (turnos cumplidos de
-    prestaciones con registra_atencion, mig 86). Dato de salud sensible (Ley
-    25.326): aplica el mismo scope por nivel que los turnos — supervisor+ ve
-    todo; el operador solo las atenciones de turnos a su alcance (agente propio
-    o espacio de su subarea)."""
+    prestaciones con registra_atencion, mig 86). Dos capas:
+    - Alcance (que atenciones): el mismo scope por nivel que los turnos —
+      supervisor+ ve todo; el operador solo las de turnos a su alcance.
+    - Contenido clinico (intervencion/recomendaciones, dato sensible Ley 25.326):
+      el MISMO guard que la historia clinica F5 (gestion Salud + nivel 1). Sin
+      permiso, las filas viajan con esos campos en NULL y reservado=true (la UI
+      sigue mostrando que hubo atencion). Con permiso, la lectura queda en
+      historia_clinica_acceso antes de responder (origen 'export' si va a PDF).
+      Cierra el residuo del plan ATENCION §4 (export "Prestaciones realizadas")."""
+    p = await permiso_historia_clinica(db, user)
+    if p["puede"]:
+        check_rate_limit(f"hc:{user['id_usuario']}", max_requests=60, window_seconds=60)
     where = ["ta.activo = TRUE", "ta.id_ciudadano = :ic"]
     params: dict[str, Any] = {"ic": id_ciudadano, "lim": limit}
     scope = await _scope_turnos_para_usuario(db, user)
@@ -485,6 +505,14 @@ async def historial_atenciones(
         ORDER BY t.fecha DESC, t.hora_inicio DESC
         LIMIT :lim
     """), params)).mappings().all()
+    if not p["puede"]:
+        # Sin contenido clinico no hay acceso a la HC que registrar.
+        return [{**dict(r), "intervencion": None, "recomendaciones": None, "reservado": True} for r in rows]
+    await registrar_acceso(db, id_usuario=user["id_usuario"], id_ciudadano=id_ciudadano, contexto=contexto,
+                           resultado="ok", motivo=p["motivo"], n_registros=len(rows),
+                           ip=get_real_ip(request), user_agent=request.headers.get("user-agent"),
+                           origen="export" if exportar else "historia")
+    await db.commit()   # get_db NO commitea solo: sin registro no hay acceso
     return [dict(r) for r in rows]
 
 

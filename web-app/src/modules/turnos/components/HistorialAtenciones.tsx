@@ -66,8 +66,14 @@ export function AtencionItem({ a, resaltada = false }: { a: TurnoAtencion; resal
         )}
         {a.atendido_por && <span style={{ ...metaTxt, marginLeft: 'auto' }}>atendió: {a.atendido_por}</span>}
       </div>
-      <div style={{ fontSize: 12.5, color: 'var(--fg-1)', marginTop: 4, whiteSpace: 'pre-wrap' }}>{a.intervencion}</div>
-      {a.recomendaciones && (
+      {a.reservado ? (
+        <div style={{ ...metaTxt, marginTop: 4, fontStyle: 'italic' }}>
+          Contenido clínico reservado a la gestión Salud y a los administradores.
+        </div>
+      ) : (
+        <div style={{ fontSize: 12.5, color: 'var(--fg-1)', marginTop: 4, whiteSpace: 'pre-wrap' }}>{a.intervencion}</div>
+      )}
+      {!a.reservado && a.recomendaciones && (
         <div style={{ fontSize: 12, color: 'var(--fg-2)', marginTop: 4, whiteSpace: 'pre-wrap' }}>
           <span style={{ fontWeight: 600 }}>Recomendaciones:</span> {a.recomendaciones}
         </div>
