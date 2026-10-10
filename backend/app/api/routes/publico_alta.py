@@ -544,7 +544,11 @@ async def alta_empresa(
     return AltaEmpresaOut(id_empresa=id_empresa, email=email, verificacion_enviada=True)
 
 
-@router.get("/verificar", response_class=HTMLResponse)
+@router.get(
+    "/verificar",
+    response_class=HTMLResponse,
+    responses={200: {"description": "Pagina de confirmacion; el link del mail se arma con API_PUBLIC_BASE_URL"}},
+)
 async def verificar(token: str, m: str | None = None, db: AsyncSession = Depends(get_db)):
     """
     Verifica el email del alta (ciudadano o empresa) a partir del token UUID.
