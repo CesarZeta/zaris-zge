@@ -19,6 +19,7 @@ Diseno (decidido con Cesar):
     captura, devolviendo bool (contrato historico de los clientes).
 """
 import logging
+import re
 
 import httpx
 
@@ -300,6 +301,8 @@ def _build_template_app_vecinos(
 </body>
 </html>"""
 
+    # La version de texto plano no lleva etiquetas: <br> -> salto, el resto se quita.
+    parrafo_texto = re.sub(r"<[^>]+>", "", re.sub(r"<br\s*/?>", "\n", parrafo_principal))
     text = f"""\
 {municipio_nombre}
 
@@ -307,7 +310,7 @@ def _build_template_app_vecinos(
 
 {saludo}
 
-{parrafo_principal}
+{parrafo_texto}
 
 {cta_texto}: {cta_url}
 
@@ -346,7 +349,8 @@ async def enviar_mail_activacion_ciudadano(
         parrafo_principal=(
             f"{municipio_nombre} te dio de alta en App Vecinos, "
             f"el servicio para enviar reclamos y hacer seguimiento desde tu celular. "
-            f"Para empezar a usarlo, definí tu contraseña haciendo clic en el siguiente boton."
+            f"Para empezar a usarlo, definí tu contraseña haciendo clic en el siguiente boton. "
+            f"Despues vas a ingresar con tu <strong>número de DNI</strong> y esa contraseña."
         ),
         cta_texto="Activar mi cuenta",
         cta_url=cta_url,
@@ -441,7 +445,8 @@ async def enviar_mail_verificacion_alta_ciudadano(
         saludo=f"Hola {saludo_nombre},",
         parrafo_principal=(
             f"Recibimos tu solicitud de alta como vecino de {municipio_nombre}. "
-            f"Para confirmar que este correo es tuyo y activar tu cuenta, hacé clic en el siguiente botón."
+            f"Para confirmar que este correo es tuyo y activar tu cuenta, hacé clic en el siguiente botón. "
+            f"Después vas a ingresar con tu <strong>número de DNI</strong> y la contraseña que elegiste al registrarte."
         ),
         cta_texto="Verificar mi alta",
         cta_url=cta_url,

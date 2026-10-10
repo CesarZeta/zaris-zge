@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     # Base del frontend del producto (shell vanilla) para armar el link publico de la encuesta.
     # En prod apunta al dominio real (§6). El form publico vive en /frontend/encuesta.html.
     FRONTEND_BASE_URL: str = "https://zge.zaris.com.ar"
+    # Base PUBLICA de esta API, para links de mail que apuntan a un endpoint del backend
+    # (ej. GET /publico/alta/verificar, que devuelve la pagina HTML de confirmacion).
+    # NO usar FRONTEND_BASE_URL para eso: es GitHub Pages (estatico) y /api/... da 404
+    # (cazado 2026-10-10: el mail de verificacion del autoregistro llevaba a un 404).
+    # Local: .env.local -> http://127.0.0.1:8000 · otro deploy: su URL de Railway.
+    API_PUBLIC_BASE_URL: str = "https://zaris-api-production-bf0b.up.railway.app"
     # Token compartido para autenticar el job dispatcher de encuestas (cron externo que
     # dispara procesar_envios_pendientes/expirar_envios_vencidos). Set via env var en Railway;
     # NO commitear el valor real. Vacio => el endpoint dispatcher debe rechazar (cuando exista).
