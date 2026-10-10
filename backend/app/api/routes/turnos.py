@@ -66,7 +66,7 @@ from app.services.guardia import (
 )
 from app.services.historia_clinica import (
     CONTEXTOS, DETALLE_403, SQL_CIUDADANO, SQL_HISTORIA,
-    permiso_historia_clinica, registrar_acceso,
+    gestion_es_salud, permiso_historia_clinica, registrar_acceso,
 )
 from app.middleware.rate_limit import check_rate_limit
 from app.utils.request_helpers import get_real_ip
@@ -195,6 +195,16 @@ async def detalle_prestacion(
     return out
 
 
+async def _registra_atencion_efectivo(db: AsyncSession, payload: Any, id_ubicacion: Optional[int]) -> bool:
+    """registra_atencion que se persiste: solo clase 'atencion', y FORZADO en las
+    prestaciones de la gestion Salud (2026-10-10). Sin esto, lo que el profesional
+    anotaba al cumplir iba a turnos.observaciones, que ve cualquiera con alcance
+    al turno y el vecino en su app; con la marca, va a turno_atencion (guard HC)."""
+    if payload.clase != "atencion":
+        return False
+    return bool(payload.registra_atencion) or await gestion_es_salud(db, payload.id_subarea, id_ubicacion)
+
+
 @router.post("/prestaciones", response_model=TipoPrestacionOut, status_code=201)
 async def crear_prestacion(
     payload: TipoPrestacionCreate,
@@ -224,7 +234,7 @@ async def crear_prestacion(
         "dur": payload.duracion_min, "tr": payload.tipo_recurso,
         "ia": payload.id_agente, "ie": payload.id_espacio, "iu": id_ubicacion,
         "mun": payload.id_municipio, "isa": payload.id_subarea,
-        "reg": payload.registra_atencion and payload.clase == "atencion",
+        "reg": await _registra_atencion_efectivo(db, payload, id_ubicacion),
         "uid": user["id_usuario"],
     })
     await db.commit()
@@ -267,7 +277,7 @@ async def editar_prestacion(
         "clase": payload.clase, "dur": payload.duracion_min, "tr": payload.tipo_recurso,
         "ia": payload.id_agente, "ie": payload.id_espacio, "iu": id_ubicacion,
         "isa": payload.id_subarea,
-        "reg": payload.registra_atencion and payload.clase == "atencion",
+        "reg": await _registra_atencion_efectivo(db, payload, id_ubicacion),
         "uid": user["id_usuario"],
     })
     await db.commit()
@@ -1252,7 +1262,11 @@ async def reprogramar_turno(
     return out  # type: ignore
 
 
-@router.patch("/{id_turno}/cumplir", response_model=TurnoOut)
+@router.patch(
+    "/{id_turno}/cumplir",
+    response_model=TurnoOut,
+    responses={422: {"description": "Prestacion con historia de atencion: intervencion obligatoria y observaciones rechazadas (van a turno_atencion)"}},
+)
 async def cumplir_turno(
     id_turno: int,
     payload: Optional[TurnoCumplir] = None,
@@ -1295,6 +1309,11 @@ async def cumplir_turno(
         raise HTTPException(422, "Esta prestación registra historia de atención: la intervención es obligatoria para cumplir el turno")
 
     obs_nueva = (payload.observaciones or "").strip() if payload else ""
+    # Con historia de atencion, lo que se anota al atender es dato clinico: va a
+    # intervencion/recomendaciones (turno_atencion, guard HC), NUNCA a
+    # turnos.observaciones, que ve el vecino y cualquiera con alcance al turno.
+    if turno["registra_atencion"] and obs_nueva:
+        raise HTTPException(422, "Esta prestación registra historia de atención: anotá lo atendido en intervención o recomendaciones, no en observaciones del turno (las ve el vecino)")
     sets = ["estado = 'cumplido'", "fecha_modificacion = NOW()", "id_usuario_modificacion = :uid"]
     params: dict[str, Any] = {"id": id_turno, "uid": user["id_usuario"]}
     if obs_nueva:

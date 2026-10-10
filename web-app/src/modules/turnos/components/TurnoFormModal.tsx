@@ -172,12 +172,14 @@ export function TurnoFormModal({ open, onClose, turno }: Props) {
             rows={2}
             style={{ ...inp, resize: 'vertical', fontFamily: 'var(--font-display)' }}
           />
+          <div style={hintTxt}>Lo ve el vecino en su app. No anotes datos clínicos.</div>
         </div>
       </div>
     </Modal>
   )
 }
 
+const hintTxt: React.CSSProperties = { fontSize: 11, color: 'var(--fg-3)', marginTop: 4 }
 const lbl: React.CSSProperties = {
   display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', marginBottom: 4,
 }

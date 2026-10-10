@@ -253,6 +253,7 @@ export function PrestacionFormModal({ open, onClose, prestacion }: Props) {
                 <span style={{ display: 'block', fontSize: 11, color: 'var(--fg-3)', marginTop: 2 }}>
                   Al cumplir cada turno se exige registrar la intervención realizada y las
                   recomendaciones, y quien atiende ve las atenciones anteriores del ciudadano.
+                  En las prestaciones de la gestión Salud queda activado siempre al guardar.
                 </span>
               </span>
             </label>
