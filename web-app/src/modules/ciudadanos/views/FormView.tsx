@@ -1,16 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { useNotificationsStore } from '../../../stores/notifications'
+import { useAuthStore } from '../../../stores/auth'
 import {
   useCiudadano,
   useCrearCiudadano,
+  useCuentasCiudadano,
   useEmpresasVinculadas,
   useModificarCiudadano,
   useNacionalidades,
   verificarDuplicadoCiudadano,
 } from '../hooks/useCiudadanos'
-import { crearCuentaVecino } from '../api/ciudadanosApi'
+import { crearCuentaVecino, crearCuentaZaris } from '../api/ciudadanosApi'
 import { CiudadanoForm } from '../components/CiudadanoForm'
+import { CuentaZarisModal } from '../components/CuentaZarisModal'
+import { CuentasChips } from '../components/CuentasChips'
 import { EmpresaVinculadaPanel } from '../components/EmpresaVinculadaPanel'
 import {
   extraerDniDeCuil,
@@ -20,7 +25,7 @@ import {
   validarEmail,
   validarTelefono,
 } from '../lib/cuilUtils'
-import type { CiudadanoCreate, DocTipo, Sexo, VerificarDuplicadoResp } from '../types/ciudadano'
+import type { CiudadanoCreate, CuentaZarisIn, DocTipo, Sexo, VerificarDuplicadoResp } from '../types/ciudadano'
 
 type Modo = 'new' | 'edit' | 'view'
 
@@ -42,6 +47,7 @@ export interface FormState {
   telefono: string
   email: string
   emp_chk: boolean
+  es_funcionario: boolean
   observaciones: string
 }
 
@@ -50,7 +56,7 @@ const emptyForm: FormState = {
   nombre: '', apellido: '', sexo: '', fecha_nac: '',
   id_nacionalidad: '', calle: '', localidad: '', provincia: '',
   latitud: null, longitud: null,
-  telefono: '', email: '', emp_chk: false, observaciones: '',
+  telefono: '', email: '', emp_chk: false, es_funcionario: false, observaciones: '',
 }
 
 export function FormView() {
@@ -110,6 +116,7 @@ export function FormView() {
       telefono: c.telefono || '',
       email: c.email || '',
       emp_chk: !!c.emp_chk,
+      es_funcionario: !!c.es_funcionario,
       observaciones: c.observaciones || '',
     })
     if (c.emp_chk) setEmpPanelOpen(true)
@@ -225,6 +232,7 @@ export function FormView() {
       telefono: soloDigitos(form.telefono),
       email: form.email.trim().toLowerCase(),
       emp_chk: form.emp_chk,
+      es_funcionario: form.es_funcionario,
       observaciones: form.observaciones.trim() || null,
     }
     return { ok: true, data }
@@ -277,8 +285,22 @@ export function FormView() {
     }
   }
 
-  // ── Cuenta App Vecinos para ciudadano existente (vía de mostrador) ──
+  // ── «Crear cuenta aplicación ZARIS» (mig 110, PLAN_CUENTAS_FUNCIONARIO.md) ──
+  // Un solo botón, dos comportamientos según el tilde «funcionario del municipio»:
+  //   sin tilde → cuenta de App Vecinos (vía de mostrador, como siempre);
+  //   con tilde → cuenta ZARIS (backoffice + app de agentes), solo Administrador,
+  //               datos extra en el mini-modal (nivel, subárea, usuario).
+  const qc = useQueryClient()
+  const nivelUsuario = useAuthStore((s) => s.user?.nivel_acceso)
+  const esAdmin = nivelUsuario === 1
+  const cuentas = useCuentasCiudadano(modo !== 'new' ? id : null)
   const [enviandoCuenta, setEnviandoCuenta] = useState(false)
+  const [modalZarisOpen, setModalZarisOpen] = useState(false)
+  // El tilde recién vale cuando está guardado: el backend lo exige en la DB (422).
+  const funcionarioGuardado = !!detalle.data?.es_funcionario
+  const tildeSinGuardar = form.es_funcionario && !funcionarioGuardado
+  const yaTieneZaris = !!cuentas.data?.zaris
+
   async function handleCuentaVecino() {
     if (!id || enviandoCuenta) return
     setEnviandoCuenta(true)
@@ -289,12 +311,69 @@ export function FormView() {
       } else {
         push({ kind: 'success', title: 'Mail de activación enviado', body: `Le llega a ${r.email} para que elija su contraseña` })
       }
+      qc.invalidateQueries({ queryKey: ['buc', 'ciudadanos', id, 'cuentas'] })
     } catch (err) {
       push({ kind: 'error', title: 'No se pudo crear la cuenta', body: (err as Error).message })
     } finally {
       setEnviandoCuenta(false)
     }
   }
+
+  function handleCrearCuentaZaris() {
+    if (!id) return
+    if (!form.es_funcionario) { void handleCuentaVecino(); return }
+    if (tildeSinGuardar) {
+      push({ kind: 'info', title: 'Guardá la ficha primero', body: 'La marca de funcionario tiene que estar guardada para crear la cuenta ZARIS.' })
+      return
+    }
+    if (!esAdmin) {
+      push({ kind: 'info', title: 'Solo un administrador puede crear cuentas de funcionario' })
+      return
+    }
+    setModalZarisOpen(true)
+  }
+
+  // Confirmar cierra el modal de inmediato y el resultado llega por toast (§23).
+  async function confirmarCuentaZaris(body: CuentaZarisIn) {
+    if (!id) return
+    setModalZarisOpen(false)
+    setEnviandoCuenta(true)
+    try {
+      const r = await crearCuentaZaris(id, body)
+      push({
+        kind: 'success',
+        title: 'Cuenta ZARIS creada',
+        body: `Usuario ${r.username}. Las credenciales se enviaron a ${r.email}`
+          + (r.cuenta_vecino_creada ? ' (también se creó su cuenta de App Vecinos).' : '.'),
+        ttl: 8000,
+      })
+      qc.invalidateQueries({ queryKey: ['buc', 'ciudadanos', id, 'cuentas'] })
+    } catch (err) {
+      push({ kind: 'error', title: 'No se pudo crear la cuenta ZARIS', body: (err as Error).message })
+    } finally {
+      setEnviandoCuenta(false)
+    }
+  }
+
+  const botonCuenta = (() => {
+    if (!form.es_funcionario) {
+      return { label: 'Crear cuenta aplicación ZARIS', disabled: enviandoCuenta,
+               title: 'Sin la marca de funcionario: crea la cuenta de App Vecinos y le manda el mail de activación al email de la ficha' }
+    }
+    if (yaTieneZaris) {
+      return { label: 'Crear cuenta aplicación ZARIS', disabled: true,
+               title: `Ya tiene cuenta ZARIS (usuario ${cuentas.data?.zaris?.username})` }
+    }
+    if (tildeSinGuardar) {
+      return { label: 'Crear cuenta aplicación ZARIS', disabled: true, title: 'Guardá la ficha primero' }
+    }
+    if (!esAdmin) {
+      return { label: 'Crear cuenta aplicación ZARIS', disabled: true,
+               title: 'Solo un administrador puede crear cuentas de funcionario' }
+    }
+    return { label: 'Crear cuenta aplicación ZARIS', disabled: enviandoCuenta,
+             title: 'Crea la cuenta para el sistema y la app de agentes y le manda las credenciales al email de la ficha' }
+  })()
 
   // ── Toggle emp_chk ──
   function handleEmpChk(checked: boolean) {
@@ -342,7 +421,8 @@ export function FormView() {
           </span>
         </header>
 
-        <div style={{ padding: 20 }}>
+        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {modo !== 'new' && id ? <CuentasChips idCiudadano={id} /> : null}
           <CiudadanoForm
             form={form}
             errores={errores}
@@ -360,14 +440,21 @@ export function FormView() {
             {readonly ? '← Volver' : 'Cancelar'}
           </button>
           {modo !== 'new' && id ? (
-            <button
-              onClick={handleCuentaVecino}
-              disabled={enviandoCuenta}
-              style={{ ...btnGhost, marginRight: 'auto' }}
-              title="Crea la cuenta del portal del vecino y le manda el mail de activación al email de la ficha"
-            >
-              {enviandoCuenta ? 'Enviando…' : 'Crear cuenta App Vecinos'}
-            </button>
+            <div style={{ marginRight: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <button
+                onClick={handleCrearCuentaZaris}
+                disabled={botonCuenta.disabled}
+                style={{ ...btnGhost, opacity: botonCuenta.disabled && !enviandoCuenta ? 0.6 : 1, cursor: botonCuenta.disabled ? 'not-allowed' : 'pointer' }}
+                title={botonCuenta.title}
+              >
+                {enviandoCuenta ? 'Enviando…' : botonCuenta.label}
+              </button>
+              {form.es_funcionario && !yaTieneZaris && !tildeSinGuardar && !esAdmin && (
+                <span style={{ fontSize: 'var(--size-caption)', color: 'var(--fg-3)' }}>
+                  Solo un administrador puede crear cuentas de funcionario.
+                </span>
+              )}
+            </div>
           ) : null}
           {!readonly && (
             <button onClick={handleGuardar} disabled={crear.isPending || modificar.isPending || bloqueoEmpresaGuardar} style={btnPrimary}>
@@ -376,6 +463,13 @@ export function FormView() {
           )}
         </footer>
       </section>
+
+      <CuentaZarisModal
+        open={modalZarisOpen}
+        ciudadano={{ nombre: form.nombre, apellido: form.apellido, email: form.email }}
+        onClose={() => setModalZarisOpen(false)}
+        onConfirm={(body) => { void confirmarCuentaZaris(body) }}
+      />
 
       {/* Panel empresa vinculada */}
       {(empPanelOpen || (empresas.data && empresas.data.length > 0 && form.emp_chk)) && id && (

@@ -23,7 +23,8 @@ export function LoginPage() {
     setError('')
     setLoading(true)
     try {
-      const res = await api.post<LoginResponse>('/api/v1/auth/login', { email, password })
+      // Email o DNI (mig 110): el backend resuelve cuál es.
+      const res = await api.post<LoginResponse>('/api/v1/auth/login', { identificador: email, password })
       login(res.access_token, res.user)
       navigate('/dashboard', { replace: true })
     } catch (err) {
@@ -53,15 +54,15 @@ export function LoginPage() {
 
         <form className={s.form} onSubmit={handleSubmit} noValidate>
           <div className={s.field}>
-            <label className={s.label} htmlFor="email">Correo electrónico</label>
+            <label className={s.label} htmlFor="email">Correo electrónico o DNI</label>
             <input
               id="email"
-              type="email"
+              type="text"
               autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className={s.input}
-              placeholder="usuario@municipio.gob.ar"
+              placeholder="usuario@municipio.gob.ar o DNI"
               required
             />
           </div>

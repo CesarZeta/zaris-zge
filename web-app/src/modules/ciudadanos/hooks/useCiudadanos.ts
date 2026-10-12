@@ -5,6 +5,7 @@ import {
   crearCiudadano,
   crearEmpresa,
   empresasVinculadas,
+  estadoCuentasCiudadano,
   getActividades,
   getNacionalidades,
   getTiposRepresentacion,
@@ -75,6 +76,16 @@ export function useEmpresasVinculadas(id: number | null) {
     queryKey: ['buc', 'ciudadanos', id, 'empresas-vinculadas'],
     queryFn:  () => empresasVinculadas(id as number),
     enabled:  id != null,
+  })
+}
+
+// ── Cuentas (App Vecinos / ZARIS) del ciudadano ──
+export function useCuentasCiudadano(id: number | null) {
+  return useQuery({
+    queryKey: ['buc', 'ciudadanos', id, 'cuentas'],
+    queryFn:  () => estadoCuentasCiudadano(id as number),
+    enabled:  id != null,
+    staleTime: 15 * 1000,
   })
 }
 

@@ -44,10 +44,48 @@ export interface Ciudadano {
   email: string
   email_chk: boolean
   emp_chk: boolean
+  /** Mig 110: funcionario del municipio → habilita «Crear cuenta aplicación ZARIS». */
+  es_funcionario: boolean
   observaciones: string | null
   fecha_modif: string | null
   activo: boolean
   modificado_por: number | null
+}
+
+// ── Cuentas del ciudadano (mig 110, PLAN_CUENTAS_FUNCIONARIO.md) ──
+export type EstadoCuentaVecino = 'sin_cuenta' | 'pendiente' | 'activa'
+
+export interface CuentasCiudadano {
+  vecino: { estado: EstadoCuentaVecino; email: string | null }
+  zaris: {
+    id_usuario: number
+    username: string
+    nivel_acceso: number
+    activo: boolean
+    debe_cambiar_password: boolean
+  } | null
+}
+
+/** Lo que la ficha no tiene y la cuenta ZARIS necesita (mini-modal, solo admin). */
+export interface CuentaZarisIn {
+  nivel_acceso: number
+  id_subarea: number
+  username: string
+}
+
+export interface CuentaZarisOut {
+  id_usuario: number
+  username: string
+  email: string
+  nivel_acceso: number
+  mail_enviado: boolean
+  cuenta_vecino_creada: boolean
+}
+
+export interface SubareaHit {
+  id_subarea: number
+  nombre: string
+  area_nombre: string | null
 }
 
 export interface CiudadanoConNacionalidad extends Ciudadano {
@@ -72,6 +110,7 @@ export interface CiudadanoCreate {
   telefono: string
   email: string
   emp_chk?: boolean
+  es_funcionario?: boolean
   observaciones?: string | null
 }
 

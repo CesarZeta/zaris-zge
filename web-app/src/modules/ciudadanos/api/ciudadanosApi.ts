@@ -11,6 +11,10 @@ import type {
   EmpresaVinculada,
   EmpresaCreate,
   CiudadanoEmpresaCreate,
+  CuentasCiudadano,
+  CuentaZarisIn,
+  CuentaZarisOut,
+  SubareaHit,
 } from '../types/ciudadano'
 
 const BASE = '/api/v1/buc'
@@ -42,6 +46,19 @@ export const crearCuentaVecino = (id: number) =>
     `${BASE}/ciudadanos/${id}/cuenta-vecino`,
     {},
   )
+
+/** Cuenta ZARIS (backoffice + app de agentes) de un ciudadano marcado como funcionario.
+ *  Solo admin (403). 422 si no tiene el tilde; 409 si ya tiene cuenta o el usuario existe. */
+export const crearCuentaZaris = (id: number, body: CuentaZarisIn) =>
+  api.post<CuentaZarisOut>(`${BASE}/ciudadanos/${id}/cuenta-zaris`, body)
+
+/** Estado de las dos cuentas (App Vecinos / ZARIS) para los chips de la ficha. */
+export const estadoCuentasCiudadano = (id: number) =>
+  api.get<CuentasCiudadano>(`${BASE}/ciudadanos/${id}/cuentas`)
+
+/** Buscador predictivo de subáreas (mismo endpoint que usa el módulo Usuarios). */
+export const buscarSubareas = (q: string) =>
+  api.get<SubareaHit[]>(`${BASE}/subareas/buscar`, { params: { q, limit: 20 } })
 
 export const verificarDuplicadoCiudadano = (campo: string, valor: string, excluir_id?: number | null) =>
   api.get<VerificarDuplicadoResp>(`${BASE}/ciudadanos/verificar-duplicado`, {
