@@ -384,7 +384,8 @@
       const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identificador, password }),
+        // `email` repetido: compat con un backend anterior a la mig 110 (ignora `identificador`).
+        body: JSON.stringify({ identificador, email: identificador, password }),
       });
 
       const data = await res.json();
