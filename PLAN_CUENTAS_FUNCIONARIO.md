@@ -1,7 +1,11 @@
 # PLAN — Circuito de alta de cuentas ZARIS (funcionario desde la ficha del ciudadano)
 
 > Diseño aprobado por César el 2026-10-12. Este archivo es la especificación + plan por fases;
-> el estado de avance vive en [`ESTADO.md`](ESTADO.md). Reglas transversales en [`CLAUDE.md`](CLAUDE.md)
+> el estado de avance vive en [`ESTADO.md`](ESTADO.md).
+>
+> **Estado: F1-F5 ENTREGADAS y en prod el 2026-10-12** (mig 110 local + prod; backend `f4e4992`, backoffice
+> `cc57b07` + `92da4d4`, manuales/docs `3743f86`; `zaris-agentes` `ed52ea9` + `50a04cd`). Queda la prueba real
+> de César en el celular (sección «Después») y la decisión pendiente de la sección 2. Reglas transversales en [`CLAUDE.md`](CLAUDE.md)
 > (§3 roles, §5 links en mails, §21 migraciones, §23 patrones UI, §24 drift en prod, §39/§38 vía skills).
 
 ## 1. Objetivo
