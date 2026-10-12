@@ -230,6 +230,10 @@ export function CiudadanoForm({ form, errores, readonly, esAlta = false, naciona
               Al guardar, además de registrar al ciudadano, el sistema le crea automáticamente
               una <strong>cuenta de App Vecinos</strong> y le envía un correo de activación.
               El vecino abre ese correo, ingresa y define su propia contraseña.
+              {form.es_funcionario && (
+                <> Como es <strong>funcionario del municipio</strong>, después un administrador
+                le crea la cuenta ZARIS desde esta misma ficha con el botón «Crear cuenta aplicación ZARIS».</>
+              )}
             </span>
           </div>
         )}
@@ -247,6 +251,25 @@ export function CiudadanoForm({ form, errores, readonly, esAlta = false, naciona
           />
           Este ciudadano es representante de una empresa
         </label>
+      </Section>
+
+      {/* ── Funcionario municipal (mig 110) ── */}
+      <Section title="Funcionario municipal">
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: readonly ? 'default' : 'pointer', fontSize: 'var(--size-ui)', color: 'var(--fg-1)' }}>
+          <input
+            type="checkbox"
+            checked={form.es_funcionario}
+            onChange={(e) => onChange('es_funcionario', e.target.checked)}
+            disabled={readonly}
+            style={{ width: 16, height: 16, accentColor: 'var(--zaris-orange)' }}
+          />
+          Este ciudadano es funcionario del municipio
+        </label>
+        <div style={{ fontSize: 'var(--size-caption)', color: 'var(--fg-3)', lineHeight: 1.5 }}>
+          Con esta marca, el botón «Crear cuenta aplicación ZARIS» le crea la cuenta para el sistema
+          y la app de agentes (solo un administrador). Sin la marca, le crea la cuenta de App Vecinos.
+          La cuenta de funcionario sirve también en la app del vecino; la del vecino no sirve en la de agentes.
+        </div>
       </Section>
 
       {/* ── Observaciones ── */}
