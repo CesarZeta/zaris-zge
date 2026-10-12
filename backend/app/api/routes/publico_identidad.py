@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.database import get_db
+from app.core.urls import url_alta_publica
 from app.schemas.publico_auth import IdentidadMunicipioOut
 
 router = APIRouter(prefix="/api/v1/publico", tags=["publico-identidad"])
@@ -44,13 +44,10 @@ async def identidad_municipio(db: AsyncSession = Depends(get_db)):
     # URL del alta publica de vecinos: dominio del shell + slug del UNICO
     # municipio activo del deploy (mono-tenant, §38). Sin slug -> None y la
     # PWA no muestra el link (fail-silent).
-    url_alta = None
     slug = await db.scalar(text(
         "SELECT codigo_corto FROM municipios WHERE activo = TRUE ORDER BY id_municipio LIMIT 1"
     ))
-    if slug:
-        base = settings.FRONTEND_BASE_URL.rstrip("/")
-        url_alta = f"{base}/frontend/alta-vecino.html?m={str(slug).strip().lower()}"
+    url_alta = url_alta_publica(slug)
 
     return IdentidadMunicipioOut(
         municipio_nombre=cfg.get("municipio_nombre"),
