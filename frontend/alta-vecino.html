@@ -41,6 +41,18 @@
     .hint { font-size: 0.8rem; color: var(--fg-3); margin-top: 4px; }
     .hint.okmsg { color: #1f8a65; font-weight: 600; }
     .field-err { color: var(--color-error); font-size: 0.8rem; margin-top: 4px; }
+    /* Ver / ocultar contraseña (botón con ojo dentro del input) */
+    .pw-wrap { position: relative; }
+    .pw-wrap input { padding-right: 46px; }
+    .pw-toggle {
+      position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+      display: flex; align-items: center; justify-content: center; width: 36px; height: 36px;
+      padding: 0; background: none; border: 0; border-radius: 8px; color: var(--fg-3); cursor: pointer;
+    }
+    .pw-toggle:hover { color: var(--fg-1); background: var(--surface-400); }
+    .pw-toggle .eye-off { display: none; }
+    .pw-toggle.on .eye { display: none; }
+    .pw-toggle.on .eye-off { display: block; }
     .geo-wrap { position: relative; }
     .geo-results {
       position: absolute; left: 0; right: 0; top: 100%; z-index: 30;
@@ -107,6 +119,7 @@
 
       <form id="form" autocomplete="off" novalidate>
         <h2 class="seccion">Identificación</h2>
+        <!-- El sexo va justo después del DNI: con los dos se calcula el CUIL (pedido de César 2026-10-12). -->
         <div class="row c2">
           <div class="field">
             <label>Nº de DNI <span class="req">*</span></label>
@@ -114,11 +127,22 @@
             <div class="field-err hidden" id="e-docnro"></div>
           </div>
           <div class="field">
-            <label>CUIL <span class="req">*</span></label>
-            <input id="f-cuil" maxlength="14" inputmode="numeric" placeholder="20-12345678-9" />
-            <div class="hint" id="h-cuil">Con o sin guiones.</div>
-            <div class="field-err hidden" id="e-cuil"></div>
+            <label>Sexo <span class="req">*</span></label>
+            <select id="f-sexo">
+              <option value="">Elegí una opción…</option>
+              <option value="MUJER">Mujer</option>
+              <option value="HOMBRE">Hombre</option>
+              <option value="OTROS">Otro / prefiero no decir</option>
+            </select>
+            <div class="hint">Lo usamos para calcular tu CUIL.</div>
+            <div class="field-err hidden" id="e-sexo"></div>
           </div>
+        </div>
+        <div class="field">
+          <label>CUIL <span class="req">*</span></label>
+          <input id="f-cuil" maxlength="14" inputmode="numeric" placeholder="Se completa con tu DNI y sexo" />
+          <div class="hint" id="h-cuil">Lo calculamos con tu DNI y tu sexo; si el tuyo es distinto, corregilo (con o sin guiones).</div>
+          <div class="field-err hidden" id="e-cuil"></div>
         </div>
         <div class="row c2">
           <div class="field"><label>Apellido <span class="req">*</span></label><input id="f-apellido" maxlength="100" /><div class="field-err hidden" id="e-apellido"></div></div>
@@ -128,25 +152,15 @@
         <h2 class="seccion">Datos personales</h2>
         <div class="row c2">
           <div class="field">
-            <label>Sexo <span class="req">*</span></label>
-            <select id="f-sexo">
-              <option value="">Elegí una opción…</option>
-              <option value="MUJER">Mujer</option>
-              <option value="HOMBRE">Hombre</option>
-              <option value="OTROS">Otro / prefiero no decir</option>
-            </select>
-            <div class="field-err hidden" id="e-sexo"></div>
-          </div>
-          <div class="field">
             <label>Fecha de nacimiento <span class="req">*</span></label>
             <input id="f-fnac" type="date" />
             <div class="field-err hidden" id="e-fnac"></div>
           </div>
-        </div>
-        <div class="field">
-          <label>Nacionalidad <span class="req">*</span></label>
-          <select id="f-nac"><option value="">Cargando…</option></select>
-          <div class="field-err hidden" id="e-nac"></div>
+          <div class="field">
+            <label>Nacionalidad <span class="req">*</span></label>
+            <select id="f-nac"><option value="">Cargando…</option></select>
+            <div class="field-err hidden" id="e-nac"></div>
+          </div>
         </div>
 
         <h2 class="seccion">Domicilio</h2>
@@ -177,13 +191,25 @@
         <div class="row c2">
           <div class="field">
             <label>Contraseña <span class="req">*</span></label>
-            <input id="f-password" type="password" maxlength="72" />
+            <div class="pw-wrap">
+              <input id="f-password" type="password" maxlength="72" />
+              <button type="button" class="pw-toggle" data-for="f-password" aria-label="Mostrar contraseña">
+                <svg class="eye" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg class="eye-off" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              </button>
+            </div>
             <div class="hint">Mínimo 8 caracteres.</div>
             <div class="field-err hidden" id="e-password"></div>
           </div>
           <div class="field">
             <label>Repetir contraseña <span class="req">*</span></label>
-            <input id="f-password2" type="password" maxlength="72" />
+            <div class="pw-wrap">
+              <input id="f-password2" type="password" maxlength="72" />
+              <button type="button" class="pw-toggle" data-for="f-password2" aria-label="Mostrar contraseña">
+                <svg class="eye" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg class="eye-off" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              </button>
+            </div>
             <div class="field-err hidden" id="e-password2"></div>
           </div>
         </div>
@@ -285,18 +311,70 @@
       const doc = digits(dni);
       return d.length === 11 && doc.length >= 7 && d.slice(2, 10) === doc.padStart(8, '0');
     }
+    // ── CUIL sugerido a partir del DNI + sexo (pedido de César 2026-10-12) ──
+    // Prefijo 20 (hombre) / 27 (mujer) + DNI a 8 dígitos + verificador módulo 11. Si el
+    // verificador da 10, el prefijo pasa a 23 y se recalcula (queda 9 para hombre y 4 para
+    // mujer, como lo asigna ANSES). Para "Otro" no se calcula: se pide tal como figura en la
+    // documentación. El vecino siempre puede corregirlo: si lo tipea, no se vuelve a pisar.
+    const HINT_CUIL = 'Lo calculamos con tu DNI y tu sexo; si el tuyo es distinto, corregilo (con o sin guiones).';
+    const HINT_CUIL_OTROS = 'Para esta opción no podemos calcularlo: ingresalo como figura en tu documentación (con o sin guiones).';
+    function digitoCuil(base10) {
+      const pesos = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+      let s = 0;
+      for (let i = 0; i < 10; i++) s += parseInt(base10[i], 10) * pesos[i];
+      const resto = 11 - (s % 11);
+      return resto === 11 ? 0 : resto;
+    }
+    function generarCuil(dni, sexo) {
+      const doc = digits(dni);
+      if (doc.length < 7 || doc.length > 8) return '';
+      const pref = sexo === 'HOMBRE' ? '20' : (sexo === 'MUJER' ? '27' : '');
+      if (!pref) return '';
+      let base = pref + doc.padStart(8, '0');
+      let dv = digitoCuil(base);
+      if (dv === 10) { base = '23' + doc.padStart(8, '0'); dv = digitoCuil(base); }
+      return base.slice(0, 2) + '-' + base.slice(2) + '-' + dv;
+    }
+    let cuilManual = false;  // el vecino lo tipeó: no se pisa con el calculado
+    function sugerirCuil() {
+      if (cuilManual) return;
+      const el = $('f-cuil'); const sexo = $('f-sexo').value;
+      const c = generarCuil($('f-docnro').value, sexo);
+      if (c) { el.value = c; validarCuilVivo(true); return; }
+      el.value = ''; el.classList.remove('ok', 'bad');
+      const h = $('h-cuil'); h.classList.remove('okmsg');
+      h.textContent = sexo === 'OTROS' ? HINT_CUIL_OTROS : HINT_CUIL;
+    }
     // Validación en vivo del CUIL (borde verde/rojo + hint)
-    function validarCuilVivo() {
+    function validarCuilVivo(calculado) {
       const el = $('f-cuil'); const v = digits(el.value);
       el.classList.remove('ok', 'bad');
       const h = $('h-cuil');
       h.classList.remove('okmsg');
-      if (v.length === 0) { h.textContent = 'Con o sin guiones.'; return; }
-      if (v.length < 11) { h.textContent = 'Con o sin guiones.'; return; }
-      if (cuilValido(el.value)) { el.classList.add('ok'); h.textContent = '✓ CUIL válido'; h.classList.add('okmsg'); }
-      else { el.classList.add('bad'); h.textContent = 'El CUIL no es válido (revisá los números).'; }
+      if (v.length < 11) { h.textContent = $('f-sexo').value === 'OTROS' ? HINT_CUIL_OTROS : HINT_CUIL; return; }
+      if (cuilValido(el.value)) {
+        el.classList.add('ok'); h.classList.add('okmsg');
+        h.textContent = calculado ? '✓ CUIL calculado con tu DNI y sexo. Si el tuyo es distinto, corregilo.' : '✓ CUIL válido';
+      } else { el.classList.add('bad'); h.textContent = 'El CUIL no es válido (revisá los números).'; }
     }
-    $('f-cuil').addEventListener('input', validarCuilVivo);
+    $('f-cuil').addEventListener('input', () => {
+      cuilManual = digits($('f-cuil').value).length > 0;   // vacío = volver a sugerir
+      validarCuilVivo(false);
+      if (!cuilManual) sugerirCuil();
+    });
+    $('f-docnro').addEventListener('input', sugerirCuil);
+    $('f-sexo').addEventListener('change', sugerirCuil);
+
+    // ── Ver / ocultar contraseña ──
+    document.querySelectorAll('.pw-toggle').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const inp = $(btn.dataset.for);
+        const mostrar = inp.type === 'password';
+        inp.type = mostrar ? 'text' : 'password';
+        btn.classList.toggle('on', mostrar);
+        btn.setAttribute('aria-label', mostrar ? 'Ocultar contraseña' : 'Mostrar contraseña');
+      });
+    });
 
     // Fecha de nacimiento: tope hoy
     $('f-fnac').max = new Date().toISOString().slice(0, 10);
