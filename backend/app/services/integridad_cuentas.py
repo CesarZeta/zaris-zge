@@ -43,8 +43,9 @@ GRACIA_HORAS = 24
 MOTIVO_SIN_VINCULO = "sin_vinculo"
 
 
-# Subquery común: usuarios activos SIN agente activo y SIN ciudadano vinculado por
-# email. Admin (nivel 1) exento. NO filtra por gracia (lo agrega cada caller).
+# Subquery común: usuarios activos SIN agente activo y SIN ciudadano vinculado (por
+# email, criterio histórico, o por usuarios.id_ciudadano, mig 110). Admin (nivel 1)
+# exento. NO filtra por gracia (lo agrega cada caller).
 _COND_SIN_VINCULO = """
     u.activo = TRUE
     AND u.nivel_acceso > 1
@@ -55,6 +56,10 @@ _COND_SIN_VINCULO = """
     AND NOT EXISTS (
         SELECT 1 FROM ciudadanos c
         WHERE lower(c.email) = lower(u.email) AND c.activo = TRUE
+    )
+    AND NOT EXISTS (
+        SELECT 1 FROM ciudadanos c
+        WHERE c.id_ciudadano = u.id_ciudadano AND c.activo = TRUE
     )
 """
 

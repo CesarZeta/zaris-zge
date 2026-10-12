@@ -37,7 +37,11 @@ COOLDOWN_RECOVERY_MINUTOS = 5
 
 
 class LoginRequest(BaseModel):
-    email: str
+    """Login del usuario interno. `identificador` = email O número de documento (mig 110,
+    pedido de César 2026-10-12). `email` se mantiene como alias por compat con clientes
+    viejos; vale cualquiera de los dos."""
+    identificador: str | None = None
+    email: str | None = None
     password: str
 
 
@@ -112,6 +116,55 @@ async def _perfil_agente_del_usuario(db: AsyncSession, id_usuario: int) -> dict:
             "subarea_nombre": row.subarea_nombre}
 
 
+_USUARIO_LOGIN_SELECT = """
+    SELECT id_usuario, nombre, email, nivel_acceso, password_hash, activo,
+           debe_cambiar_password, foto_url
+      FROM usuarios
+"""
+
+
+async def _buscar_usuario_login(db: AsyncSession, ident: str):
+    """Resuelve el usuario interno a partir del identificador del login.
+
+    - Con '@' → por email exacto (comportamiento histórico, memoria
+      reference_login_email_prod_no_es_patron_doc).
+    - Solo dígitos (7-8) → por número de documento: primero la persona de la BUC
+      vinculada (`usuarios.id_ciudadano`, mig 110) y, si no hay, el agente 1:1
+      (`agentes.dni`, el mismo camino que «Olvidé mi usuario»). Más de una
+      coincidencia = no encontrado (no elegimos a ciegas entre dos cuentas).
+    Devuelve la fila o None; el caller responde el mismo 401 genérico en todos los casos.
+    """
+    if not ident:
+        return None
+    if "@" in ident:
+        res = await db.execute(text(_USUARIO_LOGIN_SELECT + " WHERE email = :email"), {"email": ident})
+        return res.fetchone()
+
+    dni = _solo_digitos(ident)
+    if not (7 <= len(dni) <= 8):
+        return None
+    por_ciudadano = (await db.execute(text(_USUARIO_LOGIN_SELECT + """
+         WHERE activo = TRUE
+           AND id_ciudadano IN (SELECT c.id_ciudadano FROM ciudadanos c
+                                 WHERE c.doc_nro = :dni AND c.activo = TRUE)
+         LIMIT 2"""), {"dni": dni})).fetchall()
+    if len(por_ciudadano) == 1:
+        return por_ciudadano[0]
+    if len(por_ciudadano) > 1:
+        logger.warning("login por DNI ambiguo (ciudadanos): dni=%s", dni)
+        return None
+    por_agente = (await db.execute(text(_USUARIO_LOGIN_SELECT + """
+         WHERE activo = TRUE
+           AND id_usuario IN (SELECT a.id_usuario FROM agentes a
+                               WHERE a.dni = :dni AND a.activo = TRUE AND a.id_usuario IS NOT NULL)
+         LIMIT 2"""), {"dni": dni})).fetchall()
+    if len(por_agente) == 1:
+        return por_agente[0]
+    if len(por_agente) > 1:
+        logger.warning("login por DNI ambiguo (agentes): dni=%s", dni)
+    return None
+
+
 @router.post("/login", response_model=LoginResponse)
 async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
     # Anti brute-force online: limitar intentos por IP y por cuenta ANTES de
@@ -122,21 +175,13 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
     from app.utils.request_helpers import get_real_ip
     from app.middleware.rate_limit import check_rate_limit
     _ip = get_real_ip(request)
-    _mail = (body.email or "").strip().lower()
+    ident = (body.identificador or body.email or "").strip()
+    _clave_rl = ident.lower()
     check_rate_limit(f"loginint-ip:{_ip}", max_requests=10, window_seconds=60)
-    if _mail:
-        check_rate_limit(f"loginint-mail:{_mail}", max_requests=5, window_seconds=60)
+    if _clave_rl:
+        check_rate_limit(f"loginint-mail:{_clave_rl}", max_requests=5, window_seconds=60)
 
-    result = await db.execute(
-        text("""
-            SELECT id_usuario, nombre, email, nivel_acceso, password_hash, activo,
-                   debe_cambiar_password, foto_url
-            FROM usuarios
-            WHERE email = :email
-        """),
-        {"email": body.email},
-    )
-    user = result.fetchone()
+    user = await _buscar_usuario_login(db, ident)
 
     if not user or not user.activo or not verify_password(body.password, user.password_hash):
         raise HTTPException(

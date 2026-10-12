@@ -30,6 +30,10 @@ class Usuario(Base):
     id_subarea    = Column(Integer)              # FK lógica → subarea.id_subarea (obligatoria salvo es_externo)
     es_externo    = Column(Boolean, nullable=False, default=False)
     debe_cambiar_password = Column(Boolean, nullable=False, default=False)  # clave temporal → forzar cambio en 1er ingreso (mig 78)
+    # Mig 110: vínculo explícito con la persona de la BUC (funcionario dado de alta desde
+    # la ficha del ciudadano). use_alter: usuarios↔ciudadanos se referencian mutuamente.
+    id_ciudadano  = Column(Integer, ForeignKey("ciudadanos.id_ciudadano", ondelete="SET NULL", use_alter=True),
+                           nullable=True)
     fecha_alta    = Column(DateTime, nullable=False, server_default=func.now())
     fecha_modif   = Column(DateTime, nullable=False, server_default=func.now())
     fecha_ultimo_login = Column(DateTime(timezone=True), nullable=True)
@@ -128,6 +132,7 @@ class Ciudadano(Base):
     email          = Column(String(150), nullable=False)
     email_chk      = Column(Boolean, nullable=False, default=False)
     emp_chk        = Column(Boolean, nullable=False, default=False)
+    es_funcionario = Column(Boolean, nullable=False, default=False)  # mig 110: funcionario del municipio
     observaciones           = Column(String(500))
     # legacy: campo original de última modificación
     fecha_modif             = Column(DateTime)
