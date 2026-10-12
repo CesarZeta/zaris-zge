@@ -3,8 +3,6 @@ ZARIS API — Rutas del módulo BUC (Base Única de Ciudadanos).
 Endpoints: /api/v1/buc/
 """
 import logging
-import secrets
-import string
 from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 from sqlalchemy import select, or_, and_, func, text
@@ -25,9 +23,11 @@ from app.schemas.buc import (
     NacionalidadOut, TipoRepresentacionOut, ActividadOut,
     CiudadanoCreate, CiudadanoUpdate, CiudadanoOut, CiudadanoConNacionalidad,
     EmpresaCreate, EmpresaUpdate, EmpresaOut, EmpresaConActividad,
-    CiudadanoEmpresaCreate, CiudadanoEmpresaOut
+    CiudadanoEmpresaCreate, CiudadanoEmpresaOut,
+    CuentaZarisIn, CuentaZarisOut, CuentasCiudadanoOut, CuentaVecinoEstado, CuentaZarisEstado,
 )
 from app.services.cuenta_vecino import asegurar_cuenta_vecino
+from app.services.cuenta_zaris import crear_usuario_interno
 
 # Guard a nivel router: TODO endpoint del módulo BUC exige JWT válido (scope agente).
 # Esto cubre los GET de búsqueda/catálogo además de las mutaciones — ningún
@@ -51,7 +51,7 @@ _USUARIO_SELECT = """
     SELECT u.id_usuario, u.nombre, u.nivel_acceso, u.username, u.email, u.id_cargo,
            u.id_municipio, u.activo, u.cuil, u.buc_acceso,
            u.id_subarea, s.nombre AS subarea_nombre, u.es_externo,
-           u.debe_cambiar_password,
+           u.debe_cambiar_password, u.id_ciudadano,
            u.fecha_alta, u.fecha_modif, u.fecha_ultimo_login
     FROM usuarios u
     LEFT JOIN subarea s ON s.id_subarea = u.id_subarea
@@ -193,30 +193,6 @@ async def buscar_subareas(
     return [dict(row._mapping) for row in r.fetchall()]
 
 
-def _generar_password_temporal(largo: int = 10) -> str:
-    """Clave temporal legible y segura: sin caracteres ambiguos (0/O, 1/l/I).
-    Garantiza al menos una mayúscula, una minúscula y un dígito."""
-    minus = "abcdefghijkmnpqrstuvwxyz"   # sin l
-    mayus = "ABCDEFGHJKLMNPQRSTUVWXYZ"   # sin I, O
-    digs = "23456789"                     # sin 0, 1
-    alfabeto = minus + mayus + digs
-    while True:
-        clave = "".join(secrets.choice(alfabeto) for _ in range(largo))
-        if (any(c in minus for c in clave) and any(c in mayus for c in clave)
-                and any(c in digs for c in clave)):
-            return clave
-
-
-async def _branding_municipio(db: AsyncSession) -> dict:
-    """Nombre y logo del municipio desde configuracion_general (para los mails)."""
-    res = await db.execute(text("""
-        SELECT clave, valor FROM configuracion_general
-         WHERE clave IN ('municipio_nombre','municipio_logo_url')
-    """))
-    cfg = {r.clave: (r.valor or None) for r in res.fetchall()}
-    return cfg
-
-
 @router.post("/usuarios", response_model=UsuarioOut, status_code=201)
 async def crear_usuario(
     data: UsuarioCreate,
@@ -224,89 +200,17 @@ async def crear_usuario(
     db: AsyncSession = Depends(get_db),
     _admin: dict = Depends(require_admin),
 ):
-    """Alta de usuario interno.
+    """Alta de usuario interno (Maestros → Usuarios).
 
     El sistema genera una contraseña temporal aleatoria, la manda por email y marca
     `debe_cambiar_password=TRUE` (Fase 3): el usuario deberá elegir una nueva en su
     primer ingreso. Si el cliente igualmente manda `password` (seeds/compat), se
-    respeta y NO se fuerza el cambio.
+    respeta y NO se fuerza el cambio. La lógica vive en `services/cuenta_zaris.py`,
+    compartida con el alta desde la ficha del ciudadano (`/ciudadanos/{id}/cuenta-zaris`).
     """
-    existing = await db.execute(select(Usuario).where(Usuario.username == data.username))
-    if existing.scalars().first():
-        raise HTTPException(status_code=409, detail=f"Ya existe un usuario con username '{data.username}'")
-
-    data_dict = data.model_dump()
-
-    # Password: si el cliente la mandó (seeds/compat), se respeta sin forzar cambio.
-    # Si no, el sistema genera una temporal y marca debe_cambiar_password=TRUE.
-    password_explicita = data_dict.pop("password", None)
-    password_temporal = None
-    if password_explicita:
-        clave = password_explicita
-        data_dict["debe_cambiar_password"] = False
-    else:
-        password_temporal = _generar_password_temporal()
-        clave = password_temporal
-        data_dict["debe_cambiar_password"] = True
-    data_dict["password_hash"] = bcrypt.hashpw(clave.encode(), bcrypt.gensalt()).decode()
-
-    # `nombre` es NOT NULL en la DB pero el form ya no lo captura: el usuario ES
-    # la identidad. Si no vino, lo igualamos al username.
-    if not (data_dict.get("nombre") or "").strip():
-        data_dict["nombre"] = data.username
-
-    # Email obligatorio (validado en el schema). /auth/login busca por email y es
-    # el canal por el que se entrega la clave temporal.
-    email = (data_dict.get("email") or "").strip()
-    data_dict["email"] = email
-    dup_email = await db.execute(select(Usuario).where(Usuario.email == email))
-    if dup_email.scalars().first():
-        raise HTTPException(status_code=409, detail=f"Ya existe un usuario con email '{email}'")
-
-    usuario = Usuario(**data_dict)
-    db.add(usuario)
-    await db.flush()  # asigna id_usuario sin cerrar la transacción
-
-    # Regla 1:1 agente↔usuario: un usuario INTERNO fuerza la creación de su
-    # agente vinculado (datos mínimos, se completan luego desde Maestros →
-    # Agentes). Los externos NO tienen agente. La auditoría se lleva por
-    # usuario y, vía este vínculo, se puede auditar por agente.
-    if not usuario.es_externo:
-        await db.execute(text("""
-            INSERT INTO agentes (nombre, apellido, id_subarea, id_municipio, id_usuario, activo)
-            VALUES (:nombre, '', :id_subarea, :id_municipio, :id_usuario, TRUE)
-        """), {
-            "nombre": usuario.nombre,
-            "id_subarea": usuario.id_subarea,
-            "id_municipio": usuario.id_municipio,
-            "id_usuario": usuario.id_usuario,
-        })
-
-    # Branding del municipio para el mail (mientras la sesión sigue abierta).
-    cfg = await _branding_municipio(db) if password_temporal else {}
-
+    usuario = await crear_usuario_interno(db, data=data, background_tasks=background_tasks)
     await db.commit()
     await db.refresh(usuario)
-    logger.info("ALTA usuario | id=%s | username=%s | externo=%s | agente_creado=%s | pass_temporal=%s",
-                usuario.id_usuario, usuario.username, usuario.es_externo,
-                not usuario.es_externo, password_temporal is not None)
-
-    # Mail con la clave temporal (solo si el sistema la generó). Best-effort,
-    # post-commit, en BackgroundTasks — un fallo de mail no debe abortar el alta.
-    if password_temporal:
-        from app.services.email import enviar_mail_credenciales_usuario_interno
-        login_url = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/frontend/login.html"
-        municipio_nombre = cfg.get("municipio_nombre") or "Tu municipio"
-        background_tasks.add_task(
-            enviar_mail_credenciales_usuario_interno,
-            to=email,
-            username=usuario.username,
-            password_temporal=password_temporal,
-            login_url=login_url,
-            municipio_nombre=municipio_nombre,
-            municipio_logo_url=cfg.get("municipio_logo_url"),
-        )
-
     return usuario
 
 
@@ -658,6 +562,140 @@ async def crear_cuenta_vecino_existente(
     )
     await db.commit()
     return {"enviado": enviado, "ya_activada": not enviado, "email": email}
+
+
+@router.post(
+    "/ciudadanos/{id}/cuenta-zaris",
+    response_model=CuentaZarisOut,
+    status_code=201,
+    responses={
+        403: {"description": "Solo el Administrador (nivel 1) crea cuentas de funcionario"},
+        409: {"description": "El ciudadano ya tiene cuenta ZARIS, o el username/email ya existen"},
+        422: {"description": "El ciudadano no está marcado como funcionario o no tiene email"},
+    },
+)
+async def crear_cuenta_zaris(
+    id: int,
+    data: CuentaZarisIn,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    admin: dict = Depends(require_admin),
+):
+    """
+    Crea la cuenta ZARIS (backoffice + app de agentes) de un ciudadano marcado como
+    FUNCIONARIO del municipio (mig 110, PLAN_CUENTAS_FUNCIONARIO.md). Un clic, dos
+    credenciales: el usuario interno (clave temporal por mail + cambio forzado, agente 1:1
+    con los datos reales de la ficha) y, si la persona todavía no la tenía, la cuenta de
+    vecino (activación por link). La clave de vecino NO sirve para entrar a ZARIS.
+    """
+    result = await db.execute(
+        select(Ciudadano).where(Ciudadano.id_ciudadano == id, Ciudadano.activo == True)
+    )
+    ciudadano = result.scalars().first()
+    if not ciudadano:
+        raise HTTPException(status_code=404, detail="Ciudadano no encontrado")
+    if not ciudadano.es_funcionario:
+        raise HTTPException(
+            status_code=422,
+            detail="El ciudadano no está marcado como funcionario del municipio. Tildalo en la ficha y guardá.",
+        )
+    email = (ciudadano.email or "").strip().lower()
+    if not email:
+        raise HTTPException(
+            status_code=422,
+            detail="El ciudadano no tiene email cargado. Cargale el email primero (ahí se envían las credenciales).",
+        )
+    ya = await db.execute(
+        text("SELECT id_usuario, username FROM usuarios WHERE id_ciudadano = :id LIMIT 1"),
+        {"id": id},
+    )
+    existente = ya.fetchone()
+    if existente:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Este ciudadano ya tiene cuenta ZARIS (usuario '{existente.username}').",
+        )
+
+    payload = UsuarioCreate(
+        nombre=f"{ciudadano.apellido}, {ciudadano.nombre}",
+        nivel_acceso=data.nivel_acceso,
+        username=data.username,
+        email=email,
+        cuil=(ciudadano.cuil or None),
+        id_municipio=getattr(ciudadano, "id_municipio", None) or admin.get("id_municipio") or 1,
+        id_subarea=data.id_subarea,
+        es_externo=False,
+    )
+    usuario = await crear_usuario_interno(
+        db, data=payload, background_tasks=background_tasks, ciudadano=ciudadano,
+    )
+
+    # El funcionario es vecino también: si la persona no tenía NINGUNA cuenta de App
+    # Vecinos (altas anteriores a la unificación de junio), se la creamos en el mismo
+    # clic. Si ya existe (activa o pendiente) no se toca: asegurar_cuenta_vecino
+    # reenviaría la activación y el funcionario recibiría dos mails por un clic.
+    tiene_cred = await db.scalar(
+        text("SELECT 1 FROM ciudadano_credencial WHERE id_ciudadano = :id AND activo = TRUE LIMIT 1"),
+        {"id": id},
+    )
+    cuenta_vecino_creada = False
+    if not tiene_cred:
+        cuenta_vecino_creada = await asegurar_cuenta_vecino(
+            db,
+            id_ciudadano=ciudadano.id_ciudadano,
+            nombre=ciudadano.nombre or "",
+            apellido=ciudadano.apellido or "",
+            email=email,
+            id_municipio=payload.id_municipio,
+            id_usuario_alta=admin.get("id_usuario"),
+            background_tasks=background_tasks,
+        )
+
+    await db.commit()
+    logger.info("CUENTA ZARIS desde ficha | id_ciudadano=%s | id_usuario=%s | username=%s | nivel=%s | por=%s",
+                id, usuario.id_usuario, usuario.username, usuario.nivel_acceso, admin.get("id_usuario"))
+    return CuentaZarisOut(
+        id_usuario=usuario.id_usuario,
+        username=usuario.username,
+        email=email,
+        nivel_acceso=usuario.nivel_acceso,
+        mail_enviado=bool(usuario.debe_cambiar_password),
+        cuenta_vecino_creada=cuenta_vecino_creada,
+    )
+
+
+@router.get("/ciudadanos/{id}/cuentas", response_model=CuentasCiudadanoOut)
+async def estado_cuentas_ciudadano(id: int, db: AsyncSession = Depends(get_db)):
+    """Estado de las dos cuentas de una persona de la BUC: App Vecinos (sin cuenta /
+    pendiente de activar / activa) y ZARIS (usuario vinculado por mig 110, o ninguno).
+    Alimenta los chips de la ficha del ciudadano."""
+    existe = await db.scalar(
+        text("SELECT 1 FROM ciudadanos WHERE id_ciudadano = :id AND activo = TRUE"), {"id": id}
+    )
+    if not existe:
+        raise HTTPException(status_code=404, detail="Ciudadano no encontrado")
+
+    cred = (await db.execute(
+        text("""SELECT cc.activado, c.email
+                  FROM ciudadano_credencial cc
+                  JOIN ciudadanos c ON c.id_ciudadano = cc.id_ciudadano
+                 WHERE cc.id_ciudadano = :id AND cc.activo = TRUE
+                 LIMIT 1"""),
+        {"id": id},
+    )).fetchone()
+    if not cred:
+        vecino = CuentaVecinoEstado(estado="sin_cuenta")
+    else:
+        vecino = CuentaVecinoEstado(estado="activa" if cred.activado else "pendiente", email=cred.email)
+
+    usr = (await db.execute(
+        text("""SELECT id_usuario, username, nivel_acceso, activo, debe_cambiar_password
+                  FROM usuarios WHERE id_ciudadano = :id
+                 ORDER BY activo DESC, id_usuario DESC LIMIT 1"""),
+        {"id": id},
+    )).fetchone()
+    zaris = CuentaZarisEstado(**dict(usr._mapping)) if usr else None
+    return CuentasCiudadanoOut(vecino=vecino, zaris=zaris)
 
 
 @router.get("/ciudadanos/{id}", response_model=CiudadanoConNacionalidad)

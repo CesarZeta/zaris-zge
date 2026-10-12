@@ -546,10 +546,17 @@ async def enviar_mail_credenciales_usuario_interno(
     login_url: str,
     municipio_nombre: str,
     municipio_logo_url: str | None = None,
+    app_agentes_url: str | None = None,
+    dni: str | None = None,
 ) -> bool:
     """
     Mail al empleado municipal recién dado de alta con su clave temporal.
     Deberá cambiarla en su primer ingreso. Modo MOCK si Resend no está configurado.
+
+    `dni`: si viene (alta desde la ficha del ciudadano, mig 110) el mail aclara que puede
+    ingresar con su email o con su número de documento. `app_agentes_url`: link a la app
+    de agentes (`APP_AGENTES_FRONTEND_URL`); si no está configurada, no se menciona.
+    Cada link usa el setting de SU destino (§5): el del backoffice es FRONTEND_BASE_URL.
     """
     subject = f"Tu acceso a ZARIS — {municipio_nombre}"
 
@@ -559,6 +566,30 @@ async def enviar_mail_credenciales_usuario_interno(
             f'<img src="{municipio_logo_url}" alt="{municipio_nombre}" '
             f'style="max-height:64px;max-width:240px;display:block;margin:0 auto 16px;">'
         )
+
+    if dni:
+        usuario_label = "Usuario (tu email o tu DNI)"
+        usuario_valor_html = f"{to}<br>DNI {dni}"
+        usuario_valor_text = f"{to}  o  DNI {dni}"
+    else:
+        usuario_label = "Usuario (email)"
+        usuario_valor_html = to
+        usuario_valor_text = to
+
+    app_html = ""
+    app_text = ""
+    if app_agentes_url:
+        app_html = f"""
+      <p style="margin:8px 0 0 0;font-size:14px;line-height:1.55;color:rgba(38,37,30,.85);">
+        Si trabajás en la calle, también podés usar la <strong>app de agentes</strong> en tu
+        teléfono con las mismas credenciales:
+        <a href="{app_agentes_url}" style="color:#f54e00;">{app_agentes_url}</a>
+        (abrila en el navegador del teléfono y elegí «Instalar la app»).
+      </p>"""
+        app_text = f"""
+App de agentes (teléfono, mismas credenciales): {app_agentes_url}
+Abrila en el navegador del teléfono y elegí "Instalar la app".
+"""
 
     html = f"""\
 <!DOCTYPE html>
@@ -586,8 +617,8 @@ async def enviar_mail_credenciales_usuario_interno(
       </p>
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 24px 0;background:#f7f7f4;border:1px solid rgba(38,37,30,.1);border-radius:6px;">
         <tr><td style="padding:18px 20px;">
-          <div style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:rgba(38,37,30,.55);margin-bottom:4px;">Usuario (email)</div>
-          <div style="font-size:16px;font-weight:600;color:#26251e;margin-bottom:14px;word-break:break-all;">{to}</div>
+          <div style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:rgba(38,37,30,.55);margin-bottom:4px;">{usuario_label}</div>
+          <div style="font-size:16px;font-weight:600;color:#26251e;margin-bottom:14px;word-break:break-all;">{usuario_valor_html}</div>
           <div style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:rgba(38,37,30,.55);margin-bottom:4px;">Contraseña temporal</div>
           <div style="font-size:18px;font-weight:700;color:#f54e00;font-family:'Courier New',monospace;letter-spacing:.02em;">{password_temporal}</div>
         </td></tr>
@@ -596,7 +627,7 @@ async def enviar_mail_credenciales_usuario_interno(
         <a href="{login_url}" style="display:inline-block;padding:14px 28px;background:#f54e00;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;border-radius:6px;">
           Ingresar a ZARIS
         </a>
-      </div>
+      </div>{app_html}
       <p style="margin:24px 0 0 0;font-size:13px;line-height:1.5;color:rgba(38,37,30,.6);">
         Esta contraseña es temporal y de un solo uso para tu primer ingreso.
         Si no esperabas este correo, contactá al administrador del sistema.
@@ -617,11 +648,11 @@ Se creó tu cuenta en ZARIS
 Un administrador te dio de alta en el sistema de gestión municipal.
 Estas son tus credenciales de acceso:
 
-  Usuario (email):       {to}
+  {usuario_label}:   {usuario_valor_text}
   Contraseña temporal:   {password_temporal}
 
 Ingresá en: {login_url}
-
+{app_text}
 Por seguridad, el sistema te pedirá elegir una contraseña nueva la primera
 vez que ingreses. Esta contraseña es temporal.
 

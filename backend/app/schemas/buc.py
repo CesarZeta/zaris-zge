@@ -135,6 +135,8 @@ class UsuarioOut(BaseModel):
     subarea_nombre: Optional[str] = None
     es_externo:   bool
     debe_cambiar_password: bool = False
+    # Mig 110: persona de la BUC vinculada (funcionario dado de alta desde su ficha).
+    id_ciudadano: Optional[int] = None
     fecha_alta:   datetime
     fecha_modif:  datetime
     fecha_ultimo_login: Optional[datetime] = None
@@ -209,6 +211,9 @@ class CiudadanoBase(BaseModel):
     telefono: str = Field(..., max_length=15)
     email: str = Field(..., max_length=150)
     emp_chk: bool = False
+    # Mig 110: "Este ciudadano es funcionario del municipio". Habilita crear su cuenta
+    # ZARIS desde la ficha (POST /buc/ciudadanos/{id}/cuenta-zaris, solo admin).
+    es_funcionario: bool = False
     observaciones: Optional[str] = Field(None, max_length=500)
 
     @field_validator("cuil")
@@ -250,6 +255,7 @@ class CiudadanoUpdate(BaseModel):
     telefono: Optional[str] = Field(None, max_length=15)
     email: Optional[str] = Field(None, max_length=150)
     emp_chk: Optional[bool] = None
+    es_funcionario: Optional[bool] = None
     observaciones: Optional[str] = Field(None, max_length=500)
     modificado_por: Optional[int] = None
 
@@ -297,6 +303,8 @@ class CiudadanoOut(BaseModel):
     email: str
     email_chk: bool
     emp_chk: bool
+    # Default False: los SELECT crudos que armen este Out sin la columna no rompen.
+    es_funcionario: bool = False
     observaciones: Optional[str]
     fecha_modif: Optional[datetime]
     activo: bool
@@ -314,6 +322,44 @@ class CiudadanoOut(BaseModel):
 class CiudadanoConNacionalidad(CiudadanoOut):
     """Ciudadano con datos de nacionalidad incluidos."""
     nacionalidad: Optional[NacionalidadOut] = None
+
+
+# ── Cuentas del ciudadano (mig 110, PLAN_CUENTAS_FUNCIONARIO.md) ────────────────
+
+class CuentaZarisIn(BaseModel):
+    """Datos que la ficha del ciudadano NO tiene y la cuenta ZARIS necesita. Los
+    carga el administrador en el mini-modal de «Crear cuenta aplicación ZARIS»."""
+    nivel_acceso: int = Field(..., ge=1, le=5)
+    id_subarea: int
+    username: str = Field(..., max_length=50, pattern=r"^[a-zA-Z0-9_.\-]+$")
+
+
+class CuentaZarisOut(BaseModel):
+    id_usuario: int
+    username: str
+    email: str
+    nivel_acceso: int
+    mail_enviado: bool
+    cuenta_vecino_creada: bool
+
+
+class CuentaVecinoEstado(BaseModel):
+    estado: str  # 'sin_cuenta' | 'pendiente' | 'activa'
+    email: Optional[str] = None
+
+
+class CuentaZarisEstado(BaseModel):
+    id_usuario: int
+    username: str
+    nivel_acceso: int
+    activo: bool
+    debe_cambiar_password: bool = False
+
+
+class CuentasCiudadanoOut(BaseModel):
+    """Estado de las dos cuentas de una persona de la BUC (chips de la ficha)."""
+    vecino: CuentaVecinoEstado
+    zaris: Optional[CuentaZarisEstado] = None
 
 
 # ═══════════════════════════════════════════════════════════════
