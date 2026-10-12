@@ -1,4 +1,4 @@
-import { FileText, ClipboardList, Settings, BarChart3, Clock, Ticket, UserPlus, Siren, CalendarDays, ExternalLink } from 'lucide-react'
+import { FileText, ClipboardList, Settings, BarChart3, Clock, Ticket, UserPlus, Siren, CalendarDays, ExternalLink, Smartphone } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 interface Guia {
@@ -21,11 +21,19 @@ const GUIAS: Guia[] = [
   },
   {
     titulo: 'ALTA DE CIUDADANOS',
-    descripcion: 'Las dos vías de alta de un vecino: por un agente (desde Contactos) y autogestión del propio ciudadano. Cómo el alta crea la cuenta de App Vecinos y el correo de activación, y el botón "Nuevo" desde reclamos, turnos y entradas. Sirve también para asesorar al vecino que se autogestiona.',
+    descripcion: 'Las dos vías de alta de un vecino: por un agente (desde Contactos) y autogestión del propio ciudadano. Cómo el alta crea la cuenta de App Vecinos y el correo de activación, el botón "Nuevo" desde reclamos, turnos y entradas, y cómo un administrador le crea la cuenta ZARIS a un funcionario desde su misma ficha (tilde "funcionario municipal" + "Crear cuenta aplicación ZARIS").',
     icon: UserPlus,
     htmlName: 'manual_alta_ciudadanos.html',
     audiencia: 'Operador o superior',
-    tags: ['Operativo', '2 capturas', '7 secciones'],
+    tags: ['Operativo', '8 capturas', '8 secciones'],
+  },
+  {
+    titulo: 'APP DE AGENTES',
+    descripcion: 'La app del funcionario en el teléfono: cómo recibe su cuenta (correo con clave temporal), cómo instalarla en Android y iPhone para que quede con su ícono en el escritorio, el primer ingreso con correo o DNI y el cambio de contraseña, Inicio y Mis OT, notificaciones y Mi cuenta.',
+    icon: Smartphone,
+    htmlName: 'manual_app_agentes.html',
+    audiencia: 'Todo funcionario con cuenta ZARIS',
+    tags: ['Operativo', '6 capturas', '10 secciones'],
   },
   {
     titulo: 'RECLAMOS',
