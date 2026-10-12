@@ -52,13 +52,24 @@ jobs:
         run: pnpm build
 
       - name: Commit dist/ if changed
+        # Resiliente a runs duplicados del mismo commit (2026-10-12: GitHub disparo
+        # dos eventos push para 3743f86; el 2do fue rechazado con non-fast-forward
+        # porque el 1ro ya habia publicado el dist). Si origin/main ya tiene un dist
+        # identico al recien compilado, no hay nada que publicar; si difiere, se
+        # rebasea sobre origin/main antes de pushear.
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f web-app/dist
           if git diff --staged --quiet; then
             echo "Sin cambios en web-app/dist; nada que commitear."
-          else
-            git commit -m "build(web-app): publicar dist [skip ci]"
-            git push
+            exit 0
           fi
+          git fetch origin main --quiet
+          if git diff --quiet origin/main -- web-app/dist; then
+            echo "origin/main ya tiene este dist (run duplicado o carrera); nada que publicar."
+            exit 0
+          fi
+          git commit -m "build(web-app): publicar dist [skip ci]"
+          git pull --rebase origin main
+          git push
