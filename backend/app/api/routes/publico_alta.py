@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import hash_password, get_current_ciudadano
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.urls import url_alta_publica, url_portal_vecino
 from app.middleware.rate_limit import check_rate_limit
 from app.utils.request_helpers import get_real_ip
 from app.api.routes.geo import geocodificar_direccion
@@ -129,13 +130,35 @@ def _frontend_verificar_url(slug: str, token: str) -> str:
     return f"{base}/api/v1/publico/alta/verificar?token={token}&m={slug}"
 
 
-def _pagina_confirmacion(titulo: str, mensaje: str, ok: bool, municipio_nombre: str) -> str:
-    """HTML mínimo y autocontenido para la pantalla de verificación (la abre el navegador)."""
+def _pagina_confirmacion(
+    titulo: str,
+    mensaje: str,
+    ok: bool,
+    municipio_nombre: str,
+    cta_url: str | None = None,
+    cta_texto: str | None = None,
+) -> str:
+    """
+    HTML mínimo y autocontenido para la pantalla de verificación (la abre el navegador).
+
+    `cta_url` + `cta_texto` agregan un botón al pie: el vecino llega acá desde el mail (en
+    el navegador del celular, sin la pestaña del portal a mano), así que la página tiene
+    que darle a dónde seguir — el Portal del Ciudadano si verificó, la página de alta si
+    el enlace venció. Sin URL configurada no se pinta nada (fail-closed).
+    """
     color = "#1f8a65" if ok else "#cf2d56"
     icono = "&#10003;" if ok else "&#10007;"
     t = _html.escape(titulo)
     m = _html.escape(mensaje)
     mn = _html.escape(municipio_nombre or "")
+    boton = ""
+    if cta_url and cta_texto:
+        bg = "#1f8a65" if ok else "#26251e"
+        boton = (
+            f'<a href="{_html.escape(cta_url, quote=True)}" style="display:inline-block;margin-top:28px;'
+            f'padding:14px 28px;background:{bg};color:#fff;text-decoration:none;font-weight:600;'
+            f'font-size:15px;border-radius:8px;">{_html.escape(cta_texto)}</a>'
+        )
     return f"""<!DOCTYPE html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -146,6 +169,7 @@ def _pagina_confirmacion(titulo: str, mensaje: str, ok: bool, municipio_nombre: 
     <div style="width:64px;height:64px;border-radius:50%;background:{color};color:#fff;font-size:34px;line-height:64px;margin:0 auto 20px;">{icono}</div>
     <h1 style="margin:0 0 12px;font-size:22px;font-weight:600;">{t}</h1>
     <p style="margin:0;font-size:15px;line-height:1.55;color:rgba(38,37,30,.85);">{m}</p>
+    {boton}
   </div>
 </body></html>"""
 
@@ -163,6 +187,7 @@ async def identidad_alta(m: str, db: AsyncSession = Depends(get_db)):
         municipio_logo_url=cfg.get("municipio_logo_url"),
         municipio_color_primary=cfg.get("municipio_color_primary"),
         municipio_color_accent=cfg.get("municipio_color_accent"),
+        app_vecinos_url=url_portal_vecino() or None,
     )
 
 
@@ -369,6 +394,7 @@ async def alta_cuenta(
         cta_url,
         cfg.get("municipio_nombre") or muni["nombre"],
         cfg.get("municipio_logo_url"),
+        portal_url=url_portal_vecino() or None,
     )
 
     return AltaCuentaOut(id_ciudadano=id_ciudadano, email=email, verificacion_enviada=True)
@@ -603,6 +629,7 @@ async def verificar(token: str, m: str | None = None, db: AsyncSession = Depends
             f"Listo, {nombre}. Tu correo quedó verificado. Ya podés iniciar sesión en el "
             f"Portal del Ciudadano con tu DNI y la contraseña que elegiste.",
             ok=True, municipio_nombre=municipio_nombre,
+            cta_url=url_portal_vecino() or None, cta_texto="Ir al Portal del Ciudadano",
         ))
 
     # ── Empresa ──
@@ -640,15 +667,22 @@ async def verificar(token: str, m: str | None = None, db: AsyncSession = Depends
             "¡Empresa verificada!",
             f"El alta de {row.razon_social} quedó verificada correctamente.",
             ok=True, municipio_nombre=municipio_nombre,
+            cta_url=url_portal_vecino() or None, cta_texto="Ir al Portal del Ciudadano",
         ))
 
-    # Token inválido o expirado
+    # Token inválido o expirado → botón a la página pública de alta (opción "Activar mi
+    # cuenta": con el DNI pide un correo de activación nuevo). El slug es el del único
+    # municipio del deploy (mono-tenant), no el `m` de la URL (puede venir roto).
+    slug_activo = await db.scalar(text(
+        "SELECT codigo_corto FROM municipios WHERE activo = TRUE ORDER BY id_municipio LIMIT 1"
+    ))
     return HTMLResponse(
         _pagina_confirmacion(
             "Enlace inválido o vencido",
             "Este enlace de verificación no es válido o ya expiró. Si te diste de alta hace poco, "
-            "volvé a intentarlo o pedí un nuevo correo desde la página de alta.",
+            "volvé a la página de alta y pedí un nuevo correo de activación con tu DNI.",
             ok=False, municipio_nombre=municipio_nombre,
+            cta_url=url_alta_publica(slug_activo), cta_texto="Volver a la página de alta",
         ),
         status_code=400,
     )

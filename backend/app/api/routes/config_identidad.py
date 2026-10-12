@@ -26,6 +26,7 @@ from app.core.auth import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
 from app.core import storage
+from app.core.urls import url_publica as _url_publica  # fuente única con publico_alta (Portal del Ciudadano)
 
 router = APIRouter(prefix="/api/v1/config/identidad", tags=["Config - Identidad"])
 
@@ -121,17 +122,6 @@ class LogoUploadResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _url_publica(valor: Optional[str]) -> str:
-    """URL publica que la UI muestra como QR/link (Mi perfil). Fail-closed: si la
-    env var trae basura -espacios, sin esquema http(s), o la linea entera
-    "APP_X=https://..." pegada como valor (caso real en Railway 2026-09-27)-
-    devuelve "" y la vista dice "no configurada" en vez de publicar un QR invalido."""
-    v = (valor or "").strip()
-    if not re.match(r"^https?://[^\s]+$", v):
-        return ""
-    return v.rstrip("/")
-
 
 async def _leer_claves(db: AsyncSession) -> dict[str, str]:
     rows = await db.execute(text(

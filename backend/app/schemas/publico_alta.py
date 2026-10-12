@@ -33,6 +33,9 @@ class IdentidadAltaOut(BaseModel):
     municipio_logo_url: str | None = None
     municipio_color_primary: str | None = None
     municipio_color_accent: str | None = None
+    # Portal del Ciudadano (PWA): la página de alta lo muestra como botón al terminar.
+    # None si APP_VECINOS_FRONTEND_URL no está configurada (fail-closed, core/urls.py).
+    app_vecinos_url: str | None = None
 
 
 # ─── Alta en UN PASO con ficha COMPLETA (decisión 2026-06-12) ─────────────────
