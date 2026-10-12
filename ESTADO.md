@@ -16,7 +16,8 @@
 
 ## 🔵 En curso
 
-- **Todo listo para la prueba real en el celular** (pedido de César 2026-10-10, circuito implementado 2026-10-12): ver Pendientes → «Próxima sesión». Nada más en desarrollo activo.
+- **Todo listo para la prueba real en el celular** (pedido de César 2026-10-10, circuito implementado 2026-10-12): ver Pendientes → «Próxima sesión». Nada en desarrollo activo.
+- **PROPUESTA sin aprobar — app de agentes: reclamos de oficio + «Control de entradas» (QR).** Pedido de César al cierre del 2026-10-12; las 4 decisiones de alcance ya están tomadas (de oficio · niveles 1-4 · acreditar niveles 1-4 · nombre «Control de entradas») y el diseño está escrito en [`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md). **Próxima sesión: César confirma o corrige el diseño y recién ahí F1 (backend sin migración + smoke).** No hay código.
 - Proyecto **Atención por ubicación** CERRADO el 2026-09-20; residuos en [`PLAN_MODULO_ATENCION.md`](PLAN_MODULO_ATENCION.md) §4 (los dos de privacidad quedaron resueltos el 2026-10-10).
 - **App de agentes** publicada en `https://agentes.zaris.com.ar` (color del municipio, instalación desde «Mi perfil»); el vecino instala la suya desde su portal. Detalle en `zaris-agentes/ESTADO.md`.
 
