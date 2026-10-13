@@ -27,7 +27,10 @@ from app.schemas.buc import (
     CuentaZarisIn, CuentaZarisOut, CuentasCiudadanoOut, CuentaVecinoEstado, CuentaZarisEstado,
 )
 from app.services.cuenta_vecino import asegurar_cuenta_vecino
-from app.services.cuenta_zaris import crear_usuario_interno
+from app.services.cuenta_zaris import (
+    MSG_FALTAN_DATOS_ZARIS, crear_cuenta_zaris_desde_ficha, crear_usuario_interno,
+    exigir_admin_funcionario,
+)
 
 # Guard a nivel router: TODO endpoint del módulo BUC exige JWT válido (scope agente).
 # Esto cubre los GET de búsqueda/catálogo además de las mutaciones — ningún
@@ -449,7 +452,16 @@ async def crear_ciudadano(
     de App Vecinos (credencial sin password + token de activación) y dispara el mail
     de activación al email cargado. El vecino abre el mail, se loguea y elige su
     propia clave (§38 Camino B). El email es obligatorio (lo exige CiudadanoCreate).
+
+    Con el tilde «funcionario del municipio» (mig 110) el mismo guardado crea también
+    su cuenta ZARIS (backoffice + app de agentes) con `cuenta_zaris` (nivel, subárea,
+    usuario): solo Administrador (403) y los tres datos son obligatorios (422).
     """
+    if data.es_funcionario:
+        exigir_admin_funcionario(current_user)
+        if data.cuenta_zaris is None:
+            raise HTTPException(status_code=422, detail=MSG_FALTAN_DATOS_ZARIS)
+
     existing = await db.execute(
         select(Ciudadano).where(
             Ciudadano.doc_tipo == data.doc_tipo,
@@ -486,7 +498,7 @@ async def crear_ciudadano(
             detail="Ya existe una cuenta de App Vecinos con ese email.",
         )
 
-    ciudadano = Ciudadano(**data.model_dump())
+    ciudadano = Ciudadano(**data.model_dump(exclude={"cuenta_zaris"}))
     db.add(ciudadano)
     await db.flush()  # obtener id_ciudadano sin cerrar la tx (la cuenta va en la misma)
 
@@ -510,13 +522,22 @@ async def crear_ciudadano(
         background_tasks=background_tasks,
     )
 
+    # Funcionario: la cuenta ZARIS nace en la misma transacción (la de vecino ya está).
+    usuario_zaris = None
+    if data.es_funcionario and data.cuenta_zaris is not None:
+        usuario_zaris, _ = await crear_cuenta_zaris_desde_ficha(
+            db, ciudadano=ciudadano, data=data.cuenta_zaris, admin=current_user,
+            background_tasks=background_tasks,
+        )
+
     await db.commit()
     await db.refresh(ciudadano)
 
     logger.info(
-        "ALTA ciudadano + cuenta vecino | id=%s | doc=%s %s | cuil=%s | nombre=%s %s | email=%s",
+        "ALTA ciudadano + cuenta vecino | id=%s | doc=%s %s | cuil=%s | nombre=%s %s | email=%s | usuario_zaris=%s",
         ciudadano.id_ciudadano, ciudadano.doc_tipo, ciudadano.doc_nro,
-        ciudadano.cuil, ciudadano.apellido, ciudadano.nombre, email_norm
+        ciudadano.cuil, ciudadano.apellido, ciudadano.nombre, email_norm,
+        getattr(usuario_zaris, "username", None),
     )
     return ciudadano
 
@@ -594,70 +615,14 @@ async def crear_cuenta_zaris(
     ciudadano = result.scalars().first()
     if not ciudadano:
         raise HTTPException(status_code=404, detail="Ciudadano no encontrado")
-    if not ciudadano.es_funcionario:
-        raise HTTPException(
-            status_code=422,
-            detail="El ciudadano no está marcado como funcionario del municipio. Tildalo en la ficha y guardá.",
-        )
-    email = (ciudadano.email or "").strip().lower()
-    if not email:
-        raise HTTPException(
-            status_code=422,
-            detail="El ciudadano no tiene email cargado. Cargale el email primero (ahí se envían las credenciales).",
-        )
-    ya = await db.execute(
-        text("SELECT id_usuario, username FROM usuarios WHERE id_ciudadano = :id LIMIT 1"),
-        {"id": id},
+    usuario, cuenta_vecino_creada = await crear_cuenta_zaris_desde_ficha(
+        db, ciudadano=ciudadano, data=data, admin=admin, background_tasks=background_tasks,
     )
-    existente = ya.fetchone()
-    if existente:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Este ciudadano ya tiene cuenta ZARIS (usuario '{existente.username}').",
-        )
-
-    payload = UsuarioCreate(
-        nombre=f"{ciudadano.apellido}, {ciudadano.nombre}",
-        nivel_acceso=data.nivel_acceso,
-        username=data.username,
-        email=email,
-        cuil=(ciudadano.cuil or None),
-        id_municipio=getattr(ciudadano, "id_municipio", None) or admin.get("id_municipio") or 1,
-        id_subarea=data.id_subarea,
-        es_externo=False,
-    )
-    usuario = await crear_usuario_interno(
-        db, data=payload, background_tasks=background_tasks, ciudadano=ciudadano,
-    )
-
-    # El funcionario es vecino también: si la persona no tenía NINGUNA cuenta de App
-    # Vecinos (altas anteriores a la unificación de junio), se la creamos en el mismo
-    # clic. Si ya existe (activa o pendiente) no se toca: asegurar_cuenta_vecino
-    # reenviaría la activación y el funcionario recibiría dos mails por un clic.
-    tiene_cred = await db.scalar(
-        text("SELECT 1 FROM ciudadano_credencial WHERE id_ciudadano = :id AND activo = TRUE LIMIT 1"),
-        {"id": id},
-    )
-    cuenta_vecino_creada = False
-    if not tiene_cred:
-        cuenta_vecino_creada = await asegurar_cuenta_vecino(
-            db,
-            id_ciudadano=ciudadano.id_ciudadano,
-            nombre=ciudadano.nombre or "",
-            apellido=ciudadano.apellido or "",
-            email=email,
-            id_municipio=payload.id_municipio,
-            id_usuario_alta=admin.get("id_usuario"),
-            background_tasks=background_tasks,
-        )
-
     await db.commit()
-    logger.info("CUENTA ZARIS desde ficha | id_ciudadano=%s | id_usuario=%s | username=%s | nivel=%s | por=%s",
-                id, usuario.id_usuario, usuario.username, usuario.nivel_acceso, admin.get("id_usuario"))
     return CuentaZarisOut(
         id_usuario=usuario.id_usuario,
         username=usuario.username,
-        email=email,
+        email=usuario.email,
         nivel_acceso=usuario.nivel_acceso,
         mail_enviado=bool(usuario.debe_cambiar_password),
         cuenta_vecino_creada=cuenta_vecino_creada,
@@ -712,13 +677,32 @@ async def obtener_ciudadano(id: int, db: AsyncSession = Depends(get_db)):
     return ciudadano
 
 
-@router.put("/ciudadanos/{id}", response_model=CiudadanoOut)
+@router.put(
+    "/ciudadanos/{id}",
+    response_model=CiudadanoOut,
+    responses={
+        403: {"description": "Solo un Administrador puede poner el tilde de funcionario"},
+        422: {"description": "Funcionario sin cuenta ZARIS: faltan nivel, subárea y usuario"},
+    },
+)
 async def modificar_ciudadano(
     id: int,
     data: CiudadanoUpdate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
-    """Modificar ciudadano existente (update parcial)."""
+    """Modificar ciudadano existente (update parcial).
+
+    Guardar la ficha también garantiza sus cuentas (§38 Camino B + mig 110):
+    - App Vecinos: si la persona no tiene NINGUNA credencial y tiene email, se le crea
+      y se le manda la activación (fichas anteriores a la unificación de junio). Si ya
+      existe, activa o pendiente, no se toca: editar un teléfono no manda mails.
+    - ZARIS: con el tilde «funcionario» y sin usuario vinculado, el guardado crea la
+      cuenta con `cuenta_zaris` (nivel, subárea, usuario). Solo Administrador: un nivel
+      2-5 no puede poner el tilde (403) y, si la ficha ya lo tenía sin cuenta, guarda
+      igual sin crearla. Si la persona ya tiene cuenta, `cuenta_zaris` se ignora.
+    """
     result = await db.execute(
         select(Ciudadano).where(Ciudadano.id_ciudadano == id, Ciudadano.activo == True)
     )
@@ -727,16 +711,76 @@ async def modificar_ciudadano(
         raise HTTPException(status_code=404, detail="Ciudadano no encontrado")
 
     update_data = data.model_dump(exclude_unset=True)
+    update_data.pop("cuenta_zaris", None)  # no es columna: se procesa aparte
+    es_admin = current_user.get("nivel_acceso") == 1
+    if update_data.get("es_funcionario") is True and not ciudadano.es_funcionario:
+        exigir_admin_funcionario(current_user)
+
     campos_modificados = list(update_data.keys())
     for field, value in update_data.items():
         setattr(ciudadano, field, value)
+    await db.flush()
+
+    email = (ciudadano.email or "").strip().lower()
+    id_municipio = getattr(ciudadano, "id_municipio", None) or current_user.get("id_municipio") or 1
+
+    # Cuenta de App Vecinos: solo si no existe ninguna credencial (ni activa ni dada de
+    # baja). Un email ya usado por la cuenta de OTRA persona no frena el guardado: queda
+    # «sin cuenta» (los chips lo muestran) y se registra en el log.
+    cuenta_vecino_creada = False
+    if email:
+        tiene_cred = await db.scalar(
+            text("SELECT 1 FROM ciudadano_credencial WHERE id_ciudadano = :id LIMIT 1"), {"id": id}
+        )
+        if not tiene_cred:
+            dup_email = await db.scalar(
+                text("""
+                    SELECT 1 FROM ciudadano_credencial cc
+                      JOIN ciudadanos c ON c.id_ciudadano = cc.id_ciudadano
+                     WHERE LOWER(c.email) = :email AND cc.activo = TRUE AND c.activo = TRUE
+                       AND c.id_ciudadano <> :id
+                     LIMIT 1
+                """),
+                {"email": email, "id": id},
+            )
+            if dup_email:
+                logger.warning("MODIFICACION ciudadano %s: sin cuenta de App Vecinos, el email %s ya "
+                               "pertenece a la cuenta de otra persona", id, email)
+            else:
+                cuenta_vecino_creada = await asegurar_cuenta_vecino(
+                    db,
+                    id_ciudadano=ciudadano.id_ciudadano,
+                    nombre=ciudadano.nombre or "",
+                    apellido=ciudadano.apellido or "",
+                    email=email,
+                    id_municipio=id_municipio,
+                    id_usuario_alta=current_user.get("id_usuario"),
+                    background_tasks=background_tasks,
+                )
+
+    # Cuenta ZARIS del funcionario (mig 110).
+    usuario_zaris = None
+    if ciudadano.es_funcionario:
+        tiene_usuario = await db.scalar(
+            text("SELECT 1 FROM usuarios WHERE id_ciudadano = :id LIMIT 1"), {"id": id}
+        )
+        if not tiene_usuario:
+            if data.cuenta_zaris is not None:
+                exigir_admin_funcionario(current_user)
+                usuario_zaris, _ = await crear_cuenta_zaris_desde_ficha(
+                    db, ciudadano=ciudadano, data=data.cuenta_zaris, admin=current_user,
+                    background_tasks=background_tasks,
+                )
+            elif es_admin:
+                raise HTTPException(status_code=422, detail=MSG_FALTAN_DATOS_ZARIS)
 
     await db.commit()
     await db.refresh(ciudadano)
 
     logger.info(
-        "MODIFICACION ciudadano | id=%s | cuil=%s | campos=%s | usuario=%s",
-        ciudadano.id_ciudadano, ciudadano.cuil, campos_modificados, ciudadano.modificado_por
+        "MODIFICACION ciudadano | id=%s | cuil=%s | campos=%s | por=%s | cuenta_vecino_creada=%s | usuario_zaris=%s",
+        ciudadano.id_ciudadano, ciudadano.cuil, campos_modificados, current_user.get("id_usuario"),
+        cuenta_vecino_creada, getattr(usuario_zaris, "username", None),
     )
     return ciudadano
 

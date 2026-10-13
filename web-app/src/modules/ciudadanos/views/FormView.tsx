@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { useQueryClient } from '@tanstack/react-query'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { useAuthStore } from '../../../stores/auth'
 import {
@@ -12,9 +11,8 @@ import {
   useNacionalidades,
   verificarDuplicadoCiudadano,
 } from '../hooks/useCiudadanos'
-import { crearCuentaVecino, crearCuentaZaris } from '../api/ciudadanosApi'
 import { CiudadanoForm } from '../components/CiudadanoForm'
-import { CuentaZarisModal } from '../components/CuentaZarisModal'
+import { aUsername, usernameValido } from '../components/CuentaZarisCampos'
 import { CuentasChips } from '../components/CuentasChips'
 import { EmpresaVinculadaPanel } from '../components/EmpresaVinculadaPanel'
 import {
@@ -25,7 +23,7 @@ import {
   validarEmail,
   validarTelefono,
 } from '../lib/cuilUtils'
-import type { CiudadanoCreate, CuentaZarisIn, DocTipo, Sexo, VerificarDuplicadoResp } from '../types/ciudadano'
+import type { CiudadanoCreate, DocTipo, Sexo, SubareaHit, VerificarDuplicadoResp } from '../types/ciudadano'
 
 type Modo = 'new' | 'edit' | 'view'
 
@@ -48,6 +46,11 @@ export interface FormState {
   email: string
   emp_chk: boolean
   es_funcionario: boolean
+  // Cuenta ZARIS del funcionario (mig 110): viajan en `cuenta_zaris` al guardar con el tilde.
+  zaris_nivel: number
+  zaris_subarea: SubareaHit | null
+  zaris_username: string
+  zaris_username_manual: boolean   // si el admin editó el usuario a mano, no re-proponer
   observaciones: string
 }
 
@@ -56,7 +59,9 @@ const emptyForm: FormState = {
   nombre: '', apellido: '', sexo: '', fecha_nac: '',
   id_nacionalidad: '', calle: '', localidad: '', provincia: '',
   latitud: null, longitud: null,
-  telefono: '', email: '', emp_chk: false, es_funcionario: false, observaciones: '',
+  telefono: '', email: '', emp_chk: false, es_funcionario: false,
+  zaris_nivel: 4, zaris_subarea: null, zaris_username: '', zaris_username_manual: false,
+  observaciones: '',
 }
 
 export function FormView() {
@@ -89,6 +94,17 @@ export function FormView() {
   const [empPanelOpen, setEmpPanelOpen] = useState(false)
   const [bloqueoEmpresaGuardar, setBloqueoEmpresaGuardar] = useState(false)
 
+  // ── Cuentas de la persona (mig 110, PLAN_CUENTAS_FUNCIONARIO.md) ──
+  // El tilde «funcionario del municipio» lo maneja solo el Administrador y, si la persona
+  // todavía no tiene cuenta ZARIS, el guardado la crea con nivel/subárea/usuario
+  // (`cuenta_zaris` del POST/PUT). Sin botón ni modal aparte. Destildar NO borra cuentas.
+  const nivelUsuario = useAuthStore((s) => s.user?.nivel_acceso)
+  const esAdmin = nivelUsuario === 1
+  const cuentas = useCuentasCiudadano(modo !== 'new' ? id : null)
+  const yaTieneZaris = !!cuentas.data?.zaris
+  const cuentasListas = modo === 'new' || cuentas.isSuccess
+  const debeCrearCuentaZaris = form.es_funcionario && esAdmin && cuentasListas && !yaTieneZaris
+
   // Hidratar form en modo edit/view desde el detalle
   useEffect(() => {
     if (modo === 'new') {
@@ -117,6 +133,10 @@ export function FormView() {
       email: c.email || '',
       emp_chk: !!c.emp_chk,
       es_funcionario: !!c.es_funcionario,
+      zaris_nivel: 4,
+      zaris_subarea: null,
+      zaris_username: aUsername(c.nombre || '', c.apellido || ''),
+      zaris_username_manual: false,
       observaciones: c.observaciones || '',
     })
     if (c.emp_chk) setEmpPanelOpen(true)
@@ -147,6 +167,17 @@ export function FormView() {
       const next: FormState = { ...prev, [key]: value }
       // Si tocan CUIL manualmente, marcamos manual
       if (key === 'cuil') next.cuilManual = String(value).length > 0
+      // Usuario de la cuenta ZARIS: se propone nombre.apellido mientras no lo editen a mano;
+      // si lo borran, se vuelve a proponer (mismo criterio que el CUIL).
+      if (key === 'zaris_username') {
+        const limpio = String(value).replace(/\s+/g, '')
+        next.zaris_username_manual = limpio.length > 0
+        next.zaris_username = limpio || aUsername(prev.nombre, prev.apellido)
+      }
+      if ((key === 'nombre' || key === 'apellido') && !prev.zaris_username_manual) {
+        next.zaris_username = aUsername(key === 'nombre' ? String(value) : prev.nombre,
+                                        key === 'apellido' ? String(value) : prev.apellido)
+      }
       // Auto-generar CUIL desde DNI si no fue editado manualmente
       if ((key === 'doc_nro' || key === 'sexo' || key === 'doc_tipo') && !prev.cuilManual) {
         const docTipo = key === 'doc_tipo' ? (value as string) : prev.doc_tipo
@@ -209,6 +240,10 @@ export function FormView() {
     }
     if (!form.email.trim()) errs.email = 'Requerido'
     else if (!validarEmail(form.email)) errs.email = 'Formato invalido'
+    if (debeCrearCuentaZaris) {
+      if (!form.zaris_subarea) errs.zaris_subarea = 'Elegí la subárea del funcionario'
+      if (!usernameValido(form.zaris_username)) errs.zaris_username = 'Usuario inválido: letras, números, punto, guión y guión bajo, sin espacios ni tildes'
+    }
 
     setErrores(errs)
     if (Object.keys(errs).length > 0) return { ok: false }
@@ -234,6 +269,9 @@ export function FormView() {
       emp_chk: form.emp_chk,
       es_funcionario: form.es_funcionario,
       observaciones: form.observaciones.trim() || null,
+    }
+    if (debeCrearCuentaZaris && form.zaris_subarea) {
+      data.cuenta_zaris = { nivel_acceso: form.zaris_nivel, id_subarea: form.zaris_subarea.id_subarea, username: form.zaris_username }
     }
     return { ok: true, data }
   }
@@ -264,10 +302,15 @@ export function FormView() {
       }
     }
 
+    // Con `cuenta_zaris` en el body, el backend crea la cuenta ZARIS en la misma transacción:
+    // si el guardado salió bien, la cuenta existe y las credenciales ya se enviaron.
+    const avisoZaris = data.cuenta_zaris
+      ? ` Cuenta ZARIS creada (usuario ${data.cuenta_zaris.username}); las credenciales se enviaron a ${data.email}.`
+      : ''
     try {
       if (modo === 'new') {
         const c = await crear.mutateAsync(data)
-        push({ kind: 'success', title: 'Ciudadano dado de alta', body: `${c.apellido}, ${c.nombre}` })
+        push({ kind: 'success', title: 'Ciudadano dado de alta', body: `${c.apellido}, ${c.nombre}.${avisoZaris}`, ttl: avisoZaris ? 8000 : undefined })
         if (form.emp_chk) {
           // Quedarse en edicion del nuevo ciudadano y abrir panel empresa
           navigate(`/ciudadanos/${c.id_ciudadano}/editar`, { replace: true })
@@ -277,103 +320,13 @@ export function FormView() {
         }
       } else if (modo === 'edit' && id) {
         await modificar.mutateAsync(data)
-        push({ kind: 'success', title: 'Ciudadano actualizado', body: `${data.apellido}, ${data.nombre}` })
+        push({ kind: 'success', title: 'Ciudadano actualizado', body: `${data.apellido}, ${data.nombre}.${avisoZaris}`, ttl: avisoZaris ? 8000 : undefined })
         navigate('/ciudadanos')
       }
     } catch (err) {
       push({ kind: 'error', title: 'Error al guardar', body: (err as Error).message })
     }
   }
-
-  // ── «Crear cuenta aplicación ZARIS» (mig 110, PLAN_CUENTAS_FUNCIONARIO.md) ──
-  // Un solo botón, dos comportamientos según el tilde «funcionario del municipio»:
-  //   sin tilde → cuenta de App Vecinos (vía de mostrador, como siempre);
-  //   con tilde → cuenta ZARIS (backoffice + app de agentes), solo Administrador,
-  //               datos extra en el mini-modal (nivel, subárea, usuario).
-  const qc = useQueryClient()
-  const nivelUsuario = useAuthStore((s) => s.user?.nivel_acceso)
-  const esAdmin = nivelUsuario === 1
-  const cuentas = useCuentasCiudadano(modo !== 'new' ? id : null)
-  const [enviandoCuenta, setEnviandoCuenta] = useState(false)
-  const [modalZarisOpen, setModalZarisOpen] = useState(false)
-  // El tilde recién vale cuando está guardado: el backend lo exige en la DB (422).
-  const funcionarioGuardado = !!detalle.data?.es_funcionario
-  const tildeSinGuardar = form.es_funcionario && !funcionarioGuardado
-  const yaTieneZaris = !!cuentas.data?.zaris
-
-  async function handleCuentaVecino() {
-    if (!id || enviandoCuenta) return
-    setEnviandoCuenta(true)
-    try {
-      const r = await crearCuentaVecino(id)
-      if (r.ya_activada) {
-        push({ kind: 'info', title: 'La cuenta ya está activa', body: `Este vecino ya usa la App Vecinos (${r.email})` })
-      } else {
-        push({ kind: 'success', title: 'Mail de activación enviado', body: `Le llega a ${r.email} para que elija su contraseña` })
-      }
-      qc.invalidateQueries({ queryKey: ['buc', 'ciudadanos', id, 'cuentas'] })
-    } catch (err) {
-      push({ kind: 'error', title: 'No se pudo crear la cuenta', body: (err as Error).message })
-    } finally {
-      setEnviandoCuenta(false)
-    }
-  }
-
-  function handleCrearCuentaZaris() {
-    if (!id) return
-    if (!form.es_funcionario) { void handleCuentaVecino(); return }
-    if (tildeSinGuardar) {
-      push({ kind: 'info', title: 'Guardá la ficha primero', body: 'La marca de funcionario tiene que estar guardada para crear la cuenta ZARIS.' })
-      return
-    }
-    if (!esAdmin) {
-      push({ kind: 'info', title: 'Solo un administrador puede crear cuentas de funcionario' })
-      return
-    }
-    setModalZarisOpen(true)
-  }
-
-  // Confirmar cierra el modal de inmediato y el resultado llega por toast (§23).
-  async function confirmarCuentaZaris(body: CuentaZarisIn) {
-    if (!id) return
-    setModalZarisOpen(false)
-    setEnviandoCuenta(true)
-    try {
-      const r = await crearCuentaZaris(id, body)
-      push({
-        kind: 'success',
-        title: 'Cuenta ZARIS creada',
-        body: `Usuario ${r.username}. Las credenciales se enviaron a ${r.email}`
-          + (r.cuenta_vecino_creada ? ' (también se creó su cuenta de App Vecinos).' : '.'),
-        ttl: 8000,
-      })
-      qc.invalidateQueries({ queryKey: ['buc', 'ciudadanos', id, 'cuentas'] })
-    } catch (err) {
-      push({ kind: 'error', title: 'No se pudo crear la cuenta ZARIS', body: (err as Error).message })
-    } finally {
-      setEnviandoCuenta(false)
-    }
-  }
-
-  const botonCuenta = (() => {
-    if (!form.es_funcionario) {
-      return { label: 'Crear cuenta aplicación ZARIS', disabled: enviandoCuenta,
-               title: 'Sin la marca de funcionario: crea la cuenta de App Vecinos y le manda el mail de activación al email de la ficha' }
-    }
-    if (yaTieneZaris) {
-      return { label: 'Crear cuenta aplicación ZARIS', disabled: true,
-               title: `Ya tiene cuenta ZARIS (usuario ${cuentas.data?.zaris?.username})` }
-    }
-    if (tildeSinGuardar) {
-      return { label: 'Crear cuenta aplicación ZARIS', disabled: true, title: 'Guardá la ficha primero' }
-    }
-    if (!esAdmin) {
-      return { label: 'Crear cuenta aplicación ZARIS', disabled: true,
-               title: 'Solo un administrador puede crear cuentas de funcionario' }
-    }
-    return { label: 'Crear cuenta aplicación ZARIS', disabled: enviandoCuenta,
-             title: 'Crea la cuenta para el sistema y la app de agentes y le manda las credenciales al email de la ficha' }
-  })()
 
   // ── Toggle emp_chk ──
   function handleEmpChk(checked: boolean) {
@@ -429,6 +382,9 @@ export function FormView() {
             readonly={readonly}
             esAlta={modo === 'new'}
             nacionalidades={nacionalidades.data ?? []}
+            puedeMarcarFuncionario={esAdmin}
+            yaTieneZaris={yaTieneZaris}
+            mostrarCamposZaris={debeCrearCuentaZaris && !readonly}
             onChange={handleChange}
             onCuilBlur={handleCuilBlur}
             onEmpChkChange={handleEmpChk}
@@ -439,23 +395,6 @@ export function FormView() {
           <button onClick={() => navigate('/ciudadanos')} style={btnGhost}>
             {readonly ? '← Volver' : 'Cancelar'}
           </button>
-          {modo !== 'new' && id ? (
-            <div style={{ marginRight: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <button
-                onClick={handleCrearCuentaZaris}
-                disabled={botonCuenta.disabled}
-                style={{ ...btnGhost, opacity: botonCuenta.disabled && !enviandoCuenta ? 0.6 : 1, cursor: botonCuenta.disabled ? 'not-allowed' : 'pointer' }}
-                title={botonCuenta.title}
-              >
-                {enviandoCuenta ? 'Enviando…' : botonCuenta.label}
-              </button>
-              {form.es_funcionario && !yaTieneZaris && !tildeSinGuardar && !esAdmin && (
-                <span style={{ fontSize: 'var(--size-caption)', color: 'var(--fg-3)' }}>
-                  Solo un administrador puede crear cuentas de funcionario.
-                </span>
-              )}
-            </div>
-          ) : null}
           {!readonly && (
             <button onClick={handleGuardar} disabled={crear.isPending || modificar.isPending || bloqueoEmpresaGuardar} style={btnPrimary}>
               {(crear.isPending || modificar.isPending) ? 'Guardando...' : 'Guardar ciudadano'}
@@ -463,13 +402,6 @@ export function FormView() {
           )}
         </footer>
       </section>
-
-      <CuentaZarisModal
-        open={modalZarisOpen}
-        ciudadano={{ nombre: form.nombre, apellido: form.apellido, email: form.email }}
-        onClose={() => setModalZarisOpen(false)}
-        onConfirm={(body) => { void confirmarCuentaZaris(body) }}
-      />
 
       {/* Panel empresa vinculada */}
       {(empPanelOpen || (empresas.data && empresas.data.length > 0 && form.emp_chk)) && id && (

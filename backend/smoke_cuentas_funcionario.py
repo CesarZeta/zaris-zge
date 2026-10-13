@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Smoke in-process — Circuito de alta de cuentas ZARIS desde la ficha del ciudadano
-(mig 110, PLAN_CUENTAS_FUNCIONARIO.md).
+Smoke in-process — Cuentas del ciudadano al GUARDAR la ficha (mig 110, PLAN_CUENTAS_FUNCIONARIO.md).
 
     cd backend
     $env:ENV_FILE=".env.local"; $env:PYTHONPATH="."; python smoke_cuentas_funcionario.py
@@ -11,12 +10,15 @@ FastAPI real con httpx.ASGITransport (memoria feedback_smoke_authz_asgi_in_proce
 corre en modo MOCK (settings.RESEND_API_KEY = "" — .env.local tiene una key REAL de Resend,
 §5) y además se captura `enviar_mail` para leer la clave temporal y los links del cuerpo.
 
-Cubre: alta de ciudadano con es_funcionario → POST /buc/ciudadanos/{id}/cuenta-zaris (403 nivel 2,
-422 sin tilde, 201 admin, 409 repetido / username duplicado) → usuario vinculado + agente con datos
-reales + mail con los dos links y el DNI → GET /cuentas → login por email Y por DNI con la temporal →
-cambio forzado → credencial de vecino activada por link → login público OK → la clave de vecino NO
-entra a ZARIS (401) → DNI de un vecino sin usuario (401) → campo `email` viejo sigue andando →
-marcadores OpenAPI. Los datos quedan como demo (no se limpian).
+Desde 2026-10-13 NO hay botón «Crear cuenta aplicación ZARIS»: el tilde «funcionario del
+municipio» + `cuenta_zaris` (nivel, subárea, usuario) en el POST/PUT de la ficha crean la
+cuenta ZARIS en el mismo guardado (solo admin), y guardar la ficha de un vecino sin credencial
+le crea la cuenta de App Vecinos. Cubre: alta con tilde (201 admin / 422 sin datos / 403 nivel 2)
+→ usuario vinculado + agente real + DOS mails → PUT con tilde (403 nivel 2, 422 sin datos, 409
+usuario repetido, 200 crea, no-op si ya tiene, destildar no borra) → vecino legacy sin credencial
+(PUT la crea una sola vez; email ajeno → sin cuenta) → endpoint cuenta-zaris (403/404/409) →
+login por email Y por DNI con la temporal → cambio forzado → credencial de vecino → marcadores
+OpenAPI. Los datos quedan como demo (no se limpian).
 """
 import asyncio
 import logging
@@ -114,8 +116,12 @@ async def _captura_enviar_mail(to: str, subject: str, body_html: str, body_text:
     return True
 
 
-def ficha(dni: str, *, es_funcionario: bool, sufijo: str) -> dict[str, Any]:
-    return {
+def es_mail_credenciales(m: dict) -> bool:
+    return "acceso a ZARIS" in m["subject"]
+
+
+def ficha(dni: str, *, es_funcionario: bool, sufijo: str, cuenta_zaris: dict | None = None) -> dict[str, Any]:
+    f: dict[str, Any] = {
         "doc_tipo": "DNI",
         "doc_nro": dni,
         "cuil": cuil_valido(dni),
@@ -132,6 +138,9 @@ def ficha(dni: str, *, es_funcionario: bool, sufijo: str) -> dict[str, Any]:
         "emp_chk": False,
         "es_funcionario": es_funcionario,
     }
+    if cuenta_zaris is not None:
+        f["cuenta_zaris"] = cuenta_zaris
+    return f
 
 
 async def setup() -> dict:
@@ -143,7 +152,7 @@ async def setup() -> dict:
         sys.exit("ABORT: no hay subáreas activas en local")
     id_subarea = sub["id_subarea"]
 
-    # Supervisor de prueba (nivel 2) con agente, para el 403. Idempotente.
+    # Supervisor de prueba (nivel 2) con agente, para los 403. Idempotente.
     sup = await q1("SELECT id_usuario FROM usuarios WHERE email = :e", e=SUP_EMAIL)
     if not sup:
         await exec_commit("""
@@ -158,6 +167,12 @@ async def setup() -> dict:
              WHERE NOT EXISTS (SELECT 1 FROM agentes WHERE id_usuario = :u)
         """, s=id_subarea, u=sup["id_usuario"])
     return {"id_subarea": id_subarea}
+
+
+async def quitar_credencial(id_ciudadano: int) -> None:
+    """Simula una ficha anterior a la unificación de junio: persona en la BUC sin cuenta de vecino."""
+    await exec_commit("DELETE FROM ciudadano_credencial WHERE id_ciudadano = :id", id=id_ciudadano)
+    await exec_commit("DELETE FROM ciudadano_canal_preferido WHERE id_ciudadano = :id", id=id_ciudadano)
 
 
 async def main() -> int:
@@ -177,94 +192,157 @@ async def main() -> int:
             return 1
         HS = {"Authorization": f"Bearer {r.json()['access_token']}"}
 
-        # ── 1. Alta de ciudadano funcionario (tilde) y de un vecino común ────────────
+        # ── 1. Alta con el tilde: la cuenta ZARIS nace en el mismo guardado ──────────
         dni_a = str(random.randint(50_000_000, 54_999_999))
+        cuenta_a = {"nivel_acceso": 4, "id_subarea": id_subarea, "username": f"mariana.funcionaria{dni_a[-4:]}"}
         r = await c.post("/api/v1/buc/ciudadanos", json=ficha(dni_a, es_funcionario=True, sufijo=dni_a[-4:]), headers=HA)
-        if not check("1a. alta ciudadano con es_funcionario=True → 201", r.status_code == 201, short(r)):
+        check("1a. alta con tilde SIN cuenta_zaris (admin) → 422", r.status_code == 422, short(r))
+        r = await c.post("/api/v1/buc/ciudadanos", json=ficha(dni_a, es_funcionario=True, sufijo=dni_a[-4:], cuenta_zaris=cuenta_a), headers=HS)
+        check("1b. alta con tilde por nivel 2 → 403", r.status_code == 403, short(r))
+        nada = await q1("SELECT 1 FROM ciudadanos WHERE doc_nro = :d", d=dni_a)
+        check("1c. los rechazos no dejaron la persona a medias", nada is None, str(nada))
+
+        mails.clear()
+        r = await c.post("/api/v1/buc/ciudadanos", json=ficha(dni_a, es_funcionario=True, sufijo=dni_a[-4:], cuenta_zaris=cuenta_a), headers=HA)
+        if not check("1d. alta con tilde + cuenta_zaris (admin) → 201", r.status_code == 201, short(r)):
             return 1
         ciu_a = r.json()
         id_a = ciu_a["id_ciudadano"]
-        check("1b. la respuesta trae es_funcionario=true", ciu_a.get("es_funcionario") is True, str(ciu_a.get("es_funcionario")))
-        n_mails_alta = len(mails)
-        check("1c. el alta encoló el mail de activación de App Vecinos", n_mails_alta >= 1, f"({n_mails_alta} mails)")
-
-        dni_b = str(random.randint(55_000_000, 59_999_999))
-        r = await c.post("/api/v1/buc/ciudadanos", json=ficha(dni_b, es_funcionario=False, sufijo=dni_b[-4:]), headers=HA)
-        if not check("1d. alta ciudadano SIN tilde → 201", r.status_code == 201, short(r)):
-            return 1
-        id_b = r.json()["id_ciudadano"]
-
-        r = await c.get(f"/api/v1/buc/ciudadanos/{id_a}/cuentas", headers=HA)
-        cu = r.json() if r.status_code == 200 else {}
-        check("1e. GET /cuentas antes: vecino pendiente, zaris null",
-              r.status_code == 200 and cu.get("vecino", {}).get("estado") == "pendiente" and cu.get("zaris") is None, short(r))
-
-        # ── 2. Guards ────────────────────────────────────────────────────────────────
-        body = {"nivel_acceso": 4, "id_subarea": id_subarea, "username": f"mariana.funcionaria{dni_a[-4:]}"}
-        r = await c.post(f"/api/v1/buc/ciudadanos/{id_a}/cuenta-zaris", json=body, headers=HS)
-        check("2a. nivel 2 → 403", r.status_code == 403, short(r))
-        r = await c.post(f"/api/v1/buc/ciudadanos/{id_b}/cuenta-zaris", json=body, headers=HA)
-        check("2b. ciudadano sin tilde → 422", r.status_code == 422, short(r))
-        r = await c.post(f"/api/v1/buc/ciudadanos/999999999/cuenta-zaris", json=body, headers=HA)
-        check("2c. ciudadano inexistente → 404", r.status_code == 404, short(r))
-
-        # ── 3. Alta de la cuenta ZARIS ───────────────────────────────────────────────
-        mails.clear()
-        r = await c.post(f"/api/v1/buc/ciudadanos/{id_a}/cuenta-zaris", json=body, headers=HA)
-        if not check("3a. admin → 201", r.status_code == 201, short(r)):
-            return 1
-        cz = r.json()
-        id_usuario = cz["id_usuario"]
-        check("3b. respuesta: mail_enviado=true, cuenta_vecino_creada=false (ya la tenía del alta)",
-              cz.get("mail_enviado") is True and cz.get("cuenta_vecino_creada") is False, str(cz))
-
-        u = await q1("SELECT nombre, email, nivel_acceso, cuil, id_subarea, id_ciudadano, es_externo, debe_cambiar_password "
-                     "FROM usuarios WHERE id_usuario = :id", id=id_usuario)
-        check("3c. usuarios.id_ciudadano = ciudadano, nombre 'Apellido, Nombre', temporal marcada",
-              bool(u) and u["id_ciudadano"] == id_a and u["nombre"].startswith("Funcionaria") and u["debe_cambiar_password"]
+        check("1e. la respuesta trae es_funcionario=true", ciu_a.get("es_funcionario") is True, str(ciu_a.get("es_funcionario")))
+        u = await q1("SELECT id_usuario, nombre, email, nivel_acceso, id_subarea, id_ciudadano, es_externo, debe_cambiar_password "
+                     "FROM usuarios WHERE id_ciudadano = :id", id=id_a)
+        check("1f. usuario creado en el MISMO guardado: vinculado, 'Apellido, Nombre', temporal marcada, nivel 4, subárea",
+              bool(u) and u["nombre"].startswith("Funcionaria") and u["debe_cambiar_password"]
               and u["nivel_acceso"] == 4 and u["id_subarea"] == id_subarea and not u["es_externo"], str(u))
+        if not u:
+            return 1
+        id_usuario = u["id_usuario"]
         a = await q1("SELECT nombre, apellido, dni, cuil, email, telefono, id_subarea, activo FROM agentes WHERE id_usuario = :id", id=id_usuario)
-        check("3d. agente 1:1 con datos REALES de la ficha (nombre, apellido, DNI, CUIL, email, teléfono, subárea)",
+        check("1g. agente 1:1 con datos REALES de la ficha (nombre, apellido, DNI, CUIL, email, teléfono, subárea)",
               bool(a) and a["dni"] == dni_a and a["cuil"] == ciu_a["cuil"] and a["apellido"].startswith("Funcionaria")
               and a["nombre"] == "Mariana" and a["email"] == ciu_a["email"] and a["telefono"] == ciu_a["telefono"]
               and a["id_subarea"] == id_subarea and a["activo"], str(a))
-
-        cred_mail = next((m for m in mails if "acceso a ZARIS" in m["subject"]), None)
-        check("3e. se encoló el mail de credenciales (MOCK capturado)", cred_mail is not None, f"({len(mails)} mails: {[m['subject'] for m in mails]})")
+        cred_mails = [m for m in mails if es_mail_credenciales(m)]
+        act_mails = [m for m in mails if not es_mail_credenciales(m)]
+        check("1h. DOS mails: activación de App Vecinos + credenciales ZARIS", len(cred_mails) == 1 and len(act_mails) == 1,
+              f"({[m['subject'] for m in mails]})")
         password_temporal = None
-        if cred_mail:
-            txt = cred_mail["text"]
+        if cred_mails:
+            txt = cred_mails[0]["text"]
             for line in txt.splitlines():
                 if "Contraseña temporal" in line:
                     password_temporal = line.split(":")[-1].strip()
             login_url = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/frontend/login.html"
-            check("3f. el mail lleva el link del backoffice, el de la app de agentes y el DNI",
+            check("1i. el mail lleva el link del backoffice, el de la app de agentes y el DNI",
                   login_url in txt and "https://agentes.zaris.com.ar" in txt and f"DNI {dni_a}" in txt
-                  and login_url in cred_mail["html"] and "https://agentes.zaris.com.ar" in cred_mail["html"],
+                  and login_url in cred_mails[0]["html"] and "https://agentes.zaris.com.ar" in cred_mails[0]["html"],
                   f"(temporal={'ok' if password_temporal else 'NO'})")
         if not password_temporal:
             print("       (sin clave temporal capturada: se saltean los logins)")
             return 1
-
         r = await c.get(f"/api/v1/buc/ciudadanos/{id_a}/cuentas", headers=HA)
         cu = r.json() if r.status_code == 200 else {}
-        check("3g. GET /cuentas después: zaris con username y nivel",
-              r.status_code == 200 and (cu.get("zaris") or {}).get("username") == body["username"]
+        check("1j. GET /cuentas: vecino pendiente + zaris con username y nivel",
+              r.status_code == 200 and cu.get("vecino", {}).get("estado") == "pendiente"
+              and (cu.get("zaris") or {}).get("username") == cuenta_a["username"]
               and (cu.get("zaris") or {}).get("nivel_acceso") == 4, short(r))
         r = await c.get(f"/api/v1/buc/usuarios/{id_usuario}", headers=HA)
-        check("3h. GET /buc/usuarios/{id} expone id_ciudadano", r.status_code == 200 and r.json().get("id_ciudadano") == id_a, short(r))
+        check("1k. GET /buc/usuarios/{id} expone id_ciudadano", r.status_code == 200 and r.json().get("id_ciudadano") == id_a, short(r))
         r = await c.get(f"/api/v1/buc/ciudadanos/{id_a}", headers=HA)
-        check("3i. GET /buc/ciudadanos/{id} trae es_funcionario=true", r.status_code == 200 and r.json().get("es_funcionario") is True, short(r))
+        check("1l. GET /buc/ciudadanos/{id} trae es_funcionario=true", r.status_code == 200 and r.json().get("es_funcionario") is True, short(r))
 
-        # ── 4. Repetidos ─────────────────────────────────────────────────────────────
-        r = await c.post(f"/api/v1/buc/ciudadanos/{id_a}/cuenta-zaris", json=body, headers=HA)
-        check("4a. segunda vez sobre el mismo ciudadano → 409", r.status_code == 409, short(r))
+        # Vecino común (sin tilde) → 201 y un solo mail (activación).
+        mails.clear()
+        dni_b = str(random.randint(55_000_000, 59_999_999))
+        r = await c.post("/api/v1/buc/ciudadanos", json=ficha(dni_b, es_funcionario=False, sufijo=dni_b[-4:]), headers=HA)
+        if not check("1m. alta SIN tilde → 201", r.status_code == 201, short(r)):
+            return 1
+        id_b = r.json()["id_ciudadano"]
+        check("1n. el vecino común recibe solo la activación de App Vecinos", len(mails) == 1 and not es_mail_credenciales(mails[0]),
+              f"({[m['subject'] for m in mails]})")
+
+        # ── 2. Edición de la ficha (PUT) con el tilde ────────────────────────────────
+        cuenta_b = {"nivel_acceso": 3, "id_subarea": id_subarea, "username": f"mariana.funcionaria{dni_b[-4:]}"}
+        r = await c.put(f"/api/v1/buc/ciudadanos/{id_b}", json={"es_funcionario": True, "cuenta_zaris": cuenta_b}, headers=HS)
+        check("2a. nivel 2 pone el tilde → 403", r.status_code == 403, short(r))
         r = await c.put(f"/api/v1/buc/ciudadanos/{id_b}", json={"es_funcionario": True}, headers=HA)
-        check("4b. PUT es_funcionario=true sobre el vecino B → 200", r.status_code == 200 and r.json().get("es_funcionario") is True, short(r))
-        r = await c.post(f"/api/v1/buc/ciudadanos/{id_b}/cuenta-zaris", json=body, headers=HA)
-        check("4c. username ya usado → 409", r.status_code == 409, short(r))
+        check("2b. admin pone el tilde SIN cuenta_zaris → 422", r.status_code == 422, short(r))
+        sigue = await q1("SELECT es_funcionario FROM ciudadanos WHERE id_ciudadano = :id", id=id_b)
+        check("2c. el 422 no dejó el tilde guardado", bool(sigue) and sigue["es_funcionario"] is False, str(sigue))
+        r = await c.put(f"/api/v1/buc/ciudadanos/{id_b}", json={"es_funcionario": True, "cuenta_zaris": cuenta_a}, headers=HA)
+        check("2d. username ya usado → 409", r.status_code == 409, short(r))
+        mails.clear()
+        r = await c.put(f"/api/v1/buc/ciudadanos/{id_b}", json={"es_funcionario": True, "cuenta_zaris": cuenta_b}, headers=HA)
+        check("2e. admin pone el tilde + cuenta_zaris → 200 y es_funcionario=true",
+              r.status_code == 200 and r.json().get("es_funcionario") is True, short(r))
+        ub = await q1("SELECT id_usuario, nivel_acceso, id_ciudadano FROM usuarios WHERE id_ciudadano = :id", id=id_b)
+        check("2f. la cuenta ZARIS nació en el PUT (nivel 3)", bool(ub) and ub["nivel_acceso"] == 3, str(ub))
+        check("2g. un solo mail: credenciales (la activación de vecino ya la tenía del alta)",
+              len(mails) == 1 and es_mail_credenciales(mails[0]), f"({[m['subject'] for m in mails]})")
+        mails.clear()
+        r = await c.put(f"/api/v1/buc/ciudadanos/{id_b}", json={"telefono": "11" + dni_b[-8:][::-1], "cuenta_zaris": cuenta_b}, headers=HA)
+        n_usr = await q1("SELECT count(*) AS n FROM usuarios WHERE id_ciudadano = :id", id=id_b)
+        check("2h. volver a guardar (teléfono) con cuenta_zaris → 200, sin usuario nuevo ni mail (no-op)",
+              r.status_code == 200 and n_usr["n"] == 1 and len(mails) == 0, f"{short(r)} usuarios={n_usr['n']} mails={len(mails)}")
+        r = await c.put(f"/api/v1/buc/ciudadanos/{id_b}", json={"observaciones": "editado por nivel 2"}, headers=HS)
+        check("2i. nivel 2 edita otros datos de un funcionario con cuenta → 200", r.status_code == 200, short(r))
+        r = await c.put(f"/api/v1/buc/ciudadanos/{id_b}", json={"es_funcionario": False}, headers=HA)
+        n_usr = await q1("SELECT count(*) AS n FROM usuarios WHERE id_ciudadano = :id", id=id_b)
+        check("2j. destildar → 200 y la cuenta ZARIS NO se borra (la baja sigue en Usuarios)",
+              r.status_code == 200 and r.json().get("es_funcionario") is False and n_usr["n"] == 1, short(r))
+        r = await c.put(f"/api/v1/buc/ciudadanos/{id_b}", json={"es_funcionario": True}, headers=HA)
+        check("2k. volver a tildar a quien YA tiene cuenta → 200 sin pedir cuenta_zaris", r.status_code == 200, short(r))
 
-        # ── 5. Login del funcionario: email o DNI + temporal → cambio forzado ───────
+        # ── 3. Vecino anterior a la unificación: guardar la ficha le crea la cuenta ──
+        dni_c = str(random.randint(60_000_000, 64_999_999))
+        r = await c.post("/api/v1/buc/ciudadanos", json=ficha(dni_c, es_funcionario=False, sufijo=dni_c[-4:]), headers=HA)
+        if not check("3a. alta del vecino C → 201 (después se le quita la credencial para simular una ficha vieja)", r.status_code == 201, short(r)):
+            return 1
+        id_c = r.json()["id_ciudadano"]
+        await quitar_credencial(id_c)
+        r = await c.get(f"/api/v1/buc/ciudadanos/{id_c}/cuentas", headers=HA)
+        check("3b. GET /cuentas: sin_cuenta", r.status_code == 200 and r.json().get("vecino", {}).get("estado") == "sin_cuenta", short(r))
+        mails.clear()
+        r = await c.put(f"/api/v1/buc/ciudadanos/{id_c}", json={"observaciones": "ficha vieja guardada por nivel 2"}, headers=HS)
+        cred = await q1("SELECT token_activacion::text AS t, activado FROM ciudadano_credencial WHERE id_ciudadano = :id", id=id_c)
+        check("3c. PUT por nivel 2 → 200 y nace la credencial de App Vecinos + mail de activación",
+              r.status_code == 200 and bool(cred) and not cred["activado"] and len(mails) == 1 and not es_mail_credenciales(mails[0]),
+              f"{short(r)} cred={cred} mails={len(mails)}")
+        ev = await q1("SELECT estado_validacion FROM ciudadanos WHERE id_ciudadano = :id", id=id_c)
+        check("3d. la ficha la cargó un agente → estado_validacion=verificado", bool(ev) and ev["estado_validacion"] == "verificado", str(ev))
+        mails.clear()
+        r = await c.put(f"/api/v1/buc/ciudadanos/{id_c}", json={"observaciones": "segundo guardado"}, headers=HA)
+        cred2 = await q1("SELECT token_activacion::text AS t FROM ciudadano_credencial WHERE id_ciudadano = :id", id=id_c)
+        check("3e. segundo guardado: ni mail nuevo ni token regenerado (pendiente no se toca)",
+              r.status_code == 200 and len(mails) == 0 and cred2 and cred2["t"] == cred["t"], f"mails={len(mails)}")
+        r = await c.get(f"/api/v1/buc/ciudadanos/{id_c}/cuentas", headers=HA)
+        check("3f. GET /cuentas: pendiente", r.status_code == 200 and r.json().get("vecino", {}).get("estado") == "pendiente", short(r))
+
+        # Email que ya es de la cuenta de OTRA persona: guarda igual, sin cuenta ni mail.
+        dni_e = str(random.randint(65_000_000, 69_999_999))
+        r = await c.post("/api/v1/buc/ciudadanos", json=ficha(dni_e, es_funcionario=False, sufijo=dni_e[-4:]), headers=HA)
+        if not check("3g. alta del vecino E → 201", r.status_code == 201, short(r)):
+            return 1
+        id_e = r.json()["id_ciudadano"]
+        await quitar_credencial(id_e)
+        await exec_commit("UPDATE ciudadanos SET email = :e WHERE id_ciudadano = :id", e=ciu_a["email"], id=id_e)
+        mails.clear()
+        r = await c.put(f"/api/v1/buc/ciudadanos/{id_e}", json={"observaciones": "email compartido"}, headers=HA)
+        cred_e = await q1("SELECT 1 FROM ciudadano_credencial WHERE id_ciudadano = :id", id=id_e)
+        check("3h. email de la cuenta de otra persona → 200, sin credencial ni mail (queda 'sin cuenta')",
+              r.status_code == 200 and cred_e is None and len(mails) == 0, f"{short(r)} cred={cred_e} mails={len(mails)}")
+
+        # ── 4. Endpoint POST /cuenta-zaris (sigue para la API) ───────────────────────
+        r = await c.post(f"/api/v1/buc/ciudadanos/{id_a}/cuenta-zaris", json=cuenta_a, headers=HS)
+        check("4a. nivel 2 → 403", r.status_code == 403, short(r))
+        r = await c.post(f"/api/v1/buc/ciudadanos/999999999/cuenta-zaris", json=cuenta_a, headers=HA)
+        check("4b. ciudadano inexistente → 404", r.status_code == 404, short(r))
+        r = await c.post(f"/api/v1/buc/ciudadanos/{id_a}/cuenta-zaris", json=cuenta_a, headers=HA)
+        check("4c. ya tiene cuenta → 409", r.status_code == 409, short(r))
+        r = await c.post(f"/api/v1/buc/ciudadanos/{id_c}/cuenta-zaris", json=cuenta_a, headers=HA)
+        check("4d. ciudadano sin tilde → 422", r.status_code == 422, short(r))
+
+        # ── 5. Login del funcionario A: email o DNI + temporal → cambio forzado ─────
         r = await c.post("/api/v1/auth/login", json={"identificador": ciu_a["email"], "password": password_temporal})
         check("5a. login por EMAIL con la temporal → 200 + debe_cambiar_password",
               r.status_code == 200 and r.json()["user"].get("debe_cambiar_password") is True, short(r))
@@ -296,7 +374,7 @@ async def main() -> int:
         check("6c. login en la app del VECINO con DNI + clave de vecino → 200", r.status_code == 200, short(r))
         r = await c.post("/api/v1/auth/login", json={"identificador": dni_a, "password": pass_vecino})
         check("6d. la clave de vecino NO entra a ZARIS → 401", r.status_code == 401, short(r))
-        r = await c.post("/api/v1/auth/login", json={"identificador": dni_b, "password": PWD_DEV})
+        r = await c.post("/api/v1/auth/login", json={"identificador": dni_c, "password": PWD_DEV})
         check("6e. DNI de un ciudadano sin usuario → 401", r.status_code == 401, short(r))
         r = await c.post("/api/v1/auth/login", json={"password": PWD_DEV})
         check("6f. sin identificador ni email → 401", r.status_code == 401, short(r))
@@ -305,15 +383,20 @@ async def main() -> int:
         r = await c.get("/openapi.json")
         spec = r.json()
         paths = spec.get("paths", {})
-        login_props = spec.get("components", {}).get("schemas", {}).get("LoginRequest", {}).get("properties", {})
-        check("7a. rutas nuevas en OpenAPI",
+        schemas = spec.get("components", {}).get("schemas", {})
+        login_props = schemas.get("LoginRequest", {}).get("properties", {})
+        check("7a. rutas de cuentas en OpenAPI",
               "/api/v1/buc/ciudadanos/{id}/cuenta-zaris" in paths and "/api/v1/buc/ciudadanos/{id}/cuentas" in paths)
         check("7b. LoginRequest.identificador en OpenAPI", "identificador" in login_props)
+        check("7c. cuenta_zaris en CiudadanoCreate y CiudadanoUpdate (marcador del deploy)",
+              "cuenta_zaris" in schemas.get("CiudadanoCreate", {}).get("properties", {})
+              and "cuenta_zaris" in schemas.get("CiudadanoUpdate", {}).get("properties", {}))
 
     print(f"\nRESULTADO: {ok_count} OK, {fail_count} FAIL")
     for f in fallidos:
         print(f"  - {f['caso']}: {f['detalle']}")
-    print(f"  datos demo: ciudadanos {id_a} (funcionaria, usuario {id_usuario}) y {id_b}")
+    print(f"  datos demo: ciudadanos {id_a} (funcionaria, usuario {id_usuario}), {id_b} (funcionaria nivel 3), "
+          f"{id_c} (vecina pendiente), {id_e} (sin cuenta, email compartido)")
     return 0 if fail_count == 0 else 1
 
 

@@ -2,6 +2,7 @@ import type { FormState } from '../views/FormView'
 import { formatCuilInput } from '../lib/cuilUtils'
 import type { Nacionalidad } from '../types/ciudadano'
 import { AddressSearch } from '../../../ui/AddressSearch'
+import { CuentaZarisCampos } from './CuentaZarisCampos'
 
 interface Props {
   form: FormState
@@ -10,12 +11,22 @@ interface Props {
   /** true en alta nueva: al guardar se crea la cuenta de App Vecinos y se manda el mail. */
   esAlta?: boolean
   nacionalidades: Nacionalidad[]
+  /** Solo el Administrador marca/quita el tilde «funcionario» (la marca crea la cuenta ZARIS). */
+  puedeMarcarFuncionario?: boolean
+  /** La persona ya tiene cuenta ZARIS (chips): el tilde no pide más datos. */
+  yaTieneZaris?: boolean
+  /** Mostrar nivel/subárea/usuario bajo el tilde (tilde puesto, admin, sin cuenta, no readonly). */
+  mostrarCamposZaris?: boolean
   onChange: <K extends keyof FormState>(key: K, value: FormState[K]) => void
   onCuilBlur: () => void
   onEmpChkChange: (checked: boolean) => void
 }
 
-export function CiudadanoForm({ form, errores, readonly, esAlta = false, nacionalidades, onChange, onCuilBlur, onEmpChkChange }: Props) {
+export function CiudadanoForm({
+  form, errores, readonly, esAlta = false, nacionalidades,
+  puedeMarcarFuncionario = false, yaTieneZaris = false, mostrarCamposZaris = false,
+  onChange, onCuilBlur, onEmpChkChange,
+}: Props) {
   return (
     <form autoComplete="off" onSubmit={(e) => e.preventDefault()} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* ── Identificacion ── */}
@@ -231,8 +242,8 @@ export function CiudadanoForm({ form, errores, readonly, esAlta = false, naciona
               una <strong>cuenta de App Vecinos</strong> y le envía un correo de activación.
               El vecino abre ese correo, ingresa y define su propia contraseña.
               {form.es_funcionario && (
-                <> Como es <strong>funcionario del municipio</strong>, después un administrador
-                le crea la cuenta ZARIS desde esta misma ficha con el botón «Crear cuenta aplicación ZARIS».</>
+                <> Como es <strong>funcionario del municipio</strong>, también se le crea la cuenta ZARIS
+                y recibe un segundo correo con sus credenciales.</>
               )}
             </span>
           </div>
@@ -253,23 +264,37 @@ export function CiudadanoForm({ form, errores, readonly, esAlta = false, naciona
         </label>
       </Section>
 
-      {/* ── Funcionario municipal (mig 110) ── */}
+      {/* ── Funcionario municipal (mig 110): la marca crea la cuenta ZARIS al guardar ── */}
       <Section title="Funcionario municipal">
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: readonly ? 'default' : 'pointer', fontSize: 'var(--size-ui)', color: 'var(--fg-1)' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: readonly || !puedeMarcarFuncionario ? 'default' : 'pointer', fontSize: 'var(--size-ui)', color: 'var(--fg-1)' }}>
           <input
             type="checkbox"
             checked={form.es_funcionario}
             onChange={(e) => onChange('es_funcionario', e.target.checked)}
-            disabled={readonly}
+            disabled={readonly || !puedeMarcarFuncionario}
             style={{ width: 16, height: 16, accentColor: 'var(--zaris-orange)' }}
           />
           Este ciudadano es funcionario del municipio
         </label>
         <div style={{ fontSize: 'var(--size-caption)', color: 'var(--fg-3)', lineHeight: 1.5 }}>
-          Con esta marca, el botón «Crear cuenta aplicación ZARIS» le crea la cuenta para el sistema
-          y la app de agentes (solo un administrador). Sin la marca, le crea la cuenta de App Vecinos.
-          La cuenta de funcionario sirve también en la app del vecino; la del vecino no sirve en la de agentes.
+          {!puedeMarcarFuncionario
+            ? 'Solo un administrador puede poner o quitar esta marca: al guardar la ficha con ella se crea la cuenta ZARIS del funcionario.'
+            : yaTieneZaris
+              ? 'Ya tiene cuenta ZARIS (ver «Cuentas», arriba). Quitar la marca no la borra: la baja se hace desde Usuarios.'
+              : 'Al guardar la ficha con esta marca, el sistema le crea la cuenta ZARIS (sistema y app de agentes) y le envía las credenciales al email cargado.'}
         </div>
+        {mostrarCamposZaris && (
+          <CuentaZarisCampos
+            nivel={form.zaris_nivel}
+            subarea={form.zaris_subarea}
+            username={form.zaris_username}
+            email={form.email}
+            errores={{ subarea: errores.zaris_subarea, username: errores.zaris_username }}
+            onNivel={(n) => onChange('zaris_nivel', n)}
+            onSubarea={(s) => onChange('zaris_subarea', s)}
+            onUsername={(u) => onChange('zaris_username', u)}
+          />
+        )}
       </Section>
 
       {/* ── Observaciones ── */}

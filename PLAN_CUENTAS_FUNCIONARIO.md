@@ -8,6 +8,13 @@
 > de César en el celular (sección «Después») y la decisión pendiente de la sección 2. Reglas transversales en [`CLAUDE.md`](CLAUDE.md)
 > (§3 roles, §5 links en mails, §21 migraciones, §23 patrones UI, §24 drift en prod, §39/§38 vía skills).
 
+> **Cambio del 2026-10-13 (pedido de César, reemplaza la decisión 3):** **sin botón ni modal.** La cuenta ZARIS se
+> crea **al guardar la ficha** con el tilde «funcionario»: nivel, subárea y usuario aparecen debajo del tilde
+> (`CuentaZarisCampos`) y viajan en `cuenta_zaris` del `POST`/`PUT /buc/ciudadanos`. Consecuencias: el tilde pasa a
+> ser **solo de Administrador** (la marca es la cuenta); el endpoint `POST /cuenta-zaris` queda para la API; guardar la
+> ficha de un vecino sin credencial le crea la cuenta de App Vecinos (vía de mostrador sin botón) y los chips ofrecen
+> «Reenviar correo de activación» cuando quedó pendiente. Detalle en las skills `modulo-usuarios` y `modulo-app-vecinos`.
+
 ## 1. Objetivo
 
 Que un funcionario municipal se dé de alta **como persona en la BUC primero** y, desde esa misma
@@ -21,7 +28,7 @@ entrar a la app de agentes. Todo listo para la prueba real en el celular (dos em
 |---|---|---|
 | 1 | «La cuenta del funcionario sirve también en la app del vecino» | **Dos credenciales, un solo clic.** Vecino = `ciudadano_credencial` (DNI + clave que elige por link, se crea sola en el alta). ZARIS = `usuarios` (clave temporal + cambio forzado). Vínculo explícito `usuarios.id_ciudadano`. No se mezclan los scopes JWT. |
 | 2 | Quién crea la cuenta de funcionario desde la ficha | **Solo Administrador (nivel 1)**, igual que el alta en Usuarios. Nivel 2-3 ve el botón deshabilitado con la leyenda. |
-| 3 | Dónde se cargan nivel / subárea / usuario | **Mini-modal** al apretar «Crear cuenta aplicación ZARIS» con el tilde puesto. La ficha de la BUC no cambia de forma. |
+| 3 | Dónde se cargan nivel / subárea / usuario | ~~**Mini-modal** al apretar «Crear cuenta aplicación ZARIS» con el tilde puesto.~~ **Reemplazada el 2026-10-13:** los tres campos van **dentro de la ficha, debajo del tilde**, y la cuenta se crea al guardar (ver nota al inicio). |
 | 4 | Manuales | **Actualizar «Alta de ciudadanos» + nuevo «App de agentes».** |
 | 5 | Identificador de login (pedido de César al aprobar) | El login de ZARIS (shell + app de agentes) acepta **email o número de documento** + contraseña. |
 
