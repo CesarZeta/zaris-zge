@@ -12,8 +12,6 @@ import type {
   EmpresaCreate,
   CiudadanoEmpresaCreate,
   CuentasCiudadano,
-  CuentaZarisIn,
-  CuentaZarisOut,
   SubareaHit,
 } from '../types/ciudadano'
 
@@ -46,11 +44,6 @@ export const crearCuentaVecino = (id: number) =>
     `${BASE}/ciudadanos/${id}/cuenta-vecino`,
     {},
   )
-
-/** Cuenta ZARIS (backoffice + app de agentes) de un ciudadano marcado como funcionario.
- *  Solo admin (403). 422 si no tiene el tilde; 409 si ya tiene cuenta o el usuario existe. */
-export const crearCuentaZaris = (id: number, body: CuentaZarisIn) =>
-  api.post<CuentaZarisOut>(`${BASE}/ciudadanos/${id}/cuenta-zaris`, body)
 
 /** Estado de las dos cuentas (App Vecinos / ZARIS) para los chips de la ficha. */
 export const estadoCuentasCiudadano = (id: number) =>

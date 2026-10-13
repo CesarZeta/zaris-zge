@@ -193,6 +193,15 @@ class ActividadOut(BaseModel):
 # CIUDADANO
 # ═══════════════════════════════════════════════════════════════
 
+class CuentaZarisIn(BaseModel):
+    """Datos que la ficha del ciudadano NO tiene y la cuenta ZARIS necesita (mig 110).
+    Viajan dentro del alta/edición de la ficha (`cuenta_zaris`) cuando el tilde
+    «funcionario del municipio» está puesto y la persona todavía no tiene usuario."""
+    nivel_acceso: int = Field(..., ge=1, le=5)
+    id_subarea: int
+    username: str = Field(..., max_length=50, pattern=r"^[a-zA-Z0-9_.\-]+$")
+
+
 class CiudadanoBase(BaseModel):
     doc_tipo: str = Field(..., pattern=r"^(DNI|PASAPORTE)$")
     doc_nro: str = Field(..., max_length=10)
@@ -211,9 +220,12 @@ class CiudadanoBase(BaseModel):
     telefono: str = Field(..., max_length=15)
     email: str = Field(..., max_length=150)
     emp_chk: bool = False
-    # Mig 110: "Este ciudadano es funcionario del municipio". Habilita crear su cuenta
-    # ZARIS desde la ficha (POST /buc/ciudadanos/{id}/cuenta-zaris, solo admin).
+    # Mig 110: "Este ciudadano es funcionario del municipio". Con el tilde puesto, el
+    # guardado de la ficha crea su cuenta ZARIS (solo Administrador) usando `cuenta_zaris`.
     es_funcionario: bool = False
+    # Nivel, subárea y usuario de la cuenta ZARIS (la ficha no los tiene). Obligatorio
+    # en el alta con `es_funcionario=True`; se ignora si la persona ya tiene usuario.
+    cuenta_zaris: Optional[CuentaZarisIn] = None
     observaciones: Optional[str] = Field(None, max_length=500)
 
     @field_validator("cuil")
@@ -256,6 +268,8 @@ class CiudadanoUpdate(BaseModel):
     email: Optional[str] = Field(None, max_length=150)
     emp_chk: Optional[bool] = None
     es_funcionario: Optional[bool] = None
+    # Con el tilde puesto y sin usuario vinculado, PUT crea la cuenta ZARIS (solo admin).
+    cuenta_zaris: Optional[CuentaZarisIn] = None
     observaciones: Optional[str] = Field(None, max_length=500)
     modificado_por: Optional[int] = None
 
@@ -325,14 +339,7 @@ class CiudadanoConNacionalidad(CiudadanoOut):
 
 
 # ── Cuentas del ciudadano (mig 110, PLAN_CUENTAS_FUNCIONARIO.md) ────────────────
-
-class CuentaZarisIn(BaseModel):
-    """Datos que la ficha del ciudadano NO tiene y la cuenta ZARIS necesita. Los
-    carga el administrador en el mini-modal de «Crear cuenta aplicación ZARIS»."""
-    nivel_acceso: int = Field(..., ge=1, le=5)
-    id_subarea: int
-    username: str = Field(..., max_length=50, pattern=r"^[a-zA-Z0-9_.\-]+$")
-
+# (`CuentaZarisIn` está definido antes de CiudadanoBase porque viaja dentro de la ficha.)
 
 class CuentaZarisOut(BaseModel):
     id_usuario: int

@@ -25,9 +25,111 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.buc import Ciudadano, Usuario
-from app.schemas.buc import UsuarioCreate
+from app.schemas.buc import CuentaZarisIn, UsuarioCreate
+from app.services.cuenta_vecino import asegurar_cuenta_vecino
 
 logger = logging.getLogger("zaris.cuenta_zaris")
+
+MSG_SOLO_ADMIN_FUNCIONARIO = (
+    "Solo un administrador puede marcar a un ciudadano como funcionario del municipio "
+    "(la marca crea su cuenta ZARIS)."
+)
+MSG_FALTAN_DATOS_ZARIS = (
+    "Para crear la cuenta ZARIS del funcionario completá nivel de acceso, subárea y nombre de usuario."
+)
+
+
+def exigir_admin_funcionario(current_user: dict) -> None:
+    """403 si quien opera no es Administrador (nivel 1): marcar el tilde de funcionario
+    equivale a crear la cuenta ZARIS, y eso es exclusivo del admin (plan, decisión 2)."""
+    if current_user.get("nivel_acceso") != 1:
+        raise HTTPException(status_code=403, detail=MSG_SOLO_ADMIN_FUNCIONARIO)
+
+
+async def crear_cuenta_zaris_desde_ficha(
+    db: AsyncSession,
+    *,
+    ciudadano: Ciudadano,
+    data: CuentaZarisIn,
+    admin: dict,
+    background_tasks: BackgroundTasks,
+) -> tuple[Usuario, bool]:
+    """
+    Cuenta ZARIS (backoffice + app de agentes) de un ciudadano marcado como FUNCIONARIO
+    (mig 110). Un paso, dos credenciales: el usuario interno (clave temporal por mail +
+    cambio forzado, agente 1:1 con los datos reales de la ficha, vinculado por
+    `usuarios.id_ciudadano`) y, si la persona todavía no tenía NINGUNA, la cuenta de
+    vecino (activación por link). La clave de vecino NO sirve para entrar a ZARIS.
+
+    La llaman el alta y la edición de la ficha (`POST`/`PUT /buc/ciudadanos`, cuando
+    viene `cuenta_zaris` con el tilde puesto) y `POST /buc/ciudadanos/{id}/cuenta-zaris`.
+    `admin` es quien opera: el caller YA verificó que es nivel 1.
+
+    422 sin tilde o sin email · 409 si ya tiene usuario vinculado (o username/email
+    repetidos, vía crear_usuario_interno). Devuelve (usuario, cuenta_vecino_creada).
+    NO commitea.
+    """
+    if not ciudadano.es_funcionario:
+        raise HTTPException(
+            status_code=422,
+            detail="El ciudadano no está marcado como funcionario del municipio. Tildalo en la ficha y guardá.",
+        )
+    email = (ciudadano.email or "").strip().lower()
+    if not email:
+        raise HTTPException(
+            status_code=422,
+            detail="El ciudadano no tiene email cargado. Cargale el email primero (ahí se envían las credenciales).",
+        )
+    existente = (await db.execute(
+        text("SELECT id_usuario, username FROM usuarios WHERE id_ciudadano = :id LIMIT 1"),
+        {"id": ciudadano.id_ciudadano},
+    )).fetchone()
+    if existente:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Este ciudadano ya tiene cuenta ZARIS (usuario '{existente.username}').",
+        )
+
+    id_municipio = getattr(ciudadano, "id_municipio", None) or admin.get("id_municipio") or 1
+    payload = UsuarioCreate(
+        nombre=f"{ciudadano.apellido}, {ciudadano.nombre}",
+        nivel_acceso=data.nivel_acceso,
+        username=data.username,
+        email=email,
+        cuil=(ciudadano.cuil or None),
+        id_municipio=id_municipio,
+        id_subarea=data.id_subarea,
+        es_externo=False,
+    )
+    usuario = await crear_usuario_interno(
+        db, data=payload, background_tasks=background_tasks, ciudadano=ciudadano,
+    )
+
+    # El funcionario es vecino también: si la persona no tenía NINGUNA cuenta de App
+    # Vecinos (altas anteriores a la unificación de junio), se la creamos en el mismo
+    # guardado. Si ya existe (activa o pendiente) no se toca: asegurar_cuenta_vecino
+    # reenviaría la activación y el funcionario recibiría dos mails por un guardado.
+    tiene_cred = await db.scalar(
+        text("SELECT 1 FROM ciudadano_credencial WHERE id_ciudadano = :id AND activo = TRUE LIMIT 1"),
+        {"id": ciudadano.id_ciudadano},
+    )
+    cuenta_vecino_creada = False
+    if not tiene_cred:
+        cuenta_vecino_creada = await asegurar_cuenta_vecino(
+            db,
+            id_ciudadano=ciudadano.id_ciudadano,
+            nombre=ciudadano.nombre or "",
+            apellido=ciudadano.apellido or "",
+            email=email,
+            id_municipio=id_municipio,
+            id_usuario_alta=admin.get("id_usuario"),
+            background_tasks=background_tasks,
+        )
+
+    logger.info("CUENTA ZARIS desde ficha | id_ciudadano=%s | id_usuario=%s | username=%s | nivel=%s | por=%s",
+                ciudadano.id_ciudadano, usuario.id_usuario, usuario.username, usuario.nivel_acceso,
+                admin.get("id_usuario"))
+    return usuario, cuenta_vecino_creada
 
 
 def generar_password_temporal(largo: int = 10) -> str:

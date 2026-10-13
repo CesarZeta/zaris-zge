@@ -66,20 +66,12 @@ export interface CuentasCiudadano {
   } | null
 }
 
-/** Lo que la ficha no tiene y la cuenta ZARIS necesita (mini-modal, solo admin). */
+/** Lo que la ficha no tiene y la cuenta ZARIS necesita. Viaja dentro del POST/PUT de la
+ *  ficha (`cuenta_zaris`) cuando el tilde «funcionario» está puesto y aún no tiene cuenta. */
 export interface CuentaZarisIn {
   nivel_acceso: number
   id_subarea: number
   username: string
-}
-
-export interface CuentaZarisOut {
-  id_usuario: number
-  username: string
-  email: string
-  nivel_acceso: number
-  mail_enviado: boolean
-  cuenta_vecino_creada: boolean
 }
 
 export interface SubareaHit {
@@ -111,6 +103,8 @@ export interface CiudadanoCreate {
   email: string
   emp_chk?: boolean
   es_funcionario?: boolean
+  /** Solo con es_funcionario y sin cuenta ZARIS todavía: el guardado la crea (solo admin). */
+  cuenta_zaris?: CuentaZarisIn | null
   observaciones?: string | null
 }
 
