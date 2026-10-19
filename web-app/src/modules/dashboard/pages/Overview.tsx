@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Building2, CalendarCheck, FileText, FolderOpen, Siren, Ticket,
 } from 'lucide-react'
 import { useDashboardResumen, useIdentidadMunicipio } from '../hooks/useDashboardData'
-import { CAPA_COLOR, DashboardMap, type CapasVisibles } from '../components/DashboardMap'
+import {
+  CAPA_COLOR, DashboardMap, ESTADO_COLOR, ESTADOS_LEYENDA, estadoMapaEmergencia,
+  type CapasVisibles, type Encuadre,
+} from '../components/DashboardMap'
 
 // Tablero home: "Resumen de actividad municipal". Mapa geoposicionado de fondo
 // (emergencias + reclamos + espacios de atencion + tramites) y 6 tarjetas de
@@ -19,23 +22,105 @@ export function Overview() {
     emergencias: true, reclamos: true, espacios: true, tramites: true,
   })
 
+  // Filtro por estado (= color del centro del punto). Aplica a reclamos y
+  // emergencias, las dos capas con estado (César 2026-10-19).
+  const [estadosOcultos, setEstadosOcultos] = useState<Set<string>>(new Set())
+  const [verLimite, setVerLimite] = useState(true)
+
   const tarjetas = resumenQ.data?.tarjetas
   const geo = resumenQ.data?.geo
   const cargando = resumenQ.isLoading
 
+  const reclamosMapa = useMemo(
+    () => (geo?.reclamos ?? []).filter((r) => !estadosOcultos.has(r.estado)),
+    [geo?.reclamos, estadosOcultos],
+  )
+  const emergenciasMapa = useMemo(
+    () => (geo?.emergencias ?? []).filter((e) => !estadosOcultos.has(estadoMapaEmergencia(e.estado_codigo))),
+    [geo?.emergencias, estadosOcultos],
+  )
+  // Conteo por estado de lo que las capas visibles muestran (sin el filtro de
+  // estado, para que un estado oculto siga mostrando cuántos hay).
+  const conteoEstados = useMemo(() => {
+    const n: Record<string, number> = {}
+    if (capas.reclamos) for (const r of geo?.reclamos ?? []) n[r.estado] = (n[r.estado] ?? 0) + 1
+    if (capas.emergencias) {
+      for (const e of geo?.emergencias ?? []) {
+        const k = estadoMapaEmergencia(e.estado_codigo)
+        n[k] = (n[k] ?? 0) + 1
+      }
+    }
+    return n
+  }, [geo?.reclamos, geo?.emergencias, capas.reclamos, capas.emergencias])
+
+  // Encuadre del municipio (César 2026-10-19: siempre entero y a la vista,
+  // sin quedar bajo las tarjetas). Se mide el panel REAL (columna de tarjetas
+  // y leyenda, que hace wrap según el ancho) y se ofrecen al mapa las zonas
+  // libres; el mapa usa la que deja el municipio más grande.
+  const pageRef = useRef<HTMLDivElement>(null)
+  const columnaRef = useRef<HTMLDivElement>(null)
+  const leyendaRef = useRef<HTMLDivElement>(null)
+  const encuadresLibres = useCallback((): Encuadre[] => {
+    const page = pageRef.current?.getBoundingClientRect()
+    if (!page) return []
+    const rel = (el: HTMLElement | null) => {
+      const r = el?.getBoundingClientRect()
+      return r ? { left: r.left - page.left, top: r.top - page.top, right: r.right - page.left, bottom: r.bottom - page.top } : null
+    }
+    const cols = rel(columnaRef.current)
+    const ley = rel(leyendaRef.current)
+    const obst = [cols, ley].filter((o): o is NonNullable<typeof o> => o !== null)
+    if (obst.length === 0) return []
+    const M = 16
+    const br: [number, number] = [56, 24] // abajo-derecha: botones del mapa
+    const derecha = Math.max(...obst.map((o) => o.right))
+    const abajo = Math.max(...obst.map((o) => o.bottom))
+    const zonas: Encuadre[] = [
+      { topLeft: [derecha + M, M], bottomRight: br },  // a la derecha de todo el panel
+      { topLeft: [M, abajo + M], bottomRight: br },    // debajo de todo el panel
+    ]
+    // Leyenda al costado de las tarjetas: también sirve la franja a la
+    // derecha de las tarjetas y debajo de la leyenda.
+    if (cols && ley && ley.left >= cols.right - 1) {
+      zonas.push({ topLeft: [cols.right + M, ley.bottom + M], bottomRight: br })
+    }
+    return zonas
+  }, [])
+  // El panel cambia de alto/ancho (wrap de la leyenda, fila de estados que
+  // aparece o desaparece): pedirle al mapa que re-encuadre.
+  const [reencuadre, setReencuadre] = useState(0)
+  useEffect(() => {
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => setReencuadre((n) => n + 1))
+    if (columnaRef.current) ro.observe(columnaRef.current)
+    if (leyendaRef.current) ro.observe(leyendaRef.current)
+    return () => ro.disconnect()
+  }, [])
+
   function toggleCapa(k: keyof CapasVisibles) {
     setCapas((c) => ({ ...c, [k]: !c[k] }))
   }
+  function toggleEstado(estado: string) {
+    setEstadosOcultos((prev) => {
+      const sig = new Set(prev)
+      if (sig.has(estado)) sig.delete(estado)
+      else sig.add(estado)
+      return sig
+    })
+  }
 
   return (
-    <div style={pageStyle}>
+    <div ref={pageRef} style={pageStyle}>
       {/* Mapa de fondo ocupa todo. */}
       <DashboardMap
-        emergencias={geo?.emergencias ?? []}
-        reclamos={geo?.reclamos ?? []}
+        emergencias={emergenciasMapa}
+        reclamos={reclamosMapa}
         espacios={geo?.espacios ?? []}
         tramites={geo?.tramites ?? []}
         visibles={capas}
+        limite={verLimite ? geo?.limite : null}
+        encuadresLibres={encuadresLibres}
+        reencuadre={reencuadre}
         onEmergenciaClick={(e) => navigate(`/emergencias/evento/${e.id_emergencia_evento}`)}
         onReclamoClick={(r) => navigate(`/reclamos/${r.id_reclamo}`)}
         onTramiteClick={(t) => navigate(`/tramites/${t.numero_expediente}`)}
@@ -46,7 +131,7 @@ export function Overview() {
         {/* Columna izquierda (titulo compacto + azulejos debajo) y leyenda de
             capas al costado derecho del titulo (pedido 2026-07-02). */}
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: '0 0 auto' }}>
+          <div ref={columnaRef} style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: '0 0 auto' }}>
           <div style={headerStyle}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               {identidadQ.data?.municipio_logo_url ? (
@@ -114,43 +199,57 @@ export function Overview() {
           </div>
           </div>
 
-          {/* Leyenda con toggle por capa. */}
-          <div style={{ ...legendStyle, flex: '1 1 240px', minWidth: 240 }}>
-            <div style={legendTitle}>Capas del mapa</div>
+          {/* Leyenda: el CONTORNO del punto es el tipo (toggle por capa) y el
+              CENTRO es el estado (toggle = filtro). Pedido 2026-10-19. */}
+          <div ref={leyendaRef} style={{ ...legendStyle, flex: '1 1 240px', minWidth: 240 }}>
+            <div style={legendTitle}>Capas del mapa · contorno del punto</div>
             <div style={legendRowStyle}>
               <LayerToggle
                 activo={capas.emergencias}
                 onClick={() => toggleCapa('emergencias')}
                 label="Emergencias"
-                shape={<IconBadge color={CAPA_COLOR.emergencia} icon={Siren} />}
+                shape={<MarkerSwatch contorno={CAPA_COLOR.emergencia} centro="var(--surface-100)" />}
               />
               <LayerToggle
                 activo={capas.reclamos}
                 onClick={() => toggleCapa('reclamos')}
                 label="Reclamos"
-                shape={<IconBadge color="#1f8a65" icon={FileText} />}
+                shape={<MarkerSwatch contorno={CAPA_COLOR.reclamo} centro="var(--surface-100)" />}
               />
               <LayerToggle
                 activo={capas.espacios}
                 onClick={() => toggleCapa('espacios')}
                 label="Espacios"
-                shape={<IconBadge color={CAPA_COLOR.espacio} icon={Building2} />}
+                shape={<MarkerSwatch contorno={CAPA_COLOR.espacio} centro={CAPA_COLOR.espacio} />}
               />
               <LayerToggle
                 activo={capas.tramites}
                 onClick={() => toggleCapa('tramites')}
                 label="Trámites"
-                shape={<IconBadge color={CAPA_COLOR.tramite} icon={FolderOpen} />}
+                shape={<MarkerSwatch contorno={CAPA_COLOR.tramite} centro={CAPA_COLOR.tramite} />}
               />
+              {geo?.limite ? (
+                <LayerToggle
+                  activo={verLimite}
+                  onClick={() => setVerLimite((v) => !v)}
+                  label="Límite del municipio"
+                  shape={<span style={limiteSwatchStyle} />}
+                />
+              ) : null}
             </div>
-            {capas.reclamos && (
+            {(capas.reclamos || capas.emergencias) && (
               <>
-                <div style={{ ...legendTitle, marginTop: 8 }}>Estados de reclamos</div>
+                <div style={{ ...legendTitle, marginTop: 8 }}>Estado · centro del punto</div>
                 <div style={legendRowStyle}>
-                  <LegendDot color="#c62828" label="Sin asignar" />
-                  <LegendDot color="#1f8a65" label="En gestión" />
-                  <LegendDot color="#f57f17" label="En espera" />
-                  <LegendDot color="#6a1b9a" label="En auditoría" />
+                  {ESTADOS_LEYENDA.map((estado) => (
+                    <LayerToggle
+                      key={estado}
+                      activo={!estadosOcultos.has(estado)}
+                      onClick={() => toggleEstado(estado)}
+                      label={`${estado} (${conteoEstados[estado] ?? 0})`}
+                      shape={<MarkerSwatch contorno={ESTADO_COLOR[estado]} centro={ESTADO_COLOR[estado]} />}
+                    />
+                  ))}
                 </div>
               </>
             )}
@@ -181,7 +280,7 @@ const TILE = 102
 // Coherentes con CAPA_COLOR del mapa; nunca naranja (brand, §4).
 const TARJETA_COLOR = {
   emergencias: '#cf2d56', // rojo --color-error (capa emergencias)
-  reclamos:    '#1f8a65', // verde --color-success (reclamos "En gestión")
+  reclamos:    '#1f8a65', // verde --color-success (identidad de la tarjeta)
   espacios:    '#1565c0', // azul (capa espacios)
   turnos:      '#00838f', // cian oscuro (atención con turno)
   entradas:    '#6a1b9a', // violeta (eventos)
@@ -259,37 +358,26 @@ function LayerToggle({ activo, onClick, label, shape }: {
   )
 }
 
-// Mini version del marker del mapa: badge circular de color con el mismo
-// icono Lucide de la tarjeta correspondiente.
-function IconBadge({ color, icon: Icon }: {
-  color: string
-  icon: React.ComponentType<{ size?: number; strokeWidth?: number; color?: string }>
-}) {
+// Mini version del marker del mapa (mismo dibujo: contorno = tipo, centro =
+// estado), un poco mas grande que el punto real para que se lea en la leyenda.
+function MarkerSwatch({ contorno, centro }: { contorno: string; centro: string }) {
   return (
     <span style={{
-      width: 18, height: 18, borderRadius: '50%',
-      background: color, border: '2px solid white',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      flexShrink: 0,
-    }}>
-      <Icon size={10} strokeWidth={2} color="white" />
-    </span>
+      width: 14, height: 14, borderRadius: '50%', boxSizing: 'border-box',
+      background: centro, border: `3px solid ${contorno}`,
+      boxShadow: '0 0 0 1.5px rgba(255,255,255,0.95), 0 1px 3px rgba(0,0,0,0.3)',
+      display: 'inline-block', flexShrink: 0,
+    }} />
   )
 }
 
-function LegendDot({ color, label }: { color: string; label: string }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <span style={{
-        width: 12, height: 12, borderRadius: '50%',
-        background: color, border: '2px solid white',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
-        display: 'inline-block',
-      }} />
-      <span style={{ fontSize: '0.74rem', color: 'var(--fg-2)' }}>{label}</span>
-    </div>
-  )
+// Muestra de la mascara del mapa: alrededor sombreado (--zaris-orange al 18%,
+// como en el mapa) y el municipio limpio con su borde.
+const limiteSwatchStyle: React.CSSProperties = {
+  width: 18, height: 14, borderRadius: 3, flexShrink: 0,
+  background: 'rgba(245, 78, 0, 0.3)',
+  boxShadow: 'inset 0 0 0 3px rgba(245, 78, 0, 0.3), inset 0 0 0 5px var(--zaris-orange), inset 0 0 0 9px var(--surface-100)',
+  boxSizing: 'border-box',
 }
 
 const pageStyle: React.CSSProperties = {

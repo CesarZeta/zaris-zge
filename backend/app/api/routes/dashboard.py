@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
+from app.services.geo_limite import leer_limite
 
 router = APIRouter(prefix="/api/v1/dashboard", tags=["dashboard"])
 
@@ -44,7 +45,7 @@ _ENTRADAS_VIGENTES_WHERE = """
 """
 
 
-@router.get("/resumen")
+@router.get("/resumen", responses={200: {"description": "Tarjetas y capas geo; geo.limite = contorno del municipio (mig 111)"}})
 async def resumen_dashboard(
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
@@ -150,9 +151,13 @@ async def resumen_dashboard(
         LIMIT 500
     """))).mappings().all()
 
+    # --- Contorno del municipio (mig 111): capa sombreada del mapa -----------
+    limite = await leer_limite(db)
+
     return {
         "tarjetas": dict(tarjetas) if tarjetas else {},
         "geo": {
+            "limite": limite,
             "reclamos": [dict(r) for r in reclamos],
             "emergencias": [dict(r) for r in emergencias],
             "espacios": [dict(r) for r in espacios],

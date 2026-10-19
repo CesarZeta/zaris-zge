@@ -69,7 +69,7 @@ Flags:
 
 `db.<ref>.supabase.co:5432` resuelve a **IPv6** en muchos casos. Si `pg_dump` falla con `could not translate host name` o `Network is unreachable`:
 
-- **Opción A — pooler IPv4** (más confiable): usar host `aws-0-us-east-1.pooler.supabase.com`, puerto `5432` (session mode), usuario `postgres.lshfwsscvfsklrmbvkwl` (el ref va pegado al user en el pooler). El password es el mismo. La connection string exacta está en **Supabase → Settings → Database → Connection string → modo "Session"** — pedírsela al usuario si el host directo falla.
+- **Opción A — pooler IPv4** (más confiable): usar host **`aws-1-us-east-1.pooler.supabase.com`** (verificado 2026-10-19; `aws-0-…` responde `tenant/user not found` para este proyecto), puerto `5432` (session mode), usuario `postgres.lshfwsscvfsklrmbvkwl` (el ref va pegado al user en el pooler). El password es el mismo. La connection string exacta está en **Supabase → Settings → Database → Connection string → modo "Session"** — pedírsela al usuario si el host directo falla.
 - **Opción B**: si la red local tiene IPv6, el host directo funciona sin cambios.
 
 Probar primero el host de `.env` (directo). Si falla por DNS/red, caer al pooler.

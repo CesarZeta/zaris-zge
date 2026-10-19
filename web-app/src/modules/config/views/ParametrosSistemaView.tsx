@@ -129,11 +129,13 @@ const SECCIONES: Seccion[] = [
 // descripción y colores de la App Vecinos — vive en la pestaña Identidad
 // desde 2026-07-16). Las vapid_* son material criptográfico del Web Push
 // (etapa E App Vecinos): editarlas rompe las suscripciones y la privada no
-// debe mostrarse ni al admin.
+// debe mostrarse ni al admin. geo_limite_geojson (mig 111) es un GeoJSON de
+// ~3,5 KB: editarlo a mano en un input no es una tarea razonable.
 const CLAVES_OCULTAS = new Set([
   'municipio_nombre', 'municipio_logo_url',
   'municipio_descripcion', 'municipio_color_primary', 'municipio_color_accent',
   'vapid_public_key', 'vapid_private_key', 'vapid_claims_email',
+  'geo_limite_geojson',
 ])
 
 const CLAVES_CONOCIDAS = new Set(

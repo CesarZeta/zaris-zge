@@ -611,7 +611,7 @@ async def _generar_guardia(db: AsyncSession, cat: _Catalogos, rnd: random.Random
                 continue
             if cat.cat_reclamos.poblacion_localidades:
                 _id_loc, loc_nombre, lat0, lon0, radio = demo_datos._elegir_localidad(rnd, cat.cat_reclamos)
-                lat, lon = demo_datos._jitter(rnd, lat0, lon0, radio)
+                lat, lon = demo_datos._ubicar(rnd, cat.cat_reclamos, lat0, lon0, radio)
                 direccion = f"{rnd.choice(demo_datos.CALLES)} {rnd.randint(100, 5900)}, {loc_nombre}"
             else:
                 lat = lon = None

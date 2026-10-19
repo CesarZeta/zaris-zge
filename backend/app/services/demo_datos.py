@@ -42,6 +42,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import demo_datos_ref as ref
+from app.services.geo_limite import leer_limite, punto_en_limite
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +161,21 @@ def _jitter(rnd: random.Random, lat: float, lon: float, radio_m: int) -> tuple[f
     return round(lat + dlat, 7), round(lon + dlon, 7)
 
 
+def _ubicar(rnd: random.Random, cat: "_Catalogos", lat0: float, lon0: float,
+            radio_m: int) -> tuple[float, float]:
+    """Jitter alrededor del centro de la localidad, re-sorteando los puntos que
+    caen fuera del contorno del municipio (rio, partido lindero). Sin contorno
+    configurado (mig 111) se comporta como _jitter."""
+    lat, lon = _jitter(rnd, lat0, lon0, radio_m)
+    if cat.limite is None:
+        return lat, lon
+    for _ in range(30):
+        if punto_en_limite(cat.limite, lat, lon):
+            return lat, lon
+        lat, lon = _jitter(rnd, lat0, lon0, radio_m)
+    return round(lat0, 7), round(lon0, 7)  # centro de la localidad: siempre adentro
+
+
 @dataclass
 class _Catalogos:
     tipos_por_nombre: dict[str, tuple[int, int, str]] = field(default_factory=dict)
@@ -167,7 +183,9 @@ class _Catalogos:
     tipo_info: dict[int, tuple[str, int]] = field(default_factory=dict)
     subareas_por_nombre: dict[str, int] = field(default_factory=dict)
     estados_fk: dict[str, int] = field(default_factory=dict)
-    localidades_por_nombre: dict[str, int] = field(default_factory=dict)
+    # (nombre normalizado, partido normalizado) -> id_localidad
+    localidades: dict[tuple[str, str], int] = field(default_factory=dict)
+    limite: dict | None = None  # GeoJSON Polygon del municipio (mig 111)
     id_plantilla_reclamos: int | None = None
     # Poblacion ponderada de tipos ya resuelta contra el catalogo del entorno:
     # entradas ('tipo', id_tipo) o ('subarea', id_subarea), con su peso.
@@ -194,11 +212,14 @@ async def _cargar_catalogos(db: AsyncSession) -> _Catalogos:
     for fila in r.fetchall():
         cat.estados_fk[fila.nombre] = fila.id_estado_reclamo
 
-    r = await db.execute(text("SELECT id_localidad, nombre FROM localidades"))
+    r = await db.execute(text(
+        "SELECT l.id_localidad, l.nombre, p.nombre AS partido FROM localidades l "
+        "JOIN partidos p ON p.id_partido = l.id_partido"
+    ))
     for fila in r.fetchall():
-        # Ante homonimos entre partidos gana el primero; las localidades demo
-        # se resuelven igual que el backfill de localidad: por nombre.
-        cat.localidades_por_nombre.setdefault(_norm(fila.nombre), fila.id_localidad)
+        # Por (nombre, partido): "Villa Adelina" existe en VL y en San Isidro.
+        cat.localidades.setdefault((_norm(fila.nombre), _norm(fila.partido)), fila.id_localidad)
+    cat.limite = await leer_limite(db)
 
     r = await db.execute(text(
         "SELECT id_encuesta_plantilla FROM encuesta_plantilla "
@@ -218,8 +239,8 @@ async def _cargar_catalogos(db: AsyncSession) -> _Catalogos:
     if sin_match:
         logger.info("demo_datos: %s tipos de referencia sin match en el catalogo (se omiten)", sin_match)
 
-    for nombre, peso, lat, lon, radio in ref.LOCALIDADES_REF:
-        id_loc = cat.localidades_por_nombre.get(_norm(nombre))
+    for nombre, partido, peso, lat, lon, radio in ref.LOCALIDADES_REF:
+        id_loc = cat.localidades.get((_norm(nombre), _norm(partido)))
         if id_loc:
             cat.poblacion_localidades.append(((id_loc, nombre, lat, lon, radio), peso))
     return cat
@@ -273,7 +294,7 @@ async def _asegurar_vecinos(db: AsyncSession, cat: _Catalogos, uid: int,
             nombre = rnd.choice(ref.NOMBRES)
             sexo = _sexo_de(nombre)
             id_loc, loc_nombre, lat0, lon0, radio = _elegir_localidad(rnd, cat)
-            lat, lon = _jitter(rnd, lat0, lon0, radio)
+            lat, lon = _ubicar(rnd, cat, lat0, lon0, radio)
             slug = re.sub(r"[^a-z0-9]+", ".", _norm(f"{nombre} {apellido}")).strip(".")
             filas.append({
                 "doc_tipo": "DNI", "doc_nro": str(dni),
@@ -325,7 +346,7 @@ def _armar_reclamo(rnd: random.Random, cat: _Catalogos, pool: list[tuple[int, st
     id_tipo = _resolver_tipo(rnd, cat)
     tipo_nombre, id_subarea = cat.tipo_info[id_tipo]
     id_loc, loc_nombre, lat0, lon0, radio = _elegir_localidad(rnd, cat)
-    lat, lon = _jitter(rnd, lat0, lon0, radio)
+    lat, lon = _ubicar(rnd, cat, lat0, lon0, radio)
 
     dia = desde + timedelta(days=rnd.randrange(dias))
     # Horario comercial AR (UTC-3) con algo de dispersion: 11-21 UTC.

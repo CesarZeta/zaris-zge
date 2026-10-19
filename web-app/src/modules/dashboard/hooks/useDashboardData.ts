@@ -62,9 +62,17 @@ export interface GeoTramite {
   longitud: number
 }
 
+// Contorno del municipio (configuracion_general.geo_limite_geojson, mig 111):
+// GeoJSON Polygon, coordenadas [lon, lat]. null = no configurado.
+export interface LimiteMunicipio {
+  type: 'Polygon'
+  coordinates: number[][][]
+}
+
 export interface DashboardResumen {
   tarjetas: DashboardTarjetas
   geo: {
+    limite?: LimiteMunicipio | null
     reclamos: GeoReclamo[]
     emergencias: GeoEmergencia[]
     espacios: GeoEspacio[]

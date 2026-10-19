@@ -125,17 +125,28 @@ TIPOS_REF: list[tuple[str, str, int]] = [
     ('vehiculo obstruyendo garage', 'transito', 1),
 ]
 
-# (nombre_localidad, peso, lat, lon, radio_m) - id resuelto por nombre en runtime.
-LOCALIDADES_REF: list[tuple[str, int, float, float, int]] = [
-    ('Olivos', 1205, -34.5075, -58.49, 1000),
-    ('Florida', 791, -34.5305, -58.501, 800),
-    ('Munro', 478, -34.5315, -58.523, 700),
-    ('Vicente López', 372, -34.526, -58.475, 800),
-    ('Florida Oeste', 291, -34.531, -58.514, 700),
-    ('Villa Martelli', 251, -34.552, -58.512, 700),
-    ('Carapachay', 205, -34.525, -58.529, 600),
-    ('La Lucila', 172, -34.498, -58.482, 550),
-    ('Villa Adelina', 123, -34.5195, -58.543, 700),
+# (nombre_localidad, partido, peso, lat, lon, radio_m) - id resuelto en runtime
+# por (nombre, partido): "Villa Adelina" existe en los dos partidos.
+# Municipio demo "San Andres" = Vicente Lopez + San Isidro (2026-10-19). Pesos
+# de VL: reclamos de un set de referencia; los de SI, escalados por poblacion
+# (censo 2010, ~311 mil vs ~269 mil). Los puntos que el jitter saca fuera del
+# contorno del municipio (geo_limite_geojson, mig 111) se re-sortean.
+LOCALIDADES_REF: list[tuple[str, str, int, float, float, int]] = [
+    ('Olivos', 'Vicente López', 1205, -34.5075, -58.49, 1000),
+    ('Florida', 'Vicente López', 791, -34.5305, -58.501, 800),
+    ('Munro', 'Vicente López', 478, -34.5315, -58.523, 700),
+    ('Vicente López', 'Vicente López', 372, -34.526, -58.475, 800),
+    ('Florida Oeste', 'Vicente López', 291, -34.531, -58.514, 700),
+    ('Villa Martelli', 'Vicente López', 251, -34.552, -58.512, 700),
+    ('Carapachay', 'Vicente López', 205, -34.525, -58.529, 600),
+    ('La Lucila', 'Vicente López', 172, -34.498, -58.482, 550),
+    ('Villa Adelina', 'Vicente López', 123, -34.5195, -58.543, 700),
+    ('Boulogne Sur Mer', 'San Isidro', 1230, -34.499, -58.565, 1400),
+    ('Martínez', 'San Isidro', 940, -34.495, -58.512, 1300),
+    ('Beccar', 'San Isidro', 910, -34.467, -58.538, 1200),
+    ('San Isidro', 'San Isidro', 650, -34.476, -58.524, 1200),
+    ('Acassuso', 'San Isidro', 400, -34.478, -58.503, 700),
+    ('Villa Adelina', 'San Isidro', 360, -34.513, -58.553, 800),
 ]
 
 APELLIDOS: list[str] = [
