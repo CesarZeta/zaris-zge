@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Building2, CalendarCheck, FileText, FolderOpen, Siren, Ticket,
+  Building2, CalendarCheck, ChevronDown, ChevronUp, FileText, FolderOpen, Layers, Siren, Ticket,
 } from 'lucide-react'
 import { useDashboardResumen, useIdentidadMunicipio } from '../hooks/useDashboardData'
 import {
@@ -88,6 +88,22 @@ export function Overview() {
   }, [])
   // El panel cambia de alto/ancho (wrap de la leyenda, fila de estados que
   // aparece o desaparece): pedirle al mapa que re-encuadre.
+  // Modo compacto (César 2026-10-19, opción 1): con el mapa angosto el panel
+  // completo tapa el municipio. Las 6 tarjetas pasan a una fila de chips
+  // (icono + número; el nombre en el tooltip) y la leyenda se pliega detrás de
+  // un botón "Capas". El encuadre mide el panel igual que en modo normal.
+  const [anchoPagina, setAnchoPagina] = useState(0)
+  const compacto = anchoPagina > 0 && anchoPagina < ANCHO_COMPACTO
+  const [leyendaAbierta, setLeyendaAbierta] = useState(false)
+  const mostrarLeyenda = !compacto || leyendaAbierta
+  useEffect(() => {
+    const el = pageRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(([e]) => setAnchoPagina(e.contentRect.width))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   const [reencuadre, setReencuadre] = useState(0)
   useEffect(() => {
     if (typeof ResizeObserver === 'undefined') return
@@ -95,7 +111,23 @@ export function Overview() {
     if (columnaRef.current) ro.observe(columnaRef.current)
     if (leyendaRef.current) ro.observe(leyendaRef.current)
     return () => ro.disconnect()
-  }, [])
+    // Al cambiar de modo o plegar la leyenda cambian los elementos observados.
+  }, [compacto, mostrarLeyenda])
+
+  const tarjetasDef: TarjetaDef[] = [
+    { icon: Siren, color: TARJETA_COLOR.emergencias, label: 'Emergencias activas',
+      value: tarjetas?.emergencias_activas ?? 0, sublabel: 'sin cerrar en el COM', ruta: '/emergencias' },
+    { icon: FileText, color: TARJETA_COLOR.reclamos, label: 'Reclamos activos',
+      value: tarjetas?.reclamos_activos ?? 0, sublabel: `${geo?.reclamos.length ?? 0} con geo`, ruta: '/reclamos' },
+    { icon: Building2, color: TARJETA_COLOR.espacios, label: 'Espacios de atención',
+      value: tarjetas?.espacios_disponibles ?? 0, sublabel: 'disponibles', ruta: '/agenda' },
+    { icon: CalendarCheck, color: TARJETA_COLOR.turnos, label: 'Turnos otorgados',
+      value: tarjetas?.turnos_otorgados ?? 0, sublabel: 'de hoy en adelante', ruta: '/turnos' },
+    { icon: Ticket, color: TARJETA_COLOR.entradas, label: 'Entradas emitidas',
+      value: tarjetas?.entradas_emitidas ?? 0, sublabel: 'eventos vigentes', ruta: '/entradas' },
+    { icon: FolderOpen, color: TARJETA_COLOR.tramites, label: 'Trámites abiertos',
+      value: tarjetas?.tramites_abiertos ?? 0, sublabel: 'en circuito', ruta: '/tramites' },
+  ]
 
   function toggleCapa(k: keyof CapasVisibles) {
     setCapas((c) => ({ ...c, [k]: !c[k] }))
@@ -108,6 +140,77 @@ export function Overview() {
       return sig
     })
   }
+
+  function logo(alto: number) {
+    const url = identidadQ.data?.municipio_logo_url
+    if (!url) return null
+    return (
+      <img
+        src={resolverLogoUrl(url)}
+        alt=""
+        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+        style={{ height: alto, width: 'auto', maxWidth: alto * 2.25, objectFit: 'contain', flexShrink: 0 }}
+      />
+    )
+  }
+
+  // Leyenda: el CONTORNO del punto es el tipo (toggle por capa) y el CENTRO es
+  // el estado (toggle = filtro). Pedido 2026-10-19.
+  const leyenda = (
+    <div ref={leyendaRef} style={compacto ? legendStyle : { ...legendStyle, flex: '1 1 240px', minWidth: 240 }}>
+      <div style={legendTitle}>Capas del mapa · contorno del punto</div>
+      <div style={legendRowStyle}>
+        <LayerToggle
+          activo={capas.emergencias}
+          onClick={() => toggleCapa('emergencias')}
+          label="Emergencias"
+          shape={<MarkerSwatch contorno={CAPA_COLOR.emergencia} centro="var(--surface-100)" />}
+        />
+        <LayerToggle
+          activo={capas.reclamos}
+          onClick={() => toggleCapa('reclamos')}
+          label="Reclamos"
+          shape={<MarkerSwatch contorno={CAPA_COLOR.reclamo} centro="var(--surface-100)" />}
+        />
+        <LayerToggle
+          activo={capas.espacios}
+          onClick={() => toggleCapa('espacios')}
+          label="Espacios"
+          shape={<MarkerSwatch contorno={CAPA_COLOR.espacio} centro={CAPA_COLOR.espacio} />}
+        />
+        <LayerToggle
+          activo={capas.tramites}
+          onClick={() => toggleCapa('tramites')}
+          label="Trámites"
+          shape={<MarkerSwatch contorno={CAPA_COLOR.tramite} centro={CAPA_COLOR.tramite} />}
+        />
+        {geo?.limite ? (
+          <LayerToggle
+            activo={verLimite}
+            onClick={() => setVerLimite((v) => !v)}
+            label="Límite del municipio"
+            shape={<span style={limiteSwatchStyle} />}
+          />
+        ) : null}
+      </div>
+      {(capas.reclamos || capas.emergencias) && (
+        <>
+          <div style={{ ...legendTitle, marginTop: 8 }}>Estado · centro del punto</div>
+          <div style={legendRowStyle}>
+            {ESTADOS_LEYENDA.map((estado) => (
+              <LayerToggle
+                key={estado}
+                activo={!estadosOcultos.has(estado)}
+                onClick={() => toggleEstado(estado)}
+                label={`${estado} (${conteoEstados[estado] ?? 0})`}
+                shape={<MarkerSwatch contorno={ESTADO_COLOR[estado]} centro={ESTADO_COLOR[estado]} />}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
 
   return (
     <div ref={pageRef} style={pageStyle}>
@@ -126,135 +229,65 @@ export function Overview() {
         onTramiteClick={(t) => navigate(`/tramites/${t.numero_expediente}`)}
       />
 
-      {/* Panel flotante arriba-izquierda. */}
-      <div style={statsLayerStyle}>
-        {/* Columna izquierda (titulo compacto + azulejos debajo) y leyenda de
-            capas al costado derecho del titulo (pedido 2026-07-02). */}
-        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-          <div ref={columnaRef} style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: '0 0 auto' }}>
-          <div style={headerStyle}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              {identidadQ.data?.municipio_logo_url ? (
-                <img
-                  src={resolverLogoUrl(identidadQ.data.municipio_logo_url)}
-                  alt=""
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                  style={{ height: 32, width: 'auto', maxWidth: 72, objectFit: 'contain' }}
-                />
-              ) : null}
-              <h1 style={titleStyle}>{identidadQ.data?.municipio_nombre ?? ''}</h1>
+      {/* Panel flotante arriba-izquierda (en compacto, franja a lo ancho). */}
+      <div style={compacto ? { ...statsLayerStyle, right: 16 } : statsLayerStyle}>
+        {compacto ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div ref={columnaRef} style={compactoStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {logo(24)}
+                <h1 style={{ ...titleStyle, fontSize: '1rem', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {identidadQ.data?.municipio_nombre ?? ''}
+                </h1>
+                <button
+                  type="button"
+                  onClick={() => setLeyendaAbierta((v) => !v)}
+                  aria-expanded={leyendaAbierta}
+                  title={leyendaAbierta ? 'Ocultar capas y estados' : 'Ver capas y estados del mapa'}
+                  style={capasBtnStyle}
+                >
+                  <Layers size={14} strokeWidth={1.8} />
+                  Capas
+                  {leyendaAbierta ? <ChevronUp size={14} strokeWidth={1.8} /> : <ChevronDown size={14} strokeWidth={1.8} />}
+                </button>
+              </div>
+              <div style={chipsRowStyle}>
+                {tarjetasDef.map((t) => (
+                  <MiniCard key={t.ruta} {...t} cargando={cargando} onClick={() => navigate(t.ruta)} />
+                ))}
+              </div>
             </div>
-            <p style={subtitleStyle}>Resumen de actividad municipal</p>
+            {mostrarLeyenda && leyenda}
           </div>
-
-          <div style={cardsGridStyle}>
-            <StatCard
-              icon={Siren}
-              color={TARJETA_COLOR.emergencias}
-              label="Emergencias activas"
-              value={tarjetas?.emergencias_activas ?? 0}
-              sublabel={cargando ? 'cargando…' : 'sin cerrar en el COM'}
-              onClick={() => navigate('/emergencias')}
-            />
-            <StatCard
-              icon={FileText}
-              color={TARJETA_COLOR.reclamos}
-              label="Reclamos activos"
-              value={tarjetas?.reclamos_activos ?? 0}
-              sublabel={cargando ? 'cargando…' : `${geo?.reclamos.length ?? 0} con geo`}
-              onClick={() => navigate('/reclamos')}
-            />
-            <StatCard
-              icon={Building2}
-              color={TARJETA_COLOR.espacios}
-              label="Espacios de atención"
-              value={tarjetas?.espacios_disponibles ?? 0}
-              sublabel={cargando ? 'cargando…' : 'disponibles'}
-              onClick={() => navigate('/agenda')}
-            />
-            <StatCard
-              icon={CalendarCheck}
-              color={TARJETA_COLOR.turnos}
-              label="Turnos otorgados"
-              value={tarjetas?.turnos_otorgados ?? 0}
-              sublabel={cargando ? 'cargando…' : 'de hoy en adelante'}
-              onClick={() => navigate('/turnos')}
-            />
-            <StatCard
-              icon={Ticket}
-              color={TARJETA_COLOR.entradas}
-              label="Entradas emitidas"
-              value={tarjetas?.entradas_emitidas ?? 0}
-              sublabel={cargando ? 'cargando…' : 'eventos vigentes'}
-              onClick={() => navigate('/entradas')}
-            />
-            <StatCard
-              icon={FolderOpen}
-              color={TARJETA_COLOR.tramites}
-              label="Trámites abiertos"
-              value={tarjetas?.tramites_abiertos ?? 0}
-              sublabel={cargando ? 'cargando…' : 'en circuito'}
-              onClick={() => navigate('/tramites')}
-            />
-          </div>
-          </div>
-
-          {/* Leyenda: el CONTORNO del punto es el tipo (toggle por capa) y el
-              CENTRO es el estado (toggle = filtro). Pedido 2026-10-19. */}
-          <div ref={leyendaRef} style={{ ...legendStyle, flex: '1 1 240px', minWidth: 240 }}>
-            <div style={legendTitle}>Capas del mapa · contorno del punto</div>
-            <div style={legendRowStyle}>
-              <LayerToggle
-                activo={capas.emergencias}
-                onClick={() => toggleCapa('emergencias')}
-                label="Emergencias"
-                shape={<MarkerSwatch contorno={CAPA_COLOR.emergencia} centro="var(--surface-100)" />}
-              />
-              <LayerToggle
-                activo={capas.reclamos}
-                onClick={() => toggleCapa('reclamos')}
-                label="Reclamos"
-                shape={<MarkerSwatch contorno={CAPA_COLOR.reclamo} centro="var(--surface-100)" />}
-              />
-              <LayerToggle
-                activo={capas.espacios}
-                onClick={() => toggleCapa('espacios')}
-                label="Espacios"
-                shape={<MarkerSwatch contorno={CAPA_COLOR.espacio} centro={CAPA_COLOR.espacio} />}
-              />
-              <LayerToggle
-                activo={capas.tramites}
-                onClick={() => toggleCapa('tramites')}
-                label="Trámites"
-                shape={<MarkerSwatch contorno={CAPA_COLOR.tramite} centro={CAPA_COLOR.tramite} />}
-              />
-              {geo?.limite ? (
-                <LayerToggle
-                  activo={verLimite}
-                  onClick={() => setVerLimite((v) => !v)}
-                  label="Límite del municipio"
-                  shape={<span style={limiteSwatchStyle} />}
-                />
-              ) : null}
-            </div>
-            {(capas.reclamos || capas.emergencias) && (
-              <>
-                <div style={{ ...legendTitle, marginTop: 8 }}>Estado · centro del punto</div>
-                <div style={legendRowStyle}>
-                  {ESTADOS_LEYENDA.map((estado) => (
-                    <LayerToggle
-                      key={estado}
-                      activo={!estadosOcultos.has(estado)}
-                      onClick={() => toggleEstado(estado)}
-                      label={`${estado} (${conteoEstados[estado] ?? 0})`}
-                      shape={<MarkerSwatch contorno={ESTADO_COLOR[estado]} centro={ESTADO_COLOR[estado]} />}
-                    />
-                  ))}
+        ) : (
+          /* Columna izquierda (titulo compacto + azulejos debajo) y leyenda de
+             capas al costado derecho del titulo (pedido 2026-07-02). */
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <div ref={columnaRef} style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: '0 0 auto' }}>
+              <div style={headerStyle}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {logo(32)}
+                  <h1 style={titleStyle}>{identidadQ.data?.municipio_nombre ?? ''}</h1>
                 </div>
-              </>
-            )}
+                <p style={subtitleStyle}>Resumen de actividad municipal</p>
+              </div>
+              <div style={cardsGridStyle}>
+                {tarjetasDef.map((t) => (
+                  <StatCard
+                    key={t.ruta}
+                    icon={t.icon}
+                    color={t.color}
+                    label={t.label}
+                    value={t.value}
+                    sublabel={cargando ? 'cargando…' : t.sublabel}
+                    onClick={() => navigate(t.ruta)}
+                  />
+                ))}
+              </div>
+            </div>
+            {leyenda}
           </div>
-        </div>
+        )}
       </div>
     </div>
   )
@@ -293,6 +326,44 @@ function tinte(hex: string, alpha: number): string {
   const g = parseInt(hex.slice(3, 5), 16)
   const b = parseInt(hex.slice(5, 7), 16)
   return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+// Ancho del mapa (px) por debajo del cual el panel pasa a modo compacto: con
+// menos, la columna de azulejos + la leyenda no dejan lugar al municipio.
+const ANCHO_COMPACTO = 900
+
+interface TarjetaDef {
+  icon: React.ComponentType<{ size?: number; strokeWidth?: number; color?: string }>
+  color: string
+  label: string
+  value: number
+  sublabel: string
+  ruta: string
+}
+
+// Chip del modo compacto: icono + número, tinte y borde superior del color de
+// la tarjeta; el nombre completo va en el tooltip (y en aria-label).
+function MiniCard({ icon: Icon, color, label, value, sublabel, cargando, onClick }: TarjetaDef & {
+  cargando: boolean
+  onClick: () => void
+}) {
+  const detalle = cargando ? `${label}: cargando…` : `${label}: ${value} (${sublabel})`
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={detalle}
+      aria-label={detalle}
+      style={{
+        ...miniCardStyle,
+        backgroundImage: `linear-gradient(${tinte(color, 0.16)}, ${tinte(color, 0.16)})`,
+        borderTop: `3px solid ${color}`,
+      }}
+    >
+      <Icon size={14} strokeWidth={1.8} color={color} />
+      <span style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--fg-1)', lineHeight: 1 }}>{value}</span>
+    </button>
+  )
 }
 
 function StatCard({ icon: Icon, color, label, value, sublabel, onClick }: {
@@ -464,6 +535,55 @@ const cardStyle: React.CSSProperties = {
   flexDirection: 'column',
   justifyContent: 'space-between',
   pointerEvents: 'auto', // el azulejo es clickeable (ver statsLayerStyle)
+}
+
+const compactoStyle: React.CSSProperties = {
+  background: 'var(--surface-overlay)',
+  backdropFilter: 'blur(8px)',
+  WebkitBackdropFilter: 'blur(8px)',
+  border: '1px solid var(--border-primary)',
+  borderRadius: 12,
+  padding: '8px 10px',
+  boxShadow: '0 4px 20px rgba(38,37,30,0.08)',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+  pointerEvents: 'auto', // ver statsLayerStyle
+}
+
+const chipsRowStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
+  gap: 6,
+}
+
+const miniCardStyle: React.CSSProperties = {
+  background: 'var(--surface-overlay)',
+  border: '1px solid var(--border-primary)',
+  borderRadius: 8,
+  padding: '5px 4px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 5,
+  minWidth: 0,
+  cursor: 'pointer',
+  fontFamily: 'var(--font-display)',
+}
+
+const capasBtnStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  flexShrink: 0,
+  background: 'var(--surface-100)',
+  border: '1px solid var(--border-medium)',
+  borderRadius: 999,
+  padding: '3px 10px',
+  fontSize: '0.74rem',
+  fontFamily: 'var(--font-display)',
+  color: 'var(--fg-2)',
+  cursor: 'pointer',
 }
 
 const legendStyle: React.CSSProperties = {
