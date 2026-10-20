@@ -31,6 +31,7 @@ from app.utils.request_helpers import get_real_ip
 from app.api.routes.geo import geocodificar_direccion, localidad_desde_coords, reverse_geocodificar
 from app.services.email import enviar_mail_confirmacion_reclamo_ciudadano
 from app.services.cuenta_vecino import _municipio_branding
+from app.services.autoasignacion import autoasignar_reclamo
 
 logger = logging.getLogger("zaris.publico_reclamos")
 
@@ -356,6 +357,9 @@ async def crear_mi_reclamo(
                 )
             except Exception:
                 logger.warning("No se pudo encolar el mail de confirmacion del reclamo %s", nro_reclamo)
+
+        # Gestión con asignación automática (mig 114): se asigna sola, después de responder.
+        background_tasks.add_task(autoasignar_reclamo, id_reclamo)
 
         return {"id_reclamo": id_reclamo, "nro_reclamo": nro_reclamo, "estado": "Sin asignar"}
     except HTTPException:

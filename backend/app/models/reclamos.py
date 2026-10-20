@@ -268,7 +268,8 @@ class OrdenTrabajo(Base):
     resultado_auditoria     = Column(String(20), nullable=True)
     observaciones_auditoria = Column(Text, nullable=True)
     id_ot_origen            = Column(Integer, ForeignKey("ordenes_trabajo.id_ot", ondelete="SET NULL"), nullable=True)
-    id_supervisor_asigna    = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="RESTRICT"), nullable=False)
+    # NULL = OT creada por la asignación automática (mig 114, asignacion_automatica).
+    id_supervisor_asigna    = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="RESTRICT"), nullable=True)
     fecha_creacion          = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     fecha_cierre            = Column(DateTime(timezone=True), nullable=True)
     observaciones           = Column(Text, nullable=True)

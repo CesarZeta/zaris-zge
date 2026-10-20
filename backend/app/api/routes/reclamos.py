@@ -13,6 +13,7 @@ from app.core.auth import get_current_user
 from app.services import encuestas_service as svc_encuestas
 from app.services import notificaciones as svc_notif
 from app.services import push as svc_push
+from app.services.autoasignacion import autoasignar_reclamo
 from app.services.tramites.auth import resolver_agente_desde_usuario
 from app.api.routes.geo import localidad_desde_coords
 
@@ -588,9 +589,12 @@ async def obtener_reclamo(
 
 # ── POST /reclamos — crear reclamo ───────────────────────────────────────────
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, responses={
+    201: {"description": "Reclamo creado. Si su gestión tiene asignación automática (mig 114), "
+                         "la OT se asigna y agenda sola después de responder."}})
 async def crear_reclamo(
     body: dict,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
@@ -690,6 +694,8 @@ async def crear_reclamo(
                                    None, "Sin asignar", "Reclamo registrado",
                                    current_user["id_usuario"])
         await db.commit()
+        # Gestión con asignación automática (mig 114): se asigna solo, después de responder.
+        background_tasks.add_task(autoasignar_reclamo, id_reclamo)
 
         return {"id_reclamo": id_reclamo, "nro_reclamo": nro_reclamo, "estado": "Sin asignar"}
     except HTTPException:
@@ -1243,6 +1249,7 @@ async def avisar_supervisor(
 async def crear_subreclamo(
     id_reclamo: int,
     body: dict,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
@@ -1384,6 +1391,7 @@ async def crear_subreclamo(
                                    padre.estado, "En espera",
                                    f"Se generó subreclamo {nro_sub}", current_user["id_usuario"])
         await db.commit()
+        background_tasks.add_task(autoasignar_reclamo, id_sub)
 
         return {"id_reclamo": id_sub, "nro_reclamo": nro_sub, "id_reclamo_padre": id_reclamo}
     except HTTPException:

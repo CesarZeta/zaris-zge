@@ -875,9 +875,11 @@ const SCHEMAS = {
       { field: 'nombre',      label: 'Nombre',      type: 'text',     required: true },
       { field: 'descripcion', label: 'Descripción', type: 'textarea', required: false },
       { field: 'id_area',     label: 'Área',        type: 'select',   fk: 'area', fkLabel: 'nombre', fkPk: 'id_area', required: false },
+      // Mig 114: los reclamos nuevos de esta gestión se asignan solos (sin mesa).
+      { field: 'asignacion_automatica', label: 'Asignación automática de reclamos', type: 'checkbox', required: false },
     ],
     filtros: ['id_area'],
-    display: ['id_subarea', 'nombre', 'descripcion', 'id_area'],
+    display: ['id_subarea', 'nombre', 'descripcion', 'id_area', 'asignacion_automatica'],
   },
   tipo_usuario: {
     label: 'Tipo de Usuario', titulo: 'Maestro de Tipos de Usuario',
@@ -990,6 +992,15 @@ const SCHEMAS = {
       { field: 'nombre',      label: 'Nombre',      type: 'text',     required: true },
       { field: 'descripcion', label: 'Descripción', type: 'textarea', required: false },
       { field: 'id_subarea',  label: 'Subárea',     type: 'select',   fk: 'subarea', fkLabel: 'nombre', fkPk: 'id_subarea', required: false },
+      // Asignación automática (mig 114): a quién se asigna solo y cuánto se agenda.
+      { field: 'asignacion_a', label: 'Se asigna a', type: 'select', required: true,
+        options: [
+          { v: 'agente', l: 'Un agente' },
+          { v: 'equipo', l: 'Una cuadrilla (grupo de trabajo)' },
+        ],
+        hint: 'Lo usa la asignación automática de la gestión (Subáreas): un agente de nivel Gestión o una cuadrilla con integrantes.' },
+      { field: 'duracion_estimada_min', label: 'Duración estimada (minutos)', type: 'number', required: true,
+        hint: 'Tiempo que se reserva en la agenda al asignar la OT (15 a 480).' },
     ],
     filtros: ['id_subarea'],
     display: ['id_tipo_reclamo', 'nombre', 'descripcion', 'id_subarea'],

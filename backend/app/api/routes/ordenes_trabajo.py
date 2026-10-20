@@ -8,13 +8,14 @@ para que FastAPI no las interprete como path param.
 import logging
 from datetime import date, datetime, time, timedelta
 from typing import Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.auth import get_current_user
-from app.services.agenda import disponibilidad_efectiva
+from app.services.ot_slots import slots_libres_recurso as _slots_libres_recurso
+from app.services.autoasignacion import autoasignar_reclamo
 from app.services import encuestas_service as svc_encuestas
 from app.services import push as svc_push
 from app.services.tramites.auth import resolver_agente_desde_usuario
@@ -36,96 +37,8 @@ TRANSICIONES_OT: dict[str, set[str]] = {
 }
 
 
-# ── Helpers de slots (planificacion de OT sobre la agenda) ───────────────────
-def _slots_de_rango(rango_ini: time, rango_fin: time, duracion_min: int) -> list[tuple[time, time]]:
-    """Parte un rango horario en slots consecutivos de `duracion_min`.
-    Descarta el ultimo si no entra completo."""
-    out: list[tuple[time, time]] = []
-    cursor = datetime.combine(date.min, rango_ini)
-    fin = datetime.combine(date.min, rango_fin)
-    paso = timedelta(minutes=duracion_min)
-    while cursor + paso <= fin:
-        out.append((cursor.time(), (cursor + paso).time()))
-        cursor += paso
-    return out
-
-
-def _solapa(a_ini: time, a_fin: time, b_ini: time, b_fin: time) -> bool:
-    return a_ini < b_fin and a_fin > b_ini
-
-
-def _merge_rangos(rangos: list[tuple[time, time]]) -> list[tuple[time, time]]:
-    """Une rangos solapados o contiguos. Usado para la disponibilidad de un
-    equipo = union de las disponibilidades de sus agentes."""
-    if not rangos:
-        return []
-    ordenados = sorted(rangos, key=lambda r: r[0])
-    out = [ordenados[0]]
-    for ini, fin in ordenados[1:]:
-        last_ini, last_fin = out[-1]
-        if ini <= last_fin:
-            out[-1] = (last_ini, max(last_fin, fin))
-        else:
-            out.append((ini, fin))
-    return out
-
-
-async def _slots_libres_recurso(
-    db: AsyncSession, tipo_recurso: str, id_recurso: int, fecha: date, duracion_min: int,
-) -> list[dict[str, Any]]:
-    """Slots libres de un agente o equipo para una fecha.
-
-    - agente: disponibilidad efectiva del agente menos sus ocupaciones.
-    - equipo: union de las disponibilidades de los agentes del equipo
-      (equipo_agentes) menos la union de ocupaciones de todos ellos. Si el
-      equipo no tiene agentes con agenda cargada, devuelve [] (no disponible).
-    """
-    if tipo_recurso == "agente":
-        rangos_raw = await disponibilidad_efectiva(db, "agente", id_recurso, fecha)
-        rangos = [(r["hora_inicio"], r["hora_fin"]) for r in rangos_raw]
-        ocup = (await db.execute(text("""
-            SELECT hora_inicio, hora_fin FROM ocupaciones
-            WHERE activo = TRUE AND tipo_recurso = 'agente' AND id_recurso = :ir AND fecha = :f
-        """), {"ir": id_recurso, "f": fecha})).mappings().all()
-        ocupadas = [(o["hora_inicio"], o["hora_fin"]) for o in ocup]
-    elif tipo_recurso == "equipo":
-        # Disponibilidad del equipo = union de sus agentes + override de equipo
-        # sin agentes (mig 91). Delegamos en disponibilidad_efectiva para NO
-        # duplicar la logica (esta duplicacion era la que hacia divergir la
-        # grilla de Agenda del planificador de OT). Equipo sin agentes y sin
-        # override -> [] (lo resuelve disponibilidad_efectiva).
-        rangos_raw = await disponibilidad_efectiva(db, "equipo", id_recurso, fecha)
-        rangos = [(r["hora_inicio"], r["hora_fin"]) for r in rangos_raw]
-        if not rangos:
-            return []
-        # Agentes del equipo, para sumar sus ocupaciones individuales.
-        agentes = (await db.execute(text("""
-            SELECT id_agente FROM equipo_agentes
-            WHERE id_equipo = :ie AND activo = TRUE
-        """), {"ie": id_recurso})).scalars().all()
-        # Ocupaciones: las del equipo + las de cualquiera de sus agentes.
-        ocup = (await db.execute(text("""
-            SELECT hora_inicio, hora_fin FROM ocupaciones
-            WHERE activo = TRUE AND fecha = :f
-              AND (
-                (tipo_recurso = 'equipo' AND id_recurso = :ie)
-                OR (tipo_recurso = 'agente' AND id_recurso = ANY(:ags))
-              )
-        """), {"f": fecha, "ie": id_recurso, "ags": list(agentes) or [-1]})).mappings().all()
-        ocupadas = [(o["hora_inicio"], o["hora_fin"]) for o in ocup]
-    else:
-        raise HTTPException(422, "tipo_recurso debe ser 'agente' o 'equipo'")
-
-    out: list[dict[str, Any]] = []
-    for r_ini, r_fin in rangos:
-        for s_ini, s_fin in _slots_de_rango(r_ini, r_fin, duracion_min):
-            if any(_solapa(s_ini, s_fin, o_ini, o_fin) for o_ini, o_fin in ocupadas):
-                continue
-            out.append({
-                "hora_inicio": s_ini.strftime("%H:%M:%S"),
-                "hora_fin": s_fin.strftime("%H:%M:%S"),
-            })
-    return out
+# Huecos libres de un recurso: viven en services/ot_slots.py (los comparte la
+# autoasignación de reclamos, 2026-10-20).
 
 
 def _to_dict(row) -> dict:
@@ -1581,6 +1494,7 @@ async def aprobar_ot(
 async def observar_ot(
     id_ot: int,
     body: dict,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
@@ -1707,6 +1621,8 @@ async def observar_ot(
         # push (F4). Por el auditado no se avisa: para él sigue 'Resuelto'. La encuesta
         # sale cuando se resuelva el retrabajo (exenta de anti-fatiga).
         await svc_push.notificar_retrabajo_auditoria(nuevo.id_reclamo)
+        # El retrabajo entra «Sin asignar»: si la gestión autoasigna (mig 114), sale solo.
+        background_tasks.add_task(autoasignar_reclamo, nuevo.id_reclamo)
         return {"ok": True, "id_ot": id_ot, "resultado": "observada",
                 "id_reclamo": ot.id_reclamo, "estado_reclamo": "Auditado",
                 "id_reclamo_retrabajo": nuevo.id_reclamo, "nro_reclamo_retrabajo": nro_nuevo}

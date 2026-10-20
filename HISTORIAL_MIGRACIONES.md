@@ -179,6 +179,10 @@ Las reglas vivas de cada una están en la sección del módulo correspondiente d
 - **Mig 76** (sesión 2026-06-01, alta pública de vecinos §38): tabla `empresa_credencial` (1:1 con `empresas`, solo verificación de email — `token_verificacion`/`verificado`/`verificado_en`, SIN password) + índice parcial sobre el token. Local por psql, prod por `apply_migration`. El ciudadano reusa `ciudadano_credencial` (mig 53).
 - **Migs 77-79** (2026-06-09, integridad de cuentas + alta vecino en 2 pasos): 77 = `usuarios.suspendido_motivo`/`fecha_suspension` (cron de integridad §39). 78 = `usuarios.debe_cambiar_password` (clave temporal + cambio forzado §39 Fase 3). 79 = `ciudadanos.ficha_completa` + `ciudadano_credencial.debe_cambiar_password` (alta del vecino en dos pasos §38/§39 Fase 4).
 
+### Migración 114 — Autoasignación de reclamos por gestión (`backend/migrations/114_autoasignacion_reclamos.sql`)
+
+**2026-10-20, decisión de César (cuestionario).** `subarea.asignacion_automatica BOOLEAN NOT NULL DEFAULT FALSE` (el tilde, Maestros → Subáreas); `ordenes_trabajo.id_supervisor_asigna` pasa a admitir NULL (OT sin supervisor que la asignó) y `ordenes_trabajo.asignacion_automatica BOOLEAN NOT NULL DEFAULT FALSE`. Verificado antes en las dos DBs (sin las columnas, `id_supervisor_asigna` NOT NULL) y después con `information_schema`. Compatible con el código previo (defaults). Motor en `services/autoasignacion.py` (skill `modulo-ot`). En prod ninguna gestión la tiene prendida al aplicar.
+
 ### Migración 113 — Módulo `agentes_gestion` (`backend/migrations/113_modulo_agentes_gestion.sql`)
 
 **2026-10-20, decisión de César (cuestionario).** Solo datos: fila `agentes_gestion` en `modulos` (min nivel 2, activo explícito, `ON CONFLICT DO NOTHING`). Es el `data-modulo-fallback` del ítem «Maestros» del shell: el supervisor lo ve y entra a Maestros → Agentes acotado a su gestión (cargo, legajo, horario y equipos; `admin_tablas.py::_autorizar_escritura` + `frontend/admin_tablas.html` MODO_SUPERVISOR). Aplicada en local (asyncpg) y prod (`apply_migration`), verificada con SELECT en las dos.

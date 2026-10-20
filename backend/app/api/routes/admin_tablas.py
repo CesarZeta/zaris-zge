@@ -29,7 +29,8 @@ TABLE_CONFIG: dict[str, dict] = {
     },
     "subarea": {
         "pk": "id_subarea",
-        "cols": ["nombre", "descripcion", "id_area"],
+        # asignacion_automatica (mig 114): los reclamos nuevos de la gestión se asignan solos.
+        "cols": ["nombre", "descripcion", "id_area", "asignacion_automatica"],
         "fecha_mod": "fecha_modificacion",
     },
     "tipo_usuario": {
@@ -118,7 +119,10 @@ TABLE_CONFIG: dict[str, dict] = {
     },
     "tipo_reclamo": {
         "pk": "id_tipo_reclamo",
-        "cols": ["nombre", "descripcion", "id_subarea", "sla_dias", "audit"],
+        # asignacion_a + duracion_estimada_min (mig 30, sin uso hasta la autoasignación
+        # de la mig 114): a quién se le asigna solo y cuánto se agenda.
+        "cols": ["nombre", "descripcion", "id_subarea", "sla_dias", "audit",
+                 "asignacion_a", "duracion_estimada_min"],
         "fecha_mod": "fecha_modificacion",
     },
     "configuracion_general": {
