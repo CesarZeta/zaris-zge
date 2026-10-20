@@ -703,7 +703,8 @@ async def crear_reclamo(
 
 # ── PUT /reclamos/{id}/estado — cambiar estado ───────────────────────────────
 
-@router.put("/{id_reclamo}/estado")
+@router.put("/{id_reclamo}/estado", responses={403: {
+    "description": "Pase a Resuelto de un reclamo de otra gestión (se compara con la gestión del agente del usuario)"}})
 async def cambiar_estado(
     id_reclamo: int,
     body: dict,
