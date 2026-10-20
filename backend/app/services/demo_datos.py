@@ -54,8 +54,22 @@ ESTADO_SIN_ASIGNAR = "Sin asignar"
 ESTADO_EN_GESTION = "En gestión"
 ESTADO_EN_ESPERA = "En espera"
 ESTADO_EN_AUDITORIA = "En auditoría"
+ESTADO_AUDITADO = "Auditado"
 ESTADO_RESUELTO = "Resuelto"
 ESTADO_CANCELADO = "Cancelado"
+# Auditoria POSTERIOR al cierre (mig 112): un resuelto puede estar 'En auditoria'
+# (pendiente del auditor) o 'Auditado'; para encuestas y tiempos sigue siendo un
+# resuelto (su fecha_cierre es la del primer cierre).
+ESTADOS_GESTION_CERRADA_OK = (ESTADO_RESUELTO, ESTADO_EN_AUDITORIA, ESTADO_AUDITADO)
+TASA_AUDITORIA = 0.08      # fraccion de resueltos que la supervision manda a auditar
+TASA_OBSERVADA = 0.20      # fraccion de auditorias que terminan observadas (con retrabajo)
+OBSERVACIONES_AUDITORIA = [
+    "quedó un desnivel en el borde de la reparación",
+    "faltó señalizar la zona intervenida",
+    "el trabajo no cubre todo el tramo reclamado",
+    "la reparación cedió a los pocos días",
+    "quedaron restos de material sobre la vereda",
+]
 
 CANALES = [("telefono", 40), ("web", 22), ("app_movil", 15), ("presencial", 10),
            ("whatsapp", 8), ("oficio", 3), ("otro", 2)]
@@ -187,6 +201,9 @@ class _Catalogos:
     localidades: dict[tuple[str, str], int] = field(default_factory=dict)
     limite: dict | None = None  # GeoJSON Polygon del municipio (mig 111)
     id_plantilla_reclamos: int | None = None
+    # estado_ot para las OT de auditoria demo (mig 112): En gestion = pendiente, Terminada = cerrada.
+    id_estado_ot_gestion: int | None = None
+    id_estado_ot_terminada: int | None = None
     # Poblacion ponderada de tipos ya resuelta contra el catalogo del entorno:
     # entradas ('tipo', id_tipo) o ('subarea', id_subarea), con su peso.
     poblacion_tipos: list[tuple[tuple[str, int], int]] = field(default_factory=list)
@@ -227,6 +244,13 @@ async def _cargar_catalogos(db: AsyncSession) -> _Catalogos:
     ))
     fila = r.fetchone()
     cat.id_plantilla_reclamos = fila.id_encuesta_plantilla if fila else None
+
+    r = await db.execute(text("SELECT id_estado_ot, nombre FROM estado_ot WHERE activo AND nombre IN ('En gestión', 'Terminada')"))
+    for fila in r.fetchall():
+        if fila.nombre == "Terminada":
+            cat.id_estado_ot_terminada = fila.id_estado_ot
+        else:
+            cat.id_estado_ot_gestion = fila.id_estado_ot
 
     sin_match = 0
     for tipo_ref, grupo_ref, peso in ref.TIPOS_REF:
@@ -381,17 +405,33 @@ def _armar_reclamo(rnd: random.Random, cat: _Catalogos, pool: list[tuple[int, st
         "fecha_alta": fecha_alta,
         "fecha_primer_asignacion": None, "fecha_cierre": None,
         "auditoria": False, "subreclamo": False,
+        "fecha_inicio_auditoria": None, "fecha_fin_auditoria": None,
+        "resultado_auditoria": None, "id_reclamo_origen_auditoria": None,
     }
 
     if cierre <= ahora:
-        # Cerrado: 96% Resuelto (25% pasando por auditoria), 4% Cancelado.
+        # Cerrado: 96% Resuelto, 4% Cancelado. Auditoria POSTERIOR al cierre (mig
+        # 112): ~8% de los resueltos la supervision los manda a auditar 1-10 dias
+        # despues del cierre y el auditor cierra 1-7 dias mas tarde (80% aprobada /
+        # 20% observada, que genera un reclamo de retrabajo). fecha_cierre no cambia.
         if rnd.random() < 0.96:
             reclamo["estado"] = ESTADO_RESUELTO
-            reclamo["auditoria"] = rnd.random() < 0.25
+            if rnd.random() < TASA_AUDITORIA:
+                inicio = cierre + timedelta(days=rnd.uniform(1, 10))
+                if inicio <= ahora:
+                    reclamo["auditoria"] = True
+                    reclamo["fecha_inicio_auditoria"] = inicio
+                    fin = inicio + timedelta(days=rnd.uniform(1, 7))
+                    if fin <= ahora:
+                        reclamo["estado"] = ESTADO_AUDITADO
+                        reclamo["fecha_fin_auditoria"] = fin
+                        reclamo["resultado_auditoria"] = "observado" if rnd.random() < TASA_OBSERVADA else "aprobado"
+                    else:
+                        reclamo["estado"] = ESTADO_EN_AUDITORIA
         else:
             reclamo["estado"] = ESTADO_CANCELADO
         reclamo["fecha_cierre"] = cierre
-        if reclamo["estado"] == ESTADO_RESUELTO or rnd.random() < 0.5:
+        if reclamo["estado"] != ESTADO_CANCELADO or rnd.random() < 0.5:
             reclamo["fecha_primer_asignacion"] = fecha_alta + timedelta(days=demora_dias * rnd.uniform(0.1, 0.4))
         reclamo["subreclamo"] = demora_dias >= 4 and rnd.random() < 0.04
     else:
@@ -411,19 +451,102 @@ def _armar_reclamo(rnd: random.Random, cat: _Catalogos, pool: list[tuple[int, st
     return reclamo
 
 
+def _armar_retrabajo(rnd: random.Random, rec: dict, id_origen: int, nro_origen: str | None,
+                     ahora: datetime) -> dict:
+    """Reclamo NUEVO de retrabajo que nace de una auditoria observada (mig 112):
+    mismo vecino/tipo/direccion/geo, canal 'oficio', alta = cierre de la
+    auditoria. Su estado depende de la edad (puede estar ya resuelto)."""
+    alta = rec["fecha_fin_auditoria"]
+    obs = rnd.choice(OBSERVACIONES_AUDITORIA)
+    r = dict(rec)
+    r.update({
+        "descripcion": f"Retrabajo por auditoría observada del reclamo {nro_origen or id_origen}: {obs}.",
+        "canal_origen": "oficio", "fecha_alta": alta,
+        "fecha_primer_asignacion": None, "fecha_cierre": None,
+        "auditoria": False, "subreclamo": False,
+        "fecha_inicio_auditoria": None, "fecha_fin_auditoria": None, "resultado_auditoria": None,
+        "id_reclamo_origen_auditoria": id_origen, "_nro_origen": nro_origen,
+    })
+    edad = (ahora - alta).days
+    if edad >= 3 and rnd.random() < 0.7:
+        r["estado"] = ESTADO_RESUELTO
+        r["fecha_primer_asignacion"] = alta + timedelta(hours=rnd.uniform(2, 36))
+        r["fecha_cierre"] = min(alta + timedelta(days=rnd.uniform(2, max(2.5, float(edad)))),
+                                ahora - timedelta(hours=1))
+    elif edad >= 1 and rnd.random() < 0.6:
+        r["estado"] = ESTADO_EN_GESTION
+        r["fecha_primer_asignacion"] = min(alta + timedelta(hours=rnd.uniform(2, 36)), ahora)
+    else:
+        r["estado"] = ESTADO_SIN_ASIGNAR
+    return r
+
+
 _SQL_INSERT_RECLAMO = text("""
     INSERT INTO reclamos
         (id_ciudadano, id_tipo_reclamo, descripcion, prioridad, estado, id_estado_fk,
          direccion, latitud, longitud, id_localidad, canal_origen,
          fuente_geolocalizacion, fecha_alta, fecha_modificacion,
          fecha_primer_asignacion, fecha_cierre, id_usuario_alta, id_reclamo_padre,
-         observaciones)
+         observaciones, fecha_inicio_auditoria, fecha_fin_auditoria, resultado_auditoria,
+         id_reclamo_origen_auditoria)
     VALUES (:id_ciudadano, :id_tipo_reclamo, :descripcion, :prioridad, :estado, :id_estado_fk,
             :direccion, :latitud, :longitud, :id_localidad, :canal_origen,
             :fuente_geolocalizacion, :fecha_alta, :fecha_alta,
             :fecha_primer_asignacion, :fecha_cierre, :uid, :id_reclamo_padre,
-            NULL)
-    RETURNING id_reclamo
+            NULL, :fecha_inicio_auditoria, :fecha_fin_auditoria, :resultado_auditoria,
+            :id_reclamo_origen_auditoria)
+    RETURNING id_reclamo, nro_reclamo
+""")
+
+# OT de auditoria (mig 112): pendiente = En gestion sin cierre; cerrada = Terminada con resultado.
+_SQL_INSERT_OT_AUDITORIA = text("""
+    INSERT INTO ordenes_trabajo
+        (id_reclamo, id_estado, es_auditoria, resultado_auditoria, observaciones,
+         observaciones_auditoria, id_supervisor_asigna, fecha_creacion, fecha_cierre,
+         activo, fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion)
+    VALUES (:id_reclamo, :id_estado, TRUE, :resultado, 'Control de calidad (demo)',
+            :obs_aud, :uid, CAST(:inicio AS timestamptz), CAST(:fin AS timestamptz),
+            TRUE, CAST(:inicio AS timestamptz),
+            COALESCE(CAST(:fin AS timestamptz), CAST(:inicio AS timestamptz)), :uid, :uid)
+""")
+
+_SQL_ENVIAR_AUDITORIA = text("""
+    UPDATE reclamos SET estado = 'En auditoría', id_estado_fk = :fk,
+           fecha_inicio_auditoria = :inicio, fecha_fin_auditoria = NULL, resultado_auditoria = NULL,
+           fecha_modificacion = :inicio, id_usuario_modificacion = :uid
+    WHERE id_reclamo = :id
+""")
+
+_SQL_CERRAR_AUDITORIA_RECLAMO = text("""
+    UPDATE reclamos SET estado = 'Auditado', id_estado_fk = :fk, resultado_auditoria = :resultado,
+           fecha_fin_auditoria = :fin, fecha_modificacion = :fin, id_usuario_modificacion = :uid
+    WHERE id_reclamo = :id
+""")
+
+_SQL_CERRAR_AUDITORIA_OT = text("""
+    UPDATE ordenes_trabajo SET id_estado = :id_terminada, resultado_auditoria = :resultado_ot,
+           observaciones_auditoria = :obs, fecha_cierre = :fin, fecha_modificacion = :fin,
+           id_usuario_modificacion = :uid
+    WHERE id_reclamo = :id AND es_auditoria = TRUE AND activo = TRUE AND id_estado <> :id_terminada
+""")
+
+# Retrabajo desde un reclamo ya insertado (avanzar_pendientes): copia del auditado.
+_SQL_INSERT_RETRABAJO_DESDE = text("""
+    INSERT INTO reclamos
+        (id_ciudadano, id_tipo_reclamo, id_area, descripcion, direccion, domicilio_reclamo,
+         prioridad, estado, id_estado_fk, observaciones, latitud, longitud, id_localidad,
+         id_activo, id_empresa, canal_origen, fuente_geolocalizacion,
+         id_reclamo_origen_auditoria, id_municipio, activo, fecha_alta, fecha_modificacion,
+         id_usuario_alta, id_usuario_modificacion)
+    SELECT r.id_ciudadano, r.id_tipo_reclamo, r.id_area,
+           'Retrabajo por auditoría observada del reclamo ' || COALESCE(r.nro_reclamo, r.id_reclamo::text)
+               || ': ' || CAST(:obs AS text) || '.',
+           r.direccion, r.domicilio_reclamo, r.prioridad, 'Sin asignar', :fk, NULL,
+           r.latitud, r.longitud, r.id_localidad, r.id_activo, r.id_empresa, 'oficio',
+           r.fuente_geolocalizacion, r.id_reclamo, r.id_municipio, TRUE,
+           CAST(:fecha AS timestamptz), CAST(:fecha AS timestamptz), :uid, :uid
+    FROM reclamos r WHERE r.id_reclamo = :id
+    RETURNING id_reclamo, nro_reclamo
 """)
 
 _SQL_INSERT_HISTORIAL = text("""
@@ -452,11 +575,14 @@ _SQL_INSERT_RESPUESTA = text("""
 
 def _historial_de(reclamo: dict, id_reclamo: int, uid: int, rnd: random.Random,
                   es_subreclamo: bool) -> list[dict]:
+    es_retrabajo = bool(reclamo.get("id_reclamo_origen_auditoria"))
     filas = [{
         "id_reclamo": id_reclamo,
-        "accion": "Subreclamo ingresado" if es_subreclamo else "Reclamo ingresado",
+        "accion": ("Reclamo ingresado por auditoría observada" if es_retrabajo
+                   else "Subreclamo ingresado" if es_subreclamo else "Reclamo ingresado"),
         "estado_anterior": None, "estado_nuevo": ESTADO_SIN_ASIGNAR,
-        "nota": None, "fecha": reclamo["fecha_alta"], "uid": uid,
+        "nota": f"Retrabajo del reclamo {reclamo.get('_nro_origen') or reclamo['id_reclamo_origen_auditoria']}" if es_retrabajo else None,
+        "fecha": reclamo["fecha_alta"], "uid": uid,
     }]
     asig = reclamo["fecha_primer_asignacion"]
     cierre = reclamo["fecha_cierre"]
@@ -472,16 +598,23 @@ def _historial_de(reclamo: dict, id_reclamo: int, uid: int, rnd: random.Random,
                       "estado_nuevo": ESTADO_EN_ESPERA, "nota": None,
                       "fecha": (asig or reclamo["fecha_alta"]) + timedelta(hours=rnd.uniform(1, 24)),
                       "uid": uid})
-    if estado == ESTADO_RESUELTO:
+    if estado in ESTADOS_GESTION_CERRADA_OK:
         previo = ESTADO_EN_GESTION if asig else ESTADO_SIN_ASIGNAR
-        if reclamo["auditoria"]:
-            filas.append({"id_reclamo": id_reclamo, "accion": f"Cambio de estado a {ESTADO_EN_AUDITORIA}",
-                          "estado_anterior": previo, "estado_nuevo": ESTADO_EN_AUDITORIA, "nota": None,
-                          "fecha": cierre - timedelta(hours=rnd.uniform(2, 30)), "uid": uid})
-            previo = ESTADO_EN_AUDITORIA
         filas.append({"id_reclamo": id_reclamo, "accion": f"Cambio de estado a {ESTADO_RESUELTO}",
                       "estado_anterior": previo, "estado_nuevo": ESTADO_RESUELTO, "nota": None,
                       "fecha": cierre, "uid": uid})
+        # Auditoria POSTERIOR al cierre (mig 112): envio y, si ya cerro, resultado.
+        if reclamo.get("fecha_inicio_auditoria"):
+            filas.append({"id_reclamo": id_reclamo, "accion": "Enviado a auditoría",
+                          "estado_anterior": ESTADO_RESUELTO, "estado_nuevo": ESTADO_EN_AUDITORIA,
+                          "nota": "Control de calidad (demo)", "fecha": reclamo["fecha_inicio_auditoria"], "uid": uid})
+            if reclamo.get("fecha_fin_auditoria"):
+                aprobada = reclamo.get("resultado_auditoria") == "aprobado"
+                filas.append({"id_reclamo": id_reclamo,
+                              "accion": "Auditoría aprobada" if aprobada else "Auditoría observada",
+                              "estado_anterior": ESTADO_EN_AUDITORIA, "estado_nuevo": ESTADO_AUDITADO,
+                              "nota": "Trabajo verificado por el auditor" if aprobada else "Se generó un reclamo de retrabajo",
+                              "fecha": reclamo["fecha_fin_auditoria"], "uid": uid})
     elif estado == ESTADO_CANCELADO:
         filas.append({"id_reclamo": id_reclamo, "accion": "Reclamo cancelado",
                       "estado_anterior": ESTADO_EN_GESTION if asig else ESTADO_SIN_ASIGNAR,
@@ -550,7 +683,7 @@ async def generar_periodo(db: AsyncSession, desde: date, hasta: date,
 
     historial: list[dict] = []
     respuestas: list[dict] = []
-    n_sub = n_envios = 0
+    n_sub = n_envios = n_auditorias = n_retrabajos = 0
     por_estado: dict[str, int] = {}
 
     async def _insertar(rec: dict, id_padre: int | None, es_sub: bool) -> int:
@@ -564,9 +697,30 @@ async def generar_periodo(db: AsyncSession, desde: date, hasta: date,
             "fecha_alta": rec["fecha_alta"],
             "fecha_primer_asignacion": rec["fecha_primer_asignacion"],
             "fecha_cierre": rec["fecha_cierre"], "uid": uid, "id_reclamo_padre": id_padre,
+            "fecha_inicio_auditoria": rec.get("fecha_inicio_auditoria"),
+            "fecha_fin_auditoria": rec.get("fecha_fin_auditoria"),
+            "resultado_auditoria": rec.get("resultado_auditoria"),
+            "id_reclamo_origen_auditoria": rec.get("id_reclamo_origen_auditoria"),
         })).fetchone()
+        rec["_nro"] = fila.nro_reclamo
         historial.extend(_historial_de(rec, fila.id_reclamo, uid, rnd, es_sub))
         return fila.id_reclamo
+
+    async def _insertar_ot_auditoria(rec: dict, id_reclamo: int) -> None:
+        """OT es_auditoria espejo de la auditoria del reclamo (mig 112)."""
+        cerrada = rec.get("fecha_fin_auditoria") is not None
+        id_estado = cat.id_estado_ot_terminada if cerrada else cat.id_estado_ot_gestion
+        if id_estado is None:
+            return
+        resultado = None
+        if cerrada:
+            resultado = "aprobada" if rec.get("resultado_auditoria") == "aprobado" else "observada"
+        await db.execute(_SQL_INSERT_OT_AUDITORIA, {
+            "id_reclamo": id_reclamo, "id_estado": id_estado, "resultado": resultado,
+            "obs_aud": ("Trabajo verificado" if resultado == "aprobada"
+                        else rnd.choice(OBSERVACIONES_AUDITORIA) if resultado else None),
+            "uid": uid, "inicio": rec["fecha_inicio_auditoria"], "fin": rec.get("fecha_fin_auditoria"),
+        })
 
     for rec in reclamos:
         id_reclamo = await _insertar(rec, None, False)
@@ -595,7 +749,18 @@ async def generar_periodo(db: AsyncSession, desde: date, hasta: date,
             await _insertar(hijo, id_reclamo, True)
             n_sub += 1
 
-        if rec["estado"] == ESTADO_RESUELTO and cat.id_plantilla_reclamos:
+        # Auditoria posterior (mig 112): OT de auditoria + retrabajo si fue observada.
+        if rec["auditoria"]:
+            await _insertar_ot_auditoria(rec, id_reclamo)
+            n_auditorias += 1
+            if rec.get("resultado_auditoria") == "observado":
+                retrabajo = _armar_retrabajo(rnd, rec, id_reclamo, rec.get("_nro"), ahora)
+                await _insertar(retrabajo, None, False)
+                por_estado[retrabajo["estado"]] = por_estado.get(retrabajo["estado"], 0) + 1
+                n_retrabajos += 1
+
+        # La encuesta se dispara en el PRIMER cierre: un reclamo auditado tambien la tuvo.
+        if rec["estado"] in ESTADOS_GESTION_CERRADA_OK and cat.id_plantilla_reclamos:
             par = _armar_envio(rnd, rec, ahora, cat.id_plantilla_reclamos, uid)
             if par:
                 envio, respuesta = par
@@ -613,8 +778,133 @@ async def generar_periodo(db: AsyncSession, desde: date, hasta: date,
     await db.commit()
 
     return {"reclamos": len(reclamos), "subreclamos": n_sub, "por_estado": por_estado,
+            "auditorias": n_auditorias, "retrabajos": n_retrabajos,
             "encuestas_enviadas": n_envios, "encuestas_respondidas": len(respuestas),
             "pool_vecinos": len(pool), "desde": str(desde), "hasta": str(hasta)}
+
+
+async def backfill_auditorias(db: AsyncSession, fraccion: float = TASA_AUDITORIA,
+                              semilla: int | None = None, aplicar: bool = False) -> dict:
+    """Una sola vez por entorno (2026-10-20, F3 de PLAN_AUDITORIA_RECLAMOS.md): sobre
+    los reclamos demo YA cargados antes de la mig 112, sortea `fraccion` de los
+    Resueltos sin auditoria y les aplica una auditoria POSTERIOR al cierre con las
+    mismas reglas que generar_periodo (1-10 dias despues del cierre; 1-7 dias
+    de revision; 80% aprobada / 20% observada con reclamo de retrabajo envejecido).
+    Solo datos del usuario generador. Con aplicar=False no escribe: devuelve los
+    conteos que escribiria. NO commitea: lo hace el caller.
+
+    El sorteo (que reclamos, fechas, resultado) se decide en una primera pasada
+    con `random.Random(semilla)` y SIN escribir; la escritura usa otro generador
+    para sus detalles (textos, envejecimiento del retrabajo). Asi el dry-run y el
+    aplicar con la misma semilla tocan EXACTAMENTE los mismos ids (el snapshot
+    previo se arma con los ids del dry-run).
+    """
+    rnd = random.Random(semilla)
+    rnd_detalle = random.Random((semilla or 0) + 7)
+    ahora = datetime.now(timezone.utc)
+    uid = await _usuario_generador(db, crear=False)
+    if uid is None:
+        return {"detalle": "sin usuario generador: nada que auditar"}
+    cat = await _cargar_catalogos(db)
+    if cat.id_estado_ot_gestion is None or cat.id_estado_ot_terminada is None:
+        raise RuntimeError("estado_ot sin 'En gestión'/'Terminada': no se pueden crear las OT de auditoria")
+
+    r = await db.execute(text("""
+        SELECT r.id_reclamo, r.nro_reclamo, r.id_ciudadano, r.id_tipo_reclamo, r.descripcion,
+               r.prioridad, r.direccion, r.latitud, r.longitud, r.id_localidad, r.canal_origen,
+               r.fuente_geolocalizacion, r.fecha_alta, r.fecha_primer_asignacion, r.fecha_cierre,
+               c.email
+        FROM reclamos r JOIN ciudadanos c ON c.id_ciudadano = r.id_ciudadano
+        WHERE r.activo AND r.id_usuario_alta = :uid AND r.estado = 'Resuelto'
+          AND r.fecha_cierre IS NOT NULL AND r.fecha_inicio_auditoria IS NULL
+          AND r.id_reclamo_origen_auditoria IS NULL AND r.id_reclamo_padre IS NULL
+        ORDER BY r.id_reclamo
+    """), {"uid": uid})
+    candidatos = r.fetchall()
+
+    # Pasada 1: el plan, sin escribir.
+    plan: list[tuple] = []
+    for p in candidatos:
+        if rnd.random() >= fraccion:
+            continue
+        inicio = p.fecha_cierre + timedelta(days=rnd.uniform(1, 10))
+        if inicio > ahora:
+            continue
+        fin = inicio + timedelta(days=rnd.uniform(1, 7))
+        cerrada = fin <= ahora
+        resultado = None
+        if cerrada:
+            resultado = "observado" if rnd.random() < TASA_OBSERVADA else "aprobado"
+        plan.append((p, inicio, fin, cerrada, resultado))
+
+    historial: list[dict] = []
+    conteo = {"candidatos": len(candidatos), "auditadas": 0, "pendientes": 0,
+              "observadas": 0, "retrabajos": 0, "ids": []}
+    # Pasada 2: conteos (dry-run) y, si aplicar, escritura con rnd_detalle.
+    rnd = rnd_detalle
+    for p, inicio, fin, cerrada, resultado in plan:
+        rec = {
+            "id_ciudadano": p.id_ciudadano, "id_tipo_reclamo": p.id_tipo_reclamo,
+            "id_subarea": cat.tipo_info.get(p.id_tipo_reclamo, (None, None))[1],
+            "email": p.email, "id_localidad": p.id_localidad,
+            "latitud": p.latitud, "longitud": p.longitud, "direccion": p.direccion,
+            "descripcion": p.descripcion, "prioridad": p.prioridad,
+            "canal_origen": p.canal_origen, "fuente_geolocalizacion": p.fuente_geolocalizacion,
+            "fecha_alta": p.fecha_alta, "fecha_primer_asignacion": p.fecha_primer_asignacion,
+            "fecha_cierre": p.fecha_cierre, "estado": ESTADO_AUDITADO if cerrada else ESTADO_EN_AUDITORIA,
+            "auditoria": True, "subreclamo": False,
+            "fecha_inicio_auditoria": inicio, "fecha_fin_auditoria": fin if cerrada else None,
+            "resultado_auditoria": resultado, "id_reclamo_origen_auditoria": None,
+        }
+        conteo["auditadas" if cerrada else "pendientes"] += 1
+        conteo["ids"].append(p.id_reclamo)
+        if resultado == "observado":
+            conteo["observadas"] += 1
+            conteo["retrabajos"] += 1  # cada observada genera exactamente un retrabajo
+        if not aplicar:
+            continue
+
+        await db.execute(text("""
+            UPDATE reclamos SET estado = :estado, id_estado_fk = :fk,
+                   fecha_inicio_auditoria = :inicio, fecha_fin_auditoria = :fin,
+                   resultado_auditoria = :resultado, fecha_modificacion = :mod,
+                   id_usuario_modificacion = :uid
+            WHERE id_reclamo = :id
+        """), {"estado": rec["estado"], "fk": cat.estados_fk.get(rec["estado"]),
+               "inicio": inicio, "fin": fin if cerrada else None, "resultado": resultado,
+               "mod": fin if cerrada else inicio, "uid": uid, "id": p.id_reclamo})
+        await db.execute(_SQL_INSERT_OT_AUDITORIA, {
+            "id_reclamo": p.id_reclamo,
+            "id_estado": cat.id_estado_ot_terminada if cerrada else cat.id_estado_ot_gestion,
+            "resultado": ("aprobada" if resultado == "aprobado" else "observada") if cerrada else None,
+            "obs_aud": ("Trabajo verificado" if resultado == "aprobado"
+                        else rnd.choice(OBSERVACIONES_AUDITORIA) if cerrada else None),
+            "uid": uid, "inicio": inicio, "fin": fin if cerrada else None,
+        })
+        # Historial: solo los pasos de auditoria (los de gestion ya existen).
+        filas = _historial_de(rec, p.id_reclamo, uid, rnd, False)
+        historial.extend(f for f in filas if f["estado_nuevo"] in (ESTADO_EN_AUDITORIA, ESTADO_AUDITADO))
+        if resultado == "observado":
+            retrabajo = _armar_retrabajo(rnd, rec, p.id_reclamo, p.nro_reclamo, ahora)
+            fila = (await db.execute(_SQL_INSERT_RECLAMO, {
+                "id_ciudadano": retrabajo["id_ciudadano"], "id_tipo_reclamo": retrabajo["id_tipo_reclamo"],
+                "descripcion": retrabajo["descripcion"], "prioridad": retrabajo["prioridad"],
+                "estado": retrabajo["estado"], "id_estado_fk": cat.estados_fk.get(retrabajo["estado"]),
+                "direccion": retrabajo["direccion"], "latitud": retrabajo["latitud"],
+                "longitud": retrabajo["longitud"], "id_localidad": retrabajo["id_localidad"],
+                "canal_origen": retrabajo["canal_origen"],
+                "fuente_geolocalizacion": retrabajo["fuente_geolocalizacion"],
+                "fecha_alta": retrabajo["fecha_alta"],
+                "fecha_primer_asignacion": retrabajo["fecha_primer_asignacion"],
+                "fecha_cierre": retrabajo["fecha_cierre"], "uid": uid, "id_reclamo_padre": None,
+                "fecha_inicio_auditoria": None, "fecha_fin_auditoria": None,
+                "resultado_auditoria": None, "id_reclamo_origen_auditoria": p.id_reclamo,
+            })).fetchone()
+            historial.extend(_historial_de(retrabajo, fila.id_reclamo, uid, rnd, False))
+
+    if aplicar and historial:
+        await db.execute(_SQL_INSERT_HISTORIAL, historial)
+    return conteo
 
 
 async def avanzar_pendientes(db: AsyncSession, semilla: int | None = None) -> dict:
@@ -629,12 +919,12 @@ async def avanzar_pendientes(db: AsyncSession, semilla: int | None = None) -> di
 
     r = await db.execute(text("""
         SELECT r.id_reclamo, r.estado, r.fecha_alta, r.id_ciudadano, r.id_tipo_reclamo,
-               r.fecha_primer_asignacion, c.email
+               r.fecha_primer_asignacion, r.id_reclamo_origen_auditoria, c.email
         FROM reclamos r JOIN ciudadanos c ON c.id_ciudadano = r.id_ciudadano
         WHERE r.activo AND r.id_usuario_alta = :uid
           AND r.estado IN ('Sin asignar', 'En gestión', 'En espera')
           AND NOT EXISTS (SELECT 1 FROM reclamos h WHERE h.id_reclamo_padre = r.id_reclamo
-                          AND h.activo AND h.estado NOT IN ('Resuelto', 'Cancelado'))
+                          AND h.activo AND h.estado NOT IN ('Resuelto', 'Cancelado', 'En auditoría', 'Auditado'))
     """), {"uid": uid})
     pendientes = r.fetchall()
 
@@ -673,19 +963,13 @@ async def avanzar_pendientes(db: AsyncSession, semilla: int | None = None) -> di
         elif p.estado == ESTADO_EN_GESTION:
             if azar < 0.40:
                 cierre = max(ahora - timedelta(hours=rnd.uniform(0, 72)), piso)
-                previo = ESTADO_EN_GESTION
-                if rnd.random() < 0.25:
-                    fecha_aud = max(cierre - timedelta(hours=rnd.uniform(2, 24)), piso)
-                    historial.append({"id_reclamo": p.id_reclamo, "accion": f"Cambio de estado a {ESTADO_EN_AUDITORIA}",
-                                      "estado_anterior": previo, "estado_nuevo": ESTADO_EN_AUDITORIA,
-                                      "nota": None, "fecha": fecha_aud, "uid": uid})
-                    previo = ESTADO_EN_AUDITORIA
                 await _update(p.id_reclamo, ESTADO_RESUELTO, None, cierre)
                 historial.append({"id_reclamo": p.id_reclamo, "accion": f"Cambio de estado a {ESTADO_RESUELTO}",
-                                  "estado_anterior": previo, "estado_nuevo": ESTADO_RESUELTO,
+                                  "estado_anterior": ESTADO_EN_GESTION, "estado_nuevo": ESTADO_RESUELTO,
                                   "nota": None, "fecha": cierre, "uid": uid})
                 movidos["a_resuelto"] += 1
-                if cat.id_plantilla_reclamos and rnd.random() < 0.85:
+                # Un retrabajo de auditoria (mig 112) es interno: el vecino no lo ve ni se lo encuesta.
+                if cat.id_plantilla_reclamos and p.id_reclamo_origen_auditoria is None and rnd.random() < 0.85:
                     fecha_envio = min(cierre + timedelta(days=1), ahora - timedelta(minutes=5))
                     envio = {"id_plantilla": cat.id_plantilla_reclamos, "id_ciudadano": p.id_ciudadano,
                              "id_reclamo": p.id_reclamo, "email": p.email,
@@ -707,6 +991,66 @@ async def avanzar_pendientes(db: AsyncSession, semilla: int | None = None) -> di
                                   "estado_anterior": ESTADO_EN_ESPERA, "estado_nuevo": ESTADO_EN_GESTION,
                                   "nota": None, "fecha": ahora, "uid": uid})
                 movidos["a_gestion"] += 1
+
+    # Auditoria POSTERIOR al cierre (mig 112), solo datos demo:
+    #  (a) ~60% de las auditorias pendientes de mas de un dia se cierran (80% aprobada /
+    #      20% observada; la observada genera el reclamo de retrabajo);
+    #  (b) ~3% de los resueltos de los ultimos 30 dias sin auditoria se mandan a auditar.
+    movidos.update({"auditorias_cerradas": 0, "retrabajos": 0, "a_auditoria": 0})
+    if cat.id_estado_ot_terminada is not None and cat.id_estado_ot_gestion is not None:
+        r = await db.execute(text("""
+            SELECT r.id_reclamo, r.nro_reclamo, r.fecha_inicio_auditoria
+            FROM reclamos r
+            WHERE r.activo AND r.id_usuario_alta = :uid AND r.estado = 'En auditoría'
+              AND r.fecha_inicio_auditoria < :limite
+        """), {"uid": uid, "limite": ahora - timedelta(days=1)})
+        for p in r.fetchall():
+            if rnd.random() >= 0.60:
+                continue
+            aprobada = rnd.random() >= TASA_OBSERVADA
+            obs = "Trabajo verificado" if aprobada else rnd.choice(OBSERVACIONES_AUDITORIA)
+            fin = max(ahora - timedelta(hours=rnd.uniform(0, 48)),
+                      p.fecha_inicio_auditoria + timedelta(hours=1))
+            await db.execute(_SQL_CERRAR_AUDITORIA_RECLAMO, {
+                "id": p.id_reclamo, "fk": cat.estados_fk.get(ESTADO_AUDITADO),
+                "resultado": "aprobado" if aprobada else "observado", "fin": fin, "uid": uid})
+            await db.execute(_SQL_CERRAR_AUDITORIA_OT, {
+                "id": p.id_reclamo, "id_terminada": cat.id_estado_ot_terminada,
+                "resultado_ot": "aprobada" if aprobada else "observada", "obs": obs, "fin": fin, "uid": uid})
+            historial.append({"id_reclamo": p.id_reclamo,
+                              "accion": "Auditoría aprobada" if aprobada else "Auditoría observada",
+                              "estado_anterior": ESTADO_EN_AUDITORIA, "estado_nuevo": ESTADO_AUDITADO,
+                              "nota": obs, "fecha": fin, "uid": uid})
+            movidos["auditorias_cerradas"] += 1
+            if not aprobada:
+                nuevo = (await db.execute(_SQL_INSERT_RETRABAJO_DESDE, {
+                    "id": p.id_reclamo, "obs": obs, "fk": cat.estados_fk.get(ESTADO_SIN_ASIGNAR),
+                    "fecha": fin, "uid": uid})).fetchone()
+                historial.append({"id_reclamo": nuevo.id_reclamo, "accion": "Reclamo ingresado por auditoría observada",
+                                  "estado_anterior": None, "estado_nuevo": ESTADO_SIN_ASIGNAR,
+                                  "nota": f"Retrabajo del reclamo {p.nro_reclamo or p.id_reclamo}",
+                                  "fecha": fin, "uid": uid})
+                movidos["retrabajos"] += 1
+
+        r = await db.execute(text("""
+            SELECT r.id_reclamo, r.fecha_cierre FROM reclamos r
+            WHERE r.activo AND r.id_usuario_alta = :uid AND r.estado = 'Resuelto'
+              AND r.fecha_inicio_auditoria IS NULL AND r.id_reclamo_origen_auditoria IS NULL
+              AND r.fecha_cierre > :desde
+        """), {"uid": uid, "desde": ahora - timedelta(days=30)})
+        for p in r.fetchall():
+            if rnd.random() >= 0.03:
+                continue
+            inicio = min(max(ahora - timedelta(hours=rnd.uniform(0, 72)), p.fecha_cierre + timedelta(hours=1)), ahora)
+            await db.execute(_SQL_ENVIAR_AUDITORIA, {
+                "id": p.id_reclamo, "fk": cat.estados_fk.get(ESTADO_EN_AUDITORIA), "inicio": inicio, "uid": uid})
+            await db.execute(_SQL_INSERT_OT_AUDITORIA, {
+                "id_reclamo": p.id_reclamo, "id_estado": cat.id_estado_ot_gestion, "resultado": None,
+                "obs_aud": None, "uid": uid, "inicio": inicio, "fin": None})
+            historial.append({"id_reclamo": p.id_reclamo, "accion": "Enviado a auditoría",
+                              "estado_anterior": ESTADO_RESUELTO, "estado_nuevo": ESTADO_EN_AUDITORIA,
+                              "nota": "Control de calidad (demo)", "fecha": inicio, "uid": uid})
+            movidos["a_auditoria"] += 1
 
     # Maduracion de encuestas demo: expirar vencidas y responder ~35% de las vivas.
     await db.execute(text("""

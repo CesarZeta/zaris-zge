@@ -45,6 +45,22 @@ carpeta **gitignoreada** — datos personales, jamas versionar):
   (~4%), localidad+coords por centroide, y encuestas CSAT (~85% de los
   resueltos, ~30% respondidas, %sat ~68%). Catalogos resueltos POR NOMBRE en
   runtime (nunca por id — divergen local/prod).
+- **Auditoria POSTERIOR al cierre (mig 112, 2026-10-20):** ~8% de los resueltos
+  (`TASA_AUDITORIA`) reciben una auditoria 1-10 dias despues del cierre que el
+  auditor cierra 1-7 dias mas tarde (80% aprobada / 20% observada,
+  `TASA_OBSERVADA`); la observada genera un reclamo de retrabajo (canal `oficio`,
+  `id_reclamo_origen_auditoria`, SIN encuesta: el vecino no lo ve). Cada
+  auditoria tiene su OT `es_auditoria` (En gestion = pendiente / Terminada con
+  resultado) y los pasos en `reclamo_historial`; `fecha_cierre` no se toca (los
+  tiempos del BI siguen midiendose al primer cierre). `avanzar_pendientes` cierra
+  ~60% de las auditorias pendientes por corrida y manda a auditar ~3% de los
+  resueltos de los ultimos 30 dias. **Backfill unico por entorno** sobre la demo
+  cargada antes de la mig 112: `backend/backfill_auditorias_demo.py` (dry-run
+  por default; `--aplicar` crea `_backup_reclamos_auditoria_<fecha>` con las
+  filas tocadas; el sorteo del plan es independiente de la escritura, asi
+  dry-run y aplicar con la misma semilla tocan los mismos ids). Ya no existe la
+  auditoria PREVIA al cierre que el generador simulaba hasta esa fecha (25% de
+  los resueltos pasaban por 'En auditoria' en el historial).
 - **Todo atribuido al usuario INACTIVO `generador.demo`** (`id_usuario_alta`) y
   vecinos demo con email `@vecinos-demo.zaris.com.ar` → borrar/migrar a un
   tenant (IT-01) = filtrar por eso. NO borrar a mano sin decision de Cesar.

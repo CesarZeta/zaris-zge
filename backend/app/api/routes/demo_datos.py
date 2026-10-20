@@ -169,7 +169,9 @@ async def _ejecutar_corrida(id_corrida: str, body: PoblarIn, desde: date, hasta:
         "Auth: X-Dispatcher-Token o JWT admin."
     ),
     responses={
-        202: {"description": "Corrida encolada (id_corrida, estado='en_curso', consulta)"},
+        202: {"description": "Corrida encolada (id_corrida, estado='en_curso', consulta). "
+                             "Desde la mig 112 el generador sortea auditorías posteriores al cierre "
+                             "(En auditoría / Auditado + retrabajos) y las envejece en 'avanzar'."},
         409: {"description": "Rango invalido (desde > hasta o mayor a 45 dias), o ya hay una "
                              "corrida en curso en esta instancia"},
     },
