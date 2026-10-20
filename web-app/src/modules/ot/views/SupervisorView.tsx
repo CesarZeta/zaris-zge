@@ -3,7 +3,7 @@ import { Search, X } from 'lucide-react'
 import { useMesaSupervisor } from '../hooks/useOT'
 import type { MesaSupervisorFiltros } from '../api/otApi'
 import type { MesaSupervisorRow } from '../types/ot'
-import { BadgeEstadoReclamo, BadgePrioridad, SLACell, nombreCiudadano } from '../lib/format'
+import { BadgeEstadoReclamo, BadgePrioridad, SLACell } from '../lib/format'
 import { Field, StatsChips, Toolbar, inputStyle } from '../components/Toolbar'
 import { AsignarModal } from '../components/AsignarModal'
 import { ReasignarModal } from '../components/ReasignarModal'
@@ -17,12 +17,12 @@ type Tab = 'asignar' | 'reasignar'
 
 // La mesa trae TODOS los reclamos activos (sin tope): el orden se resuelve en
 // pantalla sobre lo cargado (ui/orden.tsx).
-type CampoOrden = 'nro' | 'tipo' | 'ciudadano' | 'subarea' | 'prioridad' | 'sla' | 'estado' | 'asignado'
+type CampoOrden = 'nro' | 'tipo' | 'fecha' | 'subarea' | 'prioridad' | 'sla' | 'estado' | 'asignado'
 const PESO_PRIORIDAD: Record<string, number> = { Alta: 1, Media: 2, Baja: 3 }
 const VALORES_ORDEN: Record<CampoOrden, (r: MesaSupervisorRow) => string | number | null> = {
   nro: (r) => r.id_reclamo,
   tipo: (r) => r.tipo_nombre,
-  ciudadano: (r) => nombreCiudadano(r.ciudadano_apellido, r.ciudadano_nombre),
+  fecha: (r) => (r.fecha_alta ? new Date(r.fecha_alta).getTime() : null),
   subarea: (r) => r.subarea_nombre,
   prioridad: (r) => (r.prioridad ? PESO_PRIORIDAD[r.prioridad] ?? 9 : null),
   sla: (r) => (r.sla_vencimiento ? new Date(r.sla_vencimiento).getTime() : null),
@@ -320,7 +320,9 @@ export function SupervisorView() {
                   <BotonOrden campo="tipo" orden={orden} onOrdenar={alternar}>Tipo</BotonOrden>
                 </th>
                 {tab === 'reasignar' && <ThOrden campo="estado" orden={orden} onOrdenar={alternar} style={thStyle}>Estado</ThOrden>}
-                <ThOrden campo="ciudadano" orden={orden} onOrdenar={alternar} style={thStyle}>Ciudadano</ThOrden>
+                {/* Fecha de ingreso en lugar del ciudadano (César 2026-10-21): al
+                    supervisor le sirve cuándo entró; el vecino está en «Ver». */}
+                <ThOrden campo="fecha" orden={orden} onOrdenar={alternar} style={thStyle}>Fecha</ThOrden>
                 <ThOrden campo="subarea" orden={orden} onOrdenar={alternar} style={thStyle}>Subárea</ThOrden>
                 <ThOrden campo="prioridad" orden={orden} onOrdenar={alternar} style={thStyle}>Prio.</ThOrden>
                 <ThOrden campo="sla" orden={orden} onOrdenar={alternar} style={thStyle}>SLA</ThOrden>
@@ -365,7 +367,7 @@ export function SupervisorView() {
                       <Clamp2 title={r.tipo_nombre}>{r.tipo_nombre ?? '—'}</Clamp2>
                     </td>
                     {tab === 'reasignar' && <td style={tdStyle}><BadgeEstadoReclamo estado={r.estado} /></td>}
-                    <td style={tdStyle}><Clamp2>{nombreCiudadano(r.ciudadano_apellido, r.ciudadano_nombre)}</Clamp2></td>
+                    <td style={tdStyle}><FechaIngreso iso={r.fecha_alta} /></td>
                     <td style={tdStyle}><Clamp2 title={r.subarea_nombre}>{r.subarea_nombre ?? '—'}</Clamp2></td>
                     <td style={tdStyle}><BadgePrioridad prioridad={r.prioridad} /></td>
                     <td style={tdStyle}>
@@ -422,6 +424,9 @@ export function SupervisorView() {
         idOTResaltada={drawerRow?.ot_activa_id ?? null}
         puedeGestionarAdjuntos={puedeGestionarAdjuntos}
         onClose={() => setDrawerRow(null)}
+        onPlanificar={tab === 'asignar' && drawerRow?.estado === 'Sin asignar'
+          ? () => { setReclamoPlanificar(drawerRow); setDrawerRow(null) }
+          : undefined}
       />
     </div>
   )
@@ -473,6 +478,17 @@ function Clamp2({ children, title, wide }: { children: React.ReactNode; title?: 
       }}
     >
       {children}
+    </div>
+  )
+}
+
+function FechaIngreso({ iso }: { iso: string | null }) {
+  const d = iso ? new Date(iso) : null
+  if (!d || Number.isNaN(d.getTime())) return <span style={{ color: 'var(--fg-3)' }}>—</span>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2, whiteSpace: 'nowrap' }}>
+      <span style={monoStyle}>{d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+      <span style={{ ...monoStyle, color: 'var(--fg-3)' }}>{d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</span>
     </div>
   )
 }

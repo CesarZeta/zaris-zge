@@ -21,6 +21,9 @@ interface Props {
    *  El backend igual hace cumplir el guard; esto solo gobierna la UI. */
   puedeGestionarAdjuntos?: boolean
   onClose: () => void
+  /** Mesa del Supervisor, reclamo sin asignar: botón PLANIFICAR arriba del
+   *  detalle que cierra el modal y abre el planificador (César 2026-10-21). */
+  onPlanificar?: () => void
 }
 
 const FUENTE_LABEL: Record<string, string> = {
@@ -35,7 +38,7 @@ const CANAL_LABEL: Record<string, string> = {
   presencial: 'Presencial', oficio: 'Oficio', app_movil: 'App móvil', otro: 'Otro',
 }
 
-export function OTDetalleDrawer({ open, idReclamo, idOTResaltada, puedeGestionarAdjuntos, onClose }: Props) {
+export function OTDetalleDrawer({ open, idReclamo, idOTResaltada, puedeGestionarAdjuntos, onClose, onPlanificar }: Props) {
   const detalle = useReclamoDetalle(open ? idReclamo : null)
 
   const r = detalle.data
@@ -56,6 +59,17 @@ export function OTDetalleDrawer({ open, idReclamo, idOTResaltada, puedeGestionar
       )}
       {r && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {onPlanificar && (
+            <div style={planificarBarStyle}>
+              <span style={{ fontSize: '0.86rem', color: 'var(--fg-2)' }}>
+                Reclamo sin asignar: creá su orden de trabajo y elegí a quién.
+              </span>
+              <button type="button" onClick={onPlanificar} style={btnPlanificarStyle}>
+                PLANIFICAR
+              </button>
+            </div>
+          )}
+
           <Section title="Estado">
             <Grid cols="repeat(4, 1fr)">
               <Cell label="Estado"><BadgeEstadoReclamo estado={r.estado} /></Cell>
@@ -498,6 +512,18 @@ const badgeActual: React.CSSProperties = {
   borderRadius: 999,
   background: 'var(--zaris-orange)', color: 'white',
   textTransform: 'uppercase', letterSpacing: '0.04em',
+}
+
+const planificarBarStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
+  background: 'var(--surface-300)', border: '1px solid var(--border-primary)',
+  borderLeft: '3px solid var(--zaris-orange)', borderRadius: 8, padding: '10px 14px',
+}
+
+const btnPlanificarStyle: React.CSSProperties = {
+  fontFamily: 'var(--font-display)', fontSize: '0.84rem', fontWeight: 600, letterSpacing: '0.04em',
+  padding: '8px 18px', borderRadius: 8, cursor: 'pointer',
+  background: 'var(--zaris-orange)', color: 'white', border: '1px solid var(--zaris-orange)',
 }
 
 function formatFecha(iso: string): string {
