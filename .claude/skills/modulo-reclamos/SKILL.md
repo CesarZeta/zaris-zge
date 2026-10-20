@@ -60,7 +60,11 @@ Caso real sesión 2026-05-12: introducir `'Crítica'` en `type Prioridad` costó
 ### Endpoints reclamos
 
 ```
-GET  /api/v1/reclamos                      → lista con filtros (estado, id_area, prioridad, texto, limit, offset)
+GET  /api/v1/reclamos                      → lista con filtros (estado, id_area, id_subarea, prioridad, texto, pendientes, limit, offset)
+                                             pendientes=true (2026-10-20, botón «Ver pendientes» del listado): estado ∈
+                                             ESTADOS_PENDIENTES (Sin asignar, En gestión, En espera, En auditoría — decisión de
+                                             César), orden fecha_alta ASC; se combina con los demás filtros y con el scope por
+                                             subárea. El front lo pide con limit 500 (máximo del endpoint)
 GET  /api/v1/reclamos/stats                → conteos por estado
 GET  /api/v1/reclamos/catalogo/areas       → áreas activas
 GET  /api/v1/reclamos/catalogo/tipos       → tipos de reclamo activos

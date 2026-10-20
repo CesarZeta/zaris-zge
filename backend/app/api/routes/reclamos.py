@@ -29,6 +29,9 @@ ESTADOS_VALIDOS = {"Sin asignar", "En gestión", "En espera", "En auditoría", "
 ESTADOS_AUDITORIA = {"En auditoría", "Auditado"}
 # Estados que NO admiten gestión (editar, OT, subreclamo, aviso al supervisor).
 ESTADOS_CERRADOS = {"Resuelto", "Cancelado", "En auditoría", "Auditado"}
+# «Ver pendientes» del listado (decisión de César 2026-10-20): la gestión abierta
+# más 'En auditoría', que todavía espera al auditor.
+ESTADOS_PENDIENTES = ["Sin asignar", "En gestión", "En espera", "En auditoría"]
 
 # Grafo de transiciones permitidas del ciclo de vida del reclamo (CLAUDE.md §18).
 # Flujo nominal: Sin asignar -> En gestión -> (En espera) -> Resuelto.
@@ -379,6 +382,11 @@ async def listar_reclamos(
     id_subarea: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
     texto: Optional[str] = Query(None),
+    pendientes: bool = Query(
+        False,
+        description="Solo los pendientes de resolver (Sin asignar, En gestión, En espera, "
+                    "En auditoría), del más antiguo al más nuevo. Se combina con los demás filtros.",
+    ),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -386,6 +394,7 @@ async def listar_reclamos(
 ):
     conds = ["r.activo = TRUE"]
     params: dict = {}
+    orden = "r.fecha_alta ASC" if pendientes else "r.fecha_alta DESC"
 
     # Supervisor (2) y Gestión (4): el backend fuerza la subárea de su agente
     # y pisa cualquier filtro que venga por query (Fase 3 roles).
@@ -397,6 +406,9 @@ async def listar_reclamos(
     if estado:
         conds.append("r.estado = :estado")
         params["estado"] = estado
+    if pendientes:
+        conds.append("r.estado = ANY(:estados_pendientes)")
+        params["estados_pendientes"] = ESTADOS_PENDIENTES
     if id_area:
         # Fuente unica del area: s.id_area derivada del tipo (mig 27). r.id_area
         # puede estar NULL en reclamos viejos. Ver feedback_area_via_subarea_no_via_r_id_area.
@@ -441,7 +453,7 @@ async def listar_reclamos(
         LEFT JOIN area a ON a.id_area = s.id_area
         LEFT JOIN usuarios u ON u.id_usuario = r.id_agente_asignado
         WHERE {where}
-        ORDER BY r.fecha_alta DESC
+        ORDER BY {orden}
         LIMIT :limit OFFSET :offset
     """), params)
 
