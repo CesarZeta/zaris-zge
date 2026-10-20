@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
 import { useMesaAgente, useTomarOT } from '../hooks/useOT'
 import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
+import { ThOrden, ordenarFilas, useOrden } from '../../../ui/orden'
 import { useNotificationsStore } from '../../../stores/notifications'
 import type { EstadoOT, MesaAgenteRow } from '../types/ot'
 import { BadgeEstadoOT, BadgePrioridad, SLACell, nombreCiudadano } from '../lib/format'
@@ -10,6 +11,19 @@ import { CambiarEstadoOTModal } from '../components/CambiarEstadoOTModal'
 import { OTDetalleDrawer } from '../components/OTDetalleDrawer'
 
 type Tab = 'mias' | 'disponibles'
+
+type CampoOrdenAgente = 'nro' | 'estado' | 'equipo' | 'prioridad' | 'sla' | 'tipo' | 'subarea' | 'ciudadano'
+const PESO_PRIORIDAD: Record<string, number> = { Alta: 1, Media: 2, Baja: 3 }
+const VALORES_ORDEN_AGENTE: Record<CampoOrdenAgente, (o: MesaAgenteRow) => string | number | null> = {
+  nro: (o) => o.id_ot,
+  estado: (o) => o.estado_nombre,
+  equipo: (o) => o.equipo_nombre,
+  prioridad: (o) => (o.reclamo_prioridad ? PESO_PRIORIDAD[o.reclamo_prioridad] ?? 9 : null),
+  sla: (o) => (o.sla_vencimiento ? new Date(o.sla_vencimiento).getTime() : null),
+  tipo: (o) => o.tipo_nombre,
+  subarea: (o) => o.subarea_nombre,
+  ciudadano: (o) => nombreCiudadano(o.ciudadano_apellido, o.ciudadano_nombre),
+}
 
 // Botón "Ver mis OT" del toolbar (submit del form de búsqueda diferida, §23).
 // Misma geometría que el Refrescar del Toolbar para que alineen en la fila.
@@ -67,6 +81,10 @@ export function AgenteView() {
       return true
     })
   }, [porTab, tab, fTexto, fEstado, fPrioridad])
+
+  // La mesa trae todas las OTs del agente: orden en pantalla (ui/orden.tsx).
+  const { orden, alternar } = useOrden<CampoOrdenAgente>()
+  const ordenados = useMemo(() => ordenarFilas(filtrados, orden, VALORES_ORDEN_AGENTE), [filtrados, orden])
 
   const statsCounts = useMemo(() => {
     const c: Record<string, number> = {}
@@ -167,13 +185,15 @@ export function AgenteView() {
         <table style={tableStyle}>
           <thead>
             <tr>
-              <th style={thStyle}>OT / Reclamo</th>
-              <th style={thStyle}>{tab === 'mias' ? 'Estado' : 'Equipo'}</th>
-              <th style={thStyle}>Prio.</th>
-              <th style={{ ...thStyle, minWidth: 150 }}>SLA</th>
-              <th style={thStyle}>Tipo</th>
-              <th style={thStyle}>Subárea</th>
-              <th style={thStyle}>Ciudadano</th>
+              <ThOrden campo="nro" orden={orden} onOrdenar={alternar} style={thStyle}>OT / Reclamo</ThOrden>
+              {tab === 'mias'
+                ? <ThOrden campo="estado" orden={orden} onOrdenar={alternar} style={thStyle}>Estado</ThOrden>
+                : <ThOrden campo="equipo" orden={orden} onOrdenar={alternar} style={thStyle}>Equipo</ThOrden>}
+              <ThOrden campo="prioridad" orden={orden} onOrdenar={alternar} style={thStyle}>Prio.</ThOrden>
+              <ThOrden campo="sla" orden={orden} onOrdenar={alternar} style={{ ...thStyle, minWidth: 150 }}>SLA</ThOrden>
+              <ThOrden campo="tipo" orden={orden} onOrdenar={alternar} style={thStyle}>Tipo</ThOrden>
+              <ThOrden campo="subarea" orden={orden} onOrdenar={alternar} style={thStyle}>Subárea</ThOrden>
+              <ThOrden campo="ciudadano" orden={orden} onOrdenar={alternar} style={thStyle}>Ciudadano</ThOrden>
               <th style={thStyle}>Descripción</th>
               <th style={{ ...thStyle, ...stickyTh }}>Acción</th>
             </tr>
@@ -182,14 +202,14 @@ export function AgenteView() {
             {isLoading && (
               <tr><td colSpan={9} style={emptyStyle}>Cargando…</td></tr>
             )}
-            {!isLoading && !isError && filtrados.length === 0 && (
+            {!isLoading && !isError && ordenados.length === 0 && (
               <tr><td colSpan={9} style={emptyStyle}>
                 {tab === 'mias'
                   ? 'No tenés OTs asignadas. Mirá la pestaña "Disponibles" para tomar alguna.'
                   : 'No hay OTs disponibles en tus equipos por ahora.'}
               </td></tr>
             )}
-            {filtrados.map((o) => (
+            {ordenados.map((o) => (
               <tr key={o.id_ot}>
                 <td style={tdStyle}>
                   <div style={monoStyle}>{o.nro_ot ?? '—'}</div>

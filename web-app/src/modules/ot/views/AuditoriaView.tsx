@@ -8,8 +8,23 @@ import { Field, Toolbar, inputStyle } from '../components/Toolbar'
 import { AuditarModal } from '../components/AuditarModal'
 import { OTDetalleDrawer } from '../components/OTDetalleDrawer'
 import { useAuthStore } from '../../../stores/auth'
+import { ThOrden, ordenarFilas, useOrden } from '../../../ui/orden'
 
 type Kind = 'aprobar' | 'observar'
+
+// La mesa trae todas las auditorías pendientes: orden en pantalla (ui/orden.tsx).
+type CampoOrdenAud = 'nro' | 'prioridad' | 'tipo' | 'subarea' | 'ciudadano' | 'resuelto' | 'origen'
+const PESO_PRIORIDAD: Record<string, number> = { Alta: 1, Media: 2, Baja: 3 }
+const VALORES_ORDEN_AUD: Record<CampoOrdenAud, (o: MesaAuditoriaRow) => string | number | null> = {
+  nro: (o) => o.id_ot,
+  prioridad: (o) => (o.reclamo_prioridad ? PESO_PRIORIDAD[o.reclamo_prioridad] ?? 9 : null),
+  tipo: (o) => o.tipo_nombre,
+  subarea: (o) => o.subarea_nombre,
+  ciudadano: (o) => nombreCiudadano(o.ciudadano_apellido, o.ciudadano_nombre),
+  resuelto: (o) => (o.reclamo_fecha_cierre ? new Date(o.reclamo_fecha_cierre).getTime() : null),
+  origen: (o) => (o.ot_origen_agente_apellido || o.ot_origen_agente_nombre
+    ? nombreAgente(o.ot_origen_agente_apellido, o.ot_origen_agente_nombre) : o.ot_origen_nro),
+}
 
 function fechaCorta(iso: string | null): string {
   if (!iso) return '—'
@@ -59,6 +74,9 @@ export function AuditoriaView() {
       return true
     })
   }, [ots, fTexto, fPrioridad])
+
+  const { orden, alternar } = useOrden<CampoOrdenAud>()
+  const ordenados = useMemo(() => ordenarFilas(filtrados, orden, VALORES_ORDEN_AUD), [filtrados, orden])
 
   const subtitle = !busqueda.buscado
     ? 'Presioná Ver OTs en auditoría para traer las órdenes pendientes de auditar.'
@@ -124,13 +142,13 @@ export function AuditoriaView() {
         <table style={tableStyle}>
           <thead>
             <tr>
-              <th style={thStyle}>OT auditoría</th>
-              <th style={thStyle}>Prio.</th>
-              <th style={thStyle}>Tipo</th>
-              <th style={thStyle}>Subárea</th>
-              <th style={thStyle}>Ciudadano</th>
-              <th style={thStyle}>Resuelto el</th>
-              <th style={thStyle}>OT operativa origen</th>
+              <ThOrden campo="nro" orden={orden} onOrdenar={alternar} style={thStyle}>OT auditoría</ThOrden>
+              <ThOrden campo="prioridad" orden={orden} onOrdenar={alternar} style={thStyle}>Prio.</ThOrden>
+              <ThOrden campo="tipo" orden={orden} onOrdenar={alternar} style={thStyle}>Tipo</ThOrden>
+              <ThOrden campo="subarea" orden={orden} onOrdenar={alternar} style={thStyle}>Subárea</ThOrden>
+              <ThOrden campo="ciudadano" orden={orden} onOrdenar={alternar} style={thStyle}>Ciudadano</ThOrden>
+              <ThOrden campo="resuelto" orden={orden} onOrdenar={alternar} style={thStyle}>Resuelto el</ThOrden>
+              <ThOrden campo="origen" orden={orden} onOrdenar={alternar} style={thStyle}>OT operativa origen</ThOrden>
               <th style={thStyle}>Descripción</th>
               <th style={{ ...thStyle, ...stickyTh }}>Acción</th>
             </tr>
@@ -139,12 +157,12 @@ export function AuditoriaView() {
             {isLoading && (
               <tr><td colSpan={9} style={emptyStyle}>Cargando…</td></tr>
             )}
-            {!isLoading && !isError && filtrados.length === 0 && (
+            {!isLoading && !isError && ordenados.length === 0 && (
               <tr><td colSpan={9} style={emptyStyle}>
                 No hay OTs pendientes de auditoría{ots.length ? ' que coincidan con los filtros' : ''}
               </td></tr>
             )}
-            {filtrados.map((o) => (
+            {ordenados.map((o) => (
               <tr key={o.id_ot}>
                 <td style={tdStyle}>
                   <div style={monoStyle}>{o.nro_ot ?? '—'}</div>

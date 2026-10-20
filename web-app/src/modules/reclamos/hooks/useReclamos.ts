@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   avisarSupervisor,
   cambiarEstadoReclamo,
@@ -14,6 +14,7 @@ import {
   listarAdjuntos,
   listarReclamos,
   obtenerReclamo,
+  type OrdenListadoReclamos,
 } from '../api/reclamosApi'
 import type { ReclamoCreate, ReclamoUpdate } from '../types/reclamo'
 
@@ -57,6 +58,8 @@ export interface FiltrosReclamos {
   prioridad?: string
   texto?: string
   pendientes?: boolean
+  orden?: OrdenListadoReclamos
+  dir?: 'asc' | 'desc'
   limit?: number
 }
 
@@ -75,6 +78,9 @@ export function useReclamosListado(filtros: FiltrosReclamos, opts: OpcionesLista
     queryFn: () => listarReclamos({ ...filtros, limit: filtros.limit ?? 200 }),
     staleTime: 15 * 1000,
     enabled: opts.enabled ?? true,
+    // Al reordenar (o re-buscar) las filas anteriores siguen a la vista hasta
+    // que llega la respuesta: sin esto la tabla desaparecía un instante.
+    placeholderData: keepPreviousData,
   })
 }
 

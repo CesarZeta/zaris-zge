@@ -55,9 +55,12 @@ export function BadgeEstadoOT({ estado }: { estado: EstadoOT | string | null }) 
 
 // ── SLA formateado ───────────────────────────────────────────────────
 
-export function SLACell({ sla_vencimiento, sla_dias }: {
+// `compacto`: «Vencido 15 d» en una sola línea corta (mesa del supervisor,
+// 2026-10-20: el texto largo quedaba cortado); el detalle va en el tooltip.
+export function SLACell({ sla_vencimiento, sla_dias, compacto = false }: {
   sla_vencimiento: string | null
   sla_dias: number | null
+  compacto?: boolean
 }): ReactNode {
   if (!sla_vencimiento) {
     return (
@@ -79,14 +82,24 @@ export function SLACell({ sla_vencimiento, sla_dias }: {
     return `${minutes}m`
   }
 
+  const fmtCorto = (): string => {
+    if (days > 0) return `${days} d`
+    if (hours > 0) return `${hours} h`
+    return `${minutes} min`
+  }
+  const fecha = venc.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+
   if (ms < 0) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 1, lineHeight: 1.2, whiteSpace: 'nowrap' }}>
-        <span style={{
-          color: 'white', background: 'var(--color-error)',
-          padding: '3px 8px', borderRadius: 6,
-          alignSelf: 'flex-start', fontSize: '0.78rem', fontWeight: 600,
-        }}>Vencido hace {fmtAbs()}</span>
+        <span
+          title={compacto ? `Vencido hace ${fmtAbs()} (venció ${fecha})` : undefined}
+          style={{
+            color: 'white', background: 'var(--color-error)',
+            padding: compacto ? '2px 7px' : '3px 8px', borderRadius: 6,
+            alignSelf: 'flex-start', fontSize: compacto ? '0.74rem' : '0.78rem', fontWeight: 600,
+          }}
+        >{compacto ? `Vencido ${fmtCorto()}` : `Vencido hace ${fmtAbs()}`}</span>
       </div>
     )
   }
@@ -94,7 +107,15 @@ export function SLACell({ sla_vencimiento, sla_dias }: {
   let color = '#2e7d32'
   if (hours < 24) color = '#ef6c00'
   if (hours < 6) color = 'var(--color-error)'
-  const fecha = venc.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+
+  if (compacto) {
+    return (
+      <span title={`Faltan ${fmtAbs()} — vence ${fecha}`}
+        style={{ fontSize: '0.8rem', fontWeight: 600, color, whiteSpace: 'nowrap' }}>
+        Faltan {fmtCorto()}
+      </span>
+    )
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1, lineHeight: 1.2, whiteSpace: 'nowrap' }}>

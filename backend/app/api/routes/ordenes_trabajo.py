@@ -219,6 +219,59 @@ async def _validar_scope_supervisor_ot(
             )
 
 
+# Nivel máximo de un usuario que puede recibir y operar una OT: hasta Gestión (4).
+# El Consultor (5) es solo lectura (mismo corte que los guards de /tomar y /estado).
+NIVEL_MAX_OPERA_OT = 4
+
+
+async def _validar_destinatario_ot(
+    db: AsyncSession,
+    *,
+    id_agente: Optional[int] = None,
+    id_equipo: Optional[int] = None,
+) -> None:
+    """El destinatario final de una OT siempre es una persona que recibe el aviso
+    y hace el trabajo (César 2026-10-20). Agente: activo, con usuario de ZARIS
+    activo y nivel ≤ 4. Equipo: activo y con al menos un integrante así — sin
+    esto la OT queda «asignada» a un equipo vacío (o a un Consultor) y nadie la
+    ve. 422 accionable; aplica a todos los niveles, también al admin."""
+    if id_agente is not None:
+        row = (await db.execute(text("""
+            SELECT a.apellido, a.nombre, u.activo AS u_activo, u.nivel_acceso
+            FROM agentes a
+            LEFT JOIN usuarios u ON u.id_usuario = a.id_usuario
+            WHERE a.id_agente = :id AND a.activo = TRUE
+        """), {"id": id_agente})).fetchone()
+        if not row:
+            raise HTTPException(status_code=422, detail=f"Agente {id_agente} inexistente o inactivo")
+        nombre = f"{row.apellido or ''}, {row.nombre or ''}".strip(", ")
+        if not row.u_activo:
+            raise HTTPException(status_code=422, detail=(
+                f"{nombre} no tiene un usuario activo de ZARIS: no recibiría el aviso "
+                "ni podría operar la OT. Asignala a otra persona o activale la cuenta."))
+        if row.nivel_acceso > NIVEL_MAX_OPERA_OT:
+            raise HTTPException(status_code=422, detail=(
+                f"{nombre} tiene perfil Consultor (solo lectura) y no puede operar OTs."))
+    if id_equipo is not None:
+        row = (await db.execute(text("""
+            SELECT e.nombre,
+                   (SELECT COUNT(*)
+                      FROM equipo_agentes ea
+                      JOIN agentes a ON a.id_agente = ea.id_agente AND a.activo = TRUE
+                      JOIN usuarios u ON u.id_usuario = a.id_usuario AND u.activo = TRUE
+                     WHERE ea.id_equipo = e.id_equipo AND ea.activo = TRUE
+                       AND u.nivel_acceso <= :nmax) AS integrantes
+            FROM equipos e
+            WHERE e.id_equipo = :id AND e.activo = TRUE
+        """), {"id": id_equipo, "nmax": NIVEL_MAX_OPERA_OT})).fetchone()
+        if not row:
+            raise HTTPException(status_code=422, detail=f"Equipo {id_equipo} inexistente o inactivo")
+        if not row.integrantes:
+            raise HTTPException(status_code=422, detail=(
+                f"El equipo «{row.nombre}» no tiene integrantes que puedan operar OTs: "
+                "nadie recibiría el aviso. Sumale integrantes o asigná la OT a un agente."))
+
+
 async def _validar_scope_operar_ot(
     db: AsyncSession,
     current_user: dict,
@@ -790,15 +843,25 @@ async def auto_asignar_sugerencia(
     if id_subarea is None:
         return {"sugerencia": None, "motivo": "El tipo de reclamo no tiene subarea asociada."}
 
+    # Candidatos (2026-10-20): cuadrillas con al menos un integrante que pueda
+    # operar (sino nadie recibe el aviso) y agentes de nivel Gestión (4) no
+    # auditores — nunca el propio supervisor, un auditor ni un Consultor.
     equipos = [(int(r.id_equipo), r.nombre) for r in (await db.execute(text("""
-        SELECT id_equipo, nombre FROM equipos
-        WHERE activo = TRUE AND tipo_grupo = 'trabajo_reclamos' AND id_subarea = :s
-        ORDER BY id_equipo
-    """), {"s": id_subarea})).fetchall()]
+        SELECT e.id_equipo, e.nombre FROM equipos e
+        WHERE e.activo = TRUE AND e.tipo_grupo = 'trabajo_reclamos' AND e.id_subarea = :s
+          AND EXISTS (SELECT 1 FROM equipo_agentes ea
+                        JOIN agentes a ON a.id_agente = ea.id_agente AND a.activo = TRUE
+                        JOIN usuarios u ON u.id_usuario = a.id_usuario AND u.activo = TRUE
+                       WHERE ea.id_equipo = e.id_equipo AND ea.activo = TRUE
+                         AND u.nivel_acceso <= :nmax)
+        ORDER BY e.id_equipo
+    """), {"s": id_subarea, "nmax": NIVEL_MAX_OPERA_OT})).fetchall()]
     agentes = [(int(r.id_agente), (r.apellido or "") + ", " + (r.nombre or "")) for r in (await db.execute(text("""
-        SELECT id_agente, nombre, apellido FROM agentes
-        WHERE activo = TRUE AND id_subarea = :s
-        ORDER BY apellido, nombre
+        SELECT a.id_agente, a.nombre, a.apellido FROM agentes a
+        JOIN usuarios u ON u.id_usuario = a.id_usuario AND u.activo = TRUE
+        WHERE a.activo = TRUE AND a.id_subarea = :s
+          AND u.nivel_acceso = 4 AND a.es_auditor = FALSE
+        ORDER BY a.apellido, a.nombre
     """), {"s": id_subarea})).fetchall()]
 
     # Prioriza equipos, luego agentes. Primer recurso con slot libre.
@@ -850,6 +913,7 @@ async def crear_ot_con_agenda(
     id_equipo = id_recurso if tipo_recurso == "equipo" else None
     await _validar_scope_supervisor_ot(db, current_user, id_reclamo=id_reclamo,
                                        id_agente=id_agente, id_equipo=id_equipo)
+    await _validar_destinatario_ot(db, id_agente=id_agente, id_equipo=id_equipo)
 
     # asyncpg requiere objetos date/time, no strings. El body llega como dict crudo.
     try:
@@ -1062,6 +1126,8 @@ async def crear_ot(
     await _validar_scope_supervisor_ot(db, current_user, id_reclamo=id_reclamo,
                                        id_agente=body.get("id_agente"),
                                        id_equipo=body.get("id_equipo"))
+    await _validar_destinatario_ot(db, id_agente=body.get("id_agente"),
+                                   id_equipo=body.get("id_equipo"))
     id_estado_en_gestion = await _id_estado_ot(db, "En gestión")
 
     try:
@@ -1156,6 +1222,7 @@ async def reasignar_ot(
     await _validar_scope_supervisor_ot(db, current_user, id_reclamo=ot.id_reclamo,
                                        id_agente=nuevo_id_agente,
                                        id_equipo=nuevo_id_equipo)
+    await _validar_destinatario_ot(db, id_agente=nuevo_id_agente, id_equipo=nuevo_id_equipo)
     asignado_antes = (
         f"agente {ot.ag_apellido}, {ot.ag_nombre}" if ot.id_agente
         else (f"equipo {ot.eq_nombre}" if ot.id_equipo else "sin asignar")
@@ -1241,6 +1308,11 @@ async def tomar_ot(
     # alcance; nivel 2 delega solo dentro de su subarea (reclamo Y agente destino).
     await _validar_scope_operar_ot(db, current_user, id_ot,
                                    id_agente_delegado=int(id_agente))
+    delegada = current_user.get("nivel_acceso", 99) <= 2
+    if delegada:
+        # Un supervisor/admin que delega no puede dársela a un Consultor ni a un
+        # agente sin usuario (el que la toma para sí ya pasó el guard de nivel).
+        await _validar_destinatario_ot(db, id_agente=int(id_agente))
 
     await db.execute(text("""
         UPDATE ordenes_trabajo
@@ -1248,6 +1320,9 @@ async def tomar_ot(
         WHERE id_ot = :id
     """), {"id_agente": id_agente, "id": id_ot, "uid": current_user["id_usuario"]})
     await db.commit()
+    if delegada:
+        # El agente al que se la delegaron se entera (campana + push).
+        await svc_push.notificar_ot_asignada(id_ot)
     return {"ok": True, "id_ot": id_ot, "id_agente": id_agente}
 
 

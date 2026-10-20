@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Search } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { useMesaSupervisor } from '../hooks/useOT'
 import type { MesaSupervisorFiltros } from '../api/otApi'
 import type { MesaSupervisorRow } from '../types/ot'
@@ -11,8 +11,24 @@ import { OTDetalleDrawer } from '../components/OTDetalleDrawer'
 import { PlanificadorOT } from '../components/PlanificadorOT'
 import { useAuthStore } from '../../../stores/auth'
 import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
+import { BotonOrden, ThOrden, ordenarFilas, useOrden } from '../../../ui/orden'
 
 type Tab = 'asignar' | 'reasignar'
+
+// La mesa trae TODOS los reclamos activos (sin tope): el orden se resuelve en
+// pantalla sobre lo cargado (ui/orden.tsx).
+type CampoOrden = 'nro' | 'tipo' | 'ciudadano' | 'subarea' | 'prioridad' | 'sla' | 'estado' | 'asignado'
+const PESO_PRIORIDAD: Record<string, number> = { Alta: 1, Media: 2, Baja: 3 }
+const VALORES_ORDEN: Record<CampoOrden, (r: MesaSupervisorRow) => string | number | null> = {
+  nro: (r) => r.id_reclamo,
+  tipo: (r) => r.tipo_nombre,
+  ciudadano: (r) => nombreCiudadano(r.ciudadano_apellido, r.ciudadano_nombre),
+  subarea: (r) => r.subarea_nombre,
+  prioridad: (r) => (r.prioridad ? PESO_PRIORIDAD[r.prioridad] ?? 9 : null),
+  sla: (r) => (r.sla_vencimiento ? new Date(r.sla_vencimiento).getTime() : null),
+  estado: (r) => r.estado,
+  asignado: (r) => r.ot_agente_nombre ?? r.ot_equipo_nombre ?? null,
+}
 
 // Filtros que viajan al backend (borrador de la búsqueda diferida, §23).
 type BorradorServer = { nroDesde: string; nroHasta: string; fechaDesde: string; fechaHasta: string }
@@ -94,6 +110,10 @@ export function SupervisorView() {
     })
   }, [porTab, fTexto, fEstado, fPrioridad, tab])
 
+  // Sin orden elegido queda el del backend (prioridad, SLA, antigüedad).
+  const { orden, alternar } = useOrden<CampoOrden>()
+  const ordenados = useMemo(() => ordenarFilas(filtrados, orden, VALORES_ORDEN), [filtrados, orden])
+
   // Stats por estado dentro del tab actual
   const stats = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -122,6 +142,14 @@ export function SupervisorView() {
     // paso a En gestion -> sale del tab Asignar), limpiar el panel.
     setReclamoPlanificar((prev) => (prev && !vivos.has(prev.id_reclamo) ? null : prev))
   }, [reclamos])
+
+  // Escape cierra el panel de planificación.
+  useEffect(() => {
+    if (!reclamoPlanificar) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setReclamoPlanificar(null) }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [reclamoPlanificar])
 
   function toggleSel(id: number, on: boolean) {
     setSeleccionados((prev) => {
@@ -240,58 +268,65 @@ export function SupervisorView() {
 
       {busqueda.buscado && <StatsChips counts={stats} empty="Sin reclamos en esta vista" />}
 
-      {tab === 'asignar' && seleccionados.size > 0 && (
-        <div style={selbarStyle}>
+      {/* Barra de selección SIEMPRE visible en Asignar (2026-10-20): tildar y
+          «Asignar» tiene que descubrirse sin haber tildado nada antes. */}
+      {tab === 'asignar' && busqueda.buscado && (
+        <div style={seleccionados.size > 0 ? selbarStyle : selbarVacioStyle}>
           <div style={{ fontSize: '0.84rem' }}>
-            <strong style={{ color: 'var(--zaris-orange)' }}>{seleccionados.size}</strong> reclamos seleccionados
+            {seleccionados.size > 0
+              ? <><strong style={{ color: 'var(--zaris-orange)' }}>{seleccionados.size}</strong> {seleccionados.size === 1 ? 'reclamo seleccionado' : 'reclamos seleccionados'}</>
+              : 'Tildá los reclamos que quieras asignar juntos, o tocá una fila para planificar uno.'}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => setSeleccionados(new Set())} style={selbarBtnGhost}>Limpiar</button>
-            <button onClick={abrirAsignarLote} style={selbarBtnPrimary}>Asignar OT en lote</button>
+            {seleccionados.size > 0 && (
+              <button type="button" onClick={() => setSeleccionados(new Set())} style={selbarBtnGhost}>Limpiar</button>
+            )}
+            <button
+              type="button"
+              onClick={abrirAsignarLote}
+              disabled={seleccionados.size === 0}
+              style={{ ...selbarBtnPrimary, ...(seleccionados.size === 0 ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }}
+            >
+              Asignar{seleccionados.size > 0 ? ` (${seleccionados.size})` : ''}
+            </button>
           </div>
         </div>
       )}
 
-      <div style={tab === 'asignar' ? layoutAsignarStyle : undefined}>
-        {/* Hasta la primera búsqueda la leyenda ocupa el lugar de la bandeja;
-            el panel de planificación queda a la derecha con su placeholder. */}
-        {!busqueda.buscado ? (
-          <AvisoBuscar texto="Elegí rango de números o fechas (o dejá todo vacío para ver toda la mesa) y presioná Buscar." />
-        ) : (
+      {/* La tabla usa todo el ancho; planificar abre un panel lateral que se
+          superpone (antes ocupaba una columna fija de 340 px aunque no hubiera
+          nada elegido y la tabla quedaba con scroll horizontal). */}
+      {!busqueda.buscado ? (
+        <AvisoBuscar texto="Elegí rango de números o fechas (o dejá todo vacío para ver toda la mesa) y presioná Buscar." />
+      ) : (
         <div style={cardStyle}>
           <table style={tableStyle}>
             <thead>
-              {tab === 'asignar' ? (
-                <tr>
-                  <th style={{ ...thStyle, width: 32, paddingTop: 9, paddingBottom: 9, paddingLeft: 12, paddingRight: 0 }}>
+              <tr>
+                {tab === 'asignar' && (
+                  <th style={{ ...thStyle, width: 32, paddingRight: 0 }}>
                     <input
                       type="checkbox"
                       checked={allVisiblesSelected}
                       onChange={(e) => toggleSelAll(e.target.checked)}
                       style={checkboxStyle}
+                      title="Tildar todos los visibles"
                     />
                   </th>
-                  <th style={thStyle}>N° reclamo</th>
-                  <th style={thStyle}>Prio.</th>
-                  <th style={{ ...thStyle, minWidth: 150 }}>SLA</th>
-                  <th style={thStyle}>Tipo</th>
-                  <th style={thStyle}>Subárea</th>
-                  <th style={thStyle}>Ciudadano</th>
-                  <th style={{ ...thStyle, ...stickyTh }}>Acción</th>
-                </tr>
-              ) : (
-                <tr>
-                  <th style={thStyle}>N° reclamo</th>
-                  <th style={thStyle}>Estado</th>
-                  <th style={thStyle}>Prio.</th>
-                  <th style={{ ...thStyle, minWidth: 150 }}>SLA</th>
-                  <th style={thStyle}>Tipo</th>
-                  <th style={thStyle}>Subárea</th>
-                  <th style={thStyle}>Ciudadano</th>
-                  <th style={thStyle}>Asignado a</th>
-                  <th style={{ ...thStyle, ...stickyTh }}>Acción</th>
-                </tr>
-              )}
+                )}
+                <th style={thStyle} aria-sort={orden?.campo === 'nro' || orden?.campo === 'tipo' ? (orden.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                  <BotonOrden campo="nro" orden={orden} onOrdenar={alternar}>N°</BotonOrden>
+                  <span style={{ margin: '0 4px', opacity: 0.5 }}>·</span>
+                  <BotonOrden campo="tipo" orden={orden} onOrdenar={alternar}>Tipo</BotonOrden>
+                </th>
+                {tab === 'reasignar' && <ThOrden campo="estado" orden={orden} onOrdenar={alternar} style={thStyle}>Estado</ThOrden>}
+                <ThOrden campo="ciudadano" orden={orden} onOrdenar={alternar} style={thStyle}>Ciudadano</ThOrden>
+                <ThOrden campo="subarea" orden={orden} onOrdenar={alternar} style={thStyle}>Subárea</ThOrden>
+                <ThOrden campo="prioridad" orden={orden} onOrdenar={alternar} style={thStyle}>Prio.</ThOrden>
+                <ThOrden campo="sla" orden={orden} onOrdenar={alternar} style={thStyle}>SLA</ThOrden>
+                {tab === 'reasignar' && <ThOrden campo="asignado" orden={orden} onOrdenar={alternar} style={thStyle}>Asignado a</ThOrden>}
+                <th style={{ ...thStyle, textAlign: 'right' }}>Acción</th>
+              </tr>
             </thead>
             <tbody>
               {isLoading && (
@@ -300,26 +335,23 @@ export function SupervisorView() {
               {isError && (
                 <tr><td colSpan={9} style={emptyStyle}>Error: {(error as Error)?.message ?? 'desconocido'}</td></tr>
               )}
-              {!isLoading && !isError && filtrados.length === 0 && (
+              {!isLoading && !isError && ordenados.length === 0 && (
                 <tr><td colSpan={9} style={emptyStyle}>Sin reclamos en esta vista</td></tr>
               )}
-              {filtrados.map((r) => {
+              {ordenados.map((r) => {
                 const isSel = seleccionados.has(r.id_reclamo)
-                if (tab === 'asignar') {
-                  const isPlan = reclamoPlanificar?.id_reclamo === r.id_reclamo
-                  return (
-                    <tr
-                      key={r.id_reclamo}
-                      onClick={() => setReclamoPlanificar(r)}
-                      style={{
-                        cursor: 'pointer',
-                        background: isPlan ? '#ffe6da' : isSel ? '#fff1ea' : undefined,
-                      }}
-                    >
-                      <td
-                        style={{ ...tdStyle, width: 32, paddingTop: 10, paddingBottom: 10, paddingLeft: 12, paddingRight: 0 }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
+                const isPlan = tab === 'asignar' && reclamoPlanificar?.id_reclamo === r.id_reclamo
+                return (
+                  <tr
+                    key={r.id_reclamo}
+                    onClick={tab === 'asignar' ? () => setReclamoPlanificar(r) : undefined}
+                    style={{
+                      cursor: tab === 'asignar' ? 'pointer' : undefined,
+                      background: isPlan ? '#ffe6da' : isSel ? '#fff1ea' : undefined,
+                    }}
+                  >
+                    {tab === 'asignar' && (
+                      <td style={{ ...tdStyle, width: 32, paddingRight: 0 }} onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={isSel}
@@ -327,36 +359,24 @@ export function SupervisorView() {
                           style={checkboxStyle}
                         />
                       </td>
-                      <td style={{ ...tdStyle, ...monoStyle }}>{r.nro_reclamo ?? '—'}</td>
-                      <td style={tdStyle}><BadgePrioridad prioridad={r.prioridad} /></td>
-                      <td style={tdStyle}>
-                        <SLACell sla_vencimiento={r.sla_vencimiento} sla_dias={r.sla_dias} />
-                      </td>
-                      <td style={tdStyle}><Clamp2 title={r.tipo_nombre}>{r.tipo_nombre ?? '—'}</Clamp2></td>
-                      <td style={tdStyle}><Clamp2 title={r.subarea_nombre}>{r.subarea_nombre ?? '—'}</Clamp2></td>
-                      <td style={tdStyle}>{nombreCiudadano(r.ciudadano_apellido, r.ciudadano_nombre)}</td>
-                      <td style={{ ...tdStyle, ...stickyTd }} onClick={(e) => e.stopPropagation()}>
-                        <button onClick={() => setDrawerRow(r)} style={btnGhostSm}>Ver</button>
-                        <button onClick={() => setReclamoPlanificar(r)} style={{ ...btnPrimarySm, marginLeft: 4 }}>Planificar</button>
-                      </td>
-                    </tr>
-                  )
-                }
-                return (
-                  <tr key={r.id_reclamo}>
-                    <td style={{ ...tdStyle, ...monoStyle }}>{r.nro_reclamo ?? '—'}</td>
-                    <td style={tdStyle}><BadgeEstadoReclamo estado={r.estado} /></td>
+                    )}
+                    <td style={tdStyle}>
+                      <div style={monoStyle}>{r.nro_reclamo ?? '—'}</div>
+                      <Clamp2 title={r.tipo_nombre}>{r.tipo_nombre ?? '—'}</Clamp2>
+                    </td>
+                    {tab === 'reasignar' && <td style={tdStyle}><BadgeEstadoReclamo estado={r.estado} /></td>}
+                    <td style={tdStyle}><Clamp2>{nombreCiudadano(r.ciudadano_apellido, r.ciudadano_nombre)}</Clamp2></td>
+                    <td style={tdStyle}><Clamp2 title={r.subarea_nombre}>{r.subarea_nombre ?? '—'}</Clamp2></td>
                     <td style={tdStyle}><BadgePrioridad prioridad={r.prioridad} /></td>
                     <td style={tdStyle}>
-                      <SLACell sla_vencimiento={r.sla_vencimiento} sla_dias={r.sla_dias} />
+                      <SLACell sla_vencimiento={r.sla_vencimiento} sla_dias={r.sla_dias} compacto />
                     </td>
-                    <td style={tdStyle}><Clamp2 title={r.tipo_nombre}>{r.tipo_nombre ?? '—'}</Clamp2></td>
-                    <td style={tdStyle}><Clamp2 title={r.subarea_nombre}>{r.subarea_nombre ?? '—'}</Clamp2></td>
-                    <td style={tdStyle}>{nombreCiudadano(r.ciudadano_apellido, r.ciudadano_nombre)}</td>
-                    <td style={tdStyle}><AsignadoCell row={r} /></td>
-                    <td style={{ ...tdStyle, ...stickyTd }}>
-                      <button onClick={() => setDrawerRow(r)} style={btnGhostSm}>Ver</button>
-                      <button onClick={() => abrirReasignar(r)} style={{ ...btnWarnSm, marginLeft: 4 }}>Reasignar</button>
+                    {tab === 'reasignar' && <td style={tdStyle}><AsignadoCell row={r} /></td>}
+                    <td style={{ ...tdStyle, textAlign: 'right', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
+                      <button type="button" onClick={() => setDrawerRow(r)} style={btnGhostSm}>Ver</button>
+                      {tab === 'asignar'
+                        ? <button type="button" onClick={() => setReclamoPlanificar(r)} style={{ ...btnPrimarySm, marginLeft: 4 }}>Planificar</button>
+                        : <button type="button" onClick={() => abrirReasignar(r)} style={{ ...btnWarnSm, marginLeft: 4 }}>Reasignar</button>}
                     </td>
                   </tr>
                 )
@@ -364,15 +384,26 @@ export function SupervisorView() {
             </tbody>
           </table>
         </div>
-        )}
+      )}
 
-        {tab === 'asignar' && (
-          <PlanificadorOT
-            reclamo={reclamoPlanificar}
-            onDone={() => setReclamoPlanificar(null)}
-          />
-        )}
-      </div>
+      {/* Panel lateral de planificación: aparece solo con un reclamo elegido. */}
+      {tab === 'asignar' && reclamoPlanificar && (
+        <>
+          <div style={drawerFondoStyle} onClick={() => setReclamoPlanificar(null)} aria-hidden="true" />
+          <aside style={drawerStyle} role="dialog" aria-label="Planificar orden de trabajo">
+            <div style={drawerHeadStyle}>
+              <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.95rem' }}>Planificar OT</span>
+              <button type="button" onClick={() => setReclamoPlanificar(null)} style={drawerCerrarStyle} aria-label="Cerrar">
+                <X size={18} strokeWidth={1.5} />
+              </button>
+            </div>
+            <PlanificadorOT
+              reclamo={reclamoPlanificar}
+              onDone={() => setReclamoPlanificar(null)}
+            />
+          </aside>
+        </>
+      )}
 
       <AsignarModal
         open={modalAsignarReclamos.length > 0}
@@ -481,14 +512,31 @@ const cardStyle: React.CSSProperties = {
   minWidth: 0,
 }
 
-// Tab "Asignar": bandeja a la izquierda + panel de planificacion a la derecha.
-const layoutAsignarStyle: React.CSSProperties = {
-  display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 14, alignItems: 'start',
-}
-
+// Sin minWidth: las celdas parten en dos líneas (Clamp2) en vez de forzar
+// scroll horizontal; con pantallas muy angostas el card igual scrollea.
 const tableStyle: React.CSSProperties = {
   width: '100%', borderCollapse: 'separate', borderSpacing: 0,
-  fontSize: '0.84rem', minWidth: 980,
+  fontSize: '0.84rem', minWidth: 640,
+}
+
+// Panel lateral de planificación (se superpone a la tabla). z por encima del
+// topbar del shell dev (2000) para que el encabezado del panel no quede tapado.
+const drawerFondoStyle: React.CSSProperties = {
+  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.18)', zIndex: 2100,
+}
+const drawerStyle: React.CSSProperties = {
+  position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(400px, 100vw)',
+  background: 'var(--zaris-cream)', borderLeft: '1px solid var(--border-primary)',
+  boxShadow: '-8px 0 32px rgba(0,0,0,0.18)', zIndex: 2101,
+  overflowY: 'auto', padding: '12px 14px 24px',
+  display: 'flex', flexDirection: 'column', gap: 10,
+}
+const drawerHeadStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+}
+const drawerCerrarStyle: React.CSSProperties = {
+  background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--fg-2)',
+  padding: 4, borderRadius: 6, display: 'flex',
 }
 
 const thStyle: React.CSSProperties = {
@@ -501,17 +549,6 @@ const thStyle: React.CSSProperties = {
 const tdStyle: React.CSSProperties = {
   padding: '10px 12px', borderBottom: '1px solid var(--border-primary)',
   verticalAlign: 'middle', background: 'var(--surface-100)',
-}
-
-const stickyTh: React.CSSProperties = {
-  minWidth: 120, position: 'sticky', right: 0,
-  boxShadow: '-6px 0 8px -6px rgba(0,0,0,0.12)', zIndex: 1,
-}
-
-const stickyTd: React.CSSProperties = {
-  minWidth: 120, whiteSpace: 'nowrap',
-  position: 'sticky', right: 0,
-  boxShadow: '-6px 0 8px -6px rgba(0,0,0,0.12)', zIndex: 1,
 }
 
 const monoStyle: React.CSSProperties = {
@@ -536,9 +573,16 @@ const scopeChipStyle: React.CSSProperties = {
 }
 
 const selbarStyle: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
   background: 'var(--fg-1)', color: 'var(--surface-100)',
   borderRadius: 10, padding: '9px 16px', marginBottom: 10,
+}
+
+// Misma barra sin selección: tono suave, con la ayuda de cómo usarla.
+const selbarVacioStyle: React.CSSProperties = {
+  ...selbarStyle,
+  background: 'var(--surface-300)', color: 'var(--fg-2)',
+  border: '1px solid var(--border-primary)',
 }
 
 const btnBase: React.CSSProperties = {

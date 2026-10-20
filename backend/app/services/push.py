@@ -350,30 +350,57 @@ async def enviar_push_usuario(
 
 
 async def notificar_ot_asignada(id_ot: int) -> None:
-    """Push al agente asignado a una OT OPERATIVA (alta con agente, reasignacion).
-    Resuelve el usuario por agentes.id_usuario (regla 1:1 §39). Sin agente,
-    sin usuario vinculado, OT de auditoria o sin suscripcion: no-op.
-    Llamar POST-COMMIT, best-effort (cubre todas las vias de asignacion)."""
+    """Aviso de OT OPERATIVA asignada (alta, reasignacion, delegacion): fila en la
+    campana (`notificacion`, sin mail) + push a la app de agentes. Destinatarios:
+    el agente asignado o, si la OT es de un equipo sin agente, TODOS sus
+    integrantes activos con usuario — el destinatario final siempre es una
+    persona (César 2026-10-20; antes una OT de cuadrilla no avisaba a nadie).
+    OT de auditoria o sin destinatarios: no-op. Llamar POST-COMMIT, best-effort."""
     try:
         async with AsyncSessionLocal() as db:
             r = (await db.execute(text("""
-                SELECT ot.nro_ot, ot.es_auditoria, ag.id_usuario,
+                SELECT ot.nro_ot, ot.es_auditoria, ot.id_agente, ot.id_equipo,
+                       ot.id_municipio, eq.nombre AS equipo_nombre,
                        tr.nombre AS tipo_nombre, r.direccion, r.prioridad
                 FROM ordenes_trabajo ot
                 JOIN reclamos r ON r.id_reclamo = ot.id_reclamo
                 LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
-                LEFT JOIN agentes ag ON ag.id_agente = ot.id_agente AND ag.activo = TRUE
+                LEFT JOIN equipos eq ON eq.id_equipo = ot.id_equipo
                 WHERE ot.id_ot = :id AND ot.activo = TRUE
             """), {"id": id_ot})).mappings().first()
-        if not r or r["es_auditoria"] or not r["id_usuario"]:
-            return
-        titulo = f"Nueva orden de trabajo {r['nro_ot'] or ''}".strip()
-        partes = [p for p in (r["tipo_nombre"], r["direccion"]) if p]
-        cuerpo = " · ".join(partes) or "Te asignaron una orden de trabajo."
-        if r["prioridad"] == "Alta":
-            cuerpo = f"Prioridad alta. {cuerpo}"
-        await enviar_push_usuario(
-            int(r["id_usuario"]), titulo=titulo, cuerpo=cuerpo, url=f"/ot/{id_ot}"
-        )
+            if not r or r["es_auditoria"]:
+                return
+            usuarios = [int(x.id_usuario) for x in (await db.execute(text("""
+                SELECT DISTINCT a.id_usuario
+                FROM agentes a
+                JOIN usuarios u ON u.id_usuario = a.id_usuario AND u.activo = TRUE
+                WHERE a.activo = TRUE
+                  AND (a.id_agente = :ag
+                       OR (CAST(:ag AS integer) IS NULL AND a.id_agente IN (
+                             SELECT ea.id_agente FROM equipo_agentes ea
+                              WHERE ea.id_equipo = :eq AND ea.activo = TRUE)))
+            """), {"ag": r["id_agente"], "eq": r["id_equipo"]})).fetchall()]
+            if not usuarios:
+                logger.warning("notificar_ot_asignada(%s): sin destinatarios", id_ot)
+                return
+            titulo = f"Nueva orden de trabajo {r['nro_ot'] or ''}".strip()
+            partes = [p for p in (r["tipo_nombre"], r["direccion"]) if p]
+            cuerpo = " · ".join(partes) or "Te asignaron una orden de trabajo."
+            if r["id_agente"] is None and r["equipo_nombre"]:
+                cuerpo = f"Para tu cuadrilla {r['equipo_nombre']}. {cuerpo}"
+            if r["prioridad"] == "Alta":
+                cuerpo = f"Prioridad alta. {cuerpo}"
+            # Campana del backoffice y de la app de agentes (la app navega por
+            # recurso_tipo/recurso_id; el shell por url_destino).
+            for uid in usuarios:
+                await db.execute(text("""
+                    INSERT INTO notificacion (id_usuario, tipo, titulo, mensaje, url_destino,
+                                              recurso_tipo, recurso_id, id_municipio)
+                    VALUES (:uid, 'ot_asignada', :tit, :msg, '#/ot/agente', 'ot', :rid, :mun)
+                """), {"uid": uid, "tit": titulo, "msg": cuerpo, "rid": id_ot,
+                       "mun": r["id_municipio"]})
+            await db.commit()
+        for uid in usuarios:
+            await enviar_push_usuario(uid, titulo=titulo, cuerpo=cuerpo, url=f"/ot/{id_ot}")
     except Exception as e:  # noqa: BLE001
         logger.warning("notificar_ot_asignada(%s) fallo: %s", id_ot, e)

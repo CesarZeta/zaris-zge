@@ -375,6 +375,20 @@ async def catalogo_tipos(
 
 # ── GET /reclamos — listar con filtros ───────────────────────────────────────
 
+# Columnas por las que se puede ordenar el listado (lista cerrada: el valor va
+# interpolado en el ORDER BY, nunca el texto del query param).
+_ORDEN_LISTADO = {
+    "nro": "r.id_reclamo",
+    "fecha": "r.fecha_alta",
+    "estado": "r.estado",
+    "prioridad": "CASE r.prioridad WHEN 'Alta' THEN 1 WHEN 'Media' THEN 2 WHEN 'Baja' THEN 3 END",
+    "ciudadano": "lower(c.apellido || ' ' || c.nombre)",
+    "tipo": "lower(tr.nombre)",
+    "subarea": "lower(s.nombre)",
+    "area": "lower(a.nombre)",
+    "agente": "lower(u.nombre)",
+}
+
 @router.get("")
 async def listar_reclamos(
     estado: Optional[str] = Query(None),
@@ -387,6 +401,12 @@ async def listar_reclamos(
         description="Solo los pendientes de resolver (Sin asignar, En gestión, En espera, "
                     "En auditoría), del más antiguo al más nuevo. Se combina con los demás filtros.",
     ),
+    orden: Optional[str] = Query(
+        None,
+        description="Columna de orden: " + ", ".join(sorted(_ORDEN_LISTADO)) +
+                    ". Sin valor: fecha de alta (los pendientes, del más antiguo al más nuevo).",
+    ),
+    dir: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -394,7 +414,16 @@ async def listar_reclamos(
 ):
     conds = ["r.activo = TRUE"]
     params: dict = {}
-    orden = "r.fecha_alta ASC" if pendientes else "r.fecha_alta DESC"
+    # El orden se resuelve ACÁ y no en pantalla: el listado tiene tope (limit) y
+    # ordenar solo lo cargado escondería filas (2026-10-20: el reclamo del día
+    # quedaba en la fila 192 de «Ver pendientes» sin forma de traerlo arriba).
+    if orden:
+        if orden not in _ORDEN_LISTADO:
+            raise HTTPException(422, f"orden inválido: {orden}")
+        sentido = "DESC" if dir == "desc" else "ASC"
+        orden_sql = f"{_ORDEN_LISTADO[orden]} {sentido} NULLS LAST, r.id_reclamo {sentido}"
+    else:
+        orden_sql = "r.fecha_alta ASC" if pendientes else "r.fecha_alta DESC"
 
     # Supervisor (2) y Gestión (4): el backend fuerza la subárea de su agente
     # y pisa cualquier filtro que venga por query (Fase 3 roles).
@@ -453,7 +482,7 @@ async def listar_reclamos(
         LEFT JOIN area a ON a.id_area = s.id_area
         LEFT JOIN usuarios u ON u.id_usuario = r.id_agente_asignado
         WHERE {where}
-        ORDER BY {orden}
+        ORDER BY {orden_sql}
         LIMIT :limit OFFSET :offset
     """), params)
 

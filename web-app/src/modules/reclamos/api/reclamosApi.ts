@@ -14,6 +14,10 @@ import type {
 
 const BASE = '/api/v1/reclamos'
 
+/** Columnas ordenables del listado (espejo de `_ORDEN_LISTADO` en reclamos.py). */
+export type OrdenListadoReclamos =
+  | 'nro' | 'fecha' | 'estado' | 'prioridad' | 'ciudadano' | 'tipo' | 'subarea' | 'area' | 'agente'
+
 export const getStats = () =>
   api.get<StatsReclamos>(`${BASE}/stats`)
 
@@ -34,6 +38,9 @@ export const listarReclamos = (params: {
   texto?: string
   /** Solo pendientes de resolver, del más antiguo al más nuevo (backend `ESTADOS_PENDIENTES`). */
   pendientes?: boolean
+  /** Columna de orden (lista cerrada del backend `_ORDEN_LISTADO`) y sentido. */
+  orden?: OrdenListadoReclamos
+  dir?: 'asc' | 'desc'
   limit?: number
   offset?: number
 } = {}) =>

@@ -5,6 +5,13 @@ import { useAreasCatalogo, useSubareasCatalogo, useReclamosListado, type Filtros
 import { StatsBar } from '../components/StatsBar'
 import { Badge } from '../components/Badge'
 import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
+import { ThOrden, useOrden } from '../../../ui/orden'
+import type { OrdenListadoReclamos } from '../api/reclamosApi'
+
+const NOMBRE_ORDEN: Record<OrdenListadoReclamos, string> = {
+  nro: 'número', fecha: 'fecha', estado: 'estado', prioridad: 'prioridad', ciudadano: 'ciudadano',
+  tipo: 'tipo', subarea: 'subárea', area: 'área', agente: 'responsable',
+}
 
 const ESTADOS_VALIDOS = [
   'Sin asignar', 'En gestión', 'En espera', 'En auditoría', 'Resuelto', 'Auditado', 'Cancelado',
@@ -38,12 +45,17 @@ export function ListView() {
   const verPendientes = aplicado?.estado === PENDIENTES
   // Pendientes: «todos» hasta el máximo del backend; el resto del listado sigue en 200.
   const limite = verPendientes ? 500 : 200
+  // Orden por columna: lo resuelve el backend (el listado tiene tope). Viaja en
+  // la queryKey: tras la primera búsqueda, cambiar el orden vuelve a pedir.
+  const { orden, alternar } = useOrden<OrdenListadoReclamos>()
   const filtros: FiltrosReclamos = {
     estado: verPendientes ? undefined : (aplicado?.estado ?? undefined),
     pendientes: verPendientes || undefined,
     id_area: aplicado?.idArea ?? undefined,
     id_subarea: aplicado?.idSubarea ?? undefined,
     texto: aplicado?.texto.trim() || undefined,
+    orden: orden?.campo,
+    dir: orden?.dir,
     limit: limite,
   }
 
@@ -164,8 +176,11 @@ export function ListView() {
           {listado.isLoading
             ? 'Cargando reclamos...'
             : verPendientes
-              ? `${cantidad} reclamo${cantidad !== 1 ? 's' : ''} pendiente${cantidad !== 1 ? 's' : ''} de resolver · del más antiguo al más nuevo`
+              ? `${cantidad} reclamo${cantidad !== 1 ? 's' : ''} pendiente${cantidad !== 1 ? 's' : ''} de resolver`
               : `${cantidad} reclamo${cantidad !== 1 ? 's' : ''} encontrado${cantidad !== 1 ? 's' : ''}`}
+          {!listado.isLoading && (orden
+            ? ` · ordenados por ${NOMBRE_ORDEN[orden.campo]} (${orden.dir === 'asc' ? 'ascendente' : 'descendente'})`
+            : verPendientes ? ' · del más antiguo al más nuevo' : ' · del más nuevo al más antiguo')}
           {!listado.isLoading && cantidad === limite && (
             <> · se muestran los primeros {limite}: afiná con área, subárea o texto</>
           )}
@@ -189,13 +204,13 @@ export function ListView() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--size-ui)' }}>
             <thead>
               <tr style={{ background: 'var(--surface-200)' }}>
-                <Th>N° reclamo</Th>
-                <Th>Ciudadano</Th>
-                <Th>Tipo</Th>
-                <Th>Estado</Th>
-                <Th>Prioridad</Th>
-                <Th>Fecha</Th>
-                <Th>Responsable</Th>
+                <ThOrden campo="nro" orden={orden} onOrdenar={alternar} style={thStyle}>N° reclamo</ThOrden>
+                <ThOrden campo="ciudadano" orden={orden} onOrdenar={alternar} style={thStyle}>Ciudadano</ThOrden>
+                <ThOrden campo="tipo" orden={orden} onOrdenar={alternar} style={thStyle}>Tipo</ThOrden>
+                <ThOrden campo="estado" orden={orden} onOrdenar={alternar} style={thStyle}>Estado</ThOrden>
+                <ThOrden campo="prioridad" orden={orden} onOrdenar={alternar} style={thStyle}>Prioridad</ThOrden>
+                <ThOrden campo="fecha" orden={orden} onOrdenar={alternar} style={thStyle}>Fecha</ThOrden>
+                <ThOrden campo="agente" orden={orden} onOrdenar={alternar} style={thStyle}>Responsable</ThOrden>
               </tr>
             </thead>
             <tbody>
@@ -260,16 +275,10 @@ function formatFecha(iso: string): string {
   }
 }
 
-function Th({ children }: { children: React.ReactNode }) {
-  return (
-    <th style={{
-      padding: '10px 16px', textAlign: 'left', fontWeight: 600,
-      fontSize: 'var(--size-caption)', textTransform: 'uppercase',
-      letterSpacing: '0.05em', color: 'var(--fg-2)', whiteSpace: 'nowrap',
-    }}>
-      {children}
-    </th>
-  )
+const thStyle: React.CSSProperties = {
+  padding: '10px 16px', textAlign: 'left', fontWeight: 600,
+  fontSize: 'var(--size-caption)', textTransform: 'uppercase',
+  letterSpacing: '0.05em', color: 'var(--fg-2)', whiteSpace: 'nowrap',
 }
 
 function Td({ children, mono, style }: { children: React.ReactNode; mono?: boolean; style?: React.CSSProperties }) {
