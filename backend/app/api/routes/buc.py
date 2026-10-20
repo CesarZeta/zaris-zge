@@ -50,15 +50,18 @@ logger = logging.getLogger("zaris.buc")
 # ═══════════════════════════════════════════════════════════════
 
 # SELECT base que enriquece cada usuario con el nombre de su subárea (LEFT JOIN,
-# porque los usuarios externos / sin subárea tienen id_subarea NULL).
+# porque los usuarios externos / sin subárea tienen id_subarea NULL). La gestión
+# que se muestra es la del AGENTE 1:1 (fuente del scope, §3); la de la tabla
+# usuarios queda de respaldo para los externos sin agente (2026-10-21).
 _USUARIO_SELECT = """
     SELECT u.id_usuario, u.nombre, u.nivel_acceso, u.username, u.email, u.id_cargo,
            u.id_municipio, u.activo, u.cuil, u.buc_acceso,
-           u.id_subarea, s.nombre AS subarea_nombre, u.es_externo,
+           COALESCE(ag.id_subarea, u.id_subarea) AS id_subarea, s.nombre AS subarea_nombre, u.es_externo,
            u.debe_cambiar_password, u.id_ciudadano,
            u.fecha_alta, u.fecha_modif, u.fecha_ultimo_login
     FROM usuarios u
-    LEFT JOIN subarea s ON s.id_subarea = u.id_subarea
+    LEFT JOIN agentes ag ON ag.id_usuario = u.id_usuario AND ag.activo = TRUE
+    LEFT JOIN subarea s ON s.id_subarea = COALESCE(ag.id_subarea, u.id_subarea)
 """
 
 
@@ -257,6 +260,14 @@ async def modificar_usuario(
             UPDATE agentes SET id_subarea = :s, fecha_modificacion = NOW()
              WHERE id_usuario = :id AND activo = TRUE
         """), {"s": update_data["id_subarea"], "id": id})
+
+    # Email de contacto del agente = el de la cuenta, salvo que la persona tenga
+    # ficha en la BUC (ahí manda la ficha, services/cuenta_zaris.py). 2026-10-21.
+    if update_data.get("email") and usuario.id_ciudadano is None:
+        await db.execute(text("""
+            UPDATE agentes SET email = :e, fecha_modificacion = NOW()
+             WHERE id_usuario = :id AND activo = TRUE
+        """), {"e": update_data["email"], "id": id})
 
     # Politica de renovacion (mig 96): un reset de password por admin tambien
     # reinicia el reloj de vigencia. UPDATE crudo porque el modelo ORM puede no

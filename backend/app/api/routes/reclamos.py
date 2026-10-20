@@ -129,12 +129,10 @@ async def _validar_cierre_directo_sin_ot(db, id_reclamo: int, id_tipo_reclamo, c
             detail="El tipo de reclamo no tiene subárea asociada; no se puede validar el cierre directo.",
         )
 
-    # Subárea del usuario logueado.
-    ru = await db.execute(text(
-        "SELECT id_subarea, es_externo FROM usuarios WHERE id_usuario = :uid"
-    ), {"uid": current_user["id_usuario"]})
-    rur = ru.fetchone()
-    sub_usuario = rur.id_subarea if rur else None
+    # Subárea del usuario logueado: la de su AGENTE (regla 1:1 §3/§39), no
+    # usuarios.id_subarea, que estaba desalineada en 75/93 cuentas (2026-10-21).
+    perfil = await resolver_agente_desde_usuario(current_user["id_usuario"], db)
+    sub_usuario = perfil.get("id_subarea") if perfil else None
 
     if sub_usuario is None or sub_usuario != sub_tipo:
         raise HTTPException(
@@ -146,8 +144,8 @@ async def _validar_cierre_directo_sin_ot(db, id_reclamo: int, id_tipo_reclamo, c
 async def _require_misma_subarea(db, id_tipo_reclamo, current_user: dict, accion: str):
     """Impide el cierre cross-subárea por la vía manual del FSM.
 
-    Un usuario solo puede llevar un reclamo a 'Resuelto' si su
-    subárea (`usuarios.id_subarea`) coincide con la subárea del tipo de reclamo
+    Un usuario solo puede llevar un reclamo a 'Resuelto' si la subárea de su
+    agente (regla 1:1, §3) coincide con la subárea del tipo de reclamo
     (fuente única; `reclamos.id_subarea` puede ser NULL — §27). El admin
     (nivel 1) está exento (acceso total). El cierre vía OT no pasa por acá:
     el endpoint de OT actualiza `reclamos.estado` directamente, y el agente que
@@ -170,11 +168,8 @@ async def _require_misma_subarea(db, id_tipo_reclamo, current_user: dict, accion
             detail=f"El tipo de reclamo no tiene subárea asociada; no se puede validar el pase a '{accion}'.",
         )
 
-    ru = await db.execute(text(
-        "SELECT id_subarea FROM usuarios WHERE id_usuario = :uid"
-    ), {"uid": current_user["id_usuario"]})
-    rur = ru.fetchone()
-    sub_usuario = rur.id_subarea if rur else None
+    perfil = await resolver_agente_desde_usuario(current_user["id_usuario"], db)
+    sub_usuario = perfil.get("id_subarea") if perfil else None
 
     if sub_usuario is None or sub_usuario != sub_tipo:
         raise HTTPException(

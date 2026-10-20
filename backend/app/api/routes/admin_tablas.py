@@ -514,10 +514,19 @@ async def editar(
     )
     try:
         result = await db.execute(stmt, {**data, "__id": id})
-        await db.commit()
         row = result.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail=f"Registro {id} no encontrado en {tabla}")
+        if tabla == "agentes" and "id_subarea" in data:
+            # Una sola gestión por persona: la del agente (§3). Su usuario 1:1 la
+            # acompaña (lo lee el módulo Usuarios y las cuentas viejas). 2026-10-21.
+            await db.execute(text("""
+                UPDATE usuarios u SET id_subarea = a.id_subarea, fecha_modif = NOW()
+                  FROM agentes a
+                 WHERE a.id_agente = :id AND u.id_usuario = a.id_usuario
+                   AND u.id_subarea IS DISTINCT FROM a.id_subarea
+            """), {"id": id})
+        await db.commit()
         return _sanear(tabla, _row_to_dict(row, exclude), current_user)
     except HTTPException:
         raise
