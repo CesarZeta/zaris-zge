@@ -19,22 +19,33 @@ from app.api.routes.geo import localidad_desde_coords
 router = APIRouter(prefix="/api/v1/reclamos", tags=["Reclamos"])
 logger = logging.getLogger("zaris.reclamos")
 
-ESTADOS_VALIDOS = {"Sin asignar", "En gestión", "En espera", "En auditoría", "Resuelto", "Cancelado"}
+ESTADOS_VALIDOS = {"Sin asignar", "En gestión", "En espera", "En auditoría", "Resuelto", "Cancelado", "Auditado"}
+
+# Auditoría POSTERIOR al cierre (mig 112, PLAN_AUDITORIA_RECLAMOS.md): 'En auditoría'
+# es un reclamo Resuelto reabierto para que lo revise un auditor; 'Auditado' es el
+# cierre de esa revisión (aprobado | observado). Ninguno reabre la gestión: fecha_cierre
+# no cambia y los tiempos se miden hasta el primer cierre. Se entra por
+# POST /{id}/auditoria y se sale por PUT /ot/{id}/aprobar | /observar — nunca por /estado.
+ESTADOS_AUDITORIA = {"En auditoría", "Auditado"}
+# Estados que NO admiten gestión (editar, OT, subreclamo, aviso al supervisor).
+ESTADOS_CERRADOS = {"Resuelto", "Cancelado", "En auditoría", "Auditado"}
 
 # Grafo de transiciones permitidas del ciclo de vida del reclamo (CLAUDE.md §18).
-# Flujo nominal: Sin asignar -> En gestión -> En espera -> En auditoría -> Resuelto.
+# Flujo nominal: Sin asignar -> En gestión -> (En espera) -> Resuelto.
 # - "Cancelado" es alcanzable desde cualquier estado vivo (vía PUT /cancelar, no por acá,
 #   pero lo dejamos permitido para no romper si llega por /estado).
 # - "En gestión" <-> "En espera" es bidireccional: un reclamo en espera (subreclamo,
 #   insumos, etc.) puede volver a gestión cuando se desbloquea.
-# - "En auditoría" puede volver a "En gestión" si la auditoría rechaza y reabre.
-# - "Resuelto" y "Cancelado" son finales: no salen (se reabre creando OT/subreclamo, no
-#   por cambio directo de estado).
+# - "Resuelto" y "Cancelado" son finales para la gestión: no salen por acá (se reabre
+#   creando OT/subreclamo, no por cambio directo de estado). Desde 'Resuelto' solo se
+#   sale a 'En auditoría' por POST /{id}/auditoria (mig 112).
+# - "En auditoría" y "Auditado" no salen por /estado: la auditoría la cierra el auditor.
 TRANSICIONES_PERMITIDAS: dict[str, set[str]] = {
     "Sin asignar":  {"En gestión", "Cancelado"},
-    "En gestión":   {"En espera", "En auditoría", "Resuelto", "Cancelado"},
-    "En espera":    {"En gestión", "En auditoría", "Cancelado"},
-    "En auditoría": {"En gestión", "Resuelto", "Cancelado"},
+    "En gestión":   {"En espera", "Resuelto", "Cancelado"},
+    "En espera":    {"En gestión", "Cancelado"},
+    "En auditoría": set(),
+    "Auditado":     set(),
     "Resuelto":     set(),
     "Cancelado":    set(),
 }
@@ -129,9 +140,9 @@ async def _validar_cierre_directo_sin_ot(db, id_reclamo: int, id_tipo_reclamo, c
 
 
 async def _require_misma_subarea(db, id_tipo_reclamo, current_user: dict, accion: str):
-    """Impide el cierre/auditoría cross-subárea por la vía manual del FSM.
+    """Impide el cierre cross-subárea por la vía manual del FSM.
 
-    Un usuario solo puede llevar un reclamo a 'Resuelto'/'En auditoría' si su
+    Un usuario solo puede llevar un reclamo a 'Resuelto' si su
     subárea (`usuarios.id_subarea`) coincide con la subárea del tipo de reclamo
     (fuente única; `reclamos.id_subarea` puede ser NULL — §27). El admin
     (nivel 1) está exento (acceso total). El cierre vía OT no pasa por acá:
@@ -240,7 +251,7 @@ async def desbloquear_padre_si_corresponde(db: AsyncSession, id_hijo: int, id_us
     vivos = (await db.execute(text("""
         SELECT 1 FROM reclamos
         WHERE id_reclamo_padre = :id_padre AND activo = TRUE
-          AND estado NOT IN ('Resuelto', 'Cancelado')
+          AND estado NOT IN ('Resuelto', 'Cancelado', 'En auditoría', 'Auditado')
         LIMIT 1
     """), {"id_padre": id_padre})).fetchone()
     if vivos:
@@ -413,8 +424,9 @@ async def listar_reclamos(
         SELECT
             r.id_reclamo, r.nro_reclamo, r.prioridad, r.estado,
             r.descripcion, r.domicilio_reclamo, r.observaciones,
-            r.fecha_alta, r.fecha_modificacion,
+            r.fecha_alta, r.fecha_modificacion, r.fecha_cierre,
             r.id_reclamo_padre,
+            r.resultado_auditoria, r.id_reclamo_origen_auditoria,
             r.latitud, r.longitud,
             r.id_ciudadano, c.nombre AS ciudadano_nombre, c.apellido AS ciudadano_apellido, c.doc_nro,
             r.id_tipo_reclamo, tr.nombre AS tipo_nombre, tr.sla_dias, tr.audit AS tipo_audit,
@@ -450,6 +462,10 @@ async def obtener_reclamo(
             r.descripcion, r.domicilio_reclamo, r.direccion, r.observaciones,
             r.fecha_alta, r.fecha_modificacion,
             r.fecha_primer_asignacion, r.fecha_cierre, r.sla_vencimiento,
+            r.fecha_inicio_auditoria, r.fecha_fin_auditoria, r.resultado_auditoria,
+            r.id_reclamo_origen_auditoria, ro.nro_reclamo AS origen_auditoria_nro,
+            rt.id_reclamo AS retrabajo_auditoria_id, rt.nro_reclamo AS retrabajo_auditoria_nro,
+            rt.estado AS retrabajo_auditoria_estado,
             r.canal_origen, r.fuente_geolocalizacion,
             r.latitud, r.longitud,
             r.id_localidad, loc.nombre AS localidad_nombre,
@@ -478,6 +494,10 @@ async def obtener_reclamo(
         LEFT JOIN activos act ON act.id_activo = r.id_activo
         LEFT JOIN tipos_activo ta ON ta.id_tipo_activo = act.id_tipo_activo
         LEFT JOIN empresas emp ON emp.id_empresa = r.id_empresa
+        -- Auditoría posterior (mig 112): el reclamo auditado del que nace este
+        -- retrabajo, y el retrabajo que nació de la auditoría observada de este.
+        LEFT JOIN reclamos ro ON ro.id_reclamo = r.id_reclamo_origen_auditoria
+        LEFT JOIN reclamos rt ON rt.id_reclamo_origen_auditoria = r.id_reclamo AND rt.activo = TRUE
         WHERE r.id_reclamo = :id AND r.activo = TRUE
     """), {"id": id_reclamo})
     row = result.fetchone()
@@ -660,6 +680,12 @@ async def cambiar_estado(
     if nuevo_estado == "Cancelado":
         raise HTTPException(status_code=422,
             detail="Para cancelar un reclamo usá el endpoint dedicado (requiere motivo).")
+    # Auditoría posterior al cierre (mig 112): se entra por POST /{id}/auditoria y
+    # la cierra el auditor desde su mesa (aprobar/observar). Por /estado no.
+    if nuevo_estado in ESTADOS_AUDITORIA:
+        raise HTTPException(status_code=422,
+            detail="La auditoría no se maneja por cambio de estado: un supervisor envía "
+                   "el reclamo Resuelto a auditoría y el auditor la cierra desde su mesa.")
 
     estados_validos = await _estados_desde_db(db)
     if nuevo_estado not in estados_validos:
@@ -696,21 +722,21 @@ async def cambiar_estado(
                     f"{sorted(permitidos) if permitidos else 'ningún estado (es final)'}."
                 ),
             )
-        # Bloqueo de cierre/auditoría cross-subárea por la vía manual del FSM:
-        # un no-admin solo puede llevar el reclamo a un estado final/auditoría si
-        # su subárea coincide con la del tipo de reclamo. (El cierre vía OT no
-        # pasa por este endpoint — lo hace ordenes_trabajo.py directamente.)
-        if nuevo_estado in ("Resuelto", "En auditoría"):
+        # Bloqueo de cierre cross-subárea por la vía manual del FSM: un no-admin
+        # solo puede llevar el reclamo a Resuelto si su subárea coincide con la del
+        # tipo de reclamo. (El cierre vía OT no pasa por este endpoint — lo hace
+        # ordenes_trabajo.py directamente.)
+        if nuevo_estado == "Resuelto":
             await _require_misma_subarea(db, row.id_tipo_reclamo, current_user, nuevo_estado)
 
-    # #1 — Integridad referencial padre/hijo: no cerrar/auditar un reclamo padre
-    # si tiene subreclamos activos sin resolver. Solo aplica si NO es subreclamo.
-    if nuevo_estado in ("Resuelto", "En auditoría") and row.id_reclamo_padre is None:
+    # #1 — Integridad referencial padre/hijo: no cerrar un reclamo padre si tiene
+    # subreclamos activos sin resolver. Solo aplica si NO es subreclamo.
+    if nuevo_estado == "Resuelto" and row.id_reclamo_padre is None:
         hijos = await db.execute(text("""
             SELECT nro_reclamo, estado
             FROM reclamos
             WHERE id_reclamo_padre = :id AND activo = TRUE
-              AND estado NOT IN ('Resuelto', 'Cancelado')
+              AND estado NOT IN ('Resuelto', 'Cancelado', 'En auditoría', 'Auditado')
             ORDER BY id_reclamo
         """), {"id": id_reclamo})
         pendientes = hijos.fetchall()
@@ -732,7 +758,7 @@ async def cambiar_estado(
     es_final = nuevo_estado in ("Resuelto", "Cancelado")
     # fecha_primer_asignacion se setea la primera vez que el reclamo entra a
     # 'En gestión' (medición real del SLA de primera asignación, §22). El COALESCE
-    # evita pisarla si vuelve a 'En gestión' desde 'En espera'/'En auditoría'.
+    # evita pisarla si vuelve a 'En gestión' desde 'En espera'.
     es_primera_gestion = nuevo_estado == "En gestión"
     await db.execute(text("""
         UPDATE reclamos
@@ -778,6 +804,127 @@ async def cambiar_estado(
     return {"ok": True, "id_reclamo": id_reclamo, "estado": nuevo_estado}
 
 
+# ── POST /reclamos/{id}/auditoria — enviar un reclamo Resuelto a auditoría ───
+
+@router.post("/{id_reclamo}/auditoria", status_code=201,
+             responses={422: {"description": "El reclamo no está Resuelto o ya tiene una auditoría abierta"},
+                        403: {"description": "Requiere nivel Supervisor de la subárea del reclamo, o Administrador"}})
+async def enviar_a_auditoria(
+    id_reclamo: int,
+    body: Optional[dict] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Auditoría POSTERIOR al cierre (mig 112, PLAN_AUDITORIA_RECLAMOS.md).
+
+    Un supervisor de la subárea del reclamo (o un admin) elige un reclamo
+    'Resuelto' y lo manda a 'En auditoría': se crea una OT de auditoría que un
+    auditor habilitado toma desde su mesa, y el reclamo queda pendiente de él.
+    fecha_cierre NO cambia: la gestión ya terminó y los tiempos se miden hasta
+    ese primer cierre. El vecino no se entera (ni push ni encuesta): para él el
+    reclamo sigue 'Resuelto'.
+
+    Body opcional: `observaciones` (motivo del envío) e `id_agente_auditor`
+    (auditor puntual, `agentes.es_auditor`); sin este último la auditoría queda
+    libre para cualquier auditor habilitado (regla de subárea cruzada de la mesa).
+    """
+    _require_supervisor(current_user)
+    body = body or {}
+
+    r = (await db.execute(text("""
+        SELECT r.estado, r.nro_reclamo, tr.id_subarea
+        FROM reclamos r
+        LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
+        WHERE r.id_reclamo = :id AND r.activo = TRUE
+    """), {"id": id_reclamo})).fetchone()
+    if not r:
+        raise HTTPException(status_code=404, detail=f"Reclamo {id_reclamo} no encontrado")
+    if r.estado != "Resuelto":
+        raise HTTPException(status_code=422,
+            detail=f"Solo se envía a auditoría un reclamo 'Resuelto' (actual: {r.estado}).")
+
+    # Nivel 2: solo reclamos de su subárea. Fuente: agentes.id_subarea vía la
+    # regla 1:1 (§3), igual que las mesas de OT. Admin (1) sin restricción.
+    if current_user.get("nivel_acceso") == 2:
+        perfil = await resolver_agente_desde_usuario(current_user["id_usuario"], db)
+        sub_sup = perfil.get("id_subarea") if perfil else None
+        if not sub_sup:
+            raise HTTPException(status_code=403,
+                detail="Tu usuario supervisor no tiene una subárea asignada en su perfil "
+                       "de agente. Pedile a un administrador que la configure desde Maestros → Usuarios.")
+        if r.id_subarea != sub_sup:
+            raise HTTPException(status_code=403,
+                detail="El reclamo pertenece a otra subárea. Solo podés enviar a auditoría reclamos de tu subárea.")
+
+    # Una sola auditoría abierta por reclamo (el estado ya lo garantiza; el EXISTS
+    # cubre datos viejos del modelo anterior).
+    abierta = (await db.execute(text("""
+        SELECT 1 FROM ordenes_trabajo ot
+        JOIN estado_ot e ON e.id_estado_ot = ot.id_estado
+        WHERE ot.id_reclamo = :id AND ot.activo = TRUE AND ot.es_auditoria = TRUE
+          AND e.nombre NOT IN ('Terminada', 'Cancelada')
+        LIMIT 1
+    """), {"id": id_reclamo})).fetchone()
+    if abierta:
+        raise HTTPException(status_code=422, detail="El reclamo ya tiene una auditoría abierta.")
+
+    id_auditor = body.get("id_agente_auditor")
+    if id_auditor is not None:
+        ag = (await db.execute(text(
+            "SELECT es_auditor FROM agentes WHERE id_agente = :id AND activo = TRUE"
+        ), {"id": id_auditor})).fetchone()
+        if not ag or not ag.es_auditor:
+            raise HTTPException(status_code=422,
+                detail=f"El agente {id_auditor} no es un auditor habilitado (agentes.es_auditor).")
+
+    est = (await db.execute(text(
+        "SELECT id_estado_ot FROM estado_ot WHERE nombre = 'En gestión' AND activo = TRUE"
+    ))).fetchone()
+    if not est:
+        raise HTTPException(status_code=500, detail="Estado OT 'En gestión' no encontrado en BD")
+
+    # La OT operativa que cerró la gestión (si la hubo) queda como origen: la mesa
+    # del auditor muestra quién hizo el trabajo y sus observaciones.
+    ot_origen = (await db.execute(text("""
+        SELECT ot.id_ot FROM ordenes_trabajo ot
+        JOIN estado_ot e ON e.id_estado_ot = ot.id_estado
+        WHERE ot.id_reclamo = :id AND ot.activo = TRUE AND ot.es_auditoria = FALSE
+          AND e.nombre = 'Terminada'
+        ORDER BY ot.fecha_cierre DESC NULLS LAST, ot.id_ot DESC
+        LIMIT 1
+    """), {"id": id_reclamo})).fetchone()
+
+    observaciones = (body.get("observaciones") or "").strip() or None
+    uid = current_user["id_usuario"]
+    ot_row = (await db.execute(text("""
+        INSERT INTO ordenes_trabajo
+            (id_reclamo, id_estado, id_agente, es_auditoria, id_ot_origen, id_supervisor_asigna,
+             observaciones, activo, fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion)
+        VALUES (:id_r, :id_est, :id_ag, TRUE, :id_orig, :uid,
+                :obs, TRUE, NOW(), NOW(), :uid, :uid)
+        RETURNING id_ot, nro_ot
+    """), {"id_r": id_reclamo, "id_est": est.id_estado_ot, "id_ag": id_auditor,
+           "id_orig": ot_origen.id_ot if ot_origen else None, "uid": uid,
+           "obs": observaciones})).fetchone()
+
+    await db.execute(text("""
+        UPDATE reclamos
+        SET estado = 'En auditoría', fecha_inicio_auditoria = NOW(),
+            fecha_fin_auditoria = NULL, resultado_auditoria = NULL,
+            fecha_modificacion = NOW(), id_usuario_modificacion = :uid
+        WHERE id_reclamo = :id
+    """), {"id": id_reclamo, "uid": uid})
+
+    nro_ot = ot_row.nro_ot or f"OT-{ot_row.id_ot}"
+    await _insertar_historial(db, id_reclamo, "Enviado a auditoría",
+                               "Resuelto", "En auditoría",
+                               observaciones or f"Auditoría {nro_ot} creada", uid)
+    await db.commit()
+    # Sin push al vecino ni encuesta: la auditoría es interna (César, 2026-10-19).
+    return {"ok": True, "id_reclamo": id_reclamo, "estado": "En auditoría",
+            "id_ot": ot_row.id_ot, "nro_ot": nro_ot}
+
+
 # ── PUT /reclamos/{id} — editar (alcance según estado) ───────────────────────
 
 # Campos editables sólo cuando el reclamo está "Sin asignar" (alta corregible).
@@ -807,7 +954,7 @@ async def editar_reclamo(
     row = r.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail=f"Reclamo {id_reclamo} no encontrado")
-    if row.estado in ("Resuelto", "Cancelado"):
+    if row.estado in ESTADOS_CERRADOS:
         raise HTTPException(status_code=422,
             detail=f"No se puede editar un reclamo cerrado (actual: {row.estado})")
 
@@ -899,6 +1046,10 @@ async def cancelar_reclamo(
         raise HTTPException(status_code=404, detail=f"Reclamo {id_reclamo} no encontrado")
     if row.estado == "Cancelado":
         raise HTTPException(status_code=422, detail="El reclamo ya está cancelado")
+    if row.estado in ESTADOS_AUDITORIA:
+        raise HTTPException(status_code=422,
+            detail=f"El reclamo está {row.estado}: la gestión ya cerró y la auditoría "
+                   "la resuelve el auditor desde su mesa (no se cancela).")
 
     # Integridad padre/hijo (REC-001): no cancelar un reclamo padre si tiene
     # subreclamos activos sin resolver — quedarían huérfanos vivos (el cancelar
@@ -909,7 +1060,7 @@ async def cancelar_reclamo(
             SELECT nro_reclamo, estado
             FROM reclamos
             WHERE id_reclamo_padre = :id AND activo = TRUE
-              AND estado NOT IN ('Resuelto', 'Cancelado')
+              AND estado NOT IN ('Resuelto', 'Cancelado', 'En auditoría', 'Auditado')
             ORDER BY id_reclamo
         """), {"id": id_reclamo})
         pendientes = hijos.fetchall()
@@ -1016,7 +1167,7 @@ async def avisar_supervisor(
     ), {"id": id_reclamo})).fetchone()
     if not r:
         raise HTTPException(404, f"Reclamo {id_reclamo} no encontrado")
-    if r.estado in ("Resuelto", "Cancelado"):
+    if r.estado in ESTADOS_CERRADOS:
         raise HTTPException(422, f"El reclamo está {r.estado}; no admite avisos")
 
     # Anti-spam: un aviso por usuario+reclamo cada 30 minutos.
@@ -1069,7 +1220,7 @@ async def crear_subreclamo(
         raise HTTPException(status_code=404, detail=f"Reclamo {id_reclamo} no encontrado")
     if padre.id_reclamo_padre is not None:
         raise HTTPException(status_code=422, detail="No se permite anidar subreclamos (el padre ya es un subreclamo)")
-    if padre.estado in ("Cancelado", "Resuelto"):
+    if padre.estado in ESTADOS_CERRADOS:
         raise HTTPException(status_code=422, detail=f"No se puede subreclamo a un reclamo en estado {padre.estado}")
 
     for f in ["descripcion", "id_tipo_reclamo"]:
@@ -1169,7 +1320,7 @@ async def crear_subreclamo(
         await db.execute(text("""
             UPDATE reclamos SET estado = 'En espera', fecha_modificacion = NOW(),
                 id_usuario_modificacion = :uid
-            WHERE id_reclamo = :id AND estado NOT IN ('Cancelado','Resuelto')
+            WHERE id_reclamo = :id AND estado NOT IN ('Cancelado','Resuelto','En auditoría','Auditado')
         """), {"id": id_reclamo, "uid": current_user["id_usuario"]})
 
         # Poner OTs activas del padre En espera

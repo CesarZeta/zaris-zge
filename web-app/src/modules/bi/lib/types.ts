@@ -122,7 +122,6 @@ export interface PendientesPorMesItem {
   sin_asignar: number
   en_gestion: number
   en_espera: number
-  en_auditoria: number
   total: number
 }
 

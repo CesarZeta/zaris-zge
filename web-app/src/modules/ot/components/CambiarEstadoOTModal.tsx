@@ -53,9 +53,7 @@ export function CambiarEstadoOTModal({ open, ot, onClose, onSuccess }: Props) {
       push({
         kind: 'success',
         title: isTerminada ? 'OT cerrada' : `OT actualizada a "${estadoNuevo}"`,
-        body: isTerminada && ot.tipo_audit
-          ? 'El reclamo pasa a auditoría y se generó una OT de auditoría.'
-          : undefined,
+        body: isTerminada ? 'El reclamo queda Resuelto.' : undefined,
       })
       onSuccess?.()
       onClose()
@@ -88,14 +86,11 @@ export function CambiarEstadoOTModal({ open, ot, onClose, onSuccess }: Props) {
           Estado actual: <strong style={{ color: 'var(--fg-1)' }}>{ot.estado_nombre}</strong>
         </div>
 
-        {isTerminada && ot.tipo_audit && (
+        {/* Mig 112: la auditoría es posterior al cierre y la pide la supervisión; terminar la OT siempre resuelve. */}
+        {isTerminada && (
           <div style={warnBox}>
-            Al marcar <strong>Terminada</strong> el reclamo pasa a <strong>En auditoría</strong> y se crea automáticamente una OT de auditoría.
-          </div>
-        )}
-        {isTerminada && !ot.tipo_audit && (
-          <div style={warnBox}>
-            Al marcar <strong>Terminada</strong> el reclamo pasa directo a <strong>Resuelto</strong> (sin auditoría).
+            Al marcar <strong>Terminada</strong> el reclamo pasa a <strong>Resuelto</strong> (fin de la gestión).
+            Si corresponde auditarlo, la supervisión lo envía a auditoría después, desde la ficha del reclamo.
           </div>
         )}
 

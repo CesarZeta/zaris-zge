@@ -6,6 +6,7 @@ import {
   crearReclamo,
   crearSubreclamo,
   editarReclamo,
+  enviarAuditoria,
   getCatalogoAreas,
   getCatalogoSubareas,
   getCatalogoTipos,
@@ -133,6 +134,20 @@ export function useCancelarReclamo(id: number | null) {
       cancelarReclamo(id as number, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['reclamos'] })
+    },
+  })
+}
+
+// Auditoría posterior al cierre (mig 112): el reclamo cambia de estado y nace
+// una OT de auditoría → invalida reclamos (detalle/listado/stats) y mesas de OT.
+export function useEnviarAuditoria(id: number | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { observaciones?: string; id_agente_auditor?: number | null }) =>
+      enviarAuditoria(id as number, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['reclamos'] })
+      qc.invalidateQueries({ queryKey: ['ot'] })
     },
   })
 }

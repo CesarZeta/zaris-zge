@@ -8,6 +8,7 @@ import { Badge } from '../components/Badge'
 import { AvisarSupervisorModal } from '../components/AvisarSupervisorModal'
 import { CambiarEstadoModal } from '../components/CambiarEstadoModal'
 import { CancelarReclamoModal } from '../components/CancelarReclamoModal'
+import { EnviarAuditoriaModal } from '../components/EnviarAuditoriaModal'
 import { SubreclamoModal } from '../components/SubreclamoModal'
 import { UploadAdjuntosPanel } from '../components/UploadAdjuntosPanel'
 import { ConfirmModal } from '../../agenda/components/ConfirmModal'
@@ -19,6 +20,16 @@ const FUENTE_LABEL: Record<string, string> = {
   geocoding_osm: 'Sugerencia OpenStreetMap',
   gps_dispositivo: 'GPS del dispositivo',
   activo_referenciado: 'Activo referenciado',
+}
+
+const RESULTADO_AUDITORIA_LABEL: Record<string, string> = {
+  aprobado: 'Aprobada',
+  observado: 'Observada (con retrabajo)',
+}
+
+const linkStyle: React.CSSProperties = {
+  color: 'var(--zaris-orange)', fontWeight: 600, textDecoration: 'none',
+  fontFamily: 'var(--font-mono)',
 }
 
 const CANAL_LABEL: Record<string, string> = {
@@ -36,6 +47,7 @@ export function DetailView() {
   const [openCancelar, setOpenCancelar] = useState(false)
   const [openSubreclamo, setOpenSubreclamo] = useState(false)
   const [openAviso, setOpenAviso] = useState(false)
+  const [openAuditoria, setOpenAuditoria] = useState(false)
 
   if (detalle.isLoading) {
     return <div style={{ color: 'var(--fg-3)', padding: 20 }}>Cargando reclamo...</div>
@@ -46,7 +58,13 @@ export function DetailView() {
   if (!detalle.data) return null
 
   const r = detalle.data
-  const esFinal = r.estado === 'Resuelto' || r.estado === 'Cancelado'
+  // Cerrado para la gestión: Resuelto/Cancelado y también los estados de la
+  // auditoría posterior (mig 112): 'En auditoría' (pendiente del auditor) y
+  // 'Auditado'. El backend rechaza editar/OT/subreclamo/cancelar/avisar en los 4.
+  const esFinal = ['Resuelto', 'Cancelado', 'En auditoría', 'Auditado'].includes(r.estado)
+  // Enviar a auditoría: solo un reclamo Resuelto, por Supervisión (el backend
+  // exige además que el supervisor sea de la subárea del reclamo; admin exento).
+  const puedeEnviarAuditoria = r.estado === 'Resuelto' && !!user && user.nivel_acceso <= 2
   // Dos niveles de permiso (CLAUDE.md §30):
   //  - EDITAR datos/observaciones: Atención (operador, nivel ≤ 3). El operador
   //    genera y consulta reclamos, corrige datos y toma nota.
@@ -80,6 +98,10 @@ export function DetailView() {
           {/* Cambiar estado / cancelar / subreclamo: solo Supervisión (nivel ≤ 2). */}
           {accionesEstadoVisibles && (
             <button onClick={() => setOpenEstado(true)} style={btnPrimary}>Cambiar estado</button>
+          )}
+          {/* Auditoría posterior al cierre (mig 112): reabre un Resuelto para el auditor. */}
+          {puedeEnviarAuditoria && (
+            <button onClick={() => setOpenAuditoria(true)} style={btnPrimary}>Enviar a auditoría</button>
           )}
           {/* El operador (nivel 3) pide la gestión vía aviso al supervisor. */}
           {avisoVisible && (
@@ -116,6 +138,13 @@ export function DetailView() {
         onClose={() => setOpenCancelar(false)}
         onSuccess={() => { setOpenCancelar(false); detalle.refetch() }}
       />
+      <EnviarAuditoriaModal
+        open={openAuditoria}
+        idReclamo={r.id_reclamo}
+        nroReclamo={r.nro_reclamo}
+        onClose={() => setOpenAuditoria(false)}
+        onSuccess={() => { setOpenAuditoria(false); detalle.refetch() }}
+      />
       <SubreclamoModal
         open={openSubreclamo}
         idReclamo={r.id_reclamo}
@@ -151,6 +180,46 @@ export function DetailView() {
               ? <Cell label="Primera asignación" mono>{formatFecha(r.fecha_primer_asignacion)}</Cell>
               : <span />}
         </Grid>
+        {/* Auditoría posterior al cierre (mig 112): fechas, resultado y vínculos. */}
+        {(r.fecha_inicio_auditoria || r.id_reclamo_origen_auditoria) && (
+          <Grid cols="repeat(3, 1fr)">
+            {r.fecha_inicio_auditoria && (
+              <Cell label="Auditoría" mono>
+                {formatFecha(r.fecha_inicio_auditoria)}
+                {r.fecha_fin_auditoria ? ` → ${formatFecha(r.fecha_fin_auditoria)}` : ' · pendiente'}
+              </Cell>
+            )}
+            {r.fecha_inicio_auditoria && (
+              <Cell label="Resultado de auditoría">
+                {RESULTADO_AUDITORIA_LABEL[r.resultado_auditoria ?? ''] ?? 'Pendiente del auditor'}
+              </Cell>
+            )}
+            {r.retrabajo_auditoria_id && (
+              <Cell label="Retrabajo generado">
+                <a
+                  href={`#/reclamos/${r.retrabajo_auditoria_id}`}
+                  onClick={(e) => { e.preventDefault(); navigate(`/reclamos/${r.retrabajo_auditoria_id}`) }}
+                  style={linkStyle}
+                >
+                  {r.retrabajo_auditoria_nro ?? `#${r.retrabajo_auditoria_id}`}
+                </a>
+                {r.retrabajo_auditoria_estado ? ` · ${r.retrabajo_auditoria_estado}` : ''}
+              </Cell>
+            )}
+            {r.id_reclamo_origen_auditoria && (
+              <Cell label="Retrabajo de">
+                <a
+                  href={`#/reclamos/${r.id_reclamo_origen_auditoria}`}
+                  onClick={(e) => { e.preventDefault(); navigate(`/reclamos/${r.id_reclamo_origen_auditoria}`) }}
+                  style={linkStyle}
+                >
+                  {r.origen_auditoria_nro ?? `#${r.id_reclamo_origen_auditoria}`}
+                </a>
+                {' '}(auditoría observada)
+              </Cell>
+            )}
+          </Grid>
+        )}
       </ReclamoSection>
 
       <ReclamoSection title="Ciudadano">
@@ -524,7 +593,7 @@ function Cell({ label, mono, children }: { label: string; mono?: boolean; childr
 const badgeAudit: React.CSSProperties = {
   fontSize: 10, fontWeight: 600, padding: '2px 8px',
   borderRadius: 'var(--radius-pill)',
-  background: 'rgba(96,165,200,.14)', color: '#3b82a8',
+  background: 'rgba(106,27,154,.12)', color: '#6a1b9a',
   textTransform: 'uppercase', letterSpacing: '0.04em',
 }
 

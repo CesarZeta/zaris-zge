@@ -46,7 +46,7 @@ EXT_POR_MIME = {
 }
 MAX_BYTES = 10 * 1024 * 1024  # 10 MB (= límite del bucket reclamos-adjuntos)
 ADJUNTOS_MAX_POR_RECLAMO = 5
-ESTADOS_FINALES = ("Resuelto", "Cancelado")
+ESTADOS_FINALES = ("Resuelto", "Cancelado", "En auditoría", "Auditado")  # mig 112: auditoría = cerrado para el vecino
 
 
 def _safe_filename(nombre: str) -> str:
@@ -60,6 +60,7 @@ async def _reclamo_propio(db: AsyncSession, id_reclamo: int, id_ciudadano: int):
     r = await db.execute(text("""
         SELECT id_reclamo, estado FROM reclamos
         WHERE id_reclamo = :id AND activo = TRUE AND id_ciudadano = :id_c
+          AND id_reclamo_origen_auditoria IS NULL
     """), {"id": id_reclamo, "id_c": id_ciudadano})
     row = r.fetchone()
     if not row:

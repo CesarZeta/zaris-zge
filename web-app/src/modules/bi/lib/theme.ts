@@ -9,7 +9,8 @@ export const COLOR_ESTADO: Record<string, string> = {
   'Resuelto': '#1f8a65',       // verde teal (success del DS)
   'En gestión': '#2f7fd1',     // azul
   'En espera': '#f57f17',      // amarillo/ámbar
-  'En auditoría': '#6a1b9a',   // violeta
+  'En auditoría': '#6a1b9a',   // violeta: resuelto, pendiente del auditor (mig 112)
+  'Auditado': '#00695c',       // teal oscuro: auditoría cerrada (mig 112)
   'Sin asignar': '#c62828',    // rojo
   'Cancelado': '#9e9e9e',      // gris
 }

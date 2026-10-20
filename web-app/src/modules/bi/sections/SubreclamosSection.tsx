@@ -73,6 +73,7 @@ export function SubreclamosSection({ filtros }: { filtros: BiFiltros }) {
           { key: 'en_espera', name: 'En espera', color: colorEstado('En espera') },
           { key: 'en_auditoria', name: 'En auditoría', color: colorEstado('En auditoría') },
           { key: 'resuelto', name: 'Resuelto', color: colorEstado('Resuelto') },
+          { key: 'auditado', name: 'Auditado', color: colorEstado('Auditado') },
           { key: 'cancelado', name: 'Cancelado', color: colorEstado('Cancelado') },
         ]}
         fetchMensual={(f) => biApi.subreclamosMensual(f)}

@@ -7,7 +7,7 @@ import { Badge } from '../components/Badge'
 import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
 
 const ESTADOS_VALIDOS = [
-  'Sin asignar', 'En gestión', 'En espera', 'En auditoría', 'Resuelto', 'Cancelado',
+  'Sin asignar', 'En gestión', 'En espera', 'En auditoría', 'Resuelto', 'Auditado', 'Cancelado',
 ] as const
 
 // Filtros que viajan al backend (§23): se editan en el `borrador` y se aplican

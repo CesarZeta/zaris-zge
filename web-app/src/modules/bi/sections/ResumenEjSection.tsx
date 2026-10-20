@@ -7,6 +7,13 @@ import { useEjCierresPorEstado, useEjMatriz, useEjScore } from '../hooks/useBi'
 import { periodoEnLetras } from '../lib/periodo'
 import type { BiFiltros, EjFilaBase } from '../lib/types'
 
+// Cierres por estado de auditoría (mig 112): mismos colores que COLOR_ESTADO del BI.
+const COLOR_CIERRE: Record<string, string> = {
+  Cumplido: '#1f8a65',
+  'En auditoría': '#6a1b9a',
+  Auditado: '#00695c',
+}
+
 // Sección RESUMEN del tablero Ejecutivo (VL "Resumen de incidentes del mes"):
 // score del período (% cierre / % SLA / % satisfacción), niveles de
 // satisfacción y la matriz subárea → tipo expandible.
@@ -227,7 +234,7 @@ export function ResumenEjSection({ filtros }: { filtros: BiFiltros }) {
             )}
           </ChartCard>
 
-          {/* Cierres por estado (Cumplido vs Auditado). */}
+          {/* Cierres por estado de auditoría (mig 112): Cumplido / En auditoría / Auditado. */}
           <ChartCard title="Cierres por estado" height={300}>
             {cierres.isLoading ? (
               <CenterMsg>Cargando…</CenterMsg>
@@ -239,7 +246,7 @@ export function ResumenEjSection({ filtros }: { filtros: BiFiltros }) {
                   <Pie data={cierres.data} dataKey="total" nameKey="estado" innerRadius="50%" outerRadius="78%" paddingAngle={2} label={pieLabel} labelLine={false}>
                     <Label content={DonaCentro} position="center" value={totalCierres} />
                     {(cierres.data ?? []).map((c) => (
-                      <Cell key={c.estado} fill={c.estado === 'Auditado' ? '#6a1b9a' : '#1f8a65'} />
+                      <Cell key={c.estado} fill={COLOR_CIERRE[c.estado] ?? '#1f8a65'} />
                     ))}
                   </Pie>
                   <Tooltip contentStyle={tooltipStyle} />

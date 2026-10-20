@@ -87,5 +87,11 @@ export const cambiarEstadoOT = (id_ot: number, body: CambiarEstadoOTBody) =>
 export const aprobarOT = (id_ot: number, observaciones: string) =>
   api.put<{ ok: boolean; id_ot: number; resultado: 'aprobada' }>(`${BASE}/${id_ot}/aprobar`, { observaciones })
 
-export const rechazarOT = (id_ot: number, observaciones: string) =>
-  api.put<{ ok: boolean; id_ot: number; resultado: 'rechazada' }>(`${BASE}/${id_ot}/rechazar`, { observaciones })
+// Auditoría observada (mig 112): el reclamo queda Auditado/observado y nace un
+// reclamo NUEVO de oficio para el retrabajo (antes era /rechazar → En gestión).
+export const observarOT = (id_ot: number, observaciones: string) =>
+  api.put<{
+    ok: boolean; id_ot: number; resultado: 'observada'
+    id_reclamo: number; estado_reclamo: string
+    id_reclamo_retrabajo: number; nro_reclamo_retrabajo: string | null
+  }>(`${BASE}/${id_ot}/observar`, { observaciones })

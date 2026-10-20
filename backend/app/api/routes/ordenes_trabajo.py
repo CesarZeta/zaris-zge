@@ -367,14 +367,15 @@ async def mesa_supervisor(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """Vista del supervisor: reclamos activos (Sin asignar, En gestión, En espera, En auditoría)."""
+    """Vista del supervisor: reclamos en gestión (Sin asignar, En gestión, En espera).
+    'En auditoría' y 'Auditado' (mig 112) ya cerraron la gestión: no se asignan."""
     _require_supervisor(current_user)
     # Nivel 2: la subárea del supervisor pisa cualquier query param (Fase 3 roles).
     # Nivel 1 (admin) sigue filtrando libre.
     sub_forzada = await _subarea_forzada_supervisor(db, current_user)
     if sub_forzada is not None:
         id_subarea = sub_forzada
-    conds = ["r.activo = TRUE", "r.estado NOT IN ('Resuelto','Cancelado')"]
+    conds = ["r.activo = TRUE", "r.estado NOT IN ('Resuelto','Cancelado','En auditoría','Auditado')"]
     params: dict = {}
     if id_subarea:
         # Subarea fuente unica: tr.id_subarea derivada del tipo (§27). r.id_subarea
@@ -595,6 +596,8 @@ async def mesa_auditoria(
             r.descripcion AS reclamo_descripcion,
             r.id_subarea, s.nombre AS subarea_nombre,
             r.sla_vencimiento,
+            r.estado AS reclamo_estado, r.fecha_cierre AS reclamo_fecha_cierre,
+            r.fecha_inicio_auditoria,
             tr.nombre AS tipo_nombre, tr.sla_dias,
             ot.id_agente, ag.nombre AS agente_nombre, ag.apellido AS agente_apellido,
             c.nombre AS ciudadano_nombre, c.apellido AS ciudadano_apellido,
@@ -692,6 +695,8 @@ async def mesa_auditor_me(
             r.descripcion AS reclamo_descripcion,
             r.id_subarea, s.nombre AS subarea_nombre,
             r.sla_vencimiento,
+            r.estado AS reclamo_estado, r.fecha_cierre AS reclamo_fecha_cierre,
+            r.fecha_inicio_auditoria,
             tr.nombre AS tipo_nombre, tr.sla_dias,
             ot.id_agente, ag.nombre AS agente_nombre, ag.apellido AS agente_apellido,
             c.nombre AS ciudadano_nombre, c.apellido AS ciudadano_apellido,
@@ -835,7 +840,7 @@ async def crear_ot_con_agenda(
     ), {"id": id_reclamo})).fetchone()
     if not r:
         raise HTTPException(404, f"Reclamo {id_reclamo} no encontrado")
-    if r.estado in ("Cancelado", "Resuelto"):
+    if r.estado in ("Cancelado", "Resuelto", "En auditoría", "Auditado"):
         raise HTTPException(422, f"No se puede asignar OT a un reclamo {r.estado}")
 
     id_estado_en_gestion = await _id_estado_ot(db, "En gestión")
@@ -1007,6 +1012,8 @@ async def obtener_ot(
             eot.nombre AS estado_nombre, eot.color AS estado_color,
             ot.id_reclamo, r.nro_reclamo, r.descripcion AS reclamo_descripcion,
             r.estado AS reclamo_estado, r.prioridad AS reclamo_prioridad,
+            r.fecha_cierre AS reclamo_fecha_cierre, r.fecha_inicio_auditoria,
+            r.resultado_auditoria AS reclamo_resultado_auditoria,
             r.id_tipo_reclamo, tr.nombre AS tipo_nombre, tr.sla_dias, tr.audit AS tipo_audit,
             ot.id_agente, ag.nombre AS agente_nombre, ag.apellido AS agente_apellido,
             ot.id_equipo, eq.nombre AS equipo_nombre,
@@ -1049,7 +1056,7 @@ async def crear_ot(
     reclamo = r.fetchone()
     if not reclamo:
         raise HTTPException(status_code=404, detail=f"Reclamo {id_reclamo} no encontrado")
-    if reclamo.estado in ("Cancelado", "Resuelto"):
+    if reclamo.estado in ("Cancelado", "Resuelto", "En auditoría", "Auditado"):
         raise HTTPException(status_code=422, detail=f"No se puede asignar OT a un reclamo {reclamo.estado}")
 
     await _validar_scope_supervisor_ot(db, current_user, id_reclamo=id_reclamo,
@@ -1301,10 +1308,28 @@ async def cambiar_estado_ot(
                 ),
             )
 
+    # Auditoría posterior (mig 112): la OT de auditoría se cierra desde la mesa
+    # del auditor (/aprobar, /observar), que es quien deja el reclamo 'Auditado'.
+    # Terminarla por acá dejaría el reclamo colgado en 'En auditoría'.
+    if ot.es_auditoria:
+        if nuevo_estado == "Terminada":
+            raise HTTPException(status_code=422,
+                detail="Una auditoría se cierra desde la mesa del auditor (aprobar u observar), "
+                       "no por cambio de estado.")
+        # Mover/cancelar una auditoría: supervisión, o el auditor que la tiene asignada.
+        if current_user.get("nivel_acceso", 99) > 2:
+            mi_agente = await _resolver_id_agente_por_usuario(db, current_user["id_usuario"])
+            ot_ag = (await db.execute(text(
+                "SELECT id_agente FROM ordenes_trabajo WHERE id_ot = :id"
+            ), {"id": id_ot})).fetchone()
+            if mi_agente is None or ot_ag is None or ot_ag.id_agente != mi_agente:
+                raise HTTPException(status_code=403,
+                    detail="Solo supervisión o el auditor asignado pueden mover esta auditoría.")
+
     observaciones = body.get("observaciones", "")
 
     try:
-        cierre_sql = ", fecha_cierre = NOW()" if nuevo_estado == "Terminada" else ""
+        cierre_sql = ", fecha_cierre = NOW()" if nuevo_estado in ("Terminada", "Cancelada") else ""
         await db.execute(text(f"""
             UPDATE ordenes_trabajo
             SET id_estado = :id_est, fecha_modificacion = NOW(),
@@ -1316,15 +1341,27 @@ async def cambiar_estado_ot(
 
         if nuevo_estado == "Terminada" and not ot.es_auditoria:
             await _post_cierre_ot_operativa(db, id_ot, ot, current_user["id_usuario"])
+        if nuevo_estado == "Cancelada" and ot.es_auditoria and ot.reclamo_estado == "En auditoría":
+            # Auditoría cancelada: el reclamo vuelve a su cierre de gestión. Sin
+            # push ni encuesta (el vecino nunca dejó de verlo 'Resuelto').
+            await db.execute(text("""
+                UPDATE reclamos
+                SET estado = 'Resuelto', fecha_inicio_auditoria = NULL,
+                    fecha_fin_auditoria = NULL, resultado_auditoria = NULL,
+                    fecha_modificacion = NOW(), id_usuario_modificacion = :uid
+                WHERE id_reclamo = :id
+            """), {"id": ot.id_reclamo, "uid": current_user["id_usuario"]})
+            await _insertar_historial_reclamo(db, ot.id_reclamo, "Auditoría cancelada",
+                                               "En auditoría", "Resuelto",
+                                               observaciones or "Auditoría cancelada sin resultado",
+                                               current_user["id_usuario"])
 
         await db.commit()
 
-        # Hook encuestas tras el commit. Solo si el cierre operativo resolvió el
-        # reclamo (no si pasó a 'En auditoría' por audit=true — el service lo filtra).
+        # Hooks post-commit solo para el cierre OPERATIVO: la OT terminada dejó el
+        # reclamo 'Resuelto' (fin de la gestión) → encuesta CSAT + push al vecino.
         if nuevo_estado == "Terminada" and not ot.es_auditoria:
             await _disparar_encuesta(db, ot.id_reclamo)
-            # Hook push App Vecinos (etapa E) — el reclamo cambió de estado
-            # (Resuelto o En auditoría según audit del tipo). Best-effort.
             await svc_push.notificar_estado_reclamo(ot.id_reclamo)
 
         return {"ok": True, "id_ot": id_ot, "estado": nuevo_estado}
@@ -1337,44 +1374,11 @@ async def cambiar_estado_ot(
 
 
 async def _post_cierre_ot_operativa(db: AsyncSession, id_ot: int, ot, id_usuario: int):
-    """Al cerrar OT operativa: si tipo_reclamo.audit → reclamo a En auditoría + OT auditoría."""
-    if not ot.id_tipo_reclamo:
-        await _resolver_reclamo(db, ot.id_reclamo, id_usuario)
-        return
-
-    r_tipo = await db.execute(text(
-        "SELECT audit FROM tipo_reclamo WHERE id_tipo_reclamo = :id"
-    ), {"id": ot.id_tipo_reclamo})
-    tipo = r_tipo.fetchone()
-
-    if tipo and tipo.audit:
-        await db.execute(text("""
-            UPDATE reclamos SET estado = 'En auditoría', fecha_modificacion = NOW(),
-                id_usuario_modificacion = :uid
-            WHERE id_reclamo = :id
-        """), {"id": ot.id_reclamo, "uid": id_usuario})
-
-        await _insertar_historial_reclamo(db, ot.id_reclamo,
-                                           "OT operativa cerrada, pasa a auditoría",
-                                           ot.reclamo_estado, "En auditoría",
-                                           "Cierre automático por audit=true", id_usuario)
-
-        id_estado_en_gestion = await _id_estado_ot(db, "En gestión")
-        sup_row = await db.execute(text(
-            "SELECT id_supervisor_asigna FROM ordenes_trabajo WHERE id_ot = :id"
-        ), {"id": id_ot})
-        id_super = sup_row.fetchone().id_supervisor_asigna
-
-        await db.execute(text("""
-            INSERT INTO ordenes_trabajo
-                (id_reclamo, id_estado, es_auditoria, id_ot_origen, id_supervisor_asigna,
-                 activo, fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion)
-            VALUES (:id_r, :id_est, TRUE, :id_orig, :id_super,
-                    TRUE, NOW(), NOW(), :id_super, :id_super)
-        """), {"id_r": ot.id_reclamo, "id_est": id_estado_en_gestion,
-               "id_orig": id_ot, "id_super": id_super})
-    else:
-        await _resolver_reclamo(db, ot.id_reclamo, id_usuario)
+    """Al cerrar la OT operativa el reclamo queda 'Resuelto' (fin de la gestión y de
+    sus tiempos). Hasta la mig 112 acá se bifurcaba por `tipo_reclamo.audit` hacia
+    una auditoría PREVIA al cierre; hoy la auditoría es posterior y manual
+    (POST /reclamos/{id}/auditoria), así que `audit` del tipo ya no se consulta."""
+    await _resolver_reclamo(db, ot.id_reclamo, id_usuario)
 
 
 async def _resolver_reclamo(db: AsyncSession, id_reclamo: int, id_usuario: int):
@@ -1389,7 +1393,7 @@ async def _resolver_reclamo(db: AsyncSession, id_reclamo: int, id_usuario: int):
         WHERE id_reclamo = :id
     """), {"id": id_reclamo, "uid": id_usuario})
     await _insertar_historial_reclamo(db, id_reclamo, "Reclamo resuelto",
-                                       estado_ant, "Resuelto", "OT cerrada sin auditoría", id_usuario)
+                                       estado_ant, "Resuelto", "OT operativa terminada", id_usuario)
 
     # Si este reclamo es un subreclamo, desbloquear el padre 'En espera' cuando ya
     # no quedan hermanos vivos. Import local para evitar acoplamiento de módulo
@@ -1402,9 +1406,8 @@ async def _resolver_reclamo(db: AsyncSession, id_reclamo: int, id_usuario: int):
 async def _disparar_encuesta(db: AsyncSession, id_reclamo: int):
     """Hook encuestas — disparo no-bloqueante (§42). Se llama DESPUÉS del commit
     que cierra el reclamo. El service valida internamente que el reclamo esté en
-    'Resuelto' (devuelve MOTIVO_NO_RESUELTO si no), así que es seguro llamarlo tras
-    cualquier cierre de OT: si el reclamo quedó en 'En auditoría' no crea nada.
-    Si encuestas falla, NO debe afectar el resultado del endpoint."""
+    'Resuelto' (devuelve MOTIVO_NO_RESUELTO si no) y que no sea un retrabajo de
+    auditoría. Si encuestas falla, NO debe afectar el resultado del endpoint."""
     try:
         envio, _motivo = await svc_encuestas.crear_envio_para_reclamo(db, id_reclamo)
         if envio:
@@ -1446,6 +1449,11 @@ async def aprobar_ot(
         raise HTTPException(status_code=404, detail=f"OT {id_ot} no encontrada")
     if not ot.es_auditoria:
         raise HTTPException(status_code=422, detail="Esta OT no es de auditoría")
+    if ot.estado_actual in ("Terminada", "Cancelada"):
+        raise HTTPException(status_code=422, detail=f"La auditoría ya está {ot.estado_actual}")
+    if ot.reclamo_estado != "En auditoría":
+        raise HTTPException(status_code=422,
+            detail=f"El reclamo no está 'En auditoría' (actual: {ot.reclamo_estado}).")
 
     # Guard espejo de la mesa (2026-07-18): asignacion + regla de subarea
     # cruzada re-validadas en la mutacion, no solo en el listado.
@@ -1454,6 +1462,7 @@ async def aprobar_ot(
 
     id_terminada = await _id_estado_ot(db, "Terminada")
     observaciones = body.get("observaciones", "")
+    uid = current_user["id_usuario"]
 
     try:
         await db.execute(text("""
@@ -1462,18 +1471,24 @@ async def aprobar_ot(
                 observaciones_auditoria = :obs, fecha_cierre = NOW(),
                 fecha_modificacion = NOW(), id_usuario_modificacion = :uid
             WHERE id_ot = :id
-        """), {"id_est": id_terminada, "obs": observaciones,
-               "uid": current_user["id_usuario"], "id": id_ot})
+        """), {"id_est": id_terminada, "obs": observaciones, "uid": uid, "id": id_ot})
 
-        await _resolver_reclamo(db, ot.id_reclamo, current_user["id_usuario"])
+        # Auditoría posterior (mig 112): el reclamo queda 'Auditado' (cierre de la
+        # auditoría). fecha_cierre NO se toca: la gestión terminó en el primer cierre.
+        await db.execute(text("""
+            UPDATE reclamos
+            SET estado = 'Auditado', resultado_auditoria = 'aprobado',
+                fecha_fin_auditoria = NOW(),
+                fecha_modificacion = NOW(), id_usuario_modificacion = :uid
+            WHERE id_reclamo = :id
+        """), {"id": ot.id_reclamo, "uid": uid})
+        await _insertar_historial_reclamo(db, ot.id_reclamo, "Auditoría aprobada",
+                                           "En auditoría", "Auditado",
+                                           observaciones or "Trabajo verificado por el auditor", uid)
         await db.commit()
-
-        # Hook encuestas tras el commit — la aprobación siempre resuelve el reclamo.
-        await _disparar_encuesta(db, ot.id_reclamo)
-        # Hook push App Vecinos (etapa E) — reclamo pasó a Resuelto. Best-effort.
-        await svc_push.notificar_estado_reclamo(ot.id_reclamo)
-
-        return {"ok": True, "id_ot": id_ot, "resultado": "aprobada"}
+        # Sin encuesta ni push: el vecino sigue viendo 'Resuelto' (César, 2026-10-19).
+        return {"ok": True, "id_ot": id_ot, "resultado": "aprobada",
+                "id_reclamo": ot.id_reclamo, "estado_reclamo": "Auditado"}
     except HTTPException:
         raise
     except Exception as e:
@@ -1482,17 +1497,30 @@ async def aprobar_ot(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# ── PUT /ot/{id}/rechazar ─────────────────────────────────────────────────────
+# ── PUT /ot/{id}/observar (alias legacy: /rechazar) ─────────────────────────
 
-@router.put("/{id_ot}/rechazar")
-async def rechazar_ot(
+@router.put("/{id_ot}/observar",
+            responses={422: {"description": "Observaciones obligatorias; la OT no es de auditoría o el reclamo no está En auditoría"}})
+@router.put("/{id_ot}/rechazar", deprecated=True)
+async def observar_ot(
     id_ot: int,
     body: dict,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    # Guard: solo auditor (o admin) rechaza auditorías. Sin esto, cualquier
-    # agente autenticado reabría reclamos ajenos generando retrabajo espurio.
+    """Auditoría OBSERVADA (mig 112, PLAN_AUDITORIA_RECLAMOS.md). El auditor no
+    valida el trabajo: la OT de auditoría cierra con resultado 'observada', el
+    reclamo auditado queda 'Auditado' / 'observado' (fecha_cierre intacta: sus
+    tiempos de gestión no se tocan) y nace un reclamo NUEVO para el retrabajo —
+    mismo vecino, tipo, dirección y geo, canal 'oficio', descripción con la
+    observación — vinculado por `id_reclamo_origen_auditoria`. Ese retrabajo es
+    interno: el vecino no lo ve, no recibe push ni encuesta por él.
+
+    Hasta la mig 112 esta acción era `/rechazar`: devolvía el reclamo a
+    'En gestión' con una OT Pendiente. `/rechazar` queda como alias del bundle
+    anterior hasta que el frontend publique `/observar`.
+    """
+    # Guard: solo auditor (o admin) observa auditorías.
     _id_agente = await _resolver_id_agente_por_usuario(db, current_user["id_usuario"])
     _es_admin = (current_user.get("nivel_acceso") or 99) <= 1
     if not _es_admin and (_id_agente is None or not await _verificar_es_auditor(db, _id_agente)):
@@ -1500,12 +1528,14 @@ async def rechazar_ot(
 
     observaciones = (body.get("observaciones") or "").strip()
     if not observaciones:
-        raise HTTPException(status_code=422, detail="Campo 'observaciones' obligatorio en rechazo")
+        raise HTTPException(status_code=422,
+            detail="Campo 'observaciones' obligatorio: es la observación que va al reclamo de retrabajo")
 
     r = await db.execute(text("""
-        SELECT ot.id_reclamo, ot.es_auditoria, ot.id_ot_origen,
-               r.estado AS reclamo_estado, ot.id_supervisor_asigna
+        SELECT ot.id_reclamo, ot.es_auditoria, eot.nombre AS estado_actual,
+               r.estado AS reclamo_estado, r.nro_reclamo
         FROM ordenes_trabajo ot
+        JOIN estado_ot eot ON eot.id_estado_ot = ot.id_estado
         JOIN reclamos r ON r.id_reclamo = ot.id_reclamo
         WHERE ot.id_ot = :id AND ot.activo = TRUE
     """), {"id": id_ot})
@@ -1514,6 +1544,11 @@ async def rechazar_ot(
         raise HTTPException(status_code=404, detail=f"OT {id_ot} no encontrada")
     if not ot.es_auditoria:
         raise HTTPException(status_code=422, detail="Esta OT no es de auditoría")
+    if ot.estado_actual in ("Terminada", "Cancelada"):
+        raise HTTPException(status_code=422, detail=f"La auditoría ya está {ot.estado_actual}")
+    if ot.reclamo_estado != "En auditoría":
+        raise HTTPException(status_code=422,
+            detail=f"El reclamo no está 'En auditoría' (actual: {ot.reclamo_estado}).")
 
     # Guard espejo de la mesa (2026-07-18): asignacion + regla de subarea
     # cruzada re-validadas en la mutacion, no solo en el listado.
@@ -1521,45 +1556,66 @@ async def rechazar_ot(
         await _validar_scope_auditor(db, int(_id_agente), id_ot)
 
     id_terminada = await _id_estado_ot(db, "Terminada")
-    id_pendiente  = await _id_estado_ot(db, "Pendiente")
+    uid = current_user["id_usuario"]
 
     try:
         await db.execute(text("""
             UPDATE ordenes_trabajo
-            SET id_estado = :id_est, resultado_auditoria = 'rechazada',
+            SET id_estado = :id_est, resultado_auditoria = 'observada',
                 observaciones_auditoria = :obs, fecha_cierre = NOW(),
                 fecha_modificacion = NOW(), id_usuario_modificacion = :uid
             WHERE id_ot = :id
-        """), {"id_est": id_terminada, "obs": observaciones,
-               "uid": current_user["id_usuario"], "id": id_ot})
-
-        id_origen = ot.id_ot_origen or id_ot
-        await db.execute(text("""
-            INSERT INTO ordenes_trabajo
-                (id_reclamo, id_estado, es_auditoria, id_ot_origen, id_supervisor_asigna,
-                 activo, fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion)
-            VALUES (:id_r, :id_est, FALSE, :id_orig, :id_super,
-                    TRUE, NOW(), NOW(), :uid, :uid)
-        """), {"id_r": ot.id_reclamo, "id_est": id_pendiente, "id_orig": id_origen,
-               "id_super": ot.id_supervisor_asigna, "uid": current_user["id_usuario"]})
+        """), {"id_est": id_terminada, "obs": observaciones, "uid": uid, "id": id_ot})
 
         await db.execute(text("""
-            UPDATE reclamos SET estado = 'En gestión', fecha_modificacion = NOW(),
-                id_usuario_modificacion = :uid
+            UPDATE reclamos
+            SET estado = 'Auditado', resultado_auditoria = 'observado',
+                fecha_fin_auditoria = NOW(),
+                fecha_modificacion = NOW(), id_usuario_modificacion = :uid
             WHERE id_reclamo = :id
-        """), {"id": ot.id_reclamo, "uid": current_user["id_usuario"]})
+        """), {"id": ot.id_reclamo, "uid": uid})
 
-        await _insertar_historial_reclamo(db, ot.id_reclamo,
-                                           "Auditoría rechazada — retrabajo generado",
-                                           ot.reclamo_estado, "En gestión",
-                                           observaciones, current_user["id_usuario"])
+        # Reclamo NUEVO para el retrabajo: copia del auditado (vecino, tipo, área,
+        # dirección, geo, activo, empresa, prioridad), canal 'oficio', 'Sin asignar'.
+        # nro_reclamo y sla_vencimiento los ponen los triggers.
+        nuevo = (await db.execute(text("""
+            INSERT INTO reclamos
+                (id_ciudadano, id_tipo_reclamo, id_area, descripcion, direccion,
+                 domicilio_reclamo, prioridad, estado, id_estado_fk, observaciones,
+                 latitud, longitud, id_localidad, id_activo, id_empresa, canal_origen,
+                 fuente_geolocalizacion, id_reclamo_origen_auditoria, id_municipio,
+                 activo, fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion)
+            SELECT r.id_ciudadano, r.id_tipo_reclamo, r.id_area,
+                   'Retrabajo por auditoría observada del reclamo ' || COALESCE(r.nro_reclamo, r.id_reclamo::text)
+                       || ': ' || CAST(:obs AS text),
+                   r.direccion, r.domicilio_reclamo, r.prioridad, 'Sin asignar',
+                   (SELECT id_estado_reclamo FROM estado_reclamo
+                     WHERE nombre = 'Sin asignar' AND activo = TRUE LIMIT 1),
+                   NULL, r.latitud, r.longitud, r.id_localidad, r.id_activo, r.id_empresa,
+                   'oficio', r.fuente_geolocalizacion, r.id_reclamo, r.id_municipio,
+                   TRUE, NOW(), NOW(), :uid, :uid
+            FROM reclamos r WHERE r.id_reclamo = :id
+            RETURNING id_reclamo, nro_reclamo
+        """), {"id": ot.id_reclamo, "obs": observaciones, "uid": uid})).fetchone()
+        nro_nuevo = nuevo.nro_reclamo or f"REC-{nuevo.id_reclamo}"
+        nro_orig = ot.nro_reclamo or f"REC-{ot.id_reclamo}"
+
+        await _insertar_historial_reclamo(db, nuevo.id_reclamo, "Reclamo ingresado por auditoría observada",
+                                           None, "Sin asignar",
+                                           f"Retrabajo del reclamo {nro_orig}: {observaciones}", uid)
+        await _insertar_historial_reclamo(db, ot.id_reclamo, "Auditoría observada",
+                                           "En auditoría", "Auditado",
+                                           f"{observaciones} — Retrabajo: {nro_nuevo}", uid)
         await db.commit()
-        # Hook push App Vecinos (etapa E) — reclamo volvió a En gestión. Best-effort.
-        await svc_push.notificar_estado_reclamo(ot.id_reclamo)
-        return {"ok": True, "id_ot": id_ot, "resultado": "rechazada"}
+        # Sin push ni encuesta: ni por el auditado (sigue 'Resuelto' para el vecino)
+        # ni por el retrabajo (interno). push.notificar_estado_reclamo y
+        # encuestas_service filtran id_reclamo_origen_auditoria por las dudas.
+        return {"ok": True, "id_ot": id_ot, "resultado": "observada",
+                "id_reclamo": ot.id_reclamo, "estado_reclamo": "Auditado",
+                "id_reclamo_retrabajo": nuevo.id_reclamo, "nro_reclamo_retrabajo": nro_nuevo}
     except HTTPException:
         raise
     except Exception as e:
         await db.rollback()
-        logger.error("Error al rechazar OT: %s", e)
+        logger.error("Error al observar OT: %s", e)
         raise HTTPException(status_code=400, detail=str(e))

@@ -29,6 +29,7 @@ const ESTADO_REC_STYLES: Record<string, React.CSSProperties> = {
   'En espera':     { background: '#fff8e1', color: '#f57f17', borderColor: '#ffecb3' },
   'En auditoría':  { background: '#f3e5f5', color: '#6a1b9a', borderColor: '#e1bee7' },
   'Resuelto':      { background: '#e8f5e9', color: '#2e7d32', borderColor: '#c8e6c9' },
+  'Auditado':      { background: '#e0f2f1', color: '#00695c', borderColor: '#b2dfdb' },
   'Cancelado':     { background: '#fafafa', color: '#616161', borderColor: '#e0e0e0' },
 }
 

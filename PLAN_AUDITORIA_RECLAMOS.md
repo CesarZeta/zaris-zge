@@ -1,6 +1,13 @@
 # Plan — Auditoría de reclamos POSTERIOR al cierre
 
-> Estado: **diseño propuesto el 2026-10-19, esperando el OK de César para F1.** Sin código.
+> Estado: **F1 (backend + mig 112) y F2 (frontend) implementadas el 2026-10-20; F3 (generador demo + docs de usuario) pendiente.** Los puntos *supuesto* de abajo se aplicaron tal cual están escritos, más dos decisiones que el plan no cubría (ver «Cómo quedó»); César puede corregirlas.
+
+## Cómo quedó (2026-10-20)
+
+- **Backend:** `POST /reclamos/{id}/auditoria` (supervisor de la subárea del reclamo —fuente `agentes.id_subarea`— o admin; solo sobre `Resuelto`; crea la OT de auditoría, opcionalmente asignada a un auditor puntual) · `PUT /ot/{id}/aprobar` → reclamo `Auditado`/`aprobado` · `PUT /ot/{id}/observar` (alias deprecado `/rechazar`) → `Auditado`/`observado` + reclamo NUEVO de retrabajo (`id_reclamo_origen_auditoria`, canal `oficio`, descripción con la observación) · terminar la OT operativa siempre resuelve (`tipo_reclamo.audit` ya no se consulta) · `/estado` rechaza los dos estados de auditoría · editar/OT/subreclamo/cancelar/avisar bloqueados en `En auditoría`/`Auditado` · cancelar la OT de auditoría devuelve el reclamo a `Resuelto` · indicadores: activos/pendientes = `Sin asignar`/`En gestión`/`En espera`; resueltos del BI = `Resuelto`+`En auditoría`+`Auditado`; el mapa del inicio muestra `En auditoría` en violeta y no `Auditado`.
+- **Decisiones no previstas en el plan:** (1) **el retrabajo es invisible para el vecino** (no se lista, su detalle da 404, no genera push, aviso ni encuesta): era la única forma de cumplir «el vecino no ve nada» con un reclamo nuevo a su nombre; (2) **una auditoría se puede cancelar** (OT de auditoría → `Cancelada`, por supervisión o el auditor asignado) y el reclamo vuelve a `Resuelto`; (3) los **tiempos del BI** cuentan a `En auditoría`/`Auditado` como resueltos con su `fecha_cierre` original.
+- **Frontend:** botón «Enviar a auditoría» en la ficha de un reclamo `Resuelto` (nivel ≤ 2) con modal; bloque «Auditoría» en la ficha (fechas, resultado, link al retrabajo o al reclamo auditado); mesa del auditor con «Aprobar / Observar» y columna «Resuelto el»; badges/filtros/BI con `Auditado`; el modal de cerrar OT ya no habla de auditoría previa.
+- **Verificación:** smoke in-process `backend/smoke_auditoria_reclamos.py` (71 casos) + recorrido en navegador local.
 
 ## Definición de César (2026-10-19)
 

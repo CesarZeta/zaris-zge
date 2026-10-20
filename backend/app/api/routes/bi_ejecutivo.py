@@ -50,7 +50,9 @@ _JOIN_ENC = """
     LEFT JOIN encuesta_respuesta resp ON resp.id_envio = ev.id_encuesta_envio
 """
 
-_ESTADOS_ABIERTOS = "('Sin asignar','En gestión','En espera','En auditoría')"
+# Abiertos = en gestion. 'En auditoría'/'Auditado' (mig 112) ya cerraron la gestion y
+# cuentan como resueltos (su fecha_cierre es la del primer cierre).
+_ESTADOS_ABIERTOS = "('Sin asignar','En gestión','En espera')"
 
 
 # ── Filtros ──────────────────────────────────────────────────────────────────
@@ -157,11 +159,11 @@ async def _agregado(
     r = await db.execute(text(f"""
         SELECT {grp_sql},
                COUNT(*) AS total,
-               COUNT(*) FILTER (WHERE r.estado = 'Resuelto') AS resueltos,
-               ROUND(AVG({_DIAS_CIERRE}) FILTER (WHERE r.estado = 'Resuelto' AND r.fecha_cierre IS NOT NULL), 1)::float AS prom_dias,
-               COUNT(*) FILTER (WHERE r.estado = 'Resuelto' AND r.fecha_cierre IS NOT NULL
+               COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado')) AS resueltos,
+               ROUND(AVG({_DIAS_CIERRE}) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND r.fecha_cierre IS NOT NULL), 1)::float AS prom_dias,
+               COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND r.fecha_cierre IS NOT NULL
                                 AND tr.sla_dias IS NOT NULL AND {_DIAS_CIERRE} <= tr.sla_dias) AS dentro_sla,
-               COUNT(*) FILTER (WHERE r.estado = 'Resuelto' AND r.fecha_cierre IS NOT NULL
+               COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND r.fecha_cierre IS NOT NULL
                                 AND tr.sla_dias IS NOT NULL) AS con_sla
         FROM reclamos r {_JOIN_AREA}
         WHERE {' AND '.join(cond)}
@@ -241,12 +243,12 @@ async def ej_score(
 
     r = await db.execute(text(f"""
         SELECT COUNT(*) AS total,
-               COUNT(*) FILTER (WHERE r.estado = 'Resuelto') AS resueltos,
+               COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado')) AS resueltos,
                COUNT(*) FILTER (WHERE r.estado IN {_ESTADOS_ABIERTOS}) AS abiertos,
-               ROUND(AVG({_DIAS_CIERRE}) FILTER (WHERE r.estado = 'Resuelto' AND r.fecha_cierre IS NOT NULL), 1)::float AS prom_dias,
-               COUNT(*) FILTER (WHERE r.estado = 'Resuelto' AND r.fecha_cierre IS NOT NULL
+               ROUND(AVG({_DIAS_CIERRE}) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND r.fecha_cierre IS NOT NULL), 1)::float AS prom_dias,
+               COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND r.fecha_cierre IS NOT NULL
                                 AND tr.sla_dias IS NOT NULL AND {_DIAS_CIERRE} <= tr.sla_dias) AS dentro_sla,
-               COUNT(*) FILTER (WHERE r.estado = 'Resuelto' AND r.fecha_cierre IS NOT NULL
+               COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND r.fecha_cierre IS NOT NULL
                                 AND tr.sla_dias IS NOT NULL) AS con_sla
         FROM reclamos r {_JOIN_AREA}
         WHERE {' AND '.join(cond)}
@@ -465,7 +467,7 @@ async def ej_altas_cierres(
                                  id_subarea=id_subarea, campo_fecha=campo)
         if campo == "fecha_cierre":
             cond.append("r.fecha_cierre IS NOT NULL")
-            cond.append("r.estado = 'Resuelto'")
+            cond.append("r.estado IN ('Resuelto','En auditoría','Auditado')")
         r = await db.execute(text(f"""
             SELECT to_char(date_trunc('month', r.{campo}), 'YYYY-MM') AS mes, COUNT(*) AS total
             FROM reclamos r {_JOIN_AREA}
@@ -498,10 +500,10 @@ async def ej_evolucion_indicadores(
     r = await db.execute(text(f"""
         SELECT to_char(date_trunc('month', r.fecha_alta), 'YYYY-MM') AS mes,
                COUNT(*) AS total,
-               COUNT(*) FILTER (WHERE r.estado = 'Resuelto') AS resueltos,
-               COUNT(*) FILTER (WHERE r.estado = 'Resuelto' AND r.fecha_cierre IS NOT NULL
+               COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado')) AS resueltos,
+               COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND r.fecha_cierre IS NOT NULL
                                 AND tr.sla_dias IS NOT NULL AND {_DIAS_CIERRE} <= tr.sla_dias) AS dentro_sla,
-               COUNT(*) FILTER (WHERE r.estado = 'Resuelto' AND r.fecha_cierre IS NOT NULL
+               COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND r.fecha_cierre IS NOT NULL
                                 AND tr.sla_dias IS NOT NULL) AS con_sla
         FROM reclamos r {_JOIN_AREA}
         WHERE {' AND '.join(cond)}
@@ -541,24 +543,26 @@ async def ej_cierres_por_estado(
     id_localidad: Optional[int] = Query(None), id_municipio: int = Query(1),
     db: AsyncSession = Depends(get_db),
 ):
-    """Cierres del período: Auditado = el reclamo pasó por 'En auditoría' en su
-    historial (espejo del 'Cumplido/Auditado' de VL)."""
+    """Cierres del período por estado de auditoría (mig 112): Cumplido = resuelto
+    sin auditoría · En auditoría = resuelto, pendiente del auditor · Auditado =
+    auditoría cerrada (espejo del 'Cumplido/Auditado' de VL)."""
     meses_l = _parse_meses(meses)
     cond, params = _where_ej(desde, hasta, id_area, prioridad, id_localidad, id_municipio,
                              anio=anio, meses=meses_l, id_subarea=id_subarea)
-    cond.append("r.estado = 'Resuelto'")
+    cond.append("r.estado IN ('Resuelto','En auditoría','Auditado')")
     r = await db.execute(text(f"""
-        SELECT COUNT(*) FILTER (WHERE EXISTS (
-                   SELECT 1 FROM reclamo_historial h
-                   WHERE h.id_reclamo = r.id_reclamo AND h.estado_nuevo = 'En auditoría')) AS auditados,
+        SELECT COUNT(*) FILTER (WHERE r.estado = 'Auditado')     AS auditados,
+               COUNT(*) FILTER (WHERE r.estado = 'En auditoría') AS en_auditoria,
                COUNT(*) AS total
         FROM reclamos r {_JOIN_AREA}
         WHERE {' AND '.join(cond)}
     """), params)
     row = r.fetchone()
     auditados = row.auditados or 0
+    en_auditoria = row.en_auditoria or 0
     return [
-        {"estado": "Cumplido", "total": (row.total or 0) - auditados},
+        {"estado": "Cumplido", "total": (row.total or 0) - auditados - en_auditoria},
+        {"estado": "En auditoría", "total": en_auditoria},
         {"estado": "Auditado", "total": auditados},
     ]
 
@@ -670,7 +674,7 @@ async def ej_sat_cierre(
 
     r = await db.execute(text(f"""
         SELECT {expr} AS nombre, COUNT(*) AS total,
-               COUNT(*) FILTER (WHERE r.estado = 'Resuelto') AS resueltos
+               COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado')) AS resueltos
         FROM reclamos r {join}
         WHERE {' AND '.join(cond)}
         GROUP BY 1
@@ -722,7 +726,7 @@ async def ej_geo(
         SELECT r.id_reclamo, r.nro_reclamo, r.estado, r.prioridad,
                COALESCE(tr.nombre, '') AS tipo_nombre, r.descripcion,
                r.latitud::float AS latitud, r.longitud::float AS longitud,
-               (r.estado IN ('Resuelto','Cancelado')) AS cerrado,
+               (r.estado IN ('Resuelto','Cancelado','En auditoría','Auditado')) AS cerrado,
                (SELECT MAX(resp.clasificacion_inicial)
                 FROM encuesta_envio ev
                 JOIN encuesta_respuesta resp ON resp.id_envio = ev.id_encuesta_envio

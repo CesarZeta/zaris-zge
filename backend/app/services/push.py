@@ -166,14 +166,21 @@ async def enviar_push_ciudadano(
 # demas).
 
 async def notificar_estado_reclamo(id_reclamo: int) -> None:
-    """Push al ciudadano del reclamo con su estado actual. No-op sin suscripcion."""
+    """Push al ciudadano del reclamo con su estado actual. No-op sin suscripcion.
+
+    Auditoria posterior al cierre (mig 112): es interna. No se avisa por los
+    estados 'En auditoria'/'Auditado' (el vecino sigue viendo 'Resuelto') ni por
+    nada que pase con un retrabajo de auditoria (id_reclamo_origen_auditoria),
+    que para el vecino no existe."""
     try:
         async with AsyncSessionLocal() as db:
             r = (await db.execute(text("""
-                SELECT nro_reclamo, estado, id_ciudadano
+                SELECT nro_reclamo, estado, id_ciudadano, id_reclamo_origen_auditoria
                 FROM reclamos WHERE id_reclamo = :id
             """), {"id": id_reclamo})).mappings().first()
         if not r or not r["id_ciudadano"]:
+            return
+        if r["id_reclamo_origen_auditoria"] is not None or r["estado"] in ("En auditoría", "Auditado"):
             return
         id_c = int(r["id_ciudadano"])
         titulo = f"Tu reclamo {r['nro_reclamo'] or ''}".strip()

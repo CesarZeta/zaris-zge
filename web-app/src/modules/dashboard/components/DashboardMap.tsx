@@ -40,7 +40,7 @@ export const ESTADO_COLOR: Record<string, string> = {
   'Sin asignar':  '#c62828', // rojo (urgencia)
   'En gestión':   '#29b6f6', // celeste (en curso)
   'En espera':    '#fbc02d', // amarillo (bloqueado)
-  'En auditoría': '#6a1b9a', // violeta (verificacion) — se redefine como cierre en el proximo paso
+  'En auditoría': '#6a1b9a', // violeta: resuelto, pendiente del auditor (mig 112; 'Auditado' no va al mapa)
 }
 export const ESTADOS_LEYENDA = Object.keys(ESTADO_COLOR)
 const ESTADO_SIN_COLOR = '#90a4ae'

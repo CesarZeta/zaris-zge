@@ -489,7 +489,7 @@ function Cell({ label, mono, children }: { label: string; mono?: boolean; childr
 const badgeAudit: React.CSSProperties = {
   fontSize: 10, fontWeight: 600, padding: '2px 8px',
   borderRadius: 999,
-  background: 'rgba(96,165,200,.14)', color: '#3b82a8',
+  background: 'rgba(106,27,154,.12)', color: '#6a1b9a',
   textTransform: 'uppercase', letterSpacing: '0.04em',
 }
 

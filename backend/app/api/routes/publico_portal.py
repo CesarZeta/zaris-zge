@@ -34,7 +34,9 @@ async def mi_resumen(
     Conteos del vecino logueado para la home del portal. Un solo round-trip.
 
     Define "vigente" por dominio:
-      - reclamos: activo=TRUE y estado NO final (≠ Resuelto, Cancelado).
+      - reclamos: activo=TRUE y estado NO final (≠ Resuelto, Cancelado, En auditoría,
+        Auditado — la auditoría posterior es interna, mig 112) y que no sean
+        retrabajos de auditoría.
       - turnos:   activo=TRUE y estado='reservado' (cumplido/cancelado no son vigentes).
       - entradas: activo=TRUE y reserva en estado 'reservada' (asistio/cancelada no).
     Devuelve además el total histórico de cada dominio (para "ver todos").
@@ -44,11 +46,15 @@ async def mi_resumen(
     row = (await db.execute(text("""
         SELECT
           -- Reclamos
+          -- Mig 112: 'En auditoría'/'Auditado' son cerrados para el vecino y los
+          -- retrabajos de auditoría (id_reclamo_origen_auditoria) no existen para él.
           (SELECT COUNT(*) FROM reclamos
              WHERE id_ciudadano = :id_c AND activo = TRUE
-               AND estado NOT IN ('Resuelto', 'Cancelado'))           AS reclamos_vigentes,
+               AND id_reclamo_origen_auditoria IS NULL
+               AND estado NOT IN ('Resuelto', 'Cancelado', 'En auditoría', 'Auditado')) AS reclamos_vigentes,
           (SELECT COUNT(*) FROM reclamos
-             WHERE id_ciudadano = :id_c AND activo = TRUE)             AS reclamos_total,
+             WHERE id_ciudadano = :id_c AND activo = TRUE
+               AND id_reclamo_origen_auditoria IS NULL)               AS reclamos_total,
           -- Turnos
           (SELECT COUNT(*) FROM turnos
              WHERE id_ciudadano = :id_c AND activo = TRUE

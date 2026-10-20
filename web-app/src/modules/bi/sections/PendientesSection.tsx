@@ -85,7 +85,6 @@ export function PendientesSection({ filtros }: { filtros: BiFiltros }) {
           { key: 'sin_asignar', name: 'Sin asignar', color: colorEstado('Sin asignar') },
           { key: 'en_gestion', name: 'En gestión', color: colorEstado('En gestión') },
           { key: 'en_espera', name: 'En espera', color: colorEstado('En espera') },
-          { key: 'en_auditoria', name: 'En auditoría', color: colorEstado('En auditoría') },
         ]}
         fetchMensual={(f) => biApi.pendientesMensual(f)}
         fetchDiario={(mes, f) => biApi.pendientesDiario(mes, f)}

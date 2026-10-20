@@ -44,15 +44,18 @@ WHERE conrelid = 'reclamos'::regclass AND contype = 'c';
 ```
 Caso real sesión 2026-05-12: introducir `'Crítica'` en `type Prioridad` costó un commit de fix (`c21e8df`) cuando el smoke API explotó con IntegrityError. La doc puede estar atrás; el CHECK es el contrato real.
 
-### Estados de reclamo (v1.2)
+### Estados de reclamo (v1.3 — auditoría POSTERIOR al cierre, mig 112)
 
-`Sin asignar` → `En gestión` → `En espera` → `En auditoría` → `Resuelto` / `Cancelado`
+`Sin asignar` → `En gestión` ⇄ `En espera` → `Resuelto` / `Cancelado` · `Resuelto` → (manual) `En auditoría` → `Auditado`
 
 - **Sin asignar:** reclamo ingresado, sin OT asignada.
 - **En gestión:** OT generada y en ejecución.
 - **En espera:** bloqueado por subreclamo activo.
-- **En auditoría:** OT operativa cerrada, pendiente de auditoría.
-- **Resuelto / Cancelado:** estados finales.
+- **Resuelto / Cancelado:** fin de la GESTIÓN y de sus tiempos (`fecha_cierre`). `Resuelto` es el cierre normal; después de él `fecha_cierre` no cambia nunca.
+- **En auditoría:** reclamo `Resuelto` que un supervisor de su subárea (o un admin) reabrió a mano para que lo revise un auditor (`POST /reclamos/{id}/auditoria`, crea la OT `es_auditoria`). Pendiente del auditor, NO de gestión: no se edita, no se le crea OT ni subreclamo, no se cancela, no cuenta como activo/pendiente en inicio ni BI.
+- **Auditado:** cierre de la auditoría con `resultado_auditoria` = `aprobado` | `observado` (`PUT /ot/{id}/aprobar` | `/observar`). La observada genera un **reclamo NUEVO de retrabajo** (`id_reclamo_origen_auditoria` → el auditado, canal `oficio`, descripción con la observación, `Sin asignar`); los tiempos del original no se tocan.
+- **Para el vecino la auditoría no existe:** `/publico/reclamos` muestra `Resuelto` en lugar de los dos estados de auditoría y oculta los retrabajos (listado, detalle 404, `mi-resumen`, adjuntos); `push.notificar_estado_reclamo` y `encuestas_service` saltean retrabajos y estados de auditoría. Decisión de César 2026-10-19; `PLAN_AUDITORIA_RECLAMOS.md` tiene el detalle y las dos decisiones que el plan no cubría (retrabajo invisible, auditoría cancelable).
+- **Hasta la mig 112** la auditoría era PREVIA al cierre (`tipo_reclamo.audit=true` → al terminar la OT el reclamo iba a `En auditoría` y recién al aprobarla a `Resuelto`). `tipo_reclamo.audit` quedó en la tabla pero **ningún código lo consulta**; terminar la OT operativa siempre resuelve.
 
 ### Endpoints reclamos
 
@@ -65,8 +68,11 @@ GET  /api/v1/reclamos/{id}                 → detalle con historial, OTs y subr
 POST /api/v1/reclamos                      → crear reclamo (requiere id_ciudadano BUC)
 PUT  /api/v1/reclamos/{id}                 → editar reclamo (alcance variable según estado)
 PUT  /api/v1/reclamos/{id}/estado          → cambiar estado + insertar entrada en historial
-PUT  /api/v1/reclamos/{id}/cancelar        → cancelar reclamo + cascade a OTs activas (requiere motivo)
+PUT  /api/v1/reclamos/{id}/cancelar        → cancelar reclamo + cascade a OTs activas (requiere motivo; 422 en En auditoría/Auditado)
 POST /api/v1/reclamos/{id}/subreclamo      → crear subreclamo (max 1 nivel; padre pasa a En espera)
+POST /api/v1/reclamos/{id}/auditoria       → enviar un Resuelto a auditoría (mig 112): nivel ≤ 2, supervisor de la subárea del reclamo
+                                             (agentes.id_subarea §3) o admin; body opcional {observaciones, id_agente_auditor}; crea OT
+                                             es_auditoria (id_ot_origen = última OT operativa Terminada) → 201 {id_ot, nro_ot}
 ```
 
 ### Edición de reclamos — alcance por estado
@@ -104,8 +110,10 @@ GET  /api/v1/ot/{id_ot}                    → detalle OT
 POST /api/v1/ot                            → crear OT (supervisor asigna a agente/equipo)
 PUT  /api/v1/ot/{id_ot}/tomar              → agente toma OT sin asignar
 PUT  /api/v1/ot/{id_ot}/estado             → cambiar estado OT
-PUT  /api/v1/ot/{id_ot}/aprobar            → auditor aprueba OT → reclamo Resuelto
-PUT  /api/v1/ot/{id_ot}/rechazar           → auditor rechaza OT → nueva OT Pendiente con id_ot_origen
+PUT  /api/v1/ot/{id_ot}/aprobar            → auditor aprueba → reclamo Auditado / aprobado (fecha_cierre intacta; sin encuesta ni push)
+PUT  /api/v1/ot/{id_ot}/observar           → auditor observa (observaciones obligatorias) → reclamo Auditado / observado + reclamo NUEVO
+                                             de retrabajo vinculado por id_reclamo_origen_auditoria. `/rechazar` queda como alias deprecado
+                                             (hasta mig 112 devolvía el reclamo a En gestión con una OT Pendiente)
 ```
 
 ### Validación de estados
@@ -117,16 +125,18 @@ PUT  /api/v1/ot/{id_ot}/rechazar           → auditor rechaza OT → nueva OT P
 | Desde | Puede ir a |
 |---|---|
 | `Sin asignar` | `En gestión`, `Cancelado` |
-| `En gestión` | `En espera`, `En auditoría`, `Resuelto`, `Cancelado` |
-| `En espera` | `En gestión`, `En auditoría`, `Cancelado` |
-| `En auditoría` | `En gestión`, `Resuelto`, `Cancelado` |
-| `Resuelto` / `Cancelado` | (final — ninguno) |
+| `En gestión` | `En espera`, `Resuelto`, `Cancelado` |
+| `En espera` | `En gestión`, `Cancelado` |
+| `Resuelto` / `Cancelado` / `En auditoría` / `Auditado` | (ninguno por `/estado`) |
 
 - Transición fuera del grafo → 422 listando los alcanzables.
 - Mismo estado (no-op) se acepta sin chequear el grafo.
+- **`En auditoría` y `Auditado` se rechazan como destino con 422 antes del grafo** (mig 112): se entra por `POST /{id}/auditoria` y se sale por `/ot/{id}/aprobar|observar` (o cancelando la OT de auditoría, que devuelve el reclamo a `Resuelto`). Mismo criterio que `Cancelado` (endpoint dedicado).
 - El frontend espeja el grafo en `web-app/src/modules/reclamos/components/CambiarEstadoModal.tsx` (sin `Cancelado`, que va por el endpoint dedicado `/cancelar`): el dropdown solo muestra estados alcanzables; reclamo en estado final muestra mensaje "no admite cambios". **Si modificás el grafo, tocá los DOS lugares** (backend `reclamos.py` + modal frontend) o se desincronizan.
 
-**Integridad padre/hijo (hallazgo QA #1).** `PUT /{id}/estado` a `Resuelto` o `En auditoría` se bloquea con 422 si el reclamo (que no es subreclamo) tiene subreclamos activos con estado distinto a `Resuelto`/`Cancelado`. El mensaje enumera los pendientes. Antes se podía cerrar el padre dejando hijos huérfanos activos.
+**Integridad padre/hijo (hallazgo QA #1).** `PUT /{id}/estado` a `Resuelto` se bloquea con 422 si el reclamo (que no es subreclamo) tiene subreclamos activos con estado fuera de `Resuelto`/`Cancelado`/`En auditoría`/`Auditado` (un hijo en auditoría ya cerró su gestión). El mensaje enumera los pendientes. Antes se podía cerrar el padre dejando hijos huérfanos activos. El mismo conjunto de "cerrados" gobierna `desbloquear_padre_si_corresponde` y el guard de `cancelar`.
+
+**Quirk del cierre directo sin OT (cazado por el smoke de la mig 112):** `_validar_cierre_directo_sin_ot` compara `usuarios.id_subarea` con la subárea del tipo **sin eximir al admin** (a diferencia de `_require_misma_subarea`, que sí lo exime). En local el admin `ciudadanovl@` está en la subárea 42, así que su `Sin asignar → Resuelto` da 403 sobre tipos de otra subárea: en smokes, cerrar con un supervisor de la subárea del tipo. Es comportamiento vigente, no se cambió.
 
 **Cierre directo sin OT (desde 2026-05-22).** Excepción al grafo FSM: `Sin asignar → Resuelto` (que el grafo normal NO permite) se habilita SOLO cuando se cumplen las 3 condiciones (helper `_validar_cierre_directo_sin_ot` en `reclamos.py`):
 1. el usuario es **supervisor o admin** (`nivel_acceso ≤ 2`);
@@ -134,7 +144,7 @@ PUT  /api/v1/ot/{id_ot}/rechazar           → auditor rechaza OT → nueva OT P
 3. la **subárea del usuario** (`usuarios.id_subarea`, mig 55 §21) **== subárea del tipo de reclamo** (`tipo_reclamo.id_subarea`, derivada vía `reclamos.id_tipo_reclamo`; NO usar `reclamos.id_subarea` que puede ser NULL). Si no coincide → 403.
 Caso de uso: reclamo que se resuelve sin generar OT (consulta, duplicado, sin info). El frontend (`CambiarEstadoModal.tsx`) ofrece "Resuelto" desde "Sin asignar" solo a `hasPermission(2)` y muestra un pop-up de confirmación; **el backend es la fuente de verdad de la subárea** (el modal no la conoce, así que un supervisor de otra subárea ve la opción pero recibe 403 con mensaje claro al confirmar). Es una **3ª rama** del handler `cambiar_estado`, exenta del chequeo del grafo (`es_cierre_directo` se valida antes del `elif` del grafo).
 
-**Bloqueo cierre cross-subárea por la vía normal (desde 2026-05-25).** El chequeo de subárea de arriba SOLO cubría el atajo `Sin asignar → Resuelto`. Pero un reclamo ya en `En gestión` podía pasar a `Resuelto`/`En auditoría` por la vía normal del FSM sin chequear subárea — un supervisor de otra subárea cerraba reclamos ajenos. Fix: helper `_require_misma_subarea` aplicado también al pase manual a `Resuelto`/`En auditoría` (admin nivel 1 exento). **El cierre vía OT (`ordenes_trabajo.py` actualiza `reclamos.estado` directo, NO pasa por `cambiar_estado`) no se afecta** — el agente que cierra pertenece a la subárea por construcción. Si agregás otra ruta que lleve un reclamo a estado final, recordá el guard (ver [[feedback_guard_subarea_cubre_todas_las_vias]]).
+**Bloqueo cierre cross-subárea por la vía normal (desde 2026-05-25).** El chequeo de subárea de arriba SOLO cubría el atajo `Sin asignar → Resuelto`. Pero un reclamo ya en `En gestión` podía pasar a `Resuelto`/`En auditoría` por la vía normal del FSM sin chequear subárea — un supervisor de otra subárea cerraba reclamos ajenos. Fix: helper `_require_misma_subarea` aplicado también al pase manual a `Resuelto` (admin nivel 1 exento; hasta la mig 112 cubría también `En auditoría`, que ya no se alcanza por `/estado`). **El cierre vía OT (`ordenes_trabajo.py` actualiza `reclamos.estado` directo, NO pasa por `cambiar_estado`) no se afecta** — el agente que cierra pertenece a la subárea por construcción. Si agregás otra ruta que lleve un reclamo a estado final, recordá el guard (ver [[feedback_guard_subarea_cubre_todas_las_vias]]).
 
 ### Configuración general
 

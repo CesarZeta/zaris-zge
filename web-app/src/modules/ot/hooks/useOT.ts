@@ -10,7 +10,7 @@ import {
   getSlotsRecurso,
   listarAgentesActivos,
   listarEquiposActivos,
-  rechazarOT,
+  observarOT,
   reasignarOT,
   tomarOT,
 } from '../api/otApi'
@@ -160,10 +160,11 @@ export function useAprobarOT() {
   })
 }
 
-export function useRechazarOT() {
+export function useObservarOT() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id_ot, observaciones }: { id_ot: number; observaciones: string }) => rechazarOT(id_ot, observaciones),
-    onSuccess: () => invalidarMesas(qc),
+    mutationFn: ({ id_ot, observaciones }: { id_ot: number; observaciones: string }) => observarOT(id_ot, observaciones),
+    // El retrabajo es un reclamo nuevo: también se invalida el módulo Reclamos.
+    onSuccess: () => { invalidarMesas(qc); qc.invalidateQueries({ queryKey: ['reclamos'] }) },
   })
 }

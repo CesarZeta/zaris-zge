@@ -32,7 +32,8 @@ const CARDS: Card[] = [
   {
     key: 'en-gestion',
     label: 'En gestión',
-    match: (s) => (s['En gestión'] ?? 0) + (s['En espera'] ?? 0) + (s['En auditoría'] ?? 0),
+    // 'En auditoría' ya no es gestión (mig 112: auditoría posterior al cierre).
+    match: (s) => (s['En gestión'] ?? 0) + (s['En espera'] ?? 0),
     filtroEstado: 'En gestión',
     color: '#c08532',
   },

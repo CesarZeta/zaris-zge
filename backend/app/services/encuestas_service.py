@@ -45,6 +45,7 @@ LARGO_DESCRIPCION_CORTA = 80
 MOTIVO_OK = "ok"
 MOTIVO_DESACTIVADAS = "Encuestas deshabilitadas"
 MOTIVO_NO_RESUELTO = "Reclamo no existe o no está en estado Resuelto"
+MOTIVO_RETRABAJO_AUDITORIA = "Retrabajo de auditoría: es interno, no se encuesta al vecino"
 MOTIVO_YA_EXISTE = "Ya existe envío para este reclamo"
 MOTIVO_SIN_EMAIL = "Ciudadano sin email válido"
 MOTIVO_ANTIFATIGA = "Anti-fatiga: ya recibió encuesta del área en últimos 30 días"
@@ -133,7 +134,7 @@ async def crear_envio_para_reclamo(db: AsyncSession, id_reclamo: int):
         # 2. Reclamo existe + cerrado. Subarea derivada via tipo_reclamo (§27).
         rec = (await db.execute(text("""
             SELECT r.id_reclamo, r.nro_reclamo, r.estado, r.id_ciudadano,
-                   r.id_municipio,
+                   r.id_municipio, r.id_reclamo_origen_auditoria,
                    COALESCE(tr.id_subarea, r.id_subarea) AS id_subarea,
                    c.email AS email_ciudadano
               FROM reclamos r
@@ -147,6 +148,11 @@ async def crear_envio_para_reclamo(db: AsyncSession, id_reclamo: int):
             logger.info("crear_envio: reclamo=%s no existe", id_reclamo)
             return None, MOTIVO_NO_RESUELTO
         rec = rec._mapping
+        # Mig 112: el retrabajo de una auditoria observada es interno (el vecino no
+        # lo ve); cerrarlo no dispara una segunda encuesta.
+        if rec["id_reclamo_origen_auditoria"] is not None:
+            logger.info("crear_envio: reclamo=%s es retrabajo de auditoria, skip", id_reclamo)
+            return None, MOTIVO_RETRABAJO_AUDITORIA
         if rec["estado"] != ESTADO_CERRADO_RECLAMO:
             logger.info("crear_envio: reclamo=%s no esta cerrado (estado=%s)",
                         id_reclamo, rec["estado"])

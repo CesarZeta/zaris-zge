@@ -18,7 +18,10 @@ Convenciones:
     subarea -> area. Ver §27 y memoria feedback_area_via_subarea_no_via_r_id_area.
   - Mono-municipio (§38): filtro por query param id_municipio (default 1).
   - Estados (CHECK ck_reclamo_estado): Sin asignar / En gestion / En espera /
-    En auditoria / Resuelto / Cancelado.
+    Resuelto / Cancelado, mas los de auditoria POSTERIOR al cierre (mig 112):
+    En auditoria (resuelto, pendiente del auditor) / Auditado (auditoria cerrada).
+    Para el BI un reclamo En auditoria o Auditado ES un resuelto (su gestion
+    termino en fecha_cierre); pendiente = solo Sin asignar / En gestion / En espera.
 
 Registrar en main.py: /api/v1/bi/* no colisiona con otros prefijos.
 """
@@ -41,9 +44,10 @@ router = APIRouter(
 )
 
 # Estados finales / agrupaciones reutilizadas
-ESTADOS_RESUELTO = ("Resuelto",)
+ESTADOS_RESUELTO = ("Resuelto", "En auditoría", "Auditado")  # gestion cerrada OK (mig 112)
 ESTADOS_CANCELADO = ("Cancelado",)
-ESTADOS_PENDIENTES = ("Sin asignar", "En gestión", "En espera", "En auditoría")
+ESTADOS_PENDIENTES = ("Sin asignar", "En gestión", "En espera")
+_SQL_RESUELTOS = "('Resuelto','En auditoría','Auditado')"
 
 
 def _filtros_comunes(
@@ -180,10 +184,10 @@ async def bi_resumen(
     result = await db.execute(text(f"""
         SELECT
           COUNT(*)                                                  AS total,
-          COUNT(*) FILTER (WHERE r.estado = 'Resuelto')             AS resueltos,
+          COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado')) AS resueltos,
           COUNT(*) FILTER (WHERE r.estado = 'Cancelado')            AS cancelados,
           COUNT(*) FILTER (WHERE r.estado IN
-              ('Sin asignar','En gestión','En espera','En auditoría')) AS pendientes,
+              ('Sin asignar','En gestión','En espera')) AS pendientes,
           COUNT(*) FILTER (WHERE r.id_reclamo_padre IS NOT NULL)    AS subreclamos
         FROM reclamos r
         {_JOIN_AREA}
@@ -289,10 +293,10 @@ async def bi_por_area(
           s.id_area                                                 AS id_area,
           COALESCE(a.nombre, 'Sin área')                            AS area,
           COUNT(*)                                                  AS total,
-          COUNT(*) FILTER (WHERE r.estado = 'Resuelto')             AS resueltos,
+          COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado')) AS resueltos,
           COUNT(*) FILTER (WHERE r.estado = 'Cancelado')            AS cancelados,
           COUNT(*) FILTER (WHERE r.estado IN
-              ('Sin asignar','En gestión','En espera','En auditoría')) AS pendientes
+              ('Sin asignar','En gestión','En espera')) AS pendientes
         FROM reclamos r
         {_JOIN_AREA}
         WHERE {where}
@@ -338,10 +342,10 @@ async def bi_mensual(
         SELECT
           to_char(date_trunc('month', r.fecha_alta), 'YYYY-MM')     AS mes,
           COUNT(*)                                                  AS total,
-          COUNT(*) FILTER (WHERE r.estado = 'Resuelto')             AS resueltos,
+          COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado')) AS resueltos,
           COUNT(*) FILTER (WHERE r.estado = 'Cancelado')            AS cancelados,
           COUNT(*) FILTER (WHERE r.estado IN
-              ('Sin asignar','En gestión','En espera','En auditoría')) AS pendientes
+              ('Sin asignar','En gestión','En espera')) AS pendientes
         FROM reclamos r
         {_JOIN_AREA}
         WHERE {where}
@@ -428,10 +432,10 @@ async def bi_diario(
         SELECT
           to_char(date_trunc('day', r.fecha_alta), 'YYYY-MM-DD')    AS dia,
           COUNT(*)                                                  AS total,
-          COUNT(*) FILTER (WHERE r.estado = 'Resuelto')             AS resueltos,
+          COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado')) AS resueltos,
           COUNT(*) FILTER (WHERE r.estado = 'Cancelado')            AS cancelados,
           COUNT(*) FILTER (WHERE r.estado IN
-              ('Sin asignar','En gestión','En espera','En auditoría')) AS pendientes
+              ('Sin asignar','En gestión','En espera')) AS pendientes
         FROM reclamos r
         {_JOIN_AREA}
         WHERE {where}
@@ -480,7 +484,7 @@ def _filtros_resueltos(
     cond = [
         "r.activo = TRUE",
         "(r.id_municipio = :id_municipio OR r.id_municipio IS NULL)",
-        "r.estado = 'Resuelto'",
+        f"r.estado IN {_SQL_RESUELTOS}",
         "r.fecha_cierre IS NOT NULL",
     ]
     params: dict = {"id_municipio": id_municipio}
@@ -738,11 +742,12 @@ async def bi_resueltos_detalle(
 # FASE 3 — Pendientes (reclamos en estados no finales)
 # ═══════════════════════════════════════════════════════════════════════════════
 #
-# Pendiente = estado IN ('Sin asignar','En gestión','En espera','En auditoría').
+# Pendiente = estado IN ('Sin asignar','En gestión','En espera'). 'En auditoría' ya
+# no es pendiente de gestion (mig 112: auditoria posterior al cierre).
 # Demora = NOW() - fecha_alta (dias), porque el reclamo sigue abierto. Tramos:
 #   0-3 | 4-7 | +7 dias (espeja la "Composicion tiempo" del tablero de referencia).
 _DIAS_DEMORA = "FLOOR(EXTRACT(EPOCH FROM (NOW() - r.fecha_alta)) / 86400.0)"
-_ESTADOS_PEND_SQL = "('Sin asignar','En gestión','En espera','En auditoría')"
+_ESTADOS_PEND_SQL = "('Sin asignar','En gestión','En espera')"
 
 
 def _filtros_pendientes(
@@ -849,7 +854,6 @@ async def bi_pendientes_por_mes(
           COUNT(*) FILTER (WHERE r.estado = 'Sin asignar')      AS sin_asignar,
           COUNT(*) FILTER (WHERE r.estado = 'En gestión')       AS en_gestion,
           COUNT(*) FILTER (WHERE r.estado = 'En espera')        AS en_espera,
-          COUNT(*) FILTER (WHERE r.estado = 'En auditoría')     AS en_auditoria,
           COUNT(*)                                              AS total
         FROM reclamos r {_JOIN_AREA}
         WHERE {where}
@@ -860,7 +864,7 @@ async def bi_pendientes_por_mes(
         {
             "mes": r.mes,
             "sin_asignar": r.sin_asignar, "en_gestion": r.en_gestion,
-            "en_espera": r.en_espera, "en_auditoria": r.en_auditoria,
+            "en_espera": r.en_espera,
             "total": r.total,
         }
         for r in result.fetchall()
@@ -884,7 +888,7 @@ async def bi_pendientes_mensual(
 ):
     """
     Pendientes por mes de alta, desglosados por estado (para el histograma temporal
-    con toggle Mes/Día + total). [{mes, sin_asignar, en_gestion, en_espera, en_auditoria, total}]
+    con toggle Mes/Día + total). [{mes, sin_asignar, en_gestion, en_espera, total}]
     """
     where, params = _filtros_pendientes(desde, hasta, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal, anio=anio, meses=_parse_meses(meses))
     result = await db.execute(text(f"""
@@ -893,7 +897,6 @@ async def bi_pendientes_mensual(
           COUNT(*) FILTER (WHERE r.estado = 'Sin asignar')      AS sin_asignar,
           COUNT(*) FILTER (WHERE r.estado = 'En gestión')       AS en_gestion,
           COUNT(*) FILTER (WHERE r.estado = 'En espera')        AS en_espera,
-          COUNT(*) FILTER (WHERE r.estado = 'En auditoría')     AS en_auditoria,
           COUNT(*)                                              AS total
         FROM reclamos r {_JOIN_AREA}
         WHERE {where}
@@ -902,7 +905,7 @@ async def bi_pendientes_mensual(
     """), params)
     return [
         {"mes": r.mes, "sin_asignar": r.sin_asignar, "en_gestion": r.en_gestion,
-         "en_espera": r.en_espera, "en_auditoria": r.en_auditoria, "total": r.total}
+         "en_espera": r.en_espera, "total": r.total}
         for r in result.fetchall()
     ]
 
@@ -950,7 +953,6 @@ async def bi_pendientes_diario(
           COUNT(*) FILTER (WHERE r.estado = 'Sin asignar')      AS sin_asignar,
           COUNT(*) FILTER (WHERE r.estado = 'En gestión')       AS en_gestion,
           COUNT(*) FILTER (WHERE r.estado = 'En espera')        AS en_espera,
-          COUNT(*) FILTER (WHERE r.estado = 'En auditoría')     AS en_auditoria,
           COUNT(*)                                              AS total
         FROM reclamos r {_JOIN_AREA}
         WHERE {where}
@@ -959,7 +961,7 @@ async def bi_pendientes_diario(
     """), params)
     return [
         {"dia": r.dia, "sin_asignar": r.sin_asignar, "en_gestion": r.en_gestion,
-         "en_espera": r.en_espera, "en_auditoria": r.en_auditoria, "total": r.total}
+         "en_espera": r.en_espera, "total": r.total}
         for r in result.fetchall()
     ]
 
@@ -1222,6 +1224,7 @@ async def bi_subreclamos_mensual(
           COUNT(*) FILTER (WHERE r.estado = 'En espera')        AS en_espera,
           COUNT(*) FILTER (WHERE r.estado = 'En auditoría')     AS en_auditoria,
           COUNT(*) FILTER (WHERE r.estado = 'Resuelto')         AS resuelto,
+          COUNT(*) FILTER (WHERE r.estado = 'Auditado')         AS auditado,
           COUNT(*) FILTER (WHERE r.estado = 'Cancelado')        AS cancelado,
           COUNT(*)                                              AS total
         FROM reclamos r {_JOIN_AREA}
@@ -1276,6 +1279,7 @@ async def bi_subreclamos_diario(
           COUNT(*) FILTER (WHERE r.estado = 'En espera')        AS en_espera,
           COUNT(*) FILTER (WHERE r.estado = 'En auditoría')     AS en_auditoria,
           COUNT(*) FILTER (WHERE r.estado = 'Resuelto')         AS resuelto,
+          COUNT(*) FILTER (WHERE r.estado = 'Auditado')         AS auditado,
           COUNT(*) FILTER (WHERE r.estado = 'Cancelado')        AS cancelado,
           COUNT(*)                                              AS total
         FROM reclamos r {_JOIN_AREA}

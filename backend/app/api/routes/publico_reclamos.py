@@ -113,6 +113,10 @@ async def geo_reverse_vecino(
     return await reverse_geocodificar(lat, lon)
 
 
+# Estado que ve el vecino (mig 112): la auditoría posterior al cierre es interna.
+_ESTADO_VECINO = "CASE WHEN r.estado IN ('En auditoría','Auditado') THEN 'Resuelto' ELSE r.estado END"
+
+
 # ─── GET /publico/reclamos ───────────────────────────────────────────────────
 
 @router.get("")
@@ -123,16 +127,20 @@ async def listar_mis_reclamos(
     db: AsyncSession = Depends(get_db),
     current: dict = Depends(get_current_ciudadano),
 ):
-    """Lista SOLO los reclamos del vecino logueado (id_ciudadano del token)."""
-    conds = ["r.activo = TRUE", "r.id_ciudadano = :id_c"]
+    """Lista SOLO los reclamos del vecino logueado (id_ciudadano del token).
+
+    Auditoría posterior al cierre (mig 112): para el vecino un reclamo 'En auditoría'
+    o 'Auditado' sigue 'Resuelto' (la auditoría es interna), y los retrabajos que
+    nacen de una auditoría observada (id_reclamo_origen_auditoria) no se listan."""
+    conds = ["r.activo = TRUE", "r.id_ciudadano = :id_c", "r.id_reclamo_origen_auditoria IS NULL"]
     params: dict = {"id_c": current["id_ciudadano"], "limit": limit, "offset": offset}
     if estado:
-        conds.append("r.estado = :estado")
+        conds.append(f"{_ESTADO_VECINO} = :estado")
         params["estado"] = estado
 
     result = await db.execute(text(f"""
         SELECT
-            r.id_reclamo, r.nro_reclamo, r.estado, r.descripcion,
+            r.id_reclamo, r.nro_reclamo, {_ESTADO_VECINO} AS estado, r.descripcion,
             r.direccion, r.fecha_alta, r.fecha_modificacion, r.fecha_cierre,
             r.latitud, r.longitud,
             r.id_tipo_reclamo, tr.nombre AS tipo_nombre,
@@ -157,9 +165,9 @@ async def obtener_mi_reclamo(
 ):
     """Detalle de un reclamo PROPIO. Guard duro: 404 si no es del vecino (no se
     filtra info de terceros; mismo cuerpo para 'no existe' y 'no es tuyo')."""
-    result = await db.execute(text("""
+    result = await db.execute(text(f"""
         SELECT
-            r.id_reclamo, r.nro_reclamo, r.estado, r.descripcion,
+            r.id_reclamo, r.nro_reclamo, {_ESTADO_VECINO} AS estado, r.descripcion,
             r.direccion, r.observaciones,
             r.fecha_alta, r.fecha_modificacion, r.fecha_cierre, r.sla_vencimiento,
             r.canal_origen, r.fuente_geolocalizacion,
@@ -172,6 +180,7 @@ async def obtener_mi_reclamo(
         LEFT JOIN subarea s ON s.id_subarea = tr.id_subarea
         LEFT JOIN localidades loc ON loc.id_localidad = r.id_localidad
         WHERE r.id_reclamo = :id AND r.activo = TRUE AND r.id_ciudadano = :id_c
+          AND r.id_reclamo_origen_auditoria IS NULL
     """), {"id": id_reclamo, "id_c": current["id_ciudadano"]})
     row = result.fetchone()
     if not row:
@@ -179,11 +188,17 @@ async def obtener_mi_reclamo(
 
     d = _to_dict(row)
 
-    # Historial: solo acciones públicas (estado + nota), sin identidad del agente interno.
+    # Historial: solo acciones públicas (estado + nota), sin identidad del agente
+    # interno ni rastro de la auditoría posterior (mig 112): se omiten los pasos a
+    # 'En auditoría'/'Auditado' y lo que fue 'En auditoría' se muestra 'Resuelto'.
     hist = await db.execute(text("""
-        SELECT h.accion, h.estado_anterior, h.estado_nuevo, h.nota, h.fecha_alta
+        SELECT h.accion,
+               CASE WHEN h.estado_anterior IN ('En auditoría','Auditado') THEN 'Resuelto'
+                    ELSE h.estado_anterior END AS estado_anterior,
+               h.estado_nuevo, h.nota, h.fecha_alta
         FROM reclamo_historial h
         WHERE h.id_reclamo = :id
+          AND (h.estado_nuevo IS NULL OR h.estado_nuevo NOT IN ('En auditoría','Auditado'))
         ORDER BY h.fecha_alta ASC
     """), {"id": id_reclamo})
     d["historial"] = [_to_dict(h) for h in hist.fetchall()]

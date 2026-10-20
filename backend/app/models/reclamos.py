@@ -85,6 +85,16 @@ class Reclamo(Base):
     fecha_cierre            = Column(DateTime(timezone=True), nullable=True)
     fecha_primer_asignacion = Column(DateTime(timezone=True), nullable=True)
     sla_vencimiento         = Column(DateTime(timezone=True), nullable=True)
+    # ── Auditoría POSTERIOR al cierre (migración 112) ────────────────────
+    # 'En auditoría' = reclamo Resuelto reabierto para que lo revise un auditor;
+    # 'Auditado' = cierre de esa revisión (aprobado | observado). fecha_cierre no
+    # cambia: la gestión y sus tiempos terminaron en el primer cierre.
+    fecha_inicio_auditoria  = Column(DateTime(timezone=True), nullable=True)
+    fecha_fin_auditoria     = Column(DateTime(timezone=True), nullable=True)
+    resultado_auditoria     = Column(String(20), nullable=True)
+    # Retrabajo de una auditoría observada: apunta al reclamo auditado (invisible
+    # para el vecino: no se lista, no se notifica, no se encuesta).
+    id_reclamo_origen_auditoria = Column(Integer, ForeignKey("reclamos.id_reclamo", ondelete="SET NULL"), nullable=True)
     # ── Estándar §10 ─────────────────────────────────────────────────────
     activo              = Column(Boolean, nullable=False, default=True)
     id_municipio        = Column(Integer, nullable=True)
@@ -97,8 +107,12 @@ class Reclamo(Base):
     __table_args__ = (
         CheckConstraint("prioridad IN ('Alta','Media','Baja')", name="ck_reclamo_prioridad"),
         CheckConstraint(
-            "estado IN ('Sin asignar','En gestión','En espera','En auditoría','Resuelto','Cancelado')",
+            "estado IN ('Sin asignar','En gestión','En espera','En auditoría','Resuelto','Cancelado','Auditado')",
             name="ck_reclamo_estado"
+        ),
+        CheckConstraint(
+            "resultado_auditoria IS NULL OR resultado_auditoria IN ('aprobado','observado')",
+            name="ck_reclamos_resultado_auditoria"
         ),
         CheckConstraint(
             "canal_origen IS NULL OR canal_origen IN "
@@ -119,6 +133,7 @@ class Reclamo(Base):
         Index("idx_reclamos_localidad",  "id_localidad"),
         Index("idx_reclamos_activo_ref", "id_activo"),
         Index("idx_reclamos_lat_lon",    "latitud", "longitud"),
+        Index("idx_reclamos_origen_auditoria", "id_reclamo_origen_auditoria"),
     )
 
     historial = relationship("ReclamoHistorial", back_populates="reclamo",
@@ -266,7 +281,7 @@ class OrdenTrabajo(Base):
     id_usuario_modificacion = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
 
     __table_args__ = (
-        CheckConstraint("resultado_auditoria IN ('aprobada','rechazada')", name="ck_ot_resultado"),
+        CheckConstraint("resultado_auditoria IN ('aprobada','rechazada','observada')", name="ck_ot_resultado"),
         Index("idx_ot_reclamo",   "id_reclamo"),
         Index("idx_ot_agente",    "id_agente"),
         Index("idx_ot_equipo",    "id_equipo"),

@@ -15,15 +15,24 @@ interface Props {
 
 // #3 — Grafo de transiciones permitidas. Espeja TRANSICIONES_PERMITIDAS del
 // backend (reclamos.py). Cancelado se omite acá porque usa el endpoint dedicado
-// /cancelar (motivo requerido + cascade OTs). El dropdown solo ofrece estados
-// alcanzables desde el estado actual; el resto se deshabilita.
+// /cancelar (motivo requerido + cascade OTs). La auditoría posterior (mig 112)
+// tampoco pasa por acá: se entra con «Enviar a auditoría» (POST /auditoria) y la
+// cierra el auditor desde su mesa. El dropdown solo ofrece estados alcanzables.
 const TRANSICIONES_PERMITIDAS: Record<EstadoReclamo, EstadoReclamo[]> = {
   'Sin asignar':  ['En gestión'],
-  'En gestión':   ['En espera', 'En auditoría', 'Resuelto'],
-  'En espera':    ['En gestión', 'En auditoría'],
-  'En auditoría': ['En gestión', 'Resuelto'],
+  'En gestión':   ['En espera', 'Resuelto'],
+  'En espera':    ['En gestión'],
+  'En auditoría': [],
+  'Auditado':     [],
   'Resuelto':     [],
   'Cancelado':    [],
+}
+
+// Qué decirle al usuario cuando el estado no admite cambios por acá.
+const MENSAJE_SIN_CAMBIOS: Partial<Record<EstadoReclamo, string>> = {
+  'Resuelto':     'La gestión ya cerró. Un supervisor puede mandarlo a auditoría con «Enviar a auditoría».',
+  'En auditoría': 'La auditoría la cierra el auditor desde su mesa (aprobar u observar).',
+  'Auditado':     'La auditoría ya cerró; el resultado está en la ficha del reclamo.',
 }
 
 export function CambiarEstadoModal({ open, idReclamo, estadoActual, onClose, onSuccess }: Props) {
@@ -148,10 +157,8 @@ export function CambiarEstadoModal({ open, idReclamo, estadoActual, onClose, onS
             border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-lg)',
             color: 'var(--fg-2)', fontSize: 'var(--size-ui)', lineHeight: 1.5,
           }}>
-            El reclamo está en estado <strong>{estadoActual}</strong> (final). No admite
-            cambios de estado. {estadoActual === 'Resuelto'
-              ? 'Para reabrirlo, generá una nueva OT o un subreclamo.'
-              : ''}
+            El reclamo está en estado <strong>{estadoActual}</strong>. No admite
+            cambios de estado por acá. {MENSAJE_SIN_CAMBIOS[estadoActual] ?? ''}
           </div>
         ) : (
           <Field

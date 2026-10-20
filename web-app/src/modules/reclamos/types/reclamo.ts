@@ -1,6 +1,9 @@
 // Tipos del modulo Reclamos. Mirror del response shape de backend/app/api/routes/reclamos.py.
 // Los SELECT del backend usan SQL crudo + _to_dict, no hay schema Pydantic estricto.
 
+// 'En auditoría' y 'Auditado' son la auditoría POSTERIOR al cierre (mig 112): un
+// reclamo Resuelto reabierto para que lo revise un auditor, y el cierre de esa
+// revisión. Ninguno reabre la gestión (fecha_cierre no cambia).
 export type EstadoReclamo =
   | 'Sin asignar'
   | 'En gestión'
@@ -8,6 +11,9 @@ export type EstadoReclamo =
   | 'En auditoría'
   | 'Resuelto'
   | 'Cancelado'
+  | 'Auditado'
+
+export type ResultadoAuditoria = 'aprobado' | 'observado'
 
 // Valores aceptados por reclamos_prioridad_check en prod (verificado 2026-05-12).
 // El vanilla original solo expone estos 3 — no agregar Critica/Urgente sin migrar el CHECK.
@@ -47,7 +53,11 @@ export interface ReclamoListado {
   observaciones: string | null
   fecha_alta: string
   fecha_modificacion: string | null
+  fecha_cierre: string | null
   id_reclamo_padre: number | null
+  // Auditoría posterior (mig 112)
+  resultado_auditoria: ResultadoAuditoria | null
+  id_reclamo_origen_auditoria: number | null
   latitud: number | null
   longitud: number | null
   id_ciudadano: number
@@ -108,6 +118,14 @@ export interface ReclamoDetalle extends ReclamoListado {
   fecha_primer_asignacion: string | null
   fecha_cierre: string | null
   sla_vencimiento: string | null
+  // Auditoría posterior al cierre (mig 112): fechas de la auditoría, el reclamo
+  // auditado del que nace este retrabajo y el retrabajo que nació de este.
+  fecha_inicio_auditoria: string | null
+  fecha_fin_auditoria: string | null
+  origen_auditoria_nro: string | null
+  retrabajo_auditoria_id: number | null
+  retrabajo_auditoria_nro: string | null
+  retrabajo_auditoria_estado: EstadoReclamo | null
   canal_origen: string | null
   fuente_geolocalizacion: string | null
   latitud: number | null

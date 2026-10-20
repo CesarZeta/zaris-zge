@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Modal } from '../../agenda/components/Modal'
 import { useNotificationsStore } from '../../../stores/notifications'
-import { useAprobarOT, useRechazarOT } from '../hooks/useOT'
+import { useAprobarOT, useObservarOT } from '../hooks/useOT'
 import type { MesaAuditoriaRow } from '../types/ot'
 import { nombreAgente } from '../lib/format'
 
-type Kind = 'aprobar' | 'rechazar'
+// Auditoría posterior al cierre (mig 112): aprobar → reclamo Auditado/aprobado;
+// observar → Auditado/observado + reclamo nuevo de retrabajo. Antes 'rechazar'
+// devolvía el reclamo a En gestión con una OT pendiente.
+type Kind = 'aprobar' | 'observar'
 
 interface Props {
   open: boolean
@@ -18,8 +21,8 @@ interface Props {
 export function AuditarModal({ open, kind, ot, onClose, onSuccess }: Props) {
   const push = useNotificationsStore((s) => s.push)
   const mutAprobar = useAprobarOT()
-  const mutRechazar = useRechazarOT()
-  const mut = kind === 'aprobar' ? mutAprobar : mutRechazar
+  const mutObservar = useObservarOT()
+  const mut = kind === 'aprobar' ? mutAprobar : mutObservar
 
   const [obs, setObs] = useState('')
 
@@ -31,7 +34,10 @@ export function AuditarModal({ open, kind, ot, onClose, onSuccess }: Props) {
 
   const subtitle = `${ot.nro_ot ?? ''} · ${ot.nro_reclamo ?? ''} — ${ot.tipo_nombre ?? ''}`
   const origenAg = nombreAgente(ot.ot_origen_agente_apellido, ot.ot_origen_agente_nombre)
-  const requiereObs = kind === 'rechazar'
+  const requiereObs = kind === 'observar'
+  const cierre = ot.reclamo_fecha_cierre
+    ? new Date(ot.reclamo_fecha_cierre).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
+    : '—'
   const puedeConfirmar = !mut.isPending && (!requiereObs || obs.trim().length > 0)
 
   async function confirmar() {
@@ -39,26 +45,30 @@ export function AuditarModal({ open, kind, ot, onClose, onSuccess }: Props) {
     try {
       if (kind === 'aprobar') {
         await mutAprobar.mutateAsync({ id_ot: ot.id_ot, observaciones: obs.trim() })
-        push({ kind: 'success', title: 'Auditoría aprobada — reclamo resuelto' })
+        push({ kind: 'success', title: 'Auditoría aprobada — reclamo Auditado' })
       } else {
-        await mutRechazar.mutateAsync({ id_ot: ot.id_ot, observaciones: obs.trim() })
-        push({ kind: 'success', title: 'Auditoría rechazada — nueva OT pendiente generada' })
+        const res = await mutObservar.mutateAsync({ id_ot: ot.id_ot, observaciones: obs.trim() })
+        push({
+          kind: 'success',
+          title: 'Auditoría observada — se generó el reclamo de retrabajo',
+          body: res.nro_reclamo_retrabajo ? `Retrabajo: ${res.nro_reclamo_retrabajo}` : undefined,
+        })
       }
       onSuccess?.()
       onClose()
     } catch (err) {
       push({
         kind: 'error',
-        title: kind === 'aprobar' ? 'Error al aprobar' : 'Error al rechazar',
+        title: kind === 'aprobar' ? 'Error al aprobar' : 'Error al observar',
         body: (err as Error).message,
       })
     }
   }
 
-  const title = kind === 'aprobar' ? 'Aprobar auditoría' : 'Rechazar auditoría'
+  const title = kind === 'aprobar' ? 'Aprobar auditoría' : 'Observar auditoría'
   const btn = kind === 'aprobar'
     ? { label: mut.isPending ? 'Aprobando…' : 'Aprobar', style: btnSuccess }
-    : { label: mut.isPending ? 'Rechazando…' : 'Rechazar', style: btnDanger }
+    : { label: mut.isPending ? 'Observando…' : 'Observar', style: btnDanger }
 
   return (
     <Modal
@@ -77,28 +87,30 @@ export function AuditarModal({ open, kind, ot, onClose, onSuccess }: Props) {
         <div style={{ fontSize: '0.82rem', color: 'var(--fg-3)' }}>{subtitle}</div>
 
         <div style={infoBox}>
+          Reclamo resuelto el: <strong>{cierre}</strong><br />
           OT operativa origen: <strong>{ot.ot_origen_nro ?? '—'}</strong><br />
           Agente que realizó el trabajo: <strong>{origenAg}</strong><br />
           Observaciones del agente: {ot.ot_origen_obs?.trim() || '(sin observaciones)'}
+          {ot.observaciones?.trim() ? <><br />Indicaciones de la supervisión: {ot.observaciones.trim()}</> : null}
         </div>
 
         <div style={warnBox}>
           {kind === 'aprobar' ? (
-            <>Al aprobar, el reclamo pasa a estado <strong>Resuelto</strong> y el ciclo se cierra.</>
+            <>Al aprobar, el reclamo queda <strong>Auditado</strong> (aprobado). Su fecha de cierre no cambia y el vecino no recibe aviso.</>
           ) : (
-            <>Al rechazar, se genera una <strong>nueva OT Pendiente</strong> con el agente del trabajo original y el reclamo vuelve a <strong>En gestión</strong>.</>
+            <>Al observar, el reclamo queda <strong>Auditado</strong> (observado) y se genera un <strong>reclamo nuevo de oficio</strong> para el retrabajo, con tu observación como descripción. El vecino no lo ve ni recibe aviso.</>
           )}
         </div>
 
         <Field
-          label={kind === 'aprobar' ? 'Observaciones' : 'Motivo del rechazo'}
+          label={kind === 'aprobar' ? 'Observaciones' : 'Observación (va al reclamo de retrabajo)'}
           required={requiereObs}
-          hint={kind === 'aprobar' ? 'Opcional.' : 'Obligatorio. Describí qué no cumple.'}
+          hint={kind === 'aprobar' ? 'Opcional.' : 'Obligatorio. Describí qué quedó mal o sin hacer.'}
         >
           <textarea
             value={obs}
             onChange={(e) => setObs(e.target.value)}
-            placeholder={kind === 'aprobar' ? 'Comentarios de la auditoría...' : 'Describí qué no cumple...'}
+            placeholder={kind === 'aprobar' ? 'Comentarios de la auditoría...' : 'Ej: quedó un pozo sin tapar en la esquina...'}
             rows={4}
             maxLength={500}
             style={{ ...inputStyle, resize: 'vertical', fontFamily: 'var(--font-display)' }}

@@ -221,7 +221,6 @@ export function SupervisorView() {
               <option value="">Todos</option>
               <option value="En gestión">En gestión</option>
               <option value="En espera">En espera</option>
-              <option value="En auditoría">En auditoría</option>
             </select>
           </Field>
         )}

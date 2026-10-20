@@ -9,7 +9,8 @@ const ESTADO_COLORS: Record<string, { bg: string; fg: string }> = {
   'Sin asignar':   { bg: 'rgba(207,45,86,.12)',   fg: '#cf2d56' },
   'En gestión':    { bg: 'rgba(192,133,50,.14)',  fg: '#c08532' },
   'En espera':     { bg: 'rgba(120,120,120,.12)', fg: '#666' },
-  'En auditoría':  { bg: 'rgba(96,165,200,.14)',  fg: '#3b82a8' },
+  'En auditoría':  { bg: 'rgba(106,27,154,.12)',  fg: '#6a1b9a' },  // violeta: resuelto, pendiente del auditor (mig 112)
+  'Auditado':      { bg: 'rgba(0,105,92,.12)',    fg: '#00695c' },  // teal oscuro: auditoría cerrada
   'Resuelto':      { bg: 'rgba(31,138,101,.12)',  fg: '#1f8a65' },
   'Cancelado':     { bg: 'rgba(38,37,30,.08)',    fg: 'var(--fg-2)' },
 }

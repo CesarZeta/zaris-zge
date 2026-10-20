@@ -9,7 +9,13 @@ import { AuditarModal } from '../components/AuditarModal'
 import { OTDetalleDrawer } from '../components/OTDetalleDrawer'
 import { useAuthStore } from '../../../stores/auth'
 
-type Kind = 'aprobar' | 'rechazar'
+type Kind = 'aprobar' | 'observar'
+
+function fechaCorta(iso: string | null): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
 
 // Botón "Ver OTs en auditoría" del toolbar (submit del form de búsqueda
 // diferida, §23). Misma geometría que el Refrescar del Toolbar.
@@ -61,7 +67,7 @@ export function AuditoriaView() {
     : isError
       ? 'Acceso denegado o sin agente auditor vinculado.'
       : idAgente
-        ? `Auditando como agente #${idAgente}. Aprobá o rechazá las OTs operativas cerradas.`
+        ? `Auditando como agente #${idAgente}. Reclamos ya resueltos que la supervisión mandó a auditar: aprobá u observá (la observación genera un reclamo de retrabajo).`
         : 'Tu usuario no tiene un agente con permiso de auditoría.'
 
   return (
@@ -124,6 +130,7 @@ export function AuditoriaView() {
               <th style={thStyle}>Tipo</th>
               <th style={thStyle}>Subárea</th>
               <th style={thStyle}>Ciudadano</th>
+              <th style={thStyle}>Resuelto el</th>
               <th style={thStyle}>OT operativa origen</th>
               <th style={thStyle}>Descripción</th>
               <th style={{ ...thStyle, ...stickyTh }}>Acción</th>
@@ -131,10 +138,10 @@ export function AuditoriaView() {
           </thead>
           <tbody>
             {isLoading && (
-              <tr><td colSpan={9} style={emptyStyle}>Cargando…</td></tr>
+              <tr><td colSpan={10} style={emptyStyle}>Cargando…</td></tr>
             )}
             {!isLoading && !isError && filtrados.length === 0 && (
-              <tr><td colSpan={9} style={emptyStyle}>
+              <tr><td colSpan={10} style={emptyStyle}>
                 No hay OTs pendientes de auditoría{ots.length ? ' que coincidan con los filtros' : ''}
               </td></tr>
             )}
@@ -152,6 +159,10 @@ export function AuditoriaView() {
                 <td style={tdStyle}><Clamp2 title={o.subarea_nombre}>{o.subarea_nombre ?? '—'}</Clamp2></td>
                 <td style={tdStyle}>{nombreCiudadano(o.ciudadano_apellido, o.ciudadano_nombre)}</td>
                 <td style={tdStyle}>
+                  <div style={monoStyle}>{fechaCorta(o.reclamo_fecha_cierre)}</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--fg-3)' }}>enviada {fechaCorta(o.fecha_inicio_auditoria)}</div>
+                </td>
+                <td style={tdStyle}>
                   <div style={{ ...monoStyle, fontSize: '0.72rem', color: 'var(--fg-3)' }}>{o.ot_origen_nro ?? '—'}</div>
                   <div style={{ fontSize: '0.8rem' }}>
                     Agente: {nombreAgente(o.ot_origen_agente_apellido, o.ot_origen_agente_nombre)}
@@ -163,8 +174,8 @@ export function AuditoriaView() {
                   <button onClick={() => setModal({ kind: 'aprobar', ot: o })} style={{ ...btnSuccessSm, marginRight: 4 }}>
                     Aprobar
                   </button>
-                  <button onClick={() => setModal({ kind: 'rechazar', ot: o })} style={btnDangerSm}>
-                    Rechazar
+                  <button onClick={() => setModal({ kind: 'observar', ot: o })} style={btnDangerSm}>
+                    Observar
                   </button>
                 </td>
               </tr>

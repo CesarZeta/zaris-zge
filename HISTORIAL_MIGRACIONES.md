@@ -179,6 +179,14 @@ Las reglas vivas de cada una están en la sección del módulo correspondiente d
 - **Mig 76** (sesión 2026-06-01, alta pública de vecinos §38): tabla `empresa_credencial` (1:1 con `empresas`, solo verificación de email — `token_verificacion`/`verificado`/`verificado_en`, SIN password) + índice parcial sobre el token. Local por psql, prod por `apply_migration`. El ciudadano reusa `ciudadano_credencial` (mig 53).
 - **Migs 77-79** (2026-06-09, integridad de cuentas + alta vecino en 2 pasos): 77 = `usuarios.suspendido_motivo`/`fecha_suspension` (cron de integridad §39). 78 = `usuarios.debe_cambiar_password` (clave temporal + cambio forzado §39 Fase 3). 79 = `ciudadanos.ficha_completa` + `ciudadano_credencial.debe_cambiar_password` (alta del vecino en dos pasos §38/§39 Fase 4).
 
+### Migración 112 — Auditoría de reclamos POSTERIOR al cierre (`backend/migrations/112_auditoria_posterior_cierre.sql`)
+
+**2026-10-20, F1 de `PLAN_AUDITORIA_RECLAMOS.md`.** Estado nuevo `Auditado` en `ck_reclamo_estado` y en `estado_reclamo` (final, orden 6; «En auditoría» pasa a orden 5 con descripción «resuelto, pendiente del auditor»; Resuelto 4, Cancelado 7). Columnas nuevas en `reclamos`: `fecha_inicio_auditoria`, `fecha_fin_auditoria`, `resultado_auditoria` (CHECK `aprobado|observado`) e `id_reclamo_origen_auditoria` (FK a `reclamos`, índice parcial `idx_reclamos_origen_auditoria`). `ck_ot_resultado` acepta `observada` (en local el CHECK se llamaba `ordenes_trabajo_resultado_auditoria_check`: la mig dropea los dos nombres y recrea `ck_ot_resultado`). Los reclamos «En auditoría» del modelo viejo (auditoría previa al cierre) pasan a `Resuelto` con `fecha_cierre` = fecha en que habían entrado a auditoría, más una fila de historial que lo explica.
+
+- **Local:** asyncpg (`driver_connection`, multi-statement). **Prod:** `apply_migration` (MCP); verificado por SELECT aparte: los 3 CHECKs, las 4 columnas, el índice, 7 estados activos en el catálogo, 0 reclamos «En auditoría».
+- **Única fila de datos tocada en prod:** #36 (`REC-2026-000036`), antes `En auditoría` con `fecha_cierre` NULL (había entrado a auditoría a mano el 2026-05-26 desde «En espera»; su subreclamo #37 ya estaba Resuelto); quedó `Resuelto` con `fecha_cierre = 2026-05-26 12:52:20+00`. Sin snapshot (1 fila, reversible con este dato). En local había 0.
+- **Smoke:** `backend/smoke_auditoria_reclamos.py` (in-process, solo local) 71/71.
+
 ### Migración 111 — Límite geográfico del municipio `geo_limite_geojson` (`backend/migrations/111_geo_limite_municipio.sql`)
 
 **Solo datos, 2026-10-19.** Clave nueva en `configuracion_general` con el contorno del municipio demo «San Andrés» = unión de los partidos de Vicente López y San Isidro (OSM, simplificado a 158 vértices, 3477 bytes). La lee `services/geo_limite.py`: el mapa del inicio sombrea lo de afuera y encuadra el municipio; el generador demo descarta puntos fuera del contorno. Oculta en Config → Sistema.

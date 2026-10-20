@@ -10,6 +10,7 @@ export type EstadoReclamoOT =
   | 'En auditoría'
   | 'Resuelto'
   | 'Cancelado'
+  | 'Auditado'
 
 export type EstadoOT =
   | 'En gestión'
@@ -119,6 +120,10 @@ export interface MesaAuditoriaRow {
   agente_apellido: string | null
   ciudadano_nombre: string | null
   ciudadano_apellido: string | null
+  // Auditoría posterior al cierre (mig 112): el reclamo ya está resuelto.
+  reclamo_estado: EstadoReclamoOT
+  reclamo_fecha_cierre: string | null
+  fecha_inicio_auditoria: string | null
   id_ot_origen: number | null
   ot_origen_nro: string | null
   ot_origen_obs: string | null

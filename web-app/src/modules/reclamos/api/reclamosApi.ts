@@ -55,6 +55,14 @@ export const cambiarEstadoReclamo = (id: number, body: { estado: string; nota?: 
 export const cancelarReclamo = (id: number, body: { motivo: string }) =>
   api.put<{ ok: boolean; id_reclamo: number; estado: string }>(`${BASE}/${id}/cancelar`, body)
 
+// Auditoría POSTERIOR al cierre (mig 112): manda un reclamo Resuelto a 'En auditoría'
+// (supervisor de la subárea del reclamo, o admin). Crea la OT de auditoría que un
+// auditor toma desde su mesa. fecha_cierre no cambia; el vecino no recibe aviso.
+export const enviarAuditoria = (id: number, body: { observaciones?: string; id_agente_auditor?: number | null }) =>
+  api.post<{ ok: boolean; id_reclamo: number; estado: string; id_ot: number; nro_ot: string }>(
+    `${BASE}/${id}/auditoria`, body,
+  )
+
 // Aviso del operador al supervisor (Fase 3 roles): pide una acción sobre el
 // reclamo. Notifica a los supervisores de la subárea (fallback: admins).
 export const avisarSupervisor = (id: number, body: { accion_sugerida: string; comentario?: string }) =>

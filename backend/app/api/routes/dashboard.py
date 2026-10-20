@@ -57,7 +57,8 @@ async def resumen_dashboard(
               JOIN emergencia_estado es ON es.id_emergencia_estado = ev.id_estado
              WHERE ev.activo = TRUE AND es.es_terminal = FALSE) AS emergencias_activas,
             (SELECT COUNT(*) FROM reclamos rc
-             WHERE rc.activo = TRUE AND rc.estado NOT IN ('Resuelto', 'Cancelado')) AS reclamos_activos,
+             -- Activos = en gestión. 'En auditoría'/'Auditado' (mig 112) ya cerraron.
+             WHERE rc.activo = TRUE AND rc.estado IN ('Sin asignar', 'En gestión', 'En espera')) AS reclamos_activos,
             (SELECT COUNT(*) FROM espacios_agenda ea
              WHERE ea.activo = TRUE) AS espacios_disponibles,
             (SELECT COUNT(*) FROM turnos t
@@ -81,7 +82,8 @@ async def resumen_dashboard(
                tr.nombre AS tipo_nombre
         FROM reclamos r
         LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
-        WHERE r.activo = TRUE AND r.estado NOT IN ('Resuelto', 'Cancelado')
+        -- 'En auditoría' sigue en el mapa (pendiente del auditor, violeta); 'Auditado' no.
+        WHERE r.activo = TRUE AND r.estado NOT IN ('Resuelto', 'Cancelado', 'Auditado')
           AND r.latitud IS NOT NULL AND r.longitud IS NOT NULL
         ORDER BY r.fecha_alta DESC
         LIMIT 500

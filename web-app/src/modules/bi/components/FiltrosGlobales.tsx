@@ -14,7 +14,7 @@ import { LABEL_CANAL } from '../lib/theme'
 //    manual (desde/hasta) es la otra vía: usar una limpia la otra.
 //  - Estado, prioridad, canal y tipo de reclamo (buscador).
 //  - El panel se puede CONTRAER: contraído muestra un resumen de lo aplicado.
-export const ESTADOS = ['Sin asignar', 'En gestión', 'En espera', 'En auditoría', 'Resuelto', 'Cancelado'] as const
+export const ESTADOS = ['Sin asignar', 'En gestión', 'En espera', 'En auditoría', 'Resuelto', 'Auditado', 'Cancelado'] as const
 const CANALES = ['web', 'app_movil', 'whatsapp', 'telefono', 'presencial', 'oficio', 'otro', 'sin_dato'] as const
 const TODOS_LOS_MESES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
