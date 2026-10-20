@@ -15,6 +15,10 @@ Datos fijos del proyecto:
 - **Shell del producto (GH Pages):** `https://cesarzeta.github.io/zaris-zge/index.html` (dominio propio `https://zge.zaris.com.ar`).
 - **PWA App Vecinos (Vercel):** `https://vecinos.zaris.com.ar` — repo SEPARADO `CesarZeta/zaris-vecinos`.
 
+## Paso 0 — Lista de arranque (REGLA DE CÉSAR 2026-10-20)
+
+La **primera respuesta de cada sesión** empieza planteándole a César la lista de arranque, ANTES del reporte técnico y de lo que haya pedido: `ESTADO.md` → «❓ Preguntas abiertas para César» y, para César, la memoria privada `project_preguntas_arranque` (trae el detalle sensible, p. ej. de seguridad). Cada punto con mi recomendación; **lo de seguridad primero**. Si algo se puede verificar solo (un deploy, un dato), verificarlo y decir el resultado en vez de preguntarlo. «Es tu respuesta más importante» (César).
+
 ## Contexto del proyecto — antes del estado técnico
 
 Antes de mirar servicios/repo, revisar el estado conceptual del proyecto:

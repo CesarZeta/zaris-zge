@@ -13,6 +13,8 @@ Rutina de fin de jornada. Trabajamos **en colaboración** (Cesar `CesarZeta` + R
 
 Ejecutar los 5 pasos en orden y reportar al final.
 
+> **REGLA DE CÉSAR (2026-10-20) — el cierre anota TODO y el arranque pregunta:** al cerrar, primero **cerrar lo que se pueda cerrar** (verificar un deploy, re-dispararlo, terminar lo que esté a medias). Todo lo que quede abierto —pendiente, verificación sin hacer, duda, decisión que le toca a César— se **escribe** en la lista de arranque: `ESTADO.md` → sección «❓ Preguntas abiertas para César» (sin datos sensibles) y, para César, la memoria privada `project_preguntas_arranque` (con el detalle sensible, p. ej. seguridad). **Nunca terminar el cierre con una pregunta que solo vive en el chat**: si no la responde, se pierde. Lo de seguridad con detalle explotable va SOLO a la memoria privada (§40: `ESTADO.md` es público). El reporte final es **corto** (César no lee el detalle del cierre): estado, una línea por cada punto abierto y «anotado para el arranque».
+
 ## 1. Chequeo de estado
 
 Correr el reporte de la skill **`estado-proyecto`** (repo + colaboradores + GH Pages + Railway + Vercel + Actions). Si esa skill está disponible, reusar sus comandos; lo mínimo imprescindible:
@@ -100,7 +102,7 @@ Si no hubo hallazgos, decirlo — pero recién después de pensarlo, no por defe
 
 ## Reporte final al usuario
 
-Cerrar con un bloque compacto:
+Antes del reporte: reescribir la lista de arranque (`ESTADO.md` «❓ Preguntas abiertas para César» + memoria `project_preguntas_arranque`) con TODO lo que quedó abierto, cada punto con mi recomendación. Cerrar con un bloque compacto:
 - ✅/⚠️ Estado: repo, deploys, Actions.
 - 🔄 Sync: pusheado / pendiente / si hay que traer commits de Roy.
 - 📝 Resumen de lo hecho + pendientes.
