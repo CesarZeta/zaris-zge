@@ -1,6 +1,8 @@
 # Plan — Auditoría de reclamos POSTERIOR al cierre
 
-> Estado: **F1 (backend + mig 112) y F2 (frontend) implementadas el 2026-10-20; F3 (generador demo + docs de usuario) pendiente.** Los puntos *supuesto* de abajo se aplicaron tal cual están escritos, más dos decisiones que el plan no cubría (ver «Cómo quedó»); César puede corregirlas.
+> Estado: **F1 (backend + mig 112), F2 (frontend) y F3 (generador demo + backfill en prod) implementadas el 2026-10-20 y en prod** (`16ad409`, `a17bb6d`). Los puntos *supuesto* de abajo se aplicaron tal cual están escritos, más dos decisiones que el plan no cubría (ver «Cómo quedó»); César puede corregirlas. Falta solo la doc de usuario (manual/guía QA de Reclamos y OT).
+>
+> **F3 (2026-10-20):** `services/demo_datos.py` ya no simula la auditoría previa; sortea auditorías posteriores (~8 % de los resueltos, 1-10 días tras el cierre, revisión de 1-7 días, 80 % aprobada / 20 % observada con retrabajo de oficio) con su OT e historial, y `avanzar_pendientes` las envejece (cierra ~60 % de las pendientes por corrida, manda ~3 % de los resueltos recientes). Sobre la demo cargada antes de la mig 112 se corrió una vez `backend/backfill_auditorias_demo.py` en local y en prod (prod: 2.517 candidatos → 177 Auditado + 4 En auditoría, 32 retrabajos; snapshot `_backup_reclamos_auditoria_2026_10_20` con las 181 filas previas, RLS on).
 
 ## Cómo quedó (2026-10-20)
 

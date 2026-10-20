@@ -186,6 +186,7 @@ Las reglas vivas de cada una están en la sección del módulo correspondiente d
 - **Local:** asyncpg (`driver_connection`, multi-statement). **Prod:** `apply_migration` (MCP); verificado por SELECT aparte: los 3 CHECKs, las 4 columnas, el índice, 7 estados activos en el catálogo, 0 reclamos «En auditoría».
 - **Única fila de datos tocada en prod:** #36 (`REC-2026-000036`), antes `En auditoría` con `fecha_cierre` NULL (había entrado a auditoría a mano el 2026-05-26 desde «En espera»; su subreclamo #37 ya estaba Resuelto); quedó `Resuelto` con `fecha_cierre = 2026-05-26 12:52:20+00`. Sin snapshot (1 fila, reversible con este dato). En local había 0.
 - **Smoke:** `backend/smoke_auditoria_reclamos.py` (in-process, solo local) 71/71.
+- **Backfill de demo (mismo día, F3):** `backend/backfill_auditorias_demo.py --aplicar` por el pooler `aws-1-us-east-1` sobre los reclamos del usuario `generador.demo`: 2.517 Resueltos candidatos → 181 con auditoría posterior (177 `Auditado`: 145 aprobadas + 32 observadas; 4 `En auditoría`), 181 OT `es_auditoria` y 32 reclamos de retrabajo (canal `oficio`, sin encuesta). Snapshot previo `_backup_reclamos_auditoria_2026_10_20` (181 filas, RLS on). Verificado por SELECT aparte (MCP): 0 auditados sin OT, fechas coherentes, retrabajos sin encuesta.
 
 ### Migración 111 — Límite geográfico del municipio `geo_limite_geojson` (`backend/migrations/111_geo_limite_municipio.sql`)
 
