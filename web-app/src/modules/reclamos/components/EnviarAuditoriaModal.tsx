@@ -55,7 +55,8 @@ export function EnviarAuditoriaModal({ open, idReclamo, nroReclamo, onClose, onS
           El reclamo <strong>{nroReclamo ?? `#${idReclamo}`}</strong> pasa a <strong>En auditoría</strong> para
           que lo revise un auditor. Su fecha de cierre y sus tiempos de gestión <strong>no cambian</strong>, y
           el vecino no recibe ningún aviso. El auditor lo cierra como <strong>Auditado</strong> (aprobado u
-          observado); si lo observa, se genera un reclamo nuevo de oficio para el retrabajo.
+          observado); si lo observa, puede iniciar un incidente nuevo para rehacer el trabajo, y en ese
+          caso el vecino recibe un correo que se lo explica.
         </p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

@@ -169,18 +169,18 @@ async def notificar_estado_reclamo(id_reclamo: int) -> None:
     """Push al ciudadano del reclamo con su estado actual. No-op sin suscripcion.
 
     Auditoria posterior al cierre (mig 112): es interna. No se avisa por los
-    estados 'En auditoria'/'Auditado' (el vecino sigue viendo 'Resuelto') ni por
-    nada que pase con un retrabajo de auditoria (id_reclamo_origen_auditoria),
-    que para el vecino no existe."""
+    estados 'En auditoria'/'Auditado' (el vecino sigue viendo 'Resuelto'). El
+    retrabajo de una auditoria observada SI avisa como cualquier reclamo: desde
+    F4 (2026-10-20) el vecino lo ve en la app."""
     try:
         async with AsyncSessionLocal() as db:
             r = (await db.execute(text("""
-                SELECT nro_reclamo, estado, id_ciudadano, id_reclamo_origen_auditoria
+                SELECT nro_reclamo, estado, id_ciudadano
                 FROM reclamos WHERE id_reclamo = :id
             """), {"id": id_reclamo})).mappings().first()
         if not r or not r["id_ciudadano"]:
             return
-        if r["id_reclamo_origen_auditoria"] is not None or r["estado"] in ("En auditoría", "Auditado"):
+        if r["estado"] in ("En auditoría", "Auditado"):
             return
         id_c = int(r["id_ciudadano"])
         titulo = f"Tu reclamo {r['nro_reclamo'] or ''}".strip()
@@ -195,6 +195,64 @@ async def notificar_estado_reclamo(id_reclamo: int) -> None:
         await enviar_push_ciudadano(id_c, titulo=titulo, cuerpo=cuerpo, url=url)
     except Exception as e:  # noqa: BLE001
         logger.warning("notificar_estado_reclamo(%s) fallo: %s", id_reclamo, e)
+
+
+async def notificar_retrabajo_auditoria(id_retrabajo: int) -> None:
+    """Aviso al vecino de que una auditoria de su reclamo resulto observada y se
+    abrio un reclamo nuevo para rehacer el trabajo (PLAN_AUDITORIA_RECLAMOS.md F4).
+
+    Mail (texto generico, sin la observacion del auditor) + bandeja + push. El mail
+    sale solo si el vecino tiene email y el portal esta configurado (fail-closed,
+    core/urls). Best-effort: cada canal falla por su cuenta sin cortar los demas."""
+    from app.core.urls import url_portal_vecino
+    from app.services.cuenta_vecino import _municipio_branding
+    from app.services.email import enviar_mail_retrabajo_auditoria_ciudadano
+
+    try:
+        async with AsyncSessionLocal() as db:
+            r = (await db.execute(text("""
+                SELECT rt.nro_reclamo, rt.id_ciudadano, ro.nro_reclamo AS nro_origen,
+                       c.nombre, c.apellido, c.email
+                FROM reclamos rt
+                JOIN reclamos ro ON ro.id_reclamo = rt.id_reclamo_origen_auditoria
+                JOIN ciudadanos c ON c.id_ciudadano = rt.id_ciudadano
+                WHERE rt.id_reclamo = :id
+            """), {"id": id_retrabajo})).mappings().first()
+            if not r:
+                return
+            municipio_nombre, municipio_logo_url = await _municipio_branding(db)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("notificar_retrabajo_auditoria(%s) fallo al leer: %s", id_retrabajo, e)
+        return
+
+    id_c = int(r["id_ciudadano"])
+    nro_rt = r["nro_reclamo"] or f"REC-{id_retrabajo}"
+    nro_or = r["nro_origen"] or "anterior"
+
+    email = (r["email"] or "").strip()
+    portal = url_portal_vecino()
+    if email and "@" in email and portal:
+        try:
+            await enviar_mail_retrabajo_auditoria_ciudadano(
+                to=email, nombre=r["nombre"] or "", apellido=r["apellido"] or "",
+                nro_reclamo_origen=nro_or, nro_reclamo_retrabajo=nro_rt,
+                municipio_nombre=municipio_nombre, portal_url=portal,
+                municipio_logo_url=municipio_logo_url,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("mail de retrabajo %s fallo: %s", id_retrabajo, e)
+
+    titulo = f"Tu reclamo {nro_or}"
+    cuerpo = f"Vamos a volver a hacer el trabajo: abrimos el reclamo {nro_rt}."
+    url = f"/reclamos/{id_retrabajo}"
+    try:
+        await registrar_aviso_ciudadano(
+            id_c, "reclamo_estado", titulo, cuerpo, url,
+            recurso_tipo="reclamo", recurso_id=id_retrabajo,
+        )
+        await enviar_push_ciudadano(id_c, titulo=titulo, cuerpo=cuerpo, url=url)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("aviso/push de retrabajo %s fallo: %s", id_retrabajo, e)
 
 
 async def notificar_estado_emergencia(id_evento: int) -> None:

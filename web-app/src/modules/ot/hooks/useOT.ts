@@ -163,7 +163,9 @@ export function useAprobarOT() {
 export function useObservarOT() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id_ot, observaciones }: { id_ot: number; observaciones: string }) => observarOT(id_ot, observaciones),
+    mutationFn: ({ id_ot, observaciones, generar_retrabajo }: {
+      id_ot: number; observaciones: string; generar_retrabajo: boolean
+    }) => observarOT(id_ot, observaciones, generar_retrabajo),
     // El retrabajo es un reclamo nuevo: también se invalida el módulo Reclamos.
     onSuccess: () => { invalidarMesas(qc); qc.invalidateQueries({ queryKey: ['reclamos'] }) },
   })

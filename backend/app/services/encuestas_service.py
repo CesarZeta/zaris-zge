@@ -45,7 +45,6 @@ LARGO_DESCRIPCION_CORTA = 80
 MOTIVO_OK = "ok"
 MOTIVO_DESACTIVADAS = "Encuestas deshabilitadas"
 MOTIVO_NO_RESUELTO = "Reclamo no existe o no está en estado Resuelto"
-MOTIVO_RETRABAJO_AUDITORIA = "Retrabajo de auditoría: es interno, no se encuesta al vecino"
 MOTIVO_YA_EXISTE = "Ya existe envío para este reclamo"
 MOTIVO_SIN_EMAIL = "Ciudadano sin email válido"
 MOTIVO_ANTIFATIGA = "Anti-fatiga: ya recibió encuesta del área en últimos 30 días"
@@ -148,11 +147,11 @@ async def crear_envio_para_reclamo(db: AsyncSession, id_reclamo: int):
             logger.info("crear_envio: reclamo=%s no existe", id_reclamo)
             return None, MOTIVO_NO_RESUELTO
         rec = rec._mapping
-        # Mig 112: el retrabajo de una auditoria observada es interno (el vecino no
-        # lo ve); cerrarlo no dispara una segunda encuesta.
-        if rec["id_reclamo_origen_auditoria"] is not None:
-            logger.info("crear_envio: reclamo=%s es retrabajo de auditoria, skip", id_reclamo)
-            return None, MOTIVO_RETRABAJO_AUDITORIA
+        # Retrabajo de una auditoria observada (PLAN_AUDITORIA_RECLAMOS.md F4): el
+        # vecino lo ve y al resolverlo se lo encuesta SIEMPRE, sin anti-fatiga (la
+        # auditoria ocurre dias despues del cierre original, que ya fue encuestado,
+        # y la regla de 30 dias la bloquearia casi siempre — decision de Cesar).
+        es_retrabajo = rec["id_reclamo_origen_auditoria"] is not None
         if rec["estado"] != ESTADO_CERRADO_RECLAMO:
             logger.info("crear_envio: reclamo=%s no esta cerrado (estado=%s)",
                         id_reclamo, rec["estado"])
@@ -176,7 +175,7 @@ async def crear_envio_para_reclamo(db: AsyncSession, id_reclamo: int):
         # 5. Anti-fatiga: mismo ciudadano + misma subarea en los ultimos 30 dias.
         #    Se puede desactivar desde configuracion_general.encuestas_antifatiga_activo.
         id_subarea = rec["id_subarea"]
-        if id_subarea is not None and await antifatiga_esta_activo(db):
+        if id_subarea is not None and not es_retrabajo and await antifatiga_esta_activo(db):
             reciente = (await db.execute(text("""
                 SELECT 1
                   FROM encuesta_envio ee

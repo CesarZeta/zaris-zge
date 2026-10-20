@@ -722,6 +722,19 @@ async def generar_periodo(db: AsyncSession, desde: date, hasta: date,
             "uid": uid, "inicio": rec["fecha_inicio_auditoria"], "fin": rec.get("fecha_fin_auditoria"),
         })
 
+    async def _encuestar(rec: dict, id_reclamo: int) -> int:
+        """Envio (y quizas respuesta) de encuesta del reclamo resuelto. Devuelve 0 o 1."""
+        par = _armar_envio(rnd, rec, ahora, cat.id_plantilla_reclamos, uid)
+        if not par:
+            return 0
+        envio, respuesta = par
+        envio["id_reclamo"] = id_reclamo
+        fila = (await db.execute(_SQL_INSERT_ENVIO, envio)).fetchone()
+        if respuesta:
+            respuesta["id_envio"] = fila.id_encuesta_envio
+            respuestas.append(respuesta)
+        return 1
+
     for rec in reclamos:
         id_reclamo = await _insertar(rec, None, False)
         por_estado[rec["estado"]] = por_estado.get(rec["estado"], 0) + 1
@@ -755,21 +768,16 @@ async def generar_periodo(db: AsyncSession, desde: date, hasta: date,
             n_auditorias += 1
             if rec.get("resultado_auditoria") == "observado":
                 retrabajo = _armar_retrabajo(rnd, rec, id_reclamo, rec.get("_nro"), ahora)
-                await _insertar(retrabajo, None, False)
+                id_retrabajo = await _insertar(retrabajo, None, False)
                 por_estado[retrabajo["estado"]] = por_estado.get(retrabajo["estado"], 0) + 1
                 n_retrabajos += 1
+                # F4: el vecino ve el retrabajo y al resolverlo se lo encuesta (sin anti-fatiga).
+                if retrabajo["estado"] == ESTADO_RESUELTO and cat.id_plantilla_reclamos:
+                    n_envios += await _encuestar(retrabajo, id_retrabajo)
 
         # La encuesta se dispara en el PRIMER cierre: un reclamo auditado tambien la tuvo.
         if rec["estado"] in ESTADOS_GESTION_CERRADA_OK and cat.id_plantilla_reclamos:
-            par = _armar_envio(rnd, rec, ahora, cat.id_plantilla_reclamos, uid)
-            if par:
-                envio, respuesta = par
-                envio["id_reclamo"] = id_reclamo
-                fila = (await db.execute(_SQL_INSERT_ENVIO, envio)).fetchone()
-                n_envios += 1
-                if respuesta:
-                    respuesta["id_envio"] = fila.id_encuesta_envio
-                    respuestas.append(respuesta)
+            n_envios += await _encuestar(rec, id_reclamo)
 
     if historial:
         await db.execute(_SQL_INSERT_HISTORIAL, historial)
@@ -968,8 +976,8 @@ async def avanzar_pendientes(db: AsyncSession, semilla: int | None = None) -> di
                                   "estado_anterior": ESTADO_EN_GESTION, "estado_nuevo": ESTADO_RESUELTO,
                                   "nota": None, "fecha": cierre, "uid": uid})
                 movidos["a_resuelto"] += 1
-                # Un retrabajo de auditoria (mig 112) es interno: el vecino no lo ve ni se lo encuesta.
-                if cat.id_plantilla_reclamos and p.id_reclamo_origen_auditoria is None and rnd.random() < 0.85:
+                # Los retrabajos de auditoria tambien se encuestan (F4, sin anti-fatiga).
+                if cat.id_plantilla_reclamos and rnd.random() < 0.85:
                     fecha_envio = min(cierre + timedelta(days=1), ahora - timedelta(minutes=5))
                     envio = {"id_plantilla": cat.id_plantilla_reclamos, "id_ciudadano": p.id_ciudadano,
                              "id_reclamo": p.id_reclamo, "email": p.email,

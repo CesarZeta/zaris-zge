@@ -435,6 +435,53 @@ async def enviar_mail_confirmacion_reclamo_ciudadano(
     return await enviar_mail(to=to, subject=subject, body_html=html, body_text=text, from_override=from_header)
 
 
+async def enviar_mail_retrabajo_auditoria_ciudadano(
+    to: str,
+    nombre: str,
+    apellido: str,
+    nro_reclamo_origen: str,
+    nro_reclamo_retrabajo: str,
+    municipio_nombre: str,
+    portal_url: str,
+    municipio_logo_url: str | None = None,
+) -> bool:
+    """
+    Mail al vecino cuando la auditoría de su reclamo resultó observada y el auditor
+    abrió un reclamo nuevo para rehacer el trabajo (PLAN_AUDITORIA_RECLAMOS.md F4).
+    Texto genérico a propósito: la observación del auditor es interna y NO va al mail
+    (decisión de César 2026-10-20). `portal_url` sale de core/urls.url_portal_vecino();
+    el caller omite el mail si viene vacío (fail-closed, §5).
+    """
+    cta_url = f"{portal_url.rstrip('/')}/reclamos"
+    saludo_nombre = (nombre or "").strip() or apellido or "vecino"
+    subject = f"Vamos a volver a trabajar en tu reclamo {nro_reclamo_origen} - {municipio_nombre}"
+
+    parrafo = (
+        f"Como parte de nuestros controles de calidad revisamos el trabajo realizado en tu "
+        f"reclamo <strong>{nro_reclamo_origen}</strong> y detectamos que no quedó como corresponde.<br><br>"
+        f"Por eso abrimos el reclamo <strong>{nro_reclamo_retrabajo}</strong> para volver a hacer "
+        f"la tarea. Podés seguir su avance desde el Portal del Ciudadano."
+    )
+
+    html, text = _build_template_app_vecinos(
+        titulo="Vamos a volver a hacer el trabajo",
+        saludo=f"Hola {saludo_nombre},",
+        parrafo_principal=parrafo,
+        cta_texto="Ver mis reclamos",
+        cta_url=cta_url,
+        parrafo_extra=(
+            "Cuando terminemos te vamos a pedir tu opinión sobre cómo quedó. "
+            "No hace falta que respondas este correo."
+        ),
+        municipio_nombre=municipio_nombre,
+        municipio_logo_url=municipio_logo_url,
+        cta_color=await _color_cta_municipio(),
+    )
+
+    from_header = formatear_remitente(municipio_nombre, _from_address_base())
+    return await enviar_mail(to=to, subject=subject, body_html=html, body_text=text, from_override=from_header)
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # Templates de ALTA PÚBLICA de vecinos (autoregistro desde URL pública)
 # ────────────────────────────────────────────────────────────────────────────

@@ -87,11 +87,12 @@ export const cambiarEstadoOT = (id_ot: number, body: CambiarEstadoOTBody) =>
 export const aprobarOT = (id_ot: number, observaciones: string) =>
   api.put<{ ok: boolean; id_ot: number; resultado: 'aprobada' }>(`${BASE}/${id_ot}/aprobar`, { observaciones })
 
-// Auditoría observada (mig 112): el reclamo queda Auditado/observado y nace un
-// reclamo NUEVO de oficio para el retrabajo (antes era /rechazar → En gestión).
-export const observarOT = (id_ot: number, observaciones: string) =>
+// Auditoría observada (mig 112): el reclamo queda Auditado/observado. Con
+// generar_retrabajo nace un reclamo NUEVO de oficio para rehacer el trabajo y se le
+// avisa al vecino (F4); sin él, la auditoría solo queda registrada.
+export const observarOT = (id_ot: number, observaciones: string, generar_retrabajo: boolean) =>
   api.put<{
     ok: boolean; id_ot: number; resultado: 'observada'
     id_reclamo: number; estado_reclamo: string
-    id_reclamo_retrabajo: number; nro_reclamo_retrabajo: string | null
-  }>(`${BASE}/${id_ot}/observar`, { observaciones })
+    id_reclamo_retrabajo: number | null; nro_reclamo_retrabajo: string | null
+  }>(`${BASE}/${id_ot}/observar`, { observaciones, generar_retrabajo })

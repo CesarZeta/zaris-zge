@@ -116,6 +116,28 @@ async def geo_reverse_vecino(
 # Estado que ve el vecino (mig 112): la auditoría posterior al cierre es interna.
 _ESTADO_VECINO = "CASE WHEN r.estado IN ('En auditoría','Auditado') THEN 'Resuelto' ELSE r.estado END"
 
+# Retrabajo de una auditoría observada (F4, PLAN_AUDITORIA_RECLAMOS.md): el vecino lo
+# ve, pero su descripción guarda la observación del auditor (la necesita la cuadrilla)
+# y esa observación es interna. El vecino ve la descripción de SU reclamo original.
+# Requiere `LEFT JOIN reclamos ro ON ro.id_reclamo = r.id_reclamo_origen_auditoria`.
+_DESCRIPCION_VECINO = """CASE WHEN r.id_reclamo_origen_auditoria IS NOT NULL
+         THEN COALESCE(NULLIF(TRIM(ro.descripcion), ''),
+                       'Reabierto por control de calidad del reclamo ' || COALESCE(ro.nro_reclamo, ''))
+         ELSE r.descripcion END"""
+
+# Primera entrada del historial de un retrabajo (la escribe observar_ot en
+# ordenes_trabajo.py y el generador demo con este mismo texto): su nota trae la
+# observación del auditor, así que se reemplaza por un texto genérico.
+_ACCION_ALTA_RETRABAJO = "Reclamo ingresado por auditoría observada"
+
+
+def _historial_vecino(item: dict, nro_origen: Optional[str]) -> dict:
+    if item.get("accion") == _ACCION_ALTA_RETRABAJO:
+        item["accion"] = "Reclamo reabierto por control de calidad"
+        item["nota"] = (f"Vamos a volver a hacer el trabajo del reclamo {nro_origen}."
+                        if nro_origen else "Vamos a volver a hacer el trabajo.")
+    return item
+
 
 # ─── GET /publico/reclamos ───────────────────────────────────────────────────
 
@@ -130,9 +152,10 @@ async def listar_mis_reclamos(
     """Lista SOLO los reclamos del vecino logueado (id_ciudadano del token).
 
     Auditoría posterior al cierre (mig 112): para el vecino un reclamo 'En auditoría'
-    o 'Auditado' sigue 'Resuelto' (la auditoría es interna), y los retrabajos que
-    nacen de una auditoría observada (id_reclamo_origen_auditoria) no se listan."""
-    conds = ["r.activo = TRUE", "r.id_ciudadano = :id_c", "r.id_reclamo_origen_auditoria IS NULL"]
+    o 'Auditado' sigue 'Resuelto' (la auditoría es interna). Los retrabajos que nacen
+    de una auditoría observada SÍ se listan (F4), con la descripción del reclamo
+    original y `origen_auditoria_nro` para que la app diga de dónde salen."""
+    conds = ["r.activo = TRUE", "r.id_ciudadano = :id_c"]
     params: dict = {"id_c": current["id_ciudadano"], "limit": limit, "offset": offset}
     if estado:
         conds.append(f"{_ESTADO_VECINO} = :estado")
@@ -140,14 +163,17 @@ async def listar_mis_reclamos(
 
     result = await db.execute(text(f"""
         SELECT
-            r.id_reclamo, r.nro_reclamo, {_ESTADO_VECINO} AS estado, r.descripcion,
+            r.id_reclamo, r.nro_reclamo, {_ESTADO_VECINO} AS estado,
+            {_DESCRIPCION_VECINO} AS descripcion,
             r.direccion, r.fecha_alta, r.fecha_modificacion, r.fecha_cierre,
             r.latitud, r.longitud,
             r.id_tipo_reclamo, tr.nombre AS tipo_nombre,
-            tr.id_subarea, s.nombre AS subarea_nombre
+            tr.id_subarea, s.nombre AS subarea_nombre,
+            r.id_reclamo_origen_auditoria, ro.nro_reclamo AS origen_auditoria_nro
         FROM reclamos r
         LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
         LEFT JOIN subarea s ON s.id_subarea = tr.id_subarea
+        LEFT JOIN reclamos ro ON ro.id_reclamo = r.id_reclamo_origen_auditoria
         WHERE {' AND '.join(conds)}
         ORDER BY r.fecha_alta DESC
         LIMIT :limit OFFSET :offset
@@ -164,23 +190,27 @@ async def obtener_mi_reclamo(
     current: dict = Depends(get_current_ciudadano),
 ):
     """Detalle de un reclamo PROPIO. Guard duro: 404 si no es del vecino (no se
-    filtra info de terceros; mismo cuerpo para 'no existe' y 'no es tuyo')."""
+    filtra info de terceros; mismo cuerpo para 'no existe' y 'no es tuyo').
+    Un retrabajo de auditoría (F4) se muestra con la descripción del original y su
+    alta en el historial con texto genérico: la observación del auditor es interna."""
     result = await db.execute(text(f"""
         SELECT
-            r.id_reclamo, r.nro_reclamo, {_ESTADO_VECINO} AS estado, r.descripcion,
+            r.id_reclamo, r.nro_reclamo, {_ESTADO_VECINO} AS estado,
+            {_DESCRIPCION_VECINO} AS descripcion,
             r.direccion, r.observaciones,
             r.fecha_alta, r.fecha_modificacion, r.fecha_cierre, r.sla_vencimiento,
             r.canal_origen, r.fuente_geolocalizacion,
             r.latitud, r.longitud,
             r.id_localidad, loc.nombre AS localidad_nombre,
             r.id_tipo_reclamo, tr.nombre AS tipo_nombre, tr.sla_dias,
-            tr.id_subarea, s.nombre AS subarea_nombre
+            tr.id_subarea, s.nombre AS subarea_nombre,
+            r.id_reclamo_origen_auditoria, ro.nro_reclamo AS origen_auditoria_nro
         FROM reclamos r
         LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
         LEFT JOIN subarea s ON s.id_subarea = tr.id_subarea
         LEFT JOIN localidades loc ON loc.id_localidad = r.id_localidad
+        LEFT JOIN reclamos ro ON ro.id_reclamo = r.id_reclamo_origen_auditoria
         WHERE r.id_reclamo = :id AND r.activo = TRUE AND r.id_ciudadano = :id_c
-          AND r.id_reclamo_origen_auditoria IS NULL
     """), {"id": id_reclamo, "id_c": current["id_ciudadano"]})
     row = result.fetchone()
     if not row:
@@ -190,7 +220,9 @@ async def obtener_mi_reclamo(
 
     # Historial: solo acciones públicas (estado + nota), sin identidad del agente
     # interno ni rastro de la auditoría posterior (mig 112): se omiten los pasos a
-    # 'En auditoría'/'Auditado' y lo que fue 'En auditoría' se muestra 'Resuelto'.
+    # 'En auditoría'/'Auditado' y la cancelación de una auditoría (En auditoría →
+    # Resuelto, «Auditoría cancelada»). Lo que fue 'En auditoría' se muestra
+    # 'Resuelto': en los datos anteriores a la mig 112 ese paso ES el cierre real.
     hist = await db.execute(text("""
         SELECT h.accion,
                CASE WHEN h.estado_anterior IN ('En auditoría','Auditado') THEN 'Resuelto'
@@ -199,9 +231,11 @@ async def obtener_mi_reclamo(
         FROM reclamo_historial h
         WHERE h.id_reclamo = :id
           AND (h.estado_nuevo IS NULL OR h.estado_nuevo NOT IN ('En auditoría','Auditado'))
+          AND h.accion IS DISTINCT FROM 'Auditoría cancelada'
         ORDER BY h.fecha_alta ASC
     """), {"id": id_reclamo})
-    d["historial"] = [_to_dict(h) for h in hist.fetchall()]
+    d["historial"] = [_historial_vecino(_to_dict(h), d.get("origen_auditoria_nro"))
+                      for h in hist.fetchall()]
 
     return d
 

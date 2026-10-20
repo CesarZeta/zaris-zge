@@ -7,17 +7,21 @@ Smoke in-process — Auditoría de reclamos POSTERIOR al cierre (mig 112, PLAN_A
 
 SOLO LOCAL: aborta si la DB no es zaris_dev (sin credenciales de prod, §40). Corre el app
 FastAPI real con httpx.ASGITransport (memoria feedback_smoke_authz_asgi_in_process); el mail
-corre en modo MOCK (settings.RESEND_API_KEY = "").
+corre en modo MOCK (settings.RESEND_API_KEY = "") y además se captura `enviar_mail` para leer
+el mail al vecino (patrón smoke_cuentas_funcionario.py).
 
 Cubre: envío a auditoría (403 consultor / 403 supervisor de otra subárea / 422 no Resuelto /
 201 supervisor de la subárea / 422 ya abierta) → bloqueos del reclamo En auditoría (/estado,
 editar, subreclamo, cancelar, OT, aviso, mesa supervisor) → mesa del auditor → aprobar (403
 consultor / 200 → Auditado-aprobado, fecha_cierre intacta, sin encuesta ni aviso) → observar
-(422 sin observaciones / 200 → Auditado-observado + reclamo NUEVO de retrabajo vinculado) → el
-vecino ve 'Resuelto' y no ve el retrabajo → dashboard (activos excluye, mapa muestra En auditoría)
-→ cierre de OT operativa de un tipo audit=true va a Resuelto (sin auditoría previa) → OT de
-auditoría por /estado (Terminada 422, Cancelada devuelve a Resuelto) → BI → marcadores OpenAPI.
-Los datos quedan como demo (no se limpian).
+(422 sin observaciones / 200 → Auditado-observado + reclamo NUEVO de retrabajo vinculado + mail
+genérico, aviso y push al vecino — F4) → observar SIN retrabajo (generar_retrabajo=false: sin
+reclamo nuevo ni aviso) → el vecino ve 'Resuelto' en los auditados y VE el retrabajo, con la
+descripción de su reclamo original y sin la observación del auditor → dashboard (activos
+excluye, mapa muestra En auditoría) → cierre de OT operativa de un tipo audit=true va a Resuelto
+(sin auditoría previa) → OT de auditoría por /estado (Terminada 422, Cancelada devuelve a
+Resuelto, el vecino no ve «Auditoría cancelada») → resolver el retrabajo encuesta aunque la
+anti-fatiga lo hubiera bloqueado → BI → marcadores OpenAPI. Los datos quedan como demo.
 """
 import asyncio
 import logging
@@ -41,10 +45,23 @@ if "zaris_dev" not in settings.ASYNC_DATABASE_URI:
     sys.exit("ABORT: este smoke es SOLO LOCAL (la DB configurada no es zaris_dev). No corre contra prod.")
 
 settings.RESEND_API_KEY = ""  # mail en MOCK
+PORTAL_SMOKE = "https://vecinos.smoke.local"
+settings.APP_VECINOS_FRONTEND_URL = PORTAL_SMOKE  # el mail de retrabajo exige portal configurado
 
 from app.core.auth import hash_password  # noqa: E402
 from app.core.database import AsyncSessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
+from app.services import email as email_mod  # noqa: E402
+
+MAILS: list[dict] = []
+
+
+async def _captura_enviar_mail(to: str, subject: str, body_html: str, body_text: str | None = None,
+                               from_override: str | None = None) -> bool:
+    MAILS.append({"to": to, "subject": subject, "html": body_html, "text": body_text or ""})
+    return True
+
+email_mod.enviar_mail = _captura_enviar_mail  # captura (y MOCK) de todo mail saliente
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
@@ -113,13 +130,18 @@ async def n_avisos(id_ciudadano: int) -> int:
     return (await q1("SELECT COUNT(*) AS n FROM ciudadano_aviso WHERE id_ciudadano = :id", id=id_ciudadano))["n"]
 
 
+async def ultimo_aviso(id_ciudadano: int) -> Optional[dict]:
+    return await q1("""SELECT titulo, mensaje, url_destino, recurso_id FROM ciudadano_aviso
+                       WHERE id_ciudadano = :id ORDER BY id_ciudadano_aviso DESC LIMIT 1""", id=id_ciudadano)
+
+
 async def setup() -> dict:
     admin = await q1("SELECT id_usuario, nivel_acceso, activo FROM usuarios WHERE email = :e", e=ADMIN_EMAIL)
     if not admin or admin["nivel_acceso"] != 1 or not admin["activo"]:
         sys.exit(f"ABORT: falta el admin local {ADMIN_EMAIL} (nivel 1, activo)")
-    vec = await q1("SELECT id_ciudadano FROM ciudadanos WHERE doc_nro = :d AND activo = TRUE", d=DNI_VECINO)
-    if not vec:
-        sys.exit(f"ABORT: falta el vecino local DNI {DNI_VECINO}")
+    vec = await q1("SELECT id_ciudadano, email FROM ciudadanos WHERE doc_nro = :d AND activo = TRUE", d=DNI_VECINO)
+    if not vec or "@" not in (vec["email"] or ""):
+        sys.exit(f"ABORT: falta el vecino local DNI {DNI_VECINO} con email (el mail de retrabajo lo necesita)")
     tipo_a = await q1("SELECT id_tipo_reclamo FROM tipo_reclamo WHERE id_subarea = :s AND activo ORDER BY id_tipo_reclamo LIMIT 1", s=SUB_A)
     if not tipo_a:
         sys.exit(f"ABORT: la subárea {SUB_A} no tiene tipos de reclamo activos en local")
@@ -146,7 +168,8 @@ async def setup() -> dict:
             """, n=email.split("@")[0], s=sub, u=u["id_usuario"], aud=es_aud)
             ag = await q1("SELECT id_agente FROM agentes WHERE id_usuario = :u AND activo", u=u["id_usuario"])
         ids[email] = {"id_usuario": u["id_usuario"], "id_agente": ag["id_agente"] if ag else None}
-    return {"id_ciudadano": vec["id_ciudadano"], "id_tipo_a": tipo_a["id_tipo_reclamo"], "users": ids}
+    return {"id_ciudadano": vec["id_ciudadano"], "email_vecino": vec["email"].strip(),
+            "id_tipo_a": tipo_a["id_tipo_reclamo"], "users": ids}
 
 
 async def main() -> int:
@@ -275,9 +298,15 @@ async def main() -> int:
         r = await c.post(f"/api/v1/reclamos/{R0}/auditoria", json={}, headers=HA)
         r = await c.put(f"/api/v1/ot/{OT2}/observar", json={}, headers=HAUD)
         check("5b. observar sin observaciones → 422", r.status_code == 422, short(r))
+        r = await c.put(f"/api/v1/ot/{OT2}/observar",
+                        json={"observaciones": "x", "generar_retrabajo": "si"}, headers=HAUD)
+        check("5b2. generar_retrabajo no booleano → 422", r.status_code == 422, short(r))
         avisos_antes = await n_avisos(id_c)
-        r = await c.put(f"/api/v1/ot/{OT2}/observar", json={"observaciones": "Quedó un pozo sin tapar"}, headers=HAUD)
-        check("5c. observar → 200 con retrabajo", r.status_code == 200 and r.json().get("id_reclamo_retrabajo"), short(r))
+        MAILS.clear()
+        OBS = "Quedó un pozo sin tapar"
+        # Sin generar_retrabajo: el default (true) mantiene el comportamiento del bundle anterior.
+        r = await c.put(f"/api/v1/ot/{OT2}/observar", json={"observaciones": OBS}, headers=HAUD)
+        check("5c. observar (default) → 200 con retrabajo", r.status_code == 200 and r.json().get("id_reclamo_retrabajo"), short(r))
         RT = r.json().get("id_reclamo_retrabajo")
         d2 = await reclamo(R2)
         check("5d. R2 Auditado / observado", d2["estado"] == "Auditado" and d2["resultado_auditoria"] == "observado", str(d2))
@@ -290,7 +319,19 @@ async def main() -> int:
         hs = await q("SELECT accion FROM reclamo_historial WHERE id_reclamo IN (:a, :b) ORDER BY id_historial DESC LIMIT 2", a=R2, b=RT or 0)
         check("5f. historial en R2 y en el retrabajo",
               {h["accion"] for h in hs} == {"Auditoría observada", "Reclamo ingresado por auditoría observada"}, str(hs))
-        check("5g. sin aviso al vecino por la observación", await n_avisos(id_c) == avisos_antes)
+        av = await ultimo_aviso(id_c)
+        check("5g. UN aviso al vecino, que apunta al retrabajo",
+              await n_avisos(id_c) == avisos_antes + 1 and av and av["recurso_id"] == RT
+              and av["url_destino"] == f"/reclamos/{RT}" and OBS not in (av["mensaje"] or ""), str(av))
+        mail = MAILS[0] if len(MAILS) == 1 else None
+        dt_nro = dt["nro_reclamo"] if dt else "?"
+        check("5k. UN mail al vecino: números de los dos reclamos + link al portal",
+              mail is not None and mail["to"] == ctx["email_vecino"]
+              and d2["nro_reclamo"] in mail["subject"] and dt_nro in mail["html"]
+              and f"{PORTAL_SMOKE}/reclamos" in mail["html"] and f"{PORTAL_SMOKE}/reclamos" in mail["text"],
+              f"mails={len(MAILS)} {mail['subject'] if mail else ''}")
+        check("5l. el mail NO trae la observación del auditor",
+              mail is not None and OBS not in mail["html"] and OBS not in mail["text"])
         ot2 = await q1("SELECT resultado_auditoria FROM ordenes_trabajo WHERE id_ot = :id", id=OT2)
         check("5h. OT2 resultado 'observada'", ot2 and ot2["resultado_auditoria"] == "observada", str(ot2))
         r = await c.get(f"/api/v1/reclamos/{R2}", headers=HA)
@@ -299,12 +340,42 @@ async def main() -> int:
         r = await c.get(f"/api/v1/reclamos/{RT}", headers=HA)
         check("5j. detalle retrabajo trae origen", r.status_code == 200 and r.json().get("origen_auditoria_nro") == d2["nro_reclamo"], short(r, 80))
 
+        # ── 5bis. R5: auditoría observada SIN retrabajo (el auditor elige «No») ──────
+        r = await c.post("/api/v1/reclamos", json=nuevo_reclamo("Smoke F4 — R5 observada sin retrabajo"), headers=HA)
+        R5 = r.json()["id_reclamo"]
+        await c.put(f"/api/v1/reclamos/{R5}/estado", json={"estado": "Resuelto"}, headers=HSA)
+        r = await c.post(f"/api/v1/reclamos/{R5}/auditoria", json={"id_agente_auditor": id_aud_agente}, headers=HSA)
+        OT5 = r.json()["id_ot"]
+        avisos_antes = await n_avisos(id_c)
+        MAILS.clear()
+        r = await c.put(f"/api/v1/ot/{OT5}/observar",
+                        json={"observaciones": "Faltó barrer los escombros", "generar_retrabajo": False}, headers=HAUD)
+        check("5m. observar sin retrabajo → 200, id_reclamo_retrabajo null",
+              r.status_code == 200 and r.json().get("id_reclamo_retrabajo") is None
+              and r.json().get("estado_reclamo") == "Auditado", short(r))
+        d5 = await reclamo(R5)
+        n_rt5 = (await q1("SELECT COUNT(*) AS n FROM reclamos WHERE id_reclamo_origen_auditoria = :id", id=R5))["n"]
+        check("5n. R5 Auditado / observado y SIN reclamo nuevo",
+              d5["estado"] == "Auditado" and d5["resultado_auditoria"] == "observado" and n_rt5 == 0, f"{d5} rt={n_rt5}")
+        h5 = await q1("SELECT accion, nota FROM reclamo_historial WHERE id_reclamo = :id ORDER BY id_historial DESC LIMIT 1", id=R5)
+        check("5o. historial «Auditoría observada» con la nota «Sin retrabajo»",
+              h5 and h5["accion"] == "Auditoría observada" and "Sin retrabajo" in (h5["nota"] or ""), str(h5))
+        check("5p. sin aviso ni mail al vecino", await n_avisos(id_c) == avisos_antes and not MAILS, f"mails={len(MAILS)}")
+        r = await c.get(f"/api/v1/reclamos/{R5}", headers=HA)
+        check("5q. detalle R5 sin retrabajo vinculado",
+              r.status_code == 200 and r.json().get("retrabajo_auditoria_id") is None
+              and r.json().get("resultado_auditoria") == "observado", short(r, 80))
+
         # ── 6. Lo que ve el vecino ───────────────────────────────────────────────────
         r = await c.get("/api/v1/publico/reclamos", params={"limit": 200}, headers=HV)
         lst = {x["id_reclamo"]: x for x in r.json()} if r.status_code == 200 else {}
-        check("6a. listado del vecino: R1 y R2 'Resuelto'",
-              lst.get(R1, {}).get("estado") == "Resuelto" and lst.get(R2, {}).get("estado") == "Resuelto", short(r, 80))
-        check("6b. listado del vecino NO incluye el retrabajo", RT not in lst)
+        check("6a. listado del vecino: R1, R2 y R5 'Resuelto'",
+              all(lst.get(x, {}).get("estado") == "Resuelto" for x in (R1, R2, R5)), short(r, 80))
+        desc_r2 = "Smoke 112 — R2 auditoría observada"
+        x_rt = lst.get(RT, {})
+        check("6b. listado del vecino INCLUYE el retrabajo, con el origen y la descripción del original",
+              x_rt.get("estado") == "Sin asignar" and x_rt.get("origen_auditoria_nro") == d2["nro_reclamo"]
+              and x_rt.get("descripcion") == desc_r2, str(x_rt)[:200])
         r = await c.get("/api/v1/publico/reclamos", params={"estado": "Resuelto", "limit": 200}, headers=HV)
         check("6c. filtro estado=Resuelto incluye R1", r.status_code == 200 and R1 in {x["id_reclamo"] for x in r.json()}, short(r, 80))
         r = await c.get(f"/api/v1/publico/reclamos/{R1}", headers=HV)
@@ -313,10 +384,20 @@ async def main() -> int:
               r.status_code == 200 and r.json()["estado"] == "Resuelto"
               and not any("auditor" in (a or "").lower() or "auditor" in (b or "").lower() for a, b in estados_hist), short(r, 80))
         r = await c.get(f"/api/v1/publico/reclamos/{RT}", headers=HV)
-        check("6e. detalle del retrabajo para el vecino → 404", r.status_code == 404, short(r))
+        hist_rt = r.json().get("historial", []) if r.status_code == 200 else []
+        check("6e. detalle del retrabajo para el vecino → 200 con origen y descripción del original",
+              r.status_code == 200 and r.json().get("origen_auditoria_nro") == d2["nro_reclamo"]
+              and r.json().get("id_reclamo_origen_auditoria") == R2 and r.json().get("descripcion") == desc_r2, short(r, 120))
+        check("6e2. la observación del auditor no aparece en NINGÚN campo del detalle",
+              r.status_code == 200 and OBS not in r.text, "")
+        check("6e3. alta del retrabajo en el historial con texto genérico",
+              bool(hist_rt) and hist_rt[0]["accion"] == "Reclamo reabierto por control de calidad"
+              and d2["nro_reclamo"] in (hist_rt[0]["nota"] or ""), str(hist_rt[:1]))
+        r = await c.get(f"/api/v1/publico/reclamos/{RT}/adjuntos", headers=HV)
+        check("6e4. adjuntos públicos del retrabajo → 200", r.status_code == 200, short(r, 80))
         r = await c.get("/api/v1/publico/portal/mi-resumen", headers=HV)
-        tot = await q1("SELECT COUNT(*) AS n FROM reclamos WHERE id_ciudadano = :c AND activo AND id_reclamo_origen_auditoria IS NULL", c=id_c)
-        check("6f. mi-resumen: total sin el retrabajo",
+        tot = await q1("SELECT COUNT(*) AS n FROM reclamos WHERE id_ciudadano = :c AND activo", c=id_c)
+        check("6f. mi-resumen: el total incluye el retrabajo",
               r.status_code == 200 and r.json().get("reclamos", {}).get("total") == tot["n"], short(r, 100))
 
         # ── 7. Dashboard: activos excluye auditoría, el mapa muestra En auditoría ────
@@ -355,15 +436,32 @@ async def main() -> int:
         d3 = await reclamo(R3)
         check("9d. R3 vuelve a Resuelto, sin fecha_inicio, fecha_cierre intacta",
               d3["estado"] == "Resuelto" and d3["fecha_inicio_auditoria"] is None and d3["fecha_cierre"] is not None, str(d3))
+        r = await c.get(f"/api/v1/publico/reclamos/{R3}", headers=HV)
+        acciones_r3 = [h["accion"] for h in r.json().get("historial", [])] if r.status_code == 200 else []
+        check("9f. el vecino NO ve «Auditoría cancelada» en el historial de R3",
+              r.status_code == 200 and "Auditoría cancelada" not in acciones_r3, str(acciones_r3))
         r = await c.post(f"/api/v1/reclamos/{R3}/auditoria", json={}, headers=HA)
         check("9e. R3 se puede volver a enviar a auditoría", r.status_code == 201, short(r))
 
-        # ── 10. Retrabajo: cerrarlo no encuesta ni avisa al vecino ───────────────────
+        # ── 10. Retrabajo: resolverlo avisa al vecino y encuesta SIN anti-fatiga ─────
+        # Precondición: el vecino ya tiene una encuesta de esta subárea en los últimos 30
+        # días (la de R1 o la de una corrida anterior), así que la anti-fatiga la bloquearía.
+        previa = await q1("""SELECT COUNT(*) AS n FROM encuesta_envio ee
+                              JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = :t
+                             WHERE ee.id_ciudadano = :c AND ee.id_subarea = tr.id_subarea AND ee.activo
+                               AND ee.fecha_alta > NOW() - INTERVAL '30 days'""", c=id_c, t=tipo_a)
+        check("10pre. hay encuesta reciente de la subárea (la anti-fatiga aplicaría)", previa["n"] > 0, str(previa))
         avisos_antes = await n_avisos(id_c)
         r = await c.put(f"/api/v1/reclamos/{RT}/estado", json={"estado": "Resuelto"}, headers=HSA)
         check("10a. cierre directo del retrabajo → 200", r.status_code == 200, short(r))
-        check("10b. retrabajo: 0 encuestas y 0 avisos nuevos",
-              await n_envios(RT) == 0 and await n_avisos(id_c) == avisos_antes)
+        check("10b. retrabajo resuelto: 1 encuesta (exenta de anti-fatiga) y 1 aviso al vecino",
+              await n_envios(RT) == 1 and await n_avisos(id_c) == avisos_antes + 1,
+              f"envios={await n_envios(RT)} avisos+={await n_avisos(id_c) - avisos_antes}")
+        r = await c.post("/api/v1/reclamos", json=nuevo_reclamo("Smoke F4 — R6 control anti-fatiga"), headers=HA)
+        R6 = r.json()["id_reclamo"]
+        await c.put(f"/api/v1/reclamos/{R6}/estado", json={"estado": "Resuelto"}, headers=HSA)
+        check("10c. control: un reclamo común de la misma subárea SÍ queda bloqueado por la anti-fatiga",
+              await n_envios(R6) == 0, f"envios={await n_envios(R6)}")
 
         # ── 11. BI ───────────────────────────────────────────────────────────────────
         r = await c.get("/api/v1/bi/resumen", headers=HA)
@@ -385,6 +483,9 @@ async def main() -> int:
         check("12b. PUT /ot/{id}/observar en OpenAPI + /rechazar deprecado",
               "put" in paths.get("/api/v1/ot/{id_ot}/observar", {})
               and paths.get("/api/v1/ot/{id_ot}/rechazar", {}).get("put", {}).get("deprecated") is True)
+        desc_422 = (paths.get("/api/v1/ot/{id_ot}/observar", {}).get("put", {})
+                    .get("responses", {}).get("422", {}).get("description", ""))
+        check("12c. marcador F4 en OpenAPI: generar_retrabajo", "generar_retrabajo" in desc_422, desc_422[:80])
 
     print(f"\n{'=' * 60}\nOK: {ok_count}  FAIL: {fail_count}")
     for f in fallidos:

@@ -3,7 +3,7 @@ import { Search } from 'lucide-react'
 import { useMesaAuditoria } from '../hooks/useOT'
 import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
 import type { MesaAuditoriaRow } from '../types/ot'
-import { BadgePrioridad, SLACell, nombreAgente, nombreCiudadano } from '../lib/format'
+import { BadgePrioridad, nombreAgente, nombreCiudadano } from '../lib/format'
 import { Field, Toolbar, inputStyle } from '../components/Toolbar'
 import { AuditarModal } from '../components/AuditarModal'
 import { OTDetalleDrawer } from '../components/OTDetalleDrawer'
@@ -126,7 +126,6 @@ export function AuditoriaView() {
             <tr>
               <th style={thStyle}>OT auditoría</th>
               <th style={thStyle}>Prio.</th>
-              <th style={{ ...thStyle, minWidth: 150 }}>SLA reclamo</th>
               <th style={thStyle}>Tipo</th>
               <th style={thStyle}>Subárea</th>
               <th style={thStyle}>Ciudadano</th>
@@ -138,10 +137,10 @@ export function AuditoriaView() {
           </thead>
           <tbody>
             {isLoading && (
-              <tr><td colSpan={10} style={emptyStyle}>Cargando…</td></tr>
+              <tr><td colSpan={9} style={emptyStyle}>Cargando…</td></tr>
             )}
             {!isLoading && !isError && filtrados.length === 0 && (
-              <tr><td colSpan={10} style={emptyStyle}>
+              <tr><td colSpan={9} style={emptyStyle}>
                 No hay OTs pendientes de auditoría{ots.length ? ' que coincidan con los filtros' : ''}
               </td></tr>
             )}
@@ -151,10 +150,8 @@ export function AuditoriaView() {
                   <div style={monoStyle}>{o.nro_ot ?? '—'}</div>
                   <div style={{ ...monoStyle, fontSize: '0.7rem', color: 'var(--fg-3)' }}>{o.nro_reclamo ?? ''}</div>
                 </td>
+                {/* Sin SLA: el reclamo ya se resolvió, su vencimiento no aplica a la auditoría. */}
                 <td style={tdStyle}><BadgePrioridad prioridad={o.reclamo_prioridad} /></td>
-                <td style={tdStyle}>
-                  <SLACell sla_vencimiento={o.sla_vencimiento} sla_dias={o.sla_dias} />
-                </td>
                 <td style={tdStyle}><Clamp2 title={o.tipo_nombre}>{o.tipo_nombre ?? '—'}</Clamp2></td>
                 <td style={tdStyle}><Clamp2 title={o.subarea_nombre}>{o.subarea_nombre ?? '—'}</Clamp2></td>
                 <td style={tdStyle}>{nombreCiudadano(o.ciudadano_apellido, o.ciudadano_nombre)}</td>

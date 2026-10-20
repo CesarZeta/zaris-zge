@@ -60,7 +60,6 @@ async def _reclamo_propio(db: AsyncSession, id_reclamo: int, id_ciudadano: int):
     r = await db.execute(text("""
         SELECT id_reclamo, estado FROM reclamos
         WHERE id_reclamo = :id AND activo = TRUE AND id_ciudadano = :id_c
-          AND id_reclamo_origen_auditoria IS NULL
     """), {"id": id_reclamo, "id_c": id_ciudadano})
     row = r.fetchone()
     if not row:

@@ -49,7 +49,8 @@ carpeta **gitignoreada** — datos personales, jamas versionar):
   (`TASA_AUDITORIA`) reciben una auditoria 1-10 dias despues del cierre que el
   auditor cierra 1-7 dias mas tarde (80% aprobada / 20% observada,
   `TASA_OBSERVADA`); la observada genera un reclamo de retrabajo (canal `oficio`,
-  `id_reclamo_origen_auditoria`, SIN encuesta: el vecino no lo ve). Cada
+  `id_reclamo_origen_auditoria`; desde F4 el vecino lo ve y, resuelto, se lo
+  encuesta igual que en producción — sin anti-fatiga). Cada
   auditoria tiene su OT `es_auditoria` (En gestion = pendiente / Terminada con
   resultado) y los pasos en `reclamo_historial`; `fecha_cierre` no se toca (los
   tiempos del BI siguen midiendose al primer cierre). `avanzar_pendientes` cierra

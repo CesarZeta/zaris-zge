@@ -1500,7 +1500,8 @@ async def aprobar_ot(
 # ── PUT /ot/{id}/observar (alias legacy: /rechazar) ─────────────────────────
 
 @router.put("/{id_ot}/observar",
-            responses={422: {"description": "Observaciones obligatorias; la OT no es de auditoría o el reclamo no está En auditoría"}})
+            responses={422: {"description": "Observaciones obligatorias; la OT no es de auditoría o el reclamo no está En auditoría. "
+                                            "Body: observaciones + generar_retrabajo (bool, default true)"}})
 @router.put("/{id_ot}/rechazar", deprecated=True)
 async def observar_ot(
     id_ot: int,
@@ -1509,12 +1510,17 @@ async def observar_ot(
     current_user: dict = Depends(get_current_user),
 ):
     """Auditoría OBSERVADA (mig 112, PLAN_AUDITORIA_RECLAMOS.md). El auditor no
-    valida el trabajo: la OT de auditoría cierra con resultado 'observada', el
+    valida el trabajo: la OT de auditoría cierra con resultado 'observada' y el
     reclamo auditado queda 'Auditado' / 'observado' (fecha_cierre intacta: sus
-    tiempos de gestión no se tocan) y nace un reclamo NUEVO para el retrabajo —
-    mismo vecino, tipo, dirección y geo, canal 'oficio', descripción con la
-    observación — vinculado por `id_reclamo_origen_auditoria`. Ese retrabajo es
-    interno: el vecino no lo ve, no recibe push ni encuesta por él.
+    tiempos de gestión no se tocan).
+
+    `generar_retrabajo` (F4, 2026-10-20): el auditor decide en un pop-up si abre un
+    incidente nuevo. Con `true` nace un reclamo NUEVO para el retrabajo — mismo
+    vecino, tipo, dirección y geo, canal 'oficio', descripción con la observación —
+    vinculado por `id_reclamo_origen_auditoria`, y post-commit se le avisa al vecino
+    (mail genérico + bandeja + push, `push.notificar_retrabajo_auditoria`). Con
+    `false` la auditoría solo queda registrada y el vecino no se entera. Default
+    `true`: el bundle anterior no pregunta y siempre generaba el retrabajo.
 
     Hasta la mig 112 esta acción era `/rechazar`: devolvía el reclamo a
     'En gestión' con una OT Pendiente. `/rechazar` queda como alias del bundle
@@ -1530,6 +1536,9 @@ async def observar_ot(
     if not observaciones:
         raise HTTPException(status_code=422,
             detail="Campo 'observaciones' obligatorio: es la observación que va al reclamo de retrabajo")
+    generar_retrabajo = body.get("generar_retrabajo", True)
+    if not isinstance(generar_retrabajo, bool):
+        raise HTTPException(status_code=422, detail="Campo 'generar_retrabajo' debe ser true o false")
 
     r = await db.execute(text("""
         SELECT ot.id_reclamo, ot.es_auditoria, eot.nombre AS estado_actual,
@@ -1575,6 +1584,17 @@ async def observar_ot(
             WHERE id_reclamo = :id
         """), {"id": ot.id_reclamo, "uid": uid})
 
+        nro_orig = ot.nro_reclamo or f"REC-{ot.id_reclamo}"
+        if not generar_retrabajo:
+            await _insertar_historial_reclamo(db, ot.id_reclamo, "Auditoría observada",
+                                               "En auditoría", "Auditado",
+                                               f"{observaciones} — Sin retrabajo: el auditor no abrió un incidente nuevo", uid)
+            await db.commit()
+            # El vecino no se entera: sigue viendo 'Resuelto' y no hay reclamo nuevo.
+            return {"ok": True, "id_ot": id_ot, "resultado": "observada",
+                    "id_reclamo": ot.id_reclamo, "estado_reclamo": "Auditado",
+                    "id_reclamo_retrabajo": None, "nro_reclamo_retrabajo": None}
+
         # Reclamo NUEVO para el retrabajo: copia del auditado (vecino, tipo, área,
         # dirección, geo, activo, empresa, prioridad), canal 'oficio', 'Sin asignar'.
         # nro_reclamo y sla_vencimiento los ponen los triggers.
@@ -1598,8 +1618,9 @@ async def observar_ot(
             RETURNING id_reclamo, nro_reclamo
         """), {"id": ot.id_reclamo, "obs": observaciones, "uid": uid})).fetchone()
         nro_nuevo = nuevo.nro_reclamo or f"REC-{nuevo.id_reclamo}"
-        nro_orig = ot.nro_reclamo or f"REC-{ot.id_reclamo}"
 
+        # La API pública (publico_reclamos.py) reconoce esta acción por su texto para
+        # no mostrarle al vecino la observación interna: no cambiarlo sin tocar allá.
         await _insertar_historial_reclamo(db, nuevo.id_reclamo, "Reclamo ingresado por auditoría observada",
                                            None, "Sin asignar",
                                            f"Retrabajo del reclamo {nro_orig}: {observaciones}", uid)
@@ -1607,9 +1628,10 @@ async def observar_ot(
                                            "En auditoría", "Auditado",
                                            f"{observaciones} — Retrabajo: {nro_nuevo}", uid)
         await db.commit()
-        # Sin push ni encuesta: ni por el auditado (sigue 'Resuelto' para el vecino)
-        # ni por el retrabajo (interno). push.notificar_estado_reclamo y
-        # encuestas_service filtran id_reclamo_origen_auditoria por las dudas.
+        # Post-commit, best-effort: el vecino ve el retrabajo y recibe mail + aviso +
+        # push (F4). Por el auditado no se avisa: para él sigue 'Resuelto'. La encuesta
+        # sale cuando se resuelva el retrabajo (exenta de anti-fatiga).
+        await svc_push.notificar_retrabajo_auditoria(nuevo.id_reclamo)
         return {"ok": True, "id_ot": id_ot, "resultado": "observada",
                 "id_reclamo": ot.id_reclamo, "estado_reclamo": "Auditado",
                 "id_reclamo_retrabajo": nuevo.id_reclamo, "nro_reclamo_retrabajo": nro_nuevo}

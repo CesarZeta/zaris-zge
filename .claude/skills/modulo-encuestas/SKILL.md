@@ -25,6 +25,7 @@ Encuestas de satisfacción disparadas al cierre de reclamos (Resuelto) **y al cu
 
 ### Anti-fatiga
 - Un ciudadano no recibe más de una encuesta de la misma subárea (derivada) en los últimos 30 días. El dashboard agrupa por área.
+- **Excepción — retrabajo de auditoría (F4, decisión de César 2026-10-20):** un reclamo con `id_reclamo_origen_auditoria` (nació de una auditoría observada con «Sí, iniciar nuevo incidente») se encuesta al resolverse **sin pasar por la anti-fatiga**: la auditoría ocurre días después del cierre original, que ya fue encuestado, y la regla de 30 días la bloquearía casi siempre. El resto de las reglas (toggle, Resuelto, idempotencia, email) aplica igual. Hasta F4 el retrabajo no se encuestaba (`MOTIVO_RETRABAJO_AUDITORIA`, constante eliminada). El generador demo también encuesta los retrabajos resueltos.
 - **Desactivable (desde 2026-05-25, mig 60):** la regla se puede apagar con la clave `encuestas_antifatiga_activo` en `configuracion_general` (toggle en Config → Sistema). `encuestas_service.antifatiga_esta_activo(db)` la lee; default seguro TRUE (clave ausente/error → regla activa). Con `'false'` se encuesta en cada cierre. `DIAS_ANTIFATIGA=30` sigue hardcodeado (solo el on/off es configurable).
 
 ### Delay de envío

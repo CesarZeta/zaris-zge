@@ -22,9 +22,11 @@ const FUENTE_LABEL: Record<string, string> = {
   activo_referenciado: 'Activo referenciado',
 }
 
-const RESULTADO_AUDITORIA_LABEL: Record<string, string> = {
-  aprobado: 'Aprobada',
-  observado: 'Observada (con retrabajo)',
+// Observada: el auditor eligió en un pop-up si iniciaba un incidente nuevo (F4).
+function resultadoAuditoriaLabel(resultado: string | null | undefined, conRetrabajo: boolean): string {
+  if (resultado === 'aprobado') return 'Aprobada'
+  if (resultado === 'observado') return conRetrabajo ? 'Observada (con retrabajo)' : 'Observada (sin retrabajo)'
+  return 'Pendiente del auditor'
 }
 
 const linkStyle: React.CSSProperties = {
@@ -191,7 +193,7 @@ export function DetailView() {
             )}
             {r.fecha_inicio_auditoria && (
               <Cell label="Resultado de auditoría">
-                {RESULTADO_AUDITORIA_LABEL[r.resultado_auditoria ?? ''] ?? 'Pendiente del auditor'}
+                {resultadoAuditoriaLabel(r.resultado_auditoria, r.retrabajo_auditoria_id != null)}
               </Cell>
             )}
             {r.retrabajo_auditoria_id && (
