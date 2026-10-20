@@ -488,7 +488,7 @@ function FechaIngreso({ iso }: { iso: string | null }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2, whiteSpace: 'nowrap' }}>
       <span style={monoStyle}>{d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
-      <span style={{ ...monoStyle, color: 'var(--fg-3)' }}>{d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</span>
+      <span style={{ ...monoStyle, color: 'var(--fg-3)' }}>{d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}</span>
     </div>
   )
 }
