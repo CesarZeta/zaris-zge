@@ -87,7 +87,7 @@ POST /api/v1/reclamos/{id}/auditoria       → enviar un Resuelto a auditoría (
 
 Toda edición inserta entrada `Reclamo editado` en `reclamo_historial` preservando estado anterior/nuevo (= estado actual). Si el body trae un campo prohibido para el estado actual: 422 con detalle de campos rechazados vs permitidos. Cambio de tipo re-deriva `id_area` desde `subarea.id_area` (fuente única desde mig 27). Cambio de empresa valida vínculo activo en `ciudadano_empresa`.
 
-Mismo guard `_require_gestion` aplica también a `PUT /{id}/cancelar`.
+`PUT /{id}/cancelar`, `PUT /{id}/estado`, `POST /{id}/subreclamo` y `POST /{id}/auditoria` exigen en cambio `_require_supervisor` (nivel ≤ 2; cambiar estado es supervisión, §3/§30). Avisar al supervisor admite niveles 1-4 (`NIVELES_AVISO`). Verificado en `reclamos.py` el 2026-10-20.
 
 ### Endpoints adjuntos (§26)
 
@@ -122,7 +122,7 @@ PUT  /api/v1/ot/{id_ot}/observar           → auditor observa (observaciones ob
 
 `PUT /{id}/estado` consulta `estado_reclamo WHERE activo=TRUE`. Fallback hardcoded a `{"Sin asignar", "En gestión", "En espera", "En auditoría", "Resuelto", "Cancelado"}` si la tabla está vacía.
 
-**FSM de transiciones (desde 2026-05-20, hallazgo QA #3).** `PUT /{id}/estado` valida el grafo `TRANSICIONES_PERMITIDAS` en `reclamos.py` además de exigir `_require_gestion` (nivel ≤ 3). No se permiten saltos arbitrarios (antes el endpoint aceptaba cualquier estado→cualquier estado). Grafo:
+**FSM de transiciones (desde 2026-05-20, hallazgo QA #3).** `PUT /{id}/estado` valida el grafo `TRANSICIONES_PERMITIDAS` en `reclamos.py` además de exigir `_require_supervisor` (nivel ≤ 2 desde el commit `3296d39`, 2026-06-29; antes era `_require_gestion`, nivel ≤ 3). No se permiten saltos arbitrarios (antes el endpoint aceptaba cualquier estado→cualquier estado). Grafo:
 
 | Desde | Puede ir a |
 |---|---|

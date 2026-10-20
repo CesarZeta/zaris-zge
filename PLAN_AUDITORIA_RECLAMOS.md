@@ -33,7 +33,7 @@ Implementación:
 6. **PWA `zaris-vecinos`:** el detalle de un retrabajo muestra «Reabierto por control de calidad del reclamo REC-…» con link al original.
 7. **Smoke:** `smoke_auditoria_reclamos.py` con los casos 6b/6e/6f/10b invertidos, el camino «No», el mail capturado en MOCK, el enmascarado y la encuesta exenta de anti-fatiga.
 8. **Docs:** skills `modulo-reclamos`/`modulo-ot`/`modulo-encuestas`, CLAUDE.md §21, `docs/contrato_api_publica.md`, este plan, manual de Reclamos/OT y guía QA.
-9. **Demo:** los 32 retrabajos de prod quedan visibles solos; no se les manda mail (vecinos `@vecinos-demo`). El generador no cambia.
+9. **Demo:** los 32 retrabajos de prod quedan visibles solos y no reciben mail (el mail sale solo cuando un auditor elige «Sí» desde el backoffice; estos los insertó el generador, y sus vecinos son `example.com`/`vecino.gob.ar`/`vecinos-demo`, ninguno con cuenta en la app — verificado en prod). El generador demo ahora también encuesta los retrabajos resueltos (como `enviada`, nunca `pendiente`).
 - **Frontend:** botón «Enviar a auditoría» en la ficha de un reclamo `Resuelto` (nivel ≤ 2) con modal; bloque «Auditoría» en la ficha (fechas, resultado, link al retrabajo o al reclamo auditado); mesa del auditor con «Aprobar / Observar» y columna «Resuelto el»; badges/filtros/BI con `Auditado`; el modal de cerrar OT ya no habla de auditoría previa.
 - **Verificación:** smoke in-process `backend/smoke_auditoria_reclamos.py` (71 casos) + recorrido en navegador local.
 

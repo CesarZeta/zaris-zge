@@ -12,7 +12,9 @@ Fuente única de verdad:
 
 ## 1. Flujo de Reclamo
 
-Alta en "Sin asignar". Cancelación permitida hasta "En auditoría" excluida (Sin asignar / En gestión / En espera). Reasignación permitida en todos los estados no finales. Edición completa solo en "Sin asignar"; edición parcial (solo `observaciones`) en estados intermedios; estados finales rechazan edición con 422.
+Alta en "Sin asignar". Cancelación permitida en los estados de gestión (Sin asignar / En gestión / En espera). Reasignación permitida en los estados de gestión. Edición completa solo en "Sin asignar"; edición parcial (solo `observaciones`) en En gestión / En espera; `Resuelto`, `Cancelado`, `En auditoría` y `Auditado` rechazan edición con 422.
+
+**Auditoría POSTERIOR al cierre (mig 112):** `Resuelto` es el fin de la gestión y de sus tiempos (`fecha_cierre` no cambia nunca después). La auditoría es manual: un supervisor de la subárea del reclamo (o un admin) manda un `Resuelto` a `En auditoría` y el auditor lo cierra como `Auditado` (aprobado u observado). Al observar, el auditor elige si inicia un incidente nuevo: un reclamo NUEVO de retrabajo, visible para el vecino (mail + aviso), que al resolverse dispara la encuesta.
 
 ```mermaid
 flowchart TD
@@ -21,22 +23,28 @@ flowchart TD
     SinAsignar["Sin asignar<br/>(edicion completa,<br/>reasignacion, cancelacion)"]
     EnGestion["En gestion<br/>(edicion: solo observaciones,<br/>reasignacion, cancelacion)"]
     EnEspera["En espera<br/>(bloqueado por subreclamo,<br/>edicion: solo observaciones)"]
-    EnAuditoria["En auditoria<br/>(OT operativa cerrada,<br/>edicion: solo observaciones,<br/>reasignacion permitida)"]
-    Resuelto[["Resuelto<br/>(final - sin edicion)"]]
+    Resuelto[["Resuelto<br/>(fin de la gestion - sin edicion)"]]
     Cancelado[["Cancelado<br/>(final - sin edicion)"]]
+    EnAuditoria["En auditoria<br/>(resuelto, pendiente del auditor;<br/>sin edicion, OT, subreclamo ni cancelacion)"]
+    Auditado[["Auditado<br/>(aprobado u observado - final)"]]
+    Retrabajo(["Reclamo NUEVO de retrabajo<br/>(canal oficio, nace Sin asignar,<br/>id_reclamo_origen_auditoria)"])
 
     SinAsignar -->|"OT creada<br/>(POST /ot)"| EnGestion
+    SinAsignar -->|"Cierre directo sin OT<br/>(supervisor de la subarea)"| Resuelto
     SinAsignar -->|"PUT /reclamos/{id}/cancelar<br/>(requiere motivo)"| Cancelado
 
     EnGestion -->|"POST /reclamos/{id}/subreclamo<br/>(padre a En espera)"| EnEspera
-    EnGestion -->|"OT operativa terminada"| EnAuditoria
+    EnGestion -->|"OT operativa terminada<br/>o PUT /reclamos/{id}/estado"| Resuelto
     EnGestion -->|"PUT /reclamos/{id}/cancelar<br/>(cascade a OTs activas)"| Cancelado
 
     EnEspera -->|"Subreclamo resuelto/cancelado"| EnGestion
     EnEspera -->|"PUT /reclamos/{id}/cancelar"| Cancelado
 
-    EnAuditoria -->|"PUT /ot/{id}/aprobar"| Resuelto
-    EnAuditoria -->|"PUT /ot/{id}/rechazar<br/>(nueva OT Pendiente con id_ot_origen)"| EnGestion
+    Resuelto -->|"POST /reclamos/{id}/auditoria<br/>(supervisor de la subarea o admin;<br/>crea la OT de auditoria)"| EnAuditoria
+    EnAuditoria -->|"PUT /ot/{id}/aprobar"| Auditado
+    EnAuditoria -->|"PUT /ot/{id}/observar<br/>(observacion obligatoria)"| Auditado
+    EnAuditoria -->|"OT de auditoria Cancelada"| Resuelto
+    Auditado -.->|"observado con<br/>generar_retrabajo=true"| Retrabajo
 
     %% Subreclamo (max 1 nivel)
     SubReclamo["Subreclamo<br/>(profundidad maxima 1)"]
@@ -44,12 +52,14 @@ flowchart TD
     SubReclamo -.->|"Sub debe cerrar<br/>antes que el padre<br/>pase a Resuelto/Cancelado"| EnEspera
 
     classDef finalNode stroke:#1f8a65,stroke-width:3px,fill:#e7f5ef
-    class Resuelto,Cancelado finalNode
+    class Resuelto,Cancelado,Auditado finalNode
 ```
 
 **Reglas clave:**
 - **Sub-reclamo** se crea con `POST /reclamos/{id}/subreclamo`. Profundidad maxima 1: si el padre ya tiene `id_reclamo_padre`, la API rechaza.
-- Mientras exista un sub-reclamo activo (`Sin asignar`, `En gestion`, `En espera`, `En auditoria`), el reclamo padre **no puede** pasar a `Resuelto` ni `Cancelado`. El backend valida antes de aplicar el cambio de estado.
+- Mientras exista un sub-reclamo activo en gestión (`Sin asignar`, `En gestion`, `En espera`), el reclamo padre **no puede** pasar a `Resuelto` ni `Cancelado`. Un hijo `En auditoria`/`Auditado` ya cerró su gestión. El backend valida antes de aplicar el cambio de estado.
+- `En auditoria` y `Auditado` no se alcanzan por `PUT /reclamos/{id}/estado` (422): se entra por `POST /reclamos/{id}/auditoria` y se sale por `/ot/{id}/aprobar|observar` (o cancelando la OT de auditoría).
+- **Para el vecino** la auditoría del reclamo original no existe: lo sigue viendo `Resuelto`. El retrabajo SÍ lo ve («Reabierto por control de calidad del reclamo REC-…»), sin la observación del auditor.
 - Cambios de estado quedan registrados como filas append-only en `reclamo_historial`.
 
 ---
@@ -61,15 +71,15 @@ Estados de la tabla `estado_ot`: `Pendiente`, `En gestion`, `En espera`, `Termin
 ```mermaid
 flowchart TD
     AltaSup([Supervisor crea OT:<br/>POST /ot o POST /ot/con-agenda])
-    AltaRechazo([Rechazo de auditoria:<br/>PUT /ot/{id}/rechazar<br/>genera nueva OT con id_ot_origen])
+    AltaAud([OT de auditoria es_auditoria:<br/>POST /reclamos/{id}/auditoria<br/>sobre un reclamo Resuelto])
 
     AltaSup --> Pendiente
-    AltaRechazo --> Pendiente
+    AltaAud --> EnGestion
 
     Pendiente["Pendiente<br/>(sin asignar a agente,<br/>o asignada sin tomar)"]
     EnGestion["En gestion<br/>(agente trabajando)"]
     EnEspera["En espera<br/>(bloqueada por dependencia)"]
-    Terminada[["Terminada<br/>(operativa cerrada -><br/>reclamo a En auditoria)"]]
+    Terminada[["Terminada<br/>(operativa cerrada -><br/>reclamo a Resuelto)"]]
     Cancelada[["Cancelada<br/>(cascade del reclamo padre)"]]
 
     Pendiente -->|"Agente toma:<br/>PUT /ot/{id}/tomar"| EnGestion
@@ -83,9 +93,9 @@ flowchart TD
     EnEspera -->|"PUT /ot/{id}/estado"| EnGestion
     EnEspera -->|"Cancelacion del reclamo padre"| Cancelada
 
-    %% Auditoria sobre Terminada
-    Terminada -->|"Auditor aprueba:<br/>PUT /ot/{id}/aprobar<br/>(reclamo -> Resuelto)"| FinAprobado([Reclamo a Resuelto])
-    Terminada -->|"Auditor rechaza:<br/>PUT /ot/{id}/rechazar"| AltaRechazo
+    %% OT de auditoria: se cierra solo por aprobar/observar (Terminada por /estado da 422)
+    EnGestion -->|"Auditor aprueba u observa:<br/>PUT /ot/{id}/aprobar o /observar<br/>(reclamo -> Auditado)"| Terminada
+    EnGestion -->|"Cancelar la auditoria<br/>(reclamo vuelve a Resuelto)"| Cancelada
 
     classDef finalNode stroke:#1f8a65,stroke-width:3px,fill:#e7f5ef
     classDef finalCancel stroke:#c62828,stroke-width:3px,fill:#fbe9eb
@@ -97,9 +107,11 @@ flowchart TD
 - **Alta:** Supervisor crea OT desde la bandeja de reclamos (`POST /ot` simple, o `POST /ot/con-agenda` que ademas planifica ocupacion en la grilla).
 - **Tomar:** Agente toma una OT no asignada con `PUT /ot/{id}/tomar`.
 - **Cambio de estado:** `PUT /ot/{id}/estado` con el `id_estado_ot` destino.
-- **Aprobar (auditoria):** `PUT /ot/{id}/aprobar` -> reclamo pasa a `Resuelto`.
-- **Rechazar (auditoria):** `PUT /ot/{id}/rechazar` -> crea nueva OT en `Pendiente` con `id_ot_origen` apuntando a la rechazada.
-- **Cancelar:** No tiene endpoint dedicado; se produce en cascada cuando el reclamo padre se cancela.
+- **Terminar la OT operativa** siempre deja el reclamo en `Resuelto` (no hay auditoría automática; `tipo_reclamo.audit` ya no se consulta).
+- **Enviar a auditoría:** `POST /reclamos/{id}/auditoria` sobre un reclamo `Resuelto` crea la OT `es_auditoria` (en `En gestion`, `id_ot_origen` = última OT operativa terminada) y pasa el reclamo a `En auditoria`.
+- **Aprobar (auditoria):** `PUT /ot/{id}/aprobar` -> OT `Terminada`/aprobada; reclamo `Auditado`/aprobado (cierre definitivo).
+- **Observar (auditoria):** `PUT /ot/{id}/observar` con `observaciones` (obligatoria) y `generar_retrabajo` (bool, default `true`) -> OT `Terminada`/observada; reclamo `Auditado`/observado. Con `generar_retrabajo=true` nace un reclamo NUEVO de retrabajo y se avisa al vecino (mail genérico + aviso + push); con `false`, solo queda registrado. `/rechazar` es un alias deprecado del mismo endpoint.
+- **Cancelar:** la OT operativa se cancela en cascada cuando el reclamo padre se cancela. Una OT de auditoría cancelada (`PUT /ot/{id}/estado`) devuelve el reclamo a `Resuelto`.
 
 ---
 

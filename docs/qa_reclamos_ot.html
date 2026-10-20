@@ -77,6 +77,7 @@
   .b-gestion { background: #e6f4ef; color: var(--color-success); }
   .b-espera { background: #fef6e7; color: #f57f17; }
   .b-auditoria { background: #f3e9f7; color: #6a1b9a; }
+  .b-auditado { background: #ede7f6; color: #4527a0; }
   .b-resuelto { background: #e6f4ef; color: #1f8a65; }
   .b-cancelado { background: var(--surface-400); color: var(--fg-2); }
   .flow {
@@ -111,7 +112,7 @@
       <li><a href="#ciudadanos">Ciudadanos y tipos para usar</a></li>
       <li><a href="#flujo">El flujo en una imagen</a></li>
       <li><a href="#reclamos">Casos · Reclamos</a></li>
-      <li><a href="#ot">Casos · Órdenes de Trabajo</a></li>
+      <li><a href="#ot">Casos · Órdenes de Trabajo y auditoría</a></li>
       <li><a href="#permisos">Casos · Permisos y seguridad</a></li>
       <li><a href="#preguntas">Preguntas guía para el tester</a></li>
       <li><a href="#glosario">Glosario de estados</a></li>
@@ -129,7 +130,7 @@
   <blockquote class="danger"><p><strong>⚠ Es PRODUCCIÓN.</strong> Los reclamos y OT que crees quedan en datos reales. Usá descripciones claras tipo <code>[QA] prueba tester — borrar</code> para identificarlos. Avisá al final qué números generaste así se limpian.</p></blockquote>
 
   <h2 id="usuarios">2 · Usuarios de prueba (por rol)</h2>
-  <p>Las claves se entregan por canal privado (pedíselas a César). El <strong>nivel</strong> define qué puede hacer cada uno. La <strong>subárea</strong> importa para los casos de cierre directo y de "no auditar lo propio".</p>
+  <p>Las claves se entregan por canal privado (están en <code>credenciales-testing/</code>, fuera del repo; no figuran en esta guía). El <strong>nivel</strong> define qué puede hacer cada uno. La <strong>subárea</strong> importa para los casos de cierre directo, de enviar a auditoría y de "no auditar lo propio".</p>
 
   <h3>Para Reclamos y asignación de OT (supervisores / admin)</h3>
   <table>
@@ -181,7 +182,8 @@
   </table>
 
   <h2 id="flujo">4 · El flujo en una imagen</h2>
-  <div class="flow">[Vecino] → REC creado <span class="badge b-sinasignar">Sin asignar</span> → Supervisor crea OT → <span class="badge b-gestion">En gestión</span> → Agente trabaja + sube evidencia → cierra OT → <span class="badge b-auditoria">En auditoría</span> → Auditor aprueba → <span class="badge b-resuelto">Resuelto</span> &nbsp;(o rechaza → nueva OT)</div>
+  <div class="flow">[Vecino] → REC creado <span class="badge b-sinasignar">Sin asignar</span> → Supervisor crea OT → <span class="badge b-gestion">En gestión</span> → Agente trabaja + sube evidencia → cierra OT → <span class="badge b-resuelto">Resuelto</span> (fin de la gestión)</div>
+  <div class="flow" style="margin-top:8px;">Auditoría (opcional, después del cierre): supervisor de la subárea → <strong>Enviar a auditoría</strong> desde la ficha → <span class="badge b-auditoria">En auditoría</span> → Auditor <strong>Aprueba</strong> → <span class="badge b-auditado">Auditado</span> &nbsp;·&nbsp; o <strong>Observa</strong> → pop-up «¿Iniciar un nuevo incidente?» → Sí: reclamo nuevo de oficio + aviso al vecino / No: solo queda registrado</div>
   <p style="margin-top:10px;">Atajo: un supervisor de la subárea correcta puede pasar <span class="badge b-sinasignar">Sin asignar</span> directo a <span class="badge b-resuelto">Resuelto</span> <strong>si el reclamo no tiene OT</strong> (cierre directo).</p>
 
   <h2 id="reclamos">5 · Casos · Reclamos</h2>
@@ -199,7 +201,7 @@
     <tr><td>R9</td><td><strong>Cancelar reclamo:</strong> usar la acción Cancelar e intentar guardar SIN motivo, luego con motivo.</td><td>Sin motivo: lo rechaza. Con motivo: pasa a <span class="badge b-cancelado">Cancelado</span>.</td><td class="res-cell">—</td></tr>
     <tr><td>R10</td><td><strong>Subreclamo:</strong> en un reclamo, crear un subreclamo. Verificar el padre.</td><td>El padre pasa a <span class="badge b-espera">En espera</span>. No se permite un sub-sub-reclamo (máx 1 nivel).</td><td class="res-cell">—</td></tr>
     <tr><td>R11</td><td><strong>Estado final no editable:</strong> abrir el reclamo ya <span class="badge b-resuelto">Resuelto</span> de R6 e intentar cambiar estado o editar campos.</td><td>Muestra que no admite cambios / campos bloqueados.</td><td class="res-cell">—</td></tr>
-    <tr><td>R12</td><td><strong>Padre con hijos abiertos:</strong> con un reclamo que tiene un subreclamo activo (no resuelto), intentar pasar el padre a Resuelto o En auditoría.</td><td>Se bloquea enumerando los subreclamos pendientes.</td><td class="res-cell">—</td></tr>
+    <tr><td>R12</td><td><strong>Padre con hijos abiertos:</strong> con un reclamo que tiene un subreclamo activo (no resuelto), intentar pasar el padre a Resuelto.</td><td>Se bloquea enumerando los subreclamos pendientes.</td><td class="res-cell">—</td></tr>
   </table>
 
   <h2 id="ot">6 · Casos · Órdenes de Trabajo</h2>
@@ -221,16 +223,30 @@
     <tr><td>A2</td><td>Tomar una OT sin asignar de su equipo (si hay).</td><td>La OT queda asignada al agente.</td><td class="res-cell">—</td></tr>
     <tr><td>A3</td><td>Abrir el detalle (drawer) de una OT propia. En "EVIDENCIA DE LA OT" subir una foto.</td><td>La imagen sube y aparece en la galería de evidencia (separada de los adjuntos del reclamo).</td><td class="res-cell">—</td></tr>
     <tr><td>A4</td><td>Cambiar el estado de la OT (En gestión → En espera → Terminada según corresponda).</td><td>Los estados cambian respetando las opciones ofrecidas.</td><td class="res-cell">—</td></tr>
-    <tr><td>A5</td><td>Cerrar/terminar la OT operativa.</td><td>El reclamo asociado pasa a <span class="badge b-auditoria">En auditoría</span>.</td><td class="res-cell">—</td></tr>
+    <tr><td>A5</td><td>Cerrar/terminar la OT operativa.</td><td>El reclamo asociado pasa a <span class="badge b-resuelto">Resuelto</span>, aunque su tipo haya tenido "auditoría" en el pasado: ya no hay auditoría automática.</td><td class="res-cell">—</td></tr>
+  </table>
+
+  <h3>Enviar a auditoría (ficha del reclamo, login <code>pabloyacob@</code>)</h3>
+  <table class="caso">
+    <tr><th>#</th><th>Caso / pasos</th><th>Resultado esperado</th><th class="res">PASS/FAIL</th></tr>
+    <tr><td>E1</td><td>Abrir el reclamo <span class="badge b-resuelto">Resuelto</span> de R6 (subárea Pluviales, la de Pablo). Botón <strong>Enviar a auditoría</strong>, escribir una indicación para el auditor y confirmar.</td><td>Toast "Reclamo enviado a auditoría" con el número de la OT de auditoría. El reclamo pasa a <span class="badge b-auditoria">En auditoría</span>; su fecha de cierre no cambia. Anotá el número de OT.</td><td class="res-cell">—</td></tr>
+    <tr><td>E2</td><td>Con <code>lourdesacosta@</code> (supervisora de otra subárea), abrir otro reclamo <span class="badge b-resuelto">Resuelto</span> de Pluviales y usar <strong>Enviar a auditoría</strong>.</td><td>Toast de error "No se pudo enviar a auditoría": el reclamo pertenece a otra subárea. El reclamo sigue <span class="badge b-resuelto">Resuelto</span>.</td><td class="res-cell">—</td></tr>
+    <tr><td>E3</td><td>Abrir un reclamo que NO esté <span class="badge b-resuelto">Resuelto</span> (por ejemplo, En gestión).</td><td>No aparece el botón <strong>Enviar a auditoría</strong>.</td><td class="res-cell">—</td></tr>
+    <tr><td>E4</td><td>Con el reclamo de E1 <span class="badge b-auditoria">En auditoría</span>, intentar editarlo, cambiarle el estado, generar un subreclamo o cancelarlo.</td><td>Ninguna de esas acciones está disponible o el sistema las rechaza: el reclamo está pendiente del auditor.</td><td class="res-cell">—</td></tr>
   </table>
 
   <h3>Mesa Auditoría (login <code>mgonzalez@</code> auditor, o <code>ciudadanovl@</code> admin)</h3>
+  <p>Necesitás al menos tres reclamos <span class="badge b-auditoria">En auditoría</span> (repetí E1 con otros reclamos resueltos de Pluviales). Usá ciudadanos de prueba con un email al que tengas acceso si querés ver el correo del caso U4.</p>
   <table class="caso">
     <tr><th>#</th><th>Caso / pasos</th><th>Resultado esperado</th><th class="res">PASS/FAIL</th></tr>
-    <tr><td>U1</td><td>Entrar a OT → pestaña/Mesa Auditoría con un usuario auditor.</td><td>Se ven OT en auditoría. (Un usuario NO auditor y no admin debería ver "Acceso restringido".)</td><td class="res-cell">—</td></tr>
-    <tr><td>U2</td><td>Aprobar una OT en auditoría.</td><td>El reclamo pasa a <span class="badge b-resuelto">Resuelto</span>.</td><td class="res-cell">—</td></tr>
-    <tr><td>U3</td><td>Rechazar una OT en auditoría.</td><td>Se genera una nueva OT Pendiente vinculada al origen; el reclamo vuelve a gestión.</td><td class="res-cell">—</td></tr>
-    <tr><td>U4</td><td><strong>No auditar lo propio:</strong> con <code>mgonzalez@</code>, verificar que NO aparezcan en su mesa de auditoría las OT operativas que él mismo trabajó.</td><td>Esas OT no figuran para auditar.</td><td class="res-cell">—</td></tr>
+    <tr><td>U1</td><td>Entrar a OT → Mesa Auditoría con un usuario auditor y presionar <strong>Ver OTs en auditoría</strong>.</td><td>Se ven las OT de auditoría con la columna <strong>Resuelto el</strong> y los botones Ver / Aprobar / Observar. No hay columna de SLA. (Un usuario NO auditor y no admin debería ver "Acceso restringido".)</td><td class="res-cell">—</td></tr>
+    <tr><td>U2</td><td><strong>Aprobar</strong> una OT en auditoría.</td><td>El modal se cierra al confirmar y llega el toast "Auditoría aprobada". El reclamo queda <span class="badge b-auditado">Auditado</span>; en su ficha, bloque Auditoría: resultado <em>Aprobada</em>. El vecino no recibe aviso.</td><td class="res-cell">—</td></tr>
+    <tr><td>U3</td><td><strong>Observar</strong> otra OT: intentar confirmar sin escribir la observación; después escribirla y confirmar. En el pop-up «¿Iniciar un nuevo incidente?» probar <strong>Volver</strong> y luego la tecla <strong>Escape</strong>.</td><td>Sin observación el botón Observar no se habilita. El pop-up explica las dos opciones; Volver y Escape cierran solo el pop-up y dejan la observación escrita. No se guarda nada.</td><td class="res-cell">—</td></tr>
+    <tr><td>U4</td><td>En la misma OT, Observar → <strong>Sí, iniciar nuevo incidente</strong>.</td><td>Toast "se inició un nuevo incidente" con el número del reclamo nuevo. El reclamo auditado queda <span class="badge b-auditado">Auditado</span>, ficha: <em>Observada (con retrabajo)</em> con link al reclamo nuevo. El reclamo nuevo está <span class="badge b-sinasignar">Sin asignar</span>, canal oficio, con la observación en la descripción y el link "Retrabajo de". El vecino recibe un correo "Vamos a volver a trabajar en tu reclamo…" que NO incluye la observación, y un aviso en la app.</td><td class="res-cell">—</td></tr>
+    <tr><td>U5</td><td>En la app del vecino de U4 (Portal del Ciudadano): abrir Alertas y tocar el aviso; después Mis reclamos.</td><td>El aviso abre el reclamo nuevo, con la leyenda «Reabierto por control de calidad del reclamo REC-…» (link al original). La descripción es la que había escrito el vecino, sin la observación del auditor. El reclamo original se sigue viendo <span class="badge b-resuelto">Resuelto</span>, sin rastro de la auditoría.</td><td class="res-cell">—</td></tr>
+    <tr><td>U6</td><td>En una tercera OT, Observar → <strong>No, solo registrar</strong>.</td><td>Toast "sin incidente nuevo". El reclamo queda <span class="badge b-auditado">Auditado</span>, ficha: <em>Observada (sin retrabajo)</em>, sin link a reclamo nuevo. El vecino no recibe nada.</td><td class="res-cell">—</td></tr>
+    <tr><td>U7</td><td>Resolver el reclamo nuevo de U4 (OT y cierre normal, o cierre directo por un supervisor de Pluviales).</td><td>Pasa a <span class="badge b-resuelto">Resuelto</span>; el vecino recibe el aviso de cambio de estado y, al día siguiente, la encuesta de satisfacción (aunque ya haya sido encuestado por el reclamo original).</td><td class="res-cell">—</td></tr>
+    <tr><td>U8</td><td><strong>No auditar lo propio:</strong> con <code>mgonzalez@</code>, verificar que NO aparezcan en su mesa de auditoría las OT operativas que él mismo trabajó.</td><td>Esas OT no figuran para auditar.</td><td class="res-cell">—</td></tr>
   </table>
 
   <h2 id="permisos">7 · Casos · Permisos y seguridad</h2>
@@ -256,6 +272,7 @@
     <li>¿Aparece alguna pantalla rota, sidebar duplicado, o página en blanco al navegar entre módulos?</li>
     <li>¿Llega notificación (campana arriba) cuando algo cae en tu bandeja?</li>
     <li>¿Algo tardó demasiado en cargar (más de ~5 segundos)?</li>
+    <li>En el pop-up de la auditoría observada, ¿queda claro qué pasa con el vecino en cada opción?</li>
   </ul>
 
   <h2 id="glosario">9 · Glosario de estados</h2>
@@ -265,17 +282,19 @@
     <tr><td><span class="badge b-sinasignar">Sin asignar</span></td><td>Ingresado, sin OT.</td></tr>
     <tr><td><span class="badge b-gestion">En gestión</span></td><td>OT generada y en ejecución.</td></tr>
     <tr><td><span class="badge b-espera">En espera</span></td><td>Bloqueado por un subreclamo activo.</td></tr>
-    <tr><td><span class="badge b-auditoria">En auditoría</span></td><td>OT operativa cerrada, pendiente de auditoría.</td></tr>
-    <tr><td><span class="badge b-resuelto">Resuelto</span> / <span class="badge b-cancelado">Cancelado</span></td><td>Estados finales (no se editan).</td></tr>
+    <tr><td><span class="badge b-resuelto">Resuelto</span> / <span class="badge b-cancelado">Cancelado</span></td><td>Fin de la gestión (no se editan). La fecha de cierre ya no cambia.</td></tr>
+    <tr><td><span class="badge b-auditoria">En auditoría</span></td><td>Reclamo resuelto que la supervisión mandó a revisar; pendiente del auditor, no de gestión.</td></tr>
+    <tr><td><span class="badge b-auditado">Auditado</span></td><td>Auditoría terminada: aprobada (cierre definitivo) u observada (con o sin reclamo nuevo de retrabajo).</td></tr>
   </table>
   <h3>Transiciones permitidas (qué puede ofrecer el dropdown)</h3>
   <table>
     <tr><th>Desde</th><th>Puede ir a</th></tr>
     <tr><td>Sin asignar</td><td>En gestión, Cancelado <span style="color:var(--fg-3)">(+ Resuelto si cierre directo)</span></td></tr>
-    <tr><td>En gestión</td><td>En espera, En auditoría, Resuelto, Cancelado</td></tr>
-    <tr><td>En espera</td><td>En gestión, En auditoría, Cancelado</td></tr>
-    <tr><td>En auditoría</td><td>En gestión, Resuelto, Cancelado</td></tr>
-    <tr><td>Resuelto / Cancelado</td><td>(final — ninguno)</td></tr>
+    <tr><td>En gestión</td><td>En espera, Resuelto, Cancelado</td></tr>
+    <tr><td>En espera</td><td>En gestión, Cancelado</td></tr>
+    <tr><td>Resuelto / Cancelado</td><td>(ninguno por "Cambiar estado") — un Resuelto puede ir a En auditoría solo con el botón <strong>Enviar a auditoría</strong></td></tr>
+    <tr><td>En auditoría</td><td>(ninguno por "Cambiar estado") — sale a Auditado cuando el auditor aprueba u observa, o vuelve a Resuelto si se cancela la OT de auditoría</td></tr>
+    <tr><td>Auditado</td><td>(final — ninguno)</td></tr>
   </table>
 
   <div class="footer">

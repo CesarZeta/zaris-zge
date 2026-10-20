@@ -26,7 +26,7 @@ const VISTAS: Record<string, { label: string; title: string; subtitle: string }>
   auditoria: {
     label: 'Auditoría',
     title: 'Mesa de Auditoría',
-    subtitle: 'Aprobá o rechazá OTs operativas cerradas pendientes de auditoría.',
+    subtitle: 'Aprobá u observá los reclamos resueltos que la supervisión mandó a auditar.',
   },
 }
 

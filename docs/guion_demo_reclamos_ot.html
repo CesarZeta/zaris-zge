@@ -68,6 +68,7 @@
   .b-eg { background: rgba(31,138,101,.14); color: var(--ok); }
   .b-ee { background: rgba(184,134,11,.16); color: var(--warn); }
   .b-au { background: rgba(106,27,154,.14); color: #6a1b9a; }
+  .b-ad { background: rgba(69,39,160,.12); color: #4527a0; }
   .b-re { background: rgba(38,37,30,.1); color: var(--fg-2); }
   .flow {
     background: var(--surface-100); border: 1px solid var(--border); border-radius: 8px;
@@ -107,10 +108,10 @@
   <h2>1. Tickets ya cargados para la demo</h2>
   <p>Estos tres reclamos ya están creados en estado <span class="badge b-sa">Sin asignar</span>, listos para arrancar desde la generación de la orden de trabajo. No hace falta crearlos.</p>
   <table>
-    <tr><th>Ticket</th><th>Tipo de reclamo</th><th>Auditoría</th><th>Para qué sirve en la demo</th></tr>
+    <tr><th>Ticket</th><th>Tipo de reclamo</th><th>Auditoría en la demo</th><th>Para qué sirve en la demo</th></tr>
     <tr><td><span class="ticket">REC-2026-000048</span></td><td>Corte de pasto y poda básica</td><td>No</td><td>OT a un <strong>agente</strong> → cierre <strong>directo</strong> a Resuelto</td></tr>
     <tr><td><span class="ticket">REC-2026-000049</span></td><td>Corte de pasto y poda básica</td><td>No</td><td>OT a una <strong>cuadrilla</strong> + botón <strong>Auto-asignar</strong></td></tr>
-    <tr><td><span class="ticket">REC-2026-000050</span></td><td>Ejecución y reparación de revoques</td><td><strong>Sí</strong></td><td>OT → <strong>Mesa de Auditoría</strong> + <strong>subreclamo</strong></td></tr>
+    <tr><td><span class="ticket">REC-2026-000050</span></td><td>Ejecución y reparación de revoques</td><td><strong>Sí</strong> (se manda a auditar después de resolverlo)</td><td>OT → <strong>Mesa de Auditoría</strong> + <strong>subreclamo</strong></td></tr>
   </table>
 
   <h3>Recursos de la subárea Mantenimiento general</h3>
@@ -138,7 +139,7 @@
     <li><span class="step-num">4</span>Elegir una <strong>fecha</strong> (día de semana) → aparecen los <strong>slots libres</strong> como chips (08:00, 09:00, … hasta 15:00).</li>
     <li><span class="step-num">5</span>Click en un slot → botón <strong>Crear OT y agendar</strong>. El reclamo pasa a <span class="badge b-eg">En gestión</span> y la OT queda como bloque en la Agenda del agente.</li>
     <li><span class="step-num">6</span>Ir a <strong>OT → Mesa del Agente</strong> → la OT aparece en "Mis OTs" → <strong>Cambiar estado → Terminada</strong>.</li>
-    <li><span class="step-num">7</span>Como el tipo <strong>no</strong> tiene auditoría, el reclamo pasa <strong>directo</strong> a <span class="badge b-re">Resuelto</span>.</li>
+    <li><span class="step-num">7</span>Al terminar la OT, el reclamo pasa a <span class="badge b-re">Resuelto</span>. Siempre es así: la auditoría no es automática, se pide después (sección 5).</li>
   </ol>
 
   <h2>4. OT a una cuadrilla + Auto-asignar <span class="ticket" style="font-size:14px">(REC-2026-000049)</span></h2>
@@ -155,13 +156,14 @@
 
   <h2>5. Subreclamo + Mesa de Auditoría <span class="ticket" style="font-size:14px">(REC-2026-000050)</span></h2>
   <p>El caso más completo: muestra subreclamos, el bloqueo del padre y la auditoría.</p>
-  <div class="flow">Sin asignar → <b>subreclamo</b> (padre En espera) → resolver subreclamo (padre vuelve a En gestión) → OT → Terminada → <b>En auditoría</b> → aprobar/rechazar → Resuelto</div>
+  <div class="flow">Sin asignar → <b>subreclamo</b> (padre En espera) → resolver subreclamo (padre vuelve a En gestión) → OT → Terminada → Resuelto → <b>Enviar a auditoría</b> → En auditoría → <b>Aprobar</b> (Auditado) u <b>Observar</b> (¿nuevo incidente?)</div>
   <ol>
     <li><span class="step-num">1</span>Abrir el detalle de <span class="ticket">REC-2026-000050</span> → botón <strong>Generar subreclamo</strong> (ej.: "Falta comprar pintura"). El reclamo padre pasa a <span class="badge b-ee">En espera</span>.</li>
     <li><span class="step-num">2</span>Resolver el subreclamo (cambiar estado → En gestión → Resuelto). Al cerrar el último subreclamo, <strong>el padre vuelve solo a</strong> <span class="badge b-eg">En gestión</span>.</li>
     <li><span class="step-num">3</span><strong>OT → Asignar</strong> → asignar el reclamo a un agente de Mantenimiento, agendar, y marcar la OT como <strong>Terminada</strong>.</li>
-    <li><span class="step-num">4</span>Como este tipo <strong>sí tiene auditoría</strong>, el reclamo pasa a <span class="badge b-au">En auditoría</span> y se crea automáticamente una <strong>OT de auditoría</strong>.</li>
-    <li><span class="step-num">5</span><strong>OT → Mesa de Auditoría</strong> → aparece la OT de auditoría → <strong>Aprobar</strong> (el reclamo pasa a Resuelto) o <strong>Rechazar</strong> (genera retrabajo: vuelve a En gestión con una OT Pendiente).</li>
+    <li><span class="step-num">4</span>Al terminar la OT el reclamo pasa a <span class="badge b-re">Resuelto</span>. Abrir su ficha (Reclamos → detalle) como supervisor de la subárea → botón <strong>Enviar a auditoría</strong>, con una indicación para el auditor. El reclamo pasa a <span class="badge b-au">En auditoría</span> (su fecha de cierre no cambia) y se crea la <strong>OT de auditoría</strong>.</li>
+    <li><span class="step-num">5</span><strong>OT → Mesa de Auditoría</strong> → <strong>Ver OTs en auditoría</strong> → aparece la OT con la fecha en que se resolvió el reclamo → <strong>Aprobar</strong> (el reclamo queda <span class="badge b-ad">Auditado</span>, cierre definitivo) u <strong>Observar</strong>: se escribe la observación y el sistema pregunta <strong>«¿Iniciar un nuevo incidente?»</strong>.</li>
+    <li><span class="step-num">6</span>Si se elige <strong>Sí</strong>, nace un reclamo de oficio <span class="badge b-sa">Sin asignar</span> para volver a hacer el trabajo, y el vecino lo ve en su app («Reabierto por control de calidad del reclamo REC-…») y recibe un correo que se lo explica. Si se elige <strong>No</strong>, la observación solo queda registrada. Mostrar en la ficha el bloque <strong>Auditoría</strong> con el resultado y el link al reclamo nuevo.</li>
   </ol>
 
   <h2>6. Qué mirar en cada pantalla</h2>
@@ -178,15 +180,17 @@
     <span class="badge b-sa">Sin asignar</span>
     <span class="badge b-eg">En gestión</span>
     <span class="badge b-ee">En espera</span>
-    <span class="badge b-au">En auditoría</span>
     <span class="badge b-re">Resuelto</span>
+    <span class="badge b-au">En auditoría</span>
+    <span class="badge b-ad">Auditado</span>
   </p>
   <ul>
     <li><strong>Sin asignar</strong>: reclamo ingresado, todavía sin orden de trabajo.</li>
     <li><strong>En gestión</strong>: tiene una OT en ejecución.</li>
     <li><strong>En espera</strong>: bloqueado por un subreclamo activo.</li>
-    <li><strong>En auditoría</strong>: la OT operativa se cerró y está pendiente de revisión.</li>
-    <li><strong>Resuelto / Cancelado</strong>: estados finales.</li>
+    <li><strong>Resuelto / Cancelado</strong>: fin de la gestión y de sus tiempos.</li>
+    <li><strong>En auditoría</strong>: un reclamo resuelto que la supervisión mandó a revisar; pendiente del auditor.</li>
+    <li><strong>Auditado</strong>: auditoría terminada, aprobada u observada (con o sin reclamo nuevo de retrabajo).</li>
   </ul>
 
   <footer>

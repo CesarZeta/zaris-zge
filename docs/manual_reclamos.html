@@ -103,6 +103,7 @@
   .badge.en-espera { background: #fff4d6; color: #8a5a00; }
   .badge.en-auditoria { background: #f3e8ff; color: #6a1b9a; }
   .badge.resuelto { background: #dbeafe; color: #1e40af; }
+  .badge.auditado { background: #ede7f6; color: #4527a0; }
   .badge.cancelado { background: var(--surface-400); color: var(--fg-3); }
   .badge.alta { background: #fee2e2; color: #b91c1c; }
   .badge.media { background: #fff4d6; color: #8a5a00; }
@@ -155,8 +156,9 @@
   <li><span class="badge sin-asignar">Sin asignar</span> Recién creado, esperando que un supervisor genere una OT.</li>
   <li><span class="badge en-gestion">En gestión</span> Hay una OT activa, un agente está trabajando.</li>
   <li><span class="badge en-espera">En espera</span> Bloqueado porque depende de un subreclamo activo.</li>
-  <li><span class="badge en-auditoria">En auditoría</span> El operativo terminó, falta validación del auditor.</li>
-  <li><span class="badge resuelto">Resuelto</span> Cerrado correctamente.</li>
+  <li><span class="badge resuelto">Resuelto</span> Cerrado correctamente. Termina la gestión y sus tiempos: la fecha de cierre ya no cambia.</li>
+  <li><span class="badge en-auditoria">En auditoría</span> Un reclamo resuelto que la supervisión mandó a revisar. Está pendiente del auditor, no de gestión.</li>
+  <li><span class="badge auditado">Auditado</span> El auditor terminó la revisión: aprobada (cierre definitivo) u observada.</li>
   <li><span class="badge cancelado">Cancelado</span> Anulado (no procedía, duplicado, error).</li>
 </ul>
 
@@ -251,7 +253,7 @@
 <p>De arriba a abajo:</p>
 <ul>
   <li><strong>Cabecera</strong>: tipo del reclamo (ej "Bache en calle de adoquines"), número oficial (<code>REC-2026-000022</code>) y subárea responsable.</li>
-  <li><strong>Botones de acción</strong> (arriba a la derecha): Cambiar estado · Editar · Generar subreclamo · Cancelar reclamo · Volver.</li>
+  <li><strong>Botones de acción</strong> (arriba a la derecha): Cambiar estado · Editar · Generar subreclamo · Cancelar reclamo · Volver. En un reclamo <span class="badge resuelto">Resuelto</span>, los supervisores de su subárea y los administradores ven además <strong>Enviar a auditoría</strong>.</li>
   <li><strong>Sección Estado</strong>: estado actual, prioridad, responsable asignado, canal, fecha ingreso, vencimiento SLA.</li>
   <li><strong>Sección Ciudadano</strong>: nombre, DNI/CUIL, teléfono, email.</li>
   <li><strong>Descripción y Observaciones</strong>.</li>
@@ -259,8 +261,18 @@
   <li><strong>Adjuntos</strong>: galería de fotos del reclamo.</li>
   <li><strong>OTs asociadas</strong> (si tiene): órdenes de trabajo generadas por el supervisor.</li>
   <li><strong>Subreclamos</strong> (si tiene): reclamos hijos.</li>
+  <li><strong>Auditoría</strong> (si el reclamo se auditó o nació de una auditoría): fechas de la revisión, resultado (<em>Aprobada</em>, <em>Observada (con retrabajo)</em> u <em>Observada (sin retrabajo)</em>) y el link al reclamo nuevo de retrabajo, o al reclamo auditado si estás viendo el retrabajo.</li>
   <li><strong>Historial</strong>: timeline cronológico de todo lo que pasó.</li>
 </ul>
+
+<h3>5.1 Enviar a auditoría</h3>
+<p>La auditoría es una revisión <strong>posterior al cierre</strong> y se pide a mano: sobre un reclamo <span class="badge resuelto">Resuelto</span>, un supervisor de su subárea o un administrador usa <strong>Enviar a auditoría</strong>. El modal permite dejar indicaciones para el auditor y, si querés, elegir un auditor puntual.</p>
+<ol>
+  <li>El reclamo pasa a <span class="badge en-auditoria">En auditoría</span> y aparece en la <strong>Mesa Auditoría</strong> del módulo OT. Su fecha de cierre no cambia y el vecino no recibe aviso.</li>
+  <li>Mientras está en auditoría no se edita, no se le crean OTs ni subreclamos y no se cancela.</li>
+  <li>El auditor lo cierra como <span class="badge auditado">Auditado</span>: <strong>aprobado</strong> (cierre definitivo) u <strong>observado</strong>. Al observar, el sistema le pregunta si inicia un <strong>nuevo incidente</strong>: si dice que sí, nace un reclamo de oficio <span class="badge sin-asignar">Sin asignar</span> para volver a hacer el trabajo, y el vecino lo ve en su app y recibe un correo que se lo explica; si dice que no, la observación solo queda registrada.</li>
+</ol>
+<blockquote class="info">El detalle del circuito del auditor está en el manual de OT, sección «Mesa Auditoría».</blockquote>
 
 <h2 id="cambiar-estado">6. Cambiar el estado</h2>
 <p>Click en <strong>Cambiar estado</strong>:</p>
@@ -276,7 +288,7 @@
   <li>Click <strong>Aplicar cambio</strong>.</li>
 </ol>
 
-<blockquote class="warn">El sistema valida que la transición sea coherente con el ciclo de vida. Por ejemplo, no podés saltar de "Sin asignar" directo a "Resuelto" — necesita pasar por "En gestión" primero (típicamente vía OT).</blockquote>
+<blockquote class="warn">El sistema valida que la transición sea coherente con el ciclo de vida: el desplegable sólo ofrece los estados alcanzables. La única excepción para ir de "Sin asignar" directo a "Resuelto" es el <strong>cierre directo</strong> (consultas, duplicados, casos sin información): lo puede hacer un supervisor de la subárea del tipo de reclamo, siempre que no haya una OT activa, y el sistema pide confirmación.</blockquote>
 
 <h2 id="adjuntos">7. Adjuntar fotos o documentos</h2>
 
@@ -372,14 +384,16 @@
 <table>
   <thead><tr><th>Acción</th><th>Nivel mínimo</th></tr></thead>
   <tbody>
-    <tr><td>Ver listado y detalle</td><td>Consultor (4) o superior</td></tr>
-    <tr><td>Crear reclamo</td><td>Operador (3) o superior</td></tr>
-    <tr><td>Cambiar estado, editar, subreclamar, cancelar</td><td>Operador (3) o superior</td></tr>
+    <tr><td>Ver listado y detalle</td><td>Todos los niveles (Supervisor y Gestión ven el listado de su subárea)</td></tr>
+    <tr><td>Crear y editar reclamos</td><td>Atención (3), Supervisor (2) o Admin (1)</td></tr>
+    <tr><td>Avisar al supervisor</td><td>Gestión (4) o superior</td></tr>
+    <tr><td>Cambiar estado, subreclamar, cancelar</td><td>Supervisor (2) o Admin (1)</td></tr>
     <tr><td>Generar OTs (vía módulo OT)</td><td>Supervisor (2) o Admin (1)</td></tr>
+    <tr><td>Enviar un reclamo Resuelto a auditoría</td><td>Supervisor (2) de la subárea del reclamo o Admin (1)</td></tr>
   </tbody>
 </table>
 
-<blockquote>Los <strong>Consultores</strong> (nivel 4) sólo leen. No ven los botones de acción.</blockquote>
+<blockquote>Los <strong>Consultores</strong> (nivel 5) sólo leen. No ven los botones de acción.</blockquote>
 
 <footer>
   Manual generado el 2026-05-18 · ZARIS · Gestión Estatal · Capturas reales del entorno local
