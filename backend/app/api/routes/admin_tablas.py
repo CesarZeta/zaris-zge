@@ -49,7 +49,10 @@ TABLE_CONFIG: dict[str, dict] = {
         "pk": "id_usuario",
         "cols": ["nombre", "nivel_acceso", "username", "cuil", "buc_acceso", "id_subarea", "es_externo"],
         "fecha_mod": "fecha_modif",
-        "exclude": ["password_hash"],
+        # El token de recovery permite resetear la clave de la cuenta: no sale
+        # nunca, ni al admin (2026-10-21).
+        "exclude": ["password_hash", "token_recovery", "token_recovery_expira",
+                    "fecha_ultimo_email_recovery"],
     },
     "agentes": {
         "pk": "id_agente",
@@ -211,6 +214,35 @@ def _get_config(tabla: str) -> dict:
     return TABLE_CONFIG[tabla]
 
 
+# Parámetros del sistema: solo los lee el administrador (Config → Sistema y
+# Maestros; ningún otro módulo los pide por acá). Las claves secretas no salen
+# nunca por el CRUD genérico, ni al admin: el backend las lee directo de la DB
+# (services/push.py) y ninguna pantalla las muestra. Con la privada VAPID se
+# pueden firmar push a todos los dispositivos suscriptos (2026-10-21).
+_TABLAS_SOLO_ADMIN_LECTURA = {"configuracion_general"}
+_CLAVES_SECRETAS = {"vapid_private_key"}
+
+
+def _bloquear_lectura_si_solo_admin(tabla: str, current_user: dict) -> None:
+    if tabla in _TABLAS_SOLO_ADMIN_LECTURA and current_user.get("nivel_acceso") != 1:
+        raise HTTPException(status_code=403, detail="Acción exclusiva del administrador")
+
+
+# Usuarios: fuera del admin, el CRUD genérico solo alimenta selects FK (Maestros
+# → agentes.id_usuario, servicios.id_usuario_responsable). Email, CUIL, nivel y
+# fechas de login de las cuentas no son de cualquier logueado (2026-10-21).
+_COLS_USUARIO_NO_ADMIN = {"id_usuario", "nombre", "id_subarea", "activo"}
+
+
+def _sanear(tabla: str, d: dict, current_user: dict) -> dict:
+    if tabla == "configuracion_general" and d.get("clave") in _CLAVES_SECRETAS:
+        d["valor"] = None
+        d["valor_oculto"] = True
+    if tabla == "usuarios" and current_user.get("nivel_acceso") != 1:
+        d = {k: v for k, v in d.items() if k in _COLS_USUARIO_NO_ADMIN}
+    return d
+
+
 # Columnas PII de agentes que solo el Administrador (nivel 1) puede leer por el
 # CRUD genérico. El GET de agentes lo usan también el RecursoPicker de OT y otros
 # selects (nivel 2/4), que solo necesitan id/nombre/apellido/legajo/subárea — por
@@ -351,13 +383,16 @@ def _coerce_types(data: dict, col_types: dict) -> None:
 
 # ─── GET /{tabla} — listar activos ────────────────────────────────────────────
 
-@router.get("/{tabla}")
+@router.get("/{tabla}", responses={403: {
+    "description": "configuracion_general solo la lee el administrador; las claves secretas vuelven "
+                   "con valor null; usuarios: fuera del admin solo id/nombre/subárea/activo"}})
 async def listar(
     tabla: str,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     cfg = _get_config(tabla)
+    _bloquear_lectura_si_solo_admin(tabla, current_user)
     pk = cfg["pk"]
     sub = await _subarea_supervisor(db, current_user) if tabla == "agentes" else None
     exclude = _exclude_efectivo(tabla, cfg, current_user, sub)
@@ -367,7 +402,7 @@ async def listar(
     stmt = text(f"SELECT {sel} FROM {frm} {where} ORDER BY {pre}{pk}")
     result = await db.execute(stmt)
     rows = result.fetchall()
-    return [_filtrar_pii_supervisor(_row_to_dict(r, exclude), sub) for r in rows]
+    return [_sanear(tabla, _filtrar_pii_supervisor(_row_to_dict(r, exclude), sub), current_user) for r in rows]
 
 
 # ─── GET /{tabla}/{id} — obtener uno ──────────────────────────────────────────
@@ -380,6 +415,7 @@ async def obtener(
     current_user: dict = Depends(get_current_user),
 ):
     cfg = _get_config(tabla)
+    _bloquear_lectura_si_solo_admin(tabla, current_user)
     pk = cfg["pk"]
     sub = await _subarea_supervisor(db, current_user) if tabla == "agentes" else None
     exclude = _exclude_efectivo(tabla, cfg, current_user, sub)
@@ -390,7 +426,7 @@ async def obtener(
     row = result.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail=f"Registro {id} no encontrado en {tabla}")
-    return _filtrar_pii_supervisor(_row_to_dict(row, exclude), sub)
+    return _sanear(tabla, _filtrar_pii_supervisor(_row_to_dict(row, exclude), sub), current_user)
 
 
 # ─── POST /{tabla} — crear ────────────────────────────────────────────────────
@@ -428,7 +464,7 @@ async def crear(
         result = await db.execute(stmt, data)
         await db.commit()
         row = result.fetchone()
-        return _row_to_dict(row, exclude)
+        return _sanear(tabla, _row_to_dict(row, exclude), current_user)
     except Exception as e:
         await db.rollback()
         logger.error("Error al crear en %s: %s", tabla, e)
@@ -455,6 +491,14 @@ async def editar(
 
     data = {k: v for k, v in body.items() if k in allowed}
     data = await _quitar_personales_si_ficha(db, tabla, id, data)
+    if tabla == "configuracion_general":
+        # La clave secreta llega oculta (valor null) al form: guardarlo no debe
+        # borrarla ni renombrarla. Se rota por env var de Railway, no por acá.
+        clave_actual = await db.scalar(text(
+            "SELECT clave FROM configuracion_general WHERE id_config = :id"), {"id": id})
+        if clave_actual in _CLAVES_SECRETAS:
+            data.pop("valor", None)
+            data.pop("clave", None)
     if not data:
         raise HTTPException(status_code=422, detail="No se recibieron campos válidos")
 
@@ -474,7 +518,7 @@ async def editar(
         row = result.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail=f"Registro {id} no encontrado en {tabla}")
-        return _row_to_dict(row, exclude)
+        return _sanear(tabla, _row_to_dict(row, exclude), current_user)
     except HTTPException:
         raise
     except Exception as e:

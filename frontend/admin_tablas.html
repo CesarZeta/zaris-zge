@@ -1420,7 +1420,8 @@ async function renderVistaPrevia(rows, schema) {
         if (tablaActual === 'configuracion_general') {
           const clave = String(r.clave ?? '—').replace(/</g,'&lt;');
           const desc  = r.descripcion ? String(r.descripcion).replace(/</g,'&lt;') : '';
-          const valor = r.valor != null && r.valor !== '' ? String(r.valor).replace(/</g,'&lt;').slice(0,80) : '(vacío)';
+          const valor = r.valor_oculto ? '(secreto, no se muestra)'
+            : r.valor != null && r.valor !== '' ? String(r.valor).replace(/</g,'&lt;').slice(0,80) : '(vacío)';
           return `<div class="preview-row" onclick="abrirEditar(${pk})" title="Editar" style="align-items:flex-start;">
             <span class="preview-row__main" style="white-space:normal;">
               ${clave}
