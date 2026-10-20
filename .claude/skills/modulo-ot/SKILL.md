@@ -1,11 +1,21 @@
 ---
 name: modulo-ot
-description: "Usar al trabajar en el módulo OT (Órdenes de Trabajo) de ZARIS (archivos: backend/app/api/routes/ordenes_trabajo.py, ot_adjuntos.py, web-app/src/modules/ot/ — SupervisorView, AgenteView, PlanificadorOT, OTDetalleDrawer, useOT.ts; tablas: ordenes_trabajo, ot_adjuntos). Cubre el flujo del supervisor (crear OT + agendar en una pasada), slots libres por recurso, auto-asignar al primero disponible, las 3 mesas (Supervisor/Agente/Auditoría), guard de nivel ≤2, bypass es_auditor de admin, y los adjuntos de evidencia de OT. Invocar ANTES de tocar cualquier endpoint, mesa, planificador o adjunto de OT."
+description: "Usar al trabajar en el módulo OT (Órdenes de Trabajo) de ZARIS (archivos: backend/app/api/routes/ordenes_trabajo.py, ot_adjuntos.py, services/autoasignacion.py, web-app/src/modules/ot/ — SupervisorView, AgenteView, PlanificadorOT, OTDetalleDrawer, useOT.ts; tablas: ordenes_trabajo, ot_adjuntos). Cubre el flujo del supervisor (crear y asignar la OT; los reclamos NO se agendan desde 2026-10-21), auto-asignar y autoasignación por menor carga y rotación, las 3 mesas (Supervisor/Agente/Auditoría), guard de nivel ≤2, bypass es_auditor de admin, y los adjuntos de evidencia de OT. Invocar ANTES de tocar cualquier endpoint, mesa, planificador o adjunto de OT."
 ---
 
-# Módulo OT — frontend dedicado del Supervisor (crear OT + agendar en una pasada) — §34
+# Módulo OT — frontend dedicado del Supervisor — §34
 
-Implementado 2026-05-14 jornada 5. El bullet "OT" del menú es el frontend donde el supervisor, desde la bandeja de reclamos de su subárea, crea la OT **y** la planifica en la agenda de agentes/equipos en un solo flujo. Antes eran dos pasos en dos módulos (crear OT en `modules/ot`, agendarla en `modules/agenda`).
+Implementado 2026-05-14 jornada 5. El bullet "OT" del menú es el frontend donde el supervisor, desde la bandeja de reclamos de su subárea, crea la OT y la asigna a un agente o cuadrilla.
+
+### REGLA: los reclamos NO se agendan (César, 2026-10-21)
+
+«La agenda solo es para turnos, no para reclamos. Solo que haya agentes y equipos para que se asignen los reclamos. Los horarios no entran en la ecuación.» Consecuencias vigentes:
+- **El planificador no tiene fecha, huecos ni advertencias de horario**: agente/equipo + observaciones → «Crear OT» (`POST /ot`). Un agente sin horario cargado recibe OTs igual.
+- **Auto-asignar (sugerencia) y la autoasignación por gestión eligen por menor carga y rotación** (`services/autoasignacion.py::candidatos_gestion`, compartido). Ninguna crea ocupación en la Agenda.
+- **El módulo Agenda no crea ocupaciones de OT** (se quitaron «Planificar OT», `OcupacionOTModal`, el panel de OTs pendientes para arrastrar y `OTSearch`). Las ocupaciones `tipo='ot'` que ya existían (4 en prod) se siguen viendo y moviendo.
+- `GET /ot/slots-recurso`, `POST /ot/con-agenda` y `services/ot_slots.py` quedan **sin uso** (compat con el bundle anterior); retirarlos en una sesión posterior verificando que ningún cliente los llame. `/auto-asignar-sugerencia` acepta `fecha`/`duracion_min` y los ignora.
+- Si alguna vez vuelve la idea de «agendar» una OT, es una decisión de César: no reintroducirla por defecto.
+- Las secciones de abajo que hablan de slots, `con-agenda` u ocupaciones de OT describen la historia hasta 2026-10-21.
 
 ### Vista Supervisor — tabla a todo el ancho + panel lateral (rediseño 2026-10-20)
 
@@ -13,7 +23,7 @@ Implementado 2026-05-14 jornada 5. El bullet "OT" del menú es el frontend donde
 
 ### Autoasignación de reclamos por gestión (mig 114, 2026-10-20)
 
-`services/autoasignacion.py::autoasignar_reclamo` corre como **BackgroundTask** después de responder en las 4 vías que crean reclamos (`POST /reclamos`, subreclamo, `POST /publico/reclamos`, retrabajo de `/observar`). Solo actúa si `subarea.asignacion_automatica` (tilde en Maestros → Subáreas, solo admin) y el reclamo sigue «Sin asignar» sin OT. Candidatos según `tipo_reclamo.asignacion_a` (agente nivel 4 no auditor | cuadrilla con integrantes operativos); **día por día desde hoy hasta 30 días** (si un día está completo pasa al siguiente; hoy, solo huecos que empiezan ≥ 30 min después — comparar fecha+hora completas, no solo la hora: a las 23:40 «+30 min» da 00:10); dentro del día **menor carga** (OTs operativas abiertas) y desempate por **rotación** (la última asignación más vieja). Crea OT `asignacion_automatica=TRUE` con `id_supervisor_asigna NULL` + ocupación + reclamo En gestión + historial «OT … asignada automáticamente» y avisa (`notificar_ot_asignada`, `notificar_estado_reclamo`). Sin hueco: historial «Asignación automática sin hueco» + campana `autoasignacion_sin_hueco` (sin mail) a supervisores de la gestión, fallback admins. `pg_advisory_xact_lock(114000000 + id_subarea)` serializa la gestión. Duración del hueco = `tipo_reclamo.duracion_estimada_min` (15-480, default 60). Huecos: `services/ot_slots.py::slots_libres_recurso` (movido del router, lo comparte con `/slots-recurso` y la sugerencia). **Prerequisito real: horarios cargados** (al 2026-10-20 solo 14/93 agentes y 1/7 cuadrillas de prod). Reclamos ya existentes no se reasignan al prender el tilde. Smoke local 7/7.
+`services/autoasignacion.py::autoasignar_reclamo` corre como **BackgroundTask** después de responder en las 4 vías que crean reclamos (`POST /reclamos`, subreclamo, `POST /publico/reclamos`, retrabajo de `/observar`). Solo actúa si `subarea.asignacion_automatica` (tilde en Maestros → Subáreas, solo admin) y el reclamo sigue «Sin asignar» sin OT. Candidatos según `tipo_reclamo.asignacion_a` (agente nivel 4 no auditor | cuadrilla con integrantes operativos; hoy los 285 tipos de prod dicen `agente`); el de **menor carga** (OTs operativas abiertas) y desempate por **rotación** (la última asignación más vieja). **Sin horarios ni ocupación desde 2026-10-21** (hasta ahí buscaba un hueco día por día por 30 días y exigía horarios cargados). Crea OT `asignacion_automatica=TRUE` con `id_supervisor_asigna NULL` + reclamo En gestión + historial «OT … asignada automáticamente» («menor carga de la gestión: N OTs abiertas») y avisa (`notificar_ot_asignada`, `notificar_estado_reclamo`). Sin candidatos: historial «Asignación automática sin candidatos» + campana (código histórico `autoasignacion_sin_hueco`, sin mail) a supervisores de la gestión, fallback admins. `pg_advisory_xact_lock(114000000 + id_subarea)` serializa la gestión (el segundo reclamo ve la carga del primero). `tipo_reclamo.duracion_estimada_min` quedó sin uso. Reclamos ya existentes no se reasignan al prender el tilde. Smoke local 11/11 (2026-10-21, con agentes SIN horario cargado).
 
 ### Destinatario de una OT: siempre una persona (2026-10-20)
 
@@ -21,11 +31,7 @@ Implementado 2026-05-14 jornada 5. El bullet "OT" del menú es el frontend donde
 
 ### `PlanificadorOT.tsx` — panel de planificación
 
-`web-app/src/modules/ot/components/PlanificadorOT.tsx`: muestra contexto del reclamo → selector agente/equipo → fecha → **slots libres como chips clickeables** → dos acciones:
-- **"Crear OT y agendar"** → `POST /ot/con-agenda` (crea OT + ocupación espejo en una transacción).
-- **"Crear OT sin agendar"** → `POST /ot` normal. La OT queda sin ocupación; igual registra al supervisor en `id_supervisor_asigna`.
-
-Valida FK antes de enviar (ver memoria `feedback_validar_fk_antes_submit`).
+`web-app/src/modules/ot/components/PlanificadorOT.tsx` (desde 2026-10-21): contexto del reclamo → «Auto-asignar al de menor carga» (preselecciona y avisa la carga) → agente/equipo (`RecursoPicker`, acotado a la subárea para nivel 2) → observaciones → **«Crear OT»** (`POST /ot`, registra al supervisor en `id_supervisor_asigna`). Se abre desde la fila, el botón «Planificar» o el botón **PLANIFICAR del detalle** («Ver», solo reclamos Sin asignar en la pestaña Asignar: `OTDetalleDrawer.onPlanificar`). La mesa muestra la **fecha de ingreso** (ordenable) en lugar del ciudadano (César 2026-10-21; el vecino está en «Ver»).
 
 ### Backend nuevo en `ordenes_trabajo.py`
 
@@ -33,7 +39,7 @@ Valida FK antes de enviar (ver memoria `feedback_validar_fk_antes_submit`).
 |---|---|---|---|
 | Slots libres de un recurso | GET | `/api/v1/ot/slots-recurso?tipo_recurso=&id_recurso=&fecha=&duracion_min=` | **Segmento fijo: registrado ANTES de `GET /{id_ot}`** (§5). Agente: disponibilidad efectiva menos sus ocupaciones. Equipo: **delega en `disponibilidad_efectiva('equipo')`** (§27 — unión de agentes + override) menos las ocupaciones del equipo y de sus agentes. |
 | Crear OT + agenda | POST | `/api/v1/ot/con-agenda` | Crea OT y ocupación tipo `'ot'` en una transacción. Body `dict` → convierte fecha/hora con `date.fromisoformat`/`time.fromisoformat` (asyncpg no castea strings, ver memoria `feedback_asyncpg_extract_cast_date`). Detecta conflictos de solapamiento y los devuelve, pero la OT igual se crea. `id_supervisor_asigna` = usuario logueado. |
-| **Auto-asignar al primero disponible** | GET | `/api/v1/ot/auto-asignar-sugerencia?id_reclamo=&fecha=&duracion_min=` | **Segmento fijo ANTES de `/{id_ot}`** (§5). Nivel ≤ 2. Recorre cuadrillas con integrantes operativos + agentes nivel 4 no auditores de la **subárea del reclamo** (derivada del tipo) y devuelve el **primero con slot libre** (prioriza equipos sobre agentes; orden fijo por id/apellido, no mira carga — la autoasignación real con carga + rotación está en diseño, ver `ESTADO.md`). `{sugerencia: {tipo_recurso, id_recurso, nombre, slot} \| null, motivo?}`. El botón "Auto-asignar al primero disponible" del `PlanificadorOT` lo consume y preselecciona recurso+slot para confirmar. |
+| **Auto-asignar al de menor carga** | GET | `/api/v1/ot/auto-asignar-sugerencia?id_reclamo=` | **Segmento fijo ANTES de `/{id_ot}`** (§5). Nivel ≤ 2 + scope de subárea. Desde 2026-10-21: `candidatos_gestion` del tipo preferido (`tipo_reclamo.asignacion_a`), si no hay, del otro; devuelve el primero (menor carga, rotación). `{sugerencia: {tipo_recurso, id_recurso, nombre, carga} \| null, motivo?}`. `fecha`/`duracion_min` se aceptan y se ignoran (bundle anterior). Hasta esa fecha devolvía el primer recurso con hueco en la fecha. |
 
 `GET /ot/mesa/supervisor` ahora expone **`ot_activa_agendada`** (boolean): el CTE `ot_activa` agrega un `EXISTS` sobre `ocupaciones` tipo `'ot'` activas ligadas a la OT. Permite distinguir en la bandeja las OTs creadas sin agendar. **El filtro `id_subarea` de la mesa usa `tr.id_subarea` derivado del tipo, NO `r.id_subarea`** (que está NULL en el 100% de los reclamos — filtrar por ahí vaciaba la bandeja, [[feedback_filtro_igual_null_vacia_listado]]). Mismo criterio en las dos mesas de auditoría.
 
@@ -53,7 +59,7 @@ Helpers compartidos en `ordenes_trabajo.py`: `_slots_de_rango`, `_solapa`, `_mer
 - **Turnos** → ligado a **agentes**, turnos de atención al ciudadano (§33). NO se tocó.
 - **Entradas** → ligado a **espacios** + eventos con cupo (§33). NO se tocó.
 
-`OcupacionOTModal` en el módulo Agenda (§ ver jornada anterior) se mantiene: sigue siendo válido planificar en la Agenda una OT ya creada. El flujo nuevo de OT no lo reemplaza, lo complementa.
+`OcupacionOTModal` del módulo Agenda se **borró el 2026-10-21** (las OT no se agendan, ver la regla de arriba).
 
 ### Mesa Auditoría — admin (nivel 1) bypassea `es_auditor`
 

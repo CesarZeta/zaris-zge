@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-10-20 (Cesar, 4ª sesión, larga). Pedidos de César del día, todo en prod salvo lo que se indica: campana con ✓ y «Marcar todas» (shell + app de agentes `/avisos`); perfil con secretaría y equipos (topbar, menú, Mi perfil, app); tipos de reclamo con subárea en los buscadores; OT con destinatario validado (equipo sin integrantes / Consultor → 422) y aviso a cada integrante de la cuadrilla; mesa del supervisor rediseñada; orden por columnas F1 (`ui/orden.tsx`); ficha → agente, supervisor en Maestros → Agentes (mig 113) y aviso «agente nuevo»; **autoasignación por gestión (mig 114)**, apagada hasta que César la prenda. Railway tuvo builds pausados ~4 h (incidente de plataforma): se verificó cada deploy con llamadas reales.
+**Última actualización:** 2026-10-21 (Cesar). Arreglo de seguridad del CRUD genérico de Maestros (detalle en la memoria privada); mesa del supervisor con **fecha de ingreso** (en lugar del ciudadano) y botón **PLANIFICAR** en «Ver»; **los reclamos ya no se agendan** (decisión de César: la agenda es solo para turnos): el planificador es agente/equipo → «Crear OT», auto-asignar y la autoasignación por gestión eligen por menor carga y rotación sin horarios, y la Agenda ya no crea ocupaciones de OT; **mig 115**: baja de «Emergencia Climática» (sus 22 tipos a la gestión parecida, árboles y ramas a Arbolado).
 
 ---
 
@@ -18,10 +18,10 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. 🔴 **Seguridad — hallazgo confirmado el 2026-10-20, prioridad 1.** Detalle y arreglo propuesto en la memoria privada de Cesar (`project_preguntas_arranque`). ¿Avanzo con el arreglo al arrancar?
-2. **Deploy de la autoasignación (`a414d99`):** al cierre Railway no lo había desplegado; re-disparado con `44575b4`. Verificar el marcador (201 de `POST /reclamos` en `/openapi.json` menciona «asignación automática»); si no está, Railway → `zaris-api` → Deployments.
-3. **Autoasignación:** ¿en qué gestiones la prendo? Necesita horarios cargados (14/93 agentes y 1/7 cuadrillas; Arbolado 0): ¿cargo horarios demo o los cargan los supervisores?
-4. **Funcionario de prueba:** ¿le reasigno yo una OT como admin para confirmar que el push llega, o cargás un reclamo de Arbolado?
+1. 🔴 **Seguridad — parte (b) del arreglo del 2026-10-21 (la parte (a) ya está en prod y verificada):** coordinar con César un paso que necesita Railway. Detalle en la memoria privada de Cesar.
+2. **Subárea del usuario ≠ la de su agente en 75 de 93 cuentas de prod (16 supervisores).** El cierre directo sin OT todavía lee la del usuario. ¿Alineo todas al agente (fuente única §3) y cambio ese chequeo para que lea la del agente?
+3. **Autoasignación:** ya NO necesita horarios (2026-10-21). ¿En qué gestiones la prendo (Maestros → Subáreas)?
+4. **Funcionario de prueba:** REC-2026-003079 (ramas) ahora está en Arbolado y sin asignar: ¿se lo asigno al funcionario de prueba desde la mesa para confirmar que el push llega?
 5. **92 agentes viejos sin ficha:** ¿los vinculo automáticamente por email/DNI donde coincidan y el resto a mano?
 6. **Orden por columnas F2** (trámites, turnos, entradas) **y F3** (resto): ¿avanzo?
 7. **Links de los mails de notificación** abren el inicio en vez del trámite/reclamo (el shell ignora el `#/…`): ¿lo arreglo?
@@ -32,7 +32,7 @@
 
 ## 🔵 En curso
 
-- **Prueba real del funcionario — a medias (2026-10-20).** Ciudadano 1868 → usuario 101 (nivel 4), agente 97 con datos reales, subárea Arbolado (12); mail, cambio de clave, login y **push activado** (primera suscripción de prod). **Falta:** asignarle una OT (Arbolado no tiene reclamos sin asignar: reasignar una como admin o cargar uno de sus 2 tipos) y que César confirme que el aviso llega al teléfono y a `/avisos`. Ojo: REC-2026-003079 es de Emergencia Climática, no de Arbolado.
+- **Prueba real del funcionario — a medias (2026-10-20).** Ciudadano 1868 → usuario 101 (nivel 4), agente 97 con datos reales, subárea Arbolado (12); mail, cambio de clave, login y **push activado** (primera suscripción de prod). **Falta:** asignarle una OT (REC-2026-003079 pasó a Arbolado con la mig 115 y está sin asignar) y que César confirme que el aviso llega al teléfono y a `/avisos`.
 - **Auditoría de reclamos — circuito completo en prod (F1-F4, 2026-10-20).** Queda solo la **prueba real del mail en prod**: no se observó ninguna auditoría real con «Sí» (el mail se verificó en MOCK, y el link del botón → `https://vecinos.zaris.com.ar/reclamos` da 200). Se puede hacer con el vecino de prueba de César (manda un correo real a su casilla) o esperar el primer uso real.
 - **PWA `zaris-vecinos` — modo escritorio del portal: diseño aprobado el 2026-10-12 (3ª), falta plan + código.** Solo toca el repo de la PWA; spec y pasos en su `ESTADO.md` → En curso.
 - **PROPUESTA sin aprobar — app de agentes: reclamos de oficio + «Control de entradas» (QR).** Pedido de César al cierre del 2026-10-12; las 4 decisiones de alcance ya están tomadas (de oficio · niveles 1-4 · acreditar niveles 1-4 · nombre «Control de entradas») y el diseño está escrito en [`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md). **Próxima sesión: César confirma o corrige el diseño y recién ahí F1 (backend sin migración + smoke).** No hay código.
@@ -47,7 +47,8 @@
 
 **Próxima sesión — prueba de las apps (César)**
 - 🟡 **Perfiles de prueba** (emails en la memoria privada de Cesar, NO acá — archivo público): **(b) vecino HECHO el 2026-10-12** (autoregistro → mail → verificación → portal → aviso de emergencia EM-2026-000223 en el COM; el botón de pánico «Seguridad» no se probó, dispara una alerta REAL). **(a) funcionario: EN CURSO** — alta, mail, login y cambio de clave hechos el 2026-10-20; falta el push (ver En curso). Guías: `manual_alta_ciudadanos.html` §4 y `manual_app_agentes.html`.
-- 🟢 **Autoasignación HECHA (mig 114, 2026-10-20) — falta que César la prenda.** Se activa por gestión en Maestros → Subáreas («Asignación automática de reclamos»); a quién (agente/cuadrilla) y cuánto se agenda, en Maestros → Tipos de reclamo. Sin horarios cargados no asigna (deja aviso al supervisor). Reglas en la skill `modulo-ot`.
+- 🟢 **Autoasignación HECHA (mig 114, 2026-10-20; sin horarios desde 2026-10-21) — falta que César la prenda.** Se activa por gestión en Maestros → Subáreas («Asignación automática de reclamos»); a quién (agente/cuadrilla), en Maestros → Tipos de reclamo. Elige al de menor carga y rotación; sin agentes/cuadrillas que puedan recibirla, deja aviso al supervisor. Reglas en la skill `modulo-ot`.
+- 🟢 **Retirar `GET /ot/slots-recurso`, `POST /ot/con-agenda` y `services/ot_slots.py`** (sin uso desde 2026-10-21, quedaron por compatibilidad con el bundle anterior) en una sesión posterior, verificando antes que ningún cliente los llame.
 - 🟠 **DECIDIDO (cuestionario 2026-10-20) — circuito funcionario → agente HECHO (a-c), autoasignación (d) HECHA (ítem anterior).** (a) Datos personales del agente: **solo de la ficha** (sync al guardar; solo lectura en Maestros → Agentes salvo agentes viejos sin ficha) — HECHO. (b) Puesto = cargo (sin campo nuevo). (c) Cargo, horario y equipo los completa el **supervisor en Maestros → Agentes**, solo para su gestión (mig 113 `agentes_gestion`), con sección «Equipos» en el perfil; aviso «agente nuevo» a los supervisores — HECHO. Falta: vincular los 92 agentes viejos a su ficha. (d) **Autoasignación por gestión** (tilde en la subárea, mig 113): candidatos nivel 4 + cuadrillas con integrantes, disponibilidad → menor carga → rotación; si un día está completo pasa al siguiente (horizonte 30 días, criterio de Claude); sin hueco → Sin asignar + aviso al supervisor; agente o cuadrilla según `tipo_reclamo.asignacion_a`. (e) **Super administrador multi-municipio** que crea los admins de cada municipio → va con IT-01. Hecho el mismo día: destinatario de OT validado, aviso a la cuadrilla, campana en la app de agentes, mesa del supervisor rediseñada y orden por columnas (F1). Hallazgos que siguen valiendo: el agente no se resincroniza con la ficha (92/93 sin DNI, nacieron por Maestros → Usuarios o seed); Maestros → Agentes es solo admin y oculta DNI/CUIL/email/teléfono a otros niveles; solo 14/93 agentes y 1/7 cuadrillas tienen horario; `ordenes_trabajo.id_supervisor_asigna` es NOT NULL; `tipo_reclamo.asignacion_a`/`duracion_estimada_min` existen sin uso.
 - 🟢 **Subárea del funcionario: RESUELTO 2026-10-20** — una sola fuente, la del agente (Usuarios la copia al agente). Queda el drift: FK `usuarios.id_subarea`/`agentes.id_subarea` → `subarea` en local y NO en prod (candidata a mig 115+).
 
@@ -74,6 +75,7 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
+- **2026-10-21 — Seguridad del CRUD de Maestros (`4d170e2`); mesa del supervisor con fecha y PLANIFICAR en «Ver» (`f089886`, `803c926`); reclamos sin agenda + mig 115 (`3bfdbe4`).** Smokes 38/38 y 11/11 en local; seguridad y mesa verificadas en prod (API + navegador).
 - **2026-10-20 (4ª, noche) — Ficha → agente, supervisor en Maestros → Agentes (mig 113), aviso «agente nuevo»; autoasignación (mig 114).** Smokes 16/16 y 7/7; en prod salvo el backend de la autoasignación (pregunta 2).
 - **2026-10-20 (4ª, tarde) — Destinatario de OT validado, aviso a la cuadrilla, mesa del supervisor, orden por columnas F1, `/avisos` en la app de agentes.** Smoke 9/9 + navegador; en prod.
 - **2026-10-20 (3ª) — Reclamos «Ver pendientes» + búsqueda de Ciudadanos por lo escrito (`ef318c8`, `ac3b321`, en prod).** `GET /reclamos?pendientes=true` (incluye En auditoría, decisión de César); la búsqueda de Ciudadanos decide nombre vs DNI/CUIL por lo escrito.

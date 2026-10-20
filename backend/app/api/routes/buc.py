@@ -126,13 +126,18 @@ async def historial_logins(
     return [dict(row._mapping) for row in r.fetchall()]
 
 
-@router.get("/usuarios/buscar", response_model=list[UsuarioOut])
+# Lectura de cuentas internas: solo el administrador (2026-10-21). Las consume
+# únicamente el módulo Usuarios (min_nivel 1); antes cualquier logueado veía el
+# email, CUIL, nivel y último acceso de todas las cuentas.
+@router.get("/usuarios/buscar", response_model=list[UsuarioOut],
+            responses={403: {"description": "Solo el administrador lee las cuentas internas"}})
 async def buscar_usuario(
     q: str = Query(..., min_length=1, description="Nombre, username o CUIL"),
     tipo: str = Query("auto", description="'numero' para CUIL/username, 'texto' para nombre, 'auto' para detectar"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin: dict = Depends(require_admin),
 ):
     """Buscar usuarios por nombre, username o CUIL."""
     es_numerico = tipo == "numero" or (tipo == "auto" and q.replace("-", "").isdigit())
@@ -148,12 +153,14 @@ async def buscar_usuario(
     return rows
 
 
-@router.get("/usuarios", response_model=list[UsuarioOut])
+@router.get("/usuarios", response_model=list[UsuarioOut],
+            responses={403: {"description": "Solo el administrador lee las cuentas internas"}})
 async def listar_usuarios(
     solo_activos: bool = Query(True, description="Filtrar solo usuarios activos"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin: dict = Depends(require_admin),
 ):
-    """Listar usuarios del sistema (para selector modificado_por)."""
+    """Listar usuarios del sistema (maestro del módulo Usuarios)."""
     where = " WHERE u.activo = TRUE" if solo_activos else ""
     r = await db.execute(text(_USUARIO_SELECT + where + " ORDER BY u.nombre"))
     rows = [dict(row._mapping) for row in r.fetchall()]
@@ -161,8 +168,10 @@ async def listar_usuarios(
     return rows
 
 
-@router.get("/usuarios/{id}", response_model=UsuarioOut)
-async def obtener_usuario(id: int, db: AsyncSession = Depends(get_db)):
+@router.get("/usuarios/{id}", response_model=UsuarioOut,
+            responses={403: {"description": "Solo el administrador lee las cuentas internas"}})
+async def obtener_usuario(id: int, db: AsyncSession = Depends(get_db),
+                          _admin: dict = Depends(require_admin)):
     """Obtener usuario por ID."""
     r = await db.execute(text(_USUARIO_SELECT + " WHERE u.id_usuario = :id"), {"id": id})
     row = r.fetchone()
