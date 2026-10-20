@@ -11,6 +11,11 @@ export interface User {
   // supervisor. Opcionales: sesiones viejas no los traen (el backend igual impone).
   id_subarea?: number | null
   subarea_nombre?: string | null
+  // Secretaría (área de la subárea) y equipos del agente: solo para las vistas
+  // de perfil (2026-10-20). Opcionales por sesiones viejas.
+  id_area?: number | null
+  area_nombre?: string | null
+  equipos?: string[]
   // Los trae login/me (§14); el shell dev los muestra en el topbar clonado de prod.
   cargo_nombre?: string | null
   foto_url?: string | null

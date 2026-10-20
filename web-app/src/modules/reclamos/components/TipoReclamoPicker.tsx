@@ -39,6 +39,7 @@ export function TipoReclamoPicker({ value, onChange, disabled, placeholder = 'Ti
     if (!term) return tipos.data.slice(0, 30)
     return tipos.data.filter((t) =>
       t.nombre.toLowerCase().includes(term) ||
+      (t.subarea_nombre ?? '').toLowerCase().includes(term) ||
       (t.area_nombre ?? '').toLowerCase().includes(term),
     ).slice(0, 50)
   }, [tipos.data, q])
@@ -69,7 +70,9 @@ export function TipoReclamoPicker({ value, onChange, disabled, placeholder = 'Ti
           background: 'var(--surface-100)', borderRadius: 'var(--radius-lg)',
           border: '1px solid var(--border-primary)',
           boxShadow: 'var(--shadow-card, 0 6px 24px rgba(0,0,0,.08))',
-          maxHeight: 300, overflowY: 'auto', zIndex: 50,
+          // Por encima del MapaPicker de abajo: los controles de Leaflet van en
+          // z-index 1000 y tapaban el final de la lista (captura de César 2026-10-20).
+          maxHeight: 300, overflowY: 'auto', zIndex: 1100,
         }}>
           {tipos.isLoading && (
             <div style={{ padding: 12, color: 'var(--fg-3)', fontSize: 13 }}>Cargando catálogo...</div>
@@ -93,8 +96,9 @@ export function TipoReclamoPicker({ value, onChange, disabled, placeholder = 'Ti
               }}
             >
               <div style={{ fontSize: 13, color: 'var(--fg-1)', fontWeight: 500 }}>{t.nombre}</div>
+              {/* Subárea (gestión que lo resuelve): más puntual que la secretaría (pedido 2026-10-20). */}
               <div style={{ fontSize: 11, color: 'var(--fg-3)' }}>
-                {t.area_nombre ?? '—'}{t.sla_dias ? ` · SLA ${t.sla_dias}d` : ''}{t.audit ? ' · auditable' : ''}
+                {t.subarea_nombre ?? '—'}{t.sla_dias ? ` · SLA ${t.sla_dias}d` : ''}{t.audit ? ' · auditable' : ''}
               </div>
             </button>
           ))}

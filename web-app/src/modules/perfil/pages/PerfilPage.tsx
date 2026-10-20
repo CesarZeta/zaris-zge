@@ -167,7 +167,11 @@ function Cabecera() {
         <div className={s.pills}>
           {rol && <span className={`${s.pill} ${s.pillStrong}`}>{rol}</span>}
           {user?.cargo_nombre && <span className={s.pill}>Cargo: {user.cargo_nombre}</span>}
+          {user?.area_nombre && <span className={s.pill}>{user.area_nombre}</span>}
           {user?.subarea_nombre && <span className={s.pill}>Gestión: {user.subarea_nombre}</span>}
+          {!!user?.equipos?.length && (
+            <span className={s.pill}>{user.equipos.length > 1 ? 'Equipos' : 'Equipo'}: {user.equipos.join(', ')}</span>
+          )}
         </div>
       </div>
       <div className={s.actions}>

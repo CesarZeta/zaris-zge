@@ -389,13 +389,23 @@ html, body {
   color: var(--fg-1);
 }
 
+/* "Marcar todas como leídas" — botón visible (2026-10-20; antes era un texto
+   gris de 11px que casi no se veía). Se deshabilita sin pendientes (menu.js). */
 .notif-menu__action {
   background: none;
-  border: none;
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-pill);
+  padding: 3px 10px;
   cursor: pointer;
-  color: var(--fg-3);
-  font-size: 11px;
+  color: var(--fg-1);
+  font-size: 11.5px;
+  font-weight: 500;
   font-family: var(--font-display);
+}
+
+.notif-menu__action:hover:not(:disabled) {
+  border-color: var(--zaris-orange);
+  color: var(--zaris-orange);
 }
 
 .notif-menu__action:disabled {
@@ -419,16 +429,28 @@ html, body {
   text-align: center;
 }
 
+/* Fila = item clickeable (navega) + botón ✓ (marca leída sin navegar). Dos
+   botones hermanos: un <button> no puede contener otro. */
+.notif-menu__row {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.notif-menu__row--unread {
+  background: rgba(245,78,0,.04);
+}
+
 .notif-menu__item {
   display: flex;
   align-items: flex-start;
   gap: 8px;
+  flex: 1;
+  min-width: 0;
   padding: 10px 14px;
   border: 0;
-  border-bottom: 1px solid var(--border-primary);
   background: transparent;
   cursor: pointer;
-  width: 100%;
   text-align: left;
   font-family: var(--font-display);
 }
@@ -437,8 +459,31 @@ html, body {
   background: rgba(38,37,30,.04);
 }
 
-.notif-menu__item--unread {
-  background: rgba(245,78,0,.04);
+.notif-menu__mark {
+  flex-shrink: 0;
+  width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-left: 1px solid var(--border-primary);
+  background: transparent;
+  color: var(--fg-3);
+  cursor: pointer;
+}
+
+.notif-menu__mark:hover:not(:disabled) {
+  color: var(--zaris-orange);
+  background: rgba(38,37,30,.04);
+}
+
+.notif-menu__mark:disabled {
+  opacity: 0.4;
+  cursor: progress;
+}
+
+.notif-menu__mark--error {
+  color: var(--color-error);
 }
 
 .notif-menu__item-body {
@@ -593,6 +638,15 @@ html, body {
   color: var(--fg-3);
   margin-top: 1px;
 }
+
+/* Secretaría · gestión · equipos del agente (2026-10-20), en letra chica. */
+.user-menu__info-org {
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: var(--fg-3);
+}
+.user-menu__info-cargo + .user-menu__info-org,
+.user-menu__info-role + .user-menu__info-org { margin-top: 3px; }
 
 .user-menu__divider {
   height: 1px;
@@ -1003,11 +1057,12 @@ html, body {
   background: rgba(237,236,231,.06);
 }
 
-:root[data-theme="dark"] .notif-menu__item:hover {
+:root[data-theme="dark"] .notif-menu__item:hover,
+:root[data-theme="dark"] .notif-menu__mark:hover:not(:disabled) {
   background: rgba(237,236,231,.05);
 }
 
-:root[data-theme="dark"] .notif-menu__item--unread {
+:root[data-theme="dark"] .notif-menu__row--unread {
   background: rgba(245,78,0,.10);
 }
 

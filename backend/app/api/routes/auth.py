@@ -95,25 +95,39 @@ FOTO_MAX_BYTES = 2 * 1024 * 1024  # 2 MB
 
 
 async def _perfil_agente_del_usuario(db: AsyncSession, id_usuario: int) -> dict:
-    """Cargo y subárea del agente vinculado al usuario (regla 1:1 §39). Valores
-    None si el usuario no tiene agente (externo) o el agente no los tiene.
+    """Cargo, subárea, secretaría (área de la subárea) y equipos del agente
+    vinculado al usuario (regla 1:1 §39). Valores None / [] si el usuario no
+    tiene agente (externo) o el agente no los tiene.
     La subárea la usan los módulos React para scopear pickers del supervisor
-    (Fase 3 roles); la imposición dura vive en el backend de cada módulo."""
+    (Fase 3 roles); la imposición dura vive en el backend de cada módulo.
+    Secretaría y equipos son solo para mostrar en las vistas de perfil
+    (topbar, menú del avatar, Mi perfil, app de agentes — pedido 2026-10-20)."""
     result = await db.execute(
         text("""SELECT c.nombre AS cargo_nombre,
-                       a.id_subarea, s.nombre AS subarea_nombre
+                       a.id_subarea, s.nombre AS subarea_nombre,
+                       s.id_area, ar.nombre AS area_nombre,
+                       ARRAY(SELECT e.nombre
+                               FROM equipo_agentes ea
+                               JOIN equipos e ON e.id_equipo = ea.id_equipo
+                              WHERE ea.id_agente = a.id_agente
+                                AND ea.activo = TRUE AND e.activo = TRUE
+                              ORDER BY e.nombre) AS equipos
                 FROM agentes a
                 LEFT JOIN cargos c ON c.id_cargo = a.id_cargo
                 LEFT JOIN subarea s ON s.id_subarea = a.id_subarea
+                LEFT JOIN area ar ON ar.id_area = s.id_area
                 WHERE a.id_usuario = :id AND a.activo = TRUE
                 LIMIT 1"""),
         {"id": id_usuario},
     )
     row = result.fetchone()
     if not row:
-        return {"cargo_nombre": None, "id_subarea": None, "subarea_nombre": None}
+        return {"cargo_nombre": None, "id_subarea": None, "subarea_nombre": None,
+                "id_area": None, "area_nombre": None, "equipos": []}
     return {"cargo_nombre": row.cargo_nombre, "id_subarea": row.id_subarea,
-            "subarea_nombre": row.subarea_nombre}
+            "subarea_nombre": row.subarea_nombre,
+            "id_area": row.id_area, "area_nombre": row.area_nombre,
+            "equipos": list(row.equipos or [])}
 
 
 _USUARIO_LOGIN_SELECT = """
@@ -255,6 +269,10 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
         # pickers cuando el usuario es supervisor (nivel 2, Fase 3 roles).
         "id_subarea": perfil["id_subarea"],
         "subarea_nombre": perfil["subarea_nombre"],
+        # Secretaría y equipos del agente — solo para las vistas de perfil.
+        "id_area": perfil["id_area"],
+        "area_nombre": perfil["area_nombre"],
+        "equipos": perfil["equipos"],
         "foto_url": user.foto_url,
         # Si TRUE, el frontend debe forzar el cambio de contraseña antes de
         # dejar usar el sistema (clave temporal en primer ingreso, o clave

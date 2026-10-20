@@ -65,20 +65,30 @@ async def contar_no_leidas(
     db: AsyncSession = Depends(get_db),
 ):
     """Devuelve {no_leidas: N} para el badge del topbar."""
-    n = (await db.execute(
+    return {"no_leidas": await _contar_no_leidas(db, current_user["id_usuario"])}
+
+
+async def _contar_no_leidas(db: AsyncSession, id_usuario: int) -> int:
+    return int((await db.execute(
         text("SELECT COUNT(*) AS c FROM notificacion WHERE id_usuario=:uid AND leida=FALSE AND activo=TRUE"),
-        {"uid": current_user["id_usuario"]},
-    )).scalar_one()
-    return {"no_leidas": int(n)}
+        {"uid": id_usuario},
+    )).scalar_one())
 
 
-@router.patch("/{id_notificacion}/leer")
+@router.patch(
+    "/{id_notificacion}/leer",
+    responses={404: {"description": "La notificacion no existe o no es del usuario. "
+                                    "Marcar una que ya estaba leida devuelve 200 (idempotente)."}},
+)
 async def marcar_leida(
     id_notificacion: int,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Marca una notificacion como leida. Solo el dueño puede."""
+    """Marca una notificacion como leida. Solo el dueño puede. Idempotente: si ya
+    estaba leida devuelve 200 sin tocar `leida_en` (el boton ✓ de la campana y
+    el clic en el item pueden llegar dos veces). Devuelve el contador actualizado."""
+    uid = current_user["id_usuario"]
     res = await db.execute(
         text("""
             UPDATE notificacion
@@ -89,14 +99,20 @@ async def marcar_leida(
                AND leida = FALSE
          RETURNING id_notificacion
         """),
-        {"id": id_notificacion, "uid": current_user["id_usuario"]},
+        {"id": id_notificacion, "uid": uid},
     )
-    row = res.fetchone()
-    if not row:
-        # No encontrada O no es del usuario O ya estaba leida — devolver 404 sin distinguir
-        raise HTTPException(404, "Notificacion no encontrada o ya leida")
-    await db.commit()
-    return {"id_notificacion": row.id_notificacion, "leida": True}
+    if res.fetchone():
+        await db.commit()
+    else:
+        existe = (await db.execute(
+            text("SELECT 1 FROM notificacion WHERE id_notificacion = :id AND id_usuario = :uid AND activo = TRUE"),
+            {"id": id_notificacion, "uid": uid},
+        )).scalar()
+        if not existe:
+            # No encontrada O no es del usuario — 404 sin distinguir
+            raise HTTPException(404, "Notificacion no encontrada")
+    return {"id_notificacion": id_notificacion, "leida": True,
+            "no_leidas": await _contar_no_leidas(db, uid)}
 
 
 @router.patch("/leer-todas")
@@ -114,4 +130,4 @@ async def marcar_todas_leidas(
         {"uid": current_user["id_usuario"]},
     )
     await db.commit()
-    return {"marcadas": res.rowcount or 0}
+    return {"marcadas": res.rowcount or 0, "no_leidas": 0}

@@ -40,6 +40,15 @@ export function TopBar() {
     .join('')
     .toUpperCase() ?? '—'
 
+  // Dónde trabaja (espejo de menu.js, 2026-10-20): en el topbar cargo + gestión;
+  // el detalle completo (secretaría, gestión, equipos) en el tooltip y el dropdown.
+  const equipos = user?.equipos?.filter(Boolean) ?? []
+  const equiposTxt = equipos.length ? `${equipos.length > 1 ? 'Equipos' : 'Equipo'}: ${equipos.join(', ')}` : ''
+  const linea2 = [user?.cargo_nombre ? `Cargo: ${user.cargo_nombre}` : '', user?.subarea_nombre ?? '']
+    .filter(Boolean).join(' · ')
+  const org = [user?.area_nombre ?? '', user?.subarea_nombre ? `Gestión: ${user.subarea_nombre}` : '', equiposTxt]
+    .filter(Boolean)
+
   return (
     <header className={s.topbar}>
       <div className={s.left}>
@@ -83,9 +92,12 @@ export function TopBar() {
               aria-haspopup="true"
               aria-expanded={menuAbierto}
             >
-              <span className={s.context}>
+              <span
+                className={s.context}
+                title={[user.cargo_nombre ? `Cargo: ${user.cargo_nombre}` : '', ...org].filter(Boolean).join('\n')}
+              >
                 <strong>{user.nombre} · {ROL_LABEL[user.nivel_acceso] ?? `Nivel ${user.nivel_acceso}`}</strong>
-                {user.cargo_nombre && <span className={s.contextCargo}>Cargo: {user.cargo_nombre}</span>}
+                {linea2 && <span className={s.contextCargo}>{linea2}</span>}
               </span>
               <div className={s.avatar}>
                 {user.foto_url ? <img src={user.foto_url} alt="" /> : iniciales}
@@ -102,6 +114,7 @@ export function TopBar() {
                 >
                   <span className={s.dropdownNombre}>{user.nombre}</span>
                   <span className={s.dropdownEmail}>{user.email}</span>
+                  {org.map((t) => <span key={t} className={s.dropdownEmail}>{t}</span>)}
                 </div>
                 <div className={s.dropdownDivider} />
                 <button

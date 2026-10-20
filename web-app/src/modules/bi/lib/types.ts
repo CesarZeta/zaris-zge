@@ -211,6 +211,7 @@ export interface ReclamoDetalle {
 export interface TipoReclamoCatalogo {
   id_tipo_reclamo: number
   nombre: string
+  subarea_nombre?: string | null
 }
 
 // Filtros GLOBALES del Operativo (una sola barra gobierna todas las secciones

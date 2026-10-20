@@ -13,10 +13,11 @@
   let user      = session?.user;
 
   // Si la sesion fue cargada antes del feature de permisos por modulo
-  // (sin modulos_permitidos) o antes del cargo/foto (2026-06-12), refresheamos
-  // contra /auth/me. Asi un usuario con sesion vieja ve sidebar filtrado,
-  // cargo y foto sin re-loguear.
-  if (user && (!Array.isArray(user.modulos_permitidos) || user.cargo_nombre === undefined)) {
+  // (sin modulos_permitidos), antes del cargo/foto (2026-06-12) o antes de
+  // secretaria/equipos (2026-10-20), refresheamos contra /auth/me. Asi un
+  // usuario con sesion vieja ve sidebar filtrado y su perfil completo sin re-loguear.
+  if (user && (!Array.isArray(user.modulos_permitidos) || user.cargo_nombre === undefined
+               || !Array.isArray(user.equipos))) {
     try {
       const token = session?.access_token || session?.state?.accessToken;
       if (token) {
@@ -66,23 +67,37 @@
     const nivel    = NIVELES[user.nivel_acceso] || 'Usuario';
     const cargo    = user.cargo_nombre || '';
     const foto     = user.foto_url || '';
+    // Dónde trabaja (pedido 2026-10-20): secretaría, gestión y equipos del agente.
+    const secretaria = user.area_nombre || '';
+    const gestion    = user.subarea_nombre || '';
+    const equipos    = Array.isArray(user.equipos) ? user.equipos.filter(Boolean) : [];
+    const equiposTxt = equipos.length
+      ? `${equipos.length > 1 ? 'Equipos' : 'Equipo'}: ${equipos.join(', ')}` : '';
 
     // Avatar: foto si hay (mig 88), sino iniciales.
     const avatarHtml = foto ? `<img src="${esc(foto)}" alt="">` : esc(initials);
 
     if (avatarEl)  avatarEl.innerHTML = avatarHtml;
     if (contextEl) {
+      // En el topbar no entra todo: cargo + gestión en la 2da línea; el detalle
+      // completo va en el tooltip y en el dropdown.
+      const linea2 = [cargo ? `Cargo: ${cargo}` : '', gestion].filter(Boolean).join(' · ');
+      const detalle = [cargo ? `Cargo: ${cargo}` : '', secretaria, gestion ? `Gestión: ${gestion}` : '', equiposTxt]
+        .filter(Boolean).join('\n');
+      contextEl.title = detalle;
       contextEl.innerHTML =
         `<span><strong>${esc(name.split(' ')[0])}</strong> · ${esc(nivel)}</span>` +
-        (cargo ? `<span class="topbar__context-cargo">Cargo: ${esc(cargo)}</span>` : '');
+        (linea2 ? `<span class="topbar__context-cargo">${esc(linea2)}</span>` : '');
     }
     if (infoEl) {
+      const org = [secretaria, gestion ? `Gestión: ${gestion}` : '', equiposTxt].filter(Boolean);
       infoEl.innerHTML = `
         <div class="user-menu__info-avatar">${avatarHtml}</div>
         <div>
           <div class="user-menu__info-name">${esc(name)}</div>
           <div class="user-menu__info-role">${esc(nivel)}</div>
           ${cargo ? `<div class="user-menu__info-cargo">Cargo: ${esc(cargo)}</div>` : ''}
+          ${org.map(t => `<div class="user-menu__info-org">${esc(t)}</div>`).join('')}
         </div>`;
     }
   }
@@ -472,6 +487,8 @@
   // ── Campana de notificaciones ─────────────────────────────────
   // Conectada a /api/v1/notificaciones (entregado 2026-05-18).
   // Polling cada 30s. Click en item: marca leida + navega al recurso.
+  // Botón ✓ por item: marca leída SIN navegar; "Marcar todas como leídas" en el
+  // header (pedido 2026-10-20: mirar una notificación no la marcaba).
   function _authToken() {
     const s = JSON.parse(localStorage.getItem('zaris_session') || 'null');
     return s?.state?.accessToken ?? s?.access_token ?? null;
@@ -492,35 +509,74 @@
   function _escapeHtml(s) {
     return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
+  // Ítems cargados en el dropdown: el ✓ y "Marcar todas" re-renderizan desde acá
+  // sin volver a pedir la lista.
+  let _notifItems = [];
+  // Último contador del backend: puede haber no leídas más viejas que las 20
+  // que muestra la lista, y "Marcar todas" tiene que seguir disponible.
+  let _noLeidas = 0;
+  const _ICONO_CHECK = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+  function _actualizarMarkAll() {
+    const markAll = document.getElementById('notif-menu-mark-all');
+    if (markAll) markAll.disabled = !(_noLeidas > 0 || _notifItems.some(n => !n.leida));
+  }
   function _renderNotifList(items) {
+    _notifItems = items || [];
     const list = document.getElementById('notif-menu-list');
+    _actualizarMarkAll();
     if (!list) return;
-    if (!items || items.length === 0) {
+    if (_notifItems.length === 0) {
       list.innerHTML = '<p class="notif-menu__empty">Sin notificaciones</p>';
       return;
     }
-    list.innerHTML = items.map(n => {
-      const cls = n.leida ? 'notif-menu__item' : 'notif-menu__item notif-menu__item--unread';
-      const dot = n.leida ? '' : '<span class="notif-menu__dot" aria-label="No leida"></span>';
+    list.innerHTML = _notifItems.map(n => {
+      const cls = n.leida ? 'notif-menu__row' : 'notif-menu__row notif-menu__row--unread';
+      const dot = n.leida ? '' : '<span class="notif-menu__dot" aria-label="No leída"></span>';
       const msg = n.mensaje ? `<p class="notif-menu__item-msg">${_escapeHtml(n.mensaje)}</p>` : '';
-      return `<button type="button" class="${cls}" data-id="${n.id_notificacion}" data-url="${_escapeHtml(n.url_destino || '')}">
-        <div class="notif-menu__item-body">
-          <p class="notif-menu__item-title">${_escapeHtml(n.titulo)}</p>
-          ${msg}
-          <p class="notif-menu__item-date">${_escapeHtml(_fmtFechaRelativa(n.fecha_alta))}</p>
-        </div>
-        ${dot}
-      </button>`;
+      const mark = n.leida ? '' :
+        `<button type="button" class="notif-menu__mark" data-mark="${n.id_notificacion}" title="Marcar como leída" aria-label="Marcar como leída">${_ICONO_CHECK}</button>`;
+      return `<div class="${cls}">
+        <button type="button" class="notif-menu__item" data-id="${n.id_notificacion}" data-url="${_escapeHtml(n.url_destino || '')}">
+          <div class="notif-menu__item-body">
+            <p class="notif-menu__item-title">${_escapeHtml(n.titulo)}</p>
+            ${msg}
+            <p class="notif-menu__item-date">${_escapeHtml(_fmtFechaRelativa(n.fecha_alta))}</p>
+          </div>
+          ${dot}
+        </button>
+        ${mark}
+      </div>`;
     }).join('');
     // Bind click handlers (event delegation seria mas limpia pero esto es chico)
     list.querySelectorAll('.notif-menu__item').forEach(btn => {
       btn.addEventListener('click', () => _onClickNotif(parseInt(btn.dataset.id, 10), btn.dataset.url));
     });
+    list.querySelectorAll('.notif-menu__mark').forEach(btn => {
+      // stopPropagation: el re-render saca el botón del DOM y el click-outside
+      // del document cerraría el dropdown (dd.contains(target) da false).
+      btn.addEventListener('click', (e) => { e.stopPropagation(); void _marcarLeida(parseInt(btn.dataset.mark, 10), btn); });
+    });
+  }
+  async function _marcarLeida(id, btn) {
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch(`${API}/api/v1/notificaciones/${id}/leer`, { method: 'PATCH', headers: _authHeaders() });
+      // 404 = no existe o ya estaba leída en un backend viejo: igual sale de la lista de pendientes.
+      if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
+      _notifItems = _notifItems.map(n => n.id_notificacion === id ? { ...n, leida: true } : n);
+      _renderNotifList(_notifItems);
+    } catch (e) {
+      if (btn) { btn.disabled = false; btn.title = 'No se pudo marcar. Probá de nuevo.'; btn.classList.add('notif-menu__mark--error'); }
+    }
+    void _refrescarNotifBadge();
   }
   async function _onClickNotif(id, url) {
-    try {
-      await fetch(`${API}/api/v1/notificaciones/${id}/leer`, { method: 'PATCH', headers: _authHeaders() });
-    } catch (e) { /* fail-open */ }
+    const item = _notifItems.find(n => n.id_notificacion === id);
+    if (!item || !item.leida) {
+      try {
+        await fetch(`${API}/api/v1/notificaciones/${id}/leer`, { method: 'PATCH', headers: _authHeaders() });
+      } catch (e) { /* fail-open */ }
+    }
     _closeNotif();
     void _refrescarNotifBadge();
     if (url && url.startsWith('#/')) {
@@ -536,6 +592,8 @@
       if (!res.ok) { badge.hidden = true; return; }
       const data = await res.json();
       const n = data?.no_leidas ?? 0;
+      _noLeidas = n;
+      _actualizarMarkAll();
       if (n > 0) {
         badge.textContent = n > 9 ? '9+' : String(n);
         badge.hidden = false;
@@ -656,13 +714,21 @@
       frame.addEventListener('load', function () { if (!dd.hidden) _closeNotif(); });
     }
     if (markAll) {
+      const _labelMarkAll = markAll.textContent.trim();
       markAll.addEventListener('click', async function (e) {
         e.stopPropagation();
+        markAll.disabled = true;
         try {
-          await fetch(`${API}/api/v1/notificaciones/leer-todas`, { method: 'PATCH', headers: _authHeaders() });
-          void _refrescarNotifBadge();
-          void _cargarNotifLista();
-        } catch (err) { /* fail-open */ }
+          const res = await fetch(`${API}/api/v1/notificaciones/leer-todas`, { method: 'PATCH', headers: _authHeaders() });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          _noLeidas = 0;
+          _renderNotifList(_notifItems.map(n => ({ ...n, leida: true })));
+        } catch (err) {
+          markAll.textContent = 'No se pudo. Reintentar';
+          markAll.disabled = false;
+          setTimeout(() => { markAll.textContent = _labelMarkAll; }, 4000);
+        }
+        void _refrescarNotifBadge();
       });
     }
 

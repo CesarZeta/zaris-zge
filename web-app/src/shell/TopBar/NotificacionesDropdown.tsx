@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, CheckCheck, Inbox } from 'lucide-react'
+import { Bell, Check, CheckCheck, Inbox } from 'lucide-react'
 import {
   useNotificaciones,
   useNotificacionesCount,
@@ -82,10 +82,9 @@ export function NotificacionesDropdown() {
               type="button"
               onClick={() => { void marcarTodas.mutateAsync() }}
               disabled={noLeidas === 0 || marcarTodas.isPending}
-              style={accionBtnStyle}
-              title="Marcar todas como leidas"
+              style={{ ...accionBtnStyle, ...(noLeidas === 0 ? { opacity: 0.4, cursor: 'not-allowed' } : {}) }}
             >
-              <CheckCheck size={12} strokeWidth={1.5} /> Marcar todas
+              <CheckCheck size={12} strokeWidth={1.5} /> Marcar todas como leídas
             </button>
           </header>
 
@@ -100,18 +99,33 @@ export function NotificacionesDropdown() {
               </div>
             )}
             {items.map((n) => (
-              <button
-                key={n.id_notificacion}
-                onClick={() => { void handleClick(n) }}
-                style={{ ...itemStyle, ...(n.leida ? {} : itemNuevoStyle) }}
-              >
-                <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
-                  <p style={itemTituloStyle}>{n.titulo}</p>
-                  {n.mensaje && <p style={itemMensajeStyle}>{n.mensaje}</p>}
-                  <p style={itemFechaStyle}>{formatFecha(n.fecha_alta)}</p>
-                </div>
-                {!n.leida && <span style={puntoStyle} aria-label="No leida" />}
-              </button>
+              // Fila = item (navega) + botón ✓ (marca leída sin navegar), espejo de menu.js.
+              <div key={n.id_notificacion} style={{ ...filaStyle, ...(n.leida ? {} : itemNuevoStyle) }}>
+                <button
+                  type="button"
+                  onClick={() => { void handleClick(n) }}
+                  style={itemStyle}
+                >
+                  <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                    <p style={itemTituloStyle}>{n.titulo}</p>
+                    {n.mensaje && <p style={itemMensajeStyle}>{n.mensaje}</p>}
+                    <p style={itemFechaStyle}>{formatFecha(n.fecha_alta)}</p>
+                  </div>
+                  {!n.leida && <span style={puntoStyle} aria-label="No leída" />}
+                </button>
+                {!n.leida && (
+                  <button
+                    type="button"
+                    title="Marcar como leída"
+                    aria-label="Marcar como leída"
+                    disabled={marcarLeida.isPending && marcarLeida.variables === n.id_notificacion}
+                    onClick={() => { void marcarLeida.mutateAsync(n.id_notificacion).catch(() => undefined) }}
+                    style={marcarBtnStyle}
+                  >
+                    <Check size={15} strokeWidth={1.5} />
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         </div>
@@ -169,19 +183,29 @@ const tituloStyle: React.CSSProperties = {
 
 const accionBtnStyle: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
-  background: 'none', border: 'none', cursor: 'pointer',
-  color: 'var(--fg-3)', fontSize: 11, fontFamily: 'var(--font-display)',
+  background: 'none', border: '1px solid var(--border-medium)', borderRadius: 'var(--radius-pill)',
+  padding: '3px 10px', cursor: 'pointer',
+  color: 'var(--fg-1)', fontSize: 11.5, fontWeight: 500, fontFamily: 'var(--font-display)',
 }
 
 const listaStyle: React.CSSProperties = {
   flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column',
 }
 
+const filaStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'stretch', borderBottom: '1px solid var(--border-primary)',
+}
+
 const itemStyle: React.CSSProperties = {
-  display: 'flex', alignItems: 'flex-start', gap: 8,
-  padding: '10px 14px', borderBottom: '1px solid var(--border-primary)',
-  background: 'transparent', border: 0, borderBottomWidth: 1, borderBottomStyle: 'solid',
-  cursor: 'pointer', width: '100%',
+  display: 'flex', alignItems: 'flex-start', gap: 8, flex: 1, minWidth: 0,
+  padding: '10px 14px', background: 'transparent', border: 0,
+  cursor: 'pointer',
+}
+
+const marcarBtnStyle: React.CSSProperties = {
+  flexShrink: 0, width: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
+  border: 0, borderLeft: '1px solid var(--border-primary)', background: 'transparent',
+  color: 'var(--fg-3)', cursor: 'pointer',
 }
 
 const itemNuevoStyle: React.CSSProperties = {

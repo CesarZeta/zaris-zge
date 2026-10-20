@@ -108,6 +108,9 @@ export function TipoSearch({
               style={{ ...itemStyle, width: '100%', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer' }}
             >
               {t.nombre}
+              {t.subarea_nombre && (
+                <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--fg-3)' }}>{t.subarea_nombre}</span>
+              )}
             </button>
           ))}
         </div>
