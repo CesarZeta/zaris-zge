@@ -25,7 +25,6 @@ import type {
   OcupacionCreatePayload,
   OcupacionCreated,
   OcupacionUpdatePayload,
-  OTBusquedaItem,
   RecursoAgenda,
   RecursoItem,
   RecursosConteos,
@@ -207,10 +206,6 @@ export function listarSubareasAgenda(q?: string, limit = 50) {
 
 export function listarRecursosAgenda(opts?: { tipo?: TipoRecurso; q?: string; id_municipio?: number; limit?: number; solo_cuadrillas?: boolean; id_subarea?: number }) {
   return api.get<RecursoItem[]>(`${BASE}/catalogos/recursos`, { params: opts })
-}
-
-export function buscarOTsAgenda(q?: string, estado?: string, limit = 20) {
-  return api.get<OTBusquedaItem[]>(`${BASE}/catalogos/ot-busqueda`, { params: { q, estado, limit } })
 }
 
 export function buscarEventosAgenda(q?: string, opts?: { fecha_desde?: string; fecha_hasta?: string; id_municipio?: number; limit?: number }) {

@@ -20,9 +20,9 @@ interface Props {
 }
 
 function emptyOcup(d?: Partial<OcupacionCreatePayload>): OcupacionCreatePayload {
-  // Las ocupaciones tipo 'ot' se crean desde OcupacionOTModal (modal dedicado);
-  // este modal generico crea turno/evento/bloqueo. Si llega un default tipo='ot'
-  // lo degradamos a 'turno' para no quedar en un estado sin selector.
+  // Este modal crea turno/evento/bloqueo. Las OT no se agendan desde 2026-10-21
+  // (César: «la agenda solo es para turnos»); las ocupaciones 'ot' que ya
+  // existían se ven pero no se crean. Un default tipo='ot' se degrada a 'turno'.
   return {
     tipo: d?.tipo === 'ot' ? 'turno' : (d?.tipo ?? 'turno'),
     tipo_recurso: d?.tipo_recurso ?? 'agente',
@@ -64,7 +64,7 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
   }
 
   async function submit() {
-    // Limpiar FKs segun tipo (este modal crea turno/evento/bloqueo; ot va por OcupacionOTModal)
+    // Limpiar FKs segun tipo (este modal crea turno/evento/bloqueo)
     const payload: OcupacionCreatePayload = { ...form }
     if (payload.tipo === 'evento')  { payload.id_orden_trabajo = null; payload.id_ciudadano = null }
     if (payload.tipo === 'turno')   { payload.id_orden_trabajo = null; payload.id_evento = null }

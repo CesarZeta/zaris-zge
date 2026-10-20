@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.auth import get_current_user
 from app.services.ot_slots import slots_libres_recurso as _slots_libres_recurso
-from app.services.autoasignacion import autoasignar_reclamo
+from app.services.autoasignacion import autoasignar_reclamo, candidatos_gestion
 from app.services import encuestas_service as svc_encuestas
 from app.services import push as svc_push
 from app.services.tramites.auth import resolver_agente_desde_usuario
@@ -37,8 +37,10 @@ TRANSICIONES_OT: dict[str, set[str]] = {
 }
 
 
-# Huecos libres de un recurso: viven en services/ot_slots.py (los comparte la
-# autoasignación de reclamos, 2026-10-20).
+# Huecos libres de un recurso: viven en services/ot_slots.py. Desde 2026-10-21
+# los reclamos no se agendan (César: «la agenda solo es para turnos») y ninguna
+# pantalla usa /slots-recurso ni /con-agenda; quedan por compatibilidad con el
+# bundle anterior hasta retirarlos en una sesión posterior.
 
 
 def _to_dict(row) -> dict:
@@ -721,18 +723,23 @@ async def slots_recurso(
 # ── GET /ot/auto-asignar-sugerencia — primer recurso disponible de la subarea ─
 # Segmento fijo: DEBE ir antes de GET /{id_ot}.
 
-@router.get("/auto-asignar-sugerencia")
+@router.get("/auto-asignar-sugerencia", responses={404: {
+    "description": "Reclamo inexistente. La sugerencia es por menor carga y rotacion, sin horarios "
+                   "(los reclamos no se agendan desde 2026-10-21)"}})
 async def auto_asignar_sugerencia(
     id_reclamo: int = Query(...),
-    fecha: date = Query(...),
-    duracion_min: int = Query(60, ge=15, le=480),
+    # fecha/duracion_min: sin uso desde 2026-10-21 (los reclamos no se agendan);
+    # se aceptan para que el bundle anterior no reciba 422 durante el deploy.
+    fecha: Optional[date] = Query(None),
+    duracion_min: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """Recorre los recursos de la subarea del reclamo (cuadrillas de trabajo +
-    agentes) y devuelve el PRIMERO con un slot libre en la fecha, para que el
-    supervisor confirme. Prioriza equipos (cuadrillas) sobre agentes; dentro de
-    cada grupo, el slot mas temprano. Si ninguno tiene hueco, devuelve null.
+    """Sugiere a quién asignar el reclamo: el agente (o cuadrilla, según
+    `tipo_reclamo.asignacion_a`) de la gestión con MENOR CARGA de OTs abiertas
+    y, si empatan, el que hace más tiempo que no recibe una — el mismo criterio
+    de la autoasignación (services/autoasignacion.py). Si no hay candidatos del
+    tipo preferido, prueba con el otro. El supervisor confirma.
 
     Solo supervisor/admin (es la accion de asignacion de la Mesa del Supervisor)."""
     _require_supervisor(current_user)
@@ -741,53 +748,28 @@ async def auto_asignar_sugerencia(
 
     # Subarea del reclamo: derivada del tipo (fuente unica, r.id_subarea suele ser NULL).
     sub = (await db.execute(text("""
-        SELECT tr.id_subarea
+        SELECT tr.id_subarea, tr.asignacion_a
         FROM reclamos r
         LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
         WHERE r.id_reclamo = :id AND r.activo = TRUE
     """), {"id": id_reclamo})).fetchone()
     if not sub:
         raise HTTPException(404, f"Reclamo {id_reclamo} no encontrado")
-    id_subarea = sub.id_subarea
-
-    # Candidatos: cuadrillas de trabajo de la subarea + agentes de la subarea.
-    # Si el reclamo no tiene subarea (tipo sin subarea), no podemos acotar:
-    # devolvemos sin sugerencia para no recorrer todo el padron.
-    if id_subarea is None:
+    if sub.id_subarea is None:
         return {"sugerencia": None, "motivo": "El tipo de reclamo no tiene subarea asociada."}
 
-    # Candidatos (2026-10-20): cuadrillas con al menos un integrante que pueda
-    # operar (sino nadie recibe el aviso) y agentes de nivel Gestión (4) no
-    # auditores — nunca el propio supervisor, un auditor ni un Consultor.
-    equipos = [(int(r.id_equipo), r.nombre) for r in (await db.execute(text("""
-        SELECT e.id_equipo, e.nombre FROM equipos e
-        WHERE e.activo = TRUE AND e.tipo_grupo = 'trabajo_reclamos' AND e.id_subarea = :s
-          AND EXISTS (SELECT 1 FROM equipo_agentes ea
-                        JOIN agentes a ON a.id_agente = ea.id_agente AND a.activo = TRUE
-                        JOIN usuarios u ON u.id_usuario = a.id_usuario AND u.activo = TRUE
-                       WHERE ea.id_equipo = e.id_equipo AND ea.activo = TRUE
-                         AND u.nivel_acceso <= :nmax)
-        ORDER BY e.id_equipo
-    """), {"s": id_subarea, "nmax": NIVEL_MAX_OPERA_OT})).fetchall()]
-    agentes = [(int(r.id_agente), (r.apellido or "") + ", " + (r.nombre or "")) for r in (await db.execute(text("""
-        SELECT a.id_agente, a.nombre, a.apellido FROM agentes a
-        JOIN usuarios u ON u.id_usuario = a.id_usuario AND u.activo = TRUE
-        WHERE a.activo = TRUE AND a.id_subarea = :s
-          AND u.nivel_acceso = 4 AND a.es_auditor = FALSE
-        ORDER BY a.apellido, a.nombre
-    """), {"s": id_subarea})).fetchall()]
-
-    # Prioriza equipos, luego agentes. Primer recurso con slot libre.
-    for (tipo, candidatos) in (("equipo", equipos), ("agente", agentes)):
-        for (id_rec, nombre) in candidatos:
-            slots = await _slots_libres_recurso(db, tipo, id_rec, fecha, duracion_min)
-            if slots:
-                return {"sugerencia": {
-                    "tipo_recurso": tipo, "id_recurso": id_rec, "nombre": nombre.strip(", "),
-                    "slot": slots[0],
-                }}
+    preferido = "equipo" if sub.asignacion_a == "equipo" else "agente"
+    otro = "agente" if preferido == "equipo" else "equipo"
+    for tipo in (preferido, otro):
+        candidatos = await candidatos_gestion(db, tipo, sub.id_subarea)
+        if candidatos:
+            c = candidatos[0]
+            return {"sugerencia": {
+                "tipo_recurso": tipo, "id_recurso": int(c["id"]),
+                "nombre": (c["nombre"] or "").strip(", "), "carga": int(c["carga"]),
+            }}
     return {"sugerencia": None,
-            "motivo": "Ningun equipo ni agente de la subarea tiene horario libre ese dia."}
+            "motivo": "La gestión no tiene agentes de nivel Gestión ni cuadrillas con integrantes."}
 
 
 # ── POST /ot/con-agenda — crear OT + ocupacion en una transaccion ────────────

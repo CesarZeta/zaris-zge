@@ -4,16 +4,12 @@ import type {
   CambiarEstadoOTBody,
   CatalogoEstadoOT,
   CrearOTBody,
-  CrearOTConAgendaBody,
-  CrearOTConAgendaResponse,
   EquipoLite,
   MesaAgenteResponse,
   MesaAuditoriaResponse,
   MesaSupervisorRow,
   ReasignarOTBody,
-  SlotsRecursoResponse,
   AutoAsignarSugerencia,
-  TipoRecursoOT,
 } from '../types/ot'
 
 const BASE = '/api/v1/ot'
@@ -51,29 +47,16 @@ export const listarAgentesActivos = () =>
 export const listarEquiposActivos = () =>
   api.get<EquipoLite[]>('/api/v1/admin/equipos')
 
-// Slots libres de un recurso (agente/equipo) para una fecha
-export const getSlotsRecurso = (
-  tipo_recurso: TipoRecursoOT, id_recurso: number, fecha: string, duracion_min = 60,
-) =>
-  api.get<SlotsRecursoResponse>(`${BASE}/slots-recurso`, {
-    params: { tipo_recurso, id_recurso, fecha, duracion_min },
-  })
-
-// Auto-asignar: primer recurso de la subarea con slot libre en la fecha
-export const getAutoAsignarSugerencia = (
-  id_reclamo: number, fecha: string, duracion_min = 60,
-) =>
+// Auto-asignar: el agente o cuadrilla de la gestión con menor carga (y rotación).
+// Los reclamos no se agendan (2026-10-21): no hay fecha ni horario.
+export const getAutoAsignarSugerencia = (id_reclamo: number) =>
   api.get<AutoAsignarSugerencia>(`${BASE}/auto-asignar-sugerencia`, {
-    params: { id_reclamo, fecha, duracion_min },
+    params: { id_reclamo },
   })
 
 // Mutations
 export const crearOT = (body: CrearOTBody) =>
   api.post<{ id_ot: number; nro_ot: string; id_reclamo: number }>(BASE, body)
-
-// Crea OT + ocupacion en la agenda en una transaccion
-export const crearOTConAgenda = (body: CrearOTConAgendaBody) =>
-  api.post<CrearOTConAgendaResponse>(`${BASE}/con-agenda`, body)
 
 export const reasignarOT = (id_ot: number, body: ReasignarOTBody) =>
   api.put<{ ok: boolean; id_ot: number; asignado_a: string }>(`${BASE}/${id_ot}/reasignar`, body)

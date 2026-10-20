@@ -11,7 +11,6 @@ import { MonthlyView } from './MonthlyView'
 import { EventoModal } from '../modals/EventoModal'
 import { EventoEncargadosModal } from '../modals/EventoEncargadosModal'
 import { OcupacionModal } from '../modals/OcupacionModal'
-import { OcupacionOTModal } from '../modals/OcupacionOTModal'
 import { Button } from '../../../ui'
 import { AvisoBuscar } from '../../../ui/busqueda'
 
@@ -39,12 +38,12 @@ export function VistasView() {
   }, [pillInicialAplicada, nivel, marcarPillInicial, setFiltroRecurso])
 
   // Modales de alta "global" — disponibles desde cualquier vista (dia/semana/mes).
-  // El alta contextual desde la grilla (click en slot, drag de OT) la maneja
-  // cada vista con sus propios modales.
+  // El alta contextual desde la grilla (click en slot) la maneja cada vista con
+  // sus propios modales. Las OT ya no se agendan (César 2026-10-21: «la agenda
+  // solo es para turnos»): se quitó el botón «Planificar OT».
   const [eventoOpen, setEventoOpen] = useState(false)
   const [encargOpen, setEncargOpen] = useState<number | null>(null)
   const [ocupOpen, setOcupOpen] = useState(false)
-  const [ocupOTOpen, setOcupOTOpen] = useState(false)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -59,9 +58,6 @@ export function VistasView() {
           </Button>
           <Button type="button" variant="default" icon={<Plus size={14} strokeWidth={1.5} />} onClick={() => setOcupOpen(true)}>
             Nueva ocupacion
-          </Button>
-          <Button type="button" variant="accent" icon={<Plus size={14} strokeWidth={1.5} />} onClick={() => setOcupOTOpen(true)}>
-            Planificar OT
           </Button>
         </div>
       </div>
@@ -109,11 +105,6 @@ export function VistasView() {
       <OcupacionModal
         open={ocupOpen}
         onClose={() => setOcupOpen(false)}
-        defaults={{ fecha }}
-      />
-      <OcupacionOTModal
-        open={ocupOTOpen}
-        onClose={() => setOcupOTOpen(false)}
         defaults={{ fecha }}
       />
     </div>

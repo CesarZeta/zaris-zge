@@ -1,13 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
-import { ClipboardList, CalendarClock, Wand2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ClipboardList, Wand2 } from 'lucide-react'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { useAuthStore } from '../../../stores/auth'
-import {
-  useSlotsRecurso,
-  useCrearOT, useCrearOTConAgenda,
-} from '../hooks/useOT'
+import { useCrearOT } from '../hooks/useOT'
 import { getAutoAsignarSugerencia } from '../api/otApi'
-import type { MesaSupervisorRow, SlotLibre, TipoRecursoOT } from '../types/ot'
+import type { MesaSupervisorRow, TipoRecursoOT } from '../types/ot'
 import { BadgePrioridad } from '../lib/format'
 // Reuso del RecursoPicker de Agenda (cross-module import OK: comparten
 // el mismo recurso de backend, ver feedback_cross_module_imports_react).
@@ -19,13 +16,12 @@ interface Props {
   onDone?: () => void
 }
 
-const DURACION_MIN = 60
-
 /**
- * Panel derecho de la vista Supervisor: planifica una OT para el reclamo
- * seleccionado. Elige agente/equipo + fecha -> muestra slots libres ->
- * crea OT + ocupacion en una pasada (POST /ot/con-agenda). Tambien permite
- * crear la OT sin agendar (POST /ot normal).
+ * Panel de la vista Supervisor: crea la OT del reclamo seleccionado y la asigna
+ * a un agente o equipo. Los reclamos NO se agendan (César 2026-10-21: «la agenda
+ * solo es para turnos; los horarios no entran en la ecuación»): la OT se asigna
+ * para hacerse, sin fecha ni horario. Hasta esa fecha el panel elegía un hueco
+ * libre del recurso y creaba la ocupación en la Agenda (POST /ot/con-agenda).
  */
 export function PlanificadorOT({ reclamo, onDone }: Props) {
   const push = useNotificationsStore((s) => s.push)
@@ -34,58 +30,26 @@ export function PlanificadorOT({ reclamo, onDone }: Props) {
   // recursos de su subárea en el picker. El backend igual impone el scope en
   // los POST de OT; sesiones viejas sin id_subarea caen al listado completo.
   const subareaScope = user?.nivel_acceso === 2 ? (user.id_subarea ?? undefined) : undefined
-  const crearConAgenda = useCrearOTConAgenda()
-  const crearSimple = useCrearOT()
+  const crear = useCrearOT()
 
   const [modo, setModo] = useState<TipoRecursoOT>('agente')
   const [idRecurso, setIdRecurso] = useState<number | ''>('')
-  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10))
-  const [slotSel, setSlotSel] = useState<SlotLibre | null>(null)
   const [obs, setObs] = useState('')
   const [autoBuscando, setAutoBuscando] = useState(false)
 
-  // El auto-asignar setea recurso Y slot a la vez; sin esta ref el effect que
-  // limpia el slot al cambiar el recurso borraria el slot sugerido.
-  const slotSugeridoRef = useRef<SlotLibre | null>(null)
-
   // Reset al cambiar de reclamo.
   useEffect(() => {
-    slotSugeridoRef.current = null
     setModo('agente')
     setIdRecurso('')
-    setFecha(new Date().toISOString().slice(0, 10))
-    setSlotSel(null)
     setObs('')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reclamo?.id_reclamo])
-
-  // Al cambiar recurso o fecha, el slot elegido deja de ser valido — salvo que
-  // venga de una sugerencia de auto-asignar (entonces lo respetamos una vez).
-  useEffect(() => {
-    if (slotSugeridoRef.current) {
-      setSlotSel(slotSugeridoRef.current)
-      slotSugeridoRef.current = null
-    } else {
-      setSlotSel(null)
-    }
-  }, [modo, idRecurso, fecha])
-
-  const slotsQ = useSlotsRecurso(
-    idRecurso !== '' ? modo : null,
-    idRecurso !== '' ? (idRecurso as number) : null,
-    idRecurso !== '' ? fecha : null,
-    DURACION_MIN,
-  )
-  const slots = slotsQ.data?.slots ?? []
-
-  const pendiente = crearConAgenda.isPending || crearSimple.isPending
 
   if (!reclamo) {
     return (
       <div style={vacioStyle}>
         <ClipboardList size={28} strokeWidth={1.25} style={{ color: 'var(--fg-3)' }} />
         <div style={{ fontSize: '0.86rem', color: 'var(--fg-3)', marginTop: 8 }}>
-          Selecciona un reclamo de la bandeja para planificar su orden de trabajo.
+          Selecciona un reclamo de la bandeja para crear su orden de trabajo.
         </div>
       </div>
     )
@@ -95,21 +59,18 @@ export function PlanificadorOT({ reclamo, onDone }: Props) {
     if (!reclamo) return
     setAutoBuscando(true)
     try {
-      const r = await getAutoAsignarSugerencia(reclamo.id_reclamo, fecha, DURACION_MIN)
+      const r = await getAutoAsignarSugerencia(reclamo.id_reclamo)
       if (!r.sugerencia) {
-        push({ kind: 'info', title: 'Sin recurso disponible',
-          body: r.motivo ?? 'Ningún equipo ni agente de la subárea tiene horario libre ese día.' })
+        push({ kind: 'info', title: 'Sin a quién asignar',
+          body: r.motivo ?? 'La gestión no tiene agentes ni cuadrillas que puedan recibir la OT.' })
         return
       }
       const s = r.sugerencia
-      // Aplicar modo + recurso + slot. El slot va por la ref para que el effect
-      // de reset no lo borre cuando cambie idRecurso.
-      slotSugeridoRef.current = s.slot
       setModo(s.tipo_recurso)
       setIdRecurso(s.id_recurso)
       push({ kind: 'success',
         title: `Sugerido: ${s.tipo_recurso === 'equipo' ? 'equipo' : 'agente'} ${s.nombre}`,
-        body: `Slot ${s.slot.hora_inicio.slice(0, 5)}–${s.slot.hora_fin.slice(0, 5)}. Revisá y confirmá.` })
+        body: `Es el de menor carga de la gestión (${s.carga} ${s.carga === 1 ? 'OT abierta' : 'OTs abiertas'}). Revisá y confirmá.` })
     } catch (e) {
       push({ kind: 'error', title: 'No se pudo auto-asignar', body: (e as Error).message })
     } finally {
@@ -117,43 +78,16 @@ export function PlanificadorOT({ reclamo, onDone }: Props) {
     }
   }
 
-  async function crearAgendado() {
-    if (idRecurso === '' || !slotSel || !reclamo) return
-    try {
-      const r = await crearConAgenda.mutateAsync({
-        id_reclamo: reclamo.id_reclamo,
-        tipo_recurso: modo,
-        id_recurso: idRecurso as number,
-        fecha,
-        hora_inicio: slotSel.hora_inicio.slice(0, 5),
-        hora_fin: slotSel.hora_fin.slice(0, 5),
-        observaciones: obs.trim() || undefined,
-      })
-      const conConflicto = r.conflictos.length > 0
-      push({
-        kind: conConflicto ? 'error' : 'success',
-        title: conConflicto
-          ? `${r.nro_ot} creada con conflicto de agenda`
-          : `${r.nro_ot} creada y agendada`,
-        body: conConflicto ? `${r.conflictos.length} solapamiento(s) en el recurso.` : undefined,
-        ttl: conConflicto ? 7000 : 4000,
-      })
-      onDone?.()
-    } catch (e) {
-      push({ kind: 'error', title: 'No se pudo crear la OT', body: (e as Error).message })
-    }
-  }
-
-  async function crearSinAgendar() {
+  async function crearOT() {
     if (idRecurso === '' || !reclamo) return
     try {
-      const r = await crearSimple.mutateAsync({
+      const r = await crear.mutateAsync({
         id_reclamo: reclamo.id_reclamo,
         id_agente: modo === 'agente' ? (idRecurso as number) : null,
         id_equipo: modo === 'equipo' ? (idRecurso as number) : null,
         observaciones: obs.trim() || undefined,
       })
-      push({ kind: 'success', title: `${r.nro_ot} creada (sin agendar)` })
+      push({ kind: 'success', title: `${r.nro_ot} creada y asignada` })
       onDone?.()
     } catch (e) {
       push({ kind: 'error', title: 'No se pudo crear la OT', body: (e as Error).message })
@@ -185,15 +119,16 @@ export function PlanificadorOT({ reclamo, onDone }: Props) {
         )}
       </div>
 
-      {/* Auto-asignar: primer recurso de la subarea con hueco en la fecha */}
+      {/* Auto-asignar: el de menor carga de la gestión */}
       <button
+        type="button"
         onClick={autoAsignar}
-        disabled={autoBuscando || pendiente}
+        disabled={autoBuscando || crear.isPending}
         style={btnAuto}
-        title="Busca el primer equipo o agente de la subárea con horario libre en la fecha elegida y lo preselecciona para que confirmes."
+        title="Elige al agente o cuadrilla de la gestión con menos órdenes abiertas (y, si empatan, al que hace más tiempo que no recibe una) para que confirmes."
       >
         <Wand2 size={14} strokeWidth={1.75} />
-        {autoBuscando ? 'Buscando recurso…' : 'Auto-asignar al primero disponible'}
+        {autoBuscando ? 'Buscando…' : 'Auto-asignar al de menor carga'}
       </button>
 
       {/* Recurso */}
@@ -219,44 +154,6 @@ export function PlanificadorOT({ reclamo, onDone }: Props) {
         />
       </Field>
 
-      <Field label="Fecha">
-        <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} style={inputStyle} />
-      </Field>
-
-      {/* Slots libres */}
-      {recursoElegido && (
-        <div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--fg-2)', fontWeight: 500, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
-            <CalendarClock size={13} strokeWidth={1.5} /> Slots libres
-          </div>
-          {slotsQ.isLoading && <div style={hintStyle}>Buscando huecos…</div>}
-          {slotsQ.isError && <div style={{ ...hintStyle, color: 'var(--color-error)' }}>Error al cargar slots.</div>}
-          {!slotsQ.isLoading && !slotsQ.isError && slots.length === 0 && (
-            <div style={hintStyle}>
-              {modo === 'equipo'
-                ? 'Este equipo no tiene agentes con agenda disponible ese día.'
-                : 'Este agente no tiene horario disponible ese día (sin disponibilidad o todo ocupado).'}
-            </div>
-          )}
-          {slots.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {slots.map((s) => {
-                const sel = slotSel?.hora_inicio === s.hora_inicio
-                return (
-                  <button
-                    key={s.hora_inicio}
-                    onClick={() => setSlotSel(sel ? null : s)}
-                    style={sel ? slotChipSel : slotChip}
-                  >
-                    {s.hora_inicio.slice(0, 5)}–{s.hora_fin.slice(0, 5)}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
       <Field label="Observaciones" hint="Opcional. Notas para el agente o equipo.">
         <textarea
           value={obs}
@@ -268,24 +165,14 @@ export function PlanificadorOT({ reclamo, onDone }: Props) {
         />
       </Field>
 
-      {/* Acciones */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
-        <button
-          onClick={crearAgendado}
-          disabled={pendiente || !recursoElegido || !slotSel}
-          style={btnPrimary}
-        >
-          {crearConAgenda.isPending ? 'Creando…' : 'Crear OT y agendar'}
-        </button>
-        <button
-          onClick={crearSinAgendar}
-          disabled={pendiente || !recursoElegido}
-          style={btnGhostLink}
-          title="La OT se crea sin ocupación en la agenda. Queda registrada con tu usuario como supervisor."
-        >
-          {crearSimple.isPending ? 'Creando…' : 'Crear OT sin agendar'}
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={crearOT}
+        disabled={crear.isPending || !recursoElegido}
+        style={{ ...btnPrimary, ...(!recursoElegido ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
+      >
+        {crear.isPending ? 'Creando…' : 'Crear OT'}
+      </button>
     </div>
   )
 }
@@ -334,27 +221,10 @@ const hintStyle: React.CSSProperties = {
   fontSize: '0.74rem', color: 'var(--fg-3)', lineHeight: 1.35,
 }
 
-const slotChip: React.CSSProperties = {
-  padding: '5px 10px', fontFamily: 'var(--font-mono)', fontSize: '0.76rem',
-  background: 'var(--surface-300)', color: 'var(--fg-1)',
-  border: '1px solid var(--border-medium)', borderRadius: 999, cursor: 'pointer',
-}
-
-const slotChipSel: React.CSSProperties = {
-  ...slotChip,
-  background: 'var(--zaris-orange)', color: 'white', borderColor: 'var(--zaris-orange)',
-}
-
 const btnPrimary: React.CSSProperties = {
   padding: '9px 16px', background: 'var(--zaris-orange)', color: 'white',
-  border: 'none', borderRadius: 8,
+  border: 'none', borderRadius: 8, marginTop: 4,
   fontFamily: 'var(--font-display)', fontSize: '0.86rem', fontWeight: 600, cursor: 'pointer',
-}
-
-const btnGhostLink: React.CSSProperties = {
-  padding: '6px 12px', background: 'transparent', color: 'var(--fg-2)',
-  border: '1px solid var(--border-medium)', borderRadius: 8,
-  fontFamily: 'var(--font-display)', fontSize: '0.8rem', cursor: 'pointer',
 }
 
 const btnAuto: React.CSSProperties = {

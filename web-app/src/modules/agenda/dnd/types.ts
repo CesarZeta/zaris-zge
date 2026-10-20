@@ -1,25 +1,9 @@
 // Tipos compartidos por el sistema de drag & drop de Agenda.
 import type { Ocupacion, TipoRecurso } from '../types/agenda'
 
-export interface OTPendiente {
-  id_ot: number
-  nro_ot: string | null
-  reclamo_descripcion: string | null
-  reclamo_prioridad: string | null
-  sla_dias: number | null
-  estado_nombre: string | null
-  id_agente: number | null
-  id_equipo: number | null
-  agente_apellido?: string | null
-  agente_nombre?: string | null
-  equipo_nombre?: string | null
-  // Si el tipo_reclamo dice como bloquear agenda:
-  tipo_audit?: boolean | null
-}
-
-export type DragPayload =
-  | { kind: 'occupation'; ocupacion: Ocupacion }
-  | { kind: 'pending-ot'; ot: OTPendiente }
+// Hasta 2026-10-21 también se arrastraban OTs pendientes desde un panel lateral
+// ('pending-ot'); las OT ya no se agendan.
+export type DragPayload = { kind: 'occupation'; ocupacion: Ocupacion }
 
 export interface DropPayload {
   kind: 'row'

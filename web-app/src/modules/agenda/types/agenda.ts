@@ -266,16 +266,6 @@ export interface RecursoItem {
   nombre: string
 }
 
-export interface OTBusquedaItem {
-  id_ot: number
-  nro_ot: string | null
-  estado_nombre: string | null
-  reclamo_descripcion: string | null
-  nro_reclamo: string | null
-  id_agente: number | null
-  id_equipo: number | null
-}
-
 export interface EventoBusquedaItem {
   id_evento: number
   nombre: string

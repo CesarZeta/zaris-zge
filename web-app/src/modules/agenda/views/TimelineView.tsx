@@ -10,7 +10,6 @@ import { useConflictos } from '../hooks/useConflictos'
 import { useAgendaStore, filtroUIaBackend } from '../store/agendaStore'
 import { AgendaFilters } from '../components/AgendaFilters'
 import { GanttGrid } from '../components/GanttGrid'
-import { PendingOTsPanel } from '../components/PendingOTsPanel'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { EventoModal } from '../modals/EventoModal'
 import { OcupacionModal } from '../modals/OcupacionModal'
@@ -23,20 +22,16 @@ import { PX_PER_HOUR, SNAP_MIN, HOUR_START, ROW_HEIGHT } from '../dnd/gridConsta
 import { timeToMinutes } from '../../../lib/dates'
 import type { Ocupacion, OcupacionCreatePayload, TipoRecurso } from '../types/agenda'
 
-type PendingConfirm =
-  | {
-      kind: 'reasignar'
-      idOcupacion: number
-      desde: { tipo_recurso: TipoRecurso; id_recurso: number }
-      hacia: { tipo_recurso: TipoRecurso; id_recurso: number; nombre?: string | null }
-      nuevasHoras: { hora_inicio: string; hora_fin: string }
-    }
-  | {
-      kind: 'crear-desde-ot'
-      ot: { id_ot: number; nro_ot: string | null; descripcion: string | null; sla_dias: number | null; tipo_audit: boolean | null }
-      destino: { tipo_recurso: TipoRecurso; id_recurso: number; nombre?: string | null }
-      horas: { hora_inicio: string; hora_fin: string }
-    }
+// Los reclamos no se agendan (César 2026-10-21: «la agenda solo es para
+// turnos»): se quitó el panel de OTs pendientes que se arrastraban a la grilla.
+// Las ocupaciones de OT que ya existían se siguen viendo y moviendo.
+type PendingConfirm = {
+  kind: 'reasignar'
+  idOcupacion: number
+  desde: { tipo_recurso: TipoRecurso; id_recurso: number }
+  hacia: { tipo_recurso: TipoRecurso; id_recurso: number; nombre?: string | null }
+  nuevasHoras: { hora_inicio: string; hora_fin: string }
+}
 
 export function TimelineView() {
   const fecha = useAgendaStore((s) => s.fechaActiva)
@@ -50,7 +45,7 @@ export function TimelineView() {
   const idUbicacion = modoUbicacion ? filtroUbicacion?.id ?? null : null
   const cal = useCalendarioDia(fecha, idMun, tipo_recurso, filtroSubarea, atendido, scopeSubareaPropia, idUbicacion)
   const conf = useConflictos(false)
-  const { moverOcupacion, crearDesdeOT } = useDragMutations()
+  const { moverOcupacion } = useDragMutations()
 
   const conflictoOcupIds = useMemo(() => {
     const s = new Set<number>()
@@ -68,7 +63,6 @@ export function TimelineView() {
   const [encargOpen,   setEncargOpen]   = useState<number | null>(null)
   const [ocupOpen,     setOcupOpen]     = useState<{ ocupacion: Ocupacion | null; defaults?: Partial<OcupacionCreatePayload> } | null>(null)
 
-  const [otPanelOpen, setOtPanelOpen] = useState(true)
   const [activeDrag, setActiveDrag] = useState<DragPayload | null>(null)
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null)
 
@@ -150,44 +144,6 @@ export function TimelineView() {
       })
       return
     }
-
-    // === CREAR OCUPACION DESDE OT PENDIENTE ==============================
-    if (data.kind === 'pending-ot') {
-      const ot = data.ot
-      // Hora exacta del drop: usamos activatorEvent.clientX + delta.x para
-      // ubicar el pointer al soltar, y lo mapeamos al rect de la fila destino
-      // (data-row-tipo/id estan en el DOM del GanttResourceRow).
-      const dur = 60
-      let hi = '09:00:00'
-      const rowEl = document.querySelector<HTMLDivElement>(
-        `[data-row-tipo="${overData.tipo_recurso}"][data-row-id="${overData.id_recurso}"]`,
-      )
-      const act = e.activatorEvent as PointerEvent | MouseEvent | null
-      if (rowEl && act && 'clientX' in act) {
-        const dropX = act.clientX + e.delta.x
-        const rect = rowEl.getBoundingClientRect()
-        const xInRow = dropX - rect.left
-        if (xInRow >= 0 && xInRow <= rect.width) {
-          const minutosDesdeStart = (xInRow / PX_PER_HOUR) * 60
-          const minutosAbs = HOUR_START * 60 + minutosDesdeStart
-          const snap = Math.round(minutosAbs / SNAP_MIN) * SNAP_MIN
-          const minMin = HOUR_START * 60
-          const maxMin = 20 * 60 - dur
-          const inicioClamped = Math.max(minMin, Math.min(maxMin, snap))
-          hi = toHHMMSS(inicioClamped)
-        }
-      }
-      const inicioFinal = timeToMinutes(hi.slice(0, 5))
-      const fin = inicioFinal + dur
-      const hf = toHHMMSS(fin)
-      const nombreDest = nombreRecurso(overData.tipo_recurso, overData.id_recurso)
-      setPendingConfirm({
-        kind: 'crear-desde-ot',
-        ot: { id_ot: ot.id_ot, nro_ot: ot.nro_ot, descripcion: ot.reclamo_descripcion, sla_dias: ot.sla_dias, tipo_audit: ot.tipo_audit ?? null },
-        destino: { tipo_recurso: overData.tipo_recurso, id_recurso: overData.id_recurso, nombre: nombreDest },
-        horas: { hora_inicio: hi, hora_fin: hf },
-      })
-    }
   }
 
   function nombreRecurso(tipo: TipoRecurso, id: number): string | null {
@@ -197,30 +153,15 @@ export function TimelineView() {
 
   function confirmAccept() {
     if (!pendingConfirm) return
-    if (pendingConfirm.kind === 'reasignar') {
-      moverOcupacion.mutate({
-        id: pendingConfirm.idOcupacion,
-        payload: {
-          tipo_recurso: pendingConfirm.hacia.tipo_recurso,
-          id_recurso: pendingConfirm.hacia.id_recurso,
-          hora_inicio: pendingConfirm.nuevasHoras.hora_inicio,
-          hora_fin: pendingConfirm.nuevasHoras.hora_fin,
-        },
-      })
-    } else if (pendingConfirm.kind === 'crear-desde-ot') {
-      const payload: OcupacionCreatePayload = {
-        tipo: 'ot',
-        tipo_recurso: pendingConfirm.destino.tipo_recurso,
-        id_recurso: pendingConfirm.destino.id_recurso,
-        fecha,
-        hora_inicio: pendingConfirm.horas.hora_inicio,
-        hora_fin: pendingConfirm.horas.hora_fin,
-        id_orden_trabajo: pendingConfirm.ot.id_ot,
-        duracion_aplicada_min: minutosEntre(pendingConfirm.horas.hora_inicio, pendingConfirm.horas.hora_fin),
-        id_municipio: idMun,
-      }
-      crearDesdeOT.mutate(payload)
-    }
+    moverOcupacion.mutate({
+      id: pendingConfirm.idOcupacion,
+      payload: {
+        tipo_recurso: pendingConfirm.hacia.tipo_recurso,
+        id_recurso: pendingConfirm.hacia.id_recurso,
+        hora_inicio: pendingConfirm.nuevasHoras.hora_inicio,
+        hora_fin: pendingConfirm.nuevasHoras.hora_fin,
+      },
+    })
     setPendingConfirm(null)
   }
 
@@ -286,7 +227,6 @@ export function TimelineView() {
               />
             )}
           </div>
-          <PendingOTsPanel open={otPanelOpen} onToggle={() => setOtPanelOpen((v) => !v)} />
         </div>
 
         <EventoModal
@@ -315,9 +255,9 @@ export function TimelineView() {
 
         <ConfirmModal
           open={pendingConfirm != null}
-          title={pendingConfirm?.kind === 'reasignar' ? 'Reasignar ocupacion' : 'Planificar OT'}
+          title="Reasignar ocupacion"
           message={pendingConfirm ? buildConfirmMessage(pendingConfirm) : ''}
-          confirmLabel={pendingConfirm?.kind === 'reasignar' ? 'Reasignar' : 'Crear ocupacion'}
+          confirmLabel="Reasignar"
           onConfirm={confirmAccept}
           onCancel={confirmCancel}
         />
@@ -331,7 +271,7 @@ export function TimelineView() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--fg-3)' }}>
           <Users size={12} strokeWidth={1.5} />
-          {'click en bloque -> ver/editar  ·  arrastrar bloque -> mover/reasignar  ·  arrastrar OT del panel -> planificar'}
+          {'click en bloque -> ver/editar  ·  arrastrar bloque -> mover/reasignar'}
         </div>
       </div>
 
@@ -344,20 +284,6 @@ export function TimelineView() {
             boxShadow: '0 6px 16px rgba(38,37,30,.25)',
           }}>
             {activeDrag.ocupacion.descripcion_corta ?? activeDrag.ocupacion.tipo}
-          </div>
-        )}
-        {activeDrag?.kind === 'pending-ot' && (
-          <div style={{
-            width: 220, padding: '8px 10px',
-            background: 'var(--zaris-orange)', color: 'white',
-            borderRadius: 'var(--radius-md)', fontSize: 12, opacity: 0.9,
-            fontFamily: 'var(--font-display)',
-            boxShadow: '0 6px 16px rgba(38,37,30,.25)',
-          }}>
-            <div style={{ fontWeight: 600, fontSize: 11 }}>{activeDrag.ot.nro_ot}</div>
-            <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {activeDrag.ot.reclamo_descripcion}
-            </div>
           </div>
         )}
       </DragOverlay>
@@ -380,13 +306,6 @@ function toHHMMSS(totalMin: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`
 }
 
-function minutosEntre(hi: string, hf: string): number {
-  return timeToMinutes(hf.slice(0, 5)) - timeToMinutes(hi.slice(0, 5))
-}
-
 function buildConfirmMessage(c: PendingConfirm): string {
-  if (c.kind === 'reasignar') {
-    return `Reasignar la ocupacion al recurso "${c.hacia.nombre ?? c.hacia.tipo_recurso + ' ' + c.hacia.id_recurso}" en el horario ${c.nuevasHoras.hora_inicio.slice(0, 5)}-${c.nuevasHoras.hora_fin.slice(0, 5)}?`
-  }
-  return `Planificar la OT ${c.ot.nro_ot ?? '#' + c.ot.id_ot} sobre "${c.destino.nombre ?? c.destino.tipo_recurso + ' ' + c.destino.id_recurso}" de ${c.horas.hora_inicio.slice(0, 5)} a ${c.horas.hora_fin.slice(0, 5)}? Despues podras ajustar el horario.`
+  return `Reasignar la ocupacion al recurso "${c.hacia.nombre ?? c.hacia.tipo_recurso + ' ' + c.hacia.id_recurso}" en el horario ${c.nuevasHoras.hora_inicio.slice(0, 5)}-${c.nuevasHoras.hora_fin.slice(0, 5)}?`
 }

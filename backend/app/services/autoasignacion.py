@@ -2,53 +2,53 @@
 ZARIS — Autoasignación de reclamos por gestión (mig 114, decisión de César 2026-10-20).
 
 Cuando entra un reclamo «Sin asignar» de una gestión (subárea) con
-`subarea.asignacion_automatica = TRUE`, el sistema crea la OT y la agenda solo,
-sin mesa ni supervisor:
+`subarea.asignacion_automatica = TRUE`, el sistema crea la OT solo, sin mesa ni
+supervisor:
 
   1. Candidatos según `tipo_reclamo.asignacion_a`:
        - 'agente': agentes activos de la gestión con usuario activo de nivel
          Gestión (4), no auditores.
        - 'equipo': cuadrillas (tipo_grupo 'trabajo_reclamos') de la gestión con
          al menos un integrante que pueda operar (nivel ≤ 4).
-  2. Disponibilidad: desde hoy, día por día hasta HORIZONTE_DIAS — si un día
-     está completo pasa al siguiente (César). Hoy solo cuentan los huecos que
-     empiezan dentro de MARGEN_HOY_MIN o más.
-  3. Dentro de cada día: el de MENOR CARGA (OTs operativas abiertas) y, si
-     empatan, el que hace más tiempo que no recibe una (rotación).
+  2. El de MENOR CARGA (OTs operativas abiertas) y, si empatan, el que hace más
+     tiempo que no recibe una (rotación).
 
-Sin hueco en el horizonte (o nadie con horario cargado): el reclamo queda
-«Sin asignar», se deja constancia en el historial y se avisa en la campana a
-los supervisores de la gestión (fallback admins). Sin mail: con la gestión
-autoasignando, un mail por reclamo sería ruido.
+Los reclamos NO se agendan (César 2026-10-21: «la agenda solo es para turnos;
+los horarios no entran en la ecuación»): la OT se asigna para hacerse, sin
+ocupación en la Agenda. Hasta esa fecha el motor buscaba un hueco en el horario
+de cada candidato y exigía horarios cargados.
+
+Sin candidatos: el reclamo queda «Sin asignar», se deja constancia en el
+historial y se avisa en la campana a los supervisores de la gestión (fallback
+admins). Sin mail: con la gestión autoasignando, un mail por reclamo sería ruido.
 
 Corre como BackgroundTask (post-commit, sesión propia) desde todas las vías que
 crean reclamos; un advisory lock por gestión serializa dos reclamos simultáneos
-para que no elijan el mismo hueco. Best-effort: nunca levanta.
+para que la carga que mira cada uno ya incluya la OT del otro. Best-effort:
+nunca levanta.
 """
 from __future__ import annotations
 
 import logging
-from datetime import datetime, time, timedelta
-from typing import Any, Optional
-from zoneinfo import ZoneInfo
+from typing import Any
 
 from sqlalchemy import text
 
 from app.core.database import AsyncSessionLocal
-from app.services.ot_slots import slots_libres_recurso
 
 logger = logging.getLogger("zaris.autoasignacion")
 
-HORIZONTE_DIAS = 30
-MARGEN_HOY_MIN = 30
-TZ_MUNICIPIO = ZoneInfo("America/Argentina/Buenos_Aires")
 # Base del advisory lock por gestión (cualquier número fijo; + id_subarea).
 _LOCK_BASE = 114_000_000
 
 _ESTADOS_OT_ABIERTOS = ("En gestión", "En espera", "Pendiente")
 
 
-async def _candidatos(db, tipo: str, id_subarea: int) -> list[dict]:
+async def candidatos_gestion(db, tipo: str, id_subarea: int) -> list[dict]:
+    """Agentes o cuadrillas de la gestión que pueden recibir una OT, ordenados
+    por carga (OTs operativas abiertas) y rotación (la última asignación más
+    vieja primero). Lo comparten la autoasignación y la sugerencia de la Mesa
+    del Supervisor (GET /ot/auto-asignar-sugerencia)."""
     if tipo == "equipo":
         sql = """
             SELECT e.id_equipo AS id, e.nombre AS nombre,
@@ -84,26 +84,9 @@ async def _candidatos(db, tipo: str, id_subarea: int) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-async def _primer_hueco(db, tipo: str, candidatos: list[dict], duracion: int, ahora: datetime):
-    """(fecha, slot, candidato) del primer día con hueco; dentro del día, el
-    primer candidato en el orden carga → rotación que tenga lugar."""
-    hoy = ahora.date()
-    # Comparar fecha+hora completas: con solo la hora, a las 23:40 «ahora + 30 min»
-    # da 00:10 y dejaba pasar huecos de HOY que ya pasaron (cazado por el smoke).
-    desde = (ahora + timedelta(minutes=MARGEN_HOY_MIN)).replace(tzinfo=None)
-    for d in range(HORIZONTE_DIAS):
-        fecha = hoy + timedelta(days=d)
-        for c in candidatos:
-            slots = await slots_libres_recurso(db, tipo, c["id"], fecha, duracion)
-            slots = [s for s in slots
-                     if datetime.combine(fecha, time.fromisoformat(s["hora_inicio"])) >= desde]
-            if slots:
-                return fecha, slots[0], c
-    return None
-
-
-async def _avisar_supervisores_sin_hueco(db, r, motivo: str) -> int:
-    """Campana (sin mail) a los supervisores de la gestión; fallback admins."""
+async def _avisar_supervisores_sin_candidatos(db, r, motivo: str) -> int:
+    """Campana (sin mail) a los supervisores de la gestión; fallback admins.
+    El tipo de aviso conserva su código histórico (autoasignacion_sin_hueco)."""
     usuarios = [x.id_usuario for x in (await db.execute(text("""
         SELECT DISTINCT u.id_usuario FROM agentes a
           JOIN usuarios u ON u.id_usuario = a.id_usuario AND u.activo = TRUE
@@ -124,16 +107,14 @@ async def _avisar_supervisores_sin_hueco(db, r, motivo: str) -> int:
     return len(usuarios)
 
 
-async def autoasignar_reclamo(id_reclamo: int, ahora: Optional[datetime] = None) -> dict[str, Any]:
+async def autoasignar_reclamo(id_reclamo: int) -> dict[str, Any]:
     """Intenta asignar solo un reclamo recién creado. Devuelve qué pasó (para el
-    log y los smokes): {'asignada': bool, 'motivo'?, 'id_ot'?, 'recurso'?, 'fecha'?, 'hora'?}."""
-    ahora = ahora or datetime.now(TZ_MUNICIPIO)
+    log y los smokes): {'asignada': bool, 'motivo'?, 'id_ot'?, 'recurso'?, 'carga'?}."""
     try:
         async with AsyncSessionLocal() as db:
             r = (await db.execute(text("""
                 SELECT r.id_reclamo, r.nro_reclamo, r.estado, r.id_municipio,
-                       tr.id_subarea, tr.asignacion_a, tr.duracion_estimada_min,
-                       s.asignacion_automatica
+                       tr.id_subarea, tr.asignacion_a, s.asignacion_automatica
                   FROM reclamos r
                   JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
                   JOIN subarea s ON s.id_subarea = tr.id_subarea
@@ -144,7 +125,7 @@ async def autoasignar_reclamo(id_reclamo: int, ahora: Optional[datetime] = None)
             if r.estado != "Sin asignar":
                 return {"asignada": False, "motivo": f"el reclamo está {r.estado}"}
 
-            # Serializa la gestión: dos reclamos simultáneos no eligen el mismo hueco.
+            # Serializa la gestión: dos reclamos simultáneos ven la carga del otro.
             await db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": _LOCK_BASE + int(r.id_subarea)})
             ya_tiene = await db.scalar(text(
                 "SELECT 1 FROM ordenes_trabajo WHERE id_reclamo = :id AND activo AND NOT es_auditoria LIMIT 1"),
@@ -153,24 +134,22 @@ async def autoasignar_reclamo(id_reclamo: int, ahora: Optional[datetime] = None)
                 return {"asignada": False, "motivo": "el reclamo ya tiene OT"}
 
             tipo = "equipo" if r.asignacion_a == "equipo" else "agente"
-            duracion = r.duracion_estimada_min if 15 <= (r.duracion_estimada_min or 0) <= 480 else 60
-            candidatos = await _candidatos(db, tipo, r.id_subarea)
-            hallado = await _primer_hueco(db, tipo, candidatos, duracion, ahora) if candidatos else None
+            candidatos = await candidatos_gestion(db, tipo, r.id_subarea)
 
-            if not hallado:
-                motivo = ("Nadie de la gestión puede recibirlo (sin agentes de nivel Gestión ni cuadrillas con integrantes)."
-                          if not candidatos else
-                          f"Nadie de la gestión tiene horario libre en los próximos {HORIZONTE_DIAS} días.")
+            if not candidatos:
+                motivo = ("Nadie de la gestión puede recibirlo (sin cuadrillas con integrantes)."
+                          if tipo == "equipo" else
+                          "Nadie de la gestión puede recibirlo (sin agentes de nivel Gestión).")
                 await db.execute(text("""
                     INSERT INTO reclamo_historial (id_reclamo, accion, estado_anterior, estado_nuevo, nota, fecha_alta, id_usuario_alta)
-                    VALUES (:id, 'Asignación automática sin hueco', 'Sin asignar', 'Sin asignar', :nota, NOW(), NULL)
+                    VALUES (:id, 'Asignación automática sin candidatos', 'Sin asignar', 'Sin asignar', :nota, NOW(), NULL)
                 """), {"id": id_reclamo, "nota": motivo})
-                avisados = await _avisar_supervisores_sin_hueco(db, r, motivo)
+                avisados = await _avisar_supervisores_sin_candidatos(db, r, motivo)
                 await db.commit()
-                logger.info("autoasignar %s: sin hueco (%s) — %d avisos", r.nro_reclamo, motivo, avisados)
+                logger.info("autoasignar %s: sin candidatos (%s) — %d avisos", r.nro_reclamo, motivo, avisados)
                 return {"asignada": False, "motivo": motivo}
 
-            fecha, slot, c = hallado
+            c = candidatos[0]
             id_estado = await db.scalar(text(
                 "SELECT id_estado_ot FROM estado_ot WHERE nombre = 'En gestión' AND activo = TRUE LIMIT 1"))
             ot = (await db.execute(text("""
@@ -184,13 +163,6 @@ async def autoasignar_reclamo(id_reclamo: int, ahora: Optional[datetime] = None)
                    "eq": c["id"] if tipo == "equipo" else None})).fetchone()
             nro_ot = ot.nro_ot or f"OT-{ot.id_ot}"
             await db.execute(text("""
-                INSERT INTO ocupaciones (tipo, tipo_recurso, id_recurso, fecha, hora_inicio, hora_fin,
-                                         id_orden_trabajo, id_municipio, activo, fecha_alta, fecha_modificacion)
-                VALUES ('ot', :tr, :ir, :f, :hi, :hf, :ot, :mun, TRUE, NOW(), NOW())
-            """), {"tr": tipo, "ir": c["id"], "f": fecha,
-                   "hi": time.fromisoformat(slot["hora_inicio"]), "hf": time.fromisoformat(slot["hora_fin"]),
-                   "ot": ot.id_ot, "mun": r.id_municipio or 1})
-            await db.execute(text("""
                 UPDATE reclamos SET estado = 'En gestión', fecha_modificacion = NOW(),
                        fecha_primer_asignacion = COALESCE(fecha_primer_asignacion, NOW())
                  WHERE id_reclamo = :id AND estado = 'Sin asignar'
@@ -200,18 +172,17 @@ async def autoasignar_reclamo(id_reclamo: int, ahora: Optional[datetime] = None)
                 INSERT INTO reclamo_historial (id_reclamo, accion, estado_anterior, estado_nuevo, nota, fecha_alta, id_usuario_alta)
                 VALUES (:id, :acc, 'Sin asignar', 'En gestión', :nota, NOW(), NULL)
             """), {"id": id_reclamo, "acc": f"OT {nro_ot} asignada automáticamente",
-                   "nota": f"Asignada a {quien} para el {fecha.strftime('%d/%m/%Y')} a las {slot['hora_inicio'][:5]} "
-                           f"(menor carga de la gestión con horario libre)."})
+                   "nota": f"Asignada a {quien} (menor carga de la gestión: "
+                           f"{c['carga']} {'OT abierta' if c['carga'] == 1 else 'OTs abiertas'})."})
             await db.commit()
 
         # Avisos post-commit (best-effort, sesión propia cada uno).
         from app.services import push as svc_push
         await svc_push.notificar_ot_asignada(ot.id_ot)
         await svc_push.notificar_estado_reclamo(id_reclamo)
-        logger.info("autoasignar %s → %s %s (%s %s)", r.nro_reclamo, tipo, c["id"], fecha, slot["hora_inicio"])
+        logger.info("autoasignar %s → %s %s (carga %s)", r.nro_reclamo, tipo, c["id"], c["carga"])
         return {"asignada": True, "id_ot": ot.id_ot, "nro_ot": nro_ot, "tipo_recurso": tipo,
-                "id_recurso": c["id"], "recurso": c["nombre"], "fecha": fecha.isoformat(),
-                "hora": slot["hora_inicio"][:5]}
+                "id_recurso": c["id"], "recurso": c["nombre"], "carga": c["carga"]}
     except Exception as e:  # noqa: BLE001 — best-effort SIEMPRE
         logger.error("autoasignar_reclamo(%s) fallo: %s", id_reclamo, e, exc_info=True)
         return {"asignada": False, "motivo": f"error: {e}"}

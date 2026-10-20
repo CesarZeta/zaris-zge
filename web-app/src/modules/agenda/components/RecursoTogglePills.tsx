@@ -21,11 +21,13 @@ const PILLS: Pill[] = [
   },
   {
     value: 'agentes', label: 'Agentes', icon: Users, conteoKey: 'agentes',
-    proposito: 'Disponibilidad individual de agentes. Base para asignar OT y turnos.',
+    proposito: 'Disponibilidad individual de agentes. Base para asignar turnos.',
   },
+  // Las OT no se agendan desde 2026-10-21 (César: «la agenda solo es para
+  // turnos»): la vista de equipos queda para su disponibilidad y eventos.
   {
-    value: 'equipos', label: 'Equipos · OT', icon: UsersRound, conteoKey: 'equipos',
-    proposito: 'Asignación de Órdenes de Trabajo. Acotado a los equipos de tu subárea (supervisor).',
+    value: 'equipos', label: 'Equipos', icon: UsersRound, conteoKey: 'equipos',
+    proposito: 'Disponibilidad de los equipos de trabajo. Acotado a los equipos de tu subárea (supervisor).',
   },
   {
     value: 'espacios_atendidos', label: 'Esp. atendidos · Turnos', icon: Building2, conteoKey: 'espacios_atendidos',
