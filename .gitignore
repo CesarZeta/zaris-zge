@@ -74,3 +74,7 @@ _*_caps/
 
 # Datasets de referencia reales (VL) para el seed demo - NUNCA versionar (datos personales)
 SMOKE/
+
+# Planilla de agentes con datos personales reales (nombres + emails institucionales):
+# NO se publica (el repo es público vía GH Pages). Vive solo en disco local. 2026-10-21
+Tablas Iniciales/agente.csv
