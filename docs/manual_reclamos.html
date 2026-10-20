@@ -174,8 +174,8 @@
 <h2 id="listado">2. El listado de reclamos</h2>
 <p>Al entrar al módulo <strong>Reclamos</strong> ves la pantalla principal con:</p>
 <ul>
-  <li><strong>Barra de estadísticas</strong> arriba: chips clickeables con conteo por estado. Es a la vez resumen y filtro rápido.</li>
-  <li><strong>Filtros</strong>: búsqueda libre (matchea número, ciudadano, DNI, descripción), estado, área, prioridad.</li>
+  <li><strong>Filtros</strong>: búsqueda libre (matchea número, ciudadano, DNI, descripción), estado, área y subárea. La pantalla no trae reclamos al entrar: elegí los filtros (o dejá Todos) y presioná <strong>Buscar</strong>.</li>
+  <li><strong>Barra de estadísticas</strong>, que aparece después de la primera búsqueda: chips clickeables con conteo por estado. Es a la vez resumen y filtro rápido.</li>
   <li><strong>Tabla</strong> con todos los reclamos que cumplen los filtros, ordenados por fecha de alta descendente (más nuevo arriba).</li>
   <li><strong>Botón <span style="color:var(--zaris-orange);font-weight:600">+ Nuevo reclamo</span></strong> arriba a la derecha.</li>
   <li><strong>Botón <span style="color:var(--zaris-orange);font-weight:600">Ver pendientes</span></strong>, al lado: trae todos los reclamos que todavía no se resolvieron (ver sección 3, D).</li>
@@ -198,10 +198,10 @@
 
 <p><strong>B) Filtros en la barra</strong>:</p>
 <ul>
-  <li><strong>Buscar</strong>: tipea cualquier parte del número (<code>REC-2026</code>), DNI, apellido o palabras de la descripción. Tiene debounce de 300ms (no consulta en cada tecla).</li>
+  <li><strong>Buscar</strong>: tipea cualquier parte del número (<code>REC-2026</code>), DNI, apellido o palabras de la descripción. Se aplica al presionar <strong>Buscar</strong> (o Enter), junto con el resto de los filtros.</li>
   <li><strong>Estado</strong>: dropdown con los estados oficiales y la opción <strong>Pendientes (sin resolver)</strong>, que agrupa los que todavía esperan resolución.</li>
   <li><strong>Área</strong>: filtra por área responsable. <em>Nota:</em> en la columna del tipo, bajo el nombre del reclamo, se muestra la <strong>subárea</strong> responsable (Servicios Públicos, Tránsito, Salud…).</li>
-  <li><strong>Prioridad</strong>: Alta / Media / Baja.</li>
+  <li><strong>Subárea</strong>: acota dentro del área elegida. Los supervisores y los agentes de gestión ven siempre solo los reclamos de su subárea.</li>
 </ul>
 
 <p><strong>C) Click en una fila</strong> para abrir el detalle.</p>
