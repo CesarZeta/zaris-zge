@@ -32,6 +32,8 @@ export const listarReclamos = (params: {
   id_subarea?: number
   prioridad?: string
   texto?: string
+  /** Solo pendientes de resolver, del más antiguo al más nuevo (backend `ESTADOS_PENDIENTES`). */
+  pendientes?: boolean
   limit?: number
   offset?: number
 } = {}) =>

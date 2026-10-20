@@ -28,9 +28,15 @@ export function BuscarView() {
       push({ kind: 'info', title: 'Ingresa un valor para buscar' })
       return
     }
+    // Lo escrito manda sobre la pastilla: con letras se busca por nombre y con solo
+    // números por DNI/CUIL. Antes «lorenzo» con «# DNI / CUIL» marcado (el modo de
+    // entrada) comparaba letras contra documentos y daba «no se encontró».
+    const soloNumeros = /^[\d\s\-().]+$/.test(q)
+    const modoEfectivo: Modo = /\p{L}/u.test(q) ? 'texto' : soloNumeros ? 'numero' : modo
+    if (modoEfectivo !== modo) setModo(modoEfectivo)
     setBuscando(true)
     try {
-      const res = await buscarCiudadanos({ q, tipo: modo, limit: 20 })
+      const res = await buscarCiudadanos({ q, tipo: modoEfectivo, limit: 20 })
       setResultados(res.data)
       setTotal(Number(res.headers.get('X-Total-Count') ?? res.data.length))
       if (res.data.length === 0) {

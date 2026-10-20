@@ -178,6 +178,7 @@
   <li><strong>Filtros</strong>: búsqueda libre (matchea número, ciudadano, DNI, descripción), estado, área, prioridad.</li>
   <li><strong>Tabla</strong> con todos los reclamos que cumplen los filtros, ordenados por fecha de alta descendente (más nuevo arriba).</li>
   <li><strong>Botón <span style="color:var(--zaris-orange);font-weight:600">+ Nuevo reclamo</span></strong> arriba a la derecha.</li>
+  <li><strong>Botón <span style="color:var(--zaris-orange);font-weight:600">Ver pendientes</span></strong>, al lado: trae todos los reclamos que todavía no se resolvieron (ver sección 3, D).</li>
 </ul>
 
 <figure>
@@ -186,7 +187,7 @@
 </figure>
 
 <h2 id="filtros">3. Filtrar y buscar</h2>
-<p>Tres formas de acotar la lista:</p>
+<p>Cuatro formas de acotar la lista:</p>
 
 <p><strong>A) Click en un chip de estado</strong> (más rápido). Por ejemplo, click en "En gestión" deja solo los que están activos:</p>
 
@@ -198,12 +199,14 @@
 <p><strong>B) Filtros en la barra</strong>:</p>
 <ul>
   <li><strong>Buscar</strong>: tipea cualquier parte del número (<code>REC-2026</code>), DNI, apellido o palabras de la descripción. Tiene debounce de 300ms (no consulta en cada tecla).</li>
-  <li><strong>Estado</strong>: dropdown con los 6 estados oficiales.</li>
+  <li><strong>Estado</strong>: dropdown con los estados oficiales y la opción <strong>Pendientes (sin resolver)</strong>, que agrupa los que todavía esperan resolución.</li>
   <li><strong>Área</strong>: filtra por área responsable. <em>Nota:</em> en la columna del tipo, bajo el nombre del reclamo, se muestra la <strong>subárea</strong> responsable (Servicios Públicos, Tránsito, Salud…).</li>
   <li><strong>Prioridad</strong>: Alta / Media / Baja.</li>
 </ul>
 
 <p><strong>C) Click en una fila</strong> para abrir el detalle.</p>
+
+<p><strong>D) Botón Ver pendientes</strong>: trae los reclamos <strong>Sin asignar</strong>, <strong>En gestión</strong>, <strong>En espera</strong> y <strong>En auditoría</strong>, del más antiguo al más nuevo (arriba lo que lleva más tiempo esperando). Respeta el área, la subárea y el texto que tengas elegidos: por ejemplo, con un área elegida trae solo los pendientes de esa área. El filtro Estado queda en «Pendientes (sin resolver)»; para volver al listado completo, elegí «Todos» y presioná Buscar.</p>
 
 <h2 id="alta">4. Crear un reclamo nuevo</h2>
 

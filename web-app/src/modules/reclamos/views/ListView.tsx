@@ -10,6 +10,11 @@ const ESTADOS_VALIDOS = [
   'Sin asignar', 'En gestión', 'En espera', 'En auditoría', 'Resuelto', 'Auditado', 'Cancelado',
 ] as const
 
+// Valor del filtro Estado que pide los pendientes de resolver (Sin asignar, En
+// gestión, En espera, En auditoría — los define el backend). No es un estado real:
+// viaja como `pendientes=true` y el backend los ordena del más antiguo al más nuevo.
+const PENDIENTES = '__pendientes'
+
 // Filtros que viajan al backend (§23): se editan en el `borrador` y se aplican
 // recién al presionar Buscar. El texto ya no tiene debounce: viaja con Buscar.
 interface FiltrosBorrador {
@@ -30,12 +35,16 @@ export function ListView() {
   const { borrador, setBorrador, aplicado, buscar, buscado } = busqueda
   const { estado, idArea, idSubarea, texto } = borrador
 
+  const verPendientes = aplicado?.estado === PENDIENTES
+  // Pendientes: «todos» hasta el máximo del backend; el resto del listado sigue en 200.
+  const limite = verPendientes ? 500 : 200
   const filtros: FiltrosReclamos = {
-    estado: aplicado?.estado ?? undefined,
+    estado: verPendientes ? undefined : (aplicado?.estado ?? undefined),
+    pendientes: verPendientes || undefined,
     id_area: aplicado?.idArea ?? undefined,
     id_subarea: aplicado?.idSubarea ?? undefined,
     texto: aplicado?.texto.trim() || undefined,
-    limit: 200,
+    limit: limite,
   }
 
   const areas = useAreasCatalogo()
@@ -73,7 +82,17 @@ export function ListView() {
 
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        {/* Filtro explícito, como tocar una tarjeta de estado: combina con área,
+            subárea y texto elegidos y busca. */}
+        <button
+          type="button"
+          onClick={() => filtrarPorEstado(PENDIENTES)}
+          style={btnOutline}
+          title="Sin asignar, En gestión, En espera y En auditoría, del más antiguo al más nuevo"
+        >
+          Ver pendientes
+        </button>
         <button type="button" onClick={() => navigate('/reclamos/nuevo')} style={btnAccent}>+ Nuevo reclamo</button>
       </div>
 
@@ -96,6 +115,7 @@ export function ListView() {
             style={filterInput}
           >
             <option value="">Todos</option>
+            <option value={PENDIENTES}>Pendientes (sin resolver)</option>
             {ESTADOS_VALIDOS.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
@@ -143,7 +163,12 @@ export function ListView() {
         <div style={{ fontSize: 'var(--size-ui)', color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
           {listado.isLoading
             ? 'Cargando reclamos...'
-            : `${cantidad} reclamo${cantidad !== 1 ? 's' : ''} encontrado${cantidad !== 1 ? 's' : ''}`}
+            : verPendientes
+              ? `${cantidad} reclamo${cantidad !== 1 ? 's' : ''} pendiente${cantidad !== 1 ? 's' : ''} de resolver · del más antiguo al más nuevo`
+              : `${cantidad} reclamo${cantidad !== 1 ? 's' : ''} encontrado${cantidad !== 1 ? 's' : ''}`}
+          {!listado.isLoading && cantidad === limite && (
+            <> · se muestran los primeros {limite}: afiná con área, subárea o texto</>
+          )}
         </div>
       )}
 
@@ -286,6 +311,11 @@ const btnAccent: React.CSSProperties = {
   padding: '9px 16px', background: 'var(--zaris-orange)', color: '#fff',
   border: 'none', borderRadius: 'var(--radius-lg)', fontFamily: 'var(--font-display)',
   fontSize: 'var(--size-btn)', fontWeight: 500, cursor: 'pointer',
+}
+// Ver pendientes: misma altura que Nuevo reclamo, en contorno para no competir con él.
+const btnOutline: React.CSSProperties = {
+  ...btnAccent, padding: '8px 15px', background: 'transparent', color: 'var(--zaris-orange)',
+  border: '1px solid var(--zaris-orange)',
 }
 // Buscar de la barra de filtros: mismo acento, alto alineado con Limpiar + icono.
 const btnBuscar: React.CSSProperties = {

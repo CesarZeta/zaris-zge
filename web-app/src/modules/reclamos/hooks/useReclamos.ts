@@ -56,6 +56,7 @@ export interface FiltrosReclamos {
   id_subarea?: number
   prioridad?: string
   texto?: string
+  pendientes?: boolean
   limit?: number
 }
 
