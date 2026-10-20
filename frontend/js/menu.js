@@ -582,6 +582,9 @@
     if (url && url.startsWith('#/')) {
       // Navegar el iframe al bundle React. El shell vanilla mantiene contexto.
       window.shellNavigate(`web-app/dist/index.html${url}`);
+    } else if (url && /^frontend\/[a-z0-9_-]+\.html(\?[^#]*)?$/i.test(url)) {
+      // Módulo vanilla (ej. «agente nuevo» → Maestros → Agentes, 2026-10-20).
+      window.shellNavigate(url);
     }
   }
   async function _refrescarNotifBadge() {

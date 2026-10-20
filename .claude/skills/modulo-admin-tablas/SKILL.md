@@ -9,6 +9,13 @@ description: "Usar al trabajar en el módulo Admin Tablas / CRUD genérico de ma
 
 > **Nota:** el "Estándar visual obligatorio — panel de búsqueda" (parte de §15) es transversal (aplica a TODO frontend de tabla maestra) y permanece en CLAUDE.md §15. Acá vive solo lo específico del módulo admin_tablas.
 
+### Supervisor en Maestros → Agentes + datos de la ficha (2026-10-20, mig 113)
+
+- **Escritura por nivel** (`admin_tablas.py::_autorizar_escritura`, en POST/PUT/DELETE — ya no `require_admin` por dependencia): admin todo; **supervisor (nivel 2)** solo `PUT agentes` de SU gestión con cargo y legajo (el resto del body se descarta; 422 si no queda nada) y alta/baja en `equipo_agentes` con equipo **y** agente de su gestión; cualquier otra tabla o acción → 403. El horario va por `/agenda/disponibilidad` (ya acotado al supervisor).
+- **Lectura de agentes**: `TABLE_CONFIG["agentes"]["select"]` suma `id_ciudadano_ficha` (vía `usuarios.id_ciudadano`); un supervisor recibe la PII (DNI/CUIL/email/teléfono) solo de los agentes de su gestión.
+- **Datos personales con ficha vinculada**: el PUT los ignora (`_quitar_personales_si_ficha`) y el form los muestra deshabilitados con «Se edita en la ficha del ciudadano»: la ficha es la única fuente y `PUT /buc/ciudadanos/{id}` los copia al agente (`services/cuenta_zaris.py::sincronizar_agente_desde_ficha`).
+- **Frontend** (`MODO_SUPERVISOR` por `nivel_acceso` de la sesión): selector con solo «Agentes», sin «+ Nuevo» ni «Baja», campos bloqueados salvo legajo/cargo. Sección **«Equipos»** en el form del agente (sincroniza `equipo_agentes` al guardar, como los integrantes del equipo). `?tabla=agentes&editar=ID` abre el agente (link del aviso `agente_nuevo`). Shell: el ítem Maestros lleva `data-modulo-fallback="agentes_gestion"`.
+
 ### Agregar una tabla nueva a admin_tablas
 
 1. **Backend** — agregar entrada en `TABLE_CONFIG` en `backend/app/api/routes/admin_tablas.py`:

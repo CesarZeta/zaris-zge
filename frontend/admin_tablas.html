@@ -827,6 +827,34 @@ let editId      = null;
 let deleteId    = null;
 const fkCache   = {};
 
+// ── Quién opera (2026-10-20) ──────────────────────────────────
+// Supervisor (nivel 2): ve solo Agentes de SU gestión y completa cargo, legajo,
+// horario y equipos — el backend (admin_tablas.py) impone lo mismo. El resto de
+// Maestros sigue siendo del administrador.
+const _sesionMaestros = JSON.parse(localStorage.getItem('zaris_session') || 'null');
+const _yo = _sesionMaestros?.user || _sesionMaestros?.state?.user || {};
+const MODO_SUPERVISOR = _yo.nivel_acceso === 2;
+const MI_SUBAREA = _yo.id_subarea ?? null;
+const CAMPOS_AGENTE_SUPERVISOR = new Set(['legajo', 'id_cargo']);
+// Datos personales: con ficha de la BUC vinculada se editan SOLO en la ficha
+// (al guardarla se copian al agente).
+const CAMPOS_PERSONALES_AGENTE = new Set(['nombre', 'apellido', 'dni', 'cuil', 'email', 'telefono']);
+
+function _filtrarScope(rows) {
+  if (!MODO_SUPERVISOR || tablaActual !== 'agentes') return rows;
+  return rows.filter(r => r.id_subarea === MI_SUBAREA);
+}
+
+// null = editable; si no, { hint } (texto a mostrar o '' para solo bloquear).
+function _campoBloqueado(field, record) {
+  if (tablaActual !== 'agentes') return null;
+  if (record?.id_ciudadano_ficha && CAMPOS_PERSONALES_AGENTE.has(field)) {
+    return { hint: 'Se edita en la ficha del ciudadano (Ciudadanos): al guardarla se actualiza acá.' };
+  }
+  if (MODO_SUPERVISOR && !CAMPOS_AGENTE_SUPERVISOR.has(field)) return { hint: '' };
+  return null;
+}
+
 // ── Esquemas de formulario ────────────────────────────────────
 const SCHEMAS = {
 
@@ -1260,7 +1288,7 @@ async function cargarTabla() {
                placeholder="Ingresá nombre o descripción..."
                onkeydown="if(event.key==='Enter')buscarEnTabla()">
         <button class="btn-primary" onclick="buscarEnTabla()">Buscar</button>
-        <button class="btn-primary" onclick="abrirNuevo()">+ Nuevo</button>
+        ${MODO_SUPERVISOR ? '' : '<button class="btn-primary" onclick="abrirNuevo()">+ Nuevo</button>'}
         <button class="btn-outline" onclick="abrirListado()">Listado</button>
       </div>
       <div id="sp-results" style="margin-top:.75rem;"></div>
@@ -1275,7 +1303,7 @@ async function cargarTabla() {
     const res = await fetch(`${API}/${tablaActual}`, { headers: _authHeaders() });
     if (res.status === 401) { _handleUnauth(); return; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const rows = await res.json();
+    const rows = _filtrarScope(await res.json());
     renderVistaPrevia(rows, schema);
   } catch (e) {
     document.getElementById('main').innerHTML += `<div class="empty">Error al cargar datos: ${e.message}</div>`;
@@ -1415,7 +1443,7 @@ async function renderVistaPrevia(rows, schema) {
                placeholder="Ingresá nombre o descripción..."
                onkeydown="if(event.key==='Enter')buscarEnTabla()">
         <button class="btn-primary" onclick="buscarEnTabla()">Buscar</button>
-        <button class="btn-primary" onclick="abrirNuevo()">+ Nuevo</button>
+        ${MODO_SUPERVISOR ? '' : '<button class="btn-primary" onclick="abrirNuevo()">+ Nuevo</button>'}
         <button class="btn-outline" onclick="abrirListado()">Listado</button>
       </div>
       <div id="sp-results" style="margin-top:.75rem;"></div>
@@ -1440,7 +1468,7 @@ async function buscarEnTabla() {
     const res = await fetch(`${API}/${tablaActual}`, { headers: _authHeaders() });
     if (res.status === 401) { _handleUnauth(); return; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const rows = await res.json();
+    const rows = _filtrarScope(await res.json());
     const found = rows.filter(r =>
       schema.display.some(f => String(r[f] ?? '').toLowerCase().includes(q))
     );
@@ -1483,7 +1511,7 @@ async function abrirListado() {
       <div class="section-header-actions">
         <button class="btn-outline" onclick="window.print()">Imprimir</button>
         <button class="btn-outline" onclick="cargarTabla()">← Volver</button>
-        <button class="btn-primary" onclick="abrirNuevo()">+ Nuevo</button>
+        ${MODO_SUPERVISOR ? '' : '<button class="btn-primary" onclick="abrirNuevo()">+ Nuevo</button>'}
       </div>
     </div>
     <div class="filter-bar" id="filter-bar">
@@ -1533,7 +1561,7 @@ async function abrirListado() {
     const res = await fetch(`${API}/${tablaActual}`, { headers: _authHeaders() });
     if (res.status === 401) { _handleUnauth(); return; }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    window._listadoRows = await res.json();
+    window._listadoRows = _filtrarScope(await res.json());
     aplicarFiltros();
   } catch (e) {
     main.innerHTML += `<div class="empty">Error al cargar datos: ${e.message}</div>`;
@@ -1732,7 +1760,7 @@ async function renderListadoFiltrado(rows, schema) {
           ${celdaInteg}
           <td class="actions">
             <button class="btn-edit" onclick="abrirEditar(${pk})">Editar</button>
-            <button class="btn-del"  onclick="abrirBaja(${pk}, '${String(nombre).replace(/'/g,"\\'")}')">Baja</button>
+            ${MODO_SUPERVISOR ? '' : `<button class="btn-del"  onclick="abrirBaja(${pk}, '${String(nombre).replace(/'/g,"\\'")}')">Baja</button>`}
           </td>
         </tr>${asociados}`;
       }).join('');
@@ -1831,12 +1859,17 @@ async function buildForm(schema, record = null, bodyId = 'modalBody') {
   for (const col of schema.cols) {
     const val = record ? (record[col.field] ?? '') : '';
     const req = col.required ? 'required' : '';
-    const hint = col.hint ? `<p class="field-hint">${col.hint}</p>` : '';
+    // Campo bloqueado (datos de la ficha / supervisor): disabled + su leyenda.
+    const bloq = _campoBloqueado(col.field, record);
+    const dis = bloq ? 'disabled' : '';
+    const hint = (bloq && bloq.hint)
+      ? `<p class="field-hint">${bloq.hint}</p>`
+      : (col.hint ? `<p class="field-hint">${col.hint}</p>` : '');
 
     if (col.type === 'checkbox') {
       const chk = val ? 'checked' : '';
       html += `<div class="field-check">
-        <input type="checkbox" id="f_${col.field}" name="${col.field}" ${chk}>
+        <input type="checkbox" id="f_${col.field}" name="${col.field}" ${chk} ${dis}>
         <label for="f_${col.field}">${col.label}</label>
       </div>`;
     } else if (col.type === 'select' && col.fk) {
@@ -1845,7 +1878,7 @@ async function buildForm(schema, record = null, bodyId = 'modalBody') {
         opts.map(o => `<option value="${o.value}" ${String(val) === String(o.value) ? 'selected' : ''}>${o.label}</option>`).join('');
       html += `<div class="field">
         <label for="f_${col.field}">${col.label}</label>
-        <select id="f_${col.field}" name="${col.field}" ${req}>${options}</select>
+        <select id="f_${col.field}" name="${col.field}" ${req} ${dis}>${options}</select>
         ${hint}
       </div>`;
     } else if (col.type === 'select' && col.options) {
@@ -1854,20 +1887,20 @@ async function buildForm(schema, record = null, bodyId = 'modalBody') {
       ).join('');
       html += `<div class="field">
         <label for="f_${col.field}">${col.label}</label>
-        <select id="f_${col.field}" name="${col.field}" ${req}>${options}</select>
+        <select id="f_${col.field}" name="${col.field}" ${req} ${dis}>${options}</select>
         ${hint}
       </div>`;
     } else if (col.type === 'textarea') {
       html += `<div class="field">
         <label for="f_${col.field}">${col.label}</label>
-        <textarea id="f_${col.field}" name="${col.field}" ${req}>${val}</textarea>
+        <textarea id="f_${col.field}" name="${col.field}" ${req} ${dis}>${val}</textarea>
         ${hint}
       </div>`;
     } else {
       const inputType = { time: 'time', number: 'number', date: 'date' }[col.type] || 'text';
       html += `<div class="field">
         <label for="f_${col.field}">${col.label}</label>
-        <input type="${inputType}" id="f_${col.field}" name="${col.field}" value="${val}" ${req}>
+        <input type="${inputType}" id="f_${col.field}" name="${col.field}" value="${val}" ${req} ${dis}>
         ${hint}
       </div>`;
     }
@@ -1892,6 +1925,7 @@ function cerrarInline() {
   _franjasOriginalIds = [];
   _integrantesState = [];
   _integrantesOriginalIds = [];
+  _equiposAgState = [];
 }
 
 // ── Horario de asistencia del agente (franjas de disponibilidad_recurso) ──────
@@ -2207,6 +2241,116 @@ async function _sincronizarIntegrantes(idEquipo) {
   }
 }
 
+// ── Equipos del agente (relaciones equipo_agentes, 2026-10-20) ────────────────
+// El perfil del agente muestra y edita a qué equipos pertenece (César: el
+// supervisor completa cargo, horario y equipo en el perfil del agente). Mismo
+// patrón que los integrantes del equipo: estado en memoria + sincronizar al
+// guardar. El supervisor solo ve (y el backend solo le acepta) equipos de su gestión.
+let _equiposAgState = [];  // [{ id_equipo, nombre }]
+let _equiposCache = null;
+
+async function _getEquipos() {
+  if (_equiposCache) return _equiposCache;
+  try {
+    const res = await fetch(`${API}/equipos`, { headers: _authHeaders() });
+    if (res.status === 401) { _handleUnauth(); return []; }
+    _equiposCache = res.ok ? await res.json() : [];
+  } catch (_) { _equiposCache = []; }
+  return _equiposCache;
+}
+
+async function _cargarEquiposAgente(idAgente) {
+  _equiposAgState = [];
+  if (!idAgente) return;
+  try {
+    const [relRes, equipos] = await Promise.all([
+      fetch(`${API}/equipo_agentes`, { headers: _authHeaders() }),
+      _getEquipos(),
+    ]);
+    if (!relRes.ok) return;
+    const byId = {};
+    equipos.forEach(e => { byId[e.id_equipo] = e; });
+    _equiposAgState = (await relRes.json())
+      .filter(r => r.id_agente === idAgente)
+      .map(r => ({ id_equipo: r.id_equipo, nombre: byId[r.id_equipo]?.nombre || `Equipo ${r.id_equipo}` }));
+  } catch (_) { /* sin equipos */ }
+}
+
+async function renderEquiposAgenteSeccion() {
+  if (tablaActual !== 'agentes') return;
+  const body = document.getElementById('inlineFormBody');
+  let sec = body.querySelector('#equiposAgSec');
+  if (!sec) {
+    sec = document.createElement('div');
+    sec.id = 'equiposAgSec';
+    sec.className = 'horario-sec';
+    body.appendChild(sec);
+  }
+  const equipos = await _getEquipos();
+  const ya = new Set(_equiposAgState.map(e => e.id_equipo));
+  const disponibles = equipos.filter(e => !ya.has(e.id_equipo) && (!MODO_SUPERVISOR || e.id_subarea === MI_SUBAREA));
+  const esc = (s) => String(s ?? '').replace(/</g, '&lt;');
+  const filas = _equiposAgState.map(e => `
+    <div class="integ-row" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:6px 0;border-bottom:1px solid var(--border-primary);">
+      <span>${esc(e.nombre)}</span>
+      <button type="button" class="integ-row__del" data-quitar-eq="${e.id_equipo}">Quitar</button>
+    </div>`).join('') ||
+    '<p class="horario-sec__hint">No pertenece a ningún equipo.</p>';
+  sec.innerHTML = `
+    <div class="horario-sec__title">Equipos</div>
+    <div class="horario-sec__hint">Cuadrillas o mesas en las que trabaja. Una OT asignada a una cuadrilla le llega a todos sus integrantes.</div>
+    <div id="equiposAgList">${filas}</div>
+    ${disponibles.length ? `
+      <div style="display:flex;gap:.5rem;margin-top:.5rem;">
+        <select id="equipoAgAdd" style="flex:1;">
+          <option value="">— Sumar a un equipo —</option>
+          ${disponibles.map(e => `<option value="${e.id_equipo}">${esc(e.nombre)}</option>`).join('')}
+        </select>
+        <button type="button" class="horario-add" id="btnAddEquipoAg" style="margin:0;">+ Sumar</button>
+      </div>` : ''}`;
+  sec.querySelectorAll('[data-quitar-eq]').forEach(btn => {
+    btn.onclick = () => {
+      const idE = Number(btn.dataset.quitarEq);
+      _equiposAgState = _equiposAgState.filter(e => e.id_equipo !== idE);
+      renderEquiposAgenteSeccion();
+    };
+  });
+  const add = sec.querySelector('#btnAddEquipoAg');
+  if (add) add.onclick = () => {
+    const sel = sec.querySelector('#equipoAgAdd');
+    const e = disponibles.find(x => x.id_equipo === Number(sel.value));
+    if (!e) return;
+    _equiposAgState.push({ id_equipo: e.id_equipo, nombre: e.nombre });
+    renderEquiposAgenteSeccion();
+  };
+}
+
+// Re-lee las relaciones reales del agente, da de baja las que se quitaron y
+// crea las nuevas. Si alguna falla (ej. equipo de otra gestión), lo informa.
+async function _sincronizarEquiposAgente(idAgente) {
+  let reales = [];
+  const res = await fetch(`${API}/equipo_agentes`, { headers: _authHeaders() });
+  if (res.ok) reales = (await res.json()).filter(r => r.id_agente === idAgente);
+  const vivos = new Set(_equiposAgState.map(e => e.id_equipo));
+  const realesIds = new Set(reales.map(r => r.id_equipo));
+  const errores = [];
+  for (const r of reales) {
+    if (vivos.has(r.id_equipo)) continue;
+    const d = await fetch(`${API}/equipo_agentes/${r.id_equipo_agente}`, { method: 'DELETE', headers: _authHeaders() });
+    if (!d.ok) errores.push((await d.json().catch(() => ({}))).detail || `HTTP ${d.status}`);
+  }
+  for (const e of _equiposAgState) {
+    if (realesIds.has(e.id_equipo)) continue;
+    const p = await fetch(`${API}/equipo_agentes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ..._authHeaders() },
+      body: JSON.stringify({ id_equipo: e.id_equipo, id_agente: idAgente }),
+    });
+    if (!p.ok) errores.push((await p.json().catch(() => ({}))).detail || `HTTP ${p.status}`);
+  }
+  if (errores.length) throw new Error(errores.join(' · '));
+}
+
 async function abrirNuevo() {
   editId = null;
   const schema = SCHEMAS[tablaActual];
@@ -2217,6 +2361,8 @@ async function abrirNuevo() {
     if (tablaActual === 'agentes') {
       _franjasState = []; _franjasOriginalIds = [];
       renderHorarioSeccion();
+      _equiposAgState = [];
+      await renderEquiposAgenteSeccion();
     } else if (tablaActual === 'equipos') {
       _integrantesState = []; _integrantesOriginalIds = [];
       _franjasState = []; _franjasOriginalIds = [];
@@ -2253,6 +2399,8 @@ async function abrirEditar(id) {
     if (inline && tablaActual === 'agentes') {
       await _cargarFranjas('agente', id);
       renderHorarioSeccion();
+      await _cargarEquiposAgente(id);
+      await renderEquiposAgenteSeccion();
     } else if (inline && tablaActual === 'equipos') {
       await _cargarIntegrantes(id);
       renderIntegrantesSeccion();
@@ -2337,6 +2485,8 @@ async function guardarRegistro() {
       if (idAgente) {
         try { await _sincronizarFranjas('agente', idAgente); }
         catch (e2) { toast(`Agente guardado, pero falló el horario: ${e2.message}`, 'err'); }
+        try { await _sincronizarEquiposAgente(idAgente); }
+        catch (e2) { toast(`Agente guardado, pero falló un equipo: ${e2.message}`, 'err'); }
       }
     }
 
@@ -2420,12 +2570,22 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
 // ── Inicializar iconos Lucide ──────────────────────────────────
 if (typeof lucide !== 'undefined') lucide.createIcons();
 
-// ── Auto-selección por URL param (?tabla=area) ─────────────────
-(function () {
-  const t = new URLSearchParams(location.search).get('tabla');
+// ── Auto-selección por URL param (?tabla=area&editar=ID) ───────
+// Supervisor: el selector muestra solo Agentes y arranca ahí. `editar` abre el
+// formulario de ese registro (lo usa el aviso «Nuevo agente en tu gestión»).
+(async function () {
+  const params = new URLSearchParams(location.search);
+  let t = params.get('tabla');
+  if (MODO_SUPERVISOR) {
+    document.querySelectorAll('.sidebar-item').forEach(i => { if (i.dataset.tabla !== 'agentes') i.style.display = 'none'; });
+    document.querySelectorAll('.sidebar-group').forEach(g => { g.style.display = 'none'; });
+    t = 'agentes';
+  }
   if (t && SCHEMAS[t]) {
     const item = document.querySelector(`.sidebar-item[data-tabla="${t}"]`);
-    if (item) selectTabla(item);
+    if (item) await selectTabla(item);
+    const ed = Number(params.get('editar'));
+    if (ed > 0) abrirEditar(ed);
   }
 })();
 </script>

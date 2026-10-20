@@ -910,3 +910,83 @@ async def notificar_alerta_panico(
             id_evento, e, exc_info=True,
         )
         return 0
+
+
+async def notificar_agente_nuevo(
+    id_usuario: int,
+    background_tasks: Optional[BackgroundTasks] = None,
+) -> int:
+    """
+    Nace un agente (alta de cuenta ZARIS desde la ficha o desde Maestros → Usuarios):
+    los SUPERVISORES de su gestión tienen que completar cargo, horario y equipo en
+    Maestros → Agentes (César 2026-10-20). Destinatarios: nivel 2 con agente activo
+    en la subárea del agente nuevo (sin contarlo a él); si la gestión no tiene
+    supervisor, FALLBACK a los admins (mismo criterio que el aviso de reclamos).
+    Campana + mail + push a la app de agentes. Sesión propia (post-commit),
+    best-effort: un fallo se logea y no rompe el alta.
+    """
+    try:
+        from urllib.parse import quote
+
+        from app.services.push import enviar_push_usuario
+
+        async with AsyncSessionLocal() as db:
+            ag = (await db.execute(text("""
+                SELECT a.id_agente, a.apellido, a.nombre, a.id_subarea, a.id_municipio,
+                       s.nombre AS subarea_nombre
+                  FROM agentes a
+                  LEFT JOIN subarea s ON s.id_subarea = a.id_subarea
+                 WHERE a.id_usuario = :u AND a.activo = TRUE
+                 LIMIT 1
+            """), {"u": id_usuario})).fetchone()
+            if not ag:
+                return 0  # usuario externo: no tiene agente
+            usuarios: list[dict] = []
+            if ag.id_subarea:
+                rows = (await db.execute(text("""
+                    SELECT DISTINCT u.id_usuario, u.nombre, u.email
+                      FROM agentes a
+                      JOIN usuarios u ON u.id_usuario = a.id_usuario AND u.activo = TRUE
+                     WHERE a.id_subarea = :s AND a.activo = TRUE AND u.nivel_acceso = 2
+                       AND u.id_usuario <> :nuevo
+                       AND u.email IS NOT NULL AND u.email <> ''
+                """), {"s": ag.id_subarea, "nuevo": id_usuario})).fetchall()
+                usuarios = [dict(r._mapping) for r in rows]
+            if not usuarios:
+                rows = (await db.execute(text("""
+                    SELECT u.id_usuario, u.nombre, u.email FROM usuarios u
+                     WHERE u.activo = TRUE AND u.nivel_acceso = 1 AND u.id_usuario <> :nuevo
+                       AND u.email IS NOT NULL AND u.email <> ''
+                """), {"nuevo": id_usuario})).fetchall()
+                usuarios = [dict(r._mapping) for r in rows]
+            if not usuarios:
+                logger.warning("notificar_agente_nuevo(%s): sin supervisores ni admins", id_usuario)
+                return 0
+
+            nombre = f"{ag.apellido or ''}, {ag.nombre or ''}".strip(", ")
+            gestion = ag.subarea_nombre or "sin gestión asignada"
+            titulo = f"Nuevo agente en tu gestión: {nombre}"
+            mensaje = (f"{nombre} se sumó a {gestion}. Completá su cargo, su horario y su "
+                       "equipo en Maestros → Agentes para que pueda recibir órdenes de trabajo.")
+            url_destino = f"frontend/admin_tablas.html?tabla=agentes&editar={ag.id_agente}"
+            base = settings.APP_BASE_URL.rstrip("/")
+            creadas = await _emitir_a_usuarios(
+                db, usuarios,
+                tipo_notif="agente_nuevo",
+                titulo=titulo,
+                mensaje=mensaje,
+                url_destino=url_destino,
+                background_tasks=background_tasks,
+                recurso_tipo="agente",
+                recurso_id=ag.id_agente,
+                id_municipio=ag.id_municipio,
+                url_absoluta=f"{base}/index.html?modulo={quote(url_destino, safe='')}",
+                cta_label=f"Completar el perfil de {nombre}",
+            )
+        for u in usuarios:
+            await enviar_push_usuario(int(u["id_usuario"]), titulo=titulo, cuerpo=mensaje, url="/avisos")
+        logger.info("notificar_agente_nuevo: agente %s → %d avisos", ag.id_agente, creadas)
+        return creadas
+    except Exception as e:  # noqa: BLE001 — best-effort
+        logger.error("notificar_agente_nuevo FALLO (usuario=%s): %s", id_usuario, e, exc_info=True)
+        return 0

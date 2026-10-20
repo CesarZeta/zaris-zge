@@ -54,6 +54,10 @@ TABLE_CONFIG: dict[str, dict] = {
         "pk": "id_agente",
         "cols": ["nombre", "apellido", "legajo", "dni", "cuil", "email", "telefono", "id_cargo", "id_subarea", "id_usuario", "es_auditor"],
         "fecha_mod": "fecha_modificacion",
+        # Lectura con el vínculo a la ficha de la BUC (vía usuarios.id_ciudadano):
+        # si existe, los datos personales se editan en la ficha (2026-10-20).
+        "select": ("a.*, u.id_ciudadano AS id_ciudadano_ficha",
+                   "agentes a LEFT JOIN usuarios u ON u.id_usuario = a.id_usuario", "a"),
     },
     "equipos": {
         "pk": "id_equipo",
@@ -211,13 +215,107 @@ def _get_config(tabla: str) -> dict:
 # corre como admin y sigue viendo todo para prefillar la edición.
 _PII_AGENTES = ["dni", "cuil", "email", "telefono"]
 
+# Datos personales del agente: la ficha del ciudadano es la ÚNICA fuente
+# (César 2026-10-20). Si el agente está vinculado a una ficha, se actualizan al
+# guardarla (services/cuenta_zaris.py) y acá se ignoran.
+_COLS_PERSONALES_AGENTE = {"nombre", "apellido", "dni", "cuil", "email", "telefono"}
 
-def _exclude_efectivo(tabla: str, cfg: dict, current_user: dict) -> list[str]:
-    """exclude base de la tabla + PII de agentes si el llamador no es admin."""
+# Supervisor (nivel 2): completa el perfil laboral de los agentes de SU gestión
+# — cargo y legajo; el horario va por los endpoints de Agenda (ya acotados) — y
+# su pertenencia a los equipos de su gestión. El resto de Maestros es del admin.
+_COLS_AGENTE_SUPERVISOR = {"legajo", "id_cargo"}
+_TABLAS_SUPERVISOR = {"agentes", "equipo_agentes"}
+
+
+def _exclude_efectivo(tabla: str, cfg: dict, current_user: dict,
+                      sub_supervisor: int | None = None) -> list[str]:
+    """exclude base de la tabla + PII de agentes si el llamador no es admin.
+    Un supervisor ve la PII de los agentes de SU gestión (la filtra _row_to_dict
+    por fila); el resto de los niveles nunca."""
     exclude = list(cfg.get("exclude", []))
-    if tabla == "agentes" and current_user.get("nivel_acceso") != 1:
+    if tabla == "agentes" and current_user.get("nivel_acceso") != 1 and sub_supervisor is None:
         exclude += _PII_AGENTES
     return exclude
+
+
+async def _subarea_supervisor(db: AsyncSession, current_user: dict) -> int | None:
+    """Subárea del agente vinculado al supervisor (nivel 2, regla 1:1 §39); None
+    para otros niveles o si no tiene subárea."""
+    if current_user.get("nivel_acceso") != 2:
+        return None
+    return await db.scalar(text(
+        "SELECT id_subarea FROM agentes WHERE id_usuario = :u AND activo = TRUE LIMIT 1"
+    ), {"u": current_user["id_usuario"]})
+
+
+def _filtrar_pii_supervisor(d: dict, sub: int | None) -> dict:
+    """Supervisor: PII solo de los agentes de su gestión."""
+    if sub is not None and d.get("id_subarea") != sub:
+        for col in _PII_AGENTES:
+            d.pop(col, None)
+    return d
+
+
+async def _autorizar_escritura(
+    db: AsyncSession, tabla: str, accion: str, current_user: dict,
+    *, id: int | None = None, body: dict | None = None,
+) -> dict | None:
+    """Admin: todo. Supervisor: solo el perfil laboral de los agentes de su
+    gestión (PUT agentes con cargo/legajo) y la pertenencia a equipos de su
+    gestión (alta/baja en equipo_agentes). Devuelve el body a aplicar (filtrado
+    para el supervisor) o 403/422."""
+    nivel = current_user.get("nivel_acceso", 99)
+    if nivel == 1:
+        return body
+    sub = await _subarea_supervisor(db, current_user)
+    if nivel != 2 or tabla not in _TABLAS_SUPERVISOR or sub is None:
+        raise HTTPException(status_code=403, detail="Acción exclusiva del administrador")
+
+    if tabla == "agentes":
+        if accion != "editar":
+            raise HTTPException(status_code=403, detail=(
+                "Un supervisor no da de alta ni de baja agentes: completá cargo, "
+                "horario y equipos de los agentes de tu gestión."))
+        ag_sub = await db.scalar(text(
+            "SELECT id_subarea FROM agentes WHERE id_agente = :id AND activo = TRUE"), {"id": id})
+        if ag_sub != sub:
+            raise HTTPException(status_code=403, detail="El agente pertenece a otra gestión.")
+        filtrado = {k: v for k, v in (body or {}).items() if k in _COLS_AGENTE_SUPERVISOR}
+        if not filtrado:
+            raise HTTPException(status_code=422, detail="Como supervisor solo podés cambiar cargo y legajo.")
+        return filtrado
+
+    # equipo_agentes: alta (body con id_equipo/id_agente) o baja (por id).
+    if accion == "editar":
+        raise HTTPException(status_code=403, detail="Para cambiar un equipo, sacá al agente y sumalo al nuevo.")
+    if accion == "crear":
+        id_equipo, id_agente = (body or {}).get("id_equipo"), (body or {}).get("id_agente")
+    else:
+        row = (await db.execute(text(
+            "SELECT id_equipo, id_agente FROM equipo_agentes WHERE id_equipo_agente = :id"), {"id": id})).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Registro {id} no encontrado en {tabla}")
+        id_equipo, id_agente = row.id_equipo, row.id_agente
+    eq_sub = await db.scalar(text("SELECT id_subarea FROM equipos WHERE id_equipo = :id AND activo = TRUE"),
+                             {"id": id_equipo})
+    ag_sub = await db.scalar(text("SELECT id_subarea FROM agentes WHERE id_agente = :id AND activo = TRUE"),
+                             {"id": id_agente})
+    if eq_sub != sub or ag_sub != sub:
+        raise HTTPException(status_code=403, detail="El equipo y el agente tienen que ser de tu gestión.")
+    return body
+
+
+async def _quitar_personales_si_ficha(db: AsyncSession, tabla: str, id: int, data: dict) -> dict:
+    """Agente vinculado a una ficha: sus datos personales no se editan acá."""
+    if tabla != "agentes":
+        return data
+    con_ficha = await db.scalar(text("""
+        SELECT u.id_ciudadano FROM agentes a JOIN usuarios u ON u.id_usuario = a.id_usuario
+        WHERE a.id_agente = :id
+    """), {"id": id})
+    if con_ficha is None:
+        return data
+    return {k: v for k, v in data.items() if k not in _COLS_PERSONALES_AGENTE}
 
 
 def _row_to_dict(row: Any, exclude: list[str]) -> dict:
@@ -257,12 +355,15 @@ async def listar(
 ):
     cfg = _get_config(tabla)
     pk = cfg["pk"]
-    exclude = _exclude_efectivo(tabla, cfg, current_user)
-    where = "WHERE activo = TRUE" if cfg.get("has_activo", True) else ""
-    stmt = text(f"SELECT * FROM {tabla} {where} ORDER BY {pk}")
+    sub = await _subarea_supervisor(db, current_user) if tabla == "agentes" else None
+    exclude = _exclude_efectivo(tabla, cfg, current_user, sub)
+    sel, frm, al = cfg.get("select", ("*", tabla, None))
+    pre = f"{al}." if al else ""
+    where = f"WHERE {pre}activo = TRUE" if cfg.get("has_activo", True) else ""
+    stmt = text(f"SELECT {sel} FROM {frm} {where} ORDER BY {pre}{pk}")
     result = await db.execute(stmt)
     rows = result.fetchall()
-    return [_row_to_dict(r, exclude) for r in rows]
+    return [_filtrar_pii_supervisor(_row_to_dict(r, exclude), sub) for r in rows]
 
 
 # ─── GET /{tabla}/{id} — obtener uno ──────────────────────────────────────────
@@ -276,13 +377,16 @@ async def obtener(
 ):
     cfg = _get_config(tabla)
     pk = cfg["pk"]
-    exclude = _exclude_efectivo(tabla, cfg, current_user)
-    stmt = text(f"SELECT * FROM {tabla} WHERE {pk} = :id")
+    sub = await _subarea_supervisor(db, current_user) if tabla == "agentes" else None
+    exclude = _exclude_efectivo(tabla, cfg, current_user, sub)
+    sel, frm, al = cfg.get("select", ("*", tabla, None))
+    pre = f"{al}." if al else ""
+    stmt = text(f"SELECT {sel} FROM {frm} WHERE {pre}{pk} = :id")
     result = await db.execute(stmt, {"id": id})
     row = result.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail=f"Registro {id} no encontrado en {tabla}")
-    return _row_to_dict(row, exclude)
+    return _filtrar_pii_supervisor(_row_to_dict(row, exclude), sub)
 
 
 # ─── POST /{tabla} — crear ────────────────────────────────────────────────────
@@ -292,10 +396,11 @@ async def crear(
     tabla: str,
     body: dict,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_admin),
+    current_user: dict = Depends(get_current_user),
 ):
     cfg = _get_config(tabla)
     _bloquear_si_read_only(tabla)
+    body = await _autorizar_escritura(db, tabla, "crear", current_user, body=body)
     allowed = cfg["cols"]
     exclude = cfg.get("exclude", [])
 
@@ -334,16 +439,18 @@ async def editar(
     id: int,
     body: dict,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_admin),
+    current_user: dict = Depends(get_current_user),
 ):
     cfg = _get_config(tabla)
     _bloquear_si_read_only(tabla)
+    body = await _autorizar_escritura(db, tabla, "editar", current_user, id=id, body=body)
     pk = cfg["pk"]
     allowed = cfg["cols"]
     fecha_mod = cfg["fecha_mod"]
     exclude = cfg.get("exclude", [])
 
     data = {k: v for k, v in body.items() if k in allowed}
+    data = await _quitar_personales_si_ficha(db, tabla, id, data)
     if not data:
         raise HTTPException(status_code=422, detail="No se recibieron campos válidos")
 
@@ -419,10 +526,11 @@ async def baja_logica(
     tabla: str,
     id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_admin),
+    current_user: dict = Depends(get_current_user),
 ):
     cfg = _get_config(tabla)
     _bloquear_si_read_only(tabla)
+    await _autorizar_escritura(db, tabla, "baja", current_user, id=id)
     pk = cfg["pk"]
     fecha_mod = cfg["fecha_mod"]
     if not cfg.get("has_activo", True):

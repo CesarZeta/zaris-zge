@@ -29,8 +29,9 @@ from app.schemas.buc import (
 from app.services.cuenta_vecino import asegurar_cuenta_vecino
 from app.services.cuenta_zaris import (
     MSG_FALTAN_DATOS_ZARIS, crear_cuenta_zaris_desde_ficha, crear_usuario_interno,
-    exigir_admin_funcionario,
+    exigir_admin_funcionario, sincronizar_agente_desde_ficha,
 )
+from app.services.notificaciones import notificar_agente_nuevo
 
 # Guard a nivel router: TODO endpoint del módulo BUC exige JWT válido (scope agente).
 # Esto cubre los GET de búsqueda/catálogo además de las mutaciones — ningún
@@ -214,6 +215,7 @@ async def crear_usuario(
     usuario = await crear_usuario_interno(db, data=data, background_tasks=background_tasks)
     await db.commit()
     await db.refresh(usuario)
+    await notificar_agente_nuevo(usuario.id_usuario, background_tasks=background_tasks)
     return usuario
 
 
@@ -237,6 +239,15 @@ async def modificar_usuario(
     campos_modificados = list(update_data.keys())
     for field, value in update_data.items():
         setattr(usuario, field, value)
+
+    # Gestión con una sola fuente: la del AGENTE, que es la que usa el scoping
+    # (§3). Si se cambia desde Usuarios, se escribe también en el agente 1:1
+    # (antes quedaban distintas — pendiente de ESTADO 2026-10-13).
+    if update_data.get("id_subarea") is not None:
+        await db.execute(text("""
+            UPDATE agentes SET id_subarea = :s, fecha_modificacion = NOW()
+             WHERE id_usuario = :id AND activo = TRUE
+        """), {"s": update_data["id_subarea"], "id": id})
 
     # Politica de renovacion (mig 96): un reset de password por admin tambien
     # reinicia el reloj de vigencia. UPDATE crudo porque el modelo ORM puede no
@@ -532,6 +543,8 @@ async def crear_ciudadano(
 
     await db.commit()
     await db.refresh(ciudadano)
+    if usuario_zaris is not None:
+        await notificar_agente_nuevo(usuario_zaris.id_usuario, background_tasks=background_tasks)
 
     logger.info(
         "ALTA ciudadano + cuenta vecino | id=%s | doc=%s %s | cuil=%s | nombre=%s %s | email=%s | usuario_zaris=%s",
@@ -619,6 +632,7 @@ async def crear_cuenta_zaris(
         db, ciudadano=ciudadano, data=data, admin=admin, background_tasks=background_tasks,
     )
     await db.commit()
+    await notificar_agente_nuevo(usuario.id_usuario, background_tasks=background_tasks)
     return CuentaZarisOut(
         id_usuario=usuario.id_usuario,
         username=usuario.username,
@@ -774,13 +788,18 @@ async def modificar_ciudadano(
             elif es_admin:
                 raise HTTPException(status_code=422, detail=MSG_FALTAN_DATOS_ZARIS)
 
+    # La ficha es la única fuente de los datos personales del agente (2026-10-20).
+    agentes_sync = await sincronizar_agente_desde_ficha(db, ciudadano)
+
     await db.commit()
     await db.refresh(ciudadano)
+    if usuario_zaris is not None:
+        await notificar_agente_nuevo(usuario_zaris.id_usuario, background_tasks=background_tasks)
 
     logger.info(
-        "MODIFICACION ciudadano | id=%s | cuil=%s | campos=%s | por=%s | cuenta_vecino_creada=%s | usuario_zaris=%s",
+        "MODIFICACION ciudadano | id=%s | cuil=%s | campos=%s | por=%s | cuenta_vecino_creada=%s | usuario_zaris=%s | agente_sync=%s",
         ciudadano.id_ciudadano, ciudadano.cuil, campos_modificados, current_user.get("id_usuario"),
-        cuenta_vecino_creada, getattr(usuario_zaris, "username", None),
+        cuenta_vecino_creada, getattr(usuario_zaris, "username", None), agentes_sync,
     )
     return ciudadano
 

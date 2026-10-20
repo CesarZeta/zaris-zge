@@ -46,6 +46,29 @@ def exigir_admin_funcionario(current_user: dict) -> None:
         raise HTTPException(status_code=403, detail=MSG_SOLO_ADMIN_FUNCIONARIO)
 
 
+async def sincronizar_agente_desde_ficha(db: AsyncSession, ciudadano: Ciudadano) -> int:
+    """La ficha del ciudadano es la ÚNICA fuente de los datos personales del agente
+    (César 2026-10-20): cada guardado de la ficha los copia al agente vinculado
+    (agentes.id_usuario → usuarios.id_ciudadano). Antes se copiaban una sola vez al
+    crear la cuenta y quedaban viejos. El DNI solo si el documento es DNI (igual
+    que el alta). NO commitea. Devuelve los agentes actualizados (0 o 1)."""
+    res = await db.execute(text("""
+        UPDATE agentes a
+           SET nombre = :nombre, apellido = :apellido,
+               dni = CASE WHEN CAST(:doc_tipo AS text) = 'DNI' THEN :doc_nro ELSE a.dni END,
+               cuil = :cuil, email = :email, telefono = :telefono,
+               fecha_modificacion = NOW()
+          FROM usuarios u
+         WHERE u.id_usuario = a.id_usuario AND u.id_ciudadano = :id AND a.activo = TRUE
+    """), {
+        "id": ciudadano.id_ciudadano,
+        "nombre": ciudadano.nombre or "", "apellido": ciudadano.apellido or "",
+        "doc_tipo": ciudadano.doc_tipo, "doc_nro": ciudadano.doc_nro,
+        "cuil": ciudadano.cuil, "email": ciudadano.email, "telefono": ciudadano.telefono,
+    })
+    return res.rowcount or 0
+
+
 async def crear_cuenta_zaris_desde_ficha(
     db: AsyncSession,
     *,
