@@ -79,6 +79,17 @@ POST /api/v1/reclamos/{id}/auditoria       → enviar un Resuelto a auditoría (
                                              es_auditoria (id_ot_origen = última OT operativa Terminada) → 201 {id_ot, nro_ot}
 ```
 
+### Tomar y resolver desde Reclamos + resolución que ve el vecino (mig 117, César 2026-10-21)
+
+Para municipios chicos donde el agente se autogestiona:
+- **`POST /reclamos/{id}/tomar`** (201): Gestión (4), Supervisor (2) y Admin; reclamo `Sin asignar` sin OT operativa abierta, de la **gestión del agente** del usuario (admin: cualquiera). Crea la OT a nombre del agente de quien toma (`id_supervisor_asigna` = quien toma si es 1/2, NULL si es 4), pasa el reclamo a `En gestión`, historial «Reclamo tomado por …», aviso al vecino. `FOR UPDATE` sobre el reclamo: el segundo que toma recibe **409**.
+- **`POST /reclamos/{id}/resolver`** body `{resolucion}` (5-2000 caracteres, obligatoria): quien tiene la OT (agente o integrante del equipo de la OT), la supervisión de la gestión o el admin. Termina las OT operativas abiertas (`_terminar_ots_operativas`), resuelve el reclamo (`_resolver_reclamo` con la resolución), encuesta + aviso. Si está `Sin asignar` es el cierre directo de la supervisión. 422 con subreclamos vivos.
+- Las reglas viven en `_acciones_reclamo` (reclamos.py), que también arma `acciones: {tomar, resolver}` en `GET /reclamos/{id}` para los botones del detalle. El listado muestra «Tomar» en los `Sin asignar` de la gestión del usuario (`user.id_subarea` = la del agente) y oculta «+ Nuevo reclamo» a niveles 4-5.
+- **`reclamos.resolucion`** la escriben `/resolver`, `PUT /{id}/estado` a Resuelto (campo `resolucion`) y **terminar la OT** (`PUT /ot/{id}/estado` Terminada: sus `observaciones` son la resolución). Va también como nota del paso «Resuelto» del historial.
+- **Lo que ve el vecino** (`publico_reclamos.py`): `resolucion` en el detalle y, en el historial, SOLO la nota del paso `Resuelto` igual a la resolución (más el texto genérico del retrabajo); ya no recibe `observaciones` ni las notas internas (reasignaciones con nombres de agentes, notas de supervisión). El aviso de cierre (`notificar_estado_reclamo`) dice «Resuelto: <resolución>».
+- **Bug corregido el mismo día:** la `nota` de `PUT /{id}/estado` pisaba `reclamos.observaciones` (las del alta) y le llegaba al vecino; ahora la nota es interna (solo historial). A Resuelto por esa vía también termina la OT abierta (antes quedaba `En gestión`).
+- Smoke local 22/22 + verificado en prod (REC-2026-002927, Gestión de Alumbrado: tomar → OT a su nombre → resolver → aviso al vecino).
+
 ### Edición de reclamos — alcance por estado
 
 `PUT /reclamos/{id}` aplica una allowlist de campos según el estado actual del reclamo (helper `_require_gestion` exige `nivel_acceso ∈ {1,2,3}`):

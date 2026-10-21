@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-10-21 (Cesar). Arreglo de seguridad del CRUD genérico de Maestros (detalle en la memoria privada); mesa del supervisor con **fecha de ingreso** (en lugar del ciudadano) y botón **PLANIFICAR** en «Ver»; **los reclamos ya no se agendan** (decisión de César: la agenda es solo para turnos): el planificador es agente/equipo → «Crear OT», auto-asignar y la autoasignación por gestión eligen por menor carga y rotación sin horarios, y la Agenda ya no crea ocupaciones de OT; **mig 115**: baja de «Emergencia Climática» (sus 22 tipos a la gestión parecida, árboles y ramas a Arbolado).
+**Última actualización:** 2026-10-21 (Cesar, sesión larga). Seguridad del CRUD genérico de Maestros y de la lectura de cuentas (detalle en la memoria privada); mesa del supervisor con **fecha de ingreso** y **PLANIFICAR** en «Ver»; **los reclamos ya no se agendan** (la agenda es solo para turnos; asignación por menor carga y rotación); **mig 115** baja de «Emergencia Climática»; **mig 116** una sola gestión y email por persona (la del agente); **mig 117 + Tomar/Resolver desde Reclamos** con la resolución que ve el vecino (y el vecino deja de ver notas internas); **mig 118** ficha demo en la BUC para los 91 funcionarios sin ficha; **privacidad:** `Tablas Iniciales/agente.csv` (datos personales reales) fuera del repo y del historial (2ª purga, mapa `docs/commit-map-purga-2026-10-21.txt`: los SHA desde mayo cambiaron). En curso: generador de datos demo (cierres dentro/fuera de SLA, trámites, OT, cron diario).
 
 ---
 
@@ -21,8 +21,9 @@
 1. ✅ Seguridad del 2026-10-21: la parte (a) está en prod y verificada; la parte (b) **la descartó César** (no se hace, no re-proponer).
 2. ✅ Subárea usuario ≠ agente: **resuelto 2026-10-21** (mig 116 + el cierre de reclamos lee la gestión del agente).
 3. **Autoasignación:** ya NO necesita horarios (2026-10-21). ¿En qué gestiones la prendo (Maestros → Subáreas)?
-4. **Funcionario de prueba:** REC-2026-003079 (ramas) ahora está en Arbolado y sin asignar: ¿se lo asigno al funcionario de prueba desde la mesa para confirmar que el push llega?
-5. **92 agentes viejos sin ficha:** ¿los vinculo automáticamente por email/DNI donde coincidan y el resto a mano?
+4. **Funcionario de prueba:** César asigna REC-2026-003079 (Arbolado, sin asignar) al funcionario de prueba desde la mesa (Ver → PLANIFICAR) y confirma si el push llega. Yo no tengo credenciales de un supervisor de Arbolado (y no se prueban claves).
+5. ✅ Agentes sin ficha: **resuelto 2026-10-21** (mig 118, fichas demo; 0 personas sin ficha).
+5c. **PWA del vecino:** la resolución ya le llega como nota del paso «Resuelto» del historial (sin cambiar la PWA). ¿Querés además un recuadro «Resolución» destacado en el detalle del reclamo de la app?
 6. **Orden por columnas F2** (trámites, turnos, entradas) **y F3** (resto): ¿avanzo?
 7. **Links de los mails de notificación** abren el inicio en vez del trámite/reclamo (el shell ignora el `#/…`): ¿lo arreglo?
 8. **Super administrador multi-municipio (IT-01):** ¿cuándo arrancamos el diseño?
@@ -74,6 +75,8 @@
 ---
 
 ## ✅ Hecho reciente (últimas sesiones)
+
+- **2026-10-21 (tarde) — Tomar/Resolver desde Reclamos + resolución para el vecino (mig 117), coherencia de cuentas (migs 116 y 118), purga de `agente.csv`.** Smokes 22/22 y 5/5 en local; Tomar → Resolver verificado en prod con un Gestión de Alumbrado (REC-2026-002927).
 
 - **2026-10-21 — Seguridad del CRUD de Maestros (`f90b894`); mesa del supervisor con fecha y PLANIFICAR en «Ver» (`bcb1b13`, `bd69fe2`); reclamos sin agenda + mig 115 (`fdca998`).** Smokes 38/38 y 11/11 en local; seguridad y mesa verificadas en prod (API + navegador).
 - **2026-10-20 (4ª, noche) — Ficha → agente, supervisor en Maestros → Agentes (mig 113), aviso «agente nuevo»; autoasignación (mig 114).** Smokes 16/16 y 7/7; en prod salvo el backend de la autoasignación (pregunta 2).
