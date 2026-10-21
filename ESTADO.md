@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-10-21 (Cesar, sesión larga). Seguridad del CRUD genérico de Maestros y de la lectura de cuentas (detalle en la memoria privada); mesa del supervisor con **fecha de ingreso** y **PLANIFICAR** en «Ver»; **los reclamos ya no se agendan** (la agenda es solo para turnos; asignación por menor carga y rotación); **mig 115** baja de «Emergencia Climática»; **mig 116** una sola gestión y email por persona (la del agente); **mig 117 + Tomar/Resolver desde Reclamos** con la resolución que ve el vecino (y el vecino deja de ver notas internas); **mig 118** ficha demo en la BUC para los 91 funcionarios sin ficha; **privacidad:** `Tablas Iniciales/agente.csv` (datos personales reales) fuera del repo y del historial (2ª purga, mapa `docs/commit-map-purga-2026-10-21.txt`: los SHA desde mayo cambiaron). **Generador de datos demo renovado y corrido en prod:** cierres 60-85 % dentro del SLA por mes, OT operativas para cada reclamo gestionado, generador de **trámites**, cron **diario** (datos hasta ayer, sin duplicar) y `modo=cerrar_atraso`: se cerraron los 24 trámites y 14 emergencias viejos (seed/QA) y 53 reclamos demo atrasados, con 2.701 OT históricas y reequilibrio de SLA en abril/julio/agosto.
+**Última actualización:** 2026-10-21 (Cesar, sesión larga). Seguridad de Maestros y de la lectura de cuentas; reclamos sin agenda (asignación por menor carga); Tomar/Resolver desde Reclamos con la resolución que ve el vecino (migs 115-118: baja de «Emergencia Climática», coherencia usuario/agente/ficha); `agente.csv` con datos reales fuera del repo y del historial (2ª purga: los SHA desde mayo cambiaron, mapa en `docs/`); generador de datos demo con SLA 60-85 %, trámites, OT y cron diario, corrido en prod (abril-octubre entre 60,4 % y 77,6 % dentro del SLA).
 
 ---
 
@@ -20,11 +20,13 @@
 
 1. ✅ Seguridad del 2026-10-21: la parte (a) está en prod y verificada; la parte (b) **la descartó César** (no se hace, no re-proponer).
 2. ✅ Subárea usuario ≠ agente: **resuelto 2026-10-21** (mig 116 + el cierre de reclamos lee la gestión del agente).
-3. **Autoasignación:** ya NO necesita horarios (2026-10-21). ¿En qué gestiones la prendo (Maestros → Subáreas)?
+3. **Autoasignación:** ya NO necesita horarios y elige por menor carga (2026-10-21). ¿En qué gestiones la prendo (Maestros → Subáreas)? *Recomendación:* empezar por Alumbrado Público (tiene agentes de Gestión y reclamos sin asignar) y mirar una semana.
 4. **Funcionario de prueba:** César asigna REC-2026-003079 (Arbolado, sin asignar) al funcionario de prueba desde la mesa (Ver → PLANIFICAR) y confirma si el push llega. Yo no tengo credenciales de un supervisor de Arbolado (y no se prueban claves).
 5. ✅ Agentes sin ficha: **resuelto 2026-10-21** (mig 118, fichas demo; 0 personas sin ficha).
-5b. **34 reclamos viejos abiertos que NO son del generador** (QA de abril-agosto y vecinos de prueba con cuenta, `@zaris.com.ar`/gmail): el cierre del atraso los dejó como estaban. Entre ellos REC-2026-000058/059, que `docs/guion_demo_reclamos_ot.html` usa «congelados en el paso 8». ¿Los cierro también (salvo los del guion), o se quedan?
-5c. **PWA del vecino:** la resolución ya le llega como nota del paso «Resuelto» del historial (sin cambiar la PWA). ¿Querés además un recuadro «Resolución» destacado en el detalle del reclamo de la app?
+5b. **34 reclamos viejos abiertos que NO son del generador** (QA de abril-agosto y vecinos de prueba con cuenta, `@zaris.com.ar`/gmail): el cierre del atraso los dejó como estaban. Entre ellos REC-2026-000058/059, que `docs/guion_demo_reclamos_ot.html` usa «congelados en el paso 8». ¿Los cierro también (salvo los del guion), o se quedan? *Recomendación:* cerrarlos salvo 058/059 (`modo=cerrar_atraso` no excluye ids: hacerlo con una corrida acotada o por SQL replicando el plan).
+5c. **PWA del vecino:** la resolución ya le llega como nota del paso «Resuelto» del historial (sin cambiar la PWA). ¿Querés además un recuadro «Resolución» destacado en el detalle del reclamo de la app? *Recomendación:* sí (cambio chico en `zaris-vecinos`, el backend ya manda `resolucion`).
+5d. **Encuesta de mayo trabada:** el envío #6 (reclamo 35) sigue `pendiente` desde el 2026-05-25 y el despachador nunca lo mandó. *Recomendación:* revisar por qué (¿falta de email válido? ¿delay?) y cerrarla o mandarla.
+5e. **Commits viejos de la purga del 2026-10-21:** GitHub los conserva accesibles por SHA directo hasta que su soporte los borre. *Recomendación:* pedirlo (detalle en la memoria privada de Cesar).
 6. **Orden por columnas F2** (trámites, turnos, entradas) **y F3** (resto): ¿avanzo?
 7. **Links de los mails de notificación** abren el inicio en vez del trámite/reclamo (el shell ignora el `#/…`): ¿lo arreglo?
 8. **Super administrador multi-municipio (IT-01):** ¿cuándo arrancamos el diseño?
@@ -48,11 +50,10 @@
 ## 🟠 Pendientes (backoffice / backend)
 
 **Próxima sesión — prueba de las apps (César)**
-- 🟡 **Perfiles de prueba** (emails en la memoria privada de Cesar, NO acá — archivo público): **(b) vecino HECHO el 2026-10-12** (autoregistro → mail → verificación → portal → aviso de emergencia EM-2026-000223 en el COM; el botón de pánico «Seguridad» no se probó, dispara una alerta REAL). **(a) funcionario: EN CURSO** — alta, mail, login y cambio de clave hechos el 2026-10-20; falta el push (ver En curso). Guías: `manual_alta_ciudadanos.html` §4 y `manual_app_agentes.html`.
-- 🟢 **Autoasignación HECHA (mig 114, 2026-10-20; sin horarios desde 2026-10-21) — falta que César la prenda.** Se activa por gestión en Maestros → Subáreas («Asignación automática de reclamos»); a quién (agente/cuadrilla), en Maestros → Tipos de reclamo. Elige al de menor carga y rotación; sin agentes/cuadrillas que puedan recibirla, deja aviso al supervisor. Reglas en la skill `modulo-ot`.
+- 🟡 **Perfiles de prueba** (emails en la memoria privada de Cesar): vecino HECHO (2026-10-12; el botón de pánico no se probó, dispara una alerta REAL); funcionario: falta el push (ver En curso).
 - 🟢 **Retirar `GET /ot/slots-recurso`, `POST /ot/con-agenda` y `services/ot_slots.py`** (sin uso desde 2026-10-21, quedaron por compatibilidad con el bundle anterior) en una sesión posterior, verificando antes que ningún cliente los llame.
-- 🟠 **DECIDIDO (cuestionario 2026-10-20) — circuito funcionario → agente HECHO (a-c), autoasignación (d) HECHA (ítem anterior).** (a) Datos personales del agente: **solo de la ficha** (sync al guardar; solo lectura en Maestros → Agentes salvo agentes viejos sin ficha) — HECHO. (b) Puesto = cargo (sin campo nuevo). (c) Cargo, horario y equipo los completa el **supervisor en Maestros → Agentes**, solo para su gestión (mig 113 `agentes_gestion`), con sección «Equipos» en el perfil; aviso «agente nuevo» a los supervisores — HECHO. Falta: vincular los 92 agentes viejos a su ficha. (d) **Autoasignación por gestión** (tilde en la subárea, mig 113): candidatos nivel 4 + cuadrillas con integrantes, disponibilidad → menor carga → rotación; si un día está completo pasa al siguiente (horizonte 30 días, criterio de Claude); sin hueco → Sin asignar + aviso al supervisor; agente o cuadrilla según `tipo_reclamo.asignacion_a`. (e) **Super administrador multi-municipio** que crea los admins de cada municipio → va con IT-01. Hecho el mismo día: destinatario de OT validado, aviso a la cuadrilla, campana en la app de agentes, mesa del supervisor rediseñada y orden por columnas (F1). Hallazgos que siguen valiendo: el agente no se resincroniza con la ficha (92/93 sin DNI, nacieron por Maestros → Usuarios o seed); Maestros → Agentes es solo admin y oculta DNI/CUIL/email/teléfono a otros niveles; solo 14/93 agentes y 1/7 cuadrillas tienen horario; `ordenes_trabajo.id_supervisor_asigna` es NOT NULL; `tipo_reclamo.asignacion_a`/`duracion_estimada_min` existen sin uso.
-- 🟢 **Subárea del funcionario: RESUELTO 2026-10-20** — una sola fuente, la del agente (Usuarios la copia al agente). Queda el drift: FK `usuarios.id_subarea`/`agentes.id_subarea` → `subarea` en local y NO en prod (candidata a mig 115+).
+- 🟢 **Circuito funcionario → agente: HECHO (2026-10-20/21).** Datos personales solo de la ficha; cargo/horario/equipo los completa el supervisor de la gestión (mig 113); una sola gestión y email por persona, la del agente (mig 116); toda persona con usuario tiene ficha (mig 118, fichas demo con DNI 99.000.000 + id_agente). Ojo: guardar una de esas fichas por la API crea la cuenta de App Vecinos y manda la activación al email de la cuenta (`@municipio.gob.ar`, que no existe). Pendiente de IT-01: el super administrador multi-municipio.
+- 🟢 **Drift de FK:** `usuarios.id_subarea`/`agentes.id_subarea` → `subarea` existe en local y NO en prod (candidata a mig 119+).
 
 **Decisiones de negocio pendientes (César)**
 - 🟢 **Alta — huecos menores detectados en la revisión 2026-10-10:** la clave temporal del funcionario no vence si nunca la usa; la app de agentes no tiene «olvidé mi contraseña» (hoy se recupera desde el login del backoffice, link 24 h). El vecino NO recibe clave por mail (elige la suya por link) — recomendado mantenerlo.
@@ -70,24 +71,21 @@
 - **São Paulo DESCARTADO (César, 2026-09-26, con medición):** Railway ya está co-locado con Supabase `us-east-1` y no ofrece región en Sudamérica. Detalle en CLAUDE.md §9 «Región».
 - **"La ubicación" de Buscar actualizaciones (PWA) CERRADA como innecesaria** (2026-09-26): el service worker con `autoUpdate` alcanza.
 - `DISPATCHER_TOKEN` no se rota (César 2026-09-06). El vecino NO cambia su email desde la app (2026-08-30).
-- Purga del historial git HECHA el 2026-09-20 (mapa en `docs/commit-map-purga-2026-09-20.txt`).
+- Purgas del historial git HECHAS el 2026-09-20 y el 2026-10-21 (mapas en `docs/commit-map-purga-*.txt`; un SHA viejo que no resuelve se busca ahí). Roy tiene que re-clonar.
+- Claves de las notificaciones push: **no se rotan** (César, 2026-10-21).
+- Los reclamos **no se agendan**: la agenda es solo para turnos (César, 2026-10-21).
 - Fase 3 de roles (mig 92) y la auditoría de seguridad 2026-07 (48/48) COMPLETAS.
 
 ---
 
 ## ✅ Hecho reciente (últimas sesiones)
 
+- **2026-10-21 (noche) — Generador de datos demo con SLA, trámites, OT y cron diario; corrido en prod.** Smoke 44/44 re-verificado; resultado por SQL en «Última actualización».
 - **2026-10-21 (tarde) — Tomar/Resolver desde Reclamos + resolución para el vecino (mig 117), coherencia de cuentas (migs 116 y 118), purga de `agente.csv`.** Smokes 22/22 y 5/5 en local; Tomar → Resolver verificado en prod con un Gestión de Alumbrado (REC-2026-002927).
-
 - **2026-10-21 — Seguridad del CRUD de Maestros (`f90b894`); mesa del supervisor con fecha y PLANIFICAR en «Ver» (`bcb1b13`, `bd69fe2`); reclamos sin agenda + mig 115 (`fdca998`).** Smokes 38/38 y 11/11 en local; seguridad y mesa verificadas en prod (API + navegador).
 - **2026-10-20 (4ª, noche) — Ficha → agente, supervisor en Maestros → Agentes (mig 113), aviso «agente nuevo»; autoasignación (mig 114).** Smokes 16/16 y 7/7; en prod salvo el backend de la autoasignación (pregunta 2).
 - **2026-10-20 (4ª, tarde) — Destinatario de OT validado, aviso a la cuadrilla, mesa del supervisor, orden por columnas F1, `/avisos` en la app de agentes.** Smoke 9/9 + navegador; en prod.
-- **2026-10-20 (3ª) — Reclamos «Ver pendientes» + búsqueda de Ciudadanos por lo escrito (`0595eb5`, `2a8915f`, en prod).** `GET /reclamos?pendientes=true` (incluye En auditoría, decisión de César); la búsqueda de Ciudadanos decide nombre vs DNI/CUIL por lo escrito.
-- **2026-10-20 (2ª) — Auditoría F4: resultado + retrabajo visible + mail (`b5ab13a`, PWA `9a98775`, en prod).** Detalle en `PLAN_AUDITORIA_RECLAMOS.md` (F4).
-- **2026-10-20 — Auditoría de reclamos POSTERIOR al cierre (mig 112, `a42fb3e` + `f378f04`, en prod).** Estados `En auditoría`/`Auditado`, `POST /reclamos/{id}/auditoria`, aprobar/observar, inicio/BI con la semántica nueva, generador demo + backfill en prod (181 auditorías, 32 retrabajos).
-
-- **2026-10-19 — Municipio demo San Andrés en el mapa del inicio (mig 111).** Contorno + máscara exterior, encuadre por zonas libres, generador demo con San Isidro. Detalle en `HISTORIAL_MIGRACIONES.md`.
-- **2026-10-13 — Cuentas al guardar la ficha, sin botón ni modal.** Reglas en la skill `modulo-usuarios`.
+- **2026-10-20 — Auditoría de reclamos POSTERIOR al cierre (migs 112, F1-F4) y «Ver pendientes».** Detalle en `PLAN_AUDITORIA_RECLAMOS.md`.
 
 > Detalle por migración en `HISTORIAL_MIGRACIONES.md`; reglas de cada módulo en su skill; lo anterior a septiembre (julio-agosto 2026: auditoría de seguridad 48/48, migs 95-102, BI Operativo/Ejecutivo, PWA de Roy a prod, Usuarios en React) en `HISTORIAL_MIGRACIONES.md` y la memoria privada de César.
 
