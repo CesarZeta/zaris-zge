@@ -175,7 +175,7 @@ async def notificar_estado_reclamo(id_reclamo: int) -> None:
     try:
         async with AsyncSessionLocal() as db:
             r = (await db.execute(text("""
-                SELECT nro_reclamo, estado, id_ciudadano
+                SELECT nro_reclamo, estado, id_ciudadano, resolucion
                 FROM reclamos WHERE id_reclamo = :id
             """), {"id": id_reclamo})).mappings().first()
         if not r or not r["id_ciudadano"]:
@@ -185,14 +185,19 @@ async def notificar_estado_reclamo(id_reclamo: int) -> None:
         id_c = int(r["id_ciudadano"])
         titulo = f"Tu reclamo {r['nro_reclamo'] or ''}".strip()
         cuerpo = f"Cambio de estado: {r['estado']}."
+        resolucion = (r["resolucion"] or "").strip()
+        if r["estado"] == "Resuelto" and resolucion:
+            # La resolución que escribió quien lo cerró (mig 117, César 2026-10-21).
+            cuerpo = f"Resuelto: {resolucion}"
         url = f"/reclamos/{id_reclamo}"
         # Bandeja persistente (mig 99) ANTES del push: queda aunque no haya
         # suscripcion. Mismo texto/URL que la notificacion.
         await registrar_aviso_ciudadano(
-            id_c, "reclamo_estado", titulo, cuerpo, url,
+            id_c, "reclamo_estado", titulo, cuerpo[:1000], url,
             recurso_tipo="reclamo", recurso_id=id_reclamo,
         )
-        await enviar_push_ciudadano(id_c, titulo=titulo, cuerpo=cuerpo, url=url)
+        corto = cuerpo if len(cuerpo) <= 180 else cuerpo[:177] + "…"
+        await enviar_push_ciudadano(id_c, titulo=titulo, cuerpo=corto, url=url)
     except Exception as e:  # noqa: BLE001
         logger.warning("notificar_estado_reclamo(%s) fallo: %s", id_reclamo, e)
 

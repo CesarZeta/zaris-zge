@@ -268,6 +268,79 @@ async def desbloquear_padre_si_corresponde(db: AsyncSession, id_hijo: int, id_us
     )
 
 
+# ── Tomar / resolver desde Reclamos (César 2026-10-21) ──────────────────────
+# En un municipio chico el agente de Gestión (4) se autogestiona: entra a
+# Reclamos, toma los pendientes de su gestión y los resuelve escribiendo la
+# resolución que ve el vecino. El supervisor (2) también toma y resuelve desde
+# acá. Gestión = la del AGENTE (§3). El admin (1) opera sobre cualquiera.
+NIVELES_TOMAN = {1, 2, 4}
+
+
+async def _subarea_tipo(db: AsyncSession, id_tipo_reclamo) -> Optional[int]:
+    if id_tipo_reclamo is None:
+        return None
+    return await db.scalar(text(
+        "SELECT id_subarea FROM tipo_reclamo WHERE id_tipo_reclamo = :t"), {"t": id_tipo_reclamo})
+
+
+async def _ots_operativas_abiertas(db: AsyncSession, id_reclamo: int) -> list:
+    return (await db.execute(text("""
+        SELECT ot.id_ot, ot.nro_ot, ot.id_agente, ot.id_equipo, eo.nombre AS estado
+        FROM ordenes_trabajo ot
+        JOIN estado_ot eo ON eo.id_estado_ot = ot.id_estado
+        WHERE ot.id_reclamo = :id AND ot.activo = TRUE AND NOT ot.es_auditoria
+          AND NOT eo.es_final
+        ORDER BY ot.id_ot
+    """), {"id": id_reclamo})).fetchall()
+
+
+async def _acciones_reclamo(db: AsyncSession, r, current_user: dict) -> dict:
+    """Qué puede hacer el usuario con este reclamo desde Reclamos: `tomar` y
+    `resolver`, con el motivo si no. Las mismas reglas que imponen los endpoints
+    (la UI solo las refleja). `r` trae estado, id_tipo_reclamo e id_reclamo."""
+    nivel = current_user.get("nivel_acceso", 99)
+    if nivel not in NIVELES_TOMAN:
+        return {"tomar": False, "resolver": False}
+    perfil = await resolver_agente_desde_usuario(current_user["id_usuario"], db)
+    mi_agente = perfil.get("id_agente") if perfil else None
+    mi_sub = perfil.get("id_subarea") if perfil else None
+    sub_tipo = await _subarea_tipo(db, r.id_tipo_reclamo)
+    misma_gestion = nivel == 1 or (mi_sub is not None and mi_sub == sub_tipo)
+    ots = await _ots_operativas_abiertas(db, r.id_reclamo)
+
+    tomar = (r.estado == "Sin asignar" and not ots and mi_agente is not None and misma_gestion)
+
+    resolver = False
+    if r.estado == "Sin asignar" and not ots:
+        # Cierre directo sin OT: supervisión de la gestión (o admin).
+        resolver = nivel in (1, 2) and misma_gestion
+    elif r.estado == "En gestión":
+        if nivel in (1, 2):
+            resolver = misma_gestion
+        elif mi_agente is not None and ots:
+            mis_equipos = {x.id_equipo for x in (await db.execute(text(
+                "SELECT id_equipo FROM equipo_agentes WHERE id_agente = :a AND activo = TRUE"),
+                {"a": mi_agente})).fetchall()}
+            resolver = any(o.id_agente == mi_agente or (o.id_agente is None and o.id_equipo in mis_equipos)
+                           for o in ots)
+    return {"tomar": tomar, "resolver": resolver}
+
+
+async def _terminar_ots_operativas(db: AsyncSession, id_reclamo: int,
+                                   resolucion: Optional[str], id_usuario: int) -> None:
+    """Al resolver el reclamo, sus OT operativas abiertas pasan a Terminada (antes
+    el reclamo podía quedar Resuelto con la OT 'En gestión'). NO commitea."""
+    await db.execute(text("""
+        UPDATE ordenes_trabajo ot
+        SET id_estado = (SELECT id_estado_ot FROM estado_ot WHERE nombre = 'Terminada' AND activo = TRUE LIMIT 1),
+            fecha_cierre = NOW(), fecha_modificacion = NOW(),
+            observaciones = COALESCE(:res, ot.observaciones),
+            id_usuario_modificacion = :uid
+        WHERE ot.id_reclamo = :id AND ot.activo = TRUE AND NOT ot.es_auditoria
+          AND ot.id_estado IN (SELECT id_estado_ot FROM estado_ot WHERE NOT es_final)
+    """), {"id": id_reclamo, "res": resolucion, "uid": id_usuario})
+
+
 # ── GET /reclamos/stats ──────────────────────────────────────────────────────
 
 @router.get("/stats")
@@ -496,7 +569,7 @@ async def obtener_reclamo(
     result = await db.execute(text("""
         SELECT
             r.id_reclamo, r.nro_reclamo, r.prioridad, r.estado,
-            r.descripcion, r.domicilio_reclamo, r.direccion, r.observaciones,
+            r.descripcion, r.domicilio_reclamo, r.direccion, r.observaciones, r.resolucion,
             r.fecha_alta, r.fecha_modificacion,
             r.fecha_primer_asignacion, r.fecha_cierre, r.sla_vencimiento,
             r.fecha_inicio_auditoria, r.fecha_fin_auditoria, r.resultado_auditoria,
@@ -557,7 +630,7 @@ async def obtener_reclamo(
     # OTs activas del reclamo
     ot_result = await db.execute(text("""
         SELECT ot.id_ot, ot.nro_ot, ot.es_auditoria, ot.resultado_auditoria,
-               ot.fecha_creacion, ot.fecha_cierre, ot.observaciones,
+               ot.fecha_creacion, ot.fecha_cierre, ot.observaciones, ot.id_agente, ot.id_equipo,
                eot.nombre AS estado_nombre, eot.color AS estado_color,
                ag.nombre AS agente_nombre, ag.apellido AS agente_apellido,
                eq.nombre AS equipo_nombre
@@ -578,6 +651,9 @@ async def obtener_reclamo(
         ORDER BY fecha_alta ASC
     """), {"id": id_reclamo})
     d["subreclamos"] = [_to_dict(r) for r in sub_result.fetchall()]
+
+    # Botones Tomar / Resolver del detalle (2026-10-21): mismas reglas que los endpoints.
+    d["acciones"] = await _acciones_reclamo(db, row, current_user)
 
     return d
 
@@ -795,6 +871,14 @@ async def cambiar_estado(
             )
 
     nota = body.get("nota", "")
+    # Resolución (mig 117): la ve el vecino. La nota del cambio de estado es
+    # interna y queda solo en el historial — hasta el 2026-10-21 PISABA las
+    # observaciones del alta, que además le llegaban al vecino.
+    resolucion = (body.get("resolucion") or "").strip() or None
+    if resolucion and nuevo_estado != "Resuelto":
+        raise HTTPException(status_code=422, detail="La resolución solo se escribe al pasar a 'Resuelto'.")
+    if resolucion and len(resolucion) > 2000:
+        raise HTTPException(status_code=422, detail="La resolución no puede superar los 2000 caracteres.")
 
     # fecha_cierre se setea al pasar a un estado final (§22). Para estados no
     # finales queda en NULL (CASE evita pisarla en transiciones intermedias).
@@ -806,18 +890,21 @@ async def cambiar_estado(
     await db.execute(text("""
         UPDATE reclamos
         SET estado = :estado, fecha_modificacion = NOW(),
-            observaciones = COALESCE(:obs, observaciones),
+            resolucion = COALESCE(:res, resolucion),
             id_usuario_modificacion = :uid,
             fecha_cierre = CASE WHEN :es_final THEN NOW() ELSE fecha_cierre END,
             fecha_primer_asignacion = CASE WHEN :es_gestion
                 THEN COALESCE(fecha_primer_asignacion, NOW()) ELSE fecha_primer_asignacion END
         WHERE id_reclamo = :id
-    """), {"estado": nuevo_estado, "id": id_reclamo, "obs": nota or None,
+    """), {"estado": nuevo_estado, "id": id_reclamo, "res": resolucion,
            "uid": current_user["id_usuario"], "es_final": es_final,
            "es_gestion": es_primera_gestion})
 
+    if nuevo_estado == "Resuelto":
+        await _terminar_ots_operativas(db, id_reclamo, resolucion, current_user["id_usuario"])
+
     await _insertar_historial(db, id_reclamo, f"Cambio de estado a {nuevo_estado}",
-                               estado_anterior, nuevo_estado, nota,
+                               estado_anterior, nuevo_estado, resolucion or nota,
                                current_user["id_usuario"])
 
     # Si este reclamo es un subreclamo y acaba de cerrarse, desbloquear el padre
@@ -845,6 +932,129 @@ async def cambiar_estado(
     await svc_push.notificar_estado_reclamo(id_reclamo)
 
     return {"ok": True, "id_reclamo": id_reclamo, "estado": nuevo_estado}
+
+
+# ── POST /reclamos/{id}/tomar — el agente/supervisor toma el reclamo ─────────
+
+@router.post("/{id_reclamo}/tomar", status_code=201,
+             responses={403: {"description": "Toman reclamos Gestión, Supervisor y Admin, de su propia gestión"},
+                        409: {"description": "El reclamo ya no está sin asignar (otro lo tomó)"}})
+async def tomar_reclamo(
+    id_reclamo: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Crea la OT del reclamo a nombre de quien lo toma (su agente) y lo pasa a
+    'En gestión'. Para municipios chicos donde el agente se autogestiona
+    (César 2026-10-21). Gestión (4) y Supervisor (2) solo de su gestión."""
+    from app.api.routes.ordenes_trabajo import _id_estado_ot, _validar_destinatario_ot
+
+    if current_user.get("nivel_acceso") not in NIVELES_TOMAN:
+        raise HTTPException(status_code=403,
+            detail="Tomar reclamos es para agentes de Gestión, supervisores y administradores.")
+
+    # Lock del reclamo: dos personas que toman a la vez no crean dos OT.
+    r = (await db.execute(text("""
+        SELECT id_reclamo, estado, id_tipo_reclamo, nro_reclamo
+        FROM reclamos WHERE id_reclamo = :id AND activo = TRUE FOR UPDATE
+    """), {"id": id_reclamo})).fetchone()
+    if not r:
+        raise HTTPException(status_code=404, detail=f"Reclamo {id_reclamo} no encontrado")
+    acciones = await _acciones_reclamo(db, r, current_user)
+    if not acciones["tomar"]:
+        if r.estado != "Sin asignar" or await _ots_operativas_abiertas(db, id_reclamo):
+            raise HTTPException(status_code=409, detail="Este reclamo ya fue tomado o no está sin asignar.")
+        raise HTTPException(status_code=403,
+            detail="Solo podés tomar reclamos de tu gestión (y necesitás un perfil de agente).")
+
+    perfil = await resolver_agente_desde_usuario(current_user["id_usuario"], db)
+    id_agente = perfil["id_agente"]
+    await _validar_destinatario_ot(db, id_agente=id_agente)
+    id_estado = await _id_estado_ot(db, "En gestión")
+    ot = (await db.execute(text("""
+        INSERT INTO ordenes_trabajo
+            (id_reclamo, id_estado, id_agente, id_equipo, es_auditoria, asignacion_automatica,
+             id_supervisor_asigna, activo, fecha_alta, fecha_modificacion,
+             id_usuario_alta, id_usuario_modificacion)
+        VALUES (:r, :e, :ag, NULL, FALSE, FALSE, :sup, TRUE, NOW(), NOW(), :uid, :uid)
+        RETURNING id_ot, nro_ot
+    """), {"r": id_reclamo, "e": id_estado, "ag": id_agente, "uid": current_user["id_usuario"],
+           # Quien asigna es un supervisor/admin solo si el que toma lo es.
+           "sup": current_user["id_usuario"] if current_user.get("nivel_acceso") in (1, 2) else None})).fetchone()
+    nro_ot = ot.nro_ot or f"OT-{ot.id_ot}"
+    await db.execute(text("""
+        UPDATE reclamos SET estado = 'En gestión', fecha_modificacion = NOW(),
+            id_usuario_modificacion = :uid,
+            fecha_primer_asignacion = COALESCE(fecha_primer_asignacion, NOW())
+        WHERE id_reclamo = :id
+    """), {"id": id_reclamo, "uid": current_user["id_usuario"]})
+    quien = (await db.execute(text(
+        "SELECT apellido, nombre FROM agentes WHERE id_agente = :a"), {"a": id_agente})).fetchone()
+    await _insertar_historial(db, id_reclamo, f"OT {nro_ot} generada",
+                               r.estado, "En gestión",
+                               f"Reclamo tomado por {quien.apellido}, {quien.nombre}" if quien else "Reclamo tomado",
+                               current_user["id_usuario"])
+    await db.commit()
+    # El vecino se entera del cambio de estado; quien tomó no necesita aviso.
+    await svc_push.notificar_estado_reclamo(id_reclamo)
+    return {"ok": True, "id_reclamo": id_reclamo, "id_ot": ot.id_ot, "nro_ot": nro_ot}
+
+
+# ── POST /reclamos/{id}/resolver — cerrar con la resolución que ve el vecino ─
+
+@router.post("/{id_reclamo}/resolver",
+             responses={403: {"description": "Resuelve quien tiene la OT, la supervisión de la gestión o el admin"},
+                        422: {"description": "Falta la resolución, o hay subreclamos sin resolver"}})
+async def resolver_reclamo(
+    id_reclamo: int,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Resuelve el reclamo con un texto de resolución (obligatorio, lo ve el
+    vecino en su app y en el aviso de cierre). Si tiene OT operativa abierta, la
+    termina con ese texto; si está 'Sin asignar', es el cierre directo sin OT de
+    la supervisión (§18). Dispara encuesta y aviso como cualquier cierre."""
+    from app.api.routes.ordenes_trabajo import _disparar_encuesta, _resolver_reclamo
+
+    resolucion = (body.get("resolucion") or "").strip()
+    if len(resolucion) < 5:
+        raise HTTPException(status_code=422, detail="Escribí la resolución (al menos 5 caracteres): la ve el vecino.")
+    if len(resolucion) > 2000:
+        raise HTTPException(status_code=422, detail="La resolución no puede superar los 2000 caracteres.")
+
+    r = (await db.execute(text("""
+        SELECT id_reclamo, estado, id_tipo_reclamo, id_reclamo_padre
+        FROM reclamos WHERE id_reclamo = :id AND activo = TRUE FOR UPDATE
+    """), {"id": id_reclamo})).fetchone()
+    if not r:
+        raise HTTPException(status_code=404, detail=f"Reclamo {id_reclamo} no encontrado")
+    if r.estado not in ("Sin asignar", "En gestión"):
+        raise HTTPException(status_code=422, detail=f"Un reclamo '{r.estado}' no se puede resolver desde acá.")
+    acciones = await _acciones_reclamo(db, r, current_user)
+    if not acciones["resolver"]:
+        raise HTTPException(status_code=403,
+            detail="Resuelve quien tiene la orden de trabajo, la supervisión de la gestión o un administrador.")
+
+    if r.id_reclamo_padre is None:
+        pendientes = (await db.execute(text("""
+            SELECT nro_reclamo, estado FROM reclamos
+            WHERE id_reclamo_padre = :id AND activo = TRUE
+              AND estado NOT IN ('Resuelto', 'Cancelado', 'En auditoría', 'Auditado')
+            ORDER BY id_reclamo
+        """), {"id": id_reclamo})).fetchall()
+        if pendientes:
+            detalle = ", ".join(f"{h.nro_reclamo} ({h.estado})" for h in pendientes)
+            raise HTTPException(status_code=422,
+                detail=f"Hay subreclamo(s) sin resolver: {detalle}. Resolvelos o cancelalos primero.")
+
+    await _terminar_ots_operativas(db, id_reclamo, resolucion, current_user["id_usuario"])
+    await _resolver_reclamo(db, id_reclamo, current_user["id_usuario"], resolucion)
+    await db.commit()
+
+    await _disparar_encuesta(db, id_reclamo)
+    await svc_push.notificar_estado_reclamo(id_reclamo)
+    return {"ok": True, "id_reclamo": id_reclamo, "estado": "Resuelto"}
 
 
 # ── POST /reclamos/{id}/auditoria — enviar un reclamo Resuelto a auditoría ───

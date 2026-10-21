@@ -1310,7 +1310,9 @@ async def cambiar_estado_ot(
                "uid": current_user["id_usuario"], "id": id_ot})
 
         if nuevo_estado == "Terminada" and not ot.es_auditoria:
-            await _post_cierre_ot_operativa(db, id_ot, ot, current_user["id_usuario"])
+            # Lo que escribe quien termina la OT es la resolución que ve el vecino.
+            await _post_cierre_ot_operativa(db, id_ot, ot, current_user["id_usuario"],
+                                            resolucion=observaciones)
         if nuevo_estado == "Cancelada" and ot.es_auditoria and ot.reclamo_estado == "En auditoría":
             # Auditoría cancelada: el reclamo vuelve a su cierre de gestión. Sin
             # push ni encuesta (el vecino nunca dejó de verlo 'Resuelto').
@@ -1343,15 +1345,22 @@ async def cambiar_estado_ot(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-async def _post_cierre_ot_operativa(db: AsyncSession, id_ot: int, ot, id_usuario: int):
+async def _post_cierre_ot_operativa(db: AsyncSession, id_ot: int, ot, id_usuario: int,
+                                    resolucion: Optional[str] = None):
     """Al cerrar la OT operativa el reclamo queda 'Resuelto' (fin de la gestión y de
     sus tiempos). Hasta la mig 112 acá se bifurcaba por `tipo_reclamo.audit` hacia
     una auditoría PREVIA al cierre; hoy la auditoría es posterior y manual
     (POST /reclamos/{id}/auditoria), así que `audit` del tipo ya no se consulta."""
-    await _resolver_reclamo(db, ot.id_reclamo, id_usuario)
+    await _resolver_reclamo(db, ot.id_reclamo, id_usuario, resolucion)
 
 
-async def _resolver_reclamo(db: AsyncSession, id_reclamo: int, id_usuario: int):
+async def _resolver_reclamo(db: AsyncSession, id_reclamo: int, id_usuario: int,
+                            resolucion: Optional[str] = None):
+    """Deja el reclamo 'Resuelto'. `resolucion` (mig 117) es el texto que ve el
+    vecino: va a reclamos.resolucion y como nota del paso 'Resuelto' del
+    historial (la API pública solo muestra esa nota). Sin texto, el historial
+    dice «OT operativa terminada» como antes."""
+    resolucion = (resolucion or "").strip() or None
     r = await db.execute(text(
         "SELECT estado FROM reclamos WHERE id_reclamo = :id"
     ), {"id": id_reclamo})
@@ -1359,11 +1368,13 @@ async def _resolver_reclamo(db: AsyncSession, id_reclamo: int, id_usuario: int):
     await db.execute(text("""
         UPDATE reclamos SET estado = 'Resuelto', fecha_modificacion = NOW(),
             fecha_cierre = NOW(),
+            resolucion = COALESCE(:res, resolucion),
             id_usuario_modificacion = :uid
         WHERE id_reclamo = :id
-    """), {"id": id_reclamo, "uid": id_usuario})
+    """), {"id": id_reclamo, "uid": id_usuario, "res": resolucion})
     await _insertar_historial_reclamo(db, id_reclamo, "Reclamo resuelto",
-                                       estado_ant, "Resuelto", "OT operativa terminada", id_usuario)
+                                       estado_ant, "Resuelto", resolucion or "OT operativa terminada",
+                                       id_usuario)
 
     # Si este reclamo es un subreclamo, desbloquear el padre 'En espera' cuando ya
     # no quedan hermanos vivos. Import local para evitar acoplamiento de módulo

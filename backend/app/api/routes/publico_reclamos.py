@@ -198,7 +198,7 @@ async def obtener_mi_reclamo(
         SELECT
             r.id_reclamo, r.nro_reclamo, {_ESTADO_VECINO} AS estado,
             {_DESCRIPCION_VECINO} AS descripcion,
-            r.direccion, r.observaciones,
+            r.direccion, r.resolucion,
             r.fecha_alta, r.fecha_modificacion, r.fecha_cierre, r.sla_vencimiento,
             r.canal_origen, r.fuente_geolocalizacion,
             r.latitud, r.longitud,
@@ -219,17 +219,24 @@ async def obtener_mi_reclamo(
 
     d = _to_dict(row)
 
-    # Historial: solo acciones públicas (estado + nota), sin identidad del agente
-    # interno ni rastro de la auditoría posterior (mig 112): se omiten los pasos a
-    # 'En auditoría'/'Auditado' y la cancelación de una auditoría (En auditoría →
-    # Resuelto, «Auditoría cancelada»). Lo que fue 'En auditoría' se muestra
-    # 'Resuelto': en los datos anteriores a la mig 112 ese paso ES el cierre real.
+    # Historial: solo acciones públicas, sin identidad del agente interno ni rastro
+    # de la auditoría posterior (mig 112): se omiten los pasos a 'En auditoría'/
+    # 'Auditado' y la cancelación de una auditoría (En auditoría → Resuelto,
+    # «Auditoría cancelada»). Lo que fue 'En auditoría' se muestra 'Resuelto': en
+    # los datos anteriores a la mig 112 ese paso ES el cierre real.
+    # Notas: las del historial son internas (reasignaciones con nombres de agentes,
+    # notas de supervisión). El vecino ve SOLO la resolución (mig 117, César
+    # 2026-10-21), que es la nota del paso 'Resuelto' igual a reclamos.resolucion.
     hist = await db.execute(text("""
         SELECT h.accion,
                CASE WHEN h.estado_anterior IN ('En auditoría','Auditado') THEN 'Resuelto'
                     ELSE h.estado_anterior END AS estado_anterior,
-               h.estado_nuevo, h.nota, h.fecha_alta
+               h.estado_nuevo,
+               CASE WHEN h.estado_nuevo = 'Resuelto' AND r.resolucion IS NOT NULL
+                         AND h.nota = r.resolucion THEN h.nota END AS nota,
+               h.fecha_alta
         FROM reclamo_historial h
+        JOIN reclamos r ON r.id_reclamo = h.id_reclamo
         WHERE h.id_reclamo = :id
           AND (h.estado_nuevo IS NULL OR h.estado_nuevo NOT IN ('En auditoría','Auditado'))
           AND h.accion IS DISTINCT FROM 'Auditoría cancelada'
