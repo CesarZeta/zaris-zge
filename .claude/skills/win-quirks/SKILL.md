@@ -22,7 +22,7 @@ Recetas operativas verificadas. Muchas tienen memoria asociada (`[[...]]`) con e
   git push origin main
   ```
   Tu dist es el correcto (compilado con tus fuentes); el del bot era rebuild del commit anterior. Si tu commit NO toca dist, el rebase pasa solo.
-  - **Q18b — un run ROJO de `Build & publish shell React` con `! [rejected] main -> main (fetch first)` en el paso "Commit dist/" es un run DUPLICADO del mismo commit** (GitHub disparó dos eventos `push` para `3743f86` el 2026-10-12; el primero publicó el dist). No es un bug del código: confirmar que Pages sirve el bundle nuevo y seguir. Desde ese día el paso hace `fetch` + skip si `origin/main` ya tiene el mismo dist, y rebase antes del push, así el duplicado cierra en verde.
+  - **Q18b — un run ROJO de `Build & publish shell React` con `! [rejected] main -> main (fetch first)` en el paso "Commit dist/" es un run DUPLICADO del mismo commit** (GitHub disparó dos eventos `push` para `3cae2d5` el 2026-10-12; el primero publicó el dist). No es un bug del código: confirmar que Pages sirve el bundle nuevo y seguir. Desde ese día el paso hace `fetch` + skip si `origin/main` ya tiene el mismo dist, y rebase antes del push, así el duplicado cierra en verde.
 
 ## Levantar servers local (Windows/PowerShell)
 

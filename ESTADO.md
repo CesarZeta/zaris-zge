@@ -75,12 +75,12 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
-- **2026-10-21 — Seguridad del CRUD de Maestros (`4d170e2`); mesa del supervisor con fecha y PLANIFICAR en «Ver» (`f089886`, `803c926`); reclamos sin agenda + mig 115 (`3bfdbe4`).** Smokes 38/38 y 11/11 en local; seguridad y mesa verificadas en prod (API + navegador).
+- **2026-10-21 — Seguridad del CRUD de Maestros (`f90b894`); mesa del supervisor con fecha y PLANIFICAR en «Ver» (`bcb1b13`, `bd69fe2`); reclamos sin agenda + mig 115 (`fdca998`).** Smokes 38/38 y 11/11 en local; seguridad y mesa verificadas en prod (API + navegador).
 - **2026-10-20 (4ª, noche) — Ficha → agente, supervisor en Maestros → Agentes (mig 113), aviso «agente nuevo»; autoasignación (mig 114).** Smokes 16/16 y 7/7; en prod salvo el backend de la autoasignación (pregunta 2).
 - **2026-10-20 (4ª, tarde) — Destinatario de OT validado, aviso a la cuadrilla, mesa del supervisor, orden por columnas F1, `/avisos` en la app de agentes.** Smoke 9/9 + navegador; en prod.
-- **2026-10-20 (3ª) — Reclamos «Ver pendientes» + búsqueda de Ciudadanos por lo escrito (`ef318c8`, `ac3b321`, en prod).** `GET /reclamos?pendientes=true` (incluye En auditoría, decisión de César); la búsqueda de Ciudadanos decide nombre vs DNI/CUIL por lo escrito.
-- **2026-10-20 (2ª) — Auditoría F4: resultado + retrabajo visible + mail (`e548c1e`, PWA `9a98775`, en prod).** Detalle en `PLAN_AUDITORIA_RECLAMOS.md` (F4).
-- **2026-10-20 — Auditoría de reclamos POSTERIOR al cierre (mig 112, `16ad409` + `a17bb6d`, en prod).** Estados `En auditoría`/`Auditado`, `POST /reclamos/{id}/auditoria`, aprobar/observar, inicio/BI con la semántica nueva, generador demo + backfill en prod (181 auditorías, 32 retrabajos).
+- **2026-10-20 (3ª) — Reclamos «Ver pendientes» + búsqueda de Ciudadanos por lo escrito (`0595eb5`, `2a8915f`, en prod).** `GET /reclamos?pendientes=true` (incluye En auditoría, decisión de César); la búsqueda de Ciudadanos decide nombre vs DNI/CUIL por lo escrito.
+- **2026-10-20 (2ª) — Auditoría F4: resultado + retrabajo visible + mail (`b5ab13a`, PWA `9a98775`, en prod).** Detalle en `PLAN_AUDITORIA_RECLAMOS.md` (F4).
+- **2026-10-20 — Auditoría de reclamos POSTERIOR al cierre (mig 112, `a42fb3e` + `f378f04`, en prod).** Estados `En auditoría`/`Auditado`, `POST /reclamos/{id}/auditoria`, aprobar/observar, inicio/BI con la semántica nueva, generador demo + backfill en prod (181 auditorías, 32 retrabajos).
 
 - **2026-10-19 — Municipio demo San Andrés en el mapa del inicio (mig 111).** Contorno + máscara exterior, encuadre por zonas libres, generador demo con San Isidro. Detalle en `HISTORIAL_MIGRACIONES.md`.
 - **2026-10-13 — Cuentas al guardar la ficha, sin botón ni modal.** Reglas en la skill `modulo-usuarios`.

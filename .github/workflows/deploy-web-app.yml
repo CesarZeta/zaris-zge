@@ -53,7 +53,7 @@ jobs:
 
       - name: Commit dist/ if changed
         # Resiliente a runs duplicados del mismo commit (2026-10-12: GitHub disparo
-        # dos eventos push para 3743f86; el 2do fue rechazado con non-fast-forward
+        # dos eventos push para 3cae2d5; el 2do fue rechazado con non-fast-forward
         # porque el 1ro ya habia publicado el dist). Si origin/main ya tiene un dist
         # identico al recien compilado, no hay nada que publicar; si difiere, se
         # rebasea sobre origin/main antes de pushear.

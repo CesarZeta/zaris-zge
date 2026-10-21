@@ -19,7 +19,7 @@ Aplica especialmente a: prioridad, estado, sexo, canal_origen, doc_tipo, tipo_re
 
 **Why:** Caso real sesión 2026-05-12. Introduje `'Crítica'` en `type Prioridad` de Reclamos asumiendo que era un valor común. `reclamos_prioridad_check` en prod solo acepta `Alta|Media|Baja`. Cualquier alta/edición con 'Crítica' explota con `IntegrityError` desde asyncpg. El vanilla ya sabía esto (sus 3 selects solo expusieron los 3 valores) — la falla fue mía por no chequear. Costó:
 - 1 smoke API fallido
-- 1 commit de fix (`c21e8df`)
+- 1 commit de fix (`cee3daf`)
 - Una memoria `[[reference_reclamos_prioridad_check]]` nueva
 
 **How to apply:**

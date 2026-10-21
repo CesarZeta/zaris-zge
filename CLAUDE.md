@@ -30,7 +30,7 @@ Todo módulo con individuos (pacientes, clientes, solicitantes) **debe** referen
 
 `nivel_acceso` en `usuarios` (mig 92, 2026-07-02): 1 = Administrador (ve todo) · 2 = Supervisor (gestiona, **scopeado a la subárea de su agente**) · 3 = **Atención** (ex Operador — ventanilla: ve TODOS los reclamos para consultas de vecinos, crea/edita, avisa al supervisor, no cambia estados) · 4 = **Gestión** (agente de OT — listados de reclamos **solo de su subárea**, trabaja sus OTs, avisa al supervisor, NO crea reclamos) · 5 = Consultor (solo lectura, ex nivel 4).
 
-El scoping por subárea lo impone el **backend** (`_subarea_scope_listado` en `reclamos.py`; `_subarea_forzada_supervisor` + `_validar_scope_supervisor_ot` en `ordenes_trabajo.py`) leyendo `agentes.id_subarea` vía la regla 1:1 (§39) — **NO `usuarios.id_subarea`** (pueden divergir; el agente es la fuente). El detalle por id de LECTURA queda sin scope a propósito (subreclamos cross-área, consulta por número). **Desde 2026-07-18 las MUTACIONES también scopean** (2ª ronda de la auditoría, commit `6a92cf8`): OT tomar/estado + guard espejo del auditor, Turnos (mismo alcance que la lectura), Agenda (10 mutaciones + espacios/disponibilidad/novedades), Trámites (anti-Consultor + comentar + nivel 2 a su colectivo en tomar/liberar/resultado; **desde 2026-07-19 también en operar/quien_puede/visados** — `es_admin` de Trámites = nivel 1, cierre del último residuo de la auditoría), Emergencias (fuente corregida a agentes) — **el detalle de cada guard vive en la skill del módulo**; toda mutación nueva DEBE llamar al guard de su módulo. Guards de nivel: crear/editar reclamos = `NIVELES_GESTION {1,2,3}` · avisar = `{1,2,3,4}` · operar OT/turnos/agenda = `≤ 4` · Consultor (5) solo lectura.
+El scoping por subárea lo impone el **backend** (`_subarea_scope_listado` en `reclamos.py`; `_subarea_forzada_supervisor` + `_validar_scope_supervisor_ot` en `ordenes_trabajo.py`) leyendo `agentes.id_subarea` vía la regla 1:1 (§39) — **NO `usuarios.id_subarea`** (pueden divergir; el agente es la fuente). El detalle por id de LECTURA queda sin scope a propósito (subreclamos cross-área, consulta por número). **Desde 2026-07-18 las MUTACIONES también scopean** (2ª ronda de la auditoría, commit `a7d8776`): OT tomar/estado + guard espejo del auditor, Turnos (mismo alcance que la lectura), Agenda (10 mutaciones + espacios/disponibilidad/novedades), Trámites (anti-Consultor + comentar + nivel 2 a su colectivo en tomar/liberar/resultado; **desde 2026-07-19 también en operar/quien_puede/visados** — `es_admin` de Trámites = nivel 1, cierre del último residuo de la auditoría), Emergencias (fuente corregida a agentes) — **el detalle de cada guard vive en la skill del módulo**; toda mutación nueva DEBE llamar al guard de su módulo. Guards de nivel: crear/editar reclamos = `NIVELES_GESTION {1,2,3}` · avisar = `{1,2,3,4}` · operar OT/turnos/agenda = `≤ 4` · Consultor (5) solo lectura.
 
 Usar `get_current_user` de `app/core/auth.py` en todo endpoint que requiera identidad o permisos.
 
@@ -243,7 +243,7 @@ Módulos React en `web-app/src/modules/<nombre>/`, build Vite → GH Pages → c
 
 El estilo oficial de ZARIS vive en `design-system/`. Tokens en `colors_and_type.css`, componentes en `design-system/components/*.css` (agrupados por `design-system/components.css`). **Prohibido** inventar variables propias, copiar valores hex literales, o agregar archivos como el legacy `frontend/styles.css` (que fue eliminado el 2026-05-12 junto a sus clases `.z-*` y vars `--z-*`).
 
-> **Estado:** `admin_tablas.html` ya usa tokens DS directos (0 `var(--z-*)` desde commit `042dd03`, 2026-05-13). Conserva clases internas ad-hoc (`.btn-primary`, `.field`, `.modal`) **a propósito** — renombrarlas a `*-zaris` colisionaría con el DS sin ganancia funcional. No carga ningún CSS legacy. Cualquier módulo nuevo debe usar el DS directo.
+> **Estado:** `admin_tablas.html` ya usa tokens DS directos (0 `var(--z-*)` desde commit `0586114`, 2026-05-13). Conserva clases internas ad-hoc (`.btn-primary`, `.field`, `.modal`) **a propósito** — renombrarlas a `*-zaris` colisionaría con el DS sin ganancia funcional. No carga ningún CSS legacy. Cualquier módulo nuevo debe usar el DS directo.
 
 > **Antes de crear un componente nuevo del DS o adoptar un naming nuevo:** `grep -rn "<naming-propuesto>" design-system/` para evitar dos namings paralelos. Sesión 2026-05-12 evitó duplicar `btn-zaris` con un hipotético `ds-btn` al detectar 3 huérfanos pre-existentes en `colors_and_type.css`. Aplica también a variables CSS (`--<nombre>`).
 
@@ -895,7 +895,7 @@ Cuando un usuario logueado hace click en una ruta protegida y termina en `/login
 
 2. **Recién después:** AppShell guards, router, CSS. El loop "click → 401 → redirect" se ve idéntico a "el router no respeta auth", pero no es lo mismo.
 
-Caso real: commit `454a827` (2026-05-10). Diagnostiqué CSS/router/AppShell durante 5 turnos cuando el bug eran 2 líneas en `getToken()`.
+Caso real: commit `afd189f` (2026-05-10). Diagnostiqué CSS/router/AppShell durante 5 turnos cuando el bug eran 2 líneas en `getToken()`.
 
 ### Mapeo de rutas hijo en React Router v6
 
@@ -940,7 +940,7 @@ useEffect(() => {
 }, [open, idEvento, detalle.data])
 ```
 
-Caso real: BUG-A-001 (commit `11561de`, 2026-05-11). El usuario marcó autoservicio=ON, fecha del Timeline cambió por una invalidate de query, el effect re-corrió y pisó el checkbox. Backend persistía OK; el bug era que el form mandaba `false` en submit.
+Caso real: BUG-A-001 (commit `6d1767e`, 2026-05-11). El usuario marcó autoservicio=ON, fecha del Timeline cambió por una invalidate de query, el effect re-corrió y pisó el checkbox. Backend persistía OK; el bug era que el form mandaba `false` en submit.
 
 **Variante: modal siempre montado con default derivado de props.** Un modal que vive montado con `open=false` y deriva su estado inicial de props (`useState(permiteX)`) congela el valor del PRIMER render (cuando todavía no había entidad elegida) y nunca lo re-deriva — y ofrece una acción que el backend rechaza. Fix: `useEffect(() => { if (open) { setEstado(permiteX); /* + reset de campos */ } }, [open, permiteX])`. Caso real: `CerrarModal` de Emergencias ofrecía "Cerrar como DESESTIMADO" sobre un evento EN_SITIO → 422 del FSM (cazado en QA navegador prod 2026-06-10).
 
@@ -1000,7 +1000,7 @@ DS v1.0 (`--z-*`, `.z-*`, `frontend/styles.css`, `frontend/menu.html`, `frontend
 - Antes de commitear `dist/`: buildear modo prod (sin `VITE_API_BASE` en el shell) y verificar que apunte a Railway, no a `127.0.0.1`.
 - `vite build` compila el WORKING TREE, no lo staged — commitear fuentes primero o stashear lo ajeno antes de rebuildear.
 - El bundle standalone en prod debe redirigir al shell vanilla (script en `web-app/index.html` + whitelist en `menu.js`, §14). Nunca `window.location.href='/...'` absoluto desde el bundle (rompe bajo `/zaris-zge/`, [[feedback_redirect_iframe_subpath]]).
-- **Tras pushear un commit que toca `web-app/**` SIN `[skip ci]`, el workflow `deploy-web-app.yml` rebuildea el dist en CI y puede commitear `build(web-app): publicar dist [skip ci]` a `main` ~1-2 min después** (el build Linux normaliza los line endings del index.html buildeado en Windows — diff de ~38 líneas, no funcional). Consecuencia: `git fetch` + `git pull --rebase` ANTES del próximo push o rebota con non-fast-forward (cazado 2026-06-10/11, commits `f018261`/`ce54d03`).
+- **Tras pushear un commit que toca `web-app/**` SIN `[skip ci]`, el workflow `deploy-web-app.yml` rebuildea el dist en CI y puede commitear `build(web-app): publicar dist [skip ci]` a `main` ~1-2 min después** (el build Linux normaliza los line endings del index.html buildeado en Windows — diff de ~38 líneas, no funcional). Consecuencia: `git fetch` + `git pull --rebase` ANTES del próximo push o rebota con non-fast-forward (cazado 2026-06-10/11, commits `6d44098`/`126c00d`).
 
 ## 33. Módulos Turnos y Entradas
 

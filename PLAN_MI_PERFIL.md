@@ -99,5 +99,5 @@ identidad devuelve `http://localhost:5174` o `http://localhost:5175`, **César l
 
 ## 4. Cierre y seguimiento (2026-09-27)
 
-- **HECHO el 2026-09-26** (`4be8773`, verificado en prod con jsQR: el QR decodifica a `https://vecinos.zaris.com.ar`). Decisiones abiertas resueltas: dark/guías solo en el menú; «Módulos a los que accedés» sí (solo lectura). Regla técnica que quedó: el cambio de clave usa fetch directo porque `api.post` cierra sesión ante cualquier 401 (CLAUDE.md §14).
+- **HECHO el 2026-09-26** (`8c1ba86`, verificado en prod con jsQR: el QR decodifica a `https://vecinos.zaris.com.ar`). Decisiones abiertas resueltas: dark/guías solo en el menú; «Módulos a los que accedés» sí (solo lectura). Regla técnica que quedó: el cambio de clave usa fetch directo porque `api.post` cierra sesión ante cualquier 401 (CLAUDE.md §14).
 - **Decisión de César (2026-09-27):** los funcionarios bajan **la app de agentes** desde este perfil; los vecinos bajan la app del vecino **desde el portal del vecino**, sin entrar a ZARIS. Próximo paso: tarjeta gemela «App de agentes» (backend `app_agentes_url` en `/config/identidad` desde `APP_AGENTES_FRONTEND_URL`) y definir el canal de la app del vecino en el portal; confirmar si la tarjeta del vecino se queda acá.
