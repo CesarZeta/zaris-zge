@@ -126,6 +126,15 @@ carpeta **gitignoreada** — datos personales, jamas versionar):
   de los necesarios sin romper el historial. Idempotente. Nada de mails ni push.
   Smoke: `backend/smoke_demo_sla.py` (44 checks; parte B en una transaccion que
   se revierte, con "ahora" simulado — los services aceptan `ahora=` para eso).
+  **Corrida en prod 2026-10-21 (orden que funcionó):** (1) `cerrar_atraso` trámites +
+  emergencias con `incluir_no_demo` (24 + 14); (2) `cerrar_atraso` reclamos SOLO demo
+  con `rebalancear_sla` (los no demo son QA/vecinos de prueba y el guion
+  `docs/guion_demo_reclamos_ot.html` usa REC-2026-000058/059 congelados: no cerrarlos
+  sin preguntar); (3) `poblar` por defecto; (4) historia de trámites por tramos ≤ 45 días.
+  **Ojo:** el `poblar` cierra pendientes recientes y puede bajar un mes ya
+  rebalanceado (septiembre quedó en 53,8 %): **correr el rebalanceo DESPUÉS del primer
+  `poblar`** y verificar el % por mes con SQL (`FLOOR(días de cierre) <= sla_dias`).
+  Resultado verificado: abril-octubre entre 60,4 % y 77,6 %.
 - **Desde 2026-09-22 la corrida es ASINCRONA:** el POST valida, encola en un
   `BackgroundTask` (sesion SQL propia, `AsyncSessionLocal`) y responde **202**
   `{id_corrida, estado:'en_curso', consulta}`; el workflow hace polling de
