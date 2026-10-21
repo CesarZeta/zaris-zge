@@ -14,8 +14,8 @@ tablero Datos -> Atencion (bi_atencion.py, proyecto ATENCION F6) tenga volumen:
     los ids divergen entre local y prod (estado_evento 1/2/3 vs 5/6/7).
 
 Que genera por dia del rango [desde, hasta] (+ `dias_futuro` hacia adelante
-cuando el rango llega a hoy, para que la Mesa del dia y el colero tengan
-turnos reservados):
+cuando el rango llega a ayer u hoy — el cron diario genera hasta AYER desde el
+2026-10-21 —, para que la Mesa del dia y el colero tengan turnos reservados):
   - TURNOS sobre cada prestacion activa, dentro de la disponibilidad EFECTIVA
     del recurso (feriados y novedades incluidos, via disponibilidad_efectiva_
     batch — la misma que valida la reserva real), sin pisar ocupaciones ni
@@ -57,7 +57,7 @@ from typing import Any, Optional
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services import demo_datos
+from app.services import demo_datos, demo_sla
 from app.services.agenda import disponibilidad_efectiva_batch
 from app.services.guardia import espacio_guardia
 from app.utils.fechas import TZ_MUNICIPIO, ahora_local, hoy_local
@@ -814,7 +814,10 @@ async def generar_periodo_atencion(db: AsyncSession, desde: date, hasta: date,
     if not cat.pool:
         raise RuntimeError("Sin vecinos demo: no se puede generar atencion demo")
 
-    hasta_futuro = hasta + timedelta(days=dias_futuro) if hasta >= hoy and dias_futuro else hasta
+    # Reservas a futuro si el rango llega a ayer u hoy (el cron diario genera hasta ayer:
+    # el dia de hoy ya tiene sus turnos, reservados como "futuro" en corridas previas).
+    hasta_futuro = (max(hasta, hoy - timedelta(days=1)) + timedelta(days=dias_futuro)
+                    if hasta >= hoy - timedelta(days=1) and dias_futuro else hasta)
     dias = [desde + timedelta(days=i) for i in range((hasta_futuro - desde).days + 1)]
 
     resultado: dict = {"desde": str(desde), "hasta": str(hasta), "hasta_futuro": str(hasta_futuro),
@@ -837,7 +840,9 @@ async def generar_periodo_atencion(db: AsyncSession, desde: date, hasta: date,
     else:
         resultado["turnos"] = {"omitido": "sin prestaciones activas"}
 
-    resultado["guardia"] = await _generar_guardia(db, cat, rnd, dias, ahora, hoy)
+    # La Guardia solo en el rango pedido (no en los dias "a futuro"): con el cron diario
+    # (hasta = ayer) cada dia se genera completo una sola vez.
+    resultado["guardia"] = await _generar_guardia(db, cat, rnd, [d for d in dias if d <= hasta], ahora, hoy)
     resultado["eventos"] = await _generar_eventos(db, cat, rnd, desde, hasta_futuro, ahora, hoy)
     await db.commit()
     return resultado
@@ -990,4 +995,124 @@ async def avanzar_pendientes_atencion(db: AsyncSession, semilla: Optional[int] =
             out["eventos"] = {"finalizados": len(ids), "asistencias": len(asist)}
 
     await db.commit()
+    return out
+
+
+async def cerrar_atraso_emergencias(db: AsyncSession, dias: int = 21, aplicar: bool = False,
+                                    incluir_no_demo: bool = False,
+                                    ahora: Optional[datetime] = None) -> dict:
+    """Cierre del atraso (2026-10-21): eventos de Emergencias NO terminales con
+    recepcion de hace mas de `dias` se cierran respetando el FSM de emergencias.py
+    (TRANSICIONES): PENDIENTE / EN_PREPARACION -> DESESTIMADO (falsa alarma o no
+    verificable: nunca hubo despacho); EN_CAMINO -> EN_SITIO -> RESUELTO; EN_SITIO /
+    DERIVADO -> RESUELTO (confirmada). Fechas plausibles pegadas al ultimo
+    movimiento del evento, con su emergencia_log (CIERRE). Las derivaciones a la
+    Guardia que siguen pendientes quedan 'ausente'. Demo salvo `incluir_no_demo`
+    (los de QA). Sin push (todo SQL; el aviso al vecino lo dispara solo el endpoint).
+    Dry-run si aplicar=False. Commitea si aplica."""
+    ahora = ahora or datetime.now(UTC)
+    uid = await demo_datos._usuario_generador(db, crear=False)
+    if uid is None:
+        return {"detalle": "sin usuario generador: nada que cerrar"}
+    est = {f.codigo: f.id_emergencia_estado for f in (await db.execute(text(
+        "SELECT id_emergencia_estado, codigo FROM emergencia_estado WHERE activo"))).fetchall()}
+    if not est.get("RESUELTO") or not est.get("DESESTIMADO"):
+        return {"detalle": "faltan los estados RESUELTO / DESESTIMADO"}
+    filtro_demo = "TRUE" if incluir_no_demo else "e.id_usuario_alta = :uid"
+    r = await db.execute(text(f"""
+        SELECT e.id_emergencia_evento, e.numero_operativo, es.codigo, e.fecha_hora_recepcion,
+               e.fecha_hora_despacho, e.fecha_hora_arribo, e.id_municipio, e.id_usuario_alta,
+               (SELECT MAX(l.fecha_hora) FROM emergencia_log l WHERE l.id_evento = e.id_emergencia_evento) AS ultimo
+          FROM emergencia_evento e JOIN emergencia_estado es ON es.id_emergencia_estado = e.id_estado
+         WHERE e.activo AND NOT es.es_terminal AND e.fecha_hora_recepcion < :limite AND ({filtro_demo})
+         ORDER BY e.id_emergencia_evento
+    """), {"limite": ahora - timedelta(days=dias), "uid": uid})
+    filas = r.fetchall()
+    out: dict = {"evaluados": len(filas), "a_desestimado": 0, "a_resuelto": 0, "guardia_ausentes": 0,
+                 "por_estado_actual": {}, "no_demo_detalle": []}
+    for f in filas:
+        clave = f"{f.codigo} ({'demo' if f.id_usuario_alta == uid else 'no demo'})"
+        out["por_estado_actual"][clave] = out["por_estado_actual"].get(clave, 0) + 1
+        if f.id_usuario_alta != uid and len(out["no_demo_detalle"]) < 60:
+            out["no_demo_detalle"].append({"numero": f.numero_operativo, "estado": f.codigo,
+                                           "recepcion": f.fecha_hora_recepcion.date().isoformat()})
+        rnd = demo_sla.rnd_de("emergencia", f.id_emergencia_evento)
+        piso = max(x for x in (f.fecha_hora_recepcion, f.ultimo, f.fecha_hora_despacho, f.fecha_hora_arribo) if x)
+        nota = "" if f.id_usuario_alta == uid else " Cierre de atraso de datos de prueba."
+        logs: list[tuple] = []
+        sets: dict = {}
+        if f.codigo in ("PENDIENTE", "EN_PREPARACION"):
+            cierre = piso + timedelta(minutes=rnd.uniform(10, 90))
+            veracidad = "FALSA_ALARMA" if rnd.random() < 0.6 else "NO_VERIFICABLE"
+            obs = "Sin novedades en el lugar: se cierra el evento." + nota
+            logs.append(("CIERRE", f.codigo, "DESESTIMADO", cierre,
+                         {"veracidad": veracidad, "terminal_positivo": False}, obs))
+            sets = {"est": est["DESESTIMADO"], "cierre": cierre, "ver": veracidad, "oc": obs, "arribo": None}
+            out["a_desestimado"] += 1
+        else:
+            arribo = None
+            previo = f.codigo
+            t = piso
+            if f.codigo == "EN_CAMINO":
+                arribo = piso + timedelta(minutes=rnd.uniform(5, 25))
+                logs.append(("CAMBIO_ESTADO", "EN_CAMINO", "EN_SITIO", arribo, None, None))
+                previo, t = "EN_SITIO", arribo
+            cierre = t + timedelta(minutes=rnd.uniform(20, 120))
+            obs = "Evento atendido y resuelto en el lugar." + nota
+            logs.append(("CIERRE", previo, "RESUELTO", cierre, {"veracidad": "CONFIRMADA", "terminal_positivo": True}, obs))
+            sets = {"est": est["RESUELTO"], "cierre": cierre, "ver": "CONFIRMADA", "oc": obs, "arribo": arribo}
+            out["a_resuelto"] += 1
+        if sets["cierre"] > ahora:
+            sets["cierre"] = ahora - timedelta(minutes=1)
+            logs[-1] = logs[-1][:3] + (sets["cierre"],) + logs[-1][4:]
+        # Derivaciones a la Guardia todavia pendientes: no se presento.
+        pend = (await db.execute(text("""
+            SELECT id_emergencia_atencion FROM emergencia_atencion
+             WHERE id_emergencia_evento = :e AND estado = 'pendiente' AND activo IS DISTINCT FROM FALSE
+        """), {"e": f.id_emergencia_evento})).fetchall()
+        out["guardia_ausentes"] += len(pend)
+        if not aplicar:
+            continue
+        for p in pend:
+            await db.execute(text("""
+                UPDATE emergencia_atencion SET estado = 'ausente', fecha_modificacion = CAST(:fm AS timestamptz),
+                       id_usuario_modificacion = :uid
+                 WHERE id_emergencia_atencion = :id AND estado = 'pendiente'
+            """), {"fm": sets["cierre"], "uid": uid, "id": p.id_emergencia_atencion})
+            logs.insert(len(logs) - 1, ("ATENCION_GUARDIA", logs[-1][1], logs[-1][1], sets["cierre"] - timedelta(minutes=2),
+                                        {"id_emergencia_atencion": p.id_emergencia_atencion, "resultado": "ausente"},
+                                        "No se presento en la Guardia"))
+        await db.execute(text("""
+            UPDATE emergencia_evento
+               SET id_estado = :est, fecha_hora_cierre = CAST(:cierre AS timestamptz),
+                   fecha_hora_arribo = COALESCE(fecha_hora_arribo, CAST(:arribo AS timestamptz)),
+                   veracidad = :ver, observaciones_cierre = :oc,
+                   fecha_modificacion = CAST(:cierre AS timestamptz), id_usuario_modificacion = :uid
+             WHERE id_emergencia_evento = :id AND fecha_hora_cierre IS NULL
+        """), {**sets, "uid": uid, "id": f.id_emergencia_evento})
+        await db.execute(text("""
+            INSERT INTO emergencia_log (id_evento, id_usuario, fecha_hora, tipo_accion, estado_anterior,
+                                        estado_nuevo, payload_json, observaciones, id_municipio)
+            VALUES (:e, :u, CAST(:fh AS timestamptz), :t, :ea, :en, CAST(:p AS jsonb), :o, :m)
+        """), [{"e": f.id_emergencia_evento, "u": uid, "fh": fh, "t": t, "ea": ea, "en": en,
+                "p": json.dumps(p) if p is not None else None, "o": o, "m": f.id_municipio}
+               for t, ea, en, fh, p, o in logs])
+    # Derivaciones a la Guardia viejas que siguen pendientes en eventos ya cerrados.
+    r = await db.execute(text(f"""
+        SELECT a.id_emergencia_atencion, a.derivado_en FROM emergencia_atencion a
+          JOIN emergencia_evento e ON e.id_emergencia_evento = a.id_emergencia_evento
+          JOIN emergencia_estado es ON es.id_emergencia_estado = e.id_estado
+         WHERE a.estado = 'pendiente' AND a.activo IS DISTINCT FROM FALSE AND es.es_terminal
+           AND a.derivado_en < :limite AND ({filtro_demo.replace('e.id_usuario_alta', 'a.id_usuario_alta')})
+    """), {"limite": ahora - timedelta(days=dias), "uid": uid})
+    viejas = r.fetchall()
+    out["guardia_ausentes"] += len(viejas)
+    if aplicar:
+        for a in viejas:
+            await db.execute(text("""
+                UPDATE emergencia_atencion SET estado = 'ausente',
+                       fecha_modificacion = CAST(:fm AS timestamptz), id_usuario_modificacion = :uid
+                 WHERE id_emergencia_atencion = :id AND estado = 'pendiente'
+            """), {"fm": a.derivado_en + timedelta(hours=2), "uid": uid, "id": a.id_emergencia_atencion})
+        await db.commit()
     return out

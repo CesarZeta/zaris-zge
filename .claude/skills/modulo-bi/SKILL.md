@@ -44,7 +44,36 @@ carpeta **gitignoreada** — datos personales, jamas versionar):
 - ~300-500 reclamos/mes desde abril 2026, con historial coherente, subreclamos
   (~4%), localidad+coords por centroide, y encuestas CSAT (~85% de los
   resueltos, ~30% respondidas, %sat ~68%). Catalogos resueltos POR NOMBRE en
-  runtime (nunca por id — divergen local/prod).
+  runtime (nunca por id — divergen local/prod). Solo vecinos DEMO (hasta el
+  2026-10-21 el pool de reclamos tomaba cualquier ciudadano con email).
+- **Cierres SLA-aware (decision de Cesar 2026-10-21, `services/demo_sla.py`):**
+  cada mes (por mes de ALTA) una fraccion p entre 60 % y 85 % de lo que se cierra
+  lo hace DENTRO del SLA del tipo (criterio del BI: `FLOOR(dias) <= sla_dias`) y
+  el resto fuera. p sale determinista por mes (`p_mes`, sorteado en [61, 84] para
+  dejar margen al ruido); que item cae dentro lo decide una secuencia de Weyl
+  sobre su id (error ~1 punto, no ~3 como un sorteo). Cada reclamo tiene un
+  **PLAN reproducible** desde su id + alta + SLA (`_plan_reclamo`: demora dentro
+  ≤ sla − 30 min / fuera sla+1 .. 3×sla con cola hasta 5×sla, tope 20 dias;
+  asignacion, episodio de espera, cancelacion 4 %): el generador lo aplica hasta
+  "ahora" y `avanzar_pendientes` lo sigue aplicando con LAS MISMAS fechas (cierres
+  en la fecha del plan, no "ahora"). Para eso el id se reserva con `nextval` antes
+  del INSERT (`reservar_ids`). Resultado medido (smoke): mes en p ± 1 punto;
+  pendiente ~10-13 % de lo de las ultimas 3 semanas (sube cuando p es bajo);
+  nada de mas de 20 dias abierto.
+- **OT operativas (2026-10-21):** todo reclamo que pasa por "En gestion" tiene su
+  OT (no `es_auditoria`), asignada con la regla del producto (`_AsignadorOT`,
+  espejo de `autoasignacion.candidatos_gestion`): agente nivel 4 no auditor de la
+  gestion del tipo, o cuadrilla si `tipo_reclamo.asignacion_a='equipo'`; menor
+  carga + rotacion. Fallback si la gestion no tiene a nadie: niveles 2-3 de la
+  gestion → nivel 4 de la secretaria → nivel 4 de cualquier gestion (contado en
+  `ot_por_origen`; la DB local casi no tiene agentes). Excluye agentes con push
+  activo (app de agentes en un telefono real). Estado espejo del reclamo
+  (En gestion / En espera / Terminada con el cierre del reclamo / Cancelada);
+  `id_supervisor_asigna` = un supervisor de la gestion, o NULL +
+  `asignacion_automatica=TRUE` si la gestion tiene el tilde o no tiene supervisor.
+  **Sin ocupaciones** (los reclamos no se agendan). Historial con los textos del
+  producto ("OT ... generada", "Reclamo resuelto" con la resolucion, que tambien
+  va a `reclamos.resolucion` si existe la columna — mig 117).
 - **Auditoria POSTERIOR al cierre (mig 112, 2026-10-20):** ~8% de los resueltos
   (`TASA_AUDITORIA`) reciben una auditoria 1-10 dias despues del cierre que el
   auditor cierra 1-7 dias mas tarde (80% aprobada / 20% observada,
@@ -67,12 +96,36 @@ carpeta **gitignoreada** — datos personales, jamas versionar):
   tenant (IT-01) = filtrar por eso. NO borrar a mano sin decision de Cesar.
 - **Regla critica:** los `encuesta_envio` demo JAMAS nacen `pendiente` (el
   dispatcher horario los mandaria por mail). Solo enviada/completada/expirada.
-- Refresco: cron semanal `.github/workflows/demo-datos.yml` (lunes 08:20 UTC) →
-  `POST /api/v1/demo/poblar` (auth X-Dispatcher-Token o JWT admin nivel 1;
-  genera la semana + `avanzar_pendientes` que envejece SOLO lo demo). Carga
-  manual por rango: dispatch del workflow con inputs `desde`/`hasta` (max 45
-  dias por llamada) o `backend/seed_demo_bi.py` en local. Ventana default del
-  endpoint: `[hoy-6, hoy]` — los crones de lunes consecutivos NO se solapan.
+- Refresco: **cron DIARIO** `.github/workflows/demo-datos.yml` (08:20 UTC, desde
+  2026-10-21; antes semanal) → `POST /api/v1/demo/poblar` sin fechas (auth
+  X-Dispatcher-Token o JWT admin nivel 1). Default del endpoint: **los 7 dias
+  COMPLETOS hasta ayer** (`[hoy-7, hoy-1]`). **Reclamos y tramites son
+  idempotentes por dia** (`_dias_con_reclamos_demo`: un dia con reclamos demo de
+  base — sin subreclamos ni retrabajos — se saltea; el volumen mensual es
+  determinista por mes, `volumen_dia`), asi que cada dia se genera una sola vez y
+  un cron salteado se recupera solo. Nunca hay altas posteriores a "ahora"; un
+  rango que incluye hoy genera hasta "ahora" y deja el dia marcado (parcial).
+  Atencion reserva turnos a futuro si el rango llega a ayer u hoy; la Guardia
+  solo en el rango pedido. `modulos` default `reclamos,atencion,tramites`. Antes
+  de llamar, el workflow verifica en `/openapi.json` que `PoblarIn` tenga `modo` y
+  `tramites` (contra un backend viejo, no idempotente, el cron diario duplicaria).
+  `avanzar_pendientes` solo mira los reclamos demo de los ultimos 30 dias
+  (`VENTANA_AVANCE_DIAS`); lo mas viejo es "atraso".
+- **Modo `cerrar_atraso` (2026-10-21):** `POST /demo/poblar {"modo":"cerrar_atraso"}`
+  (o dispatch con `modo=cerrar_atraso`). **Dry-run por default** (`aplicar=false`:
+  devuelve conteos + lista de lo que NO es demo); `aplicar=true` escribe.
+  Cierra reclamos pendientes de mas de `dias_atraso` (21) con su plan SLA y su OT,
+  tramites abiertos (recorren el circuito hasta un final + resultado) y eventos de
+  Emergencias no terminales (PENDIENTE/EN_PREPARACION → DESESTIMADO; EN_CAMINO/
+  EN_SITIO/DERIVADO → RESUELTO, con su `emergencia_log`). `incluir_no_demo=true`
+  suma lo de QA/seed (nota "cierre de atraso de datos de prueba", sin encuesta).
+  `completar_ot=true` (default) crea la OT operativa de los reclamos demo ya
+  cerrados que no la tienen (los anteriores a esta version). `rebalancear_sla`
+  (OPT-IN, default false): lleva los meses viejos de reclamos demo con < 60 %
+  dentro del SLA (~50-58 % en los datos anteriores) a su p, adelantando el cierre
+  de los necesarios sin romper el historial. Idempotente. Nada de mails ni push.
+  Smoke: `backend/smoke_demo_sla.py` (44 checks; parte B en una transaccion que
+  se revierte, con "ahora" simulado — los services aceptan `ahora=` para eso).
 - **Desde 2026-09-22 la corrida es ASINCRONA:** el POST valida, encola en un
   `BackgroundTask` (sesion SQL propia, `AsyncSessionLocal`) y responde **202**
   `{id_corrida, estado:'en_curso', consulta}`; el workflow hace polling de
@@ -87,10 +140,11 @@ carpeta **gitignoreada** — datos personales, jamas versionar):
   persistirlas). Smoke in-process: `backend/smoke_demo_poblar.py`. Un `failure`
   del cron NO prueba que no se generaron datos: mirar los conteos por dia antes
   de tocar nada (memoria `project_cron_demo_502_railway_timeout_5min`).
-- **REGLA (incidente 2026-08-31): el generador NO es idempotente y el cron de
-  GitHub puede demorar HORAS.** Cada llamada a `/demo/poblar` inserta un lote
-  nuevo aunque el rango ya tenga datos. Si el cron del lunes "no aparece",
-  ANTES de re-dispatchar: (1) buscar un run `event=schedule` tardio en el dia
+- **REGLA (incidente 2026-08-31; desde 2026-10-21 el generador SI es idempotente
+  por dia, pero la regla sigue valiendo para un backend viejo): el cron de
+  GitHub puede demorar HORAS.** Hasta esa fecha cada llamada a `/demo/poblar`
+  insertaba un lote nuevo aunque el rango ya tuviera datos. Si el cron "no
+  aparece", ANTES de re-dispatchar: (1) buscar un run `event=schedule` tardio en el dia
   (`gh api .../workflows/demo-datos.yml/runs`, el 2026-08-31 corrio 8 hs tarde)
   y (2) verificar los conteos por dia del periodo en la DB. Caso real: cron
   demorado + dispatch manual = semana con capas duplicadas → limpieza
@@ -315,9 +369,9 @@ score/matriz/series/composición entre sí y contra la DB).
   Colores en `theme.ts` (`COLOR_TURNO` / `COLOR_GUARDIA` / `COLOR_RESERVA` + labels; sin
   naranja para estados). **Las exportaciones NO llevan datos personales del vecino**
   (Ley 25.326: el tablero es de gestión).
-- **Datos demo**: NO hay generador de turnos / guardia / eventos (`demo_datos.py` es solo de
-  reclamos): local ~26 turnos activos, prod ~32. El tablero se ve ralo hasta que César decida
-  un generador (pendiente en `ESTADO.md`). `/score?anio=2000` devuelve ceros/`null`, no 500.
+- **Datos demo**: los genera `services/demo_atencion.py` (turnos, colero, Guardia, eventos;
+  desde 2026-09-19 — ver la sección siguiente; antes de esa fecha no había generador y el
+  tablero se veía ralo). `/score?anio=2000` devuelve ceros/`null`, no 500.
 - Verificado 2026-09-19 navegando en `localhost:5173` (login admin → landing → tarjeta →
   6 secciones con septiembre/julio, chips de mes, cascadeo gestión → ubicación → prestación,
   "Limpiar filtros") + smoke 85/85 + `pnpm typecheck`. **Queda el QA visual de César en prod.**
@@ -327,8 +381,8 @@ score/matriz/series/composición entre sí y contra la DB).
 `backend/app/services/demo_atencion.py` genera **turnos + ocupaciones espejo + colero + atenciones +
 CSAT de turnos + Guardia (eventos de Emergencias derivados y atendidos) + eventos con reservas**, y
 se dispara por las MISMAS vías que el de reclamos: `POST /api/v1/demo/poblar` (body
-`modulos: ["reclamos","atencion"]`, default ambos; `dias_futuro` 0-30, default 7), el cron semanal
-`.github/workflows/demo-datos.yml` (input `modulos`, default `reclamos,atencion`) y
+`modulos`, default `reclamos,atencion,tramites` desde 2026-10-21; `dias_futuro` 0-30, default 7), el
+cron DIARIO `.github/workflows/demo-datos.yml` (input `modulos`) y
 `backend/seed_demo_bi.py --modulos atencion`. Mismo usuario `generador.demo` en `id_usuario_alta`,
 mismos vecinos demo (solo ellos: ningún turno demo cuelga de un vecino real).
 
@@ -345,8 +399,9 @@ mismos vecinos demo (solo ellos: ningún turno demo cuelga de un vecino real).
   `turno_llamado` con espera realista (55 % a tiempo, colas hasta 120 min; re-llamado en 60 % de los
   ausentes) SIEMPRE el mismo día del turno; `turno_atencion` solo si la prestación
   `registra_atencion`; encuesta CSAT 85 % de los cumplidos (nunca `pendiente`). Cancelados = ocupación
-  `activo=FALSE` como la cancelación real. Si el rango llega a hoy, reserva `dias_futuro` hacia
-  adelante (Mesa del día / colero con turnos).
+  `activo=FALSE` como la cancelación real. Si el rango llega a ayer u hoy (el cron diario genera
+  hasta ayer), reserva `dias_futuro` hacia adelante (Mesa del día / colero con turnos); la Guardia
+  se genera solo dentro del rango pedido.
 - **Guardia**: por día 0-3 derivaciones (media ~1). Cada una = `emergencia_evento` (numerado por el
   trigger `trg_numero_emergencia`, cerrado RESUELTO con `veracidad`, log CREACION → EN_CAMINO →
   EN_SITIO → DERIVACION_GUARDIA → ATENCION_GUARDIA → CIERRE) + `emergencia_atencion` atendida 85 % /
@@ -368,8 +423,35 @@ mismos vecinos demo (solo ellos: ningún turno demo cuelga de un vecino real).
   179 derivaciones, 45 eventos / 3.234 reservas, reclamos demo intactos, integridad 0/0/0/0/0.
   **Idempotencia** (`8f72269`): recurso/día con turnos demo se saltea (`recurso_dia_ya_demo`),
   día con derivaciones demo se saltea (`dias_omitidos_con_demo`), eventos demo del rango
-  descuentan del objetivo (`ya_existian`) — re-generar un rango poblado agrega ~0. **Prod se carga por
-  chunks ≤ 45 días con el workflow (`modulos=atencion`) — NUNCA con el default `reclamos,atencion`
-  sobre meses ya poblados (duplicaría reclamos, incidente 2026-08-31).** Un deploy viejo del backend
-  IGNORA `modulos` (Pydantic descarta campos desconocidos) y generaría reclamos: confirmar en
-  `/openapi.json` que `PoblarIn` tiene `modulos` antes de dispatchar.
+  descuentan del objetivo (`ya_existian`) — re-generar un rango poblado agrega ~0. Desde 2026-10-21
+  los reclamos y los tramites también saltean los días ya generados, así que re-correr un rango
+  poblado con los tres módulos ya no duplica. Un deploy viejo del backend (anterior a esa fecha) NO
+  es idempotente para reclamos: el workflow lo detecta en `/openapi.json` (`PoblarIn.modo`) y no
+  llama.
+- **Cierre del atraso de Emergencias** (`cerrar_atraso_emergencias`, modo `cerrar_atraso` con
+  `atencion` en `modulos`): eventos no terminales con recepción de más de 21 días → DESESTIMADO
+  (PENDIENTE/EN_PREPARACION: nunca hubo despacho) o EN_SITIO → RESUELTO, fechas pegadas al último
+  log, `emergencia_log` CIERRE; derivaciones a la Guardia pendientes → ausente. Sin push.
+
+### Datos demo de TRÁMITES (generador, 2026-10-21)
+
+`backend/app/services/demo_tramites.py`, mismas vías (`modulos` incluye `tramites`; banda
+`tramites_min_mensual`/`tramites_max_mensual`, default 60-120 expedientes/mes, días hábiles,
+9 a 16 h). Detalle del modelo respetado en el docstring del módulo y en la skill `modulo-tramites`.
+
+- Tipos activos con versión publicada; caminos inicial → final enumerados del catálogo (admite un
+  ciclo de subsanación); ~22 % termina rechazado si el tipo tiene camino de rechazo. Numeración con el
+  numerador atómico del módulo (año del alta). Iniciador según `iniciadores_permitidos`: vecinos demo,
+  **empresas demo** (se crean 60 con email `@vecinos-demo.zaris.com.ar` y CUIT sintético) o un área
+  interna. Ledger: creación, numeración, pase (si `quien_puede_jsonb` exige otra subárea), toma,
+  transición, visados aprobados y resultado (automático si la transición final es aprobar/rechazar;
+  si no, lo sella un supervisor). Encuesta CSAT de trámites (iniciador vecino, nunca `pendiente`).
+- **SLA**: `tipo_tramite.sla_dias` (prod 2-4 días) o, si falta, `tramite_sla_dias_default` (30); misma
+  mezcla 60-85 % por mes que los reclamos (`p_mes('tramites', ...)`, plan por id), tope de duración
+  max(20, 3 × SLA). **Nunca queda un trámite demo pendiente en un estado `espera_iniciador`** (el
+  timer de desistimiento le mandaría mails): ese paso se difiere hasta que el plan también lo saca.
+- Sin documentos (no toca el Storage): las transiciones con `requiere_adjunto` dicen en el comentario
+  que la documentación se presentó en ventanilla.
+- `avanzar_pendientes_tramites` (cron, ventana 120 días) y `cerrar_atraso_tramites` (modo
+  `cerrar_atraso`; con `incluir_no_demo` cierra también los 21+ expedientes de `seed_tramites.py`/QA y
+  sella el resultado de los que ya están en un estado final con resultado pendiente).

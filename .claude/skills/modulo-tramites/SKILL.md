@@ -30,6 +30,9 @@ Todas siguen §10. **El catálogo `tipo_tramite` NO tiene `id_usuario_alta`** ([
 ### Migraciones (todas local + prod)
 47 catálogos · 48 instancias · 49 índices · 50 auditoría en instancias · 56 `es_sistema` · 66 destinatario=agente · 68 tipo_accion/mensaje_iniciador/cantidad_max_archivos · 73 aprobaciones por etapa · 74 `resultado` (Fase 1 retención) · 75 retención Fases 2-5 (`retencion_nunca_depurar`, `fecha_archivado`/`archivado_motivo`, `binario_purgado`/`fecha_purga_binario`, ledger `archivado_inactividad`/`purga_binario` + claves config en `75b`). Detalle en HISTORIAL/§21.
 
+### Datos demo (generador, 2026-10-21)
+`backend/app/services/demo_tramites.py` (vía `POST /api/v1/demo/poblar` con `tramites` en `modulos`, cron diario) genera expedientes por SQL con el usuario `generador.demo`: catálogo publicado, numerador del módulo, ledger completo, resultado y CSAT, mezcla de SLA 60-85 % por mes. Nunca deja un trámite demo pendiente en un estado `espera_iniciador` (el timer de desistimiento mandaría mails) y no crea documentos. Si cambiás el modelo (columnas, CHECKs del ledger, destinatario), revisá ese generador. Detalle en la skill `modulo-bi` (datos demo).
+
 ### Seeds
 `backend/seed_tramites.py` (idempotente): 7 subáreas del circuito, 9 tipos con versión publicada v1 (poda-arbol POD, pedido-informe INF, licencia-ordinaria LIC, habilitacion-comercial HAB, cambio-domicilio-comercial CDC, transferencia-habilitacion THC, inspeccion-bromatologica BRO, cartel-publicitario CAR, recurso-administrativo REA) + ~21 trámites demo. `$env:ENV_FILE=".env.local"; python seed_tramites.py`.
 

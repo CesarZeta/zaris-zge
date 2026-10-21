@@ -17,6 +17,10 @@ Implementado 2026-05-14 jornada 5. El bullet "OT" del menú es el frontend donde
 - Si alguna vez vuelve la idea de «agendar» una OT, es una decisión de César: no reintroducirla por defecto.
 - Las secciones de abajo que hablan de slots, `con-agenda` u ocupaciones de OT describen la historia hasta 2026-10-21.
 
+### OT operativas de los datos demo (2026-10-21)
+
+El generador demo (`services/demo_datos.py::_AsignadorOT`) crea por SQL la OT operativa de cada reclamo demo que pasa por «En gestión», con la misma regla que `candidatos_gestion` (nivel 4 no auditor de la gestión o cuadrilla según `asignacion_a`, menor carga y rotación; fallback a otros niveles/secretaría/municipio si la gestión no tiene a nadie), estado espejo del reclamo y **sin ocupación**. No escribe `notificacion` ni manda push: las OT demo no aparecen en la campana. Excluye agentes con push activo. Si cambiás columnas o estados de `ordenes_trabajo`, revisá ese generador. Detalle en la skill `modulo-bi` (datos demo).
+
 ### Vista Supervisor — tabla a todo el ancho + panel lateral (rediseño 2026-10-20)
 
 `web-app/src/modules/ot/views/SupervisorView.tsx`: la tabla ocupa todo el ancho (antes había una columna fija de 340 px con el `PlanificadorOT`, que dejaba la tabla con scroll horizontal y 4 de 8 columnas visibles — queja de César). Click en una fila (o «Planificar») abre el `PlanificadorOT` en un **panel lateral fijo que se superpone** (z 2100, Escape/fondo/X lo cierran; se cierra solo al crear la OT). Filas compactas: «N° · Tipo» en una celda (con dos botones de orden), SLA con `SLACell compacto` («Vencido 15 d», detalle en el tooltip). **Barra «Asignar (N)» SIEMPRE visible** en Asignar tras buscar (apagada sin tildados, con la ayuda «Tildá…»): tildar + Asignar abre el `AsignarModal` de lote. Todas las columnas ordenables en pantalla (`ui/orden.tsx`; la mesa trae todo, sin tope); lo mismo en las mesas Agente y Auditoría.

@@ -1,28 +1,37 @@
-name: Datos demo BI (cron semanal)
+name: Datos demo BI (cron diario)
 
-# Mantiene viva la demo del municipio ficticio San Andres: una vez por semana
-# genera los reclamos de los ultimos 7 dias (con historial y encuestas CSAT) y,
-# desde 2026-09-19, los turnos / llamados / Guardia / eventos demo de la semana
-# (+7 dias reservados hacia adelante), y avanza el ciclo de vida de los
-# pendientes demo (asigna/resuelve/cancela, madura encuestas, resuelve turnos
-# vencidos). Endpoint: POST /api/v1/demo/poblar con modulos=[reclamos,atencion].
+# Mantiene viva la demo del municipio ficticio San Andres: TODOS LOS DIAS genera
+# los reclamos (con historial, OT operativas y encuestas CSAT), los expedientes
+# (tramites) y los turnos / llamados / Guardia / eventos demo del dia anterior
+# completo (+7 dias de turnos reservados hacia adelante), y avanza el ciclo de
+# vida de los pendientes demo con su plan SLA-aware (cada mes 60-85 % se cierra
+# dentro del SLA). Endpoint: POST /api/v1/demo/poblar.
 #
-# Desde 2026-09-22 el endpoint es ASINCRONO: responde 202 con id_corrida y este
+# Desde 2026-10-21 el cron es DIARIO y SIN fechas: el endpoint toma por defecto
+# los 7 dias completos hasta ayer y reclamos/tramites SALTEAN los dias ya
+# generados -> cada dia se genera una sola vez y, si el cron se saltea dias (o
+# GitHub lo demora horas), la corrida siguiente los recupera sin duplicar. La
+# atencion ya era idempotente por recurso/dia. Antes de llamar, el job verifica
+# en /openapi.json que el backend desplegado tenga esa version (PoblarIn.modo y
+# modulo 'tramites'): contra un backend viejo el cron diario duplicaria reclamos.
+#
+# El endpoint es ASINCRONO (desde 2026-09-22): responde 202 con id_corrida y este
 # job hace polling de GET /api/v1/demo/poblar/{id_corrida} cada 20 s (hasta 40
-# min) para volcar el JSON de conteos en el log. Motivo: el edge de Railway corta
-# toda respuesta a los ~300 s; con los dos modulos la semana tardo 14,5 min y el
-# run del 2026-09-21 quedo en failure (502) aunque el backend termino igual.
-# Si el backend todavia es el sincrono (deploy viejo), el 200 se acepta como antes.
+# min) para volcar el JSON de conteos en el log (el edge de Railway corta toda
+# respuesta a los ~300 s).
 #
-# Solo toca datos atribuidos al usuario 'generador.demo' (inactivo). El volumen
-# semanal sale de la banda mensual 300-500 escalada a 7 dias (~70-115).
+# Disparo manual con modo = cerrar_atraso: cierra de forma plausible lo viejo que
+# quedo abierto (reclamos / tramites / emergencias de mas de 21 dias, con sus OT).
+# Con aplicar=false (default) es un DRY-RUN: el JSON trae los conteos de lo que
+# tocaria y la lista de lo que NO es del generador. incluir_no_demo=true suma los
+# datos de QA / seed_tramites.py.
+#
+# Solo toca datos atribuidos al usuario 'generador.demo' (inactivo), salvo
+# cerrar_atraso con incluir_no_demo. Ningun paso manda mails ni push.
 #
 # ALCANCE (definicion de Cesar 2026-08-30): este cron aplica datos SOLO al
 # municipio DEMO (San Andres). Cuando llegue multi-tenant (IT-01), el generador
 # debe quedar acotado al tenant demo — JAMAS generar datos en tenants reales.
-#
-# ANTES DE RE-DISPATCHAR tras un failure: verificar los conteos por dia en la DB
-# (el generador de reclamos NO es idempotente; incidente 2026-08-31).
 #
 # Auth: header X-Dispatcher-Token == env var DISPATCHER_TOKEN de Railway (el
 # mismo token que usan los otros crons). Secrets del repo:
@@ -33,22 +42,38 @@ name: Datos demo BI (cron semanal)
 
 on:
   schedule:
-    # Lunes 08:20 UTC (05:20 en AR). Cada corrida agrega la semana nueva.
-    - cron: '20 8 * * 1'
+    # Todos los dias 08:20 UTC (05:20 en AR): agrega el dia anterior completo.
+    - cron: '20 8 * * *'
   workflow_dispatch:
     inputs:
       desde:
-        description: 'Inicio del rango YYYY-MM-DD (vacio = ultimos 7 dias)'
+        description: 'Inicio del rango YYYY-MM-DD (vacio = 7 dias completos hasta ayer; max 45 dias)'
         required: false
         default: ''
       hasta:
-        description: 'Fin del rango YYYY-MM-DD (vacio = hoy)'
+        description: 'Fin del rango YYYY-MM-DD (vacio = ayer). Los dias ya generados se saltean'
         required: false
         default: ''
       modulos:
-        description: 'Que generar: reclamos,atencion (default ambos). Carga inicial de atencion = atencion'
+        description: 'reclamos,atencion,tramites (default los tres). En cerrar_atraso, atencion = emergencias'
         required: false
-        default: 'reclamos,atencion'
+        default: 'reclamos,atencion,tramites'
+      modo:
+        description: 'poblar (generar + avanzar) | cerrar_atraso (cierra lo viejo abierto)'
+        required: false
+        default: 'poblar'
+      aplicar:
+        description: 'cerrar_atraso: true escribe; false = DRY-RUN (solo conteos)'
+        required: false
+        default: 'false'
+      incluir_no_demo:
+        description: 'cerrar_atraso: incluir datos de QA/seed que no son del generador'
+        required: false
+        default: 'false'
+      rebalancear_sla:
+        description: 'cerrar_atraso: llevar los meses viejos de reclamos con menos de 60 % dentro del SLA a su objetivo'
+        required: false
+        default: 'false'
 
 concurrency:
   group: demo-datos
@@ -62,6 +87,13 @@ jobs:
         env:
           API_URL: ${{ secrets.ZARIS_API_URL || 'https://zaris-api-production-bf0b.up.railway.app' }}
           TOKEN: ${{ secrets.ENCUESTAS_DISPATCHER_TOKEN }}
+          DESDE: ${{ github.event.inputs.desde }}
+          HASTA: ${{ github.event.inputs.hasta }}
+          MODULOS: ${{ github.event.inputs.modulos }}
+          MODO: ${{ github.event.inputs.modo }}
+          APLICAR: ${{ github.event.inputs.aplicar }}
+          NO_DEMO: ${{ github.event.inputs.incluir_no_demo }}
+          REBALANCEAR: ${{ github.event.inputs.rebalancear_sla }}
         run: |
           if [ -z "$TOKEN" ]; then
             echo "::error::Falta el secret ENCUESTAS_DISPATCHER_TOKEN en el repo."
@@ -69,16 +101,30 @@ jobs:
           fi
 
           URL="$API_URL/api/v1/demo/poblar"
+          [ -z "$MODULOS" ] && MODULOS='reclamos,atencion,tramites'
+          [ -z "$MODO" ] && MODO='poblar'
+          [ "$APLICAR" = "true" ] || APLICAR='false'
+          [ "$NO_DEMO" = "true" ] || NO_DEMO='false'
+          [ "$REBALANCEAR" = "true" ] || REBALANCEAR='false'
 
-          DESDE='${{ github.event.inputs.desde }}'
-          HASTA='${{ github.event.inputs.hasta }}'
-          MODULOS='${{ github.event.inputs.modulos }}'
-          [ -z "$MODULOS" ] && MODULOS='reclamos,atencion'
+          # Preflight: el backend desplegado tiene que ser la version idempotente por dia
+          # (PoblarIn con 'modo' y el modulo 'tramites'). Contra un deploy viejo el cron
+          # diario duplicaria reclamos: mejor fallar sin llamar.
+          SPEC=$(mktemp)
+          curl -sS -o "$SPEC" "$API_URL/openapi.json"
+          if ! python3 -c 'import json,sys; p=json.load(open(sys.argv[1]))["components"]["schemas"]["PoblarIn"]["properties"]; sys.exit(0 if "modo" in p and "tramites" in json.dumps(p.get("modulos", {})) else 1)' "$SPEC"; then
+            echo "::error::El backend desplegado todavia no tiene la version diaria de /demo/poblar (PoblarIn.modo / modulo 'tramites'). Mirar el deploy de Railway antes de correr: un backend viejo no es idempotente."
+            exit 1
+          fi
+
           # 'reclamos,atencion' -> ["reclamos","atencion"] (sin jq: awk)
           MODS_JSON=$(printf '%s' "$MODULOS" | tr -d ' ' | awk -F, '{ for (i=1;i<=NF;i++) printf "%s\"%s\"", (i>1?",":""), $i }')
-          PAYLOAD=$(printf '{"modulos":[%s]}' "$MODS_JSON")
-          if [ -n "$DESDE" ] && [ -n "$HASTA" ]; then
+          if [ "$MODO" = "cerrar_atraso" ]; then
+            PAYLOAD=$(printf '{"modo":"cerrar_atraso","aplicar":%s,"incluir_no_demo":%s,"rebalancear_sla":%s,"modulos":[%s]}' "$APLICAR" "$NO_DEMO" "$REBALANCEAR" "$MODS_JSON")
+          elif [ -n "$DESDE" ] && [ -n "$HASTA" ]; then
             PAYLOAD=$(printf '{"desde":"%s","hasta":"%s","modulos":[%s]}' "$DESDE" "$HASTA" "$MODS_JSON")
+          else
+            PAYLOAD=$(printf '{"modulos":[%s]}' "$MODS_JSON")
           fi
           echo "POST $URL body=$PAYLOAD"
 
@@ -93,13 +139,8 @@ jobs:
           echo "Respuesta:"
           cat "$BODY"; echo
 
-          # Backend sincrono (anterior al 2026-09-22): 200 con el resultado completo.
-          if [ "$CODE" = "200" ]; then
-            echo "Corrida sincrona terminada (backend anterior al flujo 202)."
-            exit 0
-          fi
           if [ "$CODE" != "202" ]; then
-            echo "::error::demo/poblar devolvio HTTP $CODE (esperado 202). 409 = otra corrida en curso o rango invalido; 502 = el edge corto la respuesta. Verificar los conteos por dia en la DB ANTES de re-dispatchar."
+            echo "::error::demo/poblar devolvio HTTP $CODE (esperado 202). 409 = otra corrida en curso o rango invalido; 422 = body invalido; 502 = el edge corto la respuesta. Los dias ya generados se saltean, pero revisar los conteos por dia en la DB antes de re-dispatchar."
             exit 1
           fi
 
