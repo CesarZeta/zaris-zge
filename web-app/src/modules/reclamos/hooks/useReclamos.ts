@@ -7,6 +7,8 @@ import {
   crearSubreclamo,
   editarReclamo,
   enviarAuditoria,
+  resolverReclamo,
+  tomarReclamo,
   getCatalogoAreas,
   getCatalogoSubareas,
   getCatalogoTipos,
@@ -126,10 +128,12 @@ export function useEditarReclamo(id: number | null) {
 export function useCambiarEstadoReclamo(id: number | null) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: { estado: string; nota?: string }) =>
+    mutationFn: (body: { estado: string; nota?: string; resolucion?: string }) =>
       cambiarEstadoReclamo(id as number, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['reclamos'] })
+      // A Resuelto termina la OT abierta (2026-10-21): las mesas también cambian.
+      qc.invalidateQueries({ queryKey: ['ot'] })
     },
   })
 }
@@ -152,6 +156,30 @@ export function useEnviarAuditoria(id: number | null) {
   return useMutation({
     mutationFn: (body: { observaciones?: string; id_agente_auditor?: number | null }) =>
       enviarAuditoria(id as number, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['reclamos'] })
+      qc.invalidateQueries({ queryKey: ['ot'] })
+    },
+  })
+}
+
+// Tomar / resolver (2026-10-21): invalidan Reclamos y las mesas de OT (la OT nace
+// o se termina en la misma operación).
+export function useTomarReclamo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => tomarReclamo(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['reclamos'] })
+      qc.invalidateQueries({ queryKey: ['ot'] })
+    },
+  })
+}
+
+export function useResolverReclamo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, resolucion }: { id: number; resolucion: string }) => resolverReclamo(id, resolucion),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['reclamos'] })
       qc.invalidateQueries({ queryKey: ['ot'] })

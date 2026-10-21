@@ -1,7 +1,10 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
-import { useAreasCatalogo, useSubareasCatalogo, useReclamosListado, type FiltrosReclamos } from '../hooks/useReclamos'
+import { useAreasCatalogo, useSubareasCatalogo, useReclamosListado, useTomarReclamo, type FiltrosReclamos } from '../hooks/useReclamos'
+import { useAuthStore } from '../../../stores/auth'
+import { useNotificationsStore } from '../../../stores/notifications'
+import type { ReclamoListado } from '../types/reclamo'
 import { StatsBar } from '../components/StatsBar'
 import { Badge } from '../components/Badge'
 import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
@@ -92,6 +95,24 @@ export function ListView() {
 
   const cantidad = listado.data?.length ?? 0
 
+  // Tomar desde el listado (César 2026-10-21): Gestión (4), Supervisor (2) y Admin,
+  // en los Sin asignar de su gestión. El backend vuelve a validar (403/409).
+  const user = useAuthStore((s) => s.user)
+  const nivel = user?.nivel_acceso ?? 99
+  const tomaReclamos = nivel === 1 || nivel === 2 || nivel === 4
+  const puedeTomar = (r: ReclamoListado) =>
+    r.estado === 'Sin asignar' && (nivel === 1 || (tomaReclamos && user?.id_subarea != null && user.id_subarea === r.id_subarea))
+  const tomar = useTomarReclamo()
+  const push = useNotificationsStore((s) => s.push)
+  async function tomarDesdeLista(r: ReclamoListado) {
+    try {
+      const res = await tomar.mutateAsync(r.id_reclamo)
+      push({ kind: 'success', title: `Tomaste ${r.nro_reclamo ?? 'el reclamo'}`, body: `Orden de trabajo ${res.nro_ot} a tu nombre.` })
+    } catch (err) {
+      push({ kind: 'error', title: 'No se pudo tomar', body: (err as Error).message })
+    }
+  }
+
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
@@ -105,7 +126,10 @@ export function ListView() {
         >
           Ver pendientes
         </button>
-        <button type="button" onClick={() => navigate('/reclamos/nuevo')} style={btnAccent}>+ Nuevo reclamo</button>
+        {/* Crear reclamos: Admin, Supervisor y Atención (el backend da 403 al resto). */}
+        {nivel <= 3 && (
+          <button type="button" onClick={() => navigate('/reclamos/nuevo')} style={btnAccent}>+ Nuevo reclamo</button>
+        )}
       </div>
 
       {/* Toolbar: es un form para que Enter en cualquier filtro dispare Buscar. */}
@@ -211,6 +235,7 @@ export function ListView() {
                 <ThOrden campo="prioridad" orden={orden} onOrdenar={alternar} style={thStyle}>Prioridad</ThOrden>
                 <ThOrden campo="fecha" orden={orden} onOrdenar={alternar} style={thStyle}>Fecha</ThOrden>
                 <ThOrden campo="agente" orden={orden} onOrdenar={alternar} style={thStyle}>Responsable</ThOrden>
+                {tomaReclamos && <th style={{ ...thStyle, textAlign: 'right' }}>Acción</th>}
               </tr>
             </thead>
             <tbody>
@@ -252,6 +277,21 @@ export function ListView() {
                   </Td>
                   <Td mono style={{ fontSize: '0.78rem' }}>{formatFecha(r.fecha_alta)}</Td>
                   <Td style={{ fontSize: '0.82rem', color: 'var(--fg-2)' }}>{r.agente_nombre || '—'}</Td>
+                  {tomaReclamos && (
+                    <Td style={{ textAlign: 'right' }}>
+                      {puedeTomar(r) && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); tomarDesdeLista(r) }}
+                          disabled={tomar.isPending}
+                          style={btnTomar}
+                          title="Crea la orden de trabajo a tu nombre"
+                        >
+                          Tomar
+                        </button>
+                      )}
+                    </Td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -330,6 +370,9 @@ const btnOutline: React.CSSProperties = {
 const btnBuscar: React.CSSProperties = {
   ...btnAccent, padding: '7px 14px',
   display: 'inline-flex', alignItems: 'center', gap: 6,
+}
+const btnTomar: React.CSSProperties = {
+  ...btnAccent, padding: '5px 12px', fontWeight: 600,
 }
 const badgeClickable: React.CSSProperties = {
   display: 'inline-flex', cursor: 'pointer',

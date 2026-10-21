@@ -117,11 +117,18 @@ export function CambiarEstadoOTModal({ open, ot, onClose, onSuccess }: Props) {
           </Field>
         )}
 
-        <Field label="Observaciones" hint="Opcional. Queda en el detalle de la OT.">
+        {/* Terminar la OT resuelve el reclamo: lo escrito es la resolución que ve
+            el vecino (mig 117, César 2026-10-21). En los otros estados es interno. */}
+        <Field
+          label={estadoNuevo === 'Terminada' ? 'Resolución · la ve el vecino' : 'Observaciones'}
+          hint={estadoNuevo === 'Terminada'
+            ? 'Contale al vecino qué se hizo: le llega en su app y en el aviso de cierre.'
+            : 'Opcional. Queda en el detalle de la OT; el vecino no la ve.'}
+        >
           <textarea
             value={obs}
             onChange={(e) => setObs(e.target.value)}
-            placeholder="Notas del trabajo realizado..."
+            placeholder={estadoNuevo === 'Terminada' ? 'Ej: Se reparó el bache y se señalizó.' : 'Notas del trabajo realizado...'}
             rows={3}
             maxLength={500}
             style={{ ...inputStyle, resize: 'vertical', fontFamily: 'var(--font-display)' }}

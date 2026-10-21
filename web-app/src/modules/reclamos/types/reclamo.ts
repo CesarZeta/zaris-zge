@@ -101,6 +101,15 @@ export interface OTAsociada {
   agente_nombre: string | null
   agente_apellido: string | null
   equipo_nombre: string | null
+  id_agente?: number | null
+  id_equipo?: number | null
+}
+
+// Lo que el usuario logueado puede hacer desde Reclamos (2026-10-21): mismas
+// reglas que POST /reclamos/{id}/tomar y /resolver (el backend las calcula).
+export interface AccionesReclamo {
+  tomar: boolean
+  resolver: boolean
 }
 
 // Subreclamo (hijo)
@@ -115,6 +124,9 @@ export interface Subreclamo {
 // Reclamo full (GET /reclamos/{id})
 export interface ReclamoDetalle extends ReclamoListado {
   direccion: string | null
+  // Texto de resolución que ve el vecino (mig 117).
+  resolucion?: string | null
+  acciones?: AccionesReclamo
   fecha_primer_asignacion: string | null
   fecha_cierre: string | null
   sla_vencimiento: string | null

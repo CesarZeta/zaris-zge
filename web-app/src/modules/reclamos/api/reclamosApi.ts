@@ -58,7 +58,8 @@ export const crearReclamo = (data: ReclamoCreate) =>
 export const editarReclamo = (id: number, data: ReclamoUpdate) =>
   api.put<{ ok: boolean; id_reclamo: number; campos: string[] }>(`${BASE}/${id}`, data)
 
-export const cambiarEstadoReclamo = (id: number, body: { estado: string; nota?: string }) =>
+// `resolucion` (mig 117) solo al pasar a Resuelto: la ve el vecino. `nota` es interna.
+export const cambiarEstadoReclamo = (id: number, body: { estado: string; nota?: string; resolucion?: string }) =>
   api.put<{ ok: boolean; id_reclamo: number; estado: string }>(`${BASE}/${id}/estado`, body)
 
 export const cancelarReclamo = (id: number, body: { motivo: string }) =>
@@ -71,6 +72,15 @@ export const enviarAuditoria = (id: number, body: { observaciones?: string; id_a
   api.post<{ ok: boolean; id_reclamo: number; estado: string; id_ot: number; nro_ot: string }>(
     `${BASE}/${id}/auditoria`, body,
   )
+
+// Tomar / resolver desde Reclamos (2026-10-21): Gestión, Supervisor y Admin de la
+// gestión del reclamo. Tomar crea la OT a nombre de quien toma; resolver exige el
+// texto de resolución, que ve el vecino.
+export const tomarReclamo = (id: number) =>
+  api.post<{ ok: boolean; id_reclamo: number; id_ot: number; nro_ot: string }>(`${BASE}/${id}/tomar`, {})
+
+export const resolverReclamo = (id: number, resolucion: string) =>
+  api.post<{ ok: boolean; id_reclamo: number; estado: string }>(`${BASE}/${id}/resolver`, { resolucion })
 
 // Aviso del operador al supervisor (Fase 3 roles): pide una acción sobre el
 // reclamo. Notifica a los supervisores de la subárea (fallback: admins).

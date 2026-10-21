@@ -56,17 +56,22 @@ export function CambiarEstadoModal({ open, idReclamo, estadoActual, onClose, onS
   // Preselecciona el primer estado alcanzable (no el actual, que no es opción).
   const [estadoNuevo, setEstadoNuevo] = useState<EstadoReclamo>(alcanzables[0] ?? estadoActual)
   const [nota, setNota] = useState('')
+  // Resolución (mig 117, César 2026-10-21): obligatoria al pasar a Resuelto; la ve el vecino.
+  const [resolucion, setResolucion] = useState('')
   // Pop-up de confirmación para el cierre directo (resolver sin OT).
   const [confirmandoCierre, setConfirmandoCierre] = useState(false)
 
   // Es cierre directo cuando se resuelve un reclamo todavía "Sin asignar".
   const esCierreDirecto = estadoActual === 'Sin asignar' && estadoNuevo === 'Resuelto'
+  const aResuelto = estadoNuevo === 'Resuelto'
+  const faltaResolucion = aResuelto && resolucion.trim().length < 5
 
   useEffect(() => {
     if (open) {
       const opciones = opcionesPara(estadoActual)
       setEstadoNuevo(opciones[0] ?? estadoActual)
       setNota('')
+      setResolucion('')
       setConfirmandoCierre(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -74,7 +79,9 @@ export function CambiarEstadoModal({ open, idReclamo, estadoActual, onClose, onS
 
   async function aplicar() {
     try {
-      await mut.mutateAsync({ estado: estadoNuevo, nota: nota.trim() || undefined })
+      await mut.mutateAsync(aResuelto
+        ? { estado: estadoNuevo, resolucion: resolucion.trim() }
+        : { estado: estadoNuevo, nota: nota.trim() || undefined })
       push({ kind: 'success', title: `Estado actualizado a "${estadoNuevo}"` })
       onSuccess?.()
       onClose()
@@ -120,7 +127,7 @@ export function CambiarEstadoModal({ open, idReclamo, estadoActual, onClose, onS
             <button onClick={onClose} disabled={mut.isPending} style={btnGhost}>Cancelar</button>
             <button
               onClick={confirmar}
-              disabled={mut.isPending || alcanzables.length === 0 || estadoNuevo === estadoActual}
+              disabled={mut.isPending || alcanzables.length === 0 || estadoNuevo === estadoActual || faltaResolucion}
               style={btnPrimary}
             >
               {mut.isPending ? 'Guardando...' : 'Aplicar cambio'}
@@ -139,9 +146,9 @@ export function CambiarEstadoModal({ open, idReclamo, estadoActual, onClose, onS
             crear una orden de trabajo. Esta acción solo es válida para un supervisor de la misma
             subárea del reclamo, queda registrada en el historial y <strong>no se puede deshacer</strong>.
           </p>
-          {nota.trim() && (
+          {resolucion.trim() && (
             <p style={{ margin: '10px 0 0', color: 'var(--fg-3)', fontSize: 'var(--size-caption)' }}>
-              Nota: {nota.trim()}
+              Resolución para el vecino: {resolucion.trim()}
             </p>
           )}
         </div>
@@ -182,16 +189,29 @@ export function CambiarEstadoModal({ open, idReclamo, estadoActual, onClose, onS
           </Field>
         )}
 
-        <Field label="Nota para el historial" hint="Opcional. Aparece en el timeline del reclamo y se concatena en observaciones.">
-          <textarea
-            value={nota}
-            onChange={(e) => setNota(e.target.value)}
-            placeholder="Ej: contactado el reclamante, equipo asignado mañana 9hs."
-            rows={3}
-            maxLength={500}
-            style={{ ...inputStyle, resize: 'vertical', fontFamily: 'var(--font-display)' }}
-          />
-        </Field>
+        {aResuelto ? (
+          <Field label="Resolución" required hint="La ve el vecino en su app y en el aviso de cierre. Si hay una orden de trabajo abierta, se termina.">
+            <textarea
+              value={resolucion}
+              onChange={(e) => setResolucion(e.target.value)}
+              placeholder="Ej: Se cambió la lámpara y se verificó el encendido. Gracias por avisarnos."
+              rows={4}
+              maxLength={2000}
+              style={{ ...inputStyle, resize: 'vertical', fontFamily: 'var(--font-display)' }}
+            />
+          </Field>
+        ) : (
+          <Field label="Nota interna" hint="Opcional. Queda en el historial del reclamo; el vecino no la ve.">
+            <textarea
+              value={nota}
+              onChange={(e) => setNota(e.target.value)}
+              placeholder="Ej: contactado el reclamante, equipo asignado mañana 9hs."
+              rows={3}
+              maxLength={500}
+              style={{ ...inputStyle, resize: 'vertical', fontFamily: 'var(--font-display)' }}
+            />
+          </Field>
+        )}
       </div>
       )}
     </Modal>

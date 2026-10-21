@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { useReclamoAdjuntos, useReclamoDetalle } from '../hooks/useReclamos'
+import { useReclamoAdjuntos, useReclamoDetalle, useTomarReclamo } from '../hooks/useReclamos'
 import { useAuthStore } from '../../../stores/auth'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { Badge } from '../components/Badge'
@@ -9,6 +9,7 @@ import { AvisarSupervisorModal } from '../components/AvisarSupervisorModal'
 import { CambiarEstadoModal } from '../components/CambiarEstadoModal'
 import { CancelarReclamoModal } from '../components/CancelarReclamoModal'
 import { EnviarAuditoriaModal } from '../components/EnviarAuditoriaModal'
+import { ResolverReclamoModal } from '../components/ResolverReclamoModal'
 import { SubreclamoModal } from '../components/SubreclamoModal'
 import { UploadAdjuntosPanel } from '../components/UploadAdjuntosPanel'
 import { ConfirmModal } from '../../agenda/components/ConfirmModal'
@@ -50,6 +51,9 @@ export function DetailView() {
   const [openSubreclamo, setOpenSubreclamo] = useState(false)
   const [openAviso, setOpenAviso] = useState(false)
   const [openAuditoria, setOpenAuditoria] = useState(false)
+  const [openResolver, setOpenResolver] = useState(false)
+  const tomar = useTomarReclamo()
+  const push = useNotificationsStore((s) => s.push)
 
   if (detalle.isLoading) {
     return <div style={{ color: 'var(--fg-3)', padding: 20 }}>Cargando reclamo...</div>
@@ -83,6 +87,20 @@ export function DetailView() {
   // Subreclamo: solo sobre reclamos vivos que no sean ellos mismos un subreclamo
   // (el backend rechaza anidar > 1 nivel).
   const puedeSubreclamar = accionesEstadoVisibles && r.id_reclamo_padre == null
+  // Tomar / resolver (César 2026-10-21): Gestión, Supervisor y Admin de la gestión
+  // del reclamo. El backend calcula los permisos (`acciones`) con las mismas
+  // reglas que impone en POST /tomar y /resolver.
+  const acciones = r.acciones ?? { tomar: false, resolver: false }
+
+  async function tomarReclamo() {
+    try {
+      const res = await tomar.mutateAsync(r.id_reclamo)
+      push({ kind: 'success', title: 'Tomaste el reclamo', body: `Orden de trabajo ${res.nro_ot} a tu nombre.` })
+      detalle.refetch()
+    } catch (err) {
+      push({ kind: 'error', title: 'No se pudo tomar', body: (err as Error).message })
+    }
+  }
 
   return (
     <>
@@ -97,6 +115,14 @@ export function DetailView() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {acciones.tomar && (
+            <button type="button" onClick={tomarReclamo} disabled={tomar.isPending} style={btnAccent}>
+              {tomar.isPending ? 'Tomando...' : 'Tomar'}
+            </button>
+          )}
+          {acciones.resolver && (
+            <button type="button" onClick={() => setOpenResolver(true)} style={btnAccent}>Resolver</button>
+          )}
           {/* Cambiar estado / cancelar / subreclamo: solo Supervisión (nivel ≤ 2). */}
           {accionesEstadoVisibles && (
             <button onClick={() => setOpenEstado(true)} style={btnPrimary}>Cambiar estado</button>
@@ -153,6 +179,13 @@ export function DetailView() {
         nroReclamo={r.nro_reclamo}
         onClose={() => setOpenSubreclamo(false)}
         onSuccess={() => { setOpenSubreclamo(false); detalle.refetch() }}
+      />
+      <ResolverReclamoModal
+        open={openResolver}
+        idReclamo={r.id_reclamo}
+        nroReclamo={r.nro_reclamo}
+        onClose={() => setOpenResolver(false)}
+        onSuccess={() => detalle.refetch()}
       />
       <AvisarSupervisorModal
         open={openAviso}
@@ -254,6 +287,15 @@ export function DetailView() {
           </>
         )}
       </ReclamoSection>
+
+      {r.resolucion && (
+        <ReclamoSection title="Resolución">
+          <p style={{ margin: 0, color: 'var(--fg-1)', fontSize: '0.92rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+            {r.resolucion}
+          </p>
+          <div style={{ fontSize: '0.78rem', color: 'var(--fg-3)' }}>La ve el vecino en su app y en el aviso de cierre.</div>
+        </ReclamoSection>
+      )}
 
       <UbicacionSection r={r} />
 
@@ -609,6 +651,13 @@ const btnPrimary: React.CSSProperties = {
   border: 'none', borderRadius: 'var(--radius-lg)', fontFamily: 'var(--font-display)',
   fontSize: 'var(--size-btn)', fontWeight: 500, cursor: 'pointer',
 }
+// Tomar / Resolver: la acción principal de quien gestiona el reclamo.
+const btnAccent: React.CSSProperties = {
+  padding: '7px 14px', background: 'var(--zaris-orange)', color: '#fff',
+  border: 'none', borderRadius: 'var(--radius-lg)', fontFamily: 'var(--font-display)',
+  fontSize: 'var(--size-btn)', fontWeight: 600, cursor: 'pointer',
+}
+
 const btnDanger: React.CSSProperties = {
   padding: '7px 14px', background: 'var(--color-error)', color: '#fff',
   border: 'none', borderRadius: 'var(--radius-lg)', fontFamily: 'var(--font-display)',
