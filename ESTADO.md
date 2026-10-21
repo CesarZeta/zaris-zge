@@ -18,8 +18,8 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. 🔴 **Seguridad — parte (b) del arreglo del 2026-10-21 (la parte (a) ya está en prod y verificada):** coordinar con César un paso que necesita Railway. Detalle en la memoria privada de Cesar.
-2. **Subárea del usuario ≠ la de su agente en 75 de 93 cuentas de prod (16 supervisores).** El cierre directo sin OT todavía lee la del usuario. ¿Alineo todas al agente (fuente única §3) y cambio ese chequeo para que lea la del agente?
+1. ✅ Seguridad del 2026-10-21: la parte (a) está en prod y verificada; la parte (b) **la descartó César** (no se hace, no re-proponer).
+2. ✅ Subárea usuario ≠ agente: **resuelto 2026-10-21** (mig 116 + el cierre de reclamos lee la gestión del agente).
 3. **Autoasignación:** ya NO necesita horarios (2026-10-21). ¿En qué gestiones la prendo (Maestros → Subáreas)?
 4. **Funcionario de prueba:** REC-2026-003079 (ramas) ahora está en Arbolado y sin asignar: ¿se lo asigno al funcionario de prueba desde la mesa para confirmar que el push llega?
 5. **92 agentes viejos sin ficha:** ¿los vinculo automáticamente por email/DNI donde coincidan y el resto a mano?
