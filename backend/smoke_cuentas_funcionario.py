@@ -16,7 +16,8 @@ cuenta ZARIS en el mismo guardado (solo admin), y guardar la ficha de un vecino 
 le crea la cuenta de App Vecinos. Cubre: alta con tilde (201 admin / 422 sin datos / 403 nivel 2)
 → usuario vinculado + agente real + DOS mails → PUT con tilde (403 nivel 2, 422 sin datos, 409
 usuario repetido, 200 crea, no-op si ya tiene, destildar no borra) → vecino legacy sin credencial
-(PUT la crea una sola vez; email ajeno → sin cuenta) → endpoint cuenta-zaris (403/404/409) →
+(PUT la crea una sola vez; email ajeno → sin cuenta) → ficha demo con DNI del rango 99.000.000
+(ninguna vía le crea la cuenta de vecino hasta cargar el DNI real) → endpoint cuenta-zaris (403/404/409) →
 login por email Y por DNI con la temporal → cambio forzado → credencial de vecino → marcadores
 OpenAPI. Los datos quedan como demo (no se limpian).
 """
@@ -332,6 +333,47 @@ async def main() -> int:
         check("3h. email de la cuenta de otra persona → 200, sin credencial ni mail (queda 'sin cuenta')",
               r.status_code == 200 and cred_e is None and len(mails) == 0, f"{short(r)} cred={cred_e} mails={len(mails)}")
 
+        # Ficha demo (DNI del rango reservado 99.000.000, mig 118): ninguna vía le crea la
+        # cuenta de App Vecinos ni le manda mails, hasta que se carga el DNI real.
+        dni_d = None
+        for _ in range(20):
+            cand = str(random.randint(99_500_000, 99_999_999))
+            if not await q1("SELECT 1 FROM ciudadanos WHERE doc_nro = :d", d=cand):
+                dni_d = cand
+                break
+        mails.clear()
+        r = await c.post("/api/v1/buc/ciudadanos", json=ficha(dni_d, es_funcionario=False, sufijo=dni_d[-4:]), headers=HA)
+        if not check("3i. alta de una ficha con DNI de prueba → 201", r.status_code == 201, short(r)):
+            return 1
+        id_d = r.json()["id_ciudadano"]
+        cred_d = await q1("SELECT 1 FROM ciudadano_credencial WHERE id_ciudadano = :id", id=id_d)
+        check("3j. el alta NO crea la cuenta de App Vecinos ni manda mail", cred_d is None and len(mails) == 0,
+              f"cred={cred_d} mails={len(mails)}")
+        r = await c.put(f"/api/v1/buc/ciudadanos/{id_d}", json={"observaciones": "ficha demo guardada"}, headers=HS)
+        cred_d = await q1("SELECT 1 FROM ciudadano_credencial WHERE id_ciudadano = :id", id=id_d)
+        check("3k. guardar la ficha demo (nivel 2) → 200, sigue sin cuenta y sin mail",
+              r.status_code == 200 and cred_d is None and len(mails) == 0, f"{short(r)} cred={cred_d} mails={len(mails)}")
+        r = await c.get(f"/api/v1/buc/ciudadanos/{id_d}/cuentas", headers=HA)
+        vd = r.json().get("vecino", {}) if r.status_code == 200 else {}
+        check("3l. GET /cuentas: sin_cuenta + ficha_demo=true", vd.get("estado") == "sin_cuenta" and vd.get("ficha_demo") is True, short(r))
+        r = await c.post(f"/api/v1/buc/ciudadanos/{id_d}/cuenta-vecino", headers=HA)
+        check("3m. POST /cuenta-vecino sobre la ficha demo → 422 (no 'ya activada')",
+              r.status_code == 422 and "DNI de prueba" in r.text and len(mails) == 0, short(r))
+        slug = await q1("SELECT codigo_corto FROM municipios WHERE activo = TRUE ORDER BY id_municipio LIMIT 1")
+        r = await c.post("/api/v1/publico/alta/activar-existente",
+                         json={"municipio_slug": slug["codigo_corto"], "doc_nro": dni_d})
+        cred_d = await q1("SELECT 1 FROM ciudadano_credencial WHERE id_ciudadano = :id", id=id_d)
+        check("3n. 'Ya estoy registrado' con el DNI de prueba → 200 genérico, sin cuenta ni mail",
+              r.status_code == 200 and cred_d is None and len(mails) == 0, f"{short(r)} cred={cred_d} mails={len(mails)}")
+        r = await c.get(f"/api/v1/buc/ciudadanos/{id_c}/cuentas", headers=HA)
+        check("3o. una ficha con DNI real no es ficha demo", r.status_code == 200 and r.json()["vecino"].get("ficha_demo") is False, short(r))
+        dni_real = str(random.randint(45_000_000, 49_999_999))
+        r = await c.put(f"/api/v1/buc/ciudadanos/{id_d}", json={"doc_nro": dni_real, "cuil": cuil_valido(dni_real)}, headers=HA)
+        cred_d = await q1("SELECT activado FROM ciudadano_credencial WHERE id_ciudadano = :id", id=id_d)
+        check("3p. al cargar el DNI real, ESE guardado crea la cuenta + un mail de activación",
+              r.status_code == 200 and bool(cred_d) and not cred_d["activado"] and len(mails) == 1
+              and not es_mail_credenciales(mails[0]), f"{short(r)} cred={cred_d} mails={len(mails)}")
+
         # ── 4. Endpoint POST /cuenta-zaris (sigue para la API) ───────────────────────
         r = await c.post(f"/api/v1/buc/ciudadanos/{id_a}/cuenta-zaris", json=cuenta_a, headers=HS)
         check("4a. nivel 2 → 403", r.status_code == 403, short(r))
@@ -391,12 +433,14 @@ async def main() -> int:
         check("7c. cuenta_zaris en CiudadanoCreate y CiudadanoUpdate (marcador del deploy)",
               "cuenta_zaris" in schemas.get("CiudadanoCreate", {}).get("properties", {})
               and "cuenta_zaris" in schemas.get("CiudadanoUpdate", {}).get("properties", {}))
+        check("7d. ficha_demo en CuentaVecinoEstado (marcador del deploy 2026-10-22)",
+              "ficha_demo" in schemas.get("CuentaVecinoEstado", {}).get("properties", {}))
 
     print(f"\nRESULTADO: {ok_count} OK, {fail_count} FAIL")
     for f in fallidos:
         print(f"  - {f['caso']}: {f['detalle']}")
     print(f"  datos demo: ciudadanos {id_a} (funcionaria, usuario {id_usuario}), {id_b} (funcionaria nivel 3), "
-          f"{id_c} (vecina pendiente), {id_e} (sin cuenta, email compartido)")
+          f"{id_c} (vecina pendiente), {id_e} (sin cuenta, email compartido), {id_d} (ex ficha demo, ya con DNI real)")
     return 0 if fail_count == 0 else 1
 
 

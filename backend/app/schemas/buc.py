@@ -353,6 +353,7 @@ class CuentaZarisOut(BaseModel):
 class CuentaVecinoEstado(BaseModel):
     estado: str  # 'sin_cuenta' | 'pendiente' | 'activa'
     email: Optional[str] = None
+    ficha_demo: bool = False  # DNI de prueba (mig 118): no se le crea cuenta de App Vecinos
 
 
 class CuentaZarisEstado(BaseModel):

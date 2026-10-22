@@ -48,10 +48,16 @@ export function CuentasChips({ idCiudadano }: { idCiudadano: number }) {
   const { vecino, zaris } = cuentas.data
 
   const vecinoChip = vecino.estado === 'activa'
-    ? { texto: 'App Vecinos: activa', tono: tonoOk }
+    ? { texto: 'App Vecinos: activa', tono: tonoOk, ayuda: vecino.email }
     : vecino.estado === 'pendiente'
-      ? { texto: 'App Vecinos: pendiente de activar', tono: tonoWarn }
-      : { texto: 'App Vecinos: sin cuenta', tono: tonoNeutro }
+      ? { texto: 'App Vecinos: pendiente de activar', tono: tonoWarn, ayuda: vecino.email }
+      : vecino.ficha_demo
+        ? {
+            texto: 'App Vecinos: no aplica (DNI de prueba)',
+            tono: tonoNeutro,
+            ayuda: 'Ficha demo con DNI del rango 99.000.000: al cargar el DNI real y guardar, se le crea la cuenta.',
+          }
+        : { texto: 'App Vecinos: sin cuenta', tono: tonoNeutro, ayuda: null }
 
   const zarisChip = zaris
     ? {
@@ -66,7 +72,7 @@ export function CuentasChips({ idCiudadano }: { idCiudadano: number }) {
       <span style={{ fontSize: 'var(--size-caption)', fontWeight: 600, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
         Cuentas
       </span>
-      <span style={{ ...chip, ...vecinoChip.tono }} title={vecino.email ?? undefined}>{vecinoChip.texto}</span>
+      <span style={{ ...chip, ...vecinoChip.tono }} title={vecinoChip.ayuda ?? undefined}>{vecinoChip.texto}</span>
       {vecino.estado === 'pendiente' && (
         <button
           type="button"

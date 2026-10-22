@@ -11,8 +11,14 @@ ciudadano ya viene con su ficha completa cargada por el agente.
 
 Idempotente: si el ciudadano ya tiene credencial activa, no la duplica
 (ciudadano_credencial es 1:1). Si existe sin activar, regenera el token y reenvía.
+
+Fichas demo (mig 118): la persona con DNI del rango reservado 99.000.000 + id_agente no
+tiene cuenta de App Vecinos por ninguna vía. El vecino entra con su DNI y ese DNI es
+ficticio, y el email es el de la cuenta ZARIS (`@municipio.gob.ar`, que no recibe mail).
+Al cargar el DNI real en la ficha, el próximo guardado le crea la cuenta como a cualquiera.
 """
 import logging
+import re
 
 from fastapi import BackgroundTasks
 from sqlalchemy import text
@@ -24,6 +30,18 @@ from app.services.email import enviar_mail_activacion_ciudadano
 logger = logging.getLogger("zaris.cuenta_vecino")
 
 DIAS_ACTIVACION = 7
+
+# Rango reservado de las fichas demo de funcionarios (mig 118): 99.000.000 + id_agente.
+_DNI_FICHA_DEMO = re.compile(r"^99\d{6}$")
+MSG_FICHA_DEMO = (
+    "Esta ficha tiene un DNI de prueba (rango 99.000.000): no se le crea la cuenta de "
+    "App Vecinos. Cargá el DNI real de la persona y guardá la ficha."
+)
+
+
+def es_ficha_demo(doc_tipo: str | None, doc_nro: str | None) -> bool:
+    """True si la ficha es una de las fichas demo de funcionarios (DNI del rango reservado)."""
+    return (doc_tipo or "").upper() == "DNI" and bool(_DNI_FICHA_DEMO.match((doc_nro or "").strip()))
 
 
 async def _municipio_branding(db: AsyncSession) -> tuple[str, str | None]:
@@ -55,11 +73,21 @@ async def asegurar_cuenta_vecino(
     """
     Crea (si no existe) la credencial + canal preferido del ciudadano y encola el
     mail de activación. Devuelve True si se encoló un mail (cuenta nueva o token
-    regenerado), False si la cuenta ya estaba activada (no se hace nada).
+    regenerado), False si la cuenta ya estaba activada o la ficha es demo (no se hace nada).
 
     NO commitea — el caller controla la transacción. El mail se encola y corre
     después del commit del caller (BackgroundTasks).
     """
+    # Lee el DNI de la DB (no del caller): un PUT que acaba de cargar el DNI real ya
+    # hizo flush, así que ese mismo guardado crea la cuenta.
+    doc = (await db.execute(
+        text("SELECT doc_tipo, doc_nro FROM ciudadanos WHERE id_ciudadano = :id"),
+        {"id": id_ciudadano},
+    )).fetchone()
+    if doc and es_ficha_demo(doc.doc_tipo, doc.doc_nro):
+        logger.info("cuenta_vecino: ciudadano %s es ficha demo (DNI de prueba), skip", id_ciudadano)
+        return False
+
     # ¿Ya tiene credencial?
     res = await db.execute(
         text(

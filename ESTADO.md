@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-10-22 (Cesar). Lista de arranque resuelta: 32 reclamos de QA/vecinos de prueba cerrados en prod (salvo REC-2026-000058/059 del guion), autoasignación prendida en Alumbrado Público, encuesta #6 pasada a expirada; links de los mails abren el recurso (también tras el login); botón «VER PENDIENTES»; recuadro «Resolución» en la app del vecino; los logins mandan solo `identificador`; retirados `/ot/slots-recurso`, `/ot/con-agenda` y `ot_slots.py`. Pedido a GitHub Support por los commits viejos de las purgas, enviado por César. Todo verificado en prod.
+**Última actualización:** 2026-10-22, 2ª sesión (Cesar). Los tres riesgos chicos: fichas demo sin cuenta de App Vecinos por ninguna vía (guard en el servicio, smoke 63/63); mig 119 (FK de la gestión en usuarios y agentes, drift que solo existía en local) aplicada en local y prod y verificada con `pg_constraint`; el «vecino trabado desde junio» (1616) resultó ser un dato de un smoke (`@example.com`), así que no se le manda nada. 1ª sesión del día: lista de arranque resuelta: 32 reclamos de QA/vecinos de prueba cerrados en prod (salvo REC-2026-000058/059 del guion), autoasignación prendida en Alumbrado Público, encuesta #6 pasada a expirada; links de los mails abren el recurso (también tras el login); botón «VER PENDIENTES»; recuadro «Resolución» en la app del vecino; los logins mandan solo `identificador`; retirados `/ot/slots-recurso`, `/ot/con-agenda` y `ot_slots.py`. Pedido a GitHub Support por los commits viejos de las purgas, enviado por César. Todo verificado en prod.
 
 ---
 
@@ -20,10 +20,11 @@
 
 1. **Funcionario de prueba:** César asigna REC-2026-003079 (Arbolado, sin asignar) al funcionario de prueba desde la mesa (Ver → PLANIFICAR) y confirma si el push llega. Yo no tengo credenciales de un supervisor de Arbolado (y no se prueban claves).
 2. **Autoasignación en Alumbrado Público (prendida 2026-10-22):** la gestión tiene UN solo agente de nivel Gestión, así que recibe todo lo que entre. Mirar una semana y decidir si se suma gente o se prende en otras gestiones.
-3. **Commits viejos de las dos purgas (2026-09-20 y 2026-10-21): César mandó el pedido a GitHub Support el 2026-10-22.** Pendiente: cuando GitHub conteste, verificar que los commits viejos ya no abran por SHA (detalle en la memoria privada de Cesar).
+3. **Commits viejos de las dos purgas (2026-09-20 y 2026-10-21): César mandó el pedido a GitHub Support el 2026-10-22.** No preguntar antes del 2026-10-23 (24 h, pedido de César). Después: si GitHub contestó, verificar que los commits viejos ya no abran por SHA (el 2026-10-22 seguían en 200; detalle en la memoria privada de Cesar).
 4. **Orden por columnas F2** (trámites, turnos, entradas) **y F3** (resto): ¿avanzo?
 5. **Super administrador multi-municipio (IT-01):** ¿cuándo arrancamos el diseño?
-6. Sin respuesta de sesiones anteriores: mail real del retrabajo (¿lo pruebo con tu vecino de prueba?) · PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · vecino trabado desde junio (¿reenviar activación?) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
+6. **Ciudadano 1618** (alta por agente del 2026-06-15, cuenta de App Vecinos pendiente, sin clave, token vencido): es la única cuenta de vecino pendiente que no es una prueba nuestra conocida. ¿Es una persona real (le reenvío la activación) o una prueba de Roy (no se toca)?
+7. Sin respuesta de sesiones anteriores: mail real del retrabajo (¿lo pruebo con tu vecino de prueba?) · PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
 
 ---
 
@@ -44,8 +45,7 @@
 
 **Próxima sesión — prueba de las apps (César)**
 - 🟡 **Perfiles de prueba** (emails en la memoria privada de Cesar): vecino HECHO (2026-10-12; el botón de pánico no se probó, dispara una alerta REAL); funcionario: falta el push (ver En curso).
-- 🟢 **Circuito funcionario → agente: HECHO (2026-10-20/21).** Datos personales solo de la ficha; cargo/horario/equipo los completa el supervisor de la gestión (mig 113); una sola gestión y email por persona, la del agente (mig 116); toda persona con usuario tiene ficha (mig 118, fichas demo con DNI 99.000.000 + id_agente). Ojo: guardar una de esas fichas por la API crea la cuenta de App Vecinos y manda la activación al email de la cuenta (`@municipio.gob.ar`, que no existe). Pendiente de IT-01: el super administrador multi-municipio.
-- 🟢 **Drift de FK:** `usuarios.id_subarea`/`agentes.id_subarea` → `subarea` existe en local y NO en prod (candidata a mig 119+).
+- 🟢 **Circuito funcionario → agente: HECHO (2026-10-20/21).** Datos personales solo de la ficha; cargo/horario/equipo los completa el supervisor de la gestión (mig 113); una sola gestión y email por persona, la del agente (mig 116); toda persona con usuario tiene ficha (mig 118, fichas demo con DNI 99.000.000 + id_agente; desde el 2026-10-22 no reciben cuenta de App Vecinos hasta cargar el DNI real). Pendiente de IT-01: el super administrador multi-municipio.
 
 **Decisiones de negocio pendientes (César)**
 - 🟢 **Alta — huecos menores detectados en la revisión 2026-10-10:** la clave temporal del funcionario no vence si nunca la usa; la app de agentes no tiene «olvidé mi contraseña» (hoy se recupera desde el login del backoffice, link 24 h). El vecino NO recibe clave por mail (elige la suya por link) — recomendado mantenerlo.
@@ -72,6 +72,7 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
+- **2026-10-22 (2ª) — Ficha demo sin App Vecinos + mig 119.** Guard en `asegurar_cuenta_vecino` (`es_ficha_demo`): alta, PUT de la ficha, `activar-existente` y cuenta ZARIS no crean la credencial; `POST /cuenta-vecino` da 422; chip «no aplica (DNI de prueba)». Smoke `smoke_cuentas_funcionario.py` 63/63 en local + typecheck. Mig 119 en local (no-op) y prod (FK validadas).
 - **2026-10-22 — Lista de arranque: datos de prod + 5 cambios chicos.** Cierre de 32 reclamos viejos de prueba (backup `_backup_reclamos_qa_2026_10_22` + `_backup_ot_qa_2026_10_22`, sin mails ni encuestas), autoasignación de Alumbrado, links profundos del shell (`/#/…` y `?modulo=` sobreviven al login; CLAUDE.md §14), «VER PENDIENTES», recuadro «Resolución» en la PWA, logins sin `email`, retiro de los endpoints de OT con agenda. Verificado en local (navegador: 4 casos de link, las 3 apps).
 - **2026-10-21 (noche) — Generador de datos demo con SLA, trámites, OT y cron diario; corrido en prod.** Smoke 44/44 re-verificado; resultado por SQL en «Última actualización».
 - **2026-10-21 (tarde) — Tomar/Resolver desde Reclamos + resolución para el vecino (mig 117), coherencia de cuentas (migs 116 y 118), purga de `agente.csv`.** Smokes 22/22 y 5/5 en local; Tomar → Resolver verificado en prod con un Gestión de Alumbrado (REC-2026-002927).

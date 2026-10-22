@@ -26,7 +26,7 @@ from app.schemas.buc import (
     CiudadanoEmpresaCreate, CiudadanoEmpresaOut,
     CuentaZarisIn, CuentaZarisOut, CuentasCiudadanoOut, CuentaVecinoEstado, CuentaZarisEstado,
 )
-from app.services.cuenta_vecino import asegurar_cuenta_vecino
+from app.services.cuenta_vecino import MSG_FICHA_DEMO, asegurar_cuenta_vecino, es_ficha_demo
 from app.services.cuenta_zaris import (
     MSG_FALTAN_DATOS_ZARIS, crear_cuenta_zaris_desde_ficha, crear_usuario_interno,
     exigir_admin_funcionario, sincronizar_agente_desde_ficha,
@@ -575,7 +575,10 @@ async def crear_ciudadano(
     return ciudadano
 
 
-@router.post("/ciudadanos/{id}/cuenta-vecino")
+@router.post(
+    "/ciudadanos/{id}/cuenta-vecino",
+    responses={422: {"description": "El ciudadano no tiene email, o es una ficha demo (DNI de prueba)"}},
+)
 async def crear_cuenta_vecino_existente(
     id: int,
     background_tasks: BackgroundTasks,
@@ -596,6 +599,8 @@ async def crear_cuenta_vecino_existente(
     ciudadano = result.scalars().first()
     if not ciudadano:
         raise HTTPException(status_code=404, detail="Ciudadano no encontrado")
+    if es_ficha_demo(ciudadano.doc_tipo, ciudadano.doc_nro):
+        raise HTTPException(status_code=422, detail=MSG_FICHA_DEMO)
 
     email = (ciudadano.email or "").strip()
     if not email:
@@ -668,11 +673,12 @@ async def estado_cuentas_ciudadano(id: int, db: AsyncSession = Depends(get_db)):
     """Estado de las dos cuentas de una persona de la BUC: App Vecinos (sin cuenta /
     pendiente de activar / activa) y ZARIS (usuario vinculado por mig 110, o ninguno).
     Alimenta los chips de la ficha del ciudadano."""
-    existe = await db.scalar(
-        text("SELECT 1 FROM ciudadanos WHERE id_ciudadano = :id AND activo = TRUE"), {"id": id}
-    )
-    if not existe:
+    doc = (await db.execute(
+        text("SELECT doc_tipo, doc_nro FROM ciudadanos WHERE id_ciudadano = :id AND activo = TRUE"), {"id": id}
+    )).fetchone()
+    if not doc:
         raise HTTPException(status_code=404, detail="Ciudadano no encontrado")
+    ficha_demo = es_ficha_demo(doc.doc_tipo, doc.doc_nro)
 
     cred = (await db.execute(
         text("""SELECT cc.activado, c.email
@@ -683,9 +689,10 @@ async def estado_cuentas_ciudadano(id: int, db: AsyncSession = Depends(get_db)):
         {"id": id},
     )).fetchone()
     if not cred:
-        vecino = CuentaVecinoEstado(estado="sin_cuenta")
+        vecino = CuentaVecinoEstado(estado="sin_cuenta", ficha_demo=ficha_demo)
     else:
-        vecino = CuentaVecinoEstado(estado="activa" if cred.activado else "pendiente", email=cred.email)
+        vecino = CuentaVecinoEstado(estado="activa" if cred.activado else "pendiente", email=cred.email,
+                                    ficha_demo=ficha_demo)
 
     usr = (await db.execute(
         text("""SELECT id_usuario, username, nivel_acceso, activo, debe_cambiar_password

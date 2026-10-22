@@ -56,7 +56,9 @@ export interface Ciudadano {
 export type EstadoCuentaVecino = 'sin_cuenta' | 'pendiente' | 'activa'
 
 export interface CuentasCiudadano {
-  vecino: { estado: EstadoCuentaVecino; email: string | null }
+  /** `ficha_demo`: DNI de prueba (mig 118), nunca tiene cuenta de App Vecinos. Opcional
+   *  porque un backend anterior al 2026-10-22 no lo manda. */
+  vecino: { estado: EstadoCuentaVecino; email: string | null; ficha_demo?: boolean }
   zaris: {
     id_usuario: number
     username: string
