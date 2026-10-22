@@ -1,5 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  type ParamsPadronEmpresas,
+  listarPadronEmpresas,
   buscarEmpresas,
   cambiarEstadoEmpresa,
   crearEmpresa,
@@ -32,12 +34,14 @@ export interface OpcionesListado {
   version?: number
 }
 
-export function useEmpresasListado(opts: OpcionesListado = {}) {
+export function useEmpresasListado(params: ParamsPadronEmpresas, opts: OpcionesListado = {}) {
   return useQuery({
-    queryKey: ['buc', 'empresas', 'listado', opts.version ?? 0],
-    queryFn: () => listarEmpresas({ solo_activos: false, limit: 1000 }),
+    queryKey: ['buc', 'empresas', 'listado', params, opts.version ?? 0],
+    queryFn: () => listarPadronEmpresas(params),
     staleTime: 30 * 1000,
     enabled: opts.enabled ?? true,
+    // Paginar u ordenar no vacía la tabla mientras llega la página nueva.
+    placeholderData: keepPreviousData,
   })
 }
 

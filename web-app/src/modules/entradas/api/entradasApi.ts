@@ -1,5 +1,6 @@
 import { api } from '../../../lib/api'
 import type { Evento, EventoCreatePayload } from '../../agenda/types/agenda'
+import type { OrdenEventos } from '../../agenda/api/agendaApi'
 
 const BASE = '/api/v1/agenda'
 
@@ -7,8 +8,8 @@ const BASE = '/api/v1/agenda'
 // solo opera sobre los eventos que tienen un espacio fisico asignado
 // (id_espacio != null). El backend expone el filtro `con_espacio`.
 
-/** Columnas ordenables (espejo de `_ORDEN_EVENTOS` en agenda_v2.py). */
-export type OrdenEventos = 'fecha' | 'nombre' | 'espacio' | 'capacidad'
+/** Columnas ordenables: las define el listado de eventos de Agenda. */
+export type { OrdenEventos }
 
 export interface ListarEventosEntradaParams {
   fecha_desde?: string

@@ -474,9 +474,11 @@ async def crear_evento(
 # selector «Ordenar por» de Entradas; el listado tiene tope, el orden es del SQL.
 _ORDEN_EVENTOS = {
     "fecha": ("e.fecha", "e.hora_inicio"),
+    "horario": ("e.hora_inicio", "e.hora_fin"),
     "nombre": "lower(e.nombre)",
     "espacio": "lower(esp.nombre)",
     "capacidad": "e.capacidad_ciudadanos",
+    "estado": "ee.codigo",
 }
 
 

@@ -39,6 +39,10 @@ description: "Usar al trabajar en el módulo Admin Tablas / CRUD genérico de ma
 
 3. **Shell** — agregar `<a class="nav__link" href="frontend/admin_tablas.html?tabla=nombre_tabla">` en la sección Maestros de `index.html`.
 
+### Listado: orden por columnas (§23, F3 2026-10-22)
+
+`GET /{tabla}` trae la tabla entera, así que el listado ordena **en pantalla** (`ordenarFilasListado` + `thOrden` en `admin_tablas.html`, estado en `_ordenListado`). Se ordena por **lo que muestra la celda**: para una FK (`FK_DISPLAY_MAP`) o un enum (`ENUM_LABELS`) por la etiqueta, no por el id guardado (`_valorOrden`; el primer intento ordenaba por id y la subárea quedaba desordenada). El desplegable «Ordenar» se eliminó: lo reemplazan los encabezados + la columna **«Alta»** (`fecha_alta`/`fecha_creacion`/`creado_en`, solo si la tabla la tiene); sin columna elegida, el más reciente primero (`reverse` del orden por PK). Las filas de hijos en línea (área → subáreas) acompañan a su padre y su `colspan` cuenta todas las columnas (`totalCols`). Columna nueva en el listado ⇒ sumarla a `totalCols`.
+
 ### Tablas actualmente configuradas
 > Fuente de verdad: `TABLE_CONFIG` en `admin_tablas.py` (grepear las claves antes de confiar en esta lista). Verificado 2026-07-17:
 `area`, `subarea`, `tipo_usuario`, `cargos`, `usuarios` (READ-ONLY), `agentes`, `equipos`, `equipo_agentes`, `servicios`, `lugares_atencion`, `agenda_clase`, `agenda_feriado`, `estado_reclamo`, `estado_ot`, `tipo_reclamo`, `configuracion_general`, `municipios`, `actividades`, `tipo_representacion`, `nacionalidades`, y los 6 catálogos de Emergencias (`emergencia_prioridad`, `emergencia_estado`, `emergencia_canal_ingreso`, `emergencia_organismo_derivacion`, `emergencia_tipo`, `emergencia_subtipo`). **`equipo_usuarios` NO existe** (fue reemplazada por `equipo_agentes`).

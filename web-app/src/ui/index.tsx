@@ -1,4 +1,5 @@
 import React from 'react'
+import { ThOrden, type Orden } from './orden'
 
 /* ── Button ───────────────────────────────────────────────── */
 type ButtonVariant = 'default' | 'primary' | 'accent' | 'ghost'
@@ -245,34 +246,40 @@ export function Skeleton({ width = '100%', height = 16, style }: { width?: numbe
 }
 
 /* ── Table ────────────────────────────────────────────────── */
-interface Column<T> {
+interface Column<T, K extends string = string> {
   key: keyof T | string
   header: string
   render?: (row: T) => React.ReactNode
   width?: number | string
+  /** Campo de orden de la columna (§23): con `orden` + `onOrdenar` en la tabla,
+   *  el encabezado se vuelve ordenable. Sin él, la columna no ordena (acciones). */
+  orden?: K
 }
 
-interface TableProps<T> {
-  columns: Column<T>[]
+interface TableProps<T, K extends string> {
+  columns: Column<T, K>[]
   rows: T[]
   keyField: keyof T
+  orden?: Orden<K> | null
+  onOrdenar?: (campo: K) => void
 }
 
-export function Table<T extends object>({ columns, rows, keyField }: TableProps<T>) {
+export function Table<T extends object, K extends string = string>({ columns, rows, keyField, orden = null, onOrdenar }: TableProps<T, K>) {
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--size-btn)', fontFamily: 'var(--font-display)' }}>
         <thead>
           <tr>
-            {columns.map((col) => (
-              <th key={String(col.key)} style={{
+            {columns.map((col) => {
+              const style: React.CSSProperties = {
                 padding: '8px 12px', textAlign: 'left', fontWeight: 500,
                 color: 'var(--fg-3)', borderBottom: '1px solid var(--border-primary)',
                 width: col.width,
-              }}>
-                {col.header}
-              </th>
-            ))}
+              }
+              return col.orden && onOrdenar
+                ? <ThOrden key={String(col.key)} campo={col.orden} orden={orden} onOrdenar={onOrdenar} style={style}>{col.header}</ThOrden>
+                : <th key={String(col.key)} style={style}>{col.header}</th>
+            })}
           </tr>
         </thead>
         <tbody>

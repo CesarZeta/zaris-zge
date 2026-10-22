@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Smoke in-process — orden por columnas F2 (CLAUDE.md §23): bandejas de Trámites,
-listado de Turnos y eventos (Entradas), más el filtro por tipo de la bandeja.
+Smoke in-process — orden por columnas F2 + F3 (CLAUDE.md §23): bandejas de Trámites,
+listado de Turnos y eventos (Entradas/Agenda), más el filtro por tipo de la bandeja;
+F3 suma el padrón de ciudadanos y empresas (texto, fechas, orden y paginado en el SQL)
+y los envíos de encuestas (orden + filtro por tipo de trámites).
 
     cd backend
     $env:ENV_FILE=".env.local"; $env:PYTHONPATH="."; python smoke_orden_listados.py
@@ -161,14 +163,120 @@ async def main() -> int:
         r = await c.get("/api/v1/turnos", params={"orden": "hora_inicio"}, headers=H)
         check("3c. orden fuera de la lista → 422", r.status_code == 422, short(r))
 
-        # ── 4. Eventos (Entradas) ────────────────────────────────────────────
+        # ── 4. Eventos (Entradas + Agenda → Eventos, F3 suma horario y estado) ─
         await probar_columnas(
-            c, H, "4. /agenda/eventos", "/api/v1/agenda/eventos", ["fecha", "nombre", "espacio", "capacidad"],
+            c, H, "4. /agenda/eventos", "/api/v1/agenda/eventos",
+            ["fecha", "horario", "nombre", "espacio", "capacidad", "estado"],
             lambda j: j, extra={"con_espacio": "true"},
-            comparables={"fecha": lambda x: (x["fecha"], x["hora_inicio"]), "capacidad": lambda x: x["capacidad_ciudadanos"]},
+            comparables={"fecha": lambda x: (x["fecha"], x["hora_inicio"]),
+                         "horario": lambda x: (x["hora_inicio"], x["hora_fin"]),
+                         "capacidad": lambda x: x["capacidad_ciudadanos"]},
         )
         r = await c.get("/api/v1/agenda/eventos", params={"orden": "token_publico"}, headers=H)
         check("4b. orden fuera de la lista → 422", r.status_code == 422, short(r))
+
+        # ── 6. F3: padrón de ciudadanos (texto, fechas, orden y paginado en el SQL) ─
+        P_CIU = "/api/v1/buc/ciudadanos"
+        base_ciu = {"solo_activos": "false"}
+        await probar_columnas(
+            c, H, "6. /buc/ciudadanos", P_CIU, ["nombre", "documento", "cuil", "email", "estado", "alta"],
+            lambda j: j, extra=base_ciu,
+            comparables={"alta": lambda x: x["fecha_alta"], "estado": lambda x: x["activo"],
+                         "cuil": lambda x: x["cuil"], "documento": lambda x: x["doc_nro"].rjust(12, "0")},
+        )
+        n_ciu = await q1("SELECT COUNT(*) AS n FROM ciudadanos")
+        r = await c.get(P_CIU, params={**base_ciu, "limit": 50}, headers=H)
+        ids = [x["id_ciudadano"] for x in r.json()] if r.status_code == 200 else []
+        check("6b. sin orden: el más reciente primero + X-Total-Count = total de la tabla",
+              r.status_code == 200 and monotono(ids, True) and r.headers.get("x-total-count") == str(n_ciu["n"]),
+              f"total={r.headers.get('x-total-count')} esperado={n_ciu['n']}")
+        r1 = await c.get(P_CIU, params={**base_ciu, "orden": "alta", "limit": 20, "offset": 0}, headers=H)
+        r2 = await c.get(P_CIU, params={**base_ciu, "orden": "alta", "limit": 20, "offset": 20}, headers=H)
+        p1 = {x["id_ciudadano"] for x in r1.json()} if r1.status_code == 200 else set()
+        p2 = {x["id_ciudadano"] for x in r2.json()} if r2.status_code == 200 else set()
+        check("6c. paginado: la página 2 no repite filas de la 1", len(p1) == 20 and len(p2) > 0 and not (p1 & p2),
+              f"p1={len(p1)} p2={len(p2)} repetidas={len(p1 & p2)}")
+
+        muestra = await q1("""SELECT apellido, nombre, fecha_alta::date AS dia FROM ciudadanos
+                               WHERE length(apellido) >= 4 AND apellido !~ '[%_ ]'
+                                 AND length(nombre) >= 3 AND nombre !~ '[%_]'
+                               ORDER BY id_ciudadano DESC LIMIT 1""")
+        if muestra:
+            tok = muestra["apellido"][:4]
+            esperado = await q1("""SELECT COUNT(*) AS n FROM ciudadanos
+                                    WHERE apellido ILIKE :t OR nombre ILIKE :t OR email ILIKE :t
+                                       OR doc_nro ILIKE :t OR cuil ILIKE :t""", t=f"%{tok}%")
+            r = await c.get(P_CIU, params={**base_ciu, "q": tok, "limit": 1000}, headers=H)
+            filas_q = r.json() if r.status_code == 200 else []
+            campos = ("apellido", "nombre", "email", "doc_nro", "cuil")
+            check("6d. q filtra en el SQL: total = el de la DB y toda fila contiene el texto",
+                  r.status_code == 200 and r.headers.get("x-total-count") == str(esperado["n"])
+                  and all(any(tok.lower() in (x.get(k) or "").lower() for k in campos) for x in filas_q),
+                  f"q={tok!r} total={r.headers.get('x-total-count')} esperado={esperado['n']}")
+            primer_nombre = muestra["nombre"].split()[0]
+            r = await c.get(P_CIU, params={**base_ciu, "q": f"{muestra['apellido']} {primer_nombre}", "limit": 1000}, headers=H)
+            filas_q = r.json() if r.status_code == 200 else []
+            toks = [muestra["apellido"].lower(), primer_nombre.lower()]
+            check("6e. q con dos palabras = AND (cada una en algún campo)",
+                  r.status_code == 200 and len(filas_q) >= 1
+                  and all(all(any(t in (x.get(k) or "").lower() for k in campos) for t in toks) for x in filas_q),
+                  f"({len(filas_q)} filas)")
+            dia = muestra["dia"].isoformat()
+            esperado = await q1("SELECT COUNT(*) AS n FROM ciudadanos WHERE fecha_alta::date = :d", d=muestra["dia"])
+            r = await c.get(P_CIU, params={**base_ciu, "desde": dia, "hasta": dia, "limit": 1000}, headers=H)
+            filas_d = r.json() if r.status_code == 200 else []
+            check("6f. desde/hasta (mismo día): solo altas de ese día, total = el de la DB",
+                  r.status_code == 200 and r.headers.get("x-total-count") == str(esperado["n"])
+                  and all(x["fecha_alta"][:10] == dia for x in filas_d),
+                  f"día={dia} total={r.headers.get('x-total-count')} esperado={esperado['n']}")
+        else:
+            print("       (6d-6f salteados: no hay ciudadanos de muestra en local)")
+        r = await c.get(P_CIU, params={"orden": "id_ciudadano; DROP TABLE x"}, headers=H)
+        check("6g. orden fuera de la lista → 422", r.status_code == 422, short(r))
+        r = await c.get(P_CIU, params={"orden": "alta", "dir": "arriba"}, headers=H)
+        check("6h. dir inválido → 422", r.status_code == 422, short(r))
+
+        # ── 7. F3: padrón de empresas ────────────────────────────────────────
+        P_EMP = "/api/v1/buc/empresas"
+        await probar_columnas(
+            c, H, "7. /buc/empresas", P_EMP, ["nombre", "cuit", "localidad", "provincia", "estado", "alta"],
+            lambda j: j, extra=base_ciu,
+            comparables={"alta": lambda x: x["fecha_alta"], "estado": lambda x: x["activo"]},
+        )
+        emp = await q1("SELECT id_empresa, cuit FROM empresas WHERE cuit ~ '-' ORDER BY id_empresa DESC LIMIT 1")
+        if emp:
+            digitos = "".join(ch for ch in emp["cuit"] if ch.isdigit())
+            r = await c.get(P_EMP, params={**base_ciu, "q": digitos, "limit": 1000}, headers=H)
+            ids_e = [x["id_empresa"] for x in r.json()] if r.status_code == 200 else []
+            check("7b. q con el CUIT sin guiones encuentra la empresa", emp["id_empresa"] in ids_e,
+                  f"cuit={emp['cuit']} ({len(ids_e)} filas)")
+        else:
+            print("       (7b salteado: no hay empresas con CUIT con guiones en local)")
+        r = await c.get(P_EMP, params={"orden": "id_actividad"}, headers=H)
+        check("7c. orden fuera de la lista → 422", r.status_code == 422, short(r))
+
+        # ── 8. F3: envíos de encuestas ───────────────────────────────────────
+        P_ENV = "/api/v1/admin/encuestas/envios"
+        await probar_columnas(
+            c, H, "8. /encuestas/envios", P_ENV,
+            ["envio", "tipo", "referencia", "email", "estado", "enviada", "completada", "vence"],
+            lambda j: j,
+            comparables={"envio": lambda x: x["id_encuesta_envio"], "enviada": lambda x: x["fecha_envio"],
+                         "completada": lambda x: x["fecha_completada"], "vence": lambda x: x["fecha_expiracion"],
+                         "estado": lambda x: x["estado"]},
+        )
+        n_tram = await q1("""SELECT COUNT(*) AS n FROM encuesta_envio ee
+                              JOIN encuesta_plantilla pl ON pl.id_encuesta_plantilla = ee.id_plantilla
+                             WHERE ee.activo AND pl.tipo = 'tramites'
+                               AND (ee.id_municipio = 1 OR ee.id_municipio IS NULL)""")
+        r = await c.get(P_ENV, params={"tipo": "tramites", "limit": 200}, headers=H)
+        filas_t = r.json() if r.status_code == 200 else []
+        check("8b. tipo=tramites filtra (el filtro nuevo del front) y X-Total-Count = el de la DB",
+              r.status_code == 200 and r.headers.get("x-total-count") == str(n_tram["n"])
+              and all(x["tipo"] == "tramites" for x in filas_t),
+              f"total={r.headers.get('x-total-count')} esperado={n_tram['n']}")
+        r = await c.get(P_ENV, params={"orden": "token_unico"}, headers=H)
+        check("8c. orden fuera de la lista → 422", r.status_code == 422, short(r))
 
         # ── 5. Marcadores OpenAPI ────────────────────────────────────────────
         spec = (await c.get("/openapi.json")).json()
@@ -176,9 +284,13 @@ async def main() -> int:
         def params_de(path: str) -> set[str]:
             return {p["name"] for p in spec["paths"].get(path, {}).get("get", {}).get("parameters", [])}
 
-        for path in ("/api/v1/tramites", "/api/v1/tramites/mi-bandeja", "/api/v1/turnos", "/api/v1/agenda/eventos"):
+        for path in ("/api/v1/tramites", "/api/v1/tramites/mi-bandeja", "/api/v1/turnos", "/api/v1/agenda/eventos",
+                     "/api/v1/admin/encuestas/envios"):
             check(f"5. OpenAPI: orden + dir en GET {path}", {"orden", "dir"} <= params_de(path))
         check("5b. OpenAPI: id_tipo_tramite en GET /api/v1/tramites", "id_tipo_tramite" in params_de("/api/v1/tramites"))
+        for path in ("/api/v1/buc/ciudadanos", "/api/v1/buc/empresas"):
+            check(f"5c. OpenAPI: q + desde + hasta + orden + dir en GET {path}",
+                  {"q", "desde", "hasta", "orden", "dir"} <= params_de(path))
 
     print(f"\nRESULTADO: {ok_count} OK, {fail_count} FAIL")
     for f in fallidos:

@@ -3,6 +3,7 @@ ZARIS API — Rutas del módulo BUC (Base Única de Ciudadanos).
 Endpoints: /api/v1/buc/
 """
 import logging
+from datetime import date, datetime, time, timedelta
 from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 from sqlalchemy import select, or_, and_, func, text
@@ -32,6 +33,7 @@ from app.services.cuenta_zaris import (
     exigir_admin_funcionario, sincronizar_agente_desde_ficha,
 )
 from app.services.notificaciones import notificar_agente_nuevo
+from app.utils.orden import clausula_orden, descripcion_orden
 
 # Guard a nivel router: TODO endpoint del módulo BUC exige JWT válido (scope agente).
 # Esto cubre los GET de búsqueda/catálogo además de las mutaciones — ningún
@@ -359,18 +361,62 @@ async def listar_tipo_representacion(db: AsyncSession = Depends(get_db)):
 # CIUDADANOS
 # ═══════════════════════════════════════════════════════════════
 
+def _filtro_alta(col, desde: Optional[date], hasta: Optional[date]) -> list:
+    """Rango de `fecha_alta` (timestamp sin zona): [desde 00:00, hasta+1 00:00)."""
+    conds = []
+    if desde is not None:
+        conds.append(col >= datetime.combine(desde, time.min))
+    if hasta is not None:
+        conds.append(col < datetime.combine(hasta + timedelta(days=1), time.min))
+    return conds
+
+
+# Listado del padrón (§23): texto, fechas y orden los resuelve el SQL — con un
+# padrón real, filtrar u ordenar en pantalla solo lo cargado escondería filas.
+_ORDEN_CIUDADANOS = {
+    "nombre": ("lower(ciudadanos.apellido)", "lower(ciudadanos.nombre)"),
+    "documento": "lpad(ciudadanos.doc_nro, 12, '0')",
+    "cuil": "ciudadanos.cuil",
+    "email": "lower(ciudadanos.email)",
+    "estado": "ciudadanos.activo",
+    "alta": "ciudadanos.fecha_alta",
+}
+
+
 @router.get("/ciudadanos", response_model=list[CiudadanoOut])
 async def listar_ciudadanos(
+    response: Response,
     solo_activos: bool = Query(True),
+    q: Optional[str] = Query(None, max_length=100, description="Cada palabra debe aparecer en apellido, nombre, email, documento o CUIL"),
+    desde: Optional[date] = Query(None, description="Fecha de alta desde (inclusive)"),
+    hasta: Optional[date] = Query(None, description="Fecha de alta hasta (inclusive)"),
+    orden: Optional[str] = Query(None, description=descripcion_orden(_ORDEN_CIUDADANOS, "más reciente primero")),
+    dir: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int = Query(200, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
+    offset: int = Query(0, ge=0, le=1_000_000),
     db: AsyncSession = Depends(get_db)
 ):
-    """Listar ciudadanos (para vista previa y listado)."""
-    stmt = select(Ciudadano).order_by(Ciudadano.id_ciudadano.desc()).offset(offset).limit(limit)
+    """Listar ciudadanos (vista previa y listado). Header `X-Total-Count`: total sin paginar."""
+    order_sql = clausula_orden(orden, dir, _ORDEN_CIUDADANOS,
+                               desempate="ciudadanos.id_ciudadano",
+                               por_defecto="ciudadanos.id_ciudadano DESC")
+    conds = _filtro_alta(Ciudadano.fecha_alta, desde, hasta)
     if solo_activos:
-        stmt = stmt.where(Ciudadano.activo == True)
+        conds.append(Ciudadano.activo == True)
+    for tok in (q or "").split():
+        conds.append(or_(
+            Ciudadano.apellido.ilike(f"%{tok}%"),
+            Ciudadano.nombre.ilike(f"%{tok}%"),
+            Ciudadano.email.ilike(f"%{tok}%"),
+            Ciudadano.doc_nro.ilike(f"%{tok}%"),
+            Ciudadano.cuil.ilike(f"%{tok}%"),
+        ))
+
+    total = (await db.execute(select(func.count()).select_from(Ciudadano).where(*conds))).scalar_one()
+    stmt = select(Ciudadano).where(*conds).order_by(text(order_sql)).offset(offset).limit(limit)
     result = await db.execute(stmt)
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
     return result.scalars().all()
 
 
@@ -890,18 +936,49 @@ async def obtener_empresas_vinculadas(id: int, db: AsyncSession = Depends(get_db
 # EMPRESAS
 # ═══════════════════════════════════════════════════════════════
 
+_ORDEN_EMPRESAS = {
+    "nombre": "lower(empresas.nombre)",
+    "cuit": "empresas.cuit",
+    "localidad": "lower(empresas.localidad)",
+    "provincia": "lower(empresas.provincia)",
+    "estado": "empresas.activo",
+    "alta": "empresas.fecha_alta",
+}
+
+
 @router.get("/empresas", response_model=list[EmpresaOut])
 async def listar_empresas(
+    response: Response,
     solo_activos: bool = Query(True),
+    q: Optional[str] = Query(None, max_length=100, description="Cada palabra debe aparecer en el nombre, el email o el CUIT (con o sin guiones)"),
+    desde: Optional[date] = Query(None, description="Fecha de alta desde (inclusive)"),
+    hasta: Optional[date] = Query(None, description="Fecha de alta hasta (inclusive)"),
+    orden: Optional[str] = Query(None, description=descripcion_orden(_ORDEN_EMPRESAS, "más reciente primero")),
+    dir: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int = Query(200, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
+    offset: int = Query(0, ge=0, le=1_000_000),
     db: AsyncSession = Depends(get_db)
 ):
-    """Listar empresas (para vista previa y listado)."""
-    stmt = select(Empresa).order_by(Empresa.id_empresa.desc()).offset(offset).limit(limit)
+    """Listar empresas (vista previa y listado). Header `X-Total-Count`: total sin paginar."""
+    order_sql = clausula_orden(orden, dir, _ORDEN_EMPRESAS,
+                               desempate="empresas.id_empresa",
+                               por_defecto="empresas.id_empresa DESC")
+    conds = _filtro_alta(Empresa.fecha_alta, desde, hasta)
     if solo_activos:
-        stmt = stmt.where(Empresa.activo == True)
+        conds.append(Empresa.activo == True)
+    cuit_digitos = func.regexp_replace(Empresa.cuit, r"[^0-9]", "", "g")
+    for tok in (q or "").split():
+        alternativas = [Empresa.nombre.ilike(f"%{tok}%"), Empresa.email.ilike(f"%{tok}%")]
+        tok_digitos = "".join(ch for ch in tok if ch.isdigit())
+        if tok_digitos:
+            alternativas.append(cuit_digitos.ilike(f"%{tok_digitos}%"))
+        conds.append(or_(*alternativas))
+
+    total = (await db.execute(select(func.count()).select_from(Empresa).where(*conds))).scalar_one()
+    stmt = select(Empresa).where(*conds).order_by(text(order_sql)).offset(offset).limit(limit)
     result = await db.execute(stmt)
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
     return result.scalars().all()
 
 @router.get("/empresas/buscar", response_model=list[EmpresaOut])

@@ -3,6 +3,8 @@ import { Plus, Users, Calendar, Search } from 'lucide-react'
 import { useEventos } from '../hooks/useEventos'
 import { Badge, Button, Card, EmptyState, Skeleton, Table } from '../../../ui'
 import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
+import { useOrden } from '../../../ui/orden'
+import type { OrdenEventos } from '../api/agendaApi'
 import { EventoModal } from '../modals/EventoModal'
 import { ReservaModal } from '../modals/ReservaModal'
 import { EventoEncargadosModal } from '../modals/EventoEncargadosModal'
@@ -17,14 +19,22 @@ export function EventListView() {
   const setFechaHasta = (v: string) => busqueda.setBorrador((b) => ({ ...b, hasta: v }))
   const [limit] = useState(50)
   const [offset, setOffset] = useState(0)
+  // Orden por columna (§23): paginado → lo resuelve el backend. Cambiarlo
+  // vuelve a la primera página.
+  const { orden, alternar } = useOrden<OrdenEventos>()
   const { data, isLoading, isError, error } = useEventos({
     fecha_desde: busqueda.aplicado?.desde || undefined,
     fecha_hasta: busqueda.aplicado?.hasta || undefined,
+    orden: orden?.campo, dir: orden?.dir,
     limit, offset,
   }, { enabled: busqueda.buscado, version: busqueda.version })
   function buscar() {
     setOffset(0)
     busqueda.buscar()
+  }
+  function ordenar(campo: OrdenEventos) {
+    setOffset(0)
+    alternar(campo)
   }
   const [editId, setEditId] = useState<number | null>(null)
   const [nuevo, setNuevo] = useState(false)
@@ -77,12 +87,14 @@ export function EventListView() {
         <Card variant="default">
           <Table
             keyField="id_evento"
+            orden={orden}
+            onOrdenar={ordenar}
             columns={[
-              { key: 'fecha',       header: 'fecha',    render: (r) => <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{r.fecha as string}</span> },
-              { key: 'hora_inicio', header: 'horario',  render: (r) => <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{String(r.hora_inicio).slice(0, 5)} - {String(r.hora_fin).slice(0, 5)}</span> },
-              { key: 'nombre',      header: 'nombre' },
-              { key: 'capacidad_ciudadanos', header: 'cupo' },
-              { key: 'estado_codigo',        header: 'estado',
+              { key: 'fecha',       header: 'fecha',   orden: 'fecha',   render: (r) => <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{r.fecha as string}</span> },
+              { key: 'hora_inicio', header: 'horario', orden: 'horario', render: (r) => <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{String(r.hora_inicio).slice(0, 5)} - {String(r.hora_fin).slice(0, 5)}</span> },
+              { key: 'nombre',      header: 'nombre',  orden: 'nombre' },
+              { key: 'capacidad_ciudadanos', header: 'cupo', orden: 'capacidad' },
+              { key: 'estado_codigo',        header: 'estado', orden: 'estado',
                 render: (r) => <Badge kind={r.estado_codigo === 'activo' ? 'success' : r.estado_codigo === 'cancelado' ? 'error' : 'neutral'}>{String(r.estado_codigo ?? '?')}</Badge>,
               },
               { key: 'acciones',    header: 'acciones',

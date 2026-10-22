@@ -68,6 +68,7 @@ Mezclan PUT con PATCH. Antes de scriptear un smoke o codear un cliente, `grep "@
 | Marcar asistió / Cancelar reserva | **PATCH** | `/reservas/{id}/asistio`, `/reservas/{id}/cancelar` |
 | Acreditar por QR | **POST** | `/reservas/acreditar-qr` |
 | Crear / Editar / Cancelar ocupación | POST / PUT / DELETE | `/ocupaciones[/{id}]` |
+| Listado de eventos (paginado, `X-Total-Count`) | GET | `/eventos?orden=&dir=` contra `_ORDEN_EVENTOS` (fecha/horario/nombre/espacio/capacidad/estado, §23) — lo usan Agenda → Eventos y Entradas |
 | Calendario día / mes / semana | GET | `/calendario` (NO `/calendario/dia`), `/mes`, `/semana?desde=&dias=` |
 | Conflictos / Resolver | GET / **PATCH** | `/conflictos?resuelto=false`, `/conflictos/{id}/resolver` |
 | Recurso | GET | `/recurso/{tipo_recurso}/{id_recurso}` |

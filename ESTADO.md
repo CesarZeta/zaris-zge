@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-10-22, cierre de la 2ª sesión (Cesar). Orden por columnas **F2** (Trámites, Turnos, Entradas) + filtro «Tipo» de la bandeja de Trámites arreglado (no filtraba); fichas demo sin cuenta de App Vecinos; mig 119 (FK de la gestión, drift que solo existía en local); el «vecino trabado» 1616 era un dato de smoke. Decisiones de César: **F3 en la próxima sesión** y **las ayudas pasan a una sola página de base de conocimiento** (no más manuales, CLAUDE.md §36). Todo verificado en prod (API + navegador con el bundle nuevo).
+**Última actualización:** 2026-10-22, 3ª sesión (Cesar). Orden por columnas **F3 HECHO** (Ciudadanos, Empresas, Usuarios, Encuestas, Agenda, Maestros): con eso **el estándar §23 queda aplicado en toda la suite**. Ciudadanos y Empresas pasan a filtrar, ordenar y paginar en el servidor (el listado traía hasta 1000 filas y en prod ya hay 956 ciudadanos); el filtro «Tipo» de Encuestas → Envíos ahora ofrece Trámites. Verificado en local (smoke 122/122 + las 13 pantallas recorridas con clics).
 
 ---
 
@@ -21,8 +21,7 @@
 1. **Funcionario de prueba:** César asigna REC-2026-003079 (Arbolado, sin asignar) al funcionario de prueba desde la mesa (Ver → PLANIFICAR) y confirma si el push llega. Yo no tengo credenciales de un supervisor de Arbolado (y no se prueban claves).
 2. **Autoasignación en Alumbrado Público (prendida 2026-10-22):** la gestión tiene UN solo agente de nivel Gestión, así que recibe todo lo que entre. Mirar una semana y decidir si se suma gente o se prende en otras gestiones.
 3. **Commits viejos de las dos purgas (2026-09-20 y 2026-10-21): César mandó el pedido a GitHub Support el 2026-10-22.** No preguntar antes del 2026-10-23 (24 h, pedido de César). Después: si GitHub contestó, verificar que los commits viejos ya no abran por SHA (el 2026-10-22 seguían en 200; detalle en la memoria privada de Cesar).
-4. **Próxima sesión: orden por columnas F3** (decidido por César el 2026-10-22): ciudadanos, empresas, usuarios, encuestas, agenda, Maestros. Arrancar por el inventario de tablas (endpoint con tope → backend con `utils/orden.py`; trae todo → `ordenarFilas`; filtros sobre lo cargado → en pantalla), mismo criterio de CLAUDE.md §23.
-5. **Super administrador multi-municipio (IT-01):** ¿cuándo arrancamos el diseño?
+5. **Super administrador multi-municipio (IT-01):** ¿cuándo arrancamos el diseño? (F3 ya está hecho.)
 5b. **Base de conocimiento de ayudas** (reemplaza a los manuales, César 2026-10-22): ¿cuándo la diseñamos? Recomendación: una sesión de diseño primero (formato de pregunta/respuesta, búsqueda, si reemplaza al módulo Guías y qué pasa con los `docs/manual_*.html` actuales).
 6. **Ciudadano 1618** (alta por agente del 2026-06-15, cuenta de App Vecinos pendiente, sin clave, token vencido): es la única cuenta de vecino pendiente que no es una prueba nuestra conocida. ¿Es una persona real (le reenvío la activación) o una prueba de Roy (no se toca)?
 7. Sin respuesta de sesiones anteriores: mail real del retrabajo (¿lo pruebo con tu vecino de prueba?) · PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
@@ -62,7 +61,7 @@
 
 **Decisiones cerradas — NO re-proponer**
 - **Ayudas: una sola página de base de conocimiento con preguntas, no manuales por módulo** (César, 2026-10-22). No se crean ni actualizan `docs/manual_*.html` mientras tanto (CLAUDE.md §36). Diseño pendiente (pregunta 5b).
-- **Orden por columnas: quedan afuera** las colas operativas (Mesa del día, Guardia) y las tablas con orden propio (historia clínica, builder de trámites); Entradas usa selector «Ordenar por» (César, 2026-10-22).
+- **Orden por columnas: quedan afuera** las colas operativas (Mesa del día, Guardia, Conflictos, Pendientes de contacto), las tablas con orden propio (historia clínica, historial de accesos, builder de trámites) y la configuración (Catálogo de módulos, Plantillas); Entradas usa selector «Ordenar por»; el desplegable «Ordenar» viejo se reemplazó por encabezados + columna «Alta» (César, 2026-10-22).
 - **São Paulo DESCARTADO (César, 2026-09-26, con medición):** Railway ya está co-locado con Supabase `us-east-1` y no ofrece región en Sudamérica. Detalle en CLAUDE.md §9 «Región».
 - **"La ubicación" de Buscar actualizaciones (PWA) CERRADA como innecesaria** (2026-09-26): el service worker con `autoUpdate` alcanza.
 - `DISPATCHER_TOKEN` no se rota (César 2026-09-06). El vecino NO cambia su email desde la app (2026-08-30).
@@ -75,6 +74,7 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
+- **2026-10-22 (3ª) — Orden por columnas F3.** Backend: `GET /buc/ciudadanos` y `/buc/empresas` con `q` (AND multi-palabra) + `desde`/`hasta` + `orden`/`dir` + `X-Total-Count`; `orden` en `/admin/encuestas/envios`; `/agenda/eventos` suma horario y estado. Front: Ciudadanos/Empresas (búsqueda en el servidor, de a 100, columna Alta), Usuarios, Envíos (aviso de tope + filtro Trámites), CSAT por área, Agenda (Eventos, Feriados, Novedades, Espacios, Disponibilidad; `Table` de `ui/` ordenable), Maestros vanilla (por la etiqueta visible de la FK). Smoke `smoke_orden_listados.py` 122/122 + typecheck + recorrido con clics en local.
 - **2026-10-22 (2ª) — Orden por columnas F2.** Backend (`utils/orden.py`, lista cerrada, 422): bandejas de Trámites, `GET /turnos`, `GET /agenda/eventos`; además `GET /tramites` acepta `id_tipo_tramite` (el filtro «Tipo» no filtraba). Front: Bandeja (orden en la URL), Mi bandeja, Tipos de trámite, Turnos, Atendidos, Mis turnos y Consultas (en pantalla), Prestaciones, Entradas (selector «Ordenar por»); aviso de tope donde corresponde. Afuera a propósito: Mesa del día, Guardia, historia clínica, builder. Smoke `smoke_orden_listados.py` 64/64 + typecheck + las 9 pantallas recorridas con clics en local.
 - **2026-10-22 (2ª) — Ficha demo sin App Vecinos + mig 119.** Guard en `asegurar_cuenta_vecino` (`es_ficha_demo`): alta, PUT de la ficha, `activar-existente` y cuenta ZARIS no crean la credencial; `POST /cuenta-vecino` da 422; chip «no aplica (DNI de prueba)». Smoke `smoke_cuentas_funcionario.py` 63/63 en local + typecheck. Mig 119 en local (no-op) y prod (FK validadas).
 - **2026-10-22 — Lista de arranque: datos de prod + 5 cambios chicos.** Cierre de 32 reclamos viejos de prueba (backup `_backup_reclamos_qa_2026_10_22` + `_backup_ot_qa_2026_10_22`, sin mails ni encuestas), autoasignación de Alumbrado, links profundos del shell (`/#/…` y `?modulo=` sobreviven al login; CLAUDE.md §14), «VER PENDIENTES», recuadro «Resolución» en la PWA, logins sin `email`, retiro de los endpoints de OT con agenda. Verificado en local (navegador: 4 casos de link, las 3 apps).

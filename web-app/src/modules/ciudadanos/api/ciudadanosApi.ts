@@ -31,6 +31,28 @@ export const getActividades = () =>
 export const listarCiudadanos = (params: { solo_activos?: boolean; limit?: number; offset?: number } = {}) =>
   api.get<Ciudadano[]>(`${BASE}/ciudadanos`, { params })
 
+/** Columnas ordenables del padrón (espejo de `_ORDEN_CIUDADANOS` en buc.py). */
+export type OrdenCiudadanos = 'nombre' | 'documento' | 'cuil' | 'email' | 'estado' | 'alta'
+
+export interface ParamsPadronCiudadanos {
+  q?: string
+  desde?: string
+  hasta?: string
+  orden?: OrdenCiudadanos
+  dir?: 'asc' | 'desc'
+  limit: number
+  offset: number
+}
+
+/** Página del padrón + total sin paginar (`X-Total-Count`). Texto, fechas y
+ *  orden los resuelve el backend (§23): el padrón no entra entero en pantalla. */
+export async function listarPadronCiudadanos(params: ParamsPadronCiudadanos) {
+  const { data, headers } = await api.getWithHeaders<Ciudadano[]>(`${BASE}/ciudadanos`, {
+    params: { ...params, solo_activos: false },
+  })
+  return { filas: data, total: Number(headers.get('X-Total-Count') ?? data.length) }
+}
+
 export const buscarCiudadanos = (params: { q: string; tipo?: 'numero' | 'texto' | 'auto'; limit?: number; offset?: number }) =>
   api.getWithHeaders<Ciudadano[]>(`${BASE}/ciudadanos/buscar`, { params })
 

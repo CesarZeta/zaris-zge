@@ -2,8 +2,13 @@ import { useState } from 'react'
 import { RefreshCw, Search, X } from 'lucide-react'
 import { useEnvios, useEnvioDetalle } from '../hooks/useEncuestas'
 import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
+import { ThOrden, useOrden } from '../../../ui/orden'
 import { colorCsat } from '../components/charts'
+import type { OrdenEnvios } from '../lib/api'
 import type { EstadoEnvio } from '../lib/types'
+
+/** Tope del listado (el backend acepta hasta 200 por página). */
+const LIMITE_ENVIOS = 200
 
 const ESTADO_COLOR: Record<string, { bg: string; fg: string }> = {
   pendiente:  { bg: 'var(--surface-400)',         fg: 'var(--fg-2)' },
@@ -51,13 +56,17 @@ export function EnviosView() {
   const setEstado = (v: string) => busqueda.setBorrador((b) => ({ ...b, estado: v }))
   const setTipo = (v: string) => busqueda.setBorrador((b) => ({ ...b, tipo: v }))
   const [detalleId, setDetalleId] = useState<number | null>(null)
+  // Orden por columna (§23): el listado tiene tope → lo resuelve el backend.
+  const { orden, alternar } = useOrden<OrdenEnvios>()
   const { data, isLoading, isError, error, refetch, isFetching } = useEnvios({
     estado: busqueda.aplicado?.estado || undefined,
     tipo: busqueda.aplicado?.tipo || undefined,
-    limit: 200,
+    orden: orden?.campo, dir: orden?.dir,
+    limit: LIMITE_ENVIOS,
   }, { enabled: busqueda.buscado, version: busqueda.version })
 
-  const envios = data ?? []
+  const envios = data?.filas ?? []
+  const total = data?.total ?? 0
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -69,6 +78,7 @@ export function EnviosView() {
             <option value="">Todos</option>
             <option value="reclamos">Reclamos</option>
             <option value="turnos">Turnos</option>
+            <option value="tramites">Trámites</option>
             <option value="entradas">Entradas</option>
           </select>
         </div>
@@ -95,18 +105,25 @@ export function EnviosView() {
         <AvisoBuscar texto="Elegí tipo y estado (o dejá Todos) y presioná Buscar para ver los envíos." />
       )}
 
+      {busqueda.buscado && total > envios.length && (
+        <div style={avisoTope}>
+          Se muestran los primeros {envios.length} de {total} envíos
+          ({orden ? 'según el orden elegido' : 'los más recientes'}): acotá por tipo o estado para ver el resto.
+        </div>
+      )}
+
       {busqueda.buscado && <div style={card}>
         <table style={table}>
           <thead>
             <tr>
-              <th style={th}>Envío</th>
-              <th style={th}>Tipo</th>
-              <th style={th}>Referencia</th>
-              <th style={th}>Email destino</th>
-              <th style={th}>Estado</th>
-              <th style={th}>Enviada</th>
-              <th style={th}>Completada</th>
-              <th style={th}>Vence</th>
+              <ThOrden campo="envio" orden={orden} onOrdenar={alternar} style={th}>Envío</ThOrden>
+              <ThOrden campo="tipo" orden={orden} onOrdenar={alternar} style={th}>Tipo</ThOrden>
+              <ThOrden campo="referencia" orden={orden} onOrdenar={alternar} style={th}>Referencia</ThOrden>
+              <ThOrden campo="email" orden={orden} onOrdenar={alternar} style={th}>Email destino</ThOrden>
+              <ThOrden campo="estado" orden={orden} onOrdenar={alternar} style={th}>Estado</ThOrden>
+              <ThOrden campo="enviada" orden={orden} onOrdenar={alternar} style={th}>Enviada</ThOrden>
+              <ThOrden campo="completada" orden={orden} onOrdenar={alternar} style={th}>Completada</ThOrden>
+              <ThOrden campo="vence" orden={orden} onOrdenar={alternar} style={th}>Vence</ThOrden>
             </tr>
           </thead>
           <tbody>
@@ -236,6 +253,7 @@ const th: React.CSSProperties = {
 }
 const td: React.CSSProperties = { padding: '10px 12px', borderBottom: '1px solid var(--border-primary)', color: 'var(--fg-1)' }
 const empty: React.CSSProperties = { padding: 36, textAlign: 'center', color: 'var(--fg-3)', fontSize: '0.88rem' }
+const avisoTope: React.CSSProperties = { fontFamily: 'var(--font-display)', fontSize: '0.78rem', color: 'var(--fg-3)' }
 const errorBanner: React.CSSProperties = {
   background: '#ffebee', border: '1px solid #ffcdd2', borderLeft: '4px solid var(--color-error)',
   borderRadius: 8, padding: '12px 16px', color: '#c62828', fontSize: '0.86rem',

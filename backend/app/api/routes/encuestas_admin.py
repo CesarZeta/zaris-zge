@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
+from app.utils.orden import clausula_orden, descripcion_orden
 from app.utils.request_helpers import get_real_ip
 from app.schemas.encuestas import (
     DashboardComentarioItem,
@@ -146,6 +147,19 @@ async def detalle_plantilla(
     return EncuestaPlantillaDetalleOut.model_validate(detalle)
 
 
+# Envíos (§23): listado con tope → el orden lo resuelve el SQL.
+_ORDEN_ENVIOS = {
+    "envio": "ee.id_encuesta_envio",
+    "tipo": "pl.tipo",
+    "referencia": "lower(COALESCE(r.nro_reclamo, tp.nombre, ev.nombre, trm.numero_expediente))",
+    "email": "lower(ee.email_destino_snapshot)",
+    "estado": "ee.estado",
+    "enviada": "ee.fecha_envio",
+    "completada": "ee.fecha_completada",
+    "vence": "ee.fecha_expiracion",
+}
+
+
 @router.get("/envios", response_model=list[EncuestaEnvioOut])
 async def listar_envios(
     response: Response,
@@ -158,13 +172,18 @@ async def listar_envios(
     estado: Optional[str] = Query(None),
     desde: Optional[date] = Query(None),
     hasta: Optional[date] = Query(None),
+    orden: Optional[str] = Query(None, description=descripcion_orden(_ORDEN_ENVIOS, "más reciente primero")),
+    dir: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
+    offset: int = Query(0, ge=0, le=1_000_000),
     id_municipio: int = Query(ID_MUNICIPIO_DEFAULT),
     db: AsyncSession = Depends(get_db),
 ):
     if estado is not None and estado not in ESTADOS_ENVIO:
         raise HTTPException(422, f"estado inválido. Valores: {sorted(ESTADOS_ENVIO)}")
+    order_sql = clausula_orden(orden, dir, _ORDEN_ENVIOS,
+                               desempate="ee.id_encuesta_envio",
+                               por_defecto="ee.fecha_alta DESC")
 
     # LEFT JOIN a reclamos/turnos/prestacion/eventos: el envio es polimorfico
     # (mig 72 + 98). Inner JOIN excluiria silenciosamente los otros origenes.
@@ -216,7 +235,7 @@ async def listar_envios(
           FROM encuesta_envio ee
           {join}
          WHERE {where}
-         ORDER BY ee.fecha_alta DESC
+         ORDER BY {order_sql}
          LIMIT :limit OFFSET :offset
     """), params)).fetchall()
 

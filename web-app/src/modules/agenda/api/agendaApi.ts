@@ -46,12 +46,18 @@ export function getEstadosReserva() {
 }
 
 // ----- Eventos -------------------------------------------------------------
+/** Columnas ordenables (espejo de `_ORDEN_EVENTOS` en agenda_v2.py). */
+export type OrdenEventos = 'fecha' | 'horario' | 'nombre' | 'espacio' | 'capacidad' | 'estado'
+
 export function listarEventos(params?: {
   fecha_desde?: string
   fecha_hasta?: string
   id_estado_evento?: number
   id_subarea?: number
   id_municipio?: number
+  /** Orden: lo resuelve el backend (el listado está paginado, §23). */
+  orden?: OrdenEventos
+  dir?: 'asc' | 'desc'
   limit?: number
   offset?: number
 }) {

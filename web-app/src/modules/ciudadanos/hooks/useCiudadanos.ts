@@ -1,5 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  type ParamsPadronCiudadanos,
+  listarPadronCiudadanos,
   buscarCiudadanos,
   cambiarEstadoCiudadano,
   crearCiudadano,
@@ -52,12 +54,14 @@ export interface OpcionesListado {
   version?: number
 }
 
-export function useCiudadanosListado(opts: OpcionesListado = {}) {
+export function useCiudadanosListado(params: ParamsPadronCiudadanos, opts: OpcionesListado = {}) {
   return useQuery({
-    queryKey: ['buc', 'ciudadanos', 'listado', opts.version ?? 0],
-    queryFn: () => listarCiudadanos({ solo_activos: false, limit: 1000 }),
+    queryKey: ['buc', 'ciudadanos', 'listado', params, opts.version ?? 0],
+    queryFn: () => listarPadronCiudadanos(params),
     staleTime: 30 * 1000,
     enabled: opts.enabled ?? true,
+    // Paginar u ordenar no vacía la tabla mientras llega la página nueva.
+    placeholderData: keepPreviousData,
   })
 }
 

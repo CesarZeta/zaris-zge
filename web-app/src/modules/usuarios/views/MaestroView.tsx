@@ -3,6 +3,7 @@ import { useNotificationsStore } from '../../../stores/notifications'
 import { ConfirmModal } from '../../agenda/components/ConfirmModal'
 import { useModulosCatalogo } from '../../config/hooks/useConfig'
 import { PermisosPanel } from '../components/PermisosPanel'
+import { ThOrden, ordenarFilas, useOrden } from '../../../ui/orden'
 import { buscarSubareas, buscarUsuarios } from '../api/usuariosApi'
 import {
   useActualizarUsuario,
@@ -50,6 +51,22 @@ function fmtFechaHora(iso: string | null | undefined): string {
   return d.toLocaleString('es-AR', {
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   })
+}
+
+function fmtFecha(iso: string | null | undefined): string {
+  const d = iso ? new Date(iso) : null
+  if (!d || isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+type OrdenUsuario = 'usuario' | 'nivel' | 'subarea' | 'login' | 'alta' | 'estado'
+const VALORES_ORDEN_USUARIO: Record<OrdenUsuario, (u: Usuario) => string | number | null | undefined> = {
+  usuario: (u) => u.username,
+  nivel: (u) => u.nivel_acceso,
+  subarea: (u) => (u.es_externo ? 'Externo' : u.subarea_nombre),
+  login: (u) => u.fecha_ultimo_login,
+  alta: (u) => u.fecha_alta,
+  estado: (u) => (u.activo ? 'Activo' : 'Inactivo'),
 }
 
 export function MaestroView() {
@@ -636,9 +653,11 @@ function ListadoUsuarios({ usuarios, cargando, onVolver, onAbrir }: {
   const [texto, setTexto] = useState('')
   const [nivel, setNivel] = useState('')
   const [subarea, setSubarea] = useState('')
-  const [orden, setOrden] = useState('reciente')
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
+  // Orden por columna (§23): el listado trae todas las cuentas → en pantalla.
+  // Sin columna elegida, el más reciente primero.
+  const { orden, alternar, setOrden } = useOrden<OrdenUsuario>()
 
   const subareas = useMemo(() => {
     const vistos = new Map<number, string>()
@@ -665,11 +684,8 @@ function ListadoUsuarios({ usuarios, cargando, onVolver, onAbrir }: {
       if (hasta && d > hasta) return false
       return true
     })
-    if (orden === 'reciente') rows.sort((a, b) => b.id_usuario - a.id_usuario)
-    else if (orden === 'antiguo') rows.sort((a, b) => a.id_usuario - b.id_usuario)
-    else if (orden === 'az') rows.sort((a, b) => a.username.localeCompare(b.username, 'es'))
-    else if (orden === 'za') rows.sort((a, b) => b.username.localeCompare(a.username, 'es'))
-    return rows
+    rows.sort((a, b) => b.id_usuario - a.id_usuario)
+    return ordenarFilas(rows, orden, VALORES_ORDEN_USUARIO)
   }, [usuarios, texto, nivel, subarea, orden, desde, hasta])
 
   return (
@@ -699,21 +715,13 @@ function ListadoUsuarios({ usuarios, cargando, onVolver, onAbrir }: {
             {subareas.map(([id, nombre]) => <option key={id} value={String(id)}>{nombre}</option>)}
           </select>
         </Filtro>
-        <Filtro label="Ordenar">
-          <select value={orden} onChange={(e) => setOrden(e.target.value)} style={inputStyle}>
-            <option value="reciente">Más reciente primero</option>
-            <option value="az">A → Z</option>
-            <option value="za">Z → A</option>
-            <option value="antiguo">Más antiguo primero</option>
-          </select>
-        </Filtro>
         <Filtro label="Fecha alta desde">
           <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} style={inputStyle} />
         </Filtro>
         <Filtro label="Fecha alta hasta">
           <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} style={inputStyle} />
         </Filtro>
-        <button type="button" style={btn('ghost', 'sm')} onClick={() => { setTexto(''); setNivel(''); setSubarea(''); setOrden('reciente'); setDesde(''); setHasta('') }}>
+        <button type="button" style={btn('ghost', 'sm')} onClick={() => { setTexto(''); setNivel(''); setSubarea(''); setOrden(null); setDesde(''); setHasta('') }}>
           Limpiar
         </button>
       </div>
@@ -733,9 +741,13 @@ function ListadoUsuarios({ usuarios, cargando, onVolver, onAbrir }: {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
             <thead>
               <tr>
-                {['Usuario', 'Nivel', 'Subárea', 'Último login', 'Estado', 'Acciones'].map((h) => (
-                  <th key={h} style={thStyle}>{h}</th>
-                ))}
+                <ThOrden campo="usuario" orden={orden} onOrdenar={alternar} style={thStyle}>Usuario</ThOrden>
+                <ThOrden campo="nivel" orden={orden} onOrdenar={alternar} style={thStyle}>Nivel</ThOrden>
+                <ThOrden campo="subarea" orden={orden} onOrdenar={alternar} style={thStyle}>Subárea</ThOrden>
+                <ThOrden campo="login" orden={orden} onOrdenar={alternar} style={thStyle}>Último login</ThOrden>
+                <ThOrden campo="alta" orden={orden} onOrdenar={alternar} style={thStyle}>Alta</ThOrden>
+                <ThOrden campo="estado" orden={orden} onOrdenar={alternar} style={thStyle}>Estado</ThOrden>
+                <th style={thStyle}>Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -745,6 +757,7 @@ function ListadoUsuarios({ usuarios, cargando, onVolver, onAbrir }: {
                   <td style={tdStyle}>{NIVELES[u.nivel_acceso] ?? u.nivel_acceso}</td>
                   <td style={tdStyle}>{u.es_externo ? <em style={{ color: 'var(--fg-3)' }}>Externo</em> : (u.subarea_nombre ?? '—')}</td>
                   <td style={tdStyle}>{fmtFechaHora(u.fecha_ultimo_login)}</td>
+                  <td style={tdStyle}>{fmtFecha(u.fecha_alta)}</td>
                   <td style={tdStyle}><span style={badgeEstado(u.activo)}>{u.activo ? 'Activo' : 'Inactivo'}</span></td>
                   <td style={tdStyle}>
                     <span style={{ display: 'flex', gap: 6 }}>

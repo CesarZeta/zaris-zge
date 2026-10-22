@@ -1,22 +1,48 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import { useCiudadanosListado } from '../hooks/useCiudadanos'
 import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
-import type { Ciudadano } from '../types/ciudadano'
+import { ThOrden, useOrden } from '../../../ui/orden'
+import type { OrdenCiudadanos } from '../api/ciudadanosApi'
 
-type Orden = 'reciente' | 'antiguo' | 'az' | 'za'
+/** Filas por página del padrón. */
+const POR_PAGINA = 100
 
 export function ListView() {
   const navigate = useNavigate()
   const location = useLocation()
 
-  // Búsqueda diferida (§23): el padrón (hasta 1000 filas) NO se pide al entrar;
-  // sale recién con "Ver listado". No hay filtros server: texto/orden/fechas
-  // filtran lo cargado, en vivo, sin volver a consultar.
-  const busqueda = useBusquedaDiferida({})
-  const { buscar, buscado } = busqueda
-  const { data, isLoading, isError, error } = useCiudadanosListado({ enabled: buscado, version: busqueda.version })
+  // Búsqueda diferida (§23): texto y fechas de alta son el borrador y viajan al
+  // backend recién con Buscar. Con un padrón real no se puede traer todo y
+  // filtrar en pantalla: esconde a los que no entraron en la carga.
+  const busqueda = useBusquedaDiferida({ texto: '', desde: '', hasta: '' })
+  const { borrador, setBorrador, aplicado, buscado, buscar: aplicarFiltros } = busqueda
+  const [offset, setOffset] = useState(0)
+  // Orden por columna: lo resuelve el backend. Sin columna elegida, el más
+  // reciente primero. Cambiarlo vuelve a la primera página.
+  const { orden, alternar, setOrden } = useOrden<OrdenCiudadanos>()
+
+  const { data, isLoading, isError, error } = useCiudadanosListado({
+    q: aplicado?.texto.trim() || undefined,
+    desde: aplicado?.desde || undefined,
+    hasta: aplicado?.hasta || undefined,
+    orden: orden?.campo, dir: orden?.dir,
+    limit: POR_PAGINA, offset,
+  }, { enabled: buscado, version: busqueda.version })
+
+  function buscar() {
+    setOffset(0)
+    aplicarFiltros()
+  }
+  function ordenar(campo: OrdenCiudadanos) {
+    setOffset(0)
+    alternar(campo)
+  }
+  function limpiar() {
+    setBorrador({ texto: '', desde: '', hasta: '' })
+    setOrden(null)
+  }
 
   // Intención explícita: el botón "Listado" de BuscarView navega con
   // state { buscar: true } — ese clic YA es la búsqueda, así que arrancamos
@@ -25,47 +51,13 @@ export function ListView() {
   const autoBuscar = (location.state as { buscar?: boolean } | null)?.buscar === true
   useEffect(() => {
     if (!autoBuscar) return
-    buscar()
+    aplicarFiltros()
     navigate(location.pathname, { replace: true, state: null })
-  }, [autoBuscar, buscar, navigate, location.pathname])
+  }, [autoBuscar, aplicarFiltros, navigate, location.pathname])
 
-  const [texto, setTexto] = useState('')
-  const [orden, setOrden] = useState<Orden>('reciente')
-  const [desde, setDesde] = useState('')
-  const [hasta, setHasta] = useState('')
-
-  const filtrados = useMemo<Ciudadano[]>(() => {
-    if (!data) return []
-    let rows = [...data]
-    const t = texto.toLowerCase().trim()
-    if (t) {
-      rows = rows.filter((c) =>
-        (c.nombre || '').toLowerCase().includes(t) ||
-        (c.apellido || '').toLowerCase().includes(t) ||
-        (c.doc_nro || '').includes(t) ||
-        (c.cuil || '').includes(t),
-      )
-    }
-    if (desde || hasta) {
-      rows = rows.filter((c) => {
-        const d = (c.fecha_alta || '').slice(0, 10)
-        if (!d) return true
-        if (desde && d < desde) return false
-        if (hasta && d > hasta) return false
-        return true
-      })
-    }
-    if (orden === 'reciente') rows.sort((a, b) => (b.id_ciudadano || 0) - (a.id_ciudadano || 0))
-    else if (orden === 'antiguo') rows.sort((a, b) => (a.id_ciudadano || 0) - (b.id_ciudadano || 0))
-    else if (orden === 'az') rows.sort((a, b) => (a.apellido || '').localeCompare(b.apellido || '', 'es'))
-    else if (orden === 'za') rows.sort((a, b) => (b.apellido || '').localeCompare(a.apellido || '', 'es'))
-    return rows
-  }, [data, texto, desde, hasta, orden])
-
-  function limpiar() {
-    setTexto(''); setDesde(''); setHasta(''); setOrden('reciente')
-  }
-
+  const filas = data?.filas ?? []
+  const total = data?.total ?? 0
+  const rango = filas.length ? `${offset + 1}–${offset + filas.length} de ${total}` : `0 de ${total}`
   const fechaImpresion = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 
   return (
@@ -76,15 +68,12 @@ export function ListView() {
           Listado de ciudadanos
         </h2>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button type="button" onClick={() => buscar()} style={btnBuscar} title="Traer los ciudadanos (vuelve a consultar)">
-            <Search size={14} strokeWidth={1.5} /> Ver listado
-          </button>
           <button
             type="button"
             onClick={() => window.print()}
             style={buscado ? btnGhost : btnGhostOff}
             disabled={!buscado}
-            title={buscado ? 'Imprimir el listado visible' : 'Primero presioná Ver listado'}
+            title={buscado ? 'Imprimir la página visible' : 'Primero presioná Buscar'}
           >
             Imprimir
           </button>
@@ -96,80 +85,75 @@ export function ListView() {
       <div className="print-only" style={{ display: 'none' }}>
         <h2 style={{ fontSize: '1.1rem', fontWeight: 700, textAlign: 'center', margin: 0 }}>Padron de Ciudadanos — ZARIS</h2>
         <p style={{ fontSize: '0.78rem', color: '#666', marginTop: 4, textAlign: 'center' }}>
-          Listado generado el {fechaImpresion} · {filtrados.length} registro{filtrados.length !== 1 ? 's' : ''}
+          Listado generado el {fechaImpresion} · registros {rango}
         </p>
       </div>
 
-      {!buscado && (
-        <AvisoBuscar texto="Presioná Ver listado para traer los ciudadanos. Después filtrá por texto, fechas u orden sin volver a consultar." />
-      )}
-
-      {/* Filtros client-side (en vivo sobre lo cargado): recién cuando hay listado */}
-      {buscado && (
-        <div className="no-print" style={filterBarStyle}>
-          <div style={filterGroup}>
-            <label style={filterLabel}>Buscar</label>
-            <input
-              value={texto}
-              onChange={(e) => setTexto(e.target.value)}
-              placeholder="Nombre, apellido o DNI..."
-              style={filterInput}
-            />
-          </div>
-          <div style={filterGroup}>
-            <label style={filterLabel}>Ordenar</label>
-            <select value={orden} onChange={(e) => setOrden(e.target.value as Orden)} style={filterInput}>
-              <option value="reciente">Mas reciente primero</option>
-              <option value="az">Apellido A → Z</option>
-              <option value="za">Apellido Z → A</option>
-              <option value="antiguo">Mas antiguo primero</option>
-            </select>
-          </div>
-          <div style={filterGroup}>
-            <label style={filterLabel}>Fecha desde</label>
-            <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} style={filterInput} />
-          </div>
-          <div style={filterGroup}>
-            <label style={filterLabel}>Fecha hasta</label>
-            <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} style={filterInput} />
-          </div>
-          <div style={{ display: 'flex', gap: 8, alignSelf: 'flex-end' }}>
-            <button type="button" onClick={limpiar} style={btnGhost}>Limpiar</button>
-          </div>
+      {/* Filtros: viajan al backend. Enter = Buscar. */}
+      <form className="no-print" style={filterBarStyle} onSubmit={(e) => { e.preventDefault(); buscar() }}>
+        <div style={filterGroup}>
+          <label style={filterLabel}>Buscar</label>
+          <input
+            value={borrador.texto}
+            onChange={(e) => setBorrador((b) => ({ ...b, texto: e.target.value }))}
+            placeholder="Nombre, apellido, DNI, CUIL o email..."
+            style={{ ...filterInput, minWidth: 260 }}
+          />
         </div>
+        <div style={filterGroup}>
+          <label style={filterLabel}>Alta desde</label>
+          <input type="date" value={borrador.desde} onChange={(e) => setBorrador((b) => ({ ...b, desde: e.target.value }))} style={filterInput} />
+        </div>
+        <div style={filterGroup}>
+          <label style={filterLabel}>Alta hasta</label>
+          <input type="date" value={borrador.hasta} onChange={(e) => setBorrador((b) => ({ ...b, hasta: e.target.value }))} style={filterInput} />
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignSelf: 'flex-end' }}>
+          <button type="submit" style={btnBuscar} title="Traer los ciudadanos con estos filtros">
+            <Search size={14} strokeWidth={1.5} /> Buscar
+          </button>
+          <button type="button" onClick={limpiar} style={btnGhost}>Limpiar</button>
+        </div>
+      </form>
+
+      {!buscado && (
+        <AvisoBuscar texto="Escribí un nombre, documento o rango de alta (o dejalos vacíos para ver todo) y presioná Buscar." />
       )}
 
-      {buscado && (
+      {buscado && data && (
         <div style={{ fontSize: 'var(--size-ui)', color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
-          {filtrados.length} ciudadano{filtrados.length !== 1 ? 's' : ''} encontrado{filtrados.length !== 1 ? 's' : ''}
+          {total} ciudadano{total !== 1 ? 's' : ''} encontrado{total !== 1 ? 's' : ''}
+          {total > POR_PAGINA && <> · se muestran de a {POR_PAGINA}</>}
         </div>
       )}
 
       {isLoading && <div style={{ color: 'var(--fg-3)', padding: 20 }}>Cargando...</div>}
       {isError && <div style={{ color: 'var(--color-error)', padding: 20 }}>Error: {(error as Error).message}</div>}
-      {data && filtrados.length === 0 && (
+      {data && filas.length === 0 && (
         <div style={{ color: 'var(--fg-3)', textAlign: 'center', padding: 40 }}>Sin resultados</div>
       )}
-      {filtrados.length > 0 && (
+      {filas.length > 0 && (
         <div style={tableWrap}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--size-ui)' }}>
             <thead>
               <tr style={{ background: 'var(--surface-200)' }}>
-                <Th>Apellido, Nombre</Th>
-                <Th>Documento</Th>
-                <Th>CUIL</Th>
-                <Th>Email</Th>
-                <Th>Estado</Th>
-                <Th className="no-print">Acciones</Th>
+                <ThOrden campo="nombre" orden={orden} onOrdenar={ordenar} style={thStyle}>Apellido, Nombre</ThOrden>
+                <ThOrden campo="documento" orden={orden} onOrdenar={ordenar} style={thStyle}>Documento</ThOrden>
+                <ThOrden campo="cuil" orden={orden} onOrdenar={ordenar} style={thStyle}>CUIL</ThOrden>
+                <ThOrden campo="email" orden={orden} onOrdenar={ordenar} style={thStyle}>Email</ThOrden>
+                <ThOrden campo="alta" orden={orden} onOrdenar={ordenar} style={thStyle}>Alta</ThOrden>
+                <ThOrden campo="estado" orden={orden} onOrdenar={ordenar} style={thStyle}>Estado</ThOrden>
+                <th className="no-print" style={thStyle}>Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {filtrados.map((c) => (
+              {filas.map((c) => (
                 <tr key={c.id_ciudadano} style={{ borderTop: '1px solid var(--border-primary)' }}>
                   <Td>{c.apellido}, {c.nombre}</Td>
                   <Td mono>{c.doc_tipo} {c.doc_nro || '—'}</Td>
                   <Td mono>{c.cuil || '—'}</Td>
                   <Td>{c.email || '—'}</Td>
+                  <Td mono>{fmtFecha(c.fecha_alta)}</Td>
                   <Td>
                     <span style={c.activo ? badgeActivo : badgeInactivo}>
                       {c.activo ? 'Activo' : 'Inactivo'}
@@ -186,6 +170,16 @@ export function ListView() {
         </div>
       )}
 
+      {buscado && total > POR_PAGINA && (
+        <div className="no-print" style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end' }}>
+          <button type="button" style={offset > 0 ? btnGhost : btnGhostOff} disabled={offset === 0}
+            onClick={() => setOffset(Math.max(0, offset - POR_PAGINA))}>Anterior</button>
+          <span style={{ fontSize: 'var(--size-caption)', color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>{rango}</span>
+          <button type="button" style={offset + POR_PAGINA < total ? btnGhost : btnGhostOff} disabled={offset + POR_PAGINA >= total}
+            onClick={() => setOffset(offset + POR_PAGINA)}>Siguiente</button>
+        </div>
+      )}
+
       <style>{`
         @media print {
           .no-print { display: none !important; }
@@ -196,16 +190,16 @@ export function ListView() {
   )
 }
 
-function Th({ children, className }: { children: React.ReactNode; className?: string }) {
-  return (
-    <th className={className} style={{
-      padding: '10px 16px', textAlign: 'left', fontWeight: 600,
-      fontSize: 'var(--size-caption)', textTransform: 'uppercase',
-      letterSpacing: '0.05em', color: 'var(--fg-2)', whiteSpace: 'nowrap',
-    }}>
-      {children}
-    </th>
-  )
+function fmtFecha(iso: string | null | undefined): string {
+  const d = iso ? new Date(iso) : null
+  if (!d || isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+const thStyle: React.CSSProperties = {
+  padding: '10px 16px', textAlign: 'left', fontWeight: 600,
+  fontSize: 'var(--size-caption)', textTransform: 'uppercase',
+  letterSpacing: '0.05em', color: 'var(--fg-2)', whiteSpace: 'nowrap',
 }
 
 function Td({ children, mono, className }: { children: React.ReactNode; mono?: boolean; className?: string }) {
@@ -268,7 +262,7 @@ const btnGhost: React.CSSProperties = {
   cursor: 'pointer',
 }
 
-// "Ver listado": acento del módulo (mismo que + Nuevo en BuscarView) + icono.
+// "Buscar": acento del módulo (mismo que + Nuevo en BuscarView) + icono.
 const btnBuscar: React.CSSProperties = {
   ...btnGhost,
   background: 'var(--zaris-orange)',
@@ -280,7 +274,7 @@ const btnBuscar: React.CSSProperties = {
   gap: 6,
 }
 
-// Ghost deshabilitado hasta la primera carga (Imprimir).
+// Ghost deshabilitado (Imprimir antes de buscar, paginado en los extremos).
 const btnGhostOff: React.CSSProperties = { ...btnGhost, opacity: 0.5, cursor: 'not-allowed' }
 
 const tableWrap: React.CSSProperties = {

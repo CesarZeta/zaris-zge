@@ -17,6 +17,20 @@ import type {
 // gatea la UI igual (ver index.tsx).
 const BASE = '/api/v1/admin/encuestas'
 
+/** Columnas ordenables del listado de envíos (espejo de `_ORDEN_ENVIOS` en
+ *  encuestas_admin.py). El listado tiene tope: ordena el backend (§23). */
+export type OrdenEnvios = 'envio' | 'tipo' | 'referencia' | 'email' | 'estado' | 'enviada' | 'completada' | 'vence'
+
+export interface ParamsEnvios {
+  estado?: string
+  tipo?: string
+  id_plantilla?: number
+  orden?: OrdenEnvios
+  dir?: 'asc' | 'desc'
+  limit?: number
+  offset?: number
+}
+
 export interface ResumenParams {
   desde?: string // 'YYYY-MM-DD'
   hasta?: string
@@ -46,8 +60,11 @@ export const encuestasApi = {
   atender: (idRespuesta: number) =>
     api.patch<EncuestaRespuesta>(`${BASE}/respuestas/${idRespuesta}/atender`),
 
-  envios: (p: { estado?: string; tipo?: string; id_plantilla?: number; limit?: number; offset?: number } = {}) =>
-    api.get<EncuestaEnvio[]>(`${BASE}/envios`, { params: { ...p } }),
+  /** Página de envíos + total sin paginar (`X-Total-Count`), para avisar el tope. */
+  envios: async (p: ParamsEnvios = {}) => {
+    const { data, headers } = await api.getWithHeaders<EncuestaEnvio[]>(`${BASE}/envios`, { params: { ...p } })
+    return { filas: data, total: Number(headers.get('X-Total-Count') ?? data.length) }
+  },
 
   envioDetalle: (idEnvio: number) =>
     api.get<EncuestaEnvioConRespuesta>(`${BASE}/envios/${idEnvio}`),

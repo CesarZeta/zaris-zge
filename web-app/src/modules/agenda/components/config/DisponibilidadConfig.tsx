@@ -9,6 +9,7 @@ import { format as formatBitmask } from '../../../../lib/diasSemana'
 import type { DisponibilidadRecurso, RecursoItem, TipoRecurso } from '../../types/agenda'
 import { DisponibilidadFormModal } from './DisponibilidadFormModal'
 import { ConfirmModal } from '../ConfirmModal'
+import { ordenarFilas, useOrden } from '../../../../ui/orden'
 
 export function DisponibilidadConfig() {
   const [filtroTipo, setFiltroTipo] = useState<TipoRecurso | 'todos'>('todos')
@@ -35,6 +36,17 @@ export function DisponibilidadConfig() {
   function nombreRecurso(d: DisponibilidadRecurso): string {
     return nombreMap.get(`${d.tipo_recurso}-${d.id_recurso}`) ?? `${d.tipo_recurso} ${d.id_recurso}`
   }
+
+  // Orden por columna (§23): el listado trae todas las franjas → en pantalla.
+  const { orden, alternar } = useOrden<OrdenDisp>()
+  const filas = ordenarFilas(lista.data ?? [], orden, {
+    tipo: (d) => d.tipo_recurso,
+    recurso: (d) => nombreRecurso(d),
+    dias: (d) => d.dias_semana,
+    horario: (d) => d.hora_inicio,
+    etiqueta: (d) => d.etiqueta,
+    vigencia: (d) => d.vigente_desde ?? d.vigente_hasta,
+  })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -84,16 +96,19 @@ export function DisponibilidadConfig() {
         <div style={{ background: 'var(--surface-100)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-primary)', overflow: 'hidden' }}>
           <Table
             keyField="id_disponibilidad"
-            rows={lista.data}
+            rows={filas}
+            orden={orden}
+            onOrdenar={alternar}
             columns={[
-              { key: 'tipo_recurso', header: 'Tipo', render: (r) => <Badge kind="neutral">{r.tipo_recurso}</Badge> },
-              { key: '_recurso', header: 'Recurso', render: (r) => nombreRecurso(r) },
-              { key: 'dias_semana', header: 'Dias', render: (r) => formatBitmask(r.dias_semana) },
-              { key: '_horario', header: 'Horario', render: (r) => `${r.hora_inicio.slice(0,5)} a ${r.hora_fin.slice(0,5)}` },
-              { key: 'etiqueta', header: 'Etiqueta', render: (r) => r.etiqueta ?? <span style={{ color: 'var(--fg-3)' }}>—</span> },
+              { key: 'tipo_recurso', header: 'Tipo', orden: 'tipo', render: (r) => <Badge kind="neutral">{r.tipo_recurso}</Badge> },
+              { key: '_recurso', header: 'Recurso', orden: 'recurso', render: (r) => nombreRecurso(r) },
+              { key: 'dias_semana', header: 'Dias', orden: 'dias', render: (r) => formatBitmask(r.dias_semana) },
+              { key: '_horario', header: 'Horario', orden: 'horario', render: (r) => `${r.hora_inicio.slice(0,5)} a ${r.hora_fin.slice(0,5)}` },
+              { key: 'etiqueta', header: 'Etiqueta', orden: 'etiqueta', render: (r) => r.etiqueta ?? <span style={{ color: 'var(--fg-3)' }}>—</span> },
               {
                 key: '_vigencia',
                 header: 'Vigencia',
+                orden: 'vigencia',
                 render: (r) => {
                   if (!r.vigente_desde && !r.vigente_hasta) return <span style={{ color: 'var(--fg-3)' }}>permanente</span>
                   return `${r.vigente_desde ?? '...'} a ${r.vigente_hasta ?? '...'}`
@@ -141,3 +156,5 @@ export function DisponibilidadConfig() {
     </div>
   )
 }
+
+type OrdenDisp = 'tipo' | 'recurso' | 'dias' | 'horario' | 'etiqueta' | 'vigencia'

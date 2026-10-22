@@ -3,6 +3,7 @@ import { CalendarOff, UserX, Plus, Trash2 } from 'lucide-react'
 import { RecursoPicker } from '../components/RecursoPicker'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { useNotificationsStore } from '../../../stores/notifications'
+import { ThOrden, ordenarFilas, useOrden } from '../../../ui/orden'
 import {
   useNovedades, useCrearNovedad, useEliminarNovedad,
   useFeriados, useCrearFeriado, useEliminarFeriado,
@@ -46,6 +47,13 @@ function Feriados() {
   const [descripcion, setDescripcion] = useState('')
   const [ambito, setAmbito] = useState<AmbitoFeriado>('MUNICIPAL')
   const [confirmDel, setConfirmDel] = useState<Feriado | null>(null)
+  // Orden por columna (§23): el año entero viene cargado → en pantalla.
+  const { orden, alternar } = useOrden<'fecha' | 'descripcion' | 'ambito'>()
+  const filas = ordenarFilas(data ?? [], orden, {
+    fecha: (f) => f.fecha,
+    descripcion: (f) => f.descripcion,
+    ambito: (f) => f.ambito,
+  })
 
   async function add() {
     if (!fecha || !descripcion.trim()) {
@@ -88,15 +96,17 @@ function Feriados() {
       <div style={card}>
         <table style={table}>
           <thead><tr>
-            <th style={th}>Fecha</th><th style={th}>Descripción</th>
-            <th style={th}>Ámbito</th><th style={{ ...th, textAlign: 'right' }}>Acción</th>
+            <ThOrden campo="fecha" orden={orden} onOrdenar={alternar} style={th}>Fecha</ThOrden>
+            <ThOrden campo="descripcion" orden={orden} onOrdenar={alternar} style={th}>Descripción</ThOrden>
+            <ThOrden campo="ambito" orden={orden} onOrdenar={alternar} style={th}>Ámbito</ThOrden>
+            <th style={{ ...th, textAlign: 'right' }}>Acción</th>
           </tr></thead>
           <tbody>
             {isLoading && <tr><td colSpan={4} style={empty}>Cargando…</td></tr>}
             {!isLoading && (data ?? []).length === 0 && (
               <tr><td colSpan={4} style={empty}>No hay feriados cargados para {anio}.</td></tr>
             )}
-            {(data ?? []).map((f) => (
+            {filas.map((f) => (
               <tr key={f.id_agenda_feriado}>
                 <td style={{ ...td, ...mono }}>{f.fecha}</td>
                 <td style={td}>{f.descripcion}</td>
@@ -148,6 +158,15 @@ function Novedades() {
   const [horaFin, setHoraFin] = useState('')
   const [motivo, setMotivo] = useState('')
   const [confirmDel, setConfirmDel] = useState<Novedad | null>(null)
+  // Orden por columna (§23): trae todas las vigentes y futuras → en pantalla.
+  const { orden, alternar } = useOrden<'agente' | 'tipo' | 'rango' | 'horario' | 'motivo'>()
+  const filas = ordenarFilas(data ?? [], orden, {
+    agente: (n) => n.agente_nombre,
+    tipo: (n) => TIPO_LABEL[n.tipo] ?? n.tipo,
+    rango: (n) => n.fecha_desde,
+    horario: (n) => n.hora_inicio,
+    motivo: (n) => n.motivo,
+  })
 
   async function add() {
     if (!idAgente) { push({ kind: 'error', title: 'Elegí un agente' }); return }
@@ -224,8 +243,11 @@ function Novedades() {
       <div style={card}>
         <table style={table}>
           <thead><tr>
-            <th style={th}>Agente</th><th style={th}>Tipo</th><th style={th}>Rango</th>
-            <th style={th}>Horario</th><th style={th}>Motivo</th>
+            <ThOrden campo="agente" orden={orden} onOrdenar={alternar} style={th}>Agente</ThOrden>
+            <ThOrden campo="tipo" orden={orden} onOrdenar={alternar} style={th}>Tipo</ThOrden>
+            <ThOrden campo="rango" orden={orden} onOrdenar={alternar} style={th}>Rango</ThOrden>
+            <ThOrden campo="horario" orden={orden} onOrdenar={alternar} style={th}>Horario</ThOrden>
+            <ThOrden campo="motivo" orden={orden} onOrdenar={alternar} style={th}>Motivo</ThOrden>
             <th style={{ ...th, textAlign: 'right' }}>Acción</th>
           </tr></thead>
           <tbody>
@@ -233,7 +255,7 @@ function Novedades() {
             {!isLoading && (data ?? []).length === 0 && (
               <tr><td colSpan={6} style={empty}>No hay novedades vigentes o futuras.</td></tr>
             )}
-            {(data ?? []).map((n) => (
+            {filas.map((n) => (
               <tr key={n.id_agente_novedad}>
                 <td style={td}>{n.agente_nombre}</td>
                 <td style={td}><span style={badge}>{TIPO_LABEL[n.tipo] ?? n.tipo}</span></td>

@@ -51,7 +51,7 @@ Auth a nivel router (`dependencies=[Depends(get_current_user)]`, §39). Registra
 | Verbo | Path | Notas |
 |---|---|---|
 | GET | `/plantillas` · `/plantillas/{id}` | Detalle con preguntas + opciones anidadas |
-| GET | `/envios` · `/envios/{id}` | Filtros estado/reclamo/fecha; `X-Total-Count`. Detalle incluye respuesta anidada |
+| GET | `/envios` · `/envios/{id}` | Filtros estado/reclamo/fecha/tipo; **`orden` + `dir`** contra `_ORDEN_ENVIOS` (envio/tipo/referencia/email/estado/enviada/completada/vence, §23 F3 2026-10-22; tope 200 → la pantalla avisa «se muestran los primeros 200 de N»); `X-Total-Count`. El filtro «Tipo» de Envíos ofrece **Trámites** desde F3 (antes faltaba y los envíos de trámites no se podían filtrar). Detalle incluye respuesta anidada |
 | GET | `/respuestas/pendientes-contacto` | `solicita_contacto=TRUE AND atendida=FALSE`, orden FIFO, con datos del ciudadano |
 | GET | `/dashboard/resumen` · `/por-area` · `/evolucion` · `/comentarios` | DB vacía → ceros, no rompe |
 | POST | `/disparar` | 201 o 422 con motivo concreto |

@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Plus, Pencil, Trash2, Users } from 'lucide-react'
 import { useEspacios, useEliminarEspacio } from '../../hooks/useEspacios'
 import { Button, Badge, EmptyState, Skeleton, Table } from '../../../../ui'
 import { EspacioFormModal } from './EspacioFormModal'
 import { EspacioAgentesModal } from './EspacioAgentesModal'
 import { ConfirmModal } from '../ConfirmModal'
+import { ordenarFilas, useOrden } from '../../../../ui/orden'
 import type { EspacioAgenda } from '../../types/agenda'
 
 export function EspaciosConfig() {
@@ -13,6 +14,9 @@ export function EspaciosConfig() {
   const [formOpen, setFormOpen] = useState<{ espacio: EspacioAgenda | null } | null>(null)
   const [agentesOpen, setAgentesOpen] = useState<number | null>(null)
   const [aEliminar, setAEliminar] = useState<EspacioAgenda | null>(null)
+  // Orden por columna (§23): el listado trae todos los espacios → en pantalla.
+  const { orden, alternar } = useOrden<OrdenEspacio>()
+  const filas = useMemo(() => ordenarFilas(lista.data ?? [], orden, VALORES_ORDEN), [lista.data, orden])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -41,15 +45,18 @@ export function EspaciosConfig() {
         <div style={{ background: 'var(--surface-100)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-primary)', overflow: 'hidden' }}>
           <Table
             keyField="id_espacio"
-            rows={lista.data}
+            rows={filas}
+            orden={orden}
+            onOrdenar={alternar}
             columns={[
-              { key: 'nombre', header: 'Nombre' },
-              { key: 'subarea_nombre', header: 'Subarea', render: (r) => r.subarea_nombre ?? <span style={{ color: 'var(--fg-3)' }}>—</span> },
-              { key: 'direccion', header: 'Direccion', render: (r) => r.direccion ?? <span style={{ color: 'var(--fg-3)' }}>—</span> },
-              { key: 'capacidad_personas', header: 'Capacidad', render: (r) => r.capacidad_personas ?? <span style={{ color: 'var(--fg-3)' }}>—</span> },
+              { key: 'nombre', header: 'Nombre', orden: 'nombre' },
+              { key: 'subarea_nombre', header: 'Subarea', orden: 'subarea', render: (r) => r.subarea_nombre ?? <span style={{ color: 'var(--fg-3)' }}>—</span> },
+              { key: 'direccion', header: 'Direccion', orden: 'direccion', render: (r) => r.direccion ?? <span style={{ color: 'var(--fg-3)' }}>—</span> },
+              { key: 'capacidad_personas', header: 'Capacidad', orden: 'capacidad', render: (r) => r.capacidad_personas ?? <span style={{ color: 'var(--fg-3)' }}>—</span> },
               {
                 key: 'atendido',
                 header: 'Tipo',
+                orden: 'tipo',
                 render: (r) => (
                   <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
                     <Badge kind={r.atendido ? 'success' : 'neutral'}>{r.atendido ? 'atendido' : 'desatendido'}</Badge>
@@ -110,4 +117,13 @@ export function EspaciosConfig() {
       />
     </div>
   )
+}
+
+type OrdenEspacio = 'nombre' | 'subarea' | 'direccion' | 'capacidad' | 'tipo'
+const VALORES_ORDEN: Record<OrdenEspacio, (e: EspacioAgenda) => string | number | null | undefined> = {
+  nombre: (e) => e.nombre,
+  subarea: (e) => e.subarea_nombre,
+  direccion: (e) => e.direccion,
+  capacidad: (e) => e.capacidad_personas,
+  tipo: (e) => (e.atendido ? 'atendido' : 'desatendido'),
 }

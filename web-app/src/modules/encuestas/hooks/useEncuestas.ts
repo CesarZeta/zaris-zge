@@ -1,5 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { encuestasApi, type ResumenParams } from '../lib/api'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { encuestasApi, type ParamsEnvios, type ResumenParams } from '../lib/api'
 
 // Las queries de dashboard exigen nivel <= 2 en el backend. El gating de la UI
 // vive en index.tsx (WrapNivel); estos hooks se montan solo dentro de las vistas
@@ -60,14 +60,13 @@ export interface OpcionesListado {
   version?: number
 }
 
-export function useEnvios(
-  p: { estado?: string; tipo?: string; id_plantilla?: number; limit?: number } = {},
-  opts: OpcionesListado = {},
-) {
+export function useEnvios(p: ParamsEnvios = {}, opts: OpcionesListado = {}) {
   return useQuery({
     queryKey: ['encuestas', 'envios', p, opts.version ?? 0],
     queryFn: () => encuestasApi.envios(p),
     enabled: opts.enabled ?? true,
+    // Cambiar el orden no vacía la tabla mientras llega la respuesta.
+    placeholderData: keepPreviousData,
   })
 }
 

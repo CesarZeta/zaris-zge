@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Star, TrendingUp, ThumbsDown, PhoneCall, MessageSquare } from 'lucide-react'
 import { useResumen, usePorArea, useEvolucion, useComentarios } from '../hooks/useEncuestas'
 import { BarrasDistribucion, LineaEvolucion, KpiCard, colorCsat } from '../components/charts'
+import { ThOrden, ordenarFilas, useOrden } from '../../../ui/orden'
 
 // Período por defecto: últimos 90 días (más útil que 30 para ver tendencia,
 // y el backend ya filtra por fecha). El usuario puede ajustar desde/hasta.
@@ -21,6 +22,14 @@ export function ResumenView() {
   const porArea = usePorArea(periodo)
   const evolucion = useEvolucion(6)
   const comentarios = useComentarios({ limit: 8 })
+
+  // Orden por columna (§23): el tablero trae todas las áreas → en pantalla.
+  const { orden: ordenArea, alternar: alternarArea } = useOrden<'area' | 'respuestas' | 'csat'>()
+  const areas = ordenarFilas(porArea.data ?? [], ordenArea, {
+    area: (a) => a.nombre_area,
+    respuestas: (a) => a.total_respuestas,
+    csat: (a) => a.csat_promedio,
+  })
 
   const r = resumen.data
 
@@ -102,13 +111,13 @@ export function ResumenView() {
               <table style={table}>
                 <thead>
                   <tr>
-                    <th style={th}>Área</th>
-                    <th style={{ ...th, textAlign: 'right' }}>Respuestas</th>
-                    <th style={{ ...th, textAlign: 'right' }}>CSAT</th>
+                    <ThOrden campo="area" orden={ordenArea} onOrdenar={alternarArea} style={th}>Área</ThOrden>
+                    <ThOrden campo="respuestas" orden={ordenArea} onOrdenar={alternarArea} style={{ ...th, textAlign: 'right' }}>Respuestas</ThOrden>
+                    <ThOrden campo="csat" orden={ordenArea} onOrdenar={alternarArea} style={{ ...th, textAlign: 'right' }}>CSAT</ThOrden>
                   </tr>
                 </thead>
                 <tbody>
-                  {(porArea.data ?? []).map((a) => (
+                  {areas.map((a) => (
                     <tr key={a.id_area ?? 'null'}>
                       <td style={td}>{a.nombre_area ?? '(sin área)'}</td>
                       <td style={{ ...td, textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{a.total_respuestas}</td>

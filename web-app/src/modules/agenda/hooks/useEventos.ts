@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   actualizarEvento,
   cancelarEvento,
@@ -18,6 +18,8 @@ export function useEventos(params?: Parameters<typeof listarEventos>[0], opts: O
     queryKey: ['agenda', 'eventos', params, opts.version ?? 0],
     queryFn:  () => listarEventos(params),
     enabled:  opts.enabled ?? true,
+    // Paginar u ordenar no vacía la tabla mientras llega la página nueva.
+    placeholderData: keepPreviousData,
   })
 }
 

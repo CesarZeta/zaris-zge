@@ -235,6 +235,15 @@
       text-align: left;
       white-space: nowrap;
     }
+    /* Encabezado ordenable (§23): hereda tipografía y mayúsculas del th. */
+    .th-orden {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: none; border: none; padding: 0; margin: 0; cursor: pointer;
+      font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit;
+    }
+    .th-orden svg { opacity: .45; flex-shrink: 0; }
+    .th-orden--activo { color: var(--fg-1); }
+    .th-orden--activo svg { opacity: 1; }
     tbody tr { border-top: 1px solid var(--border-primary); transition: background 0.1s; }
     tbody tr:hover { background: var(--surface-200); }
     tbody td { padding: 0.65rem 1rem; color: var(--fg-1); vertical-align: middle; }
@@ -1507,7 +1516,7 @@ async function buscarEnTabla() {
 async function abrirListado() {
   const schema = SCHEMAS[tablaActual];
   const main = document.getElementById('main');
-  const labelField = schema.display.find(c => !isId(c)) || schema.display[0];
+  _ordenListado = null;
 
   main.innerHTML = `
     ${breadcrumbHTML((schema.label || tablaActual) + ' — Listado')}
@@ -1532,15 +1541,6 @@ async function abrirListado() {
         <input type="text" id="flt-texto" placeholder="Filtrar por nombre..." style="min-width:180px;">
       </div>
       <span id="filtros-fk-wrap"></span>
-      <div class="filter-group">
-        <label>Ordenar</label>
-        <select id="flt-orden">
-          <option value="reciente">Más reciente primero</option>
-          <option value="az">A → Z</option>
-          <option value="za">Z → A</option>
-          <option value="antiguo">Más antiguo primero</option>
-        </select>
-      </div>
       <div class="filter-group">
         <label>Fecha alta desde</label>
         <input type="date" id="flt-desde">
@@ -1616,11 +1616,9 @@ async function renderFiltrosFk(schema) {
 
 function aplicarFiltros() {
   const schema = SCHEMAS[tablaActual];
-  const labelField = schema.display.find(c => !isId(c)) || schema.display[0];
   let rows = [...(window._listadoRows || [])];
 
   const txt    = (document.getElementById('flt-texto')?.value || '').toLowerCase().trim();
-  const orden  = document.getElementById('flt-orden')?.value  || 'reciente';
   const desde  = document.getElementById('flt-desde')?.value  || '';
   const hasta  = document.getElementById('flt-hasta')?.value  || '';
 
@@ -1643,7 +1641,7 @@ function aplicarFiltros() {
 
   if (desde || hasta) {
     rows = rows.filter(r => {
-      const fa = r.fecha_alta || r.fecha_creacion || null;
+      const fa = _fechaAlta(r);
       if (!fa) return true;
       const d = fa.slice(0, 10);
       if (desde && d < desde) return false;
@@ -1652,10 +1650,9 @@ function aplicarFiltros() {
     });
   }
 
-  if (orden === 'reciente') rows = rows.reverse();
-  else if (orden === 'antiguo') { /* ya viene asc */ }
-  else if (orden === 'az') rows.sort((a, b) => String(a[labelField] ?? '').localeCompare(String(b[labelField] ?? ''), 'es'));
-  else if (orden === 'za') rows.sort((a, b) => String(b[labelField] ?? '').localeCompare(String(a[labelField] ?? ''), 'es'));
+  // El backend devuelve por PK ascendente: sin columna elegida, el más reciente primero.
+  rows.reverse();
+  if (_ordenListado) rows = ordenarFilasListado(rows, _ordenListado);
 
   renderListadoFiltrado(rows, schema);
 }
@@ -1665,10 +1662,71 @@ function limpiarFiltros() {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
-  const orden = document.getElementById('flt-orden');
-  if (orden) orden.value = 'reciente';
   document.querySelectorAll('.flt-fk').forEach(sel => { sel.value = ''; });
+  _ordenListado = null;
   aplicarFiltros();
+}
+
+// ── Orden por columnas (CLAUDE.md §23, estándar de la suite) ──
+// El listado trae la tabla entera (GET /{tabla} no tiene tope): se ordena en
+// pantalla por lo que el usuario VE en la celda (nombre de la FK, etiqueta del
+// enum), no por el id guardado. Clic = ascendente, segundo clic = descendente.
+let _ordenListado = null;   // { campo, dir } | null
+const COL_ALTA = '_alta';
+const _collatorOrden = new Intl.Collator('es', { sensitivity: 'base', numeric: true });
+
+function _fechaAlta(r) { return r.fecha_alta || r.fecha_creacion || r.creado_en || null; }
+
+function _valorOrden(r, campo) {
+  if (campo === COL_ALTA) return _fechaAlta(r);
+  const v = r[campo];
+  if (v === null || v === undefined || v === '') return null;
+  // Las FK y los enums guardan un id/código: se ordena por la etiqueta visible.
+  const porEtiqueta = FK_DISPLAY_MAP[campo] || ENUM_LABELS[campo];
+  if (typeof v === 'number' && !porEtiqueta) return v;
+  const div = document.createElement('div');
+  div.innerHTML = formatCell(v, campo);
+  return div.textContent.trim();
+}
+
+function ordenarFilasListado(rows, orden) {
+  const signo = orden.dir === 'asc' ? 1 : -1;
+  return rows
+    .map((fila, i) => ({ fila, i, v: _valorOrden(fila, orden.campo) }))
+    .sort((a, b) => {
+      // Los vacíos al final en ambas direcciones; empates conservan el orden previo.
+      if (a.v === null) return b.v === null ? a.i - b.i : 1;
+      if (b.v === null) return -1;
+      const c = typeof a.v === 'number' && typeof b.v === 'number'
+        ? a.v - b.v : _collatorOrden.compare(String(a.v), String(b.v));
+      return c !== 0 ? c * signo : a.i - b.i;
+    })
+    .map(x => x.fila);
+}
+
+function ordenarListado(campo) {
+  _ordenListado = (_ordenListado && _ordenListado.campo === campo)
+    ? { campo, dir: _ordenListado.dir === 'asc' ? 'desc' : 'asc' }
+    : { campo, dir: 'asc' };
+  aplicarFiltros();
+}
+
+const _ICONO_ORDEN = {
+  ninguno: '<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>',
+  asc: '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
+  desc: '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>',
+};
+
+function thOrden(campo, etiqueta) {
+  const activo = _ordenListado && _ordenListado.campo === campo;
+  const estado = activo ? _ordenListado.dir : 'ninguno';
+  const aria = activo ? (estado === 'asc' ? 'ascending' : 'descending') : 'none';
+  const title = activo
+    ? (estado === 'asc' ? 'Orden ascendente — clic para invertir' : 'Orden descendente — clic para invertir')
+    : 'Ordenar por esta columna';
+  return `<th aria-sort="${aria}"><button type="button" class="th-orden${activo ? ' th-orden--activo' : ''}" data-campo="${campo}" title="${title}">
+    ${etiqueta}<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${_ICONO_ORDEN[estado]}</svg>
+  </button></th>`;
 }
 
 async function renderListadoFiltrado(rows, schema) {
@@ -1686,7 +1744,12 @@ async function renderListadoFiltrado(rows, schema) {
     : schema.display;
   // Para equipos sumamos una columna "Integrantes" (conteo desde equipo_agentes).
   const colIntegrantes = tablaActual === 'equipos';
-  const headers = cols.map(c => `<th>${formatHeader(c)}</th>`).join('')
+  // "Alta" (fecha de alta) si la tabla la tiene: ordenar por ella reemplaza al
+  // viejo "más reciente / más antiguo primero".
+  const colAlta = (window._listadoRows || []).some(r => _fechaAlta(r));
+  const totalCols = cols.length + (colAlta ? 1 : 0) + (colIntegrantes ? 1 : 0) + 1;
+  const headers = cols.map(c => thOrden(c, formatHeader(c))).join('')
+    + (colAlta ? thOrden(COL_ALTA, 'Alta') : '')
     + (colIntegrantes ? '<th>Integrantes</th>' : '')
     + '<th>Acciones</th>';
 
@@ -1724,7 +1787,7 @@ async function renderListadoFiltrado(rows, schema) {
   function renderHijosInline(pk, drillType) {
     const data = hijosByPk[pk];
     if (!data || !data.length) {
-      return `<tr class="asociados-row"><td colspan="${cols.length + 1}"><div class="asociados-wrap asociados-wrap--empty">
+      return `<tr class="asociados-row"><td colspan="${totalCols}"><div class="asociados-wrap asociados-wrap--empty">
         Sin ${drillType === 'subareas' ? 'subáreas' : 'tipos de reclamo'} asociados
       </div></td></tr>`;
     }
@@ -1745,7 +1808,7 @@ async function renderListadoFiltrado(rows, schema) {
         </div>`;
       }
     }).join('');
-    return `<tr class="asociados-row"><td colspan="${cols.length + 1}"><div class="asociados-wrap">
+    return `<tr class="asociados-row"><td colspan="${totalCols}"><div class="asociados-wrap">
       <div class="asociados-title">${titulo} <span class="asociados-count">(${data.length})</span></div>
       <div class="asociados-list">${items}</div>
     </div></td></tr>`;
@@ -1756,12 +1819,13 @@ async function renderListadoFiltrado(rows, schema) {
   const labelCol = cols.find(c => !isId(c)) || cols[0];
 
   const bodyRows = rows.length === 0
-    ? `<tr><td colspan="${cols.length + 1}" class="empty">Sin resultados</td></tr>`
+    ? `<tr><td colspan="${totalCols}" class="empty">Sin resultados</td></tr>`
     : rows.map(r => {
         const pk = r[schema.pk];
         const cells = cols.map(c =>
           `<td class="${isId(c) ? 'mono' : ''}">${formatCell(r[c], c)}</td>`
         ).join('');
+        const celdaAlta = colAlta ? `<td class="mono">${_fmtFechaAlta(_fechaAlta(r))}</td>` : '';
         const nombre = r[labelCol] || pk;
         const asociados = drillDown ? renderHijosInline(pk, drillDown) : '';
         const celdaInteg = colIntegrantes
@@ -1769,6 +1833,7 @@ async function renderListadoFiltrado(rows, schema) {
           : '';
         return `<tr>
           ${cells}
+          ${celdaAlta}
           ${celdaInteg}
           <td class="actions">
             <button class="btn-edit" onclick="abrirEditar(${pk})">Editar</button>
@@ -1795,7 +1860,17 @@ async function renderListadoFiltrado(rows, schema) {
         <tbody>${bodyRows}</tbody>
       </table>
     </div>`;
+  wrap.addEventListener('click', e => {
+    const b = e.target.closest('.th-orden');
+    if (b) ordenarListado(b.dataset.campo);
+  });
   document.getElementById('main').appendChild(wrap);
+}
+
+function _fmtFechaAlta(v) {
+  const d = v ? new Date(v) : null;
+  if (!d || isNaN(d.getTime())) return '<span style="color:var(--fg-3)">—</span>';
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 function renderTabla(rows, schema) {
