@@ -5,6 +5,8 @@ description: Receta para generar o regenerar un manual operativo HTML autoconten
 
 # Generación de manuales operativos (HTML autocontenidos)
 
+> **EN PAUSA (César 2026-10-22):** las ayudas se replantean como una sola página de base de conocimiento con preguntas. No generar ni regenerar manuales hasta que esté diseñada (CLAUDE.md §36). La receta de capturas con Playwright puede servir para esa página.
+
 Receta probada para producir `docs/manual_<modulo>.html` autocontenido (capturas reales en base64).
 
 ## Patrón fundamental

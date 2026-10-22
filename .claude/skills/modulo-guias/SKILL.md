@@ -5,6 +5,8 @@ description: "Usar al trabajar en el módulo Guías (catálogo de manuales) o en
 
 # Generación de manuales operativos (§36) + Módulo Guías (§37)
 
+> **EN REPLANTEO (César 2026-10-22):** las ayudas pasan a UNA sola página de base de conocimiento con preguntas, en vez de manuales por módulo. Mientras no esté diseñada, **no crear ni actualizar `docs/manual_*.html`** (la regla «manual como entregable cuando cambia la UI» está suspendida). Lo de abajo describe el esquema vigente hasta el reemplazo.
+
 > **Receta completa de generación en la skill `generar-manual`** (`.claude/skills/generar-manual/`): setup Playwright, patrón de captura, convenciones del HTML, regenerar capturas tras cambio de UI, cleanup. Invocarla al crear/regenerar un `docs/manual_<modulo>.html`. Esta skill cubre el **inventario**, las **reglas de criterio** y el **módulo Guías** (catálogo).
 
 ## §36. Generación de manuales operativos (HTML autocontenidos)

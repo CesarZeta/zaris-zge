@@ -1019,6 +1019,8 @@ DS v1.0 (`--z-*`, `.z-*`, `frontend/styles.css`, `frontend/menu.html`, `frontend
 
 ## 36. Generación de manuales operativos (HTML autocontenidos)
 
+> **EN REPLANTEO (decisión de César 2026-10-22): las ayudas dejan de ser manuales por módulo y pasan a UNA sola página de base de conocimiento con preguntas.** Hasta que esté diseñada, **NO se actualizan ni se crean manuales** (`docs/manual_*.html`) y queda suspendida la regla «manual como entregable cuando cambia la UI». Un cambio de UI se anota como insumo para la base de conocimiento, no como manual. Diseño pendiente (ESTADO.md).
+
 > **Movido a la skill `modulo-guias`** (`.claude/skills/modulo-guias/SKILL.md`), que carga on-demand. Inventario de manuales actuales y reglas de criterio (sin fechas/nombres, manual como entregable cuando cambia la UI, una sola fuente HTML) viven ahí. La receta mecánica de generación (Playwright, capturas) sigue en la skill `generar-manual`. Ancla §36 conservada para las refs cruzadas.
 
 ## 37. Módulo Guías (catálogo de manuales)
