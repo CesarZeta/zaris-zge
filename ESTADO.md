@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-10-22 (Cesar). Lista de arranque resuelta: 32 reclamos de QA/vecinos de prueba cerrados en prod (salvo REC-2026-000058/059 del guion), autoasignación prendida en Alumbrado Público, encuesta #6 pasada a expirada; links de los mails abren el recurso (también tras el login); botón «VER PENDIENTES»; recuadro «Resolución» en la app del vecino; los logins mandan solo `identificador`; retirados `/ot/slots-recurso`, `/ot/con-agenda` y `ot_slots.py`.
+**Última actualización:** 2026-10-22 (Cesar). Lista de arranque resuelta: 32 reclamos de QA/vecinos de prueba cerrados en prod (salvo REC-2026-000058/059 del guion), autoasignación prendida en Alumbrado Público, encuesta #6 pasada a expirada; links de los mails abren el recurso (también tras el login); botón «VER PENDIENTES»; recuadro «Resolución» en la app del vecino; los logins mandan solo `identificador`; retirados `/ot/slots-recurso`, `/ot/con-agenda` y `ot_slots.py`. Pedido a GitHub Support por los commits viejos de las purgas, enviado por César. Todo verificado en prod.
 
 ---
 
@@ -20,7 +20,7 @@
 
 1. **Funcionario de prueba:** César asigna REC-2026-003079 (Arbolado, sin asignar) al funcionario de prueba desde la mesa (Ver → PLANIFICAR) y confirma si el push llega. Yo no tengo credenciales de un supervisor de Arbolado (y no se prueban claves).
 2. **Autoasignación en Alumbrado Público (prendida 2026-10-22):** la gestión tiene UN solo agente de nivel Gestión, así que recibe todo lo que entre. Mirar una semana y decidir si se suma gente o se prende en otras gestiones.
-3. **Commits viejos de la purga del 2026-10-21:** GitHub los conserva accesibles por SHA directo hasta que su soporte los borre. *Recomendación:* pedirlo (detalle en la memoria privada de Cesar).
+3. **Commits viejos de las dos purgas (2026-09-20 y 2026-10-21): César mandó el pedido a GitHub Support el 2026-10-22.** Pendiente: cuando GitHub conteste, verificar que los commits viejos ya no abran por SHA (detalle en la memoria privada de Cesar).
 4. **Orden por columnas F2** (trámites, turnos, entradas) **y F3** (resto): ¿avanzo?
 5. **Super administrador multi-municipio (IT-01):** ¿cuándo arrancamos el diseño?
 6. Sin respuesta de sesiones anteriores: mail real del retrabajo (¿lo pruebo con tu vecino de prueba?) · PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · vecino trabado desde junio (¿reenviar activación?) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
