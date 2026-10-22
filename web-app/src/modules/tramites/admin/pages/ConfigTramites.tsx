@@ -2,15 +2,33 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Settings, ExternalLink } from 'lucide-react'
 import { Button, Card, Badge, EmptyState, Skeleton } from '../../../../ui'
+import { ThOrden, ordenarFilas, useOrden } from '../../../../ui/orden'
 import { useTiposCatalogo } from '../hooks'
 import { NuevoTipoModal } from '../modals/NuevoTipoModal'
+
+type ColTipo = 'codigo' | 'nombre' | 'prefijo' | 'gestion' | 'origen' | 'estado'
+type TipoCatalogo = NonNullable<ReturnType<typeof useTiposCatalogo>['data']>['items'][number]
+
+const RANGO_ESTADO: Record<string, number> = { publicado: 1, borrador: 2, sin_estados: 3, archivado: 4 }
+
+// El catálogo llega entero: se ordena en pantalla (§23).
+const VALORES_ORDEN: Record<ColTipo, (t: TipoCatalogo) => string | number | null> = {
+  codigo: (t) => t.codigo,
+  nombre: (t) => t.nombre,
+  prefijo: (t) => t.prefijo,
+  // Área → subárea, el mismo ordenamiento que muestra la celda.
+  gestion: (t) => (t.subarea_nombre ? `${t.area_nombre ?? ''} ${t.subarea_nombre}` : null),
+  origen: (t) => (t.es_sistema ? 'Sistema' : 'Custom'),
+  estado: (t) => RANGO_ESTADO[t.estado_version] ?? 9,
+}
 
 export function ConfigTramites() {
   const navigate = useNavigate()
   const { data, isLoading, error } = useTiposCatalogo()
   const [modalAbierto, setModalAbierto] = useState(false)
+  const { orden, alternar } = useOrden<ColTipo>()
 
-  const tipos = data?.items ?? []
+  const tipos = ordenarFilas(data?.items ?? [], orden, VALORES_ORDEN)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -64,12 +82,12 @@ export function ConfigTramites() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-primary)' }}>
-                <th style={cellHead}>Código</th>
-                <th style={cellHead}>Nombre</th>
-                <th style={cellHead}>Prefijo</th>
-                <th style={cellHead}>Gestión</th>
-                <th style={cellHead}>Origen</th>
-                <th style={cellHead}>Estado</th>
+                <ThOrden campo="codigo" orden={orden} onOrdenar={alternar} style={cellHead}>Código</ThOrden>
+                <ThOrden campo="nombre" orden={orden} onOrdenar={alternar} style={cellHead}>Nombre</ThOrden>
+                <ThOrden campo="prefijo" orden={orden} onOrdenar={alternar} style={cellHead}>Prefijo</ThOrden>
+                <ThOrden campo="gestion" orden={orden} onOrdenar={alternar} style={cellHead}>Gestión</ThOrden>
+                <ThOrden campo="origen" orden={orden} onOrdenar={alternar} style={cellHead}>Origen</ThOrden>
+                <ThOrden campo="estado" orden={orden} onOrdenar={alternar} style={cellHead}>Estado</ThOrden>
                 <th style={{ ...cellHead, width: 100, textAlign: 'right' }}>Acciones</th>
               </tr>
             </thead>

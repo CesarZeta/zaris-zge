@@ -57,6 +57,7 @@ from app.schemas.agenda_v2 import (
     SubareaOut,
 )
 from app.services import encuestas_service
+from app.utils.orden import clausula_orden, descripcion_orden
 from app.services.agenda import (
     cupo_disponible,
     descripcion_corta_sql,
@@ -469,6 +470,16 @@ async def crear_evento(
     return out  # type: ignore[return-value]
 
 
+# Columnas ordenables del listado de eventos (§23; lista cerrada). Lo usa el
+# selector «Ordenar por» de Entradas; el listado tiene tope, el orden es del SQL.
+_ORDEN_EVENTOS = {
+    "fecha": ("e.fecha", "e.hora_inicio"),
+    "nombre": "lower(e.nombre)",
+    "espacio": "lower(esp.nombre)",
+    "capacidad": "e.capacidad_ciudadanos",
+}
+
+
 @router.get("/eventos", response_model=list[EventoOut])
 async def listar_eventos(
     response: Response,
@@ -478,12 +489,16 @@ async def listar_eventos(
     id_subarea: Optional[int] = None,
     id_municipio: Optional[int] = None,
     con_espacio: Optional[bool] = Query(None, description="True=solo eventos con id_espacio (modulo Entradas), False=solo sin espacio, omitir=todos"),
+    orden: Optional[str] = Query(None, description=descripcion_orden(_ORDEN_EVENTOS, "fecha, la más nueva primero")),
+    dir: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
 ):
     """Lista paginada de eventos activos. Header `X-Total-Count` para el front."""
+    orden_sql = clausula_orden(orden, dir, _ORDEN_EVENTOS, desempate="e.id_evento",
+                               por_defecto="e.fecha DESC, e.hora_inicio, e.id_evento")
     where: list[str] = ["e.activo = TRUE"]
     params: dict[str, Any] = {}
     if fecha_desde:
@@ -513,8 +528,9 @@ async def listar_eventos(
                e.activo, e.id_municipio, e.fecha_alta, e.fecha_modificacion
         FROM eventos e
         LEFT JOIN estado_evento ee ON ee.id_estado_evento = e.id_estado_evento
+        LEFT JOIN espacios_agenda esp ON esp.id_espacio = e.id_espacio
         WHERE {where_sql}
-        ORDER BY e.fecha DESC, e.hora_inicio
+        ORDER BY {orden_sql}
         LIMIT :lim OFFSET :off
     """), params_page)).mappings().all()
     response.headers["X-Total-Count"] = str(int(total or 0))

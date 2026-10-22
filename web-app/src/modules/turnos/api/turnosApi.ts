@@ -32,8 +32,11 @@ export const eliminarPrestacion = (id: number) =>
   api.delete<void>(`/api/v1/turnos/prestaciones/${id}`)
 
 // --- Turnos ---
+/** Tope del listado: si llega justo esto, la pantalla avisa que puede haber más. */
+export const LIMITE_TURNOS = 300
+
 export const listarTurnos = (filtros: ListarTurnosFiltros = {}) =>
-  api.get<Turno[]>('/api/v1/turnos', { params: { ...filtros, limit: 300 } })
+  api.get<Turno[]>('/api/v1/turnos', { params: { ...filtros, limit: LIMITE_TURNOS } })
 
 export const crearTurno = (body: CrearTurnoBody) =>
   api.post<Turno>('/api/v1/turnos', body)

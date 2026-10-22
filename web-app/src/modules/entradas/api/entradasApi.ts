@@ -7,10 +7,16 @@ const BASE = '/api/v1/agenda'
 // solo opera sobre los eventos que tienen un espacio fisico asignado
 // (id_espacio != null). El backend expone el filtro `con_espacio`.
 
+/** Columnas ordenables (espejo de `_ORDEN_EVENTOS` en agenda_v2.py). */
+export type OrdenEventos = 'fecha' | 'nombre' | 'espacio' | 'capacidad'
+
 export interface ListarEventosEntradaParams {
   fecha_desde?: string
   fecha_hasta?: string
   id_estado_evento?: number
+  /** Orden: lo resuelve el backend (el listado tiene tope, §23). */
+  orden?: OrdenEventos
+  dir?: 'asc' | 'desc'
 }
 
 export function listarEventosEntrada(params?: ListarEventosEntradaParams) {

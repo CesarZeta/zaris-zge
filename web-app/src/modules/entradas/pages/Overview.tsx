@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Plus, RefreshCw, Search, Ticket, ExternalLink } from 'lucide-react'
 import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
+import { SelectorOrden, type OpcionOrden, type Orden } from '../../../ui/orden'
 import { useEventosEntrada, useCancelarEventoEntrada } from '../hooks/useEntradas'
+import type { OrdenEventos } from '../api/entradasApi'
 import { EventoEntradaFormModal } from '../components/EventoEntradaFormModal'
 import { ReservaModal } from '../../agenda/modals/ReservaModal'
 import { ConfirmModal } from '../../agenda/components/ConfirmModal'
@@ -9,14 +11,30 @@ import { useEspacios } from '../../agenda/hooks/useEspacios'
 import { useNotificationsStore } from '../../../stores/notifications'
 import type { Evento } from '../../agenda/types/agenda'
 
+// Tarjetas sin encabezados: el orden se elige con un selector (decisión de
+// César 2026-10-22). Lo resuelve el backend porque el listado tiene tope.
+const OPCIONES_ORDEN: OpcionOrden<OrdenEventos>[] = [
+  { etiqueta: 'Fecha: más recientes primero', orden: null },
+  { etiqueta: 'Fecha: más antiguas primero', orden: { campo: 'fecha', dir: 'asc' } },
+  { etiqueta: 'Nombre: A → Z', orden: { campo: 'nombre', dir: 'asc' } },
+  { etiqueta: 'Nombre: Z → A', orden: { campo: 'nombre', dir: 'desc' } },
+  { etiqueta: 'Espacio: A → Z', orden: { campo: 'espacio', dir: 'asc' } },
+  { etiqueta: 'Espacio: Z → A', orden: { campo: 'espacio', dir: 'desc' } },
+  { etiqueta: 'Capacidad: mayor a menor', orden: { campo: 'capacidad', dir: 'desc' } },
+  { etiqueta: 'Capacidad: menor a mayor', orden: { campo: 'capacidad', dir: 'asc' } },
+]
+
 export function Overview() {
   const push = useNotificationsStore((s) => s.push)
   // Búsqueda diferida (§23): la lista no se pide al entrar; "Ver eventos" la
-  // trae. No hay filtros server: el texto filtra lo cargado, en vivo.
+  // trae. No hay filtros server: el texto filtra lo cargado, en vivo. El orden
+  // viaja en la queryKey: tras la primera búsqueda, cambiarlo vuelve a pedir.
   const busqueda = useBusquedaDiferida({})
-  const { data, isLoading, isError, error, refetch, isFetching } = useEventosEntrada(undefined, {
-    enabled: busqueda.buscado, version: busqueda.version,
-  })
+  const [orden, setOrden] = useState<Orden<OrdenEventos> | null>(null)
+  const { data, isLoading, isError, error, refetch, isFetching } = useEventosEntrada(
+    orden ? { orden: orden.campo, dir: orden.dir } : undefined,
+    { enabled: busqueda.buscado, version: busqueda.version },
+  )
   const espacios = useEspacios()
   const cancelar = useCancelarEventoEntrada()
 
@@ -83,6 +101,10 @@ export function Overview() {
             />
           </div>
         )}
+        <div style={field}>
+          <label style={lbl} htmlFor="entradas-orden">Ordenar por</label>
+          <SelectorOrden id="entradas-orden" opciones={OPCIONES_ORDEN} orden={orden} onCambiar={setOrden} style={inp} />
+        </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
           <button type="button" onClick={() => busqueda.buscar()} style={btnPrimary} title="Traer los eventos con entradas (vuelve a consultar)">
             <Search size={14} strokeWidth={1.5} /> Ver eventos

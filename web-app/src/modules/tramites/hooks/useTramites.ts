@@ -19,7 +19,7 @@ import {
   resolverAprobacion,
   marcarResultadoTramite,
 } from '../lib/api'
-import type { BandejaParams, CrearTramiteBody, TramiteResultado } from '../types'
+import type { BandejaParams, CrearTramiteBody, OrdenTramites, TramiteResultado } from '../types'
 
 const MIN = 60 * 1000
 const HORA = 60 * MIN
@@ -69,6 +69,8 @@ export type MiBandejaParams = {
   tipo_codigo?: string
   sin_tomar?: boolean
   q?: string
+  orden?: OrdenTramites
+  dir?: 'asc' | 'desc'
   limit?: number
   offset?: number
 }

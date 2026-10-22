@@ -10,6 +10,7 @@ import type {
   TransicionesPermitidas,
   CrearTramiteBody,
   BandejaParams,
+  OrdenTramites,
   TramiteResultado,
 } from '../types'
 
@@ -33,6 +34,8 @@ export const listarMiBandeja = (params?: {
   tipo_codigo?: string
   sin_tomar?: boolean
   q?: string
+  orden?: OrdenTramites
+  dir?: 'asc' | 'desc'
   limit?: number
   offset?: number
 }) =>

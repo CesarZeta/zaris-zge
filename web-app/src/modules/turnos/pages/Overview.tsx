@@ -9,9 +9,11 @@ import { ConfirmModal } from '../../agenda/components/ConfirmModal'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { useTurnoFiltros, TurnoFiltrosBar } from '../lib/turnoFiltros'
 import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
+import { ThOrden, useOrden } from '../../../ui/orden'
 import { exportarTurnosPdf, type TurnoPdfRow } from '../lib/exportPdf'
 import { useUbicacionTurnosStore } from '../stores/ubicacionTurnos'
-import type { CumplirTurnoBody, EstadoTurno, Turno } from '../types/turno'
+import { LIMITE_TURNOS } from '../api/turnosApi'
+import type { CumplirTurnoBody, EstadoTurno, OrdenTurnos, Turno } from '../types/turno'
 
 type FiltroEstado = EstadoTurno | ''
 
@@ -45,12 +47,17 @@ export function Overview() {
   // Contexto ubicación-primero (F2): si hay ubicación elegida, el listado
   // muestra solo sus turnos (el filtro lo aplica el backend).
   const ubicacion = useUbicacionTurnosStore((s) => s.ubicacion)
+  // Orden por columna (§23): lo resuelve el backend (el listado tiene tope);
+  // tras la primera búsqueda, cambiarlo vuelve a pedir.
+  const { orden, alternar } = useOrden<OrdenTurnos>()
   const { data, isLoading, isError, error, refetch, isFetching } = useTurnos({
     estado: busqueda.aplicado?.estado || undefined,
     fecha_desde: busqueda.aplicado?.desde || undefined,
     fecha_hasta: busqueda.aplicado?.hasta || undefined,
     id_espacio_ubicacion: ubicacion?.id_espacio,
-  }, { enabled: busqueda.buscado, version: busqueda.version })
+    orden: orden?.campo,
+    dir: orden?.dir,
+  }, { enabled: busqueda.buscado, version: busqueda.version, mantenerPrevio: true })
   const cumplir = useCumplirTurno()
   const cancelar = useCancelarTurno()
 
@@ -194,6 +201,12 @@ export function Overview() {
           <Chip label="Cancelados" value={counts.cancelado} color={ESTADO_COLOR.cancelado} />
         </div>
       )}
+      {busqueda.buscado && turnos.length >= LIMITE_TURNOS && (
+        <div style={avisoTope}>
+          Se muestran los primeros {LIMITE_TURNOS} turnos ({orden ? 'según el orden elegido' : 'los más recientes'}):
+          acotá por fechas o estado para ver el resto.
+        </div>
+      )}
 
       {/* Link publico de autoservicio */}
       <LinkAutoservicio />
@@ -209,11 +222,11 @@ export function Overview() {
         <table style={table}>
           <thead>
             <tr>
-              <th style={th}>Fecha / Hora</th>
-              <th style={th}>Ciudadano</th>
-              <th style={th}>Atiende</th>
-              <th style={th}>Prestación</th>
-              <th style={th}>Estado</th>
+              <ThOrden campo="fecha" orden={orden} onOrdenar={alternar} style={th}>Fecha / Hora</ThOrden>
+              <ThOrden campo="ciudadano" orden={orden} onOrdenar={alternar} style={th}>Ciudadano</ThOrden>
+              <ThOrden campo="atiende" orden={orden} onOrdenar={alternar} style={th}>Atiende</ThOrden>
+              <ThOrden campo="prestacion" orden={orden} onOrdenar={alternar} style={th}>Prestación</ThOrden>
+              <ThOrden campo="estado" orden={orden} onOrdenar={alternar} style={th}>Estado</ThOrden>
               <th style={th}>Observaciones</th>
               <th style={{ ...th, textAlign: 'right' }}>Acciones</th>
             </tr>
@@ -434,4 +447,7 @@ const empty: React.CSSProperties = {
 const errorBanner: React.CSSProperties = {
   background: '#ffebee', border: '1px solid #ffcdd2', borderLeft: '4px solid var(--color-error)',
   borderRadius: 8, padding: '12px 16px', color: '#c62828', fontSize: '0.86rem',
+}
+const avisoTope: React.CSSProperties = {
+  fontFamily: 'var(--font-display)', fontSize: '0.78rem', color: 'var(--fg-3)',
 }

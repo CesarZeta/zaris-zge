@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   cancelarTurno,
   llamarTurno,
@@ -40,6 +40,10 @@ const HORA = 60 * 60 * 1000
 export interface OpcionesListado {
   enabled?: boolean
   version?: number
+  /** Al reordenar, las filas anteriores siguen a la vista hasta que llega la
+   *  respuesta (sin esto la tabla desaparece un instante). Solo en listados:
+   *  en las colas del día mostraría el día anterior mientras carga el nuevo. */
+  mantenerPrevio?: boolean
 }
 
 export function useTurnos(filtros: ListarTurnosFiltros, opts: OpcionesListado = {}) {
@@ -48,6 +52,7 @@ export function useTurnos(filtros: ListarTurnosFiltros, opts: OpcionesListado = 
     queryFn: () => listarTurnos(filtros),
     staleTime: 15 * 1000,
     enabled: opts.enabled ?? true,
+    placeholderData: opts.mantenerPrevio ? keepPreviousData : undefined,
   })
 }
 

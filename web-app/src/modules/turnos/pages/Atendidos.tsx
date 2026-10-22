@@ -5,9 +5,11 @@ import { TurnoDetalleModal } from '../components/TurnoDetalleModal'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { useTurnoFiltros, TurnoFiltrosBar } from '../lib/turnoFiltros'
 import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
+import { ThOrden, useOrden } from '../../../ui/orden'
 import { exportarAtendidosPdf, type TurnoPdfRow } from '../lib/exportPdf'
 import { useUbicacionTurnosStore } from '../stores/ubicacionTurnos'
-import type { Turno } from '../types/turno'
+import { LIMITE_TURNOS } from '../api/turnosApi'
+import type { OrdenTurnos, Turno } from '../types/turno'
 
 export function Atendidos() {
   const push = useNotificationsStore((s) => s.push)
@@ -22,12 +24,16 @@ export function Atendidos() {
 
   // Contexto ubicación-primero (F2): respeta la ubicación elegida en el módulo.
   const ubicacion = useUbicacionTurnosStore((s) => s.ubicacion)
+  // Orden por columna (§23): lo resuelve el backend (el listado tiene tope).
+  const { orden, alternar } = useOrden<OrdenTurnos>()
   const { data, isLoading, isError, error, refetch, isFetching } = useTurnos({
     estado: 'cumplido',
     fecha_desde: busqueda.aplicado?.desde || undefined,
     fecha_hasta: busqueda.aplicado?.hasta || undefined,
     id_espacio_ubicacion: ubicacion?.id_espacio,
-  }, { enabled: busqueda.buscado, version: busqueda.version })
+    orden: orden?.campo,
+    dir: orden?.dir,
+  }, { enabled: busqueda.buscado, version: busqueda.version, mantenerPrevio: true })
 
   const turnos = data ?? []
 
@@ -119,6 +125,9 @@ export function Atendidos() {
       {busqueda.buscado && (
         <div style={{ fontSize: '0.82rem', color: 'var(--fg-3)' }}>
           {filtrados.length} turno{filtrados.length === 1 ? '' : 's'} atendido{filtrados.length === 1 ? '' : 's'}
+          {turnos.length >= LIMITE_TURNOS && (
+            <> · se muestran los primeros {LIMITE_TURNOS} ({orden ? 'según el orden elegido' : 'los más recientes'}): acotá por fechas para ver el resto</>
+          )}
         </div>
       )}
 
@@ -132,10 +141,10 @@ export function Atendidos() {
         <table style={table}>
           <thead>
             <tr>
-              <th style={th}>Fecha / Hora</th>
-              <th style={th}>Ciudadano</th>
-              <th style={th}>Atendió</th>
-              <th style={th}>Prestación</th>
+              <ThOrden campo="fecha" orden={orden} onOrdenar={alternar} style={th}>Fecha / Hora</ThOrden>
+              <ThOrden campo="ciudadano" orden={orden} onOrdenar={alternar} style={th}>Ciudadano</ThOrden>
+              <ThOrden campo="atiende" orden={orden} onOrdenar={alternar} style={th}>Atendió</ThOrden>
+              <ThOrden campo="prestacion" orden={orden} onOrdenar={alternar} style={th}>Prestación</ThOrden>
               <th style={th}>Observaciones</th>
             </tr>
           </thead>

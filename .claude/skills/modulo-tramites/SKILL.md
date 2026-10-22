@@ -43,9 +43,9 @@ Registrado **ANTES de `admin_tablas_router`** (evita `/{tabla}` greedy, §5). La
 | Verbo | Path | Notas |
 |---|---|---|
 | GET | `/tipos` · `/tipos/{id}` | Tipos activos publicados; detalle con campos/estados/transiciones/docs **a nivel raíz** (`version` es solo metadata) |
-| GET | `` (bandeja) | Filtros estado/tipo/iniciador/destinatario/numero/q/fechas; `X-Total-Count` |
+| GET | `` (bandeja) | Filtros estado/tipo (`tipo_codigo` o **`id_tipo_tramite`** — el que manda la bandeja; hasta 2026-10-22 no estaba declarado y FastAPI lo ignoraba: el filtro «Tipo» no filtraba)/iniciador/destinatario/numero/q/fechas; **`orden` + `dir`** contra `_ORDEN_TRAMITES` (numero/tipo/estado/iniciador/ubicacion/tomado/fecha/dias, §23; el front lo guarda en la URL junto a los filtros); `X-Total-Count` |
 | GET | `/{numero_o_id}` (+ `/movimientos`, `/documentos`) | Acepta `POD-LPL-2026-0001` o id int |
-| GET | `/mi-bandeja` | Colectivos del agente resueltos server-side (subárea + equipos/mesas + asignado a mí + tomado por mí). El `GET ""` general NO sirve (filtra un destinatario único). Filtros estado/tipo/sin_tomar/q |
+| GET | `/mi-bandeja` | Colectivos del agente resueltos server-side (subárea + equipos/mesas + asignado a mí + tomado por mí). El `GET ""` general NO sirve (filtra un destinatario único). Filtros estado/tipo/sin_tomar/q + `orden`/`dir` (misma lista). Tope 50 SIN paginación: la pantalla avisa «se muestran los primeros N» |
 | GET | `/destinatarios?q=` | Opciones de pase agrupadas (agentes/equipos/subáreas). Quirk: `CAST(:q AS text) IS NULL` (sino `AmbiguousParameterError`) |
 | POST | `` | Crear (201). Numerador atómico, estado inicial, 2 movimientos. **Body: `iniciador` ANIDADO** `{tipo, id_ciudadano, id_empresa, id_subarea, id_ciudadano_representante}` + `datos` (NO `datos_jsonb`) + `id_municipio`; la versión se deriva del tipo |
 | POST | `/{ref}/tomar` · `/liberar` · `/transicionar` · `/pase` · `/comentar` · `/relacionar` + GET `/transiciones-permitidas` | `tomar`=`SELECT FOR UPDATE`. `pase`/transición-final auto-liberan toma. `transicionar` valida `quien_puede_jsonb` + `requiere_adjunto` + guard de aprobaciones bloqueantes (422). `relacionar` ordena ids para UNIQUE |

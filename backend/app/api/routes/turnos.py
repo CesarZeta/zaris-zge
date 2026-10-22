@@ -60,6 +60,7 @@ from app.services.agenda import (
     turnos_respeta_disponibilidad,
 )
 from app.utils.fechas import hoy_local
+from app.utils.orden import clausula_orden, descripcion_orden
 from app.services.guardia import (
     SELECT_ATENCION, atencion_out as guardia_atencion_out, espacio_guardia,
     id_espacio_guardia, registrar_log_evento,
@@ -355,6 +356,20 @@ async def _turno_to_out(db: AsyncSession, id_turno: int) -> Optional[dict[str, A
 # =============================================================================
 # CRUD turnos
 # =============================================================================
+# Columnas ordenables del listado (§23; lista cerrada). El listado tiene tope
+# (limit), así que el orden lo resuelve el SQL y no la pantalla.
+_ORDEN_TURNOS = {
+    "fecha": ("t.fecha", "t.hora_inicio"),
+    "ciudadano": "lower(COALESCE(c.apellido, '') || ' ' || COALESCE(c.nombre, ''))",
+    "atiende": """lower(CASE WHEN t.id_espacio IS NOT NULL THEN e.nombre
+                        ELSE COALESCE(a.apellido, '') || ' ' || COALESCE(a.nombre, '') END)""",
+    "prestacion": "lower(tp.nombre)",
+    # Orden del ciclo de vida, no alfabético.
+    "estado": """CASE t.estado WHEN 'reservado' THEN 1 WHEN 'llamado' THEN 2 WHEN 'cumplido' THEN 3
+                               WHEN 'ausente' THEN 4 WHEN 'cancelado' THEN 5 END""",
+}
+
+
 @router.get("", response_model=list[TurnoOut])
 async def listar_turnos(
     response: Response,
@@ -367,11 +382,15 @@ async def listar_turnos(
     fecha_desde: Optional[date] = None,
     fecha_hasta: Optional[date] = None,
     id_municipio: int = 1,
+    orden: Optional[str] = Query(None, description=descripcion_orden(_ORDEN_TURNOS, "fecha, la más nueva primero")),
+    dir: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
+    orden_sql = clausula_orden(orden, dir, _ORDEN_TURNOS, desempate="t.id_turno",
+                               por_defecto="t.fecha DESC, t.hora_inicio, t.id_turno")
     where = ["t.activo = TRUE", "t.id_municipio = :m"]
     params: dict[str, Any] = {"m": id_municipio}
 
@@ -446,7 +465,7 @@ async def listar_turnos(
         LEFT JOIN subarea         ps ON ps.id_subarea         = tp.id_subarea
         LEFT JOIN area            pa ON pa.id_area            = ps.id_area
         WHERE {where_sql}
-        ORDER BY t.fecha DESC, t.hora_inicio
+        ORDER BY {orden_sql}
         LIMIT :lim OFFSET :off
     """), params_page)).mappings().all()
     response.headers["X-Total-Count"] = str(int(total or 0))

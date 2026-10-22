@@ -64,8 +64,33 @@ from app.services.tramites import movimientos as svc_mov
 from app.services.tramites import numerador as svc_num
 from app.services.tramites import ciclo_vida as svc_ciclo
 from app.services import notificaciones as svc_notif
+from app.utils.orden import clausula_orden, descripcion_orden
 
 router = APIRouter(prefix="/api/v1/tramites", tags=["tramites"])
+
+# Columnas ordenables de las dos bandejas (§23; lista cerrada, el valor va
+# interpolado en el ORDER BY). Los alias son los de los SELECT de GET "" y
+# GET /mi-bandeja, que hacen los mismos JOIN.
+_ORDEN_TRAMITES = {
+    "numero": "t.numero_expediente",
+    "tipo": "lower(tt.nombre)",
+    "estado": "lower(tte.etiqueta)",
+    "iniciador": """lower(CASE
+                WHEN t.iniciador_tipo = 'ciudadano' THEN c.apellido || ', ' || c.nombre
+                WHEN t.iniciador_tipo = 'empresa' THEN e.nombre
+                WHEN t.iniciador_tipo = 'area_interna' THEN sa_ini.nombre
+            END)""",
+    "ubicacion": """lower(CASE
+                WHEN t.destinatario_actual_tipo = 'subarea' THEN sa.nombre
+                WHEN t.destinatario_actual_tipo = 'equipo' THEN eq.nombre
+                WHEN t.destinatario_actual_tipo = 'agente' THEN ag_dst.apellido || ', ' || ag_dst.nombre
+            END)""",
+    "tomado": "lower(ag_tom.apellido || ', ' || ag_tom.nombre)",
+    "fecha": "t.fecha_alta",
+    # Días en el estado actual: el intervalo crece con la antigüedad de la entrada.
+    "dias": "NOW() - t.fecha_entrada_estado_actual",
+}
+_ORDEN_TRAMITES_DEFECTO = "t.fecha_alta DESC, t.id_tramite DESC"
 
 
 # ---------------------------------------------------------------------------
@@ -309,6 +334,8 @@ async def mi_bandeja(
     tipo_codigo: Optional[str] = Query(None),
     sin_tomar: Optional[bool] = Query(None),
     q: Optional[str] = Query(None),
+    orden: Optional[str] = Query(None, description=descripcion_orden(_ORDEN_TRAMITES, "fecha de alta, la más nueva primero")),
+    dir: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int = Query(50, le=200),
     offset: int = Query(0),
     current_user: dict = Depends(get_current_user),
@@ -320,6 +347,8 @@ async def mi_bandeja(
     Resuelve los colectivos del agente server-side (no se puede expresar con el
     filtro destinatario_tipo+id unico de GET /tramites).
     """
+    orden_sql = clausula_orden(orden, dir, _ORDEN_TRAMITES, desempate="t.id_tramite",
+                               por_defecto=_ORDEN_TRAMITES_DEFECTO)
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
         raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
@@ -410,7 +439,7 @@ async def mi_bandeja(
         LEFT JOIN agentes ag_dst ON ag_dst.id_agente = t.id_agente_actual
         LEFT JOIN agentes ag_tom ON ag_tom.id_agente = t.id_agente_tomado_por
         WHERE {where_clause}
-        ORDER BY t.fecha_alta DESC
+        ORDER BY {orden_sql}
         LIMIT :limit OFFSET :offset
     """), params)).fetchall()
 
@@ -496,6 +525,9 @@ async def listar_tramites(
     sin_tomar: Optional[bool] = Query(None),
     estado_codigo: Optional[str] = Query(None),
     tipo_codigo: Optional[str] = Query(None),
+    # La bandeja filtra por id (el select de tipos trae ids); antes no estaba
+    # declarado y FastAPI lo ignoraba en silencio: el filtro «Tipo» no filtraba.
+    id_tipo_tramite: Optional[int] = Query(None, ge=1, le=2_147_483_647),
     iniciador_tipo: Optional[str] = Query(None),
     id_ciudadano_iniciador: Optional[int] = Query(None),
     id_empresa_iniciadora: Optional[int] = Query(None),
@@ -503,12 +535,17 @@ async def listar_tramites(
     q: Optional[str] = Query(None),
     desde: Optional[date] = Query(None),
     hasta: Optional[date] = Query(None),
+    orden: Optional[str] = Query(None, description=descripcion_orden(_ORDEN_TRAMITES, "fecha de alta, la más nueva primero")),
+    dir: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int = Query(50, le=200),
     offset: int = Query(0),
     _user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Bandeja de tramites con filtros combinables."""
+    # El orden lo resuelve el SQL: la bandeja es paginada (§23).
+    orden_sql = clausula_orden(orden, dir, _ORDEN_TRAMITES, desempate="t.id_tramite",
+                               por_defecto=_ORDEN_TRAMITES_DEFECTO)
     conditions = ["t.id_municipio = :mun", "t.activo = TRUE"]
     params: dict[str, Any] = {"mun": id_municipio, "limit": limit, "offset": offset}
 
@@ -535,6 +572,10 @@ async def listar_tramites(
     if tipo_codigo:
         conditions.append("tt.codigo = :tipo_codigo")
         params["tipo_codigo"] = tipo_codigo
+
+    if id_tipo_tramite:
+        conditions.append("tt.id_tipo_tramite = :id_tipo_tramite")
+        params["id_tipo_tramite"] = id_tipo_tramite
 
     if iniciador_tipo:
         conditions.append("t.iniciador_tipo = :iniciador_tipo")
@@ -613,7 +654,7 @@ async def listar_tramites(
         LEFT JOIN agentes ag_dst ON ag_dst.id_agente = t.id_agente_actual
         LEFT JOIN agentes ag_tom ON ag_tom.id_agente = t.id_agente_tomado_por
         WHERE {where_clause}
-        ORDER BY t.fecha_alta DESC
+        ORDER BY {orden_sql}
         LIMIT :limit OFFSET :offset
     """)
     rows = (await db.execute(rows_sql, params)).fetchall()

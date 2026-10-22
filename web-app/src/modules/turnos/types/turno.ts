@@ -223,6 +223,9 @@ export interface GuardiaAtenderBody {
   paciente_nombre?: string | null
 }
 
+/** Columnas ordenables del listado (espejo de `_ORDEN_TURNOS` en turnos.py). */
+export type OrdenTurnos = 'fecha' | 'ciudadano' | 'atiende' | 'prestacion' | 'estado'
+
 export interface ListarTurnosFiltros {
   estado?: EstadoTurno
   id_agente?: number
@@ -232,6 +235,9 @@ export interface ListarTurnosFiltros {
   id_tipo_prestacion?: number
   fecha_desde?: string
   fecha_hasta?: string
+  /** Orden por columna: lo resuelve el backend (el listado tiene tope, §23). */
+  orden?: OrdenTurnos
+  dir?: 'asc' | 'desc'
 }
 
 /** Pantalla de sala del colero (mig 105). Respuesta PÚBLICA: sólo número y

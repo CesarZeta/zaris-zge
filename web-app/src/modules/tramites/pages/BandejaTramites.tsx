@@ -3,11 +3,38 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Plus, Search, RefreshCw } from 'lucide-react'
 import { Button, Input, Skeleton, EmptyState } from '../../../ui'
 import { AvisoBuscar } from '../../../ui/busqueda'
+import { ThOrden, type Orden } from '../../../ui/orden'
 import { useBandeja, useTiposTramite } from '../hooks/useTramites'
 import { EstadoBadge } from '../components/EstadoBadge'
-import type { TramiteBandejaItem, BandejaParams } from '../types'
+import { ORDENES_TRAMITES, type TramiteBandejaItem, type BandejaParams, type OrdenTramites } from '../types'
 
 const LIMIT = 50
+
+const COLUMNAS: { titulo: string; campo: OrdenTramites }[] = [
+  { titulo: 'N° Expediente', campo: 'numero' },
+  { titulo: 'Tipo', campo: 'tipo' },
+  { titulo: 'Estado', campo: 'estado' },
+  { titulo: 'Iniciador', campo: 'iniciador' },
+  { titulo: 'Ubicación actual', campo: 'ubicacion' },
+  { titulo: 'Tomado por', campo: 'tomado' },
+  { titulo: 'Fecha alta', campo: 'fecha' },
+  { titulo: 'Días en estado', campo: 'dias' },
+]
+
+/** El orden también vive en la URL (sobrevive a la paginación y a un deep link). */
+function leerOrden(sp: URLSearchParams): Orden<OrdenTramites> | null {
+  const campo = sp.get('orden') as OrdenTramites | null
+  if (!campo || !ORDENES_TRAMITES.includes(campo)) return null
+  return { campo, dir: sp.get('dir') === 'desc' ? 'desc' : 'asc' }
+}
+
+function conservarOrden(desde: URLSearchParams, hacia: URLSearchParams) {
+  const o = leerOrden(desde)
+  if (o) {
+    hacia.set('orden', o.campo)
+    hacia.set('dir', o.dir)
+  }
+}
 
 /** Filtros que viajan al backend. Lo APLICADO vive en la URL (deep links y
  *  paginación); lo que el usuario edita vive en un borrador local. */
@@ -55,6 +82,7 @@ export function BandejaTramites() {
       if (v) next.set(k, v)
     })
     next.set('buscar', '1')
+    conservarOrden(sp, next)
     setSp(next)
     setVersion((v) => v + 1)
   }
@@ -65,8 +93,23 @@ export function BandejaTramites() {
     setBorrador(FILTROS_VACIOS)
     const next = new URLSearchParams()
     next.set('buscar', '1')
+    conservarOrden(sp, next)
     setSp(next)
     setVersion((v) => v + 1)
+  }
+
+  // Orden por columna (§23): lo resuelve el backend porque la bandeja es
+  // paginada. Cambiarlo vuelve a la página 1 y re-pide (viaja en los params).
+  const orden = leerOrden(sp)
+  function ordenarPor(campo: OrdenTramites) {
+    setSp((prev) => {
+      const next = new URLSearchParams(prev)
+      const actual = leerOrden(prev)
+      next.set('orden', campo)
+      next.set('dir', actual?.campo === campo && actual.dir === 'asc' ? 'desc' : 'asc')
+      next.delete('pagina')
+      return next
+    })
   }
 
   const idTipo = aplicado.tipo ? Number(aplicado.tipo) : undefined
@@ -75,6 +118,7 @@ export function BandejaTramites() {
   const params: BandejaParams = {
     limit: LIMIT,
     offset,
+    ...(orden ? { orden: orden.campo, dir: orden.dir } : {}),
     ...(aplicado.estado ? { estado_codigo: aplicado.estado } : {}),
     ...(idTipo ? { id_tipo_tramite: idTipo } : {}),
     ...(aplicado.iniciador ? { iniciador_tipo: aplicado.iniciador } : {}),
@@ -199,13 +243,18 @@ export function BandejaTramites() {
         <>
           <p style={{ fontSize: 12, color: 'var(--fg-3)', fontFamily: 'var(--font-display)', margin: 0 }}>
             {total} trámite{total !== 1 ? 's' : ''} · página {paginaActual} de {totalPaginas || 1}
+            {orden
+              ? ` · ordenados por ${COLUMNAS.find((c) => c.campo === orden.campo)?.titulo.toLowerCase()} (${orden.dir === 'asc' ? 'ascendente' : 'descendente'})`
+              : ' · del más nuevo al más antiguo'}
           </p>
           <div style={{ overflowX: 'auto' }}>
             <table style={tableStyle}>
               <thead>
                 <tr>
-                  {['N° Expediente', 'Tipo', 'Estado', 'Iniciador', 'Ubicación actual', 'Tomado por', 'Fecha alta', 'Días en estado'].map((h) => (
-                    <th key={h} style={thStyle}>{h}</th>
+                  {COLUMNAS.map((c) => (
+                    <ThOrden key={c.campo} campo={c.campo} orden={orden} onOrdenar={ordenarPor} style={thStyle}>
+                      {c.titulo}
+                    </ThOrden>
                   ))}
                 </tr>
               </thead>

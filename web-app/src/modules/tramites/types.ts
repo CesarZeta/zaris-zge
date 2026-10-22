@@ -336,7 +336,18 @@ export interface CrearTramiteBody {
   id_municipio?: number
 }
 
+/** Columnas ordenables de las bandejas (espejo de `_ORDEN_TRAMITES` en tramites.py). */
+export type OrdenTramites =
+  | 'numero' | 'tipo' | 'estado' | 'iniciador' | 'ubicacion' | 'tomado' | 'fecha' | 'dias'
+
+export const ORDENES_TRAMITES: readonly OrdenTramites[] = [
+  'numero', 'tipo', 'estado', 'iniciador', 'ubicacion', 'tomado', 'fecha', 'dias',
+]
+
 export interface BandejaParams {
+  /** Orden por columna: lo resuelve el backend (la bandeja es paginada, §23). */
+  orden?: OrdenTramites
+  dir?: 'asc' | 'desc'
   estado_codigo?: string
   id_tipo_tramite?: number
   iniciador_tipo?: string

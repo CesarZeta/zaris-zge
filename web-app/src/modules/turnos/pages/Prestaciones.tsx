@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Plus, RefreshCw, Search } from 'lucide-react'
 import { usePrestaciones, useEliminarPrestacion } from '../hooks/useTurnos'
 import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
+import { ThOrden, ordenarFilas, useOrden } from '../../../ui/orden'
 import { PrestacionFormModal } from '../components/PrestacionFormModal'
 import { ConfirmModal } from '../../agenda/components/ConfirmModal'
 import { useNotificationsStore } from '../../../stores/notifications'
@@ -10,6 +11,18 @@ import type { ClasePrestacion, TipoPrestacion } from '../types/turno'
 const CLASE_LABEL: Record<ClasePrestacion, string> = {
   atencion: 'Atención de personas',
   reserva_espacio: 'Reserva de espacio',
+}
+
+type ColPrestacion = 'nombre' | 'tipo' | 'recurso' | 'ubicacion' | 'area' | 'duracion'
+
+// El catálogo llega entero (sin tope): se ordena en pantalla (§23).
+const VALORES_ORDEN: Record<ColPrestacion, (p: TipoPrestacion) => string | number | null> = {
+  nombre: (p) => p.nombre,
+  tipo: (p) => CLASE_LABEL[p.clase],
+  recurso: (p) => p.recurso_nombre,
+  ubicacion: (p) => p.ubicacion_nombre,
+  area: (p) => (p.area_nombre ? `${p.area_nombre} ${p.subarea_nombre ?? ''}` : null),
+  duracion: (p) => p.duracion_min,
 }
 
 export function Prestaciones() {
@@ -52,8 +65,9 @@ export function Prestaciones() {
     return [...m.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label))
   }, [prestaciones])
 
+  const { orden, alternar } = useOrden<ColPrestacion>()
   const filtradas = useMemo(() => {
-    let res = prestaciones
+    let res = ordenarFilas(prestaciones, orden, VALORES_ORDEN)
     if (fRecurso) {
       res = res.filter((p) => (p.tipo_recurso === 'espacio' ? `espacio:${p.id_espacio}` : `agente:${p.id_agente}`) === fRecurso)
     }
@@ -66,7 +80,7 @@ export function Prestaciones() {
         [p.nombre, p.recurso_nombre, p.ubicacion_nombre, p.descripcion, p.area_nombre, p.subarea_nombre].filter(Boolean).join(' ').toLowerCase().includes(txt))
     }
     return res
-  }, [prestaciones, fTexto, fRecurso, fArea])
+  }, [prestaciones, fTexto, fRecurso, fArea, orden])
 
   async function doBaja(p: TipoPrestacion) {
     setConfirmBaja(null)
@@ -145,12 +159,12 @@ export function Prestaciones() {
         <table style={table}>
           <thead>
             <tr>
-              <th style={th}>Nombre</th>
-              <th style={th}>Tipo</th>
-              <th style={th}>Recurso</th>
-              <th style={th}>Ubicación</th>
-              <th style={th}>Área de servicio</th>
-              <th style={th}>Duración</th>
+              <ThOrden campo="nombre" orden={orden} onOrdenar={alternar} style={th}>Nombre</ThOrden>
+              <ThOrden campo="tipo" orden={orden} onOrdenar={alternar} style={th}>Tipo</ThOrden>
+              <ThOrden campo="recurso" orden={orden} onOrdenar={alternar} style={th}>Recurso</ThOrden>
+              <ThOrden campo="ubicacion" orden={orden} onOrdenar={alternar} style={th}>Ubicación</ThOrden>
+              <ThOrden campo="area" orden={orden} onOrdenar={alternar} style={th}>Área de servicio</ThOrden>
+              <ThOrden campo="duracion" orden={orden} onOrdenar={alternar} style={th}>Duración</ThOrden>
               <th style={{ ...th, textAlign: 'right' }}>Acciones</th>
             </tr>
           </thead>

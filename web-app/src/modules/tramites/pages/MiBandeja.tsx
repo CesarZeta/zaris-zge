@@ -3,14 +3,24 @@ import { useNavigate } from 'react-router-dom'
 import { RefreshCw, Search, Inbox, ArrowRightLeft, Hand, User } from 'lucide-react'
 import { Button, Input, Skeleton, EmptyState } from '../../../ui'
 import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
+import { ThOrden, useOrden } from '../../../ui/orden'
 import { useMiBandeja } from '../hooks/useTramites'
 import { tomarTramite, pasarTramite } from '../lib/api'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { EstadoBadge } from '../components/EstadoBadge'
 import { ModalPase } from '../components/ModalPase'
-import type { TramiteBandejaItem } from '../types'
+import type { OrdenTramites, TramiteBandejaItem } from '../types'
 
 const LIMIT = 50
+
+const COLUMNAS: { titulo: string; campo: OrdenTramites }[] = [
+  { titulo: 'N° Expediente', campo: 'numero' },
+  { titulo: 'Tipo', campo: 'tipo' },
+  { titulo: 'Estado', campo: 'estado' },
+  { titulo: 'Ubicación actual', campo: 'ubicacion' },
+  { titulo: 'Tomado por', campo: 'tomado' },
+  { titulo: 'Días', campo: 'dias' },
+]
 
 /**
  * Mi bandeja: los tramites que me corresponden (mi subarea, mis mesas/equipos,
@@ -28,9 +38,13 @@ export function MiBandeja() {
   const [pasando, setPasando] = useState<TramiteBandejaItem | null>(null)
   const [accionId, setAccionId] = useState<number | null>(null)
 
+  // Orden por columna (§23): lo resuelve el backend (la bandeja trae como
+  // máximo LIMIT filas). Viaja en los params: tras la primera búsqueda, re-pide.
+  const { orden, alternar } = useOrden<OrdenTramites>()
   const qAplicado = busqueda.aplicado?.q.trim() ?? ''
   const { data, isLoading, error, refetch } = useMiBandeja({
     limit: LIMIT,
+    ...(orden ? { orden: orden.campo, dir: orden.dir } : {}),
     ...(qAplicado ? { q: qAplicado } : {}),
     ...(busqueda.aplicado?.soloSinTomar ? { sin_tomar: true } : {}),
   }, { enabled: busqueda.buscado, version: busqueda.version })
@@ -115,14 +129,23 @@ export function MiBandeja() {
         <>
           <p style={{ fontSize: 12, color: 'var(--fg-3)', fontFamily: 'var(--font-display)', margin: 0 }}>
             {total} trámite{total !== 1 ? 's' : ''} en tu bandeja
+            {orden
+              ? ` · ordenados por ${COLUMNAS.find((c) => c.campo === orden.campo)?.titulo.toLowerCase()} (${orden.dir === 'asc' ? 'ascendente' : 'descendente'})`
+              : ' · del más nuevo al más antiguo'}
+            {total > items.length && (
+              <> · se muestran los primeros {items.length}: afiná con el texto o «Solo sin tomar»</>
+            )}
           </p>
           <div style={{ overflowX: 'auto' }}>
             <table style={tableStyle}>
               <thead>
                 <tr>
-                  {['N° Expediente', 'Tipo', 'Estado', 'Ubicación actual', 'Tomado por', 'Días', 'Acciones'].map((h) => (
-                    <th key={h} style={thStyle}>{h}</th>
+                  {COLUMNAS.map((c) => (
+                    <ThOrden key={c.campo} campo={c.campo} orden={orden} onOrdenar={alternar} style={thStyle}>
+                      {c.titulo}
+                    </ThOrden>
                   ))}
+                  <th style={thStyle}>Acciones</th>
                 </tr>
               </thead>
               <tbody>

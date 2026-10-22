@@ -7,7 +7,10 @@ import { TurnoDetalleModal } from '../components/TurnoDetalleModal'
 import { ConfirmModal } from '../../agenda/components/ConfirmModal'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { AvisoBuscar } from '../../../ui/busqueda'
-import type { CumplirTurnoBody, EstadoTurno, Turno } from '../types/turno'
+import { ThOrden, ordenarFilas, useOrden } from '../../../ui/orden'
+import { VALORES_ORDEN_TURNOS } from '../lib/ordenTurnos'
+import { LIMITE_TURNOS } from '../api/turnosApi'
+import type { CumplirTurnoBody, EstadoTurno, OrdenTurnos, Turno } from '../types/turno'
 
 // Fecha "hoy" en hora local del municipio (AR = UTC-3, sin DST). El
 // .toISOString() del navegador da UTC: entre las 21:00 y 00:00 locales adelanta
@@ -55,6 +58,11 @@ export function MisTurnos() {
   // Búsqueda diferida (§23): nada viaja al backend hasta "Ver mis turnos".
   const [verTurnos, setVerTurnos] = useState(false)
   const { data, isLoading, isError, error, refetch, isFetching } = useTurnos({}, { enabled: verTurnos })
+  // Orden por columna EN PANTALLA, excepción a §23: acá los filtros (Pendientes,
+  // Hoy, texto) se aplican sobre lo cargado. Si el backend ordenara por
+  // ciudadano traería OTROS 300 turnos y «Pendientes» escondería pendientes
+  // reales (el supervisor ve todos). Sin orden elegido: próximos primero.
+  const { orden, alternar } = useOrden<OrdenTurnos>()
   const cumplir = useCumplirTurno()
   const cancelar = useCancelarTurno()
 
@@ -75,10 +83,11 @@ export function MisTurnos() {
           .includes(txt),
       )
     }
+    if (orden) return ordenarFilas(res, orden, VALORES_ORDEN_TURNOS)
     // Próximos primero (fecha + hora ascendente): lo que hay que atender antes.
     res.sort((a, b) => (a.fecha + a.hora_inicio).localeCompare(b.fecha + b.hora_inicio))
     return res
-  }, [turnos, tiempo, fTexto, hoy])
+  }, [turnos, tiempo, fTexto, hoy, orden])
 
   const counts = useMemo(() => {
     const pendientes = turnos.filter((t) => t.estado === 'reservado').length
@@ -159,15 +168,21 @@ export function MisTurnos() {
         <AvisoBuscar texto="Presioná Ver mis turnos para traer los turnos a tu cargo. Después filtrá por Pendientes, Hoy o Todos." />
       )}
 
+      {verTurnos && turnos.length >= LIMITE_TURNOS && (
+        <div style={avisoTope}>
+          Se trajeron los {LIMITE_TURNOS} turnos más recientes a tu cargo: los filtros y el orden se aplican sobre esos.
+        </div>
+      )}
+
       {verTurnos && <div style={card}>
         <table style={table}>
           <thead>
             <tr>
-              <th style={th}>Fecha / Hora</th>
-              <th style={th}>Ciudadano</th>
-              <th style={th}>Atiende</th>
-              <th style={th}>Prestación</th>
-              <th style={th}>Estado</th>
+              <ThOrden campo="fecha" orden={orden} onOrdenar={alternar} style={th}>Fecha / Hora</ThOrden>
+              <ThOrden campo="ciudadano" orden={orden} onOrdenar={alternar} style={th}>Ciudadano</ThOrden>
+              <ThOrden campo="atiende" orden={orden} onOrdenar={alternar} style={th}>Atiende</ThOrden>
+              <ThOrden campo="prestacion" orden={orden} onOrdenar={alternar} style={th}>Prestación</ThOrden>
+              <ThOrden campo="estado" orden={orden} onOrdenar={alternar} style={th}>Estado</ThOrden>
               <th style={{ ...th, textAlign: 'right' }}>Acciones</th>
             </tr>
           </thead>
@@ -350,4 +365,7 @@ const empty: React.CSSProperties = {
 const errorBanner: React.CSSProperties = {
   background: '#ffebee', border: '1px solid #ffcdd2', borderLeft: '4px solid var(--color-error)',
   borderRadius: 8, padding: '12px 16px', color: '#c62828', fontSize: '0.86rem',
+}
+const avisoTope: React.CSSProperties = {
+  fontFamily: 'var(--font-display)', fontSize: '0.78rem', color: 'var(--fg-3)',
 }

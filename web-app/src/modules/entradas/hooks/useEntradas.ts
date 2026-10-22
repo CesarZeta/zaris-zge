@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   cancelarEventoEntrada,
   crearEventoEntrada,
@@ -21,6 +21,9 @@ export function useEventosEntrada(params?: ListarEventosEntradaParams, opts: Opc
     queryFn: () => listarEventosEntrada(params),
     staleTime: 15 * 1000,
     enabled: opts.enabled ?? true,
+    // Al cambiar el orden las tarjetas anteriores siguen a la vista hasta que
+    // llega la respuesta.
+    placeholderData: keepPreviousData,
   })
 }
 

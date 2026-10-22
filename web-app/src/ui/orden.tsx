@@ -11,6 +11,8 @@ import { ArrowDown, ArrowUp, ChevronsUpDown } from 'lucide-react'
  *     mandando `orden` + `dir`. Ordenar solo lo cargado mentiría — la fila
  *     buscada puede no estar en la página traída.
  *   - Listado que trae TODO (las mesas de OT): en pantalla con `ordenarFilas`.
+ *
+ * Tarjetas sin encabezados (Entradas): `SelectorOrden`, mismo contrato.
  */
 export type DirOrden = 'asc' | 'desc'
 export interface Orden<K extends string> {
@@ -84,6 +86,43 @@ export function BotonOrden<K extends string>({
       {children}
       <Icono size={12} strokeWidth={1.75} style={{ opacity: activo ? 1 : 0.45, flexShrink: 0 }} />
     </button>
+  )
+}
+
+/** Una opción del selector: etiqueta en lenguaje llano + el orden que aplica.
+ *  `orden: null` = el orden por defecto del listado. */
+export interface OpcionOrden<K extends string> {
+  etiqueta: string
+  orden: Orden<K> | null
+}
+
+const claveOrden = (o: Orden<string> | null) => (o ? `${o.campo}:${o.dir}` : '')
+
+/**
+ * Selector «Ordenar por» para listados sin encabezados (tarjetas, p. ej.
+ * Entradas). Mismo contrato que los encabezados: el `orden` va a la queryKey
+ * o a `ordenarFilas`. `style` es el del `<select>` de la pantalla que lo usa.
+ */
+export function SelectorOrden<K extends string>({
+  opciones, orden, onCambiar, style, id,
+}: {
+  opciones: OpcionOrden<K>[]
+  orden: Orden<K> | null
+  onCambiar: (orden: Orden<K> | null) => void
+  style?: React.CSSProperties
+  id?: string
+}) {
+  return (
+    <select
+      id={id}
+      value={claveOrden(orden)}
+      onChange={(e) => onCambiar(opciones.find((o) => claveOrden(o.orden) === e.target.value)?.orden ?? null)}
+      style={style}
+    >
+      {opciones.map((o) => (
+        <option key={claveOrden(o.orden)} value={claveOrden(o.orden)}>{o.etiqueta}</option>
+      ))}
+    </select>
   )
 }
 

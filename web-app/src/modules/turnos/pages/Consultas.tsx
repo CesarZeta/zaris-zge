@@ -7,9 +7,11 @@ import { AtencionItem } from '../components/HistorialAtenciones'
 import { HistoriaClinicaPanel } from '../components/HistoriaClinica'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { exportarTurnosPdf, type TurnoPdfRow } from '../lib/exportPdf'
+import { VALORES_ORDEN_TURNOS } from '../lib/ordenTurnos'
+import { ThOrden, ordenarFilas, useOrden } from '../../../ui/orden'
 import { listarAtenciones } from '../api/turnosApi'
 import type { CiudadanoMinimo } from '../../agenda/types/agenda'
-import type { EstadoTurno, Turno, TurnoAtencion } from '../types/turno'
+import type { EstadoTurno, OrdenTurnos, Turno, TurnoAtencion } from '../types/turno'
 
 const ESTADO_COLOR: Record<EstadoTurno, { bg: string; fg: string }> = {
   reservado: { bg: 'rgba(245,127,23,0.14)', fg: '#b35900' },
@@ -39,9 +41,12 @@ export function Consultas() {
     { id_ciudadano: ciudadano?.id_ciudadano ?? -1 },
     { enabled: ciudadano != null },
   )
+  // Los turnos de UNA persona entran holgados en el tope: se ordenan en pantalla
+  // (§23). El PDF sale en el mismo orden que la tabla.
+  const { orden, alternar } = useOrden<OrdenTurnos>()
   const turnos = useMemo(
-    () => (ciudadano ? (turnosQ.data ?? []) : []),
-    [ciudadano, turnosQ.data],
+    () => (ciudadano ? ordenarFilas(turnosQ.data ?? [], orden, VALORES_ORDEN_TURNOS) : []),
+    [ciudadano, turnosQ.data, orden],
   )
   const realizados = useMemo(() => turnos.filter((t) => t.estado === 'cumplido'), [turnos])
   const atenciones = useAtencionesCiudadano(ciudadano?.id_ciudadano ?? null, 'consulta')
@@ -166,10 +171,10 @@ export function Consultas() {
               <table style={table}>
                 <thead>
                   <tr>
-                    <th style={th}>Fecha / Hora</th>
-                    <th style={th}>Atiende</th>
-                    <th style={th}>Prestación</th>
-                    <th style={th}>Estado</th>
+                    <ThOrden campo="fecha" orden={orden} onOrdenar={alternar} style={th}>Fecha / Hora</ThOrden>
+                    <ThOrden campo="atiende" orden={orden} onOrdenar={alternar} style={th}>Atiende</ThOrden>
+                    <ThOrden campo="prestacion" orden={orden} onOrdenar={alternar} style={th}>Prestación</ThOrden>
+                    <ThOrden campo="estado" orden={orden} onOrdenar={alternar} style={th}>Estado</ThOrden>
                     <th style={th}>Observaciones</th>
                   </tr>
                 </thead>
