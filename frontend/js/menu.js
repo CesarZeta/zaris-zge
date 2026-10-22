@@ -800,30 +800,63 @@
     if (!document.hidden) void _refrescarEstadoApi();
   });
 
-  // ── Auto-cargar módulo desde ?modulo=<ruta> ───────────────────
-  // Permite que un acceso standalone (vanilla o bundle React) sea
-  // redirigido al shell con ?modulo=<ruta> y aterrice con la sidebar visible.
+  // ── Auto-cargar el módulo pedido por URL ──────────────────────
+  // Un acceso standalone (vanilla o bundle React) redirige al shell con
+  // ?modulo=<ruta>, y los links de los mails traen /#/<ruta React> (trámite,
+  // reclamo, evento). El <head> de index.html guarda ese destino en
+  // sessionStorage ('zaris_destino') para que sobreviva al login.
   // La whitelist acepta:
   //   - frontend/<nombre>.html(?...)?
   //   - web-app/dist/index.html(#/...)?
   // y evita open redirects rechazando cualquier otro path.
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const mod = params.get('modulo');
+  // Con el token vencido el destino se conserva: el módulo da 401, el login
+  // vuelve al shell y recién ahí se abre y se borra.
+  function _tokenVencido() {
+    try {
+      const t = _authToken();
+      if (!t) return true;
+      const p = JSON.parse(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      return typeof p.exp === 'number' && p.exp * 1000 <= Date.now();
+    } catch (e) { return false; }
+  }
+  // Abre `mod` en el iframe si pasa la whitelist y marca su ítem del sidebar.
+  // Devuelve false si no la pasa (no navega).
+  function _abrirDestino(mod) {
     const isVanilla = /^frontend\/[a-z0-9_-]+\.html(\?.*)?$/i.test(mod || '');
     const isReact   = /^web-app\/dist\/index\.html(#\/.*)?$/i.test(mod || '');
-    if (mod && (isVanilla || isReact)) {
-      const frame = document.getElementById('module-frame');
-      if (frame) frame.src = mod;
-      // Marcar el nav-link correspondiente como activo si existe.
-      // Para vanilla compara sin la query; para React sin el hash.
-      const linkPath = mod.split('?')[0].split('#')[0];
-      const linkFull = mod.split('?')[0];                      // vanilla con query
-      document.querySelectorAll('.nav-flat__item[href], .nav__link[href]').forEach(l => {
-        const href = l.getAttribute('href') || '';
-        if (href === mod || href === linkFull || href === linkPath) l.classList.add('active');
-      });
+    if (!mod || !(isVanilla || isReact)) return false;
+    const frame = document.getElementById('module-frame');
+    if (frame) frame.src = mod;
+    // Marcar el nav-link correspondiente como activo si existe.
+    // Vanilla: sin la query. React: el módulo (#/tramites/X → #/tramites).
+    const linkPath = mod.split('?')[0].split('#')[0];
+    const linkFull = mod.split('?')[0];                      // vanilla con query
+    const linkModulo = isReact ? mod.replace(/^(web-app\/dist\/index\.html#\/[^/?]+).*$/i, '$1') : '';
+    document.querySelectorAll('.nav-flat__item[href], .nav__link[href]').forEach(l => {
+      const href = l.getAttribute('href') || '';
+      if (href === mod || href === linkFull || href === linkPath || href === linkModulo) {
+        document.querySelectorAll('.nav-flat__item, .nav__link').forEach(o => o.classList.remove('active'));
+        l.classList.add('active');
+      }
+    });
+    return true;
+  }
+  try {
+    const mod = sessionStorage.getItem('zaris_destino');
+    if (_abrirDestino(mod)) {
+      if (!_tokenVencido()) sessionStorage.removeItem('zaris_destino');
+    } else if (mod) {
+      sessionStorage.removeItem('zaris_destino');
     }
+    // La barra de direcciones queda limpia: un F5 abre el inicio, como siempre.
+    if (location.search || location.hash) history.replaceState(null, '', location.pathname);
   } catch (e) { /* ignorar */ }
+  // Link de mail abierto en la misma pestaña del shell: solo cambia el hash,
+  // la página no se recarga y el bloque de arriba no corre.
+  window.addEventListener('hashchange', function () {
+    if (location.hash.indexOf('#/') !== 0) return;
+    _abrirDestino('web-app/dist/index.html' + location.hash);
+    history.replaceState(null, '', location.pathname);
+  });
 
 })();

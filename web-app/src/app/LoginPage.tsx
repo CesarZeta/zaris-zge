@@ -24,7 +24,7 @@ export function LoginPage() {
     setLoading(true)
     try {
       // Email o DNI (mig 110): el backend resuelve cuál es.
-      const res = await api.post<LoginResponse>('/api/v1/auth/login', { identificador: email, email, password })
+      const res = await api.post<LoginResponse>('/api/v1/auth/login', { identificador: email, password })
       login(res.access_token, res.user)
       navigate('/dashboard', { replace: true })
     } catch (err) {

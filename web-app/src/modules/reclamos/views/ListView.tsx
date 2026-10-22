@@ -124,7 +124,7 @@ export function ListView() {
           style={btnOutline}
           title="Sin asignar, En gestión, En espera y En auditoría, del más antiguo al más nuevo"
         >
-          Ver pendientes
+          VER PENDIENTES
         </button>
         {/* Crear reclamos: Admin, Supervisor y Atención (el backend da 403 al resto). */}
         {nivel <= 3 && (

@@ -6,7 +6,7 @@ IMPORTANTE: rutas con segmentos fijos (/catalogo/*, /mesa/*) van ANTES de /{id_o
 para que FastAPI no las interprete como path param.
 """
 import logging
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import text
@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.auth import get_current_user
-from app.services.ot_slots import slots_libres_recurso as _slots_libres_recurso
 from app.services.autoasignacion import autoasignar_reclamo, candidatos_gestion
 from app.services import encuestas_service as svc_encuestas
 from app.services import push as svc_push
@@ -35,12 +34,6 @@ TRANSICIONES_OT: dict[str, set[str]] = {
     "Terminada":  set(),
     "Cancelada":  set(),
 }
-
-
-# Huecos libres de un recurso: viven en services/ot_slots.py. Desde 2026-10-21
-# los reclamos no se agendan (César: «la agenda solo es para turnos») y ninguna
-# pantalla usa /slots-recurso ni /con-agenda; quedan por compatibilidad con el
-# bundle anterior hasta retirarlos en una sesión posterior.
 
 
 def _to_dict(row) -> dict:
@@ -698,28 +691,6 @@ async def mesa_auditor_me(
     return {"id_agente": id_agente, "ots": [_to_dict(row) for row in result.fetchall()]}
 
 
-# ── GET /ot/slots-recurso — slots libres de un agente/equipo ─────────────────
-# Segmento fijo: DEBE ir antes de GET /{id_ot}.
-
-@router.get("/slots-recurso")
-async def slots_recurso(
-    tipo_recurso: str = Query(..., description="agente | equipo"),
-    id_recurso: int = Query(...),
-    fecha: date = Query(...),
-    duracion_min: int = Query(60, ge=15, le=480),
-    db: AsyncSession = Depends(get_db),
-    _user: dict = Depends(get_current_user),
-):
-    """Huecos libres de un recurso para una fecha, en bloques de `duracion_min`.
-    Para equipo: union de las disponibilidades de sus agentes (equipo_agentes)
-    menos las ocupaciones de todos ellos. Equipo sin agentes con agenda -> []."""
-    if tipo_recurso not in ("agente", "equipo"):
-        raise HTTPException(422, "tipo_recurso debe ser 'agente' o 'equipo'")
-    slots = await _slots_libres_recurso(db, tipo_recurso, id_recurso, fecha, duracion_min)
-    return {"tipo_recurso": tipo_recurso, "id_recurso": id_recurso,
-            "fecha": fecha.isoformat(), "duracion_min": duracion_min, "slots": slots}
-
-
 # ── GET /ot/auto-asignar-sugerencia — primer recurso disponible de la subarea ─
 # Segmento fijo: DEBE ir antes de GET /{id_ot}.
 
@@ -770,129 +741,6 @@ async def auto_asignar_sugerencia(
             }}
     return {"sugerencia": None,
             "motivo": "La gestión no tiene agentes de nivel Gestión ni cuadrillas con integrantes."}
-
-
-# ── POST /ot/con-agenda — crear OT + ocupacion en una transaccion ────────────
-
-@router.post("/con-agenda", status_code=201)
-async def crear_ot_con_agenda(
-    body: dict,
-    db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-):
-    """Crea la OT y, en la misma transaccion, su ocupacion en la agenda.
-    Body: {id_reclamo, tipo_recurso, id_recurso, fecha, hora_inicio, hora_fin,
-    observaciones?}. El supervisor queda registrado en id_supervisor_asigna.
-    Si la ocupacion entra en conflicto de horario, igual se crea (se reporta)."""
-    _require_supervisor(current_user)
-    for campo in ("id_reclamo", "tipo_recurso", "id_recurso", "fecha", "hora_inicio", "hora_fin"):
-        if body.get(campo) in (None, ""):
-            raise HTTPException(422, f"Campo requerido: {campo}")
-    tipo_recurso = body["tipo_recurso"]
-    if tipo_recurso not in ("agente", "equipo"):
-        raise HTTPException(422, "tipo_recurso debe ser 'agente' o 'equipo'")
-
-    id_reclamo = body["id_reclamo"]
-    r = (await db.execute(text(
-        "SELECT estado FROM reclamos WHERE id_reclamo = :id AND activo = TRUE"
-    ), {"id": id_reclamo})).fetchone()
-    if not r:
-        raise HTTPException(404, f"Reclamo {id_reclamo} no encontrado")
-    if r.estado in ("Cancelado", "Resuelto", "En auditoría", "Auditado"):
-        raise HTTPException(422, f"No se puede asignar OT a un reclamo {r.estado}")
-
-    id_estado_en_gestion = await _id_estado_ot(db, "En gestión")
-    uid = current_user["id_usuario"]
-    id_recurso = body["id_recurso"]
-    id_agente = id_recurso if tipo_recurso == "agente" else None
-    id_equipo = id_recurso if tipo_recurso == "equipo" else None
-    await _validar_scope_supervisor_ot(db, current_user, id_reclamo=id_reclamo,
-                                       id_agente=id_agente, id_equipo=id_equipo)
-    await _validar_destinatario_ot(db, id_agente=id_agente, id_equipo=id_equipo)
-
-    # asyncpg requiere objetos date/time, no strings. El body llega como dict crudo.
-    try:
-        f_ocup = date.fromisoformat(str(body["fecha"]))
-        hi_ocup = time.fromisoformat(str(body["hora_inicio"]))
-        hf_ocup = time.fromisoformat(str(body["hora_fin"]))
-    except ValueError as e:
-        raise HTTPException(422, f"Formato de fecha/hora invalido: {e}")
-    if hf_ocup <= hi_ocup:
-        raise HTTPException(422, "hora_fin debe ser mayor que hora_inicio")
-
-    try:
-        # 1. Crear la OT.
-        row = (await db.execute(text("""
-            INSERT INTO ordenes_trabajo
-                (id_reclamo, id_estado, id_agente, id_equipo, es_auditoria,
-                 id_supervisor_asigna, activo, fecha_alta, fecha_modificacion,
-                 id_usuario_alta, id_usuario_modificacion)
-            VALUES
-                (:id_reclamo, :id_estado, :id_agente, :id_equipo, FALSE,
-                 :uid, TRUE, NOW(), NOW(), :uid, :uid)
-            RETURNING id_ot, nro_ot
-        """), {
-            "id_reclamo": id_reclamo, "id_estado": id_estado_en_gestion,
-            "id_agente": id_agente, "id_equipo": id_equipo, "uid": uid,
-        })).fetchone()
-        id_ot = row.id_ot
-        nro_ot = row.nro_ot or f"OT-{id_ot}"
-
-        estado_ant = r.estado
-        await db.execute(text("""
-            UPDATE reclamos SET estado = 'En gestión', fecha_modificacion = NOW(),
-                id_usuario_modificacion = :uid,
-                fecha_primer_asignacion = COALESCE(fecha_primer_asignacion, NOW())
-            WHERE id_reclamo = :id AND estado NOT IN ('Cancelado','Resuelto')
-        """), {"id": id_reclamo, "uid": uid})
-        await _insertar_historial_reclamo(db, id_reclamo, f"OT {nro_ot} generada",
-                                           estado_ant, "En gestión",
-                                           body.get("observaciones", ""), uid)
-
-        # 2. Crear la ocupacion espejo en la agenda.
-        ocup = (await db.execute(text("""
-            INSERT INTO ocupaciones
-                (tipo, tipo_recurso, id_recurso, fecha, hora_inicio, hora_fin,
-                 id_orden_trabajo, id_municipio, activo, fecha_alta, fecha_modificacion,
-                 id_usuario_alta, id_usuario_modificacion)
-            VALUES
-                ('ot', :tr, :ir, :f, :hi, :hf, :id_ot, :mun, TRUE, NOW(), NOW(), :uid, :uid)
-            RETURNING id_ocupacion
-        """), {
-            "tr": tipo_recurso, "ir": id_recurso, "f": f_ocup,
-            "hi": hi_ocup, "hf": hf_ocup, "id_ot": id_ot,
-            "mun": body.get("id_municipio", 1), "uid": uid,
-        })).fetchone()
-        id_ocupacion = ocup.id_ocupacion
-
-        # 3. Detectar conflictos de solapamiento con otras ocupaciones del recurso.
-        conflictos = (await db.execute(text("""
-            SELECT id_ocupacion, tipo, hora_inicio, hora_fin
-            FROM ocupaciones
-            WHERE activo = TRUE AND tipo_recurso = :tr AND id_recurso = :ir
-              AND fecha = :f AND id_ocupacion <> :self
-              AND hora_inicio < :hf AND hora_fin > :hi
-        """), {
-            "tr": tipo_recurso, "ir": id_recurso, "f": f_ocup,
-            "self": id_ocupacion, "hi": hi_ocup, "hf": hf_ocup,
-        })).mappings().all()
-
-        await db.commit()
-        # Hook push App Vecinos (etapa E) — post-commit, best-effort.
-        await svc_push.notificar_estado_reclamo(id_reclamo)
-        # Hook push App de agentes (mig 108): avisa al agente asignado, si lo hay.
-        await svc_push.notificar_ot_asignada(id_ot)
-        return {
-            "id_ot": id_ot, "nro_ot": nro_ot, "id_reclamo": id_reclamo,
-            "id_ocupacion": id_ocupacion,
-            "conflictos": [dict(c) for c in conflictos],
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        await db.rollback()
-        logger.error("Error al crear OT con agenda: %s", e)
-        raise HTTPException(400, str(e))
 
 
 # ── GET /ot — listar OTs con filtros ─────────────────────────────────────────

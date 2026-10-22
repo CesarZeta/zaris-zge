@@ -70,7 +70,7 @@ Estados de la tabla `estado_ot`: `Pendiente`, `En gestion`, `En espera`, `Termin
 
 ```mermaid
 flowchart TD
-    AltaSup([Supervisor crea OT:<br/>POST /ot o POST /ot/con-agenda])
+    AltaSup([Supervisor crea OT:<br/>POST /ot])
     AltaAud([OT de auditoria es_auditoria:<br/>POST /reclamos/{id}/auditoria<br/>sobre un reclamo Resuelto])
 
     AltaSup --> Pendiente
@@ -104,7 +104,7 @@ flowchart TD
 ```
 
 **Operaciones:**
-- **Alta:** Supervisor crea OT desde la bandeja de reclamos (`POST /ot` simple, o `POST /ot/con-agenda` que ademas planifica ocupacion en la grilla).
+- **Alta:** Supervisor crea OT desde la bandeja de reclamos (`POST /ot`), o la crea la autoasignacion de la gestion. Los reclamos no se agendan (desde 2026-10-21).
 - **Tomar:** Agente toma una OT no asignada con `PUT /ot/{id}/tomar`.
 - **Cambio de estado:** `PUT /ot/{id}/estado` con el `id_estado_ot` destino.
 - **Terminar la OT operativa** siempre deja el reclamo en `Resuelto` (no hay auditoría automática; `tipo_reclamo.audit` ya no se consulta).

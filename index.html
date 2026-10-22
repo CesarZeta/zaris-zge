@@ -12,6 +12,14 @@
        Estando arriba de todo, redirige antes de pintar nada. También evita que
        el iframe del módulo monte sin sesión y caiga en 404 de GH Pages. -->
   <script>
+    // Destino pedido por URL (link de un mail: /#/tramites/X o ?modulo=…): se
+    // guarda ANTES del redirect para que sobreviva al login; menu.js lo valida
+    // contra su whitelist y lo abre en el iframe.
+    try {
+      var _dest = new URLSearchParams(location.search).get('modulo')
+        || (location.hash.indexOf('#/') === 0 ? 'web-app/dist/index.html' + location.hash : '');
+      if (_dest) sessionStorage.setItem('zaris_destino', _dest);
+    } catch (e) { /* sin sessionStorage: se abre el inicio */ }
     if (!localStorage.getItem('zaris_session')) {
       window.location.replace('frontend/login.html');
     }
@@ -429,6 +437,6 @@
   </div>
 
   <script src="frontend/js/qrcode.bundle.js?v=2026-07-15a"></script>
-  <script src="frontend/js/menu.js?v=2026-10-20b"></script>
+  <script src="frontend/js/menu.js?v=2026-10-22b"></script>
 </body>
 </html>
