@@ -1318,6 +1318,7 @@ async def transiciones_permitidas(
             TransicionPermitidaOut(
                 id_tipo_tramite_transicion=t["id_tipo_tramite_transicion"],
                 etiqueta_accion=t["etiqueta_accion"],
+                tipo_accion=t.get("tipo_accion") or "avanzar",
                 id_estado_destino=t["id_estado_destino"],
                 etiqueta_destino=t["etiqueta_destino"],
                 requiere_comentario=t["requiere_comentario"],

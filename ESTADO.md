@@ -25,7 +25,7 @@
 5. **Base de conocimiento de ayudas:** César la quiere tratar en una sesión completa (2026-10-23). Mientras tanto no se tocan manuales.
 6. Sin respuesta de sesiones anteriores: PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
 7. **`www.zaris.com.ar` da error de certificado (visto 2026-10-23):** el CNAME apunta a Vercel, pero el certificado que sirve cubre solo `zaris.com.ar`, así que quien entra con «www» ve una advertencia de seguridad. Recomendación: agregar `www.zaris.com.ar` al proyecto de Vercel del sitio, redirigido a `zaris.com.ar`. No se tocó.
-8. **Publicar los borradores de Trámites (2026-10-23):** Gestión de Trámites → Tipos de trámite → botón «Editar» de Aviso de Obra y de Recurso administrativo → elegir el borrador (v3 y v2), revisarlo y «Publicar». Los expedientes en curso siguen en su versión; los nuevos toman la publicada. Pendiente opcional: colorear los botones del agente según la acción (hoy solo el editor los colorea).
+8. **Publicar los borradores de Trámites (2026-10-23):** Gestión de Trámites → Tipos de trámite → botón «Editar» de Aviso de Obra y de Recurso administrativo → elegir el borrador (v3 y v2), revisarlo y «Publicar». Los expedientes en curso siguen en su versión; los nuevos toman la publicada. (Los botones del agente ya se colorean según la acción: mig 124.)
 
 ---
 

@@ -402,6 +402,8 @@ class RelacionarIn(BaseModel):
 class TransicionPermitidaOut(BaseModel):
     id_tipo_tramite_transicion: int
     etiqueta_accion: str
+    # El boton del agente se colorea segun esto (verde aprobar, rojo rechazar), 2026-10-23.
+    tipo_accion: str = "avanzar"
     id_estado_destino: int
     etiqueta_destino: str
     requiere_comentario: bool

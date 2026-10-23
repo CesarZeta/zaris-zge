@@ -24,6 +24,7 @@ import { EditarTipoModal } from '../modals/EditarTipoModal'
 import { CampoModal } from '../modals/CampoModal'
 import { EstadoModal } from '../modals/EstadoModal'
 import { TransicionModal } from '../modals/TransicionModal'
+import { colorAccion } from '../../lib/accion'
 import { DocReqModal } from '../modals/DocReqModal'
 import { AprobReqModal } from '../modals/AprobReqModal'
 import { PreviewFormulario } from '../components/PreviewFormulario'
@@ -774,17 +775,6 @@ export function ConfigTramiteDetalle() {
       />
     </div>
   )
-}
-
-// Color del badge de transición según su tipo de acción (BUG-04).
-function colorAccion(tipo?: string): string {
-  switch (tipo) {
-    case 'aprobar': return 'var(--color-success)'
-    case 'rechazar': return 'var(--color-error)'
-    case 'derivar': return '#6a1b9a'
-    case 'otro': return 'var(--fg-3)'
-    default: return 'var(--fg-2)' // avanzar / sin definir
-  }
 }
 
 function FilaInfo({ label, valor, mono = false }: { label: string; valor: string; mono?: boolean }) {

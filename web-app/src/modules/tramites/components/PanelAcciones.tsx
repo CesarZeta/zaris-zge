@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Lock, Unlock, ChevronRight, MessageSquare, Paperclip, ArrowRight, Link, AlertCircle } from 'lucide-react'
 import type { TramiteDetalle, TransicionPermitida, TramiteDocumento } from '../types'
+import { accionDestacada, colorAccion } from '../lib/accion'
 import { useNotificationsStore } from '../../../stores/notifications'
 import {
   tomarTramite, liberarTramite, transicionarTramite,
@@ -147,7 +148,10 @@ export function PanelAcciones({ tramite, transicionesPermitidas, documentosDesde
           <section style={sectionStyle}>
             <h3 style={sectionTitleStyle}>Acciones disponibles</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {transicionesPermitidas.map((t) => (
+              {transicionesPermitidas.map((t) => {
+                const destacada = accionDestacada(t.tipo_accion)
+                const color = colorAccion(t.tipo_accion)
+                return (
                 <button
                   key={t.id_tipo_tramite_transicion}
                   type="button"
@@ -155,19 +159,21 @@ export function PanelAcciones({ tramite, transicionesPermitidas, documentosDesde
                   title={!t.disponible ? (t.motivo_no_disponible ?? 'No disponible') : undefined}
                   style={{
                     ...transicionBtnStyle,
+                    ...(destacada ? { boxShadow: `inset 3px 0 0 ${color}` } : {}),
                     opacity: t.disponible ? 1 : 0.45,
                     cursor: t.disponible ? 'pointer' : 'not-allowed',
                   }}
                 >
                   <span style={{ flex: 1, textAlign: 'left' }}>
-                    <span style={{ display: 'block', fontWeight: 600, fontSize: 13 }}>{t.etiqueta_accion}</span>
+                    <span style={{ display: 'block', fontWeight: 600, fontSize: 13, color: destacada ? color : undefined }}>{t.etiqueta_accion}</span>
                     <span style={{ display: 'block', fontSize: 11, color: 'var(--fg-3)' }}>
                       → {t.etiqueta_destino}
                     </span>
                   </span>
                   <ChevronRight size={14} strokeWidth={1.5} color="var(--fg-3)" />
                 </button>
-              ))}
+                )
+              })}
             </div>
           </section>
         )}

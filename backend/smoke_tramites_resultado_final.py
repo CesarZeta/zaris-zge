@@ -23,6 +23,7 @@ Cubre:
   4. Fixture: Rechazada final SIN resultado -> Archivado con rechazar SÍ avisa (sella el resultado).
   5. Marcador OpenAPI del endpoint de transición.
   6. GET /tramites/tipos/{id} devuelve el tipo_accion de la base (antes, siempre 'avanzar').
+  7. /transiciones-permitidas trae tipo_accion (los botones del agente se colorean, mig 124).
 """
 import asyncio
 import logging
@@ -127,6 +128,16 @@ ESPERADO = [
     ("pedido-informe", "respondido", "archivado", "aprobar"),
     ("recurso-administrativo", "admitido", "resolucion_dictada", "avanzar"),
     ("recurso-administrativo", "resolucion_dictada", "archivado", "avanzar"),
+    # mig 124: decisiones intermedias (colorean el boton del agente).
+    ("poda-arbol", "en_evaluacion", "aprobada", "aprobar"),
+    ("poda-arbol", "en_evaluacion", "rechazada", "rechazar"),
+    ("cambio-domicilio-comercial", "en_revision", "aprobada", "aprobar"),
+    ("cartel-publicitario", "revision_tecnica", "pago_pendiente", "aprobar"),
+    ("habilitacion-comercial", "inspeccion", "aprobada", "aprobar"),
+    ("licencia-ordinaria", "solicitada", "aprobada_jefe", "aprobar"),
+    ("licencia-ordinaria", "aprobada_jefe", "aprobada_rrhh", "aprobar"),
+    ("transferencia-habilitacion", "validando_nuevo", "aprobada", "aprobar"),
+    ("transferencia-habilitacion", "validando_anterior", "validando_nuevo", "avanzar"),
 ]
 
 ok_count = 0
@@ -275,7 +286,8 @@ async def main() -> int:
                 fila = next((t for t in await qall(SQL_TRANS, t=tipo) if t["origen"] == o and t["destino"] == d), None)
                 if fila is None or fila["tipo_accion"] != esperado:
                     mal.append(f"{tipo} {o}->{d}={fila['tipo_accion'] if fila else 'NO EXISTE'}")
-            check("0. 19 transiciones finales etiquetadas + 2 del Recurso en avanzar", not mal, str(mal) if mal else "")
+            check("0. 19 finales (mig 123) + 8 decisiones intermedias (mig 124) etiquetadas; las del Recurso y los pasos intermedios en avanzar",
+                  not mal, str(mal) if mal else "")
 
             # ── 1. Poda aprobada ────────────────────────────────────────────
             print("1. Poda aprobada -> Archivado")
@@ -358,6 +370,14 @@ async def main() -> int:
             db = {x["id"]: x["tipo_accion"] for x in await qall(SQL_TRANS, t="poda-arbol")}
             check("6. GET /tramites/tipos/{id}: tipo_accion igual a la base (antes devolvia siempre 'avanzar')",
                   r.status_code == 200 and api == db and "aprobar" in api.values(), f"(api={sorted(api.values())})")
+
+            # ── 7. Transiciones permitidas traen tipo_accion (color del boton del agente) ──
+            id7 = await crear("poda-arbol", "Smoke resultado final 7 (botones)")
+            await recorrer(id7, (await camino("poda-arbol", [("en_evaluacion", "aprobada")]))[:-1])
+            r = await c.get(f"/api/v1/tramites/{id7}/transiciones-permitidas", headers=HA)
+            perm = {x["etiqueta_destino"]: x.get("tipo_accion") for x in (r.json() or {}).get("transiciones", [])} if r.status_code == 200 else {}
+            check("7. /transiciones-permitidas en 'En evaluacion': Aprobar=aprobar, Rechazar=rechazar",
+                  sorted(perm.values()) == ["aprobar", "rechazar"], f"({r.status_code} {perm})")
         finally:
             if fixture:
                 await exec_commit("UPDATE tipo_tramite_transicion SET tipo_accion = :a WHERE id_tipo_tramite_transicion = :i",

@@ -104,6 +104,7 @@ async def listar_transiciones_permitidas(
             SELECT
                 t.id_tipo_tramite_transicion,
                 t.etiqueta_accion,
+                t.tipo_accion,
                 t.id_estado_destino,
                 ed.etiqueta AS etiqueta_destino,
                 t.requiere_comentario,
@@ -142,6 +143,7 @@ async def listar_transiciones_permitidas(
         resultado.append({
             "id_tipo_tramite_transicion": r.id_tipo_tramite_transicion,
             "etiqueta_accion": r.etiqueta_accion,
+            "tipo_accion": r.tipo_accion,
             "id_estado_destino": r.id_estado_destino,
             "etiqueta_destino": r.etiqueta_destino,
             "requiere_comentario": r.requiere_comentario,
