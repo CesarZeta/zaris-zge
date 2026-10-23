@@ -550,6 +550,14 @@ export function ConfigTramiteDetalle() {
                       }}>
                         {t.etiqueta_accion}
                       </span>
+                      {dst?.es_final && !ori?.es_final && t.tipo_accion !== 'aprobar' && t.tipo_accion !== 'rechazar' && (
+                        <span
+                          style={{ marginLeft: 6 }}
+                          title="Termina el trámite sin aprobar ni rechazar: el vecino no recibe el resultado ni la encuesta hasta que un supervisor lo marque a mano."
+                        >
+                          <Badge kind="warn">sin resultado</Badge>
+                        </span>
+                      )}
                     </td>
                     <td style={td}>
                       {t.requiere_comentario && <Badge kind="neutral">comentario</Badge>}{' '}

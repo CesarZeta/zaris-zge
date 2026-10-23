@@ -68,6 +68,12 @@ export function TransicionModal({
 
   const pending = crear.isPending || actualizar.isPending
 
+  // mig 101/123: solo una transición final 'aprobar'/'rechazar' sella el resultado,
+  // que es lo que le avisa al vecino y dispara la encuesta.
+  const origenEsFinal = estados.find((e) => e.id_tipo_tramite_estado === origenId)?.es_final ?? false
+  const destinoEsFinal = estados.find((e) => e.id_tipo_tramite_estado === destinoId)?.es_final ?? false
+  const terminaSinResultado = destinoEsFinal && !origenEsFinal && tipoAccion !== 'aprobar' && tipoAccion !== 'rechazar'
+
   if (estados.length < 2) {
     return (
       <ModalShell titulo="Nueva transición" onCerrar={onCerrar}>
@@ -131,6 +137,13 @@ export function TransicionModal({
         <p style={{ fontSize: 11, color: 'var(--fg-3)', margin: '6px 0 0' }}>
           Una sola intención por transición. El botón del agente se colorea según esto (verde aprobar, rojo rechazar).
         </p>
+        {terminaSinResultado && (
+          <div role="note" style={avisoSinResultado}>
+            <strong>Esta transición termina el trámite sin resultado.</strong>{' '}
+            Así, el vecino no recibe el aviso de aprobado o rechazado ni la encuesta hasta que un supervisor marque el resultado a mano.
+            Si el trámite termina aprobado, elegí <em>Aprobar</em>; si termina rechazado, <em>Rechazar</em>.
+          </div>
+        )}
       </div>
 
       <div style={formRow}>
@@ -193,6 +206,11 @@ const select: React.CSSProperties = {
   width: '100%', padding: '8px 10px', borderRadius: 'var(--radius-md)',
   border: '1px solid var(--border-medium)', fontSize: 14,
   fontFamily: 'inherit', color: 'var(--fg-1)', background: 'var(--surface-100)',
+}
+const avisoSinResultado: React.CSSProperties = {
+  marginTop: 8, padding: '8px 12px', borderRadius: 'var(--radius-md)',
+  background: 'rgba(192,133,50,.12)', border: '1px solid rgba(192,133,50,.4)',
+  fontSize: 12, lineHeight: 1.45, color: 'var(--fg-1)',
 }
 const textareaMensaje: React.CSSProperties = {
   width: '100%', padding: '8px 10px', borderRadius: 'var(--radius-md)',
