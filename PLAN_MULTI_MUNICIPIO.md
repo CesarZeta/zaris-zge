@@ -22,6 +22,9 @@ ZARIS hoy atiende a un solo municipio por instalación. Para sumar municipios si
 | Dirección de cada municipio | **Su nombre antepuesto a las direcciones actuales** (`<municipio>.zge.zaris.com.ar`, `<municipio>.vecinos.zaris.com.ar`); las direcciones sin prefijo quedan para el municipio demo (§6). |
 | Municipio demo | **San Andrés es ficticio**: sus datos son generados, para pruebas y demostraciones. |
 | Áreas fijas | **Las 6 áreas activas de San Andrés** (§5). |
+| Vaciado de datos | **Solo el super administrador**, y **solo antes de producción** (municipio en puesta en marcha o demo). En producción quedan solo las bajas lógicas (§9). |
+| Tope de usuarios | **Cuentas internas activas por municipio**, fijado por el super administrador; los vecinos no tienen tope (§5b). |
+| Guía de alta | Sale del alta de un municipio de prueba y se guarda **fuera del repositorio** (`credenciales-testing/`), porque todo lo que se sube al repo queda publicado. |
 | Dónde trabaja el super administrador | **En el mismo shell**: un nivel nuevo por encima del administrador, selector de municipio en la barra superior y módulo «Municipios». |
 | Catálogos de un municipio nuevo | **Copia de un municipio modelo**; en el alta se elige qué copiar. |
 | Hosting del shell | **Se muda de GitHub Pages** (admite un solo dominio propio por sitio) a un hosting que acepte varios dominios. |
@@ -130,6 +133,15 @@ Todo en una transacción para la parte de base; lo externo (DNS, dominio en el h
 
 - **Áreas fijas (decisión de César: las que tiene San Andrés):** las 6 áreas **activas** de San Andrés al 2026-10-23 — Secretaría de Gobierno, Secretaría de Planeamiento y Obras Públicas, Secretaría de Salud, Secretaría de Seguridad, Secretaría de Servicios Públicos y Subsecretaría de Tránsito. Las 51 áreas inactivas (duplicados y legado) no pasan al modelo. Se crean con una marca de sistema (como `tipo_tramite.es_sistema`): se pueden renombrar, no dar de baja. Las claves de `configuracion_general` que hoy apuntan a ellas por id (`id_area_salud`, `id_espacio_guardia`) se siembran en el alta, siguiendo la regla §21 (sembradas por nombre, leídas por id).
 - **Municipio modelo:** un municipio marcado como modelo, con catálogos curados y **sin datos personales**, del que se copia. No es San Andrés (que tiene datos demo y usuarios); el builder lo arma a partir de los catálogos de San Andrés.
+- **Estado del municipio** (`municipios.estado`): `puesta_en_marcha` (recién dado de alta, cargando datos), `produccion`, `demo` (San Andrés) y `baja`. Lo cambia el super administrador. El paso a `produccion` es explícito y no tiene vuelta atrás desde la interfaz: es el que apaga el vaciado de datos (§9).
+- **Municipio de prueba y guía privada:** la prueba de cierre de F4 es dar de alta un municipio de prueba de punta a punta. De esa corrida sale la **guía de alta de municipio** para César (qué datos pedirle al cliente, pasos, DNS, primer administrador, perfiles mínimos, carga inicial). Va a `C:\Users\Cesar\Documents\ZARIS\credenciales-testing\`, nunca al repositorio. El municipio de prueba queda en estado `demo` o `baja` al terminar.
+- **Fila id 2 de `municipios`** («MUNICIPIO OSPINO»): una prueba cargada desde Maestros → Municipios el 2026-07-06, sin datos colgando y desconocida para César. La migración de F1 la da de baja lógica (`activo = false`). *Criterio de Claude.*
+
+### 5b. Usuarios de cada municipio
+
+- **Quién crea qué:** el super administrador crea el primer administrador (invitación por mail, §5). El administrador del municipio crea el resto de las cuentas con las pantallas de hoy (Usuarios, ficha del ciudadano con «cuenta ZARIS», §23).
+- **Perfiles mínimos para operar** (propuesta; se ajusta con la guía de arranque de §10): un administrador (nivel 1); por cada gestión que recibe reclamos, un supervisor (nivel 2) y al menos un agente de Gestión (nivel 4), porque la asignación automática reparte entre los agentes de nivel Gestión; Atención (nivel 3) para ventanilla o call center; Consultor (nivel 5) opcional. Salud, Guardia y Emergencias necesitan agentes en sus gestiones.
+- **Tope:** `municipios.max_usuarios_activos` (NULL = sin tope), lo fija el super administrador. Cuenta las cuentas internas activas del municipio (no las del super administrador ni los vecinos). Al llegar al tope no se puede crear ni reactivar una cuenta (409 con mensaje claro); el módulo Usuarios muestra «N de M cuentas» y avisa desde el 90 %. *El comportamiento al llegar al tope es criterio de Claude.*
 
 ### 6. Frontends por subdominio
 
@@ -173,6 +185,29 @@ Diseño:
 - **Exportación por municipio:** script que vuelca las filas de un municipio (más los catálogos globales) — es la prueba concreta del objetivo 2 y el respaldo que se le puede entregar a un municipio.
 - **BI:** todo filtrado por el municipio actual; el super administrador ve el municipio elegido.
 
+### 9. Vaciado de datos de un municipio (decisión de César, 2026-10-23)
+
+Para dejar un municipio limpio antes de salir a producción (borrar lo que se cargó de prueba) o para regenerar el demo.
+
+- **Quién:** solo el super administrador, a pedido del municipio.
+- **Cuándo:** solo con el municipio en `puesta_en_marcha` o `demo`. En `produccion` la opción no existe y rige la baja lógica de siempre. Es la única excepción a «nunca DELETE físico» (§5 de `CLAUDE.md`), justificada porque no hay datos de producción.
+- **Qué:** todo, o por grupos. Grupos propuestos: *operativo* (reclamos, OT, turnos, trámites, emergencias, encuestas enviadas, notificaciones, registros), *contactos* (ciudadanos, empresas y sus cuentas de la app del vecino), *maestros del municipio* (catálogos copiados del modelo, salvo las áreas fijas) y *usuarios* (salvo el administrador principal). Borrar un grupo arrastra lo operativo que depende de él (no se pueden borrar los ciudadanos y dejar sus reclamos); la pantalla muestra antes cuántas filas de qué tablas se van a borrar.
+- **Nunca:** catálogos globales, áreas fijas, `municipios`, el registro de accesos del super administrador.
+- **Resguardo:** antes de vaciar se genera la exportación del municipio (§8) y se guarda; confirmación escribiendo el nombre del municipio; queda en el registro del super administrador. También se borran los archivos del municipio en los buckets (prefijo `m{id}/`). *Exportación previa automática: criterio de Claude.*
+- **Arrancar vacío:** después de vaciar, el municipio tiene que poder operar cargando datos desde cero. La guía de arranque (§10) dice qué cargar primero, y la prueba de F4 incluye recorrer cada módulo con las tablas vacías para que ninguno se rompa (pantallas con estado vacío, sin errores 500).
+
+### 10. Guía de arranque: qué cargar primero
+
+Documento para el administrador de un municipio nuevo (y para la guía privada de César): por cada circuito (cuentas, contactos, reclamos y OT, turnos, agenda y entradas, trámites, emergencias, encuestas, app del vecino, inicio y BI), qué tablas hay que cargar antes del primer registro, en qué orden y desde qué pantalla; y el orden global de carga. El relevamiento contra la base y el código se hizo el 2026-10-23 (ver «Anexos»). Los riesgos de pantallas que se rompen con tablas vacías que salgan de ese relevamiento se corrigen en F4.
+
+Lo que el relevamiento cambia en este plan:
+
+- **F2 tiene su inventario:** todo el código supone el municipio 1 — defaults `id_municipio = 1` en los schemas (`schemas/buc.py`, `turnos.py`, `tramites.py`, `agenda_v2.py`), `current_user.get("id_municipio") or 1` (`get_current_user` hoy no devuelve el municipio) y filtros estrictos `= 1` (`turnos.py`, `turnos_publico.py`, `tramites.py`, `agenda_espacios.py`, `agenda_disponibilidad.py`). Más los `DEFAULT 1` de la base. Todo eso se reemplaza por el municipio de la request.
+- **F4 incorpora el primer administrador:** hoy no se puede crear desde ninguna pantalla (el alta exige ser admin y ningún script crea un nivel 1). El alta del municipio lo crea **con su agente y una subárea**: sin subárea, crear un trámite da 500 (`creacion.py`, CHECK `ck_tramite_destinatario`).
+- **El alta siembra todas las claves de configuración** desde los parámetros globales: hoy Config → Identidad solo hace UPDATE (si la clave no existe responde 200 sin guardar) y Config → Sistema esconde las claves inexistentes. Con la configuración por municipio, el guardado pasa a ser «insertar o actualizar».
+- **Correcciones de F4 (pantallas con tablas vacías):** asignación automática que inserta la OT con estado NULL si falta «Asignada» y pierde el error (`autoasignacion.py`); resolver un reclamo sin el estado «Terminada» da 500 (`reclamos.py`); nacionalidad e id de tipo de representación fijos en 1 (`emergencias.py`, `services/agenda.py`, `schemas/buc.py`, `publico_alta.py`); Turnos traduce cualquier error de integridad a «el horario acaba de ser tomado» (`turnos.py`); la clave de Guardia se convierte a número sin validar (`guardia.py`); el geocoding y los mapas caen a las coordenadas de Vicente López sin avisar si faltan las claves `geo_bbox_*`. Detalle con archivo:línea en el anexo.
+- **Hallazgos sueltos:** la clave `ot_pendiente_dias_vencimiento` aparece en Config → Sistema pero ningún código del backend la usa (verificado con grep); la base local no tiene `municipios.pais` (prod sí).
+
 ## Fases propuestas
 
 | Fase | Contenido | Prueba de cierre |
@@ -180,7 +215,7 @@ Diseño:
 | **F1 — Segmentación** | Clasificación de tablas; migración `id_municipio` NOT NULL + FK + backfill + únicos compuestos + numeración con código; `configuracion_general` por municipio con globales; modelo de localización (zona horaria, país, tipos de documento por país). Un solo corte en ventana anunciada, junto con F2. | San Andrés idéntico en prod (smokes existentes en verde); conteos por tabla antes/después. |
 | **F2 — Municipio de la request** | Claim en el JWT, dependency único, filtrado en todos los routers, fin de las tolerancias `IS NULL`, login dentro del municipio. Segundo municipio de prueba en local. | **Smoke de aislamiento**: con dos municipios cargados, ningún endpoint (agente, vecino, público) devuelve ni modifica datos del otro. |
 | **F3 — Super administrador** | Nivel 0, selector de municipio, registro de accesos, parámetros globales, módulo «Municipios» (edición). | Recorrido en navegador: cambiar de municipio y ver los datos correctos; registro de accesos poblado. |
-| **F4 — Alta de municipio** | Municipio modelo, áreas fijas con marca de sistema, flujo de alta completo, invitación al primer administrador, prueba automática. | Alta de un municipio de prueba en local de punta a punta; su administrador entra y carga una subárea. |
+| **F4 — Alta de municipio** | Municipio modelo, áreas fijas con marca de sistema, estado del municipio, flujo de alta completo, invitación al primer administrador, prueba automática, tope de usuarios, vaciado de datos (§9), correcciones de pantallas con tablas vacías. | Alta de un municipio de prueba de punta a punta; su administrador entra, carga lo de la guía de arranque y genera un registro en cada circuito; vaciado y re-carga. **Entregable: guía privada de alta** en `credenciales-testing/`. |
 | **F5 — Subdominios** | Mudanza del shell, resolución por hostname en shell y app del vecino, CORS, links de mails, páginas públicas. | Dos subdominios en prod mostrando cada uno su municipio; alta de vecino en cada uno con el mismo DNI. |
 | **F5b — Localización** | Zona horaria por municipio en el código, validadores por país, etiquetas de documento, geocoding por país (§7). Requisito solo para un municipio de otro país. | Un municipio de prueba en otra zona horaria: «hoy», turnos del día, SLA y BI cortan en su medianoche local. |
 | **F6 — Segunda barrera y operación** | RLS con rol de conexión no dueño; procesos programados por municipio; exportación por municipio; paths con prefijo. | Smoke de aislamiento repetido con el filtrado de la aplicación desactivado en un endpoint de prueba: RLS igual lo frena. Exportación de San Andrés restaurada en una base vacía. |
@@ -190,9 +225,7 @@ Diseño:
 
 ## Preguntas abiertas para César
 
-1. **¿Qué es la fila id 2 de `municipios`?** (Se borra, se conserva como prueba, o es un municipio real a futuro.)
-
-Resueltas el 2026-10-23: áreas fijas = las 6 activas de San Andrés (§5); direcciones = prefijo por municipio y las actuales para el demo (§6); documentos por país = tema reservado (§7).
+Ninguna pendiente. Resueltas el 2026-10-23: áreas fijas = las 6 activas de San Andrés (§5); direcciones = prefijo por municipio y las actuales para el demo (§6); documentos por país = tema reservado con investigación en curso (§7); fila id 2 = prueba, se da de baja (§5); vaciado, tope de usuarios y guía privada (§5, §5b, §9).
 
 ## Lo que queda a criterio del builder
 
@@ -202,3 +235,8 @@ Resueltas el 2026-10-23: áreas fijas = las 6 activas de San Andrés (§5); dire
 - Patrón exacto del subdominio de la app del vecino.
 - Cómo se implementa el segundo factor del nivel 0, o si va en fase aparte.
 - Orden interno de las migraciones dentro de F1 (siempre con backup previo y en local antes que en prod, §24).
+
+## Anexos
+
+- **A. Guía de arranque con tablas vacías** — [`docs/guia_arranque_tablas.md`](docs/guia_arranque_tablas.md): por circuito, qué cargar primero, por qué (FK, validación en código, clave de configuración) y desde qué pantalla; orden global de carga; catálogos que no se vacían nunca; riesgos con tablas vacías con archivo:línea; claves de `configuracion_general` y qué pasa si faltan; dependencias por FK. Relevada el 2026-10-23 sobre la base local y el código (solo lectura); la nacionalidad id 1 se verificó además en prod.
+- **B. Documentos de identidad de Hispanoamérica** — investigación en curso (2026-10-23), base del módulo de documentos por país (§7).
