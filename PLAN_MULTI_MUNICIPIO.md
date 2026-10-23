@@ -19,12 +19,14 @@ ZARIS hoy atiende a un solo municipio por instalación. Para sumar municipios si
 | Alcance del super administrador | **Ve siempre** los datos de cualquier municipio. |
 | Vecinos | **Una cuenta por municipio.** El mismo DNI puede existir en dos municipios; ninguno ve lo que la persona dejó en el otro. |
 | Funcionarios | **Una cuenta por municipio.** El único que cruza municipios es el super administrador. |
-| Dirección de cada municipio | **Subdominio de ZARIS** (p. ej. `sanandres.zaris.com.ar`). |
+| Dirección de cada municipio | **Su nombre antepuesto a las direcciones actuales** (`<municipio>.zge.zaris.com.ar`, `<municipio>.vecinos.zaris.com.ar`); las direcciones sin prefijo quedan para el municipio demo (§6). |
+| Municipio demo | **San Andrés es ficticio**: sus datos son generados, para pruebas y demostraciones. |
+| Áreas fijas | **Las 6 áreas activas de San Andrés** (§5). |
 | Dónde trabaja el super administrador | **En el mismo shell**: un nivel nuevo por encima del administrador, selector de municipio en la barra superior y módulo «Municipios». |
 | Catálogos de un municipio nuevo | **Copia de un municipio modelo**; en el alta se elige qué copiar. |
 | Hosting del shell | **Se muda de GitHub Pages** (admite un solo dominio propio por sitio) a un hosting que acepte varios dominios. |
 | Corte en San Andrés | **Ventana corta de mantenimiento anunciada y un re-login de todos** (funcionarios y vecinos). Un solo corte con backup; no hace falta convivir con sesiones viejas. |
-| Países | **También municipios fuera de Argentina.** El modelo de datos de localización (huso horario, tipos de documento, catálogos geográficos por país) entra en la misma migración de F1. |
+| Países | **También municipios fuera de Argentina.** El modelo de datos de localización (huso horario, país del documento, catálogos geográficos por país) entra en la misma migración de F1. El **módulo de documentos de identidad por país** es un tema reservado que requiere investigación aparte (§7). |
 | Historia clínica | El super administrador la abre **solo declarando el motivo, y queda registrado**. El administrador de cada municipio puede ver el registro de todo lo que hizo el super administrador en su municipio. |
 | Salida a un segundo municipio real | **Todo terminado, incluida la segunda barrera en la base (RLS)**, antes de cargar datos reales de otro municipio. |
 
@@ -62,6 +64,7 @@ Antes (2026-08-30 y 2026-10-20): **áreas fijas** por regla de negocio (Segurida
 - Una identidad única de vecino o de funcionario para varios municipios.
 - Tablero consolidado del super administrador (fase opcional al final).
 - Facturación o planes comerciales por municipio (sí queda la habilitación de módulos por municipio).
+- El módulo de documentos de identidad por país (tema reservado, §7): acá solo se deja el modelo de datos listo.
 
 ## Anti-objetivos (sería un fracaso aunque funcione)
 
@@ -125,14 +128,24 @@ Desde el módulo «Municipios», en un solo flujo:
 
 Todo en una transacción para la parte de base; lo externo (DNS, dominio en el hosting) como pasos posteriores con estado visible en la ficha del municipio («DNS pendiente», «dominio verificado»). Primera versión aceptable: los pasos externos manuales y documentados; automatizables después con un token de Cloudflare (`Zone:DNS:Edit`) y uno del hosting, guardados fuera del repo.
 
-- **Áreas fijas:** se crean con una marca de sistema (como `tipo_tramite.es_sistema`): se pueden renombrar, no dar de baja. Las claves de `configuracion_general` que hoy apuntan a ellas por id (`id_area_salud`, `id_espacio_guardia`) se siembran en el alta, siguiendo la regla §21 (sembradas por nombre, leídas por id).
+- **Áreas fijas (decisión de César: las que tiene San Andrés):** las 6 áreas **activas** de San Andrés al 2026-10-23 — Secretaría de Gobierno, Secretaría de Planeamiento y Obras Públicas, Secretaría de Salud, Secretaría de Seguridad, Secretaría de Servicios Públicos y Subsecretaría de Tránsito. Las 51 áreas inactivas (duplicados y legado) no pasan al modelo. Se crean con una marca de sistema (como `tipo_tramite.es_sistema`): se pueden renombrar, no dar de baja. Las claves de `configuracion_general` que hoy apuntan a ellas por id (`id_area_salud`, `id_espacio_guardia`) se siembran en el alta, siguiendo la regla §21 (sembradas por nombre, leídas por id).
 - **Municipio modelo:** un municipio marcado como modelo, con catálogos curados y **sin datos personales**, del que se copia. No es San Andrés (que tiene datos demo y usuarios); el builder lo arma a partir de los catálogos de San Andrés.
 
 ### 6. Frontends por subdominio
 
-- **Shell:** se muda a un hosting con varios dominios por proyecto (Vercel, donde ya están las apps del vecino y de agentes, o Cloudflare Pages). Un solo build; el municipio sale del hostname (`GET /publico/municipio` resuelve subdominio → identidad). `zge.zaris.com.ar` redirige a San Andrés o queda como entrada del super administrador (decisión pendiente). El workflow `deploy-web-app.yml` cambia de destino.
-- **App del vecino:** mismo build, subdominio por municipio (patrón a definir: `vecinos.sanandres.zaris.com.ar` o `sanandres.vecinos.zaris.com.ar`); con el DNS en Cloudflare **no hay subdominio comodín en Vercel** (exige sus nameservers), así que cada alta agrega su dominio.
-- **App de agentes:** idem, o un solo dominio con el municipio tomado del login — el builder propone.
+**Esquema de direcciones (decisión de César):** cada municipio antepone su nombre a las direcciones actuales, y las direcciones sin prefijo quedan para el municipio demo.
+
+| | Municipio demo (San Andrés, ficticio) | Cada municipio nuevo |
+|---|---|---|
+| Backoffice (shell) | `zge.zaris.com.ar` | `<municipio>.zge.zaris.com.ar` |
+| App del vecino | `vecinos.zaris.com.ar` | `<municipio>.vecinos.zaris.com.ar` |
+| App de agentes | `agentes.zaris.com.ar` | `<municipio>.agentes.zaris.com.ar` |
+
+- `<municipio>` es el subdominio del municipio (`municipios.subdominio`): minúsculas, sin tildes ni espacios, con guiones (p. ej. `vicente-lopez`). Se valida en el alta.
+- **San Andrés es el municipio demo:** ficticio, con datos generados, para pruebas y demostraciones. Las instalaciones, suscripciones push y links ya enviados siguen funcionando porque sus direcciones no cambian. El generador demo corre solo para municipios marcados como demo.
+- **Certificados:** con el DNS en Cloudflare, Vercel **no** puede servir un comodín (`*.zge.zaris.com.ar` exige sus nameservers), así que cada alta crea 3 registros CNAME (DNS only) y agrega los 3 dominios al hosting; el certificado de cada uno lo emite el hosting solo. Dos niveles de subdominio no son problema para el certificado.
+- **Shell:** se muda a un hosting con varios dominios por proyecto (Vercel, donde ya están las apps del vecino y de agentes, o Cloudflare Pages). Un solo build; el municipio sale del hostname (`GET /publico/municipio` resuelve subdominio → identidad). El workflow `deploy-web-app.yml` cambia de destino.
+- **Apps del vecino y de agentes:** mismo build para todos los municipios; el municipio sale del hostname igual que en el shell.
 - **CORS:** `allow_origins` es una lista exacta; con un subdominio por municipio pasar a `allow_origin_regex` acotado a `https://([a-z0-9-]+\.)*zaris\.com\.ar` (verificar soporte en la versión de Starlette en uso).
 - **Mails:** los links usan el subdominio del municipio destinatario, no una URL fija de settings (`app/core/urls.py` pasa a recibir el municipio).
 - **Páginas públicas vanilla** (`alta-vecino.html`, `encuesta.html`): toman el municipio del subdominio.
@@ -147,9 +160,11 @@ Hoy el sistema supone Argentina en tres lugares (medido el 2026-10-23):
 
 Diseño:
 
-- **En la migración de F1 (modelo de datos):** `municipios.zona_horaria` (nombre IANA, p. ej. `America/Argentina/Buenos_Aires`, `America/Caracas`) y `municipios.pais` normalizado a código ISO; tipos de documento como catálogo por país (Argentina: DNI, CUIL, CUIT, pasaporte; los de otro país se cargan cuando llegue); los catálogos geográficos ganan el país (`provincias.pais` o equivalente) y siguen siendo globales.
-- **Código (fase F5b, requisito antes del primer municipio de otro país, no de uno argentino):** `hoy_local`/`ahora_local` reciben el municipio y usan `ZoneInfo` (otros países pueden tener horario de verano); los procesos programados calculan fechas con la zona de cada municipio; los validadores de documento se eligen por país y tipo; los textos de la interfaz que dicen «DNI» pasan a «documento» o a la etiqueta del tipo; el geocoding suma el código de país (`countrycodes` de Nominatim) además del bbox.
+- **En la migración de F1 (modelo de datos):** `municipios.zona_horaria` (nombre IANA, p. ej. `America/Argentina/Buenos_Aires`, `America/Caracas`) y `municipios.pais` normalizado a código ISO; los catálogos geográficos ganan el país (`provincias.pais` o equivalente) y siguen siendo globales; personas y empresas guardan su documento como **(país, tipo de documento, número)**, con el tipo referido a un catálogo por país, de modo que el módulo de documentos (abajo) se enchufe después sin migrar datos de nuevo. Argentina queda cargada con DNI, CUIL y CUIT y sus validaciones de hoy.
+- **Código (fase F5b, requisito antes del primer municipio de otro país, no de uno argentino):** `hoy_local`/`ahora_local` reciben el municipio y usan `ZoneInfo` (otros países pueden tener horario de verano); los procesos programados calculan fechas con la zona de cada municipio; los textos de la interfaz que dicen «DNI» pasan a «documento» o a la etiqueta del tipo; el geocoding suma el código de país (`countrycodes` de Nominatim) además del bbox.
 - San Andrés y cualquier municipio argentino funcionan igual que hoy aunque F5b no esté hecha.
+
+**Documentos de identidad por país — tema reservado (decisión de César, 2026-10-23).** Los conceptos de DNI, CUIL y CUIT y sus estructuras valen para Argentina; cada país tiene los suyos para personas y para empresas, con sus formatos, sus reglas de validación y **sus propias leyes de identificación y de datos personales**. Hace falta un **módulo que parametrice por país** los tipos de documento (de persona y de empresa), su formato, su validación, su máscara de carga y su etiqueta. Requiere una investigación aparte y **no se diseña en este plan**: este plan solo deja el modelo de datos preparado (país + tipo + número). Lo trae César cuando decida tratarlo; un municipio de otro país no sale a producción sin ese módulo.
 
 ### 8. Operación
 
@@ -176,8 +191,8 @@ Diseño:
 ## Preguntas abiertas para César
 
 1. **¿Qué es la fila id 2 de `municipios`?** (Se borra, se conserva como prueba, o es un municipio real a futuro.)
-2. **Lista exacta de áreas fijas** y qué módulo depende de cada una (la necesita F4; si la marca de sistema se adelanta a F1, también F1).
-3. **Direcciones actuales:** ¿`zge.zaris.com.ar` y `vecinos.zaris.com.ar` quedan para siempre como las de San Andrés? *Recomendación de Claude: sí* — la app del vecino instalada y sus suscripciones push dependen de la dirección exacta, y los links de mails ya enviados apuntan ahí. El super administrador entra desde cualquier subdominio (§3), así que no necesita una dirección propia.
+
+Resueltas el 2026-10-23: áreas fijas = las 6 activas de San Andrés (§5); direcciones = prefijo por municipio y las actuales para el demo (§6); documentos por país = tema reservado (§7).
 
 ## Lo que queda a criterio del builder
 
