@@ -18,14 +18,12 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **Mirar en prod con la sesión de admin (2026-10-23):** Maestros → Tipos de Reclamo (columna «SLA» y el campo número + unidad; probar guardar uno en horas), Maestros → Subáreas (columna y tilde «Asigna a mano»), Configuración → Sistema (interruptor «Asignación automática de reclamos») y Contactos → Ciudadanos/Empresas (buscador de un solo campo). En local está todo probado con clics; en prod solo por API/SQL.
+1. **Multi-municipio y super administrador (IT-01):** diseño en [`PLAN_MULTI_MUNICIPIO.md`](PLAN_MULTI_MUNICIPIO.md) con las decisiones de César del 2026-10-23 (una base para todos con `id_municipio`, super administrador en el mismo shell, subdominio por municipio, también otros países, RLS antes de un segundo municipio real). Falta su aprobación y tres preguntas del plan (fila id 2 de `municipios`, lista de áreas fijas, direcciones actuales). Implementación en una sesión dedicada (F1+F2 en un solo corte).
 2. **Asignación automática — revisar ~2026-10-29:** carga de los agentes de las 18 gestiones que asignan solas (en varias hay UN solo agente de nivel Gestión que recibe todo; en Arbolado es el funcionario de prueba). Decidir si se suma gente o se vuelve a poner alguna a mano.
 3. **Commits viejos de las dos purgas:** César mandó el pedido a GitHub Support el 2026-10-22; sin respuesta al 2026-10-23 → volver a preguntar el lunes 2026-10-26 (detalle en la memoria privada de Cesar).
-4. **Super administrador multi-municipio (IT-01):** ¿cuándo arrancamos el diseño? Recomendación: ahora, junto con las áreas fijas.
-5. **Base de conocimiento de ayudas:** César la quiere tratar en una sesión completa (2026-10-23). Mientras tanto no se tocan manuales.
-6. Sin respuesta de sesiones anteriores: PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
-7. **`www.zaris.com.ar` da error de certificado (visto 2026-10-23):** el CNAME apunta a Vercel, pero el certificado que sirve cubre solo `zaris.com.ar`, así que quien entra con «www» ve una advertencia de seguridad. Recomendación: agregar `www.zaris.com.ar` al proyecto de Vercel del sitio, redirigido a `zaris.com.ar`. No se tocó.
-8. **Publicar los borradores de Trámites (2026-10-23):** Gestión de Trámites → Tipos de trámite → botón «Editar» de Aviso de Obra y de Recurso administrativo → elegir el borrador (v3 y v2), revisarlo y «Publicar». Los expedientes en curso siguen en su versión; los nuevos toman la publicada. De paso, mirar en prod el aviso «sin resultado» del editor y los botones coloreados del detalle (probados con clics solo en local). Y el primer cierre real de un trámite de vecino en prod confirma el aviso y la encuesta (hasta ahora probado solo en local).
+4. **Base de conocimiento de ayudas:** la próxima sesión completa es para eso (César, 2026-10-23). Mientras tanto no se tocan manuales.
+5. Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
+6. **Primer cierre real de un trámite de vecino en prod:** confirma el aviso «terminó: APROBADO/RECHAZADO» y la encuesta (probados solo en local). Agendado por César: en los próximos smokes con cuentas reales de reclamos se cierran también trámites; César pasa algunos trámites para eso.
 
 ---
 
@@ -47,7 +45,7 @@
 - 🟢 **Alta — huecos menores detectados en la revisión 2026-10-10:** la clave temporal del funcionario no vence si nunca la usa; la app de agentes no tiene «olvidé mi contraseña» (hoy se recupera desde el login del backoffice, link 24 h). El vecino NO recibe clave por mail (elige la suya por link) — recomendado mantenerlo.
 - 🟠 **Atención — residuos del plan (§4):** "ocupación vs disponibilidad efectiva" en el BI de atención · etapa 2 de HC (vista admin de `historia_clinica_acceso`, break-the-glass, ficha ampliada) · walk-in de Guardia sin evento de Emergencias.
 - 🟠 **Trámites — residuo:** los 4 tipos sin circuito (exención de tasas, permiso de espacio público, arbolado urbano, inscripción profesional) tienen la gestión asignada por criterio de Claude, cambiable desde el builder.
-- 🟠 **Áreas fijas por regla de negocio** (planteado 2026-08-30): Seguridad, Salud, Servicios Públicos… precargadas y NO removibles (renombrables sí) porque atienden módulos. Sin código todavía: analizar junto con seeds, admin_tablas, baja lógica y IT-01.
+- 🟠 **Áreas fijas por regla de negocio** (planteado 2026-08-30): Seguridad, Salud, Servicios Públicos… precargadas y NO removibles (renombrables sí) porque atienden módulos. Sin código todavía: diseño dentro de [`PLAN_MULTI_MUNICIPIO.md`](PLAN_MULTI_MUNICIPIO.md) (se crean en el alta de cada municipio con marca de sistema); falta la lista exacta.
 - 🟠 **Config/UX — reunión 2026-07-06** (tarea "Informe Bug" de la lista CONFIGURACION y UX de ClickUp): **IT-01** multi-tenant + super administrador + selector de municipio (proyecto de arquitectura, por fases con César; 2026-10-20: el super administrador crea los municipios, los parámetros globales y los administradores de cada municipio, y el administrador queda como superusuario de SU municipio) · **IT-08** botón SOS de la PWA · **IT-07** accesibilidad móvil (PWA) · **IT-09** módulo de Obras (backlog sin alcance).
 - 🟢 **Baja de cuenta del vecino:** sin endpoint ni definición; obligatoria si la app va a las stores.
 
@@ -70,6 +68,8 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
+- **2026-10-23 (3ª) — Borradores de Trámites publicados** (Aviso de Obra v3, Recurso administrativo v2, con la sesión de César) y verificados en prod con clics el aviso «sin resultado», los botones coloreados y lo de la 1ª sesión (SLA número + unidad con guardado en horas, «Asigna a mano», interruptor de Sistema, buscador de un campo). `www.zaris.com.ar` redirige al sitio con certificado válido. Smoke `smoke_tramites_ciclo_vida.py` aislado del resto de la base (`e49b41e`, 24/24). Diseño de IT-01 en `PLAN_MULTI_MUNICIPIO.md`.
+
 - **2026-10-23 (2ª) — Trámites: el cierre sella el resultado (migs 123 + 124, `f9eef11` · `0faebe7` · `a49ef4b` · `03e39c7`).** Sin doble aviso al archivar desde un estado final; `GET /tramites/tipos/{id}` con el `tipo_accion` real; aviso «sin resultado» en el editor; botones del agente coloreados; borradores de Aviso de Obra v3 y Recurso v2 en prod (sin publicar). Smoke `smoke_tramites_resultado_final.py` 16/16. Mig 122 aplicada en prod por César.
 - **2026-10-23 — SLA en minutos (mig 120) + asignación automática general (mig 121, 18 gestiones asignan solas) (`4c9f5ee`), buscador de un solo campo (`f42181d`), encabezados de Maestros (`2266b72`), mig 122 (local y prod; en prod la corrió César desde el SQL Editor).** Smokes 27/27 · 86/86 · 44/44. Rebalanceo demo: 322 reclamos (BI 55,1 % → 66,6 %). Backups y detalle en `HISTORIAL_MIGRACIONES.md`. Rama «estados, asignaciones y mesas» cerrada por César (la auditoría F1-F4 queda sin la prueba real del mail del retrabajo: verificado en MOCK). Ciudadano 1618 = prueba de Roy.
 - **2026-10-20/22 — Orden por columnas en toda la suite (F1-F3, último `97fb3bf`);** fichas demo sin App Vecinos + mig 119; links profundos del shell (§14); «VER PENDIENTES»; logins sin `email`; fuera los endpoints de OT con agenda. Detalle en CLAUDE.md §23 y las skills.
@@ -91,6 +91,7 @@
 | Roadmap detallado de Emergencias | [`PLAN_MODULO_EMERGENCIAS.md`](PLAN_MODULO_EMERGENCIAS.md) |
 | Roadmap de Atención por ubicación (Turnos, colero, Guardia, historia clínica, BI) + decisiones por fase | [`PLAN_MODULO_ATENCION.md`](PLAN_MODULO_ATENCION.md) |
 | Auditoría de reclamos posterior al cierre (decisiones de César + fases) | [`PLAN_AUDITORIA_RECLAMOS.md`](PLAN_AUDITORIA_RECLAMOS.md) |
+| Multi-municipio y super administrador (IT-01: decisiones de César + fases) | [`PLAN_MULTI_MUNICIPIO.md`](PLAN_MULTI_MUNICIPIO.md) |
 | Qué migración hace qué / cuándo se aplicó | [`HISTORIAL_MIGRACIONES.md`](HISTORIAL_MIGRACIONES.md) |
 | Contrato de la API pública que consume la PWA | [`docs/contrato_api_publica.md`](docs/contrato_api_publica.md) |
 | Cómo arrancar local / colaborar | [`ONBOARDING.md`](ONBOARDING.md) · [`CONTRIBUTING.md`](CONTRIBUTING.md) |
