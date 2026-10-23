@@ -280,7 +280,7 @@ async def seed_tipo(conn, codigo, nombre, prefijo, iniciadores, permite_rep, ico
         if not oid or not did:
             continue
         existe = await fetchval(conn,
-            """SELECT 1 FROM tipo_tramite_transicion
+            """SELECT id_tipo_tramite_transicion FROM tipo_tramite_transicion
                WHERE id_tipo_tramite_version = :v
                  AND id_estado_origen = :eo AND id_estado_destino = :ed""",
             {"v": id_ver, "eo": oid, "ed": did})
@@ -288,19 +288,26 @@ async def seed_tipo(conn, codigo, nombre, prefijo, iniciadores, permite_rep, ico
             await conn.execute(text("""
                 INSERT INTO tipo_tramite_transicion (
                     id_tipo_tramite_version, id_estado_origen, id_estado_destino,
-                    etiqueta_accion, orden, quien_puede_jsonb,
+                    etiqueta_accion, tipo_accion, orden, quien_puede_jsonb,
                     requiere_comentario, requiere_adjunto, destino_automatico_jsonb,
                     id_municipio, activo
-                ) VALUES (:v, :eo, :ed, :ea, :o, CAST(:qp AS jsonb), :rc, :ra, CAST(:da AS jsonb), :m, TRUE)
+                ) VALUES (:v, :eo, :ed, :ea, :ta, :o, CAST(:qp AS jsonb), :rc, :ra, CAST(:da AS jsonb), :m, TRUE)
             """), {
                 "v": id_ver, "eo": oid, "ed": did,
-                "ea": tr["etiqueta"], "o": tr.get("orden", 0),
+                "ea": tr["etiqueta"], "ta": tr.get("accion", "avanzar"), "o": tr.get("orden", 0),
                 "qp": json.dumps(tr.get("quien_puede", {})),
                 "rc": tr.get("req_comentario", False),
                 "ra": tr.get("req_adjunto", False),
                 "da": json.dumps(tr["destino_auto"]) if tr.get("destino_auto") else None,
                 "m": ID_MUNICIPIO
             })
+        elif tr.get("accion"):
+            # La transicion que cierra con aprobar/rechazar sella el resultado (mig 101/123);
+            # se corrige en bases sembradas antes. Solo si el seed la define.
+            await conn.execute(text(
+                "UPDATE tipo_tramite_transicion SET tipo_accion = :ta "
+                "WHERE id_tipo_tramite_transicion = :id AND tipo_accion IS DISTINCT FROM :ta"
+            ), {"ta": tr["accion"], "id": existe})
 
     # Documentos requeridos
     for doc in docs:
@@ -361,9 +368,9 @@ async def seed_tipos(conn, sa):
              "req_comentario": True, "quien_puede": {"subareas": [sa["espacios_verdes"]]}},
             {"origen": "en_evaluacion", "destino": "rechazada", "etiqueta": "Rechazar",
              "req_comentario": True, "quien_puede": {"subareas": [sa["espacios_verdes"]]}},
-            {"origen": "aprobada", "destino": "archivado", "etiqueta": "Archivar",
+            {"origen": "aprobada", "destino": "archivado", "etiqueta": "Archivar", "accion": "aprobar",
              "quien_puede": {"subareas": [sa["espacios_verdes"]]}},
-            {"origen": "rechazada", "destino": "archivado", "etiqueta": "Archivar",
+            {"origen": "rechazada", "destino": "archivado", "etiqueta": "Archivar", "accion": "rechazar",
              "quien_puede": {"subareas": [sa["espacios_verdes"]]}},
         ],
         docs=[
@@ -390,7 +397,7 @@ async def seed_tipos(conn, sa):
         transiciones=[
             {"origen": "solicitado", "destino": "respondiendo", "etiqueta": "Tomar y responder"},
             {"origen": "respondiendo", "destino": "respondido", "etiqueta": "Enviar respuesta", "req_comentario": True},
-            {"origen": "respondido", "destino": "archivado", "etiqueta": "Archivar"},
+            {"origen": "respondido", "destino": "archivado", "etiqueta": "Archivar", "accion": "aprobar"},
         ],
         docs=[
             {"nombre": "Informe respondido", "obligatorio": True, "aporta": "oficina_actual",
@@ -419,9 +426,9 @@ async def seed_tipos(conn, sa):
             {"origen": "solicitada", "destino": "aprobada_jefe", "etiqueta": "Aprobar (Jefe directo)", "req_comentario": True},
             {"origen": "aprobada_jefe", "destino": "aprobada_rrhh", "etiqueta": "Aprobar (RRHH)",
              "destino_auto": {"tipo": "subarea", "id": sa["rrhh"], "nombre": "Recursos Humanos"}},
-            {"origen": "aprobada_rrhh", "destino": "notificada", "etiqueta": "Notificar al agente"},
-            {"origen": "solicitada", "destino": "rechazada", "etiqueta": "Rechazar", "req_comentario": True},
-            {"origen": "aprobada_jefe", "destino": "rechazada", "etiqueta": "Rechazar en RRHH", "req_comentario": True},
+            {"origen": "aprobada_rrhh", "destino": "notificada", "etiqueta": "Notificar al agente", "accion": "aprobar"},
+            {"origen": "solicitada", "destino": "rechazada", "etiqueta": "Rechazar", "req_comentario": True, "accion": "rechazar"},
+            {"origen": "aprobada_jefe", "destino": "rechazada", "etiqueta": "Rechazar en RRHH", "req_comentario": True, "accion": "rechazar"},
         ],
         docs=[]
     )
@@ -457,8 +464,8 @@ async def seed_tipos(conn, sa):
             {"origen": "revision_documental", "destino": "inspeccion", "etiqueta": "Programar inspeccion",
              "destino_auto": {"tipo": "subarea", "id": sa["bromatologia"], "nombre": "Bromatologia e Inspecciones"}},
             {"origen": "inspeccion", "destino": "aprobada", "etiqueta": "Inspeccion OK", "req_comentario": True},
-            {"origen": "inspeccion", "destino": "rechazada", "etiqueta": "Inspeccion rechazada", "req_comentario": True},
-            {"origen": "aprobada", "destino": "emitida", "etiqueta": "Emitir habilitacion", "req_adjunto": True},
+            {"origen": "inspeccion", "destino": "rechazada", "etiqueta": "Inspeccion rechazada", "req_comentario": True, "accion": "rechazar"},
+            {"origen": "aprobada", "destino": "emitida", "etiqueta": "Emitir habilitacion", "req_adjunto": True, "accion": "aprobar"},
         ],
         docs=[
             {"nombre": "Contrato de locacion", "obligatorio": True, "aporta": "iniciador", "estado": "iniciado"},
@@ -491,9 +498,9 @@ async def seed_tipos(conn, sa):
             {"origen": "iniciado", "destino": "en_revision", "etiqueta": "Derivar a Habilitaciones",
              "destino_auto": {"tipo": "subarea", "id": sa["habilitaciones"], "nombre": "Habilitaciones Comerciales"}},
             {"origen": "en_revision", "destino": "aprobada", "etiqueta": "Aprobar cambio", "req_comentario": True},
-            {"origen": "en_revision", "destino": "rechazada", "etiqueta": "Rechazar", "req_comentario": True},
-            {"origen": "aprobada", "destino": "archivado", "etiqueta": "Archivar"},
-            {"origen": "rechazada", "destino": "archivado", "etiqueta": "Archivar"},
+            {"origen": "en_revision", "destino": "rechazada", "etiqueta": "Rechazar", "req_comentario": True, "accion": "rechazar"},
+            {"origen": "aprobada", "destino": "archivado", "etiqueta": "Archivar", "accion": "aprobar"},
+            {"origen": "rechazada", "destino": "archivado", "etiqueta": "Archivar", "accion": "rechazar"},
         ],
         docs=[
             {"nombre": "Constancia de habilitacion actual", "obligatorio": True, "aporta": "iniciador", "estado": "iniciado"},
@@ -523,9 +530,9 @@ async def seed_tipos(conn, sa):
             {"origen": "iniciado", "destino": "validando_anterior", "etiqueta": "Iniciar validacion"},
             {"origen": "validando_anterior", "destino": "validando_nuevo", "etiqueta": "Titular anterior OK", "req_comentario": True},
             {"origen": "validando_nuevo", "destino": "aprobada", "etiqueta": "Nuevo titular OK", "req_comentario": True},
-            {"origen": "validando_anterior", "destino": "rechazada", "etiqueta": "Rechazar por deuda", "req_comentario": True},
-            {"origen": "validando_nuevo", "destino": "rechazada", "etiqueta": "Rechazar nuevo titular", "req_comentario": True},
-            {"origen": "aprobada", "destino": "archivado", "etiqueta": "Archivar"},
+            {"origen": "validando_anterior", "destino": "rechazada", "etiqueta": "Rechazar por deuda", "req_comentario": True, "accion": "rechazar"},
+            {"origen": "validando_nuevo", "destino": "rechazada", "etiqueta": "Rechazar nuevo titular", "req_comentario": True, "accion": "rechazar"},
+            {"origen": "aprobada", "destino": "archivado", "etiqueta": "Archivar", "accion": "aprobar"},
         ],
         docs=[
             {"nombre": "Boleto de transferencia", "obligatorio": True, "aporta": "iniciador", "estado": "iniciado", "requiere_firma": True},
@@ -553,8 +560,8 @@ async def seed_tipos(conn, sa):
         transiciones=[
             {"origen": "solicitada", "destino": "programada", "etiqueta": "Programar inspeccion"},
             {"origen": "programada", "destino": "realizada", "etiqueta": "Marcar como realizada"},
-            {"origen": "realizada", "destino": "aprobada", "etiqueta": "Aprobar", "req_comentario": True},
-            {"origen": "realizada", "destino": "rechazada", "etiqueta": "Rechazar", "req_comentario": True},
+            {"origen": "realizada", "destino": "aprobada", "etiqueta": "Aprobar", "req_comentario": True, "accion": "aprobar"},
+            {"origen": "realizada", "destino": "rechazada", "etiqueta": "Rechazar", "req_comentario": True, "accion": "rechazar"},
         ],
         docs=[
             {"nombre": "Acta de inspeccion bromatologica", "obligatorio": True, "aporta": "oficina_actual",
@@ -584,8 +591,8 @@ async def seed_tipos(conn, sa):
             {"origen": "iniciado", "destino": "revision_tecnica", "etiqueta": "Derivar a Obras Particulares",
              "destino_auto": {"tipo": "subarea", "id": sa["obras_particulares"], "nombre": "Obras Particulares"}},
             {"origen": "revision_tecnica", "destino": "pago_pendiente", "etiqueta": "Aprobar tecnicamente"},
-            {"origen": "pago_pendiente", "destino": "instalado", "etiqueta": "Confirmar pago e instalacion", "req_adjunto": True},
-            {"origen": "revision_tecnica", "destino": "rechazado", "etiqueta": "Rechazar", "req_comentario": True},
+            {"origen": "pago_pendiente", "destino": "instalado", "etiqueta": "Confirmar pago e instalacion", "req_adjunto": True, "accion": "aprobar"},
+            {"origen": "revision_tecnica", "destino": "rechazado", "etiqueta": "Rechazar", "req_comentario": True, "accion": "rechazar"},
         ],
         docs=[
             {"nombre": "Plano del cartel", "obligatorio": True, "aporta": "iniciador", "estado": "iniciado"},
@@ -616,7 +623,7 @@ async def seed_tipos(conn, sa):
             {"origen": "presentado", "destino": "admitido", "etiqueta": "Admitir formalmente",
              "req_comentario": True, "quien_puede": {"subareas": [sa["legales"]]}},
             {"origen": "presentado", "destino": "inadmisible", "etiqueta": "Declarar inadmisible",
-             "req_comentario": True, "req_adjunto": True},
+             "req_comentario": True, "req_adjunto": True, "accion": "rechazar"},
             {"origen": "admitido", "destino": "resolucion_dictada", "etiqueta": "Dictar resolucion",
              "req_adjunto": True},
             {"origen": "resolucion_dictada", "destino": "archivado", "etiqueta": "Archivar"},

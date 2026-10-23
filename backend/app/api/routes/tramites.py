@@ -1435,7 +1435,10 @@ async def liberar_tramite(
     response_model=TramiteDetalleOut,
     # Marker OpenAPI (§9): verifica que el deploy del cierre del bypass
     # nivel-2 (auditoria 2026-07) aplico en prod — documentacion pura.
-    responses={403: {"description": "Fuera de tu colectivo destinatario o no cumplis quien_puede de la transicion (scope-subarea 2026-07-19)"}},
+    responses={
+        200: {"description": "Detalle del tramite. Si la transicion llega a un estado final con tipo_accion aprobar/rechazar sella el resultado; si el tramite ya estaba en un estado final no vuelve a avisar al iniciador (2026-10-23)"},
+        403: {"description": "Fuera de tu colectivo destinatario o no cumplis quien_puede de la transicion (scope-subarea 2026-07-19)"},
+    },
 )
 async def transicionar_tramite(
     tramite_ref: str,
@@ -1534,6 +1537,11 @@ async def transicionar_tramite(
     )).fetchone()
     es_final = estado_destino_row.es_final if estado_destino_row else False
     etiqueta_destino = estado_destino_row.etiqueta if estado_destino_row else ""
+    # Algunos circuitos archivan desde un estado que ya es final (Rechazada -> Archivado).
+    origen_era_final = bool(await db.scalar(
+        text("SELECT es_final FROM tipo_tramite_estado WHERE id_tipo_tramite_estado=:id"),
+        {"id": id_estado_origen},
+    ))
 
     # Calcular nuevo destinatario
     dest_auto = trans.get("destino_automatico_jsonb")
@@ -1620,12 +1628,18 @@ async def transicionar_tramite(
     )
     # mig 101: la transicion FINAL con tipo_accion aprobar/rechazar sella el
     # resultado sola (decision de Cesar 2026-08-30). Misma transaccion.
+    resultado_nuevo = None
     if es_final:
-        await svc_ciclo.derivar_resultado_por_transicion(
+        resultado_nuevo = await svc_ciclo.derivar_resultado_por_transicion(
             db, id_tramite, tramite, trans.get("tipo_accion"),
             current_user["id_usuario"], agente["id_agente"], request,
         )
     await db.commit()
+
+    # Si el tramite ya estaba en un estado final, el iniciador ya supo que termino:
+    # no se le vuelve a avisar, salvo que esta transicion selle el resultado
+    # (decision de Cesar 2026-10-23).
+    avisar_terminacion = es_final and (not origen_era_final or resultado_nuevo is not None)
 
     # Notificar solo si el destinatario cambio (transicion con dest_auto a otro recurso)
     destino_cambio = (
@@ -1637,14 +1651,14 @@ async def transicionar_tramite(
 
     # Si llego a estado final, notificar al iniciador (interno in-app, o
     # ciudadano/empresa por email). Solo si la transicion lo pide (BUG-05).
-    if es_final and trans.get("notifica_iniciador"):
+    if avisar_terminacion and trans.get("notifica_iniciador"):
         await svc_notif.notificar_estado_final_a_iniciador(
             db, id_tramite, etiqueta_destino, background_tasks,
             mensaje_custom=trans.get("mensaje_iniciador"),
         )
     # mig 101: "termino y fue aprobado/rechazado" al vecino (bandeja PWA + push;
     # el mail sigue gobernado por notifica_iniciador arriba) + encuesta CSAT.
-    if es_final:
+    if avisar_terminacion:
         await svc_ciclo.al_terminar(id_tramite, con_email=False)
 
     return await _tramite_detalle_out(id_tramite, db)
