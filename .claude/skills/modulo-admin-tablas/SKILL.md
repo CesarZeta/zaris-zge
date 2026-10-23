@@ -39,6 +39,14 @@ description: "Usar al trabajar en el módulo Admin Tablas / CRUD genérico de ma
 
 3. **Shell** — agregar `<a class="nav__link" href="frontend/admin_tablas.html?tabla=nombre_tabla">` en la sección Maestros de `index.html`.
 
+### Encabezados, tipo `duracion` y campos de reclamos (2026-10-23)
+
+- **Encabezado de columna = etiqueta del formulario** (`encabezadoColumna`): `col.th` si existe (versión corta para la columna: «Estado final», «Orden», «Días», «SLA», «Asigna a mano»…), si no `col.label`; la PK dice «ID». `formatHeader` (nombre de columna sin tildes) queda solo de respaldo para columnas sin campo. Campo nuevo con etiqueta larga ⇒ sumarle `th`.
+- **Tipo de campo `duracion`**: número + unidad (días / horas / minutos), se guarda en MINUTOS (`readForm` multiplica; al cargar elige la unidad más grande que divide exacto, `_duracionPartes`; listado con `_fmtDuracion`: «3 días», «4 h», «30 min»). Hoy lo usa `tipo_reclamo.sla_minutos` (mig 120); valida ≥ 1 minuto.
+- **Tipos de Reclamo**: SLA editable (`sla_minutos`, obligatorio, columna «SLA»); `sla_dias` NO está en `TABLE_CONFIG.cols` (lo deriva un trigger) y «Duración estimada» salió del form y de `cols` (sin uso).
+- **Subáreas**: el tilde es `asignacion_manual` («Asigna a mano», excepción a la asignación automática general de Configuración → Sistema, mig 121); `asignacion_automatica` salió de `cols` (un PUT con solo ese campo da 422).
+- Los `checkbox` muestran su `hint`; `.field input/textarea` con `box-sizing: border-box` (desbordaban el modal 3 px y aparecía scroll horizontal). El spinner de carga del listado se quita al pintar la tabla.
+
 ### Listado: orden por columnas (§23, F3 2026-10-22)
 
 `GET /{tabla}` trae la tabla entera, así que el listado ordena **en pantalla** (`ordenarFilasListado` + `thOrden` en `admin_tablas.html`, estado en `_ordenListado`). Se ordena por **lo que muestra la celda**: para una FK (`FK_DISPLAY_MAP`) o un enum (`ENUM_LABELS`) por la etiqueta, no por el id guardado (`_valorOrden`; el primer intento ordenaba por id y la subárea quedaba desordenada). El desplegable «Ordenar» se eliminó: lo reemplazan los encabezados + la columna **«Alta»** (`fecha_alta`/`fecha_creacion`/`creado_en`, solo si la tabla la tiene); sin columna elegida, el más reciente primero (`reverse` del orden por PK). Las filas de hijos en línea (área → subáreas) acompañan a su padre y su `colspan` cuenta todas las columnas (`totalCols`). Columna nueva en el listado ⇒ sumarla a `totalCols`.

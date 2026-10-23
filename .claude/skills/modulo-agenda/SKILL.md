@@ -21,7 +21,7 @@ description: "Usar al trabajar en el módulo Agenda de ZARIS (archivos: backend/
 
 **`equipo_agentes` (no `equipo_usuarios`):** pivot equipo↔agente. `equipo_usuarios` solo existe vacío en local; en prod no existe.
 
-**`asignacion_a` en `tipo_reclamo`:** define si las OTs del tipo bloquean agenda de `agente` o `equipo`. `duracion_estimada_min` es lo que bloquea el calendario (distinto de `sla_dias`, deadline del reclamo).
+**`asignacion_a` en `tipo_reclamo`:** define si las OTs del tipo van a un `agente` o a un `equipo` (desde 2026-10-21 los reclamos no se agendan: no bloquean calendario). `duracion_estimada_min` quedó sin uso y fuera del formulario de Maestros (2026-10-23); el SLA del tipo es `sla_minutos` (mig 120, `sla_dias` derivado).
 
 **Tres tipos de recurso:** `agente`, `equipo`, `espacio`. Espacio puede ser `atendido` (necesita agentes vinculados vía `espacio_agentes`) o desatendido.
 

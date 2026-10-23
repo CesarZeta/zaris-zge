@@ -18,7 +18,7 @@ description: "Usar al trabajar en el módulo Reclamos de ZARIS (archivos: backen
 | `reclamos` | Transaccional principal — un registro por reclamo |
 | `reclamo_historial` | Timeline de cambios de estado (INSERT solo, nunca UPDATE) |
 | `reclamo_adjuntos` | Adjuntos del reclamo (§22) — binarios en Supabase Storage, metadatos acá |
-| `tipo_reclamo` | Maestro con `id_area`, `id_subarea`, `sla_dias`, `audit` (FK → `area`, `subarea`) |
+| `tipo_reclamo` | Maestro con `id_subarea`, `sla_minutos` (SLA, mig 120) y `sla_dias` (DERIVADO por trigger, solo compatibilidad), `audit`, `asignacion_a` (FK → `subarea`) |
 | `estado_reclamo` | Maestro de estados válidos — PK **`id_estado_reclamo`** (no `id_estado`) |
 | `ordenes_trabajo` | OT operativa o de auditoría asociada a un reclamo |
 | `estado_ot` | Estados de OT: `En gestión`, `En espera`, `Pendiente`, `Terminada`, `Cancelada` |
@@ -284,7 +284,7 @@ Detalles del aprendizaje (incluyendo trampas que NO funcionaron) en memoria [[fe
 | `canal_origen` | VARCHAR(20) | `web` / `whatsapp` / `telefono` / `presencial` / `oficio` / `app_movil` / `otro`. |
 | `fecha_primer_asignacion` | TIMESTAMPTZ | Set al pasar a `En gestión` (medición de SLA real). **Hasta 2026-05-25 NO se seteaba** (bug); ahora se hace vía `COALESCE(fecha_primer_asignacion, NOW())` en `cambiar_estado` (reclamos.py) y en `crear_ot`/`crear_ot_con_agenda` (ordenes_trabajo.py). El COALESCE evita pisarla al volver a En gestión. |
 | `fecha_cierre` | TIMESTAMPTZ | Set al pasar a estado final (`Resuelto` o `Cancelado`). Lo setean **las 3 vías** que llevan a estado final: `cambiar_estado` (pase manual), `_resolver_reclamo`/cierre vía OT, y `PUT /{id}/cancelar` (este último se quedó afuera del fix de mayo y se corrigió el 2026-06-01 con `fecha_cierre=COALESCE(fecha_cierre, NOW())`, commit `09c2dda`). Si agregás otra ruta a estado final, setearla ahí también — un fix que cubre una vía no cubre las otras (ver memoria `feedback_guard_subarea_cubre_todas_las_vias`). |
-| `sla_vencimiento` | TIMESTAMPTZ | Calculado por trigger `trg_sla_reclamo` = `fecha_alta + tipo_reclamo.sla_dias`. |
+| `sla_vencimiento` | TIMESTAMPTZ | Calculado al INSERT por trigger `trg_sla_reclamo` = `fecha_alta + tipo_reclamo.sla_minutos` (mig 120; tiempo corrido: sábados, domingos y feriados cuentan). Cambiar el SLA del tipo NO recalcula los reclamos existentes. |
 
 ### Estado (FK vs VARCHAR — transición)
 

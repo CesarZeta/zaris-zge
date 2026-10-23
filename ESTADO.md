@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-10-22, 3ª sesión (Cesar). Orden por columnas **F3 HECHO** (Ciudadanos, Empresas, Usuarios, Encuestas, Agenda, Maestros): con eso **el estándar §23 queda aplicado en toda la suite**. Ciudadanos y Empresas pasan a filtrar, ordenar y paginar en el servidor (el listado traía hasta 1000 filas y en prod ya hay 956 ciudadanos); el filtro «Tipo» de Encuestas → Envíos ahora ofrece Trámites. Verificado en local (smoke 122/122 + las 13 pantallas recorridas con clics) y en prod (API + navegador con el bundle nuevo: Ciudadanos, Empresas, Envíos y Maestros → Agentes); Usuarios queda sin mirar en prod (pregunta 7).
+**Última actualización:** 2026-10-23 (Cesar). **SLA de los tipos de reclamo en minutos** (mig 120: número + unidad en Maestros, vencimiento y % del BI exactos; demo rebalanceada, BI en 66,6 %) y **asignación automática general del municipio** (mig 121: interruptor en Configuración → Sistema + excepción «Asigna a mano» por gestión; se tradujo el estado anterior, sigue asignando sola solo Alumbrado). Además: buscador de Ciudadanos/Empresas con un solo campo, encabezados de Maestros con tildes. Prueba del funcionario cerrada (OT asignada → push → terminada desde la app de agentes con resolución, aviso y encuesta al vecino). Verificado en local con smokes y clics, y en prod por API/SQL; la parte de Maestros y Configuración solo la puede mirar un admin (pregunta 1).
 
 ---
 
@@ -18,21 +18,20 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **Funcionario de prueba:** César asigna REC-2026-003079 (Arbolado, sin asignar) al funcionario de prueba desde la mesa (Ver → PLANIFICAR) y confirma si el push llega. Yo no tengo credenciales de un supervisor de Arbolado (y no se prueban claves).
-2. **Autoasignación en Alumbrado Público (prendida 2026-10-22):** la gestión tiene UN solo agente de nivel Gestión, así que recibe todo lo que entre. Mirar una semana y decidir si se suma gente o se prende en otras gestiones.
-3. **Commits viejos de las dos purgas (2026-09-20 y 2026-10-21): César mandó el pedido a GitHub Support el 2026-10-22.** No preguntar antes del 2026-10-23 (24 h, pedido de César). Después: si GitHub contestó, verificar que los commits viejos ya no abran por SHA (el 2026-10-22 seguían en 200; detalle en la memoria privada de Cesar).
-4. **Super administrador multi-municipio (IT-01):** ¿cuándo arrancamos el diseño? F3 ya está hecho; recomendación: ahora, junto con las áreas fijas.
-5. **Base de conocimiento de ayudas** (reemplaza a los manuales, César 2026-10-22): ¿cuándo la diseñamos? Recomendación: una sesión de diseño primero (formato de pregunta/respuesta, búsqueda, si reemplaza al módulo Guías y qué pasa con los `docs/manual_*.html` actuales).
-6. **Ciudadano 1618** (alta por agente del 2026-06-15, cuenta de App Vecinos pendiente, sin clave, token vencido): es la única cuenta de vecino pendiente que no es una prueba nuestra conocida. ¿Es una persona real (le reenvío la activación) o una prueba de Roy (no se toca)?
-7. **Usuarios → Listado en prod (F3) sin verificar:** es solo para administradores y no tengo una clave de admin de prod. Cuando entres, mirá que los encabezados ordenen y que aparezca la columna «Alta» (en local funciona). Agenda y la tabla «CSAT por área» se verificaron solo en local (mismo código que el resto).
-8. Sin respuesta de sesiones anteriores: mail real del retrabajo (¿lo pruebo con tu vecino de prueba?) · PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
+1. **Mirar en prod con la sesión de admin (2026-10-23):** Maestros → Tipos de Reclamo (columna «SLA» y el campo número + unidad; probar guardar uno en horas), Maestros → Subáreas (columna y tilde «Asigna a mano»), Configuración → Sistema (interruptor «Asignación automática de reclamos») y Contactos → Ciudadanos/Empresas (buscador de un solo campo). En local está todo probado con clics; en prod solo por API/SQL.
+2. **Asignación automática general:** quedó prendida con 81 gestiones como excepción «a mano» (traducción exacta de cómo estaba: solo Alumbrado asigna sola). ¿Le sacamos la excepción a las 17 gestiones que tienen un agente de nivel Gestión? Las 25 sin agentes conviene dejarlas a mano (si no, cada reclamo avisa «sin candidatos»). Alumbrado: revisar la carga de su único agente ~2026-10-29 (hasta hoy solo le entraron reclamos demo).
+3. **Mail real del retrabajo (auditoría):** probarlo con REC-2026-003079 (Resuelto, el vecino es César): Reclamos → Enviar a auditoría → OT → Auditoría → Observar → «Sí». Crea un reclamo de retrabajo real en Arbolado.
+4. **Commits viejos de las dos purgas:** César mandó el pedido a GitHub Support el 2026-10-22; sin respuesta al 2026-10-23 → volver a preguntar el lunes 2026-10-26 (detalle en la memoria privada de Cesar).
+5. **Super administrador multi-municipio (IT-01):** ¿cuándo arrancamos el diseño? Recomendación: ahora, junto con las áreas fijas.
+6. **Base de conocimiento de ayudas:** César la quiere tratar en una sesión completa (2026-10-23). Mientras tanto no se tocan manuales.
+7. Sin respuesta de sesiones anteriores: PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
 
 ---
 
 ## 🔵 En curso
 
-- **Prueba real del funcionario — a medias (2026-10-20).** Mail, cambio de clave, login y push activado (primera suscripción de prod). Falta el push de una OT asignada (pregunta 1).
-- **Auditoría de reclamos — circuito completo en prod (F1-F4, 2026-10-20).** Queda solo la **prueba real del mail en prod**: no se observó ninguna auditoría real con «Sí» (el mail se verificó en MOCK, y el link del botón → `https://vecinos.zaris.com.ar/reclamos` da 200). Se puede hacer con el vecino de prueba de César (manda un correo real a su casilla) o esperar el primer uso real.
+- **Auditoría de reclamos — circuito completo en prod (F1-F4, 2026-10-20).** Queda solo la **prueba real del mail en prod** (pregunta 3).
+- **Limpieza pendiente (mig 122, cuando César lo confirme):** borrar `subarea.asignacion_automatica` (sin uso desde la 121; prod ya corre el código nuevo) y evaluar `tipo_reclamo.duracion_estimada_min` (sin uso desde 2026-10-21). Ojo: el permiso del MCP rechaza `DROP` en `apply_migration`; hace falta que César lo apruebe.
 - **PWA `zaris-vecinos` — modo escritorio del portal: diseño aprobado el 2026-10-12 (3ª), falta plan + código.** Solo toca el repo de la PWA; spec y pasos en su `ESTADO.md` → En curso.
 - **PROPUESTA sin aprobar — app de agentes: reclamos de oficio + «Control de entradas» (QR).** Pedido de César al cierre del 2026-10-12; las 4 decisiones de alcance ya están tomadas (de oficio · niveles 1-4 · acreditar niveles 1-4 · nombre «Control de entradas») y el diseño está escrito en [`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md). **Próxima sesión: César confirma o corrige el diseño y recién ahí F1 (backend sin migración + smoke).** No hay código.
 - **App de agentes** publicada en `https://agentes.zaris.com.ar` (color del municipio, instalación desde «Mi perfil»); el vecino instala la suya desde su portal. Detalle en `zaris-agentes/ESTADO.md`.
@@ -45,7 +44,7 @@
 ## 🟠 Pendientes (backoffice / backend)
 
 **Próxima sesión — prueba de las apps (César)**
-- 🟡 **Perfiles de prueba** (emails en la memoria privada de Cesar): vecino HECHO (2026-10-12; el botón de pánico no se probó, dispara una alerta REAL); funcionario: falta el push (ver En curso).
+- 🟡 **Perfiles de prueba** (emails en la memoria privada de Cesar): vecino HECHO (2026-10-12; el botón de pánico no se probó, dispara una alerta REAL); funcionario HECHO (2026-10-23: OT asignada → push → terminada desde la app de agentes).
 - 🟢 **Circuito funcionario → agente: HECHO (2026-10-20/21).** Datos personales solo de la ficha; cargo/horario/equipo los completa el supervisor de la gestión (mig 113); una sola gestión y email por persona, la del agente (mig 116); toda persona con usuario tiene ficha (mig 118, fichas demo con DNI 99.000.000 + id_agente; desde el 2026-10-22 no reciben cuenta de App Vecinos hasta cargar el DNI real). Pendiente de IT-01: el super administrador multi-municipio.
 
 **Decisiones de negocio pendientes (César)**
@@ -74,6 +73,8 @@
 ---
 
 ## ✅ Hecho reciente (últimas sesiones)
+
+- **2026-10-23 — SLA en minutos (mig 120) + asignación automática general (mig 121) (`4c9f5ee`), buscador de un solo campo (`f42181d`), encabezados de Maestros (`2266b72`).** Smokes `smoke_sla_asignacion_general.py` 27/27, auditoría 86/86, demo SLA 44/44. Prod: backups `_backup_tipo_reclamo_sla_2026_10_23`, `_backup_subarea_asignacion_2026_10_23` y `_backup_rebalanceo_sla_*_2026_10_23`; rebalanceo demo 322 reclamos (BI 55,1 % → 66,6 %, meses 61-74 %). Prueba del funcionario cerrada (REC-2026-003079). Ciudadano 1618 = prueba de Roy (no se toca).
 
 - **2026-10-20/22 — Orden por columnas en toda la suite (F1 `ad61530`, F2 `e9103a1`, F3 `97fb3bf`).** Helper `utils/orden.py` (lista cerrada, 422) + `ui/orden.tsx`; el detalle de cada pantalla vive en CLAUDE.md §23 y en las skills. F3: Ciudadanos/Empresas buscan, ordenan y paginan en el servidor (`q`/`desde`/`hasta`/`orden`/`dir` + `X-Total-Count`); filtro «Trámites» en Envíos. Smoke `smoke_orden_listados.py` 122/122; verificado en local con clics y en prod.
 - **2026-10-22 — Ficha demo sin App Vecinos + mig 119** (FK de la gestión) **y lista de arranque:** 32 reclamos viejos de prueba cerrados (backups `_backup_reclamos_qa_2026_10_22` / `_backup_ot_qa_2026_10_22`), autoasignación de Alumbrado, links profundos del shell (CLAUDE.md §14), «VER PENDIENTES», recuadro «Resolución» en la PWA, logins sin `email`, fuera los endpoints de OT con agenda.

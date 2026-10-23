@@ -48,7 +48,9 @@ carpeta **gitignoreada** — datos personales, jamas versionar):
   2026-10-21 el pool de reclamos tomaba cualquier ciudadano con email).
 - **Cierres SLA-aware (decision de Cesar 2026-10-21, `services/demo_sla.py`):**
   cada mes (por mes de ALTA) una fraccion p entre 60 % y 85 % de lo que se cierra
-  lo hace DENTRO del SLA del tipo (criterio del BI: `FLOOR(dias) <= sla_dias`) y
+  lo hace DENTRO del SLA del tipo (criterio del BI de reclamos desde la mig 120:
+  `cierre - alta <= sla_minutos`, exacto, `bi.py::_DENTRO_SLA` /
+  `demo_sla.dentro_sla_reclamo`; trámites sigue con `FLOOR(dias) <= sla_dias`) y
   el resto fuera. p sale determinista por mes (`p_mes`, sorteado en [61, 84] para
   dejar margen al ruido); que item cae dentro lo decide una secuencia de Weyl
   sobre su id (error ~1 punto, no ~3 como un sorteo). Cada reclamo tiene un
@@ -70,7 +72,8 @@ carpeta **gitignoreada** — datos personales, jamas versionar):
   activo (app de agentes en un telefono real). Estado espejo del reclamo
   (En gestion / En espera / Terminada con el cierre del reclamo / Cancelada);
   `id_supervisor_asigna` = un supervisor de la gestion, o NULL +
-  `asignacion_automatica=TRUE` si la gestion tiene el tilde o no tiene supervisor.
+  `asignacion_automatica=TRUE` si la gestion asigna sola (mig 121: general
+  prendida y sin la excepcion `asignacion_manual`) o no tiene supervisor.
   **Sin ocupaciones** (los reclamos no se agendan). Historial con los textos del
   producto ("OT ... generada", "Reclamo resuelto" con la resolucion, que tambien
   va a `reclamos.resolucion` si existe la columna — mig 117).
@@ -133,8 +136,13 @@ carpeta **gitignoreada** — datos personales, jamas versionar):
   sin preguntar); (3) `poblar` por defecto; (4) historia de trámites por tramos ≤ 45 días.
   **Ojo:** el `poblar` cierra pendientes recientes y puede bajar un mes ya
   rebalanceado (septiembre quedó en 53,8 %): **correr el rebalanceo DESPUÉS del primer
-  `poblar`** y verificar el % por mes con SQL (`FLOOR(días de cierre) <= sla_dias`).
-  Resultado verificado: abril-octubre entre 60,4 % y 77,6 %.
+  `poblar`** y verificar el % por mes con SQL (desde la mig 120:
+  `fecha_cierre - fecha_alta <= make_interval(mins => sla_minutos)`).
+  Resultado verificado: abril-octubre entre 60,4 % y 77,6 % con el criterio viejo.
+  **2026-10-23:** el criterio exacto (mig 120) bajó 5 meses a 48-57 % (cierres demo
+  entre 3 y 4 días que el FLOOR contaba dentro); se re-corrió el rebalanceo con OK
+  de César: 322 reclamos demo adelantados, abril-octubre entre 61,2 % y 73,5 %,
+  BI en 66,6 %.
 - **Desde 2026-09-22 la corrida es ASINCRONA:** el POST valida, encola en un
   `BackgroundTask` (sesion SQL propia, `AsyncSessionLocal`) y responde **202**
   `{id_corrida, estado:'en_curso', consulta}`; el workflow hace polling de
