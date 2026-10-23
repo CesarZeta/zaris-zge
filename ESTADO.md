@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-10-23 (Cesar). **SLA de los tipos de reclamo en minutos** (mig 120: número + unidad en Maestros, vencimiento y % del BI exactos; demo rebalanceada, BI en 66,6 %) y **asignación automática general del municipio** (mig 121: interruptor en Configuración → Sistema + excepción «Asigna a mano» por gestión; se tradujo el estado anterior, sigue asignando sola solo Alumbrado). Además: buscador de Ciudadanos/Empresas con un solo campo, encabezados de Maestros con tildes. Prueba del funcionario cerrada (OT asignada → push → terminada desde la app de agentes con resolución, aviso y encuesta al vecino). Verificado en local con smokes y clics, y en prod por API/SQL; la parte de Maestros y Configuración solo la puede mirar un admin (pregunta 1).
+**Última actualización:** 2026-10-23 (Cesar). **SLA de los tipos de reclamo en minutos** (mig 120: número + unidad en Maestros, vencimiento y % del BI exactos; demo rebalanceada, BI en 66,6 %) y **asignación automática general del municipio** (mig 121: interruptor en Configuración → Sistema + excepción «Asigna a mano» por gestión; **asignan solas las 18 gestiones con agentes de nivel Gestión**, las 25 sin agentes siguen a mano). Además: buscador de Ciudadanos/Empresas con un solo campo, encabezados de Maestros con tildes. Prueba del funcionario cerrada. **César dio por cerrada la rama de estados, asignaciones y mesas** (la encuesta del reclamo de prueba se da por hecha; no se hizo la prueba real del mail del retrabajo). Verificado en local con smokes y clics, y en prod por API/SQL; Maestros y Configuración solo los puede mirar un admin (pregunta 1). Mig 122 (limpieza) pendiente en prod (pregunta 2). En otra sesión del mismo día se revisó **PHP2Shell** (CVE-2026-109618/109619): ZARIS no está afectado, no corre PHP en ningún repo ni dominio; sin cambios de código.
 
 ---
 
@@ -19,19 +19,18 @@
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
 1. **Mirar en prod con la sesión de admin (2026-10-23):** Maestros → Tipos de Reclamo (columna «SLA» y el campo número + unidad; probar guardar uno en horas), Maestros → Subáreas (columna y tilde «Asigna a mano»), Configuración → Sistema (interruptor «Asignación automática de reclamos») y Contactos → Ciudadanos/Empresas (buscador de un solo campo). En local está todo probado con clics; en prod solo por API/SQL.
-2. **Asignación automática general:** quedó prendida con 81 gestiones como excepción «a mano» (traducción exacta de cómo estaba: solo Alumbrado asigna sola). ¿Le sacamos la excepción a las 17 gestiones que tienen un agente de nivel Gestión? Las 25 sin agentes conviene dejarlas a mano (si no, cada reclamo avisa «sin candidatos»). Alumbrado: revisar la carga de su único agente ~2026-10-29 (hasta hoy solo le entraron reclamos demo).
-3. **Mail real del retrabajo (auditoría):** probarlo con REC-2026-003079 (Resuelto, el vecino es César): Reclamos → Enviar a auditoría → OT → Auditoría → Observar → «Sí». Crea un reclamo de retrabajo real en Arbolado.
+2. **Mig 122 en prod (la corre César):** el permiso del MCP frena todo `DROP`. En el SQL Editor de Supabase: `ALTER TABLE subarea DROP COLUMN IF EXISTS asignacion_automatica;` y `ALTER TABLE tipo_reclamo DROP COLUMN IF EXISTS duracion_estimada_min;` (archivo `backend/migrations/122_limpieza_columnas_sin_uso.sql`; respaldos tomados; el código de prod no las usa). Después, avisar para verificar.
+3. **Asignación automática — revisar ~2026-10-29:** carga de los agentes de las 18 gestiones que asignan solas (en varias hay UN solo agente de nivel Gestión que recibe todo; en Arbolado es el funcionario de prueba). Decidir si se suma gente o se vuelve a poner alguna a mano.
 4. **Commits viejos de las dos purgas:** César mandó el pedido a GitHub Support el 2026-10-22; sin respuesta al 2026-10-23 → volver a preguntar el lunes 2026-10-26 (detalle en la memoria privada de Cesar).
 5. **Super administrador multi-municipio (IT-01):** ¿cuándo arrancamos el diseño? Recomendación: ahora, junto con las áreas fijas.
 6. **Base de conocimiento de ayudas:** César la quiere tratar en una sesión completa (2026-10-23). Mientras tanto no se tocan manuales.
 7. Sin respuesta de sesiones anteriores: PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
+8. **`www.zaris.com.ar` da error de certificado (visto 2026-10-23):** el CNAME apunta a Vercel, pero el certificado que sirve cubre solo `zaris.com.ar`, así que quien entra con «www» ve una advertencia de seguridad. Recomendación: agregar `www.zaris.com.ar` al proyecto de Vercel del sitio, redirigido a `zaris.com.ar`. No se tocó.
 
 ---
 
 ## 🔵 En curso
 
-- **Auditoría de reclamos — circuito completo en prod (F1-F4, 2026-10-20).** Queda solo la **prueba real del mail en prod** (pregunta 3).
-- **Limpieza pendiente (mig 122, cuando César lo confirme):** borrar `subarea.asignacion_automatica` (sin uso desde la 121; prod ya corre el código nuevo) y evaluar `tipo_reclamo.duracion_estimada_min` (sin uso desde 2026-10-21). Ojo: el permiso del MCP rechaza `DROP` en `apply_migration`; hace falta que César lo apruebe.
 - **PWA `zaris-vecinos` — modo escritorio del portal: diseño aprobado el 2026-10-12 (3ª), falta plan + código.** Solo toca el repo de la PWA; spec y pasos en su `ESTADO.md` → En curso.
 - **PROPUESTA sin aprobar — app de agentes: reclamos de oficio + «Control de entradas» (QR).** Pedido de César al cierre del 2026-10-12; las 4 decisiones de alcance ya están tomadas (de oficio · niveles 1-4 · acreditar niveles 1-4 · nombre «Control de entradas») y el diseño está escrito en [`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md). **Próxima sesión: César confirma o corrige el diseño y recién ahí F1 (backend sin migración + smoke).** No hay código.
 - **App de agentes** publicada en `https://agentes.zaris.com.ar` (color del municipio, instalación desde «Mi perfil»); el vecino instala la suya desde su portal. Detalle en `zaris-agentes/ESTADO.md`.
@@ -43,11 +42,8 @@
 
 ## 🟠 Pendientes (backoffice / backend)
 
-**Próxima sesión — prueba de las apps (César)**
-- 🟡 **Perfiles de prueba** (emails en la memoria privada de Cesar): vecino HECHO (2026-10-12; el botón de pánico no se probó, dispara una alerta REAL); funcionario HECHO (2026-10-23: OT asignada → push → terminada desde la app de agentes).
-- 🟢 **Circuito funcionario → agente: HECHO (2026-10-20/21).** Datos personales solo de la ficha; cargo/horario/equipo los completa el supervisor de la gestión (mig 113); una sola gestión y email por persona, la del agente (mig 116); toda persona con usuario tiene ficha (mig 118, fichas demo con DNI 99.000.000 + id_agente; desde el 2026-10-22 no reciben cuenta de App Vecinos hasta cargar el DNI real). Pendiente de IT-01: el super administrador multi-municipio.
-
 **Decisiones de negocio pendientes (César)**
+- 🟡 **Botón de pánico de la PWA:** sin probar con el vecino de prueba (dispara una alerta REAL al COM). Las pruebas de vecino y funcionario están hechas (2026-10-12 y 2026-10-23).
 - 🟢 **Alta — huecos menores detectados en la revisión 2026-10-10:** la clave temporal del funcionario no vence si nunca la usa; la app de agentes no tiene «olvidé mi contraseña» (hoy se recupera desde el login del backoffice, link 24 h). El vecino NO recibe clave por mail (elige la suya por link) — recomendado mantenerlo.
 - 🟠 **Atención — residuos del plan (§4):** "ocupación vs disponibilidad efectiva" en el BI de atención · etapa 2 de HC (vista admin de `historia_clinica_acceso`, break-the-glass, ficha ampliada) · walk-in de Guardia sin evento de Emergencias.
 - 🟠 **Trámites — 2 residuos:** (a) las transiciones finales de los seeds usan `tipo_accion='avanzar'` (solo 6 tienen `aprobar`/`rechazar`) → el resultado automático y la encuesta CSAT no se disparan solos en la mayoría de los tipos (se puede mapear por estado destino); (b) los 4 tipos sin circuito (exención de tasas, permiso de espacio público, arbolado urbano, inscripción profesional) tienen la gestión asignada por criterio de Claude, cambiable desde el builder.
@@ -74,12 +70,9 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
-- **2026-10-23 — SLA en minutos (mig 120) + asignación automática general (mig 121) (`4c9f5ee`), buscador de un solo campo (`f42181d`), encabezados de Maestros (`2266b72`).** Smokes `smoke_sla_asignacion_general.py` 27/27, auditoría 86/86, demo SLA 44/44. Prod: backups `_backup_tipo_reclamo_sla_2026_10_23`, `_backup_subarea_asignacion_2026_10_23` y `_backup_rebalanceo_sla_*_2026_10_23`; rebalanceo demo 322 reclamos (BI 55,1 % → 66,6 %, meses 61-74 %). Prueba del funcionario cerrada (REC-2026-003079). Ciudadano 1618 = prueba de Roy (no se toca).
-
-- **2026-10-20/22 — Orden por columnas en toda la suite (F1 `ad61530`, F2 `e9103a1`, F3 `97fb3bf`).** Helper `utils/orden.py` (lista cerrada, 422) + `ui/orden.tsx`; el detalle de cada pantalla vive en CLAUDE.md §23 y en las skills. F3: Ciudadanos/Empresas buscan, ordenan y paginan en el servidor (`q`/`desde`/`hasta`/`orden`/`dir` + `X-Total-Count`); filtro «Trámites» en Envíos. Smoke `smoke_orden_listados.py` 122/122; verificado en local con clics y en prod.
-- **2026-10-22 — Ficha demo sin App Vecinos + mig 119** (FK de la gestión) **y lista de arranque:** 32 reclamos viejos de prueba cerrados (backups `_backup_reclamos_qa_2026_10_22` / `_backup_ot_qa_2026_10_22`), autoasignación de Alumbrado, links profundos del shell (CLAUDE.md §14), «VER PENDIENTES», recuadro «Resolución» en la PWA, logins sin `email`, fuera los endpoints de OT con agenda.
-- **2026-10-21 — Generador demo diario con SLA y trámites; Tomar/Resolver desde Reclamos (mig 117); coherencia de cuentas (migs 116, 118); seguridad del CRUD de Maestros; reclamos sin agenda (mig 115); purga de `agente.csv`.** Todo en prod; detalle en git y `HISTORIAL_MIGRACIONES.md`.
-- **2026-10-20 — Auditoría de reclamos posterior al cierre (mig 112, `PLAN_AUDITORIA_RECLAMOS.md`), orden por columnas F1, autoasignación (mig 114), supervisor en Maestros → Agentes (mig 113).** En prod.
+- **2026-10-23 — SLA en minutos (mig 120) + asignación automática general (mig 121, 18 gestiones asignan solas) (`4c9f5ee`), buscador de un solo campo (`f42181d`), encabezados de Maestros (`2266b72`), mig 122 (local; prod pendiente).** Smokes 27/27 · 86/86 · 44/44. Rebalanceo demo: 322 reclamos (BI 55,1 % → 66,6 %). Backups y detalle en `HISTORIAL_MIGRACIONES.md`. Rama «estados, asignaciones y mesas» cerrada por César (la auditoría F1-F4 queda sin la prueba real del mail del retrabajo: verificado en MOCK). Ciudadano 1618 = prueba de Roy.
+- **2026-10-20/22 — Orden por columnas en toda la suite (F1-F3, último `97fb3bf`);** fichas demo sin App Vecinos + mig 119; links profundos del shell (§14); «VER PENDIENTES»; logins sin `email`; fuera los endpoints de OT con agenda. Detalle en CLAUDE.md §23 y las skills.
+- **2026-10-23 — Revisión de PHP2Shell (CVE-2026-109618/109619, parche de PHP del 2026-10-21):** ZARIS no está afectado. Ninguno de los repos (zge, vecinos, agentes, ZGC, sitio + ZARIS News) tiene PHP, y todos los dominios públicos sirven estático (Vercel, GitHub Pages) o Python (Railway). Sin cambios.
 
 > Detalle por migración en `HISTORIAL_MIGRACIONES.md`; reglas de cada módulo en su skill; lo anterior a septiembre (julio-agosto 2026: auditoría de seguridad 48/48, migs 95-102, BI Operativo/Ejecutivo, PWA de Roy a prod, Usuarios en React) en `HISTORIAL_MIGRACIONES.md` y la memoria privada de César.
 
