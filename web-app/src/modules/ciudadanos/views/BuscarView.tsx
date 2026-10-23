@@ -5,15 +5,12 @@ import { useCambiarEstadoCiudadano, useCiudadanosRecientes, buscarCiudadanos } f
 import { ConfirmModal } from '../../agenda/components/ConfirmModal'
 import type { Ciudadano } from '../types/ciudadano'
 
-type Modo = 'numero' | 'texto'
-
 export function BuscarView() {
   const navigate = useNavigate()
   const push = useNotificationsStore((s) => s.push)
   const cambiarEstado = useCambiarEstadoCiudadano()
   const recientes = useCiudadanosRecientes(5)
 
-  const [modo, setModo] = useState<Modo>('numero')
   const [query, setQuery] = useState('')
   const [resultados, setResultados] = useState<Ciudadano[] | null>(null)
   const [total, setTotal] = useState(0)
@@ -28,15 +25,11 @@ export function BuscarView() {
       push({ kind: 'info', title: 'Ingresa un valor para buscar' })
       return
     }
-    // Lo escrito manda sobre la pastilla: con letras se busca por nombre y con solo
-    // números por DNI/CUIL. Antes «lorenzo» con «# DNI / CUIL» marcado (el modo de
-    // entrada) comparaba letras contra documentos y daba «no se encontró».
-    const soloNumeros = /^[\d\s\-().]+$/.test(q)
-    const modoEfectivo: Modo = /\p{L}/u.test(q) ? 'texto' : soloNumeros ? 'numero' : modo
-    if (modoEfectivo !== modo) setModo(modoEfectivo)
+    // Un solo campo: el backend decide por lo escrito (`tipo=auto`). Solo números
+    // busca por DNI, CUIL o teléfono; con letras, por nombre, apellido o email.
     setBuscando(true)
     try {
-      const res = await buscarCiudadanos({ q, tipo: modoEfectivo, limit: 20 })
+      const res = await buscarCiudadanos({ q, tipo: 'auto', limit: 20 })
       setResultados(res.data)
       setTotal(Number(res.headers.get('X-Total-Count') ?? res.data.length))
       if (res.data.length === 0) {
@@ -81,39 +74,12 @@ export function BuscarView() {
           Buscar ciudadano existente
         </div>
 
-        <div style={{ display: 'flex', gap: 6, marginBottom: '0.6rem' }}>
-          <button
-            type="button"
-            onClick={() => { setModo('numero'); setQuery(''); setResultados(null) }}
-            style={{
-              ...pillStyle,
-              background: modo === 'numero' ? 'var(--zaris-dark)' : 'transparent',
-              color: modo === 'numero' ? 'var(--zaris-cream)' : 'var(--fg-2)',
-              border: modo === 'numero' ? 'none' : '1px solid var(--border-primary)',
-            }}
-          >
-            # DNI / CUIL
-          </button>
-          <button
-            type="button"
-            onClick={() => { setModo('texto'); setQuery(''); setResultados(null) }}
-            style={{
-              ...pillStyle,
-              background: modo === 'texto' ? 'var(--zaris-dark)' : 'transparent',
-              color: modo === 'texto' ? 'var(--zaris-cream)' : 'var(--fg-2)',
-              border: modo === 'texto' ? 'none' : '1px solid var(--border-primary)',
-            }}
-          >
-            Aa Nombre
-          </button>
-        </div>
-
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); ejecutarBusqueda() } }}
-            placeholder={modo === 'numero' ? 'Ingresa Nro. de Documento o CUIL...' : 'Ingresa nombre o apellido...'}
+            placeholder="DNI, CUIL, teléfono, nombre, apellido o email..."
             autoFocus
             style={{
               flex: 1, minWidth: 240,
@@ -241,16 +207,6 @@ export function BuscarView() {
 }
 
 // ── Estilos inline ──
-const pillStyle: React.CSSProperties = {
-  padding: '4px 12px',
-  borderRadius: 'var(--radius-pill)',
-  fontFamily: 'var(--font-display)',
-  fontSize: '0.78rem',
-  fontWeight: 600,
-  cursor: 'pointer',
-  transition: 'background 150ms',
-}
-
 const btnPrimary: React.CSSProperties = {
   padding: '9px 14px',
   background: 'var(--zaris-dark)',

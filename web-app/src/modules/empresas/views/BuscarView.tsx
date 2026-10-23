@@ -5,15 +5,12 @@ import { buscarEmpresas, useCambiarEstadoEmpresa, useEmpresasRecientes } from '.
 import { ConfirmModal } from '../../agenda/components/ConfirmModal'
 import type { Empresa } from '../types/empresa'
 
-type Modo = 'numero' | 'texto'
-
 export function BuscarView() {
   const navigate = useNavigate()
   const push = useNotificationsStore((s) => s.push)
   const cambiarEstado = useCambiarEstadoEmpresa()
   const recientes = useEmpresasRecientes(5)
 
-  const [modo, setModo] = useState<Modo>('numero')
   const [query, setQuery] = useState('')
   const [resultados, setResultados] = useState<Empresa[] | null>(null)
   const [buscando, setBuscando] = useState(false)
@@ -29,9 +26,10 @@ export function BuscarView() {
     }
     setBuscando(true)
     try {
-      // En busqueda numerica, strip guiones para flexibilidad
-      const qEnviar = modo === 'numero' ? q.replace(/-/g, '') : q
-      const data = await buscarEmpresas({ q: qEnviar, tipo: modo, limit: 20 })
+      // Un solo campo: el backend decide por lo escrito (`tipo=auto`). Un CUIT con
+      // guiones, puntos o espacios se manda como dígitos para que lo tome como número.
+      const qEnviar = /^[\d\s\-.]+$/.test(q) ? q.replace(/\D/g, '') : q
+      const data = await buscarEmpresas({ q: qEnviar, tipo: 'auto', limit: 20 })
       setResultados(data)
       if (data.length === 0) {
         push({ kind: 'info', title: 'No se encontro ninguna empresa con esos datos' })
@@ -72,39 +70,12 @@ export function BuscarView() {
       >
         <div style={titulo}>Buscar empresa existente</div>
 
-        <div style={{ display: 'flex', gap: 6, marginBottom: '0.6rem' }}>
-          <button
-            type="button"
-            onClick={() => { setModo('numero'); setQuery(''); setResultados(null) }}
-            style={{
-              ...pillStyle,
-              background: modo === 'numero' ? 'var(--zaris-dark)' : 'transparent',
-              color: modo === 'numero' ? 'var(--zaris-cream)' : 'var(--fg-2)',
-              border: modo === 'numero' ? 'none' : '1px solid var(--border-primary)',
-            }}
-          >
-            # CUIT
-          </button>
-          <button
-            type="button"
-            onClick={() => { setModo('texto'); setQuery(''); setResultados(null) }}
-            style={{
-              ...pillStyle,
-              background: modo === 'texto' ? 'var(--zaris-dark)' : 'transparent',
-              color: modo === 'texto' ? 'var(--zaris-cream)' : 'var(--fg-2)',
-              border: modo === 'texto' ? 'none' : '1px solid var(--border-primary)',
-            }}
-          >
-            Aa Nombre
-          </button>
-        </div>
-
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); ejecutarBusqueda() } }}
-            placeholder={modo === 'numero' ? 'Ingresa CUIT de la empresa...' : 'Ingresa nombre o razon social...'}
+            placeholder="CUIT, razón social o email..."
             autoFocus
             style={searchInput}
           />
@@ -215,11 +186,6 @@ export function BuscarView() {
 const titulo: React.CSSProperties = {
   fontSize: 'var(--size-caption)', fontWeight: 700, textTransform: 'uppercase',
   letterSpacing: '0.07em', color: 'var(--fg-3)', marginBottom: '0.6rem',
-}
-const pillStyle: React.CSSProperties = {
-  padding: '4px 12px', borderRadius: 'var(--radius-pill)',
-  fontFamily: 'var(--font-display)', fontSize: '0.78rem', fontWeight: 600,
-  cursor: 'pointer', transition: 'background 150ms',
 }
 const searchInput: React.CSSProperties = {
   flex: 1, minWidth: 240, padding: '9px 12px',
