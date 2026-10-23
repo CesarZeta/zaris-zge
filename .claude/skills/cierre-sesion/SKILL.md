@@ -13,7 +13,12 @@ Rutina de fin de jornada. Trabajamos **en colaboración** (Cesar `CesarZeta` + R
 
 Ejecutar los 5 pasos en orden y reportar al final.
 
-> **REGLA DE CÉSAR (2026-10-20) — el cierre anota TODO y el arranque pregunta:** al cerrar, primero **cerrar lo que se pueda cerrar** (verificar un deploy, re-dispararlo, terminar lo que esté a medias). Todo lo que quede abierto —pendiente, verificación sin hacer, duda, decisión que le toca a César— se **escribe** en la lista de arranque: `ESTADO.md` → sección «❓ Preguntas abiertas para César» (sin datos sensibles) y, para César, la memoria privada `project_preguntas_arranque` (con el detalle sensible, p. ej. seguridad). **Nunca terminar el cierre con una pregunta que solo vive en el chat**: si no la responde, se pierde. Lo de seguridad con detalle explotable va SOLO a la memoria privada (§40: `ESTADO.md` es público). El reporte final es **corto** (César no lee el detalle del cierre): estado, una línea por cada punto abierto y «anotado para el arranque».
+> **REGLA DE CÉSAR (2026-10-20, reforzada 2026-10-23): el cierre CIERRA. No hay preguntas ni pendientes en el chat, y después no se sigue trabajando.**
+> - **Primero cerrar lo que se pueda cerrar, sin consultar:** verificar un deploy, re-dispararlo, pushear en verde, terminar lo que esté a medias.
+> - **Todo lo que quede abierto se escribe en la lista de arranque:** pendientes, verificaciones sin hacer, dudas y decisiones que le tocan a César. La lista es `ESTADO.md` → «❓ Preguntas abiertas para César» (sin datos sensibles) más la memoria privada `project_preguntas_arranque` (con el detalle sensible). Se le pregunta en la **primera respuesta de la próxima sesión**, no ahora. Lo de seguridad con detalle explotable va SOLO a la memoria privada (§40: `ESTADO.md` es público).
+> - **Durante el cierre no se le hace NINGUNA pregunta a César:** ni AskUserQuestion, ni «¿querés que…?», ni «decime cuáles…». Lo que antes se consultaba se resuelve con el criterio fijo del paso 2, o se anota para el arranque.
+> - **El reporte final no lleva signos de pregunta.** Es corto (César no lee el detalle) y cada punto abierto va como afirmación: «`www` sin certificado — anotado para el arranque». Motivo de César: si el cierre pregunta y él contesta, no se termina nunca de cerrar.
+> - **Después del reporte, la sesión está cerrada.** No hago más trabajo ni verificaciones por avisos automáticos (mensaje de otra sesión, fin de una tarea en background, aviso de idle): como mucho, una línea de acuse. Si el aviso trae algo que hay que hacer, se anota en la lista de arranque. Solo retomo si César escribe algo nuevo.
 
 ## 1. Chequeo de estado
 
@@ -39,10 +44,10 @@ echo "=== Commits REMOTOS sin traer (¿Roy pusheó?) ==="; git log --oneline HEA
 echo "=== Working tree ==="; git status --porcelain
 ```
 
-Interpretar y avisar:
-- **Commits locales sin pushear** → preguntar al usuario si pushear (push directo a main es OK con todo en verde — `feedback_push_directo_a_main`; si hay un error/intervención pendiente, PARAR y avisar).
-- **main local detrás del remoto** (Roy pusheó) → avisar; ofrecer `git pull --rebase`. Ojo con el bot de CI que commitea `dist/` (`win-quirks` Q18).
-- **Working tree sucio** → listar los archivos cambiados; decidir con el usuario si commitear, stashear o descartar. NUNCA `git checkout` masivo sin confirmar (`feedback_git_checkout_destruye_ediciones_sesion`).
+Resolver con este criterio fijo, **sin preguntar** (regla de arriba):
+- **Commits locales sin pushear** → pushear si todo está en verde (`feedback_push_directo_a_main`). Si hay un error o una intervención pendiente, NO pushear y anotarlo en la lista de arranque.
+- **main local detrás del remoto** (Roy pusheó) → `git pull --rebase` si el working tree está limpio; si no, anotarlo. Ojo con el bot de CI que commitea `dist/` (`win-quirks` Q18).
+- **Working tree sucio** → lo que hice en esta sesión se commitea y se pushea. Lo ajeno no se toca: otra sesión trabajando en el mismo tree (`feedback_sesion_paralela_cierre_aditivo`) o cambios de origen desconocido. Esos archivos se listan en la lista de arranque. Nunca descartar, stashear lo ajeno ni hacer `git checkout` masivo (`feedback_git_checkout_destruye_ediciones_sesion`).
 - ⚠️ Reportes de QA con PoCs no se commitean (§40); confirmar que ningún `.md`/`.html` de QA con payloads activos entró al stage.
 
 ## 3. Resumen de la sesión
@@ -105,8 +110,8 @@ Si no hubo hallazgos, decirlo — pero recién después de pensarlo, no por defe
 Antes del reporte: reescribir la lista de arranque (`ESTADO.md` «❓ Preguntas abiertas para César» + memoria `project_preguntas_arranque`) con TODO lo que quedó abierto, cada punto con mi recomendación. Cerrar con un bloque compacto:
 - ✅/⚠️ Estado: repo, deploys, Actions.
 - 🔄 Sync: pusheado / pendiente / si hay que traer commits de Roy.
-- 📝 Resumen de lo hecho + pendientes.
+- 📝 Resumen de lo hecho, y los puntos abiertos uno por línea, como afirmación + «anotado para el arranque». **Sin «?» en todo el reporte.**
 - 🧵 `ESTADO.md` actualizado y pusheado (cuál/es repos) — el hilo conductor común.
 - 🗂️ Bitácora privada actualizada (sí/no — solo Cesar).
 
-Si algo quedó sin resolver (un push que el usuario no autorizó, un workflow en rojo), **dejarlo explícito como pendiente para la próxima** — no maquillarlo como cerrado.
+Si algo quedó sin resolver (un push sin hacer, un workflow en rojo), **dejarlo explícito como pendiente anotado para la próxima**: no maquillarlo como cerrado, y tampoco convertirlo en una pregunta. **Ahí termina la sesión**: nada de trabajo después del reporte, salvo que César escriba algo nuevo.
