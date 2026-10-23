@@ -885,7 +885,7 @@ const SCHEMAS = {
       { field: 'descripcion', label: 'Descripción', type: 'textarea', required: false },
       { field: 'id_area',     label: 'Área',        type: 'select',   fk: 'area', fkLabel: 'nombre', fkPk: 'id_area', required: false },
       // Mig 114: los reclamos nuevos de esta gestión se asignan solos (sin mesa).
-      { field: 'asignacion_automatica', label: 'Asignación automática de reclamos', type: 'checkbox', required: false },
+      { field: 'asignacion_automatica', label: 'Asignación automática de reclamos', th: 'Asignación automática', type: 'checkbox', required: false },
     ],
     filtros: ['id_area'],
     display: ['id_subarea', 'nombre', 'descripcion', 'id_area', 'asignacion_automatica'],
@@ -963,8 +963,8 @@ const SCHEMAS = {
       { field: 'nombre',      label: 'Nombre',      type: 'text',     required: true },
       { field: 'descripcion', label: 'Descripción', type: 'textarea', required: false },
       { field: 'color',       label: 'Color (hex)', type: 'text',     required: false, hint: 'Ej: #f54e00' },
-      { field: 'es_final',    label: 'Estado final (cierra reclamo)', type: 'checkbox', required: false },
-      { field: 'orden',       label: 'Orden de display', type: 'number', required: false },
+      { field: 'es_final',    label: 'Estado final (cierra reclamo)', th: 'Estado final', type: 'checkbox', required: false },
+      { field: 'orden',       label: 'Orden de display', th: 'Orden', type: 'number', required: false },
     ],
     display: ['id_estado_reclamo', 'nombre', 'descripcion', 'es_final', 'orden'],
   },
@@ -975,8 +975,8 @@ const SCHEMAS = {
       { field: 'nombre',      label: 'Nombre',      type: 'text',     required: true },
       { field: 'descripcion', label: 'Descripción', type: 'textarea', required: false },
       { field: 'color',       label: 'Color (hex)', type: 'text',     required: false, hint: 'Ej: #1f8a65' },
-      { field: 'es_final',    label: 'Estado final (cierra OT)', type: 'checkbox', required: false },
-      { field: 'orden',       label: 'Orden de display', type: 'number', required: false },
+      { field: 'es_final',    label: 'Estado final (cierra OT)', th: 'Estado final', type: 'checkbox', required: false },
+      { field: 'orden',       label: 'Orden de display', th: 'Orden', type: 'number', required: false },
     ],
     display: ['id_estado_ot', 'nombre', 'descripcion', 'es_final', 'orden'],
   },
@@ -987,7 +987,7 @@ const SCHEMAS = {
       { field: 'nombre',                 label: 'Nombre',                    type: 'text',     required: true },
       { field: 'descripcion',            label: 'Descripción',               type: 'textarea', required: false },
       { field: 'capacidad_agentes',      label: 'Capacidad de agentes',      type: 'number',   required: false },
-      { field: 'dias_semana',            label: 'Días (coma-separados)',      type: 'text',     required: false, hint: 'Ej: lunes,martes,miércoles,jueves,viernes' },
+      { field: 'dias_semana',            label: 'Días (coma-separados)', th: 'Días', type: 'text', required: false, hint: 'Ej: lunes,martes,miércoles,jueves,viernes' },
       { field: 'hora_inicio',            label: 'Hora inicio',               type: 'time',     required: false },
       { field: 'hora_fin',               label: 'Hora fin',                  type: 'time',     required: false },
       { field: 'id_usuario_responsable', label: 'Responsable',               type: 'select',   fk: 'usuarios', fkLabel: 'nombre', fkPk: 'id_usuario', required: false },
@@ -1033,7 +1033,7 @@ const SCHEMAS = {
     cols: [
       { field: 'nombre',                label: 'Nombre',                     type: 'text',     required: true },
       { field: 'descripcion',           label: 'Descripción',                type: 'textarea', required: false },
-      { field: 'duracion_slot_minutos', label: 'Duración del slot (minutos)', type: 'number',   required: true },
+      { field: 'duracion_slot_minutos', label: 'Duración del slot (minutos)', th: 'Slot (min)', type: 'number', required: true },
       { field: 'visible_ciudadano',     label: 'Visible para ciudadano',     type: 'checkbox', required: false },
       { field: 'requiere_rrhh',         label: 'Requiere RRHH',              type: 'checkbox', required: false },
       { field: 'requiere_servicio',     label: 'Requiere servicio',          type: 'checkbox', required: false },
@@ -1092,7 +1092,7 @@ const SCHEMAS = {
       { field: 'nombre',       label: 'Nombre',            type: 'text', required: true },
       { field: 'provincia',    label: 'Provincia',         type: 'text', required: false },
       { field: 'pais',         label: 'País',              type: 'text', required: false, hint: 'Ej: Argentina.' },
-      { field: 'codigo_corto', label: 'Prefijo (3 letras)', type: 'text', required: false, hint: 'Código de 3 letras usado como prefijo en la numeración de trámites y en los enlaces públicos del municipio (ej. SAN).' },
+      { field: 'codigo_corto', label: 'Prefijo (3 letras)', th: 'Prefijo', type: 'text', required: false, hint: 'Código de 3 letras usado como prefijo en la numeración de trámites y en los enlaces públicos del municipio (ej. SAN).' },
     ],
     display: ['id_municipio', 'nombre', 'provincia', 'pais', 'codigo_corto'],
   },
@@ -1748,7 +1748,7 @@ async function renderListadoFiltrado(rows, schema) {
   // viejo "más reciente / más antiguo primero".
   const colAlta = (window._listadoRows || []).some(r => _fechaAlta(r));
   const totalCols = cols.length + (colAlta ? 1 : 0) + (colIntegrantes ? 1 : 0) + 1;
-  const headers = cols.map(c => thOrden(c, formatHeader(c))).join('')
+  const headers = cols.map(c => thOrden(c, encabezadoColumna(c, schema))).join('')
     + (colAlta ? thOrden(COL_ALTA, 'Alta') : '')
     + (colIntegrantes ? '<th>Integrantes</th>' : '')
     + '<th>Acciones</th>';
@@ -1842,9 +1842,11 @@ async function renderListadoFiltrado(rows, schema) {
         </tr>${asociados}`;
       }).join('');
 
-  // Eliminar tabla anterior si existe
+  // Eliminar tabla anterior si existe, y el spinner de carga del listado
+  // (quedaba girando arriba de la tabla mientras se la miraba).
   const prev = document.getElementById('listado-tabla-wrap');
   if (prev) prev.remove();
+  document.querySelector('#main > .loading')?.remove();
 
   const wrap = document.createElement('div');
   wrap.id = 'listado-tabla-wrap';
@@ -1881,6 +1883,14 @@ function formatHeader(col) {
   return col
     .replace(/^id_/, '').replace(/_/g, ' ')
     .replace(/\b\w/g, l => l.toUpperCase());
+}
+// Encabezado del listado: la etiqueta del formulario (con tildes) o su versión
+// corta `th` si la del formulario no entra en una columna. La PK es «ID»: con el
+// nombre de la columna decía «Agente» o «Cargo» arriba de un número.
+function encabezadoColumna(col, schema) {
+  if (col === schema.pk) return 'ID';
+  const def = (schema.cols || []).find(x => x.field === col);
+  return def ? (def.th || def.label) : formatHeader(col);
 }
 function isId(col) { return col.startsWith('id_') || col === 'id'; }
 
