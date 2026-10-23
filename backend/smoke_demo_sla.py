@@ -145,9 +145,9 @@ async def parte_a() -> None:
 
 SQL_MIX_RECLAMOS = """
     SELECT to_char(r.fecha_alta, 'YYYY-MM') AS mes,
-           COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND tr.sla_dias IS NOT NULL) AS cerrados,
-           COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND tr.sla_dias IS NOT NULL
-                AND FLOOR(EXTRACT(EPOCH FROM (r.fecha_cierre - r.fecha_alta)) / 86400.0) <= tr.sla_dias) AS dentro,
+           COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND tr.sla_minutos IS NOT NULL) AS cerrados,
+           COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND tr.sla_minutos IS NOT NULL
+                AND r.fecha_cierre - r.fecha_alta <= make_interval(mins => tr.sla_minutos)) AS dentro,
            COUNT(*) FILTER (WHERE r.estado IN ('Sin asignar','En gestión','En espera')) AS pendientes
       FROM reclamos r JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
      WHERE r.id_usuario_alta = :uid AND r.fecha_alta >= '2026-01-01' AND r.fecha_alta < '2026-03-01'
@@ -425,9 +425,9 @@ async def parte_b() -> None:
             fuera_rango = []
             for f in (await db.execute(text("""
                 SELECT to_char(r.fecha_alta AT TIME ZONE 'UTC', 'YYYY-MM') AS mes,
-                       COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND tr.sla_dias IS NOT NULL) AS c,
-                       COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND tr.sla_dias IS NOT NULL
-                            AND FLOOR(EXTRACT(EPOCH FROM (r.fecha_cierre - r.fecha_alta)) / 86400.0) <= tr.sla_dias) AS d,
+                       COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND tr.sla_minutos IS NOT NULL) AS c,
+                       COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND tr.sla_minutos IS NOT NULL
+                            AND r.fecha_cierre - r.fecha_alta <= make_interval(mins => tr.sla_minutos)) AS d,
                        COUNT(*) FILTER (WHERE r.estado IN ('Sin asignar','En gestión','En espera')) AS p
                   FROM reclamos r JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
                  WHERE r.id_usuario_alta = :u GROUP BY 1 ORDER BY 1"""), {"u": uid})).fetchall():

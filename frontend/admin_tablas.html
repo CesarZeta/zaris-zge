@@ -425,6 +425,7 @@
     .field textarea,
     .field select {
       width: 100%;
+      box-sizing: border-box; /* sin esto input/textarea medían 100% + padding y el modal scrolleaba en horizontal */
       background: transparent;
       border: 1px solid var(--border-primary);
       color: var(--fg-1);
@@ -884,11 +885,12 @@ const SCHEMAS = {
       { field: 'nombre',      label: 'Nombre',      type: 'text',     required: true },
       { field: 'descripcion', label: 'Descripción', type: 'textarea', required: false },
       { field: 'id_area',     label: 'Área',        type: 'select',   fk: 'area', fkLabel: 'nombre', fkPk: 'id_area', required: false },
-      // Mig 114: los reclamos nuevos de esta gestión se asignan solos (sin mesa).
-      { field: 'asignacion_automatica', label: 'Asignación automática de reclamos', th: 'Asignación automática', type: 'checkbox', required: false },
+      // Mig 121: excepción a la asignación automática general (Configuración → Sistema).
+      { field: 'asignacion_manual', label: 'Asigna a mano (fuera de la asignación automática de reclamos)', th: 'Asigna a mano', type: 'checkbox', required: false,
+        hint: 'La asignación automática se prende para todo el municipio en Configuración → Sistema. Tildá acá las gestiones cuyos reclamos siguen asignándose desde la mesa del supervisor.' },
     ],
     filtros: ['id_area'],
-    display: ['id_subarea', 'nombre', 'descripcion', 'id_area', 'asignacion_automatica'],
+    display: ['id_subarea', 'nombre', 'descripcion', 'id_area', 'asignacion_manual'],
   },
   tipo_usuario: {
     label: 'Tipo de Usuario', titulo: 'Maestro de Tipos de Usuario',
@@ -1001,18 +1003,19 @@ const SCHEMAS = {
       { field: 'nombre',      label: 'Nombre',      type: 'text',     required: true },
       { field: 'descripcion', label: 'Descripción', type: 'textarea', required: false },
       { field: 'id_subarea',  label: 'Subárea',     type: 'select',   fk: 'subarea', fkLabel: 'nombre', fkPk: 'id_subarea', required: false },
-      // Asignación automática (mig 114): a quién se asigna solo y cuánto se agenda.
+      // SLA (mig 120): número + unidad, se guarda en minutos.
+      { field: 'sla_minutos', label: 'SLA (plazo para resolver)', th: 'SLA', type: 'duracion', required: true,
+        hint: 'Se cuenta desde que entra el reclamo, en tiempo corrido (sábados, domingos y feriados cuentan). Con él se calcula el vencimiento.' },
+      // Asignación automática (mig 114/121): a quién se asigna solo.
       { field: 'asignacion_a', label: 'Se asigna a', type: 'select', required: true,
         options: [
           { v: 'agente', l: 'Un agente' },
           { v: 'equipo', l: 'Una cuadrilla (grupo de trabajo)' },
         ],
-        hint: 'Lo usa la asignación automática de la gestión (Subáreas): un agente de nivel Gestión o una cuadrilla con integrantes.' },
-      { field: 'duracion_estimada_min', label: 'Duración estimada (minutos)', type: 'number', required: true,
-        hint: 'Tiempo que se reserva en la agenda al asignar la OT (15 a 480).' },
+        hint: 'Lo usa la asignación automática (Configuración → Sistema): un agente de nivel Gestión o una cuadrilla con integrantes.' },
     ],
     filtros: ['id_subarea'],
-    display: ['id_tipo_reclamo', 'nombre', 'descripcion', 'id_subarea'],
+    display: ['id_tipo_reclamo', 'nombre', 'descripcion', 'id_subarea', 'sla_minutos'],
   },
 
   // ── Agenda (mig 39: areas dropeada, agenda_clase y agenda_feriado estandarizadas)
@@ -1801,7 +1804,8 @@ async function renderListadoFiltrado(rows, schema) {
           <span class="hijo-asociado__meta">${tipos} tipo${tipos === 1 ? '' : 's'}</span>
         </div>`;
       } else {
-        const sla = d.sla_dias != null ? `SLA ${d.sla_dias}d` : '—';
+        const sla = d.sla_minutos != null ? `SLA ${_fmtDuracion(d.sla_minutos)}`
+                  : d.sla_dias != null ? `SLA ${d.sla_dias}d` : '—';
         return `<div class="hijo-asociado">
           <span class="hijo-asociado__name">${nombre}</span>
           <span class="hijo-asociado__meta">${sla}</span>
@@ -1914,8 +1918,29 @@ const ENUM_LABELS = {
   tipo_grupo: { mesa_tramites: 'Mesa de entrada de trámites', trabajo_reclamos: 'Grupo de trabajo (cuadrilla)' },
 };
 
+// Plazos guardados en minutos (SLA de tipos de reclamo, mig 120): se cargan y se
+// muestran en la unidad más grande que los divide exacto.
+const DURACION_UNIDADES = [
+  { v: 1440, l: 'días' },
+  { v: 60,   l: 'horas' },
+  { v: 1,    l: 'minutos' },
+];
+function _duracionPartes(min) {
+  const m = Number(min);
+  if (!m) return { n: '', unidad: 1440 };
+  const u = DURACION_UNIDADES.find(x => m % x.v === 0) || DURACION_UNIDADES[2];
+  return { n: m / u.v, unidad: u.v };
+}
+function _fmtDuracion(min) {
+  const { n, unidad } = _duracionPartes(min);
+  if (n === '') return '—';
+  if (unidad === 1440) return `${n} ${n === 1 ? 'día' : 'días'}`;
+  return unidad === 60 ? `${n} h` : `${n} min`;
+}
+
 function formatCell(val, col) {
   if (val === null || val === undefined) return '<span style="color:var(--fg-3)">—</span>';
+  if (col === 'sla_minutos') return _fmtDuracion(val);
   if (typeof val === 'boolean') return val
     ? '<span class="badge badge-on">Sí</span>'
     : '<span class="badge badge-off">No</span>';
@@ -1968,6 +1993,20 @@ async function buildForm(schema, record = null, bodyId = 'modalBody') {
       html += `<div class="field-check">
         <input type="checkbox" id="f_${col.field}" name="${col.field}" ${chk} ${dis}>
         <label for="f_${col.field}">${col.label}</label>
+      </div>${hint}`;
+    } else if (col.type === 'duracion') {
+      // Plazo guardado en minutos (SLA, mig 120): número + unidad.
+      const { n, unidad } = _duracionPartes(val);
+      const unidades = DURACION_UNIDADES.map(u =>
+        `<option value="${u.v}" ${u.v === unidad ? 'selected' : ''}>${u.l}</option>`
+      ).join('');
+      html += `<div class="field">
+        <label for="f_${col.field}">${col.label}</label>
+        <div style="display:flex;gap:0.5rem;">
+          <input type="number" min="0" step="any" id="f_${col.field}" name="${col.field}" value="${n}" ${req} ${dis} style="flex:1;min-width:0;">
+          <select id="f_${col.field}_unidad" aria-label="Unidad" ${dis} style="width:auto;">${unidades}</select>
+        </div>
+        ${hint}
       </div>`;
     } else if (col.type === 'select' && col.fk) {
       const opts = fkCache[col.fk] || [];
@@ -2523,6 +2562,10 @@ function readForm() {
     if (!el) continue;
     if (col.type === 'checkbox') {
       data[col.field] = el.checked;
+    } else if (col.type === 'duracion') {
+      const v = el.value.trim();
+      const factor = Number(document.getElementById(`f_${col.field}_unidad`)?.value || 1);
+      data[col.field] = v === '' ? null : Math.round(Number(v) * factor);
     } else {
       const v = el.value.trim();
       const isNumeric = col.type === 'number' || col.fk || col.field.startsWith('id_');
@@ -2540,6 +2583,10 @@ async function guardarRegistro() {
   for (const col of schema.cols) {
     if (col.required && (data[col.field] === null || data[col.field] === '')) {
       toast(`El campo "${col.label}" es obligatorio`, 'err');
+      return;
+    }
+    if (col.type === 'duracion' && data[col.field] !== null && !(data[col.field] >= 1)) {
+      toast(`"${col.label}" tiene que ser de al menos 1 minuto`, 'err');
       return;
     }
   }

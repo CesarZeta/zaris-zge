@@ -464,6 +464,12 @@ async def bi_diario(
 #   0-3 dias | 4-7 dias | +7 dias  (espeja el tablero de referencia de VL).
 # Dias enteros via floor del delta en dias.
 _DIAS_CIERRE = "FLOOR(EXTRACT(EPOCH FROM (r.fecha_cierre - r.fecha_alta)) / 86400.0)"
+# Dentro del SLA (mig 120, SLA en minutos): el cierre llegó dentro del plazo del
+# tipo, exacto — el mismo criterio que el vencimiento del reclamo (trg_sla_reclamo)
+# y que la mesa («Vencido»). Antes era FLOOR(dias) <= sla_dias: un cierre a los
+# 3 dias y 20 h de un SLA de 3 dias contaba dentro aunque la mesa lo marcara vencido.
+_CON_SLA = "tr.sla_minutos IS NOT NULL"
+_DENTRO_SLA = f"({_CON_SLA} AND r.fecha_cierre - r.fecha_alta <= make_interval(mins => tr.sla_minutos))"
 _TRAMO = f"""
     CASE
       WHEN {_DIAS_CIERRE} <= 3 THEN '0-3'
@@ -522,7 +528,7 @@ async def bi_sla_resumen(
     KPIs de la vista Resueltos/SLA (sin filtro de fecha — usa el mes calendario):
       - resueltos_mes_actual / resueltos_mes_anterior / dif_pct
       - dias_cierre_promedio (sobre todos los resueltos con fecha_cierre)
-      - pct_dentro_sla (dias_cierre <= tipo_reclamo.sla_dias)
+      - pct_dentro_sla (cierre - alta <= tipo_reclamo.sla_minutos)
     """
     base_where, base_params = _filtros_resueltos(None, None, id_area, prioridad, id_municipio, estado=estado, id_tipo_reclamo=id_tipo_reclamo, canal=canal, anio=anio, meses=_parse_meses(meses))
 
@@ -535,9 +541,8 @@ async def bi_sla_resumen(
                                                                        AS mes_anterior,
           ROUND(AVG({_DIAS_CIERRE})::numeric, 1)                       AS dias_prom,
           COUNT(*)                                                     AS total_resueltos,
-          COUNT(*) FILTER (WHERE tr.sla_dias IS NOT NULL AND {_DIAS_CIERRE} <= tr.sla_dias)
-                                                                       AS dentro_sla,
-          COUNT(*) FILTER (WHERE tr.sla_dias IS NOT NULL)              AS con_sla
+          COUNT(*) FILTER (WHERE {_DENTRO_SLA})                        AS dentro_sla,
+          COUNT(*) FILTER (WHERE {_CON_SLA})                           AS con_sla
         FROM reclamos r
         {_JOIN_AREA}
         WHERE {base_where}

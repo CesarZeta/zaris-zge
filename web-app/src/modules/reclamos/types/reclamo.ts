@@ -35,6 +35,8 @@ export interface TipoCatalogo {
   id_tipo_reclamo: number
   nombre: string
   sla_dias: number | null
+  /** SLA en minutos (mig 120); sla_dias es su redondeo hacia arriba, por compatibilidad. */
+  sla_minutos?: number | null
   audit: boolean
   id_area: number | null
   area_nombre: string | null
@@ -67,6 +69,7 @@ export interface ReclamoListado {
   id_tipo_reclamo: number | null
   tipo_nombre: string | null
   sla_dias: number | null
+  sla_minutos?: number | null
   tipo_audit: boolean | null
   id_area: number | null
   area_nombre: string | null

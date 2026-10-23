@@ -1,9 +1,13 @@
 """
-ZARIS — Autoasignación de reclamos por gestión (mig 114, decisión de César 2026-10-20).
+ZARIS — Autoasignación de reclamos (mig 114, decisión de César 2026-10-20; general
+del municipio desde la mig 121, 2026-10-23).
 
-Cuando entra un reclamo «Sin asignar» de una gestión (subárea) con
-`subarea.asignacion_automatica = TRUE`, el sistema crea la OT solo, sin mesa ni
-supervisor:
+Cuando entra un reclamo «Sin asignar», el sistema crea la OT solo, sin mesa ni
+supervisor, si la asignación automática está prendida para el municipio
+(`configuracion_general.reclamos_asignacion_automatica = 'true'`, Configuración →
+Sistema) y la gestión (subárea) del tipo NO es una excepción
+(`subarea.asignacion_manual`, Maestros → Subáreas). Clave ausente o inválida =
+apagada (fail-closed):
 
   1. Candidatos según `tipo_reclamo.asignacion_a`:
        - 'agente': agentes activos de la gestión con usuario activo de nivel
@@ -42,6 +46,18 @@ logger = logging.getLogger("zaris.autoasignacion")
 _LOCK_BASE = 114_000_000
 
 _ESTADOS_OT_ABIERTOS = ("En gestión", "En espera", "Pendiente")
+
+# Interruptor general (mig 121, Configuración → Sistema).
+CLAVE_ASIGNACION_GENERAL = "reclamos_asignacion_automatica"
+
+
+async def asignacion_general_prendida(db) -> bool:
+    """True si la asignación automática está prendida para el municipio. Clave
+    ausente, inactiva o con otro valor que 'true' = apagada (fail-closed)."""
+    valor = await db.scalar(text(
+        "SELECT valor FROM configuracion_general WHERE clave = :c AND activo"),
+        {"c": CLAVE_ASIGNACION_GENERAL})
+    return str(valor or "").strip().lower() == "true"
 
 
 async def candidatos_gestion(db, tipo: str, id_subarea: int) -> list[dict]:
@@ -112,16 +128,20 @@ async def autoasignar_reclamo(id_reclamo: int) -> dict[str, Any]:
     log y los smokes): {'asignada': bool, 'motivo'?, 'id_ot'?, 'recurso'?, 'carga'?}."""
     try:
         async with AsyncSessionLocal() as db:
+            if not await asignacion_general_prendida(db):
+                return {"asignada": False, "motivo": "la asignación automática está apagada en el municipio"}
             r = (await db.execute(text("""
                 SELECT r.id_reclamo, r.nro_reclamo, r.estado, r.id_municipio,
-                       tr.id_subarea, tr.asignacion_a, s.asignacion_automatica
+                       tr.id_subarea, tr.asignacion_a, s.asignacion_manual
                   FROM reclamos r
                   JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
                   JOIN subarea s ON s.id_subarea = tr.id_subarea
                  WHERE r.id_reclamo = :id AND r.activo = TRUE
             """), {"id": id_reclamo})).fetchone()
-            if not r or not r.asignacion_automatica:
-                return {"asignada": False, "motivo": "la gestión no tiene asignación automática"}
+            if not r:
+                return {"asignada": False, "motivo": "el reclamo no existe o no tiene gestión"}
+            if r.asignacion_manual:
+                return {"asignada": False, "motivo": "la gestión asigna a mano"}
             if r.estado != "Sin asignar":
                 return {"asignada": False, "motivo": f"el reclamo está {r.estado}"}
 

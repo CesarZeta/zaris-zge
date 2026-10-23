@@ -62,6 +62,13 @@ const SECCIONES: Seccion[] = [
     icon: ClipboardCheck,
     claves: [
       {
+        // Mig 121: interruptor general; las excepciones se marcan por gestión.
+        clave: 'reclamos_asignacion_automatica',
+        label: 'Asignación automática de reclamos',
+        ayuda: 'Si está activo, cada reclamo nuevo se asigna solo al agente de nivel Gestión (o a la cuadrilla, según el tipo) de su gestión con menos órdenes de trabajo abiertas. Las gestiones marcadas «Asigna a mano» en Maestros → Subáreas quedan afuera y sus reclamos siguen en la mesa del supervisor. Si una gestión no tiene a quién asignarle, el reclamo queda en la mesa y se avisa a sus supervisores.',
+        control: 'toggle',
+      },
+      {
         clave: 'auditor_misma_subarea_permitido',
         label: 'Permitir que el auditor sea de la misma subárea',
         ayuda: 'Si está desactivado, un auditor no puede auditar reclamos de su propia subárea (separación de funciones).',

@@ -92,3 +92,15 @@ export function horaActualHHMM(): string {
   const d = new Date()
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
+
+/** Plazo en minutos, en la unidad más grande que lo divide exacto: '3 días', '4 h',
+ *  '30 min'. Para el SLA de los tipos de reclamo (mig 120). '' si no hay plazo. */
+export function etiquetaPlazoMinutos(min: number | null | undefined): string {
+  if (!min) return ''
+  if (min % 1440 === 0) {
+    const d = min / 1440
+    return `${d} ${d === 1 ? 'día' : 'días'}`
+  }
+  if (min % 60 === 0) return `${min / 60} h`
+  return `${min} min`
+}

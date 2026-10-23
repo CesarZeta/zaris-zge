@@ -35,7 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
-from app.api.routes.bi import _DIAS_CIERRE, _JOIN_AREA, _parse_meses
+from app.api.routes.bi import _CON_SLA, _DENTRO_SLA, _DIAS_CIERRE, _JOIN_AREA, _parse_meses
 
 router = APIRouter(
     prefix="/api/v1/bi/ejecutivo",
@@ -162,9 +162,9 @@ async def _agregado(
                COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado')) AS resueltos,
                ROUND(AVG({_DIAS_CIERRE}) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND r.fecha_cierre IS NOT NULL), 1)::float AS prom_dias,
                COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND r.fecha_cierre IS NOT NULL
-                                AND tr.sla_dias IS NOT NULL AND {_DIAS_CIERRE} <= tr.sla_dias) AS dentro_sla,
+                                AND {_DENTRO_SLA}) AS dentro_sla,
                COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND r.fecha_cierre IS NOT NULL
-                                AND tr.sla_dias IS NOT NULL) AS con_sla
+                                AND {_CON_SLA}) AS con_sla
         FROM reclamos r {_JOIN_AREA}
         WHERE {' AND '.join(cond)}
         GROUP BY {', '.join(str(i + 1) for i in range(n_grp))}
@@ -247,9 +247,9 @@ async def ej_score(
                COUNT(*) FILTER (WHERE r.estado IN {_ESTADOS_ABIERTOS}) AS abiertos,
                ROUND(AVG({_DIAS_CIERRE}) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND r.fecha_cierre IS NOT NULL), 1)::float AS prom_dias,
                COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND r.fecha_cierre IS NOT NULL
-                                AND tr.sla_dias IS NOT NULL AND {_DIAS_CIERRE} <= tr.sla_dias) AS dentro_sla,
+                                AND {_DENTRO_SLA}) AS dentro_sla,
                COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND r.fecha_cierre IS NOT NULL
-                                AND tr.sla_dias IS NOT NULL) AS con_sla
+                                AND {_CON_SLA}) AS con_sla
         FROM reclamos r {_JOIN_AREA}
         WHERE {' AND '.join(cond)}
     """), params)
@@ -502,9 +502,9 @@ async def ej_evolucion_indicadores(
                COUNT(*) AS total,
                COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado')) AS resueltos,
                COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND r.fecha_cierre IS NOT NULL
-                                AND tr.sla_dias IS NOT NULL AND {_DIAS_CIERRE} <= tr.sla_dias) AS dentro_sla,
+                                AND {_DENTRO_SLA}) AS dentro_sla,
                COUNT(*) FILTER (WHERE r.estado IN ('Resuelto','En auditoría','Auditado') AND r.fecha_cierre IS NOT NULL
-                                AND tr.sla_dias IS NOT NULL) AS con_sla
+                                AND {_CON_SLA}) AS con_sla
         FROM reclamos r {_JOIN_AREA}
         WHERE {' AND '.join(cond)}
         GROUP BY 1 ORDER BY 1

@@ -19,10 +19,11 @@ Como se logra sin guardar nada en la DB:
 Asi el generador (al crear) y avanzar_pendientes (dias despues) calculan el
 MISMO plan para el mismo item: el cierre ocurre en la fecha del plan, no "ahora".
 
-Definicion de "dentro del SLA" = la del BI (bi.py `_DIAS_CIERRE`):
-FLOOR(dias entre alta y cierre) <= sla_dias. Las demoras se sortean con margen
-para que coincida tambien con el vencimiento del trigger (alta + sla_dias):
-dentro <= sla - 30 min; fuera >= sla + 1,05 dias.
+Definicion de "dentro del SLA" = la del BI. Reclamos (desde la mig 120, SLA en
+minutos): cierre - alta <= sla, exacto, igual que el vencimiento del trigger
+(`dentro_sla_reclamo`, bi.py `_DENTRO_SLA`). Tramites: FLOOR(dias entre alta y
+cierre) <= sla_dias (`dentro_sla`). Las demoras se sortean con margen para que
+los dos criterios coincidan: dentro <= sla - 30 min; fuera >= sla + 1,05 dias.
 """
 from __future__ import annotations
 
@@ -66,10 +67,12 @@ def rnd_de(modulo: str, id_item: int) -> random.Random:
 
 def demora_dentro(rnd: random.Random, sla: float) -> float:
     """Dias entre alta y cierre DENTRO del SLA: media ~30 % del SLA, entre 1 h y
-    media hora antes del vencimiento."""
-    sla = max(float(sla), 0.5)
+    media hora antes del vencimiento. Con un SLA de pocas horas (mig 120) los
+    bordes se achican a un 10 % del SLA para no caer fuera (desde 5 h el
+    resultado es el mismo que antes)."""
+    sla = max(float(sla), 1 / 144)  # piso: 10 minutos
     d = sla * rnd.betavariate(1.3, 3.0)
-    return min(max(d, 1 / 24), sla - 1 / 48)
+    return min(max(d, min(1 / 24, sla * 0.1)), sla - min(1 / 48, sla * 0.1))
 
 
 def demora_fuera(rnd: random.Random, sla: float, tope: float = TOPE_DIAS) -> float:
@@ -90,7 +93,16 @@ def demora_fuera(rnd: random.Random, sla: float, tope: float = TOPE_DIAS) -> flo
 
 
 def dentro_sla(alta: datetime, cierre: datetime, sla: float | None) -> bool | None:
-    """Criterio del BI: FLOOR(dias) <= sla. None si el tipo no tiene SLA."""
+    """Criterio del BI de TRAMITES: FLOOR(dias) <= sla. None si el tipo no tiene SLA."""
     if not sla:
         return None
     return math.floor((cierre - alta).total_seconds() / 86400.0) <= float(sla)
+
+
+def dentro_sla_reclamo(alta: datetime, cierre: datetime, sla: float | None) -> bool | None:
+    """Criterio del BI de RECLAMOS (mig 120): el cierre llega antes del vencimiento,
+    exacto (sla en dias, con fraccion si el tipo lo tiene en horas o minutos).
+    None si el tipo no tiene SLA."""
+    if not sla:
+        return None
+    return (cierre - alta).total_seconds() <= float(sla) * 86400.0

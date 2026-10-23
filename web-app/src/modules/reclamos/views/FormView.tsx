@@ -117,6 +117,7 @@ export function FormView() {
         id_tipo_reclamo: r.id_tipo_reclamo,
         nombre: r.tipo_nombre ?? '',
         sla_dias: r.sla_dias,
+        sla_minutos: r.sla_minutos,
         audit: r.tipo_audit ?? false,
         id_area: r.id_area,
         area_nombre: r.area_nombre,

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search } from 'lucide-react'
+import { etiquetaPlazoMinutos } from '../../../lib/dates'
 import { useTiposCatalogo } from '../hooks/useReclamos'
 import type { TipoCatalogo } from '../types/reclamo'
 
@@ -98,7 +99,7 @@ export function TipoReclamoPicker({ value, onChange, disabled, placeholder = 'Ti
               <div style={{ fontSize: 13, color: 'var(--fg-1)', fontWeight: 500 }}>{t.nombre}</div>
               {/* Subárea (gestión que lo resuelve): más puntual que la secretaría (pedido 2026-10-20). */}
               <div style={{ fontSize: 11, color: 'var(--fg-3)' }}>
-                {t.subarea_nombre ?? '—'}{t.sla_dias ? ` · SLA ${t.sla_dias}d` : ''}{t.audit ? ' · auditable' : ''}
+                {t.subarea_nombre ?? '—'}{t.sla_minutos ? ` · SLA ${etiquetaPlazoMinutos(t.sla_minutos)}` : t.sla_dias ? ` · SLA ${t.sla_dias}d` : ''}{t.audit ? ' · auditable' : ''}
               </div>
             </button>
           ))}

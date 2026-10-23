@@ -29,8 +29,9 @@ TABLE_CONFIG: dict[str, dict] = {
     },
     "subarea": {
         "pk": "id_subarea",
-        # asignacion_automatica (mig 114): los reclamos nuevos de la gestión se asignan solos.
-        "cols": ["nombre", "descripcion", "id_area", "asignacion_automatica"],
+        # asignacion_manual (mig 121): la gestión queda afuera de la asignación automática
+        # general (clave reclamos_asignacion_automatica de configuracion_general).
+        "cols": ["nombre", "descripcion", "id_area", "asignacion_manual"],
         "fecha_mod": "fecha_modificacion",
     },
     "tipo_usuario": {
@@ -122,10 +123,11 @@ TABLE_CONFIG: dict[str, dict] = {
     },
     "tipo_reclamo": {
         "pk": "id_tipo_reclamo",
-        # asignacion_a + duracion_estimada_min (mig 30, sin uso hasta la autoasignación
-        # de la mig 114): a quién se le asigna solo y cuánto se agenda.
-        "cols": ["nombre", "descripcion", "id_subarea", "sla_dias", "audit",
-                 "asignacion_a", "duracion_estimada_min"],
+        # sla_minutos (mig 120) es el SLA; sla_dias lo deriva un trigger y no se edita.
+        # asignacion_a (mig 30): a quién se le asigna solo. duracion_estimada_min quedó
+        # sin uso cuando los reclamos dejaron de agendarse (2026-10-21).
+        "cols": ["nombre", "descripcion", "id_subarea", "sla_minutos", "audit",
+                 "asignacion_a"],
         "fecha_mod": "fecha_modificacion",
     },
     "configuracion_general": {
@@ -566,9 +568,10 @@ async def tipos_de_subarea(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """Lista los tipos de reclamo activos que pertenecen a la subárea dada."""
+    """Lista los tipos de reclamo activos que pertenecen a la subárea dada, con su SLA
+    en minutos (`sla_minutos`, mig 120; `sla_dias` queda por compatibilidad)."""
     r = await db.execute(text("""
-        SELECT id_tipo_reclamo, nombre, descripcion, sla_dias, audit
+        SELECT id_tipo_reclamo, nombre, descripcion, sla_dias, sla_minutos, audit
         FROM tipo_reclamo
         WHERE id_subarea = :id_subarea AND activo = TRUE
         ORDER BY nombre

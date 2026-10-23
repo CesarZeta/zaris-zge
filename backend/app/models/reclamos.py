@@ -226,6 +226,9 @@ class TipoReclamo(Base):
     nombre              = Column(String(200), nullable=False)
     descripcion         = Column(Text, nullable=True)
     id_subarea          = Column(Integer, ForeignKey("subarea.id_subarea", ondelete="SET NULL"), nullable=True)
+    # SLA en minutos (mig 120): la fuente. sla_dias lo deriva un trigger (CEIL / 1440)
+    # y queda solo por compatibilidad; un INSERT que trae solo sla_dias deriva los minutos.
+    sla_minutos         = Column(Integer, nullable=True)
     sla_dias            = Column(Integer, default=5)
     audit               = Column(Boolean, nullable=False, default=False)
     activo              = Column(Boolean, nullable=False, default=True)

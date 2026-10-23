@@ -429,7 +429,7 @@ async def catalogo_tipos(
         params["q"] = f"%{q.strip()}%"
 
     result = await db.execute(text(f"""
-        SELECT tr.id_tipo_reclamo, tr.nombre, tr.sla_dias, tr.audit,
+        SELECT tr.id_tipo_reclamo, tr.nombre, tr.sla_dias, tr.sla_minutos, tr.audit,
                s.id_area, a.nombre AS area_nombre,
                tr.id_subarea, s.nombre AS subarea_nombre
         FROM tipo_reclamo tr
@@ -539,7 +539,7 @@ async def listar_reclamos(
             r.resultado_auditoria, r.id_reclamo_origen_auditoria,
             r.latitud, r.longitud,
             r.id_ciudadano, c.nombre AS ciudadano_nombre, c.apellido AS ciudadano_apellido, c.doc_nro,
-            r.id_tipo_reclamo, tr.nombre AS tipo_nombre, tr.sla_dias, tr.audit AS tipo_audit,
+            r.id_tipo_reclamo, tr.nombre AS tipo_nombre, tr.sla_dias, tr.sla_minutos, tr.audit AS tipo_audit,
             s.id_area, a.nombre AS area_nombre,
             tr.id_subarea, s.nombre AS subarea_nombre,
             r.id_agente_asignado,
@@ -587,7 +587,7 @@ async def obtener_reclamo(
             r.id_reclamo_padre,
             r.id_ciudadano, c.nombre AS ciudadano_nombre, c.apellido AS ciudadano_apellido,
             c.doc_nro, c.cuil, c.telefono, c.email AS ciudadano_email,
-            r.id_tipo_reclamo, tr.nombre AS tipo_nombre, tr.sla_dias, tr.audit AS tipo_audit,
+            r.id_tipo_reclamo, tr.nombre AS tipo_nombre, tr.sla_dias, tr.sla_minutos, tr.audit AS tipo_audit,
             s.id_area, a.nombre AS area_nombre,
             tr.id_subarea, s.nombre AS subarea_nombre,
             r.id_agente_asignado,

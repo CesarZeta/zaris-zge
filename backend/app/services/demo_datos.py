@@ -61,6 +61,7 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services import autoasignacion
 from app.services import demo_datos_ref as ref
 from app.services import demo_sla
 from app.services.geo_limite import leer_limite, punto_en_limite
@@ -88,7 +89,7 @@ TASA_OBSERVADA = 0.20      # fraccion de auditorias que terminan observadas (con
 TASA_CANCELADO = 0.04      # fraccion de reclamos que se cancelan
 TASA_SUBRECLAMO = 0.04     # fraccion de reclamos largos (>= 4 dias) con un subreclamo
 TASA_ENCUESTA = 0.85       # fraccion de resueltos con encuesta enviada
-SLA_DEFAULT_RECLAMO = 5    # tipo sin sla_dias: duracion objetivo (el BI no lo cuenta en % SLA)
+SLA_DEFAULT_RECLAMO = 5    # tipo sin SLA: duracion objetivo en dias (el BI no lo cuenta en % SLA)
 # avanzar_pendientes (cron) solo mira los reclamos demo de los ultimos N dias: con el
 # tope de 20 dias del plan, nada generado por esta version queda afuera; lo pendiente
 # mas viejo (datos anteriores) es el "atraso" y se cierra con cerrar_atraso_reclamos.
@@ -272,7 +273,8 @@ class _Catalogos:
     tipos_por_nombre: dict[str, tuple[int, int, str]] = field(default_factory=dict)
     tipos_por_subarea: dict[int, list[int]] = field(default_factory=dict)
     tipo_info: dict[int, tuple[str, int]] = field(default_factory=dict)
-    tipo_sla: dict[int, int | None] = field(default_factory=dict)
+    # SLA del tipo en dias (fraccion si es en horas o minutos; mig 120: sla_minutos / 1440).
+    tipo_sla: dict[int, float | None] = field(default_factory=dict)
     tipo_asignacion: dict[int, str] = field(default_factory=dict)
     subareas_por_nombre: dict[str, int] = field(default_factory=dict)
     estados_fk: dict[str, int] = field(default_factory=dict)
@@ -295,14 +297,14 @@ class _Catalogos:
 async def _cargar_catalogos(db: AsyncSession) -> _Catalogos:
     cat = _Catalogos()
     r = await db.execute(text(
-        "SELECT t.id_tipo_reclamo, t.nombre, t.id_subarea, t.sla_dias, t.asignacion_a FROM tipo_reclamo t "
+        "SELECT t.id_tipo_reclamo, t.nombre, t.id_subarea, t.sla_minutos, t.asignacion_a FROM tipo_reclamo t "
         "JOIN subarea s ON s.id_subarea = t.id_subarea WHERE t.activo AND s.activo"
     ))
     for fila in r.fetchall():
         cat.tipos_por_nombre[_norm(fila.nombre)] = (fila.id_tipo_reclamo, fila.id_subarea, fila.nombre)
         cat.tipos_por_subarea.setdefault(fila.id_subarea, []).append(fila.id_tipo_reclamo)
         cat.tipo_info[fila.id_tipo_reclamo] = (fila.nombre, fila.id_subarea)
-        cat.tipo_sla[fila.id_tipo_reclamo] = fila.sla_dias
+        cat.tipo_sla[fila.id_tipo_reclamo] = fila.sla_minutos / 1440.0 if fila.sla_minutos else None
         cat.tipo_asignacion[fila.id_tipo_reclamo] = fila.asignacion_a or "agente"
 
     r = await db.execute(text("SELECT id_subarea, nombre FROM subarea WHERE activo"))
@@ -715,11 +717,10 @@ class _AsignadorOT:
         """))
         for f in r.fetchall():
             a.supervisores_sub.setdefault(f.id_subarea, []).append(f.id_usuario)
-        tiene_auto = bool(await db.scalar(text(
-            "SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' "
-            "AND table_name = 'subarea' AND column_name = 'asignacion_automatica'")))
-        if tiene_auto:
-            r = await db.execute(text("SELECT id_subarea FROM subarea WHERE asignacion_automatica"))
+        # Gestiones que asignan solas (mig 121): la asignacion general del municipio
+        # prendida y la gestion sin la excepcion «asigna a mano».
+        if await autoasignacion.asignacion_general_prendida(db):
+            r = await db.execute(text("SELECT id_subarea FROM subarea WHERE NOT asignacion_manual"))
             a.auto_sub = {f.id_subarea for f in r.fetchall()}
         return a
 
@@ -748,8 +749,8 @@ class _AsignadorOT:
         return None
 
     def supervisor(self, id_subarea: int | None, rnd: random.Random) -> tuple[int | None, bool]:
-        """(id_supervisor_asigna, asignacion_automatica): la gestion con el tilde de
-        asignacion automatica (mig 114) o sin supervisor -> NULL + automatica."""
+        """(id_supervisor_asigna, asignacion_automatica): la gestion que asigna sola
+        (mig 121) o sin supervisor -> NULL + automatica."""
         if id_subarea in self.auto_sub:
             return None, True
         sups = self.supervisores_sub.get(id_subarea)
@@ -1572,7 +1573,7 @@ async def _avanzar_reclamos(db: AsyncSession, cat: _Catalogos, uid: int, asignad
                 out["a_espera"] += 1
             elif nv == ESTADO_RESUELTO:
                 out["a_resuelto"] += 1
-                ok = demo_sla.dentro_sla(f.fecha_alta, _t, sla)
+                ok = demo_sla.dentro_sla_reclamo(f.fecha_alta, _t, sla)
                 if ok is not None:
                     out["cerrados_dentro_sla" if ok else "cerrados_fuera_sla"] += 1
             elif nv == ESTADO_CANCELADO:
@@ -1850,9 +1851,9 @@ async def rebalancear_sla_historico(db: AsyncSession, uid: int, aplicar: bool,
     cerrados = "('Resuelto', 'En auditoría', 'Auditado')"
     r = await db.execute(text(f"""
         SELECT to_char(r.fecha_alta AT TIME ZONE 'UTC', 'YYYY-MM') AS mes,
-               COUNT(*) FILTER (WHERE r.estado IN {cerrados} AND tr.sla_dias IS NOT NULL AND r.fecha_cierre IS NOT NULL) AS cerrados,
-               COUNT(*) FILTER (WHERE r.estado IN {cerrados} AND tr.sla_dias IS NOT NULL AND r.fecha_cierre IS NOT NULL
-                    AND FLOOR(EXTRACT(EPOCH FROM (r.fecha_cierre - r.fecha_alta)) / 86400.0) <= tr.sla_dias) AS dentro,
+               COUNT(*) FILTER (WHERE r.estado IN {cerrados} AND tr.sla_minutos IS NOT NULL AND r.fecha_cierre IS NOT NULL) AS cerrados,
+               COUNT(*) FILTER (WHERE r.estado IN {cerrados} AND tr.sla_minutos IS NOT NULL AND r.fecha_cierre IS NOT NULL
+                    AND r.fecha_cierre - r.fecha_alta <= make_interval(mins => tr.sla_minutos)) AS dentro,
                COUNT(*) FILTER (WHERE r.estado IN ('Sin asignar', 'En gestión', 'En espera')
                                   AND r.fecha_alta >= CAST(:pdesde AS timestamptz)) AS pendientes
           FROM reclamos r JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
@@ -1873,15 +1874,15 @@ async def rebalancear_sla_historico(db: AsyncSession, uid: int, aplicar: bool,
     if not meses:
         return out
     r = await db.execute(text(f"""
-        SELECT r.id_reclamo, r.fecha_alta, r.fecha_cierre, tr.sla_dias,
+        SELECT r.id_reclamo, r.fecha_alta, r.fecha_cierre, tr.sla_minutos / 1440.0 AS sla_dias,
                to_char(r.fecha_alta AT TIME ZONE 'UTC', 'YYYY-MM') AS mes,
                (SELECT MAX(h.fecha_alta) FROM reclamo_historial h WHERE h.id_reclamo = r.id_reclamo
                   AND h.fecha_alta < r.fecha_cierre AND h.estado_nuevo IS DISTINCT FROM 'Resuelto') AS previo
           FROM reclamos r JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
          WHERE r.activo AND r.id_usuario_alta = :uid AND r.estado IN {cerrados} AND r.fecha_cierre IS NOT NULL
-           AND tr.sla_dias IS NOT NULL AND r.id_reclamo_padre IS NULL
+           AND tr.sla_minutos IS NOT NULL AND r.id_reclamo_padre IS NULL
            AND NOT EXISTS (SELECT 1 FROM reclamos h WHERE h.id_reclamo_padre = r.id_reclamo)
-           AND FLOOR(EXTRACT(EPOCH FROM (r.fecha_cierre - r.fecha_alta)) / 86400.0) > tr.sla_dias
+           AND r.fecha_cierre - r.fecha_alta > make_interval(mins => tr.sla_minutos)
            AND to_char(r.fecha_alta AT TIME ZONE 'UTC', 'YYYY-MM') = ANY(:meses)
          ORDER BY r.id_reclamo
     """), {"uid": uid, "meses": list(meses)})
@@ -1894,10 +1895,10 @@ async def rebalancear_sla_historico(db: AsyncSession, uid: int, aplicar: bool,
         if m["movidos"] >= m["a_mover"]:
             continue
         rnd = demo_sla.rnd_de("reclamo", f.id_reclamo)
-        nuevo = f.fecha_alta + timedelta(days=demo_sla.demora_dentro(rnd, f.sla_dias))
+        nuevo = f.fecha_alta + timedelta(days=demo_sla.demora_dentro(rnd, float(f.sla_dias)))
         if f.previo is not None:
             nuevo = max(nuevo, f.previo + timedelta(minutes=5))
-        if not demo_sla.dentro_sla(f.fecha_alta, nuevo, f.sla_dias) or nuevo >= f.fecha_cierre:
+        if not demo_sla.dentro_sla_reclamo(f.fecha_alta, nuevo, float(f.sla_dias)) or nuevo >= f.fecha_cierre:
             continue
         m["movidos"] += 1
         out["reclamos_adelantados"] += 1
