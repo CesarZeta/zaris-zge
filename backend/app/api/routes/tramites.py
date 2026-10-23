@@ -272,11 +272,13 @@ async def detalle_tipo_tramite(
                 id_estado_origen=r.id_estado_origen,
                 id_estado_destino=r.id_estado_destino,
                 etiqueta_accion=r.etiqueta_accion,
+                tipo_accion=r.tipo_accion,
                 orden=r.orden,
                 requiere_comentario=r.requiere_comentario,
                 requiere_adjunto=r.requiere_adjunto,
                 quien_puede_jsonb=r.quien_puede_jsonb,
                 notifica_iniciador=r.notifica_iniciador,
+                mensaje_iniciador=r.mensaje_iniciador,
             )
             for r in trans_rows
         ]

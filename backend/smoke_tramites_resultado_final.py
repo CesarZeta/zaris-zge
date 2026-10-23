@@ -22,6 +22,7 @@ Cubre:
      vuelve a avisar.
   4. Fixture: Rechazada final SIN resultado -> Archivado con rechazar SÍ avisa (sella el resultado).
   5. Marcador OpenAPI del endpoint de transición.
+  6. GET /tramites/tipos/{id} devuelve el tipo_accion de la base (antes, siempre 'avanzar').
 """
 import asyncio
 import logging
@@ -349,6 +350,14 @@ async def main() -> int:
             op = app.openapi()["paths"]["/api/v1/tramites/{tramite_ref}/transicionar"]["post"]
             check("5. marcador OpenAPI (200 'no vuelve a avisar al iniciador')",
                   "no vuelve a avisar al iniciador" in op["responses"]["200"]["description"])
+
+            # ── 6. GET /tramites/tipos/{id} devuelve el tipo_accion real ────
+            t = await q1("SELECT id_tipo_tramite FROM tipo_tramite WHERE codigo = 'poda-arbol'")
+            r = await c.get(f"/api/v1/tramites/tipos/{t['id_tipo_tramite']}", headers=HA)
+            api = {x["id_tipo_tramite_transicion"]: x.get("tipo_accion") for x in r.json().get("transiciones", [])}
+            db = {x["id"]: x["tipo_accion"] for x in await qall(SQL_TRANS, t="poda-arbol")}
+            check("6. GET /tramites/tipos/{id}: tipo_accion igual a la base (antes devolvia siempre 'avanzar')",
+                  r.status_code == 200 and api == db and "aprobar" in api.values(), f"(api={sorted(api.values())})")
         finally:
             if fixture:
                 await exec_commit("UPDATE tipo_tramite_transicion SET tipo_accion = :a WHERE id_tipo_tramite_transicion = :i",
