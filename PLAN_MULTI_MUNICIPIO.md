@@ -178,6 +178,8 @@ Diseño:
 
 **Documentos de identidad por país — tema reservado (decisión de César, 2026-10-23).** Los conceptos de DNI, CUIL y CUIT y sus estructuras valen para Argentina; cada país tiene los suyos para personas y para empresas, con sus formatos, sus reglas de validación y **sus propias leyes de identificación y de datos personales**. Hace falta un **módulo que parametrice por país** los tipos de documento (de persona y de empresa), su formato, su validación, su máscara de carga y su etiqueta. Requiere una investigación aparte y **no se diseña en este plan**: este plan solo deja el modelo de datos preparado (país + tipo + número). Lo trae César cuando decida tratarlo; un municipio de otro país no sale a producción sin ese módulo.
 
+La **investigación** (pedida por César el 2026-10-23) está en el anexo B. Lo que deja para el diseño del módulo: un catálogo global `tipo_documento` por país, editable por el super administrador; cuatro algoritmos en código (suma ponderada parametrizable, Luhn, validación compuesta por reglas y el DV de dos dígitos de Panamá); dos endpoints, uno para configurar cada tipo y otro para validar un número; y un tipo no se guarda si sus ejemplos no pasan la autoprueba. Queda una decisión para cuando se diseñe: el validador actual de CUIL/CUIT (`schemas/buc.py::_validar_modulo11`) acepta DV 9 cuando el resto es 1 sin mirar el prefijo (verificado en el código el 2026-10-23), así que admite números que AFIP no emite; hay que elegir entre conservar esa compatibilidad o validar en modo estricto.
+
 ### 8. Operación
 
 - **Archivos:** los paths nuevos llevan prefijo `m{id_municipio}/…` en cada bucket; los existentes quedan como están (son de San Andrés).
@@ -239,4 +241,4 @@ Ninguna pendiente. Resueltas el 2026-10-23: áreas fijas = las 6 activas de San 
 ## Anexos
 
 - **A. Guía de arranque con tablas vacías** — [`docs/guia_arranque_tablas.md`](docs/guia_arranque_tablas.md): por circuito, qué cargar primero, por qué (FK, validación en código, clave de configuración) y desde qué pantalla; orden global de carga; catálogos que no se vacían nunca; riesgos con tablas vacías con archivo:línea; claves de `configuracion_general` y qué pasa si faltan; dependencias por FK. Relevada el 2026-10-23 sobre la base local y el código (solo lectura); la nacionalidad id 1 se verificó además en prod.
-- **B. Documentos de identidad de Hispanoamérica** — investigación en curso (2026-10-23), base del módulo de documentos por país (§7).
+- **B. Documentos de identidad de Hispanoamérica** — [`docs/investigacion_documentos_identidad.md`](docs/investigacion_documentos_identidad.md): 18 países más España; documentos de persona y de empresa, formato, dígito verificador con su algoritmo y fuente, leyes de datos personales; propuesta de catálogo, algoritmos y endpoints; lista de lo NO VERIFICADO. Base del módulo de documentos por país (§7). Hecha el 2026-10-23.
