@@ -9,7 +9,14 @@ Smoke — ciclo de vida del trámite hacia el vecino (mig 101):
 SOLO LOCAL: arma fixtures por SQL (tipo_accion de la transición final, plazos de
 config, fechas del trámite de prueba para "viajar en el tiempo") y los RESTAURA al
 final. Los trámites creados quedan como demo. Requiere uvicorn local en :8000 con
-.env.local y el vecino demo DNI 28547123 (id 3).
+.env.local, el mail en MOCK (el vecino demo tiene un correo de dominio real) y el
+vecino demo DNI 28547123 (id 3).
+
+El cron que dispara el smoke corre sobre TODOS los trámites de la base. Para que no
+toque los expedientes de ejemplo, durante la corrida: ningún tipo tiene sla_dias
+propio (todos usan el default lejano), el archivado por inactividad queda lejano y
+el anti-fatiga de encuestas apagado (sino el caso 13 falla si otro smoke ya encuestó
+al vecino en esa área en los últimos 30 días).
 
     python smoke_tramites_ciclo_vida.py
 """
@@ -30,10 +37,13 @@ TIPO_CODIGO = "poda-arbol"
 SLA_LEJANO = 36500  # 100 anios: ningun otro tramite cruza umbrales durante el smoke
 CFG_KEYS = ("tramite_desistimiento_activo", "tramite_sla_dias_default",
             "tramite_desistimiento_aviso1_dias", "tramite_desistimiento_aviso2_dias",
-            "tramite_desistimiento_dias", "tramite_desistimiento_aviso_final_horas")
+            "tramite_desistimiento_dias", "tramite_desistimiento_aviso_final_horas",
+            "tramite_inactividad_dias")
 CFG_SMOKE = {"tramite_desistimiento_activo": "true", "tramite_sla_dias_default": str(SLA_LEJANO),
              "tramite_desistimiento_aviso1_dias": "30", "tramite_desistimiento_aviso2_dias": "60",
-             "tramite_desistimiento_dias": "90", "tramite_desistimiento_aviso_final_horas": "72"}
+             "tramite_desistimiento_dias": "90", "tramite_desistimiento_aviso_final_horas": "72",
+             "tramite_inactividad_dias": str(SLA_LEJANO)}
+CLAVE_ANTIFATIGA = "encuestas_antifatiga_activo"  # puede no existir: sin clave = regla activa
 
 ok_count = fail_count = 0
 
@@ -135,9 +145,18 @@ def main() -> int:
     cfg_orig = dict(cur.fetchall())
     for k, v in CFG_SMOKE.items():
         cur.execute("UPDATE configuracion_general SET valor=%s WHERE clave=%s", (v, k))
-    cur.execute("SELECT sla_dias FROM tipo_tramite WHERE id_tipo_tramite=%s", (id_tipo,))
-    sla_orig = cur.fetchone()[0]
-    cur.execute("UPDATE tipo_tramite SET sla_dias=NULL WHERE id_tipo_tramite=%s", (id_tipo,))
+    cur.execute("SELECT valor, activo FROM configuracion_general WHERE clave=%s", (CLAVE_ANTIFATIGA,))
+    af_orig = cur.fetchone()
+    if af_orig is None:
+        cur.execute("""INSERT INTO configuracion_general (clave, valor, tipo, descripcion, activo)
+                       VALUES (%s, 'false', 'boolean', 'Anti-fatiga de encuestas (fixture de smoke)', TRUE)""",
+                    (CLAVE_ANTIFATIGA,))
+    else:
+        cur.execute("UPDATE configuracion_general SET valor='false', activo=TRUE WHERE clave=%s", (CLAVE_ANTIFATIGA,))
+    # SLA propio de TODOS los tipos a NULL: el cron usa el default lejano para cualquier trámite.
+    cur.execute("SELECT id_tipo_tramite, sla_dias FROM tipo_tramite WHERE sla_dias IS NOT NULL")
+    sla_orig = cur.fetchall()
+    cur.execute("UPDATE tipo_tramite SET sla_dias=NULL WHERE sla_dias IS NOT NULL")
     cur.execute("SELECT email FROM ciudadanos WHERE id_ciudadano=%s", (ID_CIUDADANO,))
     email_vecino = cur.fetchone()[0]
     print(f"fixtures: tipo={id_tipo} ver={id_ver} inicial={id_inicial} tr_final={id_tr_final} "
@@ -214,6 +233,8 @@ def main() -> int:
         print(f"  INFO notificaciones internas al colectivo (depende de que la subarea destino tenga usuarios): {cur.fetchone()[0]}")
         cur.execute("SELECT COUNT(*) FROM tramite WHERE id_tramite<>%s AND archivado_motivo='desistimiento' AND fecha_archivado > NOW() - interval '15 minutes'", (id_a,))
         check("8. ningun otro tramite fue desistido por el smoke (SLA lejano)", cur.fetchone()[0] == 0)
+        cur.execute("SELECT COUNT(*) FROM tramite WHERE archivado_motivo='inactividad' AND fecha_archivado > NOW() - interval '15 minutes'")
+        check("8b. ningun tramite fue archivado por inactividad durante el smoke", cur.fetchone()[0] == 0)
         r = c.patch(f"{BASE}/api/v1/admin/tramites/estados/{id_inicial}/espera-iniciador", headers=HA, json={"espera_iniciador": False})
         check("9. PATCH espera-iniciador=false (restaurar)", r.status_code == 200 and r.json().get("espera_iniciador") is False)
 
@@ -266,9 +287,16 @@ def main() -> int:
         cur.execute("UPDATE tipo_tramite_transicion SET tipo_accion=%s WHERE id_tipo_tramite_transicion=%s", (tipo_accion_orig, id_tr_final))
         for k, v in cfg_orig.items():
             cur.execute("UPDATE configuracion_general SET valor=%s WHERE clave=%s", (v, k))
-        cur.execute("UPDATE tipo_tramite SET sla_dias=%s WHERE id_tipo_tramite=%s", (sla_orig, id_tipo))
+        for id_t, sla in sla_orig:
+            cur.execute("UPDATE tipo_tramite SET sla_dias=%s WHERE id_tipo_tramite=%s", (sla, id_t))
+        if af_orig is None:
+            # baja logica: sin fila activa el lector vuelve al default (regla activa)
+            cur.execute("UPDATE configuracion_general SET activo=FALSE WHERE clave=%s", (CLAVE_ANTIFATIGA,))
+        else:
+            cur.execute("UPDATE configuracion_general SET valor=%s, activo=%s WHERE clave=%s",
+                        (af_orig[0], af_orig[1], CLAVE_ANTIFATIGA))
         cur.execute("UPDATE tipo_tramite_estado SET espera_iniciador=FALSE WHERE id_tipo_tramite_estado=%s", (id_inicial,))
-        print("fixtures restaurados (tipo_accion, config, sla_dias, flag)")
+        print(f"fixtures restaurados (tipo_accion, config, sla_dias de {len(sla_orig)} tipos, anti-fatiga, flag)")
 
     print(f"\nRESULTADO: {ok_count} OK / {fail_count} FAIL")
     return 0 if fail_count == 0 else 1
