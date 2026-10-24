@@ -262,6 +262,32 @@ async def asegurar_cuentas_dobles(conn: asyncpg.Connection, B: int, hash_dev: st
             nombre, nivel, username, hash_dev, mun, subarea)
 
 
+async def asegurar_aprobaciones(conn: asyncpg.Connection, B: int) -> None:
+    """Aprobación requerida del circuito de B y su instancia en el trámite de B. Se crean a mano
+    porque el municipio 1 de local puede no tener ninguna para clonar."""
+    tramite = await conn.fetchrow("SELECT id_tramite, id_tipo_tramite_version FROM tramite WHERE id_municipio = $1 "
+                                  "ORDER BY id_tramite LIMIT 1", B)
+    estado = await conn.fetchval("SELECT min(id_tipo_tramite_estado) FROM tipo_tramite_estado "
+                                 "WHERE id_tipo_tramite_version = $1", tramite["id_tipo_tramite_version"])
+    req = await conn.fetchval("SELECT min(id_tipo_tramite_aprobacion_requerida) FROM tipo_tramite_aprobacion_requerida "
+                              "WHERE id_municipio = $1", B)
+    if req is None:
+        req = await conn.fetchval("""
+            INSERT INTO tipo_tramite_aprobacion_requerida
+                (id_tipo_tramite_version, id_tipo_tramite_estado, aprobador_tipo, id_subarea_aprobadora,
+                 etiqueta, bloqueante, orden, activo, id_municipio)
+            VALUES ($1, $2, 'subarea', (SELECT min(id_subarea) FROM subarea WHERE id_municipio = $3),
+                    $4, TRUE, 1, TRUE, $3)
+            RETURNING id_tipo_tramite_aprobacion_requerida""",
+            tramite["id_tipo_tramite_version"], estado, B, f"{MARCA} aprobación de prueba")
+    if not await conn.fetchval("SELECT count(*) FROM tramite_aprobacion WHERE id_municipio = $1", B):
+        await conn.execute("""
+            INSERT INTO tramite_aprobacion (id_tramite, id_tipo_tramite_aprobacion_requerida, id_tipo_tramite_estado,
+                                            estado, comentario, activo, id_municipio)
+            VALUES ($1, $2, $3, 'pendiente', $4, TRUE, $5)""",
+            tramite["id_tramite"], req, estado, f"{MARCA} comentario de prueba", B)
+
+
 async def _recurso_b(c: Clonador, tipo: Optional[str]) -> Optional[int]:
     return {"agente": c.anclas.get("agentes"), "espacio": c.anclas.get("espacios_agenda"),
             "equipo": c.anclas.get("equipos")}.get((tipo or "").lower())
@@ -461,7 +487,9 @@ async def sembrar(conn: asyncpg.Connection) -> int:
             await c.clonar_hijos("encuesta_respuesta_detalle", "id_respuesta", r["id_encuesta_respuesta"], 2)
 
     # Sueltos: una fila de cada tabla que todavía no tenga datos de B.
-    referencias = {"recurso_tipo": "reclamo", "recurso_id": rec_b, "url_destino": None}
+    # Texto propio: el clonado conservaría números del municipio 1 dentro del mensaje.
+    referencias = {"recurso_tipo": "reclamo", "recurso_id": rec_b, "url_destino": None,
+                   "titulo": f"{MARCA} aviso de prueba", "mensaje": f"{MARCA} mensaje de prueba"}
     sueltos = {
         "notificacion": dict(referencias, id_usuario=c.anclas["usuarios"]),
         "ciudadano_aviso": dict(referencias, id_ciudadano=c.anclas["ciudadanos"]),
@@ -518,7 +546,12 @@ async def main() -> int:
             print(f"Municipio de aislamiento creado: id {B}")
         else:
             await asegurar_cuentas_dobles(conn, B, bcrypt.hashpw(CLAVE_DEV.encode(), bcrypt.gensalt()).decode())
+            for tabla in ("ciudadano_aviso", "notificacion"):  # fixtures creadas antes del texto propio
+                await conn.execute(f"UPDATE {tabla} SET titulo = $1, mensaje = $2 WHERE id_municipio = $3 "
+                                   "AND mensaje IS DISTINCT FROM $2", f"{MARCA} aviso de prueba",
+                                   f"{MARCA} mensaje de prueba", B)
             print(f"El municipio de aislamiento ya existe: id {B} (solo se completan cuentas faltantes)")
+        await asegurar_aprobaciones(conn, B)
         faltan = await cobertura(conn, B)
     finally:
         await conn.close()
