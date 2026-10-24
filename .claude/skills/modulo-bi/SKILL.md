@@ -1,6 +1,6 @@
 ---
 name: modulo-bi
-description: "Usar al trabajar en el módulo Datos / BI (Análisis de datos) de ZARIS (archivos: backend/app/api/routes/bi.py, bi_ejecutivo.py, bi_atencion.py, web-app/src/modules/bi/, components/HistogramaTemporal.tsx, components/exportCsv.ts; sidebar 'datos', moduloCodigo='bi'). Tableros analíticos sobre reclamos (Operativo, Ejecutivo) y sobre la atención al vecino (Atención: turnos, colero, Guardia, eventos; F6 2026-09-19). Cubre la estructura Landing→Operativo, las reglas OBLIGATORIAS de visualización (Recharts 2.15, etiquetas de total, pastilla oscura, drill-down, Exportar CSV), las convenciones de backend (área vía subárea, mono-municipio con id_municipio NULL, agregación 100% en SQL) y los datos demo. Invocar ANTES de tocar cualquier endpoint, visualización o vista del módulo Datos/BI."
+description: "Usar al trabajar en el módulo Datos / BI (Análisis de datos) de ZARIS (archivos: backend/app/api/routes/bi.py, bi_ejecutivo.py, bi_atencion.py, web-app/src/modules/bi/, components/HistogramaTemporal.tsx, components/exportCsv.ts; sidebar 'datos', moduloCodigo='bi'). Tableros analíticos sobre reclamos (Operativo, Ejecutivo) y sobre la atención al vecino (Atención: turnos, colero, Guardia, eventos; F6 2026-09-19). Cubre la estructura Landing→Operativo, las reglas OBLIGATORIAS de visualización (Recharts 2.15, etiquetas de total, pastilla oscura, drill-down, Exportar CSV), las convenciones de backend (área vía subárea, municipio del JWT, agregación 100% en SQL) y los datos demo. Invocar ANTES de tocar cualquier endpoint, visualización o vista del módulo Datos/BI."
 ---
 
 # Módulo Datos (BI — Análisis de datos) — §43
@@ -29,7 +29,7 @@ Ver memoria `reference_bi_lineamientos_visualizaciones`. Resumen:
 ### Backend
 Endpoints por vista en `bi.py`. Convenciones críticas:
 - **Área vía subárea** (§27): JOIN `reclamos → tipo_reclamo → subarea → area`. `reclamos.id_area` legacy es NULL.
-- **Mono-municipio**: filtro `(id_municipio = :m OR id_municipio IS NULL)` — los reclamos reales tienen `id_municipio` NULL (local Y prod). Filtrar estricto = BI vacío.
+- **Municipio (IT-01):** `id_municipio` sale del JWT (`Depends(municipio_actual)`, nunca un query param) y se filtra la tabla raíz `= :id_municipio`, sin `OR IS NULL` (NOT NULL desde la 125c). Los catálogos de los filtros (áreas, mi-área, subáreas, gestiones, ubicaciones, prestaciones) también son del municipio. Reglas R1-R11 en [`PLAN_MULTI_MUNICIPIO_F1_F2.md`](../../../PLAN_MULTI_MUNICIPIO_F1_F2.md).
 - Tiempo de cierre = `fecha_cierre - fecha_alta`; demora pendiente = `NOW() - fecha_alta`. Tramos 0-3 / 4-7 / +7 días.
 - Subreclamos = `id_reclamo_padre IS NOT NULL` ("intervenciones" en la jerga de los tableros de referencia).
 - El mapa de Pendientes reusa `modules/dashboard/components/DashboardMap.tsx` (Leaflet vanilla) — endpoint `/bi/pendientes-geo`.
@@ -94,6 +94,11 @@ carpeta **gitignoreada** — datos personales, jamas versionar):
   dry-run y aplicar con la misma semilla tocan los mismos ids). Ya no existe la
   auditoria PREVIA al cierre que el generador simulaba hasta esa fecha (25% de
   los resueltos pasaban por 'En auditoria' en el historial).
+- **Solo el municipio demo (IT-01):** el generador escribe en el municipio con `direccion_base`
+  (`demo_datos.municipio_demo`; F4 lo cambia por `estado = 'demo'`): catálogos, agentes, vecinos,
+  empresas, plantillas y configuración de ese municipio; los INSERT llevan su `id_municipio` (las filas
+  hijas, el de su fila padre) y `cerrar_atraso` no toca otros municipios aunque `incluir_no_demo`.
+  Con JWT, `/demo/poblar` solo lo dispara un administrador del municipio demo.
 - **Todo atribuido al usuario INACTIVO `generador.demo`** (`id_usuario_alta`) y
   vecinos demo con email `@vecinos-demo.zaris.com.ar` → borrar/migrar a un
   tenant (IT-01) = filtrar por eso. NO borrar a mano sin decision de Cesar.
@@ -343,7 +348,7 @@ score/matriz/series/composición entre sí y contra la DB).
 - **Universo de turnos = `t.activo = TRUE`.** Cancelar (turnos.py) deja `activo=TRUE` +
   `estado='cancelado'`; las filas `cancelado + activo=false` que hay en local (14) y prod (7)
   son la limpieza de un smoke del 2026-05-28 (sin `id_usuario_modificacion`), NO cancelaciones,
-  y quedan fuera a propósito. Mono-municipio como el resto (`id_municipio = :m OR NULL`).
+  y quedan fuera a propósito. Municipio del JWT como el resto.
 - **Indicadores** (`_indicadores`, mismos en score / matriz / por ubicación / por agente):
   `pct_cumplimiento` = cumplidos / otorgados con desenlace (sin pendientes) ·
   `pct_ausentismo` = ausentes / (cumplidos + ausentes) (turnos caídos entre los que llegaron a su

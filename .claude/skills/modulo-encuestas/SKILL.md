@@ -46,7 +46,7 @@ Encuestas de satisfacción disparadas al cierre de reclamos (Resuelto) **y al cu
 - Fin de rango de fecha: pasar `hasta_excl = hasta + timedelta(days=1)` como objeto `date` y comparar `< :hasta_excl`, NO `(:hasta::date + 1)` (el `::date` rompe el parser de bind params de asyncpg). Familia de [[feedback_asyncpg_extract_cast_date]].
 
 ### Router admin (`/api/v1/admin/encuestas`, fase 2C)
-Auth a nivel router (`dependencies=[Depends(get_current_user)]`, §39). Registrado en `main.py` **ANTES** de `admin_tablas_router` (evita el `/{tabla}` greedy que atraparía `'encuestas'`, §5). Mono-municipio (§38): filtra por query param `id_municipio` (default 1), NO por un `user.id_municipio` inexistente (`get_current_user` no lo expone).
+Auth a nivel router (`dependencies=[Depends(get_current_user)]`, §39). Registrado en `main.py` **ANTES** de `admin_tablas_router` (evita el `/{tabla}` greedy que atraparía `'encuestas'`, §5). Municipio (IT-01): el del JWT (`municipio_actual`), nunca un query param; los toggles, la plantilla y el branding de cada envío salen del municipio de la entidad (R8). El dispatcher recorre los municipios (`por_cada_municipio`, tope de 50 envíos por municipio). Reglas R1-R11 en [`PLAN_MULTI_MUNICIPIO_F1_F2.md`](../../../PLAN_MULTI_MUNICIPIO_F1_F2.md).
 
 | Verbo | Path | Notas |
 |---|---|---|

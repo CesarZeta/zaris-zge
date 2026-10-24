@@ -15,6 +15,8 @@ description: "Usar al trabajar en el módulo Agenda de ZARIS (archivos: backend/
 
 ### Convenciones del módulo
 
+**Municipio (IT-01, desde F2):** todo filtra por el municipio de la request — funcionario: `municipio_actual` (claim `mun` del JWT); vecino: `municipio_vecino`; público: `municipio_de_origen` (subdominio del Origin) o `municipio_por_slug` (`?m=`); con token en la URL, el de la fila del token (`app/core/municipio.py`). Nunca de un query param ni del body, y sin tolerancias `OR id_municipio IS NULL` (la columna es NOT NULL). Un id de otro municipio responde 404 como uno inexistente; en el body, 422 «<entidad> inexistente». La configuración se lee con `leer_config`/`leer_configs` (`app/core/config_municipio.py`). Reglas R1-R11 en [`PLAN_MULTI_MUNICIPIO_F1_F2.md`](../../../PLAN_MULTI_MUNICIPIO_F1_F2.md).
+
 **FKs a las PKs reales:** `eventos.id_subarea`→`subarea.id_subarea`, `eventos.id_estado_evento`→`estado_evento.id_estado_evento`, `evento_reservas.id_ciudadano`→`ciudadanos.id_ciudadano`, `ocupaciones.id_orden_trabajo`→`ordenes_trabajo.id_ot`. `evento_encargados.id_recurso` y `ocupaciones.id_recurso` → `agentes`/`equipos`/`espacios_agenda` (sin FK física; polimórfica por `tipo_recurso`, validación en backend).
 
 **Tabla única `ocupaciones`** con CHECK `ck_ocupacion_consistencia`: solo se popula la FK del `tipo` (`ot`→`id_orden_trabajo`, `evento`→`id_evento`, `turno`→`id_ciudadano`, **`bloqueo`→ninguna** — mig 89). El tipo `bloqueo` es el cierre manual de un recurso sin entidad asociada (espacio en mantenimiento, agente afectado a otra tarea): exige `motivo` (schema `OcupacionCreate`), vale para los 3 tipos de recurso y se renderiza gris en la grilla. `existe_recurso` (services/agenda.py) valida agente/equipo/**espacio** desde 2026-06-12 — antes espacio devolvía False y el POST manual de ocupación sobre espacio daba 404. No usar tablas separadas por tipo.
@@ -72,7 +74,7 @@ Mezclan PUT con PATCH. Antes de scriptear un smoke o codear un cliente, `grep "@
 | Calendario día / mes / semana | GET | `/calendario` (NO `/calendario/dia`), `/mes`, `/semana?desde=&dias=` |
 | Conflictos / Resolver | GET / **PATCH** | `/conflictos?resuelto=false`, `/conflictos/{id}/resolver` |
 | Recurso | GET | `/recurso/{tipo_recurso}/{id_recurso}` |
-| Conteos de recursos por tipo (pills) | GET | `/recursos/conteos?id_municipio=` |
+| Conteos de recursos por tipo (pills) | GET | `/recursos/conteos` (municipio del JWT) |
 
 **Router `agenda_espacios.py`** (`/api/v1/agenda/espacios`): GET listado (filtros `atendido`/`q`), POST, GET `/{id}` (con `agentes_vinculados` + `cant_agentes`), PUT, DELETE (soft + cascade N:M), GET/POST/DELETE `/{id}/agentes[/{id_ea}]`. Desde mig 93 (2026-07-02) los espacios tienen `latitud`/`longitud` (en schemas Base/Update/Out + INSERT + UPDATE + los 2 SELECT): el form `EspacioFormModal` usa el bloque §23 (`DireccionGeoField`, vive en `reclamos/components/`) y el Dashboard los muestra como capa geo (turnos/entradas se ubican vía su espacio).
 **Router `agenda_disponibilidad.py`** (`/api/v1/agenda/disponibilidad`): GET (filtros tipo/id), POST, PUT `/{id}`, DELETE `/{id}` (soft), GET `/efectiva?tipo_recurso=&id_recurso=&fecha=`.
