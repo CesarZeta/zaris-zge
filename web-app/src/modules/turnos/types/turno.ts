@@ -84,7 +84,6 @@ export interface CrearTurnoBody {
   hora_inicio: string
   hora_fin?: string
   observaciones?: string | null
-  id_municipio?: number
   id_subarea?: number | null
 }
 

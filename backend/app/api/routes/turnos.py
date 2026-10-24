@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
+from app.core.municipio import municipio_actual
 from app.schemas.turnos import (
     MesaUbicacionOut,
     TipoPrestacionCreate,
@@ -140,23 +141,23 @@ def _resolver_ubicacion_payload(payload: Any) -> Optional[int]:
     return None
 
 
-async def _prestacion_out(db: AsyncSession, id_prestacion: int) -> Optional[dict[str, Any]]:
-    row = (await db.execute(text(_PRESTACION_SELECT + " WHERE tp.id_tipo_prestacion = :id"),
-                            {"id": id_prestacion})).mappings().first()
+async def _prestacion_out(db: AsyncSession, id_prestacion: int, id_municipio: int) -> Optional[dict[str, Any]]:
+    row = (await db.execute(text(_PRESTACION_SELECT + " WHERE tp.id_tipo_prestacion = :id AND tp.id_municipio = :m"),
+                            {"id": id_prestacion, "m": id_municipio})).mappings().first()
     return dict(row) if row else None
 
 
-async def _validar_recurso_activo(db: AsyncSession, tipo_recurso: str, id_recurso: int) -> None:
+async def _validar_recurso_activo(db: AsyncSession, tipo_recurso: str, id_recurso: int, id_municipio: int) -> None:
     if tipo_recurso == "agente":
         ok = (await db.execute(text(
-            "SELECT 1 FROM agentes WHERE id_agente = :id AND activo = TRUE"
-        ), {"id": id_recurso})).first()
+            "SELECT 1 FROM agentes WHERE id_agente = :id AND activo = TRUE AND id_municipio = :m"
+        ), {"id": id_recurso, "m": id_municipio})).first()
         if not ok:
             raise HTTPException(404, "Agente no encontrado o inactivo")
     else:
         ok = (await db.execute(text(
-            "SELECT 1 FROM espacios_agenda WHERE id_espacio = :id AND activo = TRUE"
-        ), {"id": id_recurso})).first()
+            "SELECT 1 FROM espacios_agenda WHERE id_espacio = :id AND activo = TRUE AND id_municipio = :m"
+        ), {"id": id_recurso, "m": id_municipio})).first()
         if not ok:
             raise HTTPException(404, "Espacio no encontrado o inactivo")
 
@@ -168,9 +169,9 @@ async def _validar_recurso_activo(db: AsyncSession, tipo_recurso: str, id_recurs
 async def listar_prestaciones(
     clase: Optional[str] = Query(None, description="atencion|reserva_espacio"),
     q: Optional[str] = Query(None, description="Texto libre sobre nombre"),
-    id_municipio: int = 1,
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     where = ["tp.activo = TRUE", "tp.id_municipio = :m"]
     params: dict[str, Any] = {"m": id_municipio}
@@ -189,21 +190,32 @@ async def detalle_prestacion(
     id_prestacion: int,
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    out = await _prestacion_out(db, id_prestacion)
+    out = await _prestacion_out(db, id_prestacion, id_municipio)
     if out is None:
         raise HTTPException(404, "Prestacion no encontrada")
     return out
 
 
-async def _registra_atencion_efectivo(db: AsyncSession, payload: Any, id_ubicacion: Optional[int]) -> bool:
+async def _validar_subarea(db: AsyncSession, id_subarea: Optional[int], id_municipio: int) -> None:
+    """422 si la subárea del body es de otro municipio o no existe (R4, IT-01)."""
+    if id_subarea is not None and not await db.scalar(text(
+        "SELECT 1 FROM subarea WHERE id_subarea = :s AND id_municipio = :m"
+    ), {"s": id_subarea, "m": id_municipio}):
+        raise HTTPException(422, "Subárea inexistente")
+
+
+async def _registra_atencion_efectivo(db: AsyncSession, payload: Any, id_ubicacion: Optional[int],
+                                      id_municipio: int) -> bool:
     """registra_atencion que se persiste: solo clase 'atencion', y FORZADO en las
     prestaciones de la gestion Salud (2026-10-10). Sin esto, lo que el profesional
     anotaba al cumplir iba a turnos.observaciones, que ve cualquiera con alcance
     al turno y el vecino en su app; con la marca, va a turno_atencion (guard HC)."""
     if payload.clase != "atencion":
         return False
-    return bool(payload.registra_atencion) or await gestion_es_salud(db, payload.id_subarea, id_ubicacion)
+    return bool(payload.registra_atencion) or await gestion_es_salud(
+        db, payload.id_subarea, id_ubicacion, id_municipio=id_municipio)
 
 
 @router.post("/prestaciones", response_model=TipoPrestacionOut, status_code=201)
@@ -211,16 +223,18 @@ async def crear_prestacion(
     payload: TipoPrestacionCreate,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     _require_supervisor(user)
     id_recurso = payload.id_agente if payload.tipo_recurso == "agente" else payload.id_espacio
-    await _validar_recurso_activo(db, payload.tipo_recurso, int(id_recurso))  # type: ignore[arg-type]
+    await _validar_recurso_activo(db, payload.tipo_recurso, int(id_recurso), id_municipio)  # type: ignore[arg-type]
     id_ubicacion = _resolver_ubicacion_payload(payload)
     # Regla de negocio (Cesar 2026-09-01): toda prestacion declara DONDE se
     # atiende — el enfoque del modulo es ubicacion-primero.
     if id_ubicacion is None:
         raise HTTPException(422, "La prestacion debe declarar su ubicacion de atencion (donde se atiende)")
-    await _validar_recurso_activo(db, "espacio", id_ubicacion)
+    await _validar_recurso_activo(db, "espacio", id_ubicacion, id_municipio)
+    await _validar_subarea(db, payload.id_subarea, id_municipio)
     id_prestacion = await db.scalar(text("""
         INSERT INTO tipo_prestacion (
             nombre, descripcion, clase, duracion_min, tipo_recurso,
@@ -234,12 +248,12 @@ async def crear_prestacion(
         "nom": payload.nombre, "desc": payload.descripcion, "clase": payload.clase,
         "dur": payload.duracion_min, "tr": payload.tipo_recurso,
         "ia": payload.id_agente, "ie": payload.id_espacio, "iu": id_ubicacion,
-        "mun": payload.id_municipio, "isa": payload.id_subarea,
-        "reg": await _registra_atencion_efectivo(db, payload, id_ubicacion),
+        "mun": id_municipio, "isa": payload.id_subarea,
+        "reg": await _registra_atencion_efectivo(db, payload, id_ubicacion, id_municipio),
         "uid": user["id_usuario"],
     })
     await db.commit()
-    out = await _prestacion_out(db, int(id_prestacion))
+    out = await _prestacion_out(db, int(id_prestacion), id_municipio)
     if out is None:
         raise HTTPException(500, "Prestacion creada pero no se pudo releer")
     return out
@@ -251,20 +265,22 @@ async def editar_prestacion(
     payload: TipoPrestacionUpdate,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     _require_supervisor(user)
     existe = (await db.execute(text(
-        "SELECT 1 FROM tipo_prestacion WHERE id_tipo_prestacion = :id AND activo = TRUE"
-    ), {"id": id_prestacion})).first()
+        "SELECT 1 FROM tipo_prestacion WHERE id_tipo_prestacion = :id AND activo = TRUE AND id_municipio = :m"
+    ), {"id": id_prestacion, "m": id_municipio})).first()
     if not existe:
         raise HTTPException(404, "Prestacion no encontrada")
     id_recurso = payload.id_agente if payload.tipo_recurso == "agente" else payload.id_espacio
-    await _validar_recurso_activo(db, payload.tipo_recurso, int(id_recurso))  # type: ignore[arg-type]
+    await _validar_recurso_activo(db, payload.tipo_recurso, int(id_recurso), id_municipio)  # type: ignore[arg-type]
     id_ubicacion = _resolver_ubicacion_payload(payload)
     # Regla de negocio (Cesar 2026-09-01): ubicacion obligatoria (ver crear).
     if id_ubicacion is None:
         raise HTTPException(422, "La prestacion debe declarar su ubicacion de atencion (donde se atiende)")
-    await _validar_recurso_activo(db, "espacio", id_ubicacion)
+    await _validar_recurso_activo(db, "espacio", id_ubicacion, id_municipio)
+    await _validar_subarea(db, payload.id_subarea, id_municipio)
     await db.execute(text("""
         UPDATE tipo_prestacion SET
             nombre = :nom, descripcion = :desc, clase = :clase, duracion_min = :dur,
@@ -278,11 +294,11 @@ async def editar_prestacion(
         "clase": payload.clase, "dur": payload.duracion_min, "tr": payload.tipo_recurso,
         "ia": payload.id_agente, "ie": payload.id_espacio, "iu": id_ubicacion,
         "isa": payload.id_subarea,
-        "reg": await _registra_atencion_efectivo(db, payload, id_ubicacion),
+        "reg": await _registra_atencion_efectivo(db, payload, id_ubicacion, id_municipio),
         "uid": user["id_usuario"],
     })
     await db.commit()
-    out = await _prestacion_out(db, id_prestacion)
+    out = await _prestacion_out(db, id_prestacion, id_municipio)
     return out  # type: ignore
 
 
@@ -291,13 +307,14 @@ async def baja_prestacion(
     id_prestacion: int,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     _require_supervisor(user)
     res = await db.execute(text("""
         UPDATE tipo_prestacion
         SET activo = FALSE, fecha_modificacion = NOW(), id_usuario_modificacion = :uid
-        WHERE id_tipo_prestacion = :id AND activo = TRUE
-    """), {"id": id_prestacion, "uid": user["id_usuario"]})
+        WHERE id_tipo_prestacion = :id AND activo = TRUE AND id_municipio = :m
+    """), {"id": id_prestacion, "uid": user["id_usuario"], "m": id_municipio})
     if res.rowcount == 0:
         raise HTTPException(404, "Prestacion no encontrada")
     await db.commit()
@@ -307,7 +324,7 @@ async def baja_prestacion(
 # =============================================================================
 # Helper de turnos
 # =============================================================================
-async def _turno_to_out(db: AsyncSession, id_turno: int) -> Optional[dict[str, Any]]:
+async def _turno_to_out(db: AsyncSession, id_turno: int, id_municipio: int) -> Optional[dict[str, Any]]:
     row = (await db.execute(text("""
         SELECT t.id_turno, t.id_ciudadano,
                COALESCE(c.apellido, '') || ', ' || COALESCE(c.nombre, '') AS ciudadano_nombre,
@@ -348,8 +365,8 @@ async def _turno_to_out(db: AsyncSession, id_turno: int) -> Optional[dict[str, A
         LEFT JOIN tipo_prestacion tp ON tp.id_tipo_prestacion = t.id_tipo_prestacion
         LEFT JOIN subarea         ps ON ps.id_subarea         = tp.id_subarea
         LEFT JOIN area            pa ON pa.id_area            = ps.id_area
-        WHERE t.id_turno = :id
-    """), {"id": id_turno})).mappings().first()
+        WHERE t.id_turno = :id AND t.id_municipio = :m
+    """), {"id": id_turno, "m": id_municipio})).mappings().first()
     return dict(row) if row else None
 
 
@@ -381,13 +398,13 @@ async def listar_turnos(
     id_tipo_prestacion: Optional[int] = None,
     fecha_desde: Optional[date] = None,
     fecha_hasta: Optional[date] = None,
-    id_municipio: int = 1,
     orden: Optional[str] = Query(None, description=descripcion_orden(_ORDEN_TURNOS, "fecha, la más nueva primero")),
     dir: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     orden_sql = clausula_orden(orden, dir, _ORDEN_TURNOS, desempate="t.id_turno",
                                por_defecto="t.fecha DESC, t.hora_inicio, t.id_turno")
@@ -492,6 +509,7 @@ async def historial_atenciones(
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Historia de atenciones registradas de un ciudadano (turnos cumplidos de
     prestaciones con registra_atencion, mig 86). Dos capas:
@@ -503,11 +521,11 @@ async def historial_atenciones(
       sigue mostrando que hubo atencion). Con permiso, la lectura queda en
       historia_clinica_acceso antes de responder (origen 'export' si va a PDF).
       Cierra el residuo del plan ATENCION §4 (export "Prestaciones realizadas")."""
-    p = await permiso_historia_clinica(db, user)
+    p = await permiso_historia_clinica(db, user, id_municipio=id_municipio)
     if p["puede"]:
         check_rate_limit(f"hc:{user['id_usuario']}", max_requests=60, window_seconds=60)
-    where = ["ta.activo = TRUE", "ta.id_ciudadano = :ic"]
-    params: dict[str, Any] = {"ic": id_ciudadano, "lim": limit}
+    where = ["ta.activo = TRUE", "ta.id_ciudadano = :ic", "ta.id_municipio = :mun"]
+    params: dict[str, Any] = {"ic": id_ciudadano, "lim": limit, "mun": id_municipio}
     scope = await _scope_turnos_para_usuario(db, user)
     if scope is not None:
         where.append(
@@ -537,7 +555,7 @@ async def historial_atenciones(
     if not p["puede"]:
         # Sin contenido clinico no hay acceso a la HC que registrar.
         return [{**dict(r), "intervencion": None, "recomendaciones": None, "reservado": True} for r in rows]
-    await registrar_acceso(db, id_usuario=user["id_usuario"], id_ciudadano=id_ciudadano, contexto=contexto,
+    await registrar_acceso(db, id_municipio=id_municipio, id_usuario=user["id_usuario"], id_ciudadano=id_ciudadano, contexto=contexto,
                            resultado="ok", motivo=p["motivo"], n_registros=len(rows),
                            ip=get_real_ip(request), user_agent=request.headers.get("user-agent"),
                            origen="export" if exportar else "historia")
@@ -555,12 +573,13 @@ async def historial_atenciones(
 async def permiso_historia(
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Capacidad del usuario actual para consultar historias clinicas. Misma
     funcion que el guard del GET de datos (una sola fuente). La UI oculta el
     boton si puede=false; el backend igual rechaza con 403 (§30). No registra
     acceso: no hay ciudadano involucrado."""
-    p = await permiso_historia_clinica(db, user)
+    p = await permiso_historia_clinica(db, user, id_municipio=id_municipio)
     return {"puede": p["puede"], "motivo": p["motivo"]}
 
 
@@ -586,6 +605,7 @@ async def historia_clinica(
     offset: int = Query(0, ge=0, le=1_000_000),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Historia clinica minima viable (F5): turno_atencion (mig 86) UNION
     emergencia_atencion atendida|ausente (mig 106), orden cronologico DESC, con
@@ -597,27 +617,28 @@ async def historia_clinica(
     check_rate_limit(f"hc:{user['id_usuario']}", max_requests=60, window_seconds=60)
     ip, ua = get_real_ip(request), request.headers.get("user-agent")
 
-    p = await permiso_historia_clinica(db, user)
+    p = await permiso_historia_clinica(db, user, id_municipio=id_municipio)
     if not p["puede"]:
-        await registrar_acceso(db, id_usuario=user["id_usuario"], id_ciudadano=id_ciudadano, contexto=contexto,
+        await registrar_acceso(db, id_municipio=id_municipio, id_usuario=user["id_usuario"], id_ciudadano=id_ciudadano, contexto=contexto,
                                resultado="denegado", motivo=p["motivo"], n_registros=None, ip=ip, user_agent=ua)
         await db.commit()            # el intento se persiste ANTES del 403
         raise HTTPException(status.HTTP_403_FORBIDDEN, DETALLE_403.get(p["motivo"], DETALLE_403["nivel"]))
 
-    ciud = (await db.execute(SQL_CIUDADANO, {"ic": id_ciudadano})).mappings().first()
+    ciud = (await db.execute(SQL_CIUDADANO, {"ic": id_ciudadano, "mun": id_municipio})).mappings().first()
     if ciud is None:
         # Con el guard ya pasado, el 404 no revela nada nuevo: la BUC expone existencia a
         # cualquier autenticado via /buc/ciudadanos/buscar.
-        await registrar_acceso(db, id_usuario=user["id_usuario"], id_ciudadano=id_ciudadano, contexto=contexto,
+        await registrar_acceso(db, id_municipio=id_municipio, id_usuario=user["id_usuario"], id_ciudadano=id_ciudadano, contexto=contexto,
                                resultado="inexistente", motivo=p["motivo"], n_registros=0, ip=ip, user_agent=ua)
         await db.commit()
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Ciudadano no encontrado")
 
-    rows = (await db.execute(SQL_HISTORIA, {"ic": id_ciudadano, "lim": limit, "off": offset})).mappings().all()
+    rows = (await db.execute(SQL_HISTORIA, {"ic": id_ciudadano, "lim": limit, "off": offset,
+                                            "mun": id_municipio})).mappings().all()
     total = int(rows[0]["total"]) if rows else 0
     items = [{k: v for k, v in r.items() if k != "total"} for r in rows]
 
-    await registrar_acceso(db, id_usuario=user["id_usuario"], id_ciudadano=id_ciudadano, contexto=contexto,
+    await registrar_acceso(db, id_municipio=id_municipio, id_usuario=user["id_usuario"], id_ciudadano=id_ciudadano, contexto=contexto,
                            resultado="ok", motivo=p["motivo"], n_registros=len(items), ip=ip, user_agent=ua)
     await db.commit()   # get_db NO commitea solo (app/core/database.py): sin registro no hay acceso
     return {"ciudadano": dict(ciud), "total": total, "limit": limit, "offset": offset, "items": items}
@@ -632,6 +653,7 @@ async def listar_ubicaciones_atencion(
     fecha: Optional[date] = Query(None, description="Dia de los contadores (default: hoy local del municipio)"),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Ubicaciones de atencion: espacios activos que son ubicacion de alguna
     prestacion activa o tienen agentes vinculados (espacio_agentes), con su
@@ -643,7 +665,8 @@ async def listar_ubicaciones_atencion(
     scope_sql = ""
     # Guardia (mig 106): entra a la landing por la clave de config aunque no
     # tenga prestaciones ni agentes; su contador es de derivaciones pendientes.
-    params: dict[str, Any] = {"f": f, "guardia": (await id_espacio_guardia(db, user["id_municipio"])) or -1}
+    params: dict[str, Any] = {"f": f, "guardia": (await id_espacio_guardia(db, id_municipio)) or -1,
+                              "mun": id_municipio}
     if scope is not None:
         scope_sql = (
             " AND (t.id_agente = :scope_agente OR t.id_espacio IN "
@@ -680,7 +703,7 @@ async def listar_ubicaciones_atencion(
             WHERE t.activo = TRUE AND t.id_espacio_ubicacion = e.id_espacio
               AND t.fecha = :f{scope_sql}
         ) cnt ON TRUE
-        WHERE e.activo = TRUE AND (
+        WHERE e.activo = TRUE AND e.id_municipio = :mun AND (
             EXISTS (SELECT 1 FROM tipo_prestacion tp2
                      WHERE tp2.activo = TRUE AND tp2.id_espacio_ubicacion = e.id_espacio)
             OR EXISTS (SELECT 1 FROM espacio_agentes ea2
@@ -698,6 +721,7 @@ async def mesa_ubicacion(
     fecha: Optional[date] = Query(None, description="Dia a consultar (default: hoy local del municipio)"),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Mesa del dia de una ubicacion: disponibilidad efectiva + ocupaciones de
     cada recurso que atiende ahi (el espacio mismo y los agentes vinculados via
@@ -709,8 +733,8 @@ async def mesa_ubicacion(
     esp = (await db.execute(text("""
         SELECT id_espacio, nombre, direccion, atendido, id_subarea,
                token_pantalla::text AS token_pantalla
-        FROM espacios_agenda WHERE id_espacio = :id AND activo = TRUE
-    """), {"id": id_espacio})).mappings().first()
+        FROM espacios_agenda WHERE id_espacio = :id AND activo = TRUE AND id_municipio = :m
+    """), {"id": id_espacio, "m": id_municipio})).mappings().first()
     if not esp:
         raise HTTPException(404, "Ubicacion no encontrada")
 
@@ -718,7 +742,7 @@ async def mesa_ubicacion(
         SELECT DISTINCT a.id_agente,
                COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') AS nombre
         FROM agentes a
-        WHERE a.activo = TRUE AND (
+        WHERE a.activo = TRUE AND a.id_municipio = :m AND (
             a.id_agente IN (SELECT id_agente FROM espacio_agentes
                              WHERE activo = TRUE AND id_espacio = :ie)
             OR a.id_agente IN (SELECT id_agente FROM tipo_prestacion
@@ -726,7 +750,7 @@ async def mesa_ubicacion(
                                   AND tipo_recurso = 'agente' AND id_agente IS NOT NULL)
         )
         ORDER BY nombre
-    """), {"ie": id_espacio})).mappings().all()
+    """), {"ie": id_espacio, "m": id_municipio})).mappings().all()
     ids_agentes = [int(r["id_agente"]) for r in ag_rows]
 
     scope = await _scope_turnos_para_usuario(db, user)
@@ -742,7 +766,7 @@ async def mesa_ubicacion(
     # §27 — evita el O(recursos) de round-trips contra Supabase).
     recursos_batch: list[tuple[str, int, Optional[bool]]] = [("espacio", id_espacio, bool(esp["atendido"]))]
     recursos_batch += [("agente", aid, None) for aid in ids_agentes]
-    disp = await disponibilidad_efectiva_batch(db, recursos_batch, [f], id_municipio=user["id_municipio"])
+    disp = await disponibilidad_efectiva_batch(db, recursos_batch, [f], id_municipio=id_municipio)
 
     ocup_rows = (await db.execute(text("""
         SELECT o.id_ocupacion, o.tipo, o.tipo_recurso, o.id_recurso,
@@ -755,12 +779,12 @@ async def mesa_ubicacion(
         LEFT JOIN turnos t ON t.id_ocupacion = o.id_ocupacion AND t.activo = TRUE
         LEFT JOIN ciudadanos c ON c.id_ciudadano = t.id_ciudadano
         LEFT JOIN tipo_prestacion tp ON tp.id_tipo_prestacion = t.id_tipo_prestacion
-        WHERE o.activo = TRUE AND o.fecha = :f AND (
+        WHERE o.activo = TRUE AND o.fecha = :f AND o.id_municipio = :m AND (
             (o.tipo_recurso = 'espacio' AND o.id_recurso = :ie)
             OR (o.tipo_recurso = 'agente' AND o.id_recurso = ANY(:ags))
         )
         ORDER BY o.hora_inicio
-    """), {"f": f, "ie": id_espacio, "ags": ids_agentes or [-1]})).mappings().all()
+    """), {"f": f, "ie": id_espacio, "ags": ids_agentes or [-1], "m": id_municipio})).mappings().all()
     ocup_por_recurso: dict[tuple[str, int], list[dict[str, Any]]] = {}
     for row in ocup_rows:
         o = dict(row)
@@ -799,7 +823,7 @@ async def mesa_ubicacion(
         "token_pantalla": esp["token_pantalla"] if int(user.get("nivel_acceso") or 9) <= 2 else None,
         "recursos": recursos_out,
         # Guardia (mig 106): la mesa muestra el panel de derivaciones del COM.
-        "es_guardia": (await id_espacio_guardia(db, user["id_municipio"])) == id_espacio,
+        "es_guardia": (await id_espacio_guardia(db, id_municipio)) == id_espacio,
     }
 
 
@@ -808,12 +832,12 @@ async def mesa_ubicacion(
 # Segmentos fijos ANTES de /{id_turno} (§5). El COM deriva desde
 # emergencias.py (POST /eventos/{id}/derivar-guardia); aca la Guardia atiende.
 # =============================================================================
-async def _guardia_o_404(db: AsyncSession, user: dict) -> dict[str, Any]:
+async def _guardia_o_404(db: AsyncSession, user: dict, id_municipio: int) -> dict[str, Any]:
     """La Guardia configurada, con el MISMO alcance que la mesa: nivel <= 2
     siempre; nivel 3-4 solo si su subarea es la de la Guardia o figura como
     agente vinculado. 404 generico (no filtra existencia: la mesa expone
     pacientes)."""
-    g = await espacio_guardia(db, user["id_municipio"])
+    g = await espacio_guardia(db, id_municipio)
     if not g:
         raise HTTPException(404, "No hay una Guardia configurada")
     scope = await _scope_turnos_para_usuario(db, user)
@@ -850,10 +874,11 @@ async def listar_atenciones_guardia(
     estado: Optional[str] = Query(None, pattern="^(pendiente|atendida|ausente)$"),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Mesa de la Guardia: todas las derivaciones PENDIENTES (de cualquier dia —
     una derivacion de anoche sigue esperando) + las cerradas del dia pedido."""
-    g = await _guardia_o_404(db, user)
+    g = await _guardia_o_404(db, user, id_municipio)
     f = fecha or hoy_local()
     # Dia local AR (UTC-3 fijo, mismo criterio que app/utils/fechas.py).
     dia_cierre = "(COALESCE(ea.atendido_en, ea.fecha_modificacion) AT TIME ZONE 'UTC' - INTERVAL '3 hours')::date = CAST(:f AS date)"
@@ -880,18 +905,19 @@ async def atender_en_guardia(
     body: GuardiaAtenderIn,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Cierra la derivacion como ATENDIDA con la intervencion (obligatoria) y
     recomendaciones. Opcionalmente vincula el paciente a un ciudadano BUC.
     Deja en el log del evento una entrada ATENCION_GUARDIA SIN el detalle
     clinico (el log lo lee el COM; la intervencion queda en la atencion)."""
     _require_gestion(user)
-    g = await _guardia_o_404(db, user)
+    g = await _guardia_o_404(db, user, id_municipio)
     at = await _atencion_for_update(db, id_atencion, g["id_espacio"])
     if body.id_ciudadano is not None:
         existe = await db.scalar(text(
-            "SELECT 1 FROM ciudadanos WHERE id_ciudadano = :c AND activo = TRUE"
-        ), {"c": body.id_ciudadano})
+            "SELECT 1 FROM ciudadanos WHERE id_ciudadano = :c AND activo = TRUE AND id_municipio = :m"
+        ), {"c": body.id_ciudadano, "m": id_municipio})
         if not existe:
             raise HTTPException(422, "El ciudadano indicado como paciente no existe")
     id_agente = await db.scalar(text(
@@ -935,10 +961,11 @@ async def ausente_en_guardia(
     body: Optional[GuardiaAusenteIn] = None,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Cierra la derivacion como AUSENTE: el vecino no llego a la Guardia."""
     _require_gestion(user)
-    g = await _guardia_o_404(db, user)
+    g = await _guardia_o_404(db, user, id_municipio)
     at = await _atencion_for_update(db, id_atencion, g["id_espacio"])
     obs = ((body.observaciones if body else None) or "").strip() or None
     res = await db.execute(text("""
@@ -967,8 +994,9 @@ async def detalle_turno(
     id_turno: int,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    out = await _turno_to_out(db, id_turno)
+    out = await _turno_to_out(db, id_turno, id_municipio)
     if out is None:
         raise HTTPException(404, "Turno no encontrado")
     # Scope por nivel: operador no puede ver turnos fuera de su alcance.
@@ -1010,6 +1038,7 @@ async def crear_turno(
     payload: TurnoCreate,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Crea un turno + su ocupacion espejo en la grilla de Agenda. El recurso y
     la duracion salen de la prestacion; el recurso se copia al turno."""
@@ -1017,23 +1046,24 @@ async def crear_turno(
 
     # Validar ciudadano
     ciu = (await db.execute(text(
-        "SELECT 1 FROM ciudadanos WHERE id_ciudadano = :id AND activo = TRUE"
-    ), {"id": payload.id_ciudadano})).first()
+        "SELECT 1 FROM ciudadanos WHERE id_ciudadano = :id AND activo = TRUE AND id_municipio = :m"
+    ), {"id": payload.id_ciudadano, "m": id_municipio})).first()
     if not ciu:
         raise HTTPException(404, "Ciudadano no encontrado o inactivo")
 
     # Resolver la prestacion: recurso fijo + duracion + ubicacion (mig 103).
     prest = (await db.execute(text("""
         SELECT tipo_recurso, id_agente, id_espacio, id_espacio_ubicacion, duracion_min
-        FROM tipo_prestacion WHERE id_tipo_prestacion = :id AND activo = TRUE
-    """), {"id": payload.id_tipo_prestacion})).mappings().first()
+        FROM tipo_prestacion WHERE id_tipo_prestacion = :id AND activo = TRUE AND id_municipio = :m
+    """), {"id": payload.id_tipo_prestacion, "m": id_municipio})).mappings().first()
     if not prest:
         raise HTTPException(404, "Prestacion no encontrada o inactiva")
     tipo_recurso = prest["tipo_recurso"]
     id_recurso = prest["id_agente"] if tipo_recurso == "agente" else prest["id_espacio"]
     if id_recurso is None:
         raise HTTPException(422, "La prestacion no tiene un recurso valido asignado")
-    await _validar_recurso_activo(db, tipo_recurso, int(id_recurso))
+    await _validar_recurso_activo(db, tipo_recurso, int(id_recurso), id_municipio)
+    await _validar_subarea(db, payload.id_subarea, id_municipio)
 
     # Scope de escritura (2026-07-18): nivel 3-4 solo reserva sobre recursos de
     # su alcance (mismo criterio que la lectura). Nivel <= 2 sin limite.
@@ -1059,9 +1089,9 @@ async def crear_turno(
 
     # Switch global (mig 69): el turno debe caer dentro de la disponibilidad
     # efectiva del recurso (horario - feriados - novedades). Apagable.
-    if await turnos_respeta_disponibilidad(db, id_municipio=user["id_municipio"]):
+    if await turnos_respeta_disponibilidad(db, id_municipio=id_municipio):
         rangos = await disponibilidad_efectiva(db, tipo_recurso, int(id_recurso), payload.fecha,
-                                               id_municipio=user["id_municipio"])
+                                               id_municipio=id_municipio)
         dentro = any(
             r["hora_inicio"] <= payload.hora_inicio and hora_fin <= r["hora_fin"]
             for r in rangos
@@ -1107,7 +1137,7 @@ async def crear_turno(
             "tr": tipo_recurso, "ir": int(id_recurso), "f": payload.fecha,
             "hi": payload.hora_inicio, "hf": hora_fin, "ic": payload.id_ciudadano,
             "mot": f"Turno: {payload.observaciones}" if payload.observaciones else "Turno",
-            "mun": payload.id_municipio, "uid": user["id_usuario"],
+            "mun": id_municipio, "uid": user["id_usuario"],
         })
 
         id_turno = await db.scalar(text("""
@@ -1127,14 +1157,14 @@ async def crear_turno(
             "iu": id_ubicacion_turno,
             "itp": payload.id_tipo_prestacion, "iocup": id_ocupacion,
             "f": payload.fecha, "hi": payload.hora_inicio, "hf": hora_fin,
-            "obs": payload.observaciones, "mun": payload.id_municipio, "isa": payload.id_subarea,
+            "obs": payload.observaciones, "mun": id_municipio, "isa": payload.id_subarea,
             "uid": user["id_usuario"],
         })
         await db.commit()
     except IntegrityError:
         await db.rollback()
         raise HTTPException(409, "El horario acaba de ser tomado por otra reserva")
-    out = await _turno_to_out(db, int(id_turno))
+    out = await _turno_to_out(db, int(id_turno), id_municipio)
     if out is None:
         raise HTTPException(500, "Turno creado pero no se pudo releer")
     return out
@@ -1146,6 +1176,7 @@ async def reprogramar_turno(
     payload: TurnoUpdate,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Reprograma un turno 'reservado'. El recurso es el de la prestacion: si se
     cambia la prestacion, se re-resuelve recurso + duracion. Sincroniza la
@@ -1154,8 +1185,8 @@ async def reprogramar_turno(
     turno = (await db.execute(text("""
         SELECT id_turno, id_agente, id_espacio, id_tipo_prestacion, id_ocupacion,
                fecha, hora_inicio, hora_fin, estado, id_municipio
-        FROM turnos WHERE id_turno = :id AND activo = TRUE
-    """), {"id": id_turno})).mappings().first()
+        FROM turnos WHERE id_turno = :id AND activo = TRUE AND id_municipio = :m
+    """), {"id": id_turno, "m": id_municipio})).mappings().first()
     if not turno:
         raise HTTPException(404, "Turno no encontrado")
     await _validar_turno_en_scope(db, user, dict(turno))
@@ -1164,7 +1195,7 @@ async def reprogramar_turno(
 
     data = payload.model_dump(exclude_unset=True)
     if not data:
-        out = await _turno_to_out(db, id_turno)
+        out = await _turno_to_out(db, id_turno, id_municipio)
         return out  # type: ignore
 
     fecha = data.get("fecha", turno["fecha"])
@@ -1175,8 +1206,8 @@ async def reprogramar_turno(
     id_tipo_prestacion = data.get("id_tipo_prestacion", turno["id_tipo_prestacion"])
     prest = (await db.execute(text("""
         SELECT tipo_recurso, id_agente, id_espacio, id_espacio_ubicacion, duracion_min
-        FROM tipo_prestacion WHERE id_tipo_prestacion = :id AND activo = TRUE
-    """), {"id": id_tipo_prestacion})).mappings().first()
+        FROM tipo_prestacion WHERE id_tipo_prestacion = :id AND activo = TRUE AND id_municipio = :m
+    """), {"id": id_tipo_prestacion, "m": id_municipio})).mappings().first()
     if not prest:
         raise HTTPException(404, "Prestacion no encontrada o inactiva")
     tipo_recurso = prest["tipo_recurso"]
@@ -1212,9 +1243,9 @@ async def reprogramar_turno(
     await advisory_lock_tx(db, f"turno:{tipo_recurso}:{int(id_recurso)}:{fecha}")
 
     # Switch global: el nuevo horario debe caer en la disponibilidad efectiva.
-    if await turnos_respeta_disponibilidad(db, id_municipio=user["id_municipio"]):
+    if await turnos_respeta_disponibilidad(db, id_municipio=id_municipio):
         rangos = await disponibilidad_efectiva(db, tipo_recurso, int(id_recurso), fecha,
-                                               id_municipio=user["id_municipio"])
+                                               id_municipio=id_municipio)
         if not any(r["hora_inicio"] <= hora_inicio and hora_fin <= r["hora_fin"] for r in rangos):
             raise HTTPException(409, "El nuevo horario no esta dentro de la disponibilidad del recurso")
 
@@ -1279,7 +1310,7 @@ async def reprogramar_turno(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(409, "El horario acaba de ser tomado por otra reserva")
-    out = await _turno_to_out(db, id_turno)
+    out = await _turno_to_out(db, id_turno, id_municipio)
     return out  # type: ignore
 
 
@@ -1293,6 +1324,7 @@ async def cumplir_turno(
     payload: Optional[TurnoCumplir] = None,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Marca el turno como cumplido (el ciudadano se presento y se atendio).
 
@@ -1309,13 +1341,13 @@ async def cumplir_turno(
                COALESCE(tp.registra_atencion, FALSE) AS registra_atencion
         FROM turnos t
         LEFT JOIN tipo_prestacion tp ON tp.id_tipo_prestacion = t.id_tipo_prestacion
-        WHERE t.id_turno = :id AND t.activo = TRUE
-    """), {"id": id_turno})).mappings().first()
+        WHERE t.id_turno = :id AND t.activo = TRUE AND t.id_municipio = :m
+    """), {"id": id_turno, "m": id_municipio})).mappings().first()
     if not turno:
         raise HTTPException(404, "Turno no encontrado")
     await _validar_turno_en_scope(db, user, dict(turno))
     if turno["estado"] == "cumplido":
-        out = await _turno_to_out(db, id_turno)
+        out = await _turno_to_out(db, id_turno, id_municipio)
         return out  # type: ignore
     # mig 105: se cumple desde 'reservado' (mesa sin colero, flujo historico) o
     # desde 'llamado' (el ciudadano fue llamado y se presento).
@@ -1353,7 +1385,7 @@ async def cumplir_turno(
             "SELECT estado FROM turnos WHERE id_turno = :id"
         ), {"id": id_turno})
         if estado_actual == "cumplido":
-            out = await _turno_to_out(db, id_turno)
+            out = await _turno_to_out(db, id_turno, id_municipio)
             return out  # type: ignore
         raise HTTPException(409, f"Solo se puede cumplir un turno 'reservado' o 'llamado' (estado actual: '{estado_actual}')")
 
@@ -1378,7 +1410,7 @@ async def cumplir_turno(
     except Exception:
         pass
 
-    out = await _turno_to_out(db, id_turno)
+    out = await _turno_to_out(db, id_turno, id_municipio)
     return out  # type: ignore
 
 
@@ -1388,6 +1420,7 @@ async def llamar_turno(
     payload: Optional[TurnoLlamarIn] = None,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Llama al turno en la mesa de atencion (colero, mig 105).
 
@@ -1405,8 +1438,8 @@ async def llamar_turno(
                COALESCE(NULLIF(TRIM(eu.prefijo_colero), ''), '') AS prefijo
           FROM turnos t
           LEFT JOIN espacios_agenda eu ON eu.id_espacio = t.id_espacio_ubicacion
-         WHERE t.id_turno = :id AND t.activo = TRUE
-    """), {"id": id_turno})).mappings().first()
+         WHERE t.id_turno = :id AND t.activo = TRUE AND t.id_municipio = :m
+    """), {"id": id_turno, "m": id_municipio})).mappings().first()
     if not turno:
         raise HTTPException(404, "Turno no encontrado")
     await _validar_turno_en_scope(db, user, dict(turno))
@@ -1462,12 +1495,12 @@ async def llamar_turno(
 
     await db.execute(text("""
         INSERT INTO turno_llamado (id_turno, puesto, id_usuario_llama,
-                                   id_usuario_alta, id_usuario_modificacion)
-        VALUES (:it, :pu, :uid, :uid, :uid)
-    """), {"it": id_turno, "pu": puesto, "uid": user["id_usuario"]})
+                                   id_usuario_alta, id_usuario_modificacion, id_municipio)
+        VALUES (:it, :pu, :uid, :uid, :uid, :m)
+    """), {"it": id_turno, "pu": puesto, "uid": user["id_usuario"], "m": id_municipio})
     await db.commit()
 
-    out = await _turno_to_out(db, id_turno)
+    out = await _turno_to_out(db, id_turno, id_municipio)
     return out  # type: ignore
 
 
@@ -1477,6 +1510,7 @@ async def marcar_ausente(
     payload: Optional[TurnoAusenteIn] = None,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Marca que el ciudadano no se presento (colero, mig 105).
 
@@ -1488,13 +1522,13 @@ async def marcar_ausente(
     _require_gestion(user)
     turno = (await db.execute(text(
         "SELECT estado, observaciones, id_agente, id_espacio FROM turnos "
-        " WHERE id_turno = :id AND activo = TRUE"
-    ), {"id": id_turno})).mappings().first()
+        " WHERE id_turno = :id AND activo = TRUE AND id_municipio = :m"
+    ), {"id": id_turno, "m": id_municipio})).mappings().first()
     if not turno:
         raise HTTPException(404, "Turno no encontrado")
     await _validar_turno_en_scope(db, user, dict(turno))
     if turno["estado"] == "ausente":
-        out = await _turno_to_out(db, id_turno)
+        out = await _turno_to_out(db, id_turno, id_municipio)
         return out  # type: ignore
     if turno["estado"] not in ("reservado", "llamado"):
         raise HTTPException(
@@ -1520,14 +1554,14 @@ async def marcar_ausente(
             "SELECT estado FROM turnos WHERE id_turno = :id"
         ), {"id": id_turno})
         if estado_actual == "ausente":
-            out = await _turno_to_out(db, id_turno)
+            out = await _turno_to_out(db, id_turno, id_municipio)
             return out  # type: ignore
         raise HTTPException(
             409,
             f"Solo se puede marcar ausente un turno 'reservado' o 'llamado' (estado actual: '{estado_actual}')",
         )
     await db.commit()
-    out = await _turno_to_out(db, id_turno)
+    out = await _turno_to_out(db, id_turno, id_municipio)
     return out  # type: ignore
 
 
@@ -1536,17 +1570,19 @@ async def cancelar_turno(
     id_turno: int,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Cancela el turno y soft-deletea su ocupacion espejo (libera la grilla)."""
     _require_gestion(user)
     turno = (await db.execute(text(
-        "SELECT id_ocupacion, estado, id_agente, id_espacio FROM turnos WHERE id_turno = :id AND activo = TRUE"
-    ), {"id": id_turno})).mappings().first()
+        "SELECT id_ocupacion, estado, id_agente, id_espacio FROM turnos "
+        "WHERE id_turno = :id AND activo = TRUE AND id_municipio = :m"
+    ), {"id": id_turno, "m": id_municipio})).mappings().first()
     if not turno:
         raise HTTPException(404, "Turno no encontrado")
     await _validar_turno_en_scope(db, user, dict(turno))
     if turno["estado"] == "cancelado":
-        out = await _turno_to_out(db, id_turno)
+        out = await _turno_to_out(db, id_turno, id_municipio)
         return out  # type: ignore
     # mig 105: tambien se cancela un turno ya llamado (el ciudadano se fue).
     if turno["estado"] not in ("reservado", "llamado"):
@@ -1563,7 +1599,7 @@ async def cancelar_turno(
             "SELECT estado FROM turnos WHERE id_turno = :id"
         ), {"id": id_turno})
         if estado_actual == "cancelado":
-            out = await _turno_to_out(db, id_turno)
+            out = await _turno_to_out(db, id_turno, id_municipio)
             return out  # type: ignore
         raise HTTPException(409, f"Solo se puede cancelar un turno 'reservado' o 'llamado' (estado actual: '{estado_actual}')")
     if turno["id_ocupacion"]:
@@ -1573,5 +1609,5 @@ async def cancelar_turno(
             WHERE id_ocupacion = :io
         """), {"io": turno["id_ocupacion"], "uid": user["id_usuario"]})
     await db.commit()
-    out = await _turno_to_out(db, id_turno)
+    out = await _turno_to_out(db, id_turno, id_municipio)
     return out  # type: ignore

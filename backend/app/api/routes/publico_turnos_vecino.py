@@ -100,7 +100,7 @@ async def reservar_turno_vecino(
     check_rate_limit(f"turnovec:{get_real_ip(request)}", max_requests=5, window_seconds=60)
 
     id_ciudadano = current["id_ciudadano"]
-    prest = await _resolver_prestacion(db, payload.id_tipo_prestacion)
+    prest = await _resolver_prestacion(db, payload.id_tipo_prestacion, current["id_municipio"])
     tipo_recurso = prest["tipo_recurso"]
     id_recurso = prest["id_recurso"]
     duracion_min = prest["duracion_min"]
