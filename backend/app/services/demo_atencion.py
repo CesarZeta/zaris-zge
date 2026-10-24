@@ -233,7 +233,9 @@ async def _cargar_catalogos(db: AsyncSession, rnd: random.Random) -> _Catalogos:
         "SELECT id_espacio, COALESCE(NULLIF(TRIM(prefijo_colero), ''), '') AS p FROM espacios_agenda WHERE activo"))
     cat.prefijos = {f.id_espacio: f.p for f in r.fetchall()}
 
-    cat.guardia = await espacio_guardia(db)
+    id_mun_demo = await db.scalar(text(
+        "SELECT id_municipio FROM municipios WHERE direccion_base AND activo"))
+    cat.guardia = await espacio_guardia(db, id_mun_demo)
     if cat.guardia:
         r = await db.execute(text("""
             SELECT ea.id_agente FROM espacio_agentes ea JOIN agentes a ON a.id_agente = ea.id_agente

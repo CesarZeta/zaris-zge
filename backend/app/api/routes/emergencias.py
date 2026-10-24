@@ -26,6 +26,7 @@ from app.core.auth import get_current_user
 from sqlalchemy.exc import IntegrityError
 from app.services.guardia import atencion_out as guardia_atencion_out, espacio_guardia, registrar_log_evento
 from app.core.database import get_db
+from app.core.municipio import municipio_actual
 from app.services import push as svc_push
 
 router = APIRouter(
@@ -115,14 +116,15 @@ class SubtipoOut(BaseModel):
 async def listar_organismos(
     activo: Optional[bool] = Query(True),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     rows = (await db.execute(text("""
         SELECT id_emergencia_organismo_derivacion, codigo, nombre, descripcion,
                telefono_contacto, es_municipal, activo
         FROM emergencia_organismo_derivacion
-        WHERE (CAST(:activo AS boolean) IS NULL OR activo = :activo)
+        WHERE id_municipio = :mun AND (CAST(:activo AS boolean) IS NULL OR activo = :activo)
         ORDER BY nombre
-    """), {"activo": activo})).mappings().all()
+    """), {"activo": activo, "mun": id_municipio})).mappings().all()
     return [dict(r) for r in rows]
 
 
@@ -130,14 +132,15 @@ async def listar_organismos(
 async def listar_canales(
     activo: Optional[bool] = Query(True),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     rows = (await db.execute(text("""
         SELECT id_emergencia_canal_ingreso, codigo, nombre, descripcion,
                requiere_operador, activo
         FROM emergencia_canal_ingreso
-        WHERE (CAST(:activo AS boolean) IS NULL OR activo = :activo)
+        WHERE id_municipio = :mun AND (CAST(:activo AS boolean) IS NULL OR activo = :activo)
         ORDER BY nombre
-    """), {"activo": activo})).mappings().all()
+    """), {"activo": activo, "mun": id_municipio})).mappings().all()
     return [dict(r) for r in rows]
 
 
@@ -145,14 +148,15 @@ async def listar_canales(
 async def listar_prioridades(
     activo: Optional[bool] = Query(True),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     rows = (await db.execute(text("""
         SELECT id_emergencia_prioridad, codigo, nombre, descripcion,
                sla_minutos_arribo, color_token, orden_visual, activo
         FROM emergencia_prioridad
-        WHERE (CAST(:activo AS boolean) IS NULL OR activo = :activo)
+        WHERE id_municipio = :mun AND (CAST(:activo AS boolean) IS NULL OR activo = :activo)
         ORDER BY orden_visual
-    """), {"activo": activo})).mappings().all()
+    """), {"activo": activo, "mun": id_municipio})).mappings().all()
     return [dict(r) for r in rows]
 
 
@@ -193,12 +197,14 @@ async def listar_tipos(
     id_subarea: Optional[int] = Query(None),
     activo: Optional[bool] = Query(True),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     rows = (await db.execute(text(_SELECT_TIPOS + """
-        WHERE (CAST(:id_subarea AS integer) IS NULL OR t.id_subarea = :id_subarea)
+        WHERE t.id_municipio = :mun
+          AND (CAST(:id_subarea AS integer) IS NULL OR t.id_subarea = :id_subarea)
           AND (CAST(:activo AS boolean) IS NULL OR t.activo = :activo)
         ORDER BY t.nombre
-    """), {"id_subarea": id_subarea, "activo": activo})).mappings().all()
+    """), {"id_subarea": id_subarea, "activo": activo, "mun": id_municipio})).mappings().all()
     return [dict(r) for r in rows]
 
 
@@ -217,10 +223,11 @@ async def listar_subtipos_de_tipo(
     id_tipo: int,
     activo: Optional[bool] = Query(True),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     existe = (await db.execute(text(
-        "SELECT 1 FROM emergencia_tipo WHERE id_emergencia_tipo = :id"
-    ), {"id": id_tipo})).scalar()
+        "SELECT 1 FROM emergencia_tipo WHERE id_emergencia_tipo = :id AND id_municipio = :mun"
+    ), {"id": id_tipo, "mun": id_municipio})).scalar()
     if not existe:
         raise HTTPException(404, "Tipo de emergencia no encontrado")
     rows = (await db.execute(text(_SELECT_SUBTIPOS + """
@@ -236,12 +243,14 @@ async def listar_subtipos(
     id_tipo: Optional[int] = Query(None),
     activo: Optional[bool] = Query(True),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     rows = (await db.execute(text(_SELECT_SUBTIPOS + """
-        WHERE (CAST(:id_tipo AS integer) IS NULL OR st.id_tipo = :id_tipo)
+        WHERE st.id_municipio = :mun
+          AND (CAST(:id_tipo AS integer) IS NULL OR st.id_tipo = :id_tipo)
           AND (CAST(:activo AS boolean) IS NULL OR st.activo = :activo)
         ORDER BY st.id_tipo, st.nombre
-    """), {"id_tipo": id_tipo, "activo": activo})).mappings().all()
+    """), {"id_tipo": id_tipo, "activo": activo, "mun": id_municipio})).mappings().all()
     return [dict(r) for r in rows]
 
 
@@ -310,14 +319,14 @@ async def _estado_por_codigo(db: AsyncSession, codigo: str) -> dict:
     return dict(row)
 
 
-async def _evento_for_update(db: AsyncSession, id_evento: int) -> dict:
+async def _evento_for_update(db: AsyncSession, id_evento: int, id_municipio: int) -> dict:
     row = (await db.execute(text("""
         SELECT e.*, est.codigo AS estado_codigo, est.es_terminal
         FROM emergencia_evento e
         JOIN emergencia_estado est ON est.id_emergencia_estado = e.id_estado
-        WHERE e.id_emergencia_evento = :id AND e.activo
+        WHERE e.id_emergencia_evento = :id AND e.activo AND e.id_municipio = :mun
         FOR UPDATE OF e
-    """), {"id": id_evento})).mappings().first()
+    """), {"id": id_evento, "mun": id_municipio})).mappings().first()
     if not row:
         raise HTTPException(404, "Evento no encontrado")
     return dict(row)
@@ -338,7 +347,9 @@ async def _registrar_log(
         INSERT INTO emergencia_log
             (id_evento, id_usuario, tipo_accion, estado_anterior, estado_nuevo,
              payload_json, observaciones, id_municipio)
-        VALUES (:e, :u, :t, :ea, :en, CAST(:p AS jsonb), :o, :m)
+        VALUES (:e, :u, :t, :ea, :en, CAST(:p AS jsonb), :o,
+                COALESCE(CAST(:m AS integer),
+                         (SELECT id_municipio FROM emergencia_evento WHERE id_emergencia_evento = :e)))
     """), {
         "e": id_evento, "u": id_usuario, "t": tipo_accion,
         "ea": estado_anterior, "en": estado_nuevo,
@@ -358,7 +369,6 @@ class ContactoEventualCreate(BaseModel):
     contacto_alt_nombre: Optional[str] = Field(None, max_length=150)
     contacto_alt_telefono: Optional[str] = Field(None, max_length=30)
     observaciones: Optional[str] = None
-    id_municipio: Optional[int] = None
 
 
 class ContactoEventualUpdate(BaseModel):
@@ -409,7 +419,6 @@ class EventoCreate(BaseModel):
     referencia_ubicacion: Optional[str] = Field(None, max_length=300)
     observaciones_recepcion: Optional[str] = None
     audio_grabacion_url: Optional[str] = None
-    id_municipio: Optional[int] = None
 
 
 class EventoUpdate(BaseModel):
@@ -474,26 +483,27 @@ async def buscar_contactos_eventuales(
     nombre: Optional[str] = Query(None),
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     _require_operador(user)
     criterios = [c for c in (dni, telefono, nombre) if c]
     if len(criterios) != 1:
         raise HTTPException(422, "Indicar exactamente un criterio: dni, telefono o nombre")
-    where, params = _where_contacto(dni, telefono, nombre)
+    where, params = _where_contacto(dni, telefono, nombre, id_municipio)
     rows = (await db.execute(text(
         _SELECT_CONTACTO + where + " ORDER BY nombre_apellido LIMIT 20"
     ), params)).mappings().all()
     return [dict(r) for r in rows]
 
 
-def _where_contacto(dni, telefono, nombre):
-    base = " WHERE activo AND NOT convertido_a_buc AND "
+def _where_contacto(dni, telefono, nombre, id_municipio: int):
+    base = " WHERE activo AND NOT convertido_a_buc AND id_municipio = :mun AND "
     if dni:
-        return base + "dni = :v", {"v": _solo_digitos(dni)}
+        return base + "dni = :v", {"v": _solo_digitos(dni), "mun": id_municipio}
     if telefono:
-        return base + "regexp_replace(telefono, '\\D', '', 'g') = :v", {"v": _solo_digitos(telefono)}
+        return base + "regexp_replace(telefono, '\\D', '', 'g') = :v", {"v": _solo_digitos(telefono), "mun": id_municipio}
     tokens = [t for t in (nombre or "").split() if t]
-    conds, params = [], {}
+    conds, params = [], {"mun": id_municipio}
     for i, t in enumerate(tokens):
         conds.append(f"nombre_apellido ILIKE :t{i}")
         params[f"t{i}"] = f"%{t}%"
@@ -505,6 +515,7 @@ async def crear_contacto_eventual(
     body: ContactoEventualCreate,
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     _require_operador(user)
     dni = _solo_digitos(body.dni)
@@ -512,8 +523,8 @@ async def crear_contacto_eventual(
         raise HTTPException(422, "DNI invalido (minimo 6 digitos)")
     dup = (await db.execute(text("""
         SELECT id_emergencia_contacto_eventual FROM emergencia_contacto_eventual
-        WHERE dni = :dni AND activo AND NOT convertido_a_buc
-    """), {"dni": dni})).scalar()
+        WHERE dni = :dni AND activo AND NOT convertido_a_buc AND id_municipio = :mun
+    """), {"dni": dni, "mun": id_municipio})).scalar()
     if dup:
         raise HTTPException(409, f"Ya existe un contacto eventual activo con DNI {dni} (id {dup})")
     row = (await db.execute(text("""
@@ -527,17 +538,17 @@ async def crear_contacto_eventual(
         "tel": _solo_digitos(body.telefono), "dir": body.direccion.strip(),
         "can": body.contacto_alt_nombre,
         "cat": _solo_digitos(body.contacto_alt_telefono) or None,
-        "obs": body.observaciones, "mun": body.id_municipio,
+        "obs": body.observaciones, "mun": id_municipio,
         "ua": user["id_usuario"],
     })).scalar()
     await db.commit()
-    return await _contacto_out(db, row)
+    return await _contacto_out(db, row, id_municipio)
 
 
-async def _contacto_out(db: AsyncSession, id_contacto: int) -> dict:
+async def _contacto_out(db: AsyncSession, id_contacto: int, id_municipio: int) -> dict:
     row = (await db.execute(text(
-        _SELECT_CONTACTO + " WHERE id_emergencia_contacto_eventual = :id"
-    ), {"id": id_contacto})).mappings().first()
+        _SELECT_CONTACTO + " WHERE id_emergencia_contacto_eventual = :id AND id_municipio = :mun"
+    ), {"id": id_contacto, "mun": id_municipio})).mappings().first()
     if not row:
         raise HTTPException(404, "Contacto eventual no encontrado")
     return dict(row)
@@ -548,9 +559,10 @@ async def detalle_contacto_eventual(
     id_contacto: int,
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     _require_operador(user)
-    return await _contacto_out(db, id_contacto)
+    return await _contacto_out(db, id_contacto, id_municipio)
 
 
 @router.patch("/contactos-eventuales/{id_contacto}", response_model=ContactoEventualOut)
@@ -559,9 +571,10 @@ async def editar_contacto_eventual(
     body: ContactoEventualUpdate,
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     _require_operador(user)
-    actual = await _contacto_out(db, id_contacto)
+    actual = await _contacto_out(db, id_contacto, id_municipio)
     if actual["convertido_a_buc"]:
         raise HTTPException(422, "El contacto ya fue promovido a BUC; editar el ciudadano en Padrones")
     cambios = body.model_dump(exclude_unset=True)
@@ -578,7 +591,7 @@ async def editar_contacto_eventual(
         WHERE id_emergencia_contacto_eventual = :id
     """), {**cambios, "um": user["id_usuario"], "id": id_contacto})
     await db.commit()
-    return await _contacto_out(db, id_contacto)
+    return await _contacto_out(db, id_contacto, id_municipio)
 
 
 @router.post("/contactos-eventuales/{id_contacto}/promover-a-buc")
@@ -587,50 +600,51 @@ async def promover_contacto_a_buc(
     body: PromoverBucIn,
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     _require_operador(user)
-    contacto = await _contacto_out(db, id_contacto)
+    contacto = await _contacto_out(db, id_contacto, id_municipio)
     if contacto["convertido_a_buc"]:
         raise HTTPException(409, "El contacto ya fue promovido a BUC")
 
     creado = False
     if body.id_ciudadano:
         id_ciudadano = (await db.execute(text(
-            "SELECT id_ciudadano FROM ciudadanos WHERE id_ciudadano = :id AND activo"
-        ), {"id": body.id_ciudadano})).scalar()
+            "SELECT id_ciudadano FROM ciudadanos WHERE id_ciudadano = :id AND activo AND id_municipio = :mun"
+        ), {"id": body.id_ciudadano, "mun": id_municipio})).scalar()
         if not id_ciudadano:
             raise HTTPException(422, "El ciudadano indicado no existe o esta inactivo")
     else:
         # si ya hay un ciudadano activo con ese DNI, se vincula automaticamente
         id_ciudadano = (await db.execute(text("""
             SELECT id_ciudadano FROM ciudadanos
-            WHERE regexp_replace(doc_nro, '\\D', '', 'g') = :dni AND activo
+            WHERE regexp_replace(doc_nro, '\\D', '', 'g') = :dni AND activo AND id_municipio = :mun
             ORDER BY id_ciudadano LIMIT 1
-        """), {"dni": contacto["dni"]})).scalar()
+        """), {"dni": contacto["dni"], "mun": id_municipio})).scalar()
         if not id_ciudadano:
             if not (body.apellido and body.nombre and body.email):
                 raise HTTPException(
                     422, "Para crear el ciudadano en BUC se requieren apellido, nombre y email")
             cuil = "20" + contacto["dni"].zfill(8) + "9"
             dup_cuil = (await db.execute(text(
-                "SELECT id_ciudadano FROM ciudadanos WHERE cuil = :c"
-            ), {"c": cuil})).scalar()
+                "SELECT id_ciudadano FROM ciudadanos WHERE cuil = :c AND id_municipio = :mun"
+            ), {"c": cuil, "mun": id_municipio})).scalar()
             if dup_cuil:
                 raise HTTPException(409, "Colision de CUIL placeholder; vincular por id_ciudadano")
             id_ciudadano = (await db.execute(text("""
                 INSERT INTO ciudadanos
                     (doc_tipo, doc_nro, cuil, apellido, nombre, sexo, fecha_nac,
                      id_nacionalidad, ren_chk, calle, telefono, email, email_chk,
-                     emp_chk, activo, estado_validacion, ficha_completa, id_usuario_alta)
+                     emp_chk, activo, estado_validacion, ficha_completa, id_usuario_alta, id_municipio)
                 VALUES ('DNI', :dni, :cuil, :ape, :nom, 'OTROS', CAST('1900-01-01' AS date),
                         1, FALSE, :calle, :tel, :email, FALSE,
-                        FALSE, TRUE, 'verificado', FALSE, :ua)
+                        FALSE, TRUE, 'verificado', FALSE, :ua, :mun)
                 RETURNING id_ciudadano
             """), {
                 "dni": contacto["dni"], "cuil": cuil,
                 "ape": body.apellido.strip(), "nom": body.nombre.strip(),
                 "calle": contacto["direccion"], "tel": contacto["telefono"],
-                "email": body.email.strip(), "ua": user["id_usuario"],
+                "email": body.email.strip(), "ua": user["id_usuario"], "mun": id_municipio,
             })).scalar()
             creado = True
 
@@ -672,6 +686,7 @@ async def buscar_denunciante(
     nombre: Optional[str] = Query(None),
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     _require_operador(user)
     criterios = [("dni", dni), ("telefono", telefono), ("nombre", nombre)]
@@ -695,9 +710,9 @@ async def buscar_denunciante(
     buc = (await db.execute(text(f"""
         SELECT id_ciudadano, apellido, nombre, doc_nro, cuil, telefono, email,
                calle, altura, localidad
-        FROM ciudadanos WHERE activo AND {where}
+        FROM ciudadanos WHERE activo AND id_municipio = :mun AND {where}
         ORDER BY apellido, nombre LIMIT 20
-    """), params)).mappings().all()
+    """), {**params, "mun": id_municipio})).mappings().all()
     if buc:
         return {"origen": "BUC", "matches": [dict(r) for r in buc]}
 
@@ -706,6 +721,7 @@ async def buscar_denunciante(
         dni if criterio == "dni" else None,
         telefono if criterio == "telefono" else None,
         nombre if criterio == "nombre" else None,
+        id_municipio,
     )
     ev = (await db.execute(text(
         _SELECT_CONTACTO + where_ev + " ORDER BY nombre_apellido LIMIT 20"
@@ -770,10 +786,10 @@ _SELECT_EVENTO = """
 """
 
 
-async def _evento_out(db: AsyncSession, id_evento: int) -> dict:
+async def _evento_out(db: AsyncSession, id_evento: int, id_municipio: int) -> dict:
     row = (await db.execute(text(
-        _SELECT_EVENTO + " WHERE e.id_emergencia_evento = :id"
-    ), {"id": id_evento})).mappings().first()
+        _SELECT_EVENTO + " WHERE e.id_emergencia_evento = :id AND e.id_municipio = :mun"
+    ), {"id": id_evento, "mun": id_municipio})).mappings().first()
     if not row:
         raise HTTPException(404, "Evento no encontrado")
     return dict(row)
@@ -784,14 +800,15 @@ async def crear_evento(
     body: EventoCreate,
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     _require_operador(user)
 
     tipo = (await db.execute(text("""
         SELECT id_emergencia_tipo, id_subarea, id_prioridad_default,
                id_organismo_derivacion_default
-        FROM emergencia_tipo WHERE id_emergencia_tipo = :id AND activo
-    """), {"id": body.id_tipo})).mappings().first()
+        FROM emergencia_tipo WHERE id_emergencia_tipo = :id AND activo AND id_municipio = :mun
+    """), {"id": body.id_tipo, "mun": id_municipio})).mappings().first()
     if not tipo:
         raise HTTPException(422, "Tipo de emergencia inexistente o inactivo")
     if tipo["id_subarea"] != body.id_subarea:
@@ -810,11 +827,15 @@ async def crear_evento(
             id_prioridad = subtipo["id_prioridad_override"]
     if id_prioridad is None:
         id_prioridad = tipo["id_prioridad_default"]
+    elif not (await db.execute(text(
+            "SELECT 1 FROM emergencia_prioridad WHERE id_emergencia_prioridad = :id AND id_municipio = :mun"),
+            {"id": id_prioridad, "mun": id_municipio})).scalar():
+        raise HTTPException(422, "Prioridad inexistente")
 
     canal_ok = (await db.execute(text("""
         SELECT 1 FROM emergencia_canal_ingreso
-        WHERE id_emergencia_canal_ingreso = :id AND activo
-    """), {"id": body.id_canal_ingreso})).scalar()
+        WHERE id_emergencia_canal_ingreso = :id AND activo AND id_municipio = :mun
+    """), {"id": body.id_canal_ingreso, "mun": id_municipio})).scalar()
     if not canal_ok:
         raise HTTPException(422, "Canal de ingreso inexistente o inactivo")
 
@@ -828,15 +849,16 @@ async def crear_evento(
                 422, "Indicar exactamente uno: id_ciudadano_buc o id_contacto_eventual")
         if body.id_ciudadano_buc:
             ok = (await db.execute(text(
-                "SELECT 1 FROM ciudadanos WHERE id_ciudadano = :id AND activo"
-            ), {"id": body.id_ciudadano_buc})).scalar()
+                "SELECT 1 FROM ciudadanos WHERE id_ciudadano = :id AND activo AND id_municipio = :mun"
+            ), {"id": body.id_ciudadano_buc, "mun": id_municipio})).scalar()
             if not ok:
                 raise HTTPException(422, "Ciudadano BUC inexistente o inactivo")
         else:
             ok = (await db.execute(text("""
                 SELECT 1 FROM emergencia_contacto_eventual
                 WHERE id_emergencia_contacto_eventual = :id AND activo AND NOT convertido_a_buc
-            """), {"id": body.id_contacto_eventual})).scalar()
+                  AND id_municipio = :mun
+            """), {"id": body.id_contacto_eventual, "mun": id_municipio})).scalar()
             if not ok:
                 raise HTTPException(422, "Contacto eventual inexistente, inactivo o ya promovido")
 
@@ -863,7 +885,7 @@ async def crear_evento(
         "dir": body.direccion_evento.strip(), "lat": body.latitud,
         "lon": body.longitud, "ref": body.referencia_ubicacion,
         "audio": body.audio_grabacion_url, "obs": body.observaciones_recepcion,
-        "mun": body.id_municipio, "ua": user["id_usuario"],
+        "mun": id_municipio, "ua": user["id_usuario"],
     })).scalar()
 
     await _registrar_log(
@@ -871,9 +893,9 @@ async def crear_evento(
         estado_nuevo="PENDIENTE",
         payload={"id_canal_ingreso": body.id_canal_ingreso},
         observaciones=body.observaciones_recepcion,
-        id_municipio=body.id_municipio)
+        id_municipio=id_municipio)
     await db.commit()
-    return await _evento_out(db, id_evento)
+    return await _evento_out(db, id_evento, id_municipio)
 
 
 @router.get("/eventos/abiertos")
@@ -882,16 +904,17 @@ async def listar_eventos_abiertos(
     id_prioridad: Optional[int] = Query(None),
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     _require_operador(user)
     scope = await _filtro_scope_subarea(db, user)
     rows = (await db.execute(text(_SELECT_EVENTO + """
-        WHERE e.activo AND NOT est.es_terminal
+        WHERE e.activo AND NOT est.es_terminal AND e.id_municipio = :mun
           AND (CAST(:sub AS integer) IS NULL OR e.id_subarea = :sub)
           AND (CAST(:prio AS integer) IS NULL OR e.id_prioridad = :prio)
           AND (CAST(:scope AS integer) IS NULL OR e.id_subarea = :scope)
         ORDER BY e.es_panico DESC, p.orden_visual ASC, e.fecha_hora_recepcion DESC
-    """), {"sub": id_subarea, "prio": id_prioridad, "scope": scope})).mappings().all()
+    """), {"sub": id_subarea, "prio": id_prioridad, "scope": scope, "mun": id_municipio})).mappings().all()
     return [dict(r) for r in rows]
 
 
@@ -901,6 +924,7 @@ async def stats_eventos(
                                  description="ventana hacia atras en horas (NULL = historico completo)"),
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     """KPIs del tablero del dispatcher: abiertos AHORA (sin rango) + totales
     del rango por subarea y por estado. Agregacion 100% en SQL (s43).
@@ -914,11 +938,11 @@ async def stats_eventos(
         FROM emergencia_evento e
         JOIN emergencia_estado est ON est.id_emergencia_estado = e.id_estado
         JOIN subarea s ON s.id_subarea = e.id_subarea
-        WHERE e.activo AND NOT est.es_terminal
+        WHERE e.activo AND NOT est.es_terminal AND e.id_municipio = :mun
           AND (CAST(:scope AS integer) IS NULL OR e.id_subarea = :scope)
         GROUP BY e.id_subarea, s.nombre
         ORDER BY s.nombre
-    """), {"scope": scope})).mappings().all()
+    """), {"scope": scope, "mun": id_municipio})).mappings().all()
 
     # 2) eventos del rango, por estado (todos, incluidos terminales)
     #    make_interval con CAST explicito: asyncpg no castea bind params (s5)
@@ -931,25 +955,25 @@ async def stats_eventos(
                count(e.id_emergencia_evento) AS total
         FROM emergencia_estado est
         LEFT JOIN emergencia_evento e
-               ON e.id_estado = est.id_emergencia_estado AND e.activo
+               ON e.id_estado = est.id_emergencia_estado AND e.activo AND e.id_municipio = :mun
               AND (CAST(:scope AS integer) IS NULL OR e.id_subarea = :scope)
               {filtro_rango}
         WHERE est.activo
         GROUP BY est.codigo, est.nombre, est.es_terminal, est.orden_visual
         ORDER BY est.orden_visual
-    """), {"scope": scope, "h": horas})).mappings().all()
+    """), {"scope": scope, "h": horas, "mun": id_municipio})).mappings().all()
 
     # 3) eventos del rango, por subarea
     por_subarea = (await db.execute(text(f"""
         SELECT e.id_subarea, s.nombre AS subarea_nombre, count(*) AS total
         FROM emergencia_evento e
         JOIN subarea s ON s.id_subarea = e.id_subarea
-        WHERE e.activo
+        WHERE e.activo AND e.id_municipio = :mun
           AND (CAST(:scope AS integer) IS NULL OR e.id_subarea = :scope)
           {filtro_rango}
         GROUP BY e.id_subarea, s.nombre
         ORDER BY s.nombre
-    """), {"scope": scope, "h": horas})).mappings().all()
+    """), {"scope": scope, "h": horas, "mun": id_municipio})).mappings().all()
 
     return {
         "abiertos": {
@@ -978,11 +1002,12 @@ async def listar_eventos(
     offset: int = Query(0, ge=0),
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     _require_operador(user)
     scope = await _filtro_scope_subarea(db, user)
     where = """
-        WHERE e.activo
+        WHERE e.activo AND e.id_municipio = :mun
           AND (CAST(:estado AS text) IS NULL OR est.codigo = :estado)
           AND (CAST(:sub AS integer) IS NULL OR e.id_subarea = :sub)
           AND (CAST(:prio AS integer) IS NULL OR e.id_prioridad = :prio)
@@ -995,7 +1020,7 @@ async def listar_eventos(
           AND (CAST(:scope AS integer) IS NULL OR e.id_subarea = :scope)
     """
     params = {"estado": estado, "sub": id_subarea, "prio": id_prioridad,
-              "q": q, "fd": fecha_desde, "fh": fecha_hasta, "scope": scope}
+              "q": q, "fd": fecha_desde, "fh": fecha_hasta, "scope": scope, "mun": id_municipio}
     total = (await db.execute(text(f"""
         SELECT count(*) FROM emergencia_evento e
         JOIN emergencia_estado est ON est.id_emergencia_estado = e.id_estado
@@ -1016,9 +1041,10 @@ async def detalle_evento(
     id_evento: int,
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     _require_operador(user)
-    out = await _evento_out(db, id_evento)
+    out = await _evento_out(db, id_evento, id_municipio)
     await _check_scope_subarea(db, user, out["id_subarea"])
     # datos completos del denunciante para el tab correspondiente
     if out["id_ciudadano_buc"]:
@@ -1029,7 +1055,7 @@ async def detalle_evento(
         """), {"id": out["id_ciudadano_buc"]})).mappings().first()
         out["denunciante"] = dict(ciu) if ciu else None
     elif out["id_contacto_eventual"]:
-        out["denunciante"] = await _contacto_out(db, out["id_contacto_eventual"])
+        out["denunciante"] = await _contacto_out(db, out["id_contacto_eventual"], id_municipio)
     else:
         out["denunciante"] = None
     return out
@@ -1041,23 +1067,24 @@ async def editar_evento(
     body: EventoUpdate,
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     _require_operador(user)
-    ev = await _evento_for_update(db, id_evento)
+    ev = await _evento_for_update(db, id_evento, id_municipio)
     await _check_scope_subarea(db, user, ev["id_subarea"])
     if ev["es_terminal"]:
         raise HTTPException(422, "El evento esta en estado terminal; no admite edicion")
 
     cambios = body.model_dump(exclude_unset=True)
     if not cambios:
-        return await _evento_out(db, id_evento)
+        return await _evento_out(db, id_evento, id_municipio)
 
     # cambio de tipo: debe pertenecer a la misma subarea del evento
     if "id_tipo" in cambios and cambios["id_tipo"] != ev["id_tipo"]:
         tipo = (await db.execute(text("""
             SELECT id_subarea FROM emergencia_tipo
-            WHERE id_emergencia_tipo = :id AND activo
-        """), {"id": cambios["id_tipo"]})).mappings().first()
+            WHERE id_emergencia_tipo = :id AND activo AND id_municipio = :mun
+        """), {"id": cambios["id_tipo"], "mun": id_municipio})).mappings().first()
         if not tipo:
             raise HTTPException(422, "Tipo de emergencia inexistente o inactivo")
         if tipo["id_subarea"] != ev["id_subarea"]:
@@ -1075,8 +1102,8 @@ async def editar_evento(
     if "id_prioridad" in cambios:
         ok = (await db.execute(text("""
             SELECT 1 FROM emergencia_prioridad
-            WHERE id_emergencia_prioridad = :id AND activo
-        """), {"id": cambios["id_prioridad"]})).scalar()
+            WHERE id_emergencia_prioridad = :id AND activo AND id_municipio = :mun
+        """), {"id": cambios["id_prioridad"], "mun": id_municipio})).scalar()
         if not ok:
             raise HTTPException(422, "Prioridad inexistente o inactiva")
 
@@ -1108,7 +1135,7 @@ async def editar_evento(
                              payload={"campos_modificados": otros},
                              observaciones="Edicion de datos del evento")
     await db.commit()
-    return await _evento_out(db, id_evento)
+    return await _evento_out(db, id_evento, id_municipio)
 
 
 async def _aplicar_cambio_estado(
@@ -1161,6 +1188,7 @@ async def cambiar_estado_evento(
     body: CambiarEstadoIn,
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     _require_operador(user)
     destino = body.nuevo_estado.strip().upper()
@@ -1168,13 +1196,13 @@ async def cambiar_estado_evento(
         raise HTTPException(422, "Los cierres van por POST /eventos/{id}/cerrar (exigen veracidad)")
     if destino == "DERIVADO":
         raise HTTPException(422, "La derivacion va por POST /eventos/{id}/derivar (exige organismo)")
-    ev = await _evento_for_update(db, id_evento)
+    ev = await _evento_for_update(db, id_evento, id_municipio)
     await _check_scope_subarea(db, user, ev["id_subarea"])
     await _aplicar_cambio_estado(db, ev, user, destino, body.observaciones)
     await db.commit()
     # Hook push App Vecinos (etapa E) — post-commit, best-effort.
     await svc_push.notificar_estado_emergencia(id_evento)
-    return await _evento_out(db, id_evento)
+    return await _evento_out(db, id_evento, id_municipio)
 
 
 @router.post("/eventos/{id_evento}/derivar")
@@ -1183,16 +1211,17 @@ async def derivar_evento(
     body: DerivarIn,
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     _require_operador(user)
     org = (await db.execute(text("""
         SELECT id_emergencia_organismo_derivacion, codigo, nombre
         FROM emergencia_organismo_derivacion
-        WHERE id_emergencia_organismo_derivacion = :id AND activo
-    """), {"id": body.id_organismo})).mappings().first()
+        WHERE id_emergencia_organismo_derivacion = :id AND activo AND id_municipio = :mun
+    """), {"id": body.id_organismo, "mun": id_municipio})).mappings().first()
     if not org:
         raise HTTPException(422, "Organismo de derivacion inexistente o inactivo")
-    ev = await _evento_for_update(db, id_evento)
+    ev = await _evento_for_update(db, id_evento, id_municipio)
     await _check_scope_subarea(db, user, ev["id_subarea"])
     await _aplicar_cambio_estado(
         db, ev, user, "DERIVADO", body.observaciones,
@@ -1202,7 +1231,7 @@ async def derivar_evento(
         payload={"id_organismo": body.id_organismo, "organismo": org["codigo"]})
     await db.commit()
     await svc_push.notificar_estado_emergencia(id_evento)
-    return await _evento_out(db, id_evento)
+    return await _evento_out(db, id_evento, id_municipio)
 
 
 @router.post(
@@ -1218,6 +1247,7 @@ async def derivar_evento_a_guardia(
     body: DerivarGuardiaIn,
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     """Deriva al vecino a la GUARDIA (proyecto Atencion F4, mig 106).
 
@@ -1229,11 +1259,11 @@ async def derivar_evento_a_guardia(
     Una derivacion PENDIENTE por evento: repetirla da 409 (UNIQUE parcial).
     """
     _require_operador(user)
-    ev = await _evento_for_update(db, id_evento)
+    ev = await _evento_for_update(db, id_evento, id_municipio)
     await _check_scope_subarea(db, user, ev["id_subarea"])
     if ev["estado_codigo"] == "DESESTIMADO":
         raise HTTPException(422, "Un evento desestimado no se deriva a la Guardia")
-    guardia = await espacio_guardia(db)
+    guardia = await espacio_guardia(db, id_municipio)
     if not guardia:
         raise HTTPException(
             422, "No hay una Guardia configurada (clave id_espacio_guardia en Config -> Sistema)")
@@ -1243,8 +1273,8 @@ async def derivar_evento_a_guardia(
         id_ciudadano = int(ev["id_ciudadano_buc"])
     if id_ciudadano is not None:
         existe = await db.scalar(text(
-            "SELECT 1 FROM ciudadanos WHERE id_ciudadano = :c AND activo = TRUE"
-        ), {"c": id_ciudadano})
+            "SELECT 1 FROM ciudadanos WHERE id_ciudadano = :c AND activo = TRUE AND id_municipio = :mun"
+        ), {"c": id_ciudadano, "mun": id_municipio})
         if not existe:
             raise HTTPException(422, "El ciudadano indicado como paciente no existe")
     paciente_nombre = (body.paciente_nombre or "").strip() or None
@@ -1297,9 +1327,10 @@ async def cerrar_evento(
     body: CerrarIn,
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     _require_operador(user)
-    ev = await _evento_for_update(db, id_evento)
+    ev = await _evento_for_update(db, id_evento, id_municipio)
     await _check_scope_subarea(db, user, ev["id_subarea"])
     destino = "RESUELTO" if body.terminal_positivo else "DESESTIMADO"
     await _aplicar_cambio_estado(
@@ -1310,7 +1341,7 @@ async def cerrar_evento(
         payload={"veracidad": body.veracidad, "terminal_positivo": body.terminal_positivo})
     await db.commit()
     await svc_push.notificar_estado_emergencia(id_evento)
-    return await _evento_out(db, id_evento)
+    return await _evento_out(db, id_evento, id_municipio)
 
 
 @router.post("/eventos/{id_evento}/marcar-en-sitio")
@@ -1318,14 +1349,15 @@ async def marcar_en_sitio(
     id_evento: int,
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     _require_operador(user)
-    ev = await _evento_for_update(db, id_evento)
+    ev = await _evento_for_update(db, id_evento, id_municipio)
     await _check_scope_subarea(db, user, ev["id_subarea"])
     await _aplicar_cambio_estado(db, ev, user, "EN_SITIO", None)
     await db.commit()
     await svc_push.notificar_estado_emergencia(id_evento)
-    return await _evento_out(db, id_evento)
+    return await _evento_out(db, id_evento, id_municipio)
 
 
 @router.post("/eventos/{id_evento}/agregar-nota", status_code=201)
@@ -1334,9 +1366,10 @@ async def agregar_nota_evento(
     body: NotaIn,
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     _require_operador(user)
-    ev = await _evento_for_update(db, id_evento)
+    ev = await _evento_for_update(db, id_evento, id_municipio)
     await _check_scope_subarea(db, user, ev["id_subarea"])
     await _registrar_log(
         db, id_evento, user["id_usuario"], "NOTA",
@@ -1351,9 +1384,10 @@ async def log_evento(
     id_evento: int,
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     _require_operador(user)
-    ev = await _evento_out(db, id_evento)
+    ev = await _evento_out(db, id_evento, id_municipio)
     await _check_scope_subarea(db, user, ev["id_subarea"])
     rows = (await db.execute(text("""
         SELECT l.id_emergencia_log, l.id_evento, l.id_usuario,

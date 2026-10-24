@@ -127,8 +127,11 @@ def main() -> int:
 
     # 9. Reservar turno B en OTRO dia (queda como demo) + cancelar turno A (probar flujo)
     turno_b = None
+    # Los días con turno del vecino (los de demo de corridas anteriores) darían 409 y gastarían el
+    # límite de 5 reservas por minuto antes de llegar a un día libre.
+    dias_ocupados = {str(t["fecha"])[:10] for t in mios if t["estado"] != "cancelado"}
     for f in fechas:
-        if f == slot_a["fecha"]:
+        if f == slot_a["fecha"] or f in dias_ocupados:
             continue
         s = por_fecha[f]
         r = c.post(f"{BASE}/api/v1/publico/turnos/reservar", headers=H, json={

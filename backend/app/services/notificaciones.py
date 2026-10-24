@@ -844,8 +844,8 @@ async def notificar_alerta_panico(
                 rows = (await db.execute(text("""
                     SELECT u.id_usuario, u.nombre, u.email
                       FROM usuarios u
-                     WHERE u.activo = TRUE AND u.nivel_acceso = 1
-                """))).fetchall()
+                     WHERE u.activo = TRUE AND u.nivel_acceso = 1 AND u.id_municipio = :mun
+                """), {"mun": evento.id_municipio})).fetchall()
                 usuarios = [dict(r._mapping) for r in rows]
                 destino = "admins (fallback: subarea sin operadores)"
             if not usuarios:

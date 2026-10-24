@@ -285,6 +285,10 @@ def revisar(path: str, metodo: str, r: httpx.Response, con_id_b: bool, etiqueta:
         return
     # Un 4xx que repite lo que mandamos (la búsqueda con la marca) no es una filtración.
     pidio_marca = MARCA in str(r.request.url) or MARCA in (r.request.content or b"").decode("utf-8", "replace")
+    # Un valor que es exactamente la marca es el eco de la búsqueda («origen NUEVO, valor AISLAB»):
+    # los textos de B la llevan junto al texto original, nunca sola.
+    if pidio_marca:
+        cuerpo = cuerpo.replace(f'"{MARCA}"', '""')
     if r.status_code >= 500:
         falla(path, f"{metodo} {path} → {r.status_code} ({etiqueta})")
     elif MARCA in cuerpo and not (r.status_code >= 400 and pidio_marca):
@@ -418,6 +422,13 @@ async def main() -> int:
                     elif r.status_code < 300 and NUMERO_DE_A.search(r.text or ""):
                         falla(ruta.path, f"vecino de B: GET {ruta.path} devuelve números del municipio 1")
             tv_a = crear_token_ciudadano(vecino_a, 1)
+            # El vecino del municipio 1 no ve catálogos ni filas de B (los textos de B llevan la marca).
+            for ruta in rutas:
+                if not ruta.path.startswith("/api/v1/publico") or "GET" not in ruta.methods or saltear(ruta.path) \
+                        or re.search(r"{", ruta.path):
+                    continue
+                r = await c.get(ruta.path, params=query_de(ruta, ids), headers={"Authorization": f"Bearer {tv_a}"})
+                revisar(ruta.path, "GET", r, False, "vecino del municipio 1")
             r = await c.get("/api/v1/publico/auth/me", headers={"Authorization": f"Bearer {tv_a}", "Origin": ORIGEN_B_VECINOS})
             CUENTA["vecino"] += 1
             if r.status_code != 401:

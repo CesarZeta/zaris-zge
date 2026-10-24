@@ -643,7 +643,7 @@ async def listar_ubicaciones_atencion(
     scope_sql = ""
     # Guardia (mig 106): entra a la landing por la clave de config aunque no
     # tenga prestaciones ni agentes; su contador es de derivaciones pendientes.
-    params: dict[str, Any] = {"f": f, "guardia": (await id_espacio_guardia(db)) or -1}
+    params: dict[str, Any] = {"f": f, "guardia": (await id_espacio_guardia(db, user["id_municipio"])) or -1}
     if scope is not None:
         scope_sql = (
             " AND (t.id_agente = :scope_agente OR t.id_espacio IN "
@@ -799,7 +799,7 @@ async def mesa_ubicacion(
         "token_pantalla": esp["token_pantalla"] if int(user.get("nivel_acceso") or 9) <= 2 else None,
         "recursos": recursos_out,
         # Guardia (mig 106): la mesa muestra el panel de derivaciones del COM.
-        "es_guardia": (await id_espacio_guardia(db)) == id_espacio,
+        "es_guardia": (await id_espacio_guardia(db, user["id_municipio"])) == id_espacio,
     }
 
 
@@ -813,7 +813,7 @@ async def _guardia_o_404(db: AsyncSession, user: dict) -> dict[str, Any]:
     siempre; nivel 3-4 solo si su subarea es la de la Guardia o figura como
     agente vinculado. 404 generico (no filtra existencia: la mesa expone
     pacientes)."""
-    g = await espacio_guardia(db)
+    g = await espacio_guardia(db, user["id_municipio"])
     if not g:
         raise HTTPException(404, "No hay una Guardia configurada")
     scope = await _scope_turnos_para_usuario(db, user)
