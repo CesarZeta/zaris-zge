@@ -129,9 +129,12 @@ async def _autorizar(request: Request, db: AsyncSession) -> str:
             payload = jwt.decode(auth[7:], settings.SECRET_KEY, algorithms=[ALGORITHM])
             if payload.get("scope", "agente") == "agente" and payload.get("sub"):
                 fila = (await db.execute(
-                    text("SELECT id_usuario, nivel_acceso, activo FROM usuarios WHERE id_usuario = :id"),
+                    text("SELECT id_usuario, nivel_acceso, activo, id_municipio FROM usuarios WHERE id_usuario = :id"),
                     {"id": int(payload["sub"])})).fetchone()
-                if fila and fila.activo and fila.nivel_acceso == 1:
+                # Solo un administrador del municipio demo (IT-01): el generador escribe ahi.
+                id_demo = await db.scalar(text(
+                    "SELECT id_municipio FROM municipios WHERE direccion_base AND activo"))
+                if fila and fila.activo and fila.nivel_acceso == 1 and fila.id_municipio == id_demo:
                     return f"admin:{fila.id_usuario}"
         except (JWTError, ValueError):
             pass

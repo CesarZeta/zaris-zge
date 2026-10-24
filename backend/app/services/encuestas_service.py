@@ -1185,16 +1185,17 @@ async def _notificar_solicitud_contacto(db, *, id_subarea, referencia: str):
 # Jobs (dispatcher externo)
 # =============================================================================
 
-async def expirar_envios_vencidos(db: AsyncSession) -> int:
-    """Marca 'expirada' los envios vencidos en estado 'enviada'/'abierta'. Devuelve cantidad."""
+async def expirar_envios_vencidos(db: AsyncSession, *, id_municipio: int) -> int:
+    """Marca 'expirada' los envios vencidos del municipio en estado 'enviada'/'abierta'.
+    Devuelve cantidad."""
     try:
         res = await db.execute(text("""
             UPDATE encuesta_envio
                SET estado = 'expirada', fecha_modificacion = NOW()
-             WHERE activo = TRUE
+             WHERE activo = TRUE AND id_municipio = :mun
                AND estado IN ('enviada', 'abierta')
                AND fecha_expiracion < NOW()
-        """))
+        """), {"mun": id_municipio})
         await db.commit()
         n = res.rowcount or 0
         logger.info("expirar_envios_vencidos: %s envios marcados expirados", n)
@@ -1205,20 +1206,21 @@ async def expirar_envios_vencidos(db: AsyncSession) -> int:
         return 0
 
 
-async def procesar_envios_pendientes(db: AsyncSession, limite: int = 50) -> dict:
+async def procesar_envios_pendientes(db: AsyncSession, *, id_municipio: int, limite: int = 50) -> dict:
     """
-    Procesa envios 'pendiente' con fecha_alta < NOW() - 24h (delay para dar tiempo a
-    verificar que la solucion persista). Llama a enviar_email_encuesta() por cada uno.
+    Procesa los envios 'pendiente' del municipio con fecha_alta < NOW() - 24h (delay para
+    dar tiempo a verificar que la solucion persista). Llama a enviar_email_encuesta() por
+    cada uno.
     """
     resultado = {"procesados": 0, "exitosos": 0, "fallidos": 0}
     try:
         rows = (await db.execute(text("""
             SELECT id_encuesta_envio FROM encuesta_envio
-             WHERE activo = TRUE AND estado = 'pendiente'
+             WHERE activo = TRUE AND estado = 'pendiente' AND id_municipio = :mun
                AND fecha_alta < NOW() - make_interval(hours => :horas)
              ORDER BY fecha_alta
              LIMIT :lim
-        """), {"horas": HORAS_DELAY_ENVIO, "lim": limite})).fetchall()
+        """), {"horas": HORAS_DELAY_ENVIO, "lim": limite, "mun": id_municipio})).fetchall()
 
         for row in rows:
             resultado["procesados"] += 1

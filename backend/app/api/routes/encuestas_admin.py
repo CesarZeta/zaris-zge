@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.municipio import por_cada_municipio
 from app.core.municipio import municipio_actual
 from app.utils.orden import clausula_orden, descripcion_orden
 from app.utils.request_helpers import get_real_ip
@@ -721,18 +722,30 @@ async def ejecutar_dispatcher(
         raise HTTPException(401, "No autorizado")
 
     try:
-        resultado_envios = await svc.procesar_envios_pendientes(db, limite=50)
-        cantidad_expirados = await svc.expirar_envios_vencidos(db)
+        # Por municipio (IT-01): cada uno con sus envios; un fallo no frena a los demas.
+        async def _uno(id_m: int) -> dict:
+            envios = await svc.procesar_envios_pendientes(db, id_municipio=id_m, limite=50)
+            return {"envios": envios, "expirados": await svc.expirar_envios_vencidos(db, id_municipio=id_m)}
+
+        por_municipio = await por_cada_municipio(db, "Dispatcher encuestas", _uno)
+        resultado_envios = {"procesados": 0, "exitosos": 0, "fallidos": 0}
+        cantidad_expirados = 0
+        for r in por_municipio.values():
+            for k in resultado_envios:
+                resultado_envios[k] += r.get("envios", {}).get(k, 0)
+            cantidad_expirados += r.get("expirados", 0)
         logger.info(
-            "Dispatcher OK: procesados=%s exitosos=%s fallidos=%s expirados=%s",
+            "Dispatcher OK: procesados=%s exitosos=%s fallidos=%s expirados=%s municipios=%s",
             resultado_envios.get("procesados", 0),
             resultado_envios.get("exitosos", 0),
             resultado_envios.get("fallidos", 0),
             cantidad_expirados,
+            len(por_municipio),
         )
         return {
             "envios": resultado_envios,
             "expirados": cantidad_expirados,
+            "por_municipio": por_municipio,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     except HTTPException:

@@ -186,6 +186,7 @@ class _Catalogos:
     estado_reserva: dict[str, int] = field(default_factory=dict)
     id_plantilla_turnos: Optional[int] = None
     cat_reclamos: Any = None                                         # localidades para lat/lon
+    id_municipio: int = 0                                            # municipio demo
 
 
 _CODIGOS_GUARDIA_PREFERIDOS = ("EMERGENCIA_SALUD", "ACCIDENTE_VIA_PUBLICA", "CAIDA_ARBOL",
@@ -196,17 +197,19 @@ async def _cargar_catalogos(db: AsyncSession, rnd: random.Random) -> _Catalogos:
     cat = _Catalogos()
     cat.uid = await demo_datos._usuario_generador(db)
     cat.cat_reclamos = await demo_datos._cargar_catalogos(db)
+    cat.id_municipio = cat.cat_reclamos.id_municipio
+    mun = {"mun": cat.id_municipio}
 
     # Vecinos demo (solo ellos: los turnos demo nunca cuelgan de un vecino real).
     r = await db.execute(text(
-        "SELECT id_ciudadano, email FROM ciudadanos WHERE activo AND email LIKE :d ORDER BY id_ciudadano"),
-        {"d": f"%@{demo_datos.DOMINIO_VECINO_DEMO}"})
+        "SELECT id_ciudadano, email FROM ciudadanos WHERE activo AND email LIKE :d AND id_municipio = :mun "
+        "ORDER BY id_ciudadano"), {"d": f"%@{demo_datos.DOMINIO_VECINO_DEMO}", **mun})
     cat.pool = [(f.id_ciudadano, f.email) for f in r.fetchall()]
     if len(cat.pool) < 50 and cat.cat_reclamos.poblacion_localidades:
         await demo_datos._asegurar_vecinos(db, cat.cat_reclamos, cat.uid, 250, rnd)
         r = await db.execute(text(
-            "SELECT id_ciudadano, email FROM ciudadanos WHERE activo AND email LIKE :d ORDER BY id_ciudadano"),
-            {"d": f"%@{demo_datos.DOMINIO_VECINO_DEMO}"})
+            "SELECT id_ciudadano, email FROM ciudadanos WHERE activo AND email LIKE :d AND id_municipio = :mun "
+            "ORDER BY id_ciudadano"), {"d": f"%@{demo_datos.DOMINIO_VECINO_DEMO}", **mun})
         cat.pool = [(f.id_ciudadano, f.email) for f in r.fetchall()]
 
     r = await db.execute(text("""
@@ -217,9 +220,9 @@ async def _cargar_catalogos(db: AsyncSession, rnd: random.Random) -> _Catalogos:
           FROM tipo_prestacion tp
           LEFT JOIN espacios_agenda e ON e.id_espacio = tp.id_espacio
          WHERE tp.activo = TRUE AND tp.tipo_recurso IN ('agente', 'espacio')
-           AND COALESCE(tp.id_agente, tp.id_espacio) IS NOT NULL
+           AND COALESCE(tp.id_agente, tp.id_espacio) IS NOT NULL AND tp.id_municipio = :mun
          ORDER BY tp.id_tipo_prestacion
-    """))
+    """), mun)
     for f in r.fetchall():
         cat.prestaciones.append(_Prestacion(
             id=f.id_tipo_prestacion, nombre=f.nombre, tipo_recurso=f.tipo_recurso,
@@ -230,12 +233,11 @@ async def _cargar_catalogos(db: AsyncSession, rnd: random.Random) -> _Catalogos:
         ))
 
     r = await db.execute(text(
-        "SELECT id_espacio, COALESCE(NULLIF(TRIM(prefijo_colero), ''), '') AS p FROM espacios_agenda WHERE activo"))
+        "SELECT id_espacio, COALESCE(NULLIF(TRIM(prefijo_colero), ''), '') AS p FROM espacios_agenda "
+        "WHERE activo AND id_municipio = :mun"), mun)
     cat.prefijos = {f.id_espacio: f.p for f in r.fetchall()}
 
-    id_mun_demo = await db.scalar(text(
-        "SELECT id_municipio FROM municipios WHERE direccion_base AND activo"))
-    cat.guardia = await espacio_guardia(db, id_mun_demo)
+    cat.guardia = await espacio_guardia(db, cat.id_municipio)
     if cat.guardia:
         r = await db.execute(text("""
             SELECT ea.id_agente FROM espacio_agentes ea JOIN agentes a ON a.id_agente = ea.id_agente
@@ -246,22 +248,25 @@ async def _cargar_catalogos(db: AsyncSession, rnd: random.Random) -> _Catalogos:
     r = await db.execute(text("""
         SELECT id_emergencia_tipo, codigo, id_subarea, id_prioridad_default
           FROM emergencia_tipo WHERE activo AND es_emergencia AND id_prioridad_default IS NOT NULL
-    """))
+           AND id_municipio = :mun
+    """), mun)
     tipos = [dict(f._mapping) for f in r.fetchall()]
     pref = [t for t in tipos if t["codigo"] in _CODIGOS_GUARDIA_PREFERIDOS]
     cat.tipos_emergencia = pref or tipos
     r = await db.execute(text("SELECT id_emergencia_estado, codigo FROM emergencia_estado WHERE activo"))
     cat.estados_emergencia = {f.codigo: f.id_emergencia_estado for f in r.fetchall()}
-    r = await db.execute(text("SELECT id_emergencia_canal_ingreso FROM emergencia_canal_ingreso WHERE activo ORDER BY 1"))
+    r = await db.execute(text(
+        "SELECT id_emergencia_canal_ingreso FROM emergencia_canal_ingreso WHERE activo AND id_municipio = :mun "
+        "ORDER BY 1"), mun)
     cat.canales = [f.id_emergencia_canal_ingreso for f in r.fetchall()]
 
     # Espacios para eventos: con capacidad de publico (>= 20) y subarea; si el
     # municipio no cargo capacidades, los dos espacios mas grandes.
     r = await db.execute(text("""
         SELECT id_espacio, nombre, COALESCE(capacidad_personas, 0) AS cap, id_subarea
-          FROM espacios_agenda WHERE activo AND id_subarea IS NOT NULL
+          FROM espacios_agenda WHERE activo AND id_subarea IS NOT NULL AND id_municipio = :mun
          ORDER BY COALESCE(capacidad_personas, 0) DESC, id_espacio
-    """))
+    """), mun)
     todos = [dict(f._mapping) for f in r.fetchall()]
     if cat.guardia:
         todos = [e for e in todos if e["id_espacio"] != cat.guardia["id_espacio"]]
@@ -274,7 +279,7 @@ async def _cargar_catalogos(db: AsyncSession, rnd: random.Random) -> _Catalogos:
 
     r = await db.execute(text(
         "SELECT id_encuesta_plantilla FROM encuesta_plantilla WHERE tipo = 'turnos' AND activo "
-        "ORDER BY id_encuesta_plantilla LIMIT 1"))
+        "AND id_municipio = :mun ORDER BY id_encuesta_plantilla LIMIT 1"), mun)
     fila = r.fetchone()
     cat.id_plantilla_turnos = fila.id_encuesta_plantilla if fila else None
     return cat
@@ -495,10 +500,12 @@ async def _insertar_turnos(db: AsyncSession, cat: _Catalogos, turnos: list[dict]
                   "act": t["estado"] != "cancelado", "fa": t["fecha_alta"], "fm": t["fecha_modificacion"],
                   "uid": cat.uid} for t in lote]
         vals, params = _values(filas, ["tr", "ir", "f", "hi", "hf", "ic", "act", "fa", "fm", "uid"], "o")
+        params["mun"] = cat.id_municipio
         r = await db.execute(text(f"""
             INSERT INTO ocupaciones (tipo, tipo_recurso, id_recurso, fecha, hora_inicio, hora_fin,
-                                     id_ciudadano, activo, fecha_alta, fecha_modificacion, id_usuario_alta, motivo)
-            SELECT 'turno', v.tr, v.ir, v.f, v.hi, v.hf, v.ic, v.act, v.fa, v.fm, v.uid, 'Turno'
+                                     id_ciudadano, activo, fecha_alta, fecha_modificacion, id_usuario_alta, motivo,
+                                     id_municipio)
+            SELECT 'turno', v.tr, v.ir, v.f, v.hi, v.hf, v.ic, v.act, v.fa, v.fm, v.uid, 'Turno', CAST(:mun AS int)
               FROM (VALUES {vals}) AS v(tr, ir, f, hi, hf, ic, act, fa, fm, uid)
             RETURNING id_ocupacion, tipo_recurso, id_recurso, fecha, hora_inicio
         """), params)
@@ -517,12 +524,14 @@ async def _insertar_turnos(db: AsyncSession, cat: _Catalogos, turnos: list[dict]
             })
         cols = ["ic", "ia", "ie", "iu", "itp", "io", "f", "hi", "hf", "es", "num", "ori", "isa", "fa", "fm", "uid"]
         vals, params = _values(filas, cols, "t")
+        params["mun"] = cat.id_municipio
         r = await db.execute(text(f"""
             INSERT INTO turnos (id_ciudadano, id_agente, id_espacio, id_espacio_ubicacion, id_tipo_prestacion,
                                 id_ocupacion, fecha, hora_inicio, hora_fin, estado, numero_diario, origen,
-                                id_subarea, fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion)
+                                id_subarea, fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion,
+                                id_municipio)
             SELECT v.ic, v.ia, v.ie, v.iu, v.itp, v.io, v.f, v.hi, v.hf, v.es, v.num, v.ori,
-                   v.isa, v.fa, v.fm, v.uid, v.uid
+                   v.isa, v.fa, v.fm, v.uid, v.uid, CAST(:mun AS int)
               FROM (VALUES {vals}) AS v({', '.join(cols)})
             RETURNING id_turno, id_ocupacion
         """), params)
@@ -538,8 +547,9 @@ async def _insertar_turnos(db: AsyncSession, cat: _Catalogos, turnos: list[dict]
         if llam:
             await db.execute(text("""
                 INSERT INTO turno_llamado (id_turno, puesto, llamado_en, id_usuario_llama,
-                                           fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion)
-                VALUES (:it, NULL, :en, :uid, :en, :en, :uid, :uid)
+                                           fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion,
+                                           id_municipio)
+                VALUES (:it, NULL, :en, :uid, :en, :en, :uid, :uid, (SELECT id_municipio FROM turnos WHERE id_turno = :it))
             """), llam)
             n["llamados"] += len(llam)
         aten = [{"it": t["id_turno"], "ic": t["id_ciudadano"], "inter": t["atencion"]["intervencion"],
@@ -548,8 +558,9 @@ async def _insertar_turnos(db: AsyncSession, cat: _Catalogos, turnos: list[dict]
         if aten:
             await db.execute(text("""
                 INSERT INTO turno_atencion (id_turno, id_ciudadano, intervencion, recomendaciones,
-                                            id_subarea, fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion)
-                VALUES (:it, :ic, :inter, :reco, :isa, :f, :f, :uid, :uid)
+                                            id_subarea, fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion,
+                                            id_municipio)
+                VALUES (:it, :ic, :inter, :reco, :isa, :f, :f, :uid, :uid, (SELECT id_municipio FROM turnos WHERE id_turno = :it))
                 ON CONFLICT (id_turno) DO NOTHING
             """), aten)
             n["atenciones"] += len(aten)
@@ -559,12 +570,15 @@ async def _insertar_turnos(db: AsyncSession, cat: _Catalogos, turnos: list[dict]
             cols = ["id_plantilla", "id_ciudadano", "it", "email", "fecha_envio", "fecha_apertura",
                     "fecha_completada", "fecha_expiracion", "estado", "id_subarea", "uid"]
             vals, params = _values(filas, cols, "e")
+            params["mun"] = cat.id_municipio
             r = await db.execute(text(f"""
                 INSERT INTO encuesta_envio (id_plantilla, id_ciudadano, id_turno, email_destino_snapshot,
                                             fecha_envio, fecha_apertura, fecha_completada, fecha_expiracion,
-                                            estado, id_subarea, fecha_alta, fecha_modificacion, id_usuario_alta)
+                                            estado, id_subarea, fecha_alta, fecha_modificacion, id_usuario_alta,
+                                            id_municipio)
                 SELECT v.id_plantilla, v.id_ciudadano, v.it, v.email, v.fecha_envio, v.fecha_apertura,
-                       v.fecha_completada, v.fecha_expiracion, v.estado, v.id_subarea, v.fecha_envio, v.fecha_envio, v.uid
+                       v.fecha_completada, v.fecha_expiracion, v.estado, v.id_subarea, v.fecha_envio, v.fecha_envio, v.uid,
+                       CAST(:mun AS int)
                   FROM (VALUES {vals}) AS v({', '.join(cols)})
                 RETURNING id_encuesta_envio, id_turno
             """), params)
@@ -595,9 +609,9 @@ async def _generar_guardia(db: AsyncSession, cat: _Catalogos, rnd: random.Random
     r = await db.execute(text("""
         SELECT DISTINCT ((derivado_en AT TIME ZONE 'UTC') - INTERVAL '3 hours')::date AS d
           FROM emergencia_atencion
-         WHERE id_usuario_alta = :uid AND activo IS DISTINCT FROM FALSE
+         WHERE id_usuario_alta = :uid AND activo IS DISTINCT FROM FALSE AND id_municipio = :mun
            AND derivado_en >= :d0 AND derivado_en < :d1
-    """), {"uid": cat.uid, "d0": _a_utc(min(dias), time(0, 0)), "d1": _a_utc(max(dias) + timedelta(days=1), time(0, 0))})
+    """), {"uid": cat.uid, "mun": cat.id_municipio, "d0": _a_utc(min(dias), time(0, 0)), "d1": _a_utc(max(dias) + timedelta(days=1), time(0, 0))})
     ya_con_demo = {f.d for f in r.fetchall()}
     n["dias_omitidos_con_demo"] = 0
     for dia in dias:
@@ -635,9 +649,9 @@ async def _generar_guardia(db: AsyncSession, cat: _Catalogos, rnd: random.Random
                      denunciante_anonimo, id_ciudadano_buc, direccion_evento, latitud, longitud,
                      observaciones_recepcion, veracidad, observaciones_cierre,
                      fecha_hora_recepcion, fecha_hora_despacho, fecha_hora_arribo, fecha_hora_cierre,
-                     activo, fecha_alta, fecha_modificacion, id_usuario_alta)
+                     activo, fecha_alta, fecha_modificacion, id_usuario_alta, id_municipio)
                 VALUES (:sub, :tipo, :prio, :est, :canal, :uid, :anon, :ciu, :dir, :lat, :lon,
-                        :obs, :ver, :oc, :rec, :desp, :arr, :cierre, TRUE, :rec, :fm, :uid)
+                        :obs, :ver, :oc, :rec, :desp, :arr, :cierre, TRUE, :rec, :fm, :uid, :mun)
                 RETURNING id_emergencia_evento
             """), {
                 "sub": tipo["id_subarea"], "tipo": tipo["id_emergencia_tipo"], "prio": tipo["id_prioridad_default"],
@@ -647,7 +661,7 @@ async def _generar_guardia(db: AsyncSession, cat: _Catalogos, rnd: random.Random
                 "ver": "CONFIRMADA" if cierre_dt else None,
                 "oc": "Vecino derivado a la Guardia (demo)." if cierre_dt else None,
                 "rec": recepcion, "desp": en_camino, "arr": en_sitio, "cierre": cierre_dt,
-                "fm": cierre_dt or derivado,
+                "fm": cierre_dt or derivado, "mun": cat.id_municipio,
             })
             n["eventos"] += 1
             # Atencion en la Guardia
@@ -664,9 +678,9 @@ async def _generar_guardia(db: AsyncSession, cat: _Catalogos, rnd: random.Random
                     (id_emergencia_evento, id_espacio_ubicacion, id_ciudadano, paciente_nombre,
                      motivo_derivacion, estado, derivado_en, id_usuario_deriva, id_agente_atiende,
                      intervencion, recomendaciones, atendido_en, id_subarea,
-                     fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion)
+                     fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion, id_municipio)
                 VALUES (:ev, :g, :c, :pn, :m, :es, :der, :uid, :ag, :inter, :reco, :at, :sa,
-                        :der, :fm, :uid, :uid)
+                        :der, :fm, :uid, :uid, :mun)
                 RETURNING id_emergencia_atencion
             """), {
                 "ev": id_ev, "g": cat.guardia["id_espacio"], "c": id_c,
@@ -676,6 +690,7 @@ async def _generar_guardia(db: AsyncSession, cat: _Catalogos, rnd: random.Random
                 "reco": rnd.choice(RECOMENDACIONES) if estado_at == "atendida" else None,
                 "at": atendido, "sa": cat.guardia.get("id_subarea"),
                 "fm": atendido or (derivado + timedelta(minutes=30) if estado_at == "ausente" else derivado),
+                "mun": cat.id_municipio,
             })
             n["derivaciones"] += 1
             n[{"atendida": "atendidas", "ausente": "ausentes", "pendiente": "pendientes"}[estado_at]] += 1
@@ -699,8 +714,8 @@ async def _generar_guardia(db: AsyncSession, cat: _Catalogos, rnd: random.Random
                              {"veracidad": "CONFIRMADA", "terminal_positivo": True}, "Vecino derivado a la Guardia (demo)."))
             await db.execute(text("""
                 INSERT INTO emergencia_log (id_evento, id_usuario, fecha_hora, tipo_accion, estado_anterior,
-                                            estado_nuevo, payload_json, observaciones)
-                VALUES (:e, :u, :fh, :t, :ea, :en, CAST(:p AS jsonb), :o)
+                                            estado_nuevo, payload_json, observaciones, id_municipio)
+                VALUES (:e, :u, :fh, :t, :ea, :en, CAST(:p AS jsonb), :o, (SELECT id_municipio FROM emergencia_evento WHERE id_emergencia_evento = :e))
             """), [{"e": id_ev, "u": cat.uid, "fh": fh, "t": t, "ea": ea, "en": en,
                     "p": json.dumps(p) if p is not None else None, "o": o}
                    for t, ea, en, fh, p, o in logs])
@@ -719,8 +734,8 @@ async def _generar_eventos(db: AsyncSession, cat: _Catalogos, rnd: random.Random
     objetivo = max(1, round(rnd.randint(*EVENTOS_MENSUAL) * dias / 30.44))
     r = await db.execute(text("""
         SELECT id_espacio, fecha, hora_inicio, hora_fin, (id_usuario_alta = :uid) AS demo FROM eventos
-         WHERE activo AND id_espacio IS NOT NULL AND fecha BETWEEN :d AND :h
-    """), {"d": desde, "h": hasta_futuro, "uid": cat.uid})
+         WHERE activo AND id_espacio IS NOT NULL AND fecha BETWEEN :d AND :h AND id_municipio = :mun
+    """), {"d": desde, "h": hasta_futuro, "uid": cat.uid, "mun": cat.id_municipio})
     ocupado: dict[tuple[int, date], list[tuple[time, time]]] = {}
     ya_demo = 0
     for f in r.fetchall():
@@ -751,14 +766,16 @@ async def _generar_eventos(db: AsyncSession, cat: _Catalogos, rnd: random.Random
         id_ev = await db.scalar(text("""
             INSERT INTO eventos (nombre, descripcion, id_subarea, fecha, hora_inicio, hora_fin,
                                  capacidad_ciudadanos, cantidad_encargados, tipo_qr, admite_autoservicio,
-                                 token_publico, id_espacio, id_estado_evento, fecha_alta, fecha_modificacion, id_usuario_alta)
+                                 token_publico, id_espacio, id_estado_evento, fecha_alta, fecha_modificacion, id_usuario_alta,
+                                 id_municipio)
             VALUES (:n, :d, :sa, :f, :hi, :hf, :cap, 0, :qr, :auto,
-                    CASE WHEN :auto = TRUE THEN gen_random_uuid() ELSE NULL END, :esp, :es, :fa, :fm, :uid)
+                    CASE WHEN :auto = TRUE THEN gen_random_uuid() ELSE NULL END, :esp, :es, :fa, :fm, :uid, :mun)
             RETURNING id_evento
         """), {"n": nombre, "d": EVENTOS_DESCRIPCION, "sa": esp["id_subarea"], "f": dia, "hi": hi, "hf": hf,
                "cap": capacidad, "qr": tipo_qr, "auto": autoservicio, "esp": esp["id_espacio"],
                "es": est_final if pasado and est_final else est_activo, "fa": alta,
-               "fm": _clamp(inicio_utc + timedelta(hours=4), ahora) if pasado else alta, "uid": cat.uid})
+               "fm": _clamp(inicio_utc + timedelta(hours=4), ahora) if pasado else alta, "uid": cat.uid,
+               "mun": cat.id_municipio})
         n["eventos"] += 1
         k = round(capacidad * rnd.uniform(0.3, 0.95))
         ciudadanos = rnd.sample(cat.pool, min(k, len(cat.pool)))
@@ -781,11 +798,12 @@ async def _generar_eventos(db: AsyncSession, cat: _Catalogos, rnd: random.Random
         if filas:
             cols = ["ev", "ic", "er", "ori", "tok", "fa", "fm", "uid"]
             vals, params = _values(filas, cols, "r")
+            params["mun"] = cat.id_municipio
             r = await db.execute(text(f"""
                 INSERT INTO evento_reservas (id_evento, id_ciudadano, id_estado_reserva, origen, token_reserva,
-                                             fecha_alta, fecha_modificacion, id_usuario_alta)
+                                             fecha_alta, fecha_modificacion, id_usuario_alta, id_municipio)
                 SELECT v.ev, v.ic, v.er, v.ori, CASE WHEN v.tok THEN gen_random_uuid() ELSE NULL END,
-                       v.fa, v.fm, v.uid
+                       v.fa, v.fm, v.uid, CAST(:mun AS int)
                   FROM (VALUES {vals}) AS v({', '.join(cols)})
                 RETURNING id_evento_reserva
             """), params)
@@ -828,8 +846,7 @@ async def generar_periodo_atencion(db: AsyncSession, desde: date, hasta: date,
     # Turnos
     if cat.prestaciones:
         recursos = list({(p.tipo_recurso, p.id_recurso, p.atendido) for p in cat.prestaciones})
-        id_mun_demo = await db.scalar(text("SELECT id_municipio FROM municipios WHERE direccion_base AND activo"))
-        disp = await disponibilidad_efectiva_batch(db, recursos, dias, id_municipio=id_mun_demo)
+        disp = await disponibilidad_efectiva_batch(db, recursos, dias, id_municipio=cat.id_municipio)
         ocupado = await _ocupado(db, cat.prestaciones, desde, hasta_futuro)
         maximos = await _max_numeros(db, desde, hasta_futuro)
         ya_demo = await _recursos_ya_demo(db, cat.uid, desde, hasta_futuro)
@@ -873,9 +890,9 @@ async def avanzar_pendientes_atencion(db: AsyncSession, semilla: Optional[int] =
                t.id_espacio_ubicacion, t.fecha_alta, t.numero_diario, c.email
           FROM turnos t JOIN ciudadanos c ON c.id_ciudadano = t.id_ciudadano
          WHERE t.activo AND t.id_usuario_alta = :uid AND t.estado IN ('reservado', 'llamado')
-           AND (t.fecha + t.hora_inicio) < :limite
+           AND (t.fecha + t.hora_inicio) < :limite AND t.id_municipio = :mun
          ORDER BY t.fecha, t.hora_inicio
-    """), {"uid": uid, "limite": ahora_loc - timedelta(hours=1)})
+    """), {"uid": uid, "limite": ahora_loc - timedelta(hours=1), "mun": cat.id_municipio})
     filas = r.fetchall()
     if filas:
         prest = {p.id: p for p in cat.prestaciones}
@@ -908,8 +925,9 @@ async def avanzar_pendientes_atencion(db: AsyncSession, semilla: Optional[int] =
         if llam:
             await db.execute(text("""
                 INSERT INTO turno_llamado (id_turno, puesto, llamado_en, id_usuario_llama,
-                                           fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion)
-                VALUES (:it, NULL, :en, :uid, :en, :en, :uid, :uid)
+                                           fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion,
+                                           id_municipio)
+                VALUES (:it, NULL, :en, :uid, :en, :en, :uid, :uid, (SELECT id_municipio FROM turnos WHERE id_turno = :it))
             """), llam)
         aten = [{"it": t["id_turno"], "ic": t["id_ciudadano"], "inter": t["atencion"]["intervencion"],
                  "reco": t["atencion"]["recomendaciones"], "isa": t["prestacion"].id_subarea,
@@ -917,8 +935,9 @@ async def avanzar_pendientes_atencion(db: AsyncSession, semilla: Optional[int] =
         if aten:
             await db.execute(text("""
                 INSERT INTO turno_atencion (id_turno, id_ciudadano, intervencion, recomendaciones,
-                                            id_subarea, fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion)
-                VALUES (:it, :ic, :inter, :reco, :isa, :f, :f, :uid, :uid)
+                                            id_subarea, fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion,
+                                            id_municipio)
+                VALUES (:it, :ic, :inter, :reco, :isa, :f, :f, :uid, :uid, (SELECT id_municipio FROM turnos WHERE id_turno = :it))
                 ON CONFLICT (id_turno) DO NOTHING
             """), aten)
         for t in pend:
@@ -926,9 +945,11 @@ async def avanzar_pendientes_atencion(db: AsyncSession, semilla: Optional[int] =
                 id_env = await db.scalar(text("""
                     INSERT INTO encuesta_envio (id_plantilla, id_ciudadano, id_turno, email_destino_snapshot,
                                                 fecha_envio, fecha_apertura, fecha_completada, fecha_expiracion,
-                                                estado, id_subarea, fecha_alta, fecha_modificacion, id_usuario_alta)
+                                                estado, id_subarea, fecha_alta, fecha_modificacion, id_usuario_alta,
+                                                id_municipio)
                     VALUES (:id_plantilla, :id_ciudadano, :it, :email, :fecha_envio, :fecha_apertura,
-                            :fecha_completada, :fecha_expiracion, :estado, :id_subarea, :fecha_envio, :fecha_envio, :uid)
+                            :fecha_completada, :fecha_expiracion, :estado, :id_subarea, :fecha_envio, :fecha_envio, :uid,
+                            (SELECT id_municipio FROM turnos WHERE id_turno = :it))
                     RETURNING id_encuesta_envio
                 """), {**t["envio"], "it": t["id_turno"]})
                 if t["respuesta"]:
@@ -942,8 +963,8 @@ async def avanzar_pendientes_atencion(db: AsyncSession, semilla: Optional[int] =
     r = await db.execute(text("""
         SELECT id_emergencia_atencion, id_emergencia_evento, derivado_en FROM emergencia_atencion
          WHERE activo IS DISTINCT FROM FALSE AND estado = 'pendiente' AND id_usuario_alta = :uid
-           AND derivado_en < :lim
-    """), {"uid": uid, "lim": ahora - timedelta(days=1)})
+           AND derivado_en < :lim AND id_municipio = :mun
+    """), {"uid": uid, "lim": ahora - timedelta(days=1), "mun": cat.id_municipio})
     for f in r.fetchall():
         atendida = rnd.random() < 0.85 and bool(cat.medicos)
         atendido = f.derivado_en + timedelta(minutes=rnd.uniform(8, 75))
@@ -959,8 +980,8 @@ async def avanzar_pendientes_atencion(db: AsyncSession, semilla: Optional[int] =
                "at": atendido if atendida else None, "fm": atendido, "uid": uid, "id": f.id_emergencia_atencion})
         await db.execute(text("""
             INSERT INTO emergencia_log (id_evento, id_usuario, fecha_hora, tipo_accion, estado_anterior,
-                                        estado_nuevo, payload_json, observaciones)
-            VALUES (:e, :u, :fh, 'ATENCION_GUARDIA', 'EN_SITIO', 'EN_SITIO', CAST(:p AS jsonb), :o)
+                                        estado_nuevo, payload_json, observaciones, id_municipio)
+            VALUES (:e, :u, :fh, 'ATENCION_GUARDIA', 'EN_SITIO', 'EN_SITIO', CAST(:p AS jsonb), :o, (SELECT id_municipio FROM emergencia_evento WHERE id_emergencia_evento = :e))
         """), {"e": f.id_emergencia_evento, "u": uid, "fh": atendido,
                "p": json.dumps({"id_emergencia_atencion": f.id_emergencia_atencion,
                                 "resultado": "atendida" if atendida else "ausente", "id_agente_atiende": medico}),
@@ -979,7 +1000,8 @@ async def avanzar_pendientes_atencion(db: AsyncSession, semilla: Optional[int] =
         r = await db.execute(text("""
             SELECT id_evento FROM eventos
              WHERE activo AND id_usuario_alta = :uid AND fecha < :hoy AND id_estado_evento = :act
-        """), {"uid": uid, "hoy": hoy, "act": cat.estado_evento.get("activo")})
+               AND id_municipio = :mun
+        """), {"uid": uid, "hoy": hoy, "act": cat.estado_evento.get("activo"), "mun": cat.id_municipio})
         ids = [f.id_evento for f in r.fetchall()]
         if ids:
             await db.execute(text("""
@@ -1017,6 +1039,7 @@ async def cerrar_atraso_emergencias(db: AsyncSession, dias: int = 21, aplicar: b
     uid = await demo_datos._usuario_generador(db, crear=False)
     if uid is None:
         return {"detalle": "sin usuario generador: nada que cerrar"}
+    id_mun = await demo_datos.municipio_demo(db)
     est = {f.codigo: f.id_emergencia_estado for f in (await db.execute(text(
         "SELECT id_emergencia_estado, codigo FROM emergencia_estado WHERE activo"))).fetchall()}
     if not est.get("RESUELTO") or not est.get("DESESTIMADO"):
@@ -1028,8 +1051,9 @@ async def cerrar_atraso_emergencias(db: AsyncSession, dias: int = 21, aplicar: b
                (SELECT MAX(l.fecha_hora) FROM emergencia_log l WHERE l.id_evento = e.id_emergencia_evento) AS ultimo
           FROM emergencia_evento e JOIN emergencia_estado es ON es.id_emergencia_estado = e.id_estado
          WHERE e.activo AND NOT es.es_terminal AND e.fecha_hora_recepcion < :limite AND ({filtro_demo})
+           AND e.id_municipio = :mun
          ORDER BY e.id_emergencia_evento
-    """), {"limite": ahora - timedelta(days=dias), "uid": uid})
+    """), {"limite": ahora - timedelta(days=dias), "uid": uid, "mun": id_mun})
     filas = r.fetchall()
     out: dict = {"evaluados": len(filas), "a_desestimado": 0, "a_resuelto": 0, "guardia_ausentes": 0,
                  "por_estado_actual": {}, "no_demo_detalle": []}
@@ -1107,7 +1131,8 @@ async def cerrar_atraso_emergencias(db: AsyncSession, dias: int = 21, aplicar: b
           JOIN emergencia_estado es ON es.id_emergencia_estado = e.id_estado
          WHERE a.estado = 'pendiente' AND a.activo IS DISTINCT FROM FALSE AND es.es_terminal
            AND a.derivado_en < :limite AND ({filtro_demo.replace('e.id_usuario_alta', 'a.id_usuario_alta')})
-    """), {"limite": ahora - timedelta(days=dias), "uid": uid})
+           AND a.id_municipio = :mun
+    """), {"limite": ahora - timedelta(days=dias), "uid": uid, "mun": id_mun})
     viejas = r.fetchall()
     out["guardia_ausentes"] += len(viejas)
     if aplicar:

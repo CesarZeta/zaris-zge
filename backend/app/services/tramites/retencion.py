@@ -3,7 +3,7 @@ Politica de retencion y depuracion de documentos de Tramites (mig 75, Fases 3-5)
 
 Dos motores, disparados por el endpoint de mantenimiento (cron diario, S35):
 
-  1. archivar_inactivos(db)  -- Fase 3
+  1. archivar_inactivos(db, id_municipio=)  -- Fase 3 (por municipio, con sus plazos)
      Tramites sin movimiento durante N dias (configuracion_general.
      tramite_inactividad_dias) que NO esten ya archivados ni en estado final:
        - setea tramite.fecha_archivado = NOW(), archivado_motivo = 'inactividad'
@@ -13,7 +13,7 @@ Dos motores, disparados por el endpoint de mantenimiento (cron diario, S35):
      fuerza un estado del circuito, que puede no tener uno "archivado"), igual
      que `resultado` es paralelo al estado (S35).
 
-  2. purgar_binarios(db, dry_run)  -- Fase 4
+  2. purgar_binarios(db, id_municipio=, dry_run)  -- Fase 4
      Documentos cuyo binario fisico ya cumplio el plazo de retencion segun el
      resultado del tramite (aprobado -> retencion_dias_aprobado;
      rechazado/pendiente archivado -> retencion_dias_rechazado), EXCEPTO los de
@@ -38,6 +38,8 @@ import logging
 from typing import Any
 
 from sqlalchemy import text
+
+from app.core.config_municipio import leer_config
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import storage
@@ -56,33 +58,27 @@ DEFAULT_RETENCION_RECHAZADO_DIAS = 365
 # Helpers de configuracion (configuracion_general)
 # ---------------------------------------------------------------------------
 
-async def _leer_int_config(db: AsyncSession, clave: str, default: int) -> int:
-    """Lee una clave entera de configuracion_general. Default si ausente/invalida."""
+async def _leer_int_config(db: AsyncSession, clave: str, default: int, *, id_municipio: int) -> int:
+    """Clave entera de la configuracion del municipio. Default si ausente/invalida."""
     try:
-        row = (await db.execute(text("""
-            SELECT valor FROM configuracion_general
-             WHERE clave = :c AND activo = TRUE LIMIT 1
-        """), {"c": clave})).fetchone()
-        if not row:
+        valor = await leer_config(db, clave, id_municipio)
+        if valor is None:
             return default
-        return int(str(row[0]).strip())
+        return int(str(valor).strip())
     except Exception as e:
         logger.error("retencion: _leer_int_config(%s) fallo: %s", clave, e)
         return default
 
 
-async def purga_binarios_es_real(db: AsyncSession) -> bool:
-    """configuracion_general.tramite_purga_binarios_real. Default FALSE (dry-run).
+async def purga_binarios_es_real(db: AsyncSession, *, id_municipio: int) -> bool:
+    """tramite_purga_binarios_real del municipio. Default FALSE (dry-run).
 
     Solo devuelve True si la clave existe explicitamente con 'true'. Cualquier
     otra cosa (ausente, 'false', error) deja el motor en dry-run = no borra nada.
     """
     try:
-        row = (await db.execute(text("""
-            SELECT valor FROM configuracion_general
-             WHERE clave = 'tramite_purga_binarios_real' AND activo = TRUE LIMIT 1
-        """))).fetchone()
-        return bool(row) and str(row[0]).strip().lower() == "true"
+        valor = await leer_config(db, "tramite_purga_binarios_real", id_municipio)
+        return valor is not None and str(valor).strip().lower() == "true"
     except Exception as e:
         logger.error("retencion: purga_binarios_es_real fallo: %s", e)
         return False
@@ -92,14 +88,15 @@ async def purga_binarios_es_real(db: AsyncSession) -> bool:
 # Fase 3: archivado por inactividad
 # ---------------------------------------------------------------------------
 
-async def archivar_inactivos(db: AsyncSession, limite: int = 500) -> dict[str, Any]:
+async def archivar_inactivos(db: AsyncSession, *, id_municipio: int, limite: int = 500) -> dict[str, Any]:
     """Archiva tramites sin movimiento hace >= N dias. Idempotente.
 
     No toca los ya archivados ni los que estan en un estado final del circuito
     (no tiene sentido marcar 'rechazado por inactividad' algo que ya concluyo
     por el flujo). Devuelve {dias, archivados, ids}.
     """
-    dias = await _leer_int_config(db, "tramite_inactividad_dias", DEFAULT_INACTIVIDAD_DIAS)
+    dias = await _leer_int_config(db, "tramite_inactividad_dias", DEFAULT_INACTIVIDAD_DIAS,
+                                  id_municipio=id_municipio)
 
     # Candidatos: activos, no archivados, cuyo estado actual NO es final, y cuyo
     # ultimo movimiento (o fecha_alta si no hay) es mas viejo que `dias`.
@@ -109,7 +106,7 @@ async def archivar_inactivos(db: AsyncSession, limite: int = 500) -> dict[str, A
                t.id_tipo_tramite_estado_actual
           FROM tramite t
           JOIN tipo_tramite_estado e ON e.id_tipo_tramite_estado = t.id_tipo_tramite_estado_actual
-         WHERE t.activo = TRUE
+         WHERE t.activo = TRUE AND t.id_municipio = :mun
            AND t.fecha_archivado IS NULL
            AND COALESCE(e.es_final, FALSE) = FALSE
            -- mig 101: los estados que esperan al vecino los gobierna el timer
@@ -121,7 +118,7 @@ async def archivar_inactivos(db: AsyncSession, limite: int = 500) -> dict[str, A
                ) < NOW() - make_interval(days => CAST(:d AS integer))
          ORDER BY t.id_tramite
          LIMIT :lim
-    """), {"d": dias, "lim": limite})).fetchall()
+    """), {"d": dias, "lim": limite, "mun": id_municipio})).fetchall()
 
     ids: list[int] = []
     for c in candidatos:
@@ -154,7 +151,8 @@ async def archivar_inactivos(db: AsyncSession, limite: int = 500) -> dict[str, A
 # Fase 4: purga del binario fisico
 # ---------------------------------------------------------------------------
 
-async def purgar_binarios(db: AsyncSession, dry_run: bool | None = None, limite: int = 500) -> dict[str, Any]:
+async def purgar_binarios(db: AsyncSession, *, id_municipio: int, dry_run: bool | None = None,
+                          limite: int = 500) -> dict[str, Any]:
     """Depura los binarios fisicos vencidos. El registro (hash) nunca se borra.
 
     Reglas:
@@ -171,10 +169,12 @@ async def purgar_binarios(db: AsyncSession, dry_run: bool | None = None, limite:
     (real=True => dry_run=False). Devuelve {dry_run, evaluados, purgados, errores, ids}.
     """
     if dry_run is None:
-        dry_run = not await purga_binarios_es_real(db)
+        dry_run = not await purga_binarios_es_real(db, id_municipio=id_municipio)
 
-    dias_aprob = await _leer_int_config(db, "retencion_dias_aprobado", DEFAULT_RETENCION_APROBADO_DIAS)
-    dias_rech = await _leer_int_config(db, "retencion_dias_rechazado", DEFAULT_RETENCION_RECHAZADO_DIAS)
+    dias_aprob = await _leer_int_config(db, "retencion_dias_aprobado", DEFAULT_RETENCION_APROBADO_DIAS,
+                                        id_municipio=id_municipio)
+    dias_rech = await _leer_int_config(db, "retencion_dias_rechazado", DEFAULT_RETENCION_RECHAZADO_DIAS,
+                                       id_municipio=id_municipio)
 
     # El plazo depende del resultado; resolvemos la "fecha de cierre" y el limite
     # en SQL para no traer todo a Python. El tipo se alcanza via la cadena
@@ -193,7 +193,7 @@ async def purgar_binarios(db: AsyncSession, dry_run: bool | None = None, limite:
               JOIN tramite t                ON t.id_tramite = d.id_tramite
               JOIN tipo_tramite_version ttv ON ttv.id_tipo_tramite_version = t.id_tipo_tramite_version
               JOIN tipo_tramite tt          ON tt.id_tipo_tramite = ttv.id_tipo_tramite
-             WHERE d.activo = TRUE
+             WHERE d.activo = TRUE AND t.id_municipio = :mun
                AND d.binario_purgado = FALSE
                AND COALESCE(tt.retencion_nunca_depurar, FALSE) = FALSE
                AND (t.fecha_archivado IS NOT NULL OR t.resultado <> 'pendiente')
@@ -205,7 +205,7 @@ async def purgar_binarios(db: AsyncSession, dry_run: bool | None = None, limite:
                         ELSE CAST(:dr AS integer) END)
          ORDER BY id_tramite_documento
          LIMIT :lim
-    """), {"da": dias_aprob, "dr": dias_rech, "lim": limite})).fetchall()
+    """), {"da": dias_aprob, "dr": dias_rech, "lim": limite, "mun": id_municipio})).fetchall()
 
     purgados: list[int] = []
     errores: list[dict] = []

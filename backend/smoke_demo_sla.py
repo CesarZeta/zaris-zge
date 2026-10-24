@@ -366,6 +366,22 @@ async def parte_b() -> None:
             # (e) cierre del atraso con el reloj real (los datos locales viejos de mar-oct).
             ahora_real = datetime.now(UTC)
             limite = ahora_real - timedelta(days=21)
+            # IT-01: el cierre del atraso es SOLO del municipio demo; lo de otros
+            # municipios (la fixture de aislamiento) queda como estaba.
+            mun_demo = await demo_datos.municipio_demo(db)
+
+            async def _quedan(op: str):
+                return (await db.execute(text(f"""
+                    SELECT (SELECT COUNT(*) FROM reclamos WHERE activo AND fecha_alta < :l
+                              AND estado IN ('Sin asignar','En gestión','En espera') AND id_municipio {op} :m) AS reclamos,
+                           (SELECT COUNT(*) FROM tramite WHERE activo AND fecha_alta < :l AND resultado = 'pendiente'
+                              AND fecha_archivado IS NULL AND id_municipio {op} :m) AS tramites,
+                           (SELECT COUNT(*) FROM emergencia_evento e JOIN emergencia_estado s ON s.id_emergencia_estado = e.id_estado
+                             WHERE e.activo AND NOT s.es_terminal AND e.fecha_hora_recepcion < :l
+                               AND e.id_municipio {op} :m) AS emergencias
+                """), {"l": limite, "m": mun_demo})).fetchone()
+
+            otros_antes = tuple(await _quedan("<>"))
             dr = {
                 "t": await demo_tramites.cerrar_atraso_tramites(db, aplicar=False, incluir_no_demo=True),
                 "e": await demo_atencion.cerrar_atraso_emergencias(db, aplicar=False, incluir_no_demo=True),
@@ -386,17 +402,13 @@ async def parte_b() -> None:
                   f"reclamos {dr['r']['a_resuelto']}/{ap['r']['a_resuelto']} tramites {dr['t']['evaluados']}/"
                   f"{ap['t']['evaluados']} emergencias {dr['e']['evaluados']}/{ap['e']['evaluados']} OT historicas "
                   f"{dr['r']['ot_historicas']['ot_creadas']}/{ap['r']['ot_historicas']['ot_creadas']}")
-            quedan = (await db.execute(text("""
-                SELECT (SELECT COUNT(*) FROM reclamos WHERE activo AND fecha_alta < :l
-                          AND estado IN ('Sin asignar','En gestión','En espera')) AS reclamos,
-                       (SELECT COUNT(*) FROM tramite WHERE activo AND fecha_alta < :l AND resultado = 'pendiente'
-                          AND fecha_archivado IS NULL) AS tramites,
-                       (SELECT COUNT(*) FROM emergencia_evento e JOIN emergencia_estado s ON s.id_emergencia_estado = e.id_estado
-                         WHERE e.activo AND NOT s.es_terminal AND e.fecha_hora_recepcion < :l) AS emergencias
-            """), {"l": limite})).fetchone()
-            check("(e) el cierre del atraso deja 0 pendientes de mas de 21 dias",
+            quedan = await _quedan("=")
+            check("(e) el cierre del atraso deja 0 pendientes de mas de 21 dias en el municipio demo",
                   quedan.reclamos == 0 and quedan.tramites == 0 and quedan.emergencias == 0,
                   f"reclamos={quedan.reclamos} tramites={quedan.tramites} emergencias={quedan.emergencias}")
+            otros = tuple(await _quedan("<>"))
+            check("(e) los pendientes de otros municipios no se tocan", otros == otros_antes,
+                  f"(reclamos, tramites, emergencias) {otros_antes} -> {otros}")
             sin_ot = await _escalar(db, """
                 SELECT COUNT(*) FROM reclamos r WHERE r.activo AND r.id_usuario_alta = :u
                    AND r.fecha_primer_asignacion IS NOT NULL AND NOT EXISTS (

@@ -52,6 +52,7 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config_municipio import leer_config
 from app.services import demo_datos, demo_sla
 from app.services.tramites import aprobaciones as svc_aprob
 from app.services.tramites import numerador as svc_num
@@ -178,6 +179,7 @@ class _Ctx:
     pool_empresas: list[int] = field(default_factory=list)
     id_plantilla: int | None = None
     cat_reclamos: object = None
+    id_municipio: int = 0  # municipio demo (demo_datos.municipio_demo)
 
 
 def _norm(s: str | None) -> str:
@@ -259,16 +261,18 @@ async def _personal(db: AsyncSession, ctx: _Ctx) -> None:
     tiene_push = bool(await db.scalar(text("SELECT to_regclass('public.usuario_push_subscription') IS NOT NULL")))
     filtro_push = ("AND NOT EXISTS (SELECT 1 FROM usuario_push_subscription ps "
                    "WHERE ps.id_usuario = u.id_usuario AND ps.activo)") if tiene_push else ""
-    for f in (await db.execute(text("SELECT id_subarea, id_area, nombre FROM subarea"))).fetchall():
+    mun = {"mun": ctx.id_municipio}
+    for f in (await db.execute(text("SELECT id_subarea, id_area, nombre FROM subarea WHERE id_municipio = :mun"),
+                               mun)).fetchall():
         ctx.area_de_sub[f.id_subarea] = f.id_area
         ctx.nombre_sub[f.id_subarea] = f.nombre
     for f in (await db.execute(text(f"""
         SELECT ag.id_agente, ag.id_subarea, u.nivel_acceso FROM agentes ag
           JOIN usuarios u ON u.id_usuario = ag.id_usuario AND u.activo
           JOIN subarea s ON s.id_subarea = ag.id_subarea AND s.activo
-         WHERE ag.activo AND u.nivel_acceso BETWEEN 2 AND 4 {filtro_push}
+         WHERE ag.activo AND u.nivel_acceso BETWEEN 2 AND 4 AND ag.id_municipio = :mun {filtro_push}
          ORDER BY ag.id_agente
-    """))).fetchall():
+    """), mun)).fetchall():
         ctx.agentes_sub.setdefault(f.id_subarea, []).append(f.id_agente)
         ctx.agentes_todos.append(f.id_agente)
         area = ctx.area_de_sub.get(f.id_subarea)
@@ -277,7 +281,9 @@ async def _personal(db: AsyncSession, ctx: _Ctx) -> None:
         if f.nivel_acceso == 2:
             ctx.supervisores_sub.setdefault(f.id_subarea, []).append(f.id_agente)
     ctx.subareas_con_agentes = sorted(ctx.agentes_sub)
-    for f in (await db.execute(text("SELECT id_equipo, id_subarea FROM equipos WHERE id_subarea IS NOT NULL"))).fetchall():
+    for f in (await db.execute(text(
+            "SELECT id_equipo, id_subarea FROM equipos WHERE id_subarea IS NOT NULL AND id_municipio = :mun"),
+            mun)).fetchall():
         ctx.sub_de_equipo[f.id_equipo] = f.id_subarea
     for sid, nombre in ctx.nombre_sub.items():
         if _norm(nombre) == "mesa de entradas":
@@ -298,13 +304,15 @@ async def _empresas_demo(db: AsyncSession, ctx: _Ctx, rnd: random.Random) -> lis
     """Pool de empresas DEMO (email @vecinos-demo.zaris.com.ar); crea las que falten
     con CUIT sintetico valido (prefijo 30/33 + verificador mod-11)."""
     dominio = demo_datos.DOMINIO_VECINO_DEMO
-    ya = (await db.execute(text("SELECT id_empresa FROM empresas WHERE activo AND email LIKE :d ORDER BY id_empresa"),
-                           {"d": f"%@{dominio}"})).fetchall()
+    ya = (await db.execute(text("SELECT id_empresa FROM empresas WHERE activo AND email LIKE :d "
+                                     "AND id_municipio = :mun ORDER BY id_empresa"),
+                           {"d": f"%@{dominio}", "mun": ctx.id_municipio})).fetchall()
     faltan = EMPRESAS_DEMO - len(ya)
     if faltan > 0:
         actividades = [f.id for f in (await db.execute(text(
             "SELECT id FROM actividades WHERE activo ORDER BY id"))).fetchall()]
         if actividades:
+            # Todo el padron: el UNIQUE global viejo de CUIT sigue hasta el lote de limpieza.
             cuits = {f.cuit for f in (await db.execute(text("SELECT cuit FROM empresas"))).fetchall()}
             filas = []
             while len(filas) < faltan:
@@ -330,7 +338,7 @@ async def _empresas_demo(db: AsyncSession, ctx: _Ctx, rnd: random.Random) -> lis
                               # empresas.fecha_alta es timestamp SIN zona (como ciudadanos).
                               "fa": datetime.now() - timedelta(days=rnd.randint(60, 900))})
             # Mismas columnas que el alta publica (publico_alta.py), id_municipio incluido.
-            mun = min((t.id_municipio for t in ctx.tipos.values()), default=1)
+            mun = ctx.id_municipio
             await db.execute(text("""
                 INSERT INTO empresas (cuit, nombre, id_actividad, calle, altura, localidad, provincia,
                                       latitud, longitud, telefono, email, email_chk, activo,
@@ -338,8 +346,9 @@ async def _empresas_demo(db: AsyncSession, ctx: _Ctx, rnd: random.Random) -> lis
                 VALUES (:cuit, :nombre, :act, :calle, :altura, :loc, 'Buenos Aires',
                         :lat, :lon, :tel, :email, FALSE, TRUE, :mun, :fa, :uid)
             """), [{**f, "mun": mun} for f in filas])
-            ya = (await db.execute(text("SELECT id_empresa FROM empresas WHERE activo AND email LIKE :d ORDER BY id_empresa"),
-                                   {"d": f"%@{dominio}"})).fetchall()
+            ya = (await db.execute(text("SELECT id_empresa FROM empresas WHERE activo AND email LIKE :d "
+                                     "AND id_municipio = :mun ORDER BY id_empresa"),
+                                   {"d": f"%@{dominio}", "mun": ctx.id_municipio})).fetchall()
     return [f.id_empresa for f in ya]
 
 
@@ -348,18 +357,17 @@ async def _cargar_ctx(db: AsyncSession, rnd: random.Random, crear_pools: bool) -
     if uid is None:
         return None
     ctx = _Ctx(uid=uid)
-    sla_default = await db.scalar(text("""
-        SELECT CASE WHEN valor ~ '^[0-9]{1,4}$' THEN CAST(valor AS integer) END
-          FROM configuracion_general WHERE clave = 'tramite_sla_dias_default' AND activo
-    """)) or SLA_DEFAULT
+    ctx.id_municipio = await demo_datos.municipio_demo(db)
+    valor = (await leer_config(db, "tramite_sla_dias_default", ctx.id_municipio) or "").strip()
+    sla_default = (int(valor) if re.fullmatch(r"[0-9]{1,4}", valor) else 0) or SLA_DEFAULT
     for f in (await db.execute(text("""
         SELECT tt.id_tipo_tramite, tt.codigo, tt.nombre, tt.prefijo, tt.separador, tt.incluye_municipio,
                tt.incluye_anio, tt.largo_correlativo, tt.iniciadores_permitidos, tt.id_version_publicada,
                tt.id_subarea, tt.sla_dias, tt.id_municipio, COALESCE(m.codigo_corto, '') AS cod
           FROM tipo_tramite tt JOIN municipios m ON m.id_municipio = tt.id_municipio
-         WHERE tt.activo AND tt.id_version_publicada IS NOT NULL
+         WHERE tt.activo AND tt.id_version_publicada IS NOT NULL AND tt.id_municipio = :mun
          ORDER BY tt.id_tipo_tramite
-    """))).fetchall():
+    """), {"mun": ctx.id_municipio})).fetchall():
         ctx.tipos[f.id_tipo_tramite] = _Tipo(
             f.id_tipo_tramite, f.codigo, f.nombre, f.prefijo, f.separador, f.incluye_municipio,
             f.incluye_anio, f.largo_correlativo, list(f.iniciadores_permitidos or []),
@@ -370,7 +378,7 @@ async def _cargar_ctx(db: AsyncSession, rnd: random.Random, crear_pools: bool) -
     await _personal(db, ctx)
     ctx.id_plantilla = await db.scalar(text(
         "SELECT id_encuesta_plantilla FROM encuesta_plantilla WHERE tipo = 'tramites' AND activo "
-        "ORDER BY id_encuesta_plantilla LIMIT 1"))
+        "AND id_municipio = :mun ORDER BY id_encuesta_plantilla LIMIT 1"), {"mun": ctx.id_municipio})
     ctx.cat_reclamos = await demo_datos._cargar_catalogos(db)
     if crear_pools:
         ctx.pool_vecinos = await demo_datos._asegurar_vecinos(db, ctx.cat_reclamos, uid, 250, rnd)
@@ -749,9 +757,11 @@ async def _escribir_encuesta(db: AsyncSession, par, id_tramite: int) -> int:
     id_env = await db.scalar(text("""
         INSERT INTO encuesta_envio (id_plantilla, id_ciudadano, id_tramite, email_destino_snapshot,
                                     fecha_envio, fecha_apertura, fecha_completada, fecha_expiracion,
-                                    estado, id_subarea, fecha_alta, fecha_modificacion, id_usuario_alta)
+                                    estado, id_subarea, fecha_alta, fecha_modificacion, id_usuario_alta,
+                                    id_municipio)
         VALUES (:id_plantilla, :id_ciudadano, :it, :email, :fecha_envio, :fecha_apertura,
-                :fecha_completada, :fecha_expiracion, :estado, :id_subarea, :fecha_envio, :fecha_envio, :uid)
+                :fecha_completada, :fecha_expiracion, :estado, :id_subarea, :fecha_envio, :fecha_envio, :uid,
+                (SELECT id_municipio FROM tramite WHERE id_tramite = :it))
         RETURNING id_encuesta_envio
     """), {**{k: envio[k] for k in ("id_plantilla", "id_ciudadano", "email", "fecha_envio", "fecha_apertura",
                                      "fecha_completada", "fecha_expiracion", "estado", "id_subarea", "uid")},
@@ -819,8 +829,9 @@ async def generar_periodo_tramites(db: AsyncSession, desde: date, hasta: date,
         return out
     r = await db.execute(text("""
         SELECT DISTINCT (fecha_alta AT TIME ZONE 'UTC')::date AS d FROM tramite
-         WHERE id_usuario_alta = :uid AND fecha_alta >= CAST(:d0 AS timestamptz) AND fecha_alta < CAST(:d1 AS timestamptz)
-    """), {"uid": ctx.uid, "d0": datetime(desde.year, desde.month, desde.day, tzinfo=UTC),
+         WHERE id_usuario_alta = :uid AND id_municipio = :mun
+           AND fecha_alta >= CAST(:d0 AS timestamptz) AND fecha_alta < CAST(:d1 AS timestamptz)
+    """), {"uid": ctx.uid, "mun": ctx.id_municipio, "d0": datetime(desde.year, desde.month, desde.day, tzinfo=UTC),
            "d1": datetime(hasta.year, hasta.month, hasta.day, tzinfo=UTC) + timedelta(days=1)})
     ya = {f.d for f in r.fetchall()}
 
@@ -938,7 +949,7 @@ _SQL_TRAMITES_ABIERTOS = """
       JOIN tipo_tramite_estado e ON e.id_tipo_tramite_estado = t.id_tipo_tramite_estado_actual
       LEFT JOIN ciudadanos c ON c.id_ciudadano = t.id_ciudadano_iniciador
      WHERE t.activo AND t.resultado = 'pendiente' AND t.fecha_archivado IS NULL
-       AND t.fecha_alta <= CAST(:ahora AS timestamptz) AND {filtro}
+       AND t.fecha_alta <= CAST(:ahora AS timestamptz) AND t.id_municipio = :mun AND {filtro}
      ORDER BY t.id_tramite
 """
 
@@ -1048,7 +1059,8 @@ async def avanzar_pendientes_tramites(db: AsyncSession, semilla: int | None = No
         return {"detalle": "sin usuario generador: nada que avanzar"}
     r = await db.execute(text(_SQL_TRAMITES_ABIERTOS.format(
         filtro="t.id_usuario_alta = :uid AND t.fecha_alta >= CAST(:ventana AS timestamptz)")),
-        {"uid": ctx.uid, "ahora": ahora, "ventana": ahora - timedelta(days=VENTANA_AVANCE_DIAS)})
+        {"uid": ctx.uid, "ahora": ahora, "ventana": ahora - timedelta(days=VENTANA_AVANCE_DIAS),
+         "mun": ctx.id_municipio})
     out = await _avanzar(db, ctx, r.fetchall(), rnd, ahora, aplicar=True, forzar=False)
     await db.commit()
     return out
@@ -1072,7 +1084,7 @@ async def cerrar_atraso_tramites(db: AsyncSession, dias: int = 21, aplicar: bool
     filtro_demo = "TRUE" if incluir_no_demo else "t.id_usuario_alta = :uid"
     r = await db.execute(text(_SQL_TRAMITES_ABIERTOS.format(
         filtro=f"({filtro_demo}) AND t.fecha_alta < CAST(:limite AS timestamptz)")),
-        {"uid": ctx.uid, "ahora": ahora, "limite": ahora - timedelta(days=dias)})
+        {"uid": ctx.uid, "ahora": ahora, "limite": ahora - timedelta(days=dias), "mun": ctx.id_municipio})
     filas = r.fetchall()
     out = await _avanzar(db, ctx, filas, rnd, ahora, aplicar=aplicar, forzar=True)
     out["no_demo_detalle"] = [

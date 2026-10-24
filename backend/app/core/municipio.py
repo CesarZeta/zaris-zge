@@ -13,9 +13,10 @@ Origen → municipio: `<sub>.zge|vecinos|agentes.zaris.com.ar` → `municipios.s
 Sin subdominio (sin Origin, zge.zaris.com.ar, cesarzeta.github.io, localhost) → el municipio con
 `direccion_base`. Plan: PLAN_MULTI_MUNICIPIO_F1_F2.md, Tarea 6.
 """
+import logging
 import re
 import time
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import urlparse
 
 from fastapi import Depends, HTTPException, Request, status
@@ -24,6 +25,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_ciudadano, get_current_user
 from app.core.database import get_db
+
+logger = logging.getLogger("zaris.municipio")
 
 _PATRON_HOST = re.compile(r"^(?P<sub>[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\.(?:zge|vecinos|agentes)\.zaris\.com\.ar$")
 _TTL_SEGUNDOS = 60
@@ -59,6 +62,23 @@ def invalidar_cache_municipios() -> None:
 async def id_municipio_base(db: AsyncSession) -> Optional[int]:
     """Municipio de las direcciones sin prefijo (`direccion_base`), o None si no hay."""
     return (await _municipios(db))["base"]
+
+
+async def por_cada_municipio(db: AsyncSession, proceso: str, fn) -> dict[int, Any]:
+    """Procesos sin request (cron, dispatcher): corre `fn(id_municipio)` para cada
+    municipio activo, con su configuracion. Si uno falla se registra, se revierte lo
+    suyo y se sigue con el siguiente. Devuelve {id_municipio: resultado | {"error": ...}}."""
+    ids = [r[0] for r in (await db.execute(text(
+        "SELECT id_municipio FROM municipios WHERE activo = TRUE ORDER BY id_municipio"))).fetchall()]
+    resultados: dict[int, Any] = {}
+    for id_m in ids:
+        try:
+            resultados[id_m] = await fn(id_m)
+        except Exception as e:  # noqa: BLE001 — un municipio no frena a los demas
+            await db.rollback()
+            logger.exception("%s: fallo el municipio %s; sigue con el siguiente", proceso, id_m)
+            resultados[id_m] = {"error": f"{type(e).__name__}: {e}"}
+    return resultados
 
 
 async def resolver_municipio_de_origen(request: Request, db: AsyncSession) -> int:

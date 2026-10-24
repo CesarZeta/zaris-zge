@@ -38,9 +38,11 @@ si no existe): identificar/borrar/migrar a un tenant = filtrar por ese
 id_usuario_alta.
 
 ALCANCE MULTI-TENANT (definicion de Cesar 2026-08-30): el generador y su cron
-aplican datos SOLO al municipio DEMO (San Andres). Al implementar IT-01 este
-modulo debe recibir/derivar el id_municipio del tenant demo y quedar acotado a
-el — JAMAS generar datos en tenants reales.
+aplican datos SOLO al municipio DEMO (San Andres). Desde IT-01 F2 el municipio
+demo es el de las direcciones sin prefijo (municipio_demo: `direccion_base`; F4 lo
+cambia por municipios.estado = 'demo'): todo catalogo, agente y vecino se lee de
+ese municipio y todo INSERT lo lleva (las filas hijas, el de su reclamo). JAMAS
+generar datos en tenants reales.
 
 REGLA CRITICA: jamas crear encuesta_envio en estado 'pendiente' — el dispatcher
 horario de encuestas MANDA MAIL a los pendientes. Solo estados 'enviada',
@@ -288,18 +290,30 @@ class _Catalogos:
     id_estado_ot_terminada: int | None = None
     # reclamos.resolucion (mig 117): texto de cierre que ve el vecino. Opcional.
     tiene_resolucion: bool = False
+    id_municipio: int = 0  # municipio demo (municipio_demo)
     # Poblacion ponderada de tipos ya resuelta contra el catalogo del entorno:
     # entradas ('tipo', id_tipo) o ('subarea', id_subarea), con su peso.
     poblacion_tipos: list[tuple[tuple[str, int], int]] = field(default_factory=list)
     poblacion_localidades: list[tuple[tuple[int, str, float, float, int], int]] = field(default_factory=list)
 
 
+async def municipio_demo(db: AsyncSession) -> int:
+    """Municipio donde escribe el generador: el de las direcciones sin prefijo
+    (`direccion_base`, IT-01; F4 lo cambia por municipios.estado = 'demo')."""
+    id_m = await db.scalar(text("SELECT id_municipio FROM municipios WHERE direccion_base AND activo"))
+    if id_m is None:
+        raise RuntimeError("No hay un municipio con direccion_base: el generador demo no corre")
+    return id_m
+
+
 async def _cargar_catalogos(db: AsyncSession) -> _Catalogos:
     cat = _Catalogos()
+    cat.id_municipio = await municipio_demo(db)
+    mun = {"mun": cat.id_municipio}
     r = await db.execute(text(
         "SELECT t.id_tipo_reclamo, t.nombre, t.id_subarea, t.sla_minutos, t.asignacion_a FROM tipo_reclamo t "
-        "JOIN subarea s ON s.id_subarea = t.id_subarea WHERE t.activo AND s.activo"
-    ))
+        "JOIN subarea s ON s.id_subarea = t.id_subarea WHERE t.activo AND s.activo AND t.id_municipio = :mun"
+    ), mun)
     for fila in r.fetchall():
         cat.tipos_por_nombre[_norm(fila.nombre)] = (fila.id_tipo_reclamo, fila.id_subarea, fila.nombre)
         cat.tipos_por_subarea.setdefault(fila.id_subarea, []).append(fila.id_tipo_reclamo)
@@ -307,7 +321,7 @@ async def _cargar_catalogos(db: AsyncSession) -> _Catalogos:
         cat.tipo_sla[fila.id_tipo_reclamo] = fila.sla_minutos / 1440.0 if fila.sla_minutos else None
         cat.tipo_asignacion[fila.id_tipo_reclamo] = fila.asignacion_a or "agente"
 
-    r = await db.execute(text("SELECT id_subarea, nombre FROM subarea WHERE activo"))
+    r = await db.execute(text("SELECT id_subarea, nombre FROM subarea WHERE activo AND id_municipio = :mun"), mun)
     for fila in r.fetchall():
         cat.subareas_por_nombre[_norm(fila.nombre)] = fila.id_subarea
 
@@ -322,16 +336,12 @@ async def _cargar_catalogos(db: AsyncSession) -> _Catalogos:
     for fila in r.fetchall():
         # Por (nombre, partido): "Villa Adelina" existe en VL y en San Isidro.
         cat.localidades.setdefault((_norm(fila.nombre), _norm(fila.partido)), fila.id_localidad)
-    # El generador demo trabaja sobre el municipio de las direcciones sin prefijo (IT-01;
-    # F4 lo cambia por municipios.estado = 'demo').
-    id_mun_demo = await db.scalar(text(
-        "SELECT id_municipio FROM municipios WHERE direccion_base AND activo"))
-    cat.limite = await leer_limite(db, id_mun_demo)
+    cat.limite = await leer_limite(db, cat.id_municipio)
 
     r = await db.execute(text(
         "SELECT id_encuesta_plantilla FROM encuesta_plantilla "
-        "WHERE tipo = 'reclamos' AND activo ORDER BY id_encuesta_plantilla LIMIT 1"
-    ))
+        "WHERE tipo = 'reclamos' AND activo AND id_municipio = :mun ORDER BY id_encuesta_plantilla LIMIT 1"
+    ), mun)
     fila = r.fetchone()
     cat.id_plantilla_reclamos = fila.id_encuesta_plantilla if fila else None
 
@@ -364,8 +374,9 @@ async def _cargar_catalogos(db: AsyncSession) -> _Catalogos:
 
 
 async def _usuario_generador(db: AsyncSession, crear: bool = True) -> int | None:
-    r = await db.execute(text("SELECT id_usuario FROM usuarios WHERE username = :u"),
-                         {"u": USERNAME_GENERADOR})
+    id_mun = await municipio_demo(db)
+    r = await db.execute(text("SELECT id_usuario FROM usuarios WHERE username = :u AND id_municipio = :mun"),
+                         {"u": USERNAME_GENERADOR, "mun": id_mun})
     fila = r.fetchone()
     if fila:
         return fila.id_usuario
@@ -373,15 +384,14 @@ async def _usuario_generador(db: AsyncSession, crear: bool = True) -> int | None
         return None
     from app.core.auth import hash_password
     import secrets as stdlib_secrets
-    # id_municipio y buc_acceso son NOT NULL sin default en local (drift §24).
+    # buc_acceso es NOT NULL sin default en local (drift §24).
     r = await db.execute(text("""
         INSERT INTO usuarios (nombre, username, password_hash, nivel_acceso, activo,
                               buc_acceso, email, id_municipio)
-        VALUES ('Generador de datos demo', :u, :h, 5, FALSE, FALSE, :e,
-                (SELECT MIN(id_municipio) FROM usuarios WHERE id_municipio IS NOT NULL))
+        VALUES ('Generador de datos demo', :u, :h, 5, FALSE, FALSE, :e, :mun)
         RETURNING id_usuario
     """), {"u": USERNAME_GENERADOR, "h": hash_password(stdlib_secrets.token_urlsafe(24)),
-           "e": EMAIL_GENERADOR})
+           "e": EMAIL_GENERADOR, "mun": id_mun})
     return r.fetchone().id_usuario
 
 
@@ -393,11 +403,12 @@ async def _asegurar_vecinos(db: AsyncSession, cat: _Catalogos, uid: int,
     nombre de otra): nunca se reproduce un par real. DNI/CUIL sinteticos.
     """
     ya_demo = (await db.execute(text(
-        "SELECT COUNT(*) AS n FROM ciudadanos WHERE email LIKE :d"),
-        {"d": f"%@{DOMINIO_VECINO_DEMO}"})).fetchone().n
+        "SELECT COUNT(*) AS n FROM ciudadanos WHERE email LIKE :d AND id_municipio = :mun"),
+        {"d": f"%@{DOMINIO_VECINO_DEMO}", "mun": cat.id_municipio})).fetchone().n
     a_crear = max(0, objetivo_nuevos - ya_demo)
 
     if a_crear:
+        # Todo el padron: el UNIQUE global viejo de documento sigue hasta el lote de limpieza.
         existentes = {f.doc_nro for f in (await db.execute(
             text("SELECT doc_nro FROM ciudadanos"))).fetchall()}
         filas = []
@@ -425,7 +436,7 @@ async def _asegurar_vecinos(db: AsyncSession, cat: _Catalogos, uid: int,
                 "telefono": f"11{rnd.randint(20_000_000, 79_999_999)}",
                 "email": f"{slug}.{dni % 10000}@{DOMINIO_VECINO_DEMO}",
                 "fecha_alta": datetime.now() - timedelta(days=rnd.randint(30, 720)),
-                "uid": uid,
+                "uid": uid, "mun": cat.id_municipio,
             })
         # ren_chk/email_chk/emp_chk/activo: NOT NULL sin default en local (drift §24).
         await db.execute(text("""
@@ -433,19 +444,20 @@ async def _asegurar_vecinos(db: AsyncSession, cat: _Catalogos, uid: int,
                 (doc_tipo, doc_nro, cuil, nombre, apellido, sexo, fecha_nac,
                  id_nacionalidad, calle, altura, localidad, provincia,
                  latitud, longitud, telefono, email, fecha_alta, id_usuario_alta,
-                 ren_chk, email_chk, emp_chk, activo)
+                 ren_chk, email_chk, emp_chk, activo, id_municipio)
             VALUES (:doc_tipo, :doc_nro, :cuil, :nombre, :apellido, :sexo, :fecha_nac,
                     :id_nacionalidad, :calle, :altura, :localidad, :provincia,
                     :latitud, :longitud, :telefono, :email, :fecha_alta, :uid,
-                    FALSE, FALSE, FALSE, TRUE)
+                    FALSE, FALSE, FALSE, TRUE, :mun)
         """), filas)
 
     # Solo vecinos DEMO (2026-10-21): hasta esta fecha el pool eran todos los
     # ciudadanos con email, y un reclamo demo podia aparecer en la app de un vecino
     # real. demo_atencion ya filtraba asi.
     r = await db.execute(text(
-        "SELECT id_ciudadano, email FROM ciudadanos WHERE activo AND email LIKE :d ORDER BY id_ciudadano"),
-        {"d": f"%@{DOMINIO_VECINO_DEMO}"})
+        "SELECT id_ciudadano, email FROM ciudadanos WHERE activo AND email LIKE :d AND id_municipio = :mun "
+        "ORDER BY id_ciudadano"),
+        {"d": f"%@{DOMINIO_VECINO_DEMO}", "mun": cat.id_municipio})
     return [(f.id_ciudadano, f.email) for f in r.fetchall()]
 
 
@@ -673,12 +685,14 @@ class _AsignadorOT:
         self.por_origen: dict[str, int] = {}
 
     @classmethod
-    async def cargar(cls, db: AsyncSession) -> "_AsignadorOT":
+    async def cargar(cls, db: AsyncSession, id_municipio: int) -> "_AsignadorOT":
         a = cls()
+        mun = {"mun": id_municipio}
         tiene_push = bool(await db.scalar(text("SELECT to_regclass('public.usuario_push_subscription') IS NOT NULL")))
         filtro_push = ("AND NOT EXISTS (SELECT 1 FROM usuario_push_subscription ps "
                        "WHERE ps.id_usuario = u.id_usuario AND ps.activo)") if tiene_push else ""
-        for f in (await db.execute(text("SELECT id_subarea, id_area FROM subarea"))).fetchall():
+        for f in (await db.execute(text("SELECT id_subarea, id_area FROM subarea WHERE id_municipio = :mun"),
+                                   mun)).fetchall():
             a.area_de_sub[f.id_subarea] = f.id_area
         r = await db.execute(text(f"""
             SELECT ag.id_agente, TRIM(BOTH ', ' FROM COALESCE(ag.apellido, '') || ', ' || COALESCE(ag.nombre, '')) AS nombre,
@@ -688,8 +702,8 @@ class _AsignadorOT:
               FROM agentes ag
               JOIN usuarios u ON u.id_usuario = ag.id_usuario AND u.activo
              WHERE ag.activo AND NOT ag.es_auditor AND u.nivel_acceso BETWEEN 2 AND 4
-                   AND ag.id_subarea IS NOT NULL {filtro_push}
-        """))
+                   AND ag.id_subarea IS NOT NULL AND ag.id_municipio = :mun {filtro_push}
+        """), mun)
         for f in r.fetchall():
             rec = _Recurso("agente", f.id_agente, f.nombre, f.id_subarea, int(f.n_ot or 0))
             if f.nivel_acceso == 4:
@@ -706,27 +720,27 @@ class _AsignadorOT:
                      WHERE ot.id_equipo = e.id_equipo AND NOT ot.es_auditoria) AS n_ot
               FROM equipos e
              WHERE e.activo AND e.tipo_grupo = 'trabajo_reclamos' AND e.id_subarea IS NOT NULL
+               AND e.id_municipio = :mun
                AND EXISTS (SELECT 1 FROM equipo_agentes ea
                              JOIN agentes ag ON ag.id_agente = ea.id_agente AND ag.activo
                              JOIN usuarios u ON u.id_usuario = ag.id_usuario AND u.activo
                             WHERE ea.id_equipo = e.id_equipo AND ea.activo AND u.nivel_acceso <= 4)
-        """))
+        """), mun)
         for f in r.fetchall():
             a.equipos_sub.setdefault(f.id_subarea, []).append(
                 _Recurso("equipo", f.id_equipo, f"la cuadrilla {f.nombre}", f.id_subarea, int(f.n_ot or 0)))
         r = await db.execute(text("""
             SELECT DISTINCT ag.id_subarea, u.id_usuario FROM agentes ag
               JOIN usuarios u ON u.id_usuario = ag.id_usuario AND u.activo
-             WHERE ag.activo AND u.nivel_acceso = 2 AND ag.id_subarea IS NOT NULL
-        """))
+             WHERE ag.activo AND u.nivel_acceso = 2 AND ag.id_subarea IS NOT NULL AND ag.id_municipio = :mun
+        """), mun)
         for f in r.fetchall():
             a.supervisores_sub.setdefault(f.id_subarea, []).append(f.id_usuario)
         # Gestiones que asignan solas (mig 121): la asignacion general del municipio
         # prendida y la gestion sin la excepcion «asigna a mano».
-        id_mun_demo = await db.scalar(text(
-            "SELECT id_municipio FROM municipios WHERE direccion_base AND activo"))
-        if await autoasignacion.asignacion_general_prendida(db, id_mun_demo):
-            r = await db.execute(text("SELECT id_subarea FROM subarea WHERE NOT asignacion_manual"))
+        if await autoasignacion.asignacion_general_prendida(db, id_municipio):
+            r = await db.execute(text(
+                "SELECT id_subarea FROM subarea WHERE NOT asignacion_manual AND id_municipio = :mun"), mun)
             a.auto_sub = {f.id_subarea for f in r.fetchall()}
         return a
 
@@ -775,10 +789,10 @@ _SQL_INSERT_OT_OPERATIVA = text("""
     INSERT INTO ordenes_trabajo
         (id_reclamo, id_estado, id_agente, id_equipo, es_auditoria, asignacion_automatica,
          id_supervisor_asigna, fecha_creacion, fecha_cierre, observaciones, activo,
-         fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion)
+         fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion, id_municipio)
     VALUES (:id_reclamo, :id_estado, :id_agente, :id_equipo, FALSE, :auto,
             :sup, CAST(:creacion AS timestamptz), CAST(:cierre AS timestamptz), :obs, TRUE,
-            CAST(:creacion AS timestamptz), CAST(:modif AS timestamptz), :uid, :uid)
+            CAST(:creacion AS timestamptz), CAST(:modif AS timestamptz), :uid, :uid, (SELECT id_municipio FROM reclamos WHERE id_reclamo = :id_reclamo))
     RETURNING id_ot, nro_ot
 """)
 
@@ -925,13 +939,13 @@ _SQL_INSERT_RECLAMO = text("""
          fuente_geolocalizacion, fecha_alta, fecha_modificacion,
          fecha_primer_asignacion, fecha_cierre, id_usuario_alta, id_reclamo_padre,
          observaciones, fecha_inicio_auditoria, fecha_fin_auditoria, resultado_auditoria,
-         id_reclamo_origen_auditoria)
+         id_reclamo_origen_auditoria, id_municipio)
     VALUES (:id_ciudadano, :id_tipo_reclamo, :descripcion, :prioridad, :estado, :id_estado_fk,
             :direccion, :latitud, :longitud, :id_localidad, :canal_origen,
             :fuente_geolocalizacion, :fecha_alta, :fecha_alta,
             :fecha_primer_asignacion, :fecha_cierre, :uid, :id_reclamo_padre,
             NULL, :fecha_inicio_auditoria, :fecha_fin_auditoria, :resultado_auditoria,
-            :id_reclamo_origen_auditoria)
+            :id_reclamo_origen_auditoria, :id_municipio)
     RETURNING id_reclamo, nro_reclamo
 """)
 
@@ -948,13 +962,13 @@ def _sql_insert_reclamo_con_id(con_resolucion: bool):
              fuente_geolocalizacion, fecha_alta, fecha_modificacion,
              fecha_primer_asignacion, fecha_cierre, id_usuario_alta, id_usuario_modificacion,
              id_reclamo_padre, observaciones, fecha_inicio_auditoria, fecha_fin_auditoria,
-             resultado_auditoria, id_reclamo_origen_auditoria{extra_col})
+             resultado_auditoria, id_reclamo_origen_auditoria, id_municipio{extra_col})
         VALUES (:id_reclamo, :id_ciudadano, :id_tipo_reclamo, :descripcion, :prioridad, :estado, :id_estado_fk,
                 :direccion, :latitud, :longitud, :id_localidad, :canal_origen,
                 :fuente_geolocalizacion, :fecha_alta, :fecha_modificacion,
                 :fecha_primer_asignacion, :fecha_cierre, :uid, :uid,
                 :id_reclamo_padre, NULL, :fecha_inicio_auditoria, :fecha_fin_auditoria,
-                :resultado_auditoria, :id_reclamo_origen_auditoria{extra_val})
+                :resultado_auditoria, :id_reclamo_origen_auditoria, :id_municipio{extra_val})
         RETURNING id_reclamo, nro_reclamo
     """)
 
@@ -964,11 +978,11 @@ _SQL_INSERT_OT_AUDITORIA = text("""
     INSERT INTO ordenes_trabajo
         (id_reclamo, id_estado, es_auditoria, resultado_auditoria, observaciones,
          observaciones_auditoria, id_supervisor_asigna, fecha_creacion, fecha_cierre,
-         activo, fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion)
+         activo, fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion, id_municipio)
     VALUES (:id_reclamo, :id_estado, TRUE, :resultado, 'Control de calidad (demo)',
             :obs_aud, :uid, CAST(:inicio AS timestamptz), CAST(:fin AS timestamptz),
             TRUE, CAST(:inicio AS timestamptz),
-            COALESCE(CAST(:fin AS timestamptz), CAST(:inicio AS timestamptz)), :uid, :uid)
+            COALESCE(CAST(:fin AS timestamptz), CAST(:inicio AS timestamptz)), :uid, :uid, (SELECT id_municipio FROM reclamos WHERE id_reclamo = :id_reclamo))
 """)
 
 # Igual, con la OT operativa que audita (como POST /reclamos/{id}/auditoria).
@@ -976,11 +990,11 @@ _SQL_INSERT_OT_AUDITORIA_ORIGEN = text("""
     INSERT INTO ordenes_trabajo
         (id_reclamo, id_estado, es_auditoria, resultado_auditoria, observaciones,
          observaciones_auditoria, id_supervisor_asigna, id_ot_origen, fecha_creacion, fecha_cierre,
-         activo, fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion)
+         activo, fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion, id_municipio)
     VALUES (:id_reclamo, :id_estado, TRUE, :resultado, 'Control de calidad (demo)',
             :obs_aud, :uid, :id_ot_origen, CAST(:inicio AS timestamptz), CAST(:fin AS timestamptz),
             TRUE, CAST(:inicio AS timestamptz),
-            COALESCE(CAST(:fin AS timestamptz), CAST(:inicio AS timestamptz)), :uid, :uid)
+            COALESCE(CAST(:fin AS timestamptz), CAST(:inicio AS timestamptz)), :uid, :uid, (SELECT id_municipio FROM reclamos WHERE id_reclamo = :id_reclamo))
 """)
 
 _SQL_ENVIAR_AUDITORIA = text("""
@@ -1023,26 +1037,28 @@ _SQL_INSERT_RETRABAJO_DESDE = text("""
 """)
 
 _SQL_INSERT_HISTORIAL = text("""
-    INSERT INTO reclamo_historial (id_reclamo, accion, estado_anterior, estado_nuevo, nota, fecha_alta, id_usuario_alta)
-    VALUES (:id_reclamo, :accion, :estado_anterior, :estado_nuevo, :nota, :fecha, :uid)
+    INSERT INTO reclamo_historial (id_reclamo, accion, estado_anterior, estado_nuevo, nota, fecha_alta, id_usuario_alta,
+                                   id_municipio)
+    VALUES (:id_reclamo, :accion, :estado_anterior, :estado_nuevo, :nota, :fecha, :uid, (SELECT id_municipio FROM reclamos WHERE id_reclamo = :id_reclamo))
 """)
 
 _SQL_INSERT_ENVIO = text("""
     INSERT INTO encuesta_envio
         (id_plantilla, id_ciudadano, id_reclamo, email_destino_snapshot,
          fecha_envio, fecha_apertura, fecha_completada, fecha_expiracion,
-         estado, id_subarea, fecha_alta, fecha_modificacion, id_usuario_alta)
+         estado, id_subarea, fecha_alta, fecha_modificacion, id_usuario_alta, id_municipio)
     VALUES (:id_plantilla, :id_ciudadano, :id_reclamo, :email,
             :fecha_envio, :fecha_apertura, :fecha_completada, :fecha_expiracion,
-            :estado, :id_subarea, :fecha_envio, :fecha_envio, :uid)
+            :estado, :id_subarea, :fecha_envio, :fecha_envio, :uid, (SELECT id_municipio FROM reclamos WHERE id_reclamo = :id_reclamo))
     RETURNING id_encuesta_envio
 """)
 
 _SQL_INSERT_RESPUESTA = text("""
     INSERT INTO encuesta_respuesta
         (id_envio, clasificacion_inicial, rama_seguida, tiempo_completado_seg,
-         solicita_contacto, id_subarea, fecha_alta, fecha_modificacion, id_usuario_alta)
-    VALUES (:id_envio, :clasificacion, :rama, :tiempo, FALSE, :id_subarea, :fecha, :fecha, :uid)
+         solicita_contacto, id_subarea, fecha_alta, fecha_modificacion, id_usuario_alta, id_municipio)
+    VALUES (:id_envio, :clasificacion, :rama, :tiempo, FALSE, :id_subarea, :fecha, :fecha, :uid,
+            (SELECT id_municipio FROM encuesta_envio WHERE id_encuesta_envio = :id_envio))
 """)
 
 
@@ -1138,14 +1154,16 @@ def _armar_envio(rnd: random.Random, reclamo: dict, ahora: datetime,
     return envio, respuesta
 
 
-async def _dias_con_reclamos_demo(db: AsyncSession, uid: int, desde: date, hasta: date) -> set[date]:
+async def _dias_con_reclamos_demo(db: AsyncSession, uid: int, desde: date, hasta: date,
+                                  id_municipio: int) -> set[date]:
     """Dias del rango que ya tienen reclamos demo "de base" (sin contar
     subreclamos ni retrabajos, que nacen otro dia que su origen)."""
     r = await db.execute(text("""
         SELECT DISTINCT (fecha_alta AT TIME ZONE 'UTC')::date AS d FROM reclamos
          WHERE id_usuario_alta = :uid AND id_reclamo_padre IS NULL AND id_reclamo_origen_auditoria IS NULL
+           AND id_municipio = :mun
            AND fecha_alta >= CAST(:d0 AS timestamptz) AND fecha_alta < CAST(:d1 AS timestamptz)
-    """), {"uid": uid,
+    """), {"uid": uid, "mun": id_municipio,
            "d0": datetime(desde.year, desde.month, desde.day, tzinfo=timezone.utc),
            "d1": datetime(hasta.year, hasta.month, hasta.day, tzinfo=timezone.utc) + timedelta(days=1)})
     return {f.d for f in r.fetchall()}
@@ -1171,10 +1189,10 @@ async def generar_periodo(db: AsyncSession, desde: date, hasta: date,
     if not cat.poblacion_tipos or not cat.poblacion_localidades:
         raise RuntimeError("Catalogo sin tipos/localidades matcheables: no se puede generar demo")
     pool = await _asegurar_vecinos(db, cat, uid, vecinos_nuevos, rnd)
-    asignador = await _AsignadorOT.cargar(db)
+    asignador = await _AsignadorOT.cargar(db, cat.id_municipio)
     sql_insert = _sql_insert_reclamo_con_id(cat.tiene_resolucion)
 
-    ya = await _dias_con_reclamos_demo(db, uid, desde, hasta)
+    ya = await _dias_con_reclamos_demo(db, uid, desde, hasta, cat.id_municipio)
     omitidos: list[str] = []
     base: list[dict] = []
     for dia in dias_rango(desde, hasta):
@@ -1239,6 +1257,7 @@ async def generar_periodo(db: AsyncSession, desde: date, hasta: date,
             "fecha_fin_auditoria": rec.get("fecha_fin_auditoria"),
             "resultado_auditoria": rec.get("resultado_auditoria"),
             "id_reclamo_origen_auditoria": rec.get("id_reclamo_origen_auditoria"),
+            "id_municipio": cat.id_municipio,
         }
         if cat.tiene_resolucion:
             params["resolucion"] = resolucion
@@ -1395,8 +1414,9 @@ async def backfill_auditorias(db: AsyncSession, fraccion: float = TASA_AUDITORIA
         WHERE r.activo AND r.id_usuario_alta = :uid AND r.estado = 'Resuelto'
           AND r.fecha_cierre IS NOT NULL AND r.fecha_inicio_auditoria IS NULL
           AND r.id_reclamo_origen_auditoria IS NULL AND r.id_reclamo_padre IS NULL
+          AND r.id_municipio = :mun
         ORDER BY r.id_reclamo
-    """), {"uid": uid})
+    """), {"uid": uid, "mun": cat.id_municipio})
     candidatos = r.fetchall()
 
     # Pasada 1: el plan, sin escribir.
@@ -1476,6 +1496,7 @@ async def backfill_auditorias(db: AsyncSession, fraccion: float = TASA_AUDITORIA
                 "fecha_cierre": retrabajo["fecha_cierre"], "uid": uid, "id_reclamo_padre": None,
                 "fecha_inicio_auditoria": None, "fecha_fin_auditoria": None,
                 "resultado_auditoria": None, "id_reclamo_origen_auditoria": p.id_reclamo,
+                "id_municipio": cat.id_municipio,
             })).fetchone()
             historial.extend(_historial_de(retrabajo, fila.id_reclamo, uid, rnd, False))
 
@@ -1499,6 +1520,7 @@ _SQL_PENDIENTES = """
              ORDER BY o.id_ot DESC LIMIT 1) ot ON TRUE
      WHERE r.activo AND r.estado IN ('Sin asignar', 'En gestión', 'En espera')
        AND r.fecha_alta <= CAST(:ahora AS timestamptz)
+       AND r.id_municipio = :mun
        AND {filtro}
      ORDER BY r.id_reclamo
 """
@@ -1661,13 +1683,14 @@ async def avanzar_pendientes(db: AsyncSession, semilla: int | None = None,
     if uid is None:
         return {"detalle": "sin usuario generador: nada que avanzar"}
     cat = await _cargar_catalogos(db)
-    asignador = await _AsignadorOT.cargar(db)
+    asignador = await _AsignadorOT.cargar(db, cat.id_municipio)
 
     # Solo la ventana reciente: lo pendiente mas viejo (datos anteriores a esta version)
     # lo cierra cerrar_atraso_reclamos, que tiene dry-run para revisarlo antes.
     r = await db.execute(text(_SQL_PENDIENTES.format(
         filtro="r.id_usuario_alta = :uid AND r.fecha_alta >= CAST(:ventana AS timestamptz)")),
-        {"uid": uid, "ahora": ahora, "ventana": ahora - timedelta(days=VENTANA_AVANCE_DIAS)})
+        {"uid": uid, "ahora": ahora, "ventana": ahora - timedelta(days=VENTANA_AVANCE_DIAS),
+         "mun": cat.id_municipio})
     pendientes = r.fetchall()
     movidos = await _avanzar_reclamos(db, cat, uid, asignador, rnd, ahora, pendientes,
                                       aplicar=True, forzar_final=False, encuestar=True)
@@ -1685,8 +1708,8 @@ async def avanzar_pendientes(db: AsyncSession, semilla: int | None = None,
             SELECT r.id_reclamo, r.nro_reclamo, r.fecha_inicio_auditoria
             FROM reclamos r
             WHERE r.activo AND r.id_usuario_alta = :uid AND r.estado = 'En auditoría'
-              AND r.fecha_inicio_auditoria < :limite
-        """), {"uid": uid, "limite": ahora - timedelta(days=1)})
+              AND r.fecha_inicio_auditoria < :limite AND r.id_municipio = :mun
+        """), {"uid": uid, "limite": ahora - timedelta(days=1), "mun": cat.id_municipio})
         for p in r.fetchall():
             if rnd.random() >= 0.60:
                 continue
@@ -1722,8 +1745,8 @@ async def avanzar_pendientes(db: AsyncSession, semilla: int | None = None,
             FROM reclamos r
             WHERE r.activo AND r.id_usuario_alta = :uid AND r.estado = 'Resuelto'
               AND r.fecha_inicio_auditoria IS NULL AND r.id_reclamo_origen_auditoria IS NULL
-              AND r.fecha_cierre > :desde AND r.fecha_cierre <= :ahora
-        """), {"uid": uid, "desde": ahora - timedelta(days=30), "ahora": ahora})
+              AND r.fecha_cierre > :desde AND r.fecha_cierre <= :ahora AND r.id_municipio = :mun
+        """), {"uid": uid, "desde": ahora - timedelta(days=30), "ahora": ahora, "mun": cat.id_municipio})
         for p in r.fetchall():
             if rnd.random() >= 0.03:
                 continue
@@ -1742,12 +1765,14 @@ async def avanzar_pendientes(db: AsyncSession, semilla: int | None = None,
     await db.execute(text("""
         UPDATE encuesta_envio SET estado = 'expirada', fecha_modificacion = :ahora
         WHERE estado = 'enviada' AND fecha_expiracion < :ahora AND id_usuario_alta = :uid
-    """), {"ahora": ahora, "uid": uid})
+          AND id_municipio = :mun
+    """), {"ahora": ahora, "uid": uid, "mun": cat.id_municipio})
     r = await db.execute(text("""
         SELECT ev.id_encuesta_envio, ev.id_subarea, ev.fecha_envio
         FROM encuesta_envio ev
         WHERE ev.estado = 'enviada' AND ev.id_usuario_alta = :uid AND ev.fecha_envio <= :ahora
-    """), {"uid": uid, "ahora": ahora})
+          AND ev.id_municipio = :mun
+    """), {"uid": uid, "ahora": ahora, "mun": cat.id_municipio})
     n_resp = 0
     for ev in r.fetchall():
         if rnd.random() < 0.35:
@@ -1790,17 +1815,18 @@ async def completar_ot_historicas(db: AsyncSession, uid: int, aplicar: bool,
                r.fecha_modificacion, r.fecha_alta
           FROM reclamos r
          WHERE r.activo AND r.id_usuario_alta = :uid AND r.fecha_primer_asignacion IS NOT NULL
+           AND r.id_municipio = :mun
            AND r.fecha_primer_asignacion <= CAST(:ahora AS timestamptz)
            AND r.estado IN ('Resuelto', 'En auditoría', 'Auditado', 'Cancelado', 'En gestión', 'En espera')
            AND NOT EXISTS (SELECT 1 FROM ordenes_trabajo o WHERE o.id_reclamo = r.id_reclamo
                             AND o.activo AND NOT o.es_auditoria)
          ORDER BY r.id_reclamo
-    """), {"uid": uid, "ahora": ahora})
+    """), {"uid": uid, "ahora": ahora, "mun": cat.id_municipio})
     filas = [f for f in r.fetchall() if not excluir or f.id_reclamo not in excluir]
     out = {"reclamos_sin_ot": len(filas), "ot_creadas": 0, "auditorias_ligadas": 0}
     if not filas:
         return out
-    asignador = await _AsignadorOT.cargar(db)
+    asignador = await _AsignadorOT.cargar(db, cat.id_municipio)
     lote: list[dict] = []
     for f in filas:
         cierre = f.fecha_cierre if f.estado in (ESTADO_RESUELTO, ESTADO_EN_AUDITORIA, ESTADO_AUDITADO,
@@ -1826,8 +1852,9 @@ async def completar_ot_historicas(db: AsyncSession, uid: int, aplicar: bool,
         UPDATE ordenes_trabajo a SET id_ot_origen = o.id_ot
           FROM ordenes_trabajo o
          WHERE a.es_auditoria AND a.activo AND a.id_ot_origen IS NULL AND a.id_usuario_alta = :uid
+           AND a.id_municipio = :mun
            AND o.id_reclamo = a.id_reclamo AND NOT o.es_auditoria AND o.activo
-    """), {"uid": uid})
+    """), {"uid": uid, "mun": cat.id_municipio})
     out["auditorias_ligadas"] = r.rowcount or 0
     return out
 
@@ -1853,6 +1880,7 @@ async def rebalancear_sla_historico(db: AsyncSession, uid: int, aplicar: bool,
     anteriores los cierra el atraso de la misma corrida). En dry-run el % del mes se
     calcula sin esos cierres: el conteo es aproximado."""
     ahora = ahora or datetime.now(timezone.utc)
+    id_mun = await municipio_demo(db)
     pendientes_desde = pendientes_desde or datetime(1900, 1, 1, tzinfo=timezone.utc)
     cerrados = "('Resuelto', 'En auditoría', 'Auditado')"
     r = await db.execute(text(f"""
@@ -1864,8 +1892,9 @@ async def rebalancear_sla_historico(db: AsyncSession, uid: int, aplicar: bool,
                                   AND r.fecha_alta >= CAST(:pdesde AS timestamptz)) AS pendientes
           FROM reclamos r JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
          WHERE r.activo AND r.id_usuario_alta = :uid AND r.fecha_alta <= CAST(:ahora AS timestamptz)
+           AND r.id_municipio = :mun
          GROUP BY 1 ORDER BY 1
-    """), {"uid": uid, "ahora": ahora, "pdesde": pendientes_desde})
+    """), {"uid": uid, "ahora": ahora, "pdesde": pendientes_desde, "mun": id_mun})
     meses: dict[str, dict] = {}
     for f in r.fetchall():
         if not f.cerrados or f.pendientes:
@@ -1890,8 +1919,9 @@ async def rebalancear_sla_historico(db: AsyncSession, uid: int, aplicar: bool,
            AND NOT EXISTS (SELECT 1 FROM reclamos h WHERE h.id_reclamo_padre = r.id_reclamo)
            AND r.fecha_cierre - r.fecha_alta > make_interval(mins => tr.sla_minutos)
            AND to_char(r.fecha_alta AT TIME ZONE 'UTC', 'YYYY-MM') = ANY(:meses)
+           AND r.id_municipio = :mun
          ORDER BY r.id_reclamo
-    """), {"uid": uid, "meses": list(meses)})
+    """), {"uid": uid, "meses": list(meses), "mun": id_mun})
     candidatos = r.fetchall()
     # Primero los que su plan pone dentro del SLA (mismo criterio que el generador).
     candidatos.sort(key=lambda f: (not demo_sla.cae_dentro(
@@ -1949,14 +1979,14 @@ async def cerrar_atraso_reclamos(db: AsyncSession, dias: int = 21, aplicar: bool
     if uid is None:
         return {"detalle": "sin usuario generador: nada que cerrar"}
     cat = await _cargar_catalogos(db)
-    asignador = await _AsignadorOT.cargar(db)
+    asignador = await _AsignadorOT.cargar(db, cat.id_municipio)
     limite = ahora - timedelta(days=dias)
     filtro_demo = "TRUE" if incluir_no_demo else "r.id_usuario_alta = :uid"
     filtro = (f"({filtro_demo}) AND (r.fecha_alta < CAST(:limite AS timestamptz) OR EXISTS ("
               "SELECT 1 FROM reclamos p WHERE p.id_reclamo = r.id_reclamo_padre "
               "AND p.fecha_alta < CAST(:limite AS timestamptz) AND p.estado IN ('Sin asignar', 'En gestión', 'En espera')))")
     r = await db.execute(text(_SQL_PENDIENTES.format(filtro=filtro)),
-                         {"uid": uid, "ahora": ahora, "limite": limite})
+                         {"uid": uid, "ahora": ahora, "limite": limite, "mun": cat.id_municipio})
     filas = r.fetchall()
     por_estado: dict[str, int] = {}
     for f in filas:
