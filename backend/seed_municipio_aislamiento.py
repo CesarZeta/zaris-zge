@@ -15,7 +15,8 @@ si una respuesta del municipio 1 la contiene, es una filtración (smoke_aislamie
 
 Cuentas (clave dev 123456): admin.b@aislamiento.test (nivel 1), super.b@aislamiento.test (nivel 2),
 doble@aislamiento.test en el municipio 1 (nivel 5) y en B (nivel 1). Vecino de B: DNI 97000001.
-Idempotente: si el municipio ya existe, solo imprime sus ids.
+Idempotente: si el municipio ya existe, solo imprime sus ids. `--recrear` lo borra entero y lo
+vuelve a sembrar (smoke_aislamiento.py lo hace al empezar: sus mutaciones modifican B).
 """
 import asyncio
 import os
@@ -534,11 +535,36 @@ async def cobertura(conn: asyncpg.Connection, B: int) -> list[str]:
     return faltan
 
 
+async def borrar_municipio_aislamiento(conn: asyncpg.Connection) -> Optional[int]:
+    """Borra el municipio de aislamiento y todas sus filas (SOLO LOCAL: el barrido de mutaciones lo
+    modifica y cada corrida tiene que empezar de una fixture intacta). Apaga FK y triggers con
+    session_replication_role para no depender del orden ni de los triggers de solo-agregar."""
+    if await conn.fetchval("SELECT current_database()") != "zaris_dev":
+        sys.exit("ABORT: borrar el municipio de aislamiento es SOLO LOCAL.")
+    B = await conn.fetchval("SELECT id_municipio FROM municipios WHERE subdominio = $1", SUBDOMINIO)
+    if B is None:
+        return None
+    async with conn.transaction():
+        await conn.execute("SET LOCAL session_replication_role = replica")
+        tablas = [r["tabla"] for r in await conn.fetch(
+            "SELECT tabla FROM municipio_tabla_clase WHERE clase IN ('catalogo','operativo','mixta')")]
+        for t in tablas:
+            if await conn.fetchval("SELECT to_regclass($1) IS NOT NULL", f"public.{t}"):
+                await conn.execute(f'DELETE FROM "{t}" WHERE id_municipio = $1', B)
+        await conn.execute("DELETE FROM usuarios WHERE username = 'doble.a@aislamiento.test'")
+        await conn.execute("DELETE FROM municipios WHERE id_municipio = $1", B)
+    return B
+
+
 async def main() -> int:
     if "zaris_dev" not in settings.ASYNC_DATABASE_URI:
         sys.exit("ABORT: este seed es SOLO LOCAL (la DB configurada no es zaris_dev).")
     conn = await asyncpg.connect(_dsn())
     try:
+        if "--recrear" in sys.argv:
+            borrado = await borrar_municipio_aislamiento(conn)
+            if borrado:
+                print(f"Municipio de aislamiento {borrado} borrado (--recrear)")
         B = await conn.fetchval("SELECT id_municipio FROM municipios WHERE subdominio = $1", SUBDOMINIO)
         if B is None:
             async with conn.transaction():

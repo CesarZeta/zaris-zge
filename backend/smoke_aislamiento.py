@@ -62,6 +62,7 @@ MARCA = "AISLAB"
 ORIGEN_B = "https://aislamiento.zge.zaris.com.ar"
 ORIGEN_B_VECINOS = "https://aislamiento.vecinos.zaris.com.ar"
 CLAVE = "123456"
+TEXTO_DE_BUSQUEDA = {"q", "texto", "busqueda", "buscar", "term", "termino", "nombre", "search"}
 NUMERO_DE_A = re.compile(r"\b(REC|OT|EM)-(?!AIS-)([A-Z]{2,3}-)?\d{4}-\d{6}\b")
 
 # Parámetro de ruta → tabla de B. Primero las reglas por prefijo (el mismo nombre en dos módulos).
@@ -204,6 +205,8 @@ def query_de(ruta: APIRoute, ids: dict) -> dict:
         anot = getattr(f.field_info, "annotation", None)
         if POR_NOMBRE.get(nombre) in ids:
             q[nombre] = ids[POR_NOMBRE[nombre]]
+        elif nombre in TEXTO_DE_BUSQUEDA:
+            q[nombre] = MARCA  # una búsqueda que no filtra por municipio devuelve filas de B
         elif f.field_info.is_required():
             q[nombre] = valor_para(nombre, anot, ids)
     return q
@@ -284,7 +287,16 @@ async def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--rutas", default="", help="solo las rutas que empiezan con este prefijo")
     ap.add_argument("--solo-get", action="store_true")
+    ap.add_argument("--sin-recrear", action="store_true",
+                    help="no re-crear el municipio de aislamiento (por defecto se re-crea: las mutaciones lo modifican)")
     args = ap.parse_args()
+    if not args.sin_recrear:
+        import subprocess
+        r = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                         "seed_municipio_aislamiento.py"), "--recrear"],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+        if r.returncode != 0:
+            sys.exit(f"ABORT: no se pudo re-crear el municipio de aislamiento:\n{r.stdout[-800:]}\n{r.stderr[-800:]}")
     # Git Bash convierte "/api/v1/x" en "C:/Program Files/Git/api/v1/x": se recorta desde /api/.
     if "/api/" in args.rutas:
         args.rutas = args.rutas[args.rutas.index("/api/"):]
