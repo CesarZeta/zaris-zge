@@ -230,6 +230,55 @@ async def _numeracion_en_transaccion(conn) -> None:
     _reg("numeracion_nueva", not problemas, "; ".join(problemas))
 
 
+async def chk_fk_compuesta_misma_accion(conn) -> None:
+    """Cada FK compuesta fkm_* copia el ON DELETE de su FK simple original (si no, un DELETE con
+    cascada se frena: la compuesta NO ACTION puede verificar antes de que la cascada borre)."""
+    rows = (await conn.execute(text("""
+        SELECT c2.conname, c1.confdeltype AS original, c2.confdeltype AS compuesta
+          FROM pg_constraint c2
+          JOIN pg_constraint c1
+            ON c1.conrelid = c2.conrelid AND c1.confrelid = c2.confrelid AND c1.contype = 'f'
+           AND array_length(c1.conkey, 1) = 1
+           AND c1.conkey[1] = ANY (c2.conkey)
+           AND c1.conkey[1] <> (SELECT a.attnum FROM pg_attribute a
+                                 WHERE a.attrelid = c2.conrelid AND a.attname = 'id_municipio')
+         WHERE c2.contype = 'f' AND c2.conname LIKE 'fkm\\_%'
+           AND c1.confdeltype IS DISTINCT FROM c2.confdeltype"""))).fetchall()
+    total = await conn.scalar(text("SELECT count(*) FROM pg_constraint WHERE contype = 'f' AND conname LIKE 'fkm\\_%'"))
+    _reg("fk_compuesta_misma_accion", total > 0 and not rows,
+         f"{len(rows)} de {total} con otra acción: {[r.conname for r in rows[:5]]}" if rows else
+         ("no hay FK compuestas" if not total else ""))
+
+
+async def chk_compat_codigo_viejo(_conn_lectura) -> None:
+    """Hasta la 126: un INSERT con id_municipio NULL explícito o 377 cae en el municipio 1, y un
+    UPDATE que lo pisa con NULL conserva el anterior (trigger trg_000_municipio_defecto)."""
+    async with engine.connect() as conn:
+        trans = await conn.begin()
+        problemas = []
+        try:
+            nulo = (await conn.execute(text("""
+                INSERT INTO reclamos (descripcion, estado, id_municipio) VALUES ('smoke F1 compat', 'Sin asignar', NULL)
+                RETURNING id_reclamo, id_municipio"""))).fetchone()
+            if nulo.id_municipio != 1:
+                problemas.append(f"INSERT con NULL → {nulo.id_municipio}")
+            m377 = await conn.scalar(text("""
+                INSERT INTO reclamos (descripcion, estado, id_municipio) VALUES ('smoke F1 compat', 'Sin asignar', 377)
+                RETURNING id_municipio"""))
+            if m377 != 1:
+                problemas.append(f"INSERT con 377 → {m377}")
+            upd = await conn.scalar(text(
+                "UPDATE reclamos SET id_municipio = NULL WHERE id_reclamo = :r RETURNING id_municipio"),
+                {"r": nulo.id_reclamo})
+            if upd != 1:
+                problemas.append(f"UPDATE a NULL → {upd}")
+        except Exception as exc:  # noqa: BLE001
+            problemas.append(f"error: {type(exc).__name__}: {str(exc).splitlines()[0][:160]}")
+        finally:
+            await trans.rollback()
+    _reg("compat_codigo_viejo", not problemas, "; ".join(problemas))
+
+
 async def chk_fk_compuesta(_conn_lectura) -> None:
     async with engine.connect() as conn:  # conexión propia: todo lo insertado se revierte
         await _fk_compuesta_en_transaccion(conn)
@@ -293,10 +342,12 @@ async def main() -> int:
             await chk_config_dividida(conn)
             await chk_municipio_base(conn)
             await chk_unicos_compuestos(conn)
+            await chk_fk_compuesta_misma_accion(conn)
             if args.solo_lectura:
                 print("[-----] numeracion_nueva y fk_compuesta salteados (--solo-lectura)")
             else:
                 await chk_numeracion_nueva(conn)
+                await chk_compat_codigo_viejo(conn)
                 await chk_fk_compuesta(conn)
     fallas = [r for r in RESULTADOS if not r[1]]
     print(f"\n{len(RESULTADOS) - len(fallas)}/{len(RESULTADOS)} OK")

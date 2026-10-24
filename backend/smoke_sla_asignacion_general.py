@@ -111,8 +111,8 @@ async def set_general(valor: Optional[str]) -> None:
         await exec_commit("DELETE FROM configuracion_general WHERE clave = :c", c=CLAVE)
         return
     await exec_commit("""
-        INSERT INTO configuracion_general (clave, valor, tipo, descripcion, activo)
-        SELECT CAST(:c AS varchar), CAST(:v AS text), 'boolean', CAST(:d AS text), TRUE
+        INSERT INTO configuracion_general (clave, valor, tipo, descripcion, activo, id_municipio)
+        SELECT CAST(:c AS varchar), CAST(:v AS text), 'boolean', CAST(:d AS text), TRUE, 1
          WHERE NOT EXISTS (SELECT 1 FROM configuracion_general WHERE clave = CAST(:c AS varchar))
     """, c=CLAVE, v=valor, d=DESC_GENERAL)
     await exec_commit("UPDATE configuracion_general SET valor = :v, activo = TRUE WHERE clave = :c", c=CLAVE, v=valor)

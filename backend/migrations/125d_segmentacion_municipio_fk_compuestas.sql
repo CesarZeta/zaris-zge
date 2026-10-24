@@ -7,8 +7,11 @@
 -- declarada no puede cruzar municipios (regla R1 de F2: alcanza con filtrar la tabla raíz).
 --
 -- Excluidas: las FK hacia `usuarios` (columnas de auditoría id_usuario_*: el super administrador
--- de F3 no tiene municipio) y las FK hacia tablas globales. Sin ON DELETE: el borrado lo sigue
--- gobernando la FK simple original. MATCH SIMPLE: con la columna en NULL no se verifica.
+-- de F3 no tiene municipio) y las FK hacia tablas globales. MATCH SIMPLE: con la columna en NULL
+-- no se verifica. La FK compuesta COPIA la acción ON DELETE de la original (CASCADE, RESTRICT, o SET NULL /
+-- SET DEFAULT solo sobre la columna, sin tocar id_municipio): Postgres dispara los triggers de FK
+-- por orden de nombre interno, y una compuesta NO ACTION frenaría el borrado antes de que la
+-- cascada original borre los hijos (cazado por smoke_publico_auth.py, que limpia por DELETE).
 -- Re-aplicable y sin DROP.
 
 DO $$
@@ -16,6 +19,7 @@ DECLARE
     r RECORD;
     v_fk TEXT;
     v_uq TEXT;
+    v_accion TEXT;
     v_creadas INTEGER := 0;
 BEGIN
     FOR r IN
@@ -23,7 +27,8 @@ BEGIN
                ch.relname AS hija,
                pa.relname AS padre,
                (SELECT a.attname FROM pg_attribute a WHERE a.attrelid = c.conrelid  AND a.attnum = c.conkey[1])  AS col,
-               (SELECT a.attname FROM pg_attribute a WHERE a.attrelid = c.confrelid AND a.attnum = c.confkey[1]) AS ref
+               (SELECT a.attname FROM pg_attribute a WHERE a.attrelid = c.confrelid AND a.attnum = c.confkey[1]) AS ref,
+               c.confdeltype
           FROM pg_constraint c
           JOIN pg_class ch ON ch.oid = c.conrelid
           JOIN pg_class pa ON pa.oid = c.confrelid
@@ -44,9 +49,15 @@ BEGIN
         v_fk := left('fkm_' || r.conname, 63);
         IF NOT EXISTS (SELECT 1 FROM pg_constraint
                         WHERE conrelid = ('public.' || quote_ident(r.hija))::regclass AND conname = v_fk) THEN
+            v_accion := CASE r.confdeltype
+                            WHEN 'c' THEN ' ON DELETE CASCADE'
+                            WHEN 'r' THEN ' ON DELETE RESTRICT'
+                            WHEN 'n' THEN format(' ON DELETE SET NULL (%I)', r.col)
+                            WHEN 'd' THEN format(' ON DELETE SET DEFAULT (%I)', r.col)
+                            ELSE '' END;
             EXECUTE format('ALTER TABLE %I ADD CONSTRAINT %I FOREIGN KEY (id_municipio, %I) '
-                           'REFERENCES %I (id_municipio, %I) NOT VALID',
-                           r.hija, v_fk, r.col, r.padre, r.ref);
+                           'REFERENCES %I (id_municipio, %I)%s NOT VALID',
+                           r.hija, v_fk, r.col, r.padre, r.ref, v_accion);
             EXECUTE format('ALTER TABLE %I VALIDATE CONSTRAINT %I', r.hija, v_fk);
             v_creadas := v_creadas + 1;
         END IF;

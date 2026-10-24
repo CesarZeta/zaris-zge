@@ -1,13 +1,37 @@
 -- Migración 125c — IT-01 F1: id_municipio NOT NULL + FK, únicos por municipio y numeración con código
 -- Plan: PLAN_MULTI_MUNICIPIO_F1_F2.md, Tarea 2. Requiere la 125 y la 125b.
 --
--- Re-aplicable y sin DROP. Compatible con el código actual: las tablas quedan con DEFAULT 1
--- TEMPORAL (los INSERT de hoy no mandan el municipio); la 126 lo anula con SET DEFAULT NULL
--- cuando el código de F2 ya manda el municipio en cada INSERT.
+-- Re-aplicable y sin DROP. Compatible con el código actual: las tablas quedan con DEFAULT 1 y un
+-- trigger de compatibilidad TEMPORALES (los INSERT de hoy no mandan el municipio o mandan NULL);
+-- la 126 los anula (SET DEFAULT NULL + función inerte) cuando el código de F2 ya manda el
+-- municipio en cada INSERT.
 -- Los únicos globales viejos (DNI, CUIL, CUIT, números, clave de configuración) quedan hasta el
 -- lote de limpieza: borrarlos exige DROP.
 
--- 1. NOT NULL, DEFAULT 1 temporal, FK a municipios e índice en toda tabla catalogo/operativo.
+-- 0. Compatibilidad TEMPORAL con el código viejo (F1 sin F2): hay INSERT que mandan
+--    id_municipio = NULL explícito (schemas con el campo en None; el DEFAULT no aplica a un NULL
+--    explícito) y el ORM de usuarios manda 377. Este trigger los lleva al municipio 1 al insertar
+--    y conserva el municipio anterior si un UPDATE lo pisa con NULL o 377. La 126 lo deja inerte
+--    (CREATE OR REPLACE, sin DROP) y el lote de limpieza borra los triggers.
+CREATE OR REPLACE FUNCTION fn_municipio_por_defecto()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NEW.id_municipio IS NULL OR NEW.id_municipio = 377 THEN
+        IF TG_OP = 'UPDATE' THEN
+            NEW.id_municipio := OLD.id_municipio;
+        ELSE
+            NEW.id_municipio := 1;
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+-- 1. NOT NULL, DEFAULT 1 temporal, FK a municipios, índice y trigger de compatibilidad en toda
+--    tabla catalogo/operativo. El trigger se llama trg_000_… para correr antes que los de
+--    numeración (los BEFORE corren en orden alfabético).
 DO $$
 DECLARE
     r RECORD;
@@ -37,6 +61,9 @@ BEGIN
         END IF;
 
         EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I (id_municipio)', left('ix_' || r.tabla || '_mun', 63), r.tabla);
+
+        EXECUTE format('CREATE OR REPLACE TRIGGER trg_000_municipio_defecto BEFORE INSERT OR UPDATE ON %I '
+                       'FOR EACH ROW EXECUTE FUNCTION fn_municipio_por_defecto()', r.tabla);
     END LOOP;
 END $$;
 
