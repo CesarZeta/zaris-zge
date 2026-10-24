@@ -742,7 +742,7 @@ async def mesa_ubicacion(
     # §27 — evita el O(recursos) de round-trips contra Supabase).
     recursos_batch: list[tuple[str, int, Optional[bool]]] = [("espacio", id_espacio, bool(esp["atendido"]))]
     recursos_batch += [("agente", aid, None) for aid in ids_agentes]
-    disp = await disponibilidad_efectiva_batch(db, recursos_batch, [f])
+    disp = await disponibilidad_efectiva_batch(db, recursos_batch, [f], id_municipio=user["id_municipio"])
 
     ocup_rows = (await db.execute(text("""
         SELECT o.id_ocupacion, o.tipo, o.tipo_recurso, o.id_recurso,
@@ -1059,8 +1059,9 @@ async def crear_turno(
 
     # Switch global (mig 69): el turno debe caer dentro de la disponibilidad
     # efectiva del recurso (horario - feriados - novedades). Apagable.
-    if await turnos_respeta_disponibilidad(db):
-        rangos = await disponibilidad_efectiva(db, tipo_recurso, int(id_recurso), payload.fecha)
+    if await turnos_respeta_disponibilidad(db, id_municipio=user["id_municipio"]):
+        rangos = await disponibilidad_efectiva(db, tipo_recurso, int(id_recurso), payload.fecha,
+                                               id_municipio=user["id_municipio"])
         dentro = any(
             r["hora_inicio"] <= payload.hora_inicio and hora_fin <= r["hora_fin"]
             for r in rangos
@@ -1211,8 +1212,9 @@ async def reprogramar_turno(
     await advisory_lock_tx(db, f"turno:{tipo_recurso}:{int(id_recurso)}:{fecha}")
 
     # Switch global: el nuevo horario debe caer en la disponibilidad efectiva.
-    if await turnos_respeta_disponibilidad(db):
-        rangos = await disponibilidad_efectiva(db, tipo_recurso, int(id_recurso), fecha)
+    if await turnos_respeta_disponibilidad(db, id_municipio=user["id_municipio"]):
+        rangos = await disponibilidad_efectiva(db, tipo_recurso, int(id_recurso), fecha,
+                                               id_municipio=user["id_municipio"])
         if not any(r["hora_inicio"] <= hora_inicio and hora_fin <= r["hora_fin"] for r in rangos):
             raise HTTPException(409, "El nuevo horario no esta dentro de la disponibilidad del recurso")
 

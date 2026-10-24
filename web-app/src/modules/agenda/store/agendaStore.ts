@@ -6,7 +6,6 @@ export type VistaAgenda = 'vistas' | 'eventos' | 'conflictos' | 'config'
 
 interface AgendaState {
   fechaActiva: string           // YYYY-MM-DD
-  idMunicipio: number
   // Sub-fase B2: 4 valores (agentes / equipos / espacios_atendidos /
   // espacios_desatendidos) + 'ubicacion' (F2b plan ATENCION).
   filtroRecurso: FiltroRecursoUI
@@ -24,7 +23,6 @@ interface AgendaState {
   // dentro de la sesión; una recarga vuelve a pedir el clic.
   agendaBuscada: boolean
   setFechaActiva: (f: string) => void
-  setIdMunicipio: (n: number) => void
   setFiltroRecurso: (r: FiltroRecursoUI) => void
   setFiltroSubarea: (id: number | null) => void
   setFiltroUbicacion: (u: { id: number; nombre: string } | null) => void
@@ -37,7 +35,6 @@ interface AgendaState {
 
 export const useAgendaStore = create<AgendaState>()((set) => ({
   fechaActiva: toIsoDate(hoy()),
-  idMunicipio: 1,
   filtroRecurso: 'agentes',
   filtroSubarea: null,
   filtroUbicacion: null,
@@ -46,7 +43,6 @@ export const useAgendaStore = create<AgendaState>()((set) => ({
   pillInicialAplicada: false,
   agendaBuscada: false,
   setFechaActiva:    (f) => set({ fechaActiva: f }),
-  setIdMunicipio:    (n) => set({ idMunicipio: n }),
   setFiltroRecurso:  (r) => set({ filtroRecurso: r }),
   setFiltroSubarea:  (id) => set({ filtroSubarea: id }),
   setFiltroUbicacion: (u) => set({ filtroUbicacion: u }),

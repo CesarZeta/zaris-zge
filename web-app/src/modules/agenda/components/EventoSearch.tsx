@@ -6,10 +6,9 @@ import type { EventoBusquedaItem } from '../types/agenda'
 interface Props {
   onSelect: (ev: EventoBusquedaItem) => void
   placeholder?: string
-  idMunicipio?: number
 }
 
-export function EventoSearch({ onSelect, placeholder = 'nombre del evento...', idMunicipio }: Props) {
+export function EventoSearch({ onSelect, placeholder = 'nombre del evento...' }: Props) {
   const [q, setQ] = useState('')
   const [results, setResults] = useState<EventoBusquedaItem[]>([])
   const [loading, setLoading] = useState(false)
@@ -25,7 +24,7 @@ export function EventoSearch({ onSelect, placeholder = 'nombre del evento...', i
     setLoading(true); setOpen(true)
     const t = setTimeout(async () => {
       try {
-        const rows = await buscarEventosAgenda(q.trim(), { id_municipio: idMunicipio, limit: 20 })
+        const rows = await buscarEventosAgenda(q.trim(), { limit: 20 })
         if (myId === reqIdRef.current) setResults(rows)
       } catch {
         if (myId === reqIdRef.current) setResults([])
@@ -34,7 +33,7 @@ export function EventoSearch({ onSelect, placeholder = 'nombre del evento...', i
       }
     }, 280)
     return () => clearTimeout(t)
-  }, [q, idMunicipio])
+  }, [q])
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {

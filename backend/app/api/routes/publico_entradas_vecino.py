@@ -199,7 +199,7 @@ async def reservar_entrada_vecino(
                 "origen": "app_vecinos",
                 "qr_codigo": qr,
             },
-            1,
+            id_municipio=current["id_municipio"],
         )
         await db.commit()
     except IntegrityError:
@@ -256,7 +256,7 @@ async def cancelar_mi_entrada(
         db, None, "reserva", id_evento_reserva, "cancelar",
         {"estado_codigo": r["estado_codigo"]},
         {"estado_codigo": "cancelada", "origen": "app_vecinos"},
-        1,
+        id_municipio=current["id_municipio"],
     )
     await db.commit()
     return {"id_evento_reserva": id_evento_reserva, "estado_codigo": "cancelada"}

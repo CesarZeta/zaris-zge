@@ -10,7 +10,7 @@ import {
 } from '../api/agendaApi'
 import type { EspacioAgendaCreatePayload, EspacioAgendaUpdatePayload } from '../types/agenda'
 
-export function useEspacios(params?: { atendido?: boolean; q?: string; id_municipio?: number; limit?: number }) {
+export function useEspacios(params?: { atendido?: boolean; q?: string; limit?: number }) {
   return useQuery({
     queryKey: ['agenda', 'espacios', params],
     queryFn:  async () => (await listarEspacios(params)).data,

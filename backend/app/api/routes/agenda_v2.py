@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
+from app.core.municipio import municipio_actual
 from app.schemas.agenda_v2 import (
     AcreditarQRIn,
     AusenciaOut,
@@ -174,6 +175,27 @@ async def _validar_scope_evento(db: AsyncSession, user: dict, id_evento: int) ->
         raise HTTPException(status_code=403, detail="El evento pertenece a otra subárea.")
 
 
+_REFERENCIAS = {
+    "id_subarea": ("subarea", "id_subarea", "Subárea"),
+    "id_espacio": ("espacios_agenda", "id_espacio", "Espacio"),
+    "id_orden_trabajo": ("ordenes_trabajo", "id_ot", "Orden de trabajo"),
+    "id_evento": ("eventos", "id_evento", "Evento"),
+    "id_ciudadano": ("ciudadanos", "id_ciudadano", "Ciudadano"),
+}
+
+
+async def _validar_referencias(db: AsyncSession, id_municipio: int, **refs) -> None:
+    """422 si un id que llega en el body es de otro municipio o no existe (R4, IT-01).
+    Sin esta validación la FK compuesta lo frena igual, pero con un error de base."""
+    for campo, valor in refs.items():
+        if valor is None:
+            continue
+        tabla, pk, nombre = _REFERENCIAS[campo]
+        if not await db.scalar(text(f"SELECT 1 FROM {tabla} WHERE {pk} = :v AND id_municipio = :mun"),
+                               {"v": int(valor), "mun": id_municipio}):
+            raise HTTPException(status_code=422, detail=f"{nombre} inexistente")
+
+
 # =============================================================================
 # Catalogos
 # =============================================================================
@@ -216,10 +238,11 @@ async def listar_subareas_agenda(
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Subareas activas con nombre del area padre. Filtro opcional `q` (ILIKE en nombre)."""
-    conds = ["s.activo = TRUE"]
-    params: dict[str, Any] = {"lim": limit}
+    conds = ["s.activo = TRUE", "s.id_municipio = :mun"]
+    params: dict[str, Any] = {"lim": limit, "mun": id_municipio}
     if q:
         conds.append("s.nombre ILIKE :q")
         params["q"] = f"%{q}%"
@@ -240,12 +263,12 @@ async def listar_subareas_agenda(
 async def listar_recursos_agenda(
     tipo: Optional[Literal["agente", "equipo"]] = Query(None),
     q: Optional[str] = Query(None, max_length=80),
-    id_municipio: Optional[int] = Query(None),
     id_subarea: Optional[int] = Query(None, description="Filtra agentes y equipos por su subárea. Usado por el Planificador de OT para scopear el picker al supervisor (Fase 3 roles). La imposición dura vive en los POST de OT."),
     limit: int = Query(100, ge=1, le=500),
     solo_cuadrillas: bool = Query(False, description="Si True, lista solo equipos con tipo_grupo='trabajo_reclamos' (cuadrillas que atienden reclamos/OT). Usado por el Planificador de OT para no ofrecer mesas de tramites como destinatario de una OT. No afecta a los agentes."),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Lista agentes y equipos activos con nombre. Para selectores por nombre."""
     out: list[dict[str, Any]] = []
@@ -255,9 +278,8 @@ async def listar_recursos_agenda(
         if q:
             conds.append("(apellido ILIKE :q OR nombre ILIKE :q)")
             params["q"] = f"%{q}%"
-        if id_municipio is not None:
-            conds.append("id_municipio = :im")
-            params["im"] = id_municipio
+        conds.append("id_municipio = :im")
+        params["im"] = id_municipio
         if id_subarea is not None:
             conds.append("id_subarea = :isub")
             params["isub"] = id_subarea
@@ -274,9 +296,8 @@ async def listar_recursos_agenda(
         if q:
             conds.append("nombre ILIKE :q")
             params["q"] = f"%{q}%"
-        if id_municipio is not None:
-            conds.append("id_municipio = :im")
-            params["im"] = id_municipio
+        conds.append("id_municipio = :im")
+        params["im"] = id_municipio
         if id_subarea is not None:
             conds.append("id_subarea = :isub")
             params["isub"] = id_subarea
@@ -294,19 +315,13 @@ async def listar_recursos_agenda(
 
 @router.get("/recursos/conteos", response_model=RecursosConteosOut)
 async def conteos_recursos_agenda(
-    id_municipio: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Cantidad de recursos activos por tipo. Alimenta los pills del toggle en Agenda B2."""
-    params: dict[str, Any] = {}
-    # Misma regla que /calendario y /semana: id_municipio NULL se trata como
-    # del municipio actual. Sin el OR NULL, agentes/equipos legacy sin
-    # municipio aparecen en la grilla pero no en el conteo del pill.
-    where_mun = ""
-    if id_municipio is not None:
-        params["im"] = id_municipio
-        where_mun = " AND (id_municipio IS NULL OR id_municipio = :im)"
+    params: dict[str, Any] = {"im": id_municipio}
+    where_mun = " AND id_municipio = :im"
 
     agentes = (await db.execute(
         text(f"SELECT COUNT(*) FROM agentes WHERE activo = TRUE{where_mun}"), params
@@ -335,10 +350,11 @@ async def buscar_ots_agenda(
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Busqueda liviana de OTs para autocompletar. q matchea nro_ot, nro_reclamo o descripcion."""
-    conds = ["ot.activo = TRUE"]
-    params: dict[str, Any] = {"lim": limit}
+    conds = ["ot.activo = TRUE", "ot.id_municipio = :mun"]
+    params: dict[str, Any] = {"lim": limit, "mun": id_municipio}
     if q:
         conds.append("(ot.nro_ot ILIKE :q OR r.nro_reclamo ILIKE :q OR r.descripcion ILIKE :q)")
         params["q"] = f"%{q}%"
@@ -366,11 +382,11 @@ async def buscar_eventos_agenda(
     q: Optional[str] = Query(None, max_length=80),
     fecha_desde: Optional[date] = Query(None),
     fecha_hasta: Optional[date] = Query(None),
-    id_municipio: Optional[int] = Query(None),
     solo_activos: bool = Query(True),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Busqueda liviana de eventos para autocompletar (nombre)."""
     conds: list[str] = []
@@ -384,8 +400,7 @@ async def buscar_eventos_agenda(
         conds.append("e.fecha >= :fd"); params["fd"] = fecha_desde
     if fecha_hasta is not None:
         conds.append("e.fecha <= :fh"); params["fh"] = fecha_hasta
-    if id_municipio is not None:
-        conds.append("e.id_municipio = :im"); params["im"] = id_municipio
+    conds.append("e.id_municipio = :im"); params["im"] = id_municipio
     where = (" WHERE " + " AND ".join(conds)) if conds else ""
     rows = (await db.execute(text(f"""
         SELECT e.id_evento, e.nombre, e.fecha, e.hora_inicio, e.hora_fin,
@@ -402,7 +417,7 @@ async def buscar_eventos_agenda(
 # =============================================================================
 # Eventos
 # =============================================================================
-async def _evento_to_out(db: AsyncSession, id_evento: int) -> Optional[dict[str, Any]]:
+async def _evento_to_out(db: AsyncSession, id_evento: int, id_municipio: int) -> Optional[dict[str, Any]]:
     row = (await db.execute(text("""
         SELECT e.id_evento, e.nombre, e.descripcion, e.id_subarea, e.fecha,
                e.hora_inicio, e.hora_fin, e.capacidad_ciudadanos, e.cantidad_encargados,
@@ -412,8 +427,8 @@ async def _evento_to_out(db: AsyncSession, id_evento: int) -> Optional[dict[str,
                e.activo, e.id_municipio, e.fecha_alta, e.fecha_modificacion
         FROM eventos e
         LEFT JOIN estado_evento ee ON ee.id_estado_evento = e.id_estado_evento
-        WHERE e.id_evento = :i
-    """), {"i": id_evento})).mappings().first()
+        WHERE e.id_evento = :i AND e.id_municipio = :m
+    """), {"i": id_evento, "m": id_municipio})).mappings().first()
     return dict(row) if row else None
 
 
@@ -422,6 +437,7 @@ async def crear_evento(
     payload: EventoCreate,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_operador),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Crea un evento con estado inicial = `activo`."""
     id_estado = await lookup_estado_evento(db, "activo")
@@ -438,6 +454,7 @@ async def crear_evento(
                 id_subarea_evento = sub_scope
         elif payload.id_subarea != sub_scope:
             raise HTTPException(403, "No podés crear eventos de otra subárea.")
+    await _validar_referencias(db, id_municipio, id_subarea=id_subarea_evento, id_espacio=payload.id_espacio)
     row = (await db.execute(text("""
         INSERT INTO eventos (
             nombre, descripcion, id_subarea, fecha, hora_inicio, hora_fin,
@@ -457,16 +474,16 @@ async def crear_evento(
         "cap": payload.capacidad_ciudadanos, "enc": payload.cantidad_encargados,
         "qr": payload.tipo_qr, "auto": payload.admite_autoservicio,
         "esp": payload.id_espacio,
-        "es": id_estado, "mun": payload.id_municipio,
+        "es": id_estado, "mun": id_municipio,
         "uid": current_user["id_usuario"],
     })).first()
     id_evento = int(row[0])
     await registrar_audit(
         db, current_user["id_usuario"], "evento", id_evento, "crear",
-        None, payload.model_dump(mode="json"), payload.id_municipio,
+        None, payload.model_dump(mode="json"), id_municipio=id_municipio,
     )
     await db.commit()
-    out = await _evento_to_out(db, id_evento)
+    out = await _evento_to_out(db, id_evento, id_municipio)
     return out  # type: ignore[return-value]
 
 
@@ -489,7 +506,6 @@ async def listar_eventos(
     fecha_hasta: Optional[date] = None,
     id_estado_evento: Optional[int] = None,
     id_subarea: Optional[int] = None,
-    id_municipio: Optional[int] = None,
     con_espacio: Optional[bool] = Query(None, description="True=solo eventos con id_espacio (modulo Entradas), False=solo sin espacio, omitir=todos"),
     orden: Optional[str] = Query(None, description=descripcion_orden(_ORDEN_EVENTOS, "fecha, la más nueva primero")),
     dir: str = Query("asc", pattern="^(asc|desc)$"),
@@ -497,6 +513,7 @@ async def listar_eventos(
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Lista paginada de eventos activos. Header `X-Total-Count` para el front."""
     orden_sql = clausula_orden(orden, dir, _ORDEN_EVENTOS, desempate="e.id_evento",
@@ -511,8 +528,7 @@ async def listar_eventos(
         where.append("e.id_estado_evento = :ies"); params["ies"] = id_estado_evento
     if id_subarea is not None:
         where.append("e.id_subarea = :isa"); params["isa"] = id_subarea
-    if id_municipio is not None:
-        where.append("e.id_municipio = :imu"); params["imu"] = id_municipio
+    where.append("e.id_municipio = :imu"); params["imu"] = id_municipio
     if con_espacio is True:
         where.append("e.id_espacio IS NOT NULL")
     elif con_espacio is False:
@@ -545,9 +561,10 @@ async def detalle_evento(
     id_evento: int,
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Detalle del evento + encargados activos + reservas activas + cupo disponible."""
-    base = await _evento_to_out(db, id_evento)
+    base = await _evento_to_out(db, id_evento, id_municipio)
     if not base:
         raise HTTPException(404, f"Evento {id_evento} no encontrado")
     cupo = await cupo_disponible(db, id_evento)
@@ -571,9 +588,10 @@ async def actualizar_evento(
     payload: EventoUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_operador),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Actualiza campos editables. Si vienen ambas horas, valida horario."""
-    actual = await _evento_to_out(db, id_evento)
+    actual = await _evento_to_out(db, id_evento, id_municipio)
     if not actual:
         raise HTTPException(404, f"Evento {id_evento} no encontrado")
     # Scope-subarea 2026-07-18: solo eventos del alcance del usuario.
@@ -599,6 +617,8 @@ async def actualizar_evento(
                     )
             elif nuevo_sa != sub_scope:
                 raise HTTPException(403, "No podés asignar el evento a otra subárea.")
+    await _validar_referencias(db, id_municipio, id_subarea=cambios.get("id_subarea"),
+                               id_espacio=cambios.get("id_espacio"))
 
     # Validar horario si vienen ambas horas
     new_hi = cambios.get("hora_inicio", actual["hora_inicio"])
@@ -622,12 +642,12 @@ async def actualizar_evento(
     params = {**cambios, "uid": current_user["id_usuario"], "id": id_evento}
     await db.execute(text(f"UPDATE eventos SET {', '.join(sets)} WHERE id_evento = :id"), params)
 
-    nuevo = await _evento_to_out(db, id_evento)
+    nuevo = await _evento_to_out(db, id_evento, id_municipio)
     await registrar_audit(
         db, current_user["id_usuario"], "evento", id_evento, "modificar",
         {k: actual.get(k) for k in cambios.keys()},
         {k: nuevo.get(k)  for k in cambios.keys()},  # type: ignore[union-attr]
-        actual["id_municipio"],
+        id_municipio=actual["id_municipio"],
     )
     await db.commit()
     return nuevo  # type: ignore[return-value]
@@ -638,9 +658,10 @@ async def cancelar_evento(
     id_evento: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_operador),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Cambia el estado del evento a `cancelado`. NO cancela reservas (decision del operador)."""
-    actual = await _evento_to_out(db, id_evento)
+    actual = await _evento_to_out(db, id_evento, id_municipio)
     if not actual:
         raise HTTPException(404, f"Evento {id_evento} no encontrado")
     # Scope-subarea 2026-07-18: solo eventos del alcance del usuario.
@@ -655,12 +676,12 @@ async def cancelar_evento(
             id_usuario_modificacion = :uid
         WHERE id_evento = :i
     """), {"ec": id_cancelado, "uid": current_user["id_usuario"], "i": id_evento})
-    nuevo = await _evento_to_out(db, id_evento)
+    nuevo = await _evento_to_out(db, id_evento, id_municipio)
     await registrar_audit(
         db, current_user["id_usuario"], "evento", id_evento, "cancelar",
         {"id_estado_evento": actual["id_estado_evento"]},
         {"id_estado_evento": id_cancelado},
-        actual["id_municipio"],
+        id_municipio=actual["id_municipio"],
     )
     await db.commit()
     return nuevo  # type: ignore[return-value]
@@ -671,9 +692,10 @@ async def eliminar_evento(
     id_evento: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_operador),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Baja logica (activo=FALSE). DELETE semantico = baja, NO borra fila."""
-    actual = await _evento_to_out(db, id_evento)
+    actual = await _evento_to_out(db, id_evento, id_municipio)
     if not actual:
         raise HTTPException(404, f"Evento {id_evento} no encontrado")
     # Scope-subarea 2026-07-18: solo eventos del alcance del usuario.
@@ -687,7 +709,7 @@ async def eliminar_evento(
     """), {"uid": current_user["id_usuario"], "i": id_evento})
     await registrar_audit(
         db, current_user["id_usuario"], "evento", id_evento, "cancelar",
-        {"activo": True}, {"activo": False}, actual["id_municipio"],
+        {"activo": True}, {"activo": False}, id_municipio=actual["id_municipio"],
     )
     await db.commit()
     return Response(status_code=204)
@@ -717,17 +739,18 @@ async def asignar_encargado(
     payload: EventoEncargadoCreate,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_operador),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Asigna un recurso (agente|equipo) como encargado del evento.
     Crea ademas la ocupacion `tipo='evento'` correspondiente.
     Si hay conflicto de agenda en la fecha/hora del evento, NO bloquea —
     registra en conflictos_log y devuelve warning."""
-    ev = await _evento_to_out(db, id_evento)
+    ev = await _evento_to_out(db, id_evento, id_municipio)
     if not ev:
         raise HTTPException(404, f"Evento {id_evento} no encontrado")
     if not ev["activo"]:
         raise HTTPException(409, "Evento dado de baja")
-    if not await existe_recurso(db, payload.tipo_recurso, payload.id_recurso):
+    if not await existe_recurso(db, payload.tipo_recurso, payload.id_recurso, id_municipio=id_municipio):
         raise HTTPException(404, f"{payload.tipo_recurso} {payload.id_recurso} no encontrado o inactivo")
 
     # Scope-subarea 2026-07-18: el evento debe estar en el alcance del usuario.
@@ -760,6 +783,7 @@ async def asignar_encargado(
     conflictos = await detectar_conflictos(
         db, payload.tipo_recurso, payload.id_recurso,
         ev["fecha"], ev["hora_inicio"], ev["hora_fin"],
+        id_municipio=id_municipio,
     )
 
     # 3) Insertar ocupacion tipo='evento'
@@ -786,7 +810,7 @@ async def asignar_encargado(
     await registrar_audit(
         db, current_user["id_usuario"], "evento", id_evento, "asignar",
         None, {"encargado": payload.model_dump(), "ocupacion": int(id_ocup)},
-        ev["id_municipio"],
+        id_municipio=ev["id_municipio"],
     )
     await db.commit()
 
@@ -817,9 +841,10 @@ async def listar_encargados(
     id_evento: int,
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Lista encargados activos del evento con nombre del recurso."""
-    if not await _evento_to_out(db, id_evento):
+    if not await _evento_to_out(db, id_evento, id_municipio):
         raise HTTPException(404, f"Evento {id_evento} no encontrado")
     return await _listar_encargados(db, id_evento)
 
@@ -830,12 +855,13 @@ async def desasignar_encargado(
     id_evento_encargado: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_operador),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Baja logica del encargado + baja logica de la ocupacion de evento asociada."""
     enc = (await db.execute(text("""
         SELECT id_evento, tipo_recurso, id_recurso, activo, id_municipio
-        FROM evento_encargados WHERE id_evento_encargado = :i
-    """), {"i": id_evento_encargado})).mappings().first()
+        FROM evento_encargados WHERE id_evento_encargado = :i AND id_municipio = :m
+    """), {"i": id_evento_encargado, "m": id_municipio})).mappings().first()
     if not enc:
         raise HTTPException(404, "Encargado no encontrado")
     if enc["id_evento"] != id_evento:
@@ -870,7 +896,7 @@ async def desasignar_encargado(
         db, current_user["id_usuario"], "evento", id_evento, "modificar",
         {"encargado": id_evento_encargado, "activo": True},
         {"encargado": id_evento_encargado, "activo": False},
-        enc["id_municipio"],
+        id_municipio=enc["id_municipio"],
     )
     await db.commit()
     return Response(status_code=204)
@@ -896,9 +922,10 @@ async def crear_reserva(
     payload: ReservaCreate,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_operador),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Crea una reserva si hay cupo + el evento no esta cancelado/finalizado."""
-    ev = await _evento_to_out(db, id_evento)
+    ev = await _evento_to_out(db, id_evento, id_municipio)
     if not ev:
         raise HTTPException(404, f"Evento {id_evento} no encontrado")
     if not ev["activo"]:
@@ -915,8 +942,8 @@ async def crear_reserva(
         raise HTTPException(409, "Sin cupo disponible para este evento")
     # Ciudadano existe?
     n = await db.scalar(text(
-        "SELECT 1 FROM ciudadanos WHERE id_ciudadano = :i AND activo = TRUE"
-    ), {"i": payload.id_ciudadano})
+        "SELECT 1 FROM ciudadanos WHERE id_ciudadano = :i AND activo = TRUE AND id_municipio = :m"
+    ), {"i": payload.id_ciudadano, "m": id_municipio})
     if not n:
         raise HTTPException(404, f"Ciudadano {payload.id_ciudadano} no encontrado")
     # Regla global (mig 95, decision 2026-07-18): maximo UNA reserva no-cancelada
@@ -956,27 +983,27 @@ async def crear_reserva(
         await registrar_audit(
             db, current_user["id_usuario"], "reserva", int(new_id), "crear",
             None, {"id_evento": id_evento, "id_ciudadano": payload.id_ciudadano, "origen": payload.origen, "qr_codigo": qr},
-            ev["id_municipio"],
+            id_municipio=ev["id_municipio"],
         )
         await db.commit()
     except IntegrityError:
         await db.rollback()
         raise HTTPException(409, "El ciudadano ya tiene una reserva activa de este evento")
-    out = await _reserva_to_out(db, int(new_id))
+    out = await _reserva_to_out(db, int(new_id), id_municipio)
     return out  # type: ignore[return-value]
 
 
-async def _reserva_to_out(db: AsyncSession, id_reserva: int) -> Optional[dict[str, Any]]:
+async def _reserva_to_out(db: AsyncSession, id_reserva: int, id_municipio: int) -> Optional[dict[str, Any]]:
     row = (await db.execute(text("""
         SELECT r.id_evento_reserva, r.id_evento, r.id_ciudadano,
                c.apellido AS ciudadano_apellido, c.nombre AS ciudadano_nombre, c.doc_nro AS ciudadano_dni,
                r.id_estado_reserva, er.codigo AS estado_codigo,
-               r.origen, r.qr_codigo, r.activo, r.fecha_alta
+               r.origen, r.qr_codigo, r.activo, r.fecha_alta, r.id_municipio
         FROM evento_reservas r
         LEFT JOIN ciudadanos     c  ON c.id_ciudadano       = r.id_ciudadano
         LEFT JOIN estado_reserva er ON er.id_estado_reserva = r.id_estado_reserva
-        WHERE r.id_evento_reserva = :i
-    """), {"i": id_reserva})).mappings().first()
+        WHERE r.id_evento_reserva = :i AND r.id_municipio = :m
+    """), {"i": id_reserva, "m": id_municipio})).mappings().first()
     return dict(row) if row else None
 
 
@@ -985,9 +1012,10 @@ async def listar_reservas(
     id_evento: int,
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Lista reservas activas del evento (incluyendo canceladas para auditar)."""
-    if not await _evento_to_out(db, id_evento):
+    if not await _evento_to_out(db, id_evento, id_municipio):
         raise HTTPException(404, f"Evento {id_evento} no encontrado")
     rows = (await db.execute(text("""
         SELECT r.id_evento_reserva, r.id_evento, r.id_ciudadano,
@@ -1004,9 +1032,9 @@ async def listar_reservas(
 
 
 async def _patch_reserva_estado(
-    db: AsyncSession, id_evento_reserva: int, nuevo_codigo: str, id_usuario: int,
+    db: AsyncSession, id_evento_reserva: int, nuevo_codigo: str, id_usuario: int, id_municipio: int,
 ) -> Optional[dict[str, Any]]:
-    actual = await _reserva_to_out(db, id_evento_reserva)
+    actual = await _reserva_to_out(db, id_evento_reserva, id_municipio)
     if not actual:
         return None
     id_nuevo = await lookup_estado_reserva(db, nuevo_codigo)
@@ -1026,13 +1054,13 @@ async def _patch_reserva_estado(
         if res.rowcount == 0:
             await db.rollback()
             raise HTTPException(409, "La reserva cambio de estado; actualiza la lista")
-        nueva = await _reserva_to_out(db, id_evento_reserva)
+        nueva = await _reserva_to_out(db, id_evento_reserva, id_municipio)
         accion = "modificar" if nuevo_codigo != "cancelada" else "cancelar"
         await registrar_audit(
             db, id_usuario, "reserva", id_evento_reserva, accion,
             {"estado_codigo": actual["estado_codigo"]},
             {"estado_codigo": nuevo_codigo},
-            actual.get("id_municipio", 1) if isinstance(actual.get("id_municipio"), int) else 1,
+            id_municipio=actual["id_municipio"],
         )
         await db.commit()
     except IntegrityError:
@@ -1059,6 +1087,7 @@ async def acreditar_reserva_qr(
     payload: AcreditarQRIn,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_operador),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Acredita asistencia escaneando el QR fisico de una reserva.
 
@@ -1078,16 +1107,16 @@ async def acreditar_reserva_qr(
         SELECT r.id_evento_reserva, er.codigo AS estado_codigo
         FROM evento_reservas r
         LEFT JOIN estado_reserva er ON er.id_estado_reserva = r.id_estado_reserva
-        WHERE r.qr_codigo = :q AND r.activo = TRUE
+        WHERE r.qr_codigo = :q AND r.activo = TRUE AND r.id_municipio = :m
         LIMIT 1
-    """), {"q": qr})).mappings().first()
+    """), {"q": qr, "m": id_municipio})).mappings().first()
     if not row:
         raise HTTPException(404, "El codigo QR no corresponde a ninguna reserva")
     if row["estado_codigo"] == "cancelada":
         raise HTTPException(409, "La reserva fue cancelada, no se puede acreditar")
 
     nueva = await _patch_reserva_estado(
-        db, int(row["id_evento_reserva"]), "asistio", current_user["id_usuario"],
+        db, int(row["id_evento_reserva"]), "asistio", current_user["id_usuario"], id_municipio,
     )
     if not nueva:
         raise HTTPException(404, "Reserva no encontrada")
@@ -1099,18 +1128,19 @@ async def reserva_asistio(
     id_evento_reserva: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_operador),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Marca la reserva como `asistio`.
 
     Guard de estado (mig 95): una reserva cancelada NO se puede acreditar por
     id — antes esta via numerica bypasseaba el 409 que si tenia la via QR, y
     "revivia" la reserva re-consumiendo cupo sin re-validar."""
-    actual = await _reserva_to_out(db, id_evento_reserva)
+    actual = await _reserva_to_out(db, id_evento_reserva, id_municipio)
     if not actual:
         raise HTTPException(404, "Reserva no encontrada")
     if actual["estado_codigo"] == "cancelada":
         raise HTTPException(409, "La reserva fue cancelada, no se puede acreditar")
-    nueva = await _patch_reserva_estado(db, id_evento_reserva, "asistio", current_user["id_usuario"])
+    nueva = await _patch_reserva_estado(db, id_evento_reserva, "asistio", current_user["id_usuario"], id_municipio)
     if not nueva:
         raise HTTPException(404, "Reserva no encontrada")
     return nueva
@@ -1121,9 +1151,10 @@ async def reserva_cancelar(
     id_evento_reserva: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_operador),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Marca la reserva como `cancelada`. Libera cupo automaticamente."""
-    nueva = await _patch_reserva_estado(db, id_evento_reserva, "cancelada", current_user["id_usuario"])
+    nueva = await _patch_reserva_estado(db, id_evento_reserva, "cancelada", current_user["id_usuario"], id_municipio)
     if not nueva:
         raise HTTPException(404, "Reserva no encontrada")
     return nueva
@@ -1132,7 +1163,7 @@ async def reserva_cancelar(
 # =============================================================================
 # Ocupaciones
 # =============================================================================
-async def _ocupacion_to_out(db: AsyncSession, id_ocupacion: int) -> Optional[dict[str, Any]]:
+async def _ocupacion_to_out(db: AsyncSession, id_ocupacion: int, id_municipio: int) -> Optional[dict[str, Any]]:
     row = (await db.execute(text(f"""
         SELECT o.id_ocupacion, o.tipo, o.tipo_recurso, o.id_recurso, o.fecha,
                o.hora_inicio, o.hora_fin, o.id_orden_trabajo, o.id_evento, o.id_ciudadano,
@@ -1143,8 +1174,8 @@ async def _ocupacion_to_out(db: AsyncSession, id_ocupacion: int) -> Optional[dic
         LEFT JOIN eventos          ev ON ev.id_evento     = o.id_evento
         LEFT JOIN ordenes_trabajo  ot ON ot.id_ot         = o.id_orden_trabajo
         LEFT JOIN ciudadanos       ci ON ci.id_ciudadano  = o.id_ciudadano
-        WHERE o.id_ocupacion = :i
-    """), {"i": id_ocupacion})).mappings().first()
+        WHERE o.id_ocupacion = :i AND o.id_municipio = :m
+    """), {"i": id_ocupacion, "m": id_municipio})).mappings().first()
     return dict(row) if row else None
 
 
@@ -1153,18 +1184,22 @@ async def crear_ocupacion(
     payload: OcupacionCreate,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_operador),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Crea una ocupacion. Detecta conflictos de agenda y los registra en
     conflictos_log sin bloquear."""
-    if not await existe_recurso(db, payload.tipo_recurso, payload.id_recurso):
+    if not await existe_recurso(db, payload.tipo_recurso, payload.id_recurso, id_municipio=id_municipio):
         raise HTTPException(404, f"{payload.tipo_recurso} {payload.id_recurso} no encontrado o inactivo")
 
     # Scope-subarea 2026-07-18: solo recursos de la subarea del usuario.
     await _validar_scope_recurso(db, current_user, payload.tipo_recurso, payload.id_recurso)
+    await _validar_referencias(db, id_municipio, id_orden_trabajo=payload.id_orden_trabajo,
+                               id_evento=payload.id_evento, id_ciudadano=payload.id_ciudadano)
 
     conflictos = await detectar_conflictos(
         db, payload.tipo_recurso, payload.id_recurso,
         payload.fecha, payload.hora_inicio, payload.hora_fin,
+        id_municipio=id_municipio,
     )
 
     try:
@@ -1186,7 +1221,7 @@ async def crear_ocupacion(
             "f": payload.fecha, "hi": payload.hora_inicio, "hf": payload.hora_fin,
             "ot": payload.id_orden_trabajo, "ev": payload.id_evento, "ci": payload.id_ciudadano,
             "dur": payload.duracion_aplicada_min, "rol": payload.rol_en_evento, "mot": payload.motivo,
-            "mun": payload.id_municipio, "uid": current_user["id_usuario"],
+            "mun": id_municipio, "uid": current_user["id_usuario"],
         })
     except Exception as e:
         # CHECK constraint de consistencia o FK puede fallar
@@ -1195,15 +1230,15 @@ async def crear_ocupacion(
     if conflictos:
         await registrar_conflictos(
             db, int(new_id), payload.tipo_recurso, payload.id_recurso,
-            conflictos, payload.id_municipio, current_user["id_usuario"],
+            conflictos, id_municipio, current_user["id_usuario"],
         )
 
     await registrar_audit(
         db, current_user["id_usuario"], "ocupacion", int(new_id), "crear",
-        None, payload.model_dump(mode="json"), payload.id_municipio,
+        None, payload.model_dump(mode="json"), id_municipio=id_municipio,
     )
     await db.commit()
-    out = await _ocupacion_to_out(db, int(new_id))
+    out = await _ocupacion_to_out(db, int(new_id), id_municipio)
     return {
         "ocupacion": out,  # type: ignore[arg-type]
         "conflictos": [_jsonable(c) for c in conflictos],
@@ -1222,11 +1257,11 @@ async def listar_ocupaciones(
     fecha_desde: Optional[date] = None,
     fecha_hasta: Optional[date] = None,
     tipo: Optional[Literal["ot", "evento", "turno", "bloqueo"]] = None,
-    id_municipio: Optional[int] = None,
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Listado paginado de ocupaciones activas con filtros."""
     where: list[str] = ["o.activo = TRUE"]
@@ -1241,8 +1276,7 @@ async def listar_ocupaciones(
         where.append("o.fecha <= :fh"); params["fh"] = fecha_hasta
     if tipo:
         where.append("o.tipo = :t"); params["t"] = tipo
-    if id_municipio is not None:
-        where.append("o.id_municipio = :mun"); params["mun"] = id_municipio
+    where.append("o.id_municipio = :mun"); params["mun"] = id_municipio
     where_sql = " AND ".join(where)
     total = await db.scalar(text(f"SELECT COUNT(*) FROM ocupaciones o WHERE {where_sql}"), params)
     params_page = {**params, "lim": limit, "off": offset}
@@ -1271,9 +1305,10 @@ async def actualizar_ocupacion(
     payload: OcupacionUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_operador),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Actualiza fecha/horas/atributos. Re-detecta conflictos excluyendo self."""
-    actual = await _ocupacion_to_out(db, id_ocupacion)
+    actual = await _ocupacion_to_out(db, id_ocupacion, id_municipio)
     if not actual:
         raise HTTPException(404, "Ocupacion no encontrada")
     if not actual["activo"]:
@@ -1294,6 +1329,8 @@ async def actualizar_ocupacion(
     # alcance del usuario; si el payload cambia el recurso, el nuevo tambien.
     await _validar_scope_recurso(db, current_user, actual["tipo_recurso"], actual["id_recurso"])
     if (new_tr, new_ir) != (actual["tipo_recurso"], actual["id_recurso"]):
+        if not await existe_recurso(db, new_tr, new_ir, id_municipio=id_municipio):
+            raise HTTPException(404, f"{new_tr} {new_ir} no encontrado o inactivo")
         await _validar_scope_recurso(db, current_user, new_tr, new_ir)
 
     sets = [f"{k} = :{k}" for k in cambios.keys()]
@@ -1306,18 +1343,19 @@ async def actualizar_ocupacion(
     conflictos = await detectar_conflictos(
         db, new_tr, new_ir, new_f, new_hi, new_hf,
         id_ocupacion_excluir=id_ocupacion,
+        id_municipio=id_municipio,
     )
     if conflictos:
         await registrar_conflictos(
             db, id_ocupacion, new_tr, new_ir,
             conflictos, actual["id_municipio"], current_user["id_usuario"],
         )
-    nuevo = await _ocupacion_to_out(db, id_ocupacion)
+    nuevo = await _ocupacion_to_out(db, id_ocupacion, id_municipio)
     await registrar_audit(
         db, current_user["id_usuario"], "ocupacion", id_ocupacion, "modificar",
         {k: actual.get(k) for k in cambios.keys()},
         {k: nuevo.get(k)  for k in cambios.keys()},  # type: ignore[union-attr]
-        actual["id_municipio"],
+        id_municipio=actual["id_municipio"],
     )
     await db.commit()
     return {
@@ -1335,9 +1373,10 @@ async def eliminar_ocupacion(
     id_ocupacion: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_operador),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Baja logica (activo=FALSE)."""
-    actual = await _ocupacion_to_out(db, id_ocupacion)
+    actual = await _ocupacion_to_out(db, id_ocupacion, id_municipio)
     if not actual:
         raise HTTPException(404, "Ocupacion no encontrada")
     # Scope-subarea 2026-07-18: solo ocupaciones de recursos del alcance del usuario.
@@ -1351,7 +1390,7 @@ async def eliminar_ocupacion(
     """), {"uid": current_user["id_usuario"], "i": id_ocupacion})
     await registrar_audit(
         db, current_user["id_usuario"], "ocupacion", id_ocupacion, "cancelar",
-        {"activo": True}, {"activo": False}, actual["id_municipio"],
+        {"activo": True}, {"activo": False}, id_municipio=actual["id_municipio"],
     )
     await db.commit()
     return Response(status_code=204)
@@ -1377,6 +1416,7 @@ async def agenda_de_recurso(
     hasta: date,
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Agenda completa de un recurso en un rango (max 31 dias).
     Incluye ocupaciones + ausencias del recurso (estas ultimas leyendo la tabla
@@ -1385,7 +1425,7 @@ async def agenda_de_recurso(
         raise HTTPException(422, "hasta debe ser >= desde")
     if (hasta - desde).days > 31:
         raise HTTPException(422, "El rango maximo es de 31 dias")
-    if not await existe_recurso(db, tipo_recurso, id_recurso):
+    if not await existe_recurso(db, tipo_recurso, id_recurso, id_municipio=id_municipio):
         raise HTTPException(404, f"{tipo_recurso} {id_recurso} no encontrado o inactivo")
 
     # Ocupaciones del recurso
@@ -1400,9 +1440,9 @@ async def agenda_de_recurso(
         LEFT JOIN ordenes_trabajo ot ON ot.id_ot        = o.id_orden_trabajo
         LEFT JOIN ciudadanos      ci ON ci.id_ciudadano = o.id_ciudadano
         WHERE o.activo = TRUE AND o.tipo_recurso = :tr AND o.id_recurso = :ir
-          AND o.fecha BETWEEN :fd AND :fh
+          AND o.id_municipio = :m AND o.fecha BETWEEN :fd AND :fh
         ORDER BY o.fecha, o.hora_inicio
-    """), {"tr": tipo_recurso, "ir": id_recurso, "fd": desde, "fh": hasta})).mappings().all()
+    """), {"tr": tipo_recurso, "ir": id_recurso, "fd": desde, "fh": hasta, "m": id_municipio})).mappings().all()
 
     # Ausencias (tabla nueva ausencias_agente, mig 39) - solo agentes
     ausencias: list[dict[str, Any]] = []
@@ -1439,7 +1479,6 @@ async def agenda_de_recurso(
 @router.get("/calendario", response_model=CalendarioDiaOut)
 async def calendario_dia(
     fecha: date,
-    id_municipio: int = 1,
     tipo_recurso: Literal["agente", "equipo", "espacio", "todos"] = "todos",
     id_subarea: Optional[int] = Query(None, description="Filtra recursos cuyo id_subarea coincida"),
     scope_subarea_propia: bool = Query(False, description="Si True, limita los recursos a la subarea del usuario logueado (resuelta via su agente). Fail-open: si no se puede resolver, no filtra. Pensado para la vista por equipos del supervisor (ver §33 CLAUDE.md)."),
@@ -1447,6 +1486,7 @@ async def calendario_dia(
     id_espacio_ubicacion: Optional[int] = Query(None, description="Modo UBICACION (F2b plan ATENCION): la grilla muestra el espacio + los agentes que atienden ahi. Ignora tipo_recurso/atendido/subarea."),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Timeline del coordinador para una fecha. Devuelve los recursos del
     municipio con ocupaciones, ausencias (solo agentes), disponibilidad
@@ -1456,7 +1496,7 @@ async def calendario_dia(
     horaria y eventos en grilla. Compat retro: con defaults se comporta como antes
     salvo que ahora tambien devuelve disponibilidad + eventos."""
     if id_espacio_ubicacion is not None:
-        recursos = await _recursos_de_ubicacion(db, id_espacio_ubicacion)
+        recursos = await _recursos_de_ubicacion(db, id_espacio_ubicacion, id_municipio)
     else:
         id_subarea = await _resolver_scope_subarea(db, _user, id_subarea, scope_subarea_propia)
         recursos = await _listar_recursos_para_calendario(db, id_municipio, tipo_recurso, id_subarea, atendido)
@@ -1495,7 +1535,7 @@ async def calendario_dia(
         WHERE au.activo = TRUE
           AND :f BETWEEN au.fecha_desde AND au.fecha_hasta
           AND a.activo = TRUE
-          AND (a.id_municipio IS NULL OR a.id_municipio = :m)
+          AND a.id_municipio = :m
     """), {"f": fecha, "m": id_municipio})).mappings().all()
     for r in rows_aus:
         aus_por_agente.setdefault(int(r["id_agente"]), []).append({
@@ -1510,6 +1550,7 @@ async def calendario_dia(
         db,
         [(rec["tipo"], rec["id_recurso"], rec.get("atendido")) for rec in recursos],
         [fecha],
+        id_municipio=id_municipio,
     )
 
     out_recursos = []
@@ -1554,7 +1595,7 @@ async def _resolver_scope_subarea(
     return await subarea_del_usuario(db, int(user["id_usuario"]))
 
 
-async def _recursos_de_ubicacion(db: AsyncSession, id_espacio: int) -> list[dict[str, Any]]:
+async def _recursos_de_ubicacion(db: AsyncSession, id_espacio: int, id_municipio: int) -> list[dict[str, Any]]:
     """Modo UBICACION de la grilla (F2b plan ATENCION, 2026-09-01): los recursos
     de una ubicacion de atencion son el espacio mismo + los agentes que atienden
     ahi (vinculados via espacio_agentes o via prestaciones de Turnos cuya
@@ -1563,8 +1604,8 @@ async def _recursos_de_ubicacion(db: AsyncSession, id_espacio: int) -> list[dict
     no cambie."""
     esp = (await db.execute(text("""
         SELECT id_espacio, nombre, atendido FROM espacios_agenda
-        WHERE id_espacio = :id AND activo = TRUE
-    """), {"id": id_espacio})).mappings().first()
+        WHERE id_espacio = :id AND activo = TRUE AND id_municipio = :m
+    """), {"id": id_espacio, "m": id_municipio})).mappings().first()
     if not esp:
         raise HTTPException(status_code=404, detail="Ubicacion no encontrada")
     recursos: list[dict[str, Any]] = [{
@@ -1574,7 +1615,7 @@ async def _recursos_de_ubicacion(db: AsyncSession, id_espacio: int) -> list[dict
     ag_rows = (await db.execute(text("""
         SELECT DISTINCT a.id_agente, a.apellido || ', ' || a.nombre AS nombre
         FROM agentes a
-        WHERE a.activo = TRUE AND (
+        WHERE a.activo = TRUE AND a.id_municipio = :m AND (
             a.id_agente IN (SELECT id_agente FROM espacio_agentes
                              WHERE activo = TRUE AND id_espacio = :ie)
             OR a.id_agente IN (SELECT id_agente FROM tipo_prestacion
@@ -1582,7 +1623,7 @@ async def _recursos_de_ubicacion(db: AsyncSession, id_espacio: int) -> list[dict
                                   AND tipo_recurso = 'agente' AND id_agente IS NOT NULL)
         )
         ORDER BY nombre
-    """), {"ie": id_espacio})).mappings().all()
+    """), {"ie": id_espacio, "m": id_municipio})).mappings().all()
     recursos.extend({
         "tipo": "agente", "id_recurso": int(r["id_agente"]), "nombre": r["nombre"], "atendido": None,
     } for r in ag_rows)
@@ -1609,7 +1650,7 @@ async def _listar_recursos_para_calendario(
         rows = (await db.execute(text(f"""
             SELECT id_agente AS id_recurso, apellido || ', ' || nombre AS nombre
             FROM agentes
-            WHERE activo = TRUE AND (id_municipio IS NULL OR id_municipio = :m){sa_clause_simple}
+            WHERE activo = TRUE AND id_municipio = :m{sa_clause_simple}
             ORDER BY apellido, nombre
         """), base_params)).mappings().all()
         for r in rows:
@@ -1619,7 +1660,7 @@ async def _listar_recursos_para_calendario(
         rows = (await db.execute(text(f"""
             SELECT id_equipo AS id_recurso, nombre
             FROM equipos
-            WHERE activo = TRUE AND (id_municipio IS NULL OR id_municipio = :m){sa_clause_simple}
+            WHERE activo = TRUE AND id_municipio = :m{sa_clause_simple}
             ORDER BY nombre
         """), base_params)).mappings().all()
         for r in rows:
@@ -1719,11 +1760,11 @@ async def _eventos_del_dia(db: AsyncSession, fecha: date, id_municipio: int) -> 
 async def calendario_mes(
     anio: int = Query(..., ge=2020, le=2100),
     mes: int = Query(..., ge=1, le=12),
-    id_municipio: int = 1,
     tipo_recurso: Literal["agente", "equipo", "espacio", "todos"] = "todos",
     id_subarea: Optional[int] = Query(None, description="Filtra por id_subarea de eventos/recursos de las ocupaciones"),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Resumen mensual: por dia, conteos de eventos, ocupaciones por tipo y ausencias.
     Cuando tipo_recurso != 'todos' los conteos de ocupaciones se filtran por
@@ -1792,7 +1833,7 @@ async def calendario_mes(
         WHERE au.activo = TRUE
           AND NOT (au.fecha_hasta < :fd OR au.fecha_desde > :fh)
           AND a.activo = TRUE
-          AND (a.id_municipio IS NULL OR a.id_municipio = :m){aus_sa_filter}
+          AND a.id_municipio = :m{aus_sa_filter}
     """), aus_params)).mappings().all()
     for r in aus_rows:
         d0 = max(r["fecha_desde"], primer_dia)
@@ -1824,7 +1865,6 @@ async def calendario_mes(
 async def calendario_semana(
     desde: date = Query(..., description="Fecha del primer dia (inclusive)"),
     dias: int = Query(7, ge=1, le=14, description="Cantidad de dias contiguos (default 7)"),
-    id_municipio: int = 1,
     tipo_recurso: Literal["agente", "equipo", "espacio", "todos"] = "todos",
     id_subarea: Optional[int] = Query(None),
     scope_subarea_propia: bool = Query(False, description="Si True, limita los recursos a la subarea del usuario logueado. Fail-open. Ver /calendario."),
@@ -1832,6 +1872,7 @@ async def calendario_semana(
     id_espacio_ubicacion: Optional[int] = Query(None, description="Modo UBICACION (F2b plan ATENCION): la grilla muestra el espacio + los agentes que atienden ahi. Ignora tipo_recurso/atendido/subarea."),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Vista semanal: 7 dias contiguos (configurable). Los recursos vienen al
     nivel raiz; las ocupaciones/eventos/disponibilidad se desglosan por dia.
@@ -1842,7 +1883,7 @@ async def calendario_semana(
     hasta = desde + timedelta(days=dias - 1)
 
     if id_espacio_ubicacion is not None:
-        recursos = await _recursos_de_ubicacion(db, id_espacio_ubicacion)
+        recursos = await _recursos_de_ubicacion(db, id_espacio_ubicacion, id_municipio)
     else:
         id_subarea = await _resolver_scope_subarea(db, _user, id_subarea, scope_subarea_propia)
         recursos = await _listar_recursos_para_calendario(db, id_municipio, tipo_recurso, id_subarea, atendido)
@@ -1876,7 +1917,7 @@ async def calendario_semana(
         WHERE au.activo = TRUE
           AND NOT (au.fecha_hasta < :fd OR au.fecha_desde > :fh)
           AND a.activo = TRUE
-          AND (a.id_municipio IS NULL OR a.id_municipio = :m)
+          AND a.id_municipio = :m
     """), {"m": id_municipio, "fd": desde, "fh": hasta})).mappings().all()
     for r in aus_rows:
         d0 = max(r["fecha_desde"], desde)
@@ -1904,6 +1945,7 @@ async def calendario_semana(
         db,
         [(rec["tipo"], rec["id_recurso"], rec.get("atendido")) for rec in recursos],
         fechas_rango,
+        id_municipio=id_municipio,
     )
 
     # Build response por dia
@@ -1955,10 +1997,11 @@ async def listar_conflictos(
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Listado de conflictos con detalle de las dos ocupaciones involucradas."""
-    where: list[str] = ["1 = 1"]
-    params: dict[str, Any] = {}
+    where: list[str] = ["cl.id_municipio = :mun"]
+    params: dict[str, Any] = {"mun": id_municipio}
     if resuelto is not None:
         where.append("cl.resuelto = :r"); params["r"] = resuelto
     if desde:
@@ -1993,11 +2036,12 @@ async def resolver_conflicto(
     payload: ConflictoResolverIn,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_operador),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Marca el conflicto como resuelto y agrega observaciones."""
     cl = (await db.execute(text(
-        "SELECT tipo_recurso, id_recurso FROM conflictos_log WHERE id_conflicto = :i"
-    ), {"i": id_conflicto})).mappings().first()
+        "SELECT tipo_recurso, id_recurso FROM conflictos_log WHERE id_conflicto = :i AND id_municipio = :m"
+    ), {"i": id_conflicto, "m": id_municipio})).mappings().first()
     if not cl:
         raise HTTPException(404, "Conflicto no encontrado")
     # Scope-subarea 2026-07-18: solo se resuelven conflictos de recursos propios.

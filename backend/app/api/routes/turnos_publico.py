@@ -91,7 +91,7 @@ async def _resolver_prestacion(
     """Devuelve la prestacion activa con su recurso resuelto, o 404."""
     prest = (await db.execute(text("""
         SELECT tp.id_tipo_prestacion, tp.tipo_recurso, tp.id_agente, tp.id_espacio,
-               tp.duracion_min, tp.id_espacio_ubicacion,
+               tp.duracion_min, tp.id_espacio_ubicacion, tp.id_municipio,
                CASE WHEN tp.tipo_recurso = 'espacio' THEN e.nombre
                     ELSE COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') END AS recurso_nombre,
                tp.id_subarea
@@ -118,6 +118,7 @@ async def _resolver_prestacion(
         "duracion_min": int(prest["duracion_min"]),
         "id_subarea": prest["id_subarea"],
         "id_espacio_ubicacion": id_ubicacion,
+        "id_municipio": int(prest["id_municipio"]),
     }
 
 
@@ -176,6 +177,7 @@ async def _slots_libres_recurso(
     recurso_nombre: str,
     duracion_min: int,
     fecha: date,
+    id_municipio: int,
 ) -> list[dict[str, Any]]:
     """Slots libres de un recurso para una fecha: parte su disponibilidad
     efectiva en bloques de `duracion_min` y descarta los que se solapan con una
@@ -186,7 +188,7 @@ async def _slots_libres_recurso(
         return []
     hora_corte = ahora.time() if fecha == ahora.date() else None
 
-    rangos = await disponibilidad_efectiva(db, tipo_recurso, id_recurso, fecha)
+    rangos = await disponibilidad_efectiva(db, tipo_recurso, id_recurso, fecha, id_municipio=id_municipio)
     if not rangos:
         return []
 
@@ -230,7 +232,7 @@ async def listar_slots_publico(
         f = desde + timedelta(days=offset)
         out.extend(await _slots_libres_recurso(
             db, prest["tipo_recurso"], prest["id_recurso"],
-            prest["recurso_nombre"] or "", prest["duracion_min"], f,
+            prest["recurso_nombre"] or "", prest["duracion_min"], f, prest["id_municipio"],
         ))
     return out
 
@@ -297,8 +299,9 @@ async def reservar_turno_publico(
     # recurso -> dni (dentro del helper) -> ciudadano-dia.
     await advisory_lock_tx(db, f"turno:{tipo_recurso}:{id_recurso}:{payload.fecha}")
 
-    if await turnos_respeta_disponibilidad(db):
-        rangos = await disponibilidad_efectiva(db, tipo_recurso, id_recurso, payload.fecha)
+    if await turnos_respeta_disponibilidad(db, id_municipio=prest["id_municipio"]):
+        rangos = await disponibilidad_efectiva(db, tipo_recurso, id_recurso, payload.fecha,
+                                               id_municipio=prest["id_municipio"])
         dentro = any(
             r["hora_inicio"] <= hora_inicio and hora_fin <= r["hora_fin"]
             for r in rangos
@@ -323,6 +326,7 @@ async def reservar_turno_publico(
             nombre=payload.nombre,
             telefono=payload.telefono,
             email=payload.email,
+            id_municipio=prest["id_municipio"],
         )
     except ValueError as exc:
         raise HTTPException(422, str(exc))

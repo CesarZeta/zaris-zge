@@ -36,7 +36,6 @@ function emptyOcup(d?: Partial<OcupacionCreatePayload>): OcupacionCreatePayload 
     duracion_aplicada_min: d?.duracion_aplicada_min ?? null,
     rol_en_evento: d?.rol_en_evento ?? null,
     motivo: d?.motivo ?? null,
-    id_municipio: d?.id_municipio ?? 1,
   }
 }
 
@@ -49,7 +48,7 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
   const [evSel, setEvSel] = useState<EventoBusquedaItem | null>(null)
   const [confirmDel, setConfirmDel] = useState(false)
   // Para recurso espacio: son ~pocos, un select alcanza (RecursoPicker no los soporta).
-  const espacios = useEspacios({ id_municipio: form.id_municipio })
+  const espacios = useEspacios()
 
   useEffect(() => {
     if (open) {
@@ -176,7 +175,6 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
                 tipo={form.tipo_recurso as 'agente' | 'equipo'}
                 value={form.id_recurso || null}
                 onChange={(id) => update('id_recurso', id ?? 0)}
-                idMunicipio={form.id_municipio}
               />
             )}
           </Field>
@@ -195,7 +193,6 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
               <label style={lbl}>Evento</label>
               <EventoSearch
                 onSelect={(ev) => { setEvSel(ev); update('id_evento', ev.id_evento) }}
-                idMunicipio={form.id_municipio}
               />
               {evSel && (
                 <div style={{ marginTop: 6, fontSize: 13, color: 'var(--fg-2)' }}>

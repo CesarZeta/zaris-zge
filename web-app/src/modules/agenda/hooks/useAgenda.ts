@@ -22,7 +22,6 @@ export interface OpcionesListado {
 
 export function useCalendarioDia(
   fecha: string,
-  idMunicipio: number,
   tipoRecurso: TipoRecurso | 'todos' = 'todos',
   idSubarea: number | null = null,
   atendido: boolean | null = null,
@@ -31,8 +30,8 @@ export function useCalendarioDia(
   opts: OpcionesListado = {},
 ) {
   return useQuery({
-    queryKey: ['agenda', 'calendario', fecha, idMunicipio, tipoRecurso, idSubarea, atendido, scopeSubareaPropia, idEspacioUbicacion, opts.version ?? 0],
-    queryFn:  () => getCalendarioDia(fecha, idMunicipio, tipoRecurso, idSubarea, atendido, scopeSubareaPropia, idEspacioUbicacion),
+    queryKey: ['agenda', 'calendario', fecha, tipoRecurso, idSubarea, atendido, scopeSubareaPropia, idEspacioUbicacion, opts.version ?? 0],
+    queryFn:  () => getCalendarioDia(fecha, tipoRecurso, idSubarea, atendido, scopeSubareaPropia, idEspacioUbicacion),
     enabled:  opts.enabled ?? true,
   })
 }
@@ -40,7 +39,6 @@ export function useCalendarioDia(
 export function useCalendarioSemana(
   desde: string,
   dias: number,
-  idMunicipio: number,
   tipoRecurso: TipoRecurso | 'todos' = 'todos',
   idSubarea: number | null = null,
   atendido: boolean | null = null,
@@ -49,8 +47,8 @@ export function useCalendarioSemana(
   opts: OpcionesListado = {},
 ) {
   return useQuery({
-    queryKey: ['agenda', 'semana', desde, dias, idMunicipio, tipoRecurso, idSubarea, atendido, scopeSubareaPropia, idEspacioUbicacion, opts.version ?? 0],
-    queryFn:  () => getCalendarioSemana(desde, dias, idMunicipio, tipoRecurso, idSubarea, atendido, scopeSubareaPropia, idEspacioUbicacion),
+    queryKey: ['agenda', 'semana', desde, dias, tipoRecurso, idSubarea, atendido, scopeSubareaPropia, idEspacioUbicacion, opts.version ?? 0],
+    queryFn:  () => getCalendarioSemana(desde, dias, tipoRecurso, idSubarea, atendido, scopeSubareaPropia, idEspacioUbicacion),
     enabled:  opts.enabled ?? true,
   })
 }
@@ -68,14 +66,13 @@ export function useUbicacionesAtencion(enabled = true) {
 export function useCalendarioMes(
   anio: number,
   mes: number,
-  idMunicipio: number,
   tipoRecurso: TipoRecurso | 'todos' = 'todos',
   idSubarea: number | null = null,
   opts: OpcionesListado = {},
 ) {
   return useQuery({
-    queryKey: ['agenda', 'mes', anio, mes, idMunicipio, tipoRecurso, idSubarea, opts.version ?? 0],
-    queryFn:  () => getCalendarioMes(anio, mes, idMunicipio, tipoRecurso, idSubarea),
+    queryKey: ['agenda', 'mes', anio, mes, tipoRecurso, idSubarea, opts.version ?? 0],
+    queryFn:  () => getCalendarioMes(anio, mes, tipoRecurso, idSubarea),
     enabled:  opts.enabled ?? true,
   })
 }
@@ -88,10 +85,10 @@ export function useAgendaRecurso(tipoRecurso: TipoRecurso, idRecurso: number, de
   })
 }
 
-export function useRecursosConteos(idMunicipio: number) {
+export function useRecursosConteos() {
   return useQuery({
-    queryKey: ['agenda', 'recursos', 'conteos', idMunicipio],
-    queryFn:  () => getRecursosConteos(idMunicipio),
+    queryKey: ['agenda', 'recursos', 'conteos'],
+    queryFn:  () => getRecursosConteos(),
     // Conteos cambian pocas veces; cache mas largo evita refetch en cada cambio de tab.
     staleTime: 60_000,
   })

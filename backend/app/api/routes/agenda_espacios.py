@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
+from app.core.municipio import municipio_actual
 from app.schemas.agenda_v2 import (
     EspacioAgendaCreate,
     EspacioAgendaOut,
@@ -80,7 +81,19 @@ async def _validar_scope_espacio(db: AsyncSession, user: dict, id_espacio: int) 
     return sub
 
 
-async def _espacio_to_out(db: AsyncSession, id_espacio: int, incluir_agentes: bool = True) -> Optional[dict[str, Any]]:
+async def _validar_subarea(db: AsyncSession, id_subarea: Optional[int], id_municipio: int) -> None:
+    """422 si la subárea del body es de otro municipio o no existe (R4, IT-01)."""
+    if id_subarea is None:
+        return
+    if not await db.scalar(text(
+        "SELECT 1 FROM subarea WHERE id_subarea = :s AND id_municipio = :m"
+    ), {"s": id_subarea, "m": id_municipio}):
+        raise HTTPException(422, "Subárea inexistente")
+
+
+async def _espacio_to_out(
+    db: AsyncSession, id_espacio: int, id_municipio: int, incluir_agentes: bool = True,
+) -> Optional[dict[str, Any]]:
     row = (await db.execute(text("""
         SELECT e.id_espacio, e.nombre, e.descripcion, e.direccion, e.latitud, e.longitud,
                e.capacidad_personas,
@@ -88,8 +101,8 @@ async def _espacio_to_out(db: AsyncSession, id_espacio: int, incluir_agentes: bo
                e.activo, e.id_municipio, e.fecha_alta, e.fecha_modificacion
         FROM espacios_agenda e
         LEFT JOIN subarea s ON s.id_subarea = e.id_subarea
-        WHERE e.id_espacio = :id
-    """), {"id": id_espacio})).mappings().first()
+        WHERE e.id_espacio = :id AND e.id_municipio = :m
+    """), {"id": id_espacio, "m": id_municipio})).mappings().first()
     if not row:
         return None
     out = dict(row)
@@ -119,12 +132,12 @@ async def _listar_agentes_espacio(db: AsyncSession, id_espacio: int) -> list[dic
 # =============================================================================
 @router.get("", response_model=list[EspacioAgendaOut])
 async def listar_espacios(
-    id_municipio: int = 1,
     atendido: Optional[bool] = Query(None, description="True=solo atendidos, False=solo desatendidos, omitir=ambos"),
     activo: bool = True,
     q: Optional[str] = Query(None, description="Texto libre sobre nombre/direccion"),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     where = ["e.id_municipio = :m", "e.activo = :ac"]
     params: dict[str, Any] = {"m": id_municipio, "ac": activo}
@@ -162,6 +175,7 @@ async def crear_espacio(
     payload: EspacioAgendaCreate,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     _require_admin(user)
     # Scope-subarea 2026-07-18: el supervisor solo crea espacios de su subarea.
@@ -171,6 +185,7 @@ async def crear_espacio(
             raise HTTPException(403, "Los espacios compartidos (sin subárea) los crea un administrador.")
         if payload.id_subarea != sub:
             raise HTTPException(403, "Solo podés crear espacios de tu subárea.")
+    await _validar_subarea(db, payload.id_subarea, id_municipio)
     row = (await db.execute(text("""
         INSERT INTO espacios_agenda (
             nombre, descripcion, direccion, latitud, longitud, capacidad_personas, atendido,
@@ -190,11 +205,11 @@ async def crear_espacio(
         "atendido": payload.atendido,
         "id_sa": payload.id_subarea,
         "prefijo": payload.prefijo_colero,
-        "id_mun": payload.id_municipio,
+        "id_mun": id_municipio,
         "uid": user["id_usuario"],
     })).first()
     await db.commit()
-    out = await _espacio_to_out(db, int(row[0]))
+    out = await _espacio_to_out(db, int(row[0]), id_municipio)
     if out is None:
         raise HTTPException(500, "Espacio creado pero no se pudo releer")
     return out
@@ -205,8 +220,9 @@ async def detalle_espacio(
     id_espacio: int,
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    out = await _espacio_to_out(db, id_espacio)
+    out = await _espacio_to_out(db, id_espacio, id_municipio)
     if out is None:
         raise HTTPException(404, "Espacio no encontrado")
     return out
@@ -218,9 +234,12 @@ async def actualizar_espacio(
     payload: EspacioAgendaUpdate,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     _require_admin(user)
-    row = (await db.execute(text("SELECT 1 FROM espacios_agenda WHERE id_espacio = :id"), {"id": id_espacio})).first()
+    row = (await db.execute(text(
+        "SELECT 1 FROM espacios_agenda WHERE id_espacio = :id AND id_municipio = :m"
+    ), {"id": id_espacio, "m": id_municipio})).first()
     if not row:
         raise HTTPException(404, "Espacio no encontrado")
     # Scope-subarea 2026-07-18: solo espacios de la subarea del supervisor.
@@ -233,6 +252,7 @@ async def actualizar_espacio(
     # subarea o a compartido/NULL) via este PUT.
     if sub is not None and "id_subarea" in data and data["id_subarea"] != sub:
         raise HTTPException(403, "Solo podés asignar el espacio a tu propia subárea.")
+    await _validar_subarea(db, data.get("id_subarea"), id_municipio)
     # prefijo_colero (mig 105): ya viene normalizado/validado por el schema (3 alfanumericos o None).
     for col in ("nombre", "descripcion", "direccion", "latitud", "longitud", "capacidad_personas", "atendido", "id_subarea", "prefijo_colero", "activo"):
         if col in data:
@@ -240,14 +260,14 @@ async def actualizar_espacio(
             params[col] = data[col]
     if not sets:
         # Nada que actualizar — devolver estado actual.
-        out = await _espacio_to_out(db, id_espacio)
+        out = await _espacio_to_out(db, id_espacio, id_municipio)
         return out  # type: ignore
 
     sets.append("fecha_modificacion = NOW()")
     sets.append("id_usuario_modificacion = :uid")
     await db.execute(text(f"UPDATE espacios_agenda SET {', '.join(sets)} WHERE id_espacio = :id"), params)
     await db.commit()
-    out = await _espacio_to_out(db, id_espacio)
+    out = await _espacio_to_out(db, id_espacio, id_municipio)
     if out is None:
         raise HTTPException(500, "Espacio actualizado pero no se pudo releer")
     return out
@@ -258,10 +278,13 @@ async def eliminar_espacio(
     id_espacio: int,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Soft-delete: activo = FALSE. Tambien soft-deletea espacio_agentes asociados."""
     _require_admin(user)
-    row = (await db.execute(text("SELECT 1 FROM espacios_agenda WHERE id_espacio = :id AND activo = TRUE"), {"id": id_espacio})).first()
+    row = (await db.execute(text(
+        "SELECT 1 FROM espacios_agenda WHERE id_espacio = :id AND activo = TRUE AND id_municipio = :m"
+    ), {"id": id_espacio, "m": id_municipio})).first()
     if not row:
         raise HTTPException(404, "Espacio no encontrado o ya inactivo")
     # Scope-subarea 2026-07-18: solo espacios de la subarea del supervisor.
@@ -287,7 +310,12 @@ async def listar_agentes_de_espacio(
     id_espacio: int,
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
+    if not await db.scalar(text(
+        "SELECT 1 FROM espacios_agenda WHERE id_espacio = :id AND id_municipio = :m"
+    ), {"id": id_espacio, "m": id_municipio}):
+        raise HTTPException(404, "Espacio no encontrado")
     return await _listar_agentes_espacio(db, id_espacio)
 
 
@@ -297,13 +325,18 @@ async def vincular_agente_a_espacio(
     payload: EspacioAgenteCreate,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     _require_admin(user)
     # Validar existencia
-    esp = (await db.execute(text("SELECT 1 FROM espacios_agenda WHERE id_espacio = :id AND activo = TRUE"), {"id": id_espacio})).first()
+    esp = (await db.execute(text(
+        "SELECT 1 FROM espacios_agenda WHERE id_espacio = :id AND activo = TRUE AND id_municipio = :m"
+    ), {"id": id_espacio, "m": id_municipio})).first()
     if not esp:
         raise HTTPException(404, "Espacio no encontrado o inactivo")
-    ag = (await db.execute(text("SELECT 1 FROM agentes WHERE id_agente = :id AND activo = TRUE"), {"id": payload.id_agente})).first()
+    ag = (await db.execute(text(
+        "SELECT 1 FROM agentes WHERE id_agente = :id AND activo = TRUE AND id_municipio = :m"
+    ), {"id": payload.id_agente, "m": id_municipio})).first()
     if not ag:
         raise HTTPException(404, "Agente no encontrado o inactivo")
     # Scope-subarea 2026-07-18: scope SOLO por el ESPACIO. NO se valida la
@@ -327,10 +360,10 @@ async def vincular_agente_a_espacio(
         id_ea = int(existe["id_espacio_agente"])
     else:
         row = (await db.execute(text("""
-            INSERT INTO espacio_agentes (id_espacio, id_agente, id_usuario_alta, id_usuario_modificacion)
-            VALUES (:ie, :ia, :uid, :uid)
+            INSERT INTO espacio_agentes (id_espacio, id_agente, id_municipio, id_usuario_alta, id_usuario_modificacion)
+            VALUES (:ie, :ia, :m, :uid, :uid)
             RETURNING id_espacio_agente
-        """), {"ie": id_espacio, "ia": payload.id_agente, "uid": user["id_usuario"]})).first()
+        """), {"ie": id_espacio, "ia": payload.id_agente, "m": id_municipio, "uid": user["id_usuario"]})).first()
         id_ea = int(row[0])
 
     await db.commit()
@@ -353,12 +386,13 @@ async def desvincular_agente_de_espacio(
     id_espacio_agente: int,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     _require_admin(user)
     row = (await db.execute(text("""
         SELECT 1 FROM espacio_agentes
-        WHERE id_espacio_agente = :id AND id_espacio = :ie AND activo = TRUE
-    """), {"id": id_espacio_agente, "ie": id_espacio})).first()
+        WHERE id_espacio_agente = :id AND id_espacio = :ie AND activo = TRUE AND id_municipio = :m
+    """), {"id": id_espacio_agente, "ie": id_espacio, "m": id_municipio})).first()
     if not row:
         raise HTTPException(404, "Vinculo no encontrado o ya inactivo")
     # Scope-subarea 2026-07-18: scope SOLO por el ESPACIO (misma regla que el POST).

@@ -121,8 +121,9 @@ async def reservar_turno_vecino(
     # (recurso -> ciudadano-dia). Se liberan al commit/rollback.
     await advisory_lock_tx(db, f"turno:{tipo_recurso}:{id_recurso}:{payload.fecha}")
 
-    if await turnos_respeta_disponibilidad(db):
-        rangos = await disponibilidad_efectiva(db, tipo_recurso, id_recurso, payload.fecha)
+    if await turnos_respeta_disponibilidad(db, id_municipio=prest["id_municipio"]):
+        rangos = await disponibilidad_efectiva(db, tipo_recurso, id_recurso, payload.fecha,
+                                               id_municipio=prest["id_municipio"])
         dentro = any(
             r["hora_inicio"] <= hora_inicio and hora_fin <= r["hora_fin"]
             for r in rangos

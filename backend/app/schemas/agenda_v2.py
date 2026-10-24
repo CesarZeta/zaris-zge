@@ -49,8 +49,7 @@ class EventoBase(BaseModel):
 
 
 class EventoCreate(EventoBase):
-    """POST /eventos. Estado default = 'activo' (resuelto en backend)."""
-    id_municipio: int = 1
+    """POST /eventos. Estado default = 'activo' (resuelto en backend). El municipio sale de la request."""
 
 
 class EventoUpdate(BaseModel):
@@ -176,7 +175,6 @@ class OcupacionCreate(BaseModel):
     duracion_aplicada_min: Optional[int] = Field(None, ge=0)
     rol_en_evento: Optional[str] = None
     motivo: Optional[str] = None
-    id_municipio: int = 1
 
     @model_validator(mode="after")
     def _validar(self) -> "OcupacionCreate":
@@ -521,7 +519,7 @@ class EspacioAgendaBase(BaseModel):
 
 
 class EspacioAgendaCreate(EspacioAgendaBase):
-    id_municipio: int = 1
+    """El municipio sale de la request."""
 
 
 class EspacioAgendaUpdate(BaseModel):
@@ -606,7 +604,6 @@ class DisponibilidadRecursoBase(BaseModel):
 
 
 class DisponibilidadRecursoCreate(DisponibilidadRecursoBase):
-    id_municipio: int = 1
     id_subarea: Optional[int] = None
 
 

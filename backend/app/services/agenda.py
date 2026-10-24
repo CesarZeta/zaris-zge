@@ -15,6 +15,8 @@ from typing import Any, Iterable, Optional
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config_municipio import leer_config
+
 
 # =============================================================================
 # Disponibilidad efectiva (mig 41 + espacios atendidos mig 40)
@@ -27,6 +29,8 @@ async def disponibilidad_efectiva(
     tipo_recurso: str,
     id_recurso: int,
     fecha: date,
+    *,
+    id_municipio: int,
 ) -> list[dict[str, Any]]:
     """Devuelve los rangos horarios efectivos de un recurso para una fecha.
 
@@ -49,32 +53,32 @@ async def disponibilidad_efectiva(
     vinculado ya se restan al armar la union.
     """
     # Feriado: ningun recurso atiende ese dia.
-    if await _es_feriado(session, fecha, None):
+    if await _es_feriado(session, fecha, id_municipio):
         return []
 
     if tipo_recurso == "agente":
-        return await _disponibilidad_directa(session, "agente", id_recurso, fecha)
+        return await _disponibilidad_directa(session, "agente", id_recurso, fecha, id_municipio)
 
     if tipo_recurso == "equipo":
         # La disponibilidad de un equipo es la UNION de sus agentes (mig 91),
         # NO su horario propio. Unifica la grilla de Agenda con el planificador
         # de OT, que ya lo calculaba asi.
-        return await _disponibilidad_equipo_union(session, id_recurso, fecha)
+        return await _disponibilidad_equipo_union(session, id_recurso, fecha, id_municipio)
 
     if tipo_recurso == "espacio":
         # 1) Es atendido?
         row = (await session.execute(text("""
             SELECT atendido
             FROM espacios_agenda
-            WHERE id_espacio = :id AND activo = TRUE
-        """), {"id": id_recurso})).mappings().first()
+            WHERE id_espacio = :id AND activo = TRUE AND id_municipio = :m
+        """), {"id": id_recurso, "m": id_municipio})).mappings().first()
         if not row:
             return []
         atendido = bool(row["atendido"])
 
         if not atendido:
             # Desatendido: solo su propio horario.
-            return await _disponibilidad_directa(session, "espacio", id_recurso, fecha)
+            return await _disponibilidad_directa(session, "espacio", id_recurso, fecha, id_municipio)
 
         # Atendido: union de agentes vinculados activos.
         agentes_ids = [int(r["id_agente"]) for r in (await session.execute(text("""
@@ -87,11 +91,11 @@ async def disponibilidad_efectiva(
 
         union_agentes: list[tuple[dtime, dtime, Optional[str]]] = []
         for ag_id in agentes_ids:
-            for r in await _disponibilidad_directa(session, "agente", ag_id, fecha):
+            for r in await _disponibilidad_directa(session, "agente", ag_id, fecha, id_municipio):
                 union_agentes.append((r["hora_inicio"], r["hora_fin"], r.get("etiqueta")))
 
         # Si el espacio TAMBIEN tiene horario propio, intersectamos.
-        propio = await _disponibilidad_directa(session, "espacio", id_recurso, fecha)
+        propio = await _disponibilidad_directa(session, "espacio", id_recurso, fecha, id_municipio)
 
         if propio:
             # Para cada rango propio, intersectar con la union de agentes y unir.
@@ -116,6 +120,7 @@ async def _disponibilidad_directa(
     tipo_recurso: str,
     id_recurso: int,
     fecha: date,
+    id_municipio: int,
 ) -> list[dict[str, Any]]:
     """Lookup en disponibilidad_recurso aplicando bitmask de dia + vigencia."""
     # Cast explicito a ::date: asyncpg pasa el parametro como `unknown` y
@@ -124,13 +129,14 @@ async def _disponibilidad_directa(
         SELECT hora_inicio, hora_fin, etiqueta, dias_semana
         FROM disponibilidad_recurso
         WHERE activo = TRUE
+          AND id_municipio = :m
           AND tipo_recurso = :tr
           AND id_recurso   = :ir
           AND (dias_semana & (1 << (EXTRACT(ISODOW FROM (:f)::date)::int - 1))) <> 0
           AND (vigente_desde IS NULL OR (:f)::date >= vigente_desde)
           AND (vigente_hasta IS NULL OR (:f)::date <= vigente_hasta)
         ORDER BY hora_inicio
-    """), {"tr": tipo_recurso, "ir": id_recurso, "f": fecha})).mappings().all()
+    """), {"tr": tipo_recurso, "ir": id_recurso, "f": fecha, "m": id_municipio})).mappings().all()
     # Si hay multiples filas que se solapan o son contiguas, las unimos.
     triples = [(r["hora_inicio"], r["hora_fin"], r["etiqueta"]) for r in rows]
     merged = _merge_rangos(triples)
@@ -193,23 +199,20 @@ def _restar_intervalos(
 _DIA_COMPLETO: tuple[dtime, dtime] = (dtime(0, 0, 0), dtime(23, 59, 59))
 
 
-async def _override_equipo_horario_propio(session: AsyncSession) -> bool:
-    """True si la config global habilita que un equipo SIN agentes use su propio
-    horario (override, mig 91). Default False: la disponibilidad de un equipo es
-    la union de sus agentes, y un equipo sin agentes no tiene disponibilidad.
-    Fail-safe: clave ausente / error -> False (comportamiento por agentes)."""
+async def _override_equipo_horario_propio(session: AsyncSession, id_municipio: int) -> bool:
+    """True si la config del municipio habilita que un equipo SIN agentes use su
+    propio horario (override, mig 91). Default False: la disponibilidad de un
+    equipo es la union de sus agentes, y un equipo sin agentes no tiene
+    disponibilidad. Fail-safe: clave ausente / error -> False."""
     try:
-        v = await session.scalar(text(
-            "SELECT valor FROM configuracion_general "
-            "WHERE clave = 'equipos_sin_agentes_usan_horario_propio' AND activo = TRUE"
-        ))
+        v = await leer_config(session, "equipos_sin_agentes_usan_horario_propio", id_municipio)
         return str(v).strip().lower() == "true" if v is not None else False
     except Exception:
         return False
 
 
 async def _disponibilidad_equipo_union(
-    session: AsyncSession, id_equipo: int, fecha: date,
+    session: AsyncSession, id_equipo: int, fecha: date, id_municipio: int,
 ) -> list[dict[str, Any]]:
     """Disponibilidad de un equipo = UNION de los horarios de sus agentes activos
     (decision de modelo 2026-06-15). Cada agente ya trae restadas sus novedades
@@ -223,27 +226,26 @@ async def _disponibilidad_equipo_union(
     """), {"id": id_equipo})).mappings().all()]
 
     if not agentes_ids:
-        if await _override_equipo_horario_propio(session):
-            return await _disponibilidad_directa(session, "equipo", id_equipo, fecha)
+        if await _override_equipo_horario_propio(session, id_municipio):
+            return await _disponibilidad_directa(session, "equipo", id_equipo, fecha, id_municipio)
         return []
 
     union: list[tuple[dtime, dtime, Optional[str]]] = []
     for ag_id in agentes_ids:
-        for r in await _disponibilidad_directa(session, "agente", ag_id, fecha):
+        for r in await _disponibilidad_directa(session, "agente", ag_id, fecha, id_municipio):
             union.append((r["hora_inicio"], r["hora_fin"], r.get("etiqueta")))
     merged = _merge_rangos(union)
     return [{"hora_inicio": hi, "hora_fin": hf, "etiqueta": et} for (hi, hf, et) in merged]
 
 
-async def _es_feriado(session: AsyncSession, fecha: date, id_municipio: Optional[int]) -> bool:
-    """True si la fecha es feriado activo (ámbito nacional/provincial/municipal).
-    Por ahora cualquier feriado activo bloquea (no se filtra por municipio porque
-    los feriados nacionales/provinciales aplican a todos)."""
+async def _es_feriado(session: AsyncSession, fecha: date, id_municipio: int) -> bool:
+    """True si la fecha es feriado activo del municipio (cada municipio carga sus
+    feriados, también los nacionales y provinciales que le aplican)."""
     n = await session.scalar(text("""
         SELECT 1 FROM agenda_feriado
-        WHERE activo = TRUE AND fecha = (:f)::date
+        WHERE activo = TRUE AND fecha = (:f)::date AND id_municipio = :m
         LIMIT 1
-    """), {"f": fecha})
+    """), {"f": fecha, "m": id_municipio})
     return bool(n)
 
 
@@ -272,6 +274,8 @@ async def disponibilidad_efectiva_batch(
     session: AsyncSession,
     recursos: list[tuple[str, int, Optional[bool]]],
     fechas: list[date],
+    *,
+    id_municipio: int,
 ) -> dict[tuple[str, int, date], list[dict[str, Any]]]:
     """Version batch de disponibilidad_efectiva: una sola query a Postgres por tipo
     de tabla y todo el merge en Python. Evita el O(recursos x dias) de round-trips
@@ -314,7 +318,7 @@ async def disponibilidad_efectiva_batch(
         for r in rows:
             equipo_a_agentes.setdefault(int(r["id_equipo"]), []).append(int(r["id_agente"]))
     # Override: equipo sin agentes usa su horario propio (una sola lectura de config).
-    override_equipo = await _override_equipo_horario_propio(session)
+    override_equipo = await _override_equipo_horario_propio(session, id_municipio)
 
     # Identificar set de (tipo, id) que necesitamos en disponibilidad_recurso:
     # los recursos pedidos directamente + los agentes vinculados a espacios atendidos.
@@ -333,8 +337,8 @@ async def disponibilidad_efectiva_batch(
     feriados: set[date] = set()
     rows_fer = (await session.execute(text("""
         SELECT DISTINCT fecha FROM agenda_feriado
-        WHERE activo = TRUE AND fecha = ANY(:fs)
-    """), {"fs": list(fechas)})).mappings().all()
+        WHERE activo = TRUE AND fecha = ANY(:fs) AND id_municipio = :m
+    """), {"fs": list(fechas), "m": id_municipio})).mappings().all()
     for r in rows_fer:
         feriados.add(r["fecha"])
 
@@ -385,10 +389,10 @@ async def disponibilidad_efectiva_batch(
             SELECT tipo_recurso, id_recurso, dias_semana, hora_inicio, hora_fin,
                    etiqueta, vigente_desde, vigente_hasta
             FROM disponibilidad_recurso
-            WHERE activo = TRUE
+            WHERE activo = TRUE AND id_municipio = :m
               AND tipo_recurso = ANY(:tipos)
               AND id_recurso   = ANY(:ids)
-        """), {"tipos": tipos, "ids": ids})).mappings().all()
+        """), {"tipos": tipos, "ids": ids, "m": id_municipio})).mappings().all()
         for r in rows:
             par = (r["tipo_recurso"], int(r["id_recurso"]))
             if par in pares_disp:  # descartar par espureo
@@ -487,6 +491,8 @@ async def detectar_conflictos(
     hora_inicio: dtime,
     hora_fin: dtime,
     id_ocupacion_excluir: Optional[int] = None,
+    *,
+    id_municipio: int,
 ) -> list[dict[str, Any]]:
     """Devuelve ocupaciones activas del recurso en la fecha que se solapan
     con el rango (hora_inicio, hora_fin). Solape estricto: no toca borde.
@@ -499,12 +505,14 @@ async def detectar_conflictos(
                id_orden_trabajo, id_evento, id_ciudadano, motivo
         FROM ocupaciones
         WHERE activo = TRUE
+          AND id_municipio = :m
           AND tipo_recurso = :tr
           AND id_recurso   = :ir
           AND fecha        = :f
           AND NOT (hora_fin <= :hi OR hora_inicio >= :hf)
     """
-    params: dict[str, Any] = {"tr": tipo_recurso, "ir": id_recurso, "f": fecha, "hi": hora_inicio, "hf": hora_fin}
+    params: dict[str, Any] = {"tr": tipo_recurso, "ir": id_recurso, "f": fecha, "hi": hora_inicio, "hf": hora_fin,
+                              "m": id_municipio}
     if id_ocupacion_excluir is not None:
         base += " AND id_ocupacion <> :excl"
         params["excl"] = id_ocupacion_excluir
@@ -581,7 +589,7 @@ async def advisory_lock_tx(session: AsyncSession, clave: str) -> None:
     Claves prefijadas por flujo (espejo del criterio de check_rate_limit, §5):
       'turno:{tipo_recurso}:{id_recurso}:{fecha}' -> reservas del recurso ese dia
       'turnodia:{id_ciudadano}:{fecha}'           -> regla "1 turno por dia"
-      'ciudadano_dni:{dni}'                       -> alta por DNI del autoservicio
+      'ciudadano_dni:{municipio}:{dni}'           -> alta por DNI del autoservicio
     Orden de adquisicion fijo (recurso -> dni -> ciudadano-dia) para no armar
     deadlocks entre las vias."""
     await session.execute(text(
@@ -630,7 +638,8 @@ async def registrar_audit(
     accion: str,
     datos_anteriores: Optional[dict[str, Any]] = None,
     datos_nuevos: Optional[dict[str, Any]] = None,
-    id_municipio: int = 1,
+    *,
+    id_municipio: int,
 ) -> None:
     """entidad in ('evento','ocupacion','reserva'),
        accion  in ('crear','modificar','cancelar','asignar')."""
@@ -655,20 +664,23 @@ async def registrar_audit(
 # =============================================================================
 # Helpers de validacion
 # =============================================================================
-async def existe_recurso(session: AsyncSession, tipo_recurso: str, id_recurso: int) -> bool:
-    """Confirma que el agente/equipo/espacio existe y esta activo."""
+async def existe_recurso(
+    session: AsyncSession, tipo_recurso: str, id_recurso: int, *, id_municipio: int,
+) -> bool:
+    """Confirma que el agente/equipo/espacio existe, esta activo y es del municipio."""
+    p = {"i": id_recurso, "m": id_municipio}
     if tipo_recurso == "agente":
         n = await session.scalar(text(
-            "SELECT 1 FROM agentes WHERE id_agente = :i AND activo = TRUE"
-        ), {"i": id_recurso})
+            "SELECT 1 FROM agentes WHERE id_agente = :i AND activo = TRUE AND id_municipio = :m"
+        ), p)
     elif tipo_recurso == "equipo":
         n = await session.scalar(text(
-            "SELECT 1 FROM equipos WHERE id_equipo = :i AND activo = TRUE"
-        ), {"i": id_recurso})
+            "SELECT 1 FROM equipos WHERE id_equipo = :i AND activo = TRUE AND id_municipio = :m"
+        ), p)
     elif tipo_recurso == "espacio":
         n = await session.scalar(text(
-            "SELECT 1 FROM espacios_agenda WHERE id_espacio = :i AND activo = TRUE"
-        ), {"i": id_recurso})
+            "SELECT 1 FROM espacios_agenda WHERE id_espacio = :i AND activo = TRUE AND id_municipio = :m"
+        ), p)
     else:
         return False
     return bool(n)
@@ -692,14 +704,10 @@ async def subarea_del_usuario(session: AsyncSession, id_usuario: int) -> Optiona
     return int(row) if row is not None else None
 
 
-async def turnos_respeta_disponibilidad(session: AsyncSession) -> bool:
-    """Switch global (mig 69). True (default seguro) = los turnos solo se reservan
-    dentro de la disponibilidad efectiva del recurso. False = modo libre."""
-    valor = await session.scalar(text("""
-        SELECT valor FROM configuracion_general
-        WHERE clave = 'turnos_respeta_disponibilidad' AND activo = TRUE
-        LIMIT 1
-    """))
+async def turnos_respeta_disponibilidad(session: AsyncSession, *, id_municipio: int) -> bool:
+    """Switch del municipio (mig 69). True (default seguro) = los turnos solo se
+    reservan dentro de la disponibilidad efectiva del recurso. False = modo libre."""
+    valor = await leer_config(session, "turnos_respeta_disponibilidad", id_municipio)
     if valor is None:
         return True
     return str(valor).strip().lower() not in ("false", "0", "no", "off")
@@ -732,7 +740,8 @@ async def buscar_o_crear_ciudadano_por_dni(
     nombre: str,
     telefono: Optional[str] = None,
     email: Optional[str] = None,
-    id_municipio: int = 1,
+    *,
+    id_municipio: int,
 ) -> dict[str, Any]:
     """Busca un ciudadano por doc_nro (digits-only). Si existe activo, lo devuelve
     sin tocar. Si no existe, crea uno minimo con datos del form publico de autoservicio.
@@ -756,15 +765,15 @@ async def buscar_o_crear_ciudadano_por_dni(
     # Anti-carrera (mig 95): dos requests concurrentes con el mismo DNI nuevo
     # crearian DOS ciudadanos (viola BUC §2). Serializa por DNI normalizado;
     # el lock se libera al commit/rollback de la tx del caller.
-    await advisory_lock_tx(session, f"ciudadano_dni:{dni_clean}")
+    await advisory_lock_tx(session, f"ciudadano_dni:{id_municipio}:{dni_clean}")
 
     # Buscar primero (activos y dados de baja — si esta dado de baja, no recrear)
     row = (await session.execute(text("""
         SELECT id_ciudadano, apellido, nombre, doc_nro, activo
           FROM ciudadanos
-         WHERE regexp_replace(doc_nro, '[^0-9]', '', 'g') = :d
+         WHERE regexp_replace(doc_nro, '[^0-9]', '', 'g') = :d AND id_municipio = :m
          LIMIT 1
-    """), {"d": dni_clean})).mappings().first()
+    """), {"d": dni_clean, "m": id_municipio})).mappings().first()
     if row:
         return {**dict(row), "creado": False}
 

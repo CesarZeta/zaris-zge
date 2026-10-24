@@ -13,7 +13,6 @@ export function AgendaFilters({ showSubareaFilter = true }: { showSubareaFilter?
   const idSub     = useAgendaStore((s) => s.filtroSubarea)
   const setIdSub  = useAgendaStore((s) => s.setFiltroSubarea)
   const irAHoy    = useAgendaStore((s) => s.irAHoy)
-  const idMun     = useAgendaStore((s) => s.idMunicipio)
 
   const subareas = useQuery<SubareaItem[]>({
     queryKey: ['agenda', 'subareas'],
@@ -93,9 +92,6 @@ export function AgendaFilters({ showSubareaFilter = true }: { showSubareaFilter?
         </div>
       )}
 
-      <div style={{ fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', marginLeft: showSubareaFilter ? 0 : 'auto' }}>
-        municipio {idMun}
-      </div>
     </div>
   )
 }

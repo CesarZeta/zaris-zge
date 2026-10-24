@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
+from app.core.municipio import municipio_actual
 from app.schemas.agenda_v2 import (
     DisponibilidadRangoEfectivo,
     DisponibilidadRecursoCreate,
@@ -87,14 +88,14 @@ async def _validar_scope_recurso(
         )
 
 
-async def _disp_to_out(db: AsyncSession, id_disponibilidad: int) -> Optional[dict[str, Any]]:
+async def _disp_to_out(db: AsyncSession, id_disponibilidad: int, id_municipio: int) -> Optional[dict[str, Any]]:
     row = (await db.execute(text("""
         SELECT id_disponibilidad, tipo_recurso, id_recurso, dias_semana,
                hora_inicio, hora_fin, vigente_desde, vigente_hasta, etiqueta,
                activo, id_municipio, fecha_alta, fecha_modificacion
         FROM disponibilidad_recurso
-        WHERE id_disponibilidad = :id
-    """), {"id": id_disponibilidad})).mappings().first()
+        WHERE id_disponibilidad = :id AND id_municipio = :m
+    """), {"id": id_disponibilidad, "m": id_municipio})).mappings().first()
     return dict(row) if row else None
 
 
@@ -102,10 +103,10 @@ async def _disp_to_out(db: AsyncSession, id_disponibilidad: int) -> Optional[dic
 async def listar_disponibilidad(
     tipo_recurso: Optional[Literal["agente", "equipo", "espacio"]] = None,
     id_recurso: Optional[int] = None,
-    id_municipio: int = 1,
     activo: bool = True,
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     where = ["id_municipio = :m", "activo = :ac"]
     params: dict[str, Any] = {"m": id_municipio, "ac": activo}
@@ -130,10 +131,15 @@ async def crear_disponibilidad(
     payload: DisponibilidadRecursoCreate,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     _require_admin(user)
     # Validar que el recurso exista (importante: id_recurso es polimorfica).
-    await _validar_recurso_existe(db, payload.tipo_recurso, payload.id_recurso)
+    await _validar_recurso_existe(db, payload.tipo_recurso, payload.id_recurso, id_municipio)
+    if payload.id_subarea is not None and not await db.scalar(text(
+        "SELECT 1 FROM subarea WHERE id_subarea = :s AND id_municipio = :m"
+    ), {"s": payload.id_subarea, "m": id_municipio}):
+        raise HTTPException(422, "Subárea inexistente")
     # Scope-subarea 2026-07-18: solo recursos de la subarea del supervisor.
     await _validar_scope_recurso(db, user, payload.tipo_recurso, payload.id_recurso)
 
@@ -157,12 +163,12 @@ async def crear_disponibilidad(
         "vd": payload.vigente_desde,
         "vh": payload.vigente_hasta,
         "et": payload.etiqueta,
-        "im": payload.id_municipio,
+        "im": id_municipio,
         "isa": payload.id_subarea,
         "uid": user["id_usuario"],
     })).first()
     await db.commit()
-    out = await _disp_to_out(db, int(row[0]))
+    out = await _disp_to_out(db, int(row[0]), id_municipio)
     if out is None:
         raise HTTPException(500, "Disponibilidad creada pero no se pudo releer")
     return out
@@ -174,14 +180,15 @@ async def actualizar_disponibilidad(
     payload: DisponibilidadRecursoUpdate,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     _require_admin(user)
     # SELECT ampliado (scope-subarea 2026-07-18): trae tambien tipo_recurso e
     # id_recurso para validar la subarea del recurso de la fila actual.
     row = (await db.execute(text("""
         SELECT hora_inicio, hora_fin, tipo_recurso, id_recurso
-        FROM disponibilidad_recurso WHERE id_disponibilidad = :id
-    """), {"id": id_disponibilidad})).mappings().first()
+        FROM disponibilidad_recurso WHERE id_disponibilidad = :id AND id_municipio = :m
+    """), {"id": id_disponibilidad, "m": id_municipio})).mappings().first()
     if not row:
         raise HTTPException(404, "Disponibilidad no encontrada")
     # Scope-subarea 2026-07-18: solo recursos de la subarea del supervisor.
@@ -203,13 +210,13 @@ async def actualizar_disponibilidad(
             sets.append(f"{col} = :{col}")
             params[col] = data[col]
     if not sets:
-        return await _disp_to_out(db, id_disponibilidad)  # type: ignore
+        return await _disp_to_out(db, id_disponibilidad, id_municipio)  # type: ignore
 
     sets.append("fecha_modificacion = NOW()")
     sets.append("id_usuario_modificacion = :uid")
     await db.execute(text(f"UPDATE disponibilidad_recurso SET {', '.join(sets)} WHERE id_disponibilidad = :id"), params)
     await db.commit()
-    return await _disp_to_out(db, id_disponibilidad)
+    return await _disp_to_out(db, id_disponibilidad, id_municipio)
 
 
 @router.delete("/{id_disponibilidad}", status_code=204)
@@ -217,12 +224,14 @@ async def eliminar_disponibilidad(
     id_disponibilidad: int,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     _require_admin(user)
     # SELECT ampliado (scope-subarea 2026-07-18): trae el recurso para validar subarea.
     row = (await db.execute(text(
-        "SELECT tipo_recurso, id_recurso FROM disponibilidad_recurso WHERE id_disponibilidad = :id AND activo = TRUE"
-    ), {"id": id_disponibilidad})).first()
+        "SELECT tipo_recurso, id_recurso FROM disponibilidad_recurso "
+        "WHERE id_disponibilidad = :id AND activo = TRUE AND id_municipio = :m"
+    ), {"id": id_disponibilidad, "m": id_municipio})).first()
     if not row:
         raise HTTPException(404, "Disponibilidad no encontrada o ya inactiva")
     # Scope-subarea 2026-07-18: solo recursos de la subarea del supervisor.
@@ -242,20 +251,21 @@ async def consultar_disponibilidad_efectiva(
     fecha: date = Query(..., description="Fecha contra la cual resolver bitmask + vigencias"),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Devuelve los rangos de disponibilidad efectiva para un recurso en una
     fecha puntual. Aplica las reglas de espacio atendido (union con agentes
     vinculados, interseccion con horario propio del espacio)."""
-    return await disponibilidad_efectiva(db, tipo_recurso, id_recurso, fecha)
+    return await disponibilidad_efectiva(db, tipo_recurso, id_recurso, fecha, id_municipio=id_municipio)
 
 
-async def _validar_recurso_existe(db: AsyncSession, tipo: str, id_recurso: int) -> None:
-    if tipo == "agente":
-        row = (await db.execute(text("SELECT 1 FROM agentes WHERE id_agente = :id AND activo = TRUE"), {"id": id_recurso})).first()
-    elif tipo == "equipo":
-        row = (await db.execute(text("SELECT 1 FROM equipos WHERE id_equipo = :id AND activo = TRUE"), {"id": id_recurso})).first()
-    elif tipo == "espacio":
-        row = (await db.execute(text("SELECT 1 FROM espacios_agenda WHERE id_espacio = :id AND activo = TRUE"), {"id": id_recurso})).first()
+async def _validar_recurso_existe(db: AsyncSession, tipo: str, id_recurso: int, id_municipio: int) -> None:
+    tabla_pk = {"agente": ("agentes", "id_agente"), "equipo": ("equipos", "id_equipo"),
+                "espacio": ("espacios_agenda", "id_espacio")}.get(tipo)
+    if tabla_pk is not None:
+        row = (await db.execute(text(
+            f"SELECT 1 FROM {tabla_pk[0]} WHERE {tabla_pk[1]} = :id AND activo = TRUE AND id_municipio = :m"
+        ), {"id": id_recurso, "m": id_municipio})).first()
     else:
         raise HTTPException(422, f"tipo_recurso invalido: {tipo}")
     if not row:

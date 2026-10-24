@@ -52,7 +52,6 @@ export interface EventoCreatePayload {
   tipo_qr: TipoQR
   admite_autoservicio: boolean
   id_espacio?: number | null
-  id_municipio?: number
 }
 
 export type EventoUpdatePayload = Partial<EventoCreatePayload>
@@ -127,7 +126,6 @@ export interface OcupacionCreatePayload {
   duracion_aplicada_min?: number | null
   rol_en_evento?: string | null
   motivo?: string | null
-  id_municipio?: number
 }
 
 export type OcupacionUpdatePayload = Partial<Pick<
@@ -338,7 +336,6 @@ export interface EspacioAgendaCreatePayload {
   atendido: boolean
   id_subarea?: number | null
   prefijo_colero?: string | null
-  id_municipio?: number
 }
 
 export type EspacioAgendaUpdatePayload = Partial<EspacioAgendaCreatePayload> & {
@@ -379,10 +376,9 @@ export interface DisponibilidadRecursoCreatePayload {
   vigente_desde?: string | null
   vigente_hasta?: string | null
   etiqueta?: string | null
-  id_municipio?: number
   id_subarea?: number | null
 }
 
-export type DisponibilidadRecursoUpdatePayload = Partial<Omit<DisponibilidadRecursoCreatePayload, 'tipo_recurso' | 'id_recurso' | 'id_municipio' | 'id_subarea'>> & {
+export type DisponibilidadRecursoUpdatePayload = Partial<Omit<DisponibilidadRecursoCreatePayload, 'tipo_recurso' | 'id_recurso' | 'id_subarea'>> & {
   activo?: boolean
 }

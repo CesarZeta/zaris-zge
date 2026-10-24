@@ -35,7 +35,6 @@ type PendingConfirm = {
 
 export function TimelineView() {
   const fecha = useAgendaStore((s) => s.fechaActiva)
-  const idMun = useAgendaStore((s) => s.idMunicipio)
   const filtroRec = useAgendaStore((s) => s.filtroRecurso)
   const filtroSubarea = useAgendaStore((s) => s.filtroSubarea)
   const filtroUbicacion = useAgendaStore((s) => s.filtroUbicacion)
@@ -43,7 +42,7 @@ export function TimelineView() {
   // Modo UBICACION (F2b): la grilla muestra el espacio + sus agentes.
   const modoUbicacion = filtroRec === 'ubicacion'
   const idUbicacion = modoUbicacion ? filtroUbicacion?.id ?? null : null
-  const cal = useCalendarioDia(fecha, idMun, tipo_recurso, filtroSubarea, atendido, scopeSubareaPropia, idUbicacion)
+  const cal = useCalendarioDia(fecha, tipo_recurso, filtroSubarea, atendido, scopeSubareaPropia, idUbicacion)
   const conf = useConflictos(false)
   const { moverOcupacion } = useDragMutations()
 

@@ -16,10 +16,12 @@ from typing import Any, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
+from app.core.municipio import municipio_actual
 from app.services.agenda import subarea_del_usuario
 
 
@@ -81,7 +83,6 @@ class NovedadCreate(BaseModel):
     hora_inicio: Optional[time] = None
     hora_fin: Optional[time] = None
     motivo: Optional[str] = Field(None, max_length=300)
-    id_municipio: int = 1
     id_subarea: Optional[int] = None
 
 
@@ -113,7 +114,6 @@ class FeriadoCreate(BaseModel):
     fecha: date
     descripcion: str = Field(..., max_length=200)
     ambito: Literal["NACIONAL", "PROVINCIAL", "MUNICIPAL"] = "MUNICIPAL"
-    id_municipio: int = 1
 
 
 class FeriadoUpdate(BaseModel):
@@ -143,7 +143,7 @@ def _coherencia_novedad(fecha_desde: date, fecha_hasta: date, hi: Optional[time]
 # =============================================================================
 # Novedades de agentes
 # =============================================================================
-async def _novedad_to_out(db: AsyncSession, id_nov: int) -> Optional[dict[str, Any]]:
+async def _novedad_to_out(db: AsyncSession, id_nov: int, id_municipio: int) -> Optional[dict[str, Any]]:
     row = (await db.execute(text("""
         SELECT n.id_agente_novedad, n.id_agente,
                COALESCE(a.apellido, '') || ', ' || COALESCE(a.nombre, '') AS agente_nombre,
@@ -151,8 +151,8 @@ async def _novedad_to_out(db: AsyncSession, id_nov: int) -> Optional[dict[str, A
                n.motivo, n.activo, n.fecha_alta
         FROM agente_novedad n
         LEFT JOIN agentes a ON a.id_agente = n.id_agente
-        WHERE n.id_agente_novedad = :id
-    """), {"id": id_nov})).mappings().first()
+        WHERE n.id_agente_novedad = :id AND n.id_municipio = :m
+    """), {"id": id_nov, "m": id_municipio})).mappings().first()
     return dict(row) if row else None
 
 
@@ -160,12 +160,12 @@ async def _novedad_to_out(db: AsyncSession, id_nov: int) -> Optional[dict[str, A
 async def listar_novedades(
     id_agente: Optional[int] = None,
     desde: Optional[date] = Query(None, description="Solo novedades con fecha_hasta >= desde"),
-    id_municipio: int = 1,
     activo: bool = True,
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    where = ["n.activo = :ac", "(n.id_municipio = :m OR n.id_municipio IS NULL)"]
+    where = ["n.activo = :ac", "n.id_municipio = :m"]
     params: dict[str, Any] = {"ac": activo, "m": id_municipio}
     if id_agente is not None:
         where.append("n.id_agente = :ia"); params["ia"] = id_agente
@@ -189,14 +189,19 @@ async def crear_novedad(
     payload: NovedadCreate,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     _require_admin(user)
     _coherencia_novedad(payload.fecha_desde, payload.fecha_hasta, payload.hora_inicio, payload.hora_fin)
     ag = (await db.execute(text(
-        "SELECT 1 FROM agentes WHERE id_agente = :id AND activo = TRUE"
-    ), {"id": payload.id_agente})).first()
+        "SELECT 1 FROM agentes WHERE id_agente = :id AND activo = TRUE AND id_municipio = :m"
+    ), {"id": payload.id_agente, "m": id_municipio})).first()
     if not ag:
         raise HTTPException(404, "Agente no encontrado o inactivo")
+    if payload.id_subarea is not None and not await db.scalar(text(
+        "SELECT 1 FROM subarea WHERE id_subarea = :s AND id_municipio = :m"
+    ), {"s": payload.id_subarea, "m": id_municipio}):
+        raise HTTPException(422, "Subárea inexistente")
     # Scope-subarea 2026-07-18: solo agentes de la subarea del supervisor.
     await _validar_scope_agente(db, user, payload.id_agente)
     id_nov = await db.scalar(text("""
@@ -211,11 +216,11 @@ async def crear_novedad(
         "ia": payload.id_agente, "tipo": payload.tipo,
         "fd": payload.fecha_desde, "fh": payload.fecha_hasta,
         "hi": payload.hora_inicio, "hf": payload.hora_fin,
-        "mot": payload.motivo, "im": payload.id_municipio, "isa": payload.id_subarea,
+        "mot": payload.motivo, "im": id_municipio, "isa": payload.id_subarea,
         "uid": user["id_usuario"],
     })
     await db.commit()
-    out = await _novedad_to_out(db, int(id_nov))
+    out = await _novedad_to_out(db, int(id_nov), id_municipio)
     if out is None:
         raise HTTPException(500, "Novedad creada pero no se pudo releer")
     return out
@@ -227,14 +232,15 @@ async def actualizar_novedad(
     payload: NovedadUpdate,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     _require_admin(user)
     # SELECT ampliado (scope-subarea 2026-07-18): trae tambien id_agente para
     # validar la subarea del agente de la fila actual.
     cur = (await db.execute(text("""
         SELECT fecha_desde, fecha_hasta, hora_inicio, hora_fin, id_agente
-        FROM agente_novedad WHERE id_agente_novedad = :id
-    """), {"id": id_agente_novedad})).mappings().first()
+        FROM agente_novedad WHERE id_agente_novedad = :id AND id_municipio = :m
+    """), {"id": id_agente_novedad, "m": id_municipio})).mappings().first()
     if not cur:
         raise HTTPException(404, "Novedad no encontrada")
     # Scope-subarea 2026-07-18: solo agentes de la subarea del supervisor.
@@ -251,11 +257,11 @@ async def actualizar_novedad(
         if col in data:
             sets.append(f"{col} = :{col}"); params[col] = data[col]
     if not sets:
-        return await _novedad_to_out(db, id_agente_novedad)  # type: ignore
+        return await _novedad_to_out(db, id_agente_novedad, id_municipio)  # type: ignore
     sets += ["fecha_modificacion = NOW()", "id_usuario_modificacion = :uid"]
     await db.execute(text(f"UPDATE agente_novedad SET {', '.join(sets)} WHERE id_agente_novedad = :id"), params)
     await db.commit()
-    return await _novedad_to_out(db, id_agente_novedad)
+    return await _novedad_to_out(db, id_agente_novedad, id_municipio)
 
 
 @router.delete("/novedades/{id_agente_novedad}", status_code=204)
@@ -263,12 +269,13 @@ async def eliminar_novedad(
     id_agente_novedad: int,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     _require_admin(user)
     # SELECT ampliado (scope-subarea 2026-07-18): trae id_agente para validar subarea.
     row = (await db.execute(text(
-        "SELECT id_agente FROM agente_novedad WHERE id_agente_novedad = :id AND activo = TRUE"
-    ), {"id": id_agente_novedad})).first()
+        "SELECT id_agente FROM agente_novedad WHERE id_agente_novedad = :id AND activo = TRUE AND id_municipio = :m"
+    ), {"id": id_agente_novedad, "m": id_municipio})).first()
     if not row:
         raise HTTPException(404, "Novedad no encontrada o ya inactiva")
     # Scope-subarea 2026-07-18: solo agentes de la subarea del supervisor.
@@ -284,24 +291,24 @@ async def eliminar_novedad(
 # =============================================================================
 # Feriados
 # =============================================================================
-async def _feriado_to_out(db: AsyncSession, id_fer: int) -> Optional[dict[str, Any]]:
+async def _feriado_to_out(db: AsyncSession, id_fer: int, id_municipio: int) -> Optional[dict[str, Any]]:
     row = (await db.execute(text("""
         SELECT id_agenda_feriado, fecha, descripcion, ambito, activo
-        FROM agenda_feriado WHERE id_agenda_feriado = :id
-    """), {"id": id_fer})).mappings().first()
+        FROM agenda_feriado WHERE id_agenda_feriado = :id AND id_municipio = :m
+    """), {"id": id_fer, "m": id_municipio})).mappings().first()
     return dict(row) if row else None
 
 
 @router.get("/feriados", response_model=list[FeriadoOut])
 async def listar_feriados(
     anio: Optional[int] = Query(None, description="Filtra por anio de la fecha"),
-    id_municipio: int = 1,
     activo: bool = True,
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    where = ["activo = :ac"]
-    params: dict[str, Any] = {"ac": activo}
+    where = ["activo = :ac", "id_municipio = :m"]
+    params: dict[str, Any] = {"ac": activo, "m": id_municipio}
     if anio is not None:
         where.append("EXTRACT(YEAR FROM fecha) = :y"); params["y"] = anio
     rows = (await db.execute(text(f"""
@@ -318,21 +325,28 @@ async def crear_feriado(
     payload: FeriadoCreate,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     _require_admin(user)
     dup = await db.scalar(text(
-        "SELECT 1 FROM agenda_feriado WHERE fecha = :f AND activo = TRUE LIMIT 1"
-    ), {"f": payload.fecha})
+        "SELECT 1 FROM agenda_feriado WHERE fecha = :f AND activo = TRUE AND id_municipio = :m LIMIT 1"
+    ), {"f": payload.fecha, "m": id_municipio})
     if dup:
         raise HTTPException(409, "Ya existe un feriado activo en esa fecha")
-    id_fer = await db.scalar(text("""
-        INSERT INTO agenda_feriado (fecha, descripcion, ambito, activo, id_municipio, id_usuario_alta)
-        VALUES (:f, :d, :am, TRUE, :im, :uid)
-        RETURNING id_agenda_feriado
-    """), {"f": payload.fecha, "d": payload.descripcion, "am": payload.ambito,
-           "im": payload.id_municipio, "uid": user["id_usuario"]})
-    await db.commit()
-    out = await _feriado_to_out(db, int(id_fer))
+    # El UNIQUE(fecha) global viejo sigue hasta el lote de limpieza (IT-01): una
+    # fecha ya usada (de baja o de otro municipio) es un 409, no un 500.
+    try:
+        id_fer = await db.scalar(text("""
+            INSERT INTO agenda_feriado (fecha, descripcion, ambito, activo, id_municipio, id_usuario_alta)
+            VALUES (:f, :d, :am, TRUE, :im, :uid)
+            RETURNING id_agenda_feriado
+        """), {"f": payload.fecha, "d": payload.descripcion, "am": payload.ambito,
+               "im": id_municipio, "uid": user["id_usuario"]})
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(409, "Ya existe un feriado cargado en esa fecha")
+    out = await _feriado_to_out(db, int(id_fer), id_municipio)
     if out is None:
         raise HTTPException(500, "Feriado creado pero no se pudo releer")
     return out
@@ -344,11 +358,12 @@ async def actualizar_feriado(
     payload: FeriadoUpdate,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     _require_admin(user)
     cur = (await db.execute(text(
-        "SELECT 1 FROM agenda_feriado WHERE id_agenda_feriado = :id"
-    ), {"id": id_agenda_feriado})).first()
+        "SELECT 1 FROM agenda_feriado WHERE id_agenda_feriado = :id AND id_municipio = :m"
+    ), {"id": id_agenda_feriado, "m": id_municipio})).first()
     if not cur:
         raise HTTPException(404, "Feriado no encontrado")
     data = payload.model_dump(exclude_unset=True)
@@ -357,11 +372,11 @@ async def actualizar_feriado(
         if col in data:
             sets.append(f"{col} = :{col}"); params[col] = data[col]
     if not sets:
-        return await _feriado_to_out(db, id_agenda_feriado)  # type: ignore
+        return await _feriado_to_out(db, id_agenda_feriado, id_municipio)  # type: ignore
     sets += ["fecha_modificacion = NOW()", "id_usuario_modificacion = :uid"]
     await db.execute(text(f"UPDATE agenda_feriado SET {', '.join(sets)} WHERE id_agenda_feriado = :id"), params)
     await db.commit()
-    return await _feriado_to_out(db, id_agenda_feriado)
+    return await _feriado_to_out(db, id_agenda_feriado, id_municipio)
 
 
 @router.delete("/feriados/{id_agenda_feriado}", status_code=204)
@@ -369,11 +384,12 @@ async def eliminar_feriado(
     id_agenda_feriado: int,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     _require_admin(user)
     row = (await db.execute(text(
-        "SELECT 1 FROM agenda_feriado WHERE id_agenda_feriado = :id AND activo = TRUE"
-    ), {"id": id_agenda_feriado})).first()
+        "SELECT 1 FROM agenda_feriado WHERE id_agenda_feriado = :id AND activo = TRUE AND id_municipio = :m"
+    ), {"id": id_agenda_feriado, "m": id_municipio})).first()
     if not row:
         raise HTTPException(404, "Feriado no encontrado o ya inactivo")
     await db.execute(text("""

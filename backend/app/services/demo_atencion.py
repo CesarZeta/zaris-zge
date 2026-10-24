@@ -828,7 +828,8 @@ async def generar_periodo_atencion(db: AsyncSession, desde: date, hasta: date,
     # Turnos
     if cat.prestaciones:
         recursos = list({(p.tipo_recurso, p.id_recurso, p.atendido) for p in cat.prestaciones})
-        disp = await disponibilidad_efectiva_batch(db, recursos, dias)
+        id_mun_demo = await db.scalar(text("SELECT id_municipio FROM municipios WHERE direccion_base AND activo"))
+        disp = await disponibilidad_efectiva_batch(db, recursos, dias, id_municipio=id_mun_demo)
         ocupado = await _ocupado(db, cat.prestaciones, desde, hasta_futuro)
         maximos = await _max_numeros(db, desde, hasta_futuro)
         ya_demo = await _recursos_ya_demo(db, cat.uid, desde, hasta_futuro)

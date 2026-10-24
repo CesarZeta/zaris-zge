@@ -29,7 +29,6 @@ function emptyPayload(defaultDate?: string): EventoCreatePayload {
     cantidad_encargados: 1,
     tipo_qr: 'ninguno',
     admite_autoservicio: false,
-    id_municipio: 1,
   }
 }
 
@@ -67,7 +66,6 @@ export function EventoModal({ open, onClose, idEvento, defaultDate, onCreated }:
       cantidad_encargados: detalle.data.cantidad_encargados,
       tipo_qr: detalle.data.tipo_qr,
       admite_autoservicio: detalle.data.admite_autoservicio,
-      id_municipio: detalle.data.id_municipio,
     })
   }, [open, idEvento, detalle.data])
 
