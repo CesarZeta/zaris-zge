@@ -28,7 +28,9 @@ from app.core.auth import (
     crear_token_ciudadano,
 )
 from app.core.config import settings
+from app.core.config_municipio import leer_configs
 from app.core.database import get_db
+from app.core.municipio import municipio_actual, resolver_municipio_de_origen
 from app.services.email import (
     enviar_mail_activacion_ciudadano,
     enviar_mail_recovery_ciudadano,
@@ -94,12 +96,9 @@ def _ciudadano_a_basico(row) -> CiudadanoBasicoOut:
     )
 
 
-async def _municipio_branding(db: AsyncSession) -> tuple[str, str | None]:
-    """Devuelve (municipio_nombre, municipio_logo_url) leyendo configuracion_general."""
-    res = await db.execute(
-        text("SELECT clave, valor FROM configuracion_general WHERE clave IN ('municipio_nombre','municipio_logo_url')")
-    )
-    cfg = {r.clave: r.valor for r in res.fetchall()}
+async def _municipio_branding(db: AsyncSession, id_municipio: int) -> tuple[str, str | None]:
+    """Devuelve (municipio_nombre, municipio_logo_url) del municipio, leyendo configuracion_general."""
+    cfg = await leer_configs(db, ["municipio_nombre", "municipio_logo_url"], id_municipio)
     return (
         cfg.get("municipio_nombre") or "Tu municipio",
         cfg.get("municipio_logo_url") or None,
@@ -113,10 +112,11 @@ async def registrar_ciudadano(
     data: RegistroCiudadanoIn,
     background_tasks: BackgroundTasks,
     current_agente: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Un agente municipal (nivel<=3) da de alta un ciudadano + su credencial.
+    Un agente municipal (nivel<=3) da de alta un ciudadano + su credencial, en SU municipio.
     Manda mail de activacion. Para activarse, el ciudadano clickea el link y elige su password.
     """
     if current_agente["nivel_acceso"] > 3:
@@ -130,8 +130,9 @@ async def registrar_ciudadano(
 
     # DNI no debe estar en ciudadanos activos
     res = await db.execute(
-        text("SELECT id_ciudadano FROM ciudadanos WHERE doc_nro = :dni AND activo = TRUE LIMIT 1"),
-        {"dni": dni},
+        text("SELECT id_ciudadano FROM ciudadanos WHERE doc_nro = :dni AND activo = TRUE "
+             "AND id_municipio = :mun LIMIT 1"),
+        {"dni": dni, "mun": id_municipio},
     )
     if res.fetchone():
         raise HTTPException(
@@ -145,9 +146,10 @@ async def registrar_ciudadano(
             SELECT cc.id_ciudadano FROM ciudadano_credencial cc
               JOIN ciudadanos c ON c.id_ciudadano = cc.id_ciudadano
              WHERE LOWER(c.email) = :email AND cc.activo = TRUE AND c.activo = TRUE
+               AND c.id_municipio = :mun
              LIMIT 1
         """),
-        {"email": email},
+        {"email": email, "mun": id_municipio},
     )
     if res.fetchone():
         raise HTTPException(
@@ -157,7 +159,6 @@ async def registrar_ciudadano(
 
     # Insert ciudadano con defaults pragmaticos (decision sesion 2026-05-19, §32 quirk extendido).
     # El ciudadano puede actualizar fecha_nac, sexo, cuil real desde la PWA mas adelante.
-    id_municipio = current_agente.get("id_municipio") or 1
     cuil_placeholder = _construir_cuil_placeholder(dni)
 
     insert_ciudadano = await db.execute(
@@ -233,7 +234,7 @@ async def registrar_ciudadano(
     await db.commit()
 
     # Encolar mail (corre despues de cerrar la respuesta)
-    municipio_nombre, municipio_logo_url = await _municipio_branding(db)
+    municipio_nombre, municipio_logo_url = await _municipio_branding(db, id_municipio)
     background_tasks.add_task(
         enviar_mail_activacion_ciudadano,
         email,
@@ -262,7 +263,7 @@ async def activar_cuenta(data: ActivarIn, db: AsyncSession = Depends(get_db)):
         text("""
             SELECT cc.id_ciudadano_credencial, cc.id_ciudadano,
                    c.doc_nro, c.nombre, c.apellido, c.email, c.estado_validacion,
-                   c.ficha_completa, c.activo AS c_activo
+                   c.ficha_completa, c.activo AS c_activo, c.id_municipio
               FROM ciudadano_credencial cc
               JOIN ciudadanos c ON c.id_ciudadano = cc.id_ciudadano
              WHERE cc.token_activacion = CAST(:token AS uuid)
@@ -296,7 +297,7 @@ async def activar_cuenta(data: ActivarIn, db: AsyncSession = Depends(get_db)):
     )
     await db.commit()
 
-    token = crear_token_ciudadano(row.id_ciudadano)
+    token = crear_token_ciudadano(row.id_ciudadano, row.id_municipio)
     return ActivarOut(access_token=token, ciudadano=_ciudadano_a_basico(row))
 
 
@@ -315,6 +316,7 @@ async def reenviar_activacion(
     # una IP podría rotar DNIs para spamear mails de activación).
     check_rate_limit(f"vecinoreenvio:{get_real_ip(request)}", max_requests=8, window_seconds=60)
     dni = _validar_dni(data.dni)
+    id_municipio = await resolver_municipio_de_origen(request, db)
 
     res = await db.execute(
         text("""
@@ -324,8 +326,9 @@ async def reenviar_activacion(
               FROM ciudadano_credencial cc
               JOIN ciudadanos c ON c.id_ciudadano = cc.id_ciudadano
              WHERE c.doc_nro = :dni AND cc.activo = TRUE AND c.activo = TRUE
+               AND c.id_municipio = :mun
         """),
-        {"dni": dni},
+        {"dni": dni, "mun": id_municipio},
     )
     row = res.fetchone()
 
@@ -361,7 +364,7 @@ async def reenviar_activacion(
     token = str(res.fetchone().token_activacion)
     await db.commit()
 
-    municipio_nombre, municipio_logo_url = await _municipio_branding(db)
+    municipio_nombre, municipio_logo_url = await _municipio_branding(db, id_municipio)
     background_tasks.add_task(
         enviar_mail_activacion_ciudadano,
         row.email,
@@ -387,6 +390,8 @@ async def login_ciudadano(data: LoginCiudadanoIn, request: Request, db: AsyncSes
     check_rate_limit(f"vecinologin-dni:{(data.dni or '').strip()}", max_requests=6, window_seconds=60)
     dni = _validar_dni(data.dni)
     invalido = HTTPException(status_code=401, detail="Credenciales invalidas")
+    # Una cuenta por municipio: el DNI se busca en el municipio de la dirección de origen.
+    id_municipio = await resolver_municipio_de_origen(request, db)
 
     res = await db.execute(
         text("""
@@ -394,12 +399,12 @@ async def login_ciudadano(data: LoginCiudadanoIn, request: Request, db: AsyncSes
                    cc.password_hash, cc.activado, cc.intentos_fallidos, cc.bloqueada_hasta,
                    cc.activo AS cc_activo,
                    c.doc_nro, c.nombre, c.apellido, c.email, c.estado_validacion,
-                   c.ficha_completa, c.activo AS c_activo
+                   c.ficha_completa, c.activo AS c_activo, c.id_municipio
               FROM ciudadano_credencial cc
               JOIN ciudadanos c ON c.id_ciudadano = cc.id_ciudadano
-             WHERE c.doc_nro = :dni
+             WHERE c.doc_nro = :dni AND c.id_municipio = :mun
         """),
-        {"dni": dni},
+        {"dni": dni, "mun": id_municipio},
     )
     row = res.fetchone()
 
@@ -454,7 +459,7 @@ async def login_ciudadano(data: LoginCiudadanoIn, request: Request, db: AsyncSes
     )
     await db.commit()
 
-    token = crear_token_ciudadano(row.id_ciudadano)
+    token = crear_token_ciudadano(row.id_ciudadano, row.id_municipio)
     return LoginCiudadanoOut(access_token=token, ciudadano=_ciudadano_a_basico(row))
 
 
@@ -500,6 +505,7 @@ async def recuperar_password(
     # Rate limit por IP: frena el mail-bombing de recovery (cooldown es por cuenta).
     check_rate_limit(f"vecinorecovery:{get_real_ip(request)}", max_requests=8, window_seconds=60)
     dni = _validar_dni(data.dni)
+    id_municipio = await resolver_municipio_de_origen(request, db)
 
     res = await db.execute(
         text("""
@@ -508,8 +514,9 @@ async def recuperar_password(
               FROM ciudadano_credencial cc
               JOIN ciudadanos c ON c.id_ciudadano = cc.id_ciudadano
              WHERE c.doc_nro = :dni AND cc.activo = TRUE AND c.activo = TRUE
+               AND c.id_municipio = :mun
         """),
-        {"dni": dni},
+        {"dni": dni, "mun": id_municipio},
     )
     row = res.fetchone()
 
@@ -537,7 +544,7 @@ async def recuperar_password(
     token = str(res.fetchone().token_recovery)
     await db.commit()
 
-    municipio_nombre, municipio_logo_url = await _municipio_branding(db)
+    municipio_nombre, municipio_logo_url = await _municipio_branding(db, id_municipio)
     background_tasks.add_task(
         enviar_mail_recovery_ciudadano,
         row.email,
@@ -562,7 +569,7 @@ async def resetear_password(data: ResetearPasswordIn, db: AsyncSession = Depends
         text("""
             SELECT cc.id_ciudadano_credencial, cc.id_ciudadano,
                    c.doc_nro, c.nombre, c.apellido, c.email, c.estado_validacion,
-                   c.ficha_completa, c.activo AS c_activo
+                   c.ficha_completa, c.activo AS c_activo, c.id_municipio
               FROM ciudadano_credencial cc
               JOIN ciudadanos c ON c.id_ciudadano = cc.id_ciudadano
              WHERE cc.token_recovery = CAST(:token AS uuid)
@@ -593,7 +600,7 @@ async def resetear_password(data: ResetearPasswordIn, db: AsyncSession = Depends
     )
     await db.commit()
 
-    token = crear_token_ciudadano(row.id_ciudadano)
+    token = crear_token_ciudadano(row.id_ciudadano, row.id_municipio)
     return ResetearPasswordOut(access_token=token, ciudadano=_ciudadano_a_basico(row))
 
 
@@ -637,10 +644,10 @@ async def completar_ficha(
     res = await db.execute(
         text("""
             SELECT id_ciudadano FROM ciudadanos
-             WHERE cuil = :cuil AND activo = TRUE AND id_ciudadano <> :id
+             WHERE cuil = :cuil AND activo = TRUE AND id_ciudadano <> :id AND id_municipio = :mun
              LIMIT 1
         """),
-        {"cuil": cuil, "id": id_ciudadano},
+        {"cuil": cuil, "id": id_ciudadano, "mun": current["id_municipio"]},
     )
     if res.fetchone():
         raise HTTPException(status_code=409, detail="Ese CUIL ya está registrado por otra persona.")

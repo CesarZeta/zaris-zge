@@ -14,7 +14,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.config_municipio import leer_config, leer_configs
 from app.core.database import get_db
+from app.core.municipio import resolver_municipio_de_origen
 from app.core import storage
 from app.core.auth import (
     verify_password,
@@ -132,13 +134,15 @@ async def _perfil_agente_del_usuario(db: AsyncSession, id_usuario: int) -> dict:
 
 _USUARIO_LOGIN_SELECT = """
     SELECT id_usuario, nombre, email, nivel_acceso, password_hash, activo,
-           debe_cambiar_password, foto_url
+           debe_cambiar_password, foto_url, id_municipio
       FROM usuarios
 """
 
 
-async def _buscar_usuario_login(db: AsyncSession, ident: str):
-    """Resuelve el usuario interno a partir del identificador del login.
+async def _buscar_usuario_login(db: AsyncSession, ident: str, id_municipio: int):
+    """Resuelve el usuario interno a partir del identificador del login, DENTRO del municipio
+    de la dirección desde la que se entra (IT-01: una cuenta por municipio; el mismo email o DNI
+    puede existir en dos municipios).
 
     - Con '@' → por email exacto (comportamiento histórico, memoria
       reference_login_email_prod_no_es_patron_doc).
@@ -151,27 +155,29 @@ async def _buscar_usuario_login(db: AsyncSession, ident: str):
     if not ident:
         return None
     if "@" in ident:
-        res = await db.execute(text(_USUARIO_LOGIN_SELECT + " WHERE email = :email"), {"email": ident})
+        res = await db.execute(text(_USUARIO_LOGIN_SELECT + " WHERE email = :email AND id_municipio = :mun"),
+                               {"email": ident, "mun": id_municipio})
         return res.fetchone()
 
     dni = _solo_digitos(ident)
     if not (7 <= len(dni) <= 8):
         return None
     por_ciudadano = (await db.execute(text(_USUARIO_LOGIN_SELECT + """
-         WHERE activo = TRUE
+         WHERE activo = TRUE AND id_municipio = :mun
            AND id_ciudadano IN (SELECT c.id_ciudadano FROM ciudadanos c
-                                 WHERE c.doc_nro = :dni AND c.activo = TRUE)
-         LIMIT 2"""), {"dni": dni})).fetchall()
+                                 WHERE c.doc_nro = :dni AND c.activo = TRUE AND c.id_municipio = :mun)
+         LIMIT 2"""), {"dni": dni, "mun": id_municipio})).fetchall()
     if len(por_ciudadano) == 1:
         return por_ciudadano[0]
     if len(por_ciudadano) > 1:
         logger.warning("login por DNI ambiguo (ciudadanos): dni=%s", dni)
         return None
     por_agente = (await db.execute(text(_USUARIO_LOGIN_SELECT + """
-         WHERE activo = TRUE
+         WHERE activo = TRUE AND id_municipio = :mun
            AND id_usuario IN (SELECT a.id_usuario FROM agentes a
-                               WHERE a.dni = :dni AND a.activo = TRUE AND a.id_usuario IS NOT NULL)
-         LIMIT 2"""), {"dni": dni})).fetchall()
+                               WHERE a.dni = :dni AND a.activo = TRUE AND a.id_usuario IS NOT NULL
+                                 AND a.id_municipio = :mun)
+         LIMIT 2"""), {"dni": dni, "mun": id_municipio})).fetchall()
     if len(por_agente) == 1:
         return por_agente[0]
     if len(por_agente) > 1:
@@ -195,7 +201,8 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
     if _clave_rl:
         check_rate_limit(f"loginint-mail:{_clave_rl}", max_requests=5, window_seconds=60)
 
-    user = await _buscar_usuario_login(db, ident)
+    id_municipio = await resolver_municipio_de_origen(request, db)
+    user = await _buscar_usuario_login(db, ident, id_municipio)
 
     if not user or not user.activo or not verify_password(body.password, user.password_hash):
         raise HTTPException(
@@ -215,9 +222,9 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
             {"id": user.id_usuario},
         )
         await db.execute(
-            text("""INSERT INTO usuario_login_log (id_usuario, ip, user_agent)
-                    VALUES (:id, :ip, :ua)"""),
-            {"id": user.id_usuario, "ip": ip[:64], "ua": ua},
+            text("""INSERT INTO usuario_login_log (id_usuario, ip, user_agent, id_municipio)
+                    VALUES (:id, :ip, :ua, :mun)"""),
+            {"id": user.id_usuario, "ip": ip[:64], "ua": ua, "mun": user.id_municipio},
         )
         await db.commit()
     except Exception as exc:  # noqa: BLE001
@@ -230,10 +237,7 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
     debe_cambiar = bool(user.debe_cambiar_password)
     if not debe_cambiar:
         try:
-            _vig = await db.scalar(text(
-                "SELECT valor FROM configuracion_general "
-                "WHERE clave = 'password_renovacion_dias' AND activo = TRUE LIMIT 1"
-            ))
+            _vig = await leer_config(db, "password_renovacion_dias", user.id_municipio)
             _dias = int(str(_vig).strip()) if _vig is not None else 0
         except (TypeError, ValueError):
             _dias = 0
@@ -253,7 +257,7 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
                 logger.info("RENOVACION PASSWORD forzada por vigencia | id=%s | dias=%s",
                             user.id_usuario, _dias)
 
-    token = create_access_token({"sub": str(user.id_usuario)})
+    token = create_access_token({"sub": str(user.id_usuario), "mun": user.id_municipio})
     modulos = await modulos_permitidos(db, user.id_usuario, user.nivel_acceso)
     perfil = await _perfil_agente_del_usuario(db, user.id_usuario)
     user_data = {
@@ -261,6 +265,7 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
         "nombre": user.nombre,
         "email": user.email,
         "nivel_acceso": user.nivel_acceso,
+        "id_municipio": user.id_municipio,
         "modulos_permitidos": modulos,
         # Cargo del agente vinculado (None si externo/sin cargo) — lo muestra
         # el topbar del shell debajo de "Nombre · Rol".
@@ -282,7 +287,7 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
     return LoginResponse(access_token=token, user=user_data)
 
 
-@router.get("/me")
+@router.get("/me", responses={401: {"description": "Sesión sin municipio: volver a ingresar"}})
 async def me(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -359,13 +364,9 @@ def _solo_digitos(s: str) -> str:
     return re.sub(r"\D", "", s or "")
 
 
-async def _branding_municipio(db: AsyncSession) -> tuple[str, str | None]:
-    """(municipio_nombre, municipio_logo_url) desde configuracion_general."""
-    res = await db.execute(
-        text("SELECT clave, valor FROM configuracion_general "
-             "WHERE clave IN ('municipio_nombre','municipio_logo_url')")
-    )
-    cfg = {r.clave: r.valor for r in res.fetchall()}
+async def _branding_municipio(db: AsyncSession, id_municipio: int) -> tuple[str, str | None]:
+    """(municipio_nombre, municipio_logo_url) del municipio, desde configuracion_general."""
+    cfg = await leer_configs(db, ["municipio_nombre", "municipio_logo_url"], id_municipio)
     return (cfg.get("municipio_nombre") or "Tu municipio", cfg.get("municipio_logo_url") or None)
 
 
@@ -378,6 +379,7 @@ def _login_url() -> str:
 async def recuperar_password(
     body: RecuperarPasswordRequest,
     background_tasks: BackgroundTasks,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Olvidé mi contraseña (interno): manda link de reseteo al correo del usuario.
@@ -387,12 +389,13 @@ async def recuperar_password(
         # No revelamos validación: respondemos OK igual.
         return GenericoOkResponse()
 
+    id_municipio = await resolver_municipio_de_origen(request, db)
     res = await db.execute(
         text("""SELECT id_usuario, nombre, email, fecha_ultimo_email_recovery
                 FROM usuarios
-                WHERE LOWER(email) = :email AND activo = TRUE
+                WHERE LOWER(email) = :email AND activo = TRUE AND id_municipio = :mun
                 LIMIT 1"""),
-        {"email": email},
+        {"email": email, "mun": id_municipio},
     )
     row = res.fetchone()
     if not row:
@@ -416,7 +419,7 @@ async def recuperar_password(
     token = str(res.fetchone().token_recovery)
     await db.commit()
 
-    municipio_nombre, municipio_logo_url = await _branding_municipio(db)
+    municipio_nombre, municipio_logo_url = await _branding_municipio(db, id_municipio)
     background_tasks.add_task(
         enviar_mail_recovery_usuario_interno,
         row.email, row.nombre, token, _login_url(),
@@ -429,6 +432,7 @@ async def recuperar_password(
 async def recuperar_usuario(
     body: RecuperarUsuarioRequest,
     background_tasks: BackgroundTasks,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Olvidé mi usuario (interno): el empleado ingresa su DNI. Se resuelve el agente
@@ -437,6 +441,7 @@ async def recuperar_usuario(
     dni = _solo_digitos(body.documento)
     if not (7 <= len(dni) <= 8):
         return GenericoOkResponse()  # documento inválido → no filtramos nada
+    id_municipio = await resolver_municipio_de_origen(request, db)
 
     # agentes.dni → su usuario vinculado activo → email del usuario (fallback al del agente)
     res = await db.execute(
@@ -444,15 +449,15 @@ async def recuperar_usuario(
                        COALESCE(NULLIF(u.email, ''), a.email) AS email_destino
                 FROM agentes a
                 JOIN usuarios u ON u.id_usuario = a.id_usuario
-                WHERE a.dni = :dni AND a.activo = TRUE AND u.activo = TRUE
+                WHERE a.dni = :dni AND a.activo = TRUE AND u.activo = TRUE AND a.id_municipio = :mun
                 LIMIT 1"""),
-        {"dni": dni},
+        {"dni": dni, "mun": id_municipio},
     )
     row = res.fetchone()
     if not row or not row.email_destino:
         return GenericoOkResponse()  # anti-enumeración / sin email donde mandar
 
-    municipio_nombre, municipio_logo_url = await _branding_municipio(db)
+    municipio_nombre, municipio_logo_url = await _branding_municipio(db, id_municipio)
     background_tasks.add_task(
         enviar_mail_recordatorio_usuario_interno,
         row.email_destino, row.nombre, _login_url(),
