@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-10-23, 3ª sesión (Cesar). **Diseño completo de IT-01 (multi-municipio + super administrador) en [`PLAN_MULTI_MUNICIPIO.md`](PLAN_MULTI_MUNICIPIO.md)**, con todas las decisiones de César y sin preguntas abiertas; falta su aprobación para arrancar F1+F2 en una sesión dedicada. Anexos: [`docs/guia_arranque_tablas.md`](docs/guia_arranque_tablas.md) (qué cargar primero por circuito y qué se rompe con tablas vacías) y [`docs/investigacion_documentos_identidad.md`](docs/investigacion_documentos_identidad.md) (documentos de 18 países de Hispanoamérica). Borradores de Trámites publicados y lo pendiente de la 1ª y 2ª sesión verificado en prod con clics. `www.zaris.com.ar` arreglado. Smoke del ciclo de vida de trámites aislado (24/24). Mig 94 aplicada en local (faltaba `municipios.pais`).
+**Última actualización:** 2026-10-24 (Cesar). **Implementación de IT-01 F1+F2 (multi-municipio) en la rama `it01-multi-municipio`, sin mergear y sin tocar prod:** César aprobó el plan [`PLAN_MULTI_MUNICIPIO_F1_F2.md`](PLAN_MULTI_MUNICIPIO_F1_F2.md) y se ejecutó en local hasta la Tarea 18. Queda a medias la Tarea 19 (mig 126 escrita sin aplicar; `CLAUDE.md`, historial y skills ya actualizados en la rama). La Tarea 20, el corte en prod, se hace con César. `main` no cambió de código.
 
 ---
 
@@ -18,18 +18,29 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **Aprobar `PLAN_MULTI_MUNICIPIO.md` (IT-01):** decisiones de César del 2026-10-23 incorporadas (una base para todos con `id_municipio`; super administrador en el mismo shell; una cuenta por municipio; `<municipio>.zge.zaris.com.ar` y las direcciones sin prefijo para San Andrés, demo ficticio; también otros países; RLS antes de un segundo municipio real; vaciado de datos solo por el super administrador y solo antes de producción; tope de cuentas internas; municipio de prueba con guía privada fuera del repo). Sin preguntas abiertas. Recomendación: aprobarlo y dedicar la próxima sesión técnica a F1+F2 (un solo corte con ventana anunciada). Los criterios de Claude están marcados en el plan para revisarlos al leerlo.
-2. **Asignación automática — revisar ~2026-10-29:** carga de los agentes de las 18 gestiones que asignan solas (en varias hay UN solo agente de nivel Gestión que recibe todo; en Arbolado es el funcionario de prueba, que recibe todos los reclamos de esa gestión). Recomendación: no esperar al 29 para Arbolado — sumar agentes o marcarla «Asigna a mano».
-3. **Commits viejos de las dos purgas:** César mandó el pedido a GitHub Support el 2026-10-22; sin respuesta al 2026-10-23 → volver a preguntar el lunes 2026-10-26 (detalle en la memoria privada de Cesar).
-4. **Base de conocimiento de ayudas:** la próxima sesión completa es para eso (César, 2026-10-23). Mientras tanto no se tocan manuales.
-5. Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
-6. **Primer cierre real de un trámite de vecino en prod:** confirma el aviso «terminó: APROBADO/RECHAZADO» y la encuesta (probados solo en local). Agendado por César: en los próximos smokes con cuentas reales de reclamos se cierran también trámites; César pasa algunos trámites para eso.
-7. **Clave sin uso en Config → Sistema (2026-10-23):** `ot_pendiente_dias_vencimiento` se muestra y se edita, pero ningún código del backend la lee. Recomendación: sacarla de la pantalla (o definir qué debería hacer).
+1. **IT-01: terminar la Tarea 19 y agendar el corte en prod (Tarea 20).** Rama `it01-multi-municipio`; detalle en la memoria privada de Cesar y en el registro local de la ejecución. Recomendación:
+   - Próxima sesión técnica: aplicar la 126 en local, barrido de aislamiento completo, todos los smokes, recorrido con clics y commit.
+   - Después, una ventana corta con César para el corte: migs 125-125d antes del deploy y 126 después. Todos vuelven a ingresar porque los tokens viejos no tienen `mun`; avisar a Roy.
+2. **Cuatro decisiones de F2 para revisar.** Recomendación: aceptarlas; se revisan en F3, en F4 o en el lote de limpieza.
+   - (a) Las tablas globales de Maestros solo las edita el administrador del municipio base hasta F3. A otro administrador, Maestros → Municipios le da 403.
+   - (b) Un municipio sin claves de configuración propias recibe 409 al guardar su identidad (el UNIQUE global de la clave sigue hasta el lote de limpieza).
+   - (c) En el alta pública, un DNI, CUIL o CUIT que ya existe en otro municipio da 409: todavía no hay fichas de una misma persona en dos municipios.
+   - (d) `/demo/poblar` con JWT solo lo dispara el administrador del municipio demo.
+3. **Asignación automática — revisar ~2026-10-29:** carga de los agentes de las 18 gestiones que asignan solas (en varias hay UN solo agente de nivel Gestión que recibe todo; en Arbolado es el funcionario de prueba, que recibe todos los reclamos de esa gestión). Recomendación: no esperar al 29 para Arbolado — sumar agentes o marcarla «Asigna a mano».
+4. **Commits viejos de las dos purgas:** César mandó el pedido a GitHub Support el 2026-10-22; sin respuesta al 2026-10-23 → volver a preguntar el lunes 2026-10-26 (detalle en la memoria privada de Cesar).
+5. **Base de conocimiento de ayudas:** la próxima sesión completa es para eso (César, 2026-10-23). Mientras tanto no se tocan manuales.
+6. Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
+7. **Primer cierre real de un trámite de vecino en prod:** confirma el aviso «terminó: APROBADO/RECHAZADO» y la encuesta (probados solo en local). Agendado por César: en los próximos smokes con cuentas reales de reclamos se cierran también trámites; César pasa algunos trámites para eso.
+8. **Clave sin uso en Config → Sistema (2026-10-23):** `ot_pendiente_dias_vencimiento` se muestra y se edita, pero ningún código del backend la lee. Recomendación: sacarla de la pantalla (o definir qué debería hacer).
 
 ---
 
 ## 🔵 En curso
 
+- **IT-01 F1+F2 (multi-municipio), rama `it01-multi-municipio`, sin mergear:**
+  - Tareas 1-18 de [`PLAN_MULTI_MUNICIPIO_F1_F2.md`](PLAN_MULTI_MUNICIPIO_F1_F2.md) hechas en local: migs 125-125d en `zaris_dev`, todos los routers y procesos por municipio, barrido de aislamiento contra un municipio de prueba en 0 fallas por tarea, smokes en verde.
+  - Tarea 19 a medias (mig 126 escrita sin aplicar). Tarea 20 = corte en prod con César.
+  - El registro de la ejecución (decisiones por tarea) está en el worktree de Cesar, fuera del repo.
 - **PWA `zaris-vecinos` — modo escritorio del portal: diseño aprobado el 2026-10-12 (3ª), falta plan + código.** Solo toca el repo de la PWA; spec y pasos en su `ESTADO.md` → En curso.
 - **PROPUESTA sin aprobar — app de agentes: reclamos de oficio + «Control de entradas» (QR).** Pedido de César al cierre del 2026-10-12; las 4 decisiones de alcance ya están tomadas (de oficio · niveles 1-4 · acreditar niveles 1-4 · nombre «Control de entradas») y el diseño está escrito en [`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md). **Próxima sesión: César confirma o corrige el diseño y recién ahí F1 (backend sin migración + smoke).** No hay código.
 - **App de agentes** publicada en `https://agentes.zaris.com.ar` (color del municipio, instalación desde «Mi perfil»); el vecino instala la suya desde su portal. Detalle en `zaris-agentes/ESTADO.md`.
@@ -47,7 +58,7 @@
 - 🟠 **Atención — residuos del plan (§4):** "ocupación vs disponibilidad efectiva" en el BI de atención · etapa 2 de HC (vista admin de `historia_clinica_acceso`, break-the-glass, ficha ampliada) · walk-in de Guardia sin evento de Emergencias.
 - 🟠 **Trámites — residuo:** los 4 tipos sin circuito (exención de tasas, permiso de espacio público, arbolado urbano, inscripción profesional) tienen la gestión asignada por criterio de Claude, cambiable desde el builder.
 - 🟠 **Áreas fijas por regla de negocio** (planteado 2026-08-30): Seguridad, Salud, Servicios Públicos… precargadas y NO removibles (renombrables sí) porque atienden módulos. Sin código todavía: diseño dentro de [`PLAN_MULTI_MUNICIPIO.md`](PLAN_MULTI_MUNICIPIO.md) (se crean en el alta de cada municipio con marca de sistema); la lista son las 6 áreas activas de San Andrés (César, 2026-10-23).
-- 🟠 **Config/UX — reunión 2026-07-06** (tarea "Informe Bug" de la lista CONFIGURACION y UX de ClickUp): **IT-01** multi-tenant + super administrador + selector de municipio — **diseño completo en [`PLAN_MULTI_MUNICIPIO.md`](PLAN_MULTI_MUNICIPIO.md) (2026-10-23), pendiente de aprobación; fases F1-F7** · **IT-08** botón SOS de la PWA · **IT-07** accesibilidad móvil (PWA) · **IT-09** módulo de Obras (backlog sin alcance).
+- 🟠 **Config/UX — reunión 2026-07-06** (tarea "Informe Bug" de la lista CONFIGURACION y UX de ClickUp): **IT-01** multi-tenant + super administrador + selector de municipio — **diseño en [`PLAN_MULTI_MUNICIPIO.md`](PLAN_MULTI_MUNICIPIO.md), aprobado; F1+F2 en curso en la rama `it01-multi-municipio` (ver En curso); fases F3-F7 después del corte** · **IT-08** botón SOS de la PWA · **IT-07** accesibilidad móvil (PWA) · **IT-09** módulo de Obras (backlog sin alcance).
 - 🟢 **Baja de cuenta del vecino:** sin endpoint ni definición; obligatoria si la app va a las stores.
 
 **Infra / operativo**
@@ -70,9 +81,10 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
-- **2026-10-23 (3ª) — Diseño de IT-01** (`PLAN_MULTI_MUNICIPIO.md`, `e2f220b` → `f8ae533`) con guía de arranque con tablas vacías y la investigación de documentos de identidad como anexos. **Borradores de Trámites publicados** (Aviso de Obra v3, Recurso administrativo v2, con la sesión de César) y verificados en prod con clics el aviso «sin resultado», los botones coloreados y lo de la 1ª sesión (SLA número + unidad con guardado en horas, «Asigna a mano», interruptor de Sistema, buscador de un campo). `www.zaris.com.ar` redirige al sitio con certificado válido (agregado desde el panel de Vercel). Smoke `smoke_tramites_ciclo_vida.py` aislado del resto de la base (`e49b41e`, 24/24). Mig 94 aplicada en local.
+- **2026-10-24 — IT-01 F1+F2 en la rama `it01-multi-municipio` (Tareas 1-18, local).** Cubre Emergencias, Agenda, Turnos, Trámites, Encuestas, portal del vecino, Datos, Configuración, Maestros, los procesos de cron y el generador demo, todo por municipio. `smoke_demo_sla` volvió a verde (45/45). Sin cambios en `main` ni en prod.
+- **2026-10-23 (3ª) — Diseño de IT-01** ([`PLAN_MULTI_MUNICIPIO.md`](PLAN_MULTI_MUNICIPIO.md), con la guía de arranque y la investigación de documentos como anexos); borradores de Trámites publicados y verificados en prod; `www.zaris.com.ar` arreglado.
 
-- **2026-10-23 (2ª) — Trámites: el cierre sella el resultado (migs 123 + 124, `f9eef11` · `0faebe7` · `a49ef4b` · `03e39c7`).** Sin doble aviso al archivar desde un estado final; `GET /tramites/tipos/{id}` con el `tipo_accion` real; aviso «sin resultado» en el editor; botones del agente coloreados; borradores de Aviso de Obra v3 y Recurso v2 en prod (sin publicar). Smoke `smoke_tramites_resultado_final.py` 16/16. Mig 122 aplicada en prod por César.
+- **2026-10-23 (2ª) — Trámites: el cierre sella el resultado (migs 123 + 124)** y los botones del agente salen coloreados por acción. Detalle en `HISTORIAL_MIGRACIONES.md` y en la skill `modulo-tramites`.
 - **2026-10-23 (1ª) — SLA en minutos (mig 120), asignación automática general (mig 121), buscador de un solo campo, mig 122; revisión de PHP2Shell (ZARIS no afectado).** Detalle en `HISTORIAL_MIGRACIONES.md`. Ciudadano 1618 = prueba de Roy.
 
 > Detalle por migración en `HISTORIAL_MIGRACIONES.md`; reglas de cada módulo en su skill; lo anterior a septiembre (julio-agosto 2026: auditoría de seguridad 48/48, migs 95-102, BI Operativo/Ejecutivo, PWA de Roy a prod, Usuarios en React) en `HISTORIAL_MIGRACIONES.md` y la memoria privada de César.
