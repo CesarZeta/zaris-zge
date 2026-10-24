@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
+from app.core.municipio import municipio_actual
 from app.services.geo_limite import leer_limite
 
 router = APIRouter(prefix="/api/v1/dashboard", tags=["dashboard"])
@@ -49,6 +50,7 @@ _ENTRADAS_VIGENTES_WHERE = """
 async def resumen_dashboard(
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ) -> dict[str, Any]:
     # --- Tarjetas (1 query, 6 subselects) -----------------------------------
     tarjetas = (await db.execute(text(f"""
@@ -154,7 +156,7 @@ async def resumen_dashboard(
     """))).mappings().all()
 
     # --- Contorno del municipio (mig 111): capa sombreada del mapa -----------
-    limite = await leer_limite(db)
+    limite = await leer_limite(db, id_municipio)
 
     return {
         "tarjetas": dict(tarjetas) if tarjetas else {},

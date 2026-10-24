@@ -231,9 +231,9 @@ async def geo_buscar_publico(
     Reusa la lógica de filtrado de POIs de geo.py (solo_direcciones=True).
     Valida el slug + rate-limit por IP (Nominatim ya tiene su rate-limit global).
     """
-    await _resolver_municipio(db, m)
+    muni = await _resolver_municipio(db, m)
     check_rate_limit(get_real_ip(request), max_requests=20, window_seconds=60)
-    return await geocodificar_direccion(q, limit, solo_direcciones=True)
+    return await geocodificar_direccion(q, limit, solo_direcciones=True, id_municipio=muni["id_municipio"])
 
 
 @router.post("/cuenta", response_model=AltaCuentaOut, status_code=201)

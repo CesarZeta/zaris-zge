@@ -92,7 +92,7 @@ async def geo_buscar_vecino(
     geocodifica su propia dirección; scope 'publico' (no 'agente'). Rate-limit por IP
     además del rate-limit global de Nominatim."""
     check_rate_limit(f"reclpub:{get_real_ip(request)}", max_requests=20, window_seconds=60)
-    return await geocodificar_direccion(q, limit, solo_direcciones=True)
+    return await geocodificar_direccion(q, limit, solo_direcciones=True, id_municipio=current["id_municipio"])
 
 
 # ─── GET /publico/reclamos/geo/reverse ───────────────────────────────────────

@@ -322,7 +322,11 @@ async def _cargar_catalogos(db: AsyncSession) -> _Catalogos:
     for fila in r.fetchall():
         # Por (nombre, partido): "Villa Adelina" existe en VL y en San Isidro.
         cat.localidades.setdefault((_norm(fila.nombre), _norm(fila.partido)), fila.id_localidad)
-    cat.limite = await leer_limite(db)
+    # El generador demo trabaja sobre el municipio de las direcciones sin prefijo (IT-01;
+    # F4 lo cambia por municipios.estado = 'demo').
+    id_mun_demo = await db.scalar(text(
+        "SELECT id_municipio FROM municipios WHERE direccion_base AND activo"))
+    cat.limite = await leer_limite(db, id_mun_demo)
 
     r = await db.execute(text(
         "SELECT id_encuesta_plantilla FROM encuesta_plantilla "

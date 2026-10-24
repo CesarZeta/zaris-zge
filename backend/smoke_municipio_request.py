@@ -165,6 +165,66 @@ async def main() -> int:
     except ImportError as exc:
         check("app.core.config_municipio existe", False, str(exc))
 
+    # 8. bbox del geocoding por municipio (Foco 4): la cache no puede mezclar municipios.
+    print("\n8. bbox por municipio")
+    from app.api.routes import geo
+    async with AsyncSessionLocal() as db:
+        original = (await db.execute(text(
+            "SELECT valor FROM configuracion_general WHERE clave = 'geo_bbox_centro_lat' AND id_municipio = 1"))).scalar()
+    if original is None:
+        check("el municipio 1 tiene geo_bbox_centro_lat", False)
+    else:
+        try:
+            async with AsyncSessionLocal() as db:
+                await db.execute(text("UPDATE configuracion_general SET valor = '-30.0' "
+                                      "WHERE clave = 'geo_bbox_centro_lat' AND id_municipio = 1"))
+                await db.commit()
+            geo._bbox_cache.clear()
+            lat_1, _, _ = await geo._bbox_municipio(1)
+            lat_b, _, _ = await geo._bbox_municipio(B)
+            check("bbox del municipio 1 = el configurado", lat_1 == -30.0, f"lat={lat_1}")
+            check("bbox de B (sin claves) = el de respaldo, no el del municipio 1",
+                  lat_b == geo.GEO_BBOX_CENTRO_LAT, f"lat={lat_b}")
+        finally:
+            async with AsyncSessionLocal() as db:
+                await db.execute(text("UPDATE configuracion_general SET valor = :v "
+                                      "WHERE clave = 'geo_bbox_centro_lat' AND id_municipio = 1"), {"v": original})
+                await db.commit()
+            geo._bbox_cache.clear()
+
+    # 9. búsqueda de reclamos por número (Foco 3): formato viejo y nuevo, nunca el de B.
+    print("\n9. búsqueda por número")
+    async with AsyncSessionLocal() as db:
+        viejo = (await db.execute(text(
+            "SELECT nro_reclamo FROM reclamos WHERE id_municipio = 1 AND nro_reclamo ~ '^REC-[0-9]{4}-' "
+            "AND activo ORDER BY id_reclamo DESC LIMIT 1"))).scalar()
+        nuevo = (await db.execute(text(
+            "SELECT nro_reclamo FROM reclamos WHERE id_municipio = 1 AND nro_reclamo ~ '^REC-[A-Z]{2,3}-' "
+            "AND activo ORDER BY id_reclamo DESC LIMIT 1"))).scalar()
+        de_b = (await db.execute(text(
+            "SELECT nro_reclamo FROM reclamos WHERE id_municipio = :b AND activo LIMIT 1"), {"b": B})).scalar()
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.post("/api/v1/auth/login", json={"identificador": "doble@aislamiento.test", "password": CLAVE})
+        h1 = {"Authorization": f"Bearer {r.json()['access_token']}"}
+        r = await c.post("/api/v1/auth/login", json={"identificador": "admin.b@aislamiento.test", "password": CLAVE},
+                         headers={"Origin": ORIGEN_B_ZGE})
+        hb = {"Authorization": f"Bearer {r.json()['access_token']}", "Origin": ORIGEN_B_ZGE}
+        # doble@ del municipio 1 es nivel 5: lee el listado sin scope de subárea.
+        for etiqueta, nro in (("formato viejo", viejo), ("formato nuevo", nuevo)):
+            if not nro:
+                check(f"hay un reclamo del municipio 1 con {etiqueta}", False)
+                continue
+            r = await c.get("/api/v1/reclamos", params={"texto": nro}, headers=h1)
+            check(f"buscar {nro} ({etiqueta}) lo encuentra", r.status_code == 200
+                  and any(x["nro_reclamo"] == nro for x in r.json()), f"{r.status_code}")
+        if de_b:
+            r = await c.get("/api/v1/reclamos", params={"texto": de_b}, headers=h1)
+            check(f"buscar {de_b} (de B) desde el municipio 1 no lo encuentra",
+                  r.status_code == 200 and not r.json(), f"{r.status_code} {r.text[:100]}")
+            r = await c.get("/api/v1/reclamos", params={"texto": de_b}, headers=hb)
+            check(f"buscar {de_b} desde B lo encuentra",
+                  r.status_code == 200 and any(x["nro_reclamo"] == de_b for x in r.json()), f"{r.status_code}")
+
     fallas = [r for r in RES if not r[1]]
     print(f"\nRESULTADO: {len(RES) - len(fallas)} OK / {len(fallas)} FAIL")
     return 1 if fallas else 0

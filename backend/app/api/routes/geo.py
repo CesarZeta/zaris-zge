@@ -20,6 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db, AsyncSessionLocal
 from app.core.auth import get_current_user
+from app.core.config_municipio import leer_configs
+from app.core.municipio import municipio_actual
 
 router = APIRouter(prefix="/api/v1/geo", tags=["Geo"])
 logger = logging.getLogger("zaris.geo")
@@ -49,27 +51,25 @@ GEO_BBOX_CENTRO_LON = -58.4779
 GEO_BBOX_DELTA_GRADOS = 0.27     # ~28 km en lat; suficiente para AMBA norte
 
 _BBOX_TTL_SEG = 300.0
-_bbox_cache: dict = {"ts": 0.0, "lat": GEO_BBOX_CENTRO_LAT,
-                     "lon": GEO_BBOX_CENTRO_LON, "delta": GEO_BBOX_DELTA_GRADOS}
+# Cache por municipio (IT-01, R9): con la clave sin municipio, B usaría el bbox de A.
+_bbox_cache: dict[int, dict] = {}
 
 
-async def _bbox_municipio() -> tuple[float, float, float]:
-    """(lat, lon, delta) del bbox, desde configuracion_general con cache.
+async def _bbox_municipio(id_municipio: int) -> tuple[float, float, float]:
+    """(lat, lon, delta) del bbox del municipio, desde configuracion_general con cache.
 
     Cualquier error (DB caída, clave ausente, valor no numérico) cae a las
     constantes de arriba — el geocoding nunca se rompe por configuración.
     """
     now = time.monotonic()
-    if now - _bbox_cache["ts"] < _BBOX_TTL_SEG:
-        return _bbox_cache["lat"], _bbox_cache["lon"], _bbox_cache["delta"]
+    cache = _bbox_cache.get(id_municipio)
+    if cache and now - cache["ts"] < _BBOX_TTL_SEG:
+        return cache["lat"], cache["lon"], cache["delta"]
     lat, lon, delta = GEO_BBOX_CENTRO_LAT, GEO_BBOX_CENTRO_LON, GEO_BBOX_DELTA_GRADOS
     try:
         async with AsyncSessionLocal() as db:
-            r = await db.execute(text(
-                "SELECT clave, valor FROM configuracion_general "
-                "WHERE clave IN ('geo_bbox_centro_lat','geo_bbox_centro_lon','geo_bbox_delta_grados')"
-            ))
-            vals = {row.clave: row.valor for row in r.fetchall()}
+            vals = await leer_configs(
+                db, ["geo_bbox_centro_lat", "geo_bbox_centro_lon", "geo_bbox_delta_grados"], id_municipio)
         lat = float(vals["geo_bbox_centro_lat"])
         lon = float(vals["geo_bbox_centro_lon"])
         delta = float(vals["geo_bbox_delta_grados"])
@@ -78,7 +78,7 @@ async def _bbox_municipio() -> tuple[float, float, float]:
     except Exception as e:  # noqa: BLE001 — fallback deliberado a constantes
         logger.warning("geo_bbox config no disponible (%s) — uso fallback Vicente López", e)
         lat, lon, delta = GEO_BBOX_CENTRO_LAT, GEO_BBOX_CENTRO_LON, GEO_BBOX_DELTA_GRADOS
-    _bbox_cache.update(ts=now, lat=lat, lon=lon, delta=delta)
+    _bbox_cache[id_municipio] = {"ts": now, "lat": lat, "lon": lon, "delta": delta}
     return lat, lon, delta
 
 
@@ -174,7 +174,8 @@ async def listar_localidades(
 
 # ── Proxy Nominatim ──────────────────────────────────────────────────────────
 
-async def geocodificar_direccion(q: str, limit: int = 5, solo_direcciones: bool = False) -> list:
+async def geocodificar_direccion(q: str, limit: int = 5, solo_direcciones: bool = False, *,
+                                 id_municipio: int) -> list:
     """Geocoding directo (texto → candidatos con lat/lon) SIN dependencia de auth.
 
     Extraído del handler `/buscar` para poder reutilizarlo desde un endpoint público
@@ -186,7 +187,7 @@ async def geocodificar_direccion(q: str, limit: int = 5, solo_direcciones: bool 
     # válidas. No usamos `layer=address` porque excluye `highway/secondary` que
     # sí son direcciones válidas (calle sin número exacto).
     upstream_limit = 40 if solo_direcciones else limit
-    bbox_lat, bbox_lon, bbox_delta = await _bbox_municipio()
+    bbox_lat, bbox_lon, bbox_delta = await _bbox_municipio(id_municipio)
     params: dict = {
         "q": q,
         "format": "json",
@@ -305,13 +306,14 @@ async def buscar_direccion(
         description="Si True, excluye POIs (comercios, oficinas, etc.) y devuelve solo calles/edificios.",
     ),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Geocoding directo: texto → candidatos con lat/lon. Requiere JWT (backoffice).
 
     Para la versión pública (alta de vecinos), ver `/api/v1/publico/alta/geo/buscar`,
     que reutiliza la misma `geocodificar_direccion`.
     """
-    return await geocodificar_direccion(q, limit, solo_direcciones)
+    return await geocodificar_direccion(q, limit, solo_direcciones, id_municipio=id_municipio)
 
 
 async def reverse_geocodificar(lat: float, lon: float) -> dict:
