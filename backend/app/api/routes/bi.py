@@ -16,7 +16,8 @@ Convenciones:
   - El AREA se deriva SIEMPRE via subarea (mig 27 dropeo tipo_reclamo.id_area;
     reclamos.id_area legacy puede ser NULL). JOIN: reclamos -> tipo_reclamo ->
     subarea -> area. Ver §27 y memoria feedback_area_via_subarea_no_via_r_id_area.
-  - Mono-municipio (§38): filtro por query param id_municipio (default 1).
+  - Municipio (IT-01): el del usuario (municipio_actual, claim del JWT); se filtra la
+    tabla raíz (reclamos).
   - Estados (CHECK ck_reclamo_estado): Sin asignar / En gestion / En espera /
     Resuelto / Cancelado, mas los de auditoria POSTERIOR al cierre (mig 112):
     En auditoria (resuelto, pendiente del auditor) / Auditado (auditoria cerrada).
@@ -36,6 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
+from app.core.municipio import municipio_actual
 
 router = APIRouter(
     prefix="/api/v1/bi",
@@ -72,14 +74,11 @@ def _filtros_comunes(
     `incluye_subreclamos`: si False, excluye reclamos hijo (id_reclamo_padre NOT NULL).
     El area se filtra contra subarea.id_area (la query que llame debe tener el JOIN).
 
-    Nota mono-municipio (§38): los reclamos reales tienen id_municipio NULL (el alta
-    no lo setea; verificado en prod 2026-05-26). ZARIS es un deploy por municipio,
-    asi que tratamos NULL como "el municipio por defecto" e incluimos esas filas
-    junto al id_municipio pedido. Sin esto, el BI mostraria vacio en produccion.
+    `id_municipio` es el de la request (la columna es NOT NULL desde la mig 125).
     """
     cond = [
         f"{alias}.activo = TRUE",
-        f"({alias}.id_municipio = :id_municipio OR {alias}.id_municipio IS NULL)",
+        f"{alias}.id_municipio = :id_municipio",
     ]
     params: dict = {"id_municipio": id_municipio}
 
@@ -174,7 +173,7 @@ async def bi_resumen(
     canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """KPIs de cabecera: totales, resueltos, pendientes, cancelados, % cumplido."""
@@ -220,7 +219,7 @@ async def bi_por_estado(
     canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """Composicion por estado (dona). [{estado, total}]"""
@@ -249,7 +248,7 @@ async def bi_por_canal(
     canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """Reclamos por canal de origen (dona). NULL se reporta como 'sin_dato'."""
@@ -278,7 +277,7 @@ async def bi_por_area(
     canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -328,7 +327,7 @@ async def bi_mensual(
     canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -377,7 +376,7 @@ async def bi_diario(
     canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -394,7 +393,7 @@ async def bi_diario(
 
     cond = [
         "r.activo = TRUE",
-        "(r.id_municipio = :id_municipio OR r.id_municipio IS NULL)",
+        "r.id_municipio = :id_municipio",
     ]
     params: dict = {"id_municipio": id_municipio}
 
@@ -489,7 +488,7 @@ def _filtros_resueltos(
     """WHERE para reclamos resueltos con fecha_cierre (base de los tiempos)."""
     cond = [
         "r.activo = TRUE",
-        "(r.id_municipio = :id_municipio OR r.id_municipio IS NULL)",
+        "r.id_municipio = :id_municipio",
         f"r.estado IN {_SQL_RESUELTOS}",
         "r.fecha_cierre IS NOT NULL",
     ]
@@ -521,7 +520,7 @@ async def bi_sla_resumen(
     canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -575,7 +574,7 @@ async def bi_tiempos_mensual(
     canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -614,7 +613,7 @@ async def bi_tiempos_por_tipo(
     canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     limit: int = Query(10, ge=1, le=30),
     db: AsyncSession = Depends(get_db),
 ):
@@ -656,7 +655,7 @@ async def bi_evolucion_dias(
     canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """Dias promedio de cierre por mes (linea). [{mes, dias_prom, total}]"""
@@ -690,7 +689,7 @@ async def bi_resueltos_detalle(
     canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     limit: int = Query(50, ge=1, le=10000),  # tope alto para soportar exportacion CSV
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -765,7 +764,7 @@ def _filtros_pendientes(
     """WHERE para reclamos pendientes (estados no finales)."""
     cond = [
         "r.activo = TRUE",
-        "(r.id_municipio = :id_municipio OR r.id_municipio IS NULL)",
+        "r.id_municipio = :id_municipio",
         f"r.estado IN {_ESTADOS_PEND_SQL}",
     ]
     params: dict = {"id_municipio": id_municipio}
@@ -798,7 +797,7 @@ async def bi_pendientes_resumen(
     canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -848,7 +847,7 @@ async def bi_pendientes_por_mes(
     canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """Pendientes por mes de alta, desglosados por estado. [{mes, <estado>:n, total}]"""
@@ -888,7 +887,7 @@ async def bi_pendientes_mensual(
     canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -928,7 +927,7 @@ async def bi_pendientes_diario(
     canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """Pendientes por día de alta, desglosados por estado. Modo drill (mes) o global."""
@@ -983,7 +982,7 @@ async def bi_pendientes_por_tipo(
     canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     limit: int = Query(10, ge=1, le=30),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1011,7 +1010,7 @@ async def bi_pendientes_geo(
     canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -1061,7 +1060,7 @@ async def bi_pendientes_detalle(
     canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     limit: int = Query(50, ge=1, le=10000),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -1127,7 +1126,7 @@ def _filtros_subreclamos(
     """WHERE para subreclamos (id_reclamo_padre NOT NULL)."""
     cond = [
         "r.activo = TRUE",
-        "(r.id_municipio = :id_municipio OR r.id_municipio IS NULL)",
+        "r.id_municipio = :id_municipio",
         "r.id_reclamo_padre IS NOT NULL",
     ]
     params: dict = {"id_municipio": id_municipio}
@@ -1160,7 +1159,7 @@ async def bi_subreclamos_resumen(
     canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -1216,7 +1215,7 @@ async def bi_subreclamos_mensual(
     canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """Subreclamos por mes de alta, desglosados por estado (para histograma)."""
@@ -1253,7 +1252,7 @@ async def bi_subreclamos_diario(
     canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """Subreclamos por día de alta, desglosados por estado. Drill (mes) o global."""
@@ -1307,7 +1306,7 @@ async def bi_subreclamos_por_tipo(
     canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     limit: int = Query(10, ge=1, le=30),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1335,7 +1334,7 @@ async def bi_subreclamos_detalle(
     canal: Optional[str] = Query(None, description="canal_origen; 'sin_dato' = sin canal (NULL)"),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     limit: int = Query(50, ge=1, le=10000),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -1448,7 +1447,7 @@ async def bi_mensual_por_tipo(
     canal: Optional[str] = Query(None),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """Reclamos ingresados por mes apilados por tipo (top 6 + Otros)."""
@@ -1470,7 +1469,7 @@ async def bi_diario_por_tipo(
     canal: Optional[str] = Query(None),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """Reclamos ingresados por dia apilados por tipo. Modo drill (mes) o global."""
@@ -1500,7 +1499,7 @@ async def bi_reclamos_detalle(
     canal: Optional[str] = Query(None),
     anio: Optional[int] = Query(None, description="Anio calendario (chip). Se combina con `meses`."),
     meses: Optional[str] = Query(None, description="Meses 1-12 separados por coma (tildes)"),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     limit: int = Query(50, ge=1, le=10000),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -1551,7 +1550,7 @@ async def bi_reclamos_detalle(
 # ── GET /bi/mi-area ───────────────────────────────────────────────────────────
 @router.get("/mi-area")
 async def bi_mi_area(
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1566,14 +1565,15 @@ async def bi_mi_area(
           JOIN subarea s ON s.id_subarea = ag.id_subarea
           JOIN area a ON a.id_area = s.id_area
          WHERE ag.id_usuario = :uid AND ag.activo = TRUE AND a.activo = TRUE
+           AND ag.id_municipio = :m
          ORDER BY ag.id_agente LIMIT 1
-    """), {"uid": current_user["id_usuario"]})).fetchone()
+    """), {"uid": current_user["id_usuario"], "m": id_municipio})).fetchone()
     if row:
         return {"id_area": row.id_area, "nombre": row.nombre, "origen": "agente"}
     row = (await db.execute(text(f"""
         SELECT a.id_area, a.nombre, COUNT(*) AS n
           FROM reclamos r {_JOIN_AREA}
-         WHERE r.activo = TRUE AND (r.id_municipio = :m OR r.id_municipio IS NULL) AND a.id_area IS NOT NULL AND a.activo = TRUE
+         WHERE r.activo = TRUE AND r.id_municipio = :m AND a.id_area IS NOT NULL AND a.activo = TRUE
          GROUP BY a.id_area, a.nombre ORDER BY n DESC LIMIT 1
     """), {"m": id_municipio})).fetchone()
     if row:
@@ -1611,7 +1611,7 @@ async def bi_comparativo(
     canal: Optional[str] = Query(None),
     anio: Optional[int] = Query(None),
     meses: Optional[str] = Query(None),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """KPIs comparativos de la fila unica de cada seccion (Cesar 2026-08-30):
@@ -1711,11 +1711,11 @@ async def bi_comparativo(
 # ── GET /bi/catalogo/areas ────────────────────────────────────────────────────
 @router.get("/catalogo/areas")
 async def bi_catalogo_areas(
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
-    """Areas activas (para el filtro de la UI)."""
+    """Areas activas del municipio (para el filtro de la UI)."""
     result = await db.execute(text(
-        "SELECT id_area, nombre FROM area WHERE activo = TRUE ORDER BY nombre"
-    ))
+        "SELECT id_area, nombre FROM area WHERE activo = TRUE AND id_municipio = :m ORDER BY nombre"
+    ), {"m": id_municipio})
     return [{"id_area": r.id_area, "nombre": r.nombre} for r in result.fetchall()]

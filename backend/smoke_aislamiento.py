@@ -228,6 +228,8 @@ def armar_paths(ruta: APIRoute, ids: dict, numero_b: str) -> list[tuple[str, boo
     if "tabla" in params:
         out = []
         for t, cfg in TABLE_CONFIG.items():
+            if t == "municipios":
+                continue  # la lista el administrador del municipio base (con B incluido): se prueba aparte
             tabla_real = cfg.get("table", t)
             p = ruta.path.replace("{tabla}", t)
             if "{id}" in p:
@@ -379,6 +381,21 @@ async def main() -> int:
             CUENTA["control positivo"] += 1
             if r.status_code != 200 or MARCA not in r.text:
                 falla(p, f"control positivo: GET {p} como admin de B → {r.status_code} {'sin' if MARCA not in r.text else 'con'} marca")
+
+        # 2b. Maestros → municipios: solo el administrador del municipio base la lee (hasta F3).
+        if "/api/v1/admin/municipios".startswith(args.rutas):
+            r = await c.get("/api/v1/admin/municipios", headers=h_b)
+            CUENTA["municipios"] += 1
+            if r.status_code != 403:
+                falla("/api/v1/admin", f"GET /api/v1/admin/municipios como admin de B → {r.status_code}; debería ser 403")
+            r = await c.get(f"/api/v1/admin/municipios/{id_b}", headers=h_b)
+            CUENTA["municipios"] += 1
+            if r.status_code != 403:
+                falla("/api/v1/admin", f"GET /api/v1/admin/municipios/{id_b} como admin de B → {r.status_code}; debería ser 403")
+            r = await c.get("/api/v1/admin/municipios", headers=h_a)
+            CUENTA["municipios"] += 1
+            if r.status_code != 200:
+                falla("/api/v1/admin", f"GET /api/v1/admin/municipios como admin del municipio base → {r.status_code}")
 
         if not args.solo_get:
             # 3. Mutaciones como admin del municipio 1 sobre ids de B (y altas con ids de B en el body).

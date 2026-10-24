@@ -17,7 +17,7 @@ Decisiones de César (2026-08-30):
 
 Convenciones (espejo de bi.py):
   - Área vía subárea (§27): JOIN tipo_reclamo → subarea → area.
-  - Mono-municipio: id_municipio NULL cuenta como el municipio por defecto.
+  - Municipio: el del usuario (municipio_actual, claim del JWT); se filtra la tabla raíz.
   - Agregación 100% en SQL; el frontend solo dibuja.
   - Satisfacción: encuesta_envio (id_reclamo) + encuesta_respuesta.
     clasificacion_inicial 1-5; satisfecho = >=4 (regla del módulo Encuestas).
@@ -35,6 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
+from app.core.municipio import municipio_actual
 from app.api.routes.bi import _CON_SLA, _DENTRO_SLA, _DIAS_CIERRE, _JOIN_AREA, _parse_meses
 
 router = APIRouter(
@@ -66,11 +67,11 @@ def _where_ej(
     campo_fecha: str = "fecha_alta",
 ) -> tuple[list[str], dict]:
     """Condiciones WHERE del Ejecutivo. El área via s.id_area (la query debe
-    incluir _JOIN_AREA). Mismo criterio mono-municipio que bi.py.
+    incluir _JOIN_AREA). Mismo criterio de municipio que bi.py.
     `pares` = lista de año*100+mes (bloque contiguo del período anterior)."""
     cond = [
         "r.activo = TRUE",
-        "(r.id_municipio = :id_municipio OR r.id_municipio IS NULL)",
+        "r.id_municipio = :id_municipio",
     ]
     params: dict = {"id_municipio": id_municipio}
     if desde:
@@ -232,7 +233,7 @@ async def ej_score(
     anio: Optional[int] = Query(None), meses: Optional[str] = Query(None),
     id_area: Optional[int] = Query(None), id_subarea: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
-    id_localidad: Optional[int] = Query(None), id_municipio: int = Query(1),
+    id_localidad: Optional[int] = Query(None), id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """Tarjetas de arriba: total vs período anterior, score (% cierre / % SLA /
@@ -307,7 +308,7 @@ async def ej_matriz(
     anio: Optional[int] = Query(None), meses: Optional[str] = Query(None),
     id_area: Optional[int] = Query(None), id_subarea: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
-    id_localidad: Optional[int] = Query(None), id_municipio: int = Query(1),
+    id_localidad: Optional[int] = Query(None), id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """La tabla central del tablero VL: una fila por SUBÁREA (expandible a tipo)
@@ -404,7 +405,7 @@ async def ej_top_tipos(
     anio: Optional[int] = Query(None), meses: Optional[str] = Query(None),
     id_area: Optional[int] = Query(None), id_subarea: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
-    id_localidad: Optional[int] = Query(None), id_municipio: int = Query(1),
+    id_localidad: Optional[int] = Query(None), id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """Top de tipos por cantidad (mayores incidentes) o por promedio de días de
@@ -454,7 +455,7 @@ async def ej_altas_cierres(
     anio: Optional[int] = Query(None), meses: Optional[str] = Query(None),
     id_area: Optional[int] = Query(None), id_subarea: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
-    id_localidad: Optional[int] = Query(None), id_municipio: int = Query(1),
+    id_localidad: Optional[int] = Query(None), id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """Relación incidentes y cierres: por mes, altas (fecha_alta) vs cerrados
@@ -488,7 +489,7 @@ async def ej_evolucion_indicadores(
     anio: Optional[int] = Query(None), meses: Optional[str] = Query(None),
     id_area: Optional[int] = Query(None), id_subarea: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
-    id_localidad: Optional[int] = Query(None), id_municipio: int = Query(1),
+    id_localidad: Optional[int] = Query(None), id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """% Cierre, % SLA y % Satisfacción por mes (cohorte de ingreso: los reclamos
@@ -540,7 +541,7 @@ async def ej_cierres_por_estado(
     anio: Optional[int] = Query(None), meses: Optional[str] = Query(None),
     id_area: Optional[int] = Query(None), id_subarea: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
-    id_localidad: Optional[int] = Query(None), id_municipio: int = Query(1),
+    id_localidad: Optional[int] = Query(None), id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """Cierres del período por estado de auditoría (mig 112): Cumplido = resuelto
@@ -584,7 +585,7 @@ async def ej_historico(
     anio: Optional[int] = Query(None), meses: Optional[str] = Query(None),
     id_area: Optional[int] = Query(None), id_subarea: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
-    id_localidad: Optional[int] = Query(None), id_municipio: int = Query(1),
+    id_localidad: Optional[int] = Query(None), id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """Serie mensual apilada por dimensión (top N + 'Otros'), shape
@@ -635,7 +636,7 @@ async def ej_por_localidad(
     anio: Optional[int] = Query(None), meses: Optional[str] = Query(None),
     id_area: Optional[int] = Query(None), id_subarea: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
-    id_localidad: Optional[int] = Query(None), id_municipio: int = Query(1),
+    id_localidad: Optional[int] = Query(None), id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """Composición del período por localidad (dona)."""
@@ -660,7 +661,7 @@ async def ej_sat_cierre(
     anio: Optional[int] = Query(None), meses: Optional[str] = Query(None),
     id_area: Optional[int] = Query(None), id_subarea: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
-    id_localidad: Optional[int] = Query(None), id_municipio: int = Query(1),
+    id_localidad: Optional[int] = Query(None), id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """Barras % Satisfacción vs % Cierre por subárea o por localidad."""
@@ -711,7 +712,7 @@ async def ej_geo(
     anio: Optional[int] = Query(None), meses: Optional[str] = Query(None),
     id_area: Optional[int] = Query(None), id_subarea: Optional[int] = Query(None),
     prioridad: Optional[str] = Query(None),
-    id_localidad: Optional[int] = Query(None), id_municipio: int = Query(1),
+    id_localidad: Optional[int] = Query(None), id_municipio: int = Depends(municipio_actual),
     limit: int = Query(5000, ge=1, le=20000),
     db: AsyncSession = Depends(get_db),
 ):
@@ -744,12 +745,12 @@ async def ej_geo(
 @router.get("/catalogo/subareas")
 async def ej_catalogo_subareas(
     id_area: Optional[int] = Query(None),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """Subáreas presentes en reclamos (vía tipo), para el filtro del tablero.
     Con id_area se acota a las del área elegida."""
-    cond = ["r.activo = TRUE", "(r.id_municipio = :m OR r.id_municipio IS NULL)"]
+    cond = ["r.activo = TRUE", "r.id_municipio = :m"]
     params: dict = {"m": id_municipio}
     if id_area:
         cond.append("s.id_area = :id_area")
@@ -767,7 +768,7 @@ async def ej_catalogo_subareas(
 
 @router.get("/catalogo/localidades")
 async def ej_catalogo_localidades(
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     """Localidades que aparecen en reclamos (para poblar el filtro sin traer el
@@ -776,7 +777,7 @@ async def ej_catalogo_localidades(
         SELECT loc.id_localidad, loc.nombre, COUNT(*) AS total
         FROM reclamos r
         JOIN localidades loc ON loc.id_localidad = r.id_localidad
-        WHERE r.activo = TRUE AND (r.id_municipio = :m OR r.id_municipio IS NULL)
+        WHERE r.activo = TRUE AND r.id_municipio = :m
         GROUP BY 1, 2 ORDER BY loc.nombre
     """), {"m": id_municipio})
     return [dict(row._mapping) for row in r.fetchall()]

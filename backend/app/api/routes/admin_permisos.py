@@ -10,6 +10,10 @@ Todas estas rutas requieren `nivel_acceso = 1` (administrador). El guard se
 aplica via `require_admin` local porque la mig 38 incluye al modulo 'usuarios'
 con min_nivel=1, pero la matriz de permisos es transversal — no la atamos a un
 modulo concreto del catalogo.
+
+Municipio (IT-01): los permisos por usuario son de los usuarios del municipio del
+administrador (municipio_actual); un usuario de otro municipio responde 404, igual que
+uno inexistente. El catalogo de modulos es global (habilitacion por municipio en F4).
 """
 from typing import Optional
 
@@ -20,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user, modulos_permitidos
 from app.core.database import get_db
+from app.core.municipio import municipio_actual
 
 router = APIRouter(prefix="/api/v1/admin/permisos", tags=["Admin - Permisos"])
 
@@ -97,10 +102,12 @@ async def ver_permisos_usuario(
     id_usuario: int,
     db: AsyncSession = Depends(get_db),
     _admin: dict = Depends(require_admin),
+    id_municipio: int = Depends(municipio_actual),
 ):
     user = (await db.execute(
-        text("SELECT id_usuario, nivel_acceso FROM usuarios WHERE id_usuario = :id AND activo = TRUE"),
-        {"id": id_usuario},
+        text("SELECT id_usuario, nivel_acceso FROM usuarios "
+             "WHERE id_usuario = :id AND activo = TRUE AND id_municipio = :mun"),
+        {"id": id_usuario, "mun": id_municipio},
     )).fetchone()
     if not user:
         raise HTTPException(404, "Usuario no encontrado")
@@ -138,10 +145,12 @@ async def set_permisos_usuario(
     body: UsuarioModulosUpdate,
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
+    id_municipio: int = Depends(municipio_actual),
 ):
     user = (await db.execute(
-        text("SELECT id_usuario, nivel_acceso FROM usuarios WHERE id_usuario = :id AND activo = TRUE"),
-        {"id": id_usuario},
+        text("SELECT id_usuario, nivel_acceso FROM usuarios "
+             "WHERE id_usuario = :id AND activo = TRUE AND id_municipio = :mun"),
+        {"id": id_usuario, "mun": id_municipio},
     )).fetchone()
     if not user:
         raise HTTPException(404, "Usuario no encontrado")
@@ -172,8 +181,8 @@ async def set_permisos_usuario(
         await db.execute(text("""
             INSERT INTO usuario_modulos
                    (id_usuario, modulo_codigo, permitido, motivo, activo,
-                    id_usuario_alta, id_usuario_modificacion)
-            VALUES (:uid, :codigo, :perm, :motivo, TRUE, :admin, :admin)
+                    id_usuario_alta, id_usuario_modificacion, id_municipio)
+            VALUES (:uid, :codigo, :perm, :motivo, TRUE, :admin, :admin, :mun)
             ON CONFLICT (id_usuario, modulo_codigo) DO UPDATE
                SET permitido = EXCLUDED.permitido,
                    motivo = EXCLUDED.motivo,
@@ -181,7 +190,8 @@ async def set_permisos_usuario(
                    fecha_modificacion = NOW(),
                    id_usuario_modificacion = :admin
         """), {"uid": id_usuario, "codigo": ov.modulo_codigo,
-               "perm": ov.permitido, "motivo": ov.motivo, "admin": admin["id_usuario"]})
+               "perm": ov.permitido, "motivo": ov.motivo, "admin": admin["id_usuario"],
+               "mun": id_municipio})
 
     await db.commit()
 

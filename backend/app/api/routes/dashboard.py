@@ -18,8 +18,8 @@ la mig 93 (turnos y entradas se ubican via su espacio: se devuelven agregados
 por espacio); tramites via el primer campo dinamico tipo 'direccion' cuyo
 valor sea el shape nuevo {texto, lat, lon}.
 
-Mono-municipio: NO se filtra por id_municipio (puede venir NULL en datos
-viejos y un `= :mun` estricto vacia listados en silencio, §43).
+Municipio (IT-01): cada query filtra su tabla raiz por el municipio del usuario
+(municipio_actual); las relaciones con FK compuesta quedan en el mismo municipio.
 """
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ router = APIRouter(prefix="/api/v1/dashboard", tags=["dashboard"])
 # Filtro compartido entre tarjeta y capa de entradas: reservas emitidas (no
 # canceladas) de eventos activos vigentes/futuros.
 _ENTRADAS_VIGENTES_WHERE = """
-    r.activo = TRUE AND e.activo = TRUE
+    r.activo = TRUE AND e.activo = TRUE AND r.id_municipio = :m
     AND er.codigo <> 'cancelada'
     AND ee.codigo = 'activo'
     AND e.fecha >= CURRENT_DATE
@@ -57,14 +57,16 @@ async def resumen_dashboard(
         SELECT
             (SELECT COUNT(*) FROM emergencia_evento ev
               JOIN emergencia_estado es ON es.id_emergencia_estado = ev.id_estado
-             WHERE ev.activo = TRUE AND es.es_terminal = FALSE) AS emergencias_activas,
+             WHERE ev.activo = TRUE AND es.es_terminal = FALSE AND ev.id_municipio = :m) AS emergencias_activas,
             (SELECT COUNT(*) FROM reclamos rc
              -- Activos = en gestión. 'En auditoría'/'Auditado' (mig 112) ya cerraron.
-             WHERE rc.activo = TRUE AND rc.estado IN ('Sin asignar', 'En gestión', 'En espera')) AS reclamos_activos,
+             WHERE rc.activo = TRUE AND rc.id_municipio = :m
+               AND rc.estado IN ('Sin asignar', 'En gestión', 'En espera')) AS reclamos_activos,
             (SELECT COUNT(*) FROM espacios_agenda ea
-             WHERE ea.activo = TRUE) AS espacios_disponibles,
+             WHERE ea.activo = TRUE AND ea.id_municipio = :m) AS espacios_disponibles,
             (SELECT COUNT(*) FROM turnos t
-             WHERE t.activo = TRUE AND t.estado = 'reservado' AND t.fecha >= CURRENT_DATE) AS turnos_otorgados,
+             WHERE t.activo = TRUE AND t.id_municipio = :m
+               AND t.estado = 'reservado' AND t.fecha >= CURRENT_DATE) AS turnos_otorgados,
             (SELECT COUNT(*) FROM evento_reservas r
               JOIN eventos e ON e.id_evento = r.id_evento
               JOIN estado_reserva er ON er.id_estado_reserva = r.id_estado_reserva
@@ -72,8 +74,8 @@ async def resumen_dashboard(
              WHERE {_ENTRADAS_VIGENTES_WHERE}) AS entradas_emitidas,
             (SELECT COUNT(*) FROM tramite tr
               JOIN tipo_tramite_estado te ON te.id_tipo_tramite_estado = tr.id_tipo_tramite_estado_actual
-             WHERE tr.activo = TRUE AND te.es_final = FALSE) AS tramites_abiertos
-    """))).mappings().first()
+             WHERE tr.activo = TRUE AND te.es_final = FALSE AND tr.id_municipio = :m) AS tramites_abiertos
+    """), {"m": id_municipio})).mappings().first()
 
     # --- Capa reclamos activos con geo ---------------------------------------
     reclamos = (await db.execute(text("""
@@ -86,10 +88,11 @@ async def resumen_dashboard(
         LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
         -- 'En auditoría' sigue en el mapa (pendiente del auditor, violeta); 'Auditado' no.
         WHERE r.activo = TRUE AND r.estado NOT IN ('Resuelto', 'Cancelado', 'Auditado')
+          AND r.id_municipio = :m
           AND r.latitud IS NOT NULL AND r.longitud IS NOT NULL
         ORDER BY r.fecha_alta DESC
         LIMIT 500
-    """))).mappings().all()
+    """), {"m": id_municipio})).mappings().all()
 
     # --- Capa emergencias activas con geo -------------------------------------
     emergencias = (await db.execute(text("""
@@ -99,11 +102,11 @@ async def resumen_dashboard(
         FROM emergencia_evento ev
         JOIN emergencia_estado es ON es.id_emergencia_estado = ev.id_estado
         LEFT JOIN emergencia_tipo et ON et.id_emergencia_tipo = ev.id_tipo
-        WHERE ev.activo = TRUE AND es.es_terminal = FALSE
+        WHERE ev.activo = TRUE AND es.es_terminal = FALSE AND ev.id_municipio = :m
           AND ev.latitud IS NOT NULL AND ev.longitud IS NOT NULL
         ORDER BY ev.fecha_hora_recepcion DESC
         LIMIT 500
-    """))).mappings().all()
+    """), {"m": id_municipio})).mappings().all()
 
     # --- Capa espacios activos con geo (+ agregados de turnos/entradas) ------
     # Turnos y entradas no tienen geo propia: se ubican via el pin del espacio.
@@ -119,11 +122,11 @@ async def resumen_dashboard(
                   JOIN estado_evento ee ON ee.id_estado_evento = e.id_estado_evento
                  WHERE {_ENTRADAS_VIGENTES_WHERE} AND e.id_espacio = ea.id_espacio) AS entradas_vigentes
         FROM espacios_agenda ea
-        WHERE ea.activo = TRUE
+        WHERE ea.activo = TRUE AND ea.id_municipio = :m
           AND ea.latitud IS NOT NULL AND ea.longitud IS NOT NULL
         ORDER BY ea.nombre
         LIMIT 200
-    """))).mappings().all()
+    """), {"m": id_municipio})).mappings().all()
 
     # --- Capa tramites abiertos con direccion georreferenciada ---------------
     # Toma el primer campo tipo 'direccion' de la version del tramite cuyo
@@ -150,10 +153,10 @@ async def resumen_dashboard(
             ORDER BY tc.orden
             LIMIT 1
         ) d ON TRUE
-        WHERE t.activo = TRUE AND te.es_final = FALSE
+        WHERE t.activo = TRUE AND te.es_final = FALSE AND t.id_municipio = :m
         ORDER BY t.fecha_alta DESC
         LIMIT 500
-    """))).mappings().all()
+    """), {"m": id_municipio})).mappings().all()
 
     # --- Contorno del municipio (mig 111): capa sombreada del mapa -----------
     limite = await leer_limite(db, id_municipio)

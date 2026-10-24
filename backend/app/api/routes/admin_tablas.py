@@ -1,6 +1,13 @@
 """
 ZARIS API — Endpoints CRUD genéricos para tablas administrativas.
 Prefijo: /api/v1/admin/
+
+Municipio (IT-01): las tablas de catálogo y operativas se listan, leen, crean, editan
+y dan de baja dentro del municipio del usuario (municipio_actual). Un id de otro
+municipio responde igual que uno inexistente (404) y un id de otro municipio en el
+body, 422 «<entidad> inexistente». Las tablas globales no se filtran: las lee
+cualquiera (alimentan selects) y las modifica solo el administrador del municipio
+base hasta F3; `municipios`, además, solo la lee él.
 """
 import logging
 from datetime import date, time
@@ -11,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.auth import get_current_user, require_admin
+from app.core.municipio import id_municipio_base, municipio_actual
 
 router = APIRouter(tags=["Admin Tablas"])
 logger = logging.getLogger("zaris.admin_tablas")
@@ -66,10 +74,7 @@ TABLE_CONFIG: dict[str, dict] = {
     },
     "equipos": {
         "pk": "id_equipo",
-        # id_municipio editable para que el alta lo setee (mono-municipio §38): el
-        # endpoint /tramites/destinatarios filtra por municipio; una mesa sin él no
-        # aparecería en el selector de pase.
-        "cols": ["nombre", "descripcion", "id_subarea", "tipo_grupo", "id_municipio", "dias_semana", "hora_inicio", "hora_fin"],
+        "cols": ["nombre", "descripcion", "id_subarea", "tipo_grupo", "dias_semana", "hora_inicio", "hora_fin"],
         "fecha_mod": "fecha_modificacion",
         "col_types": {"hora_inicio": "time", "hora_fin": "time"},
     },
@@ -194,6 +199,54 @@ TABLE_CONFIG: dict[str, dict] = {
 
 ALLOWED_TABLES = set(TABLE_CONFIG.keys())
 
+# Tablas globales (clase 'global' de municipio_tabla_clase): sin id_municipio.
+# configuracion_general es mixta: se ven y se editan solo las filas del municipio
+# (las claves globales, como las VAPID, no salen por acá).
+_TABLAS_GLOBALES = {"tipo_usuario", "estado_reclamo", "estado_ot", "municipios", "actividades",
+                    "tipo_representacion", "nacionalidades", "emergencia_estado"}
+_SOLO_ADMIN_BASE_LECTURA = {"municipios"}
+
+# Columnas del body que apuntan a otra tabla del municipio: (tabla, PK, entidad).
+_REFERENCIAS = {
+    "id_area": ("area", "id_area", "Área"),
+    "id_subarea": ("subarea", "id_subarea", "Subárea"),
+    "id_cargo": ("cargos", "id_cargo", "Cargo"),
+    "id_usuario": ("usuarios", "id_usuario", "Usuario"),
+    "id_usuario_responsable": ("usuarios", "id_usuario", "Usuario"),
+    "id_equipo": ("equipos", "id_equipo", "Equipo"),
+    "id_agente": ("agentes", "id_agente", "Agente"),
+    "id_prioridad_default": ("emergencia_prioridad", "id_emergencia_prioridad", "Prioridad"),
+    "id_prioridad_override": ("emergencia_prioridad", "id_emergencia_prioridad", "Prioridad"),
+    "id_organismo_derivacion_default": ("emergencia_organismo_derivacion",
+                                        "id_emergencia_organismo_derivacion", "Organismo de derivación"),
+    "id_tipo": ("emergencia_tipo", "id_emergencia_tipo", "Tipo de emergencia"),
+}
+
+
+def _por_municipio(tabla: str) -> bool:
+    return tabla not in _TABLAS_GLOBALES
+
+
+async def _exigir_admin_base(db: AsyncSession, current_user: dict, id_municipio: int) -> None:
+    if current_user.get("nivel_acceso") != 1 or id_municipio != await id_municipio_base(db):
+        raise HTTPException(status_code=403, detail="Acción exclusiva del administrador del municipio base")
+
+
+async def _validar_referencias(db: AsyncSession, data: dict, id_municipio: int) -> None:
+    """422 si un id del body es de otro municipio o no existe (R4)."""
+    for col, valor in data.items():
+        ref = _REFERENCIAS.get(col)
+        if ref is None or valor is None:
+            continue
+        t, pk, nombre = ref
+        try:
+            v = int(valor)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail=f"{nombre} inexistente")
+        if not await db.scalar(text(f"SELECT 1 FROM {t} WHERE {pk} = :v AND id_municipio = :mun"),
+                               {"v": v, "mun": id_municipio}):
+            raise HTTPException(status_code=422, detail=f"{nombre} inexistente")
+
 # Tablas que se pueden LEER por el CRUD genérico (para poblar selects FK de otras
 # tablas) pero NO mutar desde acá. `usuarios` tiene su propia pantalla
 # (módulo React Usuarios, web-app #/usuarios) que hashea password y registra auditoría de login; el
@@ -296,7 +349,7 @@ def _filtrar_pii_supervisor(d: dict, sub: int | None) -> dict:
 
 async def _autorizar_escritura(
     db: AsyncSession, tabla: str, accion: str, current_user: dict,
-    *, id: int | None = None, body: dict | None = None,
+    *, id_municipio: int, id: int | None = None, body: dict | None = None,
 ) -> dict | None:
     """Admin: todo. Supervisor: solo el perfil laboral de los agentes de su
     gestión (PUT agentes con cargo/legajo) y la pertenencia a equipos de su
@@ -304,6 +357,8 @@ async def _autorizar_escritura(
     para el supervisor) o 403/422."""
     nivel = current_user.get("nivel_acceso", 99)
     if nivel == 1:
+        if not _por_municipio(tabla):
+            await _exigir_admin_base(db, current_user, id_municipio)
         return body
     sub = await _subarea_supervisor(db, current_user)
     if nivel != 2 or tabla not in _TABLAS_SUPERVISOR or sub is None:
@@ -314,9 +369,12 @@ async def _autorizar_escritura(
             raise HTTPException(status_code=403, detail=(
                 "Un supervisor no da de alta ni de baja agentes: completá cargo, "
                 "horario y equipos de los agentes de tu gestión."))
-        ag_sub = await db.scalar(text(
-            "SELECT id_subarea FROM agentes WHERE id_agente = :id AND activo = TRUE"), {"id": id})
-        if ag_sub != sub:
+        ag = (await db.execute(text(
+            "SELECT id_subarea FROM agentes WHERE id_agente = :id AND activo = TRUE AND id_municipio = :mun"),
+            {"id": id, "mun": id_municipio})).fetchone()
+        if not ag:
+            raise HTTPException(status_code=404, detail=f"Registro {id} no encontrado en {tabla}")
+        if ag.id_subarea != sub:
             raise HTTPException(status_code=403, detail="El agente pertenece a otra gestión.")
         filtrado = {k: v for k, v in (body or {}).items() if k in _COLS_AGENTE_SUPERVISOR}
         if not filtrado:
@@ -330,14 +388,17 @@ async def _autorizar_escritura(
         id_equipo, id_agente = (body or {}).get("id_equipo"), (body or {}).get("id_agente")
     else:
         row = (await db.execute(text(
-            "SELECT id_equipo, id_agente FROM equipo_agentes WHERE id_equipo_agente = :id"), {"id": id})).fetchone()
+            "SELECT id_equipo, id_agente FROM equipo_agentes WHERE id_equipo_agente = :id AND id_municipio = :mun"),
+            {"id": id, "mun": id_municipio})).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail=f"Registro {id} no encontrado en {tabla}")
         id_equipo, id_agente = row.id_equipo, row.id_agente
-    eq_sub = await db.scalar(text("SELECT id_subarea FROM equipos WHERE id_equipo = :id AND activo = TRUE"),
-                             {"id": id_equipo})
-    ag_sub = await db.scalar(text("SELECT id_subarea FROM agentes WHERE id_agente = :id AND activo = TRUE"),
-                             {"id": id_agente})
+    eq_sub = await db.scalar(text(
+        "SELECT id_subarea FROM equipos WHERE id_equipo = :id AND activo = TRUE AND id_municipio = :mun"),
+        {"id": id_equipo, "mun": id_municipio})
+    ag_sub = await db.scalar(text(
+        "SELECT id_subarea FROM agentes WHERE id_agente = :id AND activo = TRUE AND id_municipio = :mun"),
+        {"id": id_agente, "mun": id_municipio})
     if eq_sub != sub or ag_sub != sub:
         raise HTTPException(status_code=403, detail="El equipo y el agente tienen que ser de tu gestión.")
     return body
@@ -392,17 +453,26 @@ async def listar(
     tabla: str,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     cfg = _get_config(tabla)
     _bloquear_lectura_si_solo_admin(tabla, current_user)
+    if tabla in _SOLO_ADMIN_BASE_LECTURA:
+        await _exigir_admin_base(db, current_user, id_municipio)
     pk = cfg["pk"]
     sub = await _subarea_supervisor(db, current_user) if tabla == "agentes" else None
     exclude = _exclude_efectivo(tabla, cfg, current_user, sub)
     sel, frm, al = cfg.get("select", ("*", tabla, None))
     pre = f"{al}." if al else ""
-    where = f"WHERE {pre}activo = TRUE" if cfg.get("has_activo", True) else ""
+    conds, params = [], {}
+    if cfg.get("has_activo", True):
+        conds.append(f"{pre}activo = TRUE")
+    if _por_municipio(tabla):
+        conds.append(f"{pre}id_municipio = :mun")
+        params["mun"] = id_municipio
+    where = f"WHERE {' AND '.join(conds)}" if conds else ""
     stmt = text(f"SELECT {sel} FROM {frm} {where} ORDER BY {pre}{pk}")
-    result = await db.execute(stmt)
+    result = await db.execute(stmt, params)
     rows = result.fetchall()
     return [_sanear(tabla, _filtrar_pii_supervisor(_row_to_dict(r, exclude), sub), current_user) for r in rows]
 
@@ -415,16 +485,24 @@ async def obtener(
     id: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     cfg = _get_config(tabla)
     _bloquear_lectura_si_solo_admin(tabla, current_user)
+    if tabla in _SOLO_ADMIN_BASE_LECTURA:
+        await _exigir_admin_base(db, current_user, id_municipio)
     pk = cfg["pk"]
     sub = await _subarea_supervisor(db, current_user) if tabla == "agentes" else None
     exclude = _exclude_efectivo(tabla, cfg, current_user, sub)
     sel, frm, al = cfg.get("select", ("*", tabla, None))
     pre = f"{al}." if al else ""
-    stmt = text(f"SELECT {sel} FROM {frm} WHERE {pre}{pk} = :id")
-    result = await db.execute(stmt, {"id": id})
+    params: dict = {"id": id}
+    del_municipio = ""
+    if _por_municipio(tabla):
+        del_municipio = f" AND {pre}id_municipio = :mun"
+        params["mun"] = id_municipio
+    stmt = text(f"SELECT {sel} FROM {frm} WHERE {pre}{pk} = :id{del_municipio}")
+    result = await db.execute(stmt, params)
     row = result.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail=f"Registro {id} no encontrado en {tabla}")
@@ -439,10 +517,11 @@ async def crear(
     body: dict,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     cfg = _get_config(tabla)
     _bloquear_si_read_only(tabla)
-    body = await _autorizar_escritura(db, tabla, "crear", current_user, body=body)
+    body = await _autorizar_escritura(db, tabla, "crear", current_user, id_municipio=id_municipio, body=body)
     allowed = cfg["cols"]
     exclude = cfg.get("exclude", [])
 
@@ -450,6 +529,9 @@ async def crear(
     data = {k: v for k, v in body.items() if k in allowed and v is not None}
     if not data:
         raise HTTPException(status_code=422, detail="No se recibieron campos válidos")
+    if _por_municipio(tabla):
+        await _validar_referencias(db, data, id_municipio)
+        data["id_municipio"] = id_municipio
 
     if cfg.get("has_audit", True):
         data["id_usuario_alta"] = current_user["id_usuario"]
@@ -482,10 +564,11 @@ async def editar(
     body: dict,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     cfg = _get_config(tabla)
     _bloquear_si_read_only(tabla)
-    body = await _autorizar_escritura(db, tabla, "editar", current_user, id=id, body=body)
+    body = await _autorizar_escritura(db, tabla, "editar", current_user, id_municipio=id_municipio, id=id, body=body)
     pk = cfg["pk"]
     allowed = cfg["cols"]
     fecha_mod = cfg["fecha_mod"]
@@ -497,12 +580,17 @@ async def editar(
         # La clave secreta llega oculta (valor null) al form: guardarlo no debe
         # borrarla ni renombrarla. Se rota por env var de Railway, no por acá.
         clave_actual = await db.scalar(text(
-            "SELECT clave FROM configuracion_general WHERE id_config = :id"), {"id": id})
+            "SELECT clave FROM configuracion_general WHERE id_config = :id AND id_municipio = :mun"),
+            {"id": id, "mun": id_municipio})
         if clave_actual in _CLAVES_SECRETAS:
             data.pop("valor", None)
             data.pop("clave", None)
     if not data:
         raise HTTPException(status_code=422, detail="No se recibieron campos válidos")
+    del_municipio, extra = "", {}
+    if _por_municipio(tabla):
+        await _validar_referencias(db, data, id_municipio)
+        del_municipio, extra = " AND id_municipio = :__mun", {"__mun": id_municipio}
 
     if cfg.get("has_audit", True):
         data["id_usuario_modificacion"] = current_user["id_usuario"]
@@ -512,10 +600,10 @@ async def editar(
     fecha_extra = f", {fecha_mod} = NOW()" if fecha_mod else ""
     stmt = text(
         f"UPDATE {tabla} SET {sets}{fecha_extra} "
-        f"WHERE {pk} = :__id RETURNING *"
+        f"WHERE {pk} = :__id{del_municipio} RETURNING *"
     )
     try:
-        result = await db.execute(stmt, {**data, "__id": id})
+        result = await db.execute(stmt, {**data, "__id": id, **extra})
         row = result.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail=f"Registro {id} no encontrado en {tabla}")
@@ -545,18 +633,22 @@ async def subareas_de_area(
     id_area: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Lista las subáreas activas que pertenecen al área dada,
     con el conteo de tipos de reclamo activos asociados a cada una."""
+    if not await db.scalar(text("SELECT 1 FROM area WHERE id_area = :id AND id_municipio = :mun"),
+                           {"id": id_area, "mun": id_municipio}):
+        raise HTTPException(status_code=404, detail=f"Registro {id_area} no encontrado en area")
     r = await db.execute(text("""
         SELECT s.id_subarea, s.nombre, s.descripcion,
                COUNT(tr.id_tipo_reclamo) FILTER (WHERE tr.activo) AS tipos_activos
         FROM subarea s
         LEFT JOIN tipo_reclamo tr ON tr.id_subarea = s.id_subarea
-        WHERE s.id_area = :id_area AND s.activo = TRUE
+        WHERE s.id_area = :id_area AND s.activo = TRUE AND s.id_municipio = :mun
         GROUP BY s.id_subarea, s.nombre, s.descripcion
         ORDER BY s.nombre
-    """), {"id_area": id_area})
+    """), {"id_area": id_area, "mun": id_municipio})
     return [dict(row._mapping) for row in r.fetchall()]
 
 
@@ -567,15 +659,19 @@ async def tipos_de_subarea(
     id_subarea: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Lista los tipos de reclamo activos que pertenecen a la subárea dada, con su SLA
     en minutos (`sla_minutos`, mig 120; `sla_dias` queda por compatibilidad)."""
+    if not await db.scalar(text("SELECT 1 FROM subarea WHERE id_subarea = :id AND id_municipio = :mun"),
+                           {"id": id_subarea, "mun": id_municipio}):
+        raise HTTPException(status_code=404, detail=f"Registro {id_subarea} no encontrado en subarea")
     r = await db.execute(text("""
         SELECT id_tipo_reclamo, nombre, descripcion, sla_dias, sla_minutos, audit
         FROM tipo_reclamo
-        WHERE id_subarea = :id_subarea AND activo = TRUE
+        WHERE id_subarea = :id_subarea AND activo = TRUE AND id_municipio = :mun
         ORDER BY nombre
-    """), {"id_subarea": id_subarea})
+    """), {"id_subarea": id_subarea, "mun": id_municipio})
     return [dict(row._mapping) for row in r.fetchall()]
 
 
@@ -587,10 +683,11 @@ async def baja_logica(
     id: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     cfg = _get_config(tabla)
     _bloquear_si_read_only(tabla)
-    await _autorizar_escritura(db, tabla, "baja", current_user, id=id)
+    await _autorizar_escritura(db, tabla, "baja", current_user, id_municipio=id_municipio, id=id)
     pk = cfg["pk"]
     fecha_mod = cfg["fecha_mod"]
     if not cfg.get("has_activo", True):
@@ -605,7 +702,11 @@ async def baja_logica(
     if cfg.get("has_audit", True):
         parts.append("id_usuario_modificacion = :uid")
         params["uid"] = current_user["id_usuario"]
-    stmt = text(f"UPDATE {tabla} SET {', '.join(parts)} WHERE {pk} = :id RETURNING {pk}")
+    del_municipio = ""
+    if _por_municipio(tabla):
+        del_municipio = " AND id_municipio = :mun"
+        params["mun"] = id_municipio
+    stmt = text(f"UPDATE {tabla} SET {', '.join(parts)} WHERE {pk} = :id{del_municipio} RETURNING {pk}")
     try:
         result = await db.execute(stmt, params)
         await db.commit()

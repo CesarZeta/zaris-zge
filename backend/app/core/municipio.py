@@ -56,6 +56,11 @@ def invalidar_cache_municipios() -> None:
     _cache["vence"] = 0.0
 
 
+async def id_municipio_base(db: AsyncSession) -> Optional[int]:
+    """Municipio de las direcciones sin prefijo (`direccion_base`), o None si no hay."""
+    return (await _municipios(db))["base"]
+
+
 async def resolver_municipio_de_origen(request: Request, db: AsyncSession) -> int:
     """Municipio del header Origin de la request. 404 si el subdominio no existe o está inactivo;
     503 si no hay municipio base para las direcciones sin prefijo."""
