@@ -38,6 +38,7 @@ from typing import Any
 
 from sqlalchemy import text
 
+from app.core.config_municipio import leer_config
 from app.core.database import AsyncSessionLocal
 
 logger = logging.getLogger("zaris.autoasignacion")
@@ -51,12 +52,10 @@ _ESTADOS_OT_ABIERTOS = ("En gestión", "En espera", "Pendiente")
 CLAVE_ASIGNACION_GENERAL = "reclamos_asignacion_automatica"
 
 
-async def asignacion_general_prendida(db) -> bool:
+async def asignacion_general_prendida(db, id_municipio: int) -> bool:
     """True si la asignación automática está prendida para el municipio. Clave
     ausente, inactiva o con otro valor que 'true' = apagada (fail-closed)."""
-    valor = await db.scalar(text(
-        "SELECT valor FROM configuracion_general WHERE clave = :c AND activo"),
-        {"c": CLAVE_ASIGNACION_GENERAL})
+    valor = await leer_config(db, CLAVE_ASIGNACION_GENERAL, id_municipio)
     return str(valor or "").strip().lower() == "true"
 
 
@@ -110,7 +109,8 @@ async def _avisar_supervisores_sin_candidatos(db, r, motivo: str) -> int:
     """), {"s": r.id_subarea})).fetchall()]
     if not usuarios:
         usuarios = [x.id_usuario for x in (await db.execute(text(
-            "SELECT id_usuario FROM usuarios WHERE activo = TRUE AND nivel_acceso = 1"))).fetchall()]
+            "SELECT id_usuario FROM usuarios WHERE activo = TRUE AND nivel_acceso = 1 AND id_municipio = :mun"),
+            {"mun": r.id_municipio})).fetchall()]
     nro = r.nro_reclamo or f"#{r.id_reclamo}"
     for uid in usuarios:
         await db.execute(text("""
@@ -128,8 +128,6 @@ async def autoasignar_reclamo(id_reclamo: int) -> dict[str, Any]:
     log y los smokes): {'asignada': bool, 'motivo'?, 'id_ot'?, 'recurso'?, 'carga'?}."""
     try:
         async with AsyncSessionLocal() as db:
-            if not await asignacion_general_prendida(db):
-                return {"asignada": False, "motivo": "la asignación automática está apagada en el municipio"}
             r = (await db.execute(text("""
                 SELECT r.id_reclamo, r.nro_reclamo, r.estado, r.id_municipio,
                        tr.id_subarea, tr.asignacion_a, s.asignacion_manual
@@ -140,6 +138,8 @@ async def autoasignar_reclamo(id_reclamo: int) -> dict[str, Any]:
             """), {"id": id_reclamo})).fetchone()
             if not r:
                 return {"asignada": False, "motivo": "el reclamo no existe o no tiene gestión"}
+            if not await asignacion_general_prendida(db, r.id_municipio):
+                return {"asignada": False, "motivo": "la asignación automática está apagada en el municipio"}
             if r.asignacion_manual:
                 return {"asignada": False, "motivo": "la gestión asigna a mano"}
             if r.estado != "Sin asignar":
@@ -161,9 +161,11 @@ async def autoasignar_reclamo(id_reclamo: int) -> dict[str, Any]:
                           if tipo == "equipo" else
                           "Nadie de la gestión puede recibirlo (sin agentes de nivel Gestión).")
                 await db.execute(text("""
-                    INSERT INTO reclamo_historial (id_reclamo, accion, estado_anterior, estado_nuevo, nota, fecha_alta, id_usuario_alta)
-                    VALUES (:id, 'Asignación automática sin candidatos', 'Sin asignar', 'Sin asignar', :nota, NOW(), NULL)
-                """), {"id": id_reclamo, "nota": motivo})
+                    INSERT INTO reclamo_historial (id_reclamo, accion, estado_anterior, estado_nuevo, nota, fecha_alta,
+                                                   id_usuario_alta, id_municipio)
+                    VALUES (:id, 'Asignación automática sin candidatos', 'Sin asignar', 'Sin asignar', :nota, NOW(),
+                            NULL, :mun)
+                """), {"id": id_reclamo, "nota": motivo, "mun": r.id_municipio})
                 avisados = await _avisar_supervisores_sin_candidatos(db, r, motivo)
                 await db.commit()
                 logger.info("autoasignar %s: sin candidatos (%s) — %d avisos", r.nro_reclamo, motivo, avisados)
@@ -175,10 +177,10 @@ async def autoasignar_reclamo(id_reclamo: int) -> dict[str, Any]:
             ot = (await db.execute(text("""
                 INSERT INTO ordenes_trabajo
                     (id_reclamo, id_estado, id_agente, id_equipo, es_auditoria, asignacion_automatica,
-                     id_supervisor_asigna, activo, fecha_alta, fecha_modificacion)
-                VALUES (:r, :e, :ag, :eq, FALSE, TRUE, NULL, TRUE, NOW(), NOW())
+                     id_supervisor_asigna, activo, fecha_alta, fecha_modificacion, id_municipio)
+                VALUES (:r, :e, :ag, :eq, FALSE, TRUE, NULL, TRUE, NOW(), NOW(), :mun)
                 RETURNING id_ot, nro_ot
-            """), {"r": id_reclamo, "e": id_estado,
+            """), {"r": id_reclamo, "e": id_estado, "mun": r.id_municipio,
                    "ag": c["id"] if tipo == "agente" else None,
                    "eq": c["id"] if tipo == "equipo" else None})).fetchone()
             nro_ot = ot.nro_ot or f"OT-{ot.id_ot}"
@@ -189,9 +191,10 @@ async def autoasignar_reclamo(id_reclamo: int) -> dict[str, Any]:
             """), {"id": id_reclamo})
             quien = f"{'la cuadrilla' if tipo == 'equipo' else ''} {c['nombre']}".strip()
             await db.execute(text("""
-                INSERT INTO reclamo_historial (id_reclamo, accion, estado_anterior, estado_nuevo, nota, fecha_alta, id_usuario_alta)
-                VALUES (:id, :acc, 'Sin asignar', 'En gestión', :nota, NOW(), NULL)
-            """), {"id": id_reclamo, "acc": f"OT {nro_ot} asignada automáticamente",
+                INSERT INTO reclamo_historial (id_reclamo, accion, estado_anterior, estado_nuevo, nota, fecha_alta,
+                                               id_usuario_alta, id_municipio)
+                VALUES (:id, :acc, 'Sin asignar', 'En gestión', :nota, NOW(), NULL, :mun)
+            """), {"id": id_reclamo, "acc": f"OT {nro_ot} asignada automáticamente", "mun": r.id_municipio,
                    "nota": f"Asignada a {quien} (menor carga de la gestión: "
                            f"{c['carga']} {'OT abierta' if c['carga'] == 1 else 'OTs abiertas'})."})
             await db.commit()

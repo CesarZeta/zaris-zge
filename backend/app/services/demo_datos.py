@@ -723,7 +723,9 @@ class _AsignadorOT:
             a.supervisores_sub.setdefault(f.id_subarea, []).append(f.id_usuario)
         # Gestiones que asignan solas (mig 121): la asignacion general del municipio
         # prendida y la gestion sin la excepcion «asigna a mano».
-        if await autoasignacion.asignacion_general_prendida(db):
+        id_mun_demo = await db.scalar(text(
+            "SELECT id_municipio FROM municipios WHERE direccion_base AND activo"))
+        if await autoasignacion.asignacion_general_prendida(db, id_mun_demo):
             r = await db.execute(text("SELECT id_subarea FROM subarea WHERE NOT asignacion_manual"))
             a.auto_sub = {f.id_subarea for f in r.fetchall()}
         return a

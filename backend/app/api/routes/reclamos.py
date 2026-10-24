@@ -1018,7 +1018,7 @@ async def tomar_reclamo(
 
     perfil = await resolver_agente_desde_usuario(current_user["id_usuario"], db)
     id_agente = perfil["id_agente"]
-    await _validar_destinatario_ot(db, id_agente=id_agente)
+    await _validar_destinatario_ot(db, id_municipio=id_municipio, id_agente=id_agente)
     id_estado = await _id_estado_ot(db, "En gestión")
     ot = (await db.execute(text("""
         INSERT INTO ordenes_trabajo
