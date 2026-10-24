@@ -60,7 +60,7 @@ def sembrar_evento_demo(c: httpx.Client) -> bool:
         "descripcion": "Evento demo para la cartelera de la app del vecino.",
         "fecha": f, "hora_inicio": "18:00", "hora_fin": "20:00",
         "capacidad_ciudadanos": 30, "tipo_qr": "nominal",
-        "admite_autoservicio": True, "id_municipio": 1,
+        "admite_autoservicio": True,
     })
     print(f"  (seed) evento demo: {r.status_code}")
     return r.status_code in (200, 201)

@@ -439,7 +439,7 @@ async def sembrar(conn: asyncpg.Connection) -> int:
 
     # Trámite con su circuito completo (versión, campos, estados, transiciones, documentos) y movimientos.
     tr_a = await c.uno("""
-        SELECT t.id_tramite FROM tramite t WHERE t.id_municipio = 1
+        SELECT t.id_tramite FROM tramite t WHERE t.id_municipio = 1 AND t.activo
          ORDER BY EXISTS (SELECT 1 FROM tramite_documento x
                            JOIN tramite_firma f ON f.id_tramite_documento = x.id_tramite_documento
                           WHERE x.id_tramite = t.id_tramite) DESC,
@@ -467,6 +467,13 @@ async def sembrar(conn: asyncpg.Connection) -> int:
         INSERT INTO tipo_tramite_numerador (id_tipo_tramite, anio, id_municipio, ultimo_numero)
         SELECT $1, anio, $2, ultimo_numero FROM tipo_tramite_numerador WHERE id_tipo_tramite = $3
         ON CONFLICT DO NOTHING""", tipo_b, B, tipo_a)
+    # El clonador corta el ciclo tipo <-> versión publicada: sin el puntero, el tipo de B no
+    # figura en el alta de trámites y el control positivo no puede crear expedientes.
+    await conn.execute("""
+        UPDATE tipo_tramite tt SET id_version_publicada = v.id_tipo_tramite_version
+          FROM tipo_tramite_version v
+         WHERE v.id_tipo_tramite = tt.id_tipo_tramite AND v.estado = 'publicado' AND v.activo
+           AND tt.id_municipio = $1 AND tt.id_version_publicada IS NULL""", B)
 
     # Encuesta enviada con respuesta y detalle (el envío apunta al reclamo o turno de B).
     env = await conn.fetchrow("""

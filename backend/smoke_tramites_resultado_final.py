@@ -179,7 +179,7 @@ SELECT tr.id_tipo_tramite_transicion AS id, eo.codigo AS origen, ed.codigo AS de
   JOIN tipo_tramite_transicion tr ON tr.id_tipo_tramite_version = tt.id_version_publicada AND tr.activo
   JOIN tipo_tramite_estado eo ON eo.id_tipo_tramite_estado = tr.id_estado_origen
   JOIN tipo_tramite_estado ed ON ed.id_tipo_tramite_estado = tr.id_estado_destino
- WHERE tt.codigo = :t
+ WHERE tt.codigo = :t AND tt.id_municipio = 1
 """
 
 
@@ -233,7 +233,7 @@ def valor_campo(c: dict):
 
 
 async def main() -> int:
-    id_empresa = (await q1("SELECT id_empresa FROM empresas WHERE activo ORDER BY id_empresa LIMIT 1"))["id_empresa"]
+    id_empresa = (await q1("SELECT id_empresa FROM empresas WHERE activo AND id_municipio = 1 ORDER BY id_empresa LIMIT 1"))["id_empresa"]
     fixture: Optional[tuple[int, str]] = None
 
     transport = httpx.ASGITransport(app=app)
@@ -245,7 +245,7 @@ async def main() -> int:
         HA = {"Authorization": f"Bearer {r.json()['access_token']}"}
 
         async def crear(tipo: str, asunto: str) -> int:
-            t = await q1("SELECT id_tipo_tramite FROM tipo_tramite WHERE codigo = :c", c=tipo)
+            t = await q1("SELECT id_tipo_tramite FROM tipo_tramite WHERE codigo = :c AND id_municipio = 1", c=tipo)
             det = (await c.get(f"/api/v1/tramites/tipos/{t['id_tipo_tramite']}", headers=HA)).json()
             datos = {ca["nombre_interno"]: valor_campo(ca) for ca in det.get("campos") or [] if ca.get("obligatorio")}
             if "ciudadano" in (det.get("iniciadores_permitidos") or []):
@@ -254,7 +254,7 @@ async def main() -> int:
                 ini = {"tipo": "empresa", "id_empresa": id_empresa}
             rr = await c.post("/api/v1/tramites", headers=HA, json={
                 "id_tipo_tramite": t["id_tipo_tramite"], "asunto": asunto,
-                "iniciador": ini, "datos": datos, "id_municipio": 1,
+                "iniciador": ini, "datos": datos,
             })
             if rr.status_code not in (200, 201):
                 print("   crear tramite fallo:", rr.status_code, rr.text[:200])
@@ -364,7 +364,7 @@ async def main() -> int:
                   "no vuelve a avisar al iniciador" in op["responses"]["200"]["description"])
 
             # ── 6. GET /tramites/tipos/{id} devuelve el tipo_accion real ────
-            t = await q1("SELECT id_tipo_tramite FROM tipo_tramite WHERE codigo = 'poda-arbol'")
+            t = await q1("SELECT id_tipo_tramite FROM tipo_tramite WHERE codigo = 'poda-arbol' AND id_municipio = 1")
             r = await c.get(f"/api/v1/tramites/tipos/{t['id_tipo_tramite']}", headers=HA)
             api = {x["id_tipo_tramite_transicion"]: x.get("tipo_accion") for x in r.json().get("transiciones", [])}
             db = {x["id"]: x["tipo_accion"] for x in await qall(SQL_TRANS, t="poda-arbol")}

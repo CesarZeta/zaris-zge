@@ -98,7 +98,7 @@ def main() -> int:
     tok = dispatcher_token()
 
     # ── 0. Fixtures ────────────────────────────────────────────────────────
-    cur.execute("SELECT id_tipo_tramite, id_version_publicada FROM tipo_tramite WHERE codigo=%s", (TIPO_CODIGO,))
+    cur.execute("SELECT id_tipo_tramite, id_version_publicada FROM tipo_tramite WHERE codigo=%s AND id_municipio=1", (TIPO_CODIGO,))
     id_tipo, id_ver = cur.fetchone()
     cur.execute("""SELECT id_tipo_tramite_estado FROM tipo_tramite_estado
                    WHERE id_tipo_tramite_version=%s AND es_inicial AND activo""", (id_ver,))
@@ -180,7 +180,7 @@ def main() -> int:
             rr = c.post(f"{BASE}/api/v1/tramites", headers=HA, json={
                 "id_tipo_tramite": id_tipo, "asunto": asunto,
                 "iniciador": {"tipo": "ciudadano", "id_ciudadano": ID_CIUDADANO},
-                "datos": datos, "id_municipio": 1,
+                "datos": datos,
             })
             if rr.status_code not in (200, 201):
                 print("   crear tramite fallo:", rr.status_code, rr.text[:200])

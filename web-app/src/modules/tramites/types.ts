@@ -333,7 +333,6 @@ export interface CrearTramiteBody {
     id_ciudadano_representante?: number | null
   }
   datos: Record<string, unknown>
-  id_municipio?: number
 }
 
 /** Columnas ordenables de las bandejas (espejo de `_ORDEN_TRAMITES` en tramites.py). */

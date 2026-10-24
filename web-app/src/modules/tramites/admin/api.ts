@@ -34,7 +34,6 @@ export interface TipoCreateBody {
   retencion_nunca_depurar?: boolean
   sla_dias?: number | null
   id_subarea?: number | null  // mig 104: gestión responsable
-  id_municipio?: number
 }
 
 export interface TipoUpdateBody {
