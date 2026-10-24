@@ -159,11 +159,11 @@ async def reservar_turno_vecino(
                 tipo, tipo_recurso, id_recurso, fecha, hora_inicio, hora_fin,
                 id_ciudadano, motivo, id_municipio, id_usuario_alta
             ) VALUES (
-                'turno', :tr, :ir, :f, :hi, :hf, :ic, :mot, 1, NULL
+                'turno', :tr, :ir, :f, :hi, :hf, :ic, :mot, :mun, NULL
             )
             RETURNING id_ocupacion
         """), {
-            "tr": tipo_recurso, "ir": id_recurso, "f": payload.fecha,
+            "tr": tipo_recurso, "ir": id_recurso, "f": payload.fecha, "mun": prest["id_municipio"],
             "hi": hora_inicio, "hf": hora_fin, "ic": id_ciudadano,
             "mot": f"Turno (app vecinos): {payload.observaciones}" if payload.observaciones else "Turno (app vecinos)",
         })
@@ -177,11 +177,11 @@ async def reservar_turno_vecino(
             ) VALUES (
                 :ic, :ia, :ie, :iu, :itp, :iocup,
                 :f, :hi, :hf, 'reservado', :obs,
-                'autoservicio', 1, :isa
+                'autoservicio', :mun, :isa
             )
             RETURNING id_turno
         """), {
-            "ic": id_ciudadano,
+            "ic": id_ciudadano, "mun": prest["id_municipio"],
             "ia": id_recurso if tipo_recurso == "agente" else None,
             "ie": id_recurso if tipo_recurso == "espacio" else None,
             "iu": prest["id_espacio_ubicacion"],

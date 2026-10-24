@@ -115,9 +115,10 @@ async def cartelera_eventos(
         WHERE e.activo = TRUE
           AND e.admite_autoservicio = TRUE
           AND e.fecha >= CURRENT_DATE
+          AND e.id_municipio = :mun
         ORDER BY e.fecha, e.hora_inicio
         LIMIT 50
-    """), {"c": current["id_ciudadano"]})).mappings().all()
+    """), {"c": current["id_ciudadano"], "mun": current["id_municipio"]})).mappings().all()
     return [_to_dict(r) for r in rows]
 
 
@@ -141,8 +142,8 @@ async def reservar_entrada_vecino(
                ee.codigo AS estado_codigo
         FROM eventos e
         LEFT JOIN estado_evento ee ON ee.id_estado_evento = e.id_estado_evento
-        WHERE e.id_evento = :e
-    """), {"e": id_evento})).mappings().first()
+        WHERE e.id_evento = :e AND e.id_municipio = :mun
+    """), {"e": id_evento, "mun": current["id_municipio"]})).mappings().first()
     if not ev or not ev["activo"] or not ev["admite_autoservicio"]:
         raise HTTPException(404, "Evento no encontrado o no disponible")
     if ev["estado_codigo"] != "activo":
@@ -177,10 +178,11 @@ async def reservar_entrada_vecino(
                 id_evento, id_ciudadano, id_estado_reserva, origen,
                 token_reserva, id_municipio, id_usuario_alta
             ) VALUES (
-                :e, :c, :er, 'autoservicio', gen_random_uuid(), 1, NULL
+                :e, :c, :er, 'autoservicio', gen_random_uuid(), :mun, NULL
             )
             RETURNING id_evento_reserva
-        """), {"e": id_evento, "c": id_ciudadano, "er": id_reservada})).first()
+        """), {"e": id_evento, "c": id_ciudadano, "er": id_reservada,
+               "mun": current["id_municipio"]})).first()
         new_id = int(row[0])
 
         qr = None

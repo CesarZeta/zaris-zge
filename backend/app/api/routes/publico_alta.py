@@ -7,10 +7,10 @@ A diferencia de publico_auth.py (donde un agente municipal da de alta al ciudada
 acá el vecino se da de alta él mismo entrando a una URL pública diferenciada por
 municipio mediante un slug (?m=<codigo_corto>).
 
-Tenancy: mono-tenant validado (§38). El backend es de UN municipio (su identidad vive
-en configuracion_general / municipios). El slug de la URL se VALIDA contra ese único
-municipio: si no coincide, 404. Así la URL queda preparada para multi-deploy sin
-reescribir el backend a multi-tenant.
+Municipio (IT-01, R11): el slug de la URL (?m=<codigo_corto>) elige el municipio del alta
+(404 si no existe). Documento, CUIL, correo y CUIT se controlan contra los registros de ese
+municipio. El alta de empresa es del vecino logueado: va a SU municipio. La verificación
+toma el municipio de la fila del token.
 
 Marcas de verificación (reusan columnas existentes):
   - ciudadano: ciudadanos.email_chk=TRUE + estado_validacion='verificado' + credencial activada.
@@ -20,17 +20,21 @@ El alta de empresa EXIGE un ciudadano ya creado (BUC §2): la empresa se vincula
 vía ciudadano_empresa.
 """
 import re
+import uuid
 import html as _html
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import hash_password, get_current_ciudadano
 from app.core.config import settings
+from app.core.config_municipio import leer_configs
 from app.core.database import get_db
+from app.core.municipio import municipio_por_slug, resolver_municipio_de_origen
 from app.core.urls import url_alta_publica, url_portal_vecino
 from app.middleware.rate_limit import check_rate_limit
 from app.utils.request_helpers import get_real_ip
@@ -83,40 +87,18 @@ def _cuil_desde_cuit(cuit_digits: str) -> str:
     return cuit_digits
 
 
-async def _resolver_municipio(db: AsyncSession, slug: str) -> dict:
-    """
-    Valida el slug contra el ÚNICO municipio del deploy (mono-tenant).
-    Devuelve {id_municipio, nombre, slug}. 404 si el slug no coincide.
-    """
-    slug_norm = (slug or "").strip().lower()
-    if not slug_norm:
-        raise HTTPException(status_code=404, detail="Municipio no encontrado")
-
-    res = await db.execute(
-        text("""
-            SELECT id_municipio, nombre, codigo_corto
-              FROM municipios
-             WHERE LOWER(codigo_corto) = :slug AND activo = TRUE
-             LIMIT 1
-        """),
-        {"slug": slug_norm},
-    )
-    row = res.fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Municipio no encontrado")
-    return {"id_municipio": row.id_municipio, "nombre": row.nombre, "slug": row.codigo_corto}
+MSG_DUPLICADO = "Ya existe un registro con ese documento, CUIL o correo."
 
 
-async def _branding(db: AsyncSession) -> dict:
-    """Lee branding de configuracion_general (mono-tenant: una sola fila por clave)."""
-    res = await db.execute(
-        text("""
-            SELECT clave, valor FROM configuracion_general
-             WHERE clave IN ('municipio_nombre','municipio_logo_url',
-                             'municipio_color_primary','municipio_color_accent')
-        """)
-    )
-    cfg = {r.clave: (r.valor or None) for r in res.fetchall()}
+async def _branding(db: AsyncSession, id_municipio: int) -> dict:
+    """Branding del municipio: sus claves de configuración y, si no tiene nombre cargado,
+    el de la tabla municipios."""
+    cfg = {k: (v or None) for k, v in (await leer_configs(db, [
+        "municipio_nombre", "municipio_logo_url", "municipio_color_primary", "municipio_color_accent",
+    ], id_municipio)).items()}
+    if not cfg.get("municipio_nombre"):
+        cfg["municipio_nombre"] = await db.scalar(text(
+            "SELECT nombre FROM municipios WHERE id_municipio = :m"), {"m": id_municipio})
     return cfg
 
 
@@ -179,8 +161,8 @@ def _pagina_confirmacion(
 @router.get("/identidad", response_model=IdentidadAltaOut)
 async def identidad_alta(m: str, db: AsyncSession = Depends(get_db)):
     """Branding del municipio para pintar el header de la página pública. Valida el slug."""
-    muni = await _resolver_municipio(db, m)
-    cfg = await _branding(db)
+    muni = await municipio_por_slug(db, m)
+    cfg = await _branding(db, muni["id_municipio"])
     return IdentidadAltaOut(
         municipio_slug=muni["slug"],
         municipio_nombre=cfg.get("municipio_nombre") or muni["nombre"],
@@ -197,7 +179,7 @@ async def listar_actividades(m: str, db: AsyncSession = Depends(get_db)):
     Lista de actividades para el select de empresa de la página pública. Valida el slug.
     Público (sin JWT). Devuelve {actividades: [{id, descripcion}]}.
     """
-    await _resolver_municipio(db, m)
+    await municipio_por_slug(db, m)
     res = await db.execute(
         text("""
             SELECT id, descripcion FROM actividades
@@ -211,7 +193,7 @@ async def listar_actividades(m: str, db: AsyncSession = Depends(get_db)):
 @router.get("/nacionalidades")
 async def listar_nacionalidades(m: str, db: AsyncSession = Depends(get_db)):
     """Catálogo de nacionalidades para el select del alta de ciudadano. Valida el slug."""
-    await _resolver_municipio(db, m)
+    await municipio_por_slug(db, m)
     res = await db.execute(
         text("SELECT id, pais FROM nacionalidades WHERE activo IS NOT FALSE ORDER BY pais")
     )
@@ -231,7 +213,7 @@ async def geo_buscar_publico(
     Reusa la lógica de filtrado de POIs de geo.py (solo_direcciones=True).
     Valida el slug + rate-limit por IP (Nominatim ya tiene su rate-limit global).
     """
-    muni = await _resolver_municipio(db, m)
+    muni = await municipio_por_slug(db, m)
     check_rate_limit(get_real_ip(request), max_requests=20, window_seconds=60)
     return await geocodificar_direccion(q, limit, solo_direcciones=True, id_municipio=muni["id_municipio"])
 
@@ -255,7 +237,7 @@ async def alta_cuenta(
     """
     check_rate_limit(get_real_ip(request), max_requests=RATE_MAX, window_seconds=RATE_WINDOW)
 
-    muni = await _resolver_municipio(db, data.municipio_slug)
+    muni = await municipio_por_slug(db, data.municipio_slug)
     id_municipio = muni["id_municipio"]
     doc_nro = _validar_dni(_solo_digitos(data.doc_nro))
     email = data.email.lower().strip()
@@ -281,8 +263,9 @@ async def alta_cuenta(
     # Documento ya existe en BUC -> no creamos duplicado: la vía correcta es
     # "activar cuenta existente" (POST /alta/activar-existente).
     res = await db.execute(
-        text("SELECT id_ciudadano FROM ciudadanos WHERE doc_nro = :doc AND activo = TRUE LIMIT 1"),
-        {"doc": doc_nro},
+        text("""SELECT id_ciudadano FROM ciudadanos
+                 WHERE doc_nro = :doc AND activo = TRUE AND id_municipio = :mun LIMIT 1"""),
+        {"doc": doc_nro, "mun": id_municipio},
     )
     if res.fetchone():
         raise HTTPException(
@@ -293,8 +276,9 @@ async def alta_cuenta(
 
     # CUIL ya registrado por otro ciudadano activo (es UNIQUE)
     res = await db.execute(
-        text("SELECT id_ciudadano FROM ciudadanos WHERE cuil = :cuil AND activo = TRUE LIMIT 1"),
-        {"cuil": cuil},
+        text("""SELECT id_ciudadano FROM ciudadanos
+                 WHERE cuil = :cuil AND activo = TRUE AND id_municipio = :mun LIMIT 1"""),
+        {"cuil": cuil, "mun": id_municipio},
     )
     if res.fetchone():
         raise HTTPException(status_code=409, detail="Ese CUIL ya está registrado.")
@@ -305,13 +289,48 @@ async def alta_cuenta(
             SELECT cc.id_ciudadano FROM ciudadano_credencial cc
               JOIN ciudadanos c ON c.id_ciudadano = cc.id_ciudadano
              WHERE LOWER(c.email) = :email AND cc.activo = TRUE AND c.activo = TRUE
+               AND c.id_municipio = :mun
              LIMIT 1
         """),
-        {"email": email},
+        {"email": email, "mun": id_municipio},
     )
     if res.fetchone():
         raise HTTPException(status_code=409, detail="Ya hay una cuenta registrada con ese correo.")
 
+    try:
+        id_ciudadano, token = await _insertar_ciudadano_autoregistrado(db, data, {
+            "doc_nro": doc_nro,
+            "cuil": cuil,
+            "fecha_nac": fecha_nac,
+            "telefono": telefono,
+            "email": email,
+            "id_municipio": id_municipio,
+        })
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=MSG_DUPLICADO)
+
+    cfg = await _branding(db, id_municipio)
+    cta_url = _frontend_verificar_url(muni["slug"], token)
+    background_tasks.add_task(
+        enviar_mail_verificacion_alta_ciudadano,
+        email,
+        data.nombre.strip(),
+        data.apellido.strip(),
+        cta_url,
+        cfg.get("municipio_nombre") or muni["nombre"],
+        cfg.get("municipio_logo_url"),
+        portal_url=url_portal_vecino() or None,
+        id_municipio=id_municipio,
+    )
+
+    return AltaCuentaOut(id_ciudadano=id_ciudadano, email=email, verificacion_enviada=True)
+
+
+async def _insertar_ciudadano_autoregistrado(db: AsyncSession, data: AltaCuentaIn, v: dict) -> tuple[int, str]:
+    """Ficha + credencial (password elegido, token de verificación) + canal preferido, y commit.
+    Devuelve (id_ciudadano, token)."""
+    id_municipio = v["id_municipio"]
     ins = await db.execute(
         text("""
             INSERT INTO ciudadanos
@@ -329,20 +348,20 @@ async def alta_cuenta(
             RETURNING id_ciudadano
         """),
         {
-            "doc_nro": doc_nro,
-            "cuil": cuil,
+            "doc_nro": v["doc_nro"],
+            "cuil": v["cuil"],
             "nombre": data.nombre.strip(),
             "apellido": data.apellido.strip(),
             "sexo": data.sexo,
-            "fecha_nac": fecha_nac,
+            "fecha_nac": v["fecha_nac"],
             "id_nacionalidad": data.id_nacionalidad,
             "calle": data.calle.strip(),
             "localidad": data.localidad.strip(),
             "provincia": data.provincia.strip(),
             "latitud": data.latitud,
             "longitud": data.longitud,
-            "telefono": telefono,
-            "email": email,
+            "telefono": v["telefono"],
+            "email": v["email"],
             "observaciones": (data.observaciones or "").strip() or None,
             "id_municipio": id_municipio,
         },
@@ -383,22 +402,7 @@ async def alta_cuenta(
     )
 
     await db.commit()
-
-    cfg = await _branding(db)
-    cta_url = _frontend_verificar_url(muni["slug"], token)
-    background_tasks.add_task(
-        enviar_mail_verificacion_alta_ciudadano,
-        email,
-        data.nombre.strip(),
-        data.apellido.strip(),
-        cta_url,
-        cfg.get("municipio_nombre") or muni["nombre"],
-        cfg.get("municipio_logo_url"),
-        portal_url=url_portal_vecino() or None,
-        id_municipio=muni["id_municipio"],
-    )
-
-    return AltaCuentaOut(id_ciudadano=id_ciudadano, email=email, verificacion_enviada=True)
+    return id_ciudadano, token
 
 
 @router.post("/activar-existente", response_model=ActivarExistenteOut)
@@ -419,7 +423,7 @@ async def activar_cuenta_existente(
     (idempotente: cuenta activada -> no toca nada; sin activar -> regenera token).
     """
     check_rate_limit(get_real_ip(request), max_requests=RATE_MAX, window_seconds=RATE_WINDOW)
-    muni = await _resolver_municipio(db, data.municipio_slug)
+    muni = await municipio_por_slug(db, data.municipio_slug)
 
     doc_nro = _solo_digitos(data.doc_nro)
     if not (7 <= len(doc_nro) <= 8):
@@ -429,10 +433,10 @@ async def activar_cuenta_existente(
         text("""
             SELECT id_ciudadano, nombre, apellido, email
               FROM ciudadanos
-             WHERE doc_nro = :doc AND activo = TRUE
+             WHERE doc_nro = :doc AND activo = TRUE AND id_municipio = :mun
              LIMIT 1
         """),
-        {"doc": doc_nro},
+        {"doc": doc_nro, "mun": muni["id_municipio"]},
     )
     row = res.fetchone()
     if not row or not (row.email or "").strip():
@@ -470,8 +474,10 @@ async def alta_empresa(
     """
     check_rate_limit(get_real_ip(request), max_requests=RATE_MAX, window_seconds=RATE_WINDOW)
 
-    muni = await _resolver_municipio(db, data.municipio_slug)
-    id_municipio = muni["id_municipio"]
+    muni = await municipio_por_slug(db, data.municipio_slug)
+    id_municipio = ciudadano["id_municipio"]
+    if muni["id_municipio"] != id_municipio:
+        raise HTTPException(status_code=404, detail="Municipio no encontrado")
     # El representante es el ciudadano del token — get_current_ciudadano ya garantizó
     # que existe, está activo y su credencial está activada.
     id_ciudadano = ciudadano["id_ciudadano"]
@@ -489,12 +495,40 @@ async def alta_empresa(
 
     # CUIT ya registrado -> no duplicar
     res = await db.execute(
-        text("SELECT id_empresa FROM empresas WHERE cuit = :cuit AND activo = TRUE LIMIT 1"),
-        {"cuit": cuit},
+        text("""SELECT id_empresa FROM empresas
+                 WHERE cuit = :cuit AND activo = TRUE AND id_municipio = :mun LIMIT 1"""),
+        {"cuit": cuit, "mun": id_municipio},
     )
     if res.fetchone():
         raise HTTPException(status_code=409, detail="Ya existe una empresa registrada con ese CUIT.")
 
+    try:
+        id_empresa, token = await _insertar_empresa(db, data, id_ciudadano, {
+            "cuit": cuit, "email": email, "telefono": telefono, "id_municipio": id_municipio,
+        })
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Ya existe una empresa registrada con ese CUIT.")
+
+    cfg = await _branding(db, id_municipio)
+    cta_url = _frontend_verificar_url(muni["slug"], token)
+    background_tasks.add_task(
+        enviar_mail_verificacion_alta_empresa,
+        email,
+        data.razon_social.strip(),
+        cta_url,
+        cfg.get("municipio_nombre") or muni["nombre"],
+        cfg.get("municipio_logo_url"),
+        id_municipio=id_municipio,
+    )
+
+    return AltaEmpresaOut(id_empresa=id_empresa, email=email, verificacion_enviada=True)
+
+
+async def _insertar_empresa(db: AsyncSession, data: AltaEmpresaIn, id_ciudadano: int, v: dict) -> tuple[int, str]:
+    """Empresa + vínculo con el representante + credencial de verificación, y commit.
+    Devuelve (id_empresa, token)."""
+    id_municipio = v["id_municipio"]
     ins = await db.execute(
         text("""
             INSERT INTO empresas
@@ -508,7 +542,7 @@ async def alta_empresa(
             RETURNING id_empresa
         """),
         {
-            "cuit": cuit,
+            "cuit": v["cuit"],
             "nombre": data.razon_social.strip(),
             "id_actividad": data.id_actividad,
             "calle": data.calle.strip(),
@@ -516,8 +550,8 @@ async def alta_empresa(
             "provincia": data.provincia.strip(),
             "latitud": data.latitud,
             "longitud": data.longitud,
-            "telefono": telefono,
-            "email": email,
+            "telefono": v["telefono"],
+            "email": v["email"],
             "observaciones": (data.observaciones or "").strip() or None,
             "id_municipio": id_municipio,
         },
@@ -527,14 +561,16 @@ async def alta_empresa(
     # Vínculo ciudadano ↔ empresa (representación)
     await db.execute(
         text("""
-            INSERT INTO ciudadano_empresa (id_ciudadano, id_empresa, id_tipo_representacion, fecha_alta, activo)
-            VALUES (:id_ciudadano, :id_empresa, :id_tipo, NOW(), TRUE)
+            INSERT INTO ciudadano_empresa
+                (id_ciudadano, id_empresa, id_tipo_representacion, fecha_alta, activo, id_municipio)
+            VALUES (:id_ciudadano, :id_empresa, :id_tipo, NOW(), TRUE, :id_municipio)
             ON CONFLICT (id_ciudadano, id_empresa, id_tipo_representacion) DO NOTHING
         """),
         {
             "id_ciudadano": id_ciudadano,
             "id_empresa": id_empresa,
-            "id_tipo": data.id_tipo_representacion or 1,
+            "id_tipo": data.id_tipo_representacion,
+            "id_municipio": id_municipio,
         },
     )
 
@@ -556,20 +592,7 @@ async def alta_empresa(
     token = str(res.fetchone().token_verificacion)
 
     await db.commit()
-
-    cfg = await _branding(db)
-    cta_url = _frontend_verificar_url(muni["slug"], token)
-    background_tasks.add_task(
-        enviar_mail_verificacion_alta_empresa,
-        email,
-        data.razon_social.strip(),
-        cta_url,
-        cfg.get("municipio_nombre") or muni["nombre"],
-        cfg.get("municipio_logo_url"),
-        id_municipio=muni["id_municipio"],
-    )
-
-    return AltaEmpresaOut(id_empresa=id_empresa, email=email, verificacion_enviada=True)
+    return id_empresa, token
 
 
 @router.get(
@@ -577,21 +600,25 @@ async def alta_empresa(
     response_class=HTMLResponse,
     responses={200: {"description": "Pagina de confirmacion; el link del mail se arma con API_PUBLIC_BASE_URL"}},
 )
-async def verificar(token: str, m: str | None = None, db: AsyncSession = Depends(get_db)):
+async def verificar(request: Request, token: str, m: str | None = None, db: AsyncSession = Depends(get_db)):
     """
     Verifica el email del alta (ciudadano o empresa) a partir del token UUID.
     Devuelve una página HTML de confirmación (la abre el navegador del vecino).
 
     El token puede ser de un ciudadano (ciudadano_credencial.token_activacion) o de una
-    empresa (empresa_credencial.token_verificacion). Probamos primero ciudadano.
+    empresa (empresa_credencial.token_verificacion). Probamos primero ciudadano. El
+    municipio (nombre en la página) es el de la fila del token. Un token que no es un UUID
+    es el mismo caso que uno inexistente: página de enlace inválido (400), nunca un 500.
     """
-    cfg = await _branding(db)
-    municipio_nombre = cfg.get("municipio_nombre") or "Tu municipio"
+    try:
+        token = str(uuid.UUID(token))
+    except ValueError:
+        return await _pagina_enlace_invalido(db, request, m)
 
     # ── Ciudadano ──
     res = await db.execute(
         text("""
-            SELECT cc.id_ciudadano_credencial, cc.id_ciudadano, c.nombre, c.apellido
+            SELECT cc.id_ciudadano_credencial, cc.id_ciudadano, c.nombre, c.apellido, c.id_municipio
               FROM ciudadano_credencial cc
               JOIN ciudadanos c ON c.id_ciudadano = cc.id_ciudadano
              WHERE cc.token_activacion = CAST(:token AS uuid)
@@ -625,6 +652,7 @@ async def verificar(token: str, m: str | None = None, db: AsyncSession = Depends
             {"id": row.id_ciudadano_credencial},
         )
         await db.commit()
+        municipio_nombre = (await _branding(db, row.id_municipio)).get("municipio_nombre") or "Tu municipio"
         nombre = (row.nombre or "").strip() or row.apellido or "vecino"
         return HTMLResponse(_pagina_confirmacion(
             "¡Correo verificado!",
@@ -637,7 +665,7 @@ async def verificar(token: str, m: str | None = None, db: AsyncSession = Depends
     # ── Empresa ──
     res = await db.execute(
         text("""
-            SELECT ec.id_empresa_credencial, ec.id_empresa, e.nombre AS razon_social
+            SELECT ec.id_empresa_credencial, ec.id_empresa, e.nombre AS razon_social, e.id_municipio
               FROM empresa_credencial ec
               JOIN empresas e ON e.id_empresa = ec.id_empresa
              WHERE ec.token_verificacion = CAST(:token AS uuid)
@@ -665,6 +693,7 @@ async def verificar(token: str, m: str | None = None, db: AsyncSession = Depends
             {"id": row.id_empresa_credencial},
         )
         await db.commit()
+        municipio_nombre = (await _branding(db, row.id_municipio)).get("municipio_nombre") or "Tu municipio"
         return HTMLResponse(_pagina_confirmacion(
             "¡Empresa verificada!",
             f"El alta de {row.razon_social} quedó verificada correctamente.",
@@ -672,12 +701,26 @@ async def verificar(token: str, m: str | None = None, db: AsyncSession = Depends
             cta_url=url_portal_vecino() or None, cta_texto="Ir al Portal del Ciudadano",
         ))
 
-    # Token inválido o expirado → botón a la página pública de alta (opción "Activar mi
-    # cuenta": con el DNI pide un correo de activación nuevo). El slug es el del único
-    # municipio del deploy (mono-tenant), no el `m` de la URL (puede venir roto).
-    slug_activo = await db.scalar(text(
-        "SELECT codigo_corto FROM municipios WHERE activo = TRUE ORDER BY id_municipio LIMIT 1"
-    ))
+    return await _pagina_enlace_invalido(db, request, m)
+
+
+async def _pagina_enlace_invalido(db: AsyncSession, request: Request, m: str | None) -> HTMLResponse:
+    """Token inválido o expirado → botón a la página pública de alta (opción "Activar mi
+    cuenta": con el DNI pide un correo de activación nuevo). El municipio es el del `m` de
+    la URL si existe; si viene roto o falta, el de la dirección (el municipio base)."""
+    try:
+        muni = await municipio_por_slug(db, m or "")
+        id_municipio, slug_activo = muni["id_municipio"], muni["slug"]
+    except HTTPException:
+        try:
+            id_municipio = await resolver_municipio_de_origen(request, db)
+        except HTTPException:
+            id_municipio = None
+        slug_activo = (await db.scalar(text(
+            "SELECT codigo_corto FROM municipios WHERE id_municipio = :m"), {"m": id_municipio})
+            if id_municipio is not None else None)
+    municipio_nombre = ((await _branding(db, id_municipio)).get("municipio_nombre")
+                        if id_municipio is not None else None) or "Tu municipio"
     return HTMLResponse(
         _pagina_confirmacion(
             "Enlace inválido o vencido",

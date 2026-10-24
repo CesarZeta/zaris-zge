@@ -426,6 +426,13 @@ async def sembrar(conn: asyncpg.Connection) -> int:
          ORDER BY EXISTS (SELECT 1 FROM evento_reservas x WHERE x.id_evento = e.id_evento) DESC,
                   EXISTS (SELECT 1 FROM evento_encargados x WHERE x.id_evento = e.id_evento) DESC, e.id_evento DESC LIMIT 1""")
     ev_b = await c.clonar("eventos", ev_a)
+    # La cartelera de la app del vecino solo muestra eventos próximos, activos y con autoservicio:
+    # el de B tiene que figurar ahí para que el barrido vea si se le muestra al vecino del municipio 1.
+    await conn.execute("""
+        UPDATE eventos SET fecha = CURRENT_DATE + 7, admite_autoservicio = TRUE, activo = TRUE,
+               token_publico = COALESCE(token_publico, gen_random_uuid()),
+               id_estado_evento = (SELECT id_estado_evento FROM estado_evento WHERE codigo = 'activo')
+         WHERE id_evento = $1""", ev_b)
     await c.clonar_hijos("evento_reservas", "id_evento", ev_a, 1)
     for enc in await conn.fetch("SELECT id_evento_encargado, tipo_recurso FROM evento_encargados "
                                 "WHERE id_evento = $1 ORDER BY 1 LIMIT 1", ev_a):

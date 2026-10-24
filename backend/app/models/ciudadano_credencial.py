@@ -54,7 +54,7 @@ class CiudadanoCredencial(Base):
 
     # Estandar §10
     activo = Column(Boolean, nullable=False, default=True)
-    id_municipio = Column(Integer, nullable=True)
+    id_municipio = Column(Integer, nullable=False)
     id_subarea = Column(Integer, nullable=True)
     fecha_alta = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     fecha_modificacion = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -88,7 +88,7 @@ class CiudadanoCanalPreferido(Base):
 
     # Estandar §10
     activo = Column(Boolean, nullable=False, default=True)
-    id_municipio = Column(Integer, nullable=True)
+    id_municipio = Column(Integer, nullable=False)
     id_subarea = Column(Integer, nullable=True)
     fecha_alta = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     fecha_modificacion = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -124,7 +124,7 @@ class EmpresaCredencial(Base):
 
     # Estándar §10
     activo = Column(Boolean, nullable=False, default=True)
-    id_municipio = Column(Integer, nullable=True)
+    id_municipio = Column(Integer, nullable=False)
     id_subarea = Column(Integer, nullable=True)
     fecha_alta = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     fecha_modificacion = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -155,7 +155,7 @@ class CiudadanoPushSubscription(Base):
 
     # Estandar §10
     activo = Column(Boolean, nullable=False, default=True)
-    id_municipio = Column(Integer, nullable=True)
+    id_municipio = Column(Integer, nullable=False)
     id_subarea = Column(Integer, nullable=True)
     fecha_alta = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     fecha_modificacion = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

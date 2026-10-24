@@ -60,8 +60,8 @@ async def catalogo_tipos_publico(
     """Tipos de reclamo activos para poblar el formulario del vecino.
     Solo datos no sensibles (id, nombre, sla, subárea). El área se deriva de
     subarea.id_area (mig 27 eliminó tipo_reclamo.id_area)."""
-    cond = ["tr.activo = TRUE"]
-    params: dict = {"lim": limit}
+    cond = ["tr.activo = TRUE", "tr.id_municipio = :mun"]
+    params: dict = {"lim": limit, "mun": current["id_municipio"]}
     if q and q.strip():
         cond.append("tr.nombre ILIKE :q")
         params["q"] = f"%{q.strip()}%"
@@ -281,8 +281,8 @@ async def crear_mi_reclamo(
         SELECT s.id_area
         FROM tipo_reclamo tr
         LEFT JOIN subarea s ON s.id_subarea = tr.id_subarea
-        WHERE tr.id_tipo_reclamo = :id_tr AND tr.activo = TRUE
-    """), {"id_tr": id_tipo})
+        WHERE tr.id_tipo_reclamo = :id_tr AND tr.activo = TRUE AND tr.id_municipio = :mun
+    """), {"id_tr": id_tipo, "mun": current["id_municipio"]})
     row_tipo = r_tipo.fetchone()
     if not row_tipo:
         raise HTTPException(status_code=422, detail="Tipo de reclamo inválido")
@@ -321,15 +321,15 @@ async def crear_mi_reclamo(
                  domicilio_reclamo, prioridad, estado, id_estado_fk,
                  latitud, longitud, id_localidad, canal_origen,
                  fuente_geolocalizacion, activo, fecha_alta, fecha_modificacion,
-                 id_usuario_alta, id_usuario_modificacion)
+                 id_usuario_alta, id_usuario_modificacion, id_municipio)
             VALUES
                 (:id_ciudadano, :id_tipo_reclamo, :id_area, :descripcion, :direccion,
                  :direccion, 'Media', 'Sin asignar', :id_estado_fk,
                  :latitud, :longitud, :id_localidad, :canal_origen,
                  :fuente_geolocalizacion, TRUE, NOW(), NOW(),
-                 NULL, NULL)
+                 NULL, NULL, :id_municipio)
             RETURNING id_reclamo, nro_reclamo
-        """), {**data, "canal_origen": CANAL_VECINO})
+        """), {**data, "canal_origen": CANAL_VECINO, "id_municipio": current["id_municipio"]})
         await db.commit()
         row = result.fetchone()
         id_reclamo = row.id_reclamo
@@ -338,10 +338,11 @@ async def crear_mi_reclamo(
         # Historial inicial: id_usuario_alta NULL (lo originó el vecino, no un agente).
         await db.execute(text("""
             INSERT INTO reclamo_historial
-                (id_reclamo, accion, estado_anterior, estado_nuevo, nota, fecha_alta, id_usuario_alta)
+                (id_reclamo, accion, estado_anterior, estado_nuevo, nota, fecha_alta, id_usuario_alta,
+                 id_municipio)
             VALUES (:id_r, 'Reclamo ingresado', NULL, 'Sin asignar',
-                    'Reclamo registrado por el vecino desde la app', NOW(), NULL)
-        """), {"id_r": id_reclamo})
+                    'Reclamo registrado por el vecino desde la app', NOW(), NULL, :mun)
+        """), {"id_r": id_reclamo, "mun": current["id_municipio"]})
         await db.commit()
 
         # Mail de confirmacion al vecino (best-effort, post-commit). No bloquea ni
