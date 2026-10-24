@@ -25,6 +25,7 @@ from typing import Any, Optional
 from sqlalchemy import text
 
 from app.core.config import settings
+from app.core.config_municipio import leer_configs
 from app.core.database import AsyncSessionLocal
 from app.services.avisos import registrar_aviso_ciudadano
 
@@ -52,12 +53,9 @@ async def vapid_config() -> dict:
     pub = priv = email = ""
     try:
         async with AsyncSessionLocal() as db:
-            r = await db.execute(text(
-                "SELECT clave, valor FROM configuracion_general "
-                "WHERE clave IN ('vapid_public_key','vapid_private_key','vapid_claims_email') "
-                "AND id_municipio IS NULL"
-            ))
-            vals = {row.clave: (row.valor or "").strip() for row in r.fetchall()}
+            # Claves globales (municipio None): una sola identidad push para todos (R10).
+            crudos = await leer_configs(db, ["vapid_public_key", "vapid_private_key", "vapid_claims_email"], None)
+            vals = {clave: (valor or "").strip() for clave, valor in crudos.items()}
         pub = vals.get("vapid_public_key", "")
         priv = vals.get("vapid_private_key", "")
         email = vals.get("vapid_claims_email", "") or "mailto:notificaciones@zaris.com.ar"
