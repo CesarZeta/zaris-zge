@@ -48,8 +48,9 @@ async def registrar_aviso_ciudadano(
             id_aviso = await db.scalar(text("""
                 INSERT INTO ciudadano_aviso
                     (id_ciudadano, tipo, titulo, mensaje, url_destino,
-                     recurso_tipo, recurso_id, activo)
-                VALUES (:c, :t, :ti, :m, :u, :rt, :ri, TRUE)
+                     recurso_tipo, recurso_id, activo, id_municipio)
+                SELECT :c, :t, :ti, :m, :u, :rt, :ri, TRUE, c.id_municipio
+                  FROM ciudadanos c WHERE c.id_ciudadano = :c
                 RETURNING id_ciudadano_aviso
             """), {
                 "c": id_ciudadano, "t": tipo, "ti": titulo[:200], "m": mensaje,

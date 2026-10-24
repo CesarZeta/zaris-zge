@@ -206,36 +206,35 @@ def _from_address_base() -> str:
 
 _CTA_COLOR_DEFAULT = "#f54e00"
 _CTA_COLOR_TTL_SEG = 300.0
-_cta_color_cache: dict = {"ts": 0.0, "color": _CTA_COLOR_DEFAULT}
+# Cache por municipio (R9, IT-01): {id_municipio: (ts, color)}.
+_cta_color_cache: dict[int, tuple[float, str]] = {}
 
 
-async def _color_cta_municipio() -> str:
+async def _color_cta_municipio(id_municipio: int) -> str:
     """Color del boton CTA de los mails al vecino: `municipio_color_primary`
-    de configuracion_general (branding del piloto, etapa F del plan App
-    Vecinos), con fallback neutro al naranja default si la clave falta, esta
-    vacia o no es un hex valido. Cache TTL 5 min, sesion propia (los mails
-    corren en BackgroundTasks sin sesion de request)."""
+    del municipio (branding del piloto, etapa F del plan App Vecinos), con
+    fallback neutro al naranja default si la clave falta, esta vacia o no es un
+    hex valido. Cache TTL 5 min por municipio, sesion propia (los mails corren
+    en BackgroundTasks sin sesion de request)."""
     import re
     import time as _time
 
     now = _time.monotonic()
-    if now - _cta_color_cache["ts"] < _CTA_COLOR_TTL_SEG:
-        return _cta_color_cache["color"]
+    guardado = _cta_color_cache.get(id_municipio)
+    if guardado and now - guardado[0] < _CTA_COLOR_TTL_SEG:
+        return guardado[1]
     color = _CTA_COLOR_DEFAULT
     try:
-        from sqlalchemy import text as _text
-
+        from app.core.config_municipio import leer_config
         from app.core.database import AsyncSessionLocal
 
         async with AsyncSessionLocal() as db:
-            valor = await db.scalar(_text(
-                "SELECT valor FROM configuracion_general WHERE clave = 'municipio_color_primary'"
-            ))
+            valor = await leer_config(db, "municipio_color_primary", id_municipio)
         if valor and re.fullmatch(r"#[0-9a-fA-F]{6}", valor.strip()):
             color = valor.strip()
     except Exception as e:  # noqa: BLE001 — el mail nunca se cae por branding
         logger.warning("color CTA: no pude leer municipio_color_primary (%s)", e)
-    _cta_color_cache.update(ts=now, color=color)
+    _cta_color_cache[id_municipio] = (now, color)
     return color
 
 
@@ -349,6 +348,8 @@ async def enviar_mail_activacion_ciudadano(
     municipio_nombre: str,
     frontend_url: str,
     municipio_logo_url: str | None = None,
+    *,
+    id_municipio: int,
 ) -> bool:
     """
     Manda mail de activacion al ciudadano recien dado de alta.
@@ -373,7 +374,7 @@ async def enviar_mail_activacion_ciudadano(
         parrafo_extra="Este enlace es valido por 7 dias. Si expira, podes pedir un nuevo correo desde la app.",
         municipio_nombre=municipio_nombre,
         municipio_logo_url=municipio_logo_url,
-        cta_color=await _color_cta_municipio(),
+        cta_color=await _color_cta_municipio(id_municipio),
     )
 
     # Display name del municipio + address del subdominio Resend (decision sesion 2026-05-19).
@@ -392,6 +393,8 @@ async def enviar_mail_confirmacion_reclamo_ciudadano(
     municipio_nombre: str,
     frontend_url: str,
     municipio_logo_url: str | None = None,
+    *,
+    id_municipio: int,
 ) -> bool:
     """
     Mail de confirmacion al vecino cuando registra un reclamo desde la app.
@@ -428,7 +431,7 @@ async def enviar_mail_confirmacion_reclamo_ciudadano(
         ),
         municipio_nombre=municipio_nombre,
         municipio_logo_url=municipio_logo_url,
-        cta_color=await _color_cta_municipio(),
+        cta_color=await _color_cta_municipio(id_municipio),
     )
 
     from_header = formatear_remitente(municipio_nombre, _from_address_base())
@@ -444,6 +447,8 @@ async def enviar_mail_retrabajo_auditoria_ciudadano(
     municipio_nombre: str,
     portal_url: str,
     municipio_logo_url: str | None = None,
+    *,
+    id_municipio: int,
 ) -> bool:
     """
     Mail al vecino cuando la auditoría de su reclamo resultó observada y el auditor
@@ -475,7 +480,7 @@ async def enviar_mail_retrabajo_auditoria_ciudadano(
         ),
         municipio_nombre=municipio_nombre,
         municipio_logo_url=municipio_logo_url,
-        cta_color=await _color_cta_municipio(),
+        cta_color=await _color_cta_municipio(id_municipio),
     )
 
     from_header = formatear_remitente(municipio_nombre, _from_address_base())
@@ -494,6 +499,8 @@ async def enviar_mail_verificacion_alta_ciudadano(
     municipio_nombre: str,
     municipio_logo_url: str | None = None,
     portal_url: str | None = None,
+    *,
+    id_municipio: int,
 ) -> bool:
     """
     Mail de verificación del alta pública de un ciudadano (autoregistro).
@@ -518,7 +525,7 @@ async def enviar_mail_verificacion_alta_ciudadano(
         parrafo_extra="Este enlace es válido por 7 días. Si no fuiste vos, podés ignorar este mensaje.",
         municipio_nombre=municipio_nombre,
         municipio_logo_url=municipio_logo_url,
-        cta_color=await _color_cta_municipio(),
+        cta_color=await _color_cta_municipio(id_municipio),
         enlace_extra=("Después de verificar, ingresá al Portal del Ciudadano desde", portal_url) if portal_url else None,
     )
 
@@ -532,6 +539,8 @@ async def enviar_mail_verificacion_alta_empresa(
     cta_url: str,
     municipio_nombre: str,
     municipio_logo_url: str | None = None,
+    *,
+    id_municipio: int,
 ) -> bool:
     """
     Mail de verificación del alta pública de una empresa (autoregistro, vinculada a un
@@ -552,7 +561,7 @@ async def enviar_mail_verificacion_alta_empresa(
         parrafo_extra="Este enlace es válido por 7 días. Si no esperabas este correo, podés ignorarlo.",
         municipio_nombre=municipio_nombre,
         municipio_logo_url=municipio_logo_url,
-        cta_color=await _color_cta_municipio(),
+        cta_color=await _color_cta_municipio(id_municipio),
     )
 
     from_header = formatear_remitente(municipio_nombre, _from_address_base())
@@ -567,6 +576,8 @@ async def enviar_mail_recovery_ciudadano(
     municipio_nombre: str,
     frontend_url: str,
     municipio_logo_url: str | None = None,
+    *,
+    id_municipio: int,
 ) -> bool:
     """
     Manda mail de recuperacion de password al ciudadano.
@@ -588,7 +599,7 @@ async def enviar_mail_recovery_ciudadano(
         parrafo_extra="Este enlace es valido por 24 horas. Si no pediste este cambio, ignora este mensaje.",
         municipio_nombre=municipio_nombre,
         municipio_logo_url=municipio_logo_url,
-        cta_color=await _color_cta_municipio(),
+        cta_color=await _color_cta_municipio(id_municipio),
     )
 
     from_header = formatear_remitente(municipio_nombre, _from_address_base())

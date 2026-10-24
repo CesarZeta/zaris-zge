@@ -130,6 +130,15 @@ def main() -> int:
     # Los días con turno del vecino (los de demo de corridas anteriores) darían 409 y gastarían el
     # límite de 5 reservas por minuto antes de llegar a un día libre.
     dias_ocupados = {str(t["fecha"])[:10] for t in mios if t["estado"] != "cancelado"}
+    if not [f for f in fechas if f != slot_a["fecha"] and f not in dias_ocupados]:
+        # Cada corrida deja un turno de demo: cuando ya ocuparon todos los días de la
+        # ventana, el smoke libera el suyo más próximo para seguir probando otro día.
+        previos = sorted((t for t in mios if t["estado"] == "reservado" and t["id_turno"] != turno_a["id_turno"]
+                          and (t.get("observaciones") or "").startswith("Demo app vecinos")
+                          and str(t["fecha"])[:10] in fechas), key=lambda t: str(t["fecha"]))
+        if previos:
+            c.patch(f"{BASE}/api/v1/publico/turnos/{previos[0]['id_turno']}/cancelar", headers=H)
+            dias_ocupados.discard(str(previos[0]["fecha"])[:10])
     for f in fechas:
         if f == slot_a["fecha"] or f in dias_ocupados:
             continue

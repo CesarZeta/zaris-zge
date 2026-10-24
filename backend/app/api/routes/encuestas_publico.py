@@ -22,6 +22,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config_municipio import leer_configs
 from app.core.database import get_db
 from app.middleware.rate_limit import check_rate_limit
 from app.services import encuestas_service as svc
@@ -56,15 +57,15 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-async def _branding(db: AsyncSession) -> dict:
-    rows = (await db.execute(text("""
-        SELECT clave, valor FROM configuracion_general
-         WHERE clave IN ('municipio_nombre', 'municipio_logo_url')
-    """))).fetchall()
-    cfg = {r[0]: (r[1] or "").strip() for r in rows}
+async def _branding(db: AsyncSession, id_municipio: int) -> dict:
+    """Nombre y logo del municipio del envío (la ruta es por token: el municipio
+    sale de la fila, R11). Sin clave propia, el nombre de la tabla municipios."""
+    cfg = await leer_configs(db, ["municipio_nombre", "municipio_logo_url"], id_municipio)
+    nombre = (cfg.get("municipio_nombre") or "").strip() or (await db.scalar(text(
+        "SELECT nombre FROM municipios WHERE id_municipio = :m"), {"m": id_municipio}) or "").strip()
     return {
-        "municipio_nombre": cfg.get("municipio_nombre", ""),
-        "municipio_logo_url": cfg.get("municipio_logo_url", ""),
+        "municipio_nombre": nombre,
+        "municipio_logo_url": (cfg.get("municipio_logo_url") or "").strip(),
     }
 
 
@@ -77,7 +78,7 @@ async def cargar_encuesta(token: str, db: AsyncSession = Depends(get_db)):
     _validar_uuid(token)
 
     env = (await db.execute(text("""
-        SELECT ee.id_encuesta_envio, ee.id_plantilla, ee.estado, ee.fecha_expiracion,
+        SELECT ee.id_encuesta_envio, ee.id_plantilla, ee.estado, ee.fecha_expiracion, ee.id_municipio,
                ee.id_reclamo, ee.id_turno, ee.id_evento_reserva, ee.id_tramite,
                r.nro_reclamo, r.fecha_alta AS reclamo_fecha,
                t.fecha AS turno_fecha, tp.nombre AS prestacion_nombre,
@@ -156,7 +157,7 @@ async def cargar_encuesta(token: str, db: AsyncSession = Depends(get_db)):
         "opciones": op_por_q.get(p._mapping["id_encuesta_pregunta"], []),
     } for p in preguntas]
 
-    brand = await _branding(db)
+    brand = await _branding(db, env["id_municipio"])
     if env["id_tramite"] is not None:
         # tramite (mig 101): contexto = numero de expediente + tipo. Sin datos
         # del expediente ni del ciudadano.

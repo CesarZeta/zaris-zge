@@ -166,6 +166,7 @@ async def asegurar_cuenta_vecino(
         municipio_nombre,
         settings.APP_VECINOS_FRONTEND_URL,
         municipio_logo_url,
+        id_municipio=id_municipio,
     )
     logger.info("cuenta_vecino: activacion encolada para ciudadano %s (%s)", id_ciudadano, email)
     return True

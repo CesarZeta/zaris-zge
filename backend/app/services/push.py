@@ -54,7 +54,8 @@ async def vapid_config() -> dict:
         async with AsyncSessionLocal() as db:
             r = await db.execute(text(
                 "SELECT clave, valor FROM configuracion_general "
-                "WHERE clave IN ('vapid_public_key','vapid_private_key','vapid_claims_email')"
+                "WHERE clave IN ('vapid_public_key','vapid_private_key','vapid_claims_email') "
+                "AND id_municipio IS NULL"
             ))
             vals = {row.clave: (row.valor or "").strip() for row in r.fetchall()}
         pub = vals.get("vapid_public_key", "")
@@ -243,6 +244,7 @@ async def notificar_retrabajo_auditoria(id_retrabajo: int) -> None:
                 nro_reclamo_origen=nro_or, nro_reclamo_retrabajo=nro_rt,
                 municipio_nombre=municipio_nombre, portal_url=portal,
                 municipio_logo_url=municipio_logo_url,
+                id_municipio=r["id_municipio"],
             )
         except Exception as e:  # noqa: BLE001
             logger.warning("mail de retrabajo %s fallo: %s", id_retrabajo, e)

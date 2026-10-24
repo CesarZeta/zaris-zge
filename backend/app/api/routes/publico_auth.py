@@ -244,6 +244,7 @@ async def registrar_ciudadano(
         municipio_nombre,
         settings.APP_VECINOS_FRONTEND_URL,
         municipio_logo_url,
+        id_municipio=id_municipio,
     )
 
     return RegistroCiudadanoOut(
@@ -374,6 +375,7 @@ async def reenviar_activacion(
         municipio_nombre,
         settings.APP_VECINOS_FRONTEND_URL,
         municipio_logo_url,
+        id_municipio=id_municipio,
     )
 
     return GenericoOkOut()
@@ -554,6 +556,7 @@ async def recuperar_password(
         municipio_nombre,
         settings.APP_VECINOS_FRONTEND_URL,
         municipio_logo_url,
+        id_municipio=id_municipio,
     )
 
     return GenericoOkOut()

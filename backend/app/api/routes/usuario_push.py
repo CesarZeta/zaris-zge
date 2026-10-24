@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
+from app.core.municipio import municipio_actual
 from app.middleware.rate_limit import check_rate_limit
 from app.services.push import vapid_config
 from app.utils.request_helpers import get_real_ip
@@ -57,6 +58,7 @@ async def subscribe(
     request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ) -> Any:
     """Registra (o reactiva) la suscripcion del navegador del usuario logueado."""
     check_rate_limit(f"pushusr:{get_real_ip(request)}", max_requests=10, window_seconds=60)
@@ -69,13 +71,13 @@ async def subscribe(
         INSERT INTO usuario_push_subscription
             (id_usuario, endpoint, p256dh, auth_secret, user_agent, id_municipio,
              id_usuario_alta, id_usuario_modificacion)
-        VALUES (:u, :e, :p, :a, :ua, 1, :u, :u)
+        VALUES (:u, :e, :p, :a, :ua, :mun, :u, :u)
         ON CONFLICT (id_usuario, endpoint)
         DO UPDATE SET p256dh = :p, auth_secret = :a, user_agent = :ua,
                       activo = TRUE, fecha_modificacion = NOW(),
                       id_usuario_modificacion = :u
     """), {"u": id_usuario, "e": payload.endpoint, "p": payload.p256dh,
-           "a": payload.auth, "ua": ua})
+           "a": payload.auth, "ua": ua, "mun": id_municipio})
     await db.commit()
     logger.info("push agente: suscripcion registrada | id_usuario=%s", id_usuario)
     return {"suscripto": True}

@@ -361,6 +361,7 @@ async def crear_mi_reclamo(
                     municipio_nombre=municipio_nombre,
                     frontend_url=settings.APP_VECINOS_FRONTEND_URL,
                     municipio_logo_url=municipio_logo_url,
+                    id_municipio=current["id_municipio"],
                 )
             except Exception:
                 logger.warning("No se pudo encolar el mail de confirmacion del reclamo %s", nro_reclamo)

@@ -734,9 +734,9 @@ async def notificar_aviso_reclamo_a_supervision(
             rows = (await db.execute(text("""
                 SELECT u.id_usuario, u.nombre, u.email
                   FROM usuarios u
-                 WHERE u.activo = TRUE AND u.nivel_acceso = 1
+                 WHERE u.activo = TRUE AND u.nivel_acceso = 1 AND u.id_municipio = :mun
                    AND u.email IS NOT NULL AND u.email <> ''
-            """))).fetchall()
+            """), {"mun": reclamo.id_municipio})).fetchall()
             usuarios = [dict(r._mapping) for r in rows]
             destino = "admins (fallback: subarea sin supervisor)"
         if not usuarios:
@@ -956,8 +956,8 @@ async def notificar_agente_nuevo(
                 rows = (await db.execute(text("""
                     SELECT u.id_usuario, u.nombre, u.email FROM usuarios u
                      WHERE u.activo = TRUE AND u.nivel_acceso = 1 AND u.id_usuario <> :nuevo
-                       AND u.email IS NOT NULL AND u.email <> ''
-                """), {"nuevo": id_usuario})).fetchall()
+                       AND u.id_municipio = :mun AND u.email IS NOT NULL AND u.email <> ''
+                """), {"nuevo": id_usuario, "mun": ag.id_municipio})).fetchall()
                 usuarios = [dict(r._mapping) for r in rows]
             if not usuarios:
                 logger.warning("notificar_agente_nuevo(%s): sin supervisores ni admins", id_usuario)

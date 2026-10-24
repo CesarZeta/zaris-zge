@@ -28,6 +28,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.config_municipio import leer_config, leer_configs
 from app.services.email import enviar_mail
 
 logger = logging.getLogger("zaris.encuestas")
@@ -75,36 +76,28 @@ def _now() -> datetime:
 # Toggle global
 # =============================================================================
 
-async def encuestas_estan_activas(db: AsyncSession) -> bool:
-    """Lee configuracion_general.encuestas_activas. False si no existe o != 'true'."""
+async def encuestas_estan_activas(db: AsyncSession, *, id_municipio: int) -> bool:
+    """Lee encuestas_activas del municipio. False si no existe o != 'true'."""
     try:
-        row = (await db.execute(text("""
-            SELECT valor FROM configuracion_general
-             WHERE clave = 'encuestas_activas' AND activo = TRUE
-             LIMIT 1
-        """))).fetchone()
-        return bool(row) and str(row[0]).strip().lower() == "true"
+        valor = await leer_config(db, "encuestas_activas", id_municipio)
+        return valor is not None and str(valor).strip().lower() == "true"
     except Exception as e:
         logger.error("encuestas_estan_activas fallo: %s", e)
         return False
 
 
-async def antifatiga_esta_activo(db: AsyncSession) -> bool:
-    """Lee configuracion_general.encuestas_antifatiga_activo.
+async def antifatiga_esta_activo(db: AsyncSession, *, id_municipio: int) -> bool:
+    """Lee encuestas_antifatiga_activo del municipio.
 
     Default seguro = TRUE: si la clave no existe o no se puede leer, se mantiene
     la regla anti-fatiga activa (comportamiento histórico). Solo se desactiva si
     la clave existe explícitamente con valor 'false'.
     """
     try:
-        row = (await db.execute(text("""
-            SELECT valor FROM configuracion_general
-             WHERE clave = 'encuestas_antifatiga_activo' AND activo = TRUE
-             LIMIT 1
-        """))).fetchone()
-        if not row:
+        valor = await leer_config(db, "encuestas_antifatiga_activo", id_municipio)
+        if valor is None:
             return True  # sin clave -> regla activa por defecto
-        return str(row[0]).strip().lower() != "false"
+        return str(valor).strip().lower() != "false"
     except Exception as e:
         logger.error("antifatiga_esta_activo fallo: %s", e)
         return True  # fail-safe: ante error, no reenviar de más
@@ -125,11 +118,6 @@ async def crear_envio_para_reclamo(db: AsyncSession, id_reclamo: int):
     Idempotente: si ya hay un envio para el reclamo, devuelve (None, MOTIVO_YA_EXISTE).
     """
     try:
-        # 1. Toggle
-        if not await encuestas_estan_activas(db):
-            logger.info("crear_envio: encuestas desactivadas, skip reclamo=%s", id_reclamo)
-            return None, MOTIVO_DESACTIVADAS
-
         # 2. Reclamo existe + cerrado. Subarea derivada via tipo_reclamo (§27).
         rec = (await db.execute(text("""
             SELECT r.id_reclamo, r.nro_reclamo, r.estado, r.id_ciudadano,
@@ -147,6 +135,9 @@ async def crear_envio_para_reclamo(db: AsyncSession, id_reclamo: int):
             logger.info("crear_envio: reclamo=%s no existe", id_reclamo)
             return None, MOTIVO_NO_RESUELTO
         rec = rec._mapping
+        if not await encuestas_estan_activas(db, id_municipio=rec["id_municipio"]):
+            logger.info("crear_envio: encuestas desactivadas, skip reclamo=%s", id_reclamo)
+            return None, MOTIVO_DESACTIVADAS
         # Retrabajo de una auditoria observada (PLAN_AUDITORIA_RECLAMOS.md F4): el
         # vecino lo ve y al resolverlo se lo encuesta SIEMPRE, sin anti-fatiga (la
         # auditoria ocurre dias despues del cierre original, que ya fue encuestado,
@@ -175,7 +166,7 @@ async def crear_envio_para_reclamo(db: AsyncSession, id_reclamo: int):
         # 5. Anti-fatiga: mismo ciudadano + misma subarea en los ultimos 30 dias.
         #    Se puede desactivar desde configuracion_general.encuestas_antifatiga_activo.
         id_subarea = rec["id_subarea"]
-        if id_subarea is not None and not es_retrabajo and await antifatiga_esta_activo(db):
+        if id_subarea is not None and not es_retrabajo and await antifatiga_esta_activo(db, id_municipio=rec["id_municipio"]):
             reciente = (await db.execute(text("""
                 SELECT 1
                   FROM encuesta_envio ee
@@ -194,9 +185,9 @@ async def crear_envio_para_reclamo(db: AsyncSession, id_reclamo: int):
         # plantilla activa tipo='reclamos'
         plantilla = (await db.execute(text("""
             SELECT id_encuesta_plantilla FROM encuesta_plantilla
-             WHERE tipo = 'reclamos' AND activo = TRUE
+             WHERE tipo = 'reclamos' AND activo = TRUE AND id_municipio = :mun
              ORDER BY id_encuesta_plantilla LIMIT 1
-        """))).fetchone()
+        """), {"mun": rec["id_municipio"]})).fetchone()
         if plantilla is None:
             logger.warning("crear_envio: no hay plantilla activa tipo='reclamos'")
             return None, MOTIVO_SIN_PLANTILLA
@@ -242,10 +233,6 @@ async def crear_envio_para_turno(db: AsyncSession, id_turno: int):
     Idempotente: si ya hay envio para el turno, devuelve (None, MOTIVO_YA_EXISTE).
     """
     try:
-        if not await encuestas_estan_activas(db):
-            logger.info("crear_envio_turno: encuestas desactivadas, skip turno=%s", id_turno)
-            return None, MOTIVO_DESACTIVADAS
-
         t = (await db.execute(text("""
             SELECT t.id_turno, t.estado, t.id_ciudadano, t.id_municipio,
                    COALESCE(t.id_subarea, tp.id_subarea) AS id_subarea,
@@ -261,6 +248,9 @@ async def crear_envio_para_turno(db: AsyncSession, id_turno: int):
             logger.info("crear_envio_turno: turno=%s no existe", id_turno)
             return None, MOTIVO_NO_CUMPLIDO
         t = t._mapping
+        if not await encuestas_estan_activas(db, id_municipio=t["id_municipio"]):
+            logger.info("crear_envio_turno: encuestas desactivadas, skip turno=%s", id_turno)
+            return None, MOTIVO_DESACTIVADAS
         if t["estado"] != ESTADO_CUMPLIDO_TURNO:
             logger.info("crear_envio_turno: turno=%s no esta cumplido (estado=%s)", id_turno, t["estado"])
             return None, MOTIVO_NO_CUMPLIDO
@@ -279,7 +269,7 @@ async def crear_envio_para_turno(db: AsyncSession, id_turno: int):
             return None, MOTIVO_SIN_EMAIL
 
         id_subarea = t["id_subarea"]
-        if id_subarea is not None and await antifatiga_esta_activo(db):
+        if id_subarea is not None and await antifatiga_esta_activo(db, id_municipio=t["id_municipio"]):
             reciente = (await db.execute(text("""
                 SELECT 1 FROM encuesta_envio ee
                  WHERE ee.id_ciudadano = :cid AND ee.id_subarea = :sub AND ee.activo = TRUE
@@ -292,9 +282,9 @@ async def crear_envio_para_turno(db: AsyncSession, id_turno: int):
 
         plantilla = (await db.execute(text("""
             SELECT id_encuesta_plantilla FROM encuesta_plantilla
-             WHERE tipo = 'turnos' AND activo = TRUE
+             WHERE tipo = 'turnos' AND activo = TRUE AND id_municipio = :mun
              ORDER BY id_encuesta_plantilla LIMIT 1
-        """))).fetchone()
+        """), {"mun": t["id_municipio"]})).fetchone()
         if plantilla is None:
             logger.warning("crear_envio_turno: no hay plantilla activa tipo='turnos'")
             return None, MOTIVO_SIN_PLANTILLA_TURNO
@@ -337,11 +327,6 @@ async def crear_envio_para_entrada(db: AsyncSession, id_evento_reserva: int):
     Idempotente: si ya hay envio para la reserva, devuelve (None, MOTIVO_YA_EXISTE).
     """
     try:
-        if not await encuestas_estan_activas(db):
-            logger.info("crear_envio_entrada: encuestas desactivadas, skip reserva=%s",
-                        id_evento_reserva)
-            return None, MOTIVO_DESACTIVADAS
-
         # Reserva activa + estado 'asistio' (via catalogo estado_reserva).
         r = (await db.execute(text("""
             SELECT r.id_evento_reserva, er.codigo AS estado_codigo,
@@ -359,6 +344,10 @@ async def crear_envio_para_entrada(db: AsyncSession, id_evento_reserva: int):
             logger.info("crear_envio_entrada: reserva=%s no existe", id_evento_reserva)
             return None, MOTIVO_NO_ASISTIO
         r = r._mapping
+        if not await encuestas_estan_activas(db, id_municipio=r["id_municipio"]):
+            logger.info("crear_envio_entrada: encuestas desactivadas, skip reserva=%s",
+                        id_evento_reserva)
+            return None, MOTIVO_DESACTIVADAS
         if r["estado_codigo"] != ESTADO_ASISTIO_RESERVA:
             logger.info("crear_envio_entrada: reserva=%s no esta acreditada (estado=%s)",
                         id_evento_reserva, r["estado_codigo"])
@@ -379,7 +368,7 @@ async def crear_envio_para_entrada(db: AsyncSession, id_evento_reserva: int):
             return None, MOTIVO_SIN_EMAIL
 
         id_subarea = r["id_subarea"]
-        if id_subarea is not None and await antifatiga_esta_activo(db):
+        if id_subarea is not None and await antifatiga_esta_activo(db, id_municipio=r["id_municipio"]):
             reciente = (await db.execute(text("""
                 SELECT 1 FROM encuesta_envio ee
                  WHERE ee.id_ciudadano = :cid AND ee.id_subarea = :sub AND ee.activo = TRUE
@@ -393,9 +382,9 @@ async def crear_envio_para_entrada(db: AsyncSession, id_evento_reserva: int):
 
         plantilla = (await db.execute(text("""
             SELECT id_encuesta_plantilla FROM encuesta_plantilla
-             WHERE tipo = 'entradas' AND activo = TRUE
+             WHERE tipo = 'entradas' AND activo = TRUE AND id_municipio = :mun
              ORDER BY id_encuesta_plantilla LIMIT 1
-        """))).fetchone()
+        """), {"mun": r["id_municipio"]})).fetchone()
         if plantilla is None:
             logger.warning("crear_envio_entrada: no hay plantilla activa tipo='entradas'")
             return None, MOTIVO_SIN_PLANTILLA_ENTRADA
@@ -439,10 +428,6 @@ async def crear_envio_para_tramite(db: AsyncSession, id_tramite: int):
     destinatario es un agente, la de ese agente. Idempotente por tramite.
     """
     try:
-        if not await encuestas_estan_activas(db):
-            logger.info("crear_envio_tramite: encuestas desactivadas, skip tramite=%s", id_tramite)
-            return None, MOTIVO_DESACTIVADAS
-
         r = (await db.execute(text("""
             SELECT t.id_tramite, t.resultado, t.iniciador_tipo,
                    t.id_ciudadano_iniciador AS id_ciudadano, t.id_municipio,
@@ -457,6 +442,9 @@ async def crear_envio_para_tramite(db: AsyncSession, id_tramite: int):
         if r is None:
             return None, MOTIVO_NO_TERMINADO
         r = r._mapping
+        if not await encuestas_estan_activas(db, id_municipio=r["id_municipio"]):
+            logger.info("crear_envio_tramite: encuestas desactivadas, skip tramite=%s", id_tramite)
+            return None, MOTIVO_DESACTIVADAS
         if r["iniciador_tipo"] != "ciudadano" or not r["id_ciudadano"] \
                 or r["resultado"] not in ("aprobado", "rechazado"):
             logger.info("crear_envio_tramite: tramite=%s no aplica (iniciador=%s resultado=%s)",
@@ -474,7 +462,7 @@ async def crear_envio_para_tramite(db: AsyncSession, id_tramite: int):
             return None, MOTIVO_SIN_EMAIL
 
         id_subarea = r["id_subarea"]
-        if id_subarea is not None and await antifatiga_esta_activo(db):
+        if id_subarea is not None and await antifatiga_esta_activo(db, id_municipio=r["id_municipio"]):
             reciente = (await db.execute(text("""
                 SELECT 1 FROM encuesta_envio ee
                  WHERE ee.id_ciudadano = :cid AND ee.id_subarea = :sub AND ee.activo = TRUE
@@ -486,9 +474,9 @@ async def crear_envio_para_tramite(db: AsyncSession, id_tramite: int):
 
         plantilla = (await db.execute(text("""
             SELECT id_encuesta_plantilla FROM encuesta_plantilla
-             WHERE tipo = 'tramites' AND activo = TRUE
+             WHERE tipo = 'tramites' AND activo = TRUE AND id_municipio = :mun
              ORDER BY id_encuesta_plantilla LIMIT 1
-        """))).fetchone()
+        """), {"mun": r["id_municipio"]})).fetchone()
         if plantilla is None:
             logger.warning("crear_envio_tramite: no hay plantilla activa tipo='tramites'")
             return None, MOTIVO_SIN_PLANTILLA_TRAMITE
@@ -523,15 +511,15 @@ async def crear_envio_para_tramite(db: AsyncSession, id_tramite: int):
 # Branding del municipio (header del email)
 # =============================================================================
 
-async def _branding(db: AsyncSession) -> dict:
-    rows = (await db.execute(text("""
-        SELECT clave, valor FROM configuracion_general
-         WHERE clave IN ('municipio_nombre', 'municipio_logo_url')
-    """))).fetchall()
-    cfg = {r[0]: (r[1] or "").strip() for r in rows}
+async def _branding(db: AsyncSession, id_municipio: int) -> dict:
+    """Nombre y logo del municipio del envío (R8): sus claves de configuración y,
+    si no las tiene, el nombre de la tabla municipios."""
+    cfg = await leer_configs(db, ["municipio_nombre", "municipio_logo_url"], id_municipio)
+    nombre = (cfg.get("municipio_nombre") or "").strip() or (await db.scalar(text(
+        "SELECT nombre FROM municipios WHERE id_municipio = :m"), {"m": id_municipio}) or "").strip()
     return {
-        "nombre": cfg.get("municipio_nombre") or "Municipio",
-        "logo_url": cfg.get("municipio_logo_url") or "",
+        "nombre": nombre or "Municipio",
+        "logo_url": (cfg.get("municipio_logo_url") or "").strip(),
     }
 
 
@@ -825,7 +813,7 @@ async def enviar_email_encuesta(db: AsyncSession, id_encuesta_envio: int) -> boo
     LEFT y el render se ramifica segun el origen."""
     try:
         env = (await db.execute(text("""
-            SELECT ee.id_encuesta_envio, ee.token_unico, ee.estado,
+            SELECT ee.id_encuesta_envio, ee.token_unico, ee.estado, ee.id_municipio,
                    ee.email_destino_snapshot, ee.fecha_expiracion, ee.intentos_envio,
                    ee.id_reclamo, ee.id_turno, ee.id_evento_reserva, ee.id_tramite,
                    r.nro_reclamo, r.descripcion, r.fecha_cierre,
@@ -858,7 +846,7 @@ async def enviar_email_encuesta(db: AsyncSession, id_encuesta_envio: int) -> boo
             return False
 
         url = f"{settings.FRONTEND_BASE_URL}/frontend/encuesta.html?token={env['token_unico']}"
-        brand = await _branding(db)
+        brand = await _branding(db, env["id_municipio"])
         # El logo del municipio puede estar guardado como ruta relativa
         # (ej. '/design-system/assets/...'). En un cliente de email NO hay origen,
         # así que hay que entregar una URL absoluta o el <img> queda roto.

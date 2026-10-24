@@ -395,6 +395,7 @@ async def alta_cuenta(
         cfg.get("municipio_nombre") or muni["nombre"],
         cfg.get("municipio_logo_url"),
         portal_url=url_portal_vecino() or None,
+        id_municipio=muni["id_municipio"],
     )
 
     return AltaCuentaOut(id_ciudadano=id_ciudadano, email=email, verificacion_enviada=True)
@@ -565,6 +566,7 @@ async def alta_empresa(
         cta_url,
         cfg.get("municipio_nombre") or muni["nombre"],
         cfg.get("municipio_logo_url"),
+        id_municipio=muni["id_municipio"],
     )
 
     return AltaEmpresaOut(id_empresa=id_empresa, email=email, verificacion_enviada=True)
