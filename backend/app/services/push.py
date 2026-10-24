@@ -216,7 +216,7 @@ async def notificar_retrabajo_auditoria(id_retrabajo: int) -> None:
     try:
         async with AsyncSessionLocal() as db:
             r = (await db.execute(text("""
-                SELECT rt.nro_reclamo, rt.id_ciudadano, ro.nro_reclamo AS nro_origen,
+                SELECT rt.nro_reclamo, rt.id_ciudadano, rt.id_municipio, ro.nro_reclamo AS nro_origen,
                        c.nombre, c.apellido, c.email
                 FROM reclamos rt
                 JOIN reclamos ro ON ro.id_reclamo = rt.id_reclamo_origen_auditoria
@@ -225,7 +225,7 @@ async def notificar_retrabajo_auditoria(id_retrabajo: int) -> None:
             """), {"id": id_retrabajo})).mappings().first()
             if not r:
                 return
-            municipio_nombre, municipio_logo_url = await _municipio_branding(db)
+            municipio_nombre, municipio_logo_url = await _municipio_branding(db, r["id_municipio"])
     except Exception as e:  # noqa: BLE001
         logger.warning("notificar_retrabajo_auditoria(%s) fallo al leer: %s", id_retrabajo, e)
         return

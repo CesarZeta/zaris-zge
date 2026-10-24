@@ -349,7 +349,7 @@ async def crear_mi_reclamo(
         email_vecino = (current.get("email") or "").strip()
         if email_vecino:
             try:
-                municipio_nombre, municipio_logo_url = await _municipio_branding(db)
+                municipio_nombre, municipio_logo_url = await _municipio_branding(db, current["id_municipio"])
                 background_tasks.add_task(
                     enviar_mail_confirmacion_reclamo_ciudadano,
                     to=email_vecino,

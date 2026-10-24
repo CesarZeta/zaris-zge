@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.auth import get_current_user, require_admin
+from app.core.municipio import municipio_actual
 from app.models.buc import (
     Usuario, Nacionalidad, TipoRepresentacion, Actividad,
     Ciudadano, Empresa, CiudadanoEmpresa
@@ -110,12 +111,16 @@ async def historial_logins(
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Historial de accesos (auditoría) de un usuario, más reciente primero.
 
     IDOR guard: solo el Administrador (nivel 1) puede ver logs ajenos; el resto
     solo el propio (IP + user-agent son datos sensibles de trazabilidad).
     """
+    if not await db.scalar(text("SELECT 1 FROM usuarios WHERE id_usuario = :id AND id_municipio = :mun"),
+                           {"id": id, "mun": id_municipio}):
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
     if current_user.get("nivel_acceso") != 1 and current_user.get("id_usuario") != id:
         raise HTTPException(
             status_code=403,
@@ -124,10 +129,10 @@ async def historial_logins(
     r = await db.execute(text("""
         SELECT id_login_log, fecha_login, ip, user_agent
         FROM usuario_login_log
-        WHERE id_usuario = :id
+        WHERE id_usuario = :id AND id_municipio = :mun
         ORDER BY fecha_login DESC
         LIMIT :lim
-    """), {"id": id, "lim": limit})
+    """), {"id": id, "lim": limit, "mun": id_municipio})
     return [dict(row._mapping) for row in r.fetchall()]
 
 
@@ -143,6 +148,7 @@ async def buscar_usuario(
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     _admin: dict = Depends(require_admin),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Buscar usuarios por nombre, username o CUIL."""
     es_numerico = tipo == "numero" or (tipo == "auto" and q.replace("-", "").isdigit())
@@ -151,8 +157,8 @@ async def buscar_usuario(
     else:
         cond = "(u.nombre ILIKE :q OR u.username ILIKE :q)"
     r = await db.execute(text(
-        _USUARIO_SELECT + f" WHERE {cond} ORDER BY u.nombre OFFSET :off LIMIT :lim"
-    ), {"q": f"%{q}%", "off": offset, "lim": limit})
+        _USUARIO_SELECT + f" WHERE u.id_municipio = :mun AND {cond} ORDER BY u.nombre OFFSET :off LIMIT :lim"
+    ), {"q": f"%{q}%", "off": offset, "lim": limit, "mun": id_municipio})
     rows = [dict(row._mapping) for row in r.fetchall()]
     await _modulos_permitidos_batch(db, rows)
     return rows
@@ -164,10 +170,11 @@ async def listar_usuarios(
     solo_activos: bool = Query(True, description="Filtrar solo usuarios activos"),
     db: AsyncSession = Depends(get_db),
     _admin: dict = Depends(require_admin),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    """Listar usuarios del sistema (maestro del módulo Usuarios)."""
-    where = " WHERE u.activo = TRUE" if solo_activos else ""
-    r = await db.execute(text(_USUARIO_SELECT + where + " ORDER BY u.nombre"))
+    """Listar usuarios del municipio (maestro del módulo Usuarios)."""
+    where = " WHERE u.id_municipio = :mun" + (" AND u.activo = TRUE" if solo_activos else "")
+    r = await db.execute(text(_USUARIO_SELECT + where + " ORDER BY u.nombre"), {"mun": id_municipio})
     rows = [dict(row._mapping) for row in r.fetchall()]
     await _modulos_permitidos_batch(db, rows)
     return rows
@@ -176,9 +183,11 @@ async def listar_usuarios(
 @router.get("/usuarios/{id}", response_model=UsuarioOut,
             responses={403: {"description": "Solo el administrador lee las cuentas internas"}})
 async def obtener_usuario(id: int, db: AsyncSession = Depends(get_db),
-                          _admin: dict = Depends(require_admin)):
+                          _admin: dict = Depends(require_admin),
+                          id_municipio: int = Depends(municipio_actual)):
     """Obtener usuario por ID."""
-    r = await db.execute(text(_USUARIO_SELECT + " WHERE u.id_usuario = :id"), {"id": id})
+    r = await db.execute(text(_USUARIO_SELECT + " WHERE u.id_usuario = :id AND u.id_municipio = :mun"),
+                         {"id": id, "mun": id_municipio})
     row = r.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -191,12 +200,13 @@ async def obtener_usuario(id: int, db: AsyncSession = Depends(get_db),
 async def buscar_subareas(
     q: str = Query("", description="Texto libre sobre nombre de subárea o área"),
     limit: int = Query(20, ge=1, le=100),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Buscador predictivo de subáreas (para el form de Usuarios).
     Devuelve id, nombre de subárea y nombre del área a la que pertenece."""
-    params = {"lim": limit}
-    where = "WHERE s.activo = TRUE"
+    params = {"lim": limit, "mun": id_municipio}
+    where = "WHERE s.activo = TRUE AND s.id_municipio = :mun"
     if q.strip():
         where += " AND (s.nombre ILIKE :q OR a.nombre ILIKE :q)"
         params["q"] = f"%{q.strip()}%"
@@ -217,8 +227,9 @@ async def crear_usuario(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     _admin: dict = Depends(require_admin),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    """Alta de usuario interno (Maestros → Usuarios).
+    """Alta de usuario interno (Maestros → Usuarios), en el municipio de quien la crea.
 
     El sistema genera una contraseña temporal aleatoria, la manda por email y marca
     `debe_cambiar_password=TRUE` (Fase 3): el usuario deberá elegir una nueva en su
@@ -226,7 +237,8 @@ async def crear_usuario(
     respeta y NO se fuerza el cambio. La lógica vive en `services/cuenta_zaris.py`,
     compartida con el alta desde la ficha del ciudadano (`/ciudadanos/{id}/cuenta-zaris`).
     """
-    usuario = await crear_usuario_interno(db, data=data, background_tasks=background_tasks)
+    usuario = await crear_usuario_interno(db, data=data, background_tasks=background_tasks,
+                                          id_municipio=id_municipio)
     await db.commit()
     await db.refresh(usuario)
     await notificar_agente_nuevo(usuario.id_usuario, background_tasks=background_tasks)
@@ -239,14 +251,20 @@ async def modificar_usuario(
     data: UsuarioUpdate,
     db: AsyncSession = Depends(get_db),
     _admin: dict = Depends(require_admin),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Modificar datos de usuario. Si se envía 'password', se re-hashea."""
-    result = await db.execute(select(Usuario).where(Usuario.id_usuario == id))
+    result = await db.execute(select(Usuario).where(Usuario.id_usuario == id,
+                                                    Usuario.id_municipio == id_municipio))
     usuario = result.scalars().first()
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
     update_data = data.model_dump(exclude_unset=True)
+    if update_data.get("id_subarea") is not None and not await db.scalar(text(
+            "SELECT 1 FROM subarea WHERE id_subarea = :s AND id_municipio = :m"),
+            {"s": update_data["id_subarea"], "m": id_municipio}):
+        raise HTTPException(status_code=422, detail="Subárea inexistente")
     if "password" in update_data:
         update_data["password_hash"] = bcrypt.hashpw(update_data.pop("password").encode(), bcrypt.gensalt()).decode()
 
@@ -292,14 +310,16 @@ async def cambiar_estado_usuario(
     activo: bool = Query(..., description="true para reactivar, false para dar de baja"),
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Dar de alta o de baja a un usuario (soft delete).
 
     Guards anti-lockout (hallazgo 2026-07-16, pasó en QA local): un admin se
     desactivó a sí mismo y quedó afuera (401 en el próximo request, reactivado
-    por DB). Ni auto-baja ni dejar el sistema sin administradores activos.
+    por DB). Ni auto-baja ni dejar el municipio sin administradores activos.
     """
-    result = await db.execute(select(Usuario).where(Usuario.id_usuario == id))
+    result = await db.execute(select(Usuario).where(Usuario.id_usuario == id,
+                                                    Usuario.id_municipio == id_municipio))
     usuario = result.scalars().first()
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -316,12 +336,13 @@ async def cambiar_estado_usuario(
                     Usuario.nivel_acceso == 1,
                     Usuario.activo == True,  # noqa: E712
                     Usuario.id_usuario != id,
+                    Usuario.id_municipio == id_municipio,
                 )
             )
             if not otros_admins:
                 raise HTTPException(
                     status_code=422,
-                    detail="No se puede desactivar al último administrador activo del sistema.",
+                    detail="No se puede desactivar al último administrador activo del municipio.",
                 )
 
     usuario.activo = activo
@@ -394,13 +415,15 @@ async def listar_ciudadanos(
     dir: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0, le=1_000_000),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Listar ciudadanos (vista previa y listado). Header `X-Total-Count`: total sin paginar."""
     order_sql = clausula_orden(orden, dir, _ORDEN_CIUDADANOS,
                                desempate="ciudadanos.id_ciudadano",
                                por_defecto="ciudadanos.id_ciudadano DESC")
     conds = _filtro_alta(Ciudadano.fecha_alta, desde, hasta)
+    conds.append(Ciudadano.id_municipio == id_municipio)
     if solo_activos:
         conds.append(Ciudadano.activo == True)
     for tok in (q or "").split():
@@ -427,10 +450,11 @@ async def buscar_ciudadano(
     tipo: str = Query("auto", description="'numero' (DNI/CUIL/tel), 'texto' (nombre/apellido/email), 'auto'"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """
-    Búsqueda flexible de ciudadanos. En modo `auto`:
+    Búsqueda flexible de ciudadanos del municipio. En modo `auto`:
     - Si el query es solo dígitos (ignorando guiones/espacios/paréntesis),
       busca en `doc_nro`, `cuil` y `telefono` — todos comparados con dígitos
       normalizados (matchea "(11) 6429-5018" con "1164295018").
@@ -469,7 +493,7 @@ async def buscar_ciudadano(
             for tok in tokens
         ])
 
-    base_filter = (Ciudadano.activo == True, cond)
+    base_filter = (Ciudadano.activo == True, Ciudadano.id_municipio == id_municipio, cond)
 
     # Total sin paginar (para X-Total-Count)
     total_q = select(func.count()).select_from(Ciudadano).where(*base_filter)
@@ -493,9 +517,10 @@ async def verificar_duplicado_ciudadano(
     campo: str = Query(..., description="Campo a verificar: email, telefono, cuil, doc_nro"),
     valor: str = Query(..., description="Valor a buscar"),
     excluir_id: Optional[int] = Query(None, description="ID a excluir (para edición)"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    """Verificar si ya existe un ciudadano con ese valor en el campo dado."""
+    """Verificar si ya existe un ciudadano del municipio con ese valor en el campo dado."""
     campo_map = {
         "email": Ciudadano.email,
         "telefono": Ciudadano.telefono,
@@ -506,7 +531,7 @@ async def verificar_duplicado_ciudadano(
         raise HTTPException(status_code=400, detail=f"Campo '{campo}' no soportado")
 
     col = campo_map[campo]
-    q = select(Ciudadano).where(col == valor, Ciudadano.activo == True)
+    q = select(Ciudadano).where(col == valor, Ciudadano.activo == True, Ciudadano.id_municipio == id_municipio)
     if excluir_id:
         q = q.where(Ciudadano.id_ciudadano != excluir_id)
     result = await db.execute(q)
@@ -522,8 +547,9 @@ async def crear_ciudadano(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    """Alta de ciudadano.
+    """Alta de ciudadano en el municipio de quien la carga.
 
     Además de crear la persona en el padrón (BUC), crea automáticamente su CUENTA
     de App Vecinos (credencial sin password + token de activación) y dispara el mail
@@ -542,7 +568,8 @@ async def crear_ciudadano(
     existing = await db.execute(
         select(Ciudadano).where(
             Ciudadano.doc_tipo == data.doc_tipo,
-            Ciudadano.doc_nro == data.doc_nro
+            Ciudadano.doc_nro == data.doc_nro,
+            Ciudadano.id_municipio == id_municipio,
         )
     )
     if existing.scalars().first():
@@ -552,7 +579,7 @@ async def crear_ciudadano(
         )
 
     existing_cuil = await db.execute(
-        select(Ciudadano).where(Ciudadano.cuil == data.cuil)
+        select(Ciudadano).where(Ciudadano.cuil == data.cuil, Ciudadano.id_municipio == id_municipio)
     )
     if existing_cuil.scalars().first():
         raise HTTPException(status_code=409, detail=f"Ya existe un ciudadano con CUIL {data.cuil}")
@@ -565,9 +592,10 @@ async def crear_ciudadano(
             SELECT cc.id_ciudadano FROM ciudadano_credencial cc
               JOIN ciudadanos c ON c.id_ciudadano = cc.id_ciudadano
              WHERE LOWER(c.email) = :email AND cc.activo = TRUE AND c.activo = TRUE
+               AND c.id_municipio = :mun
              LIMIT 1
         """),
-        {"email": email_norm},
+        {"email": email_norm, "mun": id_municipio},
     )
     if dup_email.fetchone():
         raise HTTPException(
@@ -575,7 +603,7 @@ async def crear_ciudadano(
             detail="Ya existe una cuenta de App Vecinos con ese email.",
         )
 
-    ciudadano = Ciudadano(**data.model_dump(exclude={"cuenta_zaris"}))
+    ciudadano = Ciudadano(**data.model_dump(exclude={"cuenta_zaris"}), id_municipio=id_municipio)
     db.add(ciudadano)
     await db.flush()  # obtener id_ciudadano sin cerrar la tx (la cuenta va en la misma)
 
@@ -594,7 +622,7 @@ async def crear_ciudadano(
         nombre=ciudadano.nombre,
         apellido=ciudadano.apellido,
         email=email_norm,
-        id_municipio=getattr(ciudadano, "id_municipio", None) or current_user.get("id_municipio") or 1,
+        id_municipio=id_municipio,
         id_usuario_alta=current_user.get("id_usuario"),
         background_tasks=background_tasks,
     )
@@ -630,6 +658,7 @@ async def crear_cuenta_vecino_existente(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """
     Crea (o reenvía la activación de) la cuenta de App Vecinos para un ciudadano YA
@@ -640,7 +669,8 @@ async def crear_cuenta_vecino_existente(
     (enviado=False); credencial sin activar -> regenera el token y reenvía el mail.
     """
     result = await db.execute(
-        select(Ciudadano).where(Ciudadano.id_ciudadano == id, Ciudadano.activo == True)
+        select(Ciudadano).where(Ciudadano.id_ciudadano == id, Ciudadano.activo == True,
+                                Ciudadano.id_municipio == id_municipio)
     )
     ciudadano = result.scalars().first()
     if not ciudadano:
@@ -661,7 +691,7 @@ async def crear_cuenta_vecino_existente(
         nombre=ciudadano.nombre or "",
         apellido=ciudadano.apellido or "",
         email=email,
-        id_municipio=getattr(ciudadano, "id_municipio", None) or current_user.get("id_municipio") or 1,
+        id_municipio=ciudadano.id_municipio,
         id_usuario_alta=current_user.get("id_usuario"),
         background_tasks=background_tasks,
     )
@@ -685,6 +715,7 @@ async def crear_cuenta_zaris(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """
     Crea la cuenta ZARIS (backoffice + app de agentes) de un ciudadano marcado como
@@ -694,7 +725,8 @@ async def crear_cuenta_zaris(
     vecino (activación por link). La clave de vecino NO sirve para entrar a ZARIS.
     """
     result = await db.execute(
-        select(Ciudadano).where(Ciudadano.id_ciudadano == id, Ciudadano.activo == True)
+        select(Ciudadano).where(Ciudadano.id_ciudadano == id, Ciudadano.activo == True,
+                                Ciudadano.id_municipio == id_municipio)
     )
     ciudadano = result.scalars().first()
     if not ciudadano:
@@ -715,12 +747,14 @@ async def crear_cuenta_zaris(
 
 
 @router.get("/ciudadanos/{id}/cuentas", response_model=CuentasCiudadanoOut)
-async def estado_cuentas_ciudadano(id: int, db: AsyncSession = Depends(get_db)):
+async def estado_cuentas_ciudadano(id: int, db: AsyncSession = Depends(get_db),
+                                   id_municipio: int = Depends(municipio_actual)):
     """Estado de las dos cuentas de una persona de la BUC: App Vecinos (sin cuenta /
     pendiente de activar / activa) y ZARIS (usuario vinculado por mig 110, o ninguno).
     Alimenta los chips de la ficha del ciudadano."""
     doc = (await db.execute(
-        text("SELECT doc_tipo, doc_nro FROM ciudadanos WHERE id_ciudadano = :id AND activo = TRUE"), {"id": id}
+        text("SELECT doc_tipo, doc_nro FROM ciudadanos WHERE id_ciudadano = :id AND activo = TRUE "
+             "AND id_municipio = :mun"), {"id": id, "mun": id_municipio}
     )).fetchone()
     if not doc:
         raise HTTPException(status_code=404, detail="Ciudadano no encontrado")
@@ -751,12 +785,13 @@ async def estado_cuentas_ciudadano(id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/ciudadanos/{id}", response_model=CiudadanoConNacionalidad)
-async def obtener_ciudadano(id: int, db: AsyncSession = Depends(get_db)):
+async def obtener_ciudadano(id: int, db: AsyncSession = Depends(get_db),
+                            id_municipio: int = Depends(municipio_actual)):
     """Obtener ciudadano por ID con datos de nacionalidad."""
     result = await db.execute(
         select(Ciudadano)
         .options(selectinload(Ciudadano.nacionalidad))
-        .where(Ciudadano.id_ciudadano == id, Ciudadano.activo == True)
+        .where(Ciudadano.id_ciudadano == id, Ciudadano.activo == True, Ciudadano.id_municipio == id_municipio)
     )
     ciudadano = result.scalars().first()
     if not ciudadano:
@@ -778,6 +813,7 @@ async def modificar_ciudadano(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Modificar ciudadano existente (update parcial).
 
@@ -791,7 +827,8 @@ async def modificar_ciudadano(
       igual sin crearla. Si la persona ya tiene cuenta, `cuenta_zaris` se ignora.
     """
     result = await db.execute(
-        select(Ciudadano).where(Ciudadano.id_ciudadano == id, Ciudadano.activo == True)
+        select(Ciudadano).where(Ciudadano.id_ciudadano == id, Ciudadano.activo == True,
+                                Ciudadano.id_municipio == id_municipio)
     )
     ciudadano = result.scalars().first()
     if not ciudadano:
@@ -809,7 +846,6 @@ async def modificar_ciudadano(
     await db.flush()
 
     email = (ciudadano.email or "").strip().lower()
-    id_municipio = getattr(ciudadano, "id_municipio", None) or current_user.get("id_municipio") or 1
 
     # Cuenta de App Vecinos: solo si no existe ninguna credencial (ni activa ni dada de
     # baja). Un email ya usado por la cuenta de OTRA persona no frena el guardado: queda
@@ -825,10 +861,10 @@ async def modificar_ciudadano(
                     SELECT 1 FROM ciudadano_credencial cc
                       JOIN ciudadanos c ON c.id_ciudadano = cc.id_ciudadano
                      WHERE LOWER(c.email) = :email AND cc.activo = TRUE AND c.activo = TRUE
-                       AND c.id_ciudadano <> :id
+                       AND c.id_ciudadano <> :id AND c.id_municipio = :mun
                      LIMIT 1
                 """),
-                {"email": email, "id": id},
+                {"email": email, "id": id, "mun": id_municipio},
             )
             if dup_email:
                 logger.warning("MODIFICACION ciudadano %s: sin cuenta de App Vecinos, el email %s ya "
@@ -882,9 +918,11 @@ async def cambiar_estado_ciudadano(
     id: int,
     activo: bool = Query(..., description="true para reactivar, false para dar de baja"),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Dar de baja o reactivar un ciudadano (soft delete)."""
-    result = await db.execute(select(Ciudadano).where(Ciudadano.id_ciudadano == id))
+    result = await db.execute(select(Ciudadano).where(Ciudadano.id_ciudadano == id,
+                                                      Ciudadano.id_municipio == id_municipio))
     ciudadano = result.scalars().first()
     if not ciudadano:
         raise HTTPException(status_code=404, detail="Ciudadano no encontrado")
@@ -897,8 +935,12 @@ async def cambiar_estado_ciudadano(
 
 
 @router.get("/ciudadanos/{id}/empresas-vinculadas")
-async def obtener_empresas_vinculadas(id: int, db: AsyncSession = Depends(get_db)):
+async def obtener_empresas_vinculadas(id: int, db: AsyncSession = Depends(get_db),
+                                      id_municipio: int = Depends(municipio_actual)):
     """Obtener las empresas vinculadas a un ciudadano (via tabla ciudadano_empresa)."""
+    if not await db.scalar(text("SELECT 1 FROM ciudadanos WHERE id_ciudadano = :id AND id_municipio = :mun"),
+                           {"id": id, "mun": id_municipio}):
+        raise HTTPException(status_code=404, detail="Ciudadano no encontrado")
     result = await db.execute(
         select(CiudadanoEmpresa)
         .options(
@@ -957,13 +999,15 @@ async def listar_empresas(
     dir: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0, le=1_000_000),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Listar empresas (vista previa y listado). Header `X-Total-Count`: total sin paginar."""
     order_sql = clausula_orden(orden, dir, _ORDEN_EMPRESAS,
                                desempate="empresas.id_empresa",
                                por_defecto="empresas.id_empresa DESC")
     conds = _filtro_alta(Empresa.fecha_alta, desde, hasta)
+    conds.append(Empresa.id_municipio == id_municipio)
     if solo_activos:
         conds.append(Empresa.activo == True)
     cuit_digitos = func.regexp_replace(Empresa.cuit, r"[^0-9]", "", "g")
@@ -987,9 +1031,10 @@ async def buscar_empresa(
     tipo: str = Query("auto", description="'numero' para CUIT, 'texto' para nombre, 'auto' para detectar"),
     limit: int = Query(20, ge=1, le=100, description="Máximo de resultados"),
     offset: int = Query(0, ge=0, description="Desplazamiento para paginación"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    """Buscar empresa por CUIT, email o nombre (contains)."""
+    """Buscar empresa del municipio por CUIT, email o nombre (contains)."""
     es_numerico = tipo == "numero" or (tipo == "auto" and q.replace("-", "").isdigit())
     if es_numerico:
         q_normalizado = q.replace("-", "")
@@ -1001,7 +1046,7 @@ async def buscar_empresa(
         )
     query = (
         select(Empresa)
-        .where(Empresa.activo == True, cond)
+        .where(Empresa.activo == True, Empresa.id_municipio == id_municipio, cond)
         .order_by(Empresa.nombre)
         .offset(offset)
         .limit(limit)
@@ -1015,9 +1060,10 @@ async def verificar_duplicado_empresa(
     campo: str = Query(..., description="Campo a verificar: email, telefono, cuit"),
     valor: str = Query(..., description="Valor a buscar"),
     excluir_id: Optional[int] = Query(None, description="ID a excluir (para edición)"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    """Verificar si ya existe una empresa con ese valor en el campo dado."""
+    """Verificar si ya existe una empresa del municipio con ese valor en el campo dado."""
     campo_map = {
         "email": Empresa.email,
         "telefono": Empresa.telefono,
@@ -1027,7 +1073,7 @@ async def verificar_duplicado_empresa(
         raise HTTPException(status_code=400, detail=f"Campo '{campo}' no soportado")
 
     col = campo_map[campo]
-    q = select(Empresa).where(col == valor, Empresa.activo == True)
+    q = select(Empresa).where(col == valor, Empresa.activo == True, Empresa.id_municipio == id_municipio)
     if excluir_id:
         q = q.where(Empresa.id_empresa != excluir_id)
     result = await db.execute(q)
@@ -1041,6 +1087,7 @@ async def verificar_duplicado_empresa(
 async def crear_empresa(
     data: EmpresaCreate,
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """
     Alta de empresa CON su vecino representante, en una sola transacción.
@@ -1053,7 +1100,8 @@ async def crear_empresa(
     # El vecino representante DEBE existir y estar activo
     cid = await db.execute(
         select(Ciudadano).where(
-            Ciudadano.id_ciudadano == data.id_ciudadano, Ciudadano.activo == True
+            Ciudadano.id_ciudadano == data.id_ciudadano, Ciudadano.activo == True,
+            Ciudadano.id_municipio == id_municipio,
         )
     )
     if not cid.scalars().first():
@@ -1063,7 +1111,7 @@ async def crear_empresa(
         )
 
     existing = await db.execute(
-        select(Empresa).where(Empresa.cuit == data.cuit)
+        select(Empresa).where(Empresa.cuit == data.cuit, Empresa.id_municipio == id_municipio)
     )
     if existing.scalars().first():
         raise HTTPException(status_code=409, detail=f"Ya existe una empresa con CUIT {data.cuit}")
@@ -1073,7 +1121,7 @@ async def crear_empresa(
     id_ciudadano = payload.pop("id_ciudadano")
     id_tipo_representacion = payload.pop("id_tipo_representacion")
 
-    empresa = Empresa(**payload)
+    empresa = Empresa(**payload, id_municipio=id_municipio)
     db.add(empresa)
     await db.flush()  # obtiene empresa.id_empresa sin cerrar la transacción
 
@@ -1081,6 +1129,7 @@ async def crear_empresa(
         id_ciudadano=id_ciudadano,
         id_empresa=empresa.id_empresa,
         id_tipo_representacion=id_tipo_representacion,
+        id_municipio=id_municipio,
     )
     db.add(vinculo)
 
@@ -1095,12 +1144,13 @@ async def crear_empresa(
 
 
 @router.get("/empresas/{id}", response_model=EmpresaConActividad)
-async def obtener_empresa(id: int, db: AsyncSession = Depends(get_db)):
+async def obtener_empresa(id: int, db: AsyncSession = Depends(get_db),
+                          id_municipio: int = Depends(municipio_actual)):
     """Obtener empresa por ID con datos de actividad."""
     result = await db.execute(
         select(Empresa)
         .options(selectinload(Empresa.actividad))
-        .where(Empresa.id_empresa == id, Empresa.activo == True)
+        .where(Empresa.id_empresa == id, Empresa.activo == True, Empresa.id_municipio == id_municipio)
     )
     empresa = result.scalars().first()
     if not empresa:
@@ -1113,10 +1163,12 @@ async def modificar_empresa(
     id: int,
     data: EmpresaUpdate,
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Modificar empresa existente."""
     result = await db.execute(
-        select(Empresa).where(Empresa.id_empresa == id, Empresa.activo == True)
+        select(Empresa).where(Empresa.id_empresa == id, Empresa.activo == True,
+                              Empresa.id_municipio == id_municipio)
     )
     empresa = result.scalars().first()
     if not empresa:
@@ -1142,9 +1194,11 @@ async def cambiar_estado_empresa(
     id: int,
     activo: bool = Query(..., description="true para reactivar, false para dar de baja"),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Dar de baja o reactivar una empresa (soft delete)."""
-    result = await db.execute(select(Empresa).where(Empresa.id_empresa == id))
+    result = await db.execute(select(Empresa).where(Empresa.id_empresa == id,
+                                                    Empresa.id_municipio == id_municipio))
     empresa = result.scalars().first()
     if not empresa:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
@@ -1164,16 +1218,19 @@ async def cambiar_estado_empresa(
 async def crear_relacion_ciudadano_empresa(
     data: CiudadanoEmpresaCreate,
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Crear relación ciudadano-empresa con tipo de representación."""
     cid = await db.execute(
-        select(Ciudadano).where(Ciudadano.id_ciudadano == data.id_ciudadano, Ciudadano.activo == True)
+        select(Ciudadano).where(Ciudadano.id_ciudadano == data.id_ciudadano, Ciudadano.activo == True,
+                                Ciudadano.id_municipio == id_municipio)
     )
     if not cid.scalars().first():
         raise HTTPException(status_code=404, detail="Ciudadano no encontrado")
 
     emp = await db.execute(
-        select(Empresa).where(Empresa.id_empresa == data.id_empresa, Empresa.activo == True)
+        select(Empresa).where(Empresa.id_empresa == data.id_empresa, Empresa.activo == True,
+                              Empresa.id_municipio == id_municipio)
     )
     if not emp.scalars().first():
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
@@ -1191,7 +1248,7 @@ async def crear_relacion_ciudadano_empresa(
             detail="Ya existe esta relacion ciudadano-empresa con ese tipo de representacion"
         )
 
-    relacion = CiudadanoEmpresa(**data.model_dump())
+    relacion = CiudadanoEmpresa(**data.model_dump(), id_municipio=id_municipio)
     db.add(relacion)
     await db.commit()
     await db.refresh(relacion)

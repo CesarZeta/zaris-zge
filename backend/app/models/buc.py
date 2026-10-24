@@ -23,7 +23,7 @@ class Usuario(Base):
     email         = Column(String(150), nullable=True)
     password_hash = Column(String(255), nullable=False)
     id_cargo      = Column(String(100))
-    id_municipio  = Column(Integer, nullable=False, default=377)
+    id_municipio  = Column(Integer, nullable=False)
     activo        = Column(Boolean, nullable=False, default=True)
     cuil          = Column(String(11))
     buc_acceso    = Column(Boolean, nullable=False, default=False)
@@ -207,6 +207,7 @@ class CiudadanoEmpresa(Base):
     id_tipo_representacion = Column(Integer, ForeignKey("tipo_representacion.id"), nullable=False)
     fecha_alta             = Column(DateTime, nullable=False, server_default=func.now())
     activo                 = Column(Boolean, nullable=False, default=True)
+    id_municipio           = Column(Integer, nullable=False)
 
     __table_args__ = (
         UniqueConstraint(

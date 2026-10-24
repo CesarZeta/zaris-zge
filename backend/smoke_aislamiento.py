@@ -54,7 +54,7 @@ from app.core.auth import crear_token_ciudadano  # noqa: E402
 from app.core.database import AsyncSessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.services import push  # noqa: E402
-from seed_municipio_aislamiento import ids_aislamiento  # noqa: E402
+from seed_municipio_aislamiento import DNI_VECINO_B, cuil_valido, ids_aislamiento  # noqa: E402
 
 push._webpush_sync = lambda *a, **k: None  # nunca sale un push real
 
@@ -172,7 +172,7 @@ def valor_para(nombre: str, anot, ids: dict, *, prof: int = 0) -> Any:
             return dt.datetime.now().isoformat()
         if t is dt.time:
             return "10:00"
-    return f"{MARCA}-prueba"
+    return "ZZ-prueba"  # sin la marca: un error que repite el input no cuenta como filtración
 
 
 def cuerpo_de(modelo, ids: dict, *, prof: int = 0) -> dict:
@@ -198,11 +198,19 @@ def body_de(ruta: APIRoute, ids: dict) -> tuple[Optional[Any], bool]:
     return {}, False
 
 
+QUERY_ESPECIAL = {
+    "/api/v1/buc/ciudadanos/verificar-duplicado": {"campo": "doc_nro", "valor": DNI_VECINO_B},
+    "/api/v1/buc/empresas/verificar-duplicado": {"campo": "cuit", "valor": cuil_valido("30", "97000001")},
+}
+
+
 def query_de(ruta: APIRoute, ids: dict) -> dict:
-    q = {"id_municipio": ids["municipio"]}
+    q = {"id_municipio": ids["municipio"], **QUERY_ESPECIAL.get(ruta.path, {})}
     for f in ruta.dependant.query_params:
         nombre = getattr(f, "alias", None) or f.name
         anot = getattr(f.field_info, "annotation", None)
+        if nombre in q:
+            continue
         if POR_NOMBRE.get(nombre) in ids:
             q[nombre] = ids[POR_NOMBRE[nombre]]
         elif nombre in TEXTO_DE_BUSQUEDA:
@@ -275,9 +283,11 @@ def revisar(path: str, metodo: str, r: httpx.Response, con_id_b: bool, etiqueta:
     if r.status_code == 429:
         CUENTA["429 (sin probar)"] += 1
         return
+    # Un 4xx que repite lo que mandamos (la búsqueda con la marca) no es una filtración.
+    pidio_marca = MARCA in str(r.request.url) or MARCA in (r.request.content or b"").decode("utf-8", "replace")
     if r.status_code >= 500:
         falla(path, f"{metodo} {path} → {r.status_code} ({etiqueta})")
-    elif MARCA in cuerpo:
+    elif MARCA in cuerpo and not (r.status_code >= 400 and pidio_marca):
         falla(path, f"{metodo} {path} → {r.status_code} con datos de B ({etiqueta})")
     elif con_id_b and 200 <= r.status_code < 300:
         falla(path, f"{metodo} {path} → {r.status_code} sobre un recurso de B; debería ser 404 ({etiqueta})")

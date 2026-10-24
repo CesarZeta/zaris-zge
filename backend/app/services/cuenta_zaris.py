@@ -24,6 +24,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.config_municipio import leer_configs
 from app.models.buc import Ciudadano, Usuario
 from app.schemas.buc import CuentaZarisIn, UsuarioCreate
 from app.services.cuenta_vecino import asegurar_cuenta_vecino
@@ -113,19 +114,19 @@ async def crear_cuenta_zaris_desde_ficha(
             detail=f"Este ciudadano ya tiene cuenta ZARIS (usuario '{existente.username}').",
         )
 
-    id_municipio = getattr(ciudadano, "id_municipio", None) or admin.get("id_municipio") or 1
+    # La cuenta nace en el municipio de la ficha (R8): el caller ya la buscó dentro del suyo.
+    id_municipio = ciudadano.id_municipio
     payload = UsuarioCreate(
         nombre=f"{ciudadano.apellido}, {ciudadano.nombre}",
         nivel_acceso=data.nivel_acceso,
         username=data.username,
         email=email,
         cuil=(ciudadano.cuil or None),
-        id_municipio=id_municipio,
         id_subarea=data.id_subarea,
         es_externo=False,
     )
     usuario = await crear_usuario_interno(
-        db, data=payload, background_tasks=background_tasks, ciudadano=ciudadano,
+        db, data=payload, background_tasks=background_tasks, id_municipio=id_municipio, ciudadano=ciudadano,
     )
 
     # El funcionario es vecino también: si la persona no tenía NINGUNA cuenta de App
@@ -169,13 +170,10 @@ def generar_password_temporal(largo: int = 10) -> str:
             return clave
 
 
-async def branding_municipio(db: AsyncSession) -> dict:
+async def branding_municipio(db: AsyncSession, id_municipio: int) -> dict:
     """Nombre y logo del municipio desde configuracion_general (para los mails)."""
-    res = await db.execute(text("""
-        SELECT clave, valor FROM configuracion_general
-         WHERE clave IN ('municipio_nombre','municipio_logo_url')
-    """))
-    return {r.clave: (r.valor or None) for r in res.fetchall()}
+    cfg = await leer_configs(db, ["municipio_nombre", "municipio_logo_url"], id_municipio)
+    return {k: (v or None) for k, v in cfg.items()}
 
 
 async def crear_usuario_interno(
@@ -183,22 +181,31 @@ async def crear_usuario_interno(
     *,
     data: UsuarioCreate,
     background_tasks: BackgroundTasks,
+    id_municipio: int,
     ciudadano: Ciudadano | None = None,
 ) -> Usuario:
     """
-    Inserta el usuario (+ su agente 1:1 si no es externo) y encola el mail con la clave
-    temporal. Devuelve el ORM `Usuario` ya flusheado (con id). 409 si username o email
-    ya existen. El caller hace `commit()` (+ `refresh()` si devuelve el objeto).
+    Inserta el usuario (+ su agente 1:1 si no es externo) en `id_municipio` y encola el
+    mail con la clave temporal. Devuelve el ORM `Usuario` ya flusheado (con id). 409 si
+    username o email ya existen; 422 si la subárea no es del municipio. El caller hace
+    `commit()` (+ `refresh()` si devuelve el objeto).
 
     `ciudadano`: persona de la BUC a la que queda vinculado el usuario (mig 110). Con él,
     el agente nace con los datos reales de la ficha y el mail indica que puede ingresar
     con su email o su DNI.
     """
+    # Username: único en toda la base mientras exista el índice global viejo (lote de
+    # limpieza de IT-01); después pasa a ser por municipio (uqmun_usuarios_username).
     existing = await db.execute(select(Usuario).where(Usuario.username == data.username))
     if existing.scalars().first():
         raise HTTPException(status_code=409, detail=f"Ya existe un usuario con username '{data.username}'")
+    if data.id_subarea is not None and not await db.scalar(text(
+            "SELECT 1 FROM subarea WHERE id_subarea = :s AND id_municipio = :m"),
+            {"s": data.id_subarea, "m": id_municipio}):
+        raise HTTPException(status_code=422, detail="Subárea inexistente")
 
     data_dict = data.model_dump()
+    data_dict["id_municipio"] = id_municipio
 
     # Password: si el cliente la mandó (seeds/compat), se respeta sin forzar cambio.
     # Si no, el sistema genera una temporal y marca debe_cambiar_password=TRUE.
@@ -222,7 +229,8 @@ async def crear_usuario_interno(
     # el canal por el que se entrega la clave temporal.
     email = (data_dict.get("email") or "").strip()
     data_dict["email"] = email
-    dup_email = await db.execute(select(Usuario).where(Usuario.email == email))
+    dup_email = await db.execute(select(Usuario).where(Usuario.email == email,
+                                                       Usuario.id_municipio == id_municipio))
     if dup_email.scalars().first():
         raise HTTPException(status_code=409, detail=f"Ya existe un usuario con email '{email}'")
 
@@ -276,7 +284,7 @@ async def crear_usuario_interno(
     # después del commit del caller (BackgroundTasks) — un fallo de mail no aborta el alta.
     if password_temporal:
         from app.services.email import enviar_mail_credenciales_usuario_interno
-        cfg = await branding_municipio(db)
+        cfg = await branding_municipio(db, id_municipio)
         login_url = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/frontend/login.html"
         app_agentes_url = (settings.APP_AGENTES_FRONTEND_URL or "").strip() or None
         background_tasks.add_task(

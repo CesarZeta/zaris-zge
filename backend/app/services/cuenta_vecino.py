@@ -25,6 +25,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.config_municipio import leer_configs
 from app.services.email import enviar_mail_activacion_ciudadano
 
 logger = logging.getLogger("zaris.cuenta_vecino")
@@ -44,15 +45,9 @@ def es_ficha_demo(doc_tipo: str | None, doc_nro: str | None) -> bool:
     return (doc_tipo or "").upper() == "DNI" and bool(_DNI_FICHA_DEMO.match((doc_nro or "").strip()))
 
 
-async def _municipio_branding(db: AsyncSession) -> tuple[str, str | None]:
-    """Devuelve (municipio_nombre, municipio_logo_url) leyendo configuracion_general."""
-    res = await db.execute(
-        text(
-            "SELECT clave, valor FROM configuracion_general "
-            "WHERE clave IN ('municipio_nombre','municipio_logo_url')"
-        )
-    )
-    cfg = {r.clave: r.valor for r in res.fetchall()}
+async def _municipio_branding(db: AsyncSession, id_municipio: int) -> tuple[str, str | None]:
+    """Devuelve (municipio_nombre, municipio_logo_url) del municipio, desde configuracion_general."""
+    cfg = await leer_configs(db, ["municipio_nombre", "municipio_logo_url"], id_municipio)
     return (
         cfg.get("municipio_nombre") or "Tu municipio",
         cfg.get("municipio_logo_url") or None,
@@ -66,7 +61,7 @@ async def asegurar_cuenta_vecino(
     nombre: str,
     apellido: str,
     email: str,
-    id_municipio: int | None,
+    id_municipio: int,
     id_usuario_alta: int | None,
     background_tasks: BackgroundTasks,
 ) -> bool:
@@ -161,7 +156,7 @@ async def asegurar_cuenta_vecino(
             {"id": id_ciudadano},
         )
 
-    municipio_nombre, municipio_logo_url = await _municipio_branding(db)
+    municipio_nombre, municipio_logo_url = await _municipio_branding(db, id_municipio)
     background_tasks.add_task(
         enviar_mail_activacion_ciudadano,
         email,
