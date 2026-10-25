@@ -74,13 +74,6 @@ const SECCIONES: Seccion[] = [
         ayuda: 'Si está desactivado, un auditor no puede auditar reclamos de su propia subárea (separación de funciones).',
         control: 'toggle',
       },
-      {
-        clave: 'ot_pendiente_dias_vencimiento',
-        label: 'Vencimiento de OT pendiente',
-        ayuda: 'Días máximos que una orden de trabajo en estado Pendiente puede quedar sin reasignarse.',
-        control: 'number',
-        sufijo: 'días',
-      },
     ],
   },
   {
@@ -138,11 +131,14 @@ const SECCIONES: Seccion[] = [
 // (etapa E App Vecinos): editarlas rompe las suscripciones y la privada no
 // debe mostrarse ni al admin. geo_limite_geojson (mig 111) es un GeoJSON de
 // ~3,5 KB: editarlo a mano en un input no es una tarea razonable.
+// ot_pendiente_dias_vencimiento (mig 21) no la lee ningún código del backend:
+// se ocultó para no ofrecer un ajuste que no hace nada (César, 2026-10-24).
 const CLAVES_OCULTAS = new Set([
   'municipio_nombre', 'municipio_logo_url',
   'municipio_descripcion', 'municipio_color_primary', 'municipio_color_accent',
   'vapid_public_key', 'vapid_private_key', 'vapid_claims_email',
   'geo_limite_geojson',
+  'ot_pendiente_dias_vencimiento',
 ])
 
 const CLAVES_CONOCIDAS = new Set(
