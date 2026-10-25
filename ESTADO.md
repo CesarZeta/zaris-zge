@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-10-24, 2ª sesión (Cesar). **IT-01 F1+F2: Tarea 19 cerrada en local** (rama `it01-multi-municipio`, `3dd9c39`, pusheada, sin mergear): mig 126 aplicada en local, barrido de aislamiento completo (393 rutas) en 0 fallas, todos los smokes en verde y recorrido con clics del shell local. Revisión final de la rama en curso; **el corte en prod (Tarea 20) es el domingo 2026-10-25 con César**. En `main`: Config → Sistema ya no muestra `ot_pendiente_dias_vencimiento` (`d2fa720`). En prod: Arbolado pasó a «Asigna a mano».
+**Última actualización:** 2026-10-24, 2ª sesión (Cesar). **IT-01 F1+F2: Tarea 19 cerrada en local** (rama `it01-multi-municipio`, `3dd9c39`, pusheada, sin mergear): mig 126 aplicada en local, barrido de aislamiento completo (393 rutas) en 0 fallas, todos los smokes en verde y recorrido con clics del shell local. Revisión final de la rama hecha (`0484751`); **el corte en prod (Tarea 20) es el domingo 2026-10-25 con César**. En `main`: Config → Sistema ya no muestra `ot_pendiente_dias_vencimiento` (`d2fa720`). En prod: Arbolado pasó a «Asigna a mano».
 
 ---
 
@@ -18,7 +18,7 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **IT-01: corte en prod (Tarea 20) el domingo 2026-10-25 con César.** La Tarea 19 quedó cerrada el 2026-10-24 y la revisión final de la rama está en curso; si encuentra algo grave, se corrige antes del corte. Migs 125-125d antes del deploy y 126 después. Todos vuelven a ingresar porque los tokens viejos no tienen `mun`; avisar a Roy.
+1. **IT-01: corte en prod (Tarea 20) el domingo 2026-10-25 con César.** La Tarea 19 y la revisión final de la rama quedaron hechas el 2026-10-24: sin agujeros de aislamiento; se corrigió el filtro «Nº desde/hasta» de la mesa de OT para los números nuevos (`0484751`). Los pre-chequeos de prod de solo lectura dieron bien. Migs 125-125d antes del deploy y 126 después. Todos vuelven a ingresar porque los tokens viejos no tienen `mun`; avisar a Roy.
 2. **Asignación automática — revisar ~2026-10-29:** carga de los agentes de las 17 gestiones que asignan solas (en varias hay UN solo agente de nivel Gestión que recibe todo). Arbolado pasó a «Asigna a mano» el 2026-10-24 (su único agente de nivel Gestión era el funcionario de prueba).
 3. **Commits viejos de las dos purgas:** César mandó el pedido a GitHub Support el 2026-10-22; sin respuesta al 2026-10-23 → volver a preguntar el lunes 2026-10-26 (detalle en la memoria privada de Cesar).
 4. **Base de conocimiento de ayudas:** la próxima sesión completa es para eso (César, 2026-10-23). Mientras tanto no se tocan manuales.
@@ -31,7 +31,7 @@
 
 - **IT-01 F1+F2 (multi-municipio), rama `it01-multi-municipio`, sin mergear:**
   - Tareas 1-19 de [`PLAN_MULTI_MUNICIPIO_F1_F2.md`](PLAN_MULTI_MUNICIPIO_F1_F2.md) hechas en local: migs 125-126 en `zaris_dev`, todos los routers y procesos por municipio, barrido de aislamiento completo contra un municipio de prueba en 0 fallas, smokes en verde, recorrido con clics.
-  - Revisión final de la rama en curso. Tarea 20 = corte en prod con César, domingo 2026-10-25.
+  - Revisión final de la rama hecha (`0484751`). Tarea 20 = corte en prod con César, domingo 2026-10-25.
   - El registro de la ejecución (decisiones por tarea) está en el worktree de Cesar, fuera del repo.
 - **PWA `zaris-vecinos` — modo escritorio del portal: diseño aprobado el 2026-10-12 (3ª), falta plan + código.** Solo toca el repo de la PWA; spec y pasos en su `ESTADO.md` → En curso.
 - **PROPUESTA sin aprobar — app de agentes: reclamos de oficio + «Control de entradas» (QR).** Pedido de César al cierre del 2026-10-12; las 4 decisiones de alcance ya están tomadas (de oficio · niveles 1-4 · acreditar niveles 1-4 · nombre «Control de entradas») y el diseño está escrito en [`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md). **Próxima sesión: César confirma o corrige el diseño y recién ahí F1 (backend sin migración + smoke).** No hay código.
