@@ -4,9 +4,13 @@ import { useEffect, useState } from 'react'
 // parte del maestro de Usuarios (pedido 2026-07-16).
 import { useActualizarModulo, useModulosCatalogo } from '../../config/hooks/useConfig'
 import { useNotificationsStore } from '../../../stores/notifications'
+import { useAuthStore } from '../../../stores/auth'
 
 export function CatalogoModulosView() {
   const push = useNotificationsStore((s) => s.push)
+  // IT-01 F3: el catálogo es global (vale para todos los municipios): solo lo cambia el super
+  // administrador. Los módulos de nivel 0 son suyos y su nivel no se edita.
+  const esSuper = useAuthStore((s) => s.user?.es_super_admin === true)
   const { data: modulos = [], isLoading } = useModulosCatalogo()
   const mut = useActualizarModulo()
 
@@ -39,6 +43,10 @@ export function CatalogoModulosView() {
         Cada módulo declara un <strong>nivel mínimo de acceso</strong>. Un usuario con nivel ≤ ese valor ve el módulo por default.
         Por ejemplo, si <code>min_nivel_acceso = 3</code>, lo ven Admin (1), Supervisor (2) y Atención (3) — pero no Gestión (4) ni Consultor (5).
         Los overrides por usuario (pestaña anterior) sobreescriben esto.
+        {!esSuper && (
+          <> <strong>Solo el super administrador cambia estos niveles</strong>, porque el catálogo vale para todos los
+          municipios.</>
+        )}
       </div>
 
       <div style={tableHeaderStyle}>
@@ -81,7 +89,9 @@ export function CatalogoModulosView() {
                 value={actual}
                 onChange={(e) => setNiveles((p) => ({ ...p, [m.modulo_codigo]: Number(e.target.value) }))}
                 style={selectStyle}
+                disabled={!esSuper || original === 0}
               >
+                {original === 0 && <option value={0}>0 — Super administrador</option>}
                 <option value={1}>1 — Admin</option>
                 <option value={2}>2 — Supervisor</option>
                 <option value={3}>3 — Atención</option>

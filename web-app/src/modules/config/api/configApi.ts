@@ -93,3 +93,17 @@ export const listarConfigGeneral = () =>
 
 export const actualizarConfigParam = (id_config: number, valor: string) =>
   api.put<ConfigParam>(`${ADMIN}/configuracion_general/${id_config}`, { valor })
+
+/* ── Parámetros globales: solo el super administrador (IT-01 F3) ── */
+export interface ConfigGlobal {
+  id_config: number
+  clave: string
+  valor: string | null
+  tipo: string | null
+  descripcion: string | null
+}
+
+export const listarConfigGlobal = () => api.get<ConfigGlobal[]>('/api/v1/super/config-global')
+
+export const actualizarConfigGlobal = (id_config: number, valor: string) =>
+  api.put<ConfigGlobal>(`/api/v1/super/config-global/${id_config}`, { valor })

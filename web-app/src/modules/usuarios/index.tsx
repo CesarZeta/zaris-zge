@@ -4,6 +4,7 @@ import type { ModuleManifest } from '../../lib/types'
 import { UsuariosLayout } from './UsuariosLayout'
 import { MaestroView } from './views/MaestroView'
 import { CatalogoModulosView } from './views/CatalogoModulosView'
+import { AccesosSuperView } from './views/AccesosSuperView'
 
 const Wrap = (Component: React.FC) => () => (
   <UsuariosLayout>
@@ -29,5 +30,6 @@ export const usuariosModule: ModuleManifest = {
     { path: 'maestro', element: Wrap(MaestroView), handle: { breadcrumb: 'usuarios · maestro' } },
     { path: 'permisos', element: RedirectMaestro, handle: { breadcrumb: 'usuarios' } },
     { path: 'modulos', element: Wrap(CatalogoModulosView), handle: { breadcrumb: 'usuarios · módulos' } },
+    { path: 'accesos-super', element: Wrap(AccesosSuperView), handle: { breadcrumb: 'usuarios · registro del super administrador' } },
   ],
 }

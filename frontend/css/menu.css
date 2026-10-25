@@ -1063,6 +1063,13 @@ html, body {
 }
 /* Si todos los ítems del bloque quedaron ocultos por permisos, el JS de
    menu.js marca la sección con [hidden] para no dejar un título huérfano. */
+/* menu.js oculta con [hidden] los ítems que el usuario no tiene permitidos (§30); sin esta
+   regla el `display: flex` de .nav-flat__item pisaba el hidden y se veían todos (cazado
+   2026-10-25 en IT-01 F3: un nivel 4 veía ocho módulos ajenos). */
+.nav-flat__item[hidden] {
+  display: none;
+}
+
 .nav-flat__section[hidden] {
   display: none;
 }

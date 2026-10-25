@@ -1,6 +1,9 @@
+import { useState } from 'react'
 import { Landmark, Users } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { shellNavigate } from '../../../lib/shellNav'
+import { useAuthStore } from '../../../stores/auth'
+import { ParametrosGlobalesView } from './ParametrosGlobalesView'
 import { ParametrosSistemaView } from './ParametrosSistemaView'
 
 interface Atajo {
@@ -10,6 +13,8 @@ interface Atajo {
   href: string
   /** Ruta interna del bundle React (react-router) en vez de página del shell. */
   interna?: boolean
+  /** Solo para el super administrador (IT-01 F3). */
+  soloSuper?: boolean
 }
 
 // Atajos a pantallas de catálogos/maestros que NO son ajustes booleanos del
@@ -24,15 +29,20 @@ const ATAJOS: Atajo[] = [
     interna: true,
   },
   {
+    // Desde IT-01 F3 los municipios los edita solo el super administrador, en su módulo.
     icon: Landmark,
     titulo: 'Municipios',
-    descripcion: 'Datos del/los municipios donde opera el sistema.',
-    href: 'frontend/admin_tablas.html?tabla=municipios',
+    descripcion: 'Datos de los municipios donde opera el sistema.',
+    href: '/municipios',
+    interna: true,
+    soloSuper: true,
   },
 ]
 
 export function SistemaView() {
   const navigate = useNavigate()
+  const esSuper = useAuthStore((s) => s.user?.es_super_admin === true)
+  const [solapa, setSolapa] = useState<'municipio' | 'globales'>('municipio')
 
   function irA(a: Atajo, e: React.MouseEvent) {
     e.preventDefault()
@@ -58,7 +68,7 @@ export function SistemaView() {
         <div style={{
           display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 14,
         }}>
-          {ATAJOS.map((a) => {
+          {ATAJOS.filter((a) => !a.soloSuper || esSuper).map((a) => {
           const Icon = a.icon
           return (
             <a
@@ -86,10 +96,31 @@ export function SistemaView() {
         </div>
       </div>
 
+      {/* Super administrador (IT-01 F3): los parámetros del municipio elegido en el selector y,
+          en otra solapa, los globales. El resto ve solo los de su municipio. */}
+      {esSuper && (
+        <div role="tablist" aria-label="Parámetros" style={{ display: 'flex', gap: 8 }}>
+          {([['municipio', 'Del municipio'], ['globales', 'Parámetros globales']] as const).map(([id, txt]) => (
+            <button key={id} type="button" role="tab" aria-selected={solapa === id} onClick={() => setSolapa(id)}
+                    style={{ ...solapaStyle, ...(solapa === id ? solapaActiva : {}) }}>
+              {txt}
+            </button>
+          ))}
+        </div>
+      )}
       {/* Ajustes reales del sistema, agrupados y con controles tipados. */}
-      <ParametrosSistemaView />
+      {esSuper && solapa === 'globales' ? <ParametrosGlobalesView /> : <ParametrosSistemaView />}
     </div>
   )
+}
+
+const solapaStyle: React.CSSProperties = {
+  fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 600, padding: '6px 14px',
+  background: 'var(--surface-100)', color: 'var(--fg-2)', border: '1px solid var(--border-primary)',
+  borderRadius: 999, cursor: 'pointer',
+}
+const solapaActiva: React.CSSProperties = {
+  color: 'var(--zaris-orange)', borderColor: 'var(--zaris-orange)', background: 'var(--surface-300)',
 }
 
 const cardStyle: React.CSSProperties = {
