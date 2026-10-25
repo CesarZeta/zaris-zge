@@ -1,3 +1,5 @@
+import { headerMunicipio } from './municipioActivo'
+
 // BASE se resuelve por variable de entorno de Vite. Dev (sin .env) cae a localhost;
 // prod (.env.production) apunta a Railway. Documentado en CLAUDE.md §6.
 const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://127.0.0.1:8000'
@@ -60,6 +62,8 @@ async function request<T>(
   const token = getToken()
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    // Super administrador (IT-01 F3): el municipio elegido en el selector del shell.
+    ...headerMunicipio(),
     ...(init.headers as Record<string, string>),
   }
   if (token) headers['Authorization'] = `Bearer ${token}`

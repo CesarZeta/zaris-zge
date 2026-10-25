@@ -40,7 +40,7 @@
 
   <link rel="stylesheet" href="design-system/fonts/fonts.css">
   <link rel="stylesheet" href="design-system/colors_and_type.css">
-  <link rel="stylesheet" href="frontend/css/menu.css?v=2026-10-20a">
+  <link rel="stylesheet" href="frontend/css/menu.css?v=2026-10-25a">
 
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 </head>
@@ -73,6 +73,14 @@
           <img class="muni__logo" id="topbar-muni-logo" alt="Logo municipio" hidden>
           <span class="muni__nombre" id="topbar-muni-nombre">MUNICIPALIDAD</span>
         </div>
+
+        <!-- Super administrador (IT-01 F3): municipio en el que opera. Lo arma menu.js;
+             para cualquier otra cuenta queda oculto. -->
+        <label class="muni-selector" id="topbar-municipio-wrap" hidden>
+          <span class="muni-selector__label">Operando en</span>
+          <select class="muni-selector__select" id="topbar-municipio"
+                  aria-label="Municipio en el que opera el super administrador"></select>
+        </label>
       </div>
 
       <div class="topbar__right">
@@ -437,6 +445,6 @@
   </div>
 
   <script src="frontend/js/qrcode.bundle.js?v=2026-07-15a"></script>
-  <script src="frontend/js/menu.js?v=2026-10-22b"></script>
+  <script src="frontend/js/menu.js?v=2026-10-25a"></script>
 </body>
 </html>

@@ -99,10 +99,12 @@ export interface IdentidadMunicipio {
   app_vecinos_url?: string
 }
 
+// La del municipio de la request (`/actual`, autenticado), no la de la dirección: para el super
+// administrador es el municipio del selector (IT-01 F3); para el resto, el suyo de siempre.
 export function useIdentidadMunicipio() {
   return useQuery({
     queryKey: ['config', 'identidad'],
-    queryFn: () => api.get<IdentidadMunicipio>('/api/v1/config/identidad'),
+    queryFn: () => api.get<IdentidadMunicipio>('/api/v1/config/identidad/actual'),
     staleTime: 10 * MINUTO,
   })
 }

@@ -5,7 +5,10 @@ export interface User {
   id_usuario: number
   nombre: string
   email: string
-  nivel_acceso: 1 | 2 | 3 | 4 | 5
+  // 0 = super administrador (IT-01 F3): sin municipio, opera el que elige en el selector.
+  nivel_acceso: 0 | 1 | 2 | 3 | 4 | 5
+  es_super_admin?: boolean
+  id_municipio?: number | null
   modulos_permitidos?: string[]   // CLAUDE.md §30. Opcional para retro-compat con sesiones viejas.
   // Subárea del agente vinculado (Fase 3 roles): scopea pickers/bandejas del
   // supervisor. Opcionales: sesiones viejas no los traen (el backend igual impone).

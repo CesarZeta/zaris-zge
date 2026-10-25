@@ -814,7 +814,11 @@ const API = `${_base}/api/v1/admin`;
 function _authHeaders() {
   const session = JSON.parse(localStorage.getItem('zaris_session') || 'null');
   const token = session?.access_token;
-  return token ? { 'Authorization': `Bearer ${token}` } : {};
+  const h = token ? { 'Authorization': `Bearer ${token}` } : {};
+  // Super administrador (IT-01 F3): el municipio elegido en el selector del shell.
+  const mun = session?.user?.es_super_admin === true ? localStorage.getItem('zaris_municipio_activo') : null;
+  if (mun) h['X-Municipio'] = mun;
+  return h;
 }
 
 function _handleUnauth() {

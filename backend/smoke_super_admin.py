@@ -659,13 +659,37 @@ async def test_hc_super() -> None:
         check("un administrador de nivel 1 sigue entrando sin motivo", r.status_code == 200, f"{r.status_code}")
 
 
+# ── Tarea 7: identidad del municipio en el que se opera ──────────────────────────────────────
+
+async def test_identidad_actual() -> None:
+    print("\n20. /config/identidad/actual (identidad del municipio de la request)")
+    await _contexto()
+    B = CTX["B"]
+    nombre_b = (await _uno("SELECT nombre FROM municipios WHERE id_municipio = :b", {"b": B})).nombre
+    async with _cliente() as c:
+        pub = (await c.get("/api/v1/config/identidad")).json().get("municipio_nombre")
+        tok = await _token(c, EMAIL_SUPER)
+        r = await c.get("/api/v1/config/identidad/actual", headers=_h(tok, B))
+        check("el super con X-Municipio B ve la identidad de B",
+              r.status_code == 200 and r.json().get("municipio_nombre") == nombre_b, f"{r.status_code} {r.text[:100]}")
+        r = await c.get("/api/v1/config/identidad/actual", headers=_h(tok, 1))
+        check("con X-Municipio 1, la del municipio 1",
+              r.status_code == 200 and r.json().get("municipio_nombre") == pub, f"{r.status_code} {r.text[:100]}")
+        tb = await _token(c, "admin.b@aislamiento.test")
+        r = await c.get("/api/v1/config/identidad/actual", headers=_h(tb))
+        check("admin.b ve la de su municipio", r.status_code == 200 and r.json().get("municipio_nombre") == nombre_b,
+              f"{r.status_code}")
+        r = await c.get("/api/v1/config/identidad/actual")
+        check("sin token → 401", r.status_code == 401, f"{r.status_code}")
+
+
 TESTS = [test_constraints_nivel_0, test_seed_super_admin, test_password_renovacion_global,
          test_registrar_acceso_super, test_registro_falla_cierra,
          test_login_super, test_header_super, test_header_invalido, test_header_ignorado_para_comunes,
          test_super_degradado, test_nivel_efectivo, test_recuperar_super,
          test_escaladas_admin, test_global_super,
          test_super_municipios, test_seleccion, test_config_global, test_auditoria_accesos_super,
-         test_hc_super]
+         test_hc_super, test_identidad_actual]
 
 
 async def main() -> int:
