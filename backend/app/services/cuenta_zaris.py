@@ -28,6 +28,7 @@ from app.core.config_municipio import leer_configs
 from app.models.buc import Ciudadano, Usuario
 from app.schemas.buc import CuentaZarisIn, UsuarioCreate
 from app.services.cuenta_vecino import asegurar_cuenta_vecino
+from app.services.super_admin import EMAIL_RESERVADO, email_reservado_super_admin
 
 logger = logging.getLogger("zaris.cuenta_zaris")
 
@@ -229,6 +230,8 @@ async def crear_usuario_interno(
     # el canal por el que se entrega la clave temporal.
     email = (data_dict.get("email") or "").strip()
     data_dict["email"] = email
+    if await email_reservado_super_admin(db, email):
+        raise HTTPException(status_code=409, detail=EMAIL_RESERVADO)
     dup_email = await db.execute(select(Usuario).where(Usuario.email == email,
                                                        Usuario.id_municipio == id_municipio))
     if dup_email.scalars().first():

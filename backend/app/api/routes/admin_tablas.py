@@ -18,7 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.auth import get_current_user, require_admin
-from app.core.municipio import id_municipio_base, municipio_actual
+from app.core.municipio import municipio_actual
+from app.services.accesos_super import registrar_acceso_super
 
 router = APIRouter(tags=["Admin Tablas"])
 logger = logging.getLogger("zaris.admin_tablas")
@@ -204,7 +205,7 @@ ALLOWED_TABLES = set(TABLE_CONFIG.keys())
 # (las claves globales, como las VAPID, no salen por acá).
 _TABLAS_GLOBALES = {"tipo_usuario", "estado_reclamo", "estado_ot", "municipios", "actividades",
                     "tipo_representacion", "nacionalidades", "emergencia_estado"}
-_SOLO_ADMIN_BASE_LECTURA = {"municipios"}
+_SOLO_SUPER_LECTURA = {"municipios"}
 
 # Columnas del body que apuntan a otra tabla del municipio: (tabla, PK, entidad).
 _REFERENCIAS = {
@@ -227,9 +228,21 @@ def _por_municipio(tabla: str) -> bool:
     return tabla not in _TABLAS_GLOBALES
 
 
-async def _exigir_admin_base(db: AsyncSession, current_user: dict, id_municipio: int) -> None:
-    if current_user.get("nivel_acceso") != 1 or id_municipio != await id_municipio_base(db):
-        raise HTTPException(status_code=403, detail="Acción exclusiva del administrador del municipio base")
+def _exigir_super_admin(current_user: dict) -> None:
+    """Las tablas globales son de todos los municipios: solo las toca el super administrador
+    (IT-01 F3; hasta F2 era el administrador del municipio base)."""
+    if not current_user.get("es_super_admin"):
+        raise HTTPException(status_code=403, detail="Acción exclusiva del super administrador")
+
+
+async def _autorizar_escritura_global(current_user: dict, tabla: str, accion: str, id: int | None) -> None:
+    if tabla in _SOLO_SUPER_LECTURA:
+        # Una sola vía de edición: el módulo Municipios (valida subdominio, zona horaria, etc.).
+        raise HTTPException(status_code=403, detail="Los municipios se editan desde el módulo Municipios")
+    _exigir_super_admin(current_user)
+    await registrar_acceso_super(id_usuario=current_user["id_usuario"], accion="catalogo_global",
+                                 id_municipio=None,
+                                 detalle=f"{accion} {tabla}" + (f" {id}" if id is not None else ""))
 
 
 async def _validar_referencias(db: AsyncSession, data: dict, id_municipio: int) -> None:
@@ -358,7 +371,7 @@ async def _autorizar_escritura(
     nivel = current_user.get("nivel_acceso", 99)
     if nivel == 1:
         if not _por_municipio(tabla):
-            await _exigir_admin_base(db, current_user, id_municipio)
+            await _autorizar_escritura_global(current_user, tabla, accion, id)
         return body
     sub = await _subarea_supervisor(db, current_user)
     if nivel != 2 or tabla not in _TABLAS_SUPERVISOR or sub is None:
@@ -457,8 +470,8 @@ async def listar(
 ):
     cfg = _get_config(tabla)
     _bloquear_lectura_si_solo_admin(tabla, current_user)
-    if tabla in _SOLO_ADMIN_BASE_LECTURA:
-        await _exigir_admin_base(db, current_user, id_municipio)
+    if tabla in _SOLO_SUPER_LECTURA:
+        _exigir_super_admin(current_user)
     pk = cfg["pk"]
     sub = await _subarea_supervisor(db, current_user) if tabla == "agentes" else None
     exclude = _exclude_efectivo(tabla, cfg, current_user, sub)
@@ -489,8 +502,8 @@ async def obtener(
 ):
     cfg = _get_config(tabla)
     _bloquear_lectura_si_solo_admin(tabla, current_user)
-    if tabla in _SOLO_ADMIN_BASE_LECTURA:
-        await _exigir_admin_base(db, current_user, id_municipio)
+    if tabla in _SOLO_SUPER_LECTURA:
+        _exigir_super_admin(current_user)
     pk = cfg["pk"]
     sub = await _subarea_supervisor(db, current_user) if tabla == "agentes" else None
     exclude = _exclude_efectivo(tabla, cfg, current_user, sub)

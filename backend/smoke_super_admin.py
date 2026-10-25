@@ -392,10 +392,96 @@ async def test_recuperar_super() -> None:
         await db.commit()
 
 
+# ── Tarea 4: lo exclusivo del super administrador y escaladas ────────────────────────────────
+
+async def _uno(sql: str, params: dict | None = None):
+    async with AsyncSessionLocal() as db:
+        return (await db.execute(text(sql), params or {})).fetchone()
+
+
+async def test_escaladas_admin() -> None:
+    print("\n13. Un administrador de municipio no puede escalar")
+    await _contexto()
+    victima = (await _uno("SELECT id_usuario FROM usuarios WHERE email = 'doble@aislamiento.test' "
+                          "AND id_municipio = 1")).id_usuario
+    estado = await _uno("SELECT id_estado_reclamo, nombre FROM estado_reclamo ORDER BY 1 LIMIT 1")
+    async with _cliente() as c:
+        t1 = await _token(c, CTX["admin_1"])
+        h = _h(t1)
+        r = await c.post("/api/v1/buc/usuarios", headers=h, json={
+            "nivel_acceso": 0, "username": "smoke.f3.n0", "email": "smoke.f3.n0@prueba-aislamiento.com.ar",
+            "es_externo": True})
+        check("crear una cuenta de nivel 0 → 422", r.status_code == 422, f"{r.status_code} {r.text[:100]}")
+        r = await c.put(f"/api/v1/buc/usuarios/{victima}", headers=h, json={"nivel_acceso": 0})
+        check("pasar una cuenta a nivel 0 → 422", r.status_code == 422, f"{r.status_code} {r.text[:100]}")
+        try:
+            r = await c.put(f"/api/v1/admin/permisos/usuarios/{victima}/modulos", headers=h,
+                            json={"overrides": [{"modulo_codigo": "municipios", "permitido": True}]})
+            check("dar el módulo municipios por permiso individual → 422",
+                  r.status_code == 422 and "exclusivo del super administrador" in r.text,
+                  f"{r.status_code} {r.text[:120]}")
+        finally:
+            async with AsyncSessionLocal() as db:  # si quedó (antes del fix), se desactiva
+                await db.execute(text("UPDATE usuario_modulos SET activo = FALSE "
+                                      "WHERE id_usuario = :u AND modulo_codigo = 'municipios'"), {"u": victima})
+                await db.commit()
+        r = await c.get(f"/api/v1/buc/usuarios/{CTX['id_super']}", headers=h)
+        check("ver la cuenta del super administrador → 404", r.status_code == 404, f"{r.status_code}")
+        r = await c.put(f"/api/v1/buc/usuarios/{CTX['id_super']}", headers=h, json={"nombre": "x"})
+        check("editar la cuenta del super administrador → 404", r.status_code == 404, f"{r.status_code}")
+        try:
+            r = await c.post("/api/v1/buc/usuarios", headers=h, json={
+                "nivel_acceso": 5, "username": "smoke.f3.reservado", "email": EMAIL_SUPER, "es_externo": True})
+            check("una cuenta con el email del super administrador → 409 reservado",
+                  r.status_code == 409 and "reservado" in r.text, f"{r.status_code} {r.text[:120]}")
+        finally:
+            async with AsyncSessionLocal() as db:  # si se creó (antes del fix), se borra: rompería el login del super
+                await db.execute(text("DELETE FROM usuarios WHERE username = 'smoke.f3.reservado'"))
+                await db.commit()
+        r = await c.put("/api/v1/admin/permisos/modulos/reclamos", headers=h, json={"min_nivel_acceso": 4})
+        check("cambiar el catálogo global de módulos → 403", r.status_code == 403, f"{r.status_code}")
+        r = await c.put(f"/api/v1/admin/estado_reclamo/{estado.id_estado_reclamo}", headers=h,
+                        json={"nombre": estado.nombre})
+        check("editar un Maestro global (estado_reclamo) → 403", r.status_code == 403, f"{r.status_code}")
+        r = await c.get("/api/v1/admin/municipios", headers=h)
+        check("leer Maestros → municipios → 403", r.status_code == 403, f"{r.status_code}")
+        r = await c.get("/api/v1/admin/permisos/modulos", headers=h)
+        check("el catálogo de módulos no le muestra municipios",
+              r.status_code == 200 and all(m["modulo_codigo"] != "municipios" for m in r.json()),
+              f"{r.status_code}")
+
+
+async def test_global_super() -> None:
+    print("\n14. El super administrador edita lo global")
+    await _contexto()
+    nac = await _uno("SELECT id, pais FROM nacionalidades ORDER BY id LIMIT 1")
+    rec = await _uno("SELECT min_nivel_acceso FROM modulos WHERE modulo_codigo = 'reclamos'")
+    mun1 = await _uno("SELECT nombre FROM municipios WHERE id_municipio = 1")
+    desde = await _ultimo_acceso()
+    async with _cliente() as c:
+        tok = await _token(c, EMAIL_SUPER)
+        r = await c.put("/api/v1/admin/permisos/modulos/reclamos", headers=_h(tok, 1),
+                        json={"min_nivel_acceso": rec.min_nivel_acceso})
+        check("catálogo de módulos → 200", r.status_code == 200, f"{r.status_code} {r.text[:100]}")
+        r = await c.put(f"/api/v1/admin/nacionalidades/{nac.id}", headers=_h(tok, 1), json={"pais": nac.pais})
+        check("Maestro global (nacionalidades) → 200", r.status_code == 200, f"{r.status_code} {r.text[:100]}")
+        r = await c.get("/api/v1/admin/municipios", headers=_h(tok, 1))
+        check("lee Maestros → municipios", r.status_code == 200, f"{r.status_code}")
+        r = await c.put("/api/v1/admin/municipios/1", headers=_h(tok, 1), json={"nombre": mun1.nombre})
+        check("municipios por Maestros → 403 «se editan desde el módulo Municipios»",
+              r.status_code == 403 and "módulo Municipios" in r.text, f"{r.status_code} {r.text[:120]}")
+        r = await c.get("/api/v1/admin/permisos/modulos", headers=_h(tok, 1))
+        check("el catálogo le muestra municipios",
+              r.status_code == 200 and any(m["modulo_codigo"] == "municipios" for m in r.json()), f"{r.status_code}")
+    acciones = [f.accion for f in await _accesos_desde(desde)]
+    check("dos filas catalogo_global", acciones.count("catalogo_global") == 2, str(acciones))
+
+
 TESTS = [test_constraints_nivel_0, test_seed_super_admin, test_password_renovacion_global,
          test_registrar_acceso_super, test_registro_falla_cierra,
          test_login_super, test_header_super, test_header_invalido, test_header_ignorado_para_comunes,
-         test_super_degradado, test_nivel_efectivo, test_recuperar_super]
+         test_super_degradado, test_nivel_efectivo, test_recuperar_super,
+         test_escaladas_admin, test_global_super]
 
 
 async def main() -> int:
