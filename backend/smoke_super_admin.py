@@ -126,7 +126,54 @@ async def test_password_renovacion_global() -> None:
     check("el municipio 1 la lee (valor global)", valor is not None, repr(valor))
 
 
-TESTS = [test_constraints_nivel_0, test_seed_super_admin, test_password_renovacion_global]
+async def _id_super() -> int:
+    async with AsyncSessionLocal() as db:
+        return (await db.execute(text(
+            "SELECT id_usuario FROM usuarios WHERE lower(email) = :e AND nivel_acceso = 0"),
+            {"e": EMAIL_SUPER})).scalar()
+
+
+async def _ultimo_acceso() -> int:
+    async with AsyncSessionLocal() as db:
+        return (await db.execute(text(
+            "SELECT COALESCE(max(id_super_admin_acceso), 0) FROM super_admin_acceso"))).scalar()
+
+
+async def _accesos_desde(desde: int) -> list:
+    async with AsyncSessionLocal() as db:
+        return (await db.execute(text(
+            "SELECT accion, id_municipio, metodo, ruta, detalle FROM super_admin_acceso "
+            "WHERE id_super_admin_acceso > :d ORDER BY id_super_admin_acceso"), {"d": desde})).fetchall()
+
+
+async def test_registrar_acceso_super() -> None:
+    print("\n4. registrar_acceso_super")
+    from app.services.accesos_super import registrar_acceso_super
+    sup, desde = await _id_super(), await _ultimo_acceso()
+    await registrar_acceso_super(id_usuario=sup, accion="seleccion", id_municipio=1, metodo="POST",
+                                 ruta="/api/v1/super/seleccion", detalle="smoke T2", ip="127.0.0.1",
+                                 user_agent="smoke")
+    filas = await _accesos_desde(desde)
+    check("deja la fila y se ve desde otra sesión",
+          [(f.accion, f.id_municipio, f.detalle) for f in filas] == [("seleccion", 1, "smoke T2")], str(filas))
+
+
+async def test_registro_falla_cierra() -> None:
+    print("\n5. registro que falla = acceso negado")
+    from fastapi import HTTPException
+
+    from app.services.accesos_super import registrar_acceso_super
+    sup, desde = await _id_super(), await _ultimo_acceso()
+    try:
+        await registrar_acceso_super(id_usuario=sup, accion="inexistente", id_municipio=1)
+        check("una acción fuera del CHECK lanza 503", False, "no lanzó")
+    except HTTPException as e:
+        check("una acción fuera del CHECK lanza 503", e.status_code == 503, f"{e.status_code} {e.detail}")
+    check("y no deja fila", await _accesos_desde(desde) == [])
+
+
+TESTS = [test_constraints_nivel_0, test_seed_super_admin, test_password_renovacion_global,
+         test_registrar_acceso_super, test_registro_falla_cierra]
 
 
 async def main() -> int:
