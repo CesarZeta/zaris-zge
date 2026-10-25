@@ -259,6 +259,8 @@ export interface PantallaColero {
 export type HistoriaClinicaContexto = 'turno' | 'guardia' | 'mesa' | 'consulta' | 'otro'
 export type HistoriaClinicaMotivo =
   'admin' | 'admin_sin_config' | 'salud' | 'nivel' | 'sin_agente' | 'sin_subarea' | 'fuera_salud' | 'sin_config'
+  // Super administrador (IT-01 F3): sin motivo declarado / con motivo.
+  | 'requiere_motivo' | 'super_admin'
 
 export interface HistoriaClinicaPermiso { puede: boolean; motivo: HistoriaClinicaMotivo }
 

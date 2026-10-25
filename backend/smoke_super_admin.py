@@ -601,12 +601,71 @@ async def test_auditoria_accesos_super() -> None:
         check("el greedy de Maestros sigue vivo (GET /admin/area/<id>)", r.status_code == 200, f"{r.status_code}")
 
 
+# ── Tarea 6: historia clínica con motivo ──────────────────────────────────────────────────────
+
+async def _ultimo_hc() -> int:
+    async with AsyncSessionLocal() as db:
+        return (await db.execute(text(
+            "SELECT COALESCE(max(id_historia_clinica_acceso), 0) FROM historia_clinica_acceso"))).scalar()
+
+
+async def _hc_desde(desde: int, id_usuario: int) -> list:
+    async with AsyncSessionLocal() as db:
+        return (await db.execute(text(
+            "SELECT resultado, motivo FROM historia_clinica_acceso WHERE id_historia_clinica_acceso > :d "
+            "AND id_usuario = :u ORDER BY id_historia_clinica_acceso"), {"d": desde, "u": id_usuario})).fetchall()
+
+
+async def test_hc_super() -> None:
+    print("\n19. Historia clínica: el super administrador declara el motivo")
+    await _contexto()
+    sup = CTX["id_super"]
+    ciud = (await _uno("SELECT id_ciudadano FROM turno_atencion WHERE id_municipio = 1 AND activo "
+                       "ORDER BY id_turno_atencion LIMIT 1"))
+    ic = ciud.id_ciudadano if ciud else 1
+    url = "/api/v1/turnos/atenciones/historia"
+    async with _cliente() as c:
+        tok = await _token(c, EMAIL_SUPER)
+        h = _h(tok, 1)
+        _rate_limit._buckets.clear()
+        r = await c.get(f"{url}/permiso", headers=h)
+        check("el permiso dice requiere_motivo", r.status_code == 200 and r.json() == {
+            "puede": False, "motivo": "requiere_motivo"}, f"{r.status_code} {r.text[:100]}")
+        d_hc, d_sa = await _ultimo_hc(), await _ultimo_acceso()
+        r = await c.get(url, headers=h, params={"id_ciudadano": ic})
+        check("sin motivo → 403", r.status_code == 403, f"{r.status_code} {r.text[:100]}")
+        r = await c.get(url, headers=h, params={"id_ciudadano": ic, "motivo": "  corto  "})
+        check("con un motivo corto → 403", r.status_code == 403, f"{r.status_code}")
+        check("los dos intentos quedan como denegados",
+              [(f.resultado, f.motivo) for f in await _hc_desde(d_hc, sup)] == [("denegado", "requiere_motivo")] * 2,
+              str(await _hc_desde(d_hc, sup)))
+        motivo = "Auditoría de prueba F3 del super administrador"
+        d_hc = await _ultimo_hc()
+        r = await c.get(url, headers=h, params={"id_ciudadano": ic, "motivo": motivo})
+        check("con motivo → 200", r.status_code == 200, f"{r.status_code} {r.text[:100]}")
+        check("queda ok con motivo super_admin",
+              [(f.resultado, f.motivo) for f in await _hc_desde(d_hc, sup)] == [("ok", "super_admin")],
+              str(await _hc_desde(d_hc, sup)))
+        filas = [f for f in await _accesos_desde(d_sa) if f.accion == "historia_clinica"]
+        check("y una fila historia_clinica con el texto del motivo",
+              len(filas) == 1 and motivo in (filas[0].detalle or "") and str(ic) in (filas[0].detalle or ""),
+              str([f.detalle for f in filas]))
+        r = await c.get("/api/v1/turnos/atenciones", headers=h, params={"id_ciudadano": ic})
+        check("el historial de atenciones sin motivo viaja reservado",
+              r.status_code == 200 and all(x.get("reservado") and x.get("intervencion") is None for x in r.json()),
+              f"{r.status_code} {r.text[:120]}")
+        t1 = await _token(c, CTX["admin_1"])
+        r = await c.get(url, headers=_h(t1), params={"id_ciudadano": ic})
+        check("un administrador de nivel 1 sigue entrando sin motivo", r.status_code == 200, f"{r.status_code}")
+
+
 TESTS = [test_constraints_nivel_0, test_seed_super_admin, test_password_renovacion_global,
          test_registrar_acceso_super, test_registro_falla_cierra,
          test_login_super, test_header_super, test_header_invalido, test_header_ignorado_para_comunes,
          test_super_degradado, test_nivel_efectivo, test_recuperar_super,
          test_escaladas_admin, test_global_super,
-         test_super_municipios, test_seleccion, test_config_global, test_auditoria_accesos_super]
+         test_super_municipios, test_seleccion, test_config_global, test_auditoria_accesos_super,
+         test_hc_super]
 
 
 async def main() -> int:

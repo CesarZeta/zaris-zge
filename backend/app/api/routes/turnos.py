@@ -73,6 +73,7 @@ from app.services.historia_clinica import (
 from app.middleware.rate_limit import check_rate_limit
 from app.utils.request_helpers import get_real_ip
 from app.services import encuestas_service
+from app.services.accesos_super import registrar_acceso_super
 
 
 router = APIRouter(prefix="/api/v1/turnos", tags=["turnos"])
@@ -490,6 +491,23 @@ async def listar_turnos(
     return [dict(r) for r in rows]
 
 
+_DESC_MOTIVO_SUPER = ("Solo el super administrador (IT-01 F3): motivo de la consulta, al menos 10 caracteres. "
+                      "Queda registrado y lo ve el administrador del municipio")
+
+
+async def _registrar_hc_super(request: Request, user: dict, id_municipio: int, id_ciudadano: int,
+                              motivo: Optional[str]) -> None:
+    """La consulta de historia clínica del super administrador queda también en su registro de
+    accesos, con el motivo declarado (historia_clinica_acceso.motivo es VARCHAR(20): ahí va
+    'super_admin'). Corre después del commit del registro clínico."""
+    if user.get("es_super_admin"):
+        await registrar_acceso_super(
+            id_usuario=user["id_usuario"], accion="historia_clinica", id_municipio=id_municipio,
+            metodo=request.method, ruta=request.url.path,
+            detalle=f"ciudadano {id_ciudadano}: {(motivo or '').strip()}",
+            ip=get_real_ip(request), user_agent=request.headers.get("user-agent"))
+
+
 # Segmento fijo: registrado ANTES de GET /{id_turno} (param greedy, §5).
 @router.get(
     "/atenciones",
@@ -507,6 +525,7 @@ async def historial_atenciones(
                           description="Desde donde se abrio en la UI (queda en el registro de acceso)"),
     exportar: bool = Query(False, description="True si los datos van a un PDF: el acceso queda con origen='export'"),
     limit: int = Query(50, ge=1, le=200),
+    motivo: Optional[str] = Query(None, max_length=500, description=_DESC_MOTIVO_SUPER),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
     id_municipio: int = Depends(municipio_actual),
@@ -520,8 +539,9 @@ async def historial_atenciones(
       permiso, las filas viajan con esos campos en NULL y reservado=true (la UI
       sigue mostrando que hubo atencion). Con permiso, la lectura queda en
       historia_clinica_acceso antes de responder (origen 'export' si va a PDF).
-      Cierra el residuo del plan ATENCION §4 (export "Prestaciones realizadas")."""
-    p = await permiso_historia_clinica(db, user, id_municipio=id_municipio)
+      Cierra el residuo del plan ATENCION §4 (export "Prestaciones realizadas").
+    El super administrador (IT-01 F3) ve el contenido solo declarando `motivo`."""
+    p = await permiso_historia_clinica(db, user, id_municipio=id_municipio, motivo_declarado=motivo)
     if p["puede"]:
         check_rate_limit(f"hc:{user['id_usuario']}", max_requests=60, window_seconds=60)
     where = ["ta.activo = TRUE", "ta.id_ciudadano = :ic", "ta.id_municipio = :mun"]
@@ -560,6 +580,7 @@ async def historial_atenciones(
                            ip=get_real_ip(request), user_agent=request.headers.get("user-agent"),
                            origen="export" if exportar else "historia")
     await db.commit()   # get_db NO commitea solo: sin registro no hay acceso
+    await _registrar_hc_super(request, user, id_municipio, id_ciudadano, motivo)
     return [dict(r) for r in rows]
 
 
@@ -603,6 +624,7 @@ async def historia_clinica(
                           description="Desde donde se abrio en la UI (queda en el registro de acceso)"),
     limit: int = Query(100, ge=1, le=200),
     offset: int = Query(0, ge=0, le=1_000_000),
+    motivo: Optional[str] = Query(None, max_length=500, description=_DESC_MOTIVO_SUPER),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
     id_municipio: int = Depends(municipio_actual),
@@ -617,7 +639,7 @@ async def historia_clinica(
     check_rate_limit(f"hc:{user['id_usuario']}", max_requests=60, window_seconds=60)
     ip, ua = get_real_ip(request), request.headers.get("user-agent")
 
-    p = await permiso_historia_clinica(db, user, id_municipio=id_municipio)
+    p = await permiso_historia_clinica(db, user, id_municipio=id_municipio, motivo_declarado=motivo)
     if not p["puede"]:
         await registrar_acceso(db, id_municipio=id_municipio, id_usuario=user["id_usuario"], id_ciudadano=id_ciudadano, contexto=contexto,
                                resultado="denegado", motivo=p["motivo"], n_registros=None, ip=ip, user_agent=ua)
@@ -641,6 +663,7 @@ async def historia_clinica(
     await registrar_acceso(db, id_municipio=id_municipio, id_usuario=user["id_usuario"], id_ciudadano=id_ciudadano, contexto=contexto,
                            resultado="ok", motivo=p["motivo"], n_registros=len(items), ip=ip, user_agent=ua)
     await db.commit()   # get_db NO commitea solo (app/core/database.py): sin registro no hay acceso
+    await _registrar_hc_super(request, user, id_municipio, id_ciudadano, motivo)
     return {"ciudadano": dict(ciud), "total": total, "limit": limit, "offset": offset, "items": items}
 
 

@@ -48,18 +48,23 @@ export const cumplirTurno = (id_turno: number, body?: CumplirTurnoBody) =>
   api.patch<Turno>(`/api/v1/turnos/${id_turno}/cumplir`, body ?? {})
 
 /** Con permiso de historia clínica cada llamada queda en el registro de accesos
- *  (`exportar` = los datos van a un PDF → origen 'export'). */
-export const listarAtenciones = (id_ciudadano: number, contexto: HistoriaClinicaContexto = 'turno', exportar = false) =>
+ *  (`exportar` = los datos van a un PDF → origen 'export'). `motivo`: solo el super
+ *  administrador, que ve el contenido clínico declarándolo (IT-01 F3). */
+export const listarAtenciones = (id_ciudadano: number, contexto: HistoriaClinicaContexto = 'turno', exportar = false,
+                                 motivo?: string) =>
   api.get<TurnoAtencion[]>('/api/v1/turnos/atenciones', {
-    params: { id_ciudadano, contexto, ...(exportar ? { exportar: true } : {}) },
+    params: { id_ciudadano, contexto, ...(exportar ? { exportar: true } : {}), ...(motivo ? { motivo } : {}) },
   })
 
 /* ── Historia clínica (F5) ── */
 export const permisoHistoriaClinica = () =>
   api.get<HistoriaClinicaPermiso>('/api/v1/turnos/atenciones/historia/permiso')
 
-export const obtenerHistoriaClinica = (id_ciudadano: number, contexto: HistoriaClinicaContexto, limit = 100, offset = 0) =>
-  api.get<HistoriaClinica>('/api/v1/turnos/atenciones/historia', { params: { id_ciudadano, contexto, limit, offset } })
+export const obtenerHistoriaClinica = (id_ciudadano: number, contexto: HistoriaClinicaContexto, limit = 100, offset = 0,
+                                       motivo?: string) =>
+  api.get<HistoriaClinica>('/api/v1/turnos/atenciones/historia', {
+    params: { id_ciudadano, contexto, limit, offset, ...(motivo ? { motivo } : {}) },
+  })
 
 export const cancelarTurno = (id_turno: number) =>
   api.patch<Turno>(`/api/v1/turnos/${id_turno}/cancelar`)

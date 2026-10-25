@@ -157,10 +157,11 @@ export function useCumplirTurno() {
 /** Historia de atenciones de un ciudadano (turnos con registra_atencion).
  *  Scopeada por nivel en el backend (mismo alcance que los turnos); el contenido
  *  clínico llega `reservado` si el usuario no pasa el guard de historia clínica. */
-export function useAtencionesCiudadano(id_ciudadano: number | null, contexto: HistoriaClinicaContexto = 'turno') {
+export function useAtencionesCiudadano(id_ciudadano: number | null, contexto: HistoriaClinicaContexto = 'turno',
+                                       motivo?: string) {
   return useQuery({
-    queryKey: ['turnos', 'atenciones', id_ciudadano, contexto],
-    queryFn: () => listarAtenciones(id_ciudadano as number, contexto),
+    queryKey: ['turnos', 'atenciones', id_ciudadano, contexto, motivo ?? null],
+    queryFn: () => listarAtenciones(id_ciudadano as number, contexto, false, motivo),
     enabled: id_ciudadano != null,
     staleTime: 15 * 1000,
   })
@@ -182,25 +183,30 @@ export function useHistoriaClinicaPermiso() {
     retry: false,
   })
 }
+/** El super administrador (IT-01 F3) recibe `requiere_motivo`: ve el botón y el panel le pide
+ *  el motivo antes de cargar nada. */
 export function usePuedeHistoriaClinica(): boolean {
-  return useHistoriaClinicaPermiso().data?.puede === true
+  const d = useHistoriaClinicaPermiso().data
+  return d?.puede === true || d?.motivo === 'requiere_motivo'
 }
 
 /** Historia clínica de un ciudadano. Lazy (el panel monta solo en solapa/details/modal
  *  visible). El id va en la key: nunca se muestra la HC de otro. Sin placeholderData.
  *  gcTime corto: dato sensible, no vive en memoria más de 1 min sin uso. Sin retry
  *  (un 403 no se reintenta) ni refetch por foco (cada lectura queda registrada).
- *  `limit` cierra la key (6º elemento): "Ver más" sube el límite y eso ES una lectura
- *  nueva (queda registrada); el prefijo de invalidación no cambia. */
+ *  `limit` va en la key (6º elemento): "Ver más" sube el límite y eso ES una lectura
+ *  nueva (queda registrada); el prefijo de invalidación no cambia. `motivo` (7º): el del
+ *  super administrador (IT-01 F3). */
 export function useHistoriaClinica(
   id_ciudadano: number | null,
   contexto: HistoriaClinicaContexto,
   enabled = true,
   limit = 100,
+  motivo?: string,
 ) {
   return useQuery({
-    queryKey: ['turnos', 'historia', 'ciudadano', id_ciudadano, contexto, limit],
-    queryFn: () => obtenerHistoriaClinica(id_ciudadano as number, contexto, limit),
+    queryKey: ['turnos', 'historia', 'ciudadano', id_ciudadano, contexto, limit, motivo ?? null],
+    queryFn: () => obtenerHistoriaClinica(id_ciudadano as number, contexto, limit, 0, motivo),
     enabled: enabled && id_ciudadano != null,
     staleTime: 30 * 1000,
     gcTime: 60 * 1000,

@@ -43,11 +43,18 @@ export function HistoriaClinicaPanel({ idCiudadano, contexto, maxAlto = 360, com
 }) {
   const qc = useQueryClient()
   const [limit, setLimit] = useState(LIMITE_PAGINA)
-  // Cambio de paciente sin remontar (defensa extra al `key` del Modal): volver a la 1ª página.
-  useEffect(() => { setLimit(LIMITE_PAGINA) }, [idCiudadano])
+  // Super administrador (IT-01 F3): el motivo declarado para ESTE paciente.
+  const [motivo, setMotivo] = useState<string | null>(null)
+  // Cambio de paciente sin remontar (defensa extra al `key` del Modal): volver a la 1ª página
+  // y pedir de nuevo el motivo.
+  useEffect(() => { setLimit(LIMITE_PAGINA); setMotivo(null) }, [idCiudadano])
 
-  const q = useHistoriaClinica(idCiudadano, contexto, true, limit)
   const permiso = useHistoriaClinicaPermiso()
+  const requiereMotivo = permiso.data?.motivo === 'requiere_motivo'
+  // Sin el permiso resuelto no se pide nada: un super administrador sin motivo dejaría un
+  // intento denegado en el registro.
+  const q = useHistoriaClinica(idCiudadano, contexto, permiso.isSuccess && (!requiereMotivo || motivo != null),
+                               limit, motivo ?? undefined)
   const status = httpStatus(q.error)
 
   // Un 403 acá = el permiso cambió desde que se cacheó: que el botón desaparezca.
@@ -55,7 +62,11 @@ export function HistoriaClinicaPanel({ idCiudadano, contexto, maxAlto = 360, com
     if (status === 403) qc.invalidateQueries({ queryKey: ['turnos', 'historia', 'permiso'] })
   }, [status, qc])
 
-  if (q.isLoading) {
+  if (requiereMotivo && motivo == null) {
+    return <MotivoSuperForm onConfirmar={setMotivo} />
+  }
+
+  if (q.isLoading || permiso.isLoading) {
     return (
       <div aria-busy="true" aria-label="Cargando historia clínica" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <Skeleton height={56} />
@@ -205,6 +216,48 @@ function Campo({ label, texto }: { label: string; texto: string }) {
   )
 }
 
+/* ── Motivo del super administrador (IT-01 F3) ─────────────────────────── */
+
+/** Mínimo que exige el backend (`MOTIVO_SUPER_MIN` en services/historia_clinica.py). */
+export const MOTIVO_SUPER_MIN = 10
+
+/** El super administrador no hereda el acceso del administrador: abre una historia
+ *  clínica declarando el motivo, que queda registrado y lo ve el administrador del municipio. */
+export function MotivoSuperForm({ onConfirmar, compacto = false }: {
+  onConfirmar: (motivo: string) => void
+  compacto?: boolean
+}) {
+  const [texto, setTexto] = useState('')
+  const largo = texto.trim().length
+  return (
+    <form
+      onSubmit={(e) => { e.preventDefault(); if (largo >= MOTIVO_SUPER_MIN) onConfirmar(texto.trim()) }}
+      style={{ ...encabezado, gap: 8 }}
+    >
+      <label htmlFor="motivo-super-hc" style={labelCampo}>Motivo de la consulta</label>
+      <div style={{ fontSize: 12, color: 'var(--fg-2)' }}>
+        Como super administrador, para ver el contenido clínico declarás el motivo. Queda registrado y lo ve el
+        administrador del municipio.
+      </div>
+      <textarea
+        id="motivo-super-hc"
+        value={texto}
+        onChange={(e) => setTexto(e.target.value)}
+        rows={compacto ? 2 : 3}
+        maxLength={500}
+        placeholder="Ej.: pedido de auditoría de la Secretaría de Salud"
+        style={areaMotivo}
+      />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <Button variant="primary" type="submit" disabled={largo < MOTIVO_SUPER_MIN}>Ver historia</Button>
+        <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>
+          {largo < MOTIVO_SUPER_MIN ? `Al menos ${MOTIVO_SUPER_MIN} caracteres (${largo})` : 'Listo'}
+        </span>
+      </div>
+    </form>
+  )
+}
+
 /* ── Modal (nivel de página únicamente) ────────────────────────────────── */
 
 export function HistoriaClinicaModal({ idCiudadano, nombre, contexto, onClose }: {
@@ -317,6 +370,11 @@ const tituloItem: React.CSSProperties = { fontSize: 13.5, fontWeight: 600, color
 const lineaMeta: React.CSSProperties = { fontSize: 12, color: 'var(--fg-3)', marginTop: 4 }
 const labelCampo: React.CSSProperties = {
   fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--fg-3)', marginBottom: 2,
+}
+const areaMotivo: React.CSSProperties = {
+  width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', fontSize: 13,
+  color: 'var(--fg-1)', background: 'var(--surface-300)', border: '1px solid var(--border-medium)',
+  borderRadius: 'var(--radius-md)', padding: '8px 10px',
 }
 const bannerError: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
