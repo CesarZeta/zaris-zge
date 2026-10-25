@@ -25,7 +25,7 @@ for _stream in (sys.stdout, sys.stderr):
         _stream.reconfigure(encoding="utf-8", errors="replace")
 
 from sqlalchemy import text  # noqa: E402
-from sqlalchemy.exc import IntegrityError  # noqa: E402
+from sqlalchemy.exc import DBAPIError, IntegrityError  # noqa: E402
 
 from app.core.config import settings  # noqa: E402
 from app.core.database import engine  # noqa: E402
@@ -250,7 +250,59 @@ async def chk_fk_compuesta_misma_accion(conn) -> None:
          ("no hay FK compuestas" if not total else ""))
 
 
-async def chk_compat_codigo_viejo(_conn_lectura) -> None:
+async def chk_compat_codigo_viejo(conn_lectura) -> None:
+    """Según el estado de la 126 (DEFAULT de id_municipio en las tablas catalogo/operativo):
+    con DEFAULT (125c, código viejo) prueba la compatibilidad; sin DEFAULT (126) prueba el rechazo;
+    con algunas sí y otras no, la 126 quedó a medias."""
+    fila = (await conn_lectura.execute(text("""
+        SELECT count(*) AS total, count(*) FILTER (WHERE c.column_default IS NOT NULL) AS con_default
+          FROM information_schema.columns c
+          JOIN municipio_tabla_clase m ON m.tabla = c.table_name
+         WHERE c.table_schema = 'public' AND c.column_name = 'id_municipio'
+           AND m.clase IN ('catalogo', 'operativo')"""))).fetchone()
+    if fila.con_default == 0:
+        await _sin_default_rechaza()
+    elif fila.con_default == fila.total:
+        await _compat_antes_de_126()
+    else:
+        _reg("sin_default_municipio", False,
+             f"126 a medias: {fila.con_default} de {fila.total} tablas con DEFAULT de municipio")
+
+
+async def _sin_default_rechaza() -> None:
+    """Desde la 126: un INSERT con id_municipio NULL o 377 y un UPDATE a NULL se rechazan
+    (sin DEFAULT y con trg_000_municipio_defecto inerte, ya no caen en el municipio 1)."""
+    async with engine.connect() as conn:
+        trans = await conn.begin()
+        problemas = []
+        try:
+            id_r = await conn.scalar(text("""
+                INSERT INTO reclamos (descripcion, estado, id_municipio) VALUES ('smoke F1 126', 'Sin asignar', 1)
+                RETURNING id_reclamo"""))
+            casos = [
+                ("INSERT con NULL", "INSERT INTO reclamos (descripcion, estado, id_municipio) "
+                                    "VALUES ('smoke F1 126', 'Sin asignar', NULL)", {}),
+                ("INSERT con 377", "INSERT INTO reclamos (descripcion, estado, id_municipio) "
+                                   "VALUES ('smoke F1 126', 'Sin asignar', 377)", {}),
+                ("UPDATE a NULL", "UPDATE reclamos SET id_municipio = NULL WHERE id_reclamo = :r", {"r": id_r}),
+            ]
+            for nombre, sql, params in casos:
+                sp = await conn.begin_nested()
+                try:
+                    await conn.execute(text(sql), params)
+                    problemas.append(f"{nombre}: se aceptó")
+                except DBAPIError:
+                    pass
+                finally:
+                    await sp.rollback()
+        except Exception as exc:  # noqa: BLE001
+            problemas.append(f"error: {type(exc).__name__}: {str(exc).splitlines()[0][:160]}")
+        finally:
+            await trans.rollback()
+    _reg("sin_default_municipio", not problemas, "; ".join(problemas))
+
+
+async def _compat_antes_de_126() -> None:
     """Hasta la 126: un INSERT con id_municipio NULL explícito o 377 cae en el municipio 1, y un
     UPDATE que lo pisa con NULL conserva el anterior (trigger trg_000_municipio_defecto)."""
     async with engine.connect() as conn:

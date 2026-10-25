@@ -181,7 +181,7 @@ Las reglas vivas de cada una están en la sección del módulo correspondiente d
 
 ### Migraciones 125-126 — IT-01 multi-municipio (F1 + F2) (`backend/migrations/125_segmentacion_municipio.sql` … `126_sin_default_municipio.sql`)
 
-Plan: [`PLAN_MULTI_MUNICIPIO_F1_F2.md`](PLAN_MULTI_MUNICIPIO_F1_F2.md). **125-125d aplicadas en LOCAL** (rama `it01-multi-municipio`); **la 126 se aplica en local en la Tarea 19**; **en prod, todas pendientes del corte con César (Tarea 20)**.
+Plan: [`PLAN_MULTI_MUNICIPIO_F1_F2.md`](PLAN_MULTI_MUNICIPIO_F1_F2.md). **125-126 aplicadas en LOCAL** (rama `it01-multi-municipio`; la 126 el 2026-10-24, en la Tarea 19); **en prod, todas pendientes del corte con César (Tarea 20)**.
 - **125** (solo agrega): municipios con subdominio, país normalizado, zona horaria y `direccion_base`; catálogo geográfico global con país; tipos de documento por país; `id_municipio` (nullable) en las tablas por municipio que no lo tenían; tabla `municipio_tabla_clase` (global / catalogo / operativo / mixta), fuente única de la clasificación.
 - **125b** (datos): clasificación de las tablas; el municipio 1 atiende las direcciones sin prefijo y el 2 (prueba sin datos) queda en baja lógica; tipos de documento de Argentina; toda fila catalogo/operativo pasa al municipio 1 (incluidos los usuarios con 377); claves VAPID globales, el resto de la configuración del municipio 1.
 - **125c**: `id_municipio` NOT NULL + FK + índice en catálogo/operativo, únicos por municipio (`uqmun_*`), numeración con el código del municipio; DEFAULT 1 y trigger `trg_000_municipio_defecto` **temporales** para el código viejo. Los únicos globales viejos (DNI, CUIL, CUIT, números, `configuracion_general.clave`, `agenda_feriado.fecha`) quedan hasta el lote de limpieza (exige DROP).
