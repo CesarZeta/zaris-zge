@@ -6,7 +6,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config_municipio import leer_configs
 from app.core.database import get_db
+from app.core.municipio import municipio_de_origen
 from app.core.urls import url_alta_publica
 from app.schemas.publico_auth import IdentidadMunicipioOut
 
@@ -22,35 +24,28 @@ CLAVES_BRANDING = [
 
 
 @router.get("/identidad-municipio", response_model=IdentidadMunicipioOut)
-async def identidad_municipio(db: AsyncSession = Depends(get_db)):
+async def identidad_municipio(
+    db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_de_origen),
+):
     """
     Devuelve nombre, logo, descripcion y colores del municipio.
     Sin auth (la PWA lo lee en la pantalla de login).
 
-    Multi-tenancy: por ahora cada municipio tiene su deploy Railway propio,
-    asi que este endpoint lee la unica config del proyecto. Si en el futuro
-    consolidamos a multi-tenant compartido, este endpoint recibira un slug
-    por header/query param.
+    Municipio (IT-01): el de la direccion de la PWA (municipio_de_origen). Sin
+    nombre propio cargado, el de la tabla municipios.
     """
-    res = await db.execute(
-        text("""
-            SELECT clave, valor FROM configuracion_general
-             WHERE clave = ANY(:claves) AND activo = TRUE
-        """),
-        {"claves": CLAVES_BRANDING},
-    )
-    cfg = {r.clave: (r.valor or None) for r in res.fetchall()}
+    cfg = {k: (v or None) for k, v in (await leer_configs(db, CLAVES_BRANDING, id_municipio)).items()}
+    muni = (await db.execute(text(
+        "SELECT nombre, codigo_corto FROM municipios WHERE id_municipio = :m"
+    ), {"m": id_municipio})).fetchone()
 
-    # URL del alta publica de vecinos: dominio del shell + slug del UNICO
-    # municipio activo del deploy (mono-tenant, §38). Sin slug -> None y la
-    # PWA no muestra el link (fail-silent).
-    slug = await db.scalar(text(
-        "SELECT codigo_corto FROM municipios WHERE activo = TRUE ORDER BY id_municipio LIMIT 1"
-    ))
-    url_alta = url_alta_publica(slug)
+    # URL del alta publica de vecinos: dominio del shell + slug del municipio.
+    # Sin slug -> None y la PWA no muestra el link (fail-silent).
+    url_alta = url_alta_publica(muni.codigo_corto if muni else None)
 
     return IdentidadMunicipioOut(
-        municipio_nombre=cfg.get("municipio_nombre"),
+        municipio_nombre=cfg.get("municipio_nombre") or (muni.nombre if muni else None),
         municipio_logo_url=cfg.get("municipio_logo_url"),
         municipio_descripcion=cfg.get("municipio_descripcion"),
         municipio_color_primary=cfg.get("municipio_color_primary"),

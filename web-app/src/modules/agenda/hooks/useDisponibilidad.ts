@@ -12,7 +12,7 @@ import type {
   TipoRecurso,
 } from '../types/agenda'
 
-export function useDisponibilidad(params?: { tipo_recurso?: TipoRecurso; id_recurso?: number; id_municipio?: number }) {
+export function useDisponibilidad(params?: { tipo_recurso?: TipoRecurso; id_recurso?: number }) {
   return useQuery({
     queryKey: ['agenda', 'disponibilidad', params],
     queryFn:  () => listarDisponibilidad(params),

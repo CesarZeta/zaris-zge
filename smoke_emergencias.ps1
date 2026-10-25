@@ -104,7 +104,7 @@ $ev1 = Invoke-Api POST "/api/v1/emergencias/eventos" $H @{
     direccion_evento = "Av. 7 entre 47 y 48, La Plata"
     observaciones_recepcion = "Robo en via publica reportado por smoke"
 }
-Assert ($ev1.numero_operativo -match '^EM-\d{4}-\d{6}$') "numero operativo $($ev1.numero_operativo) formato EM-YYYY-NNNNNN"
+Assert ($ev1.numero_operativo -match '^EM-[A-Z0-9]{1,3}-\d{4}-\d{6}$') "numero operativo $($ev1.numero_operativo) formato EM-COD-YYYY-NNNNNN"
 Assert ($ev1.estado_codigo -eq 'PENDIENTE') "evento nace PENDIENTE"
 Assert ($ev1.prioridad_codigo -eq 'P1') "prioridad autocompletada del tipo (P1)"
 Assert ($ev1.organismo_codigo -eq 'POLICIA_911_PBA') "organismo default del tipo precargado"
@@ -242,7 +242,7 @@ $evVec = Invoke-Api POST "/api/v1/publico/emergencias/eventos" $HVec @{
     descripcion = "Humo visible desde la ruta, reporte del vecino"
     id_canal_ingreso = $canalTel.id_emergencia_canal_ingreso   # debe ser IGNORADO
 }
-Assert ($evVec.numero_operativo -match '^EM-\d{4}-\d{6}$' -and $evVec.estado_codigo -eq 'PENDIENTE') "vecino: POST publico crea evento PENDIENTE"
+Assert ($evVec.numero_operativo -match '^EM-[A-Z0-9]{1,3}-\d{4}-\d{6}$' -and $evVec.estado_codigo -eq 'PENDIENTE') "vecino: POST publico crea evento PENDIENTE"
 $evVecAdm = Invoke-Api GET "/api/v1/emergencias/eventos/$($evVec.id_emergencia_evento)" $H $null
 Assert ($evVecAdm.canal_codigo -eq 'APP_VECINO') "evento publico: canal forzado APP_VECINO (ignora el del body)"
 Assert ($null -eq $evVecAdm.id_operador_receptor) "evento publico: sin operador receptor"

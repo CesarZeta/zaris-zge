@@ -115,14 +115,15 @@ async def crear_upload_url_publico(
         INSERT INTO reclamo_adjuntos
             (id_reclamo, storage_bucket, storage_path, nombre_archivo,
              mime_type, tamano_bytes, descripcion, activo,
-             fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion)
+             fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion, id_municipio)
         VALUES
             (:id_r, :bucket, :path, :nombre, :mime, :size, '', FALSE,
-             NOW(), NOW(), NULL, NULL)
+             NOW(), NOW(), NULL, NULL, :mun)
         RETURNING id_adjunto
     """), {
         "id_r": id_reclamo, "bucket": signed["bucket"], "path": storage_path,
         "nombre": nombre_archivo, "mime": mime_type, "size": tamano,
+        "mun": current["id_municipio"],
     })
     id_adjunto = result.scalar_one()
     await db.commit()

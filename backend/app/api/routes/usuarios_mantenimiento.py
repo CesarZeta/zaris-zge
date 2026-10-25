@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.municipio import por_cada_municipio
 from app.services import integridad_cuentas as svc_integridad
 from app.utils.request_helpers import get_real_ip
 
@@ -62,24 +63,37 @@ async def ejecutar_integridad_cuentas(
         raise HTTPException(401, "No autorizado")
 
     try:
+        # Por municipio (IT-01): el vinculo (agente o ficha) tiene que ser del mismo
+        # municipio de la cuenta; un fallo no frena a los demas.
         if dry_run:
-            candidatos = await svc_integridad.listar_usuarios_sin_vinculo(db)
+            async def _diagnostico(id_m: int) -> list:
+                return await svc_integridad.listar_usuarios_sin_vinculo(db, id_municipio=id_m)
+
+            por_municipio = await por_cada_municipio(db, "Integridad cuentas (dry-run)", _diagnostico)
+            candidatos = [c for r in por_municipio.values() if isinstance(r, list) for c in r]
             a_suspender = [c for c in candidatos if c.get("supera_gracia")]
             return {
                 "dry_run": True,
                 "sin_vinculo_total": len(candidatos),
                 "a_suspender": len(a_suspender),
                 "detalle": a_suspender,
+                "errores": {m: r for m, r in por_municipio.items() if isinstance(r, dict)},
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
-        resultado = await svc_integridad.suspender_usuarios_sin_vinculo(db)
+        async def _suspender(id_m: int) -> dict:
+            return await svc_integridad.suspender_usuarios_sin_vinculo(db, id_municipio=id_m)
+
+        por_municipio = await por_cada_municipio(db, "Integridad cuentas", _suspender)
+        resultado = {"suspendidos": sum(r.get("suspendidos", 0) for r in por_municipio.values()),
+                     "detalle": [d for r in por_municipio.values() for d in r.get("detalle", [])]}
         logger.info(
-            "Integridad cuentas OK: suspendidos=%s", resultado.get("suspendidos", 0)
+            "Integridad cuentas OK: suspendidos=%s municipios=%s", resultado["suspendidos"], len(por_municipio)
         )
         return {
             "dry_run": False,
             **resultado,
+            "por_municipio": {m: {k: v for k, v in r.items() if k != "detalle"} for m, r in por_municipio.items()},
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     except HTTPException:

@@ -61,7 +61,7 @@ async def _evento_publico_por_token(db: AsyncSession, token: str) -> Optional[di
         SELECT e.id_evento, e.nombre, e.descripcion,
                e.fecha, e.hora_inicio, e.hora_fin,
                e.capacidad_ciudadanos, e.tipo_qr, e.admite_autoservicio,
-               e.activo, ee.codigo AS estado_codigo
+               e.activo, ee.codigo AS estado_codigo, e.id_municipio
           FROM eventos e
           LEFT JOIN estado_evento ee ON ee.id_estado_evento = e.id_estado_evento
          WHERE e.token_publico = CAST(:t AS UUID)
@@ -145,6 +145,7 @@ async def reservar_publico(
             nombre=payload.nombre,
             telefono=payload.telefono,
             email=payload.email,
+            id_municipio=int(ev["id_municipio"]),
         )
     except ValueError as exc:
         raise HTTPException(422, str(exc))
@@ -176,11 +177,12 @@ async def reservar_publico(
             ) VALUES (
                 :e, :c, :er, 'autoservicio',
                 gen_random_uuid(),
-                1, NULL
+                :mun, NULL
             )
             RETURNING id_evento_reserva, token_reserva
         """), {
             "e": int(ev["id_evento"]), "c": int(ciu["id_ciudadano"]), "er": id_reservada,
+            "mun": int(ev["id_municipio"]),
         })).first()
         new_id = int(row[0])
         token_reserva = str(row[1])
@@ -202,7 +204,7 @@ async def reservar_publico(
                 "ciudadano_creado": bool(ciu["creado"]),
                 "qr_codigo": qr,
             },
-            1,
+            id_municipio=int(ev["id_municipio"]),
         )
         await db.commit()
     except IntegrityError:
@@ -231,7 +233,7 @@ async def _reserva_publica_por_token(
     _validate_uuid(token_reserva, "Token")
     row = (await db.execute(text("""
         SELECT r.id_evento_reserva, r.id_evento, r.id_ciudadano,
-               r.token_reserva, r.qr_codigo, r.origen, r.activo,
+               r.token_reserva, r.qr_codigo, r.origen, r.activo, r.id_municipio,
                er.codigo AS estado_codigo,
                c.apellido AS ciudadano_apellido,
                c.nombre   AS ciudadano_nombre,
@@ -319,7 +321,7 @@ async def cancelar_reserva_publica(
         db, None, "reserva", int(rsv["id_evento_reserva"]), "cancelar",
         {"estado_codigo": rsv["estado_codigo"]},
         {"estado_codigo": "cancelada", "origen": "autoservicio_publico"},
-        1,
+        id_municipio=int(rsv["id_municipio"]),
     )
     await db.commit()
     return await obtener_reserva_publica(token_reserva, db)

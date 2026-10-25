@@ -12,30 +12,35 @@ devuelve 422: la Guardia no se adivina.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Optional
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config_municipio import leer_config
+
 CLAVE_GUARDIA = "id_espacio_guardia"
 
 
-async def espacio_guardia(db: AsyncSession) -> Optional[dict[str, Any]]:
-    """Devuelve la ubicacion Guardia activa (id, nombre, id_subarea, prefijo)
-    o None si la clave no esta cargada / apunta a un espacio inactivo."""
+async def espacio_guardia(db: AsyncSession, id_municipio: int) -> Optional[dict[str, Any]]:
+    """Devuelve la ubicacion Guardia activa del municipio (id, nombre, id_subarea, prefijo)
+    o None si la clave no esta cargada, no es un numero o apunta a un espacio inactivo o
+    de otro municipio (fail-closed, sin 500 por basura en la clave)."""
+    valor = (await leer_config(db, CLAVE_GUARDIA, id_municipio) or "").strip()
+    if not re.fullmatch(r"[0-9]{1,9}", valor):
+        return None
     row = (await db.execute(text("""
         SELECT e.id_espacio, e.nombre, e.id_subarea, e.direccion,
                token_pantalla::text AS token_pantalla
-          FROM configuracion_general cg
-          JOIN espacios_agenda e ON e.id_espacio = NULLIF(TRIM(cg.valor), '')::int
-         WHERE cg.clave = :k AND cg.activo = TRUE AND e.activo = TRUE
-         LIMIT 1
-    """), {"k": CLAVE_GUARDIA})).mappings().first()
+          FROM espacios_agenda e
+         WHERE e.id_espacio = :id AND e.activo = TRUE AND e.id_municipio = :mun
+    """), {"id": int(valor), "mun": id_municipio})).mappings().first()
     return dict(row) if row else None
 
 
-async def id_espacio_guardia(db: AsyncSession) -> Optional[int]:
-    g = await espacio_guardia(db)
+async def id_espacio_guardia(db: AsyncSession, id_municipio: int) -> Optional[int]:
+    g = await espacio_guardia(db, id_municipio)
     return int(g["id_espacio"]) if g else None
 
 
@@ -58,7 +63,9 @@ async def registrar_log_evento(
         INSERT INTO emergencia_log
             (id_evento, id_usuario, tipo_accion, estado_anterior, estado_nuevo,
              payload_json, observaciones, id_municipio)
-        VALUES (:e, :u, :t, :ea, :en, CAST(:p AS jsonb), :o, :m)
+        VALUES (:e, :u, :t, :ea, :en, CAST(:p AS jsonb), :o,
+                COALESCE(CAST(:m AS integer),
+                         (SELECT id_municipio FROM emergencia_evento WHERE id_emergencia_evento = :e)))
     """), {
         "e": id_evento, "u": id_usuario, "t": tipo_accion,
         "ea": estado, "en": estado,

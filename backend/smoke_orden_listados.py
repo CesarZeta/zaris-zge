@@ -184,7 +184,7 @@ async def main() -> int:
             comparables={"alta": lambda x: x["fecha_alta"], "estado": lambda x: x["activo"],
                          "cuil": lambda x: x["cuil"], "documento": lambda x: x["doc_nro"].rjust(12, "0")},
         )
-        n_ciu = await q1("SELECT COUNT(*) AS n FROM ciudadanos")
+        n_ciu = await q1("SELECT COUNT(*) AS n FROM ciudadanos WHERE id_municipio = 1")  # el listado es del municipio
         r = await c.get(P_CIU, params={**base_ciu, "limit": 50}, headers=H)
         ids = [x["id_ciudadano"] for x in r.json()] if r.status_code == 200 else []
         check("6b. sin orden: el más reciente primero + X-Total-Count = total de la tabla",
@@ -198,14 +198,14 @@ async def main() -> int:
               f"p1={len(p1)} p2={len(p2)} repetidas={len(p1 & p2)}")
 
         muestra = await q1("""SELECT apellido, nombre, fecha_alta::date AS dia FROM ciudadanos
-                               WHERE length(apellido) >= 4 AND apellido !~ '[%_ ]'
+                               WHERE id_municipio = 1 AND length(apellido) >= 4 AND apellido !~ '[%_ ]'
                                  AND length(nombre) >= 3 AND nombre !~ '[%_]'
                                ORDER BY id_ciudadano DESC LIMIT 1""")
         if muestra:
             tok = muestra["apellido"][:4]
             esperado = await q1("""SELECT COUNT(*) AS n FROM ciudadanos
-                                    WHERE apellido ILIKE :t OR nombre ILIKE :t OR email ILIKE :t
-                                       OR doc_nro ILIKE :t OR cuil ILIKE :t""", t=f"%{tok}%")
+                                    WHERE id_municipio = 1 AND (apellido ILIKE :t OR nombre ILIKE :t OR email ILIKE :t
+                                       OR doc_nro ILIKE :t OR cuil ILIKE :t)""", t=f"%{tok}%")
             r = await c.get(P_CIU, params={**base_ciu, "q": tok, "limit": 1000}, headers=H)
             filas_q = r.json() if r.status_code == 200 else []
             campos = ("apellido", "nombre", "email", "doc_nro", "cuil")
@@ -222,7 +222,7 @@ async def main() -> int:
                   and all(all(any(t in (x.get(k) or "").lower() for k in campos) for t in toks) for x in filas_q),
                   f"({len(filas_q)} filas)")
             dia = muestra["dia"].isoformat()
-            esperado = await q1("SELECT COUNT(*) AS n FROM ciudadanos WHERE fecha_alta::date = :d", d=muestra["dia"])
+            esperado = await q1("SELECT COUNT(*) AS n FROM ciudadanos WHERE id_municipio = 1 AND fecha_alta::date = :d", d=muestra["dia"])
             r = await c.get(P_CIU, params={**base_ciu, "desde": dia, "hasta": dia, "limit": 1000}, headers=H)
             filas_d = r.json() if r.status_code == 200 else []
             check("6f. desde/hasta (mismo día): solo altas de ese día, total = el de la DB",
@@ -243,7 +243,7 @@ async def main() -> int:
             lambda j: j, extra=base_ciu,
             comparables={"alta": lambda x: x["fecha_alta"], "estado": lambda x: x["activo"]},
         )
-        emp = await q1("SELECT id_empresa, cuit FROM empresas WHERE cuit ~ '-' ORDER BY id_empresa DESC LIMIT 1")
+        emp = await q1("SELECT id_empresa, cuit FROM empresas WHERE id_municipio = 1 AND cuit ~ '-' ORDER BY id_empresa DESC LIMIT 1")
         if emp:
             digitos = "".join(ch for ch in emp["cuit"] if ch.isdigit())
             r = await c.get(P_EMP, params={**base_ciu, "q": digitos, "limit": 1000}, headers=H)

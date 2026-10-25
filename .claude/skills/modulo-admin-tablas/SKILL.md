@@ -9,6 +9,13 @@ description: "Usar al trabajar en el módulo Admin Tablas / CRUD genérico de ma
 
 > **Nota:** el "Estándar visual obligatorio — panel de búsqueda" (parte de §15) es transversal (aplica a TODO frontend de tabla maestra) y permanece en CLAUDE.md §15. Acá vive solo lo específico del módulo admin_tablas.
 
+### Municipio (IT-01, F2)
+
+- Las tablas de catálogo y operativas se listan, leen, crean, editan y dan de baja dentro del municipio del usuario (`municipio_actual`): un id de otro municipio = 404 como inexistente; el alta inserta el municipio de la request (`id_municipio` no es columna editable de ninguna tabla); los ids del body (`_REFERENCIAS`: área, subárea, cargo, usuario, equipo, agente, prioridad, organismo, tipo de emergencia) se validan dentro del municipio (422 «<entidad> inexistente»). Los drill-downs área → subáreas y subárea → tipos dan 404 si el padre no es del municipio.
+- **Tablas globales** (`_TABLAS_GLOBALES`: tipo_usuario, estados de reclamo/OT/emergencia, actividades, tipo_representacion, nacionalidades, municipios): las lee cualquiera (alimentan selects) y las modifica solo el administrador del municipio base hasta F3; `municipios`, además, solo la lee él (403 al resto).
+- `configuracion_general` muestra y edita solo las filas del municipio: las claves globales (VAPID) no salen por acá.
+- Tabla nueva en `TABLE_CONFIG`: clasificarla en `municipio_tabla_clase` y, si es global, sumarla a `_TABLAS_GLOBALES`; sus columnas que apuntan a otra tabla del municipio, a `_REFERENCIAS`. Reglas R1-R11 en [`PLAN_MULTI_MUNICIPIO_F1_F2.md`](../../../PLAN_MULTI_MUNICIPIO_F1_F2.md).
+
 ### Supervisor en Maestros → Agentes + datos de la ficha (2026-10-20, mig 113)
 
 - **Escritura por nivel** (`admin_tablas.py::_autorizar_escritura`, en POST/PUT/DELETE — ya no `require_admin` por dependencia): admin todo; **supervisor (nivel 2)** solo `PUT agentes` de SU gestión con cargo y legajo (el resto del body se descarta; 422 si no queda nada) y alta/baja en `equipo_agentes` con equipo **y** agente de su gestión; cualquier otra tabla o acción → 403. El horario va por `/agenda/disponibilidad` (ya acotado al supervisor).

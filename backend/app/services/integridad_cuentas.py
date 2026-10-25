@@ -9,7 +9,7 @@ de los dos) no es un estado válido permanente — típicamente es un alta a med
 Motor disparado por el endpoint de mantenimiento (cron diario, routes/
 usuarios_mantenimiento.py):
 
-  suspender_usuarios_sin_vinculo(db)
+  suspender_usuarios_sin_vinculo(db, id_municipio=)
     Usuarios activos, nivel_acceso > 1 (admin exento), creados hace más de
     GRACIA_HORAS, sin agente activo y sin ciudadano vinculado por email:
       - activo = FALSE (baja lógica → no pueden loguear, /auth/login exige activo)
@@ -49,25 +49,26 @@ MOTIVO_SIN_VINCULO = "sin_vinculo"
 _COND_SIN_VINCULO = """
     u.activo = TRUE
     AND u.nivel_acceso > 1
+    AND u.id_municipio = :mun
     AND NOT EXISTS (
         SELECT 1 FROM agentes a
-        WHERE a.id_usuario = u.id_usuario AND a.activo = TRUE
+        WHERE a.id_usuario = u.id_usuario AND a.activo = TRUE AND a.id_municipio = u.id_municipio
     )
     AND NOT EXISTS (
         SELECT 1 FROM ciudadanos c
-        WHERE lower(c.email) = lower(u.email) AND c.activo = TRUE
+        WHERE lower(c.email) = lower(u.email) AND c.activo = TRUE AND c.id_municipio = u.id_municipio
     )
     AND NOT EXISTS (
         SELECT 1 FROM ciudadanos c
-        WHERE c.id_ciudadano = u.id_ciudadano AND c.activo = TRUE
+        WHERE c.id_ciudadano = u.id_ciudadano AND c.activo = TRUE AND c.id_municipio = u.id_municipio
     )
 """
 
 
-async def listar_usuarios_sin_vinculo(db: AsyncSession) -> list[dict[str, Any]]:
+async def listar_usuarios_sin_vinculo(db: AsyncSession, *, id_municipio: int) -> list[dict[str, Any]]:
     """
-    Diagnóstico (no muta): usuarios activos sin vínculo, con su antigüedad y si ya
-    pasaron la gracia. Útil para inspección y para el reporte del endpoint.
+    Diagnóstico (no muta): usuarios activos del municipio sin vínculo (agente o ficha del
+    mismo municipio), con su antigüedad y si ya pasaron la gracia.
     """
     rows = (await db.execute(
         text(f"""
@@ -77,12 +78,12 @@ async def listar_usuarios_sin_vinculo(db: AsyncSession) -> list[dict[str, Any]]:
             FROM usuarios u
             WHERE {_COND_SIN_VINCULO}
             ORDER BY u.id_usuario
-        """)
+        """), {"mun": id_municipio}
     )).mappings().all()
     return [dict(r) for r in rows]
 
 
-async def suspender_usuarios_sin_vinculo(db: AsyncSession) -> dict[str, Any]:
+async def suspender_usuarios_sin_vinculo(db: AsyncSession, *, id_municipio: int) -> dict[str, Any]:
     """
     Suspende (baja lógica + marca) los usuarios activos sin agente ni ciudadano que
     ya superaron el período de gracia. Idempotente: un usuario ya inactivo no se
@@ -104,7 +105,7 @@ async def suspender_usuarios_sin_vinculo(db: AsyncSession) -> dict[str, Any]:
               AND u.fecha_alta < (NOW() AT TIME ZONE 'UTC') - INTERVAL '{GRACIA_HORAS} hours'
             RETURNING u.id_usuario, u.username, u.email, u.nivel_acceso
         """),
-        {"motivo": MOTIVO_SIN_VINCULO},
+        {"motivo": MOTIVO_SIN_VINCULO, "mun": id_municipio},
     )).mappings().all()
 
     detalle = [dict(r) for r in rows]

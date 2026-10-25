@@ -407,7 +407,11 @@ async def main() -> int:
         r = await c.post(f"/api/v1/reclamos/{R3}/auditoria", json={}, headers=HA)
         OT3 = r.json()["id_ot"]
         r = await c.get("/api/v1/dashboard/resumen", headers=HA)
-        activos_db = (await q1("SELECT COUNT(*) AS n FROM reclamos WHERE activo AND estado IN ('Sin asignar','En gestión','En espera')"))["n"]
+        # La tarjeta cuenta solo el municipio del admin (IT-01): contar en el municipio de R3.
+        activos_db = (await q1("""SELECT COUNT(*) AS n FROM reclamos
+                                   WHERE activo AND estado IN ('Sin asignar','En gestión','En espera')
+                                     AND id_municipio = (SELECT id_municipio FROM reclamos WHERE id_reclamo = :r)""",
+                               r=R3))["n"]
         geo_ids = {x["id_reclamo"] for x in r.json()["geo"]["reclamos"]} if r.status_code == 200 else set()
         check("7a. tarjeta reclamos_activos = solo en gestión",
               r.status_code == 200 and r.json()["tarjetas"]["reclamos_activos"] == activos_db, short(r, 60))

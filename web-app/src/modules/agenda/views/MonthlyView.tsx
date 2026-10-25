@@ -10,7 +10,6 @@ import { listarSubareasAgenda } from '../api/agendaApi'
 import type { SubareaItem } from '../types/agenda'
 
 export function MonthlyView() {
-  const idMun = useAgendaStore((s) => s.idMunicipio)
   const fecha = useAgendaStore((s) => s.fechaActiva)
   const setFecha = useAgendaStore((s) => s.setFechaActiva)
   const setVistaGrilla = useAgendaStore((s) => s.setVistaGrilla)
@@ -30,7 +29,7 @@ export function MonthlyView() {
     return { anio: d.getFullYear(), mes: d.getMonth() + 1 }
   }, [fecha])
 
-  const cal = useCalendarioMes(anio, mes, idMun, tipo_recurso, filtroSubarea)
+  const cal = useCalendarioMes(anio, mes, tipo_recurso, filtroSubarea)
 
   function navegar(dx: number) {
     let nm = mes + dx, ny = anio

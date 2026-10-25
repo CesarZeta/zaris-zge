@@ -54,7 +54,6 @@ export function listarEventos(params?: {
   fecha_hasta?: string
   id_estado_evento?: number
   id_subarea?: number
-  id_municipio?: number
   /** Orden: lo resuelve el backend (el listado está paginado, §23). */
   orden?: OrdenEventos
   dir?: 'asc' | 'desc'
@@ -114,7 +113,6 @@ export function listarOcupaciones(params?: {
   fecha_desde?: string
   fecha_hasta?: string
   tipo?: string
-  id_municipio?: number
   limit?: number
   offset?: number
 }) {
@@ -138,14 +136,13 @@ export function getAgendaRecurso(tipo_recurso: TipoRecurso, id_recurso: number, 
 }
 export function getCalendarioDia(
   fecha: string,
-  id_municipio = 1,
   tipo_recurso: TipoRecurso | 'todos' = 'todos',
   id_subarea: number | null = null,
   atendido: boolean | null = null,
   scope_subarea_propia = false,
   id_espacio_ubicacion: number | null = null,
 ) {
-  const params: Record<string, string | number | boolean | null | undefined> = { fecha, id_municipio, tipo_recurso }
+  const params: Record<string, string | number | boolean | null | undefined> = { fecha, tipo_recurso }
   if (id_subarea != null) params.id_subarea = id_subarea
   if (atendido != null) params.atendido = atendido
   if (scope_subarea_propia) params.scope_subarea_propia = true
@@ -156,14 +153,13 @@ export function getCalendarioDia(
 export function getCalendarioSemana(
   desde: string,
   dias = 7,
-  id_municipio = 1,
   tipo_recurso: TipoRecurso | 'todos' = 'todos',
   id_subarea: number | null = null,
   atendido: boolean | null = null,
   scope_subarea_propia = false,
   id_espacio_ubicacion: number | null = null,
 ) {
-  const params: Record<string, string | number | boolean | null | undefined> = { desde, dias, id_municipio, tipo_recurso }
+  const params: Record<string, string | number | boolean | null | undefined> = { desde, dias, tipo_recurso }
   if (id_subarea != null) params.id_subarea = id_subarea
   if (atendido != null) params.atendido = atendido
   if (scope_subarea_propia) params.scope_subarea_propia = true
@@ -180,16 +176,15 @@ export function listarUbicacionesAtencion() {
 export function getCalendarioMes(
   anio: number,
   mes: number,
-  id_municipio = 1,
   tipo_recurso: TipoRecurso | 'todos' = 'todos',
   id_subarea: number | null = null,
 ) {
-  const params: Record<string, string | number | boolean | null | undefined> = { anio, mes, id_municipio, tipo_recurso }
+  const params: Record<string, string | number | boolean | null | undefined> = { anio, mes, tipo_recurso }
   if (id_subarea != null) params.id_subarea = id_subarea
   return api.get<CalendarioMes>(`${BASE}/mes`, { params })
 }
-export function getRecursosConteos(id_municipio = 1) {
-  return api.get<RecursosConteos>(`${BASE}/recursos/conteos`, { params: { id_municipio } })
+export function getRecursosConteos() {
+  return api.get<RecursosConteos>(`${BASE}/recursos/conteos`)
 }
 
 // ----- Conflictos ---------------------------------------------------------
@@ -210,16 +205,16 @@ export function listarSubareasAgenda(q?: string, limit = 50) {
   return api.get<SubareaItem[]>(`${BASE}/catalogos/subareas`, { params: { q, limit } })
 }
 
-export function listarRecursosAgenda(opts?: { tipo?: TipoRecurso; q?: string; id_municipio?: number; limit?: number; solo_cuadrillas?: boolean; id_subarea?: number }) {
+export function listarRecursosAgenda(opts?: { tipo?: TipoRecurso; q?: string; limit?: number; solo_cuadrillas?: boolean; id_subarea?: number }) {
   return api.get<RecursoItem[]>(`${BASE}/catalogos/recursos`, { params: opts })
 }
 
-export function buscarEventosAgenda(q?: string, opts?: { fecha_desde?: string; fecha_hasta?: string; id_municipio?: number; limit?: number }) {
+export function buscarEventosAgenda(q?: string, opts?: { fecha_desde?: string; fecha_hasta?: string; limit?: number }) {
   return api.get<EventoBusquedaItem[]>(`${BASE}/catalogos/evento-busqueda`, { params: { q, ...opts } })
 }
 
 // ----- Espacios (sub-fase B1) ---------------------------------------------
-export function listarEspacios(params?: { atendido?: boolean; q?: string; id_municipio?: number; limit?: number; offset?: number }) {
+export function listarEspacios(params?: { atendido?: boolean; q?: string; limit?: number; offset?: number }) {
   return api.getWithHeaders<EspacioAgenda[]>(`${BASE}/espacios`, { params })
 }
 export function crearEspacio(payload: EspacioAgendaCreatePayload) {
@@ -245,7 +240,7 @@ export function desvincularAgenteDeEspacio(idEspacio: number, idEspacioAgente: n
 }
 
 // ----- Disponibilidad de recurso (sub-fase B1) ----------------------------
-export function listarDisponibilidad(params?: { tipo_recurso?: TipoRecurso; id_recurso?: number; id_municipio?: number; limit?: number }) {
+export function listarDisponibilidad(params?: { tipo_recurso?: TipoRecurso; id_recurso?: number; limit?: number }) {
   return api.get<DisponibilidadRecurso[]>(`${BASE}/disponibilidad`, { params })
 }
 export function crearDisponibilidad(payload: DisponibilidadRecursoCreatePayload) {

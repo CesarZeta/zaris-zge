@@ -16,6 +16,8 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config_municipio import leer_config
+
 logger = logging.getLogger(__name__)
 
 CLAVE = "geo_limite_geojson"
@@ -38,14 +40,13 @@ def _validar(geo: Any) -> dict | None:
     return geo
 
 
-async def leer_limite(db: AsyncSession) -> dict | None:
-    fila = (await db.execute(text(
-        "SELECT valor FROM configuracion_general WHERE clave = :c AND activo = TRUE"
-    ), {"c": CLAVE})).fetchone()
-    if not fila or not (fila.valor or "").strip():
+async def leer_limite(db: AsyncSession, id_municipio: int) -> dict | None:
+    """Contorno del municipio (GeoJSON Polygon validado) o None si falta o es inválido."""
+    valor = await leer_config(db, CLAVE, id_municipio)
+    if not (valor or "").strip():
         return None
     try:
-        geo = _validar(json.loads(fila.valor))
+        geo = _validar(json.loads(valor))
     except (ValueError, TypeError):
         geo = None
     if geo is None:

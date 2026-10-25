@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_ciudadano
 from app.core.database import get_db
+from app.core.municipio import municipio_vecino
 from app.middleware.rate_limit import check_rate_limit
 from app.services.notificaciones import notificar_alerta_panico
 from app.utils.request_helpers import get_real_ip
@@ -68,6 +69,7 @@ class EmergenciaPublicaCreate(BaseModel):
 async def tipos_publico(
     db: AsyncSession = Depends(get_db),
     current: dict = Depends(get_current_ciudadano),
+    id_municipio: int = Depends(municipio_vecino),
 ) -> Any:
     """Tipos de emergencia activos para que el vecino clasifique su reporte.
     Solo datos no sensibles (sin prioridades/organismos del triage interno)."""
@@ -76,9 +78,9 @@ async def tipos_publico(
                t.id_subarea, s.nombre AS subarea_nombre, t.es_emergencia
         FROM emergencia_tipo t
         JOIN subarea s ON s.id_subarea = t.id_subarea
-        WHERE t.activo
+        WHERE t.activo AND t.id_municipio = :mun
         ORDER BY s.nombre, t.nombre
-    """))).mappings().all()
+    """), {"mun": id_municipio})).mappings().all()
     return [dict(r) for r in rows]
 
 
@@ -87,13 +89,14 @@ async def subtipos_publico(
     id_tipo: int,
     db: AsyncSession = Depends(get_db),
     current: dict = Depends(get_current_ciudadano),
+    id_municipio: int = Depends(municipio_vecino),
 ) -> Any:
     rows = (await db.execute(text("""
         SELECT id_emergencia_subtipo, id_tipo, codigo, nombre, descripcion
         FROM emergencia_subtipo
-        WHERE id_tipo = :t AND activo
+        WHERE id_tipo = :t AND activo AND id_municipio = :mun
         ORDER BY nombre
-    """), {"t": id_tipo})).mappings().all()
+    """), {"t": id_tipo, "mun": id_municipio})).mappings().all()
     return [dict(r) for r in rows]
 
 
@@ -105,6 +108,7 @@ async def listar_mis_emergencias(
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     current: dict = Depends(get_current_ciudadano),
+    id_municipio: int = Depends(municipio_vecino),
 ) -> Any:
     """Lista SOLO los eventos del vecino logueado (id_ciudadano del token).
     Sin datos del triage interno (operador, organismo, prioridad)."""
@@ -119,10 +123,10 @@ async def listar_mis_emergencias(
         JOIN emergencia_tipo t ON t.id_emergencia_tipo = e.id_tipo
         LEFT JOIN emergencia_subtipo st ON st.id_emergencia_subtipo = e.id_subtipo
         JOIN emergencia_estado est ON est.id_emergencia_estado = e.id_estado
-        WHERE e.activo AND e.id_ciudadano_buc = :c
+        WHERE e.activo AND e.id_ciudadano_buc = :c AND e.id_municipio = :mun
         ORDER BY e.fecha_hora_recepcion DESC
         LIMIT :limit OFFSET :offset
-    """), {"c": current["id_ciudadano"], "limit": limit, "offset": offset})).mappings().all()
+    """), {"c": current["id_ciudadano"], "limit": limit, "offset": offset, "mun": id_municipio})).mappings().all()
     return [dict(r) for r in rows]
 
 
@@ -135,6 +139,7 @@ async def reportar_emergencia(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current: dict = Depends(get_current_ciudadano),
+    id_municipio: int = Depends(municipio_vecino),
 ) -> Any:
     """El vecino reporta una emergencia desde la App Vecinos. Devuelve el
     numero_operativo para seguimiento (lo genera el trigger de la DB)."""
@@ -143,8 +148,8 @@ async def reportar_emergencia(
     tipo = (await db.execute(text("""
         SELECT id_emergencia_tipo, id_subarea, id_prioridad_default,
                id_organismo_derivacion_default
-        FROM emergencia_tipo WHERE id_emergencia_tipo = :id AND activo
-    """), {"id": body.id_tipo})).mappings().first()
+        FROM emergencia_tipo WHERE id_emergencia_tipo = :id AND activo AND id_municipio = :mun
+    """), {"id": body.id_tipo, "mun": id_municipio})).mappings().first()
     if not tipo:
         raise HTTPException(422, "Tipo de emergencia inexistente o inactivo")
 
@@ -162,8 +167,8 @@ async def reportar_emergencia(
 
     canal = (await db.execute(text("""
         SELECT id_emergencia_canal_ingreso FROM emergencia_canal_ingreso
-        WHERE codigo = :c AND activo
-    """), {"c": CANAL_VECINO})).scalar()
+        WHERE codigo = :c AND activo AND id_municipio = :mun
+    """), {"c": CANAL_VECINO, "mun": id_municipio})).scalar()
     if not canal:
         raise HTTPException(503, "Canal APP_VECINO no configurado")
 
@@ -184,9 +189,9 @@ async def reportar_emergencia(
              id_canal_ingreso, id_organismo_derivacion, id_operador_receptor,
              denunciante_anonimo, id_ciudadano_buc, id_contacto_eventual,
              direccion_evento, latitud, longitud, referencia_ubicacion,
-             observaciones_recepcion, es_panico, activo)
+             observaciones_recepcion, es_panico, activo, id_municipio)
         VALUES (:sub, :tipo, :stipo, :prio, :est, :canal, :org, NULL,
-                FALSE, :ciu, NULL, :dir, :lat, :lon, :ref, :obs, :panico, TRUE)
+                FALSE, :ciu, NULL, :dir, :lat, :lon, :ref, :obs, :panico, TRUE, :mun)
         RETURNING id_emergencia_evento
     """), {
         "sub": tipo["id_subarea"], "tipo": body.id_tipo, "stipo": body.id_subtipo,
@@ -196,17 +201,17 @@ async def reportar_emergencia(
         "dir": body.direccion_evento.strip(), "lat": body.latitud,
         "lon": body.longitud, "ref": body.referencia_ubicacion,
         "obs": (body.descripcion or "").strip() or None,
-        "panico": es_panico,
+        "panico": es_panico, "mun": id_municipio,
     })).scalar()
 
     # log CREACION: id_usuario NULL (no es usuario interno); el vecino emisor
     # queda identificado en payload_json (plan Fase 5 punto 3).
     await db.execute(text("""
         INSERT INTO emergencia_log
-            (id_evento, id_usuario, tipo_accion, estado_nuevo, payload_json, observaciones)
-        VALUES (:e, NULL, 'CREACION', 'PENDIENTE', CAST(:p AS jsonb), :o)
+            (id_evento, id_usuario, tipo_accion, estado_nuevo, payload_json, observaciones, id_municipio)
+        VALUES (:e, NULL, 'CREACION', 'PENDIENTE', CAST(:p AS jsonb), :o, :mun)
     """), {
-        "e": id_evento,
+        "e": id_evento, "mun": id_municipio,
         "p": json.dumps({
             "origen": "app_vecinos",
             "id_ciudadano": current["id_ciudadano"],

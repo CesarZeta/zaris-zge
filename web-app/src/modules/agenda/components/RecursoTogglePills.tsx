@@ -44,8 +44,7 @@ export function RecursoTogglePills() {
   const setFiltro = useAgendaStore((s) => s.setFiltroRecurso)
   const ubicacion = useAgendaStore((s) => s.filtroUbicacion)
   const setUbicacion = useAgendaStore((s) => s.setFiltroUbicacion)
-  const idMun = useAgendaStore((s) => s.idMunicipio)
-  const conteos = useRecursosConteos(idMun)
+  const conteos = useRecursosConteos()
   // Las ubicaciones se cargan solo cuando el modo 'ubicacion' está activo.
   const ubicaciones = useUbicacionesAtencion(filtro === 'ubicacion')
 

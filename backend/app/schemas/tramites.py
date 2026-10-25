@@ -299,7 +299,6 @@ class TramiteCreateIn(BaseModel):
     asunto: str
     iniciador: IniciadorIn
     datos: dict[str, Any] = {}
-    id_municipio: int = 1
 
     @field_validator("asunto")
     @classmethod
@@ -475,7 +474,6 @@ class TipoTramiteCreateIn(BaseModel):
     retencion_nunca_depurar: bool = False  # mig 75: si True, los binarios de este tipo nunca se purgan
     sla_dias: Optional[int] = None  # mig 101: NULL/0 = usa tramite_sla_dias_default
     id_subarea: Optional[int] = None  # mig 104: gestion responsable del tipo
-    id_municipio: int = 1
 
     @field_validator("codigo", "nombre", "prefijo")
     @classmethod

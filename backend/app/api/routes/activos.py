@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.auth import get_current_user
+from app.core.municipio import municipio_actual
 
 router = APIRouter(prefix="/api/v1/activos", tags=["Activos"])
 logger = logging.getLogger("zaris.activos")
@@ -48,9 +49,10 @@ async def buscar_activos(
     limit: int = Query(50, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    where = ["a.activo = TRUE"]
-    params: dict = {"lim": limit}
+    where = ["a.activo = TRUE", "a.id_municipio = :mun"]
+    params: dict = {"lim": limit, "mun": id_municipio}
     if codigo and codigo.strip():
         where.append("a.codigo_unico ILIKE :cod")
         params["cod"] = f"%{codigo.strip()}%"
@@ -90,6 +92,7 @@ async def obtener_activo(
     id_activo: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     r = await db.execute(text("""
         SELECT a.id_activo, a.codigo_unico, a.id_tipo_activo, t.nombre AS tipo,
@@ -99,8 +102,8 @@ async def obtener_activo(
         FROM activos a
         JOIN tipos_activo t ON t.id_tipo_activo = a.id_tipo_activo
         LEFT JOIN localidades l ON l.id_localidad = a.id_localidad
-        WHERE a.id_activo = :id AND a.activo = TRUE
-    """), {"id": id_activo})
+        WHERE a.id_activo = :id AND a.activo = TRUE AND a.id_municipio = :mun
+    """), {"id": id_activo, "mun": id_municipio})
     row = r.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Activo no encontrado")

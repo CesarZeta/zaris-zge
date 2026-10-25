@@ -227,6 +227,10 @@ async def main():
 
         # ─── PASO 13: login con nuevo password ───────────────────────────
         print("\nPASO 13: POST /publico/auth/login con nuevo password")
+        # Los pasos 9 y 10 ya hicieron 6 logins de este DNI: el límite por DNI (6/min,
+        # publico_auth.py) daría 429. Se espera a que venza la ventana de 60 s.
+        print("  (esperando 61 s a que venza la ventana del límite por DNI)")
+        await asyncio.sleep(61)
         r = await client.post(
             "/api/v1/publico/auth/login",
             json={"dni": DNI_TEST, "password": PASS_NUEVA},
@@ -252,9 +256,10 @@ async def main():
             "municipio_nombre", "municipio_logo_url", "municipio_descripcion",
             "municipio_color_primary", "municipio_color_accent",
         }
-        if set(body.keys()) != expected_keys:
-            fail(14, f"keys inesperadas: {sorted(body.keys())}")
-        ok(f"identidad-municipio OK con las 5 claves: {body}")
+        # El endpoint fue sumando claves (slug, redes, etc.): se exige que estén estas 5.
+        if not expected_keys <= set(body.keys()):
+            fail(14, f"faltan claves: {sorted(expected_keys - set(body.keys()))}")
+        ok(f"identidad-municipio OK con las 5 claves: {sorted(body.keys())}")
 
         # ─── PASO 15: cleanup final ──────────────────────────────────────
         print("\nPASO 15: cleanup final")

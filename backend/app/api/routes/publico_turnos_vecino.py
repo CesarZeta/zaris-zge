@@ -100,7 +100,7 @@ async def reservar_turno_vecino(
     check_rate_limit(f"turnovec:{get_real_ip(request)}", max_requests=5, window_seconds=60)
 
     id_ciudadano = current["id_ciudadano"]
-    prest = await _resolver_prestacion(db, payload.id_tipo_prestacion)
+    prest = await _resolver_prestacion(db, payload.id_tipo_prestacion, current["id_municipio"])
     tipo_recurso = prest["tipo_recurso"]
     id_recurso = prest["id_recurso"]
     duracion_min = prest["duracion_min"]
@@ -121,8 +121,9 @@ async def reservar_turno_vecino(
     # (recurso -> ciudadano-dia). Se liberan al commit/rollback.
     await advisory_lock_tx(db, f"turno:{tipo_recurso}:{id_recurso}:{payload.fecha}")
 
-    if await turnos_respeta_disponibilidad(db):
-        rangos = await disponibilidad_efectiva(db, tipo_recurso, id_recurso, payload.fecha)
+    if await turnos_respeta_disponibilidad(db, id_municipio=prest["id_municipio"]):
+        rangos = await disponibilidad_efectiva(db, tipo_recurso, id_recurso, payload.fecha,
+                                               id_municipio=prest["id_municipio"])
         dentro = any(
             r["hora_inicio"] <= hora_inicio and hora_fin <= r["hora_fin"]
             for r in rangos
@@ -158,11 +159,11 @@ async def reservar_turno_vecino(
                 tipo, tipo_recurso, id_recurso, fecha, hora_inicio, hora_fin,
                 id_ciudadano, motivo, id_municipio, id_usuario_alta
             ) VALUES (
-                'turno', :tr, :ir, :f, :hi, :hf, :ic, :mot, 1, NULL
+                'turno', :tr, :ir, :f, :hi, :hf, :ic, :mot, :mun, NULL
             )
             RETURNING id_ocupacion
         """), {
-            "tr": tipo_recurso, "ir": id_recurso, "f": payload.fecha,
+            "tr": tipo_recurso, "ir": id_recurso, "f": payload.fecha, "mun": prest["id_municipio"],
             "hi": hora_inicio, "hf": hora_fin, "ic": id_ciudadano,
             "mot": f"Turno (app vecinos): {payload.observaciones}" if payload.observaciones else "Turno (app vecinos)",
         })
@@ -176,11 +177,11 @@ async def reservar_turno_vecino(
             ) VALUES (
                 :ic, :ia, :ie, :iu, :itp, :iocup,
                 :f, :hi, :hf, 'reservado', :obs,
-                'autoservicio', 1, :isa
+                'autoservicio', :mun, :isa
             )
             RETURNING id_turno
         """), {
-            "ic": id_ciudadano,
+            "ic": id_ciudadano, "mun": prest["id_municipio"],
             "ia": id_recurso if tipo_recurso == "agente" else None,
             "ie": id_recurso if tipo_recurso == "espacio" else None,
             "iu": prest["id_espacio_ubicacion"],

@@ -26,16 +26,16 @@ async def version_tiene_tramites(db: AsyncSession, id_version: int) -> int:
     return int(row.n) if row else 0
 
 
-async def cargar_version(db: AsyncSession, id_version: int) -> dict:
-    """Devuelve la fila de tipo_tramite_version como dict, o 404."""
+async def cargar_version(db: AsyncSession, id_version: int, *, id_municipio: int) -> dict:
+    """Devuelve la fila de tipo_tramite_version del municipio como dict, o 404."""
     row = (await db.execute(
         text("""
             SELECT id_tipo_tramite_version, id_tipo_tramite, version_num,
                    estado, publicada_en, activo, id_municipio
             FROM tipo_tramite_version
-            WHERE id_tipo_tramite_version = :v
+            WHERE id_tipo_tramite_version = :v AND id_municipio = :m
         """),
-        {"v": id_version},
+        {"v": id_version, "m": id_municipio},
     )).fetchone()
     if not row:
         raise HTTPException(404, "Version de tipo de tramite no encontrada")
@@ -50,7 +50,7 @@ async def cargar_version(db: AsyncSession, id_version: int) -> dict:
     }
 
 
-async def asegurar_editable(db: AsyncSession, id_version: int) -> dict:
+async def asegurar_editable(db: AsyncSession, id_version: int, *, id_municipio: int) -> dict:
     """
     Valida que una version se pueda editar in-place.
 
@@ -60,7 +60,7 @@ async def asegurar_editable(db: AsyncSession, id_version: int) -> dict:
 
     Devuelve la fila de la version. Levanta 409 si no es editable.
     """
-    ver = await cargar_version(db, id_version)
+    ver = await cargar_version(db, id_version, id_municipio=id_municipio)
 
     if not ver["activo"]:
         raise HTTPException(409, "La version esta inactiva")
@@ -321,6 +321,8 @@ async def publicar_version(
     db: AsyncSession,
     id_version: int,
     id_agente: int | None = None,
+    *,
+    id_municipio: int,
 ) -> dict:
     """
     Publica una version en borrador. Valida:
@@ -333,7 +335,7 @@ async def publicar_version(
     - tipo_tramite.id_version_publicada = id_version (FK deferida)
     - Si habia una version anterior publicada -> queda 'archivado'
     """
-    ver = await cargar_version(db, id_version)
+    ver = await cargar_version(db, id_version, id_municipio=id_municipio)
 
     if ver["estado"] != "borrador":
         raise HTTPException(409, f"Solo se puede publicar una version en estado 'borrador' (actual: {ver['estado']})")

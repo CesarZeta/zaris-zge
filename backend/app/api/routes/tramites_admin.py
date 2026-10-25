@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
+from app.core.municipio import municipio_actual
 from pydantic import BaseModel
 
 from app.schemas.tramites import (
@@ -72,6 +73,30 @@ async def _require_admin_supervisor(
     return user
 
 
+_REFERENCIAS = {
+    "subarea": ("subarea", "id_subarea", "Subárea"),
+    "equipo": ("equipos", "id_equipo", "Equipo"),
+    "agente": ("agentes", "id_agente", "Agente"),
+}
+
+
+async def _validar_referencia(db: AsyncSession, tipo: str, valor: Optional[int], id_municipio: int) -> None:
+    """422 si un id del body (gestión, aprobador, destino automático) es de otro
+    municipio o no existe (R4, IT-01). Sin esto la FK compuesta lo frena con un
+    error de base, o el expediente se enruta a un destino que no es del municipio."""
+    if valor is None or tipo not in _REFERENCIAS:
+        return
+    tabla, pk, nombre = _REFERENCIAS[tipo]
+    if not await db.scalar(text(f"SELECT 1 FROM {tabla} WHERE {pk} = :v AND id_municipio = :m"),
+                           {"v": int(valor), "m": id_municipio}):
+        raise HTTPException(422, f"{nombre} inexistente")
+
+
+async def _validar_destino_automatico(db: AsyncSession, destino: Optional[dict], id_municipio: int) -> None:
+    if destino and destino.get("id") is not None:
+        await _validar_referencia(db, destino.get("tipo") or "subarea", destino.get("id"), id_municipio)
+
+
 async def _resolver_agente_publicador(user: dict, db: AsyncSession) -> Optional[int]:
     """Devuelve id_agente del usuario, o None si no tiene agente asociado."""
     info = await svc_auth.resolver_agente_desde_usuario(user["id_usuario"], db)
@@ -86,6 +111,7 @@ async def _resolver_agente_publicador(user: dict, db: AsyncSession) -> Optional[
 async def listar_tipos_admin(
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Lista TODOS los tipos activos (publicados, en borrador y sin publicar) para
     la pantalla de administracion. A diferencia de GET /api/v1/tramites/tipos
@@ -117,9 +143,10 @@ async def listar_tipos_admin(
             FROM tipo_tramite tt
             LEFT JOIN subarea s ON s.id_subarea = tt.id_subarea
             LEFT JOIN area a ON a.id_area = s.id_area
-            WHERE tt.activo = TRUE
+            WHERE tt.activo = TRUE AND tt.id_municipio = :m
             ORDER BY a.nombre NULLS LAST, s.nombre NULLS LAST, tt.es_sistema DESC, tt.nombre
         """),
+        {"m": id_municipio},
     )).fetchall()
 
     items: list[TipoTramiteAdminListItem] = []
@@ -153,15 +180,17 @@ async def crear_tipo_tramite(
     body: TipoTramiteCreateIn,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Crea tipo + v1 en borrador (sin estructura, hay que agregar estados/campos despues)."""
     # 1. Validar codigo unico para el municipio
     existe = (await db.execute(
         text("SELECT 1 FROM tipo_tramite WHERE codigo = :c AND id_municipio = :m"),
-        {"c": body.codigo, "m": body.id_municipio},
+        {"c": body.codigo, "m": id_municipio},
     )).fetchone()
     if existe:
         raise HTTPException(409, f"Ya existe un tipo con codigo '{body.codigo}' en este municipio")
+    await _validar_referencia(db, "subarea", body.id_subarea or None, id_municipio)
 
     # 2. Insertar tipo
     nuevo_tipo_id = (await db.execute(
@@ -186,7 +215,7 @@ async def crear_tipo_tramite(
             "rnd": body.retencion_nunca_depurar,
             "sla": body.sla_dias or None,
             "sub": body.id_subarea or None,   # mig 104
-            "mun": body.id_municipio,
+            "mun": id_municipio,
         },
     )).scalar_one()
 
@@ -197,11 +226,11 @@ async def crear_tipo_tramite(
                 (id_tipo_tramite, version_num, estado, activo, id_municipio)
             VALUES (:tt, 1, 'borrador', TRUE, :mun)
         """),
-        {"tt": nuevo_tipo_id, "mun": body.id_municipio},
+        {"tt": nuevo_tipo_id, "mun": id_municipio},
     )
 
     await db.commit()
-    return await _detalle_tipo_admin(db, int(nuevo_tipo_id))
+    return await _detalle_tipo_admin(db, int(nuevo_tipo_id), id_municipio)
 
 
 @router.put("/tipos/{id_tipo_tramite}", response_model=TipoTramiteAdminOut)
@@ -210,14 +239,17 @@ async def actualizar_tipo_tramite(
     body: TipoTramiteUpdateIn,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Actualiza datos identitarios del tipo (NO toca circuito)."""
     fila = (await db.execute(
-        text("SELECT 1 FROM tipo_tramite WHERE id_tipo_tramite = :id"),
-        {"id": id_tipo_tramite},
+        text("SELECT 1 FROM tipo_tramite WHERE id_tipo_tramite = :id AND id_municipio = :m"),
+        {"id": id_tipo_tramite, "m": id_municipio},
     )).fetchone()
     if not fila:
         raise HTTPException(404, "Tipo de tramite no encontrado")
+    if body.id_subarea:
+        await _validar_referencia(db, "subarea", body.id_subarea, id_municipio)
 
     sets: list[str] = []
     params: dict[str, Any] = {"id": id_tipo_tramite}
@@ -253,7 +285,7 @@ async def actualizar_tipo_tramite(
         params,
     )
     await db.commit()
-    return await _detalle_tipo_admin(db, id_tipo_tramite)
+    return await _detalle_tipo_admin(db, id_tipo_tramite, id_municipio)
 
 
 @router.delete("/tipos/{id_tipo_tramite}", status_code=204)
@@ -261,11 +293,12 @@ async def eliminar_tipo_tramite(
     id_tipo_tramite: int,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Soft-delete: activo=FALSE. Si tiene tramites activos asociados, rechaza."""
     fila = (await db.execute(
-        text("SELECT 1 FROM tipo_tramite WHERE id_tipo_tramite = :id AND activo = TRUE"),
-        {"id": id_tipo_tramite},
+        text("SELECT 1 FROM tipo_tramite WHERE id_tipo_tramite = :id AND activo = TRUE AND id_municipio = :m"),
+        {"id": id_tipo_tramite, "m": id_municipio},
     )).fetchone()
     if not fila:
         raise HTTPException(404, "Tipo no encontrado o ya inactivo")
@@ -294,12 +327,13 @@ async def detalle_tipo_admin(
     id_tipo_tramite: int,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Detalle admin: incluye TODAS las versiones (borradores, archivadas, publicada)."""
-    return await _detalle_tipo_admin(db, id_tipo_tramite)
+    return await _detalle_tipo_admin(db, id_tipo_tramite, id_municipio)
 
 
-async def _detalle_tipo_admin(db: AsyncSession, id_tipo_tramite: int) -> TipoTramiteAdminOut:
+async def _detalle_tipo_admin(db: AsyncSession, id_tipo_tramite: int, id_municipio: int) -> TipoTramiteAdminOut:
     tipo = (await db.execute(
         text("""
             SELECT tt.id_tipo_tramite, tt.codigo, tt.nombre, tt.descripcion, tt.prefijo,
@@ -315,9 +349,9 @@ async def _detalle_tipo_admin(db: AsyncSession, id_tipo_tramite: int) -> TipoTra
             FROM tipo_tramite tt
             LEFT JOIN subarea s ON s.id_subarea = tt.id_subarea
             LEFT JOIN area a ON a.id_area = s.id_area
-            WHERE tt.id_tipo_tramite = :id
+            WHERE tt.id_tipo_tramite = :id AND tt.id_municipio = :m
         """),
-        {"id": id_tipo_tramite},
+        {"id": id_tipo_tramite, "m": id_municipio},
     )).fetchone()
     if not tipo:
         raise HTTPException(404, "Tipo no encontrado")
@@ -372,6 +406,7 @@ async def detalle_version(
     id_version: int,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """
     Devuelve el contenido completo de una version (campos, estados, transiciones,
@@ -379,7 +414,7 @@ async def detalle_version(
     diferencia de GET /api/v1/tramites/tipos/{id} (Fase 1) que solo trae la
     publicada.
     """
-    ver = await svc_ver.cargar_version(db, id_version)
+    ver = await svc_ver.cargar_version(db, id_version, id_municipio=id_municipio)
     cant_tramites = await svc_ver.version_tiene_tramites(db, id_version)
 
     campos = (await db.execute(
@@ -466,6 +501,7 @@ async def crear_borrador(
     id_tipo_tramite: int,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """
     Crea una nueva version en borrador.
@@ -473,8 +509,8 @@ async def crear_borrador(
     - Falla si ya existe un borrador abierto.
     """
     tipo = (await db.execute(
-        text("SELECT id_municipio FROM tipo_tramite WHERE id_tipo_tramite = :id AND activo = TRUE"),
-        {"id": id_tipo_tramite},
+        text("SELECT id_municipio FROM tipo_tramite WHERE id_tipo_tramite = :id AND activo = TRUE AND id_municipio = :m"),
+        {"id": id_tipo_tramite, "m": id_municipio},
     )).fetchone()
     if not tipo:
         raise HTTPException(404, "Tipo no encontrado o inactivo")
@@ -485,7 +521,7 @@ async def crear_borrador(
     )
     await db.commit()
 
-    ver = await svc_ver.cargar_version(db, nuevo_id)
+    ver = await svc_ver.cargar_version(db, nuevo_id, id_municipio=id_municipio)
     return VersionAdminOut(**ver, cant_tramites=0)
 
 
@@ -494,10 +530,11 @@ async def publicar(
     id_version: int,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Publica una version (debe estar en borrador y tener >= 1 estado inicial + >= 1 final)."""
     id_ag = await _resolver_agente_publicador(user, db)
-    ver = await svc_ver.publicar_version(db, id_version, id_ag)
+    ver = await svc_ver.publicar_version(db, id_version, id_ag, id_municipio=id_municipio)
     await db.commit()
     n = await svc_ver.version_tiene_tramites(db, id_version)
     return VersionAdminOut(**ver, cant_tramites=n)
@@ -508,9 +545,10 @@ async def archivar(
     id_version: int,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Archiva una version publicada (deja al tipo sin version publicada hasta que se publique otra)."""
-    ver = await svc_ver.cargar_version(db, id_version)
+    ver = await svc_ver.cargar_version(db, id_version, id_municipio=id_municipio)
     if ver["estado"] == "archivado":
         raise HTTPException(409, "La version ya esta archivada")
 
@@ -535,7 +573,7 @@ async def archivar(
         )
 
     await db.commit()
-    ver2 = await svc_ver.cargar_version(db, id_version)
+    ver2 = await svc_ver.cargar_version(db, id_version, id_municipio=id_municipio)
     n = await svc_ver.version_tiene_tramites(db, id_version)
     return VersionAdminOut(**ver2, cant_tramites=n)
 
@@ -550,8 +588,9 @@ async def crear_campo(
     body: CampoIn,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    ver = await svc_ver.asegurar_editable(db, id_version)
+    ver = await svc_ver.asegurar_editable(db, id_version, id_municipio=id_municipio)
     # Validar nombre_interno unico
     existe = (await db.execute(
         text("SELECT 1 FROM tipo_tramite_campo WHERE id_tipo_tramite_version = :v AND nombre_interno = :n AND activo = TRUE"),
@@ -588,14 +627,15 @@ async def actualizar_campo(
     body: CampoUpdateIn,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     fila = (await db.execute(
-        text("SELECT id_tipo_tramite_version FROM tipo_tramite_campo WHERE id_tipo_tramite_campo = :id"),
-        {"id": id_campo},
+        text("SELECT id_tipo_tramite_version FROM tipo_tramite_campo WHERE id_tipo_tramite_campo = :id AND id_municipio = :m"),
+        {"id": id_campo, "m": id_municipio},
     )).fetchone()
     if not fila:
         raise HTTPException(404, "Campo no encontrado")
-    await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version)
+    await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version, id_municipio=id_municipio)
 
     sets: list[str] = []
     params: dict[str, Any] = {"id": id_campo}
@@ -626,14 +666,15 @@ async def eliminar_campo(
     id_campo: int,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     fila = (await db.execute(
-        text("SELECT id_tipo_tramite_version FROM tipo_tramite_campo WHERE id_tipo_tramite_campo = :id AND activo = TRUE"),
-        {"id": id_campo},
+        text("SELECT id_tipo_tramite_version FROM tipo_tramite_campo WHERE id_tipo_tramite_campo = :id AND activo = TRUE AND id_municipio = :m"),
+        {"id": id_campo, "m": id_municipio},
     )).fetchone()
     if not fila:
         raise HTTPException(404, "Campo no encontrado o ya inactivo")
-    await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version)
+    await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version, id_municipio=id_municipio)
     await db.execute(
         text("UPDATE tipo_tramite_campo SET activo = FALSE, fecha_modificacion = NOW() WHERE id_tipo_tramite_campo = :id"),
         {"id": id_campo},
@@ -665,8 +706,9 @@ async def crear_estado(
     body: EstadoIn,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    ver = await svc_ver.asegurar_editable(db, id_version)
+    ver = await svc_ver.asegurar_editable(db, id_version, id_municipio=id_municipio)
     # codigo unico
     existe = (await db.execute(
         text("SELECT 1 FROM tipo_tramite_estado WHERE id_tipo_tramite_version = :v AND codigo = :c AND activo = TRUE"),
@@ -712,14 +754,15 @@ async def actualizar_estado(
     body: EstadoUpdateIn,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     fila = (await db.execute(
-        text("SELECT id_tipo_tramite_version, es_inicial FROM tipo_tramite_estado WHERE id_tipo_tramite_estado = :id"),
-        {"id": id_estado},
+        text("SELECT id_tipo_tramite_version, es_inicial FROM tipo_tramite_estado WHERE id_tipo_tramite_estado = :id AND id_municipio = :m"),
+        {"id": id_estado, "m": id_municipio},
     )).fetchone()
     if not fila:
         raise HTTPException(404, "Estado no encontrado")
-    await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version)
+    await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version, id_municipio=id_municipio)
 
     # Si va a marcar es_inicial=TRUE y no es ya el inicial, validar unicidad
     if body.es_inicial and not fila.es_inicial:
@@ -762,14 +805,15 @@ async def marcar_espera_iniciador(
     body: EsperaIniciadorIn,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """mig 101: marca/desmarca "este estado espera al iniciador" (timer de
     desistimiento). Es METADATA del estado, no estructura del circuito: se
     edita in-place tambien en versiones publicadas con tramites (a diferencia
     del PUT, que exige version editable). No cambia FSM ni transiciones."""
     fila = (await db.execute(
-        text("SELECT 1 FROM tipo_tramite_estado WHERE id_tipo_tramite_estado = :id AND activo = TRUE"),
-        {"id": id_estado},
+        text("SELECT 1 FROM tipo_tramite_estado WHERE id_tipo_tramite_estado = :id AND activo = TRUE AND id_municipio = :m"),
+        {"id": id_estado, "m": id_municipio},
     )).fetchone()
     if not fila:
         raise HTTPException(404, "Estado no encontrado")
@@ -788,14 +832,15 @@ async def eliminar_estado(
     id_estado: int,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     fila = (await db.execute(
-        text("SELECT id_tipo_tramite_version FROM tipo_tramite_estado WHERE id_tipo_tramite_estado = :id AND activo = TRUE"),
-        {"id": id_estado},
+        text("SELECT id_tipo_tramite_version FROM tipo_tramite_estado WHERE id_tipo_tramite_estado = :id AND activo = TRUE AND id_municipio = :m"),
+        {"id": id_estado, "m": id_municipio},
     )).fetchone()
     if not fila:
         raise HTTPException(404, "Estado no encontrado o ya inactivo")
-    await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version)
+    await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version, id_municipio=id_municipio)
 
     # Si tiene transiciones activas, rechazar
     n = (await db.execute(
@@ -839,8 +884,9 @@ async def crear_transicion(
     body: TransicionIn2,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    ver = await svc_ver.asegurar_editable(db, id_version)
+    ver = await svc_ver.asegurar_editable(db, id_version, id_municipio=id_municipio)
 
     # Validar que ambos estados pertenezcan a esta version
     estados = (await db.execute(
@@ -854,6 +900,7 @@ async def crear_transicion(
     ids_validos = {e.id_tipo_tramite_estado for e in estados}
     if body.id_estado_origen not in ids_validos or body.id_estado_destino not in ids_validos:
         raise HTTPException(422, "Origen y destino deben ser estados activos de esta version")
+    await _validar_destino_automatico(db, body.destino_automatico_jsonb, id_municipio)
 
     new_id = (await db.execute(
         text("""
@@ -887,14 +934,15 @@ async def actualizar_transicion(
     body: TransicionUpdateIn,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     fila = (await db.execute(
-        text("SELECT id_tipo_tramite_version FROM tipo_tramite_transicion WHERE id_tipo_tramite_transicion = :id"),
-        {"id": id_trans},
+        text("SELECT id_tipo_tramite_version FROM tipo_tramite_transicion WHERE id_tipo_tramite_transicion = :id AND id_municipio = :m"),
+        {"id": id_trans, "m": id_municipio},
     )).fetchone()
     if not fila:
         raise HTTPException(404, "Transicion no encontrada")
-    await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version)
+    await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version, id_municipio=id_municipio)
 
     # Si se cambia origen/destino, validar que pertenezcan a la version
     if body.id_estado_origen is not None or body.id_estado_destino is not None:
@@ -928,6 +976,7 @@ async def actualizar_transicion(
         sets.append("quien_puede_jsonb = CAST(:quien_puede_jsonb AS jsonb)")
         params["quien_puede_jsonb"] = json.dumps(body.quien_puede_jsonb)
     if body.destino_automatico_jsonb is not None:
+        await _validar_destino_automatico(db, body.destino_automatico_jsonb, id_municipio)
         sets.append("destino_automatico_jsonb = CAST(:destino_automatico_jsonb AS jsonb)")
         params["destino_automatico_jsonb"] = json.dumps(body.destino_automatico_jsonb)
 
@@ -944,14 +993,15 @@ async def eliminar_transicion(
     id_trans: int,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     fila = (await db.execute(
-        text("SELECT id_tipo_tramite_version FROM tipo_tramite_transicion WHERE id_tipo_tramite_transicion = :id AND activo = TRUE"),
-        {"id": id_trans},
+        text("SELECT id_tipo_tramite_version FROM tipo_tramite_transicion WHERE id_tipo_tramite_transicion = :id AND activo = TRUE AND id_municipio = :m"),
+        {"id": id_trans, "m": id_municipio},
     )).fetchone()
     if not fila:
         raise HTTPException(404, "Transicion no encontrada o ya inactiva")
-    await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version)
+    await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version, id_municipio=id_municipio)
     await db.execute(
         text("UPDATE tipo_tramite_transicion SET activo = FALSE, fecha_modificacion = NOW() WHERE id_tipo_tramite_transicion = :id"),
         {"id": id_trans},
@@ -989,8 +1039,9 @@ async def crear_documento_requerido(
     body: DocumentoRequeridoIn,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    ver = await svc_ver.asegurar_editable(db, id_version)
+    ver = await svc_ver.asegurar_editable(db, id_version, id_municipio=id_municipio)
     # Si se referencia estado, validar que pertenezca a la version
     if body.id_tipo_tramite_estado is not None:
         ok = (await db.execute(
@@ -1034,14 +1085,15 @@ async def actualizar_documento_requerido(
     body: DocumentoRequeridoUpdateIn,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     fila = (await db.execute(
-        text("SELECT id_tipo_tramite_version FROM tipo_tramite_documento_requerido WHERE id_tipo_tramite_documento_requerido = :id"),
-        {"id": id_doc},
+        text("SELECT id_tipo_tramite_version FROM tipo_tramite_documento_requerido WHERE id_tipo_tramite_documento_requerido = :id AND id_municipio = :m"),
+        {"id": id_doc, "m": id_municipio},
     )).fetchone()
     if not fila:
         raise HTTPException(404, "Documento requerido no encontrado")
-    await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version)
+    await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version, id_municipio=id_municipio)
 
     if body.id_tipo_tramite_estado is not None:
         ok = (await db.execute(
@@ -1084,14 +1136,15 @@ async def eliminar_documento_requerido(
     id_doc: int,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     fila = (await db.execute(
-        text("SELECT id_tipo_tramite_version FROM tipo_tramite_documento_requerido WHERE id_tipo_tramite_documento_requerido = :id AND activo = TRUE"),
-        {"id": id_doc},
+        text("SELECT id_tipo_tramite_version FROM tipo_tramite_documento_requerido WHERE id_tipo_tramite_documento_requerido = :id AND activo = TRUE AND id_municipio = :m"),
+        {"id": id_doc, "m": id_municipio},
     )).fetchone()
     if not fila:
         raise HTTPException(404, "Documento requerido no encontrado o ya inactivo")
-    await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version)
+    await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version, id_municipio=id_municipio)
     await db.execute(
         text("UPDATE tipo_tramite_documento_requerido SET activo = FALSE, fecha_modificacion = NOW() WHERE id_tipo_tramite_documento_requerido = :id"),
         {"id": id_doc},
@@ -1147,8 +1200,9 @@ async def crear_aprobacion_requerida(
     body: AprobacionRequeridaIn,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    ver = await svc_ver.asegurar_editable(db, id_version)
+    ver = await svc_ver.asegurar_editable(db, id_version, id_municipio=id_municipio)
     # Validar que el estado pertenezca a la version
     ok = (await db.execute(
         text("""
@@ -1161,6 +1215,7 @@ async def crear_aprobacion_requerida(
         raise HTTPException(422, "El estado referenciado no pertenece a esta version o esta inactivo")
 
     fks = _aprob_fks(body)
+    await _validar_referencia(db, body.aprobador_tipo, fks["sa"] or fks["eq"] or fks["ag"], id_municipio)
     new_id = (await db.execute(
         text("""
             INSERT INTO tipo_tramite_aprobacion_requerida
@@ -1190,14 +1245,15 @@ async def actualizar_aprobacion_requerida(
     body: AprobacionRequeridaIn,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     fila = (await db.execute(
-        text("SELECT id_tipo_tramite_version FROM tipo_tramite_aprobacion_requerida WHERE id_tipo_tramite_aprobacion_requerida = :id"),
-        {"id": id_aprob_req},
+        text("SELECT id_tipo_tramite_version FROM tipo_tramite_aprobacion_requerida WHERE id_tipo_tramite_aprobacion_requerida = :id AND id_municipio = :m"),
+        {"id": id_aprob_req, "m": id_municipio},
     )).fetchone()
     if not fila:
         raise HTTPException(404, "Aprobacion requerida no encontrada")
-    await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version)
+    await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version, id_municipio=id_municipio)
 
     ok = (await db.execute(
         text("""
@@ -1210,6 +1266,7 @@ async def actualizar_aprobacion_requerida(
         raise HTTPException(422, "El estado referenciado no pertenece a esta version")
 
     fks = _aprob_fks(body)
+    await _validar_referencia(db, body.aprobador_tipo, fks["sa"] or fks["eq"] or fks["ag"], id_municipio)
     await db.execute(
         text("""
             UPDATE tipo_tramite_aprobacion_requerida SET
@@ -1236,14 +1293,15 @@ async def eliminar_aprobacion_requerida(
     id_aprob_req: int,
     user: dict = Depends(_require_admin_supervisor),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     fila = (await db.execute(
-        text("SELECT id_tipo_tramite_version FROM tipo_tramite_aprobacion_requerida WHERE id_tipo_tramite_aprobacion_requerida = :id AND activo = TRUE"),
-        {"id": id_aprob_req},
+        text("SELECT id_tipo_tramite_version FROM tipo_tramite_aprobacion_requerida WHERE id_tipo_tramite_aprobacion_requerida = :id AND activo = TRUE AND id_municipio = :m"),
+        {"id": id_aprob_req, "m": id_municipio},
     )).fetchone()
     if not fila:
         raise HTTPException(404, "Aprobacion requerida no encontrada o ya inactiva")
-    await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version)
+    await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version, id_municipio=id_municipio)
     await db.execute(
         text("UPDATE tipo_tramite_aprobacion_requerida SET activo = FALSE, fecha_modificacion = NOW() WHERE id_tipo_tramite_aprobacion_requerida = :id"),
         {"id": id_aprob_req},

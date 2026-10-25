@@ -16,7 +16,7 @@ Tres piezas, todas paralelas al FSM del circuito (no fuerzan estados):
      email. Si termino aprobado/rechazado, dispara la encuesta CSAT de tramites
      (encuestas_service.crear_envio_para_tramite).
 
-  3. procesar_desistimientos(db)  -- cron diario (tramites_mantenimiento.py)
+  3. procesar_desistimientos(db, id_municipio=)  -- cron diario por municipio (tramites_mantenimiento.py)
      Timer para tramites en un estado marcado `espera_iniciador` (catalogo):
        t0 = GREATEST(fecha_alta + SLA del tipo, entrada al estado de espera)
        t0 + aviso1_dias  -> aviso 1 al vecino (+ aviso interno al colectivo)
@@ -47,6 +47,7 @@ from app.services import push as svc_push
 from app.services.avisos import registrar_aviso_ciudadano
 from app.services.email import enviar_mail
 from app.services.tramites import movimientos as svc_mov
+from app.core.config_municipio import leer_config
 from app.services.tramites.retencion import _leer_int_config
 from app.utils.log_helpers import mask_email
 
@@ -71,14 +72,12 @@ DEFAULTS = {CFG_SLA_DEFAULT: 30, CFG_AVISO1: 30, CFG_AVISO2: 60,
 # Helpers
 # ---------------------------------------------------------------------------
 
-async def _leer_bool_config(db: AsyncSession, clave: str, default: bool) -> bool:
+async def _leer_bool_config(db: AsyncSession, clave: str, default: bool, *, id_municipio: int) -> bool:
     try:
-        row = (await db.execute(text(
-            "SELECT valor FROM configuracion_general WHERE clave = :c AND activo = TRUE LIMIT 1"
-        ), {"c": clave})).fetchone()
-        if not row:
+        valor = await leer_config(db, clave, id_municipio)
+        if valor is None:
             return default
-        return str(row[0]).strip().lower() == "true"
+        return str(valor).strip().lower() == "true"
     except Exception as e:  # noqa: BLE001
         logger.error("ciclo_vida: _leer_bool_config(%s) fallo: %s", clave, e)
         return default
@@ -250,12 +249,13 @@ def _texto_aviso(nivel: int, d: dict, dias_restantes: int, final_horas: int) -> 
             "el trámite se dará por desistido automáticamente.")
 
 
-async def procesar_desistimientos(db: AsyncSession, limite: int = 500) -> dict[str, Any]:
-    """Corrida diaria del timer. Devuelve {activo, config, avisos, desistidos, ids}."""
-    if not await _leer_bool_config(db, CFG_ACTIVO, True):
+async def procesar_desistimientos(db: AsyncSession, *, id_municipio: int, limite: int = 500) -> dict[str, Any]:
+    """Corrida diaria del timer para un municipio, con sus plazos. Devuelve
+    {activo, config, avisos, desistidos, ids}."""
+    if not await _leer_bool_config(db, CFG_ACTIVO, True, id_municipio=id_municipio):
         return {"activo": False, "avisos": 0, "desistidos": 0, "ids": []}
 
-    cfg = {k: await _leer_int_config(db, k, v) for k, v in DEFAULTS.items()}
+    cfg = {k: await _leer_int_config(db, k, v, id_municipio=id_municipio) for k, v in DEFAULTS.items()}
     a1, a2 = cfg[CFG_AVISO1], cfg[CFG_AVISO2]
     dd, fh = cfg[CFG_DESISTIR], cfg[CFG_FINAL_HORAS]
     umbral_final = dd - (fh / 24.0)
@@ -279,7 +279,7 @@ async def procesar_desistimientos(db: AsyncSession, limite: int = 500) -> dict[s
           JOIN tipo_tramite tt ON tt.id_tipo_tramite = v.id_tipo_tramite
           LEFT JOIN ciudadanos ci ON ci.id_ciudadano = t.id_ciudadano_iniciador
           LEFT JOIN empresas em ON em.id_empresa = t.id_empresa_iniciadora
-         WHERE t.activo = TRUE
+         WHERE t.activo = TRUE AND t.id_municipio = :mun
            AND t.fecha_archivado IS NULL
            AND COALESCE(e.es_final, FALSE) = FALSE
            AND COALESCE(e.espera_iniciador, FALSE) = TRUE
@@ -287,7 +287,7 @@ async def procesar_desistimientos(db: AsyncSession, limite: int = 500) -> dict[s
            AND COALESCE(t.resultado, 'pendiente') = 'pendiente'
          ORDER BY t.id_tramite
          LIMIT :lim
-    """), {"sla": cfg[CFG_SLA_DEFAULT], "lim": limite})).mappings().all()
+    """), {"sla": cfg[CFG_SLA_DEFAULT], "lim": limite, "mun": id_municipio})).mappings().all()
 
     avisos = 0
     desistidos: list[int] = []

@@ -12,10 +12,13 @@ Cada consulta (ok | denegado | inexistente) deja fila en historia_clinica_acceso
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Optional
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config_municipio import leer_config
 
 CLAVE_AREA_SALUD = "id_area_salud"
 
@@ -30,27 +33,26 @@ DETALLE_403: dict[str, str] = {
 }
 
 
-async def area_salud(db: AsyncSession) -> Optional[dict]:
-    """Area ACTIVA que actua como gestion Salud segun la clave de config, o None si la
-    clave falta / esta inactiva / no es numerica / apunta a un area inactiva o
-    inexistente. El CASE evita el 500 por cast de basura (mejora sobre guardia.py:23)."""
+async def area_salud(db: AsyncSession, *, id_municipio: int) -> Optional[dict]:
+    """Area ACTIVA del municipio que actua como gestion Salud segun su clave de config,
+    o None si la clave falta / no es numerica / apunta a un area inactiva, inexistente
+    o de otro municipio (fail-closed, sin 500 por basura en la clave)."""
+    valor = (await leer_config(db, CLAVE_AREA_SALUD, id_municipio) or "").strip()
+    if not re.fullmatch(r"[0-9]{1,9}", valor):
+        return None
     row = (await db.execute(text("""
-        SELECT a.id_area, a.nombre
-          FROM configuracion_general cg
-          JOIN area a
-            ON a.id_area = CASE WHEN TRIM(cg.valor) ~ '^[0-9]{1,9}$' THEN TRIM(cg.valor)::int END
-         WHERE cg.clave = :k AND cg.activo = TRUE AND a.activo = TRUE
-         LIMIT 1
-    """), {"k": CLAVE_AREA_SALUD})).mappings().first()
+        SELECT a.id_area, a.nombre FROM area a
+         WHERE a.id_area = :id AND a.activo = TRUE AND a.id_municipio = :m
+    """), {"id": int(valor), "m": id_municipio})).mappings().first()
     return dict(row) if row else None
 
 
 async def gestion_es_salud(db: AsyncSession, id_subarea: Optional[int],
-                           id_espacio_ubicacion: Optional[int] = None) -> bool:
+                           id_espacio_ubicacion: Optional[int] = None, *, id_municipio: int) -> bool:
     """True si la gestion de una prestacion pertenece al area Salud de la clave.
     Gestion = su id_subarea; si no la declara, la subarea de su ubicacion (mismo
     fallback que SQL_HISTORIA). Sin clave configurada -> False (no se adivina)."""
-    salud = await area_salud(db)
+    salud = await area_salud(db, id_municipio=id_municipio)
     if salud is None:
         return False
     id_area = await db.scalar(text("""
@@ -61,7 +63,7 @@ async def gestion_es_salud(db: AsyncSession, id_subarea: Optional[int],
     return id_area is not None and int(id_area) == int(salud["id_area"])
 
 
-async def permiso_historia_clinica(db: AsyncSession, user: dict) -> dict[str, Any]:
+async def permiso_historia_clinica(db: AsyncSession, user: dict, *, id_municipio: int) -> dict[str, Any]:
     """UNICA fuente de verdad del permiso (la usan el guard del GET de datos y el
     endpoint /permiso que consume la UI). Devuelve {"puede": bool, "motivo": str,
     "id_agente": int|None}.
@@ -80,11 +82,11 @@ async def permiso_historia_clinica(db: AsyncSession, user: dict) -> dict[str, An
     nivel = int(user.get("nivel_acceso", 99))
     base: dict[str, Any] = {"id_agente": None}
     if nivel == 1:
-        salud = await area_salud(db)
+        salud = await area_salud(db, id_municipio=id_municipio)
         return {**base, "puede": True, "motivo": "admin" if salud else "admin_sin_config"}
     if nivel > 4:
         return {**base, "puede": False, "motivo": "nivel"}
-    salud = await area_salud(db)
+    salud = await area_salud(db, id_municipio=id_municipio)
     if salud is None:
         return {**base, "puede": False, "motivo": "sin_config"}
     ag = (await db.execute(text("""
@@ -107,7 +109,7 @@ async def permiso_historia_clinica(db: AsyncSession, user: dict) -> dict[str, An
 async def registrar_acceso(db: AsyncSession, *, id_usuario: int, id_ciudadano: int,
                            contexto: str, resultado: str, motivo: str,
                            n_registros: Optional[int], ip: Optional[str],
-                           user_agent: Optional[str], origen: str = "historia") -> None:
+                           user_agent: Optional[str], id_municipio: int, origen: str = "historia") -> None:
     """INSERT en historia_clinica_acceso (mig 107). Se llama DENTRO de la misma
     transaccion del GET y el handler hace commit antes de responder: si el
     registro falla, la lectura falla ("sin registro no hay acceso").
@@ -115,9 +117,11 @@ async def registrar_acceso(db: AsyncSession, *, id_usuario: int, id_ciudadano: i
     PDF) — CHECK ck_hc_acceso_origen de la mig 107."""
     await db.execute(text("""
         INSERT INTO historia_clinica_acceso
-            (id_usuario, id_ciudadano, origen, contexto, resultado, motivo, n_registros, ip, user_agent)
-        VALUES (:u, :c, :o, :ctx, :r, :m, :n, :ip, :ua)
+            (id_usuario, id_ciudadano, origen, contexto, resultado, motivo, n_registros, ip, user_agent,
+             id_municipio)
+        VALUES (:u, :c, :o, :ctx, :r, :m, :n, :ip, :ua, :mun)
     """), {"u": id_usuario, "c": id_ciudadano, "o": origen, "ctx": contexto, "r": resultado, "m": motivo,
+           "mun": id_municipio,
            "n": n_registros, "ip": (ip or "")[:64] or None, "ua": (user_agent or "")[:255] or None})
 
 
@@ -129,7 +133,7 @@ SQL_CIUDADANO = text("""
                 THEN EXTRACT(YEAR FROM age(CURRENT_DATE, c.fecha_nac))::int END AS edad,
            c.activo
       FROM ciudadanos c
-     WHERE c.id_ciudadano = :ic
+     WHERE c.id_ciudadano = :ic AND c.id_municipio = :mun
 """)
 
 # Dos fuentes, columnas homogeneas (tipos explicitos por posicion), UNION ALL.
@@ -167,7 +171,7 @@ SQL_HISTORIA = text("""
           LEFT JOIN subarea s          ON s.id_subarea = COALESCE(tp.id_subarea, ub.id_subarea)
           LEFT JOIN agentes a          ON a.id_agente = t.id_agente
           LEFT JOIN usuarios u         ON u.id_usuario = ta.id_usuario_alta
-         WHERE ta.activo = TRUE AND ta.id_ciudadano = :ic
+         WHERE ta.activo = TRUE AND ta.id_ciudadano = :ic AND ta.id_municipio = :mun
 
         UNION ALL
 
@@ -194,7 +198,7 @@ SQL_HISTORIA = text("""
           LEFT JOIN espacios_agenda ub2    ON ub2.id_espacio = ea.id_espacio_ubicacion
           LEFT JOIN subarea s2             ON s2.id_subarea = ub2.id_subarea
           LEFT JOIN agentes ag             ON ag.id_agente = ea.id_agente_atiende
-         WHERE ea.activo = TRUE AND ea.id_ciudadano = :ic
+         WHERE ea.activo = TRUE AND ea.id_ciudadano = :ic AND ea.id_municipio = :mun
            AND ea.estado IN ('atendida', 'ausente')   -- 'pendiente' es la cola viva de la Guardia, no historia
       ) h
      ORDER BY h.fecha_hora DESC, h.origen, h.id DESC

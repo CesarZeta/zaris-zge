@@ -79,7 +79,6 @@ class TipoPrestacionCreate(_PrestacionRecursoMixin):
         description="Ubicacion donde se atiende (mig 103). Si el recurso es un "
                     "espacio y se omite, el backend usa ese mismo espacio.",
     )
-    id_municipio: int = 1
     id_subarea: Optional[int] = None
     registra_atencion: bool = False
 
@@ -110,7 +109,6 @@ class TurnoCreate(BaseModel):
         description="Opcional: si se omite se calcula con duracion_min de la prestacion",
     )
     observaciones: Optional[str] = None
-    id_municipio: int = 1
     id_subarea: Optional[int] = None
 
     @model_validator(mode="after")

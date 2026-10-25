@@ -25,6 +25,7 @@ from typing import Any, Optional
 from sqlalchemy import text
 
 from app.core.config import settings
+from app.core.config_municipio import leer_configs
 from app.core.database import AsyncSessionLocal
 from app.services.avisos import registrar_aviso_ciudadano
 
@@ -52,11 +53,9 @@ async def vapid_config() -> dict:
     pub = priv = email = ""
     try:
         async with AsyncSessionLocal() as db:
-            r = await db.execute(text(
-                "SELECT clave, valor FROM configuracion_general "
-                "WHERE clave IN ('vapid_public_key','vapid_private_key','vapid_claims_email')"
-            ))
-            vals = {row.clave: (row.valor or "").strip() for row in r.fetchall()}
+            # Claves globales (municipio None): una sola identidad push para todos (R10).
+            crudos = await leer_configs(db, ["vapid_public_key", "vapid_private_key", "vapid_claims_email"], None)
+            vals = {clave: (valor or "").strip() for clave, valor in crudos.items()}
         pub = vals.get("vapid_public_key", "")
         priv = vals.get("vapid_private_key", "")
         email = vals.get("vapid_claims_email", "") or "mailto:notificaciones@zaris.com.ar"
@@ -216,7 +215,7 @@ async def notificar_retrabajo_auditoria(id_retrabajo: int) -> None:
     try:
         async with AsyncSessionLocal() as db:
             r = (await db.execute(text("""
-                SELECT rt.nro_reclamo, rt.id_ciudadano, ro.nro_reclamo AS nro_origen,
+                SELECT rt.nro_reclamo, rt.id_ciudadano, rt.id_municipio, ro.nro_reclamo AS nro_origen,
                        c.nombre, c.apellido, c.email
                 FROM reclamos rt
                 JOIN reclamos ro ON ro.id_reclamo = rt.id_reclamo_origen_auditoria
@@ -225,7 +224,7 @@ async def notificar_retrabajo_auditoria(id_retrabajo: int) -> None:
             """), {"id": id_retrabajo})).mappings().first()
             if not r:
                 return
-            municipio_nombre, municipio_logo_url = await _municipio_branding(db)
+            municipio_nombre, municipio_logo_url = await _municipio_branding(db, r["id_municipio"])
     except Exception as e:  # noqa: BLE001
         logger.warning("notificar_retrabajo_auditoria(%s) fallo al leer: %s", id_retrabajo, e)
         return
@@ -243,6 +242,7 @@ async def notificar_retrabajo_auditoria(id_retrabajo: int) -> None:
                 nro_reclamo_origen=nro_or, nro_reclamo_retrabajo=nro_rt,
                 municipio_nombre=municipio_nombre, portal_url=portal,
                 municipio_logo_url=municipio_logo_url,
+                id_municipio=r["id_municipio"],
             )
         except Exception as e:  # noqa: BLE001
             logger.warning("mail de retrabajo %s fallo: %s", id_retrabajo, e)

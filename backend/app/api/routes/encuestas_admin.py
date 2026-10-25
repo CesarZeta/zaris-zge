@@ -10,10 +10,8 @@ Permisos finos:
   - Lectura (listados/dashboard): cualquier usuario autenticado.
   - PATCH /respuestas/{id}/atender: nivel_acceso <= 2 (admin/supervisor).
 
-Mono-municipio (§38): ZARIS es un deploy por municipio, todo es id_municipio=1.
-`get_current_user` NO expone id_municipio; se filtra por el query param `id_municipio`
-(default 1), mismo patron que tramites.py. NO se filtra por un user.id_municipio
-inexistente.
+Multi-municipio (IT-01): todo se filtra por el municipio de la request
+(municipio_actual, claim `mun` del JWT); no hay query param id_municipio.
 
 Registrar en main.py ANTES de admin_tablas_router (evita el {tabla} greedy, §5).
 """
@@ -31,6 +29,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.municipio import por_cada_municipio
+from app.core.municipio import municipio_actual
 from app.utils.orden import clausula_orden, descripcion_orden
 from app.utils.request_helpers import get_real_ip
 from app.schemas.encuestas import (
@@ -69,7 +69,6 @@ dispatcher_router = APIRouter(
 logger = logging.getLogger("zaris.encuestas.admin")
 
 ESTADOS_ENVIO = {"pendiente", "enviada", "abierta", "completada", "expirada", "error_envio"}
-ID_MUNICIPIO_DEFAULT = 1
 
 
 def _require_supervisor(current_user: dict) -> None:
@@ -85,14 +84,14 @@ def _require_supervisor(current_user: dict) -> None:
 
 @router.get("/plantillas", response_model=list[EncuestaPlantillaOut])
 async def listar_plantillas(
-    id_municipio: int = Query(ID_MUNICIPIO_DEFAULT),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     rows = (await db.execute(text("""
         SELECT id_encuesta_plantilla, nombre, descripcion, version, tipo,
                activo, id_municipio, id_subarea, fecha_alta, fecha_modificacion
           FROM encuesta_plantilla
-         WHERE activo = TRUE AND (id_municipio = :mun OR id_municipio IS NULL)
+         WHERE activo = TRUE AND id_municipio = :mun
          ORDER BY id_encuesta_plantilla
     """), {"mun": id_municipio})).fetchall()
     return [EncuestaPlantillaOut.model_validate(r._mapping) for r in rows]
@@ -101,7 +100,7 @@ async def listar_plantillas(
 @router.get("/plantillas/{id_plantilla}", response_model=EncuestaPlantillaDetalleOut)
 async def detalle_plantilla(
     id_plantilla: int,
-    id_municipio: int = Query(ID_MUNICIPIO_DEFAULT),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     plantilla = (await db.execute(text("""
@@ -109,7 +108,7 @@ async def detalle_plantilla(
                activo, id_municipio, id_subarea, fecha_alta, fecha_modificacion
           FROM encuesta_plantilla
          WHERE id_encuesta_plantilla = :id AND activo = TRUE
-           AND (id_municipio = :mun OR id_municipio IS NULL)
+           AND id_municipio = :mun
          LIMIT 1
     """), {"id": id_plantilla, "mun": id_municipio})).fetchone()
     if plantilla is None:
@@ -176,7 +175,7 @@ async def listar_envios(
     dir: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0, le=1_000_000),
-    id_municipio: int = Query(ID_MUNICIPIO_DEFAULT),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     if estado is not None and estado not in ESTADOS_ENVIO:
@@ -187,7 +186,7 @@ async def listar_envios(
 
     # LEFT JOIN a reclamos/turnos/prestacion/eventos: el envio es polimorfico
     # (mig 72 + 98). Inner JOIN excluiria silenciosamente los otros origenes.
-    conds = ["ee.activo = TRUE", "(ee.id_municipio = :mun OR ee.id_municipio IS NULL)"]
+    conds = ["ee.activo = TRUE", "ee.id_municipio = :mun"]
     params: dict = {"mun": id_municipio, "limit": limit, "offset": offset}
     if id_reclamo is not None:
         conds.append("ee.id_reclamo = :rid"); params["rid"] = id_reclamo
@@ -247,7 +246,7 @@ async def listar_envios(
 @router.get("/envios/{id_encuesta_envio}", response_model=EncuestaEnvioConRespuestaOut)
 async def detalle_envio(
     id_encuesta_envio: int,
-    id_municipio: int = Query(ID_MUNICIPIO_DEFAULT),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
     env = (await db.execute(text("""
@@ -269,7 +268,7 @@ async def detalle_envio(
           LEFT JOIN eventos ev         ON ev.id_evento = evr.id_evento
           LEFT JOIN tramite trm        ON trm.id_tramite = ee.id_tramite
          WHERE ee.id_encuesta_envio = :id AND ee.activo = TRUE
-           AND (ee.id_municipio = :mun OR ee.id_municipio IS NULL)
+           AND ee.id_municipio = :mun
          LIMIT 1
     """), {"id": id_encuesta_envio, "mun": id_municipio})).fetchone()
     if env is None:
@@ -304,14 +303,14 @@ async def pendientes_contacto(
     response: Response,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    id_municipio: int = Query(ID_MUNICIPIO_DEFAULT),
+    id_municipio: int = Depends(municipio_actual),
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     _require_supervisor(user)
     where = """
         rsp.solicita_contacto = TRUE AND rsp.atendida = FALSE AND rsp.activo = TRUE
-        AND (rsp.id_municipio = :mun OR rsp.id_municipio IS NULL)
+        AND rsp.id_municipio = :mun
     """
     params: dict = {"mun": id_municipio, "limit": limit, "offset": offset}
 
@@ -361,7 +360,7 @@ async def dashboard_resumen(
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
     tipo: Optional[str] = Query(None, description="reclamos | turnos | tramites | entradas"),
-    id_municipio: int = Query(ID_MUNICIPIO_DEFAULT),
+    id_municipio: int = Depends(municipio_actual),
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -398,7 +397,7 @@ async def dashboard_resumen(
           {join_tipo}
           {join_area}
          WHERE ee.activo = TRUE
-           AND (ee.id_municipio = :mun OR ee.id_municipio IS NULL)
+           AND ee.id_municipio = :mun
            AND ee.fecha_envio >= :desde AND ee.fecha_envio < :hasta_excl
            {cond_area}
            {cond_tipo}
@@ -414,7 +413,7 @@ async def dashboard_resumen(
           {join_tipo}
           {join_area}
          WHERE rsp.activo = TRUE
-           AND (rsp.id_municipio = :mun OR rsp.id_municipio IS NULL)
+           AND rsp.id_municipio = :mun
            AND rsp.fecha_alta >= :desde AND rsp.fecha_alta < :hasta_excl
            {cond_area}
            {cond_tipo}
@@ -434,7 +433,7 @@ async def dashboard_resumen(
           {join_tipo}
           {join_area}
          WHERE rsp.activo = TRUE
-           AND (rsp.id_municipio = :mun OR rsp.id_municipio IS NULL)
+           AND rsp.id_municipio = :mun
            AND rsp.fecha_alta >= :desde AND rsp.fecha_alta < :hasta_excl
            {cond_area}
            {cond_tipo}
@@ -450,7 +449,7 @@ async def dashboard_resumen(
     alertas = (await db.execute(text("""
         SELECT COUNT(*) FROM encuesta_respuesta rsp
          WHERE rsp.activo = TRUE AND rsp.solicita_contacto = TRUE AND rsp.atendida = FALSE
-           AND (rsp.id_municipio = :mun OR rsp.id_municipio IS NULL)
+           AND rsp.id_municipio = :mun
     """), {"mun": id_municipio})).scalar() or 0
 
     return DashboardResumenOut(
@@ -470,7 +469,7 @@ async def dashboard_por_area(
     desde: Optional[date] = Query(None),
     hasta: Optional[date] = Query(None),
     limit: int = Query(20, ge=1, le=100),
-    id_municipio: int = Query(ID_MUNICIPIO_DEFAULT),
+    id_municipio: int = Depends(municipio_actual),
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -488,7 +487,7 @@ async def dashboard_por_area(
           LEFT JOIN subarea s    ON s.id_subarea = COALESCE(tr.id_subarea, r.id_subarea)
           LEFT JOIN area a       ON a.id_area = s.id_area
          WHERE rsp.activo = TRUE
-           AND (rsp.id_municipio = :mun OR rsp.id_municipio IS NULL)
+           AND rsp.id_municipio = :mun
            AND rsp.fecha_alta >= :desde AND rsp.fecha_alta < :hasta_excl
          GROUP BY a.id_area, a.nombre
          ORDER BY csat_promedio DESC NULLS LAST
@@ -509,7 +508,7 @@ async def dashboard_por_area(
 @router.get("/dashboard/evolucion", response_model=list[DashboardEvolucionItem])
 async def dashboard_evolucion(
     meses: int = Query(6, ge=1, le=24),
-    id_municipio: int = Query(ID_MUNICIPIO_DEFAULT),
+    id_municipio: int = Depends(municipio_actual),
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -520,7 +519,7 @@ async def dashboard_evolucion(
                COUNT(*) AS total_respuestas
           FROM encuesta_respuesta rsp
          WHERE rsp.activo = TRUE
-           AND (rsp.id_municipio = :mun OR rsp.id_municipio IS NULL)
+           AND rsp.id_municipio = :mun
            AND rsp.fecha_alta >= date_trunc('month', NOW()) - make_interval(months => :meses)
          GROUP BY TO_CHAR(rsp.fecha_alta, 'YYYY-MM')
          ORDER BY anio_mes ASC
@@ -541,7 +540,7 @@ async def dashboard_comentarios(
     clasificacion: Optional[int] = Query(None, ge=1, le=5),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    id_municipio: int = Query(ID_MUNICIPIO_DEFAULT),
+    id_municipio: int = Depends(municipio_actual),
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -552,7 +551,7 @@ async def dashboard_comentarios(
         "d.valor_texto IS NOT NULL",
         "d.valor_texto <> ''",
         "rsp.activo = TRUE",
-        "(rsp.id_municipio = :mun OR rsp.id_municipio IS NULL)",
+        "rsp.id_municipio = :mun",
     ]
     params: dict = {"mun": id_municipio, "limit": limit, "offset": offset}
     if clasificacion is not None:
@@ -599,6 +598,7 @@ async def dashboard_comentarios(
 async def disparar_encuesta(
     body: DispararEncuestaIn,
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     # Exactamente uno de los tres (mig 72 + 98: reclamo XOR turno XOR entrada).
     provistos = [x for x in (body.id_reclamo, body.id_turno, body.id_evento_reserva, body.id_tramite)
@@ -606,6 +606,15 @@ async def disparar_encuesta(
     if len(provistos) != 1:
         raise HTTPException(
             422, "Indicá exactamente uno: id_reclamo, id_turno, id_evento_reserva o id_tramite")
+    # El origen tiene que ser del municipio de la request (R4, IT-01).
+    tabla, pk, valor, nombre = (
+        ("reclamos", "id_reclamo", body.id_reclamo, "Reclamo") if body.id_reclamo is not None else
+        ("turnos", "id_turno", body.id_turno, "Turno") if body.id_turno is not None else
+        ("tramite", "id_tramite", body.id_tramite, "Trámite") if body.id_tramite is not None else
+        ("evento_reservas", "id_evento_reserva", body.id_evento_reserva, "Reserva"))
+    if not await db.scalar(text(f"SELECT 1 FROM {tabla} WHERE {pk} = :v AND id_municipio = :m"),
+                           {"v": valor, "m": id_municipio}):
+        raise HTTPException(422, f"{nombre} inexistente")
 
     if body.id_reclamo is not None:
         envio, motivo = await svc.crear_envio_para_reclamo(db, body.id_reclamo)
@@ -650,6 +659,7 @@ async def atender_respuesta(
     id_respuesta: int,
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     if user.get("nivel_acceso", 99) > 2:
         raise HTTPException(403, "Solo Admin o Supervisor pueden marcar una respuesta como atendida")
@@ -657,9 +667,9 @@ async def atender_respuesta(
     resp = (await db.execute(text("""
         SELECT id_encuesta_respuesta, atendida, solicita_contacto
           FROM encuesta_respuesta
-         WHERE id_encuesta_respuesta = :id AND activo = TRUE
+         WHERE id_encuesta_respuesta = :id AND activo = TRUE AND id_municipio = :m
          LIMIT 1
-    """), {"id": id_respuesta})).fetchone()
+    """), {"id": id_respuesta, "m": id_municipio})).fetchone()
     if resp is None:
         raise HTTPException(404, "Respuesta no encontrada")
     if resp._mapping["atendida"]:
@@ -712,18 +722,30 @@ async def ejecutar_dispatcher(
         raise HTTPException(401, "No autorizado")
 
     try:
-        resultado_envios = await svc.procesar_envios_pendientes(db, limite=50)
-        cantidad_expirados = await svc.expirar_envios_vencidos(db)
+        # Por municipio (IT-01): cada uno con sus envios; un fallo no frena a los demas.
+        async def _uno(id_m: int) -> dict:
+            envios = await svc.procesar_envios_pendientes(db, id_municipio=id_m, limite=50)
+            return {"envios": envios, "expirados": await svc.expirar_envios_vencidos(db, id_municipio=id_m)}
+
+        por_municipio = await por_cada_municipio(db, "Dispatcher encuestas", _uno)
+        resultado_envios = {"procesados": 0, "exitosos": 0, "fallidos": 0}
+        cantidad_expirados = 0
+        for r in por_municipio.values():
+            for k in resultado_envios:
+                resultado_envios[k] += r.get("envios", {}).get(k, 0)
+            cantidad_expirados += r.get("expirados", 0)
         logger.info(
-            "Dispatcher OK: procesados=%s exitosos=%s fallidos=%s expirados=%s",
+            "Dispatcher OK: procesados=%s exitosos=%s fallidos=%s expirados=%s municipios=%s",
             resultado_envios.get("procesados", 0),
             resultado_envios.get("exitosos", 0),
             resultado_envios.get("fallidos", 0),
             cantidad_expirados,
+            len(por_municipio),
         )
         return {
             "envios": resultado_envios,
             "expirados": cantidad_expirados,
+            "por_municipio": por_municipio,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     except HTTPException:

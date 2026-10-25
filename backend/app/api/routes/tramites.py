@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
+from app.core.municipio import municipio_actual
 from app.schemas.tramites import (
     AprobacionOut,
     ComentarioIn,
@@ -127,9 +128,9 @@ async def _pertenece_al_colectivo_actual(agente: dict, tramite: dict, db: AsyncS
 @router.get("/tipos", response_model=TipoTramiteListOut)
 async def listar_tipos_tramite(
     iniciador: Optional[str] = Query(None, description="ciudadano | empresa | area_interna"),
-    id_municipio: int = Query(1),
     _user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Lista tipos de tramite publicados para el municipio."""
     where_extra = ""
@@ -188,6 +189,7 @@ async def detalle_tipo_tramite(
     id_tipo_tramite: int,
     _user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Detalle del tipo con su version publicada, campos, estados, transiciones y docs."""
     tipo_row = (await db.execute(
@@ -195,9 +197,9 @@ async def detalle_tipo_tramite(
             SELECT tt.*, m.codigo_corto
             FROM tipo_tramite tt
             JOIN municipios m ON m.id_municipio = tt.id_municipio
-            WHERE tt.id_tipo_tramite = :id AND tt.activo = TRUE
+            WHERE tt.id_tipo_tramite = :id AND tt.activo = TRUE AND tt.id_municipio = :mun
         """),
-        {"id": id_tipo_tramite},
+        {"id": id_tipo_tramite, "mun": id_municipio},
     )).fetchone()
 
     if not tipo_row:
@@ -342,6 +344,7 @@ async def mi_bandeja(
     offset: int = Query(0),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """
     Tramites que estan en MI bandeja: destinatario actual = mi subarea, uno de
@@ -372,19 +375,11 @@ async def mi_bandeja(
 
     conditions = [
         "t.activo = TRUE",
-        # Mono-municipio (§38): tolerar agente sin municipio y tramite sin
-        # municipio. Filtrar con "= :mun" estricto cuando el agente tiene
-        # id_municipio NULL vaciaba la bandeja en silencio (NULL no matchea
-        # nada) — bug que dejaba al agente sin ver ningun tramite.
-        # CAST(:mun AS integer) en el "IS NULL": asyncpg no puede inferir el tipo
-        # de un bind param en `:param IS NULL` y tira AmbiguousParameterError
-        # ("no se pudo determinar el tipo del parametro $1") — 500 en la bandeja.
-        # Mismo quirk que GET /destinatarios (CAST(:q AS text) IS NULL) y la
-        # familia feedback_asyncpg_extract_cast_date.
-        "(CAST(:mun AS integer) IS NULL OR t.id_municipio = :mun OR t.id_municipio IS NULL)",
+        # IT-01: el municipio de la request (la columna es NOT NULL desde la mig 125c).
+        "t.id_municipio = :mun",
         "(" + " OR ".join(bandeja_conds) + ")",
     ]
-    params["mun"] = agente["id_municipio"]
+    params["mun"] = id_municipio
 
     if estado_codigo:
         conditions.append("tte.codigo = :estado_codigo")
@@ -470,10 +465,10 @@ async def mi_bandeja(
 
 @router.get("/destinatarios")
 async def listar_destinatarios_pase(
-    id_municipio: int = Query(1),
     q: Optional[str] = Query(None),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """
     Opciones de destino para un pase: agentes (personas) y equipos (mesas) del
@@ -481,27 +476,23 @@ async def listar_destinatarios_pase(
     por nombre.
     """
     like = f"%{q}%" if q else None
-    # id_municipio puede ser NULL en filas con drift de datos (seeds viejos sin
-    # municipio). Aceptamos NULL para no ocultar mesas/agentes/subareas válidos
-    # del selector de pase — mismo criterio que BI (§43). De lo contrario una
-    # mesa sin municipio nunca aparecería como destino de un pase.
     agentes = (await db.execute(text("""
         SELECT a.id_agente AS id, a.apellido || ', ' || a.nombre AS nombre, sa.nombre AS subarea_nombre
         FROM agentes a
         LEFT JOIN subarea sa ON sa.id_subarea = a.id_subarea
-        WHERE a.activo = TRUE AND (a.id_municipio = :mun OR a.id_municipio IS NULL)
+        WHERE a.activo = TRUE AND a.id_municipio = :mun
           AND (CAST(:q AS text) IS NULL OR (a.apellido || ', ' || a.nombre) ILIKE :q)
         ORDER BY a.apellido, a.nombre LIMIT 50
     """), {"mun": id_municipio, "q": like})).fetchall()
     equipos = (await db.execute(text("""
         SELECT id_equipo AS id, nombre FROM equipos
-        WHERE activo = TRUE AND (id_municipio = :mun OR id_municipio IS NULL)
+        WHERE activo = TRUE AND id_municipio = :mun
           AND (CAST(:q AS text) IS NULL OR nombre ILIKE :q)
         ORDER BY nombre LIMIT 50
     """), {"mun": id_municipio, "q": like})).fetchall()
     subareas = (await db.execute(text("""
         SELECT id_subarea AS id, nombre FROM subarea
-        WHERE activo = TRUE AND (id_municipio = :mun OR id_municipio IS NULL)
+        WHERE activo = TRUE AND id_municipio = :mun
           AND (CAST(:q AS text) IS NULL OR nombre ILIKE :q)
         ORDER BY nombre LIMIT 50
     """), {"mun": id_municipio, "q": like})).fetchall()
@@ -520,7 +511,6 @@ async def listar_destinatarios_pase(
 @router.get("", response_model=TramiteListOut)
 async def listar_tramites(
     response: Response,
-    id_municipio: int = Query(1),
     destinatario_tipo: Optional[str] = Query(None),
     destinatario_id: Optional[int] = Query(None),
     tomado_por: Optional[int] = Query(None),
@@ -543,6 +533,7 @@ async def listar_tramites(
     offset: int = Query(0),
     _user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Bandeja de tramites con filtros combinables."""
     # El orden lo resuelve el SQL: la bandeja es paginada (§23).
@@ -698,6 +689,7 @@ async def detalle_tramite(
     numero_o_id: str,
     _user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Detalle completo de un tramite. Acepta id numerico o numero_expediente."""
     # Resolver por id o por numero
@@ -745,9 +737,9 @@ async def detalle_tramite(
             LEFT JOIN equipos eq ON eq.id_equipo = t.id_equipo_actual
             LEFT JOIN agentes ag_dst ON ag_dst.id_agente = t.id_agente_actual
             LEFT JOIN agentes ag_tom ON ag_tom.id_agente = t.id_agente_tomado_por
-            WHERE {where} AND t.activo = TRUE
+            WHERE {where} AND t.activo = TRUE AND t.id_municipio = :mun
         """),
-        params,
+        {**params, "mun": id_municipio},
     )).fetchone()
 
     if not row:
@@ -858,9 +850,10 @@ async def movimientos_tramite(
     numero_o_id: str,
     _user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Timeline completo de movimientos de un tramite."""
-    id_tramite, numero = await _resolver_tramite(numero_o_id, db)
+    id_tramite, numero = await _resolver_tramite(numero_o_id, db, id_municipio)
 
     rows = (await db.execute(
         text("""
@@ -921,9 +914,10 @@ async def documentos_tramite(
     numero_o_id: str,
     _user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Lista de documentos del tramite con sus firmas."""
-    id_tramite, numero = await _resolver_tramite(numero_o_id, db)
+    id_tramite, numero = await _resolver_tramite(numero_o_id, db, id_municipio)
 
     doc_rows = (await db.execute(
         text("""
@@ -993,16 +987,18 @@ async def documentos_tramite(
 # Helper privado: resolver tramite por id o numero
 # ---------------------------------------------------------------------------
 
-async def _resolver_tramite(numero_o_id: str, db: AsyncSession) -> tuple[int, str]:
+async def _resolver_tramite(numero_o_id: str, db: AsyncSession, id_municipio: int) -> tuple[int, str]:
     if numero_o_id.isdigit():
         row = (await db.execute(
-            text("SELECT id_tramite, numero_expediente FROM tramite WHERE id_tramite = :ref AND activo = TRUE"),
-            {"ref": int(numero_o_id)},
+            text("SELECT id_tramite, numero_expediente FROM tramite "
+                 "WHERE id_tramite = :ref AND activo = TRUE AND id_municipio = :mun"),
+            {"ref": int(numero_o_id), "mun": id_municipio},
         )).fetchone()
     else:
         row = (await db.execute(
-            text("SELECT id_tramite, numero_expediente FROM tramite WHERE numero_expediente = :ref AND activo = TRUE"),
-            {"ref": numero_o_id},
+            text("SELECT id_tramite, numero_expediente FROM tramite "
+                 "WHERE numero_expediente = :ref AND activo = TRUE AND id_municipio = :mun"),
+            {"ref": numero_o_id, "mun": id_municipio},
         )).fetchone()
 
     if not row:
@@ -1010,9 +1006,9 @@ async def _resolver_tramite(numero_o_id: str, db: AsyncSession) -> tuple[int, st
     return row.id_tramite, row.numero_expediente
 
 
-async def _cargar_tramite_dict(numero_o_id: str, db: AsyncSession) -> dict:
+async def _cargar_tramite_dict(numero_o_id: str, db: AsyncSession, id_municipio: int) -> dict:
     """Carga fila de tramite como dict para los helpers de servicios."""
-    id_tramite, _ = await _resolver_tramite(numero_o_id, db)
+    id_tramite, _ = await _resolver_tramite(numero_o_id, db, id_municipio)
     row = (await db.execute(
         text("SELECT * FROM tramite WHERE id_tramite = :id AND activo = TRUE"),
         {"id": id_tramite},
@@ -1134,6 +1130,7 @@ async def crear_tramite(
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     id_usuario = current_user["id_usuario"]
     agente = await svc_auth.resolver_agente_desde_usuario(id_usuario, db)
@@ -1149,7 +1146,7 @@ async def crear_tramite(
             JOIN municipios m ON m.id_municipio=tt.id_municipio
             WHERE tt.id_tipo_tramite=:id AND tt.activo=TRUE AND tt.id_municipio=:mun
         """),
-        {"id": body.id_tipo_tramite, "mun": body.id_municipio},
+        {"id": body.id_tipo_tramite, "mun": id_municipio},
     )).fetchone()
     if not tipo_row:
         raise HTTPException(404, "Tipo de tramite no encontrado")
@@ -1161,12 +1158,12 @@ async def crear_tramite(
     # Resolver iniciador
     iniciador_fks = await svc_creacion.resolver_iniciador(
         body.iniciador.model_dump(exclude_none=True),
-        tipo, body.id_municipio, db,
+        tipo, id_municipio, db,
     )
 
     # Validar campos del formulario
     await svc_creacion.validar_campos_contra_tipo(
-        body.datos, tipo_row.id_version_publicada, body.id_municipio, db,
+        body.datos, tipo_row.id_version_publicada, id_municipio, db,
     )
 
     # Estado inicial
@@ -1185,7 +1182,7 @@ async def crear_tramite(
 
     # Numero correlativo atomico
     anio = datetime.now(timezone.utc).year
-    correlativo = await svc_num.proximo_numero(db, body.id_tipo_tramite, body.id_municipio, anio)
+    correlativo = await svc_num.proximo_numero(db, body.id_tipo_tramite, id_municipio, anio)
     numero_expediente = svc_num.formatear_numero(
         prefijo=tipo_row.prefijo,
         separador=tipo_row.separador,
@@ -1241,7 +1238,7 @@ async def crear_tramite(
             "dest_tipo": dest_tipo,
             "dest_sa": dest_id if dest_tipo == "subarea" else None,
             "dest_eq": dest_id if dest_tipo == "equipo" else None,
-            "mun": body.id_municipio,
+            "mun": id_municipio,
             "uid": id_usuario,
         },
     )).fetchone()
@@ -1250,7 +1247,7 @@ async def crear_tramite(
     # Movimiento creacion
     await svc_mov.registrar_movimiento(
         db, id_tramite, "creacion", id_usuario, agente["id_agente"],
-        body.id_municipio, request,
+        id_municipio, request,
         id_estado_destino=estado_inicial.id_tipo_tramite_estado,
         destino_jsonb={"tipo": dest_tipo, "id": dest_id},
         metadata_jsonb={"datos_iniciales": body.datos},
@@ -1258,7 +1255,7 @@ async def crear_tramite(
     # Movimiento numeracion
     await svc_mov.registrar_movimiento(
         db, id_tramite, "numeracion", id_usuario, agente["id_agente"],
-        body.id_municipio, request,
+        id_municipio, request,
         metadata_jsonb={"numero_expediente": numero_expediente, "correlativo": correlativo, "anio": anio},
     )
 
@@ -1288,8 +1285,9 @@ async def transiciones_permitidas(
     tramite_ref: str,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    tramite = await _cargar_tramite_dict(tramite_ref, db)
+    tramite = await _cargar_tramite_dict(tramite_ref, db, id_municipio)
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
 
     estado_row = (await db.execute(
@@ -1341,6 +1339,7 @@ async def tomar_tramite(
     request: Request,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
@@ -1348,7 +1347,7 @@ async def tomar_tramite(
     # Gate anti-consultor (scope-subarea 2026-07-18).
     _require_no_consultor(agente)
 
-    id_tramite, _ = await _resolver_tramite(tramite_ref, db)
+    id_tramite, _ = await _resolver_tramite(tramite_ref, db, id_municipio)
 
     # Lock pesimista
     tramite = dict((await db.execute(
@@ -1386,6 +1385,7 @@ async def liberar_tramite(
     request: Request,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
@@ -1393,7 +1393,7 @@ async def liberar_tramite(
     # Gate anti-consultor (scope-subarea 2026-07-18).
     _require_no_consultor(agente)
 
-    id_tramite, _ = await _resolver_tramite(tramite_ref, db)
+    id_tramite, _ = await _resolver_tramite(tramite_ref, db, id_municipio)
     tramite = dict((await db.execute(
         text("SELECT * FROM tramite WHERE id_tramite=:id AND activo=TRUE FOR UPDATE"),
         {"id": id_tramite},
@@ -1450,6 +1450,7 @@ async def transicionar_tramite(
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
@@ -1457,7 +1458,7 @@ async def transicionar_tramite(
     # Gate anti-consultor (scope-subarea 2026-07-18).
     _require_no_consultor(agente)
 
-    id_tramite, _ = await _resolver_tramite(tramite_ref, db)
+    id_tramite, _ = await _resolver_tramite(tramite_ref, db, id_municipio)
     tramite = dict((await db.execute(
         text("SELECT * FROM tramite WHERE id_tramite=:id AND activo=TRUE FOR UPDATE"),
         {"id": id_tramite},
@@ -1681,6 +1682,7 @@ async def resolver_aprobacion(
     request: Request,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Resuelve una aprobacion de etapa (aprobada|rechazada).
 
@@ -1702,7 +1704,7 @@ async def resolver_aprobacion(
     # Gate anti-consultor (scope-subarea 2026-07-18).
     _require_no_consultor(agente)
 
-    id_tramite, _ = await _resolver_tramite(tramite_ref, db)
+    id_tramite, _ = await _resolver_tramite(tramite_ref, db, id_municipio)
 
     # Lock pesimista del tramite (la marca cuelga de el)
     tramite = dict((await db.execute(
@@ -1771,6 +1773,7 @@ async def pase_tramite(
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
@@ -1778,7 +1781,7 @@ async def pase_tramite(
     # Gate anti-consultor (scope-subarea 2026-07-18).
     _require_no_consultor(agente)
 
-    id_tramite, _ = await _resolver_tramite(tramite_ref, db)
+    id_tramite, _ = await _resolver_tramite(tramite_ref, db, id_municipio)
     tramite = dict((await db.execute(
         text("SELECT * FROM tramite WHERE id_tramite=:id AND activo=TRUE FOR UPDATE"),
         {"id": id_tramite},
@@ -1788,11 +1791,10 @@ async def pase_tramite(
     if not puede:
         raise HTTPException(403, motivo)
 
-    # Validación de destino tolerante a id_municipio NULL (drift de datos, §43):
-    # una mesa/agente/subarea sin municipio igual debe poder recibir el pase.
+    # El destino del pase tiene que ser del municipio del expediente.
     if body.destinatario_tipo == "subarea":
         dest_row = (await db.execute(
-            text("SELECT id_subarea FROM subarea WHERE id_subarea=:id AND activo=TRUE AND (id_municipio=:mun OR id_municipio IS NULL) LIMIT 1"),
+            text("SELECT id_subarea FROM subarea WHERE id_subarea=:id AND activo=TRUE AND id_municipio=:mun LIMIT 1"),
             {"id": body.destinatario_id, "mun": tramite["id_municipio"]},
         )).fetchone()
         if not dest_row:
@@ -1800,7 +1802,7 @@ async def pase_tramite(
         nuevo_sa, nuevo_eq, nuevo_ag = body.destinatario_id, None, None
     elif body.destinatario_tipo == "equipo":
         dest_row = (await db.execute(
-            text("SELECT id_equipo FROM equipos WHERE id_equipo=:id AND activo=TRUE AND (id_municipio=:mun OR id_municipio IS NULL) LIMIT 1"),
+            text("SELECT id_equipo FROM equipos WHERE id_equipo=:id AND activo=TRUE AND id_municipio=:mun LIMIT 1"),
             {"id": body.destinatario_id, "mun": tramite["id_municipio"]},
         )).fetchone()
         if not dest_row:
@@ -1808,7 +1810,7 @@ async def pase_tramite(
         nuevo_sa, nuevo_eq, nuevo_ag = None, body.destinatario_id, None
     elif body.destinatario_tipo == "agente":
         dest_row = (await db.execute(
-            text("SELECT id_agente FROM agentes WHERE id_agente=:id AND activo=TRUE AND (id_municipio=:mun OR id_municipio IS NULL) LIMIT 1"),
+            text("SELECT id_agente FROM agentes WHERE id_agente=:id AND activo=TRUE AND id_municipio=:mun LIMIT 1"),
             {"id": body.destinatario_id, "mun": tramite["id_municipio"]},
         )).fetchone()
         if not dest_row:
@@ -1860,6 +1862,7 @@ async def marcar_resultado_tramite(
     request: Request,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Marca el resultado del tramite (aprobado/rechazado/pendiente).
 
@@ -1877,7 +1880,7 @@ async def marcar_resultado_tramite(
     if agente["nivel_acceso"] > 2:
         raise HTTPException(403, "Solo un supervisor del área del trámite o un administrador puede marcar el resultado.")
 
-    id_tramite, _ = await _resolver_tramite(tramite_ref, db)
+    id_tramite, _ = await _resolver_tramite(tramite_ref, db, id_municipio)
     tramite = dict((await db.execute(
         text("SELECT * FROM tramite WHERE id_tramite=:id AND activo=TRUE FOR UPDATE"),
         {"id": id_tramite},
@@ -1951,6 +1954,7 @@ async def comentar_tramite(
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
@@ -1958,7 +1962,7 @@ async def comentar_tramite(
     # Gate anti-consultor (scope-subarea 2026-07-18).
     _require_no_consultor(agente)
 
-    id_tramite, _ = await _resolver_tramite(tramite_ref, db)
+    id_tramite, _ = await _resolver_tramite(tramite_ref, db, id_municipio)
     # El SELECT t.* ya trae destinatario_actual_tipo / id_subarea_actual /
     # id_equipo_actual / id_agente_actual / id_agente_iniciador /
     # id_agente_tomado_por, que usa el guard de pertenencia de abajo.
@@ -2018,6 +2022,7 @@ async def adjuntar_documento(
     nombre: Optional[str] = Form(None),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
@@ -2025,7 +2030,7 @@ async def adjuntar_documento(
     # Gate anti-consultor (scope-subarea 2026-07-18).
     _require_no_consultor(agente)
 
-    id_tramite, _ = await _resolver_tramite(tramite_ref, db)
+    id_tramite, _ = await _resolver_tramite(tramite_ref, db, id_municipio)
     tramite = dict((await db.execute(
         text("""
             SELECT t.*, tte.permite_adjuntar
@@ -2177,8 +2182,9 @@ async def descargar_documento(
     id_doc: int,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    id_tramite, _ = await _resolver_tramite(tramite_ref, db)
+    id_tramite, _ = await _resolver_tramite(tramite_ref, db, id_municipio)
     doc = (await db.execute(
         text("SELECT * FROM tramite_documento WHERE id_tramite_documento=:id AND id_tramite=:tid AND activo=TRUE"),
         {"id": id_doc, "tid": id_tramite},
@@ -2217,12 +2223,13 @@ async def firmar_documento(
     request: Request,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
         raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
 
-    id_tramite, _ = await _resolver_tramite(tramite_ref, db)
+    id_tramite, _ = await _resolver_tramite(tramite_ref, db, id_municipio)
     doc = (await db.execute(
         text("SELECT * FROM tramite_documento WHERE id_tramite_documento=:id AND id_tramite=:tid AND activo=TRUE"),
         {"id": id_doc, "tid": id_tramite},
@@ -2281,12 +2288,13 @@ async def rechazar_firma_documento(
     request: Request,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
         raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
 
-    id_tramite, _ = await _resolver_tramite(tramite_ref, db)
+    id_tramite, _ = await _resolver_tramite(tramite_ref, db, id_municipio)
     doc = (await db.execute(
         text("SELECT id_municipio FROM tramite_documento WHERE id_tramite_documento=:id AND id_tramite=:tid AND activo=TRUE"),
         {"id": id_doc, "tid": id_tramite},
@@ -2344,6 +2352,7 @@ async def relacionar_tramites(
     request: Request,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
@@ -2351,15 +2360,16 @@ async def relacionar_tramites(
     # Gate anti-consultor (scope-subarea 2026-07-18).
     _require_no_consultor(agente)
 
-    id_tramite_a, num_a = await _resolver_tramite(tramite_ref, db)
+    id_tramite_a, num_a = await _resolver_tramite(tramite_ref, db, id_municipio)
     tramite_a = dict((await db.execute(
         text("SELECT * FROM tramite WHERE id_tramite=:id AND activo=TRUE FOR UPDATE"),
         {"id": id_tramite_a},
     )).fetchone()._mapping)
 
     tramite_b = (await db.execute(
-        text("SELECT id_tramite, numero_expediente, asunto, id_municipio FROM tramite WHERE id_tramite=:id AND activo=TRUE"),
-        {"id": body.id_tramite_b},
+        text("SELECT id_tramite, numero_expediente, asunto, id_municipio FROM tramite "
+             "WHERE id_tramite=:id AND activo=TRUE AND id_municipio=:mun"),
+        {"id": body.id_tramite_b, "mun": id_municipio},
     )).fetchone()
     if not tramite_b:
         raise HTTPException(404, "Tramite B no encontrado")

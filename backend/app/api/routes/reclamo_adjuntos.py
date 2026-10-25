@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.auth import get_current_user
+from app.core.municipio import municipio_actual
 from app.core import storage
 
 router = APIRouter(prefix="/api/v1/reclamos/{id_reclamo}/adjuntos", tags=["Reclamos · Adjuntos"])
@@ -52,10 +53,11 @@ def _safe_filename(nombre: str) -> str:
     return re.sub(r"[^\w\.\-]+", "_", nombre)[:120]
 
 
-async def _existe_reclamo(db: AsyncSession, id_reclamo: int) -> None:
+async def _existe_reclamo(db: AsyncSession, id_reclamo: int, id_municipio: int) -> None:
+    """404 si el reclamo no existe o es de otro municipio (R3, IT-01)."""
     r = await db.execute(text(
-        "SELECT 1 FROM reclamos WHERE id_reclamo = :id AND activo = TRUE"
-    ), {"id": id_reclamo})
+        "SELECT 1 FROM reclamos WHERE id_reclamo = :id AND activo = TRUE AND id_municipio = :mun"
+    ), {"id": id_reclamo, "mun": id_municipio})
     if not r.fetchone():
         raise HTTPException(status_code=404, detail=f"Reclamo {id_reclamo} no encontrado")
 
@@ -68,6 +70,7 @@ async def crear_upload_url(
     body: dict,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     _require_gestion(current_user)
     nombre_archivo = _safe_filename(body.get("nombre_archivo", ""))
@@ -82,7 +85,7 @@ async def crear_upload_url(
         raise HTTPException(status_code=422,
             detail=f"Tamaño inválido (máx {MAX_BYTES // (1024*1024)} MB)")
 
-    await _existe_reclamo(db, id_reclamo)
+    await _existe_reclamo(db, id_reclamo, id_municipio)
 
     ext = EXT_POR_MIME.get(mime_type, "bin")
     storage_path = f"reclamos/{id_reclamo}/{uuid.uuid4()}.{ext}"
@@ -94,15 +97,15 @@ async def crear_upload_url(
         INSERT INTO reclamo_adjuntos
             (id_reclamo, storage_bucket, storage_path, nombre_archivo,
              mime_type, tamano_bytes, descripcion, activo,
-             fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion)
+             fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion, id_municipio)
         VALUES
             (:id_r, :bucket, :path, :nombre, :mime, :size, :desc, FALSE,
-             NOW(), NOW(), :uid, :uid)
+             NOW(), NOW(), :uid, :uid, :mun)
         RETURNING id_adjunto
     """), {
         "id_r": id_reclamo, "bucket": signed["bucket"], "path": storage_path,
         "nombre": nombre_archivo, "mime": mime_type, "size": tamano,
-        "desc": descripcion, "uid": current_user["id_usuario"],
+        "desc": descripcion, "uid": current_user["id_usuario"], "mun": id_municipio,
     })
     id_adjunto = result.scalar_one()
     await db.commit()
@@ -124,8 +127,10 @@ async def confirmar_subida(
     id_adjunto: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     _require_gestion(current_user)
+    await _existe_reclamo(db, id_reclamo, id_municipio)
     r = await db.execute(text("""
         SELECT id_adjunto, activo FROM reclamo_adjuntos
         WHERE id_adjunto = :id AND id_reclamo = :id_r
@@ -152,8 +157,9 @@ async def listar_adjuntos(
     id_reclamo: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    await _existe_reclamo(db, id_reclamo)
+    await _existe_reclamo(db, id_reclamo, id_municipio)
     r = await db.execute(text("""
         SELECT id_adjunto, storage_path, nombre_archivo, mime_type,
                tamano_bytes, descripcion, fecha_alta
@@ -183,8 +189,10 @@ async def borrar_adjunto(
     id_adjunto: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     _require_gestion(current_user)
+    await _existe_reclamo(db, id_reclamo, id_municipio)
     r = await db.execute(text("""
         SELECT storage_path, activo FROM reclamo_adjuntos
         WHERE id_adjunto = :id AND id_reclamo = :id_r

@@ -12,6 +12,12 @@ Las 3 claves viven en `configuracion_general`:
 
 El bucket es `config-assets` (publico, 2MB, image/png|jpeg|webp|svg+xml).
 La URL persistida es la URL publica directa (no firmada) - el bucket es public.
+
+Municipio (IT-01): el GET es publico y toma el municipio de la direccion
+(municipio_de_origen); el PUT y la subida del logo, el del administrador
+(municipio_actual). Lectura con leer_configs (la fila del municipio o la global) y
+guardado con guardar_config (solo la fila del municipio). Sin nombre propio, el
+nombre es el de la tabla municipios.
 """
 import re
 import uuid
@@ -24,7 +30,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.config import settings
+from app.core.config_municipio import guardar_config, leer_configs
 from app.core.database import get_db
+from app.core.municipio import municipio_actual, municipio_de_origen
 from app.core import storage
 from app.core.urls import url_publica as _url_publica  # fuente única con publico_alta (Portal del Ciudadano)
 
@@ -72,9 +80,9 @@ class IdentidadOut(BaseModel):
     municipio_descripcion: str
     municipio_color_primary: str
     municipio_color_accent: str
-    # Slug (codigo_corto) del unico municipio activo del deploy (mono-tenant §38).
-    # Lo usa Config -> Identidad para previsualizar las URLs publicas del municipio
-    # (ej. el alta de vecinos: .../frontend/alta-vecino.html?m=<slug>). None si no hay.
+    # Slug (codigo_corto) del municipio. Lo usa Config -> Identidad para previsualizar
+    # las URLs publicas del municipio (ej. el alta de vecinos:
+    # .../frontend/alta-vecino.html?m=<slug>). None si no hay.
     municipio_slug: Optional[str] = None
     # URL publica de la App Vecinos (PWA). La consume la app de agentes (tenant) y
     # queda por compat; desde el 2026-09-27 "Mi perfil" ya NO la muestra: el vecino
@@ -123,22 +131,17 @@ class LogoUploadResponse(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
-async def _leer_claves(db: AsyncSession) -> dict[str, str]:
-    rows = await db.execute(text(
-        "SELECT clave, valor FROM configuracion_general WHERE clave = ANY(:claves)"
-    ), {"claves": list(CLAVES)})
-    data = {r.clave: r.valor for r in rows.fetchall()}
-    # Slug del unico municipio activo (mono-tenant). Si hay >1 fila activa (no deberia),
-    # tomamos el de menor id_municipio para ser deterministas.
-    slug_row = await db.execute(text(
-        "SELECT codigo_corto FROM municipios WHERE activo = TRUE "
-        "ORDER BY id_municipio LIMIT 1"
-    ))
-    slug = slug_row.scalar()
-    # Defaults para claves faltantes (no deberian faltar tras seed, pero por las dudas)
+async def _leer_claves(db: AsyncSession, id_municipio: int) -> dict[str, str]:
+    data = await leer_configs(db, list(CLAVES), id_municipio)
+    muni = (await db.execute(text(
+        "SELECT nombre, codigo_corto FROM municipios WHERE id_municipio = :m"
+    ), {"m": id_municipio})).fetchone()
+    slug = muni.codigo_corto if muni else None
+    # Sin nombre propio cargado, el de la tabla municipios.
+    nombre = (data.get("municipio_nombre") or "").strip() or (muni.nombre if muni else "") or "MUNICIPALIDAD"
     return {
         "app_nombre": APP_NOMBRE,
-        "municipio_nombre": data.get("municipio_nombre", "MUNICIPALIDAD"),
+        "municipio_nombre": nombre,
         "municipio_logo_url": data.get("municipio_logo_url", ""),
         "municipio_descripcion": data.get("municipio_descripcion", ""),
         "municipio_color_primary": data.get("municipio_color_primary", ""),
@@ -154,35 +157,39 @@ async def _leer_claves(db: AsyncSession) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 @router.get("", response_model=IdentidadOut)
-async def get_identidad(db: AsyncSession = Depends(get_db)):
+async def get_identidad(
+    db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_de_origen),
+):
     """Publico. Lo lee el shell vanilla al cargar para renderizar el topbar."""
-    return await _leer_claves(db)
+    return await _leer_claves(db, id_municipio)
 
 
-@router.put("", response_model=IdentidadOut)
+@router.put("", response_model=IdentidadOut, responses={409: {"description": "El municipio no tiene esa clave"}})
 async def update_identidad(
     payload: IdentidadUpdate,
     db: AsyncSession = Depends(get_db),
     _admin: dict = Depends(require_admin),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    """Actualiza una o mas claves. Solo nivel administrador."""
+    """Actualiza una o mas claves del municipio. Solo nivel administrador."""
     actualizables = payload.model_dump(exclude_none=True)
     if not actualizables:
         raise HTTPException(422, "Body vacio: incluir al menos una clave")
     for clave, valor in actualizables.items():
-        await db.execute(text("""
-            UPDATE configuracion_general
-            SET valor = :v, fecha_modificacion = NOW()
-            WHERE clave = :k
-        """), {"k": clave, "v": valor})
+        if not await guardar_config(db, clave, valor, id_municipio):
+            # Hasta el lote de limpieza (UNIQUE(clave) global) no se puede crear la fila.
+            await db.rollback()
+            raise HTTPException(409, f"El municipio no tiene la clave {clave} cargada")
     await db.commit()
-    return await _leer_claves(db)
+    return await _leer_claves(db, id_municipio)
 
 
 @router.post("/logo-upload-url", response_model=LogoUploadResponse)
 async def crear_upload_url_logo(
     payload: LogoUploadRequest,
     _admin: dict = Depends(require_admin),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Devuelve URL firmada para que el cliente haga PUT del binario del logo
     directo a Supabase Storage. El backend NO recibe el binario."""
@@ -191,7 +198,7 @@ async def crear_upload_url_logo(
     if payload.tamano_bytes > MAX_BYTES:
         raise HTTPException(422, f"Archivo excede 2MB ({payload.tamano_bytes} bytes)")
     ext = MIME_EXT[payload.mime_type]
-    path = f"municipio/logo-{uuid.uuid4()}.{ext}"
+    path = f"municipio/{id_municipio}/logo-{uuid.uuid4()}.{ext}"
     signed = await storage.crear_signed_upload_url(path, bucket=BUCKET)
     return LogoUploadResponse(
         upload_url=signed["upload_url"],

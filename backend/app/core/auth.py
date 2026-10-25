@@ -5,11 +5,15 @@ Soporta dos scopes:
 - scope='agente' (default): usuarios internos (tabla usuarios). Vigencia 24h.
 - scope='publico': ciudadanos de la BUC con credencial (tabla ciudadano_credencial). Vigencia 30d.
 Cada guard rechaza tokens del otro scope con 401.
+
+Multi-municipio (IT-01): los dos tokens llevan el claim `mun` (municipio de la cuenta). Un token
+sin `mun` (emitido antes del corte) da 401 «Sesión vencida» y la persona vuelve a ingresar. Si la
+request trae header Origin, `mun` tiene que coincidir con el municipio de ese origen.
 """
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import bcrypt as _bcrypt
 from jose import JWTError, jwt
@@ -23,6 +27,23 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_MINUTES = 1440  # 24 h (scope='agente')
+SESION_VENCIDA = "Sesión vencida. Volvé a ingresar."
+
+
+async def _validar_municipio_token(mun, id_municipio_cuenta: int, request: Request, db: AsyncSession) -> None:
+    """El claim `mun` existe, es el de la cuenta y, si hay Origin, el del municipio de ese origen."""
+    no_vale = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=SESION_VENCIDA,
+                            headers={"WWW-Authenticate": "Bearer"})
+    if not isinstance(mun, int) or mun != id_municipio_cuenta:
+        raise no_vale
+    if request.headers.get("origin"):
+        from app.core.municipio import resolver_municipio_de_origen  # import tardío: municipio importa este módulo
+        try:
+            mun_origen = await resolver_municipio_de_origen(request, db)
+        except HTTPException:
+            raise no_vale
+        if mun_origen != mun:
+            raise no_vale
 
 
 def hash_password(plain: str) -> str:
@@ -34,7 +55,9 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """Emite JWT para agente (scope='agente' por default, retrocompat con tokens viejos)."""
+    """Emite JWT para agente (scope='agente' por default). `data` lleva `sub` y `mun` (municipio)."""
+    if not isinstance(data.get("mun"), int):
+        raise ValueError("create_access_token: falta el municipio (claim 'mun')")
     to_encode = data.copy()
     # Default scope para todos los tokens emitidos por este helper.
     to_encode.setdefault("scope", "agente")
@@ -43,11 +66,12 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
 
 
-def crear_token_ciudadano(id_ciudadano: int, expira_dias: Optional[int] = None) -> str:
+def crear_token_ciudadano(id_ciudadano: int, id_municipio: int, expira_dias: Optional[int] = None) -> str:
     """Emite JWT para ciudadano publico. Vigencia configurable via JWT_PUBLICO_EXPIRA_DIAS (default 30)."""
     dias = expira_dias if expira_dias is not None else settings.JWT_PUBLICO_EXPIRA_DIAS
     to_encode = {
         "sub": str(id_ciudadano),
+        "mun": id_municipio,
         "scope": "publico",
         "exp": datetime.now(timezone.utc) + timedelta(days=dias),
     }
@@ -55,10 +79,11 @@ def crear_token_ciudadano(id_ciudadano: int, expira_dias: Optional[int] = None) 
 
 
 async def get_current_user(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Guard para endpoints de agentes internos. Rechaza tokens scope!='agente'."""
+    """Guard para endpoints de agentes internos. Rechaza tokens scope!='agente' y sin municipio."""
     unauthorized = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="No autenticado",
@@ -84,13 +109,14 @@ async def get_current_user(
 
     result = await db.execute(
         text("""SELECT id_usuario, nombre, email, nivel_acceso, activo,
-                       debe_cambiar_password, foto_url
+                       debe_cambiar_password, foto_url, id_municipio
                 FROM usuarios WHERE id_usuario = :id"""),
         {"id": int(user_id)},
     )
     user = result.fetchone()
     if not user or not user.activo:
         raise unauthorized
+    await _validar_municipio_token(payload.get("mun"), user.id_municipio, request, db)
     return dict(user._mapping)
 
 
@@ -113,6 +139,7 @@ async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
 
 
 async def get_current_ciudadano(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
@@ -148,7 +175,7 @@ async def get_current_ciudadano(
         text("""
             SELECT c.id_ciudadano, c.doc_nro, c.nombre, c.apellido, c.email,
                    c.estado_validacion, c.ficha_completa, c.activo,
-                   cc.activado, cc.activo AS credencial_activa
+                   cc.activado, cc.activo AS credencial_activa, c.id_municipio
               FROM ciudadanos c
               JOIN ciudadano_credencial cc ON cc.id_ciudadano = c.id_ciudadano
              WHERE c.id_ciudadano = :id
@@ -158,6 +185,7 @@ async def get_current_ciudadano(
     row = result.fetchone()
     if not row or not row.activo or not row.credencial_activa or not row.activado:
         raise unauthorized
+    await _validar_municipio_token(payload.get("mun"), row.id_municipio, request, db)
     return dict(row._mapping)
 
 

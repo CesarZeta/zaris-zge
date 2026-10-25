@@ -19,7 +19,7 @@ a la mig 103) caen a la subarea de la prestacion y, si tampoco, a "Sin gestion"
 
 Convenciones (espejo de bi.py / bi_ejecutivo.py):
   - Agregacion 100% en SQL (GROUP BY posicional: los alias AS no valen en GROUP BY).
-  - Mono-municipio: id_municipio NULL cuenta como el municipio por defecto.
+  - Municipio: el del usuario (municipio_actual, claim del JWT); se filtra la tabla raíz.
   - Universo de turnos = `t.activo = TRUE`. Cancelar un turno (turnos.py) deja
     activo=TRUE y estado='cancelado'; las filas cancelado+activo=false que hay en
     local y prod son la limpieza de un smoke del 2026-05-28 (sin usuario
@@ -45,6 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
+from app.core.municipio import municipio_actual
 from app.api.routes.bi import _parse_meses
 from app.api.routes.bi_ejecutivo import _pct, _rango_anterior, _var_pct
 from app.utils.fechas import hoy_local
@@ -177,7 +178,7 @@ def _where_turnos(
     """WHERE del universo de turnos (la query debe incluir _JOIN_TURNOS)."""
     cond = [
         "t.activo = TRUE",
-        "(t.id_municipio = :id_municipio OR t.id_municipio IS NULL)",
+        "t.id_municipio = :id_municipio",
     ]
     params: dict = {"id_municipio": id_municipio}
     _where_fecha(cond, params, "t.fecha", desde, hasta, anio, meses, pares=pares, mes=mes)
@@ -265,7 +266,7 @@ def _params_comunes(
     id_area: Optional[int] = Query(None, description="Gestion (area)"),
     id_espacio_ubicacion: Optional[int] = Query(None, description="Ubicacion (espacio)"),
     id_tipo_prestacion: Optional[int] = Query(None),
-    id_municipio: int = Query(1),
+    id_municipio: int = Depends(municipio_actual),
 ) -> dict:
     return {
         "desde": desde, "hasta": hasta, "anio": anio, "meses": _parse_meses(meses),
@@ -552,7 +553,7 @@ def _where_guardia(
     va con turno, decision de Cesar 2026-09-01) y se ignora a proposito."""
     cond = [
         "x.activo IS DISTINCT FROM FALSE",
-        "(x.id_municipio = :id_municipio OR x.id_municipio IS NULL)",
+        "x.id_municipio = :id_municipio",
     ]
     params: dict = {"id_municipio": id_municipio}
     _where_fecha(cond, params, _FECHA_GUARDIA, desde, hasta, anio, meses, pares=pares, mes=mes)
@@ -697,7 +698,7 @@ def _where_eventos(
     """WHERE de eventos (fecha del evento). Prestacion no aplica (se ignora)."""
     cond = [
         "ev.activo = TRUE",
-        "(ev.id_municipio = :id_municipio OR ev.id_municipio IS NULL)",
+        "ev.id_municipio = :id_municipio",
     ]
     params: dict = {"id_municipio": id_municipio}
     _where_fecha(cond, params, "ev.fecha", desde, hasta, anio, meses, pares=pares, mes=mes)
@@ -905,13 +906,16 @@ async def at_guardia_detalle(
 # ── 9. Catalogos de los filtros ──────────────────────────────────────────────
 
 @router.get("/catalogo/gestiones")
-async def at_catalogo_gestiones(db: AsyncSession = Depends(get_db)):
-    """Gestiones = areas activas con alguna ubicacion activa, prestacion o evento
-    (las areas que solo tienen reclamos no son gestiones de atencion)."""
+async def at_catalogo_gestiones(
+    id_municipio: int = Depends(municipio_actual),
+    db: AsyncSession = Depends(get_db),
+):
+    """Gestiones = areas activas del municipio con alguna ubicacion activa, prestacion o
+    evento (las areas que solo tienen reclamos no son gestiones de atencion)."""
     r = await db.execute(text("""
         SELECT a.id_area, a.nombre
           FROM area a
-         WHERE a.activo = TRUE AND (
+         WHERE a.activo = TRUE AND a.id_municipio = :m AND (
                EXISTS (SELECT 1 FROM espacios_agenda e JOIN subarea s ON s.id_subarea = e.id_subarea
                         WHERE s.id_area = a.id_area AND e.activo = TRUE)
             OR EXISTS (SELECT 1 FROM tipo_prestacion tp JOIN subarea s ON s.id_subarea = tp.id_subarea
@@ -919,18 +923,19 @@ async def at_catalogo_gestiones(db: AsyncSession = Depends(get_db)):
             OR EXISTS (SELECT 1 FROM eventos ev JOIN subarea s ON s.id_subarea = ev.id_subarea
                         WHERE s.id_area = a.id_area AND ev.activo = TRUE))
          ORDER BY a.nombre
-    """))
+    """), {"m": id_municipio})
     return [{"id_area": row.id_area, "nombre": row.nombre} for row in r.fetchall()]
 
 
 @router.get("/catalogo/ubicaciones")
 async def at_catalogo_ubicaciones(
     id_area: Optional[int] = Query(None),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
-    """Ubicaciones (espacios activos) con su gestion, opcionalmente de un area."""
-    cond = ["e.activo = TRUE"]
-    params: dict = {}
+    """Ubicaciones (espacios activos del municipio) con su gestion, opcionalmente de un area."""
+    cond = ["e.activo = TRUE", "e.id_municipio = :m"]
+    params: dict = {"m": id_municipio}
     if id_area:
         cond.append("a.id_area = :id_area")
         params["id_area"] = id_area
@@ -949,11 +954,13 @@ async def at_catalogo_ubicaciones(
 async def at_catalogo_prestaciones(
     id_area: Optional[int] = Query(None),
     id_espacio_ubicacion: Optional[int] = Query(None),
+    id_municipio: int = Depends(municipio_actual),
     db: AsyncSession = Depends(get_db),
 ):
-    """Prestaciones (activas o con turnos) de una gestion / ubicacion."""
-    cond = ["(tp.activo = TRUE OR EXISTS (SELECT 1 FROM turnos t WHERE t.id_tipo_prestacion = tp.id_tipo_prestacion))"]
-    params: dict = {}
+    """Prestaciones del municipio (activas o con turnos) de una gestion / ubicacion."""
+    cond = ["tp.id_municipio = :m",
+            "(tp.activo = TRUE OR EXISTS (SELECT 1 FROM turnos t WHERE t.id_tipo_prestacion = tp.id_tipo_prestacion))"]
+    params: dict = {"m": id_municipio}
     if id_area:
         cond.append("a.id_area = :id_area")
         params["id_area"] = id_area

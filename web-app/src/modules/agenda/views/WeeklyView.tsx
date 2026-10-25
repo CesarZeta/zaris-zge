@@ -40,7 +40,6 @@ interface PendingMove {
 
 export function WeeklyView() {
   const fecha = useAgendaStore((s) => s.fechaActiva)
-  const idMun = useAgendaStore((s) => s.idMunicipio)
   const filtroRec = useAgendaStore((s) => s.filtroRecurso)
   const filtroSubarea = useAgendaStore((s) => s.filtroSubarea)
   const filtroUbicacion = useAgendaStore((s) => s.filtroUbicacion)
@@ -58,7 +57,7 @@ export function WeeklyView() {
     return toIsoDate(sumarDias(d, -restar))
   }, [fecha])
 
-  const sem = useCalendarioSemana(desde, 7, idMun, tipo_recurso, filtroSubarea, atendido, scopeSubareaPropia, idUbicacion)
+  const sem = useCalendarioSemana(desde, 7, tipo_recurso, filtroSubarea, atendido, scopeSubareaPropia, idUbicacion)
   const [eventoOpen, setEventoOpen] = useState<{ id: number | null } | null>(null)
   const [ocupOpen,   setOcupOpen]   = useState<{ ocupacion: Ocupacion | null } | null>(null)
   const [activeDrag, setActiveDrag] = useState<WeeklyDragPayload | null>(null)

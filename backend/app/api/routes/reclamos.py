@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.auth import get_current_user
+from app.core.municipio import municipio_actual
 from app.services import encuestas_service as svc_encuestas
 from app.services import notificaciones as svc_notif
 from app.services import push as svc_push
@@ -186,6 +187,39 @@ def _to_dict(row) -> dict:
     return d
 
 
+async def _reclamo_del_municipio(db: AsyncSession, id_reclamo: int, id_municipio: int) -> None:
+    """404 si el reclamo no existe o es de otro municipio (R3, IT-01). Después de esto las
+    consultas por id_reclamo quedan dentro del municipio: las FK compuestas no dejan cruzar."""
+    if not await db.scalar(text(
+            "SELECT 1 FROM reclamos WHERE id_reclamo = :id AND id_municipio = :mun"),
+            {"id": id_reclamo, "mun": id_municipio}):
+        raise HTTPException(status_code=404, detail=f"Reclamo {id_reclamo} no encontrado")
+
+
+_REFERENCIAS = {
+    "id_tipo_reclamo": ("tipo_reclamo", "Tipo de reclamo"),
+    "id_ciudadano": ("ciudadanos", "Ciudadano"),
+    "id_activo": ("activos", "Activo"),
+    "id_empresa": ("empresas", "Empresa"),
+}
+
+
+async def _validar_referencias(db: AsyncSession, id_municipio: int, **refs) -> None:
+    """422 si un id que llega en el body es de otro municipio o no existe (R4, IT-01).
+    Sin esta validación la FK compuesta lo frena igual, pero con un 500."""
+    for campo, valor in refs.items():
+        if valor in (None, ""):
+            continue
+        tabla, nombre = _REFERENCIAS[campo]
+        try:
+            valor = int(valor)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail=f"{nombre} inexistente")
+        if not await db.scalar(text(f"SELECT 1 FROM {tabla} WHERE {campo} = :v AND id_municipio = :mun"),
+                               {"v": valor, "mun": id_municipio}):
+            raise HTTPException(status_code=422, detail=f"{nombre} inexistente")
+
+
 async def _estados_desde_db(db: AsyncSession) -> set:
     r = await db.execute(text("SELECT nombre FROM estado_reclamo WHERE activo = TRUE"))
     rows = r.fetchall()
@@ -215,8 +249,9 @@ async def _insertar_historial(db: AsyncSession, id_reclamo: int, accion: str,
                                nota: str, id_usuario: int):
     await db.execute(text("""
         INSERT INTO reclamo_historial
-            (id_reclamo, accion, estado_anterior, estado_nuevo, nota, fecha_alta, id_usuario_alta)
-        VALUES (:id_r, :accion, :ant, :nuevo, :nota, NOW(), :uid)
+            (id_reclamo, accion, estado_anterior, estado_nuevo, nota, fecha_alta, id_usuario_alta, id_municipio)
+        SELECT :id_r, :accion, :ant, :nuevo, :nota, NOW(), :uid, r.id_municipio
+          FROM reclamos r WHERE r.id_reclamo = :id_r
     """), {
         "id_r": id_reclamo, "accion": accion,
         "ant": estado_anterior, "nuevo": estado_nuevo,
@@ -347,6 +382,7 @@ async def _terminar_ots_operativas(db: AsyncSession, id_reclamo: int,
 async def stats_reclamos(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     # Mismo scope que el listado (Fase 3): Supervisor/Gestión cuentan solo su
     # subárea (derivada del tipo, §27); Atención/Admin cuentan todo.
@@ -356,16 +392,16 @@ async def stats_reclamos(
             SELECT r.estado, COUNT(*) AS total
             FROM reclamos r
             JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
-            WHERE r.activo = TRUE AND tr.id_subarea = :sub
+            WHERE r.activo = TRUE AND tr.id_subarea = :sub AND r.id_municipio = :mun
             GROUP BY r.estado
-        """), {"sub": sub_scope})
+        """), {"sub": sub_scope, "mun": id_municipio})
     else:
         result = await db.execute(text("""
             SELECT estado, COUNT(*) AS total
             FROM reclamos
-            WHERE activo = TRUE
+            WHERE activo = TRUE AND id_municipio = :mun
             GROUP BY estado
-        """))
+        """), {"mun": id_municipio})
     return {r.estado: r.total for r in result.fetchall()}
 
 
@@ -375,10 +411,11 @@ async def stats_reclamos(
 async def catalogo_areas(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     result = await db.execute(text(
-        "SELECT id_area, nombre FROM area WHERE activo = TRUE ORDER BY nombre"
-    ))
+        "SELECT id_area, nombre FROM area WHERE activo = TRUE AND id_municipio = :mun ORDER BY nombre"
+    ), {"mun": id_municipio})
     return [dict(r._mapping) for r in result.fetchall()]
 
 
@@ -389,9 +426,10 @@ async def catalogo_subareas(
     id_area: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    cond = ["s.activo = TRUE"]
-    params: dict = {}
+    cond = ["s.activo = TRUE", "s.id_municipio = :mun"]
+    params: dict = {"mun": id_municipio}
     if id_area:
         cond.append("s.id_area = :id_area")
         params["id_area"] = id_area
@@ -414,13 +452,14 @@ async def catalogo_tipos(
     limit: int = Query(500, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """
     Lista tipos de reclamo. El área se deriva siempre de subarea.id_area
     (mig 27 eliminó la columna redundante tipo_reclamo.id_area).
     """
-    cond = ["tr.activo = TRUE"]
-    params: dict = {"lim": limit}
+    cond = ["tr.activo = TRUE", "tr.id_municipio = :mun"]
+    params: dict = {"lim": limit, "mun": id_municipio}
     if id_area:
         cond.append("s.id_area = :id_area")
         params["id_area"] = id_area
@@ -480,9 +519,10 @@ async def listar_reclamos(
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    conds = ["r.activo = TRUE"]
-    params: dict = {}
+    conds = ["r.activo = TRUE", "r.id_municipio = :mun"]
+    params: dict = {"mun": id_municipio}
     # El orden se resuelve ACÁ y no en pantalla: el listado tiene tope (limit) y
     # ordenar solo lo cargado escondería filas (2026-10-20: el reclamo del día
     # quedaba en la fila 192 de «Ver pendientes» sin forma de traerlo arriba).
@@ -565,6 +605,7 @@ async def obtener_reclamo(
     id_reclamo: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     result = await db.execute(text("""
         SELECT
@@ -608,8 +649,8 @@ async def obtener_reclamo(
         -- retrabajo, y el retrabajo que nació de la auditoría observada de este.
         LEFT JOIN reclamos ro ON ro.id_reclamo = r.id_reclamo_origen_auditoria
         LEFT JOIN reclamos rt ON rt.id_reclamo_origen_auditoria = r.id_reclamo AND rt.activo = TRUE
-        WHERE r.id_reclamo = :id AND r.activo = TRUE
-    """), {"id": id_reclamo})
+        WHERE r.id_reclamo = :id AND r.activo = TRUE AND r.id_municipio = :mun
+    """), {"id": id_reclamo, "mun": id_municipio})
     row = result.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail=f"Reclamo {id_reclamo} no encontrado")
@@ -668,6 +709,7 @@ async def crear_reclamo(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     # Crear reclamos es Atención/Supervisión/Admin (niveles 1-3). Gestión (4)
     # trabaja OTs y Consultor (5) solo lee. Cazado 2026-07-02: este POST no
@@ -679,6 +721,9 @@ async def crear_reclamo(
     for f in ["id_ciudadano", "descripcion", "id_tipo_reclamo"]:
         if not body.get(f):
             raise HTTPException(status_code=422, detail=f"Campo requerido: {f}")
+    await _validar_referencias(db, id_municipio, id_tipo_reclamo=body.get("id_tipo_reclamo"),
+                               id_ciudadano=body.get("id_ciudadano"), id_activo=body.get("id_activo"),
+                               id_empresa=body.get("id_empresa"))
 
     # direccion es el campo nuevo (§22); domicilio_reclamo se mantiene como alias entrante
     direccion = body.get("direccion") or body.get("domicilio_reclamo") or ""
@@ -733,6 +778,7 @@ async def crear_reclamo(
         if loc:
             data["id_localidad"] = loc["id_localidad"]
 
+    data["id_municipio"] = id_municipio
     try:
         # Resolver id_estado_fk de "Sin asignar" para nuevos reclamos
         r_est = await db.execute(text(
@@ -747,13 +793,13 @@ async def crear_reclamo(
                  domicilio_reclamo, prioridad, estado, id_estado_fk, observaciones,
                  latitud, longitud, id_localidad, id_activo, id_empresa, canal_origen,
                  fuente_geolocalizacion, activo, fecha_alta, fecha_modificacion,
-                 id_usuario_alta, id_usuario_modificacion)
+                 id_usuario_alta, id_usuario_modificacion, id_municipio)
             VALUES
                 (:id_ciudadano, :id_tipo_reclamo, :id_area, :descripcion, :direccion,
                  :direccion, :prioridad, 'Sin asignar', :id_estado_fk, :observaciones,
                  :latitud, :longitud, :id_localidad, :id_activo, :id_empresa, :canal_origen,
                  :fuente_geolocalizacion, TRUE, NOW(), NOW(),
-                 :id_usuario_alta, :id_usuario_alta)
+                 :id_usuario_alta, :id_usuario_alta, :id_municipio)
             RETURNING id_reclamo, nro_reclamo
         """), data)
         await db.commit()
@@ -786,6 +832,7 @@ async def cambiar_estado(
     body: dict,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     _require_supervisor(current_user)  # cambio de estado = supervisión (§30)
 
@@ -811,8 +858,9 @@ async def cambiar_estado(
         raise HTTPException(status_code=422, detail=f"Estado inválido: {nuevo_estado}")
 
     r = await db.execute(text(
-        "SELECT estado, id_reclamo_padre, id_tipo_reclamo FROM reclamos WHERE id_reclamo = :id AND activo = TRUE"
-    ), {"id": id_reclamo})
+        "SELECT estado, id_reclamo_padre, id_tipo_reclamo FROM reclamos WHERE id_reclamo = :id AND activo = TRUE "
+        "AND id_municipio = :mun"
+    ), {"id": id_reclamo, "mun": id_municipio})
     row = r.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail=f"Reclamo {id_reclamo} no encontrado")
@@ -943,6 +991,7 @@ async def tomar_reclamo(
     id_reclamo: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Crea la OT del reclamo a nombre de quien lo toma (su agente) y lo pasa a
     'En gestión'. Para municipios chicos donde el agente se autogestiona
@@ -956,8 +1005,8 @@ async def tomar_reclamo(
     # Lock del reclamo: dos personas que toman a la vez no crean dos OT.
     r = (await db.execute(text("""
         SELECT id_reclamo, estado, id_tipo_reclamo, nro_reclamo
-        FROM reclamos WHERE id_reclamo = :id AND activo = TRUE FOR UPDATE
-    """), {"id": id_reclamo})).fetchone()
+        FROM reclamos WHERE id_reclamo = :id AND activo = TRUE AND id_municipio = :mun FOR UPDATE
+    """), {"id": id_reclamo, "mun": id_municipio})).fetchone()
     if not r:
         raise HTTPException(status_code=404, detail=f"Reclamo {id_reclamo} no encontrado")
     acciones = await _acciones_reclamo(db, r, current_user)
@@ -969,16 +1018,17 @@ async def tomar_reclamo(
 
     perfil = await resolver_agente_desde_usuario(current_user["id_usuario"], db)
     id_agente = perfil["id_agente"]
-    await _validar_destinatario_ot(db, id_agente=id_agente)
+    await _validar_destinatario_ot(db, id_municipio=id_municipio, id_agente=id_agente)
     id_estado = await _id_estado_ot(db, "En gestión")
     ot = (await db.execute(text("""
         INSERT INTO ordenes_trabajo
             (id_reclamo, id_estado, id_agente, id_equipo, es_auditoria, asignacion_automatica,
              id_supervisor_asigna, activo, fecha_alta, fecha_modificacion,
-             id_usuario_alta, id_usuario_modificacion)
-        VALUES (:r, :e, :ag, NULL, FALSE, FALSE, :sup, TRUE, NOW(), NOW(), :uid, :uid)
+             id_usuario_alta, id_usuario_modificacion, id_municipio)
+        VALUES (:r, :e, :ag, NULL, FALSE, FALSE, :sup, TRUE, NOW(), NOW(), :uid, :uid, :mun)
         RETURNING id_ot, nro_ot
     """), {"r": id_reclamo, "e": id_estado, "ag": id_agente, "uid": current_user["id_usuario"],
+           "mun": id_municipio,
            # Quien asigna es un supervisor/admin solo si el que toma lo es.
            "sup": current_user["id_usuario"] if current_user.get("nivel_acceso") in (1, 2) else None})).fetchone()
     nro_ot = ot.nro_ot or f"OT-{ot.id_ot}"
@@ -1010,6 +1060,7 @@ async def resolver_reclamo(
     body: dict,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Resuelve el reclamo con un texto de resolución (obligatorio, lo ve el
     vecino en su app y en el aviso de cierre). Si tiene OT operativa abierta, la
@@ -1025,8 +1076,8 @@ async def resolver_reclamo(
 
     r = (await db.execute(text("""
         SELECT id_reclamo, estado, id_tipo_reclamo, id_reclamo_padre
-        FROM reclamos WHERE id_reclamo = :id AND activo = TRUE FOR UPDATE
-    """), {"id": id_reclamo})).fetchone()
+        FROM reclamos WHERE id_reclamo = :id AND activo = TRUE AND id_municipio = :mun FOR UPDATE
+    """), {"id": id_reclamo, "mun": id_municipio})).fetchone()
     if not r:
         raise HTTPException(status_code=404, detail=f"Reclamo {id_reclamo} no encontrado")
     if r.estado not in ("Sin asignar", "En gestión"):
@@ -1067,6 +1118,7 @@ async def enviar_a_auditoria(
     body: Optional[dict] = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Auditoría POSTERIOR al cierre (mig 112, PLAN_AUDITORIA_RECLAMOS.md).
 
@@ -1088,8 +1140,8 @@ async def enviar_a_auditoria(
         SELECT r.estado, r.nro_reclamo, tr.id_subarea
         FROM reclamos r
         LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
-        WHERE r.id_reclamo = :id AND r.activo = TRUE
-    """), {"id": id_reclamo})).fetchone()
+        WHERE r.id_reclamo = :id AND r.activo = TRUE AND r.id_municipio = :mun
+    """), {"id": id_reclamo, "mun": id_municipio})).fetchone()
     if not r:
         raise HTTPException(status_code=404, detail=f"Reclamo {id_reclamo} no encontrado")
     if r.estado != "Resuelto":
@@ -1124,8 +1176,8 @@ async def enviar_a_auditoria(
     id_auditor = body.get("id_agente_auditor")
     if id_auditor is not None:
         ag = (await db.execute(text(
-            "SELECT es_auditor FROM agentes WHERE id_agente = :id AND activo = TRUE"
-        ), {"id": id_auditor})).fetchone()
+            "SELECT es_auditor FROM agentes WHERE id_agente = :id AND activo = TRUE AND id_municipio = :mun"
+        ), {"id": id_auditor, "mun": id_municipio})).fetchone()
         if not ag or not ag.es_auditor:
             raise HTTPException(status_code=422,
                 detail=f"El agente {id_auditor} no es un auditor habilitado (agentes.es_auditor).")
@@ -1152,13 +1204,14 @@ async def enviar_a_auditoria(
     ot_row = (await db.execute(text("""
         INSERT INTO ordenes_trabajo
             (id_reclamo, id_estado, id_agente, es_auditoria, id_ot_origen, id_supervisor_asigna,
-             observaciones, activo, fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion)
+             observaciones, activo, fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion,
+             id_municipio)
         VALUES (:id_r, :id_est, :id_ag, TRUE, :id_orig, :uid,
-                :obs, TRUE, NOW(), NOW(), :uid, :uid)
+                :obs, TRUE, NOW(), NOW(), :uid, :uid, :mun)
         RETURNING id_ot, nro_ot
     """), {"id_r": id_reclamo, "id_est": est.id_estado_ot, "id_ag": id_auditor,
            "id_orig": ot_origen.id_ot if ot_origen else None, "uid": uid,
-           "obs": observaciones})).fetchone()
+           "obs": observaciones, "mun": id_municipio})).fetchone()
 
     await db.execute(text("""
         UPDATE reclamos
@@ -1197,13 +1250,14 @@ async def editar_reclamo(
     body: dict,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     _require_gestion(current_user)
 
     r = await db.execute(text("""
         SELECT id_ciudadano, estado FROM reclamos
-        WHERE id_reclamo = :id AND activo = TRUE
-    """), {"id": id_reclamo})
+        WHERE id_reclamo = :id AND activo = TRUE AND id_municipio = :mun
+    """), {"id": id_reclamo, "mun": id_municipio})
     row = r.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail=f"Reclamo {id_reclamo} no encontrado")
@@ -1220,6 +1274,7 @@ async def editar_reclamo(
     updates = {k: v for k, v in body.items() if k in permitidos}
     if not updates:
         raise HTTPException(status_code=422, detail="No hay campos editables en el body")
+    await _validar_referencias(db, id_municipio, **{k: updates[k] for k in _REFERENCIAS if k in updates})
 
     # Si cambia el tipo, re-derivar id_area desde subarea.id_area (fuente de verdad)
     if "id_tipo_reclamo" in updates and updates["id_tipo_reclamo"]:
@@ -1285,6 +1340,7 @@ async def cancelar_reclamo(
     body: dict,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     _require_supervisor(current_user)  # cancelar = cambio de estado a final (§30)
     motivo = body.get("motivo", "").strip()
@@ -1292,8 +1348,9 @@ async def cancelar_reclamo(
         raise HTTPException(status_code=422, detail="Campo 'motivo' requerido")
 
     r = await db.execute(text(
-        "SELECT estado, id_reclamo_padre FROM reclamos WHERE id_reclamo = :id AND activo = TRUE"
-    ), {"id": id_reclamo})
+        "SELECT estado, id_reclamo_padre FROM reclamos WHERE id_reclamo = :id AND activo = TRUE "
+        "AND id_municipio = :mun"
+    ), {"id": id_reclamo, "mun": id_municipio})
     row = r.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail=f"Reclamo {id_reclamo} no encontrado")
@@ -1394,6 +1451,7 @@ async def avisar_supervisor(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     """Fase 3 roles: el operador (nivel 3) NO cambia estados — genera un aviso
     a los supervisores (nivel 2) de la subárea del reclamo con la acción que
@@ -1416,8 +1474,9 @@ async def avisar_supervisor(
         raise HTTPException(422, "comentario: maximo 500 caracteres")
 
     r = (await db.execute(text(
-        "SELECT estado, nro_reclamo FROM reclamos WHERE id_reclamo = :id AND activo = TRUE"
-    ), {"id": id_reclamo})).fetchone()
+        "SELECT estado, nro_reclamo FROM reclamos WHERE id_reclamo = :id AND activo = TRUE "
+        "AND id_municipio = :mun"
+    ), {"id": id_reclamo, "mun": id_municipio})).fetchone()
     if not r:
         raise HTTPException(404, f"Reclamo {id_reclamo} no encontrado")
     if r.estado in ESTADOS_CERRADOS:
@@ -1458,6 +1517,7 @@ async def crear_subreclamo(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
 ):
     # Crear subreclamo desglosa el reclamo y pasa el padre a 'En espera' — es un
     # cambio de estado, exclusivo de Supervisión (§30). El operador toma nota o
@@ -1467,8 +1527,8 @@ async def crear_subreclamo(
     # Validar que el padre existe y no es él mismo un subreclamo
     r = await db.execute(text("""
         SELECT id_reclamo, id_ciudadano, id_empresa, id_reclamo_padre, estado
-        FROM reclamos WHERE id_reclamo = :id AND activo = TRUE
-    """), {"id": id_reclamo})
+        FROM reclamos WHERE id_reclamo = :id AND activo = TRUE AND id_municipio = :mun
+    """), {"id": id_reclamo, "mun": id_municipio})
     padre = r.fetchone()
     if not padre:
         raise HTTPException(status_code=404, detail=f"Reclamo {id_reclamo} no encontrado")
@@ -1480,6 +1540,9 @@ async def crear_subreclamo(
     for f in ["descripcion", "id_tipo_reclamo"]:
         if not body.get(f):
             raise HTTPException(status_code=422, detail=f"Campo requerido: {f}")
+    await _validar_referencias(db, id_municipio, id_tipo_reclamo=body.get("id_tipo_reclamo"),
+                               id_ciudadano=body.get("id_ciudadano"), id_activo=body.get("id_activo"),
+                               id_empresa=body.get("id_empresa"))
 
     direccion = body.get("direccion") or body.get("domicilio_reclamo") or ""
 
@@ -1538,6 +1601,7 @@ async def crear_subreclamo(
         if loc:
             data["id_localidad"] = loc["id_localidad"]
 
+    data["id_municipio"] = id_municipio
     try:
         r_est = await db.execute(text(
             "SELECT id_estado_reclamo FROM estado_reclamo WHERE nombre = 'Sin asignar' AND activo = TRUE LIMIT 1"
@@ -1551,13 +1615,13 @@ async def crear_subreclamo(
                  domicilio_reclamo, prioridad, estado, id_estado_fk, observaciones,
                  latitud, longitud, id_localidad, id_activo, id_empresa, canal_origen,
                  fuente_geolocalizacion, id_reclamo_padre, activo,
-                 fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion)
+                 fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion, id_municipio)
             VALUES
                 (:id_ciudadano, :id_tipo_reclamo, :id_area, :descripcion, :direccion,
                  :direccion, :prioridad, 'Sin asignar', :id_estado_fk, :observaciones,
                  :latitud, :longitud, :id_localidad, :id_activo, :id_empresa, :canal_origen,
                  :fuente_geolocalizacion, :id_reclamo_padre, TRUE,
-                 NOW(), NOW(), :id_usuario_alta, :id_usuario_alta)
+                 NOW(), NOW(), :id_usuario_alta, :id_usuario_alta, :id_municipio)
             RETURNING id_reclamo, nro_reclamo
         """), data)
         await db.commit()

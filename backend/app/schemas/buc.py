@@ -72,7 +72,7 @@ class UsuarioCreate(BaseModel):
     # identificador con el que /auth/login busca al usuario.
     email:        str = Field(..., max_length=150)
     id_cargo:     Optional[str] = Field(None, max_length=100)
-    id_municipio: int = Field(1)
+    # Sin id_municipio: la cuenta nace en el municipio de quien la crea (IT-01, R5).
     cuil:         Optional[str] = Field(None, max_length=11)
     buc_acceso:   bool = False
     id_subarea:   Optional[int] = None
@@ -96,7 +96,6 @@ class UsuarioUpdate(BaseModel):
     nombre:       Optional[str] = Field(None, max_length=150)
     nivel_acceso: Optional[int] = Field(None, ge=1, le=5)
     id_cargo:     Optional[str] = Field(None, max_length=100)
-    id_municipio: Optional[int] = None
     cuil:         Optional[str] = Field(None, max_length=11)
     buc_acceso:   Optional[bool] = None
     password:     Optional[str] = Field(None, min_length=8, max_length=100)
