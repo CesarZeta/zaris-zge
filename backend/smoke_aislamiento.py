@@ -166,12 +166,28 @@ def valor_para(nombre: str, anot, ids: dict, *, prof: int = 0) -> Any:
             return 1
         if t is float:
             return 1.0
+        # Valores que pasan la validación del body: si el request se frena en un 422 de
+        # validación, el handler no corre y el guard del municipio queda sin probar.
+        fin = any(x in nombre for x in ("fin", "hasta"))
         if t is dt.date:
             return dt.date.today().isoformat()
         if t is dt.datetime:
-            return dt.datetime.now().isoformat()
+            return (dt.datetime.now() + dt.timedelta(hours=1 if fin else 0)).isoformat()
         if t is dt.time:
-            return "10:00"
+            return "11:00" if fin else "10:00"
+        if t is str:
+            if "email" in nombre:
+                return "zz.prueba@prueba-aislamiento.com.ar"
+            if nombre in ("cuit", "cuil"):
+                return cuil_valido("30", "97000002")
+            if nombre in ("codigo", "nombre_interno"):
+                return "zz_prueba"
+            if "telefono" in nombre:
+                return "1164295018"
+            if nombre == "resultado":
+                return "pendiente"
+            if nombre == "tipo_dato":
+                return "booleano"
     return "ZZ-prueba"  # sin la marca: un error que repite el input no cuenta como filtración
 
 
@@ -196,6 +212,53 @@ def body_de(ruta: APIRoute, ids: dict) -> tuple[Optional[Any], bool]:
         con_b = any(POR_NOMBRE.get(k) in ids and v == ids[POR_NOMBRE[k]] for k, v in body.items())
         return body, con_b
     return {}, False
+
+
+# Mutaciones críticas que reciben un dict suelto (sin schema): el generador no sabe qué
+# campos esperan y el handler responde 422 ANTES del guard del municipio, así que el guard
+# queda sin probar (Tarea 7: «mutaciones con body válido»). (regex del path, body).
+_ADJUNTO = {"nombre_archivo": "zz.png", "mime_type": "image/png", "tamano_bytes": 10}
+_OBSERVAR = {"observaciones": "zz prueba de aislamiento", "generar_retrabajo": False}
+BODY_ESPECIAL: list[tuple[str, Any]] = [
+    (r"^/api/v1/reclamos/\d+/estado$", {"estado": "En espera"}),
+    (r"^/api/v1/reclamos/\d+/resolver$", {"resolucion": "zz prueba de aislamiento"}),
+    (r"^/api/v1/reclamos/\d+/cancelar$", {"motivo": "zz prueba de aislamiento"}),
+    (r"^/api/v1/reclamos/\d+/avisar-supervisor$", {"accion_sugerida": "Revisar", "comentario": "zz"}),
+    (r"^/api/v1/(reclamos|ot)/\d+/adjuntos/upload-url$", _ADJUNTO),
+    (r"^/api/v1/ot/\d+/reasignar$", lambda ids: {"id_agente": ids["agentes"], "nota": "zz"}),
+    (r"^/api/v1/ot/\d+/tomar$", lambda ids: {"id_agente": ids["agentes"]}),
+    (r"^/api/v1/ot/\d+/estado$", {"estado": "En espera"}),
+    (r"^/api/v1/ot/\d+/(rechazar|observar)$", _OBSERVAR),
+    (r"^/api/v1/admin/encuestas/disparar$", lambda ids: {"id_reclamo": ids["reclamos"]}),
+    (r"^/api/v1/tramites/[^/]+/aprobaciones/\d+/resolver$", {"decision": "aprobada", "observaciones": "zz"}),
+    # Schemas con validadores cruzados que el generador no satisface.
+    (r"^/api/v1/agenda/ocupaciones/\d+$", lambda ids: {"tipo_recurso": "agente", "id_recurso": ids["agentes"]}),
+    (r"^/api/v1/agenda/ocupaciones$", lambda ids: {
+        "tipo": "ot", "tipo_recurso": "agente", "id_recurso": ids["agentes"], "fecha": dt.date.today().isoformat(),
+        "hora_inicio": "10:00", "hora_fin": "11:00", "id_orden_trabajo": ids["ordenes_trabajo"]}),
+    (r"^/api/v1/turnos/prestaciones(/\d+)?$", lambda ids: {
+        "nombre": "zz", "tipo_recurso": "agente", "id_agente": ids["agentes"], "duracion_min": 30}),
+    (r"^/api/v1/admin/tramites/tipos$", lambda ids: {
+        "codigo": "zz_prueba_b", "nombre": "zz", "prefijo": "ZZB", "iniciadores_permitidos": ["ciudadano"],
+        "id_subarea": ids["subarea"]}),
+]
+
+
+def body_especial(path: str, ids: dict, metodo: str) -> Optional[dict]:
+    for patron, body in BODY_ESPECIAL:
+        if re.search(patron, path):
+            return body(ids) if callable(body) else body
+    # Maestros: PUT /admin/<tabla>/<id> solo toma las columnas de TABLE_CONFIG.
+    m = re.match(r"^/api/v1/admin/([a-z_]+)/\d+$", path)
+    if m and metodo == "PUT" and m.group(1) in TABLE_CONFIG:
+        cfg = TABLE_CONFIG[m.group(1)]
+        col = cfg["cols"][0]
+        tabla = POR_NOMBRE.get(col)
+        tipo = cfg.get("col_types", {}).get(col)
+        valor = (ids[tabla] if tabla in ids else
+                 dt.date.today().isoformat() if tipo == "date" else "10:00" if tipo == "time" else "ZZ-prueba")
+        return {col: valor}
+    return None
 
 
 QUERY_ESPECIAL = {
@@ -413,7 +476,11 @@ async def main() -> int:
                     for p, con_b in paths:
                         if not con_b and (not body_con_b or metodo != "POST" or NO_MUTAR_SIN_ID.search(p)):
                             continue  # sin ids de B no hay nada que probar (y no se tocan datos del municipio 1)
-                        r = await c.request(metodo, p, json=body, headers=h_a)
+                        # Con los query params requeridos (p. ej. ?activo= de /estado): sin ellos
+                        # el 422 de validación llega antes que el guard del municipio.
+                        cuerpo = body_especial(p, ids, metodo)
+                        r = await c.request(metodo, p, json=body if cuerpo is None else cuerpo,
+                                            params=query_de(ruta, ids), headers=h_a)
                         etiqueta = "mutación sobre id de B" if con_b else "alta con ids de B en el body"
                         revisar(p, metodo, r, True, etiqueta)
 

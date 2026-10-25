@@ -324,7 +324,7 @@ async def catalogo_estados_ot(
 async def mesa_supervisor(
     id_subarea: Optional[int] = Query(None),
     nro: Optional[str] = Query(None, max_length=30, description="Número de reclamo, parcial o completo (ILIKE)"),
-    nro_desde: Optional[int] = Query(None, ge=0, description="Parte secuencial del nro (ej. 56 para REC-2026-000056)"),
+    nro_desde: Optional[int] = Query(None, ge=0, description="Parte secuencial del nro (ej. 56 para REC-2026-000056 o REC-SAN-2026-000056)"),
     nro_hasta: Optional[int] = Query(None, ge=0),
     fecha_desde: Optional[date] = Query(None, description="fecha_alta del reclamo >= (YYYY-MM-DD)"),
     fecha_hasta: Optional[date] = Query(None, description="fecha_alta del reclamo <= (YYYY-MM-DD, inclusivo)"),
@@ -352,9 +352,10 @@ async def mesa_supervisor(
     if nro:
         conds.append("r.nro_reclamo ILIKE :nro")
         params["nro"] = f"%{nro.strip()}%"
-    # Rango por la parte secuencial del nro (formato REC-YYYY-NNNNNN, verificado
-    # 57/57 en prod). El CASE con regex evita un 500 si aparece un formato raro.
-    _nro_seq = r"(CASE WHEN r.nro_reclamo ~ '^REC-\d{4}-\d{6}$' THEN split_part(r.nro_reclamo, '-', 3)::int END)"
+    # Rango por la parte secuencial del nro: los últimos 6 dígitos, con el formato viejo
+    # REC-YYYY-NNNNNN y con el de IT-01 REC-<codigo>-YYYY-NNNNNN. El CASE con regex evita
+    # un 500 si aparece un formato raro.
+    _nro_seq = r"(CASE WHEN r.nro_reclamo ~ '^REC-([A-Z0-9]+-)?\d{4}-\d{6}$' THEN right(r.nro_reclamo, 6)::int END)"
     if nro_desde is not None:
         conds.append(f"{_nro_seq} >= :nro_desde")
         params["nro_desde"] = nro_desde

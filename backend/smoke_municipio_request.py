@@ -225,6 +225,33 @@ async def main() -> int:
             check(f"buscar {de_b} desde B lo encuentra",
                   r.status_code == 200 and any(x["nro_reclamo"] == de_b for x in r.json()), f"{r.status_code}")
 
+    # 9b. rango «Nº desde/hasta» de la mesa del supervisor (Foco 3): el secuencial es el
+    # último segmento con los dos formatos; si el formato nuevo no se entiende, la fila
+    # desaparece en silencio.
+    async with AsyncSessionLocal() as db:
+        pendientes = {}
+        for etiqueta, patron in (("formato viejo", "^REC-[0-9]{4}-[0-9]{6}$"),
+                                 ("formato nuevo", "^REC-[A-Z0-9]+-[0-9]{4}-[0-9]{6}$")):
+            pendientes[etiqueta] = (await db.execute(text(
+                "SELECT nro_reclamo FROM reclamos WHERE id_municipio = 1 AND activo AND nro_reclamo ~ :p "
+                "AND estado NOT IN ('Resuelto','Cancelado','En auditoría','Auditado') "
+                "ORDER BY id_reclamo DESC LIMIT 1"), {"p": patron})).scalar()
+        email_admin_1 = (await db.execute(text(
+            "SELECT email FROM usuarios WHERE id_usuario = :u"), {"u": admin_1})).scalar()
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        r = await login(c, email_admin_1)
+        ha = {"Authorization": f"Bearer {r.json()['access_token']}"}
+        for etiqueta, nro in pendientes.items():
+            if not nro:
+                check(f"hay un reclamo pendiente del municipio 1 con {etiqueta}", False)
+                continue
+            seq = int(nro[-6:])
+            r = await c.get("/api/v1/ot/mesa/supervisor",
+                            params={"nro_desde": seq, "nro_hasta": seq}, headers=ha)
+            check(f"mesa del supervisor con Nº {seq}-{seq} trae {nro} ({etiqueta})",
+                  r.status_code == 200 and any(x["nro_reclamo"] == nro for x in r.json()),
+                  f"{r.status_code} {[x['nro_reclamo'] for x in r.json()][:5] if r.status_code == 200 else r.text[:100]}")
+
     fallas = [r for r in RES if not r[1]]
     print(f"\nRESULTADO: {len(RES) - len(fallas)} OK / {len(fallas)} FAIL")
     return 1 if fallas else 0
