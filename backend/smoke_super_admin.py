@@ -477,11 +477,136 @@ async def test_global_super() -> None:
     check("dos filas catalogo_global", acciones.count("catalogo_global") == 2, str(acciones))
 
 
+# ── Tarea 5: endpoints del super administrador y registro para el municipio ──────────────────
+
+async def test_super_municipios() -> None:
+    print("\n15. /super/municipios")
+    await _contexto()
+    B = CTX["B"]
+    original = await _uno("SELECT nombre, subdominio, codigo_pais, pais, zona_horaria FROM municipios "
+                          "WHERE id_municipio = :b", {"b": B})
+    desde = await _ultimo_acceso()
+    async with _cliente() as c:
+        tok = await _token(c, EMAIL_SUPER)
+        r = await c.get("/api/v1/super/municipios", headers=_h(tok))
+        ids = {m["id_municipio"] for m in r.json()} if r.status_code == 200 else set()
+        check("el listado trae 1, 2 y B", r.status_code == 200 and {1, 2, B} <= ids, f"{r.status_code} {ids}")
+        cuerpo = {"nombre": original.nombre + " (editado)", "subdominio": original.subdominio,
+                  "codigo_pais": original.codigo_pais, "pais": original.pais, "zona_horaria": original.zona_horaria}
+        try:
+            r = await c.put(f"/api/v1/super/municipios/{B}", headers=_h(tok), json=cuerpo)
+            check("editar el nombre de B → 200", r.status_code == 200 and r.json().get("nombre") == cuerpo["nombre"],
+                  f"{r.status_code} {r.text[:120]}")
+            r = await c.put(f"/api/v1/super/municipios/{B}", headers=_h(tok),
+                            json={**cuerpo, "zona_horaria": "Marte/Olympus"})
+            check("zona horaria inválida → 422", r.status_code == 422, f"{r.status_code}")
+            uno = await _uno("SELECT nombre, codigo_pais, pais, zona_horaria FROM municipios WHERE id_municipio = 1")
+            r = await c.put("/api/v1/super/municipios/1", headers=_h(tok), json={
+                "nombre": uno.nombre, "subdominio": original.subdominio, "codigo_pais": uno.codigo_pais,
+                "pais": uno.pais, "zona_horaria": uno.zona_horaria})
+            check("el subdominio de B en el municipio 1 → 409", r.status_code == 409, f"{r.status_code} {r.text[:100]}")
+        finally:
+            await c.put(f"/api/v1/super/municipios/{B}", headers=_h(tok), json={**cuerpo, "nombre": original.nombre})
+        acciones = [(f.accion, f.id_municipio) for f in await _accesos_desde(desde)]
+        check("las ediciones quedan como municipio_editar", ("municipio_editar", B) in acciones, str(acciones))
+        t1 = await _token(c, CTX["admin_1"])
+        codigos = []
+        for metodo, ruta, cuerpo_r in [("GET", "/api/v1/super/municipios", None),
+                                       ("PUT", f"/api/v1/super/municipios/{B}", cuerpo),
+                                       ("POST", "/api/v1/super/seleccion", {"id_municipio": 1}),
+                                       ("GET", "/api/v1/super/config-global", None)]:
+            r = await c.request(metodo, ruta, headers=_h(t1), json=cuerpo_r)
+            codigos.append(r.status_code)
+        check("un admin de municipio → 403 en todo /super", codigos == [403] * 4, str(codigos))
+
+
+async def test_seleccion() -> None:
+    print("\n16. /super/seleccion")
+    await _contexto()
+    B = CTX["B"]
+    nombre_b = (await _uno("SELECT nombre FROM municipios WHERE id_municipio = :b", {"b": B})).nombre
+    desde = await _ultimo_acceso()
+    async with _cliente() as c:
+        tok = await _token(c, EMAIL_SUPER)
+        r = await c.post("/api/v1/super/seleccion", headers=_h(tok), json={"id_municipio": B})
+        check("elegir B → 200 con su nombre", r.status_code == 200 and r.json().get("id_municipio") == B
+              and r.json().get("nombre") == nombre_b, f"{r.status_code} {r.text[:120]}")
+        r = await c.post("/api/v1/super/seleccion", headers=_h(tok), json={"id_municipio": 2})
+        check("elegir el municipio inactivo → 404", r.status_code == 404, f"{r.status_code}")
+    check("queda la fila seleccion de B",
+          [(f.accion, f.id_municipio) for f in await _accesos_desde(desde)] == [("seleccion", B)])
+
+
+async def test_config_global() -> None:
+    print("\n17. /super/config-global")
+    await _contexto()
+    from app.core.config_municipio import leer_config
+    pwd = await _uno("SELECT id_config, valor FROM configuracion_general "
+                     "WHERE clave = 'password_renovacion_dias' AND id_municipio IS NULL")
+    de_1 = await _uno("SELECT id_config FROM configuracion_general WHERE id_municipio = 1 ORDER BY id_config LIMIT 1")
+    desde = await _ultimo_acceso()
+    async with _cliente() as c:
+        tok = await _token(c, EMAIL_SUPER)
+        r = await c.get("/api/v1/super/config-global", headers=_h(tok))
+        claves = [x["clave"] for x in r.json()] if r.status_code == 200 else []
+        check("lista password_renovacion_dias y ninguna vapid_*",
+              "password_renovacion_dias" in claves and not any(k.startswith("vapid_") for k in claves), str(claves))
+        try:
+            r = await c.put(f"/api/v1/super/config-global/{pwd.id_config}", headers=_h(tok), json={"valor": "300"})
+            check("editarla → 200", r.status_code == 200, f"{r.status_code} {r.text[:100]}")
+            async with AsyncSessionLocal() as db:
+                check("el municipio 1 lee el valor nuevo", await leer_config(db, "password_renovacion_dias", 1) == "300")
+            r = await c.put(f"/api/v1/super/config-global/{pwd.id_config}", headers=_h(tok), json={"valor": "abc"})
+            check("un entero inválido → 422", r.status_code == 422, f"{r.status_code}")
+        finally:
+            await c.put(f"/api/v1/super/config-global/{pwd.id_config}", headers=_h(tok), json={"valor": pwd.valor})
+        r = await c.put(f"/api/v1/super/config-global/{de_1.id_config}", headers=_h(tok), json={"valor": "x"})
+        check("una fila de un municipio → 404", r.status_code == 404, f"{r.status_code}")
+    filas = [f for f in await _accesos_desde(desde) if f.accion == "config_global"]
+    check("queda config_global con el antes y el después",
+          any((f.detalle or "").startswith(f"password_renovacion_dias: {pwd.valor} → 300") for f in filas),
+          str([f.detalle for f in filas]))
+
+
+async def test_auditoria_accesos_super() -> None:
+    print("\n18. /auditoria/accesos-super")
+    await _contexto()
+    B = CTX["B"]
+    async with _cliente() as c:
+        tok = await _token(c, EMAIL_SUPER)
+        await c.get(f"/api/v1/reclamos/{CTX['rec_B']}", headers=_h(tok, B))  # al menos una fila de B
+        await c.get(f"/api/v1/reclamos/{CTX['rec_1']}", headers=_h(tok, 1))  # y una del 1
+        tb = await _token(c, "admin.b@aislamiento.test")
+        r = await c.get("/api/v1/auditoria/accesos-super", headers=_h(tb), params={"limit": 200})
+        filas = r.json() if r.status_code == 200 else []
+        check("admin.b ve filas, todas de B", r.status_code == 200 and filas
+              and all(f["id_municipio"] == B for f in filas), f"{r.status_code} {str(filas)[:150]}")
+        check("con X-Total-Count expuesto", r.headers.get("X-Total-Count") is not None
+              and "X-Total-Count" in r.headers.get("Access-Control-Expose-Headers", ""), str(dict(r.headers))[:150])
+        check("con el nombre del usuario", bool(filas) and all(f.get("usuario") for f in filas), str(filas[:1]))
+        t1 = await _token(c, CTX["admin_1"])
+        r = await c.get("/api/v1/auditoria/accesos-super", headers=_h(t1), params={"limit": 200})
+        check("el admin del 1 no ve las de B", r.status_code == 200
+              and all(f["id_municipio"] == 1 for f in r.json()), f"{r.status_code}")
+        r = await c.get("/api/v1/auditoria/accesos-super", headers=_h(tb), params={"orden": "fecha", "dir": "asc"})
+        fechas = [f["fecha_hora"] for f in r.json()] if r.status_code == 200 else []
+        check("orden=fecha&dir=asc ordena", r.status_code == 200 and fechas == sorted(fechas), f"{r.status_code}")
+        r = await c.get("/api/v1/auditoria/accesos-super", headers=_h(tb), params={"orden": "basura"})
+        check("orden=basura → 422", r.status_code == 422, f"{r.status_code}")
+        tsb = await _token(c, "super.b@aislamiento.test")
+        r = await c.get("/api/v1/auditoria/accesos-super", headers=_h(tsb))
+        check("un supervisor (nivel 2) → 403", r.status_code == 403, f"{r.status_code}")
+        area = await _uno("SELECT id_area FROM area WHERE id_municipio = 1 ORDER BY id_area LIMIT 1")
+        r = await c.get(f"/api/v1/admin/area/{area.id_area}", headers=_h(t1))
+        check("el greedy de Maestros sigue vivo (GET /admin/area/<id>)", r.status_code == 200, f"{r.status_code}")
+
+
 TESTS = [test_constraints_nivel_0, test_seed_super_admin, test_password_renovacion_global,
          test_registrar_acceso_super, test_registro_falla_cierra,
          test_login_super, test_header_super, test_header_invalido, test_header_ignorado_para_comunes,
          test_super_degradado, test_nivel_efectivo, test_recuperar_super,
-         test_escaladas_admin, test_global_super]
+         test_escaladas_admin, test_global_super,
+         test_super_municipios, test_seleccion, test_config_global, test_auditoria_accesos_super]
 
 
 async def main() -> int:

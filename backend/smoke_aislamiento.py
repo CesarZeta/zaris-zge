@@ -100,6 +100,8 @@ SALTEAR: list[tuple[str, str]] = [
     (r"^/api/v1/demo/", "generador demo con token de dispatcher (Tarea 18)"),
     (r"^/api/v1/admin/permisos/modulos/\{codigo\}", "catálogo global de módulos (habilitación por municipio en F4)"),
     (r"/geo/(buscar|reverse)", "llama a Nominatim; el bbox por municipio se prueba en la Tarea 9"),
+    (r"^/api/v1/super/", "exclusivas del super administrador, sobre lo global (IT-01 F3): las prueba "
+                         "smoke_super_admin.py, con 403 para todo administrador de municipio"),
 ]
 NO_MUTAR_SIN_ID = re.compile(r"^/api/v1/(auth|demo|publico/auth|publico/alta|usuarios|tramites/mantenimiento)|"
                              r"dispatch|/push/|cambiar-password|/config/identidad")
