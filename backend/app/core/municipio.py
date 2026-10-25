@@ -12,6 +12,11 @@ Punto único: ningún router lee el municipio de un query param, del body ni de 
 Origen → municipio: `<sub>.zge|vecinos|agentes.zaris.com.ar` → `municipios.subdominio = sub`.
 Sin subdominio (sin Origin, zge.zaris.com.ar, cesarzeta.github.io, localhost) → el municipio con
 `direccion_base`. Plan: PLAN_MULTI_MUNICIPIO_F1_F2.md, Tarea 6.
+
+Super administrador (IT-01 F3): `municipio_actual` es el ÚNICO lugar que lee el header
+X-Municipio, y solo para `es_super_admin`; a cualquier otra cuenta se le ignora. Cada request
+válida del super administrador deja una fila en super_admin_acceso antes de que corra el handler.
+Plan: PLAN_MULTI_MUNICIPIO_F3.md, Tarea 3.
 """
 import logging
 import re
@@ -29,8 +34,10 @@ from app.core.database import get_db
 logger = logging.getLogger("zaris.municipio")
 
 _PATRON_HOST = re.compile(r"^(?P<sub>[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\.(?:zge|vecinos|agentes)\.zaris\.com\.ar$")
+_PATRON_ID = re.compile(r"^[0-9]{1,9}$")
 _TTL_SEGUNDOS = 60
-_cache: dict = {"vence": 0.0, "por_subdominio": {}, "base": None}
+_cache: dict = {"vence": 0.0, "por_subdominio": {}, "base": None, "ids_activos": set()}
+HEADER_MUNICIPIO = "X-Municipio"
 
 
 def subdominio_de_origen(origin: Optional[str]) -> Optional[str]:
@@ -51,6 +58,7 @@ async def _municipios(db: AsyncSession) -> dict:
             "SELECT id_municipio, subdominio, direccion_base FROM municipios WHERE activo = TRUE"))).fetchall()
         _cache["por_subdominio"] = {r.subdominio: r.id_municipio for r in rows if r.subdominio}
         _cache["base"] = next((r.id_municipio for r in rows if r.direccion_base), None)
+        _cache["ids_activos"] = {r.id_municipio for r in rows}
         _cache["vence"] = time.monotonic() + _TTL_SEGUNDOS
     return _cache
 
@@ -115,9 +123,28 @@ async def municipio_por_slug(db: AsyncSession, slug: str) -> dict:
     return {"id_municipio": row.id_municipio, "nombre": row.nombre, "slug": row.codigo_corto}
 
 
-async def municipio_actual(current_user: dict = Depends(get_current_user)) -> int:
-    """Municipio del funcionario logueado (claim `mun` del JWT, ya validado contra la base y el origen)."""
-    return current_user["id_municipio"]
+async def municipio_actual(request: Request, current_user: dict = Depends(get_current_user),
+                           db: AsyncSession = Depends(get_db)) -> int:
+    """Municipio del funcionario logueado: el claim `mun` del JWT, ya validado contra la base y el
+    origen. Para el super administrador, el del header X-Municipio (elegido en el selector), que
+    queda registrado; para cualquier otra cuenta el header se ignora."""
+    if not current_user.get("es_super_admin"):
+        return current_user["id_municipio"]
+    crudo = (request.headers.get(HEADER_MUNICIPIO) or "").strip()
+    if not crudo:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Elegí un municipio en el selector")
+    if not _PATRON_ID.match(crudo):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Municipio inválido")
+    id_mun = int(crudo)
+    if id_mun not in (await _municipios(db))["ids_activos"]:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Municipio no encontrado")
+    from app.services.accesos_super import registrar_acceso_super
+    from app.utils.request_helpers import get_real_ip
+    await registrar_acceso_super(
+        id_usuario=current_user["id_usuario"], accion="request", id_municipio=id_mun,
+        metodo=request.method, ruta=request.url.path, ip=get_real_ip(request),
+        user_agent=request.headers.get("user-agent"))
+    return id_mun
 
 
 async def municipio_vecino(ciudadano: dict = Depends(get_current_ciudadano)) -> int:

@@ -172,8 +172,230 @@ async def test_registro_falla_cierra() -> None:
     check("y no deja fila", await _accesos_desde(desde) == [])
 
 
+# ── Tarea 3: login, token y municipio por header ──────────────────────────────────────────────
+from jose import jwt  # noqa: E402
+
+from app.middleware import rate_limit as _rate_limit  # noqa: E402
+
+ORIGEN_B = "https://aislamiento.zge.zaris.com.ar"
+SESION_VENCIDA = "Sesión vencida. Volvé a ingresar."
+CTX: dict = {}  # ids y tokens de la corrida
+
+
+def _cliente() -> httpx.AsyncClient:
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+
+
+async def _login(c: httpx.AsyncClient, ident: str, origen: str | None = None,
+                 clave: str = CLAVE) -> httpx.Response:
+    # El límite de intentos es en memoria y no es lo que se prueba acá: se vacía antes de cada login.
+    _rate_limit._buckets.clear()
+    h = {"Origin": origen} if origen else {}
+    return await c.post("/api/v1/auth/login", json={"identificador": ident, "password": clave}, headers=h)
+
+
+async def _token(c: httpx.AsyncClient, ident: str) -> str:
+    """Token cacheado por corrida. Las cuentas de B (`*.b@aislamiento.test`) entran desde su dirección."""
+    clave = f"tok:{ident}"
+    if clave not in CTX:
+        r = await _login(c, ident, ORIGEN_B if ident.endswith(".b@aislamiento.test") or
+                         ident == "admin.b@aislamiento.test" else None)
+        if r.status_code != 200:
+            raise RuntimeError(f"login de {ident}: {r.status_code} {r.text[:120]}")
+        CTX[clave] = r.json()["access_token"]
+    return CTX[clave]
+
+
+def _h(tok: str, mun=None) -> dict:
+    h = {"Authorization": f"Bearer {tok}"}
+    if mun is not None:
+        h["X-Municipio"] = str(mun)
+    return h
+
+
+async def _contexto() -> None:
+    if "B" in CTX:
+        return
+    from seed_municipio_aislamiento import ids_aislamiento
+    async with AsyncSessionLocal() as db:
+        ids = await ids_aislamiento(db)
+        CTX["B"] = ids["municipio"]
+        CTX["rec_B"] = ids["reclamos"]
+        CTX["rec_1"] = (await db.execute(text(
+            "SELECT id_reclamo FROM reclamos WHERE id_municipio = 1 AND activo ORDER BY id_reclamo LIMIT 1"))).scalar()
+        CTX["admin_1"] = (await db.execute(text(
+            "SELECT email FROM usuarios WHERE id_municipio = 1 AND nivel_acceso = 1 AND activo AND email LIKE '%@%' "
+            "ORDER BY id_usuario LIMIT 1"))).scalar()
+        CTX["id_super"] = (await db.execute(text(
+            "SELECT id_usuario FROM usuarios WHERE lower(email) = :e AND nivel_acceso = 0"), {"e": EMAIL_SUPER})).scalar()
+
+
+async def test_login_super() -> None:
+    print("\n6. Login del super administrador")
+    await _contexto()
+    async with AsyncSessionLocal() as db:
+        logs_antes = (await db.execute(text("SELECT count(*) FROM usuario_login_log WHERE id_usuario = :u"),
+                                       {"u": CTX["id_super"]})).scalar()
+    desde = await _ultimo_acceso()
+    async with _cliente() as c:
+        r1 = await _login(c, EMAIL_SUPER)
+        r2 = await _login(c, EMAIL_SUPER, ORIGEN_B)
+    check("login sin Origin → 200", r1.status_code == 200, f"{r1.status_code} {r1.text[:120]}")
+    check("login desde el subdominio de B → 200", r2.status_code == 200, f"{r2.status_code} {r2.text[:120]}")
+    if r1.status_code != 200:
+        return
+    CTX[f"tok:{EMAIL_SUPER}"] = r1.json()["access_token"]
+    cl = jwt.get_unverified_claims(r1.json()["access_token"])
+    check("el token tiene sa=True y no tiene mun", cl.get("sa") is True and "mun" not in cl, str(cl))
+    u = r1.json()["user"]
+    check("user: nivel 0, sin municipio, es_super_admin",
+          u.get("nivel_acceso") == 0 and u.get("id_municipio") is None and u.get("es_super_admin") is True,
+          str({k: u.get(k) for k in ("nivel_acceso", "id_municipio", "es_super_admin")}))
+    filas = await _accesos_desde(desde)
+    check("dos filas login, globales", [(f.accion, f.id_municipio) for f in filas] == [("login", None)] * 2,
+          str(filas))
+    async with AsyncSessionLocal() as db:
+        logs = (await db.execute(text("SELECT count(*) FROM usuario_login_log WHERE id_usuario = :u"),
+                                 {"u": CTX["id_super"]})).scalar()
+    check("no escribe usuario_login_log", logs == logs_antes, f"{logs_antes} → {logs}")
+
+
+async def test_header_super() -> None:
+    print("\n7. Municipio por header (super administrador)")
+    await _contexto()
+    desde = await _ultimo_acceso()
+    async with _cliente() as c:
+        tok = await _token(c, EMAIL_SUPER)
+        rb = await c.get(f"/api/v1/reclamos/{CTX['rec_B']}", headers=_h(tok, CTX["B"]))
+        r1 = await c.get(f"/api/v1/reclamos/{CTX['rec_B']}", headers=_h(tok, 1))
+    check("con X-Municipio B ve el reclamo de B", rb.status_code == 200 and "AISLAB" in rb.text,
+          f"{rb.status_code} {rb.text[:120]}")
+    check("con X-Municipio 1 el reclamo de B da 404", r1.status_code == 404, f"{r1.status_code}")
+    filas = await _accesos_desde(desde)
+    check("una fila request por request, con su municipio",
+          [(f.accion, f.id_municipio, f.metodo, f.ruta) for f in filas]
+          == [("request", CTX["B"], "GET", f"/api/v1/reclamos/{CTX['rec_B']}"),
+              ("request", 1, "GET", f"/api/v1/reclamos/{CTX['rec_B']}")], str(filas))
+
+
+async def test_header_invalido() -> None:
+    print("\n8. X-Municipio inválido")
+    await _contexto()
+    desde = await _ultimo_acceso()
+    casos = [(None, 400, "Elegí un municipio en el selector"), ("", 400, "Elegí un municipio en el selector"),
+             ("abc", 400, "Municipio inválido"), ("-1", 400, "Municipio inválido"),
+             ("1,2", 400, "Municipio inválido"), ("1234567890", 400, "Municipio inválido"),
+             ("2", 404, "Municipio no encontrado"), ("999999", 404, "Municipio no encontrado")]
+    async with _cliente() as c:
+        tok = await _token(c, EMAIL_SUPER)
+        for valor, status, detalle in casos:
+            r = await c.get(f"/api/v1/reclamos/{CTX['rec_B']}", headers=_h(tok, valor))
+            check(f"X-Municipio={valor!r} → {status} «{detalle}»",
+                  r.status_code == status and r.json().get("detail") == detalle, f"{r.status_code} {r.text[:120]}")
+    check("ninguno deja una fila request", await _accesos_desde(desde) == [])
+
+
+async def test_header_ignorado_para_comunes() -> None:
+    print("\n9. X-Municipio ignorado para las demás cuentas")
+    await _contexto()
+    async with _cliente() as c:
+        tb = await _token(c, "admin.b@aislamiento.test")
+        t1 = await _token(c, CTX["admin_1"])
+        r = await c.get(f"/api/v1/reclamos/{CTX['rec_B']}", headers=_h(tb, 1))
+        check("admin.b con X-Municipio 1 sigue viendo B", r.status_code == 200 and "AISLAB" in r.text,
+              f"{r.status_code}")
+        r = await c.get(f"/api/v1/reclamos/{CTX['rec_1']}", headers=_h(tb, 1))
+        check("admin.b con X-Municipio 1 no ve el municipio 1", r.status_code == 404, f"{r.status_code}")
+        r = await c.get(f"/api/v1/reclamos/{CTX['rec_B']}", headers=_h(t1, CTX["B"]))
+        check("admin del 1 con X-Municipio B no ve B", r.status_code == 404, f"{r.status_code}")
+        r = await c.get(f"/api/v1/reclamos/{CTX['rec_1']}", headers=_h(t1, CTX["B"]))
+        check("admin del 1 con X-Municipio B sigue viendo el 1", r.status_code == 200, f"{r.status_code}")
+
+
+async def test_super_degradado() -> None:
+    print("\n10. Super administrador que deja de serlo")
+    await _contexto()
+    sup = CTX["id_super"]
+
+    async def _set(sql: str) -> None:
+        async with AsyncSessionLocal() as db:
+            await db.execute(text(sql), {"u": sup})
+            await db.commit()
+
+    async with _cliente() as c:
+        tok = await _token(c, EMAIL_SUPER)
+        try:
+            r = await c.get("/api/v1/auth/me", headers=_h(tok))
+            check("vigente: /auth/me → 200", r.status_code == 200, f"{r.status_code} {r.text[:100]}")
+            await _set("UPDATE usuarios SET nivel_acceso = 1, id_municipio = 1 WHERE id_usuario = :u")
+            r = await c.get("/api/v1/auth/me", headers=_h(tok))
+            check("pasado a nivel 1 → 401 sesión vencida",
+                  r.status_code == 401 and r.json().get("detail") == SESION_VENCIDA, f"{r.status_code} {r.text[:100]}")
+            await _set("UPDATE usuarios SET nivel_acceso = 0, id_municipio = NULL WHERE id_usuario = :u")
+            await _set("UPDATE usuarios SET activo = FALSE WHERE id_usuario = :u")
+            r = await c.get("/api/v1/auth/me", headers=_h(tok))
+            check("desactivado → 401", r.status_code == 401, f"{r.status_code}")
+        finally:
+            await _set("UPDATE usuarios SET nivel_acceso = 0, id_municipio = NULL, activo = TRUE WHERE id_usuario = :u")
+        r = await c.get("/api/v1/auth/me", headers=_h(tok))
+        check("restaurado → 200", r.status_code == 200, f"{r.status_code}")
+
+
+async def test_nivel_efectivo() -> None:
+    print("\n11. Nivel efectivo 1 y módulos del super administrador")
+    await _contexto()
+    async with _cliente() as c:
+        tok = await _token(c, EMAIL_SUPER)
+        r = await c.put("/api/v1/config/identidad", json={"municipio_nombre": "AISLAB no se guarda"},
+                        headers=_h(tok, CTX["B"]))
+        check("pasa el guard de nivel 1 (identidad de B → 409, no 403)", r.status_code == 409,
+              f"{r.status_code} {r.text[:120]}")
+        me = (await c.get("/api/v1/auth/me", headers=_h(tok))).json()
+        check("/auth/me: nivel 0, es_super_admin y el módulo municipios",
+              me.get("nivel_acceso") == 0 and me.get("es_super_admin") is True
+              and "municipios" in (me.get("modulos_permitidos") or []),
+              str({k: me.get(k) for k in ("nivel_acceso", "es_super_admin")}))
+        t1 = await _token(c, CTX["admin_1"])
+        me1 = (await c.get("/api/v1/auth/me", headers=_h(t1))).json()
+        check("un admin de nivel 1 no tiene municipios", "municipios" not in (me1.get("modulos_permitidos") or []),
+              str(me1.get("modulos_permitidos")))
+        check("y no es super administrador", me1.get("es_super_admin") is False, str(me1.get("es_super_admin")))
+
+
+async def test_recuperar_super() -> None:
+    print("\n12. Olvidé mi contraseña del super administrador")
+    await _contexto()
+    sup = CTX["id_super"]
+    async with AsyncSessionLocal() as db:  # sin la pausa de 5 min entre mails (corridas seguidas)
+        await db.execute(text("UPDATE usuarios SET fecha_ultimo_email_recovery = NULL WHERE id_usuario = :u"),
+                         {"u": sup})
+        await db.commit()
+    async with _cliente() as c:
+        _rate_limit._buckets.clear()
+        r = await c.post("/api/v1/auth/recuperar-password", json={"email": EMAIL_SUPER})
+        check("recuperar-password → 200", r.status_code == 200, f"{r.status_code}")
+        async with AsyncSessionLocal() as db:
+            tok_rec = (await db.execute(text("SELECT token_recovery::text FROM usuarios WHERE id_usuario = :u"),
+                                        {"u": sup})).scalar()
+        check("deja un token de reseteo en la cuenta", tok_rec is not None)
+        if tok_rec is None:
+            return
+        r = await c.post("/api/v1/auth/resetear-password", json={"token": tok_rec, "password_nueva": "ClaveSuper2026"})
+        check("resetear-password → 200", r.status_code == 200, f"{r.status_code} {r.text[:100]}")
+        r = await _login(c, EMAIL_SUPER, clave="ClaveSuper2026")
+        check("entra con la clave nueva", r.status_code == 200, f"{r.status_code}")
+    import bcrypt
+    async with AsyncSessionLocal() as db:  # vuelve a la clave de desarrollo
+        await db.execute(text("UPDATE usuarios SET password_hash = :h, debe_cambiar_password = FALSE "
+                              "WHERE id_usuario = :u"),
+                         {"h": bcrypt.hashpw(CLAVE.encode(), bcrypt.gensalt()).decode(), "u": sup})
+        await db.commit()
+
+
 TESTS = [test_constraints_nivel_0, test_seed_super_admin, test_password_renovacion_global,
-         test_registrar_acceso_super, test_registro_falla_cierra]
+         test_registrar_acceso_super, test_registro_falla_cierra,
+         test_login_super, test_header_super, test_header_invalido, test_header_ignorado_para_comunes,
+         test_super_degradado, test_nivel_efectivo, test_recuperar_super]
 
 
 async def main() -> int:
