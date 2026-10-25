@@ -111,8 +111,26 @@ async def chk_id_municipio_completo(conn) -> None:
         if not col:
             problemas.append(f"{t}: sin columna")
             continue
-        if col[0] != "NO":
+        # IT-01 F3 (mig 127): usuarios admite NULL solo para el super administrador (nivel 0),
+        # y lo garantiza ck_usuarios_municipio_nivel.
+        excepcion_super = t == "usuarios" and bool(await conn.scalar(text(
+            "SELECT 1 FROM pg_constraint WHERE conname = 'ck_usuarios_municipio_nivel'")))
+        if col[0] != "NO" and not excepcion_super:
             problemas.append(f"{t}: nullable")
+        if excepcion_super:
+            mal = await conn.scalar(text(
+                "SELECT count(*) FROM usuarios WHERE (id_municipio IS NULL) <> (nivel_acceso = 0)"))
+            if mal:
+                problemas.append(f"usuarios: {mal} filas con municipio y nivel incoherentes")
+            fk = await conn.scalar(text("""
+                SELECT count(*) FROM pg_constraint c
+                  JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+                 WHERE c.conrelid = 'usuarios'::regclass AND c.contype = 'f'
+                   AND c.confrelid = 'municipios'::regclass AND a.attname = 'id_municipio'
+                   AND array_length(c.conkey, 1) = 1"""))
+            if not fk:
+                problemas.append("usuarios: sin FK a municipios")
+            continue
         fk = await conn.scalar(text("""
             SELECT count(*) FROM pg_constraint c
               JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
@@ -139,8 +157,15 @@ async def chk_config_dividida(conn) -> None:
     if not tiene_col:
         _reg("config_dividida", False, "configuracion_general sin id_municipio")
         return
+    # Globales esperadas: las vapid_* (F1) y, desde la mig 127b (IT-01 F3), la renovación de claves,
+    # que es un parámetro de seguridad global que ningún municipio sobrescribe.
     globales_no_vapid = [r[0] for r in await conn.execute(text(
-        "SELECT clave FROM configuracion_general WHERE id_municipio IS NULL AND clave NOT LIKE 'vapid\\_%'"))]
+        "SELECT clave FROM configuracion_general WHERE id_municipio IS NULL AND clave NOT LIKE 'vapid\\_%' "
+        "AND clave <> 'password_renovacion_dias'"))]
+    globales_no_vapid += [f"{r[0]} (por municipio)" for r in await conn.execute(text(
+        "SELECT clave FROM configuracion_general WHERE id_municipio IS NOT NULL "
+        "AND clave = 'password_renovacion_dias' "
+        "AND to_regclass('public.super_admin_acceso') IS NOT NULL"))]
     vapid_no_globales = [r[0] for r in await conn.execute(text(
         "SELECT clave FROM configuracion_general WHERE id_municipio IS NOT NULL AND clave LIKE 'vapid\\_%'"))]
     otro_municipio = await conn.scalar(text(
