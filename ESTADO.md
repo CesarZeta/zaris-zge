@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-10-24 (Cesar). **Implementación de IT-01 F1+F2 (multi-municipio) en la rama `it01-multi-municipio`, sin mergear y sin tocar prod:** César aprobó el plan [`PLAN_MULTI_MUNICIPIO_F1_F2.md`](PLAN_MULTI_MUNICIPIO_F1_F2.md) y se ejecutó en local hasta la Tarea 18. Queda a medias la Tarea 19 (mig 126 escrita sin aplicar; `CLAUDE.md`, historial y skills ya actualizados en la rama). La Tarea 20, el corte en prod, se hace con César. `main` no cambió de código.
+**Última actualización:** 2026-10-24, 2ª sesión (Cesar). **IT-01 F1+F2: Tarea 19 cerrada en local** (rama `it01-multi-municipio`, `3dd9c39`, pusheada, sin mergear): mig 126 aplicada en local, barrido de aislamiento completo (393 rutas) en 0 fallas, todos los smokes en verde y recorrido con clics del shell local. Revisión final de la rama en curso; **el corte en prod (Tarea 20) es el domingo 2026-10-25 con César**. En `main`: Config → Sistema ya no muestra `ot_pendiente_dias_vencimiento` (`d2fa720`). En prod: Arbolado pasó a «Asigna a mano».
 
 ---
 
@@ -18,28 +18,20 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **IT-01: terminar la Tarea 19 y agendar el corte en prod (Tarea 20).** Rama `it01-multi-municipio`; detalle en la memoria privada de Cesar y en el registro local de la ejecución. Recomendación:
-   - Próxima sesión técnica: aplicar la 126 en local, barrido de aislamiento completo, todos los smokes, recorrido con clics y commit.
-   - Después, una ventana corta con César para el corte: migs 125-125d antes del deploy y 126 después. Todos vuelven a ingresar porque los tokens viejos no tienen `mun`; avisar a Roy.
-2. **Cuatro decisiones de F2 para revisar.** Recomendación: aceptarlas; se revisan en F3, en F4 o en el lote de limpieza.
-   - (a) Las tablas globales de Maestros solo las edita el administrador del municipio base hasta F3. A otro administrador, Maestros → Municipios le da 403.
-   - (b) Un municipio sin claves de configuración propias recibe 409 al guardar su identidad (el UNIQUE global de la clave sigue hasta el lote de limpieza).
-   - (c) En el alta pública, un DNI, CUIL o CUIT que ya existe en otro municipio da 409: todavía no hay fichas de una misma persona en dos municipios.
-   - (d) `/demo/poblar` con JWT solo lo dispara el administrador del municipio demo.
-3. **Asignación automática — revisar ~2026-10-29:** carga de los agentes de las 18 gestiones que asignan solas (en varias hay UN solo agente de nivel Gestión que recibe todo; en Arbolado es el funcionario de prueba, que recibe todos los reclamos de esa gestión). Recomendación: no esperar al 29 para Arbolado — sumar agentes o marcarla «Asigna a mano».
-4. **Commits viejos de las dos purgas:** César mandó el pedido a GitHub Support el 2026-10-22; sin respuesta al 2026-10-23 → volver a preguntar el lunes 2026-10-26 (detalle en la memoria privada de Cesar).
-5. **Base de conocimiento de ayudas:** la próxima sesión completa es para eso (César, 2026-10-23). Mientras tanto no se tocan manuales.
-6. Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
-7. **Primer cierre real de un trámite de vecino en prod:** confirma el aviso «terminó: APROBADO/RECHAZADO» y la encuesta (probados solo en local). Agendado por César: en los próximos smokes con cuentas reales de reclamos se cierran también trámites; César pasa algunos trámites para eso.
-8. **Clave sin uso en Config → Sistema (2026-10-23):** `ot_pendiente_dias_vencimiento` se muestra y se edita, pero ningún código del backend la lee. Recomendación: sacarla de la pantalla (o definir qué debería hacer).
+1. **IT-01: corte en prod (Tarea 20) el domingo 2026-10-25 con César.** La Tarea 19 quedó cerrada el 2026-10-24 y la revisión final de la rama está en curso; si encuentra algo grave, se corrige antes del corte. Migs 125-125d antes del deploy y 126 después. Todos vuelven a ingresar porque los tokens viejos no tienen `mun`; avisar a Roy.
+2. **Asignación automática — revisar ~2026-10-29:** carga de los agentes de las 17 gestiones que asignan solas (en varias hay UN solo agente de nivel Gestión que recibe todo). Arbolado pasó a «Asigna a mano» el 2026-10-24 (su único agente de nivel Gestión era el funcionario de prueba).
+3. **Commits viejos de las dos purgas:** César mandó el pedido a GitHub Support el 2026-10-22; sin respuesta al 2026-10-23 → volver a preguntar el lunes 2026-10-26 (detalle en la memoria privada de Cesar).
+4. **Base de conocimiento de ayudas:** la próxima sesión completa es para eso (César, 2026-10-23). Mientras tanto no se tocan manuales.
+5. Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
+6. **Primer cierre real de un trámite de vecino en prod:** confirma el aviso «terminó: APROBADO/RECHAZADO» y la encuesta (probados solo en local). Agendado por César: en los próximos smokes con cuentas reales de reclamos se cierran también trámites; César pasa algunos trámites para eso.
 
 ---
 
 ## 🔵 En curso
 
 - **IT-01 F1+F2 (multi-municipio), rama `it01-multi-municipio`, sin mergear:**
-  - Tareas 1-18 de [`PLAN_MULTI_MUNICIPIO_F1_F2.md`](PLAN_MULTI_MUNICIPIO_F1_F2.md) hechas en local: migs 125-125d en `zaris_dev`, todos los routers y procesos por municipio, barrido de aislamiento contra un municipio de prueba en 0 fallas por tarea, smokes en verde.
-  - Tarea 19 a medias (mig 126 escrita sin aplicar). Tarea 20 = corte en prod con César.
+  - Tareas 1-19 de [`PLAN_MULTI_MUNICIPIO_F1_F2.md`](PLAN_MULTI_MUNICIPIO_F1_F2.md) hechas en local: migs 125-126 en `zaris_dev`, todos los routers y procesos por municipio, barrido de aislamiento completo contra un municipio de prueba en 0 fallas, smokes en verde, recorrido con clics.
+  - Revisión final de la rama en curso. Tarea 20 = corte en prod con César, domingo 2026-10-25.
   - El registro de la ejecución (decisiones por tarea) está en el worktree de Cesar, fuera del repo.
 - **PWA `zaris-vecinos` — modo escritorio del portal: diseño aprobado el 2026-10-12 (3ª), falta plan + código.** Solo toca el repo de la PWA; spec y pasos en su `ESTADO.md` → En curso.
 - **PROPUESTA sin aprobar — app de agentes: reclamos de oficio + «Control de entradas» (QR).** Pedido de César al cierre del 2026-10-12; las 4 decisiones de alcance ya están tomadas (de oficio · niveles 1-4 · acreditar niveles 1-4 · nombre «Control de entradas») y el diseño está escrito en [`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md). **Próxima sesión: César confirma o corrige el diseño y recién ahí F1 (backend sin migración + smoke).** No hay código.
@@ -67,7 +59,7 @@
 
 **Decisiones cerradas — NO re-proponer**
 - **Ayudas: una sola página de base de conocimiento con preguntas, no manuales por módulo** (César, 2026-10-22). No se crean ni actualizan `docs/manual_*.html` mientras tanto (CLAUDE.md §36). Diseño pendiente (pregunta 4).
-- **Multi-municipio: UNA base para todos con `id_municipio`** (César, 2026-10-23) — no re-proponer una base por municipio. **Módulo de documentos de identidad por país: tema reservado**; lo trae César cuando quiera (investigación hecha, `docs/investigacion_documentos_identidad.md`).
+- **Multi-municipio: UNA base para todos con `id_municipio`** (César, 2026-10-23) — no re-proponer una base por municipio. **Las cuatro decisiones de F2 quedan aceptadas** (César, 2026-10-24): tablas globales de Maestros solo para el administrador del municipio base hasta F3; 409 al guardar la identidad sin claves propias; 409 en el alta pública con un documento de otro municipio; `/demo/poblar` con JWT solo para el administrador del municipio demo. Se revisan en F3, F4 o el lote de limpieza. **Módulo de documentos de identidad por país: tema reservado**; lo trae César cuando quiera (investigación hecha, `docs/investigacion_documentos_identidad.md`).
 - **Orden por columnas: quedan afuera** las colas operativas (Mesa del día, Guardia, Conflictos, Pendientes de contacto), las tablas con orden propio (historia clínica, historial de accesos, builder de trámites) y la configuración (Catálogo de módulos, Plantillas); Entradas usa selector «Ordenar por»; el desplegable «Ordenar» viejo se reemplazó por encabezados + columna «Alta» (César, 2026-10-22).
 - **São Paulo DESCARTADO (César, 2026-09-26, con medición):** Railway ya está co-locado con Supabase `us-east-1` y no ofrece región en Sudamérica. Detalle en CLAUDE.md §9 «Región».
 - **"La ubicación" de Buscar actualizaciones (PWA) CERRADA como innecesaria** (2026-09-26): el service worker con `autoUpdate` alcanza.
@@ -81,6 +73,7 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
+- **2026-10-24 (2ª) — IT-01 Tarea 19 cerrada en local** (mig 126, barrido completo en 0 fallas, smokes y recorrido con clics); Config → Sistema sin `ot_pendiente_dias_vencimiento` (`d2fa720`); Arbolado «Asigna a mano» en prod.
 - **2026-10-24 — IT-01 F1+F2 en la rama `it01-multi-municipio` (Tareas 1-18, local).** Cubre Emergencias, Agenda, Turnos, Trámites, Encuestas, portal del vecino, Datos, Configuración, Maestros, los procesos de cron y el generador demo, todo por municipio. `smoke_demo_sla` volvió a verde (45/45). Sin cambios en `main` ni en prod.
 - **2026-10-23 (3ª) — Diseño de IT-01** ([`PLAN_MULTI_MUNICIPIO.md`](PLAN_MULTI_MUNICIPIO.md), con la guía de arranque y la investigación de documentos como anexos); borradores de Trámites publicados y verificados en prod; `www.zaris.com.ar` arreglado.
 
