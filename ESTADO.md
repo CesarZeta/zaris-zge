@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-10-24, 2ª sesión (Cesar). **IT-01 F1+F2: Tarea 19 cerrada en local** (rama `it01-multi-municipio`, `3dd9c39`, pusheada, sin mergear): mig 126 aplicada en local, barrido de aislamiento completo (393 rutas) en 0 fallas, todos los smokes en verde y recorrido con clics del shell local. Revisión final de la rama hecha (`0484751`); **el corte en prod (Tarea 20) es el domingo 2026-10-25 con César**. En `main`: Config → Sistema ya no muestra `ot_pendiente_dias_vencimiento` (`d2fa720`). En prod: Arbolado pasó a «Asigna a mano».
+**Última actualización:** 2026-10-25 (Cesar). **IT-01 F1+F2 EN PROD: corte hecho** (Tarea 20, con César). Migraciones 125-125d aplicadas con el código viejo andando, después el merge `6c92cb6` a `main`, el deploy de Railway y la 126. Verificado en prod: conteos por tabla y de los listados iguales a los de antes del corte. Los tokens viejos dan 401, y en el shell, la PWA y la app de agentes la sesión vieja lleva al login sin bucle y el login nuevo entra. El primer número nuevo es `REC-SAN-2026-003161` (reclamo de prueba, queda en prod). El dispatcher de encuestas ya corre por municipio. **Todos tienen que volver a ingresar una vez.**
 
 ---
 
@@ -18,7 +18,10 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **IT-01: corte en prod (Tarea 20) el domingo 2026-10-25 con César.** La Tarea 19 y la revisión final de la rama quedaron hechas el 2026-10-24: sin agujeros de aislamiento; se corrigió el filtro «Nº desde/hasta» de la mesa de OT para los números nuevos (`0484751`). Los pre-chequeos de prod de solo lectura dieron bien. Migs 125-125d antes del deploy y 126 después. Todos vuelven a ingresar porque los tokens viejos no tienen `mun`; avisar a Roy.
+1. **IT-01, después del corte del 2026-10-25:**
+   - El lunes 2026-10-26 revisar los logs de los 3 crons diarios (trámites, integridad, datos demo), que esa madrugada corren por primera vez por municipio en prod.
+   - Siguiente fase: **F3, super administrador**.
+   - Antes de F4: el **lote de limpieza** (DROP de los únicos globales viejos, lo corre César en el SQL Editor) y los menores que solo aparecen con un segundo municipio (ver Pendientes).
 2. **Asignación automática — revisar ~2026-10-29:** carga de los agentes de las 17 gestiones que asignan solas (en varias hay UN solo agente de nivel Gestión que recibe todo). Arbolado pasó a «Asigna a mano» el 2026-10-24 (su único agente de nivel Gestión era el funcionario de prueba).
 3. **Commits viejos de las dos purgas:** César mandó el pedido a GitHub Support el 2026-10-22; sin respuesta al 2026-10-23 → volver a preguntar el lunes 2026-10-26 (detalle en la memoria privada de Cesar).
 4. **Base de conocimiento de ayudas:** la próxima sesión completa es para eso (César, 2026-10-23). Mientras tanto no se tocan manuales.
@@ -29,10 +32,9 @@
 
 ## 🔵 En curso
 
-- **IT-01 F1+F2 (multi-municipio), rama `it01-multi-municipio`, sin mergear:**
-  - Tareas 1-19 de [`PLAN_MULTI_MUNICIPIO_F1_F2.md`](PLAN_MULTI_MUNICIPIO_F1_F2.md) hechas en local: migs 125-126 en `zaris_dev`, todos los routers y procesos por municipio, barrido de aislamiento completo contra un municipio de prueba en 0 fallas, smokes en verde, recorrido con clics.
-  - Revisión final de la rama hecha (`0484751`). Tarea 20 = corte en prod con César, domingo 2026-10-25.
-  - El registro de la ejecución (decisiones por tarea) está en el worktree de Cesar, fuera del repo.
+- **IT-01 multi-municipio: F1+F2 en prod desde el 2026-10-25** ([`PLAN_MULTI_MUNICIPIO_F1_F2.md`](PLAN_MULTI_MUNICIPIO_F1_F2.md), las 20 tareas hechas).
+  - Próximo: **F3 (super administrador)**: nivel 0, selector de municipio, registro de accesos y `password_renovacion_dias` global ([`PLAN_MULTI_MUNICIPIO.md`](PLAN_MULTI_MUNICIPIO.md)).
+  - Orden propuesto para después: lote de limpieza → F4 → F5 (antes hay que elegir el hosting del shell: Vercel o Cloudflare Pages) → F6. Recién con F1-F6 hechas puede entrar un segundo municipio real.
 - **PWA `zaris-vecinos` — modo escritorio del portal: diseño aprobado el 2026-10-12 (3ª), falta plan + código.** Solo toca el repo de la PWA; spec y pasos en su `ESTADO.md` → En curso.
 - **PROPUESTA sin aprobar — app de agentes: reclamos de oficio + «Control de entradas» (QR).** Pedido de César al cierre del 2026-10-12; las 4 decisiones de alcance ya están tomadas (de oficio · niveles 1-4 · acreditar niveles 1-4 · nombre «Control de entradas») y el diseño está escrito en [`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md). **Próxima sesión: César confirma o corrige el diseño y recién ahí F1 (backend sin migración + smoke).** No hay código.
 - **App de agentes** publicada en `https://agentes.zaris.com.ar` (color del municipio, instalación desde «Mi perfil»); el vecino instala la suya desde su portal. Detalle en `zaris-agentes/ESTADO.md`.
@@ -50,8 +52,14 @@
 - 🟠 **Atención — residuos del plan (§4):** "ocupación vs disponibilidad efectiva" en el BI de atención · etapa 2 de HC (vista admin de `historia_clinica_acceso`, break-the-glass, ficha ampliada) · walk-in de Guardia sin evento de Emergencias.
 - 🟠 **Trámites — residuo:** los 4 tipos sin circuito (exención de tasas, permiso de espacio público, arbolado urbano, inscripción profesional) tienen la gestión asignada por criterio de Claude, cambiable desde el builder.
 - 🟠 **Áreas fijas por regla de negocio** (planteado 2026-08-30): Seguridad, Salud, Servicios Públicos… precargadas y NO removibles (renombrables sí) porque atienden módulos. Sin código todavía: diseño dentro de [`PLAN_MULTI_MUNICIPIO.md`](PLAN_MULTI_MUNICIPIO.md) (se crean en el alta de cada municipio con marca de sistema); la lista son las 6 áreas activas de San Andrés (César, 2026-10-23).
-- 🟠 **Config/UX — reunión 2026-07-06** (tarea "Informe Bug" de la lista CONFIGURACION y UX de ClickUp): **IT-01** multi-tenant + super administrador + selector de municipio — **diseño en [`PLAN_MULTI_MUNICIPIO.md`](PLAN_MULTI_MUNICIPIO.md), aprobado; F1+F2 en curso en la rama `it01-multi-municipio` (ver En curso); fases F3-F7 después del corte** · **IT-08** botón SOS de la PWA · **IT-07** accesibilidad móvil (PWA) · **IT-09** módulo de Obras (backlog sin alcance).
+- 🟠 **Config/UX — reunión 2026-07-06** (tarea "Informe Bug" de la lista CONFIGURACION y UX de ClickUp): **IT-01** multi-tenant + super administrador + selector de municipio — **diseño en [`PLAN_MULTI_MUNICIPIO.md`](PLAN_MULTI_MUNICIPIO.md), aprobado; F1+F2 en prod desde el 2026-10-25; sigue F3 (ver En curso)** · **IT-08** botón SOS de la PWA · **IT-07** accesibilidad móvil (PWA) · **IT-09** módulo de Obras (backlog sin alcance).
 - 🟢 **Baja de cuenta del vecino:** sin endpoint ni definición; obligatoria si la app va a las stores.
+- 🟠 **IT-01 — menores diferidos de la revisión final de F1+F2.** Ninguno afecta a San Andrés solo.
+  - **Antes de F4, con el lote de limpieza** (solo aparecen con un segundo municipio): con los únicos globales viejos, un DNI, CUIL o CUIT que ya existe en otro municipio da 500 en el alta de la BUC, en el registro público y en el placeholder de CUIL de Emergencias, y un 409 engañoso («el horario acaba de ser tomado») en el alta por DNI de Agenda. El límite de intentos del login por mail lo comparten todos los municipios.
+  - **UX:** un token válido usado desde un subdominio desconocido responde «Sesión vencida» en vez de «Municipio no encontrado» (va con F5).
+  - **Preexistentes:** Maestros da 500 con una fecha inválida (`_coerce_types`) y 400 con el texto crudo de la base al crear. El revisor recomienda un manejador global de FK violada → 422.
+  - **Herramientas:** el barrido cuenta un 429 como «sin probar» sin fallar. Los placeholders «Ej: REC-2026-000001» de las mesas de OT muestran todavía el formato viejo.
+- 🟢 **PWA — Configuración con sesión vieja:** si el vecino entra directo a `/configuracion` con un token vencido, la página se queda ahí (no borra la sesión ni manda al login). No hay bucle, y al volver al inicio cae en el login. Esa página no maneja el 401 por su cuenta, como sí lo hacen las demás (visto en el corte del 2026-10-25; repo `zaris-vecinos`).
 
 **Infra / operativo**
 - 🟡 **Vercel: los deploys de Roy quedan BLOCKED** (autor fuera del team; plan Hobby, sumar miembros exige Pro — decisión de facturación de César). **EN PAUSA** mientras Roy no esté activo; mitigación `git merge --no-ff` o commit vacío de re-trigger.
@@ -73,12 +81,11 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
-- **2026-10-24 (2ª) — IT-01 Tarea 19 cerrada en local** (mig 126, barrido completo en 0 fallas, smokes y recorrido con clics); Config → Sistema sin `ot_pendiente_dias_vencimiento` (`d2fa720`); Arbolado «Asigna a mano» en prod.
-- **2026-10-24 — IT-01 F1+F2 en la rama `it01-multi-municipio` (Tareas 1-18, local).** Cubre Emergencias, Agenda, Turnos, Trámites, Encuestas, portal del vecino, Datos, Configuración, Maestros, los procesos de cron y el generador demo, todo por municipio. `smoke_demo_sla` volvió a verde (45/45). Sin cambios en `main` ni en prod.
+- **2026-10-25 — IT-01 F1+F2 en prod (corte, Tarea 20).**
+  - Backup completo previo. Migs 125-125d, merge `6c92cb6`, deploy de Railway y mig 126.
+  - Verificado: conteos, 401 de los tokens viejos, las 4 superficies en el navegador, `REC-SAN-2026-003161` y el dispatcher por municipio. Detalle en `HISTORIAL_MIGRACIONES.md`.
+- **2026-10-24 — IT-01 F1+F2 en la rama (Tareas 1-19 y revisión final, local)**; Config → Sistema sin `ot_pendiente_dias_vencimiento` (`d2fa720`); Arbolado «Asigna a mano» en prod.
 - **2026-10-23 (3ª) — Diseño de IT-01** ([`PLAN_MULTI_MUNICIPIO.md`](PLAN_MULTI_MUNICIPIO.md), con la guía de arranque y la investigación de documentos como anexos); borradores de Trámites publicados y verificados en prod; `www.zaris.com.ar` arreglado.
-
-- **2026-10-23 (2ª) — Trámites: el cierre sella el resultado (migs 123 + 124)** y los botones del agente salen coloreados por acción. Detalle en `HISTORIAL_MIGRACIONES.md` y en la skill `modulo-tramites`.
-- **2026-10-23 (1ª) — SLA en minutos (mig 120), asignación automática general (mig 121), buscador de un solo campo, mig 122; revisión de PHP2Shell (ZARIS no afectado).** Detalle en `HISTORIAL_MIGRACIONES.md`. Ciudadano 1618 = prueba de Roy.
 
 > Detalle por migración en `HISTORIAL_MIGRACIONES.md`; reglas de cada módulo en su skill; lo anterior a septiembre (julio-agosto 2026: auditoría de seguridad 48/48, migs 95-102, BI Operativo/Ejecutivo, PWA de Roy a prod, Usuarios en React) en `HISTORIAL_MIGRACIONES.md` y la memoria privada de César.
 
