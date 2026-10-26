@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-10-26 (Cesar). **IT-01 F1+F2 en prod desde el 2026-10-25** (todos vuelven a ingresar una vez). **F3, super administrador: tareas 1 a 9 hechas en la rama `it01-f3-super-admin`** (`29abaad`, subida, sin merge). Probadas en local: suite completa 22/22, barridos de aislamiento sin fallas en los tres modos y recorrido en el navegador. Las migraciones 127 y 127b están **solo en local**. Faltan la revisión final de la rama (en curso al cerrar) y el corte en prod (tarea 10, con César).
+**Última actualización:** 2026-10-26 (Cesar). **IT-01 F1+F2 en prod desde el 2026-10-25** (todos vuelven a ingresar una vez). **F3, super administrador: tareas 1 a 9 hechas en la rama `it01-f3-super-admin`** (`29abaad`, sin merge; 127 y 127b solo en local). En local pasaron la suite (22/22), los barridos y el recorrido en el navegador. Faltan los arreglos de la revisión final y el corte en prod (pregunta 1).
 
 ---
 
@@ -19,29 +19,36 @@
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
 1. **IT-01 F3 (super administrador), antes del corte:**
-   - **Revisión final de la rama:** quedó corriendo al cierre del 2026-10-26. El informe se guarda en el workspace local del plan (`.superpowers/sdd/PLAN_MULTI_MUNICIPIO_F3/final_review.md`, en el worktree de la rama). Si no llegó, se relanza. Lo Crítico y lo Importante se arregla en una sola pasada (test que falla primero, suite verde); lo Menor queda anotado.
+   - **Revisión final de la rama: HECHA el 2026-10-26, veredicto «con arreglos».** Encontró 1 crítico y 4 importantes:
+     - crítico: una pantalla de Turnos le muestra contenido clínico al super administrador sin pedirle el motivo;
+     - un parámetro global se puede pisar desde un municipio;
+     - el selector no se sincroniza entre pestañas;
+     - hay guards del frontend que dejan al super administrador sin funciones de nivel 1;
+     - dos ediciones globales se registran después de guardarse.
+     Además hay 6 menores. El detalle está en el registro local del plan (`progress.md`, líneas `Final:`, en el worktree de la rama). **La pasada de arreglos va antes del corte** (test que falla primero, suite verde).
    - **Decisión — arreglo del sidebar:** en prod, los ítems que el usuario no tiene permitidos se ven igual, porque el `display: flex` del ítem pisa el `hidden`. Pasa desde antes de F3. El arreglo es una línea de CSS que ya está en la rama (`.nav-flat__item[hidden] { display: none }`, `frontend/css/menu.css`). **Recomendación: pasarlo ya a `main` como arreglo aparte**, sin esperar el corte.
    - **Corte en prod (tarea 10, con César):**
      - César da el email de la cuenta nueva, que no se escribe en el repo.
      - César corre la 127 en el SQL Editor (lleva DROP) y la 127b se aplica por MCP.
+     - Antes de la 127b, revisar en prod las columnas NOT NULL sin default de `modulos` (la 127b inserta una fila).
      - Merge y deploy; marcador: el path exacto `/api/v1/super/municipios` en `/openapi.json`.
      - Alta de la cuenta con `seed_super_admin.py --imprimir-sql` y `execute_sql`.
      - César elige la clave con «Olvidé mi contraseña».
      - Verificar el login, el selector «Operando en» y el registro de accesos.
    - Después: **F3b (segundo factor)** antes del primer municipio real; el **lote de limpieza** (DROP de los únicos globales viejos, en el SQL Editor) y los menores de Pendientes antes de F4.
    - Hoy, lunes 2026-10-26: revisar los logs de los 3 crons diarios (trámites, integridad, datos demo). Es la primera madrugada que corren por municipio en prod; al cierre todavía no habían corrido.
-2. **Asignación automática — revisar ~2026-10-29:** carga de los agentes de las 17 gestiones que asignan solas (en varias hay UN solo agente de nivel Gestión que recibe todo). Arbolado pasó a «Asigna a mano» el 2026-10-24 (su único agente de nivel Gestión era el funcionario de prueba).
+2. **Asignación automática — revisar ~2026-10-29:** carga de los agentes de las 17 gestiones que asignan solas (en varias, UN solo agente de nivel Gestión recibe todo).
 3. **Commits viejos de las dos purgas:** César mandó el pedido a GitHub Support el 2026-10-22; sin respuesta al 2026-10-23 → volver a preguntar el lunes 2026-10-26 (detalle en la memoria privada de Cesar).
 4. **Base de conocimiento de ayudas:** la próxima sesión completa es para eso (César, 2026-10-23). Mientras tanto no se tocan manuales.
 5. Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
-6. **Primer cierre real de un trámite de vecino en prod:** confirma el aviso «terminó: APROBADO/RECHAZADO» y la encuesta (probados solo en local). Agendado por César: en los próximos smokes con cuentas reales de reclamos se cierran también trámites; César pasa algunos trámites para eso.
+6. **Primer cierre real de un trámite de vecino en prod:** confirma el aviso de resultado y la encuesta (probados solo en local). Va con los próximos smokes con cuentas reales; César pasa los trámites.
 
 ---
 
 ## 🔵 En curso
 
 - **IT-01 multi-municipio.** F1+F2 están en prod desde el 2026-10-25 ([`PLAN_MULTI_MUNICIPIO_F1_F2.md`](PLAN_MULTI_MUNICIPIO_F1_F2.md)).
-  - **F3, super administrador** ([`PLAN_MULTI_MUNICIPIO_F3.md`](PLAN_MULTI_MUNICIPIO_F3.md)): tareas 1 a 9 en la rama `it01-f3-super-admin`; faltan la revisión final y el corte (pregunta 1). Trae nivel 0 sin municipio con selector «Operando en» (`X-Municipio`), registro `super_admin_acceso` inalterable que ve el administrador del municipio, módulo Municipios, «Parámetros globales» e historia clínica con motivo.
+  - **F3, super administrador** ([`PLAN_MULTI_MUNICIPIO_F3.md`](PLAN_MULTI_MUNICIPIO_F3.md)): tareas 1 a 9 en la rama `it01-f3-super-admin`; faltan los arreglos de la revisión final y el corte (pregunta 1). Trae nivel 0 sin municipio con selector «Operando en» (`X-Municipio`), registro `super_admin_acceso` inalterable que ve el administrador del municipio, módulo Municipios, «Parámetros globales» e historia clínica con motivo.
   - Orden para después: F3b (segundo factor) → lote de limpieza → F4 → F5 (antes hay que elegir el hosting del shell: Vercel o Cloudflare Pages) → F6. Recién con F1-F6 hechas puede entrar un segundo municipio real.
 - **PWA `zaris-vecinos` — modo escritorio del portal: diseño aprobado el 2026-10-12 (3ª), falta plan + código.** Solo toca el repo de la PWA; spec y pasos en su `ESTADO.md` → En curso.
 - **PROPUESTA sin aprobar — app de agentes: reclamos de oficio + «Control de entradas» (QR).** Diseño en [`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md); César lo confirma o corrige antes de F1. No hay código.
