@@ -13,6 +13,7 @@ import {
   listarTurnos,
   listarUbicaciones,
   listarAtencionesGuardia,
+  contenidoAtencionesGuardia,
   atenderGuardia,
   ausenteGuardia,
   mesaUbicacion,
@@ -257,6 +258,21 @@ export function useAtencionesGuardia(fecha?: string, opts: { enabled?: boolean }
     staleTime: 10 * 1000,
     refetchInterval: 30 * 1000,
     enabled: opts.enabled ?? true,
+  })
+}
+
+/** Contenido clínico de las cerradas del día (intervención/recomendaciones). Se pide al abrir
+ *  «Cerradas en el día» y NO se refresca solo: cada lectura queda en el registro de accesos de
+ *  la historia clínica. Mismo criterio de cache que useHistoriaClinica. */
+export function useContenidoGuardia(fecha: string | undefined, enabled: boolean, motivo?: string) {
+  return useQuery({
+    queryKey: ['turnos', 'guardia', 'contenido', fecha ?? 'hoy', motivo ?? null],
+    queryFn: () => contenidoAtencionesGuardia(fecha, motivo),
+    enabled,
+    staleTime: 30 * 1000,
+    gcTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+    retry: false,
   })
 }
 

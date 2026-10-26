@@ -223,9 +223,11 @@ export const MOTIVO_SUPER_MIN = 10
 
 /** El super administrador no hereda el acceso del administrador: abre una historia
  *  clínica declarando el motivo, que queda registrado y lo ve el administrador del municipio. */
-export function MotivoSuperForm({ onConfirmar, compacto = false }: {
+export function MotivoSuperForm({ onConfirmar, compacto = false, etiqueta = 'Ver historia' }: {
   onConfirmar: (motivo: string) => void
   compacto?: boolean
+  /** Texto del botón (la mesa de la Guardia dice «Ver el contenido»). */
+  etiqueta?: string
 }) {
   const [texto, setTexto] = useState('')
   const largo = texto.trim().length
@@ -249,7 +251,7 @@ export function MotivoSuperForm({ onConfirmar, compacto = false }: {
         style={areaMotivo}
       />
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <Button variant="primary" type="submit" disabled={largo < MOTIVO_SUPER_MIN}>Ver historia</Button>
+        <Button variant="primary" type="submit" disabled={largo < MOTIVO_SUPER_MIN}>{etiqueta}</Button>
         <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>
           {largo < MOTIVO_SUPER_MIN ? `Al menos ${MOTIVO_SUPER_MIN} caracteres (${largo})` : 'Listo'}
         </span>

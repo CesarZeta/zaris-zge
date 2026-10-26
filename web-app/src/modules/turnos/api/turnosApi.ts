@@ -98,6 +98,11 @@ export const mesaUbicacion = (id_espacio: number, fecha?: string) =>
 export const listarAtencionesGuardia = (fecha?: string, estado?: string) =>
   api.get<GuardiaAtencion[]>('/api/v1/turnos/guardia/atenciones', { params: { fecha, estado } })
 
+/** La misma lista CON intervención y recomendaciones: pasa por el guard de historia clínica y cada
+ *  paciente de la BUC queda registrado (403 sin permiso). `motivo`: el del super administrador. */
+export const contenidoAtencionesGuardia = (fecha?: string, motivo?: string) =>
+  api.get<GuardiaAtencion[]>('/api/v1/turnos/guardia/atenciones', { params: { fecha, contenido: true, motivo } })
+
 export const atenderGuardia = (id_atencion: number, body: GuardiaAtenderBody) =>
   api.patch<GuardiaAtencion>(`/api/v1/turnos/guardia/atenciones/${id_atencion}/atender`, body)
 

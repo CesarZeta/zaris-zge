@@ -7,13 +7,21 @@
  * Refresca solo cada 30 s (las derivaciones las crea otro puesto). Las
  * pendientes se listan siempre, de cualquier día; las cerradas, las del día
  * de la mesa.
+ *
+ * La intervención y las recomendaciones de las cerradas son contenido clínico:
+ * la lista que se refresca no las trae. Se piden al abrir «Cerradas en el día»
+ * con el mismo guard y registro de accesos que la historia clínica; el super
+ * administrador declara antes el motivo.
  */
 import { useEffect, useState } from 'react'
 import { Check, RefreshCw, Siren, UserX } from 'lucide-react'
-import { useAtencionesGuardia, useAtenderGuardia, useAusenteGuardia, usePuedeHistoriaClinica } from '../hooks/useTurnos'
+import {
+  useAtencionesGuardia, useAtenderGuardia, useAusenteGuardia, useContenidoGuardia,
+  useHistoriaClinicaPermiso, usePuedeHistoriaClinica,
+} from '../hooks/useTurnos'
 import { Modal } from '../../agenda/components/Modal'
 import { CiudadanoSearch } from '../../agenda/components/CiudadanoSearch'
-import { BotonHistoriaClinica, HistoriaClinicaModal, HistoriaClinicaPanel } from './HistoriaClinica'
+import { BotonHistoriaClinica, HistoriaClinicaModal, HistoriaClinicaPanel, MotivoSuperForm } from './HistoriaClinica'
 import { useNotificationsStore } from '../../../stores/notifications'
 import type { CiudadanoMinimo } from '../../agenda/types/agenda'
 import type { GuardiaAtencion, GuardiaAtenderBody } from '../types/turno'
@@ -53,6 +61,19 @@ export function PanelGuardia({ fecha, onCambio }: { fecha: string; onCambio?: ()
 
   const pendientes = (data ?? []).filter((a) => a.estado === 'pendiente')
   const cerradas = (data ?? []).filter((a) => a.estado !== 'pendiente')
+
+  // Contenido clínico de las cerradas: recién al abrir el bloque, y sin refresco automático
+  // (cada lectura queda registrada). El motivo del super administrador vale para el día.
+  const permiso = useHistoriaClinicaPermiso()
+  const requiereMotivo = permiso.data?.motivo === 'requiere_motivo'
+  const [cerradasAbiertas, setCerradasAbiertas] = useState(false)
+  const [motivoSuper, setMotivoSuper] = useState<string | null>(null)
+  useEffect(() => { setMotivoSuper(null) }, [fecha])
+  const hayReservadas = cerradas.some((a) => a.reservado)
+  const puedeContenido = permiso.data?.puede === true || (requiereMotivo && motivoSuper != null)
+  const contenido = useContenidoGuardia(fecha, cerradasAbiertas && hayReservadas && puedeContenido,
+                                        motivoSuper ?? undefined)
+  const contenidoPorId = new Map((contenido.data ?? []).map((a) => [a.id_emergencia_atencion, a]))
 
   async function accion(fn: () => Promise<unknown>, ok: string) {
     try {
@@ -145,8 +166,18 @@ export function PanelGuardia({ fecha, onCambio }: { fecha: string; onCambio?: ()
       )}
 
       {cerradas.length > 0 && (
-        <details style={{ marginTop: 4 }}>
+        <details style={{ marginTop: 4 }} onToggle={(e) => setCerradasAbiertas(e.currentTarget.open)}>
           <summary style={resumen}>Cerradas en el día ({cerradas.length})</summary>
+          {cerradasAbiertas && hayReservadas && requiereMotivo && motivoSuper == null && (
+            <div style={{ marginTop: 8, maxWidth: 520 }}>
+              <MotivoSuperForm compacto etiqueta="Ver el contenido" onConfirmar={setMotivoSuper} />
+            </div>
+          )}
+          {contenido.isError && (
+            <div style={{ ...errorBanner, marginTop: 8 }}>
+              {(contenido.error as Error)?.message ?? 'No se pudo cargar el contenido clínico'}
+            </div>
+          )}
           <table style={{ ...tabla, marginTop: 8 }}>
             <thead>
               <tr>
@@ -161,6 +192,7 @@ export function PanelGuardia({ fecha, onCambio }: { fecha: string; onCambio?: ()
             <tbody>
               {cerradas.map((a) => {
                 const chip = ESTADO_CHIP[a.estado]
+                const c = a.reservado ? contenidoPorId.get(a.id_emergencia_atencion) : a
                 return (
                   <tr key={a.id_emergencia_atencion} style={{ borderBottom: '1px solid var(--border-primary)' }}>
                     <td style={{ ...td, fontFamily: 'var(--font-mono)' }}>{hora(a.atendido_en ?? a.fecha_modificacion)}</td>
@@ -169,8 +201,16 @@ export function PanelGuardia({ fecha, onCambio }: { fecha: string; onCambio?: ()
                     <td style={td}><span style={{ ...chipBase, background: chip.bg, color: chip.color }}>{chip.label}</span></td>
                     <td style={{ ...td, color: 'var(--fg-2)' }}>{a.agente_atiende_nombre ?? '—'}</td>
                     <td style={{ ...td, color: 'var(--fg-2)', maxWidth: 360, whiteSpace: 'pre-wrap' }}>
-                      {a.intervencion ?? '—'}
-                      {a.recomendaciones && <div style={meta}>Recomendaciones: {a.recomendaciones}</div>}
+                      {c ? (
+                        <>
+                          {c.intervencion ?? '—'}
+                          {c.recomendaciones && <div style={meta}>Recomendaciones: {c.recomendaciones}</div>}
+                        </>
+                      ) : contenido.isFetching ? (
+                        <span style={{ color: 'var(--fg-3)' }}>Cargando…</span>
+                      ) : (
+                        <span style={{ color: 'var(--fg-3)', fontStyle: 'italic' }}>Contenido clínico reservado</span>
+                      )}
                     </td>
                   </tr>
                 )

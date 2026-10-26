@@ -235,6 +235,9 @@ class GuardiaAtencionOut(BaseModel):
     recomendaciones: Optional[str] = None
     atendido_en: Optional[datetime] = None
     fecha_modificacion: Optional[datetime] = None
+    # True si la atencion tiene contenido clinico que no viajo: la lista lo manda solo con
+    # contenido=true y el permiso de historia clinica (pasada de arreglos de IT-01 F3).
+    reservado: bool = False
 
 
 class GuardiaAtenderIn(BaseModel):

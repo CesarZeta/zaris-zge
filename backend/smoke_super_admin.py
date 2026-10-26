@@ -654,6 +654,38 @@ async def test_hc_super() -> None:
         check("el historial de atenciones sin motivo viaja reservado",
               r.status_code == 200 and all(x.get("reservado") and x.get("intervencion") is None for x in r.json()),
               f"{r.status_code} {r.text[:120]}")
+        # Mesa de la Guardia (C1 de la revisión final): el contenido clínico también exige el motivo.
+        gua = await _uno("""
+            SELECT (COALESCE(ea.atendido_en, ea.fecha_modificacion) AT TIME ZONE 'UTC' - INTERVAL '3 hours')::date AS dia
+              FROM emergencia_atencion ea
+             WHERE ea.estado = 'atendida' AND ea.activo AND ea.id_municipio = 1 AND ea.intervencion IS NOT NULL
+               AND ea.id_ciudadano IS NOT NULL
+               AND ea.id_espacio_ubicacion = (SELECT valor::int FROM configuracion_general
+                                               WHERE clave = 'id_espacio_guardia' AND id_municipio = 1 AND activo)
+             ORDER BY ea.id_emergencia_atencion DESC LIMIT 1""")
+        check("hay una atención cerrada en la Guardia del municipio 1 para probar", gua is not None)
+        if gua is not None:
+            gurl, dia = "/api/v1/turnos/guardia/atenciones", gua.dia.isoformat()
+            r = await c.get(gurl, headers=h, params={"fecha": dia})
+            at = [a for a in r.json() if a["estado"] == "atendida"] if r.status_code == 200 else []
+            check("Guardia: la mesa no le trae el contenido clínico",
+                  bool(at) and all(a["intervencion"] is None and a.get("reservado") is True for a in at),
+                  f"{r.status_code} {r.text[:120]}")
+            r = await c.get(gurl, headers=h, params={"fecha": dia, "contenido": "true"})
+            check("Guardia con contenido y sin motivo → 403 requiere motivo",
+                  r.status_code == 403 and "motivo" in r.text, f"{r.status_code} {r.text[:100]}")
+            d_hc, d_sa = await _ultimo_hc(), await _ultimo_acceso()
+            r = await c.get(gurl, headers=h, params={"fecha": dia, "contenido": "true", "motivo": motivo})
+            at = [a for a in r.json() if a["estado"] == "atendida"] if r.status_code == 200 else []
+            check("Guardia con contenido y motivo → trae la intervención",
+                  any(a["intervencion"] for a in at), f"{r.status_code} {r.text[:120]}")
+            hc = await _hc_desde(d_hc, sup)
+            check("y quedan filas ok con motivo super_admin",
+                  bool(hc) and all((f.resultado, f.motivo) == ("ok", "super_admin") for f in hc), str(hc))
+            filas = [f for f in await _accesos_desde(d_sa) if f.accion == "historia_clinica"]
+            check("y una fila historia_clinica de la Guardia con el motivo",
+                  len(filas) == 1 and motivo in (filas[0].detalle or "") and "Guardia" in (filas[0].detalle or ""),
+                  str([f.detalle for f in filas]))
         t1 = await _token(c, CTX["admin_1"])
         r = await c.get(url, headers=_h(t1), params={"id_ciudadano": ic})
         check("un administrador de nivel 1 sigue entrando sin motivo", r.status_code == 200, f"{r.status_code}")
