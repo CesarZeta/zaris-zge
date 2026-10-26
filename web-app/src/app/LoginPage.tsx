@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/auth'
 import { api } from '../lib/api'
+import { shellIrAlLogin } from '../lib/shellNav'
 import type { User } from '../lib/types'
 import s from './LoginPage.module.css'
 
@@ -21,6 +22,16 @@ export function LoginPage() {
   const login    = useAuthStore((s) => s.login)
   const navigate = useNavigate()
 
+  // Embebido en el shell vanilla, el ingreso es el del shell (frontend/login.html).
+  useEffect(() => {
+    if (window.self === window.top) return
+    try {
+      shellIrAlLogin()
+    } catch {
+      // padre de otro origen: queda este form
+    }
+  }, [])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
@@ -29,7 +40,7 @@ export function LoginPage() {
       // Email o DNI (mig 110): el backend resuelve cuál es.
       const res = await api.post<LoginResponse>('/api/v1/auth/login', { identificador: email, password })
       if (res.requiere_segundo_factor || !res.access_token || !res.user) {
-        setError('Esta cuenta pide un código: ingresá por el login del shell (localhost:8080/frontend/login.html).')
+        setError('Esta cuenta pide el código de la app: ingresá por el login del shell (frontend/login.html).')
         return
       }
       login(res.access_token, res.user)

@@ -7,6 +7,7 @@ import { CommandMenu } from '../shell/CommandMenu/CommandMenu'
 import { Notifications } from '../shell/Notifications/Notifications'
 import { useAuthStore } from '../stores/auth'
 import { useUiStore } from '../stores/ui'
+import { shellIrAlLogin } from '../lib/shellNav'
 import s from './AppShell.module.css'
 
 // Cuando el shell React vive embebido en iframe del shell vanilla (regla CLAUDE.md §14),
@@ -20,9 +21,21 @@ export function AppShell() {
   const openCmdk = useUiStore((s) => s.openCmdk)
   const navigate = useNavigate()
 
-  // Guard: si no hay sesion redirigir a login
+  // Guard: si no hay sesion, al login. Embebido es el del shell vanilla (§14): el /login
+  // interno es solo de desarrollo y no pide el codigo del segundo factor. Se borra la sesion
+  // para que login.html no rebote al shell con una sesion que el bundle no puede usar.
   useEffect(() => {
-    if (!user) navigate('/login', { replace: true })
+    if (user) return
+    if (isEmbedded) {
+      localStorage.removeItem('zaris_session')
+      try {
+        shellIrAlLogin()
+        return
+      } catch {
+        // padre de otro origen: queda el /login interno
+      }
+    }
+    navigate('/login', { replace: true })
   }, [user, navigate])
 
   // CLAUDE.md §30: si el user fue persistido antes del feature de permisos,

@@ -1,4 +1,5 @@
 import { headerMunicipio } from './municipioActivo'
+import { shellIrAlLogin } from './shellNav'
 
 // BASE se resuelve por variable de entorno de Vite. Dev (sin .env) cae a localhost;
 // prod (.env.production) apunta a Railway. Documentado en CLAUDE.md §6.
@@ -77,7 +78,7 @@ async function request<T>(
     // login del shell. Si estamos standalone (localhost:5173 dev), al /login interno.
     if (typeof window !== 'undefined' && window.self !== window.top) {
       try {
-        ;(window.parent as Window).location.href = (window.parent.location.pathname.match(/^\/[^/]+\//)?.[0] ?? '/') + 'frontend/login.html'
+        shellIrAlLogin()
       } catch {
         window.location.href = '/login'
       }

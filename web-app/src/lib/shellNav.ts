@@ -27,6 +27,16 @@ export function shellNavigate(target: string): void {
   }
 }
 
+/**
+ * Lleva el shell vanilla a su login (sesión vencida o inexistente dentro del iframe). El `/login`
+ * del bundle React es solo de desarrollo (localhost:5173) y no pide el código del segundo factor.
+ * Puede tirar si el padre no es del mismo origen: el que llama decide el fallback.
+ */
+export function shellIrAlLogin(): void {
+  const padre = window.parent as Window
+  padre.location.href = (padre.location.pathname.match(/^\/[^/]+\//)?.[0] ?? '/') + 'frontend/login.html'
+}
+
 /** Atajo a la home (Dashboard) del shell. */
 export function shellGoInicio(): void {
   shellNavigate('web-app/dist/index.html#/dashboard')
