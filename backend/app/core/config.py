@@ -63,6 +63,15 @@ class Settings(BaseSettings):
     # NO commitear el valor real. Vacio => el endpoint dispatcher debe rechazar (cuando exista).
     DISPATCHER_TOKEN: str = ""
 
+    # Segundo factor de los niveles 0 y 1 (IT-01 F3b, PLAN_MULTI_MUNICIPIO_F3B_DISENO.md).
+    # Prendido por defecto: si la env var falta en Railway, se exige igual. Solo .env.local lo
+    # apaga, para que los smokes locales sigan logueando con una sola llamada.
+    SEGUNDO_FACTOR_OBLIGATORIO: bool = True
+    # Clave Fernet que cifra los secretos de las apps de autenticación. Vacía o inválida con el
+    # segundo factor prendido = las cuentas de nivel 0/1 reciben 503 (nunca un token sin código).
+    # Set via env var en Railway; NO commitear el valor real.
+    SEGUNDO_FACTOR_CLAVE: str = ""
+
     @property
     def ASYNC_DATABASE_URI(self) -> str:
         # Si existe DATABASE_URL (Railway la provee), usarla
