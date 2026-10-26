@@ -49,6 +49,16 @@ UNICOS = [
     ("configuracion_general", ["id_municipio", "clave"], True),
 ]
 
+# Lo que borra el lote de limpieza (mig 129b).
+UNICOS_VIEJOS = [
+    "uq_ciudadano_doc", "uq_ciudadano_cuil", "uq_empresa_cuit", "usuarios_username_key",
+    "reclamos_nro_reclamo_key", "ordenes_trabajo_nro_ot_key", "emergencia_evento_numero_operativo_key",
+    "activos_codigo_unico_key", "agenda_feriado_fecha_key", "emergencia_canal_ingreso_codigo_key",
+    "emergencia_prioridad_codigo_key", "emergencia_organismo_derivacion_codigo_key",
+    "configuracion_general_clave_key",
+]
+TABLAS_LEGADO = ["reclamos_tipo", "reclamos_subarea", "reclamos_area", "emergencia_numerador", "equipo_usuarios"]
+
 RESULTADOS: list[tuple[str, bool, str]] = []
 
 
@@ -204,6 +214,30 @@ async def chk_unicos_compuestos(conn) -> None:
         if not any(list(r.cols) == cols and (r.nnd or not nnd) for r in rows):
             faltan.append(f"{tabla}({', '.join(cols)}){' NULLS NOT DISTINCT' if nnd else ''}")
     _reg("unicos_compuestos", not faltan, f"faltan: {faltan}" if faltan else "")
+
+
+async def chk_lote_limpieza(conn) -> None:
+    """Lote de limpieza (migs 129/129b): todo o nada. Aplicado = sin los únicos globales viejos,
+    sin tablas legado y sin id_municipio en las globales, con el único del username de las
+    cuentas sin municipio (129) que reemplaza al global."""
+    viejos = await conn.scalar(text("SELECT count(*) FROM pg_class WHERE relname = ANY(:n)"),
+                               {"n": UNICOS_VIEJOS})
+    legado = await conn.scalar(text("SELECT count(*) FROM pg_class WHERE relkind = 'r' AND relname = ANY(:n)"),
+                               {"n": TABLAS_LEGADO})
+    columnas = await conn.scalar(text("""
+        SELECT count(*) FROM information_schema.columns c
+          JOIN municipio_tabla_clase m ON m.tabla = c.table_name AND m.clase = 'global'
+         WHERE c.table_schema = 'public' AND c.column_name = 'id_municipio' AND c.table_name <> 'municipios'"""))
+    sin_municipio = await conn.scalar(text(
+        "SELECT count(*) FROM pg_class WHERE relname = 'uq_usuarios_username_sin_municipio'"))
+    if viejos == legado == columnas == 0:
+        _reg("lote_limpieza", bool(sin_municipio),
+             "aplicado" if sin_municipio else "aplicado sin uq_usuarios_username_sin_municipio (falta la 129)")
+    elif viejos and legado and columnas:
+        _reg("lote_limpieza", True, "pendiente (129b sin aplicar)")
+    else:
+        _reg("lote_limpieza", False,
+             f"a medias: {viejos} únicos viejos, {legado} tablas legado, {columnas} globales con id_municipio")
 
 
 async def _ultimo(conn, entidad: str) -> int:
@@ -419,6 +453,7 @@ async def main() -> int:
             await chk_config_dividida(conn)
             await chk_municipio_base(conn)
             await chk_unicos_compuestos(conn)
+            await chk_lote_limpieza(conn)
             await chk_fk_compuesta_misma_accion(conn)
             if args.solo_lectura:
                 print("[-----] numeracion_nueva y fk_compuesta salteados (--solo-lectura)")

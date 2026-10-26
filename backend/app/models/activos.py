@@ -24,7 +24,7 @@ class Activo(Base):
     __tablename__ = "activos"
 
     id_activo        = Column(Integer, primary_key=True, autoincrement=True)
-    codigo_unico     = Column(String(50), unique=True, nullable=True)
+    codigo_unico     = Column(String(50), nullable=True)
     id_tipo_activo   = Column(Integer, ForeignKey("tipos_activo.id_tipo_activo", ondelete="RESTRICT"), nullable=False)
     descripcion      = Column(Text, nullable=True)
     direccion        = Column(String(300), nullable=True)

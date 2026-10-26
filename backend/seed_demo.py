@@ -11,23 +11,6 @@ LOGIN_URL = "http://127.0.0.1:8000/api/v1/auth/login"
 CREDENTIALS = {"email": "administrativo@municipio.gob.ar", "password": "123456"}
 
 SEED_DATA = {
-    "reclamos_area": [
-        {"nombre": "Espacios Verdes"},
-        {"nombre": "Tránsito y Vialidad"},
-        {"nombre": "Obras Públicas"},
-        {"nombre": "Higiene Urbana"},
-        {"nombre": "Iluminación"},
-    ],
-    "reclamos_subarea": [
-        {"nombre": "Plazas y Parques", "id_area": 1},
-        {"nombre": "Arbolado Público", "id_area": 1},
-        {"nombre": "Semáforos", "id_area": 2},
-        {"nombre": "Calzada y Veredas", "id_area": 2},
-        {"nombre": "Corte de servicio", "id_area": 3},
-        {"nombre": "Rotura de calzada", "id_area": 3},
-        {"nombre": "Residuos en vía pública", "id_area": 4},
-        {"nombre": "Luminarias apagadas", "id_area": 5},
-    ],
     "estado_reclamo": [
         {"nombre": "Ingresado", "descripcion": "Reclamo recibido, pendiente de revisión", "color": "#6B7280", "es_final": False, "orden": 1},
         {"nombre": "En revisión", "descripcion": "Reclamo bajo análisis por el área responsable", "color": "#D97706", "es_final": False, "orden": 2},

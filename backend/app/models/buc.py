@@ -19,7 +19,7 @@ class Usuario(Base):
     id_usuario    = Column(Integer, primary_key=True, autoincrement=True)
     nombre        = Column(String(150), nullable=False)
     nivel_acceso  = Column(Integer, nullable=False, default=3)
-    username      = Column(String(50), nullable=False, unique=True)
+    username      = Column(String(50), nullable=False)
     email         = Column(String(150), nullable=True)
     password_hash = Column(String(255), nullable=False)
     id_cargo      = Column(String(100))
@@ -61,7 +61,6 @@ class Nacionalidad(Base):
     pais                    = Column(String(100), nullable=False)
     region                  = Column(String(50), nullable=False)
     activo                  = Column(Boolean, nullable=False, default=True)
-    id_municipio            = Column(Integer, nullable=True)
     id_subarea              = Column(Integer, nullable=True)
     fecha_alta              = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     fecha_modificacion      = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -78,7 +77,6 @@ class TipoRepresentacion(Base):
     tipo                    = Column(String(50), nullable=False)
     descripcion             = Column(String(200), nullable=False)
     activo                  = Column(Boolean, nullable=False, default=True)
-    id_municipio            = Column(Integer, nullable=True)
     id_subarea              = Column(Integer, nullable=True)
     fecha_alta              = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     fecha_modificacion      = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -96,7 +94,6 @@ class Actividad(Base):
     descripcion             = Column(String(200), nullable=False)
     categoria_tasa          = Column(String(50), nullable=False)
     activo                  = Column(Boolean, nullable=False, default=True)
-    id_municipio            = Column(Integer, nullable=True)
     id_subarea              = Column(Integer, nullable=True)
     fecha_alta              = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     fecha_modificacion      = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -115,7 +112,7 @@ class Ciudadano(Base):
     fecha_alta     = Column(DateTime, nullable=False, server_default=func.now())
     doc_tipo       = Column(String(10), nullable=False)
     doc_nro        = Column(String(10), nullable=False)
-    cuil           = Column(String(13), nullable=False, unique=True)
+    cuil           = Column(String(13), nullable=False)
     nombre         = Column(String(100), nullable=False)
     apellido       = Column(String(100), nullable=False)
     sexo           = Column(String(10), nullable=False)
@@ -146,7 +143,6 @@ class Ciudadano(Base):
     id_usuario_modificacion = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="SET NULL"), nullable=True)
 
     __table_args__ = (
-        UniqueConstraint("doc_tipo", "doc_nro", name="uq_ciudadano_doc"),
         Index("idx_ciudadano_email", "email"),
         Index("idx_ciudadano_apellido", "apellido"),
     )
@@ -162,7 +158,7 @@ class Empresa(Base):
 
     id_empresa     = Column(Integer, primary_key=True, autoincrement=True)
     fecha_alta     = Column(DateTime, nullable=False, server_default=func.now())
-    cuit           = Column(String(13), nullable=False, unique=True)
+    cuit           = Column(String(13), nullable=False)
     nombre         = Column(String(100), nullable=False)
     id_actividad   = Column(Integer, ForeignKey("actividades.id"), nullable=False)
     calle          = Column(String(200))

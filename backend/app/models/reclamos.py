@@ -58,7 +58,7 @@ class Reclamo(Base):
     __tablename__ = "reclamos"
 
     id_reclamo          = Column(Integer, primary_key=True, autoincrement=True)
-    nro_reclamo         = Column(String(20), unique=True, nullable=True)
+    nro_reclamo         = Column(String(20), nullable=True)
     id_ciudadano        = Column(Integer, ForeignKey("ciudadanos.id_ciudadano", ondelete="RESTRICT"), nullable=True)
     id_tipo_reclamo     = Column(Integer, ForeignKey("tipo_reclamo.id_tipo_reclamo", ondelete="SET NULL"), nullable=True)
     id_area             = Column(Integer, ForeignKey("area.id_area", ondelete="SET NULL"), nullable=True)
@@ -253,7 +253,6 @@ class EstadoOT(Base):
     es_final        = Column(Boolean, nullable=False, default=False)
     orden           = Column(Integer, nullable=False, default=0)
     activo          = Column(Boolean, nullable=False, default=True)
-    id_municipio    = Column(Integer, nullable=True)
     fecha_alta      = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     fecha_modificacion = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
@@ -262,7 +261,7 @@ class OrdenTrabajo(Base):
     __tablename__ = "ordenes_trabajo"
 
     id_ot                   = Column(Integer, primary_key=True, autoincrement=True)
-    nro_ot                  = Column(String(20), unique=True, nullable=True)
+    nro_ot                  = Column(String(20), nullable=True)
     id_reclamo              = Column(Integer, ForeignKey("reclamos.id_reclamo", ondelete="RESTRICT"), nullable=False)
     id_estado               = Column(Integer, ForeignKey("estado_ot.id_estado_ot", ondelete="RESTRICT"), nullable=False)
     id_agente               = Column(Integer, ForeignKey("agentes.id_agente", ondelete="SET NULL"), nullable=True)
@@ -321,7 +320,7 @@ class ConfiguracionGeneral(Base):
     __tablename__ = "configuracion_general"
 
     id_config           = Column(Integer, primary_key=True, autoincrement=True)
-    clave               = Column(String(100), nullable=False, unique=True)
+    clave               = Column(String(100), nullable=False)
     valor               = Column(Text, nullable=False)
     tipo                = Column(String(20), nullable=False, default="string")
     descripcion         = Column(Text, nullable=True)

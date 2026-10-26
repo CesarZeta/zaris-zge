@@ -38,23 +38,6 @@ SEED_DATA = {
         {"nombre": "Supervisor", "descripcion": "Usuario con rol de supervision"},
         {"nombre": "Consultor", "descripcion": "Usuario con acceso de solo lectura"},
     ],
-    "reclamos_area": [
-        {"nombre": "Espacios Verdes"},
-        {"nombre": "Transito y Vialidad"},
-        {"nombre": "Obras Publicas"},
-        {"nombre": "Higiene Urbana"},
-        {"nombre": "Iluminacion"},
-    ],
-    "reclamos_subarea": [
-        {"nombre": "Plazas y Parques", "id_area": 1},
-        {"nombre": "Arbolado Publico", "id_area": 1},
-        {"nombre": "Semaforos", "id_area": 2},
-        {"nombre": "Calzada y Veredas", "id_area": 2},
-        {"nombre": "Corte de servicio", "id_area": 3},
-        {"nombre": "Rotura de calzada", "id_area": 3},
-        {"nombre": "Residuos en via publica", "id_area": 4},
-        {"nombre": "Luminarias apagadas", "id_area": 5},
-    ],
     "estado_reclamo": [
         {"nombre": "Ingresado", "descripcion": "Reclamo recibido, pendiente de revision", "color": "#6B7280", "es_final": False, "orden": 1},
         {"nombre": "En revision", "descripcion": "Reclamo bajo analisis", "color": "#D97706", "es_final": False, "orden": 2},

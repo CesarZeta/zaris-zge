@@ -195,9 +195,10 @@ async def crear_usuario_interno(
     el agente nace con los datos reales de la ficha y el mail indica que puede ingresar
     con su email o su DNI.
     """
-    # Username: único en toda la base mientras exista el índice global viejo (lote de
-    # limpieza de IT-01); después pasa a ser por municipio (uqmun_usuarios_username).
-    existing = await db.execute(select(Usuario).where(Usuario.username == data.username))
+    # Username: único por municipio (uqmun_usuarios_username; el global viejo lo borró el lote
+    # de limpieza de IT-01).
+    existing = await db.execute(select(Usuario).where(
+        Usuario.username == data.username, Usuario.id_municipio == id_municipio))
     if existing.scalars().first():
         raise HTTPException(status_code=409, detail=f"Ya existe un usuario con username '{data.username}'")
     if data.id_subarea is not None and not await db.scalar(text(

@@ -79,7 +79,7 @@ class AgendaFeriado(Base):
     __tablename__ = "agenda_feriado"
 
     id_agenda_feriado       = Column(Integer, primary_key=True, autoincrement=True)
-    fecha                   = Column(Date, nullable=False, unique=True)
+    fecha                   = Column(Date, nullable=False)
     descripcion             = Column(String(200), nullable=False)
     ambito                  = Column(String(20), default="NACIONAL")
     activo                  = Column(Boolean, default=True, nullable=False)
@@ -150,7 +150,6 @@ class EstadoEvento(Base):
     descripcion              = Column(String(120))
     orden                    = Column(Integer)
     activo                   = Column(Boolean, default=True, nullable=False)
-    id_municipio             = Column(Integer, ForeignKey("municipios.id_municipio"), nullable=False)
     fecha_alta               = Column(DateTime(timezone=True), server_default=func.now())
     fecha_modificacion       = Column(DateTime(timezone=True), server_default=func.now())
     id_usuario_alta          = Column(Integer, ForeignKey("usuarios.id_usuario"))
@@ -165,7 +164,6 @@ class EstadoReserva(Base):
     descripcion              = Column(String(120))
     orden                    = Column(Integer)
     activo                   = Column(Boolean, default=True, nullable=False)
-    id_municipio             = Column(Integer, ForeignKey("municipios.id_municipio"), nullable=False)
     fecha_alta               = Column(DateTime(timezone=True), server_default=func.now())
     fecha_modificacion       = Column(DateTime(timezone=True), server_default=func.now())
     id_usuario_alta          = Column(Integer, ForeignKey("usuarios.id_usuario"))
