@@ -63,6 +63,15 @@ class Settings(BaseSettings):
     # NO commitear el valor real. Vacio => el endpoint dispatcher debe rechazar (cuando exista).
     DISPATCHER_TOKEN: str = ""
 
+    # Segundo factor de los niveles 0 y 1 (IT-01 F3b, PLAN_MULTI_MUNICIPIO_F3B_DISENO.md).
+    # Prendido por defecto: si la env var falta en Railway, se exige igual. Solo .env.local lo
+    # apaga, para que los smokes locales sigan logueando con una sola llamada.
+    SEGUNDO_FACTOR_OBLIGATORIO: bool = True
+    # Clave Fernet que cifra los secretos de las apps de autenticación. Vacía o inválida con el
+    # segundo factor prendido = las cuentas de nivel 0/1 reciben 503 (nunca un token sin código).
+    # Set via env var en Railway; NO commitear el valor real.
+    SEGUNDO_FACTOR_CLAVE: str = ""
+
     @property
     def ASYNC_DATABASE_URI(self) -> str:
         # Si existe DATABASE_URL (Railway la provee), usarla
@@ -112,5 +121,14 @@ if not _es_entorno_local() and settings.SECRET_KEY == "dev-secret-key-change-in-
         "SECRET_KEY usa el valor default público en un entorno no-local. "
         "Setear la env var SECRET_KEY con un secreto aleatorio fuerte "
         "(ej: openssl rand -hex 32) antes de arrancar."
+    )
+
+# Fail-fast del segundo factor (IT-01 F3b): solo un entorno local puede apagarlo. Si alguien pone
+# SEGUNDO_FACTOR_OBLIGATORIO=false en Railway, mejor que el arranque falle a que los niveles 0 y 1
+# entren con la clave sola sin que nadie se entere.
+if not _es_entorno_local() and not settings.SEGUNDO_FACTOR_OBLIGATORIO:
+    raise RuntimeError(
+        "SEGUNDO_FACTOR_OBLIGATORIO=false en un entorno no-local. El segundo factor solo se apaga "
+        "en .env.local; en Railway borrar la env var o ponerla en true."
     )
 

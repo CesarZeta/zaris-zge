@@ -33,10 +33,22 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_MINUTES = 1440  # 24 h (scope='agente')
-# Super administrador: 8 h hasta que tenga segundo factor (F3b). Decisión de César, 2026-10-26:
-# sin segundo factor, un token robado del rol máximo no debe servir un día entero.
+# Super administrador: 8 h (decisión de César, 2026-10-26; con F3b quedó definitiva): un token
+# robado del rol máximo no debe servir un día entero.
 SUPER_ADMIN_TOKEN_MINUTES = 480
 SESION_VENCIDA = "Sesión vencida. Volvé a ingresar."
+
+# Segundo factor (IT-01 F3b): niveles que entran con la clave más el código de la app. Ampliarlo
+# es cambiar este conjunto y nada más.
+NIVELES_CON_SEGUNDO_FACTOR: frozenset[int] = frozenset({0, 1})
+
+
+def requiere_segundo_factor(nivel_real: int) -> bool:
+    return settings.SEGUNDO_FACTOR_OBLIGATORIO and nivel_real in NIVELES_CON_SEGUNDO_FACTOR
+
+
+def _ahora_epoch() -> int:
+    return int(datetime.now(timezone.utc).timestamp())
 
 
 async def _validar_municipio_token(mun, id_municipio_cuenta: int, request: Request, db: AsyncSession) -> None:
@@ -64,7 +76,8 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """Emite JWT para agente (scope='agente' por default). `data` lleva `sub` y `mun` (municipio)."""
+    """Emite JWT para agente (scope='agente' por default). `data` lleva `sub` y `mun` (municipio);
+    `sf=True` si la persona pasó el segundo factor. Lleva `iat` para la revocación (F3b)."""
     if not isinstance(data.get("mun"), int):
         raise ValueError("create_access_token: falta el municipio (claim 'mun')")
     to_encode = data.copy()
@@ -72,16 +85,19 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     to_encode.setdefault("scope", "agente")
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=TOKEN_EXPIRE_MINUTES))
     to_encode["exp"] = expire
+    to_encode.setdefault("iat", _ahora_epoch())
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
 
 
-def crear_token_super_admin(id_usuario: int) -> str:
+def crear_token_super_admin(id_usuario: int, *, segundo_factor: bool) -> str:
     """JWT del super administrador: `sa=True` y sin `mun` (no tiene municipio). Vence a las 8 h
-    (SUPER_ADMIN_TOKEN_MINUTES)."""
+    (SUPER_ADMIN_TOKEN_MINUTES). `sf` = pasó el segundo factor; `iat` para la revocación."""
     return jwt.encode({
         "sub": str(id_usuario),
         "scope": "agente",
         "sa": True,
+        "sf": segundo_factor,
+        "iat": _ahora_epoch(),
         "exp": datetime.now(timezone.utc) + timedelta(minutes=SUPER_ADMIN_TOKEN_MINUTES),
     }, settings.SECRET_KEY, algorithm=ALGORITHM)
 
@@ -129,7 +145,7 @@ async def get_current_user(
 
     result = await db.execute(
         text("""SELECT id_usuario, nombre, email, nivel_acceso, activo,
-                       debe_cambiar_password, foto_url, id_municipio
+                       debe_cambiar_password, foto_url, id_municipio, sesiones_validas_desde
                 FROM usuarios WHERE id_usuario = :id"""),
         {"id": int(user_id)},
     )
@@ -138,16 +154,26 @@ async def get_current_user(
         raise unauthorized
     vencida = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=SESION_VENCIDA,
                             headers={"WWW-Authenticate": "Bearer"})
+    # Segundo factor (F3b): el nivel se lee de la base, así un ascenso o un descenso rige en la
+    # request siguiente. Sin `sf`, o con un `iat` anterior a la marca de revocación, la sesión venció.
+    if requiere_segundo_factor(user.nivel_acceso):
+        if payload.get("sf") is not True:
+            raise vencida
+        marca = user.sesiones_validas_desde
+        iat = payload.get("iat")
+        if marca is not None and (not isinstance(iat, int) or iat < int(marca.timestamp())):
+            raise vencida
+    datos = {k: v for k, v in user._mapping.items() if k != "sesiones_validas_desde"}
     if payload.get("sa") is True:
         # Super administrador: la cuenta tiene que seguir siendo de nivel 0 y sin municipio.
         # No se compara el Origin: entra desde cualquier dirección (spec §3).
         if user.nivel_acceso != 0 or user.id_municipio is not None:
             raise vencida
-        return {**dict(user._mapping), "nivel_acceso": 1, "nivel_real": 0, "es_super_admin": True}
+        return {**datos, "nivel_acceso": 1, "nivel_real": 0, "es_super_admin": True}
     if user.nivel_acceso == 0:
         raise vencida  # una cuenta de nivel 0 solo entra con su token propio
     await _validar_municipio_token(payload.get("mun"), user.id_municipio, request, db)
-    return {**dict(user._mapping), "nivel_real": user.nivel_acceso, "es_super_admin": False}
+    return {**datos, "nivel_real": user.nivel_acceso, "es_super_admin": False}
 
 
 async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:

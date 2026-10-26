@@ -5,9 +5,12 @@ import { api } from '../lib/api'
 import type { User } from '../lib/types'
 import s from './LoginPage.module.css'
 
+// Una cuenta de nivel 0/1 con el segundo factor prendido no recibe token (IT-01 F3b): viene
+// `requiere_segundo_factor`. Este login es solo de desarrollo y no implementa el código.
 interface LoginResponse {
-  access_token: string
-  user: User
+  access_token?: string
+  user?: User
+  requiere_segundo_factor?: boolean
 }
 
 export function LoginPage() {
@@ -25,6 +28,10 @@ export function LoginPage() {
     try {
       // Email o DNI (mig 110): el backend resuelve cuál es.
       const res = await api.post<LoginResponse>('/api/v1/auth/login', { identificador: email, password })
+      if (res.requiere_segundo_factor || !res.access_token || !res.user) {
+        setError('Esta cuenta pide un código: ingresá por el login del shell (localhost:8080/frontend/login.html).')
+        return
+      }
       login(res.access_token, res.user)
       navigate('/dashboard', { replace: true })
     } catch (err) {

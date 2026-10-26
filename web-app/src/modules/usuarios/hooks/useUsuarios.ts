@@ -4,7 +4,9 @@ import {
   buscarUsuarios,
   cambiarEstadoUsuario,
   crearUsuario,
+  habilitarSegundoFactor,
   listarUsuarios,
+  obtenerSegundoFactor,
   obtenerUsuario,
   verLoginLog,
 } from '../api/usuariosApi'
@@ -28,6 +30,21 @@ export const useUsuarioDetalle = (id: number | null) =>
     queryFn: () => obtenerUsuario(id as number),
     enabled: id != null,
   })
+
+export const useSegundoFactor = (id: number | null) =>
+  useQuery({
+    queryKey: [...KEY, 'segundo-factor', id],
+    queryFn: () => obtenerSegundoFactor(id as number),
+    enabled: id != null,
+  })
+
+export function useHabilitarSegundoFactor() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => habilitarSegundoFactor(id),
+    onSuccess: (_d, id) => qc.invalidateQueries({ queryKey: [...KEY, 'segundo-factor', id] }),
+  })
+}
 
 export const useLoginLog = (id: number | null, abierto: boolean) =>
   useQuery({

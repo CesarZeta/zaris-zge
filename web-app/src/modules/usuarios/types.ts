@@ -54,6 +54,18 @@ export interface LoginLogEntry {
   user_agent: string | null
 }
 
+// GET /api/v1/auth/segundo-factor/cuentas/{id} (IT-01 F3b). Fechas ISO; bloqueado_hasta solo
+// mientras el bloqueo siga vigente.
+export interface EstadoSegundoFactor {
+  nivel: number
+  requiere: boolean
+  vinculada: boolean
+  confirmado_en: string | null
+  habilitada: boolean
+  habilitado_hasta: string | null
+  bloqueado_hasta: string | null
+}
+
 export const NIVELES: Record<number, string> = {
   1: 'Administrador',
   2: 'Supervisor',

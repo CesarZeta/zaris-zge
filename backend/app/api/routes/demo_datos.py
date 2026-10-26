@@ -46,12 +46,12 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Request
-from jose import JWTError, jwt
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import ALGORITHM
+from app.core.auth import get_current_user
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, get_db
 from app.services import demo_atencion, demo_datos, demo_tramites
@@ -125,19 +125,20 @@ async def _autorizar(request: Request, db: AsyncSession) -> str:
 
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
+        # El JWT pasa por el guard central (IT-01 F3b): scope, cuenta activa, municipio, segundo
+        # factor y revocación, igual que en cualquier otro endpoint. Nada de decodificarlo acá.
         try:
-            payload = jwt.decode(auth[7:], settings.SECRET_KEY, algorithms=[ALGORITHM])
-            if payload.get("scope", "agente") == "agente" and payload.get("sub"):
-                fila = (await db.execute(
-                    text("SELECT id_usuario, nivel_acceso, activo, id_municipio FROM usuarios WHERE id_usuario = :id"),
-                    {"id": int(payload["sub"])})).fetchone()
-                # Solo un administrador del municipio demo (IT-01): el generador escribe ahi.
-                id_demo = await db.scalar(text(
-                    "SELECT id_municipio FROM municipios WHERE direccion_base AND activo"))
-                if fila and fila.activo and fila.nivel_acceso == 1 and fila.id_municipio == id_demo:
-                    return f"admin:{fila.id_usuario}"
-        except (JWTError, ValueError):
-            pass
+            usuario = await get_current_user(
+                request, HTTPAuthorizationCredentials(scheme="Bearer", credentials=auth[7:]), db)
+        except HTTPException:
+            usuario = None
+        if usuario is not None:
+            # Solo un administrador del municipio demo (IT-01): el generador escribe ahi.
+            id_demo = await db.scalar(text(
+                "SELECT id_municipio FROM municipios WHERE direccion_base AND activo"))
+            if (not usuario["es_super_admin"] and usuario["nivel_real"] == 1
+                    and usuario["id_municipio"] == id_demo):
+                return f"admin:{usuario['id_usuario']}"
 
     logger.warning("demo/poblar: acceso no autorizado desde IP %s", get_real_ip(request))
     raise HTTPException(401, "No autorizado")

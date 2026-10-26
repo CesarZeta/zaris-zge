@@ -9,8 +9,10 @@ import sys
 
 import httpx
 
-BASE = "https://zaris-api-production-bf0b.up.railway.app/api/v1/admin"
-LOGIN_URL = "https://zaris-api-production-bf0b.up.railway.app/api/v1/auth/login"
+from _login_interno_prod import login_interno
+
+API = "https://zaris-api-production-bf0b.up.railway.app"
+BASE = f"{API}/api/v1/admin"
 if not os.environ.get("ZARIS_SEED_EMAIL") or not os.environ.get("ZARIS_QA_PASS"):
     sys.exit("Setea ZARIS_SEED_EMAIL y ZARIS_QA_PASS (credenciales en credenciales-testing/, fuera del repo)")
 CREDENTIALS = {"email": os.environ["ZARIS_SEED_EMAIL"], "password": os.environ["ZARIS_QA_PASS"]}
@@ -142,10 +144,9 @@ SEED_DATA = {
 
 
 async def main():
+    # Una cuenta de administrador pide el código de la app (segundo factor, IT-01 F3b).
+    token = login_interno(API, CREDENTIALS["email"], CREDENTIALS["password"])
     async with httpx.AsyncClient(timeout=30) as client:
-        r = await client.post(LOGIN_URL, json=CREDENTIALS)
-        r.raise_for_status()
-        token = r.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
         print(f"Login OK — Railway prod")
 

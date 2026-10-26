@@ -68,3 +68,13 @@ Un funcionario existe PRIMERO como persona en la BUC (`ciudadanos.es_funcionario
 - **Emails reservados** (`services/super_admin.py::email_reservado_super_admin`): una cuenta de un municipio no puede usar el email de un super administrador. Da 409 «Ese email está reservado» en `crear_usuario_interno` (alta de Usuarios y cuenta ZARIS desde la ficha) y en la edición de la cuenta (`PUT /buc/usuarios/{id}`).
 - **Pestaña «Registro del super administrador»** (`/usuarios/accesos-super`, `GET /api/v1/auditoria/accesos-super`): lo que hizo el super administrador en ESTE municipio. Solo lectura, búsqueda diferida y orden en el backend.
 - **El catálogo de módulos es global:** lo cambia solo el super administrador, y para los demás la pestaña queda en solo lectura (ver skill `modulo-permisos`).
+
+### Segundo factor (IT-01 F3b, PLAN_MULTI_MUNICIPIO_F3B.md) — reglas generales en CLAUDE.md §1
+
+- **Quién:** las cuentas de nivel 0 y 1 (`NIVELES_CON_SEGUNDO_FACTOR`). Una cuenta que sube a nivel 1 no entra hasta que el super habilita su vinculación.
+- **Panel en el detalle** (`components/SegundoFactorPanel.tsx`, sub-tab Datos, solo nivel 0/1): estado «vinculado el … / sin vincular / habilitada para vincular hasta … / bloqueado hasta …», de `GET /api/v1/auth/segundo-factor/cuentas/{id}` (administrador o super, cuentas del municipio de la request; nunca devuelve secretos ni códigos).
+- **«Restablecer y habilitar vinculación»:** lo ve y lo usa **solo el super** (`POST …/cuentas/{id}/habilitar`, solo cuentas de nivel 1 del municipio elegido; si no, 404).
+  - Borra la app y los códigos de emergencia, corta las sesiones abiertas (`usuarios.sesiones_validas_desde`) y abre 24 h para vincular desde el login.
+  - Queda en «Registro del super administrador» como «Segundo factor», en la misma transacción.
+  - Un administrador no puede restablecer a otro. El nivel 0 se restablece con `backend/habilitar_segundo_factor.py`.
+- **El secreto no está en `usuarios`:** vive cifrado en `usuario_segundo_factor`. Un `SELECT` nuevo de usuarios no lo trae.

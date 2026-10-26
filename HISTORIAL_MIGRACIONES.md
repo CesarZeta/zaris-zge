@@ -179,6 +179,18 @@ Las reglas vivas de cada una están en la sección del módulo correspondiente d
 - **Mig 76** (sesión 2026-06-01, alta pública de vecinos §38): tabla `empresa_credencial` (1:1 con `empresas`, solo verificación de email — `token_verificacion`/`verificado`/`verificado_en`, SIN password) + índice parcial sobre el token. Local por psql, prod por `apply_migration`. El ciudadano reusa `ciudadano_credencial` (mig 53).
 - **Migs 77-79** (2026-06-09, integridad de cuentas + alta vecino en 2 pasos): 77 = `usuarios.suspendido_motivo`/`fecha_suspension` (cron de integridad §39). 78 = `usuarios.debe_cambiar_password` (clave temporal + cambio forzado §39 Fase 3). 79 = `ciudadanos.ficha_completa` + `ciudadano_credencial.debe_cambiar_password` (alta del vecino en dos pasos §38/§39 Fase 4).
 
+### Migraciones 128 y 128b — IT-01 F3b, segundo factor (`backend/migrations/128_segundo_factor_accion_registro.sql`, `128b_segundo_factor.sql`)
+
+Plan: [`PLAN_MULTI_MUNICIPIO_F3B.md`](PLAN_MULTI_MUNICIPIO_F3B.md). Diseño: [`PLAN_MULTI_MUNICIPIO_F3B_DISENO.md`](PLAN_MULTI_MUNICIPIO_F3B_DISENO.md). **Aplicadas en local el 2026-10-26** (rama `it01-f3b-segundo-factor`); **en prod, pendientes del corte** (Tarea 10).
+- **128** (lleva `DROP`: en prod la corre César en el SQL Editor): el CHECK `ck_super_admin_acceso_accion` suma `segundo_factor`, la acción con la que queda en el registro del super cada restablecimiento que hace sobre una cuenta de un municipio. Solo amplía: compatible con el código viejo.
+- **128b** (sin `DROP`, por MCP):
+  - `usuarios.sesiones_validas_desde` (marca de revocación: un token de nivel 0/1 con `iat` anterior da 401);
+  - `usuario_segundo_factor`: secreto cifrado y secreto pendiente, último paso usado, intentos, bloqueo y habilitación, por cuenta. Fuera de `usuarios` a propósito;
+  - `usuario_codigo_emergencia`: códigos con bcrypt, de un solo uso;
+  - `usuario_segundo_factor_evento`: append-only, con triggers por sentencia como `super_admin_acceso`.
+  - Las tres llevan RLS y son clase `mixta` (`NULL` = la cuenta del super).
+- Compatible con el código viejo: nadie usa las tablas nuevas hasta el deploy.
+
 ### Migraciones 127 y 127b — IT-01 F3, super administrador (`backend/migrations/127_super_admin_restricciones.sql`, `127b_super_admin.sql`)
 
 Plan: [`PLAN_MULTI_MUNICIPIO_F3.md`](PLAN_MULTI_MUNICIPIO_F3.md). **Aplicadas en local el 2026-10-25** (la 127c el 2026-10-26; rama `it01-f3-super-admin`) **y en prod el 2026-10-26** (Tarea 10, con César):

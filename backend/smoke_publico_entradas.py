@@ -45,11 +45,13 @@ ADMINS = ["cesar@municipio.gob.ar", "ciudadanovl@municipio.gob.ar", "roymanos@mu
 def sembrar_evento_demo(c: httpx.Client) -> bool:
     """Si la cartelera esta vacia, crea un evento demo con autoservicio via API
     admin (respeta reglas de negocio — no SQL crudo)."""
+    # Contra prod un administrador pide el código de la app (segundo factor, IT-01 F3b).
+    from _login_interno_prod import intentar_login_interno
     h = None
     for email in ADMINS:
-        r = c.post(f"{BASE}/api/v1/auth/login", json={"email": email, "password": QA_PASS})
-        if r.status_code == 200:
-            h = {"Authorization": f"Bearer {r.json()['access_token']}"}
+        token = intentar_login_interno(BASE, email, QA_PASS)
+        if token:
+            h = {"Authorization": f"Bearer {token}"}
             break
     if h is None:
         print("  (seed) ningun login admin funciono")
