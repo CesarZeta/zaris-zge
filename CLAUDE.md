@@ -680,7 +680,7 @@ class Equipo(Base):
   — 128 + 128b = **IT-01 F3b, segundo factor**:
   - 128: CHECK de `super_admin_acceso.accion` con `segundo_factor`. Lleva DROP: en prod la corre César en el SQL Editor.
   - 128b: `usuarios.sesiones_validas_desde` y las tablas `usuario_segundo_factor` (secreto cifrado, bloqueo, habilitación), `usuario_codigo_emergencia` (bcrypt) y `usuario_segundo_factor_evento` (append-only), las tres `mixta`.
-  - Estado: aplicadas en local el 2026-10-26; **en prod, pendientes del corte de F3b** (Tarea 10 de [`PLAN_MULTI_MUNICIPIO_F3B.md`](PLAN_MULTI_MUNICIPIO_F3B.md)).
+  - Estado: aplicadas en local y **en prod el 2026-10-26** (corte de F3b: la 128 por César en el SQL Editor, la 128b por MCP). Plan en [`PLAN_MULTI_MUNICIPIO_F3B.md`](PLAN_MULTI_MUNICIPIO_F3B.md).
 — cualquier mig nueva debe usar 129+ y clasificar sus tablas nuevas en `municipio_tabla_clase`**. El número se asigna al APLICAR, no al planificar (la 104 "reservada" para el colero la tomó Trámites).
 
 **Reglas vivas de migración:**

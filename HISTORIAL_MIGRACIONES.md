@@ -181,7 +181,7 @@ Las reglas vivas de cada una están en la sección del módulo correspondiente d
 
 ### Migraciones 128 y 128b — IT-01 F3b, segundo factor (`backend/migrations/128_segundo_factor_accion_registro.sql`, `128b_segundo_factor.sql`)
 
-Plan: [`PLAN_MULTI_MUNICIPIO_F3B.md`](PLAN_MULTI_MUNICIPIO_F3B.md). Diseño: [`PLAN_MULTI_MUNICIPIO_F3B_DISENO.md`](PLAN_MULTI_MUNICIPIO_F3B_DISENO.md). **Aplicadas en local el 2026-10-26** (rama `it01-f3b-segundo-factor`); **en prod, pendientes del corte** (Tarea 10).
+Plan: [`PLAN_MULTI_MUNICIPIO_F3B.md`](PLAN_MULTI_MUNICIPIO_F3B.md). Diseño: [`PLAN_MULTI_MUNICIPIO_F3B_DISENO.md`](PLAN_MULTI_MUNICIPIO_F3B_DISENO.md). **Aplicadas en local el 2026-10-26** (rama `it01-f3b-segundo-factor`) **y en prod el 2026-10-26** (Tarea 10, con César): la 128 por César en el SQL Editor, la 128b por MCP, después del backup y con `SEGUNDO_FACTOR_CLAVE` ya cargada en Railway. Orden del corte: login del shell (Pages) y app de agentes (Vercel), después el merge del backend. Esa noche quedaron vinculadas la cuenta del super (habilitada por SQL) y `cesar@` (habilitada por el super desde Usuarios).
 - **128** (lleva `DROP`: en prod la corre César en el SQL Editor): el CHECK `ck_super_admin_acceso_accion` suma `segundo_factor`, la acción con la que queda en el registro del super cada restablecimiento que hace sobre una cuenta de un municipio. Solo amplía: compatible con el código viejo.
 - **128b** (sin `DROP`, por MCP):
   - `usuarios.sesiones_validas_desde` (marca de revocación: un token de nivel 0/1 con `iat` anterior da 401);

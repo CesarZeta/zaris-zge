@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-10-26, 2ª sesión (Cesar). **IT-01 F3b implementado y probado en local; el corte en prod quedó para la próxima sesión.** Prod sin cambios hoy, todo en verde.
+**Última actualización:** 2026-10-26, 3ª sesión (Cesar). **IT-01 F3b (segundo factor) en prod**: migs 128/128b, login del shell, app de agentes y backend; vinculadas la cuenta del super y `cesar@`. Las otras dos cuentas de administrador activas no entran hasta que el super las habilite.
 
 ---
 
@@ -18,17 +18,13 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **Corte de F3b en prod** (Tarea 10 de [`PLAN_MULTI_MUNICIPIO_F3B.md`](PLAN_MULTI_MUNICIPIO_F3B.md)), con César.
-   - **Lo que hace César:** generar y cargar `SEGUNDO_FACTOR_CLAVE` en Railway, correr la mig 128 en el SQL Editor, dar el email de la cuenta 102 y vincular su celular.
-   - **Orden:** backup → variable de entorno → 128b por MCP y 128 en el Editor → `login.html` (cherry-pick a main) y la app de agentes a main → merge del backend → verificación.
-   - **Después del merge:** agregar al `.env.local` de cada checkout las dos variables nuevas (ver `backend/.env.example`).
-   - **Recomendación:** hacerlo al arrancar la próxima sesión, antes que cualquier otra cosa de IT-01.
-2. **IT-01 después de F3:**
-   - **Verificaciones que solo puede hacer César en prod** (en la base ya están verificados el login, la selección del municipio 1 y los requests):
-     - pedir de nuevo «Olvidé mi contraseña» con la cuenta del super: el mail tiene que llegar como ZARIS (asunto, encabezado, texto, pie y remitente), sin San Andrés. El arreglo `2f48a55` está desplegado, pero no se probó con un mail real;
-     - con `cesar@`, Usuarios → «Registro del super administrador» muestra las filas de la cuenta nueva;
-     - como super administrador, Reclamos → listado trae lo mismo que con `cesar@`.
-   - Después de F3b: el **lote de limpieza** (DROP de los únicos globales viejos en el SQL Editor; desde ahí la 127c es la que frena que un municipio pise una clave global) y los menores de Pendientes, antes de F4.
+1. **Cuentas de administrador sin segundo factor** (desde el corte del 2026-10-26 no pueden entrar): la de Roy y la otra cuenta de administrador de César (id 1). Recomendación: la de Roy, habilitarla desde Usuarios cuando él pueda vincular dentro de las 24 h; la otra, dejarla sin habilitar si no se usa.
+2. **IT-01 — lo que queda de F3 y F3b:**
+   - **Verificaciones que solo puede hacer César en prod:**
+     - pedir «Olvidé mi contraseña» con la cuenta del super: el mail tiene que llegar como ZARIS (asunto, encabezado, texto, pie y remitente), sin San Andrés. El arreglo `2f48a55` está desplegado, pero no se probó con un mail real;
+     - como super administrador, Reclamos → Buscar sin filtros: el total tiene que dar lo mismo que con `cesar@` (2995 el 2026-10-26 a la noche);
+     - el próximo ingreso con código deja el evento `ingreso` en `usuario_segundo_factor_evento` (en el corte solo hubo `habilitado` y `vinculado`, porque vincular ya entra).
+   - Después: el **lote de limpieza** (DROP de los únicos globales viejos en el SQL Editor; desde ahí la 127c es la que frena que un municipio pise una clave global) y los menores de Pendientes, antes de F4.
 3. **Asignación automática — revisar ~2026-10-29:** carga de los agentes de las 17 gestiones que asignan solas (en varias, UN solo agente de nivel Gestión recibe todo).
 4. **Commits viejos de las dos purgas:** César mandó el pedido a GitHub Support el 2026-10-22. El 2026-10-26 los commits seguían publicados; si siguen así hacia el 2026-11-05, reclamar el ticket (detalle en la memoria privada de Cesar).
 5. **Base de conocimiento de ayudas:** la próxima sesión completa es para eso (César, 2026-10-23). Mientras tanto no se tocan manuales.
@@ -40,15 +36,9 @@
 ## 🔵 En curso
 
 - **IT-01 multi-municipio.** F1+F2 en prod desde el 2026-10-25 ([`PLAN_MULTI_MUNICIPIO_F1_F2.md`](PLAN_MULTI_MUNICIPIO_F1_F2.md)). **F3 (super administrador) en prod desde el 2026-10-26** ([`PLAN_MULTI_MUNICIPIO_F3.md`](PLAN_MULTI_MUNICIPIO_F3.md); reglas en CLAUDE.md §1/§3).
-  - Orden para después: F3b (segundo factor) → lote de limpieza → F4 → F5 (antes hay que elegir el hosting del shell: Vercel o Cloudflare Pages) → F6. Recién con F1-F6 hechas puede entrar un segundo municipio real.
-  - **F3b (segundo factor): diseño aprobado por César el 2026-10-26** ([`PLAN_MULTI_MUNICIPIO_F3B_DISENO.md`](PLAN_MULTI_MUNICIPIO_F3B_DISENO.md)); plan en [`PLAN_MULTI_MUNICIPIO_F3B.md`](PLAN_MULTI_MUNICIPIO_F3B.md), con 10 tareas y el corte en la 10:
-    - código de una app de autenticación, obligatorio para los niveles 0 y 1;
-    - la vinculación la habilita el super;
-    - códigos de emergencia;
-    - también en la app de agentes.
-
-    **Implementado y probado en local el 2026-10-26** (Tareas 1-9 y revisión final con sus arreglos; rama `it01-f3b-segundo-factor`, y la app de agentes en la rama `segundo-factor` de su repo). **Falta el corte en prod (Tarea 10) con César.**
-    - **Para quien trabaje en local después del merge (Roy incluido):** sumar a `backend/.env.local` `SEGUNDO_FACTOR_OBLIGATORIO=false` y una `SEGUNDO_FACTOR_CLAVE` de desarrollo (comando en `backend/.env.example`). Sin eso, las cuentas de nivel 0/1 reciben 503 y los smokes que entran con un administrador fallan.
+  - **F3b (segundo factor) en prod desde el 2026-10-26** ([`PLAN_MULTI_MUNICIPIO_F3B.md`](PLAN_MULTI_MUNICIPIO_F3B.md); reglas en CLAUDE.md §1): los niveles 0 y 1 entran con la clave y el código de una app de autenticación; la vinculación la habilita el super (desde Usuarios, o `backend/habilitar_segundo_factor.py` para el nivel 0); hay códigos de emergencia; también en la app de agentes.
+    - **Para quien trabaje en local (Roy incluido):** sumar a `backend/.env.local` `SEGUNDO_FACTOR_OBLIGATORIO=false` y una `SEGUNDO_FACTOR_CLAVE` de desarrollo (comando en `backend/.env.example`). Sin eso, las cuentas de nivel 0/1 reciben 503 y los smokes que entran con un administrador fallan.
+  - Orden para después: lote de limpieza → F4 → F5 (antes hay que elegir el hosting del shell: Vercel o Cloudflare Pages) → F6. Recién con F1-F6 hechas puede entrar un segundo municipio real.
 - **PWA `zaris-vecinos` — modo escritorio del portal: diseño aprobado el 2026-10-12 (3ª), falta plan + código.** Solo toca el repo de la PWA; spec y pasos en su `ESTADO.md` → En curso.
 - **PROPUESTA sin aprobar — app de agentes: reclamos de oficio + «Control de entradas» (QR).** Diseño en [`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md); César lo confirma o corrige antes de F1. No hay código.
 - **App de agentes** publicada en `https://agentes.zaris.com.ar` (color del municipio, instalación desde «Mi perfil»); el vecino instala la suya desde su portal. Detalle en `zaris-agentes/ESTADO.md`.
@@ -93,7 +83,8 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
-- **2026-10-26 (2ª sesión) — IT-01 F3b implementado en local** (falta el corte): rama `it01-f3b-segundo-factor` (`45b03e5`) y app de agentes `segundo-factor` (`609b004`); migs 128/128b solo en local. Smoke 106/106, suite 22/23 (la roja es la de turnos, por datos), aislamiento 0 fallas, recorrido en el navegador y revisión final con sus arreglos. Además: decisión de la Guardia y borrado del worktree de F3.
+- **2026-10-26 (3ª sesión) — IT-01 F3b en prod.** Backup, `SEGUNDO_FACTOR_CLAVE` en Railway, 128 (César, SQL Editor) y 128b (MCP), login del shell (`0065b27`) y app de agentes (`609b004`) antes que el backend (merge `449f7f6`). Un nivel 2 sigue entrando sin código. Vinculadas la cuenta del super y `cesar@`; el registro del super muestra la habilitación. Además: con una sesión inutilizable el shell mostraba adentro el login de desarrollo (citaba localhost:8080); ahora va al login del shell (`6f71d8c`).
+- **2026-10-26 (2ª sesión) — IT-01 F3b implementado en local:** smoke 106/106, suite 22/23 (la roja es la de turnos, por datos), aislamiento 0 fallas, revisión final con sus arreglos. Además: decisión de la Guardia.
 - **2026-10-26 — IT-01 F3 en prod** (migs 127/127b/127c, merge `658542e`, con la pasada de arreglos de su revisión final; después, el mail de recuperación del super como ZARIS, `2f48a55`). Detalle en `HISTORIAL_MIGRACIONES.md`.
 - **2026-10-25 — IT-01 F1+F2 en prod** (migs 125-126, merge `6c92cb6`; detalle en `HISTORIAL_MIGRACIONES.md`).
 
