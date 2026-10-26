@@ -82,4 +82,6 @@ No hay credenciales de la DB de Supabase en local: el seed de prod va por MCP (`
 | `seed_demo.py` / `seed_prod.py` | varios | hardcoded mínimo |
 | `seed_catalogos_emergencias.py` | emergencia_* (6 catálogos) | `Tablas Iniciales/emergencia_*.csv` — patrón `--emit-sql` |
 
+> **Desde IT-01 los catálogos y lo operativo son por municipio:** desde la mig 126 todo INSERT manda `id_municipio` (no hay DEFAULT), y desde la 129b los únicos son por municipio, así que un `ON CONFLICT` va contra `(id_municipio, codigo)` y no contra `(codigo)`. `seed_catalogos_emergencias.py` y `seed_activos_local.py` todavía no mandan el municipio y fallan: quedan como referencia del patrón hasta F4, que define cómo se cargan los catálogos de un municipio nuevo (municipio modelo).
+
 > **CRÍTICO antes de codear cualquier seed/backend**: verificar el estado real de prod (existencia + NOT NULL + DEFAULT + CHECKs + seeds) con `execute_sql`, NO confiar en la doc ni en la simetría con local. Detalle y casos reales en CLAUDE.md §24 + [[feedback_verificar_drift_completo_prod]].

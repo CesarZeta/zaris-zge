@@ -21,7 +21,7 @@ description: "Usar al trabajar en el módulo Agenda de ZARIS (archivos: backend/
 
 **Tabla única `ocupaciones`** con CHECK `ck_ocupacion_consistencia`: solo se popula la FK del `tipo` (`ot`→`id_orden_trabajo`, `evento`→`id_evento`, `turno`→`id_ciudadano`, **`bloqueo`→ninguna** — mig 89). El tipo `bloqueo` es el cierre manual de un recurso sin entidad asociada (espacio en mantenimiento, agente afectado a otra tarea): exige `motivo` (schema `OcupacionCreate`), vale para los 3 tipos de recurso y se renderiza gris en la grilla. `existe_recurso` (services/agenda.py) valida agente/equipo/**espacio** desde 2026-06-12 — antes espacio devolvía False y el POST manual de ocupación sobre espacio daba 404. No usar tablas separadas por tipo.
 
-**`equipo_agentes` (no `equipo_usuarios`):** pivot equipo↔agente. `equipo_usuarios` solo existe vacío en local; en prod no existe.
+**`equipo_agentes` (no `equipo_usuarios`):** pivot equipo↔agente. `equipo_usuarios` ya no existe en ningún entorno (la borró la mig 129b).
 
 **`asignacion_a` en `tipo_reclamo`:** define si las OTs del tipo van a un `agente` o a un `equipo` (desde 2026-10-21 los reclamos no se agendan: no bloquean calendario). `duracion_estimada_min` quedó sin uso y fuera del formulario de Maestros (2026-10-23); el SLA del tipo es `sla_minutos` (mig 120, `sla_dias` derivado).
 
