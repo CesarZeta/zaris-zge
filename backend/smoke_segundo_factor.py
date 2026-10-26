@@ -666,6 +666,115 @@ async def test_sin_clave_503() -> None:
         _prender()
 
 
+# ── Tarea 5 ──────────────────────────────────────────────────────────────────
+
+async def _id_por_email(email: str) -> int:
+    return await _contar("SELECT id_usuario FROM usuarios WHERE lower(email) = :e", {"e": email})
+
+
+def _tok_super(id_super: int) -> str:
+    from app.core.auth import crear_token_super_admin
+    return crear_token_super_admin(id_super, segundo_factor=True)
+
+
+def _tok_admin(id_u: int) -> str:
+    from app.core.auth import create_access_token
+    return create_access_token({"sub": str(id_u), "mun": 1, "sf": True})
+
+
+async def test_habilitar_por_super() -> None:
+    print("\n5a. El super restablece y habilita a un administrador")
+    from app.services import segundo_factor as sf
+    _prender()
+    id_u = CTX["id_admin"]
+    async with AsyncSessionLocal() as db:
+        id_s = await _id_super(db)
+    viejo = _tok_admin(id_u)
+    await asyncio.sleep(1.1)
+    filas = ("SELECT count(*) FROM super_admin_acceso WHERE id_usuario = :s AND accion = 'segundo_factor' "
+             "AND id_municipio = 1", {"s": id_s})
+    eventos = ("SELECT count(*) FROM usuario_segundo_factor_evento WHERE id_usuario = :u AND evento = 'habilitado' "
+               "AND id_usuario_actor = :s", {"u": id_u, "s": id_s})
+    antes_f, antes_e = await _contar(*filas), await _contar(*eventos)
+    async with _cliente() as c:
+        r = await c.post(f"/api/v1/auth/segundo-factor/cuentas/{id_u}/habilitar", headers=_h(_tok_super(id_s), mun=1))
+    check("POST habilitar como super → 200", r.status_code == 200, f"{r.status_code} {r.text[:160]}")
+    async with AsyncSessionLocal() as db:
+        est = await sf.estado_cuenta(db, id_u)
+        activos = (await db.execute(text("SELECT count(*) FROM usuario_codigo_emergencia "
+                                         "WHERE id_usuario = :u AND activo"), {"u": id_u})).scalar()
+    check("queda habilitada y sin vincular", est.habilitada and not est.vinculada, str(est))
+    check("sin códigos de emergencia activos", activos == 0, str(activos))
+    check("el token emitido antes da 401", await _me(viejo) == 401)
+    check("fila 'segundo_factor' en el registro del super, municipio 1", await _contar(*filas) == antes_f + 1)
+    check("evento 'habilitado' con el super como actor", await _contar(*eventos) == antes_e + 1)
+
+
+async def test_habilitar_no_admin() -> None:
+    print("\n5b. Quién no puede habilitar, y sobre qué cuentas")
+    _prender()
+    id_u, id_n = CTX["id_admin"], CTX["id_nuevo"]
+    id_b = await _contar("SELECT id_usuario FROM usuarios WHERE lower(email) = 'admin.b@aislamiento.test'", {})
+    id_2 = await _id_por_email(SF_NIVEL2)
+    async with AsyncSessionLocal() as db:
+        id_s = await _id_super(db)
+    async with _cliente() as c:
+        r = await c.post(f"/api/v1/auth/segundo-factor/cuentas/{id_u}/habilitar", headers=_h(_tok_admin(id_n)))
+        check("un administrador del municipio → 403", r.status_code == 403, f"{r.status_code} {r.text[:120]}")
+        for id_x, nombre in ((id_b, "una cuenta de otro municipio"), (id_s, "su propia cuenta"),
+                             (id_2, "una cuenta de nivel 2")):
+            r = await c.post(f"/api/v1/auth/segundo-factor/cuentas/{id_x}/habilitar",
+                             headers=_h(_tok_super(id_s), mun=1))
+            check(f"el super sobre {nombre} → 404", r.status_code == 404, f"{r.status_code} {r.text[:120]}")
+
+
+async def test_estado_cuenta_endpoint() -> None:
+    print("\n5c. Estado del segundo factor de una cuenta")
+    _prender()
+    id_u, id_n = CTX["id_admin"], CTX["id_nuevo"]
+    id_b = await _contar("SELECT id_usuario FROM usuarios WHERE lower(email) = 'admin.b@aislamiento.test'", {})
+    from app.core.auth import create_access_token
+    tok_2 = create_access_token({"sub": str(await _id_por_email(SF_NIVEL2)), "mun": 1})
+    async with _cliente() as c:
+        r = await c.get(f"/api/v1/auth/segundo-factor/cuentas/{id_u}", headers=_h(_tok_admin(id_n)))
+        j = r.json() if r.status_code == 200 else {}
+        check("el administrador ve el estado → 200", r.status_code == 200 and "vinculada" in j,
+              f"{r.status_code} {r.text[:160]}")
+        check("la respuesta no trae secretos ni códigos",
+              not any(k.startswith(("secreto", "codigo")) for k in j), str(list(j)))
+        r = await c.get(f"/api/v1/auth/segundo-factor/cuentas/{id_u}", headers=_h(tok_2))
+        check("un nivel 2 → 403", r.status_code == 403, f"{r.status_code}")
+        r = await c.get(f"/api/v1/auth/segundo-factor/cuentas/{id_b}", headers=_h(_tok_admin(id_n)))
+        check("una cuenta de otro municipio → 404", r.status_code == 404, f"{r.status_code}")
+
+
+async def test_script_habilitar() -> None:
+    print("\n5d. Script del nivel 0")
+    import subprocess
+    from app.services import segundo_factor as sf
+    _prender()
+    env = {**os.environ, "ENV_FILE": ".env.local", "PYTHONPATH": ".", "PYTHONIOENCODING": "utf-8"}
+    async with AsyncSessionLocal() as db:
+        id_s = await _id_super(db)
+    r = subprocess.run([sys.executable, "habilitar_segundo_factor.py", "--email", EMAIL_SUPER],
+                       cwd=AQUI, env=env, capture_output=True, text=True, encoding="utf-8")
+    async with AsyncSessionLocal() as db:
+        est = await sf.estado_cuenta(db, id_s)
+    check("el script deja al super habilitado", r.returncode == 0 and est.habilitada and not est.vinculada,
+          f"rc={r.returncode} {r.stdout[-120:]} {r.stderr[-160:]}")
+    antes = est.habilitado_hasta
+    r = subprocess.run([sys.executable, "habilitar_segundo_factor.py", "--email", EMAIL_SUPER, "--imprimir-sql"],
+                       cwd=AQUI, env=env, capture_output=True, text=True, encoding="utf-8")
+    async with AsyncSessionLocal() as db:
+        despues = (await sf.estado_cuenta(db, id_s)).habilitado_hasta
+    check("--imprimir-sql imprime SQL y no toca la base",
+          r.returncode == 0 and "usuario_segundo_factor" in r.stdout and despues == antes,
+          f"rc={r.returncode} {r.stderr[-160:]}")
+    r = subprocess.run([sys.executable, "habilitar_segundo_factor.py", "--email", SF_ADMIN],
+                       cwd=AQUI, env=env, capture_output=True, text=True, encoding="utf-8")
+    check("con un email que no es de nivel 0 sale con error", r.returncode != 0, f"rc={r.returncode}")
+
+
 TESTS = [test_tablas_segundo_factor,
          test_cifrado, test_vinculacion, test_reintento_vinculacion, test_codigo_y_repeticion,
          test_codigo_concurrente, test_emergencia, test_bloqueo,
@@ -673,7 +782,8 @@ TESTS = [test_tablas_segundo_factor,
          test_demo_poblar_sin_sf,
          test_login_pide_codigo, test_nivel_2_sin_cambios, test_sin_habilitar, test_vinculacion_por_login,
          test_emergencia_revincula, test_bloqueo_http, test_desafio, test_clave_temporal, test_super,
-         test_sin_clave_503]
+         test_sin_clave_503,
+         test_habilitar_por_super, test_habilitar_no_admin, test_estado_cuenta_endpoint, test_script_habilitar]
 
 
 async def main() -> int:

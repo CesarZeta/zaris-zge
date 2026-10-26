@@ -10,22 +10,29 @@ POST /api/v1/auth/segundo-factor/verificar              {desafio, codigo} → to
 POST /api/v1/auth/segundo-factor/emergencia             {desafio, codigo} → desafío para revincular
 POST /api/v1/auth/segundo-factor/vinculacion            {desafio}         → QR y secreto
 POST /api/v1/auth/segundo-factor/vinculacion/confirmar  {desafio, codigo} → códigos de emergencia + token
+
+Y para el backoffice (Usuarios), con el municipio de la request:
+GET  /api/v1/auth/segundo-factor/cuentas/{id}            estado (administrador o super)
+POST /api/v1/auth/segundo-factor/cuentas/{id}/habilitar  restablece y habilita 24 h (solo el super)
 """
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from jose import JWTError, jwt
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import ALGORITHM, requiere_segundo_factor
+from app.core.auth import (ALGORITHM, NIVELES_CON_SEGUNDO_FACTOR, get_current_user, require_super_admin,
+                           requiere_segundo_factor)
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.municipio import municipio_actual
 from app.core.urls import url_login_backoffice
 from app.middleware.rate_limit import check_rate_limit
 from app.services import segundo_factor as sf
+from app.services.accesos_super import registrar_acceso_super_en
 from app.services.login_interno import LoginResponse, cargar_usuario, completar_login
 from app.utils.request_helpers import get_real_ip
 
@@ -231,3 +238,73 @@ async def confirmar_vinculacion(body: CodigoIn, request: Request, db: AsyncSessi
     await db.commit()
     sesion = await completar_login(db, request, user, segundo_factor=True)
     return VinculacionConfirmada(codigos_emergencia=codigos, **sesion)
+
+
+# ── Backoffice: estado y habilitación ────────────────────────────────────────
+
+class EstadoSegundoFactorOut(BaseModel):
+    """Solo estado: nunca secretos ni códigos."""
+    nivel: int
+    requiere: bool
+    vinculada: bool
+    confirmado_en: Optional[datetime] = None
+    habilitada: bool
+    habilitado_hasta: Optional[datetime] = None
+    bloqueado_hasta: Optional[datetime] = None
+
+
+async def _cuenta_del_municipio(db: AsyncSession, id_usuario: int, id_municipio: int):
+    """Cuenta del municipio de la request. Una de otro municipio, o del super (sin municipio),
+    responde 404 como una inexistente."""
+    fila = (await db.execute(text("""
+        SELECT id_usuario, nombre, email, nivel_acceso, id_municipio FROM usuarios
+         WHERE id_usuario = :u AND id_municipio = :m"""), {"u": id_usuario, "m": id_municipio})).fetchone()
+    if fila is None:
+        raise HTTPException(status_code=404, detail="Cuenta inexistente")
+    return fila
+
+
+async def _estado_out(db: AsyncSession, cuenta) -> EstadoSegundoFactorOut:
+    est = await sf.estado_cuenta(db, cuenta.id_usuario)
+    return EstadoSegundoFactorOut(
+        nivel=cuenta.nivel_acceso, requiere=cuenta.nivel_acceso in NIVELES_CON_SEGUNDO_FACTOR,
+        vinculada=est.vinculada, confirmado_en=est.confirmado_en, habilitada=est.habilitada,
+        habilitado_hasta=est.habilitado_hasta, bloqueado_hasta=est.bloqueado_hasta)
+
+
+@router.get("/cuentas/{id_usuario}", response_model=EstadoSegundoFactorOut)
+async def estado_de_cuenta(
+    id_usuario: int = Path(ge=1, le=2_147_483_647),
+    current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user["nivel_acceso"] != 1:  # nivel efectivo: administrador o super
+        raise HTTPException(status_code=403, detail="Requiere nivel administrador")
+    return await _estado_out(db, await _cuenta_del_municipio(db, id_usuario, id_municipio))
+
+
+@router.post("/cuentas/{id_usuario}/habilitar", response_model=EstadoSegundoFactorOut,
+             responses={404: {"description": "Cuenta de nivel 1 inexistente en el municipio"}})
+async def habilitar_cuenta(
+    request: Request,
+    id_usuario: int = Path(ge=1, le=2_147_483_647),
+    current_user: dict = Depends(require_super_admin),
+    id_municipio: int = Depends(municipio_actual),
+    db: AsyncSession = Depends(get_db),
+):
+    """Restablece el segundo factor de un administrador del municipio y habilita la vinculación
+    por 24 h: borra la app y los códigos, y corta sus sesiones. Solo el super administrador; queda
+    en su registro en la misma transacción (si no se puede registrar, el cambio no queda)."""
+    cuenta = await _cuenta_del_municipio(db, id_usuario, id_municipio)
+    if cuenta.nivel_acceso != 1:
+        raise HTTPException(status_code=404, detail="Cuenta inexistente")
+    await sf.habilitar(db, id_usuario=cuenta.id_usuario, id_municipio=cuenta.id_municipio,
+                      id_actor=current_user["id_usuario"])
+    await registrar_acceso_super_en(
+        db, id_usuario=current_user["id_usuario"], accion="segundo_factor", id_municipio=id_municipio,
+        metodo=request.method, ruta=request.url.path,
+        detalle=f"Restableció y habilitó la vinculación de {cuenta.nombre} ({cuenta.email})",
+        ip=get_real_ip(request), user_agent=request.headers.get("user-agent"))
+    await db.commit()
+    return await _estado_out(db, cuenta)
