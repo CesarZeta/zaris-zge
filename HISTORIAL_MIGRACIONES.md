@@ -181,7 +181,11 @@ Las reglas vivas de cada una están en la sección del módulo correspondiente d
 
 ### Migraciones 127 y 127b — IT-01 F3, super administrador (`backend/migrations/127_super_admin_restricciones.sql`, `127b_super_admin.sql`)
 
-Plan: [`PLAN_MULTI_MUNICIPIO_F3.md`](PLAN_MULTI_MUNICIPIO_F3.md). **Aplicadas en local el 2026-10-25** (rama `it01-f3-super-admin`); **en prod, pendientes del corte de F3**.
+Plan: [`PLAN_MULTI_MUNICIPIO_F3.md`](PLAN_MULTI_MUNICIPIO_F3.md). **Aplicadas en local el 2026-10-25** (la 127c el 2026-10-26; rama `it01-f3-super-admin`) **y en prod el 2026-10-26** (Tarea 10, con César):
+- backup previo `backups/zaris_prod_2026-10-26_1338_pre_f3.sql`, fuera del repo;
+- la 127 la corrió César en el SQL Editor; la 127b y la 127c, por MCP `apply_migration`, cada una verificada con `execute_sql` y con un login que seguía andando con el código viejo;
+- después, el merge `658542e` y el deploy de Railway, verificado por el path `/api/v1/super/municipios`;
+- primera cuenta de nivel 0: id 102, «ZARIS Soporte», con `seed_super_admin.py --imprimir-sql`. El email no va en el repo. César eligió la clave por «Olvidé mi contraseña» y entró: quedaron filas `login`, `seleccion` y `request` del municipio 1.
 - **127** (lleva `DROP`: en prod la corre César en el SQL Editor, no va por MCP):
   - CHECK `usuarios_nivel_acceso_check` y `modulos_min_nivel_acceso_check` ampliados a 0-5;
   - `usuarios.id_municipio` pasa a nullable, con `ck_usuarios_municipio_nivel` `(nivel_acceso = 0) = (id_municipio IS NULL)`.

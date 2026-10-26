@@ -667,7 +667,7 @@ class Equipo(Base):
   - 127: CHECK de nivel 0-5 en `usuarios` y en `modulos`; `usuarios.id_municipio` nullable con `ck_usuarios_municipio_nivel`, que solo deja el municipio vacío al nivel 0. Lleva DROP: en prod la corre César en el SQL Editor.
   - 127b: `super_admin_acceso`, append-only, clase `mixta`; módulo `municipios` (min 0); `password_renovacion_dias` pasa a global.
   - 127c: trigger `configuracion_general_clave_global`: una fila de un municipio no puede tener la clave de un parámetro global (leer_config la priorizaría y lo anularía). La API responde 422 antes (`admin_tablas._rechazar_clave_global`). Sin DROP, por MCP, después de la 127b.
-  - Estado: 127 y 127b aplicadas en local el 2026-10-25, la 127c el 2026-10-26; **en prod, pendientes del corte de F3**. Reglas en §1/§3 y en [`PLAN_MULTI_MUNICIPIO_F3.md`](PLAN_MULTI_MUNICIPIO_F3.md). **La 125c no se re-aplica después de la 127.**
+  - Estado: 127 y 127b aplicadas en local el 2026-10-25, la 127c el 2026-10-26; **en prod, las tres el 2026-10-26** (corte de F3: la 127 por César en el SQL Editor, 127b y 127c por MCP). Reglas en §1/§3 y en [`PLAN_MULTI_MUNICIPIO_F3.md`](PLAN_MULTI_MUNICIPIO_F3.md). **La 125c no se re-aplica después de la 127.**
 — cualquier mig nueva debe usar 128+ y clasificar sus tablas nuevas en `municipio_tabla_clase`**. El número se asigna al APLICAR, no al planificar (la 104 "reservada" para el colero la tomó Trámites).
 
 **Reglas vivas de migración:**

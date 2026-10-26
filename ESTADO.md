@@ -10,7 +10,13 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-10-26 (Cesar). **IT-01 F1+F2 en prod desde el 2026-10-25** (todos vuelven a ingresar una vez). **F3, super administrador: tareas 1 a 9 hechas en la rama `it01-f3-super-admin`** (`29abaad`, sin merge; 127 y 127b solo en local). En local pasaron la suite (22/22), los barridos y el recorrido en el navegador. Faltan los arreglos de la revisión final y el corte en prod (pregunta 1).
+**Última actualización:** 2026-10-26 (Cesar). **IT-01 F3 (super administrador) EN PROD** desde el 2026-10-26.
+
+- Antes del corte se hizo la pasada de arreglos de la revisión final: el crítico C1 y los importantes I1 a I4, más el token de 8 h.
+- Corte: migs 127 (César, SQL Editor), 127b y 127c (MCP); merge `658542e`.
+- Cuenta «ZARIS Soporte» creada; César eligió la clave por «Olvidé mi contraseña» y entró.
+- Arreglo del sidebar en prod desde `c5ca315`: un nivel 4 ya no ve los módulos que no tiene.
+- Los 3 crons diarios del lunes corrieron bien por municipio.
 
 ---
 
@@ -18,27 +24,17 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **IT-01 F3 (super administrador), antes del corte:**
-   - **Revisión final de la rama: HECHA el 2026-10-26, veredicto «con arreglos».** Encontró 1 crítico y 4 importantes:
-     - crítico: una pantalla de Turnos le muestra contenido clínico al super administrador sin pedirle el motivo;
-     - un parámetro global se puede pisar desde un municipio;
-     - el selector no se sincroniza entre pestañas;
-     - hay guards del frontend que dejan al super administrador sin funciones de nivel 1;
-     - dos ediciones globales se registran después de guardarse.
-     Además hay 6 menores. El detalle está en el registro local del plan (`progress.md`, líneas `Final:`, en el worktree de la rama). **La pasada de arreglos va antes del corte** (test que falla primero, suite verde).
-   - **Decisión — arreglo del sidebar:** en prod, los ítems que el usuario no tiene permitidos se ven igual, porque el `display: flex` del ítem pisa el `hidden`. Pasa desde antes de F3. El arreglo es una línea de CSS que ya está en la rama (`.nav-flat__item[hidden] { display: none }`, `frontend/css/menu.css`). **Recomendación: pasarlo ya a `main` como arreglo aparte**, sin esperar el corte.
-   - **Corte en prod (tarea 10, con César):**
-     - César da el email de la cuenta nueva, que no se escribe en el repo.
-     - César corre la 127 en el SQL Editor (lleva DROP) y la 127b se aplica por MCP.
-     - Antes de la 127b, revisar en prod las columnas NOT NULL sin default de `modulos` (la 127b inserta una fila).
-     - Merge y deploy; marcador: el path exacto `/api/v1/super/municipios` en `/openapi.json`.
-     - Alta de la cuenta con `seed_super_admin.py --imprimir-sql` y `execute_sql`.
-     - César elige la clave con «Olvidé mi contraseña».
-     - Verificar el login, el selector «Operando en» y el registro de accesos.
-   - Después: **F3b (segundo factor)** antes del primer municipio real; el **lote de limpieza** (DROP de los únicos globales viejos, en el SQL Editor) y los menores de Pendientes antes de F4.
-   - Hoy, lunes 2026-10-26: revisar los logs de los 3 crons diarios (trámites, integridad, datos demo). Es la primera madrugada que corren por municipio en prod; al cierre todavía no habían corrido.
+1. **IT-01 después de F3:**
+   - **Verificación visual pendiente (César):**
+     - con `cesar@`, Usuarios → «Registro del super administrador» muestra las filas de la cuenta nueva;
+     - como super administrador, Reclamos → listado trae lo mismo que con `cesar@`.
+
+     En la base ya está verificado: login, selección del municipio 1 y requests.
+   - **Decisión — Guardia:** el motivo de derivación de las pendientes sigue visible en la mesa para todos los que ven la Guardia. Lo escribe el COM y la Guardia lo usa para el triage. La intervención y las recomendaciones ya pasan por el guard de historia clínica. ¿Reservar también el motivo?
+   - **Cuenta de prueba `administrativo@` (n2) con cambio de clave forzado en prod:** la marca está desde el 2026-10-25 19:44 UTC, del corte de F1+F2; el backup previo a F3 lo confirma, no la puso F3. La vigencia global es de 365 días y su clave es del 2026-07-19, así que la renovación no la explica. Decidir: elegirle una clave nueva (y anotarla en la planilla) o quitar la marca. Averiguar qué la puso.
+   - Siguiente: **F3b (segundo factor)** antes del primer municipio real; después el **lote de limpieza** (DROP de los únicos globales viejos en el SQL Editor; desde ahí la 127c es la que frena que un municipio pise una clave global) y los menores de Pendientes, antes de F4.
 2. **Asignación automática — revisar ~2026-10-29:** carga de los agentes de las 17 gestiones que asignan solas (en varias, UN solo agente de nivel Gestión recibe todo).
-3. **Commits viejos de las dos purgas:** César mandó el pedido a GitHub Support el 2026-10-22; sin respuesta al 2026-10-23 → volver a preguntar el lunes 2026-10-26 (detalle en la memoria privada de Cesar).
+3. **Commits viejos de las dos purgas:** César mandó el pedido a GitHub Support el 2026-10-22. El 2026-10-26 los commits seguían publicados; si siguen así hacia el 2026-11-05, reclamar el ticket (detalle en la memoria privada de Cesar).
 4. **Base de conocimiento de ayudas:** la próxima sesión completa es para eso (César, 2026-10-23). Mientras tanto no se tocan manuales.
 5. Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
 6. **Primer cierre real de un trámite de vecino en prod:** confirma el aviso de resultado y la encuesta (probados solo en local). Va con los próximos smokes con cuentas reales; César pasa los trámites.
@@ -47,8 +43,12 @@
 
 ## 🔵 En curso
 
-- **IT-01 multi-municipio.** F1+F2 están en prod desde el 2026-10-25 ([`PLAN_MULTI_MUNICIPIO_F1_F2.md`](PLAN_MULTI_MUNICIPIO_F1_F2.md)).
-  - **F3, super administrador** ([`PLAN_MULTI_MUNICIPIO_F3.md`](PLAN_MULTI_MUNICIPIO_F3.md)): tareas 1 a 9 en la rama `it01-f3-super-admin`; faltan los arreglos de la revisión final y el corte (pregunta 1). Trae nivel 0 sin municipio con selector «Operando en» (`X-Municipio`), registro `super_admin_acceso` inalterable que ve el administrador del municipio, módulo Municipios, «Parámetros globales» e historia clínica con motivo.
+- **IT-01 multi-municipio.** F1+F2 en prod desde el 2026-10-25 ([`PLAN_MULTI_MUNICIPIO_F1_F2.md`](PLAN_MULTI_MUNICIPIO_F1_F2.md)). **F3 (super administrador) en prod desde el 2026-10-26** ([`PLAN_MULTI_MUNICIPIO_F3.md`](PLAN_MULTI_MUNICIPIO_F3.md)), con lo siguiente:
+  - nivel 0 sin municipio, con selector «Operando en» (`X-Municipio`), sincronizado entre pestañas;
+  - registro `super_admin_acceso` inalterable que ve el administrador del municipio;
+  - módulo Municipios y «Parámetros globales»;
+  - historia clínica con motivo, también en la mesa de la Guardia;
+  - token de 8 h hasta F3b.
   - Orden para después: F3b (segundo factor) → lote de limpieza → F4 → F5 (antes hay que elegir el hosting del shell: Vercel o Cloudflare Pages) → F6. Recién con F1-F6 hechas puede entrar un segundo municipio real.
 - **PWA `zaris-vecinos` — modo escritorio del portal: diseño aprobado el 2026-10-12 (3ª), falta plan + código.** Solo toca el repo de la PWA; spec y pasos en su `ESTADO.md` → En curso.
 - **PROPUESTA sin aprobar — app de agentes: reclamos de oficio + «Control de entradas» (QR).** Diseño en [`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md); César lo confirma o corrige antes de F1. No hay código.
@@ -74,7 +74,15 @@
   - **UX:** un token válido usado desde un subdominio desconocido responde «Sesión vencida» en vez de «Municipio no encontrado» (va con F5).
   - **Preexistentes:** Maestros da 500 con una fecha inválida (`_coerce_types`) y 400 con el texto crudo de la base al crear. El revisor recomienda un manejador global de FK violada → 422.
   - **Herramientas:** el barrido cuenta un 429 como «sin probar» sin fallar. Los placeholders «Ej: REC-2026-000001» de las mesas de OT muestran todavía el formato viejo.
-  - **F3 (rama):** en el registro del super administrador (Usuarios), ordenar por «Acción» usa el código interno y no la etiqueta que se ve.
+  - **F3, menores diferidos de su revisión final:**
+    - en el registro del super administrador (Usuarios), ordenar por «Acción» usa el código interno y no la etiqueta que se ve;
+    - faltan los únicos parciales del email y el usuario de nivel 0 (M1);
+    - Maestros → municipios le contesta a un administrador de municipio con el texto del módulo Municipios en vez del 403 (M2);
+    - la fila `request` guarda la ruta sin la query (M3);
+    - cache de 60 s de los municipios activos (M4);
+    - en el primer ingreso del super, el inicio carga antes de elegir municipio (M5);
+    - el modal de Municipios no avisa que cambiar el subdominio corta el acceso por la dirección vieja (M6);
+    - retención de `super_admin_acceso`: una fila por request, incluido el refresco de 30 s de Emergencias. Va en F4.
 - 🟢 **PWA — Configuración con sesión vieja:** si el vecino entra directo a `/configuracion` con un token vencido, la página se queda ahí (no borra la sesión ni manda al login). No hay bucle, y al volver al inicio cae en el login. Esa página no maneja el 401 por su cuenta, como sí lo hacen las demás (visto en el corte del 2026-10-25; repo `zaris-vecinos`).
 
 **Infra / operativo**
@@ -97,7 +105,17 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
-- **2026-10-25/26 — IT-01 F3 en la rama.** Plan escrito (`e080207`, decisiones de César: segundo factor en F3b, cuenta nueva, parámetros globales en Configuración → Sistema). Tareas 1 a 9 hechas y subidas (`29abaad`); la 127 y la 127b solo en local.
+- **2026-10-26 — IT-01 F3 en prod.**
+  - Pasada de arreglos con un test que falla primero:
+    - C1: la mesa de la Guardia pasa el contenido clínico por el guard de historia clínica. Antes, cualquier nivel ≤ 2 de cualquier gestión lo veía; confirmado en local con un supervisor fuera de Salud.
+    - I1: 422 más el trigger de la 127c.
+    - I2: pestañas sincronizadas.
+    - I3: `esAdministrador()` y el barrido `tools/barrido_guards_nivel.py`.
+    - I4: registro en la misma transacción.
+    - Token de 8 h.
+  - Pruebas: suite 22/22, `smoke_super_admin` 117/117 y aislamiento con 0 fallas en sus 3 modos.
+  - Corte: backup previo; 127 por César, 127b y 127c por MCP; merge `658542e`; deploy verificado por el path `/api/v1/super/municipios`; cuenta id 102; César entró.
+- **2026-10-25/26 — IT-01 F3 en la rama** (plan `e080207`, tareas 1 a 9 hasta `29abaad`).
 - **2026-10-25 — IT-01 F1+F2 en prod (corte, Tarea 20).** Backup completo antes. Migs 125-125d, merge `6c92cb6`, deploy de Railway y mig 126. Verificado: conteos, 401 de los tokens viejos, las 4 superficies en el navegador, `REC-SAN-2026-003161` y el dispatcher por municipio. Rama vieja `it01-multi-municipio` borrada del remoto. Detalle en `HISTORIAL_MIGRACIONES.md`.
 
 > Detalle por migración en `HISTORIAL_MIGRACIONES.md`; reglas de cada módulo en su skill; lo anterior a septiembre (julio-agosto 2026: auditoría de seguridad 48/48, migs 95-102, BI Operativo/Ejecutivo, PWA de Roy a prod, Usuarios en React) en `HISTORIAL_MIGRACIONES.md` y la memoria privada de César.
