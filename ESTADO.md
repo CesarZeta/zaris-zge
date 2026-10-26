@@ -23,8 +23,7 @@
      - pedir de nuevo «Olvidé mi contraseña» con la cuenta del super: el mail tiene que llegar como ZARIS (asunto, encabezado, texto, pie y remitente), sin San Andrés. El arreglo `2f48a55` está desplegado, pero no se probó con un mail real;
      - con `cesar@`, Usuarios → «Registro del super administrador» muestra las filas de la cuenta nueva;
      - como super administrador, Reclamos → listado trae lo mismo que con `cesar@`.
-   - **Decisión — Guardia:** el motivo de derivación de las pendientes sigue visible en la mesa para todos los que ven la Guardia. Lo escribe el COM y la Guardia lo usa para el triage. La intervención y las recomendaciones ya pasan por el guard de historia clínica. **Recomendación: dejarlo visible**; sin él la mesa no puede decidir a quién atiende primero, y el COM ya lo ve en su propio módulo.
-   - Siguiente: **F3b (segundo factor)** antes del primer municipio real; después el **lote de limpieza** (DROP de los únicos globales viejos en el SQL Editor; desde ahí la 127c es la que frena que un municipio pise una clave global) y los menores de Pendientes, antes de F4.
+   - Después de F3b: el **lote de limpieza** (DROP de los únicos globales viejos en el SQL Editor; desde ahí la 127c es la que frena que un municipio pise una clave global) y los menores de Pendientes, antes de F4.
 2. **Asignación automática — revisar ~2026-10-29:** carga de los agentes de las 17 gestiones que asignan solas (en varias, UN solo agente de nivel Gestión recibe todo).
 3. **Commits viejos de las dos purgas:** César mandó el pedido a GitHub Support el 2026-10-22. El 2026-10-26 los commits seguían publicados; si siguen así hacia el 2026-11-05, reclamar el ticket (detalle en la memoria privada de Cesar).
 4. **Base de conocimiento de ayudas:** la próxima sesión completa es para eso (César, 2026-10-23). Mientras tanto no se tocan manuales.
@@ -42,6 +41,13 @@
   - historia clínica con motivo, también en la mesa de la Guardia;
   - token de 8 h hasta F3b.
   - Orden para después: F3b (segundo factor) → lote de limpieza → F4 → F5 (antes hay que elegir el hosting del shell: Vercel o Cloudflare Pages) → F6. Recién con F1-F6 hechas puede entrar un segundo municipio real.
+  - **F3b (segundo factor): decisiones de César del 2026-10-26, escritas en** [`PLAN_MULTI_MUNICIPIO_F3B_DISENO.md`](PLAN_MULTI_MUNICIPIO_F3B_DISENO.md). Falta que César lea el documento completo:
+    - código de una app de autenticación, obligatorio para los niveles 0 y 1;
+    - la vinculación la habilita el super;
+    - códigos de emergencia;
+    - también en la app de agentes.
+
+    Sigue el plan de implementación.
 - **PWA `zaris-vecinos` — modo escritorio del portal: diseño aprobado el 2026-10-12 (3ª), falta plan + código.** Solo toca el repo de la PWA; spec y pasos en su `ESTADO.md` → En curso.
 - **PROPUESTA sin aprobar — app de agentes: reclamos de oficio + «Control de entradas» (QR).** Diseño en [`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md); César lo confirma o corrige antes de F1. No hay código.
 - **App de agentes** publicada en `https://agentes.zaris.com.ar` (color del municipio, instalación desde «Mi perfil»); el vecino instala la suya desde su portal. Detalle en `zaris-agentes/ESTADO.md`.
@@ -93,6 +99,7 @@
 - Purgas del historial git HECHAS el 2026-09-20 y el 2026-10-21 (mapas en `docs/commit-map-purga-*.txt`; un SHA viejo que no resuelve se busca ahí). Roy tiene que re-clonar.
 - Claves de las notificaciones push: **no se rotan** (César, 2026-10-21).
 - Los reclamos **no se agendan**: la agenda es solo para turnos (César, 2026-10-21).
+- **Guardia: el motivo de derivación sigue visible en la mesa** para todos los que ven la Guardia (César, 2026-10-26). Lo escribe el COM y sirve para el triage; lo clínico ya pasa por el guard de historia clínica.
 - Fase 3 de roles (mig 92) y la auditoría de seguridad 2026-07 (48/48) COMPLETAS.
 
 ---
