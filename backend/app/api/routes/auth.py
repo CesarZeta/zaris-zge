@@ -281,7 +281,7 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
                 logger.info("RENOVACION PASSWORD forzada por vigencia | id=%s | dias=%s",
                             user.id_usuario, _dias)
 
-    token = (crear_token_super_admin(user.id_usuario) if es_super
+    token = (crear_token_super_admin(user.id_usuario, segundo_factor=False) if es_super
              else create_access_token({"sub": str(user.id_usuario), "mun": user.id_municipio}))
     modulos = await modulos_permitidos(db, user.id_usuario, user.nivel_acceso)
     perfil = await _perfil_agente_del_usuario(db, user.id_usuario)

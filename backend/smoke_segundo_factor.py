@@ -306,9 +306,97 @@ async def test_bloqueo() -> None:
                "WHERE id_usuario = :u", {"u": id_u})
 
 
+# ── Tarea 3 ──────────────────────────────────────────────────────────────────
+
+def _h(tok: str, mun=None) -> dict:
+    h = {"Authorization": f"Bearer {tok}"}
+    if mun is not None:
+        h["X-Municipio"] = str(mun)
+    return h
+
+
+async def _me(tok: str) -> int:
+    async with _cliente() as c:
+        return (await c.get("/api/v1/auth/me", headers=_h(tok))).status_code
+
+
+async def test_token_sin_sf() -> None:
+    print("\n3a. Token de nivel 1 sin el claim del segundo factor")
+    from app.core.auth import create_access_token
+    _prender()
+    id_u = CTX["id_admin"]
+    check("sin sf → 401", await _me(create_access_token({"sub": str(id_u), "mun": 1})) == 401)
+    check("con sf → 200", await _me(create_access_token({"sub": str(id_u), "mun": 1, "sf": True})) == 200)
+
+
+async def test_ascenso() -> None:
+    print("\n3b. Ascenso de nivel 2 a 1 con un token vigente")
+    from app.core.auth import create_access_token
+    _prender()
+    id_2 = await _cuenta(SF_NIVEL2, 2)
+    tok = create_access_token({"sub": str(id_2), "mun": 1})
+    check("nivel 2 sin sf → 200", await _me(tok) == 200)
+    await _sql("UPDATE usuarios SET nivel_acceso = 1 WHERE id_usuario = :u", {"u": id_2})
+    try:
+        check("el mismo token, ya en nivel 1 → 401", await _me(tok) == 401)
+    finally:
+        await _sql("UPDATE usuarios SET nivel_acceso = 2 WHERE id_usuario = :u", {"u": id_2})
+
+
+async def test_marca() -> None:
+    print("\n3c. Revocación por sesiones_validas_desde")
+    from app.core.auth import create_access_token
+    _prender()
+    id_u = CTX["id_admin"]
+    await _sql("UPDATE usuarios SET sesiones_validas_desde = NULL WHERE id_usuario = :u", {"u": id_u})
+    tok = create_access_token({"sub": str(id_u), "mun": 1, "sf": True})
+    check("token con sf → 200", await _me(tok) == 200)
+    await asyncio.sleep(1.1)
+    await _sql("UPDATE usuarios SET sesiones_validas_desde = date_trunc('second', NOW()) WHERE id_usuario = :u",
+               {"u": id_u})
+    check("el mismo token después de la marca → 401", await _me(tok) == 401)
+    nuevo = create_access_token({"sub": str(id_u), "mun": 1, "sf": True})
+    check("un token nuevo → 200", await _me(nuevo) == 200)
+
+
+async def test_super_sin_sf() -> None:
+    print("\n3d. Token del super sin el claim")
+    from app.core.auth import crear_token_super_admin
+    _prender()
+    async with AsyncSessionLocal() as db:
+        id_super = await _id_super(db)
+    check("super sin sf → 401", await _me(crear_token_super_admin(id_super, segundo_factor=False)) == 401)
+    check("super con sf → 200", await _me(crear_token_super_admin(id_super, segundo_factor=True)) == 200)
+
+
+async def test_interruptor_apagado() -> None:
+    print("\n3e. Con el segundo factor apagado")
+    from app.core.auth import create_access_token
+    _prender()
+    settings.SEGUNDO_FACTOR_OBLIGATORIO = False
+    try:
+        check("nivel 1 sin sf → 200",
+              await _me(create_access_token({"sub": str(CTX["id_admin"]), "mun": 1})) == 200)
+    finally:
+        _prender()
+
+
+async def test_demo_poblar_sin_sf() -> None:
+    print("\n3f. /demo/poblar valida el token con el guard central")
+    from app.core.auth import create_access_token
+    _prender()
+    tok = create_access_token({"sub": str(CTX["id_admin"]), "mun": 1})
+    async with _cliente() as c:
+        # cerrar_atraso sin aplicar = dry-run: si el guard dejara pasar, no escribe nada.
+        r = await c.post("/api/v1/demo/poblar", headers=_h(tok), json={"modo": "cerrar_atraso", "aplicar": False})
+    check("nivel 1 del municipio demo sin sf → 401", r.status_code == 401, f"{r.status_code} {r.text[:120]}")
+
+
 TESTS = [test_tablas_segundo_factor,
          test_cifrado, test_vinculacion, test_reintento_vinculacion, test_codigo_y_repeticion,
-         test_codigo_concurrente, test_emergencia, test_bloqueo]
+         test_codigo_concurrente, test_emergencia, test_bloqueo,
+         test_token_sin_sf, test_ascenso, test_marca, test_super_sin_sf, test_interruptor_apagado,
+         test_demo_poblar_sin_sf]
 
 
 async def main() -> int:
