@@ -23,7 +23,7 @@ from app.core.auth import require_super_admin
 from app.core.config_municipio import leer_configs
 from app.core.database import get_db
 from app.core.municipio import invalidar_cache_municipios
-from app.services.accesos_super import registrar_acceso_super
+from app.services.accesos_super import registrar_acceso_super, registrar_acceso_super_en
 
 router = APIRouter(prefix="/api/v1/super", tags=["Super administrador"],
                    dependencies=[Depends(require_super_admin)])
@@ -115,13 +115,14 @@ async def editar_municipio(
      RETURNING id_municipio, nombre, codigo_corto, subdominio, codigo_pais, pais, zona_horaria,
                direccion_base, activo"""),
         {**body.model_dump(), "u": sa["id_usuario"], "id": id_municipio})).mappings().first()
+    cambios = "; ".join(f"{k}: {antes[k]} → {nuevo[k]}" for k in body.model_dump() if antes[k] != nuevo[k])
+    # El registro va en la misma transacción: si no se puede registrar, el cambio no queda.
+    await registrar_acceso_super_en(db, id_usuario=sa["id_usuario"], accion="municipio_editar",
+                                    id_municipio=id_municipio, metodo=request.method, ruta=request.url.path,
+                                    detalle=cambios or "sin cambios",
+                                    user_agent=request.headers.get("user-agent"))
     await db.commit()
     invalidar_cache_municipios()
-    cambios = "; ".join(f"{k}: {antes[k]} → {nuevo[k]}" for k in body.model_dump() if antes[k] != nuevo[k])
-    await registrar_acceso_super(id_usuario=sa["id_usuario"], accion="municipio_editar",
-                                 id_municipio=id_municipio, metodo=request.method, ruta=request.url.path,
-                                 detalle=cambios or "sin cambios",
-                                 user_agent=request.headers.get("user-agent"))
     return dict(nuevo)
 
 
@@ -177,9 +178,9 @@ async def editar_config_global(
         UPDATE configuracion_general SET valor = :v, fecha_modificacion = NOW()
          WHERE id_config = :id
      RETURNING id_config, clave, valor, tipo, descripcion"""), {"v": valor, "id": id_config})).mappings().first()
+    await registrar_acceso_super_en(db, id_usuario=sa["id_usuario"], accion="config_global", id_municipio=None,
+                                    metodo=request.method, ruta=request.url.path,
+                                    detalle=f"{fila.clave}: {fila.valor} → {valor}",
+                                    user_agent=request.headers.get("user-agent"))
     await db.commit()
-    await registrar_acceso_super(id_usuario=sa["id_usuario"], accion="config_global", id_municipio=None,
-                                 metodo=request.method, ruta=request.url.path,
-                                 detalle=f"{fila.clave}: {fila.valor} → {valor}",
-                                 user_agent=request.headers.get("user-agent"))
     return dict(nuevo)

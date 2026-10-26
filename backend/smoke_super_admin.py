@@ -247,6 +247,15 @@ async def test_login_super() -> None:
     CTX[f"tok:{EMAIL_SUPER}"] = r1.json()["access_token"]
     cl = jwt.get_unverified_claims(r1.json()["access_token"])
     check("el token tiene sa=True y no tiene mun", cl.get("sa") is True and "mun" not in cl, str(cl))
+    # Decisión de César (2026-10-26): 8 h hasta el segundo factor (F3b); las demás cuentas, 24 h.
+    import time as _time
+    horas = (cl.get("exp", 0) - _time.time()) / 3600
+    check("el token del super vence en 8 h", 7.9 < horas <= 8.0, f"{horas:.2f} h")
+    async with _cliente() as c:
+        r = await _login(c, CTX["admin_1"])
+    horas_1 = (jwt.get_unverified_claims(r.json()["access_token"]).get("exp", 0) - _time.time()) / 3600 \
+        if r.status_code == 200 else 0
+    check("el de un administrador de municipio sigue en 24 h", 23.9 < horas_1 <= 24.0, f"{horas_1:.2f} h")
     u = r1.json()["user"]
     check("user: nivel 0, sin municipio, es_super_admin",
           u.get("nivel_acceso") == 0 and u.get("id_municipio") is None and u.get("es_super_admin") is True,
@@ -599,6 +608,45 @@ async def test_config_global() -> None:
           str([f.detalle for f in filas]))
 
 
+async def test_registro_atomico() -> None:
+    print("\n17b. Las ediciones globales se registran en la misma transacción (I4 de la revisión final)")
+    await _contexto()
+    B = CTX["B"]
+    mun = await _uno("SELECT nombre, subdominio, codigo_pais, pais, zona_horaria FROM municipios "
+                     "WHERE id_municipio = :b", {"b": B})
+    pwd = await _uno("SELECT id_config, valor FROM configuracion_general "
+                     "WHERE clave = 'password_renovacion_dias' AND id_municipio IS NULL")
+    async with _cliente() as c:
+        tok = await _token(c, EMAIL_SUPER)
+        async with AsyncSessionLocal() as db:  # el registro falla mientras dure la prueba (solo local)
+            await db.execute(text("CREATE OR REPLACE FUNCTION smoke_f3_registro_falla() RETURNS trigger "
+                                  "LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'registro caido (smoke)'; END; $$"))
+            await db.execute(text("CREATE OR REPLACE TRIGGER smoke_f3_registro_falla BEFORE INSERT ON super_admin_acceso "
+                                  "FOR EACH ROW EXECUTE FUNCTION smoke_f3_registro_falla()"))
+            await db.commit()
+        try:
+            r = await c.put(f"/api/v1/super/municipios/{B}", headers=_h(tok), json={
+                "nombre": mun.nombre + " (sin registro)", "subdominio": mun.subdominio,
+                "codigo_pais": mun.codigo_pais, "pais": mun.pais, "zona_horaria": mun.zona_horaria})
+            check("con el registro caído, editar un municipio → 503", r.status_code == 503, f"{r.status_code}")
+            check("y el municipio no cambió",
+                  (await _uno("SELECT nombre FROM municipios WHERE id_municipio = :b", {"b": B})).nombre == mun.nombre)
+            r = await c.put(f"/api/v1/super/config-global/{pwd.id_config}", headers=_h(tok), json={"valor": "301"})
+            check("con el registro caído, editar un parámetro global → 503", r.status_code == 503, f"{r.status_code}")
+            check("y el parámetro no cambió",
+                  (await _uno("SELECT valor FROM configuracion_general WHERE id_config = :i",
+                              {"i": pwd.id_config})).valor == pwd.valor)
+        finally:
+            async with AsyncSessionLocal() as db:
+                await db.execute(text("DROP TRIGGER IF EXISTS smoke_f3_registro_falla ON super_admin_acceso"))
+                await db.execute(text("DROP FUNCTION IF EXISTS smoke_f3_registro_falla()"))
+                await db.execute(text("UPDATE municipios SET nombre = :n WHERE id_municipio = :b"),
+                                 {"n": mun.nombre, "b": B})
+                await db.execute(text("UPDATE configuracion_general SET valor = :v WHERE id_config = :i"),
+                                 {"v": pwd.valor, "i": pwd.id_config})
+                await db.commit()
+
+
 async def test_auditoria_accesos_super() -> None:
     print("\n18. /auditoria/accesos-super")
     await _contexto()
@@ -776,7 +824,8 @@ TESTS = [test_constraints_nivel_0, test_seed_super_admin, test_password_renovaci
          test_login_super, test_header_super, test_header_invalido, test_header_ignorado_para_comunes,
          test_super_degradado, test_nivel_efectivo, test_recuperar_super,
          test_escaladas_admin, test_clave_global_no_se_pisa, test_global_super,
-         test_super_municipios, test_seleccion, test_config_global, test_auditoria_accesos_super,
+         test_super_municipios, test_seleccion, test_config_global, test_registro_atomico,
+         test_auditoria_accesos_super,
          test_hc_super, test_identidad_actual, test_cambio_de_municipio_con_form_abierto]
 
 

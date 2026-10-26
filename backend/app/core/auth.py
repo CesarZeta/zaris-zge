@@ -33,6 +33,9 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_MINUTES = 1440  # 24 h (scope='agente')
+# Super administrador: 8 h hasta que tenga segundo factor (F3b). Decisión de César, 2026-10-26:
+# sin segundo factor, un token robado del rol máximo no debe servir un día entero.
+SUPER_ADMIN_TOKEN_MINUTES = 480
 SESION_VENCIDA = "Sesión vencida. Volvé a ingresar."
 
 
@@ -73,13 +76,13 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 
 def crear_token_super_admin(id_usuario: int) -> str:
-    """JWT del super administrador: `sa=True` y sin `mun` (no tiene municipio). Misma vigencia
-    que el agente."""
+    """JWT del super administrador: `sa=True` y sin `mun` (no tiene municipio). Vence a las 8 h
+    (SUPER_ADMIN_TOKEN_MINUTES)."""
     return jwt.encode({
         "sub": str(id_usuario),
         "scope": "agente",
         "sa": True,
-        "exp": datetime.now(timezone.utc) + timedelta(minutes=TOKEN_EXPIRE_MINUTES),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=SUPER_ADMIN_TOKEN_MINUTES),
     }, settings.SECRET_KEY, algorithm=ALGORITHM)
 
 
