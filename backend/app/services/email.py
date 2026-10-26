@@ -811,24 +811,34 @@ async def enviar_mail_recovery_usuario_interno(
     login_url: str,
     municipio_nombre: str,
     municipio_logo_url: str | None = None,
+    super_admin: bool = False,
 ) -> bool:
     """
     Mail de recuperación de contraseña para un usuario INTERNO (empleado municipal).
     Link: {login_url}?recovery={token} — válido 24 horas. El login del shell detecta
     el query param y muestra el form de "elegir nueva contraseña".
+    `super_admin=True` (IT-01 F3): la cuenta no es de ningún municipio, así que el mail sale
+    como ZARIS (encabezado, asunto, pie y remitente), sin el nombre ni el logo del municipio
+    de la dirección desde la que se pidió (pedido de César, 2026-10-26).
     Modo MOCK si Resend no está configurado.
     """
     cta_url = f"{login_url}?recovery={token}"
     saludo_nombre = (nombre or "").strip() or "equipo"
-    subject = f"Restablecé tu contraseña — ZARIS {municipio_nombre}"
+    if super_admin:
+        municipio_nombre, municipio_logo_url = "ZARIS", None
+        subject = "Restablecé tu contraseña — ZARIS"
+        cuenta = "de tu cuenta de super administrador de ZARIS"
+    else:
+        subject = f"Restablecé tu contraseña — ZARIS {municipio_nombre}"
+        cuenta = "de tu cuenta en el sistema de gestión municipal"
 
     cuerpo = f"""\
       <p style="margin:0 0 16px 0;font-size:15px;line-height:1.55;color:#26251e;">
         Hola {saludo_nombre},
       </p>
       <p style="margin:0 0 16px 0;font-size:15px;line-height:1.55;color:rgba(38,37,30,.85);">
-        Recibimos un pedido para restablecer la contraseña de tu cuenta en el sistema de
-        gestión municipal. Hacé clic en el botón para elegir una nueva.
+        Recibimos un pedido para restablecer la contraseña {cuenta}.
+        Hacé clic en el botón para elegir una nueva.
       </p>
       <p style="margin:0 0 8px 0;font-size:13px;line-height:1.5;color:rgba(38,37,30,.6);">
         Recordá que ingresás al sistema con tu correo: <strong>{to}</strong>
@@ -849,7 +859,7 @@ async def enviar_mail_recovery_usuario_interno(
         f"{municipio_nombre} · GESTION ESTADO\n\n"
         f"Restablecé tu contraseña\n\n"
         f"Hola {saludo_nombre},\n\n"
-        f"Recibimos un pedido para restablecer la contraseña de tu cuenta.\n"
+        f"Recibimos un pedido para restablecer la contraseña {cuenta}.\n"
         f"Ingresás al sistema con tu correo: {to}\n\n"
         f"Elegí una nueva contraseña en: {cta_url}\n\n"
         f"Este enlace es válido por 24 horas. Si no pediste este cambio, ignorá este mensaje.\n"

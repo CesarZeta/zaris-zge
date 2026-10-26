@@ -379,9 +379,42 @@ async def test_recuperar_super() -> None:
         await db.execute(text("UPDATE usuarios SET fecha_ultimo_email_recovery = NULL WHERE id_usuario = :u"),
                          {"u": sup})
         await db.commit()
+    # El mail sale en MOCK; se intercepta para mirar con qué identidad sale (pedido de César,
+    # 2026-10-26: el del super administrador es de ZARIS, no del municipio de la dirección).
+    from app.services import email as _email
+    from app.core.config_municipio import leer_config
+    async with AsyncSessionLocal() as db:
+        nombre_mun = await leer_config(db, "municipio_nombre", 1)
+    enviados: list[dict] = []
+    original = _email.enviar_mail
+
+    async def _capturar(**kw):
+        enviados.append(kw)
+        return True
+    _email.enviar_mail = _capturar
+    try:
+        async with _cliente() as c:
+            _rate_limit._buckets.clear()
+            r = await c.post("/api/v1/auth/recuperar-password", json={"email": EMAIL_SUPER})
+            async with AsyncSessionLocal() as db:
+                await db.execute(text("UPDATE usuarios SET fecha_ultimo_email_recovery = NULL "
+                                      "WHERE lower(email) = lower(:e) AND id_municipio = 1"), {"e": CTX["admin_1"]})
+                await db.commit()
+            await c.post("/api/v1/auth/recuperar-password", json={"email": CTX["admin_1"]})
+    finally:
+        _email.enviar_mail = original
+    al_super = [m for m in enviados if m.get("to", "").lower() == EMAIL_SUPER]
+    al_admin = [m for m in enviados if m.get("to", "").lower() == CTX["admin_1"].lower()]
+    m = al_super[0] if al_super else {}
+    todo = " ".join(str(m.get(k, "")) for k in ("subject", "body_html", "body_text", "from_override"))
+    check("el mail del super sale como ZARIS, sin el municipio",
+          bool(al_super) and "ZARIS" in m.get("subject", "") and str(m.get("from_override", "")).startswith("ZARIS")
+          and bool(nombre_mun) and nombre_mun not in todo,
+          f"municipio={nombre_mun!r} subject={m.get('subject')!r} from={m.get('from_override')!r}")
+    check("el de una cuenta del municipio sigue con el nombre del municipio",
+          bool(al_admin) and nombre_mun in al_admin[0].get("subject", ""),
+          f"{[x.get('subject') for x in al_admin]}")
     async with _cliente() as c:
-        _rate_limit._buckets.clear()
-        r = await c.post("/api/v1/auth/recuperar-password", json={"email": EMAIL_SUPER})
         check("recuperar-password → 200", r.status_code == 200, f"{r.status_code}")
         async with AsyncSessionLocal() as db:
             tok_rec = (await db.execute(text("SELECT token_recovery::text FROM usuarios WHERE id_usuario = :u"),

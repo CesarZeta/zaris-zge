@@ -404,7 +404,8 @@ def _login_url() -> str:
     return f"{settings.FRONTEND_BASE_URL.rstrip('/')}/frontend/login.html"
 
 
-@router.post("/recuperar-password", response_model=GenericoOkResponse)
+@router.post("/recuperar-password", response_model=GenericoOkResponse,
+             responses={200: {"description": "Siempre OK (anti-enumeración). El mail del super administrador sale como ZARIS"}})
 async def recuperar_password(
     body: RecuperarPasswordRequest,
     background_tasks: BackgroundTasks,
@@ -427,8 +428,10 @@ async def recuperar_password(
         {"email": email, "mun": id_municipio},
     )
     row = res.fetchone()
+    es_super = False
     if not row:
         # Super administrador: entra desde cualquier dirección, también para recuperar la clave.
+        es_super = True
         row = (await db.execute(
             text("""SELECT id_usuario, nombre, email, fecha_ultimo_email_recovery
                     FROM usuarios
@@ -458,11 +461,16 @@ async def recuperar_password(
     token = str(res.fetchone().token_recovery)
     await db.commit()
 
-    municipio_nombre, municipio_logo_url = await _branding_municipio(db, id_municipio)
+    # El super administrador no es de ningún municipio: su mail sale como ZARIS, no con la
+    # identidad del municipio de la dirección desde la que lo pidió.
+    if es_super:
+        municipio_nombre, municipio_logo_url = "ZARIS", None
+    else:
+        municipio_nombre, municipio_logo_url = await _branding_municipio(db, id_municipio)
     background_tasks.add_task(
         enviar_mail_recovery_usuario_interno,
         row.email, row.nombre, token, _login_url(),
-        municipio_nombre, municipio_logo_url,
+        municipio_nombre, municipio_logo_url, es_super,
     )
     return GenericoOkResponse()
 
