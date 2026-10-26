@@ -451,6 +451,37 @@ async def test_escaladas_admin() -> None:
               f"{r.status_code}")
 
 
+async def test_clave_global_no_se_pisa() -> None:
+    print("\n13b. Una clave global no se pisa desde un municipio (I1 de la revisión final)")
+    await _contexto()
+    clave = "password_renovacion_dias"
+    otra = await _uno("SELECT id_config, clave FROM configuracion_general WHERE id_municipio = 1 "
+                      "AND clave NOT LIKE 'vapid%' ORDER BY id_config LIMIT 1")
+    async with _cliente() as c:
+        h = _h(await _token(c, CTX["admin_1"]))
+        try:
+            r = await c.post("/api/v1/admin/configuracion_general", headers=h,
+                             json={"clave": clave, "valor": "0", "tipo": "integer"})
+            check("crear en el municipio una clave que existe como global → 422",
+                  r.status_code == 422 and "global" in r.text, f"{r.status_code} {r.text[:120]}")
+            r = await c.put(f"/api/v1/admin/configuracion_general/{otra.id_config}", headers=h, json={"clave": clave})
+            check("renombrar una clave del municipio con el nombre de una global → 422",
+                  r.status_code == 422 and "global" in r.text, f"{r.status_code} {r.text[:120]}")
+        finally:
+            async with AsyncSessionLocal() as db:  # si quedó (antes del arreglo), se deshace
+                await db.execute(text("DELETE FROM configuracion_general WHERE clave = :c AND id_municipio = 1"),
+                                 {"c": clave})
+                await db.execute(text("UPDATE configuracion_general SET clave = :k WHERE id_config = :i"),
+                                 {"k": otra.clave, "i": otra.id_config})
+                await db.commit()
+    async with AsyncSessionLocal() as db:
+        async with db.begin():
+            ok, det = await _falla_por(db, "INSERT INTO configuracion_general (clave, valor, tipo, activo, id_municipio) "
+                                           "VALUES (:c, '0', 'integer', TRUE, 1)", {"c": clave}, "parámetro global")
+            check("y la base lo rechaza aunque se saltee la API (trigger)", ok, det)
+            await db.rollback()
+
+
 async def test_global_super() -> None:
     print("\n14. El super administrador edita lo global")
     await _contexto()
@@ -744,7 +775,7 @@ TESTS = [test_constraints_nivel_0, test_seed_super_admin, test_password_renovaci
          test_registrar_acceso_super, test_registro_falla_cierra,
          test_login_super, test_header_super, test_header_invalido, test_header_ignorado_para_comunes,
          test_super_degradado, test_nivel_efectivo, test_recuperar_super,
-         test_escaladas_admin, test_global_super,
+         test_escaladas_admin, test_clave_global_no_se_pisa, test_global_super,
          test_super_municipios, test_seleccion, test_config_global, test_auditoria_accesos_super,
          test_hc_super, test_identidad_actual, test_cambio_de_municipio_con_form_abierto]
 

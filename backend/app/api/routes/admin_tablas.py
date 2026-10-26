@@ -291,6 +291,21 @@ _TABLAS_SOLO_ADMIN_LECTURA = {"configuracion_general"}
 _CLAVES_SECRETAS = {"vapid_private_key"}
 
 
+async def _rechazar_clave_global(db: AsyncSession, tabla: str, data: dict) -> None:
+    """Una clave global (id_municipio NULL, como password_renovacion_dias) vale para todos los
+    municipios y leer_config prioriza la fila del municipio: crearla o renombrar otra con ese
+    nombre la anularía en silencio (I1 de la revisión final de F3). Segunda barrera: trigger
+    de la mig 127c."""
+    clave = data.get("clave")
+    if tabla != "configuracion_general" or not clave:
+        return
+    if await db.scalar(text("SELECT 1 FROM configuracion_general WHERE clave = :c AND id_municipio IS NULL"),
+                       {"c": clave}):
+        raise HTTPException(status_code=422, detail=(
+            f"«{clave}» es un parámetro global de todos los municipios: lo edita el super administrador "
+            f"desde Configuración → Sistema"))
+
+
 def _bloquear_lectura_si_solo_admin(tabla: str, current_user: dict) -> None:
     if tabla in _TABLAS_SOLO_ADMIN_LECTURA and current_user.get("nivel_acceso") != 1:
         raise HTTPException(status_code=403, detail="Acción exclusiva del administrador")
@@ -542,6 +557,7 @@ async def crear(
     data = {k: v for k, v in body.items() if k in allowed and v is not None}
     if not data:
         raise HTTPException(status_code=422, detail="No se recibieron campos válidos")
+    await _rechazar_clave_global(db, tabla, data)
     if _por_municipio(tabla):
         await _validar_referencias(db, data, id_municipio)
         data["id_municipio"] = id_municipio
@@ -600,6 +616,7 @@ async def editar(
             data.pop("clave", None)
     if not data:
         raise HTTPException(status_code=422, detail="No se recibieron campos válidos")
+    await _rechazar_clave_global(db, tabla, data)
     del_municipio, extra = "", {}
     if _por_municipio(tabla):
         await _validar_referencias(db, data, id_municipio)
