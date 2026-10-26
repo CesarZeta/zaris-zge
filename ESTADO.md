@@ -31,7 +31,6 @@
 
      En la base ya está verificado: login, selección del municipio 1 y requests.
    - **Decisión — Guardia:** el motivo de derivación de las pendientes sigue visible en la mesa para todos los que ven la Guardia. Lo escribe el COM y la Guardia lo usa para el triage. La intervención y las recomendaciones ya pasan por el guard de historia clínica. ¿Reservar también el motivo?
-   - **Cuenta de prueba `administrativo@` (n2) con cambio de clave forzado en prod:** la marca está desde el 2026-10-25 19:44 UTC, del corte de F1+F2; el backup previo a F3 lo confirma, no la puso F3. La vigencia global es de 365 días y su clave es del 2026-07-19, así que la renovación no la explica. Decidir: elegirle una clave nueva (y anotarla en la planilla) o quitar la marca. Averiguar qué la puso.
    - Siguiente: **F3b (segundo factor)** antes del primer municipio real; después el **lote de limpieza** (DROP de los únicos globales viejos en el SQL Editor; desde ahí la 127c es la que frena que un municipio pise una clave global) y los menores de Pendientes, antes de F4.
 2. **Asignación automática — revisar ~2026-10-29:** carga de los agentes de las 17 gestiones que asignan solas (en varias, UN solo agente de nivel Gestión recibe todo).
 3. **Commits viejos de las dos purgas:** César mandó el pedido a GitHub Support el 2026-10-22. El 2026-10-26 los commits seguían publicados; si siguen así hacia el 2026-11-05, reclamar el ticket (detalle en la memoria privada de Cesar).
