@@ -96,9 +96,10 @@ def main() -> int:
     print(f"       -> id_ciudadano {id_nuevo} (DNI {dni})")
 
     # 2. La ficha quedó completa y SIN placeholders (login admin + GET ciudadano)
-    r = c.post(f"{BASE}/api/v1/auth/login", json={"email": ADMIN_EMAIL, "password": QA_PASS})
-    check("2a. login admin", r.status_code == 200)
-    HA = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    # Contra prod el administrador pide el código de la app (segundo factor, IT-01 F3b).
+    from _login_interno_prod import login_interno
+    HA = {"Authorization": f"Bearer {login_interno(BASE, ADMIN_EMAIL, QA_PASS)}"}
+    check("2a. login admin", True)
     r = c.get(f"{BASE}/api/v1/buc/ciudadanos/{id_nuevo}", headers=HA)
     ciu = r.json()
     sin_placeholders = (

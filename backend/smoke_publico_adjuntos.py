@@ -106,23 +106,21 @@ def main() -> int:
     check("9. sin token 401", r.status_code == 401, f"({r.status_code})")
 
     # 10. Reclamo ajeno → 404 (mismo cuerpo que inexistente)
-    r = c.post(f"{BASE}/api/v1/auth/login", json={"email": ADMIN_EMAIL, "password": QA_PASS})
-    if r.status_code == 200:
-        HA = {"Authorization": f"Bearer {r.json()['access_token']}"}
-        todos = c.get(f"{BASE}/api/v1/reclamos", params={"limit": 50}, headers=HA).json()
-        mios = {x["id_reclamo"] for x in c.get(f"{BASE}/api/v1/publico/reclamos", params={"limit": 200}, headers=H).json()}
-        ajenos = [t["id_reclamo"] for t in todos if t["id_reclamo"] not in mios]
-        if ajenos:
-            r = c.get(f"{BASE}/api/v1/publico/reclamos/{ajenos[0]}/adjuntos", headers=H)
-            check("10a. GET adjuntos reclamo ajeno 404", r.status_code == 404, f"(id {ajenos[0]}, {r.status_code})")
-            r = c.post(f"{BASE}/api/v1/publico/reclamos/{ajenos[0]}/adjuntos/upload-url", headers=H, json={
-                "nombre_archivo": "x.png", "mime_type": "image/png", "tamano_bytes": 100,
-            })
-            check("10b. upload-url reclamo ajeno 404", r.status_code == 404, f"({r.status_code})")
-        else:
-            print("  SKIP 10. no hay reclamo ajeno")
+    # Contra prod el administrador pide el código de la app (segundo factor, IT-01 F3b).
+    from _login_interno_prod import login_interno
+    HA = {"Authorization": f"Bearer {login_interno(BASE, ADMIN_EMAIL, QA_PASS)}"}
+    todos = c.get(f"{BASE}/api/v1/reclamos", params={"limit": 50}, headers=HA).json()
+    mios = {x["id_reclamo"] for x in c.get(f"{BASE}/api/v1/publico/reclamos", params={"limit": 200}, headers=H).json()}
+    ajenos = [t["id_reclamo"] for t in todos if t["id_reclamo"] not in mios]
+    if ajenos:
+        r = c.get(f"{BASE}/api/v1/publico/reclamos/{ajenos[0]}/adjuntos", headers=H)
+        check("10a. GET adjuntos reclamo ajeno 404", r.status_code == 404, f"(id {ajenos[0]}, {r.status_code})")
+        r = c.post(f"{BASE}/api/v1/publico/reclamos/{ajenos[0]}/adjuntos/upload-url", headers=H, json={
+            "nombre_archivo": "x.png", "mime_type": "image/png", "tamano_bytes": 100,
+        })
+        check("10b. upload-url reclamo ajeno 404", r.status_code == 404, f"({r.status_code})")
     else:
-        print(f"  SKIP 10. login admin fallo ({r.status_code})")
+        print("  SKIP 10. no hay reclamo ajeno")
 
     # Cleanup en PROD: soft-delete del adjunto (borra binario) — en local se deja como dato de prueba.
     if ES_PROD:
