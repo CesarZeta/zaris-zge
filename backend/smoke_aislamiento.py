@@ -370,6 +370,11 @@ async def main() -> int:
     ap.add_argument("--solo-get", action="store_true")
     ap.add_argument("--sin-recrear", action="store_true",
                     help="no re-crear el municipio de aislamiento (por defecto se re-crea: las mutaciones lo modifican)")
+    # IT-01 F3 (PLAN_MULTI_MUNICIPIO_F3.md, Tarea 9).
+    ap.add_argument("--header-ajeno", action="store_true",
+                    help="el admin del municipio 1 manda X-Municipio de B en cada request: se tiene que ignorar")
+    ap.add_argument("--como-super", action="store_true",
+                    help="el barrido con el super administrador: X-Municipio 1 en el barrido, B en el control positivo")
     args = ap.parse_args()
     if not args.sin_recrear:
         import subprocess
@@ -410,6 +415,13 @@ async def main() -> int:
                          headers={"Origin": ORIGEN_B_VECINOS})
         hv_b = {"Authorization": f"Bearer {r.json()['access_token']}", "Origin": ORIGEN_B_VECINOS} \
             if r.status_code == 200 else None
+        if args.header_ajeno:
+            h_a = {**h_a, "X-Municipio": str(id_b)}
+        if args.como_super:
+            h_s = await login(c, "super.admin@prueba-aislamiento.com.ar")
+            h_a = {**h_s, "X-Municipio": "1"}
+            h_b = {**h_s, "X-Municipio": str(id_b)}
+            print("Barrido como super administrador (X-Municipio 1; control positivo con X-Municipio B)")
         antes = await checksum_b(id_b)
 
         # 1. GET de todas las rutas como admin del municipio 1.
@@ -449,7 +461,7 @@ async def main() -> int:
 
         # 2b. Maestros → municipios: desde F3 solo la lee el super administrador (lo prueba
         # smoke_super_admin.py); ningún administrador de municipio, tampoco el del base.
-        if "/api/v1/admin/municipios".startswith(args.rutas):
+        if "/api/v1/admin/municipios".startswith(args.rutas) and not args.como_super:
             r = await c.get("/api/v1/admin/municipios", headers=h_b)
             CUENTA["municipios"] += 1
             if r.status_code != 403:

@@ -42,3 +42,13 @@ Tablas `modulos` (catálogo: `modulo_codigo` PK, `nombre`, `descripcion`, `min_n
 **Frontend React (`localhost:5173`):** `ModuleManifest.moduloCodigo?: string` (lo usan agenda/turnos/entradas/padrones); `Sidebar.tsx` filtra, fail-open; `useAuthStore.refreshSession()` rehidrata desde `/me`.
 
 > **TRAMPA DE SEGURIDAD recurrente:** que el sidebar oculte un módulo NO protege sus endpoints. `require_modulo` casi no se usa — la mayoría de routers aplican su nivel con helpers locales (`_require_gestion`, `_require_supervisor`). Hasta 2026-05-20 el router OT no chequeaba nivel y un operador con JWT creaba OT por curl (QA #2). **Antes de asumir "el router ya valida nivel", leé el handler.** Ver [[guard_nivel_endpoint_no_solo_ui]].
+
+### Super administrador (IT-01 F3, PLAN_MULTI_MUNICIPIO_F3.md)
+
+- **Catálogo de módulos:** `modulos` es global, así que `PUT /admin/permisos/modulos/{codigo}` exige `require_super_admin` (cambiarlo afecta a todos los municipios) y queda en el registro (`catalogo_global`).
+- **Módulos de `min_nivel_acceso = 0`** (hoy `municipios`) son exclusivos del super administrador:
+  - `GET /modulos` no se los lista a los demás;
+  - no se otorgan por permiso individual (`PUT /usuarios/{id}/modulos` → 422 «Ese módulo es exclusivo del super administrador»);
+  - su nivel no se edita (422).
+- **`modulos_permitidos` se llama con `nivel_real`**, no con el nivel efectivo: el super administrador tiene nivel efectivo 1 pero real 0, y solo así recibe los módulos de nivel 0. Lo hacen `require_modulo`, `/auth/me` y el login.
+- **El sidebar oculta lo no permitido** con `[hidden]` sobre `.nav-flat__item`. Hasta el 2026-10-25 el `display: flex` del ítem pisaba el hidden y se veía todo (un nivel 4 veía ocho módulos ajenos): ahora hay una regla `.nav-flat__item[hidden] { display: none }` en `frontend/css/menu.css`.

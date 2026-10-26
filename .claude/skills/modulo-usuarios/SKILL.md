@@ -60,3 +60,11 @@ Un funcionario existe PRIMERO como persona en la BUC (`ciudadanos.es_funcionario
 - **Login por email o DNI** (`POST /auth/login`, `identificador`): detalle en CLAUDE.md §1. Los tres logins mandan `identificador` + `email` (compat).
 - Frontend: `web-app/src/modules/ciudadanos/` (`CiudadanoForm` sección «Funcionario municipal»: tilde solo-admin + `CuentaZarisCampos` inline cuando el tilde está puesto y no hay cuenta; `FormState.zaris_*` en `FormView`, usuario re-propuesto al cambiar nombre/apellido mientras no se edite a mano; `CuentasChips` con **«Reenviar correo de activación»** para la cuenta de vecino pendiente, vía `POST /cuenta-vecino`). No hay botón «Crear cuenta aplicación ZARIS» ni `CuentaZarisModal` (borrados 2026-10-13).
 - Smoke in-process: `backend/smoke_cuentas_funcionario.py` (63 casos, incluye la ficha demo, mail MOCK capturado parcheando `app.services.email.enviar_mail`). Manuales: `docs/manual_alta_ciudadanos.html` §4 y `docs/manual_app_agentes.html`.
+
+### Super administrador (IT-01 F3, PLAN_MULTI_MUNICIPIO_F3.md)
+
+- **Cuenta:** nivel 0 sin municipio (`ck_usuarios_municipio_nivel`, mig 127). No aparece en ningún listado de un municipio, y su id da 404 desde cualquier municipio (filtro por municipio, R3).
+- **Alta:** se crea con `backend/seed_super_admin.py`; desde la interfaz no se crea ni se edita. Los schemas de alta y edición de cuentas rechazan el nivel 0 (`ge=1` → 422).
+- **Emails reservados** (`services/super_admin.py::email_reservado_super_admin`): una cuenta de un municipio no puede usar el email de un super administrador. Da 409 «Ese email está reservado» en `crear_usuario_interno` (alta de Usuarios y cuenta ZARIS desde la ficha) y en la edición de la cuenta (`PUT /buc/usuarios/{id}`).
+- **Pestaña «Registro del super administrador»** (`/usuarios/accesos-super`, `GET /api/v1/auditoria/accesos-super`): lo que hizo el super administrador en ESTE municipio. Solo lectura, búsqueda diferida y orden en el backend.
+- **El catálogo de módulos es global:** lo cambia solo el super administrador, y para los demás la pestaña queda en solo lectura (ver skill `modulo-permisos`).

@@ -179,6 +179,19 @@ Las reglas vivas de cada una están en la sección del módulo correspondiente d
 - **Mig 76** (sesión 2026-06-01, alta pública de vecinos §38): tabla `empresa_credencial` (1:1 con `empresas`, solo verificación de email — `token_verificacion`/`verificado`/`verificado_en`, SIN password) + índice parcial sobre el token. Local por psql, prod por `apply_migration`. El ciudadano reusa `ciudadano_credencial` (mig 53).
 - **Migs 77-79** (2026-06-09, integridad de cuentas + alta vecino en 2 pasos): 77 = `usuarios.suspendido_motivo`/`fecha_suspension` (cron de integridad §39). 78 = `usuarios.debe_cambiar_password` (clave temporal + cambio forzado §39 Fase 3). 79 = `ciudadanos.ficha_completa` + `ciudadano_credencial.debe_cambiar_password` (alta del vecino en dos pasos §38/§39 Fase 4).
 
+### Migraciones 127 y 127b — IT-01 F3, super administrador (`backend/migrations/127_super_admin_restricciones.sql`, `127b_super_admin.sql`)
+
+Plan: [`PLAN_MULTI_MUNICIPIO_F3.md`](PLAN_MULTI_MUNICIPIO_F3.md). **Aplicadas en local el 2026-10-25** (rama `it01-f3-super-admin`); **en prod, pendientes del corte de F3**.
+- **127** (lleva `DROP`: en prod la corre César en el SQL Editor, no va por MCP):
+  - CHECK `usuarios_nivel_acceso_check` y `modulos_min_nivel_acceso_check` ampliados a 0-5;
+  - `usuarios.id_municipio` pasa a nullable, con `ck_usuarios_municipio_nivel` `(nivel_acceso = 0) = (id_municipio IS NULL)`.
+  - Solo relaja restricciones: compatible con el código viejo. **Después de la 127 la 125c no se re-aplica**: le pondría NOT NULL a `usuarios.id_municipio`.
+- **127b** (sin `DROP`, por MCP):
+  - tabla `super_admin_acceso`, append-only con triggers por sentencia (UPDATE, DELETE, TRUNCATE), RLS y clase `mixta`;
+  - fila `municipios` en `modulos` con `min_nivel_acceso` 0;
+  - `password_renovacion_dias` pasa del municipio 1 a global.
+- La primera cuenta de super administrador no la crea ninguna migración: la crea `backend/seed_super_admin.py`, con el email que da César en el corte.
+
 ### Migraciones 125-126 — IT-01 multi-municipio (F1 + F2) (`backend/migrations/125_segmentacion_municipio.sql` … `126_sin_default_municipio.sql`)
 
 Plan: [`PLAN_MULTI_MUNICIPIO_F1_F2.md`](PLAN_MULTI_MUNICIPIO_F1_F2.md). **125-126 aplicadas en local** (rama `it01-multi-municipio`; la 126 el 2026-10-24, en la Tarea 19) **y en prod el 2026-10-25** (Tarea 20, con César): por MCP `apply_migration`, de a una y verificando cada una; 125-125d con el código viejo andando (respondió 200 con los tokens viejos), merge `6c92cb6` y deploy de Railway, y la 126 después. Backup previo con `/backup-prod` (`backups/zaris_prod_2026-10-25_1631_pre_it01.sql`, fuera del repo). Resultado en prod: 100 tablas clasificadas; 76 catálogo/operativo con NOT NULL + FK y sin DEFAULT; 13 únicos por municipio; 138 FK compuestas validadas; numeradores desde REC 3160 / OT 3145 / EM 236, y el primer número nuevo fue `REC-SAN-2026-003161` (reclamo de prueba autorizado). Conteos por tabla iguales a los de antes del corte (solo cambian las 3 tablas nuevas). Los tokens sin `mun` dan 401 en el backoffice, la PWA y la app de agentes.

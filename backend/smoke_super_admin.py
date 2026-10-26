@@ -683,13 +683,38 @@ async def test_identidad_actual() -> None:
         check("sin token → 401", r.status_code == 401, f"{r.status_code}")
 
 
+# ── Tarea 9: cambio de municipio con un formulario abierto (Foco 5) ───────────────────────────
+
+async def test_cambio_de_municipio_con_form_abierto() -> None:
+    print("\n21. Cambio de municipio con un formulario abierto")
+    await _contexto()
+    B = CTX["B"]
+    tipo_1 = (await _uno("SELECT id_tipo_reclamo FROM tipo_reclamo WHERE id_municipio = 1 AND activo "
+                         "ORDER BY id_tipo_reclamo LIMIT 1")).id_tipo_reclamo
+    ciud_1 = (await _uno("SELECT id_ciudadano FROM ciudadanos WHERE id_municipio = 1 AND activo "
+                         "ORDER BY id_ciudadano LIMIT 1")).id_ciudadano
+
+    async def _conteo() -> tuple:
+        r = await _uno("SELECT count(*) FILTER (WHERE id_municipio = 1) AS uno, "
+                       "count(*) FILTER (WHERE id_municipio = :b) AS b FROM reclamos", {"b": B})
+        return (r.uno, r.b)
+
+    antes = await _conteo()
+    async with _cliente() as c:
+        tok = await _token(c, EMAIL_SUPER)
+        r = await c.post("/api/v1/reclamos", headers=_h(tok, B), json={
+            "id_ciudadano": ciud_1, "id_tipo_reclamo": tipo_1, "descripcion": "smoke F3: form abierto en el 1"})
+    check("crear en B con el tipo y el ciudadano del 1 → 422", r.status_code == 422, f"{r.status_code} {r.text[:120]}")
+    check("no se creó nada en ninguno de los dos", await _conteo() == antes, f"{antes} → {await _conteo()}")
+
+
 TESTS = [test_constraints_nivel_0, test_seed_super_admin, test_password_renovacion_global,
          test_registrar_acceso_super, test_registro_falla_cierra,
          test_login_super, test_header_super, test_header_invalido, test_header_ignorado_para_comunes,
          test_super_degradado, test_nivel_efectivo, test_recuperar_super,
          test_escaladas_admin, test_global_super,
          test_super_municipios, test_seleccion, test_config_global, test_auditoria_accesos_super,
-         test_hc_super, test_identidad_actual]
+         test_hc_super, test_identidad_actual, test_cambio_de_municipio_con_form_abierto]
 
 
 async def main() -> int:

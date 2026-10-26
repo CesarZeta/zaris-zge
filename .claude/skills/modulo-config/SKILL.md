@@ -29,3 +29,11 @@ Tres bugs distintos en este módulo, todos de **navegación**, ninguno detectabl
 ### `admin_tablas` configuracion_general — mostrar `descripcion` en la preview (2026-05-22)
 
 La tabla `configuracion_general` tiene columna `descripcion` con texto útil por parámetro, pero la vista previa de `admin_tablas.html` mostraba solo `clave` + `valor` (vía `composeLabel`/`composeMeta` genéricos). El admin veía claves crudas sin saber qué hacen. **Fix** (commit `fbda282`): caso especial en `renderVistaPrevia` para `tablaActual === 'configuracion_general'` que renderiza clave + descripción en gris debajo + valor a la derecha. `configuracion_general` **no tiene columna `activo`** (sin baja lógica) — borrar registros de basura es DELETE físico, no soft-delete.
+
+### Super administrador (IT-01 F3, PLAN_MULTI_MUNICIPIO_F3.md)
+
+- **Sistema:** el super administrador ve dos solapas, «Del municipio» (el elegido en el selector «Operando en») y «Parámetros globales» (`ParametrosGlobalesView`, `GET`/`PUT /api/v1/super/config-global`).
+  - Las globales son las filas sin municipio, salvo las `vapid_*`. Hoy es `password_renovacion_dias`, que ningún municipio sobrescribe.
+  - El PUT valida por tipo en el servidor y queda en el registro (`config_global`).
+- **Atajo «Municipios»:** lleva al módulo `/municipios` y solo lo ve el super administrador. Maestros → municipios quedó en solo lectura.
+- **Identidad:** la pantalla lee `GET /config/identidad/actual` (autenticado, `municipio_actual`), que es el mismo municipio donde guarda el `PUT`. La identidad pública (`GET /config/identidad`) resuelve por la dirección, y para el super administrador mostraría otro municipio. El inicio y Mi perfil también usan `/actual`.
