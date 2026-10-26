@@ -10,13 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-10-26 (Cesar). **IT-01 F3 (super administrador) EN PROD** desde el 2026-10-26.
-
-- Antes del corte se hizo la pasada de arreglos de la revisión final: el crítico C1 y los importantes I1 a I4, más el token de 8 h.
-- Corte: migs 127 (César, SQL Editor), 127b y 127c (MCP); merge `658542e`.
-- Cuenta «ZARIS Soporte» creada; César eligió la clave por «Olvidé mi contraseña» y entró.
-- Arreglo del sidebar en prod desde `c5ca315`: un nivel 4 ya no ve los módulos que no tiene.
-- Los 3 crons diarios del lunes corrieron bien por municipio.
+**Última actualización:** 2026-10-26 (Cesar). **IT-01 F3 (super administrador) EN PROD** desde el 2026-10-26, con la pasada de arreglos de su revisión final hecha antes del corte. La cuenta «ZARIS Soporte» está creada y César entró con ella. Además, en prod: el arreglo del sidebar (`c5ca315`) y el mail de recuperación del super como ZARIS (`2f48a55`). Los 3 crons diarios corrieron bien por municipio.
 
 ---
 
@@ -25,12 +19,11 @@
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
 1. **IT-01 después de F3:**
-   - **Verificación visual pendiente (César):**
+   - **Verificaciones que solo puede hacer César en prod** (en la base ya están verificados el login, la selección del municipio 1 y los requests):
+     - pedir de nuevo «Olvidé mi contraseña» con la cuenta del super: el mail tiene que llegar como ZARIS (asunto, encabezado, texto, pie y remitente), sin San Andrés. El arreglo `2f48a55` está desplegado, pero no se probó con un mail real;
      - con `cesar@`, Usuarios → «Registro del super administrador» muestra las filas de la cuenta nueva;
      - como super administrador, Reclamos → listado trae lo mismo que con `cesar@`.
-
-     En la base ya está verificado: login, selección del municipio 1 y requests.
-   - **Decisión — Guardia:** el motivo de derivación de las pendientes sigue visible en la mesa para todos los que ven la Guardia. Lo escribe el COM y la Guardia lo usa para el triage. La intervención y las recomendaciones ya pasan por el guard de historia clínica. ¿Reservar también el motivo?
+   - **Decisión — Guardia:** el motivo de derivación de las pendientes sigue visible en la mesa para todos los que ven la Guardia. Lo escribe el COM y la Guardia lo usa para el triage. La intervención y las recomendaciones ya pasan por el guard de historia clínica. **Recomendación: dejarlo visible**; sin él la mesa no puede decidir a quién atiende primero, y el COM ya lo ve en su propio módulo.
    - Siguiente: **F3b (segundo factor)** antes del primer municipio real; después el **lote de limpieza** (DROP de los únicos globales viejos en el SQL Editor; desde ahí la 127c es la que frena que un municipio pise una clave global) y los menores de Pendientes, antes de F4.
 2. **Asignación automática — revisar ~2026-10-29:** carga de los agentes de las 17 gestiones que asignan solas (en varias, UN solo agente de nivel Gestión recibe todo).
 3. **Commits viejos de las dos purgas:** César mandó el pedido a GitHub Support el 2026-10-22. El 2026-10-26 los commits seguían publicados; si siguen así hacia el 2026-11-05, reclamar el ticket (detalle en la memoria privada de Cesar).
@@ -69,19 +62,21 @@
 - 🟠 **Config/UX — reunión 2026-07-06** (ClickUp, lista CONFIGURACION y UX): **IT-01** (ver En curso) · **IT-08** botón SOS de la PWA · **IT-07** accesibilidad móvil (PWA) · **IT-09** módulo de Obras (backlog sin alcance).
 - 🟢 **Baja de cuenta del vecino:** sin endpoint ni definición; obligatoria si la app va a las stores.
 - 🟠 **IT-01 — menores diferidos de la revisión final de F1+F2.** Ninguno afecta a San Andrés solo.
-  - **Antes de F4, con el lote de limpieza** (solo aparecen con un segundo municipio): con los únicos globales viejos, un DNI, CUIL o CUIT que ya existe en otro municipio da 500 en el alta de la BUC, en el registro público y en el placeholder de CUIL de Emergencias, y un 409 engañoso («el horario acaba de ser tomado») en el alta por DNI de Agenda. El límite de intentos del login por mail lo comparten todos los municipios.
-  - **UX:** un token válido usado desde un subdominio desconocido responde «Sesión vencida» en vez de «Municipio no encontrado» (va con F5).
-  - **Preexistentes:** Maestros da 500 con una fecha inválida (`_coerce_types`) y 400 con el texto crudo de la base al crear. El revisor recomienda un manejador global de FK violada → 422.
-  - **Herramientas:** el barrido cuenta un 429 como «sin probar» sin fallar. Los placeholders «Ej: REC-2026-000001» de las mesas de OT muestran todavía el formato viejo.
-  - **F3, menores diferidos de su revisión final:**
-    - en el registro del super administrador (Usuarios), ordenar por «Acción» usa el código interno y no la etiqueta que se ve;
-    - faltan los únicos parciales del email y el usuario de nivel 0 (M1);
-    - Maestros → municipios le contesta a un administrador de municipio con el texto del módulo Municipios en vez del 403 (M2);
-    - la fila `request` guarda la ruta sin la query (M3);
-    - cache de 60 s de los municipios activos (M4);
-    - en el primer ingreso del super, el inicio carga antes de elegir municipio (M5);
-    - el modal de Municipios no avisa que cambiar el subdominio corta el acceso por la dirección vieja (M6);
-    - retención de `super_admin_acceso`: una fila por request, incluido el refresco de 30 s de Emergencias. Va en F4.
+  - **Antes de F4, con el lote de limpieza** (solo con un segundo municipio): por los únicos globales viejos, un DNI, CUIL o CUIT de otro municipio da 500 en la BUC, el registro público y Emergencias, y un 409 engañoso en el alta por DNI de Agenda; el límite de intentos del login por mail es común a todos.
+  - Otros:
+    - «Sesión vencida» en vez de «Municipio no encontrado» con un subdominio desconocido (F5);
+    - Maestros da 500 con una fecha inválida y 400 con el texto crudo de la base (falta un manejador de FK → 422);
+    - el barrido cuenta un 429 como «sin probar»;
+    - los placeholders «Ej: REC-2026-000001» de OT tienen el formato viejo.
+  - **F3, menores de su revisión final:**
+    - únicos parciales del email y el usuario de nivel 0;
+    - 403 antes que el texto del módulo en Maestros → municipios;
+    - la query en la fila `request`;
+    - cache de 60 s de municipios activos;
+    - en el primer ingreso del super, el inicio carga antes de elegir municipio;
+    - aviso al cambiar el subdominio en Municipios;
+    - orden por «Acción» en el registro del super;
+    - retención de `super_admin_acceso` (va en F4).
 - 🟢 **PWA — Configuración con sesión vieja:** si el vecino entra directo a `/configuracion` con un token vencido, la página se queda ahí (no borra la sesión ni manda al login). No hay bucle, y al volver al inicio cae en el login. Esa página no maneja el 401 por su cuenta, como sí lo hacen las demás (visto en el corte del 2026-10-25; repo `zaris-vecinos`).
 
 **Infra / operativo**
@@ -105,17 +100,17 @@
 ## ✅ Hecho reciente (últimas sesiones)
 
 - **2026-10-26 — IT-01 F3 en prod.**
-  - Pasada de arreglos con un test que falla primero:
-    - C1: la mesa de la Guardia pasa el contenido clínico por el guard de historia clínica. Antes, cualquier nivel ≤ 2 de cualquier gestión lo veía; confirmado en local con un supervisor fuera de Salud.
-    - I1: 422 más el trigger de la 127c.
+  - Pasada de arreglos, cada uno con un test que falla primero:
+    - C1: contenido clínico de la mesa de la Guardia con el guard de historia clínica. Antes lo veía cualquier nivel ≤ 2 de cualquier gestión.
+    - I1: trigger de la 127c.
     - I2: pestañas sincronizadas.
-    - I3: `esAdministrador()` y el barrido `tools/barrido_guards_nivel.py`.
-    - I4: registro en la misma transacción.
+    - I3: `esAdministrador()`.
+    - I4: registro atómico.
     - Token de 8 h.
-  - Pruebas: suite 22/22, `smoke_super_admin` 117/117 y aislamiento con 0 fallas en sus 3 modos.
-  - Corte: backup previo; 127 por César, 127b y 127c por MCP; merge `658542e`; deploy verificado por el path `/api/v1/super/municipios`; cuenta id 102; César entró.
-- **2026-10-25/26 — IT-01 F3 en la rama** (plan `e080207`, tareas 1 a 9 hasta `29abaad`).
-- **2026-10-25 — IT-01 F1+F2 en prod (corte, Tarea 20).** Backup completo antes. Migs 125-125d, merge `6c92cb6`, deploy de Railway y mig 126. Verificado: conteos, 401 de los tokens viejos, las 4 superficies en el navegador, `REC-SAN-2026-003161` y el dispatcher por municipio. Rama vieja `it01-multi-municipio` borrada del remoto. Detalle en `HISTORIAL_MIGRACIONES.md`.
+  - Pruebas: suite 22/22 y aislamiento con 0 fallas.
+  - Corte con César; detalle en `HISTORIAL_MIGRACIONES.md`.
+  - Después: el mail de recuperación del super sale como ZARIS (`2f48a55`, pedido de César).
+- **2026-10-25 — IT-01 F1+F2 en prod** (migs 125-126, merge `6c92cb6`; detalle en `HISTORIAL_MIGRACIONES.md`).
 
 > Detalle por migración en `HISTORIAL_MIGRACIONES.md`; reglas de cada módulo en su skill; lo anterior a septiembre (julio-agosto 2026: auditoría de seguridad 48/48, migs 95-102, BI Operativo/Ejecutivo, PWA de Roy a prod, Usuarios en React) en `HISTORIAL_MIGRACIONES.md` y la memoria privada de César.
 
