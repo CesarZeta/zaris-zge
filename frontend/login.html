@@ -189,6 +189,78 @@
       color: var(--fg-4);
       text-align: center;
     }
+
+    /* Segundo factor (IT-01 F3b) */
+    .qr {
+      display: block;
+      width: 200px;
+      height: 200px;
+      margin: 0 auto 14px;
+      padding: 8px;
+      /* Blanco fijo a propósito: el QR necesita fondo claro para escanearse, también en modo oscuro. */
+      background: #fff;
+      border-radius: 8px;
+    }
+
+    .secreto {
+      font-size: 12.5px;
+      color: var(--fg-3);
+      line-height: 1.5;
+      margin-bottom: 18px;
+      text-align: center;
+    }
+
+    .secreto code, .codigos {
+      font-family: var(--font-mono);
+      color: var(--fg-1);
+    }
+
+    .secreto code {
+      display: block;
+      margin: 4px 0;
+      font-size: 12px;
+      word-break: break-all;
+    }
+
+    .btn-link {
+      background: none;
+      border: none;
+      padding: 0;
+      color: var(--zaris-orange);
+      font-family: var(--font-display);
+      font-size: 12.5px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .btn-link:hover { text-decoration: underline; }
+
+    .codigos {
+      list-style: none;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 16px;
+      margin: 0 0 12px;
+      padding: 12px 14px;
+      background: var(--surface-400);
+      border-radius: 7px;
+      font-size: 13px;
+      text-align: center;
+    }
+
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 14px 0 4px;
+      font-size: 13px;
+      text-transform: none;
+      letter-spacing: 0;
+      color: var(--fg-1);
+      cursor: pointer;
+    }
+
+    .check input { width: auto; }
   </style>
 </head>
 <body>
@@ -312,6 +384,56 @@
     <div class="error-msg" id="cambio-error"></div>
   </form>
 
+  <!-- Segundo factor (IT-01 F3b): las cuentas de nivel 0 y 1 entran con la clave más el código
+       de una app de autenticación. Ocultos por default; los muestra el login según el estado. -->
+  <form id="codigo-form" style="display:none;">
+    <p class="recovery-intro" id="codigo-intro"></p>
+    <div class="field">
+      <label for="codigo-input" id="codigo-label">Código de la app</label>
+      <input type="text" id="codigo-input" autocomplete="one-time-code" required />
+    </div>
+    <button type="submit" class="btn-submit" id="btn-codigo">Verificar</button>
+    <div class="error-msg" id="codigo-error"></div>
+    <div class="recovery-links">
+      <a href="#" id="link-emergencia">Usar un código de emergencia</a>
+      <a href="#" class="link-volver">← Volver al inicio de sesión</a>
+    </div>
+  </form>
+
+  <form id="vincular-form" style="display:none;">
+    <p class="recovery-intro">
+      Escaneá este código con la app de autenticación de tu celular (Google Authenticator,
+      Microsoft Authenticator u otra) y escribí el código de 6 dígitos que te muestra.
+    </p>
+    <img class="qr" id="vincular-qr" alt="Código QR para vincular la app de autenticación" />
+    <div class="secreto">
+      Si no podés escanearlo, cargá esta clave a mano:
+      <code id="vincular-secreto">…</code>
+      <button type="button" class="btn-link" id="btn-copiar-secreto">Copiar</button>
+    </div>
+    <div class="field">
+      <label for="vincular-codigo">Código de la app</label>
+      <input type="text" id="vincular-codigo" inputmode="numeric" autocomplete="one-time-code"
+             maxlength="7" placeholder="123456" required />
+    </div>
+    <button type="submit" class="btn-submit" id="btn-vincular">Vincular</button>
+    <div class="error-msg" id="vincular-error"></div>
+    <div class="recovery-links">
+      <a href="#" class="link-volver">← Volver al inicio de sesión</a>
+    </div>
+  </form>
+
+  <div id="emergencia-panel" style="display:none;">
+    <p class="recovery-intro">
+      Estos son tus códigos de emergencia. Cada uno sirve una sola vez para entrar si perdés el
+      celular. Guardalos fuera de la computadora: no se vuelven a mostrar.
+    </p>
+    <ol class="codigos" id="codigos-lista"></ol>
+    <button type="button" class="btn-link" id="btn-copiar-codigos">Copiar todos</button>
+    <label class="check"><input type="checkbox" id="codigos-guardados" /> Los guardé en un lugar seguro</label>
+    <button type="button" class="btn-submit" id="btn-codigos-entrar" disabled>Entrar</button>
+  </div>
+
   <p class="login-foot">zaris-zge · v0.1</p>
 </div>
 
@@ -342,6 +464,15 @@
   let _tokenTemporal = null;   // token del login con clave temporal
   let _userTemporal  = null;
 
+  // Segundo factor (IT-01 F3b)
+  const codigoForm      = document.getElementById('codigo-form');
+  const vincularForm    = document.getElementById('vincular-form');
+  const emergenciaPanel = document.getElementById('emergencia-panel');
+  const TEXTO_DESAFIO   = 'Pasaron más de 5 minutos. Volvé a ingresar tu clave.';
+  let _desafio = null;          // token corto entre la clave y el código
+  let _modoEmergencia = false;  // el form del código recibe un código de emergencia
+  let _sesionPendiente = null;  // respuesta de la vinculación: se entra al confirmar los códigos
+
   function showError(msg) {
     errorEl.textContent = msg;
     errorEl.classList.add('visible');
@@ -364,7 +495,7 @@
   function mostrarCambioForzado(token, user) {
     _tokenTemporal = token;
     _userTemporal = user;
-    form.style.display = 'none';
+    [form, codigoForm, vincularForm, emergenciaPanel].forEach(f => f.style.display = 'none');
     loginTitle.textContent = 'Cambiá tu contraseña';
     cambioForm.style.display = 'block';
     document.getElementById('pass-nueva').focus();
@@ -394,16 +525,12 @@
         return;
       }
 
-      // Primer ingreso con clave temporal: NO guardamos sesión todavía, forzamos
-      // el cambio de contraseña antes de dejar entrar (Fase 3).
-      if (data.user && data.user.debe_cambiar_password) {
-        mostrarCambioForzado(data.access_token, data.user);
+      // Nivel 0/1 (IT-01 F3b): la clave no entrega el token, sigue el código de la app.
+      if (data.requiere_segundo_factor) {
+        iniciarSegundoFactor(data);
         return;
       }
-
-      // Login normal: persistir sesión (ambas shapes, §29) y entrar al shell.
-      persistirSesion(data.access_token, data.user);
-      window.location.href = '../index.html';
+      entrarConSesion(data);
 
     } catch (err) {
       showError('No se pudo conectar con el servidor. Verificá que el backend esté activo.');
@@ -462,6 +589,192 @@
     }
   });
 
+  // ─── Segundo factor (IT-01 F3b) ────────────────────────────────────────────
+  // Con access_token (cuenta sin segundo factor, o un backend anterior a F3b) se entra como
+  // siempre; con requiere_segundo_factor, la clave da un desafío y sigue el código de la app.
+
+  // Clave temporal: el cambio forzado va antes de guardar la sesión (Fase 3).
+  function entrarConSesion(data) {
+    if (data.user && data.user.debe_cambiar_password) {
+      mostrarCambioForzado(data.access_token, data.user);
+      return;
+    }
+    persistirSesion(data.access_token, data.user);
+    window.location.href = '../index.html';
+  }
+
+  async function postSegundoFactor(ruta, body) {
+    const res = await fetch(`${API_BASE}/api/v1/auth/segundo-factor/${ruta}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    return { res, data };
+  }
+
+  function mostrarSolo(el, titulo) {
+    [form, codigoForm, vincularForm, emergenciaPanel].forEach(f => f.style.display = 'none');
+    document.querySelectorAll('.error-msg').forEach(m => m.classList.remove('visible'));
+    loginTitle.textContent = titulo;
+    el.style.display = 'block';
+  }
+
+  // Desafío vencido: vuelve al login con el aviso. Cualquier otro error, en la vista activa.
+  function errorDePaso(res, data, el) {
+    if (res.status === 401 && data.detail === TEXTO_DESAFIO) {
+      mostrarVista('login');
+      showError(TEXTO_DESAFIO);
+      return;
+    }
+    el.textContent = data.detail || 'No se pudo verificar el código.';
+    el.classList.add('visible');
+  }
+
+  function iniciarSegundoFactor(data) {
+    if (data.estado === 'sin_habilitar') {
+      showError(data.mensaje || 'Tu cuenta todavía no puede entrar.');
+      return;
+    }
+    _desafio = data.desafio;
+    if (data.estado === 'vincular') mostrarVinculacion();
+    else mostrarCodigo(false);
+  }
+
+  function mostrarCodigo(emergencia) {
+    _modoEmergencia = emergencia;
+    const input = document.getElementById('codigo-input');
+    input.value = '';
+    if (emergencia) {
+      document.getElementById('codigo-intro').textContent =
+        'Escribí uno de tus códigos de emergencia. Después vas a vincular la app de nuevo.';
+      document.getElementById('codigo-label').textContent = 'Código de emergencia';
+      input.setAttribute('inputmode', 'text');
+      input.setAttribute('autocapitalize', 'characters');
+      input.maxLength = 11;
+      input.placeholder = 'XXXXX-XXXXX';
+      document.getElementById('link-emergencia').textContent = 'Usar el código de la app';
+    } else {
+      document.getElementById('codigo-intro').textContent =
+        'Abrí la app de autenticación de tu celular y escribí el código de 6 dígitos de ZARIS.';
+      document.getElementById('codigo-label').textContent = 'Código de la app';
+      input.setAttribute('inputmode', 'numeric');
+      input.removeAttribute('autocapitalize');
+      input.maxLength = 7;
+      input.placeholder = '123456';
+      document.getElementById('link-emergencia').textContent = 'Usar un código de emergencia';
+    }
+    mostrarSolo(codigoForm, emergencia ? 'Código de emergencia' : 'Código de verificación');
+    input.focus();
+  }
+
+  document.getElementById('link-emergencia').addEventListener('click', e => {
+    e.preventDefault();
+    mostrarCodigo(!_modoEmergencia);
+  });
+
+  codigoForm.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const errEl = document.getElementById('codigo-error');
+    const b = document.getElementById('btn-codigo');
+    errEl.classList.remove('visible');
+    b.disabled = true;
+    try {
+      const { res, data } = await postSegundoFactor(_modoEmergencia ? 'emergencia' : 'verificar', {
+        desafio: _desafio, codigo: document.getElementById('codigo-input').value.trim(),
+      });
+      if (!res.ok) { errorDePaso(res, data, errEl); return; }
+      if (_modoEmergencia) {
+        // El código de emergencia no entrega la sesión: obliga a vincular la app de nuevo.
+        _desafio = data.desafio;
+        mostrarVinculacion();
+        return;
+      }
+      entrarConSesion(data);
+    } catch (err) {
+      errEl.textContent = 'No se pudo conectar con el servidor.';
+      errEl.classList.add('visible');
+    } finally {
+      b.disabled = false;
+    }
+  });
+
+  async function mostrarVinculacion() {
+    const errEl = document.getElementById('vincular-error');
+    const qr = document.getElementById('vincular-qr');
+    qr.removeAttribute('src');
+    document.getElementById('vincular-secreto').textContent = '…';
+    document.getElementById('vincular-codigo').value = '';
+    mostrarSolo(vincularForm, 'Vinculá la app de códigos');
+    try {
+      const { res, data } = await postSegundoFactor('vinculacion', { desafio: _desafio });
+      if (!res.ok) { errorDePaso(res, data, errEl); return; }
+      qr.src = data.qr;  // data URI generado por el backend; nunca innerHTML
+      document.getElementById('vincular-secreto').textContent = data.secreto;
+      document.getElementById('vincular-codigo').focus();
+    } catch (err) {
+      errEl.textContent = 'No se pudo conectar con el servidor.';
+      errEl.classList.add('visible');
+    }
+  }
+
+  function copiar(texto, boton) {
+    if (!navigator.clipboard) return;
+    navigator.clipboard.writeText(texto).then(() => {
+      const antes = boton.textContent;
+      boton.textContent = 'Copiado';
+      setTimeout(() => { boton.textContent = antes; }, 1500);
+    }).catch(() => {});
+  }
+
+  document.getElementById('btn-copiar-secreto').addEventListener('click', e => {
+    copiar(document.getElementById('vincular-secreto').textContent, e.currentTarget);
+  });
+
+  vincularForm.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const errEl = document.getElementById('vincular-error');
+    const b = document.getElementById('btn-vincular');
+    errEl.classList.remove('visible');
+    b.disabled = true;
+    try {
+      const { res, data } = await postSegundoFactor('vinculacion/confirmar', {
+        desafio: _desafio, codigo: document.getElementById('vincular-codigo').value.trim(),
+      });
+      if (!res.ok) { errorDePaso(res, data, errEl); return; }
+      _sesionPendiente = data;
+      mostrarCodigosEmergencia(data.codigos_emergencia || []);
+    } catch (err) {
+      errEl.textContent = 'No se pudo conectar con el servidor.';
+      errEl.classList.add('visible');
+    } finally {
+      b.disabled = false;
+    }
+  });
+
+  function mostrarCodigosEmergencia(codigos) {
+    const lista = document.getElementById('codigos-lista');
+    lista.textContent = '';
+    codigos.forEach(c => {
+      const li = document.createElement('li');
+      li.textContent = c;
+      lista.appendChild(li);
+    });
+    document.getElementById('codigos-guardados').checked = false;
+    document.getElementById('btn-codigos-entrar').disabled = true;
+    mostrarSolo(emergenciaPanel, 'Códigos de emergencia');
+  }
+
+  document.getElementById('btn-copiar-codigos').addEventListener('click', e => {
+    copiar((_sesionPendiente && _sesionPendiente.codigos_emergencia || []).join('\n'), e.currentTarget);
+  });
+  document.getElementById('codigos-guardados').addEventListener('change', e => {
+    document.getElementById('btn-codigos-entrar').disabled = !e.target.checked;
+  });
+  document.getElementById('btn-codigos-entrar').addEventListener('click', () => {
+    if (_sesionPendiente) entrarConSesion(_sesionPendiente);
+  });
+
   // ─── Recuperación de credenciales ──────────────────────────────────────────
   const recPassForm   = document.getElementById('recuperar-pass-form');
   const recUserForm   = document.getElementById('recuperar-user-form');
@@ -470,7 +783,9 @@
   // Muestra UNA de las vistas (login / recuperar-pass / recuperar-user / reset),
   // oculta el resto. Limpia los mensajes al cambiar.
   function mostrarVista(cual) {
-    [form, recPassForm, recUserForm, resetPassForm].forEach(f => f.style.display = 'none');
+    [form, recPassForm, recUserForm, resetPassForm, codigoForm, vincularForm, emergenciaPanel]
+      .forEach(f => f.style.display = 'none');
+    _desafio = null;
     document.querySelectorAll('.ok-msg, .error-msg').forEach(el => el.classList.remove('visible'));
     const titulos = {
       login: 'Iniciar sesión',
