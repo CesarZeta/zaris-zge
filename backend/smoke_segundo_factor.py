@@ -392,11 +392,288 @@ async def test_demo_poblar_sin_sf() -> None:
     check("nivel 1 del municipio demo sin sf → 401", r.status_code == 401, f"{r.status_code} {r.text[:120]}")
 
 
+# ── Tarea 4 ──────────────────────────────────────────────────────────────────
+
+SF_NUEVO = "sf.nuevo@prueba-aislamiento.com.ar"
+T_SIN_HABILITAR = "Tu cuenta necesita que el soporte de ZARIS habilite la vinculación de la app de códigos."
+T_CODIGO_INVALIDO = "El código no es válido. Revisá la app y probá de nuevo."
+T_BLOQUEO = "Demasiados códigos incorrectos. Probá de nuevo en 15 minutos."
+T_DESAFIO = "Pasaron más de 5 minutos. Volvé a ingresar tu clave."
+T_NO_CONFIGURADO = "El ingreso con segundo factor no está configurado en el servidor. Avisá al soporte de ZARIS."
+
+
+async def _login(c: httpx.AsyncClient, ident: str) -> httpx.Response:
+    # El límite de intentos es en memoria y no es lo que se prueba acá: se vacía antes de cada llamada.
+    _rate_limit._buckets.clear()
+    return await c.post("/api/v1/auth/login", json={"identificador": ident, "password": CLAVE})
+
+
+async def _paso(c: httpx.AsyncClient, ruta: str, body: dict) -> httpx.Response:
+    _rate_limit._buckets.clear()
+    return await c.post(f"/api/v1/auth/segundo-factor/{ruta}", json=body)
+
+
+async def _contar(sql: str, params: dict) -> int:
+    async with AsyncSessionLocal() as db:
+        return (await db.execute(text(sql), params)).scalar()
+
+
+async def _sin_repeticion(id_u: int) -> None:
+    """El anti-repetición no es lo que prueban estos tests: libera el paso de 30 s ya usado."""
+    await _sql("UPDATE usuario_segundo_factor SET ultimo_paso = NULL, intentos_fallidos = 0, "
+               "bloqueado_hasta = NULL WHERE id_usuario = :u", {"u": id_u})
+
+
+async def test_login_pide_codigo() -> None:
+    print("\n4a. Login de una cuenta vinculada: clave y después código")
+    import pyotp
+    _prender()
+    id_u = CTX["id_admin"]
+    await _sin_repeticion(id_u)
+    async with _cliente() as c:
+        r = await _login(c, SF_ADMIN)
+        j = r.json()
+        check("login → 200 sin access_token y con estado 'codigo'",
+              r.status_code == 200 and "access_token" not in j and j.get("estado") == "codigo"
+              and isinstance(j.get("desafio"), str), f"{r.status_code} {r.text[:160]}")
+        check("el desafío no sirve como token", await _me(j.get("desafio") or "x") == 401)
+        logs = await _contar("SELECT count(*) FROM usuario_login_log WHERE id_usuario = :u", {"u": id_u})
+        ingresos = await _contar("SELECT count(*) FROM usuario_segundo_factor_evento "
+                                 "WHERE id_usuario = :u AND evento = 'ingreso'", {"u": id_u})
+        r2 = await _paso(c, "verificar", {"desafio": j.get("desafio"),
+                                          "codigo": pyotp.TOTP(CTX["secreto_admin"]).now()})
+        tok = r2.json().get("access_token") if r2.status_code == 200 else None
+        check("/verificar con el código vigente → access_token", tok is not None, f"{r2.status_code} {r2.text[:160]}")
+        check("ese token sirve", tok is not None and await _me(tok) == 200)
+    check("queda la fila de usuario_login_log",
+          await _contar("SELECT count(*) FROM usuario_login_log WHERE id_usuario = :u", {"u": id_u}) == logs + 1)
+    check("queda un evento 'ingreso'",
+          await _contar("SELECT count(*) FROM usuario_segundo_factor_evento WHERE id_usuario = :u "
+                        "AND evento = 'ingreso'", {"u": id_u}) == ingresos + 1)
+
+
+async def test_nivel_2_sin_cambios() -> None:
+    print("\n4b. Nivel 2: el login de siempre")
+    _prender()
+    await _cuenta(SF_NIVEL2, 2)
+    async with _cliente() as c:
+        r = await _login(c, SF_NIVEL2)
+    check("nivel 2 → access_token directo", r.status_code == 200 and "access_token" in r.json(),
+          f"{r.status_code} {r.text[:120]}")
+
+
+async def test_sin_habilitar() -> None:
+    print("\n4c. Cuenta sin habilitar o con la habilitación vencida")
+    from app.api.routes.segundo_factor import crear_desafio
+    _prender()
+    id_n = await _cuenta(SF_NUEVO, 1)
+    CTX["id_nuevo"] = id_n
+    await _sql("""INSERT INTO usuario_segundo_factor (id_usuario, id_municipio) VALUES (:u, 1)
+                  ON CONFLICT (id_usuario) DO UPDATE SET secreto_cifrado = NULL, secreto_pendiente_cifrado = NULL,
+                         habilitado_hasta = NULL, intentos_fallidos = 0, bloqueado_hasta = NULL""", {"u": id_n})
+    async with _cliente() as c:
+        j = (await _login(c, SF_NUEVO)).json()
+        check("sin habilitar → estado 'sin_habilitar', sin desafío y con el texto fijo",
+              j.get("estado") == "sin_habilitar" and j.get("desafio") is None and j.get("mensaje") == T_SIN_HABILITAR,
+              str(j)[:200])
+        await _sql("UPDATE usuario_segundo_factor SET habilitado_hasta = NOW() - interval '1 minute' "
+                   "WHERE id_usuario = :u", {"u": id_n})
+        j = (await _login(c, SF_NUEVO)).json()
+        check("habilitación vencida → 'sin_habilitar'", j.get("estado") == "sin_habilitar", str(j)[:160])
+        r = await _paso(c, "vinculacion", {"desafio": crear_desafio(id_n, fin="vincular", id_municipio=1)})
+        check("/vinculacion con un desafío fabricado y sin habilitar → 403", r.status_code == 403,
+              f"{r.status_code} {r.text[:120]}")
+
+
+async def test_vinculacion_por_login() -> None:
+    print("\n4d. Vinculación desde el login")
+    import pyotp
+    from app.services import segundo_factor as sf
+    _prender()
+    id_n = CTX["id_nuevo"]
+    async with AsyncSessionLocal() as db:
+        await sf.habilitar(db, id_usuario=id_n, id_municipio=1, id_actor=None)
+        await db.commit()
+    async with _cliente() as c:
+        j = (await _login(c, SF_NUEVO)).json()
+        check("habilitada → estado 'vincular'", j.get("estado") == "vincular" and j.get("desafio"), str(j)[:160])
+        r = await _paso(c, "vinculacion", {"desafio": j.get("desafio")})
+        q = r.json() if r.status_code == 200 else {}
+        check("/vinculacion → QR y secreto", str(q.get("qr", "")).startswith("data:image/svg+xml")
+              and q.get("secreto"), f"{r.status_code} {r.text[:120]}")
+        r = await _paso(c, "vinculacion/confirmar",
+                        {"desafio": j.get("desafio"), "codigo": pyotp.TOTP(q.get("secreto", "A" * 32)).now()})
+        k = r.json() if r.status_code == 200 else {}
+        check("/vinculacion/confirmar → 10 códigos y access_token",
+              len(k.get("codigos_emergencia") or []) == 10 and k.get("access_token"), f"{r.status_code} {r.text[:160]}")
+        check("ese token sirve", bool(k.get("access_token")) and await _me(k["access_token"]) == 200)
+        j = (await _login(c, SF_NUEVO)).json()
+        check("el login siguiente pide el código", j.get("estado") == "codigo", str(j)[:120])
+
+
+async def test_emergencia_revincula() -> None:
+    print("\n4e. Código de emergencia: obliga a vincular, sin perder la app vieja hasta confirmar")
+    import pyotp
+    _prender()
+    id_u, viejos = CTX["id_admin"], CTX["codigos_admin"]
+    totp_viejo = pyotp.TOTP(CTX["secreto_admin"])
+    await _sin_repeticion(id_u)
+    async with _cliente() as c:
+        d = (await _login(c, SF_ADMIN)).json().get("desafio")
+        r = await _paso(c, "emergencia", {"desafio": d, "codigo": viejos[1]})
+        e = r.json() if r.status_code == 200 else {}
+        check("/emergencia → desafío nuevo y sin token", bool(e.get("desafio")) and "access_token" not in e,
+              f"{r.status_code} {r.text[:120]}")
+        r = await _paso(c, "vinculacion", {"desafio": e.get("desafio")})
+        check("con ese desafío, /vinculacion da un QR", r.status_code == 200, f"{r.status_code} {r.text[:120]}")
+        # La persona abandona acá: la app vieja sigue valiendo.
+        j = (await _login(c, SF_ADMIN)).json()
+        check("abandonada la vinculación, el login sigue en 'codigo'", j.get("estado") == "codigo", str(j)[:120])
+        r = await _paso(c, "verificar", {"desafio": j.get("desafio"), "codigo": totp_viejo.now()})
+        check("el código de la app vieja sigue entrando", r.status_code == 200, f"{r.status_code} {r.text[:120]}")
+        d = (await _login(c, SF_ADMIN)).json().get("desafio")
+        e = (await _paso(c, "emergencia", {"desafio": d, "codigo": viejos[2]})).json()
+        q = (await _paso(c, "vinculacion", {"desafio": e.get("desafio")})).json()
+        r = await _paso(c, "vinculacion/confirmar",
+                        {"desafio": e.get("desafio"), "codigo": pyotp.TOTP(q.get("secreto", "A" * 32)).now()})
+        k = r.json() if r.status_code == 200 else {}
+        check("confirmar la vinculación nueva → 10 códigos nuevos", len(k.get("codigos_emergencia") or []) == 10,
+              f"{r.status_code} {r.text[:120]}")
+        if k.get("codigos_emergencia"):
+            CTX["secreto_admin"], CTX["codigos_admin"] = q["secreto"], k["codigos_emergencia"]
+        d = (await _login(c, SF_ADMIN)).json().get("desafio")
+        r = await _paso(c, "emergencia", {"desafio": d, "codigo": viejos[3]})
+        check("un código de emergencia anterior ya no sirve → 401", r.status_code == 401, f"{r.status_code} {r.text[:120]}")
+
+
+async def test_bloqueo_http() -> None:
+    print("\n4f. Bloqueo por códigos mal puestos")
+    import pyotp
+    _prender()
+    id_u = CTX["id_admin"]
+    await _sin_repeticion(id_u)
+    async with _cliente() as c:
+        d = (await _login(c, SF_ADMIN)).json().get("desafio")
+        codigos = []
+        for _ in range(5):
+            r = await _paso(c, "verificar", {"desafio": d, "codigo": "000000"})
+            codigos.append((r.status_code, r.json().get("detail")))
+        check("4 fallos → 401 con el texto fijo",
+              all(x == (401, T_CODIGO_INVALIDO) for x in codigos[:4]), str(codigos))
+        check("el quinto → 429 con el texto fijo", codigos[4] == (429, T_BLOQUEO), str(codigos[4]))
+        bueno = pyotp.TOTP(CTX["secreto_admin"]).now()
+        r = await _paso(c, "verificar", {"desafio": d, "codigo": bueno})
+        check("el código correcto durante el bloqueo → 429", r.status_code == 429, f"{r.status_code}")
+        await _sql("UPDATE usuario_segundo_factor SET bloqueado_hasta = NOW() - interval '1 minute' "
+                   "WHERE id_usuario = :u", {"u": id_u})
+        r = await _paso(c, "verificar", {"desafio": d, "codigo": bueno})
+        check("vencido el bloqueo, entra", r.status_code == 200, f"{r.status_code} {r.text[:120]}")
+
+
+async def test_desafio() -> None:
+    print("\n4g. Desafío vencido, de otro paso o de una cuenta que cambió")
+    from datetime import datetime, timedelta, timezone
+    import pyotp
+    from jose import jwt
+    from app.core.auth import ALGORITHM
+    _prender()
+    id_u = CTX["id_admin"]
+    await _sin_repeticion(id_u)
+    vencido = jwt.encode({"sub": str(id_u), "scope": "segundo_factor", "fin": "codigo", "mun": 1,
+                          "exp": datetime.now(timezone.utc) - timedelta(seconds=10)},
+                         settings.SECRET_KEY, algorithm=ALGORITHM)
+    async with _cliente() as c:
+        r = await _paso(c, "verificar", {"desafio": vencido, "codigo": "123456"})
+        check("desafío vencido → 401 con el texto fijo", (r.status_code, r.json().get("detail")) == (401, T_DESAFIO),
+              f"{r.status_code} {r.text[:120]}")
+        d = (await _login(c, SF_ADMIN)).json().get("desafio")
+        r = await _paso(c, "vinculacion/confirmar", {"desafio": d, "codigo": "123456"})
+        check("desafío 'codigo' en /vinculacion/confirmar → 401", r.status_code == 401, f"{r.status_code}")
+        bueno = pyotp.TOTP(CTX["secreto_admin"]).now()
+        for cambio, deshacer, nombre in (
+                ("activo = FALSE", "activo = TRUE", "desactivada"),
+                ("nivel_acceso = 2", "nivel_acceso = 1", "bajada a nivel 2")):
+            d = (await _login(c, SF_ADMIN)).json().get("desafio")
+            await _sql(f"UPDATE usuarios SET {cambio} WHERE id_usuario = :u", {"u": id_u})
+            try:
+                r = await _paso(c, "verificar", {"desafio": d, "codigo": bueno})
+                check(f"cuenta {nombre} entre los dos pasos → 401", r.status_code == 401, f"{r.status_code}")
+            finally:
+                await _sql(f"UPDATE usuarios SET {deshacer} WHERE id_usuario = :u", {"u": id_u})
+
+
+async def test_clave_temporal() -> None:
+    print("\n4h. Clave temporal: el cambio forzado viene después del código")
+    import pyotp
+    _prender()
+    id_u = CTX["id_admin"]
+    await _sin_repeticion(id_u)
+    await _sql("UPDATE usuarios SET debe_cambiar_password = TRUE WHERE id_usuario = :u", {"u": id_u})
+    try:
+        async with _cliente() as c:
+            d = (await _login(c, SF_ADMIN)).json().get("desafio")
+            r = await _paso(c, "verificar", {"desafio": d, "codigo": pyotp.TOTP(CTX["secreto_admin"]).now()})
+        u = r.json().get("user", {}) if r.status_code == 200 else {}
+        check("/verificar devuelve debe_cambiar_password = true", u.get("debe_cambiar_password") is True,
+              f"{r.status_code} {r.text[:120]}")
+    finally:
+        await _sql("UPDATE usuarios SET debe_cambiar_password = FALSE WHERE id_usuario = :u", {"u": id_u})
+
+
+async def test_super() -> None:
+    print("\n4i. Super administrador: la fila 'login' recién después del código")
+    import pyotp
+    from jose import jwt
+    from app.core.auth import ALGORITHM
+    from app.services import segundo_factor as sf
+    _prender()
+    async with AsyncSessionLocal() as db:
+        id_s = await _id_super(db)
+        await sf.habilitar(db, id_usuario=id_s, id_municipio=None, id_actor=None)
+        await db.commit()
+    contar = ("SELECT count(*) FROM super_admin_acceso WHERE id_usuario = :u AND accion = 'login'", {"u": id_s})
+    async with _cliente() as c:
+        j = (await _login(c, EMAIL_SUPER)).json()
+        q = (await _paso(c, "vinculacion", {"desafio": j.get("desafio")})).json()
+        r = await _paso(c, "vinculacion/confirmar",
+                        {"desafio": j.get("desafio"), "codigo": pyotp.TOTP(q.get("secreto", "A" * 32)).now()})
+        check("el super vincula desde el login", r.status_code == 200, f"{r.status_code} {r.text[:120]}")
+        CTX["secreto_super"] = q.get("secreto")
+        await _sin_repeticion(id_s)
+        antes = await _contar(*contar)
+        j = (await _login(c, EMAIL_SUPER)).json()
+        check("el login del super pide el código", j.get("estado") == "codigo", str(j)[:120])
+        check("después de la clave no hay fila 'login'", await _contar(*contar) == antes)
+        r = await _paso(c, "verificar", {"desafio": j.get("desafio"), "codigo": pyotp.TOTP(CTX["secreto_super"]).now()})
+        check("después del código sí", await _contar(*contar) == antes + 1, f"{r.status_code} {r.text[:120]}")
+        claims = jwt.decode(r.json()["access_token"], settings.SECRET_KEY, algorithms=[ALGORITHM]) \
+            if r.status_code == 200 else {}
+        check("el token del super trae sa y sf", claims.get("sa") is True and claims.get("sf") is True, str(claims))
+
+
+async def test_sin_clave_503() -> None:
+    print("\n4j. Sin SEGUNDO_FACTOR_CLAVE")
+    _prender()
+    settings.SEGUNDO_FACTOR_CLAVE = ""
+    try:
+        async with _cliente() as c:
+            r = await _login(c, SF_ADMIN)
+            check("nivel 1 → 503 con el texto fijo", (r.status_code, r.json().get("detail")) == (503, T_NO_CONFIGURADO),
+                  f"{r.status_code} {r.text[:120]}")
+            r = await _login(c, SF_NIVEL2)
+            check("nivel 2 → access_token", r.status_code == 200 and "access_token" in r.json(), f"{r.status_code}")
+    finally:
+        _prender()
+
+
 TESTS = [test_tablas_segundo_factor,
          test_cifrado, test_vinculacion, test_reintento_vinculacion, test_codigo_y_repeticion,
          test_codigo_concurrente, test_emergencia, test_bloqueo,
          test_token_sin_sf, test_ascenso, test_marca, test_super_sin_sf, test_interruptor_apagado,
-         test_demo_poblar_sin_sf]
+         test_demo_poblar_sin_sf,
+         test_login_pide_codigo, test_nivel_2_sin_cambios, test_sin_habilitar, test_vinculacion_por_login,
+         test_emergencia_revincula, test_bloqueo_http, test_desafio, test_clave_temporal, test_super,
+         test_sin_clave_503]
 
 
 async def main() -> int:

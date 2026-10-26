@@ -28,6 +28,13 @@ def url_portal_vecino() -> str:
     return url_publica(settings.APP_VECINOS_FRONTEND_URL)
 
 
+def url_login_backoffice() -> str:
+    """Login del shell (GitHub Pages). La app de agentes lo muestra para vincular la app de
+    códigos desde la computadora (IT-01 F3b). "" si FRONTEND_BASE_URL no es una URL válida."""
+    base = url_publica(settings.FRONTEND_BASE_URL)
+    return f"{base}/frontend/login.html" if base else ""
+
+
 def url_alta_publica(slug: Optional[str]) -> Optional[str]:
     s = (slug or "").strip().lower()
     if not s:

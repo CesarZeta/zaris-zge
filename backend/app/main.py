@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.api.routes.auth import router as auth_router
+from app.api.routes.segundo_factor import router as segundo_factor_router
 from app.api.routes.buc import router as buc_router
 from app.api.routes.agenda_v2 import router as agenda_v2_router
 from app.api.routes.agenda_publico import router as agenda_publico_router
@@ -111,6 +112,7 @@ app.add_middleware(
 )
 # Rutas
 app.include_router(auth_router)
+app.include_router(segundo_factor_router)
 # usuario_push: /auth/push/* — Web Push de usuarios internos (App de agentes, mig 108)
 app.include_router(usuario_push_router)
 app.include_router(buc_router)

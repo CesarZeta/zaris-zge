@@ -63,6 +63,11 @@ def _fernet() -> Fernet:
         raise SegundoFactorNoConfigurado("SEGUNDO_FACTOR_CLAVE no es una clave Fernet") from e
 
 
+def comprobar_configuracion() -> None:
+    """Lanza SegundoFactorNoConfigurado si la clave falta o no es una clave Fernet."""
+    _fernet()
+
+
 def cifrar(secreto: str) -> str:
     return _fernet().encrypt(secreto.encode()).decode()
 
