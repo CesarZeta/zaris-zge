@@ -190,6 +190,7 @@ Plan: [`PLAN_MULTI_MUNICIPIO_F3.md`](PLAN_MULTI_MUNICIPIO_F3.md). **Aplicadas en
   - tabla `super_admin_acceso`, append-only con triggers por sentencia (UPDATE, DELETE, TRUNCATE), RLS y clase `mixta`;
   - fila `municipios` en `modulos` con `min_nivel_acceso` 0;
   - `password_renovacion_dias` pasa del municipio 1 a global.
+- **127c** (sin `DROP`, por MCP, después de la 127b; aplicada en local el 2026-10-26, en la pasada de arreglos de la revisión final): trigger `configuracion_general_clave_global` (`BEFORE INSERT OR UPDATE OF clave, id_municipio`) que rechaza una fila de un municipio con la clave de un parámetro global. Hoy también lo frena el `UNIQUE (clave)` viejo, que el lote de limpieza borra antes de F4. Compatible con el `UPDATE` de la 127b (la fila que pasa a global no se controla).
 - La primera cuenta de super administrador no la crea ninguna migración: la crea `backend/seed_super_admin.py`, con el email que da César en el corte.
 
 ### Migraciones 125-126 — IT-01 multi-municipio (F1 + F2) (`backend/migrations/125_segmentacion_municipio.sql` … `126_sin_default_municipio.sql`)
