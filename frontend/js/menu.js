@@ -563,6 +563,25 @@
     // Primera vez (o el guardado ya no vale): el módulo cargó sin municipio, se recarga.
     await _seleccionarMunicipio(elegido, previo !== elegido);
     sel.addEventListener('change', () => _seleccionarMunicipio(sel.value, true));
+
+    // Otra pestaña cambió de municipio (la elección ya la registró ella): esta la sigue, repinta
+    // la identidad y recarga el módulo. Sin esto la pantalla mostraba un municipio y cada request
+    // salía con el header del otro (I2 de la revisión final de F3).
+    window.addEventListener('storage', async function (e) {
+      if (e.key !== MUNICIPIO_ACTIVO_KEY || !e.newValue || e.newValue === sel.value) return;
+      const id = e.newValue;
+      const m = lista.find(x => String(x.id_municipio) === id);
+      sel.value = id;
+      _pintarMunicipio(m ? m.nombre : '', null);
+      try {
+        const res = await fetch(`${API}/api/v1/config/identidad/actual`, { headers: _authHeaders() });
+        if (res.ok) {
+          const d = await res.json();
+          _pintarMunicipio(d.municipio_nombre || (m && m.nombre), d.municipio_logo_url);
+        }
+      } catch (err) { /* queda el nombre de la lista */ }
+      window.shellNavigate(`web-app/dist/index.html?m=${id}#/dashboard`);
+    });
   }
   function _fmtFechaRelativa(iso) {
     const d = new Date(iso);
