@@ -7,7 +7,7 @@ import { PendientesSection } from '../sections/PendientesSection'
 import { SubreclamosSection } from '../sections/SubreclamosSection'
 import type { BiFiltros } from '../lib/types'
 import { periodoEjecutivoDefault } from '../lib/periodo'
-import { useAuthStore } from '../../../stores/auth'
+import { esAdministrador, useAuthStore } from '../../../stores/auth'
 
 // Página ÚNICA del Operativo (2026-08-30, reemplaza los 4 tabs). Decisiones de César:
 //  - una sola hoja que se recorre verticalmente: Resumen → Respuesta → Pendientes
@@ -44,7 +44,7 @@ function leerAreaGuardada(): number | undefined {
 
 export function OperativoPage({ seccion }: { seccion?: string }) {
   const nivel = useAuthStore((s) => s.user?.nivel_acceso ?? 99)
-  const esAdmin = nivel === 1
+  const esAdmin = esAdministrador(nivel)
   const areas = useCatalogoAreas()
   const miArea = useMiArea()
   const [filtros, setFiltros] = useState<BiFiltros | null>(null)

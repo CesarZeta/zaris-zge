@@ -82,3 +82,10 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 )
+
+/** Administrador del municipio en el que se opera: nivel 1, o el super administrador (nivel 0,
+ *  IT-01 F3), que tiene ahí todo lo del 1. Usar esto y no comparar el nivel por igualdad con 1:
+ *  eso deja al super afuera sin ningún error (barrido `tools/barrido_guards_nivel.py`). */
+export function esAdministrador(nivel: number | null | undefined): boolean {
+  return nivel != null && nivel <= 1
+}

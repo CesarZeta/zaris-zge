@@ -9,7 +9,7 @@ import { GuardiaAtSection } from '../sections/GuardiaAtSection'
 import { EventosAtSection } from '../sections/EventosAtSection'
 import type { BiFiltros } from '../lib/types'
 import { periodoEjecutivoDefault } from '../lib/periodo'
-import { useAuthStore } from '../../../stores/auth'
+import { esAdministrador, useAuthStore } from '../../../stores/auth'
 
 // Tablero de ATENCIÓN — "BI de atención por gestión" (proyecto ATENCIÓN F6,
 // 2026-09-19). Misma página única del Ejecutivo (índice fijo + scroll-spy +
@@ -40,7 +40,7 @@ function leerAreaGuardada(): number | undefined {
 
 export function AtencionPage() {
   const nivel = useAuthStore((s) => s.user?.nivel_acceso ?? 99)
-  const esAdmin = nivel === 1
+  const esAdmin = esAdministrador(nivel)
   const gestiones = useAtCatalogoGestiones()
   const miArea = useMiArea()
   const [filtros, setFiltros] = useState<BiFiltros | null>(null)
