@@ -14,6 +14,7 @@ const ACCIONES: Record<string, string> = {
   seleccion: 'Entró al municipio',
   historia_clinica: 'Historia clínica',
   municipio_editar: 'Editó el municipio',
+  segundo_factor: 'Segundo factor',
 }
 
 interface AccesoSuper {

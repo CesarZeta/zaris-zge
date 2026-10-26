@@ -3,6 +3,7 @@ import { useNotificationsStore } from '../../../stores/notifications'
 import { ConfirmModal } from '../../agenda/components/ConfirmModal'
 import { useModulosCatalogo } from '../../config/hooks/useConfig'
 import { PermisosPanel } from '../components/PermisosPanel'
+import { SegundoFactorPanel } from '../components/SegundoFactorPanel'
 import { ThOrden, ordenarFilas, useOrden } from '../../../ui/orden'
 import { buscarSubareas, buscarUsuarios } from '../api/usuariosApi'
 import {
@@ -441,6 +442,7 @@ export function MaestroView() {
                     Ver historial de accesos
                   </button>
                 </div>
+                <SegundoFactorPanel usuario={usuario} />
               </>
             )}
           </div>

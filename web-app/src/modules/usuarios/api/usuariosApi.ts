@@ -1,5 +1,6 @@
 import { api } from '../../../lib/api'
 import type {
+  EstadoSegundoFactor,
   LoginLogEntry,
   SubareaHit,
   Usuario,
@@ -34,3 +35,13 @@ export const buscarSubareas = (q: string) =>
 
 export const verLoginLog = (id: number) =>
   api.get<LoginLogEntry[]>(`${BUC}/usuarios/${id}/login-log`, { params: { limit: 50 } })
+
+// Segundo factor de las cuentas de nivel 0 y 1 (IT-01 F3b). Solo estado: nunca secretos ni códigos.
+const SF = '/api/v1/auth/segundo-factor'
+
+export const obtenerSegundoFactor = (id: number) =>
+  api.get<EstadoSegundoFactor>(`${SF}/cuentas/${id}`)
+
+// Solo el super administrador: restablece la app y habilita la vinculación por 24 h.
+export const habilitarSegundoFactor = (id: number) =>
+  api.post<EstadoSegundoFactor>(`${SF}/cuentas/${id}/habilitar`)
