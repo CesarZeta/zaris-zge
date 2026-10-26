@@ -18,18 +18,17 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **Cuentas de administrador sin segundo factor** (desde el corte del 2026-10-26 no pueden entrar): la de Roy y la otra cuenta de administrador de César (id 1). Recomendación: la de Roy, habilitarla desde Usuarios cuando él pueda vincular dentro de las 24 h; la otra, dejarla sin habilitar si no se usa.
-2. **IT-01 — lo que queda de F3 y F3b:**
+1. **IT-01 — lo que queda de F3 y F3b:**
    - **Verificaciones que solo puede hacer César en prod:**
      - pedir «Olvidé mi contraseña» con la cuenta del super: el mail tiene que llegar como ZARIS (asunto, encabezado, texto, pie y remitente), sin San Andrés. El arreglo `2f48a55` está desplegado, pero no se probó con un mail real;
      - como super administrador, Reclamos → Buscar sin filtros: el total tiene que dar lo mismo que con `cesar@` (2995 el 2026-10-26 a la noche);
      - el próximo ingreso con código deja el evento `ingreso` en `usuario_segundo_factor_evento` (en el corte solo hubo `habilitado` y `vinculado`, porque vincular ya entra).
    - Próximo: los menores de Pendientes y **F4** (estado y tope de usuarios por municipio, municipio modelo, alta, vaciado, módulos por municipio). F4 todavía no tiene plan.
-3. **Asignación automática — revisar ~2026-10-29:** carga de los agentes de las 17 gestiones que asignan solas (en varias, UN solo agente de nivel Gestión recibe todo).
-4. **Commits viejos de las dos purgas:** César mandó el pedido a GitHub Support el 2026-10-22. El 2026-10-26 los commits seguían publicados; si siguen así hacia el 2026-11-05, reclamar el ticket (detalle en la memoria privada de Cesar).
-5. **Base de conocimiento de ayudas:** la próxima sesión completa es para eso (César, 2026-10-23). Mientras tanto no se tocan manuales.
-6. Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
-7. **Primer cierre real de un trámite de vecino en prod:** confirma el aviso de resultado y la encuesta (probados solo en local). Va con los próximos smokes con cuentas reales; César pasa los trámites.
+2. **Asignación automática — revisar ~2026-10-29:** carga de los agentes de las 17 gestiones que asignan solas (en varias, UN solo agente de nivel Gestión recibe todo).
+3. **Commits viejos de las dos purgas:** César mandó el pedido a GitHub Support el 2026-10-22. El 2026-10-26 los commits seguían publicados; si siguen así hacia el 2026-11-05, reclamar el ticket (detalle en la memoria privada de Cesar).
+4. **Base de conocimiento de ayudas:** la próxima sesión completa es para eso (César, 2026-10-23). Mientras tanto no se tocan manuales.
+5. Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
+6. **Primer cierre real de un trámite de vecino en prod:** confirma el aviso de resultado y la encuesta (probados solo en local). Va con los próximos smokes con cuentas reales; César pasa los trámites.
 
 ---
 
@@ -77,6 +76,7 @@
 - **Orden por columnas: quedan afuera** las colas operativas, las tablas con orden propio y la configuración (César, 2026-10-22; lista en CLAUDE.md §23).
 - **São Paulo DESCARTADO** (2026-09-26, CLAUDE.md §9) · «la ubicación» de Buscar actualizaciones (PWA) innecesaria · no se rotan `DISPATCHER_TOKEN` ni las claves push · el vecino no cambia su email desde la app · los reclamos **no se agendan**.
 - Purgas del historial git HECHAS el 2026-09-20 y el 2026-10-21 (mapas en `docs/commit-map-purga-*.txt`). Roy tiene que re-clonar.
+- **Cuentas de administrador sin segundo factor:** la de Roy se habilita cuando César lo indique (no preguntar); la otra cuenta de administrador de César (id 1) queda sin habilitar (César, 2026-10-26).
 - **Guardia: el motivo de derivación sigue visible en la mesa** para todos los que ven la Guardia (César, 2026-10-26). Lo escribe el COM y sirve para el triage; lo clínico ya pasa por el guard de historia clínica.
 - Fase 3 de roles (mig 92) y la auditoría de seguridad 2026-07 (48/48) COMPLETAS.
 
@@ -86,9 +86,7 @@
 
 - **2026-10-26 (3ª sesión) — IT-01, lote de limpieza en prod** (migs 129/129b, código `00acd0b`): borrados los 13 únicos globales viejos, las tablas legado (catálogo viejo de reclamos, numerador viejo de Emergencias) y el `id_municipio` de las 10 tablas globales; antes, el código dejó de usarlos. Local: suite 23/24 (turnos, por datos) y aislamiento 406 rutas sin fallas. En prod, 24 pantallas sin 5xx después del único 500 de la caché de asyncpg (regla en CLAUDE.md §21).
 - **2026-10-26 (3ª sesión) — IT-01 F3b en prod.** Backup, `SEGUNDO_FACTOR_CLAVE` en Railway, 128 (César, SQL Editor) y 128b (MCP), login del shell (`0065b27`) y app de agentes (`609b004`) antes que el backend (merge `449f7f6`). Un nivel 2 sigue entrando sin código. Vinculadas la cuenta del super y `cesar@`; el registro del super muestra la habilitación. Además: con una sesión inutilizable el shell mostraba adentro el login de desarrollo (citaba localhost:8080); ahora va al login del shell (`6f71d8c`).
-- **2026-10-26 (2ª sesión) — IT-01 F3b implementado en local:** smoke 106/106, suite 22/23 (la roja es la de turnos, por datos), aislamiento 0 fallas, revisión final con sus arreglos. Además: decisión de la Guardia.
 - **2026-10-26 — IT-01 F3 en prod** (migs 127/127b/127c, merge `658542e`, con la pasada de arreglos de su revisión final; después, el mail de recuperación del super como ZARIS, `2f48a55`). Detalle en `HISTORIAL_MIGRACIONES.md`.
-- **2026-10-25 — IT-01 F1+F2 en prod** (migs 125-126, merge `6c92cb6`; detalle en `HISTORIAL_MIGRACIONES.md`).
 
 > Lo anterior: `HISTORIAL_MIGRACIONES.md` y las skills de cada módulo.
 
