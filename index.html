@@ -40,7 +40,7 @@
 
   <link rel="stylesheet" href="design-system/fonts/fonts.css">
   <link rel="stylesheet" href="design-system/colors_and_type.css">
-  <link rel="stylesheet" href="frontend/css/menu.css?v=2026-10-26a">
+  <link rel="stylesheet" href="frontend/css/menu.css?v=2026-10-26b">
 
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 </head>
@@ -73,6 +73,14 @@
           <img class="muni__logo" id="topbar-muni-logo" alt="Logo municipio" hidden>
           <span class="muni__nombre" id="topbar-muni-nombre">MUNICIPALIDAD</span>
         </div>
+
+        <!-- Super administrador (IT-01 F3): municipio en el que opera. Lo arma menu.js;
+             para cualquier otra cuenta queda oculto. -->
+        <label class="muni-selector" id="topbar-municipio-wrap" hidden>
+          <span class="muni-selector__label">Operando en</span>
+          <select class="muni-selector__select" id="topbar-municipio"
+                  aria-label="Municipio en el que opera el super administrador"></select>
+        </label>
       </div>
 
       <div class="topbar__right">
@@ -369,6 +377,20 @@
           <span>Configuración</span>
         </a>
 
+        <!-- Municipios: solo el super administrador (IT-01 F3). data-modulo="municipios"
+             es una fila de `modulos` con min_nivel_acceso 0 (mig 127b). -->
+        <a class="nav-flat__item" href="web-app/dist/index.html#/municipios" data-modulo="municipios">
+          <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="3" x2="21" y1="22" y2="22"/>
+            <line x1="6" x2="6" y1="18" y2="11"/>
+            <line x1="10" x2="10" y1="18" y2="11"/>
+            <line x1="14" x2="14" y1="18" y2="11"/>
+            <line x1="18" x2="18" y1="18" y2="11"/>
+            <polygon points="12 2 20 7 4 7"/>
+          </svg>
+          <span>Municipios</span>
+        </a>
+
         <!-- Guías: material informativo. Sin data-modulo -> visible para cualquier usuario autenticado. -->
         <a class="nav-flat__item" href="web-app/dist/index.html#/guias">
           <svg class="nav-flat__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -437,6 +459,6 @@
   </div>
 
   <script src="frontend/js/qrcode.bundle.js?v=2026-07-15a"></script>
-  <script src="frontend/js/menu.js?v=2026-10-22b"></script>
+  <script src="frontend/js/menu.js?v=2026-10-26b"></script>
 </body>
 </html>

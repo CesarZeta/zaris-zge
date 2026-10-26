@@ -34,6 +34,7 @@ from app.services.cuenta_zaris import (
     exigir_admin_funcionario, sincronizar_agente_desde_ficha,
 )
 from app.services.notificaciones import notificar_agente_nuevo
+from app.services.super_admin import EMAIL_RESERVADO, email_reservado_super_admin
 from app.utils.orden import clausula_orden, descripcion_orden
 
 # Guard a nivel router: TODO endpoint del módulo BUC exige JWT válido (scope agente).
@@ -265,6 +266,8 @@ async def modificar_usuario(
             "SELECT 1 FROM subarea WHERE id_subarea = :s AND id_municipio = :m"),
             {"s": update_data["id_subarea"], "m": id_municipio}):
         raise HTTPException(status_code=422, detail="Subárea inexistente")
+    if update_data.get("email") and await email_reservado_super_admin(db, update_data["email"]):
+        raise HTTPException(status_code=409, detail=EMAIL_RESERVADO)
     if "password" in update_data:
         update_data["password_hash"] = bcrypt.hashpw(update_data.pop("password").encode(), bcrypt.gensalt()).decode()
 

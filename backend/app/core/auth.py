@@ -9,6 +9,12 @@ Cada guard rechaza tokens del otro scope con 401.
 Multi-municipio (IT-01): los dos tokens llevan el claim `mun` (municipio de la cuenta). Un token
 sin `mun` (emitido antes del corte) da 401 «Sesión vencida» y la persona vuelve a ingresar. Si la
 request trae header Origin, `mun` tiene que coincidir con el municipio de ese origen.
+
+Super administrador (IT-01 F3): nivel 0 sin municipio, token con `sa=True` y sin `mun`. Ante el
+resto del código se presenta como administrador (`nivel_acceso` efectivo 1) con la marca
+`es_super_admin`; `nivel_real` guarda el 0. Solo lo distinguen a propósito la historia clínica y
+lo exclusivo del super administrador. Su municipio sale del header X-Municipio, en
+`municipio_actual` (app/core/municipio.py). Plan: PLAN_MULTI_MUNICIPIO_F3.md.
 """
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -27,6 +33,9 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_MINUTES = 1440  # 24 h (scope='agente')
+# Super administrador: 8 h hasta que tenga segundo factor (F3b). Decisión de César, 2026-10-26:
+# sin segundo factor, un token robado del rol máximo no debe servir un día entero.
+SUPER_ADMIN_TOKEN_MINUTES = 480
 SESION_VENCIDA = "Sesión vencida. Volvé a ingresar."
 
 
@@ -64,6 +73,17 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=TOKEN_EXPIRE_MINUTES))
     to_encode["exp"] = expire
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
+
+
+def crear_token_super_admin(id_usuario: int) -> str:
+    """JWT del super administrador: `sa=True` y sin `mun` (no tiene municipio). Vence a las 8 h
+    (SUPER_ADMIN_TOKEN_MINUTES)."""
+    return jwt.encode({
+        "sub": str(id_usuario),
+        "scope": "agente",
+        "sa": True,
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=SUPER_ADMIN_TOKEN_MINUTES),
+    }, settings.SECRET_KEY, algorithm=ALGORITHM)
 
 
 def crear_token_ciudadano(id_ciudadano: int, id_municipio: int, expira_dias: Optional[int] = None) -> str:
@@ -116,8 +136,18 @@ async def get_current_user(
     user = result.fetchone()
     if not user or not user.activo:
         raise unauthorized
+    vencida = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=SESION_VENCIDA,
+                            headers={"WWW-Authenticate": "Bearer"})
+    if payload.get("sa") is True:
+        # Super administrador: la cuenta tiene que seguir siendo de nivel 0 y sin municipio.
+        # No se compara el Origin: entra desde cualquier dirección (spec §3).
+        if user.nivel_acceso != 0 or user.id_municipio is not None:
+            raise vencida
+        return {**dict(user._mapping), "nivel_acceso": 1, "nivel_real": 0, "es_super_admin": True}
+    if user.nivel_acceso == 0:
+        raise vencida  # una cuenta de nivel 0 solo entra con su token propio
     await _validar_municipio_token(payload.get("mun"), user.id_municipio, request, db)
-    return dict(user._mapping)
+    return {**dict(user._mapping), "nivel_real": user.nivel_acceso, "es_super_admin": False}
 
 
 async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
@@ -135,6 +165,14 @@ async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Requiere nivel administrador",
         )
+    return current_user
+
+
+async def require_super_admin(current_user: dict = Depends(get_current_user)) -> dict:
+    """Guard de lo exclusivo del super administrador (IT-01 F3): municipios, parámetros
+    globales, catálogo de módulos y Maestros globales."""
+    if not current_user.get("es_super_admin"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requiere super administrador")
     return current_user
 
 
@@ -228,7 +266,7 @@ def require_modulo(modulo: str):
         db: AsyncSession = Depends(get_db),
     ) -> dict:
         modulos = await modulos_permitidos(
-            db, current_user["id_usuario"], current_user["nivel_acceso"]
+            db, current_user["id_usuario"], current_user["nivel_real"]
         )
         if modulo not in modulos:
             raise HTTPException(

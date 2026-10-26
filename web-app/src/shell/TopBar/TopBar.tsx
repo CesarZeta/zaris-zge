@@ -4,6 +4,7 @@ import { LogOut, User } from 'lucide-react'
 import { useAuthStore } from '../../stores/auth'
 import { useIdentidadMunicipio } from '../../modules/dashboard/hooks/useDashboardData'
 import { NotificacionesDropdown } from './NotificacionesDropdown'
+import { SelectorMunicipio } from './SelectorMunicipio'
 import s from './TopBar.module.css'
 
 // Topbar del shell DEV (localhost:5173) — clon visual del topbar del shell
@@ -13,7 +14,7 @@ import s from './TopBar.module.css'
 // del municipio | campana · contexto de usuario en 2 líneas · avatar.
 
 const ROL_LABEL: Record<number, string> = {
-  1: 'Administrador', 2: 'Supervisor', 3: 'Atención', 4: 'Gestión', 5: 'Consultor',
+  0: 'Super administrador', 1: 'Administrador', 2: 'Supervisor', 3: 'Atención', 4: 'Gestión', 5: 'Consultor',
 }
 
 export function TopBar() {
@@ -78,6 +79,7 @@ export function TopBar() {
           ) : null}
           <span className={s.muniNombre}>{identidadQ.data?.municipio_nombre ?? ''}</span>
         </div>
+        {user?.es_super_admin && <SelectorMunicipio className={s.selectorMunicipio} />}
       </div>
 
       <div className={s.right}>

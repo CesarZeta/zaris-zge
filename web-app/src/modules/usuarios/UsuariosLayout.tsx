@@ -16,6 +16,8 @@ function goInicio(e: React.MouseEvent) {
 const TABS = [
   { to: '/usuarios/maestro', slug: 'maestro', label: 'Usuarios' },
   { to: '/usuarios/modulos', slug: 'modulos', label: 'Catálogo de módulos' },
+  // IT-01 F3: lo que hizo el super administrador en este municipio (solo lectura).
+  { to: '/usuarios/accesos-super', slug: 'accesos-super', label: 'Registro del super administrador' },
 ]
 
 export function UsuariosLayout({ children }: { children: ReactNode }) {

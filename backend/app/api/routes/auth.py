@@ -22,9 +22,11 @@ from app.core.auth import (
     verify_password,
     hash_password,
     create_access_token,
+    crear_token_super_admin,
     get_current_user,
     modulos_permitidos,
 )
+from app.services.accesos_super import registrar_acceso_super
 from app.services.email import (
     enviar_mail_recovery_usuario_interno,
     enviar_mail_recordatorio_usuario_interno,
@@ -185,6 +187,16 @@ async def _buscar_usuario_login(db: AsyncSession, ident: str, id_municipio: int)
     return None
 
 
+async def _buscar_super_admin(db: AsyncSession, email: str):
+    """Cuenta de super administrador (nivel 0, sin municipio) con ese email. El login y la
+    recuperación la buscan cuando no hay cuenta del municipio de origen: el super administrador
+    entra desde cualquier dirección (spec §3). Solo por email; no tiene ficha en ninguna BUC."""
+    res = await db.execute(text(_USUARIO_LOGIN_SELECT + """
+         WHERE lower(email) = lower(:email) AND id_municipio IS NULL AND nivel_acceso = 0"""),
+        {"email": email})
+    return res.fetchone()
+
+
 @router.post("/login", response_model=LoginResponse)
 async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
     # Anti brute-force online: limitar intentos por IP y por cuenta ANTES de
@@ -203,12 +215,23 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
 
     id_municipio = await resolver_municipio_de_origen(request, db)
     user = await _buscar_usuario_login(db, ident, id_municipio)
+    if user is None and "@" in ident:
+        user = await _buscar_super_admin(db, ident)
 
     if not user or not user.activo or not verify_password(body.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales no coinciden. Probá de nuevo.",
         )
+    es_super = user.nivel_acceso == 0
+
+    if es_super:
+        # El super administrador no tiene municipio: su login va al registro de accesos (global),
+        # no a usuario_login_log. Si no se puede registrar, no entra.
+        await registrar_acceso_super(
+            id_usuario=user.id_usuario, accion="login", id_municipio=None, metodo="POST",
+            ruta=request.url.path, detalle=f"desde el municipio {id_municipio}", ip=_ip,
+            user_agent=request.headers.get("user-agent"))
 
     # Auditoría de login: actualizar el último login (denormalizado para la UI)
     # e insertar la fila append-only en usuario_login_log. Best-effort: un fallo
@@ -221,11 +244,12 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
             text("UPDATE usuarios SET fecha_ultimo_login = NOW() WHERE id_usuario = :id"),
             {"id": user.id_usuario},
         )
-        await db.execute(
-            text("""INSERT INTO usuario_login_log (id_usuario, ip, user_agent, id_municipio)
-                    VALUES (:id, :ip, :ua, :mun)"""),
-            {"id": user.id_usuario, "ip": ip[:64], "ua": ua, "mun": user.id_municipio},
-        )
+        if not es_super:
+            await db.execute(
+                text("""INSERT INTO usuario_login_log (id_usuario, ip, user_agent, id_municipio)
+                        VALUES (:id, :ip, :ua, :mun)"""),
+                {"id": user.id_usuario, "ip": ip[:64], "ua": ua, "mun": user.id_municipio},
+            )
         await db.commit()
     except Exception as exc:  # noqa: BLE001
         await db.rollback()
@@ -257,7 +281,8 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
                 logger.info("RENOVACION PASSWORD forzada por vigencia | id=%s | dias=%s",
                             user.id_usuario, _dias)
 
-    token = create_access_token({"sub": str(user.id_usuario), "mun": user.id_municipio})
+    token = (crear_token_super_admin(user.id_usuario) if es_super
+             else create_access_token({"sub": str(user.id_usuario), "mun": user.id_municipio}))
     modulos = await modulos_permitidos(db, user.id_usuario, user.nivel_acceso)
     perfil = await _perfil_agente_del_usuario(db, user.id_usuario)
     user_data = {
@@ -266,6 +291,8 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
         "email": user.email,
         "nivel_acceso": user.nivel_acceso,
         "id_municipio": user.id_municipio,
+        # Super administrador (IT-01 F3): el shell le muestra el selector de municipio.
+        "es_super_admin": es_super,
         "modulos_permitidos": modulos,
         # Cargo del agente vinculado (None si externo/sin cargo) — lo muestra
         # el topbar del shell debajo de "Nombre · Rol".
@@ -293,10 +320,12 @@ async def me(
     db: AsyncSession = Depends(get_db),
 ):
     modulos = await modulos_permitidos(
-        db, current_user["id_usuario"], current_user["nivel_acceso"]
+        db, current_user["id_usuario"], current_user["nivel_real"]
     )
     perfil = await _perfil_agente_del_usuario(db, current_user["id_usuario"])
-    return {**current_user, "modulos_permitidos": modulos, **perfil}
+    # Al frontend va el nivel real (0 para el super administrador), no el efectivo.
+    salida = {k: v for k, v in current_user.items() if k != "nivel_real"}
+    return {**salida, "nivel_acceso": current_user["nivel_real"], "modulos_permitidos": modulos, **perfil}
 
 
 @router.post("/cambiar-password")
@@ -398,6 +427,16 @@ async def recuperar_password(
         {"email": email, "mun": id_municipio},
     )
     row = res.fetchone()
+    if not row:
+        # Super administrador: entra desde cualquier dirección, también para recuperar la clave.
+        row = (await db.execute(
+            text("""SELECT id_usuario, nombre, email, fecha_ultimo_email_recovery
+                    FROM usuarios
+                    WHERE LOWER(email) = :email AND activo = TRUE
+                      AND id_municipio IS NULL AND nivel_acceso = 0
+                    LIMIT 1"""),
+            {"email": email},
+        )).fetchone()
     if not row:
         return GenericoOkResponse()  # anti-enumeración
 

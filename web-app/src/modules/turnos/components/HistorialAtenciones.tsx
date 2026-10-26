@@ -1,5 +1,7 @@
-import { useAtencionesCiudadano } from '../hooks/useTurnos'
+import { useEffect, useState } from 'react'
+import { useAtencionesCiudadano, useHistoriaClinicaPermiso } from '../hooks/useTurnos'
 import type { TurnoAtencion } from '../types/turno'
+import { MotivoSuperForm } from './HistoriaClinica'
 
 /**
  * Historia de atenciones de un ciudadano (turnos con registra_atencion, mig 86).
@@ -19,8 +21,13 @@ export function HistorialAtenciones({
   resaltarTurno?: number
   maxAlto?: number
 }) {
-  const { data, isLoading, isError } = useAtencionesCiudadano(idCiudadano)
+  // Super administrador (IT-01 F3): ve el contenido clínico declarando el motivo.
+  const [motivo, setMotivo] = useState<string | null>(null)
+  useEffect(() => { setMotivo(null) }, [idCiudadano])
+  const permiso = useHistoriaClinicaPermiso()
+  const { data, isLoading, isError } = useAtencionesCiudadano(idCiudadano, 'turno', motivo ?? undefined)
   const atenciones = data ?? []
+  const pideMotivo = permiso.data?.motivo === 'requiere_motivo' && motivo == null && atenciones.some((a) => a.reservado)
   return (
     <div style={{
       border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-md)',
@@ -36,6 +43,11 @@ export function HistorialAtenciones({
       {isError && <div style={{ ...metaTxt, color: 'var(--color-error)' }}>No se pudo cargar el historial.</div>}
       {!isLoading && !isError && atenciones.length === 0 && (
         <div style={metaTxt}>Sin atenciones registradas para este ciudadano.</div>
+      )}
+      {pideMotivo && (
+        <div style={{ marginBottom: 8 }}>
+          <MotivoSuperForm compacto onConfirmar={setMotivo} />
+        </div>
       )}
       {atenciones.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: maxAlto, overflowY: 'auto' }}>

@@ -100,6 +100,8 @@ SALTEAR: list[tuple[str, str]] = [
     (r"^/api/v1/demo/", "generador demo con token de dispatcher (Tarea 18)"),
     (r"^/api/v1/admin/permisos/modulos/\{codigo\}", "catálogo global de módulos (habilitación por municipio en F4)"),
     (r"/geo/(buscar|reverse)", "llama a Nominatim; el bbox por municipio se prueba en la Tarea 9"),
+    (r"^/api/v1/super/", "exclusivas del super administrador, sobre lo global (IT-01 F3): las prueba "
+                         "smoke_super_admin.py, con 403 para todo administrador de municipio"),
 ]
 NO_MUTAR_SIN_ID = re.compile(r"^/api/v1/(auth|demo|publico/auth|publico/alta|usuarios|tramites/mantenimiento)|"
                              r"dispatch|/push/|cambiar-password|/config/identidad")
@@ -292,7 +294,7 @@ def armar_paths(ruta: APIRoute, ids: dict, numero_b: str) -> list[tuple[str, boo
         out = []
         for t, cfg in TABLE_CONFIG.items():
             if t == "municipios":
-                continue  # la lista el administrador del municipio base (con B incluido): se prueba aparte
+                continue  # desde F3 solo la lee el super administrador: se prueba aparte (2b)
             tabla_real = cfg.get("table", t)
             p = ruta.path.replace("{tabla}", t)
             if "{id}" in p:
@@ -368,6 +370,11 @@ async def main() -> int:
     ap.add_argument("--solo-get", action="store_true")
     ap.add_argument("--sin-recrear", action="store_true",
                     help="no re-crear el municipio de aislamiento (por defecto se re-crea: las mutaciones lo modifican)")
+    # IT-01 F3 (PLAN_MULTI_MUNICIPIO_F3.md, Tarea 9).
+    ap.add_argument("--header-ajeno", action="store_true",
+                    help="el admin del municipio 1 manda X-Municipio de B en cada request: se tiene que ignorar")
+    ap.add_argument("--como-super", action="store_true",
+                    help="el barrido con el super administrador: X-Municipio 1 en el barrido, B en el control positivo")
     args = ap.parse_args()
     if not args.sin_recrear:
         import subprocess
@@ -408,6 +415,13 @@ async def main() -> int:
                          headers={"Origin": ORIGEN_B_VECINOS})
         hv_b = {"Authorization": f"Bearer {r.json()['access_token']}", "Origin": ORIGEN_B_VECINOS} \
             if r.status_code == 200 else None
+        if args.header_ajeno:
+            h_a = {**h_a, "X-Municipio": str(id_b)}
+        if args.como_super:
+            h_s = await login(c, "super.admin@prueba-aislamiento.com.ar")
+            h_a = {**h_s, "X-Municipio": "1"}
+            h_b = {**h_s, "X-Municipio": str(id_b)}
+            print("Barrido como super administrador (X-Municipio 1; control positivo con X-Municipio B)")
         antes = await checksum_b(id_b)
 
         # 1. GET de todas las rutas como admin del municipio 1.
@@ -445,8 +459,9 @@ async def main() -> int:
             if r.status_code != 200 or MARCA not in r.text:
                 falla(p, f"control positivo: GET {p} como admin de B → {r.status_code} {'sin' if MARCA not in r.text else 'con'} marca")
 
-        # 2b. Maestros → municipios: solo el administrador del municipio base la lee (hasta F3).
-        if "/api/v1/admin/municipios".startswith(args.rutas):
+        # 2b. Maestros → municipios: desde F3 solo la lee el super administrador (lo prueba
+        # smoke_super_admin.py); ningún administrador de municipio, tampoco el del base.
+        if "/api/v1/admin/municipios".startswith(args.rutas) and not args.como_super:
             r = await c.get("/api/v1/admin/municipios", headers=h_b)
             CUENTA["municipios"] += 1
             if r.status_code != 403:
@@ -457,8 +472,8 @@ async def main() -> int:
                 falla("/api/v1/admin", f"GET /api/v1/admin/municipios/{id_b} como admin de B → {r.status_code}; debería ser 403")
             r = await c.get("/api/v1/admin/municipios", headers=h_a)
             CUENTA["municipios"] += 1
-            if r.status_code != 200:
-                falla("/api/v1/admin", f"GET /api/v1/admin/municipios como admin del municipio base → {r.status_code}")
+            if r.status_code != 403:
+                falla("/api/v1/admin", f"GET /api/v1/admin/municipios como admin del municipio base → {r.status_code}; debería ser 403")
 
         if not args.solo_get:
             # 3. Mutaciones como admin del municipio 1 sobre ids de B (y altas con ids de B en el body).

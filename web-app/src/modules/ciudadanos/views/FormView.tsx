@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useNotificationsStore } from '../../../stores/notifications'
-import { useAuthStore } from '../../../stores/auth'
+import { esAdministrador, useAuthStore } from '../../../stores/auth'
 import {
   useCiudadano,
   useCrearCiudadano,
@@ -99,7 +99,7 @@ export function FormView() {
   // todavía no tiene cuenta ZARIS, el guardado la crea con nivel/subárea/usuario
   // (`cuenta_zaris` del POST/PUT). Sin botón ni modal aparte. Destildar NO borra cuentas.
   const nivelUsuario = useAuthStore((s) => s.user?.nivel_acceso)
-  const esAdmin = nivelUsuario === 1
+  const esAdmin = esAdministrador(nivelUsuario)
   const cuentas = useCuentasCiudadano(modo !== 'new' ? id : null)
   const yaTieneZaris = !!cuentas.data?.zaris
   const cuentasListas = modo === 'new' || cuentas.isSuccess

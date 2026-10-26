@@ -364,10 +364,11 @@ No invalida sesiones: los tokens de los funcionarios y de los vecinos no cambian
 - [ ] **Paso 1: Preparación.**
   - `git fetch` y rebase de la rama sobre `main`.
   - Confirmar en prod que 127 y 127b están libres.
-  - Verificar los nombres de los CHECK de `usuarios` y `modulos` (`pg_constraint`) y las columnas NOT NULL de `usuarios` (§24).
+  - Verificar los nombres de los CHECK de `usuarios` y `modulos` (`pg_constraint`) y las columnas NOT NULL sin DEFAULT de `usuarios` y de `modulos` (§24; la 127b inserta la fila `municipios` en `modulos`, recomendación de la revisión final).
   - `/backup-prod`, verificando el archivo.
 - [ ] **Paso 2: César corre la 127** en el SQL Editor. Verificación por `execute_sql`: las dos CHECK nuevas, `usuarios.id_municipio` nullable y `ck_usuarios_municipio_nivel`.
 - [ ] **Paso 3: 127b** por `apply_migration`. Verificación: la tabla con sus triggers y RLS, la fila en `municipio_tabla_clase`, la fila `municipios` en `modulos` y `password_renovacion_dias` global. El código viejo sigue andando: un login de `administrativo@` da 200.
+- [ ] **Paso 3b: 127c** por `apply_migration` (pasada de arreglos, I1). Verificación: el trigger `configuracion_general_clave_global` en `pg_trigger`.
 - [ ] **Paso 4: Código.** Merge `--no-ff` a `main` y push. Esperar en `/openapi.json` el path exacto `/api/v1/super/municipios`, no la palabra. Después, `git pull` del commit de dist de CI.
 - [ ] **Paso 5: Primera cuenta.** César da el email. `seed_super_admin.py --imprimir-sql --email <email> --nombre <nombre>` y el `INSERT` por `execute_sql`; verificar la fila.
 - [ ] **Paso 6: César elige la clave** desde `zge.zaris.com.ar` con «Olvidé mi contraseña». Verificar que el link del mail abre la página de reseteo (§5, links de mail).
@@ -376,7 +377,7 @@ No invalida sesiones: los tokens de los funcionarios y de los vecinos no cambian
   - En la base, filas `login`, `seleccion` y `request` del municipio 1.
   - Con `cesar@`, Usuarios → «Registro del super administrador» muestra esas filas.
   - Un token común sigue andando y `administrativo@` no tiene selector.
-- [ ] **Paso 8: Registro.** `HISTORIAL_MIGRACIONES.md` (127 por César en el SQL Editor, 127b por MCP, fecha), `ESTADO.md` y la memoria `project_it01_multi_municipio`. Commit y push.
+- [ ] **Paso 8: Registro.** `HISTORIAL_MIGRACIONES.md` (127 por César en el SQL Editor, 127b y 127c por MCP, fecha), `ESTADO.md` y la memoria `project_it01_multi_municipio`. Commit y push.
 
 ---
 

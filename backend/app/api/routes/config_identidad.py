@@ -165,6 +165,17 @@ async def get_identidad(
     return await _leer_claves(db, id_municipio)
 
 
+@router.get("/actual", response_model=IdentidadOut)
+async def get_identidad_actual(
+    db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
+):
+    """Autenticado: la identidad del municipio de la request, no la de la dirección. La usan
+    Configuración → Identidad (guarda en ese mismo municipio) y las pantallas del super
+    administrador, que opera el municipio del selector (IT-01 F3)."""
+    return await _leer_claves(db, id_municipio)
+
+
 @router.put("", response_model=IdentidadOut, responses={409: {"description": "El municipio no tiene esa clave"}})
 async def update_identidad(
     payload: IdentidadUpdate,

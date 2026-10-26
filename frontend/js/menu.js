@@ -39,11 +39,17 @@
     } catch (e) { /* fail-open: si no responde, no filtro */ }
   }
 
+  // ── Super administrador (IT-01 F3) ──
+  // El municipio en el que opera lo elige el selector del topbar y viaja como header
+  // X-Municipio. La clave la comparte el iframe (mismo origen): web-app/src/lib/municipioActivo.ts.
+  const MUNICIPIO_ACTIVO_KEY = 'zaris_municipio_activo';
+  const esSuper = user?.es_super_admin === true;
+
   const avatarEl  = document.getElementById('topbar-avatar');
   const contextEl = document.getElementById('topbar-context');
   const infoEl    = document.getElementById('user-menu-info');
 
-  const NIVELES = { 1: 'Administrador', 2: 'Supervisor', 3: 'Atención', 4: 'Gestión', 5: 'Consultor' };
+  const NIVELES = { 0: 'Super administrador', 1: 'Administrador', 2: 'Supervisor', 3: 'Atención', 4: 'Gestión', 5: 'Consultor' };
 
   // Escape HTML — el nombre/username viene de la DB y puede contener payloads
   // XSS (alta sin sanitizar). NUNCA interpolar datos de usuario en innerHTML sin esto.
@@ -402,6 +408,13 @@
   // con los defaults del HTML. El nombre de la app ("GESTION ESTADO") es
   // hardcoded del producto, no editable por usuario.
   (async function cargarIdentidad() {
+    // El super administrador ve la identidad del municipio que eligió (la pinta el selector).
+    if (esSuper) {
+      const btnAlta = document.getElementById('topbar-altavecino');
+      if (btnAlta) btnAlta.hidden = true;
+      _initSelectorMunicipio();
+      return;
+    }
     try {
       const res = await fetch(`${API}/api/v1/config/identidad`);
       if (!res.ok) return;
@@ -495,7 +508,80 @@
   }
   function _authHeaders() {
     const t = _authToken();
-    return t ? { 'Authorization': `Bearer ${t}` } : {};
+    const h = t ? { 'Authorization': `Bearer ${t}` } : {};
+    const m = esSuper ? localStorage.getItem(MUNICIPIO_ACTIVO_KEY) : null;
+    if (m) h['X-Municipio'] = m;
+    return h;
+  }
+
+  // ── Selector de municipio del super administrador (IT-01 F3) ──
+  // Al entrar: la lista de municipios activos; queda elegido el guardado o, si no hay (o ya no
+  // está activo), el de las direcciones sin prefijo. Cada elección se registra en el backend
+  // (POST /super/seleccion, que devuelve la identidad para el topbar) y recarga el módulo.
+  function _pintarMunicipio(nombre, logoUrl) {
+    const nombreEl = document.getElementById('topbar-muni-nombre');
+    const logoEl = document.getElementById('topbar-muni-logo');
+    if (nombreEl) nombreEl.textContent = nombre || '';
+    if (logoEl) {
+      if (logoUrl) { logoEl.src = logoUrl; logoEl.hidden = false; } else { logoEl.hidden = true; }
+    }
+  }
+  async function _seleccionarMunicipio(id, recargar) {
+    try {
+      const res = await fetch(`${API}/api/v1/super/seleccion`, {
+        method: 'POST',
+        headers: { ..._authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_municipio: Number(id) }),
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      localStorage.setItem(MUNICIPIO_ACTIVO_KEY, String(data.id_municipio));
+      _pintarMunicipio(data.nombre, data.logo_url);
+      // El query param fuerza la recarga aunque el hash sea el mismo.
+      if (recargar) window.shellNavigate(`web-app/dist/index.html?m=${data.id_municipio}#/dashboard`);
+      return true;
+    } catch (e) { return false; }
+  }
+  async function _initSelectorMunicipio() {
+    const wrap = document.getElementById('topbar-municipio-wrap');
+    const sel = document.getElementById('topbar-municipio');
+    if (!wrap || !sel) return;
+    let lista = [];
+    try {
+      const res = await fetch(`${API}/api/v1/super/municipios`, { headers: _authHeaders() });
+      if (!res.ok) return;
+      lista = (await res.json()).filter(m => m.activo);
+    } catch (e) { return; }
+    if (!lista.length) return;
+    sel.innerHTML = lista.map(m => `<option value="${m.id_municipio}">${esc(m.nombre)}</option>`).join('');
+    const previo = localStorage.getItem(MUNICIPIO_ACTIVO_KEY);
+    const elegido = lista.some(m => String(m.id_municipio) === previo)
+      ? previo
+      : String((lista.find(m => m.direccion_base) || lista[0]).id_municipio);
+    sel.value = elegido;
+    wrap.hidden = false;
+    // Primera vez (o el guardado ya no vale): el módulo cargó sin municipio, se recarga.
+    await _seleccionarMunicipio(elegido, previo !== elegido);
+    sel.addEventListener('change', () => _seleccionarMunicipio(sel.value, true));
+
+    // Otra pestaña cambió de municipio (la elección ya la registró ella): esta la sigue, repinta
+    // la identidad y recarga el módulo. Sin esto la pantalla mostraba un municipio y cada request
+    // salía con el header del otro (I2 de la revisión final de F3).
+    window.addEventListener('storage', async function (e) {
+      if (e.key !== MUNICIPIO_ACTIVO_KEY || !e.newValue || e.newValue === sel.value) return;
+      const id = e.newValue;
+      const m = lista.find(x => String(x.id_municipio) === id);
+      sel.value = id;
+      _pintarMunicipio(m ? m.nombre : '', null);
+      try {
+        const res = await fetch(`${API}/api/v1/config/identidad/actual`, { headers: _authHeaders() });
+        if (res.ok) {
+          const d = await res.json();
+          _pintarMunicipio(d.municipio_nombre || (m && m.nombre), d.municipio_logo_url);
+        }
+      } catch (err) { /* queda el nombre de la lista */ }
+      window.shellNavigate(`web-app/dist/index.html?m=${id}#/dashboard`);
+    });
   }
   function _fmtFechaRelativa(iso) {
     const d = new Date(iso);

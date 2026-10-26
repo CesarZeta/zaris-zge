@@ -209,10 +209,12 @@ export interface GuardiaAtencion {
   derivado_por: string | null
   id_agente_atiende: number | null
   agente_atiende_nombre: string | null
+  /** null con `reservado=true` salvo que se pida con `contenido` y se pase el guard de historia clínica. */
   intervencion: string | null
   recomendaciones: string | null
   atendido_en: string | null
   fecha_modificacion: string | null
+  reservado: boolean
 }
 
 export interface GuardiaAtenderBody {
@@ -259,6 +261,8 @@ export interface PantallaColero {
 export type HistoriaClinicaContexto = 'turno' | 'guardia' | 'mesa' | 'consulta' | 'otro'
 export type HistoriaClinicaMotivo =
   'admin' | 'admin_sin_config' | 'salud' | 'nivel' | 'sin_agente' | 'sin_subarea' | 'fuera_salud' | 'sin_config'
+  // Super administrador (IT-01 F3): sin motivo declarado / con motivo.
+  | 'requiere_motivo' | 'super_admin'
 
 export interface HistoriaClinicaPermiso { puede: boolean; motivo: HistoriaClinicaMotivo }
 

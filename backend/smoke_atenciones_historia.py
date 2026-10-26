@@ -504,6 +504,64 @@ async def main() -> int:
         check("16. n3 f5sinagente -> 403 'agente vinculado'",
               r.status_code == 403 and "agente vinculado" in r.json().get("detail", ""), f"({short(r, 90)})")
 
+        # 16b-16f. Mesa de la Guardia: el contenido clínico pasa por el mismo guard y registro que la
+        # historia (pasada de arreglos de IT-01 F3, C1). Van antes del 17 para que la última fila ok
+        # de f5medico siga siendo la del 17 (caso 21b).
+        GUA = "/api/v1/turnos/guardia/atenciones"
+        dia_cierre = "(COALESCE(ea.atendido_en, ea.fecha_modificacion) AT TIME ZONE 'UTC' - INTERVAL '3 hours')::date"
+        g_ea = await q1(f"""SELECT {dia_cierre} AS dia FROM emergencia_atencion ea
+                             WHERE ea.id_ciudadano = 1 AND ea.estado = 'atendida' AND ea.activo
+                               AND ea.id_espacio_ubicacion = :g
+                             ORDER BY ea.id_emergencia_atencion DESC LIMIT 1""", g=cfg["id_espacio_guardia"])
+        if g_ea is None:
+            skip("16b-16f. contenido clínico de la Guardia", "el ciudadano 1 no tiene una atención cerrada en la Guardia")
+        else:
+            dia = g_ea["dia"].isoformat()
+            n_ciud = (await q1(f"""SELECT count(DISTINCT ea.id_ciudadano) AS n FROM emergencia_atencion ea
+                                    WHERE ea.activo AND ea.id_espacio_ubicacion = :g AND ea.estado = 'atendida'
+                                      AND ea.id_ciudadano IS NOT NULL AND {dia_cierre} = :d""",
+                               g=cfg["id_espacio_guardia"], d=g_ea["dia"]))["n"]
+
+            def atendidas(r: httpx.Response) -> list:
+                return [a for a in r.json() if a["estado"] == "atendida"] if r.status_code == 200 else []
+
+            def reservadas(at: list) -> bool:
+                return bool(at) and all(a["intervencion"] is None and a["recomendaciones"] is None
+                                        and a.get("reservado") is True for a in at)
+
+            async def hc_desde(d: int) -> list:
+                return await q("""SELECT resultado, motivo, contexto, id_ciudadano FROM historia_clinica_acceso
+                                   WHERE id_historia_clinica_acceso > :d ORDER BY id_historia_clinica_acceso""", d=d)
+
+            async def ultimo_hc() -> int:
+                return (await q1("SELECT COALESCE(max(id_historia_clinica_acceso), 0) AS m FROM historia_clinica_acceso"))["m"]
+
+            r = await c.get(GUA, headers=H["administrativo"], params={"fecha": dia})
+            check("16b. n2 fuera de Salud: la mesa de la Guardia viaja sin intervención ni recomendaciones",
+                  reservadas(atendidas(r)), f"({short(r, 120)})")
+            r = await c.get(GUA, headers=H["f5medico"], params={"fecha": dia})
+            check("16c. Salud: la lista que se refresca sola tampoco trae el contenido (reservado)",
+                  reservadas(atendidas(r)), f"({short(r, 120)})")
+            d0 = await ultimo_hc()
+            r = await c.get(GUA, headers=H["f5medico"], params={"fecha": dia, "contenido": "true"})
+            at, filas = atendidas(r), await hc_desde(d0)
+            check("16d. Salud con contenido=true: trae la intervención del ciudadano 1, sin reservar",
+                  any(a["id_ciudadano"] == 1 and a["intervencion"] for a in at) and not any(a.get("reservado") for a in at),
+                  f"({short(r, 120)})")
+            check("16e. y deja una fila ok/salud/guardia por paciente de la BUC",
+                  len(filas) == n_ciud and 1 in {f["id_ciudadano"] for f in filas}
+                  and all((f["resultado"], f["motivo"], f["contexto"]) == ("ok", "salud", "guardia") for f in filas),
+                  f"(n_ciud={n_ciud}, filas={filas})")
+            esperados_log += len(filas)
+            d0 = await ultimo_hc()
+            r = await c.get(GUA, headers=H["administrativo"], params={"fecha": dia, "contenido": "true"})
+            filas = await hc_desde(d0)
+            check("16f. fuera de Salud con contenido=true -> 403 y una fila denegado/fuera_salud por paciente",
+                  r.status_code == 403 and len(filas) == n_ciud
+                  and all((f["resultado"], f["motivo"], f["contexto"]) == ("denegado", "fuera_salud", "guardia")
+                          for f in filas), f"({short(r, 90)}, filas={filas})")
+            esperados_log += len(filas)
+
         # 17. Salud n2/n3/n4 -> 200, total igual al caso 2
         for u in ("f5supsalud", "f5atencion", "f5medico"):
             r = await hist(c, H[u], id_ciudadano=1, contexto="guardia")

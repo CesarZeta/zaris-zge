@@ -97,11 +97,13 @@ export function ListView() {
 
   // Tomar desde el listado (César 2026-10-21): Gestión (4), Supervisor (2) y Admin,
   // en los Sin asignar de su gestión. El backend vuelve a validar (403/409).
+  // El super administrador (nivel 0) queda afuera a propósito: tomar crea la OT a nombre del
+  // agente de quien toma, y él no tiene agente (el backend le respondería siempre 403).
   const user = useAuthStore((s) => s.user)
   const nivel = user?.nivel_acceso ?? 99
-  const tomaReclamos = nivel === 1 || nivel === 2 || nivel === 4
+  const tomaReclamos = nivel === 1 || nivel === 2 || nivel === 4 // solo nivel 1: el super no tiene agente
   const puedeTomar = (r: ReclamoListado) =>
-    r.estado === 'Sin asignar' && (nivel === 1 || (tomaReclamos && user?.id_subarea != null && user.id_subarea === r.id_subarea))
+    r.estado === 'Sin asignar' && (nivel === 1 || (tomaReclamos && user?.id_subarea != null && user.id_subarea === r.id_subarea)) // solo nivel 1: el super no tiene agente
   const tomar = useTomarReclamo()
   const push = useNotificationsStore((s) => s.push)
   async function tomarDesdeLista(r: ReclamoListado) {

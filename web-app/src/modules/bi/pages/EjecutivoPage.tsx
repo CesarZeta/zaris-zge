@@ -8,7 +8,7 @@ import { MayoresEjSection } from '../sections/MayoresEjSection'
 import { SatisfaccionEjSection } from '../sections/SatisfaccionEjSection'
 import type { BiFiltros } from '../lib/types'
 import { periodoEjecutivoDefault } from '../lib/periodo'
-import { useAuthStore } from '../../../stores/auth'
+import { esAdministrador, useAuthStore } from '../../../stores/auth'
 
 // Tablero EJECUTIVO — "Análisis de demanda ciudadana" (2026-08-30). Decisiones
 // de César sobre las capturas Power BI de VL:
@@ -39,7 +39,7 @@ function leerAreaGuardada(): number | undefined {
 
 export function EjecutivoPage() {
   const nivel = useAuthStore((s) => s.user?.nivel_acceso ?? 99)
-  const esAdmin = nivel === 1
+  const esAdmin = esAdministrador(nivel)
   const areas = useCatalogoAreas()
   const miArea = useMiArea()
   const localidades = useEjCatalogoLocalidades()

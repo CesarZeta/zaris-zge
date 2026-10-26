@@ -25,6 +25,9 @@ CLAVE_AREA_SALUD = "id_area_salud"
 CONTEXTOS = ("turno", "guardia", "mesa", "consulta", "otro")
 
 DETALLE_403: dict[str, str] = {
+    # Super administrador (IT-01 F3): no hereda el acceso del nivel 1; abre una historia solo
+    # declarando el motivo, que queda registrado y lo ve el administrador del municipio.
+    "requiere_motivo": "Como super administrador, para abrir una historia clínica declará el motivo de la consulta (al menos 10 caracteres). Queda registrado y lo ve el administrador del municipio.",
     "nivel":       "La historia clínica está disponible solo para la gestión Salud y los administradores (el nivel Consultor no accede).",
     "sin_config":  "La historia clínica no está habilitada: falta configurar la gestión Salud (clave id_area_salud, Config > Sistema). Avisá a un administrador.",
     "sin_agente":  "Tu usuario no tiene un agente vinculado; sin agente no se puede determinar tu gestión (Usuarios > vincular agente).",
@@ -63,12 +66,18 @@ async def gestion_es_salud(db: AsyncSession, id_subarea: Optional[int],
     return id_area is not None and int(id_area) == int(salud["id_area"])
 
 
-async def permiso_historia_clinica(db: AsyncSession, user: dict, *, id_municipio: int) -> dict[str, Any]:
+MOTIVO_SUPER_MIN = 10
+
+
+async def permiso_historia_clinica(db: AsyncSession, user: dict, *, id_municipio: int,
+                                   motivo_declarado: Optional[str] = None) -> dict[str, Any]:
     """UNICA fuente de verdad del permiso (la usan el guard del GET de datos y el
     endpoint /permiso que consume la UI). Devuelve {"puede": bool, "motivo": str,
     "id_agente": int|None}.
 
     Tabla de verdad:
+      super administrador (IT-01 F3), motivo declarado >= 10 caracteres -> True, 'super_admin'
+      super administrador sin motivo (o corto)   -> False, 'requiere_motivo'  (NO hereda el 'admin' del nivel 1)
       nivel 1, clave OK                          -> True,  'admin'
       nivel 1, clave ausente/invalida            -> True,  'admin_sin_config'  (la UI le avisa que configure)
       nivel 5 (Consultor) o nivel raro (>4)      -> False, 'nivel'             (aunque su agente sea de Salud)
@@ -81,6 +90,10 @@ async def permiso_historia_clinica(db: AsyncSession, user: dict, *, id_municipio
     """
     nivel = int(user.get("nivel_acceso", 99))
     base: dict[str, Any] = {"id_agente": None}
+    if user.get("es_super_admin"):
+        if len((motivo_declarado or "").strip()) >= MOTIVO_SUPER_MIN:
+            return {**base, "puede": True, "motivo": "super_admin"}
+        return {**base, "puede": False, "motivo": "requiere_motivo"}
     if nivel == 1:
         salud = await area_salud(db, id_municipio=id_municipio)
         return {**base, "puede": True, "motivo": "admin" if salud else "admin_sin_config"}

@@ -19,7 +19,7 @@ import s from './PerfilPage.module.css'
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ROL_LABEL: Record<number, string> = {
-  1: 'Administrador', 2: 'Supervisor', 3: 'Atención', 4: 'Gestión', 5: 'Consultor',
+  0: 'Super administrador', 1: 'Administrador', 2: 'Supervisor', 3: 'Atención', 4: 'Gestión', 5: 'Consultor',
 }
 
 // Catálogo `modulos` (código → nombre visible). Solo lectura, para que el
@@ -39,6 +39,7 @@ const MODULO_LABEL: Record<string, string> = {
   encuestas: 'Encuestas',
   usuarios: 'Usuarios',
   admin_tablas: 'Maestros',
+  municipios: 'Municipios',
 }
 
 const FOTO_MIME_OK = ['image/png', 'image/jpeg']

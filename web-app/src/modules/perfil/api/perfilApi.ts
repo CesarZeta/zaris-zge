@@ -25,7 +25,8 @@ export interface FotoUploadSigned {
 }
 
 export const getMe = () => api.get<User>('/api/v1/auth/me')
-export const getIdentidad = () => api.get<IdentidadPerfil>('/api/v1/config/identidad')
+// Del municipio de la request (IT-01 F3: para el super administrador, el del selector).
+export const getIdentidad = () => api.get<IdentidadPerfil>('/api/v1/config/identidad/actual')
 
 // Foto de perfil: mismo flujo que el shell vanilla (menu.js) y el logo del
 // municipio (§26): el backend firma la URL, el navegador hace PUT del binario
