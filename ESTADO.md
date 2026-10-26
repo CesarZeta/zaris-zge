@@ -47,7 +47,8 @@
     - códigos de emergencia;
     - también en la app de agentes.
 
-    Sigue la ejecución del plan.
+    **Implementado y probado en local el 2026-10-26** (Tareas 1-9 y revisión final con sus arreglos; rama `it01-f3b-segundo-factor`, y la app de agentes en la rama `segundo-factor` de su repo). **Falta el corte en prod (Tarea 10) con César.**
+    - **Para quien trabaje en local después del merge (Roy incluido):** sumar a `backend/.env.local` `SEGUNDO_FACTOR_OBLIGATORIO=false` y una `SEGUNDO_FACTOR_CLAVE` de desarrollo (comando en `backend/.env.example`). Sin eso, las cuentas de nivel 0/1 reciben 503 y los smokes que entran con un administrador fallan.
 - **PWA `zaris-vecinos` — modo escritorio del portal: diseño aprobado el 2026-10-12 (3ª), falta plan + código.** Solo toca el repo de la PWA; spec y pasos en su `ESTADO.md` → En curso.
 - **PROPUESTA sin aprobar — app de agentes: reclamos de oficio + «Control de entradas» (QR).** Diseño en [`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md); César lo confirma o corrige antes de F1. No hay código.
 - **App de agentes** publicada en `https://agentes.zaris.com.ar` (color del municipio, instalación desde «Mi perfil»); el vecino instala la suya desde su portal. Detalle en `zaris-agentes/ESTADO.md`.

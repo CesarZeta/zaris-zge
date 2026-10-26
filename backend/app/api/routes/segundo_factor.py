@@ -86,8 +86,9 @@ def no_configurado() -> HTTPException:
 def crear_desafio(id_usuario: int, *, fin: Fin, id_municipio: Optional[int]) -> str:
     """Desafío entre la clave y el código: JWT de 5 min con un scope propio, que get_current_user
     rechaza (no sirve como token). `id_municipio` None = super administrador."""
-    claims = {"sub": str(id_usuario), "scope": SCOPE_DESAFIO, "fin": fin,
-              "exp": datetime.now(timezone.utc) + timedelta(minutes=sf.DESAFIO_MINUTOS)}
+    ahora = datetime.now(timezone.utc)
+    claims = {"sub": str(id_usuario), "scope": SCOPE_DESAFIO, "fin": fin, "iat": int(ahora.timestamp()),
+              "exp": ahora + timedelta(minutes=sf.DESAFIO_MINUTOS)}
     if id_municipio is None:
         claims["sa"] = True
     else:
@@ -114,6 +115,13 @@ async def leer_desafio(db: AsyncSession, token: str, fines: set[str]):
             raise no_vale
     elif user.nivel_acceso == 0 or payload.get("mun") != user.id_municipio:
         raise no_vale
+    # Un desafío anterior a la marca de revocación (restablecimiento o vinculación nueva) no sirve:
+    # si no, uno 'revincular' sacado antes de un restablecimiento dejaría vincular otro celular.
+    marca = (await db.execute(text("SELECT sesiones_validas_desde FROM usuarios WHERE id_usuario = :u"),
+                              {"u": id_usuario})).scalar()
+    iat = payload.get("iat")
+    if marca is not None and (not isinstance(iat, int) or iat < int(marca.timestamp())):
+        raise no_vale
     return payload["fin"], user
 
 
@@ -137,7 +145,10 @@ def _limitar(request: Request) -> None:
 
 
 async def _exigir_no_bloqueada(db: AsyncSession, user) -> None:
-    if await sf.bloqueada(db, user.id_usuario):
+    """Toma la fila de la cuenta hasta el commit del intento (FOR UPDATE): los intentos en paralelo
+    de una misma cuenta van de a uno y no pueden pasar el bloqueo."""
+    if await sf.tomar_para_intento(db, user.id_usuario):
+        await db.rollback()  # suelta la fila antes de responder
         raise HTTPException(status_code=429, detail=TEXTO_BLOQUEO)
 
 

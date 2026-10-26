@@ -123,3 +123,12 @@ if not _es_entorno_local() and settings.SECRET_KEY == "dev-secret-key-change-in-
         "(ej: openssl rand -hex 32) antes de arrancar."
     )
 
+# Fail-fast del segundo factor (IT-01 F3b): solo un entorno local puede apagarlo. Si alguien pone
+# SEGUNDO_FACTOR_OBLIGATORIO=false en Railway, mejor que el arranque falle a que los niveles 0 y 1
+# entren con la clave sola sin que nadie se entere.
+if not _es_entorno_local() and not settings.SEGUNDO_FACTOR_OBLIGATORIO:
+    raise RuntimeError(
+        "SEGUNDO_FACTOR_OBLIGATORIO=false en un entorno no-local. El segundo factor solo se apaga "
+        "en .env.local; en Railway borrar la env var o ponerla en true."
+    )
+

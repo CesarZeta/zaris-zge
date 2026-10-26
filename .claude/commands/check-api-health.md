@@ -16,6 +16,13 @@ Verifica que la API de producción está respondiendo correctamente y que los en
    ```
    (Las credenciales de PROD viven en `credenciales-testing/` FUERA del repo — §40, nunca incrustarlas acá. El login de prod es por email EXACTO de `usuarios.email`, que puede no seguir el patrón `<username>@municipio.gob.ar` — ver memoria `reference_login_email_prod_no_es_patron_doc`.)
 
+   **Segundo factor (IT-01 F3b):** un administrador (nivel 1) o el super administrador no recibe el token con la clave: el login responde `requiere_segundo_factor` con un `desafio`. Pedirle a César el código de 6 dígitos de su app y completar con:
+   ```
+   POST https://zaris-api-production-bf0b.up.railway.app/api/v1/auth/segundo-factor/verificar
+   { "desafio": "<el del login>", "codigo": "<6 dígitos>" }
+   ```
+   El desafío vence a los 5 minutos. Desde Python: `backend/_login_interno_prod.py::login_interno` hace los dos pasos y pide el código por consola.
+
 3. Con el token obtenido, verificar los endpoints críticos:
    - `GET /api/v1/buc/ciudadanos` — BUC ciudadanos
    - `GET /api/v1/buc/empresas` — BUC empresas

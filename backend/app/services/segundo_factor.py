@@ -143,6 +143,15 @@ async def bloqueada(db: AsyncSession, id_usuario: int) -> bool:
         {"u": id_usuario})).scalar())
 
 
+async def tomar_para_intento(db: AsyncSession, id_usuario: int) -> bool:
+    """Toma la fila de la cuenta (FOR UPDATE) hasta el commit del intento y dice si está bloqueada.
+    Serializa los intentos de una misma cuenta: con pedidos en paralelo, cada uno ve el fallo ya
+    confirmado del anterior y el bloqueo corta en el quinto (revisión final de F3b)."""
+    return bool((await db.execute(text(
+        "SELECT bloqueado_hasta > NOW() FROM usuario_segundo_factor WHERE id_usuario = :u FOR UPDATE"),
+        {"u": id_usuario})).scalar())
+
+
 async def registrar_fallo(db: AsyncSession, *, id_usuario: int) -> bool:
     """Suma un fallo. Al quinto bloquea 15 min (y vuelve el contador a 0). True si bloqueó."""
     fila = (await db.execute(text("""

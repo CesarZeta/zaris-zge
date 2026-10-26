@@ -176,8 +176,10 @@ def main() -> int:
         id_reclamo = (r.json() or {}).get("id_reclamo") if r.status_code in (200, 201) else None
     check("15. POST /publico/reclamos (vecino)", id_reclamo is not None, f"(id={id_reclamo})")
 
-    ra = c.post(f"{BASE}/api/v1/auth/login", json={"email": EMAIL_AGENTE, "password": QA_PASS})
-    HA = {"Authorization": f"Bearer {ra.json()['access_token']}"} if ra.status_code == 200 else None
+    # Contra prod un administrador pide el código de la app (segundo factor, IT-01 F3b).
+    from _login_interno_prod import intentar_login_interno
+    token_agente = intentar_login_interno(BASE, EMAIL_AGENTE, QA_PASS)
+    HA = {"Authorization": f"Bearer {token_agente}"} if token_agente else None
     id_aviso = None
     if HA and id_reclamo:
         r = c.put(f"{BASE}/api/v1/reclamos/{id_reclamo}/estado", headers=HA, json={"estado": "En gestión"})

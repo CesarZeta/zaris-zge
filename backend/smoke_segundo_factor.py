@@ -651,6 +651,111 @@ async def test_super() -> None:
         check("el token del super trae sa y sf", claims.get("sa") is True and claims.get("sf") is True, str(claims))
 
 
+# ── Revisión final ───────────────────────────────────────────────────────────
+
+async def test_emergencia_cuenta_para_bloqueo() -> None:
+    print("\nR1. Los códigos de emergencia mal puestos también cuentan para el bloqueo")
+    _prender()
+    id_u = CTX["id_admin"]
+    await _sin_repeticion(id_u)
+    async with _cliente() as c:
+        d = (await _login(c, SF_ADMIN)).json().get("desafio")
+        st = [(await _paso(c, "emergencia", {"desafio": d, "codigo": "ZZZZZ-ZZZZZ"})).status_code for _ in range(5)]
+    check("4 códigos de emergencia mal → 401 y el quinto → 429", st == [401] * 4 + [429], str(st))
+    await _sin_repeticion(id_u)
+
+
+async def test_bloqueo_concurrente() -> None:
+    print("\nR2. Bloqueo con intentos en paralelo: no se prueban más de 5 códigos")
+    _prender()
+    id_u = CTX["id_admin"]
+    await _sin_repeticion(id_u)
+    fallidos = ("SELECT count(*) FROM usuario_segundo_factor_evento WHERE id_usuario = :u AND evento = 'fallido'",
+                {"u": id_u})
+    antes = await _contar(*fallidos)
+    async with _cliente() as c:
+        d = (await _login(c, SF_ADMIN)).json().get("desafio")
+        _rate_limit._buckets.clear()
+        rs = await asyncio.gather(*[c.post("/api/v1/auth/segundo-factor/verificar",
+                                           json={"desafio": d, "codigo": "000000"}) for _ in range(8)])
+    st = sorted(r.status_code for r in rs)
+    nuevos = await _contar(*fallidos) - antes
+    check("8 en paralelo: como mucho 4 respuestas 401 y el resto 429", st.count(401) <= 4 and set(st) <= {401, 429},
+          str(st))
+    check("como mucho 5 fallos registrados", nuevos <= 5, f"fallidos nuevos={nuevos}")
+    await _sin_repeticion(id_u)
+
+
+async def test_paso_anterior_rechazado() -> None:
+    print("\nR3. Usado el paso t+1, el código del paso t ya no sirve")
+    import time
+    import pyotp
+    from app.services import segundo_factor as sf
+    _prender()
+    id_u, totp = CTX["id_admin"], pyotp.TOTP(CTX["secreto_admin"])
+    await _sin_repeticion(id_u)
+    async with AsyncSessionLocal() as db:
+        check("paso t+1 → True", await sf.verificar_codigo(db, id_usuario=id_u, codigo=totp.at(time.time() + 30)))
+        await db.commit()
+        check("después, el paso t → False", not await sf.verificar_codigo(db, id_usuario=id_u, codigo=totp.now()))
+    await _sin_repeticion(id_u)
+
+
+async def test_token_anterior_a_revincular() -> None:
+    print("\nR4. Un token emitido antes de revincular deja de servir")
+    import pyotp
+    _prender()
+    id_u = CTX["id_admin"]
+    await _sin_repeticion(id_u)
+    viejo = _tok_admin(id_u)
+    await asyncio.sleep(1.1)
+    async with _cliente() as c:
+        d = (await _login(c, SF_ADMIN)).json().get("desafio")
+        e = (await _paso(c, "emergencia", {"desafio": d, "codigo": CTX["codigos_admin"][0]})).json()
+        q = (await _paso(c, "vinculacion", {"desafio": e.get("desafio")})).json()
+        r = await _paso(c, "vinculacion/confirmar",
+                        {"desafio": e.get("desafio"), "codigo": pyotp.TOTP(q.get("secreto", "A" * 32)).now()})
+    check("la revinculación se confirma", r.status_code == 200, f"{r.status_code} {r.text[:120]}")
+    if r.status_code == 200:
+        CTX["secreto_admin"], CTX["codigos_admin"] = q["secreto"], r.json()["codigos_emergencia"]
+    check("el token anterior da 401", await _me(viejo) == 401)
+
+
+async def test_desafio_anterior_a_restablecimiento() -> None:
+    print("\nR5. Un desafío emitido antes de que el super restablezca la cuenta no sirve")
+    from app.services import segundo_factor as sf
+    _prender()
+    id_u = CTX["id_admin"]
+    await _sin_repeticion(id_u)
+    async with _cliente() as c:
+        d = (await _login(c, SF_ADMIN)).json().get("desafio")
+        e = (await _paso(c, "emergencia", {"desafio": d, "codigo": CTX["codigos_admin"][0]})).json()
+        await asyncio.sleep(1.1)
+        async with AsyncSessionLocal() as db:
+            await sf.habilitar(db, id_usuario=id_u, id_municipio=1, id_actor=None)
+            await db.commit()
+        r = await _paso(c, "vinculacion", {"desafio": e.get("desafio")})
+    check("desafío 'revincular' anterior al restablecimiento → 401", r.status_code == 401,
+          f"{r.status_code} {r.text[:120]}")
+
+
+async def test_arranque_sin_segundo_factor() -> None:
+    print("\nR6. Fuera de local, el backend no arranca con el segundo factor apagado")
+    import subprocess
+    base = {k: v for k, v in os.environ.items() if k not in ("ENV_FILE", "DATABASE_URL")}
+    base.update({"ENV_FILE": ".env.no-existe", "PYTHONPATH": ".", "SECRET_KEY": "x" * 64,
+                 "DATABASE_URL": "postgresql://u:p@db.remoto.example:5432/zaris"})
+    cmd = [sys.executable, "-c", "import app.core.config"]
+    apagado = subprocess.run(cmd, cwd=AQUI, env={**base, "SEGUNDO_FACTOR_OBLIGATORIO": "false"},
+                             capture_output=True, text=True, encoding="utf-8")
+    check("apagado fuera de local → no arranca y nombra la variable",
+          apagado.returncode != 0 and "SEGUNDO_FACTOR_OBLIGATORIO" in apagado.stderr,
+          f"rc={apagado.returncode} {apagado.stderr[-160:]}")
+    prendido = subprocess.run(cmd, cwd=AQUI, env={**base, "SEGUNDO_FACTOR_OBLIGATORIO": "true"},
+                              capture_output=True, text=True, encoding="utf-8")
+    check("prendido fuera de local → arranca", prendido.returncode == 0, prendido.stderr[-160:])
+
+
 async def test_sin_clave_503() -> None:
     print("\n4j. Sin SEGUNDO_FACTOR_CLAVE")
     _prender()
@@ -782,8 +887,11 @@ TESTS = [test_tablas_segundo_factor,
          test_demo_poblar_sin_sf,
          test_login_pide_codigo, test_nivel_2_sin_cambios, test_sin_habilitar, test_vinculacion_por_login,
          test_emergencia_revincula, test_bloqueo_http, test_desafio, test_clave_temporal, test_super,
+         test_emergencia_cuenta_para_bloqueo, test_bloqueo_concurrente, test_paso_anterior_rechazado,
+         test_token_anterior_a_revincular, test_desafio_anterior_a_restablecimiento,
          test_sin_clave_503,
-         test_habilitar_por_super, test_habilitar_no_admin, test_estado_cuenta_endpoint, test_script_habilitar]
+         test_habilitar_por_super, test_habilitar_no_admin, test_estado_cuenta_endpoint, test_script_habilitar,
+         test_arranque_sin_segundo_factor]
 
 
 async def main() -> int:
