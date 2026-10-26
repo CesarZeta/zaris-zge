@@ -41,13 +41,13 @@
   - historia clínica con motivo, también en la mesa de la Guardia;
   - token de 8 h hasta F3b.
   - Orden para después: F3b (segundo factor) → lote de limpieza → F4 → F5 (antes hay que elegir el hosting del shell: Vercel o Cloudflare Pages) → F6. Recién con F1-F6 hechas puede entrar un segundo municipio real.
-  - **F3b (segundo factor): decisiones de César del 2026-10-26, escritas en** [`PLAN_MULTI_MUNICIPIO_F3B_DISENO.md`](PLAN_MULTI_MUNICIPIO_F3B_DISENO.md). Falta que César lea el documento completo:
+  - **F3b (segundo factor): diseño aprobado por César el 2026-10-26** ([`PLAN_MULTI_MUNICIPIO_F3B_DISENO.md`](PLAN_MULTI_MUNICIPIO_F3B_DISENO.md)); plan en [`PLAN_MULTI_MUNICIPIO_F3B.md`](PLAN_MULTI_MUNICIPIO_F3B.md), con 10 tareas y el corte en la 10:
     - código de una app de autenticación, obligatorio para los niveles 0 y 1;
     - la vinculación la habilita el super;
     - códigos de emergencia;
     - también en la app de agentes.
 
-    Sigue el plan de implementación.
+    Sigue la ejecución del plan.
 - **PWA `zaris-vecinos` — modo escritorio del portal: diseño aprobado el 2026-10-12 (3ª), falta plan + código.** Solo toca el repo de la PWA; spec y pasos en su `ESTADO.md` → En curso.
 - **PROPUESTA sin aprobar — app de agentes: reclamos de oficio + «Control de entradas» (QR).** Diseño en [`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md); César lo confirma o corrige antes de F1. No hay código.
 - **App de agentes** publicada en `https://agentes.zaris.com.ar` (color del municipio, instalación desde «Mi perfil»); el vecino instala la suya desde su portal. Detalle en `zaris-agentes/ESTADO.md`.

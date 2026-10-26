@@ -1,6 +1,6 @@
 # IT-01 F3b — Segundo factor para el super administrador y los administradores de municipio (diseño)
 
-> Decisiones tomadas por César el 2026-10-26, en la conversación de arranque de F3b (§3). Este documento las junta; la lectura de César del documento completo es lo que habilita el plan. El plan de implementación va aparte (`PLAN_MULTI_MUNICIPIO_F3B.md`, a escribir). Base: F3 en prod desde el 2026-10-26 ([`PLAN_MULTI_MUNICIPIO_F3.md`](PLAN_MULTI_MUNICIPIO_F3.md)); spec general en [`PLAN_MULTI_MUNICIPIO.md`](PLAN_MULTI_MUNICIPIO.md) §3, que dejaba «cómo se implementa el segundo factor del nivel 0» a criterio del builder.
+> Decisiones tomadas por César el 2026-10-26, en la conversación de arranque de F3b (§3). **Documento aprobado por César el 2026-10-26.** Plan de implementación: [`PLAN_MULTI_MUNICIPIO_F3B.md`](PLAN_MULTI_MUNICIPIO_F3B.md). Base: F3 en prod desde el 2026-10-26 ([`PLAN_MULTI_MUNICIPIO_F3.md`](PLAN_MULTI_MUNICIPIO_F3.md)); spec general en [`PLAN_MULTI_MUNICIPIO.md`](PLAN_MULTI_MUNICIPIO.md) §3, que dejaba «cómo se implementa el segundo factor del nivel 0» a criterio del builder.
 
 ## 1. Por qué
 
