@@ -1,8 +1,8 @@
 {
-  "_decision": "César, 2026-10-27: el modelo lleva genéricos + trámites (docs/municipio_modelo_inventario.md).",
+  "_decision": "César, 2026-10-27: el modelo lleva genéricos + trámites (docs/municipio_modelo_inventario.md). En el corte B excluyó «inscripción Profesional»: sus aprobaciones apuntan a un agente de San Andrés.",
   "tablas": ["espacios_agenda", "lugares_atencion", "servicios", "tipo_prestacion", "equipos"],
   "nombres": {
-    "tipo_tramite": ["Permiso de Demostracion E2E"],
+    "tipo_tramite": ["Permiso de Demostracion E2E", "inscripción Profesional"],
     "equipos": ["Equipo Demo Mantenimiento"]
   }
 }

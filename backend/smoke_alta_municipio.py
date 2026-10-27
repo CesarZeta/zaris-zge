@@ -1416,6 +1416,34 @@ async def _municipio_v() -> dict:
     return {"id": mid, "admin": admin, "nombre": body["nombre"], "h": ctx["h"]}
 
 
+async def test_clonado_excluidas() -> None:
+    """Corte B: una fila excluida por nombre (un tipo de trámite) no vuelve a entrar arrastrada por
+    sus hijas (versión, aprobaciones): las hijas que la necesitan se omiten."""
+    print("\ntest_clonado_excluidas")
+    from app.services.municipios.clonado import Clonador, FilaOmitida, conexion_asyncpg
+    mid, _ = await _municipio_sql("puesta_en_marcha")
+    async with AsyncSessionLocal() as db:
+        base = await _escalar(db, "SELECT id_municipio FROM municipios WHERE direccion_base")
+        tt, ver = (await db.execute(text(
+            "SELECT v.id_tipo_tramite, v.id_tipo_tramite_version FROM tipo_tramite_version v "
+            "WHERE v.id_municipio = :b ORDER BY 2 LIMIT 1"), {"b": base})).one()
+        conn = await conexion_asyncpg(db)
+        cl = Clonador(conn, mid, permitidas={"tipo_tramite", "tipo_tramite_version"},
+                      excluidas={("tipo_tramite", tt)})
+        await cl.cargar_clases()
+        for tabla, ident in (("tipo_tramite", tt), ("tipo_tramite_version", ver)):
+            try:
+                await cl.clonar(tabla, ident)
+                omitida = False
+            except FilaOmitida:
+                omitida = True
+            check(f"{tabla} de un tipo excluido → se omite", omitida)
+        check("no entró ningún tipo de trámite", await _escalar(
+            db, "SELECT count(*) FROM tipo_tramite WHERE id_municipio = :m", {"m": mid}) == 0)
+        await db.rollback()
+    await _estado(mid, "baja")
+
+
 async def _tarea(c, h, id_tarea: str) -> dict:
     r = await c.get(f"/api/v1/super/tareas/{id_tarea}", headers=h)
     return r.json() if r.status_code == 200 else {"estado": f"HTTP {r.status_code}"}
@@ -1831,7 +1859,7 @@ async def test_revision_final() -> None:
 
 PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones_super, test_links_por_municipio,
                                      test_modelo, test_area_fija_api, test_tope, test_super_admins, test_ficha_municipio,
-                                     test_vaciado_guardas, test_vaciado_operativo_y_todo, test_exportacion_retencion, test_municipio_vacio, test_aislamiento_modelo, test_revision_final,
+                                     test_vaciado_guardas, test_clonado_excluidas, test_vaciado_operativo_y_todo, test_exportacion_retencion, test_municipio_vacio, test_aislamiento_modelo, test_revision_final,
                                      test_alta_validaciones, test_alta_ok, test_alta_atomica, test_alta_agrega_fijos, test_alta_concurrente,
                                      test_invitacion, test_invitacion_token_malformado, test_estados,
                                      test_alta_por_origen,

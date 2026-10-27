@@ -129,6 +129,9 @@ async def aplicar(excluir: Path) -> int:
         await c.cargar_clases()
         copiadas: dict[str, int] = {}
         omitidas = 0
+        # Primero todas las filas y las excluidas por nombre: una hija (versión, aprobación) que se
+        # recorre antes o después que su padre excluido no lo vuelve a arrastrar.
+        por_tabla: list[tuple[str, list[int]]] = []
         for tablas in CATALOGOS_COPIABLES.values():
             for tabla in tablas:
                 if tabla in tablas_fuera:
@@ -142,14 +145,20 @@ async def aplicar(excluir: Path) -> int:
                 filas = await conn.fetch(
                     f'SELECT "{pk}" AS id{", " + chr(34) + col + chr(34) + "::text AS nombre" if col else ""} '
                     f'FROM "{tabla}" WHERE id_municipio = $1{filtro} ORDER BY "{pk}"', base)
+                ids = []
                 for f in filas:
                     nombre = f["nombre"] if col else None
                     if nombre and (nombre in nombres_fuera.get(tabla, set()) or DE_PRUEBA.search(nombre)):
-                        continue
-                    try:
-                        await c.clonar(tabla, f["id"])
-                    except FilaOmitida:
-                        omitidas += 1
+                        c.excluidas.add((tabla, f["id"]))
+                    else:
+                        ids.append(f["id"])
+                por_tabla.append((tabla, ids))
+        for tabla, ids in por_tabla:
+            for ident in ids:
+                try:
+                    await c.clonar(tabla, ident)
+                except FilaOmitida:
+                    omitidas += 1
         for (tabla, _), _ in c.mapa.items():
             copiadas[tabla] = copiadas.get(tabla, 0) + 1
         await db.execute(text("""

@@ -17,7 +17,7 @@ catálogos copia del modelo.
 | Clases de agenda (`agenda_clase`) | 4 | sí |
 | Feriados (`agenda_feriado`) | 12 | sí |
 | Configuración (`configuracion_general`) | 28 | sí (todas las claves; el alta las pisa con la identidad del municipio) |
-| Tipos de trámite (`tipo_tramite` y sus versiones, campos, estados, transiciones, documentos y aprobaciones) | 15 | sí, menos «Permiso de Demostracion E2E» |
+| Tipos de trámite (`tipo_tramite` y sus versiones, campos, estados, transiciones, documentos y aprobaciones) | 15 | sí, menos «Permiso de Demostracion E2E» y «inscripción Profesional» (sus 4 aprobaciones son de un agente de San Andrés, que no pasa al modelo; César, corte B del 2026-10-27) |
 | Espacios (`espacios_agenda`) | 8 | no: propios de San Andrés |
 | Lugares de atención (`lugares_atencion`) | 5 | no: propios de San Andrés |
 | Servicios (`servicios`) | 5 | no: propios de San Andrés |
