@@ -11,6 +11,7 @@ catálogos nunca arrastra personas, cuentas ni datos operativos.
 Trabaja sobre una conexión asyncpg: en la app, la del AsyncSession (`conexion_asyncpg`), dentro de
 su transacción.
 """
+import json
 import re
 import uuid
 from typing import Any, Optional
@@ -123,6 +124,7 @@ class Clonador:
         vals = dict(fila)
         vals.pop(pk)
         vals["id_municipio"] = self.B
+        diferidas: list[tuple[str, str, str, int]] = []  # (col, padre, ref, id_padre) a completar después
 
         for col, (padre, ref) in m["fks"].items():
             if col in cambios or vals.get(col) is None:
@@ -144,6 +146,15 @@ class Clonador:
                     vals[col] = None  # auto-referencia (reclamo padre, etc.): no se arrastra
                     continue
                 id_padre = await self._pk_padre(padre, ref, vals[col])
+                # Ciclo mutuo con el otro lado NOT NULL (tipo_tramite.<versión vigente> ↔
+                # tipo_tramite_version.id_tipo_tramite): esta columna admite nulo, así que la fila se
+                # inserta sin ella y se completa cuando el padre (que la necesita) ya está copiado.
+                mp = await self.meta(padre)
+                if nulo_ok and (padre, id_padre) not in self.mapa and (padre, id_padre) not in self._en_curso and any(
+                        p == tabla and mp["cols"][c]["no_nulo"] for c, (p, _) in mp["fks"].items()):
+                    vals[col] = None
+                    diferidas.append((col, padre, ref, id_padre))
+                    continue
                 if (padre, id_padre) in self._en_curso:
                     if nulo_ok:
                         vals[col] = None  # ciclo entre tablas (A → B → A): se corta en la columna nullable
@@ -161,7 +172,10 @@ class Clonador:
             info = m["cols"][col]
             if col in cambios or valor is None:
                 continue
-            if col in NUMEROS_POR_TRIGGER:
+            if info["tipo"] in ("json", "jsonb") and not isinstance(valor, str):
+                # La conexión del AsyncSession decodifica JSON a dict/list; para insertar va como texto.
+                vals[col] = json.dumps(valor)
+            elif col in NUMEROS_POR_TRIGGER:
                 vals[col] = None
             elif col in m["unicos"] and col not in m["fks"]:
                 if info["tipo"] == "uuid":
@@ -182,6 +196,15 @@ class Clonador:
             raise RuntimeError(f"clonando {tabla} {id_origen}: {exc}") from exc
         if clave not in self.mapa:
             self.mapa[clave] = nuevo
+        for col, padre, ref, id_padre in diferidas:
+            try:
+                nuevo_padre = await self.clonar(padre, id_padre)
+            except FilaOmitida:
+                continue  # el padre no se puede copiar: la columna queda en NULL
+            pk_padre = (await self.meta(padre))["pk"][0]
+            valor = nuevo_padre if ref == pk_padre else await self.conn.fetchval(
+                f'SELECT "{ref}" FROM "{padre}" WHERE "{pk_padre}" = $1', nuevo_padre)
+            await self.conn.execute(f'UPDATE "{tabla}" SET "{col}" = $1 WHERE "{pk}" = $2', valor, nuevo)
         return nuevo
 
     async def clonar_hijos(self, tabla: str, col_padre: str, id_padre_origen: int,

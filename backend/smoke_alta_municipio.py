@@ -1005,7 +1005,46 @@ async def test_estados() -> None:
         await _estado(ctx["modelo"], "baja")
 
 
+# ── Tarea 12 ──────────────────────────────────────────────────────────────────────────────────
+
+async def test_modelo() -> None:
+    print("\ntest_modelo")
+    async with AsyncSessionLocal() as db:
+        m = (await db.execute(text(
+            "SELECT id_municipio, nombre, subdominio, codigo_corto FROM municipios WHERE estado = 'modelo'"))).first()
+        check("existe el municipio modelo (Modelo ZARIS)", m is not None and m.nombre == "Modelo ZARIS", m)
+        if m is None:
+            return
+        check("sin subdominio y con código MOD", m.subdominio is None and m.codigo_corto == "MOD", m)
+        tablas = (await db.execute(text(
+            "SELECT tabla FROM municipio_tabla_clase WHERE grupo IN ('contactos', 'usuarios', 'operativo') "
+            "AND clase <> 'global'"))).scalars().all()
+        con_filas = []
+        for t in tablas:
+            if await _escalar(db, "SELECT to_regclass(:t) IS NOT NULL", {"t": f"public.{t}"}) and                     await _escalar(db, f'SELECT count(*) FROM "{t}" WHERE id_municipio = :m', {"m": m.id_municipio}):
+                con_filas.append(t)
+        check("sin filas de contactos, usuarios ni operativo", not con_filas, con_filas)
+        check("6 áreas fijas", await _escalar(db, "SELECT count(*) FROM area WHERE id_municipio = :m AND es_sistema "
+                                              "AND activo", {"m": m.id_municipio}) == 6)
+        base = await _escalar(db, "SELECT id_municipio FROM municipios WHERE direccion_base")
+        faltan = (await db.execute(text(
+            "SELECT clave FROM configuracion_general WHERE id_municipio = :b AND activo EXCEPT "
+            "SELECT clave FROM configuracion_general WHERE id_municipio = :m"), {"b": base, "m": m.id_municipio})).scalars().all()
+        check("todas las claves de configuración", not faltan, faltan)
+        for t in ("espacios_agenda", "lugares_atencion", "servicios", "tipo_prestacion", "equipos"):
+            check(f"sin {t} (decisión de César)", not await _escalar(
+                db, f'SELECT count(*) FROM "{t}" WHERE id_municipio = :m', {"m": m.id_municipio}))
+        check("sin nombres de prueba en los tipos de reclamo", not await _escalar(db, """
+            SELECT count(*) FROM tipo_reclamo WHERE id_municipio = :m
+               AND nombre ~* '(\m(test|prueba|qa|demo|borrar)\M|smoke|aislab)'""", {"m": m.id_municipio}))
+        check("identidad de San Andrés en blanco", not await _escalar(db, """
+            SELECT count(*) FROM configuracion_general WHERE id_municipio = :m AND coalesce(valor, '') <> ''
+               AND clave IN ('municipio_logo_url', 'municipio_color_primary', 'geo_limite_geojson')""",
+            {"m": m.id_municipio}))
+
+
 PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones_super, test_links_por_municipio,
+                                     test_modelo,
                                      test_alta_validaciones, test_alta_ok, test_alta_atomica, test_alta_concurrente,
                                      test_invitacion, test_estados,
                                      test_alta_por_origen,
