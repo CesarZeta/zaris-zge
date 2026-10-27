@@ -13,6 +13,7 @@ adjuntos se leen antes de borrar las filas y se borran después del commit (si l
 los archivos siguen). Solo en `puesta_en_marcha` o `demo` y si el municipio nunca estuvo en producción.
 """
 import logging
+import re
 import uuid
 from dataclasses import dataclass, field
 
@@ -112,7 +113,7 @@ async def _protegidos(db: AsyncSession, id_municipio: int, grupos: dict[str, str
     p: dict[str, set] = {t: set() for t in grupos}
     admin = (await db.execute(text("""
         SELECT id_usuario, id_ciudadano, id_subarea FROM usuarios
-         WHERE id_municipio = :m AND nivel_acceso = 1 ORDER BY fecha_alta, id_usuario LIMIT 1"""),
+         WHERE id_municipio = :m AND nivel_acceso = 1 ORDER BY activo DESC, fecha_alta, id_usuario LIMIT 1"""),
         {"m": id_municipio})).first()
     p["area"] = await _ids(db, "area", "id_area", "id_municipio = :m AND es_sistema", {"m": id_municipio})
     if admin:
@@ -237,12 +238,39 @@ async def _archivos(db: AsyncSession, plan: Plan, pks: dict[str, str]) -> list[t
         salida += [(f.bucket, f.ruta) for f in filas]
     ids = plan.borrar.get("usuarios")
     if ids:
-        for (url,) in (await db.execute(text(
-                "SELECT foto_url FROM usuarios WHERE id_usuario = ANY(:ids) AND foto_url IS NOT NULL"),
+        for id_usuario, url in (await db.execute(text(
+                "SELECT id_usuario, foto_url FROM usuarios WHERE id_usuario = ANY(:ids) AND foto_url IS NOT NULL"),
                 {"ids": list(ids)})).all():
-            if _PREFIJO_FOTO_USUARIO in url:
-                salida.append(("config-assets", url.split(_PREFIJO_FOTO_USUARIO, 1)[1]))
-    return salida
+            ruta = url.split(_PREFIJO_FOTO_USUARIO, 1)[1] if _PREFIJO_FOTO_USUARIO in url else ""
+            # Solo el avatar propio del usuario: una URL armada a mano no hace borrar otro archivo.
+            if storage.ruta_valida(ruta) and re.fullmatch(rf"usuarios/{id_usuario}/avatar-[0-9a-f-]+\.(png|jpe?g)", ruta):
+                salida.append(("config-assets", ruta))
+    return [(b, r) for b, r in salida if storage.ruta_valida(r)]
+
+
+# Claves por id y la consulta que dice si su valor todavía apunta a una fila viva.
+_CLAVES_POR_ID = {
+    "id_area_salud": "SELECT 1 FROM area WHERE id_area = :v AND id_municipio = :m AND activo",
+    "id_espacio_guardia": "SELECT 1 FROM espacios_agenda WHERE id_espacio = :v AND id_municipio = :m AND activo",
+    "id_nacionalidad_defecto": "SELECT 1 FROM nacionalidades WHERE id = :v",
+    "id_tipo_representacion_defecto": "SELECT 1 FROM tipo_representacion WHERE id = :v",
+}
+
+
+async def resembrar_claves_rotas(db: AsyncSession, id_municipio: int) -> list[str]:
+    """Re-siembra solo las claves por id que quedaron apuntando a una fila borrada o inactiva: una
+    que el administrador eligió (o un área fija renombrada) no se pisa. Devuelve las re-sembradas."""
+    from app.core.config_municipio import leer_config
+    from app.services.municipios.alta import resembrar_claves_por_id
+    rotas = []
+    for clave, sql in _CLAVES_POR_ID.items():
+        valor = (await leer_config(db, clave, id_municipio) or "").strip()
+        if not (re.fullmatch(r"[0-9]{1,9}", valor)
+                and await db.scalar(text(sql), {"v": int(valor), "m": id_municipio})):
+            rotas.append(clave)
+    if rotas:
+        await resembrar_claves_por_id(db, id_municipio, solo=set(rotas))
+    return rotas
 
 
 async def _triggers_de_solo_agregar(db: AsyncSession, tablas: list[str]) -> list[tuple[str, str]]:
@@ -258,7 +286,6 @@ async def _triggers_de_solo_agregar(db: AsyncSession, tablas: list[str]) -> list
 async def vaciar(db: AsyncSession, id_municipio: int, grupos: set[str]) -> tuple[list[dict], list[tuple[str, str]]]:
     """Ejecuta el vaciado en la transacción de `db` (el llamador commitea). Devuelve el resumen y los
     archivos a borrar después del commit."""
-    from app.services.municipios.alta import resembrar_claves_por_id
     await db.execute(text("SELECT pg_advisory_xact_lock(:m)"), {"m": id_municipio})
     await validar(db, id_municipio, grupos, bloquear=True)
     _, pks, _ = await _metadatos(db)
@@ -278,7 +305,7 @@ async def vaciar(db: AsyncSession, id_municipio: int, grupos: set[str]) -> tuple
                          {"ids": list(plan.borrar[tabla])})
     for tabla, trig in apagados:
         await db.execute(text(f'ALTER TABLE "{tabla}" ENABLE TRIGGER "{trig}"'))
-    await resembrar_claves_por_id(db, id_municipio)
+    await resembrar_claves_rotas(db, id_municipio)
     return resumen(plan), archivos
 
 

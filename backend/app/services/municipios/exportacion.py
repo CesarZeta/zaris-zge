@@ -24,6 +24,10 @@ from app.services.municipios.constantes import EXPORTACION_RETENCION_DIAS
 logger = logging.getLogger("zaris.municipios")
 
 BUCKET = "exportaciones"
+# Secretos de cuentas que no salen en una exportación (el archivo puede llegar al municipio):
+# claves, tokens de un solo uso, secretos del segundo factor y llaves de push.
+COLUMNAS_SECRETAS = {"password_hash", "token_recovery", "token_activacion", "token_verificacion", "token_hash",
+                     "secreto_cifrado", "secreto_pendiente_cifrado", "codigo_hash", "auth_secret", "p256dh"}
 
 
 async def crear_tarea(db: AsyncSession, id_municipio: int, tipo: str, id_super: int,
@@ -61,7 +65,7 @@ async def armar_zip(db: AsyncSession, id_municipio: int) -> tuple[bytes, dict[st
     cantidades: dict[str, int] = {}
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for tabla in await _tablas_exportables(db):
-            filas = [dict(r._mapping) for r in (await db.execute(
+            filas = [{k: v for k, v in r._mapping.items() if k not in COLUMNAS_SECRETAS} for r in (await db.execute(
                 text(f'SELECT * FROM "{tabla}" WHERE id_municipio = :m'), {"m": id_municipio})).all()]
             cantidades[tabla] = len(filas)
             z.writestr(f"{tabla}.json", json.dumps(filas, default=str, ensure_ascii=False))

@@ -150,14 +150,15 @@ async def validar_dependencias(habilitados: set[str]) -> None:
 
 async def _municipio_de_la_request(request: Request, db: AsyncSession) -> Optional[int]:
     """Municipio de la request sin exigir token: el `mun` del token (agente o vecino, con la firma
-    verificada), el X-Municipio del super o el del Origin. None si no se puede saber: la ruta
-    resuelve su propia autenticación y responde lo que corresponda."""
+    verificada), el X-Municipio del super o el del Origin. Un token que no decodifica o sin `mun` no
+    corta acá: decide el Origin, así un token basura no saltea el 404 de las rutas públicas. None si no
+    se puede saber: la ruta resuelve su propia autenticación y responde lo que corresponda."""
     auth = request.headers.get("authorization") or ""
     if auth.lower().startswith("bearer "):
         try:
             payload = jwt.decode(auth[7:], settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         except JWTError:
-            return None
+            payload = {}  # token basura: decide el Origin, como sin token (revisión de F4+F5)
         if payload.get("sa"):
             # Un X-Municipio inválido, inexistente o de baja lo responde `municipio_actual` en la ruta
             # («Municipio no encontrado»), no esta dependency.
@@ -169,7 +170,8 @@ async def _municipio_de_la_request(request: Request, db: AsyncSession) -> Option
             estado = await estado_municipio(db, int(crudo))
             return int(crudo) if estado in ESTADOS_OPERABLES | {"modelo"} else None
         mun = payload.get("mun")
-        return mun if isinstance(mun, int) else None
+        if isinstance(mun, int):
+            return mun
     from app.core.municipio import resolver_municipio_de_origen
     try:
         return await resolver_municipio_de_origen(request, db)

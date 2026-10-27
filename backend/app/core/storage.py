@@ -68,8 +68,19 @@ def url_publica(path: str, bucket: str) -> str:
     return f"{settings.SUPABASE_URL}/storage/v1/object/public/{bucket}/{path}"
 
 
+def ruta_valida(path: str) -> bool:
+    """Una ruta dentro del bucket: sin segmentos «..» (ni codificados), sin barra inicial ni barra
+    invertida. Con «..» la URL se normaliza y sale del bucket (hallazgo de la revisión de F4+F5)."""
+    p = (path or "").strip()
+    bajo = p.lower()
+    return bool(p) and not p.startswith("/") and "\\" not in p and ".." not in p and "%2e" not in bajo \
+        and "%2f" not in bajo
+
+
 async def borrar_objeto(path: str, bucket: str | None = None) -> None:
-    """Borra el objeto del bucket. No-op silencioso si no existe."""
+    """Borra el objeto del bucket. No-op silencioso si no existe. Una ruta inválida no se toca."""
+    if not ruta_valida(path):
+        raise ValueError(f"ruta de Storage inválida: {path!r}")
     _check_config()
     bucket = bucket or settings.SUPABASE_ADJUNTOS_BUCKET
     url = f"{settings.SUPABASE_URL}/storage/v1/object/{bucket}/{path}"

@@ -739,11 +739,17 @@ def _alta_body(sufijo: str, codigo: str, **extra) -> dict:
             **extra}
 
 
+CODIGOS_USADOS: set[str] = set()  # los carga main(): con cientos de municipios de prueba, uno al azar choca
+
+
 def _sufijo() -> tuple[str, str]:
     import random
     import string
-    return ("".join(random.choices(string.ascii_lowercase + string.digits, k=5)),
-            "".join(random.choices(string.ascii_uppercase, k=3)))
+    while True:
+        cod = "".join(random.choices(string.ascii_uppercase, k=3))
+        if cod not in CODIGOS_USADOS:
+            CODIGOS_USADOS.add(cod)
+            return "".join(random.choices(string.ascii_lowercase + string.digits, k=5)), cod
 
 
 async def _contexto_alta() -> dict:
@@ -1729,9 +1735,94 @@ async def test_aislamiento_modelo() -> None:
     await _estado(nuevo, "baja")
 
 
+# ── Revisión final del branch ──────────────────────────────────────────────────────────────────
+
+async def test_revision_final() -> None:
+    """Arreglos de la revisión final: foto de usuario fuera de su ruta, módulo deshabilitado con un
+    token basura, claves por id que no se pisan, exportación sin secretos y administrador principal
+    activo."""
+    import uuid
+    from app.core import storage
+    from app.services.municipios import vaciado
+    from app.services.municipios.exportacion import armar_zip
+    print("\ntest_revision_final")
+    C = await _municipio_c()
+    async with AsyncSessionLocal() as db:
+        uid, mun = await _admin_base(db)
+        foto_antes = await _escalar(db, "SELECT foto_url FROM usuarios WHERE id_usuario = :u", {"u": uid})
+    h = _token(uid, mun)
+
+    # #1 La foto de un usuario solo puede ser su propio avatar en config-assets.
+    async with _cliente() as c:
+        ajena = storage.url_publica("usuarios/1/avatar-x.png", "config-assets").replace(
+            "/config-assets/", "/config-assets/../exportaciones/m1/")
+        r = await c.put("/api/v1/auth/me/foto", json={"foto_url": ajena}, headers=h)
+        check("#1 foto_url con ruta ajena → 422", r.status_code == 422, f"{r.status_code} {r.text[:100]}")
+        r = await c.put("/api/v1/auth/me/foto", json={"foto_url": "https://otro.sitio/x.png"}, headers=h)
+        check("#1 foto_url de otro sitio → 422", r.status_code == 422, f"{r.status_code}")
+        propia = storage.url_publica(f"usuarios/{uid}/avatar-{uuid.uuid4()}.png", "config-assets")
+        r = await c.put("/api/v1/auth/me/foto", json={"foto_url": propia}, headers=h)
+        check("#1 su propio avatar → 200", r.status_code == 200, f"{r.status_code} {r.text[:100]}")
+        await c.put("/api/v1/auth/me/foto", json={"foto_url": foto_antes or ""}, headers=h)
+    check("#1 Storage rechaza rutas con '..'", not storage.ruta_valida("usuarios/1/../../exportaciones/a.zip")
+          and not storage.ruta_valida("a/%2e%2e/b") and storage.ruta_valida("usuarios/1/avatar-a.png"))
+    async with AsyncSessionLocal() as db:
+        _, pks, _ = await vaciado._metadatos(db)
+        await db.execute(text("UPDATE usuarios SET foto_url = :f WHERE id_usuario = :u"),
+                         {"f": ajena, "u": C["n4"]})
+        archivos = await vaciado._archivos(db, vaciado.Plan(borrar={"usuarios": {C["n4"]}}), pks)
+        check("#1 el vaciado no borra una foto fuera de la ruta del usuario", archivos == [], str(archivos))
+        await db.rollback()
+
+    # #2 Un módulo deshabilitado da 404 aunque venga un token basura.
+    await _modulos(C["id"], turnos=False)
+    try:
+        async with _cliente() as c:
+            r = await c.get("/api/v1/turnos/publico/prestaciones",
+                            headers={"Origin": ORIGEN_C_VECINOS, "Authorization": "Bearer basura"})
+            check("#2 público con token basura y módulo apagado → 404", r.status_code == 404, f"{r.status_code}")
+    finally:
+        await _modulos(C["id"])
+
+    # #3 El vaciado solo re-siembra una clave por id si ya no apunta a una fila activa.
+    async with AsyncSessionLocal() as db:
+        antes = await _escalar(db, "SELECT valor FROM configuracion_general WHERE id_municipio = :m "
+                                   "AND clave = 'id_area_salud'", {"m": mun})
+        await db.execute(text("UPDATE area SET nombre = 'Salud' WHERE id_area::text = :a"), {"a": antes})
+        await vaciado.resembrar_claves_rotas(db, mun)
+        despues = await _escalar(db, "SELECT valor FROM configuracion_general WHERE id_municipio = :m "
+                                     "AND clave = 'id_area_salud'", {"m": mun})
+        check("#3 un área renombrada no pierde la clave", despues == antes, f"{antes} → {despues}")
+        await db.rollback()
+
+    # #4 La exportación no lleva secretos de cuentas.
+    async with AsyncSessionLocal() as db:
+        import io
+        import json
+        import zipfile
+        contenido, _ = await armar_zip(db, C["id"])
+    z = zipfile.ZipFile(io.BytesIO(contenido))
+    usuarios = json.loads(z.read("usuarios.json"))
+    check("#4 la exportación no trae password_hash", usuarios and all("password_hash" not in u for u in usuarios),
+          str(list(usuarios[0])[:12]) if usuarios else "sin filas")
+
+    # #11 El administrador principal protegido es el primer nivel 1 ACTIVO.
+    async with AsyncSessionLocal() as db:
+        otro = await _escalar(db, """
+            INSERT INTO usuarios (nombre, nivel_acceso, username, password_hash, id_municipio, activo, buc_acceso, email)
+            VALUES ('Prueba C nivel 1 bis', 1, :e, 'x', :m, TRUE, FALSE, :e) RETURNING id_usuario""",
+            {"e": f"admin.bis.{uuid.uuid4().hex[:6]}@prueba-aislamiento.com.ar", "m": C["id"]})
+        await db.execute(text("UPDATE usuarios SET activo = FALSE WHERE id_usuario = :u"), {"u": C["n1"]})
+        grupos, pks, fks = await vaciado._metadatos(db)
+        prot = await vaciado._protegidos(db, C["id"], grupos, pks, fks)
+        check("#11 se protege al administrador activo, no al dado de baja", prot.get("usuarios") == {otro},
+              str(prot.get("usuarios")))
+        await db.rollback()
+
+
 PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones_super, test_links_por_municipio,
                                      test_modelo, test_area_fija_api, test_tope, test_super_admins, test_ficha_municipio,
-                                     test_vaciado_guardas, test_vaciado_operativo_y_todo, test_exportacion_retencion, test_municipio_vacio, test_aislamiento_modelo,
+                                     test_vaciado_guardas, test_vaciado_operativo_y_todo, test_exportacion_retencion, test_municipio_vacio, test_aislamiento_modelo, test_revision_final,
                                      test_alta_validaciones, test_alta_ok, test_alta_atomica, test_alta_agrega_fijos, test_alta_concurrente,
                                      test_invitacion, test_invitacion_token_malformado, test_estados,
                                      test_alta_por_origen,
@@ -1742,6 +1833,9 @@ PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones
 
 
 async def main(nombres: list[str]) -> int:
+    async with AsyncSessionLocal() as db:
+        CODIGOS_USADOS.update(r[0] for r in (await db.execute(text(
+            "SELECT codigo_corto FROM municipios WHERE codigo_corto IS NOT NULL"))).all())
     for nombre in nombres or PRUEBAS:
         await PRUEBAS[nombre]()
     fallas = [r for r in RES if not r[1]]

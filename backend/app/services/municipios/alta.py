@@ -169,22 +169,25 @@ async def _poner_config(db: AsyncSession, id_mun: int, clave: str, valor: Option
         {"c": clave, "v": valor, "t": tipo, "d": clave, "m": id_mun})
 
 
-async def resembrar_claves_por_id(db: AsyncSession, id_mun: int) -> None:
+async def resembrar_claves_por_id(db: AsyncSession, id_mun: int, solo: Optional[set[str]] = None) -> None:
     """Claves de configuración que apuntan por id a entidades del municipio: se re-siembran por nombre
-    (§21). Las usan el alta y el vaciado (que puede borrar el espacio «Guardia»)."""
+    (§21). El alta las siembra todas; el vaciado, solo las que quedaron apuntando a nada (`solo`)."""
+    async def poner(clave: str, valor: str) -> None:
+        if solo is None or clave in solo:
+            await _poner_config(db, id_mun, clave, valor, "integer")
     salud = await db.scalar(text("""
         SELECT id_area FROM area WHERE id_municipio = :m AND activo AND es_sistema
            AND lower(translate(nombre, 'ÁÉÍÓÚáéíóú', 'AEIOUaeiou')) LIKE 'secretaria de salud%'"""), {"m": id_mun})
-    await _poner_config(db, id_mun, "id_area_salud", str(salud) if salud else "", "integer")
+    await poner("id_area_salud", str(salud) if salud else "")
     guardia = await db.scalar(text(
         "SELECT id_espacio FROM espacios_agenda WHERE id_municipio = :m AND activo AND nombre = 'Guardia'"),
         {"m": id_mun})
-    await _poner_config(db, id_mun, "id_espacio_guardia", str(guardia) if guardia else "", "integer")
+    await poner("id_espacio_guardia", str(guardia) if guardia else "")
     from app.services.municipios.defectos import nacionalidad_por_pais, representacion_por_nombre
     nac = await nacionalidad_por_pais(db, id_mun)
-    await _poner_config(db, id_mun, "id_nacionalidad_defecto", str(nac) if nac else "", "integer")
+    await poner("id_nacionalidad_defecto", str(nac) if nac else "")
     rep = await representacion_por_nombre(db)
-    await _poner_config(db, id_mun, "id_tipo_representacion_defecto", str(rep) if rep else "", "integer")
+    await poner("id_tipo_representacion_defecto", str(rep) if rep else "")
 
 
 async def _configuracion(db: AsyncSession, d: AltaMunicipioIn, id_mun: int, modelo: int) -> list[str]:
