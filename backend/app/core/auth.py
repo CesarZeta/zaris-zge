@@ -57,8 +57,13 @@ async def _validar_municipio_token(mun, id_municipio_cuenta: int, request: Reque
                             headers={"WWW-Authenticate": "Bearer"})
     if not isinstance(mun, int) or mun != id_municipio_cuenta:
         raise no_vale
+    # import tardío: municipio importa este módulo
+    from app.core.municipio import estado_municipio, resolver_municipio_de_origen
+    from app.services.municipios.constantes import ESTADOS_OPERABLES
+    # Un municipio de baja (o el modelo) no deja usar sus cuentas; no se revela el estado.
+    if await estado_municipio(db, mun) not in ESTADOS_OPERABLES:
+        raise no_vale
     if request.headers.get("origin"):
-        from app.core.municipio import resolver_municipio_de_origen  # import tardío: municipio importa este módulo
         try:
             mun_origen = await resolver_municipio_de_origen(request, db)
         except HTTPException:

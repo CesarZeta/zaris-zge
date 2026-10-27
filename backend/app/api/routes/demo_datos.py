@@ -133,9 +133,12 @@ async def _autorizar(request: Request, db: AsyncSession) -> str:
         except HTTPException:
             usuario = None
         if usuario is not None:
-            # Solo un administrador del municipio demo (IT-01): el generador escribe ahi.
-            id_demo = await db.scalar(text(
-                "SELECT id_municipio FROM municipios WHERE direccion_base AND activo"))
+            # Solo un administrador del municipio demo (IT-01 F4: estado demo): el generador escribe ahi.
+            from app.services.demo_datos import municipio_demo
+            try:
+                id_demo = await municipio_demo(db)
+            except RuntimeError:
+                id_demo = None
             if (not usuario["es_super_admin"] and usuario["nivel_real"] == 1
                     and usuario["id_municipio"] == id_demo):
                 return f"admin:{usuario['id_usuario']}"

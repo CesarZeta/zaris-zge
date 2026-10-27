@@ -298,11 +298,13 @@ class _Catalogos:
 
 
 async def municipio_demo(db: AsyncSession) -> int:
-    """Municipio donde escribe el generador: el de las direcciones sin prefijo
-    (`direccion_base`, IT-01; F4 lo cambia por municipios.estado = 'demo')."""
-    id_m = await db.scalar(text("SELECT id_municipio FROM municipios WHERE direccion_base AND activo"))
+    """Municipio donde escribe el generador: el que está en estado `demo` (IT-01 F4). Si hubiera
+    más de uno, el de las direcciones sin prefijo y después el de menor id."""
+    id_m = await db.scalar(text(
+        "SELECT id_municipio FROM municipios WHERE estado = 'demo' "
+        "ORDER BY direccion_base DESC, id_municipio LIMIT 1"))
     if id_m is None:
-        raise RuntimeError("No hay un municipio con direccion_base: el generador demo no corre")
+        raise RuntimeError("No hay un municipio en estado demo: el generador demo no corre")
     return id_m
 
 
