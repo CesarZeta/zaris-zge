@@ -14,6 +14,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 import httpx
+from fastapi import HTTPException
 
 os.environ.setdefault("ENV_FILE", ".env.local")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -181,10 +182,13 @@ async def main() -> int:
                 await db.commit()
             geo._bbox_cache.clear()
             lat_1, _, _ = await geo._bbox_municipio(1)
-            lat_b, _, _ = await geo._bbox_municipio(B)
             check("bbox del municipio 1 = el configurado", lat_1 == -30.0, f"lat={lat_1}")
-            check("bbox de B (sin claves) = el de respaldo, no el del municipio 1",
-                  lat_b == geo.GEO_BBOX_CENTRO_LAT, f"lat={lat_b}")
+            # Desde F4 (guía de arranque R4) un municipio sin zona no cae al respaldo: 409 con mensaje.
+            try:
+                lat_b, _, _ = await geo._bbox_municipio(B)
+                check("bbox de B (sin claves) → 409, no el del municipio 1", False, f"lat={lat_b}")
+            except HTTPException as e:
+                check("bbox de B (sin claves) → 409, no el del municipio 1", e.status_code == 409, str(e.detail))
         finally:
             async with AsyncSessionLocal() as db:
                 await db.execute(text("UPDATE configuracion_general SET valor = :v "

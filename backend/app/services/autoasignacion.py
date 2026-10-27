@@ -140,6 +140,11 @@ async def autoasignar_reclamo(id_reclamo: int) -> dict[str, Any]:
                 return {"asignada": False, "motivo": "el reclamo no existe o no tiene gestión"}
             if not await asignacion_general_prendida(db, r.id_municipio):
                 return {"asignada": False, "motivo": "la asignación automática está apagada en el municipio"}
+            # Sin órdenes de trabajo habilitadas (IT-01 F4) no se asigna: el reclamo se resuelve con
+            # el cierre directo.
+            from app.services.municipios.modulos import modulos_habilitados
+            if not {"ot_supervisor", "ot_agente", "ot_auditoria"} & set(await modulos_habilitados(db, r.id_municipio)):
+                return {"asignada": False, "motivo": "las órdenes de trabajo están deshabilitadas en el municipio"}
             if r.asignacion_manual:
                 return {"asignada": False, "motivo": "la gestión asigna a mano"}
             if r.estado != "Sin asignar":
@@ -172,8 +177,8 @@ async def autoasignar_reclamo(id_reclamo: int) -> dict[str, Any]:
                 return {"asignada": False, "motivo": motivo}
 
             c = candidatos[0]
-            id_estado = await db.scalar(text(
-                "SELECT id_estado_ot FROM estado_ot WHERE nombre = 'En gestión' AND activo = TRUE LIMIT 1"))
+            from app.services.estados_ot import id_estado_ot
+            id_estado = await id_estado_ot(db, "En gestión")
             ot = (await db.execute(text("""
                 INSERT INTO ordenes_trabajo
                     (id_reclamo, id_estado, id_agente, id_equipo, es_auditoria, asignacion_automatica,

@@ -1,5 +1,6 @@
 import { api } from '../../../lib/api'
 import type {
+  ModuloCambio,
   ModuloCatalogo,
   OverrideIn,
   UsuarioLite,
@@ -13,8 +14,8 @@ const ADMIN = '/api/v1/admin'
 export const listarModulos = () =>
   api.get<ModuloCatalogo[]>(`${PERMS}/modulos`)
 
-export const actualizarModulo = (codigo: string, min_nivel_acceso: number) =>
-  api.put<ModuloCatalogo>(`${PERMS}/modulos/${encodeURIComponent(codigo)}`, { min_nivel_acceso })
+export const actualizarModulo = (codigo: string, cambio: ModuloCambio) =>
+  api.put<ModuloCatalogo>(`${PERMS}/modulos/${encodeURIComponent(codigo)}`, cambio)
 
 // Permisos por usuario.
 // El handler genérico de admin_tablas (GET /{tabla}) devuelve todos los usuarios
@@ -93,6 +94,10 @@ export const listarConfigGeneral = () =>
 
 export const actualizarConfigParam = (id_config: number, valor: string) =>
   api.put<ConfigParam>(`${ADMIN}/configuracion_general/${id_config}`, { valor })
+
+// Una clave que el municipio todavía no tiene (municipio nuevo o vaciado) se crea al guardarla.
+export const crearConfigParam = (clave: string, valor: string, tipo: string) =>
+  api.post<ConfigParam>(`${ADMIN}/configuracion_general`, { clave, valor, tipo, descripcion: clave, activo: true })
 
 /* ── Parámetros globales: solo el super administrador (IT-01 F3) ── */
 export interface ConfigGlobal {

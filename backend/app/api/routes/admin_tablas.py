@@ -586,7 +586,19 @@ async def crear(
 
 # ─── PUT /{tabla}/{id} — editar ───────────────────────────────────────────────
 
-@router.put("/{tabla}/{id}")
+AREA_FIJA = "Es un área fija del sistema: se puede renombrar, no dar de baja."
+
+
+async def _rechazar_baja_area_fija(db: AsyncSession, tabla: str, id: int, id_municipio: int) -> None:
+    """IT-01 F4: las áreas fijas (area.es_sistema) se renombran, no se dan de baja. 422 con el texto
+    fijo antes de tocar la base (el trigger area_sistema_no_baja es la segunda barrera)."""
+    if tabla == "area" and await db.scalar(text(
+            "SELECT es_sistema FROM area WHERE id_area = :id AND id_municipio = :mun"),
+            {"id": id, "mun": id_municipio}):
+        raise HTTPException(status_code=422, detail=AREA_FIJA)
+
+
+@router.put("/{tabla}/{id}", responses={422: {"description": AREA_FIJA}})
 async def editar(
     tabla: str,
     id: int,
@@ -598,6 +610,8 @@ async def editar(
     cfg = _get_config(tabla)
     _bloquear_si_read_only(tabla)
     body = await _autorizar_escritura(db, tabla, "editar", current_user, id_municipio=id_municipio, id=id, body=body)
+    if body.get("activo") is False:
+        await _rechazar_baja_area_fija(db, tabla, id, id_municipio)
     pk = cfg["pk"]
     allowed = cfg["cols"]
     fecha_mod = cfg["fecha_mod"]
@@ -707,7 +721,7 @@ async def tipos_de_subarea(
 
 # ─── DELETE /{tabla}/{id} — baja lógica ───────────────────────────────────────
 
-@router.delete("/{tabla}/{id}")
+@router.delete("/{tabla}/{id}", responses={422: {"description": AREA_FIJA}})
 async def baja_logica(
     tabla: str,
     id: int,
@@ -718,6 +732,7 @@ async def baja_logica(
     cfg = _get_config(tabla)
     _bloquear_si_read_only(tabla)
     await _autorizar_escritura(db, tabla, "baja", current_user, id_municipio=id_municipio, id=id)
+    await _rechazar_baja_area_fija(db, tabla, id, id_municipio)
     pk = cfg["pk"]
     fecha_mod = cfg["fecha_mod"]
     if not cfg.get("has_activo", True):

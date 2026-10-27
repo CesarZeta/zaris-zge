@@ -14,6 +14,8 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.auth import get_current_user, require_admin
 from app.core.municipio import municipio_actual
+from app.services.municipios.modulos import modulos_permitidos_lote
+from app.services.municipios.tope import cupo, exigir_cupo
 from app.models.buc import (
     Usuario, Nacionalidad, TipoRepresentacion, Actividad,
     Ciudadano, Empresa, CiudadanoEmpresa
@@ -69,41 +71,13 @@ _USUARIO_SELECT = """
 """
 
 
-async def _modulos_permitidos_batch(db: AsyncSession, usuarios: list[dict]) -> None:
-    """Puebla in-place `modulos_permitidos` en cada dict de usuario.
-
-    Resuelve el modelo híbrido §30 (default por min_nivel_acceso + overrides
-    por usuario) para un lote, con 2 queries totales en vez de 2×N.
-    """
-    if not usuarios:
-        return
-
-    # 1. Defaults por nivel: para cada nivel presente, los módulos cuyo
-    #    min_nivel_acceso >= nivel.
-    cat = await db.execute(text(
-        "SELECT modulo_codigo, min_nivel_acceso FROM modulos WHERE activo = TRUE"
-    ))
-    catalogo = [(r.modulo_codigo, r.min_nivel_acceso) for r in cat.fetchall()]
-
-    # 2. Overrides de todos los usuarios del lote.
-    ids = [u["id_usuario"] for u in usuarios]
-    ov = await db.execute(text(
-        "SELECT id_usuario, modulo_codigo, permitido FROM usuario_modulos "
-        "WHERE activo = TRUE AND id_usuario = ANY(:ids)"
-    ), {"ids": ids})
-    overrides: dict[int, dict[str, bool]] = {}
-    for r in ov.fetchall():
-        overrides.setdefault(r.id_usuario, {})[r.modulo_codigo] = r.permitido
-
+async def _modulos_permitidos_batch(db: AsyncSession, usuarios: list[dict], id_municipio: int) -> None:
+    """Puebla in-place `modulos_permitidos` en cada dict de usuario (modelo híbrido §30 sobre los
+    módulos habilitados del municipio, IT-01 F4), con dos consultas para todo el lote."""
+    lote = await modulos_permitidos_lote(db, [(u["id_usuario"], u["nivel_acceso"]) for u in usuarios],
+                                         id_municipio)
     for u in usuarios:
-        nivel = u["nivel_acceso"]
-        permitidos = {cod for cod, minn in catalogo if minn >= nivel}
-        for cod, ok in overrides.get(u["id_usuario"], {}).items():
-            if ok:
-                permitidos.add(cod)
-            else:
-                permitidos.discard(cod)
-        u["modulos_permitidos"] = sorted(permitidos)
+        u["modulos_permitidos"] = lote.get(u["id_usuario"], [])
 
 
 @router.get("/usuarios/{id}/login-log")
@@ -161,7 +135,7 @@ async def buscar_usuario(
         _USUARIO_SELECT + f" WHERE u.id_municipio = :mun AND {cond} ORDER BY u.nombre OFFSET :off LIMIT :lim"
     ), {"q": f"%{q}%", "off": offset, "lim": limit, "mun": id_municipio})
     rows = [dict(row._mapping) for row in r.fetchall()]
-    await _modulos_permitidos_batch(db, rows)
+    await _modulos_permitidos_batch(db, rows, id_municipio)
     return rows
 
 
@@ -177,8 +151,16 @@ async def listar_usuarios(
     where = " WHERE u.id_municipio = :mun" + (" AND u.activo = TRUE" if solo_activos else "")
     r = await db.execute(text(_USUARIO_SELECT + where + " ORDER BY u.nombre"), {"mun": id_municipio})
     rows = [dict(row._mapping) for row in r.fetchall()]
-    await _modulos_permitidos_batch(db, rows)
+    await _modulos_permitidos_batch(db, rows, id_municipio)
     return rows
+
+
+@router.get("/usuarios/cupo",
+            responses={403: {"description": "Solo el administrador lee las cuentas internas"}})
+async def cupo_usuarios(db: AsyncSession = Depends(get_db), _admin: dict = Depends(require_admin),
+                        id_municipio: int = Depends(municipio_actual)):
+    """Cuentas internas activas del municipio y su tope (`maximo` null = sin tope); `aviso` desde el 90 %."""
+    return await cupo(db, id_municipio)
 
 
 @router.get("/usuarios/{id}", response_model=UsuarioOut,
@@ -193,7 +175,7 @@ async def obtener_usuario(id: int, db: AsyncSession = Depends(get_db),
     if not row:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     d = dict(row._mapping)
-    await _modulos_permitidos_batch(db, [d])
+    await _modulos_permitidos_batch(db, [d], id_municipio)
     return d
 
 
@@ -348,6 +330,8 @@ async def cambiar_estado_usuario(
                     detail="No se puede desactivar al último administrador activo del municipio.",
                 )
 
+    if activo and not usuario.activo:
+        await exigir_cupo(db, id_municipio)
     usuario.activo = activo
     await db.commit()
     await db.refresh(usuario)
@@ -1123,6 +1107,9 @@ async def crear_empresa(
     payload = data.model_dump()
     id_ciudadano = payload.pop("id_ciudadano")
     id_tipo_representacion = payload.pop("id_tipo_representacion")
+    if id_tipo_representacion is None:
+        from app.services.municipios.defectos import id_tipo_representacion_defecto
+        id_tipo_representacion = await id_tipo_representacion_defecto(db, id_municipio)
 
     empresa = Empresa(**payload, id_municipio=id_municipio)
     db.add(empresa)

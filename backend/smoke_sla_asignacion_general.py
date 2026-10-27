@@ -108,20 +108,21 @@ async def exec_commit(sql: str, **params) -> None:
 async def set_general(valor: Optional[str]) -> None:
     """valor None = borra la clave (para probar la clave ausente)."""
     if valor is None:
-        await exec_commit("DELETE FROM configuracion_general WHERE clave = :c", c=CLAVE)
+        await exec_commit("DELETE FROM configuracion_general WHERE clave = :c AND id_municipio = 1", c=CLAVE)
         return
     await exec_commit("""
         INSERT INTO configuracion_general (clave, valor, tipo, descripcion, activo, id_municipio)
         SELECT CAST(:c AS varchar), CAST(:v AS text), 'boolean', CAST(:d AS text), TRUE, 1
-         WHERE NOT EXISTS (SELECT 1 FROM configuracion_general WHERE clave = CAST(:c AS varchar))
+         WHERE NOT EXISTS (SELECT 1 FROM configuracion_general WHERE clave = CAST(:c AS varchar) AND id_municipio = 1)
     """, c=CLAVE, v=valor, d=DESC_GENERAL)
-    await exec_commit("UPDATE configuracion_general SET valor = :v, activo = TRUE WHERE clave = :c", c=CLAVE, v=valor)
+    await exec_commit("UPDATE configuracion_general SET valor = :v, activo = TRUE WHERE clave = :c AND id_municipio = 1",
+                      c=CLAVE, v=valor)
 
 
 async def main() -> int:
     admin = await q1("SELECT id_usuario FROM usuarios WHERE email = :e AND nivel_acceso = 1 AND activo", e=ADMIN_EMAIL)
     sup = await q1("SELECT id_usuario FROM usuarios WHERE email = :e AND activo", e=SUP_EMAIL)
-    vec = await q1("SELECT id_ciudadano FROM ciudadanos WHERE doc_nro = :d AND activo", d=DNI_VECINO)
+    vec = await q1("SELECT id_ciudadano FROM ciudadanos WHERE doc_nro = :d AND activo AND id_municipio = 1", d=DNI_VECINO)
     tipo = await q1("SELECT id_tipo_reclamo, sla_minutos, sla_dias FROM tipo_reclamo "
                     "WHERE id_subarea = :s AND activo ORDER BY id_tipo_reclamo LIMIT 1", s=SUB)
     cand = await q1("""SELECT COUNT(*) AS n FROM agentes a JOIN usuarios u ON u.id_usuario = a.id_usuario AND u.activo
@@ -132,7 +133,8 @@ async def main() -> int:
     estado_inicial = {
         "tipo_sla": tipo["sla_minutos"],
         "manual": (await q1("SELECT asignacion_manual FROM subarea WHERE id_subarea = :s", s=SUB))["asignacion_manual"],
-        "general": await q1("SELECT valor, descripcion FROM configuracion_general WHERE clave = :c", c=CLAVE),
+        "general": await q1("SELECT valor, descripcion FROM configuracion_general WHERE clave = :c AND id_municipio = 1",
+                            c=CLAVE),
     }
     id_tipo = tipo["id_tipo_reclamo"]
 
@@ -237,7 +239,7 @@ async def main() -> int:
             await set_general("true")
 
             # Config → Sistema y el flag de Subáreas: solo admin.
-            cfg = await q1("SELECT id_config FROM configuracion_general WHERE clave = :c", c=CLAVE)
+            cfg = await q1("SELECT id_config FROM configuracion_general WHERE clave = :c AND id_municipio = 1", c=CLAVE)
             r = await c.put(f"/api/v1/admin/configuracion_general/{cfg['id_config']}", headers=HS, json={"valor": "false"})
             check("2h. supervisor no cambia la clave general (403)", r.status_code == 403, short(r, 100))
             r = await c.put(f"/api/v1/admin/configuracion_general/{cfg['id_config']}", headers=HA, json={"valor": "true"})
@@ -264,7 +266,7 @@ async def main() -> int:
             await set_general(None)
         else:
             await set_general(estado_inicial["general"]["valor"])
-            await exec_commit("UPDATE configuracion_general SET descripcion = :d WHERE clave = :c",
+            await exec_commit("UPDATE configuracion_general SET descripcion = :d WHERE clave = :c AND id_municipio = 1",
                               d=estado_inicial["general"]["descripcion"], c=CLAVE)
 
     print(f"\n{ok_count} OK / {fail_count} FAIL")

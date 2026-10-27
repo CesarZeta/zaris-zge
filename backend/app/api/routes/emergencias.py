@@ -18,6 +18,8 @@ from datetime import date
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+
+from app.services.municipios.modulos import modulo_habilitado
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +28,7 @@ from app.core.auth import get_current_user
 from sqlalchemy.exc import IntegrityError
 from app.services.guardia import atencion_out as guardia_atencion_out, espacio_guardia, registrar_log_evento
 from app.core.database import get_db
+from app.services.municipios.defectos import id_nacionalidad_defecto
 from app.core.municipio import municipio_actual
 from app.services import push as svc_push
 
@@ -637,7 +640,7 @@ async def promover_contacto_a_buc(
                      id_nacionalidad, ren_chk, calle, telefono, email, email_chk,
                      emp_chk, activo, estado_validacion, ficha_completa, id_usuario_alta, id_municipio)
                 VALUES ('DNI', :dni, :cuil, :ape, :nom, 'OTROS', CAST('1900-01-01' AS date),
-                        1, FALSE, :calle, :tel, :email, FALSE,
+                        :nac, FALSE, :calle, :tel, :email, FALSE,
                         FALSE, TRUE, 'verificado', FALSE, :ua, :mun)
                 RETURNING id_ciudadano
             """), {
@@ -645,6 +648,7 @@ async def promover_contacto_a_buc(
                 "ape": body.apellido.strip(), "nom": body.nombre.strip(),
                 "calle": contacto["direccion"], "tel": contacto["telefono"],
                 "email": body.email.strip(), "ua": user["id_usuario"], "mun": id_municipio,
+                "nac": await id_nacionalidad_defecto(db, id_municipio),
             })).scalar()
             creado = True
 
@@ -1237,6 +1241,8 @@ async def derivar_evento(
 @router.post(
     "/eventos/{id_evento}/derivar-guardia",
     status_code=201,
+    # La Guardia vive dentro de Turnos (IT-01 F4): sin Turnos no hay a dónde derivar.
+    dependencies=[Depends(modulo_habilitado("turnos"))],
     responses={
         409: {"description": "Ya hay una derivacion pendiente a la Guardia para este evento"},
         422: {"description": "Evento desestimado, paciente inexistente o Guardia no configurada"},

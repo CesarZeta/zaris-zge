@@ -35,10 +35,12 @@ async def leer_configs(db: AsyncSession, claves: list[str], id_municipio: Option
     return {r.clave: r.valor for r in rows}
 
 
-async def guardar_config(db: AsyncSession, clave: str, valor: str, id_municipio: int) -> bool:
-    """Actualiza la fila de la clave del municipio. False si el municipio no tiene esa clave."""
-    res = await db.execute(text("""
-        UPDATE configuracion_general SET valor = :valor, fecha_modificacion = NOW()
-         WHERE clave = :clave AND id_municipio = :mun
-        RETURNING id_config"""), {"clave": clave, "valor": valor, "mun": id_municipio})
-    return res.fetchone() is not None
+async def guardar_config(db: AsyncSession, clave: str, valor: str, id_municipio: int, tipo: str = "string") -> bool:
+    """Guarda la clave del municipio: la actualiza o, si el municipio no la tiene (municipio nuevo o
+    vaciado), la crea con `tipo` y activa (guía de arranque, R3). Devuelve True."""
+    await db.execute(text("""
+        INSERT INTO configuracion_general (clave, valor, tipo, descripcion, activo, id_municipio)
+        VALUES (:clave, :valor, :tipo, :descripcion, TRUE, :mun)
+        ON CONFLICT (id_municipio, clave) DO UPDATE SET valor = EXCLUDED.valor, fecha_modificacion = NOW()"""),
+        {"clave": clave, "valor": valor, "tipo": tipo, "descripcion": clave, "mun": id_municipio})
+    return True

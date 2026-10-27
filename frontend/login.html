@@ -902,6 +902,15 @@
     mostrarVista('reset');
     document.getElementById('reset-pass-nueva').focus();
   }
+
+  // Invitación (IT-01 F4): invitacion.html guardó la clave y dejó el desafío para vincular la app
+  // de códigos; se sigue acá con el mismo flujo que el login.
+  try {
+    const pendiente = JSON.parse(sessionStorage.getItem('zaris_sf_pendiente') || 'null');
+    sessionStorage.removeItem('zaris_sf_pendiente');
+    if (pendiente && pendiente.requiere_segundo_factor && pendiente.desafio) iniciarSegundoFactor(pendiente);
+    else if (pendiente && pendiente.mensaje) showError(pendiente.mensaje);
+  } catch (e) { /* sin desafío pendiente: login común */ }
 </script>
 
 </body>

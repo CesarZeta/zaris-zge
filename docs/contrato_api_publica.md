@@ -57,14 +57,14 @@ Todas validan el slug `?m=<codigo_corto>` contra el único municipio del deploy.
 
 | Verbo | Ruta | Auth | Para qué |
 |---|---|---|---|
-| GET | `` | — | Nombre/logo/descripción/colores. Lo lee la PWA antes de tener token. |
+| GET | `` | — | Nombre/logo/descripción/colores. Lo lee la PWA antes de tener token. **Desde IT-01 F4 trae `modulos_habilitados`** (lista de códigos): la PWA oculta lo que el municipio no tiene. El municipio sale del `Origin` (`<sub>.vecinos.zaris.com.ar`); uno en `baja` o el modelo dan 404. |
 
 ## 4. Reclamos del vecino — `/api/v1/publico/reclamos`
 
 | Verbo | Ruta | Auth | Para qué |
 |---|---|---|---|
 | GET | `/catalogo/tipos` | publico | Tipos de reclamo activos. |
-| GET | `/geo/buscar` | publico | Geocoding para el vecino logueado. |
+| GET | `/geo/buscar` | publico | Geocoding para el vecino logueado. **409** si el municipio no tiene configurada su zona de búsqueda (IT-01 F4). |
 | GET | `/geo/reverse?lat=&lon=` | publico | **Nuevo 2026-08-30.** Geocoding INVERSO (GPS → dirección) para autocompletar el domicilio de los tickets rápidos de emergencia y del form de reclamos. Reemplaza la llamada directa a Nominatim desde el cliente. Siempre 200: `{encontrado, direccion, display_name, calle, altura, localidad, provincia, lat, lon, address}` — con `encontrado=false` (mar / sin datos) la PWA cae a las coordenadas crudas. Rate-limit 20/min/IP. |
 | GET | `` | publico | Lista SOLO los reclamos del vecino. **Desde 2026-10-20 (F4)** cada ítem trae `id_reclamo_origen_auditoria` + `origen_auditoria_nro` (null en los reclamos comunes): un reclamo que los trae fue **reabierto por el control de calidad** (auditoría) del reclamo indicado, para volver a hacer el trabajo. Su `descripcion` es la del reclamo original. Los reclamos auditados se siguen mostrando `Resuelto`. |
 | GET | `/{id_reclamo}` | publico | Detalle. **404 si no es suyo** (no filtra terceros). Mismos dos campos que el listado; en un reabierto, la primera entrada del `historial` es «Reclamo reabierto por control de calidad». La PWA muestra la leyenda «Reabierto por control de calidad del reclamo REC-…» con link al original. |

@@ -28,6 +28,7 @@ from app.core.config_municipio import leer_configs
 from app.models.buc import Ciudadano, Usuario
 from app.schemas.buc import CuentaZarisIn, UsuarioCreate
 from app.services.cuenta_vecino import asegurar_cuenta_vecino
+from app.services.municipios.tope import exigir_cupo
 from app.services.super_admin import EMAIL_RESERVADO, email_reservado_super_admin
 
 logger = logging.getLogger("zaris.cuenta_zaris")
@@ -241,6 +242,7 @@ async def crear_usuario_interno(
     if ciudadano is not None:
         data_dict["id_ciudadano"] = ciudadano.id_ciudadano
 
+    await exigir_cupo(db, id_municipio)
     usuario = Usuario(**data_dict)
     db.add(usuario)
     await db.flush()  # asigna id_usuario sin cerrar la transacción
@@ -289,8 +291,9 @@ async def crear_usuario_interno(
     if password_temporal:
         from app.services.email import enviar_mail_credenciales_usuario_interno
         cfg = await branding_municipio(db, id_municipio)
-        login_url = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/frontend/login.html"
-        app_agentes_url = (settings.APP_AGENTES_FRONTEND_URL or "").strip() or None
+        from app.core.urls import base_app, url_login_backoffice
+        login_url = await url_login_backoffice(db, id_municipio)
+        app_agentes_url = await base_app(db, id_municipio, "agentes") or None
         background_tasks.add_task(
             enviar_mail_credenciales_usuario_interno,
             to=email,

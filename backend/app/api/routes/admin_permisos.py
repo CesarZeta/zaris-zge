@@ -1,8 +1,8 @@
 """
 ZARIS API — Endpoints admin para permisos por modulo (CLAUDE.md §30).
 
-GET    /api/v1/admin/permisos/modulos                    → catalogo de modulos
-PUT    /api/v1/admin/permisos/modulos/{codigo}           → editar min_nivel_acceso
+GET    /api/v1/admin/permisos/modulos                    → modulos del municipio (habilitado + nivel)
+PUT    /api/v1/admin/permisos/modulos/{codigo}           → nivel minimo (admin) / habilitar (super)
 GET    /api/v1/admin/permisos/usuarios/{id}/modulos      → resolucion + overrides
 PUT    /api/v1/admin/permisos/usuarios/{id}/modulos      → set bulk de overrides
 
@@ -15,10 +15,13 @@ Municipio (IT-01): los permisos por usuario son de los usuarios del municipio de
 administrador (municipio_actual); un usuario de otro municipio responde 404, igual que
 uno inexistente. El catalogo de modulos es global (habilitacion por municipio en F4).
 
-Super administrador (IT-01 F3): el catálogo es global, así que cambiarlo es solo del super
-administrador (afecta a todos los municipios) y queda en su registro de accesos. Los módulos
-con min_nivel_acceso = 0 (p. ej. `municipios`) son exclusivos del super administrador: no se
-listan a los demás, no se otorgan por permiso individual y su nivel no se edita.
+Módulos por municipio (IT-01 F4): el catálogo `modulos` es global y su nivel es el valor por
+defecto del alta; lo que se edita acá es `municipio_modulo` del municipio de la request. El
+administrador cambia el nivel mínimo (1-5); habilitar o quitar un módulo es solo del super
+administrador, con las dependencias y los módulos fijos validados, y queda en su registro
+(`municipio_modulos`). Los módulos con min_nivel_acceso = 0 en el catálogo (p. ej. `municipios`)
+son exclusivos del super administrador: no existen para los demás (404), no se otorgan por
+permiso individual y su nivel no se edita.
 """
 from typing import Optional
 
@@ -27,10 +30,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user, modulos_permitidos, require_super_admin
+from app.core.auth import get_current_user, modulos_permitidos
 from app.core.database import get_db
 from app.core.municipio import municipio_actual
-from app.services.accesos_super import registrar_acceso_super
+from app.services.accesos_super import registrar_acceso_super_en
+from app.services.municipios.constantes import DEPENDENCIAS_MODULOS, MODULOS_FIJOS
+from app.services.municipios.modulos import invalidar_modulos, validar_dependencias
 
 router = APIRouter(prefix="/api/v1/admin/permisos", tags=["Admin - Permisos"])
 
@@ -53,56 +58,96 @@ class ModuloOut(BaseModel):
     descripcion: Optional[str] = None
     min_nivel_acceso: int
     activo: bool
+    habilitado: bool
+    fijo: bool
+    dependencias: list[str]
+
+
+_SELECT_MODULOS = """
+    SELECT m.modulo_codigo, m.nombre, m.descripcion, m.activo,
+           COALESCE(mm.min_nivel_acceso, m.min_nivel_acceso) AS min_nivel_acceso,
+           COALESCE(mm.habilitado, FALSE) AS habilitado, m.min_nivel_acceso AS nivel_catalogo
+      FROM modulos m
+      LEFT JOIN municipio_modulo mm ON mm.modulo_codigo = m.modulo_codigo AND mm.id_municipio = :mun"""
+
+
+def _modulo_out(r) -> dict:
+    return {"modulo_codigo": r.modulo_codigo, "nombre": r.nombre, "descripcion": r.descripcion,
+            "min_nivel_acceso": r.min_nivel_acceso, "activo": r.activo, "habilitado": r.habilitado,
+            "fijo": r.modulo_codigo in MODULOS_FIJOS,
+            "dependencias": sorted(DEPENDENCIAS_MODULOS.get(r.modulo_codigo, ()))}
 
 
 @router.get("/modulos", response_model=list[ModuloOut])
 async def listar_modulos(
     db: AsyncSession = Depends(get_db),
     admin: dict = Depends(require_admin),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    rows = await db.execute(text("""
-        SELECT modulo_codigo, nombre, descripcion, min_nivel_acceso, activo
-        FROM modulos
-        WHERE min_nivel_acceso > 0 OR :es_super
-        ORDER BY min_nivel_acceso, modulo_codigo
-    """), {"es_super": bool(admin.get("es_super_admin"))})
-    return [dict(r._mapping) for r in rows.fetchall()]
+    rows = await db.execute(text(
+        _SELECT_MODULOS + " WHERE m.activo AND (m.min_nivel_acceso > 0 OR :es_super)"
+                          " ORDER BY m.min_nivel_acceso, m.modulo_codigo"),
+        {"mun": id_municipio, "es_super": bool(admin.get("es_super_admin"))})
+    return [_modulo_out(r) for r in rows.fetchall()]
 
 
 class ModuloUpdate(BaseModel):
-    min_nivel_acceso: int = Field(ge=1, le=4)
+    min_nivel_acceso: Optional[int] = Field(None, ge=1, le=5)
+    habilitado: Optional[bool] = None
 
 
-@router.put("/modulos/{codigo}", response_model=ModuloOut)
+@router.put("/modulos/{codigo}", response_model=ModuloOut,
+            responses={403: {"description": "Habilitar o quitar un módulo es del super administrador"},
+                       422: {"description": "Dependencia entre módulos o módulo fijo"}})
 async def actualizar_modulo(
     codigo: str,
     body: ModuloUpdate,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    admin: dict = Depends(require_super_admin),
+    admin: dict = Depends(require_admin),
+    id_municipio: int = Depends(municipio_actual),
 ):
-    actual = await db.scalar(text("SELECT min_nivel_acceso FROM modulos WHERE modulo_codigo = :c"),
-                             {"c": codigo})
-    if actual == 0:
+    es_super = bool(admin.get("es_super_admin"))
+    actual = (await db.execute(text(_SELECT_MODULOS + " WHERE m.modulo_codigo = :c AND m.activo"),
+                               {"mun": id_municipio, "c": codigo})).fetchone()
+    if actual is None or (actual.nivel_catalogo == 0 and not es_super):
+        raise HTTPException(404, "Módulo no encontrado")
+    if body.min_nivel_acceso is None and body.habilitado is None:
+        raise HTTPException(422, "Indicá el nivel mínimo o si el módulo está habilitado")
+    if body.habilitado is not None and not es_super:
+        raise HTTPException(403, "Habilitar o quitar un módulo es del super administrador")
+    if body.min_nivel_acceso is not None and actual.nivel_catalogo == 0:
         raise HTTPException(422, MODULO_EXCLUSIVO)
-    await registrar_acceso_super(
-        id_usuario=admin["id_usuario"], accion="catalogo_global", id_municipio=None,
-        metodo=request.method, ruta=request.url.path,
-        detalle=f"modulo {codigo}: min_nivel_acceso {actual} → {body.min_nivel_acceso}",
-        user_agent=request.headers.get("user-agent"))
-    res = await db.execute(text("""
-        UPDATE modulos
-           SET min_nivel_acceso = :nivel,
-               fecha_modificacion = NOW(),
-               id_usuario_modificacion = :uid
-         WHERE modulo_codigo = :codigo AND activo = TRUE
-         RETURNING modulo_codigo, nombre, descripcion, min_nivel_acceso, activo
-    """), {"nivel": body.min_nivel_acceso, "uid": admin["id_usuario"], "codigo": codigo})
-    row = res.fetchone()
-    if not row:
-        raise HTTPException(404, f"Modulo '{codigo}' no encontrado o inactivo")
+    if body.habilitado is False and codigo in MODULOS_FIJOS:
+        raise HTTPException(422, "Ese módulo no se puede deshabilitar: el municipio no funciona sin él.")
+    habilitado = actual.habilitado if body.habilitado is None else body.habilitado
+    nivel = actual.min_nivel_acceso if body.min_nivel_acceso is None else body.min_nivel_acceso
+    if habilitado != actual.habilitado:
+        otros = {r[0] for r in (await db.execute(text(
+            "SELECT modulo_codigo FROM municipio_modulo WHERE id_municipio = :mun AND habilitado "
+            "AND modulo_codigo <> :c"), {"mun": id_municipio, "c": codigo})).fetchall()}
+        await validar_dependencias(otros | {codigo} if habilitado else otros)
+    await db.execute(text("""
+        INSERT INTO municipio_modulo (id_municipio, modulo_codigo, habilitado, min_nivel_acceso,
+                                      id_usuario_alta, id_usuario_modificacion)
+        VALUES (:mun, :c, :h, :n, :u, :u)
+        ON CONFLICT (id_municipio, modulo_codigo) DO UPDATE
+           SET habilitado = EXCLUDED.habilitado, min_nivel_acceso = EXCLUDED.min_nivel_acceso,
+               fecha_modificacion = NOW(), id_usuario_modificacion = EXCLUDED.id_usuario_modificacion"""),
+        {"mun": id_municipio, "c": codigo, "h": habilitado, "n": nivel, "u": admin["id_usuario"]})
+    if es_super:
+        # En la misma transacción: si no se puede registrar, el cambio no queda.
+        await registrar_acceso_super_en(
+            db, id_usuario=admin["id_usuario"], accion="municipio_modulos", id_municipio=id_municipio,
+            metodo=request.method, ruta=request.url.path,
+            detalle=f"modulo {codigo}: habilitado {actual.habilitado} → {habilitado}; "
+                    f"min_nivel_acceso {actual.min_nivel_acceso} → {nivel}",
+            user_agent=request.headers.get("user-agent"))
     await db.commit()
-    return dict(row._mapping)
+    invalidar_modulos(id_municipio)
+    nuevo = (await db.execute(text(_SELECT_MODULOS + " WHERE m.modulo_codigo = :c"),
+                              {"mun": id_municipio, "c": codigo})).fetchone()
+    return _modulo_out(nuevo)
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +176,7 @@ async def ver_permisos_usuario(
     if not user:
         raise HTTPException(404, "Usuario no encontrado")
 
-    permitidos = await modulos_permitidos(db, user.id_usuario, user.nivel_acceso)
+    permitidos = await modulos_permitidos(db, user.id_usuario, user.nivel_acceso, id_municipio)
 
     overrides_rows = await db.execute(text("""
         SELECT modulo_codigo, permitido, motivo, fecha_modificacion
@@ -218,7 +263,7 @@ async def set_permisos_usuario(
 
     await db.commit()
 
-    permitidos = await modulos_permitidos(db, user.id_usuario, user.nivel_acceso)
+    permitidos = await modulos_permitidos(db, user.id_usuario, user.nivel_acceso, id_municipio)
     overrides_rows = await db.execute(text("""
         SELECT modulo_codigo, permitido, motivo, fecha_modificacion
         FROM usuario_modulos

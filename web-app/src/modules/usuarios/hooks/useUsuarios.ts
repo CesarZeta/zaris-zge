@@ -6,6 +6,7 @@ import {
   crearUsuario,
   habilitarSegundoFactor,
   listarUsuarios,
+  obtenerCupo,
   obtenerSegundoFactor,
   obtenerUsuario,
   verLoginLog,
@@ -16,6 +17,10 @@ const KEY = ['usuarios', 'maestro']
 
 export const useUsuariosLista = () =>
   useQuery({ queryKey: [...KEY, 'lista'], queryFn: listarUsuarios })
+
+// Bajo KEY: crear o cambiar el estado de una cuenta lo refresca.
+export const useCupoCuentas = () =>
+  useQuery({ queryKey: [...KEY, 'cupo'], queryFn: obtenerCupo })
 
 export const useBuscarUsuarios = (q: string) =>
   useQuery({

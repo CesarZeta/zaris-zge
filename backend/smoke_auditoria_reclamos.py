@@ -139,7 +139,8 @@ async def setup() -> dict:
     admin = await q1("SELECT id_usuario, nivel_acceso, activo FROM usuarios WHERE email = :e", e=ADMIN_EMAIL)
     if not admin or admin["nivel_acceso"] != 1 or not admin["activo"]:
         sys.exit(f"ABORT: falta el admin local {ADMIN_EMAIL} (nivel 1, activo)")
-    vec = await q1("SELECT id_ciudadano, email FROM ciudadanos WHERE doc_nro = :d AND activo = TRUE", d=DNI_VECINO)
+    vec = await q1("SELECT id_ciudadano, email FROM ciudadanos WHERE doc_nro = :d AND activo = TRUE AND id_municipio = 1",
+                   d=DNI_VECINO)
     if not vec or "@" not in (vec["email"] or ""):
         sys.exit(f"ABORT: falta el vecino local DNI {DNI_VECINO} con email (el mail de retrabajo lo necesita)")
     tipo_a = await q1("SELECT id_tipo_reclamo FROM tipo_reclamo WHERE id_subarea = :s AND activo ORDER BY id_tipo_reclamo LIMIT 1", s=SUB_A)

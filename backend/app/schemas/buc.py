@@ -408,7 +408,8 @@ class EmpresaCreate(EmpresaBase):
     # como representante/contacto. El alta crea empresa + vínculo ciudadano_empresa
     # en una sola transacción. Sin representante no hay alta (422).
     id_ciudadano: int = Field(..., description="Vecino representante/contacto (obligatorio)")
-    id_tipo_representacion: int = Field(1, description="Tipo de representación (default: Representante Legal)")
+    id_tipo_representacion: Optional[int] = Field(
+        None, description="Tipo de representación; sin dato, el del municipio (Representante Legal)")
 
 
 class EmpresaUpdate(BaseModel):

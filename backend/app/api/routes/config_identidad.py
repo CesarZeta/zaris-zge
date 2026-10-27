@@ -33,6 +33,8 @@ from app.core.config import settings
 from app.core.config_municipio import guardar_config, leer_configs
 from app.core.database import get_db
 from app.core.municipio import municipio_actual, municipio_de_origen
+from app.core.urls import base_app
+from app.services.municipios.modulos import modulos_habilitados
 from app.core import storage
 from app.core.urls import url_publica as _url_publica  # fuente única con publico_alta (Portal del Ciudadano)
 
@@ -87,14 +89,14 @@ class IdentidadOut(BaseModel):
     # URL publica de la App Vecinos (PWA). La consume la app de agentes (tenant) y
     # queda por compat; desde el 2026-09-27 "Mi perfil" ya NO la muestra: el vecino
     # instala su app desde el portal del vecino (decision de Cesar).
-    # Fuente unica con los mails de activacion: settings.APP_VECINOS_FRONTEND_URL
-    # (env var en Railway). Cuando llegue IT-01 (multi-municipio) se mueve a
-    # configuracion_general sin tocar la vista.
+    # Misma dirección que los mails de activación: core/urls.base_app (la del municipio).
     app_vecinos_url: str = ""
     # URL publica de la App de agentes (PWA zaris-agentes). La muestra la vista
     # "Mi perfil" del backoffice (QR + link para que el funcionario la instale en su
-    # celular). Fuente: settings.APP_AGENTES_FRONTEND_URL (env var en Railway).
+    # celular). Fuente: core/urls.base_app (la del municipio).
     app_agentes_url: str = ""
+    # Módulos habilitados en el municipio (IT-01 F4): la app de agentes oculta lo deshabilitado.
+    modulos_habilitados: list[str] = []
 
 
 class IdentidadUpdate(BaseModel):
@@ -147,8 +149,9 @@ async def _leer_claves(db: AsyncSession, id_municipio: int) -> dict[str, str]:
         "municipio_color_primary": data.get("municipio_color_primary", ""),
         "municipio_color_accent": data.get("municipio_color_accent", ""),
         "municipio_slug": slug,
-        "app_vecinos_url": _url_publica(settings.APP_VECINOS_FRONTEND_URL),
-        "app_agentes_url": _url_publica(settings.APP_AGENTES_FRONTEND_URL),
+        "app_vecinos_url": await base_app(db, id_municipio, "vecinos"),
+        "app_agentes_url": await base_app(db, id_municipio, "agentes"),
+        "modulos_habilitados": sorted(await modulos_habilitados(db, id_municipio)),
     }
 
 
@@ -176,7 +179,7 @@ async def get_identidad_actual(
     return await _leer_claves(db, id_municipio)
 
 
-@router.put("", response_model=IdentidadOut, responses={409: {"description": "El municipio no tiene esa clave"}})
+@router.put("", response_model=IdentidadOut)
 async def update_identidad(
     payload: IdentidadUpdate,
     db: AsyncSession = Depends(get_db),
@@ -188,10 +191,7 @@ async def update_identidad(
     if not actualizables:
         raise HTTPException(422, "Body vacio: incluir al menos una clave")
     for clave, valor in actualizables.items():
-        if not await guardar_config(db, clave, valor, id_municipio):
-            # Hasta el lote de limpieza (UNIQUE(clave) global) no se puede crear la fila.
-            await db.rollback()
-            raise HTTPException(409, f"El municipio no tiene la clave {clave} cargada")
+        await guardar_config(db, clave, valor, id_municipio)
     await db.commit()
     return await _leer_claves(db, id_municipio)
 

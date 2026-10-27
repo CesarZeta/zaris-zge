@@ -42,6 +42,13 @@ export interface UsuarioUpdatePayload {
   password?: string
 }
 
+/** Cuentas internas activas del municipio y su tope (`maximo` null = sin tope). */
+export interface CupoCuentas {
+  activas: number
+  maximo: number | null
+  aviso: boolean
+}
+
 export interface SubareaHit {
   id_subarea: number
   nombre: string

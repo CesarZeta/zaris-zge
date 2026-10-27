@@ -83,6 +83,9 @@ class IdentidadMunicipioOut(BaseModel):
     # La PWA la linkea en la bienvenida ("¿No tenes cuenta?"). None si el
     # deploy no tiene municipio activo con codigo_corto.
     url_alta_publica: str | None = None
+    # Módulos habilitados en el municipio (IT-01 F4): la PWA oculta lo deshabilitado.
+    # Lista vacía = backend viejo: la PWA muestra todo.
+    modulos_habilitados: list[str] = []
 
 
 class GenericoOkOut(BaseModel):

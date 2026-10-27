@@ -355,9 +355,10 @@ async def test_nivel_efectivo() -> None:
     await _contexto()
     async with _cliente() as c:
         tok = await _token(c, EMAIL_SUPER)
-        r = await c.put("/api/v1/config/identidad", json={"municipio_nombre": "AISLAB no se guarda"},
-                        headers=_h(tok, CTX["B"]))
-        check("pasa el guard de nivel 1 (identidad de B → 409, no 403)", r.status_code == 409,
+        # Body vacío: pasa el guard y el handler lo rechaza (422) sin escribir; un 403 sería el guard.
+        # (Desde F4 la identidad crea la clave que falta: un valor de prueba quedaría guardado en B.)
+        r = await c.put("/api/v1/config/identidad", json={}, headers=_h(tok, CTX["B"]))
+        check("pasa el guard de nivel 1 (identidad de B con body vacío → 422, no 403)", r.status_code == 422,
               f"{r.status_code} {r.text[:120]}")
         me = (await c.get("/api/v1/auth/me", headers=_h(tok))).json()
         check("/auth/me: nivel 0, es_super_admin y el módulo municipios",
@@ -480,8 +481,15 @@ async def test_escaladas_admin() -> None:
             async with AsyncSessionLocal() as db:  # si se creó (antes del fix), se borra: rompería el login del super
                 await db.execute(text("DELETE FROM usuarios WHERE username = 'smoke.f3.reservado'"))
                 await db.commit()
+        # IT-01 F4: el administrador cambia el nivel de SU municipio (municipio_modulo); habilitar o
+        # quitar un módulo, y el catálogo global, siguen fuera de su alcance.
+        global_antes = await _uno("SELECT min_nivel_acceso FROM modulos WHERE modulo_codigo = 'reclamos'")
         r = await c.put("/api/v1/admin/permisos/modulos/reclamos", headers=h, json={"min_nivel_acceso": 4})
-        check("cambiar el catálogo global de módulos → 403", r.status_code == 403, f"{r.status_code}")
+        check("el admin cambia el nivel en su municipio → 200", r.status_code == 200, f"{r.status_code} {r.text[:100]}")
+        global_despues = await _uno("SELECT min_nivel_acceso FROM modulos WHERE modulo_codigo = 'reclamos'")
+        check("y el catálogo global no cambia", global_antes.min_nivel_acceso == global_despues.min_nivel_acceso)
+        r = await c.put("/api/v1/admin/permisos/modulos/reclamos", headers=h, json={"habilitado": False})
+        check("habilitar o quitar un módulo → 403", r.status_code == 403, f"{r.status_code}")
         r = await c.put(f"/api/v1/admin/estado_reclamo/{estado.id_estado_reclamo}", headers=h,
                         json={"nombre": estado.nombre})
         check("editar un Maestro global (estado_reclamo) → 403", r.status_code == 403, f"{r.status_code}")
@@ -547,7 +555,8 @@ async def test_global_super() -> None:
         check("el catálogo le muestra municipios",
               r.status_code == 200 and any(m["modulo_codigo"] == "municipios" for m in r.json()), f"{r.status_code}")
     acciones = [f.accion for f in await _accesos_desde(desde)]
-    check("dos filas catalogo_global", acciones.count("catalogo_global") == 2, str(acciones))
+    check("una fila catalogo_global (Maestro) y una municipio_modulos (módulos del municipio)",
+          acciones.count("catalogo_global") == 1 and acciones.count("municipio_modulos") == 1, str(acciones))
 
 
 # ── Tarea 5: endpoints del super administrador y registro para el municipio ──────────────────
@@ -556,7 +565,7 @@ async def test_super_municipios() -> None:
     print("\n15. /super/municipios")
     await _contexto()
     B = CTX["B"]
-    original = await _uno("SELECT nombre, subdominio, codigo_pais, pais, zona_horaria FROM municipios "
+    original = await _uno("SELECT nombre, subdominio, codigo_pais, id_provincia, zona_horaria FROM municipios "
                           "WHERE id_municipio = :b", {"b": B})
     desde = await _ultimo_acceso()
     async with _cliente() as c:
@@ -565,7 +574,8 @@ async def test_super_municipios() -> None:
         ids = {m["id_municipio"] for m in r.json()} if r.status_code == 200 else set()
         check("el listado trae 1, 2 y B", r.status_code == 200 and {1, 2, B} <= ids, f"{r.status_code} {ids}")
         cuerpo = {"nombre": original.nombre + " (editado)", "subdominio": original.subdominio,
-                  "codigo_pais": original.codigo_pais, "pais": original.pais, "zona_horaria": original.zona_horaria}
+                  "codigo_pais": original.codigo_pais, "id_provincia": original.id_provincia,
+                  "zona_horaria": original.zona_horaria}
         try:
             r = await c.put(f"/api/v1/super/municipios/{B}", headers=_h(tok), json=cuerpo)
             check("editar el nombre de B → 200", r.status_code == 200 and r.json().get("nombre") == cuerpo["nombre"],
@@ -573,10 +583,10 @@ async def test_super_municipios() -> None:
             r = await c.put(f"/api/v1/super/municipios/{B}", headers=_h(tok),
                             json={**cuerpo, "zona_horaria": "Marte/Olympus"})
             check("zona horaria inválida → 422", r.status_code == 422, f"{r.status_code}")
-            uno = await _uno("SELECT nombre, codigo_pais, pais, zona_horaria FROM municipios WHERE id_municipio = 1")
+            uno = await _uno("SELECT nombre, codigo_pais, id_provincia, zona_horaria FROM municipios WHERE id_municipio = 1")
             r = await c.put("/api/v1/super/municipios/1", headers=_h(tok), json={
                 "nombre": uno.nombre, "subdominio": original.subdominio, "codigo_pais": uno.codigo_pais,
-                "pais": uno.pais, "zona_horaria": uno.zona_horaria})
+                "id_provincia": uno.id_provincia, "zona_horaria": uno.zona_horaria})
             check("el subdominio de B en el municipio 1 → 409", r.status_code == 409, f"{r.status_code} {r.text[:100]}")
         finally:
             await c.put(f"/api/v1/super/municipios/{B}", headers=_h(tok), json={**cuerpo, "nombre": original.nombre})
@@ -645,7 +655,7 @@ async def test_registro_atomico() -> None:
     print("\n17b. Las ediciones globales se registran en la misma transacción (I4 de la revisión final)")
     await _contexto()
     B = CTX["B"]
-    mun = await _uno("SELECT nombre, subdominio, codigo_pais, pais, zona_horaria FROM municipios "
+    mun = await _uno("SELECT nombre, subdominio, codigo_pais, id_provincia, zona_horaria FROM municipios "
                      "WHERE id_municipio = :b", {"b": B})
     pwd = await _uno("SELECT id_config, valor FROM configuracion_general "
                      "WHERE clave = 'password_renovacion_dias' AND id_municipio IS NULL")
@@ -660,7 +670,7 @@ async def test_registro_atomico() -> None:
         try:
             r = await c.put(f"/api/v1/super/municipios/{B}", headers=_h(tok), json={
                 "nombre": mun.nombre + " (sin registro)", "subdominio": mun.subdominio,
-                "codigo_pais": mun.codigo_pais, "pais": mun.pais, "zona_horaria": mun.zona_horaria})
+                "codigo_pais": mun.codigo_pais, "id_provincia": mun.id_provincia, "zona_horaria": mun.zona_horaria})
             check("con el registro caído, editar un municipio → 503", r.status_code == 503, f"{r.status_code}")
             check("y el municipio no cambió",
                   (await _uno("SELECT nombre FROM municipios WHERE id_municipio = :b", {"b": B})).nombre == mun.nombre)

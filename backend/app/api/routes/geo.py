@@ -50,6 +50,7 @@ GEO_BBOX_CENTRO_LAT = -34.5305   # Vicente López (demo) — fallback
 GEO_BBOX_CENTRO_LON = -58.4779
 GEO_BBOX_DELTA_GRADOS = 0.27     # ~28 km en lat; suficiente para AMBA norte
 
+SIN_ZONA = "El municipio no tiene configurada su zona de búsqueda: cargala en Configuración → Sistema."
 _BBOX_TTL_SEG = 300.0
 # Cache por municipio (IT-01, R9): con la clave sin municipio, B usaría el bbox de A.
 _bbox_cache: dict[int, dict] = {}
@@ -58,16 +59,20 @@ _bbox_cache: dict[int, dict] = {}
 async def _bbox_municipio(id_municipio: int) -> tuple[float, float, float]:
     """(lat, lon, delta) del bbox del municipio, desde configuracion_general con cache.
 
-    Cualquier error (DB caída, clave ausente, valor no numérico) cae a las
-    constantes de arriba — el geocoding nunca se rompe por configuración.
+    Sin las claves (o con un valor inválido) el municipio de las direcciones sin prefijo cae a las
+    constantes de arriba; cualquier otro municipio da 409: buscaría en Vicente López sin avisar
+    (guía de arranque, R4).
     """
     now = time.monotonic()
     cache = _bbox_cache.get(id_municipio)
     if cache and now - cache["ts"] < _BBOX_TTL_SEG:
         return cache["lat"], cache["lon"], cache["delta"]
     lat, lon, delta = GEO_BBOX_CENTRO_LAT, GEO_BBOX_CENTRO_LON, GEO_BBOX_DELTA_GRADOS
+    base = True
     try:
         async with AsyncSessionLocal() as db:
+            base = bool(await db.scalar(text("SELECT direccion_base FROM municipios WHERE id_municipio = :m"),
+                                        {"m": id_municipio}))
             vals = await leer_configs(
                 db, ["geo_bbox_centro_lat", "geo_bbox_centro_lon", "geo_bbox_delta_grados"], id_municipio)
         lat = float(vals["geo_bbox_centro_lat"])
@@ -76,6 +81,8 @@ async def _bbox_municipio(id_municipio: int) -> tuple[float, float, float]:
         if not (-90 <= lat <= 90 and -180 <= lon <= 180 and 0 < delta <= 5):
             raise ValueError(f"bbox fuera de rango: {lat},{lon} ±{delta}")
     except Exception as e:  # noqa: BLE001 — fallback deliberado a constantes
+        if not base:
+            raise HTTPException(409, SIN_ZONA)
         logger.warning("geo_bbox config no disponible (%s) — uso fallback Vicente López", e)
         lat, lon, delta = GEO_BBOX_CENTRO_LAT, GEO_BBOX_CENTRO_LON, GEO_BBOX_DELTA_GRADOS
     _bbox_cache[id_municipio] = {"ts": now, "lat": lat, "lon": lon, "delta": delta}
@@ -111,15 +118,30 @@ async def _nominatim_get(path: str, params: dict) -> list | dict:
 
 # ── Catálogos DB ─────────────────────────────────────────────────────────────
 
+@router.get("/paises")
+async def listar_paises(
+    para_alta: bool = Query(False, description="Solo los habilitados para dar de alta municipios"),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Catálogo global de países (IT-01 F4) con el nombre de cada nivel (Provincia/Partido…)."""
+    r = await db.execute(text(
+        "SELECT codigo_pais, nombre, etiqueta_nivel_1, etiqueta_nivel_2, zona_horaria, habilitado_para_alta "
+        "FROM paises WHERE activo = TRUE AND (NOT :alta OR habilitado_para_alta) ORDER BY nombre"
+    ), {"alta": para_alta})
+    return [dict(row._mapping) for row in r.fetchall()]
+
+
 @router.get("/provincias")
 async def listar_provincias(
+    codigo_pais: Optional[str] = Query(None, pattern=r"^[A-Z]{2}$"),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     r = await db.execute(text(
-        "SELECT id_provincia, nombre, iso_code FROM provincias "
-        "WHERE activo = TRUE ORDER BY nombre"
-    ))
+        "SELECT id_provincia, nombre, iso_code, codigo_pais FROM provincias "
+        "WHERE activo = TRUE AND (CAST(:p AS text) IS NULL OR codigo_pais = :p) ORDER BY nombre"
+    ), {"p": codigo_pais})
     return [dict(row._mapping) for row in r.fetchall()]
 
 

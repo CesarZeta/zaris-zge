@@ -1,46 +1,91 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Modal } from '../../agenda/components/Modal'
 import { Badge, Button, EmptyState, Skeleton } from '../../../ui'
 import { ThOrden, ordenarFilas, useOrden } from '../../../ui/orden'
 import { useNotificationsStore } from '../../../stores/notifications'
-import { editarMunicipio, listarMunicipios, type MunicipioSuper, type MunicipioSuperUpdate } from '../api'
+import {
+  ESTADO_ETIQUETA, editarMunicipio, listarMunicipios, listarPaises, listarPartidos, listarProvincias,
+  type EstadoMunicipio, type MunicipioSuper, type MunicipioSuperUpdate,
+} from '../api'
+import { Campo, grupo, input, labelCampo, tabla, td, th, titulo } from './_comun'
 
-// Módulo «Municipios» del super administrador (IT-01 F3, PLAN_MULTI_MUNICIPIO_F3.md, Tarea 8).
-// En F3 solo se editan los datos del municipio: el alta, la baja, el código corto (prefijo de los
-// números) y la dirección base son de F4. La identidad (logo, colores) se edita en
+// Módulo «Municipios» del super administrador (IT-01 F3; país, provincia y estado de F4,
+// PLAN_MULTI_MUNICIPIO_F4_F5.md, Tarea 6). La lista es corta y se carga entera: los filtros por
+// país, provincia y estado se aplican en pantalla (§23). Sin un orden elegido, va agrupada por
+// país y provincia, como la devuelve el backend. La identidad (logo, colores) se edita en
 // Configuración → Identidad con el municipio elegido en el selector.
 
-type Campo = 'nombre' | 'codigo' | 'subdominio' | 'pais' | 'zona' | 'estado'
+type Campo = 'nombre' | 'codigo' | 'subdominio' | 'provincia' | 'estado' | 'cuentas'
 
-const VALORES: Record<Campo, (m: MunicipioSuper) => string | null> = {
+const VALORES: Record<Campo, (m: MunicipioSuper) => string | number | null> = {
   nombre: (m) => m.nombre,
   codigo: (m) => m.codigo_corto,
   subdominio: (m) => m.subdominio,
-  pais: (m) => m.pais ?? m.codigo_pais,
-  zona: (m) => m.zona_horaria,
-  estado: (m) => (m.activo ? 'activo' : 'inactivo'),
+  provincia: (m) => m.provincia_nombre,
+  estado: (m) => ESTADO_ETIQUETA[m.estado],
+  cuentas: (m) => m.cuentas_activas,
 }
 
+const KIND_ESTADO: Record<EstadoMunicipio, 'success' | 'warn' | 'neutral' | 'error'> = {
+  produccion: 'success', puesta_en_marcha: 'warn', demo: 'neutral', modelo: 'neutral', baja: 'error',
+}
+
+const grupoDe = (m: MunicipioSuper) =>
+  m.estado === 'modelo' ? 'Modelo' : `${m.pais_nombre ?? m.codigo_pais} · ${m.provincia_nombre ?? 'sin provincia'}`
+
 export function MunicipiosPage() {
-  const q = useQuery({ queryKey: ['super', 'municipios'], queryFn: listarMunicipios })
+  const q = useQuery({ queryKey: ['super', 'municipios'], queryFn: () => listarMunicipios() })
   const { orden, alternar } = useOrden<Campo>()
-  const [editando, setEditando] = useState<MunicipioSuper | null>(null)
-  const filas = ordenarFilas(q.data ?? [], orden, VALORES)
+  const navigate = useNavigate()
+  const [pais, setPais] = useState('')
+  const [provincia, setProvincia] = useState('')
+  const [estado, setEstado] = useState('')
+
+  const todos = q.data ?? []
+  const paises = useMemo(() => [...new Map(todos.map((m) => [m.codigo_pais, m.pais_nombre ?? m.codigo_pais])).entries()], [todos])
+  const provincias = useMemo(() => [...new Map(todos
+    .filter((m) => m.id_provincia != null && (!pais || m.codigo_pais === pais))
+    .map((m) => [String(m.id_provincia), m.provincia_nombre ?? ''])).entries()], [todos, pais])
+  const filtrados = todos.filter((m) => (!pais || m.codigo_pais === pais)
+    && (!provincia || String(m.id_provincia) === provincia) && (!estado || m.estado === estado))
+  const filas = ordenarFilas(filtrados, orden, VALORES)
+  const agrupar = !orden
 
   return (
     <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
       <header>
-        <h1 style={titulo}>Municipios</h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <h1 style={titulo}>Municipios</h1>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button variant="ghost" type="button" onClick={() => navigate('/municipios/super-administradores')}>
+              Super administradores
+            </Button>
+            <Button variant="primary" type="button" onClick={() => navigate('/municipios/alta')}>
+              + Dar de alta un municipio
+            </Button>
+          </div>
+        </div>
         <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--fg-2)' }}>
-          Datos de cada municipio. El alta y la baja llegan con la fase F4; la identidad (logo y colores) se edita
-          en Configuración → Identidad, con el municipio elegido arriba en «Operando en».
+          Datos de cada municipio, agrupados por país y provincia. La identidad (logo y colores) se edita en
+          Configuración → Identidad, con el municipio elegido arriba en «Operando en».
         </p>
       </header>
 
+      {todos.length > 0 && (
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <Filtro etiqueta="País" valor={pais} onChange={(v) => { setPais(v); setProvincia('') }}
+                  opciones={paises.map(([v, t]) => [v, t])} />
+          <Filtro etiqueta="Provincia" valor={provincia} onChange={setProvincia} opciones={provincias} />
+          <Filtro etiqueta="Estado" valor={estado} onChange={setEstado}
+                  opciones={Object.entries(ESTADO_ETIQUETA)} />
+        </div>
+      )}
+
       {q.isLoading && <Skeleton height={160} />}
       {q.isError && <EmptyState title="No se pudo cargar la lista" description={q.error.message} />}
-      {q.data && filas.length === 0 && <EmptyState title="No hay municipios" />}
+      {q.data && filas.length === 0 && <EmptyState title="No hay municipios con esos filtros" />}
       {filas.length > 0 && (
         <div style={{ overflowX: 'auto' }}>
           <table style={tabla}>
@@ -49,37 +94,56 @@ export function MunicipiosPage() {
                 <ThOrden campo="nombre" orden={orden} onOrdenar={alternar} style={th}>Nombre</ThOrden>
                 <ThOrden campo="codigo" orden={orden} onOrdenar={alternar} style={th}>Código</ThOrden>
                 <ThOrden campo="subdominio" orden={orden} onOrdenar={alternar} style={th}>Subdominio</ThOrden>
-                <ThOrden campo="pais" orden={orden} onOrdenar={alternar} style={th}>País</ThOrden>
-                <ThOrden campo="zona" orden={orden} onOrdenar={alternar} style={th}>Zona horaria</ThOrden>
+                <ThOrden campo="provincia" orden={orden} onOrdenar={alternar} style={th}>Provincia</ThOrden>
                 <ThOrden campo="estado" orden={orden} onOrdenar={alternar} style={th}>Estado</ThOrden>
+                <ThOrden campo="cuentas" orden={orden} onOrdenar={alternar} style={th}>Cuentas activas</ThOrden>
               </tr>
             </thead>
             <tbody>
-              {filas.map((m) => (
-                <tr key={m.id_municipio} onClick={() => setEditando(m)} style={{ cursor: 'pointer' }}
-                    title="Editar los datos del municipio">
-                  <td style={td}>
-                    {m.nombre}{' '}
-                    {m.direccion_base && <Badge kind="neutral">dirección base</Badge>}
-                  </td>
-                  <td style={{ ...td, fontFamily: 'var(--font-mono)' }}>{m.codigo_corto ?? '—'}</td>
-                  <td style={{ ...td, fontFamily: 'var(--font-mono)' }}>{m.subdominio ?? '—'}</td>
-                  <td style={td}>{m.pais ?? m.codigo_pais}</td>
-                  <td style={{ ...td, fontFamily: 'var(--font-mono)' }}>{m.zona_horaria}</td>
-                  <td style={td}>{m.activo ? <Badge kind="success">Activo</Badge> : <Badge kind="neutral">Inactivo</Badge>}</td>
-                </tr>
+              {filas.map((m, i) => (
+                <Fragment key={m.id_municipio}>
+                  {agrupar && (i === 0 || grupoDe(filas[i - 1]) !== grupoDe(m)) && (
+                    <tr><td colSpan={6} style={grupo}>{grupoDe(m)}</td></tr>
+                  )}
+                  <tr onClick={() => navigate(`/municipios/${m.id_municipio}`)} style={{ cursor: 'pointer' }}
+                      title="Abrir la ficha del municipio">
+                    <td style={td}>
+                      {m.nombre}{' '}
+                      {m.direccion_base && <Badge kind="neutral">dirección base</Badge>}
+                    </td>
+                    <td style={{ ...td, fontFamily: 'var(--font-mono)' }}>{m.codigo_corto ?? '—'}</td>
+                    <td style={{ ...td, fontFamily: 'var(--font-mono)' }}>{m.subdominio ?? '—'}</td>
+                    <td style={td}>{m.provincia_nombre ?? '—'}{m.partido_nombre ? ` · ${m.partido_nombre}` : ''}</td>
+                    <td style={td}><Badge kind={KIND_ESTADO[m.estado]}>{ESTADO_ETIQUETA[m.estado]}</Badge></td>
+                    <td style={{ ...td, fontFamily: 'var(--font-mono)' }}>
+                      {m.max_usuarios_activos ? `${m.cuentas_activas} de ${m.max_usuarios_activos}` : m.cuentas_activas}
+                    </td>
+                  </tr>
+                </Fragment>
               ))}
             </tbody>
           </table>
         </div>
       )}
-
-      <EditarMunicipioModal municipio={editando} onClose={() => setEditando(null)} />
     </div>
   )
 }
 
-function EditarMunicipioModal({ municipio, onClose }: { municipio: MunicipioSuper | null; onClose: () => void }) {
+function Filtro({ etiqueta, valor, onChange, opciones }: {
+  etiqueta: string; valor: string; onChange: (v: string) => void; opciones: [string, string][]
+}) {
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <span style={labelCampo}>{etiqueta}</span>
+      <select style={input} value={valor} onChange={(e) => onChange(e.target.value)}>
+        <option value="">Todos</option>
+        {opciones.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+      </select>
+    </label>
+  )
+}
+
+export function EditarMunicipioModal({ municipio, onClose }: { municipio: MunicipioSuper | null; onClose: () => void }) {
   const qc = useQueryClient()
   const push = useNotificationsStore((s) => s.push)
   const [form, setForm] = useState<MunicipioSuperUpdate | null>(null)
@@ -89,29 +153,43 @@ function EditarMunicipioModal({ municipio, onClose }: { municipio: MunicipioSupe
     if (!municipio) { setForm(null); return }
     setForm({
       nombre: municipio.nombre, subdominio: municipio.subdominio, codigo_pais: municipio.codigo_pais,
-      pais: municipio.pais, zona_horaria: municipio.zona_horaria,
+      id_provincia: municipio.id_provincia, id_partido: municipio.id_partido, zona_horaria: municipio.zona_horaria,
     })
   }, [municipio])
+
+  const paises = useQuery({ queryKey: ['geo', 'paises'], queryFn: () => listarPaises(), enabled: municipio != null })
+  const provincias = useQuery({
+    queryKey: ['geo', 'provincias', form?.codigo_pais], queryFn: () => listarProvincias(form!.codigo_pais),
+    enabled: !!form?.codigo_pais,
+  })
+  const partidos = useQuery({
+    queryKey: ['geo', 'partidos', form?.id_provincia], queryFn: () => listarPartidos(form!.id_provincia!),
+    enabled: form?.id_provincia != null,
+  })
+  const paisSel = paises.data?.find((p) => p.codigo_pais === form?.codigo_pais)
+  const nivel1 = paisSel?.etiqueta_nivel_1 ?? 'Provincia'
+  const nivel2 = paisSel?.etiqueta_nivel_2 ?? 'Partido'
 
   const mut = useMutation({
     mutationFn: ({ id, body }: { id: number; body: MunicipioSuperUpdate }) => editarMunicipio(id, body),
     onSuccess: (m) => {
-      qc.invalidateQueries({ queryKey: ['super', 'municipios'] })
+      qc.invalidateQueries({ queryKey: ['super'] })
       push({ kind: 'success', title: `Municipio «${m.nombre}» guardado` })
     },
     onError: (e: Error) => push({ kind: 'error', title: 'No se pudo guardar', body: e.message }),
   })
 
+  const sinProvinciaOk = municipio?.estado === 'baja' || municipio?.estado === 'modelo'
   const subdominioOk = !form?.subdominio || /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(form.subdominio)
-  const paisOk = !!form && /^[A-Z]{2}$/.test(form.codigo_pais)
-  const valido = !!form && form.nombre.trim().length >= 3 && subdominioOk && paisOk && form.zona_horaria.trim() !== ''
+  const valido = !!form && form.nombre.trim().length >= 3 && subdominioOk && !!form.codigo_pais
+    && (form.id_provincia != null || sinProvinciaOk) && form.zona_horaria.trim() !== ''
 
   const guardar = () => {
     if (!municipio || !form || !valido) return
     // Cerrar AL CONFIRMAR (§23): el resultado llega por aviso.
     mut.mutate({ id: municipio.id_municipio, body: {
       ...form, nombre: form.nombre.trim(), subdominio: form.subdominio?.trim() || null,
-      pais: form.pais?.trim() || null, zona_horaria: form.zona_horaria.trim(),
+      zona_horaria: form.zona_horaria.trim(),
     } })
     onClose()
   }
@@ -142,16 +220,29 @@ function EditarMunicipioModal({ municipio, onClose }: { municipio: MunicipioSupe
             <input style={{ ...input, fontFamily: 'var(--font-mono)' }} value={form.subdominio ?? ''} maxLength={63}
                    onChange={(e) => setForm({ ...form, subdominio: e.target.value.toLowerCase() })} />
           </Campo>
-          <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 12 }}>
-            <Campo etiqueta="País (código)" error={paisOk ? undefined : 'Dos letras, p. ej. AR'}>
-              <input style={{ ...input, fontFamily: 'var(--font-mono)' }} value={form.codigo_pais} maxLength={2}
-                     onChange={(e) => setForm({ ...form, codigo_pais: e.target.value.toUpperCase() })} />
-            </Campo>
-            <Campo etiqueta="País (nombre)">
-              <input style={input} value={form.pais ?? ''} maxLength={100}
-                     onChange={(e) => setForm({ ...form, pais: e.target.value })} />
-            </Campo>
-          </div>
+          <Campo etiqueta="País">
+            <select style={input} value={form.codigo_pais}
+                    onChange={(e) => setForm({ ...form, codigo_pais: e.target.value, id_provincia: null, id_partido: null })}>
+              {(paises.data ?? [{ codigo_pais: form.codigo_pais, nombre: form.codigo_pais }]).map((p) => (
+                <option key={p.codigo_pais} value={p.codigo_pais}>{p.nombre}</option>
+              ))}
+            </select>
+          </Campo>
+          <Campo etiqueta={nivel1}
+                 error={form.id_provincia == null && !sinProvinciaOk ? `Elegí la ${nivel1.toLowerCase()}` : undefined}>
+            <select style={input} value={form.id_provincia ?? ''}
+                    onChange={(e) => setForm({ ...form, id_provincia: e.target.value ? Number(e.target.value) : null, id_partido: null })}>
+              <option value="">—</option>
+              {(provincias.data ?? []).map((p) => <option key={p.id_provincia} value={p.id_provincia}>{p.nombre}</option>)}
+            </select>
+          </Campo>
+          <Campo etiqueta={`${nivel2} (opcional)`} ayuda="Puede no corresponder a uno existente.">
+            <select style={input} value={form.id_partido ?? ''} disabled={form.id_provincia == null}
+                    onChange={(e) => setForm({ ...form, id_partido: e.target.value ? Number(e.target.value) : null })}>
+              <option value="">—</option>
+              {(partidos.data ?? []).map((p) => <option key={p.id_partido} value={p.id_partido}>{p.nombre}</option>)}
+            </select>
+          </Campo>
           <Campo etiqueta="Zona horaria" ayuda="Nombre IANA, p. ej. America/Argentina/Buenos_Aires">
             <input style={{ ...input, fontFamily: 'var(--font-mono)' }} value={form.zona_horaria} maxLength={64}
                    onChange={(e) => setForm({ ...form, zona_horaria: e.target.value })} />
@@ -160,32 +251,4 @@ function EditarMunicipioModal({ municipio, onClose }: { municipio: MunicipioSupe
       )}
     </Modal>
   )
-}
-
-function Campo({ etiqueta, ayuda, error, children }: {
-  etiqueta: string; ayuda?: string; error?: string; children: React.ReactNode
-}) {
-  return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span style={labelCampo}>{etiqueta}</span>
-      {children}
-      {error ? <span style={{ fontSize: 12, color: 'var(--color-error)' }}>{error}</span>
-        : ayuda ? <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>{ayuda}</span> : null}
-    </label>
-  )
-}
-
-const titulo: React.CSSProperties = { margin: 0, fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--fg-1)' }
-const tabla: React.CSSProperties = { width: '100%', borderCollapse: 'collapse', fontSize: 13 }
-const th: React.CSSProperties = {
-  textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid var(--border-medium)', color: 'var(--fg-3)',
-  fontFamily: 'var(--font-display)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em',
-}
-const td: React.CSSProperties = { padding: '8px 10px', borderBottom: '1px solid var(--border-primary)', color: 'var(--fg-1)' }
-const labelCampo: React.CSSProperties = {
-  fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--fg-3)',
-}
-const input: React.CSSProperties = {
-  fontFamily: 'inherit', fontSize: 13, color: 'var(--fg-1)', background: 'var(--surface-100)',
-  border: '1px solid var(--border-medium)', borderRadius: 'var(--radius-md)', padding: '7px 10px',
 }

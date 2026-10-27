@@ -16,7 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.config_municipio import leer_configs
 from app.core.database import get_db
+from typing import Optional
+
 from app.core.municipio import resolver_municipio_de_origen
+from app.core.urls import url_login_backoffice
 from app.core import storage
 from app.core.auth import (
     verify_password,
@@ -168,10 +171,10 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
     ident = (body.identificador or body.email or "").strip()
     _clave_rl = ident.lower()
     check_rate_limit(f"loginint-ip:{_ip}", max_requests=10, window_seconds=60)
-    if _clave_rl:
-        check_rate_limit(f"loginint-mail:{_clave_rl}", max_requests=5, window_seconds=60)
-
     id_municipio = await resolver_municipio_de_origen(request, db)
+    if _clave_rl:
+        # Por municipio: el mismo email puede ser de cuentas de dos municipios.
+        check_rate_limit(f"loginint-mail:{id_municipio}:{_clave_rl}", max_requests=5, window_seconds=60)
     user = await _buscar_usuario_login(db, ident, id_municipio)
     if user is None and "@" in ident:
         user = await _buscar_super_admin(db, ident)
@@ -198,7 +201,7 @@ async def me(
     db: AsyncSession = Depends(get_db),
 ):
     modulos = await modulos_permitidos(
-        db, current_user["id_usuario"], current_user["nivel_real"]
+        db, current_user["id_usuario"], current_user["nivel_real"], current_user.get("id_municipio")
     )
     perfil = await perfil_agente_del_usuario(db, current_user["id_usuario"])
     # Al frontend va el nivel real (0 para el super administrador), no el efectivo.
@@ -277,9 +280,10 @@ async def _branding_municipio(db: AsyncSession, id_municipio: int) -> tuple[str,
     return (cfg.get("municipio_nombre") or "Tu municipio", cfg.get("municipio_logo_url") or None)
 
 
-def _login_url() -> str:
-    """URL del login del shell vanilla (CTA de los mails internos)."""
-    return f"{settings.FRONTEND_BASE_URL.rstrip('/')}/frontend/login.html"
+async def _login_url(db: AsyncSession, id_municipio: Optional[int]) -> str:
+    """URL del login del shell del municipio (CTA de los mails internos). El super administrador
+    (sin municipio) recibe la de las direcciones sin prefijo."""
+    return await url_login_backoffice(db, id_municipio)
 
 
 @router.post("/recuperar-password", response_model=GenericoOkResponse,
@@ -347,7 +351,7 @@ async def recuperar_password(
         municipio_nombre, municipio_logo_url = await _branding_municipio(db, id_municipio)
     background_tasks.add_task(
         enviar_mail_recovery_usuario_interno,
-        row.email, row.nombre, token, _login_url(),
+        row.email, row.nombre, token, await _login_url(db, None if es_super else id_municipio),
         municipio_nombre, municipio_logo_url, es_super,
     )
     return GenericoOkResponse()
@@ -385,7 +389,7 @@ async def recuperar_usuario(
     municipio_nombre, municipio_logo_url = await _branding_municipio(db, id_municipio)
     background_tasks.add_task(
         enviar_mail_recordatorio_usuario_interno,
-        row.email_destino, row.nombre, _login_url(),
+        row.email_destino, row.nombre, await _login_url(db, id_municipio),
         municipio_nombre, municipio_logo_url,
     )
     return GenericoOkResponse()
@@ -469,8 +473,13 @@ async def actualizar_foto(
     """Persiste la URL del avatar subido (o la limpia si viene vacía).
     Solo afecta al propio usuario del token."""
     url = (body.foto_url or "").strip()
-    if url and not url.startswith(("http://", "https://")):
-        raise HTTPException(422, "foto_url debe ser una URL http(s) o vacía.")
+    # Solo su propio avatar, subido con /me/foto-upload-url: el vaciado borra después ese archivo y
+    # una URL ajena le haría borrar otro (revisión de F4+F5).
+    prefijo = storage.url_publica("", FOTO_BUCKET)
+    ruta = url[len(prefijo):] if url.startswith(prefijo) else ""
+    if url and not (storage.ruta_valida(ruta) and re.fullmatch(
+            rf"usuarios/{current_user['id_usuario']}/avatar-[0-9a-f-]+\.(png|jpe?g)", ruta)):
+        raise HTTPException(422, "La foto tiene que ser la que subiste desde tu perfil.")
     await db.execute(
         text("UPDATE usuarios SET foto_url = :u WHERE id_usuario = :id"),
         {"u": url or None, "id": current_user["id_usuario"]},

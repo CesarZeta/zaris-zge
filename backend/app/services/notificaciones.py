@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
+from app.core.urls import base_app
 from app.services.email import enviar_mail
 from app.utils.log_helpers import mask_email
 
@@ -124,7 +125,7 @@ async def _emitir_a_usuarios(
     if tramite is not None:
         recurso_id = tramite["id_tramite"]
         id_municipio = tramite.get("id_municipio")
-        url_absoluta = _url_absoluta_tramite(tramite["numero_expediente"])
+        url_absoluta = await _url_absoluta_tramite(db, id_municipio, tramite["numero_expediente"])
         cta_label = f"Abrir tramite {tramite['numero_expediente']}"
     if recurso_id is None or url_absoluta is None:
         logger.error("_emitir_a_usuarios sin recurso_id/url_absoluta (tipo=%s)", tipo_notif)
@@ -275,9 +276,9 @@ def _url_destino_tramite(numero_expediente: str) -> str:
     return f"#/tramites/{numero_expediente}"
 
 
-def _url_absoluta_tramite(numero_expediente: str) -> str:
-    base = settings.APP_BASE_URL.rstrip("/")
-    return f"{base}/#/tramites/{numero_expediente}"
+async def _url_absoluta_tramite(db: AsyncSession, id_municipio: Optional[int], numero_expediente: str) -> str:
+    base = await base_app(db, id_municipio, "zge")
+    return f"{base}/#/tramites/{numero_expediente}" if base else ""
 
 
 def _titulo_y_mensaje(evento: EventoTramite, tramite: dict) -> tuple[str, str]:
@@ -757,7 +758,7 @@ async def notificar_aviso_reclamo_a_supervision(
         if comentario:
             mensaje += f" Comentario: \"{comentario}\""
 
-        base = settings.APP_BASE_URL.rstrip("/")
+        base = await base_app(db, reclamo.id_municipio, "zge")
         creadas = await _emitir_a_usuarios(
             db, usuarios,
             tipo_notif="reclamo_aviso_supervisor",
@@ -865,7 +866,7 @@ async def notificar_alerta_panico(
                 mensaje += f" Denunciante: {evento.denunciante_nombre}."
             mensaje += f" Subárea: {evento.subarea_nombre}."
 
-            base = settings.APP_BASE_URL.rstrip("/")
+            base = await base_app(db, evento.id_municipio, "zge")
             url_abs = f"{base}/#/emergencias/evento/{id_evento}"
             html_body, text_body = _mail_body(titulo, mensaje, f"Ver evento {numero}", url_abs)
 
@@ -969,7 +970,7 @@ async def notificar_agente_nuevo(
             mensaje = (f"{nombre} se sumó a {gestion}. Completá su cargo, su horario y su "
                        "equipo en Maestros → Agentes para que pueda recibir órdenes de trabajo.")
             url_destino = f"frontend/admin_tablas.html?tabla=agentes&editar={ag.id_agente}"
-            base = settings.APP_BASE_URL.rstrip("/")
+            base = await base_app(db, ag.id_municipio, "zge")
             creadas = await _emitir_a_usuarios(
                 db, usuarios,
                 tipo_notif="agente_nuevo",

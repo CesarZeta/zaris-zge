@@ -21,9 +21,11 @@ from app.core.database import AsyncSessionLocal
 
 logger = logging.getLogger("zaris.accesos_super")
 
-# Mismo conjunto que el CHECK ck_super_admin_acceso_accion (mig 127b, ampliado en la 128).
+# Mismo conjunto que el CHECK ck_super_admin_acceso_accion (mig 127b, ampliado en la 128 y la 130).
 ACCIONES: tuple[str, ...] = ("login", "seleccion", "request", "historia_clinica", "config_global",
-                             "municipio_editar", "catalogo_global", "segundo_factor")
+                             "municipio_editar", "catalogo_global", "segundo_factor",
+                             "municipio_alta", "municipio_estado", "municipio_modulos", "exportacion",
+                             "vaciado", "super_alta", "super_baja")
 
 
 _INSERT = text("""

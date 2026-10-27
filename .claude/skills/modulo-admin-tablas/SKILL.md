@@ -76,3 +76,8 @@ description: "Usar al trabajar en el módulo Admin Tablas / CRUD genérico de ma
 - **Tablas globales** (`_TABLAS_GLOBALES`): las mutaciones son solo del super administrador (`_exigir_super_admin`, 403 «Acción exclusiva del super administrador») y cada una queda en el registro (`catalogo_global`). Hasta F2 las editaba el administrador del municipio base.
 - **`municipios`** (`_SOLO_SUPER_LECTURA`): la lee solo el super administrador y sus mutaciones dan 403 «Los municipios se editan desde el módulo Municipios», para que haya una sola vía de edición.
 - **`admin_tablas.html` manda `X-Municipio`** (el municipio del selector) en `_authHeaders` cuando la sesión es de super administrador.
+
+## Áreas fijas (IT-01 F4, 2026-10-27)
+
+- Cada municipio tiene 6 áreas fijas (`area.es_sistema = true`): se renombran, no se dan de baja. La API responde 422 «Es un área fija del sistema: se puede renombrar, no dar de baja.» al PUT con `activo: false` y al DELETE (`_rechazar_baja_area_fija` en `admin_tablas.py`), y un trigger (`area_sistema_no_baja`) lo impide también en la base. En Maestros → Áreas el botón «Baja» de esas filas sale deshabilitado con ese texto.
+- `configuracion_general` por POST genérico: lo usa Config → Sistema para crear una clave que el municipio no tiene.

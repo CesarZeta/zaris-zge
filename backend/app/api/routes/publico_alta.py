@@ -23,6 +23,7 @@ import re
 import uuid
 import html as _html
 from datetime import date, datetime, timedelta, timezone
+from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
@@ -34,11 +35,12 @@ from app.core.auth import hash_password, get_current_ciudadano
 from app.core.config import settings
 from app.core.config_municipio import leer_configs
 from app.core.database import get_db
-from app.core.municipio import municipio_por_slug, resolver_municipio_de_origen
+from app.core.municipio import municipio_de_slug_u_origen, municipio_por_slug, resolver_municipio_de_origen
 from app.core.urls import url_alta_publica, url_portal_vecino
 from app.middleware.rate_limit import check_rate_limit
 from app.utils.request_helpers import get_real_ip
 from app.api.routes.geo import geocodificar_direccion
+from app.services.municipios.defectos import id_tipo_representacion_defecto
 from app.services.email import (
     enviar_mail_verificacion_alta_ciudadano,
     enviar_mail_verificacion_alta_empresa,
@@ -159,9 +161,10 @@ def _pagina_confirmacion(
 # ─── endpoints ──────────────────────────────────────────────────────────────
 
 @router.get("/identidad", response_model=IdentidadAltaOut)
-async def identidad_alta(m: str, db: AsyncSession = Depends(get_db)):
-    """Branding del municipio para pintar el header de la página pública. Valida el slug."""
-    muni = await municipio_por_slug(db, m)
+async def identidad_alta(request: Request, m: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+    """Branding del municipio para pintar el header de la página pública. Valida el slug; sin
+    slug, el municipio del Origin (IT-01 F4)."""
+    muni = await municipio_de_slug_u_origen(db, request, m)
     cfg = await _branding(db, muni["id_municipio"])
     return IdentidadAltaOut(
         municipio_slug=muni["slug"],
@@ -169,17 +172,17 @@ async def identidad_alta(m: str, db: AsyncSession = Depends(get_db)):
         municipio_logo_url=cfg.get("municipio_logo_url"),
         municipio_color_primary=cfg.get("municipio_color_primary"),
         municipio_color_accent=cfg.get("municipio_color_accent"),
-        app_vecinos_url=url_portal_vecino() or None,
+        app_vecinos_url=await url_portal_vecino(db, muni["id_municipio"]) or None,
     )
 
 
 @router.get("/actividades")
-async def listar_actividades(m: str, db: AsyncSession = Depends(get_db)):
+async def listar_actividades(request: Request, m: Optional[str] = None, db: AsyncSession = Depends(get_db)):
     """
     Lista de actividades para el select de empresa de la página pública. Valida el slug.
     Público (sin JWT). Devuelve {actividades: [{id, descripcion}]}.
     """
-    await municipio_por_slug(db, m)
+    await municipio_de_slug_u_origen(db, request, m)
     res = await db.execute(
         text("""
             SELECT id, descripcion FROM actividades
@@ -191,9 +194,9 @@ async def listar_actividades(m: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/nacionalidades")
-async def listar_nacionalidades(m: str, db: AsyncSession = Depends(get_db)):
+async def listar_nacionalidades(request: Request, m: Optional[str] = None, db: AsyncSession = Depends(get_db)):
     """Catálogo de nacionalidades para el select del alta de ciudadano. Valida el slug."""
-    await municipio_por_slug(db, m)
+    await municipio_de_slug_u_origen(db, request, m)
     res = await db.execute(
         text("SELECT id, pais FROM nacionalidades WHERE activo IS NOT FALSE ORDER BY pais")
     )
@@ -203,7 +206,7 @@ async def listar_nacionalidades(m: str, db: AsyncSession = Depends(get_db)):
 @router.get("/geo/buscar")
 async def geo_buscar_publico(
     request: Request,
-    m: str,
+    m: Optional[str] = None,
     q: str = Query(..., min_length=3, description="Texto a geocodificar"),
     limit: int = Query(5, ge=1, le=10),
     db: AsyncSession = Depends(get_db),
@@ -213,7 +216,7 @@ async def geo_buscar_publico(
     Reusa la lógica de filtrado de POIs de geo.py (solo_direcciones=True).
     Valida el slug + rate-limit por IP (Nominatim ya tiene su rate-limit global).
     """
-    muni = await municipio_por_slug(db, m)
+    muni = await municipio_de_slug_u_origen(db, request, m)
     check_rate_limit(get_real_ip(request), max_requests=20, window_seconds=60)
     return await geocodificar_direccion(q, limit, solo_direcciones=True, id_municipio=muni["id_municipio"])
 
@@ -237,7 +240,7 @@ async def alta_cuenta(
     """
     check_rate_limit(get_real_ip(request), max_requests=RATE_MAX, window_seconds=RATE_WINDOW)
 
-    muni = await municipio_por_slug(db, data.municipio_slug)
+    muni = await municipio_de_slug_u_origen(db, request, data.municipio_slug)
     id_municipio = muni["id_municipio"]
     doc_nro = _validar_dni(_solo_digitos(data.doc_nro))
     email = data.email.lower().strip()
@@ -320,7 +323,7 @@ async def alta_cuenta(
         cta_url,
         cfg.get("municipio_nombre") or muni["nombre"],
         cfg.get("municipio_logo_url"),
-        portal_url=url_portal_vecino() or None,
+        portal_url=await url_portal_vecino(db, id_municipio) or None,
         id_municipio=id_municipio,
     )
 
@@ -423,7 +426,7 @@ async def activar_cuenta_existente(
     (idempotente: cuenta activada -> no toca nada; sin activar -> regenera token).
     """
     check_rate_limit(get_real_ip(request), max_requests=RATE_MAX, window_seconds=RATE_WINDOW)
-    muni = await municipio_por_slug(db, data.municipio_slug)
+    muni = await municipio_de_slug_u_origen(db, request, data.municipio_slug)
 
     doc_nro = _solo_digitos(data.doc_nro)
     if not (7 <= len(doc_nro) <= 8):
@@ -474,7 +477,7 @@ async def alta_empresa(
     """
     check_rate_limit(get_real_ip(request), max_requests=RATE_MAX, window_seconds=RATE_WINDOW)
 
-    muni = await municipio_por_slug(db, data.municipio_slug)
+    muni = await municipio_de_slug_u_origen(db, request, data.municipio_slug)
     id_municipio = ciudadano["id_municipio"]
     if muni["id_municipio"] != id_municipio:
         raise HTTPException(status_code=404, detail="Municipio no encontrado")
@@ -569,7 +572,7 @@ async def _insertar_empresa(db: AsyncSession, data: AltaEmpresaIn, id_ciudadano:
         {
             "id_ciudadano": id_ciudadano,
             "id_empresa": id_empresa,
-            "id_tipo": data.id_tipo_representacion,
+            "id_tipo": data.id_tipo_representacion or await id_tipo_representacion_defecto(db, id_municipio),
             "id_municipio": id_municipio,
         },
     )
@@ -659,7 +662,7 @@ async def verificar(request: Request, token: str, m: str | None = None, db: Asyn
             f"Listo, {nombre}. Tu correo quedó verificado. Ya podés iniciar sesión en el "
             f"Portal del Ciudadano con tu DNI y la contraseña que elegiste.",
             ok=True, municipio_nombre=municipio_nombre,
-            cta_url=url_portal_vecino() or None, cta_texto="Ir al Portal del Ciudadano",
+            cta_url=await url_portal_vecino(db, row.id_municipio) or None, cta_texto="Ir al Portal del Ciudadano",
         ))
 
     # ── Empresa ──
@@ -698,7 +701,7 @@ async def verificar(request: Request, token: str, m: str | None = None, db: Asyn
             "¡Empresa verificada!",
             f"El alta de {row.razon_social} quedó verificada correctamente.",
             ok=True, municipio_nombre=municipio_nombre,
-            cta_url=url_portal_vecino() or None, cta_texto="Ir al Portal del Ciudadano",
+            cta_url=await url_portal_vecino(db, row.id_municipio) or None, cta_texto="Ir al Portal del Ciudadano",
         ))
 
     return await _pagina_enlace_invalido(db, request, m)
@@ -727,7 +730,7 @@ async def _pagina_enlace_invalido(db: AsyncSession, request: Request, m: str | N
             "Este enlace de verificación no es válido o ya expiró. Si te diste de alta hace poco, "
             "volvé a la página de alta y pedí un nuevo correo de activación con tu DNI.",
             ok=False, municipio_nombre=municipio_nombre,
-            cta_url=url_alta_publica(slug_activo), cta_texto="Volver a la página de alta",
+            cta_url=await url_alta_publica(db, id_municipio), cta_texto="Volver a la página de alta",
         ),
         status_code=400,
     )

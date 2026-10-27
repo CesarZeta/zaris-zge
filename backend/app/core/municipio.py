@@ -17,6 +17,11 @@ Super administrador (IT-01 F3): `municipio_actual` es el ÚNICO lugar que lee el
 X-Municipio, y solo para `es_super_admin`; a cualquier otra cuenta se le ignora. Cada request
 válida del super administrador deja una fila en super_admin_acceso antes de que corra el handler.
 Plan: PLAN_MULTI_MUNICIPIO_F3.md, Tarea 3.
+
+Estado del municipio (IT-01 F4): solo los ESTADOS_OPERABLES resuelven por origen o por slug, entran
+en los procesos programados y dejan usar sus cuentas. El `modelo` lo opera solo el super (con
+X-Municipio, para curar sus catálogos); `baja` no lo opera nadie.
+Plan: PLAN_MULTI_MUNICIPIO_F4_F5.md, Tarea 5.
 """
 import logging
 import re
@@ -30,13 +35,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_ciudadano, get_current_user
 from app.core.database import get_db
+from app.services.municipios.constantes import ESTADOS_OPERABLES
 
 logger = logging.getLogger("zaris.municipio")
 
 _PATRON_HOST = re.compile(r"^(?P<sub>[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\.(?:zge|vecinos|agentes)\.zaris\.com\.ar$")
 _PATRON_ID = re.compile(r"^[0-9]{1,9}$")
 _TTL_SEGUNDOS = 60
-_cache: dict = {"vence": 0.0, "por_subdominio": {}, "base": None, "ids_activos": set()}
+_cache: dict = {"vence": 0.0, "por_subdominio": {}, "base": None, "ids_activos": set(), "estados": {}}
 HEADER_MUNICIPIO = "X-Municipio"
 
 
@@ -55,16 +61,23 @@ def subdominio_de_origen(origin: Optional[str]) -> Optional[str]:
 async def _municipios(db: AsyncSession) -> dict:
     if time.monotonic() >= _cache["vence"]:
         rows = (await db.execute(text(
-            "SELECT id_municipio, subdominio, direccion_base FROM municipios WHERE activo = TRUE"))).fetchall()
-        _cache["por_subdominio"] = {r.subdominio: r.id_municipio for r in rows if r.subdominio}
-        _cache["base"] = next((r.id_municipio for r in rows if r.direccion_base), None)
-        _cache["ids_activos"] = {r.id_municipio for r in rows}
+            "SELECT id_municipio, subdominio, direccion_base, estado FROM municipios"))).fetchall()
+        operables = [r for r in rows if r.estado in ESTADOS_OPERABLES]
+        _cache["estados"] = {r.id_municipio: r.estado for r in rows}
+        _cache["por_subdominio"] = {r.subdominio: r.id_municipio for r in operables if r.subdominio}
+        _cache["base"] = next((r.id_municipio for r in operables if r.direccion_base), None)
+        _cache["ids_activos"] = {r.id_municipio for r in operables}
         _cache["vence"] = time.monotonic() + _TTL_SEGUNDOS
     return _cache
 
 
 def invalidar_cache_municipios() -> None:
     _cache["vence"] = 0.0
+
+
+async def estado_municipio(db: AsyncSession, id_municipio: int) -> Optional[str]:
+    """Estado del municipio (cacheado como el resto), o None si no existe."""
+    return (await _municipios(db))["estados"].get(id_municipio)
 
 
 async def id_municipio_base(db: AsyncSession) -> Optional[int]:
@@ -74,10 +87,11 @@ async def id_municipio_base(db: AsyncSession) -> Optional[int]:
 
 async def por_cada_municipio(db: AsyncSession, proceso: str, fn) -> dict[int, Any]:
     """Procesos sin request (cron, dispatcher): corre `fn(id_municipio)` para cada
-    municipio activo, con su configuracion. Si uno falla se registra, se revierte lo
+    municipio operable (ESTADOS_OPERABLES), con su configuracion. Si uno falla se registra, se revierte lo
     suyo y se sigue con el siguiente. Devuelve {id_municipio: resultado | {"error": ...}}."""
     ids = [r[0] for r in (await db.execute(text(
-        "SELECT id_municipio FROM municipios WHERE activo = TRUE ORDER BY id_municipio"))).fetchall()]
+        "SELECT id_municipio FROM municipios WHERE estado = ANY(:e) ORDER BY id_municipio"),
+        {"e": list(ESTADOS_OPERABLES)})).fetchall()]
     resultados: dict[int, Any] = {}
     for id_m in ids:
         try:
@@ -111,14 +125,30 @@ async def municipio_de_origen(request: Request, db: AsyncSession = Depends(get_d
 
 
 async def municipio_por_slug(db: AsyncSession, slug: str) -> dict:
-    """{id_municipio, nombre, slug} del municipio activo con ese codigo_corto; 404 si no existe."""
+    """{id_municipio, nombre, slug} del municipio operable con ese codigo_corto; 404 si no existe
+    o si es el modelo o está de baja."""
     slug_norm = (slug or "").strip().lower()
     row = None
     if slug_norm:
         row = (await db.execute(text("""
             SELECT id_municipio, nombre, codigo_corto FROM municipios
-             WHERE LOWER(codigo_corto) = :slug AND activo = TRUE"""), {"slug": slug_norm})).fetchone()
+             WHERE LOWER(codigo_corto) = :slug AND estado = ANY(:e)"""),
+            {"slug": slug_norm, "e": list(ESTADOS_OPERABLES)})).fetchone()
     if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Municipio no encontrado")
+    return {"id_municipio": row.id_municipio, "nombre": row.nombre, "slug": row.codigo_corto}
+
+
+async def municipio_de_slug_u_origen(db: AsyncSession, request: Request, slug: Optional[str]) -> dict:
+    """Páginas públicas (IT-01 F4): `?m=<slug>` gana si viene (los links viejos con `?m=SAN` siguen
+    andando); si no, el municipio del Origin. {id_municipio, nombre, slug}; 404 si no hay."""
+    if (slug or "").strip():
+        return await municipio_por_slug(db, slug)
+    id_mun = await resolver_municipio_de_origen(request, db)
+    row = (await db.execute(text(
+        "SELECT id_municipio, nombre, codigo_corto FROM municipios WHERE id_municipio = :m"),
+        {"m": id_mun})).fetchone()
+    if not row or not row.codigo_corto:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Municipio no encontrado")
     return {"id_municipio": row.id_municipio, "nombre": row.nombre, "slug": row.codigo_corto}
 
@@ -136,7 +166,8 @@ async def municipio_actual(request: Request, current_user: dict = Depends(get_cu
     if not _PATRON_ID.match(crudo):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Municipio inválido")
     id_mun = int(crudo)
-    if id_mun not in (await _municipios(db))["ids_activos"]:
+    # El super opera los municipios operables y el modelo (para curar sus catálogos); no los de baja.
+    if (await _municipios(db))["estados"].get(id_mun) not in ESTADOS_OPERABLES | {"modelo"}:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Municipio no encontrado")
     from app.services.accesos_super import registrar_acceso_super
     from app.utils.request_helpers import get_real_ip

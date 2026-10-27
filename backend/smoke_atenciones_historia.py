@@ -128,7 +128,7 @@ SELECT 'F5', CAST(:n AS text), CAST(:u AS text) || '@municipio.gob.ar',
        (SELECT s.id_subarea FROM subarea s
          WHERE s.activo AND lower(s.nombre) = 'emergencias'
            AND s.id_area = (SELECT NULLIF(TRIM(valor), '')::int FROM configuracion_general
-                             WHERE clave = 'id_area_salud' AND activo)
+                             WHERE clave = 'id_area_salud' AND activo AND id_municipio = 1)
          ORDER BY s.id_subarea LIMIT 1),
        u.id_usuario, TRUE, 4, 1
   FROM usuarios u WHERE u.username = CAST(:u AS text)
@@ -136,13 +136,13 @@ SELECT 'F5', CAST(:n AS text), CAST(:u AS text) || '@municipio.gob.ar',
 """
 SQL_VINCULO_GUARDIA = """
 INSERT INTO espacio_agentes (id_espacio, id_agente, activo, id_municipio)
-SELECT (SELECT NULLIF(TRIM(valor), '')::int FROM configuracion_general WHERE clave = 'id_espacio_guardia' AND activo),
+SELECT (SELECT NULLIF(TRIM(valor), '')::int FROM configuracion_general WHERE clave = 'id_espacio_guardia' AND activo AND id_municipio = 1),
        a.id_agente, TRUE, 1
   FROM agentes a JOIN usuarios u ON u.id_usuario = a.id_usuario
  WHERE u.username = 'f5medico'
    AND NOT EXISTS (SELECT 1 FROM espacio_agentes ea WHERE ea.id_agente = a.id_agente
                      AND ea.id_espacio = (SELECT NULLIF(TRIM(valor), '')::int FROM configuracion_general
-                                           WHERE clave = 'id_espacio_guardia' AND activo))
+                                           WHERE clave = 'id_espacio_guardia' AND activo AND id_municipio = 1))
 """
 SQL_VERIF_F5 = """
 SELECT u.email, u.nivel_acceso, g.id_agente, g.id_subarea, s.id_area
@@ -158,13 +158,13 @@ async def precondiciones() -> dict:
     """Aborta si faltan las migs 107/107b (tabla, clave activa, area activa)."""
     print("== Precondiciones (migs 107 + 107b en local)")
     reg = await q1("SELECT to_regclass('public.historia_clinica_acceso') AS r")
-    clave = await q1("SELECT valor, tipo, activo FROM configuracion_general WHERE clave = 'id_area_salud'")
+    clave = await q1("SELECT valor, tipo, activo FROM configuracion_general WHERE clave = 'id_area_salud' AND id_municipio = 1")
     area = await q1("""
         SELECT a.id_area, a.nombre, a.activo FROM configuracion_general cg
           JOIN area a ON a.id_area = CASE WHEN TRIM(cg.valor) ~ '^[0-9]+$' THEN TRIM(cg.valor)::int END
-         WHERE cg.clave = 'id_area_salud'
+         WHERE cg.clave = 'id_area_salud' AND cg.id_municipio = 1
     """)
-    guardia = await q1("SELECT valor FROM configuracion_general WHERE clave = 'id_espacio_guardia' AND activo")
+    guardia = await q1("SELECT valor FROM configuracion_general WHERE clave = 'id_espacio_guardia' AND activo AND id_municipio = 1")
     print(f"   to_regclass(historia_clinica_acceso) = {reg and reg['r']}")
     print(f"   id_area_salud = {clave} -> area {area}")
     print(f"   id_espacio_guardia = {guardia and guardia['valor']}")
@@ -588,7 +588,7 @@ async def main() -> int:
 
         # 20. clave desactivada (try/finally SIEMPRE restaura)
         try:
-            n = await exec_commit("UPDATE configuracion_general SET activo = FALSE WHERE clave = 'id_area_salud'")
+            n = await exec_commit("UPDATE configuracion_general SET activo = FALSE WHERE clave = 'id_area_salud' AND id_municipio = 1")
             if n != 1:
                 print(f"   (aviso: el UPDATE de desactivacion afecto {n} filas)")
             st, p, m = await permiso(c, admin)
@@ -603,8 +603,8 @@ async def main() -> int:
             check("20d. clave inactiva: permiso f5medico -> (False, 'sin_config')",
                   st == 200 and p is False and m == "sin_config", f"({st}, {p}, {m})")
         finally:
-            await exec_commit("UPDATE configuracion_general SET activo = TRUE WHERE clave = 'id_area_salud'")
-            rest = await q1("SELECT activo, valor FROM configuracion_general WHERE clave = 'id_area_salud'")
+            await exec_commit("UPDATE configuracion_general SET activo = TRUE WHERE clave = 'id_area_salud' AND id_municipio = 1")
+            rest = await q1("SELECT activo, valor FROM configuracion_general WHERE clave = 'id_area_salud' AND id_municipio = 1")
             check("20e. finally: clave id_area_salud restaurada (activo=TRUE, mismo valor)",
                   bool(rest) and rest["activo"] is True and str(rest["valor"]).strip() == str(cfg["id_area_salud"]),
                   f"({rest})")

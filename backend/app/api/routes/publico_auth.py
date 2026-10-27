@@ -31,6 +31,7 @@ from app.core.config import settings
 from app.core.config_municipio import leer_configs
 from app.core.database import get_db
 from app.core.municipio import municipio_actual, resolver_municipio_de_origen
+from app.core.urls import base_app
 from app.services.email import (
     enviar_mail_activacion_ciudadano,
     enviar_mail_recovery_ciudadano,
@@ -242,7 +243,7 @@ async def registrar_ciudadano(
         data.apellido.strip(),
         token,
         municipio_nombre,
-        settings.APP_VECINOS_FRONTEND_URL,
+        await base_app(db, id_municipio, "vecinos"),
         municipio_logo_url,
         id_municipio=id_municipio,
     )
@@ -373,7 +374,7 @@ async def reenviar_activacion(
         row.apellido,
         token,
         municipio_nombre,
-        settings.APP_VECINOS_FRONTEND_URL,
+        await base_app(db, id_municipio, "vecinos"),
         municipio_logo_url,
         id_municipio=id_municipio,
     )
@@ -554,7 +555,7 @@ async def recuperar_password(
         row.apellido,
         token,
         municipio_nombre,
-        settings.APP_VECINOS_FRONTEND_URL,
+        await base_app(db, id_municipio, "vecinos"),
         municipio_logo_url,
         id_municipio=id_municipio,
     )

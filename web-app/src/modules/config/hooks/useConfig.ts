@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   actualizarConfigParam,
+  crearConfigParam,
   actualizarModulo,
   getIdentidad,
   listarConfigGeneral,
@@ -11,7 +12,7 @@ import {
   verPermisosUsuario,
   type IdentidadUpdate,
 } from '../api/configApi'
-import type { OverrideIn } from '../types/config'
+import type { ModuloCambio, OverrideIn } from '../types/config'
 
 const HORA = 60 * 60 * 1000
 
@@ -27,8 +28,8 @@ export function useModulosCatalogo() {
 export function useActualizarModulo() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ codigo, min_nivel_acceso }: { codigo: string; min_nivel_acceso: number }) =>
-      actualizarModulo(codigo, min_nivel_acceso),
+    mutationFn: ({ codigo, ...cambio }: { codigo: string } & ModuloCambio) =>
+      actualizarModulo(codigo, cambio),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['config'] }),
   })
 }
@@ -88,8 +89,9 @@ export function useConfigGeneral() {
 export function useActualizarConfigParam() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id_config, valor }: { id_config: number; valor: string }) =>
-      actualizarConfigParam(id_config, valor),
+    // id_config 0 = la clave no existe en el municipio: se crea con su tipo.
+    mutationFn: ({ id_config, valor, clave, tipo }: { id_config: number; valor: string; clave?: string; tipo?: string }) =>
+      id_config === 0 && clave ? crearConfigParam(clave, valor, tipo ?? 'string') : actualizarConfigParam(id_config, valor),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['config', 'general'] }),
   })
 }

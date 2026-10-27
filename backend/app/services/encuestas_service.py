@@ -77,8 +77,13 @@ def _now() -> datetime:
 # =============================================================================
 
 async def encuestas_estan_activas(db: AsyncSession, *, id_municipio: int) -> bool:
-    """Lee encuestas_activas del municipio. False si no existe o != 'true'."""
+    """Lee encuestas_activas del municipio. False si no existe o != 'true', o si el módulo
+    `encuestas` está deshabilitado en el municipio (IT-01 F4). Es la guarda de todos los disparos
+    de envíos (reclamo, turno, entrada, trámite)."""
     try:
+        from app.services.municipios.modulos import modulo_esta_habilitado
+        if not await modulo_esta_habilitado(db, id_municipio, "encuestas"):
+            return False
         valor = await leer_config(db, "encuestas_activas", id_municipio)
         return valor is not None and str(valor).strip().lower() == "true"
     except Exception as e:
@@ -523,17 +528,16 @@ async def _branding(db: AsyncSession, id_municipio: int) -> dict:
     }
 
 
-def _absolutizar_url(u: str) -> str:
+def _absolutizar_url(u: str, base: str) -> str:
     """Devuelve una URL absoluta para usar en un email. Si `u` ya es absoluta
-    (http/https) la devuelve tal cual; si es relativa la prefija con
-    FRONTEND_BASE_URL. Vacío → vacío (el template oculta el <img>)."""
+    (http/https) la devuelve tal cual; si es relativa la prefija con `base` (el shell
+    del municipio, core/urls.base_app). Vacío → vacío (el template oculta el <img>)."""
     u = (u or "").strip()
     if not u:
         return ""
-    if u.startswith("http://") or u.startswith("https://"):
+    if u.startswith(("http://", "https://")):
         return u
-    base = settings.FRONTEND_BASE_URL.rstrip("/")
-    return f"{base}/{u.lstrip('/')}"
+    return f"{base}/{u.lstrip('/')}" if base else ""
 
 
 def _fmt_fecha(dt: Optional[datetime]) -> str:
@@ -845,12 +849,17 @@ async def enviar_email_encuesta(db: AsyncSession, id_encuesta_envio: int) -> boo
                         id_encuesta_envio, env["estado"])
             return False
 
-        url = f"{settings.FRONTEND_BASE_URL}/frontend/encuesta.html?token={env['token_unico']}"
+        from app.core.urls import base_app
+        shell = await base_app(db, env["id_municipio"], "zge")
+        if not shell:
+            logger.warning("enviar_email: envio=%s sin dirección del municipio, skip", id_encuesta_envio)
+            return False
+        url = f"{shell}/frontend/encuesta.html?token={env['token_unico']}"
         brand = await _branding(db, env["id_municipio"])
         # El logo del municipio puede estar guardado como ruta relativa
         # (ej. '/design-system/assets/...'). En un cliente de email NO hay origen,
         # así que hay que entregar una URL absoluta o el <img> queda roto.
-        logo_url = _absolutizar_url(brand["logo_url"])
+        logo_url = _absolutizar_url(brand["logo_url"], shell)
         if env["id_tramite"] is not None:
             asunto, html, texto = _render_email_tramite(
                 nombre_ciudadano=env["nombre_ciudadano"],

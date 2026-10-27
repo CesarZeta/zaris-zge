@@ -14,6 +14,19 @@ import type { ConfigParam } from '../api/configApi'
 
 type Control = 'toggle' | 'number' | 'text' | 'color'
 
+// Valor que usa el backend cuando la clave falta, y su tipo (docs/guia_arranque_tablas.md, anexo A).
+const DEFECTOS: Record<string, [string, 'boolean' | 'integer' | 'string']> = {
+  encuestas_activas: ['false', 'boolean'],
+  encuestas_antifatiga_activo: ['true', 'boolean'],
+  reclamos_asignacion_automatica: ['false', 'boolean'],
+  auditor_misma_subarea_permitido: ['false', 'boolean'],
+  geo_bbox_centro_lat: ['', 'string'],
+  geo_bbox_centro_lon: ['', 'string'],
+  geo_bbox_delta_grados: ['', 'string'],
+  id_espacio_guardia: ['', 'integer'],
+  id_area_salud: ['', 'integer'],
+}
+
 interface ParamMeta {
   clave: string
   label: string
@@ -164,6 +177,12 @@ export function ParametrosSistemaView() {
   }
 
   const porClave = new Map(params.map((p) => [p.clave, p]))
+  // Una clave que el municipio no tiene se muestra con su valor por defecto (el que usa el backend
+  // cuando falta) y se crea al guardarla: antes la pantalla la ocultaba.
+  const conDefecto = (meta: ParamMeta): ConfigParam => porClave.get(meta.clave) ?? {
+    id_config: 0, clave: meta.clave, valor: DEFECTOS[meta.clave]?.[0] ?? '', tipo: DEFECTOS[meta.clave]?.[1] ?? 'string',
+    descripcion: null, activo: true,
+  }
 
   // Claves presentes en DB que no están en ninguna sección ni ocultas.
   const otras = params.filter(
@@ -177,9 +196,7 @@ export function ParametrosSistemaView() {
       </p>
 
       {SECCIONES.map((sec) => {
-        const filas = sec.claves
-          .map((meta) => ({ meta, param: porClave.get(meta.clave) }))
-          .filter((f): f is { meta: ParamMeta; param: ConfigParam } => !!f.param)
+        const filas = sec.claves.map((meta) => ({ meta, param: conDefecto(meta) }))
         if (filas.length === 0) return null
         return (
           <SeccionCard key={sec.id} seccion={sec}>
@@ -271,7 +288,7 @@ function ParamRow({ meta, param }: { meta: ParamMeta; param: ConfigParam }) {
 
   const guardar = (nuevo: string) => {
     mut.mutate(
-      { id_config: param.id_config, valor: nuevo },
+      { id_config: param.id_config, valor: nuevo, clave: param.clave, tipo: param.tipo },
       { onSuccess: () => { setSavedFlash(true); setTimeout(() => setSavedFlash(false), 1500) } },
     )
   }
@@ -290,6 +307,11 @@ function ParamRow({ meta, param }: { meta: ParamMeta; param: ConfigParam }) {
         <code style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'var(--fg-3)', opacity: 0.7 }}>
           {param.clave}
         </code>
+        {param.id_config === 0 && (
+          <div data-sin-cargar style={{ fontSize: '0.74rem', color: 'var(--fg-3)', marginTop: 2 }}>
+            No está cargada: vale el valor por defecto. Se crea al guardarla.
+          </div>
+        )}
       </div>
 
       <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10 }}>

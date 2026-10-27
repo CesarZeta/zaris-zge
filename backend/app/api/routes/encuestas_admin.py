@@ -724,6 +724,10 @@ async def ejecutar_dispatcher(
     try:
         # Por municipio (IT-01): cada uno con sus envios; un fallo no frena a los demas.
         async def _uno(id_m: int) -> dict:
+            # Sin el módulo encuestas habilitado (IT-01 F4), el municipio no se procesa.
+            from app.services.municipios.modulos import modulo_esta_habilitado
+            if not await modulo_esta_habilitado(db, id_m, "encuestas"):
+                return {"omitido": "módulo encuestas deshabilitado"}
             envios = await svc.procesar_envios_pendientes(db, id_municipio=id_m, limite=50)
             return {"envios": envios, "expirados": await svc.expirar_envios_vencidos(db, id_municipio=id_m)}
 

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config_municipio import leer_configs
 from app.core.database import get_db
 from app.core.municipio import municipio_de_origen
+from app.services.municipios.modulos import modulos_habilitados
 from app.core.urls import url_alta_publica
 from app.schemas.publico_auth import IdentidadMunicipioOut
 
@@ -42,7 +43,7 @@ async def identidad_municipio(
 
     # URL del alta publica de vecinos: dominio del shell + slug del municipio.
     # Sin slug -> None y la PWA no muestra el link (fail-silent).
-    url_alta = url_alta_publica(muni.codigo_corto if muni else None)
+    url_alta = await url_alta_publica(db, id_municipio)
 
     return IdentidadMunicipioOut(
         municipio_nombre=cfg.get("municipio_nombre") or (muni.nombre if muni else None),
@@ -51,4 +52,5 @@ async def identidad_municipio(
         municipio_color_primary=cfg.get("municipio_color_primary"),
         municipio_color_accent=cfg.get("municipio_color_accent"),
         url_alta_publica=url_alta,
+        modulos_habilitados=sorted(await modulos_habilitados(db, id_municipio)),
     )
