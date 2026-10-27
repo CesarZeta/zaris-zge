@@ -1,36 +1,32 @@
 # Inventario para el municipio modelo
 
-Generado por `backend/crear_municipio_modelo.py --inventario` sobre el municipio base (Municipio Demo).
-Solo catálogos (grupos `maestros` y `configuracion`): no hay datos personales. Las filas inactivas
-nunca se copian. Se proponen descartar los nombres que parecen de prueba (test, prueba, qa, demo, borrar, smoke).
+IT-01 F4+F5, Tarea 12. Relevado el 2026-10-27 sobre San Andrés en prod (solo lectura). Solo
+catálogos (grupos `maestros` y `configuracion`): no hay datos personales. Las filas inactivas nunca se
+copian. El modelo no es lo que recibe cada municipio: en cada alta el super elige con casillas qué
+catálogos copia del modelo.
 
-| Tabla | Grupo | Activas | Inactivas (no se copian) | A copiar | A descartar | Nota |
-|---|---|---|---|---|---|---|
-| `agenda_clase` | maestros | 4 | 1 | 4 | — |  |
-| `agenda_feriado` | maestros | 12 | 0 | 12 | — |  |
-| `area` | maestros | 6 | 50 | 6 | — | las 6 áreas fijas se copian siempre |
-| `cargos` | maestros | 132 | 1 | 132 | — |  |
-| `emergencia_canal_ingreso` | maestros | 2 | 0 | 2 | — |  |
-| `emergencia_organismo_derivacion` | maestros | 12 | 0 | 12 | — |  |
-| `emergencia_prioridad` | maestros | 3 | 0 | 3 | — |  |
-| `emergencia_subtipo` | maestros | 147 | 0 | 147 | — |  |
-| `emergencia_tipo` | maestros | 50 | 1 | 50 | — |  |
-| `encuesta_opcion` | maestros | 19 | 0 | 19 | — |  |
-| `encuesta_plantilla` | maestros | 4 | 0 | 4 | — |  |
-| `encuesta_pregunta` | maestros | 17 | 0 | 17 | — |  |
-| `equipos` | maestros | 10 | 10 | 8 | «Equipo Demo Mantenimiento»; «Mesa prueba UI T17» |  |
-| `espacios_agenda` | maestros | 7 | 1 | 7 | — |  |
-| `lugares_atencion` | maestros | 5 | 0 | 5 | — |  |
-| `servicios` | maestros | 5 | 1 | 5 | — |  |
-| `subarea` | maestros | 64 | 19 | 62 | «SMOKE96 SubA»; «SMOKE96 SubB» |  |
-| `tipo_prestacion` | maestros | 6 | 7 | 4 | «SMOKE95 prestacion»; «SMOKE96 prest B» |  |
-| `tipo_reclamo` | maestros | 283 | 6 | 282 | «SMOKE96 tipo B» |  |
-| `tipo_tramite` | maestros | 9 | 1 | 9 | — |  |
-| `tipo_tramite_aprobacion_requerida` | maestros | 0 | 0 | 0 | — |  |
-| `tipo_tramite_campo` | maestros | 53 | 0 | 53 | — |  |
-| `tipo_tramite_documento_requerido` | maestros | 23 | 0 | 23 | — |  |
-| `tipo_tramite_estado` | maestros | 66 | 1 | 66 | — |  |
-| `tipo_tramite_transicion` | maestros | 61 | 0 | 61 | — |  |
-| `tipo_tramite_version` | maestros | 11 | 3 | 11 | — |  |
-| `configuracion_general` | configuracion | 27 | 1 | 27 | — | se copia siempre (todas las claves, pisadas por la identidad del alta) |
-| `municipio_modulo` | configuracion | 16 | 0 | 16 | — |  |
+## Decisión de César (2026-10-27): genéricos + trámites
+
+| Catálogo | Filas activas en prod | Al modelo |
+|---|---|---|
+| Áreas fijas (`area`, `es_sistema`) y subáreas (`subarea`) | 6 + 62 | sí |
+| Cargos (`cargos`) | 131 | sí |
+| Tipos de reclamo (`tipo_reclamo`) | 282 | sí |
+| Emergencias (`emergencia_tipo`, `_subtipo`, `_organismo_derivacion`, `_prioridad`, `_canal_ingreso`) | 50 · 147 · 12 · 3 · 2 | sí |
+| Encuestas (`encuesta_plantilla`, `_pregunta`, `_opcion`) | 4 · 17 · 19 | sí |
+| Clases de agenda (`agenda_clase`) | 4 | sí |
+| Feriados (`agenda_feriado`) | 12 | sí |
+| Configuración (`configuracion_general`) | 28 | sí (todas las claves; el alta las pisa con la identidad del municipio) |
+| Tipos de trámite (`tipo_tramite` y sus versiones, campos, estados, transiciones, documentos y aprobaciones) | 15 | sí, menos «Permiso de Demostracion E2E» |
+| Espacios (`espacios_agenda`) | 8 | no: propios de San Andrés |
+| Lugares de atención (`lugares_atencion`) | 5 | no: propios de San Andrés |
+| Servicios (`servicios`) | 5 | no: propios de San Andrés |
+| Prestaciones (`tipo_prestacion`) | 5 | no: dependen de los espacios |
+| Equipos (`equipos`) | 7 | no: propios de San Andrés (incluye «Equipo Demo Mantenimiento») |
+
+Sin el espacio «Guardia», el municipio nuevo arma el suyo al configurar la Guardia (la clave
+`id_espacio_guardia` queda vacía y la Guardia no se ofrece hasta configurarla).
+
+Las exclusiones que aplica `backend/crear_municipio_modelo.py --aplicar` están en
+`backend/municipio_modelo_exclusiones.json`. `--inventario` imprime el relevamiento sin pisar este
+documento (con `--salida <archivo>` lo escribe en otro lado).

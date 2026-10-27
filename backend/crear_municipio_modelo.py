@@ -5,7 +5,8 @@ Municipio modelo (IT-01 F4+F5, PLAN_MULTI_MUNICIPIO_F4_F5.md, Tarea 12).
     python crear_municipio_modelo.py --inventario
         Por cada tabla de grupo `maestros` y `configuracion` del municipio de las direcciones sin
         prefijo: filas activas, cuántas se copiarían y cuáles se proponen descartar (nombres de
-        prueba). Escribe docs/municipio_modelo_inventario.md (sin datos personales: solo catálogos).
+        prueba). Sin datos personales: solo catálogos. Con --salida <archivo> lo escribe ahí (la
+        decisión de César vive en docs/municipio_modelo_inventario.md y no se pisa).
 
     python crear_municipio_modelo.py --aplicar --excluir <archivo>
         Crea «Modelo ZARIS» (estado modelo) y copia los catálogos aprobados (Tarea 12, paso 2).
@@ -34,7 +35,6 @@ from app.core.database import AsyncSessionLocal  # noqa: E402
 
 DE_PRUEBA = re.compile(r"(?i)\b(test|prueba|qa|demo|borrar)\b|smoke|aislab")
 COLUMNAS_NOMBRE = ("nombre", "descripcion", "titulo", "etiqueta", "texto", "pregunta", "clave")
-SALIDA = AQUI.parent / "docs" / "municipio_modelo_inventario.md"
 
 
 async def _columnas(db, tabla: str) -> set[str]:
@@ -43,7 +43,7 @@ async def _columnas(db, tabla: str) -> set[str]:
         {"t": tabla})).all()}
 
 
-async def inventario() -> int:
+async def inventario(salida: Path | None) -> int:
     async with AsyncSessionLocal() as db:
         base, nombre_base = (await db.execute(text(
             "SELECT id_municipio, nombre FROM municipios WHERE direccion_base"))).one()
@@ -90,9 +90,10 @@ async def inventario() -> int:
     for tabla, grupo, total, inactivas, copiar, descartes, nota in filas_md:
         desc = "; ".join(f"«{d}»" for d in descartes[:12]) + (f" (y {len(descartes) - 12} más)" if len(descartes) > 12 else "")
         lineas.append(f"| `{tabla}` | {grupo} | {total} | {inactivas} | {copiar} | {desc or '—'} | {nota} |")
-    SALIDA.write_text("\n".join(lineas) + "\n", encoding="utf-8")
     print("\n".join(lineas))
-    print(f"\nEscrito: {SALIDA}")
+    if salida:
+        salida.write_text("\n".join(lineas) + "\n", encoding="utf-8")
+        print(f"\nEscrito: {salida}")
     return 0
 
 
@@ -101,9 +102,10 @@ def main() -> int:
     ap.add_argument("--inventario", action="store_true")
     ap.add_argument("--aplicar", action="store_true")
     ap.add_argument("--excluir", type=Path)
+    ap.add_argument("--salida", type=Path)
     args = ap.parse_args()
     if args.inventario:
-        return asyncio.run(inventario())
+        return asyncio.run(inventario(args.salida))
     if args.aplicar:
         sys.exit("--aplicar llega con la Tarea 12, paso 2 (después de la aprobación del inventario).")
     ap.print_help()
