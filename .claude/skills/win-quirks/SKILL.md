@@ -1,16 +1,18 @@
 ---
 name: win-quirks
-description: Recetas de build del bundle React (web-app/dist) y de operar el entorno local en Windows/PowerShell. Usar al buildear/commitear web-app/dist/, levantar servers locales (http.server, uvicorn, pnpm dev), correr psql, lanzar procesos detached con Start-Process, o diagnosticar redirects rotos bajo el subpath /zaris-zge/. Cubre los quirks que rompen silenciosamente en Windows (Start-Process con .cmd, localhost vs 127.0.0.1 para CORS, http.server zombie, etc.).
+description: Recetas de build del bundle React (web-app/dist) y de operar el entorno local en Windows/PowerShell. Usar al buildear web-app/dist/ en local, levantar servers locales (http.server, uvicorn, pnpm dev), correr psql, lanzar procesos detached con Start-Process, o diagnosticar redirects rotos bajo el subpath /zaris-zge/. Cubre los quirks que rompen silenciosamente en Windows (Start-Process con .cmd, localhost vs 127.0.0.1 para CORS, http.server zombie, etc.).
 ---
 
 # Build de `web-app/dist/` y entorno local (Windows/PowerShell)
 
 Recetas operativas verificadas. Muchas tienen memoria asociada (`[[...]]`) con el detalle del caso real.
 
+> **Desde el 2026-10-27 (corte A de IT-01 F4+F5) `web-app/dist/` NO se commitea:** lo buildea Cloudflare Pages en cada push (`tools/cloudflare_pages_build.sh`, [`docs/cloudflare_pages.md`](../../../docs/cloudflare_pages.md)). GitHub Pages y el workflow `deploy-web-app.yml` ya no existen: Q14, Q18 y Q22 quedan como historia.
+
 ## Build / dist
 
-- **Q1 — `pnpm build` toma `VITE_API_BASE` del shell por sobre los `.env`.** Antes de commitear `dist/`, buildear en terminal limpia modo prod (default) y verificar `grep -o 'zaris-api-production' web-app/dist/assets/index-*.js` da match (no `127.0.0.1`). Ver Q14.
-- **Q2 — `dist/index.html` tiene `base: '/zaris-zge/...'`** (GH Pages). Abrirlo directo en `localhost:8080` da assets 404. Para probar la integración shell+bundle local, levantar un server que sirva el repo bajo `/zaris-zge/` ([[project_proxy_local_zaris_zge]]).
+- **Q1 — `pnpm build` toma `VITE_API_BASE` del shell por sobre los `.env`.** Al buildear `dist/` en local para probar contra prod, hacerlo en terminal limpia modo prod (default) y verificar `grep -o 'zaris-api-production' web-app/dist/assets/index-*.js` da match (no `127.0.0.1`). Ver Q14.
+- **Q2 — `dist/index.html` tiene `base: '/web-app/dist/'`** (absoluto, raíz del dominio). Servido desde la raíz del repo (`python -m http.server 8080`) anda; bajo un subpath no. El proxy `/zaris-zge/` ([[project_proxy_local_zaris_zge]]) era para GitHub Pages.
 - **Q6 — usar `node_modules/.bin/vite` o `pnpm build`, NUNCA `npx vite`** (baja otra versión y rompe el build PostCSS).
 - **Q7 — favicon/title del scaffold Vite**: antes del 1er push a prod de un módulo React, en `web-app/index.html` `<title>` = "ZARIS · …" y `<link rel="icon">` = `/zaris-favicon.svg`; `web-app/public/` solo `zaris-favicon.svg` (sin `vite.svg`/`favicon.svg`).
 - **Q14 — `vite build` compila el WORKING TREE, no lo staged.** Commitear fuentes primero, rebuildear con el tree acotado, commitear dist (o todo junto). Stash lo ajeno antes de rebuildear. [[feedback_rebuild_dist_working_tree_limpio]].
