@@ -1,0 +1,8 @@
+{
+  "_decision": "César, 2026-10-27: el modelo lleva genéricos + trámites (docs/municipio_modelo_inventario.md).",
+  "tablas": ["espacios_agenda", "lugares_atencion", "servicios", "tipo_prestacion", "equipos"],
+  "nombres": {
+    "tipo_tramite": ["Permiso de Demostracion E2E"],
+    "equipos": ["Equipo Demo Mantenimiento"]
+  }
+}
