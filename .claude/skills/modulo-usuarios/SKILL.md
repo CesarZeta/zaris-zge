@@ -78,3 +78,9 @@ Un funcionario existe PRIMERO como persona en la BUC (`ciudadanos.es_funcionario
   - Queda en «Registro del super administrador» como «Segundo factor», en la misma transacción.
   - Un administrador no puede restablecer a otro. El nivel 0 se restablece con `backend/habilitar_segundo_factor.py`.
 - **El secreto no está en `usuarios`:** vive cifrado en `usuario_segundo_factor`. Un `SELECT` nuevo de usuarios no lo trae.
+
+## Tope de cuentas e invitación (IT-01 F4, 2026-10-27)
+
+- **Tope:** `municipios.max_usuarios_activos` (NULL = sin tope). `exigir_cupo` (`services/municipios/tope.py`) va dentro de `crear_usuario_interno` y de la reactivación (`PUT /buc/usuarios/{id}/estado`): toma la fila del municipio con `FOR UPDATE` (dos altas a la vez se serializan) y da 409 «El municipio llegó al tope de {M} cuentas activas…». Cuentan los usuarios activos de nivel 1 a 5; no cuentan el super ni los vecinos. Bajar el tope no desactiva a nadie. `GET /buc/usuarios/cupo` → `{activas, maximo, aviso}`; Usuarios muestra «N de M cuentas activas.» (color de aviso desde el 90 %). **Toda vía nueva que cree o reactive una cuenta interna llama a `exigir_cupo`.**
+- **Invitación** (primer administrador de un municipio y super administradores): `usuario_invitacion` guarda el sha256 del token; vale 72 h y una vez; una nueva anula las anteriores. El link va a `<sub>.zge.zaris.com.ar/frontend/invitacion.html?t=…`; aceptarla fija la clave y habilita la vinculación del segundo factor (24 h). Un token de largo inválido da 401 con el texto fijo, no 422. Reenvío: `POST /super/usuarios/{id}/invitacion`.
+- **Administrador principal** = el primer nivel 1 del municipio por `fecha_alta`: el vaciado nunca lo toca (ni a su agente, ficha, subárea ni sus filas de cuenta).

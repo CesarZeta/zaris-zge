@@ -111,3 +111,10 @@ Tres pendientes del traspaso de la PWA cerrados en una sola entrega (contrato: `
 - **SQL con `text()`**: `CAST(:token AS uuid)` no `:token::uuid` ([[feedback_sqlalchemy_cast_uuid]]); `INTERVAL` con duración variable → f-string literal, no bind param ([[feedback_asyncpg_extract_cast_date]]).
 - Mail de activación corre en `BackgroundTask` post-commit (patrón §35); sin Resend key → modo MOCK.
 - Smoke: `backend/smoke_publico_auth.py` (15 pasos, 15/15 OK 2026-05-19).
+
+## Links e identidad por municipio (IT-01 F4, 2026-10-27)
+
+- Todo link de un mail, aviso o push al vecino se arma con `base_app(db, id_municipio, "vecinos")` (o los helpers de `app/core/urls.py`): `https://<sub>.vecinos.zaris.com.ar`, sin prefijo para el municipio de `direccion_base`. `tools/barrido_links_mail.py` falla si aparece uno armado a mano.
+- La identidad pública (`/publico/identidad-municipio`, `/config/identidad`) trae `modulos_habilitados`: la PWA oculta las tarjetas de los módulos que el municipio no tiene (y el botón SOS sin `emergencias`).
+- El alta pública (`alta-vecino.html`, `/publico/alta/*`) resuelve el municipio por el `Origin` cuando no viene `?m=`.
+- Un municipio en `baja` o `modelo` no resuelve por origen ni por slug: 404 en las páginas públicas y 401 genérico en el login.

@@ -52,3 +52,11 @@ Tablas `modulos` (catálogo: `modulo_codigo` PK, `nombre`, `descripcion`, `min_n
   - su nivel no se edita (422).
 - **`modulos_permitidos` se llama con `nivel_real`**, no con el nivel efectivo: el super administrador tiene nivel efectivo 1 pero real 0, y solo así recibe los módulos de nivel 0. Lo hacen `require_modulo`, `/auth/me` y el login.
 - **El sidebar oculta lo no permitido** con `[hidden]` sobre `.nav-flat__item`. Hasta el 2026-10-25 el `display: flex` del ítem pisaba el hidden y se veía todo (un nivel 4 veía ocho módulos ajenos): ahora hay una regla `.nav-flat__item[hidden] { display: none }` en `frontend/css/menu.css`.
+
+## Módulos por municipio (IT-01 F4, 2026-10-27)
+
+- `municipio_modulo (id_municipio, modulo_codigo, habilitado, min_nivel_acceso)`: cada municipio tiene sus módulos y su nivel mínimo. `modulos` queda como catálogo global (nombre, nivel por defecto).
+- **Un módulo deshabilitado da 404** en todos sus endpoints: cada router lleva `dependencies=[Depends(modulo_habilitado(...))]` (tabla `MODULOS_POR_ROUTER` en `services/municipios/modulos.py`). Router nuevo de un módulo deshabilitable ⇒ sumarlo ahí. Los efectos sin request (cron, dispatcher, avisos, autoasignación) consultan `modulo_esta_habilitado` antes de actuar.
+- `modulos_permitidos(db, id_usuario, nivel, id_municipio)` combina el municipio con el override por usuario. El sidebar del shell oculta además los módulos que la identidad no lista (`modulos_habilitados`).
+- Fijos (`MODULOS_FIJOS`: usuarios, admin_tablas, padrones, municipios) no se deshabilitan (422). Dependencias (`DEPENDENCIAS_MODULOS`): 422 «{modulo} necesita {dependencia} habilitado.». La Guardia vive en `turnos` y exige `emergencias`.
+- **Quién toca qué:** el administrador del municipio edita el nivel (1-5) en Usuarios → Catálogo de módulos; solo el super habilita o deshabilita (403 para el resto), desde ahí o desde la ficha del municipio.

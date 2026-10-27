@@ -37,3 +37,10 @@ La tabla `configuracion_general` tiene columna `descripcion` con texto útil por
   - El PUT valida por tipo en el servidor y queda en el registro (`config_global`).
 - **Atajo «Municipios»:** lleva al módulo `/municipios` y solo lo ve el super administrador. Maestros → municipios quedó en solo lectura.
 - **Identidad:** la pantalla lee `GET /config/identidad/actual` (autenticado, `municipio_actual`), que es el mismo municipio donde guarda el `PUT`. La identidad pública (`GET /config/identidad`) resuelve por la dirección, y para el super administrador mostraría otro municipio. El inicio y Mi perfil también usan `/actual`.
+
+## Claves faltantes y valores por defecto (IT-01 F4, 2026-10-27)
+
+- `guardar_config(db, clave, valor, id_municipio, tipo)` **inserta o actualiza** (antes solo actualizaba): Identidad ya no da 409 por una clave que el municipio no tiene.
+- Config → Sistema muestra cada clave conocida aunque falte, con el valor que usa el backend (`DEFECTOS` en `ParametrosSistemaView.tsx`) y la nota «No está cargada…»; guardarla la crea (`POST /admin/configuracion_general` con su `tipo`). Clave nueva en la pantalla ⇒ sumar su default y su tipo a `DEFECTOS`.
+- Claves que apuntan por id: `id_area_salud`, `id_espacio_guardia`, `id_nacionalidad_defecto`, `id_tipo_representacion_defecto`. Las siembra por nombre `resembrar_claves_por_id` (`services/municipios/alta.py`) en el alta y después de un vaciado.
+- Geocoding: sin `geo_bbox_*` válidas, un municipio que no es el de las direcciones sin prefijo recibe 409 «El municipio no tiene configurada su zona de búsqueda» (antes buscaba en Vicente López sin avisar).
