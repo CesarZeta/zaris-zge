@@ -169,6 +169,19 @@ async def _poner_config(db: AsyncSession, id_mun: int, clave: str, valor: Option
         {"c": clave, "v": valor, "t": tipo, "d": clave, "m": id_mun})
 
 
+async def resembrar_claves_por_id(db: AsyncSession, id_mun: int) -> None:
+    """Claves de configuración que apuntan por id a entidades del municipio: se re-siembran por nombre
+    (§21). Las usan el alta y el vaciado (que puede borrar el espacio «Guardia»)."""
+    salud = await db.scalar(text("""
+        SELECT id_area FROM area WHERE id_municipio = :m AND activo AND es_sistema
+           AND lower(translate(nombre, 'ÁÉÍÓÚáéíóú', 'AEIOUaeiou')) LIKE 'secretaria de salud%'"""), {"m": id_mun})
+    await _poner_config(db, id_mun, "id_area_salud", str(salud) if salud else "", "integer")
+    guardia = await db.scalar(text(
+        "SELECT id_espacio FROM espacios_agenda WHERE id_municipio = :m AND activo AND nombre = 'Guardia'"),
+        {"m": id_mun})
+    await _poner_config(db, id_mun, "id_espacio_guardia", str(guardia) if guardia else "", "integer")
+
+
 async def _configuracion(db: AsyncSession, d: AltaMunicipioIn, id_mun: int, modelo: int) -> list[str]:
     await db.execute(text("""
         INSERT INTO configuracion_general (clave, valor, tipo, descripcion, activo, id_municipio)
@@ -182,15 +195,7 @@ async def _configuracion(db: AsyncSession, d: AltaMunicipioIn, id_mun: int, mode
     for clave in ("geo_bbox_centro_lat", "geo_bbox_centro_lon", "geo_bbox_delta_grados"):
         valor = getattr(i, clave)
         await _poner_config(db, id_mun, clave, None if valor is None else str(valor))
-    # Claves que apuntan por id a entidades: se re-siembran por nombre en el municipio nuevo (§21).
-    salud = await db.scalar(text("""
-        SELECT id_area FROM area WHERE id_municipio = :m AND activo AND es_sistema
-           AND lower(translate(nombre, 'ÁÉÍÓÚáéíóú', 'AEIOUaeiou')) LIKE 'secretaria de salud%'"""), {"m": id_mun})
-    await _poner_config(db, id_mun, "id_area_salud", str(salud) if salud else "", "integer")
-    guardia = await db.scalar(text(
-        "SELECT id_espacio FROM espacios_agenda WHERE id_municipio = :m AND activo AND nombre = 'Guardia'"),
-        {"m": id_mun})
-    await _poner_config(db, id_mun, "id_espacio_guardia", str(guardia) if guardia else "", "integer")
+    await resembrar_claves_por_id(db, id_mun)
     advertencias = []
     if not i.geo_limite_geojson and i.geo_bbox_centro_lat is None:
         advertencias.append(SIN_CONTORNO)

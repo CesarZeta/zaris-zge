@@ -17,6 +17,7 @@ registro de accesos. `codigo_corto` (prefijo de los números), `direccion_base` 
 editan acá: los da el alta y la baja de F4.
 """
 import asyncio
+import uuid
 import re
 from typing import Literal, Optional
 
@@ -616,3 +617,105 @@ async def baja_administrador(
                                     detalle=f"baja del super {id_usuario}", **_registro(request))
     await db.commit()
     return {"baja": True}
+
+
+# ── Exportación y vaciado (IT-01 F4+F5, Tarea 16) ─────────────────────────────────────────────
+
+class GruposIn(BaseModel):
+    grupos: list[str] = Field(..., min_length=1, max_length=4)
+
+
+class VaciadoIn(GruposIn):
+    confirmacion: str = Field(..., max_length=150)
+
+
+async def _existe(db: AsyncSession, id_municipio: int) -> None:
+    if not await db.scalar(text("SELECT 1 FROM municipios WHERE id_municipio = :m"), {"m": id_municipio}):
+        raise HTTPException(404, "Municipio no encontrado")
+
+
+@router.get("/tareas/{id_tarea}")
+async def estado_tarea(id_tarea: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    t = (await db.execute(text("""
+        SELECT id_tarea, id_municipio, tipo, estado, detalle, archivo, vence_en, fecha_alta, fecha_modificacion
+          FROM municipio_tarea WHERE id_tarea = :t"""), {"t": id_tarea})).first()
+    if t is None:
+        raise HTTPException(404, "Tarea no encontrada")
+    return dict(t._mapping)
+
+
+@router.get("/municipios/{id_municipio}/exportaciones")
+async def listar_exportaciones(id_municipio: int, db: AsyncSession = Depends(get_db)):
+    """Exportaciones vigentes (no vencidas ni purgadas), la más nueva primero."""
+    await _existe(db, id_municipio)
+    rows = await db.execute(text("""
+        SELECT id_tarea, estado, detalle, archivo, vence_en, fecha_alta FROM municipio_tarea
+         WHERE id_municipio = :m AND tipo = 'exportacion'
+           AND (estado IN ('pendiente', 'corriendo') OR (estado = 'ok' AND archivo IS NOT NULL AND vence_en > NOW()))
+         ORDER BY fecha_alta DESC"""), {"m": id_municipio})
+    return [dict(r._mapping) for r in rows]
+
+
+@router.post("/municipios/{id_municipio}/exportaciones", status_code=202)
+async def pedir_exportacion(id_municipio: int, request: Request, background_tasks: BackgroundTasks,
+                            db: AsyncSession = Depends(get_db), sa: dict = Depends(require_super_admin)):
+    from app.services.municipios.exportacion import crear_tarea, ejecutar_exportacion
+    await _existe(db, id_municipio)
+    id_tarea = await crear_tarea(db, id_municipio, "exportacion", sa["id_usuario"])
+    await registrar_acceso_super_en(db, id_usuario=sa["id_usuario"], accion="exportacion", id_municipio=id_municipio,
+                                    detalle=f"pedido de exportación {id_tarea}", **_registro(request))
+    await db.commit()
+    background_tasks.add_task(ejecutar_exportacion, id_tarea, id_municipio)
+    return {"id_tarea": id_tarea}
+
+
+@router.get("/municipios/{id_municipio}/exportaciones/{id_tarea}/descarga",
+            responses={404: {"description": "La exportación no existe, venció o no es de ese municipio"}})
+async def descargar_exportacion(id_municipio: int, id_tarea: uuid.UUID, request: Request,
+                                db: AsyncSession = Depends(get_db), sa: dict = Depends(require_super_admin)):
+    """URL firmada de 10 minutos. Cada descarga queda en el registro del super."""
+    from app.core import storage
+    from app.services.municipios.exportacion import BUCKET
+    archivo = await db.scalar(text("""
+        SELECT archivo FROM municipio_tarea WHERE id_tarea = :t AND id_municipio = :m AND tipo = 'exportacion'
+           AND estado = 'ok' AND archivo IS NOT NULL AND vence_en > NOW()"""), {"t": id_tarea, "m": id_municipio})
+    if archivo is None:
+        raise HTTPException(404, "Exportación no encontrada")
+    await registrar_acceso_super_en(db, id_usuario=sa["id_usuario"], accion="exportacion", id_municipio=id_municipio,
+                                    detalle=f"descarga de la exportación {id_tarea}", **_registro(request))
+    await db.commit()
+    return {"url": await storage.crear_signed_download_url(archivo, ttl_sec=600, bucket=BUCKET)}
+
+
+@router.post("/municipios/{id_municipio}/vaciado/plan",
+             responses={409: {"description": "El municipio está o estuvo en producción"}})
+async def plan_de_vaciado(id_municipio: int, body: GruposIn, db: AsyncSession = Depends(get_db)):
+    """Qué se borraría y qué se desvincularía, tabla por tabla, sin escribir nada."""
+    from app.services.municipios.vaciado import calcular, resumen, validar
+    await validar(db, id_municipio, set(body.grupos))
+    return resumen(await calcular(db, id_municipio, set(body.grupos)))
+
+
+@router.post("/municipios/{id_municipio}/vaciado", status_code=202,
+             responses={409: {"description": "En producción o con otro vaciado en curso"},
+                        422: {"description": "Grupos inválidos o confirmación incorrecta"}})
+async def pedir_vaciado(id_municipio: int, body: VaciadoIn, request: Request, background_tasks: BackgroundTasks,
+                        db: AsyncSession = Depends(get_db), sa: dict = Depends(require_super_admin)):
+    """Exporta y, si la exportación terminó bien, vacía (en segundo plano: el estado se consulta en
+    /super/tareas/{id})."""
+    from app.services.municipios.exportacion import crear_tarea
+    from app.services.municipios.vaciado import EN_CURSO, ejecutar_vaciado, validar
+    await db.execute(text("SELECT pg_advisory_xact_lock(:m)"), {"m": id_municipio})
+    await validar(db, id_municipio, set(body.grupos), body.confirmacion)
+    if await db.scalar(text("""
+        SELECT 1 FROM municipio_tarea WHERE id_municipio = :m AND tipo = 'vaciado'
+           AND estado IN ('pendiente', 'corriendo') AND fecha_modificacion > NOW() - interval '1 hour'"""),
+            {"m": id_municipio}):
+        raise HTTPException(409, EN_CURSO)
+    id_tarea = await crear_tarea(db, id_municipio, "vaciado", sa["id_usuario"], {"grupos": sorted(body.grupos)})
+    await registrar_acceso_super_en(db, id_usuario=sa["id_usuario"], accion="vaciado", id_municipio=id_municipio,
+                                    detalle=f"pedido de vaciado {id_tarea}: {', '.join(sorted(body.grupos))}",
+                                    **_registro(request))
+    await db.commit()
+    background_tasks.add_task(ejecutar_vaciado, id_tarea, id_municipio, set(body.grupos), sa["id_usuario"])
+    return {"id_tarea": id_tarea}

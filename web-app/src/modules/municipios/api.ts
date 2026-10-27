@@ -146,3 +146,30 @@ export const listarSupers = () => api.get<SuperAdministrador[]>('/api/v1/super/a
 export const altaSuper = (body: { nombre: string; apellido: string; email: string }) =>
   api.post<{ id_usuario: number }>('/api/v1/super/administradores', body)
 export const bajaSuper = (id: number) => api.post<{ baja: boolean }>(`/api/v1/super/administradores/${id}/baja`)
+
+// ── Exportación y vaciado (IT-01 F4+F5, Tarea 16) ─────────────────────────────────────────────
+
+export type GrupoVaciable = 'operativo' | 'contactos' | 'maestros' | 'usuarios'
+export interface Tarea {
+  id_tarea: string; id_municipio: number; tipo: 'alta' | 'exportacion' | 'vaciado'
+  estado: 'pendiente' | 'corriendo' | 'ok' | 'error'
+  detalle: Record<string, unknown> | null; archivo: string | null; vence_en: string | null
+  fecha_alta: string; fecha_modificacion: string
+}
+export interface Exportacion {
+  id_tarea: string; estado: Tarea['estado']; detalle: Record<string, unknown> | null
+  archivo: string | null; vence_en: string | null; fecha_alta: string
+}
+export interface PasoPlan { tabla: string; filas: number; accion: 'borrar' | 'desvincular' }
+
+export const obtenerTarea = (id: string) => api.get<Tarea>(`/api/v1/super/tareas/${id}`)
+export const listarExportaciones = (idMun: number) =>
+  api.get<Exportacion[]>(`/api/v1/super/municipios/${idMun}/exportaciones`)
+export const pedirExportacion = (idMun: number) =>
+  api.post<{ id_tarea: string }>(`/api/v1/super/municipios/${idMun}/exportaciones`)
+export const urlDescarga = (idMun: number, idTarea: string) =>
+  api.get<{ url: string }>(`/api/v1/super/municipios/${idMun}/exportaciones/${idTarea}/descarga`)
+export const planVaciado = (idMun: number, grupos: GrupoVaciable[]) =>
+  api.post<PasoPlan[]>(`/api/v1/super/municipios/${idMun}/vaciado/plan`, { grupos })
+export const pedirVaciado = (idMun: number, grupos: GrupoVaciable[], confirmacion: string) =>
+  api.post<{ id_tarea: string }>(`/api/v1/super/municipios/${idMun}/vaciado`, { grupos, confirmacion })

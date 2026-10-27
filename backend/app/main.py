@@ -39,6 +39,7 @@ from app.api.routes.emergencias import router as emergencias_router
 from app.api.routes.tramites import router as tramites_router
 from app.api.routes.tramites_admin import router as tramites_admin_router
 from app.api.routes.tramites_mantenimiento import router as tramites_mantenimiento_router
+from app.api.routes.municipios_mantenimiento import router as municipios_mantenimiento_router
 from app.api.routes.usuarios_mantenimiento import router as usuarios_mantenimiento_router
 from app.api.routes.demo_datos import router as demo_datos_router
 from app.api.routes.encuestas_admin import router as encuestas_admin_router
@@ -144,6 +145,7 @@ app.include_router(turnos_router, dependencies=_modulo("turnos_router"))
 # guard JWT — auth por X-Dispatcher-Token). DEBE ir ANTES de tramites_router o
 # el /{numero_o_id} greedy lo atrapa como numero_o_id='mantenimiento' (S5).
 app.include_router(tramites_mantenimiento_router)
+app.include_router(municipios_mantenimiento_router)
 # tramites_router ANTES de admin_tablas (que tiene /{tabla} greedy).
 # /tramites/* no colisiona con otros routers pero lo dejamos arriba por convención.
 app.include_router(tramites_router, dependencies=_modulo("tramites_router"))

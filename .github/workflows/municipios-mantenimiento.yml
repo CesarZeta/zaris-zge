@@ -1,0 +1,45 @@
+name: Municipios mantenimiento (cron diario)
+
+# Purga de exportaciones vencidas (IT-01 F4+F5, Tarea 16): llama una vez al día al endpoint de prod
+# que borra del bucket privado `exportaciones` los archivos con más de 90 días
+# (EXPORTACION_RETENCION_DIAS) y los marca en municipio_tarea. Idempotente.
+#
+# Auth: header X-Dispatcher-Token, igual que el mantenimiento de Trámites (mismo secret
+# ENCUESTAS_DISPATCHER_TOKEN = env var DISPATCHER_TOKEN de Railway). ZARIS_API_URL es opcional.
+#
+# Disparo manual: pestaña Actions > este workflow > Run workflow.
+
+on:
+  schedule:
+    # Una vez al día, 04:40 UTC (madrugada en AR), después del mantenimiento de Trámites.
+    - cron: '40 4 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: municipios-mantenimiento
+  cancel-in-progress: false
+
+jobs:
+  purgar-exportaciones:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Purgar exportaciones vencidas
+        env:
+          API_URL: ${{ secrets.ZARIS_API_URL || 'https://zaris-api-production-bf0b.up.railway.app' }}
+          TOKEN: ${{ secrets.ENCUESTAS_DISPATCHER_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Falta el secret ENCUESTAS_DISPATCHER_TOKEN en el repo."
+            exit 1
+          fi
+          URL="$API_URL/api/v1/municipios/mantenimiento/purgar-exportaciones"
+          echo "POST $URL"
+          BODY=$(mktemp)
+          CODE=$(curl -sS -o "$BODY" -w '%{http_code}' --max-time 280 \
+            -X POST -H "X-Dispatcher-Token: $TOKEN" "$URL")
+          echo "HTTP $CODE"
+          cat "$BODY"; echo
+          if [ "$CODE" != "200" ]; then
+            echo "::error::La purga respondió HTTP $CODE"
+            exit 1
+          fi

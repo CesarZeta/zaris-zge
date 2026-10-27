@@ -1321,8 +1321,296 @@ async def test_ficha_municipio() -> None:
                AND detalle LIKE 'tope%'""", {"m": C["id"]}) >= 2)
 
 
+# ── Tarea 16 ──────────────────────────────────────────────────────────────────────────────────
+
+class _StorageMock:
+    """Storage en memoria: en local las credenciales apuntan al proyecto de prod, así que el smoke nunca
+    sube ni borra objetos reales."""
+
+    def __init__(self):
+        self.objetos: dict[tuple[str, str], bytes] = {}
+        self.borrados: list[tuple[str, str]] = []
+        self.demora = 0.0  # segundos que tarda una subida (para que dos pedidos se superpongan)
+
+    def instalar(self):
+        from app.core import storage
+        from app.core.config import settings as s
+
+        async def subir(path, contenido, content_type, bucket=None):
+            await asyncio.sleep(self.demora)
+            self.objetos[(bucket or s.SUPABASE_ADJUNTOS_BUCKET, path)] = contenido
+
+        async def borrar(path, bucket=None):
+            clave = (bucket or s.SUPABASE_ADJUNTOS_BUCKET, path)
+            self.borrados.append(clave)
+            self.objetos.pop(clave, None)
+
+        async def firmada(path, ttl_sec=3600, bucket=None):
+            return f"https://mock/{bucket or s.SUPABASE_ADJUNTOS_BUCKET}/{path}?ttl={ttl_sec}"
+
+        async def descargar(path, bucket=None):
+            return self.objetos[(bucket or s.SUPABASE_ADJUNTOS_BUCKET, path)]
+
+        storage.subir_objeto, storage.borrar_objeto = subir, borrar
+        storage.crear_signed_download_url, storage.descargar_objeto = firmada, descargar
+        return self
+
+
+STORAGE = _StorageMock()
+GRUPOS_VACIABLES = ["operativo", "contactos", "maestros", "usuarios"]
+
+
+async def _municipio_v() -> dict:
+    """Municipio V para vaciar (local, se conserva en baja al terminar): alta completa por la API y
+    filas operativas reales clonadas del municipio base (un reclamo con adjunto, un turno, un trámite
+    con documento, una OT y una ficha con foto)."""
+    from app.services.municipios.clonado import Clonador, conexion_asyncpg
+    ctx = await _contexto_alta()
+    suf, cod = _sufijo()
+    body = _alta_body(suf, cod, id_provincia=ctx["ba"])
+    body["nombre"] = f"Municipio de prueba V {suf}"
+    body["subdominio"] = f"v-{suf}"
+    # Los tipos de reclamo, de trámite y las prestaciones los trae el clonado de las filas operativas
+    # (copiarlos también chocaría con sus únicos por municipio).
+    body["copiar"] = ["areas_subareas", "cargos", "encuestas", "agenda"]
+    body["modulos"] = ["reclamos", "agenda", "turnos", "tramites", "ot_supervisor", "ot_agente", "encuestas"]
+    async with _cliente() as c:
+        r = await c.post("/api/v1/super/municipios", json=body, headers=ctx["h"])
+    assert r.status_code == 201, r.text
+    mid, admin = r.json()["id_municipio"], r.json()["id_administrador"]
+    async with AsyncSessionLocal() as db:
+        base = await _escalar(db, "SELECT id_municipio FROM municipios WHERE direccion_base")
+        conn = await conexion_asyncpg(db)
+        cl = Clonador(conn, mid, id_usuario_alta=admin)
+        await cl.cargar_clases()
+        cl.anclas["usuarios"] = admin
+        cl.anclas["agentes"] = await _escalar(db, "SELECT id_agente FROM agentes WHERE id_usuario = :u", {"u": admin})
+        for sql in (
+            "SELECT id_adjunto FROM reclamo_adjuntos WHERE id_municipio = :b ORDER BY 1 DESC LIMIT 1",
+            "SELECT id_turno FROM turnos WHERE id_municipio = :b ORDER BY 1 DESC LIMIT 1",
+            "SELECT id_tramite_documento FROM tramite_documento WHERE id_municipio = :b ORDER BY 1 DESC LIMIT 1",
+            "SELECT id_ot FROM ordenes_trabajo WHERE id_municipio = :b ORDER BY 1 DESC LIMIT 1",
+            "SELECT id_ciudadano FROM ciudadanos WHERE id_municipio = :b AND foto_path IS NOT NULL ORDER BY 1 LIMIT 1",
+            "SELECT id_empresa FROM empresas WHERE id_municipio = :b ORDER BY 1 DESC LIMIT 1",
+        ):
+            tabla = sql.split(" FROM ")[1].split()[0]
+            pk = sql.split("SELECT ")[1].split()[0]
+            fila = await _escalar(db, sql, {"b": base})
+            if fila is not None:
+                await cl.clonar(tabla, fila)
+        # El adjunto clonado comparte la ruta con el del municipio base: se le da una propia para ver que
+        # el vaciado la borra. Un segundo adjunto queda compartido: el vaciado no debe tocar ese archivo.
+        await db.execute(text("UPDATE reclamo_adjuntos SET storage_path = 'prueba-vaciado/' || id_adjunto || '.png' "
+                              "WHERE id_municipio = :m"), {"m": mid})
+        otro = await _escalar(db, "SELECT id_adjunto FROM reclamo_adjuntos WHERE id_municipio = :b "
+                                  "ORDER BY 1 DESC OFFSET 1 LIMIT 1", {"b": base})
+        if otro is not None:
+            await cl.clonar("reclamo_adjuntos", otro)
+        await db.commit()
+    return {"id": mid, "admin": admin, "nombre": body["nombre"], "h": ctx["h"]}
+
+
+async def _tarea(c, h, id_tarea: str) -> dict:
+    r = await c.get(f"/api/v1/super/tareas/{id_tarea}", headers=h)
+    return r.json() if r.status_code == 200 else {"estado": f"HTTP {r.status_code}"}
+
+
+async def _filas_por_grupo(mid: int) -> dict[str, int]:
+    async with AsyncSessionLocal() as db:
+        tablas = (await db.execute(text(
+            "SELECT tabla, grupo FROM municipio_tabla_clase WHERE clase IN ('catalogo', 'operativo', 'mixta')"))).all()
+        out: dict[str, int] = {}
+        for t, g in tablas:
+            if await _escalar(db, "SELECT 1 FROM information_schema.columns WHERE table_name = :t "
+                                  "AND column_name = 'id_municipio'", {"t": t}):
+                out[g] = out.get(g, 0) + await _escalar(db, f'SELECT count(*) FROM "{t}" WHERE id_municipio = :m',
+                                                        {"m": mid})
+        return out
+
+
+async def _municipio_sql(estado: str) -> tuple[int, str]:
+    import uuid
+    nombre = f"Municipio de prueba G {uuid.uuid4().hex[:6]}"
+    async with AsyncSessionLocal() as db:
+        mid = await _escalar(db, """
+            INSERT INTO municipios (nombre, codigo_pais, pais, provincia, id_provincia, estado)
+            VALUES (:n, 'AR', 'Argentina', 'Buenos Aires',
+                    (SELECT id_provincia FROM provincias WHERE codigo_pais = 'AR' AND nombre = 'Buenos Aires'), :e)
+            RETURNING id_municipio""", {"n": nombre, "e": estado})
+        await db.commit()
+    invalidar_cache_municipios()
+    return mid, nombre
+
+
+async def test_vaciado_guardas() -> None:
+    print("\ntest_vaciado_guardas")
+    async with AsyncSessionLocal() as db:
+        h = await _super_headers(db)
+    prod, nombre_prod = await _municipio_sql("produccion")
+    pem, nombre_pem = await _municipio_sql("puesta_en_marcha")
+    async with _cliente() as c:
+        r = await c.post(f"/api/v1/super/municipios/{prod}/vaciado",
+                         json={"grupos": ["operativo"], "confirmacion": nombre_prod}, headers=h)
+        check("en producción → 409 texto fijo", r.status_code == 409 and "estuvo en producción" in r.text,
+              f"{r.status_code} {r.text[:120]}")
+        await c.post(f"/api/v1/super/municipios/{prod}/estado", json={"estado": "baja"}, headers=h)
+        r = await c.post(f"/api/v1/super/municipios/{prod}/estado", json={"estado": "reactivar"}, headers=h)
+        check("de baja y reactivado vuelve a producción", r.status_code == 200 and r.json()["estado"] == "produccion",
+              f"{r.status_code} {r.text[:120]}")
+        r = await c.post(f"/api/v1/super/municipios/{prod}/vaciado",
+                         json={"grupos": ["operativo"], "confirmacion": nombre_prod}, headers=h)
+        check("reactivado después de producción → 409", r.status_code == 409, f"{r.status_code} {r.text[:120]}")
+        r = await c.post(f"/api/v1/super/municipios/{pem}/vaciado",
+                         json={"grupos": ["operativo"], "confirmacion": "otro nombre"}, headers=h)
+        check("confirmación incorrecta → 422", r.status_code == 422 and "Escribí el nombre" in r.text,
+              f"{r.status_code} {r.text[:120]}")
+        r = await c.post(f"/api/v1/super/municipios/{pem}/vaciado",
+                         json={"grupos": ["configuracion"], "confirmacion": nombre_pem}, headers=h)
+        check("el grupo configuración no se vacía → 422", r.status_code == 422, f"{r.status_code} {r.text[:120]}")
+    for mid in (prod, pem):
+        await _estado(mid, "baja")
+
+
+async def test_vaciado_operativo_y_todo() -> None:
+    print("\ntest_vaciado_operativo_y_todo")
+    STORAGE.instalar()
+    V = await _municipio_v()
+    antes = await _filas_por_grupo(V["id"])
+    async with AsyncSessionLocal() as db:
+        cfg_antes = await _escalar(db, "SELECT count(*) FROM configuracion_general WHERE id_municipio = :m", {"m": V["id"]})
+        fijas = await _escalar(db, "SELECT count(*) FROM area WHERE id_municipio = :m AND es_sistema", {"m": V["id"]})
+        compartidos = {tuple(x) for x in (await db.execute(text("""
+            SELECT a.storage_bucket, a.storage_path FROM reclamo_adjuntos a WHERE a.id_municipio = :m AND EXISTS (
+              SELECT 1 FROM reclamo_adjuntos b WHERE b.storage_path = a.storage_path AND b.id_municipio <> :m)"""),
+            {"m": V["id"]})).all()}
+        adjuntos = {tuple(x) for x in (await db.execute(text(
+            "SELECT storage_bucket, storage_path FROM reclamo_adjuntos WHERE id_municipio = :m"), {"m": V["id"]})).all()}
+        adjuntos -= compartidos
+    check("V tiene datos operativos y contactos", antes.get("operativo", 0) > 0 and antes.get("contactos", 0) > 0, str(antes))
+    async with _cliente() as c:
+        r = await c.post(f"/api/v1/super/municipios/{V['id']}/vaciado/plan", json={"grupos": ["operativo"]}, headers=V["h"])
+        plan = r.json() if r.status_code == 200 else []
+        check("plan sin escribir: lista tablas y filas", r.status_code == 200 and any(p["tabla"] == "reclamos" and p["filas"] >= 1
+              for p in plan), f"{r.status_code} {r.text[:160]}")
+        check("el plan no borró nada", (await _filas_por_grupo(V["id"])) == antes)
+        r = await c.post(f"/api/v1/super/municipios/{V['id']}/vaciado",
+                         json={"grupos": ["operativo"], "confirmacion": V["nombre"]}, headers=V["h"])
+        check("vaciar operativo → 202", r.status_code == 202, f"{r.status_code} {r.text[:160]}")
+        t = await _tarea(c, V["h"], r.json()["id_tarea"]) if r.status_code == 202 else {}
+        check("la tarea terminó ok", t.get("estado") == "ok", str(t)[:200])
+        despues = await _filas_por_grupo(V["id"])
+        check("0 filas operativas", despues.get("operativo") == 0, str(despues))
+        check("los contactos siguen", despues.get("contactos") == antes.get("contactos"), f"{antes} → {despues}")
+        check("los adjuntos de Storage se borraron", adjuntos and adjuntos <= set(STORAGE.borrados), str(adjuntos)[:160])
+        check("un archivo que usa otro municipio no se borra", compartidos and not (compartidos & set(STORAGE.borrados)),
+              str(compartidos)[:160])
+        async with AsyncSessionLocal() as db:
+            check("la configuración sigue", await _escalar(db, "SELECT count(*) FROM configuracion_general "
+                                                               "WHERE id_municipio = :m", {"m": V["id"]}) == cfg_antes)
+            check("hay una exportación previa ok", await _escalar(db, """
+                SELECT count(*) FROM municipio_tarea WHERE id_municipio = :m AND tipo = 'exportacion' AND estado = 'ok'""",
+                {"m": V["id"]}) >= 1)
+
+        r = await c.post(f"/api/v1/super/municipios/{V['id']}/vaciado",
+                         json={"grupos": GRUPOS_VACIABLES, "confirmacion": V["nombre"]}, headers=V["h"])
+        t = await _tarea(c, V["h"], r.json()["id_tarea"]) if r.status_code == 202 else {}
+        check("vaciar los 4 grupos → ok", r.status_code == 202 and t.get("estado") == "ok", f"{r.status_code} {str(t)[:200]}")
+        async with AsyncSessionLocal() as db:
+            q = lambda sql: _escalar(db, sql, {"m": V["id"]})  # noqa: E731
+            check("queda solo el administrador principal", await q(
+                "SELECT count(*) FROM usuarios WHERE id_municipio = :m") == 1 and await q(
+                f"SELECT id_usuario FROM usuarios WHERE id_municipio = :m") == V["admin"])
+            check("su agente y su ficha siguen", await q("SELECT count(*) FROM agentes WHERE id_municipio = :m") == 1
+                  and await q("SELECT count(*) FROM ciudadanos WHERE id_municipio = :m") == 1)
+            check("sus áreas fijas siguen", await q("SELECT count(*) FROM area WHERE id_municipio = :m AND es_sistema") == fijas
+                  and await q("SELECT count(*) FROM area WHERE id_municipio = :m AND NOT es_sistema") == 0)
+            check("solo queda la subárea del administrador", await q("SELECT count(*) FROM subarea WHERE id_municipio = :m") == 1)
+            check("la configuración y los módulos siguen", await q(
+                "SELECT count(*) FROM configuracion_general WHERE id_municipio = :m") == cfg_antes and await q(
+                "SELECT count(*) FROM municipio_modulo WHERE id_municipio = :m") > 0)
+            rotas = await q("""
+                SELECT count(*) FROM configuracion_general cg WHERE cg.id_municipio = :m AND cg.valor ~ '^[0-9]+$' AND (
+                  (cg.clave = 'id_area_salud' AND NOT EXISTS (SELECT 1 FROM area a WHERE a.id_area = cg.valor::int AND a.id_municipio = :m))
+                  OR (cg.clave = 'id_espacio_guardia' AND NOT EXISTS (SELECT 1 FROM espacios_agenda e
+                                                                     WHERE e.id_espacio = cg.valor::int AND e.id_municipio = :m)))""")
+            check("las claves por id apuntan a filas existentes", rotas == 0, str(rotas))
+        h_admin = _token(V["admin"], V["id"])
+        quinientos = []
+        for ruta in ("/api/v1/buc/ciudadanos", "/api/v1/buc/empresas", "/api/v1/buc/usuarios", "/api/v1/reclamos",
+                     "/api/v1/turnos", "/api/v1/tramites", "/api/v1/admin/area", "/api/v1/admin/subarea",
+                     "/api/v1/admin/tipo_reclamo", "/api/v1/dashboard/resumen", "/api/v1/ordenes-trabajo",
+                     "/api/v1/agenda/espacios", "/api/v1/config/identidad/actual"):
+            r = await c.get(ruta, headers=h_admin)
+            if r.status_code >= 500:
+                quinientos.append(f"{ruta} {r.status_code}")
+        check("los listados de V no dan 500", not quinientos, str(quinientos))
+
+        STORAGE.demora = 1.0
+        r1, r2 = await asyncio.gather(
+            c.post(f"/api/v1/super/municipios/{V['id']}/vaciado", json={"grupos": ["operativo"], "confirmacion": V["nombre"]},
+                   headers=V["h"]),
+            c.post(f"/api/v1/super/municipios/{V['id']}/vaciado", json={"grupos": ["operativo"], "confirmacion": V["nombre"]},
+                   headers=V["h"]))
+        codigos = sorted((r1.status_code, r2.status_code))
+        STORAGE.demora = 0.0
+        check("dos vaciados a la vez: uno 202, el otro 409", codigos == [202, 409]
+              and "ya hay un vaciado en curso" in (r1.text + r2.text).lower(), f"{codigos} {(r1.text + r2.text)[:160]}")
+    await _estado(V["id"], "baja")
+
+
+async def test_exportacion_retencion() -> None:
+    import io
+    import json
+    import zipfile
+    print("\ntest_exportacion_retencion")
+    STORAGE.instalar()
+    V = await _municipio_v()
+    async with _cliente() as c:
+        r = await c.post(f"/api/v1/super/municipios/{V['id']}/exportaciones", headers=V["h"])
+        check("exportar → 202", r.status_code == 202, f"{r.status_code} {r.text[:160]}")
+        id_tarea = r.json().get("id_tarea") if r.status_code == 202 else None
+        t = await _tarea(c, V["h"], id_tarea) if id_tarea else {}
+        check("la exportación terminó ok, con archivo y vencimiento", t.get("estado") == "ok" and t.get("archivo")
+              and t.get("vence_en"), str(t)[:200])
+        contenido = STORAGE.objetos.get(("exportaciones", t.get("archivo") or ""))
+        check("el zip está en el bucket exportaciones", contenido is not None)
+        if contenido:
+            z = zipfile.ZipFile(io.BytesIO(contenido))
+            nombres = z.namelist()
+            ajenas = []
+            for n in nombres:
+                filas = json.loads(z.read(n))
+                ajenas += [n for f in filas if "id_municipio" in f and f["id_municipio"] != V["id"]]
+            check("un JSON por tabla, con reclamos y ciudadanos", "reclamos.json" in nombres and "ciudadanos.json" in nombres,
+                  str(nombres[:8]))
+            check("ninguna fila de otro municipio", not ajenas, str(ajenas[:5]))
+        r = await c.get(f"/api/v1/super/municipios/{V['id']}/exportaciones", headers=V["h"])
+        check("aparece en la lista vigente", r.status_code == 200 and any(e["id_tarea"] == id_tarea for e in r.json()),
+              f"{r.status_code} {r.text[:120]}")
+        r = await c.get(f"/api/v1/super/municipios/{V['id']}/exportaciones/{id_tarea}/descarga", headers=V["h"])
+        check("descarga: URL firmada de 10 minutos", r.status_code == 200 and "ttl=600" in r.json().get("url", ""),
+              f"{r.status_code} {r.text[:120]}")
+        async with AsyncSessionLocal() as db:
+            check("la descarga queda registrada", await _escalar(db, """
+                SELECT count(*) FROM super_admin_acceso WHERE accion = 'exportacion' AND id_municipio = :m
+                   AND detalle LIKE 'descarga%'""", {"m": V["id"]}) >= 1)
+            await db.execute(text("UPDATE municipio_tarea SET vence_en = NOW() - interval '1 day' WHERE id_tarea = :t"),
+                             {"t": id_tarea})
+            await db.commit()
+        r = await c.post("/api/v1/municipios/mantenimiento/purgar-exportaciones",
+                         headers={"X-Dispatcher-Token": settings.DISPATCHER_TOKEN})
+        check("purga → 200", r.status_code == 200, f"{r.status_code} {r.text[:120]}")
+        check("el objeto vencido se borró", ("exportaciones", t.get("archivo")) not in STORAGE.objetos)
+        r = await c.get(f"/api/v1/super/municipios/{V['id']}/exportaciones", headers=V["h"])
+        check("ya no aparece en la lista", r.status_code == 200 and not any(e["id_tarea"] == id_tarea for e in r.json()))
+        r = await c.post("/api/v1/municipios/mantenimiento/purgar-exportaciones", headers={"X-Dispatcher-Token": "x"})
+        check("purga sin token → 401", r.status_code == 401, str(r.status_code))
+    await _estado(V["id"], "baja")
+
+
 PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones_super, test_links_por_municipio,
                                      test_modelo, test_area_fija_api, test_tope, test_super_admins, test_ficha_municipio,
+                                     test_vaciado_guardas, test_vaciado_operativo_y_todo, test_exportacion_retencion,
                                      test_alta_validaciones, test_alta_ok, test_alta_atomica, test_alta_agrega_fijos, test_alta_concurrente,
                                      test_invitacion, test_invitacion_token_malformado, test_estados,
                                      test_alta_por_origen,

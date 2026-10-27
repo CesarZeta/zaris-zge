@@ -11,11 +11,12 @@ import {
 } from '../api'
 import { Advertencias, Casilla, faltaDependencia } from './AltaMunicipioPage'
 import { EditarMunicipioModal } from './MunicipiosPage'
+import { Exportaciones, Vaciado } from './VaciadoSecciones'
 import { Campo, input, seccion, subtitulo, tabla, td, th, titulo } from './_comun'
 
 // Ficha de un municipio (IT-01 F4+F5, Tarea 15; spec §4.4): estado y sus transiciones, módulos,
-// tope de cuentas, administradores e invitación, dominios y prueba de puesta en marcha. La
-// exportación y el vaciado se suman en la Tarea 16.
+// tope de cuentas, administradores e invitación, dominios, prueba de puesta en marcha, exportaciones
+// y vaciado (Tarea 16).
 
 const CONFIRMAR = 'Escribí el nombre del municipio para confirmar.'
 
@@ -70,6 +71,8 @@ export function MunicipioFichaPage() {
       <Administradores ficha={q.data} aviso={aviso} />
       <Dominios idMun={idMun} />
       <Prueba idMun={idMun} />
+      <Exportaciones idMun={idMun} />
+      <Vaciado municipio={m} onTermino={refrescar} />
 
       <EditarMunicipioModal municipio={editando ? m : null} onClose={() => { setEditando(false); refrescar() }} />
     </div>
