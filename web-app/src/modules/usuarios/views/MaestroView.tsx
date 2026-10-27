@@ -10,6 +10,7 @@ import {
   useActualizarUsuario,
   useCambiarEstadoUsuario,
   useCrearUsuario,
+  useCupoCuentas,
   useLoginLog,
   useUsuariosLista,
 } from '../hooks/useUsuarios'
@@ -217,7 +218,10 @@ export function MaestroView() {
         <>
           {/* Panel de búsqueda (§15) */}
           <div style={panelBusqueda}>
-            <div style={panelTitulo}>Buscar usuario existente</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+              <div style={panelTitulo}>Buscar usuario existente</div>
+              <IndicadorCupo />
+            </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <input
                 type="text"
@@ -865,6 +869,24 @@ function pistaPassword(pwd: string, cf: string): string | undefined {
   if (!cf) return 'Repetí la contraseña para confirmar el cambio.'
   if (pwd === cf) return 'La contraseña coincide.'
   return undefined
+}
+
+// «N de M cuentas activas.»: solo si el municipio tiene tope; desde el 90 %, en color de aviso.
+function IndicadorCupo() {
+  const { data } = useCupoCuentas()
+  if (!data || data.maximo == null) return null
+  return (
+    <span
+      data-cupo
+      style={{
+        fontSize: '0.8rem',
+        fontWeight: data.aviso ? 600 : 400,
+        color: data.aviso ? 'var(--color-error)' : 'var(--fg-2)',
+      }}
+    >
+      {data.activas} de {data.maximo} cuentas activas.
+    </span>
+  )
 }
 
 // ── Estilos ─────────────────────────────────────────────────────────────────

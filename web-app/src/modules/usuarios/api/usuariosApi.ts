@@ -1,5 +1,6 @@
 import { api } from '../../../lib/api'
 import type {
+  CupoCuentas,
   EstadoSegundoFactor,
   LoginLogEntry,
   SubareaHit,
@@ -14,6 +15,8 @@ const BUC = '/api/v1/buc'
 // igual que hacía el vanilla (dataset chico: decenas de usuarios).
 export const listarUsuarios = () =>
   api.get<Usuario[]>(`${BUC}/usuarios`, { params: { solo_activos: false } })
+
+export const obtenerCupo = () => api.get<CupoCuentas>(`${BUC}/usuarios/cupo`)
 
 export const buscarUsuarios = (q: string) =>
   api.get<Usuario[]>(`${BUC}/usuarios/buscar`, { params: { q, tipo: 'texto' } })

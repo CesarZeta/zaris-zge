@@ -28,6 +28,7 @@ from app.core.config_municipio import leer_configs
 from app.models.buc import Ciudadano, Usuario
 from app.schemas.buc import CuentaZarisIn, UsuarioCreate
 from app.services.cuenta_vecino import asegurar_cuenta_vecino
+from app.services.municipios.tope import exigir_cupo
 from app.services.super_admin import EMAIL_RESERVADO, email_reservado_super_admin
 
 logger = logging.getLogger("zaris.cuenta_zaris")
@@ -241,6 +242,7 @@ async def crear_usuario_interno(
     if ciudadano is not None:
         data_dict["id_ciudadano"] = ciudadano.id_ciudadano
 
+    await exigir_cupo(db, id_municipio)
     usuario = Usuario(**data_dict)
     db.add(usuario)
     await db.flush()  # asigna id_usuario sin cerrar la transacción

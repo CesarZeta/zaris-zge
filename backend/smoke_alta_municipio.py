@@ -1068,8 +1068,125 @@ async def test_area_fija_api() -> None:
             "SELECT activo, nombre FROM area WHERE id_area = :a"), {"a": area.id_area})).one()) == (True, area.nombre))
 
 
+# ── Tarea 14 ──────────────────────────────────────────────────────────────────────────────────
+
+TOPE_TEXTO = "llegó al tope de"
+
+
+async def _subarea_c(mid: int) -> int:
+    """Una subárea de C para las cuentas internas de prueba (idempotente)."""
+    async with AsyncSessionLocal() as db:
+        sub = await _escalar(db, "SELECT id_subarea FROM subarea WHERE id_municipio = :m AND nombre = 'Prueba tope'",
+                             {"m": mid})
+        if sub is None:
+            area = await _escalar(db, "SELECT id_area FROM area WHERE id_municipio = :m ORDER BY id_area LIMIT 1",
+                                  {"m": mid}) or await _escalar(db, """
+                INSERT INTO area (nombre, id_municipio, activo) VALUES ('Área prueba tope', :m, TRUE)
+                RETURNING id_area""", {"m": mid})
+            sub = await _escalar(db, """
+                INSERT INTO subarea (nombre, id_area, id_municipio, activo) VALUES ('Prueba tope', :a, :m, TRUE)
+                RETURNING id_subarea""", {"a": area, "m": mid})
+        await db.commit()
+    return sub
+
+
+async def _tope(mid: int, maximo) -> None:
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("UPDATE municipios SET max_usuarios_activos = :t WHERE id_municipio = :m"),
+                         {"t": maximo, "m": mid})
+        await db.commit()
+
+
+async def _activas(mid: int) -> int:
+    async with AsyncSessionLocal() as db:
+        return await _escalar(db, "SELECT count(*) FROM usuarios WHERE id_municipio = :m AND activo "
+                                  "AND nivel_acceso BETWEEN 1 AND 5", {"m": mid})
+
+
+async def _ficha_funcionario_c(mid: int, sufijo: str) -> int:
+    dni = "97" + sufijo[-6:].rjust(6, "0")
+    async with AsyncSessionLocal() as db:
+        cid = await _escalar(db, """
+            INSERT INTO ciudadanos (doc_tipo, doc_nro, cuil, nombre, apellido, sexo, fecha_nac, id_nacionalidad, telefono, email, email_chk, emp_chk,
+                                    ren_chk, activo, es_funcionario, id_municipio)
+            VALUES ('DNI', :dni, :cuil, 'Tope', 'Prueba', 'OTROS', '1990-01-01', (SELECT min(id) FROM nacionalidades), '1100000000', :e, FALSE, FALSE, FALSE, TRUE, TRUE, :m)
+            RETURNING id_ciudadano""", {"dni": dni, "cuil": _cuil(dni), "e": f"tope.ficha.{sufijo}@prueba-aislamiento.com.ar",
+                                        "m": mid})
+        await db.commit()
+    return cid
+
+
+async def test_tope() -> None:
+    import uuid
+    print("\ntest_tope")
+    C = await _municipio_c()
+    mid = C["id"]
+    sub = await _subarea_c(mid)
+    h = _token(C["n1"], mid)
+    creadas: list[int] = []
+
+    def alta(s: str) -> dict:
+        return {"username": f"tope.{s}", "email": f"tope.{s}@prueba-aislamiento.com.ar", "nivel_acceso": 4,
+                "id_subarea": sub}
+
+    async with _cliente() as c:
+        try:
+            activas = await _activas(mid)
+            await _tope(mid, activas)
+            s = uuid.uuid4().hex[:8]
+            r = await c.post("/api/v1/buc/usuarios", json=alta(s), headers=h)
+            check("tope lleno: POST /buc/usuarios → 409", r.status_code == 409 and TOPE_TEXTO in r.text,
+                  f"{r.status_code} {r.text[:160]}")
+            cid = await _ficha_funcionario_c(mid, str(int(s, 16) % 1_000_000))
+            r = await c.post(f"/api/v1/buc/ciudadanos/{cid}/cuenta-zaris",
+                             json={"nivel_acceso": 4, "id_subarea": sub, "username": f"tope.f{s}"}, headers=h)
+            check("tope lleno: cuenta ZARIS desde la ficha → 409", r.status_code == 409 and TOPE_TEXTO in r.text,
+                  f"{r.status_code} {r.text[:160]}")
+            check("no se creó ninguna cuenta", await _activas(mid) == activas)
+
+            r = await c.put(f"/api/v1/buc/usuarios/{C['n4']}/estado", params={"activo": "false"}, headers=h)
+            check("dar de baja una cuenta con el tope lleno → 200", r.status_code == 200, f"{r.status_code} {r.text[:120]}")
+            r = await c.post("/api/v1/buc/usuarios", json=alta(s), headers=h)
+            check("con un lugar libre, crear → 201", r.status_code == 201, f"{r.status_code} {r.text[:160]}")
+            if r.status_code == 201:
+                creadas.append(r.json()["id_usuario"])
+            r = await c.put(f"/api/v1/buc/usuarios/{C['n4']}/estado", params={"activo": "true"}, headers=h)
+            check("reactivar con el tope lleno → 409", r.status_code == 409 and TOPE_TEXTO in r.text,
+                  f"{r.status_code} {r.text[:160]}")
+
+            r = await c.get("/api/v1/buc/usuarios/cupo", headers=h)
+            cupo = r.json() if r.status_code == 200 else {}
+            check("GET /buc/usuarios/cupo → activas, maximo y aviso",
+                  cupo == {"activas": activas, "maximo": activas, "aviso": True}, f"{r.status_code} {r.text[:160]}")
+
+            antes = await _activas(mid)
+            await _tope(mid, 1)
+            check("bajar el tope por debajo de las activas no desactiva a nadie", await _activas(mid) == antes)
+
+            await _tope(mid, antes + 1)
+            s1, s2 = uuid.uuid4().hex[:8], uuid.uuid4().hex[:8]
+            r1, r2 = await asyncio.gather(c.post("/api/v1/buc/usuarios", json=alta(s1), headers=h),
+                                          c.post("/api/v1/buc/usuarios", json=alta(s2), headers=h))
+            codigos = sorted((r1.status_code, r2.status_code))
+            check("dos altas simultáneas con un lugar: una 201 y una 409", codigos == [201, 409], str(codigos))
+            creadas += [r.json()["id_usuario"] for r in (r1, r2) if r.status_code == 201]
+
+            await _tope(mid, None)
+            r = await c.get("/api/v1/buc/usuarios/cupo", headers=h)
+            check("sin tope: maximo null y sin aviso", r.status_code == 200 and r.json()["maximo"] is None
+                  and r.json()["aviso"] is False, f"{r.status_code} {r.text[:160]}")
+        finally:
+            await _tope(mid, None)
+            async with AsyncSessionLocal() as db:
+                await db.execute(text("UPDATE usuarios SET activo = (id_usuario = :n4) WHERE id_usuario = ANY(:ids)"),
+                                 {"n4": C["n4"], "ids": creadas + [C["n4"]]})
+                await db.execute(text("UPDATE usuarios SET activo = FALSE WHERE id_municipio = :m "
+                                      "AND username LIKE 'tope.%'"), {"m": mid})
+                await db.commit()
+
+
 PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones_super, test_links_por_municipio,
-                                     test_modelo, test_area_fija_api,
+                                     test_modelo, test_area_fija_api, test_tope,
                                      test_alta_validaciones, test_alta_ok, test_alta_atomica, test_alta_concurrente,
                                      test_invitacion, test_estados,
                                      test_alta_por_origen,

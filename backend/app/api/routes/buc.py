@@ -15,6 +15,7 @@ from app.core.database import get_db
 from app.core.auth import get_current_user, require_admin
 from app.core.municipio import municipio_actual
 from app.services.municipios.modulos import modulos_permitidos_lote
+from app.services.municipios.tope import cupo, exigir_cupo
 from app.models.buc import (
     Usuario, Nacionalidad, TipoRepresentacion, Actividad,
     Ciudadano, Empresa, CiudadanoEmpresa
@@ -152,6 +153,14 @@ async def listar_usuarios(
     rows = [dict(row._mapping) for row in r.fetchall()]
     await _modulos_permitidos_batch(db, rows, id_municipio)
     return rows
+
+
+@router.get("/usuarios/cupo",
+            responses={403: {"description": "Solo el administrador lee las cuentas internas"}})
+async def cupo_usuarios(db: AsyncSession = Depends(get_db), _admin: dict = Depends(require_admin),
+                        id_municipio: int = Depends(municipio_actual)):
+    """Cuentas internas activas del municipio y su tope (`maximo` null = sin tope); `aviso` desde el 90 %."""
+    return await cupo(db, id_municipio)
 
 
 @router.get("/usuarios/{id}", response_model=UsuarioOut,
@@ -321,6 +330,8 @@ async def cambiar_estado_usuario(
                     detail="No se puede desactivar al último administrador activo del municipio.",
                 )
 
+    if activo and not usuario.activo:
+        await exigir_cupo(db, id_municipio)
     usuario.activo = activo
     await db.commit()
     await db.refresh(usuario)
