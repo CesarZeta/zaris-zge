@@ -103,10 +103,6 @@ app.add_middleware(
         "http://localhost:8090",
         # App de agentes (5175 = vite dev local)
         "http://localhost:5175",
-        # Hosting viejo: se quitan en el corte A, al apagar GitHub Pages y Vercel
-        "https://cesarzeta.github.io",
-        "https://zaris-vecinos.vercel.app",
-        "https://zaris-agentes.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],

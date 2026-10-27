@@ -10,7 +10,7 @@ Punto único: ningún router lee el municipio de un query param, del body ni de 
   reserva, pantalla) toman el municipio de la fila del token.
 
 Origen → municipio: `<sub>.zge|vecinos|agentes.zaris.com.ar` → `municipios.subdominio = sub`.
-Sin subdominio (sin Origin, zge.zaris.com.ar, cesarzeta.github.io, localhost) → el municipio con
+Sin subdominio (sin Origin, zge.zaris.com.ar, localhost) → el municipio con
 `direccion_base`. Plan: PLAN_MULTI_MUNICIPIO_F1_F2.md, Tarea 6.
 
 Super administrador (IT-01 F3): `municipio_actual` es el ÚNICO lugar que lee el header
