@@ -225,6 +225,7 @@ async def notificar_retrabajo_auditoria(id_retrabajo: int) -> None:
             if not r:
                 return
             municipio_nombre, municipio_logo_url = await _municipio_branding(db, r["id_municipio"])
+            portal = await url_portal_vecino(db, r["id_municipio"])
     except Exception as e:  # noqa: BLE001
         logger.warning("notificar_retrabajo_auditoria(%s) fallo al leer: %s", id_retrabajo, e)
         return
@@ -234,7 +235,6 @@ async def notificar_retrabajo_auditoria(id_retrabajo: int) -> None:
     nro_or = r["nro_origen"] or "anterior"
 
     email = (r["email"] or "").strip()
-    portal = url_portal_vecino()
     if email and "@" in email and portal:
         try:
             await enviar_mail_retrabajo_auditoria_ciudadano(

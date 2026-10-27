@@ -570,7 +570,79 @@ async def test_efectos_apagados() -> None:
         await _modulos(C["id"])
 
 
-PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones_super,
+# ── Tarea 9 ───────────────────────────────────────────────────────────────────────────────────
+
+async def test_links_por_municipio() -> None:
+    print("\ntest_links_por_municipio")
+    import re
+    import app.services.email as em
+    from app.core.urls import base_app, url_alta_publica, url_publica
+    from app.services.notificaciones import _url_absoluta_tramite
+    C = await _municipio_c()
+    async with AsyncSessionLocal() as db:
+        B = await _escalar(db, "SELECT id_municipio FROM municipios WHERE subdominio = 'aislamiento'")
+        base, cod_base = (await db.execute(text(
+            "SELECT id_municipio, codigo_corto FROM municipios WHERE direccion_base"))).one()
+        email_base = await _escalar(db, "SELECT email FROM usuarios WHERE id_municipio = :m AND nivel_acceso = 2 "
+                                        "AND activo AND email LIKE '%@%' ORDER BY id_usuario LIMIT 1", {"m": base})
+        await db.execute(text("UPDATE usuarios SET fecha_ultimo_email_recovery = NULL WHERE email IN (:a, :b)"),
+                         {"a": EMAIL_C_N2, "b": email_base})
+        await db.execute(text("UPDATE ciudadano_credencial SET fecha_ultimo_email_recovery = NULL "
+                              "WHERE id_ciudadano IN (SELECT id_ciudadano FROM ciudadanos WHERE doc_nro IN "
+                              "('97000001', '28547123'))"))
+        await db.commit()
+    zge_c, vec_b = f"https://{SUB_C}.zge.zaris.com.ar", "https://aislamiento.vecinos.zaris.com.ar"
+    zge_base, vec_base = url_publica(settings.FRONTEND_BASE_URL), url_publica(settings.APP_VECINOS_FRONTEND_URL)
+
+    capturados: list[str] = []
+
+    async def captura(to, subject, body_html, body_text=None, from_override=None):
+        capturados.append(body_html or "")
+        return True
+
+    def links() -> list[str]:
+        return [h for html in capturados for h in re.findall(r'href="(https?://[^"]+)"', html)]
+
+    original = em.enviar_mail
+    em.enviar_mail = captura
+    try:
+        async with _cliente() as c:
+            casos = [
+                ("recuperar clave del funcionario de C", "/api/v1/auth/recuperar-password",
+                 {"email": EMAIL_C_N2}, {"Origin": ORIGEN_C_ZGE}, zge_c, zge_base),
+                ("recuperar clave del funcionario del base", "/api/v1/auth/recuperar-password",
+                 {"email": email_base}, {}, zge_base, zge_c),
+                ("recuperar clave del vecino de B", "/api/v1/publico/auth/recuperar-password",
+                 {"dni": "97000001"}, {"Origin": "https://aislamiento.vecinos.zaris.com.ar"}, vec_b, vec_base),
+                ("recuperar clave del vecino del base", "/api/v1/publico/auth/recuperar-password",
+                 {"dni": "28547123"}, {}, vec_base, vec_b),
+            ]
+            for nombre, ruta, body, h, esperado, ajeno in casos:
+                capturados.clear()
+                r = await c.post(ruta, json=body, headers=h)
+                ls = links()
+                check(f"{nombre}: los links van a {esperado}", r.status_code == 200 and bool(ls)
+                      and any(x.startswith(esperado) for x in ls) and not any(x.startswith(ajeno) for x in ls),
+                      f"{r.status_code} {ls[:3]}")
+    finally:
+        em.enviar_mail = original
+
+    async with AsyncSessionLocal() as db:
+        check("base_app de C para agentes", await base_app(db, C["id"], "agentes") == f"https://{SUB_C}.agentes.zaris.com.ar")
+        check("base_app del base = la setting de siempre", await base_app(db, base, "zge") == zge_base)
+        check("base_app api = una sola API", await base_app(db, C["id"], "api") == url_publica(settings.API_PUBLIC_BASE_URL))
+        check("alta pública de C sin ?m=", await url_alta_publica(db, C["id"]) == f"{zge_c}/frontend/alta-vecino.html",
+              await url_alta_publica(db, C["id"]))
+        check("alta pública del base con ?m=", (await url_alta_publica(db, base) or "").endswith(f"?m={cod_base.lower()}"),
+              await url_alta_publica(db, base))
+        check("link de trámite de C", (await _url_absoluta_tramite(db, C["id"], "EXP-1")).startswith(f"{zge_c}/#/tramites/"))
+        mid = await _escalar(db, "SELECT id_municipio FROM municipios WHERE subdominio IS NULL AND NOT direccion_base "
+                                 "ORDER BY id_municipio LIMIT 1")
+        if mid:
+            check("municipio sin subdominio: sin link", await base_app(db, mid, "vecinos") == "")
+
+
+PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones_super, test_links_por_municipio,
                                      test_estado_baja, test_modelo_no_operable, test_demo_por_estado,
                                      test_geo_catalogo, test_municipio_provincia,
                                      test_modulo_404, test_modulos_permitidos_municipio, test_nivel_por_municipio,

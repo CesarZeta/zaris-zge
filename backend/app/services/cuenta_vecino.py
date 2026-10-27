@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.config_municipio import leer_configs
+from app.core.urls import base_app
 from app.services.email import enviar_mail_activacion_ciudadano
 
 logger = logging.getLogger("zaris.cuenta_vecino")
@@ -164,7 +165,7 @@ async def asegurar_cuenta_vecino(
         apellido,
         token,
         municipio_nombre,
-        settings.APP_VECINOS_FRONTEND_URL,
+        await base_app(db, id_municipio, "vecinos"),
         municipio_logo_url,
         id_municipio=id_municipio,
     )

@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_ciudadano
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.urls import base_app
 from app.middleware.rate_limit import check_rate_limit
 from app.utils.request_helpers import get_real_ip
 from app.api.routes.geo import geocodificar_direccion, localidad_desde_coords, reverse_geocodificar
@@ -360,7 +361,7 @@ async def crear_mi_reclamo(
                     descripcion=descripcion,
                     direccion=direccion,
                     municipio_nombre=municipio_nombre,
-                    frontend_url=settings.APP_VECINOS_FRONTEND_URL,
+                    frontend_url=await base_app(db, current["id_municipio"], "vecinos"),
                     municipio_logo_url=municipio_logo_url,
                     id_municipio=current["id_municipio"],
                 )

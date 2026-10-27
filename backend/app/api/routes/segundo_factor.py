@@ -130,7 +130,7 @@ async def respuesta_login(db: AsyncSession, user) -> SegundoFactorRequerido:
     SegundoFactorNoConfigurado si falta la clave de cifrado."""
     sf.comprobar_configuracion()
     est = await sf.estado_cuenta(db, user.id_usuario)
-    base = {"url_backoffice": url_login_backoffice()}
+    base = {"url_backoffice": await url_login_backoffice(db, user.id_municipio)}
     if est.vinculada:
         return SegundoFactorRequerido(estado="codigo", **base, desafio=crear_desafio(
             user.id_usuario, fin="codigo", id_municipio=user.id_municipio))

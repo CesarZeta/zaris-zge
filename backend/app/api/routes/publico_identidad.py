@@ -43,7 +43,7 @@ async def identidad_municipio(
 
     # URL del alta publica de vecinos: dominio del shell + slug del municipio.
     # Sin slug -> None y la PWA no muestra el link (fail-silent).
-    url_alta = url_alta_publica(muni.codigo_corto if muni else None)
+    url_alta = await url_alta_publica(db, id_municipio)
 
     return IdentidadMunicipioOut(
         municipio_nombre=cfg.get("municipio_nombre") or (muni.nombre if muni else None),

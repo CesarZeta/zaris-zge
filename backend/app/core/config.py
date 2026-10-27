@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     # (cazado 2026-10-10: el mail de verificacion del autoregistro llevaba a un 404).
     # Local: .env.local -> http://127.0.0.1:8000 · otro deploy: su URL de Railway.
     API_PUBLIC_BASE_URL: str = "https://zaris-api-production-bf0b.up.railway.app"
+    # Dominio de las direcciones por municipio (IT-01 F4+F5): <sub>.zge|vecinos|agentes.<DOMINIO_BASE>.
+    DOMINIO_BASE: str = "zaris.com.ar"
     # Token compartido para autenticar el job dispatcher de encuestas (cron externo que
     # dispara procesar_envios_pendientes/expirar_envios_vencidos). Set via env var en Railway;
     # NO commitear el valor real. Vacio => el endpoint dispatcher debe rechazar (cuando exista).

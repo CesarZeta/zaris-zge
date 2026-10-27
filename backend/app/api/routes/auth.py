@@ -16,7 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.config_municipio import leer_configs
 from app.core.database import get_db
+from typing import Optional
+
 from app.core.municipio import resolver_municipio_de_origen
+from app.core.urls import url_login_backoffice
 from app.core import storage
 from app.core.auth import (
     verify_password,
@@ -277,9 +280,10 @@ async def _branding_municipio(db: AsyncSession, id_municipio: int) -> tuple[str,
     return (cfg.get("municipio_nombre") or "Tu municipio", cfg.get("municipio_logo_url") or None)
 
 
-def _login_url() -> str:
-    """URL del login del shell vanilla (CTA de los mails internos)."""
-    return f"{settings.FRONTEND_BASE_URL.rstrip('/')}/frontend/login.html"
+async def _login_url(db: AsyncSession, id_municipio: Optional[int]) -> str:
+    """URL del login del shell del municipio (CTA de los mails internos). El super administrador
+    (sin municipio) recibe la de las direcciones sin prefijo."""
+    return await url_login_backoffice(db, id_municipio)
 
 
 @router.post("/recuperar-password", response_model=GenericoOkResponse,
@@ -347,7 +351,7 @@ async def recuperar_password(
         municipio_nombre, municipio_logo_url = await _branding_municipio(db, id_municipio)
     background_tasks.add_task(
         enviar_mail_recovery_usuario_interno,
-        row.email, row.nombre, token, _login_url(),
+        row.email, row.nombre, token, await _login_url(db, None if es_super else id_municipio),
         municipio_nombre, municipio_logo_url, es_super,
     )
     return GenericoOkResponse()
@@ -385,7 +389,7 @@ async def recuperar_usuario(
     municipio_nombre, municipio_logo_url = await _branding_municipio(db, id_municipio)
     background_tasks.add_task(
         enviar_mail_recordatorio_usuario_interno,
-        row.email_destino, row.nombre, _login_url(),
+        row.email_destino, row.nombre, await _login_url(db, id_municipio),
         municipio_nombre, municipio_logo_url,
     )
     return GenericoOkResponse()

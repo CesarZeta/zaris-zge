@@ -169,7 +169,7 @@ async def identidad_alta(m: str, db: AsyncSession = Depends(get_db)):
         municipio_logo_url=cfg.get("municipio_logo_url"),
         municipio_color_primary=cfg.get("municipio_color_primary"),
         municipio_color_accent=cfg.get("municipio_color_accent"),
-        app_vecinos_url=url_portal_vecino() or None,
+        app_vecinos_url=await url_portal_vecino(db, muni["id_municipio"]) or None,
     )
 
 
@@ -320,7 +320,7 @@ async def alta_cuenta(
         cta_url,
         cfg.get("municipio_nombre") or muni["nombre"],
         cfg.get("municipio_logo_url"),
-        portal_url=url_portal_vecino() or None,
+        portal_url=await url_portal_vecino(db, id_municipio) or None,
         id_municipio=id_municipio,
     )
 
@@ -659,7 +659,7 @@ async def verificar(request: Request, token: str, m: str | None = None, db: Asyn
             f"Listo, {nombre}. Tu correo quedó verificado. Ya podés iniciar sesión en el "
             f"Portal del Ciudadano con tu DNI y la contraseña que elegiste.",
             ok=True, municipio_nombre=municipio_nombre,
-            cta_url=url_portal_vecino() or None, cta_texto="Ir al Portal del Ciudadano",
+            cta_url=await url_portal_vecino(db, row.id_municipio) or None, cta_texto="Ir al Portal del Ciudadano",
         ))
 
     # ── Empresa ──
@@ -698,7 +698,7 @@ async def verificar(request: Request, token: str, m: str | None = None, db: Asyn
             "¡Empresa verificada!",
             f"El alta de {row.razon_social} quedó verificada correctamente.",
             ok=True, municipio_nombre=municipio_nombre,
-            cta_url=url_portal_vecino() or None, cta_texto="Ir al Portal del Ciudadano",
+            cta_url=await url_portal_vecino(db, row.id_municipio) or None, cta_texto="Ir al Portal del Ciudadano",
         ))
 
     return await _pagina_enlace_invalido(db, request, m)
@@ -727,7 +727,7 @@ async def _pagina_enlace_invalido(db: AsyncSession, request: Request, m: str | N
             "Este enlace de verificación no es válido o ya expiró. Si te diste de alta hace poco, "
             "volvé a la página de alta y pedí un nuevo correo de activación con tu DNI.",
             ok=False, municipio_nombre=municipio_nombre,
-            cta_url=url_alta_publica(slug_activo), cta_texto="Volver a la página de alta",
+            cta_url=await url_alta_publica(db, id_municipio), cta_texto="Volver a la página de alta",
         ),
         status_code=400,
     )
