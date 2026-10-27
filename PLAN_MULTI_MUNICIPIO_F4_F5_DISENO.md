@@ -1,6 +1,6 @@
 # IT-01 F4+F5 — Alta de municipios y subdominios por municipio (diseño)
 
-> **Borrador para aprobación de César (2026-10-27), con las respuestas al builder check incorporadas.** Base: [`PLAN_MULTI_MUNICIPIO.md`](PLAN_MULTI_MUNICIPIO.md) §5, §5b, §6, §8, §9 y §10, cuyas decisiones (todas de César, 2026-10-23) siguen valiendo y no se repiten acá salvo donde este documento las precisa. F1+F2 en prod desde el 2026-10-25; F3, F3b y el lote de limpieza desde el 2026-10-26. Relevamiento del código del 2026-10-27 (commits ZGE `7272595`, zaris-vecinos `afa1182`, zaris-agentes `8d0c5f2`).
+> **Documento aprobado por César el 2026-10-27**, con las respuestas al builder check incorporadas. Plan de implementación: [`PLAN_MULTI_MUNICIPIO_F4_F5.md`](PLAN_MULTI_MUNICIPIO_F4_F5.md). Base: [`PLAN_MULTI_MUNICIPIO.md`](PLAN_MULTI_MUNICIPIO.md) §5, §5b, §6, §8, §9 y §10, cuyas decisiones (todas de César, 2026-10-23) siguen valiendo y no se repiten acá salvo donde este documento las precisa. F1+F2 en prod desde el 2026-10-25; F3, F3b y el lote de limpieza desde el 2026-10-26. Relevamiento del código del 2026-10-27 (commits ZGE `7272595`, zaris-vecinos `afa1182`, zaris-agentes `8d0c5f2`).
 >
 > Marcas: **[César]** = decisión de César; **[Claude]** = criterio mío, revisable; **[builder]** = queda a quien implemente.
 
