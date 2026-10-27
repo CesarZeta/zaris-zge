@@ -869,6 +869,62 @@ async def enviar_mail_recovery_usuario_interno(
     return await enviar_mail(to=to, subject=subject, body_html=html, body_text=text, from_override=from_header)
 
 
+async def enviar_mail_invitacion_usuario_interno(
+    to: str,
+    nombre: str,
+    link: str,
+    horas: int,
+    municipio_nombre: str,
+    municipio_logo_url: str | None = None,
+    super_admin: bool = False,
+) -> bool:
+    """
+    Invitación a elegir la clave (IT-01 F4+F5): primer administrador de un municipio o un super
+    administrador nuevo. `link` ya trae el token (base del municipio + /frontend/invitacion.html).
+    Del super administrador sale como ZARIS, igual que su recuperación. Modo MOCK sin Resend.
+    """
+    saludo_nombre = (nombre or "").strip() or "equipo"
+    if super_admin:
+        municipio_nombre, municipio_logo_url = "ZARIS", None
+        subject = "Tu cuenta de super administrador — ZARIS"
+        cuenta = "una cuenta de super administrador de ZARIS"
+    else:
+        subject = f"Tu cuenta de administrador — ZARIS {municipio_nombre}"
+        cuenta = f"la cuenta de administrador de {municipio_nombre} en ZARIS"
+    cuerpo = f"""\
+      <p style="margin:0 0 16px 0;font-size:15px;line-height:1.55;color:#26251e;">
+        Hola {saludo_nombre},
+      </p>
+      <p style="margin:0 0 16px 0;font-size:15px;line-height:1.55;color:rgba(38,37,30,.85);">
+        Te crearon {cuenta}. Hacé clic en el botón para elegir tu contraseña; después vas a vincular
+        una app de códigos en el celular (Google Authenticator, Microsoft Authenticator o similar).
+      </p>
+      <p style="margin:0 0 8px 0;font-size:13px;line-height:1.5;color:rgba(38,37,30,.6);">
+        Ingresás al sistema con tu correo: <strong>{to}</strong>
+      </p>
+      <p style="margin:0 0 8px 0;font-size:13px;line-height:1.5;color:rgba(38,37,30,.6);">
+        Este enlace es válido por {horas} horas y se usa una sola vez.
+      </p>"""
+    html = _build_template_interno(
+        titulo="Elegí tu contraseña",
+        cuerpo_html=cuerpo,
+        cta_texto="Elegir mi contraseña",
+        cta_url=link,
+        municipio_nombre=municipio_nombre,
+        municipio_logo_url=municipio_logo_url,
+    )
+    text = (
+        f"{municipio_nombre} · GESTION ESTADO\n\n"
+        f"Elegí tu contraseña\n\n"
+        f"Hola {saludo_nombre},\n\n"
+        f"Te crearon {cuenta}. Ingresás con tu correo: {to}\n\n"
+        f"Elegí tu contraseña en: {link}\n\n"
+        f"Este enlace es válido por {horas} horas y se usa una sola vez.\n"
+    )
+    from_header = formatear_remitente(municipio_nombre, _from_address_base())
+    return await enviar_mail(to=to, subject=subject, body_html=html, body_text=text, from_override=from_header)
+
+
 async def enviar_mail_recordatorio_usuario_interno(
     to: str,
     nombre: str,

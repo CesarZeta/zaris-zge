@@ -13,10 +13,13 @@ No usan `municipio_actual`: operan sobre lo global. Cada edición y cada selecci
 registro de accesos. `codigo_corto` (prefijo de los números), `direccion_base` y `activo` no se
 editan acá: los da el alta y la baja de F4.
 """
+import asyncio
 import re
-from typing import Optional
+from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+import httpx
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +29,11 @@ from app.core.config_municipio import leer_configs
 from app.core.database import get_db
 from app.core.municipio import invalidar_cache_municipios
 from app.services.accesos_super import registrar_acceso_super, registrar_acceso_super_en
-from app.services.municipios.constantes import ESTADOS
+from app.core.urls import base_app
+from app.services.municipios.alta import AltaMunicipioIn, dar_de_alta
+from app.services.municipios.constantes import ESTADOS, MODULOS_FIJOS
+from app.services.municipios.invitacion import crear_invitacion
+from app.services.municipios.modulos import invalidar_modulos, validar_dependencias
 
 router = APIRouter(prefix="/api/v1/super", tags=["Super administrador"],
                    dependencies=[Depends(require_super_admin)])
@@ -245,3 +252,240 @@ async def editar_config_global(
                                     user_agent=request.headers.get("user-agent"))
     await db.commit()
     return dict(nuevo)
+
+
+
+# ── Alta, estado, módulos y dominios de un municipio (IT-01 F4+F5, Tarea 11) ─────────────────────
+
+def _registro(request: Request) -> dict:
+    return {"metodo": request.method, "ruta": request.url.path, "user_agent": request.headers.get("user-agent")}
+
+
+@router.post("/municipios", status_code=201,
+             responses={409: {"description": "Subdominio o código corto en uso"},
+                        422: {"description": "Datos inválidos, país no habilitado o módulos sin sus dependencias"}})
+async def alta_municipio(
+    body: AltaMunicipioIn,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    sa: dict = Depends(require_super_admin),
+):
+    """Alta completa en una transacción (spec §4.4). Si algo falla, no queda nada."""
+    res = await dar_de_alta(db, body, id_super=sa["id_usuario"], background_tasks=background_tasks)
+    await registrar_acceso_super_en(
+        db, id_usuario=sa["id_usuario"], accion="municipio_alta", id_municipio=res["id_municipio"],
+        detalle=f"alta de {body.nombre} ({body.subdominio}, {body.codigo_corto})", **_registro(request))
+    await db.commit()
+    invalidar_cache_municipios()
+    invalidar_modulos(res["id_municipio"])
+    return res
+
+
+class EstadoIn(BaseModel):
+    estado: Literal["produccion", "baja", "reactivar", "puesta_en_marcha", "demo"]
+    confirmacion: Optional[str] = Field(None, max_length=150)
+
+
+@router.post("/municipios/{id_municipio}/estado", response_model=MunicipioSuperOut,
+             responses={422: {"description": "Transición no permitida o confirmación incorrecta"}})
+async def cambiar_estado(
+    id_municipio: int,
+    body: EstadoIn,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    sa: dict = Depends(require_super_admin),
+):
+    """puesta_en_marcha → produccion (escribiendo el nombre; sin vuelta atrás) · cualquiera → baja
+    (salvo el municipio de las direcciones sin prefijo) · baja → reactivar (vuelve al estado anterior).
+    demo y modelo no se asignan desde la API."""
+    actual = (await db.execute(text(
+        "SELECT nombre, estado, estado_antes_baja, direccion_base FROM municipios WHERE id_municipio = :m FOR UPDATE"),
+        {"m": id_municipio})).first()
+    if actual is None:
+        raise HTTPException(404, "Municipio no encontrado")
+    if body.estado == "produccion":
+        if actual.estado != "puesta_en_marcha":
+            raise HTTPException(422, "Solo un municipio en puesta en marcha pasa a producción")
+        if (body.confirmacion or "").strip() != actual.nombre:
+            raise HTTPException(422, "Escribí el nombre del municipio para confirmar.")
+        nuevo = "produccion"
+    elif body.estado == "baja":
+        if actual.estado == "baja":
+            raise HTTPException(422, "El municipio ya está de baja")
+        if actual.direccion_base:
+            raise HTTPException(422, "El municipio de las direcciones sin prefijo no se da de baja")
+        nuevo = "baja"
+    elif body.estado == "reactivar":
+        if actual.estado != "baja":
+            raise HTTPException(422, "Solo se reactiva un municipio de baja")
+        nuevo = actual.estado_antes_baja or "puesta_en_marcha"
+    else:
+        raise HTTPException(422, f"No se puede pasar a {body.estado} desde la API")
+    await db.execute(text("""
+        UPDATE municipios SET estado = :e, fecha_modificacion = NOW(), id_usuario_modificacion = :u
+         WHERE id_municipio = :m"""), {"e": nuevo, "u": sa["id_usuario"], "m": id_municipio})
+    await registrar_acceso_super_en(db, id_usuario=sa["id_usuario"], accion="municipio_estado",
+                                    id_municipio=id_municipio, detalle=f"{actual.estado} → {nuevo}",
+                                    **_registro(request))
+    await db.commit()
+    invalidar_cache_municipios()
+    invalidar_modulos(id_municipio)
+    return dict((await db.execute(text(_SELECT_MUNICIPIO + " WHERE m.id_municipio = :id"),
+                                  {"id": id_municipio})).mappings().first())
+
+
+class ModuloEstadoIn(BaseModel):
+    codigo: str = Field(..., max_length=50)
+    habilitado: bool
+
+
+class ModulosIn(BaseModel):
+    modulos: list[ModuloEstadoIn]
+
+
+@router.put("/municipios/{id_municipio}/modulos",
+            responses={422: {"description": "Dependencia entre módulos o módulo fijo"}})
+async def cambiar_modulos(
+    id_municipio: int,
+    body: ModulosIn,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    sa: dict = Depends(require_super_admin),
+):
+    if not await db.scalar(text("SELECT 1 FROM municipios WHERE id_municipio = :m"), {"m": id_municipio}):
+        raise HTTPException(404, "Municipio no encontrado")
+    catalogo = {r.modulo_codigo: r.min_nivel_acceso for r in (await db.execute(text(
+        "SELECT modulo_codigo, min_nivel_acceso FROM modulos WHERE activo"))).all()}
+    actuales = {r[0] for r in (await db.execute(text(
+        "SELECT modulo_codigo FROM municipio_modulo WHERE id_municipio = :m AND habilitado"),
+        {"m": id_municipio})).all()}
+    nuevos = set(actuales)
+    for mod in body.modulos:
+        if mod.codigo not in catalogo:
+            raise HTTPException(422, f"Módulo desconocido: {mod.codigo}")
+        if not mod.habilitado and mod.codigo in MODULOS_FIJOS:
+            raise HTTPException(422, "Ese módulo no se puede deshabilitar: el municipio no funciona sin él.")
+        if mod.habilitado:
+            nuevos.add(mod.codigo)
+        else:
+            nuevos.discard(mod.codigo)
+    await validar_dependencias(nuevos)
+    for mod in body.modulos:
+        await db.execute(text("""
+            INSERT INTO municipio_modulo (id_municipio, modulo_codigo, habilitado, min_nivel_acceso,
+                                          id_usuario_alta, id_usuario_modificacion)
+            VALUES (:m, :c, :h, :n, :u, :u)
+            ON CONFLICT (id_municipio, modulo_codigo) DO UPDATE
+               SET habilitado = EXCLUDED.habilitado, fecha_modificacion = NOW(),
+                   id_usuario_modificacion = EXCLUDED.id_usuario_modificacion"""),
+            {"m": id_municipio, "c": mod.codigo, "h": mod.habilitado, "n": catalogo[mod.codigo],
+             "u": sa["id_usuario"]})
+    await registrar_acceso_super_en(
+        db, id_usuario=sa["id_usuario"], accion="municipio_modulos", id_municipio=id_municipio,
+        detalle="; ".join(f"{m.codigo}={'sí' if m.habilitado else 'no'}" for m in body.modulos), **_registro(request))
+    await db.commit()
+    invalidar_modulos(id_municipio)
+    return {"habilitados": sorted(nuevos)}
+
+
+async def _hosts(db: AsyncSession, id_municipio: int) -> dict[str, str]:
+    hosts = {}
+    for app_ in ("zge", "vecinos", "agentes"):
+        base = await base_app(db, id_municipio, app_)
+        hosts[app_] = base.split("://", 1)[-1] if base else ""
+    return hosts
+
+
+@router.get("/municipios/{id_municipio}/dominios")
+async def verificar_dominios(id_municipio: int, db: AsyncSession = Depends(get_db)):
+    """Por cada app: el host, si el DNS resuelve y el código del GET por HTTPS. Sin credenciales de
+    Cloudflare: los dominios los crea tools/dominios_municipio.py."""
+    if not await db.scalar(text("SELECT 1 FROM municipios WHERE id_municipio = :m"), {"m": id_municipio}):
+        raise HTTPException(404, "Municipio no encontrado")
+    salida = []
+    async with httpx.AsyncClient(timeout=5, follow_redirects=False) as cliente:
+        for app_, host in (await _hosts(db, id_municipio)).items():
+            dns, https = False, None
+            if host:
+                try:
+                    await asyncio.get_running_loop().getaddrinfo(host, 443)
+                    dns = True
+                except OSError:
+                    dns = False
+                if dns:
+                    try:
+                        https = (await cliente.get(f"https://{host}/")).status_code
+                    except httpx.HTTPError:
+                        https = None
+            salida.append({"app": app_, "host": host, "dns": dns, "https": https})
+    return salida
+
+
+@router.post("/municipios/{id_municipio}/prueba")
+async def prueba_puesta_en_marcha(id_municipio: int, db: AsyncSession = Depends(get_db)):
+    """Chequeos de la puesta en marcha (spec §4.4), sin loguear a nadie."""
+    from app.main import app as aplicacion
+    from app.services.municipios.modulos import modulos_habilitados
+    if not await db.scalar(text("SELECT 1 FROM municipios WHERE id_municipio = :m"), {"m": id_municipio}):
+        raise HTTPException(404, "Municipio no encontrado")
+    hosts = await _hosts(db, id_municipio)
+    chequeos = []
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=aplicacion), base_url="http://interno") as c:
+        for app_ in ("zge", "vecinos", "agentes"):
+            if not hosts[app_]:
+                chequeos.append({"nombre": f"identidad pública ({app_})", "ok": False, "detalle": "sin dirección"})
+                continue
+            r = await c.get("/api/v1/publico/identidad-municipio", headers={"Origin": f"https://{hosts[app_]}"})
+            chequeos.append({"nombre": f"identidad pública ({hosts[app_]})", "ok": r.status_code == 200,
+                             "detalle": str(r.status_code)})
+        r = await c.post("/api/v1/auth/login", json={"identificador": "prueba@prueba.invalido", "password": "x" * 8},
+                         headers={"Origin": f"https://{hosts['zge']}"} if hosts["zge"] else {})
+        chequeos.append({"nombre": "el login resuelve el municipio por su dirección", "ok": r.status_code == 401,
+                         "detalle": f"{r.status_code} (401 = resolvió el municipio; 404 = no)"})
+    vigente = await db.scalar(text("""
+        SELECT count(*) FROM usuario_invitacion i JOIN usuarios u ON u.id_usuario = i.id_usuario
+         WHERE u.id_municipio = :m AND u.nivel_acceso = 1 AND i.activo AND i.usada_en IS NULL AND i.vence_en > NOW()"""),
+        {"m": id_municipio})
+    usada = await db.scalar(text("""
+        SELECT count(*) FROM usuario_invitacion i JOIN usuarios u ON u.id_usuario = i.id_usuario
+         WHERE u.id_municipio = :m AND i.usada_en IS NOT NULL"""), {"m": id_municipio})
+    chequeos.append({"nombre": "invitación del administrador", "ok": bool(vigente or usada),
+                     "detalle": "aceptada" if usada else ("vigente" if vigente else "sin invitación vigente")})
+    base = await base_app(db, id_municipio, "zge")
+    pagina = None
+    if base:
+        try:
+            async with httpx.AsyncClient(timeout=5) as c:
+                pagina = (await c.get(f"{base}/frontend/invitacion.html", follow_redirects=True)).status_code
+        except httpx.HTTPError:
+            pagina = None
+    chequeos.append({"nombre": "la página de la invitación responde", "ok": pagina == 200, "detalle": str(pagina)})
+    hab = sorted(await modulos_habilitados(db, id_municipio))
+    chequeos.append({"nombre": "módulos habilitados", "ok": bool(hab), "detalle": ", ".join(hab)})
+    return chequeos
+
+
+@router.post("/usuarios/{id_usuario}/invitacion",
+             responses={404: {"description": "La cuenta no existe o no es administrador"}})
+async def reenviar_invitacion(
+    id_usuario: int,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    sa: dict = Depends(require_super_admin),
+):
+    """Reenvía la invitación del primer administrador de un municipio (nivel 1) o de un super (nivel 0).
+    Desactiva las anteriores."""
+    u = (await db.execute(text(
+        "SELECT id_municipio, nivel_acceso FROM usuarios WHERE id_usuario = :u AND activo"), {"u": id_usuario})).first()
+    if u is None or u.nivel_acceso not in (0, 1):
+        raise HTTPException(404, "Cuenta no encontrada")
+    await crear_invitacion(db, id_usuario=id_usuario, id_municipio=u.id_municipio, id_actor=sa["id_usuario"],
+                           background_tasks=background_tasks)
+    await registrar_acceso_super_en(db, id_usuario=sa["id_usuario"],
+                                    accion="super_alta" if u.nivel_acceso == 0 else "municipio_alta",
+                                    id_municipio=u.id_municipio, detalle=f"reenvío de invitación a {id_usuario}",
+                                    **_registro(request))
+    await db.commit()
+    return {"enviada": True}

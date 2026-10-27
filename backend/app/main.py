@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.services.municipios.modulos import MODULOS_POR_ROUTER, modulo_habilitado
 from app.api.routes.auth import router as auth_router
 from app.api.routes.segundo_factor import router as segundo_factor_router
+from app.api.routes.invitacion import router as invitacion_router
 from app.api.routes.buc import router as buc_router
 from app.api.routes.agenda_v2 import router as agenda_v2_router
 from app.api.routes.agenda_publico import router as agenda_publico_router
@@ -118,6 +119,8 @@ def _modulo(router: str) -> list:
 
 app.include_router(auth_router)
 app.include_router(segundo_factor_router)
+# invitacion: /auth/invitacion/aceptar (IT-01 F4: primer administrador y super administradores)
+app.include_router(invitacion_router)
 # usuario_push: /auth/push/* — Web Push de usuarios internos (App de agentes, mig 108)
 app.include_router(usuario_push_router)
 app.include_router(buc_router)

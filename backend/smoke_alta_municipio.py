@@ -682,7 +682,332 @@ async def test_alta_por_origen() -> None:
     check("la ficha queda en C", mun == C["id"], mun)
 
 
+# ── Tarea 11 ──────────────────────────────────────────────────────────────────────────────────
+
+AREAS_FIJAS = ("Secretaría de Gobierno", "Secretaría de Planeamiento y Obras Públicas", "Secretaría de Salud",
+               "Secretaría de Seguridad", "Secretaría de Servicios Públicos", "Subsecretaría de Tránsito")
+
+
+async def _modelo_minimo() -> tuple[int, bool]:
+    """El municipio modelo: el real si existe; si no, 'modelo-smoke' armado con lo mínimo (6 áreas fijas,
+    una subárea de Gobierno, un tipo de reclamo y las claves de configuración del base). Devuelve
+    (id, propio): si es propio, al terminar vuelve a baja (para no bloquear la Tarea 12)."""
+    async with AsyncSessionLocal() as db:
+        mid = await _escalar(db, "SELECT id_municipio FROM municipios WHERE estado = 'modelo'")
+        if mid:
+            return mid, False
+        mid = await _escalar(db, "SELECT id_municipio FROM municipios WHERE subdominio = 'modelo-smoke'")
+        if mid is None:
+            mid = await _escalar(db, "INSERT INTO municipios (nombre, codigo_corto, subdominio, codigo_pais, estado) "
+                                     "VALUES ('Modelo de prueba (smoke)', 'MSM', 'modelo-smoke', 'AR', 'modelo') "
+                                     "RETURNING id_municipio")
+        await db.execute(text("UPDATE municipios SET estado = 'modelo' WHERE id_municipio = :m"), {"m": mid})
+        for nombre in AREAS_FIJAS:
+            if not await _escalar(db, "SELECT 1 FROM area WHERE id_municipio = :m AND nombre = :n", {"m": mid, "n": nombre}):
+                await db.execute(text("INSERT INTO area (nombre, activo, es_sistema, id_municipio) VALUES (:n, TRUE, TRUE, :m)"),
+                                 {"n": nombre, "m": mid})
+        gob = await _escalar(db, "SELECT id_area FROM area WHERE id_municipio = :m AND nombre = 'Secretaría de Gobierno'", {"m": mid})
+        if not await _escalar(db, "SELECT 1 FROM subarea WHERE id_municipio = :m", {"m": mid}):
+            await db.execute(text("INSERT INTO subarea (nombre, id_area, activo, id_municipio) "
+                                  "VALUES ('Mesa de Entradas', :a, TRUE, :m)"), {"a": gob, "m": mid})
+        sub = await _escalar(db, "SELECT id_subarea FROM subarea WHERE id_municipio = :m LIMIT 1", {"m": mid})
+        if not await _escalar(db, "SELECT 1 FROM tipo_reclamo WHERE id_municipio = :m", {"m": mid}):
+            await db.execute(text("""
+                INSERT INTO tipo_reclamo (nombre, id_subarea, activo, id_municipio)
+                VALUES ('Bache en la calzada', :s, TRUE, :m)"""), {"s": sub, "m": mid})
+        await db.execute(text("""
+            INSERT INTO configuracion_general (clave, valor, tipo, descripcion, activo, id_municipio)
+            SELECT clave, valor, tipo, descripcion, TRUE, :m FROM configuracion_general c
+             WHERE c.id_municipio = (SELECT id_municipio FROM municipios WHERE direccion_base) AND c.activo
+            ON CONFLICT DO NOTHING"""), {"m": mid})
+        await db.commit()
+    invalidar_cache_municipios()
+    return mid, True
+
+
+def _alta_body(sufijo: str, codigo: str, **extra) -> dict:
+    dni = str(30_000_000 + int(sufijo, 36) % 9_000_000)
+    return {"nombre": f"Municipio de prueba D {sufijo}", "codigo_pais": "AR", "id_provincia": extra.pop("id_provincia"),
+            "codigo_corto": codigo, "subdominio": f"d-{sufijo}",
+            "identidad": {"color": "#1F8A65"},
+            "copiar": ["areas_subareas", "tipos_reclamo"],
+            "modulos": ["usuarios", "admin_tablas", "padrones", "municipios", "reclamos", "agenda", "turnos"],
+            "max_usuarios_activos": None,
+            "administrador": {"nombre": "Ana", "apellido": f"Prueba{sufijo}", "dni": dni, "cuil": _cuil(dni),
+                              "sexo": "MUJER", "fecha_nac": "1985-04-02", "telefono": "1144445555",
+                              "email": f"admin.{sufijo}@prueba-aislamiento.com.ar"},
+            **extra}
+
+
+def _sufijo() -> tuple[str, str]:
+    import random
+    import string
+    return ("".join(random.choices(string.ascii_lowercase + string.digits, k=5)),
+            "".join(random.choices(string.ascii_uppercase, k=3)))
+
+
+async def _contexto_alta() -> dict:
+    modelo, propio = await _modelo_minimo()
+    async with AsyncSessionLocal() as db:
+        h = await _super_headers(db)
+        ba = await _escalar(db, "SELECT id_provincia FROM provincias WHERE codigo_pais = 'AR' AND nombre = 'Buenos Aires'")
+        cod_base, sub_base = (await db.execute(text(
+            "SELECT codigo_corto, subdominio FROM municipios WHERE direccion_base"))).one()
+    return {"modelo": modelo, "propio": propio, "h": h, "ba": ba, "cod_base": cod_base, "sub_base": sub_base}
+
+
+async def _cantidad_municipios() -> int:
+    async with AsyncSessionLocal() as db:
+        return await _escalar(db, "SELECT count(*) FROM municipios")
+
+
+async def test_alta_validaciones() -> None:
+    print("\ntest_alta_validaciones")
+    ctx = await _contexto_alta()
+    suf, cod = _sufijo()
+    antes = await _cantidad_municipios()
+    casos = [
+        ("subdominio con mayúsculas", {"subdominio": "Vicente-Lopez"}, 422),
+        ("subdominio con tilde", {"subdominio": "córdoba"}, 422),
+        ("subdominio reservado", {"subdominio": "api"}, 422),
+        ("subdominio de San Andrés", {"subdominio": ctx["sub_base"]}, 409),
+        ("código en minúsculas", {"codigo_corto": "sa"}, 422),
+        ("código de San Andrés", {"codigo_corto": ctx["cod_base"]}, 409),
+        ("país no habilitado", {"codigo_pais": "VE"}, 422),
+        ("módulos sin usuarios", {"modulos": ["admin_tablas", "padrones", "municipios", "reclamos"]}, 422),
+        ("turnos sin agenda", {"modulos": ["usuarios", "admin_tablas", "padrones", "municipios", "turnos"]}, 422),
+    ]
+    async with _cliente() as c:
+        for nombre, cambio, esperado in casos:
+            body = {**_alta_body(suf, cod, id_provincia=ctx["ba"]), **cambio}
+            r = await c.post("/api/v1/super/municipios", json=body, headers=ctx["h"])
+            check(f"{nombre} → {esperado}", r.status_code == esperado, f"{r.status_code} {r.text[:140]}")
+    check("no se creó ningún municipio", await _cantidad_municipios() == antes)
+    if ctx["propio"]:
+        await _estado(ctx["modelo"], "baja")
+
+
+async def test_alta_ok() -> None:
+    print("\ntest_alta_ok")
+    import re
+    import app.services.email as em
+    ctx = await _contexto_alta()
+    suf, cod = _sufijo()
+    capturados: list[str] = []
+
+    async def captura(to, subject, body_html, body_text=None, from_override=None):
+        capturados.append(body_html or "")
+        return True
+
+    original = em.enviar_mail
+    em.enviar_mail = captura
+    try:
+        async with _cliente() as c:
+            r = await c.post("/api/v1/super/municipios", json=_alta_body(suf, cod, id_provincia=ctx["ba"]),
+                             headers=ctx["h"])
+    finally:
+        em.enviar_mail = original
+    check("alta → 201", r.status_code == 201, f"{r.status_code} {r.text[:200]}")
+    if r.status_code != 201:
+        return
+    D = r.json()["id_municipio"]
+    async with AsyncSessionLocal() as db:
+        estado = await _escalar(db, "SELECT estado FROM municipios WHERE id_municipio = :m", {"m": D})
+        check("D en puesta_en_marcha", estado == "puesta_en_marcha", estado)
+        check("6 áreas fijas con es_sistema", await _escalar(
+            db, "SELECT count(*) FROM area WHERE id_municipio = :m AND es_sistema AND activo", {"m": D}) == 6)
+        n_mod = await _escalar(db, "SELECT count(*) FROM configuracion_general WHERE id_municipio = :m", {"m": ctx["modelo"]})
+        n_d = await _escalar(db, "SELECT count(*) FROM configuracion_general WHERE id_municipio = :m", {"m": D})
+        check("claves de configuración = las del modelo", n_d == n_mod and n_d > 0, f"{n_d} de {n_mod}")
+        salud = await _escalar(db, "SELECT valor FROM configuracion_general WHERE id_municipio = :m AND clave = 'id_area_salud'",
+                               {"m": D})
+        check("id_area_salud apunta a un área de D", salud is not None and await _escalar(
+            db, "SELECT 1 FROM area WHERE id_area::text = :a AND id_municipio = :m", {"a": salud, "m": D}) == 1, salud)
+        admin = (await db.execute(text("""
+            SELECT u.id_usuario, u.nivel_acceso, a.id_agente, a.id_subarea, u.id_ciudadano
+              FROM usuarios u JOIN agentes a ON a.id_usuario = u.id_usuario
+             WHERE u.id_municipio = :m"""), {"m": D})).first()
+        check("admin nivel 1 con agente, subárea y ficha", admin is not None and admin.nivel_acceso == 1
+              and admin.id_subarea is not None and admin.id_ciudadano is not None, admin)
+        check("invitación vigente", await _escalar(db, """
+            SELECT count(*) FROM usuario_invitacion WHERE id_usuario = :u AND usada_en IS NULL AND activo
+               AND vence_en > NOW()""", {"u": admin.id_usuario if admin else 0}) == 1)
+        check("registro municipio_alta", await _escalar(db, "SELECT count(*) FROM super_admin_acceso "
+              "WHERE accion = 'municipio_alta' AND id_municipio = :m", {"m": D}) == 1)
+        check("módulos = los elegidos", await _escalar(db, "SELECT count(*) FROM municipio_modulo WHERE id_municipio = :m "
+              "AND habilitado", {"m": D}) == 7)
+        check("no copió ninguna persona", await _escalar(db, "SELECT count(*) FROM ciudadanos WHERE id_municipio = :m",
+                                                         {"m": D}) == 1)
+    links = [h for html in capturados for h in re.findall(r'href="(https?://[^"]+)"', html)]
+    check("el mail de invitación lleva al subdominio de D",
+          any(x.startswith(f"https://d-{suf}.zge.zaris.com.ar/frontend/invitacion.html?t=") for x in links), links[:3])
+    await _estado(D, "baja")
+    if ctx["propio"]:
+        await _estado(ctx["modelo"], "baja")
+
+
+async def test_alta_atomica() -> None:
+    print("\ntest_alta_atomica")
+    from app.services.municipios import clonado
+    ctx = await _contexto_alta()
+    suf, cod = _sufijo()
+    original = clonado.Clonador.clonar
+    llamadas = {"n": 0}
+
+    async def falla(self, tabla, id_origen, cambios=None, copia_nueva=False):
+        llamadas["n"] += 1
+        if llamadas["n"] == 3:
+            raise RuntimeError("falla forzada por el smoke")
+        return await original(self, tabla, id_origen, cambios, copia_nueva)
+
+    clonado.Clonador.clonar = falla
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+                                     base_url="http://test") as c:
+            r = await c.post("/api/v1/super/municipios", json=_alta_body(suf, cod, id_provincia=ctx["ba"]),
+                             headers=ctx["h"])
+    finally:
+        clonado.Clonador.clonar = original
+    check("el alta falla", r.status_code >= 500 or r.status_code == 409, r.status_code)
+    async with AsyncSessionLocal() as db:
+        check("no quedó el municipio", not await _escalar(db, "SELECT 1 FROM municipios WHERE subdominio = :s",
+                                                         {"s": f"d-{suf}"}))
+        check("no quedó la ficha del administrador", not await _escalar(
+            db, "SELECT 1 FROM ciudadanos WHERE email = :e", {"e": f"admin.{suf}@prueba-aislamiento.com.ar"}))
+    if ctx["propio"]:
+        await _estado(ctx["modelo"], "baja")
+
+
+async def test_alta_concurrente() -> None:
+    print("\ntest_alta_concurrente")
+    ctx = await _contexto_alta()
+    suf, cod = _sufijo()
+    body = _alta_body(suf, cod, id_provincia=ctx["ba"])
+    async with _cliente() as c1, _cliente() as c2:
+        r1, r2 = await asyncio.gather(c1.post("/api/v1/super/municipios", json=body, headers=ctx["h"]),
+                                      c2.post("/api/v1/super/municipios", json=body, headers=ctx["h"]))
+    codigos = sorted([r1.status_code, r2.status_code])
+    check("dos altas iguales a la vez: una 201 y una 409", codigos == [201, 409], f"{codigos} {r1.text[:80]} {r2.text[:80]}")
+    async with AsyncSessionLocal() as db:
+        D = await _escalar(db, "SELECT id_municipio FROM municipios WHERE subdominio = :s", {"s": f"d-{suf}"})
+        check("queda uno solo", await _escalar(db, "SELECT count(*) FROM municipios WHERE subdominio = :s",
+                                              {"s": f"d-{suf}"}) == 1)
+    if D:
+        await _estado(D, "baja")
+    if ctx["propio"]:
+        await _estado(ctx["modelo"], "baja")
+
+
+async def test_invitacion() -> None:
+    print("\ntest_invitacion")
+    import re
+    import app.services.email as em
+    ctx = await _contexto_alta()
+    suf, cod = _sufijo()
+    capturados: list[str] = []
+
+    async def captura(to, subject, body_html, body_text=None, from_override=None):
+        capturados.append(body_html or "")
+        return True
+
+    def ultimo_token() -> str:
+        for html in reversed(capturados):
+            m = re.search(r"invitacion\.html\?t=([A-Za-z0-9_-]+)", html)
+            if m:
+                return m.group(1)
+        return ""
+
+    original = em.enviar_mail
+    em.enviar_mail = captura
+    try:
+        async with _cliente() as c:
+            r = await c.post("/api/v1/super/municipios", json=_alta_body(suf, cod, id_provincia=ctx["ba"]),
+                             headers=ctx["h"])
+            D = r.json().get("id_municipio") if r.status_code == 201 else None
+            tok = ultimo_token()
+            check("el mail trae el token", bool(tok))
+            r = await c.post("/api/v1/auth/invitacion/aceptar", json={"token": tok, "password": "corta"})
+            check("clave corta → 422", r.status_code == 422, f"{r.status_code}")
+            # Con el segundo factor obligatorio (como en prod), aceptar lleva a vincular la app y el
+            # desafío sirve para el paso siguiente.
+            obligatorio = settings.SEGUNDO_FACTOR_OBLIGATORIO
+            settings.SEGUNDO_FACTOR_OBLIGATORIO = True
+            try:
+                r = await c.post("/api/v1/auth/invitacion/aceptar", json={"token": tok, "password": "clave-segura-123"},
+                                 headers={"Origin": f"https://d-{suf}.zge.zaris.com.ar"})
+                check("aceptar → 200 con vinculación", r.status_code == 200 and r.json().get("estado") == "vincular"
+                      and bool(r.json().get("desafio")), f"{r.status_code} {r.text[:160]}")
+                r2 = await c.post("/api/v1/auth/segundo-factor/vinculacion", json={"desafio": r.json().get("desafio")},
+                                  headers={"Origin": f"https://d-{suf}.zge.zaris.com.ar"})
+                check("y el desafío sirve para vincular la app", r2.status_code == 200 and bool(r2.json().get("secreto")),
+                      f"{r2.status_code} {r2.text[:160]}")
+            finally:
+                settings.SEGUNDO_FACTOR_OBLIGATORIO = obligatorio
+            r = await c.post("/api/v1/auth/invitacion/aceptar", json={"token": tok, "password": "clave-segura-123"})
+            check("el mismo token otra vez → 401 texto fijo", r.status_code == 401
+                  and "El enlace venció o ya se usó" in r.text, f"{r.status_code} {r.text[:120]}")
+            async with AsyncSessionLocal() as db:
+                uid = await _escalar(db, "SELECT id_usuario FROM usuarios WHERE id_municipio = :m AND nivel_acceso = 1", {"m": D})
+            r = await c.post(f"/api/v1/super/usuarios/{uid}/invitacion", headers=ctx["h"])
+            check("reenviar → 200", r.status_code == 200, f"{r.status_code} {r.text[:120]}")
+            tok2 = ultimo_token()
+            async with AsyncSessionLocal() as db:
+                await db.execute(text("UPDATE usuario_invitacion SET vence_en = NOW() - INTERVAL '1 hour' "
+                                      "WHERE id_usuario = :u AND usada_en IS NULL"), {"u": uid})
+                await db.commit()
+            r = await c.post("/api/v1/auth/invitacion/aceptar", json={"token": tok2, "password": "clave-segura-456"})
+            check("token vencido → 401", r.status_code == 401, f"{r.status_code}")
+            # Sin segundo factor obligatorio (local): aceptar deja la clave y avisa que ya puede ingresar.
+            r = await c.post(f"/api/v1/super/usuarios/{uid}/invitacion", headers=ctx["h"])
+            tok3 = ultimo_token()
+            obligatorio = settings.SEGUNDO_FACTOR_OBLIGATORIO
+            settings.SEGUNDO_FACTOR_OBLIGATORIO = False
+            try:
+                r = await c.post("/api/v1/auth/invitacion/aceptar", json={"token": tok3, "password": "clave-segura-789"})
+                check("sin segundo factor obligatorio: 200 sin desafío", r.status_code == 200
+                      and r.json().get("requiere_segundo_factor") is False, f"{r.status_code} {r.text[:160]}")
+            finally:
+                settings.SEGUNDO_FACTOR_OBLIGATORIO = obligatorio
+    finally:
+        em.enviar_mail = original
+    if D:
+        await _estado(D, "baja")
+    if ctx["propio"]:
+        await _estado(ctx["modelo"], "baja")
+
+
+async def test_estados() -> None:
+    print("\ntest_estados")
+    ctx = await _contexto_alta()
+    suf, cod = _sufijo()
+    async with _cliente() as c:
+        r = await c.post("/api/v1/super/municipios", json=_alta_body(suf, cod, id_provincia=ctx["ba"]), headers=ctx["h"])
+        D = r.json().get("id_municipio") if r.status_code == 201 else None
+        nombre = f"Municipio de prueba D {suf}"
+        url = f"/api/v1/super/municipios/{D}/estado"
+        r = await c.post(url, json={"estado": "produccion"}, headers=ctx["h"])
+        check("produccion sin confirmación → 422", r.status_code == 422, f"{r.status_code}")
+        r = await c.post(url, json={"estado": "produccion", "confirmacion": nombre}, headers=ctx["h"])
+        check("produccion con confirmación → 200 y fue_produccion", r.status_code == 200
+              and r.json().get("fue_produccion") is True, f"{r.status_code} {r.text[:120]}")
+        r = await c.post(url, json={"estado": "puesta_en_marcha"}, headers=ctx["h"])
+        check("de produccion no se vuelve a puesta_en_marcha → 422", r.status_code == 422, f"{r.status_code}")
+        r = await c.post(url, json={"estado": "baja"}, headers=ctx["h"])
+        check("baja → 200", r.status_code == 200 and r.json().get("estado") == "baja", f"{r.status_code}")
+        r = await c.post(url, json={"estado": "reactivar"}, headers=ctx["h"])
+        check("reactivar → vuelve a produccion", r.status_code == 200 and r.json().get("estado") == "produccion",
+              f"{r.status_code} {r.text[:120]}")
+        async with AsyncSessionLocal() as db:
+            check("registro municipio_estado", await _escalar(db, "SELECT count(*) FROM super_admin_acceso "
+                  "WHERE accion = 'municipio_estado' AND id_municipio = :m", {"m": D}) == 3)
+        await c.post(url, json={"estado": "baja"}, headers=ctx["h"])
+    if ctx["propio"]:
+        await _estado(ctx["modelo"], "baja")
+
+
 PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones_super, test_links_por_municipio,
+                                     test_alta_validaciones, test_alta_ok, test_alta_atomica, test_alta_concurrente,
+                                     test_invitacion, test_estados,
                                      test_alta_por_origen,
                                      test_estado_baja, test_modelo_no_operable, test_demo_por_estado,
                                      test_geo_catalogo, test_municipio_provincia,
