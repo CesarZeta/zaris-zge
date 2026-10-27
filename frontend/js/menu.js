@@ -348,7 +348,10 @@
     ? new Set(user.modulos_permitidos)
     : null;
 
-  if (modulosPermitidos) {
+  // Muestra u oculta cada ítem según `permitidos` (y los encabezados que quedan vacíos). Se vuelve
+  // a aplicar cuando el super administrador elige un municipio: sus módulos permitidos son los
+  // del catálogo global, recortados a los habilitados en el municipio elegido (IT-01 F4).
+  function _aplicarPermisos(permitidos) {
     // Soporta el sidebar plano nuevo (.nav-flat__item) y el legacy (.nav__link).
     // Para items con data-modulo-fallback (ej OT: ot_supervisor con fallback a
     // ot_agente/ot_auditoria) basta con que CUALQUIERA de los códigos esté
@@ -357,8 +360,7 @@
       const principal = link.dataset.modulo;
       const fallback = (link.dataset.moduloFallback || '').split(',').map(s => s.trim()).filter(Boolean);
       const todos = [principal, ...fallback];
-      const algunoPermitido = todos.some(m => modulosPermitidos.has(m));
-      if (!algunoPermitido) link.hidden = true;
+      link.hidden = !todos.some(m => permitidos.has(m));
     });
     // Ocultar encabezados de sección (.nav-flat__section) cuyos ítems quedaron
     // todos ocultos por permisos — sino el título queda huérfano sobre un bloque
@@ -375,7 +377,7 @@
         }
         el = el.nextElementSibling;
       }
-      if (!algunoVisible) section.hidden = true;
+      section.hidden = !algunoVisible;
     });
     // Legacy: ocultar grupos vacios del sidebar viejo
     document.querySelectorAll('.nav__panel, .nav__subpanel').forEach(panel => {
@@ -385,6 +387,21 @@
         if (group) group.hidden = true;
       }
     });
+  }
+  if (modulosPermitidos) _aplicarPermisos(modulosPermitidos);
+
+  // Super administrador: recorta el sidebar a los módulos habilitados del municipio elegido.
+  async function _aplicarModulosDelMunicipio() {
+    if (!modulosPermitidos) return;
+    try {
+      const res = await fetch(`${API}/api/v1/config/identidad/actual`, { headers: _authHeaders() });
+      if (!res.ok) return;
+      const d = await res.json();
+      // Backend viejo (sin la lista): no se recorta.
+      if (!Array.isArray(d.modulos_habilitados) || !d.modulos_habilitados.length) return;
+      const hab = new Set(d.modulos_habilitados);
+      _aplicarPermisos(new Set([...modulosPermitidos].filter(m => hab.has(m))));
+    } catch (e) { /* queda el sidebar completo */ }
   }
 
   // ── Shell navigation (iframe) ─────────────────────────────────
@@ -537,6 +554,7 @@
       const data = await res.json();
       localStorage.setItem(MUNICIPIO_ACTIVO_KEY, String(data.id_municipio));
       _pintarMunicipio(data.nombre, data.logo_url);
+      await _aplicarModulosDelMunicipio();
       // El query param fuerza la recarga aunque el hash sea el mismo.
       if (recargar) window.shellNavigate(`web-app/dist/index.html?m=${data.id_municipio}#/dashboard`);
       return true;
@@ -589,6 +607,7 @@
           _pintarMunicipio(d.municipio_nombre || (m && m.nombre), d.municipio_logo_url);
         }
       } catch (err) { /* queda el nombre de la lista */ }
+      await _aplicarModulosDelMunicipio();
       window.shellNavigate(`web-app/dist/index.html?m=${id}#/dashboard`);
     });
   }

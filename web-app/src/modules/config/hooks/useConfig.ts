@@ -11,7 +11,7 @@ import {
   verPermisosUsuario,
   type IdentidadUpdate,
 } from '../api/configApi'
-import type { OverrideIn } from '../types/config'
+import type { ModuloCambio, OverrideIn } from '../types/config'
 
 const HORA = 60 * 60 * 1000
 
@@ -27,8 +27,8 @@ export function useModulosCatalogo() {
 export function useActualizarModulo() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ codigo, min_nivel_acceso }: { codigo: string; min_nivel_acceso: number }) =>
-      actualizarModulo(codigo, min_nivel_acceso),
+    mutationFn: ({ codigo, ...cambio }: { codigo: string } & ModuloCambio) =>
+      actualizarModulo(codigo, cambio),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['config'] }),
   })
 }

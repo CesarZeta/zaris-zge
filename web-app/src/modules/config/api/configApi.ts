@@ -1,5 +1,6 @@
 import { api } from '../../../lib/api'
 import type {
+  ModuloCambio,
   ModuloCatalogo,
   OverrideIn,
   UsuarioLite,
@@ -13,8 +14,8 @@ const ADMIN = '/api/v1/admin'
 export const listarModulos = () =>
   api.get<ModuloCatalogo[]>(`${PERMS}/modulos`)
 
-export const actualizarModulo = (codigo: string, min_nivel_acceso: number) =>
-  api.put<ModuloCatalogo>(`${PERMS}/modulos/${encodeURIComponent(codigo)}`, { min_nivel_acceso })
+export const actualizarModulo = (codigo: string, cambio: ModuloCambio) =>
+  api.put<ModuloCatalogo>(`${PERMS}/modulos/${encodeURIComponent(codigo)}`, cambio)
 
 // Permisos por usuario.
 // El handler genérico de admin_tablas (GET /{tabla}) devuelve todos los usuarios

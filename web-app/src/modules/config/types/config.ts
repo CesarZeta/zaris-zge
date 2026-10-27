@@ -6,6 +6,15 @@ export interface ModuloCatalogo {
   descripcion: string | null
   min_nivel_acceso: number
   activo: boolean
+  // IT-01 F4: estado del módulo en el municipio de la request.
+  habilitado: boolean
+  fijo: boolean
+  dependencias: string[]
+}
+
+export interface ModuloCambio {
+  min_nivel_acceso?: number
+  habilitado?: boolean
 }
 
 export interface UsuarioLite {
