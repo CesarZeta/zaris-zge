@@ -401,8 +401,10 @@ async def _fk_compuesta_en_transaccion(conn) -> None:
     ok = False
     try:
         tmp = await conn.scalar(text("""
-            INSERT INTO municipios (nombre, codigo_corto, codigo_pais, activo)
-            VALUES ('smoke F1 temporal', 'ZF1', 'AR', TRUE) RETURNING id_municipio"""))
+            INSERT INTO municipios (nombre, codigo_corto, codigo_pais, id_provincia)
+            VALUES ('smoke F1 temporal', 'ZF1', 'AR',
+                    (SELECT id_provincia FROM provincias WHERE codigo_pais = 'AR' ORDER BY id_provincia LIMIT 1))
+            RETURNING id_municipio"""))
         tipo_1 = await conn.scalar(text("SELECT id_tipo_reclamo FROM tipo_reclamo WHERE id_municipio = 1 LIMIT 1"))
         sp = await conn.begin_nested()
         try:

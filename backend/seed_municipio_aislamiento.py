@@ -297,9 +297,16 @@ async def _recurso_b(c: Clonador, tipo: Optional[str]) -> Optional[int]:
 async def sembrar(conn: asyncpg.Connection) -> int:
     hash_dev = bcrypt.hashpw(CLAVE_DEV.encode(), bcrypt.gensalt()).decode()
     B = await conn.fetchval("""
-        INSERT INTO municipios (nombre, codigo_corto, subdominio, codigo_pais, pais, provincia, activo, direccion_base)
-        VALUES ('AISLAB Municipio de Aislamiento', 'AIS', $1, 'AR', 'Argentina', 'Buenos Aires', TRUE, FALSE)
+        INSERT INTO municipios (nombre, codigo_corto, subdominio, codigo_pais, pais, provincia, id_provincia,
+                                estado, direccion_base)
+        VALUES ('AISLAB Municipio de Aislamiento', 'AIS', $1, 'AR', 'Argentina', 'Buenos Aires',
+                (SELECT id_provincia FROM provincias WHERE codigo_pais = 'AR' AND nombre = 'Buenos Aires'),
+                'puesta_en_marcha', FALSE)
         RETURNING id_municipio""", SUBDOMINIO)
+    # Módulos de B: los mismos que el municipio 1 (el clonado genérico de abajo copiaría uno solo).
+    await conn.execute("""
+        INSERT INTO municipio_modulo (id_municipio, modulo_codigo, habilitado, min_nivel_acceso)
+        SELECT $1, modulo_codigo, habilitado, min_nivel_acceso FROM municipio_modulo WHERE id_municipio = 1""", B)
     c = Clonador(conn, B)
     await c.cargar_clases()
 
