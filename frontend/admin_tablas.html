@@ -283,6 +283,7 @@
       border: 1px solid rgba(207,45,86,0.15);
     }
     .btn-del:hover { background: rgba(207,45,86,0.15); }
+    .btn-del:disabled { opacity: .45; cursor: not-allowed; background: transparent; }
 
     /* ── Loading / empty ── */
     .empty { text-align: center; padding: 3rem; color: var(--fg-3); font-size: 0.9rem; }
@@ -1846,7 +1847,9 @@ async function renderListadoFiltrado(rows, schema) {
           ${celdaInteg}
           <td class="actions">
             <button class="btn-edit" onclick="abrirEditar(${pk})">Editar</button>
-            ${MODO_SUPERVISOR ? '' : `<button class="btn-del"  onclick="abrirBaja(${pk}, '${String(nombre).replace(/'/g,"\\'")}')">Baja</button>`}
+            ${MODO_SUPERVISOR ? '' : r.es_sistema
+              ? `<button class="btn-del" disabled title="Es un área fija del sistema: se puede renombrar, no dar de baja.">Baja</button>`
+              : `<button class="btn-del"  onclick="abrirBaja(${pk}, '${String(nombre).replace(/'/g,"\\'")}')">Baja</button>`}
           </td>
         </tr>${asociados}`;
       }).join('');

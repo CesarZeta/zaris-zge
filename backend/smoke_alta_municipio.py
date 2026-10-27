@@ -1043,8 +1043,33 @@ async def test_modelo() -> None:
             {"m": m.id_municipio}))
 
 
+# ── Tarea 13 ──────────────────────────────────────────────────────────────────────────────────
+
+async def test_area_fija_api() -> None:
+    print("\ntest_area_fija_api")
+    texto = "Es un área fija del sistema: se puede renombrar, no dar de baja."
+    async with AsyncSessionLocal() as db:
+        uid, mun = await _admin_base(db)
+        area = (await db.execute(text("SELECT id_area, nombre FROM area WHERE id_municipio = :m AND es_sistema "
+                                      "ORDER BY id_area LIMIT 1"), {"m": mun})).first()
+    h = _token(uid, mun)
+    async with _cliente() as c:
+        r = await c.put(f"/api/v1/admin/area/{area.id_area}", json={"nombre": area.nombre, "activo": False}, headers=h)
+        check("PUT de baja sobre un área fija → 422 texto fijo", r.status_code == 422 and texto in r.text,
+              f"{r.status_code} {r.text[:140]}")
+        r = await c.delete(f"/api/v1/admin/area/{area.id_area}", headers=h)
+        check("DELETE sobre un área fija → 422 texto fijo", r.status_code == 422 and texto in r.text,
+              f"{r.status_code} {r.text[:140]}")
+        r = await c.put(f"/api/v1/admin/area/{area.id_area}", json={"nombre": area.nombre + " (renombrada)"}, headers=h)
+        check("renombrarla → 200", r.status_code == 200, f"{r.status_code} {r.text[:140]}")
+        await c.put(f"/api/v1/admin/area/{area.id_area}", json={"nombre": area.nombre}, headers=h)
+    async with AsyncSessionLocal() as db:
+        check("sigue activa y con su nombre", tuple((await db.execute(text(
+            "SELECT activo, nombre FROM area WHERE id_area = :a"), {"a": area.id_area})).one()) == (True, area.nombre))
+
+
 PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones_super, test_links_por_municipio,
-                                     test_modelo,
+                                     test_modelo, test_area_fija_api,
                                      test_alta_validaciones, test_alta_ok, test_alta_atomica, test_alta_concurrente,
                                      test_invitacion, test_estados,
                                      test_alta_por_origen,
