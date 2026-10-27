@@ -145,7 +145,7 @@ async def completar_login(db: AsyncSession, request: Request, user, *, segundo_f
     token = (crear_token_super_admin(user.id_usuario, segundo_factor=segundo_factor) if es_super
              else create_access_token({"sub": str(user.id_usuario), "mun": user.id_municipio,
                                        "sf": segundo_factor}))
-    modulos = await modulos_permitidos(db, user.id_usuario, user.nivel_acceso)
+    modulos = await modulos_permitidos(db, user.id_usuario, user.nivel_acceso, user.id_municipio)
     perfil = await perfil_agente_del_usuario(db, user.id_usuario)
     user_data = {
         "id_usuario": user.id_usuario,

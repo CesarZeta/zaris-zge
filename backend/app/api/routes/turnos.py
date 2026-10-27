@@ -29,6 +29,8 @@ from datetime import date, datetime, time, timedelta
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+
+from app.services.municipios.modulos import modulo_habilitado
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -892,9 +894,14 @@ async def _atencion_for_update(db: AsyncSession, id_atencion: int, id_guardia: i
     return dict(row)
 
 
+# La Guardia vive dentro de Turnos y además exige Emergencias habilitado (IT-01 F4).
+_GUARDIA = [Depends(modulo_habilitado("emergencias"))]
+
+
 @router.get(
     "/guardia/atenciones",
     response_model=list[GuardiaAtencionOut],
+    dependencies=_GUARDIA,
     responses={
         403: {"description": "contenido=true sin permiso de historia clinica (gestion Salud, nivel 1 o super administrador con motivo)"},
         429: {"description": "Mas de 60 lecturas de contenido clinico por minuto para el mismo usuario"},
@@ -966,7 +973,7 @@ async def listar_atenciones_guardia(
     return filas
 
 
-@router.patch("/guardia/atenciones/{id_atencion}/atender", response_model=GuardiaAtencionOut,
+@router.patch("/guardia/atenciones/{id_atencion}/atender", response_model=GuardiaAtencionOut, dependencies=_GUARDIA,
               responses={409: {"description": "La derivacion ya estaba cerrada"}})
 async def atender_en_guardia(
     id_atencion: int,
@@ -1022,7 +1029,7 @@ async def atender_en_guardia(
     return out
 
 
-@router.patch("/guardia/atenciones/{id_atencion}/ausente", response_model=GuardiaAtencionOut,
+@router.patch("/guardia/atenciones/{id_atencion}/ausente", response_model=GuardiaAtencionOut, dependencies=_GUARDIA,
               responses={409: {"description": "La derivacion ya estaba cerrada"}})
 async def ausente_en_guardia(
     id_atencion: int,

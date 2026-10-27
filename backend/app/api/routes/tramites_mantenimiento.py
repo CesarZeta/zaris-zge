@@ -73,6 +73,10 @@ async def ejecutar_mantenimiento(
         dry_run = None if not forzar_purga_real else False
 
         async def _uno(id_m: int) -> dict:
+            # Sin el módulo tramites habilitado (IT-01 F4), el municipio no se procesa.
+            from app.services.municipios.modulos import modulo_esta_habilitado
+            if not await modulo_esta_habilitado(db, id_m, "tramites"):
+                return {"omitido": "módulo tramites deshabilitado"}
             archivado = await svc_ret.archivar_inactivos(db, id_municipio=id_m)
             purga = await svc_ret.purgar_binarios(db, id_municipio=id_m, dry_run=dry_run)
             # mig 101: timer de desistimiento de tramites a la espera del vecino

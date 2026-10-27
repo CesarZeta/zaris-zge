@@ -258,33 +258,13 @@ async def get_current_ciudadano(
     return dict(row._mapping)
 
 
-async def modulos_permitidos(db: AsyncSession, id_usuario: int, nivel: int) -> list[str]:
-    """Resuelve la lista de modulo_codigo que un usuario puede ver, aplicando
-    el modelo hibrido de CLAUDE.md §30: default por min_nivel_acceso + override
-    explicito por usuario_modulos (permitido TRUE otorga, FALSE bloquea).
-    """
-    defaults = await db.execute(
-        text("""
-            SELECT modulo_codigo FROM modulos
-            WHERE activo = TRUE AND min_nivel_acceso >= :nivel
-        """),
-        {"nivel": nivel},
-    )
-    permitidos = {r.modulo_codigo for r in defaults.fetchall()}
-
-    overrides = await db.execute(
-        text("""
-            SELECT modulo_codigo, permitido FROM usuario_modulos
-            WHERE id_usuario = :uid AND activo = TRUE
-        """),
-        {"uid": id_usuario},
-    )
-    for r in overrides.fetchall():
-        if r.permitido:
-            permitidos.add(r.modulo_codigo)
-        else:
-            permitidos.discard(r.modulo_codigo)
-    return sorted(permitidos)
+async def modulos_permitidos(db: AsyncSession, id_usuario: int, nivel: int,
+                             id_municipio: Optional[int]) -> list[str]:
+    """Módulos que un usuario puede ver: modelo híbrido de CLAUDE.md §30 (nivel mínimo + overrides
+    de usuario_modulos) sobre los módulos HABILITADOS en su municipio (IT-01 F4). Sin municipio
+    (super administrador sin selección), el catálogo global."""
+    from app.services.municipios.modulos import modulos_permitidos as _por_municipio
+    return await _por_municipio(db, id_usuario, nivel, id_municipio)
 
 
 def require_modulo(modulo: str):
@@ -297,7 +277,7 @@ def require_modulo(modulo: str):
         db: AsyncSession = Depends(get_db),
     ) -> dict:
         modulos = await modulos_permitidos(
-            db, current_user["id_usuario"], current_user["nivel_real"]
+            db, current_user["id_usuario"], current_user["nivel_real"], current_user.get("id_municipio")
         )
         if modulo not in modulos:
             raise HTTPException(

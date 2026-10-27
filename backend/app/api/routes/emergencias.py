@@ -18,6 +18,8 @@ from datetime import date
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+
+from app.services.municipios.modulos import modulo_habilitado
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1237,6 +1239,8 @@ async def derivar_evento(
 @router.post(
     "/eventos/{id_evento}/derivar-guardia",
     status_code=201,
+    # La Guardia vive dentro de Turnos (IT-01 F4): sin Turnos no hay a dónde derivar.
+    dependencies=[Depends(modulo_habilitado("turnos"))],
     responses={
         409: {"description": "Ya hay una derivacion pendiente a la Guardia para este evento"},
         422: {"description": "Evento desestimado, paciente inexistente o Guardia no configurada"},

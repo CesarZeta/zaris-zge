@@ -480,8 +480,15 @@ async def test_escaladas_admin() -> None:
             async with AsyncSessionLocal() as db:  # si se creó (antes del fix), se borra: rompería el login del super
                 await db.execute(text("DELETE FROM usuarios WHERE username = 'smoke.f3.reservado'"))
                 await db.commit()
+        # IT-01 F4: el administrador cambia el nivel de SU municipio (municipio_modulo); habilitar o
+        # quitar un módulo, y el catálogo global, siguen fuera de su alcance.
+        global_antes = await _uno("SELECT min_nivel_acceso FROM modulos WHERE modulo_codigo = 'reclamos'")
         r = await c.put("/api/v1/admin/permisos/modulos/reclamos", headers=h, json={"min_nivel_acceso": 4})
-        check("cambiar el catálogo global de módulos → 403", r.status_code == 403, f"{r.status_code}")
+        check("el admin cambia el nivel en su municipio → 200", r.status_code == 200, f"{r.status_code} {r.text[:100]}")
+        global_despues = await _uno("SELECT min_nivel_acceso FROM modulos WHERE modulo_codigo = 'reclamos'")
+        check("y el catálogo global no cambia", global_antes.min_nivel_acceso == global_despues.min_nivel_acceso)
+        r = await c.put("/api/v1/admin/permisos/modulos/reclamos", headers=h, json={"habilitado": False})
+        check("habilitar o quitar un módulo → 403", r.status_code == 403, f"{r.status_code}")
         r = await c.put(f"/api/v1/admin/estado_reclamo/{estado.id_estado_reclamo}", headers=h,
                         json={"nombre": estado.nombre})
         check("editar un Maestro global (estado_reclamo) → 403", r.status_code == 403, f"{r.status_code}")
@@ -547,7 +554,8 @@ async def test_global_super() -> None:
         check("el catálogo le muestra municipios",
               r.status_code == 200 and any(m["modulo_codigo"] == "municipios" for m in r.json()), f"{r.status_code}")
     acciones = [f.accion for f in await _accesos_desde(desde)]
-    check("dos filas catalogo_global", acciones.count("catalogo_global") == 2, str(acciones))
+    check("una fila catalogo_global (Maestro) y una municipio_modulos (módulos del municipio)",
+          acciones.count("catalogo_global") == 1 and acciones.count("municipio_modulos") == 1, str(acciones))
 
 
 # ── Tarea 5: endpoints del super administrador y registro para el municipio ──────────────────

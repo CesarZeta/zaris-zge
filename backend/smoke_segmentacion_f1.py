@@ -178,12 +178,15 @@ async def chk_config_dividida(conn) -> None:
         "AND to_regclass('public.super_admin_acceso') IS NOT NULL"))]
     vapid_no_globales = [r[0] for r in await conn.execute(text(
         "SELECT clave FROM configuracion_general WHERE id_municipio IS NOT NULL AND clave LIKE 'vapid\\_%'"))]
-    otro_municipio = await conn.scalar(text(
-        "SELECT count(*) FROM configuracion_general WHERE id_municipio IS NOT NULL AND id_municipio <> 1"))
-    ok = not globales_no_vapid and not vapid_no_globales and otro_municipio == 0
+    # Desde IT-01 F4 cada municipio tiene su configuración (el alta la siembra): lo que no puede
+    # haber es una fila de un municipio que no existe.
+    huerfanas = await conn.scalar(text(
+        "SELECT count(*) FROM configuracion_general c WHERE c.id_municipio IS NOT NULL "
+        "AND NOT EXISTS (SELECT 1 FROM municipios m WHERE m.id_municipio = c.id_municipio)"))
+    ok = not globales_no_vapid and not vapid_no_globales and huerfanas == 0
     _reg("config_dividida", ok,
          "" if ok else f"globales que no son vapid: {globales_no_vapid}; vapid no globales: {vapid_no_globales}; "
-                       f"filas de otro municipio: {otro_municipio}")
+                       f"filas de municipios inexistentes: {huerfanas}")
 
 
 async def chk_municipio_base(conn) -> None:

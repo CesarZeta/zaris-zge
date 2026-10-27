@@ -30,7 +30,8 @@ if "zaris_dev" not in settings.ASYNC_DATABASE_URI:
     sys.exit("ABORT: este smoke es SOLO LOCAL (la DB configurada no es zaris_dev).")
 settings.RESEND_API_KEY = ""
 
-from app.core.auth import create_access_token, crear_token_super_admin, hash_password  # noqa: E402
+from app.core.auth import (  # noqa: E402
+    create_access_token, crear_token_ciudadano, crear_token_super_admin, hash_password)
 from app.core.database import AsyncSessionLocal  # noqa: E402
 from app.core.municipio import invalidar_cache_municipios  # noqa: E402
 from app.main import app  # noqa: E402
@@ -40,6 +41,7 @@ ORIGEN_C_ZGE = f"https://{SUB_C}.zge.zaris.com.ar"
 ORIGEN_C_VECINOS = f"https://{SUB_C}.vecinos.zaris.com.ar"
 EMAIL_C_N2 = "supervisor.c@prueba-aislamiento.com.ar"
 EMAIL_C_N1 = "admin.c@prueba-aislamiento.com.ar"
+EMAIL_C_N4 = "gestion.c@prueba-aislamiento.com.ar"
 CLAVE = "123456"
 
 RES: list[tuple[str, bool, str]] = []
@@ -97,7 +99,7 @@ async def _municipio_c() -> dict:
             SELECT :m, modulo_codigo, TRUE, min_nivel_acceso FROM modulos WHERE activo
             ON CONFLICT (id_municipio, modulo_codigo) DO NOTHING"""), {"m": mid})
         ids = {}
-        for email, nivel in ((EMAIL_C_N2, 2), (EMAIL_C_N1, 1)):
+        for email, nivel in ((EMAIL_C_N2, 2), (EMAIL_C_N1, 1), (EMAIL_C_N4, 4)):
             uid = await _escalar(db, "SELECT id_usuario FROM usuarios WHERE email = :e AND id_municipio = :m",
                                  {"e": email, "m": mid})
             if uid is None:
@@ -110,7 +112,7 @@ async def _municipio_c() -> dict:
             ids[nivel] = uid
         await db.commit()
     invalidar_cache_municipios()
-    return {"id": mid, "n2": ids[2], "n1": ids[1]}
+    return {"id": mid, "n2": ids[2], "n1": ids[1], "n4": ids[4]}
 
 
 def _token(id_usuario: int, id_municipio: int) -> dict:
@@ -393,9 +395,186 @@ async def test_municipio_provincia() -> None:
               texto)
 
 
+# ── Tarea 7 ───────────────────────────────────────────────────────────────────────────────────
+
+async def _modulos(id_municipio: int, **estado: bool) -> None:
+    """Fija `habilitado` de los módulos dados en el municipio (y el resto, habilitado) e invalida la caché."""
+    from app.services.municipios.modulos import invalidar_modulos
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("UPDATE municipio_modulo SET habilitado = TRUE, min_nivel_acceso = m.min_nivel_acceso "
+                              "FROM modulos m WHERE m.modulo_codigo = municipio_modulo.modulo_codigo "
+                              "AND id_municipio = :mun"), {"mun": id_municipio})
+        for codigo, hab in estado.items():
+            await db.execute(text("UPDATE municipio_modulo SET habilitado = :h WHERE id_municipio = :mun "
+                                  "AND modulo_codigo = :c"), {"h": hab, "mun": id_municipio, "c": codigo})
+        await db.commit()
+    invalidar_modulos(id_municipio)
+
+
+async def _admin_base(db) -> tuple[int, int]:
+    r = (await db.execute(text(
+        "SELECT u.id_usuario, u.id_municipio FROM usuarios u JOIN municipios m USING (id_municipio) "
+        "WHERE m.direccion_base AND u.nivel_acceso = 1 AND u.activo ORDER BY u.id_usuario LIMIT 1"))).first()
+    return r.id_usuario, r.id_municipio
+
+
+async def test_modulo_404() -> None:
+    print("\ntest_modulo_404")
+    C = await _municipio_c()
+    await _modulos(C["id"], reclamos=False, encuestas=False)
+    async with AsyncSessionLocal() as db:
+        uid_base, mun_base = await _admin_base(db)
+    try:
+        async with _cliente() as c:
+            r = await c.get("/api/v1/reclamos", headers=_token(C["n1"], C["id"]))
+            check("admin de C: GET /reclamos 404", r.status_code == 404, f"{r.status_code} {r.text[:100]}")
+            r = await c.get("/api/v1/admin/encuestas/plantillas", headers=_token(C["n1"], C["id"]))
+            check("admin de C: encuestas 404", r.status_code == 404, f"{r.status_code}")
+            h_vec = {"Authorization": "Bearer " + crear_token_ciudadano(1, C["id"]), "Origin": ORIGEN_C_VECINOS}
+            r = await c.get("/api/v1/publico/reclamos", headers=h_vec)
+            check("vecino de C: GET /publico/reclamos 404", r.status_code == 404, f"{r.status_code} {r.text[:100]}")
+            r = await c.get("/api/v1/publico/identidad-municipio", headers={"Origin": ORIGEN_C_VECINOS})
+            mods = r.json().get("modulos_habilitados") if r.status_code == 200 else None
+            check("identidad de C sin reclamos ni encuestas", isinstance(mods, list) and "reclamos" not in mods
+                  and "encuestas" not in mods and "turnos" in mods, f"{r.status_code} {mods}")
+            r = await c.get("/api/v1/reclamos", headers=_token(uid_base, mun_base))
+            check("admin del municipio base: GET /reclamos 200", r.status_code == 200, f"{r.status_code}")
+            r = await c.get("/api/v1/publico/identidad-municipio")
+            mods = r.json().get("modulos_habilitados") if r.status_code == 200 else None
+            check("identidad del municipio base con reclamos", isinstance(mods, list) and "reclamos" in mods, mods)
+            r = await c.get("/api/v1/config/identidad", headers={"Origin": ORIGEN_C_ZGE})
+            mods = r.json().get("modulos_habilitados") if r.status_code == 200 else None
+            check("/config/identidad trae los módulos habilitados", isinstance(mods, list) and "reclamos" not in mods,
+                  f"{r.status_code} {mods}")
+    finally:
+        await _modulos(C["id"])
+
+
+async def test_modulos_permitidos_municipio() -> None:
+    print("\ntest_modulos_permitidos_municipio")
+    C = await _municipio_c()
+    await _modulos(C["id"], reclamos=False)
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("""
+            INSERT INTO usuario_modulos (id_usuario, modulo_codigo, permitido, motivo, id_municipio)
+            SELECT :u, 'reclamos', TRUE, 'smoke F4', :m
+             WHERE NOT EXISTS (SELECT 1 FROM usuario_modulos WHERE id_usuario = :u AND modulo_codigo = 'reclamos')
+        """), {"u": C["n4"], "m": C["id"]})
+        await db.execute(text("UPDATE usuario_modulos SET permitido = TRUE, activo = TRUE "
+                              "WHERE id_usuario = :u AND modulo_codigo = 'reclamos'"), {"u": C["n4"]})
+        await db.commit()
+    try:
+        async with _cliente() as c:
+            r = await c.get("/api/v1/auth/me", headers=_token(C["n4"], C["id"]))
+            mods = r.json().get("modulos_permitidos") if r.status_code == 200 else None
+            check("un override no habilita un módulo apagado", isinstance(mods, list) and "reclamos" not in mods
+                  and "turnos" in mods, f"{r.status_code} {mods}")
+    finally:
+        await _modulos(C["id"])
+    async with _cliente() as c:
+        r = await c.get("/api/v1/auth/me", headers=_token(C["n4"], C["id"]))
+        check("con el módulo prendido, el override vuelve a valer",
+              "reclamos" in (r.json().get("modulos_permitidos") or []), r.status_code)
+
+
+async def test_nivel_por_municipio() -> None:
+    print("\ntest_nivel_por_municipio")
+    C = await _municipio_c()
+    await _modulos(C["id"])
+    async with AsyncSessionLocal() as db:
+        n4_base = (await db.execute(text(
+            "SELECT u.id_usuario, u.id_municipio FROM usuarios u JOIN municipios m USING (id_municipio) "
+            "WHERE m.direccion_base AND u.nivel_acceso = 4 AND u.activo AND NOT EXISTS (SELECT 1 FROM usuario_modulos um "
+            "WHERE um.id_usuario = u.id_usuario AND um.modulo_codigo = 'turnos' AND um.activo) "
+            "ORDER BY u.id_usuario LIMIT 1"))).first()
+    try:
+        async with _cliente() as c:
+            r = await c.put("/api/v1/admin/permisos/modulos/turnos", json={"min_nivel_acceso": 2},
+                            headers=_token(C["n1"], C["id"]))
+            check("el admin de C sube turnos a nivel 2", r.status_code == 200 and r.json().get("min_nivel_acceso") == 2,
+                  f"{r.status_code} {r.text[:160]}")
+            r = await c.get("/api/v1/auth/me", headers=_token(C["n4"], C["id"]))
+            check("un nivel 4 de C ya no ve turnos", "turnos" not in (r.json().get("modulos_permitidos") or ["turnos"]),
+                  r.status_code)
+            r = await c.get("/api/v1/auth/me", headers=_token(n4_base.id_usuario, n4_base.id_municipio))
+            check("un nivel 4 del municipio base lo sigue viendo", "turnos" in (r.json().get("modulos_permitidos") or []),
+                  r.status_code)
+            r = await c.put("/api/v1/admin/permisos/modulos/turnos", json={"habilitado": False},
+                            headers=_token(C["n1"], C["id"]))
+            check("el admin no habilita ni deshabilita (solo el super)", r.status_code == 403, f"{r.status_code}")
+            r = await c.put("/api/v1/admin/permisos/modulos/municipios", json={"min_nivel_acceso": 1},
+                            headers=_token(C["n1"], C["id"]))
+            check("los módulos de nivel 0 no existen para el admin", r.status_code == 404, f"{r.status_code}")
+    finally:
+        await _modulos(C["id"])
+
+
+async def test_dependencias() -> None:
+    print("\ntest_dependencias")
+    C = await _municipio_c()
+    async with AsyncSessionLocal() as db:
+        h = {**await _super_headers(db), "X-Municipio": str(C["id"])}
+    try:
+        await _modulos(C["id"], agenda=False, turnos=False, entradas=False)
+        async with _cliente() as c:
+            r = await c.put("/api/v1/admin/permisos/modulos/turnos", json={"habilitado": True}, headers=h)
+            check("habilitar turnos con agenda apagado → 422", r.status_code == 422
+                  and "turnos necesita agenda habilitado" in r.text, f"{r.status_code} {r.text[:160]}")
+        await _modulos(C["id"])
+        async with _cliente() as c:
+            r = await c.put("/api/v1/admin/permisos/modulos/agenda", json={"habilitado": False}, headers=h)
+            check("deshabilitar agenda con turnos prendido → 422", r.status_code == 422, f"{r.status_code} {r.text[:160]}")
+            r = await c.put("/api/v1/admin/permisos/modulos/usuarios", json={"habilitado": False}, headers=h)
+            check("un módulo fijo no se deshabilita → 422", r.status_code == 422, f"{r.status_code}")
+            r = await c.put("/api/v1/admin/permisos/modulos/bi", json={"habilitado": False}, headers=h)
+            check("el super deshabilita bi → 200", r.status_code == 200 and r.json().get("habilitado") is False,
+                  f"{r.status_code} {r.text[:160]}")
+            async with AsyncSessionLocal() as db:
+                n = await _escalar(db, "SELECT count(*) FROM super_admin_acceso WHERE accion = 'municipio_modulos' "
+                                       "AND id_municipio = :m AND fecha_hora > NOW() - INTERVAL '1 minute'", {"m": C["id"]})
+            check("queda registrado como municipio_modulos", n >= 1, n)
+    finally:
+        await _modulos(C["id"])
+
+
+async def test_efectos_apagados() -> None:
+    print("\ntest_efectos_apagados")
+    from app.services.encuestas_service import encuestas_estan_activas
+    C = await _municipio_c()
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("""
+            INSERT INTO configuracion_general (clave, valor, tipo, descripcion, activo, id_municipio)
+            VALUES ('encuestas_activas', 'true', 'boolean', 'smoke F4', TRUE, :m)
+            ON CONFLICT DO NOTHING"""), {"m": C["id"]})
+        await db.execute(text("UPDATE configuracion_general SET valor = 'true' WHERE clave = 'encuestas_activas' "
+                              "AND id_municipio = :m"), {"m": C["id"]})
+        await db.commit()
+    try:
+        await _modulos(C["id"])
+        async with AsyncSessionLocal() as db:
+            check("con encuestas prendido, se encuesta", await encuestas_estan_activas(db, id_municipio=C["id"]))
+        await _modulos(C["id"], encuestas=False, emergencias=False)
+        async with AsyncSessionLocal() as db:
+            check("con encuestas apagado no se crean envíos (guarda de todos los disparos)",
+                  not await encuestas_estan_activas(db, id_municipio=C["id"]))
+            antes = await _escalar(db, "SELECT count(*) FROM emergencia_atencion WHERE id_municipio = :m", {"m": C["id"]})
+        async with _cliente() as c:
+            r = await c.get("/api/v1/turnos/guardia/atenciones", headers=_token(C["n1"], C["id"]))
+            check("con emergencias apagado, la Guardia responde 404", r.status_code == 404, f"{r.status_code}")
+            r = await c.patch("/api/v1/turnos/guardia/atenciones/1/atender", json={}, headers=_token(C["n1"], C["id"]))
+            check("y no atiende (404)", r.status_code == 404, f"{r.status_code}")
+        async with AsyncSessionLocal() as db:
+            check("no se escribió emergencia_atencion", antes == await _escalar(
+                db, "SELECT count(*) FROM emergencia_atencion WHERE id_municipio = :m", {"m": C["id"]}))
+    finally:
+        await _modulos(C["id"])
+
+
 PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones_super,
                                      test_estado_baja, test_modelo_no_operable, test_demo_por_estado,
-                                     test_geo_catalogo, test_municipio_provincia)}
+                                     test_geo_catalogo, test_municipio_provincia,
+                                     test_modulo_404, test_modulos_permitidos_municipio, test_nivel_por_municipio,
+                                     test_dependencias, test_efectos_apagados)}
 
 
 async def main(nombres: list[str]) -> int:

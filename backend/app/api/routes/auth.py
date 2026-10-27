@@ -198,7 +198,7 @@ async def me(
     db: AsyncSession = Depends(get_db),
 ):
     modulos = await modulos_permitidos(
-        db, current_user["id_usuario"], current_user["nivel_real"]
+        db, current_user["id_usuario"], current_user["nivel_real"], current_user.get("id_municipio")
     )
     perfil = await perfil_agente_del_usuario(db, current_user["id_usuario"])
     # Al frontend va el nivel real (0 para el super administrador), no el efectivo.

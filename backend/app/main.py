@@ -4,10 +4,11 @@ ZARIS API — FastAPI Application Entry Point.
 import logging
 import sys
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.services.municipios.modulos import MODULOS_POR_ROUTER, modulo_habilitado
 from app.api.routes.auth import router as auth_router
 from app.api.routes.segundo_factor import router as segundo_factor_router
 from app.api.routes.buc import router as buc_router
@@ -109,6 +110,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 # Rutas
+# Módulos por municipio (IT-01 F4): cada router de un módulo deshabilitable responde 404 si el
+# módulo está apagado en el municipio de la request (mapa en services/municipios/modulos.py).
+def _modulo(router: str) -> list:
+    return [Depends(modulo_habilitado(*MODULOS_POR_ROUTER[router]))]
+
+
 app.include_router(auth_router)
 app.include_router(segundo_factor_router)
 # usuario_push: /auth/push/* — Web Push de usuarios internos (App de agentes, mig 108)
@@ -118,31 +125,31 @@ app.include_router(buc_router)
 app.include_router(usuarios_mantenimiento_router)
 # demo_datos: /demo/poblar (cron semanal de datos demo BI; X-Dispatcher-Token o admin JWT)
 app.include_router(demo_datos_router)
-app.include_router(agenda_v2_router)
-app.include_router(agenda_publico_router)
+app.include_router(agenda_v2_router, dependencies=_modulo("agenda_v2_router"))
+app.include_router(agenda_publico_router, dependencies=_modulo("agenda_publico_router"))
 # Orden: los routers especificos (/agenda/espacios, /agenda/disponibilidad)
 # DESPUES del general /agenda. FastAPI matchea por orden de registro y
 # /agenda/{path} no es greedy, asi que el orden es indiferente aca — pero
 # mantenemos especificos despues por convencion.
-app.include_router(agenda_espacios_router)
-app.include_router(agenda_disponibilidad_router)
-app.include_router(agenda_novedades_router)
+app.include_router(agenda_espacios_router, dependencies=_modulo("agenda_espacios_router"))
+app.include_router(agenda_disponibilidad_router, dependencies=_modulo("agenda_disponibilidad_router"))
+app.include_router(agenda_novedades_router, dependencies=_modulo("agenda_novedades_router"))
 # turnos_publico ANTES de turnos: /turnos/publico/* lo atraparia /turnos/{id_turno} (int) -> 422
-app.include_router(turnos_publico_router)
-app.include_router(turnos_router)
+app.include_router(turnos_publico_router, dependencies=_modulo("turnos_publico_router"))
+app.include_router(turnos_router, dependencies=_modulo("turnos_router"))
 # tramites_mantenimiento: /tramites/mantenimiento/ejecutar (segmento fijo, sin
 # guard JWT — auth por X-Dispatcher-Token). DEBE ir ANTES de tramites_router o
 # el /{numero_o_id} greedy lo atrapa como numero_o_id='mantenimiento' (S5).
 app.include_router(tramites_mantenimiento_router)
 # tramites_router ANTES de admin_tablas (que tiene /{tabla} greedy).
 # /tramites/* no colisiona con otros routers pero lo dejamos arriba por convención.
-app.include_router(tramites_router)
+app.include_router(tramites_router, dependencies=_modulo("tramites_router"))
 # tramites_admin: CRUD del catalogo de tipos. Prefix /api/v1/admin/tramites.
 # DEBE ir ANTES de admin_tablas_router (/api/v1/admin/{tabla} greedy lo atraparia).
-app.include_router(tramites_admin_router)
+app.include_router(tramites_admin_router, dependencies=_modulo("tramites_admin_router"))
 # encuestas_admin: prefix /api/v1/admin/encuestas. ANTES de admin_tablas_router
 # (/api/v1/admin/{tabla} greedy atraparia /admin/encuestas como {tabla}='encuestas').
-app.include_router(encuestas_admin_router)
+app.include_router(encuestas_admin_router, dependencies=_modulo("encuestas_admin_router"))
 # dispatcher: mismo prefix pero router sin guard JWT (auth por X-Dispatcher-Token).
 # Tambien ANTES de admin_tablas_router por el /{tabla} greedy.
 app.include_router(encuestas_dispatcher_router)
@@ -152,20 +159,20 @@ app.include_router(notificaciones_router)
 # orden explicito atrapan rutas como /api/v1/admin/permisos/* como si {tabla}='permisos'.
 app.include_router(admin_permisos_router)
 app.include_router(admin_tablas_router, prefix="/api/v1/admin")
-app.include_router(reclamos_router)
+app.include_router(reclamos_router, dependencies=_modulo("reclamos_router"))
 # BI: /api/v1/bi/* (agregaciones de analisis). No colisiona con otros prefijos.
-app.include_router(bi_router)
+app.include_router(bi_router, dependencies=_modulo("bi_router"))
 # BI Ejecutivo: /api/v1/bi/ejecutivo/* (tablero de demanda ciudadana, 2026-08-30).
-app.include_router(bi_ejecutivo_router)
+app.include_router(bi_ejecutivo_router, dependencies=_modulo("bi_ejecutivo_router"))
 # BI Atencion: /api/v1/bi/atencion/* (tablero de atencion por gestion, F6 2026-09-19).
-app.include_router(bi_atencion_router)
+app.include_router(bi_atencion_router, dependencies=_modulo("bi_atencion_router"))
 # Dashboard home: /api/v1/dashboard/resumen (conteos + capas geo). Prefijo propio.
 app.include_router(dashboard_router)
-app.include_router(reclamo_adjuntos_router)
+app.include_router(reclamo_adjuntos_router, dependencies=_modulo("reclamo_adjuntos_router"))
 # ot_adjuntos ANTES de ot_router: /ot/{id_ot}/adjuntos no debe ser atrapado por
 # el /{id_ot} greedy del router de OT (mismo quirk §5 de orden de routers).
-app.include_router(ot_adjuntos_router)
-app.include_router(ot_router)
+app.include_router(ot_adjuntos_router, dependencies=_modulo("ot_adjuntos_router"))
+app.include_router(ot_router, dependencies=_modulo("ot_router"))
 app.include_router(geo_router)
 app.include_router(activos_router)
 app.include_router(config_identidad_router)
@@ -175,22 +182,22 @@ app.include_router(super_admin_router)
 app.include_router(auditoria_super_router)
 # Emergencias (COM): /api/v1/emergencias/* — prefijo propio, sin colisiones.
 # Fase 3 sumara rutas con {id} greedy: las de segmento fijo deberan ir antes (§5).
-app.include_router(emergencias_router)
+app.include_router(emergencias_router, dependencies=_modulo("emergencias_router"))
 # App Vecinos (PWA publica de ciudadanos)
 app.include_router(publico_auth_router)
 # Alta publica de vecinos (autoregistro desde URL publica por municipio, sin JWT, rate-limited)
 app.include_router(publico_alta_router)
 app.include_router(publico_identidad_router)
 # Adjuntos publicos ANTES del router de reclamos publicos (su GET /{id_reclamo} es greedy, §5)
-app.include_router(publico_reclamos_adjuntos_router)
-app.include_router(publico_reclamos_router)
+app.include_router(publico_reclamos_adjuntos_router, dependencies=_modulo("publico_reclamos_adjuntos_router"))
+app.include_router(publico_reclamos_router, dependencies=_modulo("publico_reclamos_router"))
 app.include_router(publico_portal_router)
 # Turnos del vecino logueado (App Vecinos etapa C, scope publico)
-app.include_router(publico_turnos_vecino_router)
+app.include_router(publico_turnos_vecino_router, dependencies=_modulo("publico_turnos_vecino_router"))
 # Entradas del vecino logueado (App Vecinos etapa D, scope publico — cartelera + QR)
-app.include_router(publico_entradas_vecino_router)
+app.include_router(publico_entradas_vecino_router, dependencies=_modulo("publico_entradas_vecino_router"))
 # Emergencias del vecino (App Vecinos, scope publico — plan COM Fase 5)
-app.include_router(publico_emergencias_router)
+app.include_router(publico_emergencias_router, dependencies=_modulo("publico_emergencias_router"))
 # Suscripciones Web Push del vecino (App Vecinos etapa E, scope publico)
 app.include_router(publico_push_router)
 # Perfil del vecino logueado (ficha BUC + edicion de contacto/domicilio, scope publico)
@@ -198,7 +205,7 @@ app.include_router(publico_perfil_router)
 # Bandeja de avisos del vecino (mig 99, scope publico)
 app.include_router(publico_avisos_router)
 # Encuestas publicas (form del ciudadano, sin JWT, rate-limited por IP)
-app.include_router(encuestas_publico_router)
+app.include_router(encuestas_publico_router, dependencies=_modulo("encuestas_publico_router"))
 
 
 # Health check

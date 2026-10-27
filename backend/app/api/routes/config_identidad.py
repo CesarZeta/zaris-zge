@@ -33,6 +33,7 @@ from app.core.config import settings
 from app.core.config_municipio import guardar_config, leer_configs
 from app.core.database import get_db
 from app.core.municipio import municipio_actual, municipio_de_origen
+from app.services.municipios.modulos import modulos_habilitados
 from app.core import storage
 from app.core.urls import url_publica as _url_publica  # fuente única con publico_alta (Portal del Ciudadano)
 
@@ -95,6 +96,8 @@ class IdentidadOut(BaseModel):
     # "Mi perfil" del backoffice (QR + link para que el funcionario la instale en su
     # celular). Fuente: settings.APP_AGENTES_FRONTEND_URL (env var en Railway).
     app_agentes_url: str = ""
+    # Módulos habilitados en el municipio (IT-01 F4): la app de agentes oculta lo deshabilitado.
+    modulos_habilitados: list[str] = []
 
 
 class IdentidadUpdate(BaseModel):
@@ -149,6 +152,7 @@ async def _leer_claves(db: AsyncSession, id_municipio: int) -> dict[str, str]:
         "municipio_slug": slug,
         "app_vecinos_url": _url_publica(settings.APP_VECINOS_FRONTEND_URL),
         "app_agentes_url": _url_publica(settings.APP_AGENTES_FRONTEND_URL),
+        "modulos_habilitados": sorted(await modulos_habilitados(db, id_municipio)),
     }
 
 

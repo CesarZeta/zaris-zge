@@ -77,8 +77,13 @@ def _now() -> datetime:
 # =============================================================================
 
 async def encuestas_estan_activas(db: AsyncSession, *, id_municipio: int) -> bool:
-    """Lee encuestas_activas del municipio. False si no existe o != 'true'."""
+    """Lee encuestas_activas del municipio. False si no existe o != 'true', o si el módulo
+    `encuestas` está deshabilitado en el municipio (IT-01 F4). Es la guarda de todos los disparos
+    de envíos (reclamo, turno, entrada, trámite)."""
     try:
+        from app.services.municipios.modulos import modulo_esta_habilitado
+        if not await modulo_esta_habilitado(db, id_municipio, "encuestas"):
+            return False
         valor = await leer_config(db, "encuestas_activas", id_municipio)
         return valor is not None and str(valor).strip().lower() == "true"
     except Exception as e:
