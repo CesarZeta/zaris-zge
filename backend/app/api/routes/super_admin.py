@@ -34,7 +34,9 @@ from app.core.database import get_db
 from app.core.municipio import invalidar_cache_municipios
 from app.services.accesos_super import registrar_acceso_super, registrar_acceso_super_en
 from app.core.urls import base_app
-from app.services.municipios.alta import CATALOGOS_ETIQUETAS, SIN_CONTORNO, AltaMunicipioIn, dar_de_alta
+from app.services.municipios.alta import (
+    CATALOGOS_ETIQUETAS, SIN_CONTORNO, AltaMunicipioIn, dar_de_alta, problema_codigo, problema_partido,
+    problema_subdominio)
 from app.services.municipios.constantes import DEPENDENCIAS_MODULOS, ESTADOS, MODULOS_FIJOS
 from app.services.municipios.invitacion import crear_invitacion
 from app.services.municipios.tope import cupo
@@ -142,10 +144,46 @@ async def opciones_alta(db: AsyncSession = Depends(get_db)):
     mods = await db.execute(text(
         "SELECT modulo_codigo, nombre FROM modulos WHERE activo AND min_nivel_acceso >= 1 ORDER BY nombre"))
     return {
+        "zonas": await _zonas(db),
         "catalogos": [{"codigo": c, "nombre": n} for c, n in CATALOGOS_ETIQUETAS.items()],
         "modulos": [{"codigo": r.modulo_codigo, "nombre": r.nombre, "fijo": r.modulo_codigo in MODULOS_FIJOS,
                      "dependencias": sorted(DEPENDENCIAS_MODULOS.get(r.modulo_codigo, ()))} for r in mods],
     }
+
+
+async def _zonas(db: AsyncSession) -> list[dict]:
+    """Zonas horarias con nombre de región, ordenadas por su desfase de hoy respecto de Greenwich. Es la
+    misma base contra la que se valida la zona al guardar (pg_timezone_names)."""
+    rows = await db.execute(text(r"""
+        SELECT name, utc_offset FROM pg_timezone_names
+         WHERE name ~ '^(Africa|America|Antarctica|Arctic|Asia|Atlantic|Australia|Europe|Indian|Pacific)/'
+         ORDER BY utc_offset, name"""))
+    zonas = []
+    for nombre, desfase in rows.all():
+        minutos = int(desfase.total_seconds() // 60)
+        signo = "-" if minutos < 0 else "+"
+        zonas.append({"nombre": nombre, "desfase": f"{signo}{abs(minutos) // 60:02d}:{abs(minutos) % 60:02d}"})
+    return zonas
+
+
+@router.get("/alta/disponibilidad")
+async def disponibilidad_alta(
+    codigo_corto: Optional[str] = Query(None, max_length=10),
+    subdominio: Optional[str] = Query(None, max_length=63),
+    id_partido: Optional[int] = Query(None, ge=1, le=2_147_483_647),
+    excluir: Optional[int] = Query(None, ge=1, le=2_147_483_647, description="El municipio que se está editando"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Mientras el super escribe: si el código corto, el subdominio y el partido están libres (y por qué no)."""
+    out = {}
+    for campo, valor, problema in (
+            ("codigo_corto", codigo_corto, lambda v: problema_codigo(db, v)),
+            ("subdominio", subdominio, lambda v: problema_subdominio(db, v, excluir)),
+            ("id_partido", id_partido, lambda v: problema_partido(db, v, excluir))):
+        if valor is not None:
+            p = await problema(valor)
+            out[campo] = {"disponible": p is None, "motivo": p[1] if p else None}
+    return out
 
 
 @router.get("/municipios/{id_municipio}", responses={404: {"description": "Municipio inexistente"}})
@@ -227,7 +265,7 @@ async def _validar_ubicacion(db: AsyncSession, body: "MunicipioSuperUpdate", est
 
 
 @router.put("/municipios/{id_municipio}", response_model=MunicipioSuperOut,
-            responses={409: {"description": "El subdominio ya lo usa otro municipio"}})
+            responses={409: {"description": "El subdominio o el partido ya los usa otro municipio"}})
 async def editar_municipio(
     id_municipio: int,
     body: MunicipioSuperUpdate,
@@ -244,10 +282,13 @@ async def editar_municipio(
     # de fechas (F5b), y no depende de que el servidor tenga tzdata.
     if not await db.scalar(text("SELECT 1 FROM pg_timezone_names WHERE name = :z"), {"z": body.zona_horaria}):
         raise HTTPException(422, "Zona horaria inválida")
-    if body.subdominio and await db.scalar(text(
-            "SELECT 1 FROM municipios WHERE subdominio = :s AND id_municipio <> :id"),
-            {"s": body.subdominio, "id": id_municipio}):
-        raise HTTPException(409, "Ese subdominio ya lo usa otro municipio")
+    if body.subdominio and (p := await problema_subdominio(db, body.subdominio, id_municipio)):
+        raise HTTPException(*p)
+    if body.id_partido is not None and antes["estado"] != "baja" and (
+            p := await problema_partido(db, body.id_partido, id_municipio)):
+        raise HTTPException(*p)
+    if body.id_partido is None and antes["estado"] == "produccion":
+        raise HTTPException(422, "Un municipio en producción tiene que tener su partido")
     await db.execute(text("""
         UPDATE municipios
            SET nombre = :nombre, subdominio = :subdominio, codigo_pais = :codigo_pais, pais = :pais,
@@ -375,13 +416,16 @@ async def cambiar_estado(
     (salvo el municipio de las direcciones sin prefijo) · baja → reactivar (vuelve al estado anterior).
     demo y modelo no se asignan desde la API."""
     actual = (await db.execute(text(
-        "SELECT nombre, estado, estado_antes_baja, direccion_base FROM municipios WHERE id_municipio = :m FOR UPDATE"),
+        "SELECT nombre, estado, estado_antes_baja, direccion_base, id_partido FROM municipios "
+        "WHERE id_municipio = :m FOR UPDATE"),
         {"m": id_municipio})).first()
     if actual is None:
         raise HTTPException(404, "Municipio no encontrado")
     if body.estado == "produccion":
         if actual.estado != "puesta_en_marcha":
             raise HTTPException(422, "Solo un municipio en puesta en marcha pasa a producción")
+        if actual.id_partido is None:
+            raise HTTPException(422, "Un municipio ficticio no pasa a producción: asignale su partido en la ficha")
         if (body.confirmacion or "").strip() != actual.nombre:
             raise HTTPException(422, "Escribí el nombre del municipio para confirmar.")
         nuevo = "produccion"
@@ -395,6 +439,8 @@ async def cambiar_estado(
         if actual.estado != "baja":
             raise HTTPException(422, "Solo se reactiva un municipio de baja")
         nuevo = actual.estado_antes_baja or "puesta_en_marcha"
+        if actual.id_partido is not None and (p := await problema_partido(db, actual.id_partido, id_municipio)):
+            raise HTTPException(*p)
     else:
         raise HTTPException(422, f"No se puede pasar a {body.estado} desde la API")
     await db.execute(text("""

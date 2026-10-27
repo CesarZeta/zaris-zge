@@ -4,29 +4,46 @@ import { useNavigate } from 'react-router-dom'
 import { Badge, Button, EmptyState, Skeleton } from '../../../ui'
 import { useNotificationsStore } from '../../../stores/notifications'
 import {
-  darDeAlta, listarPaises, listarPartidos, listarProvincias, opcionesAlta,
-  type AltaMunicipioBody, type AltaResultado, type OpcionModulo,
+  darDeAlta, disponibilidadAlta, etiquetaZona, listarPaises, listarPartidos, listarProvincias, opcionesAlta,
+  type AltaMunicipioBody, type AltaResultado, type Disponible, type OpcionModulo,
 } from '../api'
 import { Campo, input, seccion, titulo } from './_comun'
 
 // Asistente de alta de un municipio (IT-01 F4+F5, Tarea 15; spec §4.4). Seis pasos y el alta en una
 // sola llamada: el backend valida todo antes de escribir y, si algo falla, no queda nada. El
 // subdominio se arma solo desde el nombre hasta que el super lo edita (auto-slug, §23).
+// Corte B (César, 2026-10-27): el municipio ES el partido (obligatorio, salvo los ficticios de demo y
+// prueba) y propone nombre, subdominio y código; la zona horaria es un combo ordenado por desfase; el
+// código corto lleva 4 letras y, como el subdominio y el partido, se comprueba libre mientras se escribe.
 
 const PASOS = ['Datos', 'Identidad', 'Qué copiar', 'Módulos', 'Tope de cuentas', 'Primer administrador'] as const
 
 // Los mismos de backend/app/services/municipios/constantes.py.
 const PATRON_SUBDOMINIO = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/
-const PATRON_CODIGO = /^[A-Z]{2,3}$/
+const LARGO_CODIGO = 4
+const PATRON_CODIGO = new RegExp(`^[A-Z]{${LARGO_CODIGO}}$`)
 const RESERVADOS = new Set(['www', 'api', 'zge', 'vecinos', 'agentes', 'admin', 'app', 'mail', 'soporte',
   'status', 'demo', 'modelo'])
 const SIN_CONTORNO = 'Sin contorno ni bbox: el geocoding usará la zona por defecto (Vicente López).'
 
-const aSubdominio = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+const sinTildes = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '')
+const aSubdominio = (s: string) => sinTildes(s).toLowerCase()
   .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 63)
+const aCodigo = (s: string) => sinTildes(s).toUpperCase().replace(/[^A-Z]/g, '').slice(0, LARGO_CODIGO)
+
+// El valor después de que dejó de cambiar `ms` milisegundos (para no consultar en cada tecla).
+function useEstable<T>(valor: T, ms = 350): T {
+  const [estable, setEstable] = useState(valor)
+  const clave = JSON.stringify(valor)
+  useEffect(() => {
+    const t = setTimeout(() => setEstable(JSON.parse(clave) as T), ms)
+    return () => clearTimeout(t)
+  }, [clave, ms])
+  return estable
+}
 
 interface Form {
-  nombre: string; codigo_pais: string; id_provincia: number | null; id_partido: number | null
+  nombre: string; codigo_pais: string; id_provincia: number | null; id_partido: number | null; ficticio: boolean
   zona_horaria: string; codigo_corto: string; subdominio: string
   color: string; logo_url: string; geojson: string; lat: string; lon: string; delta: string
   copiar: string[]; modulos: string[]; tope: string
@@ -35,7 +52,7 @@ interface Form {
 }
 
 const VACIO: Form = {
-  nombre: '', codigo_pais: '', id_provincia: null, id_partido: null, zona_horaria: '', codigo_corto: '',
+  nombre: '', codigo_pais: '', id_provincia: null, id_partido: null, ficticio: false, zona_horaria: '', codigo_corto: '',
   subdominio: '', color: '', logo_url: '', geojson: '', lat: '', lon: '', delta: '', copiar: [], modulos: [],
   tope: '', a_nombre: '', a_apellido: '', a_dni: '', a_cuil: '', a_sexo: '', a_fecha_nac: '', a_telefono: '',
   a_email: '',
@@ -62,6 +79,8 @@ export function AltaMunicipioPage() {
   const [f, setF] = useState<Form>(VACIO)
   const [resultado, setResultado] = useState<AltaResultado | null>(null)
   const subdominioTocado = useRef(false)
+  const nombreTocado = useRef(false)
+  const codigoTocado = useRef(false)
   const set = (cambios: Partial<Form>) => setF((prev) => ({ ...prev, ...cambios }))
 
   const opciones = useQuery({ queryKey: ['super', 'alta', 'opciones'], queryFn: opcionesAlta })
@@ -75,6 +94,31 @@ export function AltaMunicipioPage() {
     enabled: f.id_provincia != null,
   })
   const pais = paises.data?.find((p) => p.codigo_pais === f.codigo_pais)
+  const nivel2 = (pais?.etiqueta_nivel_2 ?? 'Partido').toLowerCase()
+
+  // Lo que propone el partido (o el nombre, si es ficticio) mientras el super no escriba lo suyo.
+  const proponer = (base: string, nombre?: string): Partial<Form> => ({
+    ...(nombre !== undefined && !nombreTocado.current ? { nombre } : {}),
+    ...(subdominioTocado.current ? {} : { subdominio: aSubdominio(base) }),
+    ...(codigoTocado.current ? {} : { codigo_corto: aCodigo(base) }),
+  })
+
+  // Disponibilidad del código, el subdominio y el partido, comprobada en el backend al dejar de escribir.
+  const consulta = useEstable({
+    codigo_corto: PATRON_CODIGO.test(f.codigo_corto) ? f.codigo_corto : undefined,
+    subdominio: PATRON_SUBDOMINIO.test(f.subdominio) && !RESERVADOS.has(f.subdominio) ? f.subdominio : undefined,
+    id_partido: f.ficticio ? undefined : f.id_partido ?? undefined,
+  })
+  const disp = useQuery({
+    queryKey: ['super', 'alta', 'disponibilidad', consulta], queryFn: () => disponibilidadAlta(consulta),
+    enabled: !!(consulta.codigo_corto || consulta.subdominio || consulta.id_partido),
+  })
+  // undefined = todavía no se sabe (escribiendo o consultando); si no, lo que dijo el backend.
+  const estado = (campo: 'codigo_corto' | 'subdominio' | 'id_partido', valor: unknown): Disponible | undefined =>
+    consulta[campo] === valor && !disp.isFetching ? disp.data?.[campo] : undefined
+  const dispCodigo = estado('codigo_corto', f.codigo_corto)
+  const dispSub = estado('subdominio', f.subdominio)
+  const dispPartido = estado('id_partido', f.id_partido ?? undefined)
 
   // Al llegar las opciones: todos los catálogos y todos los módulos elegidos (el super quita).
   useEffect(() => {
@@ -91,9 +135,14 @@ export function AltaMunicipioPage() {
     if (f.nombre.trim().length < 3) e.nombre = 'Al menos 3 letras'
     if (!f.codigo_pais) e.codigo_pais = 'Elegí el país'
     if (f.id_provincia == null) e.id_provincia = `Elegí la ${(pais?.etiqueta_nivel_1 ?? 'provincia').toLowerCase()}`
-    if (!PATRON_CODIGO.test(f.codigo_corto)) e.codigo_corto = '2 o 3 letras mayúsculas'
+    if (!f.ficticio && f.id_partido == null) e.id_partido = `Elegí el ${nivel2}, o marcá el municipio como ficticio`
+    else if (dispPartido?.disponible === false) e.id_partido = dispPartido.motivo ?? 'No disponible'
+    if (!PATRON_CODIGO.test(f.codigo_corto)) e.codigo_corto = `${LARGO_CODIGO} letras mayúsculas, sin tildes`
+    else if (dispCodigo?.disponible === false) e.codigo_corto = dispCodigo.motivo ?? 'No disponible'
     if (!PATRON_SUBDOMINIO.test(f.subdominio)) e.subdominio = 'Solo minúsculas, números y guiones, sin espacios'
     else if (RESERVADOS.has(f.subdominio)) e.subdominio = 'Ese subdominio está reservado'
+    else if (dispSub?.disponible === false) e.subdominio = dispSub.motivo ?? 'No disponible'
+    if (!f.zona_horaria) e.zona_horaria = 'Elegí la zona horaria'
     if (f.color && !/^#[0-9A-Fa-f]{6}$/.test(f.color)) e.color = 'Formato #RRGGBB'
     const coords = [f.lat, f.lon, f.delta].filter((v) => v.trim() !== '').length
     if (coords > 0 && coords < 3) e.lat = 'Completá centro (latitud y longitud) y radio, o dejá los tres vacíos'
@@ -107,10 +156,13 @@ export function AltaMunicipioPage() {
     if (f.a_telefono.trim().length < 6) e.a_telefono = 'Al menos 6 dígitos'
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.a_email.trim())) e.a_email = 'Email inválido'
     return e
-  }, [f, pais])
+  }, [f, pais, nivel2, dispPartido, dispCodigo, dispSub])
+  // El paso Datos espera a que el backend confirme que el código, el subdominio y el partido están libres.
+  const libres = dispCodigo?.disponible === true && dispSub?.disponible === true
+    && (f.ficticio || dispPartido?.disponible === true)
 
   const camposDelPaso: (keyof Form)[][] = [
-    ['nombre', 'codigo_pais', 'id_provincia', 'codigo_corto', 'subdominio'],
+    ['nombre', 'codigo_pais', 'id_provincia', 'id_partido', 'zona_horaria', 'codigo_corto', 'subdominio'],
     ['color', 'lat'],
     [],
     [],
@@ -119,6 +171,7 @@ export function AltaMunicipioPage() {
   ]
   const errorDependencia = opciones.data ? faltaDependencia(f.modulos, opciones.data.modulos) : null
   const pasoValido = (i: number) => camposDelPaso[i].every((c) => !errores[c]) && (i !== 3 || !errorDependencia)
+    && (i !== 0 || libres)
   const sinContorno = !f.geojson.trim() && f.lat.trim() === ''
 
   const alta = useMutation({
@@ -133,7 +186,8 @@ export function AltaMunicipioPage() {
   const enviar = () => {
     if (alta.isPending || !PASOS.every((_, i) => pasoValido(i))) return
     const body: AltaMunicipioBody = {
-      nombre: f.nombre.trim(), codigo_pais: f.codigo_pais, id_provincia: f.id_provincia!, id_partido: f.id_partido,
+      nombre: f.nombre.trim(), codigo_pais: f.codigo_pais, id_provincia: f.id_provincia!,
+      id_partido: f.ficticio ? null : f.id_partido, ficticio: f.ficticio,
       zona_horaria: f.zona_horaria.trim() || null, codigo_corto: f.codigo_corto, subdominio: f.subdominio,
       identidad: {
         color: f.color || null, logo_url: f.logo_url.trim() || null, geo_limite_geojson: f.geojson.trim() || null,
@@ -197,13 +251,8 @@ export function AltaMunicipioPage() {
       <div style={seccion}>
         {paso === 0 && (
           <>
-            <Campo etiqueta="Nombre" error={f.nombre ? err('nombre') : undefined}>
-              <input style={input} value={f.nombre} maxLength={150} autoFocus
-                     onChange={(e) => set({ nombre: e.target.value,
-                       ...(subdominioTocado.current ? {} : { subdominio: aSubdominio(e.target.value) }) })} />
-            </Campo>
             <Campo etiqueta="País" ayuda="Solo los habilitados para dar de alta municipios.">
-              <select style={input} value={f.codigo_pais}
+              <select style={input} value={f.codigo_pais} autoFocus
                       onChange={(e) => {
                         const p = paises.data?.find((x) => x.codigo_pais === e.target.value)
                         set({ codigo_pais: e.target.value, id_provincia: null, id_partido: null, zona_horaria: p?.zona_horaria ?? '' })
@@ -219,23 +268,49 @@ export function AltaMunicipioPage() {
                 {(provincias.data ?? []).map((p) => <option key={p.id_provincia} value={p.id_provincia}>{p.nombre}</option>)}
               </select>
             </Campo>
-            <Campo etiqueta={`${pais?.etiqueta_nivel_2 ?? 'Partido'} (opcional)`}>
-              <select style={input} value={f.id_partido ?? ''} disabled={f.id_provincia == null}
-                      onChange={(e) => set({ id_partido: e.target.value ? Number(e.target.value) : null })}>
+            <Campo etiqueta={pais?.etiqueta_nivel_2 ?? 'Partido'}
+                   ayuda={f.ficticio ? 'Municipio ficticio: no lleva partido y no puede pasar a producción.'
+                     : dispPartido?.disponible ? 'Libre: ningún otro municipio lo tiene.' : 'El municipio es el partido: uno por partido.'}
+                   error={!f.ficticio && f.id_partido != null ? err('id_partido') : undefined}>
+              <select style={input} value={f.id_partido ?? ''} disabled={f.id_provincia == null || f.ficticio}
+                      onChange={(e) => {
+                        const id = e.target.value ? Number(e.target.value) : null
+                        const p = partidos.data?.find((x) => x.id_partido === id)
+                        set({ id_partido: id, ...(p ? proponer(p.nombre, `Municipalidad de ${p.nombre}`) : {}) })
+                      }}>
                 <option value="">—</option>
                 {(partidos.data ?? []).map((p) => <option key={p.id_partido} value={p.id_partido}>{p.nombre}</option>)}
               </select>
             </Campo>
-            <Campo etiqueta="Zona horaria" ayuda="Por defecto, la del país.">
-              <input style={{ ...input, fontFamily: 'var(--font-mono)' }} value={f.zona_horaria} maxLength={64}
-                     onChange={(e) => set({ zona_horaria: e.target.value })} />
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14 }}>
+              <input type="checkbox" checked={f.ficticio}
+                     onChange={(e) => set({ ficticio: e.target.checked, id_partido: null })} />
+              Municipio ficticio (demo o prueba), sin {nivel2}
+            </label>
+            <Campo etiqueta="Nombre" ayuda={f.ficticio ? undefined : `Se propone desde el ${nivel2}; se puede cambiar.`}
+                   error={f.nombre ? err('nombre') : undefined}>
+              <input style={input} value={f.nombre} maxLength={150}
+                     onChange={(e) => {
+                       nombreTocado.current = true
+                       set({ nombre: e.target.value, ...(f.ficticio ? proponer(e.target.value) : {}) })
+                     }} />
             </Campo>
-            <Campo etiqueta="Código corto" ayuda="Prefijo de los números (REC-XXX-…). No se puede cambiar después."
+            <Campo etiqueta="Zona horaria" ayuda="Ordenadas por su diferencia con Greenwich. Por defecto, la del país."
+                   error={err('zona_horaria')}>
+              <select style={{ ...input, fontFamily: 'var(--font-mono)' }} value={f.zona_horaria}
+                      onChange={(e) => set({ zona_horaria: e.target.value })}>
+                <option value="">—</option>
+                {(opciones.data?.zonas ?? []).map((z) => <option key={z.nombre} value={z.nombre}>{etiquetaZona(z)}</option>)}
+              </select>
+            </Campo>
+            <Campo etiqueta={`Código corto (${LARGO_CODIGO} letras)`}
+                   ayuda={`${dispCodigo?.disponible ? 'Libre. ' : ''}Prefijo de los números: REC-${f.codigo_corto || 'XXXX'}-${new Date().getFullYear()}-000001. No se puede cambiar después.`}
                    error={f.codigo_corto ? err('codigo_corto') : undefined}>
-              <input style={{ ...input, fontFamily: 'var(--font-mono)' }} value={f.codigo_corto} maxLength={3}
-                     onChange={(e) => set({ codigo_corto: e.target.value.toUpperCase().replace(/[^A-Z]/g, '') })} />
+              <input style={{ ...input, fontFamily: 'var(--font-mono)' }} value={f.codigo_corto} maxLength={LARGO_CODIGO}
+                     onChange={(e) => { codigoTocado.current = true; set({ codigo_corto: aCodigo(e.target.value) }) }} />
             </Campo>
-            <Campo etiqueta="Subdominio" ayuda={f.subdominio ? `${f.subdominio}.zge.zaris.com.ar` : 'Se arma desde el nombre'}
+            <Campo etiqueta="Subdominio"
+                   ayuda={f.subdominio ? `${dispSub?.disponible ? 'Libre: ' : ''}${f.subdominio}.zge.zaris.com.ar` : 'Se arma desde el partido o el nombre'}
                    error={f.subdominio ? err('subdominio') : undefined}>
               <input style={{ ...input, fontFamily: 'var(--font-mono)' }} value={f.subdominio} maxLength={63}
                      onChange={(e) => { subdominioTocado.current = true; set({ subdominio: e.target.value.toLowerCase() }) }} />

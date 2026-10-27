@@ -58,7 +58,7 @@ class Reclamo(Base):
     __tablename__ = "reclamos"
 
     id_reclamo          = Column(Integer, primary_key=True, autoincrement=True)
-    nro_reclamo         = Column(String(20), nullable=True)
+    nro_reclamo         = Column(String(24), nullable=True)
     id_ciudadano        = Column(Integer, ForeignKey("ciudadanos.id_ciudadano", ondelete="RESTRICT"), nullable=True)
     id_tipo_reclamo     = Column(Integer, ForeignKey("tipo_reclamo.id_tipo_reclamo", ondelete="SET NULL"), nullable=True)
     id_area             = Column(Integer, ForeignKey("area.id_area", ondelete="SET NULL"), nullable=True)
@@ -261,7 +261,7 @@ class OrdenTrabajo(Base):
     __tablename__ = "ordenes_trabajo"
 
     id_ot                   = Column(Integer, primary_key=True, autoincrement=True)
-    nro_ot                  = Column(String(20), nullable=True)
+    nro_ot                  = Column(String(24), nullable=True)
     id_reclamo              = Column(Integer, ForeignKey("reclamos.id_reclamo", ondelete="RESTRICT"), nullable=False)
     id_estado               = Column(Integer, ForeignKey("estado_ot.id_estado_ot", ondelete="RESTRICT"), nullable=False)
     id_agente               = Column(Integer, ForeignKey("agentes.id_agente", ondelete="SET NULL"), nullable=True)

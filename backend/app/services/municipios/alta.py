@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.municipios.clonado import Clonador, FilaOmitida, conexion_asyncpg
 from app.services.municipios.constantes import (
-    MODULOS_FIJOS, PATRON_CODIGO_CORTO, PATRON_SUBDOMINIO, SUBDOMINIOS_RESERVADOS)
+    CODIGO_CORTO_LARGO, MODULOS_FIJOS, PATRON_CODIGO_CORTO, PATRON_SUBDOMINIO, SUBDOMINIOS_RESERVADOS)
 from app.services.municipios.modulos import validar_dependencias
 
 # Grupos de catálogos que el super elige copiar del modelo (casillas del asistente). Las áreas fijas y
@@ -80,8 +80,10 @@ class AltaMunicipioIn(BaseModel):
     codigo_pais: str = Field(..., pattern=r"^[A-Z]{2}$")
     id_provincia: int = Field(..., ge=1, le=2_147_483_647)
     id_partido: Optional[int] = Field(None, ge=1, le=2_147_483_647)
+    # Municipio de demo o de prueba, sin partido. Uno real lleva su partido (el municipio ES el partido).
+    ficticio: bool = False
     zona_horaria: Optional[str] = Field(None, max_length=64)
-    codigo_corto: str = Field(..., max_length=5)
+    codigo_corto: str = Field(..., max_length=CODIGO_CORTO_LARGO)
     subdominio: str = Field(..., max_length=63)
     identidad: IdentidadAlta = IdentidadAlta()
     copiar: list[str] = []
@@ -90,11 +92,54 @@ class AltaMunicipioIn(BaseModel):
     administrador: AdministradorAlta
 
 
+CODIGO_INVALIDO = f"El código corto lleva {CODIGO_CORTO_LARGO} letras mayúsculas, sin tildes"
+SUBDOMINIO_INVALIDO = "Subdominio inválido: minúsculas, números y guiones, sin tildes"
+SUBDOMINIO_RESERVADO = "Ese subdominio está reservado"
+PARTIDO_TOMADO = "Ese partido ya tiene un municipio"
+
+
+async def problema_codigo(db: AsyncSession, codigo: str) -> Optional[tuple[int, str]]:
+    if not re.fullmatch(PATRON_CODIGO_CORTO, codigo):
+        return 422, CODIGO_INVALIDO
+    if await db.scalar(text("SELECT 1 FROM municipios WHERE codigo_corto = :c"), {"c": codigo}):
+        return 409, "Ese código corto ya lo usa otro municipio"
+    return None
+
+
+async def problema_subdominio(db: AsyncSession, sub: str, excluir: Optional[int] = None) -> Optional[tuple[int, str]]:
+    if not re.fullmatch(PATRON_SUBDOMINIO, sub):
+        return 422, SUBDOMINIO_INVALIDO
+    if sub in SUBDOMINIOS_RESERVADOS:
+        return 422, SUBDOMINIO_RESERVADO
+    if await db.scalar(text("SELECT 1 FROM municipios WHERE subdominio = :s AND id_municipio <> COALESCE(:x, 0)"),
+                       {"s": sub, "x": excluir}):
+        return 409, "Ese subdominio ya lo usa otro municipio"
+    return None
+
+
+async def problema_partido(db: AsyncSession, id_partido: int, excluir: Optional[int] = None) -> Optional[tuple[int, str]]:
+    """Un partido, un municipio vigente (el índice uq_municipios_partido_vigente lo sostiene)."""
+    if await db.scalar(text(
+            "SELECT 1 FROM municipios WHERE id_partido = :p AND estado <> 'baja' AND id_municipio <> COALESCE(:x, 0)"),
+            {"p": id_partido, "x": excluir}):
+        return 409, PARTIDO_TOMADO
+    return None
+
+
+def _si_hay(problema: Optional[tuple[int, str]]) -> None:
+    if problema:
+        raise HTTPException(*problema)
+
+
 async def _validar(db: AsyncSession, d: AltaMunicipioIn) -> dict:
-    if not re.match(PATRON_SUBDOMINIO, d.subdominio) or d.subdominio in SUBDOMINIOS_RESERVADOS:
-        raise HTTPException(422, "Subdominio inválido o reservado: minúsculas, números y guiones, sin tildes")
-    if not re.match(PATRON_CODIGO_CORTO, d.codigo_corto):
-        raise HTTPException(422, "Código corto inválido: 2 o 3 letras mayúsculas")
+    sub, cod = await problema_subdominio(db, d.subdominio), await problema_codigo(db, d.codigo_corto)
+    for p in (sub, cod):  # primero los de formato (422), después los ocupados (409)
+        if p and p[0] == 422:
+            _si_hay(p)
+    if d.ficticio and d.id_partido is not None:
+        raise HTTPException(422, "Un municipio ficticio no lleva partido")
+    if not d.ficticio and d.id_partido is None:
+        raise HTTPException(422, "Elegí el partido del municipio, o marcalo como ficticio (demo o prueba)")
     pais = (await db.execute(text(
         "SELECT nombre, zona_horaria FROM paises WHERE codigo_pais = :p AND habilitado_para_alta AND activo"),
         {"p": d.codigo_pais})).first()
@@ -120,10 +165,10 @@ async def _validar(db: AsyncSession, d: AltaMunicipioIn) -> dict:
     if modulos - catalogo:
         raise HTTPException(422, f"Módulos desconocidos: {sorted(modulos - catalogo)}")
     await validar_dependencias(modulos)
-    if await db.scalar(text("SELECT 1 FROM municipios WHERE subdominio = :s"), {"s": d.subdominio}):
-        raise HTTPException(409, "Ese subdominio ya lo usa otro municipio")
-    if await db.scalar(text("SELECT 1 FROM municipios WHERE codigo_corto = :c"), {"c": d.codigo_corto}):
-        raise HTTPException(409, "Ese código corto ya lo usa otro municipio")
+    _si_hay(sub)
+    _si_hay(cod)
+    if d.id_partido is not None:
+        _si_hay(await problema_partido(db, d.id_partido))
     modelo = await db.scalar(text("SELECT id_municipio FROM municipios WHERE estado = 'modelo'"))
     if modelo is None:
         raise HTTPException(422, "No hay municipio modelo del que copiar los catálogos")
@@ -279,7 +324,7 @@ async def dar_de_alta(db: AsyncSession, d: AltaMunicipioIn, *, id_super: int,
             "pais": v["pais"], "prov": d.id_provincia, "prov_nombre": v["provincia"], "partido": d.id_partido,
             "zona": v["zona"], "tope": d.max_usuarios_activos, "u": id_super})
     except IntegrityError:
-        raise HTTPException(409, "El subdominio o el código corto ya los usa otro municipio")
+        raise HTTPException(409, "El subdominio, el código corto o el partido ya los usa otro municipio")
     omitidas = await _copiar_catalogos(db, d, id_mun, v["modelo"], id_super)
     await db.execute(text("""
         INSERT INTO municipio_modulo (id_municipio, modulo_codigo, habilitado, min_nivel_acceso, id_usuario_alta)

@@ -81,7 +81,10 @@ export const listarPartidos = (idProvincia: number) =>
 // ── Alta, ficha y super administradores (IT-01 F4+F5, Tarea 15) ───────────────────────────────
 
 export interface OpcionModulo { codigo: string; nombre: string; fijo: boolean; dependencias: string[] }
+/** Zona horaria con nombre de región y su desfase de hoy respecto de Greenwich ("-03:00"). */
+export interface ZonaHoraria { nombre: string; desfase: string }
 export interface OpcionesAlta {
+  zonas: ZonaHoraria[]
   catalogos: { codigo: string; nombre: string }[]
   modulos: OpcionModulo[]
 }
@@ -91,6 +94,8 @@ export interface AltaMunicipioBody {
   codigo_pais: string
   id_provincia: number
   id_partido: number | null
+  /** Municipio de demo o de prueba, sin partido (uno real lleva su partido). */
+  ficticio: boolean
   zona_horaria: string | null
   codigo_corto: string
   subdominio: string
@@ -130,6 +135,12 @@ export interface SuperAdministrador {
 }
 
 export const opcionesAlta = () => api.get<OpcionesAlta>('/api/v1/super/alta/opciones')
+export interface Disponible { disponible: boolean; motivo: string | null }
+export type Disponibilidad = Partial<Record<'codigo_corto' | 'subdominio' | 'id_partido', Disponible>>
+export const disponibilidadAlta = (q: { codigo_corto?: string; subdominio?: string; id_partido?: number; excluir?: number }) =>
+  api.get<Disponibilidad>('/api/v1/super/alta/disponibilidad', { params: q })
+/** «UTC−03:00 · America/Argentina/Buenos_Aires» (signo menos tipográfico). */
+export const etiquetaZona = (z: ZonaHoraria) => `UTC${z.desfase.replace('-', '−')} · ${z.nombre}`
 export const darDeAlta = (body: AltaMunicipioBody) => api.post<AltaResultado>('/api/v1/super/municipios', body)
 export const fichaMunicipio = (id: number) => api.get<FichaMunicipio>(`/api/v1/super/municipios/${id}`)
 export const cambiarEstado = (id: number, estado: 'produccion' | 'baja' | 'reactivar', confirmacion?: string) =>

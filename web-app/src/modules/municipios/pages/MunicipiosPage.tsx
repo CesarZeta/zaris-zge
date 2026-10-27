@@ -6,8 +6,8 @@ import { Badge, Button, EmptyState, Skeleton } from '../../../ui'
 import { ThOrden, ordenarFilas, useOrden } from '../../../ui/orden'
 import { useNotificationsStore } from '../../../stores/notifications'
 import {
-  ESTADO_ETIQUETA, editarMunicipio, listarMunicipios, listarPaises, listarPartidos, listarProvincias,
-  type EstadoMunicipio, type MunicipioSuper, type MunicipioSuperUpdate,
+  ESTADO_ETIQUETA, editarMunicipio, etiquetaZona, listarMunicipios, listarPaises, listarPartidos, listarProvincias,
+  opcionesAlta, type EstadoMunicipio, type MunicipioSuper, type MunicipioSuperUpdate,
 } from '../api'
 import { Campo, grupo, input, labelCampo, tabla, td, th, titulo } from './_comun'
 
@@ -166,6 +166,8 @@ export function EditarMunicipioModal({ municipio, onClose }: { municipio: Munici
     queryKey: ['geo', 'partidos', form?.id_provincia], queryFn: () => listarPartidos(form!.id_provincia!),
     enabled: form?.id_provincia != null,
   })
+  const opciones = useQuery({ queryKey: ['super', 'alta', 'opciones'], queryFn: opcionesAlta, enabled: municipio != null })
+  const zonas = opciones.data?.zonas ?? []
   const paisSel = paises.data?.find((p) => p.codigo_pais === form?.codigo_pais)
   const nivel1 = paisSel?.etiqueta_nivel_1 ?? 'Provincia'
   const nivel2 = paisSel?.etiqueta_nivel_2 ?? 'Partido'
@@ -236,16 +238,21 @@ export function EditarMunicipioModal({ municipio, onClose }: { municipio: Munici
               {(provincias.data ?? []).map((p) => <option key={p.id_provincia} value={p.id_provincia}>{p.nombre}</option>)}
             </select>
           </Campo>
-          <Campo etiqueta={`${nivel2} (opcional)`} ayuda="Puede no corresponder a uno existente.">
+          <Campo etiqueta={nivel2}
+                 ayuda={form.id_partido == null ? 'Sin partido = municipio ficticio (demo o prueba): no pasa a producción.'
+                   : 'El municipio es el partido: uno por partido.'}>
             <select style={input} value={form.id_partido ?? ''} disabled={form.id_provincia == null}
                     onChange={(e) => setForm({ ...form, id_partido: e.target.value ? Number(e.target.value) : null })}>
               <option value="">—</option>
               {(partidos.data ?? []).map((p) => <option key={p.id_partido} value={p.id_partido}>{p.nombre}</option>)}
             </select>
           </Campo>
-          <Campo etiqueta="Zona horaria" ayuda="Nombre IANA, p. ej. America/Argentina/Buenos_Aires">
-            <input style={{ ...input, fontFamily: 'var(--font-mono)' }} value={form.zona_horaria} maxLength={64}
-                   onChange={(e) => setForm({ ...form, zona_horaria: e.target.value })} />
+          <Campo etiqueta="Zona horaria" ayuda="Ordenadas por su diferencia con Greenwich.">
+            <select style={{ ...input, fontFamily: 'var(--font-mono)' }} value={form.zona_horaria}
+                    onChange={(e) => setForm({ ...form, zona_horaria: e.target.value })}>
+              {!zonas.some((z) => z.nombre === form.zona_horaria) && <option value={form.zona_horaria}>{form.zona_horaria}</option>}
+              {zonas.map((z) => <option key={z.nombre} value={z.nombre}>{etiquetaZona(z)}</option>)}
+            </select>
           </Campo>
         </div>
       )}

@@ -728,7 +728,7 @@ async def _modelo_minimo() -> tuple[int, bool]:
 def _alta_body(sufijo: str, codigo: str, **extra) -> dict:
     dni = str(30_000_000 + int(sufijo, 36) % 9_000_000)
     return {"nombre": f"Municipio de prueba D {sufijo}", "codigo_pais": "AR", "id_provincia": extra.pop("id_provincia"),
-            "codigo_corto": codigo, "subdominio": f"d-{sufijo}",
+            "codigo_corto": codigo, "subdominio": f"d-{sufijo}", "ficticio": True,
             "identidad": {"color": "#1F8A65"},
             "copiar": ["areas_subareas", "tipos_reclamo"],
             "modulos": ["usuarios", "admin_tablas", "padrones", "municipios", "reclamos", "agenda", "turnos"],
@@ -746,7 +746,7 @@ def _sufijo() -> tuple[str, str]:
     import random
     import string
     while True:
-        cod = "".join(random.choices(string.ascii_uppercase, k=3))
+        cod = "".join(random.choices(string.ascii_uppercase, k=4))
         if cod not in CODIGOS_USADOS:
             CODIGOS_USADOS.add(cod)
             return "".join(random.choices(string.ascii_lowercase + string.digits, k=5)), cod
@@ -760,6 +760,92 @@ async def _contexto_alta() -> dict:
         cod_base, sub_base = (await db.execute(text(
             "SELECT codigo_corto, subdominio FROM municipios WHERE direccion_base"))).one()
     return {"modelo": modelo, "propio": propio, "h": h, "ba": ba, "cod_base": cod_base, "sub_base": sub_base}
+
+
+def _minutos(desfase: str) -> int:
+    signo = -1 if desfase.startswith("-") else 1
+    h, m = desfase.lstrip("+-").split(":")
+    return signo * (int(h) * 60 + int(m))
+
+
+async def _partido_libre(id_provincia: int) -> int:
+    async with AsyncSessionLocal() as db:
+        return await _escalar(db, """
+            SELECT p.id_partido FROM partidos p WHERE p.id_provincia = :pr AND NOT EXISTS (
+              SELECT 1 FROM municipios m WHERE m.id_partido = p.id_partido AND m.estado <> 'baja')
+             ORDER BY p.id_partido LIMIT 1""", {"pr": id_provincia})
+
+
+async def test_alta_partido_zona_codigo() -> None:
+    """Corte B (César, 2026-10-27): municipio = partido (obligatorio salvo ficticio, uno vigente por
+    partido), zonas horarias precargadas con su desfase, código corto de 4 letras y disponibilidad
+    del código, el subdominio y el partido mientras se escribe."""
+    print("\ntest_alta_partido_zona_codigo")
+    ctx = await _contexto_alta()
+    partido = await _partido_libre(ctx["ba"])
+    creados: list[int] = []
+    async with _cliente() as c:
+        r = await c.get("/api/v1/super/alta/opciones", headers=ctx["h"])
+        lista = r.json().get("zonas", []) if r.status_code == 200 else []
+        zonas = {z["nombre"]: z["desfase"] for z in lista}
+        check("opciones trae las zonas con su desfase", zonas.get("America/Argentina/Buenos_Aires") == "-03:00",
+              f"{len(zonas)} zonas")
+        check("zonas con nombre de región (sin posix/, Etc/ ni abreviaturas)", bool(zonas) and all(
+            "/" in z and not z.startswith(("posix/", "Etc/")) for z in zonas))
+        check("zonas ordenadas por desfase", [_minutos(z["desfase"]) for z in lista]
+              == sorted(_minutos(z["desfase"]) for z in lista))
+
+        suf, cod = _sufijo()
+        real = {**_alta_body(suf, cod, id_provincia=ctx["ba"]), "ficticio": False}
+        r = await c.post("/api/v1/super/municipios", json=real, headers=ctx["h"])
+        check("sin partido ni ficticio → 422", r.status_code == 422 and "partido" in r.text, f"{r.status_code} {r.text[:120]}")
+        r = await c.post("/api/v1/super/municipios", headers=ctx["h"],
+                         json={**_alta_body(suf, cod, id_provincia=ctx["ba"]), "id_partido": partido})
+        check("ficticio con partido → 422", r.status_code == 422, f"{r.status_code} {r.text[:120]}")
+
+        params = {"codigo_corto": cod, "subdominio": f"d-{suf}", "id_partido": partido}
+        r = await c.get("/api/v1/super/alta/disponibilidad", params=params, headers=ctx["h"])
+        d = r.json() if r.status_code == 200 else {}
+        check("disponibilidad: libres", r.status_code == 200 and all(
+            d.get(k, {}).get("disponible") is True for k in ("codigo_corto", "subdominio", "id_partido")),
+            f"{r.status_code} {r.text[:200]}")
+
+        r = await c.post("/api/v1/super/municipios", json={**real, "id_partido": partido}, headers=ctx["h"])
+        check("con partido → 201", r.status_code == 201, f"{r.status_code} {r.text[:160]}")
+        if r.status_code == 201:
+            creados.append(r.json()["id_municipio"])
+
+        r = await c.get("/api/v1/super/alta/disponibilidad", params=params, headers=ctx["h"])
+        d = r.json() if r.status_code == 200 else {}
+        check("disponibilidad: ocupados, con motivo", r.status_code == 200 and all(
+            d.get(k, {}).get("disponible") is False and d[k].get("motivo") for k in ("codigo_corto", "subdominio", "id_partido")),
+            f"{r.status_code} {r.text[:240]}")
+        r = await c.get("/api/v1/super/alta/disponibilidad", params={"codigo_corto": "AB", "subdominio": "api"},
+                        headers=ctx["h"])
+        d = r.json() if r.status_code == 200 else {}
+        check("disponibilidad: formato y reservados", r.status_code == 200
+              and "4 letras" in (d.get("codigo_corto", {}).get("motivo") or "")
+              and "reservado" in (d.get("subdominio", {}).get("motivo") or ""), f"{r.status_code} {r.text[:240]}")
+
+        suf2, cod2 = _sufijo()
+        r = await c.post("/api/v1/super/municipios", headers=ctx["h"],
+                         json={**_alta_body(suf2, cod2, id_provincia=ctx["ba"]), "ficticio": False, "id_partido": partido})
+        check("otro municipio con el mismo partido → 409", r.status_code == 409 and "partido" in r.text,
+              f"{r.status_code} {r.text[:120]}")
+
+        fict, nombre_fict = await _municipio_sql("puesta_en_marcha")
+        creados.append(fict)
+        r = await c.post(f"/api/v1/super/municipios/{fict}/estado", json={"estado": "produccion", "confirmacion": nombre_fict},
+                         headers=ctx["h"])
+        check("un ficticio no pasa a producción → 422", r.status_code == 422 and "partido" in r.text,
+              f"{r.status_code} {r.text[:120]}")
+        r = await c.put(f"/api/v1/super/municipios/{fict}", headers=ctx["h"], json={
+            "nombre": nombre_fict, "codigo_pais": "AR", "id_provincia": ctx["ba"], "id_partido": partido,
+            "zona_horaria": "America/Argentina/Buenos_Aires"})
+        check("editar poniendo un partido ya tomado → 409", r.status_code == 409 and "partido" in r.text,
+              f"{r.status_code} {r.text[:120]}")
+    for mid in creados:
+        await _estado(mid, "baja")
 
 
 async def _cantidad_municipios() -> int:
@@ -778,7 +864,8 @@ async def test_alta_validaciones() -> None:
         ("subdominio reservado", {"subdominio": "api"}, 422),
         ("subdominio de San Andrés", {"subdominio": ctx["sub_base"]}, 409),
         ("código en minúsculas", {"codigo_corto": "sa"}, 422),
-        ("código de San Andrés", {"codigo_corto": ctx["cod_base"]}, 409),
+        # San Andrés conserva su código de 3 letras; un alta nueva exige 4 (César, 2026-10-27).
+        ("código de 3 letras", {"codigo_corto": ctx["cod_base"]}, 422),
         ("país no habilitado", {"codigo_pais": "VE"}, 422),
         ("turnos sin agenda", {"modulos": ["usuarios", "admin_tablas", "padrones", "municipios", "turnos"]}, 422),
     ]
@@ -1018,7 +1105,10 @@ async def test_estados() -> None:
     ctx = await _contexto_alta()
     suf, cod = _sufijo()
     async with _cliente() as c:
-        r = await c.post("/api/v1/super/municipios", json=_alta_body(suf, cod, id_provincia=ctx["ba"]), headers=ctx["h"])
+        # Pasa a producción: tiene que ser un municipio real, con su partido.
+        body = {**_alta_body(suf, cod, id_provincia=ctx["ba"]), "ficticio": False,
+                "id_partido": await _partido_libre(ctx["ba"])}
+        r = await c.post("/api/v1/super/municipios", json=body, headers=ctx["h"])
         D = r.json().get("id_municipio") if r.status_code == 201 else None
         nombre = f"Municipio de prueba D {suf}"
         url = f"/api/v1/super/municipios/{D}/estado"
@@ -1877,7 +1967,7 @@ async def test_revision_final() -> None:
 PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones_super, test_links_por_municipio,
                                      test_modelo, test_area_fija_api, test_tope, test_super_admins, test_ficha_municipio,
                                      test_vaciado_guardas, test_clonado_excluidas, test_vaciado_operativo_y_todo, test_exportacion_retencion, test_municipio_vacio, test_aislamiento_modelo, test_revision_final,
-                                     test_alta_validaciones, test_alta_ok, test_alta_atomica, test_alta_agrega_fijos, test_alta_concurrente,
+                                     test_alta_validaciones, test_alta_partido_zona_codigo, test_alta_ok, test_alta_atomica, test_alta_agrega_fijos, test_alta_concurrente,
                                      test_invitacion, test_invitacion_token_malformado, test_estados,
                                      test_alta_por_origen,
                                      test_estado_baja, test_modelo_no_operable, test_demo_por_estado,

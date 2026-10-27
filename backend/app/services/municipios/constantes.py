@@ -31,5 +31,7 @@ TOPE_AVISO = 0.9
 PATRON_SUBDOMINIO = r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
 SUBDOMINIOS_RESERVADOS = frozenset({"www", "api", "zge", "vecinos", "agentes", "admin", "app", "mail",
                                     "soporte", "status", "demo", "modelo"})
-# municipios.codigo_corto es VARCHAR(3): los números (REC-<código>-…) se dimensionaron con eso.
-PATRON_CODIGO_CORTO = r"^[A-Z]{2,3}$"
+# Código corto de un municipio nuevo: 4 letras (César, 2026-10-27). municipios.codigo_corto es VARCHAR(4)
+# y los números (REC-<código>-AAAA-NNNNNN) VARCHAR(24) desde la mig 131; San Andrés conserva SAN.
+CODIGO_CORTO_LARGO = 4
+PATRON_CODIGO_CORTO = rf"[A-Z]{{{CODIGO_CORTO_LARGO}}}"
