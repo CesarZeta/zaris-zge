@@ -642,7 +642,48 @@ async def test_links_por_municipio() -> None:
             check("municipio sin subdominio: sin link", await base_app(db, mid, "vecinos") == "")
 
 
+# ── Tarea 10 ──────────────────────────────────────────────────────────────────────────────────
+
+def _cuil(dni: str) -> str:
+    base = "27" + dni.zfill(8)
+    dv = 11 - sum(int(d) * f for d, f in zip(base, (5, 4, 3, 2, 7, 6, 5, 4, 3, 2))) % 11
+    return base + ("0" if dv == 11 else "9" if dv == 10 else str(dv))
+
+
+async def test_alta_por_origen() -> None:
+    print("\ntest_alta_por_origen")
+    import random
+    C = await _municipio_c()
+    async with AsyncSessionLocal() as db:
+        base, cod_base = (await db.execute(text(
+            "SELECT id_municipio, codigo_corto FROM municipios WHERE direccion_base"))).one()
+    async with _cliente() as c:
+        r = await c.get("/api/v1/publico/alta/identidad", headers={"Origin": ORIGEN_C_ZGE})
+        check("identidad sin ?m= desde el subdominio de C → C",
+              r.status_code == 200 and r.json().get("municipio_slug") == "CPR", f"{r.status_code} {r.text[:120]}")
+        r = await c.get("/api/v1/publico/alta/identidad", params={"m": cod_base}, headers={"Origin": ORIGEN_C_ZGE})
+        check("con ?m= del base desde el subdominio de C → gana el slug",
+              r.status_code == 200 and r.json().get("municipio_slug") == cod_base, f"{r.status_code} {r.text[:120]}")
+        r = await c.get("/api/v1/publico/alta/identidad")
+        check("sin ?m= y sin Origin → el municipio base",
+              r.status_code == 200 and r.json().get("municipio_slug") == cod_base, f"{r.status_code} {r.text[:120]}")
+        r = await c.get("/api/v1/publico/alta/nacionalidades", headers={"Origin": ORIGEN_C_ZGE})
+        check("nacionalidades sin ?m= desde C", r.status_code == 200, f"{r.status_code}")
+        dni = str(random.randint(46_000_000, 46_999_999))
+        ficha = {"doc_nro": dni, "cuil": _cuil(dni), "nombre": "Vecina", "apellido": f"OrigenC{dni[-4:]}",
+                 "sexo": "MUJER", "fecha_nac": "1990-05-10", "id_nacionalidad": 1, "calle": "Av. Maipú 950",
+                 "localidad": "Vicente López", "provincia": "Buenos Aires", "latitud": -34.5263,
+                 "longitud": -58.4727, "telefono": "11 4444 5566",
+                 "email": f"alta.origen.{dni}@prueba-aislamiento.com.ar", "password": "demoalta123"}
+        r = await c.post("/api/v1/publico/alta/cuenta", json=ficha, headers={"Origin": ORIGEN_C_ZGE})
+        check("alta en un paso sin municipio_slug desde C → 201", r.status_code == 201, f"{r.status_code} {r.text[:160]}")
+    async with AsyncSessionLocal() as db:
+        mun = await _escalar(db, "SELECT id_municipio FROM ciudadanos WHERE doc_nro = :d", {"d": dni})
+    check("la ficha queda en C", mun == C["id"], mun)
+
+
 PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones_super, test_links_por_municipio,
+                                     test_alta_por_origen,
                                      test_estado_baja, test_modelo_no_operable, test_demo_por_estado,
                                      test_geo_catalogo, test_municipio_provincia,
                                      test_modulo_404, test_modulos_permitidos_municipio, test_nivel_por_municipio,

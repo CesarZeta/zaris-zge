@@ -18,7 +18,7 @@ Flujo:
   5. POST /empresa                 -> (requiere ciudadano) empresa + vínculo + credencial. Mail.
   6. GET  /verificar?token=        -> marca verificado (ciudadano o empresa) y activa la cuenta.
 """
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -45,7 +45,8 @@ class IdentidadAltaOut(BaseModel):
 # Fase 4 (paso 2 "completar ficha" en la app, eliminado).
 
 class AltaCuentaIn(BaseModel):
-    municipio_slug: str = Field(..., min_length=1, max_length=20)
+    # Opcional (IT-01 F4): sin slug, el municipio sale del Origin de la página.
+    municipio_slug: Optional[str] = Field(None, min_length=1, max_length=20)
 
     # Identificación
     doc_nro: str = Field(..., min_length=6, max_length=15)   # DNI (digit-only se normaliza en el endpoint)
@@ -96,7 +97,8 @@ class AltaCuentaOut(BaseModel):
 # Anti-enumeración: SIEMPRE responde 200 con el mismo mensaje, exista o no el DNI.
 
 class ActivarExistenteIn(BaseModel):
-    municipio_slug: str = Field(..., min_length=1, max_length=20)
+    # Opcional (IT-01 F4): sin slug, el municipio sale del Origin de la página.
+    municipio_slug: Optional[str] = Field(None, min_length=1, max_length=20)
     doc_nro: str = Field(..., min_length=6, max_length=15)
 
 
@@ -142,7 +144,8 @@ class CompletarFichaOut(BaseModel):
 # ─── Alta de empresa (requiere ciudadano ya creado) ──────────────────────────
 
 class AltaEmpresaIn(BaseModel):
-    municipio_slug: str = Field(..., min_length=1, max_length=20)
+    # Opcional (IT-01 F4): sin slug, el municipio sale del Origin de la página.
+    municipio_slug: Optional[str] = Field(None, min_length=1, max_length=20)
     # NOTA: id_ciudadano (el representante) NO viene del cliente — sale del JWT scope
     # 'publico' del vecino logueado. Antes se tomaba del body y era un IDOR: cualquiera
     # podía vincular una empresa a un id_ciudadano ajeno enumerando IDs secuenciales.

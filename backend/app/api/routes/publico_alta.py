@@ -23,6 +23,7 @@ import re
 import uuid
 import html as _html
 from datetime import date, datetime, timedelta, timezone
+from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
@@ -34,7 +35,7 @@ from app.core.auth import hash_password, get_current_ciudadano
 from app.core.config import settings
 from app.core.config_municipio import leer_configs
 from app.core.database import get_db
-from app.core.municipio import municipio_por_slug, resolver_municipio_de_origen
+from app.core.municipio import municipio_de_slug_u_origen, municipio_por_slug, resolver_municipio_de_origen
 from app.core.urls import url_alta_publica, url_portal_vecino
 from app.middleware.rate_limit import check_rate_limit
 from app.utils.request_helpers import get_real_ip
@@ -159,9 +160,10 @@ def _pagina_confirmacion(
 # ─── endpoints ──────────────────────────────────────────────────────────────
 
 @router.get("/identidad", response_model=IdentidadAltaOut)
-async def identidad_alta(m: str, db: AsyncSession = Depends(get_db)):
-    """Branding del municipio para pintar el header de la página pública. Valida el slug."""
-    muni = await municipio_por_slug(db, m)
+async def identidad_alta(request: Request, m: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+    """Branding del municipio para pintar el header de la página pública. Valida el slug; sin
+    slug, el municipio del Origin (IT-01 F4)."""
+    muni = await municipio_de_slug_u_origen(db, request, m)
     cfg = await _branding(db, muni["id_municipio"])
     return IdentidadAltaOut(
         municipio_slug=muni["slug"],
@@ -174,12 +176,12 @@ async def identidad_alta(m: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/actividades")
-async def listar_actividades(m: str, db: AsyncSession = Depends(get_db)):
+async def listar_actividades(request: Request, m: Optional[str] = None, db: AsyncSession = Depends(get_db)):
     """
     Lista de actividades para el select de empresa de la página pública. Valida el slug.
     Público (sin JWT). Devuelve {actividades: [{id, descripcion}]}.
     """
-    await municipio_por_slug(db, m)
+    await municipio_de_slug_u_origen(db, request, m)
     res = await db.execute(
         text("""
             SELECT id, descripcion FROM actividades
@@ -191,9 +193,9 @@ async def listar_actividades(m: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/nacionalidades")
-async def listar_nacionalidades(m: str, db: AsyncSession = Depends(get_db)):
+async def listar_nacionalidades(request: Request, m: Optional[str] = None, db: AsyncSession = Depends(get_db)):
     """Catálogo de nacionalidades para el select del alta de ciudadano. Valida el slug."""
-    await municipio_por_slug(db, m)
+    await municipio_de_slug_u_origen(db, request, m)
     res = await db.execute(
         text("SELECT id, pais FROM nacionalidades WHERE activo IS NOT FALSE ORDER BY pais")
     )
@@ -203,7 +205,7 @@ async def listar_nacionalidades(m: str, db: AsyncSession = Depends(get_db)):
 @router.get("/geo/buscar")
 async def geo_buscar_publico(
     request: Request,
-    m: str,
+    m: Optional[str] = None,
     q: str = Query(..., min_length=3, description="Texto a geocodificar"),
     limit: int = Query(5, ge=1, le=10),
     db: AsyncSession = Depends(get_db),
@@ -213,7 +215,7 @@ async def geo_buscar_publico(
     Reusa la lógica de filtrado de POIs de geo.py (solo_direcciones=True).
     Valida el slug + rate-limit por IP (Nominatim ya tiene su rate-limit global).
     """
-    muni = await municipio_por_slug(db, m)
+    muni = await municipio_de_slug_u_origen(db, request, m)
     check_rate_limit(get_real_ip(request), max_requests=20, window_seconds=60)
     return await geocodificar_direccion(q, limit, solo_direcciones=True, id_municipio=muni["id_municipio"])
 
@@ -237,7 +239,7 @@ async def alta_cuenta(
     """
     check_rate_limit(get_real_ip(request), max_requests=RATE_MAX, window_seconds=RATE_WINDOW)
 
-    muni = await municipio_por_slug(db, data.municipio_slug)
+    muni = await municipio_de_slug_u_origen(db, request, data.municipio_slug)
     id_municipio = muni["id_municipio"]
     doc_nro = _validar_dni(_solo_digitos(data.doc_nro))
     email = data.email.lower().strip()
@@ -423,7 +425,7 @@ async def activar_cuenta_existente(
     (idempotente: cuenta activada -> no toca nada; sin activar -> regenera token).
     """
     check_rate_limit(get_real_ip(request), max_requests=RATE_MAX, window_seconds=RATE_WINDOW)
-    muni = await municipio_por_slug(db, data.municipio_slug)
+    muni = await municipio_de_slug_u_origen(db, request, data.municipio_slug)
 
     doc_nro = _solo_digitos(data.doc_nro)
     if not (7 <= len(doc_nro) <= 8):
@@ -474,7 +476,7 @@ async def alta_empresa(
     """
     check_rate_limit(get_real_ip(request), max_requests=RATE_MAX, window_seconds=RATE_WINDOW)
 
-    muni = await municipio_por_slug(db, data.municipio_slug)
+    muni = await municipio_de_slug_u_origen(db, request, data.municipio_slug)
     id_municipio = ciudadano["id_municipio"]
     if muni["id_municipio"] != id_municipio:
         raise HTTPException(status_code=404, detail="Municipio no encontrado")

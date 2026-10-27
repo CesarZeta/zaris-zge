@@ -280,7 +280,9 @@
     const API_BASE = _local.includes(window.location.hostname)
       ? 'http://127.0.0.1:8000'
       : 'https://zaris-api-production-bf0b.up.railway.app';
-    const slug = (new URLSearchParams(window.location.search).get('m') || '').trim();
+    // ?m=<slug> gana si viene; si no, el backend resuelve el municipio por el origen de la página
+    // (subdominio del municipio, IT-01 F4) y devuelve su slug, que se usa en el resto de las llamadas.
+    let slug = (new URLSearchParams(window.location.search).get('m') || '').trim();
 
     const $ = (id) => document.getElementById(id);
     const digits = (s) => (s || '').replace(/\D/g, '');
@@ -380,12 +382,12 @@
     $('f-fnac').max = new Date().toISOString().slice(0, 10);
 
     async function cargarIdentidad() {
-      if (!slug) { showError('Página no disponible', 'Falta el identificador del municipio en la dirección.'); return; }
       try {
-        const res = await fetch(`${API_BASE}/api/v1/publico/alta/identidad?m=${encodeURIComponent(slug)}`);
+        const res = await fetch(`${API_BASE}/api/v1/publico/alta/identidad${slug ? `?m=${encodeURIComponent(slug)}` : ''}`);
         if (res.status === 404) { showError('Municipio no encontrado', 'El enlace de alta no corresponde a un municipio válido.'); return; }
         if (!res.ok) { showError('No se pudo cargar', 'Intentá nuevamente en unos minutos.'); return; }
         const data = await res.json();
+        slug = data.municipio_slug || slug;
         pintarBranding(data);
         cargarNacionalidades();
         show('state-form');

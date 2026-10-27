@@ -139,6 +139,20 @@ async def municipio_por_slug(db: AsyncSession, slug: str) -> dict:
     return {"id_municipio": row.id_municipio, "nombre": row.nombre, "slug": row.codigo_corto}
 
 
+async def municipio_de_slug_u_origen(db: AsyncSession, request: Request, slug: Optional[str]) -> dict:
+    """Páginas públicas (IT-01 F4): `?m=<slug>` gana si viene (los links viejos con `?m=SAN` siguen
+    andando); si no, el municipio del Origin. {id_municipio, nombre, slug}; 404 si no hay."""
+    if (slug or "").strip():
+        return await municipio_por_slug(db, slug)
+    id_mun = await resolver_municipio_de_origen(request, db)
+    row = (await db.execute(text(
+        "SELECT id_municipio, nombre, codigo_corto FROM municipios WHERE id_municipio = :m"),
+        {"m": id_mun})).fetchone()
+    if not row or not row.codigo_corto:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Municipio no encontrado")
+    return {"id_municipio": row.id_municipio, "nombre": row.nombre, "slug": row.codigo_corto}
+
+
 async def municipio_actual(request: Request, current_user: dict = Depends(get_current_user),
                            db: AsyncSession = Depends(get_db)) -> int:
     """Municipio del funcionario logueado: el claim `mun` del JWT, ya validado contra la base y el
