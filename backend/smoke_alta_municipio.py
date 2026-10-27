@@ -1688,9 +1688,50 @@ async def test_municipio_vacio() -> None:
     await _estado(W, "baja")
 
 
+# ── Tarea 18 ──────────────────────────────────────────────────────────────────────────────────
+
+async def test_aislamiento_modelo() -> None:
+    """El municipio modelo no aparece en ninguna respuesta de un municipio: ni en los listados de
+    catálogos ni por id (404), para el administrador del municipio base y el de uno dado de alta."""
+    print("\ntest_aislamiento_modelo")
+    ctx = await _contexto_alta()
+    suf, cod = _sufijo()
+    async with _cliente() as c:
+        r = await c.post("/api/v1/super/municipios", json=_alta_body(suf, cod, id_provincia=ctx["ba"]), headers=ctx["h"])
+        assert r.status_code == 201, r.text
+        nuevo, admin_nuevo = r.json()["id_municipio"], r.json()["id_administrador"]
+    async with AsyncSessionLocal() as db:
+        modelo = await _escalar(db, "SELECT id_municipio FROM municipios WHERE estado = 'modelo'")
+        uid_base, base = await _admin_base(db)
+        ids_modelo = {}
+        for tabla, pk in (("area", "id_area"), ("subarea", "id_subarea"), ("tipo_reclamo", "id_tipo_reclamo"),
+                          ("cargos", "id_cargo"), ("tipo_tramite", "id_tipo_tramite")):
+            ids_modelo[(tabla, pk)] = {x[0] for x in (await db.execute(text(
+                f"SELECT {pk} FROM {tabla} WHERE id_municipio = :m"), {"m": modelo})).all()}
+    check("el modelo tiene catálogos para probar", sum(len(v) for v in ids_modelo.values()) > 0)
+    async with _cliente() as c:
+        for quien, h in (("base", _token(uid_base, base)), ("dado de alta", _token(admin_nuevo, nuevo))):
+            vistos, por_id = [], []
+            for (tabla, pk), ids in ids_modelo.items():
+                r = await c.get(f"/api/v1/admin/{tabla}", headers=h)
+                filas = r.json() if r.status_code == 200 else []
+                filas = filas.get("items", filas) if isinstance(filas, dict) else filas
+                vistos += [f"{tabla}:{f[pk]}" for f in filas if isinstance(f, dict) and f.get(pk) in ids]
+                for i in list(ids)[:3]:
+                    r = await c.get(f"/api/v1/admin/{tabla}/{i}", headers=h)
+                    if r.status_code != 404:
+                        por_id.append(f"{tabla}/{i} {r.status_code}")
+            check(f"admin {quien}: ningún catálogo del modelo en los listados", not vistos, str(vistos[:5]))
+            check(f"admin {quien}: el modelo por id → 404", not por_id, str(por_id[:5]))
+        r = await c.get("/api/v1/config/identidad", params={"m": "modelo"})
+        check("el modelo no tiene identidad pública", r.status_code in (404, 200) and "Modelo ZARIS" not in r.text,
+              f"{r.status_code} {r.text[:120]}")
+    await _estado(nuevo, "baja")
+
+
 PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones_super, test_links_por_municipio,
                                      test_modelo, test_area_fija_api, test_tope, test_super_admins, test_ficha_municipio,
-                                     test_vaciado_guardas, test_vaciado_operativo_y_todo, test_exportacion_retencion, test_municipio_vacio,
+                                     test_vaciado_guardas, test_vaciado_operativo_y_todo, test_exportacion_retencion, test_municipio_vacio, test_aislamiento_modelo,
                                      test_alta_validaciones, test_alta_ok, test_alta_atomica, test_alta_agrega_fijos, test_alta_concurrente,
                                      test_invitacion, test_invitacion_token_malformado, test_estados,
                                      test_alta_por_origen,
