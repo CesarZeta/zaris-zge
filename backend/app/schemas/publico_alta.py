@@ -3,7 +3,7 @@ Schemas Pydantic para el ALTA PÚBLICA de vecinos (autoregistro).
 
 Endpoints bajo /api/v1/publico/alta/*. A diferencia de publico_auth.py (donde el alta
 la hace un agente municipal), acá el ciudadano se da de alta él mismo desde una URL
-pública diferenciada por municipio (slug validado, mono-tenant §38).
+pública diferenciada por municipio (slug validado).
 
 Paridad de campos con el alta oficial del backoffice (módulos React ciudadanos/empresas):
 datos personales completos + domicilio normalizado por OSM (calle/localidad/provincia +

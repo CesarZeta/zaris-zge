@@ -252,6 +252,22 @@ async def main() -> int:
                   r.status_code == 200 and any(x["nro_reclamo"] == nro for x in r.json()),
                   f"{r.status_code} {[x['nro_reclamo'] for x in r.json()][:5] if r.status_code == 200 else r.text[:100]}")
 
+    # CORS por patrón (IT-01 F4+F5, Tarea 1): subdominios de municipio y proyectos de Cloudflare Pages.
+    print("\nCORS por patrón")
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        async def preflight(origen: str) -> str | None:
+            r = await c.options("/api/v1/config/identidad", headers={
+                "Origin": origen, "Access-Control-Request-Method": "GET"})
+            return r.headers.get("access-control-allow-origin")
+        for origen in ("https://zge.zaris.com.ar", "https://b.vecinos.zaris.com.ar",
+                       "https://zaris-agentes.pages.dev", "https://abc123.zaris-zge.pages.dev"):
+            got = await preflight(origen)
+            check(f"test_cors_patron: {origen} permitido", got == origen, f"allow-origin={got}")
+        for origen in ("https://zge.zaris.com.ar.evil.com", "https://evilzaris.com.ar",
+                       "http://zge.zaris.com.ar"):
+            got = await preflight(origen)
+            check(f"test_cors_patron: {origen} rechazado", got is None, f"allow-origin={got}")
+
     fallas = [r for r in RES if not r[1]]
     print(f"\nRESULTADO: {len(RES) - len(fallas)} OK / {len(fallas)} FAIL")
     return 1 if fallas else 0
