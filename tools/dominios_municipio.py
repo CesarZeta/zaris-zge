@@ -154,6 +154,8 @@ def verificar(cf, sub: str) -> None:
 
 
 def main() -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("subdominio")
     grupo = ap.add_mutually_exclusive_group()

@@ -11,7 +11,8 @@
   <script>
     // Standalone → redirigir al shell con ?modulo= para mostrar sidebar.
     if (window.self === window.top) {
-      var p = window.location.pathname.replace(/^.*\//, 'frontend/');
+      // Cloudflare Pages sirve /frontend/admin_tablas sin el .html: la whitelist del shell lo exige.
+      var p = 'frontend/' + window.location.pathname.replace(/^.*\//, '').replace(/(\.html)?$/, '.html');
       var s = window.location.search || '';
       window.location.replace('../index.html?modulo=' + encodeURIComponent(p + s));
     } else {
