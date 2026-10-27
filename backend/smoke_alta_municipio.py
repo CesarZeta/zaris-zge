@@ -774,7 +774,6 @@ async def test_alta_validaciones() -> None:
         ("código en minúsculas", {"codigo_corto": "sa"}, 422),
         ("código de San Andrés", {"codigo_corto": ctx["cod_base"]}, 409),
         ("país no habilitado", {"codigo_pais": "VE"}, 422),
-        ("módulos sin usuarios", {"modulos": ["admin_tablas", "padrones", "municipios", "reclamos"]}, 422),
         ("turnos sin agenda", {"modulos": ["usuarios", "admin_tablas", "padrones", "municipios", "turnos"]}, 422),
     ]
     async with _cliente() as c:
@@ -878,6 +877,27 @@ async def test_alta_atomica() -> None:
         await _estado(ctx["modelo"], "baja")
 
 
+async def test_alta_agrega_fijos() -> None:
+    """El asistente no muestra los módulos fijos que no son de un municipio (Municipios, nivel 0): el
+    alta los habilita igual."""
+    print("\ntest_alta_agrega_fijos")
+    ctx = await _contexto_alta()
+    suf, cod = _sufijo()
+    body = _alta_body(suf, cod, id_provincia=ctx["ba"])
+    body["modulos"] = ["reclamos"]
+    async with _cliente() as c:
+        r = await c.post("/api/v1/super/municipios", json=body, headers=ctx["h"])
+    check("alta sin los módulos fijos → 201", r.status_code == 201, f"{r.status_code} {r.text[:160]}")
+    if r.status_code == 201:
+        async with AsyncSessionLocal() as db:
+            hab = {x[0] for x in (await db.execute(text(
+                "SELECT modulo_codigo FROM municipio_modulo WHERE id_municipio = :m AND habilitado"),
+                {"m": r.json()["id_municipio"]})).all()}
+        check("quedan habilitados los fijos y los elegidos",
+              hab == {"usuarios", "admin_tablas", "padrones", "municipios", "reclamos"}, str(sorted(hab)))
+        await _estado(r.json()["id_municipio"], "baja")
+
+
 async def test_alta_concurrente() -> None:
     print("\ntest_alta_concurrente")
     ctx = await _contexto_alta()
@@ -974,6 +994,17 @@ async def test_invitacion() -> None:
         await _estado(D, "baja")
     if ctx["propio"]:
         await _estado(ctx["modelo"], "baja")
+
+
+async def test_invitacion_token_malformado() -> None:
+    """Un link cortado por el cliente de mail da el texto fijo (401), no un 422 de validación."""
+    from app.services.municipios.invitacion import INVITACION_INVALIDA
+    print("\ntest_invitacion_token_malformado")
+    async with _cliente() as c:
+        for tok in ("corto", "x" * 300, ""):
+            r = await c.post("/api/v1/auth/invitacion/aceptar", json={"token": tok, "password": "ClaveDePrueba2026!"})
+            check(f"token de {len(tok)} caracteres → 401 con el texto fijo",
+                  r.status_code == 401 and r.json().get("detail") == INVITACION_INVALIDA, f"{r.status_code} {r.text[:120]}")
 
 
 async def test_estados() -> None:
@@ -1185,10 +1216,115 @@ async def test_tope() -> None:
                 await db.commit()
 
 
+# ── Tarea 15 ──────────────────────────────────────────────────────────────────────────────────
+
+async def test_super_admins() -> None:
+    import uuid
+    from fastapi import HTTPException
+    from app.services.municipios.super_admins import dar_de_baja_super
+    print("\ntest_super_admins")
+    async with AsyncSessionLocal() as db:
+        h = await _super_headers(db)
+        yo = await _escalar(db, "SELECT id_usuario FROM usuarios WHERE nivel_acceso = 0 AND id_municipio IS NULL "
+                                "AND activo ORDER BY id_usuario LIMIT 1")
+        email_mun = await _escalar(db, "SELECT email FROM usuarios WHERE id_municipio IS NOT NULL AND activo "
+                                       "AND email IS NOT NULL ORDER BY id_usuario LIMIT 1")
+    email = f"super.{uuid.uuid4().hex[:8]}@prueba-aislamiento.com.ar"
+    async with _cliente() as c:
+        r = await c.post("/api/v1/super/administradores", json={"nombre": "Prueba", "apellido": "Super", "email": email},
+                         headers=h)
+        check("alta de un super → 201", r.status_code == 201, f"{r.status_code} {r.text[:160]}")
+        nuevo = r.json().get("id_usuario") if r.status_code == 201 else None
+        async with AsyncSessionLocal() as db:
+            fila = (await db.execute(text("SELECT nivel_acceso, id_municipio, activo FROM usuarios WHERE id_usuario = :u"),
+                                     {"u": nuevo})).first() if nuevo else None
+            check("nivel 0, sin municipio, activa", fila is not None and tuple(fila) == (0, None, True), str(fila))
+            check("con una invitación vigente", bool(nuevo) and await _escalar(db, """
+                SELECT count(*) FROM usuario_invitacion WHERE id_usuario = :u AND activo AND usada_en IS NULL
+                   AND vence_en > NOW()""", {"u": nuevo}) == 1)
+            check("registra super_alta", bool(nuevo) and await _escalar(db, """
+                SELECT count(*) FROM super_admin_acceso WHERE accion = 'super_alta' AND id_usuario = :y
+                   AND detalle LIKE :d""", {"y": yo, "d": f"%{email}%"}) >= 1)
+        r = await c.post("/api/v1/super/administradores", json={"nombre": "Otra", "apellido": "Vez", "email": email.upper()},
+                         headers=h)
+        check("el mismo email otra vez → 409", r.status_code == 409, f"{r.status_code} {r.text[:120]}")
+        r = await c.post("/api/v1/super/administradores", json={"nombre": "De", "apellido": "Municipio", "email": email_mun},
+                         headers=h)
+        check("el email de una cuenta de un municipio → 409", r.status_code == 409, f"{r.status_code} {r.text[:120]}")
+        r = await c.get("/api/v1/super/administradores", headers=h)
+        check("GET lista al nuevo", r.status_code == 200 and any(s["id_usuario"] == nuevo for s in r.json()),
+              f"{r.status_code} {r.text[:120]}")
+
+        r = await c.post(f"/api/v1/super/administradores/{yo}/baja", headers=h)
+        check("darse de baja a sí mismo → 409", r.status_code == 409, f"{r.status_code} {r.text[:120]}")
+        if nuevo:
+            r = await c.post(f"/api/v1/super/administradores/{nuevo}/baja", headers=h)
+            check("baja de otro super → 200", r.status_code == 200, f"{r.status_code} {r.text[:120]}")
+    async with AsyncSessionLocal() as db:
+        if nuevo:
+            check("quedó inactivo y registra super_baja",
+                  await _escalar(db, "SELECT activo FROM usuarios WHERE id_usuario = :u", {"u": nuevo}) is False
+                  and await _escalar(db, "SELECT count(*) FROM super_admin_acceso WHERE accion = 'super_baja' "
+                                         "AND detalle LIKE :d", {"d": f"%{nuevo}%"}) >= 1)
+        # El último super activo: por la API no se llega (el que la pide es otro super activo); el servicio
+        # lo frena igual. Se prueba en una transacción que se descarta.
+        await db.execute(text("UPDATE usuarios SET activo = FALSE WHERE id_municipio IS NULL AND nivel_acceso = 0 "
+                              "AND id_usuario <> :y"), {"y": yo})
+        try:
+            await dar_de_baja_super(db, id_usuario=yo, id_actor=nuevo or 0)
+            check("baja del último super activo → 409", False, "no falló")
+        except HTTPException as e:
+            check("baja del último super activo → 409", e.status_code == 409, f"{e.status_code} {e.detail}")
+        await db.rollback()
+
+
+async def test_ficha_municipio() -> None:
+    print("\ntest_ficha_municipio")
+    C = await _municipio_c()
+    async with AsyncSessionLocal() as db:
+        h = await _super_headers(db)
+    async with _cliente() as c:
+        r = await c.get("/api/v1/super/alta/opciones", headers=h)
+        op = r.json() if r.status_code == 200 else {}
+        cats = {x["codigo"]: x["nombre"] for x in op.get("catalogos", [])}
+        check("opciones del alta: catálogos con nombre visible", r.status_code == 200 and cats.get("tramites") == "Trámites"
+              and cats.get("tipos_reclamo") == "Tipos de reclamo", f"{r.status_code} {str(cats)[:160]}")
+        mods = {x["codigo"]: x for x in op.get("modulos", [])}
+        check("opciones del alta: módulos con fijo y dependencias", mods.get("usuarios", {}).get("fijo") is True
+              and mods.get("turnos", {}).get("dependencias") == ["agenda"] and "municipios" not in mods,
+              str(list(mods.items())[:3])[:200])
+        r = await c.get(f"/api/v1/super/municipios/{C['id']}", headers=h)
+        f = r.json() if r.status_code == 200 else {}
+        check("ficha → 200 con el municipio", r.status_code == 200 and f.get("municipio", {}).get("id_municipio") == C["id"],
+              f"{r.status_code} {r.text[:160]}")
+        check("ficha: módulos con habilitado", any(m["codigo"] == "reclamos" and "habilitado" in m for m in f.get("modulos", [])),
+              str(f.get("modulos"))[:160])
+        check("ficha: administradores con invitación pendiente",
+              any(a["id_usuario"] == C["n1"] and "invitacion_pendiente" in a for a in f.get("administradores", [])),
+              str(f.get("administradores"))[:160])
+        check("ficha: cupo", set(f.get("cupo", {})) == {"activas", "maximo", "aviso"}, str(f.get("cupo")))
+        check("ficha: advierte que no tiene contorno ni bbox",
+              any("contorno" in a for a in f.get("advertencias", [])), str(f.get("advertencias")))
+        r = await c.get("/api/v1/super/municipios/2000000000", headers=h)
+        check("ficha de un municipio inexistente → 404", r.status_code == 404, f"{r.status_code}")
+        r = await c.put(f"/api/v1/super/municipios/{C['id']}/tope", json={"maximo": 50}, headers=h)
+        check("cambiar el tope → 200", r.status_code == 200 and r.json().get("max_usuarios_activos") == 50,
+              f"{r.status_code} {r.text[:120]}")
+        r = await c.put(f"/api/v1/super/municipios/{C['id']}/tope", json={"maximo": 0}, headers=h)
+        check("tope 0 → 422", r.status_code == 422, f"{r.status_code}")
+        r = await c.put(f"/api/v1/super/municipios/{C['id']}/tope", json={"maximo": None}, headers=h)
+        check("quitar el tope → 200 sin máximo", r.status_code == 200 and r.json().get("max_usuarios_activos") is None,
+              f"{r.status_code} {r.text[:120]}")
+    async with AsyncSessionLocal() as db:
+        check("el cambio de tope queda registrado", await _escalar(db, """
+            SELECT count(*) FROM super_admin_acceso WHERE accion = 'municipio_editar' AND id_municipio = :m
+               AND detalle LIKE 'tope%'""", {"m": C["id"]}) >= 2)
+
+
 PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones_super, test_links_por_municipio,
-                                     test_modelo, test_area_fija_api, test_tope,
-                                     test_alta_validaciones, test_alta_ok, test_alta_atomica, test_alta_concurrente,
-                                     test_invitacion, test_estados,
+                                     test_modelo, test_area_fija_api, test_tope, test_super_admins, test_ficha_municipio,
+                                     test_alta_validaciones, test_alta_ok, test_alta_atomica, test_alta_agrega_fijos, test_alta_concurrente,
+                                     test_invitacion, test_invitacion_token_malformado, test_estados,
                                      test_alta_por_origen,
                                      test_estado_baja, test_modelo_no_operable, test_demo_por_estado,
                                      test_geo_catalogo, test_municipio_provincia,

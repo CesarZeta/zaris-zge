@@ -9,11 +9,10 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.municipios.constantes import TOPE_AVISO
+
 TOPE_ALCANZADO = ("El municipio llegó al tope de {maximo} cuentas activas. Pedí al soporte de ZARIS que lo "
                   "amplíe o desactivá una cuenta.")
-# Desde qué proporción del tope la pantalla de Usuarios avisa.
-UMBRAL_AVISO = 0.9
-
 _ACTIVAS = ("SELECT count(*) FROM usuarios WHERE id_municipio = :m AND activo "
             "AND nivel_acceso BETWEEN 1 AND 5")
 
@@ -34,4 +33,4 @@ async def cupo(db: AsyncSession, id_municipio: int) -> dict:
                              {"m": id_municipio})
     activas = await db.scalar(text(_ACTIVAS), {"m": id_municipio})
     return {"activas": activas, "maximo": maximo,
-            "aviso": maximo is not None and activas >= UMBRAL_AVISO * maximo}
+            "aviso": maximo is not None and activas >= TOPE_AVISO * maximo}

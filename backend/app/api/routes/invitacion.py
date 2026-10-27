@@ -28,7 +28,9 @@ router = APIRouter(prefix="/api/v1/auth/invitacion", tags=["Invitación"])
 
 
 class AceptarIn(BaseModel):
-    token: str = Field(..., min_length=20, max_length=200)
+    # Sin cota inferior: un link cortado por el cliente de mail tiene que dar el texto fijo (401),
+    # no un 422 de validación que la página muestra como error genérico.
+    token: str = Field("", max_length=4096)
     password: str = Field(..., min_length=8, max_length=100)
 
 
@@ -41,6 +43,8 @@ async def aceptar_invitacion(body: AceptarIn, request: Request, db: AsyncSession
         sf.comprobar_configuracion()
     except sf.SegundoFactorNoConfigurado:
         raise HTTPException(503, "El segundo factor no está configurado")
+    if not 20 <= len(body.token) <= 200:
+        raise HTTPException(401, INVITACION_INVALIDA)
     inv = await tomar_invitacion(db, body.token)
     usuario = (await db.execute(text(
         "SELECT id_usuario, id_municipio, nivel_acceso, activo FROM usuarios WHERE id_usuario = :u"),

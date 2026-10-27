@@ -39,6 +39,17 @@ CATALOGOS_COPIABLES: dict[str, list[str]] = {
     "encuestas": ["encuesta_plantilla", "encuesta_pregunta", "encuesta_opcion"],
     "agenda": ["agenda_clase", "agenda_feriado"],
 }
+# Nombre visible de cada grupo en el asistente (mismo orden que CATALOGOS_COPIABLES).
+CATALOGOS_ETIQUETAS: dict[str, str] = {
+    "areas_subareas": "Áreas y subáreas",
+    "cargos": "Cargos",
+    "tipos_reclamo": "Tipos de reclamo",
+    "prestaciones": "Prestaciones de turnos",
+    "tramites": "Trámites",
+    "emergencias": "Catálogos de emergencias",
+    "encuestas": "Encuestas",
+    "agenda": "Clases de evento y feriados",
+}
 _TABLAS_COPIABLES = {t for ts in CATALOGOS_COPIABLES.values() for t in ts}
 SIN_CONTORNO = "sin contorno ni bbox: el geocoding usará la zona por defecto (Vicente López)"
 
@@ -103,13 +114,11 @@ async def _validar(db: AsyncSession, d: AltaMunicipioIn) -> dict:
     desconocidos = set(d.copiar) - set(CATALOGOS_COPIABLES)
     if desconocidos:
         raise HTTPException(422, f"Catálogos desconocidos: {sorted(desconocidos)}")
-    modulos = set(d.modulos)
+    # Los fijos se habilitan siempre: el asistente no los ofrece (no se pueden destildar).
+    modulos = set(d.modulos) | MODULOS_FIJOS
     catalogo = {r[0] for r in (await db.execute(text("SELECT modulo_codigo FROM modulos WHERE activo"))).all()}
     if modulos - catalogo:
         raise HTTPException(422, f"Módulos desconocidos: {sorted(modulos - catalogo)}")
-    faltan = MODULOS_FIJOS - modulos
-    if faltan:
-        raise HTTPException(422, f"Faltan módulos que el municipio necesita: {sorted(faltan)}")
     await validar_dependencias(modulos)
     if await db.scalar(text("SELECT 1 FROM municipios WHERE subdominio = :s"), {"s": d.subdominio}):
         raise HTTPException(409, "Ese subdominio ya lo usa otro municipio")
@@ -118,7 +127,7 @@ async def _validar(db: AsyncSession, d: AltaMunicipioIn) -> dict:
     modelo = await db.scalar(text("SELECT id_municipio FROM municipios WHERE estado = 'modelo'"))
     if modelo is None:
         raise HTTPException(422, "No hay municipio modelo del que copiar los catálogos")
-    return {"pais": pais.nombre, "provincia": provincia, "zona": zona, "modelo": modelo}
+    return {"pais": pais.nombre, "provincia": provincia, "zona": zona, "modelo": modelo, "modulos": modulos}
 
 
 async def _copiar_catalogos(db: AsyncSession, d: AltaMunicipioIn, id_mun: int, modelo: int,
@@ -262,7 +271,7 @@ async def dar_de_alta(db: AsyncSession, d: AltaMunicipioIn, *, id_super: int,
     await db.execute(text("""
         INSERT INTO municipio_modulo (id_municipio, modulo_codigo, habilitado, min_nivel_acceso, id_usuario_alta)
         SELECT :m, modulo_codigo, modulo_codigo = ANY(:hab), min_nivel_acceso, :u FROM modulos WHERE activo"""),
-        {"m": id_mun, "hab": list(d.modulos), "u": id_super})
+        {"m": id_mun, "hab": sorted(v["modulos"]), "u": id_super})
     advertencias = await _configuracion(db, d, id_mun, v["modelo"])
     if omitidas:
         advertencias.append(f"{omitidas} filas del modelo no se copiaron: dependen de catálogos no elegidos")

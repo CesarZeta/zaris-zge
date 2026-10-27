@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Modal } from '../../agenda/components/Modal'
 import { Badge, Button, EmptyState, Skeleton } from '../../../ui'
@@ -8,6 +9,7 @@ import {
   ESTADO_ETIQUETA, editarMunicipio, listarMunicipios, listarPaises, listarPartidos, listarProvincias,
   type EstadoMunicipio, type MunicipioSuper, type MunicipioSuperUpdate,
 } from '../api'
+import { Campo, grupo, input, labelCampo, tabla, td, th, titulo } from './_comun'
 
 // Módulo «Municipios» del super administrador (IT-01 F3; país, provincia y estado de F4,
 // PLAN_MULTI_MUNICIPIO_F4_F5.md, Tarea 6). La lista es corta y se carga entera: los filtros por
@@ -36,7 +38,7 @@ const grupoDe = (m: MunicipioSuper) =>
 export function MunicipiosPage() {
   const q = useQuery({ queryKey: ['super', 'municipios'], queryFn: () => listarMunicipios() })
   const { orden, alternar } = useOrden<Campo>()
-  const [editando, setEditando] = useState<MunicipioSuper | null>(null)
+  const navigate = useNavigate()
   const [pais, setPais] = useState('')
   const [provincia, setProvincia] = useState('')
   const [estado, setEstado] = useState('')
@@ -54,7 +56,17 @@ export function MunicipiosPage() {
   return (
     <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
       <header>
-        <h1 style={titulo}>Municipios</h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <h1 style={titulo}>Municipios</h1>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button variant="ghost" type="button" onClick={() => navigate('/municipios/super-administradores')}>
+              Super administradores
+            </Button>
+            <Button variant="primary" type="button" onClick={() => navigate('/municipios/alta')}>
+              + Dar de alta un municipio
+            </Button>
+          </div>
+        </div>
         <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--fg-2)' }}>
           Datos de cada municipio, agrupados por país y provincia. La identidad (logo y colores) se edita en
           Configuración → Identidad, con el municipio elegido arriba en «Operando en».
@@ -93,7 +105,8 @@ export function MunicipiosPage() {
                   {agrupar && (i === 0 || grupoDe(filas[i - 1]) !== grupoDe(m)) && (
                     <tr><td colSpan={6} style={grupo}>{grupoDe(m)}</td></tr>
                   )}
-                  <tr onClick={() => setEditando(m)} style={{ cursor: 'pointer' }} title="Editar los datos del municipio">
+                  <tr onClick={() => navigate(`/municipios/${m.id_municipio}`)} style={{ cursor: 'pointer' }}
+                      title="Abrir la ficha del municipio">
                     <td style={td}>
                       {m.nombre}{' '}
                       {m.direccion_base && <Badge kind="neutral">dirección base</Badge>}
@@ -112,8 +125,6 @@ export function MunicipiosPage() {
           </table>
         </div>
       )}
-
-      <EditarMunicipioModal municipio={editando} onClose={() => setEditando(null)} />
     </div>
   )
 }
@@ -132,7 +143,7 @@ function Filtro({ etiqueta, valor, onChange, opciones }: {
   )
 }
 
-function EditarMunicipioModal({ municipio, onClose }: { municipio: MunicipioSuper | null; onClose: () => void }) {
+export function EditarMunicipioModal({ municipio, onClose }: { municipio: MunicipioSuper | null; onClose: () => void }) {
   const qc = useQueryClient()
   const push = useNotificationsStore((s) => s.push)
   const [form, setForm] = useState<MunicipioSuperUpdate | null>(null)
@@ -162,7 +173,7 @@ function EditarMunicipioModal({ municipio, onClose }: { municipio: MunicipioSupe
   const mut = useMutation({
     mutationFn: ({ id, body }: { id: number; body: MunicipioSuperUpdate }) => editarMunicipio(id, body),
     onSuccess: (m) => {
-      qc.invalidateQueries({ queryKey: ['super', 'municipios'] })
+      qc.invalidateQueries({ queryKey: ['super'] })
       push({ kind: 'success', title: `Municipio «${m.nombre}» guardado` })
     },
     onError: (e: Error) => push({ kind: 'error', title: 'No se pudo guardar', body: e.message }),
@@ -240,36 +251,4 @@ function EditarMunicipioModal({ municipio, onClose }: { municipio: MunicipioSupe
       )}
     </Modal>
   )
-}
-
-function Campo({ etiqueta, ayuda, error, children }: {
-  etiqueta: string; ayuda?: string; error?: string; children: React.ReactNode
-}) {
-  return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span style={labelCampo}>{etiqueta}</span>
-      {children}
-      {error ? <span style={{ fontSize: 12, color: 'var(--color-error)' }}>{error}</span>
-        : ayuda ? <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>{ayuda}</span> : null}
-    </label>
-  )
-}
-
-const titulo: React.CSSProperties = { margin: 0, fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--fg-1)' }
-const tabla: React.CSSProperties = { width: '100%', borderCollapse: 'collapse', fontSize: 13 }
-const th: React.CSSProperties = {
-  textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid var(--border-medium)', color: 'var(--fg-3)',
-  fontFamily: 'var(--font-display)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em',
-}
-const td: React.CSSProperties = { padding: '8px 10px', borderBottom: '1px solid var(--border-primary)', color: 'var(--fg-1)' }
-const grupo: React.CSSProperties = {
-  padding: '12px 10px 6px', color: 'var(--fg-2)', fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 600,
-  borderBottom: '1px solid var(--border-medium)', background: 'var(--surface-300)',
-}
-const labelCampo: React.CSSProperties = {
-  fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--fg-3)',
-}
-const input: React.CSSProperties = {
-  fontFamily: 'inherit', fontSize: 13, color: 'var(--fg-1)', background: 'var(--surface-100)',
-  border: '1px solid var(--border-medium)', borderRadius: 'var(--radius-md)', padding: '7px 10px',
 }

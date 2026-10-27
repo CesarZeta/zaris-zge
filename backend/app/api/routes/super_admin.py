@@ -6,6 +6,9 @@ GET  /api/v1/super/municipios                   → todos los municipios, por pa
 PUT  /api/v1/super/municipios/{id_municipio}    → editar nombre, subdominio, país, provincia, partido y
                                                   zona horaria (el texto de país y provincia se deriva)
 POST /api/v1/super/seleccion                    → el selector del shell eligió un municipio
+GET  /api/v1/super/administradores             → super administradores (activos primero)
+POST /api/v1/super/administradores             → alta por invitación (Tarea 15)
+POST /api/v1/super/administradores/{id}/baja   → baja (ni la propia ni la del último activo)
 GET  /api/v1/super/config-global                → parámetros globales (sin las claves vapid_*)
 PUT  /api/v1/super/config-global/{id_config}    → editar un parámetro global
 
@@ -19,8 +22,8 @@ from typing import Literal, Optional
 
 import httpx
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query, Request
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,9 +33,11 @@ from app.core.database import get_db
 from app.core.municipio import invalidar_cache_municipios
 from app.services.accesos_super import registrar_acceso_super, registrar_acceso_super_en
 from app.core.urls import base_app
-from app.services.municipios.alta import AltaMunicipioIn, dar_de_alta
-from app.services.municipios.constantes import ESTADOS, MODULOS_FIJOS
+from app.services.municipios.alta import CATALOGOS_ETIQUETAS, SIN_CONTORNO, AltaMunicipioIn, dar_de_alta
+from app.services.municipios.constantes import DEPENDENCIAS_MODULOS, ESTADOS, MODULOS_FIJOS
 from app.services.municipios.invitacion import crear_invitacion
+from app.services.municipios.tope import cupo
+from app.services.municipios.super_admins import crear_super, dar_de_baja_super, listar_supers
 from app.services.municipios.modulos import invalidar_modulos, validar_dependencias
 
 router = APIRouter(prefix="/api/v1/super", tags=["Super administrador"],
@@ -127,6 +132,74 @@ async def listar_municipios(
           " AND (CAST(:estado AS text) IS NULL OR m.estado = :estado)"
         + _ORDEN_MUNICIPIOS), {"pais": codigo_pais, "prov": id_provincia, "estado": estado})
     return [dict(r._mapping) for r in rows.fetchall()]
+
+
+@router.get("/alta/opciones")
+async def opciones_alta(db: AsyncSession = Depends(get_db)):
+    """Lo que el asistente de alta ofrece elegir: grupos de catálogos del modelo y módulos (sin
+    «Municipios», que es del super y no de un municipio)."""
+    mods = await db.execute(text(
+        "SELECT modulo_codigo, nombre FROM modulos WHERE activo AND min_nivel_acceso >= 1 ORDER BY nombre"))
+    return {
+        "catalogos": [{"codigo": c, "nombre": n} for c, n in CATALOGOS_ETIQUETAS.items()],
+        "modulos": [{"codigo": r.modulo_codigo, "nombre": r.nombre, "fijo": r.modulo_codigo in MODULOS_FIJOS,
+                     "dependencias": sorted(DEPENDENCIAS_MODULOS.get(r.modulo_codigo, ()))} for r in mods],
+    }
+
+
+@router.get("/municipios/{id_municipio}", responses={404: {"description": "Municipio inexistente"}})
+async def ficha_municipio(id_municipio: int = Path(..., ge=1, le=2_147_483_647),
+                          db: AsyncSession = Depends(get_db)):
+    """Ficha: el municipio, sus módulos, sus administradores (con la invitación pendiente), el cupo de
+    cuentas y las advertencias del alta que siguen vigentes."""
+    m = (await db.execute(text(_SELECT_MUNICIPIO + " WHERE m.id_municipio = :m"), {"m": id_municipio})).first()
+    if m is None:
+        raise HTTPException(404, "Municipio no encontrado")
+    mods = await db.execute(text("""
+        SELECT mo.modulo_codigo AS codigo, mo.nombre, COALESCE(mm.habilitado, FALSE) AS habilitado
+          FROM modulos mo
+          LEFT JOIN municipio_modulo mm ON mm.modulo_codigo = mo.modulo_codigo AND mm.id_municipio = :m
+         WHERE mo.activo AND mo.min_nivel_acceso >= 1
+         ORDER BY mo.nombre"""), {"m": id_municipio})
+    admins = await db.execute(text("""
+        SELECT u.id_usuario, u.nombre, u.email, u.activo,
+               EXISTS (SELECT 1 FROM usuario_invitacion i WHERE i.id_usuario = u.id_usuario AND i.activo
+                          AND i.usada_en IS NULL AND i.vence_en > NOW()) AS invitacion_pendiente
+          FROM usuarios u
+         WHERE u.id_municipio = :m AND u.nivel_acceso = 1
+         ORDER BY u.activo DESC, u.nombre"""), {"m": id_municipio})
+    geo = await leer_configs(db, ["geo_limite_geojson", "geo_bbox_centro_lat"], id_municipio)
+    advertencias = [] if m.direccion_base or any((v or "").strip() for v in geo.values()) else [SIN_CONTORNO]
+    return {
+        "municipio": dict(m._mapping),
+        "modulos": [dict({**r._mapping, "fijo": r.codigo in MODULOS_FIJOS,
+                          "dependencias": sorted(DEPENDENCIAS_MODULOS.get(r.codigo, ()))}) for r in mods],
+        "administradores": [dict(r._mapping) for r in admins],
+        "cupo": await cupo(db, id_municipio),
+        "advertencias": advertencias,
+    }
+
+
+class TopeIn(BaseModel):
+    maximo: Optional[int] = Field(None, ge=1, le=100_000)
+
+
+@router.put("/municipios/{id_municipio}/tope", response_model=MunicipioSuperOut,
+            responses={404: {"description": "Municipio inexistente"}})
+async def cambiar_tope(id_municipio: int, body: TopeIn, request: Request, db: AsyncSession = Depends(get_db),
+                       sa: dict = Depends(require_super_admin)):
+    """Tope de cuentas internas activas (null = sin tope). Bajarlo por debajo de las activas no
+    desactiva a nadie: solo impide crear o reactivar (spec §4.5)."""
+    ok = await db.scalar(text("UPDATE municipios SET max_usuarios_activos = :t WHERE id_municipio = :m "
+                              "RETURNING id_municipio"), {"t": body.maximo, "m": id_municipio})
+    if ok is None:
+        raise HTTPException(404, "Municipio no encontrado")
+    await registrar_acceso_super_en(db, id_usuario=sa["id_usuario"], accion="municipio_editar",
+                                    id_municipio=id_municipio, detalle=f"tope de cuentas: {body.maximo or 'sin tope'}",
+                                    **_registro(request))
+    await db.commit()
+    return dict((await db.execute(text(_SELECT_MUNICIPIO + " WHERE m.id_municipio = :m"),
+                                  {"m": id_municipio})).one()._mapping)
 
 
 async def _validar_ubicacion(db: AsyncSession, body: "MunicipioSuperUpdate", estado: str) -> tuple[str, Optional[str]]:
@@ -489,3 +562,57 @@ async def reenviar_invitacion(
                                     **_registro(request))
     await db.commit()
     return {"enviada": True}
+
+
+# ── Super administradores (IT-01 F4+F5, Tarea 15) ──────────────────────────────────────────────
+
+class SuperAdminIn(BaseModel):
+    nombre: str = Field(..., min_length=1, max_length=70)
+    apellido: str = Field(..., min_length=1, max_length=70)
+    email: str = Field(..., max_length=150)
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, v: str) -> str:
+        from app.schemas.buc import _validar_email_fmt
+        return _validar_email_fmt(v.strip())
+
+
+@router.get("/administradores")
+async def listar_administradores(db: AsyncSession = Depends(get_db)):
+    return await listar_supers(db)
+
+
+@router.post("/administradores", status_code=201,
+             responses={409: {"description": "El email ya es de otra cuenta"}})
+async def alta_administrador(
+    body: SuperAdminIn,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    sa: dict = Depends(require_super_admin),
+):
+    """Cuenta de nivel 0 sin municipio; elige su clave con la invitación (el mail sale como ZARIS)."""
+    nuevo = await crear_super(db, nombre=body.nombre, apellido=body.apellido, email=body.email,
+                              id_actor=sa["id_usuario"], background_tasks=background_tasks)
+    await registrar_acceso_super_en(db, id_usuario=sa["id_usuario"], accion="super_alta", id_municipio=None,
+                                    detalle=f"alta del super {nuevo} ({body.email.strip().lower()})",
+                                    **_registro(request))
+    await db.commit()
+    return {"id_usuario": nuevo}
+
+
+@router.post("/administradores/{id_usuario}/baja",
+             responses={404: {"description": "No es un super administrador"},
+                        409: {"description": "Baja propia o del último super activo"}})
+async def baja_administrador(
+    id_usuario: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    sa: dict = Depends(require_super_admin),
+):
+    await dar_de_baja_super(db, id_usuario=id_usuario, id_actor=sa["id_usuario"])
+    await registrar_acceso_super_en(db, id_usuario=sa["id_usuario"], accion="super_baja", id_municipio=None,
+                                    detalle=f"baja del super {id_usuario}", **_registro(request))
+    await db.commit()
+    return {"baja": True}
