@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   actualizarConfigParam,
+  crearConfigParam,
   actualizarModulo,
   getIdentidad,
   listarConfigGeneral,
@@ -88,8 +89,9 @@ export function useConfigGeneral() {
 export function useActualizarConfigParam() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id_config, valor }: { id_config: number; valor: string }) =>
-      actualizarConfigParam(id_config, valor),
+    // id_config 0 = la clave no existe en el municipio: se crea con su tipo.
+    mutationFn: ({ id_config, valor, clave, tipo }: { id_config: number; valor: string; clave?: string; tipo?: string }) =>
+      id_config === 0 && clave ? crearConfigParam(clave, valor, tipo ?? 'string') : actualizarConfigParam(id_config, valor),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['config', 'general'] }),
   })
 }

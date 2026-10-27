@@ -119,3 +119,19 @@ UPDATE municipio_tabla_clase t SET grupo = g.grupo, fecha_modificacion = NOW()
 
 -- Falla si una tabla no global quedó sin grupo (la lista de arriba tiene que cubrirlas todas).
 ALTER TABLE municipio_tabla_clase VALIDATE CONSTRAINT ck_municipio_tabla_clase_grupo_requerido;
+
+-- 7. Defaults de catálogos globales por municipio (guía de arranque R9/R10): nacionalidad del país del
+--    municipio y tipo de representación «Representante Legal», resueltos por nombre. No pisa un valor
+--    ya cargado.
+INSERT INTO configuracion_general (clave, valor, tipo, descripcion, activo, id_municipio)
+SELECT 'id_nacionalidad_defecto', COALESCE((SELECT n.id::text FROM nacionalidades n JOIN paises p ON p.codigo_pais = m.codigo_pais
+                                              WHERE n.pais ILIKE p.nombre ORDER BY n.id LIMIT 1), ''),
+       'integer', 'Nacionalidad por defecto de las fichas que se crean sin ese dato', TRUE, m.id_municipio
+  FROM municipios m WHERE m.estado <> 'baja'
+ON CONFLICT (id_municipio, clave) DO NOTHING;
+INSERT INTO configuracion_general (clave, valor, tipo, descripcion, activo, id_municipio)
+SELECT 'id_tipo_representacion_defecto',
+       COALESCE((SELECT id::text FROM tipo_representacion WHERE tipo = 'Representante Legal' ORDER BY id LIMIT 1), ''),
+       'integer', 'Tipo de representación por defecto al vincular una empresa', TRUE, m.id_municipio
+  FROM municipios m WHERE m.estado <> 'baja'
+ON CONFLICT (id_municipio, clave) DO NOTHING;

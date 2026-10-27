@@ -33,6 +33,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from app.services.municipios.modulos import modulo_habilitado
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
+
+
+def _error_integridad_turno(e: IntegrityError) -> HTTPException:
+    """El único de horario (uq_turnos_slot_*) es «horario tomado» (409); cualquier otra violación de
+    integridad es un dato inválido (422 con el motivo), no un choque de horario (guía de arranque, R6)."""
+    restriccion = getattr(getattr(e.orig, "__cause__", None), "constraint_name", None) or ""
+    if restriccion.startswith("uq_turnos_slot") or "uq_turnos_slot" in str(e.orig):
+        return HTTPException(409, "El horario acaba de ser tomado por otra reserva")
+    return HTTPException(422, f"No se pudo guardar el turno: dato inválido ({restriccion or 'integridad'})")
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
@@ -1236,9 +1245,9 @@ async def crear_turno(
             "uid": user["id_usuario"],
         })
         await db.commit()
-    except IntegrityError:
+    except IntegrityError as e:
         await db.rollback()
-        raise HTTPException(409, "El horario acaba de ser tomado por otra reserva")
+        raise _error_integridad_turno(e)
     out = await _turno_to_out(db, int(id_turno), id_municipio)
     if out is None:
         raise HTTPException(500, "Turno creado pero no se pudo releer")
@@ -1382,9 +1391,9 @@ async def reprogramar_turno(
                    "hi": hora_inicio, "hf": hora_fin,
                    "uid": user["id_usuario"], "io": turno["id_ocupacion"]})
         await db.commit()
-    except IntegrityError:
+    except IntegrityError as e:
         await db.rollback()
-        raise HTTPException(409, "El horario acaba de ser tomado por otra reserva")
+        raise _error_integridad_turno(e)
     out = await _turno_to_out(db, id_turno, id_municipio)
     return out  # type: ignore
 

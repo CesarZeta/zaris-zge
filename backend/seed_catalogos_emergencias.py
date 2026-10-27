@@ -64,33 +64,36 @@ def n(s: str) -> str:
     return s if s else "NULL"
 
 
-def subarea_subq(clave_csv: str) -> str:
+def subarea_subq(clave_csv: str, mun: int) -> str:
     return ("(SELECT id_subarea FROM subarea WHERE " + FOLD +
-            " = '" + SUBAREAS[clave_csv] + "' AND activo ORDER BY id_subarea LIMIT 1)")
+            " = '" + SUBAREAS[clave_csv] + f"' AND activo AND id_municipio = {int(mun)} ORDER BY id_subarea LIMIT 1)")
 
 
 # CTE que mapea la clave del CSV al id_subarea real del entorno
-CTE_SA = (
-    "WITH sa AS (\n"
-    "  SELECT 'POLICIA_MUNICIPAL' AS k, " + subarea_subq("POLICIA_MUNICIPAL") + " AS id_subarea\n"
-    "  UNION ALL\n"
-    "  SELECT 'DEFENSA_CIVIL', " + subarea_subq("DEFENSA_CIVIL") + "\n"
-    ")\n"
-)
+def cte_sa(mun: int) -> str:
+    return (
+        "WITH sa AS (\n"
+        "  SELECT 'POLICIA_MUNICIPAL' AS k, " + subarea_subq("POLICIA_MUNICIPAL", mun) + " AS id_subarea\n"
+        "  UNION ALL\n"
+        "  SELECT 'DEFENSA_CIVIL', " + subarea_subq("DEFENSA_CIVIL", mun) + "\n"
+        ")\n"
+    )
 
 
 def _values(filas: list[str]) -> str:
     return ",\n  ".join(filas)
 
 
-def generar_sql() -> str:
+def generar_sql(mun: int) -> str:
+    """SQL del seed para el municipio `mun` (los catálogos son por municipio desde IT-01)."""
+    M = int(mun)
     stmts: list[str] = []
 
     # Guard: las subareas de Seguridad deben existir (mig 81)
     stmts.append(
         "DO $$\nBEGIN\n"
-        "  IF " + subarea_subq("POLICIA_MUNICIPAL") + " IS NULL\n"
-        "     OR " + subarea_subq("DEFENSA_CIVIL") + " IS NULL THEN\n"
+        "  IF " + subarea_subq("POLICIA_MUNICIPAL", M) + " IS NULL\n"
+        "     OR " + subarea_subq("DEFENSA_CIVIL", M) + " IS NULL THEN\n"
         "    RAISE EXCEPTION 'Subareas Policia Municipal / Defensa Civil no encontradas (aplicar mig 81)';\n"
         "  END IF;\nEND $$;"
     )
@@ -99,10 +102,10 @@ def generar_sql() -> str:
     filas = [f"({q(r['codigo'])}, {q(r['nombre'])}, {q(r['descripcion'])}, {b(r['requiere_operador'])})"
              for r in leer_csv("emergencia_canal_ingreso.csv")]
     stmts.append(
-        "INSERT INTO emergencia_canal_ingreso (codigo, nombre, descripcion, requiere_operador, activo)\n"
-        "SELECT v.codigo, v.nombre, v.descripcion, v.requiere_operador, TRUE\n"
+        "INSERT INTO emergencia_canal_ingreso (codigo, nombre, descripcion, requiere_operador, activo, id_municipio)\n"
+        f"SELECT v.codigo, v.nombre, v.descripcion, v.requiere_operador, TRUE, {M}\n"
         "FROM (VALUES\n  " + _values(filas) + "\n) AS v(codigo, nombre, descripcion, requiere_operador)\n"
-        "ON CONFLICT (codigo) DO UPDATE SET nombre = EXCLUDED.nombre,\n"
+        "ON CONFLICT (id_municipio, codigo) DO UPDATE SET nombre = EXCLUDED.nombre,\n"
         "  descripcion = EXCLUDED.descripcion, requiere_operador = EXCLUDED.requiere_operador,\n"
         "  activo = TRUE, fecha_modificacion = NOW();"
     )
@@ -111,10 +114,10 @@ def generar_sql() -> str:
     filas = [f"({q(r['codigo'])}, {q(r['nombre'])}, {q(r['descripcion'])}, {n(r['sla_minutos_arribo'])}, {q(r['color_token'])}, {n(r['orden_visual'])})"
              for r in leer_csv("emergencia_prioridad.csv")]
     stmts.append(
-        "INSERT INTO emergencia_prioridad (codigo, nombre, descripcion, sla_minutos_arribo, color_token, orden_visual, activo)\n"
-        "SELECT v.codigo, v.nombre, v.descripcion, v.sla, v.color_token, v.orden, TRUE\n"
+        "INSERT INTO emergencia_prioridad (codigo, nombre, descripcion, sla_minutos_arribo, color_token, orden_visual, activo, id_municipio)\n"
+        f"SELECT v.codigo, v.nombre, v.descripcion, v.sla, v.color_token, v.orden, TRUE, {M}\n"
         "FROM (VALUES\n  " + _values(filas) + "\n) AS v(codigo, nombre, descripcion, sla, color_token, orden)\n"
-        "ON CONFLICT (codigo) DO UPDATE SET nombre = EXCLUDED.nombre,\n"
+        "ON CONFLICT (id_municipio, codigo) DO UPDATE SET nombre = EXCLUDED.nombre,\n"
         "  descripcion = EXCLUDED.descripcion, sla_minutos_arribo = EXCLUDED.sla_minutos_arribo,\n"
         "  color_token = EXCLUDED.color_token, orden_visual = EXCLUDED.orden_visual,\n"
         "  activo = TRUE, fecha_modificacion = NOW();"
@@ -137,10 +140,10 @@ def generar_sql() -> str:
     filas = [f"({q(r['codigo'])}, {q(r['nombre'])}, {q(r['descripcion'])}, {q(r['telefono_contacto'])}, {b(r['es_municipal'])})"
              for r in leer_csv("emergencia_organismo_derivacion.csv")]
     stmts.append(
-        "INSERT INTO emergencia_organismo_derivacion (codigo, nombre, descripcion, telefono_contacto, es_municipal, activo)\n"
-        "SELECT v.codigo, v.nombre, CAST(v.descripcion AS text), v.telefono, v.es_municipal, TRUE\n"
+        "INSERT INTO emergencia_organismo_derivacion (codigo, nombre, descripcion, telefono_contacto, es_municipal, activo, id_municipio)\n"
+        f"SELECT v.codigo, v.nombre, CAST(v.descripcion AS text), v.telefono, v.es_municipal, TRUE, {M}\n"
         "FROM (VALUES\n  " + _values(filas) + "\n) AS v(codigo, nombre, descripcion, telefono, es_municipal)\n"
-        "ON CONFLICT (codigo) DO UPDATE SET nombre = EXCLUDED.nombre,\n"
+        "ON CONFLICT (id_municipio, codigo) DO UPDATE SET nombre = EXCLUDED.nombre,\n"
         "  descripcion = EXCLUDED.descripcion, telefono_contacto = EXCLUDED.telefono_contacto,\n"
         "  es_municipal = EXCLUDED.es_municipal, activo = TRUE, fecha_modificacion = NOW();"
     )
@@ -153,15 +156,15 @@ def generar_sql() -> str:
     filas = [f"({q(r['subarea'])}, {n(r['codigo_oficial'])}, {q(r['codigo'])}, {q(r['nombre'])}, {q(r['prioridad'])}, {q(r['organismo_default'])}, {b(r['requiere_911'])}, {b(r['es_emergencia'])})"
              for r in tipos]
     stmts.append(
-        CTE_SA +
+        cte_sa(M) +
         "INSERT INTO emergencia_tipo (id_subarea, codigo_oficial, codigo, nombre, id_prioridad_default,\n"
-        "  id_organismo_derivacion_default, requiere_911, es_emergencia, activo)\n"
+        "  id_organismo_derivacion_default, requiere_911, es_emergencia, activo, id_municipio)\n"
         "SELECT sa.id_subarea, v.codigo_oficial, v.codigo, v.nombre,\n"
-        "  p.id_emergencia_prioridad, o.id_emergencia_organismo_derivacion, v.req911, v.es_emergencia, TRUE\n"
+        f"  p.id_emergencia_prioridad, o.id_emergencia_organismo_derivacion, v.req911, v.es_emergencia, TRUE, {M}\n"
         "FROM (VALUES\n  " + _values(filas) + "\n) AS v(sub, codigo_oficial, codigo, nombre, prio, org, req911, es_emergencia)\n"
         "JOIN sa ON sa.k = v.sub\n"
-        "JOIN emergencia_prioridad p ON p.codigo = v.prio\n"
-        "LEFT JOIN emergencia_organismo_derivacion o ON o.codigo = v.org\n"
+        f"JOIN emergencia_prioridad p ON p.codigo = v.prio AND p.id_municipio = {M}\n"
+        f"LEFT JOIN emergencia_organismo_derivacion o ON o.codigo = v.org AND o.id_municipio = {M}\n"
         "ON CONFLICT (id_subarea, codigo) DO UPDATE SET nombre = EXCLUDED.nombre,\n"
         "  codigo_oficial = EXCLUDED.codigo_oficial, id_prioridad_default = EXCLUDED.id_prioridad_default,\n"
         "  id_organismo_derivacion_default = EXCLUDED.id_organismo_derivacion_default,\n"
@@ -177,9 +180,9 @@ def generar_sql() -> str:
     filas = [f"({q(r['subarea'])}, {q(r['tipo_codigo'])}, {q(r['codigo'])}, {q(r['nombre'])})"
              for r in subtipos]
     stmts.append(
-        CTE_SA +
-        "INSERT INTO emergencia_subtipo (id_tipo, codigo, nombre, activo)\n"
-        "SELECT t.id_emergencia_tipo, v.codigo, v.nombre, TRUE\n"
+        cte_sa(M) +
+        "INSERT INTO emergencia_subtipo (id_tipo, codigo, nombre, activo, id_municipio)\n"
+        f"SELECT t.id_emergencia_tipo, v.codigo, v.nombre, TRUE, {M}\n"
         "FROM (VALUES\n  " + _values(filas) + "\n) AS v(sub, tipo_codigo, codigo, nombre)\n"
         "JOIN sa ON sa.k = v.sub\n"
         "JOIN emergencia_tipo t ON t.codigo = v.tipo_codigo AND t.id_subarea = sa.id_subarea\n"
@@ -209,9 +212,11 @@ async def main():
                         help="No ejecuta: escribe el SQL generado (para aplicar en prod via MCP).")
     parser.add_argument("--confirm-prod", action="store_true",
                         help="Necesario si DATABASE_URL apunta a Supabase.")
+    parser.add_argument("--municipio", type=int, required=True,
+                        help="id_municipio al que se le cargan los catálogos.")
     args = parser.parse_args()
 
-    sql = generar_sql()
+    sql = generar_sql(args.municipio)
 
     if args.emit_sql:
         out = Path(args.emit_sql)

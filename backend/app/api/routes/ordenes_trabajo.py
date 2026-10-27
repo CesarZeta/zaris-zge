@@ -283,13 +283,8 @@ async def _validar_scope_auditor(db: AsyncSession, id_agente_auditor: int, id_ot
 
 
 async def _id_estado_ot(db: AsyncSession, nombre: str) -> int:
-    r = await db.execute(text(
-        "SELECT id_estado_ot FROM estado_ot WHERE nombre = :n AND activo = TRUE"
-    ), {"n": nombre})
-    row = r.fetchone()
-    if not row:
-        raise HTTPException(status_code=500, detail=f"Estado OT '{nombre}' no encontrado en BD")
-    return row.id_estado_ot
+    from app.services.estados_ot import id_estado_ot
+    return await id_estado_ot(db, nombre)
 
 
 async def _insertar_historial_reclamo(db: AsyncSession, id_reclamo: int, accion: str,

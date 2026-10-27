@@ -171,10 +171,10 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
     ident = (body.identificador or body.email or "").strip()
     _clave_rl = ident.lower()
     check_rate_limit(f"loginint-ip:{_ip}", max_requests=10, window_seconds=60)
-    if _clave_rl:
-        check_rate_limit(f"loginint-mail:{_clave_rl}", max_requests=5, window_seconds=60)
-
     id_municipio = await resolver_municipio_de_origen(request, db)
+    if _clave_rl:
+        # Por municipio: el mismo email puede ser de cuentas de dos municipios.
+        check_rate_limit(f"loginint-mail:{id_municipio}:{_clave_rl}", max_requests=5, window_seconds=60)
     user = await _buscar_usuario_login(db, ident, id_municipio)
     if user is None and "@" in ident:
         user = await _buscar_super_admin(db, ident)

@@ -166,7 +166,7 @@ class AltaEmpresaIn(BaseModel):
     email: EmailStr
 
     observaciones: str | None = Field(None, max_length=500)
-    id_tipo_representacion: int = 1  # default: Representante Legal
+    id_tipo_representacion: Optional[int] = None  # sin dato: el del municipio (Representante Legal)
 
     @field_validator("cuit")
     @classmethod

@@ -95,6 +95,10 @@ export const listarConfigGeneral = () =>
 export const actualizarConfigParam = (id_config: number, valor: string) =>
   api.put<ConfigParam>(`${ADMIN}/configuracion_general/${id_config}`, { valor })
 
+// Una clave que el municipio todavía no tiene (municipio nuevo o vaciado) se crea al guardarla.
+export const crearConfigParam = (clave: string, valor: string, tipo: string) =>
+  api.post<ConfigParam>(`${ADMIN}/configuracion_general`, { clave, valor, tipo, descripcion: clave, activo: true })
+
 /* ── Parámetros globales: solo el super administrador (IT-01 F3) ── */
 export interface ConfigGlobal {
   id_config: number

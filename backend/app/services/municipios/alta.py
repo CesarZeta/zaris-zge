@@ -180,6 +180,11 @@ async def resembrar_claves_por_id(db: AsyncSession, id_mun: int) -> None:
         "SELECT id_espacio FROM espacios_agenda WHERE id_municipio = :m AND activo AND nombre = 'Guardia'"),
         {"m": id_mun})
     await _poner_config(db, id_mun, "id_espacio_guardia", str(guardia) if guardia else "", "integer")
+    from app.services.municipios.defectos import nacionalidad_por_pais, representacion_por_nombre
+    nac = await nacionalidad_por_pais(db, id_mun)
+    await _poner_config(db, id_mun, "id_nacionalidad_defecto", str(nac) if nac else "", "integer")
+    rep = await representacion_por_nombre(db)
+    await _poner_config(db, id_mun, "id_tipo_representacion_defecto", str(rep) if rep else "", "integer")
 
 
 async def _configuracion(db: AsyncSession, d: AltaMunicipioIn, id_mun: int, modelo: int) -> list[str]:

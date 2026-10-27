@@ -50,6 +50,7 @@ GEO_BBOX_CENTRO_LAT = -34.5305   # Vicente López (demo) — fallback
 GEO_BBOX_CENTRO_LON = -58.4779
 GEO_BBOX_DELTA_GRADOS = 0.27     # ~28 km en lat; suficiente para AMBA norte
 
+SIN_ZONA = "El municipio no tiene configurada su zona de búsqueda: cargala en Configuración → Sistema."
 _BBOX_TTL_SEG = 300.0
 # Cache por municipio (IT-01, R9): con la clave sin municipio, B usaría el bbox de A.
 _bbox_cache: dict[int, dict] = {}
@@ -58,16 +59,20 @@ _bbox_cache: dict[int, dict] = {}
 async def _bbox_municipio(id_municipio: int) -> tuple[float, float, float]:
     """(lat, lon, delta) del bbox del municipio, desde configuracion_general con cache.
 
-    Cualquier error (DB caída, clave ausente, valor no numérico) cae a las
-    constantes de arriba — el geocoding nunca se rompe por configuración.
+    Sin las claves (o con un valor inválido) el municipio de las direcciones sin prefijo cae a las
+    constantes de arriba; cualquier otro municipio da 409: buscaría en Vicente López sin avisar
+    (guía de arranque, R4).
     """
     now = time.monotonic()
     cache = _bbox_cache.get(id_municipio)
     if cache and now - cache["ts"] < _BBOX_TTL_SEG:
         return cache["lat"], cache["lon"], cache["delta"]
     lat, lon, delta = GEO_BBOX_CENTRO_LAT, GEO_BBOX_CENTRO_LON, GEO_BBOX_DELTA_GRADOS
+    base = True
     try:
         async with AsyncSessionLocal() as db:
+            base = bool(await db.scalar(text("SELECT direccion_base FROM municipios WHERE id_municipio = :m"),
+                                        {"m": id_municipio}))
             vals = await leer_configs(
                 db, ["geo_bbox_centro_lat", "geo_bbox_centro_lon", "geo_bbox_delta_grados"], id_municipio)
         lat = float(vals["geo_bbox_centro_lat"])
@@ -76,6 +81,8 @@ async def _bbox_municipio(id_municipio: int) -> tuple[float, float, float]:
         if not (-90 <= lat <= 90 and -180 <= lon <= 180 and 0 < delta <= 5):
             raise ValueError(f"bbox fuera de rango: {lat},{lon} ±{delta}")
     except Exception as e:  # noqa: BLE001 — fallback deliberado a constantes
+        if not base:
+            raise HTTPException(409, SIN_ZONA)
         logger.warning("geo_bbox config no disponible (%s) — uso fallback Vicente López", e)
         lat, lon, delta = GEO_BBOX_CENTRO_LAT, GEO_BBOX_CENTRO_LON, GEO_BBOX_DELTA_GRADOS
     _bbox_cache[id_municipio] = {"ts": now, "lat": lat, "lon": lon, "delta": delta}

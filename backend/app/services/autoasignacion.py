@@ -177,8 +177,8 @@ async def autoasignar_reclamo(id_reclamo: int) -> dict[str, Any]:
                 return {"asignada": False, "motivo": motivo}
 
             c = candidatos[0]
-            id_estado = await db.scalar(text(
-                "SELECT id_estado_ot FROM estado_ot WHERE nombre = 'En gestión' AND activo = TRUE LIMIT 1"))
+            from app.services.estados_ot import id_estado_ot
+            id_estado = await id_estado_ot(db, "En gestión")
             ot = (await db.execute(text("""
                 INSERT INTO ordenes_trabajo
                     (id_reclamo, id_estado, id_agente, id_equipo, es_auditoria, asignacion_automatica,

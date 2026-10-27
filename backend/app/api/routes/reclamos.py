@@ -365,15 +365,17 @@ async def _terminar_ots_operativas(db: AsyncSession, id_reclamo: int,
                                    resolucion: Optional[str], id_usuario: int) -> None:
     """Al resolver el reclamo, sus OT operativas abiertas pasan a Terminada (antes
     el reclamo podía quedar Resuelto con la OT 'En gestión'). NO commitea."""
+    from app.services.estados_ot import id_estado_ot
+    terminada = await id_estado_ot(db, "Terminada")
     await db.execute(text("""
         UPDATE ordenes_trabajo ot
-        SET id_estado = (SELECT id_estado_ot FROM estado_ot WHERE nombre = 'Terminada' AND activo = TRUE LIMIT 1),
+        SET id_estado = :terminada,
             fecha_cierre = NOW(), fecha_modificacion = NOW(),
             observaciones = COALESCE(:res, ot.observaciones),
             id_usuario_modificacion = :uid
         WHERE ot.id_reclamo = :id AND ot.activo = TRUE AND NOT ot.es_auditoria
           AND ot.id_estado IN (SELECT id_estado_ot FROM estado_ot WHERE NOT es_final)
-    """), {"id": id_reclamo, "res": resolucion, "uid": id_usuario})
+    """), {"id": id_reclamo, "res": resolucion, "uid": id_usuario, "terminada": terminada})
 
 
 # ── GET /reclamos/stats ──────────────────────────────────────────────────────
@@ -1182,11 +1184,8 @@ async def enviar_a_auditoria(
             raise HTTPException(status_code=422,
                 detail=f"El agente {id_auditor} no es un auditor habilitado (agentes.es_auditor).")
 
-    est = (await db.execute(text(
-        "SELECT id_estado_ot FROM estado_ot WHERE nombre = 'En gestión' AND activo = TRUE"
-    ))).fetchone()
-    if not est:
-        raise HTTPException(status_code=500, detail="Estado OT 'En gestión' no encontrado en BD")
+    from app.services.estados_ot import id_estado_ot
+    id_en_gestion = await id_estado_ot(db, "En gestión")
 
     # La OT operativa que cerró la gestión (si la hubo) queda como origen: la mesa
     # del auditor muestra quién hizo el trabajo y sus observaciones.
@@ -1209,7 +1208,7 @@ async def enviar_a_auditoria(
         VALUES (:id_r, :id_est, :id_ag, TRUE, :id_orig, :uid,
                 :obs, TRUE, NOW(), NOW(), :uid, :uid, :mun)
         RETURNING id_ot, nro_ot
-    """), {"id_r": id_reclamo, "id_est": est.id_estado_ot, "id_ag": id_auditor,
+    """), {"id_r": id_reclamo, "id_est": id_en_gestion, "id_ag": id_auditor,
            "id_orig": ot_origen.id_ot if ot_origen else None, "uid": uid,
            "obs": observaciones, "mun": id_municipio})).fetchone()
 

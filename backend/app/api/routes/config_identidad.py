@@ -179,7 +179,7 @@ async def get_identidad_actual(
     return await _leer_claves(db, id_municipio)
 
 
-@router.put("", response_model=IdentidadOut, responses={409: {"description": "El municipio no tiene esa clave"}})
+@router.put("", response_model=IdentidadOut)
 async def update_identidad(
     payload: IdentidadUpdate,
     db: AsyncSession = Depends(get_db),
@@ -191,10 +191,7 @@ async def update_identidad(
     if not actualizables:
         raise HTTPException(422, "Body vacio: incluir al menos una clave")
     for clave, valor in actualizables.items():
-        if not await guardar_config(db, clave, valor, id_municipio):
-            # Hasta el lote de limpieza (UNIQUE(clave) global) no se puede crear la fila.
-            await db.rollback()
-            raise HTTPException(409, f"El municipio no tiene la clave {clave} cargada")
+        await guardar_config(db, clave, valor, id_municipio)
     await db.commit()
     return await _leer_claves(db, id_municipio)
 

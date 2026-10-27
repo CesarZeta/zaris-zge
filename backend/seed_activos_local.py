@@ -6,8 +6,11 @@ Seed de tipos_activo + activos en local desde CSVs en `Tablas Iniciales/`.
 - Idempotente: usa UPSERT por codigo_unico para activos y por nombre para tipos.
 
 Uso:
-    cd backend && python seed_activos_local.py
+    cd backend && python seed_activos_local.py --municipio <id>
+
+Los activos son del municipio (IT-01); los tipos son globales.
 """
+import argparse
 import asyncio
 import csv
 from pathlib import Path
@@ -61,7 +64,7 @@ def parse_num(s: str) -> float | None:
 VL_BBOX = (-34.55, -58.55, -34.48, -58.45)
 
 
-async def main():
+async def main(id_municipio: int):
     conn = await asyncpg.connect(DSN)
     try:
         # ── Tipos ────────────────────────────────────────────────────────
@@ -117,9 +120,9 @@ async def main():
                     """
                     INSERT INTO activos
                         (codigo_unico, id_tipo_activo, descripcion, direccion,
-                         id_localidad, latitud, longitud, activo)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
-                    ON CONFLICT (codigo_unico) DO UPDATE
+                         id_localidad, latitud, longitud, activo, id_municipio)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8)
+                    ON CONFLICT (id_municipio, codigo_unico) DO UPDATE
                        SET id_tipo_activo = EXCLUDED.id_tipo_activo,
                            descripcion = EXCLUDED.descripcion,
                            direccion = EXCLUDED.direccion,
@@ -129,17 +132,19 @@ async def main():
                            activo = TRUE
                     """,
                     codigo, id_tipo, desc, direccion,
-                    id_localidad_vl, lat, lon,
+                    id_localidad_vl, lat, lon, id_municipio,
                 )
                 insertados += 1
 
         print(f"  activos: {insertados} insertados/actualizados")
 
-        total = await conn.fetchval("SELECT COUNT(*) FROM activos WHERE activo = TRUE")
+        total = await conn.fetchval("SELECT COUNT(*) FROM activos WHERE activo = TRUE AND id_municipio = $1", id_municipio)
         print(f"  total activos en DB: {total}")
     finally:
         await conn.close()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--municipio", type=int, required=True, help="id_municipio al que se le cargan los activos")
+    asyncio.run(main(ap.parse_args().municipio))

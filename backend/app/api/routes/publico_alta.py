@@ -40,6 +40,7 @@ from app.core.urls import url_alta_publica, url_portal_vecino
 from app.middleware.rate_limit import check_rate_limit
 from app.utils.request_helpers import get_real_ip
 from app.api.routes.geo import geocodificar_direccion
+from app.services.municipios.defectos import id_tipo_representacion_defecto
 from app.services.email import (
     enviar_mail_verificacion_alta_ciudadano,
     enviar_mail_verificacion_alta_empresa,
@@ -571,7 +572,7 @@ async def _insertar_empresa(db: AsyncSession, data: AltaEmpresaIn, id_ciudadano:
         {
             "id_ciudadano": id_ciudadano,
             "id_empresa": id_empresa,
-            "id_tipo": data.id_tipo_representacion,
+            "id_tipo": data.id_tipo_representacion or await id_tipo_representacion_defecto(db, id_municipio),
             "id_municipio": id_municipio,
         },
     )

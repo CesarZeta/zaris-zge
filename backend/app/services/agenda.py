@@ -778,10 +778,8 @@ async def buscar_o_crear_ciudadano_por_dni(
         return {**dict(row), "creado": False}
 
     # Crear nuevo
-    id_nac = await session.scalar(text(
-        "SELECT id FROM nacionalidades WHERE pais ILIKE 'Argentina' LIMIT 1"
-    ))
-    id_nac = int(id_nac) if id_nac else 1
+    from app.services.municipios.defectos import id_nacionalidad_defecto
+    id_nac = await id_nacionalidad_defecto(session, id_municipio)
 
     tel = telefono.strip() if telefono and telefono.strip() else "0"
     em  = email.strip().lower() if email and email.strip() else f"{dni_clean}@autoservicio.local"

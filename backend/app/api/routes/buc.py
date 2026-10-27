@@ -1107,6 +1107,9 @@ async def crear_empresa(
     payload = data.model_dump()
     id_ciudadano = payload.pop("id_ciudadano")
     id_tipo_representacion = payload.pop("id_tipo_representacion")
+    if id_tipo_representacion is None:
+        from app.services.municipios.defectos import id_tipo_representacion_defecto
+        id_tipo_representacion = await id_tipo_representacion_defecto(db, id_municipio)
 
     empresa = Empresa(**payload, id_municipio=id_municipio)
     db.add(empresa)

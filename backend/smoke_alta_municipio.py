@@ -1608,9 +1608,89 @@ async def test_exportacion_retencion() -> None:
     await _estado(V["id"], "baja")
 
 
+# ── Tarea 17 ──────────────────────────────────────────────────────────────────────────────────
+
+async def test_municipio_vacio() -> None:
+    """Un municipio recién dado de alta sin copiar catálogos: las pantallas no dan 500 y lo que falta
+    da un error con mensaje (guía de arranque, R3-R10)."""
+    from fastapi import HTTPException
+    from app.services.estados_ot import id_estado_ot
+    from app.services.municipios.defectos import id_nacionalidad_defecto, id_tipo_representacion_defecto
+    print("\ntest_municipio_vacio")
+    ctx = await _contexto_alta()
+    suf, cod = _sufijo()
+    body = _alta_body(suf, cod, id_provincia=ctx["ba"])
+    body["nombre"] = f"Municipio de prueba W {suf}"
+    body["subdominio"] = f"w-{suf}"
+    body["copiar"] = []
+    body["modulos"] = ["reclamos", "agenda", "turnos", "tramites", "ot_supervisor", "ot_agente", "ot_auditoria",
+                       "emergencias", "encuestas", "entradas", "bi", "agentes_gestion"]
+    async with _cliente() as c:
+        r = await c.post("/api/v1/super/municipios", json=body, headers=ctx["h"])
+        assert r.status_code == 201, r.text
+        W, admin = r.json()["id_municipio"], r.json()["id_administrador"]
+        h = _token(admin, W)
+
+        quinientos = []
+        for ruta in ("/api/v1/buc/ciudadanos", "/api/v1/buc/empresas", "/api/v1/buc/usuarios", "/api/v1/buc/usuarios/cupo",
+                     "/api/v1/reclamos", "/api/v1/reclamos/catalogo/tipos", "/api/v1/ordenes-trabajo", "/api/v1/turnos",
+                     "/api/v1/turnos/prestaciones", "/api/v1/tramites", "/api/v1/tramites/tipos", "/api/v1/emergencias/eventos",
+                     "/api/v1/admin/area", "/api/v1/admin/subarea", "/api/v1/admin/tipo_reclamo", "/api/v1/admin/agentes",
+                     "/api/v1/admin/equipos", "/api/v1/admin/configuracion_general", "/api/v1/agenda/espacios",
+                     "/api/v1/dashboard/resumen", "/api/v1/config/identidad/actual", "/api/v1/encuestas/plantillas",
+                     "/api/v1/bi/operativo/resumen", "/api/v1/notificaciones"):
+            r = await c.get(ruta, headers=h)
+            if r.status_code >= 500:
+                quinientos.append(f"{ruta} {r.status_code}")
+        check("los listados del municipio vacío no dan 500", not quinientos, str(quinientos))
+
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("DELETE FROM configuracion_general WHERE id_municipio = :m AND clave = 'municipio_descripcion'"),
+                             {"m": W})
+            await db.commit()
+        r = await c.put("/api/v1/config/identidad", json={"municipio_descripcion": "Prueba W"}, headers=h)
+        check("R3: Identidad crea la clave que falta", r.status_code == 200, f"{r.status_code} {r.text[:120]}")
+        async with AsyncSessionLocal() as db:
+            check("R3: la clave quedó con tipo y activa", tuple((await db.execute(text(
+                "SELECT valor, tipo, activo FROM configuracion_general WHERE id_municipio = :m AND clave = 'municipio_descripcion'"),
+                {"m": W})).one()) == ("Prueba W", "string", True))
+
+        r = await c.get("/api/v1/geo/buscar", params={"q": "Calle Falsa 123"}, headers=h)
+        check("R4: sin zona de búsqueda → 409 con mensaje", r.status_code == 409 and "zona de búsqueda" in r.text,
+              f"{r.status_code} {r.text[:120]}")
+
+        for i in range(5):
+            await c.post("/api/v1/auth/login", json={"identificador": "repetido.tope@prueba-aislamiento.com.ar",
+                                                     "password": "incorrecta"},
+                         headers={"Origin": f"https://w-{suf}.zge.zaris.com.ar"})
+        r = await c.post("/api/v1/auth/login", json={"identificador": "repetido.tope@prueba-aislamiento.com.ar",
+                                                     "password": "incorrecta"})
+        check("límite de intentos por mail separado por municipio", r.status_code != 429, str(r.status_code))
+
+    async with AsyncSessionLocal() as db:
+        nac = await id_nacionalidad_defecto(db, W)
+        rep = await id_tipo_representacion_defecto(db, W)
+        check("R9: nacionalidad por defecto del municipio (la de su país)", await _escalar(
+            db, "SELECT pais FROM nacionalidades WHERE id = :i", {"i": nac}) == "Argentina", str(nac))
+        check("R10: tipo de representación por defecto", await _escalar(
+            db, "SELECT tipo FROM tipo_representacion WHERE id = :i", {"i": rep}) == "Representante Legal", str(rep))
+        check("R9/R10: claves sembradas por el alta", await _escalar(db, """
+            SELECT count(*) FROM configuracion_general WHERE id_municipio = :m
+               AND clave IN ('id_nacionalidad_defecto', 'id_tipo_representacion_defecto') AND valor ~ '^[0-9]+$'""",
+            {"m": W}) == 2)
+        await db.execute(text("UPDATE estado_ot SET nombre = 'Terminada (prueba)' WHERE nombre = 'Terminada'"))
+        try:
+            await id_estado_ot(db, "Terminada")
+            check("R7: estado de OT faltante → 409", False, "no falló")
+        except HTTPException as e:
+            check("R7: estado de OT faltante → 409", e.status_code == 409 and "Terminada" in e.detail, f"{e.status_code} {e.detail}")
+        await db.rollback()
+    await _estado(W, "baja")
+
+
 PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones_super, test_links_por_municipio,
                                      test_modelo, test_area_fija_api, test_tope, test_super_admins, test_ficha_municipio,
-                                     test_vaciado_guardas, test_vaciado_operativo_y_todo, test_exportacion_retencion,
+                                     test_vaciado_guardas, test_vaciado_operativo_y_todo, test_exportacion_retencion, test_municipio_vacio,
                                      test_alta_validaciones, test_alta_ok, test_alta_atomica, test_alta_agrega_fijos, test_alta_concurrente,
                                      test_invitacion, test_invitacion_token_malformado, test_estados,
                                      test_alta_por_origen,

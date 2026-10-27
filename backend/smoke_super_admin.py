@@ -355,9 +355,10 @@ async def test_nivel_efectivo() -> None:
     await _contexto()
     async with _cliente() as c:
         tok = await _token(c, EMAIL_SUPER)
-        r = await c.put("/api/v1/config/identidad", json={"municipio_nombre": "AISLAB no se guarda"},
-                        headers=_h(tok, CTX["B"]))
-        check("pasa el guard de nivel 1 (identidad de B → 409, no 403)", r.status_code == 409,
+        # Body vacío: pasa el guard y el handler lo rechaza (422) sin escribir; un 403 sería el guard.
+        # (Desde F4 la identidad crea la clave que falta: un valor de prueba quedaría guardado en B.)
+        r = await c.put("/api/v1/config/identidad", json={}, headers=_h(tok, CTX["B"]))
+        check("pasa el guard de nivel 1 (identidad de B con body vacío → 422, no 403)", r.status_code == 422,
               f"{r.status_code} {r.text[:120]}")
         me = (await c.get("/api/v1/auth/me", headers=_h(tok))).json()
         check("/auth/me: nivel 0, es_super_admin y el módulo municipios",
