@@ -6,8 +6,8 @@ URLs públicas que el backend arma para la UI y los mails (fuente única).
   esquema http(s), o la línea entera "APP_X=https://..." pegada como valor (caso real
   en Railway 2026-09-27)- devuelve "" y la UI dice "no configurada" en vez de publicar
   un link o QR inválido (memoria feedback_setting_url_publica_default_vacio).
-- `url_alta_publica(slug)`: página pública de alta de vecinos del shell (GitHub Pages)
-  para el ÚNICO municipio del deploy (mono-tenant, CLAUDE.md §38): dominio + `?m=slug`.
+- `url_alta_publica(slug)`: página pública de alta de vecinos del shell para el municipio
+  del slug: dominio + `?m=slug`.
   Sin slug → None (la PWA y las páginas no muestran el link).
 """
 import re

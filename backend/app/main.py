@@ -86,24 +86,26 @@ app = FastAPI(
 )
 
 # CORS
+# Subdominios de municipio (<sub>.zge|vecinos|agentes.zaris.com.ar, mismo patron que _PATRON_HOST de
+# core/municipio.py) y proyectos de Cloudflare Pages (incluidas sus vistas previas <hash>.zaris-*.pages.dev).
+# Solo https. Starlette lo evalua con fullmatch.
+ORIGEN_ZARIS_REGEX = (
+    r"^https://([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)?(zge|vecinos|agentes)\.zaris\.com\.ar$"
+    r"|^https://([a-z0-9-]+\.)?zaris-(zge|vecinos|agentes)\.pages\.dev$"
+)
 app.add_middleware(
     CORSMiddleware,
+    allow_origin_regex=ORIGEN_ZARIS_REGEX,
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:5174",
         "http://localhost:8080",
         "http://localhost:8090",
-        "https://cesarzeta.github.io",
-        "http://zge.zaris.com.ar",
-        "https://zge.zaris.com.ar",
-        # App Vecinos (PWA en Vercel)
-        "http://vecinos.zaris.com.ar",
-        "https://vecinos.zaris.com.ar",
-        "https://zaris-vecinos.vercel.app",
-        # App de agentes (PWA en Vercel, repo zaris-agentes; 5175 = vite dev local)
+        # App de agentes (5175 = vite dev local)
         "http://localhost:5175",
-        "http://agentes.zaris.com.ar",
-        "https://agentes.zaris.com.ar",
+        # Hosting viejo: se quitan en el corte A, al apagar GitHub Pages y Vercel
+        "https://cesarzeta.github.io",
+        "https://zaris-vecinos.vercel.app",
         "https://zaris-agentes.vercel.app",
     ],
     allow_credentials=True,

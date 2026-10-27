@@ -5,6 +5,9 @@ name: Build & publish shell React (web-app/)
 # main, asi que el build queda en cesarzeta.github.io/zaris-zge/web-app/.
 #
 # Si el dist/ no cambia (mismo hash), no se hace commit.
+#
+# IT-01 F4+F5: se borra en el corte A, cuando zge.zaris.com.ar pasa a Cloudflare
+# Pages, que buildea web-app en cada push (tools/cloudflare_pages_build.sh).
 
 on:
   push:
