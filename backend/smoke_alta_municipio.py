@@ -1440,6 +1440,23 @@ async def test_clonado_excluidas() -> None:
             check(f"{tabla} de un tipo excluido → se omite", omitida)
         check("no entró ningún tipo de trámite", await _escalar(
             db, "SELECT count(*) FROM tipo_tramite WHERE id_municipio = :m", {"m": mid}) == 0)
+        # solo_activas: una versión activa de un tipo dado de baja no lo trae de vuelta.
+        fila = (await db.execute(text(
+            "SELECT v.id_tipo_tramite_version FROM tipo_tramite_version v JOIN tipo_tramite t USING (id_tipo_tramite) "
+            "WHERE v.id_municipio = :b AND v.activo AND NOT t.activo LIMIT 1"), {"b": base})).first()
+        if fila is None:
+            check("hay una versión activa de un tipo inactivo para probar", False)
+        else:
+            cl2 = Clonador(conn, mid, permitidas={"tipo_tramite", "tipo_tramite_version"}, solo_activas=True)
+            await cl2.cargar_clases()
+            try:
+                await cl2.clonar("tipo_tramite_version", fila[0])
+                omitida = False
+            except FilaOmitida:
+                omitida = True
+            check("versión de un tipo inactivo (solo_activas) → se omite", omitida)
+            check("no entró el tipo inactivo", await _escalar(
+                db, "SELECT count(*) FROM tipo_tramite WHERE id_municipio = :m", {"m": mid}) == 0)
         await db.rollback()
     await _estado(mid, "baja")
 

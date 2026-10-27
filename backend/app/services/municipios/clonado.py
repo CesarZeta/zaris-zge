@@ -38,13 +38,15 @@ async def conexion_asyncpg(db):
 class Clonador:
     def __init__(self, conn, id_mun: int, *, marca: Optional[str] = None,
                  permitidas: Optional[set[str]] = None, id_usuario_alta: Optional[int] = None,
-                 excluidas: Optional[set[tuple[str, int]]] = None):
+                 excluidas: Optional[set[tuple[str, int]]] = None, solo_activas: bool = False):
         self.conn = conn
         self.B = id_mun
         self.marca = marca
         self.permitidas = permitidas
         # (tabla, id) que no se copian aunque una fila hija los pida: la hija se omite (FilaOmitida).
         self.excluidas = excluidas or set()
+        # Copia de catálogos: una fila dada de baja en el origen no se copia aunque una hija activa la pida.
+        self.solo_activas = solo_activas
         self.id_usuario_alta = id_usuario_alta
         self.mapa: dict[tuple[str, int], int] = {}
         self.anclas: dict[str, int] = {}
@@ -125,6 +127,8 @@ class Clonador:
         fila = await self.conn.fetchrow(f'SELECT * FROM "{tabla}" WHERE "{pk}" = $1', id_origen)
         if fila is None:
             raise RuntimeError(f"{tabla} {id_origen} no existe")
+        if self.solo_activas and fila.get("activo") is False:
+            raise FilaOmitida(f"{tabla} {id_origen}: dada de baja")
         cambios = dict(cambios or {})
         vals = dict(fila)
         vals.pop(pk)

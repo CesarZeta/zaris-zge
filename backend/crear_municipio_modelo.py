@@ -125,7 +125,7 @@ async def aplicar(excluir: Path) -> int:
             RETURNING id_municipio"""), {"p": prov})
         conn = await conexion_asyncpg(db)
         permitidas = {t for ts in CATALOGOS_COPIABLES.values() for t in ts} - tablas_fuera
-        c = Clonador(conn, modelo, permitidas=permitidas)
+        c = Clonador(conn, modelo, permitidas=permitidas, solo_activas=True)
         await c.cargar_clases()
         copiadas: dict[str, int] = {}
         omitidas = 0

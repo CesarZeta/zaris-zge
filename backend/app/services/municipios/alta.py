@@ -134,7 +134,7 @@ async def _copiar_catalogos(db: AsyncSession, d: AltaMunicipioIn, id_mun: int, m
                             id_super: int) -> int:
     """Copia del modelo las tablas elegidas (y siempre las áreas fijas). Devuelve las filas omitidas."""
     conn = await conexion_asyncpg(db)
-    c = Clonador(conn, id_mun, permitidas=_TABLAS_COPIABLES, id_usuario_alta=id_super)
+    c = Clonador(conn, id_mun, permitidas=_TABLAS_COPIABLES, id_usuario_alta=id_super, solo_activas=True)
     await c.cargar_clases()
     tablas: list[str] = [] if "areas_subareas" in d.copiar else ["area"]
     for grupo in CATALOGOS_COPIABLES:
