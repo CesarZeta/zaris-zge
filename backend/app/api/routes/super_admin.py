@@ -1,8 +1,10 @@
 """
 ZARIS API — Lo exclusivo del super administrador (IT-01 F3, PLAN_MULTI_MUNICIPIO_F3.md, Tarea 5).
 
-GET  /api/v1/super/municipios                   → todos los municipios (también los inactivos)
-PUT  /api/v1/super/municipios/{id_municipio}    → editar nombre, subdominio, país y zona horaria
+GET  /api/v1/super/municipios                   → todos los municipios, por país, provincia y nombre
+                                                  (?codigo_pais=&id_provincia=&estado=)
+PUT  /api/v1/super/municipios/{id_municipio}    → editar nombre, subdominio, país, provincia, partido y
+                                                  zona horaria (el texto de país y provincia se deriva)
 POST /api/v1/super/seleccion                    → el selector del shell eligió un municipio
 GET  /api/v1/super/config-global                → parámetros globales (sin las claves vapid_*)
 PUT  /api/v1/super/config-global/{id_config}    → editar un parámetro global
@@ -14,7 +16,7 @@ editan acá: los da el alta y la baja de F4.
 import re
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +26,7 @@ from app.core.config_municipio import leer_configs
 from app.core.database import get_db
 from app.core.municipio import invalidar_cache_municipios
 from app.services.accesos_super import registrar_acceso_super, registrar_acceso_super_en
+from app.services.municipios.constantes import ESTADOS
 
 router = APIRouter(prefix="/api/v1/super", tags=["Super administrador"],
                    dependencies=[Depends(require_super_admin)])
@@ -39,16 +42,29 @@ class MunicipioSuperOut(BaseModel):
     subdominio: Optional[str] = None
     codigo_pais: str
     pais: Optional[str] = None
+    pais_nombre: Optional[str] = None
+    etiqueta_nivel_1: Optional[str] = None
+    etiqueta_nivel_2: Optional[str] = None
+    id_provincia: Optional[int] = None
+    provincia_nombre: Optional[str] = None
+    id_partido: Optional[int] = None
+    partido_nombre: Optional[str] = None
     zona_horaria: str
     direccion_base: bool
     activo: bool
+    estado: str
+    fue_produccion: bool
+    max_usuarios_activos: Optional[int] = None
+    cuentas_activas: int = 0
 
 
 class MunicipioSuperUpdate(BaseModel):
+    """`pais` y `provincia` en texto ya no se aceptan (si llegan se ignoran): se derivan del catálogo."""
     nombre: str = Field(..., min_length=3, max_length=150)
     subdominio: Optional[str] = Field(None, max_length=63, pattern=_SUBDOMINIO)
     codigo_pais: str = Field(..., pattern=r"^[A-Z]{2}$")
-    pais: Optional[str] = Field(None, max_length=100)
+    id_provincia: Optional[int] = Field(None, ge=1, le=2_147_483_647)
+    id_partido: Optional[int] = Field(None, ge=1, le=2_147_483_647)
     zona_horaria: str = Field(..., min_length=3, max_length=64)
 
 
@@ -75,15 +91,58 @@ class ConfigGlobalUpdate(BaseModel):
 
 
 _SELECT_MUNICIPIO = """
-    SELECT id_municipio, nombre, codigo_corto, subdominio, codigo_pais, pais, zona_horaria,
-           direccion_base, activo
-      FROM municipios"""
+    SELECT m.id_municipio, m.nombre, m.codigo_corto, m.subdominio, m.codigo_pais, m.pais, m.zona_horaria,
+           m.direccion_base, m.activo, m.estado, m.fue_produccion, m.max_usuarios_activos,
+           m.id_provincia, pr.nombre AS provincia_nombre, m.id_partido, pa.nombre AS partido_nombre,
+           ps.nombre AS pais_nombre, ps.etiqueta_nivel_1, ps.etiqueta_nivel_2,
+           (SELECT count(*) FROM usuarios u
+             WHERE u.id_municipio = m.id_municipio AND u.activo AND u.nivel_acceso BETWEEN 1 AND 5
+           ) AS cuentas_activas
+      FROM municipios m
+      LEFT JOIN provincias pr ON pr.id_provincia = m.id_provincia
+      LEFT JOIN partidos pa ON pa.id_partido = m.id_partido
+      LEFT JOIN paises ps ON ps.codigo_pais = m.codigo_pais"""
+
+_ORDEN_MUNICIPIOS = " ORDER BY ps.nombre NULLS LAST, pr.nombre NULLS LAST, m.nombre, m.id_municipio"
 
 
 @router.get("/municipios", response_model=list[MunicipioSuperOut])
-async def listar_municipios(db: AsyncSession = Depends(get_db)):
-    rows = await db.execute(text(_SELECT_MUNICIPIO + " ORDER BY id_municipio"))
+async def listar_municipios(
+    codigo_pais: Optional[str] = Query(None, pattern=r"^[A-Z]{2}$"),
+    id_provincia: Optional[int] = Query(None, ge=1, le=2_147_483_647),
+    estado: Optional[str] = Query(None, pattern="^(" + "|".join(ESTADOS) + ")$"),
+    db: AsyncSession = Depends(get_db),
+):
+    rows = await db.execute(text(
+        _SELECT_MUNICIPIO
+        + " WHERE (CAST(:pais AS text) IS NULL OR m.codigo_pais = :pais)"
+          " AND (CAST(:prov AS integer) IS NULL OR m.id_provincia = :prov)"
+          " AND (CAST(:estado AS text) IS NULL OR m.estado = :estado)"
+        + _ORDEN_MUNICIPIOS), {"pais": codigo_pais, "prov": id_provincia, "estado": estado})
     return [dict(r._mapping) for r in rows.fetchall()]
+
+
+async def _validar_ubicacion(db: AsyncSession, body: "MunicipioSuperUpdate", estado: str) -> tuple[str, Optional[str]]:
+    """País del catálogo, provincia de ese país y partido de esa provincia (422 si no). Devuelve el
+    texto derivado (país, provincia) que se guarda en las columnas viejas."""
+    pais = await db.scalar(text("SELECT nombre FROM paises WHERE codigo_pais = :p AND activo"),
+                           {"p": body.codigo_pais})
+    if pais is None:
+        raise HTTPException(422, "País inexistente")
+    provincia = None
+    if body.id_provincia is not None:
+        provincia = await db.scalar(text(
+            "SELECT nombre FROM provincias WHERE id_provincia = :i AND codigo_pais = :p"),
+            {"i": body.id_provincia, "p": body.codigo_pais})
+        if provincia is None:
+            raise HTTPException(422, "La provincia no es del país del municipio")
+    elif estado not in ("baja", "modelo"):
+        raise HTTPException(422, "Elegí la provincia del municipio")
+    if body.id_partido is not None and not await db.scalar(text(
+            "SELECT 1 FROM partidos WHERE id_partido = :i AND id_provincia = :p"),
+            {"i": body.id_partido, "p": body.id_provincia}):
+        raise HTTPException(422, "El partido no es de la provincia del municipio")
+    return pais, provincia
 
 
 @router.put("/municipios/{id_municipio}", response_model=MunicipioSuperOut,
@@ -95,10 +154,11 @@ async def editar_municipio(
     db: AsyncSession = Depends(get_db),
     sa: dict = Depends(require_super_admin),
 ):
-    antes = (await db.execute(text(_SELECT_MUNICIPIO + " WHERE id_municipio = :id"),
+    antes = (await db.execute(text(_SELECT_MUNICIPIO + " WHERE m.id_municipio = :id"),
                               {"id": id_municipio})).mappings().first()
     if antes is None:
         raise HTTPException(404, "Municipio no encontrado")
+    pais, provincia = await _validar_ubicacion(db, body, antes["estado"])
     # La zona se valida contra la base de husos de Postgres: es la que usan las conversiones
     # de fechas (F5b), y no depende de que el servidor tenga tzdata.
     if not await db.scalar(text("SELECT 1 FROM pg_timezone_names WHERE name = :z"), {"z": body.zona_horaria}):
@@ -107,14 +167,15 @@ async def editar_municipio(
             "SELECT 1 FROM municipios WHERE subdominio = :s AND id_municipio <> :id"),
             {"s": body.subdominio, "id": id_municipio}):
         raise HTTPException(409, "Ese subdominio ya lo usa otro municipio")
-    nuevo = (await db.execute(text("""
+    await db.execute(text("""
         UPDATE municipios
            SET nombre = :nombre, subdominio = :subdominio, codigo_pais = :codigo_pais, pais = :pais,
+               id_provincia = :id_provincia, provincia = :provincia, id_partido = :id_partido,
                zona_horaria = :zona_horaria, fecha_modificacion = NOW(), id_usuario_modificacion = :u
-         WHERE id_municipio = :id
-     RETURNING id_municipio, nombre, codigo_corto, subdominio, codigo_pais, pais, zona_horaria,
-               direccion_base, activo"""),
-        {**body.model_dump(), "u": sa["id_usuario"], "id": id_municipio})).mappings().first()
+         WHERE id_municipio = :id"""),
+        {**body.model_dump(), "pais": pais, "provincia": provincia, "u": sa["id_usuario"], "id": id_municipio})
+    nuevo = (await db.execute(text(_SELECT_MUNICIPIO + " WHERE m.id_municipio = :id"),
+                              {"id": id_municipio})).mappings().first()
     cambios = "; ".join(f"{k}: {antes[k]} → {nuevo[k]}" for k in body.model_dump() if antes[k] != nuevo[k])
     # El registro va en la misma transacción: si no se puede registrar, el cambio no queda.
     await registrar_acceso_super_en(db, id_usuario=sa["id_usuario"], accion="municipio_editar",

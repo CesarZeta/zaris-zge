@@ -550,10 +550,19 @@
     try {
       const res = await fetch(`${API}/api/v1/super/municipios`, { headers: _authHeaders() });
       if (!res.ok) return;
-      lista = (await res.json()).filter(m => m.activo);
+      // IT-01 F4: sin los de baja; el modelo sí (el super cura sus catálogos). Backend viejo: `activo`.
+      lista = (await res.json()).filter(m => (m.estado ? m.estado !== 'baja' : m.activo));
     } catch (e) { return; }
     if (!lista.length) return;
-    sel.innerHTML = lista.map(m => `<option value="${m.id_municipio}">${esc(m.nombre)}</option>`).join('');
+    // Agrupado por país y provincia, en el orden en que lo devuelve el backend.
+    const grupoDe = m => (m.estado === 'modelo' ? 'Modelo'
+      : `${m.pais_nombre || m.codigo_pais || ''} · ${m.provincia_nombre || 'sin provincia'}`);
+    const etiqueta = m => (m.estado === 'modelo' ? `Modelo — ${m.nombre}` : m.nombre);
+    const grupos = [...new Set(lista.map(grupoDe))];
+    sel.innerHTML = grupos.map(g => `<optgroup label="${esc(g).replace(/"/g, '&quot;')}">`
+      + lista.filter(m => grupoDe(m) === g)
+          .map(m => `<option value="${m.id_municipio}">${esc(etiqueta(m))}</option>`).join('')
+      + '</optgroup>').join('');
     const previo = localStorage.getItem(MUNICIPIO_ACTIVO_KEY);
     const elegido = lista.some(m => String(m.id_municipio) === previo)
       ? previo

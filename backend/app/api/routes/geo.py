@@ -111,15 +111,30 @@ async def _nominatim_get(path: str, params: dict) -> list | dict:
 
 # ── Catálogos DB ─────────────────────────────────────────────────────────────
 
+@router.get("/paises")
+async def listar_paises(
+    para_alta: bool = Query(False, description="Solo los habilitados para dar de alta municipios"),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Catálogo global de países (IT-01 F4) con el nombre de cada nivel (Provincia/Partido…)."""
+    r = await db.execute(text(
+        "SELECT codigo_pais, nombre, etiqueta_nivel_1, etiqueta_nivel_2, zona_horaria, habilitado_para_alta "
+        "FROM paises WHERE activo = TRUE AND (NOT :alta OR habilitado_para_alta) ORDER BY nombre"
+    ), {"alta": para_alta})
+    return [dict(row._mapping) for row in r.fetchall()]
+
+
 @router.get("/provincias")
 async def listar_provincias(
+    codigo_pais: Optional[str] = Query(None, pattern=r"^[A-Z]{2}$"),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     r = await db.execute(text(
-        "SELECT id_provincia, nombre, iso_code FROM provincias "
-        "WHERE activo = TRUE ORDER BY nombre"
-    ))
+        "SELECT id_provincia, nombre, iso_code, codigo_pais FROM provincias "
+        "WHERE activo = TRUE AND (CAST(:p AS text) IS NULL OR codigo_pais = :p) ORDER BY nombre"
+    ), {"p": codigo_pais})
     return [dict(row._mapping) for row in r.fetchall()]
 
 

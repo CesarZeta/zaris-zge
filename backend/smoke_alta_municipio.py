@@ -325,8 +325,77 @@ async def test_demo_por_estado() -> None:
         check("el administrador de C (puesta_en_marcha) no", r.status_code == 401, f"{r.status_code}")
 
 
+# ── Tarea 6 ───────────────────────────────────────────────────────────────────────────────────
+
+async def _super_headers(db) -> dict:
+    sid = await _escalar(db, "SELECT id_usuario FROM usuarios WHERE nivel_acceso = 0 AND id_municipio IS NULL "
+                             "AND activo ORDER BY id_usuario LIMIT 1")
+    return {"Authorization": "Bearer " + crear_token_super_admin(sid, segundo_factor=True)}
+
+
+async def test_geo_catalogo() -> None:
+    print("\ntest_geo_catalogo")
+    C = await _municipio_c()
+    h = _token(C["n2"], C["id"])
+    async with _cliente() as c:
+        r = await c.get("/api/v1/geo/paises", params={"para_alta": "true"}, headers=h)
+        check("paises para el alta = solo AR", r.status_code == 200 and [p["codigo_pais"] for p in r.json()] == ["AR"],
+              f"{r.status_code} {r.text[:160]}")
+        if r.status_code == 200 and r.json():
+            p = r.json()[0]
+            check("el país trae sus etiquetas de nivel", p.get("etiqueta_nivel_1") == "Provincia"
+                  and p.get("etiqueta_nivel_2") == "Partido", p)
+        r = await c.get("/api/v1/geo/paises", headers=h)
+        check("paises sin filtro incluye VE", r.status_code == 200 and "VE" in [p["codigo_pais"] for p in r.json()],
+              f"{r.status_code}")
+        r = await c.get("/api/v1/geo/provincias", params={"codigo_pais": "AR"}, headers=h)
+        check("provincias de AR = 24", r.status_code == 200 and len(r.json()) == 24, f"{r.status_code} {len(r.json())}")
+        r = await c.get("/api/v1/geo/provincias", params={"codigo_pais": "VE"}, headers=h)
+        check("provincias de VE = 0 (todavía no se cargaron)", r.status_code == 200 and r.json() == [], f"{r.status_code}")
+
+
+async def test_municipio_provincia() -> None:
+    print("\ntest_municipio_provincia")
+    C = await _municipio_c()
+    async with AsyncSessionLocal() as db:
+        h = await _super_headers(db)
+        ba = await _escalar(db, "SELECT id_provincia FROM provincias WHERE codigo_pais = 'AR' AND nombre = 'Buenos Aires'")
+        cba = await _escalar(db, "SELECT id_provincia FROM provincias WHERE codigo_pais = 'AR' AND nombre ILIKE 'C_rdoba'")
+        partido_cba = await _escalar(db, "SELECT id_partido FROM partidos WHERE id_provincia = :p LIMIT 1", {"p": cba})
+    base = {"nombre": "Municipio de prueba C", "subdominio": SUB_C, "codigo_pais": "AR",
+            "zona_horaria": "America/Argentina/Buenos_Aires", "id_provincia": ba, "id_partido": None}
+    async with _cliente() as c:
+        r = await c.put(f"/api/v1/super/municipios/{C['id']}", json={**base, "codigo_pais": "VE"}, headers=h)
+        check("PUT con una provincia que no es del país → 422", r.status_code == 422, f"{r.status_code} {r.text[:160]}")
+        r = await c.put(f"/api/v1/super/municipios/{C['id']}", json={**base, "id_partido": partido_cba}, headers=h)
+        check("PUT con un partido de otra provincia → 422", r.status_code == 422, f"{r.status_code} {r.text[:160]}")
+        r = await c.put(f"/api/v1/super/municipios/{C['id']}", json={**base, "id_provincia": cba}, headers=h)
+        j = r.json() if r.status_code == 200 else {}
+        check("PUT con Córdoba → 200 y provincia_nombre", r.status_code == 200
+              and j.get("provincia_nombre", "").startswith("C") and j.get("pais_nombre") == "Argentina",
+              f"{r.status_code} {r.text[:200]}")
+        check("la salida trae estado, etiquetas y cuentas activas",
+              j.get("estado") == "puesta_en_marcha" and j.get("etiqueta_nivel_1") == "Provincia"
+              and j.get("cuentas_activas", 0) >= 2, j)
+        r = await c.get("/api/v1/super/municipios", params={"id_provincia": cba}, headers=h)
+        check("filtro por provincia", r.status_code == 200 and [m["id_municipio"] for m in r.json()] == [C["id"]],
+              f"{r.status_code} {r.text[:160]}")
+        r = await c.get("/api/v1/super/municipios", params={"estado": "demo"}, headers=h)
+        check("filtro por estado", r.status_code == 200 and all(m["estado"] == "demo" for m in r.json())
+              and len(r.json()) >= 1, f"{r.status_code}")
+        r = await c.put(f"/api/v1/super/municipios/{C['id']}", json=base, headers=h)
+        check("vuelve a Buenos Aires", r.status_code == 200 and r.json().get("provincia_nombre") == "Buenos Aires",
+              f"{r.status_code}")
+        async with AsyncSessionLocal() as db:
+            texto = (await db.execute(text("SELECT pais, provincia FROM municipios WHERE id_municipio = :m"),
+                                      {"m": C["id"]})).one()
+        check("el texto de país y provincia se deriva del catálogo", tuple(texto) == ("Argentina", "Buenos Aires"),
+              texto)
+
+
 PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones_super,
-                                     test_estado_baja, test_modelo_no_operable, test_demo_por_estado)}
+                                     test_estado_baja, test_modelo_no_operable, test_demo_por_estado,
+                                     test_geo_catalogo, test_municipio_provincia)}
 
 
 async def main(nombres: list[str]) -> int:
