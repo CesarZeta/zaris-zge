@@ -12,6 +12,8 @@
 
 **Stack:** FastAPI 0.111 + SQLAlchemy async (asyncpg), PostgreSQL 17 · shell vanilla + React 19 (Vite) · PWAs `zaris-vecinos` y `zaris-agentes` (React + VitePWA) · Cloudflare Pages + DNS de Cloudflare · Supabase Storage · Resend.
 
+**Plan aprobado por César el 2026-10-27.** Ejecución recomendada: directa (como F1+F2 y F3), con la revisión independiente de la Tarea 18. Se ejecuta desde una sesión nueva, para tener contexto suficiente.
+
 **Spec:** [`PLAN_MULTI_MUNICIPIO_F4_F5_DISENO.md`](PLAN_MULTI_MUNICIPIO_F4_F5_DISENO.md), aprobado por César el 2026-10-27. Base: [`PLAN_MULTI_MUNICIPIO.md`](PLAN_MULTI_MUNICIPIO.md) §5-§10; siguen valiendo las reglas R1-R11 de [`PLAN_MULTI_MUNICIPIO_F1_F2.md`](PLAN_MULTI_MUNICIPIO_F1_F2.md) y lo de F3/F3b (CLAUDE.md §1, §3). Relevamiento del código: commits ZGE `7272595`, zaris-vecinos `afa1182`, zaris-agentes `8d0c5f2`.
 
 ## Restricciones globales
