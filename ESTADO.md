@@ -18,15 +18,15 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **IT-01 — lo que queda de F3 y F3b:**
-   - **Verificaciones que solo puede hacer César en prod:**
-     - pedir «Olvidé mi contraseña» con la cuenta del super: el mail tiene que llegar como ZARIS (asunto, encabezado, texto, pie y remitente), sin San Andrés. El arreglo `2f48a55` está desplegado, pero no se probó con un mail real;
-     - como super administrador, Reclamos → Buscar sin filtros: el total tiene que dar lo mismo que con `cesar@` (2995 el 2026-10-26 a la noche);
-     - el próximo ingreso con código deja el evento `ingreso` en `usuario_segundo_factor_evento` (en el corte solo hubo `habilitado` y `vinculado`, porque vincular ya entra).
-   - Próximo: los menores de Pendientes y **F4** (estado y tope de usuarios por municipio, municipio modelo, alta, vaciado, módulos por municipio). F4 todavía no tiene plan.
+1. **IT-01 — próximo: F4 y F5 juntas** (decisión de César, 2026-10-27): alta de municipios (estado, modelo, primer administrador, módulos por municipio, tope, vaciado) y subdominios por municipio, para que la prueba final sea en prod. Hoy el administrador de un municipio nuevo no puede entrar en prod sin subdominio. **Los tres frontends (shell, app del vecino, app de agentes) se mudan a Cloudflare Pages**: costo cero y el DNS ya está ahí; Vercel Hobby no admite uso comercial. Diseño en curso desde el 2026-10-27. Las verificaciones de F3/F3b en prod quedaron hechas el 2026-10-27: el mail de recuperación del super sale como ZARIS, el super ve el mismo total de reclamos que `cesar@` y el ingreso con código deja su evento.
 2. **Asignación automática — revisar ~2026-10-29:** carga de los agentes de las 17 gestiones que asignan solas (en varias, UN solo agente de nivel Gestión recibe todo).
 3. **Commits viejos de las dos purgas:** César mandó el pedido a GitHub Support el 2026-10-22. El 2026-10-26 los commits seguían publicados; si siguen así hacia el 2026-11-05, reclamar el ticket (detalle en la memoria privada de Cesar).
-4. **Base de conocimiento de ayudas:** la próxima sesión completa es para eso (César, 2026-10-23). Mientras tanto no se tocan manuales.
+4. **Bloque del vecino — después de F4 (orden de César, 2026-10-27):**
+   1. La web del ciudadano con todo lo que tiene la app (supuesto de Claude, sin confirmar: es el modo escritorio del portal, ver En curso).
+   2. Todas las prestaciones del vecino; falta **iniciar un trámite** desde el portal (ni endpoint ni pantalla). Turnos y entradas ya se reservan desde la app (verificado en el código).
+   3. **Vecino 360 para el vecino** (perfil o donde convenga).
+   4. **Vecino 360 para el municipio:** en Datos y como pestaña de la ficha del ciudadano y de la empresa, con todas sus interacciones; por persona o por empresa representada.
+   5. **Base de conocimiento de ayudas** al final, con dos capítulos: canales del vecino y gestión interna. Ya hay un relevamiento inicial de los canales del vecino (2026-10-27). Mientras tanto no se tocan manuales.
 5. Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
 6. **Primer cierre real de un trámite de vecino en prod:** confirma el aviso de resultado y la encuesta (probados solo en local). Va con los próximos smokes con cuentas reales; César pasa los trámites.
 
@@ -38,7 +38,7 @@
   - **F3b (segundo factor) en prod desde el 2026-10-26** ([`PLAN_MULTI_MUNICIPIO_F3B.md`](PLAN_MULTI_MUNICIPIO_F3B.md); reglas en CLAUDE.md §1): los niveles 0 y 1 entran con la clave y el código de una app de autenticación; la vinculación la habilita el super (desde Usuarios, o `backend/habilitar_segundo_factor.py` para el nivel 0); hay códigos de emergencia; también en la app de agentes.
     - **Para quien trabaje en local (Roy incluido):** sumar a `backend/.env.local` `SEGUNDO_FACTOR_OBLIGATORIO=false` y una `SEGUNDO_FACTOR_CLAVE` de desarrollo (comando en `backend/.env.example`). Sin eso, las cuentas de nivel 0/1 reciben 503 y los smokes que entran con un administrador fallan.
   - **Lote de limpieza en prod desde el 2026-10-26** (migs 129/129b): el mismo DNI, CUIT o clave de configuración ya puede estar en dos municipios; desde acá la 127c es la que frena que un municipio pise una clave global.
-  - Orden para después: F4 → F5 (antes hay que elegir el hosting del shell: Vercel o Cloudflare Pages) → F6. Recién con F1-F6 hechas puede entrar un segundo municipio real.
+  - Orden para después: F4+F5 juntas (hosting elegido: Cloudflare Pages para los tres frontends) → F6. Recién con F1-F6 hechas puede entrar un segundo municipio real.
 - **PWA `zaris-vecinos` — modo escritorio del portal: diseño aprobado el 2026-10-12 (3ª), falta plan + código.** Solo toca el repo de la PWA; spec y pasos en su `ESTADO.md` → En curso.
 - **PROPUESTA sin aprobar — app de agentes: reclamos de oficio + «Control de entradas» (QR).** Diseño en [`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md); César lo confirma o corrige antes de F1. No hay código.
 - **App de agentes** publicada en `https://agentes.zaris.com.ar` (color del municipio, instalación desde «Mi perfil»); el vecino instala la suya desde su portal. Detalle en `zaris-agentes/ESTADO.md`.
