@@ -1473,6 +1473,15 @@ async def test_vaciado_guardas() -> None:
         r = await c.post(f"/api/v1/super/municipios/{pem}/vaciado",
                          json={"grupos": ["configuracion"], "confirmacion": nombre_pem}, headers=h)
         check("el grupo configuración no se vacía → 422", r.status_code == 422, f"{r.status_code} {r.text[:120]}")
+        async with AsyncSessionLocal() as db:
+            base = (await db.execute(text(
+                "SELECT id_municipio, nombre FROM municipios WHERE direccion_base LIMIT 1"))).first()
+        # Confirmación equivocada a propósito: si la guarda falta, da 422 y no vacía (sin efectos).
+        for sufijo, body in (("/plan", {"grupos": ["operativo"]}),
+                             ("", {"grupos": ["operativo"], "confirmacion": f"no-es-{base.nombre}"})):
+            r = await c.post(f"/api/v1/super/municipios/{base.id_municipio}/vaciado{sufijo}", json=body, headers=h)
+            check(f"municipio de las direcciones sin prefijo{sufijo or ''} → 409",
+                  r.status_code == 409 and "sin prefijo" in r.text, f"{r.status_code} {r.text[:120]}")
     for mid in (prod, pem):
         await _estado(mid, "baja")
 

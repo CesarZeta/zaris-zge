@@ -30,6 +30,8 @@ logger = logging.getLogger("zaris.municipios")
 
 GRUPOS_VACIABLES = ("operativo", "contactos", "maestros", "usuarios")
 NO_VACIABLE = "Este municipio está o estuvo en producción: sus datos no se pueden vaciar."
+# Decisión de César (2026-10-27): el municipio de las direcciones sin prefijo no se vacía aunque esté en demo.
+NO_VACIABLE_BASE = "El municipio de las direcciones sin prefijo no se puede vaciar."
 CONFIRMAR = "Escribí el nombre del municipio para confirmar."
 EN_CURSO = "Ya hay un vaciado en curso para este municipio."
 
@@ -67,10 +69,12 @@ async def validar(db: AsyncSession, id_municipio: int, grupos: set[str], confirm
     if not grupos or not grupos <= set(GRUPOS_VACIABLES):
         raise HTTPException(422, f"Grupos a vaciar: alguno de {', '.join(GRUPOS_VACIABLES)}")
     m = (await db.execute(text(
-        "SELECT nombre, estado, fue_produccion FROM municipios WHERE id_municipio = :m"
+        "SELECT nombre, estado, fue_produccion, direccion_base FROM municipios WHERE id_municipio = :m"
         + (" FOR UPDATE" if bloquear else "")), {"m": id_municipio})).first()
     if m is None:
         raise HTTPException(404, "Municipio no encontrado")
+    if m.direccion_base:
+        raise HTTPException(409, NO_VACIABLE_BASE)
     if m.estado not in ESTADOS_VACIABLES or m.fue_produccion:
         raise HTTPException(409, NO_VACIABLE)
     if confirmacion is not None and confirmacion.strip() != m.nombre:

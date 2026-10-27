@@ -20,6 +20,7 @@ const GRUPOS: { codigo: GrupoVaciable; nombre: string; ayuda: string }[] = [
   { codigo: 'usuarios', nombre: 'Usuarios', ayuda: 'cuentas internas y agentes, salvo el administrador principal' },
 ]
 const NO_VACIABLE = 'Este municipio está o estuvo en producción: sus datos no se pueden vaciar.'
+const NO_VACIABLE_BASE = 'El municipio de las direcciones sin prefijo no se puede vaciar.'
 const CONFIRMAR = 'Escribí el nombre del municipio para confirmar.'
 
 const fecha = (iso: string | null) => (iso ? new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : '—')
@@ -101,6 +102,7 @@ export function Vaciado({ municipio, onTermino }: { municipio: MunicipioSuper; o
   const [enCurso, setEnCurso] = useState<string | null>(null)
   const tarea = useTarea(enCurso)
   const vaciable = (municipio.estado === 'puesta_en_marcha' || municipio.estado === 'demo') && !municipio.fue_produccion
+    && !municipio.direccion_base
 
   useEffect(() => { setPlan(null) }, [grupos])
   useEffect(() => { if (confirmando) setConfirmacion('') }, [confirmando])
@@ -131,7 +133,9 @@ export function Vaciado({ municipio, onTermino }: { municipio: MunicipioSuper; o
     return (
       <section style={seccion}>
         <h2 style={subtitulo}>Vaciado de datos</h2>
-        <p style={{ margin: 0, fontSize: 13, color: 'var(--fg-2)' }}>{NO_VACIABLE}</p>
+        <p style={{ margin: 0, fontSize: 13, color: 'var(--fg-2)' }}>
+          {municipio.direccion_base ? NO_VACIABLE_BASE : NO_VACIABLE}
+        </p>
       </section>
     )
   }
