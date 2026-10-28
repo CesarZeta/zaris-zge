@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db, AsyncSessionLocal
 from app.core.auth import get_current_user
 from app.core.config_municipio import leer_configs
+from app.core.geo_zona import CLAVES_ZONA, zona_completa
 from app.core.municipio import municipio_actual
 from app.services.geo_limite import encuadre_municipio
 
@@ -44,13 +45,11 @@ _NOMINATIM_MIN_INTERVAL = 1.05  # margen sobre el 1 req/s
 #
 # Desde mig 87 el bbox es CONFIGURABLE en `configuracion_general` (claves
 # geo_bbox_centro_lat / geo_bbox_centro_lon / geo_bbox_delta_grados, editables
-# en Config → Sistema §41). Estas constantes quedan como FALLBACK si las claves
-# faltan o son inválidas. Se leen con cache TTL 5 min (la función corre también
-# desde routers públicos sin sesión DB inyectada → sesión propia).
-GEO_BBOX_CENTRO_LAT = -34.5305   # Vicente López (demo) — fallback
-GEO_BBOX_CENTRO_LON = -58.4779
-GEO_BBOX_DELTA_GRADOS = 0.27     # ~28 km en lat; suficiente para AMBA norte
-
+# en Config → Sistema §41). Sin las tres claves válidas, CUALQUIER municipio
+# recibe 409: no hay respaldo con la zona de otro municipio (César, 2026-10-28;
+# hasta entonces San Andrés caía a constantes de Vicente López). Se leen con
+# cache TTL 5 min (la función corre también desde routers públicos sin sesión
+# DB inyectada → sesión propia).
 SIN_ZONA = "El municipio no tiene configurada su zona de búsqueda: cargala en Configuración → Sistema."
 _BBOX_TTL_SEG = 300.0
 # Cache por municipio (IT-01, R9): con la clave sin municipio, B usaría el bbox de A.
@@ -60,32 +59,18 @@ _bbox_cache: dict[int, dict] = {}
 async def _bbox_municipio(id_municipio: int) -> tuple[float, float, float]:
     """(lat, lon, delta) del bbox del municipio, desde configuracion_general con cache.
 
-    Sin las claves (o con un valor inválido) el municipio de las direcciones sin prefijo cae a las
-    constantes de arriba; cualquier otro municipio da 409: buscaría en Vicente López sin avisar
-    (guía de arranque, R4).
+    Sin las tres claves válidas (core/geo_zona.py), 409 para cualquier municipio: buscaría en la
+    zona de otro sin avisar (guía de arranque, R4).
     """
     now = time.monotonic()
     cache = _bbox_cache.get(id_municipio)
     if cache and now - cache["ts"] < _BBOX_TTL_SEG:
         return cache["lat"], cache["lon"], cache["delta"]
-    lat, lon, delta = GEO_BBOX_CENTRO_LAT, GEO_BBOX_CENTRO_LON, GEO_BBOX_DELTA_GRADOS
-    base = True
-    try:
-        async with AsyncSessionLocal() as db:
-            base = bool(await db.scalar(text("SELECT direccion_base FROM municipios WHERE id_municipio = :m"),
-                                        {"m": id_municipio}))
-            vals = await leer_configs(
-                db, ["geo_bbox_centro_lat", "geo_bbox_centro_lon", "geo_bbox_delta_grados"], id_municipio)
-        lat = float(vals["geo_bbox_centro_lat"])
-        lon = float(vals["geo_bbox_centro_lon"])
-        delta = float(vals["geo_bbox_delta_grados"])
-        if not (-90 <= lat <= 90 and -180 <= lon <= 180 and 0 < delta <= 5):
-            raise ValueError(f"bbox fuera de rango: {lat},{lon} ±{delta}")
-    except Exception as e:  # noqa: BLE001 — fallback deliberado a constantes
-        if not base:
-            raise HTTPException(409, SIN_ZONA)
-        logger.warning("geo_bbox config no disponible (%s) — uso fallback Vicente López", e)
-        lat, lon, delta = GEO_BBOX_CENTRO_LAT, GEO_BBOX_CENTRO_LON, GEO_BBOX_DELTA_GRADOS
+    async with AsyncSessionLocal() as db:
+        vals = await leer_configs(db, list(CLAVES_ZONA), id_municipio)
+    if not zona_completa(vals):
+        raise HTTPException(409, SIN_ZONA)
+    lat, lon, delta = (float(vals[c]) for c in CLAVES_ZONA)
     _bbox_cache[id_municipio] = {"ts": now, "lat": lat, "lon": lon, "delta": delta}
     return lat, lon, delta
 
