@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { aBounds, ENCUADRE_ARGENTINA, useEncuadreMapa } from '../../../lib/encuadreMapa'
 
 // Workaround icono default de Leaflet bajo bundler (Vite). Sin esto el marker
 // no aparece porque Leaflet busca los PNG en rutas relativas que el build rompe.
@@ -27,8 +28,8 @@ interface Props {
   defaultCenter?: { lat: number; lon: number }
 }
 
-// Vicente Lopez (centro aproximado) como default — coincide con el dataset de activos.
-const DEFAULT_CENTER = { lat: -34.5305, lon: -58.4779 }
+// Sin pin, el mapa arranca en el encuadre del municipio (contorno, zona de búsqueda o país:
+// lib/encuadreMapa), nunca en un municipio fijo.
 const DEFAULT_ZOOM_NOPIN = 13
 const DEFAULT_ZOOM_PIN = 16
 
@@ -37,6 +38,10 @@ export function MapaPicker({ lat, lon, onChange, height = 320, defaultCenter }: 
   const mapRef = useRef<L.Map | null>(null)
   const markerRef = useRef<L.Marker | null>(null)
   const onChangeRef = useRef(onChange)
+  // El encuadre del municipio llega después del primer render: se aplica una sola vez, y solo si
+  // todavía no hay pin ni el usuario movió el mapa.
+  const encuadre = useEncuadreMapa()
+  const tocadoRef = useRef(false)
 
   // Mantener onChange estable sin re-inicializar el mapa.
   useEffect(() => { onChangeRef.current = onChange }, [onChange])
@@ -44,16 +49,11 @@ export function MapaPicker({ lat, lon, onChange, height = 320, defaultCenter }: 
   // Init una sola vez.
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
-    const center = lat != null && lon != null
-      ? [lat, lon] as [number, number]
-      : [defaultCenter?.lat ?? DEFAULT_CENTER.lat, defaultCenter?.lon ?? DEFAULT_CENTER.lon] as [number, number]
-    const zoom = (lat != null && lon != null) ? DEFAULT_ZOOM_PIN : DEFAULT_ZOOM_NOPIN
-
-    const map = L.map(containerRef.current, {
-      center,
-      zoom,
-      scrollWheelZoom: true,
-    })
+    const map = L.map(containerRef.current, { scrollWheelZoom: true })
+    if (lat != null && lon != null) map.setView([lat, lon], DEFAULT_ZOOM_PIN)
+    else if (defaultCenter) map.setView([defaultCenter.lat, defaultCenter.lon], DEFAULT_ZOOM_NOPIN)
+    else map.fitBounds(aBounds(encuadre.data ?? ENCUADRE_ARGENTINA))
+    map.on('dragstart zoomstart', () => { tocadoRef.current = true })
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       maxZoom: 19,
@@ -78,6 +78,13 @@ export function MapaPicker({ lat, lon, onChange, height = 320, defaultCenter }: 
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !encuadre.data || markerRef.current || defaultCenter || tocadoRef.current) return
+    map.fitBounds(aBounds(encuadre.data))
+    tocadoRef.current = false
+  }, [encuadre.data, defaultCenter])
 
   // Sincronizar marker desde props (cuando el usuario picked desde la lista de busqueda).
   useEffect(() => {

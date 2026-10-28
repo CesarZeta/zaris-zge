@@ -2017,6 +2017,52 @@ async def test_zona_busqueda() -> None:
             await db.commit()
 
 
+async def test_encuadre_mapas() -> None:
+    """Los mapas arrancan en el contorno, la zona de búsqueda o el país, nunca en un municipio fijo
+    (César, 2026-10-28)."""
+    print("\ntest_encuadre_mapas")
+    C = await _municipio_c()
+    claves = ("geo_bbox_centro_lat", "geo_bbox_centro_lon", "geo_bbox_delta_grados", "geo_limite_geojson")
+
+    async def poner(valores: dict) -> None:
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("DELETE FROM configuracion_general WHERE id_municipio = :m AND clave = ANY(:c)"),
+                             {"m": C["id"], "c": list(claves)})
+            for clave, valor in valores.items():
+                await db.execute(text("""
+                    INSERT INTO configuracion_general (clave, valor, tipo, descripcion, activo, id_municipio)
+                    VALUES (:c, :v, 'string', :d, TRUE, :m)"""), {"c": clave, "v": valor, "d": clave, "m": C["id"]})
+            await db.commit()
+
+    h = _token(C["n2"], C["id"])
+    try:
+        async with _cliente() as c:
+            await poner({})
+            r = await c.get("/api/v1/geo/encuadre", headers=h)
+            e = r.json() if r.status_code == 200 else {}
+            check("sin contorno ni zona → el país (Argentina)", e.get("origen") == "pais" and e.get("sur") == -55.1
+                  and e.get("norte") == -21.7, f"{r.status_code} {r.text[:160]}")
+            await poner({"geo_bbox_centro_lat": "-33.7", "geo_bbox_centro_lon": "-60.6"})
+            r = await c.get("/api/v1/geo/encuadre", headers=h)
+            check("zona incompleta (sin radio) → el país", r.json().get("origen") == "pais", r.text[:160])
+            await poner({"geo_bbox_centro_lat": "-33.7", "geo_bbox_centro_lon": "-60.6", "geo_bbox_delta_grados": "0.1"})
+            r = await c.get("/api/v1/geo/encuadre", headers=h)
+            e = r.json()
+            check("zona completa → la zona", e.get("origen") == "zona" and abs(e["sur"] + 33.8) < 1e-9
+                  and abs(e["este"] + 60.5) < 1e-9, r.text[:160])
+            poligono = '{"type":"Polygon","coordinates":[[[-60.7,-33.8],[-60.5,-33.8],[-60.5,-33.6],[-60.7,-33.6],[-60.7,-33.8]]]}'
+            await poner({"geo_bbox_centro_lat": "-33.7", "geo_bbox_centro_lon": "-60.6", "geo_bbox_delta_grados": "0.5",
+                         "geo_limite_geojson": poligono})
+            r = await c.get("/api/v1/geo/encuadre", headers=h)
+            e = r.json()
+            check("con contorno → el contorno, aunque haya zona", e.get("origen") == "contorno" and e.get("sur") == -33.8
+                  and e.get("oeste") == -60.7 and e.get("norte") == -33.6 and e.get("este") == -60.5, r.text[:160])
+            r = await c.get("/api/v1/geo/encuadre")
+            check("sin token → 401", r.status_code == 401, f"{r.status_code}")
+    finally:
+        await poner({})
+
+
 async def _super_headers_sin_db() -> dict:
     async with AsyncSessionLocal() as db:
         return await _super_headers(db)
@@ -2031,7 +2077,8 @@ PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones
                                      test_estado_baja, test_modelo_no_operable, test_demo_por_estado,
                                      test_geo_catalogo, test_municipio_provincia,
                                      test_modulo_404, test_modulos_permitidos_municipio, test_nivel_por_municipio,
-                                     test_dependencias, test_efectos_apagados, test_zona_busqueda)}
+                                     test_dependencias, test_efectos_apagados, test_zona_busqueda,
+                                     test_encuadre_mapas)}
 
 
 async def main(nombres: list[str]) -> int:

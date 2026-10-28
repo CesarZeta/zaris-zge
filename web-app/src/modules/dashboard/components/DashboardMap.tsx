@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { aBounds, ENCUADRE_ARGENTINA, useEncuadreMapa } from '../../../lib/encuadreMapa'
 
 import type {
   GeoEmergencia, GeoEspacio, GeoReclamo, GeoTramite, LimiteMunicipio,
@@ -24,9 +25,8 @@ const DefaultIcon = L.icon({
 })
 L.Marker.prototype.options.icon = DefaultIcon
 
-// Vicente Lopez (centro aproximado) — mismo default que MapaPicker de Reclamos.
-const DEFAULT_CENTER: [number, number] = [-34.5305, -58.4779]
-const DEFAULT_ZOOM = 13
+// Encuadre inicial: contorno, zona de búsqueda, puntos o país (lib/encuadreMapa); nunca un
+// municipio fijo (César, 2026-10-28).
 
 // Marker del mapa (César 2026-10-19): punto de 13 px — la mitad del badge de
 // 26 px con icono que habia antes, ilegible a ese tamaño. Dos colores:
@@ -212,6 +212,7 @@ export function DashboardMap({
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
+  const encuadre = useEncuadreMapa()
   const markersLayerRef = useRef<L.LayerGroup | null>(null)
   const limiteLayerRef = useRef<L.Polygon | null>(null)
   // Bounds del municipio (no de la mascara, que abarca el mundo) para el encuadre.
@@ -303,12 +304,11 @@ export function DashboardMap({
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
     const map = L.map(containerRef.current, {
-      center: DEFAULT_CENTER,
-      zoom: DEFAULT_ZOOM,
       scrollWheelZoom: true,
       // El control de zoom default va en top-left, donde vive el panel de stats.
       zoomControl: false,
     })
+    map.fitBounds(aBounds(ENCUADRE_ARGENTINA))
     L.control.zoom({ position: 'bottomright' }).addTo(map)
     // Tile minimal gris claro/oscuro SIN API key: Esri Gray Canvas. CARTO
     // (Positron/Dark Matter) empezo a servir tiles con marca "API KEY REQUIRED"
@@ -493,16 +493,26 @@ export function DashboardMap({
     // Con contorno, el encuadre inicial es el municipio entero (no la nube de
     // puntos, que deja afuera zonas sin actividad).
     const limiteBounds = limiteBoundsRef.current
-    if (debeFit && (bounds.length > 0 || limiteBounds?.isValid())) {
+    // Sin contorno: la zona de búsqueda manda sobre la nube de puntos (salvo en los mapas
+    // analíticos del BI, que encuadran lo filtrado), y sin zona ni puntos, el país (César,
+    // 2026-10-28). Se espera la respuesta del encuadre para no encuadrar dos veces.
+    const enc = encuadre.data
+    const zonaBounds = !limiteBounds?.isValid() && enc?.origen === 'zona' && !marcadorPunto ? aBounds(enc) : null
+    const encListo = !encuadre.isLoading
+    if (debeFit && encListo && (bounds.length > 0 || limiteBounds?.isValid() || zonaBounds || enc)) {
       fittedRef.current = true
       const map = mapRef.current
       const fit = () => {
         if (limiteBounds?.isValid()) {
           if (!usuarioMovioRef.current) encuadrarLimite.current()
+        } else if (zonaBounds) {
+          map.fitBounds(zonaBounds)
         } else if (bounds.length >= 2) {
           map.fitBounds(L.latLngBounds(bounds), { padding: [60, 60], maxZoom: 15 })
-        } else {
+        } else if (bounds.length === 1) {
           map.setView(bounds[0], 15)
+        } else if (enc) {
+          map.fitBounds(aBounds(enc))
         }
       }
       map.invalidateSize()
@@ -513,7 +523,7 @@ export function DashboardMap({
         fit()
       }, 300)
     }
-  }, [reclamos, emergencias, espacios, tramites, visibles, marcadorPunto, limite])
+  }, [reclamos, emergencias, espacios, tramites, visibles, marcadorPunto, limite, encuadre.data, encuadre.isLoading])
 
   return (
     <div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />

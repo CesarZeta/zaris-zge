@@ -22,6 +22,7 @@ from app.core.database import get_db, AsyncSessionLocal
 from app.core.auth import get_current_user
 from app.core.config_municipio import leer_configs
 from app.core.municipio import municipio_actual
+from app.services.geo_limite import encuadre_municipio
 
 router = APIRouter(prefix="/api/v1/geo", tags=["Geo"])
 logger = logging.getLogger("zaris.geo")
@@ -114,6 +115,19 @@ async def _nominatim_get(path: str, params: dict) -> list | dict:
         logger.warning("Nominatim %s -> HTTP %s", path, r.status_code)
         raise HTTPException(status_code=502, detail="Servicio de geocoding no disponible")
     return r.json()
+
+
+# ── Encuadre de los mapas ────────────────────────────────────────────────────
+
+@router.get("/encuadre", responses={200: {"description": "Recuadro inicial de los mapas: contorno, zona de búsqueda o país"}})
+async def encuadre(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
+):
+    """Dónde arrancan los mapas del municipio de la request (sur, oeste, norte, este y `origen`):
+    contorno, zona de búsqueda o país. Ningún mapa arranca en un municipio fijo (César, 2026-10-28)."""
+    return await encuadre_municipio(db, id_municipio)
 
 
 # ── Catálogos DB ─────────────────────────────────────────────────────────────

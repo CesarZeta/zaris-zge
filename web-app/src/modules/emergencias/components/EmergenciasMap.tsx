@@ -5,6 +5,7 @@ import { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
+import { aBounds, ENCUADRE_ARGENTINA, useEncuadreMapa } from '../../../lib/encuadreMapa'
 import type { EmergenciaEvento } from '../types'
 import { ESTADO_COLOR } from '../lib/ui'
 
@@ -26,9 +27,8 @@ const DefaultIcon = L.icon({
 })
 L.Marker.prototype.options.icon = DefaultIcon
 
-// Vicente Lopez (centro aproximado) — mismo default que DashboardMap/MapaPicker.
-const DEFAULT_CENTER: [number, number] = [-34.5305, -58.4779]
-const DEFAULT_ZOOM = 13
+// Sin eventos con ubicación, el mapa muestra el encuadre del municipio (contorno, zona de
+// búsqueda o país: lib/encuadreMapa), nunca un municipio fijo.
 
 function makeMarkerIcon(estadoCodigo: string) {
   const color = ESTADO_COLOR[estadoCodigo] ?? '#455a64'
@@ -56,6 +56,8 @@ export function EmergenciasMap({ eventos, onMarkerClick }: Props) {
   const mapRef = useRef<L.Map | null>(null)
   const markersLayerRef = useRef<L.LayerGroup | null>(null)
   const onClickRef = useRef(onMarkerClick)
+  const encuadre = useEncuadreMapa()
+  const hayPuntosRef = useRef(false)
 
   useEffect(() => { onClickRef.current = onMarkerClick }, [onMarkerClick])
 
@@ -63,11 +65,10 @@ export function EmergenciasMap({ eventos, onMarkerClick }: Props) {
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
     const map = L.map(containerRef.current, {
-      center: DEFAULT_CENTER,
-      zoom: DEFAULT_ZOOM,
       scrollWheelZoom: true,
       zoomControl: false,
     })
+    map.fitBounds(aBounds(encuadre.data ?? ENCUADRE_ARGENTINA))
     L.control.zoom({ position: 'bottomright' }).addTo(map)
     // Esri Gray Canvas sin API key (CARTO paso a exigir key, 2026-08-30).
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
@@ -107,12 +108,19 @@ export function EmergenciasMap({ eventos, onMarkerClick }: Props) {
       m.addTo(markersLayerRef.current!)
       bounds.push([ev.latitud, ev.longitud])
     }
+    hayPuntosRef.current = bounds.length > 0
     if (bounds.length >= 2) {
       mapRef.current.fitBounds(L.latLngBounds(bounds), { padding: [50, 50], maxZoom: 15 })
     } else if (bounds.length === 1) {
       mapRef.current.setView(bounds[0], 15)
     }
   }, [eventos])
+
+  // Sin eventos con ubicación: el encuadre del municipio, cuando llega.
+  useEffect(() => {
+    if (!mapRef.current || !encuadre.data || hayPuntosRef.current) return
+    mapRef.current.fitBounds(aBounds(encuadre.data))
+  }, [encuadre.data])
 
   return (
     <div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />
