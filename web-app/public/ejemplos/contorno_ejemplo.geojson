@@ -1,0 +1,22 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "descripcion": "Ejemplo de contorno: un polígono cerrado, en latitud/longitud (EPSG:4326)" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-63.8032649, -36.1187957],
+            [-63.7483819, -36.3180463],
+            [-63.9267515, -36.4174812],
+            [-64.1462834, -36.3401539],
+            [-64.1325627, -36.1520394],
+            [-63.8032649, -36.1187957]
+          ]
+        ]
+      }
+    }
+  ]
+}

@@ -236,6 +236,17 @@ async def test_norm_fuera_de_pais() -> None:
     check("un polígono en Europa → paso pais", _paso(europa) == "pais", _paso(europa))
 
 
+async def test_norm_ejemplo_instructivo() -> None:
+    from app.services.contorno import normalizar_contorno
+    ejemplo = Path(AQUI).parent / "web-app" / "public" / "ejemplos" / "contorno_ejemplo.geojson"
+    try:
+        c = normalizar_contorno(ejemplo.read_text(encoding="utf-8"))
+        check("el ejemplo del instructivo se acepta, con una parte y sin avisos", c.partes == 1 and not c.avisos,
+              (c.partes, c.avisos))
+    except FileNotFoundError:
+        check("existe el ejemplo del instructivo", False, str(ejemplo))
+
+
 async def test_zona_pergamino() -> None:
     from app.services.contorno import normalizar_contorno, zona_desde_contorno
     z = zona_desde_contorno(normalizar_contorno(_fix("pergamino_ign.geojson")))
@@ -699,7 +710,7 @@ PRUEBAS = {f.__name__.removeprefix("test_"): f for f in (
     test_catalogo_bajas_sin_municipio, test_geo_partidos_q,
     test_norm_pergamino_ign, test_norm_metros, test_norm_invertido, test_norm_linea, test_norm_dos_partes,
     test_norm_hueco_preservado, test_norm_isla_diminuta, test_norm_binario_y_kml, test_norm_vacio,
-    test_norm_tamano_entrada, test_norm_z_y_sin_cerrar, test_norm_fuera_de_pais, test_zona_pergamino,
+    test_norm_tamano_entrada, test_norm_z_y_sin_cerrar, test_norm_fuera_de_pais, test_zona_pergamino, test_norm_ejemplo_instructivo,
     test_lectores_multi, test_lectores_hueco, test_lectores_compat_san_andres,
     test_ign_ok, test_ign_respuesta_no_json, test_ign_vacio, test_ign_timeout, test_ign_sin_partido,
     test_api_guardar_y_zona, test_api_aviso_zona, test_api_guards, test_api_admin_tablas_bloquea,

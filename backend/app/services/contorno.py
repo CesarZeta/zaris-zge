@@ -67,14 +67,14 @@ def _leer(entrada: str | bytes | dict) -> Any:
     if isinstance(entrada, (bytes, bytearray)):
         if len(entrada) > MAX_ENTRADA:
             raise ContornoInvalido("El archivo pesa más de 5 MB. Simplificalo en QGIS antes de subirlo "
-                                   f"(Vectorial → Geometría → Simplificar). {COMO_ARMAR}", "tamano")
+                                   f"(Vectorial ► Herramientas de geometría ► Simplificar). {COMO_ARMAR}", "tamano")
         try:
             entrada = bytes(entrada).decode("utf-8-sig")
         except UnicodeDecodeError:
             entrada = None
     if entrada is not None and len(entrada) > MAX_ENTRADA:
         raise ContornoInvalido("El archivo pesa más de 5 MB. Simplificalo en QGIS antes de subirlo "
-                               f"(Vectorial → Geometría → Simplificar). {COMO_ARMAR}", "tamano")
+                               f"(Vectorial ► Herramientas de geometría ► Simplificar). {COMO_ARMAR}", "tamano")
     try:
         if entrada is None or entrada.lstrip().startswith("<"):
             raise ValueError
@@ -180,9 +180,9 @@ def normalizar_contorno(entrada: str | bytes | dict, *, codigo_pais: str = "AR")
                 if isinstance(g, MultiPolygon):
                     reparadas.extend(g.geoms)
             if not reparadas:
-                raise ContornoInvalido("El polígono se corta a sí mismo y no se pudo reparar. Revisalo en QGIS "
-                                       f"(Vectorial → Herramientas de geometría → Corregir geometrías). {COMO_ARMAR}",
-                                       "tipo")
+                raise ContornoInvalido("El polígono se corta a sí mismo y no se pudo reparar. Corregilo en QGIS: "
+                                       "en la Caja de herramientas de procesamiento (menú Procesamiento) buscá "
+                                       f"«Corregir geometrías». {COMO_ARMAR}", "tipo")
             avisos.append("El polígono se cortaba a sí mismo: se reparó.")
         else:
             reparadas = [poli]
@@ -207,7 +207,7 @@ def normalizar_contorno(entrada: str | bytes | dict, *, codigo_pais: str = "AR")
                  else {"type": "MultiPolygon", "coordinates": coords})
     if len(json.dumps(geometria, separators=(",", ":"))) > MAX_GUARDADO:
         raise ContornoInvalido("El contorno sigue siendo demasiado detallado después de simplificarlo. Simplificalo "
-                               f"en QGIS (Vectorial → Geometría → Simplificar). {COMO_ARMAR}", "tamano")
+                               f"en QGIS (Vectorial ► Herramientas de geometría ► Simplificar). {COMO_ARMAR}", "tamano")
 
     xs = [c[0] for p in coords for a in p for c in a]
     ys = [c[1] for p in coords for a in p for c in a]
