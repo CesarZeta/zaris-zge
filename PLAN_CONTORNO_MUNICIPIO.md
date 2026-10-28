@@ -87,7 +87,7 @@ El componente vive en el módulo Municipios y Config lo importa cross-module (me
 
 ---
 
-### Tarea 1: Catálogo de gobiernos locales (instantánea, migraciones, local y prod)
+### Task 1: Catálogo de gobiernos locales (instantánea, migraciones, local y prod)
 
 **Files:**
 - Create: `tools/georef_catalogo.py`, `backend/data/georef_gobiernos_locales_2026-10-28.json`, `backend/data/alias_catalogo_geo.json`, `backend/migrations/132_catalogo_gobiernos_locales.sql`, `backend/migrations/132b_catalogo_gobiernos_locales_datos.sql`
@@ -137,7 +137,7 @@ El componente vive en el módulo Municipios y Config lo importa cross-module (me
   3. Verificación independiente con `execute_sql`: conteos de los cuatro checks del paso 4, y que el conteo de reclamos con localidad → partido sea el mismo que antes (anotarlo antes del paso 1).
 - [ ] **Paso 7: commit.** `feat(it-01): catalogo de gobiernos locales con codigo de Georef (migs 132/132b)`.
 
-### Tarea 2: Selector de partido / municipio con autocompletar
+### Task 2: Selector de partido / municipio con autocompletar
 
 **Files:**
 - Modify: `backend/app/api/routes/geo.py` (`listar_partidos`), `web-app/src/modules/municipios/api.ts` (`listarPartidos`), `AltaMunicipioPage.tsx`, `MunicipioFichaPage.tsx`
@@ -164,7 +164,7 @@ El componente vive en el módulo Municipios y Config lo importa cross-module (me
 - [ ] **Paso 4: verificación.** `pnpm typecheck` limpio. En el navegador, local: alta → provincia Córdoba → escribir «villa ma» → aparecen Villa María y Villa de María → elegir → la disponibilidad responde.
 - [ ] **Paso 5: commit.** `feat(it-01): partido o municipio con autocompletar sobre el catalogo completo`.
 
-### Tarea 3: `normalizar_contorno` (servicio puro) y fixtures
+### Task 3: `normalizar_contorno` (servicio puro) y fixtures
 
 **Files:**
 - Create: `backend/app/services/contorno.py` (parte pura), `backend/fixtures/contorno/` (ver abajo)
@@ -226,7 +226,7 @@ El componente vive en el módulo Municipios y Config lo importa cross-module (me
 - [ ] **Paso 3:** `pip install -r requirements.txt` en local y registrar la versión instalada. Verificar con `python -c "import shapely; print(shapely.__version__)"` desde `backend/`.
 - [ ] **Paso 4: commit.** `feat(it-01): normalizacion de contornos con shapely y fixtures`.
 
-### Tarea 4: Lectores con MultiPolygon (backend y máscara del inicio)
+### Task 4: Lectores con MultiPolygon (backend y máscara del inicio)
 
 **Files:**
 - Modify: `backend/app/services/geo_limite.py`, `web-app/src/modules/dashboard/hooks/useDashboardData.ts` (tipo `LimiteMunicipio`), `web-app/src/modules/dashboard/components/DashboardMap.tsx` (`mascaraExterior` y bounds)
@@ -252,7 +252,7 @@ El componente vive en el módulo Municipios y Config lo importa cross-module (me
   - Verificación en el navegador, local: San Andrés se ve igual que antes (captura antes/después).
 - [ ] **Paso 4: commit.** `feat(it-01): el contorno puede tener varias partes y huecos`.
 
-### Tarea 5: Contorno oficial del IGN, guardar y quitar (backend)
+### Task 5: Contorno oficial del IGN, guardar y quitar (backend)
 
 **Files:**
 - Modify: `backend/app/services/contorno.py` (parte con base de datos y red), `super_admin.py`, `geo.py`, `admin_tablas.py`, `municipios/alta.py`, `main.py`
@@ -331,7 +331,7 @@ El componente vive en el módulo Municipios y Config lo importa cross-module (me
   3. Esperado: 200 con `vertices_antes == 2679`.
   4. Si da 502 o timeout: parar, anotarlo y aplicar la decisión del diseño (botón oficial deshabilitado con el aviso, subida de archivo como vía). Preguntarle a César por copia versionada o intermediario antes de seguir con la Tarea 6.
 
-### Tarea 6: Componente `ContornoMunicipio` y las tres pantallas
+### Task 6: Componente `ContornoMunicipio` y las tres pantallas
 
 **Files:**
 - Create: `web-app/src/modules/municipios/contorno/{api.ts, ContornoMunicipio.tsx, MapaContorno.tsx, ContornoMunicipio.module.css}`
@@ -379,7 +379,7 @@ El componente vive en el módulo Municipios y Config lo importa cross-module (me
   `pnpm typecheck` limpio.
 - [ ] **Paso 7: commit.** `feat(it-01): cargar el contorno desde el alta, la ficha y Configuracion`.
 
-### Tarea 7: Instructivo dentro de la pantalla
+### Task 7: Instructivo dentro de la pantalla
 
 **Files:**
 - Create: `web-app/src/modules/municipios/contorno/InstructivoContorno.tsx` (+ `.module.css`), `web-app/src/modules/municipios/contorno/instructivo/geojsonio-0N.png`, `web-app/public/ejemplos/contorno_ejemplo.geojson`
@@ -414,7 +414,7 @@ El componente vive en el módulo Municipios y Config lo importa cross-module (me
   `pnpm typecheck` limpio.
 - [ ] **Paso 6: commit.** `feat(it-01): instructivo para armar el archivo del contorno`.
 
-### Tarea 8: Prod, archivo para el municipio 6 y documentación
+### Task 8: Prod, archivo para el municipio 6 y documentación
 
 **Files:**
 - Modify: `ESTADO.md`, `CLAUDE.md` (§21: migs 132/132b; §23 o §10: regla «el contorno se guarda solo con `services/contorno.py`»), `HISTORIAL_MIGRACIONES.md`

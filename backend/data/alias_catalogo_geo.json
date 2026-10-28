@@ -1,0 +1,10 @@
+{
+ "_nota": "Alias a mano para tools/georef_catalogo.py: nombre viejo en nuestras tablas -> código de Georef. Solo cuando es el MISMO lugar con otro nombre (un departamento que contiene varios municipios NO va acá: sus localidades se reubican por nombre).",
+ "provincias": [
+  {"nombre": "Tierra del Fuego", "codigo": "94"}
+ ],
+ "partidos": [
+  {"nombre": "Mar del Plata (General Pueyrredón)", "codigo": "060357"},
+  {"nombre": "Gualeguaychú", "codigo": "300189"}
+ ]
+}
