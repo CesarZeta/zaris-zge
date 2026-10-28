@@ -59,7 +59,7 @@ function useEstable<T>(valor: T, ms = 350): T {
 interface Form {
   nombre: string; codigo_pais: string; id_provincia: number | null; id_partido: number | null; ficticio: boolean
   zona_horaria: string; codigo_corto: string; subdominio: string
-  color: string; logo_url: string; contorno: ContornoVista | null; codigo_partido: string | null
+  color: string; logo_url: string; contorno: ContornoVista | null; codigo_partido: string | null; partido_nombre: string | null
   lat: string; lon: string; delta: string
   copiar: string[]; modulos: string[]; tope: string
   a_nombre: string; a_apellido: string; a_dni: string; a_cuil: string; a_sexo: '' | 'HOMBRE' | 'MUJER' | 'OTROS'
@@ -68,7 +68,7 @@ interface Form {
 
 const VACIO: Form = {
   nombre: '', codigo_pais: '', id_provincia: null, id_partido: null, ficticio: false, zona_horaria: '', codigo_corto: '',
-  subdominio: '', color: '', logo_url: '', contorno: null, codigo_partido: null, lat: '', lon: '', delta: '', copiar: [], modulos: [],
+  subdominio: '', color: '', logo_url: '', contorno: null, codigo_partido: null, partido_nombre: null, lat: '', lon: '', delta: '', copiar: [], modulos: [],
   tope: '', a_nombre: '', a_apellido: '', a_dni: '', a_cuil: '', a_sexo: '', a_fecha_nac: '', a_telefono: '',
   a_email: '',
 }
@@ -293,7 +293,7 @@ export function AltaMunicipioPage() {
             <Campo etiqueta={pais?.etiqueta_nivel_1 ?? 'Provincia'}>
               <select style={input} value={f.id_provincia ?? ''} disabled={!f.codigo_pais}
                       onChange={(e) => set({ id_provincia: e.target.value ? Number(e.target.value) : null, id_partido: null,
-                                             codigo_partido: null, ...sinContornoOficial() })}>
+                                             codigo_partido: null, partido_nombre: null, ...sinContornoOficial() })}>
                 <option value="">—</option>
                 {(provincias.data ?? []).map((p) => <option key={p.id_provincia} value={p.id_provincia}>{p.nombre}</option>)}
               </select>
@@ -302,15 +302,17 @@ export function AltaMunicipioPage() {
                    ayuda={f.ficticio ? 'Municipio ficticio: no lleva partido y no puede pasar a producción.'
                      : dispPartido?.disponible ? 'Libre: ningún otro municipio lo tiene.' : 'El municipio es el partido: uno por partido.'}
                    error={!f.ficticio && f.id_partido != null ? err('id_partido') : undefined}>
-              <PartidoSearch idProvincia={f.id_provincia} value={f.id_partido} disabled={f.ficticio} inputStyle={input}
+              <PartidoSearch idProvincia={f.id_provincia} value={f.id_partido} etiqueta={f.partido_nombre}
+                             disabled={f.ficticio} inputStyle={input}
                              onChange={(p) => set({ id_partido: p?.id_partido ?? null, codigo_partido: p?.codigo_georef ?? null,
+                                                    partido_nombre: p?.nombre ?? null,
                                                     ...(p ? proponer(p.nombre, `Municipalidad de ${p.nombre}`) : {}),
                                                     ...sinContornoOficial() })} />
             </Campo>
             <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14 }}>
               <input type="checkbox" checked={f.ficticio}
                      onChange={(e) => set({ ficticio: e.target.checked, id_partido: null, codigo_partido: null,
-                                            ...sinContornoOficial() })} />
+                                            partido_nombre: null, ...sinContornoOficial() })} />
               Municipio ficticio (demo o prueba), sin {nivel2}
             </label>
             <Campo etiqueta="Nombre" ayuda={f.ficticio ? undefined : `Se propone desde el ${nivel2}; se puede cambiar.`}

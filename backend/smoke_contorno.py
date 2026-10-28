@@ -247,6 +247,56 @@ async def test_norm_ejemplo_instructivo() -> None:
         check("existe el ejemplo del instructivo", False, str(ejemplo))
 
 
+async def test_norm_estructuras_raras() -> None:
+    """Revisión final, Important 2: JSON que no sirve tiene que dar ContornoInvalido (422), nunca otra excepción (500)."""
+    from app.services.contorno import ContornoInvalido, normalizar_contorno
+    casos = {"Polygon sin anillos": {"type": "Polygon", "coordinates": []},
+             "Polygon con anillo vacío": {"type": "Polygon", "coordinates": [[]]},
+             "MultiPolygon vacío": {"type": "MultiPolygon", "coordinates": []},
+             "features no es lista": {"type": "FeatureCollection", "features": 5},
+             "coordinates no es lista": {"type": "Polygon", "coordinates": 5},
+             "anidado muy profundo": "[" * 100_000 + "]" * 100_000,
+             "todo colapsa al redondear": {"type": "Polygon", "coordinates": [[[-62.5, -36.5], [-62.500001, -36.5],
+                                                                               [-62.500001, -36.500001], [-62.5, -36.5]]]}}
+    for nombre, entrada in casos.items():
+        try:
+            normalizar_contorno(entrada)
+            check(f"{nombre} → rechazo", False, "lo aceptó")
+        except ContornoInvalido as e:
+            check(f"{nombre} → ContornoInvalido", e.paso in ("formato", "tipo"), e.paso)
+        except Exception as e:  # noqa: BLE001
+            check(f"{nombre} → ContornoInvalido", False, f"{type(e).__name__}: {str(e)[:80]}")
+
+
+async def test_norm_desordenado_rapido() -> None:
+    """Revisión final, Important 1: un polígono con los puntos desordenados se rechaza enseguida, sin repararlo
+    (repararlo costaba ~43 s con 400 vértices y bloqueaba la API de todos los municipios)."""
+    import random
+    import time
+    from app.services.contorno import ContornoInvalido, normalizar_contorno
+    azar = random.Random(1)
+    pts = [[-62.5 + azar.random() * 0.1, -36.5 + azar.random() * 0.1] for _ in range(400)]
+    t = time.monotonic()
+    try:
+        normalizar_contorno({"type": "Polygon", "coordinates": [pts + [pts[0]]]})
+        paso = None
+    except ContornoInvalido as e:
+        paso = e.paso
+    dt = time.monotonic() - t
+    check("400 vértices desordenados → rechazo con paso tipo en menos de 2 s", paso == "tipo" and dt < 2,
+          (paso, round(dt, 2)))
+    from app.services.contorno import normalizar_contorno as n2
+    d = json.loads(_fix("pergamino_ign.geojson"))
+    anillo = d["features"][0]["geometry"]["coordinates"][0][0]
+    anillo[100], anillo[1500] = anillo[1500], anillo[100]
+    try:
+        c = n2(d)
+        check("una auto-intersección real (Pergamino con dos puntos cruzados) se repara", c.partes >= 1 and
+              any("repar" in a for a in c.avisos), c.avisos)
+    except ContornoInvalido as e:
+        check("una auto-intersección real (Pergamino con dos puntos cruzados) se repara", False, e.mensaje)
+
+
 async def test_zona_pergamino() -> None:
     from app.services.contorno import normalizar_contorno, zona_desde_contorno
     z = zona_desde_contorno(normalizar_contorno(_fix("pergamino_ign.geojson")))
@@ -456,6 +506,20 @@ async def test_ign_timeout() -> None:
         await _volver(C["id"], await _foto(C["id"]))
 
 
+async def test_ign_geometria_vacia() -> None:
+    import httpx
+    C, idp = await _c_con_partido(PERGAMINO)
+    _ign(lambda _r: httpx.Response(200, json={"type": "FeatureCollection", "features": [
+        {"type": "Feature", "properties": {"fna": "X"}, "geometry": {"type": "MultiPolygon", "coordinates": []}}]}))
+    try:
+        async with _cliente() as c:
+            r = await c.get("/api/v1/contorno/oficial", headers=_token(C["n1"], C["id"]))
+        check("el IGN devuelve una geometría vacía → 502 limpio", r.status_code == 502, f"{r.status_code} {r.text[:200]}")
+    finally:
+        _ign_off()
+        await _volver(C["id"], await _foto(C["id"]))
+
+
 async def test_ign_sin_partido() -> None:
     C, _ = await _c_con_partido(None)
     async with _cliente() as c:
@@ -629,6 +693,35 @@ async def test_api_alta_contorno() -> None:
               f"{r.status_code} {creado} {r.text[:200]}")
 
 
+async def test_api_alta_no_copia_contorno_modelo() -> None:
+    """Revisión final: el alta copia la configuración del modelo, pero nunca su contorno (sería el de otro lugar)."""
+    import smoke_alta_municipio as sam
+    from app.core.config_municipio import guardar_config
+    ctx = await sam._contexto_alta()
+    modelo = ctx["modelo"]
+    foto_modelo = await _foto(modelo)
+    async with AsyncSessionLocal() as db:
+        sam.CODIGOS_USADOS.update(r[0] for r in (await db.execute(text("SELECT codigo_corto FROM municipios"))).all())
+        await guardar_config(db, "geo_limite_geojson", json.dumps({"type": "Polygon", "coordinates": [
+            [[-62.5, -36.5], [-62.4, -36.5], [-62.4, -36.4], [-62.5, -36.4], [-62.5, -36.5]]]}), modelo)
+        await guardar_config(db, "geo_limite_origen", json.dumps({"via": "archivo", "archivo": "modelo"}), modelo)
+        await db.commit()
+    try:
+        suf, cod = sam._sufijo()
+        async with _cliente() as c:
+            r = await c.post("/api/v1/super/municipios", json=sam._alta_body(suf, cod, id_provincia=ctx["ba"]), headers=ctx["h"])
+        check("alta sin contorno → 201", r.status_code == 201, f"{r.status_code} {r.text[:200]}")
+        if r.status_code == 201:
+            vals = await _foto(r.json()["id_municipio"])
+            check("el municipio nuevo no hereda el contorno del modelo",
+                  not vals.get("geo_limite_geojson") and not vals.get("geo_limite_origen"), vals)
+    finally:
+        async with AsyncSessionLocal() as db:
+            for k in ("geo_limite_geojson", "geo_limite_origen"):
+                await guardar_config(db, k, foto_modelo.get(k) or "", modelo)
+            await db.commit()
+
+
 async def test_api_quitar() -> None:
     from app.services.geo_limite import encuadre_municipio
     C, _ = await _c_con_partido(None)
@@ -711,10 +804,11 @@ PRUEBAS = {f.__name__.removeprefix("test_"): f for f in (
     test_norm_pergamino_ign, test_norm_metros, test_norm_invertido, test_norm_linea, test_norm_dos_partes,
     test_norm_hueco_preservado, test_norm_isla_diminuta, test_norm_binario_y_kml, test_norm_vacio,
     test_norm_tamano_entrada, test_norm_z_y_sin_cerrar, test_norm_fuera_de_pais, test_zona_pergamino, test_norm_ejemplo_instructivo,
+    test_norm_estructuras_raras, test_norm_desordenado_rapido,
     test_lectores_multi, test_lectores_hueco, test_lectores_compat_san_andres,
-    test_ign_ok, test_ign_respuesta_no_json, test_ign_vacio, test_ign_timeout, test_ign_sin_partido,
+    test_ign_ok, test_ign_respuesta_no_json, test_ign_vacio, test_ign_timeout, test_ign_sin_partido, test_ign_geometria_vacia,
     test_api_guardar_y_zona, test_api_aviso_zona, test_api_guards, test_api_admin_tablas_bloquea,
-    test_api_alta_contorno, test_api_quitar, test_api_cambio_partido_ign, test_api_cambio_partido_archivo,
+    test_api_alta_contorno, test_api_alta_no_copia_contorno_modelo, test_api_quitar, test_api_cambio_partido_ign, test_api_cambio_partido_archivo,
 )}
 
 

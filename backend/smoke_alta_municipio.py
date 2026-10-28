@@ -908,7 +908,9 @@ async def test_alta_ok() -> None:
         check("D en puesta_en_marcha", estado == "puesta_en_marcha", estado)
         check("6 áreas fijas con es_sistema", await _escalar(
             db, "SELECT count(*) FROM area WHERE id_municipio = :m AND es_sistema AND activo", {"m": D}) == 6)
-        n_mod = await _escalar(db, "SELECT count(*) FROM configuracion_general WHERE id_municipio = :m", {"m": ctx["modelo"]})
+        # El contorno del modelo no se copia (es de un lugar: PLAN_CONTORNO_MUNICIPIO, revisión final).
+        n_mod = await _escalar(db, "SELECT count(*) FROM configuracion_general WHERE id_municipio = :m "
+                                   "AND clave NOT IN ('geo_limite_geojson', 'geo_limite_origen')", {"m": ctx["modelo"]})
         n_d = await _escalar(db, "SELECT count(*) FROM configuracion_general WHERE id_municipio = :m", {"m": D})
         check("claves de configuración = las del modelo", n_d == n_mod and n_d > 0, f"{n_d} de {n_mod}")
         salud = await _escalar(db, "SELECT valor FROM configuracion_general WHERE id_municipio = :m AND clave = 'id_area_salud'",

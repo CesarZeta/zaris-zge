@@ -64,7 +64,7 @@ async def registrar_si_super(db: AsyncSession, usuario: dict, request: Request, 
                                         detalle=detalle, user_agent=request.headers.get("user-agent"))
 
 
-@router.get("")
+@router.get("", responses={200: {"description": "El contorno guardado (contorno) y el código oficial del partido (codigo_oficial); un archivo desordenado o ilegible da 422, nunca 500"}})
 async def ver_contorno(
     db: AsyncSession = Depends(get_db),
     _admin: dict = Depends(require_admin),
@@ -82,7 +82,7 @@ async def previsualizar(
     id_municipio: int = Depends(municipio_actual),
 ):
     """Depura el archivo y lo devuelve para verlo en el mapa. No guarda nada."""
-    c = ct.normalizar_contorno(body.geojson, codigo_pais=await ct.pais_del_municipio(db, id_municipio))
+    c = await ct.normalizar_en_hilo(body.geojson, codigo_pais=await ct.pais_del_municipio(db, id_municipio))
     origen = {"via": "archivo", "archivo": body.archivo} if body.archivo else {"via": "archivo"}
     return {**ct.vista(c, origen), "aviso_zona": await ct.aviso_zona(db, id_municipio, c)}
 
@@ -113,7 +113,7 @@ async def guardar(
     """Vuelve a depurar en el servidor (nunca guarda lo del cliente tal cual), guarda el contorno, su
     origen y la zona de búsqueda derivada."""
     await validar_origen(db, body.origen, await ct.codigo_del_municipio(db, id_municipio))
-    c = ct.normalizar_contorno(body.geojson, codigo_pais=await ct.pais_del_municipio(db, id_municipio))
+    c = await ct.normalizar_en_hilo(body.geojson, codigo_pais=await ct.pais_del_municipio(db, id_municipio))
     origen = origen_limpio(body.origen)
     zona = await ct.guardar_contorno(db, id_municipio, c, origen)
     await registrar_si_super(db, admin, request, id_municipio, f"contorno guardado ({origen['via']})")

@@ -20,12 +20,14 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
+import anyio
 import httpx
+import shapely
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from shapely.geometry import MultiPolygon, Polygon, shape
 from shapely.geometry.polygon import orient
-from shapely.validation import make_valid
+from shapely.errors import GEOSException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,6 +41,10 @@ MAX_ENTRADA = 5_000_000         # bytes del archivo que se sube
 MAX_GUARDADO = 200_000          # bytes del contorno ya depurado
 MARGEN_ZONA = 0.1               # grados que se suman al radio de la zona de búsqueda (≈ 11 km)
 RADIO_MAXIMO = 5.0              # el mismo tope que valida core/geo_zona.py
+# Largo del borde / perímetro de su envolvente convexa. Un contorno real da ~1-10 (Pergamino 1,2); uno con
+# los puntos desordenados, decenas o cientos, y repararlo cuesta minutos de CPU con la API bloqueada
+# (revisión final, 2026-10-28). Por encima del tope no se repara: se rechaza.
+MAX_RECORRIDO = 20.0
 
 COMO_ARMAR = "Mirá «¿Cómo armo el archivo?»."
 
@@ -160,6 +166,23 @@ def _redondear(anillo) -> list[list[float]]:
 
 
 def normalizar_contorno(entrada: str | bytes | dict, *, codigo_pais: str = "AR") -> ContornoNormalizado:
+    """Depura un contorno. Cualquier cosa que no sirva sale como ContornoInvalido (422 con su paso),
+    nunca como otra excepción (500)."""
+    try:
+        return _normalizar(entrada, codigo_pais)
+    except ContornoInvalido:
+        raise
+    except (TypeError, ValueError, IndexError, KeyError, AttributeError, RecursionError, GEOSException):
+        raise ContornoInvalido(f"El archivo no trae un contorno que se pueda leer. {COMO_ARMAR}", "formato") from None
+
+
+async def normalizar_en_hilo(entrada: str | bytes | dict, *, codigo_pais: str = "AR") -> ContornoNormalizado:
+    """normalizar_contorno fuera del event loop: un archivo grande no frena las demás requests (shapely
+    suelta el GIL dentro de GEOS)."""
+    return await anyio.to_thread.run_sync(lambda: normalizar_contorno(entrada, codigo_pais=codigo_pais))
+
+
+def _normalizar(entrada: str | bytes | dict, codigo_pais: str) -> ContornoNormalizado:
     polis = _poligonos(_leer(entrada))
     vertices_antes = sum(len(a) for p in polis for a in p if isinstance(a, list))
     anillos_por_poli = [[_anillo(a) for a in p] for p in polis]
@@ -173,7 +196,10 @@ def normalizar_contorno(entrada: str | bytes | dict, *, codigo_pais: str = "AR")
                                    f"primero. {COMO_ARMAR}", "tipo")
         poli = Polygon(anillos[0], [a for a in anillos[1:] if len(a) >= 4])
         if not poli.is_valid:
-            arreglado = make_valid(poli)
+            if poli.exterior.length > MAX_RECORRIDO * poli.convex_hull.exterior.length:
+                raise ContornoInvalido("El polígono se cruza consigo mismo muchísimas veces: los puntos parecen estar "
+                                       "desordenados. Revisalo en QGIS o dibujalo de nuevo. " + COMO_ARMAR, "tipo")
+            arreglado = shapely.make_valid(poli, method="structure")
             geoms = getattr(arreglado, "geoms", [arreglado])
             reparadas = [g for g in geoms if isinstance(g, Polygon) and not g.is_empty]
             for g in geoms:
@@ -203,6 +229,8 @@ def normalizar_contorno(entrada: str | bytes | dict, *, codigo_pais: str = "AR")
         if len(exterior) < 4:
             continue
         coords.append([exterior] + [h for h in (_redondear(i) for i in p.interiors) if len(h) >= 4])
+    if not coords:
+        raise ContornoInvalido(f"El contorno es demasiado chico: no queda ninguna superficie. {COMO_ARMAR}", "tipo")
     geometria = ({"type": "Polygon", "coordinates": coords[0]} if len(coords) == 1
                  else {"type": "MultiPolygon", "coordinates": coords})
     if len(json.dumps(geometria, separators=(",", ":"))) > MAX_GUARDADO:
@@ -320,7 +348,7 @@ async def contorno_oficial_ign(codigo_georef: str, *, codigo_pais: str = "AR",
         raise IgnSinContorno(f"El IGN no tiene el contorno de este municipio (código {codigo_georef}). "
                              "Podés subir un archivo: mirá «¿Cómo armo el archivo?».")
     try:
-        c = normalizar_contorno(datos, codigo_pais=codigo_pais)
+        c = await normalizar_en_hilo(datos, codigo_pais=codigo_pais)
     except ContornoInvalido as e:
         raise IgnNoResponde(f"El IGN devolvió un contorno que no se pudo usar: {e.mensaje}") from None
     props = features[0].get("properties") or {}

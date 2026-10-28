@@ -26,6 +26,14 @@ export function PartidoSearch({ idProvincia, value, etiqueta, disabled, inputSty
   const elegidoRef = useRef(etiqueta ?? '')
   const provinciaRef = useRef(idProvincia)
 
+  // El valor se borró desde afuera (marcar «ficticio», por ejemplo): el nombre que mostraba ya no corresponde.
+  useEffect(() => {
+    if (value == null && elegidoRef.current && q === elegidoRef.current) {
+      elegidoRef.current = ''
+      setQ('')
+    }
+  }, [value]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Otra provincia: el texto anterior ya no corresponde.
   useEffect(() => {
     if (provinciaRef.current === idProvincia) return

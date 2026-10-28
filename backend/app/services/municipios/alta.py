@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.geo_zona import CLAVES_ZONA, SIN_ZONA_BUSQUEDA, zona_completa
 from app.services.contorno import (
-    MAX_ENTRADA, OrigenIn, codigo_del_partido, guardar_contorno, normalizar_contorno, origen_limpio,
+    MAX_ENTRADA, OrigenIn, codigo_del_partido, guardar_contorno, normalizar_en_hilo, origen_limpio,
     validar_origen)
 from app.services.municipios.clonado import Clonador, FilaOmitida, conexion_asyncpg
 from app.services.municipios.constantes import (
@@ -185,7 +185,8 @@ async def _validar(db: AsyncSession, d: AltaMunicipioIn) -> dict:
     if (d.identidad.geo_limite_geojson or "").strip():
         origen = d.identidad.geo_limite_origen or OrigenIn(via="archivo")
         await validar_origen(db, origen, await codigo_del_partido(db, d.id_partido))
-        contorno = (normalizar_contorno(d.identidad.geo_limite_geojson, codigo_pais=d.codigo_pais), origen_limpio(origen))
+        contorno = (await normalizar_en_hilo(d.identidad.geo_limite_geojson, codigo_pais=d.codigo_pais),
+                    origen_limpio(origen))
     return {"pais": pais.nombre, "provincia": provincia, "zona": zona, "modelo": modelo, "modulos": modulos,
             "contorno": contorno}
 
@@ -255,7 +256,9 @@ async def _configuracion(db: AsyncSession, d: AltaMunicipioIn, id_mun: int, mode
     await db.execute(text("""
         INSERT INTO configuracion_general (clave, valor, tipo, descripcion, activo, id_municipio)
         SELECT clave, valor, COALESCE(tipo, 'string'), descripcion, TRUE, :d
-          FROM configuracion_general WHERE id_municipio = :m AND activo"""), {"d": id_mun, "m": modelo})
+          FROM configuracion_general WHERE id_municipio = :m AND activo
+           -- El contorno es de un lugar: el del modelo nunca pasa a un municipio nuevo.
+           AND clave NOT IN ('geo_limite_geojson', 'geo_limite_origen')"""), {"d": id_mun, "m": modelo})
     i = d.identidad
     await _poner_config(db, id_mun, "municipio_nombre", d.nombre)
     await _poner_config(db, id_mun, "municipio_color_primary", i.color)

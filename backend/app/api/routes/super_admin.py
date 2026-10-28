@@ -852,7 +852,7 @@ async def _municipio_o_404(db: AsyncSession, id_municipio: int) -> None:
 @router.post("/contorno/previsualizar", responses={422: {"description": "El archivo no sirve: detail + paso"}})
 async def previsualizar_contorno_alta(body: PrevisualizarAltaIn):
     """Para el alta: el municipio todavía no existe, así que no hay zona previa con qué comparar."""
-    c = ct.normalizar_contorno(body.geojson, codigo_pais=body.codigo_pais)
+    c = await ct.normalizar_en_hilo(body.geojson, codigo_pais=body.codigo_pais)
     origen = {"via": "archivo", "archivo": body.archivo} if body.archivo else {"via": "archivo"}
     return {**ct.vista(c, origen), "aviso_zona": None}
 
@@ -883,7 +883,7 @@ async def previsualizar_contorno_municipio(body: PrevisualizarIn,
                                            id_municipio: int = Path(..., ge=1, le=2_147_483_647),
                                            db: AsyncSession = Depends(get_db)):
     await _municipio_o_404(db, id_municipio)
-    c = ct.normalizar_contorno(body.geojson, codigo_pais=await ct.pais_del_municipio(db, id_municipio))
+    c = await ct.normalizar_en_hilo(body.geojson, codigo_pais=await ct.pais_del_municipio(db, id_municipio))
     origen = {"via": "archivo", "archivo": body.archivo} if body.archivo else {"via": "archivo"}
     return {**ct.vista(c, origen), "aviso_zona": await ct.aviso_zona(db, id_municipio, c)}
 
@@ -909,7 +909,7 @@ async def guardar_contorno_municipio(body: GuardarIn, request: Request,
                                      sa: dict = Depends(require_super_admin)):
     await _municipio_o_404(db, id_municipio)
     await validar_origen(db, body.origen, await ct.codigo_del_municipio(db, id_municipio))
-    c = ct.normalizar_contorno(body.geojson, codigo_pais=await ct.pais_del_municipio(db, id_municipio))
+    c = await ct.normalizar_en_hilo(body.geojson, codigo_pais=await ct.pais_del_municipio(db, id_municipio))
     origen = origen_limpio(body.origen)
     zona = await ct.guardar_contorno(db, id_municipio, c, origen)
     # El registro va en la misma transacción: si no se puede registrar, el cambio no queda.
