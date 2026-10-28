@@ -921,9 +921,9 @@ async def test_alta_ok() -> None:
              WHERE u.id_municipio = :m"""), {"m": D})).first()
         check("admin nivel 1 con agente, subárea y ficha", admin is not None and admin.nivel_acceso == 1
               and admin.id_subarea is not None and admin.id_ciudadano is not None, admin)
-        check("invitación vigente", await _escalar(db, """
-            SELECT count(*) FROM usuario_invitacion WHERE id_usuario = :u AND usada_en IS NULL AND activo
-               AND vence_en > NOW()""", {"u": admin.id_usuario if admin else 0}) == 1)
+        check("el alta no crea la invitación (sale desde la ficha)", await _escalar(db, """
+            SELECT count(*) FROM usuario_invitacion WHERE id_usuario = :u""",
+            {"u": admin.id_usuario if admin else 0}) == 0)
         check("registro municipio_alta", await _escalar(db, "SELECT count(*) FROM super_admin_acceso "
               "WHERE accion = 'municipio_alta' AND id_municipio = :m", {"m": D}) == 1)
         check("módulos = los elegidos", await _escalar(db, "SELECT count(*) FROM municipio_modulo WHERE id_municipio = :m "
@@ -931,11 +931,55 @@ async def test_alta_ok() -> None:
         check("no copió ninguna persona", await _escalar(db, "SELECT count(*) FROM ciudadanos WHERE id_municipio = :m",
                                                          {"m": D}) == 1)
     links = [h for html in capturados for h in re.findall(r'href="(https?://[^"]+)"', html)]
+    check("el alta no manda el mail de invitación", not any("invitacion.html" in x for x in links), links[:3])
+    # Envío desde la ficha: con alguna dirección sin responder, 409 y nada creado; con las tres, 200.
+    uid = admin.id_usuario if admin else 0
+    em.enviar_mail = captura
+    try:
+        async with _cliente() as c:
+            restaurar = _dominios_simulados(ok=False)
+            try:
+                r = await c.post(f"/api/v1/super/usuarios/{uid}/invitacion", headers=ctx["h"])
+            finally:
+                restaurar()
+            check("enviar con direcciones caídas → 409", r.status_code == 409
+                  and "tienen que responder" in r.text, f"{r.status_code} {r.text[:160]}")
+            async with AsyncSessionLocal() as db:
+                check("y no crea la invitación", await _escalar(
+                    db, "SELECT count(*) FROM usuario_invitacion WHERE id_usuario = :u", {"u": uid}) == 0)
+            restaurar = _dominios_simulados(ok=True)
+            try:
+                r = await c.post(f"/api/v1/super/usuarios/{uid}/invitacion", headers=ctx["h"])
+            finally:
+                restaurar()
+            check("enviar con las tres direcciones en verde → 200 con la fecha",
+                  r.status_code == 200 and bool(r.json().get("enviada_en")), f"{r.status_code} {r.text[:160]}")
+            f = (await c.get(f"/api/v1/super/municipios/{D}", headers=ctx["h"])).json()
+            a = next((x for x in f.get("administradores", []) if x["id_usuario"] == uid), {})
+            check("la ficha muestra el envío", bool(a.get("invitacion_enviada_en")) and a.get("invitacion_pendiente")
+                  and a.get("invitacion_aceptada_en") is None and bool(a.get("invitacion_vence_en")), str(a)[:200])
+    finally:
+        em.enviar_mail = original
+    links = [h for html in capturados for h in re.findall(r'href="(https?://[^"]+)"', html)]
     check("el mail de invitación lleva al subdominio de D",
           any(x.startswith(f"https://d-{suf}.zge.zaris.com.ar/frontend/invitacion.html?t=") for x in links), links[:3])
     await _estado(D, "baja")
     if ctx["propio"]:
         await _estado(ctx["modelo"], "baja")
+
+
+def _dominios_simulados(ok: bool):
+    """Simula el resultado de «Verificar» (las tres direcciones responden o no) sin salir a la red.
+    Devuelve la función que restaura el original."""
+    from app.api.routes import super_admin as rutas
+
+    async def falso(db, id_municipio):
+        return [{"app": a, "host": f"{a}.prueba.invalido", "dns": ok, "https": 200 if ok else None}
+                for a in ("zge", "vecinos", "agentes")]
+
+    original = rutas.estado_dominios
+    rutas.estado_dominios = falso
+    return lambda: setattr(rutas, "estado_dominios", original)
 
 
 async def test_alta_atomica() -> None:
@@ -1032,11 +1076,17 @@ async def test_invitacion() -> None:
 
     original = em.enviar_mail
     em.enviar_mail = captura
+    restaurar = lambda: None  # noqa: E731
     try:
         async with _cliente() as c:
             r = await c.post("/api/v1/super/municipios", json=_alta_body(suf, cod, id_provincia=ctx["ba"]),
                              headers=ctx["h"])
             D = r.json().get("id_municipio") if r.status_code == 201 else None
+            async with AsyncSessionLocal() as db:
+                uid = await _escalar(db, "SELECT id_usuario FROM usuarios WHERE id_municipio = :m AND nivel_acceso = 1", {"m": D})
+            restaurar = _dominios_simulados(ok=True)
+            r = await c.post(f"/api/v1/super/usuarios/{uid}/invitacion", headers=ctx["h"])
+            check("enviar la invitación desde la ficha → 200", r.status_code == 200, f"{r.status_code} {r.text[:120]}")
             tok = ultimo_token()
             check("el mail trae el token", bool(tok))
             r = await c.post("/api/v1/auth/invitacion/aceptar", json={"token": tok, "password": "corta"})
@@ -1083,6 +1133,7 @@ async def test_invitacion() -> None:
                 settings.SEGUNDO_FACTOR_OBLIGATORIO = obligatorio
     finally:
         em.enviar_mail = original
+        restaurar()
     if D:
         await _estado(D, "baja")
     if ctx["propio"]:

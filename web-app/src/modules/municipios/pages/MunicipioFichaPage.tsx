@@ -6,8 +6,8 @@ import { ConfirmModal } from '../../agenda/components/ConfirmModal'
 import { Badge, Button, EmptyState, Skeleton } from '../../../ui'
 import { useNotificationsStore } from '../../../stores/notifications'
 import {
-  ESTADO_ETIQUETA, cambiarEstado, cambiarModulos, cambiarTope, fichaMunicipio, probarPuestaEnMarcha,
-  reenviarInvitacion, verificarDominios, type Chequeo, type Dominio, type FichaMunicipio,
+  ESTADO_ETIQUETA, cambiarEstado, cambiarModulos, cambiarTope, dominioOk, fichaMunicipio, probarPuestaEnMarcha,
+  reenviarInvitacion, verificarDominios, type AdministradorMunicipio, type Chequeo, type Dominio, type FichaMunicipio,
 } from '../api'
 import { Advertencias, Casilla, faltaDependencia } from './AltaMunicipioPage'
 import { EditarMunicipioModal } from './MunicipiosPage'
@@ -28,6 +28,9 @@ export function MunicipioFichaPage() {
   const push = useNotificationsStore((s) => s.push)
   const q = useQuery({ queryKey: ['super', 'ficha', idMun], queryFn: () => fichaMunicipio(idMun), enabled: idMun > 0 })
   const [editando, setEditando] = useState(false)
+  // El resultado de «Verificar» lo usa también Administradores: la invitación sale recién con las
+  // tres direcciones en verde.
+  const [dominios, setDominios] = useState<Dominio[] | null>(null)
 
   const refrescar = () => {
     qc.invalidateQueries({ queryKey: ['super', 'ficha', idMun] })
@@ -68,8 +71,8 @@ export function MunicipioFichaPage() {
       <Estado ficha={q.data} aviso={aviso} />
       <Modulos ficha={q.data} aviso={aviso} />
       <Tope ficha={q.data} aviso={aviso} />
-      <Administradores ficha={q.data} aviso={aviso} />
-      <Dominios idMun={idMun} />
+      <Dominios idMun={idMun} lista={dominios} onVerificado={setDominios} />
+      <Administradores ficha={q.data} aviso={aviso} dominios={dominios} />
       <Prueba idMun={idMun} />
       <Exportaciones idMun={idMun} />
       <Vaciado municipio={m} onTermino={refrescar} />
@@ -208,11 +211,28 @@ function Tope({ ficha, aviso }: { ficha: FichaMunicipio; aviso: Aviso }) {
   )
 }
 
-function Administradores({ ficha, aviso }: { ficha: FichaMunicipio; aviso: Aviso }) {
-  const mut = useMutation({ mutationFn: reenviarInvitacion, ...aviso('Invitación reenviada') })
+const fecha = (iso: string | null) => (iso ? new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : '—')
+
+function estadoInvitacion(a: AdministradorMunicipio) {
+  if (a.invitacion_aceptada_en) return <Badge kind="success">aceptada el {fecha(a.invitacion_aceptada_en)}</Badge>
+  if (a.invitacion_pendiente) return <>pendiente · vence el {fecha(a.invitacion_vence_en)}</>
+  if (a.invitacion_enviada_en) return <Badge kind="error">vencida</Badge>
+  return <>sin enviar</>
+}
+
+function Administradores({ ficha, aviso, dominios }: { ficha: FichaMunicipio; aviso: Aviso; dominios: Dominio[] | null }) {
+  const mut = useMutation({ mutationFn: reenviarInvitacion, ...aviso('Invitación enviada') })
+  const listos = !!dominios && dominios.length === 3 && dominios.every(dominioOk)
+  const conBoton = ficha.administradores.some((a) => a.activo && !a.invitacion_aceptada_en)
   return (
     <section style={seccion}>
       <h2 style={subtitulo}>Administradores</h2>
+      {conBoton && !listos && (
+        <p data-invitacion-espera style={{ margin: 0, fontSize: 13, color: 'var(--fg-2)' }}>
+          La invitación se envía cuando «Verificar» (en Dominios) da las tres direcciones en verde: el link lleva a
+          la dirección del municipio y no abre hasta que exista.
+        </p>
+      )}
       {ficha.administradores.length === 0 ? (
         <p style={{ margin: 0, fontSize: 13, color: 'var(--fg-2)' }}>El municipio no tiene administradores.</p>
       ) : (
@@ -223,12 +243,19 @@ function Administradores({ ficha, aviso }: { ficha: FichaMunicipio; aviso: Aviso
               <tr key={a.id_usuario}>
                 <td style={td}>{a.nombre}{!a.activo && <> <Badge kind="error">inactivo</Badge></>}</td>
                 <td style={td}>{a.email ?? '—'}</td>
-                <td style={td}>{a.invitacion_pendiente ? 'pendiente' : '—'}</td>
+                <td style={td}>{estadoInvitacion(a)}</td>
                 <td style={{ ...td, textAlign: 'right' }}>
-                  {a.activo && (
-                    <Button type="button" disabled={mut.isPending} onClick={() => mut.mutate(a.id_usuario)}>
-                      Reenviar invitación
-                    </Button>
+                  {a.activo && !a.invitacion_aceptada_en && (
+                    <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                      <Button type="button" disabled={!listos || mut.isPending} onClick={() => mut.mutate(a.id_usuario)}>
+                        {a.invitacion_enviada_en ? 'Reintentar envío' : 'Enviar invitación'}
+                      </Button>
+                      {a.invitacion_enviada_en && (
+                        <span data-invitacion-enviada style={{ fontSize: 12, color: 'var(--fg-3)' }}>
+                          Enviada el {fecha(a.invitacion_enviada_en)}
+                        </span>
+                      )}
+                    </div>
                   )}
                 </td>
               </tr>
@@ -240,12 +267,13 @@ function Administradores({ ficha, aviso }: { ficha: FichaMunicipio; aviso: Aviso
   )
 }
 
-function Dominios({ idMun }: { idMun: number }) {
+function Dominios({ idMun, lista, onVerificado }: {
+  idMun: number; lista: Dominio[] | null; onVerificado: (l: Dominio[]) => void
+}) {
   const push = useNotificationsStore((s) => s.push)
-  const [lista, setLista] = useState<Dominio[] | null>(null)
   const mut = useMutation({
     mutationFn: () => verificarDominios(idMun),
-    onSuccess: setLista,
+    onSuccess: onVerificado,
     onError: (e: Error) => push({ kind: 'error', title: 'No se pudo verificar', body: e.message }),
   })
   return (

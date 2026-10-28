@@ -5,7 +5,8 @@ Todo en UNA transacción (la del llamador, que commitea): municipio en `puesta_e
 catálogos del modelo (Clonador sin marca, re-mapeo de FK, solo tablas de catálogo) → módulos →
 configuración (todas las claves del modelo, pisadas por la identidad recibida; las que apuntan por id
 a entidades se re-siembran por nombre) → ficha BUC + agente + usuario nivel 1 del primer
-administrador → invitación por mail. Si algo falla, no queda nada.
+administrador. Si algo falla, no queda nada. La invitación NO sale acá: el super la manda desde la ficha
+cuando las tres direcciones del municipio responden (César, 2026-10-28).
 """
 import re
 import secrets
@@ -279,7 +280,6 @@ async def _administrador(db: AsyncSession, d: AltaMunicipioIn, id_mun: int, id_s
     from app.models.buc import Ciudadano
     from app.schemas.buc import UsuarioCreate
     from app.services.cuenta_zaris import crear_usuario_interno
-    from app.services.municipios.invitacion import crear_invitacion
     a = d.administrador
     nacionalidad = await db.scalar(text(
         "SELECT id FROM nacionalidades WHERE lower(pais) LIKE lower(:p) || '%' ORDER BY id LIMIT 1"),
@@ -302,12 +302,10 @@ async def _administrador(db: AsyncSession, d: AltaMunicipioIn, id_mun: int, id_s
         username=f"admin.{d.codigo_corto.lower()}", email=a.email.lower(), cuil=a.cuil,
         id_subarea=await _subarea_admin(db, id_mun), es_externo=False,
         # Clave aleatoria que nadie conoce: no sale el mail de clave temporal; la persona elige la suya
-        # con la invitación.
+        # con la invitación que el super manda desde la ficha.
         password=secrets.token_urlsafe(32))
     usuario = await crear_usuario_interno(db, data=datos, background_tasks=background_tasks, id_municipio=id_mun,
                                           ciudadano=ciudadano)
-    await crear_invitacion(db, id_usuario=usuario.id_usuario, id_municipio=id_mun, id_actor=id_super,
-                           background_tasks=background_tasks)
     return usuario.id_usuario
 
 

@@ -231,18 +231,14 @@ export function AltaMunicipioPage() {
         <h1 style={titulo}>Municipio dado de alta</h1>
         <div style={seccion}>
           <p style={{ margin: 0 }}>
-            <strong>{f.nombre}</strong> quedó en puesta en marcha. Le mandamos la invitación al primer
-            administrador ({f.a_email.trim().toLowerCase()}): vence en 72 horas.
+            <strong>{f.nombre}</strong> quedó en puesta en marcha, con la cuenta de su primer administrador
+            ({f.a_email.trim().toLowerCase()}). Todavía no le mandamos la invitación.
           </p>
           {resultado.advertencias.length > 0 && <Advertencias lista={resultado.advertencias} />}
           <p style={{ margin: 0, fontSize: 13, color: 'var(--fg-2)' }}>
             Falta crear sus tres direcciones con <code>tools/dominios_municipio.py {f.subdominio}</code>. Después,
-            en la ficha, «Verificar» y «Probar puesta en marcha».
-          </p>
-          <p style={{ margin: 0, fontSize: 13, color: 'var(--fg-2)' }}>
-            El link de la invitación lleva a <code>{f.subdominio}.zge.zaris.com.ar</code> y no abre hasta que esa
-            dirección exista. Si el administrador la recibe antes, reenviala desde la ficha («Reenviar
-            invitación») cuando «Verificar» dé las tres en verde.
+            en la ficha: «Verificar», y con las tres en verde, «Enviar invitación» (vence en 72 horas) y «Probar
+            puesta en marcha».
           </p>
           <div><Button variant="primary" type="button" onClick={() => navigate(`/municipios/${resultado.id_municipio}`)}>
             Ir a la ficha
@@ -406,17 +402,17 @@ export function AltaMunicipioPage() {
         {paso === 5 && (
           <>
             <p style={ayudaPaso}>
-              Se crea su ficha en la BUC del municipio, su agente y su cuenta de administrador. Recibe un mail para
-              elegir la clave y vincular la app de autenticación: nadie más conoce la clave. Todos los campos son
-              obligatorios.
+              Se crea su ficha en la BUC del municipio, su agente y su cuenta de administrador. Después, desde la
+              ficha del municipio, se le envía una invitación para elegir la clave y vincular la app de
+              autenticación: nadie más conoce la clave. Todos los campos son obligatorios.
             </p>
             <div data-resumen-direcciones style={{ ...ayudaPaso, padding: '10px 12px', borderRadius: 8,
               border: '1px solid var(--border-medium)', background: 'var(--surface-200)' }}>
               El link de la invitación lleva a <strong style={{ fontFamily: 'var(--font-mono)' }}>
               {f.subdominio || '—'}.zge.zaris.com.ar</strong>. Revisá que sea el subdominio que querés: las tres
               direcciones ({f.subdominio || '—'}.zge, .vecinos y .agentes) se crean con{' '}
-              <code>tools/dominios_municipio.py {f.subdominio || '<subdominio>'}</code>, y hasta que existan el
-              link no abre.
+              <code>tools/dominios_municipio.py {f.subdominio || '<subdominio>'}</code>, y la invitación se envía
+              desde la ficha cuando las tres responden.
             </div>
             <div style={grilla}>
               <Campo etiqueta="Nombre">

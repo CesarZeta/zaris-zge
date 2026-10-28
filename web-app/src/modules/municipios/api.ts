@@ -120,6 +120,8 @@ export interface AltaResultado { id_municipio: number; id_administrador: number;
 export interface Cupo { activas: number; maximo: number | null; aviso: boolean }
 export interface AdministradorMunicipio {
   id_usuario: number; nombre: string; email: string | null; activo: boolean; invitacion_pendiente: boolean
+  /** De la última invitación: cuándo se envió y cuándo vence; y si alguna vez la aceptó. */
+  invitacion_enviada_en: string | null; invitacion_vence_en: string | null; invitacion_aceptada_en: string | null
 }
 export interface FichaMunicipio {
   municipio: MunicipioSuper
@@ -151,8 +153,12 @@ export const cambiarTope = (id: number, maximo: number | null) =>
   api.put<MunicipioSuper>(`/api/v1/super/municipios/${id}/tope`, { maximo })
 export const verificarDominios = (id: number) => api.get<Dominio[]>(`/api/v1/super/municipios/${id}/dominios`)
 export const probarPuestaEnMarcha = (id: number) => api.post<Chequeo[]>(`/api/v1/super/municipios/${id}/prueba`)
+/** Envía (o vuelve a enviar) la invitación. A un administrador de municipio, solo con sus tres
+ *  direcciones respondiendo (409 si no). */
 export const reenviarInvitacion = (idUsuario: number) =>
-  api.post<{ enviada: boolean }>(`/api/v1/super/usuarios/${idUsuario}/invitacion`)
+  api.post<{ enviada: boolean; enviada_en: string | null }>(`/api/v1/super/usuarios/${idUsuario}/invitacion`)
+/** La dirección resuelve y responde por HTTPS sin error (la misma regla que el backend). */
+export const dominioOk = (d: Dominio) => !!d.host && d.dns && d.https != null && d.https < 400
 export const listarSupers = () => api.get<SuperAdministrador[]>('/api/v1/super/administradores')
 export const altaSuper = (body: { nombre: string; apellido: string; email: string }) =>
   api.post<{ id_usuario: number }>('/api/v1/super/administradores', body)

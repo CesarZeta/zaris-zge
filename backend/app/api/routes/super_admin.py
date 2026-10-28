@@ -201,11 +201,19 @@ async def ficha_municipio(id_municipio: int = Path(..., ge=1, le=2_147_483_647),
           LEFT JOIN municipio_modulo mm ON mm.modulo_codigo = mo.modulo_codigo AND mm.id_municipio = :m
          WHERE mo.activo AND mo.min_nivel_acceso >= 1
          ORDER BY mo.nombre"""), {"m": id_municipio})
+    # De la última invitación de cada uno: cuándo se envió, cuándo vence y si la aceptó (la ficha
+    # muestra «Enviar invitación» o «Reintentar envío» con la fecha del último envío).
     admins = await db.execute(text("""
         SELECT u.id_usuario, u.nombre, u.email, u.activo,
                EXISTS (SELECT 1 FROM usuario_invitacion i WHERE i.id_usuario = u.id_usuario AND i.activo
-                          AND i.usada_en IS NULL AND i.vence_en > NOW()) AS invitacion_pendiente
+                          AND i.usada_en IS NULL AND i.vence_en > NOW()) AS invitacion_pendiente,
+               ult.fecha_alta AS invitacion_enviada_en, ult.vence_en AS invitacion_vence_en,
+               (SELECT max(i.usada_en) FROM usuario_invitacion i WHERE i.id_usuario = u.id_usuario)
+                   AS invitacion_aceptada_en
           FROM usuarios u
+          LEFT JOIN LATERAL (SELECT i.fecha_alta, i.vence_en FROM usuario_invitacion i
+                              WHERE i.id_usuario = u.id_usuario
+                              ORDER BY i.fecha_alta DESC, i.id_invitacion DESC LIMIT 1) ult ON TRUE
          WHERE u.id_municipio = :m AND u.nivel_acceso = 1
          ORDER BY u.activo DESC, u.nombre"""), {"m": id_municipio})
     geo = await leer_configs(db, list(CLAVES_ZONA), id_municipio)
@@ -525,6 +533,15 @@ async def verificar_dominios(id_municipio: int, db: AsyncSession = Depends(get_d
     Cloudflare: los dominios los crea tools/dominios_municipio.py."""
     if not await db.scalar(text("SELECT 1 FROM municipios WHERE id_municipio = :m"), {"m": id_municipio}):
         raise HTTPException(404, "Municipio no encontrado")
+    return await estado_dominios(db, id_municipio)
+
+
+def dominio_ok(d: dict) -> bool:
+    """La dirección resuelve y responde por HTTPS sin error (lo que la ficha muestra en verde)."""
+    return bool(d["host"]) and d["dns"] and d["https"] is not None and d["https"] < 400
+
+
+async def estado_dominios(db: AsyncSession, id_municipio: int) -> list[dict]:
     salida = []
     async with httpx.AsyncClient(timeout=5, follow_redirects=False) as cliente:
         for app_, host in (await _hosts(db, id_municipio)).items():
@@ -572,8 +589,13 @@ async def prueba_puesta_en_marcha(id_municipio: int, db: AsyncSession = Depends(
     usada = await db.scalar(text("""
         SELECT count(*) FROM usuario_invitacion i JOIN usuarios u ON u.id_usuario = i.id_usuario
          WHERE u.id_municipio = :m AND i.usada_en IS NOT NULL"""), {"m": id_municipio})
+    alguna = vigente or usada or await db.scalar(text("""
+        SELECT count(*) FROM usuario_invitacion i JOIN usuarios u ON u.id_usuario = i.id_usuario
+         WHERE u.id_municipio = :m AND u.nivel_acceso = 1"""), {"m": id_municipio})
     chequeos.append({"nombre": "invitación del administrador", "ok": bool(vigente or usada),
-                     "detalle": "aceptada" if usada else ("vigente" if vigente else "sin invitación vigente")})
+                     "detalle": "aceptada" if usada else ("vigente" if vigente else (
+                         "vencida: reintentá el envío desde Administradores" if alguna
+                         else "sin enviar: se envía desde Administradores"))})
     base = await base_app(db, id_municipio, "zge")
     pagina = None
     if base:
@@ -588,29 +610,41 @@ async def prueba_puesta_en_marcha(id_municipio: int, db: AsyncSession = Depends(
     return chequeos
 
 
+DIRECCIONES_SIN_RESPONDER = ("Las tres direcciones del municipio tienen que responder antes de enviar la "
+                              "invitación (en la ficha, «Verificar»). Sin respuesta: {}")
+
+
 @router.post("/usuarios/{id_usuario}/invitacion",
-             responses={404: {"description": "La cuenta no existe o no es administrador"}})
-async def reenviar_invitacion(
+             responses={404: {"description": "La cuenta no existe o no es administrador"},
+                        409: {"description": "Las direcciones del municipio todavía no responden"}})
+async def enviar_invitacion(
     id_usuario: int,
     request: Request,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     sa: dict = Depends(require_super_admin),
 ):
-    """Reenvía la invitación del primer administrador de un municipio (nivel 1) o de un super (nivel 0).
-    Desactiva las anteriores."""
+    """Envía (o vuelve a enviar) la invitación de un administrador de un municipio (nivel 1) o de un super
+    (nivel 0); desactiva las anteriores. Para un administrador de municipio, solo si sus tres direcciones
+    responden: el link lleva a la del shell y el administrador va a usar las otras dos."""
     u = (await db.execute(text(
         "SELECT id_municipio, nivel_acceso FROM usuarios WHERE id_usuario = :u AND activo"), {"u": id_usuario})).first()
     if u is None or u.nivel_acceso not in (0, 1):
         raise HTTPException(404, "Cuenta no encontrada")
+    if u.id_municipio is not None:
+        caidas = [d["host"] or d["app"] for d in await estado_dominios(db, u.id_municipio) if not dominio_ok(d)]
+        if caidas:
+            raise HTTPException(409, DIRECCIONES_SIN_RESPONDER.format(", ".join(caidas)))
     await crear_invitacion(db, id_usuario=id_usuario, id_municipio=u.id_municipio, id_actor=sa["id_usuario"],
                            background_tasks=background_tasks)
     await registrar_acceso_super_en(db, id_usuario=sa["id_usuario"],
                                     accion="super_alta" if u.nivel_acceso == 0 else "municipio_alta",
-                                    id_municipio=u.id_municipio, detalle=f"reenvío de invitación a {id_usuario}",
+                                    id_municipio=u.id_municipio, detalle=f"envío de invitación a {id_usuario}",
                                     **_registro(request))
+    enviada_en = await db.scalar(text(
+        "SELECT max(fecha_alta) FROM usuario_invitacion WHERE id_usuario = :u AND activo"), {"u": id_usuario})
     await db.commit()
-    return {"enviada": True}
+    return {"enviada": True, "enviada_en": enviada_en}
 
 
 # ── Super administradores (IT-01 F4+F5, Tarea 15) ──────────────────────────────────────────────
