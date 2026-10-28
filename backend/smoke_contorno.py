@@ -9,8 +9,10 @@ Smoke in-process — contorno del municipio y catálogo de gobiernos locales
 SOLO LOCAL. Sin argumentos corre todas las pruebas; con nombres, solo esas.
 """
 import asyncio
+import json
 import os
 import sys
+from pathlib import Path
 
 os.environ.setdefault("ENV_FILE", ".env.local")
 AQUI = os.path.dirname(os.path.abspath(__file__))
@@ -114,9 +116,140 @@ async def test_geo_partidos_q() -> None:
               f"{r.status_code} {len(r.json())}")
 
 
+# ── Tarea 3: normalizar_contorno (puro) ─────────────────────────────────────
+
+FIX = Path(AQUI) / "fixtures" / "contorno"
+
+
+def _fix(nombre: str) -> str:
+    return (FIX / nombre).read_text(encoding="utf-8")
+
+
+def _paso(entrada) -> str | None:
+    """Paso del ContornoInvalido que tira la normalización, o None si la acepta."""
+    from app.services.contorno import ContornoInvalido, normalizar_contorno
+    try:
+        normalizar_contorno(entrada)
+    except ContornoInvalido as e:
+        return e.paso
+    return None
+
+
+def _mensaje(entrada) -> str:
+    from app.services.contorno import ContornoInvalido, normalizar_contorno
+    try:
+        normalizar_contorno(entrada)
+    except ContornoInvalido as e:
+        return e.mensaje
+    return ""
+
+
+def _coords(g: dict):
+    pols = g["coordinates"] if g["type"] == "MultiPolygon" else [g["coordinates"]]
+    return [c for pol in pols for anillo in pol for c in anillo]
+
+
+async def test_norm_pergamino_ign() -> None:
+    from app.services.contorno import normalizar_contorno
+    c = normalizar_contorno(_fix("pergamino_ign.geojson"))
+    check("Pergamino del IGN: una parte", c.partes == 1, c.partes)
+    check("vértices antes = 2681", c.vertices_antes == 2681, c.vertices_antes)
+    check("simplifica (menos vértices)", c.vertices_despues < 2681, c.vertices_despues)
+    check("pesa hasta 200 KB", len(json.dumps(c.geometria)) <= 200_000, len(json.dumps(c.geometria)))
+    check("coordenadas con 5 decimales o menos",
+          all(len(repr(v).split(".")[1]) <= 5 for p in _coords(c.geometria) for v in p if "." in repr(v)))
+    r = c.recuadro
+    check("recuadro de Pergamino", abs(r["sur"] + 34.176) < 0.001 and abs(r["oeste"] + 60.943) < 0.001
+          and abs(r["norte"] + 33.540) < 0.001 and abs(r["este"] + 60.139) < 0.001, r)
+
+
+async def test_norm_metros() -> None:
+    check("en metros → paso metros", _paso(_fix("pergamino_metros.geojson")) == "metros",
+          _paso(_fix("pergamino_metros.geojson")))
+    check("el mensaje dice EPSG:4326", "EPSG:4326" in _mensaje(_fix("pergamino_metros.geojson")))
+
+
+async def test_norm_invertido() -> None:
+    check("lat/lon invertidas → paso invertido", _paso(_fix("pergamino_invertido.geojson")) == "invertido",
+          _paso(_fix("pergamino_invertido.geojson")))
+
+
+async def test_norm_linea() -> None:
+    check("una línea → paso tipo", _paso(_fix("linea.geojson")) == "tipo", _paso(_fix("linea.geojson")))
+    check("el mensaje nombra LineString", "LineString" in _mensaje(_fix("linea.geojson")))
+
+
+async def test_norm_dos_partes() -> None:
+    from app.services.contorno import normalizar_contorno
+    c = normalizar_contorno(_fix("dos_partes.geojson"))
+    check("dos Features → MultiPolygon de 2 partes", c.geometria["type"] == "MultiPolygon" and c.partes == 2,
+          (c.geometria["type"], c.partes))
+
+
+async def test_norm_hueco_preservado() -> None:
+    from app.services.contorno import normalizar_contorno
+    c = normalizar_contorno(_fix("con_hueco.geojson"))
+    check("el hueco sobrevive", c.geometria["type"] == "Polygon" and len(c.geometria["coordinates"]) == 2,
+          c.geometria)
+
+
+async def test_norm_isla_diminuta() -> None:
+    from app.services.contorno import normalizar_contorno
+    c = normalizar_contorno(_fix("isla_diminuta.geojson"))
+    check("la isla de 2 m se descarta", c.partes == 1, c.partes)
+    check("con aviso", any("descart" in a for a in c.avisos), c.avisos)
+
+
+async def test_norm_binario_y_kml() -> None:
+    zip_ = bytes([0x50, 0x4B, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00, 0x08, 0x00]) + b"shapefile"
+    kml = '<?xml version="1.0"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document/></kml>'
+    check("un .zip → paso formato", _paso(zip_) == "formato", _paso(zip_))
+    check("un KML → paso formato", _paso(kml) == "formato", _paso(kml))
+    check("el mensaje sugiere QGIS", "QGIS" in _mensaje(kml), _mensaje(kml))
+
+
+async def test_norm_vacio() -> None:
+    check("FeatureCollection vacía → paso tipo",
+          _paso({"type": "FeatureCollection", "features": []}) == "tipo")
+    check("Feature sin geometría → paso tipo",
+          _paso({"type": "Feature", "properties": {}, "geometry": None}) == "tipo")
+
+
+async def test_norm_tamano_entrada() -> None:
+    grande = '{"type":"Polygon","coordinates":[[' + ",".join(["[-62.5,-36.5]"] * 400_000) + "]]}"
+    check("entrada de más de 5 MB → paso tamano", len(grande) > 5_000_000 and _paso(grande) == "tamano",
+          (len(grande), _paso(grande)))
+
+
+async def test_norm_z_y_sin_cerrar() -> None:
+    from app.services.contorno import normalizar_contorno
+    g = {"type": "Polygon", "coordinates": [[[-62.5, -36.5, 10], [-62.4, -36.5, 11], [-62.4, -36.4, 12],
+                                               [-62.5, -36.4, 13]]]}
+    c = normalizar_contorno(g)
+    anillo = c.geometria["coordinates"][0]
+    check("se cierra el anillo", anillo[0] == anillo[-1], anillo)
+    check("sin la tercera coordenada", all(len(p) == 2 for p in anillo), anillo[:2])
+
+
+async def test_norm_fuera_de_pais() -> None:
+    europa = {"type": "Polygon", "coordinates": [[[2.3, 48.8], [2.4, 48.8], [2.4, 48.9], [2.3, 48.9], [2.3, 48.8]]]}
+    check("un polígono en Europa → paso pais", _paso(europa) == "pais", _paso(europa))
+
+
+async def test_zona_pergamino() -> None:
+    from app.services.contorno import normalizar_contorno, zona_desde_contorno
+    z = zona_desde_contorno(normalizar_contorno(_fix("pergamino_ign.geojson")))
+    ok = (abs(float(z["geo_bbox_centro_lat"]) + 33.858) < 0.001 and abs(float(z["geo_bbox_centro_lon"]) + 60.541) < 0.001
+          and abs(float(z["geo_bbox_delta_grados"]) - 0.502) < 0.001 and all(isinstance(v, str) for v in z.values()))
+    check("zona derivada de Pergamino: centro del recuadro, mitad del lado mayor + 0,1", ok, z)
+
+
 PRUEBAS = {f.__name__.removeprefix("test_"): f for f in (
     test_catalogo_completo, test_catalogo_codigos, test_catalogo_sin_huerfanos_de_reclamos,
     test_catalogo_bajas_sin_municipio, test_geo_partidos_q,
+    test_norm_pergamino_ign, test_norm_metros, test_norm_invertido, test_norm_linea, test_norm_dos_partes,
+    test_norm_hueco_preservado, test_norm_isla_diminuta, test_norm_binario_y_kml, test_norm_vacio,
+    test_norm_tamano_entrada, test_norm_z_y_sin_cerrar, test_norm_fuera_de_pais, test_zona_pergamino,
 )}
 
 
