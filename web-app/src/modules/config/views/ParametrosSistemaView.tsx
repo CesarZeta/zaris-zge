@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import {
-  BellRing, Check, ClipboardCheck, Loader2, MapPin, Settings2, Stethoscope,
+  BellRing, Check, ClipboardCheck, Loader2, Map as MapaIcono, MapPin, Settings2, Stethoscope,
 } from 'lucide-react'
+import { ContornoMunicipio } from '../../municipios/contorno/ContornoMunicipio'
 import { useConfigGeneral, useActualizarConfigParam } from '../hooks/useConfig'
 import type { ConfigParam } from '../api/configApi'
 import { normalizarNumero, parLatLon, problemaZona } from '../../../lib/zonaBusqueda'
@@ -93,7 +95,7 @@ const SECCIONES: Seccion[] = [
   {
     id: 'geocoding',
     titulo: 'Búsqueda de direcciones (zona del municipio)',
-    descripcion: 'Acotan el buscador de direcciones (OpenStreetMap) a la zona del municipio: lo que cae afuera se descarta. Aplica a reclamos, emergencias, padrones y al alta pública de vecinos. Los cambios toman efecto en ~5 minutos.',
+    descripcion: 'Acotan el buscador de direcciones (OpenStreetMap) a la zona del municipio: lo que cae afuera se descarta. Aplica a reclamos, emergencias, padrones y al alta pública de vecinos. Se recalcula al guardar el contorno; podés ajustarla después. Los cambios toman efecto en ~5 minutos.',
     icon: MapPin,
     claves: [
       {
@@ -143,15 +145,15 @@ const SECCIONES: Seccion[] = [
 // descripción y colores de la App Vecinos — vive en la pestaña Identidad
 // desde 2026-07-16). Las vapid_* son material criptográfico del Web Push
 // (etapa E App Vecinos): editarlas rompe las suscripciones y la privada no
-// debe mostrarse ni al admin. geo_limite_geojson (mig 111) es un GeoJSON de
-// ~3,5 KB: editarlo a mano en un input no es una tarea razonable.
+// debe mostrarse ni al admin. geo_limite_geojson y geo_limite_origen se cargan en el bloque
+// «Contorno del municipio» (services/contorno.py los depura; a mano el backend los rechaza).
 // ot_pendiente_dias_vencimiento (mig 21) no la lee ningún código del backend:
 // se ocultó para no ofrecer un ajuste que no hace nada (César, 2026-10-24).
 const CLAVES_OCULTAS = new Set([
   'municipio_nombre', 'municipio_logo_url',
   'municipio_descripcion', 'municipio_color_primary', 'municipio_color_accent',
   'vapid_public_key', 'vapid_private_key', 'vapid_claims_email',
-  'geo_limite_geojson',
+  'geo_limite_geojson', 'geo_limite_origen',
   'ot_pendiente_dias_vencimiento',
 ])
 
@@ -159,8 +161,18 @@ const CLAVES_CONOCIDAS = new Set(
   SECCIONES.flatMap((s) => s.claves.map((c) => c.clave)),
 )
 
+// El contorno va arriba de la zona: al guardarlo, la zona se recalcula desde él.
+const SECCION_CONTORNO: Seccion = {
+  id: 'contorno',
+  titulo: 'Contorno del municipio',
+  descripcion: 'El límite del municipio. Se usa en el mapa del inicio y para encuadrar los mapas. Se trae el oficial del IGN o se sube un archivo.',
+  icon: MapaIcono,
+  claves: [],
+}
+
 export function ParametrosSistemaView() {
   const { data: params, isLoading, isError } = useConfigGeneral()
+  const qc = useQueryClient()
 
   if (isLoading) {
     return (
@@ -200,11 +212,21 @@ export function ParametrosSistemaView() {
         const filas = sec.claves.map((meta) => ({ meta, param: conDefecto(meta) }))
         if (filas.length === 0) return null
         return (
-          <SeccionCard key={sec.id} seccion={sec}>
-            {sec.id === 'geocoding' ? <ZonaBusqueda filas={filas} /> : filas.map(({ meta, param }) => (
-              <ParamRow key={meta.clave} meta={meta} param={param} />
-            ))}
-          </SeccionCard>
+          <Fragment key={sec.id}>
+            {sec.id === 'geocoding' && (
+              <SeccionCard seccion={SECCION_CONTORNO}>
+                <div style={{ padding: '13px 16px', borderTop: '1px solid var(--border-primary)' }}>
+                  <ContornoMunicipio destino={{ modo: 'config' }}
+                                     onGuardado={() => qc.invalidateQueries({ queryKey: ['config', 'general'] })} />
+                </div>
+              </SeccionCard>
+            )}
+            <SeccionCard seccion={sec}>
+              {sec.id === 'geocoding' ? <ZonaBusqueda filas={filas} /> : filas.map(({ meta, param }) => (
+                <ParamRow key={meta.clave} meta={meta} param={param} />
+              ))}
+            </SeccionCard>
+          </Fragment>
         )
       })}
 

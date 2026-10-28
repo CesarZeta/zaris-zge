@@ -47,10 +47,13 @@ export interface ApiResponseWithHeaders<T> {
  *  en la UI (ej. historia clínica F5) sin parsear el texto. */
 export class ApiError extends Error {
   readonly status: number
-  constructor(status: number, message: string) {
+  /** El cuerpo JSON del error, para los que traen más que `detail` (ej. el `paso` del contorno). */
+  readonly body: unknown
+  constructor(status: number, message: string, body?: unknown) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.body = body
   }
 }
 export const httpStatus = (e: unknown): number | undefined => (e instanceof ApiError ? e.status : undefined)
@@ -97,7 +100,7 @@ async function request<T>(
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     const msg = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail ?? err)
-    throw new ApiError(res.status, msg || 'Error desconocido')
+    throw new ApiError(res.status, msg || 'Error desconocido', err)
   }
 
   const data = (await res.json()) as T

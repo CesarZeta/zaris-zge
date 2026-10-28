@@ -43,6 +43,8 @@ export interface MunicipioSuperUpdate {
   id_provincia: number | null
   id_partido: number | null
   zona_horaria: string
+  /** Confirma quitar el contorno oficial del partido anterior al cambiar el partido (409 sin esto). */
+  quitar_contorno?: boolean
 }
 
 export interface FiltrosMunicipios {
@@ -71,7 +73,7 @@ export const listarMunicipios = (filtros: FiltrosMunicipios = {}) =>
   api.get<MunicipioSuper[]>('/api/v1/super/municipios', { params: { ...filtros } })
 
 export const editarMunicipio = (id: number, body: MunicipioSuperUpdate) =>
-  api.put<MunicipioSuper>(`/api/v1/super/municipios/${id}`, body)
+  api.put<MunicipioSuper & { aviso_contorno?: string | null }>(`/api/v1/super/municipios/${id}`, body)
 
 export const listarPaises = (paraAlta = false) =>
   api.get<Pais[]>('/api/v1/geo/paises', { params: paraAlta ? { para_alta: true } : {} })
@@ -108,6 +110,7 @@ export interface AltaMunicipioBody {
     color: string | null
     logo_url: string | null
     geo_limite_geojson: string | null
+    geo_limite_origen: import('./contorno/api').OrigenContorno | null
     geo_bbox_centro_lat: number | null
     geo_bbox_centro_lon: number | null
     geo_bbox_delta_grados: number | null

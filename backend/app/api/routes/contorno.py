@@ -70,7 +70,8 @@ async def ver_contorno(
     _admin: dict = Depends(require_admin),
     id_municipio: int = Depends(municipio_actual),
 ):
-    return {"contorno": await ct.leer_contorno(db, id_municipio)}
+    return {"contorno": await ct.leer_contorno(db, id_municipio),
+            "codigo_oficial": await ct.codigo_del_municipio(db, id_municipio)}
 
 
 @router.post("/previsualizar", responses={422: {"description": "El archivo no sirve: detail + paso del instructivo"}})

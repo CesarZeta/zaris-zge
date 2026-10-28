@@ -9,6 +9,8 @@ import {
 } from '../api'
 import { Campo, input, seccion, titulo } from './_comun'
 import { PartidoSearch } from '../components/PartidoSearch'
+import { ContornoMunicipio } from '../contorno/ContornoMunicipio'
+import type { ContornoVista } from '../contorno/api'
 import { normalizarNumero, parLatLon, problemaZona } from '../../../lib/zonaBusqueda'
 
 // Asistente de alta de un municipio (IT-01 F4+F5, Tarea 15; spec §4.4). Seis pasos y el alta en una
@@ -57,7 +59,8 @@ function useEstable<T>(valor: T, ms = 350): T {
 interface Form {
   nombre: string; codigo_pais: string; id_provincia: number | null; id_partido: number | null; ficticio: boolean
   zona_horaria: string; codigo_corto: string; subdominio: string
-  color: string; logo_url: string; geojson: string; lat: string; lon: string; delta: string
+  color: string; logo_url: string; contorno: ContornoVista | null; codigo_partido: string | null
+  lat: string; lon: string; delta: string
   copiar: string[]; modulos: string[]; tope: string
   a_nombre: string; a_apellido: string; a_dni: string; a_cuil: string; a_sexo: '' | 'HOMBRE' | 'MUJER' | 'OTROS'
   a_fecha_nac: string; a_telefono: string; a_email: string
@@ -65,7 +68,7 @@ interface Form {
 
 const VACIO: Form = {
   nombre: '', codigo_pais: '', id_provincia: null, id_partido: null, ficticio: false, zona_horaria: '', codigo_corto: '',
-  subdominio: '', color: '', logo_url: '', geojson: '', lat: '', lon: '', delta: '', copiar: [], modulos: [],
+  subdominio: '', color: '', logo_url: '', contorno: null, codigo_partido: null, lat: '', lon: '', delta: '', copiar: [], modulos: [],
   tope: '', a_nombre: '', a_apellido: '', a_dni: '', a_cuil: '', a_sexo: '', a_fecha_nac: '', a_telefono: '',
   a_email: '',
 }
@@ -94,6 +97,13 @@ export function AltaMunicipioPage() {
   const nombreTocado = useRef(false)
   const codigoTocado = useRef(false)
   const set = (cambios: Partial<Form>) => setF((prev) => ({ ...prev, ...cambios }))
+  // El contorno oficial es el del partido elegido: si el partido cambia, se quita (el de un archivo queda).
+  const [avisoContorno, setAvisoContorno] = useState<string | null>(null)
+  const sinContornoOficial = (): Partial<Form> => {
+    if (f.contorno?.origen?.via !== 'ign') return {}
+    setAvisoContorno('Se quitó el contorno oficial: era el del partido anterior. Traé el del partido nuevo.')
+    return { contorno: null }
+  }
 
   const opciones = useQuery({ queryKey: ['super', 'alta', 'opciones'], queryFn: opcionesAlta })
   const paises = useQuery({ queryKey: ['geo', 'paises', 'alta'], queryFn: () => listarPaises(true) })
@@ -206,7 +216,8 @@ export function AltaMunicipioPage() {
       id_partido: f.ficticio ? null : f.id_partido, ficticio: f.ficticio,
       zona_horaria: f.zona_horaria.trim() || null, codigo_corto: f.codigo_corto, subdominio: f.subdominio,
       identidad: {
-        color: f.color || null, logo_url: f.logo_url.trim() || null, geo_limite_geojson: f.geojson.trim() || null,
+        color: f.color || null, logo_url: f.logo_url.trim() || null, geo_limite_geojson: f.contorno ? JSON.stringify(f.contorno.geometria) : null,
+        geo_limite_origen: f.contorno?.origen ?? null,
         geo_bbox_centro_lat: num(normalizarNumero(f.lat)), geo_bbox_centro_lon: num(normalizarNumero(f.lon)),
         geo_bbox_delta_grados: num(normalizarNumero(f.delta)),
       },
@@ -281,7 +292,8 @@ export function AltaMunicipioPage() {
             </Campo>
             <Campo etiqueta={pais?.etiqueta_nivel_1 ?? 'Provincia'}>
               <select style={input} value={f.id_provincia ?? ''} disabled={!f.codigo_pais}
-                      onChange={(e) => set({ id_provincia: e.target.value ? Number(e.target.value) : null, id_partido: null })}>
+                      onChange={(e) => set({ id_provincia: e.target.value ? Number(e.target.value) : null, id_partido: null,
+                                             codigo_partido: null, ...sinContornoOficial() })}>
                 <option value="">—</option>
                 {(provincias.data ?? []).map((p) => <option key={p.id_provincia} value={p.id_provincia}>{p.nombre}</option>)}
               </select>
@@ -291,12 +303,14 @@ export function AltaMunicipioPage() {
                      : dispPartido?.disponible ? 'Libre: ningún otro municipio lo tiene.' : 'El municipio es el partido: uno por partido.'}
                    error={!f.ficticio && f.id_partido != null ? err('id_partido') : undefined}>
               <PartidoSearch idProvincia={f.id_provincia} value={f.id_partido} disabled={f.ficticio} inputStyle={input}
-                             onChange={(p) => set({ id_partido: p?.id_partido ?? null,
-                                                    ...(p ? proponer(p.nombre, `Municipalidad de ${p.nombre}`) : {}) })} />
+                             onChange={(p) => set({ id_partido: p?.id_partido ?? null, codigo_partido: p?.codigo_georef ?? null,
+                                                    ...(p ? proponer(p.nombre, `Municipalidad de ${p.nombre}`) : {}),
+                                                    ...sinContornoOficial() })} />
             </Campo>
             <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14 }}>
               <input type="checkbox" checked={f.ficticio}
-                     onChange={(e) => set({ ficticio: e.target.checked, id_partido: null })} />
+                     onChange={(e) => set({ ficticio: e.target.checked, id_partido: null, codigo_partido: null,
+                                            ...sinContornoOficial() })} />
               Municipio ficticio (demo o prueba), sin {nivel2}
             </label>
             <Campo etiqueta="Nombre" ayuda={f.ficticio ? undefined : `Se propone desde el ${nivel2}; se puede cambiar.`}
@@ -343,18 +357,22 @@ export function AltaMunicipioPage() {
             <Campo etiqueta="Logo (URL)">
               <input style={input} value={f.logo_url} maxLength={500} onChange={(e) => set({ logo_url: e.target.value })} />
             </Campo>
+            <Campo etiqueta="Contorno del municipio"
+                   ayuda="El oficial del IGN para el partido elegido, o un archivo. Al usarlo, la zona de abajo se completa sola.">
+              <ContornoMunicipio destino={{ modo: 'alta', idPartido: f.ficticio ? null : f.id_partido, codigoPais: f.codigo_pais || 'AR' }}
+                                 codigoOficial={f.ficticio ? null : f.codigo_partido} valor={f.contorno}
+                                 onCambio={(c) => { setAvisoContorno(null); set(c ? { contorno: c, lat: c.zona.geo_bbox_centro_lat,
+                                   lon: c.zona.geo_bbox_centro_lon, delta: c.zona.geo_bbox_delta_grados } : { contorno: null }) }} />
+            </Campo>
+            {avisoContorno && <Advertencias lista={[avisoContorno]} />}
             <Campo etiqueta="Zona del geocoding: centro y radio en grados" error={err('lat')}
-                   ayuda="Restringe las búsquedas de direcciones a la zona del municipio. En la latitud se puede pegar «latitud, longitud» como lo copia Google Maps. Radio: 0.1 ≈ 11 km.">
+                   ayuda="Restringe las búsquedas de direcciones a la zona del municipio. Con contorno se completa sola; se puede ajustar. En la latitud se puede pegar «latitud, longitud» como lo copia Google Maps. Radio: 0.1 ≈ 11 km.">
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <input style={{ ...input, width: 140 }} placeholder="Latitud" value={f.lat}
                        onChange={(e) => { const par = parLatLon(e.target.value); set(par ? { lat: par[0], lon: par[1] } : { lat: e.target.value }) }} />
                 <input style={{ ...input, width: 140 }} placeholder="Longitud" value={f.lon} onChange={(e) => set({ lon: e.target.value })} />
                 <input style={{ ...input, width: 110 }} placeholder="Radio" value={f.delta} onChange={(e) => set({ delta: e.target.value })} />
               </div>
-            </Campo>
-            <Campo etiqueta="Contorno del municipio (GeoJSON)">
-              <textarea style={{ ...input, minHeight: 90, fontFamily: 'var(--font-mono)', fontSize: 12 }}
-                        value={f.geojson} onChange={(e) => set({ geojson: e.target.value })} />
             </Campo>
             {sinContorno && <Advertencias lista={[SIN_CONTORNO]} />}
           </>

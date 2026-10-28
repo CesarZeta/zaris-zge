@@ -388,6 +388,14 @@ async def test_ign_ok() -> None:
             r = await c.get("/api/v1/contorno/oficial", headers=_token(C["n1"], C["id"]))
             check("Configuración: el oficial del partido del municipio → 200",
                   r.status_code == 200 and r.json().get("vertices_antes") == 2681, f"{r.status_code} {r.text[:200]}")
+            check("la vista trae la zona derivada", r.status_code == 200
+                  and abs(float(r.json().get("zona", {}).get("geo_bbox_delta_grados", 0)) - 0.502) < 0.001,
+                  r.status_code == 200 and r.json().get("zona"))
+            r = await c.get("/api/v1/contorno", headers=_token(C["n1"], C["id"]))
+            check("GET dice el código oficial del partido", r.status_code == 200
+                  and r.json().get("codigo_oficial") == PERGAMINO, r.text[:200])
+            r = await c.get(f"/api/v1/super/municipios/{C['id']}/contorno", headers=h)
+            check("la ficha también", r.status_code == 200 and r.json().get("codigo_oficial") == PERGAMINO, r.text[:200])
     finally:
         _ign_off()
         await _volver(C["id"], foto)
@@ -472,6 +480,9 @@ async def test_api_guardar_y_zona() -> None:
             cv = (r.json() or {}).get("contorno") if r.status_code == 200 else None
             check("GET devuelve el guardado con su origen", bool(cv) and cv["partes"] == 1
                   and cv["origen"]["via"] == "archivo", f"{r.status_code} {str(cv)[:200]}")
+            check("sin partido, GET dice que no hay código oficial",
+                  r.status_code == 200 and "codigo_oficial" in r.json() and r.json()["codigo_oficial"] is None,
+                  r.text[:200])
             r = await c.put("/api/v1/contorno", headers=h1,
                             json={"geojson": _fix("linea.geojson"), "origen": {"via": "archivo", "archivo": "x"}})
             check("una línea → 422 con paso tipo", r.status_code == 422 and r.json().get("paso") == "tipo",

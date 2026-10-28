@@ -873,7 +873,8 @@ async def contorno_oficial_alta(id_partido: int = Query(..., ge=1, le=2_147_483_
 async def ver_contorno_municipio(id_municipio: int = Path(..., ge=1, le=2_147_483_647),
                                  db: AsyncSession = Depends(get_db)):
     await _municipio_o_404(db, id_municipio)
-    return {"contorno": await ct.leer_contorno(db, id_municipio)}
+    return {"contorno": await ct.leer_contorno(db, id_municipio),
+            "codigo_oficial": await ct.codigo_del_municipio(db, id_municipio)}
 
 
 @router.post("/municipios/{id_municipio}/contorno/previsualizar",

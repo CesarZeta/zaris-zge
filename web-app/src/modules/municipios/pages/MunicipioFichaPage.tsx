@@ -13,6 +13,7 @@ import { Advertencias, Casilla, faltaDependencia } from './AltaMunicipioPage'
 import { EditarMunicipioModal } from './MunicipiosPage'
 import { Exportaciones, Vaciado } from './VaciadoSecciones'
 import { Campo, input, seccion, subtitulo, tabla, td, th, titulo } from './_comun'
+import { ContornoMunicipio } from '../contorno/ContornoMunicipio'
 
 // Ficha de un municipio (IT-01 F4+F5, Tarea 15; spec §4.4): estado y sus transiciones, módulos,
 // tope de cuentas, administradores e invitación, dominios, prueba de puesta en marcha, exportaciones
@@ -71,6 +72,14 @@ export function MunicipioFichaPage() {
       <Estado ficha={q.data} aviso={aviso} />
       <Modulos ficha={q.data} aviso={aviso} />
       <Tope ficha={q.data} aviso={aviso} />
+      <section style={seccion} data-seccion-contorno>
+        <h2 style={subtitulo}>Contorno del municipio</h2>
+        <p style={{ margin: 0, fontSize: 13, color: 'var(--fg-2)' }}>
+          Se usa en el mapa del inicio y para encuadrar los mapas. Al guardarlo se recalcula la zona de búsqueda
+          de direcciones.
+        </p>
+        <ContornoMunicipio destino={{ modo: 'ficha', idMunicipio: idMun }} onGuardado={refrescar} />
+      </section>
       <Dominios idMun={idMun} lista={dominios} onVerificado={setDominios} />
       <Administradores ficha={q.data} aviso={aviso} dominios={dominios} />
       <Prueba idMun={idMun} />

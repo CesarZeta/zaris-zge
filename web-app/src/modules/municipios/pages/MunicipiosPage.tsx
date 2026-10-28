@@ -2,6 +2,8 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Modal } from '../../agenda/components/Modal'
+import { ConfirmModal } from '../../agenda/components/ConfirmModal'
+import { ApiError } from '../../../lib/api'
 import { Badge, Button, EmptyState, Skeleton } from '../../../ui'
 import { ThOrden, ordenarFilas, useOrden } from '../../../ui/orden'
 import { useNotificationsStore } from '../../../stores/notifications'
@@ -169,13 +171,24 @@ export function EditarMunicipioModal({ municipio, onClose }: { municipio: Munici
   const nivel1 = paisSel?.etiqueta_nivel_1 ?? 'Provincia'
   const nivel2 = paisSel?.etiqueta_nivel_2 ?? 'Partido'
 
+  // Cambiar el partido con el contorno oficial del anterior: el backend responde 409 y se confirma acá.
+  const [quitarContorno, setQuitarContorno] = useState<{ id: number; body: MunicipioSuperUpdate; mensaje: string } | null>(null)
   const mut = useMutation({
     mutationFn: ({ id, body }: { id: number; body: MunicipioSuperUpdate }) => editarMunicipio(id, body),
     onSuccess: (m) => {
       qc.invalidateQueries({ queryKey: ['super'] })
+      qc.invalidateQueries({ queryKey: ['contorno'] })
       push({ kind: 'success', title: `Municipio «${m.nombre}» guardado` })
+      if (m.aviso_contorno) push({ kind: 'info', title: 'Revisá el contorno', body: m.aviso_contorno, ttl: 10000 })
     },
-    onError: (e: Error) => push({ kind: 'error', title: 'No se pudo guardar', body: e.message }),
+    onError: (e: Error, vars) => {
+      if (e instanceof ApiError && e.status === 409
+          && (e.body as { contorno_partido_anterior?: boolean } | undefined)?.contorno_partido_anterior) {
+        setQuitarContorno({ ...vars, mensaje: e.message })
+        return
+      }
+      push({ kind: 'error', title: 'No se pudo guardar', body: e.message })
+    },
   })
 
   const sinProvinciaOk = municipio?.estado === 'baja' || municipio?.estado === 'modelo'
@@ -194,6 +207,7 @@ export function EditarMunicipioModal({ municipio, onClose }: { municipio: Munici
   }
 
   return (
+    <>
     <Modal
       open={municipio != null}
       onClose={onClose}
@@ -252,5 +266,15 @@ export function EditarMunicipioModal({ municipio, onClose }: { municipio: Munici
         </div>
       )}
     </Modal>
+    <ConfirmModal open={quitarContorno != null} title="Cambiar el partido"
+                  message={`${quitarContorno?.mensaje ?? ''} El contorno se quita y el partido se cambia.`}
+                  confirmLabel="Quitar el contorno y cambiar el partido" danger
+                  onConfirm={() => {
+                    const p = quitarContorno
+                    setQuitarContorno(null)
+                    if (p) mut.mutate({ id: p.id, body: { ...p.body, quitar_contorno: true } })
+                  }}
+                  onCancel={() => setQuitarContorno(null)} />
+    </>
   )
 }

@@ -285,7 +285,7 @@ def vista(c: ContornoNormalizado, origen: Optional[dict]) -> dict:
     """Lo que ven las pantallas: el contorno depurado con su resumen y su origen."""
     return {"geometria": c.geometria, "partes": c.partes, "vertices_antes": c.vertices_antes,
             "vertices_despues": c.vertices_despues, "superficie_km2": c.superficie_km2,
-            "recuadro": c.recuadro, "avisos": c.avisos, "origen": origen}
+            "recuadro": c.recuadro, "avisos": c.avisos, "origen": origen, "zona": zona_desde_contorno(c)}
 
 
 def hoy() -> str:
