@@ -6,10 +6,11 @@ import { Badge, Button, EmptyState, Skeleton } from '../../../ui'
 import { ThOrden, ordenarFilas, useOrden } from '../../../ui/orden'
 import { useNotificationsStore } from '../../../stores/notifications'
 import {
-  ESTADO_ETIQUETA, editarMunicipio, etiquetaZona, listarMunicipios, listarPaises, listarPartidos, listarProvincias,
+  ESTADO_ETIQUETA, editarMunicipio, etiquetaZona, listarMunicipios, listarPaises, listarProvincias,
   opcionesAlta, type EstadoMunicipio, type MunicipioSuper, type MunicipioSuperUpdate,
 } from '../api'
 import { Campo, grupo, input, labelCampo, tabla, td, th, titulo } from './_comun'
+import { PartidoSearch } from '../components/PartidoSearch'
 
 // Módulo «Municipios» del super administrador (IT-01 F3; país, provincia y estado de F4,
 // PLAN_MULTI_MUNICIPIO_F4_F5.md, Tarea 6). La lista es corta y se carga entera: los filtros por
@@ -162,10 +163,6 @@ export function EditarMunicipioModal({ municipio, onClose }: { municipio: Munici
     queryKey: ['geo', 'provincias', form?.codigo_pais], queryFn: () => listarProvincias(form!.codigo_pais),
     enabled: !!form?.codigo_pais,
   })
-  const partidos = useQuery({
-    queryKey: ['geo', 'partidos', form?.id_provincia], queryFn: () => listarPartidos(form!.id_provincia!),
-    enabled: form?.id_provincia != null,
-  })
   const opciones = useQuery({ queryKey: ['super', 'alta', 'opciones'], queryFn: opcionesAlta, enabled: municipio != null })
   const zonas = opciones.data?.zonas ?? []
   const paisSel = paises.data?.find((p) => p.codigo_pais === form?.codigo_pais)
@@ -241,11 +238,9 @@ export function EditarMunicipioModal({ municipio, onClose }: { municipio: Munici
           <Campo etiqueta={nivel2}
                  ayuda={form.id_partido == null ? 'Sin partido = municipio ficticio (demo o prueba): no pasa a producción.'
                    : 'El municipio es el partido: uno por partido.'}>
-            <select style={input} value={form.id_partido ?? ''} disabled={form.id_provincia == null}
-                    onChange={(e) => setForm({ ...form, id_partido: e.target.value ? Number(e.target.value) : null })}>
-              <option value="">—</option>
-              {(partidos.data ?? []).map((p) => <option key={p.id_partido} value={p.id_partido}>{p.nombre}</option>)}
-            </select>
+            <PartidoSearch key={municipio?.id_municipio} idProvincia={form.id_provincia} value={form.id_partido}
+                           etiqueta={municipio?.partido_nombre} inputStyle={input}
+                           onChange={(p) => setForm({ ...form, id_partido: p?.id_partido ?? null })} />
           </Campo>
           <Campo etiqueta="Zona horaria" ayuda="Ordenadas por su diferencia con Greenwich.">
             <select style={{ ...input, fontFamily: 'var(--font-mono)' }} value={form.zona_horaria}

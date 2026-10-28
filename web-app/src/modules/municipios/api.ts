@@ -61,7 +61,11 @@ export interface Pais {
 }
 
 export interface Provincia { id_provincia: number; nombre: string; codigo_pais: string }
-export interface Partido { id_partido: number; id_provincia: number; nombre: string }
+export interface Partido {
+  id_partido: number; id_provincia: number; nombre: string
+  // Catálogo de gobiernos locales (mig 132): código de Georef, el que usa el contorno oficial del IGN.
+  nombre_completo: string | null; categoria: string | null; codigo_georef: string | null
+}
 
 export const listarMunicipios = (filtros: FiltrosMunicipios = {}) =>
   api.get<MunicipioSuper[]>('/api/v1/super/municipios', { params: { ...filtros } })
@@ -75,8 +79,9 @@ export const listarPaises = (paraAlta = false) =>
 export const listarProvincias = (codigoPais: string) =>
   api.get<Provincia[]>('/api/v1/geo/provincias', { params: { codigo_pais: codigoPais } })
 
-export const listarPartidos = (idProvincia: number) =>
-  api.get<Partido[]>('/api/v1/geo/partidos', { params: { id_provincia: idProvincia } })
+// Una provincia puede tener cientos (Córdoba, 427): se busca por texto, nunca se lista entera.
+export const buscarPartidos = (idProvincia: number, q: string, limit = 20) =>
+  api.get<Partido[]>('/api/v1/geo/partidos', { params: { id_provincia: idProvincia, q, limit } })
 
 // ── Alta, ficha y super administradores (IT-01 F4+F5, Tarea 15) ───────────────────────────────
 

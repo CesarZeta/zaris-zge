@@ -4,10 +4,11 @@ import { useNavigate } from 'react-router-dom'
 import { Badge, Button, EmptyState, Skeleton } from '../../../ui'
 import { useNotificationsStore } from '../../../stores/notifications'
 import {
-  darDeAlta, disponibilidadAlta, etiquetaZona, listarPaises, listarPartidos, listarProvincias, opcionesAlta,
+  darDeAlta, disponibilidadAlta, etiquetaZona, listarPaises, listarProvincias, opcionesAlta,
   type AltaMunicipioBody, type AltaResultado, type Disponible, type OpcionModulo,
 } from '../api'
 import { Campo, input, seccion, titulo } from './_comun'
+import { PartidoSearch } from '../components/PartidoSearch'
 import { normalizarNumero, parLatLon, problemaZona } from '../../../lib/zonaBusqueda'
 
 // Asistente de alta de un municipio (IT-01 F4+F5, Tarea 15; spec §4.4). Seis pasos y el alta en una
@@ -99,10 +100,6 @@ export function AltaMunicipioPage() {
   const provincias = useQuery({
     queryKey: ['geo', 'provincias', f.codigo_pais], queryFn: () => listarProvincias(f.codigo_pais),
     enabled: !!f.codigo_pais,
-  })
-  const partidos = useQuery({
-    queryKey: ['geo', 'partidos', f.id_provincia], queryFn: () => listarPartidos(f.id_provincia!),
-    enabled: f.id_provincia != null,
   })
   const pais = paises.data?.find((p) => p.codigo_pais === f.codigo_pais)
   const nivel2 = (pais?.etiqueta_nivel_2 ?? 'Partido').toLowerCase()
@@ -293,15 +290,9 @@ export function AltaMunicipioPage() {
                    ayuda={f.ficticio ? 'Municipio ficticio: no lleva partido y no puede pasar a producción.'
                      : dispPartido?.disponible ? 'Libre: ningún otro municipio lo tiene.' : 'El municipio es el partido: uno por partido.'}
                    error={!f.ficticio && f.id_partido != null ? err('id_partido') : undefined}>
-              <select style={input} value={f.id_partido ?? ''} disabled={f.id_provincia == null || f.ficticio}
-                      onChange={(e) => {
-                        const id = e.target.value ? Number(e.target.value) : null
-                        const p = partidos.data?.find((x) => x.id_partido === id)
-                        set({ id_partido: id, ...(p ? proponer(p.nombre, `Municipalidad de ${p.nombre}`) : {}) })
-                      }}>
-                <option value="">—</option>
-                {(partidos.data ?? []).map((p) => <option key={p.id_partido} value={p.id_partido}>{p.nombre}</option>)}
-              </select>
+              <PartidoSearch idProvincia={f.id_provincia} value={f.id_partido} disabled={f.ficticio} inputStyle={input}
+                             onChange={(p) => set({ id_partido: p?.id_partido ?? null,
+                                                    ...(p ? proponer(p.nombre, `Municipalidad de ${p.nombre}`) : {}) })} />
             </Campo>
             <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14 }}>
               <input type="checkbox" checked={f.ficticio}

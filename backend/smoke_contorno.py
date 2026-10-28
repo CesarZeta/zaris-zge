@@ -28,6 +28,7 @@ if "zaris_dev" not in settings.ASYNC_DATABASE_URI:
 settings.RESEND_API_KEY = ""
 
 from app.core.database import AsyncSessionLocal  # noqa: E402
+from smoke_alta_municipio import _cliente, _municipio_c, _super_headers, _token  # noqa: E402
 
 RES: list[tuple[str, bool, str]] = []
 
@@ -79,9 +80,43 @@ async def test_catalogo_bajas_sin_municipio() -> None:
         check("ningún municipio vigente apunta a un partido de baja", n == 0, n)
 
 
+# ── Tarea 2: /geo/partidos con búsqueda ──────────────────────────────────────
+
+async def test_geo_partidos_q() -> None:
+    C = await _municipio_c()
+    h = _token(C["n2"], C["id"])
+    async with AsyncSessionLocal() as db:
+        ba = await _escalar(db, "SELECT id_provincia FROM provincias WHERE codigo_georef = '06'")
+        cba = await _escalar(db, "SELECT id_provincia FROM provincias WHERE codigo_georef = '14'")
+        baja = await _escalar(db, "SELECT nombre FROM partidos WHERE NOT activo AND id_provincia = :p LIMIT 1",
+                              {"p": cba})
+    async with _cliente() as c:
+        r = await c.get("/api/v1/geo/partidos", params={"id_provincia": ba, "q": "perga"}, headers=h)
+        filas = r.json() if r.status_code == 200 else []
+        check("q=perga en Buenos Aires trae solo Pergamino con su código",
+              [f.get("codigo_georef") for f in filas] == ["060623"], f"{r.status_code} {str(filas)[:200]}")
+        check("la fila trae categoría y nombre completo",
+              bool(filas and filas[0].get("categoria") and filas[0].get("nombre_completo")), filas[:1])
+        r = await c.get("/api/v1/geo/partidos", params={"id_provincia": cba, "q": "villa sarm"}, headers=h)
+        nombres = [f["nombre"] for f in r.json()] if r.status_code == 200 else []
+        check("q con dos palabras en Córdoba: los dos Villa Sarmiento, con nombres distintos",
+              len(nombres) == 2 and len(set(nombres)) == 2, f"{r.status_code} {nombres}")
+        r = await c.get("/api/v1/geo/partidos", params={"id_provincia": cba, "q": "rio cuarto"}, headers=h)
+        check("sin tildes encuentra con tildes (rio cuarto → Río Cuarto)",
+              r.status_code == 200 and "Río Cuarto" in [f["nombre"] for f in r.json()], r.text[:200])
+        r = await c.get("/api/v1/geo/partidos", params={"id_provincia": cba, "q": baja}, headers=h)
+        check("una fila de baja no se ofrece", r.status_code == 200 and baja not in [f["nombre"] for f in r.json()],
+              f"{baja} {r.text[:200]}")
+        r = await c.get("/api/v1/geo/partidos", params={"id_provincia": cba, "q": "a", "limit": 5}, headers=h)
+        check("limit acota la respuesta", r.status_code == 200 and len(r.json()) == 5, f"{r.status_code}")
+        r = await c.get("/api/v1/geo/partidos", params={"id_provincia": ba}, headers=h)
+        check("sin q sigue trayendo la provincia entera", r.status_code == 200 and len(r.json()) == 135,
+              f"{r.status_code} {len(r.json())}")
+
+
 PRUEBAS = {f.__name__.removeprefix("test_"): f for f in (
     test_catalogo_completo, test_catalogo_codigos, test_catalogo_sin_huerfanos_de_reclamos,
-    test_catalogo_bajas_sin_municipio,
+    test_catalogo_bajas_sin_municipio, test_geo_partidos_q,
 )}
 
 

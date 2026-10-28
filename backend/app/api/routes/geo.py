@@ -146,20 +146,33 @@ async def listar_provincias(
 
 @router.get("/partidos")
 async def listar_partidos(
-    id_provincia: Optional[int] = Query(None),
+    id_provincia: Optional[int] = Query(None, ge=1, le=2_147_483_647),
+    q: Optional[str] = Query(None, max_length=100, description="Texto: cada palabra en el nombre o el nombre completo"),
+    limit: Optional[int] = Query(None, ge=1, le=100, description="Por defecto 20 con q; sin q, todos"),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    """Partidos / gobiernos locales activos (mig 132: con su código de Georef). Con `q`, para el
+    autocompletar: una provincia puede tener cientos (Córdoba, 427)."""
+    where = ["activo = TRUE"]
+    params: dict = {}
     if id_provincia:
-        r = await db.execute(text(
-            "SELECT id_partido, id_provincia, nombre FROM partidos "
-            "WHERE activo = TRUE AND id_provincia = :ip ORDER BY nombre"
-        ), {"ip": id_provincia})
-    else:
-        r = await db.execute(text(
-            "SELECT id_partido, id_provincia, nombre FROM partidos "
-            "WHERE activo = TRUE ORDER BY nombre"
-        ))
+        where.append("id_provincia = :ip")
+        params["ip"] = id_provincia
+    # Sin distinguir tildes: «rio cuarto» encuentra «Río Cuarto» (sin depender de la extensión unaccent).
+    sin_tildes = "translate(lower({}), 'áéíóúüñàèìòù', 'aeiouunaeiou')"
+    for i, palabra in enumerate((q or "").split()):
+        where.append(f"({sin_tildes.format('nombre')} LIKE {sin_tildes.format(f':p{i}')} "
+                     f"OR {sin_tildes.format('nombre_completo')} LIKE {sin_tildes.format(f':p{i}')})")
+        params[f"p{i}"] = f"%{palabra.replace(chr(92), '').replace('%', '').replace('_', '')}%"
+    if q and q.strip() and limit is None:
+        limit = 20
+    sql = ("SELECT id_partido, id_provincia, nombre, nombre_completo, categoria, codigo_georef FROM partidos "
+           f"WHERE {' AND '.join(where)} ORDER BY nombre")
+    if limit:
+        sql += " LIMIT :lim"
+        params["lim"] = limit
+    r = await db.execute(text(sql), params)
     return [dict(row._mapping) for row in r.fetchall()]
 
 
