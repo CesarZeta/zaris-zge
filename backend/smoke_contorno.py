@@ -244,12 +244,79 @@ async def test_zona_pergamino() -> None:
     check("zona derivada de Pergamino: centro del recuadro, mitad del lado mayor + 0,1", ok, z)
 
 
+# ── Tarea 4: lectores con MultiPolygon ──────────────────────────────────────
+
+SAN_ANDRES_ENCUADRE = {"sur": -34.56925, "oeste": -58.5998, "norte": -34.44334, "este": -58.45952,
+                       "origen": "contorno"}   # anotado el 2026-10-28 antes de tocar geo_limite.py
+
+
+async def _con_contorno(id_municipio: int, geometria: dict | None):
+    """Pone (o vacía, con None) el contorno del municipio; devuelve el valor anterior para restaurarlo."""
+    from app.core.config_municipio import guardar_config, leer_config
+    async with AsyncSessionLocal() as db:
+        antes = await leer_config(db, "geo_limite_geojson", id_municipio)
+        await guardar_config(db, "geo_limite_geojson", json.dumps(geometria) if geometria else "", id_municipio)
+        await db.commit()
+    return antes
+
+
+async def _restaurar(id_municipio: int, valor) -> None:
+    from app.core.config_municipio import guardar_config
+    async with AsyncSessionLocal() as db:
+        await guardar_config(db, "geo_limite_geojson", valor or "", id_municipio)
+        await db.commit()
+
+
+async def test_lectores_multi() -> None:
+    from app.services.contorno import normalizar_contorno
+    from app.services.geo_limite import encuadre_municipio, leer_limite, punto_en_limite
+    C = await _municipio_c()
+    geo = normalizar_contorno(_fix("dos_partes.geojson")).geometria
+    antes = await _con_contorno(C["id"], geo)
+    try:
+        async with AsyncSessionLocal() as db:
+            limite = await leer_limite(db, C["id"])
+            enc = await encuadre_municipio(db, C["id"])
+        check("leer_limite acepta el MultiPolygon", limite is not None and limite["type"] == "MultiPolygon",
+              limite and limite["type"])
+        check("el encuadre cubre las dos partes", enc["origen"] == "contorno" and abs(enc["oeste"] + 62.5) < 1e-6
+              and abs(enc["este"] + 62.1) < 1e-6, enc)
+        if limite:
+            check("adentro de la primera parte", punto_en_limite(limite, -36.45, -62.45))
+            check("adentro de la segunda parte", punto_en_limite(limite, -36.45, -62.15))
+            check("afuera entre las dos", not punto_en_limite(limite, -36.45, -62.30))
+    finally:
+        await _restaurar(C["id"], antes)
+
+
+async def test_lectores_hueco() -> None:
+    from app.services.contorno import normalizar_contorno
+    from app.services.geo_limite import punto_en_limite
+    hueco = normalizar_contorno(_fix("con_hueco.geojson")).geometria
+    check("Polygon: afuera en el hueco", not punto_en_limite(hueco, -36.45, -62.45))
+    check("Polygon: adentro fuera del hueco", punto_en_limite(hueco, -36.49, -62.49))
+    multi = {"type": "MultiPolygon", "coordinates": [hueco["coordinates"],
+             [[[-62.2, -36.5], [-62.1, -36.5], [-62.1, -36.4], [-62.2, -36.4], [-62.2, -36.5]]]]}
+    check("MultiPolygon: afuera en el hueco de una parte", not punto_en_limite(multi, -36.45, -62.45))
+    check("MultiPolygon: adentro de la otra parte", punto_en_limite(multi, -36.45, -62.15))
+
+
+async def test_lectores_compat_san_andres() -> None:
+    from app.services.geo_limite import encuadre_municipio, leer_limite
+    async with AsyncSessionLocal() as db:
+        limite = await leer_limite(db, 1)
+        enc = await encuadre_municipio(db, 1)
+    check("San Andrés sigue leyéndose como Polygon", limite is not None and limite["type"] == "Polygon")
+    check("San Andrés: mismo encuadre que antes", enc == SAN_ANDRES_ENCUADRE, enc)
+
+
 PRUEBAS = {f.__name__.removeprefix("test_"): f for f in (
     test_catalogo_completo, test_catalogo_codigos, test_catalogo_sin_huerfanos_de_reclamos,
     test_catalogo_bajas_sin_municipio, test_geo_partidos_q,
     test_norm_pergamino_ign, test_norm_metros, test_norm_invertido, test_norm_linea, test_norm_dos_partes,
     test_norm_hueco_preservado, test_norm_isla_diminuta, test_norm_binario_y_kml, test_norm_vacio,
     test_norm_tamano_entrada, test_norm_z_y_sin_cerrar, test_norm_fuera_de_pais, test_zona_pergamino,
+    test_lectores_multi, test_lectores_hueco, test_lectores_compat_san_andres,
 )}
 
 

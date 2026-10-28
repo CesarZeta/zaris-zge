@@ -6,6 +6,7 @@ import { aBounds, ENCUADRE_ARGENTINA, useEncuadreMapa } from '../../../lib/encua
 import type {
   GeoEmergencia, GeoEspacio, GeoReclamo, GeoTramite, LimiteMunicipio,
 } from '../hooks/useDashboardData'
+import { partesLimite } from '../hooks/useDashboardData'
 
 // Workaround icono default de Leaflet bajo bundler (Vite). Sin esto el marker
 // no aparece porque Leaflet busca los PNG en rutas relativas que el build rompe.
@@ -104,9 +105,13 @@ const LIMITE_ESTILO: L.PathOptions = {
 }
 const MUNDO: L.LatLngTuple[] = [[-89, -179.9], [-89, 179.9], [89, 179.9], [89, -179.9]]
 
+// Un hueco por cada anillo de cada parte: con la regla par-impar de Leaflet (fillRule
+// 'evenodd', la de siempre) cada parte queda limpia y un hueco propio del municipio (un
+// enclave) vuelve a quedar sombreado.
 function mascaraExterior(limite: LimiteMunicipio): L.Polygon {
-  const hueco = limite.coordinates[0].map(([lon, lat]) => [lat, lon] as L.LatLngTuple)
-  return L.polygon([MUNDO, hueco], LIMITE_ESTILO)
+  const anillos = partesLimite(limite).flatMap((parte) =>
+    parte.map((anillo) => anillo.map(([lon, lat]) => [lat, lon] as L.LatLngTuple)))
+  return L.polygon([MUNDO, ...anillos], { ...LIMITE_ESTILO, fillRule: 'evenodd' })
 }
 
 // Marker mínimo tipo scatter para los mapas analíticos del BI Ejecutivo
@@ -382,7 +387,7 @@ export function DashboardMap({
     limiteLayerRef.current?.remove()
     limiteLayerRef.current = limite ? mascaraExterior(limite).addTo(map) : null
     limitePuntosRef.current = limite
-      ? limite.coordinates[0].map(([lon, lat]) => L.latLng(lat, lon))
+      ? partesLimite(limite).flatMap((parte) => parte[0].map(([lon, lat]) => L.latLng(lat, lon)))
       : []
     limiteBoundsRef.current = limite ? L.latLngBounds(limitePuntosRef.current) : null
     verMunicipioCtlRef.current?.remove()

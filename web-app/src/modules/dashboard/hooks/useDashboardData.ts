@@ -63,10 +63,15 @@ export interface GeoTramite {
 }
 
 // Contorno del municipio (configuracion_general.geo_limite_geojson, mig 111):
-// GeoJSON Polygon, coordenadas [lon, lat]. null = no configurado.
-export interface LimiteMunicipio {
-  type: 'Polygon'
-  coordinates: number[][][]
+// GeoJSON Polygon o MultiPolygon (varias partes, p. ej. islas), coordenadas [lon, lat].
+// null = no configurado.
+export type LimiteMunicipio =
+  | { type: 'Polygon'; coordinates: number[][][] }
+  | { type: 'MultiPolygon'; coordinates: number[][][][] }
+
+/** Cada parte como lista de anillos: el primero es el exterior, los demás huecos. */
+export function partesLimite(l: LimiteMunicipio): number[][][][] {
+  return l.type === 'MultiPolygon' ? l.coordinates : [l.coordinates]
 }
 
 export interface DashboardResumen {
