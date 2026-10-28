@@ -4,7 +4,8 @@ ZARIS API — FastAPI Application Entry Point.
 import logging
 import sys
 from contextlib import asynccontextmanager
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
@@ -33,6 +34,8 @@ from app.api.routes.ot_adjuntos import router as ot_adjuntos_router
 from app.api.routes.geo import router as geo_router
 from app.api.routes.activos import router as activos_router
 from app.api.routes.config_identidad import router as config_identidad_router
+from app.api.routes.contorno import router as contorno_router
+from app.services.contorno import ContornoInvalido
 from app.api.routes.super_admin import router as super_admin_router
 from app.api.routes.auditoria_super import router as auditoria_super_router
 from app.api.routes.emergencias import router as emergencias_router
@@ -87,6 +90,13 @@ app = FastAPI(
     description="API para ZARIS Gestion Estatal - Modulo BUC",
     lifespan=lifespan,
 )
+
+
+# Un contorno que no sirve (services/contorno.py) responde 422 con el mensaje y el `paso`, que es la
+# sección del instructivo que lo explica (PLAN_CONTORNO_MUNICIPIO_DISENO.md §4.3).
+@app.exception_handler(ContornoInvalido)
+async def _contorno_invalido(_request: Request, e: ContornoInvalido) -> JSONResponse:
+    return JSONResponse(status_code=422, content={"detail": e.mensaje, "paso": e.paso})
 
 # CORS
 # Subdominios de municipio (<sub>.zge|vecinos|agentes.zaris.com.ar, mismo patron que _PATRON_HOST de
@@ -181,6 +191,7 @@ app.include_router(ot_router, dependencies=_modulo("ot_router"))
 app.include_router(geo_router)
 app.include_router(activos_router)
 app.include_router(config_identidad_router)
+app.include_router(contorno_router)
 # Super administrador (IT-01 F3): /api/v1/super/* y /api/v1/auditoria/* — prefijos propios,
 # fuera de /api/v1/admin (no los atrapa el /{tabla} greedy de admin_tablas).
 app.include_router(super_admin_router)

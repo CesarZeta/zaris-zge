@@ -15,14 +15,23 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from dataclasses import dataclass, field
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Literal, Optional
 
-from shapely.geometry import MultiPolygon, Polygon
+import httpx
+from fastapi import HTTPException
+from pydantic import BaseModel, Field
+from shapely.geometry import MultiPolygon, Polygon, shape
 from shapely.geometry.polygon import orient
 from shapely.validation import make_valid
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.geo_limite import ENCUADRE_PAIS
+from app.core.config_municipio import guardar_config, leer_config, leer_configs
+from app.core.geo_zona import CLAVES_ZONA, zona_completa
+from app.services.geo_limite import ENCUADRE_PAIS, leer_limite, poligonos
 
 TOLERANCIA_GRADOS = 0.00005     # ≈ 5 m
 DECIMALES = 5                   # ≈ 1 m
@@ -225,3 +234,172 @@ def zona_desde_contorno(c: ContornoNormalizado) -> dict[str, str]:
     radio = min(max(r["norte"] - r["sur"], r["este"] - r["oeste"]) / 2 + MARGEN_ZONA, RADIO_MAXIMO)
     return {"geo_bbox_centro_lat": repr(round(lat, 6)), "geo_bbox_centro_lon": repr(round(lon, 6)),
             "geo_bbox_delta_grados": repr(round(radio, 6))}
+
+
+# ── Con base de datos y red: contorno oficial, guardar, quitar, leer ─────────────────────────────
+
+CLAVE_LIMITE = "geo_limite_geojson"
+CLAVE_ORIGEN = "geo_limite_origen"
+IGN_WFS = "https://wms.ign.gob.ar/geoserver/ows"
+IGN_TIMEOUT_SEG = 20.0
+# Solo para las pruebas: un httpx.MockTransport en lugar de la red.
+TRANSPORTE_IGN: Optional[httpx.AsyncBaseTransport] = None
+AVISO_ZONA_LEJANA = ("El contorno queda lejos de la zona de búsqueda que tenía el municipio. "
+                     "¿Elegiste el municipio correcto?")
+
+
+ORIGEN_AJENO = "El contorno oficial tiene que ser el del partido del municipio."
+
+
+class OrigenIn(BaseModel):
+    """De dónde salió el contorno: el oficial del IGN (con su código) o un archivo subido."""
+    via: Literal["ign", "archivo"]
+    codigo: Optional[str] = Field(None, max_length=6)
+    nombre: Optional[str] = Field(None, max_length=200)
+    fuente: Optional[str] = Field(None, max_length=200)
+    archivo: Optional[str] = Field(None, max_length=200)
+
+
+def origen_limpio(o: OrigenIn) -> dict:
+    """Solo los campos de la vía: el origen se muestra al lado del contorno."""
+    campos = ("via", "codigo", "nombre", "fuente") if o.via == "ign" else ("via", "archivo")
+    return {k: v for k, v in o.model_dump(exclude_none=True).items() if k in campos}
+
+
+async def validar_origen(db: AsyncSession, o: OrigenIn, codigo_partido: Optional[str]) -> None:
+    """Un origen IGN solo vale con el código del partido del municipio: el contorno de otro no se guarda
+    como oficial."""
+    if o.via == "ign" and (not codigo_partido or o.codigo != codigo_partido):
+        raise HTTPException(422, ORIGEN_AJENO)
+
+
+class IgnSinContorno(Exception):
+    """El IGN respondió, pero no tiene un contorno para ese código (404 para el usuario)."""
+
+
+class IgnNoResponde(Exception):
+    """El IGN no respondió, tardó demasiado o devolvió algo que no es GeoJSON (502)."""
+
+
+def vista(c: ContornoNormalizado, origen: Optional[dict]) -> dict:
+    """Lo que ven las pantallas: el contorno depurado con su resumen y su origen."""
+    return {"geometria": c.geometria, "partes": c.partes, "vertices_antes": c.vertices_antes,
+            "vertices_despues": c.vertices_despues, "superficie_km2": c.superficie_km2,
+            "recuadro": c.recuadro, "avisos": c.avisos, "origen": origen}
+
+
+def hoy() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+async def contorno_oficial_ign(codigo_georef: str, *, codigo_pais: str = "AR",
+                               cliente: Optional[httpx.AsyncClient] = None) -> tuple[ContornoNormalizado, dict]:
+    """Contorno oficial del gobierno local (capa ign:municipio del IGN, campo in1 = código de Georef),
+    ya normalizado, y su origen. No guarda nada: ZARIS guarda la copia y no vuelve a pedirlo."""
+    if not re.fullmatch(r"[0-9]{6}", codigo_georef or ""):
+        raise IgnSinContorno("Este municipio no tiene un código oficial válido.")
+    params = {"service": "WFS", "version": "2.0.0", "request": "GetFeature", "typeNames": "ign:municipio",
+              "outputFormat": "application/json", "srsName": "EPSG:4326",
+              "CQL_FILTER": f"in1='{codigo_georef}'"}
+    propio = cliente is None
+    cliente = cliente or httpx.AsyncClient(timeout=IGN_TIMEOUT_SEG, transport=TRANSPORTE_IGN)
+    try:
+        r = await cliente.get(IGN_WFS, params=params)
+        if r.status_code != 200:
+            raise IgnNoResponde(f"El IGN respondió {r.status_code}")
+        datos = r.json()
+    except (httpx.HTTPError, ValueError) as e:
+        raise IgnNoResponde(str(e)[:200]) from None
+    finally:
+        if propio:
+            await cliente.aclose()
+    features = datos.get("features") if isinstance(datos, dict) else None
+    if not isinstance(features, list):
+        raise IgnNoResponde("La respuesta del IGN no es GeoJSON")
+    if not features:
+        raise IgnSinContorno(f"El IGN no tiene el contorno de este municipio (código {codigo_georef}). "
+                             "Podés subir un archivo: mirá «¿Cómo armo el archivo?».")
+    try:
+        c = normalizar_contorno(datos, codigo_pais=codigo_pais)
+    except ContornoInvalido as e:
+        raise IgnNoResponde(f"El IGN devolvió un contorno que no se pudo usar: {e.mensaje}") from None
+    props = features[0].get("properties") or {}
+    origen = {"via": "ign", "codigo": codigo_georef, "nombre": props.get("fna"), "fuente": props.get("fdc"),
+              "fecha": hoy()}
+    return c, origen
+
+
+async def codigo_del_partido(db: AsyncSession, id_partido: Optional[int]) -> Optional[str]:
+    if id_partido is None:
+        return None
+    return await db.scalar(text("SELECT codigo_georef FROM partidos WHERE id_partido = :p"), {"p": id_partido})
+
+
+async def codigo_del_municipio(db: AsyncSession, id_municipio: int) -> Optional[str]:
+    return await db.scalar(text("""
+        SELECT pa.codigo_georef FROM municipios m JOIN partidos pa ON pa.id_partido = m.id_partido
+         WHERE m.id_municipio = :m"""), {"m": id_municipio})
+
+
+async def pais_del_municipio(db: AsyncSession, id_municipio: int) -> str:
+    return await db.scalar(text("SELECT codigo_pais FROM municipios WHERE id_municipio = :m"),
+                           {"m": id_municipio}) or "AR"
+
+
+async def leer_origen(db: AsyncSession, id_municipio: int) -> Optional[dict]:
+    valor = await leer_config(db, CLAVE_ORIGEN, id_municipio)
+    try:
+        origen = json.loads(valor) if (valor or "").strip() else None
+    except ValueError:
+        return None
+    return origen if isinstance(origen, dict) else None
+
+
+async def leer_contorno(db: AsyncSession, id_municipio: int) -> Optional[dict]:
+    """El contorno guardado como lo ven las pantallas, o None. Se resume sin volver a simplificarlo."""
+    geo = await leer_limite(db, id_municipio)
+    if geo is None:
+        return None
+    partes = poligonos(geo)
+    vertices = sum(len(a) for p in partes for a in p)
+    xs = [c[0] for p in partes for c in p[0]]
+    ys = [c[1] for p in partes for c in p[0]]
+    lat_media = (min(ys) + max(ys)) / 2
+    resumen = ContornoNormalizado(
+        geometria=geo, partes=len(partes), vertices_antes=vertices, vertices_despues=vertices,
+        superficie_km2=round(shape(geo).area * 111.32 ** 2 * math.cos(math.radians(lat_media)), 1),
+        recuadro={"sur": min(ys), "oeste": min(xs), "norte": max(ys), "este": max(xs)})
+    return vista(resumen, await leer_origen(db, id_municipio))
+
+
+async def aviso_zona(db: AsyncSession, id_municipio: Optional[int], c: ContornoNormalizado) -> Optional[str]:
+    """Aviso (no bloquea) si el contorno no se cruza con la zona de búsqueda que el municipio ya tenía:
+    probablemente se eligió el municipio equivocado."""
+    if id_municipio is None:
+        return None
+    zona = await leer_configs(db, list(CLAVES_ZONA), id_municipio)
+    if not zona_completa(zona):
+        return None
+    lat, lon, delta = (float(zona[k]) for k in CLAVES_ZONA)
+    r = c.recuadro
+    se_cruzan = (r["sur"] <= lat + delta and lat - delta <= r["norte"]
+                 and r["oeste"] <= lon + delta and lon - delta <= r["este"])
+    return None if se_cruzan else AVISO_ZONA_LEJANA
+
+
+async def guardar_contorno(db: AsyncSession, id_municipio: int, c: ContornoNormalizado, origen: dict) -> dict:
+    """Guarda el contorno, su origen y la zona de búsqueda derivada. No commitea: lo hace el llamador
+    junto con el registro de acceso, si corresponde."""
+    origen = {**origen, "fecha": hoy()}
+    await guardar_config(db, CLAVE_LIMITE, json.dumps(c.geometria, separators=(",", ":")), id_municipio)
+    await guardar_config(db, CLAVE_ORIGEN, json.dumps(origen, ensure_ascii=False), id_municipio)
+    zona = zona_desde_contorno(c)
+    for clave, valor in zona.items():
+        await guardar_config(db, clave, valor, id_municipio)
+    return zona
+
+
+async def quitar_contorno(db: AsyncSession, id_municipio: int) -> None:
+    """Quita el contorno y su origen; la zona de búsqueda queda (los mapas encuadran por ella). No commitea."""
+    await guardar_config(db, CLAVE_LIMITE, "", id_municipio)
+    await guardar_config(db, CLAVE_ORIGEN, "", id_municipio)

@@ -323,6 +323,26 @@ async def _rechazar_zona_invalida(db: AsyncSession, tabla: str, data: dict, id_m
         raise HTTPException(status_code=422, detail=problema)
 
 
+_CLAVES_CONTORNO = {"geo_limite_geojson", "geo_limite_origen"}
+
+
+async def _rechazar_contorno(db: AsyncSession, tabla: str, data: dict, id_municipio: int,
+                             id: Optional[int] = None) -> None:
+    """El contorno se guarda solo con services/contorno.py, que lo depura y deriva la zona: escrito a
+    mano por acá quedaba sin validar (PLAN_CONTORNO_MUNICIPIO_DISENO.md §4.3)."""
+    if tabla != "configuracion_general":
+        return
+    clave = data.get("clave")
+    if not clave and id is not None:
+        clave = await db.scalar(text(
+            "SELECT clave FROM configuracion_general WHERE id_config = :id AND id_municipio = :mun"),
+            {"id": id, "mun": id_municipio})
+    if clave in _CLAVES_CONTORNO:
+        raise HTTPException(status_code=422, detail=(
+            "El contorno del municipio se carga desde Configuración → Sistema → Contorno del municipio, "
+            "no a mano"))
+
+
 def _bloquear_lectura_si_solo_admin(tabla: str, current_user: dict) -> None:
     if tabla in _TABLAS_SOLO_ADMIN_LECTURA and current_user.get("nivel_acceso") != 1:
         raise HTTPException(status_code=403, detail="Acción exclusiva del administrador")
@@ -577,6 +597,7 @@ async def crear(
         raise HTTPException(status_code=422, detail="No se recibieron campos válidos")
     await _rechazar_clave_global(db, tabla, data)
     await _rechazar_zona_invalida(db, tabla, data, id_municipio)
+    await _rechazar_contorno(db, tabla, data, id_municipio)
     if _por_municipio(tabla):
         await _validar_referencias(db, data, id_municipio)
         data["id_municipio"] = id_municipio
@@ -651,6 +672,7 @@ async def editar(
         raise HTTPException(status_code=422, detail="No se recibieron campos válidos")
     await _rechazar_clave_global(db, tabla, data)
     await _rechazar_zona_invalida(db, tabla, data, id_municipio, id)
+    await _rechazar_contorno(db, tabla, data, id_municipio, id)
     del_municipio, extra = "", {}
     if _por_municipio(tabla):
         await _validar_referencias(db, data, id_municipio)

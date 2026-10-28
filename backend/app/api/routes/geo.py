@@ -75,6 +75,11 @@ async def _bbox_municipio(id_municipio: int) -> tuple[float, float, float]:
     return lat, lon, delta
 
 
+def invalidar_bbox(id_municipio: int) -> None:
+    """La zona cambió (se guardó o se quitó el contorno): el próximo geocoding la vuelve a leer."""
+    _bbox_cache.pop(id_municipio, None)
+
+
 def _viewbox_municipio(lat: float, lon: float, delta: float) -> str:
     """Formato Nominatim: lon1,lat1,lon2,lat2 (dos esquinas opuestas)."""
     return f"{lon - delta},{lat - delta},{lon + delta},{lat + delta}"

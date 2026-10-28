@@ -24,11 +24,16 @@ from typing import Literal, Optional
 import httpx
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.routes.contorno import GuardarIn, PrevisualizarIn, oficial
+from app.api.routes.geo import invalidar_bbox
 from app.core.auth import require_super_admin
+from app.services import contorno as ct
+from app.services.contorno import origen_limpio, validar_origen
 from app.core.config_municipio import leer_configs
 from app.core.database import get_db
 from app.core.geo_zona import CLAVES_ZONA, zona_completa
@@ -82,6 +87,9 @@ class MunicipioSuperUpdate(BaseModel):
     id_provincia: Optional[int] = Field(None, ge=1, le=2_147_483_647)
     id_partido: Optional[int] = Field(None, ge=1, le=2_147_483_647)
     zona_horaria: str = Field(..., min_length=3, max_length=64)
+    # Cambiar el partido con un contorno oficial (IGN) del partido anterior pide confirmación: con
+    # True, el contorno se quita en la misma transacción (PLAN_CONTORNO_MUNICIPIO_DISENO.md §4.4).
+    quitar_contorno: bool = False
 
 
 class SeleccionIn(BaseModel):
@@ -273,8 +281,17 @@ async def _validar_ubicacion(db: AsyncSession, body: "MunicipioSuperUpdate", est
     return pais, provincia
 
 
-@router.put("/municipios/{id_municipio}", response_model=MunicipioSuperOut,
-            responses={409: {"description": "El subdominio o el partido ya los usa otro municipio"}})
+class MunicipioEditadoOut(MunicipioSuperOut):
+    aviso_contorno: Optional[str] = None
+
+
+CONTORNO_PARTIDO_ANTERIOR = "El contorno guardado es el oficial del partido anterior. Confirmá para quitarlo."
+CONTORNO_DE_ARCHIVO = "El contorno guardado se cargó desde un archivo: revisá que corresponda al partido nuevo."
+
+
+@router.put("/municipios/{id_municipio}", response_model=MunicipioEditadoOut,
+            responses={409: {"description": "El subdominio o el partido ya los usa otro municipio, o el contorno "
+                                            "oficial es del partido anterior (contorno_partido_anterior)"}})
 async def editar_municipio(
     id_municipio: int,
     body: MunicipioSuperUpdate,
@@ -298,16 +315,30 @@ async def editar_municipio(
         raise HTTPException(*p)
     if body.id_partido is None and antes["estado"] == "produccion":
         raise HTTPException(422, "Un municipio en producción tiene que tener su partido")
+    datos = body.model_dump(exclude={"quitar_contorno"})
+    aviso_contorno, contorno_quitado = None, False
+    if body.id_partido != antes["id_partido"] and (await ct.leer_limite(db, id_municipio)) is not None:
+        origen = await ct.leer_origen(db, id_municipio) or {}
+        if origen.get("via") == "ign" and origen.get("codigo") != await ct.codigo_del_partido(db, body.id_partido):
+            if not body.quitar_contorno:
+                return JSONResponse(status_code=409, content={"detail": CONTORNO_PARTIDO_ANTERIOR,
+                                                              "contorno_partido_anterior": True})
+            await ct.quitar_contorno(db, id_municipio)
+            contorno_quitado = True
+        elif origen.get("via") != "ign":
+            aviso_contorno = CONTORNO_DE_ARCHIVO
     await db.execute(text("""
         UPDATE municipios
            SET nombre = :nombre, subdominio = :subdominio, codigo_pais = :codigo_pais, pais = :pais,
                id_provincia = :id_provincia, provincia = :provincia, id_partido = :id_partido,
                zona_horaria = :zona_horaria, fecha_modificacion = NOW(), id_usuario_modificacion = :u
          WHERE id_municipio = :id"""),
-        {**body.model_dump(), "pais": pais, "provincia": provincia, "u": sa["id_usuario"], "id": id_municipio})
+        {**datos, "pais": pais, "provincia": provincia, "u": sa["id_usuario"], "id": id_municipio})
     nuevo = (await db.execute(text(_SELECT_MUNICIPIO + " WHERE m.id_municipio = :id"),
                               {"id": id_municipio})).mappings().first()
-    cambios = "; ".join(f"{k}: {antes[k]} → {nuevo[k]}" for k in body.model_dump() if antes[k] != nuevo[k])
+    cambios = "; ".join(f"{k}: {antes[k]} → {nuevo[k]}" for k in datos if antes[k] != nuevo[k])
+    if contorno_quitado:
+        cambios += "; contorno quitado (era el oficial del partido anterior)"
     # El registro va en la misma transacción: si no se puede registrar, el cambio no queda.
     await registrar_acceso_super_en(db, id_usuario=sa["id_usuario"], accion="municipio_editar",
                                     id_municipio=id_municipio, metodo=request.method, ruta=request.url.path,
@@ -315,7 +346,9 @@ async def editar_municipio(
                                     user_agent=request.headers.get("user-agent"))
     await db.commit()
     invalidar_cache_municipios()
-    return dict(nuevo)
+    if contorno_quitado:
+        invalidar_bbox(id_municipio)
+    return {**dict(nuevo), "aviso_contorno": aviso_contorno}
 
 
 @router.post("/seleccion", response_model=SeleccionOut)
@@ -801,3 +834,99 @@ async def pedir_vaciado(id_municipio: int, body: VaciadoIn, request: Request, ba
     await db.commit()
     background_tasks.add_task(ejecutar_vaciado, id_tarea, id_municipio, set(body.grupos), sa["id_usuario"])
     return {"id_tarea": id_tarea}
+
+
+# ── Contorno del municipio: alta (antes de que exista el municipio) y ficha ─────────────────────
+# PLAN_CONTORNO_MUNICIPIO_DISENO.md §4.4-4.6. La depuración es la de services/contorno.py, la misma
+# de Configuración; acá cambia de dónde sale el municipio y que el cambio queda registrado.
+
+class PrevisualizarAltaIn(PrevisualizarIn):
+    codigo_pais: str = Field("AR", pattern=r"^[A-Z]{2}$")
+
+
+async def _municipio_o_404(db: AsyncSession, id_municipio: int) -> None:
+    if not await db.scalar(text("SELECT 1 FROM municipios WHERE id_municipio = :m"), {"m": id_municipio}):
+        raise HTTPException(404, "Municipio no encontrado")
+
+
+@router.post("/contorno/previsualizar", responses={422: {"description": "El archivo no sirve: detail + paso"}})
+async def previsualizar_contorno_alta(body: PrevisualizarAltaIn):
+    """Para el alta: el municipio todavía no existe, así que no hay zona previa con qué comparar."""
+    c = ct.normalizar_contorno(body.geojson, codigo_pais=body.codigo_pais)
+    origen = {"via": "archivo", "archivo": body.archivo} if body.archivo else {"via": "archivo"}
+    return {**ct.vista(c, origen), "aviso_zona": None}
+
+
+@router.get("/contorno-oficial", responses={404: {"description": "El IGN no tiene el contorno"},
+                                            409: {"description": "El partido no tiene código oficial"},
+                                            502: {"description": "El IGN no respondió"}})
+async def contorno_oficial_alta(id_partido: int = Query(..., ge=1, le=2_147_483_647),
+                                db: AsyncSession = Depends(get_db)):
+    """Para el alta: el contorno oficial del partido elegido."""
+    pais = await db.scalar(text("""
+        SELECT pr.codigo_pais FROM partidos pa JOIN provincias pr ON pr.id_provincia = pa.id_provincia
+         WHERE pa.id_partido = :p"""), {"p": id_partido})
+    return {**await oficial(db, await ct.codigo_del_partido(db, id_partido), pais or "AR"), "aviso_zona": None}
+
+
+@router.get("/municipios/{id_municipio}/contorno")
+async def ver_contorno_municipio(id_municipio: int = Path(..., ge=1, le=2_147_483_647),
+                                 db: AsyncSession = Depends(get_db)):
+    await _municipio_o_404(db, id_municipio)
+    return {"contorno": await ct.leer_contorno(db, id_municipio)}
+
+
+@router.post("/municipios/{id_municipio}/contorno/previsualizar",
+             responses={422: {"description": "El archivo no sirve: detail + paso"}})
+async def previsualizar_contorno_municipio(body: PrevisualizarIn,
+                                           id_municipio: int = Path(..., ge=1, le=2_147_483_647),
+                                           db: AsyncSession = Depends(get_db)):
+    await _municipio_o_404(db, id_municipio)
+    c = ct.normalizar_contorno(body.geojson, codigo_pais=await ct.pais_del_municipio(db, id_municipio))
+    origen = {"via": "archivo", "archivo": body.archivo} if body.archivo else {"via": "archivo"}
+    return {**ct.vista(c, origen), "aviso_zona": await ct.aviso_zona(db, id_municipio, c)}
+
+
+@router.get("/municipios/{id_municipio}/contorno/oficial",
+            responses={404: {"description": "El IGN no tiene el contorno"},
+                       409: {"description": "El municipio no tiene partido con código oficial"},
+                       502: {"description": "El IGN no respondió"}})
+async def contorno_oficial_municipio(id_municipio: int = Path(..., ge=1, le=2_147_483_647),
+                                     db: AsyncSession = Depends(get_db)):
+    await _municipio_o_404(db, id_municipio)
+    v = await oficial(db, await ct.codigo_del_municipio(db, id_municipio), await ct.pais_del_municipio(db, id_municipio))
+    c = ct.ContornoNormalizado(v["geometria"], v["partes"], v["vertices_antes"], v["vertices_despues"],
+                               v["superficie_km2"], v["recuadro"], v["avisos"])
+    return {**v, "aviso_zona": await ct.aviso_zona(db, id_municipio, c)}
+
+
+@router.put("/municipios/{id_municipio}/contorno",
+            responses={422: {"description": "El archivo no sirve, o el origen IGN no es el del partido"}})
+async def guardar_contorno_municipio(body: GuardarIn, request: Request,
+                                     id_municipio: int = Path(..., ge=1, le=2_147_483_647),
+                                     db: AsyncSession = Depends(get_db),
+                                     sa: dict = Depends(require_super_admin)):
+    await _municipio_o_404(db, id_municipio)
+    await validar_origen(db, body.origen, await ct.codigo_del_municipio(db, id_municipio))
+    c = ct.normalizar_contorno(body.geojson, codigo_pais=await ct.pais_del_municipio(db, id_municipio))
+    origen = origen_limpio(body.origen)
+    zona = await ct.guardar_contorno(db, id_municipio, c, origen)
+    # El registro va en la misma transacción: si no se puede registrar, el cambio no queda.
+    await registrar_acceso_super_en(db, id_usuario=sa["id_usuario"], accion="municipio_editar",
+                                    id_municipio=id_municipio, detalle=f"contorno guardado ({origen['via']})",
+                                    **_registro(request))
+    await db.commit()
+    invalidar_bbox(id_municipio)
+    return {"contorno": await ct.leer_contorno(db, id_municipio), "zona": zona}
+
+
+@router.delete("/municipios/{id_municipio}/contorno", status_code=204)
+async def quitar_contorno_municipio(request: Request, id_municipio: int = Path(..., ge=1, le=2_147_483_647),
+                                    db: AsyncSession = Depends(get_db),
+                                    sa: dict = Depends(require_super_admin)):
+    await _municipio_o_404(db, id_municipio)
+    await ct.quitar_contorno(db, id_municipio)
+    await registrar_acceso_super_en(db, id_usuario=sa["id_usuario"], accion="municipio_editar",
+                                    id_municipio=id_municipio, detalle="contorno quitado", **_registro(request))
+    await db.commit()
+    invalidar_bbox(id_municipio)

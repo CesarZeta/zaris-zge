@@ -20,6 +20,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.geo_zona import CLAVES_ZONA, SIN_ZONA_BUSQUEDA, zona_completa
+from app.services.contorno import (
+    MAX_ENTRADA, OrigenIn, codigo_del_partido, guardar_contorno, normalizar_contorno, origen_limpio,
+    validar_origen)
 from app.services.municipios.clonado import Clonador, FilaOmitida, conexion_asyncpg
 from app.services.municipios.constantes import (
     CODIGO_CORTO_LARGO, MODULOS_FIJOS, PATRON_CODIGO_CORTO, PATRON_SUBDOMINIO, SUBDOMINIOS_RESERVADOS)
@@ -60,7 +63,10 @@ SIN_CONTORNO = SIN_ZONA_BUSQUEDA
 class IdentidadAlta(BaseModel):
     color: Optional[str] = Field(None, pattern=r"^#[0-9A-Fa-f]{6}$")
     logo_url: Optional[str] = Field(None, max_length=500)
-    geo_limite_geojson: Optional[str] = None
+    # Contorno (PLAN_CONTORNO_MUNICIPIO_DISENO.md): se depura con services/contorno.py antes de
+    # escribir nada; su origen dice si vino del IGN o de un archivo.
+    geo_limite_geojson: Optional[str] = Field(None, max_length=MAX_ENTRADA + 1_000)
+    geo_limite_origen: Optional[OrigenIn] = None
     geo_bbox_centro_lat: Optional[float] = Field(None, ge=-90, le=90)
     geo_bbox_centro_lon: Optional[float] = Field(None, ge=-180, le=180)
     geo_bbox_delta_grados: Optional[float] = Field(None, gt=0, le=5)
@@ -175,7 +181,13 @@ async def _validar(db: AsyncSession, d: AltaMunicipioIn) -> dict:
     modelo = await db.scalar(text("SELECT id_municipio FROM municipios WHERE estado = 'modelo'"))
     if modelo is None:
         raise HTTPException(422, "No hay municipio modelo del que copiar los catálogos")
-    return {"pais": pais.nombre, "provincia": provincia, "zona": zona, "modelo": modelo, "modulos": modulos}
+    contorno = None
+    if (d.identidad.geo_limite_geojson or "").strip():
+        origen = d.identidad.geo_limite_origen or OrigenIn(via="archivo")
+        await validar_origen(db, origen, await codigo_del_partido(db, d.id_partido))
+        contorno = (normalizar_contorno(d.identidad.geo_limite_geojson, codigo_pais=d.codigo_pais), origen_limpio(origen))
+    return {"pais": pais.nombre, "provincia": provincia, "zona": zona, "modelo": modelo, "modulos": modulos,
+            "contorno": contorno}
 
 
 async def _copiar_catalogos(db: AsyncSession, d: AltaMunicipioIn, id_mun: int, modelo: int,
@@ -238,7 +250,8 @@ async def resembrar_claves_por_id(db: AsyncSession, id_mun: int, solo: Optional[
     await poner("id_tipo_representacion_defecto", str(rep) if rep else "")
 
 
-async def _configuracion(db: AsyncSession, d: AltaMunicipioIn, id_mun: int, modelo: int) -> list[str]:
+async def _configuracion(db: AsyncSession, d: AltaMunicipioIn, id_mun: int, modelo: int,
+                         contorno: Optional[tuple] = None) -> list[str]:
     await db.execute(text("""
         INSERT INTO configuracion_general (clave, valor, tipo, descripcion, activo, id_municipio)
         SELECT clave, valor, COALESCE(tipo, 'string'), descripcion, TRUE, :d
@@ -247,13 +260,15 @@ async def _configuracion(db: AsyncSession, d: AltaMunicipioIn, id_mun: int, mode
     await _poner_config(db, id_mun, "municipio_nombre", d.nombre)
     await _poner_config(db, id_mun, "municipio_color_primary", i.color)
     await _poner_config(db, id_mun, "municipio_logo_url", i.logo_url)
-    await _poner_config(db, id_mun, "geo_limite_geojson", i.geo_limite_geojson)
+    # Con contorno, la zona sale de él salvo que el super la haya escrito (el asistente la muestra derivada).
+    zona_derivada = await guardar_contorno(db, id_mun, *contorno) if contorno else {}
     for clave in ("geo_bbox_centro_lat", "geo_bbox_centro_lon", "geo_bbox_delta_grados"):
         valor = getattr(i, clave)
-        await _poner_config(db, id_mun, clave, None if valor is None else str(valor))
+        await _poner_config(db, id_mun, clave, str(valor) if valor is not None else zona_derivada.get(clave))
     await resembrar_claves_por_id(db, id_mun)
     advertencias = []
-    if not zona_completa({c: None if getattr(i, c) is None else str(getattr(i, c)) for c in CLAVES_ZONA}):
+    if not zona_completa({c: str(getattr(i, c)) if getattr(i, c) is not None else zona_derivada.get(c)
+                          for c in CLAVES_ZONA}):
         advertencias.append(SIN_CONTORNO)
     return advertencias
 
@@ -330,7 +345,7 @@ async def dar_de_alta(db: AsyncSession, d: AltaMunicipioIn, *, id_super: int,
         INSERT INTO municipio_modulo (id_municipio, modulo_codigo, habilitado, min_nivel_acceso, id_usuario_alta)
         SELECT :m, modulo_codigo, modulo_codigo = ANY(:hab), min_nivel_acceso, :u FROM modulos WHERE activo"""),
         {"m": id_mun, "hab": sorted(v["modulos"]), "u": id_super})
-    advertencias = await _configuracion(db, d, id_mun, v["modelo"])
+    advertencias = await _configuracion(db, d, id_mun, v["modelo"], v["contorno"])
     if omitidas:
         advertencias.append(f"{omitidas} filas del modelo no se copiaron: dependen de catálogos no elegidos")
     id_admin = await _administrador(db, d, id_mun, id_super, background_tasks)
