@@ -18,6 +18,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.geo_zona import CLAVES_ZONA, SIN_ZONA_BUSQUEDA, zona_completa
 from app.services.municipios.clonado import Clonador, FilaOmitida, conexion_asyncpg
 from app.services.municipios.constantes import (
     CODIGO_CORTO_LARGO, MODULOS_FIJOS, PATRON_CODIGO_CORTO, PATRON_SUBDOMINIO, SUBDOMINIOS_RESERVADOS)
@@ -51,7 +52,8 @@ CATALOGOS_ETIQUETAS: dict[str, str] = {
     "agenda": "Clases de evento y feriados",
 }
 _TABLAS_COPIABLES = {t for ts in CATALOGOS_COPIABLES.values() for t in ts}
-SIN_CONTORNO = "sin contorno ni bbox: el geocoding usará la zona por defecto (Vicente López)"
+# Sin zona de búsqueda, el geocoding de un municipio nuevo responde 409 (geo.py), no busca en otro lado.
+SIN_CONTORNO = SIN_ZONA_BUSQUEDA
 
 
 class IdentidadAlta(BaseModel):
@@ -250,7 +252,7 @@ async def _configuracion(db: AsyncSession, d: AltaMunicipioIn, id_mun: int, mode
         await _poner_config(db, id_mun, clave, None if valor is None else str(valor))
     await resembrar_claves_por_id(db, id_mun)
     advertencias = []
-    if not i.geo_limite_geojson and i.geo_bbox_centro_lat is None:
+    if not zona_completa({c: None if getattr(i, c) is None else str(getattr(i, c)) for c in CLAVES_ZONA}):
         advertencias.append(SIN_CONTORNO)
     return advertencias
 

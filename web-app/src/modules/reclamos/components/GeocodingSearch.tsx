@@ -65,7 +65,7 @@ export function GeocodingSearch({ onPick, placeholder }: Props) {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         onFocus={() => { if (results.length > 0) setOpen(true) }}
-        placeholder={placeholder ?? 'Buscar dirección (ej. Av. Maipú 1500 Vicente López)'}
+        placeholder={placeholder ?? 'Buscar dirección (ej. Av. San Martín 1500)'}
         style={inputStyle}
       />
       {open && (

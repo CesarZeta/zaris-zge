@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import require_super_admin
 from app.core.config_municipio import leer_configs
 from app.core.database import get_db
+from app.core.geo_zona import CLAVES_ZONA, zona_completa
 from app.core.municipio import invalidar_cache_municipios
 from app.services.accesos_super import registrar_acceso_super, registrar_acceso_super_en
 from app.core.urls import base_app
@@ -207,8 +208,8 @@ async def ficha_municipio(id_municipio: int = Path(..., ge=1, le=2_147_483_647),
           FROM usuarios u
          WHERE u.id_municipio = :m AND u.nivel_acceso = 1
          ORDER BY u.activo DESC, u.nombre"""), {"m": id_municipio})
-    geo = await leer_configs(db, ["geo_limite_geojson", "geo_bbox_centro_lat"], id_municipio)
-    advertencias = [] if m.direccion_base or any((v or "").strip() for v in geo.values()) else [SIN_CONTORNO]
+    geo = await leer_configs(db, list(CLAVES_ZONA), id_municipio)
+    advertencias = [] if m.direccion_base or zona_completa(geo) else [SIN_CONTORNO]
     return {
         "municipio": dict(m._mapping),
         "modulos": [dict({**r._mapping, "fijo": r.codigo in MODULOS_FIJOS,

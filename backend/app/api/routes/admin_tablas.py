@@ -11,12 +11,13 @@ base hasta F3; `municipios`, además, solo la lee él.
 """
 import logging
 from datetime import date, time
-from typing import Any
+from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.geo_zona import problema_valor_zona
 from app.core.auth import get_current_user, require_admin
 from app.core.municipio import municipio_actual
 from app.services.accesos_super import registrar_acceso_super
@@ -306,6 +307,22 @@ async def _rechazar_clave_global(db: AsyncSession, tabla: str, data: dict) -> No
             f"desde Configuración → Sistema"))
 
 
+async def _rechazar_zona_invalida(db: AsyncSession, tabla: str, data: dict, id_municipio: int,
+                                  id: Optional[int] = None) -> None:
+    """La zona de búsqueda (geo_bbox_*) se guarda solo si es un número en rango: un valor mal
+    cargado se guardaba y el buscador de direcciones respondía 409 sin que nadie supiera por qué
+    (prueba de cierre de F4+F5, 2026-10-28)."""
+    if tabla != "configuracion_general" or "valor" not in data:
+        return
+    clave = data.get("clave")
+    if not clave and id is not None:
+        clave = await db.scalar(text(
+            "SELECT clave FROM configuracion_general WHERE id_config = :id AND id_municipio = :mun"),
+            {"id": id, "mun": id_municipio})
+    if clave and (problema := problema_valor_zona(clave, data["valor"])):
+        raise HTTPException(status_code=422, detail=problema)
+
+
 def _bloquear_lectura_si_solo_admin(tabla: str, current_user: dict) -> None:
     if tabla in _TABLAS_SOLO_ADMIN_LECTURA and current_user.get("nivel_acceso") != 1:
         raise HTTPException(status_code=403, detail="Acción exclusiva del administrador")
@@ -539,7 +556,8 @@ async def obtener(
 
 # ─── POST /{tabla} — crear ────────────────────────────────────────────────────
 
-@router.post("/{tabla}", status_code=201)
+@router.post("/{tabla}", status_code=201,
+             responses={422: {"description": "Zona de búsqueda (geo_bbox_*) fuera de rango o no numérica"}})
 async def crear(
     tabla: str,
     body: dict,
@@ -558,6 +576,7 @@ async def crear(
     if not data:
         raise HTTPException(status_code=422, detail="No se recibieron campos válidos")
     await _rechazar_clave_global(db, tabla, data)
+    await _rechazar_zona_invalida(db, tabla, data, id_municipio)
     if _por_municipio(tabla):
         await _validar_referencias(db, data, id_municipio)
         data["id_municipio"] = id_municipio
@@ -631,6 +650,7 @@ async def editar(
     if not data:
         raise HTTPException(status_code=422, detail="No se recibieron campos válidos")
     await _rechazar_clave_global(db, tabla, data)
+    await _rechazar_zona_invalida(db, tabla, data, id_municipio, id)
     del_municipio, extra = "", {}
     if _por_municipio(tabla):
         await _validar_referencias(db, data, id_municipio)

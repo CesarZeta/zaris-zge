@@ -8,6 +8,7 @@ import {
   type AltaMunicipioBody, type AltaResultado, type Disponible, type OpcionModulo,
 } from '../api'
 import { Campo, input, seccion, titulo } from './_comun'
+import { normalizarNumero, parLatLon, problemaZona } from '../../../lib/zonaBusqueda'
 
 // Asistente de alta de un municipio (IT-01 F4+F5, Tarea 15; spec §4.4). Seis pasos y el alta en una
 // sola llamada: el backend valida todo antes de escribir y, si algo falla, no queda nada. El
@@ -24,7 +25,17 @@ const LARGO_CODIGO = 4
 const PATRON_CODIGO = new RegExp(`^[A-Z]{${LARGO_CODIGO}}$`)
 const RESERVADOS = new Set(['www', 'api', 'zge', 'vecinos', 'agentes', 'admin', 'app', 'mail', 'soporte',
   'status', 'demo', 'modelo'])
-const SIN_CONTORNO = 'Sin contorno ni bbox: el geocoding usará la zona por defecto (Vicente López).'
+// Sin zona, el buscador de direcciones del municipio nuevo responde «sin zona» (geo.py), no busca en otro lado.
+const SIN_CONTORNO = 'Sin zona de búsqueda: el buscador de direcciones no va a funcionar hasta que se cargue '
+  + 'acá o en Configuración → Sistema.'
+
+// Qué decir de cada campo cuando falta o está mal (el botón se deshabilita y la lista explica por qué).
+const ETIQUETAS: Partial<Record<keyof Form, string>> = {
+  nombre: 'Nombre', codigo_pais: 'País', id_provincia: 'Provincia', id_partido: 'Partido',
+  zona_horaria: 'Zona horaria', codigo_corto: 'Código corto', subdominio: 'Subdominio', color: 'Color principal',
+  lat: 'Zona del geocoding', tope: 'Tope de cuentas', a_nombre: 'Nombre', a_apellido: 'Apellido', a_dni: 'DNI',
+  a_cuil: 'CUIL', a_sexo: 'Sexo', a_fecha_nac: 'Fecha de nacimiento', a_telefono: 'Teléfono', a_email: 'Email',
+}
 
 const sinTildes = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '')
 const aSubdominio = (s: string) => sinTildes(s).toLowerCase()
@@ -145,7 +156,12 @@ export function AltaMunicipioPage() {
     if (!f.zona_horaria) e.zona_horaria = 'Elegí la zona horaria'
     if (f.color && !/^#[0-9A-Fa-f]{6}$/.test(f.color)) e.color = 'Formato #RRGGBB'
     const coords = [f.lat, f.lon, f.delta].filter((v) => v.trim() !== '').length
+    const malZona = ([['Latitud', 'geo_bbox_centro_lat', f.lat], ['Longitud', 'geo_bbox_centro_lon', f.lon],
+      ['Radio', 'geo_bbox_delta_grados', f.delta]] as const)
+      .map(([nombre, clave, v]) => { const p = problemaZona(clave, v); return p && `${nombre}: ${p.toLowerCase()}` })
+      .find(Boolean)
     if (coords > 0 && coords < 3) e.lat = 'Completá centro (latitud y longitud) y radio, o dejá los tres vacíos'
+    else if (malZona) e.lat = malZona
     if (f.tope.trim() !== '' && !(Number.isInteger(Number(f.tope)) && Number(f.tope) >= 1)) e.tope = 'Un número entero, 1 o más'
     if (!f.a_nombre.trim()) e.a_nombre = 'Obligatorio'
     if (!f.a_apellido.trim()) e.a_apellido = 'Obligatorio'
@@ -154,7 +170,8 @@ export function AltaMunicipioPage() {
     if (!f.a_sexo) e.a_sexo = 'Elegí una opción'
     if (!f.a_fecha_nac) e.a_fecha_nac = 'Obligatoria'
     if (f.a_telefono.trim().length < 6) e.a_telefono = 'Al menos 6 dígitos'
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.a_email.trim())) e.a_email = 'Email inválido'
+    if (!f.a_email.trim()) e.a_email = 'Obligatorio'
+    else if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.a_email.trim())) e.a_email = 'Email inválido'
     return e
   }, [f, pais, nivel2, dispPartido, dispCodigo, dispSub])
   // El paso Datos espera a que el backend confirme que el código, el subdominio y el partido están libres.
@@ -172,7 +189,9 @@ export function AltaMunicipioPage() {
   const errorDependencia = opciones.data ? faltaDependencia(f.modulos, opciones.data.modulos) : null
   const pasoValido = (i: number) => camposDelPaso[i].every((c) => !errores[c]) && (i !== 3 || !errorDependencia)
     && (i !== 0 || libres)
-  const sinContorno = !f.geojson.trim() && f.lat.trim() === ''
+  const sinContorno = f.lat.trim() === ''
+  // Lo que impide avanzar en el paso actual, con el motivo (antes el botón se deshabilitaba sin decir por qué).
+  const faltan = camposDelPaso[paso].flatMap((c) => (errores[c] ? [[c, errores[c]!] as const] : []))
 
   const alta = useMutation({
     mutationFn: darDeAlta,
@@ -191,7 +210,8 @@ export function AltaMunicipioPage() {
       zona_horaria: f.zona_horaria.trim() || null, codigo_corto: f.codigo_corto, subdominio: f.subdominio,
       identidad: {
         color: f.color || null, logo_url: f.logo_url.trim() || null, geo_limite_geojson: f.geojson.trim() || null,
-        geo_bbox_centro_lat: num(f.lat), geo_bbox_centro_lon: num(f.lon), geo_bbox_delta_grados: num(f.delta),
+        geo_bbox_centro_lat: num(normalizarNumero(f.lat)), geo_bbox_centro_lon: num(normalizarNumero(f.lon)),
+        geo_bbox_delta_grados: num(normalizarNumero(f.delta)),
       },
       copiar: f.copiar,
       modulos: [...new Set([...f.modulos, ...opciones.data!.modulos.filter((m) => m.fijo).map((m) => m.codigo)])],
@@ -218,6 +238,11 @@ export function AltaMunicipioPage() {
           <p style={{ margin: 0, fontSize: 13, color: 'var(--fg-2)' }}>
             Falta crear sus tres direcciones con <code>tools/dominios_municipio.py {f.subdominio}</code>. Después,
             en la ficha, «Verificar» y «Probar puesta en marcha».
+          </p>
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--fg-2)' }}>
+            El link de la invitación lleva a <code>{f.subdominio}.zge.zaris.com.ar</code> y no abre hasta que esa
+            dirección exista. Si el administrador la recibe antes, reenviala desde la ficha («Reenviar
+            invitación») cuando «Verificar» dé las tres en verde.
           </p>
           <div><Button variant="primary" type="button" onClick={() => navigate(`/municipios/${resultado.id_municipio}`)}>
             Ir a la ficha
@@ -332,9 +357,10 @@ export function AltaMunicipioPage() {
               <input style={input} value={f.logo_url} maxLength={500} onChange={(e) => set({ logo_url: e.target.value })} />
             </Campo>
             <Campo etiqueta="Zona del geocoding: centro y radio en grados" error={err('lat')}
-                   ayuda="Restringe las búsquedas de direcciones a la zona del municipio.">
+                   ayuda="Restringe las búsquedas de direcciones a la zona del municipio. En la latitud se puede pegar «latitud, longitud» como lo copia Google Maps. Radio: 0.1 ≈ 11 km.">
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <input style={{ ...input, width: 140 }} placeholder="Latitud" value={f.lat} onChange={(e) => set({ lat: e.target.value })} />
+                <input style={{ ...input, width: 140 }} placeholder="Latitud" value={f.lat}
+                       onChange={(e) => { const par = parLatLon(e.target.value); set(par ? { lat: par[0], lon: par[1] } : { lat: e.target.value }) }} />
                 <input style={{ ...input, width: 140 }} placeholder="Longitud" value={f.lon} onChange={(e) => set({ lon: e.target.value })} />
                 <input style={{ ...input, width: 110 }} placeholder="Radio" value={f.delta} onChange={(e) => set({ delta: e.target.value })} />
               </div>
@@ -381,8 +407,17 @@ export function AltaMunicipioPage() {
           <>
             <p style={ayudaPaso}>
               Se crea su ficha en la BUC del municipio, su agente y su cuenta de administrador. Recibe un mail para
-              elegir la clave y vincular la app de autenticación: nadie más conoce la clave.
+              elegir la clave y vincular la app de autenticación: nadie más conoce la clave. Todos los campos son
+              obligatorios.
             </p>
+            <div data-resumen-direcciones style={{ ...ayudaPaso, padding: '10px 12px', borderRadius: 8,
+              border: '1px solid var(--border-medium)', background: 'var(--surface-200)' }}>
+              El link de la invitación lleva a <strong style={{ fontFamily: 'var(--font-mono)' }}>
+              {f.subdominio || '—'}.zge.zaris.com.ar</strong>. Revisá que sea el subdominio que querés: las tres
+              direcciones ({f.subdominio || '—'}.zge, .vecinos y .agentes) se crean con{' '}
+              <code>tools/dominios_municipio.py {f.subdominio || '<subdominio>'}</code>, y hasta que existan el
+              link no abre.
+            </div>
             <div style={grilla}>
               <Campo etiqueta="Nombre">
                 <input style={input} value={f.a_nombre} maxLength={100} onChange={(e) => set({ a_nombre: e.target.value })} />
@@ -419,6 +454,18 @@ export function AltaMunicipioPage() {
         )}
       </div>
 
+      {faltan.length > 0 && (
+        <div data-faltan role="status" style={{ fontSize: 13, color: 'var(--fg-2)' }}>
+          Para seguir falta: {faltan.map(([c, m], i) => (
+            <span key={c}>{i > 0 && ' · '}<strong>{ETIQUETAS[c] ?? c}</strong> ({m.charAt(0).toLowerCase() + m.slice(1)})</span>
+          ))}
+        </div>
+      )}
+      {faltan.length === 0 && paso === 0 && !libres && (
+        <div role="status" style={{ fontSize: 13, color: 'var(--fg-3)' }}>
+          Comprobando que el código, el subdominio y el {nivel2} estén libres…
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap' }}>
         <Button variant="ghost" type="button" onClick={() => (paso === 0 ? navigate('/municipios') : setPaso(paso - 1))}>
           {paso === 0 ? 'Cancelar' : '← Anterior'}

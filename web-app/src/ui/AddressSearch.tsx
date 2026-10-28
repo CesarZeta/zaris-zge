@@ -71,7 +71,7 @@ export function AddressSearch({ onPick, placeholder, disabled }: Props) {
         onChange={(e) => setQ(e.target.value)}
         onFocus={() => { if (results.length > 0) setOpen(true) }}
         disabled={disabled}
-        placeholder={placeholder ?? 'Buscar dirección (ej. Av. Maipú 1500 Vicente López)'}
+        placeholder={placeholder ?? 'Buscar dirección (ej. Av. San Martín 1500)'}
         style={inputStyle(!!disabled)}
       />
       {open && (

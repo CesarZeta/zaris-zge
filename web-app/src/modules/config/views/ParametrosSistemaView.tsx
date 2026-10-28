@@ -4,6 +4,7 @@ import {
 } from 'lucide-react'
 import { useConfigGeneral, useActualizarConfigParam } from '../hooks/useConfig'
 import type { ConfigParam } from '../api/configApi'
+import { normalizarNumero, parLatLon, problemaZona } from '../../../lib/zonaBusqueda'
 
 // =============================================================================
 // Catálogo de presentación: agrupa las claves crudas de configuracion_general
@@ -98,19 +99,19 @@ const SECCIONES: Seccion[] = [
       {
         clave: 'geo_bbox_centro_lat',
         label: 'Latitud del centro del municipio',
-        ayuda: 'Coordenada decimal WGS84 (ej: -34.5305). Es el centro de la zona de búsqueda.',
+        ayuda: 'Número decimal con punto, entre -90 y 90. Podés pegar acá «latitud, longitud» tal como lo copia Google Maps (clic derecho sobre el mapa) y se reparte en los dos campos.',
         control: 'text',
       },
       {
         clave: 'geo_bbox_centro_lon',
         label: 'Longitud del centro del municipio',
-        ayuda: 'Coordenada decimal WGS84 (ej: -58.4779). Es el centro de la zona de búsqueda.',
+        ayuda: 'Número decimal con punto, entre -180 y 180.',
         control: 'text',
       },
       {
         clave: 'geo_bbox_delta_grados',
         label: 'Radio de la zona (en grados)',
-        ayuda: 'Semi-lado del recuadro de búsqueda, en grados. 0.27 ≈ 28 km: cubre el partido y los linderos. Si el municipio es más extenso, subirlo.',
+        ayuda: 'Mayor que 0 y hasta 5. 0.1 ≈ 11 km; 0.27 ≈ 28 km. Tiene que cubrir todo el municipio.',
         control: 'text',
       },
     ],
@@ -200,7 +201,7 @@ export function ParametrosSistemaView() {
         if (filas.length === 0) return null
         return (
           <SeccionCard key={sec.id} seccion={sec}>
-            {filas.map(({ meta, param }) => (
+            {sec.id === 'geocoding' ? <ZonaBusqueda filas={filas} /> : filas.map(({ meta, param }) => (
               <ParamRow key={meta.clave} meta={meta} param={param} />
             ))}
           </SeccionCard>
@@ -231,6 +232,103 @@ export function ParametrosSistemaView() {
           ))}
         </SeccionCard>
       )}
+    </div>
+  )
+}
+
+// Los tres campos de la zona se editan y se guardan juntos, con la validación de lib/zonaBusqueda
+// (prueba de cierre de F4+F5, 2026-10-28: «lat, lon» pegado en la latitud se guardaba y el buscador
+// de direcciones dejaba de andar sin aviso).
+function ZonaBusqueda({ filas }: { filas: { meta: ParamMeta; param: ConfigParam }[] }) {
+  const mut = useActualizarConfigParam()
+  const remotos = Object.fromEntries(filas.map(({ param }) => [param.clave, param.valor ?? '']))
+  const clave = filas.map(({ param }) => `${param.id_config}:${param.valor}`).join('|')
+  const [valores, setValores] = useState<Record<string, string>>(remotos)
+  const [estado, setEstado] = useState<'idle' | 'guardando' | 'ok' | { error: string }>('idle')
+
+  // Al cambiar lo guardado (refetch después de guardar), se vuelve a partir de lo que hay en la base.
+  useEffect(() => { setValores(remotos) }, [clave]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const cambiar = (c: string, v: string) => {
+    const par = c !== 'geo_bbox_delta_grados' ? parLatLon(v) : null
+    setValores((prev) => par
+      ? { ...prev, geo_bbox_centro_lat: par[0], geo_bbox_centro_lon: par[1] }
+      : { ...prev, [c]: v })
+    setEstado('idle')
+  }
+
+  const errores = Object.fromEntries(filas.map(({ param }) => [param.clave, problemaZona(param.clave, valores[param.clave] ?? '')]))
+  const hayError = Object.values(errores).some(Boolean)
+  const sucias = filas.filter(({ param }) => normalizarNumero(valores[param.clave] ?? '') !== (param.valor ?? '').trim())
+  const vacias = filas.filter(({ param }) => normalizarNumero(valores[param.clave] ?? '') === '').map(({ meta }) => meta.label.toLowerCase())
+
+  const guardar = async () => {
+    if (hayError || sucias.length === 0 || estado === 'guardando') return
+    setEstado('guardando')
+    try {
+      for (const { param } of sucias) {
+        await mut.mutateAsync({ id_config: param.id_config, valor: normalizarNumero(valores[param.clave] ?? ''),
+          clave: param.clave, tipo: param.tipo })
+      }
+      setEstado('ok')
+    } catch (e) {
+      setEstado({ error: (e as Error).message })
+    }
+  }
+
+  return (
+    <div data-zona-busqueda>
+      {filas.map(({ meta, param }) => {
+        const error = errores[param.clave]
+        const sucia = sucias.some((s) => s.param.clave === param.clave)
+        return (
+          <div key={meta.clave} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '13px 16px',
+            borderTop: '1px solid var(--border-primary)' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--fg-1)' }}>{meta.label}</div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--fg-3)', marginTop: 3, lineHeight: 1.45 }}>{meta.ayuda}</div>
+              <code style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'var(--fg-3)', opacity: 0.7 }}>
+                {param.clave}
+              </code>
+            </div>
+            <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+              <input
+                value={valores[param.clave] ?? ''}
+                placeholder="—"
+                aria-invalid={!!error}
+                disabled={estado === 'guardando'}
+                onChange={(e) => cambiar(param.clave, e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') void guardar() }}
+                style={{ ...inputBase, width: 220, fontFamily: 'var(--font-mono)',
+                  borderColor: error ? 'var(--color-error)' : sucia ? 'var(--zaris-orange)' : 'var(--border-primary)' }}
+              />
+              {error && <span role="alert" style={{ fontSize: '0.74rem', color: 'var(--color-error)' }}>{error}</span>}
+            </div>
+          </div>
+        )
+      })}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, padding: '12px 16px',
+        borderTop: '1px solid var(--border-primary)', flexWrap: 'wrap' }}>
+        {vacias.length > 0 && !hayError && (
+          <span style={{ fontSize: '0.78rem', color: 'var(--fg-3)', marginRight: 'auto' }}>
+            Falta {vacias.join(', ')}: el buscador de direcciones no funciona hasta completar los tres.
+          </span>
+        )}
+        {estado === 'ok' && sucias.length === 0 && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--color-success)', fontSize: '0.78rem' }}>
+            <Check size={14} /> Guardado
+          </span>
+        )}
+        {typeof estado === 'object' && (
+          <span role="alert" style={{ fontSize: '0.78rem', color: 'var(--color-error)' }}>No se guardó: {estado.error}</span>
+        )}
+        <button type="button" onClick={() => void guardar()} disabled={hayError || sucias.length === 0 || estado === 'guardando'}
+          style={{ ...inputBase, cursor: hayError || sucias.length === 0 ? 'default' : 'pointer', fontWeight: 600,
+            background: hayError || sucias.length === 0 ? 'var(--surface-300)' : 'var(--zaris-orange)',
+            color: hayError || sucias.length === 0 ? 'var(--fg-3)' : '#fff', border: 'none' }}>
+          {estado === 'guardando' ? 'Guardando…' : 'Guardar zona'}
+        </button>
+      </div>
     </div>
   )
 }
@@ -321,6 +419,11 @@ function ParamRow({ meta, param }: { meta: ParamMeta; param: ConfigParam }) {
           </span>
         )}
         {mut.isPending && <Loader2 size={14} className="spin" color="var(--fg-3)" />}
+        {mut.isError && (
+          <span role="alert" style={{ fontSize: '0.76rem', color: 'var(--color-error)', maxWidth: 220 }}>
+            No se guardó: {mut.error.message}
+          </span>
+        )}
 
         {esBool ? (
           <Toggle

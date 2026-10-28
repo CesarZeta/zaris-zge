@@ -1399,8 +1399,8 @@ async def test_ficha_municipio() -> None:
               any(a["id_usuario"] == C["n1"] and "invitacion_pendiente" in a for a in f.get("administradores", [])),
               str(f.get("administradores"))[:160])
         check("ficha: cupo", set(f.get("cupo", {})) == {"activas", "maximo", "aviso"}, str(f.get("cupo")))
-        check("ficha: advierte que no tiene contorno ni bbox",
-              any("contorno" in a for a in f.get("advertencias", [])), str(f.get("advertencias")))
+        check("ficha: advierte que no tiene la zona de búsqueda",
+              any("zona de búsqueda" in a for a in f.get("advertencias", [])), str(f.get("advertencias")))
         r = await c.get("/api/v1/super/municipios/2000000000", headers=h)
         check("ficha de un municipio inexistente → 404", r.status_code == 404, f"{r.status_code}")
         r = await c.put(f"/api/v1/super/municipios/{C['id']}/tope", json={"maximo": 50}, headers=h)
@@ -1964,6 +1964,64 @@ async def test_revision_final() -> None:
         await db.rollback()
 
 
+async def test_zona_busqueda() -> None:
+    """Prueba de cierre 2026-10-28: «lat, lon» pegado en la latitud se guardaba y el buscador de
+    direcciones respondía 409 sin aviso. La API rechaza la zona inválida y la ficha avisa mientras
+    falte alguna de las tres claves."""
+    print("\ntest_zona_busqueda")
+    C = await _municipio_c()
+    claves = ("geo_bbox_centro_lat", "geo_bbox_centro_lon", "geo_bbox_delta_grados")
+
+    async def borrar() -> None:
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("DELETE FROM configuracion_general WHERE id_municipio = :m AND clave = ANY(:c)"),
+                             {"m": C["id"], "c": list(claves)})
+            await db.commit()
+
+    await borrar()
+    h = _token(C["n1"], C["id"])
+    base = "/api/v1/admin/configuracion_general"
+    nueva = lambda clave, valor: {"clave": clave, "valor": valor, "tipo": "string", "descripcion": clave,  # noqa: E731
+                                  "activo": True}
+    try:
+        async with _cliente() as c:
+            r = await c.post(base, json=nueva("geo_bbox_centro_lat", "-33.6948, -60.6339"), headers=h)
+            check("«lat, lon» en la latitud → 422", r.status_code == 422, f"{r.status_code} {r.text[:120]}")
+            r = await c.post(base, json=nueva("geo_bbox_centro_lat", "-33.6948"), headers=h)
+            check("latitud válida → 201", r.status_code == 201, f"{r.status_code} {r.text[:120]}")
+            id_lat = r.json().get("id_config") if r.status_code == 201 else None
+            for valor, esperado in (("abc", 422), ("-91", 422), ("", 200), ("-33.6948", 200)):
+                r = await c.put(f"{base}/{id_lat}", json={"valor": valor}, headers=h)
+                check(f"PUT latitud «{valor}» → {esperado}", r.status_code == esperado, f"{r.status_code} {r.text[:120]}")
+            r = await c.post(base, json=nueva("geo_bbox_centro_lon", "-181"), headers=h)
+            check("longitud -181 → 422", r.status_code == 422, f"{r.status_code}")
+            r = await c.post(base, json=nueva("geo_bbox_centro_lon", "-60.6339"), headers=h)
+            check("longitud válida → 201", r.status_code == 201, f"{r.status_code}")
+            hs = {**await _super_headers_sin_db(), "X-Municipio": str(C["id"])}
+            r = await c.get(f"/api/v1/super/municipios/{C['id']}", headers=hs)
+            check("ficha: sin radio, avisa que la zona no está completa",
+                  any("zona de búsqueda" in a for a in r.json().get("advertencias", [])), r.text[:200])
+            r = await c.post(base, json=nueva("geo_bbox_delta_grados", "0"), headers=h)
+            check("radio 0 → 422", r.status_code == 422, f"{r.status_code}")
+            r = await c.post(base, json=nueva("geo_bbox_delta_grados", "0.1"), headers=h)
+            check("radio 0.1 → 201", r.status_code == 201, f"{r.status_code}")
+            r = await c.get(f"/api/v1/super/municipios/{C['id']}", headers=hs)
+            check("ficha: con la zona completa, sin aviso", r.json().get("advertencias") == [], r.text[:200])
+            r = await c.post(base, json=nueva("encuestas_activas_prueba_zona", "lo que sea"), headers=h)
+            check("otra clave con texto libre no se valida → 201", r.status_code == 201, f"{r.status_code}")
+    finally:
+        await borrar()
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("DELETE FROM configuracion_general WHERE id_municipio = :m "
+                                  "AND clave = 'encuestas_activas_prueba_zona'"), {"m": C["id"]})
+            await db.commit()
+
+
+async def _super_headers_sin_db() -> dict:
+    async with AsyncSessionLocal() as db:
+        return await _super_headers(db)
+
+
 PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones_super, test_links_por_municipio,
                                      test_modelo, test_area_fija_api, test_tope, test_super_admins, test_ficha_municipio,
                                      test_vaciado_guardas, test_clonado_excluidas, test_vaciado_operativo_y_todo, test_exportacion_retencion, test_municipio_vacio, test_aislamiento_modelo, test_revision_final,
@@ -1973,7 +2031,7 @@ PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones
                                      test_estado_baja, test_modelo_no_operable, test_demo_por_estado,
                                      test_geo_catalogo, test_municipio_provincia,
                                      test_modulo_404, test_modulos_permitidos_municipio, test_nivel_por_municipio,
-                                     test_dependencias, test_efectos_apagados)}
+                                     test_dependencias, test_efectos_apagados, test_zona_busqueda)}
 
 
 async def main(nombres: list[str]) -> int:

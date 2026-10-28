@@ -33,11 +33,15 @@ export function Button({ variant = 'default', icon, children, style, ...rest }: 
 
   const [hovered, setHovered] = React.useState(false)
   const hoverColor = variant === 'primary' || variant === 'accent' ? undefined : 'var(--color-error)'
+  // Deshabilitado tiene que verse deshabilitado: sin esto, «Dar de alta» se veía activo y el clic no
+  // hacía nada (prueba de cierre de F4+F5, 2026-10-28).
+  const deshabilitado: React.CSSProperties = rest.disabled ? { opacity: 0.45, cursor: 'not-allowed' } : {}
 
   return (
     <button
       {...rest}
-      style={{ ...base, ...variants[variant], ...(hovered && hoverColor ? { color: hoverColor } : {}), ...style }}
+      style={{ ...base, ...variants[variant], ...(hovered && hoverColor && !rest.disabled ? { color: hoverColor } : {}),
+        ...deshabilitado, ...style }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
