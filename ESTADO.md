@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-10-30 (Cesar, cierre). Mapa de la App Vecinos en prod (probado por César en el teléfono) y falla de aislamiento entre municipios cazada en la prueba de cierre y arreglada (ver Hecho reciente). La prueba de cierre sigue desde el primer registro por circuito (pregunta 1).
+**Última actualización:** 2026-10-30 (Cesar, cierre de la 2ª sesión). César postergó la prueba de cierre (necesita su teléfono, sus casillas y sus códigos) y adelantó la base de conocimiento: borrador del material de venta por circuito (pregunta 7). Antes, en el día: mapa de la App Vecinos en prod y falla de aislamiento entre municipios arreglada (ver Hecho reciente).
 
 ---
 
@@ -18,7 +18,7 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **IT-01 F4+F5 — próximo: el resto de la prueba de cierre con César** (spec §5 de `PLAN_MULTI_MUNICIPIO_F4_F5_DISENO.md`; hechos el alta, la invitación, el tope, el contorno y el arreglo de los cruces). Orden propuesto, con quién hace cada paso:
+1. **IT-01 F4+F5 — próximo: el resto de la prueba de cierre con César** (postergada por César el 2026-10-30 a favor de la base de conocimiento; sigue igual) (spec §5 de `PLAN_MULTI_MUNICIPIO_F4_F5_DISENO.md`; hechos el alta, la invitación, el tope, el contorno y el arreglo de los cruces). Orden propuesto, con quién hace cada paso:
    1. César, en el teléfono: vecino en `prueba.vecinos.zaris.com.ar` con el **DNI 30123456** (el mismo de un vecino de San Andrés) y su Gmail; mirar que el link del mail vaya a `prueba.…`; cargar un reclamo «Árbol/tocón/rama con peligro de caída» y una emergencia desde «Nueva emergencia» (no el botón de pánico).
    2. César entra como **admin.prue** (clave + código) en la pestaña del navegador de VS Code; Claude maneja el backoffice: OT a mikeamigo (Arbolado asigna a mano), espacio + prestación + disponibilidad, turno y evento con reserva para el vecino, un trámite, Entradas 404 (backoffice y vecino).
    3. César, en el teléfono: **mikeamigo** en `prueba.agentes.zaris.com.ar` (clave temporal en su Hotmail) resuelve la OT.
@@ -32,9 +32,13 @@
    2. Todas las prestaciones del vecino; falta **iniciar un trámite** desde el portal (ni endpoint ni pantalla). Turnos y entradas ya se reservan desde la app (verificado en el código).
    3. **Vecino 360 para el vecino** (perfil o donde convenga).
    4. **Vecino 360 para el municipio:** en Datos y como pestaña de la ficha del ciudadano y de la empresa, con todas sus interacciones; por persona o por empresa representada.
-   5. **Base de conocimiento de ayudas** al final, con dos capítulos: canales del vecino y gestión interna. Ya hay un relevamiento inicial de los canales del vecino (2026-10-27). Mientras tanto no se tocan manuales.
+   5. **Base de conocimiento de ayudas**, con dos capítulos: canales del vecino y gestión interna. Ya hay un relevamiento inicial de los canales del vecino (2026-10-27). Mientras tanto no se tocan manuales. César la adelantó el 2026-10-30 empezando por el material de venta (pregunta 7).
 5. Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
 6. **Primer cierre real de un trámite de vecino en prod:** confirma el aviso de resultado y la encuesta (probados solo en local). Va con los próximos smokes con cuentas reales; César pasa los trámites.
+7. **Base de conocimiento — material de venta por circuito** (pedido de César, 2026-10-30): borrador en `docs/base_conocimiento/resumen_circuitos.md`, **solo en la máquina de César, sin commitear** (lleva notas internas y el repo es público). Estructura de César: de cara al vecino · a la gestión · a los altos mandos y la jefatura de gabinete · encuestas y su análisis · tableros de todas las áreas con la matriz volumen / cierre / SLA / satisfacción / seguimiento; lo no implementado va con (\*). Queda que César:
+   - revise los (\*) de los tableros: varios son propuesta de Claude, no pedidos anotados (encuesta después de una emergencia, productividad por agente, tablero integral);
+   - confirme si su «punto 2» (el pedido decía «dos cosas» y traía una sola) era esta estructura o es otra pieza (supuesto de Claude: una ficha técnica por circuito);
+   - apruebe el texto. Recomendación de Claude: commitear sin la sección «Notas internas», que pasa a este archivo.
 
 ---
 
@@ -70,6 +74,10 @@
 - 🟠 **IT-01 — menores diferidos de las revisiones finales (F1+F2, F3, F3b, F4+F5):** lista en [`PLAN_MULTI_MUNICIPIO.md`](PLAN_MULTI_MUNICIPIO.md) → «Menores diferidos». Ninguno afecta a San Andrés solo.
 - 🟢 **`smoke_publico_turnos.py` en rojo por datos locales:** el vecino de prueba ya tiene turnos en los días hábiles siguientes y el 6.º intento choca con el límite de 5 reservas por minuto. No es del código: limpiar esos turnos o empezar más adelante.
 - 🟢 **PWA — `/configuracion` no maneja el 401** con un token vencido (se queda en la página; sin bucle). Repo `zaris-vecinos`.
+- 🟠 **Encuestas — pedido de contacto en una encuesta de trámite** (`encuestas_service.py`, `registrar_respuesta`, paso 5): la referencia solo distingue reclamo, turno y evento, así que el aviso al área diría «Reserva de evento #None». Sumar la rama de `id_tramite`. Verificado en el código el 2026-10-30.
+- 🟢 **Encuestas → Resumen:** la pantalla filtra solo por fechas; el backend ya acepta circuito (`tipo`) y área. La «Satisfacción por área» cuenta solo reclamos.
+- 🟢 **Documentación desactualizada** (relevada el 2026-10-30 para el material de venta): `docs/flujos_operativos_zge.md` (la OT nace «En gestión», los turnos tienen 5 estados, el ciclo de los eventos) y las skills `modulo-encuestas`, `modulo-permisos` y `modulo-usuarios`; revisarlas contra el código al tocar cada módulo. La de `modulo-bi` ya se corrigió.
+- 🟢 **Textos de la PWA que prometen más de lo que hace** (trámites, notificaciones, noticias): detalle en `zaris-vecinos/ESTADO.md`.
 
 **Infra / operativo**
 - 🟡 **Barrido visual de modo oscuro** en los módulos React restantes: **POSPUESTO por César 2026-09-20**. Sumar el mapa del inicio: tras los cambios del 2026-10-19 no se revisó en oscuro, y el contorno pizarra de los reclamos casi no se ve sobre el tile oscuro.
