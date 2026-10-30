@@ -4,7 +4,9 @@ Clonado de filas de un municipio a otro (IT-01 F4+F5, Tarea 11). Extraído de
 filtraciones); el alta de municipios lo usa sin marca para copiar catálogos del modelo.
 
 Cada FK hacia una tabla segmentada (catalogo/operativo) se re-mapea clonando primero al padre
-(recursivo). Con `permitidas`, solo se clonan esas tablas: una FK hacia otra tabla segmentada queda
+(recursivo). `id_subarea` e `id_area` se re-mapean igual aunque la base no tenga su FK (la columna
+estándar §10 es «FK futura» en casi todas las tablas, y en prod faltaban FK que en local existían:
+la copia del modelo quedó colgando de San Andrés, prueba de cierre de F4+F5, 2026-10-30). Con `permitidas`, solo se clonan esas tablas: una FK hacia otra tabla segmentada queda
 en NULL si la columna lo admite y, si no, la fila se omite (`FilaOmitida`). Así una copia de
 catálogos nunca arrastra personas, cuentas ni datos operativos.
 
@@ -15,6 +17,8 @@ import json
 import re
 import uuid
 from typing import Any, Optional
+
+from app.services.municipios.cruces import SIN_FK
 
 TEXTO_LIBRE = re.compile(
     r"^(nombre|apellido|descripcion|direccion\w*|domicilio\w*|observacion\w*|detalle\w*|titulo|mensaje|"
@@ -90,10 +94,17 @@ class Clonador:
               JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = i.indkey[0]
              WHERE i.indrelid = $1::regclass AND i.indisunique AND NOT i.indisprimary AND i.indnatts = 1""",
             f"public.{tabla}")
+        fks_tabla = {r["col"]: (r["padre"], r["ref"]) for r in fks if r["col"] != "id_municipio"}
+        implicitas = set()
+        for col, padre, ref in SIN_FK:
+            if col not in fks_tabla and tabla != padre and any(r["col"] == col for r in cols):
+                fks_tabla[col] = (padre, ref)
+                implicitas.add(col)
         m = {
             "cols": {r["col"]: r for r in cols},
             "pk": [r["attname"] for r in pk],
-            "fks": {r["col"]: (r["padre"], r["ref"]) for r in fks if r["col"] != "id_municipio"},
+            "fks": fks_tabla,
+            "implicitas": implicitas,
             "checks": {r["attname"] for r in checks},
             "unicos": {r["attname"] for r in unicos},
         }
@@ -146,6 +157,10 @@ class Clonador:
                 vals[col] = self.id_usuario_alta if nulo_ok and self.id_usuario_alta else \
                     (None if nulo_ok else self.anclas.get("usuarios"))
             elif self.segmentada(padre):
+                if col in m["implicitas"] and nulo_ok and await self.conn.fetchval(
+                        f'SELECT 1 FROM "{padre}" WHERE "{ref}" = $1', vals[col]) is None:
+                    vals[col] = None  # sin FK la base pudo dejar un huérfano: no se arrastra
+                    continue
                 if self.permitidas is not None and padre not in self.permitidas:
                     if nulo_ok:
                         vals[col] = None

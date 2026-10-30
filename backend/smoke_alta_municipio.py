@@ -1016,6 +1016,69 @@ async def test_alta_atomica() -> None:
         await _estado(ctx["modelo"], "baja")
 
 
+async def test_cruces_municipio() -> None:
+    """Ninguna fila de un municipio apunta a otro; el chequeo lo caza aunque la columna no tenga FK, y
+    con un cruce el alta no se hace (prueba de cierre de F4+F5, 2026-10-30: en prod faltaban las FK de
+    tipo_reclamo.id_subarea y subarea.id_area y la copia del modelo quedó colgando de San Andrés)."""
+    print("\ntest_cruces_municipio")
+    from app.services.municipios import alta
+    from app.services.municipios.clonado import conexion_asyncpg
+    from app.services.municipios.cruces import contar_cruces
+    C = await _municipio_c()
+    async with AsyncSessionLocal() as db:
+        conn = await conexion_asyncpg(db)
+        ids = [r[0] for r in (await db.execute(text("SELECT id_municipio FROM municipios ORDER BY 1"))).all()]
+        con_cruces = {m: x for m in ids if (x := await contar_cruces(conn, m))}
+        check("ningún municipio local apunta a otro", not con_cruces, str(con_cruces)[:300])
+        # Una columna id_subarea SIN FK apuntando a una gestión de otro municipio: el chequeo la ve.
+        await conn.execute("CREATE TABLE zz_prueba_cruces (id serial PRIMARY KEY, id_municipio integer, id_subarea integer)")
+        ajena = await conn.fetchval("SELECT id_subarea FROM subarea WHERE id_municipio <> $1 ORDER BY 1 LIMIT 1", C["id"])
+        await conn.execute("INSERT INTO zz_prueba_cruces (id_municipio, id_subarea) VALUES ($1, $2)", C["id"], ajena)
+        cruces = await contar_cruces(conn, C["id"])
+        check("un id_subarea sin FK que apunta a otro municipio se detecta",
+              ("zz_prueba_cruces.id_subarea → subarea", 1) in cruces, str(cruces))
+        # El clonador reapunta id_subarea aunque la columna no tenga FK; un huérfano queda en NULL.
+        from app.services.municipios.clonado import Clonador
+        otro = await conn.fetchval("SELECT id_municipio FROM subarea WHERE id_subarea = $1", ajena)
+        con_gestion = await conn.fetchval(
+            "INSERT INTO zz_prueba_cruces (id_municipio, id_subarea) VALUES ($1, $2) RETURNING id", otro, ajena)
+        huerfana = await conn.fetchval(
+            "INSERT INTO zz_prueba_cruces (id_municipio, id_subarea) VALUES ($1, 2147483000) RETURNING id", otro)
+        cl = Clonador(conn, C["id"])
+        await cl.cargar_clases()
+        copia = await cl.clonar("zz_prueba_cruces", con_gestion)
+        mun_copia = await conn.fetchval("""SELECT s.id_municipio FROM zz_prueba_cruces z
+            JOIN subarea s ON s.id_subarea = z.id_subarea WHERE z.id = $1""", copia)
+        check("el clonador reapunta un id_subarea sin FK al municipio destino", mun_copia == C["id"], str(mun_copia))
+        copia = await cl.clonar("zz_prueba_cruces", huerfana)
+        check("un id_subarea huérfano se copia en NULL",
+              await conn.fetchval("SELECT id_subarea FROM zz_prueba_cruces WHERE id = $1", copia) is None)
+        await db.rollback()
+
+    ctx = await _contexto_alta()
+    suf, cod = _sufijo()
+    original = alta.contar_cruces
+
+    async def con_cruce(conn, id_municipio):
+        return [("tabla.col → padre", 1)]
+
+    alta.contar_cruces = con_cruce
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+                                     base_url="http://test") as c:
+            r = await c.post("/api/v1/super/municipios", json=_alta_body(suf, cod, id_provincia=ctx["ba"]),
+                             headers=ctx["h"])
+    finally:
+        alta.contar_cruces = original
+    check("con un cruce el alta responde 500 con el aviso", r.status_code == 500
+          and r.json().get("detail") == alta.CRUCES_EN_ALTA, f"{r.status_code} {r.text[:160]}")
+    async with AsyncSessionLocal() as db:
+        check("con un cruce no queda el municipio", not await _escalar(
+            db, "SELECT 1 FROM municipios WHERE subdominio = :s", {"s": f"d-{suf}"}))
+    if ctx["propio"]:
+        await _estado(ctx["modelo"], "baja")
+
+
 async def test_alta_agrega_fijos() -> None:
     """El asistente no muestra los módulos fijos que no son de un municipio (Municipios, nivel 0): el
     alta los habilita igual."""
@@ -2144,7 +2207,7 @@ async def _super_headers_sin_db() -> dict:
 PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones_super, test_links_por_municipio,
                                      test_modelo, test_area_fija_api, test_tope, test_super_admins, test_ficha_municipio,
                                      test_vaciado_guardas, test_clonado_excluidas, test_vaciado_operativo_y_todo, test_exportacion_retencion, test_municipio_vacio, test_aislamiento_modelo, test_revision_final,
-                                     test_alta_validaciones, test_alta_partido_zona_codigo, test_alta_ok, test_alta_atomica, test_alta_agrega_fijos, test_alta_concurrente,
+                                     test_alta_validaciones, test_alta_partido_zona_codigo, test_alta_ok, test_alta_atomica, test_cruces_municipio, test_alta_agrega_fijos, test_alta_concurrente,
                                      test_invitacion, test_invitacion_token_malformado, test_estados,
                                      test_alta_por_origen,
                                      test_estado_baja, test_modelo_no_operable, test_demo_por_estado,

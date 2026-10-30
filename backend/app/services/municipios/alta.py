@@ -8,6 +8,7 @@ a entidades se re-siembran por nombre) → ficha BUC + agente + usuario nivel 1 
 administrador. Si algo falla, no queda nada. La invitación NO sale acá: el super la manda desde la ficha
 cuando las tres direcciones del municipio responden (César, 2026-10-28).
 """
+import logging
 import re
 import secrets
 from datetime import date
@@ -24,9 +25,12 @@ from app.services.contorno import (
     MAX_ENTRADA, OrigenIn, codigo_del_partido, guardar_contorno, normalizar_en_hilo, origen_limpio,
     validar_origen)
 from app.services.municipios.clonado import Clonador, FilaOmitida, conexion_asyncpg
+from app.services.municipios.cruces import contar_cruces
 from app.services.municipios.constantes import (
     CODIGO_CORTO_LARGO, MODULOS_FIJOS, PATRON_CODIGO_CORTO, PATRON_SUBDOMINIO, SUBDOMINIOS_RESERVADOS)
 from app.services.municipios.modulos import validar_dependencias
+
+logger = logging.getLogger(__name__)
 
 # Grupos de catálogos que el super elige copiar del modelo (casillas del asistente). Las áreas fijas y
 # la configuración se copian siempre. Los padres que una fila necesita se copian aunque su grupo no
@@ -105,6 +109,8 @@ CODIGO_INVALIDO = f"El código corto lleva {CODIGO_CORTO_LARGO} letras mayúscul
 SUBDOMINIO_INVALIDO = "Subdominio inválido: minúsculas, números y guiones, sin tildes"
 SUBDOMINIO_RESERVADO = "Ese subdominio está reservado"
 PARTIDO_TOMADO = "Ese partido ya tiene un municipio"
+CRUCES_EN_ALTA = ("La copia del modelo dejó datos que apuntan a otro municipio: el alta no se hizo. "
+                  "Avisá a soporte.")
 
 
 async def problema_codigo(db: AsyncSession, codigo: str) -> Optional[tuple[int, str]]:
@@ -352,4 +358,10 @@ async def dar_de_alta(db: AsyncSession, d: AltaMunicipioIn, *, id_super: int,
     if omitidas:
         advertencias.append(f"{omitidas} filas del modelo no se copiaron: dependen de catálogos no elegidos")
     id_admin = await _administrador(db, d, id_mun, id_super, background_tasks)
+    # Ninguna fila del municipio nuevo puede apuntar a otro (cazado en la prueba de cierre: faltaban
+    # FK en prod y la copia del modelo quedó colgando de San Andrés). Si queda alguna, no hay alta.
+    cruces = await contar_cruces(await conexion_asyncpg(db), id_mun)
+    if cruces:
+        logger.error("Alta de %s cancelada: referencias a otro municipio %s", d.subdominio, cruces)
+        raise HTTPException(500, CRUCES_EN_ALTA)
     return {"id_municipio": id_mun, "id_administrador": id_admin, "advertencias": advertencias}

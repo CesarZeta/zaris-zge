@@ -421,7 +421,8 @@ def _registro(request: Request) -> dict:
 @router.post("/municipios", status_code=201,
              responses={201: {"description": "Municipio creado; del modelo se copian solo las filas activas"},
                         409: {"description": "Subdominio o código corto en uso"},
-                        422: {"description": "Datos inválidos, país no habilitado o módulos sin sus dependencias"}})
+                        422: {"description": "Datos inválidos, país no habilitado o módulos sin sus dependencias"},
+                        500: {"description": "La copia del modelo dejó datos que apuntan a otro municipio: no se dio de alta"}})
 async def alta_municipio(
     body: AltaMunicipioIn,
     request: Request,
