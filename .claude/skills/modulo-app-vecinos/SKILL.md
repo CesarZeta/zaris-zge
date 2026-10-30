@@ -44,6 +44,7 @@ Backend mínimo para la PWA `zaris-vecinos` que permite a los ciudadanos enviar 
 
 - **Sin auth** (la PWA lo lee antes de tener token, en la pantalla de login).
 - Lee con `leer_configs` las 5 claves del municipio de la dirección (`municipio_de_origen`): `municipio_nombre`, `municipio_logo_url`, `municipio_descripcion`, `municipio_color_primary`, `municipio_color_accent`. Claves ausentes/vacías → `null`; sin `municipio_nombre` propio, `municipios.nombre`.
+- **`GET /api/v1/publico/encuadre-mapa`** (mismo router, sin auth, 2026-10-30): el recuadro donde arranca el mapa sin pin de la PWA (`encuadre_municipio` de `services/geo_limite.py`, el mismo del `/geo/encuadre` del backoffice): contorno → zona de búsqueda → país. La PWA no dibuja el contorno (decisión de César: en las apps el mapa solo sirve para ubicar una dirección). Smoke: `smoke_alta_municipio.py test_encuadre_mapas`.
 
 ### Vigencia de tokens
 

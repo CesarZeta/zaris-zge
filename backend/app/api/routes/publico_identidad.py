@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config_municipio import leer_configs
 from app.core.database import get_db
 from app.core.municipio import municipio_de_origen
+from app.services.geo_limite import encuadre_municipio
 from app.services.municipios.modulos import modulos_habilitados
 from app.core.urls import url_alta_publica
 from app.schemas.publico_auth import IdentidadMunicipioOut
@@ -54,3 +55,14 @@ async def identidad_municipio(
         url_alta_publica=url_alta,
         modulos_habilitados=sorted(await modulos_habilitados(db, id_municipio)),
     )
+
+
+@router.get("/encuadre-mapa", responses={200: {"description": "Recuadro inicial del mapa de la App Vecinos"}})
+async def encuadre_mapa(
+    db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_de_origen),
+):
+    """Dónde arranca el mapa de la PWA (sur, oeste, norte, este y `origen`) para el municipio de la
+    dirección: el mismo encuadre que el backoffice (`/geo/encuadre`). Sin auth: el formulario de
+    emergencias también lo usa. Solo el recuadro, sin el contorno: la app no lo dibuja."""
+    return await encuadre_municipio(db, id_municipio)

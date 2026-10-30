@@ -59,6 +59,12 @@ Todas validan el slug `?m=<codigo_corto>` contra el único municipio del deploy.
 |---|---|---|---|
 | GET | `` | — | Nombre/logo/descripción/colores. Lo lee la PWA antes de tener token. **Desde IT-01 F4 trae `modulos_habilitados`** (lista de códigos): la PWA oculta lo que el municipio no tiene. El municipio sale del `Origin` (`<sub>.vecinos.zaris.com.ar`); uno en `baja` o el modelo dan 404. |
 
+### Encuadre del mapa — `/api/v1/publico/encuadre-mapa` (2026-10-30)
+
+| Verbo | Ruta | Auth | Para qué |
+|---|---|---|---|
+| GET | `` | — | Dónde arranca el mapa sin pin de «Nuevo reclamo» y «Nueva emergencia»: `{sur, oeste, norte, este, origen}` con `origen` = `contorno`, `zona` o `pais` (el contorno del municipio; si no hay, su zona de búsqueda; si tampoco, el país). Es el mismo encuadre que el `/geo/encuadre` del backoffice, para el municipio del `Origin`. Solo el recuadro: la app no dibuja el contorno. Un backend sin el endpoint (404) o un error dejan el mapa en la Argentina completa. |
+
 ## 4. Reclamos del vecino — `/api/v1/publico/reclamos`
 
 | Verbo | Ruta | Auth | Para qué |

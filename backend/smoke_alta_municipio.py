@@ -2088,6 +2088,14 @@ async def test_encuadre_mapas() -> None:
             await db.commit()
 
     h = _token(C["n2"], C["id"])
+    publico = "/api/v1/publico/encuadre-mapa"
+
+    async def igual_en_la_app(c, r, caso: str) -> None:
+        """La App Vecinos (sin token, por la dirección del municipio) arranca donde el backoffice."""
+        p = await c.get(publico, headers={"Origin": ORIGEN_C_VECINOS})
+        check(f"app del vecino, {caso}: mismo encuadre que el backoffice", p.status_code == 200 and p.json() == r.json(),
+              f"{p.status_code} {p.text[:160]}")
+
     try:
         async with _cliente() as c:
             await poner({})
@@ -2095,14 +2103,17 @@ async def test_encuadre_mapas() -> None:
             e = r.json() if r.status_code == 200 else {}
             check("sin contorno ni zona → el país (Argentina)", e.get("origen") == "pais" and e.get("sur") == -55.1
                   and e.get("norte") == -21.7, f"{r.status_code} {r.text[:160]}")
+            await igual_en_la_app(c, r, "sin contorno ni zona")
             await poner({"geo_bbox_centro_lat": "-33.7", "geo_bbox_centro_lon": "-60.6"})
             r = await c.get("/api/v1/geo/encuadre", headers=h)
             check("zona incompleta (sin radio) → el país", r.json().get("origen") == "pais", r.text[:160])
+            await igual_en_la_app(c, r, "zona incompleta")
             await poner({"geo_bbox_centro_lat": "-33.7", "geo_bbox_centro_lon": "-60.6", "geo_bbox_delta_grados": "0.1"})
             r = await c.get("/api/v1/geo/encuadre", headers=h)
             e = r.json()
             check("zona completa → la zona", e.get("origen") == "zona" and abs(e["sur"] + 33.8) < 1e-9
                   and abs(e["este"] + 60.5) < 1e-9, r.text[:160])
+            await igual_en_la_app(c, r, "con zona")
             poligono = '{"type":"Polygon","coordinates":[[[-60.7,-33.8],[-60.5,-33.8],[-60.5,-33.6],[-60.7,-33.6],[-60.7,-33.8]]]}'
             await poner({"geo_bbox_centro_lat": "-33.7", "geo_bbox_centro_lon": "-60.6", "geo_bbox_delta_grados": "0.5",
                          "geo_limite_geojson": poligono})
@@ -2110,8 +2121,17 @@ async def test_encuadre_mapas() -> None:
             e = r.json()
             check("con contorno → el contorno, aunque haya zona", e.get("origen") == "contorno" and e.get("sur") == -33.8
                   and e.get("oeste") == -60.7 and e.get("norte") == -33.6 and e.get("este") == -60.5, r.text[:160])
+            await igual_en_la_app(c, r, "con contorno")
             r = await c.get("/api/v1/geo/encuadre")
             check("sin token → 401", r.status_code == 401, f"{r.status_code}")
+            r = await c.get(publico, headers={"Origin": "https://no-existe.vecinos.zaris.com.ar"})
+            check("app del vecino desde una dirección que no es de ningún municipio → 404", r.status_code == 404,
+                  f"{r.status_code}")
+            r = await c.get(publico)
+            e = r.json() if r.status_code == 200 else {}
+            check("app del vecino sin dirección → el municipio base, no el de prueba",
+                  r.status_code == 200 and e.get("origen") in ("contorno", "zona", "pais") and e.get("sur") != -33.8,
+                  f"{r.status_code} {r.text[:160]}")
     finally:
         await poner({})
 
