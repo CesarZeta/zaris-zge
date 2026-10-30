@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-10-30 (Cesar). Hecho el tercer trabajo aprobado: el **mapa de la App Vecinos** arranca en el municipio de la dirección (endpoint público `/publico/encuadre-mapa`, en prod). Además, renovadas las claves de las cuentas de prueba de prod y pedido a GitHub Support el borrado de los commits viejos de `agente.csv`. Sigue el resto de la prueba de cierre de F4+F5.
+**Última actualización:** 2026-10-30 (Cesar, cierre). Mapa de la App Vecinos en prod (probado por César en el teléfono) y falla de aislamiento entre municipios cazada en la prueba de cierre y arreglada (ver Hecho reciente). La prueba de cierre sigue desde el primer registro por circuito (pregunta 1).
 
 ---
 
@@ -18,7 +18,13 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **IT-01 F4+F5 — próximo: el resto de la prueba de cierre con César.** Los tres trabajos aprobados están hechos y en prod. El municipio de prueba (id 6) ya tiene contorno y zona de búsqueda (cargados el 2026-10-28): la prueba de cierre sigue desde ahí.
+1. **IT-01 F4+F5 — próximo: el resto de la prueba de cierre con César** (spec §5 de `PLAN_MULTI_MUNICIPIO_F4_F5_DISENO.md`; hechos el alta, la invitación, el tope, el contorno y el arreglo de los cruces). Orden propuesto, con quién hace cada paso:
+   1. César, en el teléfono: vecino en `prueba.vecinos.zaris.com.ar` con el **DNI 30123456** (el mismo de un vecino de San Andrés) y su Gmail; mirar que el link del mail vaya a `prueba.…`; cargar un reclamo «Árbol/tocón/rama con peligro de caída» y una emergencia desde «Nueva emergencia» (no el botón de pánico).
+   2. César entra como **admin.prue** (clave + código) en la pestaña del navegador de VS Code; Claude maneja el backoffice: OT a mikeamigo (Arbolado asigna a mano), espacio + prestación + disponibilidad, turno y evento con reserva para el vecino, un trámite, Entradas 404 (backoffice y vecino).
+   3. César, en el teléfono: **mikeamigo** en `prueba.agentes.zaris.com.ar` (clave temporal en su Hotmail) resuelve la OT.
+   4. Claude: cada vecino con el mismo DNI ve solo lo suyo.
+   5. Encuesta respondida → vaciado con exportación y re-carga (super) → recorrido sin 500 → San Andrés en verde → baja + `tools/dominios_municipio.py prueba --quitar` + guía privada.
+   - **Decisión pendiente: la encuesta sale 24 h después del cierre** (`HORAS_DELAY_ENVIO`). Recomendación de Claude: adelantar 24 h la fecha de ese único `encuesta_envio` del municipio 6 para terminar en el día (el envío diario ya funciona en San Andrés; lo que se prueba es el link a `prueba.…` y que la respuesta quede en su municipio). La otra opción es esperar al día siguiente.
 2. **Vercel:** César activa el 2FA de su cuenta de Vercel; después Claude quita `agentes.` y `vecinos.` de los proyectos viejos y los pausa (decidido el 2026-10-27).
 3. **Commits viejos de `agente.csv`:** el pedido del 2026-10-22 no había quedado registrado; el ticket se abrió el 2026-10-30 por el asistente de GitHub Support. Si hacia el 2026-11-06 el commit sigue publicado, reclamar en el mismo ticket (detalle en la memoria privada de Cesar).
 4. **Bloque del vecino — después de F4 (orden de César, 2026-10-27):**
@@ -50,10 +56,11 @@
 ## 🟠 Pendientes (backoffice / backend)
 
 **Decisiones de negocio pendientes (César)**
-- 🔴 **Prueba de cierre de F4+F5 — lo que queda** (invitación desde la ficha, contorno del municipio y mapa de la PWA ya están hechos y en prod: ver Hecho reciente).
-  1. **El resto de la prueba de cierre con César** (pregunta 1): el municipio 6 ya tiene contorno y zona.
+- 🔴 **Prueba de cierre de F4+F5 — lo que queda** (invitación desde la ficha, contorno, mapa de la PWA y el arreglo de los cruces entre municipios ya están en prod: ver Hecho reciente).
+  1. **El resto de la prueba de cierre con César** (pregunta 1, con el orden y quién hace cada paso).
+  - 🟢 **Drift menor de FK entre local y prod:** unas 30 FK (agenda, eventos, ocupaciones, reservas, `conflictos_log`, `municipios`) difieren solo en la acción al borrar (en prod sin `ON DELETE`). No afecta al clonador; alinear cuando se toquen esas tablas. Diff con el script de la sesión del 2026-10-30 (comparar `pg_get_constraintdef` de las dos bases).
   - **Sin verificar en prod:** `08babf7` (el geocoding sin respaldo de Vicente López) no deja una marca pública; Railway sirve commits posteriores con marca, así que debería estar, pero el comportamiento no se probó.
-- 🟢 **Contorno — menores de la revisión final (2026-10-28), ninguno rompe:** la fecha del origen se guarda en UTC (visto en prod: «cargado el 29/10» el 28 a la noche; usar la zona horaria del municipio) · partes superpuestas no se unen (`unary_union`) · huecos o partes que colapsan al redondear se descartan sin aviso · el timeout del IGN (20 s) es por fase, no total · `fna`/`fdc` del IGN de más de 200 caracteres darían un 422 de Pydantic · `/geo/partidos` sin tildes no cubre mayúsculas acentuadas (Ñ, Á) · `ContornoMunicipio` dice «Todavía no tiene contorno» si el GET falla · `guardar_config` no reactiva una fila de baja y Maestros no bloquea dar de baja o renombrar la fila del contorno · faltan pruebas de `X-Municipio` falsificado y de `/super/municipios/{id}/contorno/previsualizar`.
+- 🟢 **Contorno — 9 menores de la revisión final (2026-10-28), ninguno rompe:** lista en [`PLAN_CONTORNO_MUNICIPIO.md`](PLAN_CONTORNO_MUNICIPIO.md) → «Menores diferidos» (el más visible: la fecha del origen en UTC).
 - 🟡 **Botón de pánico de la PWA:** sin probar con el vecino de prueba (dispara una alerta REAL al COM). Las pruebas de vecino y funcionario están hechas (2026-10-12 y 2026-10-23).
 - 🟢 **Alta — huecos menores (revisión 2026-10-10):** la clave temporal del funcionario no vence si nunca la usa; la app de agentes no tiene «olvidé mi contraseña» (se recupera desde el login del backoffice).
 - 🟠 **Atención — residuos del plan (§4):** "ocupación vs disponibilidad efectiva" en el BI de atención · etapa 2 de HC (vista admin de `historia_clinica_acceso`, break-the-glass, ficha ampliada) · walk-in de Guardia sin evento de Emergencias.
@@ -83,8 +90,8 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
+- **2026-10-30 — Referencias que cruzaban de municipio, arregladas** (`6d1308b`, migs 133/133b en prod; detalle en `HISTORIAL_MIGRACIONES.md`): el modelo y el Municipio de Prueba tenían gestiones y tipos de reclamo colgando de San Andrés (en prod faltaban FK que en local existían). Reapuntados por nombre, FK creadas, el clonador reapunta `id_subarea`/`id_area` sin FK y el alta no se hace si queda un cruce (`contar_cruces`). Smoke alta 304/0; prod con 0 cruces. Sin datos operativos afectados.
 - **2026-10-30 — Mapa de la App Vecinos y claves de prueba** (`9d1f8ad` acá, `5b30d1f` en `zaris-vecinos`): `GET /api/v1/publico/encuadre-mapa` (sin token, municipio del `Origin`) devuelve el mismo encuadre que `/geo/encuadre`; el mapa de «Nuevo reclamo» y «Nueva emergencia» de la PWA arranca ahí y no en Vicente López. Solo el recuadro, sin contorno (César). Smoke alta 298/0; en prod, cada dirección devuelve su municipio. **Las claves de las cuentas de prueba de prod se renovaron el 2026-10-30:** cada una tiene clave propia, guardada fuera del repo; pedíselas a César. La clave dev de los seeds y smokes sigue siendo solo local.
-- **2026-10-28 (2ª sesión) — Invitación desde la ficha y contorno del municipio, en prod y probados** (`9ec2aa7`…`a7ef7cb`; diseño y plan en `PLAN_CONTORNO_MUNICIPIO*.md`): la invitación sale desde la ficha con «Verificar» en verde (409 si no); catálogo con los 2.082 gobiernos locales de Georef (migs 132/132b) y partido con autocompletar; contorno oficial del IGN (responde desde Railway en 2 s) o archivo con instructivo (geojson.io y QGIS 3.44), depurado en `services/contorno.py`, con zona derivada; multipolígonos y huecos en todos los mapas. Revisión final: 4 importantes corregidos. Smokes contorno 105/0, alta 292/0, super administrador 121/0.
 
 > Lo anterior: `HISTORIAL_MIGRACIONES.md` y las skills de cada módulo.
 

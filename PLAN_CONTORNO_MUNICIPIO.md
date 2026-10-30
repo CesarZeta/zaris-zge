@@ -432,3 +432,17 @@ El componente vive en el módulo Municipios y Config lo importa cross-module (me
   - La regla del contorno.
   - Memoria `project_preguntas_arranque`: sacar el ítem del catálogo.
 - [ ] **Paso 4: commit y push.** `docs(it-01): contorno del municipio y catalogo de gobiernos locales en prod`.
+
+## Menores diferidos de la revisión final (2026-10-28)
+
+Ninguno rompe. Movidos desde `ESTADO.md` el 2026-10-30.
+
+- La fecha del origen se guarda en UTC (visto en prod: «cargado el 29/10» el 28 a la noche); usar la zona horaria del municipio.
+- Partes superpuestas no se unen (`unary_union`).
+- Huecos o partes que colapsan al redondear se descartan sin aviso.
+- El timeout del IGN (20 s) es por fase, no total.
+- `fna`/`fdc` del IGN de más de 200 caracteres darían un 422 de Pydantic.
+- `/geo/partidos` sin tildes no cubre mayúsculas acentuadas (Ñ, Á).
+- `ContornoMunicipio` dice «Todavía no tiene contorno» si el GET falla.
+- `guardar_config` no reactiva una fila de baja, y Maestros no bloquea dar de baja o renombrar la fila del contorno.
+- Faltan pruebas de `X-Municipio` falsificado y de `/super/municipios/{id}/contorno/previsualizar`.
