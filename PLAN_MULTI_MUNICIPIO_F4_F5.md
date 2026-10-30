@@ -458,6 +458,14 @@
 - [ ] **Paso 7:** escribir la **guía privada de alta** en `C:\Users\Cesar\Documents\ZARIS\credenciales-testing\guia_alta_municipio.md` a partir de la corrida (qué pedirle al cliente, pasos, DNS, primer administrador, perfiles mínimos, carga inicial). Nunca al repo.
 - [ ] **Paso 8:** registro: `HISTORIAL_MIGRACIONES.md` (130 por César, 130b y 130c por MCP, fecha), `ESTADO.md`, memoria `project_it01_multi_municipio`. Commit y push.
 
+## Decisiones de César en el corte B (movidas de `ESTADO.md` el 2026-10-30)
+
+- San Andrés (direcciones sin prefijo) no se puede vaciar.
+- La exportación no lleva secretos: una restauración futura obliga a reiniciar clave y segundo factor.
+- El modelo excluye «inscripción Profesional» (sus aprobaciones apuntan a un agente de San Andrés).
+- Partido obligatorio salvo ficticio, un municipio vigente por partido, y un ficticio no pasa a producción.
+- Código corto de 4 letras.
+
 ## Lo que queda para fases posteriores
 
 - **F5b:** zona horaria por municipio en el código, validadores y etiquetas de documento por país, geocoding por país; habilitar otro país en `paises.habilitado_para_alta`.
