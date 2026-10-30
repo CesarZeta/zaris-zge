@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-10-28 (Cesar, 2ª sesión). Hechos y probados en prod dos de los tres trabajos aprobados: la invitación sale desde la ficha, y el **contorno del municipio** (catálogo de los 2.082 gobiernos locales con código de Georef; contorno oficial del IGN o archivo con instructivo, en el alta, la ficha y Configuración; el municipio 6 ya tiene el suyo). Queda el tercero: el mapa de la PWA.
+**Última actualización:** 2026-10-30 (Cesar). Hecho el tercer trabajo aprobado: el **mapa de la App Vecinos** arranca en el municipio de la dirección (endpoint público `/publico/encuadre-mapa`, en prod). Además, renovadas las claves de las cuentas de prueba de prod y pedido a GitHub Support el borrado de los commits viejos de `agente.csv`. Sigue el resto de la prueba de cierre de F4+F5.
 
 ---
 
@@ -18,11 +18,9 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **IT-01 F4+F5 — próximo: el tercer trabajo aprobado (mapa de la PWA, pendiente 🔴) y el resto de la prueba de cierre con César.** El municipio de prueba (id 6) ya tiene contorno y zona de búsqueda (cargados el 2026-10-28): la prueba de cierre sigue desde ahí.
-1b. **Santa Cruz y Santiago del Estero sin gobiernos locales en Georef:** el catálogo se completó (2.082 con código), pero Georef no lista municipios de esas dos provincias; quedan sus 3 filas viejas (departamentos, sin código ni contorno oficial: solo vía archivo). ¿Se cargan a mano los municipios de esas provincias, o se espera a que un municipio real de ahí lo pida?
-1c. **Vercel:** César activa el 2FA de su cuenta de Vercel; después Claude quita `agentes.` y `vecinos.` de los proyectos viejos y los pausa (decidido el 2026-10-27).
-2. **Asignación automática — revisar ~2026-10-29:** carga de los agentes de las 17 gestiones que asignan solas (en varias, UN solo agente de nivel Gestión recibe todo).
-3. **Commits viejos de las dos purgas:** César mandó el pedido a GitHub Support el 2026-10-22. El 2026-10-26 los commits seguían publicados; si siguen así hacia el 2026-11-05, reclamar el ticket (detalle en la memoria privada de Cesar).
+1. **IT-01 F4+F5 — próximo: el resto de la prueba de cierre con César.** Los tres trabajos aprobados están hechos y en prod. El municipio de prueba (id 6) ya tiene contorno y zona de búsqueda (cargados el 2026-10-28): la prueba de cierre sigue desde ahí.
+2. **Vercel:** César activa el 2FA de su cuenta de Vercel; después Claude quita `agentes.` y `vecinos.` de los proyectos viejos y los pausa (decidido el 2026-10-27).
+3. **Commits viejos de `agente.csv`:** el pedido del 2026-10-22 no había quedado registrado; el ticket se abrió el 2026-10-30 por el asistente de GitHub Support. Si hacia el 2026-11-06 el commit sigue publicado, reclamar en el mismo ticket (detalle en la memoria privada de Cesar).
 4. **Bloque del vecino — después de F4 (orden de César, 2026-10-27):**
    1. La web del ciudadano con todo lo que tiene la app (supuesto de Claude, sin confirmar: es el modo escritorio del portal, ver En curso).
    2. Todas las prestaciones del vecino; falta **iniciar un trámite** desde el portal (ni endpoint ni pantalla). Turnos y entradas ya se reservan desde la app (verificado en el código).
@@ -52,9 +50,8 @@
 ## 🟠 Pendientes (backoffice / backend)
 
 **Decisiones de negocio pendientes (César)**
-- 🔴 **Prueba de cierre de F4+F5 — lo que queda** (la invitación desde la ficha y el contorno del municipio ya están hechos y en prod: ver Hecho reciente).
-  1. **App del vecino (`zaris-vecinos`):** su `MapaPicker` todavía tiene Vicente López fijo. Hacer una versión pública de `/geo/encuadre` (municipio de origen, `municipio_de_origen`) y que la PWA arranque en contorno → zona → país, igual que el backoffice. `encuadre_municipio` ya contempla multipolígonos.
-  2. **El resto de la prueba de cierre con César** (pregunta 1): el municipio 6 ya tiene contorno y zona.
+- 🔴 **Prueba de cierre de F4+F5 — lo que queda** (invitación desde la ficha, contorno del municipio y mapa de la PWA ya están hechos y en prod: ver Hecho reciente).
+  1. **El resto de la prueba de cierre con César** (pregunta 1): el municipio 6 ya tiene contorno y zona.
   - **Sin verificar en prod:** `08babf7` (el geocoding sin respaldo de Vicente López) no deja una marca pública; Railway sirve commits posteriores con marca, así que debería estar, pero el comportamiento no se probó.
 - 🟢 **Contorno — menores de la revisión final (2026-10-28), ninguno rompe:** la fecha del origen se guarda en UTC (visto en prod: «cargado el 29/10» el 28 a la noche; usar la zona horaria del municipio) · partes superpuestas no se unen (`unary_union`) · huecos o partes que colapsan al redondear se descartan sin aviso · el timeout del IGN (20 s) es por fase, no total · `fna`/`fdc` del IGN de más de 200 caracteres darían un 422 de Pydantic · `/geo/partidos` sin tildes no cubre mayúsculas acentuadas (Ñ, Á) · `ContornoMunicipio` dice «Todavía no tiene contorno» si el GET falla · `guardar_config` no reactiva una fila de baja y Maestros no bloquea dar de baja o renombrar la fila del contorno · faltan pruebas de `X-Municipio` falsificado y de `/super/municipios/{id}/contorno/previsualizar`.
 - 🟡 **Botón de pánico de la PWA:** sin probar con el vecino de prueba (dispara una alerta REAL al COM). Las pruebas de vecino y funcionario están hechas (2026-10-12 y 2026-10-23).
@@ -77,6 +74,8 @@
 - **São Paulo DESCARTADO** (2026-09-26, CLAUDE.md §9) · «la ubicación» de Buscar actualizaciones (PWA) innecesaria · no se rotan `DISPATCHER_TOKEN` ni las claves push · el vecino no cambia su email desde la app · los reclamos **no se agendan**.
 - Purgas del historial git HECHAS el 2026-09-20 y el 2026-10-21 (mapas en `docs/commit-map-purga-*.txt`). Roy tiene que re-clonar.
 - **Cuentas de administrador sin segundo factor:** la de Roy se habilita cuando César lo indique (no preguntar); la otra cuenta de administrador de César (id 1) queda sin habilitar (César, 2026-10-26).
+- **Asignación automática revisada el 2026-10-30: sin cambios** (César). Desde el 23/10, 88 OT asignadas solas en 14 gestiones; la rotación reparte bien donde hay dos agentes y donde hay uno solo el volumen es bajo (≤ 7 por semana). Volver a mirarla con un segundo municipio o volumen real.
+- **Santa Cruz y Santiago del Estero sin gobiernos locales en Georef: se espera** a que un municipio real de esas provincias lo pida, y se carga con archivo (César, 2026-10-30).
 - **Guardia: el motivo de derivación sigue visible en la mesa** para todos los que ven la Guardia (César, 2026-10-26). Lo escribe el COM y sirve para el triage; lo clínico ya pasa por el guard de historia clínica.
 - Fase 3 de roles (mig 92) y la auditoría de seguridad 2026-07 (48/48) COMPLETAS.
 
@@ -84,8 +83,8 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
+- **2026-10-30 — Mapa de la App Vecinos y claves de prueba** (`9d1f8ad` acá, `5b30d1f` en `zaris-vecinos`): `GET /api/v1/publico/encuadre-mapa` (sin token, municipio del `Origin`) devuelve el mismo encuadre que `/geo/encuadre`; el mapa de «Nuevo reclamo» y «Nueva emergencia» de la PWA arranca ahí y no en Vicente López. Solo el recuadro, sin contorno (César). Smoke alta 298/0; en prod, cada dirección devuelve su municipio. **Las claves de las cuentas de prueba de prod se renovaron el 2026-10-30:** cada una tiene clave propia, guardada fuera del repo; pedíselas a César. La clave dev de los seeds y smokes sigue siendo solo local.
 - **2026-10-28 (2ª sesión) — Invitación desde la ficha y contorno del municipio, en prod y probados** (`9ec2aa7`…`a7ef7cb`; diseño y plan en `PLAN_CONTORNO_MUNICIPIO*.md`): la invitación sale desde la ficha con «Verificar» en verde (409 si no); catálogo con los 2.082 gobiernos locales de Georef (migs 132/132b) y partido con autocompletar; contorno oficial del IGN (responde desde Railway en 2 s) o archivo con instructivo (geojson.io y QGIS 3.44), depurado en `services/contorno.py`, con zona derivada; multipolígonos y huecos en todos los mapas. Revisión final: 4 importantes corregidos. Smokes contorno 105/0, alta 292/0, super administrador 121/0.
-- **2026-10-28 — Prueba de cierre de F4+F5 (primera parte) y arreglos en prod** (`99c3f2f`, `6b6aabc`, `08babf7`): zona de búsqueda validada en la API (422) y editada junta en Configuración → Sistema con «Guardar zona»; asistente de alta con «Para seguir falta: …» y resumen del subdominio; botones deshabilitados visibles en toda la suite; `GET /geo/encuadre` y los tres mapas del backoffice en contorno → zona → Argentina; sin Vicente López como respaldo del geocoding. Smokes: alta 286/0, super administrador 121/0, municipio por request 46/0.
 
 > Lo anterior: `HISTORIAL_MIGRACIONES.md` y las skills de cada módulo.
 
