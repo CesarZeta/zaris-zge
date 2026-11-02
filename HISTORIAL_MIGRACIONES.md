@@ -187,6 +187,12 @@ Cazado en la prueba de cierre de F4+F5 (2026-10-30), antes de cargar el primer r
 - **Código:** el clonador reapunta `id_subarea`/`id_area` aunque no tengan FK (huérfanos en NULL), y el alta corre `contar_cruces` (`services/municipios/cruces.py`) y no se hace si queda alguna referencia a otro municipio (500). Smoke `test_cruces_municipio`.
 - **Queda (menor):** otras FK difieren entre local y prod solo en la acción al borrar (en prod sin `ON DELETE`); no afecta al clonador.
 
+### Migración 134 — gestiones guardadas dentro de los JSON de las transiciones de trámites (`backend/migrations/134_reapuntar_cruces_json_transiciones.sql`)
+
+Cazado en la prueba de cierre de F4+F5 (2026-11-02): «Derivar a Espacios Verdes» del trámite POD-PRUE-2026-0001 respondió 500 porque `tipo_tramite_transicion.destino_automatico_jsonb` apuntaba a la gestión de San Andrés y la FK compuesta `fkm_tramite_id_subarea_actual_fkey` lo rechazó (sin fuga: la base frenó el cruce). El clonador copia los JSON tal cual y `contar_cruces` no los mira, así que el modelo (5) y el Municipio de Prueba (6) tenían 6 destinos automáticos y 7 «quién puede» (`quien_puede_jsonb.subareas`) con ids de 7 gestiones de San Andrés (68-74). **Aplicada en local y en prod el 2026-11-02, por MCP.** Backup `_backup_cruces_transicion_2026_11_02` (132 filas de los municipios 5 y 6, con RLS).
+- **Solo datos:** reapunta por nombre a la gestión del propio municipio (también el `nombre` del destino); aborta si un cruce no tiene exactamente una equivalente o si al final queda alguna referencia a otro municipio (subárea, equipo o agente). Local: 4 municipios (modelo local y 3 de prueba), 28 destinos y 48 transiciones. Prod: 0 cruces después; San Andrés sin tocar.
+- **Queda el código:** que el clonador reapunte las referencias dentro de JSON y que `contar_cruces` las cuente (pendiente en `ESTADO.md`). Sin eso, un alta nueva vuelve a copiar los ids del modelo.
+
 ### Migraciones 132 y 132b — catálogo de gobiernos locales (`backend/migrations/132_catalogo_gobiernos_locales.sql`, `132b_catalogo_gobiernos_locales_datos.sql`)
 
 Diseño: [`PLAN_CONTORNO_MUNICIPIO_DISENO.md`](PLAN_CONTORNO_MUNICIPIO_DISENO.md) §4.2. **Aplicadas en local y en prod el 2026-10-28.** En prod: backups `_backup_partidos_2026_10_28`, `_backup_localidades_2026_10_28` y `_backup_provincias_2026_10_28` (con RLS) → 132 por MCP → **132b por conexión directa** (pooler de sesión, en una transacción): pesa 327 KB y pasarla por el MCP no era razonable. Por eso no figura en la lista de migraciones de Supabase.
