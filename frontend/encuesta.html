@@ -160,6 +160,7 @@
     // Estado del formulario en memoria
     let preguntas = [];       // todas las del backend
     let clasificacion = null; // valor de P1 (likert)
+    let idClasificadora = null; // P1: la primera likert de 'todos'; las demás likert no cambian la rama
     const respuestas = {};    // id_pregunta -> {valor_numerico|id_opcion_seleccionada|valor_texto}
 
     // Mapeo clasificación -> rama (debe espejar el backend; el server recalcula igual)
@@ -191,6 +192,10 @@
     function render(data) {
       const enc = data.encuesta || {};
       preguntas = data.preguntas || [];
+      const likerts = preguntas
+        .filter((p) => p.tipo === 'likert5' && p.rama === 'todos')
+        .sort((a, b) => a.orden - b.orden);
+      idClasificadora = likerts.length ? likerts[0].id_pregunta : null;
 
       // Branding
       if (enc.municipio_nombre) $('brand-name').textContent = enc.municipio_nombre;
@@ -242,15 +247,16 @@
         const box = document.createElement('div');
         box.className = 'likert';
         const etiquetas = ['Muy malo', 'Malo', 'Regular', 'Bueno', 'Excelente'];
+        const cur = respuestas[p.id_pregunta];
         for (let i = 1; i <= 5; i++) {
           const b = document.createElement('button');
           b.type = 'button';
           b.innerHTML = `<span class="n">${i}</span>${etiquetas[i - 1]}`;
-          if (clasificacion === i) b.classList.add('sel');
+          if (cur && cur.valor_numerico === i) b.classList.add('sel');
           b.addEventListener('click', () => {
-            clasificacion = i;
             respuestas[p.id_pregunta] = { valor_numerico: i };
-            renderQuestions(); // re-render: cambia la rama visible
+            if (idClasificadora == null || p.id_pregunta === idClasificadora) clasificacion = i;
+            renderQuestions(); // re-render: la P1 cambia la rama visible
           });
           box.appendChild(b);
         }
