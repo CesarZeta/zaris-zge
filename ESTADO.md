@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-11-03 (Cesar). Prueba de cierre de F4+F5 terminada en prod, salvo quitar los dominios de `prueba`: claves cruzadas, exportación, vaciado, módulos vacíos, recarga desde cero, tope de cuentas, San Andrés intacto y municipio 6 en baja. Arreglados en el camino: vaciado con trámites numerados, ventana visible del vaciado y encuestas fijas (mig 135). Quedan los arreglos de la prueba (pendientes) y diseñar el versionado.
+**Última actualización:** 2026-11-03 (Cesar). Prueba de cierre de F4+F5 terminada en prod: claves cruzadas, exportación, vaciado, módulos vacíos, recarga desde cero, tope de cuentas, San Andrés intacto, municipio 6 en baja y dominios quitados. Arreglados en el camino: vaciado con trámites numerados, ventana visible del vaciado y encuestas fijas (mig 135). Nueva página propia de error 404 en los tres sitios. Quedan los arreglos de la prueba (pendientes), las ramas de encuestas y el versionado (preguntas abiertas).
 
 ---
 
@@ -18,8 +18,8 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **IT-01 F4+F5 — último paso de la prueba de cierre:** autorizar a Claude a quitar los dominios de `prueba` (`tools/dominios_municipio.py prueba --quitar`): cambia DNS y el control de permisos lo frena sin una autorización expresa. El municipio 6 ya está en baja y su API responde 404.
-   - **Versionado:** César pidió empezar a manejarlo (2026-11-03). Hoy la versión está escrita a mano (`v0.1` en el login y en la barra inferior, `1.0.0` en la API, `0.1.0` en la App Vecinos) y el repo no tiene tags. Falta definir el alcance con César.
+1. **Encuestas — todas las ramas en los cuatro circuitos** (César, 2026-11-03): trámites, entradas y turnos con todas las ramas, preguntas adaptadas a cada proceso y los mismos valores de respuesta, para integrar los resultados. Claude presentó una tabla con los textos; falta la aprobación de César. Después: migración en el modelo y San Andrés, y arreglar el pedido de contacto de trámites.
+   - **Versionado** (César, 2026-11-03): para saber si alguien con una ventana abierta está en una versión vieja y para diagnosticar problemas técnicos o de uso. Hoy la versión está escrita a mano (`v0.1` en el login y en la barra inferior, `1.0.0` en la API, `0.1.0` en la App Vecinos) y el repo no tiene tags. Falta cerrar la descripción con César.
 2. **Vercel:** César activa el 2FA de su cuenta de Vercel; después Claude quita `agentes.` y `vecinos.` de los proyectos viejos y los pausa (decidido el 2026-10-27).
 3. **Commits viejos de `agente.csv`:** el pedido del 2026-10-22 no había quedado registrado; el ticket se abrió el 2026-10-30 por el asistente de GitHub Support. Si hacia el 2026-11-06 el commit sigue publicado, reclamar en el mismo ticket (detalle en la memoria privada de Cesar).
 4. **Bloque del vecino — después de F4 (orden de César, 2026-10-27):**
@@ -51,8 +51,7 @@
 ## 🟠 Pendientes (backoffice / backend)
 
 **Decisiones de negocio pendientes (César)**
-- 🔴 **Prueba de cierre de F4+F5 — lo que queda:** pregunta 1 (quitar los dominios de `prueba`).
-- 🔴 **Prueba de cierre — hallazgos del 2026-11-02 y 2026-11-03 para arreglar**, con detalle y orden en [`PLAN_MULTI_MUNICIPIO_F4_F5.md`](PLAN_MULTI_MUNICIPIO_F4_F5.md) → «Prueba de cierre — hallazgos»: (1) **el clonador y `contar_cruces` no ven ids dentro de JSON** (bloquea un municipio real; datos ya corregidos con la mig 134), (2) 6 campos de trámites con opciones en formato viejo que el validador rechaza, (3) mensaje de trámites para el super, (4) nombre del municipio oculto a ≤ 900 px, (5) «ver contraseña» en el login del backoffice, (6) pantalla para que el super elija municipio, (7) encuestas en «Promociones» de Gmail, (9) App Vecinos, (10) tres verificaciones pendientes, (11) menores.
+- 🔴 **Prueba de cierre — hallazgos del 2026-11-02 y 2026-11-03 para arreglar**, con detalle y orden en [`PLAN_MULTI_MUNICIPIO_F4_F5.md`](PLAN_MULTI_MUNICIPIO_F4_F5.md) → «Prueba de cierre — hallazgos»: (1) **el clonador y `contar_cruces` no ven ids dentro de JSON** (bloquea un municipio real; datos ya corregidos con la mig 134), (2) 6 campos de trámites con opciones en formato viejo que el validador rechaza, (3) mensaje de trámites para el super, (4) nombre del municipio oculto a ≤ 900 px, (5) «ver contraseña» en el login del backoffice, (6) pantalla para que el super elija municipio, (7) encuestas en «Promociones» de Gmail, (8) plantillas de encuestas sin todas las ramas (pregunta 1), (9) App Vecinos, (10) tres verificaciones pendientes, (11) menores.
 - 🟢 **Contorno — 9 menores de la revisión final (2026-10-28), ninguno rompe:** lista en [`PLAN_CONTORNO_MUNICIPIO.md`](PLAN_CONTORNO_MUNICIPIO.md) → «Menores diferidos» (el más visible: la fecha del origen en UTC).
 - 🟡 **Botón de pánico de la PWA:** sin probar con el vecino de prueba (dispara una alerta REAL al COM). Las pruebas de vecino y funcionario están hechas (2026-10-12 y 2026-10-23).
 - 🟢 **Alta (2026-10-10):** la clave temporal del funcionario no vence si no la usa; la app de agentes no tiene «olvidé mi contraseña».
@@ -81,14 +80,14 @@
 - **Santa Cruz y Santiago del Estero sin gobiernos locales en Georef: se espera** a que un municipio real lo pida (César, 2026-10-30).
 - **Guardia: el motivo de derivación sigue visible en la mesa** (César, 2026-10-26).
 - **El super administrador no opera trámites** (César, 2026-11-02): cadena de custodia; solo se corrige el mensaje.
-- **Encuestas fijas hasta nuevo aviso** (César, 2026-11-03): todo municipio arranca con las preguntas por defecto, en el formato de dos positivas, la neutra y dos negativas, y no se editan. El alta las copia siempre y el vaciado no las toca. Sin editor por municipio y sin completar ramas.
+- **Encuestas fijas hasta nuevo aviso** (César, 2026-11-03): todo municipio arranca con las preguntas por defecto, en el formato de dos positivas, la neutra y dos negativas, y no se editan. El alta las copia siempre y el vaciado no las toca. Sin editor por municipio. Completar las ramas de la encuesta estándar sí se hace (pregunta 1).
 - Fase 3 de roles (mig 92) y la auditoría de seguridad 2026-07 (48/48) COMPLETAS.
 
 ---
 
 ## ✅ Hecho reciente (últimas sesiones)
 
-- **2026-11-03 — Prueba de cierre de F4+F5, parte final:** claves cruzadas; exportación y vaciado de los cuatro grupos (1056 filas; San Andrés y modelo sin cambios); módulos vacíos y 178 `GET` sin ningún 5xx; recarga desde cero con el mismo DNI y email; tope de cuentas en 409; barrido de San Andrés y `smoke_publico_turnos` 12 OK; municipio 6 en baja; guía privada en `credenciales-testing/`. Arreglados: vaciado con trámites numerados (`5933ac8`), ventana visible del vaciado (`9ddf362`), mig 135 (`14f2bf6`) y encuestas obligatorias en el alta.
+- **2026-11-03 — Prueba de cierre de F4+F5, parte final:** claves cruzadas; exportación y vaciado de los cuatro grupos (1056 filas; San Andrés y modelo sin cambios); módulos vacíos y 178 `GET` sin ningún 5xx; recarga desde cero con el mismo DNI y email; tope de cuentas en 409; barrido de San Andrés y `smoke_publico_turnos` 12 OK; municipio 6 en baja y dominios quitados; guía privada en `credenciales-testing/`. Arreglados: vaciado con trámites numerados (`5933ac8`), ventana visible del vaciado (`9ddf362`), mig 135 (`14f2bf6`), encuestas obligatorias en el alta (`7a996cb`) y página propia de error 404 en los tres sitios (`f0a9375`).
 - **2026-11-02 — Prueba de cierre de F4+F5, pasos 1-5 en prod con César** (municipio 6, «Municipio de Prueba»): alta del vecino con el DNI de uno de San Andrés (mail y links con `PRUE`) · REC-PRUE-2026-000001 → OT-PRUE-2026-000001 a mikeamigo → resuelta desde `prueba.agentes` · EM-PRUE-2026-000001 desde la App Vecinos, cerrada desde el tablero · turno reservado desde la App Vecinos y cumplido · evento con reserva por Agenda · POD-PRUE-2026-0001 hasta «Archivado / Aprobado», con aviso al vecino y encuesta (**primer cierre real de un trámite de vecino en prod**) · tres encuestas enviadas y respondidas · Entradas deshabilitado: fuera del menú y 404 en la API del vecino · 0 registros que crucen de municipio. Arreglados en el camino: **mig 134** (gestiones dentro de JSON de las transiciones; local y prod, backup `_backup_cruces_transicion_2026_11_02`) y el **formulario de encuestas** (`3da4086`).
 - **2026-10-30 —** migs 133/133b (gestiones y tipos de reclamo que cruzaban de municipio) y mapa de la App Vecinos por municipio (`9d1f8ad`). Claves de las cuentas de prueba de prod renovadas, fuera del repo: pedíselas a César.
 
