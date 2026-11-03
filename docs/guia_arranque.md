@@ -11,7 +11,7 @@ que pasa si falta algo está en [`guia_arranque_tablas.md`](guia_arranque_tablas
   app de agentes).
 - Las **6 áreas fijas** (secretarías). Se pueden renombrar; no se pueden dar de baja.
 - Los catálogos que se eligieron en el alta, copiados del modelo (subáreas, tipos de reclamo,
-  trámites, encuestas, feriados…).
+  trámites, feriados…), y siempre las encuestas.
 - La configuración del sistema, con valores por defecto.
 - Los módulos habilitados para el municipio.
 - Tu cuenta de administrador, tu ficha y tu agente. Al aceptar la invitación elegís la clave y
@@ -37,12 +37,13 @@ Lo que está en negrita es lo que bloquea a lo que sigue.
      subárea y la asignación automática encendida en Configuración → Sistema.
    - **Turnos:** primero **Agenda → Espacios** (las ubicaciones de atención) y su
      **disponibilidad**; después **Turnos → Prestaciones**. Sin disponibilidad no se puede dar un
-     turno. La Guardia necesita además el espacio «Guardia» y el módulo Emergencias.
+     turno, y en un espacio «atendido» hace falta también la del agente asignado. La Guardia necesita además el espacio «Guardia» y el módulo Emergencias.
    - **Trámites:** Trámites → Tipos de trámite: crear el tipo, sus estados, transiciones, campos y
      documentos, y **publicar la versión**. Sin versión publicada no se puede iniciar un trámite.
    - **Emergencias:** tipos y subtipos de emergencia por subárea (Policía Municipal, Defensa Civil).
    - **Entradas y Agenda:** espacios, y eventos con cupo.
-   - **Encuestas:** las plantillas vienen del modelo; se encienden en Configuración → Sistema.
+   - **Encuestas:** las plantillas vienen del modelo y no se editan; se encienden en Configuración →
+     Sistema.
 7. **Contactos:** las fichas de ciudadanos y empresas se cargan solas a medida que se atiende, o desde
    Contactos. Los vecinos pueden darse de alta en el portal del municipio.
 

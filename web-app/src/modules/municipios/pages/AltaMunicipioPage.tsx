@@ -384,7 +384,8 @@ export function AltaMunicipioPage() {
           <>
             <p style={ayudaPaso}>Catálogos que se copian del municipio modelo. Las áreas fijas se copian siempre.</p>
             {opciones.data!.catalogos.map((c) => (
-              <Casilla key={c.codigo} etiqueta={c.nombre} marcada={f.copiar.includes(c.codigo)}
+              <Casilla key={c.codigo} etiqueta={c.nombre} marcada={!!c.obligatorio || f.copiar.includes(c.codigo)}
+                       deshabilitada={c.obligatorio} nota={c.obligatorio ? 'siempre' : undefined}
                        onChange={(v) => set({ copiar: v ? [...f.copiar, c.codigo] : f.copiar.filter((x) => x !== c.codigo) })} />
             ))}
           </>

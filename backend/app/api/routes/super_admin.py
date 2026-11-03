@@ -41,7 +41,7 @@ from app.core.municipio import invalidar_cache_municipios
 from app.services.accesos_super import registrar_acceso_super, registrar_acceso_super_en
 from app.core.urls import base_app
 from app.services.municipios.alta import (
-    CATALOGOS_ETIQUETAS, SIN_CONTORNO, AltaMunicipioIn, dar_de_alta, problema_codigo, problema_partido,
+    CATALOGOS_ETIQUETAS, CATALOGOS_OBLIGATORIOS, SIN_CONTORNO, AltaMunicipioIn, dar_de_alta, problema_codigo, problema_partido,
     problema_subdominio)
 from app.services.municipios.constantes import DEPENDENCIAS_MODULOS, ESTADOS, MODULOS_FIJOS
 from app.services.municipios.invitacion import crear_invitacion
@@ -146,7 +146,7 @@ async def listar_municipios(
     return [dict(r._mapping) for r in rows.fetchall()]
 
 
-@router.get("/alta/opciones")
+@router.get("/alta/opciones", responses={200: {"description": "Catalogos con marca de obligatorio"}})
 async def opciones_alta(db: AsyncSession = Depends(get_db)):
     """Lo que el asistente de alta ofrece elegir: grupos de catálogos del modelo y módulos (sin
     «Municipios», que es del super y no de un municipio)."""
@@ -154,7 +154,8 @@ async def opciones_alta(db: AsyncSession = Depends(get_db)):
         "SELECT modulo_codigo, nombre FROM modulos WHERE activo AND min_nivel_acceso >= 1 ORDER BY nombre"))
     return {
         "zonas": await _zonas(db),
-        "catalogos": [{"codigo": c, "nombre": n} for c, n in CATALOGOS_ETIQUETAS.items()],
+        "catalogos": [{"codigo": c, "nombre": n, "obligatorio": c in CATALOGOS_OBLIGATORIOS}
+                      for c, n in CATALOGOS_ETIQUETAS.items()],
         "modulos": [{"codigo": r.modulo_codigo, "nombre": r.nombre, "fijo": r.modulo_codigo in MODULOS_FIJOS,
                      "dependencias": sorted(DEPENDENCIAS_MODULOS.get(r.modulo_codigo, ()))} for r in mods],
     }

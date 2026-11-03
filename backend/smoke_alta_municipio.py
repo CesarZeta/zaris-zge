@@ -1079,6 +1079,34 @@ async def test_cruces_municipio() -> None:
         await _estado(ctx["modelo"], "baja")
 
 
+async def test_alta_encuestas_obligatorias() -> None:
+    """Decisión de César (2026-11-03): las encuestas son fijas y todo municipio arranca con ellas, aunque
+    el pedido de alta no las elija."""
+    print("\ntest_alta_encuestas_obligatorias")
+    ctx = await _contexto_alta()
+    suf, cod = _sufijo()
+    body = _alta_body(suf, cod, id_provincia=ctx["ba"])
+    check("el pedido no elige encuestas", "encuestas" not in body["copiar"])
+    async with _cliente() as c:
+        op = await c.get("/api/v1/super/alta/opciones", headers=ctx["h"])
+        catalogos = {x["codigo"]: x for x in op.json()["catalogos"]} if op.status_code == 200 else {}
+        check("las opciones marcan encuestas como obligatorio", catalogos.get("encuestas", {}).get("obligatorio") is True,
+              str(catalogos.get("encuestas")))
+        check("los demás catálogos se pueden elegir", catalogos.get("tipos_reclamo", {}).get("obligatorio") is False,
+              str(catalogos.get("tipos_reclamo")))
+        r = await c.post("/api/v1/super/municipios", json=body, headers=ctx["h"])
+    check("alta → 201", r.status_code == 201, f"{r.status_code} {r.text[:200]}")
+    if r.status_code != 201:
+        return
+    mid = r.json()["id_municipio"]
+    async with AsyncSessionLocal() as db:
+        for tabla, activo in (("encuesta_plantilla", "activo"), ("encuesta_pregunta", "activo"), ("encuesta_opcion", "activo")):
+            en_modelo = await _escalar(db, f"SELECT count(*) FROM {tabla} WHERE id_municipio = :m AND {activo}", {"m": ctx["modelo"]})
+            en_alta = await _escalar(db, f"SELECT count(*) FROM {tabla} WHERE id_municipio = :m", {"m": mid})
+            check(f"{tabla}: el municipio nuevo tiene las del modelo", en_modelo > 0 and en_alta == en_modelo, f"{en_alta} de {en_modelo}")
+    await _estado(mid, "baja")
+
+
 async def test_alta_agrega_fijos() -> None:
     """El asistente no muestra los módulos fijos que no son de un municipio (Municipios, nivel 0): el
     alta los habilita igual."""
@@ -2279,7 +2307,7 @@ async def _super_headers_sin_db() -> dict:
 PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones_super, test_links_por_municipio,
                                      test_modelo, test_area_fija_api, test_tope, test_super_admins, test_ficha_municipio,
                                      test_vaciado_guardas, test_clonado_excluidas, test_vaciado_operativo_y_todo, test_vaciado_numerador_tramite, test_vaciado_conserva_encuestas, test_exportacion_retencion, test_municipio_vacio, test_aislamiento_modelo, test_revision_final,
-                                     test_alta_validaciones, test_alta_partido_zona_codigo, test_alta_ok, test_alta_atomica, test_cruces_municipio, test_alta_agrega_fijos, test_alta_concurrente,
+                                     test_alta_validaciones, test_alta_partido_zona_codigo, test_alta_ok, test_alta_encuestas_obligatorias, test_alta_atomica, test_cruces_municipio, test_alta_agrega_fijos, test_alta_concurrente,
                                      test_invitacion, test_invitacion_token_malformado, test_estados,
                                      test_alta_por_origen,
                                      test_estado_baja, test_modelo_no_operable, test_demo_por_estado,

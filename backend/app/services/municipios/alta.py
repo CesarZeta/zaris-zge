@@ -48,6 +48,9 @@ CATALOGOS_COPIABLES: dict[str, list[str]] = {
     "encuestas": ["encuesta_plantilla", "encuesta_pregunta", "encuesta_opcion"],
     "agenda": ["agenda_clase", "agenda_feriado"],
 }
+# Se copian siempre, aunque el pedido no los elija. Encuestas: la encuesta estándar de ZARIS es fija,
+# no se edita por municipio hasta nuevo aviso (decisión de César, 2026-11-03).
+CATALOGOS_OBLIGATORIOS: frozenset[str] = frozenset({"encuestas"})
 # Nombre visible de cada grupo en el asistente (mismo orden que CATALOGOS_COPIABLES).
 CATALOGOS_ETIQUETAS: dict[str, str] = {
     "areas_subareas": "Áreas y subáreas",
@@ -199,13 +202,14 @@ async def _validar(db: AsyncSession, d: AltaMunicipioIn) -> dict:
 
 async def _copiar_catalogos(db: AsyncSession, d: AltaMunicipioIn, id_mun: int, modelo: int,
                             id_super: int) -> int:
-    """Copia del modelo las tablas elegidas (y siempre las áreas fijas). Devuelve las filas omitidas."""
+    """Copia del modelo las tablas elegidas (y siempre las áreas fijas y los catálogos obligatorios).
+    Devuelve las filas omitidas."""
     conn = await conexion_asyncpg(db)
     c = Clonador(conn, id_mun, permitidas=_TABLAS_COPIABLES, id_usuario_alta=id_super, solo_activas=True)
     await c.cargar_clases()
     tablas: list[str] = [] if "areas_subareas" in d.copiar else ["area"]
     for grupo in CATALOGOS_COPIABLES:
-        if grupo in d.copiar:
+        if grupo in d.copiar or grupo in CATALOGOS_OBLIGATORIOS:
             tablas += CATALOGOS_COPIABLES[grupo]
     omitidas = 0
     for tabla in tablas:

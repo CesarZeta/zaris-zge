@@ -92,7 +92,7 @@ export interface OpcionModulo { codigo: string; nombre: string; fijo: boolean; d
 export interface ZonaHoraria { nombre: string; desfase: string }
 export interface OpcionesAlta {
   zonas: ZonaHoraria[]
-  catalogos: { codigo: string; nombre: string }[]
+  catalogos: { codigo: string; nombre: string; obligatorio?: boolean }[]
   modulos: OpcionModulo[]
 }
 
