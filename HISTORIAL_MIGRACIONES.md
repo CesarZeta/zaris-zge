@@ -193,6 +193,11 @@ Cazado en la prueba de cierre de F4+F5 (2026-11-02): «Derivar a Espacios Verdes
 - **Solo datos:** reapunta por nombre a la gestión del propio municipio (también el `nombre` del destino); aborta si un cruce no tiene exactamente una equivalente o si al final queda alguna referencia a otro municipio (subárea, equipo o agente). Local: 4 municipios (modelo local y 3 de prueba), 28 destinos y 48 transiciones. Prod: 0 cruces después; San Andrés sin tocar.
 - **Queda el código:** que el clonador reapunte las referencias dentro de JSON y que `contar_cruces` las cuente (pendiente en `ESTADO.md`). Sin eso, un alta nueva vuelve a copiar los ids del modelo.
 
+### Migración 135 — las plantillas de encuestas no se vacían (`backend/migrations/135_encuestas_fuera_del_vaciado.sql`)
+
+Cazado en la prueba de cierre de F4+F5 (2026-11-03): vaciar Maestros borraba `encuesta_plantilla`, `encuesta_pregunta` y `encuesta_opcion`, que no se pueden crear desde la aplicación (solo las copia el alta), y el municipio se quedaba sin encuestas para siempre. Decisión de César: siempre queda el modelo, y cada municipio lo cambiará si quiere (editor pendiente de diseño). **Aplicada en local y en prod el 2026-11-03, por MCP.**
+- **Solo datos:** las tres tablas pasan al grupo `configuracion` de `municipio_tabla_clase`, que el vaciado no toca nunca. Re-aplicable; falla si alguna no está clasificada. Smoke `test_vaciado_conserva_encuestas`.
+
 ### Migraciones 132 y 132b — catálogo de gobiernos locales (`backend/migrations/132_catalogo_gobiernos_locales.sql`, `132b_catalogo_gobiernos_locales_datos.sql`)
 
 Diseño: [`PLAN_CONTORNO_MUNICIPIO_DISENO.md`](PLAN_CONTORNO_MUNICIPIO_DISENO.md) §4.2. **Aplicadas en local y en prod el 2026-10-28.** En prod: backups `_backup_partidos_2026_10_28`, `_backup_localidades_2026_10_28` y `_backup_provincias_2026_10_28` (con RLS) → 132 por MCP → **132b por conexión directa** (pooler de sesión, en una transacción): pesa 327 KB y pasarla por el MCP no era razonable. Por eso no figura en la lista de migraciones de Supabase.
