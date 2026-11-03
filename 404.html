@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>ZARIS · Página no encontrada</title>
+  <link rel="icon" href="/web-app/dist/zaris-favicon.svg">
+  <script>
+    // Tema claro/oscuro: mismo localStorage del shell (zaris_theme). Antes de los CSS.
+    try { if (localStorage.getItem('zaris_theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch (e) {}
+  </script>
+  <!-- Rutas absolutas: Cloudflare Pages sirve este archivo para cualquier dirección inexistente, a cualquier profundidad. -->
+  <link rel="stylesheet" href="/design-system/fonts/fonts.css">
+  <link rel="stylesheet" href="/design-system/colors_and_type.css">
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: grid; place-items: center; padding: 24px; box-sizing: border-box;
+      background: var(--zaris-cream); color: var(--fg-1); font-family: var(--font-display);
+    }
+    main {
+      width: 100%; max-width: 460px; box-sizing: border-box; padding: 32px;
+      background: var(--surface-100); border: 1px solid var(--border-primary); border-radius: 12px;
+    }
+    .marca { display: flex; align-items: center; gap: 8px; margin-bottom: 28px; font-weight: 600; letter-spacing: -0.02em; }
+    .marca svg { width: 22px; height: 22px; }
+    .codigo { margin: 0 0 8px; font-family: var(--font-mono); font-size: 13px; color: var(--zaris-orange); }
+    h1 { margin: 0 0 12px; font-size: 26px; font-weight: 500; letter-spacing: -0.01em; line-height: 1.2; }
+    p { margin: 0 0 16px; font-size: 15px; line-height: 1.5; color: var(--fg-2); }
+    .direccion {
+      margin: 0 0 24px; padding: 8px 10px; font-family: var(--font-mono); font-size: 12px; color: var(--fg-2);
+      background: var(--surface-400); border-radius: 6px; overflow-wrap: anywhere;
+    }
+    .acciones { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+    .boton {
+      padding: 9px 16px; font: inherit; font-size: 14px; border-radius: 8px; cursor: pointer; text-decoration: none;
+      border: 1px solid var(--border-medium); background: transparent; color: var(--fg-1);
+    }
+    .boton--principal { background: var(--fg-1); border-color: var(--fg-1); color: var(--surface-100); }
+    .boton[hidden] { display: none; }
+    .ayuda { margin: 0; font-size: 13px; color: var(--fg-3); }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="marca">
+      <svg viewBox="0 0 500 500" aria-hidden="true">
+        <g fill="none" stroke="currentColor" stroke-width="34" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M 110 78 L 388 78"/>
+          <path d="M 388 78 L 110 430"/>
+          <path d="M 388 220 L 222 430"/>
+          <path d="M 388 362 L 334 430"/>
+        </g>
+      </svg>
+      ZARIS
+    </div>
+    <p class="codigo">Error 404</p>
+    <h1>No encontramos esta página</h1>
+    <p>La dirección puede estar mal escrita, o la página ya no existe.</p>
+    <p class="direccion" id="direccion"></p>
+    <div class="acciones">
+      <!-- target _top: si esto se abrió dentro del iframe del shell, el inicio reemplaza la ventana entera. -->
+      <a class="boton boton--principal" href="/" target="_top">Ir al inicio</a>
+      <button class="boton" id="volver" type="button" hidden>Volver</button>
+    </div>
+    <p class="ayuda">Si llegaste desde un mail o desde un enlace que debería funcionar, avisale a quien administra el sistema en tu municipio.</p>
+  </main>
+  <script>
+    document.getElementById('direccion').textContent = location.pathname + location.search;
+    if (history.length > 1) {
+      var volver = document.getElementById('volver');
+      volver.hidden = false;
+      volver.addEventListener('click', function () { history.back(); });
+    }
+  </script>
+</body>
+</html>

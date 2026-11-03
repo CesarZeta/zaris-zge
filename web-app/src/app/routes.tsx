@@ -2,6 +2,7 @@ import { createElement } from 'react'
 import { createHashRouter, Navigate } from 'react-router-dom'
 import { AppShell } from './AppShell'
 import { LoginPage } from './LoginPage'
+import { NoEncontradaPage } from './NoEncontradaPage'
 import { modules } from '../modules'
 import { AutoservicioPage } from '../autoservicio/AutoservicioPage'
 import { MiReservaPage } from '../autoservicio/MiReservaPage'
@@ -61,6 +62,6 @@ export const router = createHashRouter([
   },
   {
     path: '*',
-    element: createElement(Navigate, { to: '/dashboard', replace: true }),
+    element: createElement(NoEncontradaPage),
   },
 ])
