@@ -1824,6 +1824,51 @@ async def test_vaciado_operativo_y_todo() -> None:
     await _estado(V["id"], "baja")
 
 
+async def test_vaciado_numerador_tramite() -> None:
+    """Prueba de cierre (2026-11-03): `tipo_tramite_numerador` tiene clave compuesta y apunta a
+    `tipo_tramite`. Un municipio con un trámite ya numerado no se podía vaciar con Maestros: el borrado
+    chocaba con la FK y el vaciado entero se revertía."""
+    print("\ntest_vaciado_numerador_tramite")
+    STORAGE.instalar()
+    V = await _municipio_v()
+    filas_numerador = "SELECT count(*) FROM tipo_tramite_numerador WHERE id_municipio = :m"
+    async with AsyncSessionLocal() as db:
+        tipo = await _escalar(db, "SELECT id_tipo_tramite FROM tipo_tramite WHERE id_municipio = :m ORDER BY 1 LIMIT 1",
+                              {"m": V["id"]})
+        check("V tiene un tipo de trámite", tipo is not None)
+        await db.execute(text("""
+            INSERT INTO tipo_tramite_numerador (id_tipo_tramite, anio, ultimo_numero, id_municipio)
+            VALUES (:t, 2026, 1, :m) ON CONFLICT DO NOTHING"""), {"t": tipo, "m": V["id"]})
+        await db.commit()
+        check("V tiene un trámite numerado", await _escalar(db, filas_numerador, {"m": V["id"]}) == 1)
+        base = await _escalar(db, "SELECT id_municipio FROM municipios WHERE direccion_base")
+        otro_municipio = await _escalar(db, "SELECT count(*) FROM tipo_tramite_numerador WHERE id_municipio <> :m",
+                                        {"m": V["id"]})
+        check("otro municipio tiene numeradores (para ver que no se tocan)", base is not None and otro_municipio > 0,
+              str(otro_municipio))
+    async with _cliente() as c:
+        r = await c.post(f"/api/v1/super/municipios/{V['id']}/vaciado/plan", json={"grupos": ["maestros"]}, headers=V["h"])
+        plan = r.json() if r.status_code == 200 else []
+        check("el plan de Maestros muestra el numerador", any(
+            p["tabla"] == "tipo_tramite_numerador" and p["filas"] == 1 and p["accion"] == "borrar" for p in plan),
+            f"{r.status_code} {str(plan)[:200]}")
+        r = await c.post(f"/api/v1/super/municipios/{V['id']}/vaciado/plan", json={"grupos": ["operativo"]}, headers=V["h"])
+        check("el plan de Operativo no toca el numerador", r.status_code == 200 and not any(
+            p["tabla"] == "tipo_tramite_numerador" for p in r.json()), r.text[:200])
+        r = await c.post(f"/api/v1/super/municipios/{V['id']}/vaciado",
+                         json={"grupos": GRUPOS_VACIABLES, "confirmacion": V["nombre"]}, headers=V["h"])
+        t = await _tarea(c, V["h"], r.json()["id_tarea"]) if r.status_code == 202 else {}
+        check("vaciar los 4 grupos con un trámite numerado → ok", r.status_code == 202 and t.get("estado") == "ok",
+              f"{r.status_code} {str(t)[:300]}")
+    async with AsyncSessionLocal() as db:
+        check("no quedan numeradores de trámite", await _escalar(db, filas_numerador, {"m": V["id"]}) == 0)
+        check("no quedan tipos de trámite", await _escalar(
+            db, "SELECT count(*) FROM tipo_tramite WHERE id_municipio = :m", {"m": V["id"]}) == 0)
+        check("los numeradores de otros municipios siguen", await _escalar(
+            db, "SELECT count(*) FROM tipo_tramite_numerador WHERE id_municipio <> :m", {"m": V["id"]}) == otro_municipio)
+    await _estado(V["id"], "baja")
+
+
 async def test_exportacion_retencion() -> None:
     import io
     import json
@@ -2206,7 +2251,7 @@ async def _super_headers_sin_db() -> dict:
 
 PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones_super, test_links_por_municipio,
                                      test_modelo, test_area_fija_api, test_tope, test_super_admins, test_ficha_municipio,
-                                     test_vaciado_guardas, test_clonado_excluidas, test_vaciado_operativo_y_todo, test_exportacion_retencion, test_municipio_vacio, test_aislamiento_modelo, test_revision_final,
+                                     test_vaciado_guardas, test_clonado_excluidas, test_vaciado_operativo_y_todo, test_vaciado_numerador_tramite, test_exportacion_retencion, test_municipio_vacio, test_aislamiento_modelo, test_revision_final,
                                      test_alta_validaciones, test_alta_partido_zona_codigo, test_alta_ok, test_alta_atomica, test_cruces_municipio, test_alta_agrega_fijos, test_alta_concurrente,
                                      test_invitacion, test_invitacion_token_malformado, test_estados,
                                      test_alta_por_origen,

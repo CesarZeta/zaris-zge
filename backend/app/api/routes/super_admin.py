@@ -804,7 +804,8 @@ async def descargar_exportacion(id_municipio: int, id_tarea: uuid.UUID, request:
 
 
 @router.post("/municipios/{id_municipio}/vaciado/plan",
-             responses={409: {"description": "El municipio está o estuvo en producción"}})
+             responses={404: {"description": "Municipio no encontrado"},
+                        409: {"description": "El municipio está o estuvo en producción"}})
 async def plan_de_vaciado(id_municipio: int, body: GruposIn, db: AsyncSession = Depends(get_db)):
     """Qué se borraría y qué se desvincularía, tabla por tabla, sin escribir nada."""
     from app.services.municipios.vaciado import calcular, resumen, validar

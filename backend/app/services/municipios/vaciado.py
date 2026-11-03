@@ -61,6 +61,9 @@ class Plan:
     desvincular: dict[tuple[str, str], set] = field(default_factory=dict)
     orden: list[str] = field(default_factory=list)
     cortes: list[tuple[str, str]] = field(default_factory=list)  # FK anulables que se cortan para un ciclo
+    # Tablas de clave compuesta de los grupos elegidos (tipo_tramite_numerador): no entran al cálculo por
+    # id. Se borran enteras (por municipio) y antes que el resto, porque apuntan a filas que se borran.
+    por_municipio: dict[str, int] = field(default_factory=dict)
 
 
 async def validar(db: AsyncSession, id_municipio: int, grupos: set[str], confirmacion: str | None = None,
@@ -197,6 +200,11 @@ async def calcular(db: AsyncSession, id_municipio: int, grupos_elegidos: set[str
     desvincular = {k: ids - borrar.get(k[0], set()) for k, ids in desvincular.items()}
     plan = Plan(borrar=borrar, desvincular={k: v for k, v in desvincular.items() if v})
     _ordenar(plan, fks)
+    for tabla, grupo in grupos.items():
+        if grupo in grupos_elegidos and tabla not in pks:
+            filas = await db.scalar(text(f'SELECT count(*) FROM "{tabla}" WHERE id_municipio = :m'), {"m": id_municipio})
+            if filas:
+                plan.por_municipio[tabla] = filas
     return plan
 
 
@@ -220,7 +228,8 @@ def _ordenar(plan: Plan, fks: list[_Fk]) -> None:
 
 
 def resumen(plan: Plan) -> list[dict]:
-    salida = [{"tabla": t, "filas": len(plan.borrar[t]), "accion": "borrar"} for t in plan.orden]
+    salida = [{"tabla": t, "filas": n, "accion": "borrar"} for t, n in sorted(plan.por_municipio.items())]
+    salida += [{"tabla": t, "filas": len(plan.borrar[t]), "accion": "borrar"} for t in plan.orden]
     salida += [{"tabla": f"{t}.{c}", "filas": len(ids), "accion": "desvincular"}
                for (t, c), ids in sorted(plan.desvincular.items())]
     return salida
@@ -295,7 +304,8 @@ async def vaciar(db: AsyncSession, id_municipio: int, grupos: set[str]) -> tuple
     _, pks, _ = await _metadatos(db)
     plan = await calcular(db, id_municipio, grupos)
     archivos = await _archivos(db, plan, pks)
-    apagados = await _triggers_de_solo_agregar(db, list(plan.borrar) + [t for t, _ in plan.desvincular])
+    apagados = await _triggers_de_solo_agregar(
+        db, list(plan.por_municipio) + list(plan.borrar) + [t for t, _ in plan.desvincular])
     for tabla, trig in apagados:
         await db.execute(text(f'ALTER TABLE "{tabla}" DISABLE TRIGGER "{trig}"'))
     for (tabla, col), ids in plan.desvincular.items():
@@ -304,6 +314,8 @@ async def vaciar(db: AsyncSession, id_municipio: int, grupos: set[str]) -> tuple
     for tabla, col in plan.cortes:
         await db.execute(text(f'UPDATE "{tabla}" SET "{col}" = NULL WHERE "{pks[tabla]}" = ANY(:ids)'),
                          {"ids": list(plan.borrar[tabla])})
+    for tabla in plan.por_municipio:
+        await db.execute(text(f'DELETE FROM "{tabla}" WHERE id_municipio = :m'), {"m": id_municipio})
     for tabla in plan.orden:
         await db.execute(text(f'DELETE FROM "{tabla}" WHERE "{pks[tabla]}" = ANY(:ids)'),
                          {"ids": list(plan.borrar[tabla])})

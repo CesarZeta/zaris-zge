@@ -484,6 +484,11 @@ Municipio 6 «Municipio de Prueba». Lo hecho está en `ESTADO.md` → Hecho rec
 
 Arreglados durante la prueba: mig 134 (datos del punto 1) y el formulario público de encuestas (`3da4086`: todas las preguntas 1-5 se marcaban con el mismo valor y la de turnos no se podía enviar).
 
+**2026-11-03, paso 6 (vaciado), plan revisado antes de borrar:**
+- **Vaciado con Maestros y un trámite numerado (arreglado):** `tipo_tramite_numerador` tiene clave compuesta, quedaba fuera del plan y su FK a `tipo_tramite` hacía fallar todo el vaciado (sin borrar nada). Ahora las tablas de clave compuesta de los grupos elegidos aparecen en el plan y se borran antes que sus padres. Test: `test_vaciado_numerador_tramite`.
+- **Menor, sin arreglar:** si el agente del administrador principal está asignado a un espacio, el espacio y esa asignación no se borran aunque se elija Maestros (`_protegidos` trata `espacio_agentes` como fila de la cuenta). En prueba: «Oficina de Atención - Prueba».
+- **Menor, sin arreglar:** `numerador_municipio` es del grupo configuración, así que tras un vaciado la numeración de reclamos, OT y emergencias sigue donde estaba (`REC-PRUE-2026-000002`), no vuelve a 1.
+
 ## Lo que queda para fases posteriores
 
 - **F5b:** zona horaria por municipio en el código, validadores y etiquetas de documento por país, geocoding por país; habilitar otro país en `paises.habilitado_para_alta`.
