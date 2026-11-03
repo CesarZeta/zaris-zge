@@ -8,22 +8,24 @@ interface ModalProps {
   children: React.ReactNode
   width?: number | string
   footer?: React.ReactNode
+  /** false: sin la X, ni Escape, ni clic afuera. Para esperas que no se pueden abandonar. */
+  cerrable?: boolean
 }
 
-export function Modal({ open, onClose, title, children, width = 560, footer }: ModalProps) {
+export function Modal({ open, onClose, title, children, width = 560, footer, cerrable = true }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (cerrable && e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', onKey)
     // Focus trap basico: focus en el modal al abrir
     setTimeout(() => contentRef.current?.focus(), 0)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose])
+  }, [open, onClose, cerrable])
 
   if (!open) return null
 
@@ -34,7 +36,7 @@ export function Modal({ open, onClose, title, children, width = 560, footer }: M
       aria-modal="true"
       aria-label={title}
       onClick={(e) => {
-        if (e.target === overlayRef.current) onClose()
+        if (cerrable && e.target === overlayRef.current) onClose()
       }}
       style={{
         position: 'fixed', inset: 0, background: 'rgba(38,37,30,.45)',
@@ -54,16 +56,18 @@ export function Modal({ open, onClose, title, children, width = 560, footer }: M
       >
         <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--size-title-sm)', fontWeight: 500, color: 'var(--fg-1)' }}>{title}</h2>
-          <button
-            aria-label="Cerrar"
-            onClick={onClose}
-            style={{
-              background: 'transparent', border: 'none', cursor: 'pointer',
-              color: 'var(--fg-3)', padding: 4, display: 'inline-flex', borderRadius: 'var(--radius-md)',
-            }}
-          >
-            <X size={18} strokeWidth={1.5} />
-          </button>
+          {cerrable && (
+            <button
+              aria-label="Cerrar"
+              onClick={onClose}
+              style={{
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                color: 'var(--fg-3)', padding: 4, display: 'inline-flex', borderRadius: 'var(--radius-md)',
+              }}
+            >
+              <X size={18} strokeWidth={1.5} />
+            </button>
+          )}
         </header>
         <div style={{ overflowY: 'auto', flex: 1 }}>{children}</div>
         {footer && (
