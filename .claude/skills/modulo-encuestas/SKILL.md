@@ -7,6 +7,8 @@ description: "Usar al trabajar en el módulo Encuestas (CSAT — satisfacción) 
 
 Encuestas de satisfacción disparadas al cierre de reclamos (Resuelto) **y al cumplir turnos** (mig 72). Encuesta estándar ZARIS (no editable por municipio en v1), ramificación condicional según satisfacción inicial. DB: mig 57 (6 tablas + toggle) + 58 (tracking atención) + 72 (turnos). Todas las fases entregadas y verificadas E2E (auditoría email, services, router admin, form público, dispatcher, encuesta de turnos). Backoffice React `web-app/src/modules/encuestas/`.
 
+> **Decisión de César (2026-11-03): encuestas fijas hasta nuevo aviso.** Todo municipio arranca con la encuesta estándar (pregunta de 1 a 5: dos negativas, la neutra y dos positivas) y no se edita. El alta la copia siempre (`CATALOGOS_OBLIGATORIOS`) y el vaciado no la toca (grupo `configuracion`, mig 135). Los cuatro circuitos usan **los mismos valores de respuesta** para que los resultados se integren: textos aprobados, por aplicar, en `PLAN_MULTI_MUNICIPIO_F4_F5.md` → «Encuestas: textos aprobados».
+
 ### Tablas (mig 57 + 58 + 72)
 `encuesta_plantilla` → `encuesta_pregunta` → `encuesta_opcion` (catálogo); `encuesta_envio` → `encuesta_respuesta` (1:1) → `encuesta_respuesta_detalle`. PKs estilo `id_<tabla>`, estándar §10 completo, RLS habilitado sin políticas (deny-all, service_role bypassa, §26). Mig 58 sumó a `encuesta_respuesta`: `atendida`/`atendida_por`/`fecha_atendida` + índice parcial `idx_encuesta_respuesta_pendientes`.
 

@@ -491,7 +491,7 @@ Arreglados durante la prueba: mig 134 (datos del punto 1) y el formulario públi
 - **Pedido de César, hecho:** el vaciado corría sin testigo (solo cambiaba el texto del botón) y el resultado era un aviso que se iba solo. Ahora hay una ventana que no se puede cerrar mientras corre, con el aviso de no cerrar, los dos pasos y el tiempo, y otra con el resultado que solo se cierra con un botón. La pestaña advierte al cerrarse y el menú y la barra del shell quedan inactivos.
 - **Vaciar Maestros dejaba al municipio sin encuestas (arreglado, mig 135):** borraba plantillas, preguntas y opciones, que no se pueden crear desde la aplicación (solo las copia el alta). Decisión de César: siempre queda el modelo. Pasaron al grupo `configuracion`. Test: `test_vaciado_conserva_encuestas`.
 - **Encuestas fijas hasta nuevo aviso (decisión de César, 2026-11-03):** todo municipio arranca con las preguntas por defecto, en el formato de dos positivas, la neutra y dos negativas, y no se editan. El alta las copia siempre (`CATALOGOS_OBLIGATORIOS`, test `test_alta_encuestas_obligatorias`). No hay editor por municipio.
-- **Punto 8, precisado por César (2026-11-03):** trámites, entradas y turnos tienen que tener todas las ramas, con preguntas adaptadas a cada proceso y **los mismos valores de respuesta en los cuatro circuitos**, para que los resultados se integren. Propuesta de textos presentada; falta su aprobación. Incluye arreglar la rama de `id_tramite` en `registrar_respuesta` (pedido de contacto) y revisar que el Resumen integre los circuitos.
+- **Punto 8, precisado por César (2026-11-03):** trámites, entradas y turnos tienen que tener todas las ramas, con preguntas adaptadas a cada proceso y **los mismos valores de respuesta en los cuatro circuitos**, para que los resultados se integren. **Textos aprobados por César:** ver «Encuestas: textos aprobados» más abajo.
 - **Cierre (2026-11-03):** municipio 6 en baja (API 404) y dominios de `prueba` quitados (NXDOMAIN en un resolutor externo; los de San Andrés, sin cambios). Guía privada en `credenciales-testing/`, con alta, módulos y baja.
 - **Página propia de error 404 (César, hecha):** `404.html` en el sitio del backoffice y página en el bundle React y en las dos apps, que antes mandaban al inicio sin avisar.
 - **Sin verificar:** qué ve alguien en un municipio dado de baja que todavía conserva sus direcciones (el login responde 404). No se puede probar en prod sin otro municipio de baja con dominios.
@@ -500,6 +500,39 @@ Arreglados durante la prueba: mig 134 (datos del punto 1) y el formulario públi
 - **Recorrido de los módulos vacíos (admin.prue):** todas las pantallas sin errores, Maestros sin errores y 178 `GET` sin parámetros sin ningún 5xx. Recarga desde cero: reclamo con OT, turno, evento con reserva, emergencia y trámite armado en el builder; tope de cuentas: 409 al llegar. El mismo DNI y el mismo email se pudieron volver a usar.
 - **Menores, sin arreglar:** con un espacio «atendido», el turno da 409 «fuera de horario» si falta el horario del agente, y el mensaje no lo dice · `POST /admin/emergencia_tipo` sin `es_emergencia` responde 400 con el SQL crudo (el formulario sí lo manda) · la barra superior muestra «Zarini,» (la primera palabra de «Apellido, Nombre»).
 - **Resultado en prod (2026-11-03, 19:35):** 1056 filas borradas, 1 archivo, 9 s. Municipio 6 como se esperaba; San Andrés y el modelo con los mismos conteos en todas las tablas.
+
+## Encuestas: textos aprobados (César, 2026-11-03)
+
+Falta aplicarlos. Va en la mig 136, solo datos, en el modelo y en San Andrés: se suman las preguntas y opciones que faltan y lo ya respondido no se toca. El reclamo queda como está: es la referencia. Rama según la pregunta 1: negativas 1-2, neutra 3, positivas 4-5.
+
+| Rama | Reclamos (hoy) | Turnos | Trámites | Entradas |
+|---|---|---|---|---|
+| Todos: de 1 a 5 | ¿Qué tan satisfecho estás con la resolución de tu reclamo? | ¿Qué tan satisfecho estás con la atención que recibiste? *(hoy)* | ¿Cómo calificás la gestión de tu trámite? *(hoy)* | ¿Cómo calificás el evento al que asististe? *(hoy)* |
+| Positivas: múltiple | ¿Qué aspecto destacarías de la atención recibida? | Igual | ¿Qué aspecto destacarías de la gestión? | ¿Qué aspecto destacarías del evento? |
+| Positivas: sí/no | ¿Recomendarías este canal de reclamos a otros vecinos? | ¿Recomendarías este punto de atención a otros vecinos? *(hoy)* | ¿Recomendarías hacer este trámite por este canal? | ¿Recomendarías estos eventos a otros vecinos? |
+| Neutra: múltiple | ¿Qué faltó para que tu experiencia fuera mejor? | Igual | Igual | Igual |
+| Neutra: sí / parcialmente / no | ¿La resolución fue lo que esperabas? | ¿La atención fue lo que esperabas? | ¿El resultado del trámite fue lo que esperabas? | ¿El evento fue lo que esperabas? |
+| Negativas: múltiple | ¿Cuál fue el principal problema? | Igual | Igual | Igual |
+| Negativas: sí/no | ¿Querés que un responsable del municipio te contacte? | Igual *(hoy)* | Igual | Igual |
+
+El comentario final queda como está en cada circuito. Turnos conserva además «¿El tiempo de espera te pareció razonable?», de 1 a 5, para todas las ramas.
+
+**Respuestas:** mismos valores que reclamos en los cuatro circuitos. Solo cambia el texto visible de estas:
+
+| Valor | Reclamos | Turnos | Trámites | Entradas |
+|---|---|---|---|---|
+| `demora` | Demora excesiva | Igual | Igual | Demora en el ingreso |
+| `no_resuelto` | No resolvieron el problema | No resolvieron mi consulta | No resolvieron mi trámite | No fue lo que se anunció |
+| `solucion_incorrecta` | Solución incorrecta | Respuesta incorrecta | Resolución incorrecta | Mala organización |
+| `mejor_solucion` | Mejor solución | Mejor respuesta | Mejor resolución | Mejor organización |
+| `calidad` | Calidad de la solución | Calidad de la atención | Calidad de la gestión | Calidad del evento |
+
+Los demás valores usan el texto de reclamos: negativas `mala_comunicacion`, `mal_trato`, `otro`; neutra `mas_rapidez`, `mas_informacion`, `mejor_comunicacion`, `otro`, y `si`, `parcialmente`, `no`; positivas `rapidez`, `claridad`, `trato`, `otro`.
+
+**Junto con esto:**
+- Arreglar el pedido de contacto: `registrar_respuesta` no tiene la rama de `id_tramite`, y el aviso al área diría «Reserva de evento #None». Revisar también la de entradas.
+- Revisar que Encuestas → Resumen integre los cuatro circuitos: hoy filtra solo por fechas y «Satisfacción por área» cuenta solo reclamos.
+- Verificar el formulario público con una plantilla de cada circuito y que el municipio modelo quede igual que San Andrés.
 
 ## Lo que queda para fases posteriores
 
