@@ -503,7 +503,7 @@ Arreglados durante la prueba: mig 134 (datos del punto 1) y el formulario públi
 
 ## Encuestas: textos aprobados (César, 2026-11-03)
 
-Falta aplicarlos. Va en la mig 136, solo datos, en el modelo y en San Andrés: se suman las preguntas y opciones que faltan y lo ya respondido no se toca. El reclamo queda como está: es la referencia. Rama según la pregunta 1: negativas 1-2, neutra 3, positivas 4-5.
+**Aplicados el 2026-11-06 con la mig 136** (solo datos, en el modelo y en San Andrés): se sumaron las preguntas y opciones que faltaban y lo ya respondido no se tocó. El reclamo queda como está: es la referencia. Rama según la pregunta 1: negativas 1-2, neutra 3, positivas 4-5.
 
 | Rama | Reclamos (hoy) | Turnos | Trámites | Entradas |
 |---|---|---|---|---|
@@ -529,10 +529,12 @@ El comentario final queda como está en cada circuito. Turnos conserva además �
 
 Los demás valores usan el texto de reclamos: negativas `mala_comunicacion`, `mal_trato`, `otro`; neutra `mas_rapidez`, `mas_informacion`, `mejor_comunicacion`, `otro`, y `si`, `parcialmente`, `no`; positivas `rapidez`, `claridad`, `trato`, `otro`.
 
-**Junto con esto:**
-- Arreglar el pedido de contacto: `registrar_respuesta` no tiene la rama de `id_tramite`, y el aviso al área diría «Reserva de evento #None». Revisar también la de entradas.
-- Revisar que Encuestas → Resumen integre los cuatro circuitos: hoy filtra solo por fechas y «Satisfacción por área» cuenta solo reclamos.
-- Verificar el formulario público con una plantilla de cada circuito y que el municipio modelo quede igual que San Andrés.
+**Junto con esto (hecho el 2026-11-06):**
+- Pedido de contacto: `registrar_respuesta` tiene la rama de `id_tramite` (el aviso decía «Reserva de evento #None»). La de entradas ya estaba bien.
+- Encuestas → Resumen integra los cuatro circuitos: por área ya no cuenta solo reclamos, hay un selector de circuito que alcanza a todos los bloques y una tabla por circuito.
+- Formulario público verificado en el navegador con turnos, trámites y entradas, en local, con las mismas plantillas que prod (hash igual) y el modelo igual a San Andrés. No se abrió un token real de prod, para no marcar ese envío como abierto.
+
+**Sin hacer, a decidir:** el Resumen compara el puntaje entre circuitos, pero todavía no muestra los motivos (por ejemplo, «Demora» en los cuatro), que es lo que los mismos valores permiten sumar. En prod hay 16 detalles para 2210 respuestas, porque las respuestas demo se generan sin detalle. Entradas no tiene ningún envío en prod: el generador demo no la encuesta y nadie acreditó una reserva con vecino con email.
 
 ## Lo que queda para fases posteriores
 

@@ -7,7 +7,7 @@ description: "Usar al trabajar en el módulo Encuestas (CSAT — satisfacción) 
 
 Encuestas de satisfacción disparadas al cierre de reclamos (Resuelto) **y al cumplir turnos** (mig 72). Encuesta estándar ZARIS (no editable por municipio en v1), ramificación condicional según satisfacción inicial. DB: mig 57 (6 tablas + toggle) + 58 (tracking atención) + 72 (turnos). Todas las fases entregadas y verificadas E2E (auditoría email, services, router admin, form público, dispatcher, encuesta de turnos). Backoffice React `web-app/src/modules/encuestas/`.
 
-> **Decisión de César (2026-11-03): encuestas fijas hasta nuevo aviso.** Todo municipio arranca con la encuesta estándar (pregunta de 1 a 5: dos negativas, la neutra y dos positivas) y no se edita. El alta la copia siempre (`CATALOGOS_OBLIGATORIOS`) y el vaciado no la toca (grupo `configuracion`, mig 135). Los cuatro circuitos usan **los mismos valores de respuesta** para que los resultados se integren: textos aprobados, por aplicar, en `PLAN_MULTI_MUNICIPIO_F4_F5.md` → «Encuestas: textos aprobados».
+> **Decisión de César (2026-11-03): encuestas fijas hasta nuevo aviso.** Todo municipio arranca con la encuesta estándar (pregunta de 1 a 5: dos negativas, la neutra y dos positivas) y no se edita. El alta la copia siempre (`CATALOGOS_OBLIGATORIOS`) y el vaciado no la toca (grupo `configuracion`, mig 135). Los cuatro circuitos tienen todas las ramas y usan **los mismos valores de respuesta** para que los resultados se integren (mig 136, 2026-11-06; textos en `PLAN_MULTI_MUNICIPIO_F4_F5.md` → «Encuestas: textos aprobados»). Solo cambia el texto visible de cada circuito: **no agregar un valor nuevo en un solo circuito**. Smoke: `backend/smoke_encuestas_circuitos.py`.
 
 ### Tablas (mig 57 + 58 + 72)
 `encuesta_plantilla` → `encuesta_pregunta` → `encuesta_opcion` (catálogo); `encuesta_envio` → `encuesta_respuesta` (1:1) → `encuesta_respuesta_detalle`. PKs estilo `id_<tabla>`, estándar §10 completo, RLS habilitado sin políticas (deny-all, service_role bypassa, §26). Mig 58 sumó a `encuesta_respuesta`: `atendida`/`atendida_por`/`fecha_atendida` + índice parcial `idx_encuesta_respuesta_pendientes`.
@@ -55,7 +55,8 @@ Auth a nivel router (`dependencies=[Depends(get_current_user)]`, §39). Registra
 | GET | `/plantillas` · `/plantillas/{id}` | Detalle con preguntas + opciones anidadas |
 | GET | `/envios` · `/envios/{id}` | Filtros estado/reclamo/fecha/tipo; **`orden` + `dir`** contra `_ORDEN_ENVIOS` (envio/tipo/referencia/email/estado/enviada/completada/vence, §23 F3 2026-10-22; tope 200 → la pantalla avisa «se muestran los primeros 200 de N»); `X-Total-Count`. El filtro «Tipo» de Envíos ofrece **Trámites** desde F3 (antes faltaba y los envíos de trámites no se podían filtrar). Detalle incluye respuesta anidada |
 | GET | `/respuestas/pendientes-contacto` | `solicita_contacto=TRUE AND atendida=FALSE`, orden FIFO, con datos del ciudadano |
-| GET | `/dashboard/resumen` · `/por-area` · `/evolucion` · `/comentarios` | DB vacía → ceros, no rompe |
+| GET | `/dashboard/resumen` · `/por-area` · `/evolucion` · `/comentarios` | DB vacía → ceros, no rompe. Filtro `tipo` (circuito; fuera de la lista, 422) que también alcanza a las alertas de contacto. La gestión de por-área sale de `JOIN_SUBAREA_ENVIO`: en un reclamo, su tipo; en los otros, la del envío |
+| GET | `/dashboard/por-circuito` | Siempre los cuatro, aunque uno no tenga envíos; no sigue al filtro. Mismos criterios de fecha que el resumen (2026-11-06) |
 | POST | `/disparar` | 201 o 422 con motivo concreto |
 | PATCH | `/respuestas/{id}/atender` | nivel ≤ 2; 422 si ya atendida |
 
@@ -89,7 +90,7 @@ Railway bloquea egress SMTP (587/465 timeout); Resend usa HTTPS/443. `services/e
 
 ### UI backoffice + agenda de turnos
 - `views/PlantillasView.tsx` (tab "Encuestas" en `/encuestas/plantillas`): plantillas activas (reclamos/turnos) + preguntas por rama. Filtro TIPO + `id_plantilla` en `/envios` y `/dashboard/resumen` (columnas Tipo/Referencia).
-- **Trap polimórfico** ([[encuesta_envio_polimorfico_left_join]]): `pendientes-contacto`/`dashboard/resumen`/`/envios` usan LEFT JOIN reclamos+turnos+tipo_prestacion (inner a reclamos excluía turnos). `referencia`=`COALESCE(nro_reclamo, prestacion_nombre)`. `dashboard/por-area` solo-reclamos. `POST /disparar` acepta `id_turno`.
+- **Trap polimórfico** ([[encuesta_envio_polimorfico_left_join]]): `pendientes-contacto`/`dashboard/resumen`/`/envios` usan LEFT JOIN reclamos+turnos+tipo_prestacion (inner a reclamos excluía turnos). `referencia`=`COALESCE(nro_reclamo, prestacion_nombre)`. `dashboard/por-area` cuenta los cuatro circuitos desde 2026-11-06. `POST /disparar` acepta `id_turno`.
 - La **agenda solo-turnos** vive en §33 (`turnos/pages/AgendaTurnos.tsx`), no reusa la Gantt de Agenda.
 
 ### Encuestas de ENTRADAS (mig 98 + 98b, 2026-07-18)

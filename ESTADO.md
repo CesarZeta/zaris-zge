@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-11-03 (Cesar). Prueba de cierre de F4+F5 terminada en prod: claves cruzadas, exportación, vaciado, módulos vacíos, recarga desde cero, tope de cuentas, San Andrés intacto, municipio 6 en baja y dominios quitados. Arreglados en el camino: vaciado con trámites numerados, ventana visible del vaciado y encuestas fijas (mig 135). Nueva página propia de error 404 en los tres sitios. César aprobó los textos de las encuestas y decidió cómo avisar de una versión vieja. Sigue: aplicar las encuestas, planificar el versionado y los arreglos de la prueba (preguntas abiertas).
+**Última actualización:** 2026-11-06 (Cesar). Encuestas con todas las ramas en los cuatro circuitos, en prod (mig 136). Sigue: el versionado y los arreglos de la prueba de cierre de F4+F5 (preguntas abiertas).
 
 ---
 
@@ -18,8 +18,8 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **Encuestas — todas las ramas en los cuatro circuitos: textos APROBADOS por César (2026-11-03), falta aplicarlos.** Están en [`PLAN_MULTI_MUNICIPIO_F4_F5.md`](PLAN_MULTI_MUNICIPIO_F4_F5.md) → «Encuestas: textos aprobados». Claude sigue con eso sin consultar: mig 136 en el modelo y San Andrés, pedido de contacto de trámites y Resumen integrado.
-   - **Versionado y «Acerca de»** (César, 2026-11-03): decidido en [`PLAN_VERSIONADO.md`](PLAN_VERSIONADO.md): ante una versión vieja, **un aviso** en todas las aplicaciones, y un «Acerca de» en todas con los datos de ZARIS, la propiedad del software, un enlace a la página y la versión. **Falta que César dé** el texto de propiedad y los datos de ZARIS; Claude arma el plan.
+1. **Versionado y «Acerca de»** (César, 2026-11-03): decidido en [`PLAN_VERSIONADO.md`](PLAN_VERSIONADO.md): ante una versión vieja, **un aviso** en todas las aplicaciones, y un «Acerca de» en todas con los datos de ZARIS, la propiedad del software, un enlace a la página y la versión. **Falta que César dé** el texto de propiedad y los datos de ZARIS; Claude arma el plan.
+   - **Encuestas, motivos en el Resumen** (2026-11-06): compara el puntaje entre circuitos, pero no muestra los motivos, que es lo que los mismos valores permiten sumar. A decidir, con los datos en [`PLAN_MULTI_MUNICIPIO_F4_F5.md`](PLAN_MULTI_MUNICIPIO_F4_F5.md) → «Encuestas: textos aprobados».
 2. **Vercel:** César activa el 2FA de su cuenta de Vercel; después Claude quita `agentes.` y `vecinos.` de los proyectos viejos y los pausa (decidido el 2026-10-27).
 3. **Commits viejos de `agente.csv`:** el pedido del 2026-10-22 no había quedado registrado; el ticket se abrió el 2026-10-30 por el asistente de GitHub Support. Si hacia el 2026-11-06 el commit sigue publicado, reclamar en el mismo ticket (detalle en la memoria privada de Cesar).
 4. **Bloque del vecino — después de F4 (orden de César, 2026-10-27):**
@@ -51,7 +51,7 @@
 ## 🟠 Pendientes (backoffice / backend)
 
 **Decisiones de negocio pendientes (César)**
-- 🔴 **Prueba de cierre — hallazgos del 2026-11-02 y 2026-11-03 para arreglar**, con detalle y orden en [`PLAN_MULTI_MUNICIPIO_F4_F5.md`](PLAN_MULTI_MUNICIPIO_F4_F5.md) → «Prueba de cierre — hallazgos»: (1) **el clonador y `contar_cruces` no ven ids dentro de JSON** (bloquea un municipio real; datos ya corregidos con la mig 134), (2) 6 campos de trámites con opciones en formato viejo que el validador rechaza, (3) mensaje de trámites para el super, (4) nombre del municipio oculto a ≤ 900 px, (5) «ver contraseña» en el login del backoffice, (6) pantalla para que el super elija municipio, (7) encuestas en «Promociones» de Gmail, (8) plantillas de encuestas sin todas las ramas (pregunta 1), (9) App Vecinos, (10) tres verificaciones pendientes, (11) menores.
+- 🔴 **Prueba de cierre — hallazgos del 2026-11-02 y 2026-11-03 para arreglar**, con detalle y orden en [`PLAN_MULTI_MUNICIPIO_F4_F5.md`](PLAN_MULTI_MUNICIPIO_F4_F5.md) → «Prueba de cierre — hallazgos»: (1) **el clonador y `contar_cruces` no ven ids dentro de JSON** (bloquea un municipio real; datos ya corregidos con la mig 134), (2) 6 campos de trámites con opciones en formato viejo que el validador rechaza, (3) mensaje de trámites para el super, (4) nombre del municipio oculto a ≤ 900 px, (5) «ver contraseña» en el login del backoffice, (6) pantalla para que el super elija municipio, (7) encuestas en «Promociones» de Gmail, (9) App Vecinos, (10) tres verificaciones pendientes, (11) menores.
 - 🟢 **Contorno — 9 menores de la revisión final (2026-10-28), ninguno rompe:** lista en [`PLAN_CONTORNO_MUNICIPIO.md`](PLAN_CONTORNO_MUNICIPIO.md) → «Menores diferidos» (el más visible: la fecha del origen en UTC).
 - 🟡 **Botón de pánico de la PWA:** sin probar con el vecino de prueba (dispara una alerta REAL al COM). Las pruebas de vecino y funcionario están hechas (2026-10-12 y 2026-10-23).
 - 🟢 **Alta (2026-10-10):** la clave temporal del funcionario no vence si no la usa; la app de agentes no tiene «olvidé mi contraseña».
@@ -85,6 +85,7 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
+- **2026-11-06 — Encuestas en los cuatro circuitos (`016f22f`, mig 136):** todas las ramas con los textos aprobados y los mismos valores en reclamos, turnos, trámites y entradas; pedido de contacto de trámites arreglado; Resumen integrado, con selector de circuito y tabla por circuito. Prod: modelo igual a San Andrés, lo ya respondido intacto y las sumas por circuito y por área iguales al total.
 - **2026-11-03 — Prueba de cierre de F4+F5, parte final:** claves cruzadas; exportación y vaciado de los cuatro grupos (1056 filas; San Andrés y modelo sin cambios); módulos vacíos y 178 `GET` sin ningún 5xx; recarga desde cero con el mismo DNI y email; tope de cuentas en 409; barrido de San Andrés y `smoke_publico_turnos` 12 OK; municipio 6 en baja y dominios quitados; guía privada en `credenciales-testing/`. Arreglados: vaciado con trámites numerados (`5933ac8`), ventana visible del vaciado (`9ddf362`), mig 135 (`14f2bf6`), encuestas obligatorias en el alta (`7a996cb`) y página propia de error 404 en los tres sitios (`f0a9375`).
 - **2026-11-02 — Prueba de cierre de F4+F5, pasos 1-5:** un registro real por circuito en el municipio 6, con el vecino con el mismo DNI que uno de San Andrés y 0 registros que crucen de municipio. Arreglados: **mig 134** y el **formulario de encuestas** (`3da4086`).
 - **2026-10-30 —** claves de las cuentas de prueba de prod renovadas, fuera del repo: pedíselas a César.
