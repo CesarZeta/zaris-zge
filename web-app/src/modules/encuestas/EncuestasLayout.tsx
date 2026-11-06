@@ -40,7 +40,7 @@ export function EncuestasLayout({ children }: { children: ReactNode }) {
             Encuestas de satisfacción
           </h1>
           <p style={{ fontSize: '0.82rem', color: 'var(--fg-3)', margin: '2px 0 0' }}>
-            Resultados de las encuestas CSAT que se envían al cerrar reclamos.
+            Resultados de las encuestas CSAT que se envían al terminar un reclamo, un turno, un trámite o un evento.
           </p>
         </div>
       </div>

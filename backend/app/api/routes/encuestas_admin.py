@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 import secrets as stdlib_secrets
 from datetime import date, datetime, timedelta, timezone
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import text
@@ -39,6 +39,7 @@ from app.schemas.encuestas import (
     DashboardEvolucionItem,
     DashboardPeriodoOut,
     DashboardPorAreaItem,
+    DashboardPorCircuitoItem,
     DashboardResumenOut,
     DispararEncuestaIn,
     EncuestaEnvioConRespuestaOut,
@@ -69,6 +70,25 @@ dispatcher_router = APIRouter(
 logger = logging.getLogger("zaris.encuestas.admin")
 
 ESTADOS_ENVIO = {"pendiente", "enviada", "abierta", "completada", "expirada", "error_envio"}
+
+# Filtro «Circuito» del Resumen: un valor fuera de la lista da 422, no un tablero vacío.
+Circuito = Literal["reclamos", "turnos", "tramites", "entradas"]
+
+# Gestión de una respuesta en los cuatro circuitos. En un reclamo manda su tipo (sus números no cambian
+# por sumar a los otros); turnos, trámites y entradas usan la que quedó en el envío al crearlo.
+JOIN_SUBAREA_ENVIO = """
+    LEFT JOIN reclamos r      ON r.id_reclamo = ee.id_reclamo
+    LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
+    LEFT JOIN subarea s       ON s.id_subarea = COALESCE(tr.id_subarea, r.id_subarea, ee.id_subarea)
+"""
+
+
+def _filtro_circuito(tipo: Optional[str]) -> tuple[str, str]:
+    """JOIN y condición para filtrar por circuito; la consulta tiene que tener `ee` y el param :tipo."""
+    if tipo is None:
+        return "", ""
+    return (" JOIN encuesta_plantilla pl ON pl.id_encuesta_plantilla = ee.id_plantilla ",
+            " AND pl.tipo = :tipo")
 
 
 def _require_supervisor(current_user: dict) -> None:
@@ -359,7 +379,7 @@ async def dashboard_resumen(
     desde: Optional[date] = Query(None),
     hasta: Optional[date] = Query(None),
     id_area: Optional[int] = Query(None),
-    tipo: Optional[str] = Query(None, description="reclamos | turnos | tramites | entradas"),
+    tipo: Optional[Circuito] = Query(None, description="reclamos | turnos | tramites | entradas"),
     id_municipio: int = Depends(municipio_actual),
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -371,24 +391,13 @@ async def dashboard_resumen(
     params: dict = {"mun": id_municipio, "desde": desde,
                     "hasta_excl": hasta + timedelta(days=1), "id_area": id_area,
                     "tipo": tipo}
-    # filtro de area opcional, via tipo_reclamo -> subarea -> area.
-    # LEFT JOIN (no inner) para no excluir envios de turno cuando NO se filtra
-    # por area: el resumen general debe contar reclamos Y turnos (mig 72).
+    # filtro de area opcional, en los cuatro circuitos (JOIN_SUBAREA_ENVIO).
     join_area = ""
     cond_area = ""
     if id_area is not None:
-        join_area = """
-            LEFT JOIN reclamos r        ON r.id_reclamo = ee.id_reclamo
-            LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
-            LEFT JOIN subarea s    ON s.id_subarea = COALESCE(tr.id_subarea, r.id_subarea)
-        """
+        join_area = JOIN_SUBAREA_ENVIO
         cond_area = " AND s.id_area = :id_area"
-    # filtro por tipo de plantilla (separa CSAT de reclamos vs turnos)
-    join_tipo = ""
-    cond_tipo = ""
-    if tipo is not None:
-        join_tipo = " JOIN encuesta_plantilla pl ON pl.id_encuesta_plantilla = ee.id_plantilla "
-        cond_tipo = " AND pl.tipo = :tipo"
+    join_tipo, cond_tipo = _filtro_circuito(tipo)
 
     # total enviadas en el periodo (por fecha_envio)
     total_enviadas = (await db.execute(text(f"""
@@ -446,11 +455,14 @@ async def dashboard_resumen(
     ]
 
     # alertas de contacto pendientes (no acotadas al periodo: son una cola viva)
-    alertas = (await db.execute(text("""
+    alertas = (await db.execute(text(f"""
         SELECT COUNT(*) FROM encuesta_respuesta rsp
+          JOIN encuesta_envio ee ON ee.id_encuesta_envio = rsp.id_envio
+          {join_tipo}
          WHERE rsp.activo = TRUE AND rsp.solicita_contacto = TRUE AND rsp.atendida = FALSE
            AND rsp.id_municipio = :mun
-    """), {"mun": id_municipio})).scalar() or 0
+           {cond_tipo}
+    """), {"mun": id_municipio, "tipo": tipo})).scalar() or 0
 
     return DashboardResumenOut(
         periodo=DashboardPeriodoOut(desde=desde, hasta=hasta),
@@ -469,6 +481,7 @@ async def dashboard_por_area(
     desde: Optional[date] = Query(None),
     hasta: Optional[date] = Query(None),
     limit: int = Query(20, ge=1, le=100),
+    tipo: Optional[Circuito] = Query(None, description="reclamos | turnos | tramites | entradas"),
     id_municipio: int = Depends(municipio_actual),
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -476,23 +489,24 @@ async def dashboard_por_area(
     _require_supervisor(user)
     hasta = hasta or date.today()
     desde = desde or (hasta - timedelta(days=30))
-    rows = (await db.execute(text("""
+    join_tipo, cond_tipo = _filtro_circuito(tipo)
+    rows = (await db.execute(text(f"""
         SELECT a.id_area, a.nombre AS nombre_area,
                COUNT(*) AS total_respuestas,
                ROUND(AVG(rsp.clasificacion_inicial)::numeric, 2) AS csat_promedio
           FROM encuesta_respuesta rsp
           JOIN encuesta_envio ee ON ee.id_encuesta_envio = rsp.id_envio
-          JOIN reclamos r        ON r.id_reclamo = ee.id_reclamo
-          LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
-          LEFT JOIN subarea s    ON s.id_subarea = COALESCE(tr.id_subarea, r.id_subarea)
+          {join_tipo}
+          {JOIN_SUBAREA_ENVIO}
           LEFT JOIN area a       ON a.id_area = s.id_area
          WHERE rsp.activo = TRUE
            AND rsp.id_municipio = :mun
            AND rsp.fecha_alta >= :desde AND rsp.fecha_alta < :hasta_excl
+           {cond_tipo}
          GROUP BY a.id_area, a.nombre
          ORDER BY csat_promedio DESC NULLS LAST
          LIMIT :limit
-    """), {"mun": id_municipio, "desde": desde,
+    """), {"mun": id_municipio, "desde": desde, "tipo": tipo,
            "hasta_excl": hasta + timedelta(days=1), "limit": limit})).fetchall()
     return [
         DashboardPorAreaItem(
@@ -505,25 +519,85 @@ async def dashboard_por_area(
     ]
 
 
+@router.get("/dashboard/por-circuito", response_model=list[DashboardPorCircuitoItem])
+async def dashboard_por_circuito(
+    desde: Optional[date] = Query(None),
+    hasta: Optional[date] = Query(None),
+    id_municipio: int = Depends(municipio_actual),
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Los cuatro circuitos siempre, aunque alguno no tenga envíos en el período. Mismos criterios de
+    fecha que /dashboard/resumen: los envíos por fecha_envio y las respuestas por su fecha."""
+    _require_supervisor(user)
+    hasta = hasta or date.today()
+    desde = desde or (hasta - timedelta(days=30))
+    rows = (await db.execute(text("""
+        WITH env AS (
+            SELECT pl.tipo, COUNT(*) AS enviadas
+              FROM encuesta_envio ee
+              JOIN encuesta_plantilla pl ON pl.id_encuesta_plantilla = ee.id_plantilla
+             WHERE ee.activo = TRUE AND ee.id_municipio = :mun
+               AND ee.fecha_envio >= :desde AND ee.fecha_envio < :hasta_excl
+             GROUP BY pl.tipo
+        ), res AS (
+            SELECT pl.tipo, COUNT(*) AS respuestas,
+                   AVG(rsp.clasificacion_inicial) AS csat,
+                   SUM(CASE WHEN rsp.clasificacion_inicial <= 2 THEN 1 ELSE 0 END) AS insat
+              FROM encuesta_respuesta rsp
+              JOIN encuesta_envio ee ON ee.id_encuesta_envio = rsp.id_envio
+              JOIN encuesta_plantilla pl ON pl.id_encuesta_plantilla = ee.id_plantilla
+             WHERE rsp.activo = TRUE AND rsp.id_municipio = :mun
+               AND rsp.fecha_alta >= :desde AND rsp.fecha_alta < :hasta_excl
+             GROUP BY pl.tipo
+        )
+        SELECT c.tipo, COALESCE(env.enviadas, 0) AS enviadas,
+               COALESCE(res.respuestas, 0) AS respuestas,
+               COALESCE(res.csat, 0) AS csat, COALESCE(res.insat, 0) AS insat
+          FROM (VALUES (1, 'reclamos'), (2, 'turnos'), (3, 'tramites'), (4, 'entradas')) AS c(n, tipo)
+          LEFT JOIN env ON env.tipo = c.tipo
+          LEFT JOIN res ON res.tipo = c.tipo
+         ORDER BY c.n
+    """), {"mun": id_municipio, "desde": desde, "hasta_excl": hasta + timedelta(days=1)})).fetchall()
+    salida: list[DashboardPorCircuitoItem] = []
+    for r in rows:
+        m = r._mapping
+        enviadas, respuestas = int(m["enviadas"]), int(m["respuestas"])
+        salida.append(DashboardPorCircuitoItem(
+            tipo=m["tipo"],
+            total_enviadas=enviadas,
+            total_respuestas=respuestas,
+            tasa_respuesta_pct=round(respuestas * 100.0 / enviadas, 1) if enviadas else 0.0,
+            csat_promedio=round(float(m["csat"]), 2),
+            pct_insatisfechos=round(int(m["insat"]) * 100.0 / respuestas, 1) if respuestas else 0.0,
+        ))
+    return salida
+
+
 @router.get("/dashboard/evolucion", response_model=list[DashboardEvolucionItem])
 async def dashboard_evolucion(
     meses: int = Query(6, ge=1, le=24),
+    tipo: Optional[Circuito] = Query(None, description="reclamos | turnos | tramites | entradas"),
     id_municipio: int = Depends(municipio_actual),
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     _require_supervisor(user)
-    rows = (await db.execute(text("""
+    join_tipo, cond_tipo = _filtro_circuito(tipo)
+    rows = (await db.execute(text(f"""
         SELECT TO_CHAR(rsp.fecha_alta, 'YYYY-MM') AS anio_mes,
                ROUND(AVG(rsp.clasificacion_inicial)::numeric, 2) AS csat_promedio,
                COUNT(*) AS total_respuestas
           FROM encuesta_respuesta rsp
+          JOIN encuesta_envio ee ON ee.id_encuesta_envio = rsp.id_envio
+          {join_tipo}
          WHERE rsp.activo = TRUE
            AND rsp.id_municipio = :mun
            AND rsp.fecha_alta >= date_trunc('month', NOW()) - make_interval(months => :meses)
+           {cond_tipo}
          GROUP BY TO_CHAR(rsp.fecha_alta, 'YYYY-MM')
          ORDER BY anio_mes ASC
-    """), {"mun": id_municipio, "meses": meses})).fetchall()
+    """), {"mun": id_municipio, "meses": meses, "tipo": tipo})).fetchall()
     return [
         DashboardEvolucionItem(
             anio_mes=r._mapping["anio_mes"],
@@ -538,6 +612,7 @@ async def dashboard_evolucion(
 async def dashboard_comentarios(
     response: Response,
     clasificacion: Optional[int] = Query(None, ge=1, le=5),
+    tipo: Optional[Circuito] = Query(None, description="reclamos | turnos | tramites | entradas"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     id_municipio: int = Depends(municipio_actual),
@@ -553,26 +628,31 @@ async def dashboard_comentarios(
         "rsp.activo = TRUE",
         "rsp.id_municipio = :mun",
     ]
-    params: dict = {"mun": id_municipio, "limit": limit, "offset": offset}
+    params: dict = {"mun": id_municipio, "limit": limit, "offset": offset, "tipo": tipo}
     if clasificacion is not None:
         conds.append("rsp.clasificacion_inicial = :clf"); params["clf"] = clasificacion
     where = " AND ".join(conds)
+    join_tipo, cond_tipo = _filtro_circuito(tipo)
+    joins = f"""
+          JOIN encuesta_pregunta p  ON p.id_encuesta_pregunta = d.id_pregunta
+          JOIN encuesta_respuesta rsp ON rsp.id_encuesta_respuesta = d.id_respuesta
+          JOIN encuesta_envio ee ON ee.id_encuesta_envio = rsp.id_envio
+          {join_tipo}
+    """
 
     total = (await db.execute(text(f"""
         SELECT COUNT(*)
           FROM encuesta_respuesta_detalle d
-          JOIN encuesta_pregunta p  ON p.id_encuesta_pregunta = d.id_pregunta
-          JOIN encuesta_respuesta rsp ON rsp.id_encuesta_respuesta = d.id_respuesta
-         WHERE {where}
+          {joins}
+         WHERE {where} {cond_tipo}
     """), params)).scalar() or 0
 
     rows = (await db.execute(text(f"""
         SELECT rsp.id_envio AS id_envio, rsp.fecha_alta AS fecha_respuesta,
                rsp.clasificacion_inicial, d.valor_texto AS comentario
           FROM encuesta_respuesta_detalle d
-          JOIN encuesta_pregunta p  ON p.id_encuesta_pregunta = d.id_pregunta
-          JOIN encuesta_respuesta rsp ON rsp.id_encuesta_respuesta = d.id_respuesta
-         WHERE {where}
+          {joins}
+         WHERE {where} {cond_tipo}
          ORDER BY rsp.fecha_alta DESC
          LIMIT :limit OFFSET :offset
     """), params)).fetchall()

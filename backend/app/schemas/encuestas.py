@@ -319,6 +319,15 @@ class DashboardPorAreaItem(BaseModel):
     csat_promedio: float
 
 
+class DashboardPorCircuitoItem(BaseModel):
+    tipo: str              # reclamos | turnos | tramites | entradas
+    total_enviadas: int
+    total_respuestas: int
+    tasa_respuesta_pct: float
+    csat_promedio: float
+    pct_insatisfechos: float
+
+
 class DashboardEvolucionItem(BaseModel):
     anio_mes: str          # 'YYYY-MM'
     csat_promedio: float

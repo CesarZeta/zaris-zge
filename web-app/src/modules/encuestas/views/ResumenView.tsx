@@ -1,8 +1,16 @@
 import { useMemo, useState } from 'react'
 import { Star, TrendingUp, ThumbsDown, PhoneCall, MessageSquare } from 'lucide-react'
-import { useResumen, usePorArea, useEvolucion, useComentarios } from '../hooks/useEncuestas'
+import { useResumen, usePorArea, usePorCircuito, useEvolucion, useComentarios } from '../hooks/useEncuestas'
 import { BarrasDistribucion, LineaEvolucion, KpiCard, colorCsat } from '../components/charts'
 import { ThOrden, ordenarFilas, useOrden } from '../../../ui/orden'
+import type { Circuito } from '../lib/types'
+
+const CIRCUITO_LABEL: Record<Circuito, string> = {
+  reclamos: 'Reclamos',
+  turnos: 'Turnos',
+  tramites: 'Trámites',
+  entradas: 'Entradas',
+}
 
 // Período por defecto: últimos 90 días (más útil que 30 para ver tendencia,
 // y el backend ya filtra por fecha). El usuario puede ajustar desde/hasta.
@@ -16,12 +24,16 @@ const HOY = new Date().toISOString().slice(0, 10)
 export function ResumenView() {
   const [desde, setDesde] = useState(isoHaceDias(90))
   const [hasta, setHasta] = useState(HOY)
+  const [circuito, setCircuito] = useState<Circuito | ''>('')
+  const tipo = circuito || undefined
 
   const periodo = useMemo(() => ({ desde, hasta }), [desde, hasta])
-  const resumen = useResumen(periodo)
-  const porArea = usePorArea(periodo)
-  const evolucion = useEvolucion(6)
-  const comentarios = useComentarios({ limit: 8 })
+  const resumen = useResumen({ ...periodo, tipo })
+  const porArea = usePorArea({ ...periodo, tipo, limit: 100 })
+  // La tabla por circuito no se filtra: es la comparación entre los cuatro.
+  const porCircuito = usePorCircuito(periodo)
+  const evolucion = useEvolucion(6, tipo)
+  const comentarios = useComentarios({ limit: 8, tipo })
 
   // Orden por columna (§23): el tablero trae todas las áreas → en pantalla.
   const { orden: ordenArea, alternar: alternarArea } = useOrden<'area' | 'respuestas' | 'csat'>()
@@ -29,6 +41,16 @@ export function ResumenView() {
     area: (a) => a.nombre_area,
     respuestas: (a) => a.total_respuestas,
     csat: (a) => a.csat_promedio,
+  })
+  const { orden: ordenCircuito, alternar: alternarCircuito } =
+    useOrden<'circuito' | 'enviadas' | 'respuestas' | 'tasa' | 'csat' | 'insatisfechos'>()
+  const circuitos = ordenarFilas(porCircuito.data ?? [], ordenCircuito, {
+    circuito: (c) => CIRCUITO_LABEL[c.tipo],
+    enviadas: (c) => c.total_enviadas,
+    respuestas: (c) => c.total_respuestas,
+    tasa: (c) => c.tasa_respuesta_pct,
+    csat: (c) => c.csat_promedio,
+    insatisfechos: (c) => c.pct_insatisfechos,
   })
 
   const r = resumen.data
@@ -44,6 +66,20 @@ export function ResumenView() {
         <div style={field}>
           <label style={lbl}>Hasta</label>
           <input type="date" value={hasta} min={desde} max={HOY} onChange={(e) => setHasta(e.target.value)} style={inp} />
+        </div>
+        <div style={field}>
+          <label style={lbl} htmlFor="encuestas-circuito">Circuito</label>
+          <select
+            id="encuestas-circuito"
+            value={circuito}
+            onChange={(e) => setCircuito(e.target.value as Circuito | '')}
+            style={inp}
+          >
+            <option value="">Todos</option>
+            {(Object.keys(CIRCUITO_LABEL) as Circuito[]).map((c) => (
+              <option key={c} value={c}>{CIRCUITO_LABEL[c]}</option>
+            ))}
+          </select>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
           <button style={btnGhost} onClick={() => { setDesde(isoHaceDias(30)); setHasta(HOY) }}>30 días</button>
@@ -99,6 +135,42 @@ export function ResumenView() {
             ? <Cargando />
             : <LineaEvolucion data={evolucion.data ?? []} />}
         </div>
+      </div>
+
+      {/* CSAT por circuito: siempre los cuatro, no sigue al selector */}
+      <div style={card}>
+        <h3 style={cardTitle}>CSAT por circuito</h3>
+        {porCircuito.isError && <div style={errorBanner}>{(porCircuito.error as Error)?.message ?? 'Error al cargar los circuitos'}</div>}
+        {porCircuito.isLoading ? <Cargando /> : !porCircuito.isError && (
+          <table style={table}>
+            <thead>
+              <tr>
+                <ThOrden campo="circuito" orden={ordenCircuito} onOrdenar={alternarCircuito} style={th}>Circuito</ThOrden>
+                <ThOrden campo="enviadas" orden={ordenCircuito} onOrdenar={alternarCircuito} style={{ ...th, textAlign: 'right' }}>Enviadas</ThOrden>
+                <ThOrden campo="respuestas" orden={ordenCircuito} onOrdenar={alternarCircuito} style={{ ...th, textAlign: 'right' }}>Respuestas</ThOrden>
+                <ThOrden campo="tasa" orden={ordenCircuito} onOrdenar={alternarCircuito} style={{ ...th, textAlign: 'right' }}>Tasa</ThOrden>
+                <ThOrden campo="csat" orden={ordenCircuito} onOrdenar={alternarCircuito} style={{ ...th, textAlign: 'right' }}>CSAT</ThOrden>
+                <ThOrden campo="insatisfechos" orden={ordenCircuito} onOrdenar={alternarCircuito} style={{ ...th, textAlign: 'right' }}>% insatisfechos</ThOrden>
+              </tr>
+            </thead>
+            <tbody>
+              {circuitos.map((c) => (
+                <tr key={c.tipo}>
+                  <td style={td}>{CIRCUITO_LABEL[c.tipo]}</td>
+                  <td style={{ ...td, textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{c.total_enviadas}</td>
+                  <td style={{ ...td, textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{c.total_respuestas}</td>
+                  <td style={{ ...td, textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{c.tasa_respuesta_pct.toFixed(1)}%</td>
+                  <td style={{ ...td, textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: c.total_respuestas ? colorCsat(c.csat_promedio) : 'var(--fg-3)' }}>
+                    {c.total_respuestas ? c.csat_promedio.toFixed(2) : '—'}
+                  </td>
+                  <td style={{ ...td, textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                    {c.total_respuestas ? `${c.pct_insatisfechos.toFixed(1)}%` : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {/* CSAT por área */}

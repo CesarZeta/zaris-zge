@@ -12,6 +12,8 @@ export interface DashboardDistribucionItem {
   count: number
 }
 
+export type Circuito = 'reclamos' | 'turnos' | 'tramites' | 'entradas'
+
 export interface DashboardResumen {
   periodo: DashboardPeriodo
   csat_promedio: number
@@ -28,6 +30,15 @@ export interface DashboardPorAreaItem {
   nombre_area: string | null
   total_respuestas: number
   csat_promedio: number
+}
+
+export interface DashboardPorCircuitoItem {
+  tipo: Circuito
+  total_enviadas: number
+  total_respuestas: number
+  tasa_respuesta_pct: number
+  csat_promedio: number
+  pct_insatisfechos: number
 }
 
 export interface DashboardEvolucionItem {

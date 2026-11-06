@@ -1,8 +1,10 @@
 import { api } from '../../../lib/api'
 import type {
+  Circuito,
   DashboardComentarioItem,
   DashboardEvolucionItem,
   DashboardPorAreaItem,
+  DashboardPorCircuitoItem,
   DashboardResumen,
   EncuestaEnvio,
   EncuestaEnvioConRespuesta,
@@ -35,20 +37,23 @@ export interface ResumenParams {
   desde?: string // 'YYYY-MM-DD'
   hasta?: string
   id_area?: number
-  tipo?: string // reclamos | turnos | tramites
+  tipo?: Circuito
 }
 
 export const encuestasApi = {
   resumen: (p: ResumenParams = {}) =>
     api.get<DashboardResumen>(`${BASE}/dashboard/resumen`, { params: { ...p } }),
 
-  porArea: (p: { desde?: string; hasta?: string; limit?: number } = {}) =>
+  porArea: (p: { desde?: string; hasta?: string; limit?: number; tipo?: Circuito } = {}) =>
     api.get<DashboardPorAreaItem[]>(`${BASE}/dashboard/por-area`, { params: { ...p } }),
 
-  evolucion: (p: { meses?: number } = {}) =>
+  porCircuito: (p: { desde?: string; hasta?: string } = {}) =>
+    api.get<DashboardPorCircuitoItem[]>(`${BASE}/dashboard/por-circuito`, { params: { ...p } }),
+
+  evolucion: (p: { meses?: number; tipo?: Circuito } = {}) =>
     api.get<DashboardEvolucionItem[]>(`${BASE}/dashboard/evolucion`, { params: { ...p } }),
 
-  comentarios: (p: { clasificacion?: number; limit?: number; offset?: number } = {}) =>
+  comentarios: (p: { clasificacion?: number; limit?: number; offset?: number; tipo?: Circuito } = {}) =>
     api.get<DashboardComentarioItem[]>(`${BASE}/dashboard/comentarios`, { params: { ...p } }),
 
   // pendientes-contacto SIEMPRE devuelve los no-atendidos (solicita_contacto=TRUE

@@ -59,8 +59,8 @@ const SECCIONES: Seccion[] = [
     claves: [
       {
         clave: 'encuestas_activas',
-        label: 'Enviar encuestas al cerrar reclamos',
-        ayuda: 'Si está activo, cada reclamo resuelto dispara una encuesta de satisfacción al ciudadano. Desactivarlo detiene el envío en todo el municipio.',
+        label: 'Enviar encuestas de satisfacción',
+        ayuda: 'Si está activo, cada reclamo resuelto, turno cumplido, trámite terminado y asistencia a un evento dispara una encuesta al ciudadano. Desactivarlo detiene el envío en todo el municipio.',
         control: 'toggle',
       },
       {

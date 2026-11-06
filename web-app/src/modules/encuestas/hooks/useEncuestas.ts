@@ -1,5 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { encuestasApi, type ParamsEnvios, type ResumenParams } from '../lib/api'
+import type { Circuito } from '../lib/types'
 
 // Las queries de dashboard exigen nivel <= 2 en el backend. El gating de la UI
 // vive en index.tsx (WrapNivel); estos hooks se montan solo dentro de las vistas
@@ -12,21 +13,28 @@ export function useResumen(p: ResumenParams) {
   })
 }
 
-export function usePorArea(p: { desde?: string; hasta?: string } = {}) {
+export function usePorArea(p: { desde?: string; hasta?: string; limit?: number; tipo?: Circuito } = {}) {
   return useQuery({
     queryKey: ['encuestas', 'por-area', p],
     queryFn: () => encuestasApi.porArea(p),
   })
 }
 
-export function useEvolucion(meses = 6) {
+export function usePorCircuito(p: { desde?: string; hasta?: string } = {}) {
   return useQuery({
-    queryKey: ['encuestas', 'evolucion', meses],
-    queryFn: () => encuestasApi.evolucion({ meses }),
+    queryKey: ['encuestas', 'por-circuito', p],
+    queryFn: () => encuestasApi.porCircuito(p),
   })
 }
 
-export function useComentarios(p: { clasificacion?: number; limit?: number } = {}) {
+export function useEvolucion(meses = 6, tipo?: Circuito) {
+  return useQuery({
+    queryKey: ['encuestas', 'evolucion', meses, tipo],
+    queryFn: () => encuestasApi.evolucion({ meses, tipo }),
+  })
+}
+
+export function useComentarios(p: { clasificacion?: number; limit?: number; tipo?: Circuito } = {}) {
   return useQuery({
     queryKey: ['encuestas', 'comentarios', p],
     queryFn: () => encuestasApi.comentarios(p),

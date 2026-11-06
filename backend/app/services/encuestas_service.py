@@ -1140,6 +1140,8 @@ async def registrar_respuesta(
                 referencia = f"Reclamo #{env['nro_reclamo']}"
             elif env["id_turno"] is not None:
                 referencia = f"Turno #{env['id_turno']}"
+            elif env["id_tramite"] is not None:
+                referencia = f"Trámite {env['tramite_numero'] or '#' + str(env['id_tramite'])}"
             else:
                 # entrada (mig 98): referencia legible con el nombre del evento
                 referencia = (
