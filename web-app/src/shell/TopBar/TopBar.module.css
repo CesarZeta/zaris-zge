@@ -260,6 +260,10 @@
 
 .dropdownItemDanger:hover { color: var(--color-error); }
 
+/* Con varios municipios el nombre es el dato que no puede faltar: se recorta con «…», no se oculta. */
 @media (max-width: 900px) {
-  .brandApp, .muniNombre { display: none; }
+  .brandApp { display: none; }
+}
+@media (max-width: 720px) {
+  .context { display: none; }
 }

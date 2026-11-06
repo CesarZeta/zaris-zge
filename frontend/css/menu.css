@@ -153,8 +153,9 @@ html, body {
   text-overflow: ellipsis;
 }
 
+/* Con varios municipios el nombre es el dato que no puede faltar: se recorta con «…», no se oculta. */
 @media (max-width: 900px) {
-  .brand__app, .muni__nombre { display: none; }
+  .brand__app { display: none; }
 }
 
 .topbar__right {
@@ -184,6 +185,12 @@ html, body {
   font-size: 10.5px;
   color: var(--fg-3);
   white-space: nowrap;
+}
+
+/* En un teléfono el bloque de usuario dejaba el nombre del municipio en 0 px. Quién entró está en el
+   menú del avatar. Va después de la regla base: si no, la base gana. */
+@media (max-width: 720px) {
+  .topbar__context { display: none; }
 }
 
 /* Campana de notificaciones - funcional desde 2026-05-18.

@@ -10,6 +10,9 @@ la copia del modelo quedó colgando de San Andrés, prueba de cierre de F4+F5, 2
 en NULL si la columna lo admite y, si no, la fila se omite (`FilaOmitida`). Así una copia de
 catálogos nunca arrastra personas, cuentas ni datos operativos.
 
+Los ids guardados dentro de un JSON (`cruces.REFERENCIAS_JSON`) se re-mapean igual, y lo que no se
+puede copiar se quita sin ampliar ningún permiso (`cruces.reapuntar_json`, `referencias_quitadas`).
+
 Trabaja sobre una conexión asyncpg: en la app, la del AsyncSession (`conexion_asyncpg`), dentro de
 su transacción.
 """
@@ -18,7 +21,7 @@ import re
 import uuid
 from typing import Any, Optional
 
-from app.services.municipios.cruces import SIN_FK
+from app.services.municipios.cruces import PADRES_JSON, REFERENCIAS_JSON, SIN_FK, como_id, reapuntar_json
 
 TEXTO_LIBRE = re.compile(
     r"^(nombre|apellido|descripcion|direccion\w*|domicilio\w*|observacion\w*|detalle\w*|titulo|mensaje|"
@@ -52,6 +55,8 @@ class Clonador:
         # Copia de catálogos: una fila dada de baja en el origen no se copia aunque una hija activa la pida.
         self.solo_activas = solo_activas
         self.id_usuario_alta = id_usuario_alta
+        # Referencias dentro de un JSON que no se pudieron copiar (agentes y equipos en una copia de catálogos).
+        self.referencias_quitadas = 0
         self.mapa: dict[tuple[str, int], int] = {}
         self.anclas: dict[str, int] = {}
         self._en_curso: list[tuple[str, int]] = []
@@ -121,6 +126,21 @@ class Clonador:
         if ref == pk:
             return valor
         return await self.conn.fetchval(f'SELECT "{pk}" FROM "{padre}" WHERE "{ref}" = $1', valor)
+
+    async def _id_en_destino(self, tipo: str, id_origen: Any) -> Optional[int]:
+        """El id en el municipio destino de una referencia dentro de un JSON; None si no se puede copiar."""
+        padre, pk = PADRES_JSON[tipo]
+        if padre in self.anclas:
+            return self.anclas[padre]
+        i = como_id(id_origen)
+        if i is None or (self.permitidas is not None and padre not in self.permitidas):
+            return None
+        if await self.conn.fetchval(f'SELECT 1 FROM "{padre}" WHERE "{pk}" = $1', i) is None:
+            return None  # sin FK la base pudo dejar un huérfano: no se arrastra
+        try:
+            return await self.clonar(padre, i)
+        except FilaOmitida:
+            return None
 
     async def clonar(self, tabla: str, id_origen: int, cambios: Optional[dict] = None,
                      copia_nueva: bool = False) -> int:
@@ -196,6 +216,13 @@ class Clonador:
             info = m["cols"][col]
             if col in cambios or valor is None:
                 continue
+            forma = REFERENCIAS_JSON.get((tabla, col))
+            if forma:
+                valor, quitadas = await reapuntar_json(forma, valor, self._id_en_destino)
+                self.referencias_quitadas += quitadas
+                vals[col] = valor
+                if valor is None:
+                    continue
             if info["tipo"] in ("json", "jsonb") and not isinstance(valor, str):
                 # La conexión del AsyncSession decodifica JSON a dict/list; para insertar va como texto.
                 vals[col] = json.dumps(valor)

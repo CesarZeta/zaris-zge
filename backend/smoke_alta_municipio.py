@@ -1079,6 +1079,230 @@ async def test_cruces_municipio() -> None:
         await _estado(ctx["modelo"], "baja")
 
 
+async def test_cruces_json() -> None:
+    """Ids guardados DENTRO de un JSON de catálogo (prueba de cierre de F4+F5, 2026-11-02: «Derivar» dio 500
+    porque el clonador copió los destinos del modelo tal cual y contar_cruces no los miraba)."""
+    print("\ntest_cruces_json")
+    from app.services.municipios import alta
+    from app.services.municipios.clonado import Clonador, conexion_asyncpg
+    from app.services.municipios.cruces import contar_cruces
+
+    ctx = await _contexto_alta()
+    modelo = ctx["modelo"]
+    suf, cod = _sufijo()
+    body = _alta_body(suf, cod, id_provincia=ctx["ba"])
+    body["copiar"] = ["areas_subareas", "tramites"]
+    async with _cliente() as c:
+        r = await c.post("/api/v1/super/municipios", json=body, headers=ctx["h"])
+    check("alta con trámites → 201", r.status_code == 201, f"{r.status_code} {r.text[:300]}")
+    if r.status_code != 201:
+        return
+    mid = r.json()["id_municipio"]
+
+    destinos = """SELECT s.id_municipio, s.nombre, x.destino_automatico_jsonb->>'nombre' AS etiqueta
+                    FROM tipo_tramite_transicion x
+                    JOIN tipo_tramite_version v ON v.id_tipo_tramite_version = x.id_tipo_tramite_version AND v.activo
+                    LEFT JOIN subarea s ON s.id_subarea = (x.destino_automatico_jsonb->>'id')::int
+                   WHERE x.id_municipio = :m AND x.activo AND x.destino_automatico_jsonb->>'tipo' = 'subarea'"""
+    quien = """SELECT s.id_municipio, s.nombre
+                 FROM tipo_tramite_transicion x
+                 JOIN tipo_tramite_version v ON v.id_tipo_tramite_version = x.id_tipo_tramite_version AND v.activo
+                 CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(x.quien_puede_jsonb->'subareas', '[]'::jsonb)) e(v)
+                 LEFT JOIN subarea s ON s.id_subarea = e.v::int
+                WHERE x.id_municipio = :m AND x.activo"""
+    async with AsyncSessionLocal() as db:
+        dest_nuevo = (await db.execute(text(destinos), {"m": mid})).all()
+        dest_modelo = (await db.execute(text(destinos), {"m": modelo})).all()
+        quien_nuevo = (await db.execute(text(quien), {"m": mid})).all()
+        quien_modelo = (await db.execute(text(quien), {"m": modelo})).all()
+        check("el modelo tiene destinos y «quién puede» para probar", bool(dest_modelo) and bool(quien_modelo))
+        check("los destinos automáticos apuntan a gestiones del municipio nuevo",
+              bool(dest_nuevo) and all(f[0] == mid for f in dest_nuevo), str(dest_nuevo[:3]))
+        check("«quién puede» apunta a gestiones del municipio nuevo",
+              bool(quien_nuevo) and all(f[0] == mid for f in quien_nuevo), str(quien_nuevo[:3]))
+        check("cada destino es la misma gestión que en el modelo",
+              sorted(f[1] for f in dest_nuevo) == sorted(f[1] for f in dest_modelo), str(dest_nuevo[:3]))
+        check("cada «quién puede» es la misma gestión que en el modelo",
+              sorted(f[1] for f in quien_nuevo) == sorted(f[1] for f in quien_modelo))
+        check("el nombre guardado en el destino sigue siendo el de la gestión",
+              all(f[1] == f[2] for f in dest_nuevo), str(dest_nuevo[:3]))
+
+        conn = await conexion_asyncpg(db)
+        check("el alta queda sin cruces", not await contar_cruces(conn, mid), str(await contar_cruces(conn, mid)))
+        check("ningún municipio local apunta a otro dentro de un JSON", not [
+            (m, x) for m in [f[0] for f in await conn.fetch("SELECT id_municipio FROM municipios ORDER BY 1")]
+            for x in await contar_cruces(conn, m) if "_jsonb" in x[0]])
+
+        # contar_cruces ve las tres formas de JSON (en una transacción que se revierte).
+        transicion = await conn.fetchval(
+            "SELECT id_tipo_tramite_transicion FROM tipo_tramite_transicion WHERE id_municipio = $1 ORDER BY 1 LIMIT 1", mid)
+        documento = await conn.fetchval(
+            "SELECT id_tipo_tramite_documento_requerido FROM tipo_tramite_documento_requerido WHERE id_municipio = $1 ORDER BY 1 LIMIT 1", mid)
+        ajena = await conn.fetchval("SELECT id_subarea FROM subarea WHERE id_municipio = $1 ORDER BY 1 LIMIT 1", modelo)
+        propia = await conn.fetchval("SELECT id_subarea FROM subarea WHERE id_municipio = $1 ORDER BY 1 LIMIT 1", mid)
+        check("hay transición y documento para probar", bool(transicion) and bool(documento))
+        async with db.begin_nested() as sp:
+            await conn.execute("""UPDATE tipo_tramite_transicion
+                SET destino_automatico_jsonb = $1::jsonb, quien_puede_jsonb = $2::jsonb
+                WHERE id_tipo_tramite_transicion = $3""",
+                f'{{"tipo": "subarea", "id": {ajena}, "nombre": "x"}}', f'{{"subareas": [{ajena}, {propia}]}}', transicion)
+            await conn.execute("""UPDATE tipo_tramite_documento_requerido SET firmantes_jsonb = $1::jsonb
+                WHERE id_tipo_tramite_documento_requerido = $2""",
+                f'[{{"tipo": "subarea", "id": {ajena}, "rol_intervencion": "firma"}}]', documento)
+            cruces = dict(await contar_cruces(conn, mid))
+            check("detecta un destino automático de otro municipio",
+                  cruces.get("tipo_tramite_transicion.destino_automatico_jsonb → subarea") == 1, str(cruces))
+            check("detecta un «quién puede» de otro municipio, y solo ese",
+                  cruces.get("tipo_tramite_transicion.quien_puede_jsonb → subarea") == 1, str(cruces))
+            check("detecta un firmante de otro municipio",
+                  cruces.get("tipo_tramite_documento_requerido.firmantes_jsonb → subarea") == 1, str(cruces))
+            await sp.rollback()
+
+        # Lo que no viene en una copia de catálogos se quita, y nunca amplía quién puede.
+        C = await _municipio_c()
+        agente = await conn.fetchval("SELECT id_agente FROM agentes WHERE id_municipio <> $1 ORDER BY 1 LIMIT 1", C["id"])
+        equipo = await conn.fetchval("SELECT id_equipo FROM equipos WHERE id_municipio <> $1 ORDER BY 1 LIMIT 1", C["id"])
+        origen = await conn.fetchrow("""
+            SELECT x.id_tipo_tramite_transicion AS t, d.id_tipo_tramite_documento_requerido AS d
+              FROM tipo_tramite_transicion x
+              JOIN tipo_tramite_documento_requerido d ON d.id_tipo_tramite_version = x.id_tipo_tramite_version
+             WHERE x.id_municipio = $1 AND x.activo AND d.activo ORDER BY 1, 2 LIMIT 1""", modelo)
+        check("hay agente, equipo y filas de origen para probar", bool(agente) and bool(equipo) and bool(origen))
+        subarea_modelo = await conn.fetchval(
+            "SELECT id_subarea FROM subarea WHERE id_municipio = $1 AND activo ORDER BY 1 LIMIT 1", modelo)
+        async with db.begin_nested() as sp:
+            await conn.execute("""UPDATE tipo_tramite_transicion
+                SET quien_puede_jsonb = $1::jsonb, destino_automatico_jsonb = $2::jsonb
+                WHERE id_tipo_tramite_transicion = $3""",
+                f'{{"subareas": [{subarea_modelo}, 2147483000], "equipos": [{equipo}], "agentes": [{agente}], "roles": ["supervisor"]}}',
+                f'{{"tipo": "agente", "id": {agente}, "nombre": "x"}}', origen["t"])
+            await conn.execute("""UPDATE tipo_tramite_documento_requerido SET firmantes_jsonb = $1::jsonb
+                WHERE id_tipo_tramite_documento_requerido = $2""",
+                f'[{{"tipo": "agente", "id": {agente}, "rol_intervencion": "firma"}}, '
+                f'{{"tipo": "subarea", "id": {subarea_modelo}, "rol_intervencion": "visado"}}]', origen["d"])
+            cl = Clonador(conn, C["id"], permitidas=alta._TABLAS_COPIABLES, solo_activas=True)
+            await cl.cargar_clases()
+            nueva_t = await cl.clonar("tipo_tramite_transicion", origen["t"])
+            nuevo_d = await cl.clonar("tipo_tramite_documento_requerido", origen["d"])
+            import json as _json
+            fila = await conn.fetchrow("""SELECT quien_puede_jsonb::text AS q, destino_automatico_jsonb::text AS d
+                FROM tipo_tramite_transicion WHERE id_tipo_tramite_transicion = $1""", nueva_t)
+            q = _json.loads(fila["q"])
+            s_nueva = cl.mapa.get(("subarea", subarea_modelo))
+            check("la gestión se reapunta y el id huérfano se quita", q.get("subareas") == [s_nueva] and s_nueva, str(q))
+            check("equipo y agente se quitan, pero la clave queda: vacío deniega, no abre",
+                  q.get("equipos") == [] and q.get("agentes") == [], str(q))
+            check("lo que no es un id no se toca", q.get("roles") == ["supervisor"], str(q))
+            check("un destino automático que no se copia queda sin destino", fila["d"] is None, str(fila["d"]))
+            firmantes = _json.loads(await conn.fetchval("""SELECT firmantes_jsonb::text FROM tipo_tramite_documento_requerido
+                WHERE id_tipo_tramite_documento_requerido = $1""", nuevo_d))
+            check("el firmante agente se quita y el de gestión se reapunta",
+                  firmantes == [{"tipo": "subarea", "id": s_nueva, "rol_intervencion": "visado"}], str(firmantes))
+            check("lo quitado se avisa al alta", cl.referencias_quitadas >= 4, str(cl.referencias_quitadas))
+            await sp.rollback()
+        await db.rollback()
+    await _estado(mid, "baja")
+
+    # El builder no deja guardar un id de otro municipio dentro de un JSON. Si la guarda faltara, las filas
+    # creadas se borran abajo: es un borrador local de prueba.
+    async with AsyncSessionLocal() as db:
+        base = await _escalar(db, "SELECT id_municipio FROM municipios WHERE direccion_base")
+        admin = await _escalar(db, "SELECT id_usuario FROM usuarios WHERE id_municipio = :m AND nivel_acceso = 1 "
+                                   "AND activo ORDER BY id_usuario LIMIT 1", {"m": base})
+        version = await _escalar(db, """
+            SELECT v.id_tipo_tramite_version FROM tipo_tramite_version v
+             WHERE v.id_municipio = :m AND v.estado = 'borrador' AND v.activo
+               AND (SELECT count(*) FROM tipo_tramite_estado e
+                     WHERE e.id_tipo_tramite_version = v.id_tipo_tramite_version AND e.activo) >= 2
+             ORDER BY 1 LIMIT 1""", {"m": base})
+        estados = [f[0] for f in (await db.execute(text(
+            "SELECT id_tipo_tramite_estado FROM tipo_tramite_estado WHERE id_tipo_tramite_version = :v AND activo "
+            "ORDER BY 1 LIMIT 2"), {"v": version})).all()] if version else []
+        propia = await _escalar(db, "SELECT id_subarea FROM subarea WHERE id_municipio = :m ORDER BY 1 LIMIT 1", {"m": base})
+        ajena = await _escalar(db, "SELECT id_subarea FROM subarea WHERE id_municipio <> :m ORDER BY 1 LIMIT 1", {"m": base})
+    check("hay un borrador con estados para probar el builder", bool(version) and len(estados) == 2)
+    if not version:
+        return
+    h = _token(admin, base)
+    p = "/api/v1/admin/tramites"
+    etiqueta = f"zz prueba cruces {suf}"
+    transicion = {"id_estado_origen": estados[0], "id_estado_destino": estados[1], "etiqueta_accion": etiqueta}
+    documento = {"nombre": etiqueta}
+    malo = 2147483000
+    firmante = lambda i: [{"tipo": "subarea", "id": i, "rol_intervencion": "firma"}]  # noqa: E731
+    try:
+        async with _cliente() as c:
+            for nombre, qp, detalle in (
+                ("gestión de otro municipio", {"subareas": [ajena]}, "Subárea inexistente"),
+                ("equipo inexistente", {"equipos": [malo]}, "Equipo inexistente"),
+                ("agente inexistente", {"agentes": [malo]}, "Agente inexistente"),
+                ("id que no es un número", {"subareas": ["x"]}, "Subárea inexistente"),
+            ):
+                r = await c.post(f"{p}/versiones/{version}/transiciones", json={**transicion, "quien_puede_jsonb": qp}, headers=h)
+                check(f"«quién puede» con {nombre} → 422", r.status_code == 422 and r.json().get("detail") == detalle,
+                      f"{r.status_code} {r.text[:160]}")
+            r = await c.post(f"{p}/versiones/{version}/transiciones",
+                             json={**transicion, "destino_automatico_jsonb": {"tipo": "subarea", "id": "x"}}, headers=h)
+            check("destino con un id que no es un número → 422", r.status_code == 422, f"{r.status_code} {r.text[:160]}")
+            r = await c.post(f"{p}/versiones/{version}/transiciones",
+                             json={**transicion, "quien_puede_jsonb": {"subareas": [propia], "roles": ["supervisor"]}}, headers=h)
+            check("«quién puede» con una gestión propia → 201", r.status_code == 201, f"{r.status_code} {r.text[:160]}")
+            if r.status_code == 201:
+                id_t = r.json()["id_tipo_tramite_transicion"]
+                r = await c.put(f"{p}/transiciones/{id_t}", json={"quien_puede_jsonb": {"subareas": [ajena]}}, headers=h)
+                check("editar con una gestión de otro municipio → 422", r.status_code == 422, f"{r.status_code} {r.text[:160]}")
+            r = await c.post(f"{p}/versiones/{version}/documentos-requeridos",
+                             json={**documento, "firmantes_jsonb": firmante(ajena)}, headers=h)
+            check("firmante de otro municipio → 422", r.status_code == 422 and r.json().get("detail") == "Subárea inexistente",
+                  f"{r.status_code} {r.text[:160]}")
+            r = await c.post(f"{p}/versiones/{version}/documentos-requeridos",
+                             json={**documento, "firmantes_jsonb": {"tipo": "subarea", "id": propia}}, headers=h)
+            check("firmantes que no son una lista → 422", r.status_code == 422, f"{r.status_code} {r.text[:160]}")
+            r = await c.post(f"{p}/versiones/{version}/documentos-requeridos",
+                             json={**documento, "firmantes_jsonb": firmante(propia)}, headers=h)
+            check("firmante de una gestión propia → 201", r.status_code == 201, f"{r.status_code} {r.text[:160]}")
+            if r.status_code == 201:
+                id_d = r.json()["id_tipo_tramite_documento_requerido"]
+                r = await c.put(f"{p}/documentos-requeridos/{id_d}", json={"firmantes_jsonb": firmante(ajena)}, headers=h)
+                check("editar con un firmante de otro municipio → 422", r.status_code == 422, f"{r.status_code} {r.text[:160]}")
+    finally:
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("DELETE FROM tipo_tramite_transicion WHERE id_municipio = :m AND etiqueta_accion = :e"),
+                             {"m": base, "e": etiqueta})
+            await db.execute(text("DELETE FROM tipo_tramite_documento_requerido WHERE id_municipio = :m AND nombre = :e"),
+                             {"m": base, "e": etiqueta})
+            await db.commit()
+    if ctx["propio"]:
+        await _estado(ctx["modelo"], "baja")
+
+
+async def test_tramites_sin_agente() -> None:
+    """Decisión de César (2026-11-02): el super no opera trámites (todo movimiento lo firma un agente del
+    municipio). El 403 se lo tiene que decir, no mandarlo a pedir que le configuren un perfil."""
+    print("\ntest_tramites_sin_agente")
+    C = await _municipio_c()
+    async with AsyncSessionLocal() as db:
+        h_super = await _super_headers(db)
+        sin_agente = await _escalar(db, """
+            SELECT u.id_usuario FROM usuarios u
+             WHERE u.id_municipio = :m AND u.nivel_acceso = 1 AND u.activo
+               AND NOT EXISTS (SELECT 1 FROM agentes a WHERE a.id_usuario = u.id_usuario AND a.activo)
+             ORDER BY 1 LIMIT 1""", {"m": C["id"]})
+    async with _cliente() as c:
+        r = await c.get("/api/v1/tramites/mi-bandeja", headers={**h_super, "X-Municipio": str(C["id"])})
+        detalle = r.json().get("detail", "") if r.status_code == 403 else ""
+        check("super → 403", r.status_code == 403, f"{r.status_code} {r.text[:160]}")
+        check("al super le dice que no opera trámites y que entre con una cuenta del municipio",
+              "no opera trámites" in detalle and "cuenta del municipio" in detalle, detalle)
+        check("al super no lo manda a pedir un perfil", "Pedile" not in detalle, detalle)
+        check("hay una cuenta del municipio sin agente para probar", bool(sin_agente))
+        if sin_agente:
+            r = await c.get("/api/v1/tramites/mi-bandeja", headers=_token(sin_agente, C["id"]))
+            check("una cuenta sin agente sigue recibiendo el mensaje de siempre",
+                  r.status_code == 403 and "Pedile a un administrador" in r.json().get("detail", ""),
+                  f"{r.status_code} {r.text[:160]}")
+
+
 async def test_alta_encuestas_obligatorias() -> None:
     """Decisión de César (2026-11-03): las encuestas son fijas y todo municipio arranca con ellas, aunque
     el pedido de alta no las elija."""
@@ -2307,7 +2531,7 @@ async def _super_headers_sin_db() -> dict:
 PRUEBAS = {f.__name__: f for f in (test_base_f4, test_triggers_f4, test_acciones_super, test_links_por_municipio,
                                      test_modelo, test_area_fija_api, test_tope, test_super_admins, test_ficha_municipio,
                                      test_vaciado_guardas, test_clonado_excluidas, test_vaciado_operativo_y_todo, test_vaciado_numerador_tramite, test_vaciado_conserva_encuestas, test_exportacion_retencion, test_municipio_vacio, test_aislamiento_modelo, test_revision_final,
-                                     test_alta_validaciones, test_alta_partido_zona_codigo, test_alta_ok, test_alta_encuestas_obligatorias, test_alta_atomica, test_cruces_municipio, test_alta_agrega_fijos, test_alta_concurrente,
+                                     test_alta_validaciones, test_alta_partido_zona_codigo, test_alta_ok, test_alta_encuestas_obligatorias, test_alta_atomica, test_cruces_municipio, test_cruces_json, test_tramites_sin_agente, test_alta_agrega_fijos, test_alta_concurrente,
                                      test_invitacion, test_invitacion_token_malformado, test_estados,
                                      test_alta_por_origen,
                                      test_estado_baja, test_modelo_no_operable, test_demo_por_estado,

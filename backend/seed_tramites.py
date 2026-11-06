@@ -350,7 +350,8 @@ async def seed_tipos(conn, sa):
         campos=[
             {"nombre_interno": "direccion_arbol", "etiqueta": "Direccion del arbol", "tipo_dato": "direccion", "obligatorio": True, "orden": 1},
             {"nombre_interno": "especie_aproximada", "etiqueta": "Especie aproximada", "tipo_dato": "seleccion", "obligatorio": False, "orden": 2,
-             "opciones": {"opciones": ["nativa", "exotica", "no_se"]}},
+             "opciones": [{"valor": "nativa", "etiqueta": "Nativa"}, {"valor": "exotica", "etiqueta": "Exótica"},
+                          {"valor": "no_se", "etiqueta": "No sé"}]},
             {"nombre_interno": "motivo", "etiqueta": "Motivo del pedido", "tipo_dato": "texto_largo", "obligatorio": True, "orden": 3},
         ],
         estados=[
@@ -439,7 +440,9 @@ async def seed_tipos(conn, sa):
         ["empresa"], True, "store", "#f59e0b",
         campos=[
             {"nombre_interno": "rubro", "etiqueta": "Rubro", "tipo_dato": "seleccion", "obligatorio": True, "orden": 1,
-             "opciones": {"opciones": ["gastronomico", "comercial", "industrial", "servicios", "otro"]}},
+             "opciones": [{"valor": "gastronomico", "etiqueta": "Gastronómico"}, {"valor": "comercial", "etiqueta": "Comercial"},
+                          {"valor": "industrial", "etiqueta": "Industrial"}, {"valor": "servicios", "etiqueta": "Servicios"},
+                          {"valor": "otro", "etiqueta": "Otro"}]},
             {"nombre_interno": "direccion_local", "etiqueta": "Direccion del local", "tipo_dato": "direccion", "obligatorio": True, "orden": 2},
             {"nombre_interno": "superficie_m2", "etiqueta": "Superficie (m2)", "tipo_dato": "decimal", "obligatorio": True, "orden": 3},
             {"nombre_interno": "horario_atencion", "etiqueta": "Horario de atencion", "tipo_dato": "texto", "obligatorio": True, "orden": 4},
@@ -546,7 +549,9 @@ async def seed_tipos(conn, sa):
         ["empresa"], True, "microscope", "#ef4444",
         campos=[
             {"nombre_interno": "rubro_solicitud", "etiqueta": "Rubro", "tipo_dato": "seleccion", "obligatorio": True, "orden": 1,
-             "opciones": {"opciones": ["gastronomico", "panaderia", "carniceria", "verduleria", "otro"]}},
+             "opciones": [{"valor": "gastronomico", "etiqueta": "Gastronómico"}, {"valor": "panaderia", "etiqueta": "Panadería"},
+                          {"valor": "carniceria", "etiqueta": "Carnicería"}, {"valor": "verduleria", "etiqueta": "Verdulería"},
+                          {"valor": "otro", "etiqueta": "Otro"}]},
             {"nombre_interno": "motivo", "etiqueta": "Motivo", "tipo_dato": "texto_largo", "obligatorio": True, "orden": 2},
             {"nombre_interno": "fecha_solicitada", "etiqueta": "Fecha preferida", "tipo_dato": "fecha", "obligatorio": False, "orden": 3},
         ],
@@ -577,7 +582,8 @@ async def seed_tipos(conn, sa):
             {"nombre_interno": "direccion_local", "etiqueta": "Direccion del local", "tipo_dato": "direccion", "obligatorio": True, "orden": 1},
             {"nombre_interno": "dimensiones", "etiqueta": "Dimensiones del cartel", "tipo_dato": "texto", "obligatorio": True, "orden": 2},
             {"nombre_interno": "tipo_cartel", "etiqueta": "Tipo de cartel", "tipo_dato": "seleccion", "obligatorio": True, "orden": 3,
-             "opciones": {"opciones": ["frontal", "marquesina", "saliente", "luminoso"]}},
+             "opciones": [{"valor": "frontal", "etiqueta": "Frontal"}, {"valor": "marquesina", "etiqueta": "Marquesina"},
+                          {"valor": "saliente", "etiqueta": "Saliente"}, {"valor": "luminoso", "etiqueta": "Luminoso"}]},
             {"nombre_interno": "monto_tasa", "etiqueta": "Monto de la tasa", "tipo_dato": "moneda", "obligatorio": True, "orden": 4},
         ],
         estados=[
@@ -607,7 +613,9 @@ async def seed_tipos(conn, sa):
         campos=[
             {"nombre_interno": "numero_acto_recurrido", "etiqueta": "N° del acto recurrido", "tipo_dato": "texto", "obligatorio": True, "orden": 1},
             {"nombre_interno": "tipo_acto", "etiqueta": "Tipo de acto", "tipo_dato": "seleccion", "obligatorio": True, "orden": 2,
-             "opciones": {"opciones": ["resolucion", "disposicion", "decreto", "multa", "otro"]}},
+             "opciones": [{"valor": "resolucion", "etiqueta": "Resolución"}, {"valor": "disposicion", "etiqueta": "Disposición"},
+                          {"valor": "decreto", "etiqueta": "Decreto"}, {"valor": "multa", "etiqueta": "Multa"},
+                          {"valor": "otro", "etiqueta": "Otro"}]},
             {"nombre_interno": "fecha_notificacion", "etiqueta": "Fecha de notificacion", "tipo_dato": "fecha", "obligatorio": True, "orden": 3},
             {"nombre_interno": "fundamentos", "etiqueta": "Fundamentos", "tipo_dato": "texto_largo", "obligatorio": True, "orden": 4},
             {"nombre_interno": "pretension", "etiqueta": "Pretension", "tipo_dato": "texto_largo", "obligatorio": True, "orden": 5},

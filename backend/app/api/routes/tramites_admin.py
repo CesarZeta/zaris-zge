@@ -52,6 +52,7 @@ from app.schemas.tramites import (
     VersionAdminOut,
     VersionOut,
 )
+from app.services.municipios.cruces import ids_en_json
 from app.services.tramites import auth as svc_auth
 from app.services.tramites import versionado as svc_ver
 
@@ -87,14 +88,38 @@ async def _validar_referencia(db: AsyncSession, tipo: str, valor: Optional[int],
     if valor is None or tipo not in _REFERENCIAS:
         return
     tabla, pk, nombre = _REFERENCIAS[tipo]
+    try:
+        id_valor = int(valor)
+    except (TypeError, ValueError):
+        raise HTTPException(422, f"{nombre} inexistente") from None
     if not await db.scalar(text(f"SELECT 1 FROM {tabla} WHERE {pk} = :v AND id_municipio = :m"),
-                           {"v": int(valor), "m": id_municipio}):
+                           {"v": id_valor, "m": id_municipio}):
         raise HTTPException(422, f"{nombre} inexistente")
 
 
 async def _validar_destino_automatico(db: AsyncSession, destino: Optional[dict], id_municipio: int) -> None:
-    if destino and destino.get("id") is not None:
-        await _validar_referencia(db, destino.get("tipo") or "subarea", destino.get("id"), id_municipio)
+    if not destino:
+        return
+    for tipo, valor in ids_en_json("objeto", destino):
+        await _validar_referencia(db, tipo, valor, id_municipio)
+
+
+async def _validar_quien_puede(db: AsyncSession, quien: Any, id_municipio: int) -> None:
+    if quien is None:
+        return
+    if not isinstance(quien, dict):
+        raise HTTPException(422, "«Quién puede» tiene un formato inválido")
+    for tipo, valor in ids_en_json("por_clave", quien):
+        await _validar_referencia(db, tipo, valor, id_municipio)
+
+
+async def _validar_firmantes(db: AsyncSession, firmantes: Any, id_municipio: int) -> None:
+    if firmantes is None:
+        return
+    if not isinstance(firmantes, list):
+        raise HTTPException(422, "Los firmantes tienen un formato inválido")
+    for tipo, valor in ids_en_json("lista", firmantes):
+        await _validar_referencia(db, tipo, valor, id_municipio)
 
 
 async def _resolver_agente_publicador(user: dict, db: AsyncSession) -> Optional[int]:
@@ -878,7 +903,8 @@ async def _estado_out(db: AsyncSession, id_estado: int) -> EstadoOut:
 # tipo_tramite_transicion CRUD
 # ---------------------------------------------------------------------------
 
-@router.post("/versiones/{id_version}/transiciones", status_code=201, response_model=TransicionOut)
+@router.post("/versiones/{id_version}/transiciones", status_code=201, response_model=TransicionOut,
+             responses={422: {"description": "Estados de otra versión, o «quién puede» o destino que apuntan a otro municipio"}})
 async def crear_transicion(
     id_version: int,
     body: TransicionIn2,
@@ -901,6 +927,7 @@ async def crear_transicion(
     if body.id_estado_origen not in ids_validos or body.id_estado_destino not in ids_validos:
         raise HTTPException(422, "Origen y destino deben ser estados activos de esta version")
     await _validar_destino_automatico(db, body.destino_automatico_jsonb, id_municipio)
+    await _validar_quien_puede(db, body.quien_puede_jsonb, id_municipio)
 
     new_id = (await db.execute(
         text("""
@@ -973,6 +1000,7 @@ async def actualizar_transicion(
             params[field] = val
 
     if body.quien_puede_jsonb is not None:
+        await _validar_quien_puede(db, body.quien_puede_jsonb, id_municipio)
         sets.append("quien_puede_jsonb = CAST(:quien_puede_jsonb AS jsonb)")
         params["quien_puede_jsonb"] = json.dumps(body.quien_puede_jsonb)
     if body.destino_automatico_jsonb is not None:
@@ -1053,6 +1081,7 @@ async def crear_documento_requerido(
         )).fetchone()
         if not ok:
             raise HTTPException(422, "El estado referenciado no pertenece a esta version o esta inactivo")
+    await _validar_firmantes(db, body.firmantes_jsonb, id_municipio)
 
     new_id = (await db.execute(
         text("""
@@ -1120,6 +1149,7 @@ async def actualizar_documento_requerido(
         sets.append("formatos_permitidos = :formatos_permitidos")
         params["formatos_permitidos"] = body.formatos_permitidos
     if body.firmantes_jsonb is not None:
+        await _validar_firmantes(db, body.firmantes_jsonb, id_municipio)
         sets.append("firmantes_jsonb = CAST(:firmantes_jsonb AS jsonb)")
         params["firmantes_jsonb"] = json.dumps(body.firmantes_jsonb)
 

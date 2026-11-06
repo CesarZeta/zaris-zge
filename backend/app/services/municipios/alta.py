@@ -201,9 +201,9 @@ async def _validar(db: AsyncSession, d: AltaMunicipioIn) -> dict:
 
 
 async def _copiar_catalogos(db: AsyncSession, d: AltaMunicipioIn, id_mun: int, modelo: int,
-                            id_super: int) -> int:
+                            id_super: int) -> tuple[int, int]:
     """Copia del modelo las tablas elegidas (y siempre las áreas fijas y los catálogos obligatorios).
-    Devuelve las filas omitidas."""
+    Devuelve las filas omitidas y las referencias dentro de un JSON que no se pudieron copiar."""
     conn = await conexion_asyncpg(db)
     c = Clonador(conn, id_mun, permitidas=_TABLAS_COPIABLES, id_usuario_alta=id_super, solo_activas=True)
     await c.cargar_clases()
@@ -227,7 +227,7 @@ async def _copiar_catalogos(db: AsyncSession, d: AltaMunicipioIn, id_mun: int, m
                 await c.clonar(tabla, id_origen)
             except FilaOmitida:
                 omitidas += 1
-    return omitidas
+    return omitidas, c.referencias_quitadas
 
 
 async def _poner_config(db: AsyncSession, id_mun: int, clave: str, valor: Optional[str], tipo: str = "string") -> None:
@@ -353,7 +353,7 @@ async def dar_de_alta(db: AsyncSession, d: AltaMunicipioIn, *, id_super: int,
             "zona": v["zona"], "tope": d.max_usuarios_activos, "u": id_super})
     except IntegrityError:
         raise HTTPException(409, "El subdominio, el código corto o el partido ya los usa otro municipio")
-    omitidas = await _copiar_catalogos(db, d, id_mun, v["modelo"], id_super)
+    omitidas, quitadas = await _copiar_catalogos(db, d, id_mun, v["modelo"], id_super)
     await db.execute(text("""
         INSERT INTO municipio_modulo (id_municipio, modulo_codigo, habilitado, min_nivel_acceso, id_usuario_alta)
         SELECT :m, modulo_codigo, modulo_codigo = ANY(:hab), min_nivel_acceso, :u FROM modulos WHERE activo"""),
@@ -361,6 +361,9 @@ async def dar_de_alta(db: AsyncSession, d: AltaMunicipioIn, *, id_super: int,
     advertencias = await _configuracion(db, d, id_mun, v["modelo"], v["contorno"])
     if omitidas:
         advertencias.append(f"{omitidas} filas del modelo no se copiaron: dependen de catálogos no elegidos")
+    if quitadas:
+        advertencias.append(f"{quitadas} referencias de trámites a agentes o equipos no se copiaron: "
+                            "revisá quién puede ejecutar cada acción y los firmantes")
     id_admin = await _administrador(db, d, id_mun, id_super, background_tasks)
     # Ninguna fila del municipio nuevo puede apuntar a otro (cazado en la prueba de cierre: faltaban
     # FK en prod y la copia del modelo quedó colgando de San Andrés). Si queda alguna, no hay alta.

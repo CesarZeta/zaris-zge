@@ -69,6 +69,16 @@ from app.utils.orden import clausula_orden, descripcion_orden
 
 router = APIRouter(prefix="/api/v1/tramites", tags=["tramites"])
 
+
+def _sin_perfil_de_agente(user: dict) -> HTTPException:
+    """Todo movimiento de un expediente lo firma un agente del municipio (cadena de custodia): el super
+    administrador no opera trámites, y configurarle un perfil no es la salida (César, 2026-11-02)."""
+    if user.get("es_super_admin"):
+        return HTTPException(403, "El super administrador no opera trámites: todo movimiento de un expediente "
+                                  "lo firma un agente del municipio. Entrá con una cuenta del municipio.")
+    return HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. "
+                              "Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
+
 # Columnas ordenables de las dos bandejas (§23; lista cerrada, el valor va
 # interpolado en el ORDER BY). Los alias son los de los SELECT de GET "" y
 # GET /mi-bandeja, que hacen los mismos JOIN.
@@ -356,7 +366,7 @@ async def mi_bandeja(
                                por_defecto=_ORDEN_TRAMITES_DEFECTO)
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
+        raise _sin_perfil_de_agente(current_user)
 
     # Colectivos a los que pertenece el agente
     bandeja_conds = [
@@ -1135,7 +1145,7 @@ async def crear_tramite(
     id_usuario = current_user["id_usuario"]
     agente = await svc_auth.resolver_agente_desde_usuario(id_usuario, db)
     if not agente:
-        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
+        raise _sin_perfil_de_agente(current_user)
     # Gate anti-consultor (scope-subarea 2026-07-18): crear es mutacion.
     _require_no_consultor(agente)
 
@@ -1343,7 +1353,7 @@ async def tomar_tramite(
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
+        raise _sin_perfil_de_agente(current_user)
     # Gate anti-consultor (scope-subarea 2026-07-18).
     _require_no_consultor(agente)
 
@@ -1389,7 +1399,7 @@ async def liberar_tramite(
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
+        raise _sin_perfil_de_agente(current_user)
     # Gate anti-consultor (scope-subarea 2026-07-18).
     _require_no_consultor(agente)
 
@@ -1454,7 +1464,7 @@ async def transicionar_tramite(
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
+        raise _sin_perfil_de_agente(current_user)
     # Gate anti-consultor (scope-subarea 2026-07-18).
     _require_no_consultor(agente)
 
@@ -1700,7 +1710,7 @@ async def resolver_aprobacion(
 
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
+        raise _sin_perfil_de_agente(current_user)
     # Gate anti-consultor (scope-subarea 2026-07-18).
     _require_no_consultor(agente)
 
@@ -1777,7 +1787,7 @@ async def pase_tramite(
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
+        raise _sin_perfil_de_agente(current_user)
     # Gate anti-consultor (scope-subarea 2026-07-18).
     _require_no_consultor(agente)
 
@@ -1874,7 +1884,7 @@ async def marcar_resultado_tramite(
     """
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
+        raise _sin_perfil_de_agente(current_user)
     # Scope-subarea 2026-07-18: niveles 3+ nunca marcan resultado. El scope
     # del nivel 2 se valida mas abajo, con el tramite ya cargado.
     if agente["nivel_acceso"] > 2:
@@ -1958,7 +1968,7 @@ async def comentar_tramite(
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
+        raise _sin_perfil_de_agente(current_user)
     # Gate anti-consultor (scope-subarea 2026-07-18).
     _require_no_consultor(agente)
 
@@ -2026,7 +2036,7 @@ async def adjuntar_documento(
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
+        raise _sin_perfil_de_agente(current_user)
     # Gate anti-consultor (scope-subarea 2026-07-18).
     _require_no_consultor(agente)
 
@@ -2227,7 +2237,7 @@ async def firmar_documento(
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
+        raise _sin_perfil_de_agente(current_user)
 
     id_tramite, _ = await _resolver_tramite(tramite_ref, db, id_municipio)
     doc = (await db.execute(
@@ -2292,7 +2302,7 @@ async def rechazar_firma_documento(
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
+        raise _sin_perfil_de_agente(current_user)
 
     id_tramite, _ = await _resolver_tramite(tramite_ref, db, id_municipio)
     doc = (await db.execute(
@@ -2356,7 +2366,7 @@ async def relacionar_tramites(
 ):
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
-        raise HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
+        raise _sin_perfil_de_agente(current_user)
     # Gate anti-consultor (scope-subarea 2026-07-18).
     _require_no_consultor(agente)
 
