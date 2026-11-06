@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-11-06 (Cesar). Encuestas con todas las ramas en los cuatro circuitos, en prod (mig 136). Sigue: el versionado y los arreglos de la prueba de cierre de F4+F5 (preguntas abiertas).
+**Última actualización:** 2026-11-06 (Cesar). En prod: encuestas con todas las ramas en los cuatro circuitos (mig 136) y los arreglos 1 a 5 de la prueba de cierre de F4+F5 (mig 137). Sigue: el versionado y los arreglos restantes (preguntas abiertas).
 
 ---
 
@@ -29,7 +29,7 @@
    4. **Vecino 360 para el municipio:** en Datos y como pestaña de la ficha del ciudadano y de la empresa, con todas sus interacciones; por persona o por empresa representada.
    5. **Base de conocimiento de ayudas**, con dos capítulos: canales del vecino y gestión interna. Ya hay un relevamiento inicial de los canales del vecino (2026-10-27). Mientras tanto no se tocan manuales. César la adelantó el 2026-10-30 empezando por el material de venta (pregunta 7).
 5. Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
-6. **Arreglos que dejó la prueba de cierre:** confirmar el orden recomendado en `PLAN_MULTI_MUNICIPIO_F4_F5.md` → «Prueba de cierre — hallazgos». Lo primero es el clonador con los ids dentro de JSON, porque bloquea el alta de un municipio real. Dos piden diseño antes de codear: la pantalla para que el super elija municipio y el catálogo de emergencias del vecino.
+6. **Arreglos que dejó la prueba de cierre:** del 1 al 5 hechos el 2026-11-06. Quedan en `PLAN_MULTI_MUNICIPIO_F4_F5.md` → «Prueba de cierre — hallazgos». Dos piden diseño antes de codear: la pantalla para que el super elija municipio y el catálogo de emergencias del vecino.
 7. **Base de conocimiento — material de venta por circuito** (2026-10-30): borrador `docs/base_conocimiento/resumen_circuitos.md`, **solo en la máquina de César, sin commitear** (lleva notas internas; el repo es público). César revisa los (\*) de los tableros (varios son propuesta de Claude), dice si su «punto 2» era esta estructura o es otra pieza (supuesto de Claude: ficha técnica por circuito) y aprueba el texto. Recomendación: commitearlo sin «Notas internas».
 
 ---
@@ -51,7 +51,7 @@
 ## 🟠 Pendientes (backoffice / backend)
 
 **Decisiones de negocio pendientes (César)**
-- 🔴 **Prueba de cierre — hallazgos del 2026-11-02 y 2026-11-03 para arreglar**, con detalle y orden en [`PLAN_MULTI_MUNICIPIO_F4_F5.md`](PLAN_MULTI_MUNICIPIO_F4_F5.md) → «Prueba de cierre — hallazgos»: (1) **el clonador y `contar_cruces` no ven ids dentro de JSON** (bloquea un municipio real; datos ya corregidos con la mig 134), (2) 6 campos de trámites con opciones en formato viejo que el validador rechaza, (3) mensaje de trámites para el super, (4) nombre del municipio oculto a ≤ 900 px, (5) «ver contraseña» en el login del backoffice, (6) pantalla para que el super elija municipio, (7) encuestas en «Promociones» de Gmail, (9) App Vecinos, (10) tres verificaciones pendientes, (11) menores.
+- 🟠 **Prueba de cierre — hallazgos que quedan**, con detalle en [`PLAN_MULTI_MUNICIPIO_F4_F5.md`](PLAN_MULTI_MUNICIPIO_F4_F5.md) → «Prueba de cierre — hallazgos»: (6) pantalla para que el super elija municipio, (7) encuestas en «Promociones» de Gmail, (9) App Vecinos, (10) tres verificaciones pendientes, (11) menores.
 - 🟢 **Contorno — 9 menores de la revisión final (2026-10-28), ninguno rompe:** lista en [`PLAN_CONTORNO_MUNICIPIO.md`](PLAN_CONTORNO_MUNICIPIO.md) → «Menores diferidos» (el más visible: la fecha del origen en UTC).
 - 🟡 **Botón de pánico de la PWA:** sin probar con el vecino de prueba (dispara una alerta REAL al COM). Las pruebas de vecino y funcionario están hechas (2026-10-12 y 2026-10-23).
 - 🟢 **Alta (2026-10-10):** la clave temporal del funcionario no vence si no la usa; la app de agentes no tiene «olvidé mi contraseña».
@@ -85,9 +85,9 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
+- **2026-11-06 — Arreglos 1 a 5 de la prueba de cierre (`352ef67`, mig 137):** el alta reapunta y controla los ids dentro de JSON, y el builder ya no los acepta de otro municipio; cuatro tipos de trámite que no se podían iniciar en San Andrés ya se pueden iniciar; mensaje de trámites para el super; nombre del municipio en pantallas angostas; «ver contraseña» en el login.
 - **2026-11-06 — Encuestas en los cuatro circuitos (`016f22f`, mig 136):** todas las ramas con los textos aprobados y los mismos valores en reclamos, turnos, trámites y entradas; pedido de contacto de trámites arreglado; Resumen integrado, con selector de circuito y tabla por circuito. Prod: modelo igual a San Andrés, lo ya respondido intacto y las sumas por circuito y por área iguales al total.
-- **2026-11-03 — Prueba de cierre de F4+F5, parte final:** claves cruzadas; exportación y vaciado de los cuatro grupos (1056 filas; San Andrés y modelo sin cambios); módulos vacíos y 178 `GET` sin ningún 5xx; recarga desde cero con el mismo DNI y email; tope de cuentas en 409; barrido de San Andrés y `smoke_publico_turnos` 12 OK; municipio 6 en baja y dominios quitados; guía privada en `credenciales-testing/`. Arreglados: vaciado con trámites numerados (`5933ac8`), ventana visible del vaciado (`9ddf362`), mig 135 (`14f2bf6`), encuestas obligatorias en el alta (`7a996cb`) y página propia de error 404 en los tres sitios (`f0a9375`).
-- **2026-11-02 — Prueba de cierre de F4+F5, pasos 1-5:** un registro real por circuito en el municipio 6, con el vecino con el mismo DNI que uno de San Andrés y 0 registros que crucen de municipio. Arreglados: **mig 134** y el **formulario de encuestas** (`3da4086`).
+- **2026-11-03 — Prueba de cierre de F4+F5 terminada:** exportación, vaciado, módulos vacíos, recarga desde cero y tope de cuentas, con San Andrés y el modelo sin cambios; municipio 6 en baja. Arreglados en el camino: vaciado con trámites numerados, ventana visible del vaciado, mig 135, encuestas obligatorias en el alta y página propia de error 404 en los tres sitios.
 - **2026-10-30 —** claves de las cuentas de prueba de prod renovadas, fuera del repo: pedíselas a César.
 
 > Lo anterior: `HISTORIAL_MIGRACIONES.md` y las skills de cada módulo.

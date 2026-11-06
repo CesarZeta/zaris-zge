@@ -468,7 +468,16 @@
 
 ## Prueba de cierre — hallazgos del 2026-11-02 (pasos 1-5, en prod con César)
 
-Municipio 6 «Municipio de Prueba». Lo hecho está en `ESTADO.md` → Hecho reciente; lo que falta de la prueba, en su pregunta 1. Hallazgos, en el orden de trabajo recomendado:
+Municipio 6 «Municipio de Prueba». Hallazgos, en el orden de trabajo recomendado.
+
+**Hechos el 2026-11-06 (`352ef67`, mig 137): puntos 1 a 5, y el 8 con la mig 136.** Lo que descubrió el arreglo:
+- Punto 1: el builder tampoco validaba `quien_puede_jsonb` ni `firmantes_jsonb` contra el municipio; ahora responde 422. Lo que una copia no trae se quita sin abrir permisos, y el alta lo avisa.
+- Punto 2: era más grave de lo anotado. Cinco de los seis campos son obligatorios, así que cuatro tipos de trámite no se podían iniciar en San Andrés.
+- Punto 4: quitar el `display:none` no alcanzaba; a 400 px el nombre quedaba en 0 px. A ≤ 720 px se oculta el bloque de usuario, que sigue en el menú del avatar. A 400 px el nombre tiene 65 px con «…», visible pero justo.
+
+**Sin verificar por Claude:** las pantallas en prod de los puntos 3 y 4 y el «ver contraseña» con el clic real (sí en local y, en prod, el archivo publicado y la API); un alta real en prod con el clonador nuevo (sí en local; en prod, 0 cruces dentro de JSON antes de publicarlo).
+
+Siguen: 6, 7, 9, 10 y 11.
 
 1. **Clonador y `contar_cruces` no ven las referencias dentro de JSON.** El alta copió tal cual los ids de gestiones de `tipo_tramite_transicion.destino_automatico_jsonb` y `quien_puede_jsonb` (13 por municipio, todas de San Andrés): «Derivar» daba 500 por la FK compuesta de `tramite.id_subarea_actual` (sin fuga: la base frenó el cruce). Datos corregidos con la mig 134 en modelo y prueba (local: 4 municipios). **Falta el código** (`services/municipios/`: clonador + `cruces.py`), con un test que falle primero. Otros JSON de catálogo revisados: `tipo_tramite_documento_requerido.firmantes_jsonb` (ids de agentes; vacío en modelo y prueba, San Andrés tiene 3) y `tipo_tramite_campo.*_jsonb`.
 2. **Opciones de trámites con formato viejo:** 6 campos `seleccion` por municipio (San Andrés, modelo y prueba) guardan `{"opciones":["nativa",…]}` y el validador rechaza cualquier valor («'no_se' no es una opcion valida»): habilitación comercial (rubro), cartel (tipo), recurso administrativo (tipo de acto, dos versiones), inspección bromatológica (rubro), poda (especie). Si alguno es obligatorio, ese trámite no se puede iniciar. Normalizar a `[{valor, etiqueta}]` con una mig de datos, verificando antes el formato que espera el validador.
