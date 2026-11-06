@@ -88,7 +88,7 @@
 
 - **2026-11-06 — Arreglos 1 a 5 de la prueba de cierre (`352ef67`, mig 137):** el alta reapunta y controla los ids dentro de JSON, y el builder ya no los acepta de otro municipio; cuatro tipos de trámite que no se podían iniciar en San Andrés ya se pueden iniciar; mensaje de trámites para el super; nombre del municipio en pantallas angostas; «ver contraseña» en el login.
 - **2026-11-06 — Encuestas en los cuatro circuitos (`016f22f`, mig 136):** todas las ramas con los textos aprobados y los mismos valores en reclamos, turnos, trámites y entradas; pedido de contacto de trámites arreglado; Resumen integrado, con selector de circuito y tabla por circuito. Prod: modelo igual a San Andrés, lo ya respondido intacto y las sumas por circuito y por área iguales al total.
-- **2026-11-03 — Prueba de cierre de F4+F5 terminada:** exportación, vaciado, módulos vacíos, recarga desde cero y tope de cuentas, con San Andrés y el modelo sin cambios; municipio 6 en baja. Arreglados en el camino: vaciado con trámites numerados, ventana visible del vaciado, mig 135, encuestas obligatorias en el alta y página propia de error 404 en los tres sitios.
+- **2026-11-03 — Prueba de cierre de F4+F5 terminada**, con San Andrés y el modelo sin cambios; municipio 6 en baja. Detalle en el plan.
 - **2026-10-30 —** claves de las cuentas de prueba de prod renovadas, fuera del repo: pedíselas a César.
 
 > Lo anterior: `HISTORIAL_MIGRACIONES.md` y las skills de cada módulo.
