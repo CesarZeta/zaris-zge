@@ -30,10 +30,10 @@ Después de un cambio en producción, alguien puede seguir con una ventana abier
 - **«Acerca de»:** existe en las dos apps (`AcercaPage`), pero no dice de quién es el software ni enlaza a la página. **El backoffice no tiene ninguno.**
 - **Actualización de las apps:** usan `registerType: 'autoUpdate'` del service worker, que recarga solo. Hay que compatibilizarlo con la decisión del aviso.
 
-## Falta definir
+## Definido por César (2026-11-19)
 
-- El texto exacto de propiedad y los datos de ZARIS que se muestran, y el enlace. No inventarlos: los da César. Recomendación: «© ZARIS. Todos los derechos reservados.» y `https://zaris.com.ar`, a confirmar.
-- Dónde se abre el «Acerca de» del backoffice. Recomendación: el menú del avatar, junto a «Mi perfil» y «Guías de uso».
+- Texto: «© ZARIS. Todos los derechos reservados.» y `https://zaris.com.ar`.
+- El «Acerca de» del backoffice va en el menú del avatar.
 
 ## Hecho (2026-11-19)
 
@@ -46,4 +46,6 @@ Después de un cambio en producción, alguien puede seguir con una ventana abier
 
 **API:** `/api/health` informa `version` (fecha y hora del arranque del proceso en Railway, con el mismo formato; `dev` en local) y `commit` (`RAILWAY_GIT_COMMIT_SHA`).
 
-**Pendiente:** las dos apps (abajo) y, para más adelante, la etiqueta de git por versión y el registro corto de cambios.
+**App Vecinos y app de agentes** (`zaris-vecinos` `4226a03`, `zaris-agentes` `8e35dae`): la versión la calcula `vite.config.ts` en el build de Cloudflare (`CF_PAGES`); el service worker pasa a `registerType: 'prompt'` y `src/lib/actualizacion.ts` muestra el aviso «Actualizar» (busca cada 5 min y al volver a la app). «Acerca de» con la propiedad, el enlace y la versión con su commit. Probado el ciclo completo en local: aviso, «Actualizar», versión nueva. Quien ya tiene la app instalada recibe esta versión una última vez con la recarga automática vieja.
+
+**Para más adelante:** la etiqueta de git por versión y el registro corto de cambios.

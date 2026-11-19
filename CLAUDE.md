@@ -210,7 +210,7 @@ Cazado 2026-05-20: se pushearon dos commits backend a `main` y prod siguió sirv
 1. **El servicio estaba caído** — el usuario tuvo que levantarlo manualmente desde el dashboard para que tomara el commit.
 2. **Incidente de plataforma "builds slow to progress"** — Railway encoló el build por horas (banner amarillo en el dashboard).
 
-**Regla operativa:** tras pushear backend, NO asumir que prod ya tiene el código. Verificar con `curl /openapi.json` (¿aparece el path nuevo?) o un preflight del header esperado. Si no aplica en ~5 min, **pedirle al usuario que mire el dashboard Railway** (servicio `zaris-api` → Deployments): banner de incidente, deploy en Failed/Building, o servicio caído. El health (`/api/health`) puede seguir 200 con el deploy VIEJO activo — no sirve para confirmar que el commit nuevo aplicó. Para eso, chequear algo que **solo exista en el commit nuevo**.
+**Regla operativa:** tras pushear backend, NO asumir que prod ya tiene el código. Verificar con `curl /openapi.json` (¿aparece el path nuevo?) o un preflight del header esperado. Si no aplica en ~5 min, **pedirle al usuario que mire el dashboard Railway** (servicio `zaris-api` → Deployments): banner de incidente, deploy en Failed/Building, o servicio caído. El status 200 de `/api/health` no prueba que el commit nuevo aplicó (puede ser el deploy VIEJO). **Desde 2026-11-19 `/api/health` devuelve `commit` (los 7 primeros caracteres de `RAILWAY_GIT_COMMIT_SHA`) y `version`: comparar ese `commit` con el pusheado es la verificación directa.** Del lado de Cloudflare Pages, lo mismo con `https://zge.zaris.com.ar/version.json` (PLAN_VERSIONADO.md).
 
 **Cómo distinguir "deploy viejo en prod" de "mi test CORS está mal hecho"**: usar un origen que YA estaba permitido hace tiempo (`https://zge.zaris.com.ar`) como control. Si el preflight `OPTIONS` con ese origen devuelve `Access-Control-Allow-Origin` pero el origen nuevo no, es deploy viejo (no test roto). Comando: `curl -s -i -X OPTIONS -H "Origin: https://zge.zaris.com.ar" -H "Access-Control-Request-Method: GET" <url> | grep -i access-control-allow-origin`.
 
@@ -538,7 +538,7 @@ Desde 2026-05-13 el topbar tiene bloques fijos; desde 2026-06-12 hay además una
 | **Topbar · Derecha** | Campana de notificaciones (cada ítem con botón ✓ que marca leída sin navegar + «Marcar todas como leídas» en el header, deshabilitado sin pendientes — 2026-10-20) · contexto de usuario en 2 líneas ("Nombre · Rol" + "Cargo: X · Gestión"; tooltip con secretaría, gestión y equipos — `cargo_nombre`/`subarea_nombre`/`area_nombre`/`equipos` de login/me) · avatar (foto `usuarios.foto_url` mig 88, o iniciales) · dropdown usuario (ver abajo) | `.topbar__bell` `.topbar__context-cargo` `.topbar__avatar` `.user-menu` |
 | **Statusbar · Izquierda** | Estado del servidor: dot gris/verde/rojo + label ("Servidor operativo" / "Sin conexión…"), ping `GET /api/health` cada 60s + al volver de background | `.statusbar__api` `#statusbar-api` `#statusbar-api-label` |
 | **Statusbar · Centro** | Fecha+hora "mar 13 may, 14:32", refresca cada 30s (**movida desde el centro del topbar**) | `.statusbar__clock` `#statusbar-clock` |
-| **Statusbar · Derecha** | Versión `zaris-zge · v0.1` (movida del pie del sidebar — `.sidebar__foot` eliminado) | `.statusbar__version` |
+| **Statusbar · Derecha** | Versión de la publicación (`zaris-zge · v2026.11.19.1544`): la escribe el build en `frontend/js/version.js` (en el repo dice `dev`), nunca a mano. Con `/version.json` distinto, `menu.js` muestra el aviso «Actualizar» (no recarga sola) | `.statusbar__version` `#statusbar-version` |
 
 La statusbar está pensada para crecer con más indicadores de estado (contenido a definir). **Los labels del sidebar van con mayúscula inicial** ("Reclamos", "Trámites" — pedido del usuario 2026-06-12); no hay `text-transform`, la capitalización vive en el HTML.
 
@@ -556,6 +556,7 @@ El topbar del shell (`index.html`) tiene un dropdown al hacer clic en el nombre/
 - **Cambiar foto…**: file picker PNG/JPG ≤2MB → `POST /auth/me/foto-upload-url` (URL firmada, bucket público `config-assets`, paths `usuarios/{id}/avatar-{uuid}.{ext}`) → PUT del binario directo a Storage → `PUT /auth/me/foto` persiste `usuarios.foto_url` (mig 88). Mismo flujo que el logo del municipio (§26). El feedback (Subiendo…/Foto actualizada/error) se muestra en el label del propio botón.
 - **Modo oscuro**: toggle con switch — ver "Modo oscuro" en §13.
 - **Guías de uso**: `shellNavigate('web-app/dist/index.html#/guias')` (módulo Guías §37).
+- **Acerca de ZARIS** (2026-11-19): modal con la versión del sitio y la del servidor (`/api/health`), «© ZARIS. Todos los derechos reservados.» y el enlace a `zaris.com.ar` (texto aprobado por César). Las dos apps tienen el mismo texto en su «Acerca de».
 - **Cerrar sesión**: `localStorage.removeItem('zaris_session')` + redirect a `frontend/login.html`.
 - CSS en `frontend/css/menu.css` bajo `.user-menu*`; lógica en `frontend/js/menu.js` (`_renderUserUI()` re-renderiza topbar+dropdown tras subir foto; el refresh contra `/me` también se dispara si la sesión vieja no trae `cargo_nombre`).
 
