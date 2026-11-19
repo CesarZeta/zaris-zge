@@ -18,8 +18,7 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **Claude in Chrome** (2026-11-19): César instaló y activó la extensión, pero esta sesión no veía sus herramientas (se cargan al iniciar). Al arrancar, Claude comprueba si las tiene y la primera tarea con Chrome es Vercel (punto 2).
-2. **Vercel:** César activa el 2FA de su cuenta de Vercel; después Claude quita `agentes.` y `vecinos.` de los proyectos viejos y los pausa (decidido el 2026-10-27).
+1. ~~Claude in Chrome y Vercel~~ — **hecho el 2026-11-19:** Claude in Chrome conectado (se habilita con `@browser` en la conversación o con «Enabled by default» para las nuevas). Con la sesión de César se quitaron `agentes.` y `vecinos.` de los proyectos viejos de Vercel y se pausaron los dos (`*.vercel.app` responde 503; los dominios siguen en 200 desde Cloudflare Pages).
 3. **Mail del reclamo cargado en ventanilla** (2026-11-19): hoy el vecino recibe el mail con el número solo si carga el reclamo desde su app; si lo carga un agente, no. Recomendación de Claude: que también le llegue, como en trámites (cambio chico).
 4. **Verificar en prod con la cuenta de super de César** (2026-11-19): Trámites → abrir un expediente → «Tomar» tiene que decir que el super no opera trámites y que entre con una cuenta del municipio.
 5. **Siguiente trabajo propuesto por Claude: F6** (segunda barrera entre municipios en la base de datos, requisito para un segundo municipio real), con dos ajustes de seguridad de las cuentas. Detalle de los ajustes en la memoria privada de Cesar.
