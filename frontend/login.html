@@ -525,6 +525,9 @@
       state: { accessToken: token, user: user },
       version: 0,
     }));
+    // Un ingreso nuevo del super administrador arranca en el municipio de la dirección
+    // (prueba de cierre de F4+F5, hallazgo 6): se olvida el que eligió en la sesión anterior.
+    localStorage.removeItem('zaris_municipio_activo');
   }
 
   function mostrarCambioForzado(token, user) {

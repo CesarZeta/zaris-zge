@@ -582,9 +582,14 @@
           .map(m => `<option value="${m.id_municipio}">${esc(etiqueta(m))}</option>`).join('')
       + '</optgroup>').join('');
     const previo = localStorage.getItem(MUNICIPIO_ACTIVO_KEY);
+    // Sin elección en esta sesión: el municipio de la dirección (`<sub>.zge.zaris.com.ar`);
+    // en la dirección sin prefijo, el de `direccion_base` (San Andrés, el de prueba y demo).
+    const sub = (location.hostname.match(/^([a-z0-9-]+)\.zge\.zaris\.com\.ar$/i) || [])[1];
+    const deLaDireccion = (sub && lista.find(m => (m.subdominio || '').toLowerCase() === sub.toLowerCase()))
+      || lista.find(m => m.direccion_base) || lista[0];
     const elegido = lista.some(m => String(m.id_municipio) === previo)
       ? previo
-      : String((lista.find(m => m.direccion_base) || lista[0]).id_municipio);
+      : String(deLaDireccion.id_municipio);
     sel.value = elegido;
     wrap.hidden = false;
     // Primera vez (o el guardado ya no vale): el módulo cargó sin municipio, se recarga.
