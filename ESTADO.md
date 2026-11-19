@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-11-19 (Cesar, cierre). En prod: versión y «Acerca de» en las tres aplicaciones, motivos en el Resumen de encuestas y encuestas de Entradas en la demo, mail al vecino al iniciar un trámite, super arrancando en el municipio de la dirección y 404 con la marca ZARIS. Sigue: Claude in Chrome (próxima sesión) y F6.
+**Última actualización:** 2026-11-19 (Cesar, cierre). En prod: versión y «Acerca de» en las tres aplicaciones, motivos en el Resumen de encuestas y encuestas de Entradas en la demo, mail al vecino al iniciar un trámite, super arrancando en el municipio de la dirección y 404 con la marca ZARIS. Segunda sesión del 2026-11-19: Claude in Chrome conectado y Vercel resuelto (dominios viejos quitados, proyectos `zaris-agentes` y `zaris-vecinos` pausados). Sigue: mail del reclamo de ventanilla, prueba del super en Trámites (ya se puede hacer con Chrome) y F6.
 
 ---
 
