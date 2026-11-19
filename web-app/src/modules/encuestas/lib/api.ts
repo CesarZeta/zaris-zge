@@ -5,6 +5,7 @@ import type {
   DashboardEvolucionItem,
   DashboardPorAreaItem,
   DashboardPorCircuitoItem,
+  DashboardMotivoItem,
   DashboardResumen,
   EncuestaEnvio,
   EncuestaEnvioConRespuesta,
@@ -49,6 +50,9 @@ export const encuestasApi = {
 
   porCircuito: (p: { desde?: string; hasta?: string } = {}) =>
     api.get<DashboardPorCircuitoItem[]>(`${BASE}/dashboard/por-circuito`, { params: { ...p } }),
+
+  motivos: (p: ResumenParams = {}) =>
+    api.get<DashboardMotivoItem[]>(`${BASE}/dashboard/motivos`, { params: { ...p } }),
 
   evolucion: (p: { meses?: number; tipo?: Circuito } = {}) =>
     api.get<DashboardEvolucionItem[]>(`${BASE}/dashboard/evolucion`, { params: { ...p } }),

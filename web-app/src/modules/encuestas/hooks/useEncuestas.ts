@@ -27,6 +27,13 @@ export function usePorCircuito(p: { desde?: string; hasta?: string } = {}) {
   })
 }
 
+export function useMotivos(p: ResumenParams) {
+  return useQuery({
+    queryKey: ['encuestas', 'motivos', p],
+    queryFn: () => encuestasApi.motivos(p),
+  })
+}
+
 export function useEvolucion(meses = 6, tipo?: Circuito) {
   return useQuery({
     queryKey: ['encuestas', 'evolucion', meses, tipo],

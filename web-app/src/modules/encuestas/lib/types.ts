@@ -41,6 +41,21 @@ export interface DashboardPorCircuitoItem {
   pct_insatisfechos: number
 }
 
+export type RamaEncuesta = 'insatisfechos' | 'neutrales' | 'satisfechos'
+
+/** Motivo elegido en la pregunta de opción múltiple de cada rama (mismos valores en los cuatro circuitos). */
+export interface DashboardMotivoItem {
+  rama: RamaEncuesta
+  valor: string
+  etiqueta: string
+  total: number
+  pct: number
+  reclamos: number
+  turnos: number
+  tramites: number
+  entradas: number
+}
+
 export interface DashboardEvolucionItem {
   anio_mes: string // 'YYYY-MM'
   csat_promedio: number

@@ -57,6 +57,7 @@ Auth a nivel router (`dependencies=[Depends(get_current_user)]`, §39). Registra
 | GET | `/respuestas/pendientes-contacto` | `solicita_contacto=TRUE AND atendida=FALSE`, orden FIFO, con datos del ciudadano |
 | GET | `/dashboard/resumen` · `/por-area` · `/evolucion` · `/comentarios` | DB vacía → ceros, no rompe. Filtro `tipo` (circuito; fuera de la lista, 422) que también alcanza a las alertas de contacto. La gestión de por-área sale de `JOIN_SUBAREA_ENVIO`: en un reclamo, su tipo; en los otros, la del envío |
 | GET | `/dashboard/por-circuito` | Siempre los cuatro, aunque uno no tenga envíos; no sigue al filtro. Mismos criterios de fecha que el resumen (2026-11-06) |
+| GET | `/dashboard/motivos` | Motivo elegido en la pregunta de opción múltiple de cada rama (problema / qué faltó / qué destacan), sumado entre circuitos por `valor` y con columna por circuito. Mismos filtros que el resumen. Excluye las respuestas de expectativa (`si`/`parcialmente`/`no`). Todos los valores de la plantilla aparecen aunque tengan 0 (2026-11-19) |
 | POST | `/disparar` | 201 o 422 con motivo concreto |
 | PATCH | `/respuestas/{id}/atender` | nivel ≤ 2; 422 si ya atendida |
 
@@ -96,6 +97,9 @@ Railway bloquea egress SMTP (587/465 timeout); Resend usa HTTPS/443. `services/e
 ### Encuestas de ENTRADAS (mig 98 + 98b, 2026-07-18)
 
 Tercera rama del polimorfismo: `encuesta_envio.id_evento_reserva` (FK `ON DELETE RESTRICT`, mismo criterio que `id_turno`) + `ck_encuesta_envio_origen` XOR de 3 + tipo `'entradas'` sumado a `ck_encuesta_plantilla_tipo`. **Disparo:** al pasar la reserva a `asistio` (acreditación) — hook post-commit best-effort en `agenda_v2._patch_reserva_estado`, cubre el PATCH por id Y el acreditar-QR con un solo punto. `crear_envio_para_entrada` (service) espeja al de turnos: mismo gate `encuestas_activas`, anti-fatiga (subárea desde `eventos.id_subarea`), plantilla activa `tipo='entradas'` (seed 98b: "Encuesta de asistencia a eventos", likert5 + texto_libre; sin plantilla → return silencioso). **Al sumar OTRA rama futura:** ampliar el CHECK, los LEFT JOIN de dispatcher/admin/público/schemas ([[encuesta_envio_polimorfico_left_join]]) Y los label-maps del frontend (`EnviosView`/`PlantillasView`). `referencia` = `COALESCE(nro_reclamo, prestacion_nombre, evento_nombre, numero_expediente)`.
+
+### Datos demo de encuestas (`services/demo_encuestas.py`, 2026-11-19)
+Paso final de cada corrida del generador (`POST /demo/poblar` y `seed_demo_bi.py`): **encuesta las reservas demo acreditadas** (Entradas no tenía envíos) y **carga el motivo** de cada respuesta demo sin detalle (las demo se generaban sin detalle y el Resumen no tenía motivos). Idempotente y determinístico (el sorteo sale del id, no de un RNG compartido). Solo toca filas del usuario generador: una respuesta real no tiene `id_usuario_alta` y siempre trae detalle. Para deshacer en prod: los detalles demo son los de `id_usuario_alta` = usuario generador, y los envíos de entradas demo, los de ese usuario con `id_evento_reserva`.
 
 ### Encuestas de TRÁMITES (mig 101 + 101b, 2026-08-30)
 

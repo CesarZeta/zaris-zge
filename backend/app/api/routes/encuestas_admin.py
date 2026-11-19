@@ -40,6 +40,7 @@ from app.schemas.encuestas import (
     DashboardPeriodoOut,
     DashboardPorAreaItem,
     DashboardPorCircuitoItem,
+    DashboardMotivoItem,
     DashboardResumenOut,
     DispararEncuestaIn,
     EncuestaEnvioConRespuestaOut,
@@ -572,6 +573,84 @@ async def dashboard_por_circuito(
             pct_insatisfechos=round(int(m["insat"]) * 100.0 / respuestas, 1) if respuestas else 0.0,
         ))
     return salida
+
+
+# Respuestas de la pregunta «¿La resolución fue lo que esperabas?» (rama neutra): no son motivos.
+_VALORES_EXPECTATIVA = ("si", "parcialmente", "no")
+
+
+@router.get("/dashboard/motivos", response_model=list[DashboardMotivoItem])
+async def dashboard_motivos(
+    desde: Optional[date] = Query(None),
+    hasta: Optional[date] = Query(None),
+    id_area: Optional[int] = Query(None),
+    tipo: Optional[Circuito] = Query(None, description="reclamos | turnos | tramites | entradas"),
+    id_municipio: int = Depends(municipio_actual),
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Motivos elegidos en la pregunta de opción múltiple de cada rama: el principal problema
+    (insatisfechos), qué faltó (neutrales) y qué destacan (satisfechos). Mismos filtros que
+    /dashboard/resumen. Todos los valores de la plantilla aparecen, aunque nadie los eligió."""
+    _require_supervisor(user)
+    hasta = hasta or date.today()
+    desde = desde or (hasta - timedelta(days=30))
+    join_area, cond_area = ("", "")
+    if id_area is not None:
+        join_area, cond_area = JOIN_SUBAREA_ENVIO, " AND s.id_area = :id_area"
+    cond_tipo = " AND pl.tipo = :tipo" if tipo else ""
+    rows = (await db.execute(text(f"""
+        WITH det AS (
+            SELECT pr.rama, op.valor, pl.tipo
+              FROM encuesta_respuesta_detalle d
+              JOIN encuesta_respuesta rsp ON rsp.id_encuesta_respuesta = d.id_respuesta
+              JOIN encuesta_envio ee      ON ee.id_encuesta_envio = rsp.id_envio
+              JOIN encuesta_plantilla pl  ON pl.id_encuesta_plantilla = ee.id_plantilla
+              JOIN encuesta_pregunta pr   ON pr.id_encuesta_pregunta = d.id_pregunta
+              JOIN encuesta_opcion op     ON op.id_encuesta_opcion = d.id_opcion_seleccionada
+              {join_area}
+             WHERE d.activo AND rsp.activo AND rsp.id_municipio = :mun
+               AND rsp.fecha_alta >= :desde AND rsp.fecha_alta < :hasta_excl
+               AND pr.tipo = 'multiple' AND op.valor <> ALL(CAST(:expectativa AS text[]))
+               {cond_area}
+               {cond_tipo}
+        ), cat AS (
+            SELECT DISTINCT ON (pr.rama, op.valor) pr.rama, op.valor, op.texto, op.orden
+              FROM encuesta_opcion op
+              JOIN encuesta_pregunta pr  ON pr.id_encuesta_pregunta = op.id_pregunta
+              JOIN encuesta_plantilla pl ON pl.id_encuesta_plantilla = pr.id_plantilla
+             WHERE pl.id_municipio = :mun AND pl.activo AND pr.activo AND op.activo
+               AND pr.tipo = 'multiple' AND op.valor <> ALL(CAST(:expectativa AS text[]))
+             ORDER BY pr.rama, op.valor, (pl.tipo = COALESCE(CAST(:tipo AS text), 'reclamos')) DESC, op.orden
+        )
+        SELECT cat.rama, cat.valor, cat.texto AS etiqueta, cat.orden,
+               COUNT(det.valor) AS total,
+               COUNT(det.valor) FILTER (WHERE det.tipo = 'reclamos') AS reclamos,
+               COUNT(det.valor) FILTER (WHERE det.tipo = 'turnos')   AS turnos,
+               COUNT(det.valor) FILTER (WHERE det.tipo = 'tramites') AS tramites,
+               COUNT(det.valor) FILTER (WHERE det.tipo = 'entradas') AS entradas
+          FROM cat
+          LEFT JOIN det ON det.rama = cat.rama AND det.valor = cat.valor
+         GROUP BY cat.rama, cat.valor, cat.texto, cat.orden
+    """), {"mun": id_municipio, "desde": desde, "hasta_excl": hasta + timedelta(days=1),
+           "id_area": id_area, "tipo": tipo, "expectativa": list(_VALORES_EXPECTATIVA)})).fetchall()
+
+    por_rama: dict[str, int] = {}
+    for r in rows:
+        por_rama[r.rama] = por_rama.get(r.rama, 0) + int(r.total)
+    orden_rama = {"insatisfechos": 0, "neutrales": 1, "satisfechos": 2}
+    # Dentro de cada rama, el más elegido primero; «otro» al final; a igual cantidad, el orden
+    # de la plantilla.
+    filas = sorted(rows, key=lambda r: (orden_rama.get(r.rama, 9), r.valor == "otro", -int(r.total), r.orden))
+    return [
+        DashboardMotivoItem(
+            rama=r.rama, valor=r.valor, etiqueta=r.etiqueta, total=int(r.total),
+            pct=round(int(r.total) * 100.0 / por_rama[r.rama], 1) if por_rama.get(r.rama) else 0.0,
+            reclamos=int(r.reclamos), turnos=int(r.turnos),
+            tramites=int(r.tramites), entradas=int(r.entradas),
+        )
+        for r in filas
+    ]
 
 
 @router.get("/dashboard/evolucion", response_model=list[DashboardEvolucionItem])

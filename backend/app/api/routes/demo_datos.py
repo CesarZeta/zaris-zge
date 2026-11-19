@@ -54,7 +54,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_user
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, get_db
-from app.services import demo_atencion, demo_datos, demo_tramites
+from app.services import demo_atencion, demo_datos, demo_encuestas, demo_tramites
 from app.utils.request_helpers import get_real_ip
 
 logger = logging.getLogger(__name__)
@@ -174,6 +174,8 @@ async def _correr_poblar(db: AsyncSession, body: PoblarIn, desde: date, hasta: d
     if body.avanzar and "tramites" in modulos:
         resultado["avanzado_tramites"] = await demo_tramites.avanzar_pendientes_tramites(
             db, semilla=body.semilla)
+    # Encuestas de entradas y motivos de las respuestas demo (2026-11-19). Idempotente.
+    resultado["encuestas_demo"] = await demo_encuestas.completar_encuestas_demo(db)
 
 
 async def _correr_atraso(db: AsyncSession, body: PoblarIn, modulos: set[str], resultado: dict) -> None:

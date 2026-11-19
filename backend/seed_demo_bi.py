@@ -29,7 +29,7 @@ import json
 from datetime import date, timedelta
 
 from app.core.database import AsyncSessionLocal
-from app.services import demo_atencion, demo_datos, demo_tramites
+from app.services import demo_atencion, demo_datos, demo_encuestas, demo_tramites
 
 
 def _meses(desde: date, hasta: date):
@@ -119,6 +119,8 @@ async def main() -> None:
         if "tramites" in modulos:
             r = await demo_tramites.avanzar_pendientes_tramites(db, semilla=args.semilla)
             print(f"avanzar_pendientes_tramites: {r}")
+        r = await demo_encuestas.completar_encuestas_demo(db)
+        print(f"encuestas demo (entradas + motivos): {r}")
 
 
 if __name__ == "__main__":

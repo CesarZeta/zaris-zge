@@ -1,9 +1,17 @@
 import { useMemo, useState } from 'react'
 import { Star, TrendingUp, ThumbsDown, PhoneCall, MessageSquare } from 'lucide-react'
-import { useResumen, usePorArea, usePorCircuito, useEvolucion, useComentarios } from '../hooks/useEncuestas'
+import { useResumen, usePorArea, usePorCircuito, useMotivos, useEvolucion, useComentarios } from '../hooks/useEncuestas'
 import { BarrasDistribucion, LineaEvolucion, KpiCard, colorCsat } from '../components/charts'
 import { ThOrden, ordenarFilas, useOrden } from '../../../ui/orden'
-import type { Circuito } from '../lib/types'
+import type { Circuito, DashboardMotivoItem, RamaEncuesta } from '../lib/types'
+
+// Una tabla por rama de la encuesta: la pregunta de opción múltiple de cada una.
+const RAMAS: { valor: RamaEncuesta; titulo: string }[] = [
+  { valor: 'insatisfechos', titulo: 'Principal problema (puntuaron 1 o 2)' },
+  { valor: 'neutrales', titulo: 'Qué faltó (puntuaron 3)' },
+  { valor: 'satisfechos', titulo: 'Qué destacan (puntuaron 4 o 5)' },
+]
+const CIRCUITOS: Circuito[] = ['reclamos', 'turnos', 'tramites', 'entradas']
 
 const CIRCUITO_LABEL: Record<Circuito, string> = {
   reclamos: 'Reclamos',
@@ -32,6 +40,7 @@ export function ResumenView() {
   const porArea = usePorArea({ ...periodo, tipo, limit: 100 })
   // La tabla por circuito no se filtra: es la comparación entre los cuatro.
   const porCircuito = usePorCircuito(periodo)
+  const motivos = useMotivos({ ...periodo, tipo })
   const evolucion = useEvolucion(6, tipo)
   const comentarios = useComentarios({ limit: 8, tipo })
 
@@ -173,6 +182,24 @@ export function ResumenView() {
         )}
       </div>
 
+      {/* Motivos por rama: sigue al período, al circuito y al área del selector */}
+      <div style={card}>
+        <h3 style={cardTitle}>Motivos</h3>
+        {motivos.isError && <div style={errorBanner}>{(motivos.error as Error)?.message ?? 'Error al cargar los motivos'}</div>}
+        {motivos.isLoading ? <Cargando /> : !motivos.isError && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            {RAMAS.map((rama) => (
+              <MotivosTabla
+                key={rama.valor}
+                titulo={rama.titulo}
+                filas={(motivos.data ?? []).filter((m) => m.rama === rama.valor)}
+                porCircuito={!circuito}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* CSAT por área */}
       <div style={card}>
         <h3 style={cardTitle}>CSAT por área</h3>
@@ -231,6 +258,70 @@ export function ResumenView() {
             )
         )}
       </div>
+    </div>
+  )
+}
+
+// Sin orden elegido, el del backend: el más elegido primero y «Otro» al final.
+function MotivosTabla({ titulo, filas, porCircuito }: {
+  titulo: string
+  filas: DashboardMotivoItem[]
+  porCircuito: boolean
+}) {
+  const { orden, alternar } = useOrden<'motivo' | 'total' | Circuito>()
+  const ordenadas = ordenarFilas(filas, orden, {
+    motivo: (m) => m.etiqueta,
+    total: (m) => m.total,
+    reclamos: (m) => m.reclamos,
+    turnos: (m) => m.turnos,
+    tramites: (m) => m.tramites,
+    entradas: (m) => m.entradas,
+  })
+  const total = filas.reduce((s, m) => s + m.total, 0)
+  const num: React.CSSProperties = { ...td, textAlign: 'right', fontFamily: 'var(--font-mono)' }
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--fg-2)' }}>{titulo}</span>
+        <span style={{ fontSize: '0.78rem', color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>{total} respuestas</span>
+      </div>
+      {total === 0 ? <p style={vacio}>Nadie eligió un motivo en el período.</p> : (
+        <table style={table}>
+          <thead>
+            <tr>
+              <ThOrden campo="motivo" orden={orden} onOrdenar={alternar} style={th}>Motivo</ThOrden>
+              <ThOrden campo="total" orden={orden} onOrdenar={alternar} style={{ ...th, textAlign: 'right' }}>Total</ThOrden>
+              <th style={{ ...th, width: '28%' }}>%</th>
+              {porCircuito && CIRCUITOS.map((c) => (
+                <ThOrden key={c} campo={c} orden={orden} onOrdenar={alternar} style={{ ...th, textAlign: 'right' }}>
+                  {CIRCUITO_LABEL[c]}
+                </ThOrden>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {ordenadas.map((m) => (
+              <tr key={m.valor}>
+                <td style={td}>{m.etiqueta}</td>
+                <td style={{ ...num, fontWeight: 600 }}>{m.total}</td>
+                <td style={td}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ flex: 1, height: 8, borderRadius: 4, background: 'var(--surface-400)', minWidth: 40 }}>
+                      <div style={{ width: `${m.pct}%`, height: '100%', borderRadius: 4, background: 'var(--zaris-orange)' }} />
+                    </div>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--fg-2)', minWidth: 44, textAlign: 'right' }}>
+                      {m.pct.toFixed(1)}%
+                    </span>
+                  </div>
+                </td>
+                {porCircuito && CIRCUITOS.map((c) => (
+                  <td key={c} style={{ ...num, color: m[c] ? 'var(--fg-1)' : 'var(--fg-3)' }}>{m[c]}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   )
 }

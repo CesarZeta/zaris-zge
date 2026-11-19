@@ -328,6 +328,20 @@ class DashboardPorCircuitoItem(BaseModel):
     pct_insatisfechos: float
 
 
+class DashboardMotivoItem(BaseModel):
+    """Motivo elegido en la pregunta de opción múltiple de cada rama (2026-11-19). Los cuatro
+    circuitos usan los mismos valores (mig 136), así que se suman entre sí."""
+    rama: str              # insatisfechos | neutrales | satisfechos
+    valor: str
+    etiqueta: str          # texto del circuito filtrado, o el de reclamos si no hay filtro
+    total: int
+    pct: float             # sobre el total de motivos elegidos en la rama
+    reclamos: int
+    turnos: int
+    tramites: int
+    entradas: int
+
+
 class DashboardEvolucionItem(BaseModel):
     anio_mes: str          # 'YYYY-MM'
     csat_promedio: float
