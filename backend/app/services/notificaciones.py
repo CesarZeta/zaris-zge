@@ -525,6 +525,58 @@ async def notificar_comentario_a_tomador(
         return 0
 
 
+async def notificar_inicio_a_iniciador(
+    db: AsyncSession,
+    id_tramite: int,
+    background_tasks: Optional[BackgroundTasks] = None,
+) -> int:
+    """
+    Al crearse un trámite de iniciador ciudadano o empresa: mail con el número de expediente
+    (decisión de César, 2026-11-19: como reclamos, se avisa al iniciar y al terminar, no en los
+    pasos intermedios). Sin email del iniciador o sin dirección del Portal del Ciudadano no sale.
+    Iniciador interno: nada (su área ya lo ve en el sistema). Fail-safe: no levanta.
+    """
+    try:
+        tramite = await _datos_tramite(db, id_tramite)
+        if not tramite or tramite.get("iniciador_tipo") not in ("ciudadano", "empresa"):
+            return 0
+        if tramite["iniciador_tipo"] == "ciudadano":
+            destinatario = tramite.get("email_ciudadano_ini")
+            nombre = (tramite.get("nombre_ciudadano_ini") or "").split(" ")[0]
+        else:
+            destinatario = tramite.get("email_empresa_ini")
+            nombre = tramite.get("nombre_empresa_ini") or ""
+        numero = tramite["numero_expediente"]
+        if not (destinatario or "").strip():
+            logger.info("notificar_inicio %s: iniciador sin email, no se envia", numero)
+            return 0
+        id_mun = tramite["id_municipio"]
+        from app.core.urls import url_portal_vecino
+        from app.services.cuenta_zaris import branding_municipio
+        from app.services.email import enviar_mail_inicio_tramite
+        portal = await url_portal_vecino(db, id_mun)
+        if not portal:
+            logger.info("notificar_inicio %s: municipio sin Portal del Ciudadano, no se envia", numero)
+            return 0
+        brand = await branding_municipio(db, id_mun)
+        muni_nombre = brand.get("municipio_nombre") or (await db.execute(text(
+            "SELECT nombre FROM municipios WHERE id_municipio = :m"), {"m": id_mun})).scalar() or ""
+        kwargs = dict(to=destinatario.strip(), nombre=nombre, numero_expediente=numero,
+                      tipo_nombre=tramite.get("tipo_nombre") or "trámite", municipio_nombre=muni_nombre,
+                      portal_url=portal, municipio_logo_url=brand.get("municipio_logo_url"),
+                      id_municipio=id_mun)
+        if background_tasks is not None:
+            background_tasks.add_task(enviar_mail_inicio_tramite, **kwargs)
+        else:
+            await enviar_mail_inicio_tramite(**kwargs)
+        logger.info("notificar_inicio %s: email a %s (%s)", numero, tramite["iniciador_tipo"],
+                    mask_email(destinatario))
+        return 1
+    except Exception as e:
+        logger.error("notificar_inicio_a_iniciador FALLO (tramite=%s): %s", id_tramite, e, exc_info=True)
+        return 0
+
+
 async def notificar_estado_final_a_iniciador(
     db: AsyncSession,
     id_tramite: int,

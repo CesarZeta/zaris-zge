@@ -1279,6 +1279,8 @@ async def crear_tramite(
 
     # Notificar destinatario inicial (fail-safe interno, no rompe el flow)
     await svc_notif.notificar_tramite_a_bandeja(db, id_tramite, "creacion", background_tasks)
+    # Mail al vecino/empresa iniciador con el número de expediente (César, 2026-11-19). Fail-safe.
+    await svc_notif.notificar_inicio_a_iniciador(db, id_tramite, background_tasks)
 
     return await _tramite_detalle_out(id_tramite, db)
 

@@ -438,6 +438,54 @@ async def enviar_mail_confirmacion_reclamo_ciudadano(
     return await enviar_mail(to=to, subject=subject, body_html=html, body_text=text, from_override=from_header)
 
 
+async def enviar_mail_inicio_tramite(
+    to: str,
+    nombre: str,
+    numero_expediente: str,
+    tipo_nombre: str,
+    municipio_nombre: str,
+    portal_url: str,
+    municipio_logo_url: str | None = None,
+    *,
+    id_municipio: int,
+) -> bool:
+    """
+    Mail al vecino (o a la empresa) cuando se inicia un trámite a su nombre: el número de
+    expediente es su comprobante (decisión de César, 2026-11-19: los trámites avisan al iniciar y
+    al terminar; los pasos intermedios no avisan por mail). `portal_url` sale de
+    core/urls.url_portal_vecino(); el caller omite el mail si viene vacío (fail-closed, §5).
+    """
+    import html as _html
+    numero = _html.escape(numero_expediente or "")
+    tipo = _html.escape(tipo_nombre or "trámite")
+    saludo_nombre = _html.escape((nombre or "").strip() or "vecino")
+    subject = f"Iniciaste el trámite {numero_expediente} - {municipio_nombre}"
+
+    parrafo = (
+        f"Registramos tu trámite <strong>{tipo}</strong> con el número de expediente "
+        f"<strong>{numero}</strong>.<br><br>"
+        f"Guardá este número: es tu comprobante y te lo van a pedir si consultás por el trámite."
+    )
+
+    html, text = _build_template_app_vecinos(
+        titulo="Registramos tu trámite",
+        saludo=f"Hola {saludo_nombre},",
+        parrafo_principal=parrafo,
+        cta_texto="Ir al Portal del Ciudadano",
+        cta_url=portal_url.rstrip("/"),
+        parrafo_extra=(
+            "Te vamos a avisar por correo cuando el trámite termine. "
+            "No hace falta que respondas este correo."
+        ),
+        municipio_nombre=municipio_nombre,
+        municipio_logo_url=municipio_logo_url,
+        cta_color=await _color_cta_municipio(id_municipio),
+    )
+
+    from_header = formatear_remitente(municipio_nombre, _from_address_base())
+    return await enviar_mail(to=to, subject=subject, body_html=html, body_text=text, from_override=from_header)
+
+
 async def enviar_mail_retrabajo_auditoria_ciudadano(
     to: str,
     nombre: str,
