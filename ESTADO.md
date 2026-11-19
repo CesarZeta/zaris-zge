@@ -18,18 +18,16 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **Trámites — aviso al vecino cuando se inicia** (2026-11-19): César definió que trámites avise como reclamos (al iniciar con el número, al terminar y después la encuesta; los pasos intermedios no avisan por mail). Hoy trámites **no** avisa al iniciar: solo avisa a la bandeja del área. En reclamos, el mail con el número sale cuando el vecino carga el reclamo desde su app; el que carga el agente en ventanilla no manda mail. A decidir: si al iniciar un trámite (siempre en ventanilla, por ahora) se le manda al vecino un mail con el número. Recomendación de Claude: sí, si el vecino tiene email, porque el expediente puede tardar semanas y es su único comprobante.
-2. **Encuestas en «Promociones» de Gmail — medir** (hallazgo 7): el 2026-11-19 se cambiaron los asuntos y el botón, y se mandó una encuesta de prueba (reclamo REC-SAN-2026-000123, remitente «MUNICIPALIDAD DE SAN ANDRES <no-reply@zaris.com.ar>») a las dos casillas de Gmail de prueba de César. Falta que César diga en qué pestaña cayó (Principal o Promociones).
-3. **Vercel:** César activa el 2FA de su cuenta de Vercel; después Claude quita `agentes.` y `vecinos.` de los proyectos viejos y los pausa (decidido el 2026-10-27).
-4. **Bloque del vecino — después de F4 (orden de César, 2026-10-27):**
+1. **Vercel:** César activa el 2FA de su cuenta de Vercel; después Claude quita `agentes.` y `vecinos.` de los proyectos viejos y los pausa (decidido el 2026-10-27).
+2. **Bloque del vecino — después de F4 (orden de César, 2026-10-27):**
    1. La web del ciudadano con todo lo que tiene la app (supuesto de Claude, sin confirmar: es el modo escritorio del portal, ver En curso).
    2. Todas las prestaciones del vecino; falta **iniciar un trámite** desde el portal (ni endpoint ni pantalla). Turnos y entradas ya se reservan desde la app (verificado en el código).
    3. **Vecino 360 para el vecino** (perfil o donde convenga).
    4. **Vecino 360 para el municipio:** en Datos y como pestaña de la ficha del ciudadano y de la empresa, con todas sus interacciones; por persona o por empresa representada.
-   5. **Base de conocimiento de ayudas**, con dos capítulos: canales del vecino y gestión interna. Ya hay un relevamiento inicial de los canales del vecino (2026-10-27). Mientras tanto no se tocan manuales. César la adelantó el 2026-10-30 empezando por el material de venta (pregunta 7).
-5. Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
-6. **Arreglos que dejó la prueba de cierre:** quedan el 9 (App Vecinos: catálogo de emergencias del vecino, pide diseño) y menores del 10 y 11, en `PLAN_MULTI_MUNICIPIO_F4_F5.md` → «Prueba de cierre — hallazgos» → «2026-11-19».
-7. **Base de conocimiento — material de venta por circuito** (2026-10-30): borrador `docs/base_conocimiento/resumen_circuitos.md`, **solo en la máquina de César, sin commitear** (lleva notas internas; el repo es público). César revisa los (\*) de los tableros (varios son propuesta de Claude), dice si su «punto 2» era esta estructura o es otra pieza (supuesto de Claude: ficha técnica por circuito) y aprueba el texto. Recomendación: commitearlo sin «Notas internas».
+   5. **Base de conocimiento de ayudas**, con dos capítulos: canales del vecino y gestión interna. Ya hay un relevamiento inicial de los canales del vecino (2026-10-27). Mientras tanto no se tocan manuales. César la adelantó el 2026-10-30 empezando por el material de venta (pregunta 5).
+3. Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
+4. **Arreglos que dejó la prueba de cierre:** quedan el 9 (App Vecinos: catálogo de emergencias del vecino, pide diseño) y menores del 10 y 11, en `PLAN_MULTI_MUNICIPIO_F4_F5.md` → «Prueba de cierre — hallazgos» → «2026-11-19».
+5. **Base de conocimiento — material de venta por circuito** (2026-10-30): borrador `docs/base_conocimiento/resumen_circuitos.md`, **solo en la máquina de César, sin commitear** (lleva notas internas; el repo es público). César revisa los (\*) de los tableros (varios son propuesta de Claude), dice si su «punto 2» era esta estructura o es otra pieza (supuesto de Claude: ficha técnica por circuito) y aprueba el texto. Recomendación: commitearlo sin «Notas internas».
 
 ---
 
@@ -67,7 +65,7 @@
 - 🟡 **Barrido visual de modo oscuro** en los módulos React restantes y el mapa del inicio (el contorno de los reclamos casi no se ve): **POSPUESTO por César 2026-09-20**.
 
 **Decisiones cerradas — NO re-proponer**
-- **Ayudas: una sola página de base de conocimiento con preguntas, no manuales por módulo** (César, 2026-10-22). No se crean ni actualizan `docs/manual_*.html` mientras tanto (CLAUDE.md §36). Diseño pendiente (preguntas 4 y 7).
+- **Ayudas: una sola página de base de conocimiento con preguntas, no manuales por módulo** (César, 2026-10-22). No se crean ni actualizan `docs/manual_*.html` mientras tanto (CLAUDE.md §36). Diseño pendiente (preguntas 2 y 5).
 - **Multi-municipio: UNA base para todos con `id_municipio`** (César, 2026-10-23; decisiones de cada fase en los `PLAN_MULTI_MUNICIPIO*.md`). **Documentos de identidad por país: tema reservado**, lo trae César.
 - **Orden por columnas: quedan afuera** las colas operativas, las tablas con orden propio y la configuración (César, 2026-10-22; lista en CLAUDE.md §23).
 - **São Paulo DESCARTADO** (2026-09-26, CLAUDE.md §9) · «la ubicación» de Buscar actualizaciones (PWA) innecesaria · no se rotan `DISPATCHER_TOKEN` ni las claves push · el vecino no cambia su email desde la app · los reclamos **no se agendan**.
@@ -84,6 +82,7 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
+- **2026-11-19 — Trámites avisan al vecino al iniciar (`46de69d`):** mail «Iniciaste el trámite {número}» al ciudadano o la empresa iniciadora (decisión de César: como reclamos, aviso al iniciar y al terminar, sin mail en los pasos intermedios). Prueba en prod: POD-SAN-2026-0096. **Encuestas en Gmail:** con los asuntos nuevos la prueba entró en Principal en las dos casillas de César (hallazgo 7 cerrado).
 - **2026-11-19 — (`9804e72`):** con la ventana angosta, el super ve el municipio en el selector (el nombre suelto quedaba en 0 px) y el mapa del inicio muestra el título en varias líneas; en el editor de transiciones de trámites, la casilla de aviso al iniciador aparece solo en las que terminan el trámite (decisión de César: los intermedios no avisan por mail).
 - **2026-11-19 — Cerrados sin código:** el «DNI y teléfono pegados» del buscador de reservas no era un error (en pantalla van en dos líneas; se había leído con `textContent`, que las pega); el commit de `agente.csv` ya no se puede obtener en GitHub (404 en sus seis direcciones públicas, 422 en la API); el vaciado apaga el menú y la barra del shell y bloquea el cierre de la pestaña mientras corre (probado en local con un municipio de prueba y el Storage simulado).
 - **2026-11-19 — Versionado y «Acerca de» en las tres aplicaciones (`5e01155`, `zaris-agentes` `8e35dae`, `zaris-vecinos` `4226a03`):** versión por publicación (fecha y hora + commit, la genera el build), «Acerca de» con «© ZARIS. Todos los derechos reservados.» y `zaris.com.ar`, y aviso «Actualizar» ante una versión nueva (las apps ya no se recargan solas). `/api/health` y `/version.json` informan el commit: así se verifica un deploy. Detalle en [`PLAN_VERSIONADO.md`](PLAN_VERSIONADO.md).
