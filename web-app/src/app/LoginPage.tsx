@@ -5,6 +5,7 @@ import { api } from '../lib/api'
 import { shellIrAlLogin } from '../lib/shellNav'
 import type { User } from '../lib/types'
 import s from './LoginPage.module.css'
+import { versionTexto } from '../lib/version'
 
 // Una cuenta de nivel 0/1 con el segundo factor prendido no recibe token (IT-01 F3b): viene
 // `requiere_segundo_factor`. Este login es solo de desarrollo y no implementa el código.
@@ -106,7 +107,7 @@ export function LoginPage() {
           {error && <div className={s.error} role="alert">{error}</div>}
         </form>
 
-        <p className={s.foot}>zaris-zge · v0.1</p>
+        <p className={s.foot}>zaris-zge · {versionTexto}</p>
       </div>
     </div>
   )

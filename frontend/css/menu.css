@@ -1115,3 +1115,55 @@ html, body {
   .app { display: block; }
   .canvas { padding: 0; overflow: visible; }
 }
+
+/* ── Acerca de ZARIS (modal; reusa .altavecino-*) y aviso de versión nueva ── */
+.acerca { align-items: stretch; text-align: left; }
+.acerca__producto {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+.acerca__datos {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  font-size: 0.82rem;
+}
+.acerca__datos dt { color: var(--fg-3); }
+.acerca__datos dd { margin: 0; font-family: var(--font-mono); color: var(--fg-1); overflow-wrap: anywhere; }
+.acerca__propiedad { margin: 0; font-size: 0.82rem; color: var(--fg-2); }
+.acerca .altavecino-btn { align-self: flex-start; }
+
+.version-aviso {
+  position: fixed;
+  left: 50%;
+  bottom: 42px;
+  transform: translateX(-50%);
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 12px 10px 16px;
+  background: var(--fg-1);
+  color: var(--surface-100);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 28px rgba(0,0,0,.25);
+  font-family: var(--font-display);
+  font-size: 0.86rem;
+}
+.version-aviso[hidden] { display: none; }
+.version-aviso__btn {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--zaris-orange);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}

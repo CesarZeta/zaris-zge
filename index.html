@@ -40,7 +40,7 @@
 
   <link rel="stylesheet" href="design-system/fonts/fonts.css">
   <link rel="stylesheet" href="design-system/colors_and_type.css">
-  <link rel="stylesheet" href="frontend/css/menu.css?v=2026-11-06a">
+  <link rel="stylesheet" href="frontend/css/menu.css?v=2026-11-19a">
 
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 </head>
@@ -166,6 +166,12 @@
             <button class="user-menu__item" id="btn-guias">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
               Guías de uso
+            </button>
+
+            <!-- Acerca de: propiedad de ZARIS, enlace y versión (PLAN_VERSIONADO.md) -->
+            <button class="user-menu__item" id="btn-acerca">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+              Acerca de ZARIS
             </button>
 
             <div class="user-menu__divider"></div>
@@ -427,7 +433,8 @@
         <time class="statusbar__clock" id="statusbar-clock" datetime="">—</time>
       </div>
       <div class="statusbar__right">
-        <span class="statusbar__version">zaris-zge · v0.1</span>
+        <!-- Versión de esta publicación: la escribe el build (frontend/js/version.js). -->
+        <span class="statusbar__version" id="statusbar-version">zaris-zge</span>
       </div>
     </footer>
 
@@ -458,7 +465,33 @@
     </div>
   </div>
 
+  <!-- Modal: Acerca de ZARIS. Lo abre #btn-acerca. -->
+  <div class="altavecino-overlay" id="acerca-overlay" hidden role="dialog" aria-modal="true" aria-label="Acerca de ZARIS">
+    <div class="altavecino-modal">
+      <header class="altavecino-modal__header">
+        <span class="altavecino-modal__title">Acerca de ZARIS</span>
+        <button type="button" class="altavecino-modal__close" id="acerca-close" aria-label="Cerrar">&times;</button>
+      </header>
+      <div class="altavecino-modal__body acerca">
+        <p class="acerca__producto">ZARIS · Gestión Estado</p>
+        <dl class="acerca__datos">
+          <dt>Versión</dt><dd id="acerca-version">—</dd>
+          <dt>Servidor</dt><dd id="acerca-servidor">—</dd>
+        </dl>
+        <p class="acerca__propiedad">© ZARIS. Todos los derechos reservados.</p>
+        <a class="altavecino-btn altavecino-btn--outline" href="https://zaris.com.ar" target="_blank" rel="noopener noreferrer">zaris.com.ar</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Aviso de versión nueva publicada: lo muestra menu.js; no recarga solo (César, 2026-11-03). -->
+  <div class="version-aviso" id="version-aviso" hidden role="status">
+    <span>Hay una versión nueva de ZARIS. Actualizá para usarla.</span>
+    <button type="button" class="version-aviso__btn" id="version-aviso-btn">Actualizar</button>
+  </div>
+
+  <script src="frontend/js/version.js"></script>
   <script src="frontend/js/qrcode.bundle.js?v=2026-07-15a"></script>
-  <script src="frontend/js/menu.js?v=2026-11-19a"></script>
+  <script src="frontend/js/menu.js?v=2026-11-19b"></script>
 </body>
 </html>

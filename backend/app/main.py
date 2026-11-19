@@ -84,9 +84,20 @@ async def lifespan(app: FastAPI):
     logger.info("Cerrando aplicación")
 
 
+# Versión de la publicación (PLAN_VERSIONADO.md): en Railway, el commit desplegado y la fecha y
+# hora de Argentina del arranque del proceso (un deploy nuevo = un arranque nuevo), con el mismo
+# formato que los frontends. En local, «dev».
+import os as _os
+from datetime import datetime as _dt
+from app.utils.fechas import TZ_MUNICIPIO as _TZ_AR
+
+API_COMMIT = (_os.environ.get("RAILWAY_GIT_COMMIT_SHA") or "")[:7]
+API_VERSION = (_dt.now(_TZ_AR).strftime("%Y.%m.%d.%H%M")
+               if API_COMMIT or _os.environ.get("RAILWAY_ENVIRONMENT_NAME") else "dev")
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    version="1.0.0",
+    version=API_VERSION,
     description="API para ZARIS Gestion Estatal - Modulo BUC",
     lifespan=lifespan,
 )
@@ -232,6 +243,7 @@ async def health_check():
     return {
         "status": "ok",
         "service": settings.PROJECT_NAME,
-        "version": "1.0.0",
+        "version": API_VERSION,
+        "commit": API_COMMIT,
         "module": "BUC"
     }

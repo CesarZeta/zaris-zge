@@ -926,6 +926,66 @@
     if (!document.hidden) void _refrescarEstadoApi();
   });
 
+  // ── Versión, «Acerca de» y aviso de versión nueva (PLAN_VERSIONADO.md) ──
+  // La versión de esta pantalla la escribe el build en frontend/js/version.js; la publicada
+  // está en /version.json. Si difieren, un aviso fijo con «Actualizar»: no se recarga sola,
+  // para no perder un formulario a medio completar (César, 2026-11-03). En local es «dev».
+  const VERSION_LOCAL = (window.ZARIS_VERSION && window.ZARIS_VERSION.version) || 'dev';
+  const COMMIT_LOCAL = (window.ZARIS_VERSION && window.ZARIS_VERSION.commit) || '';
+  const versionTexto = VERSION_LOCAL === 'dev' ? 'desarrollo' : `v${VERSION_LOCAL}`;
+  const svEl = document.getElementById('statusbar-version');
+  if (svEl) {
+    svEl.textContent = `zaris-zge · ${versionTexto}`;
+    if (COMMIT_LOCAL) svEl.title = `Publicación ${COMMIT_LOCAL}`;
+  }
+
+  async function _buscarVersionNueva() {
+    if (VERSION_LOCAL === 'dev') return;
+    try {
+      const base = window.location.pathname.replace(/\/[^/]*$/, '');
+      const res = await fetch(`${base}/version.json?t=${Date.now()}`, { cache: 'no-store' });
+      if (!res.ok) return;
+      const pub = await res.json();
+      if (pub && pub.version && pub.version !== VERSION_LOCAL) {
+        const aviso = document.getElementById('version-aviso');
+        if (aviso) aviso.hidden = false;
+      }
+    } catch (e) { /* sin red: se vuelve a mirar en el próximo intento */ }
+  }
+  const btnActualizar = document.getElementById('version-aviso-btn');
+  if (btnActualizar) btnActualizar.addEventListener('click', function () { window.location.reload(); });
+  setTimeout(_buscarVersionNueva, 15000);
+  setInterval(_buscarVersionNueva, 5 * 60000);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) void _buscarVersionNueva();
+  });
+
+  const acercaOverlay = document.getElementById('acerca-overlay');
+  const btnAcerca = document.getElementById('btn-acerca');
+  if (btnAcerca && acercaOverlay) {
+    btnAcerca.addEventListener('click', async function () {
+      closeMenu();
+      const v = document.getElementById('acerca-version');
+      const s = document.getElementById('acerca-servidor');
+      if (v) v.textContent = COMMIT_LOCAL ? `${versionTexto} (${COMMIT_LOCAL})` : versionTexto;
+      acercaOverlay.hidden = false;
+      if (s) {
+        s.textContent = 'consultando…';
+        try {
+          const res = await fetch(API + '/api/health', { cache: 'no-store' });
+          const d = res.ok ? await res.json() : null;
+          const vs = d && (d.version === 'dev' ? 'desarrollo' : `v${d.version}`);
+          s.textContent = d ? (d.commit ? `${vs} (${d.commit})` : vs) : 'sin respuesta';
+        } catch (e) { s.textContent = 'sin conexión'; }
+      }
+    });
+    const cerrarAcerca = function () { acercaOverlay.hidden = true; };
+    const btnCerrarAcerca = document.getElementById('acerca-close');
+    if (btnCerrarAcerca) btnCerrarAcerca.addEventListener('click', cerrarAcerca);
+    acercaOverlay.addEventListener('click', function (e) { if (e.target === acercaOverlay) cerrarAcerca(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !acercaOverlay.hidden) cerrarAcerca(); });
+  }
+
   // ── Auto-cargar el módulo pedido por URL ──────────────────────
   // Un acceso standalone (vanilla o bundle React) redirige al shell con
   // ?modulo=<ruta>, y los links de los mails traen /#/<ruta React> (trámite,

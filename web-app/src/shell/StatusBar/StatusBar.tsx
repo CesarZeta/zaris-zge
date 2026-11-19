@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import s from './StatusBar.module.css'
+import { versionTexto } from '../../lib/version'
 
 // Statusbar inferior del shell DEV — clon de la .statusbar del shell vanilla
 // de producción (§14): estado del servidor (ping /api/health cada 60s) ·
@@ -59,7 +60,7 @@ export function StatusBar() {
         <time className={s.clock}>{reloj}</time>
       </div>
       <div className={s.right}>
-        <span className={s.version}>zaris-zge · v0.1</span>
+        <span className={s.version}>zaris-zge · {versionTexto}</span>
       </div>
     </footer>
   )

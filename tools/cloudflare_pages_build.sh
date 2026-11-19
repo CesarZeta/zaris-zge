@@ -7,6 +7,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Versión de la publicación (PLAN_VERSIONADO.md): fecha y hora de Argentina del build, más el
+# commit. La lee el shell (frontend/js/version.js) y la compara con /version.json para avisar
+# que hay una versión nueva; el bundle React la recibe por VITE_APP_VERSION.
+COMMIT="${CF_PAGES_COMMIT_SHA:-$(git rev-parse HEAD 2>/dev/null || echo '')}"
+COMMIT="${COMMIT:0:7}"
+VERSION="$(TZ=America/Argentina/Buenos_Aires date +%Y.%m.%d.%H%M)"
+export VITE_APP_VERSION="$VERSION" VITE_APP_COMMIT="$COMMIT"
+
 (cd web-app && pnpm install --frozen-lockfile && pnpm build)
 
 rm -rf _site
@@ -17,5 +25,9 @@ cp index.html _site/
 cp 404.html _site/
 cp -r frontend design-system docs landing _site/
 cp -r web-app/dist _site/web-app/dist
+
+printf "window.ZARIS_VERSION = { version: '%s', commit: '%s' };\n" "$VERSION" "$COMMIT" > _site/frontend/js/version.js
+printf '{"version":"%s","commit":"%s"}\n' "$VERSION" "$COMMIT" > _site/version.json
+echo "Versión $VERSION ($COMMIT)"
 
 echo "_site listo: $(find _site -type f | wc -l) archivos"

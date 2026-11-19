@@ -447,8 +447,17 @@
     <button type="button" class="btn-submit" id="btn-codigos-entrar" disabled>Entrar</button>
   </div>
 
-  <p class="login-foot">zaris-zge · v0.1</p>
+  <p class="login-foot" id="login-foot">zaris-zge</p>
 </div>
+<!-- Versión de la publicación (la escribe el build; en local «dev»). -->
+<script src="js/version.js"></script>
+<script>
+  (function () {
+    var v = (window.ZARIS_VERSION && window.ZARIS_VERSION.version) || 'dev';
+    var el = document.getElementById('login-foot');
+    if (el) el.textContent = 'zaris-zge · ' + (v === 'dev' ? 'desarrollo' : 'v' + v) + ' · © ZARIS';
+  })();
+</script>
 
 <script>
   // Ver / ocultar contraseña en todos los campos de clave (ingreso, recuperación y cambio forzado).

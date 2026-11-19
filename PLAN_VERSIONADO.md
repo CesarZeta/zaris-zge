@@ -1,6 +1,6 @@
 # Versionado y «Acerca de» en todas las aplicaciones
 
-Estado: **decisiones de César tomadas el 2026-11-03, falta el plan de implementación.** No hay código.
+Estado: **decisiones de César tomadas el 2026-11-03; texto del «Acerca de» aprobado el 2026-11-19** («© ZARIS. Todos los derechos reservados.» + `https://zaris.com.ar`; en el backoffice, en el menú del avatar). Implementación del 2026-11-19 en «Hecho» al final.
 
 ## Para qué
 
@@ -34,3 +34,16 @@ Después de un cambio en producción, alguien puede seguir con una ventana abier
 
 - El texto exacto de propiedad y los datos de ZARIS que se muestran, y el enlace. No inventarlos: los da César. Recomendación: «© ZARIS. Todos los derechos reservados.» y `https://zaris.com.ar`, a confirmar.
 - Dónde se abre el «Acerca de» del backoffice. Recomendación: el menú del avatar, junto a «Mi perfil» y «Guías de uso».
+
+## Hecho (2026-11-19)
+
+**Número de versión:** fecha y hora de Argentina de la publicación, `AAAA.MM.DD.HHMM`, más el commit corto. Lo genera el build; nadie lo escribe a mano.
+
+**Backoffice (`zaris-zge`):**
+- `tools/cloudflare_pages_build.sh` calcula la versión, reescribe `frontend/js/version.js` (en el repo dice `dev`) y publica `/version.json`; el bundle React la recibe por `VITE_APP_VERSION` / `VITE_APP_COMMIT` (`web-app/src/lib/version.ts`).
+- La barra inferior y el login la muestran; el menú del avatar tiene «Acerca de ZARIS» (versión, versión del servidor, propiedad y enlace).
+- `menu.js` compara la versión de la pantalla con `/version.json` a los 15 s, cada 5 min y al volver a la pestaña; si difieren, aviso fijo con «Actualizar» (no recarga sola).
+
+**API:** `/api/health` informa `version` (fecha y hora del arranque del proceso en Railway, con el mismo formato; `dev` en local) y `commit` (`RAILWAY_GIT_COMMIT_SHA`).
+
+**Pendiente:** las dos apps (abajo) y, para más adelante, la etiqueta de git por versión y el registro corto de cambios.
