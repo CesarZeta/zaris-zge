@@ -1182,6 +1182,14 @@ async def crear_turno(
         )
         if not dentro:
             que = "del espacio" if tipo_recurso == "espacio" else "del agente"
+            if not rangos:
+                # Sin ningún horario ese día: el caso típico es un espacio atendido sin
+                # agentes con horario (prueba de cierre de F4+F5); el mensaje dice qué falta.
+                falta = ("Si el espacio es atendido, vinculale agentes con horario en Agenda → Espacios; "
+                         "si no, cargá su disponibilidad." if tipo_recurso == "espacio"
+                         else "Cargá su disponibilidad en Agenda → Disponibilidad.")
+                raise HTTPException(409, f"Ese dia no hay ningun horario disponible {que} "
+                                         f"(feriado, inasistencia o sin horario cargado). {falta}")
             raise HTTPException(409, f"El horario no esta dentro de la disponibilidad {que} (feriado, inasistencia o fuera de horario)")
 
     # Solapamiento contra la ocupacion del mismo recurso.

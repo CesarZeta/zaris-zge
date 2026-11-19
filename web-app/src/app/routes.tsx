@@ -3,6 +3,7 @@ import { createHashRouter, Navigate } from 'react-router-dom'
 import { AppShell } from './AppShell'
 import { LoginPage } from './LoginPage'
 import { NoEncontradaPage } from './NoEncontradaPage'
+import { ModuloGuard } from './ModuloGuard'
 import { modules } from '../modules'
 import { AutoservicioPage } from '../autoservicio/AutoservicioPage'
 import { MiReservaPage } from '../autoservicio/MiReservaPage'
@@ -52,11 +53,15 @@ export const router = createHashRouter([
       ...modules.map((mod) => ({
         path: mod.id,
         handle: { breadcrumb: mod.label },
-        children: mod.routes.map((r) =>
-          r.index
-            ? { index: true as const, handle: r.handle, element: createElement(r.element) }
-            : { path: r.path,        handle: r.handle, element: createElement(r.element) }
-        ),
+        children: mod.routes.map((r) => {
+          // Módulo deshabilitado en el municipio: aviso en lugar de la pantalla (IT-01 F4).
+          const element = mod.moduloCodigo
+            ? createElement(ModuloGuard, { codigo: mod.moduloCodigo }, createElement(r.element))
+            : createElement(r.element)
+          return r.index
+            ? { index: true as const, handle: r.handle, element }
+            : { path: r.path,        handle: r.handle, element }
+        }),
       })),
     ],
   },

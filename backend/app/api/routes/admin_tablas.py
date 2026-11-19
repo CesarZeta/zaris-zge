@@ -25,6 +25,29 @@ from app.services.accesos_super import registrar_acceso_super
 router = APIRouter(tags=["Admin Tablas"])
 logger = logging.getLogger("zaris.admin_tablas")
 
+
+def _error_db(e: Exception) -> HTTPException:
+    """Mensaje para el usuario ante un error de la base al guardar, sin el SQL crudo (antes
+    `detail=str(e)` mostraba la sentencia y los parámetros; prueba de cierre de F4+F5). El
+    detalle completo queda en el log."""
+    orig = getattr(e, "orig", None)
+    causa = getattr(orig, "__cause__", None) or orig
+    codigo = getattr(causa, "sqlstate", None) or getattr(orig, "pgcode", None)
+    columna = getattr(causa, "column_name", None)
+    campo = f" «{columna}»" if columna else ""
+    if codigo == "23502":
+        return HTTPException(status_code=422, detail=f"Falta completar el campo{campo}.")
+    if codigo == "23505":
+        return HTTPException(status_code=409, detail="Ya existe un registro con ese valor.")
+    if codigo == "23503":
+        return HTTPException(status_code=409, detail="El valor elegido no existe, o el registro está "
+                                                     "en uso por otros datos y no se puede cambiar así.")
+    if codigo == "23514":
+        return HTTPException(status_code=422, detail="Uno de los valores no es válido.")
+    if codigo and codigo.startswith("22"):
+        return HTTPException(status_code=422, detail="Uno de los valores tiene un formato inválido.")
+    return HTTPException(status_code=400, detail="No se pudo guardar el registro.")
+
 # ─── Registro de tablas ────────────────────────────────────────────────────────
 # pk: columna de clave primaria
 # cols: columnas editables (excluye pk y timestamps estándar)
@@ -621,7 +644,7 @@ async def crear(
     except Exception as e:
         await db.rollback()
         logger.error("Error al crear en %s: %s", tabla, e)
-        raise HTTPException(status_code=400, detail=str(e))
+        raise _error_db(e)
 
 
 # ─── PUT /{tabla}/{id} — editar ───────────────────────────────────────────────
@@ -709,7 +732,7 @@ async def editar(
     except Exception as e:
         await db.rollback()
         logger.error("Error al editar en %s id=%s: %s", tabla, id, e)
-        raise HTTPException(status_code=400, detail=str(e))
+        raise _error_db(e)
 
 
 # ─── GET /area/{id}/subareas — drill-down: subáreas de un área ────────────────
@@ -806,4 +829,4 @@ async def baja_logica(
     except Exception as e:
         await db.rollback()
         logger.error("Error al dar de baja en %s id=%s: %s", tabla, id, e)
-        raise HTTPException(status_code=400, detail=str(e))
+        raise _error_db(e)

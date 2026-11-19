@@ -64,12 +64,19 @@
     } catch (e) { /* ignorar */ }
   }
 
+  // Nombre de pila para la barra: el nombre puede venir como «Apellido, Nombre» (la barra
+  // mostraba «Zarini,») o sin apellido («, mikeamigo»).
+  function _nombreCorto(nombre) {
+    const partes = String(nombre || '').split(',').map(s => s.trim()).filter(Boolean);
+    const pila = nombre.includes(',') && partes.length > 1 ? partes[1] : (partes[0] || '');
+    return pila.split(/\s+/)[0] || '';
+  }
   // Render del usuario en topbar + dropdown. Función (no bloque inline) para
   // poder re-renderizar tras subir la foto sin recargar el shell.
   function _renderUserUI() {
     if (!user) return;
-    const name     = user.nombre || user.username || '';
-    const initials = name.split(' ').slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || 'ZG';
+    const name     = (user.nombre || user.username || '').replace(/^\s*,\s*/, '');
+    const initials = name.replace(/,/g, ' ').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || 'ZG';
     const nivel    = NIVELES[user.nivel_acceso] || 'Usuario';
     const cargo    = user.cargo_nombre || '';
     const foto     = user.foto_url || '';
@@ -92,7 +99,7 @@
         .filter(Boolean).join('\n');
       contextEl.title = detalle;
       contextEl.innerHTML =
-        `<span><strong>${esc(name.split(' ')[0])}</strong> · ${esc(nivel)}</span>` +
+        `<span><strong>${esc(_nombreCorto(name))}</strong> · ${esc(nivel)}</span>` +
         (linea2 ? `<span class="topbar__context-cargo">${esc(linea2)}</span>` : '');
     }
     if (infoEl) {

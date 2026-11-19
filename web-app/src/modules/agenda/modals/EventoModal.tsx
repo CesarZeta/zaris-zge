@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Copy, Check, ExternalLink } from 'lucide-react'
 import { Modal } from '../components/Modal'
 import { ConfirmModal } from '../components/ConfirmModal'
+import { SubareaSelect } from '../components/SubareaSelect'
 import { Button } from '../../../ui'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { useEventoDetalle, useCrearEvento, useActualizarEvento, useCancelarEvento, useEliminarEvento } from '../hooks/useEventos'
@@ -146,7 +147,7 @@ export function EventoModal({ open, onClose, idEvento, defaultDate, onCreated }:
           <textarea value={form.descripcion ?? ''} onChange={(e) => update('descripcion', e.target.value)} rows={2} style={{ ...inp, resize: 'vertical' }} />
         </Field>
         <Field label="Fecha"><input type="date" value={form.fecha} onChange={(e) => update('fecha', e.target.value)} style={inp} /></Field>
-        <Field label="ID Subarea (opcional)"><input type="number" value={form.id_subarea ?? ''} onChange={(e) => update('id_subarea', e.target.value ? Number(e.target.value) : null)} style={inp} /></Field>
+        <Field label="Gestión (opcional)"><SubareaSelect value={form.id_subarea ?? null} onChange={(id) => update('id_subarea', id)} style={inp} /></Field>
         <Field label="Hora inicio"><input type="time" value={form.hora_inicio} onChange={(e) => update('hora_inicio', e.target.value)} style={inp} /></Field>
         <Field label="Hora fin"><input type="time" value={form.hora_fin} onChange={(e) => update('hora_fin', e.target.value)} style={inp} /></Field>
         <Field label="Capacidad ciudadanos"><input type="number" min={0} value={form.capacidad_ciudadanos} onChange={(e) => update('capacidad_ciudadanos', Number(e.target.value))} style={inp} /></Field>

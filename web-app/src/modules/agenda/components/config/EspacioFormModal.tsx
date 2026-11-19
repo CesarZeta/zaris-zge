@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Modal } from '../Modal'
 import { Button } from '../../../../ui'
 import { DireccionGeoField } from '../../../reclamos/components/DireccionGeoField'
+import { SubareaSelect } from '../SubareaSelect'
 import { useActualizarEspacio, useCrearEspacio } from '../../hooks/useEspacios'
 import type { EspacioAgenda, EspacioAgendaCreatePayload } from '../../types/agenda'
 
@@ -30,7 +31,9 @@ const emptyForm: FormState = {
   latitud: null,
   longitud: null,
   capacidad_personas: '',
-  atendido: true,
+  // Sin tildar por defecto: un espacio atendido sin agentes vinculados no tiene horario y
+  // los turnos dan «fuera de horario» (prueba de cierre de F4+F5, menores).
+  atendido: false,
   id_subarea: '',
   prefijo_colero: '',
 }
@@ -155,12 +158,10 @@ export function EspacioFormModal({ open, onClose, espacio }: Props) {
               style={inputStyle}
             />
           </Field>
-          <Field label="ID Subarea (opcional)" style={{ flex: 1, minWidth: 130 }}>
-            <input
-              type="number"
-              min={1}
-              value={form.id_subarea}
-              onChange={(e) => setForm((f) => ({ ...f, id_subarea: e.target.value }))}
+          <Field label="Gestión (opcional)" style={{ flex: 1, minWidth: 180 }}>
+            <SubareaSelect
+              value={form.id_subarea ? Number(form.id_subarea) : null}
+              onChange={(id) => setForm((f) => ({ ...f, id_subarea: id != null ? String(id) : '' }))}
               style={inputStyle}
             />
           </Field>
