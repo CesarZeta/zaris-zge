@@ -158,6 +158,19 @@ html, body {
   .brand__app { display: none; }
 }
 
+/* Super administrador en pantalla angosta: el nombre suelto quedaba en 0 px al lado del selector
+   (captura de César, 2026-11-19). El selector ya dice en qué municipio opera: el nombre se oculta y el
+   selector toma el espacio; en un teléfono también el rótulo «Operando en». */
+.muni-selector { min-width: 0; }
+.muni-selector__select { min-width: 0; text-overflow: ellipsis; }
+@media (max-width: 1100px) {
+  .topbar__left:has(.muni-selector:not([hidden])) .muni__nombre { display: none; }
+}
+@media (max-width: 720px) {
+  .muni-selector__label { display: none; }
+  .muni-selector { margin-left: 4px; }
+}
+
 .topbar__right {
   display: flex;
   align-items: center;

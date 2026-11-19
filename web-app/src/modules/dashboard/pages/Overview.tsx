@@ -236,7 +236,9 @@ export function Overview() {
             <div ref={columnaRef} style={compactoStyle}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {logo(24)}
-                <h1 style={{ ...titleStyle, fontSize: '1rem', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {/* En varias líneas: con «…» en una sola, en una ventana angosta solo se leía
+                    «MUNICIP…» (captura de César, 2026-11-19). */}
+                <h1 style={{ ...titleStyle, fontSize: '0.95rem', lineHeight: 1.2, flex: 1, minWidth: 0, whiteSpace: 'normal', overflowWrap: 'break-word' }}>
                   {identidadQ.data?.municipio_nombre ?? ''}
                 </h1>
                 <button

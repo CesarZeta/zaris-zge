@@ -168,13 +168,22 @@ export function TransicionModal({
           <input type="checkbox" checked={requiereAdjunto} onChange={(e) => setRequiereAdjunto(e.target.checked)} />
           Requiere al menos un adjunto nuevo
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, cursor: 'pointer' }}>
-          <input type="checkbox" checked={notificaIniciador} onChange={(e) => setNotificaIniciador(e.target.checked)} />
-          Notifica al iniciador (cuando se ejecute)
-        </label>
+        {/* El aviso al iniciador sale solo cuando el trámite termina: los pasos intermedios no avisan por
+            mail, igual que en reclamos (César, 2026-11-19). En una transición intermedia la casilla no
+            tendría efecto, así que no se muestra. */}
+        {destinoEsFinal ? (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, cursor: 'pointer' }}>
+            <input type="checkbox" checked={notificaIniciador} onChange={(e) => setNotificaIniciador(e.target.checked)} />
+            Avisar al iniciador que el trámite terminó
+          </label>
+        ) : (
+          <p style={{ fontSize: 12, color: 'var(--fg-3)', margin: 0 }}>
+            Esta transición no termina el trámite: el iniciador no recibe aviso. Se le avisa cuando el trámite llega a un estado final.
+          </p>
+        )}
       </div>
 
-      {notificaIniciador && (
+      {destinoEsFinal && notificaIniciador && (
         <div style={{ ...formRow, marginTop: 12 }}>
           <label style={label}>Mensaje al iniciador</label>
           <textarea
@@ -185,7 +194,7 @@ export function TransicionModal({
             style={textareaMensaje}
           />
           <p style={{ fontSize: 11, color: 'var(--fg-3)', margin: '4px 0 0' }}>
-            Texto que recibe el vecino (o el área iniciadora) cuando se ejecuta esta transición. Si lo dejás vacío, se envía un mensaje genérico.
+            Texto que recibe el vecino (o el área iniciadora) cuando el trámite termina con esta transición. Si lo dejás vacío, se envía un mensaje genérico.
           </p>
         </div>
       )}
