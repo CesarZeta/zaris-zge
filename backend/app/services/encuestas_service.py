@@ -552,7 +552,9 @@ def _render_email_encuesta(
     url: str, municipio_nombre: str, municipio_logo_url: str,
 ) -> tuple[str, str, str]:
     """Devuelve (asunto, html, texto_plano)."""
-    asunto = f"Tu opinión sobre el reclamo #{nro_reclamo} nos importa"
+    # Asunto transaccional y concreto (sin «nos importa»): Gmail mandaba la encuesta a
+    # «Promociones» (prueba de cierre de F4+F5, hallazgo 7).
+    asunto = f"Encuesta sobre tu reclamo {nro_reclamo}"
 
     desc = (descripcion or "").strip()
     if len(desc) > LARGO_DESCRIPCION_CORTA:
@@ -587,8 +589,8 @@ def _render_email_encuesta(
       </p>
       <div style="text-align:center;margin:24px 0;">
         <a href="{_esc(url)}" style="display:inline-block;background:#f54e00;color:#fff;
-           text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:bold;
-           font-size:15px;letter-spacing:.03em;">RESPONDER ENCUESTA</a>
+           text-decoration:none;padding:10px 20px;border-radius:6px;font-weight:bold;
+           font-size:15px;">Responder la encuesta</a>
       </div>
       <p style="font-size:13px;color:rgba(38,37,30,.55);margin:0;">
         Este link expira el {f_exp}. Gracias por ayudarnos a mejorar.
@@ -616,7 +618,7 @@ def _render_email_turno(
     url: str, municipio_nombre: str, municipio_logo_url: str,
 ) -> tuple[str, str, str]:
     """Devuelve (asunto, html, texto_plano) para la encuesta de un turno."""
-    asunto = "Tu opinión sobre la atención que recibiste nos importa"
+    asunto = f"Encuesta sobre tu turno: {prestacion_nombre}" if prestacion_nombre else "Encuesta sobre tu turno"
 
     prest_esc = _esc(prestacion_nombre or "tu atención")
     nombre_esc = _esc(nombre_ciudadano or "")
@@ -649,8 +651,8 @@ def _render_email_turno(
       </p>
       <div style="text-align:center;margin:24px 0;">
         <a href="{_esc(url)}" style="display:inline-block;background:#f54e00;color:#fff;
-           text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:bold;
-           font-size:15px;letter-spacing:.03em;">RESPONDER ENCUESTA</a>
+           text-decoration:none;padding:10px 20px;border-radius:6px;font-weight:bold;
+           font-size:15px;">Responder la encuesta</a>
       </div>
       <p style="font-size:13px;color:rgba(38,37,30,.55);margin:0;">
         Este link expira el {f_exp}. Gracias por ayudarnos a mejorar.
@@ -679,7 +681,7 @@ def _render_email_entrada(
 ) -> tuple[str, str, str]:
     """Devuelve (asunto, html, texto_plano) para la encuesta de una entrada
     (asistencia acreditada a un evento). `fecha_evento` es DATE (eventos.fecha)."""
-    asunto = "Tu opinión sobre el evento al que asististe nos importa"
+    asunto = f"Encuesta sobre el evento {evento_nombre}" if evento_nombre else "Encuesta sobre el evento"
 
     evento_esc = _esc(evento_nombre or "el evento")
     nombre_esc = _esc(nombre_ciudadano or "")
@@ -712,8 +714,8 @@ def _render_email_entrada(
       </p>
       <div style="text-align:center;margin:24px 0;">
         <a href="{_esc(url)}" style="display:inline-block;background:#f54e00;color:#fff;
-           text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:bold;
-           font-size:15px;letter-spacing:.03em;">RESPONDER ENCUESTA</a>
+           text-decoration:none;padding:10px 20px;border-radius:6px;font-weight:bold;
+           font-size:15px;">Responder la encuesta</a>
       </div>
       <p style="font-size:13px;color:rgba(38,37,30,.55);margin:0;">
         Este link expira el {f_exp}. Gracias por ayudarnos a mejorar.
@@ -742,7 +744,7 @@ def _render_email_tramite(
 ) -> tuple[str, str, str]:
     """(asunto, html, texto_plano) para la encuesta de un tramite terminado
     (mig 101). Sin datos del expediente mas alla del numero, tipo y resultado."""
-    asunto = "Tu opinión sobre la gestión de tu trámite nos importa"
+    asunto = f"Encuesta sobre tu trámite {numero_expediente}" if numero_expediente else "Encuesta sobre tu trámite"
 
     nombre_esc = _esc(nombre_ciudadano or "")
     muni_esc = _esc(municipio_nombre)
@@ -773,8 +775,8 @@ def _render_email_tramite(
       </p>
       <div style="text-align:center;margin:24px 0;">
         <a href="{_esc(url)}" style="display:inline-block;background:#f54e00;color:#fff;
-           text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:bold;
-           font-size:15px;letter-spacing:.03em;">RESPONDER ENCUESTA</a>
+           text-decoration:none;padding:10px 20px;border-radius:6px;font-weight:bold;
+           font-size:15px;">Responder la encuesta</a>
       </div>
       <p style="font-size:13px;color:rgba(38,37,30,.55);margin:0;">
         Este link expira el {f_exp}. Gracias por ayudarnos a mejorar.
