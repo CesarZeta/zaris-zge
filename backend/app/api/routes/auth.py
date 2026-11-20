@@ -27,6 +27,8 @@ from app.core.auth import (
     get_current_user,
     modulos_permitidos,
     requiere_segundo_factor,
+    cortar_sesiones,
+    token_nuevo_para,
 )
 from app.api.routes.segundo_factor import SegundoFactorRequerido, no_configurado, respuesta_login
 from app.services import segundo_factor as sf
@@ -209,9 +211,11 @@ async def me(
     return {**salida, "nivel_acceso": current_user["nivel_real"], "modulos_permitidos": modulos, **perfil}
 
 
-@router.post("/cambiar-password")
+@router.post("/cambiar-password", responses={
+    200: {"description": "Devuelve access_token: la sesión nueva (las demás quedan cortadas)."}})
 async def cambiar_password(
     body: CambiarPasswordRequest,
+    request: Request,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -259,10 +263,14 @@ async def cambiar_password(
                  WHERE id_usuario = :id"""),
         {"h": nuevo_hash, "id": current_user["id_usuario"]},
     )
+    # IT-01 F6.1: el cambio corta todas las sesiones abiertas (también la de esta pantalla) y
+    # entrega una nueva, con el mismo segundo factor que la que pidió el cambio.
+    await cortar_sesiones(db, current_user["id_usuario"])
     await db.commit()
     logger.info("CAMBIO PASSWORD self-service | id=%s | forzado=%s",
                 current_user["id_usuario"], forzado)
-    return {"ok": True, "debe_cambiar_password": False}
+    return {"ok": True, "debe_cambiar_password": False,
+            "access_token": token_nuevo_para(current_user, getattr(request.state, "sesion_sf", False))}
 
 
 # ─── Recuperación de credenciales del usuario interno ─────────────────────────
@@ -437,6 +445,7 @@ async def resetear_password_interno(
                  WHERE id_usuario = :id"""),
         {"h": nuevo_hash, "id": row.id_usuario},
     )
+    await cortar_sesiones(db, row.id_usuario)  # IT-01 F6.1: las sesiones abiertas se cortan
     await db.commit()
     logger.info("RESET PASSWORD por recovery | id=%s", row.id_usuario)
     return {"ok": True}

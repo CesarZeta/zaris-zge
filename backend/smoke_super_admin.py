@@ -433,6 +433,8 @@ async def test_recuperar_super() -> None:
                               "WHERE id_usuario = :u"),
                          {"h": bcrypt.hashpw(CLAVE.encode(), bcrypt.gensalt()).decode(), "u": sup})
         await db.commit()
+    # Restablecer la clave corta las sesiones abiertas (IT-01 F6.1): la cacheada del super ya no vale.
+    CTX.pop(f"tok:{EMAIL_SUPER}", None)
 
 
 # ── Tarea 4: lo exclusivo del super administrador y escaladas ────────────────────────────────

@@ -124,6 +124,23 @@ def crear_token_ciudadano(id_ciudadano: int, id_municipio: int, expira_dias: Opt
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
 
 
+async def cortar_sesiones(db: AsyncSession, id_usuario: int) -> None:
+    """Vence todas las sesiones abiertas de la cuenta (IT-01 F6.1). Va en la misma transacción que el
+    cambio que la motiva (el llamador commitea). Segundos enteros, como los `iat`."""
+    await db.execute(text(
+        "UPDATE usuarios SET sesiones_validas_desde = date_trunc('second', NOW()) WHERE id_usuario = :u"),
+        {"u": id_usuario})
+
+
+def token_nuevo_para(current_user: dict, segundo_factor: bool) -> str:
+    """Sesión nueva para la misma cuenta, con el mismo tipo de token y el mismo segundo factor que la
+    que pidió el cambio (IT-01 F6.1: cambiar la propia clave corta las sesiones y entrega otra)."""
+    if current_user.get("es_super_admin"):
+        return crear_token_super_admin(current_user["id_usuario"], segundo_factor=segundo_factor)
+    return create_access_token({"sub": str(current_user["id_usuario"]),
+                                "mun": current_user["id_municipio"], "sf": segundo_factor})
+
+
 async def get_current_user(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
@@ -165,14 +182,15 @@ async def get_current_user(
     vencida = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=SESION_VENCIDA,
                             headers={"WWW-Authenticate": "Bearer"})
     # Segundo factor (F3b): el nivel se lee de la base, así un ascenso o un descenso rige en la
-    # request siguiente. Sin `sf`, o con un `iat` anterior a la marca de revocación, la sesión venció.
-    if requiere_segundo_factor(user.nivel_acceso):
-        if payload.get("sf") is not True:
-            raise vencida
-        marca = user.sesiones_validas_desde
-        iat = payload.get("iat")
-        if marca is not None and (not isinstance(iat, int) or iat < int(marca.timestamp())):
-            raise vencida
+    # request siguiente. Sin `sf`, la sesión de un nivel con segundo factor venció.
+    if requiere_segundo_factor(user.nivel_acceso) and payload.get("sf") is not True:
+        raise vencida
+    # Revocación (F3b; para todos los niveles desde F6.1): un `iat` anterior a la marca, venció.
+    marca = user.sesiones_validas_desde
+    iat = payload.get("iat")
+    if marca is not None and (not isinstance(iat, int) or iat < int(marca.timestamp())):
+        raise vencida
+    request.state.sesion_sf = payload.get("sf") is True
     datos = {k: v for k, v in user._mapping.items() if k != "sesiones_validas_desde"}
     if user.debe_cambiar_password and request.url.path not in RUTAS_CON_CLAVE_TEMPORAL:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=CLAVE_TEMPORAL)

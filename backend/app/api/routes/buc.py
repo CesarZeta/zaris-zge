@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.auth import get_current_user, require_admin
+from app.core.auth import cortar_sesiones, get_current_user, require_admin
 from app.core.municipio import municipio_actual
 from app.services.municipios.modulos import modulos_permitidos_lote
 from app.services.municipios.tope import cupo, exigir_cupo
@@ -281,6 +281,7 @@ async def modificar_usuario(
         await db.execute(text(
             "UPDATE usuarios SET password_actualizada_en = NOW() WHERE id_usuario = :id"
         ), {"id": id})
+        await cortar_sesiones(db, id)  # IT-01 F6.1: la clave nueva corta las sesiones abiertas
 
     await db.commit()
     await db.refresh(usuario)
