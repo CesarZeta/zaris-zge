@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-11-20 (Cesar). En prod: mail al vecino con el número del reclamo cargado desde el backoffice; prueba del super en Trámites hecha con César; diseño de F6 aprobado ([`PLAN_MULTI_MUNICIPIO_F6_DISENO.md`](PLAN_MULTI_MUNICIPIO_F6_DISENO.md)) y **F6.1 en prod** (clave temporal y corte de sesiones, [`PLAN_MULTI_MUNICIPIO_F6_1.md`](PLAN_MULTI_MUNICIPIO_F6_1.md)). **F6.2 hecha en local** (la barrera, [`PLAN_MULTI_MUNICIPIO_F6_2.md`](PLAN_MULTI_MUNICIPIO_F6_2.md)). Sigue: F6.3, el corte en prod, que necesita que César cree el usuario `zaris_app`.
+**Última actualización:** 2026-11-20 (Cesar, cierre). En prod: mail al vecino con el número del reclamo cargado desde el backoffice; prueba del super en Trámites hecha con César; diseño de F6 aprobado ([`PLAN_MULTI_MUNICIPIO_F6_DISENO.md`](PLAN_MULTI_MUNICIPIO_F6_DISENO.md)) y **F6.1 en prod** (clave temporal y corte de sesiones, [`PLAN_MULTI_MUNICIPIO_F6_1.md`](PLAN_MULTI_MUNICIPIO_F6_1.md)). **F6.2 hecha en local** (la barrera, [`PLAN_MULTI_MUNICIPIO_F6_2.md`](PLAN_MULTI_MUNICIPIO_F6_2.md)). Sigue: F6.3, el corte en prod, que necesita que César cree el usuario `zaris_app`.
 
 ---
 
@@ -18,19 +18,17 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. ~~Claude in Chrome y Vercel~~ — **hecho el 2026-11-19:** Claude in Chrome conectado (se habilita con `@browser` en la conversación o con «Enabled by default» para las nuevas). Con la sesión de César se quitaron `agentes.` y `vecinos.` de los proyectos viejos de Vercel y se pausaron los dos (`*.vercel.app` responde 503; los dominios siguen en 200 desde Cloudflare Pages).
-3. ~~Mail del reclamo cargado en ventanilla~~ — **hecho el 2026-11-20** (`1fac3bb`): sale al cargar desde el backoffice, salvo de oficio, fichas demo, sin email o sin portal.
-4. ~~Super en Trámites~~ — **verificado el 2026-11-20** con César: el super recibe el mensaje correcto y no toma; el administrador del municipio sí.
-5. **F6 en curso:** diseño aprobado el 2026-11-20 (dos usuarios de conexión). F6.1 en prod; F6.2 hecha en local (prod sin cambios: `DB_BARRERA=false`, migración 138 solo local). Para F6.3: César crea el usuario `zaris_app` en el SQL Editor de Supabase y carga su clave en Railway; antes de prender la barrera se mide la bandeja de trámites en prod (en local la barrera le suma ~9 ms).
-6. **Bloque del vecino — después de F4 (orden de César, 2026-10-27):**
+1. **F6.3 — prender la segunda barrera en prod** (recomendación de Claude: hacerlo en la próxima sesión). César crea el usuario `zaris_app` en el SQL Editor de Supabase (Claude le pasa el SQL sin clave; la clave la elige él) y carga `APP_DB_USER` y `APP_DB_PASSWORD` en Railway. Después Claude aplica la 138, publica con `DB_BARRERA=false`, mide la bandeja de trámites en prod (en local la barrera le suma ~9 ms) y recién ahí se prende. Vuelta atrás: `DB_BARRERA=false`. Desvío del diseño a validar: el vaciado va sin la barrera (deshabilita triggers y eso exige el dueño de las tablas).
+2. **Mail del reclamo cargado en ventanilla — falta verlo llegar en prod** (en prod desde `1fac3bb`, probado en local): cargar un reclamo desde el backoffice a nombre de un vecino de prueba con email (Reclamos → «+ Nuevo reclamo» → canal Presencial) y ver el mail «Recibimos tu reclamo REC-…».
+3. **Bloque del vecino — después de F4 (orden de César, 2026-10-27):**
    1. La web del ciudadano con todo lo que tiene la app (supuesto de Claude, sin confirmar: es el modo escritorio del portal, ver En curso).
    2. Todas las prestaciones del vecino; falta **iniciar un trámite** desde el portal (ni endpoint ni pantalla). Turnos y entradas ya se reservan desde la app (verificado en el código).
    3. **Vecino 360 para el vecino** (perfil o donde convenga).
    4. **Vecino 360 para el municipio:** en Datos y como pestaña de la ficha del ciudadano y de la empresa, con todas sus interacciones; por persona o por empresa representada.
-   5. **Base de conocimiento de ayudas**, con dos capítulos: canales del vecino y gestión interna. Ya hay un relevamiento inicial de los canales del vecino (2026-10-27). Mientras tanto no se tocan manuales. César la adelantó el 2026-10-30 empezando por el material de venta (pregunta 9).
-7. Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
-8. **Arreglos que dejó la prueba de cierre:** quedan el 9 (App Vecinos: catálogo de emergencias del vecino, pide diseño) y menores del 10 y 11, en `PLAN_MULTI_MUNICIPIO_F4_F5.md` → «Prueba de cierre — hallazgos» → «2026-11-19».
-9. **Base de conocimiento — material de venta por circuito** (2026-10-30): borrador `docs/base_conocimiento/resumen_circuitos.md`, **solo en la máquina de César, sin commitear** (lleva notas internas; el repo es público). César revisa los (\*) de los tableros (varios son propuesta de Claude), dice si su «punto 2» era esta estructura o es otra pieza (supuesto de Claude: ficha técnica por circuito) y aprueba el texto. Recomendación: commitearlo sin «Notas internas».
+   5. **Base de conocimiento de ayudas**, con dos capítulos: canales del vecino y gestión interna. Ya hay un relevamiento inicial de los canales del vecino (2026-10-27). Mientras tanto no se tocan manuales. César la adelantó el 2026-10-30 empezando por el material de venta (pregunta 6).
+4. Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
+5. **Arreglos que dejó la prueba de cierre:** quedan el 9 (App Vecinos: catálogo de emergencias del vecino, pide diseño) y menores del 10 y 11, en `PLAN_MULTI_MUNICIPIO_F4_F5.md` → «Prueba de cierre — hallazgos» → «2026-11-19».
+6. **Base de conocimiento — material de venta por circuito** (2026-10-30): borrador `docs/base_conocimiento/resumen_circuitos.md`, **solo en la máquina de César, sin commitear** (lleva notas internas; el repo es público). César revisa los (\*) de los tableros (varios son propuesta de Claude), dice si su «punto 2» era esta estructura o es otra pieza (supuesto de Claude: ficha técnica por circuito) y aprueba el texto. Recomendación: commitearlo sin «Notas internas».
 
 ---
 
@@ -68,7 +66,7 @@
 - 🟡 **Barrido visual de modo oscuro** en los módulos React restantes y el mapa del inicio (el contorno de los reclamos casi no se ve): **POSPUESTO por César 2026-09-20**.
 
 **Decisiones cerradas — NO re-proponer**
-- **Ayudas: una sola página de base de conocimiento con preguntas, no manuales por módulo** (César, 2026-10-22). No se crean ni actualizan `docs/manual_*.html` mientras tanto (CLAUDE.md §36). Diseño pendiente (preguntas 6 y 9).
+- **Ayudas: una sola página de base de conocimiento con preguntas, no manuales por módulo** (César, 2026-10-22). No se crean ni actualizan `docs/manual_*.html` mientras tanto (CLAUDE.md §36). Diseño pendiente (preguntas 3 y 6).
 - **Multi-municipio: UNA base para todos con `id_municipio`** (César, 2026-10-23; decisiones de cada fase en los `PLAN_MULTI_MUNICIPIO*.md`). **Documentos de identidad por país: tema reservado**, lo trae César.
 - **Orden por columnas: quedan afuera** las colas operativas, las tablas con orden propio y la configuración (César, 2026-10-22; lista en CLAUDE.md §23).
 - **São Paulo DESCARTADO** (2026-09-26, CLAUDE.md §9) · «la ubicación» de Buscar actualizaciones (PWA) innecesaria · no se rotan `DISPATCHER_TOKEN` ni las claves push · el vecino no cambia su email desde la app · los reclamos **no se agendan**.
@@ -90,13 +88,7 @@
   - IT-01 F6.2 en local: usuario `zaris_app`, migración 138 (políticas desde `municipio_tabla_clase`), municipio por transacción, conexión de sistema acotada (`tools/barrido_sistema.py`). Con la barrera, una consulta sin filtro solo ve el municipio de la request; los 30 smokes dan lo mismo con y sin la barrera.
   - IT-01 F6.1 en prod (`23d7834`): con clave temporal la sesión solo sirve para cambiar la clave; todo cambio de clave (propio, por el link del mail, por un administrador o por vencimiento) corta las sesiones abiertas de cualquier nivel, y el propio devuelve una sesión nueva que adoptan el login, «Mi perfil» y la app de agentes (`smoke_cuentas_f6_1.py`, 20/20). Menores diferidos en el plan.
 
-- **2026-11-19:**
-  - Versión por publicación, «Acerca de» y aviso «Actualizar» en las tres aplicaciones; `/api/health` y `/version.json` informan el commit ([`PLAN_VERSIONADO.md`](PLAN_VERSIONADO.md)).
-  - Encuestas: motivos por rama en el Resumen; el generador demo encuesta Entradas y carga motivos; asuntos sin «nos importa» (entran en Principal de Gmail).
-  - Trámites: mail al vecino al iniciar con el número de expediente; los pasos intermedios no avisan por mail (decisión de César).
-  - Prueba de cierre: el super arranca en el municipio de la dirección; menores del hallazgo 11; municipio visible en ventana angosta; 404 con la marca ZARIS en las apps. Detalle en [`PLAN_MULTI_MUNICIPIO_F4_F5.md`](PLAN_MULTI_MUNICIPIO_F4_F5.md).
-- **2026-11-06 —** arreglos 1 a 5 de la prueba de cierre (mig 137) y encuestas con todas las ramas en los cuatro circuitos (mig 136).
-- **2026-10-30 —** claves de las cuentas de prueba de prod renovadas, fuera del repo: pedíselas a César.
+- **2026-11-19:** versión y «Acerca de» en las tres aplicaciones ([`PLAN_VERSIONADO.md`](PLAN_VERSIONADO.md)); motivos en el Resumen de encuestas; mail al vecino al iniciar un trámite; super arrancando en el municipio de la dirección y 404 con la marca ZARIS ([`PLAN_MULTI_MUNICIPIO_F4_F5.md`](PLAN_MULTI_MUNICIPIO_F4_F5.md)).
 
 > Lo anterior: `HISTORIAL_MIGRACIONES.md` y las skills de cada módulo.
 
