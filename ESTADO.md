@@ -19,7 +19,7 @@
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
 1. **F6.3 — falta la prueba de César como super administrador:** cambiar «Operando en» a otro municipio y volver, con el inicio y Reclamos de cada uno. Además, validar el desvío del diseño: el vaciado va sin la barrera, porque deshabilita triggers y eso exige ser el dueño de las tablas.
-2. **Mail del reclamo cargado en ventanilla — falta confirmar que llegó** (cargados el 2026-11-20 a nombre del vecino de prueba 1613: REC-SAN-2026-003478 y REC-SAN-2026-003479; los dos se pueden cerrar).
+2. **Reclamos de prueba de F6.3 para cerrar:** REC-SAN-2026-003478 y REC-SAN-2026-003479, del vecino de prueba 1613. Los mails de los dos llegaron (César, 2026-11-20).
 3. **Bloque del vecino — después de F4 (orden de César, 2026-10-27):**
    1. La web del ciudadano con todo lo que tiene la app (supuesto de Claude, sin confirmar: es el modo escritorio del portal, ver En curso).
    2. Todas las prestaciones del vecino; falta **iniciar un trámite** desde el portal (ni endpoint ni pantalla). Turnos y entradas ya se reservan desde la app (verificado en el código).
