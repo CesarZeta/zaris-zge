@@ -116,3 +116,21 @@ Compatible hacia atrás: si la respuesta no trae `access_token` (backend actual)
 - [ ] **Step 3:** Esperar a que `/api/health` informe el commit nuevo; confirmar el marcador en `/openapi.json` (`cambiar-password` con «Devuelve access_token»).
 - [ ] **Step 4:** Verificación en prod sin tocar claves reales: login de una cuenta de prueba de nivel 3 (credenciales en `credenciales-testing/`, por script, §40) → `GET /auth/me` 200 y `GET /reclamos` 200 (la cuenta sin marca sigue operando). El recorrido del cambio de clave en prod lo hace César con su cuenta si quiere verlo; la regla queda probada por el smoke.
 - [ ] **Step 5:** ESTADO.md: F6.1 en «Hecho reciente»; F6.2 como siguiente.
+
+---
+
+## Resultado (2026-11-20)
+
+En prod desde `23d7834` (clientes desde `114aeee` y `zaris-agentes` `9ffce7a`). Smoke `smoke_cuentas_f6_1.py` 20/20; recorrido navegando en local de los tres clientes; en prod, una cuenta de Gestión sin marca entra y opera.
+
+**Hallazgo de la revisión final, corregido** (`23d7834`): la renovación por vencimiento marca el cambio obligatorio en el login y dejaba las otras sesiones de la persona en 403; ahora también llama a `cortar_sesiones` (caso `caso_clave_vencida_corta_otra_sesion`).
+
+**Decisiones tomadas en la ejecución:**
+- `caso_super_cambia_clave` crea su propio super en vez de saltearse, así corre siempre sin tocar la cuenta de `smoke_super_admin.py`.
+- `smoke_super_admin.py` descarta la sesión cacheada del super después de restablecerle la clave (ahora queda cortada, como corresponde).
+- Un token emitido en el mismo segundo que la marca sigue valiendo (los `iat` son segundos enteros); ventana de menos de un segundo, la misma de F3b.
+
+**Menores diferidos:**
+- Un administrador que se cambia su propia clave desde Usuarios queda con la sesión cortada y vuelve a entrar con la clave nueva; el camino previsto es «Mi perfil».
+- Cambiar la propia clave entrega una sesión con vigencia completa (24 h, u 8 h el super): extiende la sesión, pero exige conocer la clave actual.
+- En prod quedan dos cuentas activas con clave temporal (ids 3 y 105), sin ingresos recientes; al entrar, el login las lleva al cambio.

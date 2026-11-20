@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-11-19 (Cesar, cierre). En prod: versión y «Acerca de» en las tres aplicaciones, motivos en el Resumen de encuestas y encuestas de Entradas en la demo, mail al vecino al iniciar un trámite, super arrancando en el municipio de la dirección y 404 con la marca ZARIS. Segunda sesión del 2026-11-19: Claude in Chrome conectado y Vercel resuelto (dominios viejos quitados, proyectos `zaris-agentes` y `zaris-vecinos` pausados). Sigue: mail del reclamo de ventanilla, prueba del super en Trámites (ya se puede hacer con Chrome) y F6.
+**Última actualización:** 2026-11-20 (Cesar). En prod: mail al vecino con el número del reclamo cargado desde el backoffice; prueba del super en Trámites hecha con César; diseño de F6 aprobado ([`PLAN_MULTI_MUNICIPIO_F6_DISENO.md`](PLAN_MULTI_MUNICIPIO_F6_DISENO.md)) y **F6.1 en prod** (clave temporal y corte de sesiones, [`PLAN_MULTI_MUNICIPIO_F6_1.md`](PLAN_MULTI_MUNICIPIO_F6_1.md)). Sigue: plan de F6.2 (la barrera en local).
 
 ---
 
@@ -19,9 +19,9 @@
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
 1. ~~Claude in Chrome y Vercel~~ — **hecho el 2026-11-19:** Claude in Chrome conectado (se habilita con `@browser` en la conversación o con «Enabled by default» para las nuevas). Con la sesión de César se quitaron `agentes.` y `vecinos.` de los proyectos viejos de Vercel y se pausaron los dos (`*.vercel.app` responde 503; los dominios siguen en 200 desde Cloudflare Pages).
-3. **Mail del reclamo cargado en ventanilla** (2026-11-19): hoy el vecino recibe el mail con el número solo si carga el reclamo desde su app; si lo carga un agente, no. Recomendación de Claude: que también le llegue, como en trámites (cambio chico).
-4. **Verificar en prod con la cuenta de super de César** (2026-11-19): Trámites → abrir un expediente → «Tomar» tiene que decir que el super no opera trámites y que entre con una cuenta del municipio.
-5. **Siguiente trabajo propuesto por Claude: F6** (segunda barrera entre municipios en la base de datos, requisito para un segundo municipio real), con dos ajustes de seguridad de las cuentas. Detalle de los ajustes en la memoria privada de Cesar.
+3. ~~Mail del reclamo cargado en ventanilla~~ — **hecho el 2026-11-20** (`1fac3bb`): sale al cargar desde el backoffice, salvo de oficio, fichas demo, sin email o sin portal.
+4. ~~Super en Trámites~~ — **verificado el 2026-11-20** con César: el super recibe el mensaje correcto y no toma; el administrador del municipio sí.
+5. **F6 en curso:** diseño aprobado el 2026-11-20 (dos usuarios de conexión). F6.1 en prod. Sigue F6.2: plan de tareas de la barrera en local.
 6. **Bloque del vecino — después de F4 (orden de César, 2026-10-27):**
    1. La web del ciudadano con todo lo que tiene la app (supuesto de Claude, sin confirmar: es el modo escritorio del portal, ver En curso).
    2. Todas las prestaciones del vecino; falta **iniciar un trámite** desde el portal (ni endpoint ni pantalla). Turnos y entradas ya se reservan desde la app (verificado en el código).
@@ -84,6 +84,10 @@
 ---
 
 ## ✅ Hecho reciente (últimas sesiones)
+
+- **2026-11-20:**
+  - Reclamos: mail al vecino con el número cuando lo carga un agente (`smoke_reclamo_alta_mail.py`).
+  - IT-01 F6.1 en prod (`23d7834`): con clave temporal la sesión solo sirve para cambiar la clave; todo cambio de clave (propio, por el link del mail, por un administrador o por vencimiento) corta las sesiones abiertas de cualquier nivel, y el propio devuelve una sesión nueva que adoptan el login, «Mi perfil» y la app de agentes (`smoke_cuentas_f6_1.py`, 20/20). Menores diferidos en el plan.
 
 - **2026-11-19:**
   - Versión por publicación, «Acerca de» y aviso «Actualizar» en las tres aplicaciones; `/api/health` y `/version.json` informan el commit ([`PLAN_VERSIONADO.md`](PLAN_VERSIONADO.md)).
