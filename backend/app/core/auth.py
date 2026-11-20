@@ -42,6 +42,11 @@ SESION_VENCIDA = "Sesión vencida. Volvé a ingresar."
 # es cambiar este conjunto y nada más.
 NIVELES_CON_SEGUNDO_FACTOR: frozenset[int] = frozenset({0, 1})
 
+# Clave temporal (IT-01 F6.1): mientras la cuenta tenga `debe_cambiar_password`, su sesión solo
+# sirve para ver la propia cuenta y cambiar la clave. Cualquier otra ruta, 403.
+RUTAS_CON_CLAVE_TEMPORAL: frozenset[str] = frozenset({"/api/v1/auth/me", "/api/v1/auth/cambiar-password"})
+CLAVE_TEMPORAL = "Tenés que cambiar tu contraseña antes de seguir."
+
 
 def requiere_segundo_factor(nivel_real: int) -> bool:
     return settings.SEGUNDO_FACTOR_OBLIGATORIO and nivel_real in NIVELES_CON_SEGUNDO_FACTOR
@@ -169,6 +174,8 @@ async def get_current_user(
         if marca is not None and (not isinstance(iat, int) or iat < int(marca.timestamp())):
             raise vencida
     datos = {k: v for k, v in user._mapping.items() if k != "sesiones_validas_desde"}
+    if user.debe_cambiar_password and request.url.path not in RUTAS_CON_CLAVE_TEMPORAL:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=CLAVE_TEMPORAL)
     if payload.get("sa") is True:
         # Super administrador: la cuenta tiene que seguir siendo de nivel 0 y sin municipio.
         # No se compara el Origin: entra desde cualquier dirección (spec §3).
