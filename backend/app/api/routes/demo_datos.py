@@ -211,6 +211,10 @@ async def _ejecutar_corrida(id_corrida: str, body: PoblarIn, desde: date, hasta:
     resultado: dict = {}
     try:
         async with AsyncSessionLocal() as db:
+            # Segunda barrera (IT-01 F6): el generador escribe en el municipio en estado demo.
+            from app.core.database import fijar_municipio
+            from app.services.demo_datos import municipio_demo
+            await fijar_municipio(db, await municipio_demo(db))
             if body.modo == "cerrar_atraso":
                 await _correr_atraso(db, body, modulos, resultado)
             else:

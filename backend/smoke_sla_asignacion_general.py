@@ -167,7 +167,8 @@ async def main() -> int:
             check("1a. PUT SLA 4 h → sla_minutos 240 y sla_dias derivado 1",
                   r.status_code == 200 and fila == {"sla_minutos": 240, "sla_dias": 1}, f"{short(r, 80)} {fila}")
             r = await c.put(f"/api/v1/admin/tipo_reclamo/{id_tipo}", headers=HA, json={"sla_minutos": 0})
-            check("1b. SLA 0 → 400 (CHECK)", r.status_code == 400, short(r, 120))
+            # 422 desde b4959b9 (2026-11-19): admin_tablas traduce la violación de un CHECK a 422.
+            check("1b. SLA 0 → 422 (CHECK)", r.status_code == 422, short(r, 120))
             r = await c.put(f"/api/v1/admin/tipo_reclamo/{id_tipo}", headers=HA, json={"sla_dias": 9})
             check("1c. solo sla_dias → 422 (ya no se edita por Maestros)", r.status_code == 422, short(r, 120))
 

@@ -28,7 +28,8 @@ from sqlalchemy import text  # noqa: E402
 from sqlalchemy.exc import DBAPIError, IntegrityError  # noqa: E402
 
 from app.core.config import settings  # noqa: E402
-from app.core.database import engine  # noqa: E402
+# Verificaciones como dueño de la base: no pasan por la barrera (IT-01 F6).
+from app.core.sistema import _engine_sistema as engine  # noqa: E402
 
 ES_LOCAL = "zaris_dev" in settings.ASYNC_DATABASE_URI
 

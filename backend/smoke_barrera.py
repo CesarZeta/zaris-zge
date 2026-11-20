@@ -172,6 +172,20 @@ async def parte_backend() -> None:
         n = (await db.execute(text("SELECT count(DISTINCT id_municipio) FROM reclamos"))).scalar()
         check(n > 1, "la sesión de sistema ve más de un municipio", str(n))
 
+    print("[sin_filtro_igual_frena]")
+    import httpx
+    from app.main import app
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://smoke.local",
+                                 timeout=60) as c:
+        r = await c.post("/api/v1/auth/login", json={"identificador": "ciudadanovl@municipio.gob.ar",
+                                                     "password": os.environ.get("ZARIS_QA_PASS") or "123456"})
+        tok = r.json().get("access_token", "")
+        r = await c.get("/api/v1/_prueba/reclamos-sin-filtro", headers={"Authorization": f"Bearer {tok}"})
+        grupos = r.json() if r.status_code == 200 else None
+        check(grupos is not None and [g["id_municipio"] for g in grupos] == [1],
+              "una consulta sin filtro de municipio solo devuelve el municipio de la request",
+              f"{r.status_code} {str(grupos)[:200]}")
+
 
 async def main() -> int:
     await parte_base()

@@ -137,3 +137,20 @@
 - [ ] **Step 5: Tiempos**: con uvicorn local, 20 requests de `GET /dashboard/resumen`, `GET /reclamos?limit=50` y `GET /tramites?limit=50` con y sin la barrera; anotar medianas. Expected: diferencia menor al 20 %.
 - [ ] **Step 6: Navegando** con la barrera (shell local + bundle local + uvicorn con `DB_BARRERA=true`): inicio, Reclamos (buscar, abrir uno), Trámites (bandeja), Turnos (Buscar), Mi perfil; y el super cambiando de municipio en el selector.
 - [ ] **Step 7:** Docs (CLAUDE.md, historial, ESTADO). Commit y push (`feat(db): segundo plano con municipio y corrida completa con la barrera`). Con `DB_BARRERA` en `false` por defecto y la migración solo en local, el push no cambia prod.
+
+---
+
+## Resultado (2026-11-20)
+
+Hecho en local; prod sin cambios (`DB_BARRERA=false` por defecto, migración 138 solo en `zaris_dev`).
+
+- **La prueba central:** el endpoint de prueba consulta reclamos sin filtro de municipio. Sin la barrera devuelve 30 municipios; con la barrera, solo el de la request.
+- **Corrida completa:** los 23 smokes in-process y los 7 por HTTP dan el mismo resultado con y sin la barrera (las diferencias que aparecieron son de datos o de la ventana de 15 minutos del ciclo de vida, detalladas en el registro de la ejecución).
+- **Navegando con la barrera:** inicio, Reclamos (búsqueda y detalle), Trámites, Turnos, Mi perfil y el super cambiando de municipio en el selector.
+
+**Desvíos del diseño, decididos en la ejecución:**
+- **El vaciado no va con la barrera** (diseño §4.4): deshabilita triggers y eso solo lo puede el dueño de las tablas. Sigue borrando solo filas del municipio y después de la exportación.
+- **Las sesiones de segundo plano heredan el municipio de la request** por una variable de contexto, en vez de recibirlo como parámetro: menos cambios y el mismo efecto. Fuera de una request, sin `sesion_municipio`, no ven nada.
+- El control de módulos habilitados fija el municipio de la request (corre antes que el handler).
+
+**Pendiente para F6.3:** la barrera suma unos 9 ms a la bandeja de trámites en local (una consulta de 11 tablas pasa de 7 a 16 ms; el inicio y los reclamos casi no cambian). Medirlo en prod antes de prender `DB_BARRERA`.

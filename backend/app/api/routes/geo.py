@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db, AsyncSessionLocal
+from app.core.database import get_db, AsyncSessionLocal, sesion_municipio
 from app.core.auth import get_current_user
 from app.core.config_municipio import leer_configs
 from app.core.geo_zona import CLAVES_ZONA, zona_completa
@@ -66,7 +66,7 @@ async def _bbox_municipio(id_municipio: int) -> tuple[float, float, float]:
     cache = _bbox_cache.get(id_municipio)
     if cache and now - cache["ts"] < _BBOX_TTL_SEG:
         return cache["lat"], cache["lon"], cache["delta"]
-    async with AsyncSessionLocal() as db:
+    async with sesion_municipio(id_municipio) as db:  # segunda barrera (IT-01 F6)
         vals = await leer_configs(db, list(CLAVES_ZONA), id_municipio)
     if not zona_completa(vals):
         raise HTTPException(409, SIN_ZONA)

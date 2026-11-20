@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-11-20 (Cesar). En prod: mail al vecino con el número del reclamo cargado desde el backoffice; prueba del super en Trámites hecha con César; diseño de F6 aprobado ([`PLAN_MULTI_MUNICIPIO_F6_DISENO.md`](PLAN_MULTI_MUNICIPIO_F6_DISENO.md)) y **F6.1 en prod** (clave temporal y corte de sesiones, [`PLAN_MULTI_MUNICIPIO_F6_1.md`](PLAN_MULTI_MUNICIPIO_F6_1.md)). Sigue: plan de F6.2 (la barrera en local).
+**Última actualización:** 2026-11-20 (Cesar). En prod: mail al vecino con el número del reclamo cargado desde el backoffice; prueba del super en Trámites hecha con César; diseño de F6 aprobado ([`PLAN_MULTI_MUNICIPIO_F6_DISENO.md`](PLAN_MULTI_MUNICIPIO_F6_DISENO.md)) y **F6.1 en prod** (clave temporal y corte de sesiones, [`PLAN_MULTI_MUNICIPIO_F6_1.md`](PLAN_MULTI_MUNICIPIO_F6_1.md)). **F6.2 hecha en local** (la barrera, [`PLAN_MULTI_MUNICIPIO_F6_2.md`](PLAN_MULTI_MUNICIPIO_F6_2.md)). Sigue: F6.3, el corte en prod, que necesita que César cree el usuario `zaris_app`.
 
 ---
 
@@ -21,7 +21,7 @@
 1. ~~Claude in Chrome y Vercel~~ — **hecho el 2026-11-19:** Claude in Chrome conectado (se habilita con `@browser` en la conversación o con «Enabled by default» para las nuevas). Con la sesión de César se quitaron `agentes.` y `vecinos.` de los proyectos viejos de Vercel y se pausaron los dos (`*.vercel.app` responde 503; los dominios siguen en 200 desde Cloudflare Pages).
 3. ~~Mail del reclamo cargado en ventanilla~~ — **hecho el 2026-11-20** (`1fac3bb`): sale al cargar desde el backoffice, salvo de oficio, fichas demo, sin email o sin portal.
 4. ~~Super en Trámites~~ — **verificado el 2026-11-20** con César: el super recibe el mensaje correcto y no toma; el administrador del municipio sí.
-5. **F6 en curso:** diseño aprobado el 2026-11-20 (dos usuarios de conexión). F6.1 en prod. Sigue F6.2: plan de tareas de la barrera en local.
+5. **F6 en curso:** diseño aprobado el 2026-11-20 (dos usuarios de conexión). F6.1 en prod; F6.2 hecha en local (prod sin cambios: `DB_BARRERA=false`, migración 138 solo local). Para F6.3: César crea el usuario `zaris_app` en el SQL Editor de Supabase y carga su clave en Railway; antes de prender la barrera se mide la bandeja de trámites en prod (en local la barrera le suma ~9 ms).
 6. **Bloque del vecino — después de F4 (orden de César, 2026-10-27):**
    1. La web del ciudadano con todo lo que tiene la app (supuesto de Claude, sin confirmar: es el modo escritorio del portal, ver En curso).
    2. Todas las prestaciones del vecino; falta **iniciar un trámite** desde el portal (ni endpoint ni pantalla). Turnos y entradas ya se reservan desde la app (verificado en el código).
@@ -87,6 +87,7 @@
 
 - **2026-11-20:**
   - Reclamos: mail al vecino con el número cuando lo carga un agente (`smoke_reclamo_alta_mail.py`).
+  - IT-01 F6.2 en local: usuario `zaris_app`, migración 138 (políticas desde `municipio_tabla_clase`), municipio por transacción, conexión de sistema acotada (`tools/barrido_sistema.py`). Con la barrera, una consulta sin filtro solo ve el municipio de la request; los 30 smokes dan lo mismo con y sin la barrera.
   - IT-01 F6.1 en prod (`23d7834`): con clave temporal la sesión solo sirve para cambiar la clave; todo cambio de clave (propio, por el link del mail, por un administrador o por vencimiento) corta las sesiones abiertas de cualquier nivel, y el propio devuelve una sesión nueva que adoptan el login, «Mi perfil» y la app de agentes (`smoke_cuentas_f6_1.py`, 20/20). Menores diferidos en el plan.
 
 - **2026-11-19:**

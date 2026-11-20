@@ -12,7 +12,8 @@ commits intermedios de un guardado). Sin municipio fijado, una tabla de municipi
 - La conexión SIN barrera solo existe en `app/core/sistema.py` (lista cerrada de excepciones).
 """
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from contextvars import ContextVar
+from typing import AsyncIterator, Optional
 
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -36,19 +37,30 @@ AsyncSessionLocal = async_sessionmaker(
 
 _SET_MUNICIPIO = text("SELECT set_config('app.id_municipio', :m, true)")
 
+# Municipio de la request en curso. Lo pone `fijar_municipio`; lo heredan las sesiones que se abren
+# en el mismo contexto sin municipio propio: las tareas de segundo plano de esa request (avisos,
+# mails, autoasignación) y los servicios que abren su propia sesión. Fuera de una request no hay
+# municipio y la barrera falla cerrada.
+_municipio_en_curso: ContextVar[Optional[int]] = ContextVar("municipio_en_curso", default=None)
+
 
 @event.listens_for(Session, "after_begin")
 def _aplicar_municipio(session: Session, transaction, connection) -> None:
-    """Cada transacción nueva de una sesión con municipio arranca con la variable puesta."""
+    """Cada transacción nueva arranca con la variable puesta: la de la sesión o, si no tiene, la de
+    la request en curso."""
     id_municipio = session.info.get("id_municipio")
+    if id_municipio is None:
+        id_municipio = _municipio_en_curso.get()
     if id_municipio is not None:
         connection.execute(_SET_MUNICIPIO, {"m": str(id_municipio)})
 
 
 async def fijar_municipio(db: AsyncSession, id_municipio: int) -> None:
-    """El municipio de la sesión: rige desde ya (transacción en curso) y en las siguientes."""
+    """El municipio de la sesión y de la request en curso: rige desde ya (transacción en curso) y en
+    las siguientes."""
     id_municipio = int(id_municipio)
     db.info["id_municipio"] = id_municipio
+    _municipio_en_curso.set(id_municipio)
     if db.in_transaction():
         await db.execute(_SET_MUNICIPIO, {"m": str(id_municipio)})
 

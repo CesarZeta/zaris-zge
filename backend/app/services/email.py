@@ -226,9 +226,9 @@ async def _color_cta_municipio(id_municipio: int) -> str:
     color = _CTA_COLOR_DEFAULT
     try:
         from app.core.config_municipio import leer_config
-        from app.core.database import AsyncSessionLocal
+        from app.core.database import sesion_municipio
 
-        async with AsyncSessionLocal() as db:
+        async with sesion_municipio(id_municipio) as db:  # segunda barrera (IT-01 F6)
             valor = await leer_config(db, "municipio_color_primary", id_municipio)
         if valor and re.fullmatch(r"#[0-9a-fA-F]{6}", valor.strip()):
             color = valor.strip()

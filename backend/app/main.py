@@ -139,6 +139,12 @@ def _modulo(router: str) -> list:
     return [Depends(modulo_habilitado(*MODULOS_POR_ROUTER[router]))]
 
 
+# Prueba de la segunda barrera (IT-01 F6.2): consulta sin filtro de municipio. SOLO en local.
+from app.core.config import _es_entorno_local  # noqa: E402
+if _es_entorno_local():
+    from app.api.routes.prueba_barrera import router as prueba_barrera_router  # noqa: E402
+    app.include_router(prueba_barrera_router)
+
 app.include_router(auth_router)
 app.include_router(segundo_factor_router)
 # invitacion: /auth/invitacion/aceptar (IT-01 F4: primer administrador y super administradores)
