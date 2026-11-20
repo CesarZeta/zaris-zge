@@ -31,6 +31,14 @@
 
 ---
 
+## Resultado (2026-11-20)
+
+- **En prod desde `58a5140`**, con la barrera prendida. Prueba real: un adjunto a REC-SAN-2026-003478 quedó en `m1/reclamos/3480/<uuid>.png`, se descargó idéntico y su baja lo borró de Storage. El cron de encuestas, disparado a mano, imprimió `OK Municipalidad de San Andrés (1)` y quedó en verde.
+- **Local:** `smoke_archivos_municipio.py` 41/41 con `DB_BARRERA` en `false` y en `true`; los 21 smokes in-process en verde con la barrera; `tools/ci/test_resumen_cron.py` 4/4.
+- **Revisión final** (revisor aparte): sin críticos. Un importante corregido: el texto de un error de la base trae la consulta y sus parámetros, y el log de Actions es público. `error_publico` deja solo el tipo y la primera línea; el detalle sigue en el log del servidor.
+- **Menores diferidos:** `resumen_cron.py` decide por `con_error` y no por el estado de cada municipio · la foto vieja del vecino se borra sin comprobar su carpeta (solo la escribe el servidor) · `ruta_valida` no rechaza otros `%`-encodings · la parte «crons» del smoke corre el mantenimiento real sobre los datos locales.
+- **Para César:** una purga de trámites con errores o encuestas que no se pudieron mandar siguen mostrando el municipio como OK (son resultados por ítem). Si querés que pongan el cron en rojo, es una condición más en `resumen_municipios`.
+
 ### Task 1: Rutas por municipio en `storage`
 
 **Files:**

@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-11-20, tarde (Cesar). **F6.3 hecha: prod corre con la segunda barrera** (`DB_BARRERA=true`, el backend entra como `zaris_app`, migración 138 aplicada; detalle y mediciones en [`PLAN_MULTI_MUNICIPIO_F6_2.md`](PLAN_MULTI_MUNICIPIO_F6_2.md) → «F6.3»). Vuelta atrás: `DB_BARRERA=false` en Railway. Sigue F6.4 (archivos por municipio y logs de los crons) y F6.5 (restauración).
+**Última actualización:** 2026-11-20, tarde (Cesar). **F6.3 hecha: prod corre con la segunda barrera** (`DB_BARRERA=true`, el backend entra como `zaris_app`, migración 138 aplicada; detalle y mediciones en [`PLAN_MULTI_MUNICIPIO_F6_2.md`](PLAN_MULTI_MUNICIPIO_F6_2.md) → «F6.3»). Vuelta atrás: `DB_BARRERA=false` en Railway. **F6.4 en prod el mismo día** (archivos nuevos en la carpeta `m{id}/` de su municipio, y crons con resultado por municipio en el log, [`PLAN_MULTI_MUNICIPIO_F6_4.md`](PLAN_MULTI_MUNICIPIO_F6_4.md)). Sigue F6.5 (restauración).
 
 ---
 
@@ -83,6 +83,7 @@
 ## ✅ Hecho reciente (últimas sesiones)
 
 - **2026-11-20:**
+  - IT-01 F6.4 en prod (`58a5140`). Todo archivo nuevo va en la carpeta de su municipio: adjuntos de reclamos y OT, documentos de trámites, fotos de perfil y logo; lo del super va en `global/`. Lo viejo no se movió. El vaciado nunca borra la carpeta de otro municipio. Los crons de encuestas, trámites e integridad imprimen una línea por municipio y fallan con el nombre del que dio error (sin datos de vecinos en el log público). Probado en prod con un adjunto real (`m1/reclamos/3480/…`) y el cron de encuestas.
   - IT-01 F6.3 en prod: la segunda barrera quedó prendida. César creó `zaris_app` y corrió la 138 en el SQL Editor. Las mediciones con dos cuentas dan los mismos conteos y tiempos con y sin la barrera. El recorrido incluyó el alta de reclamos con autoasignación en segundo plano, la app del vecino, el link de encuesta y el cron de encuestas, y la base no registró ningún permiso denegado.
   - Reclamos: mail al vecino con el número cuando lo carga un agente (`smoke_reclamo_alta_mail.py`).
   - IT-01 F6.2 en local: usuario `zaris_app`, migración 138 (políticas desde `municipio_tabla_clase`), municipio por transacción, conexión de sistema acotada (`tools/barrido_sistema.py`). Con la barrera, una consulta sin filtro solo ve el municipio de la request; los 30 smokes dan lo mismo con y sin la barrera.

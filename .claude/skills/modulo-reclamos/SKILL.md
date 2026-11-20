@@ -275,7 +275,7 @@ Detalles del aprendizaje (incluyendo trampas que NO funcionaron) en memoria [[fe
 
 - Tabla `reclamo_adjuntos`: solo metadatos (`storage_path`, `mime_type`, `tamano_bytes`).
 - Bucket: `reclamos-adjuntos` con políticas RLS que requieren JWT válido.
-- Path convention: `reclamos/{id_reclamo}/{uuid}.{ext}`.
+- Path convention: `m{id_municipio}/reclamos/{id_reclamo}/{uuid}.{ext}` (IT-01 F6.4, armada con `storage.ruta_de_municipio`); los adjuntos anteriores quedan en `reclamos/{id_reclamo}/…` y se leen por la ruta guardada.
 - **Flujo de upload (a implementar):** frontend pide URL firmada al backend → sube directo a Storage → backend inserta fila en `reclamo_adjuntos`. La URL firmada tiene TTL corto.
 - Solo imágenes en V1. Adjuntos desde web app o app móvil futura.
 
@@ -327,13 +327,13 @@ Detalles del aprendizaje (incluyendo trampas que NO funcionaron) en memoria [[fe
 - Hover muestra botón `×` para borrar (soft-delete + `DELETE` del binario en bucket).
 
 ### Diseño
-- **Bucket privado** + URL firmada al servir. Los paths siguen `reclamos/{id_reclamo}/{uuid}.{ext}`.
+- **Bucket privado** + URL firmada al servir. Los paths nuevos van en la carpeta del municipio (`m{id}/reclamos/{id_reclamo}/{uuid}.{ext}`).
 - **No hay policies RLS sobre `storage.objects`**: el backend usa `service_role` que las bypassa. Toda autorización vive en endpoints FastAPI (validación JWT + scope al reclamo).
 - **Filas pre-upload con `activo=FALSE`**: si el cliente abandona entre `upload-url` y `confirm`, queda una fila huérfana sin binario, invisible para el GET. Limpieza opcional en sesión futura via cron o batch.
 - **Best-effort delete del binario**: si Storage falla al borrar, la fila queda soft-deleted igual y se loggea — el usuario nunca ve el adjunto.
 
 ### Frontend en otros módulos
-Para sumar adjuntos a otra entidad (ej: OTs), replicar el patrón: nueva tabla `<entidad>_adjuntos` con mismos campos, nuevo bucket si conviene aislar, y reutilizar `app/core/storage.py` (las funciones reciben `path` arbitrario y leen el bucket de settings — extraer a parámetro si se usan múltiples buckets). **Ya hecho para OT** (`ot_adjuntos`, mig 54, ver §34) — reusa el mismo bucket `reclamos-adjuntos` con paths bajo `ot/{id_ot}/`. Es la referencia canónica para clonar a futuras entidades.
+Para sumar adjuntos a otra entidad (ej: OTs), replicar el patrón: nueva tabla `<entidad>_adjuntos` con mismos campos, nuevo bucket si conviene aislar, y reutilizar `app/core/storage.py` (las funciones reciben `path` arbitrario y leen el bucket de settings — extraer a parámetro si se usan múltiples buckets). **Ya hecho para OT** (`ot_adjuntos`, mig 54, ver §34) — reusa el mismo bucket `reclamos-adjuntos` con paths bajo `m{id}/ot/{id_ot}/`. Es la referencia canónica para clonar a futuras entidades.
 
 
 ## Localidad derivada de las coordenadas (2026-08-30, para el BI Ejecutivo)
