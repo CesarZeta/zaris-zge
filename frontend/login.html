@@ -622,10 +622,11 @@
         cambioError.classList.add('visible');
         return;
       }
-      // Cambio OK: la marca ya quedó en FALSE. Persistimos la sesión (el token
-      // sigue siendo válido) y entramos al shell.
+      // Cambio OK: la marca ya quedó en FALSE. Desde IT-01 F6.1 el cambio de clave corta las
+      // sesiones abiertas y devuelve una nueva (access_token); si no viene (backend anterior),
+      // el token temporal sigue valiendo.
       const userOk = Object.assign({}, _userTemporal, { debe_cambiar_password: false });
-      persistirSesion(_tokenTemporal, userOk);
+      persistirSesion(data.access_token || _tokenTemporal, userOk);
       window.location.href = '../index.html';
     } catch (err) {
       cambioError.textContent = 'No se pudo conectar con el servidor.';

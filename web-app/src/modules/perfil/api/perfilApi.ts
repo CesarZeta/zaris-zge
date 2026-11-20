@@ -52,10 +52,14 @@ export class CambioPasswordError extends Error {
  * Cambio voluntario de contraseña. NO usa `api.post` a propósito: el helper
  * trata TODO 401 como sesión vencida (borra `zaris_session` y manda al login),
  * pero acá el 401 significa "la contraseña actual no coincide" y el usuario
- * tiene que poder corregirla sin perder la sesión. Fetch directo, mismo token.
+ * tiene que poder corregirla sin perder la sesión. Fetch directo.
+ *
+ * IT-01 F6.1: el cambio corta las demás sesiones abiertas y devuelve una nueva
+ * (`access_token`); se adopta para seguir trabajando. Un backend anterior no la
+ * manda y el token actual sigue valiendo.
  */
 export async function cambiarPassword(password_actual: string, password_nueva: string): Promise<void> {
-  const token = useAuthStore.getState().accessToken
+  const { accessToken: token, user, login } = useAuthStore.getState()
   const res = await fetch(`${BASE}/api/v1/auth/cambiar-password`, {
     method: 'POST',
     headers: {
@@ -64,7 +68,11 @@ export async function cambiarPassword(password_actual: string, password_nueva: s
     },
     body: JSON.stringify({ password_actual, password_nueva }),
   })
-  if (res.ok) return
+  if (res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { access_token?: string }
+    if (data.access_token && user) login(data.access_token, user)
+    return
+  }
   const err = await res.json().catch(() => ({ detail: res.statusText }))
   const msg = typeof err?.detail === 'string' ? err.detail : JSON.stringify(err?.detail ?? err)
   throw new CambioPasswordError(res.status, msg || 'No se pudo cambiar la contraseña.')
