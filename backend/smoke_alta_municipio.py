@@ -2355,7 +2355,7 @@ async def test_revision_final() -> None:
         _, pks, _ = await vaciado._metadatos(db)
         await db.execute(text("UPDATE usuarios SET foto_url = :f WHERE id_usuario = :u"),
                          {"f": ajena, "u": C["n4"]})
-        archivos = await vaciado._archivos(db, vaciado.Plan(borrar={"usuarios": {C["n4"]}}), pks)
+        archivos = await vaciado._archivos(db, vaciado.Plan(borrar={"usuarios": {C["n4"]}}), pks, C["id"])
         check("#1 el vaciado no borra una foto fuera de la ruta del usuario", archivos == [], str(archivos))
         await db.rollback()
 

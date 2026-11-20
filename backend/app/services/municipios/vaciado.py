@@ -237,7 +237,16 @@ def resumen(plan: Plan) -> list[dict]:
     return salida
 
 
-async def _archivos(db: AsyncSession, plan: Plan, pks: dict[str, str]) -> list[tuple[str, str]]:
+def archivo_del_municipio(ruta: str, id_municipio: int) -> bool:
+    """Un archivo que el vaciado de este municipio puede borrar: ruta válida, en el formato viejo (sin
+    carpeta) o en la carpeta del municipio. Nunca uno de la carpeta de otro ni de `global/` (IT-01 F6.4)."""
+    if not storage.ruta_valida(ruta) or ruta.startswith(storage.CARPETA_GLOBAL):
+        return False
+    return storage.municipio_de_ruta(ruta) in (None, id_municipio)
+
+
+async def _archivos(db: AsyncSession, plan: Plan, pks: dict[str, str],
+                    id_municipio: int) -> list[tuple[str, str]]:
     """Rutas de los archivos de las filas que se borran, salvo las que usa una fila que queda."""
     salida: list[tuple[str, str]] = []
     for tabla, col_bucket, col_ruta in _ARCHIVOS:
@@ -258,9 +267,9 @@ async def _archivos(db: AsyncSession, plan: Plan, pks: dict[str, str]) -> list[t
                 {"ids": list(ids)})).all():
             ruta = url.split(_PREFIJO_FOTO_USUARIO, 1)[1] if _PREFIJO_FOTO_USUARIO in url else ""
             # Solo el avatar propio del usuario: una URL armada a mano no hace borrar otro archivo.
-            if storage.ruta_valida(ruta) and re.fullmatch(rf"usuarios/{id_usuario}/avatar-[0-9a-f-]+\.(png|jpe?g)", ruta):
+            if storage.es_avatar_de(ruta, id_usuario, id_municipio):
                 salida.append(("config-assets", ruta))
-    return [(b, r) for b, r in salida if storage.ruta_valida(r)]
+    return [(b, r) for b, r in salida if archivo_del_municipio(r, id_municipio)]
 
 
 # Claves por id y la consulta que dice si su valor todavía apunta a una fila viva.
@@ -305,7 +314,7 @@ async def vaciar(db: AsyncSession, id_municipio: int, grupos: set[str]) -> tuple
     await validar(db, id_municipio, grupos, bloquear=True)
     _, pks, _ = await _metadatos(db)
     plan = await calcular(db, id_municipio, grupos)
-    archivos = await _archivos(db, plan, pks)
+    archivos = await _archivos(db, plan, pks, id_municipio)
     apagados = await _triggers_de_solo_agregar(
         db, list(plan.por_municipio) + list(plan.borrar) + [t for t, _ in plan.desvincular])
     for tabla, trig in apagados:

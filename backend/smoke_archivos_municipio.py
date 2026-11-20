@@ -217,8 +217,19 @@ async def parte_subidas() -> None:
             await ejecutar("UPDATE ciudadanos SET foto_path = :p WHERE id_ciudadano = :i", p=vecino["foto_path"], i=idc)
 
 
+def parte_vaciado() -> None:
+    print("— vaciado")
+    from app.services.municipios.vaciado import archivo_del_municipio
+    check(archivo_del_municipio("m3/reclamos/1/a.jpg", 3), "vaciado_borra_su_carpeta")
+    check(archivo_del_municipio("reclamos/1/a.jpg", 3), "vaciado_borra_formato_viejo")
+    check(not archivo_del_municipio("m1/reclamos/1/a.jpg", 3), "vaciado_no_borra_prefijo_ajeno")
+    check(not archivo_del_municipio("global/usuarios/1/avatar-a.png", 3), "vaciado_no_borra_global")
+    check(not archivo_del_municipio("../m3/x", 3), "vaciado_no_borra_ruta_invalida")
+
+
 async def main() -> None:
     parte_rutas()
+    parte_vaciado()
     await parte_subidas()
     print(f"\n{OK} OK, {FAIL} FAIL")
     sys.exit(1 if FAIL else 0)
