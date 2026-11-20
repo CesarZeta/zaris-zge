@@ -28,6 +28,9 @@
 3. Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
 4. **Arreglos que dejó la prueba de cierre:** quedan el 9 (App Vecinos: catálogo de emergencias del vecino, pide diseño) y menores del 10 y 11, en `PLAN_MULTI_MUNICIPIO_F4_F5.md` → «Prueba de cierre — hallazgos» → «2026-11-19».
 5. **Base de conocimiento — material de venta por circuito** (2026-10-30): borrador `docs/base_conocimiento/resumen_circuitos.md`, **solo en la máquina de César, sin commitear** (lleva notas internas; el repo es público). César revisa los (\*) de los tableros (varios son propuesta de Claude), dice si su «punto 2» era esta estructura o es otra pieza (supuesto de Claude: ficha técnica por circuito) y aprueba el texto. Recomendación: commitearlo sin «Notas internas».
+6. **Dos decisiones de F6.4 para confirmar** (2026-11-20, [`PLAN_MULTI_MUNICIPIO_F6_4.md`](PLAN_MULTI_MUNICIPIO_F6_4.md) → «Resultado»):
+   1. Los archivos del super administrador van a la carpeta `global/` en vez de asignarle San Andrés (César lo había propuesto). Motivo: darle municipio cambia el modelo de cuentas de F3 y un vaciado de San Andrés podría borrarlo. Recomendación: dejar `global/`; si César prefiere San Andrés, es un cambio en `storage.ruta_de_municipio`.
+   2. Hoy una purga de trámites con errores o encuestas que no se pudieron mandar dejan el municipio en OK (son fallas de un ítem y ya figuran en la respuesta). Recomendación: que pongan el cron en rojo solo si fallan todos los ítems del municipio.
 
 ---
 
