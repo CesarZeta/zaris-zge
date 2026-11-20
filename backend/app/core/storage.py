@@ -3,6 +3,8 @@ ZARIS API — Cliente Supabase Storage para adjuntos de reclamos.
 Usa httpx + service_role key. Bypassa RLS — toda autorización vive en
 el backend (validación de JWT + scope de reclamo).
 """
+import re
+
 import httpx
 from fastapi import HTTPException
 
@@ -75,6 +77,33 @@ def ruta_valida(path: str) -> bool:
     bajo = p.lower()
     return bool(p) and not p.startswith("/") and "\\" not in p and ".." not in p and "%2e" not in bajo \
         and "%2f" not in bajo
+
+
+_PREFIJO_MUNICIPIO = re.compile(r"m([0-9]{1,9})/")
+CARPETA_GLOBAL = "global/"
+
+
+def ruta_de_municipio(id_municipio: int | None, ruta: str) -> str:
+    """Ruta de un archivo NUEVO dentro del bucket (IT-01 F6.4): en la carpeta de su municipio
+    (`m{id}/…`), o en `global/` si no tiene (la cuenta del super administrador). Los archivos viejos
+    quedan donde están: lo que lee una ruta guardada la usa tal cual."""
+    if not ruta_valida(ruta) or _PREFIJO_MUNICIPIO.match(ruta) or ruta.startswith(CARPETA_GLOBAL):
+        raise ValueError(f"ruta de Storage inválida para prefijar: {ruta!r}")
+    return f"m{int(id_municipio)}/{ruta}" if id_municipio is not None else f"{CARPETA_GLOBAL}{ruta}"
+
+
+def municipio_de_ruta(ruta: str) -> int | None:
+    """El municipio de la carpeta `m{id}/` de una ruta, o None (formato viejo o `global/`)."""
+    m = _PREFIJO_MUNICIPIO.match(ruta or "")
+    return int(m.group(1)) if m else None
+
+
+def es_avatar_de(ruta: str, id_usuario: int, id_municipio: int | None) -> bool:
+    """La foto de perfil propia de la cuenta, en el formato viejo o en la carpeta de su municipio
+    (`global/` para la cuenta sin municipio)."""
+    carpeta = re.escape(f"m{int(id_municipio)}/") if id_municipio is not None else re.escape(CARPETA_GLOBAL)
+    return ruta_valida(ruta) and re.fullmatch(
+        rf"({carpeta})?usuarios/{int(id_usuario)}/avatar-[0-9a-f-]+\.(png|jpe?g)", ruta) is not None
 
 
 async def borrar_objeto(path: str, bucket: str | None = None) -> None:
