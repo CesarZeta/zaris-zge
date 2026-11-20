@@ -705,7 +705,8 @@ async def obtener_reclamo(
 
 @router.post("", status_code=201, responses={
     201: {"description": "Reclamo creado. Si su gestión tiene asignación automática (mig 114), "
-                         "la OT se asigna y agenda sola después de responder."}})
+                         "la OT se asigna y agenda sola después de responder. Al vecino le llega "
+                         "un mail con el número (salvo de oficio o sin email)."}})
 async def crear_reclamo(
     body: dict,
     background_tasks: BackgroundTasks,
@@ -813,6 +814,9 @@ async def crear_reclamo(
                                    None, "Sin asignar", "Reclamo registrado",
                                    current_user["id_usuario"])
         await db.commit()
+        # Mail al vecino con el número (César, 2026-11-20), después de responder. Se encola
+        # antes que la autoasignación: un mail no espera a que se asigne la OT.
+        background_tasks.add_task(svc_push.notificar_alta_reclamo_agente, id_reclamo)
         # Gestión con asignación automática (mig 114): se asigna solo, después de responder.
         background_tasks.add_task(autoasignar_reclamo, id_reclamo)
 

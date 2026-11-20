@@ -201,6 +201,57 @@ async def notificar_estado_reclamo(id_reclamo: int) -> None:
         logger.warning("notificar_estado_reclamo(%s) fallo: %s", id_reclamo, e)
 
 
+async def notificar_alta_reclamo_agente(id_reclamo: int) -> None:
+    """Mail al vecino con el número del reclamo que un agente cargó a su nombre desde el
+    backoffice (ventanilla, teléfono…). César, 2026-11-20: como en trámites, el vecino recibe
+    el número aunque no lo haya cargado él. El reclamo cargado desde la app ya tiene su mail en
+    `publico_reclamos.crear_mi_reclamo`.
+
+    No sale: reclamo de oficio (lo inicia el municipio), ficha demo de funcionario (mig 118, su
+    email no recibe), ciudadano sin email, o municipio sin Portal del Ciudadano (fail-closed,
+    core/urls). Best-effort, sesión propia: corre después de responder."""
+    from app.core.urls import url_portal_vecino
+    from app.services.cuenta_vecino import _municipio_branding, es_ficha_demo
+    from app.services.email import enviar_mail_confirmacion_reclamo_ciudadano
+
+    try:
+        async with AsyncSessionLocal() as db:
+            r = (await db.execute(text("""
+                SELECT r.nro_reclamo, r.descripcion, r.direccion, r.canal_origen, r.id_municipio,
+                       c.nombre, c.apellido, c.email, c.doc_tipo, c.doc_nro
+                FROM reclamos r
+                JOIN ciudadanos c ON c.id_ciudadano = r.id_ciudadano
+                WHERE r.id_reclamo = :id
+            """), {"id": id_reclamo})).mappings().first()
+            if not r:
+                return
+            nro = r["nro_reclamo"] or f"REC-{id_reclamo}"
+            email = (r["email"] or "").strip()
+            if (r["canal_origen"] or "") == "oficio":
+                logger.info("alta reclamo %s: de oficio, sin mail al vecino", nro)
+                return
+            if es_ficha_demo(r["doc_tipo"], r["doc_nro"]):
+                logger.info("alta reclamo %s: ficha demo de funcionario, sin mail", nro)
+                return
+            if not email or "@" not in email:
+                logger.info("alta reclamo %s: el ciudadano no tiene email, sin mail", nro)
+                return
+            portal = await url_portal_vecino(db, r["id_municipio"])
+            if not portal:
+                logger.info("alta reclamo %s: municipio sin Portal del Ciudadano, sin mail", nro)
+                return
+            municipio_nombre, municipio_logo_url = await _municipio_branding(db, r["id_municipio"])
+        await enviar_mail_confirmacion_reclamo_ciudadano(
+            to=email, nombre=r["nombre"] or "", apellido=r["apellido"] or "",
+            nro_reclamo=nro, descripcion=r["descripcion"] or "", direccion=r["direccion"] or "",
+            municipio_nombre=municipio_nombre, frontend_url=portal,
+            municipio_logo_url=municipio_logo_url, id_municipio=r["id_municipio"],
+            cargado_por_agente=True,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("notificar_alta_reclamo_agente(%s) fallo: %s", id_reclamo, e)
+
+
 async def notificar_retrabajo_auditoria(id_retrabajo: int) -> None:
     """Aviso al vecino de que una auditoria de su reclamo resulto observada y se
     abrio un reclamo nuevo para rehacer el trabajo (PLAN_AUDITORIA_RECLAMOS.md F4).

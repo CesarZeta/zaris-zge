@@ -179,6 +179,8 @@ Caso de uso: reclamo que se resuelve sin generar OT (consulta, duplicado, sin in
 
 Todo reclamo requiere `id_ciudadano` válido de la BUC. El frontend busca ciudadanos vía `GET /api/v1/buc/ciudadanos/buscar?q=<texto>` con debounce de 300ms antes de permitir el submit.
 
+**Mail con el número al vecino, cargue quien cargue (César, 2026-11-20).** Desde la app: `publico_reclamos.crear_mi_reclamo`. Desde el backoffice: `POST /reclamos` encola `push.notificar_alta_reclamo_agente` (sesión propia, después de responder), que usa el mismo `enviar_mail_confirmacion_reclamo_ciudadano` con `cargado_por_agente=True` (texto de comprobante, botón a `/reclamos` del Portal del Ciudadano). **No sale:** de oficio, ficha demo de funcionario (`es_ficha_demo`), ciudadano sin email o municipio sin portal (fail-closed). Los subreclamos y el retrabajo no pasan por acá (el retrabajo tiene su propio mail). El mail no lleva `observaciones` (son internas). Smoke: `backend/smoke_reclamo_alta_mail.py`.
+
 ### Patrón XSS — resultados de búsqueda BUC en vanilla JS
 
 Cuando se renderizan resultados donde el usuario puede hacer clic para seleccionar, **nunca** interpolar datos del servidor en handlers `onclick`. Usar `data-attrs` + event delegation:

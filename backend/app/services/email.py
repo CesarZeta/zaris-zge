@@ -317,13 +317,16 @@ def _build_template_app_vecinos(
 </html>"""
 
     # La version de texto plano no lleva etiquetas: <br> -> salto, el resto se quita.
-    parrafo_texto = re.sub(r"<[^>]+>", "", re.sub(r"<br\s*/?>", "\n", parrafo_principal))
+    # Las entidades que escaparon los llamadores (&amp;, &quot;) vuelven a su caracter.
+    import html as _html
+    parrafo_texto = _html.unescape(
+        re.sub(r"<[^>]+>", "", re.sub(r"<br\s*/?>", "\n", parrafo_principal)))
     text = f"""\
 {municipio_nombre}
 
 {titulo}
 
-{saludo}
+{_html.unescape(saludo)}
 
 {parrafo_texto}
 
@@ -395,29 +398,49 @@ async def enviar_mail_confirmacion_reclamo_ciudadano(
     municipio_logo_url: str | None = None,
     *,
     id_municipio: int,
+    cargado_por_agente: bool = False,
 ) -> bool:
     """
-    Mail de confirmacion al vecino cuando registra un reclamo desde la app.
-    No requiere accion: solo confirma la recepcion y deja un CTA para seguirlo.
-    El CTA abre la PWA en la lista de reclamos del vecino. Modo MOCK si Resend
-    no esta configurado.
+    Mail de confirmacion al vecino cuando se registra un reclamo a su nombre: desde la app
+    (lo cargó él) o desde el backoffice (`cargado_por_agente`, ventanilla o teléfono; César,
+    2026-11-20: el número le llega como en trámites). No requiere accion: confirma la
+    recepcion y deja un CTA a la lista de reclamos del Portal del Ciudadano. Modo MOCK si
+    Resend no esta configurado.
     """
+    import html as _html
     cta_url = f"{frontend_url.rstrip('/')}/reclamos"
-    saludo_nombre = (nombre or "").strip() or apellido or "vecino"
+    saludo_nombre = _html.escape((nombre or "").strip() or apellido or "vecino")
     subject = f"Recibimos tu reclamo {nro_reclamo} - {municipio_nombre}"
 
-    # Recorte defensivo de la descripcion para el cuerpo del mail.
+    # Recorte defensivo de la descripcion para el cuerpo del mail. Se escapa: desde el
+    # backoffice la escribe otra persona.
     desc = (descripcion or "").strip()
     if len(desc) > 280:
         desc = desc[:277] + "..."
-    dir_txt = (direccion or "").strip() or "(sin direccion)"
+    desc = _html.escape(desc)
+    dir_txt = _html.escape((direccion or "").strip() or "(sin direccion)")
+    nro = _html.escape(nro_reclamo or "")
+    muni = _html.escape(municipio_nombre or "")
 
-    parrafo = (
-        f"Registramos tu reclamo <strong>{nro_reclamo}</strong> en {municipio_nombre}. "
-        f"Lo recibimos correctamente y ya esta en cola para ser gestionado.<br><br>"
-        f"<strong>Ubicacion:</strong> {dir_txt}<br>"
-        f"<strong>Detalle:</strong> {desc}"
-    )
+    if cargado_por_agente:
+        parrafo = (
+            f"Registramos tu reclamo con el número <strong>{nro}</strong> en {muni}. "
+            f"Ya está en cola para ser gestionado.<br><br>"
+            f"<strong>Ubicación:</strong> {dir_txt}<br>"
+            f"<strong>Detalle:</strong> {desc}<br><br>"
+            f"Guardá este número: es tu comprobante y te lo van a pedir si consultás por el reclamo."
+        )
+        extra = ("Podés seguirlo desde el Portal del Ciudadano. "
+                 "No hace falta que respondas este correo.")
+    else:
+        parrafo = (
+            f"Registramos tu reclamo <strong>{nro}</strong> en {muni}. "
+            f"Lo recibimos correctamente y ya esta en cola para ser gestionado.<br><br>"
+            f"<strong>Ubicacion:</strong> {dir_txt}<br>"
+            f"<strong>Detalle:</strong> {desc}"
+        )
+        extra = ("Te avisaremos por notificacion cuando tu reclamo cambie de estado. "
+                 "No hace falta que respondas este correo.")
 
     html, text = _build_template_app_vecinos(
         titulo="Recibimos tu reclamo",
@@ -425,10 +448,7 @@ async def enviar_mail_confirmacion_reclamo_ciudadano(
         parrafo_principal=parrafo,
         cta_texto="Ver mis reclamos",
         cta_url=cta_url,
-        parrafo_extra=(
-            "Te avisaremos por notificacion cuando tu reclamo cambie de estado. "
-            "No hace falta que respondas este correo."
-        ),
+        parrafo_extra=extra,
         municipio_nombre=municipio_nombre,
         municipio_logo_url=municipio_logo_url,
         cta_color=await _color_cta_municipio(id_municipio),
