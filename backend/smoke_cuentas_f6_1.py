@@ -167,6 +167,25 @@ async def caso_super_cambia_clave(c: httpx.AsyncClient) -> None:
         check(await me(c, nuevo) == 200, "la sesión nueva del super opera")
 
 
+async def caso_clave_vencida_corta_otra_sesion(c: httpx.AsyncClient) -> None:
+    """Revisión final: la renovación periódica marca el cambio obligatorio en el login; la otra sesión
+    abierta (p. ej. la app de agentes) tiene que volver al login (401), no quedar en 403 en todo."""
+    print("[caso_clave_vencida_corta_otra_sesion]")
+    email = await crear_cuenta(4, "Actual-12345")
+    a = (await login(c, email, "Actual-12345"))["access_token"]
+    async with AsyncSessionLocal() as s:
+        await s.execute(text("UPDATE usuarios SET password_actualizada_en = NOW() - interval '400 days' "
+                             "WHERE email = :e"), {"e": email})
+        await s.commit()
+    await asyncio.sleep(1.1)
+    d = await login(c, email, "Actual-12345")
+    check(d["user"]["debe_cambiar_password"] is True, "el login marca la clave vencida")
+    r = await c.get("/api/v1/reclamos", headers=hdr(a))
+    check(r.status_code == 401, "la otra sesión vuelve al login (401)", f"{r.status_code} {r.text[:100]}")
+    r = await c.get("/api/v1/reclamos", headers=hdr(d["access_token"]))
+    check(r.status_code == 403, "la sesión nueva solo sirve para cambiar la clave (403)", str(r.status_code))
+
+
 async def caso_sin_marca_sigue_igual(c: httpx.AsyncClient) -> None:
     print("[caso_sin_marca_sigue_igual]")
     email = await crear_cuenta(4, "Actual-12345")
@@ -183,6 +202,7 @@ async def main() -> int:
         await caso_admin_cambia_clave(c, admin["access_token"])
         await caso_recovery_corta_sesion(c)
         await caso_super_cambia_clave(c)
+        await caso_clave_vencida_corta_otra_sesion(c)
         await caso_sin_marca_sigue_igual(c)
     print(f"\n== {OK} OK · {FAIL} FAIL ==")
     return 1 if FAIL else 0

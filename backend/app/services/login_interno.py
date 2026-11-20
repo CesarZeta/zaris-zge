@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import create_access_token, crear_token_super_admin, modulos_permitidos
+from app.core.auth import create_access_token, crear_token_super_admin, cortar_sesiones, modulos_permitidos
 from app.core.config_municipio import leer_config
 from app.core.municipio import resolver_municipio_de_origen
 from app.services.accesos_super import registrar_acceso_super
@@ -137,6 +137,9 @@ async def completar_login(db: AsyncSession, request: Request, user, *, segundo_f
                 await db.execute(text(
                     "UPDATE usuarios SET debe_cambiar_password = TRUE WHERE id_usuario = :id"
                 ), {"id": user.id_usuario})
+                # IT-01 F6.1: las otras sesiones abiertas vuelven al login (y de ahí al cambio), en vez
+                # de quedar con 403 en todo. El token de este login se emite después de la marca.
+                await cortar_sesiones(db, user.id_usuario)
                 await db.commit()
                 debe_cambiar = True
                 logger.info("RENOVACION PASSWORD forzada por vigencia | id=%s | dias=%s",
