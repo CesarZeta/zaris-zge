@@ -209,6 +209,14 @@ Textos aprobados por César el 2026-11-03 (`PLAN_MULTI_MUNICIPIO_F4_F5.md` → �
 Cazado en la prueba de cierre de F4+F5 (2026-11-02). Seis campos `seleccion` por municipio guardaban `{"opciones": ["nativa", …]}`, herencia de `seed_tramites.py`: la pantalla los mostraba, pero `validar_campos_contra_tipo` rechazaba cualquier valor. Cinco son obligatorios, así que habilitación comercial, cartel publicitario, recurso administrativo e inspección bromatológica **no se podían iniciar** en San Andrés ni en un municipio clonado; los trámites existentes los creó el generador demo, que no pasa por ese validador. **Aplicada en local y en prod el 2026-11-06, por MCP.** Backup `_backup_tramite_campo_opciones_2026_11_06` (12 filas de los municipios 1 y 5, con RLS).
 - **Solo datos, en todos los municipios:** pasa a `[{"valor", "etiqueta"}]`, el formato del builder. Los valores no cambian, y en prod ningún trámite quedó con un valor fuera de las opciones. La etiqueta es el valor con mayúscula y tildes; un valor sin etiqueta conocida hace fallar la migración. Re-aplicable. La semilla también quedó en el formato nuevo. Smoke `smoke_tramites_opciones.py`.
 
+### Migración 138 — segunda barrera por municipio (`backend/migrations/138_barrera_municipio.sql`)
+
+IT-01 F6.2 ([`PLAN_MULTI_MUNICIPIO_F6_2.md`](PLAN_MULTI_MUNICIPIO_F6_2.md)). **Aplicada solo en local el 2026-11-20; en prod va en el corte de F6.3**, después de que César cree el usuario `zaris_app` en el SQL Editor. Exige que el usuario exista (si no, aborta).
+- Permisos de `zaris_app` sobre las tablas clasificadas, secuencias y funciones (nada sobre `_backup_*`), y privilegios por defecto para las tablas nuevas.
+- Políticas desde `municipio_tabla_clase`, solo `TO zaris_app`: `barrera_municipio` (catálogo, operativo, mixta y `usuarios`: `id_municipio` = `app.id_municipio`), `barrera_parametros_globales` (lectura de los globales de `configuracion_general`) y `barrera_global`. Sin la variable no se ve nada.
+- Enciende RLS en cada tabla clasificada: en local muchas lo tenían apagado (en prod ya estaban todas encendidas).
+- Mientras el backend entre como `postgres` no cambia nada. Smoke `smoke_barrera.py`.
+
 ### Migraciones 132 y 132b — catálogo de gobiernos locales (`backend/migrations/132_catalogo_gobiernos_locales.sql`, `132b_catalogo_gobiernos_locales_datos.sql`)
 
 Diseño: [`PLAN_CONTORNO_MUNICIPIO_DISENO.md`](PLAN_CONTORNO_MUNICIPIO_DISENO.md) §4.2. **Aplicadas en local y en prod el 2026-10-28.** En prod: backups `_backup_partidos_2026_10_28`, `_backup_localidades_2026_10_28` y `_backup_provincias_2026_10_28` (con RLS) → 132 por MCP → **132b por conexión directa** (pooler de sesión, en una transacción): pesa 327 KB y pasarla por el MCP no era razonable. Por eso no figura en la lista de migraciones de Supabase.

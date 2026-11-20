@@ -74,6 +74,14 @@ class Settings(BaseSettings):
     # Set via env var en Railway; NO commitear el valor real.
     SEGUNDO_FACTOR_CLAVE: str = ""
 
+    # Segunda barrera (IT-01 F6): con DB_BARRERA=true, las requests se conectan como el usuario
+    # APP_DB_USER (sin permiso para saltear RLS) y la base filtra por municipio. Con false, todo
+    # como antes. En el pooler de Supabase el usuario va como `zaris_app.<ref>`.
+    # Set via env var en Railway; NO commitear la clave.
+    DB_BARRERA: bool = False
+    APP_DB_USER: str = ""
+    APP_DB_PASSWORD: str = ""
+
     @property
     def ASYNC_DATABASE_URI(self) -> str:
         # Si existe DATABASE_URL (Railway la provee), usarla
