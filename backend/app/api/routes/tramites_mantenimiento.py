@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.municipio import por_cada_municipio
+from app.core.municipio import por_cada_municipio, resumen_municipios
 from app.services.tramites import retencion as svc_ret
 from app.services.tramites import ciclo_vida as svc_ciclo
 from app.utils.request_helpers import get_real_ip
@@ -84,10 +84,13 @@ async def ejecutar_mantenimiento(
             # aca no debe tumbar el archivado/purga ya hechos.
             try:
                 desistimiento = await svc_ciclo.procesar_desistimientos(db, id_municipio=id_m)
-            except Exception:
+            except Exception as e:
                 logger.exception("Mantenimiento tramites: desistimiento fallo (municipio %s)", id_m)
                 await db.rollback()
                 desistimiento = {"error": True, "avisos": 0, "desistidos": 0}
+                # IT-01 F6.4: el municipio queda con error en el log del workflow (lo demás se conserva).
+                return {"archivado": archivado, "purga": purga, "desistimiento": desistimiento,
+                        "error": f"desistimiento: {type(e).__name__}: {e}"}
             return {"archivado": archivado, "purga": purga, "desistimiento": desistimiento}
 
         # Por municipio (IT-01), cada uno con sus plazos; un fallo no frena a los demas.
@@ -123,6 +126,7 @@ async def ejecutar_mantenimiento(
             "purga": purga,
             "desistimiento": desistimiento,
             "por_municipio": por_municipio,
+            **await resumen_municipios(db, por_municipio),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     except HTTPException:

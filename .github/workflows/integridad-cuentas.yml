@@ -33,6 +33,12 @@ jobs:
   integridad:
     runs-on: ubuntu-latest
     steps:
+      # Solo tools/ci: el script que resume el resultado por municipio (IT-01 F6.4).
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/ci
+          sparse-checkout-cone-mode: false
+
       - name: Llamar al endpoint de integridad de cuentas
         env:
           API_URL: ${{ secrets.ZARIS_API_URL || 'https://zaris-api-production-bf0b.up.railway.app' }}
@@ -60,3 +66,6 @@ jobs:
             echo "::error::Integridad de cuentas devolvio HTTP $CODE (esperado 200)."
             exit 1
           fi
+
+          # Una línea por municipio; si alguno dio error, el paso falla con su nombre.
+          python3 tools/ci/resumen_cron.py "$BODY"

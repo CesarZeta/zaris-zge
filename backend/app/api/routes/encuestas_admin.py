@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.municipio import por_cada_municipio
+from app.core.municipio import por_cada_municipio, resumen_municipios
 from app.core.municipio import municipio_actual
 from app.utils.orden import clausula_orden, descripcion_orden
 from app.utils.request_helpers import get_real_ip
@@ -909,6 +909,7 @@ async def ejecutar_dispatcher(
             "envios": resultado_envios,
             "expirados": cantidad_expirados,
             "por_municipio": por_municipio,
+            **await resumen_municipios(db, por_municipio),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     except HTTPException:

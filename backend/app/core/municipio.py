@@ -104,6 +104,26 @@ async def por_cada_municipio(db: AsyncSession, proceso: str, fn) -> dict[int, An
     return resultados
 
 
+async def resumen_municipios(db: AsyncSession, por_municipio: dict[int, Any]) -> dict:
+    """Lo que el log de un cron muestra por municipio (IT-01 F6.4): nombre y estado de cada uno, y la
+    lista de los que dieron error para que el workflow falle con sus nombres."""
+    ids = sorted(por_municipio)
+    nombres = dict((await db.execute(text(
+        "SELECT id_municipio, nombre FROM municipios WHERE id_municipio = ANY(:i)"), {"i": ids})).all()) if ids else {}
+    municipios, con_error = [], []
+    for id_m in ids:
+        r, nombre = por_municipio[id_m], nombres.get(id_m, f"Municipio {id_m}")
+        error = r.get("error") if isinstance(r, dict) else None
+        if error:
+            estado = "error"
+            con_error.append(f"{nombre} ({id_m}): {error}")
+        else:
+            estado = "omitido" if isinstance(r, dict) and r.get("omitido") else "ok"
+        municipios.append({"id_municipio": id_m, "nombre": nombre, "estado": estado,
+                           "error": str(error) if error else None})
+    return {"municipios": municipios, "con_error": con_error}
+
+
 async def resolver_municipio_de_origen(request: Request, db: AsyncSession) -> int:
     """Municipio del header Origin de la request. 404 si el subdominio no existe o está inactivo;
     503 si no hay municipio base para las direcciones sin prefijo."""

@@ -227,10 +227,59 @@ def parte_vaciado() -> None:
     check(not archivo_del_municipio("../m3/x", 3), "vaciado_no_borra_ruta_invalida")
 
 
+async def parte_crons() -> None:
+    print("— crons")
+    import httpx
+    from sqlalchemy import text
+
+    from app.core.config import settings
+    from app.core.sistema import SesionSistema
+    from app.main import app
+    from app.services.tramites import ciclo_vida as svc_ciclo
+
+    settings.RESEND_API_KEY = ""  # MOCK: el dispatcher de encuestas no manda mails reales
+    settings.DISPATCHER_TOKEN = settings.DISPATCHER_TOKEN or "smoke-f64"
+    h = {"X-Dispatcher-Token": settings.DISPATCHER_TOKEN}
+    async with SesionSistema() as s:
+        operables = {r.id_municipio: r.nombre for r in (await s.execute(text(
+            "SELECT id_municipio, nombre FROM municipios WHERE estado IN ('puesta_en_marcha','produccion','demo')"))).all()}
+
+    def bien(j: dict) -> bool:
+        ms = j.get("municipios") or []
+        return ({m["id_municipio"]: m["nombre"] for m in ms} == operables and j.get("con_error") == []
+                and all(m["estado"] in ("ok", "omitido") for m in ms))
+
+    rutas = [("cron_encuestas", "/api/v1/admin/encuestas/dispatcher/ejecutar", {}),
+             ("cron_tramites", "/api/v1/tramites/mantenimiento/ejecutar", {}),
+             ("cron_integridad_dry_run", "/api/v1/usuarios/mantenimiento/integridad-cuentas", {"dry_run": "true"})]
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://smoke.local", timeout=300) as c:
+        for nombre, ruta, params in rutas:
+            r = await c.post(ruta, headers=h, params=params)
+            j = r.json() if r.status_code == 200 else {}
+            check(r.status_code == 200 and bien(j), nombre, f"{r.status_code} {str(j)[:300] or r.text[:300]}")
+
+        original = svc_ciclo.procesar_desistimientos
+
+        async def falla(*a, **k):
+            raise RuntimeError("falla de prueba F6.4")
+
+        svc_ciclo.procesar_desistimientos = falla
+        try:
+            r = await c.post("/api/v1/tramites/mantenimiento/ejecutar", headers=h)
+        finally:
+            svc_ciclo.procesar_desistimientos = original
+        j = r.json() if r.status_code == 200 else {}
+        errores = [m for m in j.get("municipios", []) if m["estado"] == "error"]
+        check(r.status_code == 200 and errores and all("desistimiento" in (m["error"] or "") for m in errores)
+              and any(operables[errores[0]["id_municipio"]] in e for e in j.get("con_error", [])),
+              "tramites_desistimiento_falla", f"{r.status_code} {str(j.get('municipios'))[:300]}")
+
+
 async def main() -> None:
     parte_rutas()
     parte_vaciado()
     await parte_subidas()
+    await parte_crons()
     print(f"\n{OK} OK, {FAIL} FAIL")
     sys.exit(1 if FAIL else 0)
 

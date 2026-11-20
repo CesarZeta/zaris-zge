@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.municipio import por_cada_municipio
+from app.core.municipio import por_cada_municipio, resumen_municipios
 from app.services import integridad_cuentas as svc_integridad
 from app.utils.request_helpers import get_real_ip
 
@@ -78,6 +78,7 @@ async def ejecutar_integridad_cuentas(
                 "a_suspender": len(a_suspender),
                 "detalle": a_suspender,
                 "errores": {m: r for m, r in por_municipio.items() if isinstance(r, dict)},
+                **await resumen_municipios(db, por_municipio),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
@@ -94,6 +95,7 @@ async def ejecutar_integridad_cuentas(
             "dry_run": False,
             **resultado,
             "por_municipio": {m: {k: v for k, v in r.items() if k != "detalle"} for m, r in por_municipio.items()},
+            **await resumen_municipios(db, por_municipio),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     except HTTPException:
