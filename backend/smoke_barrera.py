@@ -142,8 +142,40 @@ async def parte_base() -> None:
         await app.close()
 
 
+async def parte_backend() -> None:
+    """Parte 2: el código del backend con DB_BARRERA=true (in-process)."""
+    settings.DB_BARRERA = True
+    from sqlalchemy import text
+    from app.core.database import AsyncSessionLocal, fijar_municipio, sesion_municipio
+    from app.core.sistema import SesionSistema
+
+    async def reclamos(db, donde: str = "") -> int:
+        return (await db.execute(text(f"SELECT count(*) FROM reclamos {donde}"))).scalar()
+
+    print("[transaccion_despues_de_commit]")
+    async with AsyncSessionLocal() as db:
+        check(await reclamos(db) == 0, "una sesión sin municipio no ve reclamos")
+        await fijar_municipio(db, 1)
+        check(await reclamos(db) > 0, "con el municipio fijado los ve")
+        await db.commit()
+        check(await reclamos(db) > 0, "después de un commit los sigue viendo")
+        await db.rollback()
+        check(await reclamos(db, "WHERE id_municipio <> 1") == 0, "y nunca los de otro municipio")
+
+    print("[sesion_municipio_ve_lo_suyo]")
+    async with sesion_municipio(1) as db:
+        check(await reclamos(db) > 0 and await reclamos(db, "WHERE id_municipio <> 1") == 0,
+              "sesion_municipio(1) ve solo el 1")
+
+    print("[sistema_ve_todo]")
+    async with SesionSistema() as db:
+        n = (await db.execute(text("SELECT count(DISTINCT id_municipio) FROM reclamos"))).scalar()
+        check(n > 1, "la sesión de sistema ve más de un municipio", str(n))
+
+
 async def main() -> int:
     await parte_base()
+    await parte_backend()
     print(f"\n== {OK} OK · {FAIL} FAIL ==")
     return 1 if FAIL else 0
 

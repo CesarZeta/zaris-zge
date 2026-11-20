@@ -99,6 +99,19 @@ class Settings(BaseSettings):
             f"@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         )
 
+    @property
+    def ASYNC_DATABASE_URI_APP(self) -> str:
+        """Conexión de las requests (IT-01 F6). Con DB_BARRERA, la misma base con el usuario
+        APP_DB_USER (sujeto a la barrera); si no, la de siempre. Sin usuario o sin clave con la
+        barrera prendida: error, el backend no arranca."""
+        if not self.DB_BARRERA:
+            return self.ASYNC_DATABASE_URI
+        if not (self.APP_DB_USER and self.APP_DB_PASSWORD):
+            raise RuntimeError("DB_BARRERA=true exige APP_DB_USER y APP_DB_PASSWORD")
+        from sqlalchemy.engine import make_url
+        url = make_url(self.ASYNC_DATABASE_URI).set(username=self.APP_DB_USER, password=self.APP_DB_PASSWORD)
+        return url.render_as_string(hide_password=False)
+
     class Config:
         # Permite seleccionar el archivo de entorno con la variable ENV_FILE
         # (ej: ENV_FILE=.env.local para desarrollo local). Default: .env
