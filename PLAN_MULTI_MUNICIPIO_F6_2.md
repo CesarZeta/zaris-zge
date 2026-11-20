@@ -154,3 +154,14 @@ Hecho en local; prod sin cambios (`DB_BARRERA=false` por defecto, migración 138
 - El control de módulos habilitados fija el municipio de la request (corre antes que el handler).
 
 **Pendiente para F6.3:** la barrera suma unos 9 ms a la bandeja de trámites en local (una consulta de 11 tablas pasa de 7 a 16 ms; el inicio y los reclamos casi no cambian). Medirlo en prod antes de prender `DB_BARRERA`.
+
+**F6.3, corte en prod (2026-11-20):**
+- **Usuario y variables:** César creó `zaris_app` en el SQL Editor y cargó la clave en Railway. Claude cargó `APP_DB_USER=zaris_app.<ref>`, que es el formato del pooler en modo sesión, el mismo que usa `DATABASE_URL`. La 138 la corrió César en el SQL Editor (el MCP la rechazó por los `DROP`).
+- **Medición:** 7 endpoints con dos cuentas (supervisor y atención), primero con `DB_BARRERA=false` y después con `true`. Los conteos dan igual (715 trámites, 953 ciudadanos, 150 turnos de 7 días) y los tiempos también (bandeja de trámites: 228/222 ms sin la barrera, 218/176 ms con ella). En prod los 9 ms de local no se notan: el piso es la latencia de ~170 ms.
+- **Recorrido con la barrera:**
+  - Alta de dos reclamos por ventanilla: REC-SAN-2026-003478 (gestión que asigna a mano) y REC-SAN-2026-003479, que se asignó solo en segundo plano con la OT-SAN-2026-003659, aviso al agente y aviso al vecino.
+  - App del vecino: login, sus reclamos y su resumen.
+  - Sin token: identidad por origen y link de encuesta (el token inválido da 404).
+  - Cron de encuestas disparado a mano: HTTP 200, con el resultado por municipio.
+  - En `pg_stat_activity` el backend aparece como `zaris_app`, y los logs de Postgres no muestran ningún permiso denegado.
+- **Vuelta atrás:** `DB_BARRERA=false` en Railway (redeploy de unos 30 s, sin código).

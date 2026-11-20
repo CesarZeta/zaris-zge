@@ -211,7 +211,7 @@ Cazado en la prueba de cierre de F4+F5 (2026-11-02). Seis campos `seleccion` por
 
 ### Migración 138 — segunda barrera por municipio (`backend/migrations/138_barrera_municipio.sql`)
 
-IT-01 F6.2 ([`PLAN_MULTI_MUNICIPIO_F6_2.md`](PLAN_MULTI_MUNICIPIO_F6_2.md)). **Aplicada solo en local el 2026-11-20; en prod va en el corte de F6.3**, después de que César cree el usuario `zaris_app` en el SQL Editor. Exige que el usuario exista (si no, aborta).
+IT-01 F6.2 ([`PLAN_MULTI_MUNICIPIO_F6_2.md`](PLAN_MULTI_MUNICIPIO_F6_2.md)). **Aplicada en local y en prod el 2026-11-20** (corte de F6.3). En prod: César creó `zaris_app` en el SQL Editor (sin superusuario, sin BYPASSRLS) y la 138 la corrió él ahí mismo, porque el MCP la rechazó por los `DROP POLICY IF EXISTS`; por eso no figura en la lista de migraciones de Supabase. Verificado por MCP: 84 `barrera_municipio`, 19 `barrera_global`, 1 `barrera_parametros_globales`, ninguna tabla clasificada sin política ni sin permiso, ningún `_backup_*` visible para `zaris_app`. Exige que el usuario exista (si no, aborta).
 - Permisos de `zaris_app` sobre las tablas clasificadas, secuencias y funciones (nada sobre `_backup_*`), y privilegios por defecto para las tablas nuevas.
 - Políticas desde `municipio_tabla_clase`, solo `TO zaris_app`: `barrera_municipio` (catálogo, operativo, mixta y `usuarios`: `id_municipio` = `app.id_municipio`), `barrera_parametros_globales` (lectura de los globales de `configuracion_general`) y `barrera_global`. Sin la variable no se ve nada.
 - Enciende RLS en cada tabla clasificada: en local muchas lo tenían apagado (en prod ya estaban todas encendidas).

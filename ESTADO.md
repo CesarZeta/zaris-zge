@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-11-20 (Cesar, cierre). En prod: mail al vecino con el número del reclamo cargado desde el backoffice; prueba del super en Trámites hecha con César; diseño de F6 aprobado ([`PLAN_MULTI_MUNICIPIO_F6_DISENO.md`](PLAN_MULTI_MUNICIPIO_F6_DISENO.md)) y **F6.1 en prod** (clave temporal y corte de sesiones, [`PLAN_MULTI_MUNICIPIO_F6_1.md`](PLAN_MULTI_MUNICIPIO_F6_1.md)). **F6.2 hecha en local** (la barrera, [`PLAN_MULTI_MUNICIPIO_F6_2.md`](PLAN_MULTI_MUNICIPIO_F6_2.md)). Sigue: F6.3, el corte en prod, que necesita que César cree el usuario `zaris_app`.
+**Última actualización:** 2026-11-20, tarde (Cesar). **F6.3 hecha: prod corre con la segunda barrera** (`DB_BARRERA=true`, el backend entra como `zaris_app`, migración 138 aplicada; detalle y mediciones en [`PLAN_MULTI_MUNICIPIO_F6_2.md`](PLAN_MULTI_MUNICIPIO_F6_2.md) → «F6.3»). Vuelta atrás: `DB_BARRERA=false` en Railway. Sigue F6.4 (archivos por municipio y logs de los crons) y F6.5 (restauración).
 
 ---
 
@@ -18,8 +18,8 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **F6.3 — prender la segunda barrera en prod** (recomendación de Claude: hacerlo en la próxima sesión). César crea el usuario `zaris_app` en el SQL Editor de Supabase (Claude le pasa el SQL sin clave; la clave la elige él) y carga `APP_DB_USER` y `APP_DB_PASSWORD` en Railway. Después Claude aplica la 138, publica con `DB_BARRERA=false`, mide la bandeja de trámites en prod (en local la barrera le suma ~9 ms) y recién ahí se prende. Vuelta atrás: `DB_BARRERA=false`. Desvío del diseño a validar: el vaciado va sin la barrera (deshabilita triggers y eso exige el dueño de las tablas).
-2. **Mail del reclamo cargado en ventanilla — falta verlo llegar en prod** (en prod desde `1fac3bb`, probado en local): cargar un reclamo desde el backoffice a nombre de un vecino de prueba con email (Reclamos → «+ Nuevo reclamo» → canal Presencial) y ver el mail «Recibimos tu reclamo REC-…».
+1. **F6.3 — falta la prueba de César como super administrador:** cambiar «Operando en» a otro municipio y volver, con el inicio y Reclamos de cada uno. Además, validar el desvío del diseño: el vaciado va sin la barrera, porque deshabilita triggers y eso exige ser el dueño de las tablas.
+2. **Mail del reclamo cargado en ventanilla — falta confirmar que llegó** (cargados el 2026-11-20 a nombre del vecino de prueba 1613: REC-SAN-2026-003478 y REC-SAN-2026-003479; los dos se pueden cerrar).
 3. **Bloque del vecino — después de F4 (orden de César, 2026-10-27):**
    1. La web del ciudadano con todo lo que tiene la app (supuesto de Claude, sin confirmar: es el modo escritorio del portal, ver En curso).
    2. Todas las prestaciones del vecino; falta **iniciar un trámite** desde el portal (ni endpoint ni pantalla). Turnos y entradas ya se reservan desde la app (verificado en el código).
@@ -84,6 +84,7 @@
 ## ✅ Hecho reciente (últimas sesiones)
 
 - **2026-11-20:**
+  - IT-01 F6.3 en prod: la segunda barrera quedó prendida. César creó `zaris_app` y corrió la 138 en el SQL Editor. Las mediciones con dos cuentas dan los mismos conteos y tiempos con y sin la barrera. El recorrido incluyó el alta de reclamos con autoasignación en segundo plano, la app del vecino, el link de encuesta y el cron de encuestas, y la base no registró ningún permiso denegado.
   - Reclamos: mail al vecino con el número cuando lo carga un agente (`smoke_reclamo_alta_mail.py`).
   - IT-01 F6.2 en local: usuario `zaris_app`, migración 138 (políticas desde `municipio_tabla_clase`), municipio por transacción, conexión de sistema acotada (`tools/barrido_sistema.py`). Con la barrera, una consulta sin filtro solo ve el municipio de la request; los 30 smokes dan lo mismo con y sin la barrera.
   - IT-01 F6.1 en prod (`23d7834`): con clave temporal la sesión solo sirve para cambiar la clave; todo cambio de clave (propio, por el link del mail, por un administrador o por vencimiento) corta las sesiones abiertas de cualquier nivel, y el propio devuelve una sesión nueva que adoptan el login, «Mi perfil» y la app de agentes (`smoke_cuentas_f6_1.py`, 20/20). Menores diferidos en el plan.
