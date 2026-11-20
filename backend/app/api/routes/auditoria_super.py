@@ -15,7 +15,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import require_admin
-from app.core.database import get_db
+from app.core.database import get_db  # noqa: F401
+# Segunda barrera (IT-01 F6, excepción 5): pantallas globales del super y su registro de accesos.
+from app.core.sistema import get_db_sistema
 from app.core.municipio import municipio_actual
 from app.services.accesos_super import ACCIONES
 from app.utils.orden import clausula_orden, descripcion_orden
@@ -46,7 +48,7 @@ async def listar_accesos_super(
     dir: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int = Query(100, ge=1, le=200),
     offset: int = Query(0, ge=0, le=1_000_000),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_sistema),
     _admin: dict = Depends(require_admin),
     id_municipio: int = Depends(municipio_actual),
 ):

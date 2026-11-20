@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.utils.request_helpers import get_real_ip
 from app.middleware.rate_limit import check_rate_limit
+from app.core.sistema import fijar_por_token
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -151,6 +152,7 @@ async def reservar_publico(
         raise HTTPException(422, str(exc))
 
     # No duplicar reserva (mismo DNI, mismo evento, no cancelada)
+    await fijar_por_token(db, token, "evento")  # segunda barrera (IT-01 F6): municipio del token
     dup = await db.scalar(text("""
         SELECT 1 FROM evento_reservas r
         JOIN estado_reserva er ON er.id_estado_reserva = r.id_estado_reserva
@@ -255,6 +257,7 @@ async def obtener_reserva_publica(
     rsv = await _reserva_publica_por_token(db, token_reserva)
     if not rsv or not rsv["activo"]:
         raise HTTPException(404, "Reserva no encontrada")
+    await fijar_por_token(db, token_reserva, "reserva")  # segunda barrera (IT-01 F6): municipio del token
     ev_row = (await db.execute(text("""
         SELECT e.id_evento, e.nombre, e.descripcion,
                e.fecha, e.hora_inicio, e.hora_fin,

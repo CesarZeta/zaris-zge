@@ -51,7 +51,8 @@ settings.RESEND_API_KEY = ""
 
 from app.api.routes.admin_tablas import TABLE_CONFIG  # noqa: E402
 from app.core.auth import crear_token_ciudadano  # noqa: E402
-from app.core.database import AsyncSessionLocal, engine  # noqa: E402
+# Preparación y verificación como dueño de la base: no pasa por la barrera (IT-01 F6).
+from app.core.sistema import SesionSistema as AsyncSessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
 from app.services import push  # noqa: E402
 from seed_municipio_aislamiento import DNI_VECINO_B, cuil_valido, ids_aislamiento  # noqa: E402
@@ -321,7 +322,7 @@ def armar_paths(ruta: APIRoute, ids: dict, numero_b: str) -> list[tuple[str, boo
 
 async def checksum_b(id_b: int) -> dict[str, str]:
     out = {}
-    async with engine.connect() as conn:
+    async with AsyncSessionLocal() as conn:  # dueño de la base: ve las filas de B
         tablas = [r[0] for r in await conn.execute(text(
             "SELECT tabla FROM municipio_tabla_clase WHERE clase IN ('catalogo','operativo') ORDER BY 1"))]
         for t in tablas:

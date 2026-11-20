@@ -51,7 +51,8 @@ settings.APP_VECINOS_FRONTEND_URL = PORTAL        # como en prod (verificado en 
 settings.FRONTEND_BASE_URL = SHELL
 settings.API_PUBLIC_BASE_URL = BASE_IN_PROCESS    # el link del mail se sigue in-process
 
-from app.core.database import AsyncSessionLocal  # noqa: E402
+# Preparación y verificación como dueño de la base: no pasa por la barrera (IT-01 F6).
+from app.core.sistema import SesionSistema as AsyncSessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
 import app.services.email as email_mod  # noqa: E402
 

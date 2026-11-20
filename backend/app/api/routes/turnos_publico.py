@@ -31,6 +31,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from app.utils.request_helpers import get_real_ip
 from app.middleware.rate_limit import check_rate_limit
+from app.core.sistema import fijar_por_token
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -453,6 +454,7 @@ async def cancelar_turno_publico(
         raise HTTPException(409, f"No se puede cancelar un turno '{t['estado']}'")
 
     # CAS de estado (mig 95): no pisar un cumplir concurrente del backoffice.
+    await fijar_por_token(db, token, "turno")  # segunda barrera (IT-01 F6): municipio del token
     res = await db.execute(text("""
         UPDATE turnos SET estado = 'cancelado', fecha_modificacion = NOW()
         WHERE id_turno = :id AND estado = 'reservado'
@@ -512,6 +514,7 @@ async def pantalla_colero(
     except (ValueError, AttributeError, TypeError):
         raise HTTPException(404, "Pantalla no encontrada")
 
+    await fijar_por_token(db, token_pantalla, "pantalla")  # segunda barrera (IT-01 F6): municipio del token
     espacio = (await db.execute(text("""
         SELECT id_espacio, nombre FROM espacios_agenda
          WHERE token_pantalla = CAST(:tok AS uuid) AND activo = TRUE

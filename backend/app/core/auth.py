@@ -27,7 +27,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import fijar_municipio, get_db
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -46,6 +46,10 @@ NIVELES_CON_SEGUNDO_FACTOR: frozenset[int] = frozenset({0, 1})
 # sirve para ver la propia cuenta y cambiar la clave. Cualquier otra ruta, 403.
 RUTAS_CON_CLAVE_TEMPORAL: frozenset[str] = frozenset({"/api/v1/auth/me", "/api/v1/auth/cambiar-password"})
 CLAVE_TEMPORAL = "Tenés que cambiar tu contraseña antes de seguir."
+
+# Columnas de la cuenta que valida cada sesión (las usa también app/core/sistema.py para el super).
+COLUMNAS_SESION = """SELECT id_usuario, nombre, email, nivel_acceso, activo, debe_cambiar_password,
+                            foto_url, id_municipio, sesiones_validas_desde FROM usuarios"""
 
 
 def requiere_segundo_factor(nivel_real: int) -> bool:
@@ -170,17 +174,20 @@ async def get_current_user(
     except JWTError:
         raise unauthorized
 
-    result = await db.execute(
-        text("""SELECT id_usuario, nombre, email, nivel_acceso, activo,
-                       debe_cambiar_password, foto_url, id_municipio, sesiones_validas_desde
-                FROM usuarios WHERE id_usuario = :id"""),
-        {"id": int(user_id)},
-    )
-    user = result.fetchone()
-    if not user or not user.activo:
-        raise unauthorized
     vencida = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=SESION_VENCIDA,
                             headers={"WWW-Authenticate": "Bearer"})
+    # Segunda barrera (IT-01 F6): la cuenta se lee con el municipio del token ya fijado. La del super
+    # no tiene municipio: se lee sin barrera (excepción 2 de app/core/sistema.py).
+    if payload.get("sa") is True:
+        from app.core.sistema import cuenta_de_sesion_super
+        user = await cuenta_de_sesion_super(int(user_id))
+    else:
+        if not isinstance(payload.get("mun"), int):
+            raise vencida
+        await fijar_municipio(db, payload["mun"])
+        user = (await db.execute(text(COLUMNAS_SESION + " WHERE id_usuario = :id"), {"id": int(user_id)})).fetchone()
+    if not user or not user.activo:
+        raise unauthorized
     # Segundo factor (F3b): el nivel se lee de la base, así un ascenso o un descenso rige en la
     # request siguiente. Sin `sf`, la sesión de un nivel con segundo factor venció.
     if requiere_segundo_factor(user.nivel_acceso) and payload.get("sf") is not True:
@@ -265,6 +272,11 @@ async def get_current_ciudadano(
     except JWTError:
         raise unauthorized
 
+    # Segunda barrera (IT-01 F6): el municipio del token se fija antes de leer la ficha.
+    if not isinstance(payload.get("mun"), int):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=SESION_VENCIDA,
+                            headers={"WWW-Authenticate": "Bearer"})
+    await fijar_municipio(db, payload["mun"])
     result = await db.execute(
         text("""
             SELECT c.id_ciudadano, c.doc_nro, c.nombre, c.apellido, c.email,

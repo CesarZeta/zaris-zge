@@ -18,6 +18,8 @@ from app.core.config_municipio import leer_configs
 from app.core.database import get_db
 from typing import Optional
 
+from app.core.database import fijar_municipio
+from app.core.sistema import SesionSistema, municipio_de_token
 from app.core.municipio import resolver_municipio_de_origen
 from app.core.urls import url_login_backoffice
 from app.core import storage
@@ -179,8 +181,16 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
         check_rate_limit(f"loginint-mail:{id_municipio}:{_clave_rl}", max_requests=5, window_seconds=60)
     user = await _buscar_usuario_login(db, ident, id_municipio)
     if user is None and "@" in ident:
-        user = await _buscar_super_admin(db, ident)
+        # Segunda barrera (IT-01 F6, excepciones 1 y 2): la cuenta del super no tiene municipio;
+        # su login sigue entero en la conexión de sistema.
+        async with SesionSistema() as dbs:
+            sup = await _buscar_super_admin(dbs, ident)
+            if sup is not None:
+                return await _terminar_login(dbs, request, body, sup)
+    return await _terminar_login(db, request, body, user)
 
+
+async def _terminar_login(db: AsyncSession, request: Request, body: "LoginRequest", user):
     if not user or not user.activo or not verify_password(body.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -211,13 +221,23 @@ async def me(
     return {**salida, "nivel_acceso": current_user["nivel_real"], "modulos_permitidos": modulos, **perfil}
 
 
+async def db_de_la_cuenta(current_user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Sesión para leer o escribir la PROPIA cuenta. La del super no tiene municipio y con la segunda
+    barrera es invisible desde la conexión de las requests: va por la de sistema (IT-01 F6, exc. 2)."""
+    if current_user.get("es_super_admin"):
+        async with SesionSistema() as dbs:
+            yield dbs
+    else:
+        yield db
+
+
 @router.post("/cambiar-password", responses={
     200: {"description": "Devuelve access_token: la sesión nueva (las demás quedan cortadas)."}})
 async def cambiar_password(
     body: CambiarPasswordRequest,
     request: Request,
     current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(db_de_la_cuenta),
 ):
     """Cambio self-service de la propia contraseña del usuario autenticado.
 
@@ -294,6 +314,29 @@ async def _login_url(db: AsyncSession, id_municipio: Optional[int]) -> str:
     return await url_login_backoffice(db, id_municipio)
 
 
+async def _token_de_recuperacion(db: AsyncSession, row) -> Optional[str]:
+    """Token nuevo de «Olvidé mi contraseña» para la cuenta, o None si no hay cuenta o está en el
+    cooldown de 5 minutos. Commitea en la sesión que recibe."""
+    if not row:
+        return None
+    if row.fecha_ultimo_email_recovery is not None:
+        delta = datetime.now(timezone.utc) - row.fecha_ultimo_email_recovery
+        if delta < timedelta(minutes=COOLDOWN_RECOVERY_MINUTOS):
+            return None
+    res = await db.execute(
+        text(f"""UPDATE usuarios
+                    SET token_recovery = gen_random_uuid(),
+                        token_recovery_expira = NOW() + INTERVAL '{HORAS_RECOVERY_INTERNO} hours',
+                        fecha_ultimo_email_recovery = NOW()
+                  WHERE id_usuario = :id
+                  RETURNING token_recovery"""),
+        {"id": row.id_usuario},
+    )
+    token = str(res.fetchone().token_recovery)
+    await db.commit()
+    return token
+
+
 @router.post("/recuperar-password", response_model=GenericoOkResponse,
              responses={200: {"description": "Siempre OK (anti-enumeración). El mail del super administrador sale como ZARIS"}})
 async def recuperar_password(
@@ -318,38 +361,24 @@ async def recuperar_password(
         {"email": email, "mun": id_municipio},
     )
     row = res.fetchone()
-    es_super = False
-    if not row:
-        # Super administrador: entra desde cualquier dirección, también para recuperar la clave.
-        es_super = True
-        row = (await db.execute(
-            text("""SELECT id_usuario, nombre, email, fecha_ultimo_email_recovery
-                    FROM usuarios
-                    WHERE LOWER(email) = :email AND activo = TRUE
-                      AND id_municipio IS NULL AND nivel_acceso = 0
-                    LIMIT 1"""),
-            {"email": email},
-        )).fetchone()
-    if not row:
-        return GenericoOkResponse()  # anti-enumeración
-
-    # Cooldown 5 min
-    if row.fecha_ultimo_email_recovery is not None:
-        delta = datetime.now(timezone.utc) - row.fecha_ultimo_email_recovery
-        if delta < timedelta(minutes=COOLDOWN_RECOVERY_MINUTOS):
-            return GenericoOkResponse()
-
-    res = await db.execute(
-        text(f"""UPDATE usuarios
-                    SET token_recovery = gen_random_uuid(),
-                        token_recovery_expira = NOW() + INTERVAL '{HORAS_RECOVERY_INTERNO} hours',
-                        fecha_ultimo_email_recovery = NOW()
-                  WHERE id_usuario = :id
-                  RETURNING token_recovery"""),
-        {"id": row.id_usuario},
-    )
-    token = str(res.fetchone().token_recovery)
-    await db.commit()
+    es_super = row is None
+    if es_super:
+        # Super administrador: entra desde cualquier dirección, también para recuperar la clave. Su
+        # cuenta no tiene municipio: se busca y se marca sin la barrera (IT-01 F6, excepción 1).
+        async with SesionSistema() as dbs:
+            row = (await dbs.execute(
+                text("""SELECT id_usuario, nombre, email, fecha_ultimo_email_recovery
+                        FROM usuarios
+                        WHERE LOWER(email) = :email AND activo = TRUE
+                          AND id_municipio IS NULL AND nivel_acceso = 0
+                        LIMIT 1"""),
+                {"email": email},
+            )).fetchone()
+            token = await _token_de_recuperacion(dbs, row)
+    else:
+        token = await _token_de_recuperacion(db, row)
+    if token is None:
+        return GenericoOkResponse()  # anti-enumeración o cooldown
 
     # El super administrador no es de ningún municipio: su mail sale como ZARIS, no con la
     # identidad del municipio de la dirección desde la que lo pidió.
@@ -417,6 +446,19 @@ async def resetear_password_interno(
     if len(nueva) > 100:
         raise HTTPException(status_code=422, detail="La contraseña es demasiado larga.")
 
+    # Segunda barrera (IT-01 F6, excepción 3): el token dice de qué municipio es la cuenta; la del
+    # super (sin municipio) sigue en la conexión de sistema.
+    duenio = await municipio_de_token("recuperacion_interna", body.token)
+    if duenio is None:
+        raise HTTPException(status_code=400, detail="El enlace es inválido o expiró. Pedí uno nuevo.")
+    if duenio["id_municipio"] is None:
+        async with SesionSistema() as dbs:
+            return await _aplicar_reseteo(dbs, body.token, nueva)
+    await fijar_municipio(db, duenio["id_municipio"])
+    return await _aplicar_reseteo(db, body.token, nueva)
+
+
+async def _aplicar_reseteo(db: AsyncSession, token: str, nueva: str) -> dict:
     res = await db.execute(
         text("""SELECT id_usuario, password_hash
                 FROM usuarios
@@ -424,7 +466,7 @@ async def resetear_password_interno(
                   AND token_recovery_expira > NOW()
                   AND activo = TRUE
                 LIMIT 1"""),
-        {"token": body.token},
+        {"token": token},
     )
     row = res.fetchone()
     if not row:
@@ -477,7 +519,7 @@ async def crear_upload_url_foto(
 async def actualizar_foto(
     body: FotoUpdateRequest,
     current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(db_de_la_cuenta),
 ):
     """Persiste la URL del avatar subido (o la limpia si viene vacía).
     Solo afecta al propio usuario del token."""

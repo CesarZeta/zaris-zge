@@ -186,6 +186,10 @@ def modulo_habilitado(*codigos: str):
         id_municipio = await _municipio_de_la_request(request, db)
         if id_municipio is None:
             return
+        # Segunda barrera (IT-01 F6): corre antes que el handler. Es el mismo municipio que después
+        # fija la ruta (token, Origin o el selector del super, que municipio_actual registra).
+        from app.core.database import fijar_municipio
+        await fijar_municipio(db, id_municipio)
         habilitados = await modulos_habilitados(db, id_municipio)
         if not any(c in habilitados for c in codigos):
             raise NO_ENCONTRADO

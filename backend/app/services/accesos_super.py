@@ -17,7 +17,8 @@ from fastapi import HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import AsyncSessionLocal
+# Excepción 2 de la segunda barrera (IT-01 F6): el registro del super tiene filas sin municipio.
+from app.core.sistema import SesionSistema
 
 logger = logging.getLogger("zaris.accesos_super")
 
@@ -58,7 +59,7 @@ async def registrar_acceso_super(*, id_usuario: int, accion: str, id_municipio: 
                                  detalle: Optional[str] = None, ip: Optional[str] = None,
                                  user_agent: Optional[str] = None) -> None:
     try:
-        async with AsyncSessionLocal() as db:
+        async with SesionSistema() as db:
             await db.execute(_INSERT, _params(id_usuario, accion, id_municipio, metodo, ruta, detalle, ip,
                                               user_agent))
             await db.commit()

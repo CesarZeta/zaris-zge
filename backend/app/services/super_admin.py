@@ -14,9 +14,7 @@ EMAIL_RESERVADO = "Ese email está reservado"
 
 
 async def email_reservado_super_admin(db: AsyncSession, email: Optional[str]) -> bool:
-    """True si el email es el de una cuenta sin municipio (super administrador)."""
-    if not (email or "").strip():
-        return False
-    return bool(await db.scalar(text(
-        "SELECT 1 FROM usuarios WHERE lower(email) = lower(:e) AND id_municipio IS NULL LIMIT 1"),
-        {"e": email.strip()}))
+    """True si el email es el de una cuenta sin municipio (super administrador). Se consulta sin la
+    barrera: con la barrera, la cuenta del super es invisible desde cualquier municipio (IT-01 F6)."""
+    from app.core.sistema import es_email_de_super
+    return await es_email_de_super(email)

@@ -34,7 +34,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_ciudadano, get_current_user
-from app.core.database import get_db
+from app.core.database import fijar_municipio, get_db
 from app.services.municipios.constantes import ESTADOS_OPERABLES
 
 logger = logging.getLogger("zaris.municipio")
@@ -95,6 +95,7 @@ async def por_cada_municipio(db: AsyncSession, proceso: str, fn) -> dict[int, An
     resultados: dict[int, Any] = {}
     for id_m in ids:
         try:
+            await fijar_municipio(db, id_m)  # segunda barrera (IT-01 F6): cada vuelta, su municipio
             resultados[id_m] = await fn(id_m)
         except Exception as e:  # noqa: BLE001 — un municipio no frena a los demas
             await db.rollback()
@@ -112,11 +113,13 @@ async def resolver_municipio_de_origen(request: Request, db: AsyncSession) -> in
         id_mun = datos["por_subdominio"].get(sub)
         if id_mun is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Municipio no encontrado")
-        return id_mun
-    if datos["base"] is None:
+    elif datos["base"] is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                             detail="No hay un municipio configurado para esta dirección")
-    return datos["base"]
+    else:
+        id_mun = datos["base"]
+    await fijar_municipio(db, id_mun)  # segunda barrera (IT-01 F6)
+    return id_mun
 
 
 async def municipio_de_origen(request: Request, db: AsyncSession = Depends(get_db)) -> int:
@@ -136,6 +139,7 @@ async def municipio_por_slug(db: AsyncSession, slug: str) -> dict:
             {"slug": slug_norm, "e": list(ESTADOS_OPERABLES)})).fetchone()
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Municipio no encontrado")
+    await fijar_municipio(db, row.id_municipio)  # segunda barrera (IT-01 F6)
     return {"id_municipio": row.id_municipio, "nombre": row.nombre, "slug": row.codigo_corto}
 
 
@@ -175,6 +179,7 @@ async def municipio_actual(request: Request, current_user: dict = Depends(get_cu
         id_usuario=current_user["id_usuario"], accion="request", id_municipio=id_mun,
         metodo=request.method, ruta=request.url.path, ip=get_real_ip(request),
         user_agent=request.headers.get("user-agent"))
+    await fijar_municipio(db, id_mun)  # segunda barrera (IT-01 F6): el municipio elegido en el selector
     return id_mun
 
 

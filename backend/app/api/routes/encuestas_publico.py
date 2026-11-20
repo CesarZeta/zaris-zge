@@ -19,6 +19,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from app.core.sistema import fijar_por_token
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -77,6 +78,7 @@ async def _branding(db: AsyncSession, id_municipio: int) -> dict:
 async def cargar_encuesta(token: str, db: AsyncSession = Depends(get_db)):
     _validar_uuid(token)
 
+    await fijar_por_token(db, token, "encuesta")  # segunda barrera (IT-01 F6): municipio del token
     env = (await db.execute(text("""
         SELECT ee.id_encuesta_envio, ee.id_plantilla, ee.estado, ee.fecha_expiracion, ee.id_municipio,
                ee.id_reclamo, ee.id_turno, ee.id_evento_reserva, ee.id_tramite,
@@ -208,6 +210,7 @@ async def responder_encuesta(
     db: AsyncSession = Depends(get_db),
 ):
     _validar_uuid(token)
+    await fijar_por_token(db, token, "encuesta")  # segunda barrera (IT-01 F6): municipio del token
 
     # tamaño total del body (4 KB)
     raw = await request.body()

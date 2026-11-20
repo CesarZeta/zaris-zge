@@ -18,7 +18,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import storage
-from app.core.database import AsyncSessionLocal
+from app.core.database import sesion_municipio
+from app.core.sistema import SesionSistema
 from app.services.municipios.constantes import EXPORTACION_RETENCION_DIAS
 
 logger = logging.getLogger("zaris.municipios")
@@ -45,7 +46,7 @@ async def marcar_tarea(id_tarea: uuid.UUID, estado: str, **campos) -> None:
     if "detalle" in campos:
         params["detalle"] = json.dumps(campos["detalle"])
         sets = sets.replace("detalle = :detalle", "detalle = CAST(:detalle AS jsonb)")
-    async with AsyncSessionLocal() as db:
+    async with SesionSistema() as db:  # seguimiento de las tareas del super (excepción 5)
         await db.execute(text(f"UPDATE municipio_tarea SET estado = :e, fecha_modificacion = NOW()"
                               f"{', ' + sets if sets else ''} WHERE id_tarea = :t"), params)
         await db.commit()
@@ -76,11 +77,12 @@ async def ejecutar_exportacion(id_tarea: uuid.UUID, id_municipio: int) -> bool:
     """Arma el zip y lo sube. True si terminó ok. Nunca levanta: el error queda en la tarea."""
     await marcar_tarea(id_tarea, "corriendo")
     try:
-        async with AsyncSessionLocal() as db:
+        # Con la barrera del municipio: el zip no puede llevar filas de otro (IT-01 F6).
+        async with sesion_municipio(id_municipio) as db:
             contenido, cantidades = await armar_zip(db, id_municipio)
         ruta = f"m{id_municipio}/{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{str(id_tarea)[:8]}.zip"
         await storage.subir_objeto(ruta, contenido, "application/zip", bucket=BUCKET)
-        async with AsyncSessionLocal() as db:
+        async with SesionSistema() as db:
             await db.execute(text("""
                 UPDATE municipio_tarea SET estado = 'ok', archivo = :a, fecha_modificacion = NOW(),
                        vence_en = NOW() + make_interval(days => :d), detalle = CAST(:det AS jsonb)
@@ -97,7 +99,7 @@ async def ejecutar_exportacion(id_tarea: uuid.UUID, id_municipio: int) -> bool:
 
 async def purgar_vencidas() -> int:
     """Borra el objeto de las exportaciones vencidas y las marca (archivo NULL). Devuelve cuántas."""
-    async with AsyncSessionLocal() as db:
+    async with SesionSistema() as db:  # recorre las exportaciones de todos los municipios
         vencidas = (await db.execute(text("""
             SELECT id_tarea, archivo FROM municipio_tarea
              WHERE tipo = 'exportacion' AND archivo IS NOT NULL AND vence_en < NOW()"""))).all()
@@ -108,7 +110,7 @@ async def purgar_vencidas() -> int:
         except Exception:  # noqa: BLE001
             logger.exception("purga de la exportación %s", v.id_tarea)
             continue
-        async with AsyncSessionLocal() as db:
+        async with SesionSistema() as db:
             await db.execute(text("""
                 UPDATE municipio_tarea SET archivo = NULL, fecha_modificacion = NOW(),
                        detalle = COALESCE(detalle, '{}'::jsonb) || jsonb_build_object('purgada', NOW())

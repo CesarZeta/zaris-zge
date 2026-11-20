@@ -19,6 +19,21 @@ RAIZ = Path(__file__).resolve().parent.parent / "backend" / "app"
 
 PERMITIDOS: dict[str, str] = {
     "core/sistema.py": "define la conexión sin barrera",
+    "core/auth.py": "2 · la sesión del super: su cuenta no tiene municipio",
+    "services/super_admin.py": "1 · emails reservados de las cuentas del super",
+    "services/accesos_super.py": "2 · registro de accesos del super (filas sin municipio)",
+    "api/routes/auth.py": "1-3 · login y recuperación del super; token de restablecimiento → municipio",
+    "api/routes/segundo_factor.py": "2 · segundo factor del super (desafío con `sa`)",
+    "api/routes/super_admin.py": "4-5 · alta de municipios y pantallas globales del super (solo require_super_admin)",
+    "api/routes/auditoria_super.py": "5 · registro de accesos del super (filtra por el municipio de la request)",
+    "services/municipios/exportacion.py": "5 · seguimiento de las tareas del super (el zip se arma con la barrera)",
+    "services/municipios/vaciado.py": "4-5 · deshabilita triggers: exige el dueño de las tablas",
+    "api/routes/turnos_publico.py": "3 · token de turno y de pantalla → municipio",
+    "api/routes/agenda_publico.py": "3 · token de evento y de reserva → municipio",
+    "api/routes/encuestas_publico.py": "3 · token de encuesta → municipio",
+    "api/routes/publico_auth.py": "3 · tokens de activación y recuperación del vecino → municipio",
+    "api/routes/publico_alta.py": "3 · token de verificación del alta → municipio",
+    "api/routes/invitacion.py": "3 · token de invitación → municipio (la del super sigue sin barrera)",
 }
 
 MOTORES = {"core/database.py", "core/sistema.py"}

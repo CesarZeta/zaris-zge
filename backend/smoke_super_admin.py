@@ -31,7 +31,8 @@ if "zaris_dev" not in settings.ASYNC_DATABASE_URI:
     sys.exit("ABORT: este smoke es SOLO LOCAL (la DB configurada no es zaris_dev).")
 settings.RESEND_API_KEY = ""
 
-from app.core.database import AsyncSessionLocal  # noqa: E402
+# Preparación y verificación como dueño de la base: no pasa por la barrera (IT-01 F6).
+from app.core.sistema import SesionSistema as AsyncSessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
 
 EMAIL_SUPER = "super.admin@prueba-aislamiento.com.ar"

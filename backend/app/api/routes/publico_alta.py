@@ -27,6 +27,7 @@ from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
+from app.core.sistema import fijar_por_token
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -619,6 +620,7 @@ async def verificar(request: Request, token: str, m: str | None = None, db: Asyn
         return await _pagina_enlace_invalido(db, request, m)
 
     # ── Ciudadano ──
+    await fijar_por_token(db, token, "activacion_vecino", "verificacion_empresa")  # segunda barrera (IT-01 F6): municipio del token
     res = await db.execute(
         text("""
             SELECT cc.id_ciudadano_credencial, cc.id_ciudadano, c.nombre, c.apellido, c.id_municipio

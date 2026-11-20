@@ -17,6 +17,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 
 from app.utils.request_helpers import get_real_ip
 from app.middleware.rate_limit import check_rate_limit
+from app.core.sistema import fijar_por_token
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -261,6 +262,7 @@ async def activar_cuenta(data: ActivarIn, db: AsyncSession = Depends(get_db)):
     if len(data.password) < 8:
         raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 8 caracteres")
 
+    await fijar_por_token(db, data.token, "activacion_vecino")  # segunda barrera (IT-01 F6): municipio del token
     res = await db.execute(
         text("""
             SELECT cc.id_ciudadano_credencial, cc.id_ciudadano,
@@ -569,6 +571,7 @@ async def resetear_password(data: ResetearPasswordIn, db: AsyncSession = Depends
     if len(data.password) < 8:
         raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 8 caracteres")
 
+    await fijar_por_token(db, data.token, "recuperacion_vecino")  # segunda barrera (IT-01 F6): municipio del token
     res = await db.execute(
         text("""
             SELECT cc.id_ciudadano_credencial, cc.id_ciudadano,

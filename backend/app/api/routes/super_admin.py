@@ -35,7 +35,9 @@ from app.core.auth import require_super_admin
 from app.services import contorno as ct
 from app.services.contorno import origen_limpio, validar_origen
 from app.core.config_municipio import leer_configs
-from app.core.database import get_db
+from app.core.database import get_db  # noqa: F401
+# Segunda barrera (IT-01 F6, excepción 5): pantallas globales del super y su registro de accesos.
+from app.core.sistema import get_db_sistema
 from app.core.geo_zona import CLAVES_ZONA, zona_completa
 from app.core.municipio import invalidar_cache_municipios
 from app.services.accesos_super import registrar_acceso_super, registrar_acceso_super_en
@@ -135,7 +137,7 @@ async def listar_municipios(
     codigo_pais: Optional[str] = Query(None, pattern=r"^[A-Z]{2}$"),
     id_provincia: Optional[int] = Query(None, ge=1, le=2_147_483_647),
     estado: Optional[str] = Query(None, pattern="^(" + "|".join(ESTADOS) + ")$"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_sistema),
 ):
     rows = await db.execute(text(
         _SELECT_MUNICIPIO
@@ -147,7 +149,7 @@ async def listar_municipios(
 
 
 @router.get("/alta/opciones", responses={200: {"description": "Catalogos con marca de obligatorio"}})
-async def opciones_alta(db: AsyncSession = Depends(get_db)):
+async def opciones_alta(db: AsyncSession = Depends(get_db_sistema)):
     """Lo que el asistente de alta ofrece elegir: grupos de catálogos del modelo y módulos (sin
     «Municipios», que es del super y no de un municipio)."""
     mods = await db.execute(text(
@@ -182,7 +184,7 @@ async def disponibilidad_alta(
     subdominio: Optional[str] = Query(None, max_length=63),
     id_partido: Optional[int] = Query(None, ge=1, le=2_147_483_647),
     excluir: Optional[int] = Query(None, ge=1, le=2_147_483_647, description="El municipio que se está editando"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_sistema),
 ):
     """Mientras el super escribe: si el código corto, el subdominio y el partido están libres (y por qué no)."""
     out = {}
@@ -198,7 +200,7 @@ async def disponibilidad_alta(
 
 @router.get("/municipios/{id_municipio}", responses={404: {"description": "Municipio inexistente"}})
 async def ficha_municipio(id_municipio: int = Path(..., ge=1, le=2_147_483_647),
-                          db: AsyncSession = Depends(get_db)):
+                          db: AsyncSession = Depends(get_db_sistema)):
     """Ficha: el municipio, sus módulos, sus administradores (con la invitación pendiente), el cupo de
     cuentas y las advertencias del alta que siguen vigentes."""
     m = (await db.execute(text(_SELECT_MUNICIPIO + " WHERE m.id_municipio = :m"), {"m": id_municipio})).first()
@@ -243,7 +245,7 @@ class TopeIn(BaseModel):
 
 @router.put("/municipios/{id_municipio}/tope", response_model=MunicipioSuperOut,
             responses={404: {"description": "Municipio inexistente"}})
-async def cambiar_tope(id_municipio: int, body: TopeIn, request: Request, db: AsyncSession = Depends(get_db),
+async def cambiar_tope(id_municipio: int, body: TopeIn, request: Request, db: AsyncSession = Depends(get_db_sistema),
                        sa: dict = Depends(require_super_admin)):
     """Tope de cuentas internas activas (null = sin tope). Bajarlo por debajo de las activas no
     desactiva a nadie: solo impide crear o reactivar (spec §4.5)."""
@@ -297,7 +299,7 @@ async def editar_municipio(
     id_municipio: int,
     body: MunicipioSuperUpdate,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_sistema),
     sa: dict = Depends(require_super_admin),
 ):
     antes = (await db.execute(text(_SELECT_MUNICIPIO + " WHERE m.id_municipio = :id"),
@@ -356,7 +358,7 @@ async def editar_municipio(
 async def seleccionar_municipio(
     body: SeleccionIn,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_sistema),
     sa: dict = Depends(require_super_admin),
 ):
     row = (await db.execute(text("SELECT nombre FROM municipios WHERE id_municipio = :id AND activo = TRUE"),
@@ -375,7 +377,7 @@ _WHERE_GLOBAL = "id_municipio IS NULL AND activo = TRUE AND clave NOT LIKE 'vapi
 
 
 @router.get("/config-global", response_model=list[ConfigGlobalOut])
-async def listar_config_global(db: AsyncSession = Depends(get_db)):
+async def listar_config_global(db: AsyncSession = Depends(get_db_sistema)):
     rows = await db.execute(text(
         f"SELECT id_config, clave, valor, tipo, descripcion FROM configuracion_general "
         f"WHERE {_WHERE_GLOBAL} ORDER BY clave"))
@@ -387,7 +389,7 @@ async def editar_config_global(
     id_config: int,
     body: ConfigGlobalUpdate,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_sistema),
     sa: dict = Depends(require_super_admin),
 ):
     fila = (await db.execute(text(
@@ -428,7 +430,7 @@ async def alta_municipio(
     body: AltaMunicipioIn,
     request: Request,
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_sistema),
     sa: dict = Depends(require_super_admin),
 ):
     """Alta completa en una transacción (spec §4.4). Si algo falla, no queda nada."""
@@ -453,7 +455,7 @@ async def cambiar_estado(
     id_municipio: int,
     body: EstadoIn,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_sistema),
     sa: dict = Depends(require_super_admin),
 ):
     """puesta_en_marcha → produccion (escribiendo el nombre; sin vuelta atrás) · cualquiera → baja
@@ -515,7 +517,7 @@ async def cambiar_modulos(
     id_municipio: int,
     body: ModulosIn,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_sistema),
     sa: dict = Depends(require_super_admin),
 ):
     if not await db.scalar(text("SELECT 1 FROM municipios WHERE id_municipio = :m"), {"m": id_municipio}):
@@ -563,7 +565,7 @@ async def _hosts(db: AsyncSession, id_municipio: int) -> dict[str, str]:
 
 
 @router.get("/municipios/{id_municipio}/dominios")
-async def verificar_dominios(id_municipio: int, db: AsyncSession = Depends(get_db)):
+async def verificar_dominios(id_municipio: int, db: AsyncSession = Depends(get_db_sistema)):
     """Por cada app: el host, si el DNS resuelve y el código del GET por HTTPS. Sin credenciales de
     Cloudflare: los dominios los crea tools/dominios_municipio.py."""
     if not await db.scalar(text("SELECT 1 FROM municipios WHERE id_municipio = :m"), {"m": id_municipio}):
@@ -597,7 +599,7 @@ async def estado_dominios(db: AsyncSession, id_municipio: int) -> list[dict]:
 
 
 @router.post("/municipios/{id_municipio}/prueba")
-async def prueba_puesta_en_marcha(id_municipio: int, db: AsyncSession = Depends(get_db)):
+async def prueba_puesta_en_marcha(id_municipio: int, db: AsyncSession = Depends(get_db_sistema)):
     """Chequeos de la puesta en marcha (spec §4.4), sin loguear a nadie."""
     from app.main import app as aplicacion
     from app.services.municipios.modulos import modulos_habilitados
@@ -656,7 +658,7 @@ async def enviar_invitacion(
     id_usuario: int,
     request: Request,
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_sistema),
     sa: dict = Depends(require_super_admin),
 ):
     """Envía (o vuelve a enviar) la invitación de un administrador de un municipio (nivel 1) o de un super
@@ -697,7 +699,7 @@ class SuperAdminIn(BaseModel):
 
 
 @router.get("/administradores")
-async def listar_administradores(db: AsyncSession = Depends(get_db)):
+async def listar_administradores(db: AsyncSession = Depends(get_db_sistema)):
     return await listar_supers(db)
 
 
@@ -707,7 +709,7 @@ async def alta_administrador(
     body: SuperAdminIn,
     request: Request,
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_sistema),
     sa: dict = Depends(require_super_admin),
 ):
     """Cuenta de nivel 0 sin municipio; elige su clave con la invitación (el mail sale como ZARIS)."""
@@ -726,7 +728,7 @@ async def alta_administrador(
 async def baja_administrador(
     id_usuario: int,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_sistema),
     sa: dict = Depends(require_super_admin),
 ):
     await dar_de_baja_super(db, id_usuario=id_usuario, id_actor=sa["id_usuario"])
@@ -752,7 +754,7 @@ async def _existe(db: AsyncSession, id_municipio: int) -> None:
 
 
 @router.get("/tareas/{id_tarea}")
-async def estado_tarea(id_tarea: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def estado_tarea(id_tarea: uuid.UUID, db: AsyncSession = Depends(get_db_sistema)):
     t = (await db.execute(text("""
         SELECT id_tarea, id_municipio, tipo, estado, detalle, archivo, vence_en, fecha_alta, fecha_modificacion
           FROM municipio_tarea WHERE id_tarea = :t"""), {"t": id_tarea})).first()
@@ -762,7 +764,7 @@ async def estado_tarea(id_tarea: uuid.UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/municipios/{id_municipio}/exportaciones")
-async def listar_exportaciones(id_municipio: int, db: AsyncSession = Depends(get_db)):
+async def listar_exportaciones(id_municipio: int, db: AsyncSession = Depends(get_db_sistema)):
     """Exportaciones vigentes (no vencidas ni purgadas), la más nueva primero."""
     await _existe(db, id_municipio)
     rows = await db.execute(text("""
@@ -775,7 +777,7 @@ async def listar_exportaciones(id_municipio: int, db: AsyncSession = Depends(get
 
 @router.post("/municipios/{id_municipio}/exportaciones", status_code=202)
 async def pedir_exportacion(id_municipio: int, request: Request, background_tasks: BackgroundTasks,
-                            db: AsyncSession = Depends(get_db), sa: dict = Depends(require_super_admin)):
+                            db: AsyncSession = Depends(get_db_sistema), sa: dict = Depends(require_super_admin)):
     from app.services.municipios.exportacion import crear_tarea, ejecutar_exportacion
     await _existe(db, id_municipio)
     id_tarea = await crear_tarea(db, id_municipio, "exportacion", sa["id_usuario"])
@@ -789,7 +791,7 @@ async def pedir_exportacion(id_municipio: int, request: Request, background_task
 @router.get("/municipios/{id_municipio}/exportaciones/{id_tarea}/descarga",
             responses={404: {"description": "La exportación no existe, venció o no es de ese municipio"}})
 async def descargar_exportacion(id_municipio: int, id_tarea: uuid.UUID, request: Request,
-                                db: AsyncSession = Depends(get_db), sa: dict = Depends(require_super_admin)):
+                                db: AsyncSession = Depends(get_db_sistema), sa: dict = Depends(require_super_admin)):
     """URL firmada de 10 minutos. Cada descarga queda en el registro del super."""
     from app.core import storage
     from app.services.municipios.exportacion import BUCKET
@@ -807,7 +809,7 @@ async def descargar_exportacion(id_municipio: int, id_tarea: uuid.UUID, request:
 @router.post("/municipios/{id_municipio}/vaciado/plan",
              responses={404: {"description": "Municipio no encontrado"},
                         409: {"description": "El municipio está o estuvo en producción"}})
-async def plan_de_vaciado(id_municipio: int, body: GruposIn, db: AsyncSession = Depends(get_db)):
+async def plan_de_vaciado(id_municipio: int, body: GruposIn, db: AsyncSession = Depends(get_db_sistema)):
     """Qué se borraría y qué se desvincularía, tabla por tabla, sin escribir nada."""
     from app.services.municipios.vaciado import calcular, resumen, validar
     await validar(db, id_municipio, set(body.grupos))
@@ -818,7 +820,7 @@ async def plan_de_vaciado(id_municipio: int, body: GruposIn, db: AsyncSession = 
              responses={409: {"description": "En producción o con otro vaciado en curso"},
                         422: {"description": "Grupos inválidos o confirmación incorrecta"}})
 async def pedir_vaciado(id_municipio: int, body: VaciadoIn, request: Request, background_tasks: BackgroundTasks,
-                        db: AsyncSession = Depends(get_db), sa: dict = Depends(require_super_admin)):
+                        db: AsyncSession = Depends(get_db_sistema), sa: dict = Depends(require_super_admin)):
     """Exporta y, si la exportación terminó bien, vacía (en segundo plano: el estado se consulta en
     /super/tareas/{id})."""
     from app.services.municipios.exportacion import crear_tarea
@@ -864,7 +866,7 @@ async def previsualizar_contorno_alta(body: PrevisualizarAltaIn):
                                             409: {"description": "El partido no tiene código oficial"},
                                             502: {"description": "El IGN no respondió"}})
 async def contorno_oficial_alta(id_partido: int = Query(..., ge=1, le=2_147_483_647),
-                                db: AsyncSession = Depends(get_db)):
+                                db: AsyncSession = Depends(get_db_sistema)):
     """Para el alta: el contorno oficial del partido elegido."""
     pais = await db.scalar(text("""
         SELECT pr.codigo_pais FROM partidos pa JOIN provincias pr ON pr.id_provincia = pa.id_provincia
@@ -874,7 +876,7 @@ async def contorno_oficial_alta(id_partido: int = Query(..., ge=1, le=2_147_483_
 
 @router.get("/municipios/{id_municipio}/contorno")
 async def ver_contorno_municipio(id_municipio: int = Path(..., ge=1, le=2_147_483_647),
-                                 db: AsyncSession = Depends(get_db)):
+                                 db: AsyncSession = Depends(get_db_sistema)):
     await _municipio_o_404(db, id_municipio)
     return {"contorno": await ct.leer_contorno(db, id_municipio),
             "codigo_oficial": await ct.codigo_del_municipio(db, id_municipio)}
@@ -884,7 +886,7 @@ async def ver_contorno_municipio(id_municipio: int = Path(..., ge=1, le=2_147_48
              responses={422: {"description": "El archivo no sirve: detail + paso"}})
 async def previsualizar_contorno_municipio(body: PrevisualizarIn,
                                            id_municipio: int = Path(..., ge=1, le=2_147_483_647),
-                                           db: AsyncSession = Depends(get_db)):
+                                           db: AsyncSession = Depends(get_db_sistema)):
     await _municipio_o_404(db, id_municipio)
     c = await ct.normalizar_en_hilo(body.geojson, codigo_pais=await ct.pais_del_municipio(db, id_municipio))
     origen = {"via": "archivo", "archivo": body.archivo} if body.archivo else {"via": "archivo"}
@@ -896,7 +898,7 @@ async def previsualizar_contorno_municipio(body: PrevisualizarIn,
                        409: {"description": "El municipio no tiene partido con código oficial"},
                        502: {"description": "El IGN no respondió"}})
 async def contorno_oficial_municipio(id_municipio: int = Path(..., ge=1, le=2_147_483_647),
-                                     db: AsyncSession = Depends(get_db)):
+                                     db: AsyncSession = Depends(get_db_sistema)):
     await _municipio_o_404(db, id_municipio)
     v = await oficial(db, await ct.codigo_del_municipio(db, id_municipio), await ct.pais_del_municipio(db, id_municipio))
     c = ct.ContornoNormalizado(v["geometria"], v["partes"], v["vertices_antes"], v["vertices_despues"],
@@ -908,7 +910,7 @@ async def contorno_oficial_municipio(id_municipio: int = Path(..., ge=1, le=2_14
             responses={422: {"description": "El archivo no sirve, o el origen IGN no es el del partido"}})
 async def guardar_contorno_municipio(body: GuardarIn, request: Request,
                                      id_municipio: int = Path(..., ge=1, le=2_147_483_647),
-                                     db: AsyncSession = Depends(get_db),
+                                     db: AsyncSession = Depends(get_db_sistema),
                                      sa: dict = Depends(require_super_admin)):
     await _municipio_o_404(db, id_municipio)
     await validar_origen(db, body.origen, await ct.codigo_del_municipio(db, id_municipio))
@@ -926,7 +928,7 @@ async def guardar_contorno_municipio(body: GuardarIn, request: Request,
 
 @router.delete("/municipios/{id_municipio}/contorno", status_code=204)
 async def quitar_contorno_municipio(request: Request, id_municipio: int = Path(..., ge=1, le=2_147_483_647),
-                                    db: AsyncSession = Depends(get_db),
+                                    db: AsyncSession = Depends(get_db_sistema),
                                     sa: dict = Depends(require_super_admin)):
     await _municipio_o_404(db, id_municipio)
     await ct.quitar_contorno(db, id_municipio)

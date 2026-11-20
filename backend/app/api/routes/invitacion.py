@@ -14,6 +14,8 @@ from types import SimpleNamespace
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
+from app.core.database import fijar_municipio
+from app.core.sistema import SesionSistema, municipio_de_token
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,7 +23,7 @@ from app.core.auth import requiere_segundo_factor
 from app.core.database import get_db
 from app.middleware.rate_limit import check_rate_limit
 from app.services import segundo_factor as sf
-from app.services.municipios.invitacion import INVITACION_INVALIDA, tomar_invitacion
+from app.services.municipios.invitacion import INVITACION_INVALIDA, hash_token, tomar_invitacion
 from app.utils.request_helpers import get_real_ip
 
 router = APIRouter(prefix="/api/v1/auth/invitacion", tags=["Invitación"])
@@ -45,6 +47,19 @@ async def aceptar_invitacion(body: AceptarIn, request: Request, db: AsyncSession
         raise HTTPException(503, "El segundo factor no está configurado")
     if not 20 <= len(body.token) <= 200:
         raise HTTPException(401, INVITACION_INVALIDA)
+    # Segunda barrera (IT-01 F6, excepción 3): la invitación dice de qué municipio es la cuenta; la
+    # de un super (sin municipio) sigue en la conexión de sistema.
+    duenio = await municipio_de_token("invitacion", hash_token(body.token))
+    if duenio is None:
+        raise HTTPException(401, INVITACION_INVALIDA)
+    if duenio["id_municipio"] is None:
+        async with SesionSistema() as dbs:
+            return await _aceptar(dbs, body, respuesta_login)
+    await fijar_municipio(db, duenio["id_municipio"])
+    return await _aceptar(db, body, respuesta_login)
+
+
+async def _aceptar(db: AsyncSession, body: AceptarIn, respuesta_login):
     inv = await tomar_invitacion(db, body.token)
     usuario = (await db.execute(text(
         "SELECT id_usuario, id_municipio, nivel_acceso, activo FROM usuarios WHERE id_usuario = :u"),

@@ -15,6 +15,7 @@ Y para el backoffice (Usuarios), con el municipio de la request:
 GET  /api/v1/auth/segundo-factor/cuentas/{id}            estado (administrador o super)
 POST /api/v1/auth/segundo-factor/cuentas/{id}/habilitar  restablece y habilita 24 h (solo el super)
 """
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
@@ -33,6 +34,8 @@ from app.core.urls import url_login_backoffice
 from app.middleware.rate_limit import check_rate_limit
 from app.services import segundo_factor as sf
 from app.services.accesos_super import registrar_acceso_super_en
+from app.core.database import sesion_municipio
+from app.core.sistema import SesionSistema
 from app.services.login_interno import LoginResponse, cargar_usuario, completar_login
 from app.utils.request_helpers import get_real_ip
 
@@ -125,6 +128,24 @@ async def leer_desafio(db: AsyncSession, token: str, fines: set[str]):
     return payload["fin"], user
 
 
+@asynccontextmanager
+async def sesion_del_desafio(token: str):
+    """Sesión para una ruta del segundo factor (IT-01 F6): el desafío firmado dice de qué municipio
+    es la cuenta. La del super (sin municipio) va por la conexión de sistema (excepción 2)."""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+    except (JWTError, TypeError, ValueError):
+        raise HTTPException(status_code=401, detail=TEXTO_DESAFIO)
+    if payload.get("sa") is True:
+        async with SesionSistema() as db:
+            yield db
+    elif isinstance(payload.get("mun"), int):
+        async with sesion_municipio(payload["mun"]) as db:
+            yield db
+    else:
+        raise HTTPException(status_code=401, detail=TEXTO_DESAFIO)
+
+
 async def respuesta_login(db: AsyncSession, user) -> SegundoFactorRequerido:
     """Lo que devuelve el login con clave a una cuenta con segundo factor. Lanza
     SegundoFactorNoConfigurado si falta la clave de cifrado."""
@@ -188,7 +209,12 @@ async def _etiqueta(db: AsyncSession, user) -> str:
 @router.post("/verificar", response_model=LoginResponse,
              responses={401: {"description": "Código inválido o desafío vencido"},
                         429: {"description": "Cuenta bloqueada 15 minutos"}})
-async def verificar(body: CodigoIn, request: Request, db: AsyncSession = Depends(get_db)):
+async def verificar(body: CodigoIn, request: Request):
+    async with sesion_del_desafio(body.desafio) as db:
+        return await _verificar(body, request, db)
+
+
+async def _verificar(body: CodigoIn, request: Request, db: AsyncSession):
     _limitar(request)
     _, user = await leer_desafio(db, body.desafio, {"codigo"})
     await _exigir_no_bloqueada(db, user)
@@ -204,7 +230,12 @@ async def verificar(body: CodigoIn, request: Request, db: AsyncSession = Depends
 
 
 @router.post("/emergencia", response_model=DesafioOut)
-async def emergencia(body: CodigoIn, request: Request, db: AsyncSession = Depends(get_db)):
+async def emergencia(body: CodigoIn, request: Request):
+    async with sesion_del_desafio(body.desafio) as db:
+        return await _emergencia(body, request, db)
+
+
+async def _emergencia(body: CodigoIn, request: Request, db: AsyncSession):
     """Un código de emergencia no entrega token: obliga a vincular la app de nuevo en el mismo
     flujo. La app vieja sigue valiendo hasta que se confirma la nueva."""
     _limitar(request)
@@ -218,7 +249,12 @@ async def emergencia(body: CodigoIn, request: Request, db: AsyncSession = Depend
 
 
 @router.post("/vinculacion", response_model=VinculacionOut)
-async def vinculacion(body: DesafioIn, request: Request, db: AsyncSession = Depends(get_db)):
+async def vinculacion(body: DesafioIn, request: Request):
+    async with sesion_del_desafio(body.desafio) as db:
+        return await _vinculacion(body, request, db)
+
+
+async def _vinculacion(body: DesafioIn, request: Request, db: AsyncSession):
     _limitar(request)
     fin, user = await leer_desafio(db, body.desafio, {"vincular", "revincular"})
     if fin == "vincular":
@@ -233,7 +269,12 @@ async def vinculacion(body: DesafioIn, request: Request, db: AsyncSession = Depe
 
 
 @router.post("/vinculacion/confirmar", response_model=VinculacionConfirmada)
-async def confirmar_vinculacion(body: CodigoIn, request: Request, db: AsyncSession = Depends(get_db)):
+async def confirmar_vinculacion(body: CodigoIn, request: Request):
+    async with sesion_del_desafio(body.desafio) as db:
+        return await _confirmar_vinculacion(body, request, db)
+
+
+async def _confirmar_vinculacion(body: CodigoIn, request: Request, db: AsyncSession):
     _limitar(request)
     fin, user = await leer_desafio(db, body.desafio, {"vincular", "revincular"})
     await _exigir_no_bloqueada(db, user)

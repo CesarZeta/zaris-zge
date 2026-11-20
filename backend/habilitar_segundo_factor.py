@@ -51,7 +51,7 @@ async def habilitar_local(email: str) -> int:
     from sqlalchemy import text
 
     from app.core.config import settings
-    from app.core.database import AsyncSessionLocal
+    from app.core.sistema import SesionSistema as AsyncSessionLocal  # dueño de la base (IT-01 F6)
     from app.services import segundo_factor as sf
 
     if "zaris_dev" not in settings.ASYNC_DATABASE_URI:

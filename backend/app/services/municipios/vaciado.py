@@ -23,7 +23,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import storage
 from app.core.config import settings
-from app.core.database import AsyncSessionLocal
+# El vaciado deshabilita triggers (ALTER TABLE): exige el dueño de las tablas. Va sin la segunda
+# barrera; borra solo filas del municipio y siempre después de la exportación (IT-01 F6).
+from app.core.sistema import SesionSistema
 from app.services.municipios.constantes import ESTADOS_VACIABLES
 
 logger = logging.getLogger("zaris.municipios")
@@ -329,7 +331,7 @@ async def ejecutar_vaciado(id_tarea: uuid.UUID, id_municipio: int, grupos: set[s
     """Segundo plano: exporta y, solo si la exportación terminó ok, vacía. El estado queda en la tarea."""
     from app.services.accesos_super import registrar_acceso_super_en
     from app.services.municipios.exportacion import crear_tarea, ejecutar_exportacion, marcar_tarea
-    async with AsyncSessionLocal() as db:
+    async with SesionSistema() as db:
         id_exp = await crear_tarea(db, id_municipio, "exportacion", id_super, {"previa_al_vaciado": str(id_tarea)})
         await db.commit()
     await marcar_tarea(id_tarea, "corriendo", detalle={"grupos": sorted(grupos), "exportacion": str(id_exp)})
@@ -338,7 +340,7 @@ async def ejecutar_vaciado(id_tarea: uuid.UUID, id_municipio: int, grupos: set[s
                                                        "error": "la exportación previa falló: no se vació nada"})
         return
     try:
-        async with AsyncSessionLocal() as db:
+        async with SesionSistema() as db:
             plan, archivos = await vaciar(db, id_municipio, grupos)
             await registrar_acceso_super_en(
                 db, id_usuario=id_super, accion="vaciado", id_municipio=id_municipio,

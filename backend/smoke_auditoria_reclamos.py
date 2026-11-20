@@ -49,7 +49,8 @@ PORTAL_SMOKE = "https://vecinos.smoke.local"
 settings.APP_VECINOS_FRONTEND_URL = PORTAL_SMOKE  # el mail de retrabajo exige portal configurado
 
 from app.core.auth import hash_password  # noqa: E402
-from app.core.database import AsyncSessionLocal  # noqa: E402
+# Preparación y verificación como dueño de la base: no pasa por la barrera (IT-01 F6).
+from app.core.sistema import SesionSistema as AsyncSessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
 from app.services import email as email_mod  # noqa: E402
 

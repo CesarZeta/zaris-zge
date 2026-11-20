@@ -29,7 +29,8 @@ if "zaris_dev" not in settings.ASYNC_DATABASE_URI:
     sys.exit("ABORT: este smoke es SOLO LOCAL (la DB configurada no es zaris_dev).")
 settings.RESEND_API_KEY = ""
 
-from app.core.database import AsyncSessionLocal  # noqa: E402
+# Preparación y verificación como dueño de la base: no pasa por la barrera (IT-01 F6).
+from app.core.sistema import SesionSistema as AsyncSessionLocal  # noqa: E402
 from smoke_alta_municipio import _cliente, _municipio_c, _super_headers, _token  # noqa: E402
 
 RES: list[tuple[str, bool, str]] = []
