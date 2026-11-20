@@ -18,17 +18,16 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **F6.3 — falta la prueba de César como super administrador:** cambiar «Operando en» a otro municipio y volver, con el inicio y Reclamos de cada uno. Además, validar el desvío del diseño: el vaciado va sin la barrera, porque deshabilita triggers y eso exige ser el dueño de las tablas.
-2. **Reclamos de prueba de F6.3 para cerrar:** REC-SAN-2026-003478 y REC-SAN-2026-003479, del vecino de prueba 1613. Los mails de los dos llegaron (César, 2026-11-20).
-3. **Bloque del vecino — después de F4 (orden de César, 2026-10-27):**
+1. **Reclamos de prueba de F6.3 para cerrar:** REC-SAN-2026-003478 y REC-SAN-2026-003479, del vecino de prueba 1613. Los mails de los dos llegaron (César, 2026-11-20).
+2. **Bloque del vecino — después de F4 (orden de César, 2026-10-27):**
    1. La web del ciudadano con todo lo que tiene la app (supuesto de Claude, sin confirmar: es el modo escritorio del portal, ver En curso).
    2. Todas las prestaciones del vecino; falta **iniciar un trámite** desde el portal (ni endpoint ni pantalla). Turnos y entradas ya se reservan desde la app (verificado en el código).
    3. **Vecino 360 para el vecino** (perfil o donde convenga).
    4. **Vecino 360 para el municipio:** en Datos y como pestaña de la ficha del ciudadano y de la empresa, con todas sus interacciones; por persona o por empresa representada.
-   5. **Base de conocimiento de ayudas**, con dos capítulos: canales del vecino y gestión interna. Ya hay un relevamiento inicial de los canales del vecino (2026-10-27). Mientras tanto no se tocan manuales. César la adelantó el 2026-10-30 empezando por el material de venta (pregunta 6).
-4. Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
-5. **Arreglos que dejó la prueba de cierre:** quedan el 9 (App Vecinos: catálogo de emergencias del vecino, pide diseño) y menores del 10 y 11, en `PLAN_MULTI_MUNICIPIO_F4_F5.md` → «Prueba de cierre — hallazgos» → «2026-11-19».
-6. **Base de conocimiento — material de venta por circuito** (2026-10-30): borrador `docs/base_conocimiento/resumen_circuitos.md`, **solo en la máquina de César, sin commitear** (lleva notas internas; el repo es público). César revisa los (\*) de los tableros (varios son propuesta de Claude), dice si su «punto 2» era esta estructura o es otra pieza (supuesto de Claude: ficha técnica por circuito) y aprueba el texto. Recomendación: commitearlo sin «Notas internas».
+   5. **Base de conocimiento de ayudas**, con dos capítulos: canales del vecino y gestión interna. Ya hay un relevamiento inicial de los canales del vecino (2026-10-27). Mientras tanto no se tocan manuales. César la adelantó el 2026-10-30 empezando por el material de venta (pregunta 5).
+3. Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
+4. **Arreglos que dejó la prueba de cierre:** quedan el 9 (App Vecinos: catálogo de emergencias del vecino, pide diseño) y menores del 10 y 11, en `PLAN_MULTI_MUNICIPIO_F4_F5.md` → «Prueba de cierre — hallazgos» → «2026-11-19».
+5. **Base de conocimiento — material de venta por circuito** (2026-10-30): borrador `docs/base_conocimiento/resumen_circuitos.md`, **solo en la máquina de César, sin commitear** (lleva notas internas; el repo es público). César revisa los (\*) de los tableros (varios son propuesta de Claude), dice si su «punto 2» era esta estructura o es otra pieza (supuesto de Claude: ficha técnica por circuito) y aprueba el texto. Recomendación: commitearlo sin «Notas internas».
 
 ---
 
@@ -66,7 +65,7 @@
 - 🟡 **Barrido visual de modo oscuro** en los módulos React restantes y el mapa del inicio (el contorno de los reclamos casi no se ve): **POSPUESTO por César 2026-09-20**.
 
 **Decisiones cerradas — NO re-proponer**
-- **Ayudas: una sola página de base de conocimiento con preguntas, no manuales por módulo** (César, 2026-10-22). No se crean ni actualizan `docs/manual_*.html` mientras tanto (CLAUDE.md §36). Diseño pendiente (preguntas 3 y 6).
+- **Ayudas: una sola página de base de conocimiento con preguntas, no manuales por módulo** (César, 2026-10-22). No se crean ni actualizan `docs/manual_*.html` mientras tanto (CLAUDE.md §36). Diseño pendiente (preguntas 2 y 5).
 - **Multi-municipio: UNA base para todos con `id_municipio`** (César, 2026-10-23; decisiones de cada fase en los `PLAN_MULTI_MUNICIPIO*.md`). **Documentos de identidad por país: tema reservado**, lo trae César.
 - **Orden por columnas: quedan afuera** las colas operativas, las tablas con orden propio y la configuración (César, 2026-10-22; lista en CLAUDE.md §23).
 - **São Paulo DESCARTADO** (2026-09-26, CLAUDE.md §9) · «la ubicación» de Buscar actualizaciones (PWA) innecesaria · no se rotan `DISPATCHER_TOKEN` ni las claves push · el vecino no cambia su email desde la app · los reclamos **no se agendan**.
@@ -76,7 +75,7 @@
 - **Santa Cruz y Santiago del Estero sin gobiernos locales en Georef: se espera** a que un municipio real lo pida (César, 2026-10-30).
 - **Guardia: el motivo de derivación sigue visible en la mesa** (César, 2026-10-26).
 - **El super administrador no opera trámites** (César, 2026-11-02): cadena de custodia; solo se corrige el mensaje.
-- **Encuestas fijas hasta nuevo aviso** (César, 2026-11-03): todo municipio arranca con las preguntas por defecto, en el formato de dos positivas, la neutra y dos negativas, y no se editan. El alta las copia siempre y el vaciado no las toca. Sin editor por municipio. Completar las ramas de la encuesta estándar sí se hace (pregunta 1).
+- **Encuestas fijas hasta nuevo aviso** (César, 2026-11-03): todo municipio arranca con las preguntas por defecto, en el formato de dos positivas, la neutra y dos negativas, y no se editan. El alta las copia siempre y el vaciado no las toca. Sin editor por municipio. Completar las ramas de la encuesta estándar sí se hace.
 - Fase 3 de roles (mig 92) y la auditoría de seguridad 2026-07 (48/48) COMPLETAS.
 
 ---

@@ -164,4 +164,6 @@ Hecho en local; prod sin cambios (`DB_BARRERA=false` por defecto, migración 138
   - Sin token: identidad por origen y link de encuesta (el token inválido da 404).
   - Cron de encuestas disparado a mano: HTTP 200, con el resultado por municipio.
   - En `pg_stat_activity` el backend aparece como `zaris_app`, y los logs de Postgres no muestran ningún permiso denegado.
+- **César, el mismo día:** probó el super administrador con la barrera prendida («Operando en» → Municipio de Prueba → San Andrés, sin problemas), confirmó que llegaron los mails de los dos reclamos y **validó el desvío del diseño**: el vaciado corre sin la barrera, porque deshabilita triggers y eso exige ser el dueño de las tablas.
+- **Claves:** `APP_DB_PASSWORD` es la del usuario de la base `zaris_app`, no la de ninguna cuenta. Vive solo en Railway; la nota privada de César está en `credenciales-testing/claves_infraestructura.md`, fuera del repo.
 - **Vuelta atrás:** `DB_BARRERA=false` en Railway (redeploy de unos 30 s, sin código).
