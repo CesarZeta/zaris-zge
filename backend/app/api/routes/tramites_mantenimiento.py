@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.municipio import por_cada_municipio, resumen_municipios
+from app.core.municipio import error_publico, por_cada_municipio, resumen_municipios
 from app.services.tramites import retencion as svc_ret
 from app.services.tramites import ciclo_vida as svc_ciclo
 from app.utils.request_helpers import get_real_ip
@@ -90,7 +90,7 @@ async def ejecutar_mantenimiento(
                 desistimiento = {"error": True, "avisos": 0, "desistidos": 0}
                 # IT-01 F6.4: el municipio queda con error en el log del workflow (lo demás se conserva).
                 return {"archivado": archivado, "purga": purga, "desistimiento": desistimiento,
-                        "error": f"desistimiento: {type(e).__name__}: {e}"}
+                        "error": f"desistimiento: {error_publico(e)}"}
             return {"archivado": archivado, "purga": purga, "desistimiento": desistimiento}
 
         # Por municipio (IT-01), cada uno con sus plazos; un fallo no frena a los demas.

@@ -85,6 +85,15 @@ async def id_municipio_base(db: AsyncSession) -> Optional[int]:
     return (await _municipios(db))["base"]
 
 
+def error_publico(e: BaseException) -> str:
+    """Texto de un error para la respuesta de un cron, que el workflow imprime en el log PÚBLICO de
+    Actions (IT-01 F6.4): tipo y primera línea, acotada. Las líneas siguientes de un error de la base
+    traen la consulta y sus parámetros (datos de vecinos); el detalle completo queda en el log del
+    servidor (`logger.exception`)."""
+    primera = (str(e).strip().splitlines() or [""])[0]
+    return f"{type(e).__name__}: {primera}"[:200]
+
+
 async def por_cada_municipio(db: AsyncSession, proceso: str, fn) -> dict[int, Any]:
     """Procesos sin request (cron, dispatcher): corre `fn(id_municipio)` para cada
     municipio operable (ESTADOS_OPERABLES), con su configuracion. Si uno falla se registra, se revierte lo
@@ -100,7 +109,7 @@ async def por_cada_municipio(db: AsyncSession, proceso: str, fn) -> dict[int, An
         except Exception as e:  # noqa: BLE001 — un municipio no frena a los demas
             await db.rollback()
             logger.exception("%s: fallo el municipio %s; sigue con el siguiente", proceso, id_m)
-            resultados[id_m] = {"error": f"{type(e).__name__}: {e}"}
+            resultados[id_m] = {"error": error_publico(e)}
     return resultados
 
 

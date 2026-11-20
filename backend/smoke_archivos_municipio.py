@@ -261,7 +261,9 @@ async def parte_crons() -> None:
         original = svc_ciclo.procesar_desistimientos
 
         async def falla(*a, **k):
-            raise RuntimeError("falla de prueba F6.4")
+            # Como un error de la base: la primera línea dice qué pasó; las siguientes traen la consulta
+            # y sus parámetros (datos de vecinos), que no pueden llegar al log público de Actions.
+            raise RuntimeError("falla de prueba F6.4\n[SQL: UPDATE x]\n[parameters: ('vecino.f64@correo.com',)]")
 
         svc_ciclo.procesar_desistimientos = falla
         try:
@@ -273,6 +275,20 @@ async def parte_crons() -> None:
         check(r.status_code == 200 and errores and all("desistimiento" in (m["error"] or "") for m in errores)
               and any(operables[errores[0]["id_municipio"]] in e for e in j.get("con_error", [])),
               "tramites_desistimiento_falla", f"{r.status_code} {str(j.get('municipios'))[:300]}")
+        check(r.status_code == 200 and "vecino.f64@correo.com" not in r.text and "[SQL:" not in r.text
+              and "falla de prueba F6.4" in r.text, "error_publico_sin_parametros", r.text[:400])
+
+        from app.core.database import AsyncSessionLocal
+        from app.core.municipio import por_cada_municipio
+
+        async def revienta(id_m):
+            raise RuntimeError("primera línea\n[parameters: ('vecino.f64@correo.com',)]")
+
+        async with AsyncSessionLocal() as db:
+            res = await por_cada_municipio(db, "smoke F6.4", revienta)
+        textos = [v.get("error", "") for v in res.values()]
+        check(textos and all(t == "RuntimeError: primera línea" for t in textos),
+              "por_cada_municipio_error_sin_parametros", str(textos)[:300])
 
 
 async def main() -> None:
