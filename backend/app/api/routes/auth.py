@@ -505,7 +505,8 @@ async def crear_upload_url_foto(
     if body.tamano_bytes > FOTO_MAX_BYTES:
         raise HTTPException(422, "La imagen excede el máximo de 2 MB.")
     ext = FOTO_MIME_OK[body.mime_type]
-    path = f"usuarios/{current_user['id_usuario']}/avatar-{uuid.uuid4()}.{ext}"
+    path = storage.ruta_de_municipio(current_user.get("id_municipio"),
+                                     f"usuarios/{current_user['id_usuario']}/avatar-{uuid.uuid4()}.{ext}")
     signed = await storage.crear_signed_upload_url(path, bucket=FOTO_BUCKET)
     return {
         "upload_url": signed["upload_url"],
@@ -528,8 +529,7 @@ async def actualizar_foto(
     # una URL ajena le haría borrar otro (revisión de F4+F5).
     prefijo = storage.url_publica("", FOTO_BUCKET)
     ruta = url[len(prefijo):] if url.startswith(prefijo) else ""
-    if url and not (storage.ruta_valida(ruta) and re.fullmatch(
-            rf"usuarios/{current_user['id_usuario']}/avatar-[0-9a-f-]+\.(png|jpe?g)", ruta)):
+    if url and not storage.es_avatar_de(ruta, current_user["id_usuario"], current_user.get("id_municipio")):
         raise HTTPException(422, "La foto tiene que ser la que subiste desde tu perfil.")
     await db.execute(
         text("UPDATE usuarios SET foto_url = :u WHERE id_usuario = :id"),

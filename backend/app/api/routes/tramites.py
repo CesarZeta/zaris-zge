@@ -2082,7 +2082,7 @@ async def adjuntar_documento(
     )).scalar()
 
     nombre_logico = nombre or (Path(file.filename or "archivo").stem)
-    info = await svc_docs.guardar_archivo_mock(file, num_exp, anio, nombre_logico)
+    info = await svc_docs.guardar_archivo_mock(file, num_exp, anio, nombre_logico, id_municipio)
     posicion = await svc_docs.obtener_proxima_posicion(id_tramite, db)
 
     requiere_firma = bool(doc_req and doc_req.get("requiere_firma"))

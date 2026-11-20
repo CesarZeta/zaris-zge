@@ -105,6 +105,7 @@ async def guardar_archivo_mock(
     numero_expediente: str,
     anio: int,
     nombre_logico: str,
+    id_municipio: int,
 ) -> dict:
     """
     Sube el archivo a Supabase Storage (bucket privado TRAMITES_BUCKET).
@@ -122,9 +123,10 @@ async def guardar_archivo_mock(
     sha256 = hashlib.sha256(contenido).hexdigest()
     mime = ALLOWED_MIME_MAP.get(ext) or mimetypes.guess_type(file.filename or "")[0] or "application/octet-stream"
 
-    # Path en el bucket: tramites/{anio}/{expediente}/{uuid}.{ext}. El uuid evita
+    # Path en el bucket: m{id_municipio}/tramites/{anio}/{expediente}/{uuid}.{ext} (IT-01 F6.4). El uuid evita
     # colisiones sin necesidad de listar el bucket (el slug va en el nombre lógico DB).
-    storage_path = f"tramites/{anio}/{_slug(numero_expediente)}/{uuid.uuid4()}.{ext}"
+    storage_path = storage.ruta_de_municipio(
+        id_municipio, f"tramites/{anio}/{_slug(numero_expediente)}/{uuid.uuid4()}.{ext}")
 
     await storage.subir_objeto(storage_path, contenido, mime, bucket=TRAMITES_BUCKET)
 

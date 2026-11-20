@@ -63,8 +63,163 @@ def parte_rutas() -> None:
     check(not st.es_avatar_de("global/usuarios/6/avatar-ab.png", 6, 1), "avatar_global_de_cuenta_con_municipio")
 
 
+class StorageMock:
+    """Storage en memoria (patrón de smoke_alta_municipio.py)."""
+
+    def __init__(self):
+        self.subidos: list[tuple[str, str]] = []
+        self.borrados: list[tuple[str, str]] = []
+
+    def instalar(self):
+        from app.core import storage
+        from app.core.config import settings as s
+
+        def b(bucket):
+            return bucket or s.SUPABASE_ADJUNTOS_BUCKET
+
+        async def firmar_subida(path, bucket=None):
+            return {"upload_url": f"https://mock/up/{b(bucket)}/{path}", "token": "t", "path": path, "bucket": b(bucket)}
+
+        async def subir(path, contenido, content_type, bucket=None):
+            self.subidos.append((b(bucket), path))
+
+        async def borrar(path, bucket=None):
+            self.borrados.append((b(bucket), path))
+
+        async def firmar_bajada(path, ttl_sec=3600, bucket=None):
+            return f"https://mock/down/{b(bucket)}/{path}"
+
+        storage.crear_signed_upload_url, storage.subir_objeto = firmar_subida, subir
+        storage.borrar_objeto, storage.crear_signed_download_url = borrar, firmar_bajada
+        return self
+
+
+def jpeg_200px() -> bytes:
+    """JPEG mínimo que pasa el validador del perfil (lee el SOF): 200x200 y más de 1 KB."""
+    app0 = b"\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
+    relleno = b"\xff\xfe" + (1202).to_bytes(2, "big") + b"x" * 1200
+    sof = b"\xff\xc0\x00\x11\x08\x00\xc8\x00\xc8\x03\x01\x22\x00\x02\x11\x01\x03\x11\x01"
+    return b"\xff\xd8" + app0 + relleno + sof + b"\xff\xd9"
+
+
+async def parte_subidas() -> None:
+    print("— subidas")
+    import io
+
+    import httpx
+    from fastapi import UploadFile
+    from sqlalchemy import text
+
+    from app.core import storage as st
+    from app.core.config import settings
+    from app.core.sistema import SesionSistema
+    from app.main import app
+    from app.services.tramites import documentos as svc_docs
+
+    if "zaris_dev" not in settings.ASYNC_DATABASE_URI:
+        sys.exit("ABORT: este smoke es SOLO LOCAL (la DB configurada no es zaris_dev).")
+    mock = StorageMock().instalar()
+    pwd = os.environ.get("ZARIS_QA_PASS") or "123456"
+
+    async def q1(sql: str, **p):
+        async with SesionSistema() as s:
+            r = (await s.execute(text(sql), p)).mappings().first()
+            return dict(r) if r else None
+
+    async def ejecutar(sql: str, **p):
+        async with SesionSistema() as s:
+            await s.execute(text(sql), p)
+            await s.commit()
+
+    admin = await q1("SELECT id_usuario, id_municipio, foto_url FROM usuarios WHERE email = 'ciudadanovl@municipio.gob.ar'")
+    mun = admin["id_municipio"]
+    vecino = await q1("SELECT c.id_ciudadano, c.foto_path FROM ciudadanos c WHERE c.doc_nro = '28547123' AND c.id_municipio = :m", m=mun)
+    reclamo = await q1("SELECT id_reclamo FROM reclamos WHERE id_municipio = :m AND activo ORDER BY id_reclamo DESC LIMIT 1", m=mun)
+    reclamo_vec = await q1("""SELECT id_reclamo FROM reclamos WHERE id_ciudadano = :c AND activo
+                               AND estado NOT IN ('Resuelto','Cancelado','En auditoría','Auditado')
+                             ORDER BY id_reclamo DESC LIMIT 1""", c=vecino["id_ciudadano"])
+    ot = await q1("SELECT id_ot FROM ordenes_trabajo WHERE id_municipio = :m AND activo ORDER BY id_ot DESC LIMIT 1", m=mun)
+    pref = f"m{mun}/"
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://smoke.local", timeout=90) as c:
+        r = await c.post("/api/v1/auth/login", json={"identificador": "ciudadanovl@municipio.gob.ar", "password": pwd})
+        ha = {"Authorization": f"Bearer {r.json()['access_token']}"}
+        archivo = {"nombre_archivo": "smoke.png", "mime_type": "image/png", "tamano_bytes": 100}
+
+        r = await c.post(f"/api/v1/reclamos/{reclamo['id_reclamo']}/adjuntos/upload-url", headers=ha, json=archivo)
+        ruta = r.json().get("storage_path", "") if r.status_code == 201 else ""
+        check(ruta.startswith(f"{pref}reclamos/{reclamo['id_reclamo']}/"), "subida_adjunto_reclamo", f"{r.status_code} {ruta or r.text[:200]}")
+        if r.status_code == 201:
+            await ejecutar("DELETE FROM reclamo_adjuntos WHERE id_adjunto = :i", i=r.json()["id_adjunto"])
+
+        r = await c.post(f"/api/v1/ot/{ot['id_ot']}/adjuntos/upload-url", headers=ha, json=archivo)
+        ruta = r.json().get("storage_path", "") if r.status_code == 201 else ""
+        check(ruta.startswith(f"{pref}ot/{ot['id_ot']}/"), "subida_adjunto_ot", f"{r.status_code} {ruta or r.text[:200]}")
+        if r.status_code == 201:
+            await ejecutar("DELETE FROM ot_adjuntos WHERE id_adjunto = :i", i=r.json()["id_adjunto"])
+
+        info = await svc_docs.guardar_archivo_mock(
+            UploadFile(io.BytesIO(b"%PDF-1.4 smoke"), filename="smoke.pdf"), "EXP-SMOKE-1", 2026, "smoke", mun)
+        check(info["storage_path"].startswith(f"{pref}tramites/2026/"), "subida_documento_tramite", info["storage_path"])
+
+        r = await c.post("/api/v1/config/identidad/logo-upload-url", headers=ha, json={"mime_type": "image/png", "tamano_bytes": 100})
+        check(r.status_code == 200 and r.json()["path"].startswith(f"{pref}logo-"), "subida_logo", f"{r.status_code} {r.text[:200]}")
+
+        r = await c.post("/api/v1/auth/me/foto-upload-url", headers=ha, json={"mime_type": "image/png", "tamano_bytes": 100})
+        nueva = r.json() if r.status_code == 200 else {}
+        check(nueva.get("path", "").startswith(f"{pref}usuarios/{admin['id_usuario']}/avatar-"), "subida_foto_usuario", f"{r.status_code} {r.text[:200]}")
+        if nueva:
+            r = await c.put("/api/v1/auth/me/foto", headers=ha, json={"foto_url": nueva["public_url"]})
+            check(r.status_code == 200, "foto_usuario_formato_nuevo_ok", f"{r.status_code} {r.text[:200]}")
+        vieja = st.url_publica(f"usuarios/{admin['id_usuario']}/avatar-0a1b2c.png", "config-assets")
+        r = await c.put("/api/v1/auth/me/foto", headers=ha, json={"foto_url": vieja})
+        check(r.status_code == 200, "foto_usuario_formato_viejo_ok", f"{r.status_code} {r.text[:200]}")
+        ajena = st.url_publica(f"m{mun + 1000}/usuarios/{admin['id_usuario']}/avatar-0a1b2c.png", "config-assets")
+        r = await c.put("/api/v1/auth/me/foto", headers=ha, json={"foto_url": ajena})
+        check(r.status_code == 422, "foto_usuario_prefijo_ajeno_422", f"{r.status_code}")
+        await ejecutar("UPDATE usuarios SET foto_url = :u WHERE id_usuario = :i", u=admin["foto_url"], i=admin["id_usuario"])
+
+        r = await c.post("/api/v1/auth/login", json={"identificador": "super.admin@prueba-aislamiento.com.ar", "password": pwd})
+        if r.status_code == 200 and "access_token" in r.json():
+            hs = {"Authorization": f"Bearer {r.json()['access_token']}"}
+            r = await c.post("/api/v1/auth/me/foto-upload-url", headers=hs, json={"mime_type": "image/png", "tamano_bytes": 100})
+            check(r.status_code == 200 and r.json()["path"].startswith("global/usuarios/"), "subida_foto_super", f"{r.status_code} {r.text[:200]}")
+        else:
+            check(False, "subida_foto_super", f"sin el super local (correr smoke_super_admin.py): {r.status_code}")
+
+        r = await c.post("/api/v1/publico/auth/login", json={"dni": "28547123", "password": pwd})
+        hv = {"Authorization": f"Bearer {r.json()['access_token']}"} if r.status_code == 200 else {}
+        check(bool(hv), "login_vecino", f"{r.status_code} {r.text[:200]}")
+        if hv and reclamo_vec:
+            r = await c.post(f"/api/v1/publico/reclamos/{reclamo_vec['id_reclamo']}/adjuntos/upload-url", headers=hv,
+                             json={"nombre_archivo": "smoke.jpg", "mime_type": "image/jpeg", "tamano_bytes": 100})
+            ruta = r.json().get("storage_path", "") if r.status_code == 201 else ""
+            check(ruta.startswith(f"{pref}reclamos/{reclamo_vec['id_reclamo']}/"), "subida_adjunto_reclamo_vecino", f"{r.status_code} {ruta or r.text[:200]}")
+            if r.status_code == 201:
+                await ejecutar("DELETE FROM reclamo_adjuntos WHERE id_adjunto = :i", i=r.json()["id_adjunto"])
+        elif hv:
+            check(False, "subida_adjunto_reclamo_vecino", "el vecino 28547123 no tiene un reclamo abierto")
+        if hv:
+            idc = vecino["id_ciudadano"]
+            await ejecutar("UPDATE ciudadanos SET foto_path = :p WHERE id_ciudadano = :i", p=f"perfiles/{idc}.jpg", i=idc)
+            mock.borrados.clear()
+            r = await c.post("/api/v1/publico/perfil/foto", headers=hv,
+                             files={"archivo": ("smoke.jpg", jpeg_200px(), "image/jpeg")})
+            fila = await q1("SELECT foto_path FROM ciudadanos WHERE id_ciudadano = :i", i=idc)
+            check(r.status_code == 200 and fila["foto_path"] == f"{pref}perfiles/{idc}.jpg"
+                  and any(p == f"perfiles/{idc}.jpg" for _, p in mock.borrados),
+                  "foto_vecino_reemplaza_vieja", f"{r.status_code} {fila} {mock.borrados} {r.text[:200]}")
+            await ejecutar("UPDATE ciudadanos SET foto_path = :p WHERE id_ciudadano = :i", p=f"perfiles/{idc}.jpg", i=idc)
+            mock.borrados.clear()
+            r = await c.delete("/api/v1/publico/perfil/foto", headers=hv)
+            check(r.status_code == 200 and [p for _, p in mock.borrados] == [f"perfiles/{idc}.jpg"],
+                  "foto_vecino_quitar_usa_ruta_guardada", f"{r.status_code} {mock.borrados}")
+            await ejecutar("UPDATE ciudadanos SET foto_path = :p WHERE id_ciudadano = :i", p=vecino["foto_path"], i=idc)
+
+
 async def main() -> None:
     parte_rutas()
+    await parte_subidas()
     print(f"\n{OK} OK, {FAIL} FAIL")
     sys.exit(1 if FAIL else 0)
 

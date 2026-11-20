@@ -113,7 +113,7 @@ async def crear_upload_url(
     await _require_puede_gestionar(db, id_ot, current_user, id_municipio)
 
     ext = EXT_POR_MIME.get(mime_type, "bin")
-    storage_path = f"ot/{id_ot}/{uuid.uuid4()}.{ext}"
+    storage_path = storage.ruta_de_municipio(id_municipio, f"ot/{id_ot}/{uuid.uuid4()}.{ext}")
 
     signed = await storage.crear_signed_upload_url(storage_path)
 

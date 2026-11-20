@@ -209,7 +209,7 @@ async def crear_upload_url_logo(
     if payload.tamano_bytes > MAX_BYTES:
         raise HTTPException(422, f"Archivo excede 2MB ({payload.tamano_bytes} bytes)")
     ext = MIME_EXT[payload.mime_type]
-    path = f"municipio/{id_municipio}/logo-{uuid.uuid4()}.{ext}"
+    path = storage.ruta_de_municipio(id_municipio, f"logo-{uuid.uuid4()}.{ext}")
     signed = await storage.crear_signed_upload_url(path, bucket=BUCKET)
     return LogoUploadResponse(
         upload_url=signed["upload_url"],

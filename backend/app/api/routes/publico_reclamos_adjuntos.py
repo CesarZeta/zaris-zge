@@ -106,7 +106,7 @@ async def crear_upload_url_publico(
             detail=f"Máximo {ADJUNTOS_MAX_POR_RECLAMO} fotos por reclamo")
 
     ext = EXT_POR_MIME.get(mime_type, "bin")
-    storage_path = f"reclamos/{id_reclamo}/{uuid.uuid4()}.{ext}"
+    storage_path = storage.ruta_de_municipio(current["id_municipio"], f"reclamos/{id_reclamo}/{uuid.uuid4()}.{ext}")
 
     signed = await storage.crear_signed_upload_url(storage_path)
 

@@ -51,8 +51,15 @@ FOTO_MIN_PX = 100
 FOTO_URL_TTL_SEG = 3600
 
 
-def _foto_path(id_ciudadano: int) -> str:
-    return f"perfiles/{int(id_ciudadano)}.jpg"
+def _foto_path(id_municipio: int, id_ciudadano: int) -> str:
+    """Ruta de la foto nueva, en la carpeta del municipio (IT-01 F6.4). Las viejas quedan en
+    `perfiles/{id}.jpg`: lo que lee o borra una foto usa `ciudadanos.foto_path`, no esta función."""
+    return storage.ruta_de_municipio(id_municipio, f"perfiles/{int(id_ciudadano)}.jpg")
+
+
+async def _foto_guardada(db: AsyncSession, id_ciudadano: int) -> str | None:
+    return (await db.execute(text("SELECT foto_path FROM ciudadanos WHERE id_ciudadano = :id"),
+                             {"id": id_ciudadano})).scalar()
 
 
 def _dimensiones_jpeg(data: bytes) -> tuple[int, int]:
@@ -314,7 +321,8 @@ async def subir_foto_perfil(
     if ancho < FOTO_MIN_PX or alto < FOTO_MIN_PX:
         raise HTTPException(422, f"La foto debe tener al menos {FOTO_MIN_PX}x{FOTO_MIN_PX} px (tiene {ancho}x{alto})")
 
-    path = _foto_path(id_c)
+    path = _foto_path(current["id_municipio"], id_c)
+    anterior = await _foto_guardada(db, id_c)
     await storage.subir_objeto(path, data, "image/jpeg")  # x-upsert: pisa la anterior
     await db.execute(text("""
         UPDATE ciudadanos
@@ -322,6 +330,12 @@ async def subir_foto_perfil(
          WHERE id_ciudadano = :id AND activo = TRUE
     """), {"p": path, "id": id_c})
     await db.commit()
+    if anterior and anterior != path:
+        # La foto del formato viejo (perfiles/{id}.jpg) no la pisa el upsert: se borra, best-effort.
+        try:
+            await storage.borrar_objeto(anterior)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("perfil: no se pudo borrar la foto anterior de %s: %s", id_c, e)
     logger.info("perfil: ciudadano %s subió foto (%s bytes, %sx%s)", id_c, len(data), ancho, alto)
     return await _perfil_out(db, id_c)
 
@@ -337,7 +351,9 @@ async def borrar_foto_perfil(
     check_rate_limit(f"perfilfoto:{get_real_ip(request)}", max_requests=5, window_seconds=60)
     id_c = int(current["id_ciudadano"])
     try:
-        await storage.borrar_objeto(_foto_path(id_c))
+        guardada = await _foto_guardada(db, id_c)
+        if guardada:
+            await storage.borrar_objeto(guardada)
     except Exception as e:  # noqa: BLE001 — si el bucket falla, igual se desvincula
         logger.warning("perfil: no se pudo borrar la foto de %s del bucket: %s", id_c, e)
     await db.execute(text("""
