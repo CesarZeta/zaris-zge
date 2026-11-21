@@ -1217,6 +1217,127 @@ async def test_ajeno_404_pedido(c: httpx.AsyncClient, ha: dict) -> None:
             await _limpiar_tramite_completo(i)
 
 
+async def _limpiar_avisos_pedido(idt: int) -> None:
+    await ejecutar("DELETE FROM ciudadano_aviso WHERE recurso_tipo = 'tramite' AND recurso_id = :t", t=idt)
+
+
+async def test_visto_con_guard(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[26] /visto: solo marca quien puede operar el trámite; el resto recibe 204 sin escribir")
+    mun = await _municipio_base()
+    hv = await _login_vecino(c)
+    idt, numero = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke pedido visto")
+    cons = await _usuario_fixture(mun, 5)
+    otro = await _usuario_fixture(mun, 3)
+    try:
+        r = await _pedir(c, ha, numero, pide_archivo=False)
+        idp = r.json()["pedidos"][0]["id_tramite_pedido"]
+        r = await c.post(f"{BASE_PUB}/{idt}/pedidos/{idp}/responder", headers=hv, data={"texto": "Respuesta para ver"})
+        check(r.status_code == 200, "respuesta del vecino", f"{r.status_code} {r.text[:150]}")
+        for nombre, f in (("Consultor", cons), ("agente que no puede operar", otro)):
+            h = await _login_fixture(c, f)
+            r = await c.post(f"{BASE_BO}/{numero}/pedidos/{idp}/visto", headers=h)
+            check(r.status_code == 204, f"{nombre}: 204", f"{r.status_code} {r.text[:120]}")
+            fila = await _fila_bandeja(c, ha, numero)
+            check(fila["respuesta_sin_ver"] is True, f"{nombre}: respuesta_sin_ver sigue true", str(fila))
+        r = await c.post(f"{BASE_BO}/{numero}/pedidos/{idp}/visto", headers=ha)
+        check(r.status_code == 204, "admin: 204", str(r.status_code))
+        fila = await _fila_bandeja(c, ha, numero)
+        check(fila["respuesta_sin_ver"] is False, "admin: respuesta_sin_ver false", str(fila))
+    finally:
+        await _borrar_usuario_fixture(cons)
+        await _borrar_usuario_fixture(otro)
+        await _limpiar_avisos_pedido(idt)
+        await _limpiar_tramite_completo(idt)
+
+
+async def _estados_finales(idt: int) -> list[dict]:
+    async with AsyncSessionLocal() as sx:
+        rows = (await sx.execute(text(
+            "SELECT e.id_tipo_tramite_estado AS e FROM tipo_tramite_estado e JOIN tramite t "
+            "ON t.id_tipo_tramite_version = e.id_tipo_tramite_version WHERE t.id_tramite = :t AND e.es_final"),
+            {"t": idt})).mappings().all()
+    return [dict(x) for x in rows]
+
+
+async def _hasta_estado_final(c: httpx.AsyncClient, ha: dict, idt: int, numero: str) -> bool:
+    """Recorre transiciones permitidas (prefiere las que llevan a un final) hasta llegar a un estado final."""
+    for _ in range(8):
+        r = await c.get(f"{BASE_BO}/{numero}/transiciones-permitidas", headers=ha)
+        ts = [t for t in r.json().get("transiciones", []) if t["disponible"] and not t["requiere_adjunto"]]
+        if not ts:
+            return False
+        finales = {r2["e"] for r2 in await _estados_finales(idt)}
+        t = next((x for x in ts if x["id_estado_destino"] in finales), ts[0])
+        r = await c.post(f"{BASE_BO}/{numero}/transicionar", headers=ha,
+                         json={"id_tipo_tramite_transicion": t["id_tipo_tramite_transicion"], "comentario": "smoke cierre"})
+        if r.status_code != 200:
+            return False
+        if t["id_estado_destino"] in finales:
+            return True
+    return False
+
+
+async def _chequear_cierre(idt: int, motivo: str, nombre: str) -> None:
+    p = await q1("SELECT estado, motivo_cancelacion FROM tramite_pedido_iniciador WHERE id_tramite = :t", t=idt)
+    check(p is not None and p["estado"] == "cancelado" and p["motivo_cancelacion"] == motivo,
+          f"{nombre}: pedido cancelado con el motivo", str(p))
+    m = await q1("SELECT id_agente, id_ciudadano_actor AS c, metadata_jsonb AS md FROM tramite_movimiento "
+                 "WHERE id_tramite = :t AND tipo = 'pedido_cancelado'", t=idt)
+    check(m is not None and m["id_agente"] is None and m["c"] is None and m["md"].get("automatico") is True,
+          f"{nombre}: movimiento pedido_cancelado automático de sistema", str(m))
+
+
+async def test_pedido_se_cancela_al_cerrar(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[27] El pedido abierto se cancela cuando el trámite termina; responder da 409")
+    from app.services.tramites import retencion as svc_ret
+    hv = await _login_vecino(c)
+    nuevo = lambda a: _tramite_ventanilla(c, ha, ID_CIUDADANO, a)
+    # a) transición a un estado final
+    idt, numero = await nuevo("Smoke cierre por transición")
+    try:
+        await _pedir(c, ha, numero, pide_archivo=False)
+        idp = (await q1("SELECT id_tramite_pedido AS i FROM tramite_pedido_iniciador WHERE id_tramite = :t", t=idt))["i"]
+        llego = await _hasta_estado_final(c, ha, idt, numero)
+        check(llego, "se llegó a un estado final por transiciones")
+        if llego:
+            await _chequear_cierre(idt, "El trámite terminó", "transición final")
+            r = await c.post(f"{BASE_PUB}/{idt}/pedidos/{idp}/responder", headers=hv, data={"texto": "Respuesta tardía"})
+            check(r.status_code == 409 and "ya terminó" in r.text, "responder en un trámite final: 409", f"{r.status_code} {r.text[:150]}")
+    finally:
+        await _limpiar_avisos_pedido(idt)
+        await _limpiar_tramite_completo(idt)
+    # b) desistido manual por /resultado
+    idt, numero = await nuevo("Smoke cierre por desistido")
+    try:
+        await _pedir(c, ha, numero, pide_archivo=False)
+        idp = (await q1("SELECT id_tramite_pedido AS i FROM tramite_pedido_iniciador WHERE id_tramite = :t", t=idt))["i"]
+        r = await c.post(f"{BASE_BO}/{numero}/resultado", headers=ha, json={"resultado": "desistido", "comentario": "smoke desistido"})
+        check(r.status_code == 200, "resultado desistido: 200", f"{r.status_code} {r.text[:150]}")
+        await _chequear_cierre(idt, "El trámite se dio por desistido", "desistido manual")
+        r = await c.post(f"{BASE_PUB}/{idt}/pedidos/{idp}/responder", headers=hv, data={"texto": "Respuesta tardía"})
+        check(r.status_code == 409, "responder en un trámite archivado: 409", f"{r.status_code}")
+    finally:
+        await _limpiar_avisos_pedido(idt)
+        await _limpiar_tramite_completo(idt)
+    # c) archivo por inactividad (la función del cron, sobre este trámite envejecido)
+    mun = await _municipio_base()
+    idt, numero = await nuevo("Smoke cierre por inactividad")
+    try:
+        await _pedir(c, ha, numero, pide_archivo=False)
+        await ejecutar("UPDATE tramite SET fecha_modificacion = NOW() - INTERVAL '5000 days', "
+                       "fecha_entrada_estado_actual = NOW() - INTERVAL '5000 days' WHERE id_tramite = :t", t=idt)
+        await ejecutar("UPDATE tramite_movimiento SET fecha_alta = NOW() - INTERVAL '5000 days' WHERE id_tramite = :t", t=idt)
+        async with AsyncSessionLocal() as s:
+            res = await svc_ret.archivar_inactivos(s, id_municipio=mun)
+        if idt in res["ids"]:
+            await _chequear_cierre(idt, "El trámite se archivó por inactividad", "inactividad")
+        else:
+            check(False, "el trámite envejecido fue archivado por inactividad", str(res)[:200])
+    finally:
+        await _limpiar_avisos_pedido(idt)
+        await _limpiar_tramite_completo(idt)
+
+
 CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cuenta_422,
          test_backoffice_alta_con_cuenta_201,
          test_identidad_validar_y_revocar, test_identidad_en_perfil_publico, test_backoffice_alta_exige_identidad,
@@ -1227,7 +1348,7 @@ CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cue
          test_documento_del_paso, test_resumen_tramites,
          test_estado_oculto_para_iniciador,
          test_pedido_ciclo_completo, test_pedido_reglas_422, test_respuesta_doble_409, test_cancelar_pedido,
-         test_ajeno_404_pedido]
+         test_ajeno_404_pedido, test_visto_con_guard, test_pedido_se_cancela_al_cerrar]
 
 
 async def main() -> int:

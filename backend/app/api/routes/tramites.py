@@ -1613,6 +1613,9 @@ async def transicionar_tramite(
             db, id_tramite, tramite, trans.get("tipo_accion"),
             current_user["id_usuario"], agente["id_agente"], request,
         )
+    if es_final:
+        await svc_pedidos.cancelar_pedido_abierto_por_cierre(
+            db, id_tramite, "El trámite terminó", tramite["id_municipio"])
     await db.commit()
 
     # Si el tramite ya estaba en un estado final, el iniciador ya supo que termino:
@@ -1899,6 +1902,9 @@ async def marcar_resultado_tramite(
         comentario=body.comentario,
         metadata_jsonb={"resultado_anterior": anterior, "resultado_nuevo": body.resultado},
     )
+    if body.resultado == "desistido":
+        await svc_pedidos.cancelar_pedido_abierto_por_cierre(
+            db, id_tramite, "El trámite se dio por desistido", tramite["id_municipio"])
     await db.commit()
 
     # mig 101: comunicar al iniciador (bandeja PWA + push + mail) y disparar la
@@ -2061,9 +2067,16 @@ async def pedido_visto(
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
     if not agente:
         raise _sin_perfil_de_agente(current_user)
-    id_tramite, _ = await _resolver_tramite(tramite_ref, db, id_municipio)
-    await svc_pedidos.marcar_visto(db, id_tramite, id_pedido, current_user["id_usuario"])
-    await db.commit()
+    # El detalle lo dispara en cada apertura (lectura sin scope): quien no puede operar el trámite
+    # (Consultor, otra subárea) recibe 204 SIN escribir, para no borrar el chip del equipo responsable.
+    if agente["nivel_acceso"] < 5:
+        tramite = await _cargar_tramite_dict(tramite_ref, db, id_municipio)
+        puede, _motivo = await svc_auth.agente_puede_operar(agente, tramite, db)
+        if puede:
+            await svc_pedidos.marcar_visto(db, tramite["id_tramite"], id_pedido, current_user["id_usuario"])
+            await db.commit()
+        return Response(status_code=204)
+    await _resolver_tramite(tramite_ref, db, id_municipio)
     return Response(status_code=204)
 
 

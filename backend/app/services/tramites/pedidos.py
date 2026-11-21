@@ -20,7 +20,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import AsyncSessionLocal
 from app.core.urls import url_portal_vecino
 from app.services.tramites import alta as svc_alta
-from app.services.tramites import ciclo_vida as svc_ciclo
 from app.services.tramites import movimientos as svc_mov
 
 logger = logging.getLogger("zaris.tramites.pedidos")
@@ -44,8 +43,7 @@ async def crear_pedido(
     if tramite.get("iniciador_tipo") != "ciudadano" or not tramite.get("id_ciudadano_iniciador"):
         raise HTTPException(422, "Solo se puede pedir algo al vecino cuando el trámite lo inició un ciudadano.")
     if not await svc_alta.vecino_tiene_cuenta(db, tramite["id_ciudadano_iniciador"]):
-        raise HTTPException(422, "El vecino no tiene cuenta en el portal: no puede recibir ni responder pedidos. "
-                                 "Pedile que se registre en el Portal del Ciudadano.")
+        raise HTTPException(422, svc_alta.MSJ_SIN_CUENTA)
     if tramite.get("fecha_archivado") is not None:
         raise HTTPException(422, "El trámite está archivado.")
     if tramite.get("es_final"):
@@ -113,6 +111,26 @@ async def cancelar_pedido(
     )
 
 
+async def cancelar_pedido_abierto_por_cierre(db: AsyncSession, id_tramite: int, motivo: str,
+                                             id_municipio: int) -> bool:
+    """El trámite se cierra (estado final, desistimiento, archivo por inactividad): el pedido abierto,
+    si hay, queda `cancelado` con `motivo` y un movimiento `pedido_cancelado` automático (actor sistema).
+    NO avisa al vecino: el aviso del cierre ya lo cubre. Va en la transacción del cierre; no commitea.
+    Devuelve True si había un pedido abierto."""
+    ped = (await db.execute(
+        text("UPDATE tramite_pedido_iniciador SET estado = 'cancelado', motivo_cancelacion = :m, "
+             "fecha_modificacion = NOW() WHERE id_tramite = :t AND estado = 'abierto' AND activo = TRUE "
+             "RETURNING id_tramite_pedido"),
+        {"m": motivo, "t": id_tramite})).fetchone()
+    if not ped:
+        return False
+    await svc_mov.registrar_movimiento(
+        db, id_tramite, "pedido_cancelado", None, None, id_municipio, None, comentario=motivo,
+        metadata_jsonb={"id_tramite_pedido": ped[0], "automatico": True},
+    )
+    return True
+
+
 async def marcar_visto(db: AsyncSession, id_tramite: int, id_pedido: int, id_usuario: int) -> None:
     """Marca la respuesta como vista (solo la primera vez). 404 si el pedido no es del trámite."""
     existe = (await db.execute(
@@ -177,6 +195,7 @@ async def listar_pedidos(db: AsyncSession, id_tramite: int) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 async def _avisar(id_tramite: int, titulo_fn) -> None:
+    from app.services.tramites import ciclo_vida as svc_ciclo  # import tardio: ciclo_vida/retencion importan este modulo
     try:
         async with AsyncSessionLocal() as db:
             d = await svc_ciclo._datos_para_vecino(db, id_tramite)
