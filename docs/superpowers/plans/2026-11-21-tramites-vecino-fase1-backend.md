@@ -40,7 +40,8 @@
 - Produces (schema):
   - `tramite.id_agente_iniciador`, `tramite_movimiento.id_agente`, `tramite_documento.id_agente_subio` → NULL permitido.
   - `tramite_movimiento.id_ciudadano_actor INTEGER`, `tramite_documento.id_ciudadano_subio INTEGER`, `tramite_documento.id_tramite_pedido INTEGER` (FK compuestas); CHECKs `ck_tramite_movimiento_un_actor` y `ck_tramite_documento_un_actor`: `NOT (agente IS NOT NULL AND ciudadano IS NOT NULL)`.
-  - `tipo_tramite.ofrecer_al_vecino BOOLEAN NOT NULL DEFAULT FALSE`.
+  - `tipo_tramite.ofrecer_al_vecino BOOLEAN NOT NULL DEFAULT FALSE` y `tipo_tramite.exige_identidad_validada BOOLEAN NOT NULL DEFAULT FALSE` (la 139b no la prende en ninguno).
+  - `ciudadano_identidad_validacion` (spec §5.10: `id_ciudadano_identidad_validacion` PK, `id_ciudadano`, `id_agente` NOT NULL, `fecha` TIMESTAMPTZ NOT NULL DEFAULT NOW(), `documento_presentado` VARCHAR(40) NOT NULL, `observacion`, `motivo_revocacion`, `id_agente_revoca`, `fecha_revocacion`, §10). Único parcial `uq_ciudadano_identidad_activa (id_ciudadano) WHERE activo`. Clasificación `operativo`, grupo `contactos`; RLS + `barrera_municipio`; FK compuestas a `ciudadanos` y `agentes`.
   - `tramite_pedido_iniciador` (`id_tramite_pedido` PK, `id_tramite`, `texto` TEXT NOT NULL, `pide_archivo` BOOL NOT NULL DEFAULT FALSE, `estado` VARCHAR(12) CHECK `abierto|respondido|cancelado`, `id_agente_pide` NULL, `fecha_pedido` TIMESTAMPTZ NOT NULL DEFAULT NOW(), `respuesta_texto`, `fecha_respuesta`, `id_agente_cancela`, `motivo_cancelacion`, `respuesta_vista_en`, `aviso_nivel` SMALLINT NOT NULL DEFAULT 0, `aviso_en`, + §10). Único parcial `uq_tramite_pedido_abierto (id_tramite) WHERE estado='abierto' AND activo`.
   - CHECK de `tramite_movimiento.tipo` + `pedido_iniciador`, `respuesta_iniciador`, `pedido_cancelado`; CHECK `ck_ciudadano_aviso_tipo` + `tramite_pedido`.
   - 139b: `ofrecer_al_vecino = TRUE` donde `codigo IN ('aviso-obra','poda-arbol','inscripcion-profesional','exencion-tasas','permiso-espacio-publico','recurso-administrativo')`, en todos los municipios.
@@ -85,6 +86,27 @@
 - [ ] **Step 4:** los dos tests pasan; `smoke_tramites_aviso_inicio.py` sigue verde.
 - [ ] **Step 5:** commit `feat(tramites): un tramite de vecino exige su cuenta del portal`.
 
+### Task 3b: Identidad validada en el municipio
+
+**Files:**
+- Create: `backend/app/services/identidad.py`
+- Modify: `backend/app/api/routes/buc.py` (endpoints + `identidad_validada` en el GET de la ficha y en `/cuentas`), `backend/app/schemas/buc.py`, `backend/app/api/routes/publico_perfil.py`, `backend/app/services/tramites/alta.py`, `backend/app/api/routes/tramites.py` (alta del backoffice)
+
+**Interfaces:**
+- Produces:
+  - `async def identidad_validada(db, id_ciudadano: int) -> dict | None` (`{fecha, agente_nombre}` de la fila activa).
+  - `POST /api/v1/buc/ciudadanos/{id}/identidad/validar` `{documento_presentado: str (2..40), observacion: str | None}` → 201; nivel ≤ 3 con agente; 409 si ya está validada.
+  - `POST /api/v1/buc/ciudadanos/{id}/identidad/revocar` `{motivo: str (min 5)}` → 200; nivel ≤ 2; 404 si no hay validación activa.
+  - `identidad_validada: {fecha, agente_nombre} | null` en la ficha, en `/cuentas` y en `GET /publico/perfil` (en el perfil público, solo `{fecha}`).
+  - En `crear_tramite_en_db`'s caller del backoffice: si `tipo.exige_identidad_validada` y el iniciador ciudadano no la tiene → 422 «Validá la identidad del vecino en su ficha antes de iniciar este trámite».
+  - Constante `MSG_IDENTIDAD_PORTAL = "Para iniciar este trámite tenés que validar tu identidad en el municipio. Acercate con tu documento."` en `services/identidad.py` (la usa la Task 4).
+
+- [ ] **Step 1: tests** `test_identidad_validar_y_revocar`: un usuario nivel 4 → 403; nivel 3 valida → 201 y la ficha trae `identidad_validada`; validar de nuevo → 409; nivel 3 revoca → 403; nivel 2 revoca → 200 y la ficha vuelve a `null`; en DB quedan las dos filas (una revocada). `test_backoffice_alta_exige_identidad`: con `exige_identidad_validada=true` en poda-arbol (el smoke lo prende y lo restaura), alta para un vecino con cuenta sin validar → 422; tras validar → 201.
+- [ ] **Step 2:** correr → fallan.
+- [ ] **Step 3:** implementar.
+- [ ] **Step 4:** pasan con y sin barrera.
+- [ ] **Step 5:** commit `feat(buc): validar la identidad del vecino en el municipio`.
+
 ### Task 4: Router público — tipos y alta atómica
 
 **Files:**
@@ -96,7 +118,7 @@
 - Produces:
   - `async def tipos_ofrecidos(db, id_municipio: int, id_tipo: int | None = None) -> list[dict]` en `services/tramites/alta.py` (criterio del spec §5.1, en SQL).
   - `async def documentos_del_alta(db, id_version: int, id_estado_inicial: int) -> list[dict]` (aporta iniciador, sin estado o del estado inicial, sin `requiere_firma`).
-  - `GET /api/v1/publico/tramites/tipos` → `[{id_tipo_tramite, nombre, descripcion}]`; `GET /tipos/{id}` → `{..., campos: [{nombre_interno, etiqueta, tipo_dato, obligatorio, opciones, ayuda, orden}], documentos: [{id_documento_requerido, nombre, descripcion, obligatorio, formatos_permitidos, tamano_max_mb, cantidad_max_archivos}]}`.
+  - `GET /api/v1/publico/tramites/tipos` → `[{id_tipo_tramite, nombre, descripcion, exige_identidad_validada, puede_iniciar, motivo_no_puede: str | None}]` (`puede_iniciar=false` + `MSG_IDENTIDAD_PORTAL` si exige y el vecino no la tiene; el POST responde 422 con ese texto); `GET /tipos/{id}` → `{..., campos: [{nombre_interno, etiqueta, tipo_dato, obligatorio, opciones, ayuda, orden}], documentos: [{id_documento_requerido, nombre, descripcion, obligatorio, formatos_permitidos, tamano_max_mb, cantidad_max_archivos}]}`.
   - `POST /api/v1/publico/tramites` multipart: `id_tipo_tramite: int`, `datos: str` (JSON), `archivos: list[UploadFile]`, `documentos: str` (JSON lista paralela de `id_documento_requerido`, uno por archivo) → 201 `{id_tramite, numero_expediente}`.
 
 - [ ] **Step 1: tests** (vecino demo con cuenta, login por `/publico/auth/login`):
@@ -105,6 +127,7 @@
   - `test_alta_sin_documento_obligatorio_422`: sin la foto → 422 y sin filas nuevas.
   - `test_alta_atomica_sin_restos` (Review Focus 1): dos archivos, el segundo excede `tamano_max_mb` → 422, ninguna fila nueva en `tramite`/`tramite_documento` y ningún objeto nuevo bajo la carpeta del expediente (Storage simulado en el smoke: monkeypatch de `storage.subir_objeto`/`borrar_objeto` que registra llamadas, memoria `reference_storage_local_apunta_a_prod`).
   - `test_alta_campo_invalido_422`: `seleccion` con un valor fuera de las opciones → 422.
+  - `test_alta_exige_identidad_portal`: con `exige_identidad_validada=true` en poda-arbol (el smoke lo prende y lo restaura) y el vecino sin validar → el tipo aparece con `puede_iniciar=false` y `motivo_no_puede=MSG_IDENTIDAD_PORTAL`; el POST → 422 con ese texto y sin filas nuevas.
 - [ ] **Step 2:** correr → 404 (router inexistente).
 - [ ] **Step 3:** implementar. Orden dentro del POST: validar tipo ofrecido → validar campos → validar cada archivo contra su documento requerido y que estén todos los obligatorios → `crear_tramite_en_db` (actor ciudadano, destinatario `("subarea", tipo.id_subarea)`) → subir archivos e insertar documentos + movimientos `adjunto` → commit; ante cualquier excepción después de subir, `borrar_archivo` de lo subido y re-lanzar. Post-commit: `notificar_tramite_a_bandeja(..., "creacion")` y `notificar_inicio_a_iniciador`.
 - [ ] **Step 4:** los tests pasan con `DB_BARRERA=true` y `false`.
@@ -179,12 +202,12 @@
 - [ ] **Step 4:** pasan; `smoke_tramites_ciclo_vida.py` sigue verde.
 - [ ] **Step 5:** commit `feat(tramites): un pedido sin respuesta termina en desistimiento`.
 
-### Task 8: `ofrecer_al_vecino` en el catálogo admin
+### Task 8: `ofrecer_al_vecino` y `exige_identidad_validada` en el catálogo admin
 
 **Files:**
 - Modify: `backend/app/schemas/tramites.py` (`TipoTramiteCreateIn`, `TipoTramiteUpdateIn`, `TipoTramiteAdminOut`, `TipoTramiteAdminListItem`), `backend/app/api/routes/tramites_admin.py` (INSERT del POST, `sets` del PUT, los dos SELECT: `_detalle_tipo_admin` y `listar_tipos_admin`)
 
-- [ ] **Step 1: test** `test_admin_ofrecer_al_vecino`: PUT `{ofrecer_al_vecino: true}` sobre un tipo con `ciudadano` → el detalle y la lista admin lo devuelven `true` y el tipo aparece en `GET /publico/tramites/tipos`; PUT `true` sobre un tipo solo de empresa → 422 «Solo se ofrece al vecino un trámite que admite iniciador ciudadano».
+- [ ] **Step 1: test** `test_admin_ofrecer_al_vecino`: PUT `{ofrecer_al_vecino: true}` sobre un tipo con `ciudadano` → el detalle y la lista admin lo devuelven `true` y el tipo aparece en `GET /publico/tramites/tipos`; PUT `true` sobre un tipo solo de empresa → 422 «Solo se ofrece al vecino un trámite que admite iniciador ciudadano». Igual para `exige_identidad_validada` (ida y vuelta por PUT, visible en detalle y lista admin; sin la restricción de iniciador).
 - [ ] **Step 2:** correr → falla.
 - [ ] **Step 3:** implementar.
 - [ ] **Step 4:** pasa.

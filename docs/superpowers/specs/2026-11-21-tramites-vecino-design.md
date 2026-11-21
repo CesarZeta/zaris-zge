@@ -114,9 +114,18 @@ Hoy `tramite.id_agente_iniciador`, `tramite_movimiento.id_agente` y `tramite_doc
 - Formulario dinámico para los tipos de dato `texto`, `texto_largo`, `numero`, `decimal`, `moneda`, `fecha`, `booleano`, `seleccion`, `seleccion_multiple`, `direccion` (los de los tipos ofrecidos). Validación en vivo, con los mismos criterios que el backend.
 - Mismo estilo y componentes que reclamos (`NuevoReclamoPage`, `ReclamoDetallePage`).
 
+### 5.10 Identidad validada en el municipio (decisión de César, 2026-11-21: por tipo)
+Hoy `ciudadanos.estado_validacion='verificado'` mezcla «lo cargó un agente» con «confirmó su correo»: no dice que alguien haya visto el documento de la persona. Se agrega un acto aparte:
+- **Validar la identidad**: un agente (nivel ≤ 3, con agente vinculado), con el vecino y su documento delante, toca «Validar identidad» en la ficha del ciudadano. Tabla nueva `ciudadano_identidad_validacion` (append-only): `id_ciudadano`, `id_agente`, `fecha`, `documento_presentado` (texto corto, p. ej. «DNI»), `observacion`, `activo`, `motivo_revocacion`, `id_agente_revoca`, `fecha_revocacion`, §10. La identidad está validada si hay una fila activa. Revocar (nivel ≤ 2) la desactiva con motivo. *(Decisiones de Claude: tabla con historia, no columnas en `ciudadanos`; quién valida y quién revoca.)* `estado_validacion` no se toca.
+- **Por tipo**: `tipo_tramite.exige_identidad_validada BOOLEAN NOT NULL DEFAULT FALSE`, casilla «Exige identidad validada en el municipio» en el configurador. La migración no la prende en ningún tipo: lo decide la gestión.
+- **Portal**: un tipo que la exige se lista igual, con `puede_iniciar=false` y el texto «Para iniciar este trámite tenés que validar tu identidad en el municipio. Acercate con tu documento.»; el alta responde 422 con ese texto.
+- **Backoffice**: el alta de un tipo que la exige, para un vecino sin identidad validada, también responde 422 («Validá la identidad del vecino en su ficha antes de iniciar este trámite»). *(Decisión de Claude: la regla es del tipo, no del canal.)*
+- La ficha del ciudadano (`GET /buc/ciudadanos/{id}` y `/cuentas`) y `GET /publico/perfil` exponen `identidad_validada: {fecha, agente} | null`.
+- Fuera de alcance: documentos que deban presentarse en original en el municipio (se puede resolver más adelante con una casilla en el documento requerido).
+
 ## 6. Fases propuestas
 1. **Backend**: migración (columnas, tabla, CHECKs, clasificación, barrera), router público, pedidos en el backoffice, ajustes a timer/avisos/consumidores, contrato y smokes (con y sin `DB_BARRERA`). Deploy y verificación en prod.
-2. **Backoffice**: casilla en el configurador, botón y panel de pedidos, chips en las bandejas, «Iniciado por» con ciudadano.
+2. **Backoffice**: casillas en el configurador («Se ofrece al vecino», «Exige identidad validada»), «Validar identidad» en la ficha del ciudadano, botón y panel de pedidos, chips en las bandejas, «Iniciado por» con ciudadano.
 3. **PWA**: tarjeta, lista, alta, detalle y respuesta. Verificación navegando en prod con el vecino de prueba.
 
 ## 7. Queda para el builder
