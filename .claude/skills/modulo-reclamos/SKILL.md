@@ -102,7 +102,7 @@ Para municipios chicos donde el agente se autogestiona:
 
 Toda edición inserta entrada `Reclamo editado` en `reclamo_historial` preservando estado anterior/nuevo (= estado actual). Si el body trae un campo prohibido para el estado actual: 422 con detalle de campos rechazados vs permitidos. Cambio de tipo re-deriva `id_area` desde `subarea.id_area` (fuente única desde mig 27). Cambio de empresa valida vínculo activo en `ciudadano_empresa`.
 
-`PUT /{id}/cancelar`, `PUT /{id}/estado`, `POST /{id}/subreclamo` y `POST /{id}/auditoria` exigen en cambio `_require_supervisor` (nivel ≤ 2; cambiar estado es supervisión, §3/§30). Avisar al supervisor admite niveles 1-4 (`NIVELES_AVISO`). Verificado en `reclamos.py` el 2026-10-20.
+`PUT /{id}/cancelar`, `PUT /{id}/estado`, `POST /{id}/subreclamo` y `POST /{id}/auditoria` exigen en cambio `_require_supervisor` (nivel ≤ 2; cambiar estado es supervisión, §3/§30). **Desde 2026-11-21 `/cancelar` exige además la gestión del reclamo** (`_require_misma_subarea`, admin exento; antes un supervisor de otra gestión cancelaba reclamos ajenos): 403 «Solo un usuario de la misma subárea…». Smoke: `backend/smoke_reclamo_cancelar_gestion.py`. Avisar al supervisor admite niveles 1-4 (`NIVELES_AVISO`). Verificado en `reclamos.py` el 2026-10-20.
 
 ### Endpoints adjuntos (§26)
 
