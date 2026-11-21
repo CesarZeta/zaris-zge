@@ -145,7 +145,7 @@ async def _validar_cierre_directo_sin_ot(db, id_reclamo: int, id_tipo_reclamo, c
 async def _require_misma_subarea(db, id_tipo_reclamo, current_user: dict, accion: str):
     """Impide el cierre cross-subárea por la vía manual del FSM.
 
-    Un usuario solo puede llevar un reclamo a 'Resuelto' si la subárea de su
+    Un usuario solo puede llevar un reclamo a 'Resuelto' (o cancelarlo, PUT /cancelar) si la subárea de su
     agente (regla 1:1, §3) coincide con la subárea del tipo de reclamo
     (fuente única; `reclamos.id_subarea` puede ser NULL — §27). El admin
     (nivel 1) está exento (acceso total). El cierre vía OT no pasa por acá:
@@ -1337,7 +1337,9 @@ async def editar_reclamo(
 
 # ── PUT /reclamos/{id}/cancelar — cancelar con cascade a OTs ─────────────────
 
-@router.put("/{id_reclamo}/cancelar")
+@router.put("/{id_reclamo}/cancelar",
+            responses={403: {"description": "El reclamo es de otra gestión (solo la supervisión de su "
+                                            "gestión o un administrador lo cancelan)"}})
 async def cancelar_reclamo(
     id_reclamo: int,
     body: dict,
@@ -1351,12 +1353,15 @@ async def cancelar_reclamo(
         raise HTTPException(status_code=422, detail="Campo 'motivo' requerido")
 
     r = await db.execute(text(
-        "SELECT estado, id_reclamo_padre FROM reclamos WHERE id_reclamo = :id AND activo = TRUE "
+        "SELECT estado, id_reclamo_padre, id_tipo_reclamo FROM reclamos WHERE id_reclamo = :id AND activo = TRUE "
         "AND id_municipio = :mun"
     ), {"id": id_reclamo, "mun": id_municipio})
     row = r.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail=f"Reclamo {id_reclamo} no encontrado")
+    # Mismo guard que el pase a 'Resuelto': un supervisor solo cancela reclamos de su gestión
+    # (subárea de su agente = subárea del tipo); el admin, cualquiera (2026-11-21).
+    await _require_misma_subarea(db, row.id_tipo_reclamo, current_user, "Cancelado")
     if row.estado == "Cancelado":
         raise HTTPException(status_code=422, detail="El reclamo ya está cancelado")
     if row.estado in ESTADOS_AUDITORIA:
