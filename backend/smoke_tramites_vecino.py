@@ -407,10 +407,17 @@ DNI_VECINO = "28547123"
 PNG = (b"\x89PNG\r\n\x1a\n" + b"\x00" * 64)
 
 
+_HV: dict = {}
+
+
 async def _login_vecino(c: httpx.AsyncClient) -> dict:
+    """Un solo login por corrida (el login del vecino tiene rate limit de 6/min por DNI)."""
+    if _HV:
+        return _HV
     r = await c.post("/api/v1/publico/auth/login", json={"dni": DNI_VECINO, "password": PWD_DEV})
     assert r.status_code == 200, f"login vecino: {r.status_code} {r.text[:200]}"
-    return {"Authorization": f"Bearer {r.json()['access_token']}"}
+    _HV.update({"Authorization": f"Bearer {r.json()['access_token']}"})
+    return _HV
 
 
 async def _doc_poda(tipo_id: int) -> dict:
@@ -544,7 +551,7 @@ async def test_alta_atomica_sin_restos(c: httpx.AsyncClient, ha: dict) -> None:
         r = await c.post("/api/v1/publico/tramites", headers=hv, data=data, files=files)
         check(r.status_code == 422, "responde 422", f"{r.status_code} {r.text[:200]}")
         check(await _cuenta_filas() == antes, "ninguna fila nueva en tramite/tramite_documento/movimiento")
-        check(set(SUBIDOS) <= set(BORRADOS), "todo objeto subido fue borrado", f"{SUBIDOS} {BORRADOS}")
+        check(not SUBIDOS, "no se subió nada (rechazado por tamaño declarado antes de leer)", f"{SUBIDOS} {BORRADOS}")
 
         # Falla DESPUÉS de subir: la segunda subida levanta; el primer objeto se borra y no queda nada.
         SUBIDOS.clear(); BORRADOS.clear(); FALLAR_EN_SUBIDA_N[:] = [2]
@@ -600,11 +607,63 @@ async def test_alta_exige_identidad_portal(c: httpx.AsyncClient, ha: dict) -> No
         await ejecutar("UPDATE tipo_tramite SET exige_identidad_validada = :v WHERE id_tipo_tramite = :t", v=previo, t=tipo["id_tipo_tramite"])
 
 
+async def test_alta_limites_de_carga(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[13] Límites: cantidad por documento, total de archivos y tope del body")
+    mun = await _municipio_base()
+    tipo = await _tipo_poda(mun)
+    doc = await _doc_poda(tipo["id_tipo_tramite"])
+    hv = await _login_vecino(c)
+    antes = await _cuenta_filas()
+    SUBIDOS.clear()
+    data, files = _form(tipo["id_tipo_tramite"], DATOS_PODA, [("a.png", PNG), ("b.png", PNG)], [doc["id"], doc["id"]])
+    r = await c.post("/api/v1/publico/tramites", headers=hv, data=data, files=files)
+    check(r.status_code == 422 and "admite hasta" in r.text, "más archivos que cantidad_max_archivos: 422", f"{r.status_code} {r.text[:150]}")
+    n = 25
+    data, files = _form(tipo["id_tipo_tramite"], DATOS_PODA, [(f"{i}.png", PNG) for i in range(n)], [doc["id"]] * n)
+    r = await c.post("/api/v1/publico/tramites", headers=hv, data=data, files=files)
+    check(r.status_code == 422 and "hasta 20 archivos" in r.text, "más de 20 archivos en total: 422", f"{r.status_code} {r.text[:150]}")
+    grande = bytes(26 * 1024 * 1024)
+    data, files = _form(tipo["id_tipo_tramite"], DATOS_PODA, [("g.png", grande)], [doc["id"]])
+    r = await c.post("/api/v1/publico/tramites", headers=hv, data=data, files=files)
+    check(r.status_code == 413, "body sobre el tope: 413", f"{r.status_code} {r.text[:150]}")
+    check(not SUBIDOS and await _cuenta_filas() == antes, "nada subido ni filas nuevas")
+
+
+async def test_alta_filtra_datos_ajenos(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[14] Claves ajenas de `datos` no llegan a la base")
+    mun = await _municipio_base()
+    tipo = await _tipo_poda(mun)
+    doc = await _doc_poda(tipo["id_tipo_tramite"])
+    hv = await _login_vecino(c)
+    datos = dict(DATOS_PODA, clave_ajena="X" * 50, archivo_falso="y")
+    ver = (await q1("SELECT id_version_publicada AS v FROM tipo_tramite WHERE id_tipo_tramite = :t", t=tipo["id_tipo_tramite"]))["v"]
+    await ejecutar("INSERT INTO tipo_tramite_campo (id_tipo_tramite_version, nombre_interno, etiqueta, tipo_dato, obligatorio, orden, id_municipio) "
+                   "VALUES (:v, 'archivo_falso', 'Archivo falso', 'archivo', FALSE, 99, :m)", v=ver, m=mun)
+    idt = None
+    try:
+        data, files = _form(tipo["id_tipo_tramite"], datos, [("a.png", PNG)], [doc["id"]])
+        r = await c.post("/api/v1/publico/tramites", headers=hv, data=data, files=files)
+        check(r.status_code == 201, "responde 201", f"{r.status_code} {r.text[:200]}")
+        if r.status_code != 201:
+            return
+        idt = r.json()["id_tramite"]
+        t = await q1("SELECT datos_jsonb FROM tramite WHERE id_tramite = :t", t=idt)
+        m = await q1("SELECT metadata_jsonb FROM tramite_movimiento WHERE id_tramite = :t AND tipo = 'creacion'", t=idt)
+        check(set(t["datos_jsonb"]) == set(DATOS_PODA), "datos_jsonb solo con campos activos del tipo", str(t))
+        check(set(m["metadata_jsonb"]["datos_iniciales"]) == set(DATOS_PODA), "el movimiento creacion tampoco las guarda", str(m))
+    finally:
+        await ejecutar("DELETE FROM tipo_tramite_campo WHERE id_tipo_tramite_version = :v AND nombre_interno = 'archivo_falso'", v=ver)
+        if idt:
+            await ejecutar("DELETE FROM tramite_documento WHERE id_tramite = :t", t=idt)
+            await _borrar_tramite(idt)
+
+
 CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cuenta_422,
          test_backoffice_alta_con_cuenta_201,
          test_identidad_validar_y_revocar, test_identidad_en_perfil_publico, test_backoffice_alta_exige_identidad,
          test_tipos_ofrecidos, test_alta_vecino_ok, test_alta_sin_documento_obligatorio_422,
-         test_alta_atomica_sin_restos, test_alta_campo_invalido_422, test_alta_exige_identidad_portal]
+         test_alta_atomica_sin_restos, test_alta_campo_invalido_422, test_alta_exige_identidad_portal,
+         test_alta_limites_de_carga, test_alta_filtra_datos_ajenos]
 
 
 async def main() -> int:
