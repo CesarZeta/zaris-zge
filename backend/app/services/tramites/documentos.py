@@ -128,7 +128,12 @@ async def guardar_archivo_mock(
     storage_path = storage.ruta_de_municipio(
         id_municipio, f"tramites/{anio}/{_slug(numero_expediente)}/{uuid.uuid4()}.{ext}")
 
-    await storage.subir_objeto(storage_path, contenido, mime, bucket=TRAMITES_BUCKET)
+    try:
+        await storage.subir_objeto(storage_path, contenido, mime, bucket=TRAMITES_BUCKET)
+    except BaseException:
+        # Una subida a medias no deja un objeto huérfano en el bucket.
+        await borrar_archivos([storage_path])
+        raise
 
     return {
         "storage_path": storage_path,
@@ -147,6 +152,15 @@ async def descargar_bytes(storage_path: str) -> bytes:
 async def borrar_archivo(storage_path: str) -> None:
     """Borra el objeto del bucket (best-effort)."""
     await storage.borrar_objeto(storage_path, bucket=TRAMITES_BUCKET)
+
+
+async def borrar_archivos(storage_paths: list[str]) -> None:
+    """Borra varios objetos del bucket; uno que falla no impide borrar los demás (best-effort)."""
+    for ruta in storage_paths:
+        try:
+            await borrar_archivo(ruta)
+        except Exception:  # noqa: BLE001 - limpieza best-effort; el original ya está en vuelo
+            pass
 
 
 async def obtener_proxima_posicion(id_tramite: int, db: AsyncSession) -> int:
