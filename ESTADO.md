@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-11-21 (Cesar). **IT-01 F6.5 cerrada** con la exportación real de San Andrés: IT-01 completa en prod (F1-F6). Empezó el bloque del vecino con el diseño de **trámites desde el portal** (pregunta 1). F6.3 y F6.4 en prod desde el 2026-11-20 (vuelta atrás de la barrera: `DB_BARRERA=false` en Railway).
+**Última actualización:** 2026-11-21 (Cesar). **IT-01 F6.5 cerrada** con la exportación real de San Andrés: IT-01 completa en prod (F1-F6). Empezó el bloque del vecino: **trámites desde el portal**, fase 1 (backend) implementada en la rama `tramites-vecino-fase1`, sin pasar a prod (pregunta 1). F6.3 y F6.4 en prod desde el 2026-11-20 (vuelta atrás de la barrera: `DB_BARRERA=false` en Railway).
 
 ---
 
@@ -18,7 +18,7 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **Trámites desde el portal del vecino — diseño para aprobar:** [`docs/superpowers/specs/2026-11-21-tramites-vecino-design.md`](docs/superpowers/specs/2026-11-21-tramites-vecino-design.md) (iniciar, ver estado, subir documentos, responder pedidos del municipio; «pedido al vecino» paralelo al circuito, elegido por César el 2026-11-21).
+1. **Trámites desde el portal del vecino — fase 1 (backend) implementada, falta cerrar y pasar a prod.** Diseño aprobado ([spec](docs/superpowers/specs/2026-11-21-tramites-vecino-design.md), incluye identidad validada por tipo) y [plan](docs/superpowers/plans/2026-11-21-tramites-vecino-fase1-backend.md). Tareas 1-8 hechas y revisadas una por una, en la rama **`tramites-vecino-fase1`** (13 commits, `efcfa34`; NO está en `main`: el código espera la migración 139). Smoke `backend/smoke_tramites_vecino.py` 239/239 con y sin barrera. Falta: (a) la revisión final del conjunto (se cortó por el cierre) y su tanda de correcciones, que incluye sí o sí el re-chequeo del pedido abierto dentro de la transacción antes de desistir; (b) correr `smoke_tramites_ciclo_vida.py` con uvicorn local y mail apagado; (c) Task 9: César corre la 139 en el SQL Editor de Supabase, la 139b por MCP, merge a `main`, push y verificación en prod. Registro de avance local (no versionado): `.superpowers/sdd/2026-11-21-tramites-vecino-fase1-backend/progress.md`.
 2. **Bloque del vecino — después de F4 (orden de César, 2026-10-27):**
    1. La web del ciudadano con todo lo que tiene la app (supuesto de Claude, sin confirmar: es el modo escritorio del portal, ver En curso).
    2. Todas las prestaciones del vecino; falta **iniciar un trámite** desde el portal (ni endpoint ni pantalla). Turnos y entradas ya se reservan desde la app (verificado en el código).
