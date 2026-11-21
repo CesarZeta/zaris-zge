@@ -332,9 +332,25 @@ class CiudadanoOut(BaseModel):
         from_attributes = True
 
 
+class IdentidadValidadaOut(BaseModel):
+    """Validación de identidad hecha en el municipio (agente que vio el documento)."""
+    fecha: datetime
+    agente_nombre: Optional[str] = None
+
+
+class IdentidadValidarIn(BaseModel):
+    documento_presentado: str = Field(..., min_length=2, max_length=40)
+    observacion: Optional[str] = Field(None, max_length=500)
+
+
+class IdentidadRevocarIn(BaseModel):
+    motivo: str = Field(..., min_length=5, max_length=500)
+
+
 class CiudadanoConNacionalidad(CiudadanoOut):
     """Ciudadano con datos de nacionalidad incluidos."""
     nacionalidad: Optional[NacionalidadOut] = None
+    identidad_validada: Optional[IdentidadValidadaOut] = None
 
 
 # ── Cuentas del ciudadano (mig 110, PLAN_CUENTAS_FUNCIONARIO.md) ────────────────
@@ -367,6 +383,7 @@ class CuentasCiudadanoOut(BaseModel):
     """Estado de las dos cuentas de una persona de la BUC (chips de la ficha)."""
     vecino: CuentaVecinoEstado
     zaris: Optional[CuentaZarisEstado] = None
+    identidad_validada: Optional[IdentidadValidadaOut] = None
 
 
 # ═══════════════════════════════════════════════════════════════

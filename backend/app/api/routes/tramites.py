@@ -57,6 +57,7 @@ from app.schemas.tramites import (
 )
 from app.services.tramites import alta as svc_alta
 from app.services.tramites import auth as svc_auth
+from app.services import identidad as svc_identidad
 from app.services.tramites import aprobaciones as svc_aprob
 from app.services.tramites import autorizacion as svc_autorizacion
 from app.services.tramites import creacion as svc_creacion
@@ -1187,6 +1188,11 @@ async def crear_tramite(
         body.iniciador.model_dump(exclude_none=True),
         tipo, id_municipio, db,
     )
+
+    # Identidad validada en el municipio (antes de consumir el numerador, como la cuenta del portal).
+    if body.iniciador.tipo == "ciudadano":
+        await svc_identidad.exigir_identidad_para_tipo(
+            db, tipo=tipo, id_ciudadano=iniciador_fks.get("id_ciudadano_iniciador"))
 
     # Validar campos del formulario
     await svc_creacion.validar_campos_contra_tipo(
