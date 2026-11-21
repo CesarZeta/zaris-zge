@@ -70,3 +70,11 @@ Con el zip de San Andrés de `zaris_dev` (68.081 filas, 84 tablas) en una base n
 - [ ] **Step 2:** `volcar` contra prod (pooler, conexión directa) y `restaurar` en una base local nueva; informe con conteos iguales.
 - [ ] **Step 3:** backend local contra esa base, inicio de San Andrés en el navegador.
 - [ ] **Step 4:** borrar la base y los archivos (datos reales, no quedan en la máquina más que lo necesario).
+
+---
+
+## Resultado (2026-11-21)
+
+- **Tasks 1 y 2 hechas** (`e0f7562`, `bd88668`): `tools/test_restaurar_exportacion.py` 9/9 y `backend/smoke_restauracion.py` 18/18. San Andrés de `zaris_dev` (68.081 filas, 84 tablas) se restaura en 7 s con los conteos iguales al zip (80 tablas, 66.506 filas, más 1.575 sin secreto que quedan afuera a propósito), el post-data entero (563 FK válidas), 95 secuencias y la barrera. El backend contra la base restaurada da el mismo inicio y el mismo listado de reclamos que `zaris_dev`, con la barrera apagada y prendida.
+- **Task 3, parte hecha:** `volcar` contra prod (pooler, solo lectura) y la estructura de prod aplicada a un Postgres 17 vacío: 103 tablas, 104 políticas, 98 triggers y 563 FK, sin errores. Los archivos de prod se borraron de la máquina.
+- **Task 3, falta:** la restauración con la exportación real de San Andrés. Armar el zip desde esta máquina contra prod quedó bloqueado por el control de permisos (trae datos de vecinos); va por el camino del producto: el super lo pide y lo descarga desde la ficha del municipio → «Exportaciones» → «Exportar ahora» → «Descargar».

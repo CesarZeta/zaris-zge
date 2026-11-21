@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-11-20, tarde (Cesar). **F6.3 hecha: prod corre con la segunda barrera** (`DB_BARRERA=true`, el backend entra como `zaris_app`, migración 138 aplicada; detalle y mediciones en [`PLAN_MULTI_MUNICIPIO_F6_2.md`](PLAN_MULTI_MUNICIPIO_F6_2.md) → «F6.3»). Vuelta atrás: `DB_BARRERA=false` en Railway. **F6.4 en prod el mismo día** (archivos nuevos en la carpeta `m{id}/` de su municipio, y crons con resultado por municipio en el log, [`PLAN_MULTI_MUNICIPIO_F6_4.md`](PLAN_MULTI_MUNICIPIO_F6_4.md)). Sigue F6.5 (restauración).
+**Última actualización:** 2026-11-21 (Cesar). **F6.5 (restauración) casi cerrada:** `tools/restaurar_exportacion.py` levanta la exportación de un municipio en una base vacía; probada con San Andrés de local (smoke 18/18, mismo inicio y reclamos que el original, con y sin barrera) y con la estructura de prod. Falta la prueba con la exportación real de prod ([`PLAN_MULTI_MUNICIPIO_F6_5.md`](PLAN_MULTI_MUNICIPIO_F6_5.md) → «Resultado»; pregunta 1). F6.3 y F6.4 en prod desde el 2026-11-20 (vuelta atrás de la barrera: `DB_BARRERA=false` en Railway).
 
 ---
 
@@ -18,7 +18,7 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **Reclamos de prueba de F6.3 para cerrar:** REC-SAN-2026-003478 y REC-SAN-2026-003479, del vecino de prueba 1613. Los mails de los dos llegaron (César, 2026-11-20).
+1. **F6.5 — exportación real de San Andrés para la última prueba:** en `https://zge.zaris.com.ar` como super → Municipios → San Andrés → «Exportaciones» → «Exportar ahora» → cuando dice «lista», «Descargar»; pasarle el zip a Claude, que lo restaura en una base local, levanta el backend contra ella, muestra el inicio y borra todo. Desde la máquina de Claude no se puede armar (el control de permisos frena traer datos de vecinos de prod).
 2. **Bloque del vecino — después de F4 (orden de César, 2026-10-27):**
    1. La web del ciudadano con todo lo que tiene la app (supuesto de Claude, sin confirmar: es el modo escritorio del portal, ver En curso).
    2. Todas las prestaciones del vecino; falta **iniciar un trámite** desde el portal (ni endpoint ni pantalla). Turnos y entradas ya se reservan desde la app (verificado en el código).
@@ -28,9 +28,6 @@
 3. Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · propuesta app de agentes (reclamos de oficio + control de entradas) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
 4. **Arreglos que dejó la prueba de cierre:** quedan el 9 (App Vecinos: catálogo de emergencias del vecino, pide diseño) y menores del 10 y 11, en `PLAN_MULTI_MUNICIPIO_F4_F5.md` → «Prueba de cierre — hallazgos» → «2026-11-19».
 5. **Base de conocimiento — material de venta por circuito** (2026-10-30): borrador `docs/base_conocimiento/resumen_circuitos.md`, **solo en la máquina de César, sin commitear** (lleva notas internas; el repo es público). César revisa los (\*) de los tableros (varios son propuesta de Claude), dice si su «punto 2» era esta estructura o es otra pieza (supuesto de Claude: ficha técnica por circuito) y aprueba el texto. Recomendación: commitearlo sin «Notas internas».
-6. **Dos decisiones de F6.4 para confirmar** (2026-11-20, [`PLAN_MULTI_MUNICIPIO_F6_4.md`](PLAN_MULTI_MUNICIPIO_F6_4.md) → «Resultado»):
-   1. Los archivos del super administrador van a la carpeta `global/` en vez de asignarle San Andrés (César lo había propuesto). Motivo: darle municipio cambia el modelo de cuentas de F3 y un vaciado de San Andrés podría borrarlo. Recomendación: dejar `global/`; si César prefiere San Andrés, es un cambio en `storage.ruta_de_municipio`.
-   2. Hoy una purga de trámites con errores o encuestas que no se pudieron mandar dejan el municipio en OK (son fallas de un ítem y ya figuran en la respuesta). Recomendación: que pongan el cron en rojo solo si fallan todos los ítems del municipio.
 
 ---
 
@@ -85,6 +82,7 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
+- **2026-11-21:** IT-01 F6.5: herramienta de restauración y su smoke (`e0f7562`, `bd88668`). Decisiones de F6.4 confirmadas por César: el super queda en `global/`; los crons siguen en OK con fallas de un ítem (no había trámites con errores: los 720 de prod pasan los 15 controles y la purga de hoy evaluó 0). Reclamos de prueba REC-SAN-2026-003478 y 003479 cancelados («reclamo de prueba»; la OT del segundo, cancelada en cascada).
 - **2026-11-20:**
   - IT-01 F6.4 en prod (`58a5140`). Todo archivo nuevo va en la carpeta de su municipio: adjuntos de reclamos y OT, documentos de trámites, fotos de perfil y logo; lo del super va en `global/`. Lo viejo no se movió. El vaciado nunca borra la carpeta de otro municipio. Los crons de encuestas, trámites e integridad imprimen una línea por municipio y fallan con el nombre del que dio error (sin datos de vecinos en el log público). Probado en prod con un adjunto real (`m1/reclamos/3480/…`) y el cron de encuestas.
   - IT-01 F6.3 en prod: la segunda barrera quedó prendida. César creó `zaris_app` y corrió la 138 en el SQL Editor. Las mediciones con dos cuentas dan los mismos conteos y tiempos con y sin la barrera. El recorrido incluyó el alta de reclamos con autoasignación en segundo plano, la app del vecino, el link de encuesta y el cron de encuestas, y la base no registró ningún permiso denegado.
