@@ -37,6 +37,7 @@ from app.main import app  # noqa: E402
 PWD_DEV = os.environ.get("ZARIS_QA_PASS") or "123456"
 ADMIN_EMAIL = "ciudadanovl@municipio.gob.ar"
 ID_CIUDADANO = 3
+DATOS_PODA = {"direccion_arbol": "Calle Smoke 123", "motivo": "Smoke de alta"}
 OK = FAIL = 0
 
 
@@ -125,7 +126,97 @@ async def test_backoffice_ve_movimientos_del_vecino(c: httpx.AsyncClient, ha: di
         await ejecutar("DELETE FROM tramite WHERE id_tramite = :t", t=idt)
 
 
-CASOS = [test_backoffice_ve_movimientos_del_vecino]
+async def _municipio_base() -> int:
+    return (await q1("SELECT id_municipio FROM municipios WHERE direccion_base = TRUE LIMIT 1"))["id_municipio"]
+
+
+async def _vecino_con_cuenta(mun: int) -> Optional[int]:
+    r = await q1(
+        "SELECT c.id_ciudadano FROM ciudadanos c WHERE c.activo AND c.id_municipio = :m "
+        "AND EXISTS (SELECT 1 FROM ciudadano_credencial cc WHERE cc.id_ciudadano = c.id_ciudadano AND cc.activo) "
+        "ORDER BY c.id_ciudadano LIMIT 1", m=mun)
+    return r["id_ciudadano"] if r else None
+
+
+async def _vecino_sin_cuenta(mun: int) -> Optional[int]:
+    r = await q1(
+        "SELECT c.id_ciudadano FROM ciudadanos c WHERE c.activo AND c.id_municipio = :m "
+        "AND NOT EXISTS (SELECT 1 FROM ciudadano_credencial cc WHERE cc.id_ciudadano = c.id_ciudadano) "
+        "ORDER BY c.id_ciudadano LIMIT 1", m=mun)
+    return r["id_ciudadano"] if r else None
+
+
+async def _tipo_poda(mun: int) -> Optional[dict]:
+    return await q1(
+        "SELECT id_tipo_tramite, prefijo FROM tipo_tramite WHERE codigo = 'poda-arbol' AND id_municipio = :m "
+        "AND activo AND id_version_publicada IS NOT NULL", m=mun)
+
+
+async def _borrar_tramite(idt: int) -> None:
+    await ejecutar("DELETE FROM tramite_aprobacion WHERE id_tramite = :t", t=idt)
+    await ejecutar("DELETE FROM tramite_movimiento WHERE id_tramite = :t", t=idt)
+    await ejecutar("DELETE FROM tramite WHERE id_tramite = :t", t=idt)
+
+
+async def test_backoffice_alta_sin_cuenta_422(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[2] Alta de backoffice para un vecino sin cuenta: 422 y nada escrito")
+    mun = await _municipio_base()
+    tipo = await _tipo_poda(mun)
+    vid = await _vecino_sin_cuenta(mun)
+    if not tipo or not vid:
+        check(False, "datos de partida (poda-arbol y un vecino sin credencial)", f"tipo={tipo} vecino={vid}")
+        return
+    antes = (await q1("SELECT count(*) AS n FROM tramite"))["n"]
+    corr_antes = await q1("SELECT COALESCE(SUM(ultimo_numero),0) AS n FROM tipo_tramite_numerador WHERE id_tipo_tramite = :t",
+                          t=tipo["id_tipo_tramite"])
+    r = await c.post("/api/v1/tramites", headers=ha, json={
+        "id_tipo_tramite": tipo["id_tipo_tramite"], "asunto": "Smoke sin cuenta", "datos": DATOS_PODA,
+        "iniciador": {"tipo": "ciudadano", "id_ciudadano": vid}})
+    check(r.status_code == 422, "responde 422", f"{r.status_code} {r.text[:200]}")
+    check("no tiene cuenta en el portal" in r.text, "mensaje de la regla", r.text[:200])
+    despues = (await q1("SELECT count(*) AS n FROM tramite"))["n"]
+    check(antes == despues, "no se creó ningún trámite", f"{antes} -> {despues}")
+    corr_despues = await q1("SELECT COALESCE(SUM(ultimo_numero),0) AS n FROM tipo_tramite_numerador WHERE id_tipo_tramite = :t",
+                            t=tipo["id_tipo_tramite"])
+    check(corr_antes == corr_despues, "el numerador no avanzó", f"{corr_antes} -> {corr_despues}")
+
+
+async def test_backoffice_alta_con_cuenta_201(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[3] Alta de backoffice para un vecino con cuenta: 201")
+    mun = await _municipio_base()
+    tipo = await _tipo_poda(mun)
+    vid = await _vecino_con_cuenta(mun)
+    if not tipo or not vid:
+        check(False, "datos de partida (poda-arbol y un vecino con credencial)", f"tipo={tipo} vecino={vid}")
+        return
+    r = await c.post("/api/v1/tramites", headers=ha, json={
+        "id_tipo_tramite": tipo["id_tipo_tramite"], "asunto": "Smoke con cuenta", "datos": DATOS_PODA,
+        "iniciador": {"tipo": "ciudadano", "id_ciudadano": vid}})
+    check(r.status_code == 201, "responde 201", f"{r.status_code} {r.text[:300]}")
+    if r.status_code != 201:
+        return
+    numero = r.json().get("numero_expediente", "")
+    idt = (await q1("SELECT id_tramite, id_agente_iniciador FROM tramite WHERE numero_expediente = :n", n=numero))
+    try:
+        check(bool(tipo["prefijo"]) and numero.startswith(tipo["prefijo"]), "número con el prefijo del tipo", numero)
+        ag = await q1("SELECT a.id_agente FROM agentes a JOIN usuarios u ON u.id_usuario = a.id_usuario "
+                      "WHERE u.email = :e LIMIT 1", e=ADMIN_EMAIL)
+        check(idt["id_agente_iniciador"] == (ag or {}).get("id_agente"), "id_agente_iniciador = admin", str(idt))
+        async with AsyncSessionLocal() as s:
+            movs = (await s.execute(text(
+                "SELECT tipo, id_agente, id_ciudadano_actor FROM tramite_movimiento WHERE id_tramite = :t ORDER BY orden_secuencial"),
+                {"t": idt["id_tramite"]})).mappings().all()
+        tipos = [m["tipo"] for m in movs]
+        check(tipos[:2] == ["creacion", "numeracion"], "movimientos creacion y numeracion", str(tipos))
+        check(all(m["id_agente"] == (ag or {}).get("id_agente") and m["id_ciudadano_actor"] is None for m in movs[:2]),
+              "movimientos con id_agente del admin", str([dict(m) for m in movs[:2]]))
+    finally:
+        await _borrar_tramite(idt["id_tramite"])
+
+
+
+CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cuenta_422,
+         test_backoffice_alta_con_cuenta_201]
 
 
 async def main() -> int:
