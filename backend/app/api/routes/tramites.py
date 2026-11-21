@@ -55,6 +55,7 @@ from app.schemas.tramites import (
     DocumentoRequeridoOut,
     VersionOut,
 )
+from app.services.tramites import alta as svc_alta
 from app.services.tramites import auth as svc_auth
 from app.services.tramites import aprobaciones as svc_aprob
 from app.services.tramites import autorizacion as svc_autorizacion
@@ -1192,103 +1193,22 @@ async def crear_tramite(
         body.datos, tipo_row.id_version_publicada, id_municipio, db,
     )
 
-    # Estado inicial
-    estado_inicial = (await db.execute(
-        text("""
-            SELECT id_tipo_tramite_estado FROM tipo_tramite_estado
-            WHERE id_tipo_tramite_version=:ver AND es_inicial=TRUE AND activo=TRUE
-        """),
-        {"ver": tipo_row.id_version_publicada},
-    )).fetchone()
-    if not estado_inicial:
-        raise HTTPException(500, "El tipo de tramite no tiene estado inicial configurado")
-
     # Destinatario inicial = subarea del agente creador
-    dest_tipo, dest_id = svc_creacion.determinar_destinatario_inicial(agente)
+    destinatario = svc_creacion.determinar_destinatario_inicial(agente)
 
-    # Numero correlativo atomico
-    anio = datetime.now(timezone.utc).year
-    correlativo = await svc_num.proximo_numero(db, body.id_tipo_tramite, id_municipio, anio)
-    numero_expediente = svc_num.formatear_numero(
-        prefijo=tipo_row.prefijo,
-        separador=tipo_row.separador,
-        incluye_municipio=tipo_row.incluye_municipio,
-        incluye_anio=tipo_row.incluye_anio,
-        codigo_municipio=tipo_row.codigo_corto or "",
-        anio=anio,
-        correlativo=correlativo,
-        largo_correlativo=tipo_row.largo_correlativo,
-    )
-
-    datos_str = json.dumps(body.datos)
-
-    # INSERT tramite
-    t_row = (await db.execute(
-        text("""
-            INSERT INTO tramite (
-                numero_expediente, id_tipo_tramite_version, asunto,
-                datos_jsonb, iniciador_tipo,
-                id_ciudadano_iniciador, id_empresa_iniciadora,
-                id_ciudadano_representante, id_subarea_iniciadora,
-                id_agente_iniciador,
-                id_tipo_tramite_estado_actual, fecha_entrada_estado_actual,
-                destinatario_actual_tipo,
-                id_subarea_actual, id_equipo_actual,
-                id_municipio,
-                id_usuario_alta, id_usuario_modificacion
-            ) VALUES (
-                :num, :ver, :asunto,
-                CAST(:datos AS jsonb), :ini_tipo,
-                :cid, :eid, :crep, :sub_ini,
-                :ag_ini,
-                :estado, NOW(),
-                :dest_tipo,
-                :dest_sa, :dest_eq,
-                :mun,
-                :uid, :uid
-            )
-            RETURNING id_tramite
-        """),
-        {
-            "num": numero_expediente,
-            "ver": tipo_row.id_version_publicada,
-            "asunto": body.asunto,
-            "datos": datos_str,
-            "ini_tipo": body.iniciador.tipo,
-            "cid": iniciador_fks.get("id_ciudadano_iniciador"),
-            "eid": iniciador_fks.get("id_empresa_iniciadora"),
-            "crep": iniciador_fks.get("id_ciudadano_representante"),
-            "sub_ini": iniciador_fks.get("id_subarea_iniciadora"),
-            "ag_ini": agente["id_agente"],
-            "estado": estado_inicial.id_tipo_tramite_estado,
-            "dest_tipo": dest_tipo,
-            "dest_sa": dest_id if dest_tipo == "subarea" else None,
-            "dest_eq": dest_id if dest_tipo == "equipo" else None,
-            "mun": id_municipio,
-            "uid": id_usuario,
-        },
-    )).fetchone()
-    id_tramite = t_row.id_tramite
-
-    # Movimiento creacion
-    await svc_mov.registrar_movimiento(
-        db, id_tramite, "creacion", id_usuario, agente["id_agente"],
-        id_municipio, request,
-        id_estado_destino=estado_inicial.id_tipo_tramite_estado,
-        destino_jsonb={"tipo": dest_tipo, "id": dest_id},
-        metadata_jsonb={"datos_iniciales": body.datos},
-    )
-    # Movimiento numeracion
-    await svc_mov.registrar_movimiento(
-        db, id_tramite, "numeracion", id_usuario, agente["id_agente"],
-        id_municipio, request,
-        metadata_jsonb={"numero_expediente": numero_expediente, "correlativo": correlativo, "anio": anio},
-    )
-
-    # Instanciar las aprobaciones requeridas del estado inicial (idempotente)
-    await svc_aprob.instanciar_aprobaciones_de_estado(
-        db, id_tramite, tipo_row.id_version_publicada,
-        estado_inicial.id_tipo_tramite_estado,
+    id_tramite = await svc_alta.crear_tramite_en_db(
+        db,
+        tipo=tipo,
+        datos=body.datos,
+        asunto=body.asunto,
+        iniciador_fks=iniciador_fks,
+        iniciador_tipo=body.iniciador.tipo,
+        id_municipio=id_municipio,
+        actor_agente=agente,
+        id_ciudadano_actor=None,
+        id_usuario=id_usuario,
+        destinatario=destinatario,
+        request=request,
     )
 
     await db.commit()
