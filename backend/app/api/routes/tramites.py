@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
+from fastapi import Path as Path_
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,6 +36,9 @@ from app.schemas.tramites import (
     MovimientoOut,
     MovimientosOut,
     PaseIn,
+    PedidoCancelarIn,
+    PedidoIn,
+    PedidoOut,
     RechazarFirmaIn,
     RelacionOut,
     RelacionarIn,
@@ -57,6 +61,7 @@ from app.schemas.tramites import (
 )
 from app.services.tramites import alta as svc_alta
 from app.services.tramites import auth as svc_auth
+from app.services.tramites import pedidos as svc_pedidos
 from app.services import identidad as svc_identidad
 from app.services.tramites import aprobaciones as svc_aprob
 from app.services.tramites import autorizacion as svc_autorizacion
@@ -104,6 +109,14 @@ _ORDEN_TRAMITES = {
     "dias": "NOW() - t.fecha_entrada_estado_actual",
 }
 _ORDEN_TRAMITES_DEFECTO = "t.fecha_alta DESC, t.id_tramite DESC"
+
+# Columnas de las bandejas que dicen si hay un pedido al vecino sin responder y si su respuesta
+# todavia no la vio ningun agente (spec 2026-11-21 §5.6).
+_SQL_PEDIDOS_LISTA = """EXISTS (SELECT 1 FROM tramite_pedido_iniciador pi
+                    WHERE pi.id_tramite = t.id_tramite AND pi.estado = 'abierto' AND pi.activo = TRUE) AS pedido_abierto,
+            EXISTS (SELECT 1 FROM tramite_pedido_iniciador pi
+                    WHERE pi.id_tramite = t.id_tramite AND pi.estado = 'respondido'
+                      AND pi.respuesta_vista_en IS NULL AND pi.activo = TRUE) AS respuesta_sin_ver"""
 
 
 # ---------------------------------------------------------------------------
@@ -435,7 +448,8 @@ async def mi_bandeja(
                 WHEN t.destinatario_actual_tipo = 'agente' THEN ag_dst.apellido || ', ' || ag_dst.nombre
             END AS destinatario_actual_nombre,
             ag_tom.apellido || ', ' || ag_tom.nombre AS tomado_por_nombre,
-            t.tomado_en, t.fecha_alta, t.fecha_entrada_estado_actual
+            t.tomado_en, t.fecha_alta, t.fecha_entrada_estado_actual,
+            {_SQL_PEDIDOS_LISTA}
         FROM tramite t
         JOIN tipo_tramite_version ttv ON ttv.id_tipo_tramite_version = t.id_tipo_tramite_version
         JOIN tipo_tramite tt ON tt.id_tipo_tramite = ttv.id_tipo_tramite
@@ -463,6 +477,7 @@ async def mi_bandeja(
             destinatario_actual_nombre=r.destinatario_actual_nombre,
             tomado_por_nombre=r.tomado_por_nombre, tomado_en=r.tomado_en, fecha_alta=r.fecha_alta,
             dias_en_estado_actual=_dias_entre(r.fecha_entrada_estado_actual, now),
+            pedido_abierto=bool(r.pedido_abierto), respuesta_sin_ver=bool(r.respuesta_sin_ver),
         )
         for r in rows
     ]
@@ -646,7 +661,8 @@ async def listar_tramites(
             ag_tom.apellido || ', ' || ag_tom.nombre AS tomado_por_nombre,
             t.tomado_en,
             t.fecha_alta,
-            t.fecha_entrada_estado_actual
+            t.fecha_entrada_estado_actual,
+            {_SQL_PEDIDOS_LISTA}
         FROM tramite t
         JOIN tipo_tramite_version ttv ON ttv.id_tipo_tramite_version = t.id_tipo_tramite_version
         JOIN tipo_tramite tt ON tt.id_tipo_tramite = ttv.id_tipo_tramite
@@ -683,6 +699,7 @@ async def listar_tramites(
             tomado_en=r.tomado_en,
             fecha_alta=r.fecha_alta,
             dias_en_estado_actual=_dias_entre(r.fecha_entrada_estado_actual, now),
+            pedido_abierto=bool(r.pedido_abierto), respuesta_sin_ver=bool(r.respuesta_sin_ver),
         )
         for r in rows
     ]
@@ -816,6 +833,7 @@ async def detalle_tramite(
     # Aprobaciones de etapa (visados) — mismo set que arma _tramite_detalle_out
     # tras las mutaciones; este handler GET es el que carga la pantalla al entrar.
     aprob_rows = await svc_aprob.aprobaciones_de_tramite(db, row.id_tramite)
+    pedidos = await svc_pedidos.listar_pedidos(db, row.id_tramite)
 
     return TramiteDetalleOut(
         id_tramite=row.id_tramite,
@@ -848,6 +866,7 @@ async def detalle_tramite(
         cant_firmas_pendientes=cant_firmas,
         relaciones=relaciones,
         aprobaciones=[AprobacionOut(**a) for a in aprob_rows],
+        pedidos=[PedidoOut(**p) for p in pedidos],
         fecha_alta=row.fecha_alta,
         id_municipio=row.id_municipio,
     )
@@ -1109,6 +1128,7 @@ async def _tramite_detalle_out(id_tramite: int, db: AsyncSession) -> TramiteDeta
     """), {"id": id_tramite})).fetchall()
 
     aprob_rows = await svc_aprob.aprobaciones_de_tramite(db, id_tramite)
+    pedidos = await svc_pedidos.listar_pedidos(db, id_tramite)
 
     return TramiteDetalleOut(
         id_tramite=row.id_tramite, numero_expediente=row.numero_expediente,
@@ -1138,6 +1158,7 @@ async def _tramite_detalle_out(id_tramite: int, db: AsyncSession) -> TramiteDeta
             ) for r in rel_rows
         ],
         aprobaciones=[AprobacionOut(**a) for a in aprob_rows],
+        pedidos=[PedidoOut(**p) for p in pedidos],
         fecha_alta=row.fecha_alta, id_municipio=row.id_municipio,
     )
 
@@ -1960,6 +1981,90 @@ async def comentar_tramite(
         db, id_tramite, current_user["id_usuario"], body.comentario, background_tasks,
     )
     return mov
+
+
+# ---------------------------------------------------------------------------
+# Pedidos al vecino (spec 2026-11-21 §5.6) — paralelos al FSM: no cambian el estado.
+# ---------------------------------------------------------------------------
+
+async def _tramite_para_pedido(tramite_ref: str, agente: dict, db: AsyncSession, id_municipio: int,
+                               lock: bool) -> dict:
+    """El trámite (con `es_final` del estado actual) listo para pedir/cancelar. Exige poder operarlo."""
+    id_tramite, _ = await _resolver_tramite(tramite_ref, db, id_municipio)
+    row = (await db.execute(
+        text("SELECT t.*, COALESCE(tte.es_final, FALSE) AS es_final FROM tramite t "
+             "JOIN tipo_tramite_estado tte ON tte.id_tipo_tramite_estado = t.id_tipo_tramite_estado_actual "
+             "WHERE t.id_tramite = :id AND t.activo = TRUE" + (" FOR UPDATE OF t" if lock else "")),
+        {"id": id_tramite},
+    )).fetchone()
+    if not row:
+        raise HTTPException(404, "Tramite no encontrado")
+    tramite = dict(row._mapping)
+    puede, motivo = await svc_auth.agente_puede_operar(agente, tramite, db)
+    if not puede:
+        raise HTTPException(403, motivo)
+    return tramite
+
+
+@router.post("/{tramite_ref}/pedidos", response_model=TramiteDetalleOut)
+async def pedir_al_vecino(
+    tramite_ref: str,
+    body: PedidoIn,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
+):
+    agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
+    if not agente:
+        raise _sin_perfil_de_agente(current_user)
+    _require_no_consultor(agente)
+    tramite = await _tramite_para_pedido(tramite_ref, agente, db, id_municipio, lock=True)
+    await svc_pedidos.crear_pedido(db, tramite, agente, current_user["id_usuario"],
+                                   body.texto, body.pide_archivo, request)
+    await db.commit()
+    await svc_pedidos.avisar_pedido_nuevo(tramite["id_tramite"], body.texto)
+    return await _tramite_detalle_out(tramite["id_tramite"], db)
+
+
+@router.post("/{tramite_ref}/pedidos/{id_pedido}/cancelar", response_model=TramiteDetalleOut)
+async def cancelar_pedido_al_vecino(
+    tramite_ref: str,
+    body: PedidoCancelarIn,
+    request: Request,
+    id_pedido: int = Path_(..., ge=1, le=2_147_483_647),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
+):
+    agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
+    if not agente:
+        raise _sin_perfil_de_agente(current_user)
+    _require_no_consultor(agente)
+    tramite = await _tramite_para_pedido(tramite_ref, agente, db, id_municipio, lock=False)
+    await svc_pedidos.cancelar_pedido(db, tramite, id_pedido, agente, current_user["id_usuario"],
+                                      body.motivo, request)
+    await db.commit()
+    await svc_pedidos.avisar_pedido_cancelado(tramite["id_tramite"])
+    return await _tramite_detalle_out(tramite["id_tramite"], db)
+
+
+@router.post("/{tramite_ref}/pedidos/{id_pedido}/visto", status_code=204)
+async def pedido_visto(
+    tramite_ref: str,
+    id_pedido: int = Path_(..., ge=1, le=2_147_483_647),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    id_municipio: int = Depends(municipio_actual),
+):
+    """Marca la respuesta del vecino como vista (la llama el detalle al abrirse). Solo la primera vez."""
+    agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
+    if not agente:
+        raise _sin_perfil_de_agente(current_user)
+    id_tramite, _ = await _resolver_tramite(tramite_ref, db, id_municipio)
+    await svc_pedidos.marcar_visto(db, id_tramite, id_pedido, current_user["id_usuario"])
+    await db.commit()
+    return Response(status_code=204)
 
 
 # ---------------------------------------------------------------------------

@@ -21,9 +21,9 @@ from app.core.database import AsyncSessionLocal
 
 logger = logging.getLogger("zaris.avisos")
 
-# Espejo del CHECK ck_ciudadano_aviso_tipo (mig 99 + 101). Un tipo nuevo exige migracion.
+# Espejo del CHECK ck_ciudadano_aviso_tipo (mig 99 + 101 + 139). Un tipo nuevo exige migracion.
 TIPOS_AVISO = ("reclamo_estado", "emergencia_estado", "municipio",
-               "tramite_estado", "tramite_pendiente")
+               "tramite_estado", "tramite_pendiente", "tramite_pedido")
 
 
 async def registrar_aviso_ciudadano(

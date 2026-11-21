@@ -98,3 +98,7 @@ class MiTramiteDetalleOut(MiTramiteOut):
 
 class DocumentosSubidosOut(BaseModel):
     subidos: int
+
+
+class RespuestaPedidoOut(BaseModel):
+    respondido: bool

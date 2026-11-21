@@ -37,6 +37,7 @@ from app.schemas.publico_tramites import (
     DocumentosSubidosOut,
     MiTramiteDetalleOut,
     MiTramiteOut,
+    RespuestaPedidoOut,
     TipoOfrecidoDetalleOut,
     TipoOfrecidoOut,
 )
@@ -46,11 +47,13 @@ from app.services.tramites import alta as svc_alta
 from app.services.tramites import creacion as svc_creacion
 from app.services.tramites import documentos as svc_docs
 from app.services.tramites import movimientos as svc_mov
+from app.services.tramites import pedidos as svc_pedidos
 from app.utils.request_helpers import get_real_ip
 
 router = APIRouter(prefix="/api/v1/publico/tramites", tags=["publico-tramites"])
 logger = logging.getLogger("zaris.publico_tramites")
 
+MAX_ID = 2_147_483_647
 MAX_ARCHIVOS_TOTAL = 20            # partes `archivos` por request
 MAX_CUERPO_BYTES = 25 * 1024 * 1024  # tope del body (lo aplica LimiteCuerpoMiddleware, antes de parsear)
 
@@ -155,9 +158,11 @@ async def _validar_archivos(archivos: list[UploadFile], docs_ids: list[int], doc
 
 async def _guardar_documentos(db: AsyncSession, request: Request, id_tramite: int, numero: str,
                               id_municipio: int, id_ciudadano: int, archivos: list[UploadFile],
-                              docs_ids: list[int], docs: dict[int, dict], subidos: list[str]) -> None:
+                              docs_ids: list[int | None], docs: dict[int | None, dict], subidos: list[str],
+                              id_tramite_pedido: int | None = None) -> None:
     """Sube cada archivo a Storage y crea su `tramite_documento` + movimiento `adjunto`, todo en la
-    transacción del llamador (que commitea, o hace rollback y borra `subidos`)."""
+    transacción del llamador (que commitea, o hace rollback y borra `subidos`). Con `id_tramite_pedido`
+    los documentos son la respuesta a un pedido: sin documento requerido (`docs_ids` = None)."""
     anio = datetime.now(timezone.utc).year
     for f, id_doc in zip(archivos, docs_ids):
         doc = docs[id_doc]
@@ -172,12 +177,12 @@ async def _guardar_documentos(db: AsyncSession, request: Request, id_tramite: in
                     nombre, nombre_archivo_original,
                     storage_path, mime_type, tamano_bytes, hash_sha256,
                     requiere_firma, estado_firma, posicion_orden,
-                    id_agente_subio, id_ciudadano_subio, id_municipio
+                    id_agente_subio, id_ciudadano_subio, id_municipio, id_tramite_pedido
                 ) VALUES (
                     :tramite, :doc_req, :nombre, :nombre_orig,
                     :path, :mime, :tamano, :hash,
                     FALSE, 'no_requiere', :pos,
-                    NULL, :cid, :mun
+                    NULL, :cid, :mun, :pedido
                 )
                 RETURNING id_tramite_documento
             """),
@@ -187,7 +192,7 @@ async def _guardar_documentos(db: AsyncSession, request: Request, id_tramite: in
                 "nombre_orig": info["nombre_archivo_original"],
                 "path": info["storage_path"], "mime": info["mime_type"],
                 "tamano": info["tamano_bytes"], "hash": info["hash_sha256"],
-                "pos": posicion, "cid": id_ciudadano, "mun": id_municipio,
+                "pos": posicion, "cid": id_ciudadano, "mun": id_municipio, "pedido": id_tramite_pedido,
             },
         )).fetchone()
         await svc_mov.registrar_movimiento(
@@ -201,6 +206,70 @@ async def _guardar_documentos(db: AsyncSession, request: Request, id_tramite: in
             },
             id_ciudadano_actor=id_ciudadano,
         )
+
+
+# Pseudo-documento de la respuesta a un pedido: no hay documento requerido, así que solo valen los
+# topes generales (formato y tamaño de `documentos.py`, cantidad de `MAX_ARCHIVOS_TOTAL`).
+_DOC_RESPUESTA = {"nombre": None, "cantidad_max_archivos": MAX_ARCHIVOS_TOTAL, "tamano_max_mb": None,
+                  "formatos_permitidos": []}
+
+
+@router.post("/{id_tramite}/pedidos/{id_pedido}/responder", response_model=RespuestaPedidoOut)
+async def responder_pedido(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    id_tramite: int = Path_(..., ge=1, le=MAX_ID),
+    id_pedido: int = Path_(..., ge=1, le=MAX_ID),
+    texto: str = Form(..., min_length=1, max_length=4000),
+    archivos: list[UploadFile] = File(default=[]),
+    db: AsyncSession = Depends(get_db),
+    ciudadano: dict = Depends(get_current_ciudadano),
+    id_municipio: int = Depends(municipio_vecino),
+):
+    check_rate_limit(f"trampubped:{get_real_ip(request)}", max_requests=20, window_seconds=60)
+    id_c = ciudadano["id_ciudadano"]
+    t = await _mi_tramite(db, id_tramite, id_c, id_municipio)  # 404 idéntico si no es suyo
+
+    texto = texto.strip()
+    if len(texto) < 5:
+        raise HTTPException(422, "La respuesta tiene que tener al menos 5 caracteres")
+    if len(archivos) > MAX_ARCHIVOS_TOTAL:
+        raise HTTPException(422, f"Se admiten hasta {MAX_ARCHIVOS_TOTAL} archivos por vez")
+    # Todo lo que se puede chequear sin tocar el pedido va ANTES de tomarlo (el lock dura poco).
+    docs_ids: list[int | None] = [None] * len(archivos)
+    await _validar_archivos(archivos, docs_ids, {None: _DOC_RESPUESTA})
+
+    # El pedido se toma con FOR UPDATE y debe estar abierto: la respuesta concurrente espera acá y recibe 409.
+    pedido = await svc_pedidos.tomar_abierto_para_responder(db, id_tramite, id_pedido)
+    if pedido["pide_archivo"] and not archivos:
+        await db.rollback()
+        raise HTTPException(422, "Este pedido necesita que adjuntes al menos un archivo.")
+
+    subidos: list[str] = []
+    try:
+        await _guardar_documentos(db, request, id_tramite, t["numero_expediente"], id_municipio, id_c,
+                                  archivos, docs_ids, {None: _DOC_RESPUESTA}, subidos, id_tramite_pedido=id_pedido)
+        await db.execute(
+            text("""
+                UPDATE tramite_pedido_iniciador
+                   SET estado = 'respondido', respuesta_texto = :txt, fecha_respuesta = NOW(),
+                       fecha_modificacion = NOW()
+                 WHERE id_tramite_pedido = :p
+            """), {"txt": texto, "p": id_pedido})
+        await svc_mov.registrar_movimiento(
+            db, id_tramite, "respuesta_iniciador", None, None, id_municipio, request,
+            comentario=texto,
+            metadata_jsonb={"id_tramite_pedido": id_pedido, "archivos": len(archivos)},
+            id_ciudadano_actor=id_c,
+        )
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        await svc_docs.borrar_archivos(subidos)
+        raise
+
+    await svc_notif.notificar_respuesta_vecino(db, id_tramite, background_tasks)
+    return RespuestaPedidoOut(respondido=True)
 
 
 @router.post("", status_code=201, response_model=AltaTramiteOut)
@@ -309,7 +378,6 @@ async def iniciar_tramite(
 # Un trámite que no es del token es un 404 idéntico al de un id inexistente.
 
 NO_ENCONTRADO = "Trámite no encontrado"
-MAX_ID = 2_147_483_647
 
 _SQL_MIS = """
     SELECT t.id_tramite, t.numero_expediente, t.datos_jsonb, t.resultado, t.fecha_alta,

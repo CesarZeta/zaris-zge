@@ -109,7 +109,9 @@ async def _datos_para_vecino(db: AsyncSession, id_tramite: int) -> Optional[dict
 
 
 async def _mail_vecino(dest: str, nombre: Optional[str], asunto: str, cuerpo: str,
-                       numero: str, tipo_nombre: str) -> None:
+                       numero: str, tipo_nombre: str, url_portal: str = "") -> None:
+    """`url_portal` (de `core.urls.url_portal_vecino`, que resuelve el llamador con su sesión): si viene,
+    el mail suma el botón «Ir al Portal del Ciudadano»; vacío = sin botón."""
     html = (
         f"<p>Hola {_esc(nombre) or ''},</p>"
         f"<p>{_esc(cuerpo)}</p>"
@@ -117,6 +119,11 @@ async def _mail_vecino(dest: str, nombre: Optional[str], asunto: str, cuerpo: st
         f"Tipo: {_esc(tipo_nombre)}</p>"
     )
     texto = f"{cuerpo}\n\nExpediente: {numero}\nTipo: {tipo_nombre}"
+    if url_portal:
+        html += (f'<p><a href="{_esc(url_portal)}" style="background:#f54e00;color:#fff;text-decoration:none;'
+                 f'padding:10px 20px;border-radius:8px;display:inline-block;font-weight:500">'
+                 f'Ir al Portal del Ciudadano</a></p>')
+        texto += f"\n\nIr al Portal del Ciudadano: {url_portal}"
     try:
         ok = await enviar_mail(dest, asunto, html, texto)
         logger.info("ciclo_vida: mail %s a %s -> %s", numero, mask_email(dest), ok)
@@ -125,7 +132,7 @@ async def _mail_vecino(dest: str, nombre: Optional[str], asunto: str, cuerpo: st
 
 
 async def _avisar_vecino(d: dict, tipo_aviso: str, titulo: str, cuerpo: str,
-                         *, con_email: bool) -> None:
+                         *, con_email: bool, url_portal: str = "") -> None:
     """Bandeja PWA + push (solo ciudadano — la empresa no tiene app) y,
     si `con_email`, correo al iniciador (ciudadano o empresa). Best-effort."""
     id_c = d.get("id_ciudadano_iniciador")
@@ -141,7 +148,8 @@ async def _avisar_vecino(d: dict, tipo_aviso: str, titulo: str, cuerpo: str,
         else:
             dest, nombre = d.get("email_empresa"), d.get("nombre_empresa")
         if dest and "@" in dest:
-            await _mail_vecino(dest, nombre, titulo, cuerpo, d["numero_expediente"], d.get("tipo_nombre") or "trámite")
+            await _mail_vecino(dest, nombre, titulo, cuerpo, d["numero_expediente"], d.get("tipo_nombre") or "trámite",
+                              url_portal)
 
 
 def _texto_terminacion(d: dict) -> tuple[str, str]:
