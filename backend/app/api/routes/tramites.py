@@ -911,7 +911,8 @@ async def movimientos_tramite(
             destino_jsonb=r.destino_jsonb,
             comentario=r.comentario,
             metadata_jsonb=r.metadata_jsonb,
-            agente_nombre=r.agente_nombre,
+            # el Timeline actual lee agente_nombre: con el vecino como actor lleva su nombre
+            agente_nombre=r.agente_nombre or r.ciudadano_nombre,
             actor_tipo=r.actor_tipo,
             actor_nombre=r.agente_nombre if r.actor_tipo == "agente" else r.ciudadano_nombre,
             fecha_alta=r.fecha_alta,
