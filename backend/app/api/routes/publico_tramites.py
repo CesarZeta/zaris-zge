@@ -47,6 +47,9 @@ from app.utils.request_helpers import get_real_ip
 router = APIRouter(prefix="/api/v1/publico/tramites", tags=["publico-tramites"])
 logger = logging.getLogger("zaris.publico_tramites")
 
+MAX_ARCHIVOS_TOTAL = 20            # partes `archivos` por request
+MAX_CUERPO_BYTES = 25 * 1024 * 1024  # tope del body (lo aplica LimiteCuerpoMiddleware, antes de parsear)
+
 
 def _tipo_out(t: dict, identidad_ok: bool) -> dict:
     bloqueado = bool(t["exige_identidad_validada"]) and not identidad_ok
@@ -136,6 +139,8 @@ async def iniciar_tramite(
     id_ciudadano = ciudadano["id_ciudadano"]
 
     datos_d = _json_de_form(datos, "datos", dict)
+    if len(archivos) > MAX_ARCHIVOS_TOTAL:
+        raise HTTPException(422, f"Se admiten hasta {MAX_ARCHIVOS_TOTAL} archivos por trámite")
     docs_ids = _json_de_form(documentos, "documentos", list)
     if len(docs_ids) != len(archivos) or not all(isinstance(x, int) and not isinstance(x, bool) for x in docs_ids):
         raise HTTPException(422, "Cada archivo tiene que indicar a qué documento corresponde")
@@ -162,7 +167,12 @@ async def iniciar_tramite(
     if tipo.get("exige_identidad_validada") and not await svc_identidad.identidad_validada(db, id_ciudadano):
         raise HTTPException(422, svc_identidad.MSG_IDENTIDAD_PORTAL)
 
-    # 3. Campos del formulario
+    # 3. Campos del formulario: solo se conservan los campos activos del tipo (el ledger es append-only)
+    campos_ok = {r[0] for r in (await db.execute(
+        text("SELECT nombre_interno FROM tipo_tramite_campo WHERE id_tipo_tramite_version = :v AND activo = TRUE "
+             "AND tipo_dato NOT IN ('archivo', 'agente', 'subarea')"),
+        {"v": tipo["id_version_publicada"]})).all()}
+    datos_d = {k: v for k, v in datos_d.items() if k in campos_ok}
     try:
         await svc_creacion.validar_campos_contra_tipo(datos_d, tipo["id_version_publicada"], id_municipio, db)
     except HTTPException as e:
@@ -174,24 +184,29 @@ async def iniciar_tramite(
         raise HTTPException(500, "El tipo de tramite no tiene estado inicial configurado")
     docs_alta = {d["id_documento_requerido"]: d for d in
                  await svc_alta.documentos_del_alta(db, tipo["id_version_publicada"], estado_inicial)}
+    # Todo chequeo barato (documento, cantidad, tamaño declarado) ANTES de leer ningún archivo.
     por_doc: dict[int, int] = {}
     for f, id_doc in zip(archivos, docs_ids):
         doc = docs_alta.get(id_doc)
         if not doc:
             raise HTTPException(422, "Un archivo no corresponde a ningún documento de este trámite")
         por_doc[id_doc] = por_doc.get(id_doc, 0) + 1
+        if por_doc[id_doc] > (doc["cantidad_max_archivos"] or 1):
+            raise HTTPException(422, f"'{doc['nombre']}' admite hasta {doc['cantidad_max_archivos']} archivo(s)")
         if svc_docs._extension(f.filename or "") not in svc_docs.ALLOWED_MIME_MAP:
             raise HTTPException(422, f"El archivo '{f.filename or ''}' tiene un formato no aceptado")
+        max_mb = min(doc.get("tamano_max_mb") or svc_docs.UPLOADS_MAX_SIZE_MB, svc_docs.UPLOADS_MAX_SIZE_MB)
+        if f.size is not None and f.size > max_mb * 1024 * 1024:
+            raise HTTPException(422, f"El archivo '{f.filename or ''}' supera el tamaño máximo de {max_mb} MB")
+    for f, id_doc in zip(archivos, docs_ids):
         try:
-            await svc_docs.validar_archivo_mock(f, doc)
+            await svc_docs.validar_archivo_mock(f, docs_alta[id_doc])
         except HTTPException as e:
             raise _a_422(e)
     for id_doc, doc in docs_alta.items():
         n = por_doc.get(id_doc, 0)
         if doc["obligatorio"] and n == 0:
             raise HTTPException(422, f"Falta el documento obligatorio: {doc['nombre']}")
-        if n > (doc["cantidad_max_archivos"] or 1):
-            raise HTTPException(422, f"'{doc['nombre']}' admite hasta {doc['cantidad_max_archivos']} archivo(s)")
 
     # 5. Crear todo en una transacción; lo subido se borra si algo falla antes del commit
     subidos: list[str] = []
