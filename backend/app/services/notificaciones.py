@@ -380,6 +380,46 @@ async def notificar_tramite_a_bandeja(
         return 0
 
 
+async def notificar_documento_vecino(
+    db: AsyncSession,
+    id_tramite: int,
+    background_tasks: Optional[BackgroundTasks] = None,
+) -> int:
+    """
+    El vecino subio documentos que le pedia el paso actual: avisa al destinatario actual del
+    tramite (in-app + mail, mismo armado que `notificar_tramite_a_bandeja`).
+
+    Fail-safe: cualquier error se logea pero NO levanta.
+    """
+    try:
+        tramite = await _datos_tramite(db, id_tramite)
+        if not tramite:
+            return 0
+        dest_tipo = tramite.get("destinatario_actual_tipo")
+        dest_id = tramite.get("destinatario_actual_id")
+        if not dest_tipo or not dest_id:
+            return 0
+        usuarios = await _resolver_destinatarios_usuarios(db, dest_tipo, dest_id)
+        if not usuarios:
+            return 0
+        numero = tramite["numero_expediente"]
+        titulo = f"El vecino aporto documentacion: {numero}"
+        mensaje = (f"El vecino subio documentos al tramite {numero} "
+                   f"({tramite.get('tipo_nombre') or 'tramite'}) que esta en tu bandeja.")
+        return await _emitir_a_usuarios(
+            db, usuarios,
+            tramite=tramite,
+            tipo_notif="tramite_documento_vecino",
+            titulo=titulo,
+            mensaje=mensaje,
+            url_destino=_url_destino_tramite(numero),
+            background_tasks=background_tasks,
+        )
+    except Exception as e:
+        logger.error("notificar_documento_vecino FALLO para tramite %s: %s", id_tramite, e, exc_info=True)
+        return 0
+
+
 async def notificar_firma_pendiente(
     db: AsyncSession,
     id_tramite: int,

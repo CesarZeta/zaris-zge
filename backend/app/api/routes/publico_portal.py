@@ -5,7 +5,7 @@ Bajo /api/v1/publico/portal/*. Guard get_current_ciudadano (JWT scope 'publico')
 
 Pensado para la pantalla de inicio del portal del vecino: una sola llamada que
 devuelve los conteos de lo que el ciudadano tiene activo (reclamos, turnos,
-entradas), sin pedir cada listado por separado. Todo scopeado al id_ciudadano
+entradas, trámites), sin pedir cada listado por separado. Todo scopeado al id_ciudadano
 del token (nunca de un parámetro).
 
 Mono-tenant (§38): el deploy es de un municipio; no se filtra por municipio acá
@@ -68,7 +68,18 @@ async def mi_resumen(
           -- Avisos (bandeja mig 99) — badge de la campana
           (SELECT COUNT(*) FROM ciudadano_aviso
              WHERE id_ciudadano = :id_c AND activo = TRUE
-               AND leido = FALSE)                                     AS avisos_no_leidos
+               AND leido = FALSE)                                     AS avisos_no_leidos,
+          -- Trámites (suyos, de ventanilla o de la app): vigente = no archivado y estado no final
+          (SELECT COUNT(*) FROM tramite t
+             JOIN tipo_tramite_estado e ON e.id_tipo_tramite_estado = t.id_tipo_tramite_estado_actual
+             WHERE t.id_ciudadano_iniciador = :id_c AND t.activo = TRUE
+               AND t.fecha_archivado IS NULL AND e.es_final = FALSE)  AS tramites_vigentes,
+          (SELECT COUNT(*) FROM tramite
+             WHERE id_ciudadano_iniciador = :id_c AND activo = TRUE)   AS tramites_total,
+          (SELECT COUNT(*) FROM tramite_pedido_iniciador p
+             JOIN tramite t ON t.id_tramite = p.id_tramite
+             WHERE t.id_ciudadano_iniciador = :id_c AND t.activo = TRUE
+               AND p.estado = 'abierto' AND p.activo = TRUE)          AS tramites_pedidos_abiertos
     """), {"id_c": id_c})).fetchone()
 
     return {
@@ -81,4 +92,6 @@ async def mi_resumen(
         "turnos":   {"vigentes": row.turnos_vigentes,   "total": row.turnos_total},
         "entradas": {"vigentes": row.entradas_vigentes, "total": row.entradas_total},
         "avisos":   {"no_leidos": row.avisos_no_leidos},
+        "tramites": {"vigentes": row.tramites_vigentes, "total": row.tramites_total,
+                     "pedidos_abiertos": row.tramites_pedidos_abiertos},
     }

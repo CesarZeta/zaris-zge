@@ -206,3 +206,28 @@ async def estado_inicial_de(db: AsyncSession, id_version: int) -> int | None:
              "WHERE id_tipo_tramite_version = :v AND es_inicial = TRUE AND activo = TRUE"),
         {"v": id_version},
     )).scalar()
+
+
+async def documentos_del_paso(db: AsyncSession, id_tramite: int, id_version: int, id_estado: int,
+                              desde) -> list[dict]:
+    """Documentos que el estado ACTUAL le pide al vecino (spec §5.5): `aporta_quien = 'iniciador'`,
+    atados a ese estado y sin firma. Mismo shape que `documentos_del_alta` más `subidos`: los que el
+    vecino ya subió desde que el trámite entró al estado (`desde` = fecha_entrada_estado_actual)."""
+    filas = (await db.execute(
+        text("""
+            SELECT d.id_tipo_tramite_documento_requerido AS id_documento_requerido, d.nombre, d.descripcion,
+                   d.obligatorio, d.formatos_permitidos, d.tamano_max_mb, d.cantidad_max_archivos,
+                   (SELECT COUNT(*) FROM tramite_documento td
+                     WHERE td.id_tramite = :tr AND td.activo = TRUE
+                       AND td.id_tipo_tramite_documento_requerido = d.id_tipo_tramite_documento_requerido
+                       AND td.id_ciudadano_subio IS NOT NULL
+                       AND td.fecha_alta >= :desde) AS subidos
+              FROM tipo_tramite_documento_requerido d
+             WHERE d.id_tipo_tramite_version = :ver AND d.activo = TRUE
+               AND d.aporta_quien = 'iniciador' AND d.requiere_firma = FALSE
+               AND d.id_tipo_tramite_estado = :est
+             ORDER BY d.orden, d.id_tipo_tramite_documento_requerido
+        """),
+        {"tr": id_tramite, "ver": id_version, "est": id_estado, "desde": desde},
+    )).mappings().all()
+    return [dict(f) for f in filas]
