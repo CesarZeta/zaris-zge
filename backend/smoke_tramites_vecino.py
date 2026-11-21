@@ -1523,6 +1523,65 @@ async def test_pedido_en_tramite_cerrado_no_avisa(c: httpx.AsyncClient, ha: dict
             await _limpiar_tramite_completo(i)
 
 
+async def test_admin_ofrecer_al_vecino(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[32] Catalogo admin: ofrecer_al_vecino y exige_identidad_validada")
+    mun = await _municipio_base()
+    hv = await _login_vecino(c)
+    tipo = await _tipo_poda(mun)
+    tid = tipo["id_tipo_tramite"]
+    orig = await q1("SELECT ofrecer_al_vecino AS o, exige_identidad_validada AS e, iniciadores_permitidos AS i FROM tipo_tramite WHERE id_tipo_tramite = :t", t=tid)
+    base = f"/api/v1/admin/tramites/tipos/{tid}"
+
+    async def _lista_admin():
+        r = await c.get("/api/v1/admin/tramites/tipos", headers=ha)
+        return next((x for x in r.json()["items"] if x["id_tipo_tramite"] == tid), {})
+
+    async def _publico_ids():
+        r = await c.get("/api/v1/publico/tramites/tipos", headers=hv)
+        return {t["id_tipo_tramite"] for t in r.json()}
+
+    tmp = None
+    try:
+        r = await c.put(base, json={"ofrecer_al_vecino": False}, headers=ha)
+        check(r.status_code == 200 and r.json().get("ofrecer_al_vecino") is False, "PUT false: detalle false", f"{r.status_code} {r.text[:200]}")
+        check(tid not in await _publico_ids(), "no ofrecido: no esta en /publico/tramites/tipos")
+        r = await c.put(base, json={"ofrecer_al_vecino": True}, headers=ha)
+        check(r.status_code == 200 and r.json().get("ofrecer_al_vecino") is True, "PUT true: detalle true", f"{r.status_code} {r.text[:200]}")
+        r = await c.get(base + "/admin", headers=ha)
+        check(r.json().get("ofrecer_al_vecino") is True, "GET detalle admin true")
+        check((await _lista_admin()).get("ofrecer_al_vecino") is True, "lista admin true")
+        check(tid in await _publico_ids(), "ofrecido: aparece en /publico/tramites/tipos")
+        # exige_identidad_validada: ida y vuelta
+        for val in (True, False):
+            r = await c.put(base, json={"exige_identidad_validada": val}, headers=ha)
+            check(r.status_code == 200 and r.json().get("exige_identidad_validada") is val, f"PUT exige_identidad {val}", f"{r.status_code} {r.text[:200]}")
+            check((await _lista_admin()).get("exige_identidad_validada") is val, f"lista admin exige_identidad {val}")
+        # tipo solo de empresa
+        cod = "smoke-solo-empresa"
+        await ejecutar("DELETE FROM tipo_tramite_version WHERE id_tipo_tramite IN (SELECT id_tipo_tramite FROM tipo_tramite WHERE codigo = :c AND id_municipio = :m)", c=cod, m=mun)
+        await ejecutar("DELETE FROM tipo_tramite WHERE codigo = :c AND id_municipio = :m", c=cod, m=mun)
+        cuerpo = {"codigo": cod, "nombre": "Smoke solo empresa", "prefijo": "SSE", "iniciadores_permitidos": ["empresa"]}
+        r = await c.post("/api/v1/admin/tramites/tipos", json={**cuerpo, "ofrecer_al_vecino": True}, headers=ha)
+        check(r.status_code == 422 and "Solo se ofrece al vecino" in r.text, "POST ofrecer sin ciudadano: 422", f"{r.status_code} {r.text[:200]}")
+        r = await c.post("/api/v1/admin/tramites/tipos", json=cuerpo, headers=ha)
+        check(r.status_code == 201 and r.json()["ofrecer_al_vecino"] is False and r.json()["exige_identidad_validada"] is False, "POST default false", f"{r.status_code} {r.text[:200]}")
+        if r.status_code == 201:
+            tmp = r.json()["id_tipo_tramite"]
+            r = await c.put(f"/api/v1/admin/tramites/tipos/{tmp}", json={"ofrecer_al_vecino": True}, headers=ha)
+            check(r.status_code == 422 and "Solo se ofrece al vecino un trámite que admite iniciador ciudadano" in r.text, "PUT true en tipo solo empresa: 422", f"{r.status_code} {r.text[:200]}")
+            r = await c.put(f"/api/v1/admin/tramites/tipos/{tmp}", json={"exige_identidad_validada": True}, headers=ha)
+            check(r.status_code == 200 and r.json()["exige_identidad_validada"] is True, "exige_identidad sin restriccion de iniciador")
+        # quitar 'ciudadano' con la bandera en true: 422 (estado resultante)
+        r = await c.put(base, json={"iniciadores_permitidos": ["empresa"]}, headers=ha)
+        check(r.status_code == 422, "PUT quitar ciudadano con la bandera true: 422", f"{r.status_code} {r.text[:200]}")
+    finally:
+        await ejecutar("UPDATE tipo_tramite SET ofrecer_al_vecino = :o, exige_identidad_validada = :e, iniciadores_permitidos = :i WHERE id_tipo_tramite = :t",
+                       o=orig["o"], e=orig["e"], i=orig["i"], t=tid)
+        if tmp:
+            await ejecutar("DELETE FROM tipo_tramite_version WHERE id_tipo_tramite = :t", t=tmp)
+            await ejecutar("DELETE FROM tipo_tramite WHERE id_tipo_tramite = :t", t=tmp)
+
+
 CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cuenta_422,
          test_backoffice_alta_con_cuenta_201,
          test_identidad_validar_y_revocar, test_identidad_en_perfil_publico, test_backoffice_alta_exige_identidad,
@@ -1535,7 +1594,7 @@ CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cue
          test_pedido_ciclo_completo, test_pedido_reglas_422, test_respuesta_doble_409, test_cancelar_pedido,
          test_ajeno_404_pedido, test_visto_con_guard, test_pedido_se_cancela_al_cerrar,
          test_pedido_escalones, test_pedido_desistimiento_apagado, test_cambio_de_estado_no_reinicia,
-         test_pedido_en_tramite_cerrado_no_avisa]
+         test_pedido_en_tramite_cerrado_no_avisa, test_admin_ofrecer_al_vecino]
 
 
 async def main() -> int:

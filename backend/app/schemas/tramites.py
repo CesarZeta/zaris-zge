@@ -530,6 +530,8 @@ class TipoTramiteCreateIn(BaseModel):
     retencion_nunca_depurar: bool = False  # mig 75: si True, los binarios de este tipo nunca se purgan
     sla_dias: Optional[int] = None  # mig 101: NULL/0 = usa tramite_sla_dias_default
     id_subarea: Optional[int] = None  # mig 104: gestion responsable del tipo
+    ofrecer_al_vecino: bool = False  # mig 139: se ofrece en el portal del vecino
+    exige_identidad_validada: bool = False  # mig 139: el vecino debe tener la identidad validada
 
     @field_validator("codigo", "nombre", "prefijo")
     @classmethod
@@ -581,6 +583,8 @@ class TipoTramiteUpdateIn(BaseModel):
     retencion_nunca_depurar: Optional[bool] = None  # mig 75
     sla_dias: Optional[int] = None  # mig 101 (0 = volver al default global)
     id_subarea: Optional[int] = None  # mig 104 (0 = desasignar la gestion)
+    ofrecer_al_vecino: Optional[bool] = None  # mig 139
+    exige_identidad_validada: Optional[bool] = None  # mig 139
 
     @field_validator("iniciadores_permitidos")
     @classmethod
@@ -793,6 +797,8 @@ class TipoTramiteAdminOut(BaseModel):
     es_sistema: bool = False
     retencion_nunca_depurar: bool = False  # mig 75: override politica de retencion
     sla_dias: Optional[int] = None  # mig 101
+    ofrecer_al_vecino: bool = False  # mig 139
+    exige_identidad_validada: bool = False  # mig 139
     # mig 104: gestion responsable. El area NO se guarda, se deriva por JOIN
     # subarea -> area (fuente unica, §27 / project_tipo_reclamo_area_inconsistencia).
     id_subarea: Optional[int] = None
@@ -820,6 +826,8 @@ class TipoTramiteAdminListItem(BaseModel):
     prefijo: str
     iniciadores_permitidos: list[str]
     es_sistema: bool
+    ofrecer_al_vecino: bool = False  # mig 139
+    exige_identidad_validada: bool = False  # mig 139
     # mig 104: gestion responsable (area derivada por JOIN subarea -> area)
     id_subarea: Optional[int] = None
     subarea_nombre: Optional[str] = None

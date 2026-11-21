@@ -147,6 +147,7 @@ async def listar_tipos_admin(
             SELECT tt.id_tipo_tramite, tt.codigo, tt.nombre, tt.prefijo,
                    tt.iniciadores_permitidos,
                    COALESCE(tt.es_sistema, FALSE) AS es_sistema,
+                   tt.ofrecer_al_vecino, tt.exige_identidad_validada,
                    -- mig 104: gestion responsable (area derivada por JOIN, nunca guardada)
                    tt.id_subarea, s.nombre AS subarea_nombre, a.nombre AS area_nombre,
                    tt.id_version_publicada,
@@ -191,6 +192,8 @@ async def listar_tipos_admin(
             prefijo=f.prefijo,
             iniciadores_permitidos=list(f.iniciadores_permitidos or []),
             es_sistema=bool(f.es_sistema),
+            ofrecer_al_vecino=bool(f.ofrecer_al_vecino),
+            exige_identidad_validada=bool(f.exige_identidad_validada),
             id_subarea=f.id_subarea,
             subarea_nombre=f.subarea_nombre,
             area_nombre=f.area_nombre,
@@ -198,6 +201,12 @@ async def listar_tipos_admin(
             estado_version=estado,
         ))
     return TipoTramiteAdminListOut(items=items, total=len(items))
+
+
+def _exigir_iniciador_ciudadano(iniciadores: list[str]) -> None:
+    """mig 139: solo se ofrece al vecino un tipo que admite iniciador ciudadano."""
+    if "ciudadano" not in (iniciadores or []):
+        raise HTTPException(422, "Solo se ofrece al vecino un trámite que admite iniciador ciudadano")
 
 
 @router.post("/tipos", status_code=201, response_model=TipoTramiteAdminOut)
@@ -216,6 +225,8 @@ async def crear_tipo_tramite(
     if existe:
         raise HTTPException(409, f"Ya existe un tipo con codigo '{body.codigo}' en este municipio")
     await _validar_referencia(db, "subarea", body.id_subarea or None, id_municipio)
+    if body.ofrecer_al_vecino:
+        _exigir_iniciador_ciudadano(body.iniciadores_permitidos)
 
     # 2. Insertar tipo
     nuevo_tipo_id = (await db.execute(
@@ -225,9 +236,10 @@ async def crear_tipo_tramite(
                  largo_correlativo, separador, correlativo_reinicia_anual,
                  iniciadores_permitidos, permite_representante, icono, color,
                  retencion_nunca_depurar, sla_dias, id_subarea,
+                 ofrecer_al_vecino, exige_identidad_validada,
                  activo, id_municipio)
             VALUES (:cod, :nom, :desc, :pre, :imun, :ian, :lc, :sep, :cra,
-                    :ini, :pr, :ico, :col, :rnd, :sla, :sub, TRUE, :mun)
+                    :ini, :pr, :ico, :col, :rnd, :sla, :sub, :ofr, :eiv, TRUE, :mun)
             RETURNING id_tipo_tramite
         """),
         {
@@ -240,6 +252,7 @@ async def crear_tipo_tramite(
             "rnd": body.retencion_nunca_depurar,
             "sla": body.sla_dias or None,
             "sub": body.id_subarea or None,   # mig 104
+            "ofr": body.ofrecer_al_vecino, "eiv": body.exige_identidad_validada,   # mig 139
             "mun": id_municipio,
         },
     )).scalar_one()
@@ -268,11 +281,16 @@ async def actualizar_tipo_tramite(
 ):
     """Actualiza datos identitarios del tipo (NO toca circuito)."""
     fila = (await db.execute(
-        text("SELECT 1 FROM tipo_tramite WHERE id_tipo_tramite = :id AND id_municipio = :m"),
+        text("SELECT iniciadores_permitidos, ofrecer_al_vecino FROM tipo_tramite WHERE id_tipo_tramite = :id AND id_municipio = :m"),
         {"id": id_tipo_tramite, "m": id_municipio},
     )).fetchone()
     if not fila:
         raise HTTPException(404, "Tipo de tramite no encontrado")
+    # mig 139: se valida contra el estado RESULTANTE (iniciadores y bandera juntos).
+    ofrece = body.ofrecer_al_vecino if body.ofrecer_al_vecino is not None else bool(fila.ofrecer_al_vecino)
+    inis = body.iniciadores_permitidos if body.iniciadores_permitidos is not None else list(fila.iniciadores_permitidos or [])
+    if ofrece and (body.ofrecer_al_vecino is not None or body.iniciadores_permitidos is not None):
+        _exigir_iniciador_ciudadano(inis)
     if body.id_subarea:
         await _validar_referencia(db, "subarea", body.id_subarea, id_municipio)
 
@@ -281,7 +299,7 @@ async def actualizar_tipo_tramite(
     for field in ("nombre", "descripcion", "prefijo", "permite_representante",
                   "incluye_municipio", "incluye_anio", "largo_correlativo",
                   "separador", "correlativo_reinicia_anual", "icono", "color",
-                  "retencion_nunca_depurar"):
+                  "retencion_nunca_depurar", "ofrecer_al_vecino", "exige_identidad_validada"):
         val = getattr(body, field)
         if val is not None:
             sets.append(f"{field} = :{field}")
@@ -367,7 +385,7 @@ async def _detalle_tipo_admin(db: AsyncSession, id_tipo_tramite: int, id_municip
                    tt.correlativo_reinicia_anual, tt.icono, tt.color, tt.activo,
                    COALESCE(tt.es_sistema, FALSE) AS es_sistema,
                    COALESCE(tt.retencion_nunca_depurar, FALSE) AS retencion_nunca_depurar,
-                   tt.sla_dias,
+                   tt.sla_dias, tt.ofrecer_al_vecino, tt.exige_identidad_validada,
                    -- mig 104: gestion responsable; el area SIEMPRE derivada por JOIN
                    tt.id_subarea, s.nombre AS subarea_nombre, a.nombre AS area_nombre,
                    tt.id_version_publicada
@@ -406,6 +424,8 @@ async def _detalle_tipo_admin(db: AsyncSession, id_tipo_tramite: int, id_municip
         es_sistema=bool(tipo.es_sistema),
         retencion_nunca_depurar=bool(tipo.retencion_nunca_depurar),
         sla_dias=tipo.sla_dias,
+        ofrecer_al_vecino=bool(tipo.ofrecer_al_vecino),
+        exige_identidad_validada=bool(tipo.exige_identidad_validada),
         id_subarea=tipo.id_subarea,
         subarea_nombre=tipo.subarea_nombre,
         area_nombre=tipo.area_nombre,
