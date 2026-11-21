@@ -363,6 +363,9 @@ async def procesar_desistimientos(db: AsyncSession, *, id_municipio: int, limite
                 metadata_jsonb={"dias_desde_t0": round(dias, 1), "resultado_nuevo": "desistido",
                                 "archivado_motivo": "desistimiento", "automatico": True},
             )
+            from app.services.tramites import pedidos as svc_pedidos  # tardio: pedidos usa ciclo_vida
+            await svc_pedidos.cancelar_pedido_abierto_por_cierre(
+                db, id_t, "El trámite se dio por desistido", d["id_municipio"])
             await db.commit()
             await al_terminar(id_t, con_email=True)
             desistidos.append(id_t)

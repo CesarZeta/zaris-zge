@@ -226,10 +226,12 @@ async def responder_pedido(
     ciudadano: dict = Depends(get_current_ciudadano),
     id_municipio: int = Depends(municipio_vecino),
 ):
-    check_rate_limit(f"trampubped:{get_real_ip(request)}", max_requests=20, window_seconds=60)
+    check_rate_limit(f"trampub:ped:{get_real_ip(request)}", max_requests=20, window_seconds=60)
     id_c = ciudadano["id_ciudadano"]
     t = await _mi_tramite(db, id_tramite, id_c, id_municipio)  # 404 idéntico si no es suyo
 
+    if t.get("fecha_archivado") is not None or t.get("es_final"):
+        raise HTTPException(409, "El trámite ya terminó: el pedido quedó sin efecto.")
     texto = texto.strip()
     if len(texto) < 5:
         raise HTTPException(422, "La respuesta tiene que tener al menos 5 caracteres")
@@ -384,7 +386,7 @@ _SQL_MIS = """
            t.fecha_entrada_estado_actual, t.id_tipo_tramite_version, t.id_tipo_tramite_estado_actual,
            t.destinatario_actual_tipo,
            tt.nombre AS tipo_nombre, e.etiqueta AS estado_etiqueta, e.color AS estado_color,
-           e.oculto_para_iniciador AS estado_oculto,
+           e.oculto_para_iniciador AS estado_oculto, t.fecha_archivado, COALESCE(e.es_final, FALSE) AS es_final,
            EXISTS (SELECT 1 FROM tramite_pedido_iniciador p
                     WHERE p.id_tramite = t.id_tramite AND p.estado = 'abierto' AND p.activo = TRUE)
                AS tiene_pedido_abierto,

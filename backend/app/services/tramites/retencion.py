@@ -44,6 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import storage
 from app.services.tramites import movimientos as svc_mov
+from app.services.tramites import pedidos as svc_pedidos
 from app.services.tramites.documentos import TRAMITES_BUCKET
 
 logger = logging.getLogger("zaris.tramites.retencion")
@@ -138,6 +139,8 @@ async def archivar_inactivos(db: AsyncSession, *, id_municipio: int, limite: int
             comentario=f"Archivado automatico por inactividad ({dias} dias sin movimiento).",
             metadata_jsonb={"dias_inactividad": dias, "resultado_nuevo": "rechazado"},
         )
+        await svc_pedidos.cancelar_pedido_abierto_por_cierre(
+            db, c.id_tramite, "El trámite se archivó por inactividad", c.id_municipio)
         ids.append(c.id_tramite)
 
     if ids:
