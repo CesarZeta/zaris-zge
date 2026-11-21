@@ -30,7 +30,7 @@ Dos motores, disparados por el endpoint de mantenimiento (cron diario, S35):
      reporta que se purgaria. Red de seguridad para la primera corrida.
 
 El movimiento del cron usa como id_agente el id_agente_iniciador del propio
-tramite (la columna es NOT NULL; no hay "agente sistema") e id_usuario NULL.
+tramite tal cual (puede ser NULL si lo inició el vecino: actor "sistema") e id_usuario NULL.
 """
 from __future__ import annotations
 

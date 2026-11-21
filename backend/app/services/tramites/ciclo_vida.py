@@ -30,8 +30,8 @@ Tres piezas, todas paralelas al FSM del circuito (no fuerzan estados):
      ciudadano/empresa: un tramite interno no se "desiste".
 
 Plazos en configuracion_general (seed 101b, Config -> Sistema §41) con defaults
-seguros. El movimiento del cron usa id_agente_iniciador (NOT NULL; no hay
-"agente sistema") e id_usuario NULL, igual que retencion.py.
+seguros. El movimiento del cron usa id_agente_iniciador tal cual (puede ser NULL:
+tramite iniciado por el vecino = actor "sistema") e id_usuario NULL, igual que retencion.py.
 """
 from __future__ import annotations
 
@@ -170,8 +170,8 @@ async def derivar_resultado_por_transicion(
     id_tramite: int,
     tramite: dict,
     tipo_accion: Optional[str],
-    id_usuario: int,
-    id_agente: int,
+    id_usuario: int | None,
+    id_agente: int | None,
     request: Optional[Request] = None,
 ) -> Optional[str]:
     """Si la transicion final es 'aprobar'/'rechazar' y el tramite no tiene

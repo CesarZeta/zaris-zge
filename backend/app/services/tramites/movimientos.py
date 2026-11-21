@@ -37,8 +37,8 @@ async def registrar_movimiento(
     db: AsyncSession,
     id_tramite: int,
     tipo: str,
-    id_usuario: int,
-    id_agente: int,
+    id_usuario: int | None,
+    id_agente: int | None,
     id_municipio: int,
     request: Request | None = None,
     id_tipo_tramite_transicion: int | None = None,
@@ -48,6 +48,7 @@ async def registrar_movimiento(
     destino_jsonb: dict | None = None,
     comentario: str | None = None,
     metadata_jsonb: dict | None = None,
+    id_ciudadano_actor: int | None = None,
 ) -> dict:
     """
     Inserta una fila en tramite_movimiento y la devuelve.
@@ -69,7 +70,7 @@ async def registrar_movimiento(
                 id_estado_origen, id_estado_destino,
                 origen_jsonb, destino_jsonb,
                 comentario, metadata_jsonb,
-                id_agente, ip, user_agent,
+                id_agente, id_ciudadano_actor, ip, user_agent,
                 id_municipio,
                 id_usuario_alta, id_usuario_modificacion
             ) VALUES (
@@ -78,7 +79,7 @@ async def registrar_movimiento(
                 :estado_orig, :estado_dest,
                 CAST(:orig AS jsonb), CAST(:dest AS jsonb),
                 :comentario, CAST(:meta AS jsonb),
-                :agente, :ip, :ua,
+                :agente, :ciu, :ip, :ua,
                 :mun,
                 :uid, :uid
             )
@@ -96,6 +97,7 @@ async def registrar_movimiento(
             "comentario": comentario,
             "meta": _jsonb(metadata_jsonb),
             "agente": id_agente,
+            "ciu": id_ciudadano_actor,
             "ip": ip,
             "ua": user_agent,
             "mun": id_municipio,
