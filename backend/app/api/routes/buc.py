@@ -29,7 +29,10 @@ from app.schemas.buc import (
     EmpresaCreate, EmpresaUpdate, EmpresaOut, EmpresaConActividad,
     CiudadanoEmpresaCreate, CiudadanoEmpresaOut,
     CuentaZarisIn, CuentaZarisOut, CuentasCiudadanoOut, CuentaVecinoEstado, CuentaZarisEstado,
+    IdentidadValidarIn, IdentidadRevocarIn,
 )
+from app.services import identidad as svc_identidad
+from app.services.tramites import auth as svc_tramites_auth
 from app.services.cuenta_vecino import MSG_FICHA_DEMO, asegurar_cuenta_vecino, es_ficha_demo
 from app.services.cuenta_zaris import (
     MSG_FALTAN_DATOS_ZARIS, crear_cuenta_zaris_desde_ficha, crear_usuario_interno,
@@ -769,7 +772,8 @@ async def estado_cuentas_ciudadano(id: int, db: AsyncSession = Depends(get_db),
         {"id": id},
     )).fetchone()
     zaris = CuentaZarisEstado(**dict(usr._mapping)) if usr else None
-    return CuentasCiudadanoOut(vecino=vecino, zaris=zaris)
+    return CuentasCiudadanoOut(vecino=vecino, zaris=zaris,
+                               identidad_validada=await svc_identidad.identidad_validada(db, id))
 
 
 @router.get("/ciudadanos/{id}", response_model=CiudadanoConNacionalidad)
@@ -784,7 +788,73 @@ async def obtener_ciudadano(id: int, db: AsyncSession = Depends(get_db),
     ciudadano = result.scalars().first()
     if not ciudadano:
         raise HTTPException(status_code=404, detail="Ciudadano no encontrado")
-    return ciudadano
+    out = CiudadanoConNacionalidad.model_validate(ciudadano)
+    out.identidad_validada = await svc_identidad.identidad_validada(db, id)
+    return out
+
+
+async def _ciudadano_del_municipio(db: AsyncSession, id: int, id_municipio: int) -> None:
+    ok = (await db.execute(
+        text("SELECT 1 FROM ciudadanos WHERE id_ciudadano = :id AND activo = TRUE AND id_municipio = :mun"),
+        {"id": id, "mun": id_municipio})).fetchone()
+    if not ok:
+        raise HTTPException(status_code=404, detail="Ciudadano no encontrado")
+
+
+@router.post(
+    "/ciudadanos/{id}/identidad/validar",
+    status_code=201,
+    responses={
+        403: {"description": "Solo Atención, Supervisor o Administrador con perfil de agente validan identidad"},
+        409: {"description": "La identidad del vecino ya está validada"},
+    },
+)
+async def validar_identidad_ciudadano(
+    id: int,
+    data: IdentidadValidarIn,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
+):
+    """El agente vio el documento del vecino en persona y deja constancia en su ficha."""
+    if current_user.get("nivel_acceso", 99) > 3:
+        raise HTTPException(status_code=403, detail="Tu nivel no permite validar la identidad de un vecino")
+    agente = await svc_tramites_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
+    if not agente:
+        raise HTTPException(status_code=403, detail="Tu usuario no tiene un perfil de agente municipal: "
+                                                    "validar una identidad lo firma un agente")
+    await _ciudadano_del_municipio(db, id, id_municipio)
+    await svc_identidad.validar_identidad(
+        db, id_ciudadano=id, id_municipio=id_municipio, id_agente=agente["id_agente"],
+        id_usuario=current_user["id_usuario"], documento_presentado=data.documento_presentado.strip(),
+        observacion=(data.observacion or "").strip() or None)
+    await db.commit()
+    return {"identidad_validada": await svc_identidad.identidad_validada(db, id)}
+
+
+@router.post(
+    "/ciudadanos/{id}/identidad/revocar",
+    responses={
+        403: {"description": "Solo Supervisor o Administrador revocan una validación de identidad"},
+        404: {"description": "El vecino no tiene una validación de identidad activa"},
+    },
+)
+async def revocar_identidad_ciudadano(
+    id: int,
+    data: IdentidadRevocarIn,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
+):
+    if current_user.get("nivel_acceso", 99) > 2:
+        raise HTTPException(status_code=403, detail="Solo un Supervisor o un Administrador revoca una validación de identidad")
+    agente = await svc_tramites_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
+    await _ciudadano_del_municipio(db, id, id_municipio)
+    await svc_identidad.revocar_identidad(
+        db, id_ciudadano=id, id_agente=(agente or {}).get("id_agente"),
+        id_usuario=current_user["id_usuario"], motivo=data.motivo.strip())
+    await db.commit()
+    return {"identidad_validada": None}
 
 
 @router.put(

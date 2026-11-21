@@ -36,6 +36,7 @@ from app.core.auth import get_current_ciudadano
 from app.core.database import get_db
 from app.middleware.rate_limit import check_rate_limit
 from app.schemas.buc import _validar_telefono_arg
+from app.services.identidad import identidad_validada
 from app.utils.request_helpers import get_real_ip
 
 logger = logging.getLogger("zaris.publico_perfil")
@@ -125,6 +126,8 @@ class PerfilOut(BaseModel):
     # mig 102: URL firmada (TTL 1 h) de la foto de perfil, o null sin foto.
     foto_url: Optional[str] = None
     foto_actualizada_en: Optional[str] = None
+    # Validación de identidad en el municipio: solo la fecha (el vecino no ve qué agente fue).
+    identidad_validada: Optional[dict] = None
 
 
 class PerfilUpdateIn(BaseModel):
@@ -204,7 +207,9 @@ async def _perfil_out(db: AsyncSession, id_ciudadano: int) -> PerfilOut:
             foto_url = await storage.crear_signed_download_url(row["foto_path"], ttl_sec=FOTO_URL_TTL_SEG)
         except Exception as e:  # noqa: BLE001 — la foto nunca rompe el perfil
             logger.warning("perfil: no se pudo firmar la foto de %s: %s", id_ciudadano, e)
+    ident = await identidad_validada(db, id_ciudadano)
     return PerfilOut(
+        identidad_validada={"fecha": _iso(ident["fecha"])} if ident else None,
         foto_url=foto_url,
         foto_actualizada_en=_iso(row["foto_actualizada_en"]),
         id_ciudadano=row["id_ciudadano"],
