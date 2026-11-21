@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-11-21 (Cesar). **F6.5 (restauración) casi cerrada:** `tools/restaurar_exportacion.py` levanta la exportación de un municipio en una base vacía; probada con San Andrés de local (smoke 18/18, mismo inicio y reclamos que el original, con y sin barrera) y con la estructura de prod. Falta la prueba con la exportación real de prod ([`PLAN_MULTI_MUNICIPIO_F6_5.md`](PLAN_MULTI_MUNICIPIO_F6_5.md) → «Resultado»; pregunta 1). F6.3 y F6.4 en prod desde el 2026-11-20 (vuelta atrás de la barrera: `DB_BARRERA=false` en Railway).
+**Última actualización:** 2026-11-21 (Cesar). **IT-01 F6.5 cerrada** con la exportación real de San Andrés: IT-01 completa en prod (F1-F6). Empezó el bloque del vecino con el diseño de **trámites desde el portal** (pregunta 1). F6.3 y F6.4 en prod desde el 2026-11-20 (vuelta atrás de la barrera: `DB_BARRERA=false` en Railway).
 
 ---
 
@@ -18,7 +18,7 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **F6.5 — exportación real de San Andrés para la última prueba:** en `https://zge.zaris.com.ar` como super → Municipios → San Andrés → «Exportaciones» → «Exportar ahora» → cuando dice «lista», «Descargar»; pasarle el zip a Claude, que lo restaura en una base local, levanta el backend contra ella, muestra el inicio y borra todo. Desde la máquina de Claude no se puede armar (el control de permisos frena traer datos de vecinos de prod).
+1. **Trámites desde el portal del vecino — diseño para aprobar:** [`docs/superpowers/specs/2026-11-21-tramites-vecino-design.md`](docs/superpowers/specs/2026-11-21-tramites-vecino-design.md) (iniciar, ver estado, subir documentos, responder pedidos del municipio; «pedido al vecino» paralelo al circuito, elegido por César el 2026-11-21).
 2. **Bloque del vecino — después de F4 (orden de César, 2026-10-27):**
    1. La web del ciudadano con todo lo que tiene la app (supuesto de Claude, sin confirmar: es el modo escritorio del portal, ver En curso).
    2. Todas las prestaciones del vecino; falta **iniciar un trámite** desde el portal (ni endpoint ni pantalla). Turnos y entradas ya se reservan desde la app (verificado en el código).
@@ -48,6 +48,7 @@
 ## 🟠 Pendientes (backoffice / backend)
 
 **Decisiones de negocio pendientes (César)**
+- 🟠 **Regla de César (2026-11-21): ningún trámite ni servicio sin cuenta de vecino o de empresa.** Para trámites la cubre el diseño del portal (el alta del backoffice va a exigir la cuenta; hoy hay 9 trámites cargados por agentes a vecinos sin cuenta). **Falta verificar** reclamos, turnos y entradas cargados desde el backoffice.
 - 🟠 **Prueba de cierre — hallazgos que quedan**, con detalle en [`PLAN_MULTI_MUNICIPIO_F4_F5.md`](PLAN_MULTI_MUNICIPIO_F4_F5.md) → «Prueba de cierre — hallazgos»: (6) pantalla para que el super elija municipio, (7) encuestas en «Promociones» de Gmail, (9) App Vecinos, (10) tres verificaciones pendientes, (11) menores.
 - 🟢 **Contorno — 9 menores de la revisión final (2026-10-28), ninguno rompe:** lista en [`PLAN_CONTORNO_MUNICIPIO.md`](PLAN_CONTORNO_MUNICIPIO.md) → «Menores diferidos» (el más visible: la fecha del origen en UTC).
 - 🟡 **Botón de pánico de la PWA:** sin probar con el vecino de prueba (dispara una alerta REAL al COM). Las pruebas de vecino y funcionario están hechas (2026-10-12 y 2026-10-23).
@@ -82,7 +83,7 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
-- **2026-11-21:** IT-01 F6.5: herramienta de restauración y su smoke (`e0f7562`, `bd88668`). Decisiones de F6.4 confirmadas por César: el super queda en `global/`; los crons siguen en OK con fallas de un ítem (no había trámites con errores: los 720 de prod pasan los 15 controles y la purga de hoy evaluó 0). Reclamos de prueba REC-SAN-2026-003478 y 003479 cancelados («reclamo de prueba»; la OT del segundo, cancelada en cascada). Cancelar un reclamo exige ahora su gestión, igual que el pase a Resuelto (`db9aa56`; `smoke_reclamo_cancelar_gestion.py` 8/8 con y sin barrera; 403 verificado en prod).
+- **2026-11-21:** **IT-01 F6.5 cerrada**: la exportación real de San Andrés se restauró en una base local vacía con los conteos iguales al zip y el inicio funcionando; después se borró todo ([`PLAN_MULTI_MUNICIPIO_F6_5.md`](PLAN_MULTI_MUNICIPIO_F6_5.md) → «Resultado»). Herramienta de restauración y su smoke (`e0f7562`, `bd88668`). Decisiones de F6.4 confirmadas por César: el super queda en `global/`; los crons siguen en OK con fallas de un ítem (no había trámites con errores: los 720 de prod pasan los 15 controles y la purga de hoy evaluó 0). Reclamos de prueba REC-SAN-2026-003478 y 003479 cancelados («reclamo de prueba»; la OT del segundo, cancelada en cascada). Cancelar un reclamo exige ahora su gestión, igual que el pase a Resuelto (`db9aa56`; `smoke_reclamo_cancelar_gestion.py` 8/8 con y sin barrera; 403 verificado en prod).
 - **2026-11-20:** IT-01 F6.1 (todo cambio de clave corta las sesiones; clave temporal solo sirve para cambiarla), F6.2 (usuario `zaris_app` + migración 138), F6.3 (segunda barrera prendida en prod, mismos conteos y tiempos con y sin ella) y F6.4 (archivos por carpeta de municipio, crons con una línea por municipio) en prod. Mail al vecino con el número cuando un agente carga el reclamo. Detalle en `PLAN_MULTI_MUNICIPIO_F6*.md`.
 
 - **2026-11-19:** versión y «Acerca de» en las tres aplicaciones ([`PLAN_VERSIONADO.md`](PLAN_VERSIONADO.md)); motivos en el Resumen de encuestas; mail al vecino al iniciar un trámite; super arrancando en el municipio de la dirección y 404 con la marca ZARIS ([`PLAN_MULTI_MUNICIPIO_F4_F5.md`](PLAN_MULTI_MUNICIPIO_F4_F5.md)).

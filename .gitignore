@@ -17,6 +17,8 @@ backend/.env.local
 # Backups de la DB de prod (datos reales — NUNCA al repo publico)
 backups/
 *.dump
+# Exportaciones de un municipio (Municipios → Exportaciones): datos de vecinos
+*.zip
 
 # IDE
 .vscode/
