@@ -316,6 +316,7 @@ _SQL_MIS = """
            t.fecha_entrada_estado_actual, t.id_tipo_tramite_version, t.id_tipo_tramite_estado_actual,
            t.destinatario_actual_tipo,
            tt.nombre AS tipo_nombre, e.etiqueta AS estado_etiqueta, e.color AS estado_color,
+           e.oculto_para_iniciador AS estado_oculto,
            EXISTS (SELECT 1 FROM tramite_pedido_iniciador p
                     WHERE p.id_tramite = t.id_tramite AND p.estado = 'abierto' AND p.activo = TRUE)
                AS tiene_pedido_abierto,
@@ -337,6 +338,27 @@ _SQL_MIS = """
 """
 
 
+async def _mostrar_estado_visible(db: AsyncSession, filas: list[dict]) -> list[dict]:
+    """`oculto_para_iniciador`: un estado oculto nunca se expone (ni etiqueta ni color). Se muestra el
+    último estado VISIBLE por el que pasó el trámite (el ledger hacia atrás) o, si no hay, "En trámite"
+    sin color. Lo demás (vigencia, pedidos) sigue usando el estado real."""
+    for f in filas:
+        if not f.get("estado_oculto"):
+            continue
+        prev = (await db.execute(
+            text("""
+                SELECT e.etiqueta, e.color FROM tramite_movimiento m
+                  JOIN tipo_tramite_estado e ON e.id_tipo_tramite_estado = m.id_estado_destino
+                 WHERE m.id_tramite = :t AND m.activo = TRUE
+                   AND m.tipo IN ('creacion', 'transicion', 'cambio_estado')
+                   AND e.oculto_para_iniciador = FALSE
+                 ORDER BY m.orden_secuencial DESC LIMIT 1
+            """), {"t": f["id_tramite"]})).mappings().first()
+        f["estado_etiqueta"] = prev["etiqueta"] if prev else "En trámite"
+        f["estado_color"] = prev["color"] if prev else None
+    return filas
+
+
 def _resumen_out(r) -> dict:
     return {
         "id_tramite": r["id_tramite"], "numero_expediente": r["numero_expediente"],
@@ -354,7 +376,7 @@ async def _mi_tramite(db: AsyncSession, id_tramite: int, id_ciudadano: int, id_m
     )).mappings().first()
     if not fila:
         raise HTTPException(404, NO_ENCONTRADO)
-    return dict(fila)
+    return (await _mostrar_estado_visible(db, [dict(fila)]))[0]
 
 
 def _opcion_etiqueta(opciones, valor) -> str:
@@ -413,7 +435,8 @@ async def _historial(db: AsyncSession, id_tramite: int, id_ciudadano: int) -> li
     movs = (await db.execute(
         text("""
             SELECT m.tipo, m.fecha_alta, m.metadata_jsonb, m.id_ciudadano_actor,
-                   ed.etiqueta AS estado_destino, tr.mensaje_iniciador
+                   ed.etiqueta AS estado_destino, ed.oculto_para_iniciador AS destino_oculto,
+                   tr.mensaje_iniciador
               FROM tramite_movimiento m
               LEFT JOIN tipo_tramite_estado ed ON ed.id_tipo_tramite_estado = m.id_estado_destino
               LEFT JOIN tipo_tramite_transicion tr ON tr.id_tipo_tramite_transicion = m.id_tipo_tramite_transicion
@@ -430,6 +453,8 @@ async def _historial(db: AsyncSession, id_tramite: int, id_ciudadano: int) -> li
         if tipo == "creacion":
             texto = "Iniciaste el trámite."
         elif tipo in ("transicion", "cambio_estado"):
+            if m["destino_oculto"]:
+                continue  # estado oculto al iniciador: ni la fila ni su mensaje
             texto = f"El trámite pasó a «{m['estado_destino']}»." if m["estado_destino"] else "El trámite avanzó."
             if m["mensaje_iniciador"]:
                 texto += f" {m['mensaje_iniciador'].strip()}"
@@ -467,6 +492,7 @@ async def mis_tramites(
     filas = (await db.execute(
         text(_SQL_MIS + " ORDER BY t.fecha_alta DESC, t.id_tramite DESC"),
         {"c": ciudadano["id_ciudadano"], "mun": id_municipio})).mappings().all()
+    filas = await _mostrar_estado_visible(db, [dict(r) for r in filas])
     return [_resumen_out(r) for r in filas]
 
 
