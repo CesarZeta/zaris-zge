@@ -62,7 +62,8 @@ async def agente_puede_ejecutar_transicion(
         checks.append((ok, f"No perteneces a los equipos requeridos {equipos}"))
 
     if quien.get("iniciador"):
-        ok = agente_info["id_agente"] == tramite.get("id_agente_iniciador")
+        ini = tramite.get("id_agente_iniciador")
+        ok = ini is not None and agente_info["id_agente"] == ini
         checks.append((ok, "Solo el agente que inicio el tramite puede ejecutar esta accion"))
 
     if "roles" in quien:

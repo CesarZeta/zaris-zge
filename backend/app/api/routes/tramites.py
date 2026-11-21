@@ -881,11 +881,16 @@ async def movimientos_tramite(
                 tm.comentario,
                 tm.metadata_jsonb,
                 ag.apellido || ', ' || ag.nombre AS agente_nombre,
+                ci.apellido || ', ' || ci.nombre AS ciudadano_nombre,
+                CASE WHEN tm.id_agente IS NOT NULL THEN 'agente'
+                     WHEN tm.id_ciudadano_actor IS NOT NULL THEN 'ciudadano'
+                     ELSE 'sistema' END AS actor_tipo,
                 tm.fecha_alta
             FROM tramite_movimiento tm
             LEFT JOIN tipo_tramite_estado eo ON eo.id_tipo_tramite_estado = tm.id_estado_origen
             LEFT JOIN tipo_tramite_estado ed ON ed.id_tipo_tramite_estado = tm.id_estado_destino
-            JOIN agentes ag ON ag.id_agente = tm.id_agente
+            LEFT JOIN agentes ag ON ag.id_agente = tm.id_agente
+            LEFT JOIN ciudadanos ci ON ci.id_ciudadano = tm.id_ciudadano_actor
             WHERE tm.id_tramite = :id AND tm.activo = TRUE
             ORDER BY tm.orden_secuencial
         """),
@@ -907,6 +912,8 @@ async def movimientos_tramite(
             comentario=r.comentario,
             metadata_jsonb=r.metadata_jsonb,
             agente_nombre=r.agente_nombre,
+            actor_tipo=r.actor_tipo,
+            actor_nombre=r.agente_nombre if r.actor_tipo == "agente" else r.ciudadano_nombre,
             fecha_alta=r.fecha_alta,
         )
         for r in rows
@@ -931,10 +938,14 @@ async def documentos_tramite(
 
     doc_rows = (await db.execute(
         text("""
-            SELECT *
-            FROM tramite_documento
-            WHERE id_tramite = :id AND activo = TRUE
-            ORDER BY posicion_orden
+            SELECT td.*,
+                   ag.apellido || ', ' || ag.nombre AS subio_agente_nombre,
+                   ci.apellido || ', ' || ci.nombre AS subio_ciudadano_nombre
+            FROM tramite_documento td
+            LEFT JOIN agentes ag ON ag.id_agente = td.id_agente_subio
+            LEFT JOIN ciudadanos ci ON ci.id_ciudadano = td.id_ciudadano_subio
+            WHERE td.id_tramite = :id AND td.activo = TRUE
+            ORDER BY td.posicion_orden
         """),
         {"id": id_tramite},
     )).fetchall()
@@ -987,6 +998,10 @@ async def documentos_tramite(
             posicion_orden=d.posicion_orden,
             binario_purgado=bool(getattr(d, "binario_purgado", False)),
             firmas=firmas,
+            actor_tipo=("agente" if d.id_agente_subio is not None
+                        else "ciudadano" if d.id_ciudadano_subio is not None else "sistema"),
+            actor_nombre=(d.subio_agente_nombre if d.id_agente_subio is not None
+                          else d.subio_ciudadano_nombre),
             fecha_alta=d.fecha_alta,
         ))
 

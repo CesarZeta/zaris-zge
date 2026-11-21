@@ -7,7 +7,7 @@ Fase 2: creacion, transicion, pase, toma, firma, adjuntos, comentario, relacion.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
@@ -239,7 +239,9 @@ class MovimientoOut(BaseModel):
     destino_jsonb: Optional[Any] = None
     comentario: Optional[str] = None
     metadata_jsonb: Optional[Any] = None
-    agente_nombre: str
+    agente_nombre: Optional[str] = None  # None si actuó el vecino o el sistema
+    actor_tipo: Literal["agente", "ciudadano", "sistema"] = "agente"
+    actor_nombre: Optional[str] = None
     fecha_alta: datetime
 
 
@@ -273,6 +275,8 @@ class DocumentoOut(BaseModel):
     posicion_orden: int
     binario_purgado: bool = False  # mig 75: TRUE = archivo depurado del bucket (registro se conserva)
     firmas: list[FirmaOut] = []
+    actor_tipo: Literal["agente", "ciudadano", "sistema"] = "agente"
+    actor_nombre: Optional[str] = None
     fecha_alta: datetime
 
 
