@@ -658,12 +658,299 @@ async def test_alta_filtra_datos_ajenos(c: httpx.AsyncClient, ha: dict) -> None:
             await _borrar_tramite(idt)
 
 
+# ── Task 5: mis trámites, detalle, documentos del paso, resumen ─────────────
+
+BASE_PUB = "/api/v1/publico/tramites"
+CONTENIDO_FALSO = b"BINARIO-SMOKE"
+
+
+async def _descargar_falso(path):
+    return CONTENIDO_FALSO
+
+
+async def _tramite_ventanilla(c: httpx.AsyncClient, ha: dict, vid: int, asunto: str) -> tuple[int, str]:
+    """Un trámite de poda creado por el admin para el vecino `vid` (ventanilla)."""
+    mun = await _municipio_base()
+    tipo = await _tipo_poda(mun)
+    r = await c.post("/api/v1/tramites", headers=ha, json={
+        "id_tipo_tramite": tipo["id_tipo_tramite"], "asunto": asunto, "datos": DATOS_PODA,
+        "iniciador": {"tipo": "ciudadano", "id_ciudadano": vid}})
+    assert r.status_code == 201, f"alta ventanilla: {r.status_code} {r.text[:200]}"
+    numero = r.json()["numero_expediente"]
+    idt = (await q1("SELECT id_tramite FROM tramite WHERE numero_expediente = :n", n=numero))["id_tramite"]
+    return idt, numero
+
+
+async def _limpiar_tramite_completo(idt: int) -> None:
+    await ejecutar("DELETE FROM notificacion WHERE recurso_tipo = 'tramite' AND recurso_id = :t", t=idt)
+    await ejecutar("DELETE FROM tramite_pedido_iniciador WHERE id_tramite = :t", t=idt)
+    await ejecutar("DELETE FROM tramite_documento WHERE id_tramite = :t", t=idt)
+    await _borrar_tramite(idt)
+
+
+async def _otro_vecino_con_cuenta(mun: int) -> Optional[int]:
+    r = await q1(
+        "SELECT c.id_ciudadano FROM ciudadanos c WHERE c.activo AND c.id_municipio = :m AND c.id_ciudadano <> :yo "
+        "AND EXISTS (SELECT 1 FROM ciudadano_credencial cc WHERE cc.id_ciudadano = c.id_ciudadano AND cc.activo) "
+        "ORDER BY c.id_ciudadano LIMIT 1", m=mun, yo=ID_CIUDADANO)
+    return r["id_ciudadano"] if r else None
+
+
+async def test_mis_tramites_incluye_ventanilla(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[15] Mis trámites: el de ventanilla y el de la app aparecen, del más nuevo al más viejo")
+    mun = await _municipio_base()
+    tipo = await _tipo_poda(mun)
+    doc = await _doc_poda(tipo["id_tipo_tramite"])
+    hv = await _login_vecino(c)
+    otro = await _otro_vecino_con_cuenta(mun)
+    if not otro:
+        check(False, "datos de partida (otro vecino con cuenta)")
+        return
+    idv, num_v = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke ventanilla")
+    ido, num_o = await _tramite_ventanilla(c, ha, otro, "Smoke de otro vecino")
+    data, files = _form(tipo["id_tipo_tramite"], DATOS_PODA, [("a.png", PNG)], [doc["id"]])
+    r = await c.post(BASE_PUB, headers=hv, data=data, files=files)
+    idn = r.json()["id_tramite"] if r.status_code == 201 else None
+    num_n = r.json().get("numero_expediente") if r.status_code == 201 else None
+    try:
+        check(idn is not None, "alta de la app 201", f"{r.status_code} {r.text[:200]}")
+        r = await c.get(BASE_PUB, headers=hv)
+        check(r.status_code == 200, "GET /publico/tramites 200", f"{r.status_code} {r.text[:200]}")
+        lista = r.json() if r.status_code == 200 else []
+        nums = [t["numero_expediente"] for t in lista]
+        check(num_v in nums and num_n in nums, "aparecen el de ventanilla y el de la app", str(nums[:6]))
+        check(num_o not in nums, "el de otro vecino no aparece")
+        check(nums.index(num_n) < nums.index(num_v) if num_v in nums and num_n in nums else False,
+              "orden: el más nuevo primero")
+        t = next((x for x in lista if x["numero_expediente"] == num_n), {})
+        claves = {"id_tramite", "numero_expediente", "tipo_nombre", "estado_etiqueta", "estado_color", "resultado",
+                  "fecha_alta", "tiene_pedido_abierto", "documentos_pendientes"}
+        check(set(t) == claves, "forma de cada fila", str(sorted(t)))
+        check(t.get("estado_etiqueta") == "Iniciado" and t.get("resultado") == "pendiente"
+              and t.get("tiene_pedido_abierto") is False and t.get("documentos_pendientes") == 0,
+              "valores del trámite recién iniciado", str(t))
+        r = await c.get(BASE_PUB)
+        check(r.status_code == 401, "sin token: 401", f"{r.status_code}")
+        r = await c.get(BASE_PUB, headers=ha)
+        check(r.status_code == 401, "token de funcionario: 401", f"{r.status_code}")
+    finally:
+        for i in (idv, ido, idn):
+            if i:
+                await _limpiar_tramite_completo(i)
+
+
+async def test_detalle_sin_datos_internos(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[16] Detalle: sin comentarios internos ni nombres de agentes")
+    mun = await _municipio_base()
+    hv = await _login_vecino(c)
+    idt, numero = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke detalle")
+    ag = await q1("SELECT a.nombre, a.apellido FROM agentes a JOIN usuarios u ON u.id_usuario = a.id_usuario "
+                  "WHERE u.email = :e", e=ADMIN_EMAIL)
+    otra = await q1("SELECT id_subarea FROM subarea WHERE activo AND id_municipio = :m AND id_subarea <> "
+                    "(SELECT id_subarea_actual FROM tramite WHERE id_tramite = :t) ORDER BY id_subarea LIMIT 1", m=mun, t=idt)
+    try:
+        secreto = "COMENTARIO-INTERNO-QX7"
+        r = await c.post(f"/api/v1/tramites/{numero}/comentar", headers=ha, json={"comentario": secreto})
+        check(r.status_code == 201, "el admin comenta", f"{r.status_code} {r.text[:200]}")
+        r = await c.post(f"/api/v1/tramites/{numero}/pase", headers=ha,
+                         json={"destinatario_tipo": "subarea", "destinatario_id": otra["id_subarea"], "comentario": secreto})
+        check(r.status_code == 200, "el admin hace un pase", f"{r.status_code} {r.text[:200]}")
+        r = await c.get(f"{BASE_PUB}/{idt}", headers=hv)
+        check(r.status_code == 200, "GET detalle 200", f"{r.status_code} {r.text[:200]}")
+        if r.status_code != 200:
+            return
+        d = r.json()
+        crudo = r.text
+        check(secreto not in crudo, "el texto del comentario no aparece en ningún lado")
+        check(ag["nombre"] not in crudo and ag["apellido"] not in crudo, "el nombre del agente no aparece", f"{ag}")
+        textos = [h["texto"] for h in d["historial"]]
+        check(textos[:1] == ["Iniciaste el trámite."], "el historial trae la creación", str(textos))
+        check(all(set(h) == {"fecha", "texto"} for h in d["historial"]), "cada fila: fecha y texto")
+        check(len(textos) == 1, "ni comentario ni pase ni numeración en el historial", str(textos))
+        check({"etiqueta": "Dirección del árbol", "valor": DATOS_PODA["direccion_arbol"]} in d["datos"]
+              or any(x["valor"] == DATOS_PODA["direccion_arbol"] for x in d["datos"]),
+              "datos con etiqueta y valor", str(d["datos"]))
+        check(all(set(x) == {"etiqueta", "valor"} for x in d["datos"]), "forma de datos")
+        check(d["pedido_abierto"] is None and d["documentos"] == [], "sin pedido ni documentos propios")
+        check({"documentos_del_paso", "historial", "datos", "documentos", "pedido_abierto"} <= set(d), "claves del detalle")
+    finally:
+        await _limpiar_tramite_completo(idt)
+
+
+async def test_ajeno_404(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[17] Lo ajeno es 404 con el mismo cuerpo que un id inexistente")
+    mun = await _municipio_base()
+    hv = await _login_vecino(c)
+    otro = await _otro_vecino_con_cuenta(mun)
+    if not otro:
+        check(False, "datos de partida (otro vecino con cuenta)")
+        return
+    ido, _ = await _tramite_ventanilla(c, ha, otro, "Smoke ajeno")
+    mio, _ = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke propio con doc de personal")
+    ver = await q1("SELECT id_tipo_tramite_version AS v FROM tramite WHERE id_tramite = :t", t=ido)
+    doc_ajeno = await ejecutar(
+        "INSERT INTO tramite_documento (id_tramite, nombre, nombre_archivo_original, storage_path, mime_type, tamano_bytes, "
+        "hash_sha256, posicion_orden, id_agente_subio, id_ciudadano_subio, id_municipio) "
+        "VALUES (:t, 'x.pdf', 'x.pdf', 'smoke/x.pdf', 'application/pdf', 3, 'h', 1, NULL, :c, :m) RETURNING id_tramite_documento",
+        t=ido, c=otro, m=mun)
+    doc_personal = await ejecutar(
+        "INSERT INTO tramite_documento (id_tramite, nombre, nombre_archivo_original, storage_path, mime_type, tamano_bytes, "
+        "hash_sha256, posicion_orden, id_agente_subio, id_ciudadano_subio, id_municipio) "
+        "VALUES (:t, 'p.pdf', 'p.pdf', 'smoke/p.pdf', 'application/pdf', 3, 'h', 1, NULL, NULL, :m) RETURNING id_tramite_documento",
+        t=mio, m=mun)
+    try:
+        inexistente = 2_000_000_000
+        r0 = await c.get(f"{BASE_PUB}/{inexistente}", headers=hv)
+        check(r0.status_code == 404, "id inexistente: 404", f"{r0.status_code}")
+        r = await c.get(f"{BASE_PUB}/{ido}", headers=hv)
+        check(r.status_code == 404 and r.text == r0.text, "detalle ajeno: 404 idéntico", f"{r.status_code} {r.text}")
+        r0 = await c.get(f"{BASE_PUB}/{inexistente}/documentos/1/contenido", headers=hv)
+        r = await c.get(f"{BASE_PUB}/{ido}/documentos/{doc_ajeno['id_tramite_documento']}/contenido", headers=hv)
+        check(r.status_code == 404 and r.text == r0.text, "contenido de un trámite ajeno: 404 idéntico", f"{r.status_code} {r.text}")
+        r = await c.get(f"{BASE_PUB}/{mio}/documentos/{doc_ajeno['id_tramite_documento']}/contenido", headers=hv)
+        check(r.status_code == 404, "doc ajeno colgado de mi trámite: 404", f"{r.status_code}")
+        r = await c.get(f"{BASE_PUB}/{mio}/documentos/{doc_personal['id_tramite_documento']}/contenido", headers=hv)
+        check(r.status_code == 404, "doc subido por el personal: 404", f"{r.status_code}")
+        r0 = await c.post(f"{BASE_PUB}/{inexistente}/documentos", headers=hv, data={"documentos": "[1]"},
+                          files=[("archivos", ("a.png", PNG, "image/png"))])
+        r = await c.post(f"{BASE_PUB}/{ido}/documentos", headers=hv, data={"documentos": "[1]"},
+                         files=[("archivos", ("a.png", PNG, "image/png"))])
+        check(r0.status_code == 404 and r.status_code == 404 and r.text == r0.text,
+              "subir a un trámite ajeno: 404 idéntico", f"{r.status_code} {r.text}")
+        r = await c.get(f"{BASE_PUB}/{mio}", headers=hv)
+        check(r.status_code == 200 and r.json()["documentos"] == [], "mi detalle no lista el doc del personal", r.text[:200])
+        check(ver is not None, "fixture")
+    finally:
+        for i in (ido, mio):
+            await _limpiar_tramite_completo(i)
+
+
+async def test_documento_del_paso(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[18] Documentos del paso: listar, subir, descargar y notificar")
+    from app.services.tramites import documentos as svc_docs_mod
+    mun = await _municipio_base()
+    tipo = await _tipo_poda(mun)
+    doc = await _doc_poda(tipo["id_tipo_tramite"])
+    hv = await _login_vecino(c)
+    ver = (await q1("SELECT id_version_publicada AS v FROM tipo_tramite WHERE id_tipo_tramite = :t", t=tipo["id_tipo_tramite"]))["v"]
+    est_ini = (await q1("SELECT id_tipo_tramite_estado AS e FROM tipo_tramite_estado WHERE id_tipo_tramite_version = :v AND es_inicial", v=ver))["e"]
+    est_otro = (await q1("SELECT id_tipo_tramite_estado AS e FROM tipo_tramite_estado WHERE id_tipo_tramite_version = :v AND NOT es_inicial "
+                         "ORDER BY orden LIMIT 1", v=ver))["e"]
+    sql_req = ("INSERT INTO tipo_tramite_documento_requerido (id_tipo_tramite_version, id_tipo_tramite_estado, nombre, obligatorio, "
+               "formatos_permitidos, tamano_max_mb, requiere_firma, aporta_quien, orden, id_municipio, cantidad_max_archivos) "
+               "VALUES (:v, :e, :n, TRUE, ARRAY['png'], 5, FALSE, 'iniciador', 9, :m, 2) RETURNING id_tipo_tramite_documento_requerido AS id")
+    data, files = _form(tipo["id_tipo_tramite"], DATOS_PODA, [("a.png", PNG)], [doc["id"]])
+    r = await c.post(BASE_PUB, headers=hv, data=data, files=files)
+    if r.status_code != 201:
+        check(False, "alta previa", f"{r.status_code} {r.text[:200]}")
+        return
+    idt = r.json()["id_tramite"]
+    # Los requisitos extra se crean DESPUÉS del alta (un obligatorio nuevo exigiría el documento al iniciar).
+    req_ok = await ejecutar(sql_req, v=ver, e=est_ini, n="Documento extra smoke", m=mun)
+    req_otro = await ejecutar(sql_req, v=ver, e=est_otro, n="Documento de otro estado smoke", m=mun)
+    original = svc_docs_mod.descargar_bytes
+    svc_docs_mod.descargar_bytes = _descargar_falso
+    try:
+        r = await c.get(f"{BASE_PUB}/{idt}", headers=hv)
+        d = r.json()
+        paso = {p["id_documento_requerido"]: p for p in d["documentos_del_paso"]}
+        check(req_ok["id"] in paso and req_otro["id"] not in paso, "aparece el del estado actual, no el de otro estado",
+              str(sorted(paso)))
+        check(paso.get(req_ok["id"], {}).get("subidos") == 0 and paso.get(req_ok["id"], {}).get("formatos_permitidos") == ["png"],
+              "forma del documento del paso con subidos=0", str(paso.get(req_ok["id"])))
+        check(len(d["documentos"]) == 1 and d["documentos"][0]["binario_purgado"] is False, "mis documentos: el del alta", str(d["documentos"]))
+        lista = (await c.get(BASE_PUB, headers=hv)).json()
+        fila = next(x for x in lista if x["id_tramite"] == idt)
+        check(fila["documentos_pendientes"] == 1, "documentos_pendientes = 1 (falta el extra obligatorio)", str(fila))
+
+        # estado equivocado, extensión y cantidad
+        mal = lambda ids, arch: c.post(f"{BASE_PUB}/{idt}/documentos", headers=hv, data={"documentos": json_dumps(ids)}, files=arch)
+        r = await mal([req_otro["id"]], [("archivos", ("a.png", PNG, "image/png"))])
+        check(r.status_code == 422, "documento de otro estado: 422", f"{r.status_code} {r.text[:150]}")
+        r = await mal([req_ok["id"]], [("archivos", ("a.exe", PNG, "application/octet-stream"))])
+        check(r.status_code == 422, "formato no aceptado: 422", f"{r.status_code} {r.text[:150]}")
+        r = await mal([req_ok["id"]] * 3, [("archivos", (f"{i}.png", PNG, "image/png")) for i in range(3)])
+        check(r.status_code == 422 and "admite hasta" in r.text, "más que la cantidad máxima: 422", f"{r.status_code} {r.text[:150]}")
+        r = await c.post(f"{BASE_PUB}/{idt}/documentos", headers=hv, data={"documentos": "[]"})
+        check(r.status_code == 422, "sin archivos: 422", f"{r.status_code}")
+
+        # subida válida
+        SUBIDOS.clear(); MAILS.clear()
+        movs_antes = (await q1("SELECT count(*) AS n FROM tramite_movimiento WHERE id_tramite = :t AND tipo = 'adjunto'", t=idt))["n"]
+        r = await mal([req_ok["id"]], [("archivos", ("extra.png", PNG, "image/png"))])
+        check(r.status_code == 201 and r.json() == {"subidos": 1}, "subir el del paso: 201 {subidos: 1}", f"{r.status_code} {r.text[:200]}")
+        check(len(SUBIDOS) == 1, "un objeto subido a Storage", str(SUBIDOS))
+        filas = await ejecutar("SELECT id_tramite_documento AS id FROM tramite_documento WHERE id_tramite = :t "
+                               "AND id_tipo_tramite_documento_requerido = :r AND id_ciudadano_subio = :c",
+                               t=idt, r=req_ok["id"], c=ID_CIUDADANO)
+        check(filas is not None, "tramite_documento del vecino creado")
+        movs = (await q1("SELECT count(*) AS n FROM tramite_movimiento WHERE id_tramite = :t AND tipo = 'adjunto' "
+                         "AND id_ciudadano_actor = :c", t=idt, c=ID_CIUDADANO))["n"]
+        check(movs == movs_antes + 1, "movimiento adjunto con id_ciudadano_actor", f"{movs_antes} -> {movs}")
+        dest = await q1("SELECT id_subarea_actual AS s FROM tramite WHERE id_tramite = :t", t=idt)
+        usuarios = (await q1("SELECT count(*) AS n FROM agentes a JOIN usuarios u ON u.id_usuario = a.id_usuario AND u.activo "
+                             "WHERE a.id_subarea = :s AND a.activo AND u.email IS NOT NULL AND u.email <> ''", s=dest["s"]))["n"]
+        notifs = (await q1("SELECT count(*) AS n FROM notificacion WHERE recurso_tipo = 'tramite' AND recurso_id = :t "
+                           "AND tipo = 'tramite_documento_vecino'", t=idt))["n"]
+        check(notifs == usuarios, "notificación al colectivo destinatario (una por usuario)", f"{notifs} vs {usuarios}")
+        d = (await c.get(f"{BASE_PUB}/{idt}", headers=hv)).json()
+        check(len(d["documentos"]) == 2, "el detalle ahora lista 2 documentos", str(len(d["documentos"])))
+        propio = next(x for x in d["documentos"] if x["nombre"] == "Documento extra smoke")
+        paso = {p["id_documento_requerido"]: p for p in d["documentos_del_paso"]}
+        check(paso[req_ok["id"]]["subidos"] == 1, "subidos = 1 en el paso", str(paso[req_ok["id"]]))
+        fila = next(x for x in (await c.get(BASE_PUB, headers=hv)).json() if x["id_tramite"] == idt)
+        check(fila["documentos_pendientes"] == 0, "documentos_pendientes vuelve a 0", str(fila))
+        check(any(h["texto"].startswith("Subiste el documento") for h in d["historial"]), "el historial muestra lo que subió",
+              str([h["texto"] for h in d["historial"]]))
+
+        # descarga y purga
+        r = await c.get(f"{BASE_PUB}/{idt}/documentos/{propio['id_tramite_documento']}/contenido", headers=hv)
+        check(r.status_code == 200 and r.content == CONTENIDO_FALSO and r.headers["content-type"].startswith("image/png"),
+              "descarga del propio: 200 con el binario", f"{r.status_code} {r.headers.get('content-type')}")
+        await ejecutar("UPDATE tramite_documento SET binario_purgado = TRUE WHERE id_tramite_documento = :d", d=propio["id_tramite_documento"])
+        r = await c.get(f"{BASE_PUB}/{idt}/documentos/{propio['id_tramite_documento']}/contenido", headers=hv)
+        check(r.status_code == 410, "binario purgado: 410", f"{r.status_code}")
+    finally:
+        svc_docs_mod.descargar_bytes = original
+        await _limpiar_tramite_completo(idt)
+        await ejecutar("DELETE FROM tipo_tramite_documento_requerido WHERE id_tipo_tramite_documento_requerido = ANY(:i)",
+                       i=[req_ok["id"], req_otro["id"]])
+
+
+def json_dumps(x) -> str:
+    import json as _j
+    return _j.dumps(x)
+
+
+async def test_resumen_tramites(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[19] mi-resumen suma los trámites")
+    hv = await _login_vecino(c)
+    idt, _ = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke resumen")
+    try:
+        r = await c.get("/api/v1/publico/portal/mi-resumen", headers=hv)
+        check(r.status_code == 200, "mi-resumen 200", f"{r.status_code} {r.text[:200]}")
+        if r.status_code != 200:
+            return
+        j = r.json()
+        total = (await q1("SELECT count(*) AS n FROM tramite WHERE id_ciudadano_iniciador = :c AND activo", c=ID_CIUDADANO))["n"]
+        vig = (await q1("SELECT count(*) AS n FROM tramite t JOIN tipo_tramite_estado e ON e.id_tipo_tramite_estado = t.id_tipo_tramite_estado_actual "
+                        "WHERE t.id_ciudadano_iniciador = :c AND t.activo AND t.fecha_archivado IS NULL AND NOT e.es_final", c=ID_CIUDADANO))["n"]
+        check(j["tramites"]["total"] == total and j["tramites"]["vigentes"] == vig and total >= 1,
+              "tramites.total y vigentes = lo de la base", f"{j['tramites']} vs {total}/{vig}")
+        check(j["tramites"]["pedidos_abiertos"] == 0, "pedidos_abiertos = 0", str(j["tramites"]))
+        check({"reclamos", "turnos", "entradas", "avisos", "ciudadano"} <= set(j), "las claves de siempre siguen")
+    finally:
+        await _limpiar_tramite_completo(idt)
+
+
 CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cuenta_422,
          test_backoffice_alta_con_cuenta_201,
          test_identidad_validar_y_revocar, test_identidad_en_perfil_publico, test_backoffice_alta_exige_identidad,
          test_tipos_ofrecidos, test_alta_vecino_ok, test_alta_sin_documento_obligatorio_422,
          test_alta_atomica_sin_restos, test_alta_campo_invalido_422, test_alta_exige_identidad_portal,
-         test_alta_limites_de_carga, test_alta_filtra_datos_ajenos]
+         test_alta_limites_de_carga, test_alta_filtra_datos_ajenos,
+         test_mis_tramites_incluye_ventanilla, test_detalle_sin_datos_internos, test_ajeno_404,
+         test_documento_del_paso, test_resumen_tramites]
 
 
 async def main() -> int:
