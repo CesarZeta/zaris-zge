@@ -943,6 +943,42 @@ async def test_resumen_tramites(c: httpx.AsyncClient, ha: dict) -> None:
         await _limpiar_tramite_completo(idt)
 
 
+async def test_estado_oculto_para_iniciador(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[20] Estado oculto_para_iniciador: no se expone")
+    mun = await _municipio_base()
+    hv = await _login_vecino(c)
+    idt, numero = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke estado oculto")
+    t = await q1("SELECT id_tipo_tramite_version AS v, id_tipo_tramite_estado_actual AS e FROM tramite WHERE id_tramite = :t", t=idt)
+    ini = await q1("SELECT etiqueta, color FROM tipo_tramite_estado WHERE id_tipo_tramite_estado = :e", e=t["e"])
+    oc = await q1("SELECT id_tipo_tramite_estado AS e, etiqueta, codigo, oculto_para_iniciador AS o FROM tipo_tramite_estado "
+                  "WHERE id_tipo_tramite_version = :v AND NOT es_inicial AND NOT es_final ORDER BY orden LIMIT 1", v=t["v"])
+    previo = oc["o"]
+    try:
+        await ejecutar("UPDATE tipo_tramite_estado SET oculto_para_iniciador = TRUE WHERE id_tipo_tramite_estado = :e", e=oc["e"])
+        # movimiento de transición al estado oculto + cambio real del estado actual
+        await ejecutar("INSERT INTO tramite_movimiento (id_tramite, orden_secuencial, tipo, id_estado_origen, id_estado_destino, id_municipio) "
+                       "VALUES (:t, 90, 'transicion', :o, :d, :m)", t=idt, o=t["e"], d=oc["e"], m=mun)
+        await ejecutar("UPDATE tramite SET id_tipo_tramite_estado_actual = :e WHERE id_tramite = :t", e=oc["e"], t=idt)
+        fila = next(x for x in (await c.get(BASE_PUB, headers=hv)).json() if x["id_tramite"] == idt)
+        check(fila["estado_etiqueta"] == ini["etiqueta"] and fila["estado_color"] == ini["color"],
+              "lista: muestra el último estado visible", str(fila))
+        r = await c.get(f"{BASE_PUB}/{idt}", headers=hv)
+        d = r.json()
+        check(d["estado_etiqueta"] == ini["etiqueta"], "detalle: estado visible anterior", d["estado_etiqueta"])
+        check(oc["etiqueta"] not in r.text and oc["codigo"] not in r.text, "la etiqueta/código oculto no aparece en ningún lado")
+        check(not any("pasó a" in h["texto"] for h in d["historial"]), "el historial omite la fila del estado oculto",
+              str([h["texto"] for h in d["historial"]]))
+        # sin ningún estado visible previo: se borra el ledger de visibles
+        await ejecutar("UPDATE tipo_tramite_estado SET oculto_para_iniciador = TRUE WHERE id_tipo_tramite_estado = :e", e=t["e"])
+        d = (await c.get(f"{BASE_PUB}/{idt}", headers=hv)).json()
+        check(d["estado_etiqueta"] == "En trámite" and d["estado_color"] is None, "sin visible previo: En trámite sin color",
+              f"{d['estado_etiqueta']} {d['estado_color']}")
+    finally:
+        await ejecutar("UPDATE tipo_tramite_estado SET oculto_para_iniciador = FALSE WHERE id_tipo_tramite_estado = :e", e=t["e"])
+        await ejecutar("UPDATE tipo_tramite_estado SET oculto_para_iniciador = :o WHERE id_tipo_tramite_estado = :e", o=previo, e=oc["e"])
+        await _limpiar_tramite_completo(idt)
+
+
 CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cuenta_422,
          test_backoffice_alta_con_cuenta_201,
          test_identidad_validar_y_revocar, test_identidad_en_perfil_publico, test_backoffice_alta_exige_identidad,
@@ -950,7 +986,8 @@ CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cue
          test_alta_atomica_sin_restos, test_alta_campo_invalido_422, test_alta_exige_identidad_portal,
          test_alta_limites_de_carga, test_alta_filtra_datos_ajenos,
          test_mis_tramites_incluye_ventanilla, test_detalle_sin_datos_internos, test_ajeno_404,
-         test_documento_del_paso, test_resumen_tramites]
+         test_documento_del_paso, test_resumen_tramites,
+         test_estado_oculto_para_iniciador]
 
 
 async def main() -> int:
