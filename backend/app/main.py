@@ -53,6 +53,7 @@ from app.api.routes.publico_auth import router as publico_auth_router
 from app.api.routes.publico_alta import router as publico_alta_router
 from app.api.routes.publico_identidad import router as publico_identidad_router
 from app.api.routes.publico_reclamos import router as publico_reclamos_router
+from app.api.routes.publico_tramites import router as publico_tramites_router
 from app.api.routes.publico_reclamos_adjuntos import router as publico_reclamos_adjuntos_router
 from app.api.routes.publico_portal import router as publico_portal_router
 from app.api.routes.publico_turnos_vecino import router as publico_turnos_vecino_router
@@ -225,6 +226,8 @@ app.include_router(publico_identidad_router)
 app.include_router(publico_reclamos_adjuntos_router, dependencies=_modulo("publico_reclamos_adjuntos_router"))
 app.include_router(publico_reclamos_router, dependencies=_modulo("publico_reclamos_router"))
 app.include_router(publico_portal_router)
+# Trámites del vecino logueado (scope publico): tipos ofrecidos + alta atómica multipart
+app.include_router(publico_tramites_router, dependencies=_modulo("publico_tramites_router"))
 # Turnos del vecino logueado (App Vecinos etapa C, scope publico)
 app.include_router(publico_turnos_vecino_router, dependencies=_modulo("publico_turnos_vecino_router"))
 # Entradas del vecino logueado (App Vecinos etapa D, scope publico — cartelera + QR)

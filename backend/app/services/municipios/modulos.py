@@ -48,6 +48,7 @@ MODULOS_POR_ROUTER: dict[str, tuple[str, ...]] = {
     "publico_entradas_vecino_router": ("entradas",),
     "tramites_router": ("tramites",),
     "tramites_admin_router": ("tramites",),
+    "publico_tramites_router": ("tramites",),
     "emergencias_router": ("emergencias",),
     "publico_emergencias_router": ("emergencias",),
     "encuestas_admin_router": ("encuestas",),

@@ -150,3 +150,59 @@ async def crear_tramite_en_db(
         db, id_tramite, id_version, estado_inicial.id_tipo_tramite_estado,
     )
     return id_tramite
+
+
+async def tipos_ofrecidos(db: AsyncSession, id_municipio: int, id_tipo: int | None = None) -> list[dict]:
+    """Tipos de trámite que el portal le ofrece al vecino (spec §5.1).
+
+    Se ofrece si: activo, con versión publicada, `ofrecer_al_vecino`, `ciudadano` entre los
+    iniciadores, gestión asignada y activa, y ningún campo activo de tipo `agente` o `subarea`
+    (son internos). Con `id_tipo` devuelve a lo sumo ese tipo.
+    """
+    filas = (await db.execute(
+        text("""
+            SELECT tt.id_tipo_tramite, tt.nombre, tt.descripcion, tt.id_subarea,
+                   tt.id_version_publicada, tt.exige_identidad_validada
+              FROM tipo_tramite tt
+              JOIN subarea sa ON sa.id_subarea = tt.id_subarea AND sa.activo = TRUE
+             WHERE tt.id_municipio = :mun
+               AND tt.activo = TRUE
+               AND tt.ofrecer_al_vecino = TRUE
+               AND tt.id_version_publicada IS NOT NULL
+               AND 'ciudadano' = ANY (tt.iniciadores_permitidos)
+               AND NOT EXISTS (
+                     SELECT 1 FROM tipo_tramite_campo f
+                      WHERE f.id_tipo_tramite_version = tt.id_version_publicada
+                        AND f.activo = TRUE AND f.tipo_dato IN ('agente', 'subarea'))
+               AND (CAST(:tipo AS integer) IS NULL OR tt.id_tipo_tramite = CAST(:tipo AS integer))
+             ORDER BY tt.nombre, tt.id_tipo_tramite
+        """),
+        {"mun": id_municipio, "tipo": id_tipo},
+    )).mappings().all()
+    return [dict(f) for f in filas]
+
+
+async def documentos_del_alta(db: AsyncSession, id_version: int, id_estado_inicial: int) -> list[dict]:
+    """Documentos requeridos que el vecino aporta al iniciar: `aporta_quien = 'iniciador'`, sin
+    estado o atados al estado inicial, y sin firma (spec §5.3)."""
+    filas = (await db.execute(
+        text("""
+            SELECT id_tipo_tramite_documento_requerido AS id_documento_requerido, nombre, descripcion,
+                   obligatorio, formatos_permitidos, tamano_max_mb, cantidad_max_archivos
+              FROM tipo_tramite_documento_requerido
+             WHERE id_tipo_tramite_version = :ver AND activo = TRUE
+               AND aporta_quien = 'iniciador' AND requiere_firma = FALSE
+               AND (id_tipo_tramite_estado IS NULL OR id_tipo_tramite_estado = :est)
+             ORDER BY orden, id_tipo_tramite_documento_requerido
+        """),
+        {"ver": id_version, "est": id_estado_inicial},
+    )).mappings().all()
+    return [dict(f) for f in filas]
+
+
+async def estado_inicial_de(db: AsyncSession, id_version: int) -> int | None:
+    return (await db.execute(
+        text("SELECT id_tipo_tramite_estado FROM tipo_tramite_estado "
+             "WHERE id_tipo_tramite_version = :v AND es_inicial = TRUE AND activo = TRUE"),
+        {"v": id_version},
+    )).scalar()
