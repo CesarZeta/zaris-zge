@@ -420,6 +420,51 @@ async def notificar_documento_vecino(
         return 0
 
 
+async def notificar_respuesta_vecino(
+    db: AsyncSession,
+    id_tramite: int,
+    background_tasks: Optional[BackgroundTasks] = None,
+) -> int:
+    """
+    El vecino respondio un pedido del municipio: avisa (in-app + mail, mismo armado que
+    `notificar_tramite_a_bandeja`) al agente que tomo el tramite, si hay, y al colectivo
+    destinatario actual. Un usuario que esta en los dos recibe una sola notificacion.
+
+    Fail-safe: cualquier error se logea pero NO levanta.
+    """
+    try:
+        tramite = await _datos_tramite(db, id_tramite)
+        if not tramite:
+            return 0
+        usuarios: list[dict] = []
+        if tramite.get("id_agente_tomado_por"):
+            usuarios += await _usuarios_por_agente(db, tramite["id_agente_tomado_por"])
+        dest_tipo = tramite.get("destinatario_actual_tipo")
+        dest_id = tramite.get("destinatario_actual_id")
+        if dest_tipo and dest_id:
+            usuarios += await _resolver_destinatarios_usuarios(db, dest_tipo, dest_id)
+        vistos: set[int] = set()
+        unicos = [u for u in usuarios if not (u["id_usuario"] in vistos or vistos.add(u["id_usuario"]))]
+        if not unicos:
+            return 0
+        numero = tramite["numero_expediente"]
+        titulo = f"El vecino respondio un pedido: {numero}"
+        mensaje = (f"El vecino respondio el pedido que se le hizo en el tramite {numero} "
+                   f"({tramite.get('tipo_nombre') or 'tramite'}).")
+        return await _emitir_a_usuarios(
+            db, unicos,
+            tramite=tramite,
+            tipo_notif="tramite_respuesta_vecino",
+            titulo=titulo,
+            mensaje=mensaje,
+            url_destino=_url_destino_tramite(numero),
+            background_tasks=background_tasks,
+        )
+    except Exception as e:
+        logger.error("notificar_respuesta_vecino FALLO para tramite %s: %s", id_tramite, e, exc_info=True)
+        return 0
+
+
 async def notificar_firma_pendiente(
     db: AsyncSession,
     id_tramite: int,

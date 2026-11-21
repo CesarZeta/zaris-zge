@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +151,8 @@ class TramiteListItem(BaseModel):
     tomado_en: Optional[datetime] = None
     fecha_alta: datetime
     dias_en_estado_actual: int
+    pedido_abierto: bool = False        # hay un pedido al vecino sin responder
+    respuesta_sin_ver: bool = False     # el vecino respondió y ningún agente abrió el detalle después
 
 
 class TramiteListOut(BaseModel):
@@ -187,6 +189,55 @@ class AprobacionOut(BaseModel):
     id_tramite_documento: Optional[int] = None
 
 
+class DocumentoRespuestaOut(BaseModel):
+    id_tramite_documento: int
+    nombre: str
+    nombre_archivo_original: Optional[str] = None
+    fecha_alta: datetime
+    binario_purgado: bool = False
+
+
+class PedidoOut(BaseModel):
+    """Pedido del municipio al iniciador (vecino) de un trámite. `agente_pide` es interno: el portal
+    del vecino NO usa este schema."""
+    id_tramite_pedido: int
+    texto: str
+    pide_archivo: bool
+    estado: str  # abierto | respondido | cancelado
+    fecha_pedido: datetime
+    agente_pide: Optional[str] = None
+    respuesta_texto: Optional[str] = None
+    fecha_respuesta: Optional[datetime] = None
+    respuesta_vista_en: Optional[datetime] = None
+    documentos_respuesta: list[DocumentoRespuestaOut] = []
+    motivo_cancelacion: Optional[str] = None
+
+
+class PedidoIn(BaseModel):
+    texto: str = Field(..., min_length=5, max_length=2000)
+    pide_archivo: bool = False
+
+    @field_validator("texto")
+    @classmethod
+    def texto_valido(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) < 5:
+            raise ValueError("El pedido tiene que tener al menos 5 caracteres")
+        return v
+
+
+class PedidoCancelarIn(BaseModel):
+    motivo: str = Field(..., min_length=5, max_length=1000)
+
+    @field_validator("motivo")
+    @classmethod
+    def motivo_valido(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) < 5:
+            raise ValueError("El motivo tiene que tener al menos 5 caracteres")
+        return v
+
+
 class TramiteDetalleOut(BaseModel):
     id_tramite: int
     numero_expediente: str
@@ -218,6 +269,7 @@ class TramiteDetalleOut(BaseModel):
     cant_firmas_pendientes: int
     relaciones: list[RelacionOut] = []
     aprobaciones: list[AprobacionOut] = []
+    pedidos: list[PedidoOut] = []
     fecha_alta: datetime
     id_municipio: int
 

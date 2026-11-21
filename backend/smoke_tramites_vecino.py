@@ -35,6 +35,7 @@ from app.core.sistema import SesionSistema as AsyncSessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
 from app.core import storage as _storage  # noqa: E402
 from app.services import email as svc_email  # noqa: E402
+from app.services.tramites import ciclo_vida as _ciclo_vida  # noqa: E402
 from app.services.identidad import MSG_IDENTIDAD_PORTAL  # noqa: E402
 
 # Storage local apunta a PROD: nada sale a la red; se registran las llamadas.
@@ -62,6 +63,7 @@ async def _capturar(to, subject, body_html, body_text=None, from_override=None):
 _storage.subir_objeto = _subir_falso
 _storage.borrar_objeto = _borrar_falso
 svc_email.enviar_mail = _capturar
+_ciclo_vida.enviar_mail = _capturar  # ciclo_vida lo importó por nombre al cargar app.main
 
 PWD_DEV = os.environ.get("ZARIS_QA_PASS") or "123456"
 ADMIN_EMAIL = "ciudadanovl@municipio.gob.ar"
@@ -979,6 +981,242 @@ async def test_estado_oculto_para_iniciador(c: httpx.AsyncClient, ha: dict) -> N
         await _limpiar_tramite_completo(idt)
 
 
+# ── Task 6: pedidos al vecino ───────────────────────────────────────────────
+
+BASE_BO = "/api/v1/tramites"
+
+
+async def _pedir(c, ha, numero, texto="Necesitamos que adjuntes una foto del frente", pide_archivo=True):
+    return await c.post(f"{BASE_BO}/{numero}/pedidos", headers=ha, json={"texto": texto, "pide_archivo": pide_archivo})
+
+
+async def _fila_bandeja(c, ha, numero) -> Optional[dict]:
+    r = await c.get(BASE_BO, headers=ha, params={"numero": numero})
+    items = r.json().get("items", []) if r.status_code == 200 else []
+    return items[0] if items else None
+
+
+async def test_pedido_ciclo_completo(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[21] Pedido al vecino: pedir, responder, ver y marcar visto")
+    hv = await _login_vecino(c)
+    idt, numero = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke pedido ciclo")
+    url_previa = settings.APP_VECINOS_FRONTEND_URL
+    settings.APP_VECINOS_FRONTEND_URL = "https://vecinos.smoke.local"
+    try:
+        MAILS.clear()
+        r = await _pedir(c, ha, numero)
+        check(r.status_code == 200, "pedir: 200", f"{r.status_code} {r.text[:200]}")
+        if r.status_code != 200:
+            return
+        ped = r.json()["pedidos"]
+        check(len(ped) == 1 and ped[0]["estado"] == "abierto" and ped[0]["pide_archivo"] is True,
+              "el detalle trae el pedido abierto", str(ped))
+        idp = ped[0]["id_tramite_pedido"]
+        av = await q1("SELECT count(*) AS n FROM ciudadano_aviso WHERE id_ciudadano = :c AND tipo = 'tramite_pedido' "
+                      "AND recurso_tipo = 'tramite' AND recurso_id = :t", c=ID_CIUDADANO, t=idt)
+        check(av["n"] == 1, "aviso tramite_pedido en la bandeja del vecino", str(av))
+        mail = [m for m in MAILS if numero in m["subject"] + m["html"]]
+        check(len(mail) == 1, "un mail capturado al vecino", str(MAILS)[:200])
+        check(bool(mail) and "Ir al Portal del Ciudadano" in mail[0]["html"] and "https://vecinos.smoke.local" in mail[0]["html"],
+              "el mail trae el botón al portal", mail[0]["html"][:300] if mail else "")
+        mov = await q1("SELECT metadata_jsonb FROM tramite_movimiento WHERE id_tramite = :t AND tipo = 'pedido_iniciador'", t=idt)
+        check(mov is not None and mov["metadata_jsonb"].get("id_tramite_pedido") == idp,
+              "movimiento pedido_iniciador con id_tramite_pedido en metadata", str(mov))
+
+        fila = await _fila_bandeja(c, ha, numero)
+        check(fila is not None and fila["pedido_abierto"] is True and fila["respuesta_sin_ver"] is False,
+              "bandeja: pedido_abierto=true", str(fila))
+        d = (await c.get(f"{BASE_PUB}/{idt}", headers=hv)).json()
+        check(d["pedido_abierto"] is not None and d["pedido_abierto"]["id_tramite_pedido"] == idp, "detalle público: pedido_abierto",
+              str(d.get("pedido_abierto")))
+        check("agente_pide" not in str(d["pedido_abierto"]), "el detalle público no expone al agente")
+
+        url = f"{BASE_PUB}/{idt}/pedidos/{idp}/responder"
+        r = await c.post(url, headers=hv, data={"texto": "Ahí va la foto del frente"})
+        check(r.status_code == 422, "responder sin archivo si lo pidió: 422", f"{r.status_code} {r.text[:150]}")
+        r = await c.post(url, headers=hv, data={"texto": "ok"}, files=[("archivos", ("f.png", PNG, "image/png"))])
+        check(r.status_code == 422, "texto de menos de 5 caracteres: 422", f"{r.status_code}")
+        SUBIDOS.clear()
+        r = await c.post(url, headers=hv, data={"texto": "Ahí va la foto del frente"},
+                         files=[("archivos", ("frente.png", PNG, "image/png"))])
+        check(r.status_code == 200, "responder con archivo: 200", f"{r.status_code} {r.text[:200]}")
+        check(len(SUBIDOS) == 1, "un objeto subido a Storage", str(SUBIDOS))
+        p = await q1("SELECT estado, respuesta_texto, fecha_respuesta, respuesta_vista_en FROM tramite_pedido_iniciador "
+                     "WHERE id_tramite_pedido = :p", p=idp)
+        check(p["estado"] == "respondido" and p["respuesta_texto"] == "Ahí va la foto del frente" and p["fecha_respuesta"] is not None
+              and p["respuesta_vista_en"] is None, "pedido respondido con su texto", str(p))
+        doc = await q1("SELECT id_ciudadano_subio AS c FROM tramite_documento WHERE id_tramite = :t AND id_tramite_pedido = :p",
+                       t=idt, p=idp)
+        check(doc is not None and doc["c"] == ID_CIUDADANO, "documento vinculado al pedido y subido por el vecino", str(doc))
+        mv = await q1("SELECT id_ciudadano_actor AS c, metadata_jsonb FROM tramite_movimiento WHERE id_tramite = :t "
+                      "AND tipo = 'respuesta_iniciador'", t=idt)
+        check(mv is not None and mv["c"] == ID_CIUDADANO and mv["metadata_jsonb"].get("id_tramite_pedido") == idp,
+              "movimiento respuesta_iniciador del vecino", str(mv))
+        dest = await q1("SELECT id_subarea_actual AS s FROM tramite WHERE id_tramite = :t", t=idt)
+        usuarios = (await q1("SELECT count(*) AS n FROM agentes a JOIN usuarios u ON u.id_usuario = a.id_usuario AND u.activo "
+                             "WHERE a.id_subarea = :s AND a.activo AND u.email IS NOT NULL AND u.email <> ''", s=dest["s"]))["n"]
+        notifs = (await q1("SELECT count(*) AS n FROM notificacion WHERE recurso_tipo = 'tramite' AND recurso_id = :t "
+                           "AND tipo = 'tramite_respuesta_vecino'", t=idt))["n"]
+        check(notifs == usuarios and notifs > 0, "notificación in-app al colectivo destinatario", f"{notifs} vs {usuarios}")
+
+        d = (await c.get(f"{BASE_PUB}/{idt}", headers=hv)).json()
+        check(d["pedido_abierto"] is None, "el detalle público ya no tiene pedido abierto")
+        check(any(h["texto"].startswith("Te pidieron:") for h in d["historial"])
+              and any(h["texto"] == "Respondiste el pedido." for h in d["historial"]),
+              "historial del vecino con el pedido y la respuesta", str([h["texto"] for h in d["historial"]]))
+        rb = await c.get(f"{BASE_BO}/{numero}", headers=ha)
+        pb = rb.json()["pedidos"][0]
+        check(pb["estado"] == "respondido" and pb["respuesta_texto"] == "Ahí va la foto del frente"
+              and len(pb["documentos_respuesta"]) == 1 and pb["agente_pide"], "detalle del backoffice con la respuesta y el agente",
+              str(pb))
+        fila = await _fila_bandeja(c, ha, numero)
+        check(fila["pedido_abierto"] is False and fila["respuesta_sin_ver"] is True, "bandeja: respuesta_sin_ver=true", str(fila))
+        r = await c.post(f"{BASE_BO}/{numero}/pedidos/{idp}/visto", headers=ha)
+        check(r.status_code == 204, "visto: 204", f"{r.status_code} {r.text[:150]}")
+        fila = await _fila_bandeja(c, ha, numero)
+        check(fila["respuesta_sin_ver"] is False, "bandeja: respuesta_sin_ver=false tras /visto", str(fila))
+    finally:
+        settings.APP_VECINOS_FRONTEND_URL = url_previa
+        await ejecutar("DELETE FROM ciudadano_aviso WHERE tipo = 'tramite_pedido' AND recurso_tipo = 'tramite' AND recurso_id = :t", t=idt)
+        await ejecutar("DELETE FROM tramite_documento WHERE id_tramite = :t", t=idt)
+        await _limpiar_tramite_completo(idt)
+
+
+async def test_pedido_reglas_422(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[22] Pedido al vecino: reglas de negocio (422)")
+    mun = await _municipio_base()
+    idt, numero = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke pedido reglas")
+    try:
+        r = await _pedir(c, ha, numero, texto="cort")
+        check(r.status_code == 422, "texto de menos de 5 caracteres: 422", f"{r.status_code}")
+        r = await _pedir(c, ha, numero)
+        check(r.status_code == 200, "primer pedido: 200", f"{r.status_code} {r.text[:150]}")
+        r = await _pedir(c, ha, numero, texto="Otro pedido distinto del anterior")
+        check(r.status_code == 422, "segundo pedido con uno abierto: 422", f"{r.status_code} {r.text[:150]}")
+        n = (await q1("SELECT count(*) AS n FROM tramite_pedido_iniciador WHERE id_tramite = :t", t=idt))["n"]
+        check(n == 1, "sigue habiendo un solo pedido", str(n))
+        await ejecutar("DELETE FROM tramite_pedido_iniciador WHERE id_tramite = :t", t=idt)
+
+        # archivado y estado final
+        await ejecutar("UPDATE tramite SET fecha_archivado = NOW() WHERE id_tramite = :t", t=idt)
+        r = await _pedir(c, ha, numero)
+        check(r.status_code == 422, "trámite archivado: 422", f"{r.status_code}")
+        await ejecutar("UPDATE tramite SET fecha_archivado = NULL WHERE id_tramite = :t", t=idt)
+        orig = (await q1("SELECT id_tipo_tramite_estado_actual AS e, id_tipo_tramite_version AS v FROM tramite WHERE id_tramite = :t", t=idt))
+        fin = await q1("SELECT id_tipo_tramite_estado AS e FROM tipo_tramite_estado WHERE id_tipo_tramite_version = :v AND es_final LIMIT 1",
+                       v=orig["v"])
+        await ejecutar("UPDATE tramite SET id_tipo_tramite_estado_actual = :e WHERE id_tramite = :t", e=fin["e"], t=idt)
+        r = await _pedir(c, ha, numero)
+        check(r.status_code == 422, "estado final: 422", f"{r.status_code}")
+        await ejecutar("UPDATE tramite SET id_tipo_tramite_estado_actual = :e WHERE id_tramite = :t", e=orig["e"], t=idt)
+
+        # vecino sin cuenta (se le desactiva la credencial un rato)
+        await ejecutar("UPDATE ciudadano_credencial SET activo = FALSE WHERE id_ciudadano = :c", c=ID_CIUDADANO)
+        try:
+            r = await _pedir(c, ha, numero)
+            check(r.status_code == 422 and "cuenta" in r.text, "vecino sin cuenta en el portal: 422", f"{r.status_code} {r.text[:150]}")
+        finally:
+            await ejecutar("UPDATE ciudadano_credencial SET activo = TRUE WHERE id_ciudadano = :c", c=ID_CIUDADANO)
+
+        # iniciador empresa
+        emp = await q1("SELECT id_empresa FROM empresas WHERE id_municipio = :m AND activo ORDER BY id_empresa LIMIT 1", m=mun)
+        if emp:
+            await ejecutar("UPDATE tramite SET iniciador_tipo = 'empresa', id_ciudadano_iniciador = NULL, id_empresa_iniciadora = :e "
+                           "WHERE id_tramite = :t", e=emp["id_empresa"], t=idt)
+            r = await _pedir(c, ha, numero)
+            check(r.status_code == 422, "iniciador empresa: 422", f"{r.status_code} {r.text[:150]}")
+            await ejecutar("UPDATE tramite SET iniciador_tipo = 'ciudadano', id_ciudadano_iniciador = :c, id_empresa_iniciadora = NULL "
+                           "WHERE id_tramite = :t", c=ID_CIUDADANO, t=idt)
+        else:
+            check(False, "datos de partida (una empresa)")
+        r = await _pedir(c, ha, numero)
+        check(r.status_code == 200, "con todo en regla vuelve a andar: 200", f"{r.status_code} {r.text[:150]}")
+    finally:
+        await ejecutar("DELETE FROM ciudadano_aviso WHERE tipo = 'tramite_pedido' AND recurso_tipo = 'tramite' AND recurso_id = :t", t=idt)
+        await _limpiar_tramite_completo(idt)
+
+
+async def test_respuesta_doble_409(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[23] Dos respuestas a la vez: una gana, la otra 409")
+    hv = await _login_vecino(c)
+    idt, numero = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke pedido doble")
+    try:
+        r = await _pedir(c, ha, numero, pide_archivo=False)
+        idp = r.json()["pedidos"][0]["id_tramite_pedido"]
+        url = f"{BASE_PUB}/{idt}/pedidos/{idp}/responder"
+
+        async def uno(i):
+            return await c.post(url, headers=hv, data={"texto": f"Respuesta número {i}"},
+                                files=[("archivos", (f"{i}.png", PNG, "image/png"))])
+        r1, r2 = await asyncio.gather(uno(1), uno(2))
+        codigos = sorted([r1.status_code, r2.status_code])
+        check(codigos == [200, 409], "una 200 y otra 409", str(codigos))
+        n = (await q1("SELECT count(*) AS n FROM tramite_movimiento WHERE id_tramite = :t AND tipo = 'respuesta_iniciador'", t=idt))["n"]
+        d = (await q1("SELECT count(*) AS n FROM tramite_documento WHERE id_tramite = :t AND id_tramite_pedido = :p", t=idt, p=idp))["n"]
+        check(n == 1 and d == 1, "una sola respuesta guardada (movimiento y documento)", f"mov={n} doc={d}")
+    finally:
+        await ejecutar("DELETE FROM ciudadano_aviso WHERE tipo = 'tramite_pedido' AND recurso_tipo = 'tramite' AND recurso_id = :t", t=idt)
+        await ejecutar("DELETE FROM tramite_documento WHERE id_tramite = :t", t=idt)
+        await _limpiar_tramite_completo(idt)
+
+
+async def test_cancelar_pedido(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[24] Cancelar un pedido")
+    hv = await _login_vecino(c)
+    idt, numero = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke pedido cancelar")
+    try:
+        r = await _pedir(c, ha, numero, pide_archivo=False)
+        idp = r.json()["pedidos"][0]["id_tramite_pedido"]
+        r = await c.post(f"{BASE_BO}/{numero}/pedidos/{idp}/cancelar", headers=ha, json={"motivo": "ya"})
+        check(r.status_code == 422, "motivo corto: 422", f"{r.status_code}")
+        r = await c.post(f"{BASE_BO}/{numero}/pedidos/{idp}/cancelar", headers=ha, json={"motivo": "Lo pedimos por error"})
+        check(r.status_code == 200 and r.json()["pedidos"][0]["estado"] == "cancelado"
+              and r.json()["pedidos"][0]["motivo_cancelacion"] == "Lo pedimos por error", "cancelar: 200 y estado cancelado",
+              f"{r.status_code} {r.text[:200]}")
+        av = (await q1("SELECT count(*) AS n FROM ciudadano_aviso WHERE id_ciudadano = :c AND tipo = 'tramite_pedido' "
+                       "AND recurso_id = :t", c=ID_CIUDADANO, t=idt))["n"]
+        check(av == 2, "avisos al vecino: el pedido y la cancelación", str(av))
+        mov = await q1("SELECT metadata_jsonb FROM tramite_movimiento WHERE id_tramite = :t AND tipo = 'pedido_cancelado'", t=idt)
+        check(mov is not None and mov["metadata_jsonb"].get("id_tramite_pedido") == idp, "movimiento pedido_cancelado con id en metadata", str(mov))
+        r = await c.post(f"{BASE_PUB}/{idt}/pedidos/{idp}/responder", headers=hv, data={"texto": "Respuesta tardía al pedido"})
+        check(r.status_code == 409, "responder después de cancelado: 409", f"{r.status_code}")
+        r = await c.post(f"{BASE_BO}/{numero}/pedidos/{idp}/cancelar", headers=ha, json={"motivo": "Otra vez cancelado"})
+        check(r.status_code == 409, "cancelar uno ya cancelado: 409", f"{r.status_code}")
+        r = await c.post(f"{BASE_BO}/{numero}/pedidos/2000000000/visto", headers=ha)
+        check(r.status_code == 404, "visto de un pedido inexistente: 404", f"{r.status_code}")
+    finally:
+        await ejecutar("DELETE FROM ciudadano_aviso WHERE tipo = 'tramite_pedido' AND recurso_tipo = 'tramite' AND recurso_id = :t", t=idt)
+        await _limpiar_tramite_completo(idt)
+
+
+async def test_ajeno_404_pedido(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[25] Responder el pedido de un trámite ajeno: 404 idéntico")
+    mun = await _municipio_base()
+    hv = await _login_vecino(c)
+    otro = await _otro_vecino_con_cuenta(mun)
+    if not otro:
+        check(False, "datos de partida (otro vecino con cuenta)")
+        return
+    ido, numero = await _tramite_ventanilla(c, ha, otro, "Smoke pedido ajeno")
+    mio, num_mio = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke pedido propio")
+    try:
+        r = await _pedir(c, ha, numero, pide_archivo=False)
+        idp = r.json()["pedidos"][0]["id_tramite_pedido"]
+        form = {"texto": "Intento responder lo ajeno"}
+        r0 = await c.post(f"{BASE_PUB}/2000000000/pedidos/{idp}/responder", headers=hv, data=form)
+        r = await c.post(f"{BASE_PUB}/{ido}/pedidos/{idp}/responder", headers=hv, data=form)
+        check(r0.status_code == 404 and r.status_code == 404 and r.text == r0.text, "trámite ajeno: 404 idéntico",
+              f"{r.status_code} {r.text}")
+        r = await c.post(f"{BASE_PUB}/{mio}/pedidos/{idp}/responder", headers=hv, data=form)
+        check(r.status_code == 404, "pedido ajeno colgado de mi trámite: 404", f"{r.status_code}")
+        p = await q1("SELECT estado FROM tramite_pedido_iniciador WHERE id_tramite_pedido = :p", p=idp)
+        check(p["estado"] == "abierto", "el pedido ajeno sigue abierto", str(p))
+    finally:
+        await ejecutar("DELETE FROM ciudadano_aviso WHERE tipo = 'tramite_pedido' AND recurso_tipo = 'tramite' AND recurso_id = :t", t=ido)
+        for i in (ido, mio):
+            await _limpiar_tramite_completo(i)
+
+
 CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cuenta_422,
          test_backoffice_alta_con_cuenta_201,
          test_identidad_validar_y_revocar, test_identidad_en_perfil_publico, test_backoffice_alta_exige_identidad,
@@ -987,7 +1225,9 @@ CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cue
          test_alta_limites_de_carga, test_alta_filtra_datos_ajenos,
          test_mis_tramites_incluye_ventanilla, test_detalle_sin_datos_internos, test_ajeno_404,
          test_documento_del_paso, test_resumen_tramites,
-         test_estado_oculto_para_iniciador]
+         test_estado_oculto_para_iniciador,
+         test_pedido_ciclo_completo, test_pedido_reglas_422, test_respuesta_doble_409, test_cancelar_pedido,
+         test_ajeno_404_pedido]
 
 
 async def main() -> int:

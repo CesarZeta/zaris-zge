@@ -123,7 +123,9 @@ from app.middleware.limite_cuerpo import LimiteCuerpoMiddleware  # noqa: E402
 from app.api.routes.publico_tramites import MAX_CUERPO_BYTES as _TRAMITES_MAX_CUERPO  # noqa: E402
 app.add_middleware(LimiteCuerpoMiddleware,
                    limites={("POST", "/api/v1/publico/tramites"): _TRAMITES_MAX_CUERPO},
-                   patrones=[("POST", r"/api/v1/publico/tramites/[0-9]{1,10}/documentos", _TRAMITES_MAX_CUERPO)])
+                   patrones=[("POST", r"/api/v1/publico/tramites/[0-9]{1,10}/documentos", _TRAMITES_MAX_CUERPO),
+                             ("POST", r"/api/v1/publico/tramites/[0-9]{1,10}/pedidos/[0-9]{1,10}/responder",
+                              _TRAMITES_MAX_CUERPO)])
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=ORIGEN_ZARIS_REGEX,
