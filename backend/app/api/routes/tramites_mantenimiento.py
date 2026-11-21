@@ -91,13 +91,24 @@ async def ejecutar_mantenimiento(
                 # IT-01 F6.4: el municipio queda con error en el log del workflow (lo demás se conserva).
                 return {"archivado": archivado, "purga": purga, "desistimiento": desistimiento,
                         "error": f"desistimiento: {error_publico(e)}"}
-            return {"archivado": archivado, "purga": purga, "desistimiento": desistimiento}
+            # Pedidos al vecino sin respuesta: timer propio, mismas claves. Idem best-effort.
+            try:
+                pedidos = await svc_ciclo.procesar_pedidos_sin_respuesta(db, id_municipio=id_m)
+            except Exception as e:
+                logger.exception("Mantenimiento tramites: pedidos sin respuesta fallo (municipio %s)", id_m)
+                await db.rollback()
+                return {"archivado": archivado, "purga": purga, "desistimiento": desistimiento,
+                        "pedidos_sin_respuesta": {"error": True, "avisos": 0, "desistidos": 0},
+                        "error": f"pedidos sin respuesta: {error_publico(e)}"}
+            return {"archivado": archivado, "purga": purga, "desistimiento": desistimiento,
+                    "pedidos_sin_respuesta": pedidos}
 
         # Por municipio (IT-01), cada uno con sus plazos; un fallo no frena a los demas.
         por_municipio = await por_cada_municipio(db, "Mantenimiento tramites", _uno)
         archivado = {"archivados": 0, "ids": []}
         purga = {"dry_run": None, "evaluados": 0, "purgados": 0, "errores": 0, "ids": []}
         desistimiento = {"avisos": 0, "desistidos": 0, "ids": []}
+        pedidos_sin_respuesta = {"avisos": 0, "desistidos": 0, "ids": []}
         for r in por_municipio.values():
             a, p, d = r.get("archivado", {}), r.get("purga", {}), r.get("desistimiento", {})
             archivado["archivados"] += a.get("archivados", 0)
@@ -108,23 +119,30 @@ async def ejecutar_mantenimiento(
             desistimiento["avisos"] += d.get("avisos", 0)
             desistimiento["desistidos"] += d.get("desistidos", 0)
             desistimiento["ids"] += d.get("ids", [])
+            ps = r.get("pedidos_sin_respuesta", {})
+            pedidos_sin_respuesta["avisos"] += ps.get("avisos", 0)
+            pedidos_sin_respuesta["desistidos"] += ps.get("desistidos", 0)
+            pedidos_sin_respuesta["ids"] += ps.get("ids", [])
         # dry-run si todos los municipios corrieron en dry-run (el detalle va por municipio).
         purga["dry_run"] = all(r.get("purga", {}).get("dry_run", True) for r in por_municipio.values())
         logger.info(
             "Mantenimiento tramites OK: archivados=%s purga_dry_run=%s purgados=%s errores=%s "
-            "avisos_desist=%s desistidos=%s municipios=%s",
+            "avisos_desist=%s desistidos=%s avisos_pedido=%s desistidos_pedido=%s municipios=%s",
             archivado["archivados"],
             purga["dry_run"],
             purga["purgados"],
             purga["errores"],
             desistimiento["avisos"],
             desistimiento["desistidos"],
+            pedidos_sin_respuesta["avisos"],
+            pedidos_sin_respuesta["desistidos"],
             len(por_municipio),
         )
         return {
             "archivado": archivado,
             "purga": purga,
             "desistimiento": desistimiento,
+            "pedidos_sin_respuesta": pedidos_sin_respuesta,
             "por_municipio": por_municipio,
             **await resumen_municipios(db, por_municipio),
             "timestamp": datetime.now(timezone.utc).isoformat(),

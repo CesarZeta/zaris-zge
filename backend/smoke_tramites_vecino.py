@@ -1338,6 +1338,191 @@ async def test_pedido_se_cancela_al_cerrar(c: httpx.AsyncClient, ha: dict) -> No
         await _limpiar_tramite_completo(idt)
 
 
+async def _cfg_desistimiento(mun: int) -> dict:
+    from app.services.tramites.retencion import _leer_int_config
+    async with AsyncSessionLocal() as s:
+        cfg = {k: await _leer_int_config(s, k, v, id_municipio=mun) for k, v in _ciclo_vida.DEFAULTS.items()}
+    return cfg
+
+
+async def _correr_pedidos_sin_respuesta(mun: int) -> dict:
+    async with AsyncSessionLocal() as s:
+        return await _ciclo_vida.procesar_pedidos_sin_respuesta(s, id_municipio=mun)
+
+
+async def _viajar_pedido(idt: int, dias: float) -> None:
+    await ejecutar("UPDATE tramite_pedido_iniciador SET fecha_pedido = NOW() - make_interval(secs => CAST(:s AS float)) "
+                   "WHERE id_tramite = :t", s=dias * 86400, t=idt)
+
+
+async def _estado_pedido(idt: int) -> dict:
+    return await q1("SELECT id_tramite_pedido AS id, estado, aviso_nivel AS nivel, aviso_en FROM tramite_pedido_iniciador "
+                    "WHERE id_tramite = :t", t=idt)
+
+
+async def _avisos_pedido(idt: int) -> list:
+    async with AsyncSessionLocal() as s:
+        rows = (await s.execute(text(
+            "SELECT id_agente, id_usuario_alta AS id_usuario, metadata_jsonb AS md FROM tramite_movimiento "
+            "WHERE id_tramite = :t AND tipo = 'aviso_iniciador' AND metadata_jsonb ->> 'id_tramite_pedido' IS NOT NULL "
+            "ORDER BY id_tramite_movimiento"), {"t": idt})).mappings().all()
+    return [dict(r) for r in rows]
+
+
+async def test_pedido_escalones(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[28] Pedido sin respuesta: avisos escalonados (1 nivel por corrida) y desistimiento")
+    mun = await _municipio_base()
+    cfg = await _cfg_desistimiento(mun)
+    a1, a2, dd, fh = (cfg[_ciclo_vida.CFG_AVISO1], cfg[_ciclo_vida.CFG_AVISO2],
+                      cfg[_ciclo_vida.CFG_DESISTIR], cfg[_ciclo_vida.CFG_FINAL_HORAS])
+    idt, numero = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke pedido escalones")
+    texto = "Necesitamos la foto del frente del arbol"
+    try:
+        r = await _pedir(c, ha, numero, texto=texto, pide_archivo=False)
+        check(r.status_code in (200, 201), "pedido creado", f"{r.status_code} {r.text[:120]}")
+        await ejecutar("UPDATE tramite SET desist_aviso_nivel = 0 WHERE id_tramite = :t", t=idt)
+        # Recien hecho: no corresponde nada.
+        res = await _correr_pedidos_sin_respuesta(mun)
+        check(res.get("activo") is True and (await _estado_pedido(idt))["nivel"] == 0, "pedido nuevo: sin aviso", str(res)[:120])
+        # a1 + 1 dias -> nivel 1 con aviso que cita el pedido.
+        await _viajar_pedido(idt, a1 + 1)
+        MAILS.clear()
+        res = await _correr_pedidos_sin_respuesta(mun)
+        e = await _estado_pedido(idt)
+        check(e["nivel"] == 1 and e["aviso_en"] is not None and idt in [x["id_tramite"] for x in res["avisados"]],
+              "a1+1 dias: nivel 1", f"{e} {res}")
+        check(res["avisos"] >= 1 and "avisados" in res and "desistidos" in res and "ids" in res, "forma del resultado", str(res)[:150])
+        av = await _avisos_pedido(idt)
+        check(len(av) == 1 and av[0]["id_agente"] is None and av[0]["id_usuario"] is None
+              and av[0]["md"].get("nivel") == 1 and av[0]["md"].get("id_tramite_pedido") == e["id"]
+              and av[0]["md"].get("automatico") is True, "movimiento aviso_iniciador de sistema con metadata", str(av))
+        check(any(texto in m["html"] for m in MAILS), "el mail cita el texto del pedido", str([m["subject"] for m in MAILS]))
+        ca = await q1("SELECT mensaje FROM ciudadano_aviso WHERE tipo = 'tramite_pedido' AND recurso_tipo = 'tramite' "
+                      "AND recurso_id = :t", t=idt)
+        check(ca is not None and texto in ca["mensaje"], "aviso en la bandeja del vecino con el texto", str(ca))
+        # Correr de nuevo sin mover el tiempo: ningun aviso nuevo.
+        res = await _correr_pedidos_sin_respuesta(mun)
+        check((await _estado_pedido(idt))["nivel"] == 1 and len(await _avisos_pedido(idt)) == 1
+              and idt not in [x["id_tramite"] for x in res["avisados"]], "segunda corrida sin mover: sin aviso nuevo", str(res)[:150])
+        # Un solo nivel por corrida: aunque el pedido tenga mucho atraso, de 1 pasa a 2.
+        await _viajar_pedido(idt, a2 + 1)
+        await _correr_pedidos_sin_respuesta(mun)
+        check((await _estado_pedido(idt))["nivel"] == 2, "a2+1 dias: nivel 2")
+        await _viajar_pedido(idt, dd - fh / 24.0 + 0.1)
+        await _correr_pedidos_sin_respuesta(mun)
+        check((await _estado_pedido(idt))["nivel"] == 3, "umbral final: nivel 3 (ultimo aviso)")
+        check(len(await _avisos_pedido(idt)) == 3, "tres avisos registrados", str(len(await _avisos_pedido(idt))))
+        # dd + 1 con nivel 3 -> desistido.
+        await _viajar_pedido(idt, dd + 1)
+        MAILS.clear()
+        res = await _correr_pedidos_sin_respuesta(mun)
+        t = await q1("SELECT resultado, fecha_archivado, archivado_motivo FROM tramite WHERE id_tramite = :t", t=idt)
+        check(t["resultado"] == "desistido" and t["fecha_archivado"] is not None and t["archivado_motivo"] == "desistimiento"
+              and idt in res["ids"] and res["desistidos"] >= 1, "dd+1 dias: tramite desistido", f"{t} {res}")
+        p = await q1("SELECT estado, motivo_cancelacion FROM tramite_pedido_iniciador WHERE id_tramite = :t", t=idt)
+        check(p["estado"] == "cancelado" and p["motivo_cancelacion"] == "El trámite se dio por desistido",
+              "el pedido queda cancelado con el motivo", str(p))
+        m = await q1("SELECT id_agente, id_usuario_alta AS id_usuario, metadata_jsonb AS md FROM tramite_movimiento WHERE id_tramite = :t "
+                     "AND tipo = 'desistido'", t=idt)
+        check(m is not None and m["md"].get("id_tramite_pedido") == (await _estado_pedido(idt))["id"]
+              and m["md"].get("automatico") is True and m["id_usuario"] is None, "movimiento desistido con el id del pedido", str(m))
+        mc = await q1("SELECT metadata_jsonb AS md FROM tramite_movimiento WHERE id_tramite = :t AND tipo = 'pedido_cancelado'", t=idt)
+        check(mc is not None and mc["md"].get("automatico") is True, "movimiento pedido_cancelado automatico", str(mc))
+        check(any("desistido" in m2["subject"] for m2 in MAILS), "mail de desistimiento al vecino", str([m2["subject"] for m2 in MAILS]))
+        # Desistido y archivado: no vuelve a procesarse.
+        res = await _correr_pedidos_sin_respuesta(mun)
+        check(idt not in res["ids"] and idt not in [x["id_tramite"] for x in res["avisados"]], "no se reprocesa", str(res)[:120])
+    finally:
+        await _limpiar_avisos_pedido(idt)
+        await _limpiar_tramite_completo(idt)
+
+
+async def test_pedido_desistimiento_apagado(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[29] Pedido sin respuesta: con el desistimiento apagado no hace nada")
+    mun = await _municipio_base()
+    cfg = await _cfg_desistimiento(mun)
+    idt, numero = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke pedido apagado")
+    original = _ciclo_vida._leer_bool_config
+
+    async def _apagado(db, clave, default, *, id_municipio):
+        return False
+    try:
+        await _pedir(c, ha, numero, pide_archivo=False)
+        await _viajar_pedido(idt, cfg[_ciclo_vida.CFG_DESISTIR] + 5)
+        _ciclo_vida._leer_bool_config = _apagado
+        res = await _correr_pedidos_sin_respuesta(mun)
+        check(res.get("activo") is False and res.get("avisos") == 0 and res.get("desistidos") == 0, "resultado inactivo", str(res))
+        e = await _estado_pedido(idt)
+        t = await q1("SELECT resultado FROM tramite WHERE id_tramite = :t", t=idt)
+        check(e["estado"] == "abierto" and e["nivel"] == 0 and t["resultado"] == "pendiente", "nada cambio", f"{e} {t}")
+    finally:
+        _ciclo_vida._leer_bool_config = original
+        await _limpiar_avisos_pedido(idt)
+        await _limpiar_tramite_completo(idt)
+
+
+async def test_cambio_de_estado_no_reinicia(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[30] Una transicion del tramite no reinicia el timer del pedido")
+    mun = await _municipio_base()
+    cfg = await _cfg_desistimiento(mun)
+    idt, numero = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke pedido sin reinicio")
+    try:
+        await _pedir(c, ha, numero, pide_archivo=False)
+        await _viajar_pedido(idt, cfg[_ciclo_vida.CFG_AVISO1] + 1)
+        await _correr_pedidos_sin_respuesta(mun)
+        antes = await _estado_pedido(idt)
+        check(antes["nivel"] == 1, "nivel 1 antes de la transicion", str(antes))
+        finales = {x["e"] for x in await _estados_finales(idt)}
+        r = await c.get(f"{BASE_BO}/{numero}/transiciones-permitidas", headers=ha)
+        ts = [t for t in r.json().get("transiciones", [])
+              if t["disponible"] and not t["requiere_adjunto"] and t["id_estado_destino"] not in finales]
+        check(bool(ts), "hay una transicion no final disponible")
+        if ts:
+            r = await c.post(f"{BASE_BO}/{numero}/transicionar", headers=ha,
+                             json={"id_tipo_tramite_transicion": ts[0]["id_tipo_tramite_transicion"], "comentario": "smoke"})
+            check(r.status_code == 200, "transicion aplicada", f"{r.status_code} {r.text[:120]}")
+            despues = await _estado_pedido(idt)
+            check(despues["estado"] == "abierto" and despues["nivel"] == 1 and despues["aviso_en"] == antes["aviso_en"],
+                  "el nivel y la fecha del aviso no cambian", f"{antes} {despues}")
+            # Y el timer sigue: con mas atraso pasa a nivel 2.
+            await _viajar_pedido(idt, cfg[_ciclo_vida.CFG_AVISO2] + 1)
+            await _correr_pedidos_sin_respuesta(mun)
+            check((await _estado_pedido(idt))["nivel"] == 2, "el timer sigue corriendo (nivel 2)")
+    finally:
+        await _limpiar_avisos_pedido(idt)
+        await _limpiar_tramite_completo(idt)
+
+
+async def test_pedido_en_tramite_cerrado_no_avisa(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[31] Un pedido abierto en un tramite archivado o en estado final no avisa ni desiste")
+    mun = await _municipio_base()
+    cfg = await _cfg_desistimiento(mun)
+    atraso = cfg[_ciclo_vida.CFG_DESISTIR] + 10
+    a, na = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke pedido tramite archivado")
+    f, nf = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke pedido tramite final")
+    try:
+        for n in (na, nf):
+            await _pedir(c, ha, n, pide_archivo=False)
+        for i in (a, f):
+            await _viajar_pedido(i, atraso)
+        await ejecutar("UPDATE tramite SET fecha_archivado = NOW() WHERE id_tramite = :t", t=a)
+        fin = (await _estados_finales(f))
+        check(bool(fin), "el tipo tiene un estado final")
+        if fin:
+            await ejecutar("UPDATE tramite SET id_tipo_tramite_estado_actual = :e WHERE id_tramite = :t", e=fin[0]["e"], t=f)
+        res = await _correr_pedidos_sin_respuesta(mun)
+        for i, nombre in ((a, "archivado"), (f, "en estado final")):
+            e = await _estado_pedido(i)
+            t = await q1("SELECT resultado FROM tramite WHERE id_tramite = :t", t=i)
+            check(e["estado"] == "abierto" and e["nivel"] == 0 and t["resultado"] == "pendiente"
+                  and i not in res["ids"] and i not in [x["id_tramite"] for x in res["avisados"]],
+                  f"tramite {nombre}: ni aviso ni desistimiento", f"{e} {t}")
+    finally:
+        for i in (a, f):
+            await _limpiar_avisos_pedido(i)
+            await _limpiar_tramite_completo(i)
+
+
 CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cuenta_422,
          test_backoffice_alta_con_cuenta_201,
          test_identidad_validar_y_revocar, test_identidad_en_perfil_publico, test_backoffice_alta_exige_identidad,
@@ -1348,7 +1533,9 @@ CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cue
          test_documento_del_paso, test_resumen_tramites,
          test_estado_oculto_para_iniciador,
          test_pedido_ciclo_completo, test_pedido_reglas_422, test_respuesta_doble_409, test_cancelar_pedido,
-         test_ajeno_404_pedido, test_visto_con_guard, test_pedido_se_cancela_al_cerrar]
+         test_ajeno_404_pedido, test_visto_con_guard, test_pedido_se_cancela_al_cerrar,
+         test_pedido_escalones, test_pedido_desistimiento_apagado, test_cambio_de_estado_no_reinicia,
+         test_pedido_en_tramite_cerrado_no_avisa]
 
 
 async def main() -> int:
