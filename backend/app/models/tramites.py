@@ -187,7 +187,7 @@ class Tramite(Base):
     id_empresa_iniciadora            = Column(Integer, ForeignKey("empresas.id_empresa"))
     id_ciudadano_representante       = Column(Integer, ForeignKey("ciudadanos.id_ciudadano"))
     id_subarea_iniciadora            = Column(Integer, ForeignKey("subarea.id_subarea"))
-    id_agente_iniciador              = Column(Integer, ForeignKey("agentes.id_agente"), nullable=False)
+    id_agente_iniciador              = Column(Integer, ForeignKey("agentes.id_agente"))
 
     id_tipo_tramite_estado_actual    = Column(Integer, ForeignKey("tipo_tramite_estado.id_tipo_tramite_estado"), nullable=False)
     fecha_entrada_estado_actual      = Column(TIMESTAMPTZ, nullable=False, server_default=func.now())
@@ -223,7 +223,7 @@ class TramiteMovimiento(Base):
     destino_jsonb                = Column(JSONB)
     comentario                   = Column(Text)
     metadata_jsonb               = Column(JSONB)
-    id_agente                    = Column(Integer, ForeignKey("agentes.id_agente"), nullable=False)
+    id_agente                    = Column(Integer, ForeignKey("agentes.id_agente"))
     ip                           = Column(String(45))
     user_agent                   = Column(Text)
     activo                       = Column(Boolean, nullable=False, default=True)
@@ -248,7 +248,7 @@ class TramiteDocumento(Base):
     requiere_firma               = Column(Boolean, nullable=False, default=False)
     estado_firma                 = Column(String(20), nullable=False, default='no_requiere')
     posicion_orden               = Column(Integer, nullable=False)
-    id_agente_subio              = Column(Integer, ForeignKey("agentes.id_agente"), nullable=False)
+    id_agente_subio              = Column(Integer, ForeignKey("agentes.id_agente"))
     binario_purgado              = Column(Boolean, nullable=False, default=False)  # mig 75: archivo fisico depurado del bucket
     fecha_purga_binario          = Column(TIMESTAMPTZ)  # mig 75: cuando se purgo
     activo                       = Column(Boolean, nullable=False, default=True)
