@@ -48,7 +48,7 @@
 ## 🟠 Pendientes (backoffice / backend)
 
 **Decisiones de negocio pendientes (César)**
-- 🟠 **Regla de César (2026-11-21): ningún trámite ni servicio sin cuenta de vecino o de empresa.** Para trámites la cubre el diseño del portal (el alta del backoffice va a exigir la cuenta; hoy hay 9 trámites cargados por agentes a vecinos sin cuenta). **Falta verificar** reclamos, turnos y entradas cargados desde el backoffice.
+- 🟠 **Regla de César (2026-11-21): ningún trámite ni servicio sin cuenta de vecino o de empresa; la única excepción son las emergencias.** Para trámites la cubre el diseño del portal (el alta del backoffice va a exigir la cuenta; hoy hay 9 trámites cargados por agentes a vecinos sin cuenta). **Falta verificar** reclamos, turnos y entradas cargados desde el backoffice.
 - 🟠 **Prueba de cierre — hallazgos que quedan**, con detalle en [`PLAN_MULTI_MUNICIPIO_F4_F5.md`](PLAN_MULTI_MUNICIPIO_F4_F5.md) → «Prueba de cierre — hallazgos»: (6) pantalla para que el super elija municipio, (7) encuestas en «Promociones» de Gmail, (9) App Vecinos, (10) tres verificaciones pendientes, (11) menores.
 - 🟢 **Contorno — 9 menores de la revisión final (2026-10-28), ninguno rompe:** lista en [`PLAN_CONTORNO_MUNICIPIO.md`](PLAN_CONTORNO_MUNICIPIO.md) → «Menores diferidos» (el más visible: la fecha del origen en UTC).
 - 🟡 **Botón de pánico de la PWA:** sin probar con el vecino de prueba (dispara una alerta REAL al COM). Las pruebas de vecino y funcionario están hechas (2026-10-12 y 2026-10-23).
