@@ -12,6 +12,7 @@ import type {
   EmpresaCreate,
   CiudadanoEmpresaCreate,
   CuentasCiudadano,
+  IdentidadValidada,
   SubareaHit,
 } from '../types/ciudadano'
 
@@ -70,6 +71,14 @@ export const crearCuentaVecino = (id: number) =>
 /** Estado de las dos cuentas (App Vecinos / ZARIS) para los chips de la ficha. */
 export const estadoCuentasCiudadano = (id: number) =>
   api.get<CuentasCiudadano>(`${BASE}/ciudadanos/${id}/cuentas`)
+
+/** Deja constancia de que un agente vio el documento del vecino en persona (mig 139). */
+export const validarIdentidad = (id: number, body: { documento_presentado: string; observacion?: string }) =>
+  api.post<{ identidad_validada: IdentidadValidada | null }>(`${BASE}/ciudadanos/${id}/identidad/validar`, body)
+
+/** Revoca la validación de identidad activa (Supervisor o Administrador). */
+export const revocarIdentidad = (id: number, body: { motivo: string }) =>
+  api.post<{ identidad_validada: null }>(`${BASE}/ciudadanos/${id}/identidad/revocar`, body)
 
 /** Buscador predictivo de subáreas (mismo endpoint que usa el módulo Usuarios). */
 export const buscarSubareas = (q: string) =>

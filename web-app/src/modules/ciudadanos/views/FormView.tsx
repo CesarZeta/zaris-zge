@@ -14,6 +14,7 @@ import {
 import { CiudadanoForm } from '../components/CiudadanoForm'
 import { aUsername, usernameValido } from '../components/CuentaZarisCampos'
 import { CuentasChips } from '../components/CuentasChips'
+import { IdentidadPanel } from '../components/IdentidadPanel'
 import { EmpresaVinculadaPanel } from '../components/EmpresaVinculadaPanel'
 import {
   extraerDniDeCuil,
@@ -376,6 +377,7 @@ export function FormView() {
 
         <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
           {modo !== 'new' && id ? <CuentasChips idCiudadano={id} /> : null}
+          {modo !== 'new' && id ? <IdentidadPanel idCiudadano={id} /> : null}
           <CiudadanoForm
             form={form}
             errores={errores}

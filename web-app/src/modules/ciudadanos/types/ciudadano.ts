@@ -66,6 +66,13 @@ export interface CuentasCiudadano {
     activo: boolean
     debe_cambiar_password: boolean
   } | null
+  /** Identidad validada en una ventanilla del municipio (mig 139). null = sin validar. */
+  identidad_validada?: IdentidadValidada | null
+}
+
+export interface IdentidadValidada {
+  fecha: string
+  agente_nombre: string | null
 }
 
 /** Lo que la ficha no tiene y la cuenta ZARIS necesita. Viaja dentro del POST/PUT de la
