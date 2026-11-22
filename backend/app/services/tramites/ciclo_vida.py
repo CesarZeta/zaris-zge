@@ -309,7 +309,25 @@ async def _tomar_tramite_para_timer(db: AsyncSession, id_tramite: int, sla_defau
     fila = (await db.execute(text(_SQL_TRAMITE_TIMER), {"id": id_tramite, "sla": sla_default})).mappings().first()
     if not fila or fila["es_final"] or (exige_espera and not fila["espera_iniciador"]):
         return None
+    if exige_espera and await _vecino_ya_subio_documentos(db, id_tramite):
+        return None
     return dict(fila)
+
+
+# El vecino ya subió documentos en el estado actual: la pelota está en el municipio. Mismo criterio en
+# la selección de candidatos y en la re-lectura bloqueada (decisión de César, 2026-11-22).
+_SQL_VECINO_SUBIO = """
+    EXISTS (SELECT 1 FROM tramite_documento td
+             WHERE td.id_tramite = t.id_tramite AND td.activo = TRUE
+               AND td.id_ciudadano_subio IS NOT NULL
+               AND td.fecha_alta >= t.fecha_entrada_estado_actual)
+"""
+
+
+async def _vecino_ya_subio_documentos(db: AsyncSession, id_tramite: int) -> bool:
+    return bool((await db.execute(text(
+        f"SELECT {_SQL_VECINO_SUBIO} AS subio FROM tramite t WHERE t.id_tramite = :id"),
+        {"id": id_tramite})).scalar())
 
 
 def _nivel_siguiente(nivel: int, dias: float, a1: int, a2: int, umbral_final: float, dd: int):
@@ -406,7 +424,7 @@ async def procesar_desistimientos(db: AsyncSession, *, id_municipio: int, limite
 
     cfg = {k: await _leer_int_config(db, k, v, id_municipio=id_municipio) for k, v in DEFAULTS.items()}
 
-    candidatos = (await db.execute(text("""
+    candidatos = (await db.execute(text(f"""
         SELECT t.id_tramite
           FROM tramite t
           JOIN tipo_tramite_estado e ON e.id_tipo_tramite_estado = t.id_tipo_tramite_estado_actual
@@ -416,6 +434,7 @@ async def procesar_desistimientos(db: AsyncSession, *, id_municipio: int, limite
            AND COALESCE(e.espera_iniciador, FALSE) = TRUE
            AND t.iniciador_tipo IN ('ciudadano', 'empresa')
            AND COALESCE(t.resultado, 'pendiente') = 'pendiente'
+           AND NOT {_SQL_VECINO_SUBIO}
          ORDER BY t.id_tramite
          LIMIT :lim
     """), {"lim": limite, "mun": id_municipio})).scalars().all()

@@ -1852,6 +1852,64 @@ async def test_cancelar_pedido_orden_de_locks(c: httpx.AsyncClient, ha: dict) ->
         await _limpiar_tramite_completo(idt)
 
 
+async def test_espera_congelada_si_el_vecino_subio(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[40] Timer de espera_iniciador: si el vecino ya subió documentos en el estado, no avanza")
+    mun = await _municipio_base()
+    cfg = await _cfg_desistimiento(mun)
+    idt, _numero = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke espera congelada")
+    est = await q1("SELECT t.id_tipo_tramite_estado_actual AS e, e.espera_iniciador AS esp FROM tramite t "
+                   "JOIN tipo_tramite_estado e ON e.id_tipo_tramite_estado = t.id_tipo_tramite_estado_actual "
+                   "WHERE t.id_tramite = :t", t=idt)
+    id_agente = (await q1("SELECT id_agente FROM agentes WHERE id_municipio = :m AND activo = TRUE LIMIT 1", m=mun))["id_agente"]
+
+    async def _fila() -> Optional[dict]:
+        async with AsyncSessionLocal() as s:
+            return await _ciclo_vida.procesar_desistimiento_tramite(s, idt, cfg)
+
+    async def _foto() -> dict:
+        return await q1("SELECT resultado, fecha_archivado, desist_aviso_nivel AS nivel FROM tramite WHERE id_tramite = :t", t=idt)
+
+    async def _doc(alta_sql: str, vecino: bool) -> None:
+        await ejecutar(
+            "INSERT INTO tramite_documento (id_tramite, nombre, nombre_archivo_original, storage_path, mime_type, "
+            "tamano_bytes, hash_sha256, posicion_orden, id_agente_subio, id_ciudadano_subio, id_municipio, fecha_alta) "
+            f"VALUES (:t, 'Doc', 'doc.pdf', 'smoke/doc.pdf', 'application/pdf', 3, 'h', 1, :ag, :ci, :m, {alta_sql}) "
+            "RETURNING id_tramite_documento AS id",
+            t=idt, ag=None if vecino else id_agente, ci=ID_CIUDADANO if vecino else None, m=mun)
+
+    async def _reiniciar() -> None:
+        await ejecutar("DELETE FROM tramite_documento WHERE id_tramite = :t", t=idt)
+        await ejecutar("UPDATE tramite SET desist_aviso_nivel = 0, desist_aviso_en = NULL, resultado = 'pendiente', "
+                       "fecha_archivado = NULL, fecha_entrada_estado_actual = NOW() - INTERVAL '400 days' "
+                       "WHERE id_tramite = :t", t=idt)
+    try:
+        await ejecutar("UPDATE tipo_tramite_estado SET espera_iniciador = TRUE WHERE id_tipo_tramite_estado = :e", e=est["e"])
+        await ejecutar("UPDATE tramite SET fecha_alta = NOW() - INTERVAL '400 days' WHERE id_tramite = :t", t=idt)
+        casos = [("sin documento del vecino (control)", None, False, True),
+                 ("documento del vecino subido después de entrar al estado", "NOW() - INTERVAL '1 day'", True, False),
+                 ("documento del vecino de ANTES de entrar al estado", "NOW() - INTERVAL '500 days'", True, True),
+                 ("documento subido por un agente", "NOW() - INTERVAL '1 day'", False, True)]
+        for nombre, alta, vecino, avisa in casos:
+            await _reiniciar()
+            if alta:
+                await _doc(alta, vecino)
+            antes, movs, avisos = await _foto(), await _movs_timer(idt), await _avisos_bandeja(idt)
+            MAILS.clear()
+            res = await _fila()
+            if avisa:
+                check(res is not None and res.get("accion") == "aviso" and (await _foto())["nivel"] == 1,
+                      f"{nombre}: el timer avisa", f"{res} {await _foto()}")
+            else:
+                check(res is None and await _foto() == antes and await _movs_timer(idt) == movs
+                      and await _avisos_bandeja(idt) == avisos and not MAILS,
+                      f"{nombre}: no escribe nada (ni movimiento, ni aviso, ni nivel)", f"{res} {antes} -> {await _foto()}")
+    finally:
+        await ejecutar("UPDATE tipo_tramite_estado SET espera_iniciador = :v WHERE id_tipo_tramite_estado = :e",
+                       v=bool(est["esp"]), e=est["e"])
+        await _limpiar_avisos_pedido(idt)
+        await _limpiar_tramite_completo(idt)
+
+
 CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cuenta_422,
          test_backoffice_alta_con_cuenta_201,
          test_identidad_validar_y_revocar, test_identidad_en_perfil_publico, test_backoffice_alta_exige_identidad,
@@ -1867,7 +1925,7 @@ CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cue
          test_pedido_en_tramite_cerrado_no_avisa, test_admin_ofrecer_al_vecino,
          test_cron_pedido_foto_fresca, test_cron_espera_foto_fresca, test_tope_cuerpo_ids_no_canonicos,
          test_documentos_tramite_cerrado_409, test_descarga_nombre_no_latin1, test_visto_admin_sin_agente,
-         test_cancelar_pedido_orden_de_locks]
+         test_cancelar_pedido_orden_de_locks, test_espera_congelada_si_el_vecino_subio]
 
 
 async def main() -> int:
