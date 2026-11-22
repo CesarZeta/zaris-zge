@@ -147,13 +147,13 @@ Los avisos los escribe el **backend** en los mismos hooks post-commit que dispar
 
 | Verbo | Ruta | Auth | Para qué |
 |---|---|---|---|
-| GET | `?solo_no_leidos=&limit=&offset=` | publico | `{avisos: [...], no_leidos, total}`, del más nuevo al más viejo. Cada aviso: `{id_aviso, tipo ('reclamo_estado' \| 'emergencia_estado' \| 'tramite_estado' \| 'tramite_pendiente' \| 'tramite_pedido' \| 'municipio'), titulo, mensaje, url (ruta RELATIVA en la PWA, misma que el push: "/reclamos/123", "/emergencias"; los de trámites traen "/alertas"), recurso_tipo ('reclamo' \| 'emergencia' \| 'tramite'), recurso_id, leido, leido_en, fecha}`. **Trámites (desde 2026-08-30):** `tramite_estado` = "tu trámite terminó: APROBADO/RECHAZADO" (o desistido); `tramite_pendiente` = avisos escalonados cuando el expediente espera documentación del vecino (30/60 días y 72 h antes de darlo por desistido). La PWA solo los muestra (los endpoints de trámites del vecino están en la sección 12). |
+| GET | `?solo_no_leidos=&limit=&offset=` | publico | `{avisos: [...], no_leidos, total}`, del más nuevo al más viejo. Cada aviso: `{id_aviso, tipo ('reclamo_estado' \| 'emergencia_estado' \| 'tramite_estado' \| 'tramite_pendiente' \| 'tramite_pedido' \| 'municipio'), titulo, mensaje, url (ruta RELATIVA en la PWA, misma que el push: "/reclamos/123", "/emergencias"; los de trámites traen "/tramites/{id_tramite}" desde el 2026-11-22 y los anteriores conservan "/alertas"), recurso_tipo ('reclamo' \| 'emergencia' \| 'tramite'), recurso_id, leido, leido_en, fecha}`. **Trámites (desde 2026-08-30):** `tramite_estado` = "tu trámite terminó: APROBADO/RECHAZADO" (o desistido); `tramite_pendiente` = avisos escalonados cuando el expediente espera documentación del vecino (30/60 días y 72 h antes de darlo por desistido). Tocarlos abre el trámite en la PWA (sección 12). |
 | PATCH | `/{id_aviso}/leer` | publico | Marca UN aviso leído. Idempotente. **404 si no existe o no es del vecino** (mismo cuerpo). Devuelve `{ok, id_aviso, leido, leido_en, no_leidos}`. |
 | POST | `/leer-todos` | publico | Marca todos los pendientes. `{ok, marcados, no_leidos: 0}`. |
 
 ## 12. Trámites del vecino — `/api/v1/publico/tramites` (nuevo 2026-11-22, mig 139)
 
-Todos los endpoints son scope `publico` (el `id_ciudadano` sale del token) y exigen el módulo `tramites` habilitado en el municipio. **La PWA todavía no tiene pantallas** de este circuito (fase 3): hoy solo existe el backend. Un trámite que no es del vecino responde **404 idéntico** al de un id inexistente.
+Todos los endpoints son scope `publico` (el `id_ciudadano` sale del token) y exigen el módulo `tramites` habilitado en el municipio. La PWA los usa desde el 2026-11-22: `/tramites` (lista), `/tramites/nuevo` (alta en cuatro pasos) y `/tramites/{id}` (detalle, documentos del paso y respuesta a pedidos). Un trámite que no es del vecino responde **404 idéntico** al de un id inexistente.
 
 | Verbo | Ruta | Auth | Para qué |
 |---|---|---|---|
@@ -173,7 +173,7 @@ Códigos que la PWA tiene que manejar:
 - **413** el cuerpo supera **25 MB** (tope de todo POST bajo `/api/v1/publico/tramites`, antes de parsear el multipart). **411** si falta `Content-Length`.
 - **422** validación: sin cuenta de vecino, tipo que exige identidad validada y el vecino no la tiene (el texto manda acercarse al municipio con el documento), campos o documentos inválidos o faltantes, formato o tamaño de archivo no aceptado, JSON mal formado en `datos`/`documentos`.
 
-**Bandeja de avisos (sección 11).** Los pedidos del municipio llegan al vecino como aviso `tramite_pedido` (nuevo) con `url` `/alertas`, `recurso_tipo` `tramite`; se suman a `tramite_estado` y `tramite_pendiente`. Un pedido cancelado por el municipio también se avisa.
+**Bandeja de avisos (sección 11).** Los pedidos del municipio llegan al vecino como aviso `tramite_pedido` (nuevo) con `url` `/tramites/{id_tramite}`, `recurso_tipo` `tramite`; se suman a `tramite_estado` y `tramite_pendiente`. Un pedido cancelado por el municipio también se avisa.
 
 ---
 

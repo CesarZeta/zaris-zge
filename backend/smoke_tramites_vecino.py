@@ -1968,6 +1968,31 @@ async def test_tipo_expone_validacion(c: httpx.AsyncClient, ha: dict) -> None:
                        v=_j.dumps(campo["v"]) if campo["v"] is not None else None, i=campo["id"])
 
 
+async def test_aviso_tramite_url(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[40] Los avisos de trámites al vecino (bandeja y push) abren el trámite en la app")
+    from app.services import push as _push
+    pushes: list[dict] = []
+    original = _push.enviar_push_ciudadano
+
+    async def _capturar_push(id_ciudadano, titulo, cuerpo, url=None, **kw):
+        pushes.append({"id": id_ciudadano, "url": url})
+        return 0
+
+    _push.enviar_push_ciudadano = _capturar_push
+    idt, numero = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke url del aviso")
+    try:
+        r = await _pedir(c, ha, numero, pide_archivo=False)
+        check(r.status_code == 200, "pedido creado", f"{r.status_code} {r.text[:120]}")
+        av = await q1("SELECT url_destino AS u FROM ciudadano_aviso WHERE tipo = 'tramite_pedido' AND recurso_tipo = 'tramite' "
+                      "AND recurso_id = :t ORDER BY 1 DESC LIMIT 1", t=idt)
+        check(av is not None and av["u"] == f"/tramites/{idt}", "el aviso de la bandeja lleva a /tramites/{id}", str(av))
+        check(any(p["url"] == f"/tramites/{idt}" for p in pushes), "el push lleva a /tramites/{id}", str(pushes))
+    finally:
+        _push.enviar_push_ciudadano = original
+        await _limpiar_avisos_pedido(idt)
+        await _limpiar_tramite_completo(idt)
+
+
 CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cuenta_422,
          test_backoffice_alta_con_cuenta_201,
          test_identidad_validar_y_revocar, test_identidad_en_perfil_publico, test_backoffice_alta_exige_identidad,
@@ -1984,7 +2009,8 @@ CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cue
          test_cron_pedido_foto_fresca, test_cron_espera_foto_fresca, test_tope_cuerpo_ids_no_canonicos,
          test_documentos_tramite_cerrado_409, test_descarga_nombre_no_latin1, test_visto_admin_sin_agente,
          test_cancelar_pedido_orden_de_locks, test_espera_congelada_si_el_vecino_subio,
-         test_cerrar_atraso_cancela_pedido, test_tipo_expone_validacion]
+         test_cerrar_atraso_cancela_pedido, test_tipo_expone_validacion,
+         test_aviso_tramite_url]
 
 
 async def main() -> int:

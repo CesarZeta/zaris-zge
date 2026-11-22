@@ -60,8 +60,10 @@ logger = logging.getLogger("zaris.tramites.ciclo_vida")
 
 RESULTADO_POR_ACCION = {"aprobar": "aprobado", "rechazar": "rechazado"}
 RESULTADOS_CON_ENCUESTA = ("aprobado", "rechazado")
-# La PWA no tiene pantallas de tramites: el aviso se lee en la bandeja.
-URL_PWA_AVISOS = "/alertas"
+def url_pwa_tramite(id_tramite: int) -> str:
+    """Ruta de la app del vecino que abre el trámite (fase 3, 2026-11-22). Los avisos viejos
+    conservan `/alertas`, que la app sigue manejando."""
+    return f"/tramites/{id_tramite}"
 
 CFG_ACTIVO = "tramite_desistimiento_activo"
 CFG_SLA_DEFAULT = "tramite_sla_dias_default"
@@ -142,11 +144,12 @@ async def _avisar_vecino(d: dict, tipo_aviso: str, titulo: str, cuerpo: str,
     si `con_email`, correo al iniciador (ciudadano o empresa). Best-effort."""
     id_c = d.get("id_ciudadano_iniciador")
     if d.get("iniciador_tipo") == "ciudadano" and id_c:
+        url = url_pwa_tramite(int(d["id_tramite"]))
         await registrar_aviso_ciudadano(
-            int(id_c), tipo_aviso, titulo, cuerpo, URL_PWA_AVISOS,
+            int(id_c), tipo_aviso, titulo, cuerpo, url,
             recurso_tipo="tramite", recurso_id=int(d["id_tramite"]),
         )
-        await svc_push.enviar_push_ciudadano(int(id_c), titulo=titulo, cuerpo=cuerpo, url=URL_PWA_AVISOS)
+        await svc_push.enviar_push_ciudadano(int(id_c), titulo=titulo, cuerpo=cuerpo, url=url)
     if con_email:
         if d.get("iniciador_tipo") == "ciudadano":
             dest, nombre = d.get("email_ciudadano"), d.get("nombre_ciudadano")
