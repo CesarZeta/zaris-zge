@@ -115,6 +115,18 @@ export const resolverAprobacion = (
   body: { decision: 'aprobada' | 'rechazada'; comentario?: string; id_tramite_documento?: number },
 ) => api.post<TramiteDetalle>(`${BASE}/${numero}/aprobaciones/${idAprob}/resolver`, body)
 
+/* ── Pedidos al vecino (mig 139) ─────────────────────────── */
+
+export const pedirAlVecino = (numero: string, body: { texto: string; pide_archivo: boolean }) =>
+  api.post<TramiteDetalle>(`${BASE}/${numero}/pedidos`, body)
+
+export const cancelarPedido = (numero: string, idPedido: number, body: { motivo: string }) =>
+  api.post<TramiteDetalle>(`${BASE}/${numero}/pedidos/${idPedido}/cancelar`, body)
+
+/** Marca la respuesta del vecino como vista (la bandeja deja de mostrar «Respondió el vecino»). */
+export const marcarPedidoVisto = (numero: string, idPedido: number) =>
+  api.post<void>(`${BASE}/${numero}/pedidos/${idPedido}/visto`)
+
 /* ── Documentos ──────────────────────────────────────────── */
 
 export function adjuntarDocumento(

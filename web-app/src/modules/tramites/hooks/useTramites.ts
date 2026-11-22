@@ -18,6 +18,8 @@ import {
   relacionarTramite,
   resolverAprobacion,
   marcarResultadoTramite,
+  pedirAlVecino,
+  cancelarPedido,
 } from '../lib/api'
 import type { BandejaParams, CrearTramiteBody, OrdenTramites, TramiteResultado } from '../types'
 
@@ -197,6 +199,36 @@ export function useMarcarResultado(numero: string) {
       void qc.invalidateQueries({ queryKey: ['tramites', 'detalle', numero] })
       void qc.invalidateQueries({ queryKey: ['tramites', 'movimientos', numero] })
     },
+  })
+}
+
+/* ── Pedidos al vecino (mig 139) ─────────────────────────── */
+
+function useInvalidarTramiteYBandejas(numero: string) {
+  const qc = useQueryClient()
+  return () => {
+    for (const k of ['detalle', 'movimientos', 'documentos', 'transiciones']) {
+      void qc.invalidateQueries({ queryKey: ['tramites', k, numero] })
+    }
+    void qc.invalidateQueries({ queryKey: ['tramites', 'bandeja'] })
+    void qc.invalidateQueries({ queryKey: ['tramites', 'mi-bandeja'] })
+  }
+}
+
+export function usePedirAlVecino(numero: string) {
+  const invalidar = useInvalidarTramiteYBandejas(numero)
+  return useMutation({
+    mutationFn: (body: { texto: string; pide_archivo: boolean }) => pedirAlVecino(numero, body),
+    onSuccess: invalidar,
+  })
+}
+
+export function useCancelarPedido(numero: string) {
+  const invalidar = useInvalidarTramiteYBandejas(numero)
+  return useMutation({
+    mutationFn: (vars: { idPedido: number; motivo: string }) =>
+      cancelarPedido(numero, vars.idPedido, { motivo: vars.motivo }),
+    onSuccess: invalidar,
   })
 }
 

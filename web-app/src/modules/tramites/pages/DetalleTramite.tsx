@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, RefreshCw, Paperclip } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, RefreshCw, Paperclip, MessageCircleQuestion } from 'lucide-react'
 import { Skeleton } from '../../../ui'
 import { useAuthStore } from '../../../stores/auth'
 import { useTramite } from '../hooks/useTramites'
@@ -13,6 +14,12 @@ import { PanelAcciones } from '../components/PanelAcciones'
 import { PanelAprobaciones } from '../components/PanelAprobaciones'
 import { FileUploader } from '../components/FileUploader'
 import { ETIQUETA_INICIADOR } from '../lib/actor'
+import { PanelPedidos } from '../components/PanelPedidos'
+import { ModalPedido } from '../components/ModalPedido'
+import { usePedirAlVecino, useCancelarPedido } from '../hooks/useTramites'
+import { marcarPedidoVisto } from '../lib/api'
+import { useNotificationsStore } from '../../../stores/notifications'
+import type { PedidoTramite } from '../types'
 
 export function DetalleTramite() {
   const { numero } = useParams<{ numero: string }>()
@@ -28,6 +35,46 @@ export function DetalleTramite() {
   const movData = movimientos.data?.movimientos ?? []
   const transData = transiciones.data
   const docsData = documentos.data?.documentos ?? []
+
+  const push = useNotificationsStore((s) => s.push)
+  const qc = useQueryClient()
+  const hasPermission = useAuthStore((s) => s.hasPermission)
+  const puedeOperar = hasPermission(4)  // el Consultor (5) es solo lectura
+  const pedir = usePedirAlVecino(numero ?? '')
+  const cancelar = useCancelarPedido(numero ?? '')
+  const [modalPedir, setModalPedir] = useState(false)
+  const [pedidoACancelar, setPedidoACancelar] = useState<PedidoTramite | null>(null)
+
+  // Una sola marca de «visto» por respuesta, aunque el detalle se refetchee (foco, invalidaciones).
+  const vistosEnviados = useRef<Set<number>>(new Set())
+  const pedidosData = data?.pedidos
+  const numeroData = data?.numero_expediente
+  useEffect(() => {
+    if (!numeroData || !pedidosData) return
+    const sinVer = pedidosData.filter((p) =>
+      p.estado === 'respondido' && !p.respuesta_vista_en && !vistosEnviados.current.has(p.id_tramite_pedido))
+    if (sinVer.length === 0) return
+    sinVer.forEach((p) => vistosEnviados.current.add(p.id_tramite_pedido))
+    void Promise.allSettled(sinVer.map((p) => marcarPedidoVisto(numeroData, p.id_tramite_pedido))).then(() => {
+      void qc.invalidateQueries({ queryKey: ['tramites', 'bandeja'] })
+      void qc.invalidateQueries({ queryKey: ['tramites', 'mi-bandeja'] })
+    })
+  }, [numeroData, pedidosData, qc])
+
+  function enviarPedido(body: { texto: string; pide_archivo: boolean }) {
+    pedir.mutate(body, {
+      onSuccess: () => push({ kind: 'success', title: 'Pedido enviado', body: 'Le llega un aviso al vecino en la app y por correo' }),
+      onError: (e) => push({ kind: 'error', title: 'No se pudo enviar el pedido', body: e instanceof Error ? e.message : undefined }),
+    })
+  }
+
+  function confirmarCancelacion(body: { motivo: string }) {
+    if (!pedidoACancelar) return
+    cancelar.mutate({ idPedido: pedidoACancelar.id_tramite_pedido, motivo: body.motivo }, {
+      onSuccess: () => push({ kind: 'success', title: 'Pedido cancelado', body: 'Se le avisó al vecino' }),
+      onError: (e) => push({ kind: 'error', title: 'No se pudo cancelar el pedido', body: e instanceof Error ? e.message : undefined }),
+    })
+  }
 
   if (isLoading) {
     return (
@@ -69,6 +116,14 @@ export function DetalleTramite() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {puedeOperar && data.iniciador_tipo === 'ciudadano' && !data.fecha_archivado
+            && data.resultado === 'pendiente' && !(data.pedidos ?? []).some((p) => p.estado === 'abierto') && (
+            <button type="button" onClick={() => setModalPedir(true)} style={btnOutlineStyle}
+              title="Pedirle al vecino un dato o un documento: le llega a la app y por correo">
+              <MessageCircleQuestion size={14} strokeWidth={1.5} />
+              Pedir al vecino
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setShowUploader(true)}
@@ -125,6 +180,16 @@ export function DetalleTramite() {
               </div>
             )}
           </section>
+
+          {/* Pedidos al vecino (mig 139) */}
+          {data.iniciador_tipo === 'ciudadano' && (
+            <PanelPedidos
+              numero={data.numero_expediente}
+              pedidos={data.pedidos ?? []}
+              puedeCancelar={puedeOperar}
+              onCancelar={setPedidoACancelar}
+            />
+          )}
 
           {/* Documentos */}
           <section style={cardStyle}>
@@ -203,6 +268,10 @@ export function DetalleTramite() {
           />
         </div>
       </div>
+
+      <ModalPedido modo="pedir" abierto={modalPedir} onConfirmar={enviarPedido} onCerrar={() => setModalPedir(false)} />
+      <ModalPedido modo="cancelar" abierto={pedidoACancelar !== null} onConfirmar={confirmarCancelacion}
+        onCerrar={() => setPedidoACancelar(null)} />
 
       {showUploader && (
         <FileUploader

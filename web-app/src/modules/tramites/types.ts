@@ -231,8 +231,30 @@ export interface TramiteDetalle {
   cant_firmas_pendientes: number
   relaciones: TramiteRelacion[]
   aprobaciones: TramiteAprobacion[]
+  pedidos: PedidoTramite[]   // mig 139: pedidos del municipio al vecino
   fecha_alta: string
   id_municipio: number
+}
+
+/** Pedido del municipio al vecino iniciador (mig 139). No cambia el estado del trámite. */
+export interface PedidoTramite {
+  id_tramite_pedido: number
+  texto: string
+  pide_archivo: boolean
+  estado: 'abierto' | 'respondido' | 'cancelado'
+  fecha_pedido: string
+  agente_pide: string | null
+  respuesta_texto: string | null
+  fecha_respuesta: string | null
+  respuesta_vista_en: string | null
+  documentos_respuesta: Array<{
+    id_tramite_documento: number
+    nombre: string
+    nombre_archivo_original: string | null
+    fecha_alta: string
+    binario_purgado: boolean
+  }>
+  motivo_cancelacion: string | null
 }
 
 export interface TramiteMovimiento {
