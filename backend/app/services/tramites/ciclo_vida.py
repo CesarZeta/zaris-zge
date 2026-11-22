@@ -538,7 +538,8 @@ async def procesar_pedido_sin_respuesta(db: AsyncSession, id_tramite: int, id_tr
             logger.warning("ciclo_vida: aviso al vecino (pedido tramite=%s) fallo: %s", id_t, e)
         try:
             from app.services import notificaciones as svc_notif
-            await svc_notif.notificar_tramite_pendiente_vecino(db, id_t, nuevo_nivel, int(dias))
+            await svc_notif.notificar_tramite_pendiente_vecino(db, id_t, nuevo_nivel, int(dias),
+                                                               texto_pedido=ped["texto"])
         except Exception as e:  # noqa: BLE001
             logger.warning("ciclo_vida: notificacion interna (pedido tramite=%s) fallo: %s", id_t, e)
         logger.info("ciclo_vida: aviso %s pedido=%s tramite=%s (%s dias)", nuevo_nivel, id_p, d["numero_expediente"], int(dias))

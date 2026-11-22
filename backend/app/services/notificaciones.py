@@ -774,8 +774,11 @@ async def notificar_tramite_pendiente_vecino(
     nivel: int,
     dias: int,
     background_tasks: Optional[BackgroundTasks] = None,
+    texto_pedido: Optional[str] = None,
 ) -> int:
     """
+    Con `texto_pedido` el aviso es por un pedido al vecino sin respuesta (mig 139) y lo cita.
+
     Aviso INTERNO (in-app + email) al colectivo destinatario actual: el tramite
     lleva `dias` dias esperando al iniciador y se le acaba de mandar el aviso
     `nivel` del timer de desistimiento (mig 101). Recomienda contactarlo para
@@ -798,11 +801,18 @@ async def notificar_tramite_pendiente_vecino(
         numero = tramite["numero_expediente"]
         etiqueta = {1: "1er aviso", 2: "2do aviso"}.get(nivel, "último aviso")
         titulo = f"Trámite {numero} pendiente del vecino ({etiqueta})"
-        mensaje = (
-            f"El trámite {numero} lleva {dias} días esperando una respuesta del iniciador; "
-            f"se le envió el {etiqueta} de desistimiento. Si corresponde, contactalo para "
-            "reactivar el expediente antes de que se dé por desistido automáticamente."
-        )
+        if texto_pedido:
+            mensaje = (
+                f"El vecino no respondió el pedido «{texto_pedido}» del trámite {numero} "
+                f"({dias} días desde el pedido); se le envió el {etiqueta} de desistimiento. "
+                "Si corresponde, contactalo o cancelá el pedido antes de que el trámite se dé por desistido."
+            )
+        else:
+            mensaje = (
+                f"El trámite {numero} lleva {dias} días esperando una respuesta del iniciador; "
+                f"se le envió el {etiqueta} de desistimiento. Si corresponde, contactalo para "
+                "reactivar el expediente antes de que se dé por desistido automáticamente."
+            )
         creadas = await _emitir_a_usuarios(
             db, usuarios,
             tramite=tramite,
