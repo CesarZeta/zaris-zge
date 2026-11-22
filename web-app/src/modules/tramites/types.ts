@@ -198,6 +198,8 @@ export interface TramiteBandejaItem {
   tomado_en: string | null
   fecha_alta: string
   dias_en_estado_actual: number
+  pedido_abierto?: boolean     // mig 139: hay un pedido al vecino sin responder
+  respuesta_sin_ver?: boolean  // mig 139: el vecino respondió y nadie abrió el detalle
 }
 
 export interface TramiteDetalle {

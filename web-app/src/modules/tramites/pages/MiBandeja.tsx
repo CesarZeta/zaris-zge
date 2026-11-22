@@ -8,6 +8,7 @@ import { useMiBandeja } from '../hooks/useTramites'
 import { tomarTramite, pasarTramite } from '../lib/api'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { EstadoBadge } from '../components/EstadoBadge'
+import { ChipVecino } from '../components/ChipVecino'
 import { ModalPase } from '../components/ModalPase'
 import type { OrdenTramites, TramiteBandejaItem } from '../types'
 
@@ -162,7 +163,12 @@ export function MiBandeja() {
                       <td style={tdStyle}>
                         <span style={tipoPill}>{item.tipo_nombre}</span>
                       </td>
-                      <td style={tdStyle}><EstadoBadge etiqueta={item.estado_etiqueta} color={item.estado_color} /></td>
+                      <td style={tdStyle}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+                          <EstadoBadge etiqueta={item.estado_etiqueta} color={item.estado_color} />
+                          <ChipVecino pedidoAbierto={item.pedido_abierto} respuestaSinVer={item.respuesta_sin_ver} />
+                        </div>
+                      </td>
                       <td style={{ ...tdStyle, fontSize: 12, color: 'var(--fg-2)', fontFamily: 'var(--font-display)' }}>
                         {item.destinatario_actual_tipo === 'agente'
                           ? (

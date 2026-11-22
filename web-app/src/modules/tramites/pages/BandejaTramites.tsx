@@ -6,6 +6,7 @@ import { AvisoBuscar } from '../../../ui/busqueda'
 import { ThOrden, type Orden } from '../../../ui/orden'
 import { useBandeja, useTiposTramite } from '../hooks/useTramites'
 import { EstadoBadge } from '../components/EstadoBadge'
+import { ChipVecino } from '../components/ChipVecino'
 import { ORDENES_TRAMITES, type TramiteBandejaItem, type BandejaParams, type OrdenTramites } from '../types'
 
 const LIMIT = 50
@@ -327,6 +328,7 @@ function FilasTramite({ item, onClick }: { item: TramiteBandejaItem; onClick: ()
           </span>
           {item.iniciador_nombre}
         </div>
+        <ChipVecino pedidoAbierto={item.pedido_abierto} respuestaSinVer={item.respuesta_sin_ver} />
       </td>
       <td style={{ ...tdStyle, fontSize: 12, color: 'var(--fg-2)', fontFamily: 'var(--font-display)' }}>
         {item.destinatario_actual_nombre ?? '—'}
