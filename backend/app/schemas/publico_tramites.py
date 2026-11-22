@@ -24,6 +24,9 @@ class CampoPublicoOut(BaseModel):
     opciones: Optional[Any] = None
     ayuda: Optional[str] = None
     orden: int
+    # Reglas extra del campo, con el significado de `_validar_escalar` (services/tramites/creacion.py):
+    # {min, max} = largo en texto/dirección y valor en numero/moneda; {regex} en texto. null si no tiene.
+    validacion: Optional[dict] = None
 
 
 class DocumentoAltaOut(BaseModel):

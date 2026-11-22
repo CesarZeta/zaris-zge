@@ -95,7 +95,8 @@ async def detalle_tipo(
     identidad_ok = bool(await svc_identidad.identidad_validada(db, ciudadano["id_ciudadano"]))
     campos = (await db.execute(
         text("""
-            SELECT nombre_interno, etiqueta, tipo_dato, obligatorio, opciones_jsonb AS opciones, ayuda, orden
+            SELECT nombre_interno, etiqueta, tipo_dato, obligatorio, opciones_jsonb AS opciones, ayuda, orden,
+                   validacion_jsonb AS validacion
               FROM tipo_tramite_campo
              WHERE id_tipo_tramite_version = :ver AND activo = TRUE
              ORDER BY orden, id_tipo_tramite_campo

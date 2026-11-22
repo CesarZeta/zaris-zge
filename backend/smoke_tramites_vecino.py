@@ -1400,6 +1400,10 @@ async def test_pedido_escalones(c: httpx.AsyncClient, ha: dict) -> None:
         ca = await q1("SELECT mensaje FROM ciudadano_aviso WHERE tipo = 'tramite_pedido' AND recurso_tipo = 'tramite' "
                       "AND recurso_id = :t", t=idt)
         check(ca is not None and texto in ca["mensaje"], "aviso en la bandeja del vecino con el texto", str(ca))
+        ni = await q1("SELECT count(*) AS n, bool_and(mensaje LIKE '%' || :tx || '%') AS cita FROM notificacion "
+                      "WHERE tipo = 'tramite_pendiente_vecino' AND recurso_tipo = 'tramite' AND recurso_id = :t", tx=texto, t=idt)
+        check(ni is not None and ni["n"] >= 1 and ni["cita"] is True,
+              "el aviso interno al equipo dice qué pedido no se respondió", str(ni))
         # Correr de nuevo sin mover el tiempo: ningun aviso nuevo.
         res = await _correr_pedidos_sin_respuesta(mun)
         check((await _estado_pedido(idt))["nivel"] == 1 and len(await _avisos_pedido(idt)) == 1
@@ -1910,6 +1914,60 @@ async def test_espera_congelada_si_el_vecino_subio(c: httpx.AsyncClient, ha: dic
         await _limpiar_tramite_completo(idt)
 
 
+async def test_cerrar_atraso_cancela_pedido(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[38] El cierre de atrasos del generador demo cancela el pedido abierto del trámite que cierra")
+    from datetime import datetime, timezone
+    from app.services import demo_tramites
+    idt, numero = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke cierre de atraso con pedido")
+    try:
+        await _pedir(c, ha, numero, pide_archivo=False)
+        # Todo en el año 2000: con `ahora` en marzo de 2000, el cierre de atrasos solo ve este trámite.
+        await ejecutar("UPDATE tramite SET fecha_alta = '2000-01-01', fecha_entrada_estado_actual = '2000-01-01', "
+                       "fecha_modificacion = '2000-01-01' WHERE id_tramite = :t", t=idt)
+        await ejecutar("UPDATE tramite_movimiento SET fecha_alta = '2000-01-01' WHERE id_tramite = :t", t=idt)
+        await ejecutar("UPDATE tramite_pedido_iniciador SET fecha_pedido = '2000-01-02' WHERE id_tramite = :t", t=idt)
+        async with AsyncSessionLocal() as s:
+            res = await demo_tramites.cerrar_atraso_tramites(
+                s, dias=21, aplicar=True, incluir_no_demo=True, semilla=7,
+                ahora=datetime(2000, 3, 1, tzinfo=timezone.utc))
+        t = await q1("SELECT resultado, e.es_final FROM tramite tr JOIN tipo_tramite_estado e "
+                     "ON e.id_tipo_tramite_estado = tr.id_tipo_tramite_estado_actual WHERE tr.id_tramite = :t", t=idt)
+        check(t is not None and (t["es_final"] or t["resultado"] != "pendiente"), "el cierre de atrasos cerró el trámite",
+              f"{t} {str(res)[:200]}")
+        await _chequear_cierre(idt, "El trámite terminó", "cierre de atraso demo")
+    finally:
+        await _limpiar_avisos_pedido(idt)
+        await _limpiar_tramite_completo(idt)
+
+
+async def test_tipo_expone_validacion(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[39] El detalle del tipo para el portal trae la validación de cada campo")
+    mun = await _municipio_base()
+    tipo = await _tipo_poda(mun)
+    hv = await _login_vecino(c)
+    campo = await q1(
+        "SELECT c.id_tipo_tramite_campo AS id, c.nombre_interno AS n, c.validacion_jsonb AS v FROM tipo_tramite_campo c "
+        "JOIN tipo_tramite tt ON tt.id_version_publicada = c.id_tipo_tramite_version "
+        "WHERE tt.id_tipo_tramite = :t AND c.activo AND c.tipo_dato IN ('texto', 'texto_largo') "
+        "ORDER BY c.orden LIMIT 1", t=tipo["id_tipo_tramite"]) if tipo else None
+    if not campo:
+        check(False, "datos de partida (poda-arbol con un campo de texto)")
+        return
+    import json as _j
+    try:
+        await ejecutar("UPDATE tipo_tramite_campo SET validacion_jsonb = CAST(:v AS jsonb) WHERE id_tipo_tramite_campo = :i",
+                       v=_j.dumps({"min": 10}), i=campo["id"])
+        r = await c.get(f"/api/v1/publico/tramites/tipos/{tipo['id_tipo_tramite']}", headers=hv)
+        campos = {x["nombre_interno"]: x for x in r.json().get("campos", [])} if r.status_code == 200 else {}
+        check(campos.get(campo["n"], {}).get("validacion") == {"min": 10}, "el campo trae su validación",
+              f"{r.status_code} {campos.get(campo['n'])}")
+        otros = [x for k, x in campos.items() if k != campo["n"]]
+        check(all("validacion" in x for x in otros), "los demás campos traen la clave (null si no tienen)", str(otros)[:200])
+    finally:
+        await ejecutar("UPDATE tipo_tramite_campo SET validacion_jsonb = CAST(:v AS jsonb) WHERE id_tipo_tramite_campo = :i",
+                       v=_j.dumps(campo["v"]) if campo["v"] is not None else None, i=campo["id"])
+
+
 CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cuenta_422,
          test_backoffice_alta_con_cuenta_201,
          test_identidad_validar_y_revocar, test_identidad_en_perfil_publico, test_backoffice_alta_exige_identidad,
@@ -1925,14 +1983,18 @@ CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cue
          test_pedido_en_tramite_cerrado_no_avisa, test_admin_ofrecer_al_vecino,
          test_cron_pedido_foto_fresca, test_cron_espera_foto_fresca, test_tope_cuerpo_ids_no_canonicos,
          test_documentos_tramite_cerrado_409, test_descarga_nombre_no_latin1, test_visto_admin_sin_agente,
-         test_cancelar_pedido_orden_de_locks, test_espera_congelada_si_el_vecino_subio]
+         test_cancelar_pedido_orden_de_locks, test_espera_congelada_si_el_vecino_subio,
+         test_cerrar_atraso_cancela_pedido, test_tipo_expone_validacion]
 
 
 async def main() -> int:
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
     async with httpx.AsyncClient(transport=transport, base_url="http://smoke.local", timeout=90) as c:
         ha = await login_admin(c)
+        solo = [x for x in os.environ.get("SMOKE_CASOS", "").split(",") if x]  # p. ej. SMOKE_CASOS=test_x,test_y
         for caso in CASOS:
+            if solo and caso.__name__ not in solo:
+                continue
             await caso(c, ha)
     print(f"\n{OK}/{OK + FAIL} OK")
     return 0 if FAIL == 0 else 1
