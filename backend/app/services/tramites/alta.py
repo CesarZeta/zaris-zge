@@ -152,12 +152,19 @@ async def crear_tramite_en_db(
     return id_tramite
 
 
+# Tipos de campo que el formulario del portal sabe pedir (PWA `CampoTramite`). Un tipo con otro
+# campo activo (agente, subárea, equipo, ciudadano, empresa, archivo, fecha_hora) no se ofrece:
+# el vecino no podría completarlo.
+TIPOS_DATO_PORTAL = ("texto", "texto_largo", "numero", "decimal", "moneda", "fecha",
+                     "booleano", "seleccion", "seleccion_multiple", "direccion")
+
+
 async def tipos_ofrecidos(db: AsyncSession, id_municipio: int, id_tipo: int | None = None) -> list[dict]:
     """Tipos de trámite que el portal le ofrece al vecino (spec §5.1).
 
     Se ofrece si: activo, con versión publicada, `ofrecer_al_vecino`, `ciudadano` entre los
-    iniciadores, gestión asignada y activa, y ningún campo activo de tipo `agente` o `subarea`
-    (son internos). Con `id_tipo` devuelve a lo sumo ese tipo.
+    iniciadores, gestión asignada y activa, y todos sus campos activos de un tipo que el portal
+    sabe pedir (`TIPOS_DATO_PORTAL`). Con `id_tipo` devuelve a lo sumo ese tipo.
     """
     filas = (await db.execute(
         text("""
@@ -173,11 +180,12 @@ async def tipos_ofrecidos(db: AsyncSession, id_municipio: int, id_tipo: int | No
                AND NOT EXISTS (
                      SELECT 1 FROM tipo_tramite_campo f
                       WHERE f.id_tipo_tramite_version = tt.id_version_publicada
-                        AND f.activo = TRUE AND f.tipo_dato IN ('agente', 'subarea'))
+                        AND f.activo = TRUE
+                        AND f.tipo_dato <> ALL (CAST(:soportados AS text[])))
                AND (CAST(:tipo AS integer) IS NULL OR tt.id_tipo_tramite = CAST(:tipo AS integer))
              ORDER BY tt.nombre, tt.id_tipo_tramite
         """),
-        {"mun": id_municipio, "tipo": id_tipo},
+        {"mun": id_municipio, "tipo": id_tipo, "soportados": list(TIPOS_DATO_PORTAL)},
     )).mappings().all()
     return [dict(f) for f in filas]
 

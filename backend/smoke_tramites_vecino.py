@@ -639,8 +639,10 @@ async def test_alta_filtra_datos_ajenos(c: httpx.AsyncClient, ha: dict) -> None:
     hv = await _login_vecino(c)
     datos = dict(DATOS_PODA, clave_ajena="X" * 50, archivo_falso="y")
     ver = (await q1("SELECT id_version_publicada AS v FROM tipo_tramite WHERE id_tipo_tramite = :t", t=tipo["id_tipo_tramite"]))["v"]
-    await ejecutar("INSERT INTO tipo_tramite_campo (id_tipo_tramite_version, nombre_interno, etiqueta, tipo_dato, obligatorio, orden, id_municipio) "
-                   "VALUES (:v, 'archivo_falso', 'Archivo falso', 'archivo', FALSE, 99, :m)", v=ver, m=mun)
+    # Campo dado de baja: su clave tampoco se guarda. (Un campo `archivo` activo ya no sirve para esto:
+    # desde el 2026-11-22 un tipo con un campo que el portal no sabe pedir no se ofrece.)
+    await ejecutar("INSERT INTO tipo_tramite_campo (id_tipo_tramite_version, nombre_interno, etiqueta, tipo_dato, obligatorio, orden, id_municipio, activo) "
+                   "VALUES (:v, 'archivo_falso', 'Archivo falso', 'texto', FALSE, 99, :m, FALSE)", v=ver, m=mun)
     idt = None
     try:
         data, files = _form(tipo["id_tipo_tramite"], datos, [("a.png", PNG)], [doc["id"]])
@@ -1993,6 +1995,51 @@ async def test_aviso_tramite_url(c: httpx.AsyncClient, ha: dict) -> None:
         await _limpiar_tramite_completo(idt)
 
 
+async def test_cerrado_no_pide_documentos(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[41] Un trámite desistido no le pide documentos al vecino (detalle y lista)")
+    hv = await _login_vecino(c)
+    idt, numero = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke cerrado sin documentos del paso")
+    try:
+        r = await c.get(f"{BASE_PUB}/{idt}", headers=hv)
+        antes = r.json() if r.status_code == 200 else {}
+        check(len(antes.get("documentos_del_paso", [])) >= 1, "abierto: el paso pide su documento", str(antes)[:200])
+        r = await c.post(f"{BASE_BO}/{numero}/resultado", headers=ha, json={"resultado": "desistido", "comentario": "smoke"})
+        check(r.status_code == 200, "desistido manual: 200", f"{r.status_code} {r.text[:150]}")
+        d = (await c.get(f"{BASE_PUB}/{idt}", headers=hv)).json()
+        check(d.get("documentos_del_paso") == [] and d.get("documentos_pendientes") == 0,
+              "desistido: el detalle no pide documentos", str({k: d.get(k) for k in ("documentos_del_paso", "documentos_pendientes")}))
+        fila = next((x for x in (await c.get(BASE_PUB, headers=hv)).json() if x["id_tramite"] == idt), None)
+        check(fila is not None and fila["documentos_pendientes"] == 0, "desistido: la lista no marca documentos pendientes", str(fila))
+    finally:
+        await _limpiar_avisos_pedido(idt)
+        await _limpiar_tramite_completo(idt)
+
+
+async def test_tipo_con_campo_no_soportado_no_se_ofrece(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[42] Un tipo con un campo que el portal no sabe pedir (fecha_hora, archivo, ciudadano...) no se ofrece")
+    mun = await _municipio_base()
+    tipo = await _tipo_poda(mun)
+    hv = await _login_vecino(c)
+    campo = await q1(
+        "SELECT c.id_tipo_tramite_campo AS id, c.tipo_dato AS td FROM tipo_tramite_campo c "
+        "JOIN tipo_tramite tt ON tt.id_version_publicada = c.id_tipo_tramite_version "
+        "WHERE tt.id_tipo_tramite = :t AND c.activo AND NOT c.obligatorio ORDER BY c.orden LIMIT 1",
+        t=tipo["id_tipo_tramite"]) if tipo else None
+    if not campo:
+        check(False, "datos de partida (poda-arbol con un campo opcional)")
+        return
+    try:
+        await ejecutar("UPDATE tipo_tramite_campo SET tipo_dato = 'fecha_hora' WHERE id_tipo_tramite_campo = :i", i=campo["id"])
+        ids = [x["id_tipo_tramite"] for x in (await c.get("/api/v1/publico/tramites/tipos", headers=hv)).json()]
+        check(tipo["id_tipo_tramite"] not in ids, "con un campo fecha_hora el tipo no aparece", str(ids))
+        r = await c.get(f"/api/v1/publico/tramites/tipos/{tipo['id_tipo_tramite']}", headers=hv)
+        check(r.status_code == 404, "y su detalle da 404", str(r.status_code))
+    finally:
+        await ejecutar("UPDATE tipo_tramite_campo SET tipo_dato = :td WHERE id_tipo_tramite_campo = :i", td=campo["td"], i=campo["id"])
+    ids = [x["id_tipo_tramite"] for x in (await c.get("/api/v1/publico/tramites/tipos", headers=hv)).json()]
+    check(tipo["id_tipo_tramite"] in ids, "restaurado: el tipo vuelve a aparecer", str(ids))
+
+
 CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cuenta_422,
          test_backoffice_alta_con_cuenta_201,
          test_identidad_validar_y_revocar, test_identidad_en_perfil_publico, test_backoffice_alta_exige_identidad,
@@ -2010,7 +2057,8 @@ CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cue
          test_documentos_tramite_cerrado_409, test_descarga_nombre_no_latin1, test_visto_admin_sin_agente,
          test_cancelar_pedido_orden_de_locks, test_espera_congelada_si_el_vecino_subio,
          test_cerrar_atraso_cancela_pedido, test_tipo_expone_validacion,
-         test_aviso_tramite_url]
+         test_aviso_tramite_url, test_cerrado_no_pide_documentos,
+         test_tipo_con_campo_no_soportado_no_se_ofrece]
 
 
 async def main() -> int:

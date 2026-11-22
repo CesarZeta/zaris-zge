@@ -410,6 +410,8 @@ _SQL_MIS = """
            EXISTS (SELECT 1 FROM tramite_pedido_iniciador p
                     WHERE p.id_tramite = t.id_tramite AND p.estado = 'abierto' AND p.activo = TRUE)
                AS tiene_pedido_abierto,
+           CASE WHEN t.fecha_archivado IS NOT NULL OR COALESCE(e.es_final, FALSE) OR t.resultado <> 'pendiente'
+                THEN 0 ELSE
            (SELECT COUNT(*) FROM tipo_tramite_documento_requerido d
              WHERE d.id_tipo_tramite_version = t.id_tipo_tramite_version AND d.activo = TRUE
                AND d.obligatorio = TRUE AND d.aporta_quien = 'iniciador' AND d.requiere_firma = FALSE
@@ -419,7 +421,7 @@ _SQL_MIS = """
                       WHERE td.id_tramite = t.id_tramite AND td.activo = TRUE
                         AND td.id_tipo_tramite_documento_requerido = d.id_tipo_tramite_documento_requerido
                         AND td.id_ciudadano_subio IS NOT NULL
-                        AND td.fecha_alta >= t.fecha_entrada_estado_actual)) AS documentos_pendientes
+                        AND td.fecha_alta >= t.fecha_entrada_estado_actual)) END AS documentos_pendientes
       FROM tramite t
       JOIN tipo_tramite_version v ON v.id_tipo_tramite_version = t.id_tipo_tramite_version
       JOIN tipo_tramite tt ON tt.id_tipo_tramite = v.id_tipo_tramite
@@ -600,7 +602,9 @@ async def detalle_mi_tramite(
              "WHERE id_tramite = :t AND id_ciudadano_subio = :c AND activo = TRUE "
              "ORDER BY posicion_orden, id_tramite_documento"),
         {"t": id_tramite, "c": id_c})).mappings().all()
-    del_paso = await svc_alta.documentos_del_paso(
+    # Un trámite cerrado (archivado, estado final o con resultado) no le pide nada más al vecino.
+    cerrado = bool(t["fecha_archivado"] or t["es_final"] or t["resultado"] != "pendiente")
+    del_paso = [] if cerrado else await svc_alta.documentos_del_paso(
         db, id_tramite, t["id_tipo_tramite_version"], t["id_tipo_tramite_estado_actual"],
         t["fecha_entrada_estado_actual"])
     pedido = (await db.execute(
