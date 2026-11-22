@@ -2065,11 +2065,10 @@ async def pedido_visto(
 ):
     """Marca la respuesta del vecino como vista (la llama el detalle al abrirse). Solo la primera vez."""
     agente = await svc_auth.resolver_agente_desde_usuario(current_user["id_usuario"], db)
-    if not agente:
-        raise _sin_perfil_de_agente(current_user)
     # El detalle lo dispara en cada apertura (lectura sin scope): quien no puede operar el trámite
-    # (Consultor, otra subárea) recibe 204 SIN escribir, para no borrar el chip del equipo responsable.
-    if agente["nivel_acceso"] < 5:
+    # (Consultor, otra subárea, o una cuenta sin agente vinculado, como un administrador que solo
+    # consulta) recibe 204 SIN escribir, para no borrar el chip del equipo responsable.
+    if agente and agente["nivel_acceso"] < 5:
         tramite = await _cargar_tramite_dict(tramite_ref, db, id_municipio)
         puede, _motivo = await svc_auth.agente_puede_operar(agente, tramite, db)
         if puede:

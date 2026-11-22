@@ -20,6 +20,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi import Path as Path_
@@ -214,6 +215,22 @@ _DOC_RESPUESTA = {"nombre": None, "cantidad_max_archivos": MAX_ARCHIVOS_TOTAL, "
                   "formatos_permitidos": []}
 
 
+async def _tomar_tramite_abierto(db: AsyncSession, id_tramite: int, msg_cerrado: str) -> None:
+    """Bloquea el trámite (FOR UPDATE) antes de escribir en él y, con la foto fresca, exige que no esté
+    archivado ni en un estado final: 409 con `msg_cerrado` si terminó entre la lectura y la escritura."""
+    bloqueado = (await db.execute(
+        text("SELECT id_tramite FROM tramite WHERE id_tramite = :t AND activo = TRUE FOR UPDATE"),
+        {"t": id_tramite})).first()
+    fila = (await db.execute(
+        text("SELECT t.fecha_archivado, COALESCE(e.es_final, FALSE) AS es_final FROM tramite t "
+             "JOIN tipo_tramite_estado e ON e.id_tipo_tramite_estado = t.id_tipo_tramite_estado_actual "
+             "WHERE t.id_tramite = :t"),
+        {"t": id_tramite})).mappings().first() if bloqueado else None
+    if not fila or fila["fecha_archivado"] is not None or fila["es_final"]:
+        await db.rollback()
+        raise HTTPException(409, msg_cerrado)
+
+
 @router.post("/{id_tramite}/pedidos/{id_pedido}/responder", response_model=RespuestaPedidoOut)
 async def responder_pedido(
     request: Request,
@@ -241,6 +258,8 @@ async def responder_pedido(
     docs_ids: list[int | None] = [None] * len(archivos)
     await _validar_archivos(archivos, docs_ids, {None: _DOC_RESPUESTA})
 
+    # Orden de locks: el trámite y después el pedido, igual que las transiciones y el cron (sin deadlock).
+    await _tomar_tramite_abierto(db, id_tramite, "El trámite ya terminó: el pedido quedó sin efecto.")
     # El pedido se toma con FOR UPDATE y debe estar abierto: la respuesta concurrente espera acá y recibe 409.
     pedido = await svc_pedidos.tomar_abierto_para_responder(db, id_tramite, id_pedido)
     if pedido["pide_archivo"] and not archivos:
@@ -380,6 +399,7 @@ async def iniciar_tramite(
 # Un trámite que no es del token es un 404 idéntico al de un id inexistente.
 
 NO_ENCONTRADO = "Trámite no encontrado"
+MSG_DOCS_TRAMITE_CERRADO = "El trámite ya terminó: no se pueden sumar documentos."
 
 _SQL_MIS = """
     SELECT t.id_tramite, t.numero_expediente, t.datos_jsonb, t.resultado, t.fecha_alta,
@@ -598,6 +618,15 @@ async def detalle_mi_tramite(
     }
 
 
+def _content_disposition(nombre: str | None) -> str:
+    """`inline` con el nombre en RFC 5987 (`filename*=UTF-8''<percent-encoded>`, cualquier carácter) y
+    un `filename=` ASCII de respaldo. Los headers HTTP son latin-1: el nombre crudo con «€» o un emoji
+    daba 500. Se quitan los caracteres de control (CR/LF incluidos)."""
+    limpio = "".join(ch for ch in (nombre or "") if ch.isprintable()).strip() or "documento"
+    respaldo = "".join(ch if " " <= ch <= "~" and ch not in '"\\;' else "_" for ch in limpio)
+    return f"inline; filename=\"{respaldo}\"; filename*=UTF-8''{quote(limpio, safe='')}"
+
+
 @router.get("/{id_tramite}/documentos/{id_doc}/contenido")
 async def contenido_documento(
     id_tramite: int = Path_(..., ge=1, le=MAX_ID),
@@ -618,11 +647,11 @@ async def contenido_documento(
         raise HTTPException(410, "El archivo fue depurado por la política de retención. "
                                  "El registro del documento se conserva en el expediente.")
     contenido = await svc_docs.descargar_bytes(doc["storage_path"])
-    nombre = (doc["nombre_archivo_original"] or "documento").replace('"', "").replace("\r", "").replace("\n", "")
     return Response(
         content=contenido,
         media_type=doc["mime_type"] or "application/octet-stream",
-        headers={"Content-Disposition": f'inline; filename="{nombre}"'},
+        headers={"Content-Disposition": _content_disposition(doc["nombre_archivo_original"]),
+                 "X-Content-Type-Options": "nosniff"},
     )
 
 
@@ -640,6 +669,8 @@ async def subir_documentos_del_paso(
     check_rate_limit(f"trampubdoc:{get_real_ip(request)}", max_requests=20, window_seconds=60)
     id_c = ciudadano["id_ciudadano"]
     t = await _mi_tramite(db, id_tramite, id_c, id_municipio)
+    if t.get("fecha_archivado") is not None or t.get("es_final"):
+        raise HTTPException(409, MSG_DOCS_TRAMITE_CERRADO)
 
     if not archivos:
         raise HTTPException(422, "No se envió ningún archivo")
@@ -656,6 +687,8 @@ async def subir_documentos_del_paso(
     ya = {d["id_documento_requerido"]: int(d["subidos"]) for d in pedidos}
     await _validar_archivos(archivos, docs_ids, docs_paso, ya)
 
+    # Con el trámite bloqueado se vuelve a mirar: pudo terminar mientras se validaban los archivos.
+    await _tomar_tramite_abierto(db, id_tramite, MSG_DOCS_TRAMITE_CERRADO)
     numero = t["numero_expediente"]
     subidos: list[str] = []
     try:

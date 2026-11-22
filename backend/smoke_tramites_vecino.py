@@ -1582,6 +1582,229 @@ async def test_admin_ofrecer_al_vecino(c: httpx.AsyncClient, ha: dict) -> None:
             await ejecutar("DELETE FROM tipo_tramite WHERE id_tipo_tramite = :t", t=tmp)
 
 
+# ── Ola de corrección final ──────────────────────────────────────────────────
+
+async def _movs_timer(idt: int) -> int:
+    return (await q1("SELECT count(*) AS n FROM tramite_movimiento WHERE id_tramite = :t "
+                     "AND tipo IN ('aviso_iniciador', 'desistido', 'pedido_cancelado')", t=idt))["n"]
+
+
+async def _avisos_bandeja(idt: int) -> int:
+    return (await q1("SELECT count(*) AS n FROM ciudadano_aviso WHERE recurso_tipo = 'tramite' AND recurso_id = :t", t=idt))["n"]
+
+
+async def _fila_pedido_cron(idt: int, idp: int, cfg: dict):
+    async with AsyncSessionLocal() as s:
+        return await _ciclo_vida.procesar_pedido_sin_respuesta(s, idt, idp, cfg)
+
+
+async def test_cron_pedido_foto_fresca(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[33] Cron de pedidos: la fila se decide con la foto bloqueada (respondido / aprobado / cancelado no escriben)")
+    mun = await _municipio_base()
+    cfg = await _cfg_desistimiento(mun)
+    dd, a1 = cfg[_ciclo_vida.CFG_DESISTIR], cfg[_ciclo_vida.CFG_AVISO1]
+    casos = []
+    try:
+        # (nombre, nivel previo, atraso, cómo cambia entre la selección y el proceso)
+        for nombre, nivel, atraso, sql in (
+            ("pedido respondido (rama desistimiento)", 3, dd + 1,
+             "UPDATE tramite_pedido_iniciador SET estado = 'respondido', respuesta_texto = 'ya respondí', "
+             "fecha_respuesta = NOW() WHERE id_tramite = :t"),
+            ("pedido respondido (rama aviso)", 0, a1 + 1,
+             "UPDATE tramite_pedido_iniciador SET estado = 'respondido', respuesta_texto = 'ya respondí', "
+             "fecha_respuesta = NOW() WHERE id_tramite = :t"),
+            ("pedido cancelado (rama aviso)", 0, a1 + 1,
+             "UPDATE tramite_pedido_iniciador SET estado = 'cancelado', motivo_cancelacion = 'smoke' WHERE id_tramite = :t"),
+            ("trámite aprobado (rama desistimiento)", 3, dd + 1,
+             "UPDATE tramite SET resultado = 'aprobado' WHERE id_tramite = :t"),
+            ("trámite aprobado (rama aviso)", 0, a1 + 1,
+             "UPDATE tramite SET resultado = 'aprobado' WHERE id_tramite = :t"),
+        ):
+            idt, numero = await _tramite_ventanilla(c, ha, ID_CIUDADANO, f"Smoke carrera {nombre}")
+            casos.append(idt)
+            await _pedir(c, ha, numero, pide_archivo=False)
+            await _viajar_pedido(idt, atraso)
+            await ejecutar("UPDATE tramite_pedido_iniciador SET aviso_nivel = :n WHERE id_tramite = :t", n=nivel, t=idt)
+            idp = (await _estado_pedido(idt))["id"]
+            antes_t = await q1("SELECT resultado, fecha_archivado FROM tramite WHERE id_tramite = :t", t=idt)
+            await ejecutar(sql, t=idt)  # el cambio que llega entre la selección y el proceso de la fila
+            esperado_t = await q1("SELECT resultado, fecha_archivado FROM tramite WHERE id_tramite = :t", t=idt)
+            esperado_p = await _estado_pedido(idt)
+            movs, avisos = await _movs_timer(idt), await _avisos_bandeja(idt)
+            MAILS.clear()
+            res = await _fila_pedido_cron(idt, idp, cfg)
+            t = await q1("SELECT resultado, fecha_archivado FROM tramite WHERE id_tramite = :t", t=idt)
+            p = await _estado_pedido(idt)
+            check(res is None, f"{nombre}: la fila no hace nada", str(res))
+            check(t == esperado_t and t["resultado"] != "desistido" and antes_t["fecha_archivado"] is None
+                  and t["fecha_archivado"] is None, f"{nombre}: el trámite no cambia", f"{esperado_t} -> {t}")
+            check(p == esperado_p, f"{nombre}: el pedido no cambia", f"{esperado_p} -> {p}")
+            check(await _movs_timer(idt) == movs and await _avisos_bandeja(idt) == avisos and not MAILS,
+                  f"{nombre}: ni movimiento, ni aviso, ni mail", f"{movs} {avisos} {[m['subject'] for m in MAILS]}")
+        # Control: con la foto vigente la misma función sí avisa (no es que nunca haga nada).
+        idt, numero = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke carrera control")
+        casos.append(idt)
+        await _pedir(c, ha, numero, pide_archivo=False)
+        await _viajar_pedido(idt, a1 + 1)
+        idp = (await _estado_pedido(idt))["id"]
+        res = await _fila_pedido_cron(idt, idp, cfg)
+        check(res == {"accion": "aviso", "nivel": 1} and (await _estado_pedido(idt))["nivel"] == 1,
+              "control: pedido abierto vigente -> aviso nivel 1", str(res))
+    finally:
+        for i in casos:
+            await _limpiar_avisos_pedido(i)
+            await _limpiar_tramite_completo(i)
+
+
+async def test_cron_espera_foto_fresca(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[34] Cron de espera_iniciador: re-chequea el trámite bloqueado antes de avisar o desistir")
+    mun = await _municipio_base()
+    cfg = await _cfg_desistimiento(mun)
+    idt, numero = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke espera foto fresca")
+    est = await q1("SELECT t.id_tipo_tramite_estado_actual AS e, e.espera_iniciador AS esp FROM tramite t "
+                   "JOIN tipo_tramite_estado e ON e.id_tipo_tramite_estado = t.id_tipo_tramite_estado_actual "
+                   "WHERE t.id_tramite = :t", t=idt)
+    fin = await _estados_finales(idt)
+
+    async def _fila() -> Optional[dict]:
+        async with AsyncSessionLocal() as s:
+            return await _ciclo_vida.procesar_desistimiento_tramite(s, idt, cfg)
+
+    async def _foto() -> dict:
+        return await q1("SELECT resultado, fecha_archivado, desist_aviso_nivel AS nivel, id_tipo_tramite_estado_actual AS e "
+                        "FROM tramite WHERE id_tramite = :t", t=idt)
+    try:
+        await ejecutar("UPDATE tipo_tramite_estado SET espera_iniciador = TRUE WHERE id_tipo_tramite_estado = :e", e=est["e"])
+        await ejecutar("UPDATE tramite SET fecha_alta = NOW() - INTERVAL '400 days', "
+                       "fecha_entrada_estado_actual = NOW() - INTERVAL '400 days', desist_aviso_nivel = 3 "
+                       "WHERE id_tramite = :t", t=idt)
+        negativos = [("trámite aprobado", "UPDATE tramite SET resultado = 'aprobado' WHERE id_tramite = :t",
+                      "UPDATE tramite SET resultado = 'pendiente' WHERE id_tramite = :t"),
+                     ("estado que ya no espera al iniciador",
+                      "UPDATE tipo_tramite_estado SET espera_iniciador = FALSE WHERE id_tipo_tramite_estado = "
+                      "(SELECT id_tipo_tramite_estado_actual FROM tramite WHERE id_tramite = :t)",
+                      "UPDATE tipo_tramite_estado SET espera_iniciador = TRUE WHERE id_tipo_tramite_estado = "
+                      "(SELECT id_tipo_tramite_estado_actual FROM tramite WHERE id_tramite = :t)"),
+                     ("trámite archivado", "UPDATE tramite SET fecha_archivado = NOW() WHERE id_tramite = :t",
+                      "UPDATE tramite SET fecha_archivado = NULL WHERE id_tramite = :t")]
+        if fin:
+            negativos.append(("trámite en estado final",
+                              f"UPDATE tramite SET id_tipo_tramite_estado_actual = {int(fin[0]['e'])} WHERE id_tramite = :t",
+                              f"UPDATE tramite SET id_tipo_tramite_estado_actual = {int(est['e'])} WHERE id_tramite = :t"))
+        for nombre, cambio, deshacer in negativos:
+            await ejecutar(cambio, t=idt)
+            antes, movs, avisos = await _foto(), await _movs_timer(idt), await _avisos_bandeja(idt)
+            MAILS.clear()
+            res = await _fila()
+            check(res is None and await _foto() == antes and await _movs_timer(idt) == movs
+                  and await _avisos_bandeja(idt) == avisos and not MAILS,
+                  f"{nombre}: no desiste ni avisa ni escribe", f"{res} {antes} -> {await _foto()}")
+            await ejecutar(deshacer, t=idt)
+        # Control: con la foto vigente (nivel 3, plazo vencido) la fila desiste.
+        res = await _fila()
+        f = await _foto()
+        check(res == {"accion": "desistido"} and f["resultado"] == "desistido" and f["fecha_archivado"] is not None,
+              "control: foto vigente -> desistido", f"{res} {f}")
+    finally:
+        await ejecutar("UPDATE tipo_tramite_estado SET espera_iniciador = :v WHERE id_tipo_tramite_estado = :e",
+                       v=bool(est["esp"]), e=est["e"])
+        await _limpiar_avisos_pedido(idt)
+        await _limpiar_tramite_completo(idt)
+
+
+async def test_tope_cuerpo_ids_no_canonicos(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[35] Tope del cuerpo: todo POST bajo /publico/tramites, también con ids no canónicos")
+    hv = await _login_vecino(c)
+    mucho = {"Content-Length": str(26 * 1024 * 1024), "Content-Type": "multipart/form-data; boundary=x"}
+    for ruta in ("/0012/documentos", "/+12/documentos", "/1_2/documentos", "/00000000012/documentos",
+                 "/0012/pedidos/0001/responder", "/12/pedidos/+1/responder", "", "/", "/cualquier/cosa"):
+        r = await c.post(f"{BASE_PUB}{ruta}", headers={**hv, **mucho}, content=b"--x--")
+        check(r.status_code == 413, f"POST {BASE_PUB}{ruta} con Content-Length sobre el tope: 413", f"{r.status_code} {r.text[:100]}")
+    # Debajo del tope el pedido llega al handler (no lo frena el middleware).
+    r = await c.post(f"{BASE_PUB}/0012/documentos", headers=hv, data={"documentos": "[1]"},
+                     files=[("archivos", ("a.png", PNG, "image/png"))])
+    check(r.status_code not in (411, 413), "debajo del tope: lo responde el handler", f"{r.status_code}")
+    r = await c.get(f"{BASE_PUB}/tipos", headers=hv)
+    check(r.status_code == 200, "un GET del prefijo no se topa", f"{r.status_code}")
+
+
+async def test_documentos_tramite_cerrado_409(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[36] Subir documentos del paso a un trámite final o archivado: 409 y nada subido")
+    hv = await _login_vecino(c)
+    a, _na = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke docs archivado")
+    f, _nf = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke docs final")
+    try:
+        await ejecutar("UPDATE tramite SET fecha_archivado = NOW() WHERE id_tramite = :t", t=a)
+        fin = await _estados_finales(f)
+        check(bool(fin), "el tipo tiene un estado final")
+        if fin:
+            await ejecutar("UPDATE tramite SET id_tipo_tramite_estado_actual = :e WHERE id_tramite = :t", e=fin[0]["e"], t=f)
+        for idt, nombre in ((a, "archivado"), (f, "en estado final")):
+            SUBIDOS.clear()
+            n = (await q1("SELECT count(*) AS n FROM tramite_documento WHERE id_tramite = :t", t=idt))["n"]
+            r = await c.post(f"{BASE_PUB}/{idt}/documentos", headers=hv, data={"documentos": "[1]"},
+                             files=[("archivos", ("a.png", PNG, "image/png"))])
+            check(r.status_code == 409 and "ya terminó" in r.text, f"trámite {nombre}: 409", f"{r.status_code} {r.text[:150]}")
+            check(not SUBIDOS and (await q1("SELECT count(*) AS n FROM tramite_documento WHERE id_tramite = :t", t=idt))["n"] == n,
+                  f"trámite {nombre}: nada subido ni filas nuevas", str(SUBIDOS))
+    finally:
+        for i in (a, f):
+            await _limpiar_tramite_completo(i)
+
+
+async def test_descarga_nombre_no_latin1(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[37] Descarga del portal: Content-Disposition RFC 5987 con un nombre no latin-1 y nosniff")
+    from urllib.parse import unquote
+    from app.services.tramites import documentos as svc_docs_mod
+    mun = await _municipio_base()
+    hv = await _login_vecino(c)
+    idt, _ = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke descarga nombre")
+    nombre = 'Fachada ñ € "uno".pdf'
+    doc = await ejecutar(
+        "INSERT INTO tramite_documento (id_tramite, nombre, nombre_archivo_original, storage_path, mime_type, tamano_bytes, "
+        "hash_sha256, posicion_orden, id_agente_subio, id_ciudadano_subio, id_municipio) "
+        "VALUES (:t, 'Fachada', :n, 'smoke/f.pdf', 'application/pdf', 3, 'h', 1, NULL, :c, :m) RETURNING id_tramite_documento AS id",
+        t=idt, n=nombre, c=ID_CIUDADANO, m=mun)
+    original = svc_docs_mod.descargar_bytes
+    svc_docs_mod.descargar_bytes = _descargar_falso
+    try:
+        r = await c.get(f"{BASE_PUB}/{idt}/documentos/{doc['id']}/contenido", headers=hv)
+        cd = r.headers.get("content-disposition", "")
+        check(r.status_code == 200 and r.content == CONTENIDO_FALSO, "descarga: 200 con el binario", f"{r.status_code} {r.text[:120]}")
+        check("filename*=UTF-8''" in cd and unquote(cd.split("filename*=UTF-8''", 1)[1]) == nombre,
+              "filename* lleva el nombre exacto (ñ y €) percent-encoded", cd)
+        check(cd.startswith("inline; filename=\"") and cd.split('filename="', 1)[1].split('"', 1)[0].isascii(),
+              "filename= de respaldo en ASCII", cd)
+        check(r.headers.get("x-content-type-options") == "nosniff", "X-Content-Type-Options: nosniff", str(dict(r.headers)))
+    finally:
+        svc_docs_mod.descargar_bytes = original
+        await _limpiar_tramite_completo(idt)
+
+
+async def test_visto_admin_sin_agente(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[38] /visto de un administrador sin agente vinculado: 204 sin escribir")
+    mun = await _municipio_base()
+    hv = await _login_vecino(c)
+    idt, numero = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke visto admin sin agente")
+    adm = await _usuario_fixture(mun, 1, con_agente=False)
+    try:
+        r = await _pedir(c, ha, numero, pide_archivo=False)
+        idp = r.json()["pedidos"][0]["id_tramite_pedido"]
+        r = await c.post(f"{BASE_PUB}/{idt}/pedidos/{idp}/responder", headers=hv, data={"texto": "Respuesta para ver"})
+        check(r.status_code == 200, "respuesta del vecino", f"{r.status_code} {r.text[:150]}")
+        h = await _login_fixture(c, adm)
+        r = await c.post(f"{BASE_BO}/{numero}/pedidos/{idp}/visto", headers=h)
+        check(r.status_code == 204, "admin sin agente: 204 (no 403)", f"{r.status_code} {r.text[:150]}")
+        p = await q1("SELECT respuesta_vista_en FROM tramite_pedido_iniciador WHERE id_tramite_pedido = :p", p=idp)
+        check(p["respuesta_vista_en"] is None, "admin sin agente: no marca la respuesta como vista", str(p))
+        r = await c.post(f"{BASE_BO}/NO-EXISTE-999/pedidos/{idp}/visto", headers=h)
+        check(r.status_code == 404, "admin sin agente, trámite inexistente: 404", f"{r.status_code}")
+    finally:
+        await _borrar_usuario_fixture(adm)
+        await _limpiar_avisos_pedido(idt)
+        await _limpiar_tramite_completo(idt)
+
+
 CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cuenta_422,
          test_backoffice_alta_con_cuenta_201,
          test_identidad_validar_y_revocar, test_identidad_en_perfil_publico, test_backoffice_alta_exige_identidad,
@@ -1594,7 +1817,9 @@ CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cue
          test_pedido_ciclo_completo, test_pedido_reglas_422, test_respuesta_doble_409, test_cancelar_pedido,
          test_ajeno_404_pedido, test_visto_con_guard, test_pedido_se_cancela_al_cerrar,
          test_pedido_escalones, test_pedido_desistimiento_apagado, test_cambio_de_estado_no_reinicia,
-         test_pedido_en_tramite_cerrado_no_avisa, test_admin_ofrecer_al_vecino]
+         test_pedido_en_tramite_cerrado_no_avisa, test_admin_ofrecer_al_vecino,
+         test_cron_pedido_foto_fresca, test_cron_espera_foto_fresca, test_tope_cuerpo_ids_no_canonicos,
+         test_documentos_tramite_cerrado_409, test_descarga_nombre_no_latin1, test_visto_admin_sin_agente]
 
 
 async def main() -> int:

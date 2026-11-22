@@ -118,14 +118,14 @@ ORIGEN_ZARIS_REGEX = (
     r"^https://([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)?(zge|vecinos|agentes)\.zaris\.com\.ar$"
     r"|^https://([a-z0-9-]+\.)?zaris-(zge|vecinos|agentes)\.pages\.dev$"
 )
-# Tope del cuerpo del alta de trámites del vecino (antes del parseo multipart; CORS queda por fuera).
+# Tope del cuerpo de TODO POST de trámites del vecino (antes del parseo multipart; CORS queda por
+# fuera). Se topa el prefijo entero y no cada ruta con su id: FastAPI acepta como int ids que una
+# regex de dígitos no cubre (`0012`, `+12`, `1_2`, más de 10 dígitos) y esos saltaban el tope.
 from app.middleware.limite_cuerpo import LimiteCuerpoMiddleware  # noqa: E402
 from app.api.routes.publico_tramites import MAX_CUERPO_BYTES as _TRAMITES_MAX_CUERPO  # noqa: E402
 app.add_middleware(LimiteCuerpoMiddleware,
-                   limites={("POST", "/api/v1/publico/tramites"): _TRAMITES_MAX_CUERPO},
-                   patrones=[("POST", r"/api/v1/publico/tramites/[0-9]{1,10}/documentos", _TRAMITES_MAX_CUERPO),
-                             ("POST", r"/api/v1/publico/tramites/[0-9]{1,10}/pedidos/[0-9]{1,10}/responder",
-                              _TRAMITES_MAX_CUERPO)])
+                   limites={},
+                   patrones=[("POST", r"/api/v1/publico/tramites(?:/.*)?", _TRAMITES_MAX_CUERPO)])
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=ORIGEN_ZARIS_REGEX,

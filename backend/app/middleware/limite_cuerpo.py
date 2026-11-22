@@ -3,7 +3,8 @@ Tope del cuerpo de una request ANTES de que se parsee (FastAPI parsea el multipa
 correr dependencias y handler, así que un chequeo dentro del handler llega tarde).
 
 Se aplica a rutas puntuales por (método, ruta exacta) o por patrón (regex que debe calzar con la
-ruta ENTERA, para las rutas con un id variable; nunca se ensancha a otras rutas). Sin Content-Length -> 411; mayor al tope
+ruta ENTERA; para un prefijo con ids variables conviene topar el prefijo completo, porque FastAPI
+acepta como int ids que una regex de dígitos no cubre). Sin Content-Length -> 411; mayor al tope
 -> 413. Responde sin leer el cuerpo.
 """
 from __future__ import annotations

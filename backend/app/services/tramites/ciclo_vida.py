@@ -28,6 +28,11 @@ Tres piezas, todas paralelas al FSM del circuito (no fuerzan estados):
      El nivel vive en tramite.desist_aviso_nivel y se resetea a 0 en cada
      transicion (el vecino respondio / el circuito se movio). Solo iniciadores
      ciudadano/empresa: un tramite interno no se "desiste".
+     La lectura solo elige candidatos; cada fila se decide en su propia transaccion con el tramite
+     bloqueado (FOR UPDATE) y re-chequeado (ver `_tomar_tramite_para_timer`).
+
+  4. procesar_pedidos_sin_respuesta(db, id_municipio=)  -- mismo cron, timer de los pedidos al
+     vecino: bloquea el tramite y DESPUES el pedido (todavia `abierto`) antes de avisar o desistir.
 
 Plazos en configuracion_general (seed 101b, Config -> Sistema §41) con defaults
 seguros. El movimiento del cron usa id_agente_iniciador tal cual (puede ser NULL:
@@ -257,36 +262,154 @@ def _texto_aviso(nivel: int, d: dict, dias_restantes: int, final_horas: int) -> 
             "el trámite se dará por desistido automáticamente.")
 
 
+# Los dos timers eligen candidatos con una lectura y después procesan CADA fila en su propia
+# transacción, con la foto fresca y bloqueada: entre la lectura y la escritura el vecino pudo
+# responder, un agente pudo cerrar el trámite o marcar el resultado. Orden de locks: el trámite
+# antes que el pedido, igual que las transiciones y la respuesta del vecino (evita el deadlock).
+
+_SQL_TRAMITE_TIMER = """
+    SELECT t.id_tramite, t.numero_expediente, t.id_municipio, t.id_agente_iniciador,
+           t.iniciador_tipo, t.id_ciudadano_iniciador, t.id_empresa_iniciadora,
+           t.desist_aviso_nivel,
+           COALESCE(e.es_final, FALSE) AS es_final,
+           COALESCE(e.espera_iniciador, FALSE) AS espera_iniciador,
+           tt.nombre AS tipo_nombre, e.etiqueta AS estado_etiqueta,
+           ci.email AS email_ciudadano,
+           TRIM(COALESCE(ci.nombre, '') || ' ' || COALESCE(ci.apellido, '')) AS nombre_ciudadano,
+           em.email AS email_empresa, em.nombre AS nombre_empresa,
+           EXTRACT(EPOCH FROM (NOW() - GREATEST(
+               t.fecha_alta + make_interval(days => COALESCE(NULLIF(tt.sla_dias, 0), CAST(:sla AS integer))),
+               t.fecha_entrada_estado_actual
+           ))) / 86400.0 AS dias_desde_t0
+      FROM tramite t
+      JOIN tipo_tramite_estado e ON e.id_tipo_tramite_estado = t.id_tipo_tramite_estado_actual
+      JOIN tipo_tramite_version v ON v.id_tipo_tramite_version = t.id_tipo_tramite_version
+      JOIN tipo_tramite tt ON tt.id_tipo_tramite = v.id_tipo_tramite
+      LEFT JOIN ciudadanos ci ON ci.id_ciudadano = t.id_ciudadano_iniciador
+      LEFT JOIN empresas em ON em.id_empresa = t.id_empresa_iniciadora
+     WHERE t.id_tramite = :id
+"""
+
+
+async def _tomar_tramite_para_timer(db: AsyncSession, id_tramite: int, sla_default: int, *,
+                                    exige_espera: bool) -> Optional[dict]:
+    """Bloquea el trámite (FOR UPDATE) y devuelve su foto fresca si el timer todavía puede actuar:
+    activo, sin archivar, resultado pendiente, iniciador ciudadano/empresa, estado actual no final y
+    (si `exige_espera`) todavía `espera_iniciador`. Si no, None: el llamador no escribe nada."""
+    bloqueado = (await db.execute(text("""
+        SELECT id_tramite FROM tramite
+         WHERE id_tramite = :id AND activo = TRUE AND fecha_archivado IS NULL
+           AND COALESCE(resultado, 'pendiente') = 'pendiente'
+           AND iniciador_tipo IN ('ciudadano', 'empresa')
+         FOR UPDATE
+    """), {"id": id_tramite})).first()
+    if not bloqueado:
+        return None
+    # Con el lock tomado, esta lectura ve lo último commiteado (estado actual, plazos, contacto).
+    fila = (await db.execute(text(_SQL_TRAMITE_TIMER), {"id": id_tramite, "sla": sla_default})).mappings().first()
+    if not fila or fila["es_final"] or (exige_espera and not fila["espera_iniciador"]):
+        return None
+    return dict(fila)
+
+
+def _nivel_siguiente(nivel: int, dias: float, a1: int, a2: int, umbral_final: float, dd: int):
+    """Escalón que corresponde ahora: 1/2/3 = aviso, None = desistir, 0 = nada (un nivel por corrida)."""
+    if nivel <= 0 and dias >= a1:
+        return 1
+    if nivel == 1 and dias >= a2:
+        return 2
+    if nivel == 2 and dias >= umbral_final:
+        return 3
+    if nivel >= 3 and dias >= dd:
+        return None
+    return 0
+
+
+async def procesar_desistimiento_tramite(db: AsyncSession, id_tramite: int, cfg: dict) -> Optional[dict]:
+    """Una fila del timer de `espera_iniciador`, en su propia transacción y con la foto bloqueada.
+    Devuelve {"accion": "aviso", "nivel": n} | {"accion": "desistido"} o None si no correspondía nada
+    (en ese caso no escribe: ni movimiento, ni resultado, ni aviso)."""
+    a1, a2 = cfg[CFG_AVISO1], cfg[CFG_AVISO2]
+    dd, fh = cfg[CFG_DESISTIR], cfg[CFG_FINAL_HORAS]
+    d = await _tomar_tramite_para_timer(db, id_tramite, cfg[CFG_SLA_DEFAULT], exige_espera=True)
+    if not d:
+        await db.rollback()
+        return None
+    nivel = int(d.get("desist_aviso_nivel") or 0)
+    dias = float(d.get("dias_desde_t0") or 0.0)
+    id_t = int(d["id_tramite"])
+    nuevo_nivel = _nivel_siguiente(nivel, dias, a1, a2, dd - (fh / 24.0), dd)
+    if nuevo_nivel == 0:
+        await db.rollback()
+        return None
+
+    if nuevo_nivel is not None:
+        restantes = max(0, int(round(dd - dias)))
+        titulo, cuerpo = _texto_aviso(nuevo_nivel, d, restantes, fh)
+        await db.execute(text("""
+            UPDATE tramite SET desist_aviso_nivel = :n, desist_aviso_en = NOW(),
+                               fecha_modificacion = NOW()
+             WHERE id_tramite = :id
+        """), {"n": nuevo_nivel, "id": id_t})
+        await svc_mov.registrar_movimiento(
+            db, id_t, "aviso_iniciador",
+            id_usuario=None, id_agente=d["id_agente_iniciador"],
+            id_municipio=d["id_municipio"],
+            comentario=f"{_ETIQUETA_NIVEL[nuevo_nivel]} de desistimiento al iniciador "
+                       f"({int(dias)} días desde el vencimiento del SLA / entrada a la espera).",
+            metadata_jsonb={"nivel": nuevo_nivel, "dias_desde_t0": round(dias, 1),
+                            "dias_restantes": restantes, "automatico": True},
+        )
+        await db.commit()
+        # Post-commit, best-effort: vecino (bandeja + push + mail) e interno.
+        await _avisar_vecino(d, "tramite_pendiente", titulo, cuerpo, con_email=True)
+        try:
+            from app.services import notificaciones as svc_notif
+            await svc_notif.notificar_tramite_pendiente_vecino(db, id_t, nuevo_nivel, int(dias))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("ciclo_vida: notificacion interna tramite=%s fallo: %s", id_t, e)
+        logger.info("ciclo_vida: aviso %s tramite=%s (%s dias)", nuevo_nivel, d["numero_expediente"], int(dias))
+        return {"accion": "aviso", "nivel": nuevo_nivel}
+
+    await db.execute(text("""
+        UPDATE tramite SET resultado = 'desistido',
+                           fecha_archivado = NOW(),
+                           archivado_motivo = 'desistimiento',
+                           desist_aviso_en = NOW(),
+                           fecha_modificacion = NOW()
+         WHERE id_tramite = :id AND fecha_archivado IS NULL
+    """), {"id": id_t})
+    await svc_mov.registrar_movimiento(
+        db, id_t, "desistido",
+        id_usuario=None, id_agente=d["id_agente_iniciador"],
+        id_municipio=d["id_municipio"],
+        comentario=f"Desistimiento automático: sin respuesta del iniciador tras {int(dias)} días "
+                   f"(SLA + {dd} días, {a1}/{a2}/{fh}h de avisos).",
+        metadata_jsonb={"dias_desde_t0": round(dias, 1), "resultado_nuevo": "desistido",
+                        "archivado_motivo": "desistimiento", "automatico": True},
+    )
+    from app.services.tramites import pedidos as svc_pedidos  # tardio: pedidos usa ciclo_vida
+    await svc_pedidos.cancelar_pedido_abierto_por_cierre(
+        db, id_t, "El trámite se dio por desistido", d["id_municipio"])
+    await db.commit()
+    await al_terminar(id_t, con_email=True)
+    logger.info("ciclo_vida: DESISTIDO tramite=%s (%s dias)", d["numero_expediente"], int(dias))
+    return {"accion": "desistido"}
+
+
 async def procesar_desistimientos(db: AsyncSession, *, id_municipio: int, limite: int = 500) -> dict[str, Any]:
     """Corrida diaria del timer para un municipio, con sus plazos. Devuelve
-    {activo, config, avisos, desistidos, ids}."""
+    {activo, config, avisos, desistidos, ids}. La lectura solo elige candidatos; la decisión de cada
+    uno la toma `procesar_desistimiento_tramite` con la foto bloqueada."""
     if not await _leer_bool_config(db, CFG_ACTIVO, True, id_municipio=id_municipio):
         return {"activo": False, "avisos": 0, "desistidos": 0, "ids": []}
 
     cfg = {k: await _leer_int_config(db, k, v, id_municipio=id_municipio) for k, v in DEFAULTS.items()}
-    a1, a2 = cfg[CFG_AVISO1], cfg[CFG_AVISO2]
-    dd, fh = cfg[CFG_DESISTIR], cfg[CFG_FINAL_HORAS]
-    umbral_final = dd - (fh / 24.0)
 
-    # asyncpg: cada bind param casteado (make_interval(days => CAST(...)), §35 quirks).
-    rows = (await db.execute(text("""
-        SELECT t.id_tramite, t.numero_expediente, t.id_municipio, t.id_agente_iniciador,
-               t.iniciador_tipo, t.id_ciudadano_iniciador, t.id_empresa_iniciadora,
-               t.desist_aviso_nivel,
-               tt.nombre AS tipo_nombre, e.etiqueta AS estado_etiqueta,
-               ci.email AS email_ciudadano,
-               TRIM(COALESCE(ci.nombre, '') || ' ' || COALESCE(ci.apellido, '')) AS nombre_ciudadano,
-               em.email AS email_empresa, em.nombre AS nombre_empresa,
-               EXTRACT(EPOCH FROM (NOW() - GREATEST(
-                   t.fecha_alta + make_interval(days => COALESCE(NULLIF(tt.sla_dias, 0), CAST(:sla AS integer))),
-                   t.fecha_entrada_estado_actual
-               ))) / 86400.0 AS dias_desde_t0
+    candidatos = (await db.execute(text("""
+        SELECT t.id_tramite
           FROM tramite t
           JOIN tipo_tramite_estado e ON e.id_tipo_tramite_estado = t.id_tipo_tramite_estado_actual
-          JOIN tipo_tramite_version v ON v.id_tipo_tramite_version = t.id_tipo_tramite_version
-          JOIN tipo_tramite tt ON tt.id_tipo_tramite = v.id_tipo_tramite
-          LEFT JOIN ciudadanos ci ON ci.id_ciudadano = t.id_ciudadano_iniciador
-          LEFT JOIN empresas em ON em.id_empresa = t.id_empresa_iniciadora
          WHERE t.activo = TRUE AND t.id_municipio = :mun
            AND t.fecha_archivado IS NULL
            AND COALESCE(e.es_final, FALSE) = FALSE
@@ -295,81 +418,23 @@ async def procesar_desistimientos(db: AsyncSession, *, id_municipio: int, limite
            AND COALESCE(t.resultado, 'pendiente') = 'pendiente'
          ORDER BY t.id_tramite
          LIMIT :lim
-    """), {"sla": cfg[CFG_SLA_DEFAULT], "lim": limite, "mun": id_municipio})).mappings().all()
+    """), {"lim": limite, "mun": id_municipio})).scalars().all()
+    # Cierra la lectura (commit, no rollback: no descarta lo que el llamador ya hizo en la sesión,
+    # como el archivado del mismo cron). Cada fila va después en su propia transacción.
+    await db.commit()
 
     avisos = 0
     desistidos: list[int] = []
     avisados: list[dict] = []
-    for r in rows:
-        d = dict(r)
-        nivel = int(d.get("desist_aviso_nivel") or 0)
-        dias = float(d.get("dias_desde_t0") or 0.0)
-        id_t = int(d["id_tramite"])
-
-        if nivel <= 0 and dias >= a1:
-            nuevo_nivel = 1
-        elif nivel == 1 and dias >= a2:
-            nuevo_nivel = 2
-        elif nivel == 2 and dias >= umbral_final:
-            nuevo_nivel = 3
-        elif nivel >= 3 and dias >= dd:
-            nuevo_nivel = None  # desistir
-        else:
+    for id_t in candidatos:
+        res = await procesar_desistimiento_tramite(db, int(id_t), cfg)
+        if not res:
             continue
-
-        if nuevo_nivel is not None:
-            restantes = max(0, int(round(dd - dias)))
-            titulo, cuerpo = _texto_aviso(nuevo_nivel, d, restantes, fh)
-            await db.execute(text("""
-                UPDATE tramite SET desist_aviso_nivel = :n, desist_aviso_en = NOW(),
-                                   fecha_modificacion = NOW()
-                 WHERE id_tramite = :id
-            """), {"n": nuevo_nivel, "id": id_t})
-            await svc_mov.registrar_movimiento(
-                db, id_t, "aviso_iniciador",
-                id_usuario=None, id_agente=d["id_agente_iniciador"],
-                id_municipio=d["id_municipio"],
-                comentario=f"{_ETIQUETA_NIVEL[nuevo_nivel]} de desistimiento al iniciador "
-                           f"({int(dias)} días desde el vencimiento del SLA / entrada a la espera).",
-                metadata_jsonb={"nivel": nuevo_nivel, "dias_desde_t0": round(dias, 1),
-                                "dias_restantes": restantes, "automatico": True},
-            )
-            await db.commit()
-            # Post-commit, best-effort: vecino (bandeja + push + mail) e interno.
-            await _avisar_vecino(d, "tramite_pendiente", titulo, cuerpo, con_email=True)
-            try:
-                from app.services import notificaciones as svc_notif
-                await svc_notif.notificar_tramite_pendiente_vecino(db, id_t, nuevo_nivel, int(dias))
-            except Exception as e:  # noqa: BLE001
-                logger.warning("ciclo_vida: notificacion interna tramite=%s fallo: %s", id_t, e)
+        if res["accion"] == "aviso":
             avisos += 1
-            avisados.append({"id_tramite": id_t, "nivel": nuevo_nivel})
-            logger.info("ciclo_vida: aviso %s tramite=%s (%s dias)", nuevo_nivel, d["numero_expediente"], int(dias))
+            avisados.append({"id_tramite": int(id_t), "nivel": res["nivel"]})
         else:
-            await db.execute(text("""
-                UPDATE tramite SET resultado = 'desistido',
-                                   fecha_archivado = NOW(),
-                                   archivado_motivo = 'desistimiento',
-                                   desist_aviso_en = NOW(),
-                                   fecha_modificacion = NOW()
-                 WHERE id_tramite = :id AND fecha_archivado IS NULL
-            """), {"id": id_t})
-            await svc_mov.registrar_movimiento(
-                db, id_t, "desistido",
-                id_usuario=None, id_agente=d["id_agente_iniciador"],
-                id_municipio=d["id_municipio"],
-                comentario=f"Desistimiento automático: sin respuesta del iniciador tras {int(dias)} días "
-                           f"(SLA + {dd} días, {a1}/{a2}/{fh}h de avisos).",
-                metadata_jsonb={"dias_desde_t0": round(dias, 1), "resultado_nuevo": "desistido",
-                                "archivado_motivo": "desistimiento", "automatico": True},
-            )
-            from app.services.tramites import pedidos as svc_pedidos  # tardio: pedidos usa ciclo_vida
-            await svc_pedidos.cancelar_pedido_abierto_por_cierre(
-                db, id_t, "El trámite se dio por desistido", d["id_municipio"])
-            await db.commit()
-            await al_terminar(id_t, con_email=True)
-            desistidos.append(id_t)
-            logger.info("ciclo_vida: DESISTIDO tramite=%s (%s dias)", d["numero_expediente"], int(dias))
+            desistidos.append(int(id_t))
 
     return {"activo": True, "config": cfg, "avisos": avisos, "avisados": avisados,
             "desistidos": len(desistidos), "ids": desistidos}
@@ -395,36 +460,115 @@ def _texto_aviso_pedido(nivel: int, d: dict, texto: str, dias_restantes: int, fi
             "el trámite se dará por desistido automáticamente.")
 
 
+async def procesar_pedido_sin_respuesta(db: AsyncSession, id_tramite: int, id_tramite_pedido: int,
+                                        cfg: dict) -> Optional[dict]:
+    """Una fila del timer de pedidos, en su propia transacción: bloquea el trámite (activo, sin
+    archivar, pendiente, estado no final) y DESPUÉS el pedido (todavía `abierto`), y decide el escalón
+    con esa foto. Devuelve {"accion": "aviso", "nivel": n} | {"accion": "desistido"} o None si no
+    correspondía nada (en ese caso no escribe: ni movimiento, ni resultado, ni aviso)."""
+    a1, a2 = cfg[CFG_AVISO1], cfg[CFG_AVISO2]
+    dd, fh = cfg[CFG_DESISTIR], cfg[CFG_FINAL_HORAS]
+    d = await _tomar_tramite_para_timer(db, id_tramite, cfg[CFG_SLA_DEFAULT], exige_espera=False)
+    if not d:
+        await db.rollback()
+        return None
+    ped = (await db.execute(text("""
+        SELECT id_tramite_pedido, texto, aviso_nivel,
+               EXTRACT(EPOCH FROM (NOW() - fecha_pedido)) / 86400.0 AS dias_desde_t0
+          FROM tramite_pedido_iniciador
+         WHERE id_tramite_pedido = :p AND id_tramite = :t AND estado = 'abierto' AND activo = TRUE
+         FOR UPDATE
+    """), {"p": id_tramite_pedido, "t": id_tramite})).mappings().first()
+    if not ped:
+        await db.rollback()
+        return None
+    nivel = int(ped["aviso_nivel"] or 0)
+    dias = float(ped["dias_desde_t0"] or 0.0)
+    id_t, id_p = int(d["id_tramite"]), int(ped["id_tramite_pedido"])
+    nuevo_nivel = _nivel_siguiente(nivel, dias, a1, a2, dd - (fh / 24.0), dd)
+    if nuevo_nivel == 0:
+        await db.rollback()
+        return None
+
+    if nuevo_nivel is not None:
+        restantes = max(0, int(round(dd - dias)))
+        titulo, cuerpo = _texto_aviso_pedido(nuevo_nivel, d, ped["texto"], restantes, fh)
+        await db.execute(text("""
+            UPDATE tramite_pedido_iniciador SET aviso_nivel = :n, aviso_en = NOW(), fecha_modificacion = NOW()
+             WHERE id_tramite_pedido = :p
+        """), {"n": nuevo_nivel, "p": id_p})
+        await svc_mov.registrar_movimiento(
+            db, id_t, "aviso_iniciador",
+            id_usuario=None, id_agente=None, id_municipio=d["id_municipio"],
+            comentario=f"{_ETIQUETA_NIVEL[nuevo_nivel]} de desistimiento al iniciador por un pedido sin respuesta "
+                       f"({int(dias)} días desde el pedido).",
+            metadata_jsonb={"id_tramite_pedido": id_p, "nivel": nuevo_nivel,
+                            "dias_desde_t0": round(dias, 1), "dias_restantes": restantes, "automatico": True},
+        )
+        await db.commit()
+        # Post-commit, best-effort: vecino (bandeja + push + mail) e interno.
+        try:
+            from app.core.urls import url_portal_vecino
+            url = await url_portal_vecino(db, d["id_municipio"])
+        except Exception as e:  # noqa: BLE001
+            logger.warning("ciclo_vida: url del portal (pedido tramite=%s) fallo: %s", id_t, e)
+            url = ""
+        try:
+            await _avisar_vecino(d, "tramite_pedido", titulo, cuerpo, con_email=True, url_portal=url)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("ciclo_vida: aviso al vecino (pedido tramite=%s) fallo: %s", id_t, e)
+        try:
+            from app.services import notificaciones as svc_notif
+            await svc_notif.notificar_tramite_pendiente_vecino(db, id_t, nuevo_nivel, int(dias))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("ciclo_vida: notificacion interna (pedido tramite=%s) fallo: %s", id_t, e)
+        logger.info("ciclo_vida: aviso %s pedido=%s tramite=%s (%s dias)", nuevo_nivel, id_p, d["numero_expediente"], int(dias))
+        return {"accion": "aviso", "nivel": nuevo_nivel}
+
+    await db.execute(text("""
+        UPDATE tramite SET resultado = 'desistido',
+                           fecha_archivado = NOW(),
+                           archivado_motivo = 'desistimiento',
+                           desist_aviso_en = NOW(),
+                           fecha_modificacion = NOW()
+         WHERE id_tramite = :id AND fecha_archivado IS NULL
+    """), {"id": id_t})
+    await svc_mov.registrar_movimiento(
+        db, id_t, "desistido",
+        id_usuario=None, id_agente=d["id_agente_iniciador"],
+        id_municipio=d["id_municipio"],
+        comentario=f"Desistimiento automático: el iniciador no respondió el pedido tras {int(dias)} días "
+                   f"({a1}/{a2}/{fh}h de avisos, desiste a los {dd} días).",
+        metadata_jsonb={"id_tramite_pedido": id_p, "dias_desde_t0": round(dias, 1),
+                        "resultado_nuevo": "desistido", "archivado_motivo": "desistimiento",
+                        "automatico": True},
+    )
+    from app.services.tramites import pedidos as svc_pedidos  # tardio: pedidos usa ciclo_vida
+    await svc_pedidos.cancelar_pedido_abierto_por_cierre(
+        db, id_t, "El trámite se dio por desistido", d["id_municipio"])
+    await db.commit()
+    await al_terminar(id_t, con_email=True)
+    logger.info("ciclo_vida: DESISTIDO por pedido sin respuesta tramite=%s (%s dias)", d["numero_expediente"], int(dias))
+    return {"accion": "desistido"}
+
+
 async def procesar_pedidos_sin_respuesta(db: AsyncSession, *, id_municipio: int, limite: int = 500) -> dict[str, Any]:
     """Timer propio de los pedidos al vecino sin responder. Mismas claves y escalones que
     `procesar_desistimientos`, pero con t0 = `fecha_pedido` y el nivel en
     `tramite_pedido_iniciador.aviso_nivel` (una transicion del tramite no lo toca). Un nivel por
     corrida. Solo pedidos `abierto` de tramites activos, no archivados, no finales y pendientes.
-    Al desistir: mismo UPDATE y movimiento `desistido` que el otro timer + pedido cancelado."""
+    Al desistir: mismo UPDATE y movimiento `desistido` que el otro timer + pedido cancelado.
+    La lectura solo elige candidatos; la decisión la toma `procesar_pedido_sin_respuesta` por fila."""
     if not await _leer_bool_config(db, CFG_ACTIVO, True, id_municipio=id_municipio):
         return {"activo": False, "avisos": 0, "desistidos": 0, "ids": []}
 
     cfg = {k: await _leer_int_config(db, k, v, id_municipio=id_municipio) for k, v in DEFAULTS.items()}
-    a1, a2 = cfg[CFG_AVISO1], cfg[CFG_AVISO2]
-    dd, fh = cfg[CFG_DESISTIR], cfg[CFG_FINAL_HORAS]
-    umbral_final = dd - (fh / 24.0)
 
-    rows = (await db.execute(text("""
-        SELECT p.id_tramite_pedido, p.texto AS pedido_texto, p.aviso_nivel,
-               EXTRACT(EPOCH FROM (NOW() - p.fecha_pedido)) / 86400.0 AS dias_desde_t0,
-               t.id_tramite, t.numero_expediente, t.id_municipio, t.id_agente_iniciador,
-               t.iniciador_tipo, t.id_ciudadano_iniciador, t.id_empresa_iniciadora,
-               tt.nombre AS tipo_nombre, e.etiqueta AS estado_etiqueta,
-               ci.email AS email_ciudadano,
-               TRIM(COALESCE(ci.nombre, '') || ' ' || COALESCE(ci.apellido, '')) AS nombre_ciudadano,
-               em.email AS email_empresa, em.nombre AS nombre_empresa
+    candidatos = (await db.execute(text("""
+        SELECT p.id_tramite_pedido, p.id_tramite
           FROM tramite_pedido_iniciador p
           JOIN tramite t ON t.id_tramite = p.id_tramite
           JOIN tipo_tramite_estado e ON e.id_tipo_tramite_estado = t.id_tipo_tramite_estado_actual
-          JOIN tipo_tramite_version v ON v.id_tipo_tramite_version = t.id_tipo_tramite_version
-          JOIN tipo_tramite tt ON tt.id_tipo_tramite = v.id_tipo_tramite
-          LEFT JOIN ciudadanos ci ON ci.id_ciudadano = t.id_ciudadano_iniciador
-          LEFT JOIN empresas em ON em.id_empresa = t.id_empresa_iniciadora
          WHERE p.estado = 'abierto' AND p.activo = TRUE AND p.id_municipio = :mun
            AND t.activo = TRUE AND t.fecha_archivado IS NULL
            AND COALESCE(e.es_final, FALSE) = FALSE
@@ -432,90 +576,23 @@ async def procesar_pedidos_sin_respuesta(db: AsyncSession, *, id_municipio: int,
            AND t.iniciador_tipo IN ('ciudadano', 'empresa')
          ORDER BY p.id_tramite_pedido
          LIMIT :lim
-    """), {"lim": limite, "mun": id_municipio})).mappings().all()
+    """), {"lim": limite, "mun": id_municipio})).all()
+    # Cierra la lectura (commit, no rollback: no descarta lo que el llamador ya hizo en la sesión,
+    # como el archivado del mismo cron). Cada fila va después en su propia transacción.
+    await db.commit()
 
     avisos = 0
     desistidos: list[int] = []
     avisados: list[dict] = []
-    for r in rows:
-        d = dict(r)
-        nivel = int(d.get("aviso_nivel") or 0)
-        dias = float(d.get("dias_desde_t0") or 0.0)
-        id_t = int(d["id_tramite"])
-        id_p = int(d["id_tramite_pedido"])
-
-        if nivel <= 0 and dias >= a1:
-            nuevo_nivel = 1
-        elif nivel == 1 and dias >= a2:
-            nuevo_nivel = 2
-        elif nivel == 2 and dias >= umbral_final:
-            nuevo_nivel = 3
-        elif nivel >= 3 and dias >= dd:
-            nuevo_nivel = None  # desistir
-        else:
+    for id_p, id_t in candidatos:
+        res = await procesar_pedido_sin_respuesta(db, int(id_t), int(id_p), cfg)
+        if not res:
             continue
-
-        if nuevo_nivel is not None:
-            restantes = max(0, int(round(dd - dias)))
-            titulo, cuerpo = _texto_aviso_pedido(nuevo_nivel, d, d["pedido_texto"], restantes, fh)
-            await db.execute(text("""
-                UPDATE tramite_pedido_iniciador SET aviso_nivel = :n, aviso_en = NOW(), fecha_modificacion = NOW()
-                 WHERE id_tramite_pedido = :p
-            """), {"n": nuevo_nivel, "p": id_p})
-            await svc_mov.registrar_movimiento(
-                db, id_t, "aviso_iniciador",
-                id_usuario=None, id_agente=None, id_municipio=d["id_municipio"],
-                comentario=f"{_ETIQUETA_NIVEL[nuevo_nivel]} de desistimiento al iniciador por un pedido sin respuesta "
-                           f"({int(dias)} días desde el pedido).",
-                metadata_jsonb={"id_tramite_pedido": id_p, "nivel": nuevo_nivel,
-                                "dias_desde_t0": round(dias, 1), "dias_restantes": restantes, "automatico": True},
-            )
-            await db.commit()
-            # Post-commit, best-effort: vecino (bandeja + push + mail) e interno.
-            try:
-                from app.core.urls import url_portal_vecino
-                url = await url_portal_vecino(db, d["id_municipio"])
-            except Exception as e:  # noqa: BLE001
-                logger.warning("ciclo_vida: url del portal (pedido tramite=%s) fallo: %s", id_t, e)
-                url = ""
-            try:
-                await _avisar_vecino(d, "tramite_pedido", titulo, cuerpo, con_email=True, url_portal=url)
-            except Exception as e:  # noqa: BLE001
-                logger.warning("ciclo_vida: aviso al vecino (pedido tramite=%s) fallo: %s", id_t, e)
-            try:
-                from app.services import notificaciones as svc_notif
-                await svc_notif.notificar_tramite_pendiente_vecino(db, id_t, nuevo_nivel, int(dias))
-            except Exception as e:  # noqa: BLE001
-                logger.warning("ciclo_vida: notificacion interna (pedido tramite=%s) fallo: %s", id_t, e)
+        if res["accion"] == "aviso":
             avisos += 1
-            avisados.append({"id_tramite": id_t, "id_tramite_pedido": id_p, "nivel": nuevo_nivel})
-            logger.info("ciclo_vida: aviso %s pedido=%s tramite=%s (%s dias)", nuevo_nivel, id_p, d["numero_expediente"], int(dias))
+            avisados.append({"id_tramite": int(id_t), "id_tramite_pedido": int(id_p), "nivel": res["nivel"]})
         else:
-            await db.execute(text("""
-                UPDATE tramite SET resultado = 'desistido',
-                                   fecha_archivado = NOW(),
-                                   archivado_motivo = 'desistimiento',
-                                   desist_aviso_en = NOW(),
-                                   fecha_modificacion = NOW()
-                 WHERE id_tramite = :id AND fecha_archivado IS NULL
-            """), {"id": id_t})
-            await svc_mov.registrar_movimiento(
-                db, id_t, "desistido",
-                id_usuario=None, id_agente=d["id_agente_iniciador"],
-                id_municipio=d["id_municipio"],
-                comentario=f"Desistimiento automático: el iniciador no respondió el pedido tras {int(dias)} días "
-                           f"({a1}/{a2}/{fh}h de avisos, desiste a los {dd} días).",
-                metadata_jsonb={"id_tramite_pedido": id_p, "dias_desde_t0": round(dias, 1),
-                                "resultado_nuevo": "desistido", "archivado_motivo": "desistimiento",
-                                "automatico": True},
-            )
-            from app.services.tramites import pedidos as svc_pedidos  # tardio: pedidos usa ciclo_vida
-            await svc_pedidos.cancelar_pedido_abierto_por_cierre(
-                db, id_t, "El trámite se dio por desistido", d["id_municipio"])
-            await db.commit()
-            await al_terminar(id_t, con_email=True)
-            desistidos.append(id_t)
-            logger.info("ciclo_vida: DESISTIDO por pedido sin respuesta tramite=%s (%s dias)", d["numero_expediente"], int(dias))
+            desistidos.append(int(id_t))
 
     return {"activo": True, "config": cfg, "avisos": avisos, "avisados": avisados,
             "desistidos": len(desistidos), "ids": desistidos}
