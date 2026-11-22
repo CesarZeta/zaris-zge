@@ -218,6 +218,11 @@ IT-01 F6.2 ([`PLAN_MULTI_MUNICIPIO_F6_2.md`](PLAN_MULTI_MUNICIPIO_F6_2.md)). **A
 - Mientras el backend entre como `postgres` no cambia nada. Smoke `smoke_barrera.py`.
 
 
+### Migración 140 — nombre del tipo «Inscripción profesional» (`backend/migrations/140_tipo_tramite_nombre_mayuscula.sql`)
+
+Solo datos. En San Andrés el tipo `inscripcion-profesional` se llamaba «inscripción Profesional», y desde la fase 1 lo ve el vecino en el portal: pasa a «Inscripción profesional». Toca solo el nombre exacto (re-aplicable). **Local (0 filas: el tipo no existe ahí) y prod (1 fila, verificada) el 2026-11-22, por MCP.**
+
+
 ### Migraciones 139 + 139b — trámites del vecino, fase 1 backend (`backend/migrations/139_tramites_vecino.sql`, `139b_tramites_vecino_datos.sql`)
 
 Spec en [`docs/superpowers/specs/2026-11-21-tramites-vecino-design.md`](docs/superpowers/specs/2026-11-21-tramites-vecino-design.md). **Aplicadas en local y en prod el 2026-11-22.** En prod: la 139 la corrió César en el SQL Editor de Supabase (lleva `DROP NOT NULL` y `DROP CONSTRAINT`, que el MCP rechaza) y la 139b por MCP el mismo día. Verificado en prod: San Andrés con 6 tipos ofrecidos, el modelo con 5, y ningún tipo exige identidad validada.
