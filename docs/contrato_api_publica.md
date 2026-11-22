@@ -147,9 +147,33 @@ Los avisos los escribe el **backend** en los mismos hooks post-commit que dispar
 
 | Verbo | Ruta | Auth | Para qué |
 |---|---|---|---|
-| GET | `?solo_no_leidos=&limit=&offset=` | publico | `{avisos: [...], no_leidos, total}`, del más nuevo al más viejo. Cada aviso: `{id_aviso, tipo ('reclamo_estado' \| 'emergencia_estado' \| 'tramite_estado' \| 'tramite_pendiente' \| 'municipio'), titulo, mensaje, url (ruta RELATIVA en la PWA, misma que el push: "/reclamos/123", "/emergencias"; los de trámites traen "/alertas"), recurso_tipo ('reclamo' \| 'emergencia' \| 'tramite'), recurso_id, leido, leido_en, fecha}`. **Trámites (desde 2026-08-30):** `tramite_estado` = "tu trámite terminó: APROBADO/RECHAZADO" (o desistido); `tramite_pendiente` = avisos escalonados cuando el expediente espera documentación del vecino (30/60 días y 72 h antes de darlo por desistido). La PWA solo los muestra; no hay endpoint público de trámites. |
+| GET | `?solo_no_leidos=&limit=&offset=` | publico | `{avisos: [...], no_leidos, total}`, del más nuevo al más viejo. Cada aviso: `{id_aviso, tipo ('reclamo_estado' \| 'emergencia_estado' \| 'tramite_estado' \| 'tramite_pendiente' \| 'tramite_pedido' \| 'municipio'), titulo, mensaje, url (ruta RELATIVA en la PWA, misma que el push: "/reclamos/123", "/emergencias"; los de trámites traen "/alertas"), recurso_tipo ('reclamo' \| 'emergencia' \| 'tramite'), recurso_id, leido, leido_en, fecha}`. **Trámites (desde 2026-08-30):** `tramite_estado` = "tu trámite terminó: APROBADO/RECHAZADO" (o desistido); `tramite_pendiente` = avisos escalonados cuando el expediente espera documentación del vecino (30/60 días y 72 h antes de darlo por desistido). La PWA solo los muestra (los endpoints de trámites del vecino están en la sección 12). |
 | PATCH | `/{id_aviso}/leer` | publico | Marca UN aviso leído. Idempotente. **404 si no existe o no es del vecino** (mismo cuerpo). Devuelve `{ok, id_aviso, leido, leido_en, no_leidos}`. |
 | POST | `/leer-todos` | publico | Marca todos los pendientes. `{ok, marcados, no_leidos: 0}`. |
+
+## 12. Trámites del vecino — `/api/v1/publico/tramites` (nuevo 2026-11-22, mig 139)
+
+Todos los endpoints son scope `publico` (el `id_ciudadano` sale del token) y exigen el módulo `tramites` habilitado en el municipio. **La PWA todavía no tiene pantallas** de este circuito (fase 3): hoy solo existe el backend. Un trámite que no es del vecino responde **404 idéntico** al de un id inexistente.
+
+| Verbo | Ruta | Auth | Para qué |
+|---|---|---|---|
+| GET | `/tipos` | publico | Tipos que el municipio ofrece al vecino (`ofrecer_al_vecino`): `{id_tipo_tramite, nombre, descripcion, exige_identidad_validada, puede_iniciar, motivo_no_puede}`. `puede_iniciar=false` si el tipo exige identidad validada y el vecino no la tiene (el motivo trae el texto para mostrar). |
+| GET | `/tipos/{id_tipo_tramite}` | publico | Lo mismo más `campos` (`nombre_interno, etiqueta, tipo_dato, obligatorio, opciones, ayuda, orden`) y `documentos` del alta. 404 si el tipo no se ofrece. |
+| POST | `` | publico | Inicia un trámite en UN request **multipart**, todo o nada. Form: `id_tipo_tramite` (int), `datos` (JSON objeto, default `{}`), `documentos` (JSON lista de ids de documento requerido, uno por archivo, en el mismo orden), `archivos` (partes de archivo, hasta 20). **201** `{id_tramite, numero_expediente}`. Rate-limit 20/min/IP (clave `trampub:`). Avisa a la bandeja de la gestión y manda mail al vecino con el número. |
+| GET | `` | publico | Mis trámites: `{id_tramite, numero_expediente, tipo_nombre, estado_etiqueta, estado_color, resultado, fecha_alta, tiene_pedido_abierto, documentos_pendientes}`, del más nuevo al más viejo. Un estado `oculto_para_iniciador` nunca se muestra: sale el último estado visible o «En trámite». |
+| GET | `/{id_tramite}` | publico | Detalle: lo anterior más `datos` (etiqueta/valor legibles), `documentos` (los que subió el vecino), `documentos_del_paso`, `pedido_abierto` (`{id_tramite_pedido, texto, pide_archivo, fecha_pedido}` o `null`) e `historial` (`{fecha, texto}`, lista cerrada: nada interno ni de agentes). |
+| GET | `/{id_tramite}/documentos/{id_doc}/contenido` | publico | Descarga un documento que SUBIÓ el vecino (404 si es del personal o de otro vecino). 410 si el binario fue depurado por retención. |
+| POST | `/{id_tramite}/documentos` | publico | Suma documentos del paso actual. Multipart: `documentos` (JSON lista de ids, uno por archivo) y `archivos` (1 a 20). **201** `{subidos}`. Rate-limit 20/min/IP (`trampubdoc:`). |
+| POST | `/{id_tramite}/pedidos/{id_pedido}/responder` | publico | Responde un pedido del municipio. Multipart: `texto` (5 a 4000 caracteres, obligatorio) y `archivos` (hasta 20; obligatorios si el pedido tiene `pide_archivo`). `{respondido: true}`. Rate-limit 20/min/IP (`trampub:ped:`). |
+
+Códigos que la PWA tiene que manejar:
+
+- **404** trámite, tipo o documento ajeno o inexistente (mismo cuerpo).
+- **409** el trámite ya terminó o se archivó: no se suman documentos ni se responde un pedido (el pedido abierto se canceló al cerrar). También 409 si el pedido ya no está abierto (respuesta concurrente).
+- **413** el cuerpo supera **25 MB** (tope de todo POST bajo `/api/v1/publico/tramites`, antes de parsear el multipart). **411** si falta `Content-Length`.
+- **422** validación: sin cuenta de vecino, tipo que exige identidad validada y el vecino no la tiene (el texto manda acercarse al municipio con el documento), campos o documentos inválidos o faltantes, formato o tamaño de archivo no aceptado, JSON mal formado en `datos`/`documentos`.
+
+**Bandeja de avisos (sección 11).** Los pedidos del municipio llegan al vecino como aviso `tramite_pedido` (nuevo) con `url` `/alertas`, `recurso_tipo` `tramite`; se suman a `tramite_estado` y `tramite_pendiente`. Un pedido cancelado por el municipio también se avisa.
 
 ---
 

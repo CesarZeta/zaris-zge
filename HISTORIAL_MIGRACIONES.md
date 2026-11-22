@@ -217,6 +217,14 @@ IT-01 F6.2 ([`PLAN_MULTI_MUNICIPIO_F6_2.md`](PLAN_MULTI_MUNICIPIO_F6_2.md)). **A
 - Enciende RLS en cada tabla clasificada: en local muchas lo tenían apagado (en prod ya estaban todas encendidas).
 - Mientras el backend entre como `postgres` no cambia nada. Smoke `smoke_barrera.py`.
 
+
+### Migraciones 139 + 139b — trámites del vecino, fase 1 backend (`backend/migrations/139_tramites_vecino.sql`, `139b_tramites_vecino_datos.sql`)
+
+Spec en [`docs/superpowers/specs/2026-11-21-tramites-vecino-design.md`](docs/superpowers/specs/2026-11-21-tramites-vecino-design.md). **Aplicadas en local y en prod el 2026-11-22.** En prod: la 139 la corrió César en el SQL Editor de Supabase (lleva `DROP NOT NULL` y `DROP CONSTRAINT`, que el MCP rechaza) y la 139b por MCP el mismo día. Verificado en prod: San Andrés con 6 tipos ofrecidos, el modelo con 5, y ningún tipo exige identidad validada.
+- **139 (estructura):** `tramite.id_agente_iniciador`, `tramite_movimiento.id_agente` y `tramite_documento.id_agente_subio` admiten NULL; `tramite_movimiento.id_ciudadano_actor` y `tramite_documento.id_ciudadano_subio` (FK simple y compuesta) con CHECK de un solo actor; `tramite_documento.id_tramite_pedido`; `tipo_tramite.ofrecer_al_vecino` y `exige_identidad_validada`; tablas `ciudadano_identidad_validacion` (una activa por persona) y `tramite_pedido_iniciador` (un pedido abierto por trámite), clasificadas en `municipio_tabla_clase`, con RLS y política de la barrera; CHECK de movimientos y de avisos ampliados (`tramite_pedido`).
+- **139b (datos):** marca `ofrecer_al_vecino` en los seis tipos por código (`aviso-obra`, `poda-arbol`, `inscripcion-profesional`, `exencion-tasas`, `permiso-espacio-publico`, `recurso-administrativo`), en todos los municipios que los tengan; no prende `exige_identidad_validada` en ninguno.
+- Reglas vivas en la skill `modulo-tramites` → «Trámites del vecino» y contrato en `docs/contrato_api_publica.md` §12.
+
 ### Migraciones 132 y 132b — catálogo de gobiernos locales (`backend/migrations/132_catalogo_gobiernos_locales.sql`, `132b_catalogo_gobiernos_locales_datos.sql`)
 
 Diseño: [`PLAN_CONTORNO_MUNICIPIO_DISENO.md`](PLAN_CONTORNO_MUNICIPIO_DISENO.md) §4.2. **Aplicadas en local y en prod el 2026-10-28.** En prod: backups `_backup_partidos_2026_10_28`, `_backup_localidades_2026_10_28` y `_backup_provincias_2026_10_28` (con RLS) → 132 por MCP → **132b por conexión directa** (pooler de sesión, en una transacción): pesa 327 KB y pasarla por el MCP no era razonable. Por eso no figura en la lista de migraciones de Supabase.
@@ -1019,4 +1027,3 @@ Bloque cerrado 2026-05-12. La versión condensada vive en §31 del CLAUDE.md vig
 ### Deuda futura — cerrada
 
 `admin_tablas.html` fue migrado a tokens DS directos en commit `0586114` (2026-05-13): 0 `var(--z-*)` remanentes. Las clases internas (`.btn-primary`, `.field`, `.modal`) se conservan a propósito (renombrarlas a `*-zaris` colisionaría con el DS sin ganancia funcional). No queda deuda de estilos legacy en el repo.
-

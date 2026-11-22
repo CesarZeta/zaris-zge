@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-11-21 (Cesar). **IT-01 F6.5 cerrada** con la exportación real de San Andrés: IT-01 completa en prod (F1-F6). Empezó el bloque del vecino: **trámites desde el portal**, fase 1 (backend) implementada en la rama `tramites-vecino-fase1`, sin pasar a prod (pregunta 1). F6.3 y F6.4 en prod desde el 2026-11-20 (vuelta atrás de la barrera: `DB_BARRERA=false` en Railway).
+**Última actualización:** 2026-11-22. IT-01 completa en prod (F1-F6, F6.5 cerrada el 2026-11-21). Bloque del vecino: **trámites desde el portal**, fase 1 (backend) en prod desde el 2026-11-22; faltan las pantallas (pregunta 1). F6.3 y F6.4 en prod desde el 2026-11-20 (vuelta atrás de la barrera: `DB_BARRERA=false` en Railway).
 
 ---
 
@@ -18,7 +18,7 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **Trámites desde el portal del vecino — fase 1 (backend) implementada, falta cerrar y pasar a prod.** Diseño aprobado ([spec](docs/superpowers/specs/2026-11-21-tramites-vecino-design.md), incluye identidad validada por tipo) y [plan](docs/superpowers/plans/2026-11-21-tramites-vecino-fase1-backend.md). Tareas 1-8 hechas y revisadas una por una, en la rama **`tramites-vecino-fase1`** (13 commits, `efcfa34`; NO está en `main`: el código espera la migración 139). Smoke `backend/smoke_tramites_vecino.py` 239/239 con y sin barrera. Falta: (a) la revisión final del conjunto (se cortó por el cierre) y su tanda de correcciones, que incluye sí o sí el re-chequeo del pedido abierto dentro de la transacción antes de desistir; (b) correr `smoke_tramites_ciclo_vida.py` con uvicorn local y mail apagado; (c) Task 9: César corre la 139 en el SQL Editor de Supabase, la 139b por MCP, merge a `main`, push y verificación en prod. Registro de avance local (no versionado): `.superpowers/sdd/2026-11-21-tramites-vecino-fase1-backend/progress.md`.
+1. **Trámites desde el portal del vecino — fase 1 (backend) en prod desde el 2026-11-22** (migraciones 139 + 139b; contrato en [`docs/contrato_api_publica.md`](docs/contrato_api_publica.md) §12 y reglas en la skill `modulo-tramites`). Diseño: [spec](docs/superpowers/specs/2026-11-21-tramites-vecino-design.md), [plan](docs/superpowers/plans/2026-11-21-tramites-vecino-fase1-backend.md). **Falta:** las pantallas, fases 2 y 3 según el spec: backoffice (pedidos al vecino, validar identidad en la ficha, marcar tipos ofrecidos) y PWA (iniciar, ver mis trámites, responder pedidos).
 2. **Bloque del vecino — después de F4 (orden de César, 2026-10-27):**
    1. La web del ciudadano con todo lo que tiene la app (supuesto de Claude, sin confirmar: es el modo escritorio del portal, ver En curso).
    2. Todas las prestaciones del vecino; falta **iniciar un trámite** desde el portal (ni endpoint ni pantalla). Turnos y entradas ya se reservan desde la app (verificado en el código).
@@ -83,6 +83,7 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
+- **2026-11-22:** **Trámites del vecino, fase 1 (backend) en prod**: iniciar, ver, subir documentos y responder pedidos desde el portal, identidad validada en ventanilla por tipo, pedidos del municipio al vecino con su timer, y timer de `espera_iniciador` congelado si el vecino ya subió documentos. Migraciones 139 + 139b ([`HISTORIAL_MIGRACIONES.md`](HISTORIAL_MIGRACIONES.md)).
 - **2026-11-21:** **IT-01 F6.5 cerrada**: la exportación real de San Andrés se restauró en una base local vacía con los conteos iguales al zip y el inicio funcionando; después se borró todo ([`PLAN_MULTI_MUNICIPIO_F6_5.md`](PLAN_MULTI_MUNICIPIO_F6_5.md) → «Resultado»). Herramienta de restauración y su smoke (`e0f7562`, `bd88668`). Decisiones de F6.4 confirmadas por César: el super queda en `global/`; los crons siguen en OK con fallas de un ítem (no había trámites con errores: los 720 de prod pasan los 15 controles y la purga de hoy evaluó 0). Reclamos de prueba REC-SAN-2026-003478 y 003479 cancelados («reclamo de prueba»; la OT del segundo, cancelada en cascada). Cancelar un reclamo exige ahora su gestión, igual que el pase a Resuelto (`db9aa56`; `smoke_reclamo_cancelar_gestion.py` 8/8 con y sin barrera; 403 verificado en prod).
 - **2026-11-20:** IT-01 F6.1 (todo cambio de clave corta las sesiones; clave temporal solo sirve para cambiarla), F6.2 (usuario `zaris_app` + migración 138), F6.3 (segunda barrera prendida en prod, mismos conteos y tiempos con y sin ella) y F6.4 (archivos por carpeta de municipio, crons con una línea por municipio) en prod. Mail al vecino con el número cuando un agente carga el reclamo. Detalle en `PLAN_MULTI_MUNICIPIO_F6*.md`.
 

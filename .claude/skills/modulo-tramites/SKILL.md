@@ -116,6 +116,21 @@ Tres piezas, todas **paralelas al FSM** (no fuerzan estados en los circuitos):
 - Desistido manual: `POST /{ref}/resultado {"resultado":"desistido"}` → misma marca + movimiento `desistido` + aviso al vecino. `ResultadoChip` lo ofrece.
 - Smoke `backend/smoke_tramites_ciclo_vida.py` (23/23, **solo local**: viaja en el tiempo con SQL y restaura fixtures).
 
+### Trámites del vecino (mig 139, 2026-11-22)
+
+Spec: `docs/superpowers/specs/2026-11-21-tramites-vecino-design.md`. Contrato público: `docs/contrato_api_publica.md` §12 (router `publico_tramites`, `/api/v1/publico/tramites`, módulo `tramites`, rate limit `trampub:`/`trampubdoc:`). La PWA aún no tiene pantallas (fase 3).
+
+- **El actor puede ser el vecino.** `tramite_movimiento.id_ciudadano_actor` y `tramite_documento.id_ciudadano_subio` conviven con `id_agente`/`id_agente_subio`, que ahora admiten NULL; un CHECK exige **un solo actor por fila**. Todo movimiento o documento nuevo del portal lleva el ciudadano y ningún agente. `tramite_documento.id_tramite_pedido` liga el archivo a la respuesta de un pedido.
+- **Toda alta con iniciador ciudadano exige cuenta de vecino** (`ciudadano_credencial` activa, activada o pendiente), en backoffice y portal: `crear_tramite_en_db` da 422 «El vecino no tiene cuenta en el portal: dale de alta la cuenta desde su ficha» antes de consumir el numerador.
+- **Por tipo, dos flags** (`tipo_tramite`, ambos FALSE por defecto): `ofrecer_al_vecino` (aparece en `/publico/tramites/tipos`; el builder lo marca desde Config de tipos) y `exige_identidad_validada`. Con el segundo, el vecino solo inicia si tiene identidad validada en ventanilla; si no, 422 con el texto de `services/identidad.MSG_IDENTIDAD_PORTAL`, y el backoffice da 422 con `MSG_IDENTIDAD_BACKOFFICE`.
+- **Validación de identidad** (`ciudadano_identidad_validacion`, **una activa por persona**, índice único parcial): `POST /api/v1/buc/ciudadanos/{id}/identidad/validar` (nivel ≤ 3 con perfil de agente; 409 si ya está validada) y `.../identidad/revocar` (nivel ≤ 2; 404 si no hay activa). La baja es lógica y deja quién y cuándo.
+- **Pedidos al iniciador** (`tramite_pedido_iniciador`, estados `abierto`/`respondido`/`cancelado`): el agente pide con `POST /tramites/{ref}/pedidos`, cancela con `.../pedidos/{id}/cancelar` y la bandeja marca la respuesta vista con `.../pedidos/{id}/visto` (204; no escribe si la cuenta no puede operar el trámite). **Un pedido abierto por trámite** (índice único parcial). Se **cancelan solos** al pasar el trámite a un estado final o archivarlo (movimiento `pedido_cancelado`, sin aviso extra: el cierre ya avisa). Responder sobre un trámite cerrado o un pedido ya no abierto = **409**.
+- **Timer propio de pedidos sin respuesta** (`procesar_pedidos_sin_respuesta`, mismo cron diario): cuenta desde `fecha_pedido` con los mismos plazos y claves que el de `espera_iniciador` (avisos, último aviso, desistimiento) y termina en **desistimiento** del trámite; el nivel se guarda en `tramite_pedido_iniciador.aviso_nivel` y una transición del trámite no lo reinicia.
+- **Orden de locks: trámite → pedido**, en todo camino (transición, cancelar, responder, cron, cierre). Se toma el trámite con `FOR UPDATE`, se re-lee la foto y recién después el pedido; invertirlo da deadlock con la respuesta del vecino. El detalle del trámite se bloquea también durante la subida a Storage (evita carreras con el tope por documento).
+- **Tope de cuerpo del portal:** `LimiteCuerpoMiddleware` aplica 25 MB a todo `POST` bajo `/api/v1/publico/tramites` (patrón con `fullmatch`, ver `main.py`) ANTES de parsear el multipart: 413 si excede, 411 sin `Content-Length`. Una ruta nueva bajo ese prefijo lo hereda.
+- **Visibilidad:** el vecino solo ve lo suyo (404 idéntico a inexistente), el historial es una lista cerrada de tipos de movimiento, y un estado `oculto_para_iniciador` nunca se expone.
+- El timer de `espera_iniciador` se congela si el vecino ya subió documentos: regla ya descripta en «Ciclo de vida hacia el vecino».
+
 ### Gestión responsable del tipo (mig 104, ordenamiento de César 2026-09-06)
 
 `tipo_tramite.id_subarea` = **la gestión que tramita ese tipo**. NO es el destinatario del expediente (ese sigue siendo polimórfico en `tramite`: `id_subarea_actual` / `id_equipo_actual` / `id_agente_actual`) ni cambia el FSM ni el scoping de §3.
