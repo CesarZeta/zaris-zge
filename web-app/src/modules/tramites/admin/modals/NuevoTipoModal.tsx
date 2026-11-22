@@ -3,6 +3,8 @@ import { Button, Input } from '../../../../ui'
 import { useCrearTipo, useSubareasCatalogo } from '../hooks'
 import type { SubareaCatalogoItem } from '../api'
 import { ModalShell, label, requiredMark, errorMsg, formRow } from './_modalShell'
+import { CasillasPortal } from '../components/CasillasPortal'
+import { ofrecerTrasCambioIniciadores } from '../portalVecino'
 import type { IniciadorTipo } from '../../types'
 
 const INICIADORES: IniciadorTipo[] = ['ciudadano', 'empresa', 'area_interna']
@@ -20,6 +22,8 @@ export function NuevoTipoModal({
   const [iniciadores, setIniciadores] = useState<IniciadorTipo[]>(['ciudadano'])
   const [permiteRep, setPermiteRep] = useState(false)
   const [nuncaDepurar, setNuncaDepurar] = useState(false)
+  const [ofrecer, setOfrecer] = useState(false)
+  const [exigeIdentidad, setExigeIdentidad] = useState(false)
   const [slaDias, setSlaDias] = useState(0)
   const [largoCorr, setLargoCorr] = useState(4)
   const [idSubarea, setIdSubarea] = useState(0)
@@ -39,7 +43,9 @@ export function NuevoTipoModal({
   const crear = useCrearTipo()
 
   function toggleIni(i: IniciadorTipo) {
-    setIniciadores((prev) => prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i])
+    const nuevos = iniciadores.includes(i) ? iniciadores.filter((x) => x !== i) : [...iniciadores, i]
+    setIniciadores(nuevos)
+    setOfrecer((o) => ofrecerTrasCambioIniciadores(nuevos, o))
   }
 
   async function handleGuardar() {
@@ -65,6 +71,8 @@ export function NuevoTipoModal({
         iniciadores_permitidos: iniciadores,
         permite_representante: permiteRep,
         retencion_nunca_depurar: nuncaDepurar,
+        ofrecer_al_vecino: ofrecer,
+        exige_identidad_validada: exigeIdentidad,
         sla_dias: slaDias > 0 ? slaDias : null,
         id_subarea: idSubarea > 0 ? idSubarea : null,  // mig 104
         largo_correlativo: largoCorr,
@@ -152,6 +160,12 @@ export function NuevoTipoModal({
         <input type="checkbox" checked={permiteRep} onChange={(e) => setPermiteRep(e.target.checked)} />
         Permitir representante (ciudadano apoderado)
       </label>
+
+      <CasillasPortal
+        iniciadores={iniciadores}
+        ofrecer={ofrecer} onOfrecer={setOfrecer}
+        exige={exigeIdentidad} onExige={setExigeIdentidad}
+      />
 
       <label style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 14, cursor: 'pointer', marginBottom: 4 }}>
         <input type="checkbox" checked={nuncaDepurar} onChange={(e) => setNuncaDepurar(e.target.checked)} style={{ marginTop: 3 }} />

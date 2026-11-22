@@ -32,6 +32,8 @@ export interface TipoCreateBody {
   icono?: string | null
   color?: string | null
   retencion_nunca_depurar?: boolean
+  ofrecer_al_vecino?: boolean
+  exige_identidad_validada?: boolean
   sla_dias?: number | null
   id_subarea?: number | null  // mig 104: gestión responsable
 }
@@ -50,6 +52,8 @@ export interface TipoUpdateBody {
   icono?: string | null
   color?: string | null
   retencion_nunca_depurar?: boolean
+  ofrecer_al_vecino?: boolean
+  exige_identidad_validada?: boolean
   sla_dias?: number | null  // 0 = volver al default global
   id_subarea?: number | null  // mig 104 (0 = desasignar)
 }

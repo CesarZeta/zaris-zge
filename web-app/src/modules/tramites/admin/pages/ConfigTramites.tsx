@@ -95,7 +95,12 @@ export function ConfigTramites() {
               {tipos.map((t) => (
                 <tr key={t.id_tipo_tramite} style={{ borderBottom: '1px solid var(--border-primary)' }}>
                   <td style={cellMono}>{t.codigo}</td>
-                  <td style={cell}>{t.nombre}</td>
+                  <td style={cell}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      {t.nombre}
+                      {t.ofrecer_al_vecino && <Badge kind="success">Portal</Badge>}
+                    </span>
+                  </td>
                   <td style={cellMono}>{t.prefijo}</td>
                   {/* mig 104: gestión responsable. El área se muestra encima porque
                       el ordenamiento del catálogo es área → subárea → tipo. */}

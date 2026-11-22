@@ -143,6 +143,8 @@ export interface TipoTramiteAdmin {
   activo: boolean
   es_sistema: boolean
   retencion_nunca_depurar: boolean
+  ofrecer_al_vecino: boolean          // mig 139: aparece en la app del vecino
+  exige_identidad_validada: boolean   // mig 139: el vecino necesita la identidad validada en ventanilla
   sla_dias: number | null  // mig 101: null = default global (Config → Sistema)
   // mig 104: gestión responsable del tipo. El área no se guarda: la deriva el
   // backend por JOIN subarea → area (fuente única, §27).
@@ -169,6 +171,8 @@ export interface TipoTramiteAdminListItem {
   id_subarea: number | null       // mig 104
   subarea_nombre: string | null
   area_nombre: string | null
+  ofrecer_al_vecino: boolean        // mig 139
+  exige_identidad_validada: boolean // mig 139
   id_version_publicada: number | null
   estado_version: 'publicado' | 'borrador' | 'sin_estados' | 'archivado'
 }

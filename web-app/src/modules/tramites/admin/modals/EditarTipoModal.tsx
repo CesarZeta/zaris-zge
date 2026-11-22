@@ -3,6 +3,8 @@ import { Button, Input } from '../../../../ui'
 import { useActualizarTipo, useSubareasCatalogo } from '../hooks'
 import type { SubareaCatalogoItem } from '../api'
 import { ModalShell, label, errorMsg, formRow } from './_modalShell'
+import { CasillasPortal } from '../components/CasillasPortal'
+import { ofrecerTrasCambioIniciadores } from '../portalVecino'
 import type { IniciadorTipo, TipoTramiteAdmin } from '../../types'
 
 const INICIADORES: IniciadorTipo[] = ['ciudadano', 'empresa', 'area_interna']
@@ -19,6 +21,8 @@ export function EditarTipoModal({
   const [iniciadores, setIniciadores] = useState<IniciadorTipo[]>(tipo.iniciadores_permitidos)
   const [permiteRep, setPermiteRep] = useState(tipo.permite_representante)
   const [nuncaDepurar, setNuncaDepurar] = useState(tipo.retencion_nunca_depurar ?? false)
+  const [ofrecer, setOfrecer] = useState(tipo.ofrecer_al_vecino ?? false)
+  const [exigeIdentidad, setExigeIdentidad] = useState(tipo.exige_identidad_validada ?? false)
   const [slaDias, setSlaDias] = useState(tipo.sla_dias ?? 0)
   const [idSubarea, setIdSubarea] = useState(tipo.id_subarea ?? 0)
   const [error, setError] = useState('')
@@ -27,7 +31,9 @@ export function EditarTipoModal({
   const actualizar = useActualizarTipo(tipo.id_tipo_tramite)
 
   function toggleIni(i: IniciadorTipo) {
-    setIniciadores((prev) => prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i])
+    const nuevos = iniciadores.includes(i) ? iniciadores.filter((x) => x !== i) : [...iniciadores, i]
+    setIniciadores(nuevos)
+    setOfrecer((o) => ofrecerTrasCambioIniciadores(nuevos, o))
   }
 
   // Agrupadas por área para que el select muestre la jerarquía gestión → área.
@@ -53,6 +59,8 @@ export function EditarTipoModal({
         iniciadores_permitidos: iniciadores,
         permite_representante: permiteRep,
         retencion_nunca_depurar: nuncaDepurar,
+        ofrecer_al_vecino: ofrecer,
+        exige_identidad_validada: exigeIdentidad,
         sla_dias: slaDias,  // 0 = el backend vuelve al default global
         id_subarea: idSubarea,  // 0 = el backend la desasigna (mig 104)
       })
@@ -103,6 +111,12 @@ export function EditarTipoModal({
         <input type="checkbox" checked={permiteRep} onChange={(e) => setPermiteRep(e.target.checked)} />
         Permitir representante
       </label>
+
+      <CasillasPortal
+        iniciadores={iniciadores}
+        ofrecer={ofrecer} onOfrecer={setOfrecer}
+        exige={exigeIdentidad} onExige={setExigeIdentidad}
+      />
 
       <label style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 14, cursor: 'pointer', marginBottom: 4 }}>
         <input type="checkbox" checked={nuncaDepurar} onChange={(e) => setNuncaDepurar(e.target.checked)} style={{ marginTop: 3 }} />
