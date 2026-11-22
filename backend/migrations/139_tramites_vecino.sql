@@ -4,11 +4,13 @@
 -- Qué hace:
 --   1. tramite.id_agente_iniciador, tramite_movimiento.id_agente y tramite_documento.id_agente_subio
 --      pasan a admitir NULL (el actor puede ser el vecino).
---   2. tramite_movimiento.id_ciudadano_actor y tramite_documento.id_ciudadano_subio (FK compuestas a
---      ciudadanos) + CHECK de un solo actor por fila; tramite_documento.id_tramite_pedido.
+--   2. tramite_movimiento.id_ciudadano_actor y tramite_documento.id_ciudadano_subio (FK simple y
+--      compuesta a ciudadanos) + CHECK de un solo actor por fila; tramite_documento.id_tramite_pedido.
+--      Toda referencia nueva lleva su FK simple y su FK compuesta por municipio (§10).
 --   3. tipo_tramite.ofrecer_al_vecino y tipo_tramite.exige_identidad_validada (ambas FALSE).
 --   4. Tablas nuevas ciudadano_identidad_validacion y tramite_pedido_iniciador, clasificadas en
---      municipio_tabla_clase, con RLS y su política barrera_municipio (la 138 ya corrió).
+--      municipio_tabla_clase, con RLS y su política barrera_municipio (la 138 ya corrió), y permisos
+--      explícitos de zaris_app sobre la tabla y su secuencia.
 --   5. Se amplían los CHECK tramite_movimiento_tipo_check y ck_ciudadano_aviso_tipo.
 --
 -- Lleva DROP CONSTRAINT / DROP NOT NULL: en prod la corre César en el SQL Editor de Supabase
@@ -86,12 +88,50 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_tramite_pedido_mun_id
     ON tramite_pedido_iniciador (id_municipio, id_tramite_pedido);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_tramite_pedido_abierto
     ON tramite_pedido_iniciador (id_tramite) WHERE estado = 'abierto' AND activo;
+-- Índices de las referencias: los pedidos de un trámite (todos los estados) y los documentos de la
+-- respuesta a un pedido (también los usa la FK al borrar o cambiar un pedido).
+CREATE INDEX IF NOT EXISTS idx_tramite_pedido_iniciador_id_tramite
+    ON tramite_pedido_iniciador (id_tramite);
+CREATE INDEX IF NOT EXISTS idx_tramite_documento_id_tramite_pedido
+    ON tramite_documento (id_tramite_pedido);
 
--- 5. FK compuestas (id_municipio, col) y CHECK de un solo actor.
+-- 5. FK simples y compuestas (id_municipio, col) de cada referencia nueva (§10), y CHECK de un solo
+--    actor. La simple se crea solo si la columna no tiene ninguna FK de una columna (como la 133b).
 DO $$
 DECLARE
     f RECORD;
 BEGIN
+    FOR f IN SELECT * FROM (VALUES
+        ('ciudadano_identidad_validacion', 'ciudadano_identidad_validacion_id_ciudadano_fkey',
+         'id_ciudadano',       'ciudadanos',               'id_ciudadano'),
+        ('ciudadano_identidad_validacion', 'ciudadano_identidad_validacion_id_agente_fkey',
+         'id_agente',          'agentes',                  'id_agente'),
+        ('ciudadano_identidad_validacion', 'ciudadano_identidad_validacion_id_agente_revoca_fkey',
+         'id_agente_revoca',   'agentes',                  'id_agente'),
+        ('tramite_pedido_iniciador',       'tramite_pedido_iniciador_id_tramite_fkey',
+         'id_tramite',         'tramite',                  'id_tramite'),
+        ('tramite_pedido_iniciador',       'tramite_pedido_iniciador_id_agente_pide_fkey',
+         'id_agente_pide',     'agentes',                  'id_agente'),
+        ('tramite_pedido_iniciador',       'tramite_pedido_iniciador_id_agente_cancela_fkey',
+         'id_agente_cancela',  'agentes',                  'id_agente'),
+        ('tramite_movimiento',             'tramite_movimiento_id_ciudadano_actor_fkey',
+         'id_ciudadano_actor', 'ciudadanos',               'id_ciudadano'),
+        ('tramite_documento',              'tramite_documento_id_ciudadano_subio_fkey',
+         'id_ciudadano_subio', 'ciudadanos',               'id_ciudadano'),
+        ('tramite_documento',              'tramite_documento_id_tramite_pedido_fkey',
+         'id_tramite_pedido',  'tramite_pedido_iniciador', 'id_tramite_pedido')
+    ) AS v(tabla, nombre, col, destino, col_destino)
+    LOOP
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint c
+             WHERE c.conrelid = ('public.' || f.tabla)::regclass AND c.contype = 'f'
+               AND c.conkey = ARRAY[(SELECT attnum FROM pg_attribute
+                                      WHERE attrelid = ('public.' || f.tabla)::regclass AND attname = f.col)]) THEN
+            EXECUTE format('ALTER TABLE %I ADD CONSTRAINT %I FOREIGN KEY (%I) REFERENCES %I (%I)',
+                           f.tabla, f.nombre, f.col, f.destino, f.col_destino);
+        END IF;
+    END LOOP;
+
     FOR f IN SELECT * FROM (VALUES
         ('ciudadano_identidad_validacion', 'fkm_ciudadano_identidad_validacion_id_ciudadano_fkey',
          'id_ciudadano',      'ciudadanos',                'id_ciudadano'),
@@ -161,6 +201,12 @@ BEGIN
         EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
         IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'zaris_app') THEN
             EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON public.%I TO zaris_app', t);
+            -- La secuencia del SERIAL, explícita: los privilegios por defecto de la 138 solo cubren
+            -- lo que crea el rol postgres, y sin USAGE el INSERT como zaris_app falla en nextval.
+            EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE %s TO zaris_app',
+                           pg_get_serial_sequence('public.' || t, 'id_' || CASE t
+                               WHEN 'ciudadano_identidad_validacion' THEN 'ciudadano_identidad_validacion'
+                               ELSE 'tramite_pedido' END));
         END IF;
         EXECUTE format('DROP POLICY IF EXISTS barrera_municipio ON public.%I', t);
         IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'zaris_app') THEN
