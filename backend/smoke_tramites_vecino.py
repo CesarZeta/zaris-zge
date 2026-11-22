@@ -1717,7 +1717,8 @@ async def test_tope_cuerpo_ids_no_canonicos(c: httpx.AsyncClient, ha: dict) -> N
     hv = await _login_vecino(c)
     mucho = {"Content-Length": str(26 * 1024 * 1024), "Content-Type": "multipart/form-data; boundary=x"}
     for ruta in ("/0012/documentos", "/+12/documentos", "/1_2/documentos", "/00000000012/documentos",
-                 "/0012/pedidos/0001/responder", "/12/pedidos/+1/responder", "", "/", "/cualquier/cosa"):
+                 "/0012/pedidos/0001/responder", "/12/pedidos/+1/responder", "", "/", "/cualquier/cosa",
+                 "%0A", "/12%0A/documentos", "/12/pedidos/1%0A/responder"):
         r = await c.post(f"{BASE_PUB}{ruta}", headers={**hv, **mucho}, content=b"--x--")
         check(r.status_code == 413, f"POST {BASE_PUB}{ruta} con Content-Length sobre el tope: 413", f"{r.status_code} {r.text[:100]}")
     # Debajo del tope el pedido llega al handler (no lo frena el middleware).
@@ -1776,6 +1777,15 @@ async def test_descarga_nombre_no_latin1(c: httpx.AsyncClient, ha: dict) -> None
         check(cd.startswith("inline; filename=\"") and cd.split('filename="', 1)[1].split('"', 1)[0].isascii(),
               "filename= de respaldo en ASCII", cd)
         check(r.headers.get("x-content-type-options") == "nosniff", "X-Content-Type-Options: nosniff", str(dict(r.headers)))
+        # La misma descarga desde el backoffice (antes armaba el header crudo y daba 500 con «€»).
+        r = await c.get(f"/api/v1/tramites/{idt}/documentos/{doc['id']}/contenido", headers=ha)
+        cd = r.headers.get("content-disposition", "")
+        check(r.status_code == 200 and r.content == CONTENIDO_FALSO, "backoffice: descarga 200 con el binario",
+              f"{r.status_code} {r.text[:120]}")
+        check("filename*=UTF-8''" in cd and unquote(cd.split("filename*=UTF-8''", 1)[1]) == nombre
+              and cd.split('filename="', 1)[1].split('"', 1)[0].isascii(),
+              "backoffice: filename* con el nombre exacto y respaldo ASCII", cd)
+        check(r.headers.get("x-content-type-options") == "nosniff", "backoffice: nosniff", str(dict(r.headers)))
     finally:
         svc_docs_mod.descargar_bytes = original
         await _limpiar_tramite_completo(idt)
@@ -1805,6 +1815,43 @@ async def test_visto_admin_sin_agente(c: httpx.AsyncClient, ha: dict) -> None:
         await _limpiar_tramite_completo(idt)
 
 
+async def test_cancelar_pedido_orden_de_locks(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[39] Cancelar desde el backoffice toma el trámite antes que el pedido (sin deadlock con el cron)")
+    idt, numero = await _tramite_ventanilla(c, ha, ID_CIUDADANO, "Smoke orden de locks")
+    try:
+        r = await _pedir(c, ha, numero, pide_archivo=False)
+        idp = r.json()["pedidos"][0]["id_tramite_pedido"]
+        async with AsyncSessionLocal() as cron:
+            # El "cron" toma el trámite como lo hace la función por fila...
+            await cron.execute(text("SET LOCAL lock_timeout = '5s'"))
+            await cron.execute(text("SELECT 1 FROM tramite WHERE id_tramite = :t FOR UPDATE"), {"t": idt})
+            # ...mientras el agente cancela: con el orden correcto la cancelación espera en el trámite
+            # sin haber tocado el pedido.
+            tarea = asyncio.create_task(c.post(f"{BASE_BO}/{numero}/pedidos/{idp}/cancelar", headers=ha,
+                                               json={"motivo": "Cancelado en carrera"}))
+            await asyncio.sleep(1.5)
+            check(not tarea.done(), "la cancelación espera el lock del trámite")
+            try:
+                fila = (await cron.execute(text(
+                    "SELECT estado FROM tramite_pedido_iniciador WHERE id_tramite_pedido = :p FOR UPDATE"),
+                    {"p": idp})).first()
+                ok_lock = fila is not None and fila[0] == "abierto"
+            except Exception as e:  # noqa: BLE001 — deadlock (40P01) o lock_timeout si el orden fuera otro
+                ok_lock = False
+                print("    (lock del pedido falló:", type(e).__name__, str(e).splitlines()[0][:120], ")")
+            check(ok_lock, "el cron toma el pedido sin esperar ni deadlock (sigue abierto)")
+            if ok_lock:
+                await cron.commit()
+            else:
+                await cron.rollback()
+        r = await tarea
+        check(r.status_code == 200 and r.json()["pedidos"][0]["estado"] == "cancelado",
+              "la cancelación termina bien después (200)", f"{r.status_code} {r.text[:150]}")
+    finally:
+        await _limpiar_avisos_pedido(idt)
+        await _limpiar_tramite_completo(idt)
+
+
 CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cuenta_422,
          test_backoffice_alta_con_cuenta_201,
          test_identidad_validar_y_revocar, test_identidad_en_perfil_publico, test_backoffice_alta_exige_identidad,
@@ -1819,7 +1866,8 @@ CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cue
          test_pedido_escalones, test_pedido_desistimiento_apagado, test_cambio_de_estado_no_reinicia,
          test_pedido_en_tramite_cerrado_no_avisa, test_admin_ofrecer_al_vecino,
          test_cron_pedido_foto_fresca, test_cron_espera_foto_fresca, test_tope_cuerpo_ids_no_canonicos,
-         test_documentos_tramite_cerrado_409, test_descarga_nombre_no_latin1, test_visto_admin_sin_agente]
+         test_documentos_tramite_cerrado_409, test_descarga_nombre_no_latin1, test_visto_admin_sin_agente,
+         test_cancelar_pedido_orden_de_locks]
 
 
 async def main() -> int:

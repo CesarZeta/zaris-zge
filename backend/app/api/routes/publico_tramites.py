@@ -20,7 +20,6 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi import Path as Path_
@@ -618,15 +617,6 @@ async def detalle_mi_tramite(
     }
 
 
-def _content_disposition(nombre: str | None) -> str:
-    """`inline` con el nombre en RFC 5987 (`filename*=UTF-8''<percent-encoded>`, cualquier carácter) y
-    un `filename=` ASCII de respaldo. Los headers HTTP son latin-1: el nombre crudo con «€» o un emoji
-    daba 500. Se quitan los caracteres de control (CR/LF incluidos)."""
-    limpio = "".join(ch for ch in (nombre or "") if ch.isprintable()).strip() or "documento"
-    respaldo = "".join(ch if " " <= ch <= "~" and ch not in '"\\;' else "_" for ch in limpio)
-    return f"inline; filename=\"{respaldo}\"; filename*=UTF-8''{quote(limpio, safe='')}"
-
-
 @router.get("/{id_tramite}/documentos/{id_doc}/contenido")
 async def contenido_documento(
     id_tramite: int = Path_(..., ge=1, le=MAX_ID),
@@ -650,8 +640,8 @@ async def contenido_documento(
     return Response(
         content=contenido,
         media_type=doc["mime_type"] or "application/octet-stream",
-        headers={"Content-Disposition": _content_disposition(doc["nombre_archivo_original"]),
-                 "X-Content-Type-Options": "nosniff"},
+        headers={"Content-Disposition": svc_docs.content_disposition_inline(doc["nombre_archivo_original"]),
+                 **svc_docs.HEADERS_DESCARGA},
     )
 
 

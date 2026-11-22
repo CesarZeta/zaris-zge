@@ -2047,7 +2047,9 @@ async def cancelar_pedido_al_vecino(
     if not agente:
         raise _sin_perfil_de_agente(current_user)
     _require_no_consultor(agente)
-    tramite = await _tramite_para_pedido(tramite_ref, agente, db, id_municipio, lock=False)
+    # Orden de locks de todo camino de pedidos: el trámite y después el pedido (sin deadlock con la
+    # respuesta del vecino ni con el cron; el movimiento toma FOR KEY SHARE del trámite por la FK).
+    tramite = await _tramite_para_pedido(tramite_ref, agente, db, id_municipio, lock=True)
     await svc_pedidos.cancelar_pedido(db, tramite, id_pedido, agente, current_user["id_usuario"],
                                       body.motivo, request)
     await db.commit()
@@ -2277,7 +2279,8 @@ async def descargar_documento(
         content=contenido,
         media_type=doc.mime_type or "application/octet-stream",
         headers={
-            "Content-Disposition": f'inline; filename="{doc.nombre_archivo_original or "documento"}"',
+            "Content-Disposition": svc_docs.content_disposition_inline(doc.nombre_archivo_original),
+            **svc_docs.HEADERS_DESCARGA,
         },
     )
 

@@ -15,6 +15,7 @@ import re
 import uuid
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import HTTPException, UploadFile
 from sqlalchemy import text
@@ -229,3 +230,16 @@ async def crear_firmas_pendientes(
         ids_creados.append(row.id_tramite_firma)
 
     return ids_creados
+
+
+# Headers de toda descarga de un documento (portal y backoffice): el tipo declarado manda.
+HEADERS_DESCARGA = {"X-Content-Type-Options": "nosniff"}
+
+
+def content_disposition_inline(nombre: str | None) -> str:
+    """`inline` con el nombre en RFC 5987 (`filename*=UTF-8''<percent-encoded>`, cualquier caracter) y
+    un `filename=` ASCII de respaldo. Los headers HTTP son latin-1: el nombre crudo con «€» o un emoji
+    daba 500. Se quitan los caracteres de control (CR/LF incluidos)."""
+    limpio = "".join(ch for ch in (nombre or "") if ch.isprintable()).strip() or "documento"
+    respaldo = "".join(ch if " " <= ch <= "~" and ch not in '"\\;' else "_" for ch in limpio)
+    return f"inline; filename=\"{respaldo}\"; filename*=UTF-8''{quote(limpio, safe='')}"

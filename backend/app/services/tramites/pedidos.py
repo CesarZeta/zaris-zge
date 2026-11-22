@@ -87,7 +87,7 @@ async def cancelar_pedido(
     request: Optional[Request] = None,
 ) -> None:
     """Cancela un pedido ABIERTO del trámite (lo toma con FOR UPDATE). 404 si no es de este trámite,
-    409 si ya no está abierto."""
+    409 si ya no está abierto. El llamador ya tiene el trámite bloqueado (orden trámite → pedido)."""
     ped = (await db.execute(
         text("SELECT estado FROM tramite_pedido_iniciador WHERE id_tramite_pedido = :p AND id_tramite = :t "
              "AND activo = TRUE FOR UPDATE"),
