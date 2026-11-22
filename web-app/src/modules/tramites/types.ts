@@ -11,6 +11,10 @@ export type TipoMovimiento =
   | 'comentario' | 'relacion' | 'desistido' | 'reapertura'
   | 'aprobacion' | 'resultado'
   | 'archivado_inactividad' | 'purga_binario' | 'aviso_iniciador'
+  | 'pedido_iniciador' | 'respuesta_iniciador' | 'pedido_cancelado'  // mig 139
+
+/** Quién actuó (mig 139): el vecino desde el portal también es actor. */
+export type ActorTipo = 'agente' | 'ciudadano' | 'sistema'
 
 export type TipoDatoCampo =
   | 'texto' | 'texto_largo' | 'numero' | 'decimal' | 'fecha' | 'fecha_hora'
@@ -243,7 +247,9 @@ export interface TramiteMovimiento {
   id_estado_destino: number | null
   estado_origen_etiqueta: string | null
   estado_destino_etiqueta: string | null
-  agente_nombre: string
+  agente_nombre: string | null
+  actor_tipo: ActorTipo
+  actor_nombre: string | null
   ip: string | null
   fecha_alta: string
 }
@@ -260,6 +266,8 @@ export interface TramiteDocumento {
   posicion_orden: number
   binario_purgado?: boolean   // mig 75: TRUE = archivo depurado del bucket (registro conservado)
   agente_subio_nombre?: string
+  actor_tipo?: ActorTipo
+  actor_nombre?: string | null
   fecha_alta: string
   firmas: TramiteFirma[]
 }

@@ -3,9 +3,11 @@ import {
   ClipboardList, Hash, ArrowRight, Hand, LockOpen, RefreshCw, Zap,
   Paperclip, PenLine, Check, X, MessageSquare, Link2, Ban, RotateCcw,
   Circle, ChevronUp, ChevronDown, BadgeCheck, Flag, Archive, Trash2, AlarmClock,
+  MessageCircleQuestion, Reply,
   type LucideIcon,
 } from 'lucide-react'
 import type { TramiteMovimiento, TipoMovimiento } from '../types'
+import { autorActor, nombreActor } from '../lib/actor'
 
 /* ── Iconos y etiquetas por tipo de movimiento ───────────── */
 
@@ -13,11 +15,11 @@ const TIPO_CONFIG: Record<
   TipoMovimiento,
   { icon: LucideIcon; color: string; etiqueta: (m: TramiteMovimiento) => string }
 > = {
-  creacion:       { icon: ClipboardList, color: '#1f8a65', etiqueta: (m) => `Trámite creado por ${m.agente_nombre}` },
+  creacion:       { icon: ClipboardList, color: '#1f8a65', etiqueta: (m) => m.actor_tipo === 'ciudadano' ? `Iniciado por ${nombreActor(m)} desde el portal` : `Trámite creado por ${nombreActor(m)}` },
   numeracion:     { icon: Hash,          color: '#6a1b9a', etiqueta: (m) => `Numerado: ${String(m.metadata_jsonb?.numero_expediente ?? '')}` },
   pase:           { icon: ArrowRight,    color: '#1565c0', etiqueta: (m) => `Pase: ${m.origen_jsonb?.nombre ?? '—'} → ${m.destino_jsonb?.nombre ?? '—'}` },
-  toma:           { icon: Hand,          color: '#f57f17', etiqueta: (m) => `Tomado por ${m.agente_nombre}` },
-  liberacion:     { icon: LockOpen,      color: '#78909c', etiqueta: (m) => `Liberado por ${m.agente_nombre}` },
+  toma:           { icon: Hand,          color: '#f57f17', etiqueta: (m) => `Tomado por ${nombreActor(m)}` },
+  liberacion:     { icon: LockOpen,      color: '#78909c', etiqueta: (m) => `Liberado por ${nombreActor(m)}` },
   cambio_estado:  { icon: RefreshCw,     color: '#f54e00', etiqueta: (m) => `Estado: ${m.estado_origen_etiqueta ?? '—'} → ${m.estado_destino_etiqueta ?? '—'}` },
   transicion:     { icon: Zap,           color: '#f54e00', etiqueta: (m) => `Transición: ${m.estado_origen_etiqueta ?? '—'} → ${m.estado_destino_etiqueta ?? '—'}` },
   adjunto:        { icon: Paperclip,     color: '#5c6bc0', etiqueta: (m) => `Adjuntó: ${String(m.metadata_jsonb?.nombre ?? 'documento')}` },
@@ -33,6 +35,9 @@ const TIPO_CONFIG: Record<
   archivado_inactividad: { icon: Archive, color: '#78909c', etiqueta: () => 'Archivado automático por inactividad' },
   purga_binario:  { icon: Trash2,        color: '#90a4ae', etiqueta: () => 'Archivo físico depurado por antigüedad' },
   aviso_iniciador: { icon: AlarmClock,   color: '#f57f17', etiqueta: (m) => `Aviso ${String(m.metadata_jsonb?.nivel ?? '')} de desistimiento al iniciador (trámite pendiente)` },
+  pedido_iniciador: { icon: MessageCircleQuestion, color: '#f57f17', etiqueta: () => 'Pedido al vecino' },
+  respuesta_iniciador: { icon: Reply,  color: '#1f8a65', etiqueta: () => 'Respondió el vecino' },
+  pedido_cancelado: { icon: Ban,       color: '#78909c', etiqueta: (m) => m.metadata_jsonb?.automatico ? 'Pedido al vecino cancelado al cerrar o por desistimiento' : 'Pedido al vecino cancelado' },
 }
 
 function formatFechaRelativa(iso: string): string {
@@ -142,7 +147,7 @@ export function Timeline({ movimientos }: TimelineProps) {
 
               {/* Agente */}
               <p style={{ fontSize: 11, color: 'var(--fg-3)', margin: '2px 0 0', fontFamily: 'var(--font-display)' }}>
-                {mov.agente_nombre}
+                {autorActor(mov)}
               </p>
 
               {/* Comentario */}

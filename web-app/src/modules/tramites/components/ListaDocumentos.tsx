@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { FileText, Download, Eye, PenSquare, XCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import type { TramiteDocumento, TramiteFirma } from '../types'
 import { descargarDocumentoBlob, rechazarFirma } from '../lib/api'
+import { nombreActor } from '../lib/actor'
 import { EstadoFirmaBadge } from './EstadoFirmaBadge'
 import { ModalFirma } from './ModalFirma'
 import { VisorDocumento } from './VisorDocumento'
@@ -113,6 +114,7 @@ export function ListaDocumentos({ tramiteNumero, documentos, onCambio }: ListaDo
                   </p>
                   <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-display)' }}>
                     {formatBytes(doc.tamano_bytes)} · {doc.mime_type}
+                    {doc.actor_tipo && <> · Subido por {nombreActor(doc)}</>}
                     {doc.hash_sha256 ? (
                       <>
                         {' '}·{' '}

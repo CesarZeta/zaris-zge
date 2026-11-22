@@ -12,6 +12,7 @@ import { ListaDocumentos } from '../components/ListaDocumentos'
 import { PanelAcciones } from '../components/PanelAcciones'
 import { PanelAprobaciones } from '../components/PanelAprobaciones'
 import { FileUploader } from '../components/FileUploader'
+import { ETIQUETA_INICIADOR } from '../lib/actor'
 
 export function DetalleTramite() {
   const { numero } = useParams<{ numero: string }>()
@@ -98,7 +99,7 @@ export function DetalleTramite() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 24px' }}>
               <MetaDato
                 label="Iniciador"
-                valor={`${data.iniciador_tipo === 'area_interna' ? 'Área interna' : data.iniciador_tipo}${data.iniciador_nombre ? ` — ${data.iniciador_nombre}` : ''}`}
+                valor={`${ETIQUETA_INICIADOR[data.iniciador_tipo] ?? data.iniciador_tipo}${data.iniciador_nombre ? ` — ${data.iniciador_nombre}` : ''}`}
               />
               <MetaDato
                 label="Fecha de alta"
