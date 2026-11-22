@@ -56,6 +56,7 @@ from app.core.config_municipio import leer_config
 from app.services import demo_datos, demo_sla
 from app.services.tramites import aprobaciones as svc_aprob
 from app.services.tramites import numerador as svc_num
+from app.services.tramites import pedidos as svc_pedidos
 
 logger = logging.getLogger(__name__)
 
@@ -720,7 +721,10 @@ def _sellar_resultado(ctx: _Ctx, ver: _Version, st: _Estado, plan_resultado: str
     return True
 
 
-async def _guardar(db: AsyncSession, st: _Estado, ctx: _Ctx) -> None:
+async def _guardar(db: AsyncSession, st: _Estado, ctx: _Ctx, *, cerrado: bool = False) -> None:
+    """Persiste los pasos aplicados. Con `cerrado` (el trámite llegó a un estado final), el pedido
+    abierto al vecino se cancela como en el cierre normal: el generador escribe por SQL y no pasa
+    por `transicionar_tramite`."""
     if st.movs:
         await db.execute(_SQL_MOV, st.movs)
     await db.execute(text("""
@@ -738,6 +742,8 @@ async def _guardar(db: AsyncSession, st: _Estado, ctx: _Ctx) -> None:
            "tp": st.tomado_por, "te": st.tomado_en if st.tomado_por else None,
            "res": st.resultado, "fm": st.ultimo, "uid": ctx.uid, "id": st.id_tramite})
     st.movs = []
+    if cerrado:
+        await svc_pedidos.cancelar_pedido_abierto_por_cierre(db, st.id_tramite, "El trámite terminó", st.id_municipio)
 
 
 def _envio_encuesta(rnd: random.Random, ctx: _Ctx, st: _Estado, t_sello: datetime,
@@ -1011,7 +1017,7 @@ async def _avanzar(db: AsyncSession, ctx: _Ctx, filas: list, rnd: random.Random,
                         par = _envio_encuesta(rnd, ctx, st, st.ultimo, ahora)
                         if par:
                             out["encuestas"] += await _escribir_encuesta(db, par, f.id_tramite)
-                    await _guardar(db, st, ctx)
+                    await _guardar(db, st, ctx, cerrado=True)
             continue
         if plan is None:
             out["sin_camino"] += 1
@@ -1044,7 +1050,7 @@ async def _avanzar(db: AsyncSession, ctx: _Ctx, filas: list, rnd: random.Random,
                     if par:
                         out["encuestas"] += await _escribir_encuesta(db, par, f.id_tramite)
         if aplicar:
-            await _guardar(db, st, ctx)
+            await _guardar(db, st, ctx, cerrado=terminado)
     return out
 
 
