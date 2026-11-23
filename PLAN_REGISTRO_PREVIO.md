@@ -51,9 +51,10 @@
 - **F2 — Backoffice: atender empieza por el registro.** En reclamos, turnos, entradas y trámites, el buscador de
   vecino ofrece dar de alta a la persona **sin perder lo que se estaba cargando** (modal, no otra pantalla) y vuelve
   con el vecino elegido. Mismo control en el backend para los cuatro circuitos (según §4).
-- **F3 — Alta de empresa del lado del vecino** (portal y app), con los mismos datos que el backoffice, para el vecino
+- **F3 — Registro del vecino en el portal y en la app, y después su usuario** (§6).
+- **F4 — Alta de empresa del lado del vecino** (portal y app), con los mismos datos que el backoffice, para el vecino
   ya registrado.
-- **F4 — Igualar las dos altas de persona** (tipo de documento, textos y validaciones) y documentar.
+- **F5 — Igualar las dos altas de persona** (tipo de documento, textos y validaciones) y documentar.
 
 **No cambia:** emergencias (incluidos SOS y pánico), Guardia (viene de una emergencia), relevamientos, subreclamos y
 retrabajos (heredan el vecino del reclamo original). Lo ya cargado no se toca.
@@ -90,3 +91,24 @@ Sin hacer nada, F2 bloquea a 946 hasta abrir y guardar su ficha. **Propuesta:** 
 **sin mandar correos**, a los 853 que tienen los datos completos y no la tienen. Cada vecino la activa cuando quiera
 desde «Ya estoy registrado en el municipio». Quedan por completar a mano 2 vecinos. Las fichas demo de funcionarios
 siguen sin cuenta de vecino: no pueden figurar como vecino de una transacción hasta cargar su DNI real.
+
+## 6. El camino del vecino (definición de César, 2026-11-23)
+
+1. Entra por el **portal web en un navegador** o **bajando la aplicación**.
+2. **Primero se registra** con sus datos completos, desde ahí mismo.
+3. Una vez registrado y dado de alta, **se le ofrece generar su usuario**, que es con lo que ingresa.
+4. Ingresa con su **número de usuario o su número de documento** y su contraseña. Si la pierde, la recuperación de
+   siempre.
+
+| Paso | Hoy (verificado 2026-11-23) | Qué cambia |
+|---|---|---|
+| Entrar | Portal y app son la misma PWA (`zaris-vecinos`) | Nada |
+| Registrarse | La PWA abre otra página, `frontend/alta-vecino.html`, en otra pestaña | Pantalla de registro **dentro** del portal y de la app; la página vieja redirige ahí |
+| Orden | Datos y contraseña juntos; después verifica el correo | Datos → verifica el correo (alta) → **recién ahí genera el usuario y elige la contraseña** |
+| Ya cargado por el municipio | «Ya estoy registrado»: correo y elige contraseña | Igual, terminando en la misma pantalla de generar el usuario |
+| Ingreso | Solo DNI + contraseña (`LoginCiudadanoIn.dni`) | **DNI o número de usuario** |
+| Número de usuario | No existe | Lo asigna el sistema al generar el usuario; se ve en el perfil y en el correo |
+| Recuperación | Por DNI, con correo | Igual, aceptando también el número de usuario |
+
+Reemplaza la decisión del 2026-06-12 («la app no pide datos de ficha»): desde ahora el registro se hace también en la app.
+El alta por un agente ya sigue este orden (ficha → correo → el vecino elige su contraseña).

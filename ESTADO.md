@@ -46,7 +46,7 @@
 ## 🟠 Pendientes (backoffice / backend)
 
 **Decisiones de negocio pendientes (César)**
-- 🟠 **Registro previo:** ver pregunta 1. Siguen F2 (backoffice), F3 (alta de empresa del lado del vecino) y F4 (igualar las altas).
+- 🟠 **Registro previo:** ver pregunta 1. Siguen F2 (backoffice), F3 (registro del vecino en el portal y la app, y después su usuario: §6), F4 (alta de empresa del lado del vecino) y F5 (igualar las altas).
 - 🟠 **Prueba de cierre — hallazgos que quedan**, con detalle en [`PLAN_MULTI_MUNICIPIO_F4_F5.md`](PLAN_MULTI_MUNICIPIO_F4_F5.md) → «Prueba de cierre — hallazgos»: (6) pantalla para que el super elija municipio, (7) encuestas en «Promociones» de Gmail, (9) App Vecinos, (10) tres verificaciones pendientes, (11) menores.
 - 🟢 **Contorno — 9 menores de la revisión final (2026-10-28), ninguno rompe:** lista en [`PLAN_CONTORNO_MUNICIPIO.md`](PLAN_CONTORNO_MUNICIPIO.md) → «Menores diferidos» (el más visible: la fecha del origen en UTC).
 - 🟡 **Botón de pánico de la PWA:** sin probar con el vecino de prueba (dispara una alerta REAL al COM). Las pruebas de vecino y funcionario están hechas (2026-10-12 y 2026-10-23).
