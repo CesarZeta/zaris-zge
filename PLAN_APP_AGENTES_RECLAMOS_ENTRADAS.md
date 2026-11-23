@@ -144,4 +144,6 @@ registro (call center, app del vecino, web del portal del vecino, app de agentes
   o `jsqr`; campo manual; verde/rojo; contador). La cámara se apaga mientras se muestra un resultado.
 - Los apartados se muestran según el módulo del municipio y el nivel (el Consultor no los ve): `lib/permisos.ts`.
 - Verificado navegando en local a 360 px: alta con foto y pin, detalle, QR leído por la cámara (video simulado, vía
-  `jsqr`), repetida, cancelada, inexistente, sin permiso de cámara. **Sin probar en un teléfono real.**
+  `jsqr`), repetida, cancelada, inexistente, sin permiso de cámara. **Probado por César en su Android el 2026-11-23** (relevamiento con fotos y lectura del QR).
+- **Últimas 20 entradas** (pedido de César, 2026-11-23): `GET /agentes/entradas/ultimas`, solo las que validó la propia
+  cuenta (número, horario, persona, documento y evento); se ve en `/entradas` y debajo del lector.
