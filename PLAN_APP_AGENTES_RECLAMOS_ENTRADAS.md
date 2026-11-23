@@ -1,8 +1,8 @@
 # PLAN — App de agentes: relevamientos + control de entradas (QR)
 
-> **Estado: APROBADA por César el 2026-11-22** (§2b y §2c: siguió las cuatro recomendaciones). **F1 (backend)
-> hecha en local el 2026-11-22** (mig 141 + `agentes_app.py`, smoke 43/43); la mig 141 en prod la corre César en
-> el SQL Editor y recién después se publica el código. Avance en [`ESTADO.md`](ESTADO.md).
+> **Estado: APROBADA por César el 2026-11-22** (§2b y §2c: siguió las cuatro recomendaciones). **F1 (backend) en
+> prod el 2026-11-22** (mig 141 corrida por César en el SQL Editor + `agentes_app.py`, smoke 43/43). Sigue F1b.
+> Avance en [`ESTADO.md`](ESTADO.md).
 
 ## 1. Pedido de César (2026-10-12, textual resumido)
 
@@ -114,8 +114,7 @@ declararlo.
   `POST /agentes/entradas/acreditar-qr`, `GET /agentes/entradas/eventos-hoy` (niveles 1-4; módulos `reclamos` y
   `entradas`). Helper `acreditar_qr_en_puerta` en `agenda_v2.py` (el endpoint de Agenda no cambió).
 - Cortes por la marca en los avisos y la encuesta; herencia en subreclamo y retrabajo; fotos del autor (nivel 4).
-- **Decisión de Claude a confirmar con César:** un QR de un evento de **otro día** responde `otra_fecha` y **no
-  consume** la entrada (la puerta lo muestra en rojo con la fecha). Si prefiere que se acepte igual, es un cambio
-  de una línea.
+- **Confirmado por César (2026-11-22):** un QR de un evento de **otro día** responde `otra_fecha` y **no consume**
+  la entrada (la puerta lo muestra en rojo con la fecha).
 - Smoke `backend/smoke_agentes_app.py` 43/43 (también con `DB_BARRERA=true`); auditoría 86, encuestas 294, alta
   con mail 11 y cancelar 8 siguen en verde.

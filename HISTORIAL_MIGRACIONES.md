@@ -232,7 +232,7 @@ Spec en [`docs/superpowers/specs/2026-11-21-tramites-vecino-design.md`](docs/sup
 
 ### Migración 141 — relevamientos (`backend/migrations/141_relevamientos.sql`)
 
-App de agentes, F1 ([`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md), decisiones de César del 2026-11-22). **Aplicada en local el 2026-11-22; en prod la corre César en el SQL Editor** (lleva `DROP CONSTRAINT`).
+App de agentes, F1 ([`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md), decisiones de César del 2026-11-22). **Aplicada en local y en prod el 2026-11-22**; en prod la corrió César en el SQL Editor (lleva `DROP CONSTRAINT`), antes de publicar el código que lee la columna.
 - `reclamos.es_relevamiento` (FALSE por defecto) + `ck_reclamos_relevamiento_sin_ciudadano` (un relevamiento no lleva ciudadano) + índice parcial `idx_reclamos_relevamiento`.
 - `numerador_municipio` admite la entidad `relevamiento` y `fn_generar_nro_reclamo` numera `REL-<municipio>-<año>-<número>` con su propio contador (los reclamos siguen en `REC-`).
 - Sin tablas nuevas (`reclamos` ya está clasificada). Smoke `smoke_agentes_app.py`.
