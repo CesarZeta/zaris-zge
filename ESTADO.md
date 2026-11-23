@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-11-23 noche (Cesar). **App de agentes cerrada y aprobada por César** (relevamientos, control de entradas con QR, últimas 20, push). **Registro previo:** F1 en prod y 853 cuentas creadas; camino del vecino definido (§6 del plan). **Sigue F2.** IT-01 completa en prod; vuelta atrás de la barrera: `DB_BARRERA=false` en Railway.
+**Última actualización:** 2026-11-23 cierre (Cesar). **Material de marketing** (sumario, presentación de 11 páginas, correo) y, al contrastarlo con el producto: notificaciones del vecino repuestas, vacunación en San Andrés, app del vecino sin tipografía con serifa, acentos en todo el sistema. **Sigue registro previo F2.** Vuelta atrás de la barrera: `DB_BARRERA=false` en Railway.
 
 ---
 
@@ -27,7 +27,7 @@
    5. **Base de conocimiento de ayudas**, con dos capítulos: canales del vecino y gestión interna. Ya hay un relevamiento inicial de los canales del vecino (2026-10-27). Mientras tanto no se tocan manuales. César la adelantó el 2026-10-30 empezando por el material de venta (pregunta 5).
 3. **App de agentes: circuito aprobado por César el 2026-11-23, cerrado** ([`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md)); no pedir más pruebas, lo cubre `smoke_agentes_app.py`. REL-SAN-2026-000001 queda sin asignar («Calles y veredas» asigna a mano y no tiene agentes de nivel Gestión). Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
 4. **Arreglos que dejó la prueba de cierre:** quedan el 9 (App Vecinos: catálogo de emergencias del vecino, pide diseño) y menores del 10 y 11, en `PLAN_MULTI_MUNICIPIO_F4_F5.md` → «Prueba de cierre — hallazgos» → «2026-11-19».
-5. **Material de marketing (2026-11-23):** sumario por secretaría y hojas por secretaría, borradores en `folletos/` (solo en la máquina de César, fuera del repo). Se suma la revisión pendiente de `docs/base_conocimiento/resumen_circuitos.md` (los (\*) de los tableros y el «punto 2»).
+5. **Material de marketing (2026-11-23):** en `folletos/` (solo en la máquina de César, fuera del repo): sumario, presentación con carátula y cierre, y correo. César lo revisa; falta su respuesta sobre teléfono o WhatsApp en el cierre (recomendación: sumarlo) y probar el QR y una impresión. Pedido nuevo: **relevamiento del mercado**. Sigue abierta la revisión de `docs/base_conocimiento/resumen_circuitos.md` (recomendación: darla por reemplazada por el sumario).
 
 ---
 
@@ -62,6 +62,8 @@
 - 🟠 **Config/UX — reunión 2026-07-06** (ClickUp, lista CONFIGURACION y UX): **IT-01** (ver En curso) · **IT-08** botón SOS de la PWA · **IT-07** accesibilidad móvil (PWA) · **IT-09** módulo de Obras (backlog sin alcance).
 - 🟢 **Baja de cuenta del vecino:** sin endpoint ni definición; obligatoria si la app va a las stores.
 - 🟠 **IT-01 — menores diferidos de las revisiones finales (F1+F2, F3, F3b, F4+F5):** lista en [`PLAN_MULTI_MUNICIPIO.md`](PLAN_MULTI_MUNICIPIO.md) → «Menores diferidos». Ninguno afecta a San Andrés solo.
+- 🟠 **`smoke_aislamiento.py` en rojo (4 fallas, 2026-11-23):** rutas nuevas de trámites (`/pedidos/{id_pedido}/cancelar` y `/visto`, mig 139, entre otras) sin mapear en el test; no es un cruce de municipios. Sumar `id_pedido` a sus datos.
+- 🟢 **«Permiso de Demostración E2E»** (tipo de trámite de prueba, activo en San Andrés, 28 expedientes): sacarlo de la vista antes de una demostración; sin respuesta de César.
 - 🟢 **`smoke_publico_turnos.py` en rojo por datos locales** (el 6.º intento choca con el límite de 5 reservas por minuto); no es del código.
 - 🟢 **PWA — `/configuracion` no maneja el 401** con un token vencido (se queda en la página; sin bucle). Repo `zaris-vecinos`.
 - 🟢 **Docs desactualizadas** (2026-10-30): `docs/flujos_operativos_zge.md` (estados de OT, turnos y eventos) y las skills `modulo-encuestas`, `modulo-permisos`, `modulo-usuarios`; revisar al tocar cada módulo. Textos de la PWA que prometen de más: `zaris-vecinos/ESTADO.md`.
@@ -87,11 +89,9 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
-- **2026-11-23 (tarde):** **notificaciones del vecino repuestas** en la PWA (César; se habían quitado el 2026-07-06 a pedido de Roy: **Roy, avisado por acá**). Backend: un dispositivo avisa a un solo vecino y apagar uno no apaga los otros (`smoke_publico_push.py` 10/10 con y sin barrera). **Vacunación en San Andrés**: «Vacunatorio Municipal» y prestación «Vacunación» de 15 minutos (`backend/seed_vacunacion_demo.sql`, solo datos). **Acentos** en catálogos de San Andrés y del modelo, pantallas y mensajes del backend (regla de César: siempre bien, sin preguntar). `smoke_aislamiento.py` con fallas por rutas de pedidos de trámites (mig 139) que el test no mapea: falta sumarlas.
-- **2026-11-23:** **App de agentes F2 y F3** (`zaris-agentes`): relevamientos con fotos, pin y GPS, y lector de QR para el control de entradas. Datos y Reclamos: filtro «Transacción» con los textos y los CSV según lo elegido; «App móvil» pasa a «App del vecino» y aparece «App de agentes» como canal. Definiciones de César sobre registro previo y transacción/canal, en CLAUDE.md y en el plan. Últimas 20 entradas por agente. Un teléfono con una versión vieja de las apps ahora se actualiza solo una vez. Registro previo F1: turnos y entradas sin cuenta, 410, y arreglado que ver o cancelar por el link daba error desde F6. Smoke `smoke_agentes_app.py` 80/80 con y sin barrera.
-
-- **2026-11-22 (noche):** **App de agentes F1 + F1b en prod** (`90f3029`, `d1c953b`; mig 141 corrida por César en el SQL Editor): relevamientos (`REL-`, sin vecino, sin avisos ni encuesta; `POST/GET /api/v1/agentes/relevamientos`), control de entradas (`POST /agentes/entradas/acreditar-qr`, `GET /agentes/entradas/eventos-hoy`), filtro «Clase» en Reclamos y «Origen» en Datos. Smoke `smoke_agentes_app.py` 57/57. Menores de trámites del vecino resueltos (`bf3e791` + PWA `5fb8121`).
-
+- **2026-11-23 (tarde):** **notificaciones del vecino repuestas** en la PWA (César; se habían quitado el 2026-07-06 a pedido de Roy: **Roy, avisado por acá**); backend: un dispositivo avisa a un solo vecino y apagar uno no apaga los otros (`smoke_publico_push.py` 10/10). **Vacunación en San Andrés** (`seed_vacunacion_demo.sql`). **Acentos** en catálogos de San Andrés y del modelo (248 filas), pantallas, correos y mensajes; «GESTIÓN ESTADO» en el shell. PWA: títulos sin serifa.
+- **2026-11-23:** **App de agentes F2 y F3** cerrada y aprobada; Datos y Reclamos con filtro «Transacción»; registro previo F1 (reservas sin cuenta, 410) y 853 cuentas creadas.
+- **2026-11-22 (noche):** App de agentes F1 + F1b (relevamientos `REL-`, control de entradas; mig 141). Trámites del vecino cerrado.
 
 > Lo anterior: `HISTORIAL_MIGRACIONES.md` y las skills de cada módulo.
 

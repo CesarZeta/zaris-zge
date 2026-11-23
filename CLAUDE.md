@@ -162,6 +162,8 @@ No suponer paridad entre stacks. Hoy:
 
   Alternativas si no querés tocar la conexión cruda: partir el SQL por `;` en Python (cuidado con BEGIN/COMMIT, comentarios, `$$` de funciones) o usar el cliente `psql` por subprocess. La opción `driver_connection` es la más limpia para correr archivos `.sql` enteros desde Python.
 
+- **Ortografía (César, 2026-11-23):** todo texto que ve una persona —pantallas, mensajes del backend, mails, catálogos, seeds, datos de demostración, documentos— lleva sus acentos, también en mayúsculas («GESTIÓN ESTADO»). Si aparece uno mal, se corrige en el momento, sin preguntar. Al corregir datos: solo filas activas, nunca claves ni códigos, y antes `grep` de seeds y smokes que busquen por ese nombre (un seed por nombre lo duplica).
+
 ## 6. URLs del Proyecto
 
 Monorepo: `github.com/CesarZeta/zaris-zge`.
@@ -552,7 +554,7 @@ Desde 2026-05-13 el topbar tiene bloques fijos; desde 2026-06-12 hay además una
 
 | Barra · Posición | Contenido | IDs/clases |
 |---|---|---|
-| **Topbar · Izquierda** | `ZARIS` (logo+wordmark, link a inicio) · "GESTION ESTADO" (hardcoded, NO editable) · separador vertical · logo municipio (opcional, `<img>` hidden si no hay URL) · nombre municipio · **selector «Operando en»** (solo el super administrador, IT-01 F3: municipios activos, arranca en el de `direccion_base`, cada elección va a `POST /super/seleccion` y recarga el módulo; clave `localStorage` `zaris_municipio_activo`, que leen `web-app/src/lib/municipioActivo.ts` y `admin_tablas.html` para mandar `X-Municipio`) | `.brand` `.brand__name` `.brand__app` `.topbar__sep` `.muni` `#topbar-muni-logo` `#topbar-muni-nombre` `#topbar-municipio` |
+| **Topbar · Izquierda** | `ZARIS` (logo+wordmark, link a inicio) · "GESTIÓN ESTADO" (hardcoded, NO editable) · separador vertical · logo municipio (opcional, `<img>` hidden si no hay URL) · nombre municipio · **selector «Operando en»** (solo el super administrador, IT-01 F3: municipios activos, arranca en el de `direccion_base`, cada elección va a `POST /super/seleccion` y recarga el módulo; clave `localStorage` `zaris_municipio_activo`, que leen `web-app/src/lib/municipioActivo.ts` y `admin_tablas.html` para mandar `X-Municipio`) | `.brand` `.brand__name` `.brand__app` `.topbar__sep` `.muni` `#topbar-muni-logo` `#topbar-muni-nombre` `#topbar-municipio` |
 | **Topbar · Derecha** | Campana de notificaciones (cada ítem con botón ✓ que marca leída sin navegar + «Marcar todas como leídas» en el header, deshabilitado sin pendientes — 2026-10-20) · contexto de usuario en 2 líneas ("Nombre · Rol" + "Cargo: X · Gestión"; tooltip con secretaría, gestión y equipos — `cargo_nombre`/`subarea_nombre`/`area_nombre`/`equipos` de login/me) · avatar (foto `usuarios.foto_url` mig 88, o iniciales) · dropdown usuario (ver abajo) | `.topbar__bell` `.topbar__context-cargo` `.topbar__avatar` `.user-menu` |
 | **Statusbar · Izquierda** | Estado del servidor: dot gris/verde/rojo + label ("Servidor operativo" / "Sin conexión…"), ping `GET /api/health` cada 60s + al volver de background | `.statusbar__api` `#statusbar-api` `#statusbar-api-label` |
 | **Statusbar · Centro** | Fecha+hora "mar 13 may, 14:32", refresca cada 30s (**movida desde el centro del topbar**) | `.statusbar__clock` `#statusbar-clock` |
@@ -560,7 +562,7 @@ Desde 2026-05-13 el topbar tiene bloques fijos; desde 2026-06-12 hay además una
 
 La statusbar está pensada para crecer con más indicadores de estado (contenido a definir). **Los labels del sidebar van con mayúscula inicial** ("Reclamos", "Trámites" — pedido del usuario 2026-06-12); no hay `text-transform`, la capitalización vive en el HTML.
 
-**"GESTION ESTADO" es interno del producto.** Vive hardcoded en el HTML como `<span class="brand__app">GESTION ESTADO</span>`. NO se puede editar desde UI ni se persiste en DB. Backend lo expone en `GET /api/v1/config/identidad` solo por compat con el shell vanilla. Si en el futuro alguien tiene que cambiar el nombre del producto, edita `index.html` y `backend/app/api/routes/config_identidad.py` (constante `APP_NOMBRE`).
+**"GESTIÓN ESTADO" es interno del producto.** Vive hardcoded en el HTML como `<span class="brand__app">GESTIÓN ESTADO</span>`. NO se puede editar desde UI ni se persiste en DB. Backend lo expone en `GET /api/v1/config/identidad` solo por compat con el shell vanilla. Si en el futuro alguien tiene que cambiar el nombre del producto, edita `index.html` y `backend/app/api/routes/config_identidad.py` (constante `APP_NOMBRE`).
 
 **El nombre y logo del municipio SÍ son editables** desde el módulo Config → Identidad (ver §21 para las claves y §32 Quirk 13 para el flujo de upload). `menu.js` los carga al boot llamando a `GET /api/v1/config/identidad` (público).
 
