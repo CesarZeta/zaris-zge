@@ -76,7 +76,7 @@ export function EventoModal({ open, onClose, idEvento, defaultDate, onCreated }:
 
   async function submit() {
     if (form.hora_fin <= form.hora_inicio) {
-      push({ kind: 'error', title: 'Horario invalido', body: 'hora_fin debe ser mayor que hora_inicio' })
+      push({ kind: 'error', title: 'Horario inválido', body: 'hora_fin debe ser mayor que hora_inicio' })
       return
     }
     try {
@@ -143,7 +143,7 @@ export function EventoModal({ open, onClose, idEvento, defaultDate, onCreated }:
         <Field label="Nombre" full>
           <input type="text" value={form.nombre} onChange={(e) => update('nombre', e.target.value)} style={inp} />
         </Field>
-        <Field label="Descripcion" full>
+        <Field label="Descripción" full>
           <textarea value={form.descripcion ?? ''} onChange={(e) => update('descripcion', e.target.value)} rows={2} style={{ ...inp, resize: 'vertical' }} />
         </Field>
         <Field label="Fecha"><input type="date" value={form.fecha} onChange={(e) => update('fecha', e.target.value)} style={inp} /></Field>
@@ -180,7 +180,7 @@ export function EventoModal({ open, onClose, idEvento, defaultDate, onCreated }:
       <ConfirmModal
         open={confirm === 'cancelar'}
         title="Cancelar evento"
-        message="Cancelar este evento? No cancela reservas automaticamente — el operador debe revisarlas manualmente."
+        message="¿Cancelar este evento? No cancela reservas automáticamente — el operador debe revisarlas manualmente."
         confirmLabel="Cancelar evento"
         danger
         onConfirm={doCancel}
@@ -189,7 +189,7 @@ export function EventoModal({ open, onClose, idEvento, defaultDate, onCreated }:
       <ConfirmModal
         open={confirm === 'eliminar'}
         title="Eliminar evento"
-        message="Baja logica del evento? Se podra reactivar manualmente desde la base."
+        message="¿Dar de baja el evento? Se podrá reactivar manualmente desde la base."
         confirmLabel="Eliminar"
         danger
         onConfirm={doDelete}
@@ -249,7 +249,7 @@ function AutoservicioLink({ token }: { token: string }) {
         fontFamily: 'var(--font-display)', fontSize: 11, color: 'var(--fg-3)',
         textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6,
       }}>
-        Link publico de autoservicio
+        Link público de autoservicio
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <input

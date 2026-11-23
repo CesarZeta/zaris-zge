@@ -254,7 +254,7 @@ export function TimelineView() {
 
         <ConfirmModal
           open={pendingConfirm != null}
-          title="Reasignar ocupacion"
+          title="Reasignar ocupación"
           message={pendingConfirm ? buildConfirmMessage(pendingConfirm) : ''}
           confirmLabel="Reasignar"
           onConfirm={confirmAccept}
@@ -306,5 +306,5 @@ function toHHMMSS(totalMin: number): string {
 }
 
 function buildConfirmMessage(c: PendingConfirm): string {
-  return `Reasignar la ocupacion al recurso "${c.hacia.nombre ?? c.hacia.tipo_recurso + ' ' + c.hacia.id_recurso}" en el horario ${c.nuevasHoras.hora_inicio.slice(0, 5)}-${c.nuevasHoras.hora_fin.slice(0, 5)}?`
+  return `Reasignar la ocupación al recurso "${c.hacia.nombre ?? c.hacia.tipo_recurso + ' ' + c.hacia.id_recurso}" en el horario ${c.nuevasHoras.hora_inicio.slice(0, 5)}-${c.nuevasHoras.hora_fin.slice(0, 5)}?`
 }

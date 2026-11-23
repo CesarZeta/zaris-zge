@@ -103,7 +103,7 @@ API_VERSION = (_dt.now(_TZ_AR).strftime("%Y.%m.%d.%H%M")
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=API_VERSION,
-    description="API para ZARIS Gestion Estatal - Modulo BUC",
+    description="API para ZARIS Gestión Estatal - Módulo BUC",
     lifespan=lifespan,
 )
 

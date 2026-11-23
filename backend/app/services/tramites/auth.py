@@ -139,16 +139,16 @@ async def agente_puede_tomar(
     # El supervisor (nivel 2) conserva la capacidad de desplazar una toma
     # ajena; los niveles 3+ no pueden tomar un tramite tomado por otro.
     if nivel >= 3 and tomado_por and tomado_por != agente_info["id_agente"]:
-        return False, "El tramite ya fue tomado por otro agente"
+        return False, "El trámite ya fue tomado por otro agente"
 
     dest_tipo, dest_id = _destinatario_actual(tramite)
     if dest_tipo is None or dest_id is None:
-        return False, "El tramite no tiene destinatario asignado"
+        return False, "El trámite no tiene destinatario asignado"
 
     if not await pertenece_al_colectivo_actual(agente_info, tramite, db):
         if nivel == 2:
             return False, "El trámite está destinado a otra área. Solo podés gestionarlo si pertenece a tu subárea o equipos."
-        return False, "No perteneces al colectivo destinatario del tramite"
+        return False, "No perteneces al colectivo destinatario del trámite"
 
     return True, None
 
@@ -183,6 +183,6 @@ async def agente_puede_operar(
         return False, "El trámite está destinado a otra área. Solo podés gestionarlo si pertenece a tu subárea o equipos."
 
     if tomado_por is None:
-        return False, "Debes tomar el tramite antes de operarlo"
+        return False, "Debes tomar el trámite antes de operarlo"
 
-    return False, "El tramite esta tomado por otro agente"
+    return False, "El trámite está tomado por otro agente"

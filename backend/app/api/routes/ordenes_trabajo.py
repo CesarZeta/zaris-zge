@@ -736,7 +736,7 @@ async def auto_asignar_sugerencia(
     if not sub:
         raise HTTPException(404, f"Reclamo {id_reclamo} no encontrado")
     if sub.id_subarea is None:
-        return {"sugerencia": None, "motivo": "El tipo de reclamo no tiene subarea asociada."}
+        return {"sugerencia": None, "motivo": "El tipo de reclamo no tiene subárea asociada."}
 
     preferido = "equipo" if sub.asignacion_a == "equipo" else "agente"
     otro = "agente" if preferido == "equipo" else "equipo"

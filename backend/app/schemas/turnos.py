@@ -76,7 +76,7 @@ class TipoPrestacionCreate(_PrestacionRecursoMixin):
     id_espacio: Optional[int] = None
     id_espacio_ubicacion: Optional[int] = Field(
         None,
-        description="Ubicacion donde se atiende (mig 103). Si el recurso es un "
+        description="Ubicación donde se atiende (mig 103). Si el recurso es un "
                     "espacio y se omite, el backend usa ese mismo espacio.",
     )
     id_subarea: Optional[int] = None
@@ -106,7 +106,7 @@ class TurnoCreate(BaseModel):
     hora_inicio: time
     hora_fin: Optional[time] = Field(
         None,
-        description="Opcional: si se omite se calcula con duracion_min de la prestacion",
+        description="Opcional: si se omite se calcula con duracion_min de la prestación",
     )
     observaciones: Optional[str] = None
     id_subarea: Optional[int] = None
@@ -246,7 +246,7 @@ class GuardiaAtenderIn(BaseModel):
     mismo criterio que turno_atencion mig 86)."""
     intervencion: str = Field(..., min_length=1)
     recomendaciones: Optional[str] = None
-    id_ciudadano: Optional[int] = Field(None, description="Vincular el paciente a un ciudadano BUC (si la derivacion vino sin BUC)")
+    id_ciudadano: Optional[int] = Field(None, description="Vincular el paciente a un ciudadano BUC (si la derivación vino sin BUC)")
     paciente_nombre: Optional[str] = Field(None, max_length=150)
 
 

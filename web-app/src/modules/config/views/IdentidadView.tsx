@@ -166,7 +166,7 @@ export function IdentidadView() {
         <div style={previewLabel}>Vista previa</div>
         <div style={previewBar}>
           <span style={previewZaris}>ZARIS</span>
-          <span style={previewApp}>GESTION ESTADO</span>
+          <span style={previewApp}>GESTIÓN ESTADO</span>
           <span style={previewSep}></span>
           {form.municipio_logo_url ? (
             <img src={form.municipio_logo_url} alt="" style={previewLogo} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />

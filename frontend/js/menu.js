@@ -429,7 +429,7 @@
 
   // ── Identidad del topbar (nombre/logo municipio) ──
   // GET /api/v1/config/identidad es publico. Cualquier valor que falle queda
-  // con los defaults del HTML. El nombre de la app ("GESTION ESTADO") es
+  // con los defaults del HTML. El nombre de la app ("GESTIÓN ESTADO") es
   // hardcoded del producto, no editable por usuario.
   (async function cargarIdentidad() {
     // El super administrador ve la identidad del municipio que eligió (la pinta el selector).

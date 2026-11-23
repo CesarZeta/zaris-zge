@@ -14,7 +14,7 @@ interface Props {
 
 export function ConfirmModal({
   open,
-  title = 'Confirmar accion',
+  title = 'Confirmar acción',
   message,
   confirmLabel = 'Confirmar',
   cancelLabel = 'Cancelar',

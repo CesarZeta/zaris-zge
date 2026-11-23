@@ -143,7 +143,7 @@ export function FormView() {
       if (!t.valido) errs.telefono = t.error
     }
     if (!form.email.trim()) errs.email = 'Requerido'
-    else if (!validarEmail(form.email)) errs.email = 'Formato invalido'
+    else if (!validarEmail(form.email)) errs.email = 'Formato inválido'
 
     setErrores(errs)
     if (Object.keys(errs).length > 0) return { ok: false }
@@ -188,7 +188,7 @@ export function FormView() {
       if (telDup.existe) dupErrs.telefono = `Ya registrado: ${(telDup as { nombre?: string }).nombre ?? ''}`
       if (Object.keys(dupErrs).length > 0) {
         setErrores((prev) => ({ ...prev, ...dupErrs }))
-        push({ kind: 'error', title: 'Hay datos duplicados', body: 'Revisa email/telefono' })
+        push({ kind: 'error', title: 'Hay datos duplicados', body: 'Revisá el email o el teléfono' })
         return
       }
     }
@@ -212,7 +212,7 @@ export function FormView() {
   const estadoBadge = modo === 'new'
     ? { label: 'NUEVO', bg: 'rgba(31,138,101,.12)', fg: 'var(--color-success)' }
     : modo === 'edit'
-      ? { label: 'EDICION', bg: 'rgba(192,133,50,.14)', fg: 'var(--zaris-gold, #c08532)' }
+      ? { label: 'EDICIÓN', bg: 'rgba(192,133,50,.14)', fg: 'var(--zaris-gold, #c08532)' }
       : { label: 'CONSULTA', bg: 'rgba(38,37,30,.08)', fg: 'var(--fg-2)' }
 
   if (modo !== 'new' && detalle.isLoading) {

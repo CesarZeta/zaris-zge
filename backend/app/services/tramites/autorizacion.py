@@ -64,7 +64,7 @@ async def agente_puede_ejecutar_transicion(
     if quien.get("iniciador"):
         ini = tramite.get("id_agente_iniciador")
         ok = ini is not None and agente_info["id_agente"] == ini
-        checks.append((ok, "Solo el agente que inicio el tramite puede ejecutar esta accion"))
+        checks.append((ok, "Solo el agente que inició el trámite puede ejecutar esta acción"))
 
     if "roles" in quien:
         roles = quien["roles"]

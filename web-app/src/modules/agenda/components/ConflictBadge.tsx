@@ -3,7 +3,7 @@ import { AlertTriangle } from 'lucide-react'
 export function ConflictBadge({ small = false }: { small?: boolean }) {
   return (
     <span
-      title="Esta ocupacion tiene conflicto de agenda"
+      title="Esta ocupación tiene conflicto de agenda"
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 4,
         background: 'rgba(207,45,86,.18)', color: 'var(--color-error)',

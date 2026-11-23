@@ -18,7 +18,7 @@ export function AgendaLayout({ children }: { children: ReactNode }) {
           agenda
         </h1>
         <p style={{ margin: '6px 0 0', color: 'var(--fg-3)', fontSize: 'var(--size-btn)' }}>
-          dia, semana, mes, eventos y configuracion de espacios y disponibilidad.
+          día, semana, mes, eventos y configuración de espacios y disponibilidad.
         </p>
       </div>
 

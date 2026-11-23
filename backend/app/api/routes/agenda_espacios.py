@@ -134,7 +134,7 @@ async def _listar_agentes_espacio(db: AsyncSession, id_espacio: int) -> list[dic
 async def listar_espacios(
     atendido: Optional[bool] = Query(None, description="True=solo atendidos, False=solo desatendidos, omitir=ambos"),
     activo: bool = True,
-    q: Optional[str] = Query(None, description="Texto libre sobre nombre/direccion"),
+    q: Optional[str] = Query(None, description="Texto libre sobre nombre/dirección"),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
     id_municipio: int = Depends(municipio_actual),

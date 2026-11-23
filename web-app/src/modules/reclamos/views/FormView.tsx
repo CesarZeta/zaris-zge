@@ -307,7 +307,7 @@ export function FormView() {
           </p>
         </div>
         <span style={badgeNew}>
-          {modo === 'new' ? '● NUEVO' : '✏ EDICION'}
+          {modo === 'new' ? '● NUEVO' : '✏ EDICIÓN'}
         </span>
       </header>
 

@@ -602,7 +602,7 @@ async def _insertar_empresa(db: AsyncSession, data: AltaEmpresaIn, id_ciudadano:
 @router.get(
     "/verificar",
     response_class=HTMLResponse,
-    responses={200: {"description": "Pagina de confirmacion; el link del mail se arma con API_PUBLIC_BASE_URL"}},
+    responses={200: {"description": "Página de confirmación; el link del mail se arma con API_PUBLIC_BASE_URL"}},
 )
 async def verificar(request: Request, token: str, m: str | None = None, db: AsyncSession = Depends(get_db)):
     """

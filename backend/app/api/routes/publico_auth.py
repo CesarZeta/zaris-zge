@@ -72,7 +72,7 @@ def _validar_dni(dni: str) -> str:
     """Devuelve DNI digits-only. Levanta 400 si no es 7-8 chars."""
     limpio = _solo_digitos(dni)
     if not (7 <= len(limpio) <= 8):
-        raise HTTPException(status_code=400, detail="DNI invalido: debe tener 7 u 8 digitos")
+        raise HTTPException(status_code=400, detail="DNI inválido: debe tener 7 u 8 dígitos")
     return limpio
 
 
@@ -279,7 +279,7 @@ async def activar_cuenta(data: ActivarIn, db: AsyncSession = Depends(get_db)):
     )
     row = res.fetchone()
     if not row or not row.c_activo:
-        raise HTTPException(status_code=400, detail="Token invalido o expirado")
+        raise HTTPException(status_code=400, detail="Token inválido o expirado")
 
     hashed = hash_password(data.password)
     await db.execute(
@@ -588,7 +588,7 @@ async def resetear_password(data: ResetearPasswordIn, db: AsyncSession = Depends
     )
     row = res.fetchone()
     if not row or not row.c_activo:
-        raise HTTPException(status_code=400, detail="Token invalido o expirado")
+        raise HTTPException(status_code=400, detail="Token inválido o expirado")
 
     hashed = hash_password(data.password)
     await db.execute(

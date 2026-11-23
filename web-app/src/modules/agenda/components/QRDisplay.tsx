@@ -55,7 +55,7 @@ export function QRDisplay({ value, size = 160, showText = true, copiable = true 
           {copiable && (
             <button
               onClick={onCopy}
-              aria-label={copied ? 'Copiado' : 'Copiar codigo'}
+              aria-label={copied ? 'Copiado' : 'Copiar código'}
               style={{
                 background: 'transparent', border: 'none', cursor: 'pointer',
                 color: copied ? 'var(--color-success)' : 'var(--fg-3)',

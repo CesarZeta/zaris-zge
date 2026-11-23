@@ -77,7 +77,7 @@ async def _contar_no_leidas(db: AsyncSession, id_usuario: int) -> int:
 
 @router.patch(
     "/{id_notificacion}/leer",
-    responses={404: {"description": "La notificacion no existe o no es del usuario. "
+    responses={404: {"description": "La notificación no existe o no es del usuario. "
                                     "Marcar una que ya estaba leida devuelve 200 (idempotente)."}},
 )
 async def marcar_leida(
@@ -110,7 +110,7 @@ async def marcar_leida(
         )).scalar()
         if not existe:
             # No encontrada O no es del usuario — 404 sin distinguir
-            raise HTTPException(404, "Notificacion no encontrada")
+            raise HTTPException(404, "Notificación no encontrada")
     return {"id_notificacion": id_notificacion, "leida": True,
             "no_leidas": await _contar_no_leidas(db, uid)}
 

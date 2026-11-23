@@ -505,7 +505,7 @@ async def buscar_ciudadano(
 
 @router.get("/ciudadanos/verificar-duplicado")
 async def verificar_duplicado_ciudadano(
-    campo: str = Query(..., description="Campo a verificar: email, telefono, cuil, doc_nro"),
+    campo: str = Query(..., description="Campo a verificar: email, teléfono, cuil, doc_nro"),
     valor: str = Query(..., description="Valor a buscar"),
     excluir_id: Optional[int] = Query(None, description="ID a excluir (para edición)"),
     db: AsyncSession = Depends(get_db),
@@ -1115,7 +1115,7 @@ async def buscar_empresa(
 
 @router.get("/empresas/verificar-duplicado")
 async def verificar_duplicado_empresa(
-    campo: str = Query(..., description="Campo a verificar: email, telefono, cuit"),
+    campo: str = Query(..., description="Campo a verificar: email, teléfono, cuit"),
     valor: str = Query(..., description="Valor a buscar"),
     excluir_id: Optional[int] = Query(None, description="ID a excluir (para edición)"),
     db: AsyncSession = Depends(get_db),
@@ -1306,7 +1306,7 @@ async def crear_relacion_ciudadano_empresa(
     if existing.scalars().first():
         raise HTTPException(
             status_code=409,
-            detail="Ya existe esta relacion ciudadano-empresa con ese tipo de representacion"
+            detail="Ya existe esta relación ciudadano-empresa con ese tipo de representación"
         )
 
     relacion = CiudadanoEmpresa(**data.model_dump(), id_municipio=id_municipio)

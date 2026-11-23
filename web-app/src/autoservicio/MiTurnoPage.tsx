@@ -138,7 +138,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     <div style={s.page}>
       <div style={s.brand}><ZarisMark /></div>
       <div style={s.card}>{children}</div>
-      <div style={s.footer}>ZARIS &middot; Gestion Estatal</div>
+      <div style={s.footer}>ZARIS &middot; Gestión Estatal</div>
     </div>
   )
 }

@@ -13,7 +13,7 @@ export const DIA_BIT = {
 } as const
 
 export const DIA_LABEL_CORTO = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'] as const
-export const DIA_LABEL_LARGO = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado', 'Domingo'] as const
+export const DIA_LABEL_LARGO = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'] as const
 
 export type DiaIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6
 
@@ -52,10 +52,10 @@ export function incluye(mask: number, dia: DiaIndex): boolean {
  *   resto → "Lun, Mie, Vie"
  */
 export function format(mask: number): string {
-  if (mask === 127) return 'Todos los dias'
+  if (mask === 127) return 'Todos los días'
   if (mask === 31) return 'Lun a Vie'
   if (mask === 96) return 'Sab y Dom'
-  if (mask === 0) return '(sin dias)'
+  if (mask === 0) return '(sin días)'
   const idx = deserialize(mask)
   if (idx.length === 1) return DIA_LABEL_CORTO[idx[0]]
   return idx.map((i) => DIA_LABEL_CORTO[i]).join(', ')

@@ -35,7 +35,7 @@ export function AgendaFilters({ showSubareaFilter = true }: { showSubareaFilter?
     }}>
       <button
         onClick={() => navegar(-1)}
-        aria-label="Dia anterior"
+        aria-label="Día anterior"
         style={navBtnStyle}
       ><ChevronLeft size={16} strokeWidth={1.5} /></button>
 
@@ -58,7 +58,7 @@ export function AgendaFilters({ showSubareaFilter = true }: { showSubareaFilter?
 
       <button
         onClick={() => navegar(1)}
-        aria-label="Dia siguiente"
+        aria-label="Día siguiente"
         style={navBtnStyle}
       ><ChevronRight size={16} strokeWidth={1.5} /></button>
 

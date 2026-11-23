@@ -111,7 +111,7 @@ export function EventoEncargadosModal({ open, onClose, idEvento }: Props) {
       <ConfirmModal
         open={confirmRemoveId != null}
         title="Quitar encargado"
-        message="Quitar este encargado y dar de baja su ocupacion? Esta accion se puede deshacer manualmente."
+        message="¿Quitar este encargado y dar de baja su ocupación? Esta acción se puede deshacer manualmente."
         confirmLabel="Quitar"
         danger
         onConfirm={() => confirmRemoveId != null && doRemove(confirmRemoveId)}

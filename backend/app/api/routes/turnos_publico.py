@@ -96,11 +96,11 @@ async def _resolver_prestacion(
         WHERE tp.id_tipo_prestacion = :id AND tp.activo = TRUE AND tp.id_municipio = :m
     """), {"id": id_tipo_prestacion, "m": id_municipio})).mappings().first()
     if not prest:
-        raise HTTPException(404, "Prestacion no encontrada o inactiva")
+        raise HTTPException(404, "Prestación no encontrada o inactiva")
     tr = prest["tipo_recurso"]
     id_recurso = prest["id_agente"] if tr == "agente" else prest["id_espacio"]
     if id_recurso is None:
-        raise HTTPException(422, "La prestacion no tiene un recurso valido asignado")
+        raise HTTPException(422, "La prestación no tiene un recurso válido asignado")
     # Ubicacion de atencion (mig 103): la de la prestacion o, si el recurso es
     # un espacio, ese mismo espacio. Se copia al turno en TODAS las vias.
     id_ubicacion = prest["id_espacio_ubicacion"]
@@ -218,7 +218,7 @@ async def _slots_libres_recurso(
 
 @router.get("/slots", response_model=list[SlotLibreOut])
 async def listar_slots_publico(
-    id_tipo_prestacion: int = Query(..., description="Prestacion: define recurso + duracion"),
+    id_tipo_prestacion: int = Query(..., description="Prestación: define recurso + duración"),
     fecha_desde: Optional[date] = Query(None, description="Default: hoy"),
     dias: int = Query(DIAS_VENTANA_DEFAULT, ge=1, le=DIAS_VENTANA_MAX),
     db: AsyncSession = Depends(get_db),

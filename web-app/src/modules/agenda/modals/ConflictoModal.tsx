@@ -49,8 +49,8 @@ export function ConflictoModal({ open, onClose, conflicto }: Props) {
             estado: <strong style={{ color: conflicto.resuelto ? 'var(--color-success)' : 'var(--color-error)' }}>{conflicto.resuelto ? 'resuelto' : 'pendiente'}</strong>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
-            <Lado titulo="Ocupacion origen" det={conflicto.ocupacion_origen_detalle} idAlt={conflicto.id_ocupacion_origen} />
-            <Lado titulo="Ocupacion en conflicto" det={conflicto.ocupacion_conflicto_detalle} idAlt={conflicto.id_ocupacion_conflicto} />
+            <Lado titulo="Ocupación origen" det={conflicto.ocupacion_origen_detalle} idAlt={conflicto.id_ocupacion_origen} />
+            <Lado titulo="Ocupación en conflicto" det={conflicto.ocupacion_conflicto_detalle} idAlt={conflicto.id_ocupacion_conflicto} />
           </div>
           {conflicto.observaciones && (
             <div style={{ padding: 8, background: 'var(--surface-200)', borderRadius: 'var(--radius-md)', marginBottom: 10, fontSize: 13 }}>
@@ -60,7 +60,7 @@ export function ConflictoModal({ open, onClose, conflicto }: Props) {
           {!conflicto.resuelto && (
             <div>
               <label style={{ fontSize: 11, color: 'var(--fg-3)', textTransform: 'uppercase' }}>Observaciones</label>
-              <textarea rows={3} value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Detalle de la resolucion (opcional)"
+              <textarea rows={3} value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Detalle de la resolución (opcional)"
                 style={{
                   width: '100%', padding: '8px 10px', borderRadius: 'var(--radius-md)',
                   border: '1px solid var(--border-primary)', background: 'var(--surface-100)',

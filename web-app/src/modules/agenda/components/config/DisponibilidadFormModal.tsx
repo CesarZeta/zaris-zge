@@ -76,7 +76,7 @@ export function DisponibilidadFormModal({ open, onClose, disp }: Props) {
     e.preventDefault()
     setError(null)
     if (!form.id_recurso)         { setError('Elegi un recurso.'); return }
-    if (form.dias_semana === 0)   { setError('Elegi al menos un dia.'); return }
+    if (form.dias_semana === 0)   { setError('Elegí al menos un día.'); return }
     if (form.hora_fin <= form.hora_inicio) { setError('La hora fin debe ser mayor que la hora inicio.'); return }
     if (form.vigente_desde && form.vigente_hasta && form.vigente_hasta < form.vigente_desde) {
       setError('vigente_hasta debe ser >= vigente_desde.'); return
@@ -160,7 +160,7 @@ export function DisponibilidadFormModal({ open, onClose, disp }: Props) {
           </>
         )}
 
-        <Field label="Dias de la semana">
+        <Field label="Días de la semana">
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {DIA_LABEL_CORTO.map((lbl, i) => {
               const idx = i as DiaIndex
@@ -184,7 +184,7 @@ export function DisponibilidadFormModal({ open, onClose, disp }: Props) {
             })}
           </div>
           <div style={{ fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', marginTop: 4 }}>
-            {diasActivos.length === 0 ? '(sin dias)' : formatBitmask(form.dias_semana)}
+            {diasActivos.length === 0 ? '(sin días)' : formatBitmask(form.dias_semana)}
           </div>
         </Field>
 

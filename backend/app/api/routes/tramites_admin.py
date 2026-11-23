@@ -71,7 +71,7 @@ async def _require_admin_supervisor(
     """Solo Admin (1) o Supervisor (2) pueden tocar el catalogo."""
     nivel = user.get("nivel_acceso", 99)
     if nivel > 2:
-        raise HTTPException(403, "Solo Admin o Supervisor pueden modificar el catalogo de tramites")
+        raise HTTPException(403, "Solo Admin o Supervisor pueden modificar el catálogo de trámites")
     return user
 
 
@@ -288,7 +288,7 @@ async def actualizar_tipo_tramite(
         {"id": id_tipo_tramite, "m": id_municipio},
     )).fetchone()
     if not fila:
-        raise HTTPException(404, "Tipo de tramite no encontrado")
+        raise HTTPException(404, "Tipo de trámite no encontrado")
     # mig 139: se valida contra el estado RESULTANTE (iniciadores y bandera juntos).
     ofrece = body.ofrecer_al_vecino if body.ofrecer_al_vecino is not None else bool(fila.ofrecer_al_vecino)
     inis = body.iniciadores_permitidos if body.iniciadores_permitidos is not None else list(fila.iniciadores_permitidos or [])
@@ -598,7 +598,7 @@ async def archivar(
     """Archiva una version publicada (deja al tipo sin version publicada hasta que se publique otra)."""
     ver = await svc_ver.cargar_version(db, id_version, id_municipio=id_municipio)
     if ver["estado"] == "archivado":
-        raise HTTPException(409, "La version ya esta archivada")
+        raise HTTPException(409, "La versión ya está archivada")
 
     if ver["estado"] == "borrador":
         # Si es borrador, simplemente desactivar (soft-delete)
@@ -772,7 +772,7 @@ async def crear_estado(
             {"v": id_version},
         )).fetchone()
         if otro:
-            raise HTTPException(409, "Ya existe un estado inicial en esta version. Desmarcalo primero.")
+            raise HTTPException(409, "Ya existe un estado inicial en esta versión. Desmarcalo primero.")
 
     new_id = (await db.execute(
         text("""
@@ -823,7 +823,7 @@ async def actualizar_estado(
             {"v": fila.id_tipo_tramite_version, "id": id_estado},
         )).fetchone()
         if otro:
-            raise HTTPException(409, "Ya existe otro estado inicial en esta version")
+            raise HTTPException(409, "Ya existe otro estado inicial en esta versión")
 
     sets: list[str] = []
     params: dict[str, Any] = {"id": id_estado}
@@ -948,7 +948,7 @@ async def crear_transicion(
     )).fetchall()
     ids_validos = {e.id_tipo_tramite_estado for e in estados}
     if body.id_estado_origen not in ids_validos or body.id_estado_destino not in ids_validos:
-        raise HTTPException(422, "Origen y destino deben ser estados activos de esta version")
+        raise HTTPException(422, "Origen y destino deben ser estados activos de esta versión")
     await _validar_destino_automatico(db, body.destino_automatico_jsonb, id_municipio)
     await _validar_quien_puede(db, body.quien_puede_jsonb, id_municipio)
 
@@ -991,7 +991,7 @@ async def actualizar_transicion(
         {"id": id_trans, "m": id_municipio},
     )).fetchone()
     if not fila:
-        raise HTTPException(404, "Transicion no encontrada")
+        raise HTTPException(404, "Transición no encontrada")
     await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version, id_municipio=id_municipio)
 
     # Si se cambia origen/destino, validar que pertenezcan a la version
@@ -1010,7 +1010,7 @@ async def actualizar_transicion(
             {"ids": ids_a_validar, "v": fila.id_tipo_tramite_version},
         )).fetchall()
         if len(validos) != len(set(ids_a_validar)):
-            raise HTTPException(422, "Algun estado origen/destino no pertenece a la version o esta inactivo")
+            raise HTTPException(422, "Algún estado origen/destino no pertenece a la versión o está inactivo")
 
     sets: list[str] = []
     params: dict[str, Any] = {"id": id_trans}
@@ -1051,7 +1051,7 @@ async def eliminar_transicion(
         {"id": id_trans, "m": id_municipio},
     )).fetchone()
     if not fila:
-        raise HTTPException(404, "Transicion no encontrada o ya inactiva")
+        raise HTTPException(404, "Transición no encontrada o ya inactiva")
     await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version, id_municipio=id_municipio)
     await db.execute(
         text("UPDATE tipo_tramite_transicion SET activo = FALSE, fecha_modificacion = NOW() WHERE id_tipo_tramite_transicion = :id"),
@@ -1103,7 +1103,7 @@ async def crear_documento_requerido(
             {"e": body.id_tipo_tramite_estado, "v": id_version},
         )).fetchone()
         if not ok:
-            raise HTTPException(422, "El estado referenciado no pertenece a esta version o esta inactivo")
+            raise HTTPException(422, "El estado referenciado no pertenece a esta versión o está inactivo")
     await _validar_firmantes(db, body.firmantes_jsonb, id_municipio)
 
     new_id = (await db.execute(
@@ -1156,7 +1156,7 @@ async def actualizar_documento_requerido(
             {"e": body.id_tipo_tramite_estado, "v": fila.id_tipo_tramite_version},
         )).fetchone()
         if not ok:
-            raise HTTPException(422, "El estado referenciado no pertenece a esta version")
+            raise HTTPException(422, "El estado referenciado no pertenece a esta versión")
 
     sets: list[str] = []
     params: dict[str, Any] = {"id": id_doc}
@@ -1265,7 +1265,7 @@ async def crear_aprobacion_requerida(
         {"e": body.id_tipo_tramite_estado, "v": id_version},
     )).fetchone()
     if not ok:
-        raise HTTPException(422, "El estado referenciado no pertenece a esta version o esta inactivo")
+        raise HTTPException(422, "El estado referenciado no pertenece a esta versión o está inactivo")
 
     fks = _aprob_fks(body)
     await _validar_referencia(db, body.aprobador_tipo, fks["sa"] or fks["eq"] or fks["ag"], id_municipio)
@@ -1305,7 +1305,7 @@ async def actualizar_aprobacion_requerida(
         {"id": id_aprob_req, "m": id_municipio},
     )).fetchone()
     if not fila:
-        raise HTTPException(404, "Aprobacion requerida no encontrada")
+        raise HTTPException(404, "Aprobación requerida no encontrada")
     await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version, id_municipio=id_municipio)
 
     ok = (await db.execute(
@@ -1316,7 +1316,7 @@ async def actualizar_aprobacion_requerida(
         {"e": body.id_tipo_tramite_estado, "v": fila.id_tipo_tramite_version},
     )).fetchone()
     if not ok:
-        raise HTTPException(422, "El estado referenciado no pertenece a esta version")
+        raise HTTPException(422, "El estado referenciado no pertenece a esta versión")
 
     fks = _aprob_fks(body)
     await _validar_referencia(db, body.aprobador_tipo, fks["sa"] or fks["eq"] or fks["ag"], id_municipio)
@@ -1353,7 +1353,7 @@ async def eliminar_aprobacion_requerida(
         {"id": id_aprob_req, "m": id_municipio},
     )).fetchone()
     if not fila:
-        raise HTTPException(404, "Aprobacion requerida no encontrada o ya inactiva")
+        raise HTTPException(404, "Aprobación requerida no encontrada o ya inactiva")
     await svc_ver.asegurar_editable(db, fila.id_tipo_tramite_version, id_municipio=id_municipio)
     await db.execute(
         text("UPDATE tipo_tramite_aprobacion_requerida SET activo = FALSE, fecha_modificacion = NOW() WHERE id_tipo_tramite_aprobacion_requerida = :id"),

@@ -38,8 +38,8 @@ router = APIRouter(prefix="/api/v1/tramites", tags=["tramites-mantenimiento"])
 
 @router.post(
     "/mantenimiento/ejecutar",
-    summary="Archiva tramites inactivos y depura binarios vencidos",
-    description="Endpoint llamado por cron. Auth via header X-Dispatcher-Token (no JWT — es maquina).",
+    summary="Archiva trámites inactivos y depura binarios vencidos",
+    description="Endpoint llamado por cron. Auth via header X-Dispatcher-Token (no JWT — es máquina).",
 )
 async def ejecutar_mantenimiento(
     request: Request,
@@ -104,7 +104,7 @@ async def ejecutar_mantenimiento(
                     "pedidos_sin_respuesta": pedidos}
 
         # Por municipio (IT-01), cada uno con sus plazos; un fallo no frena a los demas.
-        por_municipio = await por_cada_municipio(db, "Mantenimiento tramites", _uno)
+        por_municipio = await por_cada_municipio(db, "Mantenimiento trámites", _uno)
         archivado = {"archivados": 0, "ids": []}
         purga = {"dry_run": None, "evaluados": 0, "purgados": 0, "errores": 0, "ids": []}
         desistimiento = {"avisos": 0, "desistidos": 0, "ids": []}

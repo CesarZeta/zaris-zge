@@ -10,7 +10,7 @@ import s from './TopBar.module.css'
 // Topbar del shell DEV (localhost:5173) — clon visual del topbar del shell
 // vanilla de producción (index.html + frontend/css/menu.css), pedido de César
 // 2026-08-31 para que la vista previa en dev refleje la interfase real.
-// Estructura de prod: brand ZARIS + "GESTION ESTADO" · separador · identidad
+// Estructura de prod: brand ZARIS + "GESTIÓN ESTADO" · separador · identidad
 // del municipio | campana · contexto de usuario en 2 líneas · avatar.
 
 const ROL_LABEL: Record<number, string> = {
@@ -63,7 +63,7 @@ export function TopBar() {
             </g>
           </svg>
           <span className={s.brandName}>ZARIS</span>
-          <span className={s.brandApp}>GESTION ESTADO</span>
+          <span className={s.brandApp}>GESTIÓN ESTADO</span>
         </Link>
 
         <span className={s.sep} aria-hidden="true" />

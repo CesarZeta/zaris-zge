@@ -33,7 +33,7 @@ export function BuscarView() {
       setResultados(res.data)
       setTotal(Number(res.headers.get('X-Total-Count') ?? res.data.length))
       if (res.data.length === 0) {
-        push({ kind: 'info', title: 'No se encontro ningun ciudadano con esos datos' })
+        push({ kind: 'info', title: 'No se encontró ningún ciudadano con esos datos' })
       }
     } catch (err) {
       push({ kind: 'error', title: 'Error en la busqueda', body: (err as Error).message })
@@ -159,7 +159,7 @@ export function BuscarView() {
       {/* Vista previa: ultimos ingresados */}
       <section>
         <div style={{ fontSize: 'var(--size-caption)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--fg-3)', marginBottom: '0.5rem' }}>
-          Ultimos ciudadanos ingresados
+          Últimos ciudadanos ingresados
         </div>
         {recientes.isLoading && <div style={{ color: 'var(--fg-3)', fontSize: '0.82rem' }}>Cargando...</div>}
         {recientes.isError && <div style={{ color: 'var(--color-error)', fontSize: '0.82rem' }}>Error al cargar</div>}

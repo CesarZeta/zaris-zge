@@ -136,7 +136,7 @@ export function BuscarView() {
       </section>
 
       <section>
-        <div style={titulo}>Ultimas empresas ingresadas</div>
+        <div style={titulo}>Últimas empresas ingresadas</div>
         {recientes.isLoading && <div style={{ color: 'var(--fg-3)', fontSize: '0.82rem' }}>Cargando...</div>}
         {recientes.isError && <div style={{ color: 'var(--color-error)', fontSize: '0.82rem' }}>Error al cargar</div>}
         {recientes.data && recientes.data.length === 0 && (

@@ -48,7 +48,7 @@ export function CiudadanosLayout({ children }: { children: ReactNode }) {
             Padron de Ciudadanos
           </h1>
           <p style={{ fontSize: '0.82rem', color: 'var(--fg-3)', margin: '2px 0 0' }}>
-            Base Unica de Ciudadanos — identificacion y datos personales
+            Base Única de Ciudadanos — identificación y datos personales
           </p>
         </div>
       </div>

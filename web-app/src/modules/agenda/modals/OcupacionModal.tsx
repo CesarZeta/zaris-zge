@@ -85,7 +85,7 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
       return
     }
     if (payload.hora_fin <= payload.hora_inicio) {
-      push({ kind: 'error', title: 'Horario invalido', body: 'hora_fin > hora_inicio' })
+      push({ kind: 'error', title: 'Horario inválido', body: 'hora_fin > hora_inicio' })
       return
     }
     try {
@@ -93,7 +93,7 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
       const conConflicto = (r.conflictos?.length ?? 0) > 0
       push({
         kind: conConflicto ? 'error' : 'success',
-        title: conConflicto ? 'Ocupacion creada con conflicto' : 'Ocupacion creada',
+        title: conConflicto ? 'Ocupación creada con conflicto' : 'Ocupación creada',
         body: r.mensaje ?? undefined,
         ttl: conConflicto ? 7000 : 4000,
       })
@@ -108,14 +108,14 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
     setConfirmDel(false)
     try {
       await eliminar.mutateAsync(ocupacion.id_ocupacion)
-      push({ kind: 'success', title: 'Ocupacion dada de baja' })
+      push({ kind: 'success', title: 'Ocupación dada de baja' })
       onClose()
     } catch (e) {
       push({ kind: 'error', title: 'No se pudo eliminar', body: (e as Error).message })
     }
   }
 
-  const titulo = ocupacion ? `Ocupacion #${ocupacion.id_ocupacion}` : 'Nueva ocupacion'
+  const titulo = ocupacion ? `Ocupación #${ocupacion.id_ocupacion}` : 'Nueva ocupación'
 
   return (
     <Modal
@@ -233,8 +233,8 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
       )}
       <ConfirmModal
         open={confirmDel}
-        title="Dar de baja ocupacion"
-        message="Dar de baja esta ocupacion? Se libera el slot del recurso en la grilla."
+        title="Dar de baja ocupación"
+        message="¿Dar de baja esta ocupación? Se libera el slot del recurso en la grilla."
         confirmLabel="Dar de baja"
         danger
         onConfirm={doDelete}
@@ -262,7 +262,7 @@ function ReadonlyOcupacion({ o }: { o: Ocupacion }) {
       {o.id_evento && <Row k="Evento" v={`#${o.id_evento}`} />}
       {o.id_orden_trabajo && <Row k="OT" v={`#${o.id_orden_trabajo}`} />}
       {o.id_ciudadano && <Row k="Ciudadano" v={`#${o.id_ciudadano}`} />}
-      {o.descripcion_corta && <Row k="Descripcion" v={o.descripcion_corta} />}
+      {o.descripcion_corta && <Row k="Descripción" v={o.descripcion_corta} />}
       {o.motivo && <Row k="Motivo" v={o.motivo} />}
       {o.rol_en_evento && <Row k="Rol" v={o.rol_en_evento} />}
     </div>

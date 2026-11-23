@@ -22,7 +22,7 @@ export function EspaciosConfig() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <p style={{ margin: 0, color: 'var(--fg-3)', fontSize: 13, fontFamily: 'var(--font-display)' }}>
-          Espacios fisicos donde se desarrollan eventos o turnos. Los atendidos requieren agentes vinculados.
+          Espacios físicos donde se desarrollan eventos o turnos. Los atendidos requieren agentes vinculados.
         </p>
         <Button variant="accent" icon={<Plus size={14} strokeWidth={1.5} />} onClick={() => setFormOpen({ espacio: null })}>
           Nuevo espacio
@@ -50,8 +50,8 @@ export function EspaciosConfig() {
             onOrdenar={alternar}
             columns={[
               { key: 'nombre', header: 'Nombre', orden: 'nombre' },
-              { key: 'subarea_nombre', header: 'Subarea', orden: 'subarea', render: (r) => r.subarea_nombre ?? <span style={{ color: 'var(--fg-3)' }}>—</span> },
-              { key: 'direccion', header: 'Direccion', orden: 'direccion', render: (r) => r.direccion ?? <span style={{ color: 'var(--fg-3)' }}>—</span> },
+              { key: 'subarea_nombre', header: 'Subárea', orden: 'subarea', render: (r) => r.subarea_nombre ?? <span style={{ color: 'var(--fg-3)' }}>—</span> },
+              { key: 'direccion', header: 'Dirección', orden: 'direccion', render: (r) => r.direccion ?? <span style={{ color: 'var(--fg-3)' }}>—</span> },
               { key: 'capacidad_personas', header: 'Capacidad', orden: 'capacidad', render: (r) => r.capacidad_personas ?? <span style={{ color: 'var(--fg-3)' }}>—</span> },
               {
                 key: 'atendido',

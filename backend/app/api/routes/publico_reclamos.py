@@ -275,7 +275,7 @@ async def crear_mi_reclamo(
     if not id_tipo:
         raise HTTPException(status_code=422, detail="Campo requerido: id_tipo_reclamo")
     if not direccion:
-        raise HTTPException(status_code=422, detail="Campo requerido: direccion")
+        raise HTTPException(status_code=422, detail="Campo requerido: dirección")
 
     # Validar tipo (debe existir y estar activo) + derivar id_area de subarea.id_area.
     r_tipo = await db.execute(text("""

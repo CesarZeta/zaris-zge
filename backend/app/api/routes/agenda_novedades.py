@@ -301,7 +301,7 @@ async def _feriado_to_out(db: AsyncSession, id_fer: int, id_municipio: int) -> O
 
 @router.get("/feriados", response_model=list[FeriadoOut])
 async def listar_feriados(
-    anio: Optional[int] = Query(None, description="Filtra por anio de la fecha"),
+    anio: Optional[int] = Query(None, description="Filtra por año de la fecha"),
     activo: bool = True,
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),

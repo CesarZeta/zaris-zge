@@ -483,7 +483,7 @@ def normalizar_prefijo_colero(v: Any) -> Optional[str]:
         return None
     if not _PREFIJO_COLERO_RE.match(s):
         raise ValueError(
-            "El prefijo del colero debe tener exactamente 3 letras o numeros (ej. ODO -> ODO-001)"
+            "El prefijo del colero debe tener exactamente 3 letras o números (ej. ODO -> ODO-001)"
         )
     return s
 
@@ -499,7 +499,7 @@ class EspacioAgendaBase(BaseModel):
     id_subarea: Optional[int] = None
     prefijo_colero: Optional[str] = Field(
         None, max_length=4,
-        description="Prefijo del numero del colero (mig 105): 3 alfanumericos, ej. 'ODO' -> 'ODO-001'. Vacio = sin prefijo.",
+        description="Prefijo del número del colero (mig 105): 3 alfanuméricos, ej. 'ODO' -> 'ODO-001'. Vacío = sin prefijo.",
     )
 
     @field_validator("prefijo_colero", mode="before")

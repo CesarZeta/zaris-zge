@@ -57,7 +57,7 @@ export function VistasView() {
             Nuevo evento
           </Button>
           <Button type="button" variant="default" icon={<Plus size={14} strokeWidth={1.5} />} onClick={() => setOcupOpen(true)}>
-            Nueva ocupacion
+            Nueva ocupación
           </Button>
         </div>
       </div>

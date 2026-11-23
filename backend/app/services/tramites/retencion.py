@@ -231,7 +231,7 @@ async def purgar_binarios(db: AsyncSession, *, id_municipio: int, dry_run: bool 
                 db, c.id_tramite, "purga_binario",
                 id_usuario=None, id_agente=c.id_agente_iniciador,
                 id_municipio=c.id_municipio,
-                comentario="Archivo fisico depurado por antiguedad. El registro y su hash se conservan.",
+                comentario="Archivo físico depurado por antigüedad. El registro y su hash se conservan.",
                 metadata_jsonb={"id_tramite_documento": c.id_tramite_documento, "resultado": c.resultado},
             )
             purgados.append(c.id_tramite_documento)

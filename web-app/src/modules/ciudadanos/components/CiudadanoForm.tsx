@@ -30,7 +30,7 @@ export function CiudadanoForm({
   return (
     <form autoComplete="off" onSubmit={(e) => e.preventDefault()} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* ── Identificacion ── */}
-      <Section title="Identificacion">
+      <Section title="Identificación">
         <Row cols="1fr 1fr 1fr">
           <Field label="Tipo Documento" required error={errores.doc_tipo}>
             <select
@@ -44,7 +44,7 @@ export function CiudadanoForm({
               <option value="PASAPORTE">Pasaporte</option>
             </select>
           </Field>
-          <Field label="Numero Documento" error={errores.doc_nro}>
+          <Field label="Número Documento" error={errores.doc_nro}>
             <input
               type="text"
               value={form.doc_nro}
@@ -199,14 +199,14 @@ export function CiudadanoForm({
       {/* ── Contacto ── */}
       <Section title="Contacto">
         <Row cols="1fr 1fr">
-          <Field label="Telefono" required error={errores.telefono} hint="Sin el 0 del codigo de area. Ej: 1155667788">
+          <Field label="Teléfono" required error={errores.telefono} hint="Sin el 0 del código de área. Ej: 1155667788">
             <input
               type="text"
               value={form.telefono}
               onChange={(e) => onChange('telefono', e.target.value.replace(/\D/g, '').slice(0, 10))}
               disabled={readonly}
               maxLength={10}
-              placeholder="Cod. area + numero (10 digitos)"
+              placeholder="Cod. área + número (10 dígitos)"
               style={inputStyle(readonly)}
             />
           </Field>

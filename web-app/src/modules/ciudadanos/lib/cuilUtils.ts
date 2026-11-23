@@ -13,7 +13,7 @@ export interface ValidacionResult {
 export function validarCuilCuit(valor: string): ValidacionResult {
   const limpio = String(valor || '').replace(/[-\s]/g, '')
   if (!/^\d{11}$/.test(limpio)) {
-    return { valido: false, formateado: '', error: 'Debe contener exactamente 11 digitos numericos.' }
+    return { valido: false, formateado: '', error: 'Debe contener exactamente 11 dígitos numéricos.' }
   }
   const digitos = limpio.split('').map(Number)
   let suma = 0
@@ -29,7 +29,7 @@ export function validarCuilCuit(valor: string): ValidacionResult {
   return {
     valido,
     formateado,
-    error: valido ? '' : `Digito verificador invalido (esperaba ${esperado}).`,
+    error: valido ? '' : `Dígito verificador inválido (esperaba ${esperado}).`,
   }
 }
 
@@ -72,10 +72,10 @@ export function formatCuilInput(valor: string): string {
 export function validarTelefono(valor: string): { valido: boolean; error: string } {
   const limpio = String(valor || '').replace(/[-\s()]/g, '')
   if (!/^\d{10}$/.test(limpio)) {
-    return { valido: false, error: 'Telefono debe tener 10 digitos (codigo de area sin 0 + numero).' }
+    return { valido: false, error: 'Teléfono debe tener 10 dígitos (código de área sin 0 + número).' }
   }
   if (limpio.startsWith('0')) {
-    return { valido: false, error: 'No incluir el 0 del codigo de area.' }
+    return { valido: false, error: 'No incluir el 0 del código de área.' }
   }
   return { valido: true, error: '' }
 }

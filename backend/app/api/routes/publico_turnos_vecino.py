@@ -115,7 +115,7 @@ async def reservar_turno_vecino(
     hora_fin = (datetime.combine(payload.fecha, hora_inicio)
                 + timedelta(minutes=duracion_min)).time()
     if hora_fin <= hora_inicio:
-        raise HTTPException(422, "La duracion de la prestacion excede el dia")
+        raise HTTPException(422, "La duración de la prestación excede el día")
 
     # Anti-carrera (mig 95): mismo orden de locks que turnos_publico.py
     # (recurso -> ciudadano-dia). Se liberan al commit/rollback.
@@ -129,7 +129,7 @@ async def reservar_turno_vecino(
             for r in rangos
         )
         if not dentro:
-            raise HTTPException(409, "El horario solicitado no esta dentro de la disponibilidad del recurso")
+            raise HTTPException(409, "El horario solicitado no está dentro de la disponibilidad del recurso")
 
     solapado = await db.scalar(text("""
         SELECT 1 FROM ocupaciones
@@ -138,7 +138,7 @@ async def reservar_turno_vecino(
         LIMIT 1
     """), {"tr": tipo_recurso, "ir": id_recurso, "f": payload.fecha, "hi": hora_inicio, "hf": hora_fin})
     if solapado:
-        raise HTTPException(409, "El horario solicitado ya no esta disponible")
+        raise HTTPException(409, "El horario solicitado ya no está disponible")
 
     # Anti-carrera de la regla "1 turno por dia" (mismo vecino, dos recursos
     # distintos en paralelo). Mismo orden de adquisicion que turnos_publico.py.
@@ -150,7 +150,7 @@ async def reservar_turno_vecino(
         LIMIT 1
     """), {"ic": id_ciudadano, "f": payload.fecha})
     if dup:
-        raise HTTPException(409, "Ya tenes un turno reservado para ese dia")
+        raise HTTPException(409, "Ya tenés un turno reservado para ese día")
 
     # UNIQUE parcial de slot (mig 95): red de contencion -> 409, no doble reserva.
     try:
@@ -192,7 +192,7 @@ async def reservar_turno_vecino(
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(409, "El horario solicitado ya no esta disponible")
+        raise HTTPException(409, "El horario solicitado ya no está disponible")
 
     return {
         "id_turno": int(row["id_turno"]),

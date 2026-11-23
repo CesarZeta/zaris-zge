@@ -3,7 +3,7 @@ import { useAgendaStore } from '../store/agendaStore'
 import type { VistaGrilla } from '../types/agenda'
 
 const OPCIONES: { value: VistaGrilla; label: string; icon: typeof CalendarDays }[] = [
-  { value: 'dia',    label: 'Dia',    icon: CalendarDays },
+  { value: 'dia',    label: 'Día',    icon: CalendarDays },
   { value: 'semana', label: 'Semana', icon: CalendarRange },
   { value: 'mes',    label: 'Mes',    icon: Calendar },
 ]

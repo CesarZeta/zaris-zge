@@ -374,7 +374,7 @@ async def enviar_mail_activacion_ciudadano(
         ),
         cta_texto="Activar mi cuenta",
         cta_url=cta_url,
-        parrafo_extra="Este enlace es valido por 7 dias. Si expira, podes pedir un nuevo correo desde la app.",
+        parrafo_extra="Este enlace es válido por 7 días. Si expira, podés pedir un nuevo correo desde la app.",
         municipio_nombre=municipio_nombre,
         municipio_logo_url=municipio_logo_url,
         cta_color=await _color_cta_municipio(id_municipio),
@@ -439,7 +439,7 @@ async def enviar_mail_confirmacion_reclamo_ciudadano(
             f"<strong>Ubicacion:</strong> {dir_txt}<br>"
             f"<strong>Detalle:</strong> {desc}"
         )
-        extra = ("Te avisaremos por notificacion cuando tu reclamo cambie de estado. "
+        extra = ("Te avisaremos por notificación cuando tu reclamo cambie de estado. "
                  "No hace falta que respondas este correo.")
 
     html, text = _build_template_app_vecinos(
@@ -664,7 +664,7 @@ async def enviar_mail_recovery_ciudadano(
         ),
         cta_texto="Elegir nueva contraseña",
         cta_url=cta_url,
-        parrafo_extra="Este enlace es valido por 24 horas. Si no pediste este cambio, ignora este mensaje.",
+        parrafo_extra="Este enlace es válido por 24 horas. Si no pediste este cambio, ignorá este mensaje.",
         municipio_nombre=municipio_nombre,
         municipio_logo_url=municipio_logo_url,
         cta_color=await _color_cta_municipio(id_municipio),
@@ -745,7 +745,7 @@ Abrila en el navegador del teléfono y elegí "Instalar la app".
     <tr><td style="padding:32px 32px 24px 32px;text-align:center;border-bottom:1px solid rgba(38,37,30,.08);">
       {logo_html}
       <div style="font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:rgba(38,37,30,.6);">
-        {municipio_nombre} · GESTION ESTADO
+        {municipio_nombre} · GESTIÓN ESTADO
       </div>
     </td></tr>
     <tr><td style="padding:32px;">
@@ -786,7 +786,7 @@ Abrila en el navegador del teléfono y elegí "Instalar la app".
 </html>"""
 
     text = f"""\
-{municipio_nombre} · GESTION ESTADO
+{municipio_nombre} · GESTIÓN ESTADO
 
 Se creó tu cuenta en ZARIS
 
@@ -811,7 +811,7 @@ Si no esperabas este correo, contactá al administrador del sistema.
 # ────────────────────────────────────────────────────────────────────────────
 # Templates de RECUPERACIÓN de credenciales del USUARIO INTERNO (backoffice).
 # Espejo del recovery del vecino (publico_auth.py) pero para el login del shell
-# (frontend/login.html). Usa el look del shell (marca ZARIS · GESTION ESTADO),
+# (frontend/login.html). Usa el look del shell (marca ZARIS · GESTIÓN ESTADO),
 # no el de App Vecinos. El CTA va al login del backoffice.
 # ────────────────────────────────────────────────────────────────────────────
 
@@ -853,7 +853,7 @@ def _build_template_interno(
     <tr><td style="padding:32px 32px 24px 32px;text-align:center;border-bottom:1px solid rgba(38,37,30,.08);">
       {logo_html}
       <div style="font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:rgba(38,37,30,.6);">
-        {municipio_nombre} · GESTION ESTADO
+        {municipio_nombre} · GESTIÓN ESTADO
       </div>
     </td></tr>
     <tr><td style="padding:32px;">
@@ -924,7 +924,7 @@ async def enviar_mail_recovery_usuario_interno(
         municipio_logo_url=municipio_logo_url,
     )
     text = (
-        f"{municipio_nombre} · GESTION ESTADO\n\n"
+        f"{municipio_nombre} · GESTIÓN ESTADO\n\n"
         f"Restablecé tu contraseña\n\n"
         f"Hola {saludo_nombre},\n\n"
         f"Recibimos un pedido para restablecer la contraseña {cuenta}.\n"
@@ -982,7 +982,7 @@ async def enviar_mail_invitacion_usuario_interno(
         municipio_logo_url=municipio_logo_url,
     )
     text = (
-        f"{municipio_nombre} · GESTION ESTADO\n\n"
+        f"{municipio_nombre} · GESTIÓN ESTADO\n\n"
         f"Elegí tu contraseña\n\n"
         f"Hola {saludo_nombre},\n\n"
         f"Te crearon {cuenta}. Ingresás con tu correo: {to}\n\n"
@@ -1037,7 +1037,7 @@ async def enviar_mail_recordatorio_usuario_interno(
         municipio_logo_url=municipio_logo_url,
     )
     text = (
-        f"{municipio_nombre} · GESTION ESTADO\n\n"
+        f"{municipio_nombre} · GESTIÓN ESTADO\n\n"
         f"Tu usuario de acceso\n\n"
         f"Hola {saludo_nombre},\n\n"
         f"Pediste recuperar tu usuario de acceso. Ingresás con este correo: {to}\n\n"

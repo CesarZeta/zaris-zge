@@ -289,7 +289,7 @@ async def _check_scope_subarea(db: AsyncSession, user: dict, id_subarea_evento: 
         return
     propia = await _subarea_usuario(db, user["id_usuario"])
     if propia is not None and propia != id_subarea_evento:
-        raise HTTPException(403, "El evento pertenece a otra subarea")
+        raise HTTPException(403, "El evento pertenece a otra subárea")
 
 
 async def _filtro_scope_subarea(db: AsyncSession, user: dict) -> Optional[int]:
@@ -491,7 +491,7 @@ async def buscar_contactos_eventuales(
     _require_operador(user)
     criterios = [c for c in (dni, telefono, nombre) if c]
     if len(criterios) != 1:
-        raise HTTPException(422, "Indicar exactamente un criterio: dni, telefono o nombre")
+        raise HTTPException(422, "Indicar exactamente un criterio: dni, teléfono o nombre")
     where, params = _where_contacto(dni, telefono, nombre, id_municipio)
     rows = (await db.execute(text(
         _SELECT_CONTACTO + where + " ORDER BY nombre_apellido LIMIT 20"
@@ -523,7 +523,7 @@ async def crear_contacto_eventual(
     _require_operador(user)
     dni = _solo_digitos(body.dni)
     if len(dni) < 6:
-        raise HTTPException(422, "DNI invalido (minimo 6 digitos)")
+        raise HTTPException(422, "DNI inválido (mínimo 6 dígitos)")
     dup = (await db.execute(text("""
         SELECT id_emergencia_contacto_eventual FROM emergencia_contacto_eventual
         WHERE dni = :dni AND activo AND NOT convertido_a_buc AND id_municipio = :mun
@@ -616,7 +616,7 @@ async def promover_contacto_a_buc(
             "SELECT id_ciudadano FROM ciudadanos WHERE id_ciudadano = :id AND activo AND id_municipio = :mun"
         ), {"id": body.id_ciudadano, "mun": id_municipio})).scalar()
         if not id_ciudadano:
-            raise HTTPException(422, "El ciudadano indicado no existe o esta inactivo")
+            raise HTTPException(422, "El ciudadano indicado no existe o está inactivo")
     else:
         # si ya hay un ciudadano activo con ese DNI, se vincula automaticamente
         id_ciudadano = (await db.execute(text("""
@@ -696,7 +696,7 @@ async def buscar_denunciante(
     criterios = [("dni", dni), ("telefono", telefono), ("nombre", nombre)]
     activos = [(k, v) for k, v in criterios if v]
     if len(activos) != 1:
-        raise HTTPException(422, "Indicar exactamente un criterio: dni, telefono o nombre")
+        raise HTTPException(422, "Indicar exactamente un criterio: dni, teléfono o nombre")
     criterio, valor = activos[0]
 
     # 1) BUC
@@ -816,7 +816,7 @@ async def crear_evento(
     if not tipo:
         raise HTTPException(422, "Tipo de emergencia inexistente o inactivo")
     if tipo["id_subarea"] != body.id_subarea:
-        raise HTTPException(422, "El tipo no pertenece a la subarea indicada")
+        raise HTTPException(422, "El tipo no pertenece a la subárea indicada")
 
     id_prioridad = body.id_prioridad
     if body.id_subtipo is not None:
@@ -826,7 +826,7 @@ async def crear_evento(
             WHERE id_emergencia_subtipo = :id AND id_tipo = :t AND activo
         """), {"id": body.id_subtipo, "t": body.id_tipo})).mappings().first()
         if not subtipo:
-            raise HTTPException(422, "El subtipo no pertenece al tipo indicado o esta inactivo")
+            raise HTTPException(422, "El subtipo no pertenece al tipo indicado o está inactivo")
         if id_prioridad is None:
             id_prioridad = subtipo["id_prioridad_override"]
     if id_prioridad is None:
@@ -1077,7 +1077,7 @@ async def editar_evento(
     ev = await _evento_for_update(db, id_evento, id_municipio)
     await _check_scope_subarea(db, user, ev["id_subarea"])
     if ev["es_terminal"]:
-        raise HTTPException(422, "El evento esta en estado terminal; no admite edicion")
+        raise HTTPException(422, "El evento está en estado terminal; no admite edición")
 
     cambios = body.model_dump(exclude_unset=True)
     if not cambios:
@@ -1092,7 +1092,7 @@ async def editar_evento(
         if not tipo:
             raise HTTPException(422, "Tipo de emergencia inexistente o inactivo")
         if tipo["id_subarea"] != ev["id_subarea"]:
-            raise HTTPException(422, "El tipo nuevo pertenece a otra subarea")
+            raise HTTPException(422, "El tipo nuevo pertenece a otra subárea")
         if "id_subtipo" not in cambios:
             cambios["id_subtipo"] = None   # el subtipo viejo ya no aplica
     if cambios.get("id_subtipo") is not None:
@@ -1137,7 +1137,7 @@ async def editar_evento(
         await _registrar_log(db, id_evento, user["id_usuario"], "NOTA",
                              estado_anterior=estado_actual, estado_nuevo=estado_actual,
                              payload={"campos_modificados": otros},
-                             observaciones="Edicion de datos del evento")
+                             observaciones="Edición de datos del evento")
     await db.commit()
     return await _evento_out(db, id_evento, id_municipio)
 
@@ -1224,7 +1224,7 @@ async def derivar_evento(
         WHERE id_emergencia_organismo_derivacion = :id AND activo AND id_municipio = :mun
     """), {"id": body.id_organismo, "mun": id_municipio})).mappings().first()
     if not org:
-        raise HTTPException(422, "Organismo de derivacion inexistente o inactivo")
+        raise HTTPException(422, "Organismo de derivación inexistente o inactivo")
     ev = await _evento_for_update(db, id_evento, id_municipio)
     await _check_scope_subarea(db, user, ev["id_subarea"])
     await _aplicar_cambio_estado(
@@ -1244,7 +1244,7 @@ async def derivar_evento(
     # La Guardia vive dentro de Turnos (IT-01 F4): sin Turnos no hay a dónde derivar.
     dependencies=[Depends(modulo_habilitado("turnos"))],
     responses={
-        409: {"description": "Ya hay una derivacion pendiente a la Guardia para este evento"},
+        409: {"description": "Ya hay una derivación pendiente a la Guardia para este evento"},
         422: {"description": "Evento desestimado, paciente inexistente o Guardia no configurada"},
     },
 )
@@ -1305,7 +1305,7 @@ async def derivar_evento_a_guardia(
         })
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(409, "Ya hay una derivacion pendiente a la Guardia para este evento")
+        raise HTTPException(409, "Ya hay una derivación pendiente a la Guardia para este evento")
 
     await registrar_log_evento(
         db, id_evento, user["id_usuario"], "DERIVACION_GUARDIA",
@@ -1318,7 +1318,7 @@ async def derivar_evento_a_guardia(
     await db.commit()
     out = await guardia_atencion_out(db, int(id_atencion))
     if out is None:
-        raise HTTPException(500, "Derivacion creada pero no se pudo releer")
+        raise HTTPException(500, "Derivación creada pero no se pudo releer")
     return out
 
 
@@ -1326,7 +1326,7 @@ async def derivar_evento_a_guardia(
 # comportamiento — el 403 real lo levanta _check_scope_subarea.
 @router.post(
     "/eventos/{id_evento}/cerrar",
-    responses={403: {"description": "Fuera del alcance del operador (scope-subarea) o alerta ajena"}},
+    responses={403: {"description": "Fuera del alcance del operador (scope-subárea) o alerta ajena"}},
 )
 async def cerrar_evento(
     id_evento: int,

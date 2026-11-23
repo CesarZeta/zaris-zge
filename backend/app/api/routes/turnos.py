@@ -207,7 +207,7 @@ async def detalle_prestacion(
 ):
     out = await _prestacion_out(db, id_prestacion, id_municipio)
     if out is None:
-        raise HTTPException(404, "Prestacion no encontrada")
+        raise HTTPException(404, "Prestación no encontrada")
     return out
 
 
@@ -245,7 +245,7 @@ async def crear_prestacion(
     # Regla de negocio (Cesar 2026-09-01): toda prestacion declara DONDE se
     # atiende — el enfoque del modulo es ubicacion-primero.
     if id_ubicacion is None:
-        raise HTTPException(422, "La prestacion debe declarar su ubicacion de atencion (donde se atiende)")
+        raise HTTPException(422, "La prestación debe declarar su ubicación de atención (donde se atiende)")
     await _validar_recurso_activo(db, "espacio", id_ubicacion, id_municipio)
     await _validar_subarea(db, payload.id_subarea, id_municipio)
     id_prestacion = await db.scalar(text("""
@@ -268,7 +268,7 @@ async def crear_prestacion(
     await db.commit()
     out = await _prestacion_out(db, int(id_prestacion), id_municipio)
     if out is None:
-        raise HTTPException(500, "Prestacion creada pero no se pudo releer")
+        raise HTTPException(500, "Prestación creada pero no se pudo releer")
     return out
 
 
@@ -285,13 +285,13 @@ async def editar_prestacion(
         "SELECT 1 FROM tipo_prestacion WHERE id_tipo_prestacion = :id AND activo = TRUE AND id_municipio = :m"
     ), {"id": id_prestacion, "m": id_municipio})).first()
     if not existe:
-        raise HTTPException(404, "Prestacion no encontrada")
+        raise HTTPException(404, "Prestación no encontrada")
     id_recurso = payload.id_agente if payload.tipo_recurso == "agente" else payload.id_espacio
     await _validar_recurso_activo(db, payload.tipo_recurso, int(id_recurso), id_municipio)  # type: ignore[arg-type]
     id_ubicacion = _resolver_ubicacion_payload(payload)
     # Regla de negocio (Cesar 2026-09-01): ubicacion obligatoria (ver crear).
     if id_ubicacion is None:
-        raise HTTPException(422, "La prestacion debe declarar su ubicacion de atencion (donde se atiende)")
+        raise HTTPException(422, "La prestación debe declarar su ubicación de atención (donde se atiende)")
     await _validar_recurso_activo(db, "espacio", id_ubicacion, id_municipio)
     await _validar_subarea(db, payload.id_subarea, id_municipio)
     await db.execute(text("""
@@ -329,7 +329,7 @@ async def baja_prestacion(
         WHERE id_tipo_prestacion = :id AND activo = TRUE AND id_municipio = :m
     """), {"id": id_prestacion, "uid": user["id_usuario"], "m": id_municipio})
     if res.rowcount == 0:
-        raise HTTPException(404, "Prestacion no encontrada")
+        raise HTTPException(404, "Prestación no encontrada")
     await db.commit()
     return Response(status_code=204)
 
@@ -406,7 +406,7 @@ async def listar_turnos(
     estado: Optional[str] = Query(None, description="reservado|llamado|cumplido|ausente|cancelado"),
     id_agente: Optional[int] = None,
     id_espacio: Optional[int] = None,
-    id_espacio_ubicacion: Optional[int] = Query(None, description="Ubicacion de atencion (mig 103)"),
+    id_espacio_ubicacion: Optional[int] = Query(None, description="Ubicación de atención (mig 103)"),
     id_ciudadano: Optional[int] = None,
     id_tipo_prestacion: Optional[int] = None,
     fecha_desde: Optional[date] = None,
@@ -525,8 +525,8 @@ async def _registrar_hc_super(request: Request, user: dict, id_municipio: int, i
     "/atenciones",
     response_model=list[TurnoAtencionOut],
     responses={
-        200: {"description": "Sin permiso de historia clinica, intervencion/recomendaciones viajan NULL con reservado=true"},
-        429: {"description": "Mas de 60 lecturas de contenido clinico por minuto para el mismo usuario"},
+        200: {"description": "Sin permiso de historia clínica, intervención/recomendaciones viajan NULL con reservado=true"},
+        429: {"description": "Más de 60 lecturas de contenido clínico por minuto para el mismo usuario"},
     },
 )
 async def historial_atenciones(
@@ -620,9 +620,9 @@ async def permiso_historia(
     "/atenciones/historia",
     response_model=HistoriaClinicaOut,
     responses={
-        403: {"description": "Solo gestion Salud (agentes.id_subarea bajo id_area_salud) y nivel 1 (F5, mig 107)"},
+        403: {"description": "Solo gestión Salud (agentes.id_subarea bajo id_area_salud) y nivel 1 (F5, mig 107)"},
         404: {"description": "Ciudadano no encontrado"},
-        429: {"description": "Mas de 60 consultas de historia clinica por minuto para el mismo usuario"},
+        429: {"description": "Más de 60 consultas de historia clínica por minuto para el mismo usuario"},
     },
 )
 async def historia_clinica(
@@ -630,7 +630,7 @@ async def historia_clinica(
     # le=int32: la columna historia_clinica_acceso.id_ciudadano es INTEGER y asyncpg tipa el
     # bind como int4 -> un id mayor daba 500 en el INSERT del log y el intento NO quedaba
     # registrado (rompia "todo acceso deja fila"). Con la cota es 422 antes del guard.
-    id_ciudadano: int = Query(..., ge=1, le=2_147_483_647, description="Ciudadano cuya historia clinica se consulta"),
+    id_ciudadano: int = Query(..., ge=1, le=2_147_483_647, description="Ciudadano cuya historia clínica se consulta"),
     # El enum de contexto tiene UNA fuente (CONTEXTOS del servicio = CHECK de la mig 107).
     contexto: str = Query("otro", pattern="^(" + "|".join(CONTEXTOS) + ")$",
                           description="Desde donde se abrio en la UI (queda en el registro de acceso)"),
@@ -685,7 +685,7 @@ async def historia_clinica(
 # =============================================================================
 @router.get("/ubicaciones", response_model=list[UbicacionTurnosOut])
 async def listar_ubicaciones_atencion(
-    fecha: Optional[date] = Query(None, description="Dia de los contadores (default: hoy local del municipio)"),
+    fecha: Optional[date] = Query(None, description="Día de los contadores (default: hoy local del municipio)"),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
     id_municipio: int = Depends(municipio_actual),
@@ -753,7 +753,7 @@ async def listar_ubicaciones_atencion(
 @router.get("/ubicaciones/{id_espacio}/mesa", response_model=MesaUbicacionOut)
 async def mesa_ubicacion(
     id_espacio: int,
-    fecha: Optional[date] = Query(None, description="Dia a consultar (default: hoy local del municipio)"),
+    fecha: Optional[date] = Query(None, description="Día a consultar (default: hoy local del municipio)"),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
     id_municipio: int = Depends(municipio_actual),
@@ -771,7 +771,7 @@ async def mesa_ubicacion(
         FROM espacios_agenda WHERE id_espacio = :id AND activo = TRUE AND id_municipio = :m
     """), {"id": id_espacio, "m": id_municipio})).mappings().first()
     if not esp:
-        raise HTTPException(404, "Ubicacion no encontrada")
+        raise HTTPException(404, "Ubicación no encontrada")
 
     ag_rows = (await db.execute(text("""
         SELECT DISTINCT a.id_agente,
@@ -793,7 +793,7 @@ async def mesa_ubicacion(
         en_subarea = scope.get("id_subarea") is not None and esp["id_subarea"] == scope["id_subarea"]
         es_agente_de_aca = scope["id_agente"] in ids_agentes
         if not en_subarea and not es_agente_de_aca:
-            raise HTTPException(404, "Ubicacion no encontrada")
+            raise HTTPException(404, "Ubicación no encontrada")
 
     f = fecha or hoy_local()
 
@@ -833,7 +833,7 @@ async def mesa_ubicacion(
             o["turno_estado"] = None
             o["ciudadano_nombre"] = None
             o["prestacion_nombre"] = None
-            o["motivo"] = "Ocupado en otra ubicacion"
+            o["motivo"] = "Ocupado en otra ubicación"
         o.pop("id_espacio_ubicacion", None)
         ocup_por_recurso.setdefault((o["tipo_recurso"], int(o["id_recurso"])), []).append(o)
 
@@ -897,7 +897,7 @@ async def _atencion_for_update(db: AsyncSession, id_atencion: int, id_guardia: i
          FOR UPDATE OF ea
     """), {"id": id_atencion})).mappings().first()
     if not row or int(row["id_espacio_ubicacion"]) != int(id_guardia):
-        raise HTTPException(404, "Derivacion no encontrada")
+        raise HTTPException(404, "Derivación no encontrada")
     if row["estado"] != "pendiente":
         raise HTTPException(409, f"La derivacion ya esta cerrada ({row['estado']})")
     return dict(row)
@@ -913,14 +913,14 @@ _GUARDIA = [Depends(modulo_habilitado("emergencias"))]
     dependencies=_GUARDIA,
     responses={
         403: {"description": "contenido=true sin permiso de historia clinica (gestion Salud, nivel 1 o super administrador con motivo)"},
-        429: {"description": "Mas de 60 lecturas de contenido clinico por minuto para el mismo usuario"},
+        429: {"description": "Más de 60 lecturas de contenido clínico por minuto para el mismo usuario"},
     },
 )
 async def listar_atenciones_guardia(
     request: Request,
-    fecha: Optional[date] = Query(None, description="Dia de las atenciones cerradas (default: hoy local). Las pendientes salen siempre."),
+    fecha: Optional[date] = Query(None, description="Día de las atenciones cerradas (default: hoy local). Las pendientes salen siempre."),
     estado: Optional[str] = Query(None, pattern="^(pendiente|atendida|ausente)$"),
-    contenido: bool = Query(False, description="True para recibir intervencion/recomendaciones: pasa por el guard de historia clinica y queda registrado"),
+    contenido: bool = Query(False, description="True para recibir intervención/recomendaciones: pasa por el guard de historia clínica y queda registrado"),
     motivo: Optional[str] = Query(None, max_length=500, description=_DESC_MOTIVO_SUPER),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
@@ -983,7 +983,7 @@ async def listar_atenciones_guardia(
 
 
 @router.patch("/guardia/atenciones/{id_atencion}/atender", response_model=GuardiaAtencionOut, dependencies=_GUARDIA,
-              responses={409: {"description": "La derivacion ya estaba cerrada"}})
+              responses={409: {"description": "La derivación ya estaba cerrada"}})
 async def atender_en_guardia(
     id_atencion: int,
     body: GuardiaAtenderIn,
@@ -1023,7 +1023,7 @@ async def atender_en_guardia(
     })
     if res.rowcount == 0:
         await db.rollback()
-        raise HTTPException(409, "La derivacion ya estaba cerrada")
+        raise HTTPException(409, "La derivación ya estaba cerrada")
     await registrar_log_evento(
         db, int(at["id_emergencia_evento"]), user["id_usuario"], "ATENCION_GUARDIA",
         estado=at["estado_evento"],
@@ -1034,12 +1034,12 @@ async def atender_en_guardia(
     await db.commit()
     out = await guardia_atencion_out(db, id_atencion)
     if out is None:
-        raise HTTPException(500, "Atencion registrada pero no se pudo releer")
+        raise HTTPException(500, "Atención registrada pero no se pudo releer")
     return out
 
 
 @router.patch("/guardia/atenciones/{id_atencion}/ausente", response_model=GuardiaAtencionOut, dependencies=_GUARDIA,
-              responses={409: {"description": "La derivacion ya estaba cerrada"}})
+              responses={409: {"description": "La derivación ya estaba cerrada"}})
 async def ausente_en_guardia(
     id_atencion: int,
     body: Optional[GuardiaAusenteIn] = None,
@@ -1059,7 +1059,7 @@ async def ausente_en_guardia(
     """), {"u": user["id_usuario"], "id": id_atencion})
     if res.rowcount == 0:
         await db.rollback()
-        raise HTTPException(409, "La derivacion ya estaba cerrada")
+        raise HTTPException(409, "La derivación ya estaba cerrada")
     await registrar_log_evento(
         db, int(at["id_emergencia_evento"]), user["id_usuario"], "ATENCION_GUARDIA",
         estado=at["estado_evento"],
@@ -1069,7 +1069,7 @@ async def ausente_en_guardia(
     await db.commit()
     out = await guardia_atencion_out(db, id_atencion)
     if out is None:
-        raise HTTPException(500, "Atencion actualizada pero no se pudo releer")
+        raise HTTPException(500, "Atención actualizada pero no se pudo releer")
     return out
 
 
@@ -1141,11 +1141,11 @@ async def crear_turno(
         FROM tipo_prestacion WHERE id_tipo_prestacion = :id AND activo = TRUE AND id_municipio = :m
     """), {"id": payload.id_tipo_prestacion, "m": id_municipio})).mappings().first()
     if not prest:
-        raise HTTPException(404, "Prestacion no encontrada o inactiva")
+        raise HTTPException(404, "Prestación no encontrada o inactiva")
     tipo_recurso = prest["tipo_recurso"]
     id_recurso = prest["id_agente"] if tipo_recurso == "agente" else prest["id_espacio"]
     if id_recurso is None:
-        raise HTTPException(422, "La prestacion no tiene un recurso valido asignado")
+        raise HTTPException(422, "La prestación no tiene un recurso válido asignado")
     await _validar_recurso_activo(db, tipo_recurso, int(id_recurso), id_municipio)
     await _validar_subarea(db, payload.id_subarea, id_municipio)
 
@@ -1156,7 +1156,7 @@ async def crear_turno(
         "id_agente": int(id_recurso) if tipo_recurso == "agente" else None,
         "id_espacio": int(id_recurso) if tipo_recurso == "espacio" else None,
     }, scope):
-        raise HTTPException(403, "La prestacion elegida atiende con un recurso fuera de tu alcance (otra subarea)")
+        raise HTTPException(403, "La prestación elegida atiende con un recurso fuera de tu alcance (otra subárea)")
 
     # hora_fin: usa la del payload o la calcula con la duracion de la prestacion.
     hora_fin = payload.hora_fin
@@ -1164,7 +1164,7 @@ async def crear_turno(
         base = datetime.combine(payload.fecha, payload.hora_inicio)
         hora_fin = (base + timedelta(minutes=int(prest["duracion_min"]))).time()
         if hora_fin <= payload.hora_inicio:
-            raise HTTPException(422, "La duracion de la prestacion excede el dia")
+            raise HTTPException(422, "La duración de la prestación excede el día")
 
     # Anti-carrera (mig 95): serializa las reservas concurrentes del mismo
     # recurso+dia ANTES de los checks — el segundo request espera el commit del
@@ -1301,11 +1301,11 @@ async def reprogramar_turno(
         FROM tipo_prestacion WHERE id_tipo_prestacion = :id AND activo = TRUE AND id_municipio = :m
     """), {"id": id_tipo_prestacion, "m": id_municipio})).mappings().first()
     if not prest:
-        raise HTTPException(404, "Prestacion no encontrada o inactiva")
+        raise HTTPException(404, "Prestación no encontrada o inactiva")
     tipo_recurso = prest["tipo_recurso"]
     id_recurso = prest["id_agente"] if tipo_recurso == "agente" else prest["id_espacio"]
     if id_recurso is None:
-        raise HTTPException(422, "La prestacion no tiene un recurso valido asignado")
+        raise HTTPException(422, "La prestación no tiene un recurso válido asignado")
 
     # Scope de escritura (2026-07-18): si cambia la prestacion, el recurso
     # DESTINO tambien debe caer en el alcance del usuario (guard en las dos
@@ -1316,7 +1316,7 @@ async def reprogramar_turno(
             "id_agente": int(id_recurso) if tipo_recurso == "agente" else None,
             "id_espacio": int(id_recurso) if tipo_recurso == "espacio" else None,
         }, scope_dest):
-            raise HTTPException(403, "La prestacion nueva atiende con un recurso fuera de tu alcance (otra subarea)")
+            raise HTTPException(403, "La prestación nueva atiende con un recurso fuera de tu alcance (otra subárea)")
 
     # hora_fin: explicita, o recalculada con la duracion de la prestacion cuando
     # cambio algo que la afecta (prestacion, fecha u hora).
@@ -1339,7 +1339,7 @@ async def reprogramar_turno(
         rangos = await disponibilidad_efectiva(db, tipo_recurso, int(id_recurso), fecha,
                                                id_municipio=id_municipio)
         if not any(r["hora_inicio"] <= hora_inicio and hora_fin <= r["hora_fin"] for r in rangos):
-            raise HTTPException(409, "El nuevo horario no esta dentro de la disponibilidad del recurso")
+            raise HTTPException(409, "El nuevo horario no está dentro de la disponibilidad del recurso")
 
     # Solapamiento contra la ocupacion del mismo recurso (excluyendo la propia).
     # CAST obligatorio: asyncpg no infiere el tipo de :io usado en "IS NULL"
@@ -1409,7 +1409,7 @@ async def reprogramar_turno(
 @router.patch(
     "/{id_turno}/cumplir",
     response_model=TurnoOut,
-    responses={422: {"description": "Prestacion con historia de atencion: intervencion obligatoria y observaciones rechazadas (van a turno_atencion)"}},
+    responses={422: {"description": "Prestación con historia de atención: intervención obligatoria y observaciones rechazadas (van a turno_atencion)"}},
 )
 async def cumplir_turno(
     id_turno: int,
@@ -1549,8 +1549,8 @@ async def llamar_turno(
         if not turno["id_espacio_ubicacion"]:
             raise HTTPException(
                 422,
-                "El turno no tiene ubicacion de atencion: no se le puede asignar numero de colero. "
-                "Asigna la ubicacion en la prestacion (mig 103).",
+                "El turno no tiene ubicación de atención: no se le puede asignar número de colero. "
+                "Asigná la ubicación en la prestación (mig 103).",
             )
         await advisory_lock_tx(
             db, f"colero:{int(turno['id_espacio_ubicacion'])}:{turno['fecha']}"

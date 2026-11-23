@@ -130,7 +130,7 @@ export function ReservaModal({ open, onClose, idEvento }: Props) {
           <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 12 }}>
             <QRDisplay value={qr} size={120} />
             <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>
-              Mostrar este codigo al ingresar al evento para acreditar la reserva.
+              Mostrar este código al ingresar al evento para acreditar la reserva.
             </div>
           </div>
         )}

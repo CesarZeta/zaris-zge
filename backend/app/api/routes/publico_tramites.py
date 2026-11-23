@@ -352,7 +352,7 @@ async def iniciar_tramite(
     # 4. Documentos: todos los archivos contra su documento requerido, antes de subir nada
     estado_inicial = await svc_alta.estado_inicial_de(db, tipo["id_version_publicada"])
     if not estado_inicial:
-        raise HTTPException(500, "El tipo de tramite no tiene estado inicial configurado")
+        raise HTTPException(500, "El tipo de trámite no tiene estado inicial configurado")
     docs_alta = {d["id_documento_requerido"]: d for d in
                  await svc_alta.documentos_del_alta(db, tipo["id_version_publicada"], estado_inicial)}
     por_doc = await _validar_archivos(archivos, docs_ids, docs_alta)

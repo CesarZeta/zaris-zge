@@ -239,7 +239,7 @@ export function WeeklyView() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--fg-3)' }}>
-          {'arrastrar un bloque -> mover a otro dia o recurso (conserva el horario)'}
+          {'arrastrar un bloque -> mover a otro día o recurso (conserva el horario)'}
         </div>
 
         <EventoModal
@@ -255,7 +255,7 @@ export function WeeklyView() {
         />
         <ConfirmModal
           open={pendingMove != null}
-          title="Mover ocupacion"
+          title="Mover ocupación"
           message={pendingMove
             ? `Mover "${pendingMove.descripcion}" al ${pendingMove.fechaDestino} sobre "${pendingMove.nombreDestino ?? pendingMove.tipoDestino + ' ' + pendingMove.idDestino}"? El horario se mantiene.`
             : ''}

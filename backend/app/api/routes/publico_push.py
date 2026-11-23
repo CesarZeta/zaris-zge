@@ -59,7 +59,7 @@ async def public_key(
     """Clave publica VAPID. 503 si el push no esta configurado en este deploy."""
     cfg = await vapid_config()
     if not cfg["public"]:
-        raise HTTPException(503, "Las notificaciones push no estan configuradas")
+        raise HTTPException(503, "Las notificaciones push no están configuradas")
     return {"public_key": cfg["public"]}
 
 

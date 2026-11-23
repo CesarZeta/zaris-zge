@@ -86,7 +86,7 @@ export function EmpresaVinculadaPanel({ idCiudadano, readonly, modoAlta, empresa
       if (!t.valido) errs.telefono = t.error
     }
     if (!form.email.trim()) errs.email = 'Requerido'
-    else if (!validarEmail(form.email)) errs.email = 'Formato invalido'
+    else if (!validarEmail(form.email)) errs.email = 'Formato inválido'
 
     setErrores(errs)
     return Object.keys(errs).length === 0
@@ -173,7 +173,7 @@ export function EmpresaVinculadaPanel({ idCiudadano, readonly, modoAlta, empresa
               onChange={(e) => set('nombre', e.target.value)}
               disabled={verSolamente}
               maxLength={100}
-              placeholder="Razon social"
+              placeholder="Razón social"
               style={inputStyle(verSolamente)}
             />
           </Field>
@@ -226,14 +226,14 @@ export function EmpresaVinculadaPanel({ idCiudadano, readonly, modoAlta, empresa
               style={inputStyle(verSolamente)}
             />
           </Field>
-          <Field label="Telefono" required error={errores.telefono}>
+          <Field label="Teléfono" required error={errores.telefono}>
             <input
               type="text"
               value={form.telefono}
               onChange={(e) => set('telefono', e.target.value.replace(/\D/g, '').slice(0, 10))}
               disabled={verSolamente}
               maxLength={10}
-              placeholder="10 digitos"
+              placeholder="10 dígitos"
               style={inputStyle(verSolamente)}
             />
           </Field>

@@ -102,7 +102,7 @@ export function DisponibilidadConfig() {
             columns={[
               { key: 'tipo_recurso', header: 'Tipo', orden: 'tipo', render: (r) => <Badge kind="neutral">{r.tipo_recurso}</Badge> },
               { key: '_recurso', header: 'Recurso', orden: 'recurso', render: (r) => nombreRecurso(r) },
-              { key: 'dias_semana', header: 'Dias', orden: 'dias', render: (r) => formatBitmask(r.dias_semana) },
+              { key: 'dias_semana', header: 'Días', orden: 'dias', render: (r) => formatBitmask(r.dias_semana) },
               { key: '_horario', header: 'Horario', orden: 'horario', render: (r) => `${r.hora_inicio.slice(0,5)} a ${r.hora_fin.slice(0,5)}` },
               { key: 'etiqueta', header: 'Etiqueta', orden: 'etiqueta', render: (r) => r.etiqueta ?? <span style={{ color: 'var(--fg-3)' }}>—</span> },
               {

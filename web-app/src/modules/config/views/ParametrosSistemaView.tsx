@@ -133,7 +133,7 @@ const SECCIONES: Seccion[] = [
       {
         clave: 'id_area_salud',
         label: 'Área que actúa como gestión Salud',
-        ayuda: 'area.id_area. Sus agentes activos de niveles 2-4 pueden ver la historia clínica.',
+        ayuda: 'área.id_area. Sus agentes activos de niveles 2-4 pueden ver la historia clínica.',
         control: 'number',
       },
     ],

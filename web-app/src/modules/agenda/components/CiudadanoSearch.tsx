@@ -12,7 +12,7 @@ interface Props {
   permitirNuevo?: boolean
 }
 
-export function CiudadanoSearch({ onSelect, placeholder = 'DNI, CUIL, telefono o nombre...', permitirNuevo = true }: Props) {
+export function CiudadanoSearch({ onSelect, placeholder = 'DNI, CUIL, teléfono o nombre...', permitirNuevo = true }: Props) {
   const navigate = useNavigate()
   const [q, setQ] = useState('')
   const [results, setResults] = useState<CiudadanoMinimo[]>([])

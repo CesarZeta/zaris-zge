@@ -38,7 +38,7 @@ async def cargar_version(db: AsyncSession, id_version: int, *, id_municipio: int
         {"v": id_version, "m": id_municipio},
     )).fetchone()
     if not row:
-        raise HTTPException(404, "Version de tipo de tramite no encontrada")
+        raise HTTPException(404, "Versión de tipo de trámite no encontrada")
     return {
         "id_tipo_tramite_version": row.id_tipo_tramite_version,
         "id_tipo_tramite": row.id_tipo_tramite,
@@ -63,10 +63,10 @@ async def asegurar_editable(db: AsyncSession, id_version: int, *, id_municipio: 
     ver = await cargar_version(db, id_version, id_municipio=id_municipio)
 
     if not ver["activo"]:
-        raise HTTPException(409, "La version esta inactiva")
+        raise HTTPException(409, "La versión esta inactiva")
 
     if ver["estado"] == "archivado":
-        raise HTTPException(409, "La version esta archivada")
+        raise HTTPException(409, "La versión esta archivada")
 
     if ver["estado"] == "borrador":
         return ver
@@ -77,7 +77,7 @@ async def asegurar_editable(db: AsyncSession, id_version: int, *, id_municipio: 
         raise HTTPException(
             409,
             f"La version v{ver['version_num']} ya tiene {n} tramite(s) instanciado(s). "
-            "Crea una nueva version (borrador) para editar el circuito.",
+            "Crea una nueva versión (borrador) para editar el circuito.",
         )
 
     return ver
@@ -353,7 +353,7 @@ async def publicar_version(
         {"v": id_version},
     )).scalar_one()
     if int(final) < 1:
-        raise HTTPException(409, "La version debe tener al menos 1 estado final")
+        raise HTTPException(409, "La versión debe tener al menos 1 estado final")
 
     # Ningún estado no-final puede quedar sin transición de salida: un trámite
     # caería ahí y no podría avanzar nunca (estado muerto). Cazado en repaso 2026-05-27.

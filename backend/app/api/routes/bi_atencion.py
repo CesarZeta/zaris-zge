@@ -52,7 +52,7 @@ from app.utils.fechas import hoy_local
 
 router = APIRouter(
     prefix="/api/v1/bi/atencion",
-    tags=["BI Atencion"],
+    tags=["BI Atención"],
     dependencies=[Depends(get_current_user)],
 )
 
@@ -263,8 +263,8 @@ async def _agregado_turnos(
 def _params_comunes(
     desde: Optional[date] = Query(None), hasta: Optional[date] = Query(None),
     anio: Optional[int] = Query(None), meses: Optional[str] = Query(None),
-    id_area: Optional[int] = Query(None, description="Gestion (area)"),
-    id_espacio_ubicacion: Optional[int] = Query(None, description="Ubicacion (espacio)"),
+    id_area: Optional[int] = Query(None, description="Gestión (área)"),
+    id_espacio_ubicacion: Optional[int] = Query(None, description="Ubicación (espacio)"),
     id_tipo_prestacion: Optional[int] = Query(None),
     id_municipio: int = Depends(municipio_actual),
 ) -> dict:

@@ -19,7 +19,7 @@ export function useDragMutations() {
           body: `${data.conflictos.length} solapamiento(s) detectado(s). Revisar Conflictos.`,
         })
       } else {
-        push({ kind: 'success', title: 'Ocupacion actualizada' })
+        push({ kind: 'success', title: 'Ocupación actualizada' })
       }
     },
     onError: (err: Error) => {

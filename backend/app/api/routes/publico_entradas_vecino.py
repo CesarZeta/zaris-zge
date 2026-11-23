@@ -165,7 +165,7 @@ async def reservar_entrada_vecino(
         LIMIT 1
     """), {"e": id_evento, "c": id_ciudadano})
     if dup:
-        raise HTTPException(409, "Ya tenes una entrada reservada para este evento")
+        raise HTTPException(409, "Ya tenés una entrada reservada para este evento")
 
     id_reservada = await lookup_estado_reserva(db, "reservada")
     if not id_reservada:
@@ -206,7 +206,7 @@ async def reservar_entrada_vecino(
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(409, "Ya tenes una entrada reservada para este evento")
+        raise HTTPException(409, "Ya tenés una entrada reservada para este evento")
 
     return {
         "id_evento_reserva": new_id,

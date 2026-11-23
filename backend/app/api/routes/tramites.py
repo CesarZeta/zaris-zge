@@ -83,7 +83,7 @@ def _sin_perfil_de_agente(user: dict) -> HTTPException:
     if user.get("es_super_admin"):
         return HTTPException(403, "El super administrador no opera trámites: todo movimiento de un expediente "
                                   "lo firma un agente del municipio. Entrá con una cuenta del municipio.")
-    return HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar tramites. "
+    return HTTPException(403, "Tu usuario no tiene un perfil de agente municipal, necesario para operar trámites. "
                               "Pedile a un administrador que lo configure desde Maestros -> Usuarios.")
 
 # Columnas ordenables de las dos bandejas (§23; lista cerrada, el valor va
@@ -228,7 +228,7 @@ async def detalle_tipo_tramite(
     )).fetchone()
 
     if not tipo_row:
-        raise HTTPException(404, "Tipo de tramite no encontrado")
+        raise HTTPException(404, "Tipo de trámite no encontrado")
 
     id_ver = tipo_row.id_version_publicada
     version_out: Optional[VersionOut] = None
@@ -772,7 +772,7 @@ async def detalle_tramite(
     )).fetchone()
 
     if not row:
-        raise HTTPException(404, "Tramite no encontrado")
+        raise HTTPException(404, "Trámite no encontrado")
 
     # Ultimo movimiento
     ult_mov = (await db.execute(
@@ -1049,7 +1049,7 @@ async def _resolver_tramite(numero_o_id: str, db: AsyncSession, id_municipio: in
         )).fetchone()
 
     if not row:
-        raise HTTPException(404, "Tramite no encontrado")
+        raise HTTPException(404, "Trámite no encontrado")
     return row.id_tramite, row.numero_expediente
 
 
@@ -1061,7 +1061,7 @@ async def _cargar_tramite_dict(numero_o_id: str, db: AsyncSession, id_municipio:
         {"id": id_tramite},
     )).fetchone()
     if not row:
-        raise HTTPException(404, "Tramite no encontrado")
+        raise HTTPException(404, "Trámite no encontrado")
     return dict(row._mapping)
 
 
@@ -1106,7 +1106,7 @@ async def _tramite_detalle_out(id_tramite: int, db: AsyncSession) -> TramiteDeta
     )).fetchone()
 
     if not row:
-        raise HTTPException(404, "Tramite no encontrado")
+        raise HTTPException(404, "Trámite no encontrado")
 
     ult_mov = (await db.execute(
         text("SELECT tipo, comentario, fecha_alta FROM tramite_movimiento WHERE id_tramite=:id AND activo=TRUE ORDER BY orden_secuencial DESC LIMIT 1"),
@@ -1198,9 +1198,9 @@ async def crear_tramite(
         {"id": body.id_tipo_tramite, "mun": id_municipio},
     )).fetchone()
     if not tipo_row:
-        raise HTTPException(404, "Tipo de tramite no encontrado")
+        raise HTTPException(404, "Tipo de trámite no encontrado")
     if not tipo_row.id_version_publicada:
-        raise HTTPException(400, "El tipo de tramite no tiene version publicada")
+        raise HTTPException(400, "El tipo de trámite no tiene versión publicada")
 
     tipo = dict(tipo_row._mapping)
 
@@ -1376,7 +1376,7 @@ async def liberar_tramite(
 
     tomado_por = tramite.get("id_agente_tomado_por")
     if not tomado_por:
-        raise HTTPException(400, "El tramite no esta tomado")
+        raise HTTPException(400, "El trámite no está tomado")
     # Scope-subarea 2026-07-18: pueden liberar el tomador, un administrador
     # (nivel 1), o un supervisor (nivel 2) SOLO si pertenece al colectivo
     # destinatario actual del tramite.
@@ -1414,8 +1414,8 @@ async def liberar_tramite(
     # Marker OpenAPI (§9): verifica que el deploy del cierre del bypass
     # nivel-2 (auditoria 2026-07) aplico en prod — documentacion pura.
     responses={
-        200: {"description": "Detalle del tramite. Si la transicion llega a un estado final con tipo_accion aprobar/rechazar sella el resultado; si el tramite ya estaba en un estado final no vuelve a avisar al iniciador (2026-10-23)"},
-        403: {"description": "Fuera de tu colectivo destinatario o no cumplis quien_puede de la transicion (scope-subarea 2026-07-19)"},
+        200: {"description": "Detalle del trámite. Si la transición llega a un estado final con tipo_accion aprobar/rechazar sella el resultado; si el trámite ya estaba en un estado final no vuelve a avisar al iniciador (2026-10-23)"},
+        403: {"description": "Fuera de tu colectivo destinatario o no cumplís quien_puede de la transición (scope-subárea 2026-07-19)"},
     },
 )
 async def transicionar_tramite(
@@ -1445,14 +1445,14 @@ async def transicionar_tramite(
         {"id": body.id_tipo_tramite_transicion},
     )).fetchone()
     if not trans_row:
-        raise HTTPException(404, "Transicion no encontrada")
+        raise HTTPException(404, "Transición no encontrada")
     trans = dict(trans_row._mapping)
 
     # Validar pertenencia y estado actual
     if trans["id_tipo_tramite_version"] != tramite["id_tipo_tramite_version"]:
-        raise HTTPException(400, "La transicion no pertenece a la version del tramite")
+        raise HTTPException(400, "La transición no pertenece a la versión del trámite")
     if trans["id_estado_origen"] != tramite["id_tipo_tramite_estado_actual"]:
-        raise HTTPException(400, "La transicion no aplica al estado actual del tramite")
+        raise HTTPException(400, "La transición no aplica al estado actual del trámite")
 
     # Permisos
     puede_op, motivo = await svc_auth.agente_puede_operar(agente, tramite, db)
@@ -1464,7 +1464,7 @@ async def transicionar_tramite(
 
     # Comentario requerido
     if trans["requiere_comentario"] and not (body.comentario or "").strip():
-        raise HTTPException(400, "Esta transicion requiere un comentario")
+        raise HTTPException(400, "Esta transición requiere un comentario")
 
     # Adjunto requerido desde el ultimo cambio de estado
     if trans["requiere_adjunto"]:
@@ -1485,7 +1485,7 @@ async def transicionar_tramite(
             {"id": id_tramite, "desde": desde},
         )).fetchone()
         if not tiene_doc:
-            raise HTTPException(400, "Esta transicion requiere adjuntar al menos un documento en el estado actual")
+            raise HTTPException(400, "Esta transición requiere adjuntar al menos un documento en el estado actual")
 
     # Aprobaciones por etapa: no se puede AVANZAR si hay marcas BLOQUEANTES del
     # estado actual sin aprobar (pendientes o rechazadas). Espeja requiere_adjunto.
@@ -1503,7 +1503,7 @@ async def transicionar_tramite(
             raise HTTPException(
                 422,
                 f"Faltan aprobaciones de la etapa actual: {etiquetas}. "
-                "El tramite no puede avanzar hasta que esten aprobadas.",
+                "El trámite no puede avanzar hasta que estén aprobadas.",
             )
 
     id_estado_origen = tramite["id_tipo_tramite_estado_actual"]
@@ -1692,10 +1692,10 @@ async def resolver_aprobacion(
 
     requisito = await svc_aprob.requisito_de_aprobacion(db, id_aprob)
     if not requisito or requisito["id_tramite"] != id_tramite:
-        raise HTTPException(404, "Aprobacion no encontrada para este tramite")
+        raise HTTPException(404, "Aprobación no encontrada para este trámite")
 
     if not svc_aprob.agente_puede_resolver(requisito, agente):
-        raise HTTPException(403, "No perteneces al area que debe resolver esta aprobacion")
+        raise HTTPException(403, "No perteneces al área que debe resolver esta aprobación")
 
     # Validar documento opcional pertenece al tramite
     if body.id_tramite_documento is not None:
@@ -1704,7 +1704,7 @@ async def resolver_aprobacion(
             {"d": body.id_tramite_documento, "t": id_tramite},
         )).fetchone()
         if not doc_ok:
-            raise HTTPException(400, "El documento indicado no pertenece a este tramite")
+            raise HTTPException(400, "El documento indicado no pertenece a este trámite")
 
     await db.execute(
         text("""
@@ -2004,7 +2004,7 @@ async def _tramite_para_pedido(tramite_ref: str, agente: dict, db: AsyncSession,
         {"id": id_tramite},
     )).fetchone()
     if not row:
-        raise HTTPException(404, "Tramite no encontrado")
+        raise HTTPException(404, "Trámite no encontrado")
     tramite = dict(row._mapping)
     puede, motivo = await svc_auth.agente_puede_operar(agente, tramite, db)
     if not puede:
@@ -2130,7 +2130,7 @@ async def adjuntar_documento(
         if not dr:
             raise HTTPException(404, "Documento requerido no encontrado")
         if dr.id_tipo_tramite_version != tramite["id_tipo_tramite_version"]:
-            raise HTTPException(400, "El documento requerido no pertenece a la version de este tramite")
+            raise HTTPException(400, "El documento requerido no pertenece a la versión de este trámite")
         doc_req = dict(dr._mapping)
 
     await svc_docs.validar_archivo_mock(file, doc_req)
@@ -2270,7 +2270,7 @@ async def descargar_documento(
     if getattr(doc, "binario_purgado", False):
         raise HTTPException(
             410,
-            "El archivo fisico fue depurado por la politica de retencion. "
+            "El archivo físico fue depurado por la política de retención. "
             "El registro del documento y su huella digital se conservan en el expediente.",
         )
 
@@ -2446,9 +2446,9 @@ async def relacionar_tramites(
         {"id": body.id_tramite_b, "mun": id_municipio},
     )).fetchone()
     if not tramite_b:
-        raise HTTPException(404, "Tramite B no encontrado")
+        raise HTTPException(404, "Trámite B no encontrado")
     if tramite_b.id_municipio != tramite_a["id_municipio"]:
-        raise HTTPException(400, "Los tramites deben pertenecer al mismo municipio")
+        raise HTTPException(400, "Los trámites deben pertenecer al mismo municipio")
 
     puede, motivo = await svc_auth.agente_puede_operar(agente, tramite_a, db)
     if not puede:
@@ -2480,7 +2480,7 @@ async def relacionar_tramites(
         )).fetchone()
     except Exception as exc:
         if "unique" in str(exc).lower():
-            raise HTTPException(409, "Los tramites ya estan relacionados")
+            raise HTTPException(409, "Los trámites ya están relacionados")
         raise
 
     meta = {"id_tramite_relacionado": body.id_tramite_b, "tipo": "asociacion_simple"}

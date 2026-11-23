@@ -6,7 +6,7 @@ PUT    /api/v1/config/identidad                  admin (nivel 1) - actualiza nom
 POST   /api/v1/config/identidad/logo-upload-url  admin - signed URL para subir logo
 
 Las 3 claves viven en `configuracion_general`:
-  - app_nombre          (string, default 'GESTION ESTADO')
+  - app_nombre          (string, default 'GESTIÓN ESTADO')
   - municipio_nombre    (string, default 'MUNICIPALIDAD')
   - municipio_logo_url  (string, default '' = sin logo)
 
@@ -41,9 +41,9 @@ from app.core.urls import url_publica as _url_publica  # fuente única con publi
 router = APIRouter(prefix="/api/v1/config/identidad", tags=["Config - Identidad"])
 
 BUCKET = "config-assets"
-# `app_nombre` ('GESTION ESTADO') es hardcoded del producto, no editable.
+# `app_nombre` ('GESTIÓN ESTADO') es hardcoded del producto, no editable.
 # Solo persistimos lo que el municipio puede personalizar.
-APP_NOMBRE = "GESTION ESTADO"
+APP_NOMBRE = "GESTIÓN ESTADO"
 # Identidad completa del municipio (2026-07-16): nombre/logo del topbar +
 # descripcion y colores de marca de la App Vecinos (antes se editaban en
 # Config -> Sistema; se unificaron aca — las claves existen desde mig 52).
@@ -113,7 +113,7 @@ class IdentidadUpdate(BaseModel):
         if v is None or v == "":
             return v
         if not HEX_RE.match(v):
-            raise ValueError("Color invalido: usar formato #RRGGBB")
+            raise ValueError("Color inválido: usar formato #RRGGBB")
         return v
 
 
@@ -189,7 +189,7 @@ async def update_identidad(
     """Actualiza una o mas claves del municipio. Solo nivel administrador."""
     actualizables = payload.model_dump(exclude_none=True)
     if not actualizables:
-        raise HTTPException(422, "Body vacio: incluir al menos una clave")
+        raise HTTPException(422, "Body vacío: incluir al menos una clave")
     for clave, valor in actualizables.items():
         await guardar_config(db, clave, valor, id_municipio)
     await db.commit()

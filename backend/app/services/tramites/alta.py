@@ -65,7 +65,7 @@ async def crear_tramite_en_db(
         {"ver": id_version},
     )).fetchone()
     if not estado_inicial:
-        raise HTTPException(500, "El tipo de tramite no tiene estado inicial configurado")
+        raise HTTPException(500, "El tipo de trámite no tiene estado inicial configurado")
 
     dest_tipo, dest_id = destinatario
     id_agente = actor_agente["id_agente"] if actor_agente else None

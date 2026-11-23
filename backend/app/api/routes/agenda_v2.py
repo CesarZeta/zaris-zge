@@ -507,7 +507,7 @@ async def listar_eventos(
     fecha_hasta: Optional[date] = None,
     id_estado_evento: Optional[int] = None,
     id_subarea: Optional[int] = None,
-    con_espacio: Optional[bool] = Query(None, description="True=solo eventos con id_espacio (modulo Entradas), False=solo sin espacio, omitir=todos"),
+    con_espacio: Optional[bool] = Query(None, description="True=solo eventos con id_espacio (módulo Entradas), False=solo sin espacio, omitir=todos"),
     orden: Optional[str] = Query(None, description=descripcion_orden(_ORDEN_EVENTOS, "fecha, la más nueva primero")),
     dir: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int = Query(50, ge=1, le=200),
@@ -767,7 +767,7 @@ async def asignar_encargado(
         WHERE id_evento = :e AND tipo_recurso = :tr AND id_recurso = :ir AND activo = TRUE
     """), {"e": id_evento, "tr": payload.tipo_recurso, "ir": payload.id_recurso})
     if existe:
-        raise HTTPException(409, "El recurso ya esta asignado como encargado de este evento")
+        raise HTTPException(409, "El recurso ya está asignado como encargado de este evento")
 
     # 1) Insertar encargado
     new_enc_id = await db.scalar(text("""
@@ -1189,7 +1189,7 @@ async def acreditar_reserva_qr(
         LIMIT 1
     """), {"q": qr, "m": id_municipio})).mappings().first()
     if not row:
-        raise HTTPException(404, "El codigo QR no corresponde a ninguna reserva")
+        raise HTTPException(404, "El código QR no corresponde a ninguna reserva")
     if row["estado_codigo"] == "cancelada":
         raise HTTPException(409, "La reserva fue cancelada, no se puede acreditar")
 
@@ -1322,7 +1322,7 @@ async def crear_ocupacion(
         "conflictos": [_jsonable(c) for c in conflictos],
         "mensaje": (
             f"Ocupacion creada con {len(conflictos)} conflicto(s) - revisar /agenda/conflictos."
-            if conflictos else "Ocupacion creada sin conflictos."
+            if conflictos else "Ocupación creada sin conflictos."
         ),
     }
 
@@ -1388,9 +1388,9 @@ async def actualizar_ocupacion(
     """Actualiza fecha/horas/atributos. Re-detecta conflictos excluyendo self."""
     actual = await _ocupacion_to_out(db, id_ocupacion, id_municipio)
     if not actual:
-        raise HTTPException(404, "Ocupacion no encontrada")
+        raise HTTPException(404, "Ocupación no encontrada")
     if not actual["activo"]:
-        raise HTTPException(409, "Ocupacion dada de baja")
+        raise HTTPException(409, "Ocupación dada de baja")
     cambios = payload.model_dump(exclude_unset=True)
     if not cambios:
         return {"ocupacion": actual, "conflictos": [], "mensaje": "Sin cambios."}  # type: ignore[return-value]
@@ -1441,7 +1441,7 @@ async def actualizar_ocupacion(
         "conflictos": [_jsonable(c) for c in conflictos],
         "mensaje": (
             f"Ocupacion actualizada con {len(conflictos)} conflicto(s)."
-            if conflictos else "Ocupacion actualizada sin conflictos."
+            if conflictos else "Ocupación actualizada sin conflictos."
         ),
     }
 
@@ -1456,7 +1456,7 @@ async def eliminar_ocupacion(
     """Baja logica (activo=FALSE)."""
     actual = await _ocupacion_to_out(db, id_ocupacion, id_municipio)
     if not actual:
-        raise HTTPException(404, "Ocupacion no encontrada")
+        raise HTTPException(404, "Ocupación no encontrada")
     # Scope-subarea 2026-07-18: solo ocupaciones de recursos del alcance del usuario.
     await _validar_scope_recurso(db, current_user, actual["tipo_recurso"], actual["id_recurso"])
     if not actual["activo"]:
@@ -1502,7 +1502,7 @@ async def agenda_de_recurso(
     if hasta < desde:
         raise HTTPException(422, "hasta debe ser >= desde")
     if (hasta - desde).days > 31:
-        raise HTTPException(422, "El rango maximo es de 31 dias")
+        raise HTTPException(422, "El rango máximo es de 31 días")
     if not await existe_recurso(db, tipo_recurso, id_recurso, id_municipio=id_municipio):
         raise HTTPException(404, f"{tipo_recurso} {id_recurso} no encontrado o inactivo")
 
@@ -1559,9 +1559,9 @@ async def calendario_dia(
     fecha: date,
     tipo_recurso: Literal["agente", "equipo", "espacio", "todos"] = "todos",
     id_subarea: Optional[int] = Query(None, description="Filtra recursos cuyo id_subarea coincida"),
-    scope_subarea_propia: bool = Query(False, description="Si True, limita los recursos a la subarea del usuario logueado (resuelta via su agente). Fail-open: si no se puede resolver, no filtra. Pensado para la vista por equipos del supervisor (ver §33 CLAUDE.md)."),
+    scope_subarea_propia: bool = Query(False, description="Si True, limita los recursos a la subárea del usuario logueado (resuelta via su agente). Fail-open: si no se puede resolver, no filtra. Pensado para la vista por equipos del supervisor (ver §33 CLAUDE.md)."),
     atendido: Optional[bool] = Query(None, description="Solo aplica a tipo_recurso='espacio'. None=todos, True=atendidos, False=desatendidos"),
-    id_espacio_ubicacion: Optional[int] = Query(None, description="Modo UBICACION (F2b plan ATENCION): la grilla muestra el espacio + los agentes que atienden ahi. Ignora tipo_recurso/atendido/subarea."),
+    id_espacio_ubicacion: Optional[int] = Query(None, description="Modo UBICACIÓN (F2b plan ATENCIÓN): la grilla muestra el espacio + los agentes que atienden ahi. Ignora tipo_recurso/atendido/subárea."),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
     id_municipio: int = Depends(municipio_actual),
@@ -1685,7 +1685,7 @@ async def _recursos_de_ubicacion(db: AsyncSession, id_espacio: int, id_municipio
         WHERE id_espacio = :id AND activo = TRUE AND id_municipio = :m
     """), {"id": id_espacio, "m": id_municipio})).mappings().first()
     if not esp:
-        raise HTTPException(status_code=404, detail="Ubicacion no encontrada")
+        raise HTTPException(status_code=404, detail="Ubicación no encontrada")
     recursos: list[dict[str, Any]] = [{
         "tipo": "espacio", "id_recurso": int(esp["id_espacio"]),
         "nombre": esp["nombre"], "atendido": bool(esp["atendido"]),
@@ -1941,13 +1941,13 @@ async def calendario_mes(
 # =============================================================================
 @router.get("/semana", response_model=CalendarioSemanaOut)
 async def calendario_semana(
-    desde: date = Query(..., description="Fecha del primer dia (inclusive)"),
-    dias: int = Query(7, ge=1, le=14, description="Cantidad de dias contiguos (default 7)"),
+    desde: date = Query(..., description="Fecha del primer día (inclusive)"),
+    dias: int = Query(7, ge=1, le=14, description="Cantidad de días contiguos (default 7)"),
     tipo_recurso: Literal["agente", "equipo", "espacio", "todos"] = "todos",
     id_subarea: Optional[int] = Query(None),
-    scope_subarea_propia: bool = Query(False, description="Si True, limita los recursos a la subarea del usuario logueado. Fail-open. Ver /calendario."),
+    scope_subarea_propia: bool = Query(False, description="Si True, limita los recursos a la subárea del usuario logueado. Fail-open. Ver /calendario."),
     atendido: Optional[bool] = Query(None),
-    id_espacio_ubicacion: Optional[int] = Query(None, description="Modo UBICACION (F2b plan ATENCION): la grilla muestra el espacio + los agentes que atienden ahi. Ignora tipo_recurso/atendido/subarea."),
+    id_espacio_ubicacion: Optional[int] = Query(None, description="Modo UBICACIÓN (F2b plan ATENCIÓN): la grilla muestra el espacio + los agentes que atienden ahi. Ignora tipo_recurso/atendido/subárea."),
     db: AsyncSession = Depends(get_db),
     _user: dict = Depends(get_current_user),
     id_municipio: int = Depends(municipio_actual),

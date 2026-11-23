@@ -361,7 +361,7 @@ class TramiteCreateIn(BaseModel):
     def asunto_no_vacio(cls, v: str) -> str:
         v = v.strip()
         if not v:
-            raise ValueError("El asunto no puede estar vacio")
+            raise ValueError("El asunto no puede estar vacío")
         return v
 
 
@@ -421,7 +421,7 @@ class ComentarioIn(BaseModel):
     def comentario_valido(cls, v: str) -> str:
         v = v.strip()
         if not v:
-            raise ValueError("El comentario no puede estar vacio")
+            raise ValueError("El comentario no puede estar vacío")
         if len(v) > 5000:
             raise ValueError("El comentario no puede superar los 5000 caracteres")
         return v
@@ -441,7 +441,7 @@ class RechazarFirmaIn(BaseModel):
     def motivo_no_vacio(cls, v: str) -> str:
         v = v.strip()
         if not v:
-            raise ValueError("El motivo de rechazo no puede estar vacio")
+            raise ValueError("El motivo de rechazo no puede estar vacío")
         return v
 
 

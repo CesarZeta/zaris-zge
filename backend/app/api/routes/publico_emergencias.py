@@ -160,7 +160,7 @@ async def reportar_emergencia(
             WHERE id_emergencia_subtipo = :id AND id_tipo = :t AND activo
         """), {"id": body.id_subtipo, "t": body.id_tipo})).mappings().first()
         if not subtipo:
-            raise HTTPException(422, "El subtipo no pertenece al tipo indicado o esta inactivo")
+            raise HTTPException(422, "El subtipo no pertenece al tipo indicado o está inactivo")
         id_prioridad = subtipo["id_prioridad_override"]
     if id_prioridad is None:
         id_prioridad = tipo["id_prioridad_default"]

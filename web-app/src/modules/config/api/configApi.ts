@@ -33,7 +33,7 @@ export const setPermisosUsuario = (id_usuario: number, overrides: OverrideIn[]) 
 const IDENTIDAD = '/api/v1/config/identidad'
 
 export interface IdentidadValues {
-  // `app_nombre` ('GESTION ESTADO') es interno del producto — el backend lo
+  // `app_nombre` ('GESTIÓN ESTADO') es interno del producto — el backend lo
   // devuelve por compat con el shell vanilla pero NO es editable (§14). Por eso
   // no figura en IdentidadUpdate: el PUT lo ignoraría.
   app_nombre: string

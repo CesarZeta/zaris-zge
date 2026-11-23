@@ -45,7 +45,7 @@ export function EmpresasLayout({ children }: { children: ReactNode }) {
             Padron de Empresas
           </h1>
           <p style={{ fontSize: '0.82rem', color: 'var(--fg-3)', margin: '2px 0 0' }}>
-            Base Unica de Ciudadanos — razones sociales y actividad economica
+            Base Única de Ciudadanos — razones sociales y actividad económica
           </p>
         </div>
       </div>

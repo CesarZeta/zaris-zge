@@ -274,7 +274,7 @@ async def resolver_iniciador(
         id_rep = body_iniciador.get("id_ciudadano_representante")
         if id_rep:
             if not tipo_tramite.get("permite_representante"):
-                raise HTTPException(400, "Este tipo de tramite no permite representante")
+                raise HTTPException(400, "Este tipo de trámite no permite representante")
             # Validar vinculo ciudadano-empresa activo
             vinculo = (await db.execute(
                 text("""

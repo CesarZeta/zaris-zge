@@ -140,7 +140,7 @@ export function RecursoPicker({ tipo, value, onChange, placeholder, soloCuadrill
           <button
             type="button"
             onClick={limpiar}
-            aria-label="Limpiar seleccion"
+            aria-label="Limpiar selección"
             style={{
               position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
               background: 'transparent', border: 'none', cursor: 'pointer',

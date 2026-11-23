@@ -92,7 +92,7 @@ export function EspacioFormModal({ open, onClose, espacio }: Props) {
     if (!form.nombre.trim()) { setError('El nombre es obligatorio.'); return }
     const pref = form.prefijo_colero.trim().toUpperCase()
     if (pref && !PREFIJO_RE.test(pref)) {
-      setError('El prefijo del colero debe tener exactamente 3 letras o numeros (ej. ODO).')
+      setError('El prefijo del colero debe tener exactamente 3 letras o números (ej. ODO).')
       return
     }
     try {
@@ -131,7 +131,7 @@ export function EspacioFormModal({ open, onClose, espacio }: Props) {
             style={inputStyle}
           />
         </Field>
-        <Field label="Descripcion">
+        <Field label="Descripción">
           <textarea
             value={form.descripcion}
             onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))}
@@ -171,11 +171,11 @@ export function EspacioFormModal({ open, onClose, espacio }: Props) {
               onChange={(e) => setForm((f) => ({ ...f, prefijo_colero: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3) }))}
               maxLength={3}
               placeholder="ODO"
-              title="Los numeros del colero de esta ubicacion salen con este prefijo: ODO-001, ODO-002. Vacio = sin prefijo (001)."
+              title="Los números del colero de esta ubicación salen con este prefijo: ODO-001, ODO-002. Vacío = sin prefijo (001)."
               style={{ ...inputStyle, fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}
             />
             <span style={{ fontFamily: 'var(--font-display)', fontSize: 11, color: 'var(--fg-3)' }}>
-              {form.prefijo_colero ? `Los numeros salen ${form.prefijo_colero}-001, ${form.prefijo_colero}-002…` : 'Vacio = sin prefijo (001, 002…)'}
+              {form.prefijo_colero ? `Los números salen ${form.prefijo_colero}-001, ${form.prefijo_colero}-002…` : 'Vacío = sin prefijo (001, 002…)'}
             </span>
           </Field>
         </div>

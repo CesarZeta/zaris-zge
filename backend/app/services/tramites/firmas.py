@@ -54,12 +54,12 @@ async def agente_puede_firmar(
 
     if id_sa_asig is not None:
         if agente_info["id_subarea"] != id_sa_asig:
-            return False, "Tu subarea no esta asignada para firmar este documento"
+            return False, "Tu subárea no está asignada para firmar este documento"
         return True, None
 
     if id_eq_asig is not None:
         if id_eq_asig not in agente_info["ids_equipos"]:
-            return False, "Tu equipo no esta asignado para firmar este documento"
+            return False, "Tu equipo no está asignado para firmar este documento"
         return True, None
 
     # Firma sin asignacion especifica (firmantes_jsonb mal configurado):

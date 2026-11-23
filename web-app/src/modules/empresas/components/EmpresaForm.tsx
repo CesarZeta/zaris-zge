@@ -49,7 +49,7 @@ export function EmpresaForm({ form, errores, readonly, actividades, onChange }: 
   return (
     <form autoComplete="off" onSubmit={(e) => e.preventDefault()} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Identificacion */}
-      <Section title="Identificacion">
+      <Section title="Identificación">
         <Row cols="1fr 2fr">
           <Field label="CUIT" required error={errores.cuit}>
             <input
@@ -69,14 +69,14 @@ export function EmpresaForm({ form, errores, readonly, actividades, onChange }: 
               onChange={(e) => onChange('nombre', e.target.value)}
               disabled={readonly}
               maxLength={100}
-              placeholder="Razon social"
+              placeholder="Razón social"
               style={inputStyle(readonly)}
             />
           </Field>
         </Row>
 
         <Row cols="2fr 1fr">
-          <Field label="Actividad economica (CLAE)" required error={errores.id_actividad}>
+          <Field label="Actividad económica (CLAE)" required error={errores.id_actividad}>
             <input
               type="text"
               placeholder="Filtrar actividades..."
@@ -182,14 +182,14 @@ export function EmpresaForm({ form, errores, readonly, actividades, onChange }: 
       {/* Contacto */}
       <Section title="Contacto">
         <Row cols="1fr 1fr">
-          <Field label="Telefono" required error={errores.telefono} hint="Sin el 0 del codigo de area. Ej: 1155667788">
+          <Field label="Teléfono" required error={errores.telefono} hint="Sin el 0 del código de área. Ej: 1155667788">
             <input
               type="text"
               value={form.telefono}
               onChange={(e) => onChange('telefono', e.target.value.replace(/\D/g, '').slice(0, 10))}
               disabled={readonly}
               maxLength={10}
-              placeholder="Cod. area + numero (10 digitos)"
+              placeholder="Cod. área + número (10 dígitos)"
               style={inputStyle(readonly)}
             />
           </Field>

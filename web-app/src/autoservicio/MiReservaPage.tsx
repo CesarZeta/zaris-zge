@@ -100,7 +100,7 @@ export function MiReservaPage() {
 
       {reserva.qr_codigo && !cancelada && (
         <div style={{ marginTop: 22, padding: 18, background: 'var(--surface-200)', borderRadius: 'var(--radius-md)', textAlign: 'center' }}>
-          <h2 style={{ ...s.h2, textAlign: 'left' }}>Tu codigo de ingreso</h2>
+          <h2 style={{ ...s.h2, textAlign: 'left' }}>Tu código de ingreso</h2>
           <p style={{ color: 'var(--fg-3)', fontSize: 13, margin: '0 0 12px', textAlign: 'left' }}>
             Mostralo al ingresar al evento. Lo van a escanear para acreditar tu asistencia.
           </p>
@@ -140,7 +140,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     <div style={s.page}>
       <div style={s.brand}><ZarisMark /></div>
       <div style={s.card}>{children}</div>
-      <div style={s.footer}>ZARIS · Gestion Estatal</div>
+      <div style={s.footer}>ZARIS · Gestión Estatal</div>
     </div>
   )
 }
