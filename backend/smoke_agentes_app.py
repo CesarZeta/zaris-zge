@@ -425,6 +425,19 @@ async def test_control_de_entradas(c, h) -> None:
         r = await c.get("/api/v1/agentes/entradas/eventos-hoy", headers=h["gestion2"])
         otro = next((x for x in r.json() if x["id_evento"] == e_hoy), None)
         check(otro is not None and not otro["soy_encargado"], "para otro agente no es suyo")
+
+        print("[11] Últimas entradas: las que validó la cuenta, con número, hora, persona y documento")
+        r = await c.get("/api/v1/agentes/entradas/ultimas", headers=h["gestion"])
+        ult = r.json() if r.status_code == 200 else []
+        rid = (await q1("SELECT id_evento_reserva AS i FROM evento_reservas WHERE qr_codigo = :q", q=qr_ok))["i"]
+        check(ult and ult[0]["numero"] == rid, "la última validada va primero", r.text[:200])
+        check(ult and all(ult[0].get(k) for k in ("registrada_en", "persona", "documento", "evento")),
+              "trae hora, persona, documento y evento", str(ult[:1]))
+        check(len(ult) <= 20 and sum(1 for x in ult if x["numero"] == rid) == 1, "hasta 20, sin repetir")
+        r = await c.get("/api/v1/agentes/entradas/ultimas", headers=h["gestion2"])
+        check(all(x["numero"] != rid for x in r.json()), "otro agente no la ve")
+        r = await c.get("/api/v1/agentes/entradas/ultimas", headers=h["consultor"])
+        check(r.status_code == 403, "Consultor (5): 403", str(r.status_code))
     finally:
         for e in (e_hoy, e_manana):
             await ejecutar("DELETE FROM encuesta_envio WHERE id_evento_reserva IN "

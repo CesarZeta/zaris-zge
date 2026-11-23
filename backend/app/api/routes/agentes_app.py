@@ -26,7 +26,7 @@ from app.core.auth import get_current_user
 from app.core.database import get_db
 from app.core.municipio import municipio_actual
 from app.schemas.agentes_app import (
-    AcreditarQRPuertaIn, AcreditarQRPuertaOut, EventoHoyOut, RelevamientoCreadoOut,
+    AcreditarQRPuertaIn, AcreditarQRPuertaOut, EntradaValidadaOut, EventoHoyOut, RelevamientoCreadoOut,
     RelevamientoDetalleOut, RelevamientoIn, RelevamientoItemOut,
 )
 from app.services.autoasignacion import autoasignar_reclamo
@@ -201,6 +201,34 @@ async def acreditar_qr(
     """Lee el QR de una entrada en la puerta. Válida y de hoy → queda consumida («acreditada»)."""
     _require_app(current_user)
     return await acreditar_qr_en_puerta(db, body.qr_codigo, current_user["id_usuario"], id_municipio)
+
+
+@entradas_router.get("/ultimas", response_model=list[EntradaValidadaOut])
+async def ultimas_entradas(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+    id_municipio: int = Depends(municipio_actual),
+):
+    """Las últimas 20 entradas que validó esta cuenta (César, 2026-11-23): el proceso en la puerta es
+    muy rápido y el agente necesita volver a mirar. Solo las propias: llevan datos personales."""
+    _require_app(current_user)
+    filas = (await db.execute(text("""
+        SELECT r.id_evento_reserva AS numero, l.fecha AS registrada_en, e.nombre AS evento,
+               NULLIF(CONCAT_WS(', ', c.apellido, c.nombre), '') AS persona,
+               NULLIF(CONCAT_WS(' ', c.doc_tipo, c.doc_nro), '') AS documento
+          FROM (SELECT id_entidad, MAX(fecha) AS fecha
+                  FROM agenda_audit_log
+                 WHERE id_municipio = :m AND id_usuario = :u AND entidad = 'reserva'
+                   AND datos_nuevos ->> 'estado_codigo' = 'asistio'
+                 GROUP BY id_entidad) l
+          JOIN evento_reservas r ON r.id_evento_reserva = l.id_entidad AND r.id_municipio = :m AND r.activo = TRUE
+          JOIN estado_reserva er ON er.id_estado_reserva = r.id_estado_reserva AND er.codigo = 'asistio'
+          JOIN eventos e ON e.id_evento = r.id_evento
+          LEFT JOIN ciudadanos c ON c.id_ciudadano = r.id_ciudadano
+         ORDER BY l.fecha DESC, r.id_evento_reserva DESC
+         LIMIT 20
+    """), {"m": id_municipio, "u": current_user["id_usuario"]})).mappings().all()
+    return [EntradaValidadaOut(**dict(f)) for f in filas]
 
 
 @entradas_router.get("/eventos-hoy", response_model=list[EventoHoyOut])

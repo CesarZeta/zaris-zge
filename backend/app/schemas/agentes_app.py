@@ -97,6 +97,14 @@ class AcreditarQRPuertaOut(BaseModel):
     reserva: Optional[ReservaPuertaOut] = None
 
 
+class EntradaValidadaOut(BaseModel):
+    numero: int  # id de la reserva: el número de la entrada
+    registrada_en: datetime
+    persona: Optional[str] = None
+    documento: Optional[str] = None
+    evento: str
+
+
 class EventoHoyOut(BaseModel):
     id_evento: int
     nombre: str
