@@ -1,7 +1,9 @@
 // Estilos y assets compartidos por las paginas publicas de autoservicio.
 // No importar nada de stores ni de hooks del backoffice.
 
-import type { CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
+import { raizDelSitio } from '../lib/shellNav'
+import { getIdentidadPublica, type IdentidadPublica } from './api'
 
 export const layoutStyles = {
   page: {
@@ -160,6 +162,45 @@ export function ZarisMark() {
         fontWeight: 600, color: 'var(--fg-1)', letterSpacing: '.04em',
         fontFamily: 'var(--font-display)', fontSize: 18,
       }}>ZARIS</span>
+    </div>
+  )
+}
+
+// Toda transacción empieza por el registro de la persona (César, 2026-11-23): estas páginas no
+// reservan; mandan al portal del vecino a ingresar o a crear la cuenta.
+export function IrAlPortal({ texto }: { texto: string }) {
+  const [id, setId] = useState<IdentidadPublica | null>(null)
+  const [fallo, setFallo] = useState(false)
+  useEffect(() => {
+    let cancel = false
+    getIdentidadPublica()
+      .then((d) => { if (!cancel) setId(d) })
+      .catch(() => { if (!cancel) setFallo(true) })
+    return () => { cancel = true }
+  }, [])
+
+  const alta = id?.municipio_slug
+    ? `${raizDelSitio(window.location.pathname)}frontend/alta-vecino.html?m=${encodeURIComponent(id.municipio_slug)}`
+    : null
+  const boton: CSSProperties = { ...layoutStyles.submit, display: 'block', textAlign: 'center', textDecoration: 'none', boxSizing: 'border-box' }
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <p style={{ ...layoutStyles.desc, marginBottom: 0 }}>{texto}</p>
+      {id?.app_vecinos_url && (
+        <a style={boton} href={id.app_vecinos_url}>Ingresar al portal del vecino</a>
+      )}
+      {alta && (
+        <a
+          style={{ ...boton, marginTop: 10, background: 'transparent', color: 'var(--zaris-orange)', border: '1px solid var(--zaris-orange)' }}
+          href={alta}
+        >
+          Todavía no tengo cuenta
+        </a>
+      )}
+      {(fallo || (id && !id.app_vecinos_url && !alta)) && (
+        <div style={layoutStyles.warn}>En este momento no podemos mostrarte el portal. Acercate al municipio o probá más tarde.</div>
+      )}
     </div>
   )
 }

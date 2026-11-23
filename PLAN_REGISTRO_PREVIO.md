@@ -1,6 +1,7 @@
 # PLAN — Registro previo del vecino y de la empresa en toda transacción
 
-> **Estado: definiciones de César tomadas el 2026-11-23; falta su respuesta a §4 antes de codear.**
+> **Estado: F1 hecha el 2026-11-23. César eligió la opción B (§4): la cuenta es requisito en todo. Falta su OK a §5
+> (cuentas para los vecinos ya cargados) para hacer F2.**
 > Avance en [`ESTADO.md`](ESTADO.md).
 
 ## 1. Definiciones de César (2026-11-21 y 2026-11-23)
@@ -43,7 +44,7 @@
 
 ## 3. Fases propuestas
 
-- **F1 — Cerrar el alta con solo el DNI.** Las dos páginas públicas dejan de reservar: muestran la prestación o el
+- **F1 — Cerrar el alta con solo el DNI. HECHA (2026-11-23).** Las dos páginas públicas dejan de reservar: muestran la prestación o el
   evento y llevan a ingresar o a registrarse en el portal del vecino. El backend responde 410 en los dos POST anónimos
   y se retira `buscar_o_crear_ciudadano_por_dni`. Los links ya emitidos para ver o cancelar un turno o una reserva
   siguen funcionando. Los botones «copiar enlace» de Turnos, Entradas y Agenda pasan a dar la URL del portal.
@@ -57,10 +58,31 @@
 **No cambia:** emergencias (incluidos SOS y pánico), Guardia (viene de una emergencia), relevamientos, subreclamos y
 retrabajos (heredan el vecino del reclamo original). Lo ya cargado no se toca.
 
-## 4. Decisión que falta
+## 4. Decisión de César (2026-11-23): la cuenta es requisito
 
-**Una ficha vieja, con la persona cargada pero sin cuenta del portal, ¿puede hacer un reclamo, un turno o una reserva?**
-- **A (recomendada):** sí; alcanza con que la persona esté registrada, y al atenderla se ofrece completar la ficha (al
-  guardarla se crea la cuenta). Los trámites siguen exigiendo la cuenta, como hoy.
-- **B:** no; se exige la cuenta en los cuatro circuitos. En San Andrés bloquea a 946 de los 953 vecinos hasta abrir y
-  guardar su ficha, y los vecinos demo no podrían usarse para mostrar el sistema.
+«Es requisito para cualquier vecino tener un usuario, como así también un agente municipal: cualquiera que opere con una
+cuenta tiene que tener los datos de ciudadano. Nadie puede estar no identificado con sus datos completos en la base de
+personas; por lo tanto ninguna transacción es válida si no tiene un contacto de vecino o empresa en su remitente.»
+
+- **Vecino:** sin cuenta no hay reclamo, turno, entrada ni trámite, por ninguna vía (opción B).
+- **Agente:** toda cuenta interna tiene su ficha de persona (verificado en prod el 2026-11-23: las 93 cuentas del
+  municipio la tienen; la del super administrador no es de ningún municipio).
+- **Relevamiento:** su remitente es la persona de quien lo carga. Se deriva de la cuenta (`usuarios.id_ciudadano`) y sin
+  ficha vinculada el alta da 403. No se copia en `reclamos.id_ciudadano`, porque esa columna es el vecino al que se le
+  avisa y se le encuesta (definición del 2026-11-22: un relevamiento no avisa ni encuesta).
+- **Emergencias:** exceptuadas.
+
+## 5. Cuentas para los vecinos ya cargados (falta el OK de César)
+
+Medido en prod el 2026-11-23 sobre los 953 vecinos activos de San Andrés:
+
+| Grupo | Vecinos | Datos completos | Con cuenta |
+|---|---|---|---|
+| Cargados | 612 | 610 | 7 |
+| Del generador demo | 250 | 250 | 0 |
+| Fichas demo de funcionarios (DNI 99.000.000+) | 91 | 0 | 0 (por regla) |
+
+Sin hacer nada, F2 bloquea a 946 hasta abrir y guardar su ficha. **Propuesta:** crear la cuenta pendiente de activación,
+**sin mandar correos**, a los 853 que tienen los datos completos y no la tienen. Cada vecino la activa cuando quiera
+desde «Ya estoy registrado en el municipio». Quedan por completar a mano 2 vecinos. Las fichas demo de funcionarios
+siguen sin cuenta de vecino: no pueden figurar como vecino de una transacción hasta cargar su DNI real.

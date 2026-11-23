@@ -53,7 +53,9 @@ Una **PRESTACIÓN** define recurso fijo + duración + clase. La reserva elige **
 
 **Autoservicio:** Entradas YA tiene autoservicio funcionando — un evento con `admite_autoservicio=true` tiene `token_publico` y la página pública `/autoservicio/:tokenPublico` (que ya existía para eventos) lo gestiona sin cambios. La card de Entradas muestra el link público.
 
-### Turnos autoservicio — ENTREGADO (2026-05-14)
+### Turnos autoservicio — ENTREGADO (2026-05-14), CERRADO SIN CUENTA desde el 2026-11-23
+
+> **Sacar un turno o una entrada exige la cuenta del vecino** (César, `PLAN_REGISTRO_PREVIO.md`). `POST /turnos/publico/reservar` y `POST /agenda/publico/evento/{token}/reservar` responden **410**; `buscar_o_crear_ciudadano_por_dni` no existe más. `#/turnos-autoservicio` y `#/autoservicio/<token>` solo informan y llevan al portal (`IrAlPortal` en `autoservicio/shared.tsx`). Ver y cancelar por el link del turno o de la reserva siguen. Todo endpoint por token llama a `fijar_por_token` ANTES de su primera consulta (cancelar un turno por su link daba 500 desde F6 por una variable inexistente). Lo que sigue en esta sección sobre reservar es historia.
 
 Flujo público sin JWT para que el ciudadano reserve un turno sin pasar por mesa. A diferencia de eventos (fecha/hora fija), el ciudadano elige un slot libre que el backend calcula cruzando `disponibilidad_recurso` con `ocupaciones`.
 

@@ -427,20 +427,6 @@ class SlotLibreOut(BaseModel):
     hora_fin: time
 
 
-class TurnoPublicoCreate(BaseModel):
-    """Reserva de turno por autoservicio. Busca/crea ciudadano por DNI.
-    El recurso lo trae la prestacion (el cliente NO lo manda)."""
-    id_tipo_prestacion: int
-    fecha: date
-    hora_inicio: time
-    dni: str = Field(..., min_length=6, max_length=20)
-    apellido: str = Field(..., min_length=1, max_length=100)
-    nombre: str = Field(..., min_length=1, max_length=100)
-    telefono: Optional[str] = None
-    email: Optional[str] = None
-    observaciones: Optional[str] = None
-
-
 class TurnoPublicoOut(BaseModel):
     """Datos de un turno reservado por autoservicio (incluye token para
     consultar/cancelar despues)."""

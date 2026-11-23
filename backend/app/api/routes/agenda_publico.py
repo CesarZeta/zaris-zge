@@ -5,11 +5,8 @@ Acceso por token UUID (no enumerable):
   - eventos.token_publico     : abre el form de reserva del evento.
   - evento_reservas.token_reserva : permite ver/cancelar una reserva individual.
 
-Validaciones del POST /reservar:
-  - evento.admite_autoservicio = TRUE
-  - estado_evento.codigo = 'activo'
-  - cupo_disponible > 0
-  - mismo DNI no tiene reserva activa no-cancelada en el mismo evento
+La entrada se reserva desde el portal del vecino (`publico_entradas_vecino.py`): toda transacción
+empieza por el registro de la persona (César, 2026-11-23). `POST /reservar` responde 410.
 """
 from __future__ import annotations
 
@@ -17,26 +14,19 @@ import logging
 import re
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.utils.request_helpers import get_real_ip
-from app.middleware.rate_limit import check_rate_limit
 from app.core.sistema import fijar_por_token
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.schemas.agenda_v2 import (
     EventoPublicoOut,
-    ReservaPublicaCreate,
     ReservaPublicaOut,
 )
 from app.services.agenda import (
-    buscar_o_crear_ciudadano_por_dni,
     cupo_disponible,
-    generar_qr_codigo,
-    lock_evento_row,
     lookup_estado_reserva,
     registrar_audit,
 )
@@ -58,6 +48,7 @@ async def _evento_publico_por_token(db: AsyncSession, token: str) -> Optional[di
     abierto + evento activo. Si algo falla, None — el caller decide el error
     (404 generico para no filtrar si existe o no)."""
     _validate_uuid(token, "Token")
+    await fijar_por_token(db, token, "evento")  # segunda barrera (IT-01 F6): municipio del token
     row = (await db.execute(text("""
         SELECT e.id_evento, e.nombre, e.descripcion,
                e.fecha, e.hora_inicio, e.hora_fin,
@@ -108,122 +99,10 @@ async def obtener_evento_publico(
 # =============================================================================
 # POST reservar
 # =============================================================================
-@router.post(
-    "/evento/{token_publico}/reservar",
-    response_model=ReservaPublicaOut,
-    status_code=201,
-)
-async def reservar_publico(
-    token_publico: str,
-    payload: ReservaPublicaCreate,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-):
-    """Crea una reserva por autoservicio.
-    Busca ciudadano por DNI; si no existe lo crea con datos minimos."""
-    # Rate limit anónimo: evita creación masiva de reservas/ciudadanos por abuso.
-    check_rate_limit(f"agendapub:{get_real_ip(request)}", max_requests=10, window_seconds=60)
-    ev = await _evento_publico_por_token(db, token_publico)
-    if not ev or not ev["activo"] or not ev["admite_autoservicio"]:
-        raise HTTPException(404, "Evento no encontrado o no disponible")
-    if ev["estado_codigo"] != "activo":
-        raise HTTPException(409, f"Evento en estado '{ev['estado_codigo']}', no acepta reservas")
-
-    # Anti-sobrecupo (mig 95): row-lock del evento antes de contar el cupo
-    # (misma serializacion que agenda_v2 y publico_entradas_vecino).
-    await lock_evento_row(db, int(ev["id_evento"]))
-
-    cupo = await cupo_disponible(db, int(ev["id_evento"]))
-    if cupo <= 0:
-        raise HTTPException(409, "Sin cupo disponible para este evento")
-
-    # Busca o crea ciudadano por DNI
-    try:
-        ciu = await buscar_o_crear_ciudadano_por_dni(
-            db,
-            dni=payload.dni,
-            apellido=payload.apellido,
-            nombre=payload.nombre,
-            telefono=payload.telefono,
-            email=payload.email,
-            id_municipio=int(ev["id_municipio"]),
-        )
-    except ValueError as exc:
-        raise HTTPException(422, str(exc))
-
-    # No duplicar reserva (mismo DNI, mismo evento, no cancelada)
-    await fijar_por_token(db, token, "evento")  # segunda barrera (IT-01 F6): municipio del token
-    dup = await db.scalar(text("""
-        SELECT 1 FROM evento_reservas r
-        JOIN estado_reserva er ON er.id_estado_reserva = r.id_estado_reserva
-        WHERE r.id_evento = :e
-          AND r.id_ciudadano = :c
-          AND r.activo = TRUE
-          AND er.codigo <> 'cancelada'
-        LIMIT 1
-    """), {"e": int(ev["id_evento"]), "c": int(ciu["id_ciudadano"])})
-    if dup:
-        raise HTTPException(409, "Ya existe una reserva activa para este DNI en el evento")
-
-    id_reservada = await lookup_estado_reserva(db, "reservada")
-    if not id_reservada:
-        raise HTTPException(500, "Falta seed de estado_reserva (codigo='reservada').")
-
-    # UNIQUE parcial (mig 95) respalda el check de duplicado -> 409, no 500.
-    try:
-        row = (await db.execute(text("""
-            INSERT INTO evento_reservas (
-                id_evento, id_ciudadano, id_estado_reserva, origen,
-                token_reserva,
-                id_municipio, id_usuario_alta
-            ) VALUES (
-                :e, :c, :er, 'autoservicio',
-                gen_random_uuid(),
-                :mun, NULL
-            )
-            RETURNING id_evento_reserva, token_reserva
-        """), {
-            "e": int(ev["id_evento"]), "c": int(ciu["id_ciudadano"]), "er": id_reservada,
-            "mun": int(ev["id_municipio"]),
-        })).first()
-        new_id = int(row[0])
-        token_reserva = str(row[1])
-
-        qr = None
-        if ev["tipo_qr"] != "ninguno":
-            qr = generar_qr_codigo(int(ev["id_evento"]), new_id)
-            await db.execute(text(
-                "UPDATE evento_reservas SET qr_codigo = :q WHERE id_evento_reserva = :i"
-            ), {"q": qr, "i": new_id})
-
-        await registrar_audit(
-            db, None, "reserva", new_id, "crear",
-            None,
-            {
-                "id_evento": int(ev["id_evento"]),
-                "id_ciudadano": int(ciu["id_ciudadano"]),
-                "origen": "autoservicio",
-                "ciudadano_creado": bool(ciu["creado"]),
-                "qr_codigo": qr,
-            },
-            id_municipio=int(ev["id_municipio"]),
-        )
-        await db.commit()
-    except IntegrityError:
-        await db.rollback()
-        raise HTTPException(409, "Ya existe una reserva activa para este DNI en el evento")
-
-    return ReservaPublicaOut(
-        id_evento_reserva=new_id,
-        token_reserva=token_reserva,
-        qr_codigo=qr,
-        estado_codigo="reservada",
-        origen="autoservicio",
-        ciudadano_apellido=ciu.get("apellido"),
-        ciudadano_nombre=ciu.get("nombre"),
-        ciudadano_dni=ciu.get("doc_nro"),
-        evento=await _build_evento_publico_out(db, ev),
-    )
+@router.post("/evento/{token_publico}/reservar", status_code=410)
+async def reservar_publico(token_publico: str):
+    """Cerrado: la reserva sin cuenta creaba personas con solo el DNI y datos de relleno."""
+    raise HTTPException(410, "Para reservar tu entrada ingresá al portal del vecino con tu cuenta.")
 
 
 # =============================================================================
@@ -233,6 +112,7 @@ async def _reserva_publica_por_token(
     db: AsyncSession, token_reserva: str,
 ) -> Optional[dict[str, Any]]:
     _validate_uuid(token_reserva, "Token")
+    await fijar_por_token(db, token_reserva, "reserva")  # segunda barrera (IT-01 F6): municipio del token
     row = (await db.execute(text("""
         SELECT r.id_evento_reserva, r.id_evento, r.id_ciudadano,
                r.token_reserva, r.qr_codigo, r.origen, r.activo, r.id_municipio,
@@ -257,7 +137,6 @@ async def obtener_reserva_publica(
     rsv = await _reserva_publica_por_token(db, token_reserva)
     if not rsv or not rsv["activo"]:
         raise HTTPException(404, "Reserva no encontrada")
-    await fijar_por_token(db, token_reserva, "reserva")  # segunda barrera (IT-01 F6): municipio del token
     ev_row = (await db.execute(text("""
         SELECT e.id_evento, e.nombre, e.descripcion,
                e.fecha, e.hora_inicio, e.hora_fin,

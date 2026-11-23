@@ -303,7 +303,7 @@ export function Overview() {
 function LinkAutoservicio() {
   const push = useNotificationsStore((s) => s.push)
   // Turnos autoservicio no tiene token de entrada (el ciudadano arranca
-  // eligiendo el tramite). El link es fijo: la pagina publica de turnos.
+  // en el portal). El link es fijo: la página pública que lleva al portal del vecino.
   const url = `${window.location.origin}${window.location.pathname}#/turnos-autoservicio`
   return (
     <div style={{
@@ -313,10 +313,10 @@ function LinkAutoservicio() {
     }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--fg-2)' }}>
-          Autoservicio para ciudadanos
+          Turnos desde el portal del vecino
         </span>
         <span style={{ fontSize: '0.74rem', color: 'var(--fg-3)' }}>
-          Compartí este link para que reserven turnos sin pasar por mesa.
+          Compartí este link: lleva al portal del vecino, donde se saca el turno con la cuenta.
         </span>
       </div>
       <code style={{

@@ -32,14 +32,6 @@ export interface EventoPublico {
   tipo_qr: 'nominal' | 'generico' | 'ninguno'
 }
 
-export interface ReservaPublicaCreate {
-  dni: string
-  apellido: string
-  nombre: string
-  telefono?: string
-  email?: string
-}
-
 export interface ReservaPublica {
   id_evento_reserva: number
   token_reserva: string
@@ -56,13 +48,6 @@ export function getEventoPublico(token: string) {
   return jsonFetch<EventoPublico>(`/api/v1/agenda/publico/evento/${token}`)
 }
 
-export function postReservaPublica(token: string, payload: ReservaPublicaCreate) {
-  return jsonFetch<ReservaPublica>(`/api/v1/agenda/publico/evento/${token}/reservar`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  })
-}
-
 export function getReservaPublica(tokenReserva: string) {
   return jsonFetch<ReservaPublica>(`/api/v1/agenda/publico/reserva/${tokenReserva}`)
 }
@@ -74,39 +59,8 @@ export function deleteReservaPublica(tokenReserva: string) {
 }
 
 // =============================================================================
-// Turnos — autoservicio publico (mig 71: el ciudadano elige una prestacion,
-// que ya trae el recurso fijo; solo elige slot + datos)
+// Turnos: ver y cancelar por el link del turno (sacarlo exige la cuenta del portal)
 // =============================================================================
-export interface PrestacionPublica {
-  id_tipo_prestacion: number
-  nombre: string
-  descripcion: string | null
-  clase: 'atencion' | 'reserva_espacio'
-  duracion_min: number
-  recurso_nombre: string | null
-}
-
-export interface SlotLibre {
-  tipo_recurso: 'agente' | 'espacio'
-  id_recurso: number
-  recurso_nombre: string
-  fecha: string
-  hora_inicio: string
-  hora_fin: string
-}
-
-export interface TurnoPublicoCreate {
-  id_tipo_prestacion: number
-  fecha: string
-  hora_inicio: string
-  dni: string
-  apellido: string
-  nombre: string
-  telefono?: string
-  email?: string
-  observaciones?: string
-}
-
 export interface TurnoPublico {
   id_turno: number
   token_turno: string
@@ -121,29 +75,6 @@ export interface TurnoPublico {
   ciudadano_dni: string | null
 }
 
-export function getPrestacionesTurno() {
-  return jsonFetch<PrestacionPublica[]>('/api/v1/turnos/publico/prestaciones')
-}
-
-export function getSlotsTurno(params: {
-  id_tipo_prestacion: number
-  fecha_desde?: string
-  dias?: number
-}) {
-  const qs = new URLSearchParams()
-  qs.set('id_tipo_prestacion', String(params.id_tipo_prestacion))
-  if (params.fecha_desde) qs.set('fecha_desde', params.fecha_desde)
-  if (params.dias != null) qs.set('dias', String(params.dias))
-  return jsonFetch<SlotLibre[]>(`/api/v1/turnos/publico/slots?${qs.toString()}`)
-}
-
-export function postTurnoPublico(payload: TurnoPublicoCreate) {
-  return jsonFetch<TurnoPublico>('/api/v1/turnos/publico/reservar', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  })
-}
-
 export function getTurnoPublico(tokenTurno: string) {
   return jsonFetch<TurnoPublico>(`/api/v1/turnos/publico/turno/${tokenTurno}`)
 }
@@ -152,4 +83,17 @@ export function deleteTurnoPublico(tokenTurno: string) {
   return jsonFetch<TurnoPublico>(`/api/v1/turnos/publico/turno/${tokenTurno}`, {
     method: 'DELETE',
   })
+}
+
+// =============================================================================
+// Portal del vecino: a dónde mandar a quien quiere sacar un turno o una entrada
+// =============================================================================
+export interface IdentidadPublica {
+  municipio_nombre: string
+  municipio_slug: string | null
+  app_vecinos_url?: string
+}
+
+export function getIdentidadPublica() {
+  return jsonFetch<IdentidadPublica>('/api/v1/config/identidad')
 }

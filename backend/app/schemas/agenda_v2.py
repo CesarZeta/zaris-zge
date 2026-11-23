@@ -450,16 +450,6 @@ class EventoPublicoOut(BaseModel):
     tipo_qr: str
 
 
-class ReservaPublicaCreate(BaseModel):
-    """Form publico de reserva. DNI + apellido + nombre obligatorios;
-    telefono y email opcionales."""
-    dni: str = Field(..., min_length=6, max_length=15)
-    apellido: str = Field(..., min_length=1, max_length=120)
-    nombre: str = Field(..., min_length=1, max_length=120)
-    telefono: Optional[str] = Field(None, max_length=40)
-    email: Optional[str] = Field(None, max_length=200)
-
-
 class ReservaPublicaOut(BaseModel):
     """Devuelta tras crear o consultar una reserva publica."""
     model_config = ConfigDict(from_attributes=True)

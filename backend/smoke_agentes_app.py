@@ -142,6 +142,63 @@ async def test_reclamo_sigue_con_rec(c, h) -> None:
         CREADOS.append(r.json()["id_reclamo"])
 
 
+async def test_exige_persona(c, h) -> None:
+    print("[13] Sin ficha de persona vinculada no se carga un relevamiento; con ficha, es el remitente")
+    tipo = await _tipo_de_prueba()
+    f = await q1("SELECT id_ciudadano FROM usuarios WHERE email = :e", e=GESTION_2)
+    await ejecutar("UPDATE usuarios SET id_ciudadano = NULL WHERE email = :e", e=GESTION_2)
+    try:
+        r = await c.post("/api/v1/agentes/relevamientos", headers=h["gestion2"], json=_cuerpo(tipo))
+        check(r.status_code == 403 and "ficha de persona" in r.text, "sin ficha: 403 con el motivo", r.text[:160])
+    finally:
+        await ejecutar("UPDATE usuarios SET id_ciudadano = :c WHERE email = :e", c=f["id_ciudadano"], e=GESTION_2)
+    r = await c.post("/api/v1/agentes/relevamientos", headers=h["gestion2"], json=_cuerpo(tipo))
+    check(r.status_code == 201, "con ficha: 201", r.text[:160])
+    if r.status_code == 201:
+        CREADOS.append(r.json()["id_reclamo"])
+        d = (await c.get(f"/api/v1/agentes/relevamientos/{r.json()['id_reclamo']}", headers=h["gestion2"])).json()
+        check(bool(d.get("remitente")), "el detalle trae el remitente", str(d.get("remitente")))
+
+
+async def test_publico_sin_cuenta(c) -> None:
+    print("[14] Sin cuenta no se saca turno ni entrada; ver y cancelar por el link siguen andando")
+    r = await c.post("/api/v1/turnos/publico/reservar", json={})
+    check(r.status_code == 410 and "portal" in r.text, "turno sin cuenta: 410", f"{r.status_code} {r.text[:120]}")
+    r = await c.post(f"/api/v1/agenda/publico/evento/{uuid.uuid4()}/reservar", json={})
+    check(r.status_code == 410 and "portal" in r.text, "entrada sin cuenta: 410", f"{r.status_code} {r.text[:120]}")
+    antes = (await q1("SELECT COUNT(*) AS n FROM ciudadanos"))["n"]
+    t = await ejecutar("""
+        INSERT INTO turnos (id_ciudadano, id_agente, id_tipo_prestacion, fecha, hora_inicio, hora_fin, estado, origen, id_municipio)
+        SELECT 3, a.id_agente, tp.id_tipo_prestacion, CURRENT_DATE + 400, '03:00', '03:10', 'reservado', 'autoservicio', 1
+          FROM (SELECT id_agente FROM agentes WHERE id_municipio = 1 AND activo ORDER BY 1 LIMIT 1) a,
+               (SELECT id_tipo_prestacion FROM tipo_prestacion WHERE id_municipio = 1 AND activo ORDER BY 1 LIMIT 1) tp
+        RETURNING id_turno, CAST(token_turno AS text) AS tok""")
+    ev = await _evento(hoy_local(), "Smoke link de entrada")
+    try:
+        r = await c.get(f"/api/v1/turnos/publico/turno/{t['tok']}")
+        check(r.status_code == 200, "ver el turno por su link", f"{r.status_code} {r.text[:120]}")
+        r = await c.delete(f"/api/v1/turnos/publico/turno/{t['tok']}")
+        check(r.status_code == 200 and r.json()["estado"] == "cancelado", "cancelar el turno por su link", f"{r.status_code} {r.text[:120]}")
+        rs = await ejecutar("""
+            INSERT INTO evento_reservas (id_evento, id_ciudadano, id_estado_reserva, origen, token_reserva, activo, id_municipio)
+            VALUES (:e, 3, (SELECT id_estado_reserva FROM estado_reserva WHERE codigo = 'reservada'), 'autoservicio',
+                    gen_random_uuid(), TRUE, 1) RETURNING CAST(token_reserva AS text) AS tok""", e=ev)
+        r = await c.get(f"/api/v1/agenda/publico/reserva/{rs['tok']}")
+        check(r.status_code == 200, "ver la reserva por su link", f"{r.status_code} {r.text[:120]}")
+        r = await c.delete(f"/api/v1/agenda/publico/reserva/{rs['tok']}")
+        check(r.status_code == 200 and r.json()["estado_codigo"] == "cancelada", "cancelar la reserva por su link", f"{r.status_code} {r.text[:120]}")
+        evt = await q1("UPDATE eventos SET admite_autoservicio = TRUE, token_publico = gen_random_uuid() WHERE id_evento = :e "
+                       "RETURNING CAST(token_publico AS text) AS tok", e=ev)
+        await ejecutar("UPDATE eventos SET admite_autoservicio = TRUE, token_publico = CAST(:t AS uuid) WHERE id_evento = :e", t=evt["tok"], e=ev)
+        r = await c.get(f"/api/v1/agenda/publico/evento/{evt['tok']}")
+        check(r.status_code == 200, "la página del evento se ve", f"{r.status_code} {r.text[:120]}")
+        check((await q1("SELECT COUNT(*) AS n FROM ciudadanos"))["n"] == antes, "no se creó ninguna persona")
+    finally:
+        await ejecutar("DELETE FROM turnos WHERE id_turno = :i", i=t["id_turno"])
+        await ejecutar("DELETE FROM evento_reservas WHERE id_evento = :e", e=ev)
+        await ejecutar("DELETE FROM eventos WHERE id_evento = :e", e=ev)
+
+
 async def test_validaciones(c, h) -> None:
     print("[3] Validaciones y permisos del alta")
     tipo = await _tipo_de_prueba()
@@ -403,6 +460,8 @@ async def main() -> int:
             rel = await test_alta_relevamiento(c, h)
             await test_reclamo_sigue_con_rec(c, h)
             await test_validaciones(c, h)
+            await test_exige_persona(c, h)
+            await test_publico_sin_cuenta(c)
             if rel:
                 await test_listado_y_detalle(c, h, rel)
                 await test_adjuntos_del_autor(c, h, rel)

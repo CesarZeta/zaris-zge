@@ -67,6 +67,7 @@ class RelevamientoHistorialOut(BaseModel):
 
 
 class RelevamientoDetalleOut(RelevamientoItemOut):
+    remitente: Optional[str] = None  # persona (ficha) de quien lo cargó
     gestion: Optional[str] = None
     latitud: Optional[float] = None
     longitud: Optional[float] = None

@@ -46,6 +46,17 @@ def _require_app(current_user: dict) -> None:
         raise HTTPException(403, "Tu cuenta es de solo consulta: no puede cargar relevamientos ni controlar entradas.")
 
 
+async def _require_persona(db: AsyncSession, id_usuario: int) -> None:
+    """Nadie opera sin estar identificado en la base de personas (César, 2026-11-23): el remitente del
+    relevamiento es la ficha de quien lo carga. Se deriva de la cuenta (`usuarios.id_ciudadano`); no se
+    copia en `reclamos.id_ciudadano`, que es el vecino al que se le avisa y se le encuesta."""
+    ok = await db.scalar(text("""
+        SELECT 1 FROM usuarios u JOIN ciudadanos c ON c.id_ciudadano = u.id_ciudadano AND c.activo = TRUE
+         WHERE u.id_usuario = :u"""), {"u": id_usuario})
+    if not ok:
+        raise HTTPException(403, "Tu cuenta no está vinculada a una ficha de persona: pedile a un administrador que la complete.")
+
+
 # ─── Relevamientos ───────────────────────────────────────────────────────────
 
 @relevamientos_router.post("", status_code=201, response_model=RelevamientoCreadoOut)
@@ -58,6 +69,7 @@ async def crear_relevamiento(
 ):
     """Carga un relevamiento a nombre del agente. Nace `Sin asignar` y sigue el circuito del reclamo."""
     _require_app(current_user)
+    await _require_persona(db, current_user["id_usuario"])
 
     tipo = (await db.execute(text("""
         SELECT s.id_area
@@ -120,10 +132,13 @@ async def crear_relevamiento(
 
 _SELECT_RELEVAMIENTO = """
     SELECT r.id_reclamo, r.nro_reclamo, r.estado, tr.nombre AS tipo, r.descripcion, r.direccion,
-           r.fecha_alta, s.nombre AS gestion, r.latitud, r.longitud, r.resolucion, r.fecha_cierre
+           r.fecha_alta, s.nombre AS gestion, r.latitud, r.longitud, r.resolucion, r.fecha_cierre,
+           NULLIF(CONCAT_WS(', ', c.apellido, c.nombre), '') AS remitente
       FROM reclamos r
       LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
       LEFT JOIN subarea s ON s.id_subarea = tr.id_subarea
+      LEFT JOIN usuarios u ON u.id_usuario = r.id_usuario_alta
+      LEFT JOIN ciudadanos c ON c.id_ciudadano = u.id_ciudadano
      WHERE r.es_relevamiento AND r.activo = TRUE AND r.id_municipio = :mun AND r.id_usuario_alta = :u
 """
 

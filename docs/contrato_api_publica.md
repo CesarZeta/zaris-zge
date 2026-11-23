@@ -183,11 +183,11 @@ Para compartir por link sin que el ciudadano tenga cuenta.
 
 ### Turnos — `/api/v1/turnos/publico`
 - GET `/prestaciones` · GET `/slots?id_tipo_prestacion=&fecha_desde=&dias=`
-- POST `/reservar` (busca/crea ciudadano por DNI) → `token_turno`
+- POST `/reservar` → **410 desde el 2026-11-23**: el turno se saca con la cuenta (`/publico/turnos/reservar`)
 - GET `/turno/{token_turno}` · DELETE `/turno/{token_turno}`
 
 ### Eventos/Entradas — `/api/v1/agenda/publico`
-- GET `/evento/{token_publico}` · POST `/evento/{token_publico}/reservar`
+- GET `/evento/{token_publico}` · POST `/evento/{token_publico}/reservar` (**410 desde el 2026-11-23**: la entrada se reserva con la cuenta)
 - GET `/reserva/{token_reserva}` · DELETE `/reserva/{token_reserva}`
 
 ### Encuestas CSAT — `/api/v1/publico/encuesta` (rate-limited 5/min/IP)

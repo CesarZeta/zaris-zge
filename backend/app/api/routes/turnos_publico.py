@@ -9,15 +9,11 @@ disponibilidad efectiva del recurso de la prestacion con sus ocupaciones.
 Flujo del ciudadano:
   1. GET    /api/v1/turnos/publico/prestaciones          -> elige la prestacion
   2. GET    /api/v1/turnos/publico/slots?id_tipo_prestacion= -> elige dia y hora
-  3. POST   /api/v1/turnos/publico/reservar              -> crea el turno
-  4. GET    /api/v1/turnos/publico/turno/{token}         -> consulta despues
-  5. DELETE /api/v1/turnos/publico/turno/{token}         -> cancela
+  3. GET    /api/v1/turnos/publico/turno/{token}         -> consulta despues
+  4. DELETE /api/v1/turnos/publico/turno/{token}         -> cancela
 
-Validaciones del POST /reservar:
-  - prestacion activa con recurso valido
-  - el slot pedido cae dentro de la disponibilidad efectiva del recurso ese dia
-  - el slot no se solapa con ninguna ocupacion existente del recurso
-  - el ciudadano (por DNI) no tiene otro turno no-cancelado el mismo dia
+El turno se saca desde el portal del vecino (`publico_turnos_vecino.py`): toda transacción empieza por
+el registro de la persona (César, 2026-11-23). `POST /reservar` responde 410.
 """
 from __future__ import annotations
 
@@ -33,7 +29,6 @@ from app.utils.request_helpers import get_real_ip
 from app.middleware.rate_limit import check_rate_limit
 from app.core.sistema import fijar_por_token
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -42,14 +37,10 @@ from app.schemas.turnos import (
     PantallaColeroOut,
     PrestacionPublicaOut,
     SlotLibreOut,
-    TurnoPublicoCreate,
     TurnoPublicoOut,
 )
 from app.services.agenda import (
-    advisory_lock_tx,
-    buscar_o_crear_ciudadano_por_dni,
     disponibilidad_efectiva,
-    turnos_respeta_disponibilidad,
 )
 from app.utils.fechas import ahora_local, hoy_local
 
@@ -58,6 +49,8 @@ router = APIRouter(prefix="/api/v1/turnos/publico", tags=["turnos-publico"])
 logger = logging.getLogger("zaris.turnos_publico")
 
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+
+MSJ_RESERVA_CON_CUENTA = "Para sacar un turno ingresá al portal del vecino con tu cuenta."
 
 DIAS_VENTANA_DEFAULT = 14
 DIAS_VENTANA_MAX = 30
@@ -267,141 +260,10 @@ async def _turno_publico_out(db: AsyncSession, id_turno: int) -> Optional[dict[s
     return dict(row) if row else None
 
 
-@router.post(
-    "/reservar",
-    response_model=TurnoPublicoOut,
-    status_code=201,
-    responses={409: {"description": "Slot ocupado, fuera de disponibilidad o turno duplicado (anti-carrera mig 95)"}},
-)
-async def reservar_turno_publico(
-    payload: TurnoPublicoCreate,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    id_municipio: int = Depends(municipio_de_origen),
-):
-    """Crea un turno por autoservicio. El recurso lo trae la prestacion.
-    Busca/crea el ciudadano por DNI."""
-    # Rate limit anónimo: evita que un script cree turnos/ciudadanos en masa.
-    # Clave prefijada por flujo (§5) para no compartir bucket con otros endpoints.
-    check_rate_limit(f"turnopub:{get_real_ip(request)}", max_requests=10, window_seconds=60)
-    prest = await _resolver_prestacion(db, payload.id_tipo_prestacion, id_municipio)
-    tipo_recurso = prest["tipo_recurso"]
-    id_recurso = prest["id_recurso"]
-    duracion_min = prest["duracion_min"]
-    id_subarea = prest["id_subarea"]
-
-    ahora = ahora_local()
-    if payload.fecha < ahora.date() or (
-        payload.fecha == ahora.date() and payload.hora_inicio <= ahora.time()
-    ):
-        raise HTTPException(422, "No se puede reservar un turno en el pasado")
-
-    hora_inicio = payload.hora_inicio
-    hora_fin = (datetime.combine(payload.fecha, hora_inicio)
-                + timedelta(minutes=duracion_min)).time()
-    if hora_fin <= hora_inicio:
-        raise HTTPException(422, "La duracion de la prestacion excede el dia")
-
-    # Anti-carrera (mig 95): serializa las reservas concurrentes del mismo
-    # recurso+dia ANTES de los checks. Orden de locks fijo en todas las vias:
-    # recurso -> dni (dentro del helper) -> ciudadano-dia.
-    await advisory_lock_tx(db, f"turno:{tipo_recurso}:{id_recurso}:{payload.fecha}")
-
-    if await turnos_respeta_disponibilidad(db, id_municipio=prest["id_municipio"]):
-        rangos = await disponibilidad_efectiva(db, tipo_recurso, id_recurso, payload.fecha,
-                                               id_municipio=prest["id_municipio"])
-        dentro = any(
-            r["hora_inicio"] <= hora_inicio and hora_fin <= r["hora_fin"]
-            for r in rangos
-        )
-        if not dentro:
-            raise HTTPException(409, "El horario solicitado no esta dentro de la disponibilidad del recurso")
-
-    solapado = await db.scalar(text("""
-        SELECT 1 FROM ocupaciones
-        WHERE activo = TRUE AND tipo_recurso = :tr AND id_recurso = :ir AND fecha = :f
-          AND hora_inicio < :hf AND hora_fin > :hi AND id_municipio = :m
-        LIMIT 1
-    """), {"tr": tipo_recurso, "ir": id_recurso, "f": payload.fecha, "hi": hora_inicio, "hf": hora_fin,
-           "m": id_municipio})
-    if solapado:
-        raise HTTPException(409, "El horario solicitado ya no esta disponible")
-
-    try:
-        ciu = await buscar_o_crear_ciudadano_por_dni(
-            db,
-            dni=payload.dni,
-            apellido=payload.apellido,
-            nombre=payload.nombre,
-            telefono=payload.telefono,
-            email=payload.email,
-            id_municipio=prest["id_municipio"],
-        )
-    except ValueError as exc:
-        raise HTTPException(422, str(exc))
-
-    # Anti-carrera de la regla "1 turno por dia": mismo ciudadano reservando en
-    # paralelo contra DOS recursos distintos el mismo dia (el lock de recurso no
-    # lo cubre). Mismo orden de adquisicion en publico_turnos_vecino.py.
-    await advisory_lock_tx(db, f"turnodia:{int(ciu['id_ciudadano'])}:{payload.fecha}")
-
-    dup = await db.scalar(text("""
-        SELECT 1 FROM turnos
-        WHERE id_ciudadano = :ic AND fecha = :f AND activo = TRUE AND estado <> 'cancelado'
-        LIMIT 1
-    """), {"ic": int(ciu["id_ciudadano"]), "f": payload.fecha})
-    if dup:
-        raise HTTPException(409, "El ciudadano ya tiene un turno reservado para ese dia")
-
-    id_agente_turno = id_recurso if tipo_recurso == "agente" else None
-    id_espacio_turno = id_recurso if tipo_recurso == "espacio" else None
-
-    # UNIQUE parcial de slot (mig 95): red de contencion si otra via inserta
-    # el mismo slot pese al lock -> 409 en lugar de doble reserva.
-    try:
-        id_ocupacion = await db.scalar(text("""
-            INSERT INTO ocupaciones (
-                tipo, tipo_recurso, id_recurso, fecha, hora_inicio, hora_fin,
-                id_ciudadano, motivo, id_municipio, id_usuario_alta
-            ) VALUES (
-                'turno', :tr, :ir, :f, :hi, :hf, :ic, :mot, :mun, NULL
-            )
-            RETURNING id_ocupacion
-        """), {
-            "tr": tipo_recurso, "ir": id_recurso, "f": payload.fecha,
-            "hi": hora_inicio, "hf": hora_fin, "ic": int(ciu["id_ciudadano"]),
-            "mot": f"Turno (autoservicio): {payload.observaciones}" if payload.observaciones else "Turno (autoservicio)",
-            "mun": id_municipio,
-        })
-
-        row = (await db.execute(text("""
-            INSERT INTO turnos (
-                id_ciudadano, id_agente, id_espacio, id_espacio_ubicacion,
-                id_tipo_prestacion, id_ocupacion,
-                fecha, hora_inicio, hora_fin, estado, observaciones,
-                origen, id_municipio, id_subarea
-            ) VALUES (
-                :ic, :ia, :ie, :iu, :itp, :iocup,
-                :f, :hi, :hf, 'reservado', :obs,
-                'autoservicio', :mun, :isa
-            )
-            RETURNING id_turno, CAST(token_turno AS TEXT) AS token_turno
-        """), {
-            "ic": int(ciu["id_ciudadano"]), "ia": id_agente_turno, "ie": id_espacio_turno,
-            "iu": prest["id_espacio_ubicacion"],
-            "itp": payload.id_tipo_prestacion, "iocup": id_ocupacion,
-            "f": payload.fecha, "hi": hora_inicio, "hf": hora_fin,
-            "obs": payload.observaciones, "isa": id_subarea, "mun": id_municipio,
-        })).mappings().first()
-        await db.commit()
-    except IntegrityError:
-        await db.rollback()
-        raise HTTPException(409, "El horario solicitado ya no esta disponible")
-
-    out = await _turno_publico_out(db, int(row["id_turno"]))
-    if out is None:
-        raise HTTPException(500, "Turno creado pero no se pudo releer")
-    return out
+@router.post("/reservar", status_code=410)
+async def reservar_turno_publico():
+    """Cerrado: la reserva sin cuenta creaba personas con solo el DNI y datos de relleno."""
+    raise HTTPException(410, MSJ_RESERVA_CON_CUENTA)
 
 
 # =============================================================================
@@ -409,6 +271,7 @@ async def reservar_turno_publico(
 # =============================================================================
 async def _turno_por_token(db: AsyncSession, token: str) -> Optional[dict[str, Any]]:
     _validate_uuid(token)
+    await fijar_por_token(db, token, "turno")  # segunda barrera (IT-01 F6): municipio del token
     row = (await db.execute(text("""
         SELECT t.id_turno, CAST(t.token_turno AS TEXT) AS token_turno,
                t.id_ocupacion, t.estado, t.fecha, t.hora_inicio, t.hora_fin, t.activo,
@@ -454,7 +317,6 @@ async def cancelar_turno_publico(
         raise HTTPException(409, f"No se puede cancelar un turno '{t['estado']}'")
 
     # CAS de estado (mig 95): no pisar un cumplir concurrente del backoffice.
-    await fijar_por_token(db, token, "turno")  # segunda barrera (IT-01 F6): municipio del token
     res = await db.execute(text("""
         UPDATE turnos SET estado = 'cancelado', fecha_modificacion = NOW()
         WHERE id_turno = :id AND estado = 'reservado'
