@@ -32,7 +32,7 @@ GRUPOS = [
      "Mesa que recibe y gestiona los trámites de habilitación comercial."),
     ("Mesa Obras Particulares", "Obras Particulares",
      "Mesa de Obras Particulares: planos, permisos y expedientes de obra."),
-    ("Mesa Bromatología", "Bromatologia e Inspecciones",
+    ("Mesa Bromatología", "Bromatología e Inspecciones",
      "Mesa de Bromatología e Inspecciones para trámites de control sanitario."),
     ("Cuadrilla Mantenimiento General", "Mantenimiento general",
      "Cuadrilla operativa de mantenimiento general del municipio."),

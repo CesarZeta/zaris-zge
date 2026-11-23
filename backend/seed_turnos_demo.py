@@ -33,8 +33,8 @@ ID_MUNICIPIO = 1
 CIUDADANO_MODELO = 1  # Juan Perez, DNI 12345678
 DIAS_LV = 31  # bitmask Lun-Vie (§27)
 
-LUGAR_ATENDIDO = "Sala Municipal de Odontologia"
-LUGAR_DESATENDIDO = "Salon de Usos Multiples"
+LUGAR_ATENDIDO = "Sala Municipal de Odontología"
+LUGAR_DESATENDIDO = "Salón de Usos Múltiples"
 
 
 def proximo_dia_habil(desde: date, offset_dias: int = 0) -> date:

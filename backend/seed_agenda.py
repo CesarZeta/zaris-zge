@@ -102,7 +102,7 @@ async def verificar_maestros(session: AsyncSession) -> dict[str, int]:
     if counts["ciudadanos"] < 2:
         raise RuntimeError("Faltan al menos 2 ciudadanos para crear reservas demo.")
     if counts["subarea"] < 1:
-        raise RuntimeError("Falta al menos 1 subarea para asignar al evento demo.")
+        raise RuntimeError("Falta al menos 1 subárea para asignar al evento demo.")
     return counts
 
 
@@ -197,13 +197,13 @@ async def seed_equipo_demo(session: AsyncSession, agentes: list[int]) -> int:
 
 async def seed_evento_demo(session: AsyncSession) -> int:
     """Crea (o reutiliza) un evento 'Vacunacion antigripal' para el lunes proximo."""
-    nombre = "Vacunacion antigripal"
+    nombre = "Vacunación antigripal"
     fecha = proximo_lunes()
     id_estado_activo = await session.scalar(text(
         "SELECT id_estado_evento FROM estado_evento WHERE codigo='activo'"
     ))
     if not id_estado_activo:
-        raise RuntimeError("Falta seed de estado_evento (codigo='activo').")
+        raise RuntimeError("Falta seed de estado_evento (código='activo').")
     id_subarea = await session.scalar(text(
         "SELECT id_subarea FROM subarea WHERE activo=TRUE ORDER BY id_subarea LIMIT 1"
     ))
@@ -220,7 +220,7 @@ async def seed_evento_demo(session: AsyncSession) -> int:
         "VALUES (:n,:d,:sa,:f,:hi,:hf,20,1,'nominal',TRUE,:es,1,TRUE) RETURNING id_evento"
     ), {
         "n": nombre,
-        "d": "Campania de vacunacion antigripal - demo del modulo Agenda.",
+        "d": "Campaña de vacunación antigripal - demo del módulo Agenda.",
         "sa": id_subarea,
         "f": fecha,
         "hi": time(9, 0),

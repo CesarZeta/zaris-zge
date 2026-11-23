@@ -151,7 +151,7 @@ async def seed_subareas(conn):
         "ORDER BY id_area LIMIT 1")
     if not id_area_gobierno:
         raise RuntimeError(
-            "No hay un area activa cuyo nombre contenga 'gobierno'. El circuito de "
+            "No hay un área activa cuyo nombre contenga 'gobierno'. El circuito de "
             "tramites cuelga de la Secretaria de Gobierno (mig 104): creala antes "
             "de correr este seed.")
 
@@ -159,9 +159,9 @@ async def seed_subareas(conn):
     for clave, nombre in (
         ("mesa_entradas",      "Mesa de Entradas"),
         ("habilitaciones",     "Habilitaciones Comerciales"),
-        ("bromatologia",       "Bromatologia e Inspecciones"),
+        ("bromatologia",       "Bromatología e Inspecciones"),
         ("obras_particulares", "Obras Particulares"),
-        ("legales",            "Asesoria Legal y Tecnica"),
+        ("legales",            "Asesoría Legal y Técnica"),
         ("rrhh",               "Recursos Humanos"),
         ("espacios_verdes",    "Espacios Verdes"),
     ):
@@ -345,10 +345,10 @@ async def seed_tipos(conn, sa):
 
     # 1. poda-arbol
     tipos["poda-arbol"] = await seed_tipo(conn,
-        "poda-arbol", "Solicitud de poda de arbol", "POD",
+        "poda-arbol", "Solicitud de poda de árbol", "POD",
         ["ciudadano"], False, "trees", "#22c55e",
         campos=[
-            {"nombre_interno": "direccion_arbol", "etiqueta": "Direccion del arbol", "tipo_dato": "direccion", "obligatorio": True, "orden": 1},
+            {"nombre_interno": "direccion_arbol", "etiqueta": "Dirección del árbol", "tipo_dato": "direccion", "obligatorio": True, "orden": 1},
             {"nombre_interno": "especie_aproximada", "etiqueta": "Especie aproximada", "tipo_dato": "seleccion", "obligatorio": False, "orden": 2,
              "opciones": [{"valor": "nativa", "etiqueta": "Nativa"}, {"valor": "exotica", "etiqueta": "Exótica"},
                           {"valor": "no_se", "etiqueta": "No sé"}]},
@@ -356,7 +356,7 @@ async def seed_tipos(conn, sa):
         ],
         estados=[
             {"codigo": "iniciado", "etiqueta": "Iniciado", "color": "#3b82f6", "orden": 1, "inicial": True},
-            {"codigo": "en_evaluacion", "etiqueta": "En evaluacion", "color": "#f59e0b", "orden": 2},
+            {"codigo": "en_evaluacion", "etiqueta": "En evaluación", "color": "#f59e0b", "orden": 2},
             {"codigo": "aprobada", "etiqueta": "Aprobada", "color": "#22c55e", "orden": 3},
             {"codigo": "rechazada", "etiqueta": "Rechazada", "color": "#ef4444", "orden": 4},
             {"codigo": "archivado", "etiqueta": "Archivado", "color": "#6b7280", "orden": 5, "final": True},
@@ -375,19 +375,19 @@ async def seed_tipos(conn, sa):
              "quien_puede": {"subareas": [sa["espacios_verdes"]]}},
         ],
         docs=[
-            {"nombre": "Foto del arbol", "obligatorio": True, "aporta": "iniciador",
+            {"nombre": "Foto del árbol", "obligatorio": True, "aporta": "iniciador",
              "estado": "iniciado", "formatos": ["jpg", "png", "pdf"]},
         ]
     )
 
     # 2. pedido-informe
     tipos["pedido-informe"] = await seed_tipo(conn,
-        "pedido-informe", "Pedido de informe a otra area", "INF",
+        "pedido-informe", "Pedido de informe a otra área", "INF",
         ["area_interna"], False, "file-text", "#6366f1",
         campos=[
             {"nombre_interno": "asunto_informe", "etiqueta": "Asunto del informe", "tipo_dato": "texto", "obligatorio": True, "orden": 1},
             {"nombre_interno": "detalle", "etiqueta": "Detalle", "tipo_dato": "texto_largo", "obligatorio": True, "orden": 2},
-            {"nombre_interno": "subarea_destinataria", "etiqueta": "Subarea destinataria", "tipo_dato": "subarea", "obligatorio": True, "orden": 3},
+            {"nombre_interno": "subarea_destinataria", "etiqueta": "Subárea destinataria", "tipo_dato": "subarea", "obligatorio": True, "orden": 3},
         ],
         estados=[
             {"codigo": "solicitado", "etiqueta": "Solicitado", "color": "#3b82f6", "orden": 1, "inicial": True},
@@ -436,47 +436,47 @@ async def seed_tipos(conn, sa):
 
     # 4. habilitacion-comercial
     tipos["habilitacion-comercial"] = await seed_tipo(conn,
-        "habilitacion-comercial", "Habilitacion comercial", "HAB",
+        "habilitacion-comercial", "Habilitación comercial", "HAB",
         ["empresa"], True, "store", "#f59e0b",
         campos=[
             {"nombre_interno": "rubro", "etiqueta": "Rubro", "tipo_dato": "seleccion", "obligatorio": True, "orden": 1,
              "opciones": [{"valor": "gastronomico", "etiqueta": "Gastronómico"}, {"valor": "comercial", "etiqueta": "Comercial"},
                           {"valor": "industrial", "etiqueta": "Industrial"}, {"valor": "servicios", "etiqueta": "Servicios"},
                           {"valor": "otro", "etiqueta": "Otro"}]},
-            {"nombre_interno": "direccion_local", "etiqueta": "Direccion del local", "tipo_dato": "direccion", "obligatorio": True, "orden": 2},
+            {"nombre_interno": "direccion_local", "etiqueta": "Dirección del local", "tipo_dato": "direccion", "obligatorio": True, "orden": 2},
             {"nombre_interno": "superficie_m2", "etiqueta": "Superficie (m2)", "tipo_dato": "decimal", "obligatorio": True, "orden": 3},
-            {"nombre_interno": "horario_atencion", "etiqueta": "Horario de atencion", "tipo_dato": "texto", "obligatorio": True, "orden": 4},
+            {"nombre_interno": "horario_atencion", "etiqueta": "Horario de atención", "tipo_dato": "texto", "obligatorio": True, "orden": 4},
             {"nombre_interno": "tiene_cartel", "etiqueta": "Tiene cartel publicitario", "tipo_dato": "booleano", "obligatorio": False, "orden": 5},
         ],
         estados=[
             {"codigo": "iniciado", "etiqueta": "Iniciado", "color": "#3b82f6", "orden": 1, "inicial": True},
-            {"codigo": "revision_documental", "etiqueta": "Revision documental", "color": "#f59e0b", "orden": 2},
-            {"codigo": "subsanacion", "etiqueta": "Subsanacion pendiente", "color": "#fb923c", "orden": 3},
-            {"codigo": "inspeccion", "etiqueta": "En inspeccion", "color": "#a78bfa", "orden": 4},
+            {"codigo": "revision_documental", "etiqueta": "Revisión documental", "color": "#f59e0b", "orden": 2},
+            {"codigo": "subsanacion", "etiqueta": "Subsanación pendiente", "color": "#fb923c", "orden": 3},
+            {"codigo": "inspeccion", "etiqueta": "En inspección", "color": "#a78bfa", "orden": 4},
             {"codigo": "aprobada", "etiqueta": "Aprobada", "color": "#22c55e", "orden": 5},
             {"codigo": "rechazada", "etiqueta": "Rechazada", "color": "#ef4444", "orden": 6, "final": True},
-            {"codigo": "emitida", "etiqueta": "Habilitacion emitida", "color": "#10b981", "orden": 7, "final": True},
+            {"codigo": "emitida", "etiqueta": "Habilitación emitida", "color": "#10b981", "orden": 7, "final": True},
         ],
         transiciones=[
             {"origen": "iniciado", "destino": "revision_documental", "etiqueta": "Derivar a Habilitaciones",
              "destino_auto": {"tipo": "subarea", "id": sa["habilitaciones"], "nombre": "Habilitaciones Comerciales"}},
-            {"origen": "revision_documental", "destino": "subsanacion", "etiqueta": "Pedir subsanacion",
+            {"origen": "revision_documental", "destino": "subsanacion", "etiqueta": "Pedir subsanación",
              "req_comentario": True},
             {"origen": "subsanacion", "destino": "revision_documental", "etiqueta": "Reenviar corregido",
              "req_adjunto": True, "quien_puede": {"iniciador": True}},
-            {"origen": "revision_documental", "destino": "inspeccion", "etiqueta": "Programar inspeccion",
-             "destino_auto": {"tipo": "subarea", "id": sa["bromatologia"], "nombre": "Bromatologia e Inspecciones"}},
-            {"origen": "inspeccion", "destino": "aprobada", "etiqueta": "Inspeccion OK", "req_comentario": True, "accion": "aprobar"},
-            {"origen": "inspeccion", "destino": "rechazada", "etiqueta": "Inspeccion rechazada", "req_comentario": True, "accion": "rechazar"},
-            {"origen": "aprobada", "destino": "emitida", "etiqueta": "Emitir habilitacion", "req_adjunto": True, "accion": "aprobar"},
+            {"origen": "revision_documental", "destino": "inspeccion", "etiqueta": "Programar inspección",
+             "destino_auto": {"tipo": "subarea", "id": sa["bromatologia"], "nombre": "Bromatología e Inspecciones"}},
+            {"origen": "inspeccion", "destino": "aprobada", "etiqueta": "Inspección OK", "req_comentario": True, "accion": "aprobar"},
+            {"origen": "inspeccion", "destino": "rechazada", "etiqueta": "Inspección rechazada", "req_comentario": True, "accion": "rechazar"},
+            {"origen": "aprobada", "destino": "emitida", "etiqueta": "Emitir habilitación", "req_adjunto": True, "accion": "aprobar"},
         ],
         docs=[
-            {"nombre": "Contrato de locacion", "obligatorio": True, "aporta": "iniciador", "estado": "iniciado"},
+            {"nombre": "Contrato de locación", "obligatorio": True, "aporta": "iniciador", "estado": "iniciado"},
             {"nombre": "Plano del local", "obligatorio": True, "aporta": "iniciador", "estado": "iniciado"},
             {"nombre": "Libreta sanitaria", "obligatorio": True, "aporta": "iniciador", "estado": "iniciado"},
             {"nombre": "Certificado de bomberos", "obligatorio": True, "aporta": "iniciador", "estado": "iniciado"},
-            {"nombre": "Acta de inspeccion", "obligatorio": True, "aporta": "oficina_actual", "estado": "inspeccion", "requiere_firma": True},
-            {"nombre": "Certificado de habilitacion", "obligatorio": True, "aporta": "oficina_actual", "estado": "aprobada", "requiere_firma": True},
+            {"nombre": "Acta de inspección", "obligatorio": True, "aporta": "oficina_actual", "estado": "inspeccion", "requiere_firma": True},
+            {"nombre": "Certificado de habilitación", "obligatorio": True, "aporta": "oficina_actual", "estado": "aprobada", "requiere_firma": True},
         ]
     )
 
@@ -485,14 +485,14 @@ async def seed_tipos(conn, sa):
         "cambio-domicilio-comercial", "Cambio de domicilio comercial", "CDC",
         ["empresa"], True, "map-pin", "#14b8a6",
         campos=[
-            {"nombre_interno": "direccion_anterior", "etiqueta": "Direccion anterior", "tipo_dato": "direccion", "obligatorio": True, "orden": 1},
-            {"nombre_interno": "direccion_nueva", "etiqueta": "Direccion nueva", "tipo_dato": "direccion", "obligatorio": True, "orden": 2},
+            {"nombre_interno": "direccion_anterior", "etiqueta": "Dirección anterior", "tipo_dato": "direccion", "obligatorio": True, "orden": 1},
+            {"nombre_interno": "direccion_nueva", "etiqueta": "Dirección nueva", "tipo_dato": "direccion", "obligatorio": True, "orden": 2},
             {"nombre_interno": "fecha_efectiva", "etiqueta": "Fecha efectiva del cambio", "tipo_dato": "fecha", "obligatorio": True, "orden": 3},
-            {"nombre_interno": "nro_habilitacion_actual", "etiqueta": "N° de habilitacion actual", "tipo_dato": "texto", "obligatorio": True, "orden": 4},
+            {"nombre_interno": "nro_habilitacion_actual", "etiqueta": "N° de habilitación actual", "tipo_dato": "texto", "obligatorio": True, "orden": 4},
         ],
         estados=[
             {"codigo": "iniciado", "etiqueta": "Iniciado", "color": "#3b82f6", "orden": 1, "inicial": True},
-            {"codigo": "en_revision", "etiqueta": "En revision", "color": "#f59e0b", "orden": 2},
+            {"codigo": "en_revision", "etiqueta": "En revisión", "color": "#f59e0b", "orden": 2},
             {"codigo": "aprobada", "etiqueta": "Aprobada", "color": "#22c55e", "orden": 3},
             {"codigo": "rechazada", "etiqueta": "Rechazada", "color": "#ef4444", "orden": 4, "final": True},
             {"codigo": "archivado", "etiqueta": "Archivado", "color": "#6b7280", "orden": 5, "final": True},
@@ -506,17 +506,17 @@ async def seed_tipos(conn, sa):
             {"origen": "rechazada", "destino": "archivado", "etiqueta": "Archivar", "accion": "rechazar"},
         ],
         docs=[
-            {"nombre": "Constancia de habilitacion actual", "obligatorio": True, "aporta": "iniciador", "estado": "iniciado"},
+            {"nombre": "Constancia de habilitación actual", "obligatorio": True, "aporta": "iniciador", "estado": "iniciado"},
             {"nombre": "Constancia del nuevo domicilio", "obligatorio": True, "aporta": "iniciador", "estado": "iniciado"},
         ]
     )
 
     # 6. transferencia-habilitacion
     tipos["transferencia-habilitacion"] = await seed_tipo(conn,
-        "transferencia-habilitacion", "Transferencia de habilitacion comercial", "THC",
+        "transferencia-habilitacion", "Transferencia de habilitación comercial", "THC",
         ["empresa"], True, "arrow-right-left", "#0ea5e9",
         campos=[
-            {"nombre_interno": "nro_habilitacion", "etiqueta": "N° de habilitacion a transferir", "tipo_dato": "texto", "obligatorio": True, "orden": 1},
+            {"nombre_interno": "nro_habilitacion", "etiqueta": "N° de habilitación a transferir", "tipo_dato": "texto", "obligatorio": True, "orden": 1},
             {"nombre_interno": "cuit_titular_anterior", "etiqueta": "CUIT titular anterior", "tipo_dato": "texto", "obligatorio": True, "orden": 2},
             {"nombre_interno": "cuit_titular_nuevo", "etiqueta": "CUIT titular nuevo", "tipo_dato": "texto", "obligatorio": True, "orden": 3},
             {"nombre_interno": "fecha_efectiva", "etiqueta": "Fecha efectiva", "tipo_dato": "fecha", "obligatorio": True, "orden": 4},
@@ -530,7 +530,7 @@ async def seed_tipos(conn, sa):
             {"codigo": "archivado", "etiqueta": "Archivado", "color": "#6b7280", "orden": 6, "final": True},
         ],
         transiciones=[
-            {"origen": "iniciado", "destino": "validando_anterior", "etiqueta": "Iniciar validacion"},
+            {"origen": "iniciado", "destino": "validando_anterior", "etiqueta": "Iniciar validación"},
             {"origen": "validando_anterior", "destino": "validando_nuevo", "etiqueta": "Titular anterior OK", "req_comentario": True},
             {"origen": "validando_nuevo", "destino": "aprobada", "etiqueta": "Nuevo titular OK", "req_comentario": True, "accion": "aprobar"},
             {"origen": "validando_anterior", "destino": "rechazada", "etiqueta": "Rechazar por deuda", "req_comentario": True, "accion": "rechazar"},
@@ -545,7 +545,7 @@ async def seed_tipos(conn, sa):
 
     # 7. inspeccion-bromatologica
     tipos["inspeccion-bromatologica"] = await seed_tipo(conn,
-        "inspeccion-bromatologica", "Solicitud de inspeccion bromatologica", "BRO",
+        "inspeccion-bromatologica", "Solicitud de inspección bromatológica", "BRO",
         ["empresa"], True, "microscope", "#ef4444",
         campos=[
             {"nombre_interno": "rubro_solicitud", "etiqueta": "Rubro", "tipo_dato": "seleccion", "obligatorio": True, "orden": 1,
@@ -563,23 +563,23 @@ async def seed_tipos(conn, sa):
             {"codigo": "rechazada", "etiqueta": "Rechazada", "color": "#ef4444", "orden": 5, "final": True},
         ],
         transiciones=[
-            {"origen": "solicitada", "destino": "programada", "etiqueta": "Programar inspeccion"},
+            {"origen": "solicitada", "destino": "programada", "etiqueta": "Programar inspección"},
             {"origen": "programada", "destino": "realizada", "etiqueta": "Marcar como realizada"},
             {"origen": "realizada", "destino": "aprobada", "etiqueta": "Aprobar", "req_comentario": True, "accion": "aprobar"},
             {"origen": "realizada", "destino": "rechazada", "etiqueta": "Rechazar", "req_comentario": True, "accion": "rechazar"},
         ],
         docs=[
-            {"nombre": "Acta de inspeccion bromatologica", "obligatorio": True, "aporta": "oficina_actual",
+            {"nombre": "Acta de inspección bromatológica", "obligatorio": True, "aporta": "oficina_actual",
              "estado": "realizada", "requiere_firma": True},
         ]
     )
 
     # 8. cartel-publicitario
     tipos["cartel-publicitario"] = await seed_tipo(conn,
-        "cartel-publicitario", "Instalacion de cartel publicitario", "CAR",
+        "cartel-publicitario", "Instalación de cartel publicitario", "CAR",
         ["empresa"], True, "megaphone", "#f97316",
         campos=[
-            {"nombre_interno": "direccion_local", "etiqueta": "Direccion del local", "tipo_dato": "direccion", "obligatorio": True, "orden": 1},
+            {"nombre_interno": "direccion_local", "etiqueta": "Dirección del local", "tipo_dato": "direccion", "obligatorio": True, "orden": 1},
             {"nombre_interno": "dimensiones", "etiqueta": "Dimensiones del cartel", "tipo_dato": "texto", "obligatorio": True, "orden": 2},
             {"nombre_interno": "tipo_cartel", "etiqueta": "Tipo de cartel", "tipo_dato": "seleccion", "obligatorio": True, "orden": 3,
              "opciones": [{"valor": "frontal", "etiqueta": "Frontal"}, {"valor": "marquesina", "etiqueta": "Marquesina"},
@@ -588,7 +588,7 @@ async def seed_tipos(conn, sa):
         ],
         estados=[
             {"codigo": "iniciado", "etiqueta": "Iniciado", "color": "#3b82f6", "orden": 1, "inicial": True},
-            {"codigo": "revision_tecnica", "etiqueta": "Revision tecnica", "color": "#f59e0b", "orden": 2},
+            {"codigo": "revision_tecnica", "etiqueta": "Revisión técnica", "color": "#f59e0b", "orden": 2},
             {"codigo": "pago_pendiente", "etiqueta": "Pago pendiente", "color": "#fb923c", "orden": 3},
             {"codigo": "instalado", "etiqueta": "Instalado", "color": "#22c55e", "orden": 4, "final": True},
             {"codigo": "rechazado", "etiqueta": "Rechazado", "color": "#ef4444", "orden": 5, "final": True},
@@ -596,8 +596,8 @@ async def seed_tipos(conn, sa):
         transiciones=[
             {"origen": "iniciado", "destino": "revision_tecnica", "etiqueta": "Derivar a Obras Particulares",
              "destino_auto": {"tipo": "subarea", "id": sa["obras_particulares"], "nombre": "Obras Particulares"}},
-            {"origen": "revision_tecnica", "destino": "pago_pendiente", "etiqueta": "Aprobar tecnicamente", "accion": "aprobar"},
-            {"origen": "pago_pendiente", "destino": "instalado", "etiqueta": "Confirmar pago e instalacion", "req_adjunto": True, "accion": "aprobar"},
+            {"origen": "revision_tecnica", "destino": "pago_pendiente", "etiqueta": "Aprobar técnicamente", "accion": "aprobar"},
+            {"origen": "pago_pendiente", "destino": "instalado", "etiqueta": "Confirmar pago e instalación", "req_adjunto": True, "accion": "aprobar"},
             {"origen": "revision_tecnica", "destino": "rechazado", "etiqueta": "Rechazar", "req_comentario": True, "accion": "rechazar"},
         ],
         docs=[
@@ -616,15 +616,15 @@ async def seed_tipos(conn, sa):
              "opciones": [{"valor": "resolucion", "etiqueta": "Resolución"}, {"valor": "disposicion", "etiqueta": "Disposición"},
                           {"valor": "decreto", "etiqueta": "Decreto"}, {"valor": "multa", "etiqueta": "Multa"},
                           {"valor": "otro", "etiqueta": "Otro"}]},
-            {"nombre_interno": "fecha_notificacion", "etiqueta": "Fecha de notificacion", "tipo_dato": "fecha", "obligatorio": True, "orden": 3},
+            {"nombre_interno": "fecha_notificacion", "etiqueta": "Fecha de notificación", "tipo_dato": "fecha", "obligatorio": True, "orden": 3},
             {"nombre_interno": "fundamentos", "etiqueta": "Fundamentos", "tipo_dato": "texto_largo", "obligatorio": True, "orden": 4},
-            {"nombre_interno": "pretension", "etiqueta": "Pretension", "tipo_dato": "texto_largo", "obligatorio": True, "orden": 5},
+            {"nombre_interno": "pretension", "etiqueta": "Pretensión", "tipo_dato": "texto_largo", "obligatorio": True, "orden": 5},
         ],
         estados=[
             {"codigo": "presentado", "etiqueta": "Presentado", "color": "#3b82f6", "orden": 1, "inicial": True},
             {"codigo": "admitido", "etiqueta": "Admitido", "color": "#f59e0b", "orden": 2},
             {"codigo": "inadmisible", "etiqueta": "Inadmisible", "color": "#ef4444", "orden": 3, "final": True},
-            {"codigo": "resolucion_dictada", "etiqueta": "Resolucion dictada", "color": "#22c55e", "orden": 4, "final": True},
+            {"codigo": "resolucion_dictada", "etiqueta": "Resolución dictada", "color": "#22c55e", "orden": 4, "final": True},
             {"codigo": "archivado", "etiqueta": "Archivado", "color": "#6b7280", "orden": 5, "final": True},
         ],
         transiciones=[
@@ -632,13 +632,13 @@ async def seed_tipos(conn, sa):
              "req_comentario": True, "quien_puede": {"subareas": [sa["legales"]]}},
             {"origen": "presentado", "destino": "inadmisible", "etiqueta": "Declarar inadmisible",
              "req_comentario": True, "req_adjunto": True, "accion": "rechazar"},
-            {"origen": "admitido", "destino": "resolucion_dictada", "etiqueta": "Dictar resolucion",
+            {"origen": "admitido", "destino": "resolucion_dictada", "etiqueta": "Dictar resolución",
              "req_adjunto": True},
             {"origen": "resolucion_dictada", "destino": "archivado", "etiqueta": "Archivar"},
         ],
         docs=[
             {"nombre": "Copia del acto recurrido", "obligatorio": True, "aporta": "iniciador", "estado": "presentado"},
-            {"nombre": "Resolucion del recurso", "obligatorio": True, "aporta": "oficina_actual",
+            {"nombre": "Resolución del recurso", "obligatorio": True, "aporta": "oficina_actual",
              "estado": "admitido", "requiere_firma": True},
         ]
     )
@@ -871,7 +871,7 @@ async def seed_tramites_instancias(conn, sa, tipos, cids, eids, rep_eid):
     await agregar_movimiento(conn, tid3, 4, "cambio_estado", id_ag,
         id_estado_origen=eid_poda.get("en_evaluacion"), id_estado_destino=eid_poda.get("aprobada"),
         comentario="Poda aprobada. Cuadrilla programada para semana proxima.", dias_atras=3)
-    await agregar_documento(conn, tid3, "Foto del arbol", "image/jpeg", id_ag, posicion=1)
+    await agregar_documento(conn, tid3, "Foto del árbol", "image/jpeg", id_ag, posicion=1)
     print(f"    {num3} (poda/aprobada)")
 
     # 4: archivado
@@ -894,16 +894,16 @@ async def seed_tramites_instancias(conn, sa, tipos, cids, eids, rep_eid):
     tid5, num5 = await crear_tramite(conn, t_inf, "solicitado",
         "Informe sobre estado de calles en Zona Norte", "area_interna",
         sa["mesa_entradas"], sa["mesa_entradas"], id_ag,
-        {"asunto_informe": "Estado calles Zona Norte", "detalle": "Se solicita informe tecnico"},
+        {"asunto_informe": "Estado calles Zona Norte", "detalle": "Se solicita informe técnico"},
         dias_atras=3)
     await agregar_movimiento(conn, tid5, 1, "creacion", id_ag, dias_atras=3)
     await agregar_movimiento(conn, tid5, 2, "numeracion", id_ag, dias_atras=3)
     print(f"    {num5} (informe/solicitado)")
 
     tid6, num6 = await crear_tramite(conn, t_inf, "respondido",
-        "Informe disponibilidad turnos para vacunacion", "area_interna",
+        "Informe disponibilidad turnos para vacunación", "area_interna",
         sa["rrhh"], sa["rrhh"], id_ag,
-        {"asunto_informe": "Disponibilidad vacunacion", "detalle": "Ver memo adjunto"},
+        {"asunto_informe": "Disponibilidad vacunación", "detalle": "Ver memo adjunto"},
         dias_atras=20)
     await agregar_movimiento(conn, tid6, 1, "creacion", id_ag, dias_atras=20)
     await agregar_movimiento(conn, tid6, 2, "numeracion", id_ag, dias_atras=20)
@@ -916,7 +916,7 @@ async def seed_tramites_instancias(conn, sa, tipos, cids, eids, rep_eid):
     t_lic = tipos["licencia-ordinaria"]
 
     tid7, num7 = await crear_tramite(conn, t_lic, "solicitada",
-        "Licencia ordinaria - Perez Juan - 5 dias", "area_interna",
+        "Licencia ordinaria - Perez Juan - 5 días", "area_interna",
         sa["rrhh"], sa["rrhh"], id_ag,
         {"agente_solicitante": 1, "fecha_desde": "2026-06-02", "fecha_hasta": "2026-06-06"},
         dias_atras=2)
@@ -925,7 +925,7 @@ async def seed_tramites_instancias(conn, sa, tipos, cids, eids, rep_eid):
     print(f"    {num7} (licencia/solicitada)")
 
     tid8, num8 = await crear_tramite(conn, t_lic, "aprobada_jefe",
-        "Licencia ordinaria - Martinez Laura - 10 dias", "area_interna",
+        "Licencia ordinaria - Martinez Laura - 10 días", "area_interna",
         sa["rrhh"], sa["rrhh"], id_ag,
         {"agente_solicitante": 2, "fecha_desde": "2026-06-10", "fecha_hasta": "2026-06-20"},
         dias_atras=5)
@@ -935,7 +935,7 @@ async def seed_tramites_instancias(conn, sa, tipos, cids, eids, rep_eid):
     print(f"    {num8} (licencia/aprobada_jefe)")
 
     tid9, num9 = await crear_tramite(conn, t_lic, "notificada",
-        "Licencia ordinaria - Gonzalez Maria - 7 dias", "area_interna",
+        "Licencia ordinaria - Gonzalez Maria - 7 días", "area_interna",
         sa["rrhh"], sa["rrhh"], id_ag,
         {"agente_solicitante": 3, "fecha_desde": "2026-05-05", "fecha_hasta": "2026-05-12"},
         dias_atras=20)
@@ -955,7 +955,7 @@ async def seed_tramites_instancias(conn, sa, tipos, cids, eids, rep_eid):
     rep1 = rep_eid  # ciudadano que representa
 
     tid10, num10 = await crear_tramite(conn, t_hab, "subsanacion",
-        "Habilitacion comercial - Almacen Centro", "empresa",
+        "Habilitación comercial - Almacén Centro", "empresa",
         eid1, sa["habilitaciones"], id_ag,
         {"rubro": "comercial", "direccion_local": "Mitre 456", "superficie_m2": 85.0, "horario_atencion": "9 a 20"},
         id_representante=rep1, dias_atras=12)
@@ -964,13 +964,13 @@ async def seed_tramites_instancias(conn, sa, tipos, cids, eids, rep_eid):
     await agregar_movimiento(conn, tid10, 3, "pase", id_ag, dias_atras=10)
     await agregar_movimiento(conn, tid10, 4, "cambio_estado", id_ag,
         comentario="Falta libreta sanitaria actualizada y certificado de bomberos vigente.", dias_atras=8)
-    id_doc_hab = await agregar_documento(conn, tid10, "Contrato de locacion", posicion=1)
+    id_doc_hab = await agregar_documento(conn, tid10, "Contrato de locación", posicion=1)
     id_doc_hab2 = await agregar_documento(conn, tid10, "Plano del local", posicion=2)
     print(f"    {num10} (habilitacion/subsanacion)")
 
     eid2 = eids[1] if len(eids) > 1 else eids[0]
     tid11, num11 = await crear_tramite(conn, t_hab, "emitida",
-        "Habilitacion comercial - Servicios Ambientales", "empresa",
+        "Habilitación comercial - Servicios Ambientales", "empresa",
         eid2, sa["habilitaciones"], id_ag,
         {"rubro": "servicios", "direccion_local": "Av. Libertad 789", "superficie_m2": 200.0, "horario_atencion": "8 a 18"},
         dias_atras=45)
@@ -979,14 +979,14 @@ async def seed_tramites_instancias(conn, sa, tipos, cids, eids, rep_eid):
     await agregar_movimiento(conn, tid11, 3, "pase", id_ag, dias_atras=42)
     await agregar_movimiento(conn, tid11, 4, "cambio_estado", id_ag, dias_atras=38)
     await agregar_movimiento(conn, tid11, 5, "cambio_estado", id_ag, dias_atras=30)
-    await agregar_movimiento(conn, tid11, 6, "cambio_estado", id_ag, comentario="Habilitacion emitida.", dias_atras=20)
-    id_doc_hab_cert = await agregar_documento(conn, tid11, "Certificado de habilitacion", posicion=1,
+    await agregar_movimiento(conn, tid11, 6, "cambio_estado", id_ag, comentario="Habilitación emitida.", dias_atras=20)
+    id_doc_hab_cert = await agregar_documento(conn, tid11, "Certificado de habilitación", posicion=1,
                                                requiere_firma=True, estado_firma="firmado")
     print(f"    {num11} (habilitacion/emitida)")
 
     eid3 = eids[2] if len(eids) > 2 else eids[0]
     tid12, num12 = await crear_tramite(conn, t_hab, "revision_documental",
-        "Habilitacion comercial - Kiosco Belgrano", "empresa",
+        "Habilitación comercial - Kiosco Belgrano", "empresa",
         eid3, sa["habilitaciones"], id_ag,
         {"rubro": "comercial", "direccion_local": "Belgrano 1100", "superficie_m2": 30.0, "horario_atencion": "7 a 22"},
         dias_atras=6)
@@ -997,7 +997,7 @@ async def seed_tramites_instancias(conn, sa, tipos, cids, eids, rep_eid):
 
     eid4 = eids[3] if len(eids) > 3 else eids[0]
     tid13, num13 = await crear_tramite(conn, t_hab, "revision_documental",
-        "Habilitacion comercial - Distribuidora Norte", "empresa",
+        "Habilitación comercial - Distribuidora Norte", "empresa",
         eid4, sa["habilitaciones"], id_ag,
         {"rubro": "industrial", "direccion_local": "Ruta 9 km 5", "superficie_m2": 500.0, "horario_atencion": "6 a 14"},
         dias_atras=9)
@@ -1034,7 +1034,7 @@ async def seed_tramites_instancias(conn, sa, tipos, cids, eids, rep_eid):
     t_thc = tipos["transferencia-habilitacion"]
 
     tid16, num16 = await crear_tramite(conn, t_thc, "validando_anterior",
-        "Transferencia habilitacion - Tecnologia Urbana a Servicios Ambientales", "empresa",
+        "Transferencia habilitación - Tecnologia Urbana a Servicios Ambientales", "empresa",
         eid2, sa["habilitaciones"], id_ag,
         {"nro_habilitacion": "HAB-LPL-2026-0003",
          "cuit_titular_anterior": "30912345609", "cuit_titular_nuevo": "30689012341",
@@ -1052,9 +1052,9 @@ async def seed_tramites_instancias(conn, sa, tipos, cids, eids, rep_eid):
     t_bro = tipos["inspeccion-bromatologica"]
 
     tid17, num17 = await crear_tramite(conn, t_bro, "programada",
-        "Inspeccion bromatologica - Almacen demo", "empresa",
+        "Inspección bromatológica - Almacén demo", "empresa",
         eid3, sa["bromatologia"], id_ag,
-        {"rubro_solicitud": "gastronomico", "motivo": "Habilitacion nueva"},
+        {"rubro_solicitud": "gastronomico", "motivo": "Habilitación nueva"},
         dias_atras=7)
     await agregar_movimiento(conn, tid17, 1, "creacion", id_ag, dias_atras=7)
     await agregar_movimiento(conn, tid17, 2, "numeracion", id_ag, dias_atras=7)
