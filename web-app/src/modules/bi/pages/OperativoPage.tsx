@@ -6,6 +6,7 @@ import { RespuestaSection } from '../sections/RespuestaSection'
 import { PendientesSection } from '../sections/PendientesSection'
 import { SubreclamosSection } from '../sections/SubreclamosSection'
 import type { BiFiltros } from '../lib/types'
+import { nombresTransaccion, type NombresTransaccion } from '../lib/transaccion'
 import { periodoEjecutivoDefault } from '../lib/periodo'
 import { esAdministrador, useAuthStore } from '../../../stores/auth'
 
@@ -22,13 +23,18 @@ import { esAdministrador, useAuthStore } from '../../../stores/auth'
 //  - al saltar desde el índice la sección queda debajo de la barra y la barra
 //    muestra SIEMPRE en qué sección se está (scroll-spy por posición);
 //  - el panel de filtros se puede contraer.
-const SECCIONES = [
-  { id: 'resumen', label: 'Resumen', desc: 'Volumen y composición de los reclamos del período' },
-  { id: 'respuesta', label: 'Respuesta', desc: 'Reclamos cerrados y tiempos de respuesta' },
-  { id: 'pendientes', label: 'Pendientes', desc: 'Reclamos abiertos, demora y ubicación' },
-  { id: 'subreclamos', label: 'Subreclamos', desc: 'Intervenciones derivadas de un reclamo padre' },
-] as const
-type SeccionId = (typeof SECCIONES)[number]['id']
+const IDS_SECCIONES = ['resumen', 'respuesta', 'pendientes', 'subreclamos'] as const
+type SeccionId = (typeof IDS_SECCIONES)[number]
+
+// Los textos siguen a la transacción elegida (reclamos o relevamientos).
+function secciones(n: NombresTransaccion): Array<{ id: SeccionId; label: string; desc: string }> {
+  return [
+    { id: 'resumen', label: 'Resumen', desc: `Volumen y composición de los ${n.plural} del período` },
+    { id: 'respuesta', label: 'Respuesta', desc: `${n.Plural} cerrados y tiempos de respuesta` },
+    { id: 'pendientes', label: 'Pendientes', desc: `${n.Plural} abiertos, demora y ubicación` },
+    { id: 'subreclamos', label: n.SubPlural, desc: `Intervenciones derivadas de un ${n.singular} padre` },
+  ]
+}
 
 const AREA_KEY = 'zaris_bi_area'
 const FILTROS_KEY = 'zaris_bi_filtros_colapsados'
@@ -117,10 +123,10 @@ export function OperativoPage({ seccion }: { seccion?: string }) {
       // un poco más abajo (+24) para que la recién saltada cuente como activa.
       const rect = stickyRef.current?.getBoundingClientRect()
       const limite = (rect ? rect.bottom : stickyH) + 24
-      let actual: SeccionId = SECCIONES[0].id
-      for (const s of SECCIONES) {
-        const el = document.getElementById(s.id)
-        if (el && el.getBoundingClientRect().top <= limite) actual = s.id
+      let actual: SeccionId = IDS_SECCIONES[0]
+      for (const id of IDS_SECCIONES) {
+        const el = document.getElementById(id)
+        if (el && el.getBoundingClientRect().top <= limite) actual = id
       }
       setActiva((prev) => (prev === actual ? prev : actual))
     }
@@ -169,7 +175,8 @@ export function OperativoPage({ seccion }: { seccion?: string }) {
     return <div style={{ color: 'var(--fg-3)', fontSize: '0.86rem', padding: 24, textAlign: 'center' }}>Cargando tablero…</div>
   }
 
-  const secActiva = SECCIONES.find((s) => s.id === activa) ?? SECCIONES[0]
+  const listaSecciones = secciones(nombresTransaccion(filtros))
+  const secActiva = listaSecciones.find((s) => s.id === activa) ?? listaSecciones[0]
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 48, ['--bi-sticky' as string]: `${stickyH}px` } as React.CSSProperties}>
@@ -184,7 +191,7 @@ export function OperativoPage({ seccion }: { seccion?: string }) {
         <div aria-hidden="true" style={coverStyle} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
           <nav aria-label="Secciones del tablero" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-            {SECCIONES.map((s) => (
+            {listaSecciones.map((s) => (
               <button
                 key={s.id}
                 type="button"

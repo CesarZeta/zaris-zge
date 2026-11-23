@@ -189,7 +189,7 @@ export interface StatsReclamos {
 }
 
 // Canal de origen del reclamo
-export type CanalOrigen = 'web' | 'whatsapp' | 'telefono' | 'presencial' | 'oficio' | 'app_movil' | 'otro'
+export type CanalOrigen = 'web' | 'whatsapp' | 'telefono' | 'presencial' | 'oficio' | 'app_movil' | 'app_agentes' | 'otro'
 
 // Payload para POST /reclamos (alta)
 export interface ReclamoCreate {

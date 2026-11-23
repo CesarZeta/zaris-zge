@@ -11,12 +11,14 @@ import { exportarCsv, hoyISO } from '../components/exportCsv'
 import { biApi } from '../lib/api'
 import { useComparativo, useSubreclamosPorTipo, useSubreclamosResumen } from '../hooks/useBi'
 import { periodoEnLetras } from '../lib/periodo'
+import { nombresTransaccion } from '../lib/transaccion'
 import type { BiFiltros } from '../lib/types'
 import { colorEstado } from '../lib/theme'
 
 // Sección SUBRECLAMOS (breve, al pie): reclamos con id_reclamo_padre —
 // "intervenciones" en la jerga de los tableros de referencia. No existe en Power BI.
 export function SubreclamosSection({ filtros }: { filtros: BiFiltros }) {
+  const n = nombresTransaccion(filtros)
   const resumen = useSubreclamosResumen(filtros)
   const porTipo = useSubreclamosPorTipo(filtros, 10)
   const comp = useComparativo('subreclamos', filtros)
@@ -28,15 +30,15 @@ export function SubreclamosSection({ filtros }: { filtros: BiFiltros }) {
     try {
       const { data } = await biApi.subreclamosDetalle(filtros, 10000, 0)
       exportarCsv(
-        `subreclamos_${hoyISO()}.csv`,
+        `${n.subPlural}_${hoyISO()}.csv`,
         [
-          { header: 'N° Subreclamo', value: (d) => d.nro_reclamo },
+          { header: `N° ${n.SubSingular}`, value: (d) => d.nro_reclamo },
           { header: 'Fecha alta', value: (d) => (d.fecha_alta ? d.fecha_alta.slice(0, 10) : '') },
           { header: 'Tipo', value: (d) => d.tipo },
           { header: 'Prioridad', value: (d) => d.prioridad },
           { header: 'Estado', value: (d) => d.estado },
           { header: 'Área', value: (d) => d.area },
-          { header: 'N° Reclamo padre', value: (d) => d.nro_padre },
+          { header: `N° ${n.Singular} padre`, value: (d) => d.nro_padre },
           { header: 'Estado padre', value: (d) => d.estado_padre },
         ],
         data,
@@ -49,22 +51,22 @@ export function SubreclamosSection({ filtros }: { filtros: BiFiltros }) {
   return (
     <Seccion
       id="subreclamos"
-      titulo="Subreclamos"
+      titulo={n.SubPlural}
       periodo={periodoEnLetras(filtros).actual}
       onExport={handleExport}
       exportando={exportando}
       exportDisabled={!r?.total}
-      exportLabel="Exportar subreclamos"
+      exportLabel={`Exportar ${n.subPlural}`}
     >
       {/* KPIs — UNA fila: totalizador + comparativos + padres */}
       <KpiRow n={4}>
-        <KpiCard label="Subreclamos" value={fmt(r?.total)} accent="var(--zaris-orange)" sub={comp.data ? comp.data.periodo_actual : 'período filtrado'} />
-        <KpisComparativos c={comp.data} etiqueta="subreclamos" />
-        <KpiCard label="Reclamos padre" value={fmt(r?.padres)} sub="con subreclamos asociados" />
+        <KpiCard label={n.SubPlural} value={fmt(r?.total)} accent="var(--zaris-orange)" sub={comp.data ? comp.data.periodo_actual : 'período filtrado'} />
+        <KpisComparativos c={comp.data} etiqueta={n.subPlural} />
+        <KpiCard label={`${n.Plural} padre`} value={fmt(r?.padres)} sub={`con ${n.subPlural} asociados`} />
       </KpiRow>
 
       <HistogramaTemporal
-        tituloBase="Subreclamos ingresados"
+        tituloBase={`${n.SubPlural} ingresados`}
         cacheKey="subreclamos"
         filtros={filtros}
         series={[
@@ -81,11 +83,11 @@ export function SubreclamosSection({ filtros }: { filtros: BiFiltros }) {
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
-        <ChartCard title="Subreclamos por estado">
+        <ChartCard title={`${n.SubPlural} por estado`}>
           {resumen.isLoading ? (
             <CenterMsg>Cargando…</CenterMsg>
           ) : !r?.por_estado?.length ? (
-            <CenterMsg>Sin subreclamos.</CenterMsg>
+            <CenterMsg>Sin {n.subPlural}.</CenterMsg>
           ) : (
             <ResponsiveContainer>
               <PieChart>
@@ -100,7 +102,7 @@ export function SubreclamosSection({ filtros }: { filtros: BiFiltros }) {
           )}
         </ChartCard>
 
-        <ChartCard title="Reclamos padre por estado">
+        <ChartCard title={`${n.Plural} padre por estado`}>
           {resumen.isLoading ? (
             <CenterMsg>Cargando…</CenterMsg>
           ) : !r?.por_estado_padre?.length ? (
@@ -120,7 +122,7 @@ export function SubreclamosSection({ filtros }: { filtros: BiFiltros }) {
         </ChartCard>
       </div>
 
-      <ChartCard title="Ranking de subreclamos por tipo" height={Math.max(220, (porTipo.data?.length ?? 1) * 42 + 60)}>
+      <ChartCard title={`Ranking de ${n.subPlural} por tipo`} height={Math.max(220, (porTipo.data?.length ?? 1) * 42 + 60)}>
         {porTipo.isLoading ? (
           <CenterMsg>Cargando…</CenterMsg>
         ) : !porTipo.data?.length ? (
@@ -132,7 +134,7 @@ export function SubreclamosSection({ filtros }: { filtros: BiFiltros }) {
               <XAxis type="number" tick={AXIS} allowDecimals={false} />
               <YAxis type="category" dataKey="tipo" tick={AXIS} width={180} />
               <Tooltip contentStyle={tooltipStyle} cursor={{ fill: 'rgba(245,78,0,0.06)' }} />
-              <Bar dataKey="total" name="Subreclamos" fill="var(--zaris-orange)" radius={[0, 4, 4, 0]}>
+              <Bar dataKey="total" name={n.SubPlural} fill="var(--zaris-orange)" radius={[0, 4, 4, 0]}>
                 <LabelList dataKey="total" position="right" content={TotalLabelH} />
               </Bar>
             </BarChart>

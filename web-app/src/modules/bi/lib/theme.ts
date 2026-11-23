@@ -52,7 +52,8 @@ export const LABEL_CANAL: Record<string, string> = {
   telefono: 'Teléfono',
   presencial: 'Presencial',
   oficio: 'Oficio',
-  app_movil: 'App móvil',
+  app_movil: 'App del vecino',
+  app_agentes: 'App de agentes',
   otro: 'Otro',
   sin_dato: 'Sin dato',
 }

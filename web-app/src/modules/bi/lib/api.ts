@@ -63,7 +63,7 @@ function qp(f: BiFiltros) {
     id_localidad: f.id_localidad,
     id_espacio_ubicacion: f.id_espacio_ubicacion, id_tipo_prestacion: f.id_tipo_prestacion,
     // Solo viaja si no es el valor por defecto: el tablero de Atención no lo conoce.
-    origen: f.origen === 'relevamientos' ? f.origen : undefined,
+    clase: f.clase === 'relevamientos' ? f.clase : undefined,
   }
 }
 // Sin el rango de fechas (drill a un mes concreto). Los chips de año/meses sí
@@ -76,7 +76,7 @@ function qpSinFechas(f: BiFiltros) {
     id_localidad: f.id_localidad,
     id_espacio_ubicacion: f.id_espacio_ubicacion, id_tipo_prestacion: f.id_tipo_prestacion,
     // Solo viaja si no es el valor por defecto: el tablero de Atención no lo conoce.
-    origen: f.origen === 'relevamientos' ? f.origen : undefined,
+    clase: f.clase === 'relevamientos' ? f.clase : undefined,
   }
 }
 

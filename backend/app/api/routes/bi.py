@@ -40,31 +40,32 @@ from app.core.auth import get_current_user
 from app.core.database import get_db
 from app.core.municipio import municipio_actual
 
-# ── Origen: reclamos del vecino o relevamientos (mig 141, decisión de César 2026-11-22) ──
+# ── Clase de transacción: reclamo o relevamiento (mig 141, César 2026-11-22 y 2026-11-23) ──
+# Es el TIPO de transacción; el origen o canal (call center, apps, portal) es `canal_origen`.
 # Datos cuenta los relevamientos APARTE de los reclamos del vecino. El filtro llega como
-# query param `origen` a TODOS los endpoints del Operativo y del Ejecutivo por una dependencia
+# query param `clase` a TODOS los endpoints del Operativo y del Ejecutivo por una dependencia
 # a nivel router (no hace falta declararlo en cada firma) y lo aplican `_aplicar_extras` y
 # `_where_ej`. Sin el parámetro, `reclamos`: un tablero nunca mezcla los dos.
-_ORIGEN_BI: ContextVar[str] = ContextVar("origen_bi", default="reclamos")
+_CLASE_BI: ContextVar[str] = ContextVar("clase_bi", default="reclamos")
 
 
-async def origen_bi(
-    origen: Literal["reclamos", "relevamientos"] = Query(
+async def clase_bi(
+    clase: Literal["reclamos", "relevamientos"] = Query(
         "reclamos", description="reclamos = los del vecino · relevamientos = los que carga un agente (mig 141)"),
 ) -> None:
     # Dependencia async: corre en la misma tarea que el handler, así el valor le llega.
-    _ORIGEN_BI.set(origen)
+    _CLASE_BI.set(clase)
 
 
-def cond_origen(alias: str = "r") -> str:
-    """Condición fija (sin parámetros) del origen elegido en la request."""
-    return f"{alias}.es_relevamiento" if _ORIGEN_BI.get() == "relevamientos" else f"NOT {alias}.es_relevamiento"
+def cond_clase(alias: str = "r") -> str:
+    """Condición fija (sin parámetros) de la clase elegida en la request."""
+    return f"{alias}.es_relevamiento" if _CLASE_BI.get() == "relevamientos" else f"NOT {alias}.es_relevamiento"
 
 
 router = APIRouter(
     prefix="/api/v1/bi",
     tags=["BI"],
-    dependencies=[Depends(get_current_user), Depends(origen_bi)],
+    dependencies=[Depends(get_current_user), Depends(clase_bi)],
 )
 
 # Estados finales / agrupaciones reutilizadas
@@ -161,7 +162,7 @@ def _aplicar_extras(
     canal de origen. Se suman a TODAS las secciones y a las exportaciones —
     una seccion cuyo universo choca con el filtro (ej. Pendientes con
     estado=Resuelto) simplemente queda vacia, como en Power BI."""
-    cond.append(cond_origen(alias))
+    cond.append(cond_clase(alias))
     if estado:
         cond.append(f"{alias}.estado = :estado")
         params["estado"] = estado

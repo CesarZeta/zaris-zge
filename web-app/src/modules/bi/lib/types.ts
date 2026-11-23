@@ -237,12 +237,12 @@ export interface BiFiltros {
   // Filtros del tablero de ATENCIÓN (F6, 2026-09-19): ubicación (espacio) y prestación.
   id_espacio_ubicacion?: number
   id_tipo_prestacion?: number
-  // Origen de los incidentes (mig 141): los reclamos del vecino o los relevamientos que carga un
-  // agente. Operativo y Ejecutivo los cuentan APARTE; sin valor = reclamos (decisión de César).
-  origen?: OrigenIncidente
+  // Tipo de transacción (mig 141): reclamos o relevamientos (no es el canal). Operativo y
+  // Ejecutivo los cuentan APARTE; sin valor = reclamos (decisión de César).
+  clase?: ClaseTransaccion
 }
 
-export type OrigenIncidente = 'reclamos' | 'relevamientos'
+export type ClaseTransaccion = 'reclamos' | 'relevamientos'
 
 // KPIs comparativos de la fila única de cada sección (GET /bi/comparativo).
 export interface Comparativo {

@@ -36,13 +36,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_user
 from app.core.database import get_db
 from app.core.municipio import municipio_actual
-from app.api.routes.bi import _CON_SLA, _DENTRO_SLA, _DIAS_CIERRE, _JOIN_AREA, _parse_meses, cond_origen, origen_bi
+from app.api.routes.bi import _CON_SLA, _DENTRO_SLA, _DIAS_CIERRE, _JOIN_AREA, _parse_meses, cond_clase, clase_bi
 
 router = APIRouter(
     prefix="/api/v1/bi/ejecutivo",
     tags=["BI Ejecutivo"],
-    # origen_bi: reclamos del vecino o relevamientos (mig 141), ver bi.py.
-    dependencies=[Depends(get_current_user), Depends(origen_bi)],
+    # clase_bi: reclamos del vecino o relevamientos (mig 141), ver bi.py.
+    dependencies=[Depends(get_current_user), Depends(clase_bi)],
 )
 
 # Join de encuestas de reclamos: un envío por fila (contar envíos = correcto para
@@ -73,7 +73,7 @@ def _where_ej(
     cond = [
         "r.activo = TRUE",
         "r.id_municipio = :id_municipio",
-        cond_origen("r"),  # reclamos del vecino o relevamientos (mig 141)
+        cond_clase("r"),  # reclamos del vecino o relevamientos (mig 141)
     ]
     params: dict = {"id_municipio": id_municipio}
     if desde:

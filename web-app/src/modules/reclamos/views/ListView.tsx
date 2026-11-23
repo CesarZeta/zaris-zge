@@ -32,7 +32,7 @@ interface FiltrosBorrador {
   idArea: number | null
   idSubarea: number | null
   texto: string
-  /** Clase (mig 141): todos, solo reclamos del vecino o solo relevamientos. */
+  /** Transacción (mig 141): todos, solo reclamos del vecino o solo relevamientos. */
   clase: ClaseIncidente | null
 }
 
@@ -161,15 +161,15 @@ export function ListView() {
           </select>
         </div>
         <div style={filterGroup}>
-          <label style={filterLabel}>Clase</label>
+          <label style={filterLabel}>Transacción</label>
           <select
             value={clase ?? ''}
             onChange={(e) => { const v = (e.target.value || null) as ClaseIncidente | null; setBorrador((b) => ({ ...b, clase: v })) }}
             style={filterInput}
-            title="Los relevamientos los carga un agente municipal desde la app de agentes"
+            title="Los relevamientos los inicia un agente municipal, sin un vecino que lo pida"
           >
             <option value="">Todos</option>
-            <option value="reclamos">Reclamos del vecino</option>
+            <option value="reclamos">Reclamos</option>
             <option value="relevamientos">Relevamientos</option>
           </select>
         </div>

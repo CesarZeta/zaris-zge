@@ -10,12 +10,14 @@ import { exportarCsv, hoyISO } from '../components/exportCsv'
 import { biApi } from '../lib/api'
 import { useComparativo, useEvolucionDias, useSlaResumen, useTiemposMensual, useTiemposPorTipo } from '../hooks/useBi'
 import { periodoEnLetras } from '../lib/periodo'
+import { nombresTransaccion } from '../lib/transaccion'
 import type { BiFiltros } from '../lib/types'
 import { COLOR_TRAMO_0_3, COLOR_TRAMO_4_7, COLOR_TRAMO_MAS7, labelCanal, labelMes } from '../lib/theme'
 
 // Sección RESPUESTA: los reclamos CERRADOS (resueltos con fecha de cierre) y sus
 // tiempos — equivale al tablero "Tiempos de respuesta" de Power BI.
 export function RespuestaSection({ filtros }: { filtros: BiFiltros }) {
+  const n = nombresTransaccion(filtros)
   const sla = useSlaResumen(filtros)
   const tMes = useTiemposMensual(filtros)
   const tTipo = useTiemposPorTipo(filtros, 10)
@@ -31,9 +33,9 @@ export function RespuestaSection({ filtros }: { filtros: BiFiltros }) {
     try {
       const { data } = await biApi.resueltosDetalle(filtros, 10000, 0)
       exportarCsv(
-        `reclamos_resueltos_${hoyISO()}.csv`,
+        `${n.plural}_resueltos_${hoyISO()}.csv`,
         [
-          { header: 'N° Reclamo', value: (r) => r.nro_reclamo },
+          { header: `N° ${n.Singular}`, value: (r) => r.nro_reclamo },
           { header: 'Fecha cierre', value: (r) => (r.fecha_cierre ? r.fecha_cierre.slice(0, 10) : '') },
           { header: 'Tipo', value: (r) => r.tipo },
           { header: 'Prioridad', value: (r) => r.prioridad },
@@ -77,7 +79,7 @@ export function RespuestaSection({ filtros }: { filtros: BiFiltros }) {
         {tMes.isLoading ? (
           <CenterMsg>Cargando…</CenterMsg>
         ) : !tMes.data?.length ? (
-          <CenterMsg>Sin reclamos resueltos con fecha de cierre en el período.</CenterMsg>
+          <CenterMsg>Sin {n.plural} resueltos con fecha de cierre en el período.</CenterMsg>
         ) : (
           <ResponsiveContainer>
             <BarChart data={tMes.data.map((m) => ({ ...m, label: labelMes(m.mes) }))} margin={{ top: 24, right: 12, left: 0, bottom: 0 }}>
@@ -103,7 +105,7 @@ export function RespuestaSection({ filtros }: { filtros: BiFiltros }) {
 
       {/* Tiempos por tipo + evolución */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
-        <ChartCard title="Tiempos por tipo de reclamo" height={Math.max(240, (tTipo.data?.length ?? 1) * 42 + 60)}>
+        <ChartCard title={`Tiempos por tipo de ${n.singular}`} height={Math.max(240, (tTipo.data?.length ?? 1) * 42 + 60)}>
           {tTipo.isLoading ? (
             <CenterMsg>Cargando…</CenterMsg>
           ) : !tTipo.data?.length ? (

@@ -35,7 +35,7 @@ const FUENTE_LABEL: Record<string, string> = {
 
 const CANAL_LABEL: Record<string, string> = {
   web: 'Web', whatsapp: 'WhatsApp', telefono: 'Teléfono',
-  presencial: 'Presencial', oficio: 'Oficio', app_movil: 'App móvil', otro: 'Otro',
+  presencial: 'Presencial', oficio: 'Oficio', app_movil: 'App del vecino', app_agentes: 'App de agentes', otro: 'Otro',
 }
 
 export function OTDetalleDrawer({ open, idReclamo, idOTResaltada, puedeGestionarAdjuntos, onClose, onPlanificar }: Props) {

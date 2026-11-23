@@ -13,12 +13,14 @@ import { useComparativo, usePendientesGeo, usePendientesPorTipo, usePendientesRe
 import { periodoEnLetras } from '../lib/periodo'
 import { DashboardMap } from '../../dashboard/components/DashboardMap'
 import type { GeoReclamo } from '../../dashboard/hooks/useDashboardData'
+import { nombresTransaccion } from '../lib/transaccion'
 import type { BiFiltros, PendienteGeo } from '../lib/types'
 import { COLOR_TRAMO_0_3, COLOR_TRAMO_4_7, COLOR_TRAMO_MAS7, colorEstado, colorTramo, labelCanal } from '../lib/theme'
 
 // Sección PENDIENTES: lo abierto hoy (estados no finales), su demora y dónde está
 // — equivale a "Pendientes" + "Pendientes geoposicionados" de Power BI.
 export function PendientesSection({ filtros }: { filtros: BiFiltros }) {
+  const n = nombresTransaccion(filtros)
   const resumen = usePendientesResumen(filtros)
   const porTipo = usePendientesPorTipo(filtros, 10)
   const geo = usePendientesGeo(filtros)
@@ -39,9 +41,9 @@ export function PendientesSection({ filtros }: { filtros: BiFiltros }) {
     try {
       const { data } = await biApi.pendientesDetalle(filtros, 10000, 0)
       exportarCsv(
-        `reclamos_pendientes_${hoyISO()}.csv`,
+        `${n.plural}_pendientes_${hoyISO()}.csv`,
         [
-          { header: 'N° Reclamo', value: (d) => d.nro_reclamo },
+          { header: `N° ${n.Singular}`, value: (d) => d.nro_reclamo },
           { header: 'Fecha alta', value: (d) => (d.fecha_alta ? d.fecha_alta.slice(0, 10) : '') },
           { header: 'Tipo', value: (d) => d.tipo },
           { header: 'Prioridad', value: (d) => d.prioridad },
@@ -167,7 +169,7 @@ export function PendientesSection({ filtros }: { filtros: BiFiltros }) {
         {geo.isLoading ? (
           <CenterMsg>Cargando mapa…</CenterMsg>
         ) : !geo.data?.length ? (
-          <CenterMsg>No hay reclamos pendientes con ubicación geográfica.</CenterMsg>
+          <CenterMsg>No hay {n.plural} pendientes con ubicación geográfica.</CenterMsg>
         ) : (
           <div style={{ position: 'relative', isolation: 'isolate', zIndex: 0, width: '100%', height: '100%', borderRadius: 8, overflow: 'hidden' }}>
             <DashboardMap

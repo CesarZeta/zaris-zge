@@ -11,6 +11,7 @@ import { exportarCsv, hoyISO } from '../components/exportCsv'
 import { biApi } from '../lib/api'
 import { useComparativo, usePorArea, usePorCanal, usePorEstado, useResumen } from '../hooks/useBi'
 import { periodoEnLetras } from '../lib/periodo'
+import { nombresTransaccion } from '../lib/transaccion'
 import type { BiFiltros } from '../lib/types'
 import {
   COLOR_CANCELADO, COLOR_PENDIENTE, COLOR_RESUELTO, PALETA_CATEGORICA, colorEstado, labelCanal,
@@ -19,6 +20,7 @@ import {
 // Sección RESUMEN de la página única del Operativo: volumen y composición del
 // universo filtrado (todos los estados). Export = todos los tickets del filtro.
 export function ResumenSection({ filtros }: { filtros: BiFiltros }) {
+  const n = nombresTransaccion(filtros)
   const resumen = useResumen(filtros)
   const porEstado = usePorEstado(filtros)
   const porCanal = usePorCanal(filtros)
@@ -32,9 +34,9 @@ export function ResumenSection({ filtros }: { filtros: BiFiltros }) {
     try {
       const { data } = await biApi.reclamosDetalle(filtros, 10000, 0)
       exportarCsv(
-        `reclamos_${hoyISO()}.csv`,
+        `${n.plural}_${hoyISO()}.csv`,
         [
-          { header: 'N° Reclamo', value: (d) => d.nro_reclamo },
+          { header: `N° ${n.Singular}`, value: (d) => d.nro_reclamo },
           { header: 'Fecha alta', value: (d) => (d.fecha_alta ? d.fecha_alta.slice(0, 10) : '') },
           { header: 'Tipo', value: (d) => d.tipo },
           { header: 'Prioridad', value: (d) => d.prioridad },
@@ -45,7 +47,7 @@ export function ResumenSection({ filtros }: { filtros: BiFiltros }) {
           { header: 'Dirección', value: (d) => d.direccion },
           { header: 'Fecha cierre', value: (d) => (d.fecha_cierre ? d.fecha_cierre.slice(0, 10) : '') },
           { header: 'Días (cierre o demora)', value: (d) => d.dias },
-          { header: 'Subreclamo', value: (d) => (d.es_subreclamo ? 'Sí' : 'No') },
+          { header: n.SubSingular, value: (d) => (d.es_subreclamo ? 'Sí' : 'No') },
         ],
         data,
       )
@@ -65,8 +67,8 @@ export function ResumenSection({ filtros }: { filtros: BiFiltros }) {
     >
       {/* KPIs — UNA fila: totalizador de lo filtrado + comparativos + composición */}
       <KpiRow n={6}>
-        <KpiCard label="Reclamos ingresados" value={fmt(r?.total)} sub={comp.data ? comp.data.periodo_actual : 'período filtrado'} />
-        <KpisComparativos c={comp.data} etiqueta="reclamos" />
+        <KpiCard label={`${n.Plural} ingresados`} value={fmt(r?.total)} sub={comp.data ? comp.data.periodo_actual : 'período filtrado'} />
+        <KpisComparativos c={comp.data} etiqueta={n.plural} />
         <KpiCard label="Resueltos" value={fmt(r?.resueltos)} accent={COLOR_RESUELTO} />
         <KpiCard label="Pendientes" value={fmt(r?.pendientes)} accent={COLOR_PENDIENTE} sub={r ? `cancelados: ${fmt(r.cancelados)}` : undefined} />
         <KpiCard label="% Cumplimiento" value={r ? `${r.pct_cumplido}%` : '—'} accent="var(--zaris-orange)" sub="resueltos / cerrados" />
@@ -74,7 +76,7 @@ export function ResumenSection({ filtros }: { filtros: BiFiltros }) {
 
       {/* Histórico: toggle Estado / Tipo (como el "Histórico de reclamos" de Power BI) + Mes/Día + drill */}
       <HistogramaTemporal
-        tituloBase="Reclamos ingresados"
+        tituloBase={`${n.Plural} ingresados`}
         cacheKey="resumen"
         filtros={filtros}
         series={[
@@ -137,7 +139,7 @@ export function ResumenSection({ filtros }: { filtros: BiFiltros }) {
       </div>
 
       {/* Barras horizontales por área (con un área filtrada muestra solo esa barra) */}
-      <ChartCard title="Reclamos por área y estado" height={Math.max(160, (porArea.data?.length ?? 1) * 48 + 60)}>
+      <ChartCard title={`${n.Plural} por área y estado`} height={Math.max(160, (porArea.data?.length ?? 1) * 48 + 60)}>
         {porArea.isLoading ? (
           <CenterMsg>Cargando…</CenterMsg>
         ) : !porArea.data?.length ? (

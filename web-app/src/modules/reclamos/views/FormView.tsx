@@ -66,7 +66,7 @@ const CANALES: { value: CanalOrigen; label: string }[] = [
   { value: 'telefono', label: 'Teléfono' },
   { value: 'presencial', label: 'Presencial' },
   { value: 'oficio', label: 'Oficio' },
-  { value: 'app_movil', label: 'App móvil' },
+  { value: 'app_movil', label: 'App del vecino' },
   { value: 'otro', label: 'Otro' },
 ]
 
@@ -391,6 +391,7 @@ export function FormView() {
                 >
                   <option value="">— sin definir —</option>
                   {CANALES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                  {form.canal_origen === 'app_agentes' && <option value="app_agentes">App de agentes</option>}
                 </select>
               </Field>
             </Row>

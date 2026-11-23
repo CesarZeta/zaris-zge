@@ -230,6 +230,10 @@ Spec en [`docs/superpowers/specs/2026-11-21-tramites-vecino-design.md`](docs/sup
 - **139b (datos):** marca `ofrecer_al_vecino` en los seis tipos por código (`aviso-obra`, `poda-arbol`, `inscripcion-profesional`, `exencion-tasas`, `permiso-espacio-publico`, `recurso-administrativo`), en todos los municipios que los tengan; no prende `exige_identidad_validada` en ninguno.
 - Reglas vivas en la skill `modulo-tramites` → «Trámites del vecino» y contrato en `docs/contrato_api_publica.md` §12.
 
+### Migración 142 — canal «app de agentes» (`backend/migrations/142_canal_app_agentes.sql`)
+
+Definición de César (2026-11-23): el canal es la interfaz de registro y el relevamiento es un tipo de transacción. `ck_reclamos_canal` admite `app_agentes`; los relevamientos ya cargados con `oficio` pasan a ese canal. **Aplicada en local el 2026-11-23; en prod la corre César en el SQL Editor** (lleva `DROP CONSTRAINT`), antes de publicar el código que escribe ese canal.
+
 ### Migración 141 — relevamientos (`backend/migrations/141_relevamientos.sql`)
 
 App de agentes, F1 ([`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md), decisiones de César del 2026-11-22). **Aplicada en local y en prod el 2026-11-22**; en prod la corrió César en el SQL Editor (lleva `DROP CONSTRAINT`), antes de publicar el código que lee la columna.

@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
 import { TipoSearch } from './TipoSearch'
-import { SelectorOrigen, labelOrigen } from './SelectorOrigen'
+import { SelectorTransaccion, labelTransaccion } from './SelectorTransaccion'
 import type { AreaCatalogo, BiFiltros } from '../lib/types'
+import { nombresTransaccion } from '../lib/transaccion'
 import { periodoEjecutivoDefault } from '../lib/periodo'
 import { LABEL_CANAL } from '../lib/theme'
 
@@ -16,7 +17,7 @@ import { LABEL_CANAL } from '../lib/theme'
 //  - Estado, prioridad, canal y tipo de reclamo (buscador).
 //  - El panel se puede CONTRAER: contraído muestra un resumen de lo aplicado.
 export const ESTADOS = ['Sin asignar', 'En gestión', 'En espera', 'En auditoría', 'Resuelto', 'Auditado', 'Cancelado'] as const
-const CANALES = ['web', 'app_movil', 'whatsapp', 'telefono', 'presencial', 'oficio', 'otro', 'sin_dato'] as const
+const CANALES = ['web', 'app_movil', 'app_agentes', 'whatsapp', 'telefono', 'presencial', 'oficio', 'otro', 'sin_dato'] as const
 const TODOS_LOS_MESES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
 // "2026 · año completo" / "2026 · mes 5" / "2026 · meses 5, 6" (mismo criterio que el backend).
@@ -81,13 +82,13 @@ export function FiltrosGlobales({
     || (filtros.anio ?? undefined) !== def.anio
     || meses.join(',') !== (def.meses ?? []).join(',')
     || filtros.prioridad || filtros.estado || filtros.id_tipo_reclamo || filtros.canal
-    || filtros.origen === 'relevamientos'
+    || filtros.clase === 'relevamientos'
     || (filtros.id_area ?? undefined) !== (areaDefault ?? undefined))
 
   // Resumen de lo aplicado (se muestra contraído).
   const nombreArea = filtros.id_area ? areas.find((a) => a.id_area === filtros.id_area)?.nombre : 'Todas las áreas'
   const resumen = [
-    labelOrigen(filtros.origen),
+    labelTransaccion(filtros.clase),
     nombreArea ?? '—',
     labelPeriodo(filtros) ?? 'todo el período',
     filtros.estado, filtros.prioridad && `prioridad ${filtros.prioridad}`,
@@ -165,9 +166,9 @@ export function FiltrosGlobales({
             </div>
           </div>
 
-          {/* Fila 2: origen + rango manual + estado + prioridad + canal + tipo */}
+          {/* Fila 2: transacción + rango manual + estado + prioridad + canal + tipo */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-end' }}>
-            <SelectorOrigen value={filtros.origen} onChange={(origen) => set({ origen })}
+            <SelectorTransaccion value={filtros.clase} onChange={(clase) => set({ clase })}
               labelStyle={labelStyle} inputStyle={inputStyle} />
             <div>
               <label style={labelStyle}>Desde</label>
@@ -201,7 +202,7 @@ export function FiltrosGlobales({
               </select>
             </div>
             <div>
-              <label style={labelStyle}>Tipo de reclamo</label>
+              <label style={labelStyle}>Tipo de {nombresTransaccion(filtros).singular}</label>
               <TipoSearch
                 idArea={filtros.id_area}
                 seleccionado={filtros.id_tipo_reclamo ? { id: filtros.id_tipo_reclamo, nombre: filtros.tipo_nombre ?? '' } : undefined}

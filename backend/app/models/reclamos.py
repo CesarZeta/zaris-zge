@@ -116,7 +116,7 @@ class Reclamo(Base):
         ),
         CheckConstraint(
             "canal_origen IS NULL OR canal_origen IN "
-            "('web','whatsapp','telefono','presencial','oficio','app_movil','otro')",
+            "('web','whatsapp','telefono','presencial','oficio','app_movil','app_agentes','otro')",
             name="ck_reclamos_canal"
         ),
         CheckConstraint(

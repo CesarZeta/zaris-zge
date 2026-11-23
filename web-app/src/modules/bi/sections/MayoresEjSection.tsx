@@ -111,7 +111,7 @@ export function MayoresEjSection({ filtros }: { filtros: BiFiltros }) {
           {porDemora.isLoading ? (
             <CenterMsg>Cargando…</CenterMsg>
           ) : !porDemora.data?.length ? (
-            <CenterMsg>Sin cierres en el período (el promedio de días requiere reclamos resueltos).</CenterMsg>
+            <CenterMsg>Sin cierres en el período (el promedio de días requiere incidentes resueltos).</CenterMsg>
           ) : (
             <div style={{ height: '100%', overflowY: 'auto', overflowX: 'hidden', paddingRight: 10 }}>
               <TablaTop rows={porDemora.data} demora />

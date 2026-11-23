@@ -1,7 +1,8 @@
 # PLAN — App de agentes: relevamientos + control de entradas (QR)
 
 > **Estado: APROBADA por César el 2026-11-22** (§2b y §2c: siguió las cuatro recomendaciones). **F1 (backend) en
-> prod el 2026-11-22** (mig 141 corrida por César en el SQL Editor + `agentes_app.py`, smoke 43/43). Sigue F1b.
+> prod el 2026-11-22** (mig 141 corrida por César en el SQL Editor + `agentes_app.py`), F1b en prod el 2026-11-22,
+> **F2 y F3 (pantallas de la app) hechas el 2026-11-23**.
 > Avance en [`ESTADO.md`](ESTADO.md).
 
 ## 1. Pedido de César (2026-10-12, textual resumido)
@@ -127,3 +128,20 @@ declararlo.
 - Verificado navegando en local (listado, contadores, detalle, editar, Operativo y Ejecutivo) y smoke 57/57 con y
   sin barrera; Atención 85, SLA demo 45. Queda para César: las tarjetas de Datos siguen diciendo «reclamos» aunque
   el origen sea relevamientos.
+
+### Corrección de vocabulario (César, 2026-11-23)
+«No dije que el origen es distinto: dije que es un tipo de transacción distinta.» El **canal** es la interfaz de
+registro (call center, app del vecino, web del portal del vecino, app de agentes). En consecuencia:
+- Datos: el filtro «Origen» pasa a **«Transacción»** (API: `origen` → `clase`, igual que en Reclamos) y los textos y
+  los nombres de los CSV siguen lo elegido. Reclamos: «Clase» pasa a **«Transacción»**.
+- Los relevamientos se registran con canal **`app_agentes`** («App de agentes»; migración 142) en lugar de `oficio`.
+  «App móvil» se muestra como «App del vecino».
+
+### F2 y F3 — hechas (2026-11-23, `zaris-agentes`)
+- **Relevamientos:** `/relevamientos`, `/relevamientos/nuevo` (tipo con buscador, descripción, hasta 5 fotos, dirección
+  OSM, pin y GPS; el punto completa la dirección si está vacía) y `/relevamientos/:id` (historial, mapa, agregar fotos).
+- **Control de entradas:** `/entradas` (eventos de hoy, los propios primero) y `/entradas/escanear` (`BarcodeDetector`
+  o `jsqr`; campo manual; verde/rojo; contador). La cámara se apaga mientras se muestra un resultado.
+- Los apartados se muestran según el módulo del municipio y el nivel (el Consultor no los ve): `lib/permisos.ts`.
+- Verificado navegando en local a 360 px: alta con foto y pin, detalle, QR leído por la cámara (video simulado, vía
+  `jsqr`), repetida, cancelada, inexistente, sin permiso de cámara. **Sin probar en un teléfono real.**
