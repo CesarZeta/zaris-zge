@@ -27,7 +27,7 @@
    5. **Base de conocimiento de ayudas**, con dos capítulos: canales del vecino y gestión interna. Ya hay un relevamiento inicial de los canales del vecino (2026-10-27). Mientras tanto no se tocan manuales. César la adelantó el 2026-10-30 empezando por el material de venta (pregunta 5).
 3. **App de agentes: circuito aprobado por César el 2026-11-23, cerrado** ([`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md)); no pedir más pruebas, lo cubre `smoke_agentes_app.py`. REL-SAN-2026-000001 queda sin asignar («Calles y veredas» asigna a mano y no tiene agentes de nivel Gestión). Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
 4. **Arreglos que dejó la prueba de cierre:** quedan el 9 (App Vecinos: catálogo de emergencias del vecino, pide diseño) y menores del 10 y 11, en `PLAN_MULTI_MUNICIPIO_F4_F5.md` → «Prueba de cierre — hallazgos» → «2026-11-19».
-5. **Base de conocimiento — material de venta por circuito** (2026-10-30): borrador `docs/base_conocimiento/resumen_circuitos.md`, **solo en la máquina de César, sin commitear** (lleva notas internas; el repo es público). César revisa los (\*) de los tableros (varios son propuesta de Claude), dice si su «punto 2» era esta estructura o es otra pieza (supuesto de Claude: ficha técnica por circuito) y aprueba el texto. Recomendación: commitearlo sin «Notas internas».
+5. **Material de marketing (2026-11-23):** sumario por secretaría y hojas por secretaría, borradores en `folletos/` (solo en la máquina de César, fuera del repo). Se suma la revisión pendiente de `docs/base_conocimiento/resumen_circuitos.md` (los (\*) de los tableros y el «punto 2»).
 
 ---
 
@@ -44,6 +44,12 @@
 ---
 
 ## 🟠 Pendientes (backoffice / backend)
+
+**Aprobado por César el 2026-11-23, sin empezar** (salió de contrastar el material de marketing con el producto)
+- 🟠 **Confirmación y recordatorio de turnos y entradas al vecino** (aviso, correo y notificación; hoy no se manda ninguno). Pide migración del CHECK de `ciudadano_aviso.tipo`, con `DROP`.
+- 🟠 **Tablero de trámites en Datos.**
+- 🟠 **KPI de gestión** (lo define César): coeficiente que combina los indicadores de gestión con la encuesta de cierre, solo para las interacciones que tienen un vecino: reclamos, turnos, entradas y trámites. **Emergencias y relevamientos quedan afuera** del modelo de análisis y sin encuesta. Por eso no se proponen ni el tablero ni la encuesta de emergencias.
+- 🟢 **Vacunación en la demostración de San Andrés** (prestación de turnos; sin desarrollo) · **modo escritorio del portal** (ya en «En curso»). La agenda en la app de agentes no se promete.
 
 **Decisiones de negocio pendientes (César)**
 - 🟠 **Registro previo:** ver pregunta 1. Siguen F2 (backoffice), F3 (registro del vecino en el portal y la app, y después su usuario: §6), F4 (alta de empresa del lado del vecino) y F5 (igualar las altas).
@@ -81,6 +87,7 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
+- **2026-11-23 (tarde):** **notificaciones del vecino repuestas** en la PWA (César; se habían quitado el 2026-07-06 a pedido de Roy: **Roy, avisado por acá**). Backend: un dispositivo avisa a un solo vecino y apagar uno no apaga los otros (`smoke_publico_push.py` 10/10 con y sin barrera).
 - **2026-11-23:** **App de agentes F2 y F3** (`zaris-agentes`): relevamientos con fotos, pin y GPS, y lector de QR para el control de entradas. Datos y Reclamos: filtro «Transacción» con los textos y los CSV según lo elegido; «App móvil» pasa a «App del vecino» y aparece «App de agentes» como canal. Definiciones de César sobre registro previo y transacción/canal, en CLAUDE.md y en el plan. Últimas 20 entradas por agente. Un teléfono con una versión vieja de las apps ahora se actualiza solo una vez. Registro previo F1: turnos y entradas sin cuenta, 410, y arreglado que ver o cancelar por el link daba error desde F6. Smoke `smoke_agentes_app.py` 80/80 con y sin barrera.
 
 - **2026-11-22 (noche):** **App de agentes F1 + F1b en prod** (`90f3029`, `d1c953b`; mig 141 corrida por César en el SQL Editor): relevamientos (`REL-`, sin vecino, sin avisos ni encuesta; `POST/GET /api/v1/agentes/relevamientos`), control de entradas (`POST /agentes/entradas/acreditar-qr`, `GET /agentes/entradas/eventos-hoy`), filtro «Clase» en Reclamos y «Origen» en Datos. Smoke `smoke_agentes_app.py` 57/57. Menores de trámites del vecino resueltos (`bf3e791` + PWA `5fb8121`).

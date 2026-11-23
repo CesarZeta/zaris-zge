@@ -123,8 +123,8 @@ Todas validan el slug `?m=<codigo_corto>` contra el único municipio del deploy.
 | Verbo | Ruta | Auth | Para qué |
 |---|---|---|---|
 | GET | `/public-key` | publico | Clave VAPID pública para suscribir. |
-| POST | `/subscribe` | publico | Registra la suscripción (UPSERT, activa `canal_push`). |
-| POST | `/unsubscribe` | publico | Da de baja la suscripción. |
+| POST | `/subscribe` | publico | Registra la suscripción (UPSERT, activa `canal_push`). El mismo dispositivo deja de avisar a otro vecino que lo tuviera registrado. |
+| POST | `/unsubscribe` | publico | Da de baja la suscripción. `canal_push` se apaga solo si no le queda otro dispositivo. Sin `endpoint`, da de baja todas. |
 
 ## 10. Perfil del vecino — `/api/v1/publico/perfil` (nuevo 2026-08-30)
 

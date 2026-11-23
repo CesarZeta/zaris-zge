@@ -5,7 +5,7 @@ Bajo /api/v1/publico/push/*. Guard get_current_ciudadano (JWT scope 'publico').
 
   - GET  /public-key   -> clave publica VAPID (la PWA la usa en pushManager.subscribe)
   - POST /subscribe    -> UPSERT de la suscripcion del navegador + canal_push=TRUE
-  - POST /unsubscribe  -> baja logica de la suscripcion + canal_push=FALSE
+  - POST /unsubscribe  -> baja logica de la suscripcion; canal_push=FALSE si no le queda otro dispositivo
 
 La preferencia vive en ciudadano_canal_preferido.canal_push (mig 53): el toggle
 de la PWA es la unica UI que la toca. El envio real vive en services/push.py.
@@ -76,6 +76,14 @@ async def subscribe(
     id_ciudadano = current["id_ciudadano"]
     ua = (request.headers.get("user-agent") or "")[:300]
 
+    # Un dispositivo avisa a UNA persona: si este navegador quedo registrado a nombre de
+    # otro vecino (sesion vencida sin cerrar), sus avisos no pueden llegarle a quien entro.
+    await db.execute(text("""
+        UPDATE ciudadano_push_subscription
+           SET activo = FALSE, fecha_modificacion = NOW()
+         WHERE endpoint = :e AND id_ciudadano <> :c AND activo = TRUE AND id_municipio = :mun
+    """), {"e": payload.endpoint, "c": id_ciudadano, "mun": id_municipio})
+
     # UNIQUE (id_ciudadano, endpoint) — mig 53. Re-suscribirse reactiva y
     # refresca las claves (el navegador puede rotarlas).
     await db.execute(text("""
@@ -113,6 +121,12 @@ async def unsubscribe(
                SET activo = FALSE, fecha_modificacion = NOW()
              WHERE id_ciudadano = :c AND activo = TRUE
         """), {"c": id_ciudadano})
-    await _set_canal_push(db, id_ciudadano, False, id_municipio)
+    # El interruptor de la PWA es «en este dispositivo»: el canal se apaga recien cuando
+    # no le queda ningun otro dispositivo suscripto.
+    quedan = await db.scalar(text(
+        "SELECT EXISTS (SELECT 1 FROM ciudadano_push_subscription"
+        " WHERE id_ciudadano = :c AND activo = TRUE)"
+    ), {"c": id_ciudadano})
+    await _set_canal_push(db, id_ciudadano, bool(quedan), id_municipio)
     await db.commit()
     return {"suscripto": False}
