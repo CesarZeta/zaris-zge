@@ -97,7 +97,8 @@ Un **relevamiento** es un incidente que lleva a cabo un agente municipal: nadie 
 - **No alcanza con `canal_origen = 'oficio'`:** el retrabajo de una auditoría observada también es `oficio` y sí avisa al vecino.
 - **Herencia:** el subreclamo y el retrabajo de un relevamiento también lo son (sin ciudadano). Toda vía nueva que cree un reclamo a partir de otro copia la marca.
 - **Alta:** solo desde la app de agentes, `POST /api/v1/agentes/relevamientos` (niveles 1-4; router `agentes_app.py`, módulo `reclamos`); «mis relevamientos» en `GET /agentes/relevamientos` y `/{id}` (solo los propios, 404 a lo ajeno). Quien lo cargó (nivel 4) puede subirle y quitarle fotos (`reclamo_adjuntos._require_gestion_o_autor`); en un reclamo común el nivel 4 sigue sin poder.
-- **Backoffice y Datos (F1b, pendiente):** en Reclamos con etiqueta y filtro «Relevamientos»; en Datos, contados aparte de los reclamos del vecino.
+- **Backoffice (F1b, 2026-11-22):** `GET /reclamos` y `/reclamos/stats` aceptan `clase` = `reclamos` | `relevamientos` (sin valor: todos; `_cond_clase`); el listado trae `es_relevamiento` y el detalle además `cargado_por_nombre` (agente de `id_usuario_alta` o la cuenta). Pantalla: filtro «Clase» en el listado (viaja con Buscar y también lo siguen los contadores), etiqueta «Relevamiento» en la columna del vecino y en el detalle, bloque «Relevamiento · Cargado por» en lugar de «Ciudadano», y tarjeta propia al editar. `PUT /reclamos/{id}` responde 422 si se le quiere asignar vecino o empresa a un relevamiento.
+- **Datos:** ver la skill `modulo-bi` → «Origen» (cuenta los relevamientos aparte).
 - Smoke `backend/smoke_agentes_app.py` (in-process, también con `DB_BARRERA=true`).
 
 ### Edición de reclamos — alcance por estado

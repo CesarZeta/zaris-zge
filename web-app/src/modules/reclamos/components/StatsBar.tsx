@@ -1,9 +1,11 @@
 import { useStats } from '../hooks/useReclamos'
-import type { StatsReclamos } from '../types/reclamo'
+import type { ClaseIncidente, StatsReclamos } from '../types/reclamo'
 
 interface Props {
   estadoActivo: string | null
   onSelectEstado: (estado: string | null) => void
+  /** Clase aplicada en el listado: los contadores cuentan lo mismo que la lista. */
+  clase?: ClaseIncidente
 }
 
 interface Card {
@@ -46,8 +48,9 @@ const CARDS: Card[] = [
   },
 ]
 
-export function StatsBar({ estadoActivo, onSelectEstado }: Props) {
-  const stats = useStats()
+export function StatsBar({ estadoActivo, onSelectEstado, clase }: Props) {
+  // Los contadores siguen la clase aplicada en el listado (mig 141).
+  const stats = useStats(clase)
   const data = stats.data ?? {}
 
   return (

@@ -1,9 +1,12 @@
-// Badges para estado y prioridad.
+// Badges para estado, prioridad y la marca de relevamiento (mig 141).
 
 interface BadgeProps {
-  kind: 'estado' | 'prioridad'
+  kind: 'estado' | 'prioridad' | 'relevamiento'
   value: string
 }
+
+// Relevamiento: azul, el color de los pases del módulo (no choca con estados ni prioridades).
+const RELEVAMIENTO_COLOR = { bg: 'rgba(21,101,192,.12)', fg: '#1565c0' }
 
 const ESTADO_COLORS: Record<string, { bg: string; fg: string }> = {
   'Sin asignar':   { bg: 'rgba(207,45,86,.12)',   fg: '#cf2d56' },
@@ -24,7 +27,9 @@ const PRIORIDAD_COLORS: Record<string, { bg: string; fg: string }> = {
 
 export function Badge({ kind, value }: BadgeProps) {
   const palette = kind === 'estado' ? ESTADO_COLORS : PRIORIDAD_COLORS
-  const c = palette[value] || { bg: 'rgba(38,37,30,.08)', fg: 'var(--fg-2)' }
+  const c = kind === 'relevamiento'
+    ? RELEVAMIENTO_COLOR
+    : palette[value] || { bg: 'rgba(38,37,30,.08)', fg: 'var(--fg-2)' }
   return (
     <span style={{
       display: 'inline-block',

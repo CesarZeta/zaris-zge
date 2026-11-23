@@ -3,7 +3,7 @@ ZARIS API — Endpoints del módulo Reclamos (v1.2).
 Prefijo: /api/v1/reclamos/
 """
 import logging
-from typing import Optional
+from typing import Literal, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -380,8 +380,19 @@ async def _terminar_ots_operativas(db: AsyncSession, id_reclamo: int,
 
 # ── GET /reclamos/stats ──────────────────────────────────────────────────────
 
+def _cond_clase(clase: Optional[str]) -> str:
+    """Condición SQL fija (sin parámetros) para separar reclamos del vecino y relevamientos (mig 141)."""
+    if clase == "reclamos":
+        return "AND NOT r.es_relevamiento"
+    if clase == "relevamientos":
+        return "AND r.es_relevamiento"
+    return ""
+
+
 @router.get("/stats")
 async def stats_reclamos(
+    clase: Optional[Literal["reclamos", "relevamientos"]] = Query(
+        None, description="reclamos = los del vecino · relevamientos = los que carga un agente (mig 141) · sin valor: todos"),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
     id_municipio: int = Depends(municipio_actual),
@@ -390,19 +401,19 @@ async def stats_reclamos(
     # subárea (derivada del tipo, §27); Atención/Admin cuentan todo.
     sub_scope = await _subarea_scope_listado(db, current_user)
     if sub_scope is not None:
-        result = await db.execute(text("""
+        result = await db.execute(text(f"""
             SELECT r.estado, COUNT(*) AS total
             FROM reclamos r
             JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
-            WHERE r.activo = TRUE AND tr.id_subarea = :sub AND r.id_municipio = :mun
+            WHERE r.activo = TRUE AND tr.id_subarea = :sub AND r.id_municipio = :mun {_cond_clase(clase)}
             GROUP BY r.estado
         """), {"sub": sub_scope, "mun": id_municipio})
     else:
-        result = await db.execute(text("""
-            SELECT estado, COUNT(*) AS total
-            FROM reclamos
-            WHERE activo = TRUE AND id_municipio = :mun
-            GROUP BY estado
+        result = await db.execute(text(f"""
+            SELECT r.estado, COUNT(*) AS total
+            FROM reclamos r
+            WHERE r.activo = TRUE AND r.id_municipio = :mun {_cond_clase(clase)}
+            GROUP BY r.estado
         """), {"mun": id_municipio})
     return {r.estado: r.total for r in result.fetchall()}
 
@@ -511,6 +522,8 @@ async def listar_reclamos(
         description="Solo los pendientes de resolver (Sin asignar, En gestión, En espera, "
                     "En auditoría), del más antiguo al más nuevo. Se combina con los demás filtros.",
     ),
+    clase: Optional[Literal["reclamos", "relevamientos"]] = Query(
+        None, description="reclamos = los del vecino · relevamientos = los que carga un agente (mig 141) · sin valor: todos"),
     orden: Optional[str] = Query(
         None,
         description="Columna de orden: " + ", ".join(sorted(_ORDEN_LISTADO)) +
@@ -562,6 +575,8 @@ async def listar_reclamos(
     if prioridad:
         conds.append("r.prioridad = :prioridad")
         params["prioridad"] = prioridad
+    if clase:
+        conds.append(_cond_clase(clase).removeprefix("AND "))
     if texto:
         conds.append("(r.descripcion ILIKE :txt OR r.nro_reclamo ILIKE :txt OR c.nombre ILIKE :txt OR c.apellido ILIKE :txt OR c.doc_nro ILIKE :txt OR tr.nombre ILIKE :txt)")
         params["txt"] = f"%{texto}%"
@@ -579,6 +594,7 @@ async def listar_reclamos(
             r.fecha_alta, r.fecha_modificacion, r.fecha_cierre,
             r.id_reclamo_padre,
             r.resultado_auditoria, r.id_reclamo_origen_auditoria,
+            r.es_relevamiento,
             r.latitud, r.longitud,
             r.id_ciudadano, c.nombre AS ciudadano_nombre, c.apellido AS ciudadano_apellido, c.doc_nro,
             r.id_tipo_reclamo, tr.nombre AS tipo_nombre, tr.sla_dias, tr.sla_minutos, tr.audit AS tipo_audit,
@@ -619,7 +635,8 @@ async def obtener_reclamo(
             r.id_reclamo_origen_auditoria, ro.nro_reclamo AS origen_auditoria_nro,
             rt.id_reclamo AS retrabajo_auditoria_id, rt.nro_reclamo AS retrabajo_auditoria_nro,
             rt.estado AS retrabajo_auditoria_estado,
-            r.canal_origen, r.fuente_geolocalizacion,
+            r.canal_origen, r.fuente_geolocalizacion, r.es_relevamiento,
+            COALESCE(NULLIF(TRIM(CONCAT_WS(' ', agalta.nombre, agalta.apellido)), ''), ualta.nombre) AS cargado_por_nombre,
             r.latitud, r.longitud,
             r.id_localidad, loc.nombre AS localidad_nombre,
             par.id_partido, par.nombre AS partido_nombre,
@@ -651,6 +668,10 @@ async def obtener_reclamo(
         -- retrabajo, y el retrabajo que nació de la auditoría observada de este.
         LEFT JOIN reclamos ro ON ro.id_reclamo = r.id_reclamo_origen_auditoria
         LEFT JOIN reclamos rt ON rt.id_reclamo_origen_auditoria = r.id_reclamo AND rt.activo = TRUE
+        -- Quién lo cargó (relevamientos, mig 141): el agente de la cuenta o, si no tiene, la cuenta.
+        LEFT JOIN usuarios ualta ON ualta.id_usuario = r.id_usuario_alta
+        LEFT JOIN LATERAL (SELECT ag2.nombre, ag2.apellido FROM agentes ag2
+                            WHERE ag2.id_usuario = r.id_usuario_alta AND ag2.activo = TRUE LIMIT 1) agalta ON TRUE
         WHERE r.id_reclamo = :id AND r.activo = TRUE AND r.id_municipio = :mun
     """), {"id": id_reclamo, "mun": id_municipio})
     row = result.fetchone()
@@ -1258,12 +1279,18 @@ async def editar_reclamo(
     _require_gestion(current_user)
 
     r = await db.execute(text("""
-        SELECT id_ciudadano, estado FROM reclamos
+        SELECT id_ciudadano, estado, es_relevamiento FROM reclamos
         WHERE id_reclamo = :id AND activo = TRUE AND id_municipio = :mun
     """), {"id": id_reclamo, "mun": id_municipio})
     row = r.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail=f"Reclamo {id_reclamo} no encontrado")
+    # Un relevamiento (mig 141) no tiene solicitante: no se le asigna vecino ni empresa.
+    if row.es_relevamiento:
+        if body.get("id_ciudadano") or body.get("id_empresa"):
+            raise HTTPException(status_code=422,
+                detail="Un relevamiento no tiene solicitante: no se le asigna vecino ni empresa.")
+        body = {k: v for k, v in body.items() if k not in ("id_ciudadano", "id_empresa")}
     if row.estado in ESTADOS_CERRADOS:
         raise HTTPException(status_code=422,
             detail=f"No se puede editar un reclamo cerrado (actual: {row.estado})")

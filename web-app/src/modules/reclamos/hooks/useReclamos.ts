@@ -18,7 +18,7 @@ import {
   obtenerReclamo,
   type OrdenListadoReclamos,
 } from '../api/reclamosApi'
-import type { ReclamoCreate, ReclamoUpdate } from '../types/reclamo'
+import type { ClaseIncidente, ReclamoCreate, ReclamoUpdate } from '../types/reclamo'
 
 const HORA = 60 * 60 * 1000
 
@@ -44,10 +44,10 @@ export function useTiposCatalogo(id_area?: number) {
 }
 
 // ── Stats (contadores top) ──
-export function useStats() {
+export function useStats(clase?: ClaseIncidente) {
   return useQuery({
-    queryKey: ['reclamos', 'stats'],
-    queryFn: getStats,
+    queryKey: ['reclamos', 'stats', clase ?? 'todos'],
+    queryFn: () => getStats(clase),
     staleTime: 30 * 1000,
   })
 }
@@ -60,6 +60,7 @@ export interface FiltrosReclamos {
   prioridad?: string
   texto?: string
   pendientes?: boolean
+  clase?: ClaseIncidente
   orden?: OrdenListadoReclamos
   dir?: 'asc' | 'desc'
   limit?: number

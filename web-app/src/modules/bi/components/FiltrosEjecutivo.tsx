@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import type { AreaCatalogo, BiFiltros, EjLocalidadCatalogo, EjSubareaCatalogo } from '../lib/types'
 import { periodoEjecutivoDefault } from '../lib/periodo'
 import { labelPeriodo } from './FiltrosGlobales'
+import { SelectorOrigen, labelOrigen } from './SelectorOrigen'
 
 // Panel "Filtrado de análisis" del EJECUTIVO (2026-08-30). Decisión de César:
 // el tablero de conducción filtra por PERÍODO + ÁREA (+ localidad, como los
@@ -64,7 +65,7 @@ export function FiltrosEjecutivo({
   const hayFiltros = !!(filtros.desde || filtros.hasta
     || (filtros.anio ?? undefined) !== def.anio
     || meses.join(',') !== (def.meses ?? []).join(',')
-    || filtros.id_localidad || filtros.id_subarea
+    || filtros.id_localidad || filtros.id_subarea || filtros.origen === 'relevamientos'
     || (filtros.id_area ?? undefined) !== (def.id_area ?? undefined))
 
   const nombreArea = filtros.id_area ? areas.find((a) => a.id_area === filtros.id_area)?.nombre : 'Todas las áreas'
@@ -75,6 +76,7 @@ export function FiltrosEjecutivo({
     ? localidades.find((l) => l.id_localidad === filtros.id_localidad)?.nombre
     : undefined
   const resumen = [
+    labelOrigen(filtros.origen),
     nombreArea ?? '—',
     nombreSub,
     labelPeriodo(filtros) ?? 'todo el período',
@@ -168,6 +170,8 @@ export function FiltrosEjecutivo({
             <label style={labelStyle}>Hasta</label>
             <input type="date" value={filtros.hasta ?? ''} onChange={(e) => setRango({ desde: filtros.desde, hasta: e.target.value || undefined })} style={inputStyle} />
           </div>
+          <SelectorOrigen value={filtros.origen} onChange={(origen) => set({ origen })}
+            labelStyle={labelStyle} inputStyle={inputStyle} />
           <div>
             <label style={labelStyle}>Localidad</label>
             <select

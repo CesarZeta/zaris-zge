@@ -118,3 +118,12 @@ declararlo.
   la entrada (la puerta lo muestra en rojo con la fecha).
 - Smoke `backend/smoke_agentes_app.py` 43/43 (también con `DB_BARRERA=true`); auditoría 86, encuestas 294, alta
   con mail 11 y cancelar 8 siguen en verde.
+
+### F1b — hecho (2026-11-22)
+- **Reclamos:** filtro «Clase» (todos / reclamos del vecino / relevamientos) en el listado y en los contadores,
+  etiqueta «Relevamiento», bloque «Cargado por» en el detalle y tarjeta propia al editar; asignarle un vecino o una
+  empresa da 422.
+- **Datos:** filtro «Origen» en Operativo y Ejecutivo (por defecto reclamos del vecino; relevamientos aparte).
+- Verificado navegando en local (listado, contadores, detalle, editar, Operativo y Ejecutivo) y smoke 57/57 con y
+  sin barrera; Atención 85, SLA demo 45. Queda para César: las tarjetas de Datos siguen diciendo «reclamos» aunque
+  el origen sea relevamientos.

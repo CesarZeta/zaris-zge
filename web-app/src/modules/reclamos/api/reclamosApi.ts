@@ -1,6 +1,7 @@
 import { api } from '../../../lib/api'
 import type {
   AreaCatalogo,
+  ClaseIncidente,
   SubareaCatalogo,
   TipoCatalogo,
   ReclamoListado,
@@ -18,8 +19,8 @@ const BASE = '/api/v1/reclamos'
 export type OrdenListadoReclamos =
   | 'nro' | 'fecha' | 'estado' | 'prioridad' | 'ciudadano' | 'tipo' | 'subarea' | 'area' | 'agente'
 
-export const getStats = () =>
-  api.get<StatsReclamos>(`${BASE}/stats`)
+export const getStats = (clase?: ClaseIncidente) =>
+  api.get<StatsReclamos>(`${BASE}/stats`, { params: { clase } })
 
 export const getCatalogoAreas = () =>
   api.get<AreaCatalogo[]>(`${BASE}/catalogo/areas`)
@@ -38,6 +39,8 @@ export const listarReclamos = (params: {
   texto?: string
   /** Solo pendientes de resolver, del más antiguo al más nuevo (backend `ESTADOS_PENDIENTES`). */
   pendientes?: boolean
+  /** reclamos = los del vecino · relevamientos = los que carga un agente (mig 141) · sin valor: todos. */
+  clase?: ClaseIncidente
   /** Columna de orden (lista cerrada del backend `_ORDEN_LISTADO`) y sentido. */
   orden?: OrdenListadoReclamos
   dir?: 'asc' | 'desc'

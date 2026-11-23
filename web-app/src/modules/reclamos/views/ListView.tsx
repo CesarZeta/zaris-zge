@@ -4,7 +4,7 @@ import { Search } from 'lucide-react'
 import { useAreasCatalogo, useSubareasCatalogo, useReclamosListado, useTomarReclamo, type FiltrosReclamos } from '../hooks/useReclamos'
 import { useAuthStore } from '../../../stores/auth'
 import { useNotificationsStore } from '../../../stores/notifications'
-import type { ReclamoListado } from '../types/reclamo'
+import type { ClaseIncidente, ReclamoListado } from '../types/reclamo'
 import { StatsBar } from '../components/StatsBar'
 import { Badge } from '../components/Badge'
 import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
@@ -32,9 +32,11 @@ interface FiltrosBorrador {
   idArea: number | null
   idSubarea: number | null
   texto: string
+  /** Clase (mig 141): todos, solo reclamos del vecino o solo relevamientos. */
+  clase: ClaseIncidente | null
 }
 
-const FILTROS_INICIALES: FiltrosBorrador = { estado: null, idArea: null, idSubarea: null, texto: '' }
+const FILTROS_INICIALES: FiltrosBorrador = { estado: null, idArea: null, idSubarea: null, texto: '', clase: null }
 
 export function ListView() {
   const navigate = useNavigate()
@@ -43,7 +45,7 @@ export function ListView() {
   // (áreas/subáreas) sí cargan al entrar: son las opciones del filtro.
   const busqueda = useBusquedaDiferida<FiltrosBorrador>(FILTROS_INICIALES)
   const { borrador, setBorrador, aplicado, buscar, buscado } = busqueda
-  const { estado, idArea, idSubarea, texto } = borrador
+  const { estado, idArea, idSubarea, texto, clase } = borrador
 
   const verPendientes = aplicado?.estado === PENDIENTES
   // Pendientes: «todos» hasta el máximo del backend; el resto del listado sigue en 200.
@@ -57,6 +59,7 @@ export function ListView() {
     id_area: aplicado?.idArea ?? undefined,
     id_subarea: aplicado?.idSubarea ?? undefined,
     texto: aplicado?.texto.trim() || undefined,
+    clase: aplicado?.clase ?? undefined,
     orden: orden?.campo,
     dir: orden?.dir,
     limit: limite,
@@ -158,6 +161,19 @@ export function ListView() {
           </select>
         </div>
         <div style={filterGroup}>
+          <label style={filterLabel}>Clase</label>
+          <select
+            value={clase ?? ''}
+            onChange={(e) => { const v = (e.target.value || null) as ClaseIncidente | null; setBorrador((b) => ({ ...b, clase: v })) }}
+            style={filterInput}
+            title="Los relevamientos los carga un agente municipal desde la app de agentes"
+          >
+            <option value="">Todos</option>
+            <option value="reclamos">Reclamos del vecino</option>
+            <option value="relevamientos">Relevamientos</option>
+          </select>
+        </div>
+        <div style={filterGroup}>
           <label style={filterLabel}>Área</label>
           <select
             value={idArea ?? ''}
@@ -191,7 +207,7 @@ export function ListView() {
 
       {/* Contadores por estado: consultan al backend, así que recién después de la
           primera búsqueda. Clic en una tarjeta filtra por ese estado y busca. */}
-      {buscado && <StatsBar estadoActivo={estado} onSelectEstado={filtrarPorEstado} />}
+      {buscado && <StatsBar estadoActivo={estado} onSelectEstado={filtrarPorEstado} clase={aplicado?.clase ?? undefined} />}
 
       {!buscado && (
         <AvisoBuscar texto="Elegí estado, área o texto (o dejá Todos) y presioná Buscar para ver los reclamos." />
@@ -251,12 +267,21 @@ export function ListView() {
                 >
                   <Td mono>{r.nro_reclamo || `#${r.id_reclamo}`}</Td>
                   <Td>
-                    <strong style={{ fontSize: '0.85rem' }}>
-                      {r.ciudadano_apellido || '—'}, {r.ciudadano_nombre || '—'}
-                    </strong>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
-                      {r.doc_nro || '—'}
-                    </div>
+                    {r.es_relevamiento ? (
+                      <>
+                        <Badge kind="relevamiento" value="Relevamiento" />
+                        <div style={{ fontSize: '0.72rem', color: 'var(--fg-3)', marginTop: 2 }}>sin vecino: lo cargó un agente</div>
+                      </>
+                    ) : (
+                      <>
+                        <strong style={{ fontSize: '0.85rem' }}>
+                          {r.ciudadano_apellido || '—'}, {r.ciudadano_nombre || '—'}
+                        </strong>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
+                          {r.doc_nro || '—'}
+                        </div>
+                      </>
+                    )}
                   </Td>
                   <Td>
                     <div style={{ fontSize: '0.84rem', fontWeight: 500 }}>{r.tipo_nombre || '—'}</div>

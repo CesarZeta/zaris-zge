@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { TipoSearch } from './TipoSearch'
+import { SelectorOrigen, labelOrigen } from './SelectorOrigen'
 import type { AreaCatalogo, BiFiltros } from '../lib/types'
 import { periodoEjecutivoDefault } from '../lib/periodo'
 import { LABEL_CANAL } from '../lib/theme'
@@ -80,11 +81,13 @@ export function FiltrosGlobales({
     || (filtros.anio ?? undefined) !== def.anio
     || meses.join(',') !== (def.meses ?? []).join(',')
     || filtros.prioridad || filtros.estado || filtros.id_tipo_reclamo || filtros.canal
+    || filtros.origen === 'relevamientos'
     || (filtros.id_area ?? undefined) !== (areaDefault ?? undefined))
 
   // Resumen de lo aplicado (se muestra contraído).
   const nombreArea = filtros.id_area ? areas.find((a) => a.id_area === filtros.id_area)?.nombre : 'Todas las áreas'
   const resumen = [
+    labelOrigen(filtros.origen),
     nombreArea ?? '—',
     labelPeriodo(filtros) ?? 'todo el período',
     filtros.estado, filtros.prioridad && `prioridad ${filtros.prioridad}`,
@@ -162,8 +165,10 @@ export function FiltrosGlobales({
             </div>
           </div>
 
-          {/* Fila 2: rango manual + estado + prioridad + canal + tipo */}
+          {/* Fila 2: origen + rango manual + estado + prioridad + canal + tipo */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-end' }}>
+            <SelectorOrigen value={filtros.origen} onChange={(origen) => set({ origen })}
+              labelStyle={labelStyle} inputStyle={inputStyle} />
             <div>
               <label style={labelStyle}>Desde</label>
               <input type="date" value={filtros.desde ?? ''} onChange={(e) => setRango({ desde: e.target.value || undefined, hasta: filtros.hasta })} style={inputStyle} />

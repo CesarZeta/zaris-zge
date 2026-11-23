@@ -6,7 +6,7 @@ import type { BiFiltros } from '../lib/types'
 // Incluye TODOS los campos que viajan al backend: si se agrega un filtro nuevo a
 // BiFiltros hay que sumarlo acá o las vistas muestran datos viejos.
 export const filtrosKey = (f: BiFiltros) =>
-  [f.desde, f.hasta, f.anio, (f.meses ?? []).join(','), f.id_area, f.id_subarea, f.prioridad, f.estado, f.id_tipo_reclamo, f.canal, f.id_localidad, f.id_espacio_ubicacion, f.id_tipo_prestacion] as const
+  [f.desde, f.hasta, f.anio, (f.meses ?? []).join(','), f.id_area, f.id_subarea, f.prioridad, f.estado, f.id_tipo_reclamo, f.canal, f.id_localidad, f.id_espacio_ubicacion, f.id_tipo_prestacion, f.origen ?? 'reclamos'] as const
 const key = (sub: string, f: BiFiltros) => ['bi', sub, ...filtrosKey(f)] as const
 
 // KPIs comparativos de la fila única de cada sección.

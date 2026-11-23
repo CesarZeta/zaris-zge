@@ -211,6 +211,57 @@ async def test_sin_avisos_ni_encuesta(c, h, rel: dict) -> None:
     check(not MAILS, "sin mails", str(MAILS))
 
 
+async def test_backoffice_y_datos(c, h, rel: dict) -> None:
+    print("[11] F1b: Reclamos separa por clase y Datos cuenta los relevamientos aparte")
+    ids = lambda r: [x["id_reclamo"] for x in r.json()]  # noqa: E731
+    r = await c.get("/api/v1/reclamos", headers=h["admin"], params={"clase": "relevamientos", "limit": 500})
+    check(r.status_code == 200 and rel["id_reclamo"] in ids(r), "clase=relevamientos lo trae", str(r.status_code))
+    check(all(x["es_relevamiento"] for x in r.json()), "y solo trae relevamientos")
+    r = await c.get("/api/v1/reclamos", headers=h["admin"],
+                    params={"clase": "reclamos", "texto": rel["nro_reclamo"], "limit": 500})
+    check(rel["id_reclamo"] not in ids(r), "clase=reclamos no lo trae")
+    r = await c.get("/api/v1/reclamos", headers=h["admin"], params={"texto": rel["nro_reclamo"]})
+    check(rel["id_reclamo"] in ids(r), "sin clase: lo trae junto con los reclamos")
+    r = await c.get("/api/v1/reclamos", headers=h["admin"], params={"clase": "basura"})
+    check(r.status_code == 422, "clase inválida: 422", str(r.status_code))
+    st_rel = (await c.get("/api/v1/reclamos/stats", headers=h["admin"], params={"clase": "relevamientos"})).json()
+    st_rec = (await c.get("/api/v1/reclamos/stats", headers=h["admin"], params={"clase": "reclamos"})).json()
+    st_all = (await c.get("/api/v1/reclamos/stats", headers=h["admin"])).json()
+    check(sum(st_rel.values()) + sum(st_rec.values()) == sum(st_all.values()) and sum(st_rel.values()) >= 1,
+          "contadores: relevamientos + reclamos = todos", f"{st_rel} {st_rec}")
+
+    d = (await c.get(f"/api/v1/reclamos/{rel['id_reclamo']}", headers=h["admin"])).json()
+    check(d.get("es_relevamiento") is True and d.get("cargado_por_nombre"), "detalle: marca y quién lo cargó",
+          str({k: d.get(k) for k in ("es_relevamiento", "cargado_por_nombre")}))
+
+    nuevo = await c.post("/api/v1/agentes/relevamientos", headers=h["gestion"],
+                         json=_cuerpo(await _tipo_de_prueba()))
+    if nuevo.status_code == 201:
+        idn = nuevo.json()["id_reclamo"]
+        CREADOS.append(idn)
+        est = (await q1("SELECT estado FROM reclamos WHERE id_reclamo = :i", i=idn))["estado"]
+        if est == "Sin asignar":
+            r = await c.put(f"/api/v1/reclamos/{idn}", headers=h["admin"], json={"id_ciudadano": 3})
+            check(r.status_code == 422, "editar: asignarle un vecino da 422", str(r.status_code))
+            r = await c.put(f"/api/v1/reclamos/{idn}", headers=h["admin"],
+                            json={"descripcion": "Smoke: relevamiento editado", "id_ciudadano": None})
+            check(r.status_code == 200, "editar la descripción anda", f"{r.status_code} {r.text[:150]}")
+        else:
+            print(f"  (la asignación automática ya lo pasó a {est}: se saltea la edición completa)")
+
+    print("[12] Datos: el origen separa reclamos y relevamientos en el Operativo y el Ejecutivo")
+    n_rel = (await q1("SELECT COUNT(*) AS n FROM reclamos WHERE id_municipio = 1 AND activo AND es_relevamiento"))["n"]
+    n_rec = (await q1("SELECT COUNT(*) AS n FROM reclamos WHERE id_municipio = 1 AND activo AND NOT es_relevamiento"))["n"]
+    for url in ("/api/v1/bi/resumen", "/api/v1/bi/ejecutivo/score"):
+        t_def = (await c.get(url, headers=h["admin"])).json()["total"]
+        t_rec = (await c.get(url, headers=h["admin"], params={"origen": "reclamos"})).json()["total"]
+        t_rel = (await c.get(url, headers=h["admin"], params={"origen": "relevamientos"})).json()["total"]
+        check(t_def == t_rec == n_rec, f"{url}: por defecto solo reclamos del vecino", f"{t_def} {t_rec} {n_rec}")
+        check(t_rel == n_rel, f"{url}: origen=relevamientos los cuenta aparte", f"{t_rel} {n_rel}")
+    r = await c.get("/api/v1/bi/resumen", headers=h["admin"], params={"origen": "basura"})
+    check(r.status_code == 422, "origen inválido: 422", str(r.status_code))
+
+
 async def test_subreclamo_hereda(c, h) -> None:
     print("[7] El subreclamo de un relevamiento también es relevamiento y sin ciudadano")
     tipo = await _tipo_de_prueba()
@@ -355,6 +406,7 @@ async def main() -> int:
                 await test_listado_y_detalle(c, h, rel)
                 await test_adjuntos_del_autor(c, h, rel)
                 await test_sin_avisos_ni_encuesta(c, h, rel)
+                await test_backoffice_y_datos(c, h, rel)
             await test_subreclamo_hereda(c, h)
             if CREADOS:
                 await test_check_de_la_base()

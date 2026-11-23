@@ -45,6 +45,9 @@ export interface TipoCatalogo {
 }
 
 // Fila del listado /reclamos (GET "")
+/** Clase de incidente (mig 141): los reclamos del vecino o los relevamientos que carga un agente. */
+export type ClaseIncidente = 'reclamos' | 'relevamientos'
+
 export interface ReclamoListado {
   id_reclamo: number
   nro_reclamo: string | null
@@ -60,9 +63,11 @@ export interface ReclamoListado {
   // Auditoría posterior (mig 112)
   resultado_auditoria: ResultadoAuditoria | null
   id_reclamo_origen_auditoria: number | null
+  /** Relevamiento (mig 141): lo cargó un agente, no tiene vecino. */
+  es_relevamiento?: boolean
   latitud: number | null
   longitud: number | null
-  id_ciudadano: number
+  id_ciudadano: number | null
   ciudadano_nombre: string | null
   ciudadano_apellido: string | null
   doc_nro: string | null
@@ -127,6 +132,8 @@ export interface Subreclamo {
 // Reclamo full (GET /reclamos/{id})
 export interface ReclamoDetalle extends ReclamoListado {
   direccion: string | null
+  /** Quién lo cargó (agente o cuenta); se muestra en los relevamientos (mig 141). */
+  cargado_por_nombre?: string | null
   // Texto de resolución que ve el vecino (mig 117).
   resolucion?: string | null
   acciones?: AccionesReclamo

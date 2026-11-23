@@ -199,6 +199,7 @@ export function DetailView() {
         <Grid cols="repeat(4, 1fr)">
           <Cell label="Estado">
             <Badge kind="estado" value={r.estado} />
+            {r.es_relevamiento && <span style={{ marginLeft: 6 }}><Badge kind="relevamiento" value="Relevamiento" /></span>}
           </Cell>
           <Cell label="Prioridad">
             <Badge kind="prioridad" value={r.prioridad ?? 'Media'} />
@@ -257,6 +258,18 @@ export function DetailView() {
         )}
       </ReclamoSection>
 
+      {r.es_relevamiento ? (
+        <ReclamoSection title="Relevamiento">
+          <Grid cols="1fr">
+            <Cell label="Cargado por">
+              {r.cargado_por_nombre || '—'}
+              <span style={{ color: 'var(--fg-3)', marginLeft: 8 }}>
+                desde la app de agentes. No tiene vecino: no se avisa a nadie ni hay encuesta.
+              </span>
+            </Cell>
+          </Grid>
+        </ReclamoSection>
+      ) : (
       <ReclamoSection title="Ciudadano">
         <Grid cols="repeat(4, 1fr)">
           <Cell label="Nombre">{r.ciudadano_apellido || '—'}, {r.ciudadano_nombre || '—'}</Cell>
@@ -273,6 +286,7 @@ export function DetailView() {
           </Grid>
         )}
       </ReclamoSection>
+      )}
 
       <ReclamoSection title="Descripción">
         <p style={{ margin: 0, color: 'var(--fg-1)', fontSize: '0.92rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>

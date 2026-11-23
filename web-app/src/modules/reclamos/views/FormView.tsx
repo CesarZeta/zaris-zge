@@ -338,6 +338,16 @@ export function FormView() {
                 </Field>
               )}
             </>
+          ) : detalle.data?.es_relevamiento ? (
+            // Relevamiento (mig 141): lo cargó un agente, no tiene vecino.
+            <div style={cardCiudadano}>
+              <div>
+                <strong style={{ color: 'var(--fg-1)' }}>Relevamiento</strong>
+                <div style={{ fontSize: '0.78rem', color: 'var(--fg-3)', marginTop: 2 }}>
+                  Cargado por {detalle.data.cargado_por_nombre ?? 'un agente'} desde la app de agentes: no tiene vecino.
+                </div>
+              </div>
+            </div>
           ) : (
             // En edit el ciudadano viene fijo (no se cambia desde la UI en Fase B)
             <div style={cardCiudadano}>
