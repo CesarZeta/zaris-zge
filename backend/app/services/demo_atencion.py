@@ -94,6 +94,18 @@ INTERVENCIONES = [
     "Consulta por alergia estacional. Se indica antihistamínico.",
     "Control post tratamiento. Evolución favorable, alta de seguimiento.",
 ]
+# Prestaciones cuyo nombre dice «vacun»: la atencion es la aplicacion, no una consulta.
+INTERVENCIONES_VACUNACION = [
+    "Vacuna antigripal aplicada. Sin reacciones inmediatas.",
+    "Refuerzo doble adultos aplicado. Se actualiza el carnet.",
+    "Vacuna del calendario aplicada. Se actualiza el carnet.",
+    "Segunda dosis de hepatitis B aplicada. Sin reacciones inmediatas.",
+]
+RECOMENDACIONES_VACUNACION = [
+    "Frío local si hay dolor. Consultar ante fiebre persistente.",
+    "Conservar el carnet y volver para la próxima dosis.",
+    None, None,
+]
 RECOMENDACIONES = [
     "Reposo relativo e hidratación. Volver ante fiebre persistente.",
     "Control en 30 días con estudios de laboratorio.",
@@ -376,8 +388,10 @@ def _desenlace(rnd: random.Random, cat: _Catalogos, t: dict, ahora: datetime) ->
     fin_atencion = _clamp(fin_atencion, ahora - timedelta(minutes=1))
     t["fecha_modificacion"] = fin_atencion
     if p.registra_atencion:
-        t["atencion"] = {"intervencion": rnd.choice(INTERVENCIONES),
-                         "recomendaciones": rnd.choice(RECOMENDACIONES), "fecha": fin_atencion}
+        es_vacuna = "vacun" in p.nombre.lower()
+        t["atencion"] = {"intervencion": rnd.choice(INTERVENCIONES_VACUNACION if es_vacuna else INTERVENCIONES),
+                         "recomendaciones": rnd.choice(RECOMENDACIONES_VACUNACION if es_vacuna else RECOMENDACIONES),
+                         "fecha": fin_atencion}
     if cat.id_plantilla_turnos and rnd.random() < 0.85:
         fecha_envio = fin_atencion + timedelta(days=1, hours=rnd.uniform(0, 6))
         if fecha_envio > ahora - timedelta(hours=1):

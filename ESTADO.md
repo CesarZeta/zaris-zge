@@ -48,8 +48,8 @@
 **Aprobado por César el 2026-11-23, sin empezar** (salió de contrastar el material de marketing con el producto)
 - 🟠 **Confirmación y recordatorio de turnos y entradas al vecino** (aviso, correo y notificación; hoy no se manda ninguno). Pide migración del CHECK de `ciudadano_aviso.tipo`, con `DROP`.
 - 🟠 **Tablero de trámites en Datos.**
-- 🟠 **KPI de gestión** (lo define César): coeficiente que combina los indicadores de gestión con la encuesta de cierre, solo para las interacciones que tienen un vecino: reclamos, turnos, entradas y trámites. **Emergencias y relevamientos quedan afuera** del modelo de análisis y sin encuesta. Por eso no se proponen ni el tablero ni la encuesta de emergencias.
-- 🟢 **Vacunación en la demostración de San Andrés** (prestación de turnos; sin desarrollo) · **modo escritorio del portal** (ya en «En curso»). La agenda en la app de agentes no se promete.
+- 🟠 **KPI de gestión** (lo define César): coeficiente que combina los indicadores de gestión con la encuesta de cierre, solo para las interacciones que tienen un vecino: reclamos, turnos, entradas y trámites. **Emergencias, relevamientos y la Guardia quedan afuera** del modelo de análisis y sin encuesta. Por eso no se proponen ni el tablero ni la encuesta de emergencias.
+- 🟢 **Modo escritorio del portal** (ya en «En curso»). La agenda en la app de agentes no se promete.
 
 **Decisiones de negocio pendientes (César)**
 - 🟠 **Registro previo:** ver pregunta 1. Siguen F2 (backoffice), F3 (registro del vecino en el portal y la app, y después su usuario: §6), F4 (alta de empresa del lado del vecino) y F5 (igualar las altas).
@@ -87,7 +87,7 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
-- **2026-11-23 (tarde):** **notificaciones del vecino repuestas** en la PWA (César; se habían quitado el 2026-07-06 a pedido de Roy: **Roy, avisado por acá**). Backend: un dispositivo avisa a un solo vecino y apagar uno no apaga los otros (`smoke_publico_push.py` 10/10 con y sin barrera).
+- **2026-11-23 (tarde):** **notificaciones del vecino repuestas** en la PWA (César; se habían quitado el 2026-07-06 a pedido de Roy: **Roy, avisado por acá**). Backend: un dispositivo avisa a un solo vecino y apagar uno no apaga los otros (`smoke_publico_push.py` 10/10 con y sin barrera). **Vacunación en San Andrés**: «Vacunatorio Municipal» y prestación «Vacunación» de 15 minutos (`backend/seed_vacunacion_demo.sql`, solo datos).
 - **2026-11-23:** **App de agentes F2 y F3** (`zaris-agentes`): relevamientos con fotos, pin y GPS, y lector de QR para el control de entradas. Datos y Reclamos: filtro «Transacción» con los textos y los CSV según lo elegido; «App móvil» pasa a «App del vecino» y aparece «App de agentes» como canal. Definiciones de César sobre registro previo y transacción/canal, en CLAUDE.md y en el plan. Últimas 20 entradas por agente. Un teléfono con una versión vieja de las apps ahora se actualiza solo una vez. Registro previo F1: turnos y entradas sin cuenta, 410, y arreglado que ver o cancelar por el link daba error desde F6. Smoke `smoke_agentes_app.py` 80/80 con y sin barrera.
 
 - **2026-11-22 (noche):** **App de agentes F1 + F1b en prod** (`90f3029`, `d1c953b`; mig 141 corrida por César en el SQL Editor): relevamientos (`REL-`, sin vecino, sin avisos ni encuesta; `POST/GET /api/v1/agentes/relevamientos`), control de entradas (`POST /agentes/entradas/acreditar-qr`, `GET /agentes/entradas/eventos-hoy`), filtro «Clase» en Reclamos y «Origen» en Datos. Smoke `smoke_agentes_app.py` 57/57. Menores de trámites del vecino resueltos (`bf3e791` + PWA `5fb8121`).
