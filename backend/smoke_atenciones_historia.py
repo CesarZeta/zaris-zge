@@ -343,7 +343,7 @@ async def main() -> int:
         turnos_it = [i for i in items if i["origen"] == "turno"]
         check("2f. items turno: id_turno en {34,35,45}, titulo/gestion/ubicacion via prestacion, sin motivo_derivacion",
               len(turnos_it) >= 2 and all(
-                  i["id_turno"] in TURNOS_CIUD1 and i["titulo"] == "Atencion medica - Odontologia"
+                  i["id_turno"] in TURNOS_CIUD1 and i["titulo"] == "Atención médica - Odontología"
                   and i["gestion_nombre"] == "Odontología" and i["ubicacion_nombre"] == "Sala Municipal de Odontologia"
                   and i["motivo_derivacion"] is None and i["id_emergencia_evento"] is None and i["estado"] == "atendida"
                   for i in turnos_it),

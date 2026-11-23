@@ -205,17 +205,17 @@ async def main(confirm_prod: bool) -> None:
 
         # --- 4) Prestaciones de ejemplo con recurso real ---------------------
         p_odonto_ag = await asegurar_prestacion(
-            db, "Atencion medica - Odontologia", "atencion", "agente", agentes[0], 30,
-            "Consulta odontologica con profesional asignado")
+            db, "Atención médica - Odontología", "atencion", "agente", agentes[0], 30,
+            "Consulta odontológica con profesional asignado")
         p_clinica = await asegurar_prestacion(
-            db, "Atencion medica - Clinica general", "atencion", "agente", agentes[1], 30,
-            "Consulta clinica general")
+            db, "Atención médica - Clínica general", "atencion", "agente", agentes[1], 30,
+            "Consulta de clínica general")
         p_odonto_sala = await asegurar_prestacion(
-            db, "Atencion - Sala de Odontologia", "atencion", "espacio", id_atendido, 45,
-            "Atencion odontologica en la sala municipal (varios profesionales)")
+            db, "Atención - Sala de Odontología", "atencion", "espacio", id_atendido, 45,
+            "Atención odontológica en la sala municipal (varios profesionales)")
         p_sum = await asegurar_prestacion(
-            db, "Reserva - Salon de Usos Multiples", "reserva_espacio", "espacio", id_desatendido, 60,
-            "Reserva del salon para actividades comunitarias")
+            db, "Reserva - Salón de Usos Múltiples", "reserva_espacio", "espacio", id_desatendido, 60,
+            "Reserva del salón para actividades comunitarias")
         prestaciones = {
             "odonto_ag": (p_odonto_ag, "agente", agentes[0], 30),
             "clinica": (p_clinica, "agente", agentes[1], 30),
