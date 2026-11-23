@@ -201,6 +201,7 @@ Desde 2026-05-13 hay un hook `pre-commit` que corre `tsc -b --noEmit` cuando el 
 
 - **Script npm:** `pnpm typecheck` (en `web-app/`) → `tsc -b --noEmit`. Útil para correrlo a mano sin commitear.
 - **Hook fuente:** versionado en `tools/hooks/pre-commit`. `.git/hooks/` no entra a git por diseño — tras clonar el repo, instalar con `bash tools/hooks/install.sh` (idempotente).
+- **Backend (2026-11-23):** tras un barrido que toca muchos handlers, `pyflakes backend/app | grep "undefined name"` tiene que dar vacío antes de pushear (dos `NameError` vivieron en prod desde F6 en endpoints públicos sin smoke). Un endpoint público que se toca lleva su caso en un smoke.
 - **Bypass puntual:** `git commit --no-verify`. No usar como hábito; el hook existe porque el build ya corre `tsc -b` (ver `build` en `web-app/package.json`) y queremos cazar errores de tipo antes del push, no en el build de Cloudflare Pages.
 - **Costo:** ~5s con cache TS caliente, ~10s en frío. Cero costo si el commit no toca `web-app/`.
 
