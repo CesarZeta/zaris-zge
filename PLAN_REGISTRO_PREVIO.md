@@ -1,7 +1,7 @@
 # PLAN — Registro previo del vecino y de la empresa en toda transacción
 
-> **Estado: F1 hecha el 2026-11-23. César eligió la opción B (§4): la cuenta es requisito en todo. Falta su OK a §5
-> (cuentas para los vecinos ya cargados) para hacer F2.**
+> **Estado: F1 hecha el 2026-11-23. César eligió la opción B (§4): la cuenta es requisito en todo. Cuentas de §5 creadas el 2026-11-23.
+> Sigue F2.**
 > Avance en [`ESTADO.md`](ESTADO.md).
 
 ## 1. Definiciones de César (2026-11-21 y 2026-11-23)
@@ -72,7 +72,11 @@ personas; por lo tanto ninguna transacción es válida si no tiene un contacto d
   avisa y se le encuesta (definición del 2026-11-22: un relevamiento no avisa ni encuesta).
 - **Emergencias:** exceptuadas.
 
-## 5. Cuentas para los vecinos ya cargados (falta el OK de César)
+## 5. Cuentas para los vecinos ya cargados — HECHO (2026-11-23, OK de César)
+
+**853 cuentas pendientes de activación creadas en prod, sin correos** (backup `_backup_cuentas_vecino_2026_11_23`,
+con RLS). Verificado después: 860 de 953 vecinos con cuenta, 0 correos, 0 duplicadas; sin cuenta quedan las 91 fichas
+demo de funcionarios y 2 vecinos con datos incompletos. Lo que sigue es la medición previa.
 
 Medido en prod el 2026-11-23 sobre los 953 vecinos activos de San Andrés:
 

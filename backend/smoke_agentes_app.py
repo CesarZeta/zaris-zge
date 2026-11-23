@@ -160,6 +160,47 @@ async def test_exige_persona(c, h) -> None:
         check(bool(d.get("remitente")), "el detalle trae el remitente", str(d.get("remitente")))
 
 
+async def test_asignacion_y_push(c, h) -> None:
+    print("[15] El supervisor asigna el relevamiento: OT, campana y push al agente asignado")
+    tipo = await _tipo_de_prueba()
+    r = await c.post("/api/v1/agentes/relevamientos", headers=h["gestion"], json=_cuerpo(tipo))
+    check(r.status_code == 201, "alta", r.text[:160])
+    if r.status_code != 201:
+        return
+    idr = r.json()["id_reclamo"]
+    CREADOS.append(idr)
+    dest = await q1("SELECT a.id_agente, u.id_usuario FROM usuarios u JOIN agentes a ON a.id_usuario = u.id_usuario "
+                    "AND a.activo WHERE u.email = :e", e=GESTION_2)
+    pushes: list[tuple] = []
+
+    async def _push_falso(id_usuario, titulo, cuerpo, url="/inicio"):
+        pushes.append((id_usuario, titulo, cuerpo, url))
+        return 1
+
+    real, svc_push.enviar_push_usuario = svc_push.enviar_push_usuario, _push_falso
+    id_ot = None
+    try:
+        r = await c.post("/api/v1/ot", headers=h["admin"], json={"id_reclamo": idr, "id_agente": dest["id_agente"]})
+        check(r.status_code == 201, "OT creada sobre el relevamiento", f"{r.status_code} {r.text[:160]}")
+        if r.status_code != 201:
+            return
+        id_ot = r.json()["id_ot"]
+        est = await q1("SELECT estado FROM reclamos WHERE id_reclamo = :i", i=idr)
+        check(est["estado"] == "En gestión", "el relevamiento pasa a En gestión", str(est))
+        mios = [x for x in pushes if x[0] == dest["id_usuario"]]
+        check(len(mios) == 1 and "orden de trabajo" in mios[0][1] and mios[0][3] == f"/ot/{id_ot}",
+              "push al agente, que abre la OT", str(pushes))
+        n = await q1("SELECT COUNT(*) AS n FROM notificacion WHERE id_usuario = :u AND recurso_id = :o AND titulo LIKE 'Nueva orden%'",
+                     u=dest["id_usuario"], o=id_ot)
+        check(n["n"] == 1, "aviso en la campana", str(n))
+        mesa = await c.get("/api/v1/ot/agente/me", headers=h["gestion2"])
+        check(any(o["id_ot"] == id_ot for o in mesa.json()["ots"]), "aparece en «Mis OT» del agente")
+    finally:
+        svc_push.enviar_push_usuario = real
+        if id_ot:
+            await ejecutar("DELETE FROM notificacion WHERE recurso_id = :o AND titulo LIKE 'Nueva orden%'", o=id_ot)
+
+
 async def test_publico_sin_cuenta(c) -> None:
     print("[14] Sin cuenta no se saca turno ni entrada; ver y cancelar por el link siguen andando")
     r = await c.post("/api/v1/turnos/publico/reservar", json={})
@@ -475,6 +516,7 @@ async def main() -> int:
             await test_validaciones(c, h)
             await test_exige_persona(c, h)
             await test_publico_sin_cuenta(c)
+            await test_asignacion_y_push(c, h)
             if rel:
                 await test_listado_y_detalle(c, h, rel)
                 await test_adjuntos_del_autor(c, h, rel)
