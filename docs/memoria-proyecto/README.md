@@ -30,7 +30,7 @@
 - [useSyncExternalStore: cachear getSnapshot](feedback_usesyncexternalstore_getsnapshot_cache.md) — JSON.parse da ref nueva → loop; cachear vs string crudo.
 - [Geocoding vecino: scope publico](reference_geocoding_vecino_endpoint_scope_publico.md) — /publico/reclamos/geo/buscar.
 - [Verificar superficies externas](feedback_verificar_superficies_externas_y_recuerdo_usuario.md) — "No lo veo" ≠ "no existe".
-- [Folletos comerciales locales](reference_folletos_comerciales_locales.md) — en folletos/ (gitignored, NO docs/).
+- [Folletos comerciales locales](reference_folletos_comerciales_locales.md) — en marketing/ (gitignored, NO docs/).
 - [SKILL.md: render expande $N y cachea](reference_skill_render_expande_dolar_y_cachea.md) — no $1 literal; validar fix en sesión nueva.
 - [python3 no está en el Bash tool](reference_no_python3_en_bash_tool.md) — falla silencioso; editar con Edit/Write.
 - [Regla vs receta para skills](feedback_regla_vs_receta_para_skills.md) — CLAUDE.md gobierna sin invocar; skill = tarea deliberada.

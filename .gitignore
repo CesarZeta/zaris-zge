@@ -53,7 +53,8 @@ backend/uploads/
 # Documentos archivados con info sensible (no versionar)
 docs/archivo/
 
-# Folletos comerciales locales (no publicar en GH Pages)
+# Material comercial local: el repo es público, nada de esto se publica (ver marketing/LEEME.md)
+marketing/
 folletos/
 
 # Config local de Claude Code (no versionar), EXCEPTO skills y commands del proyecto.
