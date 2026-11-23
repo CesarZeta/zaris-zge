@@ -94,7 +94,7 @@ async def crear_relevamiento(
                 (NULL, :tipo, :area, :descripcion, :direccion, :direccion,
                  'Media', 'Sin asignar',
                  (SELECT id_estado_reclamo FROM estado_reclamo WHERE nombre = 'Sin asignar' AND activo = TRUE LIMIT 1),
-                 '', :lat, :lon, :loc, 'oficio', :fuente, TRUE, TRUE, NOW(), NOW(), :u, :u, :mun)
+                 '', :lat, :lon, :loc, 'app_agentes', :fuente, TRUE, TRUE, NOW(), NOW(), :u, :u, :mun)
             RETURNING id_reclamo, nro_reclamo
         """), {
             "tipo": body.id_tipo_reclamo, "area": tipo.id_area, "descripcion": body.descripcion,

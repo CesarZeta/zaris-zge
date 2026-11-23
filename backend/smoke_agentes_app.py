@@ -124,6 +124,7 @@ async def test_alta_relevamiento(c, h) -> Optional[dict]:
                     i=d["id_reclamo"], e=GESTION)
     check(fila["es_relevamiento"] and fila["id_ciudadano"] is None, "marcado y sin ciudadano", str(fila))
     check(fila["id_usuario_alta"] == fila["yo"], "queda a nombre del agente")
+    check(fila["canal_origen"] == "app_agentes", "el canal es la app de agentes", str(fila["canal_origen"]))
     h1 = await q1("SELECT accion, nota FROM reclamo_historial WHERE id_reclamo = :i ORDER BY id_historial LIMIT 1",
                   i=d["id_reclamo"])
     check(h1 and h1["accion"] == "Relevamiento ingresado" and "app de agentes" in h1["nota"], "historial", str(h1))
@@ -249,17 +250,17 @@ async def test_backoffice_y_datos(c, h, rel: dict) -> None:
         else:
             print(f"  (la asignación automática ya lo pasó a {est}: se saltea la edición completa)")
 
-    print("[12] Datos: el origen separa reclamos y relevamientos en el Operativo y el Ejecutivo")
+    print("[12] Datos: la transacción separa reclamos y relevamientos en el Operativo y el Ejecutivo")
     n_rel = (await q1("SELECT COUNT(*) AS n FROM reclamos WHERE id_municipio = 1 AND activo AND es_relevamiento"))["n"]
     n_rec = (await q1("SELECT COUNT(*) AS n FROM reclamos WHERE id_municipio = 1 AND activo AND NOT es_relevamiento"))["n"]
     for url in ("/api/v1/bi/resumen", "/api/v1/bi/ejecutivo/score"):
         t_def = (await c.get(url, headers=h["admin"])).json()["total"]
-        t_rec = (await c.get(url, headers=h["admin"], params={"origen": "reclamos"})).json()["total"]
-        t_rel = (await c.get(url, headers=h["admin"], params={"origen": "relevamientos"})).json()["total"]
+        t_rec = (await c.get(url, headers=h["admin"], params={"clase": "reclamos"})).json()["total"]
+        t_rel = (await c.get(url, headers=h["admin"], params={"clase": "relevamientos"})).json()["total"]
         check(t_def == t_rec == n_rec, f"{url}: por defecto solo reclamos del vecino", f"{t_def} {t_rec} {n_rec}")
-        check(t_rel == n_rel, f"{url}: origen=relevamientos los cuenta aparte", f"{t_rel} {n_rel}")
-    r = await c.get("/api/v1/bi/resumen", headers=h["admin"], params={"origen": "basura"})
-    check(r.status_code == 422, "origen inválido: 422", str(r.status_code))
+        check(t_rel == n_rel, f"{url}: clase=relevamientos los cuenta aparte", f"{t_rel} {n_rel}")
+    r = await c.get("/api/v1/bi/resumen", headers=h["admin"], params={"clase": "basura"})
+    check(r.status_code == 422, "clase inválida: 422", str(r.status_code))
 
 
 async def test_subreclamo_hereda(c, h) -> None:
