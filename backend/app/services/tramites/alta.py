@@ -190,6 +190,42 @@ async def tipos_ofrecidos(db: AsyncSession, id_municipio: int, id_tipo: int | No
     return [dict(f) for f in filas]
 
 
+async def motivos_fuera_del_portal(db: AsyncSession, id_municipio: int) -> dict[int, str]:
+    """Para los tipos marcados «se ofrece al vecino» que el portal NO ofrece, el motivo en
+    lenguaje llano (lo muestra el configurador). Mismas condiciones que `tipos_ofrecidos`."""
+    filas = (await db.execute(
+        text("""
+            SELECT tt.id_tipo_tramite,
+                   tt.id_version_publicada IS NULL AS sin_publicar,
+                   NOT ('ciudadano' = ANY (tt.iniciadores_permitidos)) AS sin_ciudadano,
+                   (sa.id_subarea IS NULL OR sa.activo IS NOT TRUE) AS sin_gestion,
+                   (SELECT string_agg(f.etiqueta, ', ' ORDER BY f.orden, f.id_tipo_tramite_campo)
+                      FROM tipo_tramite_campo f
+                     WHERE f.id_tipo_tramite_version = tt.id_version_publicada
+                       AND f.activo = TRUE
+                       AND f.tipo_dato <> ALL (CAST(:soportados AS text[]))) AS campos
+              FROM tipo_tramite tt
+              LEFT JOIN subarea sa ON sa.id_subarea = tt.id_subarea
+             WHERE tt.id_municipio = :mun AND tt.activo = TRUE AND tt.ofrecer_al_vecino = TRUE
+        """),
+        {"mun": id_municipio, "soportados": list(TIPOS_DATO_PORTAL)},
+    )).mappings().all()
+    motivos: dict[int, str] = {}
+    for f in filas:
+        partes = []
+        if f["sin_publicar"]:
+            partes.append("no tiene una versión publicada")
+        if f["sin_ciudadano"]:
+            partes.append("no admite iniciador ciudadano")
+        if f["sin_gestion"]:
+            partes.append("no tiene una gestión activa asignada")
+        if f["campos"]:
+            partes.append(f"la app no sabe pedir estos campos: {f['campos']}")
+        if partes:
+            motivos[f["id_tipo_tramite"]] = "No se ofrece al vecino: " + "; ".join(partes) + "."
+    return motivos
+
+
 async def documentos_del_alta(db: AsyncSession, id_version: int, id_estado_inicial: int) -> list[dict]:
     """Documentos requeridos que el vecino aporta al iniciar: `aporta_quien = 'iniciador'`, sin
     estado o atados al estado inicial, y sin firma (spec §5.3)."""

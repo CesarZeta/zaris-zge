@@ -833,6 +833,8 @@ class TipoTramiteAdminListItem(BaseModel):
     subarea_nombre: Optional[str] = None
     area_nombre: Optional[str] = None
     id_version_publicada: Optional[int] = None
+    # Marcado «se ofrece al vecino» pero el portal no lo ofrece: por que (None = se ofrece o no esta marcado)
+    portal_motivo_excluido: Optional[str] = None
     # estado_version: 'publicado' | 'borrador' | 'sin_estados' — derivado de la ultima version
     estado_version: str
 

@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.core.urls import url_portal_vecino
+from app.services.notificaciones import citar_texto
 from app.services.tramites import alta as svc_alta
 from app.services.tramites import movimientos as svc_mov
 
@@ -212,7 +213,7 @@ async def avisar_pedido_nuevo(id_tramite: int, texto: str) -> None:
     def _t(d: dict) -> tuple[str, str]:
         n, tipo = d["numero_expediente"], d.get("tipo_nombre") or "Trámite"
         return (f"Tenés un pedido en tu trámite {n}",
-                f"{tipo}: el municipio te pidió lo siguiente: {texto}. "
+                f"{tipo}: el municipio te pidió lo siguiente: {citar_texto(texto)}. "
                 "Respondelo desde el Portal del Ciudadano.")
     await _avisar(id_tramite, _t)
 

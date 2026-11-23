@@ -1,8 +1,7 @@
-# PLAN — App de agentes: reclamos de oficio + control de entradas (QR)
+# PLAN — App de agentes: relevamientos + control de entradas (QR)
 
-> **Estado: PROPUESTA diseñada el 2026-10-12, PENDIENTE DE APROBACIÓN de César** (la sesión cerró antes de
-> que la revisara). No hay código. Al retomar: releer este archivo, confirmar o corregir el diseño con César y
-> recién entonces arrancar F1. El estado de avance vivirá en [`ESTADO.md`](ESTADO.md).
+> **Estado: PROPUESTA diseñada el 2026-10-12 y CORREGIDA por César el 2026-11-22** (§2b). No hay código.
+> Faltan las cuatro definiciones de §2c antes de F1. El estado de avance vivirá en [`ESTADO.md`](ESTADO.md).
 
 ## 1. Pedido de César (2026-10-12, textual resumido)
 
@@ -18,6 +17,36 @@
 | 2 | Quién carga reclamos desde la app | **Todo funcionario con la app, niveles 1-4** (Consultor 5 no). |
 | 3 | Quién acredita entradas por QR desde la app | **Todo funcionario con la app, niveles 1-4** (hoy `POST /agenda/reservas/acreditar-qr` exige ≤ 3). La app muestra primero los eventos de hoy donde es encargado, pero acredita cualquier QR válido. |
 | 4 | Nombre del apartado | **«Control de entradas»** → «Escanear QR». |
+
+## 2b. Correcciones de César (2026-11-22)
+
+1. **No son «reclamos de oficio»: se llaman relevamientos.** Un relevamiento es un tipo de incidente como el
+   reclamo, pero lo lleva a cabo un agente municipal (no hay un vecino que lo pida).
+2. **Un relevamiento no avisa a ningún solicitante** (ni mail, ni push, ni bandeja de la app del vecino) **y no tiene
+   encuesta de satisfacción**: quien lo inicia es un agente, no un vecino.
+3. **Entradas:** el agente funciona de «picaboletos»: lee el QR, **valida el acceso y marca la entrada como
+   consumida** (una segunda lectura de la misma entrada tiene que decir que ya se usó). El nombre del apartado queda
+   «Control de entradas» salvo que César elija otro.
+
+**Consecuencia sobre la decisión 1 de §2:** el relevamiento **no lleva `id_ciudadano`** (antes: la ficha del
+funcionario). Con la ficha, el funcionario habría recibido los avisos y la encuesta de su propio relevamiento.
+
+**Por qué hace falta una marca propia y no alcanza con `canal_origen='oficio'`** (verificado en el código el
+2026-11-22): hoy `oficio` lo usan también el reclamo de retrabajo que nace de una auditoría observada y los que
+carga el backoffice; el de retrabajo **copia al vecino y sí le avisa** (F4, 2026-10-20). Los avisos de cambio de
+estado (`push.notificar_estado_reclamo`) y la encuesta salen solo si hay `id_ciudadano`, y el mail de alta se
+saltea para `oficio`. Un relevamiento sin ciudadano ya no dispara nada; la marca sirve para **nombrarlo, listarlo
+y contarlo aparte**, y como segunda barrera explícita en cada disparo («si es relevamiento, no se avisa ni se
+encuesta»).
+
+## 2c. Definiciones pendientes de César (con la recomendación de Claude)
+
+| # | Pregunta | Recomendación |
+|---|---|---|
+| 1 | ¿Tipos propios o el mismo catálogo de tipos de reclamo? | **El mismo catálogo** (gestión, SLA y asignación ya están ahí). |
+| 2 | ¿Numeración propia (`REL-SAN-2026-000001`) o la de los reclamos? | **Propia**, para que el número diga qué es. |
+| 3 | ¿Sigue el mismo circuito (OT, asignación automática, auditoría)? | **Sí, el mismo**: lo que cambia es quién lo inicia. |
+| 4 | ¿Dónde se ve en el backoffice y en Datos? | **En Reclamos, con etiqueta y filtro «Relevamientos»; en Datos, contado aparte** de los reclamos del vecino. |
 
 ## 3. Realidad verificada (2026-10-12)
 
@@ -35,13 +64,16 @@
 
 ## 4. Diseño propuesto (a confirmar)
 
-### Backend (`zaris-zge`) — sin migración
+### Backend (`zaris-zge`) — migración chica para la marca de relevamiento (forma según §2c)
 Router `backend/app/api/routes/agentes_app.py` bajo `/api/v1/agentes/*`, guard usuario interno **nivel ≤ 4**:
-- `POST /agentes/reclamos` — body como el del vecino (`id_tipo_reclamo`, `descripcion ≥ 5`, `direccion`, lat/lon,
-  `fuente_geolocalizacion`). Inserta con `canal_origen='oficio'`, `id_usuario_alta`=user, `id_ciudadano`=
-  `usuarios.id_ciudadano` o NULL, prioridad Media, estado «Sin asignar» (FK + VARCHAR), localidad derivada de coords;
-  historial «Reclamo de oficio cargado desde la app de agentes por <agente>». Devuelve `{id_reclamo, nro_reclamo}`.
-- `GET /agentes/reclamos` — reclamos de oficio cargados por mí (`id_usuario_alta = me AND canal_origen='oficio'`).
+- `POST /agentes/relevamientos` — body como el del reclamo del vecino (`id_tipo_reclamo`, `descripcion ≥ 5`,
+  `direccion`, lat/lon, `fuente_geolocalizacion`). Inserta el relevamiento **sin `id_ciudadano`**, con
+  `id_usuario_alta`=user, la marca de relevamiento, prioridad Media, estado «Sin asignar» (FK + VARCHAR), localidad
+  derivada de coords; historial «Relevamiento cargado desde la app de agentes por <agente>». Devuelve
+  `{id_reclamo, nro_reclamo}`.
+- **Ningún aviso al solicitante ni encuesta:** guard explícito por la marca en el mail de alta, en
+  `push.notificar_estado_reclamo` y en `encuestas_service.crear_envio_para_reclamo` (además de no tener ciudadano).
+- `GET /agentes/relevamientos` — los relevamientos cargados por mí.
 - Reusar: `GET /reclamos/catalogo/tipos`, `GET /geo/buscar`, `GET /geo/reverse`, `GET /reclamos/{id}`,
   `GET /reclamos/{id}/adjuntos` (la app ya los usa para OT). **Verificar el guard de
   `reclamo_adjuntos.py` upload-url/confirm**: si exige ≤ 3, excepción «quien cargó el reclamo puede adjuntarle fotos».
@@ -50,22 +82,25 @@ Router `backend/app/api/routes/agentes_app.py` bajo `/api/v1/agentes/*`, guard u
   'no_encontrada', acreditada_en, reserva: {evento, fecha, hora, espacio, ciudadano}}`. «ya_acreditada» = entrada
   repetida (rojo, con la hora del primer ingreso). Sigue disparando la encuesta CSAT.
 - `GET /agentes/entradas/eventos-hoy` — eventos del día con reservas/acreditadas y `soy_encargado`.
-- Smoke in-process `backend/smoke_agentes_app.py`: reclamo de oficio por nivel 4 (201, canal oficio, historial), nivel 5
-  → 403, QR válido/repetido/cancelado/inexistente, eventos-hoy.
+- Smoke in-process `backend/smoke_agentes_app.py`: relevamiento por nivel 4 (201, marca, sin ciudadano, historial),
+  nivel 5 → 403, cerrarlo **no** crea encuesta ni aviso, QR válido / ya consumido / cancelado / inexistente,
+  eventos-hoy.
 
 ### App de agentes (`zaris-agentes`)
-- Barra inferior: Inicio · Mis OT · **Reclamos** · **Entradas** · Cuenta (5 ítems).
-- Reclamos: `/reclamos` (Mis reclamos) → `/reclamos/nuevo` (portado del vecino: tipo con buscador, descripción,
-  dirección OSM + «usar mi ubicación» + pin en el mapa, fotos con la cámara) → `/reclamos/:id` (detalle + historial).
+- Barra inferior: Inicio · Mis OT · **Relevamientos** · **Entradas** · Cuenta (5 ítems).
+- Relevamientos: `/relevamientos` (Mis relevamientos) → `/relevamientos/nuevo` (portado del reclamo del vecino: tipo
+  con buscador, descripción, dirección OSM + «usar mi ubicación» + pin en el mapa, fotos con la cámara) →
+  `/relevamientos/:id` (detalle + historial).
 - Control de entradas: `/entradas` (eventos de hoy, los míos primero, botón **Escanear QR**) → `/entradas/escanear`
   (cámara: `BarcodeDetector` en Android/Chrome; fallback `jsqr` para iPhone; campo manual) → tarjeta de resultado
-  verde/rojo/ámbar + «Escanear otra» + contador de la sesión.
+  verde/rojo/ámbar + «Escanear otra» + contador de la sesión. Verde = acceso válido, la entrada queda consumida;
+  rojo = ya consumida (con la hora del primer ingreso), cancelada o inexistente.
 - Inicio: accesos a los dos apartados.
 
-### Manual y docs
-`manual_app_agentes.html` (+2 secciones, una regeneración al final), `ESTADO.md` de los dos repos, skills
-`modulo-reclamos` (canal oficio desde la app) y `modulo-agenda` (acreditación desde la app), README de la app.
+### Docs
+`ESTADO.md` de los dos repos, skills `modulo-reclamos` (relevamientos) y `modulo-agenda` (acreditación desde la
+app), README de la app. **Sin manual:** los manuales están en pausa hasta la base de conocimiento (CLAUDE.md §36).
 
 ### Fases
-F1 backend + smoke → F2 app Reclamos → F3 app Control de entradas → F4 manual + docs → F5 prod (push, OpenAPI,
-Vercel), todo verificado navegando antes de declararlo.
+F1 backend + smoke → F2 app Relevamientos → F3 app Control de entradas → F4 docs → F5 prod (push, OpenAPI,
+Cloudflare Pages), todo verificado navegando antes de declararlo.

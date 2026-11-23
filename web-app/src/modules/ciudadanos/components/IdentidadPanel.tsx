@@ -4,6 +4,7 @@ import { useAuthStore } from '../../../stores/auth'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { revocarIdentidad, validarIdentidad } from '../api/ciudadanosApi'
 import { useCuentasCiudadano } from '../hooks/useCiudadanos'
+import { Badge } from '../../../ui'
 
 /**
  * Identidad validada en el municipio (mig 139): un agente vio el documento de la persona en
@@ -42,11 +43,11 @@ export function IdentidadPanel({ idCiudadano }: { idCiudadano: number }) {
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
       <span style={etiqueta}>Identidad</span>
-      <span style={{ ...chip, ...(validada ? tonoOk : tonoNeutro) }}>
+      <Badge kind={validada ? 'success' : 'neutral'}>
         {validada
           ? `Identidad validada el ${fecha(validada.fecha)}${validada.agente_nombre ? ` por ${validada.agente_nombre}` : ''}`
           : 'Identidad sin validar en el municipio'}
-      </span>
+      </Badge>
       {!validada && hasPermission(3) && (
         <button type="button" style={linkBtn} onClick={() => setModal('validar')}>Validar identidad</button>
       )}
@@ -112,12 +113,6 @@ function fecha(iso: string): string {
 const etiqueta: React.CSSProperties = {
   fontSize: 'var(--size-caption)', fontWeight: 600, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: '0.06em',
 }
-const chip: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 'var(--radius-pill)',
-  fontSize: 'var(--size-caption)', fontWeight: 600, fontFamily: 'var(--font-display)',
-}
-const tonoOk: React.CSSProperties = { background: 'rgba(31,138,101,.12)', color: 'var(--color-success)' }
-const tonoNeutro: React.CSSProperties = { background: 'var(--surface-400)', color: 'var(--fg-2)' }
 const linkBtn: React.CSSProperties = {
   background: 'transparent', border: 'none', padding: '2px 4px', cursor: 'pointer', fontFamily: 'var(--font-display)',
   fontSize: 'var(--size-caption)', fontWeight: 600, color: 'var(--zaris-orange)', textDecoration: 'underline',

@@ -51,6 +51,7 @@ from app.core.database import AsyncSessionLocal
 from app.services import push as svc_push
 from app.services.avisos import registrar_aviso_ciudadano
 from app.services.email import enviar_mail
+from app.services.notificaciones import citar_texto
 from app.services.tramites import movimientos as svc_mov
 from app.core.config_municipio import leer_config
 from app.services.tramites.retencion import _leer_int_config
@@ -469,6 +470,7 @@ async def procesar_desistimientos(db: AsyncSession, *, id_municipio: int, limite
 def _texto_aviso_pedido(nivel: int, d: dict, texto: str, dias_restantes: int, final_horas: int) -> tuple[str, str]:
     n = d["numero_expediente"]
     tipo = d.get("tipo_nombre") or "Trámite"
+    texto = citar_texto(texto)
     if nivel == 1:
         return (f"Tenés un pedido pendiente en tu trámite {n}",
                 f"{tipo}: el municipio te pidió lo siguiente: {texto}. Respondelo desde el Portal del Ciudadano. "

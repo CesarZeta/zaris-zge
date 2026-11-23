@@ -178,6 +178,8 @@ export interface TipoTramiteAdminListItem {
   ofrecer_al_vecino: boolean        // mig 139
   exige_identidad_validada: boolean // mig 139
   id_version_publicada: number | null
+  /** Marcado «se ofrece al vecino» pero el portal no lo ofrece: el motivo. */
+  portal_motivo_excluido?: string | null
   estado_version: 'publicado' | 'borrador' | 'sin_estados' | 'archivado'
 }
 

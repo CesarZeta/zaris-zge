@@ -53,6 +53,7 @@ from app.schemas.tramites import (
     VersionOut,
 )
 from app.services.municipios.cruces import ids_en_json
+from app.services.tramites import alta as svc_alta
 from app.services.tramites import auth as svc_auth
 from app.services.tramites import versionado as svc_ver
 
@@ -175,6 +176,7 @@ async def listar_tipos_admin(
         {"m": id_municipio},
     )).fetchall()
 
+    motivos = await svc_alta.motivos_fuera_del_portal(db, id_municipio)
     items: list[TipoTramiteAdminListItem] = []
     for f in filas:
         if f.id_version_publicada is not None:
@@ -198,6 +200,7 @@ async def listar_tipos_admin(
             subarea_nombre=f.subarea_nombre,
             area_nombre=f.area_nombre,
             id_version_publicada=f.id_version_publicada,
+            portal_motivo_excluido=motivos.get(f.id_tipo_tramite),
             estado_version=estado,
         ))
     return TipoTramiteAdminListOut(items=items, total=len(items))

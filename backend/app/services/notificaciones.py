@@ -28,6 +28,15 @@ from app.core.urls import base_app
 from app.services.email import enviar_mail
 from app.utils.log_helpers import mask_email
 
+
+def citar_texto(texto: Optional[str], maximo: Optional[int] = None) -> str:
+    """Texto libre (un pedido al vecino) listo para citarlo dentro de una oración: sin espacios
+    ni punto final (la oración pone el suyo) y, con `maximo`, recortado con «…»."""
+    t = " ".join((texto or "").split()).rstrip(" .")
+    if maximo and len(t) > maximo:
+        t = t[: maximo - 1].rstrip(" .,;:") + "…"
+    return t
+
 logger = logging.getLogger("zaris.notificaciones")
 
 EventoTramite = Literal["creacion", "pase", "transicion"]
@@ -803,7 +812,7 @@ async def notificar_tramite_pendiente_vecino(
         titulo = f"Trámite {numero} pendiente del vecino ({etiqueta})"
         if texto_pedido:
             mensaje = (
-                f"El vecino no respondió el pedido «{texto_pedido}» del trámite {numero} "
+                f"El vecino no respondió el pedido «{citar_texto(texto_pedido, 120)}» del trámite {numero} "
                 f"({dias} días desde el pedido); se le envió el {etiqueta} de desistimiento. "
                 "Si corresponde, contactalo o cancelá el pedido antes de que el trámite se dé por desistido."
             )

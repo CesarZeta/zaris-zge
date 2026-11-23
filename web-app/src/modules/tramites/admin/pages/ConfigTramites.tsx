@@ -98,8 +98,16 @@ export function ConfigTramites() {
                   <td style={cell}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                       {t.nombre}
-                      {t.ofrecer_al_vecino && <Badge kind="success">Portal</Badge>}
+                      {t.ofrecer_al_vecino && !t.portal_motivo_excluido && <Badge kind="success">Portal</Badge>}
+                      {t.ofrecer_al_vecino && t.portal_motivo_excluido && (
+                        <Badge kind="warn">Fuera del portal</Badge>
+                      )}
                     </span>
+                    {t.ofrecer_al_vecino && t.portal_motivo_excluido && (
+                      <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 2 }}>
+                        {t.portal_motivo_excluido}
+                      </div>
+                    )}
                   </td>
                   <td style={cellMono}>{t.prefijo}</td>
                   {/* mig 104: gestión responsable. El área se muestra encima porque

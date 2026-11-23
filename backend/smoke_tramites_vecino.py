@@ -2034,10 +2034,29 @@ async def test_tipo_con_campo_no_soportado_no_se_ofrece(c: httpx.AsyncClient, ha
         check(tipo["id_tipo_tramite"] not in ids, "con un campo fecha_hora el tipo no aparece", str(ids))
         r = await c.get(f"/api/v1/publico/tramites/tipos/{tipo['id_tipo_tramite']}", headers=hv)
         check(r.status_code == 404, "y su detalle da 404", str(r.status_code))
+        r = await c.get("/api/v1/admin/tramites/tipos", headers=ha)
+        item = next((x for x in r.json().get("items", []) if x["id_tipo_tramite"] == tipo["id_tipo_tramite"]), {})
+        motivo = item.get("portal_motivo_excluido") or ""
+        check("la app no sabe pedir estos campos" in motivo, "el configurador dice por qué no se ofrece", motivo)
     finally:
         await ejecutar("UPDATE tipo_tramite_campo SET tipo_dato = :td WHERE id_tipo_tramite_campo = :i", td=campo["td"], i=campo["id"])
     ids = [x["id_tipo_tramite"] for x in (await c.get("/api/v1/publico/tramites/tipos", headers=hv)).json()]
     check(tipo["id_tipo_tramite"] in ids, "restaurado: el tipo vuelve a aparecer", str(ids))
+    r = await c.get("/api/v1/admin/tramites/tipos", headers=ha)
+    item = next((x for x in r.json().get("items", []) if x["id_tipo_tramite"] == tipo["id_tipo_tramite"]), {})
+    check(item.get("portal_motivo_excluido") is None, "restaurado: el configurador ya no marca motivo",
+          str(item.get("portal_motivo_excluido")))
+
+
+async def test_citar_texto_pedido(c: httpx.AsyncClient, ha: dict) -> None:
+    print("[43] El pedido citado en un aviso no repite el punto final y el aviso interno lo recorta")
+    from app.services.notificaciones import citar_texto
+    from app.services.tramites.ciclo_vida import _texto_aviso_pedido
+    _, cuerpo = _texto_aviso_pedido(1, {"numero_expediente": "X-1", "tipo_nombre": "Poda"}, "Traé el DNI.  ", 10, 72)
+    check("DNI.." not in cuerpo and "DNI. Respondelo" in cuerpo, "aviso al vecino con un solo punto", cuerpo)
+    largo = citar_texto("palabra " * 60, 120)
+    check(len(largo) <= 120 and largo.endswith("…"), "cita recortada a 120 con «…»", largo)
+    check(citar_texto("  hola   mundo . ") == "hola mundo", "espacios y punto final fuera", citar_texto("  hola   mundo . "))
 
 
 CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cuenta_422,
@@ -2058,7 +2077,7 @@ CASOS = [test_backoffice_ve_movimientos_del_vecino, test_backoffice_alta_sin_cue
          test_cancelar_pedido_orden_de_locks, test_espera_congelada_si_el_vecino_subio,
          test_cerrar_atraso_cancela_pedido, test_tipo_expone_validacion,
          test_aviso_tramite_url, test_cerrado_no_pide_documentos,
-         test_tipo_con_campo_no_soportado_no_se_ofrece]
+         test_tipo_con_campo_no_soportado_no_se_ofrece, test_citar_texto_pedido]
 
 
 async def main() -> int:
