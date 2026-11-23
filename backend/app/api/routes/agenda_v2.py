@@ -58,6 +58,7 @@ from app.schemas.agenda_v2 import (
     SubareaOut,
 )
 from app.services import encuestas_service
+from app.utils.fechas import hoy_local
 from app.utils.orden import clausula_orden, descripcion_orden
 from app.services.agenda import (
     cupo_disponible,
@@ -1080,6 +1081,83 @@ async def _patch_reserva_estado(
         except Exception:
             pass
     return nueva
+
+
+async def acreditar_qr_en_puerta(
+    db: AsyncSession, qr_codigo: str, id_usuario: int, id_municipio: int,
+) -> dict[str, Any]:
+    """Lectura del QR en la puerta desde la app de agentes (control de entradas, el «picaboletos»).
+
+    Nunca levanta por el contenido del QR: devuelve `resultado` para que la puerta muestre verde o
+    rojo. Solo `acreditada` consume la entrada (estado `asistio`, mismo `_patch_reserva_estado` que
+    el backoffice: CAS de la mig 95 + encuesta de entradas).
+      - `no_encontrada`: el código no es de ninguna reserva activa del municipio.
+      - `cancelada`: la reserva o el evento están cancelados.
+      - `ya_acreditada`: la entrada ya se usó; `acreditada_en` es el primer ingreso.
+      - `otra_fecha`: la entrada es de un evento de otro día; no se consume.
+    """
+    qr = (qr_codigo or "").strip()
+    if not qr:
+        return {"resultado": "no_encontrada", "acreditada_en": None, "reserva": None}
+
+    async def _leer() -> Optional[dict[str, Any]]:
+        fila = (await db.execute(text("""
+            SELECT r.id_evento_reserva, er.codigo AS estado_codigo, r.fecha_modificacion,
+                   e.id_evento, e.nombre AS evento, e.fecha, e.hora_inicio, e.hora_fin,
+                   ee.codigo AS estado_evento, esp.nombre AS espacio,
+                   c.apellido AS ciudadano_apellido, c.nombre AS ciudadano_nombre
+            FROM evento_reservas r
+            JOIN eventos e ON e.id_evento = r.id_evento
+            LEFT JOIN estado_reserva er ON er.id_estado_reserva = r.id_estado_reserva
+            LEFT JOIN estado_evento ee ON ee.id_estado_evento = e.id_estado_evento
+            LEFT JOIN espacios_agenda esp ON esp.id_espacio = e.id_espacio
+            LEFT JOIN ciudadanos c ON c.id_ciudadano = r.id_ciudadano
+            WHERE r.qr_codigo = :q AND r.activo = TRUE AND r.id_municipio = :m
+            LIMIT 1
+        """), {"q": qr, "m": id_municipio})).mappings().first()
+        return dict(fila) if fila else None
+
+    async def _primer_ingreso(fila: dict[str, Any]) -> Any:
+        momento = (await db.execute(text("""
+            SELECT MIN(fecha) FROM agenda_audit_log
+            WHERE entidad = 'reserva' AND id_entidad = :i AND id_municipio = :m
+              AND datos_nuevos ->> 'estado_codigo' = 'asistio'
+        """), {"i": fila["id_evento_reserva"], "m": id_municipio})).scalar()
+        return momento or fila["fecha_modificacion"]
+
+    def _reserva(fila: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id_evento_reserva": fila["id_evento_reserva"], "id_evento": fila["id_evento"],
+            "evento": fila["evento"], "fecha": fila["fecha"],
+            "hora_inicio": fila["hora_inicio"], "hora_fin": fila["hora_fin"],
+            "espacio": fila["espacio"],
+            "ciudadano": ", ".join(x for x in (fila["ciudadano_apellido"], fila["ciudadano_nombre"]) if x) or None,
+        }
+
+    fila = await _leer()
+    if not fila:
+        return {"resultado": "no_encontrada", "acreditada_en": None, "reserva": None}
+    if fila["estado_codigo"] == "cancelada" or fila["estado_evento"] == "cancelado":
+        return {"resultado": "cancelada", "acreditada_en": None, "reserva": _reserva(fila)}
+    if fila["estado_codigo"] == "asistio":
+        return {"resultado": "ya_acreditada", "acreditada_en": await _primer_ingreso(fila),
+                "reserva": _reserva(fila)}
+    if fila["fecha"] != hoy_local():
+        return {"resultado": "otra_fecha", "acreditada_en": None, "reserva": _reserva(fila)}
+
+    try:
+        await _patch_reserva_estado(db, int(fila["id_evento_reserva"]), "asistio", id_usuario, id_municipio)
+    except HTTPException as e:
+        if e.status_code != 409:
+            raise
+        # Otra puerta la leyó en el mismo instante (CAS de la mig 95): se informa lo que quedó.
+        fila = await _leer()
+        if fila and fila["estado_codigo"] == "asistio":
+            return {"resultado": "ya_acreditada", "acreditada_en": await _primer_ingreso(fila),
+                    "reserva": _reserva(fila)}
+        return {"resultado": "cancelada", "acreditada_en": None, "reserva": _reserva(fila) if fila else None}
+    fila = await _leer()
+    return {"resultado": "acreditada", "acreditada_en": await _primer_ingreso(fila), "reserva": _reserva(fila)}
 
 
 @router.post("/reservas/acreditar-qr", response_model=ReservaOut)

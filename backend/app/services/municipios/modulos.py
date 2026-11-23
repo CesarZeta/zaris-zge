@@ -35,6 +35,8 @@ MODULOS_POR_ROUTER: dict[str, tuple[str, ...]] = {
     "reclamo_adjuntos_router": ("reclamos",),
     "publico_reclamos_router": ("reclamos",),
     "publico_reclamos_adjuntos_router": ("reclamos",),
+    "agentes_relevamientos_router": ("reclamos",),
+    "agentes_entradas_router": ("entradas",),
     "ot_router": ("ot_supervisor", "ot_agente", "ot_auditoria"),
     "ot_adjuntos_router": ("ot_supervisor", "ot_agente", "ot_auditoria"),
     "agenda_v2_router": ("agenda",),

@@ -90,6 +90,16 @@ Para municipios chicos donde el agente se autogestiona:
 - **Bug corregido el mismo día:** la `nota` de `PUT /{id}/estado` pisaba `reclamos.observaciones` (las del alta) y le llegaba al vecino; ahora la nota es interna (solo historial). A Resuelto por esa vía también termina la OT abierta (antes quedaba `En gestión`).
 - Smoke local 22/22 + verificado en prod (REC-2026-002927, Gestión de Alumbrado: tomar → OT a su nombre → resolver → aviso al vecino).
 
+### Relevamientos (mig 141, app de agentes, César 2026-11-22)
+
+Un **relevamiento** es un incidente que lleva a cabo un agente municipal: nadie lo pidió. Vive en `reclamos` con `es_relevamiento = TRUE`, el mismo catálogo de tipos y el mismo circuito (OT, asignación automática, auditoría), con numeración propia `REL-<municipio>-<año>-<número>` (trigger `fn_generar_nro_reclamo`, entidad `relevamiento` del numerador).
+- **Sin solicitante:** `id_ciudadano` NULL (lo exige `ck_reclamos_relevamiento_sin_ciudadano`), canal `oficio`, `id_usuario_alta` = el agente. **No avisa a nadie ni tiene encuesta:** `push.notificar_estado_reclamo`, `notificar_alta_reclamo_agente`, `notificar_retrabajo_auditoria` y `encuestas_service.crear_envio_para_reclamo` (`MOTIVO_RELEVAMIENTO`) lo cortan por la marca. **Todo disparo nuevo hacia el vecino de un reclamo tiene que cortar por `es_relevamiento`.**
+- **No alcanza con `canal_origen = 'oficio'`:** el retrabajo de una auditoría observada también es `oficio` y sí avisa al vecino.
+- **Herencia:** el subreclamo y el retrabajo de un relevamiento también lo son (sin ciudadano). Toda vía nueva que cree un reclamo a partir de otro copia la marca.
+- **Alta:** solo desde la app de agentes, `POST /api/v1/agentes/relevamientos` (niveles 1-4; router `agentes_app.py`, módulo `reclamos`); «mis relevamientos» en `GET /agentes/relevamientos` y `/{id}` (solo los propios, 404 a lo ajeno). Quien lo cargó (nivel 4) puede subirle y quitarle fotos (`reclamo_adjuntos._require_gestion_o_autor`); en un reclamo común el nivel 4 sigue sin poder.
+- **Backoffice y Datos (F1b, pendiente):** en Reclamos con etiqueta y filtro «Relevamientos»; en Datos, contados aparte de los reclamos del vecino.
+- Smoke `backend/smoke_agentes_app.py` (in-process, también con `DB_BARRERA=true`).
+
 ### Edición de reclamos — alcance por estado
 
 `PUT /reclamos/{id}` aplica una allowlist de campos según el estado actual del reclamo (helper `_require_gestion` exige `nivel_acceso ∈ {1,2,3}`):

@@ -230,6 +230,13 @@ Spec en [`docs/superpowers/specs/2026-11-21-tramites-vecino-design.md`](docs/sup
 - **139b (datos):** marca `ofrecer_al_vecino` en los seis tipos por código (`aviso-obra`, `poda-arbol`, `inscripcion-profesional`, `exencion-tasas`, `permiso-espacio-publico`, `recurso-administrativo`), en todos los municipios que los tengan; no prende `exige_identidad_validada` en ninguno.
 - Reglas vivas en la skill `modulo-tramites` → «Trámites del vecino» y contrato en `docs/contrato_api_publica.md` §12.
 
+### Migración 141 — relevamientos (`backend/migrations/141_relevamientos.sql`)
+
+App de agentes, F1 ([`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md), decisiones de César del 2026-11-22). **Aplicada en local el 2026-11-22; en prod la corre César en el SQL Editor** (lleva `DROP CONSTRAINT`).
+- `reclamos.es_relevamiento` (FALSE por defecto) + `ck_reclamos_relevamiento_sin_ciudadano` (un relevamiento no lleva ciudadano) + índice parcial `idx_reclamos_relevamiento`.
+- `numerador_municipio` admite la entidad `relevamiento` y `fn_generar_nro_reclamo` numera `REL-<municipio>-<año>-<número>` con su propio contador (los reclamos siguen en `REC-`).
+- Sin tablas nuevas (`reclamos` ya está clasificada). Smoke `smoke_agentes_app.py`.
+
 ### Migraciones 132 y 132b — catálogo de gobiernos locales (`backend/migrations/132_catalogo_gobiernos_locales.sql`, `132b_catalogo_gobiernos_locales_datos.sql`)
 
 Diseño: [`PLAN_CONTORNO_MUNICIPIO_DISENO.md`](PLAN_CONTORNO_MUNICIPIO_DISENO.md) §4.2. **Aplicadas en local y en prod el 2026-10-28.** En prod: backups `_backup_partidos_2026_10_28`, `_backup_localidades_2026_10_28` y `_backup_provincias_2026_10_28` (con RLS) → 132 por MCP → **132b por conexión directa** (pooler de sesión, en una transacción): pesa 327 KB y pasarla por el MCP no era razonable. Por eso no figura en la lista de migraciones de Supabase.

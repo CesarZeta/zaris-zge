@@ -1453,7 +1453,7 @@ async def observar_ot(
                 (id_ciudadano, id_tipo_reclamo, id_area, descripcion, direccion,
                  domicilio_reclamo, prioridad, estado, id_estado_fk, observaciones,
                  latitud, longitud, id_localidad, id_activo, id_empresa, canal_origen,
-                 fuente_geolocalizacion, id_reclamo_origen_auditoria, id_municipio,
+                 fuente_geolocalizacion, id_reclamo_origen_auditoria, id_municipio, es_relevamiento,
                  activo, fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion)
             SELECT r.id_ciudadano, r.id_tipo_reclamo, r.id_area,
                    'Retrabajo por auditoría observada del reclamo ' || COALESCE(r.nro_reclamo, r.id_reclamo::text)
@@ -1462,7 +1462,7 @@ async def observar_ot(
                    (SELECT id_estado_reclamo FROM estado_reclamo
                      WHERE nombre = 'Sin asignar' AND activo = TRUE LIMIT 1),
                    NULL, r.latitud, r.longitud, r.id_localidad, r.id_activo, r.id_empresa,
-                   'oficio', r.fuente_geolocalizacion, r.id_reclamo, r.id_municipio,
+                   'oficio', r.fuente_geolocalizacion, r.id_reclamo, r.id_municipio, r.es_relevamiento,
                    TRUE, NOW(), NOW(), :uid, :uid
             FROM reclamos r WHERE r.id_reclamo = :id
             RETURNING id_reclamo, nro_reclamo

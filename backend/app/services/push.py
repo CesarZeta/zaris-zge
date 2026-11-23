@@ -174,10 +174,11 @@ async def notificar_estado_reclamo(id_reclamo: int) -> None:
     try:
         async with AsyncSessionLocal() as db:
             r = (await db.execute(text("""
-                SELECT nro_reclamo, estado, id_ciudadano, resolucion
+                SELECT nro_reclamo, estado, id_ciudadano, resolucion, es_relevamiento
                 FROM reclamos WHERE id_reclamo = :id
             """), {"id": id_reclamo})).mappings().first()
-        if not r or not r["id_ciudadano"]:
+        # Un relevamiento (mig 141) no tiene solicitante: no se avisa a nadie.
+        if not r or not r["id_ciudadano"] or r["es_relevamiento"]:
             return
         if r["estado"] in ("En auditoría", "Auditado"):
             return
@@ -218,7 +219,7 @@ async def notificar_alta_reclamo_agente(id_reclamo: int) -> None:
         async with AsyncSessionLocal() as db:
             r = (await db.execute(text("""
                 SELECT r.nro_reclamo, r.descripcion, r.direccion, r.canal_origen, r.id_municipio,
-                       c.nombre, c.apellido, c.email, c.doc_tipo, c.doc_nro
+                       r.es_relevamiento, c.nombre, c.apellido, c.email, c.doc_tipo, c.doc_nro
                 FROM reclamos r
                 JOIN ciudadanos c ON c.id_ciudadano = r.id_ciudadano
                 WHERE r.id_reclamo = :id
@@ -227,7 +228,7 @@ async def notificar_alta_reclamo_agente(id_reclamo: int) -> None:
                 return
             nro = r["nro_reclamo"] or f"REC-{id_reclamo}"
             email = (r["email"] or "").strip()
-            if (r["canal_origen"] or "") == "oficio":
+            if (r["canal_origen"] or "") == "oficio" or r["es_relevamiento"]:
                 logger.info("alta reclamo %s: de oficio, sin mail al vecino", nro)
                 return
             if es_ficha_demo(r["doc_tipo"], r["doc_nro"]):
@@ -267,13 +268,14 @@ async def notificar_retrabajo_auditoria(id_retrabajo: int) -> None:
         async with AsyncSessionLocal() as db:
             r = (await db.execute(text("""
                 SELECT rt.nro_reclamo, rt.id_ciudadano, rt.id_municipio, ro.nro_reclamo AS nro_origen,
-                       c.nombre, c.apellido, c.email
+                       rt.es_relevamiento, c.nombre, c.apellido, c.email
                 FROM reclamos rt
                 JOIN reclamos ro ON ro.id_reclamo = rt.id_reclamo_origen_auditoria
                 JOIN ciudadanos c ON c.id_ciudadano = rt.id_ciudadano
                 WHERE rt.id_reclamo = :id
             """), {"id": id_retrabajo})).mappings().first()
-            if not r:
+            # Retrabajo de un relevamiento (mig 141): sin solicitante, sin aviso.
+            if not r or r["es_relevamiento"]:
                 return
             municipio_nombre, municipio_logo_url = await _municipio_branding(db, r["id_municipio"])
             portal = await url_portal_vecino(db, r["id_municipio"])

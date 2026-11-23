@@ -1,7 +1,8 @@
 # PLAN — App de agentes: relevamientos + control de entradas (QR)
 
-> **Estado: PROPUESTA diseñada el 2026-10-12 y CORREGIDA por César el 2026-11-22** (§2b). No hay código.
-> Faltan las cuatro definiciones de §2c antes de F1. El estado de avance vivirá en [`ESTADO.md`](ESTADO.md).
+> **Estado: APROBADA por César el 2026-11-22** (§2b y §2c: siguió las cuatro recomendaciones). **F1 (backend)
+> hecha en local el 2026-11-22** (mig 141 + `agentes_app.py`, smoke 43/43); la mig 141 en prod la corre César en
+> el SQL Editor y recién después se publica el código. Avance en [`ESTADO.md`](ESTADO.md).
 
 ## 1. Pedido de César (2026-10-12, textual resumido)
 
@@ -39,9 +40,9 @@ saltea para `oficio`. Un relevamiento sin ciudadano ya no dispara nada; la marca
 y contarlo aparte**, y como segunda barrera explícita en cada disparo («si es relevamiento, no se avisa ni se
 encuesta»).
 
-## 2c. Definiciones pendientes de César (con la recomendación de Claude)
+## 2c. Definiciones de César (2026-11-22: «sigue a las cuatro recomendaciones»)
 
-| # | Pregunta | Recomendación |
+| # | Pregunta | Decisión |
 |---|---|---|
 | 1 | ¿Tipos propios o el mismo catálogo de tipos de reclamo? | **El mismo catálogo** (gestión, SLA y asignación ya están ahí). |
 | 2 | ¿Numeración propia (`REL-SAN-2026-000001`) o la de los reclamos? | **Propia**, para que el número diga qué es. |
@@ -102,5 +103,19 @@ Router `backend/app/api/routes/agentes_app.py` bajo `/api/v1/agentes/*`, guard u
 app), README de la app. **Sin manual:** los manuales están en pausa hasta la base de conocimiento (CLAUDE.md §36).
 
 ### Fases
-F1 backend + smoke → F2 app Relevamientos → F3 app Control de entradas → F4 docs → F5 prod (push, OpenAPI,
-Cloudflare Pages), todo verificado navegando antes de declararlo.
+F1 backend + smoke → **F1b backoffice y Datos** (Reclamos: etiqueta y filtro «Relevamientos»; Datos: contarlos
+aparte de los reclamos del vecino; antes de que la app cargue relevamientos reales) → F2 app Relevamientos → F3 app
+Control de entradas → F4 docs → F5 prod (push, OpenAPI, Cloudflare Pages), todo verificado navegando antes de
+declararlo.
+
+### F1 — hecho en local (2026-11-22)
+- Mig 141 (`reclamos.es_relevamiento`, CHECK sin ciudadano, numeración `REL-`), local aplicada.
+- `backend/app/api/routes/agentes_app.py`: `POST/GET /agentes/relevamientos`, `GET /agentes/relevamientos/{id}`,
+  `POST /agentes/entradas/acreditar-qr`, `GET /agentes/entradas/eventos-hoy` (niveles 1-4; módulos `reclamos` y
+  `entradas`). Helper `acreditar_qr_en_puerta` en `agenda_v2.py` (el endpoint de Agenda no cambió).
+- Cortes por la marca en los avisos y la encuesta; herencia en subreclamo y retrabajo; fotos del autor (nivel 4).
+- **Decisión de Claude a confirmar con César:** un QR de un evento de **otro día** responde `otra_fecha` y **no
+  consume** la entrada (la puerta lo muestra en rojo con la fecha). Si prefiere que se acepte igual, es un cambio
+  de una línea.
+- Smoke `backend/smoke_agentes_app.py` 43/43 (también con `DB_BARRERA=true`); auditoría 86, encuestas 294, alta
+  con mail 11 y cancelar 8 siguen en verde.

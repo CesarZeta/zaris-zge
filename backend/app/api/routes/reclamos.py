@@ -1534,7 +1534,7 @@ async def crear_subreclamo(
 
     # Validar que el padre existe y no es él mismo un subreclamo
     r = await db.execute(text("""
-        SELECT id_reclamo, id_ciudadano, id_empresa, id_reclamo_padre, estado
+        SELECT id_reclamo, id_ciudadano, id_empresa, id_reclamo_padre, estado, es_relevamiento
         FROM reclamos WHERE id_reclamo = :id AND activo = TRUE AND id_municipio = :mun
     """), {"id": id_reclamo, "mun": id_municipio})
     padre = r.fetchone()
@@ -1571,6 +1571,9 @@ async def crear_subreclamo(
 
     # id_empresa: por defecto hereda del padre. Si el body lo trae, valida.
     id_ciudadano_sub = body.get("id_ciudadano") or padre.id_ciudadano
+    # El subreclamo de un relevamiento (mig 141) también lo es: sin solicitante ni empresa.
+    if padre.es_relevamiento:
+        id_ciudadano_sub = None
     if "id_empresa" in body:
         id_empresa = body.get("id_empresa")
         if id_empresa:
@@ -1600,6 +1603,7 @@ async def crear_subreclamo(
         "canal_origen":     body.get("canal_origen"),
         "fuente_geolocalizacion": body.get("fuente_geolocalizacion"),
         "id_reclamo_padre": id_reclamo,
+        "es_relevamiento":  bool(padre.es_relevamiento),
         "id_usuario_alta":  current_user["id_usuario"],
     }
 
@@ -1622,13 +1626,13 @@ async def crear_subreclamo(
                 (id_ciudadano, id_tipo_reclamo, id_area, descripcion, direccion,
                  domicilio_reclamo, prioridad, estado, id_estado_fk, observaciones,
                  latitud, longitud, id_localidad, id_activo, id_empresa, canal_origen,
-                 fuente_geolocalizacion, id_reclamo_padre, activo,
+                 fuente_geolocalizacion, id_reclamo_padre, es_relevamiento, activo,
                  fecha_alta, fecha_modificacion, id_usuario_alta, id_usuario_modificacion, id_municipio)
             VALUES
                 (:id_ciudadano, :id_tipo_reclamo, :id_area, :descripcion, :direccion,
                  :direccion, :prioridad, 'Sin asignar', :id_estado_fk, :observaciones,
                  :latitud, :longitud, :id_localidad, :id_activo, :id_empresa, :canal_origen,
-                 :fuente_geolocalizacion, :id_reclamo_padre, TRUE,
+                 :fuente_geolocalizacion, :id_reclamo_padre, :es_relevamiento, TRUE,
                  NOW(), NOW(), :id_usuario_alta, :id_usuario_alta, :id_municipio)
             RETURNING id_reclamo, nro_reclamo
         """), data)

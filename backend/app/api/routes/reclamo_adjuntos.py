@@ -48,6 +48,21 @@ def _require_gestion(current_user: dict) -> None:
         )
 
 
+async def _require_gestion_o_autor(db: AsyncSession, id_reclamo: int, current_user: dict, id_municipio: int) -> None:
+    """Niveles de gestión, o quien cargó el relevamiento (mig 141): el agente de nivel Gestión que
+    lo levantó desde la app de agentes le agrega las fotos. Solo lo suyo y solo relevamientos."""
+    if current_user.get("nivel_acceso") in NIVELES_GESTION_ADJUNTOS:
+        return
+    if current_user.get("nivel_acceso") == 4:
+        r = await db.execute(text(
+            "SELECT 1 FROM reclamos WHERE id_reclamo = :id AND id_municipio = :mun AND activo = TRUE "
+            "AND es_relevamiento AND id_usuario_alta = :u"
+        ), {"id": id_reclamo, "mun": id_municipio, "u": current_user["id_usuario"]})
+        if r.fetchone():
+            return
+    _require_gestion(current_user)
+
+
 def _safe_filename(nombre: str) -> str:
     nombre = (nombre or "").strip() or "archivo"
     return re.sub(r"[^\w\.\-]+", "_", nombre)[:120]
@@ -72,7 +87,7 @@ async def crear_upload_url(
     current_user: dict = Depends(get_current_user),
     id_municipio: int = Depends(municipio_actual),
 ):
-    _require_gestion(current_user)
+    await _require_gestion_o_autor(db, id_reclamo, current_user, id_municipio)
     nombre_archivo = _safe_filename(body.get("nombre_archivo", ""))
     mime_type = (body.get("mime_type") or "").lower()
     tamano = int(body.get("tamano_bytes") or 0)
@@ -129,7 +144,7 @@ async def confirmar_subida(
     current_user: dict = Depends(get_current_user),
     id_municipio: int = Depends(municipio_actual),
 ):
-    _require_gestion(current_user)
+    await _require_gestion_o_autor(db, id_reclamo, current_user, id_municipio)
     await _existe_reclamo(db, id_reclamo, id_municipio)
     r = await db.execute(text("""
         SELECT id_adjunto, activo FROM reclamo_adjuntos
@@ -191,7 +206,7 @@ async def borrar_adjunto(
     current_user: dict = Depends(get_current_user),
     id_municipio: int = Depends(municipio_actual),
 ):
-    _require_gestion(current_user)
+    await _require_gestion_o_autor(db, id_reclamo, current_user, id_municipio)
     await _existe_reclamo(db, id_reclamo, id_municipio)
     r = await db.execute(text("""
         SELECT storage_path, activo FROM reclamo_adjuntos

@@ -29,6 +29,10 @@ from app.api.routes.bi_ejecutivo import router as bi_ejecutivo_router
 from app.api.routes.bi_atencion import router as bi_atencion_router
 from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.reclamo_adjuntos import router as reclamo_adjuntos_router
+from app.api.routes.agentes_app import (
+    entradas_router as agentes_entradas_router,
+    relevamientos_router as agentes_relevamientos_router,
+)
 from app.api.routes.ordenes_trabajo import router as ot_router
 from app.api.routes.ot_adjuntos import router as ot_adjuntos_router
 from app.api.routes.geo import router as geo_router
@@ -212,6 +216,10 @@ app.include_router(bi_atencion_router, dependencies=_modulo("bi_atencion_router"
 # Dashboard home: /api/v1/dashboard/resumen (conteos + capas geo). Prefijo propio.
 app.include_router(dashboard_router)
 app.include_router(reclamo_adjuntos_router, dependencies=_modulo("reclamo_adjuntos_router"))
+# App de agentes (mig 141): /api/v1/agentes/relevamientos/* (módulo reclamos) y
+# /api/v1/agentes/entradas/* (módulo entradas). Prefijos propios, sin colisiones.
+app.include_router(agentes_relevamientos_router, dependencies=_modulo("agentes_relevamientos_router"))
+app.include_router(agentes_entradas_router, dependencies=_modulo("agentes_entradas_router"))
 # ot_adjuntos ANTES de ot_router: /ot/{id_ot}/adjuntos no debe ser atrapado por
 # el /{id_ot} greedy del router de OT (mismo quirk §5 de orden de routers).
 app.include_router(ot_adjuntos_router, dependencies=_modulo("ot_adjuntos_router"))

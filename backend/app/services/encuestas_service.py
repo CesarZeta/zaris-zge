@@ -48,6 +48,7 @@ MOTIVO_DESACTIVADAS = "Encuestas deshabilitadas"
 MOTIVO_NO_RESUELTO = "Reclamo no existe o no está en estado Resuelto"
 MOTIVO_YA_EXISTE = "Ya existe envío para este reclamo"
 MOTIVO_SIN_EMAIL = "Ciudadano sin email válido"
+MOTIVO_RELEVAMIENTO = "Es un relevamiento: no tiene solicitante a quien encuestar"
 MOTIVO_ANTIFATIGA = "Anti-fatiga: ya recibió encuesta del área en últimos 30 días"
 MOTIVO_SIN_PLANTILLA = "No hay plantilla de encuesta activa para reclamos"
 MOTIVO_SIN_PLANTILLA_TURNO = "No hay plantilla de encuesta activa para turnos"
@@ -126,11 +127,11 @@ async def crear_envio_para_reclamo(db: AsyncSession, id_reclamo: int):
         # 2. Reclamo existe + cerrado. Subarea derivada via tipo_reclamo (§27).
         rec = (await db.execute(text("""
             SELECT r.id_reclamo, r.nro_reclamo, r.estado, r.id_ciudadano,
-                   r.id_municipio, r.id_reclamo_origen_auditoria,
+                   r.id_municipio, r.id_reclamo_origen_auditoria, r.es_relevamiento,
                    COALESCE(tr.id_subarea, r.id_subarea) AS id_subarea,
                    c.email AS email_ciudadano
               FROM reclamos r
-              JOIN ciudadanos c ON c.id_ciudadano = r.id_ciudadano
+              LEFT JOIN ciudadanos c ON c.id_ciudadano = r.id_ciudadano
               LEFT JOIN tipo_reclamo tr ON tr.id_tipo_reclamo = r.id_tipo_reclamo
              WHERE r.id_reclamo = :id
              LIMIT 1
@@ -140,6 +141,13 @@ async def crear_envio_para_reclamo(db: AsyncSession, id_reclamo: int):
             logger.info("crear_envio: reclamo=%s no existe", id_reclamo)
             return None, MOTIVO_NO_RESUELTO
         rec = rec._mapping
+        # Un relevamiento (mig 141) no tiene solicitante a quien encuestar.
+        if rec["es_relevamiento"]:
+            logger.info("crear_envio: reclamo=%s es un relevamiento, sin encuesta", id_reclamo)
+            return None, MOTIVO_RELEVAMIENTO
+        if rec["id_ciudadano"] is None:  # sin vecino no hay a quién encuestar (como antes del LEFT JOIN)
+            logger.info("crear_envio: reclamo=%s sin ciudadano", id_reclamo)
+            return None, MOTIVO_NO_RESUELTO
         if not await encuestas_estan_activas(db, id_municipio=rec["id_municipio"]):
             logger.info("crear_envio: encuestas desactivadas, skip reclamo=%s", id_reclamo)
             return None, MOTIVO_DESACTIVADAS
