@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-11-22. IT-01 completa en prod (F1-F6, F6.5 cerrada el 2026-11-21). Bloque del vecino: **trámites desde el portal completos en prod** (fases 1, 2 y 3 el 2026-11-22: backend, pantallas del backoffice y de la app del vecino; pregunta 1). F6.3 y F6.4 en prod desde el 2026-11-20 (vuelta atrás de la barrera: `DB_BARRERA=false` en Railway).
+**Última actualización:** 2026-11-22 noche (Cesar). **App de agentes: F1 (backend, mig 141) y F1b (Reclamos y Datos) en prod** — relevamientos y control de entradas (pregunta 3). Trámites del vecino cerrados con los menores resueltos (pregunta 1). IT-01 completa en prod (F1-F6); vuelta atrás de la barrera: `DB_BARRERA=false` en Railway.
 
 ---
 
@@ -25,7 +25,7 @@
    3. **Vecino 360 para el vecino** (perfil o donde convenga).
    4. **Vecino 360 para el municipio:** en Datos y como pestaña de la ficha del ciudadano y de la empresa, con todas sus interacciones; por persona o por empresa representada.
    5. **Base de conocimiento de ayudas**, con dos capítulos: canales del vecino y gestión interna. Ya hay un relevamiento inicial de los canales del vecino (2026-10-27). Mientras tanto no se tocan manuales. César la adelantó el 2026-10-30 empezando por el material de venta (pregunta 5).
-3. **App de agentes — relevamientos + control de entradas: aprobada el 2026-11-22, F1 (backend) en prod** (mig 141 corrida por César; [`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md)). Un QR de otro día no se consume (confirmado por César). **F1b hecha el 2026-11-22**: Reclamos separa por clase (filtro, contadores, etiqueta, detalle) y Datos cuenta los relevamientos aparte (filtro «Origen» en Operativo y Ejecutivo). Siguen las pantallas de la app de agentes (F2 relevamientos, F3 control de entradas). Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
+3. **App de agentes — relevamientos + control de entradas: aprobada el 2026-11-22; F1 (backend, mig 141) y F1b (Reclamos y Datos) en prod** ([`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md)). Un QR de otro día no se consume (confirmado por César). **Decisión pendiente de César:** con el origen «Relevamientos», las tarjetas y títulos de Datos siguen diciendo «reclamos»; recomendación de Claude: que digan «relevamientos». **Próximo:** F2 (pantallas de relevamientos en `zaris-agentes`) y F3 (control de entradas con la cámara). En prod todavía no hay ningún relevamiento: las pantallas nuevas se verificaron en local. Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
 4. **Arreglos que dejó la prueba de cierre:** quedan el 9 (App Vecinos: catálogo de emergencias del vecino, pide diseño) y menores del 10 y 11, en `PLAN_MULTI_MUNICIPIO_F4_F5.md` → «Prueba de cierre — hallazgos» → «2026-11-19».
 5. **Base de conocimiento — material de venta por circuito** (2026-10-30): borrador `docs/base_conocimiento/resumen_circuitos.md`, **solo en la máquina de César, sin commitear** (lleva notas internas; el repo es público). César revisa los (\*) de los tableros (varios son propuesta de Claude), dice si su «punto 2» era esta estructura o es otra pieza (supuesto de Claude: ficha técnica por circuito) y aprueba el texto. Recomendación: commitearlo sin «Notas internas».
 
@@ -81,10 +81,10 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
+- **2026-11-22 (noche):** **App de agentes F1 + F1b en prod** (`90f3029`, `d1c953b`; mig 141 corrida por César en el SQL Editor): relevamientos (`REL-`, sin vecino, sin avisos ni encuesta; `POST/GET /api/v1/agentes/relevamientos`), control de entradas (`POST /agentes/entradas/acreditar-qr`, `GET /agentes/entradas/eventos-hoy`), filtro «Clase» en Reclamos y «Origen» en Datos. Smoke `smoke_agentes_app.py` 57/57. Menores de trámites del vecino resueltos (`bf3e791` + PWA `5fb8121`).
+
 - **2026-11-22 (tarde):** **Trámites del vecino, fases 2 y 3 en prod**: pantallas del backoffice y de la app, avisos de trámites que abren el trámite (`/tramites/{id}`), la validación de cada campo llega al portal, migración 140 (nombre «Inscripción profesional»), el cierre de atrasos demo cancela los pedidos abiertos y el aviso interno de un pedido vencido cita el pedido.
 - **2026-11-22:** **Trámites del vecino, fase 1 (backend) en prod**: iniciar, ver, subir documentos y responder pedidos desde el portal, identidad validada en ventanilla por tipo, pedidos del municipio al vecino con su timer, y timer de `espera_iniciador` congelado si el vecino ya subió documentos. Migraciones 139 + 139b ([`HISTORIAL_MIGRACIONES.md`](HISTORIAL_MIGRACIONES.md)).
-- **2026-11-21:** **IT-01 F6.5 cerrada** con la exportación real de San Andrés ([`PLAN_MULTI_MUNICIPIO_F6_5.md`](PLAN_MULTI_MUNICIPIO_F6_5.md) → «Resultado»). Cancelar un reclamo exige su gestión, igual que el pase a Resuelto (`db9aa56`).
-- **2026-11-20:** IT-01 F6.1 a F6.4 en prod (detalle en `PLAN_MULTI_MUNICIPIO_F6*.md`).
 
 > Lo anterior: `HISTORIAL_MIGRACIONES.md` y las skills de cada módulo.
 
