@@ -15,6 +15,7 @@ from app.services import encuestas_service as svc_encuestas
 from app.services import notificaciones as svc_notif
 from app.services import push as svc_push
 from app.services.autoasignacion import autoasignar_reclamo
+from app.services.cuenta_vecino import exigir_cuenta_vecino
 from app.services.tramites.auth import resolver_agente_desde_usuario
 from app.api.routes.geo import localidad_desde_coords
 
@@ -748,6 +749,7 @@ async def crear_reclamo(
     await _validar_referencias(db, id_municipio, id_tipo_reclamo=body.get("id_tipo_reclamo"),
                                id_ciudadano=body.get("id_ciudadano"), id_activo=body.get("id_activo"),
                                id_empresa=body.get("id_empresa"))
+    await exigir_cuenta_vecino(db, int(body["id_ciudadano"]))
 
     # direccion es el campo nuevo (§22); domicilio_reclamo se mantiene como alias entrante
     direccion = body.get("direccion") or body.get("domicilio_reclamo") or ""
@@ -1305,6 +1307,12 @@ async def editar_reclamo(
     if not updates:
         raise HTTPException(status_code=422, detail="No hay campos editables en el body")
     await _validar_referencias(db, id_municipio, **{k: updates[k] for k in _REFERENCIAS if k in updates})
+    # El vecino del reclamo se cambia por otro que también tenga cuenta, pero no se quita.
+    if "id_ciudadano" in updates:
+        if updates["id_ciudadano"] in (None, ""):
+            raise HTTPException(status_code=422, detail="Un reclamo no puede quedar sin vecino.")
+        if int(updates["id_ciudadano"]) != row.id_ciudadano:
+            await exigir_cuenta_vecino(db, int(updates["id_ciudadano"]))
 
     # Si cambia el tipo, re-derivar id_area desde subarea.id_area (fuente de verdad)
     if "id_tipo_reclamo" in updates and updates["id_tipo_reclamo"]:
@@ -1601,6 +1609,9 @@ async def crear_subreclamo(
     # El subreclamo de un relevamiento (mig 141) también lo es: sin solicitante ni empresa.
     if padre.es_relevamiento:
         id_ciudadano_sub = None
+    elif id_ciudadano_sub and int(id_ciudadano_sub) != padre.id_ciudadano:
+        # Hereda el vecino del padre; si se carga a nombre de otro, ese otro tiene que tener cuenta.
+        await exigir_cuenta_vecino(db, int(id_ciudadano_sub))
     if "id_empresa" in body:
         id_empresa = body.get("id_empresa")
         if id_empresa:

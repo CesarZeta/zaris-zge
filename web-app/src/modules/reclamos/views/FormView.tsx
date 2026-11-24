@@ -332,6 +332,7 @@ export function FormView() {
               ) : (
                 <Field label="Buscar ciudadano" required error={errores.ciudadano}>
                   <CiudadanoSearch
+                    exigirCuenta
                     placeholder="DNI, CUIL, teléfono o nombre..."
                     onSelect={(c) => { setForm((p) => ({ ...p, ciudadano: c, id_ciudadano: c.id_ciudadano })); if (errores.ciudadano) setErrores((p) => { const n = {...p}; delete n.ciudadano; return n }) }}
                   />

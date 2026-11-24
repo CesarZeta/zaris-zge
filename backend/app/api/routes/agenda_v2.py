@@ -58,6 +58,7 @@ from app.schemas.agenda_v2 import (
     SubareaOut,
 )
 from app.services import encuestas_service
+from app.services.cuenta_vecino import exigir_cuenta_vecino
 from app.utils.fechas import hoy_local
 from app.utils.orden import clausula_orden, descripcion_orden
 from app.services.agenda import (
@@ -947,6 +948,7 @@ async def crear_reserva(
     ), {"i": payload.id_ciudadano, "m": id_municipio})
     if not n:
         raise HTTPException(404, f"Ciudadano {payload.id_ciudadano} no encontrado")
+    await exigir_cuenta_vecino(db, payload.id_ciudadano)
     # Regla global (mig 95, decision 2026-07-18): maximo UNA reserva no-cancelada
     # por ciudadano+evento — tambien en backoffice (las vias publicas ya la tenian).
     dup = await db.scalar(text("""
@@ -1273,6 +1275,8 @@ async def crear_ocupacion(
     await _validar_scope_recurso(db, current_user, payload.tipo_recurso, payload.id_recurso)
     await _validar_referencias(db, id_municipio, id_orden_trabajo=payload.id_orden_trabajo,
                                id_evento=payload.id_evento, id_ciudadano=payload.id_ciudadano)
+    if payload.id_ciudadano is not None:
+        await exigir_cuenta_vecino(db, payload.id_ciudadano)
 
     conflictos = await detectar_conflictos(
         db, payload.tipo_recurso, payload.id_recurso,

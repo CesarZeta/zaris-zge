@@ -206,7 +206,7 @@ export function OcupacionModal({ open, onClose, defaults, ocupacion }: Props) {
             <>
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={lbl}>Ciudadano</label>
-                <CiudadanoSearch onSelect={(c) => { setCiudadano(c); update('id_ciudadano', c.id_ciudadano) }} />
+                <CiudadanoSearch exigirCuenta onSelect={(c) => { setCiudadano(c); update('id_ciudadano', c.id_ciudadano) }} />
                 {ciudadano && (
                   <div style={{ marginTop: 6, fontSize: 13, color: 'var(--fg-2)' }}>
                     Seleccionado: <strong>{ciudadano.apellido}, {ciudadano.nombre}</strong>

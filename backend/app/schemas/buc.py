@@ -322,6 +322,8 @@ class CiudadanoOut(BaseModel):
     fecha_modif: Optional[datetime]
     activo: bool
     modificado_por: Optional[int]
+    # Solo lo completa /ciudadanos/buscar (el buscador de los formularios); None = no se consultó.
+    tiene_cuenta: Optional[bool] = None
 
     @computed_field
     @property

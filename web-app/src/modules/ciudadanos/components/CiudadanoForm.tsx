@@ -1,4 +1,4 @@
-import type { FormState } from '../views/FormView'
+import type { FormState } from '../hooks/useFichaCiudadano'
 import { formatCuilInput } from '../lib/cuilUtils'
 import type { Nacionalidad } from '../types/ciudadano'
 import { AddressSearch } from '../../../ui/AddressSearch'
@@ -17,6 +17,8 @@ interface Props {
   yaTieneZaris?: boolean
   /** Mostrar nivel/subárea/usuario bajo el tilde (tilde puesto, admin, sin cuenta, no readonly). */
   mostrarCamposZaris?: boolean
+  /** En la ventana de registro la marca de funcionario no se ofrece. */
+  ocultarFuncionario?: boolean
   onChange: <K extends keyof FormState>(key: K, value: FormState[K]) => void
   onCuilBlur: () => void
   onEmpChkChange: (checked: boolean) => void
@@ -25,13 +27,13 @@ interface Props {
 export function CiudadanoForm({
   form, errores, readonly, esAlta = false, nacionalidades,
   puedeMarcarFuncionario = false, yaTieneZaris = false, mostrarCamposZaris = false,
-  onChange, onCuilBlur, onEmpChkChange,
+  ocultarFuncionario = false, onChange, onCuilBlur, onEmpChkChange,
 }: Props) {
   return (
     <form autoComplete="off" onSubmit={(e) => e.preventDefault()} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* ── Identificacion ── */}
       <Section title="Identificación">
-        <Row cols="1fr 1fr 1fr">
+        <Row>
           <Field label="Tipo Documento" required error={errores.doc_tipo}>
             <select
               value={form.doc_tipo}
@@ -72,7 +74,7 @@ export function CiudadanoForm({
 
       {/* ── Datos personales ── */}
       <Section title="Datos personales">
-        <Row cols="1fr 1fr">
+        <Row>
           <Field label="Nombre" required error={errores.nombre}>
             <input
               type="text"
@@ -96,7 +98,7 @@ export function CiudadanoForm({
             />
           </Field>
         </Row>
-        <Row cols="1fr 1fr 1fr">
+        <Row>
           <Field label="Sexo" required error={errores.sexo}>
             <select
               value={form.sexo}
@@ -152,7 +154,7 @@ export function CiudadanoForm({
             }}
           />
         </Field>
-        <Row cols="1fr 1fr">
+        <Row>
           <Field label="Calle y Altura" required error={errores.calle}>
             <input
               type="text"
@@ -198,7 +200,7 @@ export function CiudadanoForm({
 
       {/* ── Contacto ── */}
       <Section title="Contacto">
-        <Row cols="1fr 1fr">
+        <Row>
           <Field label="Teléfono" required error={errores.telefono} hint="Sin el 0 del código de área. Ej: 1155667788">
             <input
               type="text"
@@ -251,7 +253,7 @@ export function CiudadanoForm({
       </Section>
 
       {/* ── Representacion empresarial ── */}
-      <Section title="Representacion empresarial">
+      <Section title="Representación empresarial">
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: readonly ? 'default' : 'pointer', fontSize: 'var(--size-ui)', color: 'var(--fg-1)' }}>
           <input
             type="checkbox"
@@ -265,7 +267,7 @@ export function CiudadanoForm({
       </Section>
 
       {/* ── Funcionario municipal (mig 110): la marca crea la cuenta ZARIS al guardar ── */}
-      <Section title="Funcionario municipal">
+      {!ocultarFuncionario && <Section title="Funcionario municipal">
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: readonly || !puedeMarcarFuncionario ? 'default' : 'pointer', fontSize: 'var(--size-ui)', color: 'var(--fg-1)' }}>
           <input
             type="checkbox"
@@ -295,7 +297,7 @@ export function CiudadanoForm({
             onUsername={(u) => onChange('zaris_username', u)}
           />
         )}
-      </Section>
+      </Section>}
 
       {/* ── Observaciones ── */}
       <Section title="Observaciones">
@@ -306,7 +308,7 @@ export function CiudadanoForm({
             disabled={readonly}
             maxLength={500}
             rows={3}
-            placeholder="Notas adicionales (max. 500 caracteres)"
+            placeholder="Notas adicionales (máx. 500 caracteres)"
             style={{ ...inputStyle(readonly), resize: 'vertical', fontFamily: 'var(--font-display)' }}
           />
         </Field>
@@ -331,9 +333,10 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-function Row({ cols, children }: { cols: string; children: React.ReactNode }) {
+// Las columnas bajan de renglón cuando no entran (la ventana de registro puede ser angosta).
+function Row({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 12 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 12 }}>
       {children}
     </div>
   )

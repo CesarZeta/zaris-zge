@@ -188,6 +188,8 @@ Caso de uso: reclamo que se resuelve sin generar OT (consulta, duplicado, sin in
 
 ### Ciudadano en reclamos
 
+**La cuenta del vecino es requisito (2026-11-24, PLAN_REGISTRO_PREVIO F2):** `exigir_cuenta_vecino` en el alta, en el cambio de vecino (`PUT /reclamos/{id}`, que además no admite dejarlo vacío) y en el subreclamo a nombre de otra persona; el que hereda al vecino del padre no pide nada. Smoke `backend/smoke_registro_previo.py`.
+
 Todo reclamo requiere `id_ciudadano` válido de la BUC. El frontend busca ciudadanos vía `GET /api/v1/buc/ciudadanos/buscar?q=<texto>` con debounce de 300ms antes de permitir el submit.
 
 **Mail con el número al vecino, cargue quien cargue (César, 2026-11-20).** Desde la app: `publico_reclamos.crear_mi_reclamo`. Desde el backoffice: `POST /reclamos` encola `push.notificar_alta_reclamo_agente` (sesión propia, después de responder), que usa el mismo `enviar_mail_confirmacion_reclamo_ciudadano` con `cargado_por_agente=True` (texto de comprobante, botón a `/reclamos` del Portal del Ciudadano). **No sale:** de oficio, ficha demo de funcionario (`es_ficha_demo`), ciudadano sin email o municipio sin portal (fail-closed). Los subreclamos y el retrabajo no pasan por acá (el retrabajo tiene su propio mail). El mail no lleva `observaciones` (son internas). Smoke: `backend/smoke_reclamo_alta_mail.py`.

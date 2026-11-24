@@ -20,7 +20,7 @@ Al cargar el DNI real en la ficha, el próximo guardado le crea la cuenta como a
 import logging
 import re
 
-from fastapi import BackgroundTasks
+from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,6 +44,59 @@ MSG_FICHA_DEMO = (
 def es_ficha_demo(doc_tipo: str | None, doc_nro: str | None) -> bool:
     """True si la ficha es una de las fichas demo de funcionarios (DNI del rango reservado)."""
     return (doc_tipo or "").upper() == "DNI" and bool(_DNI_FICHA_DEMO.match((doc_nro or "").strip()))
+
+
+MSG_SIN_CUENTA = (
+    "El vecino no tiene cuenta en el portal: abrí su ficha, completá los datos y guardala "
+    "para crearla"
+)
+MSG_SIN_CUENTA_FICHA_DEMO = (
+    "El vecino no tiene cuenta en el portal: su ficha tiene un DNI de prueba (rango "
+    "99.000.000). Cargá el DNI real de la persona y guardá la ficha"
+)
+MSG_VECINO_DE_BAJA = "El vecino está dado de baja: reactivá su ficha antes de seguir"
+
+
+async def vecino_tiene_cuenta(db: AsyncSession, id_ciudadano: int) -> bool:
+    """True si el vecino está activo y tiene una credencial del portal activa (ya activada o
+    pendiente de activación)."""
+    fila = (await db.execute(
+        text("SELECT 1 FROM ciudadano_credencial cc "
+             "JOIN ciudadanos c ON c.id_ciudadano = cc.id_ciudadano "
+             "WHERE cc.id_ciudadano = :c AND cc.activo = TRUE AND c.activo = TRUE LIMIT 1"),
+        {"c": id_ciudadano},
+    )).fetchone()
+    return fila is not None
+
+
+async def vecinos_con_cuenta(db: AsyncSession, ids: list[int]) -> set[int]:
+    """De `ids`, los que tienen una credencial del portal activa (una sola consulta)."""
+    if not ids:
+        return set()
+    filas = await db.execute(
+        text("SELECT id_ciudadano FROM ciudadano_credencial "
+             "WHERE activo = TRUE AND id_ciudadano = ANY(CAST(:ids AS integer[]))"),
+        {"ids": ids},
+    )
+    return {f.id_ciudadano for f in filas.fetchall()}
+
+
+async def exigir_cuenta_vecino(db: AsyncSession, id_ciudadano: int) -> None:
+    """422 si el vecino no puede ser el remitente de una transacción (PLAN_REGISTRO_PREVIO.md §4:
+    la cuenta es requisito). La llama TODA vía del backoffice que cargue un reclamo, un turno,
+    una reserva o un trámite a nombre de un vecino; las emergencias quedan exceptuadas. Se llama
+    después de validar que el vecino existe en el municipio."""
+    if await vecino_tiene_cuenta(db, id_ciudadano):
+        return
+    c = (await db.execute(
+        text("SELECT doc_tipo, doc_nro, activo FROM ciudadanos WHERE id_ciudadano = :id"),
+        {"id": id_ciudadano},
+    )).fetchone()
+    if c and not c.activo:
+        raise HTTPException(422, MSG_VECINO_DE_BAJA)
+    if c and es_ficha_demo(c.doc_tipo, c.doc_nro):
+        raise HTTPException(422, MSG_SIN_CUENTA_FICHA_DEMO)
+    raise HTTPException(422, MSG_SIN_CUENTA)
 
 
 async def _municipio_branding(db: AsyncSession, id_municipio: int) -> tuple[str, str | None]:

@@ -248,6 +248,8 @@ export interface CiudadanoMinimo {
   cuil: string | null
   telefono: string | null
   email: string | null
+  /** Cuenta del portal (activa o pendiente). Solo la informa el buscador. */
+  tiene_cuenta?: boolean | null
 }
 
 // Catalogos de autocompletar / filtros (sub-fase 3.B)

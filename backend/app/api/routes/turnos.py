@@ -85,6 +85,7 @@ from app.services.historia_clinica import (
 from app.middleware.rate_limit import check_rate_limit
 from app.utils.request_helpers import get_real_ip
 from app.services import encuestas_service
+from app.services.cuenta_vecino import exigir_cuenta_vecino
 from app.services.accesos_super import registrar_acceso_super
 
 
@@ -1134,6 +1135,7 @@ async def crear_turno(
     ), {"id": payload.id_ciudadano, "m": id_municipio})).first()
     if not ciu:
         raise HTTPException(404, "Ciudadano no encontrado o inactivo")
+    await exigir_cuenta_vecino(db, payload.id_ciudadano)
 
     # Resolver la prestacion: recurso fijo + duracion + ubicacion (mig 103).
     prest = (await db.execute(text("""

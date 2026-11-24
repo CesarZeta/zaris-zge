@@ -113,7 +113,7 @@ export function TurnoFormModal({ open, onClose, turno }: Props) {
             </div>
           ) : (
             <>
-              <CiudadanoSearch onSelect={(c) => setCid(c)} />
+              <CiudadanoSearch exigirCuenta onSelect={(c) => setCid(c)} />
               {cid && (
                 <div style={{ marginTop: 6, fontSize: 13, color: 'var(--fg-2)' }}>
                   Seleccionado: <strong>{cid.apellido}, {cid.nombre}</strong>

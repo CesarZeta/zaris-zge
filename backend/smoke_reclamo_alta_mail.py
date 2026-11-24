@@ -17,8 +17,8 @@ Cubre:
      comprobante, botón a /reclamos del Portal del Ciudadano, remitente con el municipio.
   2. Descripción con HTML: llega escapada.
   3. De oficio: ningún mail.
-  4. Ficha demo de funcionario: ningún mail.
-  5. Ciudadano sin email: ningún mail.
+  4. Ficha demo de funcionario: 422 (no tiene cuenta, registro previo F2) y ningún mail.
+  5. Ciudadano sin email: ídem (sin correo no hay cuenta).
   6. El mail del reclamo cargado desde la app conserva su texto.
 """
 import asyncio
@@ -141,7 +141,7 @@ async def main() -> int:
         print("[4] Ficha demo de funcionario")
         MAILS.clear()
         nro = await crear(demo["id_ciudadano"], "presencial")
-        check(nro is not None and not MAILS, "ningún mail", f"{nro} {len(MAILS)}")
+        check(nro is None and not MAILS, "no se crea y ningún mail", f"{nro} {len(MAILS)}")
 
         print("[5] Ciudadano sin email")
         if not sin_email:
@@ -149,7 +149,7 @@ async def main() -> int:
         else:
             MAILS.clear()
             nro = await crear(sin_email["id_ciudadano"], "presencial")
-            check(nro is not None and not MAILS, "ningún mail", f"{nro} {len(MAILS)}")
+            check(nro is None and not MAILS, "no se crea y ningún mail", f"{nro} {len(MAILS)}")
 
     print("[6] Mail del reclamo cargado desde la app")
     MAILS.clear()
@@ -158,7 +158,7 @@ async def main() -> int:
         descripcion="d", direccion="calle", municipio_nombre="Muni", frontend_url="https://v.example",
         id_municipio=1)
     m = MAILS[0] if MAILS else None
-    check(m is not None and "notificacion" in m["html"] and "comprobante" not in m["html"],
+    check(m is not None and "notificación" in m["html"] and "comprobante" not in m["html"],
           "conserva el texto de la app")
 
     print(f"\n== {OK} OK · {FAIL} FAIL ==")

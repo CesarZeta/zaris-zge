@@ -99,6 +99,8 @@ Con 84 agentes en prod, los endpoints B1 originales eran inusables (`/calendario
 
 **Quirk de clave:** `disponibilidad_por_recurso` en `/semana` usa formato `"{tipo}:{id}"` con dos puntos. Ver [[reference_agenda_semana_disponibilidad_key]].
 
+**Cuenta del vecino (2026-11-24):** reservas y ocupaciones de tipo `turno` exigen la cuenta (`exigir_cuenta_vecino`, 422).
+
 ### Anti-carrera en reservas de eventos (mig 95, 2026-07-18) — OBLIGATORIO en toda vía nueva
 
 Las 3 vías que insertan `evento_reservas` (backoffice `agenda_v2.crear_reserva`, autoservicio anónimo `agenda_publico.reservar_publico`, vecino `publico_entradas_vecino.reservar_entrada_vecino`) siguen el mismo protocolo — **cualquier vía nueva debe replicarlo o la carrera se reabre por esa puerta**:

@@ -94,7 +94,7 @@ export function EmpresaVinculadaPanel({ idCiudadano, readonly, modoAlta, empresa
 
   async function guardar() {
     if (!validar()) {
-      push({ kind: 'error', title: 'Revisa los campos de la empresa' })
+      push({ kind: 'error', title: 'Revisá los campos de la empresa' })
       return
     }
     const cuitFmt = validarCuilCuit(form.cuit).formateado || form.cuit
@@ -140,7 +140,7 @@ export function EmpresaVinculadaPanel({ idCiudadano, readonly, modoAlta, empresa
 
       <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
         <Row cols="1fr 1fr">
-          <Field label="Tipo de Representacion" required error={errores.id_tipo_representacion}>
+          <Field label="Tipo de representación" required error={errores.id_tipo_representacion}>
             <select
               value={form.id_tipo_representacion}
               onChange={(e) => set('id_tipo_representacion', e.target.value)}

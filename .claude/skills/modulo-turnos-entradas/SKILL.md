@@ -79,6 +79,8 @@ Flujo público sin JWT para que el ciudadano reserve un turno sin pasar por mesa
 
 **Frontend público (`web-app/src/autoservicio/`):** `TurnosPage.tsx` (`/turnos-autoservicio`, 3 pasos prestación→slot→datos) · `MiTurnoPage.tsx` (`/turno/:tokenTurno`, ver/cancelar). El backoffice muestra banner con el link público + copiar. **Las 4 rutas públicas del bundle están eximidas del guard standalone** (whitelist en `web-app/index.html`, BUG cazado 2026-06-12 — ver skill `win-quirks` Q12): ruta pública nueva ⇒ sumarla a la regex o el link compartido rebota al login.
 
+> **Backoffice (2026-11-24, PLAN_REGISTRO_PREVIO F2):** `POST /turnos` y `POST /agenda/eventos/{id}/reservas` también exigen la cuenta (`exigir_cuenta_vecino`, 422). `TurnoFormModal` y `ReservaModal` usan `CiudadanoSearch` con `exigirCuenta`. La Guardia queda exceptuada.
+
 ### Anti-carrera (mig 95, 2026-07-18) — OBLIGATORIO en toda vía nueva de escritura
 
 Los checks de solape/duplicado son check-then-insert: sin lock, dos requests concurrentes pasan ambos. Desde mig 95 el cierre es triple y **cualquier vía nueva que escriba `turnos`/`ocupaciones` debe replicarlo**:

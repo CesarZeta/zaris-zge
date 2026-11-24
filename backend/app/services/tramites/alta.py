@@ -18,20 +18,10 @@ from fastapi import HTTPException, Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.cuenta_vecino import MSG_SIN_CUENTA, exigir_cuenta_vecino
 from app.services.tramites import aprobaciones as svc_aprob
 from app.services.tramites import movimientos as svc_mov
 from app.services.tramites import numerador as svc_num
-
-MSJ_SIN_CUENTA = "El vecino no tiene cuenta en el portal: dale de alta la cuenta desde su ficha"
-
-
-async def vecino_tiene_cuenta(db: AsyncSession, id_ciudadano: int) -> bool:
-    """True si el ciudadano tiene una credencial del portal activa (activada o pendiente)."""
-    fila = (await db.execute(
-        text("SELECT 1 FROM ciudadano_credencial WHERE id_ciudadano = :c AND activo = TRUE LIMIT 1"),
-        {"c": id_ciudadano},
-    )).fetchone()
-    return fila is not None
 
 
 async def crear_tramite_en_db(
@@ -54,8 +44,12 @@ async def crear_tramite_en_db(
 
     if iniciador_tipo == "ciudadano":
         id_cid = iniciador_fks.get("id_ciudadano_iniciador")
-        if not id_cid or not await vecino_tiene_cuenta(db, id_cid):
-            raise HTTPException(422, MSJ_SIN_CUENTA)
+        if not id_cid:
+            raise HTTPException(422, MSG_SIN_CUENTA)
+        await exigir_cuenta_vecino(db, id_cid)
+    # La persona que representa a una empresa también opera con su cuenta.
+    if iniciador_fks.get("id_ciudadano_representante"):
+        await exigir_cuenta_vecino(db, iniciador_fks["id_ciudadano_representante"])
 
     estado_inicial = (await db.execute(
         text("""

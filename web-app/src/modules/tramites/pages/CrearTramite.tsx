@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Button, Skeleton } from '../../../ui'
+import { CiudadanoSearch } from '../../agenda/components/CiudadanoSearch'
 import { EntitySelect } from '../components/EntitySelect'
 import { FormularioDinamico, validarDatos } from '../components/FormularioDinamico'
 import { useTiposTramite, useTipoTramiteDetalle, useCrearTramite } from '../hooks/useTramites'
@@ -21,6 +22,8 @@ export function CrearTramite() {
   const [idTipoSeleccionado, setIdTipoSeleccionado] = useState<number | null>(null)
   const [iniciadorTipo, setIniciadorTipo] = useState<IniciadorTipo | null>(null)
   const [idCiudadano, setIdCiudadano] = useState<number | null>(null)
+  const [ciudadanoNombre, setCiudadanoNombre] = useState('')
+  const [representanteNombre, setRepresentanteNombre] = useState('')
   const [idEmpresa, setIdEmpresa] = useState<number | null>(null)
   const [idSubareaIniciadora, setIdSubareaIniciadora] = useState<number | null>(null)
   const [idRepresentante, setIdRepresentante] = useState<number | null>(null)
@@ -194,14 +197,12 @@ export function CrearTramite() {
           {(iniciadorTipo === 'ciudadano' || (iniciadoresPermitidos.length === 1 && iniciadoresPermitidos[0] === 'ciudadano')) && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <label style={labelStyle}>Ciudadano</label>
-              <EntitySelect
-                endpoint="/api/v1/buc/ciudadanos/buscar"
-                idField="id_ciudadano"
-                labelField="nombre_completo"
-                value={idCiudadano}
-                onChange={(id) => setIdCiudadano(id)}
-                placeholder="Buscar ciudadano por nombre o DNI..."
+              <CiudadanoSearch
+                key={`iniciador-${idTipoSeleccionado}`}
+                exigirCuenta
+                onSelect={(c) => { setIdCiudadano(c.id_ciudadano); setCiudadanoNombre(`${c.apellido}, ${c.nombre}`) }}
               />
+              {idCiudadano && <span style={elegidoStyle}>Seleccionado: <strong>{ciudadanoNombre}</strong></span>}
             </div>
           )}
 
@@ -237,14 +238,16 @@ export function CrearTramite() {
           {permiteRepresentante && iniciadorTipo === 'empresa' && idEmpresa && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
               <label style={labelStyle}>Representante (ciudadano)</label>
-              <EntitySelect
-                endpoint="/api/v1/buc/ciudadanos/buscar"
-                idField="id_ciudadano"
-                labelField="nombre_completo"
-                value={idRepresentante}
-                onChange={(id) => setIdRepresentante(id)}
-                placeholder="Buscar representante..."
+              <CiudadanoSearch
+                exigirCuenta
+                onSelect={(c) => { setIdRepresentante(c.id_ciudadano); setRepresentanteNombre(`${c.apellido}, ${c.nombre}`) }}
               />
+              {idRepresentante && (
+                <span style={elegidoStyle}>
+                  Seleccionado: <strong>{representanteNombre}</strong>{' '}
+                  <button type="button" onClick={() => setIdRepresentante(null)} style={quitarStyle}>Quitar</button>
+                </span>
+              )}
             </div>
           )}
         </section>
@@ -320,6 +323,12 @@ export function CrearTramite() {
       )}
     </div>
   )
+}
+
+const elegidoStyle: React.CSSProperties = { fontSize: 13, color: 'var(--fg-2)', fontFamily: 'var(--font-display)' }
+const quitarStyle: React.CSSProperties = {
+  background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
+  color: 'var(--zaris-orange)', textDecoration: 'underline', font: 'inherit',
 }
 
 const ICONO_MAP: Record<string, LucideIcon> = {

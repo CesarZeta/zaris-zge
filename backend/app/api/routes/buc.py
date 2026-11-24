@@ -33,7 +33,9 @@ from app.schemas.buc import (
 )
 from app.services import identidad as svc_identidad
 from app.services.tramites import auth as svc_tramites_auth
-from app.services.cuenta_vecino import MSG_FICHA_DEMO, asegurar_cuenta_vecino, es_ficha_demo
+from app.services.cuenta_vecino import (
+    MSG_FICHA_DEMO, asegurar_cuenta_vecino, es_ficha_demo, vecinos_con_cuenta,
+)
 from app.services.cuenta_zaris import (
     MSG_FALTAN_DATOS_ZARIS, crear_cuenta_zaris_desde_ficha, crear_usuario_interno,
     exigir_admin_funcionario, sincronizar_agente_desde_ficha,
@@ -497,10 +499,13 @@ async def buscar_ciudadano(
         .offset(offset)
         .limit(limit)
     )
-    result = await db.execute(page_q)
+    vecinos = (await db.execute(page_q)).scalars().all()
+    con_cuenta = await vecinos_con_cuenta(db, [v.id_ciudadano for v in vecinos])
+    for v in vecinos:
+        v.tiene_cuenta = v.id_ciudadano in con_cuenta
     response.headers["X-Total-Count"] = str(total)
     response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
-    return result.scalars().all()
+    return vecinos
 
 
 @router.get("/ciudadanos/verificar-duplicado")

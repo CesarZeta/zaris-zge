@@ -453,6 +453,21 @@ async def _asegurar_vecinos(db: AsyncSession, cat: _Catalogos, uid: int,
                     FALSE, FALSE, FALSE, TRUE, :mun)
         """), filas)
 
+    # La cuenta es requisito en toda transacción (PLAN_REGISTRO_PREVIO.md §4): el vecino demo
+    # nace con la suya pendiente de activación, sin correo.
+    await db.execute(text("""
+        INSERT INTO ciudadano_credencial (id_ciudadano, activado, activo, id_municipio, id_usuario_alta)
+        SELECT c.id_ciudadano, FALSE, TRUE, c.id_municipio, :uid FROM ciudadanos c
+         WHERE c.activo AND c.email LIKE :d AND c.id_municipio = :mun
+        ON CONFLICT (id_ciudadano) DO NOTHING
+    """), {"uid": uid, "d": f"%@{DOMINIO_VECINO_DEMO}", "mun": cat.id_municipio})
+    await db.execute(text("""
+        INSERT INTO ciudadano_canal_preferido (id_ciudadano, id_municipio, id_usuario_alta)
+        SELECT c.id_ciudadano, c.id_municipio, :uid FROM ciudadanos c
+         WHERE c.activo AND c.email LIKE :d AND c.id_municipio = :mun
+        ON CONFLICT (id_ciudadano) DO NOTHING
+    """), {"uid": uid, "d": f"%@{DOMINIO_VECINO_DEMO}", "mun": cat.id_municipio})
+
     # Solo vecinos DEMO (2026-10-21): hasta esta fecha el pool eran todos los
     # ciudadanos con email, y un reclamo demo podia aparecer en la app de un vecino
     # real. demo_atencion ya filtraba asi.

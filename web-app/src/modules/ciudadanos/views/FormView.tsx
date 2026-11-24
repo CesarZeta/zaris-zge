@@ -1,69 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useNotificationsStore } from '../../../stores/notifications'
-import { esAdministrador, useAuthStore } from '../../../stores/auth'
-import {
-  useCiudadano,
-  useCrearCiudadano,
-  useCuentasCiudadano,
-  useEmpresasVinculadas,
-  useModificarCiudadano,
-  useNacionalidades,
-  verificarDuplicadoCiudadano,
-} from '../hooks/useCiudadanos'
+import { useEmpresasVinculadas } from '../hooks/useCiudadanos'
+import { type ModoFicha, useFichaCiudadano } from '../hooks/useFichaCiudadano'
 import { CiudadanoForm } from '../components/CiudadanoForm'
-import { aUsername, usernameValido } from '../components/CuentaZarisCampos'
 import { CuentasChips } from '../components/CuentasChips'
 import { IdentidadPanel } from '../components/IdentidadPanel'
 import { EmpresaVinculadaPanel } from '../components/EmpresaVinculadaPanel'
-import {
-  extraerDniDeCuil,
-  generarCuilDesdeDni,
-  soloDigitos,
-  validarCuilCuit,
-  validarEmail,
-  validarTelefono,
-} from '../lib/cuilUtils'
-import type { CiudadanoCreate, DocTipo, Sexo, SubareaHit, VerificarDuplicadoResp } from '../types/ciudadano'
-
-type Modo = 'new' | 'edit' | 'view'
-
-export interface FormState {
-  doc_tipo: DocTipo | ''
-  doc_nro: string
-  cuil: string
-  cuilManual: boolean   // si el usuario edito el CUIL a mano, no auto-generar
-  nombre: string
-  apellido: string
-  sexo: Sexo | ''
-  fecha_nac: string
-  id_nacionalidad: string
-  calle: string
-  localidad: string
-  provincia: string
-  latitud: number | null
-  longitud: number | null
-  telefono: string
-  email: string
-  emp_chk: boolean
-  es_funcionario: boolean
-  // Cuenta ZARIS del funcionario (mig 110): viajan en `cuenta_zaris` al guardar con el tilde.
-  zaris_nivel: number
-  zaris_subarea: SubareaHit | null
-  zaris_username: string
-  zaris_username_manual: boolean   // si el admin editó el usuario a mano, no re-proponer
-  observaciones: string
-}
-
-const emptyForm: FormState = {
-  doc_tipo: '', doc_nro: '', cuil: '', cuilManual: false,
-  nombre: '', apellido: '', sexo: '', fecha_nac: '',
-  id_nacionalidad: '', calle: '', localidad: '', provincia: '',
-  latitud: null, longitud: null,
-  telefono: '', email: '', emp_chk: false, es_funcionario: false,
-  zaris_nivel: 4, zaris_subarea: null, zaris_username: '', zaris_username_manual: false,
-  observaciones: '',
-}
 
 export function FormView() {
   const navigate = useNavigate()
@@ -75,7 +18,7 @@ export function FormView() {
   // /ciudadanos/nuevo               → new
   // /ciudadanos/:id                 → view
   // /ciudadanos/:id/editar          → edit
-  const modo: Modo = useMemo(() => {
+  const modo: ModoFicha = useMemo(() => {
     if (location.pathname.endsWith('/nuevo')) return 'new'
     if (location.pathname.endsWith('/editar')) return 'edit'
     return 'view'
@@ -84,248 +27,36 @@ export function FormView() {
   const id = params.id ? Number(params.id) : null
   const readonly = modo === 'view'
 
-  const detalle = useCiudadano(modo === 'new' ? null : id)
-  const nacionalidades = useNacionalidades()
+  const ficha = useFichaCiudadano({ modo, id })
+  const { form, errores, detalle, handleChange, yaTieneZaris } = ficha
   const empresas = useEmpresasVinculadas(modo === 'new' ? null : id)
-  const crear = useCrearCiudadano()
-  const modificar = useModificarCiudadano(id)
 
-  const [form, setForm] = useState<FormState>(emptyForm)
-  const [errores, setErrores] = useState<Record<string, string>>({})
   const [empPanelOpen, setEmpPanelOpen] = useState(false)
   const [bloqueoEmpresaGuardar, setBloqueoEmpresaGuardar] = useState(false)
 
-  // ── Cuentas de la persona (mig 110, PLAN_CUENTAS_FUNCIONARIO.md) ──
-  // El tilde «funcionario del municipio» lo maneja solo el Administrador y, si la persona
-  // todavía no tiene cuenta ZARIS, el guardado la crea con nivel/subárea/usuario
-  // (`cuenta_zaris` del POST/PUT). Sin botón ni modal aparte. Destildar NO borra cuentas.
-  const nivelUsuario = useAuthStore((s) => s.user?.nivel_acceso)
-  const esAdmin = esAdministrador(nivelUsuario)
-  const cuentas = useCuentasCiudadano(modo !== 'new' ? id : null)
-  const yaTieneZaris = !!cuentas.data?.zaris
-  const cuentasListas = modo === 'new' || cuentas.isSuccess
-  const debeCrearCuentaZaris = form.es_funcionario && esAdmin && cuentasListas && !yaTieneZaris
-
-  // Hidratar form en modo edit/view desde el detalle
   useEffect(() => {
-    if (modo === 'new') {
-      setForm(emptyForm)
-      setEmpPanelOpen(false)
-      return
-    }
-    if (!detalle.data) return
-    const c = detalle.data
-    setForm({
-      doc_tipo: c.doc_tipo,
-      doc_nro: c.doc_nro || '',
-      cuil: c.cuil || '',
-      cuilManual: true, // ya cargado, no autogenerar
-      nombre: c.nombre || '',
-      apellido: c.apellido || '',
-      sexo: c.sexo,
-      fecha_nac: c.fecha_nac ? c.fecha_nac.substring(0, 10) : '',
-      id_nacionalidad: String(c.id_nacionalidad || ''),
-      calle: c.calle || '',
-      localidad: c.localidad || '',
-      provincia: c.provincia || '',
-      latitud: c.latitud ?? null,
-      longitud: c.longitud ?? null,
-      telefono: c.telefono || '',
-      email: c.email || '',
-      emp_chk: !!c.emp_chk,
-      es_funcionario: !!c.es_funcionario,
-      zaris_nivel: 4,
-      zaris_subarea: null,
-      zaris_username: aUsername(c.nombre || '', c.apellido || ''),
-      zaris_username_manual: false,
-      observaciones: c.observaciones || '',
-    })
-    if (c.emp_chk) setEmpPanelOpen(true)
+    if (modo === 'new') setEmpPanelOpen(false)
+    else if (detalle.data?.emp_chk) setEmpPanelOpen(true)
   }, [modo, detalle.data])
 
-  // Lookup duplicados con debounce (DNI / CUIL al tipear)
-  const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  function programarLookup(campo: 'doc_nro' | 'cuil', valor: string) {
-    if (lookupTimer.current) clearTimeout(lookupTimer.current)
-    lookupTimer.current = setTimeout(async () => {
-      try {
-        const r = await verificarDuplicadoCiudadano(campo, valor, id ?? undefined)
-        if (r.existe && r.id && r.id !== id) {
-          push({
-            kind: 'info',
-            title: `${campo === 'cuil' ? 'CUIL' : 'DNI'} ya registrado`,
-            body: `${r.nombre} - usa Buscar para traerlo`,
-            ttl: 6000,
-          })
-        }
-      } catch { /* silencioso */ }
-    }, 800)
-  }
-
-  // Actualiza un campo y dispara reglas automaticas
-  function handleChange<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setForm((prev) => {
-      const next: FormState = { ...prev, [key]: value }
-      // Si tocan CUIL manualmente, marcamos manual
-      if (key === 'cuil') next.cuilManual = String(value).length > 0
-      // Usuario de la cuenta ZARIS: se propone nombre.apellido mientras no lo editen a mano;
-      // si lo borran, se vuelve a proponer (mismo criterio que el CUIL).
-      if (key === 'zaris_username') {
-        const limpio = String(value).replace(/\s+/g, '')
-        next.zaris_username_manual = limpio.length > 0
-        next.zaris_username = limpio || aUsername(prev.nombre, prev.apellido)
-      }
-      if ((key === 'nombre' || key === 'apellido') && !prev.zaris_username_manual) {
-        next.zaris_username = aUsername(key === 'nombre' ? String(value) : prev.nombre,
-                                        key === 'apellido' ? String(value) : prev.apellido)
-      }
-      // Auto-generar CUIL desde DNI si no fue editado manualmente
-      if ((key === 'doc_nro' || key === 'sexo' || key === 'doc_tipo') && !prev.cuilManual) {
-        const docTipo = key === 'doc_tipo' ? (value as string) : prev.doc_tipo
-        const docNro = key === 'doc_nro' ? (value as string) : prev.doc_nro
-        const sexo = key === 'sexo' ? (value as string) : prev.sexo
-        const generado = generarCuilDesdeDni(docNro, sexo, docTipo)
-        if (generado) next.cuil = generado
-        else if (next.cuil && !prev.cuilManual) next.cuil = ''
-      }
-      return next
-    })
-    // limpiar error del campo
-    if (errores[key as string]) {
-      setErrores((prev) => { const n = { ...prev }; delete n[key as string]; return n })
-    }
-    // Lookups
-    if (key === 'doc_nro' && typeof value === 'string') {
-      const digits = soloDigitos(value)
-      if (digits.length >= 7) programarLookup('doc_nro', digits)
-    }
-    if (key === 'cuil' && typeof value === 'string') {
-      const digits = soloDigitos(value)
-      if (digits.length === 11) programarLookup('cuil', value)
-    }
-  }
-
-  // Al perder foco del CUIL, si DNI esta vacio, extraer DNI del CUIL
-  function handleCuilBlur() {
-    if (!form.doc_nro && form.cuil) {
-      const dni = extraerDniDeCuil(form.cuil)
-      if (dni) setForm((prev) => ({ ...prev, doc_nro: dni }))
-    }
-  }
-
-  // ── Validar formulario ──
-  function validar(): { ok: boolean; data?: CiudadanoCreate } {
-    const errs: Record<string, string> = {}
-
-    if (!form.doc_tipo) errs.doc_tipo = 'Requerido'
-    if (!form.doc_nro && !form.cuil) {
-      errs.doc_nro = 'Ingresa DNI o CUIL'
-      errs.cuil = 'Ingresa DNI o CUIL'
-    }
-    if (form.cuil) {
-      const r = validarCuilCuit(form.cuil)
-      if (!r.valido) errs.cuil = r.error
-    }
-    if (!form.nombre.trim()) errs.nombre = 'Requerido'
-    if (!form.apellido.trim()) errs.apellido = 'Requerido'
-    if (!form.sexo) errs.sexo = 'Requerido'
-    if (!form.fecha_nac) errs.fecha_nac = 'Requerido'
-    if (!form.id_nacionalidad) errs.id_nacionalidad = 'Requerido'
-    if (!form.calle.trim()) errs.calle = 'Requerido'
-    if (!form.localidad.trim()) errs.localidad = 'Requerido'
-    if (!form.provincia.trim()) errs.provincia = 'Requerido'
-    if (!form.telefono.trim()) errs.telefono = 'Requerido'
-    else {
-      const t = validarTelefono(form.telefono)
-      if (!t.valido) errs.telefono = t.error
-    }
-    if (!form.email.trim()) errs.email = 'Requerido'
-    else if (!validarEmail(form.email)) errs.email = 'Formato inválido'
-    if (debeCrearCuentaZaris) {
-      if (!form.zaris_subarea) errs.zaris_subarea = 'Elegí la subárea del funcionario'
-      if (!usernameValido(form.zaris_username)) errs.zaris_username = 'Usuario inválido: letras, números, punto, guión y guión bajo, sin espacios ni tildes'
-    }
-
-    setErrores(errs)
-    if (Object.keys(errs).length > 0) return { ok: false }
-
-    // Construir payload (con CUIL formateado, telefono y email sin guiones/trim)
-    const cuilFmt = validarCuilCuit(form.cuil).formateado || form.cuil
-    const data: CiudadanoCreate = {
-      doc_tipo: form.doc_tipo as DocTipo,
-      doc_nro: soloDigitos(form.doc_nro) || extraerDniDeCuil(cuilFmt) || form.doc_nro,
-      cuil: cuilFmt,
-      nombre: form.nombre.trim(),
-      apellido: form.apellido.trim(),
-      sexo: form.sexo as Sexo,
-      fecha_nac: form.fecha_nac,
-      id_nacionalidad: Number(form.id_nacionalidad),
-      calle: form.calle.trim() || null,
-      localidad: form.localidad.trim() || null,
-      provincia: form.provincia.trim() || null,
-      latitud: form.latitud,
-      longitud: form.longitud,
-      telefono: soloDigitos(form.telefono),
-      email: form.email.trim().toLowerCase(),
-      emp_chk: form.emp_chk,
-      es_funcionario: form.es_funcionario,
-      observaciones: form.observaciones.trim() || null,
-    }
-    if (debeCrearCuentaZaris && form.zaris_subarea) {
-      data.cuenta_zaris = { nivel_acceso: form.zaris_nivel, id_subarea: form.zaris_subarea.id_subarea, username: form.zaris_username }
-    }
-    return { ok: true, data }
-  }
-
-  // ── Guardar ──
   async function handleGuardar() {
-    const v = validar()
-    if (!v.ok || !v.data) {
-      push({ kind: 'error', title: 'Revisa los campos marcados' })
-      return
-    }
-    const data = v.data
-
-    // Verificacion de duplicados solo en alta
+    const r = await ficha.guardar()
+    if (!r) return
+    const { ciudadano: c, avisoZaris } = r
+    const body = `${c.apellido}, ${c.nombre}.${avisoZaris}`
+    const ttl = avisoZaris ? 8000 : undefined
     if (modo === 'new') {
-      const noDup: VerificarDuplicadoResp = { existe: false }
-      const [emailDup, telDup] = await Promise.all([
-        verificarDuplicadoCiudadano('email', data.email, id ?? undefined).catch(() => noDup),
-        verificarDuplicadoCiudadano('telefono', data.telefono, id ?? undefined).catch(() => noDup),
-      ])
-      const dupErrs: Record<string, string> = {}
-      if (emailDup.existe) dupErrs.email = `Ya registrado: ${emailDup.nombre}`
-      if (telDup.existe) dupErrs.telefono = `Ya registrado: ${telDup.nombre}`
-      if (Object.keys(dupErrs).length > 0) {
-        setErrores((prev) => ({ ...prev, ...dupErrs }))
-        push({ kind: 'error', title: 'Hay datos duplicados', body: 'Revisá el email o el teléfono' })
-        return
-      }
-    }
-
-    // Con `cuenta_zaris` en el body, el backend crea la cuenta ZARIS en la misma transacción:
-    // si el guardado salió bien, la cuenta existe y las credenciales ya se enviaron.
-    const avisoZaris = data.cuenta_zaris
-      ? ` Cuenta ZARIS creada (usuario ${data.cuenta_zaris.username}); las credenciales se enviaron a ${data.email}.`
-      : ''
-    try {
-      if (modo === 'new') {
-        const c = await crear.mutateAsync(data)
-        push({ kind: 'success', title: 'Ciudadano dado de alta', body: `${c.apellido}, ${c.nombre}.${avisoZaris}`, ttl: avisoZaris ? 8000 : undefined })
-        if (form.emp_chk) {
-          // Quedarse en edicion del nuevo ciudadano y abrir panel empresa
-          navigate(`/ciudadanos/${c.id_ciudadano}/editar`, { replace: true })
-          setEmpPanelOpen(true)
-        } else {
-          navigate('/ciudadanos')
-        }
-      } else if (modo === 'edit' && id) {
-        await modificar.mutateAsync(data)
-        push({ kind: 'success', title: 'Ciudadano actualizado', body: `${data.apellido}, ${data.nombre}.${avisoZaris}`, ttl: avisoZaris ? 8000 : undefined })
+      push({ kind: 'success', title: 'Ciudadano dado de alta', body, ttl })
+      if (form.emp_chk) {
+        // Quedarse en edicion del nuevo ciudadano y abrir panel empresa
+        navigate(`/ciudadanos/${c.id_ciudadano}/editar`, { replace: true })
+        setEmpPanelOpen(true)
+      } else {
         navigate('/ciudadanos')
       }
-    } catch (err) {
-      push({ kind: 'error', title: 'Error al guardar', body: (err as Error).message })
+    } else {
+      push({ kind: 'success', title: 'Ciudadano actualizado', body, ttl })
+      navigate('/ciudadanos')
     }
   }
 
@@ -339,7 +70,7 @@ export function FormView() {
     if (modo === 'edit' && id) {
       setEmpPanelOpen(true)
     } else if (modo === 'new') {
-      push({ kind: 'info', title: 'Guarda el ciudadano primero para vincular la empresa' })
+      push({ kind: 'info', title: 'Guardá el ciudadano primero para vincular la empresa' })
     }
   }
 
@@ -383,12 +114,12 @@ export function FormView() {
             errores={errores}
             readonly={readonly}
             esAlta={modo === 'new'}
-            nacionalidades={nacionalidades.data ?? []}
-            puedeMarcarFuncionario={esAdmin}
+            nacionalidades={ficha.nacionalidades}
+            puedeMarcarFuncionario={ficha.esAdmin}
             yaTieneZaris={yaTieneZaris}
-            mostrarCamposZaris={debeCrearCuentaZaris && !readonly}
+            mostrarCamposZaris={ficha.debeCrearCuentaZaris && !readonly}
             onChange={handleChange}
-            onCuilBlur={handleCuilBlur}
+            onCuilBlur={ficha.handleCuilBlur}
             onEmpChkChange={handleEmpChk}
           />
         </div>
@@ -398,8 +129,8 @@ export function FormView() {
             {readonly ? '← Volver' : 'Cancelar'}
           </button>
           {!readonly && (
-            <button onClick={handleGuardar} disabled={crear.isPending || modificar.isPending || bloqueoEmpresaGuardar} style={btnPrimary}>
-              {(crear.isPending || modificar.isPending) ? 'Guardando...' : 'Guardar ciudadano'}
+            <button onClick={handleGuardar} disabled={ficha.guardando || bloqueoEmpresaGuardar} style={btnPrimary}>
+              {ficha.guardando ? 'Guardando...' : 'Guardar ciudadano'}
             </button>
           )}
         </footer>

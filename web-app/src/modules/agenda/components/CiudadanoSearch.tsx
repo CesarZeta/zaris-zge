@@ -1,23 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Search, UserPlus } from 'lucide-react'
 import { buscarCiudadanos } from '../api/agendaApi'
 import type { CiudadanoMinimo } from '../types/agenda'
+import { RegistroVecinoModal } from '../../ciudadanos/components/RegistroVecinoModal'
 
 interface Props {
   onSelect: (c: CiudadanoMinimo) => void
   placeholder?: string
-  /** Muestra el botón "+ Nuevo" que dirige al alta de ciudadano. Default true.
-   *  Se puede ocultar (false) en contextos donde no aplica crear uno nuevo. */
+  /** Muestra el botón "+ Nuevo" que abre el registro del vecino en una ventana, sin perder lo
+   *  que se está cargando. Default true; false donde no aplica crear uno nuevo. */
   permitirNuevo?: boolean
+  /** La transacción exige la cuenta del vecino (reclamos, turnos, reservas, trámites): si el
+   *  elegido no la tiene, se abre su ficha para completarla antes de seguir. */
+  exigirCuenta?: boolean
 }
 
-export function CiudadanoSearch({ onSelect, placeholder = 'DNI, CUIL, teléfono o nombre...', permitirNuevo = true }: Props) {
-  const navigate = useNavigate()
+export function CiudadanoSearch({ onSelect, placeholder = 'DNI, CUIL, teléfono o nombre...', permitirNuevo = true, exigirCuenta = false }: Props) {
   const [q, setQ] = useState('')
   const [results, setResults] = useState<CiudadanoMinimo[]>([])
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
+  // Ventana de registro: {id: null} = persona nueva; con id, completar la ficha de ese vecino.
+  const [registro, setRegistro] = useState<{ id: number | null; doc?: string } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const reqIdRef = useRef(0)
   // Tras un pick, setQ() rellena el input con el nombre, lo cual reabriria
@@ -56,10 +60,30 @@ export function CiudadanoSearch({ onSelect, placeholder = 'DNI, CUIL, teléfono 
     return () => document.removeEventListener('mousedown', onClick)
   }, [])
 
-  function irAltaCiudadano() {
-    // El alta de ciudadano vive en el mismo bundle React (módulo Ciudadanos).
-    // Navegamos dentro del HashRouter; el agente vuelve y busca al recién creado.
-    navigate('/ciudadanos/nuevo')
+  function abrirAlta() {
+    const digitos = q.replace(/\D/g, '')
+    setOpen(false)
+    setRegistro({ id: null, doc: /^[\d.\s]+$/.test(q.trim()) && /^\d{7,8}$/.test(digitos) ? digitos : undefined })
+  }
+
+  function elegir(c: CiudadanoMinimo) {
+    // `=== false`: un backend que todavía no informa la cuenta no frena (lo controla él al guardar).
+    if (exigirCuenta && c.tiene_cuenta === false) {
+      setOpen(false)
+      setRegistro({ id: c.id_ciudadano })
+      return
+    }
+    confirmar(c)
+  }
+
+  function confirmar(c: CiudadanoMinimo) {
+    const texto = `${c.apellido ?? ''}, ${c.nombre ?? ''}`.trim()
+    // Solo si setQ cambia el texto corre el effect que hay que saltear.
+    if (texto !== q) skipNextRef.current = true
+    onSelect(c)
+    setOpen(false)
+    setResults([])
+    setQ(texto)
   }
 
   return (
@@ -83,8 +107,8 @@ export function CiudadanoSearch({ onSelect, placeholder = 'DNI, CUIL, teléfono 
         {permitirNuevo && (
           <button
             type="button"
-            onClick={irAltaCiudadano}
-            title="Dar de alta un ciudadano nuevo"
+            onClick={abrirAlta}
+            title="Registrar un vecino nuevo"
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
               padding: '9px 12px', borderRadius: 'var(--radius-lg)',
@@ -113,7 +137,7 @@ export function CiudadanoSearch({ onSelect, placeholder = 'DNI, CUIL, teléfono 
               {permitirNuevo && (
                 <button
                   type="button"
-                  onClick={irAltaCiudadano}
+                  onClick={abrirAlta}
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 6,
                     padding: '6px 10px', borderRadius: 'var(--radius-md)',
@@ -121,7 +145,7 @@ export function CiudadanoSearch({ onSelect, placeholder = 'DNI, CUIL, teléfono 
                     cursor: 'pointer', fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 600,
                   }}
                 >
-                  <UserPlus size={13} strokeWidth={1.5} /> Dar de alta un ciudadano
+                  <UserPlus size={13} strokeWidth={1.5} /> Registrar un vecino
                 </button>
               )}
             </div>
@@ -129,13 +153,8 @@ export function CiudadanoSearch({ onSelect, placeholder = 'DNI, CUIL, teléfono 
           {results.map((c) => (
             <button
               key={c.id_ciudadano}
-              onClick={() => {
-                skipNextRef.current = true
-                onSelect(c)
-                setOpen(false)
-                setResults([])
-                setQ(`${c.apellido ?? ''}, ${c.nombre ?? ''}`.trim())
-              }}
+              type="button"
+              onClick={() => elegir(c)}
               style={{
                 display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px',
                 background: 'transparent', border: 'none', cursor: 'pointer',
@@ -145,6 +164,9 @@ export function CiudadanoSearch({ onSelect, placeholder = 'DNI, CUIL, teléfono 
               <div style={{ fontSize: 13, color: 'var(--fg-1)' }}>
                 <strong>{c.apellido}, {c.nombre}</strong>
                 {c.doc_nro && <span style={{ color: 'var(--fg-3)' }}> · DNI {c.doc_nro}</span>}
+                {exigirCuenta && c.tiene_cuenta === false && (
+                  <span style={{ color: 'var(--color-error)' }}> · sin cuenta: completar su ficha</span>
+                )}
               </div>
               <div style={{ fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
                 {[c.telefono, c.email].filter(Boolean).join(' · ')}
@@ -152,6 +174,14 @@ export function CiudadanoSearch({ onSelect, placeholder = 'DNI, CUIL, teléfono 
             </button>
           ))}
         </div>
+      )}
+      {registro && (
+        <RegistroVecinoModal
+          idCiudadano={registro.id}
+          docInicial={registro.doc}
+          onCerrar={() => setRegistro(null)}
+          onListo={(c) => { setRegistro(null); confirmar({ ...c, tiene_cuenta: true }) }}
+        />
       )}
     </div>
   )

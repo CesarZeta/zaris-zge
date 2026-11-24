@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import AsyncSessionLocal
 from app.core.urls import url_portal_vecino
 from app.services.notificaciones import citar_texto
-from app.services.tramites import alta as svc_alta
+from app.services.cuenta_vecino import MSG_SIN_CUENTA, vecino_tiene_cuenta
 from app.services.tramites import movimientos as svc_mov
 
 logger = logging.getLogger("zaris.tramites.pedidos")
@@ -43,8 +43,8 @@ async def crear_pedido(
     un pedido abierto. Devuelve el id del pedido."""
     if tramite.get("iniciador_tipo") != "ciudadano" or not tramite.get("id_ciudadano_iniciador"):
         raise HTTPException(422, "Solo se puede pedir algo al vecino cuando el trámite lo inició un ciudadano.")
-    if not await svc_alta.vecino_tiene_cuenta(db, tramite["id_ciudadano_iniciador"]):
-        raise HTTPException(422, svc_alta.MSJ_SIN_CUENTA)
+    if not await vecino_tiene_cuenta(db, tramite["id_ciudadano_iniciador"]):
+        raise HTTPException(422, MSG_SIN_CUENTA)
     if tramite.get("fecha_archivado") is not None:
         raise HTTPException(422, "El trámite está archivado.")
     if tramite.get("es_final"):
