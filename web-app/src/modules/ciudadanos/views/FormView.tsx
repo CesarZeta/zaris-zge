@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useAuthStore } from '../../../stores/auth'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { useEmpresasVinculadas } from '../hooks/useCiudadanos'
 import { type ModoFicha, useFichaCiudadano } from '../hooks/useFichaCiudadano'
@@ -13,6 +14,7 @@ export function FormView() {
   const location = useLocation()
   const params = useParams<{ id?: string }>()
   const push = useNotificationsStore((s) => s.push)
+  const puedeEditar = useAuthStore((s) => s.hasPermission)(4) // Consultor: solo lectura
 
   // Modo: derivado de la URL.
   // /ciudadanos/nuevo               → new
@@ -20,9 +22,9 @@ export function FormView() {
   // /ciudadanos/:id/editar          → edit
   const modo: ModoFicha = useMemo(() => {
     if (location.pathname.endsWith('/nuevo')) return 'new'
-    if (location.pathname.endsWith('/editar')) return 'edit'
+    if (location.pathname.endsWith('/editar') && puedeEditar) return 'edit'
     return 'view'
-  }, [location.pathname])
+  }, [location.pathname, puedeEditar])
 
   const id = params.id ? Number(params.id) : null
   const readonly = modo === 'view'
@@ -75,6 +77,8 @@ export function FormView() {
   }
 
   // Estado de UI superior
+  if (modo === 'new' && !puedeEditar) return <Navigate to="/ciudadanos" replace />
+
   const titulo = modo === 'new' ? 'Alta de ciudadano' : modo === 'edit' ? 'Modificar ciudadano' : 'Consulta de ciudadano'
   const estadoBadge = modo === 'new'
     ? { label: 'NUEVO', bg: 'rgba(31,138,101,.12)', fg: 'var(--color-success)' }

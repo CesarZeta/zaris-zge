@@ -56,6 +56,16 @@ router = APIRouter(
 logger = logging.getLogger("zaris.buc")
 
 
+async def exigir_escritura_padron(current_user: dict = Depends(get_current_user)) -> None:
+    """El Consultor (nivel 5) es de solo lectura (CLAUDE.md §3). Va en TODA mutación del padrón: el
+    módulo Padrones lo ven los cinco niveles, así que el sidebar no alcanza."""
+    if int(current_user.get("nivel_acceso", 99)) > 4:
+        raise HTTPException(403, "El perfil Consultor es de solo lectura: no puede modificar el padrón.")
+
+
+ESCRITURA_PADRON = [Depends(exigir_escritura_padron)]
+
+
 # ═══════════════════════════════════════════════════════════════
 # USUARIOS
 # ═══════════════════════════════════════════════════════════════
@@ -537,7 +547,8 @@ async def verificar_duplicado_ciudadano(
     return {"existe": False}
 
 
-@router.post("/ciudadanos", response_model=CiudadanoOut, status_code=201)
+@router.post("/ciudadanos", response_model=CiudadanoOut, status_code=201,
+             dependencies=ESCRITURA_PADRON)
 async def crear_ciudadano(
     data: CiudadanoCreate,
     background_tasks: BackgroundTasks,
@@ -647,6 +658,7 @@ async def crear_ciudadano(
 
 @router.post(
     "/ciudadanos/{id}/cuenta-vecino",
+    dependencies=ESCRITURA_PADRON,
     responses={422: {"description": "El ciudadano no tiene email, o es una ficha demo (DNI de prueba)"}},
 )
 async def crear_cuenta_vecino_existente(
@@ -865,8 +877,9 @@ async def revocar_identidad_ciudadano(
 @router.put(
     "/ciudadanos/{id}",
     response_model=CiudadanoOut,
+    dependencies=ESCRITURA_PADRON,
     responses={
-        403: {"description": "Solo un Administrador puede poner el tilde de funcionario"},
+        403: {"description": "Perfil Consultor (solo lectura), o tilde de funcionario sin ser Administrador"},
         422: {"description": "Funcionario sin cuenta ZARIS: faltan nivel, subárea y usuario"},
     },
 )
@@ -976,7 +989,8 @@ async def modificar_ciudadano(
     return ciudadano
 
 
-@router.put("/ciudadanos/{id}/estado", response_model=CiudadanoOut)
+@router.put("/ciudadanos/{id}/estado", response_model=CiudadanoOut,
+            dependencies=ESCRITURA_PADRON)
 async def cambiar_estado_ciudadano(
     id: int,
     activo: bool = Query(..., description="true para reactivar, false para dar de baja"),
@@ -1146,7 +1160,8 @@ async def verificar_duplicado_empresa(
     return {"existe": False}
 
 
-@router.post("/empresas", response_model=EmpresaOut, status_code=201)
+@router.post("/empresas", response_model=EmpresaOut, status_code=201,
+             dependencies=ESCRITURA_PADRON)
 async def crear_empresa(
     data: EmpresaCreate,
     db: AsyncSession = Depends(get_db),
@@ -1226,7 +1241,8 @@ async def obtener_empresa(id: int, db: AsyncSession = Depends(get_db),
     return empresa
 
 
-@router.put("/empresas/{id}", response_model=EmpresaOut)
+@router.put("/empresas/{id}", response_model=EmpresaOut,
+            dependencies=ESCRITURA_PADRON)
 async def modificar_empresa(
     id: int,
     data: EmpresaUpdate,
@@ -1257,7 +1273,8 @@ async def modificar_empresa(
     return empresa
 
 
-@router.put("/empresas/{id}/estado", response_model=EmpresaOut)
+@router.put("/empresas/{id}/estado", response_model=EmpresaOut,
+            dependencies=ESCRITURA_PADRON)
 async def cambiar_estado_empresa(
     id: int,
     activo: bool = Query(..., description="true para reactivar, false para dar de baja"),
@@ -1282,7 +1299,8 @@ async def cambiar_estado_empresa(
 # CIUDADANO-EMPRESA (relación)
 # ═══════════════════════════════════════════════════════════════
 
-@router.post("/ciudadano-empresa", response_model=CiudadanoEmpresaOut, status_code=201)
+@router.post("/ciudadano-empresa", response_model=CiudadanoEmpresaOut, status_code=201,
+             dependencies=ESCRITURA_PADRON)
 async def crear_relacion_ciudadano_empresa(
     data: CiudadanoEmpresaCreate,
     db: AsyncSession = Depends(get_db),

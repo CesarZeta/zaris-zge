@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useAuthStore } from '../../../stores/auth'
 import { useNotificationsStore } from '../../../stores/notifications'
 import {
   useActividades,
@@ -43,12 +44,13 @@ export function FormView() {
   const location = useLocation()
   const params = useParams<{ id?: string }>()
   const push = useNotificationsStore((s) => s.push)
+  const puedeEditar = useAuthStore((s) => s.hasPermission)(4) // Consultor: solo lectura
 
   const modo: Modo = useMemo(() => {
     if (location.pathname.endsWith('/nuevo')) return 'new'
-    if (location.pathname.endsWith('/editar')) return 'edit'
+    if (location.pathname.endsWith('/editar') && puedeEditar) return 'edit'
     return 'view'
-  }, [location.pathname])
+  }, [location.pathname, puedeEditar])
 
   const id = params.id ? Number(params.id) : null
   const readonly = modo === 'view'
@@ -207,6 +209,8 @@ export function FormView() {
       push({ kind: 'error', title: 'Error al guardar', body: (err as Error).message })
     }
   }
+
+  if (modo === 'new' && !puedeEditar) return <Navigate to="/empresas" replace />
 
   const titulo = modo === 'new' ? 'Alta de empresa' : modo === 'edit' ? 'Modificar empresa' : 'Consulta de empresa'
   const estadoBadge = modo === 'new'

@@ -5,10 +5,10 @@ ZARIS API - Router admin del modulo Encuestas (CSAT). Fase 2C.
 Listados, dashboard y acciones para el backoffice. NO incluye el form publico
 del ciudadano (fase 2D) ni el dispatcher (fase 2E).
 
-Auth: todo el router exige JWT via dependencies=[Depends(get_current_user)] (§39).
+Auth: todo el router exige JWT de nivel 1 o 2 via dependencies=[Depends(exigir_supervisor)].
 Permisos finos:
-  - Lectura (listados/dashboard): cualquier usuario autenticado.
-  - PATCH /respuestas/{id}/atender: nivel_acceso <= 2 (admin/supervisor).
+  - Todo el router: nivel_acceso <= 2 (admin/supervisor). Los envíos traen el correo y el enlace
+    personal del vecino (token_unico): con él se responde en su nombre.
 
 Multi-municipio (IT-01): todo se filtra por el municipio de la request
 (municipio_actual, claim `mun` del JWT); no hay query param id_municipio.
@@ -52,10 +52,21 @@ from app.schemas.encuestas import (
 )
 from app.services import encuestas_service as svc
 
+def _require_supervisor(current_user: dict) -> None:
+    """Encuestas es de Admin (1) y Supervisor (2).
+    Espeja el patrón de ordenes_trabajo._require_supervisor (§3)."""
+    if current_user.get("nivel_acceso", 99) > 2:
+        raise HTTPException(403, "Acceso restringido a administrador o supervisor")
+
+
+async def exigir_supervisor(current_user: dict = Depends(get_current_user)) -> None:
+    _require_supervisor(current_user)
+
+
 router = APIRouter(
     prefix="/api/v1/admin/encuestas",
     tags=["Encuestas Admin"],
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(exigir_supervisor)],
 )
 
 # Router SEPARADO para el dispatcher: NO lleva el guard JWT del router admin.
@@ -90,13 +101,6 @@ def _filtro_circuito(tipo: Optional[str]) -> tuple[str, str]:
         return "", ""
     return (" JOIN encuesta_plantilla pl ON pl.id_encuesta_plantilla = ee.id_plantilla ",
             " AND pl.tipo = :tipo")
-
-
-def _require_supervisor(current_user: dict) -> None:
-    """Dashboards y atención de respuestas: exclusivos de Admin (1) y Supervisor (2).
-    Espeja el patrón de ordenes_trabajo._require_supervisor (§3)."""
-    if current_user.get("nivel_acceso", 99) > 2:
-        raise HTTPException(403, "Acceso restringido a administrador o supervisor")
 
 
 # ===========================================================================

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuthStore } from '../../../stores/auth'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { buscarEmpresas, useCambiarEstadoEmpresa, useEmpresasRecientes } from '../hooks/useEmpresas'
 import { ConfirmModal } from '../../agenda/components/ConfirmModal'
@@ -8,6 +9,8 @@ import type { Empresa } from '../types/empresa'
 export function BuscarView() {
   const navigate = useNavigate()
   const push = useNotificationsStore((s) => s.push)
+  // El Consultor (nivel 5) es de solo lectura: el backend le responde 403 a toda escritura.
+  const puedeEditar = useAuthStore((s) => s.hasPermission)(4)
   const cambiarEstado = useCambiarEstadoEmpresa()
   const recientes = useEmpresasRecientes(5)
 
@@ -21,7 +24,7 @@ export function BuscarView() {
   async function ejecutarBusqueda() {
     const q = query.trim()
     if (!q) {
-      push({ kind: 'info', title: 'Ingresa un valor para buscar' })
+      push({ kind: 'info', title: 'Ingresá un valor para buscar' })
       return
     }
     setBuscando(true)
@@ -82,7 +85,9 @@ export function BuscarView() {
           <button onClick={ejecutarBusqueda} disabled={buscando} style={btnPrimary}>
             {buscando ? 'Buscando...' : 'Buscar'}
           </button>
-          <button onClick={() => navigate('/empresas/nuevo')} style={btnAccent}>+ Nuevo</button>
+          {puedeEditar && (
+            <button onClick={() => navigate('/empresas/nuevo')} style={btnAccent}>+ Nuevo</button>
+          )}
           {/* Intención explícita (§23): este clic YA es la búsqueda del listado —
               ListView lee `state.buscar` y arranca buscando en vez de mostrar el gate. */}
           <button onClick={() => navigate('/empresas/listado', { state: { buscar: true } })} style={btnGhost}>Listado</button>
@@ -98,12 +103,12 @@ export function BuscarView() {
                   {!unico.activo && <span style={{ color: 'var(--color-error)', marginLeft: 8 }}>(inactiva)</span>}
                 </div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                  <button onClick={() => navigate(`/empresas/${unico.id_empresa}/editar`)} style={btnPrimary}>Editar</button>
+                  {puedeEditar && <button onClick={() => navigate(`/empresas/${unico.id_empresa}/editar`)} style={btnPrimary}>Editar</button>}
                   <button onClick={() => navigate(`/empresas/${unico.id_empresa}`)} style={btnGhost}>Consultar</button>
-                  {unico.activo && (
+                  {puedeEditar && unico.activo && (
                     <button onClick={() => setBajaTarget(unico)} style={btnDanger}>Dar de baja</button>
                   )}
-                  <button onClick={() => navigate('/empresas/nuevo')} style={btnGhost}>+ Alta nueva de todas formas</button>
+                  {puedeEditar && <button onClick={() => navigate('/empresas/nuevo')} style={btnGhost}>+ Alta nueva de todas formas</button>}
                 </div>
               </>
             ) : (
@@ -121,13 +126,13 @@ export function BuscarView() {
                           {!e.activo && <span style={{ color: 'var(--color-error)', marginLeft: 6 }}>(inactiva)</span>}
                         </div>
                       </div>
-                      <button onClick={() => navigate(`/empresas/${e.id_empresa}/editar`)} style={btnXs}>Editar</button>
+                      {puedeEditar && <button onClick={() => navigate(`/empresas/${e.id_empresa}/editar`)} style={btnXs}>Editar</button>}
                       <button onClick={() => navigate(`/empresas/${e.id_empresa}`)} style={btnXsGhost}>Ver</button>
                     </div>
                   ))}
                 </div>
                 <div style={{ marginTop: 10 }}>
-                  <button onClick={() => navigate('/empresas/nuevo')} style={btnGhost}>+ Alta nueva de todas formas</button>
+                  {puedeEditar && <button onClick={() => navigate('/empresas/nuevo')} style={btnGhost}>+ Alta nueva de todas formas</button>}
                 </div>
               </>
             )}
@@ -171,7 +176,7 @@ export function BuscarView() {
       <ConfirmModal
         open={bajaTarget != null}
         title="Confirmar baja"
-        message={bajaTarget ? `Dar de baja a "${bajaTarget.nombre}" (CUIT ${bajaTarget.cuit})? La empresa quedara inactiva.` : ''}
+        message={bajaTarget ? `¿Dar de baja a "${bajaTarget.nombre}" (CUIT ${bajaTarget.cuit})? La empresa quedará inactiva.` : ''}
         confirmLabel="Dar de baja"
         cancelLabel="Cancelar"
         danger

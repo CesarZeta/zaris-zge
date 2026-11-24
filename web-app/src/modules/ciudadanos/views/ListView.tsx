@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import { useCiudadanosListado } from '../hooks/useCiudadanos'
+import { useAuthStore } from '../../../stores/auth'
 import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
 import { ThOrden, useOrden } from '../../../ui/orden'
 import type { OrdenCiudadanos } from '../api/ciudadanosApi'
@@ -11,6 +12,7 @@ const POR_PAGINA = 100
 
 export function ListView() {
   const navigate = useNavigate()
+  const puedeEditar = useAuthStore((s) => s.hasPermission)(4) // Consultor: solo lectura
   const location = useLocation()
 
   // Búsqueda diferida (§23): texto y fechas de alta son el borrador y viajan al
@@ -161,7 +163,7 @@ export function ListView() {
                   </Td>
                   <Td className="no-print">
                     <button onClick={() => navigate(`/ciudadanos/${c.id_ciudadano}`)} style={tblBtn}>Ver</button>
-                    <button onClick={() => navigate(`/ciudadanos/${c.id_ciudadano}/editar`)} style={tblBtn}>Editar</button>
+                    {puedeEditar && <button onClick={() => navigate(`/ciudadanos/${c.id_ciudadano}/editar`)} style={tblBtn}>Editar</button>}
                   </Td>
                 </tr>
               ))}

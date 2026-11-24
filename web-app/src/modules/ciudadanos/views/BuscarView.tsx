@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuthStore } from '../../../stores/auth'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { useCambiarEstadoCiudadano, useCiudadanosRecientes, buscarCiudadanos } from '../hooks/useCiudadanos'
 import { ConfirmModal } from '../../agenda/components/ConfirmModal'
@@ -8,6 +9,8 @@ import type { Ciudadano } from '../types/ciudadano'
 export function BuscarView() {
   const navigate = useNavigate()
   const push = useNotificationsStore((s) => s.push)
+  // El Consultor (nivel 5) es de solo lectura: el backend le responde 403 a toda escritura.
+  const puedeEditar = useAuthStore((s) => s.hasPermission)(4)
   const cambiarEstado = useCambiarEstadoCiudadano()
   const recientes = useCiudadanosRecientes(5)
 
@@ -22,7 +25,7 @@ export function BuscarView() {
   async function ejecutarBusqueda() {
     const q = query.trim()
     if (!q) {
-      push({ kind: 'info', title: 'Ingresa un valor para buscar' })
+      push({ kind: 'info', title: 'Ingresá un valor para buscar' })
       return
     }
     // Un solo campo: el backend decide por lo escrito (`tipo=auto`). Solo números
@@ -96,9 +99,9 @@ export function BuscarView() {
           <button onClick={ejecutarBusqueda} disabled={buscando} style={btnPrimary}>
             {buscando ? 'Buscando...' : 'Buscar'}
           </button>
-          <button onClick={() => navigate('/ciudadanos/nuevo')} style={btnAccent}>
-            + Nuevo
-          </button>
+          {puedeEditar && (
+            <button onClick={() => navigate('/ciudadanos/nuevo')} style={btnAccent}>+ Nuevo</button>
+          )}
           {/* Intención explícita (§23): este clic YA es la búsqueda del listado —
               ListView lee `state.buscar` y arranca buscando en vez de mostrar el gate. */}
           <button onClick={() => navigate('/ciudadanos/listado', { state: { buscar: true } })} style={btnGhost}>
@@ -119,12 +122,12 @@ export function BuscarView() {
                   {!ciudadanoUnico.activo && <span style={{ color: 'var(--color-error)', marginLeft: 8 }}>(inactivo)</span>}
                 </div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                  <button onClick={() => navigate(`/ciudadanos/${ciudadanoUnico.id_ciudadano}/editar`)} style={btnPrimary}>Editar</button>
+                  {puedeEditar && <button onClick={() => navigate(`/ciudadanos/${ciudadanoUnico.id_ciudadano}/editar`)} style={btnPrimary}>Editar</button>}
                   <button onClick={() => navigate(`/ciudadanos/${ciudadanoUnico.id_ciudadano}`)} style={btnGhost}>Consultar</button>
-                  {ciudadanoUnico.activo && (
+                  {puedeEditar && ciudadanoUnico.activo && (
                     <button onClick={() => setBajaTarget(ciudadanoUnico)} style={btnDanger}>Dar de baja</button>
                   )}
-                  <button onClick={() => navigate('/ciudadanos/nuevo')} style={btnGhost}>+ Alta nueva de todas formas</button>
+                  {puedeEditar && <button onClick={() => navigate('/ciudadanos/nuevo')} style={btnGhost}>+ Alta nueva de todas formas</button>}
                 </div>
               </>
             ) : (
@@ -142,13 +145,13 @@ export function BuscarView() {
                           {!c.activo && <span style={{ color: 'var(--color-error)', marginLeft: 6 }}>(inactivo)</span>}
                         </div>
                       </div>
-                      <button onClick={() => navigate(`/ciudadanos/${c.id_ciudadano}/editar`)} style={btnXs}>Editar</button>
+                      {puedeEditar && <button onClick={() => navigate(`/ciudadanos/${c.id_ciudadano}/editar`)} style={btnXs}>Editar</button>}
                       <button onClick={() => navigate(`/ciudadanos/${c.id_ciudadano}`)} style={btnXsGhost}>Ver</button>
                     </div>
                   ))}
                 </div>
                 <div style={{ marginTop: 10 }}>
-                  <button onClick={() => navigate('/ciudadanos/nuevo')} style={btnGhost}>+ Alta nueva de todas formas</button>
+                  {puedeEditar && <button onClick={() => navigate('/ciudadanos/nuevo')} style={btnGhost}>+ Alta nueva de todas formas</button>}
                 </div>
               </>
             )}
@@ -195,7 +198,7 @@ export function BuscarView() {
       <ConfirmModal
         open={bajaTarget != null}
         title="Confirmar baja"
-        message={bajaTarget ? `Dar de baja a ${bajaTarget.apellido}, ${bajaTarget.nombre} (CUIL ${bajaTarget.cuil})? El registro quedara inactivo y no aparecera en busquedas.` : ''}
+        message={bajaTarget ? `¿Dar de baja a ${bajaTarget.apellido}, ${bajaTarget.nombre} (CUIL ${bajaTarget.cuil})? El registro quedará inactivo y no aparecerá en las búsquedas.` : ''}
         confirmLabel="Dar de baja"
         cancelLabel="Cancelar"
         danger

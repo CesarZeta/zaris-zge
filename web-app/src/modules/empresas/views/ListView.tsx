@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import { useEmpresasListado } from '../hooks/useEmpresas'
+import { useAuthStore } from '../../../stores/auth'
 import { AvisoBuscar, useBusquedaDiferida } from '../../../ui/busqueda'
 import { ThOrden, useOrden } from '../../../ui/orden'
 import type { OrdenEmpresas } from '../api/empresasApi'
@@ -11,6 +12,7 @@ const POR_PAGINA = 100
 
 export function ListView() {
   const navigate = useNavigate()
+  const puedeEditar = useAuthStore((s) => s.hasPermission)(4) // Consultor: solo lectura
   const location = useLocation()
 
   // Búsqueda diferida (§23): texto y fechas de alta son el borrador y viajan al
@@ -159,7 +161,7 @@ export function ListView() {
                   </Td>
                   <Td className="no-print">
                     <button onClick={() => navigate(`/empresas/${e.id_empresa}`)} style={tblBtn}>Ver</button>
-                    <button onClick={() => navigate(`/empresas/${e.id_empresa}/editar`)} style={tblBtn}>Editar</button>
+                    {puedeEditar && <button onClick={() => navigate(`/empresas/${e.id_empresa}/editar`)} style={tblBtn}>Editar</button>}
                   </Td>
                 </tr>
               ))}

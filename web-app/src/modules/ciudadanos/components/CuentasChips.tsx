@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { useAuthStore } from '../../../stores/auth'
 import { useNotificationsStore } from '../../../stores/notifications'
 import { crearCuentaVecino } from '../api/ciudadanosApi'
 import { useCuentasCiudadano } from '../hooks/useCiudadanos'
@@ -21,6 +22,7 @@ export function CuentasChips({ idCiudadano }: { idCiudadano: number }) {
   const cuentas = useCuentasCiudadano(idCiudadano)
   const qc = useQueryClient()
   const push = useNotificationsStore((s) => s.push)
+  const puedeEditar = useAuthStore((s) => s.hasPermission)(4) // Consultor: solo lectura
   const [reenviando, setReenviando] = useState(false)
 
   async function reenviarActivacion() {
@@ -73,7 +75,7 @@ export function CuentasChips({ idCiudadano }: { idCiudadano: number }) {
         Cuentas
       </span>
       <span style={{ ...chip, ...vecinoChip.tono }} title={vecinoChip.ayuda ?? undefined}>{vecinoChip.texto}</span>
-      {vecino.estado === 'pendiente' && (
+      {puedeEditar && vecino.estado === 'pendiente' && (
         <button
           type="button"
           onClick={() => { void reenviarActivacion() }}
