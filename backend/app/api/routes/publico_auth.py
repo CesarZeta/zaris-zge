@@ -11,6 +11,7 @@ Todos bajo /api/v1/publico/auth/*. Modelo:
 - Anti-enumeracion: /reenviar-activacion y /recuperar-password siempre 200 OK.
 """
 import re
+import uuid
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
@@ -33,15 +34,19 @@ from app.core.config_municipio import leer_configs
 from app.core.database import get_db
 from app.core.municipio import municipio_actual, resolver_municipio_de_origen
 from app.core.urls import base_app
+from app.services.cuenta_vecino import asignar_numero_usuario
 from app.services.email import (
     enviar_mail_activacion_ciudadano,
     enviar_mail_recovery_ciudadano,
+    enviar_mail_usuario_generado_ciudadano,
 )
 from app.schemas.publico_auth import (
     RegistroCiudadanoIn,
     RegistroCiudadanoOut,
     ActivarIn,
     ActivarOut,
+    ConfirmarCorreoIn,
+    ConfirmarCorreoOut,
     ReenviarActivacionIn,
     LoginCiudadanoIn,
     LoginCiudadanoOut,
@@ -68,12 +73,31 @@ def _solo_digitos(s: str) -> str:
     return re.sub(r"\D", "", s or "")
 
 
+def _token_uuid(token: str) -> str:
+    """Un token que no es un UUID es el mismo caso que uno inexistente: 400, nunca un 500 (§5)."""
+    try:
+        return str(uuid.UUID(token))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Token inválido o expirado")
+
+
 def _validar_dni(dni: str) -> str:
     """Devuelve DNI digits-only. Levanta 400 si no es 7-8 chars."""
     limpio = _solo_digitos(dni)
     if not (7 <= len(limpio) <= 8):
         raise HTTPException(status_code=400, detail="DNI inválido: debe tener 7 u 8 dígitos")
     return limpio
+
+
+def _condicion_identificador(identificador: str) -> tuple[str, dict]:
+    """Condición SQL del ingreso: número de usuario (6 dígitos, mig 143) o DNI (7 u 8)."""
+    limpio = _solo_digitos(identificador)
+    if len(limpio) == 6:
+        return "cc.numero_usuario = :ident", {"ident": int(limpio)}
+    if 7 <= len(limpio) <= 8:
+        return "c.doc_nro = :ident", {"ident": limpio}
+    raise HTTPException(status_code=400,
+                        detail="Ingresá tu DNI (7 u 8 dígitos) o tu número de usuario (6 dígitos)")
 
 
 def _construir_cuil_placeholder(dni: str) -> str:
@@ -86,7 +110,7 @@ def _construir_cuil_placeholder(dni: str) -> str:
     return f"20{dni.zfill(8)}9"
 
 
-def _ciudadano_a_basico(row) -> CiudadanoBasicoOut:
+def _ciudadano_a_basico(row, numero_usuario: int | None = None) -> CiudadanoBasicoOut:
     return CiudadanoBasicoOut(
         id_ciudadano=row.id_ciudadano,
         dni=row.doc_nro,
@@ -95,6 +119,7 @@ def _ciudadano_a_basico(row) -> CiudadanoBasicoOut:
         email=row.email,
         estado_validacion=row.estado_validacion,
         ficha_completa=bool(getattr(row, "ficha_completa", False)),
+        numero_usuario=numero_usuario if numero_usuario is not None else getattr(row, "numero_usuario", None),
     )
 
 
@@ -256,13 +281,52 @@ async def registrar_ciudadano(
     )
 
 
+@router.post("/confirmar-correo", response_model=ConfirmarCorreoOut)
+async def confirmar_correo(data: ConfirmarCorreoIn, request: Request, db: AsyncSession = Depends(get_db)):
+    """
+    Paso 1 del link del correo: el vecino demuestra que la casilla es suya y queda dado de alta
+    (PLAN_REGISTRO_PREVIO.md §6). No consume el token: con él genera después su usuario. Va por
+    POST a propósito: los antivirus de correo abren los links con GET.
+    """
+    check_rate_limit(f"vecinoconfirma:{get_real_ip(request)}", max_requests=20, window_seconds=60)
+    token = _token_uuid(data.token)
+    await fijar_por_token(db, token, "activacion_vecino")  # segunda barrera (IT-01 F6): municipio del token
+    row = (await db.execute(
+        text("""
+            SELECT cc.id_ciudadano, c.nombre, c.apellido
+              FROM ciudadano_credencial cc
+              JOIN ciudadanos c ON c.id_ciudadano = cc.id_ciudadano
+             WHERE cc.token_activacion = CAST(:token AS uuid)
+               AND cc.token_activacion_expira > NOW()
+               AND cc.activado = FALSE
+               AND cc.activo = TRUE AND c.activo = TRUE
+        """),
+        {"token": token},
+    )).fetchone()
+    if not row:
+        raise HTTPException(status_code=400, detail="Token inválido o expirado")
+    await db.execute(
+        text("""
+            UPDATE ciudadanos
+               SET email_chk = TRUE, estado_validacion = 'verificado', fecha_modificacion = NOW()
+             WHERE id_ciudadano = :id
+               AND (email_chk IS NOT TRUE OR estado_validacion <> 'verificado')
+        """),
+        {"id": row.id_ciudadano},
+    )
+    await db.commit()
+    return ConfirmarCorreoOut(nombre=row.nombre or "", apellido=row.apellido or "")
+
+
 @router.post("/activar", response_model=ActivarOut)
-async def activar_cuenta(data: ActivarIn, db: AsyncSession = Depends(get_db)):
-    """Ciudadano activa cuenta con token + setea password."""
+async def activar_cuenta(data: ActivarIn, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+    """El vecino genera su usuario: elige la contraseña y el sistema le asigna el número. El click
+    en el correo también confirma la casilla."""
     if len(data.password) < 8:
         raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 8 caracteres")
 
-    await fijar_por_token(db, data.token, "activacion_vecino")  # segunda barrera (IT-01 F6): municipio del token
+    token_activacion = _token_uuid(data.token)
+    await fijar_por_token(db, token_activacion, "activacion_vecino")  # segunda barrera (IT-01 F6): municipio del token
     res = await db.execute(
         text("""
             SELECT cc.id_ciudadano_credencial, cc.id_ciudadano,
@@ -275,7 +339,7 @@ async def activar_cuenta(data: ActivarIn, db: AsyncSession = Depends(get_db)):
                AND cc.activado = FALSE
                AND cc.activo = TRUE
         """),
-        {"token": data.token},
+        {"token": token_activacion},
     )
     row = res.fetchone()
     if not row or not row.c_activo:
@@ -299,10 +363,35 @@ async def activar_cuenta(data: ActivarIn, db: AsyncSession = Depends(get_db)):
         """),
         {"ph": hashed, "id": row.id_ciudadano_credencial},
     )
+    numero = await asignar_numero_usuario(db, row.id_ciudadano_credencial, row.id_municipio)
+    await db.execute(
+        text("""
+            UPDATE ciudadanos
+               SET email_chk = TRUE, estado_validacion = 'verificado', fecha_modificacion = NOW()
+             WHERE id_ciudadano = :id
+               AND (email_chk IS NOT TRUE OR estado_validacion <> 'verificado')
+        """),
+        {"id": row.id_ciudadano},
+    )
     await db.commit()
 
+    municipio_nombre, municipio_logo_url = await _municipio_branding(db, row.id_municipio)
+    background_tasks.add_task(
+        enviar_mail_usuario_generado_ciudadano,
+        row.email,
+        row.nombre,
+        row.apellido,
+        numero,
+        municipio_nombre,
+        await base_app(db, row.id_municipio, "vecinos"),
+        municipio_logo_url,
+        id_municipio=row.id_municipio,
+    )
+
     token = crear_token_ciudadano(row.id_ciudadano, row.id_municipio)
-    return ActivarOut(access_token=token, ciudadano=_ciudadano_a_basico(row))
+    basico = _ciudadano_a_basico(row, numero)
+    basico.estado_validacion = "verificado"
+    return ActivarOut(access_token=token, ciudadano=basico)
 
 
 @router.post("/reenviar-activacion", response_model=GenericoOkOut)
@@ -386,30 +475,30 @@ async def reenviar_activacion(
 
 @router.post("/login", response_model=LoginCiudadanoOut)
 async def login_ciudadano(data: LoginCiudadanoIn, request: Request, db: AsyncSession = Depends(get_db)):
-    """Login con DNI + password. Lockout 5 intentos = 15 minutos."""
+    """Login con DNI o número de usuario + password. Lockout 5 intentos = 15 minutos."""
     # Rate limit por IP y por DNI ANTES de tocar la DB/bcrypt: complementa el
     # lockout por-cuenta (que no frena un ataque distribuido por muchas cuentas
     # desde una IP). Claves prefijadas por flujo (§5).
     _ip = get_real_ip(request)
     check_rate_limit(f"vecinologin-ip:{_ip}", max_requests=10, window_seconds=60)
-    check_rate_limit(f"vecinologin-dni:{(data.dni or '').strip()}", max_requests=6, window_seconds=60)
-    dni = _validar_dni(data.dni)
-    invalido = HTTPException(status_code=401, detail="Credenciales invalidas")
-    # Una cuenta por municipio: el DNI se busca en el municipio de la dirección de origen.
+    check_rate_limit(f"vecinologin-dni:{_solo_digitos(data.identificador)}", max_requests=6, window_seconds=60)
+    cond, params = _condicion_identificador(data.identificador)
+    invalido = HTTPException(status_code=401, detail="Credenciales inválidas")
+    # Una cuenta por municipio: se busca en el municipio de la dirección de origen.
     id_municipio = await resolver_municipio_de_origen(request, db)
 
     res = await db.execute(
-        text("""
-            SELECT cc.id_ciudadano_credencial, cc.id_ciudadano,
+        text(f"""
+            SELECT cc.id_ciudadano_credencial, cc.id_ciudadano, cc.numero_usuario,
                    cc.password_hash, cc.activado, cc.intentos_fallidos, cc.bloqueada_hasta,
                    cc.activo AS cc_activo,
                    c.doc_nro, c.nombre, c.apellido, c.email, c.estado_validacion,
                    c.ficha_completa, c.activo AS c_activo, c.id_municipio
               FROM ciudadano_credencial cc
               JOIN ciudadanos c ON c.id_ciudadano = cc.id_ciudadano
-             WHERE c.doc_nro = :dni AND c.id_municipio = :mun
+             WHERE {cond} AND c.id_municipio = :mun
         """),
-        {"dni": dni, "mun": id_municipio},
+        {**params, "mun": id_municipio},
     )
     row = res.fetchone()
 
@@ -420,7 +509,7 @@ async def login_ciudadano(data: LoginCiudadanoIn, request: Request, db: AsyncSes
     if row.bloqueada_hasta is not None and row.bloqueada_hasta > datetime.now(timezone.utc):
         raise HTTPException(
             status_code=401,
-            detail="Cuenta bloqueada temporalmente. Intenta en unos minutos.",
+            detail="Cuenta bloqueada temporalmente. Intentá en unos minutos.",
         )
 
     # Verificar password
@@ -478,6 +567,7 @@ async def me(current: dict = Depends(get_current_ciudadano)):
         email=current["email"],
         estado_validacion=current["estado_validacion"],
         ficha_completa=bool(current.get("ficha_completa", False)),
+        numero_usuario=current.get("numero_usuario"),
     )
 
 
@@ -509,19 +599,19 @@ async def recuperar_password(
     """Pide email de recovery. Anti-enumeracion + cooldown silencioso de 5 minutos."""
     # Rate limit por IP: frena el mail-bombing de recovery (cooldown es por cuenta).
     check_rate_limit(f"vecinorecovery:{get_real_ip(request)}", max_requests=8, window_seconds=60)
-    dni = _validar_dni(data.dni)
+    cond, params = _condicion_identificador(data.identificador)
     id_municipio = await resolver_municipio_de_origen(request, db)
 
     res = await db.execute(
-        text("""
+        text(f"""
             SELECT cc.id_ciudadano_credencial, cc.activado, cc.fecha_ultimo_email_recovery,
                    c.nombre, c.apellido, c.email
               FROM ciudadano_credencial cc
               JOIN ciudadanos c ON c.id_ciudadano = cc.id_ciudadano
-             WHERE c.doc_nro = :dni AND cc.activo = TRUE AND c.activo = TRUE
+             WHERE {cond} AND cc.activo = TRUE AND c.activo = TRUE
                AND c.id_municipio = :mun
         """),
-        {"dni": dni, "mun": id_municipio},
+        {**params, "mun": id_municipio},
     )
     row = res.fetchone()
 
@@ -571,10 +661,11 @@ async def resetear_password(data: ResetearPasswordIn, db: AsyncSession = Depends
     if len(data.password) < 8:
         raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 8 caracteres")
 
-    await fijar_por_token(db, data.token, "recuperacion_vecino")  # segunda barrera (IT-01 F6): municipio del token
+    token_recovery = _token_uuid(data.token)
+    await fijar_por_token(db, token_recovery, "recuperacion_vecino")  # segunda barrera (IT-01 F6): municipio del token
     res = await db.execute(
         text("""
-            SELECT cc.id_ciudadano_credencial, cc.id_ciudadano,
+            SELECT cc.id_ciudadano_credencial, cc.id_ciudadano, cc.numero_usuario,
                    c.doc_nro, c.nombre, c.apellido, c.email, c.estado_validacion,
                    c.ficha_completa, c.activo AS c_activo, c.id_municipio
               FROM ciudadano_credencial cc
@@ -584,7 +675,7 @@ async def resetear_password(data: ResetearPasswordIn, db: AsyncSession = Depends
                AND cc.activado = TRUE
                AND cc.activo = TRUE
         """),
-        {"token": data.token},
+        {"token": token_recovery},
     )
     row = res.fetchone()
     if not row or not row.c_activo:

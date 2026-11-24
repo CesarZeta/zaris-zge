@@ -84,7 +84,6 @@ def main() -> int:
         "longitud": -58.4727,
         "telefono": "11 4444 5566",
         "email": email,
-        "password": "demoalta123",
     }
 
     # 1. Alta completa en un paso

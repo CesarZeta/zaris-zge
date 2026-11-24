@@ -281,7 +281,7 @@ async def get_current_ciudadano(
         text("""
             SELECT c.id_ciudadano, c.doc_nro, c.nombre, c.apellido, c.email,
                    c.estado_validacion, c.ficha_completa, c.activo,
-                   cc.activado, cc.activo AS credencial_activa, c.id_municipio
+                   cc.activado, cc.activo AS credencial_activa, cc.numero_usuario, c.id_municipio
               FROM ciudadanos c
               JOIN ciudadano_credencial cc ON cc.id_ciudadano = c.id_ciudadano
              WHERE c.id_ciudadano = :id

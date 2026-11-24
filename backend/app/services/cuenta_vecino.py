@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.config_municipio import leer_configs
 from app.core.urls import base_app
+from app.services.agenda import advisory_lock_tx
 from app.services.email import enviar_mail_activacion_ciudadano
 
 logger = logging.getLogger("zaris.cuenta_vecino")
@@ -79,6 +80,24 @@ async def vecinos_con_cuenta(db: AsyncSession, ids: list[int]) -> set[int]:
         {"ids": ids},
     )
     return {f.id_ciudadano for f in filas.fetchall()}
+
+
+async def asignar_numero_usuario(db: AsyncSession, id_ciudadano_credencial: int, id_municipio: int) -> int:
+    """Número de usuario del vecino (mig 143): el que ya tenía o el siguiente del municipio. Se
+    llama en la misma transacción que activa la cuenta; el lock serializa dos activaciones a la
+    vez y el índice único por municipio es la red."""
+    await advisory_lock_tx(db, f"usuario_vecino:{id_municipio}")
+    return (await db.execute(
+        text("""
+            UPDATE ciudadano_credencial k
+               SET numero_usuario = COALESCE(k.numero_usuario, (
+                     SELECT COALESCE(MAX(m.numero_usuario), 100000) + 1
+                       FROM ciudadano_credencial m WHERE m.id_municipio = :mun))
+             WHERE k.id_ciudadano_credencial = :id AND k.id_municipio = :mun
+         RETURNING k.numero_usuario
+        """),
+        {"id": id_ciudadano_credencial, "mun": id_municipio},
+    )).scalar_one()
 
 
 async def exigir_cuenta_vecino(db: AsyncSession, id_ciudadano: int) -> None:

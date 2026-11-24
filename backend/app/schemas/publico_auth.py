@@ -2,7 +2,7 @@
 Schemas Pydantic para auth publico de ciudadanos (App Vecinos).
 Endpoints bajo /api/v1/publico/auth/* y /api/v1/publico/identidad-municipio.
 """
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import AliasChoices, BaseModel, EmailStr, Field
 
 
 class CiudadanoBasicoOut(BaseModel):
@@ -15,6 +15,8 @@ class CiudadanoBasicoOut(BaseModel):
     # TRUE = el vecino ya completó su ficha real (paso 2). FALSE = solo el mínimo del
     # paso 1 → el portal lo lleva a completar la ficha al ingresar (Fase 4).
     ficha_completa: bool = False
+    # Mig 143: lo asigna el sistema cuando el vecino genera su usuario.
+    numero_usuario: int | None = None
 
 
 class RegistroCiudadanoIn(BaseModel):
@@ -43,12 +45,24 @@ class ActivarOut(BaseModel):
     ciudadano: CiudadanoBasicoOut
 
 
+class ConfirmarCorreoIn(BaseModel):
+    token: str
+
+
+class ConfirmarCorreoOut(BaseModel):
+    """El correo quedó confirmado; el token sigue sirviendo para generar el usuario."""
+    nombre: str
+    apellido: str
+
+
 class ReenviarActivacionIn(BaseModel):
     dni: str = Field(..., min_length=7, max_length=8)
 
 
 class LoginCiudadanoIn(BaseModel):
-    dni: str = Field(..., min_length=7, max_length=8)
+    """`identificador` = DNI (7 u 8 dígitos) o número de usuario (6). `dni` es el nombre viejo."""
+    identificador: str = Field(..., min_length=6, max_length=12,
+                               validation_alias=AliasChoices("identificador", "dni"))
     password: str = Field(..., min_length=1, max_length=72)
 
 
@@ -59,7 +73,8 @@ class LoginCiudadanoOut(BaseModel):
 
 
 class RecuperarPasswordIn(BaseModel):
-    dni: str = Field(..., min_length=7, max_length=8)
+    identificador: str = Field(..., min_length=6, max_length=12,
+                               validation_alias=AliasChoices("identificador", "dni"))
 
 
 class ResetearPasswordIn(BaseModel):

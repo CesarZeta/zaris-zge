@@ -230,6 +230,10 @@ Spec en [`docs/superpowers/specs/2026-11-21-tramites-vecino-design.md`](docs/sup
 - **139b (datos):** marca `ofrecer_al_vecino` en los seis tipos por código (`aviso-obra`, `poda-arbol`, `inscripcion-profesional`, `exencion-tasas`, `permiso-espacio-publico`, `recurso-administrativo`), en todos los municipios que los tengan; no prende `exige_identidad_validada` en ninguno.
 - Reglas vivas en la skill `modulo-tramites` → «Trámites del vecino» y contrato en `docs/contrato_api_publica.md` §12.
 
+### Migración 143 — número de usuario del vecino (`backend/migrations/143_numero_usuario_vecino.sql`)
+
+Registro previo F3. `ciudadano_credencial.numero_usuario` (INTEGER, 100001 a 999999, único por municipio). Las cuentas ya activadas lo recibieron en la misma migración (4 en prod, 76 en local). No usa `numerador_municipio` porque ampliar su CHECK de entidades exigía un `DROP`: el número sale de `services/cuenta_vecino.py::asignar_numero_usuario` (lock por municipio, máximo + 1). Local y prod el 2026-11-24 (prod por MCP, antes del código).
+
 ### Migración 142 — canal «app de agentes» (`backend/migrations/142_canal_app_agentes.sql`)
 
 Definición de César (2026-11-23): el canal es la interfaz de registro y el relevamiento es un tipo de transacción. `ck_reclamos_canal` admite `app_agentes`; los relevamientos ya cargados con `oficio` pasan a ese canal. **Aplicada en local y en prod el 2026-11-23**; en prod la corrió César en el SQL Editor (lleva `DROP CONSTRAINT`), antes de publicar el código que escribe ese canal.

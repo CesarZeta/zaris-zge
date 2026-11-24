@@ -98,6 +98,8 @@ def _dimensiones_jpeg(data: bytes) -> tuple[int, int]:
 class PerfilOut(BaseModel):
     id_ciudadano: int
     dni: str
+    # Mig 143: con él o con el DNI se ingresa.
+    numero_usuario: Optional[int] = None
     doc_tipo: Optional[str] = None
     # NULL cuando el CUIL guardado es el placeholder del alta por agente.
     cuil: Optional[str] = None
@@ -191,8 +193,9 @@ async def _perfil_out(db: AsyncSession, id_ciudadano: int) -> PerfilOut:
                c.estado_validacion, c.ficha_completa,
                c.fecha_alta, c.fecha_modificacion,
                c.foto_path, c.foto_actualizada_en,
-               cp.canal_email, cp.canal_push
+               cp.canal_email, cp.canal_push, cc.numero_usuario
           FROM ciudadanos c
+          LEFT JOIN ciudadano_credencial cc ON cc.id_ciudadano = c.id_ciudadano
           LEFT JOIN nacionalidades n ON n.id = c.id_nacionalidad
           LEFT JOIN ciudadano_canal_preferido cp ON cp.id_ciudadano = c.id_ciudadano
          WHERE c.id_ciudadano = :id AND c.activo = TRUE
@@ -214,6 +217,7 @@ async def _perfil_out(db: AsyncSession, id_ciudadano: int) -> PerfilOut:
         foto_actualizada_en=_iso(row["foto_actualizada_en"]),
         id_ciudadano=row["id_ciudadano"],
         dni=row["doc_nro"],
+        numero_usuario=row["numero_usuario"],
         doc_tipo=row["doc_tipo"],
         cuil=None if placeholder else row["cuil"],
         cuil_es_placeholder=placeholder,

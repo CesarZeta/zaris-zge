@@ -304,13 +304,13 @@ def _build_template_app_vecinos(
       </p>
       {enlace_extra_html}
       <p style="margin:0;font-size:12px;line-height:1.5;color:rgba(38,37,30,.5);word-break:break-all;">
-        Si el boton no funciona, copia y pega este enlace en tu navegador:<br>
+        Si el botón no funciona, copiá y pegá este enlace en tu navegador:<br>
         <span style="color:{cta_color};">{cta_url}</span>
       </p>
     </td></tr>
     <tr><td style="padding:16px 32px;text-align:center;border-top:1px solid rgba(38,37,30,.08);font-size:11px;color:rgba(38,37,30,.5);">
       Este mensaje fue enviado por {municipio_nombre}.<br>
-      Si no esperabas este correo, podes ignorarlo.
+      Si no esperabas este correo, podés ignorarlo.
     </td></tr>
   </table>
 </body>
@@ -334,11 +334,11 @@ def _build_template_app_vecinos(
 
 {parrafo_extra}
 
-{enlace_extra_text}Si el boton no funciona, copia y pega el enlace de arriba en tu navegador.
+{enlace_extra_text}Si el botón no funciona, copiá y pegá el enlace de arriba en tu navegador.
 
 ---
 Este mensaje fue enviado por {municipio_nombre}.
-Si no esperabas este correo, podes ignorarlo.
+Si no esperabas este correo, podés ignorarlo.
 """
     return html, text
 
@@ -361,18 +361,18 @@ async def enviar_mail_activacion_ciudadano(
     """
     cta_url = f"{frontend_url.rstrip('/')}/activar?token={token}"
     saludo_nombre = (nombre or "").strip() or apellido or "vecino"
-    subject = f"Activa tu cuenta en {municipio_nombre} - App Vecinos"
+    subject = f"Generá tu usuario en {municipio_nombre} - Portal del Ciudadano"
 
     html, text = _build_template_app_vecinos(
-        titulo="Activa tu cuenta",
+        titulo="Generá tu usuario",
         saludo=f"Hola {saludo_nombre},",
         parrafo_principal=(
-            f"{municipio_nombre} te dio de alta en App Vecinos, "
-            f"el servicio para enviar reclamos y hacer seguimiento desde tu celular. "
-            f"Para empezar a usarlo, definí tu contraseña haciendo clic en el siguiente boton. "
-            f"Despues vas a ingresar con tu <strong>número de DNI</strong> y esa contraseña."
+            f"Ya estás registrado en {municipio_nombre}. Con tu usuario podés hacer reclamos, sacar turnos, "
+            f"reservar entradas e iniciar trámites desde el Portal del Ciudadano, en la computadora o en el celular. "
+            f"Para generarlo, elegí tu contraseña haciendo clic en el siguiente botón. "
+            f"Después vas a ingresar con tu <strong>DNI o tu número de usuario</strong> y esa contraseña."
         ),
-        cta_texto="Activar mi cuenta",
+        cta_texto="Generar mi usuario",
         cta_url=cta_url,
         parrafo_extra="Este enlace es válido por 7 días. Si expira, podés pedir un nuevo correo desde la app.",
         municipio_nombre=municipio_nombre,
@@ -566,39 +566,69 @@ async def enviar_mail_verificacion_alta_ciudadano(
     cta_url: str,
     municipio_nombre: str,
     municipio_logo_url: str | None = None,
-    portal_url: str | None = None,
     *,
     id_municipio: int,
 ) -> bool:
     """
-    Mail de verificación del alta pública de un ciudadano (autoregistro).
-    El link `cta_url` (ya armado por el caller, con el slug del municipio) verifica el
-    email: al clickearlo el ciudadano queda email_chk=TRUE, estado_validacion='verificado'
-    y su cuenta activada. `portal_url` (Portal del Ciudadano, si está configurado) va como
-    línea extra para que el vecino sepa a dónde entrar después de verificar.
+    Mail del registro del vecino desde el portal o la app. El link `cta_url` (armado por el
+    caller) abre el portal: confirma la casilla, queda dado de alta y ahí genera su usuario.
     """
     saludo_nombre = (nombre or "").strip() or apellido or "vecino"
-    subject = f"Verificá tu alta en {municipio_nombre}"
+    subject = f"Confirmá tu registro en {municipio_nombre}"
 
     html, text = _build_template_app_vecinos(
-        titulo="Verificá tu alta",
+        titulo="Confirmá tu registro",
         saludo=f"Hola {saludo_nombre},",
         parrafo_principal=(
-            f"Recibimos tu solicitud de alta como vecino de {municipio_nombre}. "
-            f"Para confirmar que este correo es tuyo y activar tu cuenta, hacé clic en el siguiente botón. "
-            f"Después vas a ingresar con tu <strong>número de DNI</strong> y la contraseña que elegiste al registrarte."
+            f"Recibimos tus datos para registrarte como vecino de {municipio_nombre}. "
+            f"Para confirmar que este correo es tuyo y generar tu usuario, hacé clic en el siguiente botón. "
+            f"Ahí elegís tu contraseña; después vas a ingresar con tu <strong>DNI o tu número de usuario</strong>."
         ),
-        cta_texto="Verificar mi alta",
+        cta_texto="Confirmar mi registro",
         cta_url=cta_url,
         parrafo_extra="Este enlace es válido por 7 días. Si no fuiste vos, podés ignorar este mensaje.",
         municipio_nombre=municipio_nombre,
         municipio_logo_url=municipio_logo_url,
         cta_color=await _color_cta_municipio(id_municipio),
-        enlace_extra=("Después de verificar, ingresá al Portal del Ciudadano desde", portal_url) if portal_url else None,
     )
 
     from_header = formatear_remitente(municipio_nombre, _from_address_base())
     return await enviar_mail(to=to, subject=subject, body_html=html, body_text=text, from_override=from_header)
+
+
+async def enviar_mail_usuario_generado_ciudadano(
+    to: str,
+    nombre: str,
+    apellido: str,
+    numero_usuario: int,
+    municipio_nombre: str,
+    frontend_url: str,
+    municipio_logo_url: str | None = None,
+    *,
+    id_municipio: int,
+) -> bool:
+    """Le confirma al vecino el número de usuario que le asignó el sistema (mig 143)."""
+    if not to or not frontend_url:
+        return False
+    saludo_nombre = (nombre or "").strip() or apellido or "vecino"
+    html, text = _build_template_app_vecinos(
+        titulo="Tu usuario",
+        saludo=f"Hola {saludo_nombre},",
+        parrafo_principal=(
+            f"Generaste tu usuario en {municipio_nombre}. Tu número de usuario es "
+            f"<strong>{numero_usuario}</strong>. Para ingresar usá ese número o tu DNI, con la "
+            f"contraseña que elegiste."
+        ),
+        cta_texto="Ir al Portal del Ciudadano",
+        cta_url=f"{frontend_url.rstrip('/')}/login",
+        parrafo_extra="Si no fuiste vos, comunicate con el municipio.",
+        municipio_nombre=municipio_nombre,
+        municipio_logo_url=municipio_logo_url,
+        cta_color=await _color_cta_municipio(id_municipio),
+    )
+    from_header = formatear_remitente(municipio_nombre, _from_address_base())
+    return await enviar_mail(to=to, subject=f"Tu usuario en {municipio_nombre}: {numero_usuario}",
+                             body_html=html, body_text=text, from_override=from_header)
 
 
 async def enviar_mail_verificacion_alta_empresa(
@@ -653,14 +683,14 @@ async def enviar_mail_recovery_ciudadano(
     """
     cta_url = f"{frontend_url.rstrip('/')}/resetear-password?token={token}"
     saludo_nombre = (nombre or "").strip() or apellido or "vecino"
-    subject = f"Restablece tu contraseña en {municipio_nombre} - App Vecinos"
+    subject = f"Restablecé tu contraseña en {municipio_nombre} - App Vecinos"
 
     html, text = _build_template_app_vecinos(
-        titulo="Restablece tu contraseña",
+        titulo="Restablecé tu contraseña",
         saludo=f"Hola {saludo_nombre},",
         parrafo_principal=(
             "Recibimos un pedido para restablecer la contraseña de tu cuenta en App Vecinos. "
-            "Hace clic en el boton para elegir una nueva."
+            "Hacé clic en el botón para elegir una nueva."
         ),
         cta_texto="Elegir nueva contraseña",
         cta_url=cta_url,

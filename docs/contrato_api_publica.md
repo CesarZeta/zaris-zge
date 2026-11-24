@@ -29,11 +29,12 @@ autoservicios anónimos por token bajo `/api/v1/turnos/publico/*` y
 
 | Verbo | Ruta | Auth | Para qué |
 |---|---|---|---|
-| POST | `/login` | — | DNI + password → JWT scope publico. Lockout: 5 fallidos → 15 min. |
-| GET | `/me` | publico | Datos del vecino logueado (incluye `ficha_completa`). |
-| POST | `/activar` | — | Activa con `token_activacion` (7d), setea password → JWT. |
+| POST | `/login` | — | `{identificador, password}` → JWT scope publico. `identificador` = DNI (7 u 8 dígitos) o **número de usuario** (6, desde 2026-11-24, mig 143); `dni` sigue aceptado como nombre viejo. Lockout: 5 fallidos → 15 min. |
+| GET | `/me` | publico | Datos del vecino logueado (incluye `ficha_completa` y `numero_usuario`). |
+| POST | `/confirmar-correo` | — | **2026-11-24.** `{token}` del link del correo: confirma la casilla y deja al vecino dado de alta, sin gastar el token → `{nombre, apellido}`. 400 si no es válido o venció. |
+| POST | `/activar` | — | **Generar el usuario:** `{token, password}` (7 días) → JWT + `ciudadano.numero_usuario`; manda un correo con el número. |
 | POST | `/reenviar-activacion` | — | Reenvía mail. Anti-enumeración: siempre 200. |
-| POST | `/recuperar-password` | — | Pide mail de recovery. Anti-enumeración: siempre 200. |
+| POST | `/recuperar-password` | — | `{identificador}` (DNI o número de usuario). Pide mail de recovery. Anti-enumeración: siempre 200. |
 | POST | `/resetear-password` | — | Aplica nuevo pass con `token_recovery` (24h) → JWT. |
 | GET | `/nacionalidades` | publico | Catálogo para la ficha. |
 | POST | `/registrar` | **agente** (nivel ≤3) | Alta por mostrador. NO lo usa la PWA. |
@@ -41,17 +42,17 @@ autoservicios anónimos por token bajo `/api/v1/turnos/publico/*` y
 
 ## 2. Alta pública (autoregistro) — `/api/v1/publico/alta`
 
-Todas validan el slug `?m=<codigo_corto>` contra el único municipio del deploy.
+El municipio sale del slug `?m=<codigo_corto>` o, sin él, del `Origin`.
 
 | Verbo | Ruta | Auth | Para qué |
 |---|---|---|---|
 | GET | `/identidad` | — | Nombre/logo/colores del municipio. |
 | GET | `/actividades` · `/nacionalidades` | — | Catálogos para el form. |
 | GET | `/geo/buscar?m=&q=` | — | Geocoding OSM sesgado a la zona del municipio. |
-| POST | `/cuenta` | — | Alta en UN PASO con ficha completa (CUIL real, domicilio, etc.). |
+| POST | `/cuenta` | — | Registro con la ficha completa (CUIL real, domicilio, etc.), **sin contraseña** desde 2026-11-24: el correo lleva a `{portal}/activar?token=`, donde confirma la casilla y genera su usuario. |
 | POST | `/activar-existente` | — | Vecino ya en la BUC pide cuenta. Anti-enumeración: 200. |
 | POST | `/empresa` | publico | El vecino logueado da de alta su empresa. |
-| GET | `/verificar?token=&m=` | — | Link del mail; devuelve página HTML. |
+| GET | `/verificar?token=&m=` | — | Link de los correos anteriores al 2026-11-24 (y de las empresas); devuelve página HTML, o redirige al portal si falta elegir la contraseña. |
 
 ## 3. Identidad del municipio — `/api/v1/publico/identidad-municipio`
 

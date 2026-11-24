@@ -66,10 +66,10 @@ class AltaCuentaIn(BaseModel):
     latitud: float | None = None
     longitud: float | None = None
 
-    # Contacto + cuenta
+    # Contacto. La contraseña no va acá: se elige al generar el usuario, después de confirmar el
+    # correo (PLAN_REGISTRO_PREVIO.md §6). Una página vieja que la mande, se ignora.
     telefono: str = Field(..., min_length=6, max_length=20)
     email: EmailStr
-    password: str = Field(..., min_length=8, max_length=72)
 
     observaciones: str | None = Field(None, max_length=500)
 
@@ -84,9 +84,9 @@ class AltaCuentaOut(BaseModel):
     email: str
     verificacion_enviada: bool = True
     mensaje: str = (
-        "Tu alta quedó registrada. Te enviamos un correo para verificar tu dirección: "
-        "revisá tu casilla (y la carpeta de correo no deseado / spam) y hacé clic en el enlace. "
-        "Después de verificar ya podés iniciar sesión con tu DNI y la contraseña que elegiste."
+        "Recibimos tus datos. Te enviamos un correo para confirmar tu casilla: revisá la bandeja "
+        "de entrada (y el correo no deseado) y abrí el enlace. Ahí generás tu usuario y elegís tu "
+        "contraseña."
     )
 
 

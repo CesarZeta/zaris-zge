@@ -26,13 +26,13 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from app.core.sistema import fijar_por_token
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import hash_password, get_current_ciudadano
+from app.core.auth import get_current_ciudadano
 from app.core.config import settings
 from app.core.config_municipio import leer_configs
 from app.core.database import get_db
@@ -46,7 +46,7 @@ from app.services.email import (
     enviar_mail_verificacion_alta_ciudadano,
     enviar_mail_verificacion_alta_empresa,
 )
-from app.services.cuenta_vecino import asegurar_cuenta_vecino
+from app.services.cuenta_vecino import asegurar_cuenta_vecino, asignar_numero_usuario
 from app.schemas.publico_alta import (
     IdentidadAltaOut,
     AltaCuentaIn,
@@ -230,14 +230,14 @@ async def alta_cuenta(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Autoregistro del vecino en UN PASO con la ficha COMPLETA (decisión 2026-06-12,
-    reemplaza al modelo de 2 pasos de la Fase 4). El registro BUC nace completo y
-    válido: NUNCA se escriben placeholders falsos (fecha 1900, CUIL inventado).
+    Registro del vecino con la ficha COMPLETA. El registro BUC nace completo y válido:
+    NUNCA se escriben placeholders falsos (fecha 1900, CUIL inventado).
 
     Validaciones canónicas del ciudadano: CUIL módulo 11 (schema), fecha de nacimiento
     plausible, nacionalidad existente, DNI/CUIL/email sin duplicar contra activos.
-    La credencial guarda el password elegido + token de verificación; activado=FALSE
-    hasta confirmar el email. ficha_completa=TRUE desde el origen.
+    La credencial nace sin contraseña y con el token del correo; activado=FALSE. El link
+    del correo confirma la casilla (alta) y recién ahí el vecino genera su usuario y elige
+    la contraseña (PLAN_REGISTRO_PREVIO.md §6). ficha_completa=TRUE desde el origen.
     """
     check_rate_limit(get_real_ip(request), max_requests=RATE_MAX, window_seconds=RATE_WINDOW)
 
@@ -315,7 +315,8 @@ async def alta_cuenta(
         raise HTTPException(status_code=409, detail=MSG_DUPLICADO)
 
     cfg = await _branding(db, id_municipio)
-    cta_url = _frontend_verificar_url(muni["slug"], token)
+    portal = await url_portal_vecino(db, id_municipio)
+    cta_url = f"{portal}/activar?token={token}" if portal else _frontend_verificar_url(muni["slug"], token)
     background_tasks.add_task(
         enviar_mail_verificacion_alta_ciudadano,
         email,
@@ -324,7 +325,6 @@ async def alta_cuenta(
         cta_url,
         cfg.get("municipio_nombre") or muni["nombre"],
         cfg.get("municipio_logo_url"),
-        portal_url=await url_portal_vecino(db, id_municipio) or None,
         id_municipio=id_municipio,
     )
 
@@ -332,7 +332,7 @@ async def alta_cuenta(
 
 
 async def _insertar_ciudadano_autoregistrado(db: AsyncSession, data: AltaCuentaIn, v: dict) -> tuple[int, str]:
-    """Ficha + credencial (password elegido, token de verificación) + canal preferido, y commit.
+    """Ficha + credencial (sin contraseña, con el token del correo) + canal preferido, y commit.
     Devuelve (id_ciudadano, token)."""
     id_municipio = v["id_municipio"]
     ins = await db.execute(
@@ -372,10 +372,7 @@ async def _insertar_ciudadano_autoregistrado(db: AsyncSession, data: AltaCuentaI
     )
     id_ciudadano = ins.fetchone().id_ciudadano
 
-    # Credencial con password elegido + token de verificación. activado=FALSE: la cuenta
-    # se habilita recién al verificar el email. debe_cambiar_password=FALSE (el vecino
-    # eligió su clave; el Camino B sí la deja TRUE).
-    hashed = hash_password(data.password)
+    # Credencial sin contraseña: la elige al generar el usuario desde el link del correo.
     res = await db.execute(
         text(f"""
             INSERT INTO ciudadano_credencial
@@ -383,12 +380,12 @@ async def _insertar_ciudadano_autoregistrado(db: AsyncSession, data: AltaCuentaI
                  activado, debe_cambiar_password, fecha_ultimo_email_activacion,
                  activo, id_municipio, fecha_alta, fecha_modificacion)
             VALUES
-                (:id_ciudadano, :ph, gen_random_uuid(), NOW() + INTERVAL '{DIAS_VERIFICACION} days',
+                (:id_ciudadano, NULL, gen_random_uuid(), NOW() + INTERVAL '{DIAS_VERIFICACION} days',
                  FALSE, FALSE, NOW(),
                  TRUE, :id_municipio, NOW(), NOW())
             RETURNING token_activacion
         """),
-        {"id_ciudadano": id_ciudadano, "ph": hashed, "id_municipio": id_municipio},
+        {"id_ciudadano": id_ciudadano, "id_municipio": id_municipio},
     )
     token = str(res.fetchone().token_activacion)
 
@@ -623,7 +620,7 @@ async def verificar(request: Request, token: str, m: str | None = None, db: Asyn
     await fijar_por_token(db, token, "activacion_vecino", "verificacion_empresa")  # segunda barrera (IT-01 F6): municipio del token
     res = await db.execute(
         text("""
-            SELECT cc.id_ciudadano_credencial, cc.id_ciudadano, c.nombre, c.apellido, c.id_municipio
+            SELECT cc.id_ciudadano_credencial, cc.id_ciudadano, cc.password_hash, c.nombre, c.apellido, c.id_municipio
               FROM ciudadano_credencial cc
               JOIN ciudadanos c ON c.id_ciudadano = cc.id_ciudadano
              WHERE cc.token_activacion = CAST(:token AS uuid)
@@ -633,6 +630,12 @@ async def verificar(request: Request, token: str, m: str | None = None, db: Asyn
         {"token": token},
     )
     row = res.fetchone()
+    # Sin contraseña elegida no hay cuenta que activar: el vecino tiene que generar su usuario.
+    if row and not row.password_hash:
+        portal = await url_portal_vecino(db, row.id_municipio)
+        if not portal:
+            return await _pagina_enlace_invalido(db, request, m)
+        return RedirectResponse(f"{portal}/activar?token={token}", status_code=303)
     if row:
         await db.execute(
             text("""
@@ -656,13 +659,14 @@ async def verificar(request: Request, token: str, m: str | None = None, db: Asyn
             """),
             {"id": row.id_ciudadano_credencial},
         )
+        numero = await asignar_numero_usuario(db, row.id_ciudadano_credencial, row.id_municipio)
         await db.commit()
         municipio_nombre = (await _branding(db, row.id_municipio)).get("municipio_nombre") or "Tu municipio"
         nombre = (row.nombre or "").strip() or row.apellido or "vecino"
         return HTMLResponse(_pagina_confirmacion(
             "¡Correo verificado!",
             f"Listo, {nombre}. Tu correo quedó verificado. Ya podés iniciar sesión en el "
-            f"Portal del Ciudadano con tu DNI y la contraseña que elegiste.",
+            f"Portal del Ciudadano con tu DNI o tu número de usuario ({numero}) y la contraseña que elegiste.",
             ok=True, municipio_nombre=municipio_nombre,
             cta_url=await url_portal_vecino(db, row.id_municipio) or None, cta_texto="Ir al Portal del Ciudadano",
         ))
