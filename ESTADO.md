@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-11-24 (Cesar, cierre). Avisos de turnos y entradas publicados (mig 144, `420a49f`); padrón y Encuestas cerrados para quien no corresponde; sigue el catálogo de emergencias del vecino. Vuelta atrás de la barrera: `DB_BARRERA=false` en Railway.
+**Última actualización:** 2026-11-24 (Cesar, 4.ª sesión). Catálogo de emergencias del vecino publicado (migs 145 y 145b, `ccf9981`; PWA `42f9cd6`). Sigue Vecino 360 del municipio. Vuelta atrás de la barrera: `DB_BARRERA=false` en Railway.
 
 ---
 
@@ -18,7 +18,7 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **Sigue: catálogo de emergencias del vecino** ([`PLAN_CATALOGO_EMERGENCIAS_VECINO.md`](PLAN_CATALOGO_EMERGENCIAS_VECINO.md)), aprobado con sus recomendaciones, sin código. Después, Vecino 360 del lado del municipio. **Avisos de turnos y entradas en prod desde el 2026-11-24**: la tarea corrió en OK con 0 envíos; **sin verificar en prod un aviso real** (César: sacar un turno con su cuenta en el portal y mirar «Alertas» y el correo). **Falta borrar** la rama remota `tramites-vecino-fase1` (lo corre César).
+1. **Sigue: Vecino 360 del lado del municipio** (diseño con César). **Sin verificar en prod:** un aviso real de turno (al 2026-11-24, 0 avisos de turno o entrada en prod; César: sacar un turno con su cuenta en el portal y mirar «Alertas» y el correo) y un reporte real de emergencia con el catálogo nuevo (el catálogo sí se leyó en prod con el vecino demo; no se creó ninguna emergencia). **Para decidir:** «Objeto sospechoso» entra como Hallazgo, P3; los teléfonos de «Violencia familiar o de género» están vacíos. **Falta borrar** la rama remota `tramites-vecino-fase1` (lo corre César).
 2. **Bloque del vecino — después de F4 (orden de César, 2026-10-27):**
    1. La web del ciudadano con todo lo que tiene la app (supuesto de Claude, sin confirmar: es el modo escritorio del portal, ver En curso).
    2. Todas las prestaciones del vecino: trámites, turnos y entradas ya se hacen desde la app (trámites desde el 2026-11-22). Quedan los trámites de empresa (segunda etapa del spec).
@@ -26,7 +26,7 @@
    4. **Vecino 360 para el municipio:** en Datos y como pestaña de la ficha del ciudadano y de la empresa, con todas sus interacciones; por persona o por empresa representada.
    5. **Base de conocimiento de ayudas**, con dos capítulos: canales del vecino y gestión interna. Ya hay un relevamiento inicial de los canales del vecino (2026-10-27). Mientras tanto no se tocan manuales.
 3. **App de agentes: circuito aprobado por César el 2026-11-23, cerrado** ([`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md)); no pedir más pruebas, lo cubre `smoke_agentes_app.py`. REL-SAN-2026-000001 queda sin asignar («Calles y veredas» asigna a mano y no tiene agentes de nivel Gestión). Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
-4. **Arreglos que dejó la prueba de cierre:** quedan el 9 (App Vecinos: catálogo de emergencias del vecino, pide diseño) y menores del 10 y 11, en `PLAN_MULTI_MUNICIPIO_F4_F5.md` → «Prueba de cierre — hallazgos» → «2026-11-19».
+4. **Arreglos que dejó la prueba de cierre:** quedan menores del 10 y 11 (el 9, hecho el 2026-11-24), en `PLAN_MULTI_MUNICIPIO_F4_F5.md` → «Prueba de cierre — hallazgos» → «2026-11-19».
 
 ---
 
@@ -49,7 +49,7 @@
 - 🟢 **Modo escritorio del portal** (ya en «En curso»). La agenda en la app de agentes no se promete.
 
 **Decisiones de negocio pendientes (César)**
-- 🟠 **Prueba de cierre — hallazgos que quedan**, con detalle en [`PLAN_MULTI_MUNICIPIO_F4_F5.md`](PLAN_MULTI_MUNICIPIO_F4_F5.md) → «Prueba de cierre — hallazgos»: (6) pantalla para que el super elija municipio, (7) encuestas en «Promociones» de Gmail, (9) App Vecinos, (10) tres verificaciones pendientes, (11) menores.
+- 🟠 **Prueba de cierre — hallazgos que quedan**, con detalle en [`PLAN_MULTI_MUNICIPIO_F4_F5.md`](PLAN_MULTI_MUNICIPIO_F4_F5.md) → «Prueba de cierre — hallazgos»: (6) pantalla para que el super elija municipio, (7) encuestas en «Promociones» de Gmail, (10) tres verificaciones pendientes, (11) menores.
 - 🟢 **Contorno — 9 menores de la revisión final (2026-10-28), ninguno rompe:** lista en [`PLAN_CONTORNO_MUNICIPIO.md`](PLAN_CONTORNO_MUNICIPIO.md) → «Menores diferidos» (el más visible: la fecha del origen en UTC).
 - 🟡 **Botón de pánico de la PWA:** sin probar con el vecino de prueba (dispara una alerta REAL al COM). Las pruebas de vecino y funcionario están hechas (2026-10-12 y 2026-10-23).
 - 🟢 **Alta (2026-10-10):** la clave temporal del funcionario no vence si no la usa; la app de agentes no tiene «olvidé mi contraseña».
@@ -83,10 +83,11 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
+- **2026-11-24 (4.ª):** catálogo de emergencias del vecino (migs 145 y 145b): 10 grupos y 34 opciones en la app, editables en Maestros; los SOS se resuelven en el servidor («Asistencia» → Emergencia de salud P1; «Seguridad» → Alerta de pánico P1); tipo nuevo «Violencia familiar o de género» P1; el COM ve lo que eligió el vecino. `smoke_catalogo_emergencias.py` 50/50 con y sin barrera; leído en prod con el vecino demo.
 - **2026-11-24 (3.ª):** avisos de turnos y entradas (mig 144, `420a49f`, en prod): confirmación, cambio, cancelación y recordatorio (`recordatorios.yml`), `smoke_avisos_turnos.py` 35/35; «Permiso de Demostración E2E» desactivado en San Andrés (sus 28 expedientes siguen); título de la pestaña «Gestión Estado».
 - **2026-11-24 (2.ª sesión):** el Consultor (nivel 5) ya no escribe en el padrón (`exigir_escritura_padron`; botones ocultos) y todo `/admin/encuestas` queda para niveles 1 y 2; `smoke_consultor_solo_lectura.py` 32/32, verificado en producción. `enlace_extra` quitado de los mails. Nombre con acento dentro del JSON de dos transiciones de trámites (modelo y San Andrés; `smoke_alta_municipio.py` 361/361). PWA: ver su `ESTADO.md`.
 - **2026-11-24 — Registro previo F2 a F5** (mig 143, en prod): `exigir_cuenta_vecino` en las seis vías del backoffice y ventana de registro sin perder lo cargado; registro y «generar usuario» en la PWA, ingreso con DNI o número de usuario; empresas del vecino; altas igualadas; nadie se crea con datos de relleno. `alta-vecino.html` redirige al portal. `smoke_aislamiento.py` en 0 fallas. Nombre del municipio con su acento en prod.
-- **2026-11-23 (tarde):** **notificaciones del vecino repuestas** en la PWA (César; se habían quitado el 2026-07-06 a pedido de Roy: **Roy, avisado por acá**); backend: un dispositivo avisa a un solo vecino y apagar uno no apaga los otros (`smoke_publico_push.py` 10/10). **Vacunación en San Andrés** (`seed_vacunacion_demo.sql`). **Acentos** en catálogos de San Andrés y del modelo (248 filas), pantallas, correos y mensajes; «GESTIÓN ESTADO» en el shell. PWA: títulos sin serifa.
+- **2026-11-23 (tarde):** notificaciones del vecino repuestas en la PWA (**Roy, avisado por acá**), Vacunación en San Andrés y acentos en catálogos y pantallas.
 
 > Lo anterior: `HISTORIAL_MIGRACIONES.md` y las skills de cada módulo.
 
