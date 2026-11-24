@@ -21,7 +21,7 @@ Hoy (San Andrés, prod, 2026-11-24): 3.354 reclamos, 4.578 turnos (3.639 de Salu
 1. Una línea de tiempo por persona y por empresa: reclamos, turnos, entradas, trámites y emergencias.
 2. Una sola regla de permisos, en el servidor, para las tres superficies.
 3. «Historial» del portal completo: suma trámites, filtro por tipo y lo de sus empresas.
-4. Datos: tablero «Vecino 360», y los tableros de Datos dejan de responder a quien no tiene el módulo.
+4. Datos: tablero «Vecino 360», con el control de acceso del módulo.
 
 **No-objetivos**
 - Contenido clínico, en cualquiera de las tres. La historia clínica sigue en Turnos con su registro de accesos.
@@ -113,12 +113,12 @@ Abiertos: 2 reclamos · 1 trámite   Último contacto 12/11   Calificó 4,2
 ### 7.2 De mi empresa
 Selector «Míos | {empresa}» si representa alguna: reclamos y trámites de la empresa, sin detalle (número, tipo, estado visible, fecha).
 
-**Riesgo:** cualquier vecino puede registrar en el portal una empresa con un CUIT ajeno que todavía no esté cargado, y quedaría como representante. **[Propuesta]** Lo de la empresa lo ve solo quien tenga la **representación confirmada por el municipio**: migración con `ciudadano_empresa.confirmada_en` e `id_usuario_confirma`; las que carga un agente nacen confirmadas, las del portal quedan pendientes y un agente (niveles 1 a 4) las confirma desde la ficha de la empresa. La única que hay hoy queda confirmada por la migración solo si la cargó un agente; si no, pendiente. Mientras está pendiente, el vecino ve «Pendiente de confirmación del municipio».
+**[Propuesta]** Lo de la empresa lo ve solo quien tenga la **representación confirmada por el municipio**: migración con `ciudadano_empresa.confirmada_en` e `id_usuario_confirma`; las que carga un agente nacen confirmadas, las del portal quedan pendientes y un agente (niveles 1 a 4) las confirma desde la ficha de la empresa. La única que hay hoy queda confirmada por la migración solo si la cargó un agente; si no, pendiente. Mientras está pendiente, el vecino ve «Pendiente de confirmación del municipio».
 
 ## 8. Datos
 
 ### 8.1 Control de acceso (primero)
-Los tres routers de Datos suman `require_modulo("bi")`: 403 sin el módulo. Hoy solo piden sesión. El inicio no los usa (verificado). Smokes que los llaman con otras cuentas, a ajustar.
+Los tres routers de Datos usan `require_modulo("bi")`: 403 sin el módulo. El inicio no los usa (verificado). Smokes que los llaman con otras cuentas, a ajustar.
 
 ### 8.2 Tablero «Vecino 360»
 Cuarta tarjeta de la landing, ruta `/bi/vecino360`, endpoints `/api/v1/bi/vecino360/*`.
