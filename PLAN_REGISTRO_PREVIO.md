@@ -1,7 +1,7 @@
 # PLAN — Registro previo del vecino y de la empresa en toda transacción
 
-> **Estado: F1 hecha el 2026-11-23, F2 y F3 el 2026-11-24. César eligió la opción B (§4): la cuenta es requisito en todo. Cuentas de §5
-> creadas el 2026-11-23. Sigue F4.**
+> **Estado: F1 hecha el 2026-11-23; F2, F3, F4 y F5 el 2026-11-24. COMPLETO. César eligió la opción B (§4): la cuenta es requisito en todo. Cuentas de §5
+> creadas el 2026-11-23.**
 > Avance en [`ESTADO.md`](ESTADO.md).
 
 ## 1. Definiciones de César (2026-11-21 y 2026-11-23)
@@ -53,8 +53,8 @@
   con el vecino elegido. Mismo control en el backend para los cuatro circuitos (según §4).
 - **F3 — Registro del vecino en el portal y en la app, y después su usuario** (§6). **HECHA (2026-11-24; detalle en §8).**
 - **F4 — Alta de empresa del lado del vecino** (portal y app), con los mismos datos que el backoffice, para el vecino
-  ya registrado.
-- **F5 — Igualar las dos altas de persona** (tipo de documento, textos y validaciones) y documentar.
+  ya registrado. **HECHA (2026-11-24; detalle en §9).**
+- **F5 — Igualar las dos altas de persona** (tipo de documento, textos y validaciones) y documentar. **HECHA (2026-11-24; detalle en §9).**
 
 **No cambia:** emergencias (incluidos SOS y pánico), Guardia (viene de una emergencia), relevamientos, subreclamos y
 retrabajos (heredan el vecino del reclamo original). Lo ya cargado no se toca.
@@ -124,8 +124,6 @@ El alta por un agente ya sigue este orden (ficha → correo → el vecino elige 
   ficha de la pantalla de Ciudadanos (`useFichaCiudadano`), y con el tilde de representante ofrece cargar la empresa.
 - **Datos demo:** el generador crea a sus vecinos con la cuenta pendiente.
 - **Smoke:** `backend/smoke_registro_previo.py` (35/35, con barrera y sin ella).
-- **Queda para F5:** dos endpoints sin pantalla propia en ese sentido que crean personas con datos de relleno, `POST
-  /publico/auth/registrar` y la promoción a la BUC de un contacto de emergencia sin ficha (`promover-a-buc`).
 - **Fuera de alcance:** un trámite iniciado por una empresa sin representante no pide cuenta de nadie (la empresa es el remitente).
 
 ## 8. F3, cómo quedó (2026-11-24)
@@ -139,3 +137,16 @@ El alta por un agente ya sigue este orden (ficha → correo → el vecino elige 
   páginas públicas ya usan esa dirección.
 - **Domicilio:** en las dos altas, si la sugerencia es la calle sin número, se conserva la altura tipeada.
 - **Smokes:** `smoke_alta_portal_links.py` (39/39, con barrera y sin ella) y el circuito navegado en local.
+
+## 9. F4 y F5, cómo quedaron (2026-11-24)
+
+- **Empresas del vecino:** Configuración → «Mis empresas» en la PWA (`/empresas`, `/empresas/nueva`), con los mismos datos que el
+  backoffice. Backend `publico_empresas.py` (listado y catálogos); el alta sigue siendo `POST /publico/alta/empresa`, con el
+  representante del token. El CUIT se compara por dígitos en las dos altas (hay filas viejas con guiones).
+- **Altas igualadas:** tipo de documento (DNI o pasaporte) en las dos, teléfono de 10 dígitos, CUIL que corresponde al DNI y
+  fecha de nacimiento posible. En el backoffice, esos controles rigen para el alta; una ficha vieja se sigue pudiendo editar.
+- **Nadie se crea con datos de relleno:** `POST /publico/auth/registrar` responde 410, y en Emergencias el contacto eventual se
+  vincula a su ficha o se registra con la ficha completa («Registrar como vecino»).
+- **Smokes:** `smoke_publico_empresas.py` 16/16, `smoke_publico_auth.py` 15/15, `smoke_emergencias.ps1` 65/65,
+  `smoke_aislamiento.py` 0 fallas.
+- **Queda afuera:** operar un trámite o un reclamo en nombre de la empresa desde la PWA (segunda etapa de los trámites del vecino).

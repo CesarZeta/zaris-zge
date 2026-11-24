@@ -95,6 +95,7 @@ POR_NOMBRE = {
     "id_canal_ingreso": "emergencia_canal_ingreso", "id_prioridad": "emergencia_prioridad",
     "id_tipo_tramite_version": "tipo_tramite_version", "id_lugar": "lugares_atencion", "id_servicio": "servicios",
     "id_ciudadano_buc": "ciudadanos", "id_contacto_eventual": "emergencia_contacto_eventual",
+    "id_pedido": "tramite_pedido_iniciador", "id_doc": "tramite_documento",
 }
 SALTEAR: list[tuple[str, str]] = [
     (r"\{token", "token público en la URL: el municipio sale de la fila del token (R11), se prueba aparte"),

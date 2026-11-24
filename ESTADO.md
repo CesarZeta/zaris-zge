@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-11-23 cierre (Cesar). **Material de marketing** (sumario, presentación de 11 páginas, correo) y, al contrastarlo con el producto: notificaciones del vecino repuestas, vacunación en San Andrés, app del vecino sin tipografía con serifa, acentos en todo el sistema. **Sigue registro previo F2.** Vuelta atrás de la barrera: `DB_BARRERA=false` en Railway.
+**Última actualización:** 2026-11-24 (Cesar). **Registro previo COMPLETO (F2 a F5)** en prod: el backoffice exige la cuenta del vecino, el registro vive en el portal con número de usuario, el vecino registra sus empresas y las altas quedaron iguales. Vuelta atrás de la barrera: `DB_BARRERA=false` en Railway.
 
 ---
 
@@ -18,7 +18,7 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **Registro previo del vecino y de la empresa** ([`PLAN_REGISTRO_PREVIO.md`](PLAN_REGISTRO_PREVIO.md)): César definió que la cuenta es requisito en toda transacción (salvo emergencias) y que toda cuenta interna tiene su ficha. F1 hecha el 2026-11-23 (cerradas las dos reservas públicas sin cuenta). Las 853 cuentas pendientes de los vecinos ya cargados se crearon ese día, sin correos (§5). **Sigue F2** (exigir la cuenta en el backoffice y dar de alta sin perder lo cargado); no espera respuesta de César. Trámites del vecino: cerrado; **falta borrar** la rama remota `tramites-vecino-fase1` (sus 13 commits están en `main`, comparados el 2026-11-23): `git push origin --delete tramites-vecino-fase1`, lo corre César.
+1. **Registro previo: COMPLETO el 2026-11-24** ([`PLAN_REGISTRO_PREVIO.md`](PLAN_REGISTRO_PREVIO.md)). El formato del número de usuario (6 dígitos, desde 100001) lo eligió Claude. **Falta borrar** la rama remota `tramites-vecino-fase1` (sus 13 commits están en `main`): `git push origin --delete tramites-vecino-fase1`, lo corre César.
 2. **Bloque del vecino — después de F4 (orden de César, 2026-10-27):**
    1. La web del ciudadano con todo lo que tiene la app (supuesto de Claude, sin confirmar: es el modo escritorio del portal, ver En curso).
    2. Todas las prestaciones del vecino: trámites, turnos y entradas ya se hacen desde la app (trámites desde el 2026-11-22). Quedan los trámites de empresa (segunda etapa del spec).
@@ -36,7 +36,6 @@
 - **IT-01 multi-municipio: completa en prod (F1-F6).** Planes y decisiones en los `PLAN_MULTI_MUNICIPIO*.md`, reglas en CLAUDE.md §1/§3/§10. Quedan los arreglos de la prueba de cierre (pregunta 4) y los menores diferidos.
   - **Para quien trabaje en local (Roy incluido):** sumar a `backend/.env.local` `SEGUNDO_FACTOR_OBLIGATORIO=false` y una `SEGUNDO_FACTOR_CLAVE` de desarrollo (comando en `backend/.env.example`). Sin eso, las cuentas de nivel 0/1 reciben 503 y los smokes que entran con un administrador fallan.
 - **PWA `zaris-vecinos` — modo escritorio del portal: diseño aprobado el 2026-10-12 (3ª), falta plan + código.** Solo toca el repo de la PWA; spec y pasos en su `ESTADO.md` → En curso.
-- **Registro previo, F2 (próximo trabajo):** en el backoffice, exigir la cuenta del vecino en reclamos (`reclamos.py::crear_reclamo`), turnos (`turnos.py`) y entradas (`agenda_v2.py`) con `services/tramites/alta.py::vecino_tiene_cuenta`, y que `CiudadanoSearch` dé de alta a la persona en un modal sin perder lo cargado. Después F3 (registro en la PWA + número de usuario), F4 y F5.
 - **App de agentes** publicada en `https://agentes.zaris.com.ar` (color del municipio, instalación desde «Mi perfil»); el vecino instala la suya desde su portal. Detalle en `zaris-agentes/ESTADO.md`.
 
 > **PWA `zaris-vecinos`:** consume todo lo que el backend entregó. Falta backend nuevo: noticias, redes, emergencias en `mi-resumen` y baja de cuenta ([`docs/contrato_api_publica.md`](docs/contrato_api_publica.md)).
@@ -52,7 +51,6 @@
 - 🟢 **Modo escritorio del portal** (ya en «En curso»). La agenda en la app de agentes no se promete.
 
 **Decisiones de negocio pendientes (César)**
-- 🟠 **Registro previo:** ver pregunta 1. Siguen F2 (backoffice), F3 (registro del vecino en el portal y la app, y después su usuario: §6), F4 (alta de empresa del lado del vecino) y F5 (igualar las altas).
 - 🟠 **Prueba de cierre — hallazgos que quedan**, con detalle en [`PLAN_MULTI_MUNICIPIO_F4_F5.md`](PLAN_MULTI_MUNICIPIO_F4_F5.md) → «Prueba de cierre — hallazgos»: (6) pantalla para que el super elija municipio, (7) encuestas en «Promociones» de Gmail, (9) App Vecinos, (10) tres verificaciones pendientes, (11) menores.
 - 🟢 **Contorno — 9 menores de la revisión final (2026-10-28), ninguno rompe:** lista en [`PLAN_CONTORNO_MUNICIPIO.md`](PLAN_CONTORNO_MUNICIPIO.md) → «Menores diferidos» (el más visible: la fecha del origen en UTC).
 - 🟡 **Botón de pánico de la PWA:** sin probar con el vecino de prueba (dispara una alerta REAL al COM). Las pruebas de vecino y funcionario están hechas (2026-10-12 y 2026-10-23).
@@ -62,7 +60,6 @@
 - 🟠 **Config/UX — reunión 2026-07-06** (ClickUp, lista CONFIGURACION y UX): **IT-01** (ver En curso) · **IT-08** botón SOS de la PWA · **IT-07** accesibilidad móvil (PWA) · **IT-09** módulo de Obras (backlog sin alcance).
 - 🟢 **Baja de cuenta del vecino:** sin endpoint ni definición; obligatoria si la app va a las stores.
 - 🟠 **IT-01 — menores diferidos de las revisiones finales (F1+F2, F3, F3b, F4+F5):** lista en [`PLAN_MULTI_MUNICIPIO.md`](PLAN_MULTI_MUNICIPIO.md) → «Menores diferidos». Ninguno afecta a San Andrés solo.
-- 🟠 **`smoke_aislamiento.py` en rojo (4 fallas, 2026-11-23):** rutas nuevas de trámites (`/pedidos/{id_pedido}/cancelar` y `/visto`, mig 139, entre otras) sin mapear en el test; no es un cruce de municipios. Sumar `id_pedido` a sus datos.
 - 🟢 **«Permiso de Demostración E2E»** (tipo de trámite de prueba, activo en San Andrés, 28 expedientes): sacarlo de la vista antes de una demostración; sin respuesta de César.
 - 🟢 **`smoke_publico_turnos.py` en rojo por datos locales** (el 6.º intento choca con el límite de 5 reservas por minuto); no es del código.
 - 🟢 **PWA — `/configuracion` no maneja el 401** con un token vencido (se queda en la página; sin bucle). Repo `zaris-vecinos`.
@@ -89,6 +86,7 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
+- **2026-11-24 — Registro previo F2 a F5** (mig 143, en prod): `exigir_cuenta_vecino` en las seis vías del backoffice y ventana de registro sin perder lo cargado; registro y «generar usuario» en la PWA, ingreso con DNI o número de usuario; empresas del vecino; altas igualadas; nadie se crea con datos de relleno. `alta-vecino.html` redirige al portal. `smoke_aislamiento.py` en 0 fallas. Nombre del municipio con su acento en prod.
 - **2026-11-23 (tarde):** **notificaciones del vecino repuestas** en la PWA (César; se habían quitado el 2026-07-06 a pedido de Roy: **Roy, avisado por acá**); backend: un dispositivo avisa a un solo vecino y apagar uno no apaga los otros (`smoke_publico_push.py` 10/10). **Vacunación en San Andrés** (`seed_vacunacion_demo.sql`). **Acentos** en catálogos de San Andrés y del modelo (248 filas), pantallas, correos y mensajes; «GESTIÓN ESTADO» en el shell. PWA: títulos sin serifa.
 - **2026-11-23:** **App de agentes F2 y F3** cerrada y aprobada; Datos y Reclamos con filtro «Transacción»; registro previo F1 (reservas sin cuenta, 410) y 853 cuentas creadas.
 - **2026-11-22 (noche):** App de agentes F1 + F1b (relevamientos `REL-`, control de entradas; mig 141). Trámites del vecino cerrado.
