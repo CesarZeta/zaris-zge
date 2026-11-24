@@ -18,7 +18,8 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **Registro previo: COMPLETO el 2026-11-24** ([`PLAN_REGISTRO_PREVIO.md`](PLAN_REGISTRO_PREVIO.md)). El formato del número de usuario (6 dígitos, desde 100001) lo eligió Claude. **Falta borrar** la rama remota `tramites-vecino-fase1` (sus 13 commits están en `main`): `git push origin --delete tramites-vecino-fase1`, lo corre César.
+1. **Registro previo: COMPLETO el 2026-11-24** ([`PLAN_REGISTRO_PREVIO.md`](PLAN_REGISTRO_PREVIO.md)). Para confirmar: el formato del número de usuario (6 dígitos desde 100001, lo eligió Claude; recomendación: dejarlo). **Falta borrar** la rama remota `tramites-vecino-fase1`: `git push origin --delete tramites-vecino-fase1`, lo corre César. **Sin verificar:** las pantallas nuevas del backoffice en prod (se recorrieron en local) y cómo pasa a la versión nueva un teléfono con la app vieja que abre `/registro` (la versión vieja muestra su página 404; en la prueba se borró el service worker a mano).
+   - **Qué sigue (César eligió el orden general; falta el detalle):** (a) catálogo de emergencias del vecino, recomendado como lo próximo, empezando por la tabla completa de los tipos actuales; (b) dentro del bloque del vecino, recomendado Vecino 360 del lado del municipio; (c) confirmación y recordatorio de turnos y entradas, aprobado.
 2. **Bloque del vecino — después de F4 (orden de César, 2026-10-27):**
    1. La web del ciudadano con todo lo que tiene la app (supuesto de Claude, sin confirmar: es el modo escritorio del portal, ver En curso).
    2. Todas las prestaciones del vecino: trámites, turnos y entradas ya se hacen desde la app (trámites desde el 2026-11-22). Quedan los trámites de empresa (segunda etapa del spec).
