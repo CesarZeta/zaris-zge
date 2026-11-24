@@ -48,7 +48,7 @@ Encuestas de satisfacción disparadas al cierre de reclamos (Resuelto) **y al cu
 - Fin de rango de fecha: pasar `hasta_excl = hasta + timedelta(days=1)` como objeto `date` y comparar `< :hasta_excl`, NO `(:hasta::date + 1)` (el `::date` rompe el parser de bind params de asyncpg). Familia de [[feedback_asyncpg_extract_cast_date]].
 
 ### Router admin (`/api/v1/admin/encuestas`, fase 2C)
-Auth a nivel router (`dependencies=[Depends(get_current_user)]`, §39). Registrado en `main.py` **ANTES** de `admin_tablas_router` (evita el `/{tabla}` greedy que atraparía `'encuestas'`, §5). Municipio (IT-01): el del JWT (`municipio_actual`), nunca un query param; los toggles, la plantilla y el branding de cada envío salen del municipio de la entidad (R8). El dispatcher recorre los municipios (`por_cada_municipio`, tope de 50 envíos por municipio). Reglas R1-R11 en [`PLAN_MULTI_MUNICIPIO_F1_F2.md`](../../../PLAN_MULTI_MUNICIPIO_F1_F2.md).
+Auth a nivel router (`dependencies=[Depends(exigir_supervisor)]`: todo el router es nivel 1 y 2 desde 2026-11-24; los envíos traen el enlace personal del vecino). Registrado en `main.py` **ANTES** de `admin_tablas_router` (evita el `/{tabla}` greedy que atraparía `'encuestas'`, §5). Municipio (IT-01): el del JWT (`municipio_actual`), nunca un query param; los toggles, la plantilla y el branding de cada envío salen del municipio de la entidad (R8). El dispatcher recorre los municipios (`por_cada_municipio`, tope de 50 envíos por municipio). Reglas R1-R11 en [`PLAN_MULTI_MUNICIPIO_F1_F2.md`](../../../PLAN_MULTI_MUNICIPIO_F1_F2.md).
 
 | Verbo | Path | Notas |
 |---|---|---|
@@ -62,7 +62,7 @@ Auth a nivel router (`dependencies=[Depends(get_current_user)]`, §39). Registra
 | PATCH | `/respuestas/{id}/atender` | nivel ≤ 2; 422 si ya atendida |
 
 ### Niveles de acceso al módulo
-- Listados (envíos, plantillas, disparar): cualquier usuario autenticado.
+- Listados (envíos, plantillas, disparar): nivel ≤ 2, como el resto del router (2026-11-24).
 - Dashboards (resumen, por-area, evolucion, comentarios, pendientes-contacto): admin/supervisor (`nivel_acceso <= 2`), vía helper `_require_supervisor(user)` en `encuestas_admin.py`.
 - Atender respuestas (`PATCH /respuestas/{id}/atender`): admin/supervisor.
 - Endpoints públicos `/api/v1/publico/encuesta/*`: SIN auth, validados por token UUID + rate limiting 5/min por IP (in-memory, `app/middleware/rate_limit.py`). Router separado (§39). Nunca devuelven datos personales del ciudadano ni descripción del reclamo (§40). Token inválido/inexistente → 404; completada → 410; expirada → 410 (y marca `estado='expirada'`). IP real vía `app/utils/request_helpers.py::get_real_ip` (lee `X-Forwarded-For` por el proxy de Railway). `valor_texto` se trunca a 1000 chars (no se rechaza); body máx 4 KB.
