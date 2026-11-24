@@ -248,13 +248,9 @@ def _build_template_app_vecinos(
     municipio_nombre: str,
     municipio_logo_url: str | None = None,
     cta_color: str = _CTA_COLOR_DEFAULT,
-    enlace_extra: tuple[str, str] | None = None,
 ) -> tuple[str, str]:
     """
     Arma (html, text) con el look App Vecinos: sobrio, sin emojis, sin marca ZARIS.
-    `enlace_extra=(etiqueta, url)` agrega una línea "etiqueta: url" debajo del párrafo extra
-    (ej. el Portal del Ciudadano en el mail de verificación: el vecino tiene que saber a
-    dónde ir después de verificar). Va en texto plano y en HTML, sin etiquetas en el texto.
     """
     logo_html = ""
     if municipio_logo_url:
@@ -262,16 +258,6 @@ def _build_template_app_vecinos(
             f'<img src="{municipio_logo_url}" alt="{municipio_nombre}" '
             f'style="max-height:64px;max-width:240px;display:block;margin:0 auto 16px;">'
         )
-    enlace_extra_html = ""
-    enlace_extra_text = ""
-    if enlace_extra and enlace_extra[1]:
-        etiqueta, url_extra = enlace_extra
-        enlace_extra_html = (
-            f'<p style="margin:0 0 16px 0;font-size:13px;line-height:1.5;color:rgba(38,37,30,.6);word-break:break-all;">'
-            f'{etiqueta}: <a href="{url_extra}" style="color:{cta_color};">{url_extra}</a></p>'
-        )
-        enlace_extra_text = f"{etiqueta}: {url_extra}\n\n"
-
     html = f"""\
 <!DOCTYPE html>
 <html lang="es">
@@ -302,7 +288,6 @@ def _build_template_app_vecinos(
       <p style="margin:24px 0 8px 0;font-size:13px;line-height:1.5;color:rgba(38,37,30,.6);">
         {parrafo_extra}
       </p>
-      {enlace_extra_html}
       <p style="margin:0;font-size:12px;line-height:1.5;color:rgba(38,37,30,.5);word-break:break-all;">
         Si el botón no funciona, copiá y pegá este enlace en tu navegador:<br>
         <span style="color:{cta_color};">{cta_url}</span>
@@ -334,7 +319,7 @@ def _build_template_app_vecinos(
 
 {parrafo_extra}
 
-{enlace_extra_text}Si el botón no funciona, copiá y pegá el enlace de arriba en tu navegador.
+Si el botón no funciona, copiá y pegá el enlace de arriba en tu navegador.
 
 ---
 Este mensaje fue enviado por {municipio_nombre}.
