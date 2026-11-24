@@ -230,6 +230,10 @@ Spec en [`docs/superpowers/specs/2026-11-21-tramites-vecino-design.md`](docs/sup
 - **139b (datos):** marca `ofrecer_al_vecino` en los seis tipos por código (`aviso-obra`, `poda-arbol`, `inscripcion-profesional`, `exencion-tasas`, `permiso-espacio-publico`, `recurso-administrativo`), en todos los municipios que los tengan; no prende `exige_identidad_validada` en ninguno.
 - Reglas vivas en la skill `modulo-tramites` → «Trámites del vecino» y contrato en `docs/contrato_api_publica.md` §12.
 
+### Migración 145 + 145b — catálogo de emergencias del vecino (`backend/migrations/145_catalogo_emergencias_vecino.sql`, `145b_…_seed.sql`)
+
+**Aplicadas en local y prod el 2026-11-24, por MCP (sin DROP), antes del código.** `emergencia_grupo_vecino` (10 grupos) y `emergencia_opcion_vecino` (35 opciones: 34 en la lista más la del SOS «Seguridad»), catálogos del grupo `maestros`, con política `barrera_municipio`, copiados en el alta; cada opción apunta a un tipo y, si corresponde, a un subtipo del COM (FK compuesta que exige que el subtipo sea de ese tipo) y, hasta cinco, a un botón SOS (único parcial por municipio). `emergencia_evento.clasificacion_vecino`: el texto de la opción elegida. 145b: además, dos tipos nuevos del COM, P1 y con aviso al 911, en la gestión de «Robo»: `ALERTA_PANICO` y `VIOLENCIA_FAMILIAR_GENERO`. Municipios con datos: San Andrés y el modelo. Plan: `PLAN_CATALOGO_EMERGENCIAS_VECINO.md`.
+
 ### Migración 144 — avisos de turnos y entradas (`backend/migrations/144_avisos_turnos_entradas.sql`)
 
 Tipos `turno` y `entrada` en `ck_ciudadano_aviso_tipo`; `turnos.recordado_en` y `evento_reservas.recordado_en` (un solo recordatorio) con índices parciales. Lleva `DROP CONSTRAINT`: en prod la corrió César en el SQL Editor. Local y prod el 2026-11-24, antes del código.

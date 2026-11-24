@@ -11,19 +11,21 @@ fijas del canal (plan seccion 4.5, no negociables desde el body):
   - id_operador_receptor = NULL (no hubo operador)
   - id_estado = PENDIENTE
   - id_subarea / prioridad / organismo default derivados del tipo (el vecino
-    NO clasifica triage: elige tipo + subtipo y describe)
+    NO clasifica triage: elige del catalogo del vecino -mig 145- y describe)
   - id_usuario_alta = NULL (no es un usuario interno)
   - log CREACION con id_usuario=NULL y el vecino identificado en payload_json
 
-Sin migracion: reusa las tablas de las migs 82-83.
+Catalogo del vecino (mig 145, PLAN_CATALOGO_EMERGENCIAS_VECINO.md): grupos y
+opciones por municipio; cada opcion apunta a un tipo (y subtipo) del COM. Los
+botones SOS se resuelven aca por su opcion, no buscando palabras en la app.
 """
 from __future__ import annotations
 
 import json
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -53,17 +55,104 @@ def _es_alerta_panico(descripcion: Optional[str]) -> bool:
     return normalizado.startswith(_PREFIJO_PANICO)
 
 
+BOTON_PANICO = "seguridad"
+# El panico nunca se rechaza por configuracion: sin su opcion, estos tipos en orden.
+_TIPOS_PANICO = ("ALERTA_PANICO", "PEDIDO_GENERICO_AUXILIO")
+_NOMBRE_PANICO = "Alerta de pánico"
+OPCION_INEXISTENTE = "Opción de emergencia inexistente o inactiva"
+FALTA_DESCRIPCION = "Contanos qué está pasando para poder ayudarte"
+
+
 class EmergenciaPublicaCreate(BaseModel):
-    id_tipo: int
-    id_subtipo: Optional[int] = None
+    """La clasificacion va por UNA de tres vias: `id_opcion` (catalogo del vecino), `boton_sos` (boton del
+    abanico) o `id_tipo` (versiones anteriores de la app)."""
+    id_opcion: Optional[int] = Field(None, ge=1, le=2_147_483_647)
+    boton_sos: Optional[Literal["seguridad", "incendio", "asistencia", "accidente", "tormenta"]] = None
+    id_tipo: Optional[int] = Field(None, ge=1, le=2_147_483_647)
+    id_subtipo: Optional[int] = Field(None, ge=1, le=2_147_483_647)
     direccion_evento: str = Field(..., min_length=3, max_length=300)
     descripcion: Optional[str] = Field(None, max_length=2000)
     latitud: Optional[float] = None
     longitud: Optional[float] = None
     referencia_ubicacion: Optional[str] = Field(None, max_length=300)
 
+    @model_validator(mode="after")
+    def _una_clasificacion(self):
+        if sum(x is not None for x in (self.id_opcion, self.boton_sos, self.id_tipo)) != 1:
+            raise ValueError("Indicá qué está pasando: una sola opción, un botón SOS o un tipo")
+        return self
 
-# ─── Catalogo minimo para el form del vecino ─────────────────────────────────
+
+# ─── Catalogo del vecino (mig 145) ───────────────────────────────────────────
+
+_FROM_OPCION = """
+    FROM emergencia_opcion_vecino o
+    JOIN emergencia_tipo t ON t.id_emergencia_tipo = o.id_tipo AND t.activo
+    LEFT JOIN emergencia_grupo_vecino g ON g.id_emergencia_grupo_vecino = o.id_grupo
+    WHERE o.activo AND o.id_municipio = :mun
+      AND (o.id_grupo IS NULL OR g.activo OR o.boton_sos IS NOT NULL)
+"""
+
+
+@router.get("/catalogo")
+async def catalogo_vecino(
+    db: AsyncSession = Depends(get_db),
+    current: dict = Depends(get_current_ciudadano),
+    id_municipio: int = Depends(municipio_vecino),
+) -> Any:
+    """Lo que el vecino elige: grupos con sus opciones, y la opcion de cada boton SOS. Sin datos del triage
+    (tipo, prioridad, 911, gestion). Una opcion cuyo tipo se dio de baja no se ofrece."""
+    filas = (await db.execute(text(f"""
+        SELECT o.id_emergencia_opcion_vecino AS id_opcion, o.nombre, o.texto_ayuda, o.descripcion_obligatoria,
+               o.boton_sos, g.id_emergencia_grupo_vecino AS id_grupo, g.nombre AS grupo, g.icono,
+               g.activo AS grupo_activo
+        {_FROM_OPCION}
+        ORDER BY g.orden, g.id_emergencia_grupo_vecino, o.orden, o.id_emergencia_opcion_vecino
+    """), {"mun": id_municipio})).mappings().all()
+    grupos: dict[int, dict] = {}
+    botones: dict[str, dict] = {}
+    for f in filas:
+        opcion = {"id_opcion": f["id_opcion"], "nombre": f["nombre"], "texto_ayuda": f["texto_ayuda"],
+                  "descripcion_obligatoria": f["descripcion_obligatoria"]}
+        if f["boton_sos"]:
+            botones[f["boton_sos"]] = opcion
+        if f["id_grupo"] is not None and f["grupo_activo"]:
+            grupos.setdefault(f["id_grupo"], {
+                "id_grupo": f["id_grupo"], "nombre": f["grupo"], "icono": f["icono"], "opciones": [],
+            })["opciones"].append(opcion)
+    return {"grupos": list(grupos.values()), "botones_sos": botones}
+
+
+async def _clasificar(db: AsyncSession, body: EmergenciaPublicaCreate, id_municipio: int) -> dict:
+    """{id_tipo, id_subtipo, nombre, descripcion_obligatoria, panico} de lo que eligio el vecino."""
+    if body.id_tipo is not None:
+        return {"id_tipo": body.id_tipo, "id_subtipo": body.id_subtipo, "nombre": None,
+                "descripcion_obligatoria": False, "panico": False}
+    panico = body.boton_sos == BOTON_PANICO
+    campo, valor = ("o.id_emergencia_opcion_vecino", body.id_opcion) if body.id_opcion is not None \
+        else ("o.boton_sos", body.boton_sos)
+    op = (await db.execute(text(f"""
+        SELECT o.id_tipo, o.nombre, o.descripcion_obligatoria,
+               (SELECT st.id_emergencia_subtipo FROM emergencia_subtipo st
+                 WHERE st.id_emergencia_subtipo = o.id_subtipo AND st.id_tipo = o.id_tipo AND st.activo) AS id_subtipo
+        {_FROM_OPCION} AND {campo} = :v
+    """), {"mun": id_municipio, "v": valor})).mappings().first()
+    if op:
+        # Un SOS no pide nada mas: se toca en la urgencia.
+        return {**op, "panico": panico,
+                "descripcion_obligatoria": op["descripcion_obligatoria"] and body.boton_sos is None}
+    if panico:
+        for codigo in _TIPOS_PANICO:
+            id_tipo = await db.scalar(text(
+                "SELECT id_emergencia_tipo FROM emergencia_tipo WHERE codigo = :c AND activo AND id_municipio = :mun "
+                "ORDER BY id_emergencia_tipo LIMIT 1"), {"c": codigo, "mun": id_municipio})
+            if id_tipo:
+                return {"id_tipo": id_tipo, "id_subtipo": None, "nombre": _NOMBRE_PANICO,
+                        "descripcion_obligatoria": False, "panico": True}
+    raise HTTPException(422, OPCION_INEXISTENTE)
+
+
+# ─── Catalogo del COM (versiones anteriores de la app) para el form del vecino ─────────────────────────────────
 
 @router.get("/tipos")
 async def tipos_publico(
@@ -111,10 +200,12 @@ async def listar_mis_emergencias(
     id_municipio: int = Depends(municipio_vecino),
 ) -> Any:
     """Lista SOLO los eventos del vecino logueado (id_ciudadano del token).
-    Sin datos del triage interno (operador, organismo, prioridad)."""
+    Sin datos del triage interno (operador, organismo, prioridad). Si reporto
+    desde el catalogo, ve la opcion que eligio aunque el COM reclasifique."""
     rows = (await db.execute(text("""
         SELECT e.id_emergencia_evento, e.numero_operativo,
-               t.nombre AS tipo_nombre, st.nombre AS subtipo_nombre,
+               COALESCE(e.clasificacion_vecino, t.nombre) AS tipo_nombre,
+               CASE WHEN e.clasificacion_vecino IS NULL THEN st.nombre END AS subtipo_nombre,
                est.codigo AS estado_codigo, est.nombre AS estado_nombre,
                est.es_terminal,
                e.direccion_evento, e.referencia_ubicacion,
@@ -132,7 +223,8 @@ async def listar_mis_emergencias(
 
 # ─── POST /publico/emergencias/eventos — reportar emergencia ─────────────────
 
-@router.post("/eventos", status_code=201)
+@router.post("/eventos", status_code=201, responses={422: {
+    "description": f"{OPCION_INEXISTENTE} · {FALTA_DESCRIPCION}"}})
 async def reportar_emergencia(
     body: EmergenciaPublicaCreate,
     request: Request,
@@ -145,20 +237,26 @@ async def reportar_emergencia(
     numero_operativo para seguimiento (lo genera el trigger de la DB)."""
     check_rate_limit(f"emergpub:{get_real_ip(request)}", max_requests=5, window_seconds=60)
 
+    elegido = await _clasificar(db, body, id_municipio)
+    id_tipo, id_subtipo = elegido["id_tipo"], elegido["id_subtipo"]
+    descripcion = (body.descripcion or "").strip() or None
+    if elegido["descripcion_obligatoria"] and not descripcion:
+        raise HTTPException(422, FALTA_DESCRIPCION)
+
     tipo = (await db.execute(text("""
         SELECT id_emergencia_tipo, id_subarea, id_prioridad_default,
                id_organismo_derivacion_default
         FROM emergencia_tipo WHERE id_emergencia_tipo = :id AND activo AND id_municipio = :mun
-    """), {"id": body.id_tipo, "mun": id_municipio})).mappings().first()
+    """), {"id": id_tipo, "mun": id_municipio})).mappings().first()
     if not tipo:
         raise HTTPException(422, "Tipo de emergencia inexistente o inactivo")
 
     id_prioridad = None
-    if body.id_subtipo is not None:
+    if id_subtipo is not None:
         subtipo = (await db.execute(text("""
             SELECT id_prioridad_override FROM emergencia_subtipo
             WHERE id_emergencia_subtipo = :id AND id_tipo = :t AND activo
-        """), {"id": body.id_subtipo, "t": body.id_tipo})).mappings().first()
+        """), {"id": id_subtipo, "t": id_tipo})).mappings().first()
         if not subtipo:
             raise HTTPException(422, "El subtipo no pertenece al tipo indicado o está inactivo")
         id_prioridad = subtipo["id_prioridad_override"]
@@ -179,9 +277,9 @@ async def reportar_emergencia(
     if not estado:
         raise HTTPException(503, "Estado PENDIENTE no configurado")
 
-    # Deteccion server-side de la alerta de panico del boton "Seguridad" de la
-    # PWA (mig 97). El body NO puede setear es_panico directo.
-    es_panico = _es_alerta_panico(body.descripcion)
+    # Alerta de panico (mig 97): el boton «Seguridad» (mig 145) o, en versiones
+    # anteriores de la app, el prefijo de la descripcion.
+    es_panico = elegido["panico"] or _es_alerta_panico(body.descripcion)
 
     id_evento = (await db.execute(text("""
         INSERT INTO emergencia_evento
@@ -189,18 +287,18 @@ async def reportar_emergencia(
              id_canal_ingreso, id_organismo_derivacion, id_operador_receptor,
              denunciante_anonimo, id_ciudadano_buc, id_contacto_eventual,
              direccion_evento, latitud, longitud, referencia_ubicacion,
-             observaciones_recepcion, es_panico, activo, id_municipio)
+             observaciones_recepcion, es_panico, clasificacion_vecino, activo, id_municipio)
         VALUES (:sub, :tipo, :stipo, :prio, :est, :canal, :org, NULL,
-                FALSE, :ciu, NULL, :dir, :lat, :lon, :ref, :obs, :panico, TRUE, :mun)
+                FALSE, :ciu, NULL, :dir, :lat, :lon, :ref, :obs, :panico, :clasif, TRUE, :mun)
         RETURNING id_emergencia_evento
     """), {
-        "sub": tipo["id_subarea"], "tipo": body.id_tipo, "stipo": body.id_subtipo,
+        "sub": tipo["id_subarea"], "tipo": id_tipo, "stipo": id_subtipo,
         "prio": id_prioridad, "est": estado, "canal": canal,
         "org": tipo["id_organismo_derivacion_default"],
         "ciu": current["id_ciudadano"],
         "dir": body.direccion_evento.strip(), "lat": body.latitud,
         "lon": body.longitud, "ref": body.referencia_ubicacion,
-        "obs": (body.descripcion or "").strip() or None,
+        "obs": descripcion, "clasif": elegido["nombre"],
         "panico": es_panico, "mun": id_municipio,
     })).scalar()
 
@@ -216,8 +314,9 @@ async def reportar_emergencia(
             "origen": "app_vecinos",
             "id_ciudadano": current["id_ciudadano"],
             "canal": CANAL_VECINO,
+            "opcion": elegido["nombre"],
         }),
-        "o": (body.descripcion or "").strip() or None,
+        "o": descripcion,
     })
     await db.commit()
 

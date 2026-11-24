@@ -729,6 +729,8 @@
     <div class="sidebar-item" data-tabla="emergencia_estado"              onclick="selectTabla(this)"><i data-lucide="circle-dot"   class="si"></i>Estados de Emergencia</div>
     <div class="sidebar-item" data-tabla="emergencia_organismo_derivacion" onclick="selectTabla(this)"><i data-lucide="shield"      class="si"></i>Organismos de Derivación</div>
     <div class="sidebar-item" data-tabla="emergencia_canal_ingreso"        onclick="selectTabla(this)"><i data-lucide="phone-call"  class="si"></i>Canales de Ingreso</div>
+    <div class="sidebar-item" data-tabla="emergencia_grupo_vecino"         onclick="selectTabla(this)"><i data-lucide="layout-grid" class="si"></i>Grupos (app del vecino)</div>
+    <div class="sidebar-item" data-tabla="emergencia_opcion_vecino"        onclick="selectTabla(this)"><i data-lucide="tag"         class="si"></i>Opciones (app del vecino)</div>
 
     <div class="sidebar-group">Agenda y Turnos</div>
     <div class="sidebar-item" data-tabla="lugares_atencion"    onclick="selectTabla(this)"><i data-lucide="map-pin"       class="si"></i>Lugares de Atención</div>
@@ -1209,6 +1211,46 @@ const SCHEMAS = {
     filtros: ['id_tipo'],
     display: ['id_emergencia_subtipo', 'codigo', 'nombre', 'id_tipo', 'id_prioridad_override'],
   },
+  emergencia_grupo_vecino: {
+    label: 'Grupo de emergencias del vecino', titulo: 'Emergencias: grupos de la app del vecino',
+    pk: 'id_emergencia_grupo_vecino',
+    cols: [
+      { field: 'nombre', label: 'Nombre', type: 'text', required: true, hint: 'Es el texto que ve el vecino.' },
+      { field: 'codigo', label: 'Código', type: 'text', required: true,
+        hint: 'Identificador interno en mayúsculas, sin espacios ni acentos. No se repite.' },
+      { field: 'icono',  label: 'Ícono',  type: 'select', required: true, options: [
+        { v: 'salud', l: 'Salud' }, { v: 'fuego', l: 'Fuego' }, { v: 'gas', l: 'Gas y sustancias' },
+        { v: 'arbol', l: 'Árbol' }, { v: 'derrumbe', l: 'Derrumbe' }, { v: 'agua', l: 'Agua y tormenta' },
+        { v: 'personas', l: 'Personas' }, { v: 'animales', l: 'Animales' }, { v: 'seguridad', l: 'Seguridad' },
+        { v: 'otra', l: 'Otra' } ] },
+      { field: 'orden',  label: 'Orden',  type: 'number', required: true, hint: 'De menor a mayor en la app.' },
+    ],
+    display: ['id_emergencia_grupo_vecino', 'nombre', 'icono', 'orden'],
+  },
+  emergencia_opcion_vecino: {
+    label: 'Opción de emergencias del vecino', titulo: 'Emergencias: opciones de la app del vecino',
+    pk: 'id_emergencia_opcion_vecino',
+    cols: [
+      { field: 'nombre',     label: 'Nombre', type: 'text', required: true, hint: 'Es el texto que ve y elige el vecino.' },
+      { field: 'codigo',     label: 'Código', type: 'text', required: true,
+        hint: 'Identificador interno en mayúsculas, sin espacios ni acentos. No se repite.' },
+      { field: 'id_grupo',   label: 'Grupo', type: 'select', fk: 'emergencia_grupo_vecino', fkLabel: 'nombre', fkPk: 'id_emergencia_grupo_vecino', required: false,
+        hint: 'Dónde la ve el vecino. Sin grupo, solo se usa desde su botón SOS.' },
+      { field: 'id_tipo',    label: 'Tipo de emergencia', type: 'select', fk: 'emergencia_tipo', fkLabel: 'nombre', fkPk: 'id_emergencia_tipo', required: true,
+        hint: 'De acá salen la prioridad, el aviso al 911 y la gestión que la atiende. El vecino no los ve.' },
+      { field: 'id_subtipo', label: 'Subtipo de emergencia', type: 'select', fk: 'emergencia_subtipo', fkLabel: 'nombre', fkPk: 'id_emergencia_subtipo', required: false, filtraPor: 'id_tipo' },
+      { field: 'boton_sos',  label: 'Botón SOS', type: 'select', required: false, options: [
+        { v: '', l: '— Ninguno —' }, { v: 'seguridad', l: 'Seguridad (pánico)' }, { v: 'incendio', l: 'Incendio' },
+        { v: 'asistencia', l: 'Asistencia' }, { v: 'accidente', l: 'Accidente de tránsito' }, { v: 'tormenta', l: 'Tormenta' } ],
+        hint: 'Botón de la app que usa esta opción. Cada botón va en una sola.' },
+      { field: 'texto_ayuda', label: 'Texto de ayuda', type: 'textarea', required: false,
+        hint: 'Lo ve el vecino al elegirla. Por ejemplo, los teléfonos del municipio: se pueden tocar para llamar.' },
+      { field: 'descripcion_obligatoria', label: 'Exigir descripción', type: 'checkbox', required: false },
+      { field: 'orden',      label: 'Orden', type: 'number', required: true, hint: 'De menor a mayor dentro del grupo.' },
+    ],
+    filtros: ['id_grupo', 'id_tipo'],
+    display: ['id_emergencia_opcion_vecino', 'nombre', 'id_grupo', 'id_tipo', 'id_subtipo', 'boton_sos', 'orden'],
+  },
 };
 
 // ── Toast ─────────────────────────────────────────────────────
@@ -1253,6 +1295,8 @@ const TABLA_META = {
   emergencia_organismo_derivacion: { icon: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',  sub: 'Organismos externos de derivación (911, SAME, Bomberos)' },
   emergencia_tipo:                 { icon: '<path d="M2 18h20"/><path d="M5 18V9.5a2.5 2.5 0 0 1 5 0V18"/><path d="M14 18v-7a2 2 0 0 1 4 0v7"/><circle cx="7.5" cy="5.5" r="1.5"/>',  sub: 'Tipos de incidente / emergencia por subárea' },
   emergencia_subtipo:              { icon: '<line x1="6" y1="3" x2="6" y2="15"/><path d="M21 6H8"/><path d="M21 12H8"/><path d="M21 18H8"/>',  sub: 'Subtipos dentro de cada tipo de emergencia' },
+  emergencia_grupo_vecino:         { icon: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>',  sub: 'Los grupos que ve el vecino al reportar una emergencia' },
+  emergencia_opcion_vecino:        { icon: '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>',  sub: 'Lo que elige el vecino, con el tipo de emergencia al que corresponde' },
 };
 
 function tablaIcon(tabla) {
@@ -1919,11 +1963,15 @@ const FK_DISPLAY_MAP = {
   id_prioridad_override: { fk: 'emergencia_prioridad', pk: 'id_emergencia_prioridad', label: 'nombre' },
   id_organismo_derivacion_default: { fk: 'emergencia_organismo_derivacion', pk: 'id_emergencia_organismo_derivacion', label: 'nombre' },
   id_tipo: { fk: 'emergencia_tipo', pk: 'id_emergencia_tipo', label: 'nombre' },
+  id_subtipo: { fk: 'emergencia_subtipo', pk: 'id_emergencia_subtipo', label: 'nombre' },
+  id_grupo: { fk: 'emergencia_grupo_vecino', pk: 'id_emergencia_grupo_vecino', label: 'nombre' },
 };
 
 // Valores legibles para columnas enum conocidas (no FK).
 const ENUM_LABELS = {
   tipo_grupo: { mesa_tramites: 'Mesa de entrada de trámites', trabajo_reclamos: 'Grupo de trabajo (cuadrilla)' },
+  boton_sos: { seguridad: 'Seguridad (pánico)', incendio: 'Incendio', asistencia: 'Asistencia', accidente: 'Accidente de tránsito', tormenta: 'Tormenta' },
+  icono: { salud: 'Salud', fuego: 'Fuego', gas: 'Gas y sustancias', arbol: 'Árbol', derrumbe: 'Derrumbe', agua: 'Agua y tormenta', personas: 'Personas', animales: 'Animales', seguridad: 'Seguridad', otra: 'Otra' },
 };
 
 // Plazos guardados en minutos (SLA de tipos de reclamo, mig 120): se cargan y se
@@ -1972,9 +2020,17 @@ async function loadFkOptions(fk, fkPk, fkLabel) {
     const res = await fetch(`${API}/${fk}`, { headers: _authHeaders() });
     if (!res.ok) return [];
     const data = await res.json();
-    fkCache[fk] = data.map(r => ({ value: r[fkPk], label: r[fkLabel] || r[fkPk] }));
+    fkCache[fk] = data.map(r => ({ value: r[fkPk], label: r[fkLabel] || r[fkPk], fila: r }));
     return fkCache[fk];
   } catch { return []; }
+}
+
+// Select que depende de otro (`filtraPor`): solo las opciones cuyo `filtraPor` es el valor elegido en ese campo.
+function _opcionesFiltradas(col, valorPadre, actual) {
+  const opts = (fkCache[col.fk] || []).filter(o => !col.filtraPor ||
+    (valorPadre !== '' && valorPadre != null && String(o.fila[col.filtraPor]) === String(valorPadre)));
+  return '<option value="">— Sin asignar —</option>' + opts.map(o =>
+    `<option value="${o.value}" ${String(actual) === String(o.value) ? 'selected' : ''}>${String(o.label).replace(/</g, '&lt;')}</option>`).join('');
 }
 
 // ── Construir formulario ───────────────────────────────────────
@@ -2017,9 +2073,7 @@ async function buildForm(schema, record = null, bodyId = 'modalBody') {
         ${hint}
       </div>`;
     } else if (col.type === 'select' && col.fk) {
-      const opts = fkCache[col.fk] || [];
-      const options = `<option value="">— Sin asignar —</option>` +
-        opts.map(o => `<option value="${o.value}" ${String(val) === String(o.value) ? 'selected' : ''}>${o.label}</option>`).join('');
+      const options = _opcionesFiltradas(col, col.filtraPor && record ? record[col.filtraPor] : '', val);
       html += `<div class="field">
         <label for="f_${col.field}">${col.label}</label>
         <select id="f_${col.field}" name="${col.field}" ${req} ${dis}>${options}</select>
@@ -2051,6 +2105,11 @@ async function buildForm(schema, record = null, bodyId = 'modalBody') {
   }
 
   body.innerHTML = html;
+  for (const col of schema.cols.filter(c => c.filtraPor)) {
+    const padre = document.getElementById(`f_${col.filtraPor}`);
+    const hijo = document.getElementById(`f_${col.field}`);
+    padre.addEventListener('change', () => { hijo.innerHTML = _opcionesFiltradas(col, padre.value, ''); });
+  }
 }
 
 // ── Abrir formulario (modal genérico o inline según la tabla) ──────────────────
@@ -2651,6 +2710,7 @@ async function guardarRegistro() {
 
     if (inline) cerrarInline(); else closeModal('formModal');
     toast(editId ? 'Registro actualizado' : 'Registro creado', 'ok');
+    delete fkCache[tablaActual];
     await cargarTabla();
   } catch (e) {
     toast(`Error: ${e.message}`, 'err');

@@ -45,7 +45,7 @@ Assert ($null -ne $login.access_token) "login admin local"
 
 # ---- datos base ----
 $subPol = (Invoke-Api GET "/api/v1/emergencias/tipos?id_subarea=90" $H $null)
-Assert ($subPol.Count -eq 34) "34 tipos policia"
+Assert ($subPol.Count -eq 36) "36 tipos policia (34 + panico y violencia, mig 145)"
 $robo = $subPol | Where-Object { $_.codigo -eq 'ROBO' }
 $agradec = $subPol | Where-Object { $_.codigo -eq 'AGRADECIMIENTO' }
 $tipoDc = (Invoke-Api GET "/api/v1/emergencias/tipos?id_subarea=91" $H $null) | Where-Object { $_.codigo -eq 'INCENDIO' }
@@ -241,7 +241,7 @@ Assert ($null -ne $loginVec.access_token) "login vecino (JWT scope publico)"
 $idCiuVec = $loginVec.ciudadano.id_ciudadano
 
 $tiposPub = Invoke-Api GET "/api/v1/publico/emergencias/tipos" $HVec $null
-Assert (@($tiposPub).Count -eq 50) "vecino: catalogo publico de tipos (50)"
+Assert (@($tiposPub).Count -eq 52) "vecino: catalogo publico de tipos (52)"
 $tipoIncendio = $tiposPub | Where-Object { $_.codigo -eq 'INCENDIO' }
 $subtiposPub = Invoke-Api GET "/api/v1/publico/emergencias/tipos/$($tipoIncendio.id_emergencia_tipo)/subtipos" $HVec $null
 $stForestal = $subtiposPub | Where-Object { $_.codigo -eq 'FORESTAL' }

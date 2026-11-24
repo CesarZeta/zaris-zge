@@ -220,6 +220,18 @@ TABLE_CONFIG: dict[str, dict] = {
         "cols": ["id_tipo", "codigo", "nombre", "descripcion", "id_prioridad_override"],
         "fecha_mod": "fecha_modificacion",
     },
+    # Catálogo del vecino (mig 145): lo que elige en la app, con el tipo del COM al que apunta.
+    "emergencia_grupo_vecino": {
+        "pk": "id_emergencia_grupo_vecino",
+        "cols": ["codigo", "nombre", "icono", "orden"],
+        "fecha_mod": "fecha_modificacion",
+    },
+    "emergencia_opcion_vecino": {
+        "pk": "id_emergencia_opcion_vecino",
+        "cols": ["codigo", "nombre", "id_grupo", "id_tipo", "id_subtipo", "boton_sos",
+                 "descripcion_obligatoria", "texto_ayuda", "orden"],
+        "fecha_mod": "fecha_modificacion",
+    },
 }
 
 ALLOWED_TABLES = set(TABLE_CONFIG.keys())
@@ -245,6 +257,8 @@ _REFERENCIAS = {
     "id_organismo_derivacion_default": ("emergencia_organismo_derivacion",
                                         "id_emergencia_organismo_derivacion", "Organismo de derivación"),
     "id_tipo": ("emergencia_tipo", "id_emergencia_tipo", "Tipo de emergencia"),
+    "id_subtipo": ("emergencia_subtipo", "id_emergencia_subtipo", "Subtipo de emergencia"),
+    "id_grupo": ("emergencia_grupo_vecino", "id_emergencia_grupo_vecino", "Grupo"),
 }
 
 
@@ -344,6 +358,28 @@ async def _rechazar_zona_invalida(db: AsyncSession, tabla: str, data: dict, id_m
             {"id": id, "mun": id_municipio})
     if clave and (problema := problema_valor_zona(clave, data["valor"])):
         raise HTTPException(status_code=422, detail=problema)
+
+
+async def _rechazar_opcion_vecino_incoherente(db: AsyncSession, tabla: str, data: dict, id_municipio: int,
+                                              id: Optional[int] = None) -> None:
+    """Catálogo de emergencias del vecino (mig 145): el subtipo tiene que ser del tipo elegido, y la opción
+    va en un grupo o en un botón SOS. La base también lo impide; acá se dice por qué."""
+    if tabla != "emergencia_opcion_vecino":
+        return
+    actual: dict = {}
+    if id is not None:
+        fila = (await db.execute(text(
+            "SELECT id_grupo, id_tipo, id_subtipo, boton_sos FROM emergencia_opcion_vecino "
+            "WHERE id_emergencia_opcion_vecino = :id AND id_municipio = :mun"),
+            {"id": id, "mun": id_municipio})).mappings().first()
+        actual = dict(fila) if fila else {}
+    final = {**actual, **data}
+    if final.get("id_grupo") is None and final.get("boton_sos") is None:
+        raise HTTPException(status_code=422, detail="Elegí el grupo donde la ve el vecino, o el botón SOS que la usa")
+    if final.get("id_subtipo") is not None and final.get("id_tipo") is not None and not await db.scalar(text(
+            "SELECT 1 FROM emergencia_subtipo WHERE id_emergencia_subtipo = :s AND id_tipo = :t"),
+            {"s": int(final["id_subtipo"]), "t": int(final["id_tipo"])}):
+        raise HTTPException(status_code=422, detail="El subtipo elegido no es de ese tipo de emergencia")
 
 
 _CLAVES_CONTORNO = {"geo_limite_geojson", "geo_limite_origen"}
@@ -623,6 +659,7 @@ async def crear(
     await _rechazar_contorno(db, tabla, data, id_municipio)
     if _por_municipio(tabla):
         await _validar_referencias(db, data, id_municipio)
+        await _rechazar_opcion_vecino_incoherente(db, tabla, data, id_municipio)
         data["id_municipio"] = id_municipio
 
     if cfg.get("has_audit", True):
@@ -699,6 +736,7 @@ async def editar(
     del_municipio, extra = "", {}
     if _por_municipio(tabla):
         await _validar_referencias(db, data, id_municipio)
+        await _rechazar_opcion_vecino_incoherente(db, tabla, data, id_municipio, id)
         del_municipio, extra = " AND id_municipio = :__mun", {"__mun": id_municipio}
 
     if cfg.get("has_audit", True):

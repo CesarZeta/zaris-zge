@@ -140,6 +140,7 @@ export function DetalleEvento() {
               <Dato label="Dirección" valor={ev.direccion_evento} />
               <Dato label="Referencia" valor={ev.referencia_ubicacion} />
               <Dato label="Canal de ingreso" valor={ev.canal_codigo === 'APP_VECINO' ? 'App Vecinos' : 'Llamada telefónica'} />
+              {ev.clasificacion_vecino && <Dato label="El vecino eligió" valor={ev.clasificacion_vecino} />}
               <Dato label="Organismo de derivación" valor={ev.organismo_nombre} />
               <Dato label="Guardia" valor={ev.guardia_atencion_estado ? `Derivado ${formatFechaHora(ev.guardia_derivado_en)} · ${GUARDIA_LABEL[ev.guardia_atencion_estado] ?? ev.guardia_atencion_estado}` : null} />
               <Dato label="Observaciones de recepción" valor={ev.observaciones_recepcion} ancho />

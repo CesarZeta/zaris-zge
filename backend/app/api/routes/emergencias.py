@@ -734,7 +734,7 @@ _SELECT_EVENTO = """
            e.direccion_evento, e.latitud, e.longitud, e.referencia_ubicacion,
            e.audio_grabacion_url, e.observaciones_recepcion, e.observaciones_cierre,
            e.veracidad, e.fecha_hora_recepcion, e.fecha_hora_despacho,
-           e.fecha_hora_arribo, e.fecha_hora_cierre, e.es_panico, e.activo,
+           e.fecha_hora_arribo, e.fecha_hora_cierre, e.es_panico, e.clasificacion_vecino, e.activo,
            ga.id_emergencia_atencion AS guardia_atencion_id,
            ga.estado AS guardia_atencion_estado,
            ga.derivado_en AS guardia_derivado_en

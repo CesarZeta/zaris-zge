@@ -1,6 +1,6 @@
 # Catálogo de emergencias del vecino — tabla completa y propuesta
 
-> **Estado (2026-11-24):** aprobado por César con las cuatro recomendaciones. Sin código todavía (va después de los avisos de turnos). Datos leídos de producción (San Andrés): 50 tipos activos, todos visibles hoy para el vecino.
+> **Estado (2026-11-24):** aprobado por César con las cuatro recomendaciones e implementado (migs 145 y 145b). Al cargarlo, «Amenaza o extorsión» y «Amenaza de bomba u objeto sospechoso» quedaron en dos opciones cada una, porque la tabla les da tipos y prioridades distintos: «Amenaza de muerte» (Integridad a la vida, P1) y «Amenaza o extorsión» (Extorsión, P2); «Amenaza de bomba» (Explosivos, P1) y «Objeto sospechoso» (Hallazgo, P3). Los teléfonos de violencia familiar o de género los carga cada municipio en Maestros → Opciones (app del vecino) → Texto de ayuda; hoy está vacío. Datos leídos de producción (San Andrés): 50 tipos activos, todos visibles hoy para el vecino.
 > Dirección ya dada por César (2026-11-02): el vecino **primero clasifica** eligiendo de un catálogo propio y **después amplía** con una descripción.
 
 ## Cómo leer la tabla

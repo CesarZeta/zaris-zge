@@ -44,7 +44,8 @@ CATALOGOS_COPIABLES: dict[str, list[str]] = {
                  "tipo_tramite_transicion", "tipo_tramite_documento_requerido",
                  "tipo_tramite_aprobacion_requerida"],
     "emergencias": ["emergencia_prioridad", "emergencia_canal_ingreso", "emergencia_organismo_derivacion",
-                    "emergencia_tipo", "emergencia_subtipo"],
+                    "emergencia_tipo", "emergencia_subtipo", "emergencia_grupo_vecino",
+                    "emergencia_opcion_vecino"],
     "encuestas": ["encuesta_plantilla", "encuesta_pregunta", "encuesta_opcion"],
     "agenda": ["agenda_clase", "agenda_feriado"],
 }

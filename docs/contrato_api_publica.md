@@ -112,12 +112,13 @@ El municipio sale del slug `?m=<codigo_corto>` o, sin él, del `Origin`.
 
 | Verbo | Ruta | Auth | Para qué |
 |---|---|---|---|
-| GET | `/tipos` | publico | Tipos de emergencia (sin datos de triage). |
-| GET | `/tipos/{id_tipo}/subtipos` | publico | Subtipos. |
-| GET | `/eventos` | publico | Mis reportes. |
-| POST | `/eventos` | publico | Reporta emergencia. Canal `APP_VECINO` forzado server-side. Rate-limit 5/min/IP. |
+| GET | `/catalogo` | publico | **Nuevo 2026-11-24.** Lo que el vecino elige: `{grupos: [{id_grupo, nombre, icono, opciones: [{id_opcion, nombre, texto_ayuda, descripcion_obligatoria}]}], botones_sos: {seguridad?, incendio?, asistencia?, accidente?, tormenta?: opción}}`. Sin datos del triage. `icono` ∈ salud, fuego, gas, arbol, derrumbe, agua, personas, animales, seguridad, otra. |
+| GET | `/tipos` | publico | Tipos del COM. Solo para versiones anteriores de la app. |
+| GET | `/tipos/{id_tipo}/subtipos` | publico | Subtipos. Solo para versiones anteriores de la app. |
+| GET | `/eventos` | publico | Mis reportes. `tipo_nombre` es la opción que eligió el vecino (aunque el COM reclasifique); en los reportes sin opción, el tipo del COM. |
+| POST | `/eventos` | publico | Reporta emergencia. La clasificación va por **una** de tres vías (422 con ninguna o con dos): `id_opcion` (catálogo), `boton_sos` (abanico SOS; el backend resuelve la opción y 422 si el municipio no la tiene, salvo `seguridad`, que entra siempre) o `id_tipo` + `id_subtipo` (versiones anteriores). Con `descripcion_obligatoria` y sin descripción, 422. Canal `APP_VECINO` forzado server-side. Rate-limit 5/min/IP. |
 
-> **Alerta de pánico (botón «Seguridad» de la PWA — mig 97).** El body de `POST /eventos` **no tiene** campo `es_panico`: el backend lo deriva **únicamente** del prefijo de `descripcion`. Si `descripcion` empieza con **`ALERTA DE PANICO`** (se compara con `strip` + mayúsculas + sin tildes, así que `"Alerta de pánico: …"` también cuenta), el evento se guarda con `es_panico=true`, se notifica in-app + mail a los operadores COM de la subárea del tipo (fallback: admins) y el tablero de Emergencias lo muestra primero, con card destacada, banner rojo y sonido. **Ese prefijo es el mecanismo formal** — cualquier otro texto crea un evento común. `GET /eventos` no expone `es_panico` (el vecino ve su reporte como uno más). Fuente: `publico_emergencias.py` (`_PREFIJO_PANICO`, `_es_alerta_panico`).
+> **Alerta de pánico (botón «Seguridad» de la PWA — mig 97; desde el 2026-11-24, por `boton_sos: "seguridad"`).** El body de `POST /eventos` **no tiene** campo `es_panico`: el backend lo deriva del botón o, en versiones anteriores de la app, del prefijo de `descripcion`. Si `descripcion` empieza con **`ALERTA DE PANICO`** (se compara con `strip` + mayúsculas + sin tildes, así que `"Alerta de pánico: …"` también cuenta), el evento se guarda con `es_panico=true`, se notifica in-app + mail a los operadores COM de la subárea del tipo (fallback: admins) y el tablero de Emergencias lo muestra primero, con card destacada, banner rojo y sonido. Con el botón, entra como tipo «Alerta de pánico» (P1). Sin el botón ni ese prefijo, es un evento común. `GET /eventos` no expone `es_panico` (el vecino ve su reporte como uno más). Fuente: `publico_emergencias.py` (`_PREFIJO_PANICO`, `_es_alerta_panico`).
 
 ## 9. Web Push — `/api/v1/publico/push`
 

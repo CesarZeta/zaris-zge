@@ -145,8 +145,10 @@ export interface EmergenciaEvento {
   fecha_hora_arribo?: string | null
   fecha_hora_cierre?: string | null
   /** Alerta de panico del boton "Seguridad" de la App Vecinos (mig 97).
-   * La setea SOLO el backend al detectar el prefijo en la descripcion. */
+   * La setea SOLO el backend: por el boton SOS o, en apps viejas, por el prefijo de la descripcion. */
   es_panico: boolean
+  /** Opción del catálogo del vecino con la que lo reportó (mig 145). */
+  clasificacion_vecino?: string | null
   activo: boolean
 }
 
