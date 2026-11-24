@@ -452,23 +452,20 @@
         // Si la imagen falla al cargar, la ocultamos para no mostrar el icono roto.
         muniLogoEl.addEventListener('error', () => { muniLogoEl.hidden = true; }, { once: true });
       }
-      // IT-05: el slug del municipio habilita el botón "Alta vecino" del topbar.
-      _initAltaVecino(data.municipio_slug);
+      // IT-05: la dirección del portal del vecino habilita el botón "Alta vecino" del topbar.
+      _initAltaVecino(data.municipio_slug, data.app_vecinos_url);
     } catch (e) { /* fail-open: defaults del HTML */ }
   })();
 
   // ── Compartir alta de vecino (URL + QR) — IT-05 ───────────────────
-  // El botón del topbar abre un modal con el enlace público de alta y su QR.
-  // La URL depende del slug (codigo_corto) del municipio; sin slug, el botón
-  // se oculta (no hay enlace válido para compartir).
-  function _initAltaVecino(slug) {
+  // El botón del topbar abre un modal con el enlace al registro y su QR. El registro vive en
+  // el portal del vecino del municipio; sin esa dirección, el botón se oculta.
+  function _initAltaVecino(slug, portal) {
     const btn = document.getElementById('topbar-altavecino');
     if (!btn) return;
-    if (!slug) { btn.hidden = true; return; }
+    if (!/^https?:\/\//.test(portal || '')) { btn.hidden = true; return; }
 
-    // Base pública: en prod es el origin del shell (GH Pages / dominio propio).
-    const base = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '');
-    const url = `${base}/frontend/alta-vecino.html?m=${encodeURIComponent(slug)}`;
+    const url = `${portal.replace(/\/+$/, '')}/registro`;
 
     const overlay = document.getElementById('altavecino-overlay');
     const urlEl = document.getElementById('altavecino-url');
@@ -515,7 +512,7 @@
       try {
         const a = document.createElement('a');
         a.href = canvas.toDataURL('image/png');
-        a.download = `alta-vecino-${slug}.png`;
+        a.download = `registro-vecino-${slug || 'municipio'}.png`;
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
       } catch (e) { /* noop */ }
     });

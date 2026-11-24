@@ -1,7 +1,7 @@
 # PLAN — Registro previo del vecino y de la empresa en toda transacción
 
-> **Estado: F1 hecha el 2026-11-23 y F2 el 2026-11-24. César eligió la opción B (§4): la cuenta es requisito en todo. Cuentas de §5
-> creadas el 2026-11-23. Sigue F3.**
+> **Estado: F1 hecha el 2026-11-23, F2 y F3 el 2026-11-24. César eligió la opción B (§4): la cuenta es requisito en todo. Cuentas de §5
+> creadas el 2026-11-23. Sigue F4.**
 > Avance en [`ESTADO.md`](ESTADO.md).
 
 ## 1. Definiciones de César (2026-11-21 y 2026-11-23)
@@ -51,7 +51,7 @@
 - **F2 — Backoffice: atender empieza por el registro. HECHA (2026-11-24; detalle en §7).** En reclamos, turnos, entradas y trámites, el buscador de
   vecino ofrece dar de alta a la persona **sin perder lo que se estaba cargando** (modal, no otra pantalla) y vuelve
   con el vecino elegido. Mismo control en el backend para los cuatro circuitos (según §4).
-- **F3 — Registro del vecino en el portal y en la app, y después su usuario** (§6).
+- **F3 — Registro del vecino en el portal y en la app, y después su usuario** (§6). **HECHA (2026-11-24; detalle en §8).**
 - **F4 — Alta de empresa del lado del vecino** (portal y app), con los mismos datos que el backoffice, para el vecino
   ya registrado.
 - **F5 — Igualar las dos altas de persona** (tipo de documento, textos y validaciones) y documentar.
@@ -127,3 +127,15 @@ El alta por un agente ya sigue este orden (ficha → correo → el vecino elige 
 - **Queda para F5:** dos endpoints sin pantalla propia en ese sentido que crean personas con datos de relleno, `POST
   /publico/auth/registrar` y la promoción a la BUC de un contacto de emergencia sin ficha (`promover-a-buc`).
 - **Fuera de alcance:** un trámite iniciado por una empresa sin representante no pide cuenta de nadie (la empresa es el remitente).
+
+## 8. F3, cómo quedó (2026-11-24)
+
+- **PWA:** `/registro` (datos completos, sin contraseña), `/activar` (confirma el correo al abrir el enlace y después genera
+  el usuario), ingreso y recuperación con DNI o número de usuario; el número se ve en Configuración y llega por correo.
+- **Número de usuario:** 6 dígitos desde 100001, correlativo por municipio (mig 143). Formato elegido por Claude para que no se
+  confunda con un DNI; las cuentas que ya estaban activas recibieron el suyo.
+- **Backend:** `POST /publico/auth/confirmar-correo`, `asignar_numero_usuario`, `identificador` en el ingreso y la recuperación.
+- **Página vieja:** `frontend/alta-vecino.html` redirige a `{portal}/registro`; el QR del shell, Config → Identidad y las
+  páginas públicas ya usan esa dirección.
+- **Domicilio:** en las dos altas, si la sugerencia es la calle sin número, se conserva la altura tipeada.
+- **Smokes:** `smoke_alta_portal_links.py` (39/39, con barrera y sin ella) y el circuito navegado en local.

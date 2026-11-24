@@ -2,7 +2,6 @@
 // No importar nada de stores ni de hooks del backoffice.
 
 import { useEffect, useState, type CSSProperties } from 'react'
-import { raizDelSitio } from '../lib/shellNav'
 import { getIdentidadPublica, type IdentidadPublica } from './api'
 
 export const layoutStyles = {
@@ -179,9 +178,7 @@ export function IrAlPortal({ texto }: { texto: string }) {
     return () => { cancel = true }
   }, [])
 
-  const alta = id?.municipio_slug
-    ? `${raizDelSitio(window.location.pathname)}frontend/alta-vecino.html?m=${encodeURIComponent(id.municipio_slug)}`
-    : null
+  const alta = id?.app_vecinos_url ? `${id.app_vecinos_url.replace(/\/+$/, '')}/registro` : null
   const boton: CSSProperties = { ...layoutStyles.submit, display: 'block', textAlign: 'center', textDecoration: 'none', boxSizing: 'border-box' }
 
   return (
@@ -195,7 +192,7 @@ export function IrAlPortal({ texto }: { texto: string }) {
           style={{ ...boton, marginTop: 10, background: 'transparent', color: 'var(--zaris-orange)', border: '1px solid var(--zaris-orange)' }}
           href={alta}
         >
-          Todavía no tengo cuenta
+          Registrarme
         </a>
       )}
       {(fallo || (id && !id.app_vecinos_url && !alta)) && (

@@ -42,8 +42,7 @@ async def identidad_municipio(
         "SELECT nombre, codigo_corto FROM municipios WHERE id_municipio = :m"
     ), {"m": id_municipio})).fetchone()
 
-    # URL del alta publica de vecinos: dominio del shell + slug del municipio.
-    # Sin slug -> None y la PWA no muestra el link (fail-silent).
+    # Registro de vecinos, en el portal del municipio. La PWA actual ya no la usa.
     url_alta = await url_alta_publica(db, id_municipio)
 
     return IdentidadMunicipioOut(

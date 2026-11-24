@@ -126,7 +126,7 @@ async def main() -> int:
     nac = await q1("SELECT id FROM nacionalidades ORDER BY id LIMIT 1")
     if not nac:
         sys.exit("ABORT: tabla nacionalidades vacía en local")
-    url_alta = f"{SHELL}/frontend/alta-vecino.html?m={slug}"
+    url_alta = f"{PORTAL}/registro"
 
     email_mod.enviar_mail = _captura_enviar_mail
 

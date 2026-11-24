@@ -733,10 +733,10 @@ async def _pagina_enlace_invalido(db: AsyncSession, request: Request, m: str | N
     return HTMLResponse(
         _pagina_confirmacion(
             "Enlace inválido o vencido",
-            "Este enlace de verificación no es válido o ya expiró. Si te diste de alta hace poco, "
-            "volvé a la página de alta y pedí un nuevo correo de activación con tu DNI.",
+            "Este enlace no es válido o ya expiró. Si te registraste hace poco, entrá al registro, "
+            "elegí «Ya estoy registrado» y pedí un correo nuevo con tu DNI.",
             ok=False, municipio_nombre=municipio_nombre,
-            cta_url=await url_alta_publica(db, id_municipio), cta_texto="Volver a la página de alta",
+            cta_url=await url_alta_publica(db, id_municipio), cta_texto="Ir al registro",
         ),
         status_code=400,
     )

@@ -56,10 +56,25 @@ export interface DireccionNormalizada {
 
 // Extrae calle / localidad / provincia desde el `address` de Nominatim.
 // El usuario despues puede ajustar a mano si el parseo no lo convencio.
-export function parseAddress(r: GeoBuscarResult): DireccionNormalizada {
+/** Altura tipeada cuando la sugerencia es la calle sin número («Maipú 1200» suele devolver «Avenida
+ *  Maipú»): el primer número que no es parte del nombre de la calle. Solo si lo tipeado nombra a esa
+ *  calle: la sugerencia puede ser otra y el número no le corresponde. */
+function alturaTipeada(q: string, calle: string): string {
+  const palabras = (t: string) =>
+    t.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().match(/[a-z]{4,}/g) ?? []
+  const genericas = new Set(['avenida', 'calle', 'boulevard', 'pasaje', 'diagonal', 'general', 'doctor'])
+  const deLaCalle = new Set(palabras(calle).filter((w) => !genericas.has(w)))
+  const tipeado = q.split(',')[0]
+  if (!palabras(tipeado).some((w) => deLaCalle.has(w))) return ''
+  const numeros = new Set(calle.match(/\d+/g) ?? [])
+  return (tipeado.match(/\d{1,5}/g) ?? []).find((n) => !numeros.has(n)) ?? ''
+}
+
+export function parseAddress(r: GeoBuscarResult, q = ''): DireccionNormalizada {
   const a = r.address ?? {}
   const calleBase = a.road || a.pedestrian || a.footway || a.cycleway || a.path || ''
-  const calle = a.house_number && calleBase ? `${calleBase} ${a.house_number}` : calleBase
+  const altura = calleBase ? (a.house_number || alturaTipeada(q, calleBase)) : ''
+  const calle = altura ? `${calleBase} ${altura}` : calleBase
   const localidad = a.city || a.town || a.village || a.hamlet || a.municipality || a.suburb || a.neighbourhood || a.city_district || ''
   const provincia = a.state || a.province || a.region || ''
   return { calle, localidad, provincia }

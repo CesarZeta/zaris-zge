@@ -75,6 +75,15 @@ Backend mínimo para la PWA `zaris-vecinos` que permite a los ciudadanos enviar 
 ### Estado / alcance
 Backend en prod, verificado. PWA en repo separado `CesarZeta/zaris-vecinos` (Vercel, `vecinos.zaris.com.ar`) — **no documentar la PWA acá** (otro repo; su README tiene el checklist para replicar en municipio #2). **Etapas A-E del plan CERRADAS al 2026-06-12** (reclamos con fotos+pin, emergencias, turnos, entradas con QR, push — ver `PLAN_APP_VECINOS.md`). **Fuera de alcance**: bandeja `vinculado_pendiente` (futuro), panel admin de branding (producto separado).
 
+### Registro y usuario del vecino (2026-11-24, PLAN_REGISTRO_PREVIO §6; REEMPLAZA lo que sigue donde no coincida)
+
+- **Orden:** registro con la ficha completa, **sin contraseña** (`POST /alta/cuenta`; la PWA en `/registro`, también desde la app) → correo con link a `{portal}/activar?token=` → al abrirlo, `POST /auth/confirmar-correo` confirma la casilla y lo deja dado de alta **sin gastar el token** (POST a propósito: los antivirus de correo abren los links con GET) → `POST /auth/activar` **genera el usuario**: contraseña + `numero_usuario`, y manda un correo que lo informa. «Ya estoy registrado» (`activar-existente`) lleva a la misma pantalla, igual que el alta por un agente.
+- **Número de usuario (mig 143):** `ciudadano_credencial.numero_usuario`, 6 dígitos desde 100001, único por municipio; lo da `asignar_numero_usuario` (lock + máximo + 1) en la transacción que activa. Toda vía nueva que active una cuenta lo llama.
+- **Ingreso y recuperación** con `identificador` = DNI (7 u 8 dígitos) o número de usuario (6): `_condicion_identificador` en `publico_auth.py`. `dni` queda como nombre viejo del campo.
+- **Tokens:** `_token_uuid` antes de la consulta (basura = 400, nunca 500).
+- **`frontend/alta-vecino.html` solo redirige** a `{portal}/registro`; `url_alta_publica` devuelve esa dirección (shell → «Alta vecino», Config → Identidad, páginas públicas). `/alta/verificar` queda para los correos viejos: sin contraseña elegida redirige al portal.
+- Smoke `backend/smoke_alta_portal_links.py` (circuito completo, dos activaciones a la vez, con barrera y sin ella).
+
 ### Alta pública de vecinos (autoregistro) — UN PASO con ficha COMPLETA (replanteo 2026-06-12)
 Página pública `frontend/alta-vecino.html?m=<slug>` (vanilla, DS ZARIS) donde el **vecino crea su cuenta** (sin agente, sin JWT). Router `routes/publico_alta.py` (`/api/v1/publico/alta/*`, sin JWT, rate-limited por IP). **Municipio**: el slug `?m=<codigo_corto>` elige el municipio (`municipio_por_slug`, 404 si no existe); documento, CUIL, correo y CUIT se controlan dentro de ese municipio (los UNIQUE globales viejos siguen hasta el lote de limpieza: un choque responde 409 genérico). El alta de empresa va al municipio del vecino logueado; `/alta/verificar` valida el UUID (basura = página 400) y toma el municipio de la fila del token.
 

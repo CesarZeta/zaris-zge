@@ -84,13 +84,13 @@
       </div>
 
       <div class="topbar__right">
-        <!-- Compartir alta de vecino: URL + QR (logica en menu.js, IT-05) -->
+        <!-- Compartir el registro de vecinos: URL + QR (logica en menu.js, IT-05) -->
         <button
           class="topbar__altavecino"
           id="topbar-altavecino"
           type="button"
-          aria-label="Compartir alta de vecino"
-          title="Compartir link/QR de alta de vecino"
+          aria-label="Compartir el registro de vecinos"
+          title="Compartir el enlace y el QR del registro de vecinos"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
@@ -441,15 +441,15 @@
   </div>
 
   <!-- Modal: compartir alta de vecino (URL + QR). Lo abre #topbar-altavecino. -->
-  <div class="altavecino-overlay" id="altavecino-overlay" hidden role="dialog" aria-modal="true" aria-label="Compartir alta de vecino">
+  <div class="altavecino-overlay" id="altavecino-overlay" hidden role="dialog" aria-modal="true" aria-label="Compartir el registro de vecinos">
     <div class="altavecino-modal">
       <header class="altavecino-modal__header">
-        <span class="altavecino-modal__title">Alta de vecino</span>
+        <span class="altavecino-modal__title">Registro de vecinos</span>
         <button type="button" class="altavecino-modal__close" id="altavecino-close" aria-label="Cerrar">&times;</button>
       </header>
       <div class="altavecino-modal__body">
         <p class="altavecino-modal__desc">
-          Compartí este enlace con el vecino para que cree su cuenta desde el celular.
+          Compartí este enlace con el vecino para que se registre y genere su usuario.
           Puede escanear el QR o abrir el link directamente.
         </p>
         <div class="altavecino-modal__qr" id="altavecino-qr">
@@ -492,6 +492,6 @@
 
   <script src="frontend/js/version.js"></script>
   <script src="frontend/js/qrcode.bundle.js?v=2026-07-15a"></script>
-  <script src="frontend/js/menu.js?v=2026-11-19b"></script>
+  <script src="frontend/js/menu.js?v=2026-11-24a"></script>
 </body>
 </html>

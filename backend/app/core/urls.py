@@ -64,20 +64,9 @@ async def url_login_backoffice(db: AsyncSession, id_municipio: Optional[int]) ->
 
 
 async def url_alta_publica(db: AsyncSession, id_municipio: Optional[int]) -> Optional[str]:
-    """Página pública de alta de vecinos del municipio. Con subdominio propio la página resuelve el
-    municipio por el origen; el de las direcciones sin prefijo lleva `?m=<codigo_corto>`. None si no
-    se puede armar."""
+    """Registro de vecinos del municipio: vive en su portal (PLAN_REGISTRO_PREVIO.md §6). La página
+    vieja `frontend/alta-vecino.html` solo redirige acá. None si no se puede armar."""
     if id_municipio is None:
         return None
-    base = await base_app(db, id_municipio, "zge")
-    if not base:
-        return None
-    row = (await db.execute(text(
-        "SELECT codigo_corto, direccion_base FROM municipios WHERE id_municipio = :m"),
-        {"m": id_municipio})).first()
-    if row is None:
-        return None
-    if not row.direccion_base:
-        return f"{base}/frontend/alta-vecino.html"
-    slug = (row.codigo_corto or "").strip().lower()
-    return f"{base}/frontend/alta-vecino.html?m={slug}" if slug else None
+    base = await base_app(db, id_municipio, "vecinos")
+    return f"{base}/registro" if base else None

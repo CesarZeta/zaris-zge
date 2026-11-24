@@ -82,9 +82,7 @@ class IdentidadOut(BaseModel):
     municipio_descripcion: str
     municipio_color_primary: str
     municipio_color_accent: str
-    # Slug (codigo_corto) del municipio. Lo usa Config -> Identidad para previsualizar
-    # las URLs publicas del municipio (ej. el alta de vecinos:
-    # .../frontend/alta-vecino.html?m=<slug>). None si no hay.
+    # Slug (codigo_corto) del municipio. None si no hay.
     municipio_slug: Optional[str] = None
     # URL publica de la App Vecinos (PWA). La consume la app de agentes (tenant) y
     # queda por compat; desde el 2026-09-27 "Mi perfil" ya NO la muestra: el vecino

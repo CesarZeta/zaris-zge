@@ -592,6 +592,7 @@ async def test_links_por_municipio() -> None:
                               "WHERE id_ciudadano IN (SELECT id_ciudadano FROM ciudadanos WHERE doc_nro IN "
                               "('97000001', '28547123'))"))
         await db.commit()
+    vec_c = f"https://{SUB_C}.vecinos.zaris.com.ar"
     zge_c, vec_b = f"https://{SUB_C}.zge.zaris.com.ar", "https://aislamiento.vecinos.zaris.com.ar"
     zge_base, vec_base = url_publica(settings.FRONTEND_BASE_URL), url_publica(settings.APP_VECINOS_FRONTEND_URL)
 
@@ -632,9 +633,9 @@ async def test_links_por_municipio() -> None:
         check("base_app de C para agentes", await base_app(db, C["id"], "agentes") == f"https://{SUB_C}.agentes.zaris.com.ar")
         check("base_app del base = la setting de siempre", await base_app(db, base, "zge") == zge_base)
         check("base_app api = una sola API", await base_app(db, C["id"], "api") == url_publica(settings.API_PUBLIC_BASE_URL))
-        check("alta pública de C sin ?m=", await url_alta_publica(db, C["id"]) == f"{zge_c}/frontend/alta-vecino.html",
+        check("alta pública de C sin ?m=", await url_alta_publica(db, C["id"]) == f"{vec_c}/registro",
               await url_alta_publica(db, C["id"]))
-        check("alta pública del base con ?m=", (await url_alta_publica(db, base) or "").endswith(f"?m={cod_base.lower()}"),
+        check("alta pública del base, en su portal", (await url_alta_publica(db, base) or "").endswith("/registro"),
               await url_alta_publica(db, base))
         check("link de trámite de C", (await _url_absoluta_tramite(db, C["id"], "EXP-1")).startswith(f"{zge_c}/#/tramites/"))
         mid = await _escalar(db, "SELECT id_municipio FROM municipios WHERE subdominio IS NULL AND NOT direccion_base "

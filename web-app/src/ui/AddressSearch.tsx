@@ -58,7 +58,7 @@ export function AddressSearch({ onPick, placeholder, disabled }: Props) {
 
   function handlePick(r: GeoBuscarResult) {
     skipNextRef.current = true
-    onPick(parseAddress(r), r)
+    onPick(parseAddress(r, q), r)
     setOpen(false)
     setResults([])
     setQ(r.display_name ?? '')

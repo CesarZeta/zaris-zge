@@ -3,27 +3,6 @@ import { Upload, X, Check, Copy, ExternalLink } from 'lucide-react'
 import { useIdentidad, useUpdateIdentidad } from '../hooks/useConfig'
 import { crearLogoUploadUrl, type IdentidadValues } from '../api/configApi'
 
-/**
- * Base pública del producto (donde vive el shell vanilla + frontend/).
- * En iframe del shell, usamos el origin+path del padre (prod: zge.zaris.com.ar/...).
- * Standalone dev (localhost:5173) cae al shell vanilla local (8080).
- */
-function basePublica(): string {
-  if (typeof window !== 'undefined' && window.self !== window.top) {
-    try {
-      const loc = window.parent.location
-      const path = loc.pathname.replace(/[^/]*$/, '') // recorta index.html
-      return `${loc.origin}${path}`.replace(/\/$/, '')
-    } catch {
-      /* cross-origin: cae al fallback */
-    }
-  }
-  if (typeof window !== 'undefined' && window.location.hostname === 'localhost' && window.location.port === '5173') {
-    return 'http://localhost:8080'
-  }
-  return typeof window !== 'undefined' ? window.location.origin : ''
-}
-
 const MIME_OK = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']
 const MAX_BYTES = 2 * 1024 * 1024
 // '' = color sin definir (la PWA usa su default); si hay valor debe ser #RRGGBB.
@@ -261,7 +240,7 @@ export function IdentidadView() {
       </div>
 
       {/* Enlaces públicos del municipio (solo lectura) */}
-      <EnlacesPublicos slug={identidad.data?.municipio_slug ?? null} />
+      <EnlacesPublicos portal={(identidad.data?.app_vecinos_url ?? '').replace(/\/+$/, '')} />
 
       <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
         <button
@@ -336,35 +315,33 @@ function ColorCampo({ label, hint, value, onChange }: {
 interface EnlaceDef {
   titulo: string
   descripcion: string
-  /** Ruta relativa a la base pública, con {slug} interpolado. */
-  ruta: (slug: string) => string
+  /** Ruta dentro del portal del vecino del municipio. */
+  ruta: string
 }
 
 const ENLACES: EnlaceDef[] = [
   {
-    titulo: 'Alta de vecinos',
-    descripcion: 'El vecino crea su cuenta desde el celular. Compartí este enlace en la web del municipio, redes o QR.',
-    ruta: (slug) => `/frontend/alta-vecino.html?m=${encodeURIComponent(slug)}`,
+    titulo: 'Registro de vecinos',
+    descripcion: 'El vecino se registra y genera su usuario desde el portal, en la computadora o en el celular. Compartí este enlace en la web del municipio, redes o QR.',
+    ruta: '/registro',
   },
 ]
 
-function EnlacesPublicos({ slug }: { slug: string | null }) {
-  const base = basePublica()
+function EnlacesPublicos({ portal }: { portal: string }) {
   return (
     <div style={enlacesWrap}>
       <div style={labelStyle}>Enlaces públicos del municipio</div>
       <span style={hintStyle}>
-        URLs que pueden compartirse con los vecinos. Cambian según el código del municipio.
+        Direcciones que pueden compartirse con los vecinos. Son las del portal de este municipio.
       </span>
-      {!slug ? (
+      {!portal ? (
         <div style={{ ...notifStyle('error'), marginTop: 4 }}>
-          <X size={16} /> No hay un código de municipio configurado. Asigná uno en Maestros → Municipios
-          (campo "código corto") para habilitar los enlaces públicos.
+          <X size={16} /> El municipio no tiene configurada la dirección de su portal del vecino.
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
           {ENLACES.map((e) => (
-            <EnlacePublico key={e.titulo} def={e} url={`${base}${e.ruta(slug)}`} />
+            <EnlacePublico key={e.titulo} def={e} url={`${portal}${e.ruta}`} />
           ))}
         </div>
       )}
