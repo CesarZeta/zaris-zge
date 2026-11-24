@@ -10,7 +10,7 @@
 > - La PWA App Vecinos tiene su **propio** `ESTADO.md` en el repo `zaris-vecinos`. Acá va solo backoffice/backend.
 > - **Tamaño objetivo: ~12 KB.** Si "Última actualización" o "Hecho reciente" crecen más de eso, se podan (lo viejo ya está en el historial y en los `PLAN_*.md`).
 
-**Última actualización:** 2026-11-24 (Cesar, 2.ª sesión). Padrón y Encuestas cerrados para quien no corresponde (`952016c`), pedidos de la PWA publicados, y dos propuestas para decidir: avisos de turnos y entradas, y catálogo de emergencias del vecino. Vuelta atrás de la barrera: `DB_BARRERA=false` en Railway.
+**Última actualización:** 2026-11-24 (Cesar, cierre). Avisos de turnos y entradas publicados (mig 144, `420a49f`); padrón y Encuestas cerrados para quien no corresponde; sigue el catálogo de emergencias del vecino. Vuelta atrás de la barrera: `DB_BARRERA=false` en Railway.
 
 ---
 
@@ -18,16 +18,15 @@
 
 > Regla de César (2026-10-20): al cerrar se anota todo lo abierto; al arrancar se pregunta primero. Lo sensible (seguridad) tiene el detalle en la memoria privada de Cesar, no acá (este archivo es público).
 
-1. **Avisos de turnos y entradas: hechos y probados en local, sin publicar.** César corre la migración 144 en el SQL Editor; después se publica el backend y la tarea `recordatorios.yml` ([`PLAN_AVISOS_TURNOS_ENTRADAS.md`](PLAN_AVISOS_TURNOS_ENTRADAS.md)). **Lo que sigue:** [`PLAN_CATALOGO_EMERGENCIAS_VECINO.md`](PLAN_CATALOGO_EMERGENCIAS_VECINO.md), aprobado por César con sus recomendaciones; después, Vecino 360 del lado del municipio. **Falta borrar** la rama remota `tramites-vecino-fase1` (lo corre César).
+1. **Sigue: catálogo de emergencias del vecino** ([`PLAN_CATALOGO_EMERGENCIAS_VECINO.md`](PLAN_CATALOGO_EMERGENCIAS_VECINO.md)), aprobado con sus recomendaciones, sin código. Después, Vecino 360 del lado del municipio. **Avisos de turnos y entradas en prod desde el 2026-11-24**: la tarea corrió en OK con 0 envíos; **sin verificar en prod un aviso real** (César: sacar un turno con su cuenta en el portal y mirar «Alertas» y el correo). **Falta borrar** la rama remota `tramites-vecino-fase1` (lo corre César).
 2. **Bloque del vecino — después de F4 (orden de César, 2026-10-27):**
    1. La web del ciudadano con todo lo que tiene la app (supuesto de Claude, sin confirmar: es el modo escritorio del portal, ver En curso).
    2. Todas las prestaciones del vecino: trámites, turnos y entradas ya se hacen desde la app (trámites desde el 2026-11-22). Quedan los trámites de empresa (segunda etapa del spec).
    3. **Vecino 360 para el vecino** (perfil o donde convenga).
    4. **Vecino 360 para el municipio:** en Datos y como pestaña de la ficha del ciudadano y de la empresa, con todas sus interacciones; por persona o por empresa representada.
-   5. **Base de conocimiento de ayudas**, con dos capítulos: canales del vecino y gestión interna. Ya hay un relevamiento inicial de los canales del vecino (2026-10-27). Mientras tanto no se tocan manuales. César la adelantó el 2026-10-30 empezando por el material de venta (pregunta 5).
+   5. **Base de conocimiento de ayudas**, con dos capítulos: canales del vecino y gestión interna. Ya hay un relevamiento inicial de los canales del vecino (2026-10-27). Mientras tanto no se tocan manuales.
 3. **App de agentes: circuito aprobado por César el 2026-11-23, cerrado** ([`PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md`](PLAN_APP_AGENTES_RECLAMOS_ENTRADAS.md)); no pedir más pruebas, lo cubre `smoke_agentes_app.py`. REL-SAN-2026-000001 queda sin asignar («Calles y veredas» asigna a mano y no tiene agentes de nivel Gestión). Para otra sesión (César, 2026-10-23): PWA modo escritorio (falta plan) · ¿app del vecino con email además de DNI? · mapa del inicio en oscuro.
 4. **Arreglos que dejó la prueba de cierre:** quedan el 9 (App Vecinos: catálogo de emergencias del vecino, pide diseño) y menores del 10 y 11, en `PLAN_MULTI_MUNICIPIO_F4_F5.md` → «Prueba de cierre — hallazgos» → «2026-11-19».
-5. **Material de marketing (2026-11-23):** en `marketing/` (solo en la máquina de César, fuera del repo): sumario, presentación con carátula y cierre, y correo. César lo revisa; falta su respuesta sobre teléfono o WhatsApp en el cierre (recomendación: sumarlo) y probar el QR y una impresión. Pedido nuevo: **relevamiento del mercado**. Sigue abierta la revisión de `marketing/3_base_interna/resumen_circuitos.md` (recomendación: darla por reemplazada por el sumario).
 
 ---
 
@@ -44,7 +43,7 @@
 
 ## 🟠 Pendientes (backoffice / backend)
 
-**Aprobado por César el 2026-11-23, sin empezar** (salió de contrastar el material de marketing con el producto)
+**Aprobado por César el 2026-11-23, sin empezar**
 - 🟠 **Tablero de trámites en Datos.**
 - 🟠 **KPI de gestión** (lo define César): coeficiente que combina los indicadores de gestión con la encuesta de cierre, solo para las interacciones que tienen un vecino: reclamos, turnos, entradas y trámites. **Emergencias, relevamientos y la Guardia quedan afuera** del modelo de análisis y sin encuesta. Por eso no se proponen ni el tablero ni la encuesta de emergencias.
 - 🟢 **Modo escritorio del portal** (ya en «En curso»). La agenda en la app de agentes no se promete.
@@ -66,7 +65,8 @@
 - 🟡 **Barrido visual de modo oscuro** en los módulos React restantes y el mapa del inicio (el contorno de los reclamos casi no se ve): **POSPUESTO por César 2026-09-20**.
 
 **Decisiones cerradas — NO re-proponer**
-- **Ayudas: una sola página de base de conocimiento con preguntas, no manuales por módulo** (César, 2026-10-22). No se crean ni actualizan `docs/manual_*.html` mientras tanto (CLAUDE.md §36). Diseño pendiente (preguntas 2 y 5).
+- **Marketing va en sus propias conversaciones** (César, 2026-11-24): en las de desarrollo no se plantea ni se mezcla.
+- **Ayudas: una sola página de base de conocimiento con preguntas, no manuales por módulo** (César, 2026-10-22). No se crean ni actualizan `docs/manual_*.html` mientras tanto (CLAUDE.md §36). Diseño pendiente (pregunta 2).
 - **Multi-municipio: UNA base para todos con `id_municipio`** (César, 2026-10-23; decisiones de cada fase en los `PLAN_MULTI_MUNICIPIO*.md`). **Documentos de identidad por país: tema reservado**, lo trae César.
 - **Orden por columnas: quedan afuera** las colas operativas, las tablas con orden propio y la configuración (César, 2026-10-22; lista en CLAUDE.md §23).
 - **São Paulo DESCARTADO** (2026-09-26, CLAUDE.md §9) · «la ubicación» de Buscar actualizaciones (PWA) innecesaria · no se rotan `DISPATCHER_TOKEN` ni las claves push · el vecino no cambia su email desde la app · los reclamos **no se agendan**.
@@ -83,11 +83,10 @@
 
 ## ✅ Hecho reciente (últimas sesiones)
 
-- **2026-11-24 (3.ª):** avisos de turnos y entradas (mig 144, en local); «Permiso de Demostración E2E» desactivado en San Andrés (sus 28 expedientes siguen); título de la pestaña «Gestión Estado».
+- **2026-11-24 (3.ª):** avisos de turnos y entradas (mig 144, `420a49f`, en prod): confirmación, cambio, cancelación y recordatorio (`recordatorios.yml`), `smoke_avisos_turnos.py` 35/35; «Permiso de Demostración E2E» desactivado en San Andrés (sus 28 expedientes siguen); título de la pestaña «Gestión Estado».
 - **2026-11-24 (2.ª sesión):** el Consultor (nivel 5) ya no escribe en el padrón (`exigir_escritura_padron`; botones ocultos) y todo `/admin/encuestas` queda para niveles 1 y 2; `smoke_consultor_solo_lectura.py` 32/32, verificado en producción. `enlace_extra` quitado de los mails. Nombre con acento dentro del JSON de dos transiciones de trámites (modelo y San Andrés; `smoke_alta_municipio.py` 361/361). PWA: ver su `ESTADO.md`.
 - **2026-11-24 — Registro previo F2 a F5** (mig 143, en prod): `exigir_cuenta_vecino` en las seis vías del backoffice y ventana de registro sin perder lo cargado; registro y «generar usuario» en la PWA, ingreso con DNI o número de usuario; empresas del vecino; altas igualadas; nadie se crea con datos de relleno. `alta-vecino.html` redirige al portal. `smoke_aislamiento.py` en 0 fallas. Nombre del municipio con su acento en prod.
 - **2026-11-23 (tarde):** **notificaciones del vecino repuestas** en la PWA (César; se habían quitado el 2026-07-06 a pedido de Roy: **Roy, avisado por acá**); backend: un dispositivo avisa a un solo vecino y apagar uno no apaga los otros (`smoke_publico_push.py` 10/10). **Vacunación en San Andrés** (`seed_vacunacion_demo.sql`). **Acentos** en catálogos de San Andrés y del modelo (248 filas), pantallas, correos y mensajes; «GESTIÓN ESTADO» en el shell. PWA: títulos sin serifa.
-- **2026-11-23:** **App de agentes F2 y F3** cerrada y aprobada; Datos y Reclamos con filtro «Transacción»; registro previo F1 (reservas sin cuenta, 410) y 853 cuentas creadas.
 
 > Lo anterior: `HISTORIAL_MIGRACIONES.md` y las skills de cada módulo.
 

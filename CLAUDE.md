@@ -720,7 +720,7 @@ class Equipo(Base):
 — 141 = relevamientos: `reclamos.es_relevamiento` (sin ciudadano, CHECK), numeración `REL-` con contador propio (local y prod el 2026-11-22; en prod la corrió César en el SQL Editor; reglas en la skill `modulo-reclamos`).
 — 142 = `ck_reclamos_canal` admite `app_agentes`, el canal de los relevamientos (local y prod el 2026-11-23; en prod la corrió César en el SQL Editor).
 — 143 = `ciudadano_credencial.numero_usuario` (número de usuario del vecino, 6 dígitos, único por municipio; lo asigna `asignar_numero_usuario` al activar la cuenta; local y prod el 2026-11-24, por MCP).
-— 144 = avisos de turnos y entradas (`recordado_en`, tipos `turno` y `entrada`; local el 2026-11-24, **en prod la corre César antes del código**).
+— 144 = avisos de turnos y entradas (`recordado_en`, tipos `turno` y `entrada`; local y prod el 2026-11-24; en prod la corrió César en el SQL Editor).
 — cualquier mig nueva debe usar 145+ y clasificar sus tablas nuevas en `municipio_tabla_clase` con su `grupo`** (un catálogo que no se puede volver a crear desde la aplicación va en `configuracion`, para que ningún vaciado lo borre). El número se asigna al APLICAR, no al planificar (la 104 "reservada" para el colero la tomó Trámites).
 
 **Reglas vivas de migración:**

@@ -232,7 +232,7 @@ Spec en [`docs/superpowers/specs/2026-11-21-tramites-vecino-design.md`](docs/sup
 
 ### Migración 144 — avisos de turnos y entradas (`backend/migrations/144_avisos_turnos_entradas.sql`)
 
-Tipos `turno` y `entrada` en `ck_ciudadano_aviso_tipo`; `turnos.recordado_en` y `evento_reservas.recordado_en` (un solo recordatorio) con índices parciales. Lleva `DROP CONSTRAINT`: en prod la corre César. Local el 2026-11-24. Va antes del código.
+Tipos `turno` y `entrada` en `ck_ciudadano_aviso_tipo`; `turnos.recordado_en` y `evento_reservas.recordado_en` (un solo recordatorio) con índices parciales. Lleva `DROP CONSTRAINT`: en prod la corrió César en el SQL Editor. Local y prod el 2026-11-24, antes del código.
 
 ### Migración 143 — número de usuario del vecino (`backend/migrations/143_numero_usuario_vecino.sql`)
 

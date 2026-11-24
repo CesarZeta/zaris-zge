@@ -1,6 +1,6 @@
 # Avisos de turnos y entradas al vecino — propuesta
 
-> **Estado (2026-11-24):** aprobado por César con las cuatro recomendaciones. **Hecho y probado en local** (`smoke_avisos_turnos.py` 35/35 con y sin barrera); PWA publicada. Falta la migración 144 en producción (la corre César) y, con ella, publicar el backend y la tarea.
+> **Estado (2026-11-24): en producción** (mig 144, `420a49f`; PWA `f8d95c4`). `smoke_avisos_turnos.py` 35/35 con y sin barrera; la tarea `recordatorios.yml` corrió en OK con 0 envíos. Sin verificar en producción un aviso real.
 
 ## Situación verificada
 
