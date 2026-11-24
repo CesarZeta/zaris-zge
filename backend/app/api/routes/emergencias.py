@@ -28,7 +28,6 @@ from app.core.auth import get_current_user
 from sqlalchemy.exc import IntegrityError
 from app.services.guardia import atencion_out as guardia_atencion_out, espacio_guardia, registrar_log_evento
 from app.core.database import get_db
-from app.services.municipios.defectos import id_nacionalidad_defecto
 from app.core.municipio import municipio_actual
 from app.services import push as svc_push
 
@@ -399,12 +398,8 @@ class ContactoEventualOut(BaseModel):
 
 
 class PromoverBucIn(BaseModel):
-    # vincular a un ciudadano existente...
+    # Sin id_ciudadano se vincula al vecino activo con el DNI del contacto, si está registrado.
     id_ciudadano: Optional[int] = None
-    # ...o crear uno nuevo (apellido + nombre + email obligatorios en ese caso)
-    apellido: Optional[str] = Field(None, max_length=100)
-    nombre: Optional[str] = Field(None, max_length=100)
-    email: Optional[str] = Field(None, max_length=150)
 
 
 class EventoCreate(BaseModel):
@@ -610,7 +605,6 @@ async def promover_contacto_a_buc(
     if contacto["convertido_a_buc"]:
         raise HTTPException(409, "El contacto ya fue promovido a BUC")
 
-    creado = False
     if body.id_ciudadano:
         id_ciudadano = (await db.execute(text(
             "SELECT id_ciudadano FROM ciudadanos WHERE id_ciudadano = :id AND activo AND id_municipio = :mun"
@@ -625,32 +619,10 @@ async def promover_contacto_a_buc(
             ORDER BY id_ciudadano LIMIT 1
         """), {"dni": contacto["dni"], "mun": id_municipio})).scalar()
         if not id_ciudadano:
-            if not (body.apellido and body.nombre and body.email):
-                raise HTTPException(
-                    422, "Para crear el ciudadano en BUC se requieren apellido, nombre y email")
-            cuil = "20" + contacto["dni"].zfill(8) + "9"
-            dup_cuil = (await db.execute(text(
-                "SELECT id_ciudadano FROM ciudadanos WHERE cuil = :c AND id_municipio = :mun"
-            ), {"c": cuil, "mun": id_municipio})).scalar()
-            if dup_cuil:
-                raise HTTPException(409, "Colision de CUIL placeholder; vincular por id_ciudadano")
-            id_ciudadano = (await db.execute(text("""
-                INSERT INTO ciudadanos
-                    (doc_tipo, doc_nro, cuil, apellido, nombre, sexo, fecha_nac,
-                     id_nacionalidad, ren_chk, calle, telefono, email, email_chk,
-                     emp_chk, activo, estado_validacion, ficha_completa, id_usuario_alta, id_municipio)
-                VALUES ('DNI', :dni, :cuil, :ape, :nom, 'OTROS', CAST('1900-01-01' AS date),
-                        :nac, FALSE, :calle, :tel, :email, FALSE,
-                        FALSE, TRUE, 'verificado', FALSE, :ua, :mun)
-                RETURNING id_ciudadano
-            """), {
-                "dni": contacto["dni"], "cuil": cuil,
-                "ape": body.apellido.strip(), "nom": body.nombre.strip(),
-                "calle": contacto["direccion"], "tel": contacto["telefono"],
-                "email": body.email.strip(), "ua": user["id_usuario"], "mun": id_municipio,
-                "nac": await id_nacionalidad_defecto(db, id_municipio),
-            })).scalar()
-            creado = True
+            # Nunca se crea una persona con datos de relleno (PLAN_REGISTRO_PREVIO.md §2): se
+            # registra con su ficha completa y se vincula por id_ciudadano.
+            raise HTTPException(422, "La persona no está registrada: registrala con sus datos completos "
+                                     "y vinculala.")
 
     # reasignar eventos previos del contacto al ciudadano BUC
     eventos = (await db.execute(text("""
@@ -675,7 +647,7 @@ async def promover_contacto_a_buc(
     await db.commit()
     return {
         "id_ciudadano": id_ciudadano,
-        "ciudadano_creado": creado,
+        "ciudadano_creado": False,  # compatibilidad: nunca se crea acá
         "eventos_reasignados": len(eventos),
     }
 

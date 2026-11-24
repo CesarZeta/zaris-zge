@@ -14,7 +14,7 @@ import re
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
 from app.utils.request_helpers import get_real_ip
 from app.middleware.rate_limit import check_rate_limit
@@ -29,10 +29,9 @@ from app.core.auth import (
     get_current_ciudadano,
     crear_token_ciudadano,
 )
-from app.core.config import settings
 from app.core.config_municipio import leer_configs
 from app.core.database import get_db
-from app.core.municipio import municipio_actual, resolver_municipio_de_origen
+from app.core.municipio import resolver_municipio_de_origen
 from app.core.urls import base_app
 from app.services.cuenta_vecino import asignar_numero_usuario
 from app.services.email import (
@@ -41,8 +40,6 @@ from app.services.email import (
     enviar_mail_usuario_generado_ciudadano,
 )
 from app.schemas.publico_auth import (
-    RegistroCiudadanoIn,
-    RegistroCiudadanoOut,
     ActivarIn,
     ActivarOut,
     ConfirmarCorreoIn,
@@ -100,16 +97,6 @@ def _condicion_identificador(identificador: str) -> tuple[str, dict]:
                         detail="Ingresá tu DNI (7 u 8 dígitos) o tu número de usuario (6 dígitos)")
 
 
-def _construir_cuil_placeholder(dni: str) -> str:
-    """
-    Cuando un agente da de alta un ciudadano por la PWA, no le pedimos CUIL real
-    (lo completa el ciudadano despues si hace falta). Pero ciudadanos.cuil es NOT NULL
-    UNIQUE. Generamos uno digit-only basado en el DNI con prefijo '20' (masculino default).
-    El ciudadano puede actualizarlo desde la PWA mas adelante.
-    """
-    return f"20{dni.zfill(8)}9"
-
-
 def _ciudadano_a_basico(row, numero_usuario: int | None = None) -> CiudadanoBasicoOut:
     return CiudadanoBasicoOut(
         id_ciudadano=row.id_ciudadano,
@@ -134,151 +121,11 @@ async def _municipio_branding(db: AsyncSession, id_municipio: int) -> tuple[str,
 
 # ─── endpoints ──────────────────────────────────────────────────────────────
 
-@router.post("/registrar", response_model=RegistroCiudadanoOut, status_code=201)
-async def registrar_ciudadano(
-    data: RegistroCiudadanoIn,
-    background_tasks: BackgroundTasks,
-    current_agente: dict = Depends(get_current_user),
-    id_municipio: int = Depends(municipio_actual),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Un agente municipal (nivel<=3) da de alta un ciudadano + su credencial, en SU municipio.
-    Manda mail de activacion. Para activarse, el ciudadano clickea el link y elige su password.
-    """
-    if current_agente["nivel_acceso"] > 3:
-        raise HTTPException(
-            status_code=403,
-            detail="Se requiere nivel de acceso Operador o superior",
-        )
-
-    dni = _validar_dni(data.dni)
-    email = data.email.lower().strip()
-
-    # DNI no debe estar en ciudadanos activos
-    res = await db.execute(
-        text("SELECT id_ciudadano FROM ciudadanos WHERE doc_nro = :dni AND activo = TRUE "
-             "AND id_municipio = :mun LIMIT 1"),
-        {"dni": dni, "mun": id_municipio},
-    )
-    if res.fetchone():
-        raise HTTPException(
-            status_code=409,
-            detail="Ya existe un ciudadano con ese DNI. Buscarlo y vincular cuenta en vez de crear nuevo.",
-        )
-
-    # Email no debe estar usado por credencial activa de OTRO ciudadano
-    res = await db.execute(
-        text("""
-            SELECT cc.id_ciudadano FROM ciudadano_credencial cc
-              JOIN ciudadanos c ON c.id_ciudadano = cc.id_ciudadano
-             WHERE LOWER(c.email) = :email AND cc.activo = TRUE AND c.activo = TRUE
-               AND c.id_municipio = :mun
-             LIMIT 1
-        """),
-        {"email": email, "mun": id_municipio},
-    )
-    if res.fetchone():
-        raise HTTPException(
-            status_code=409,
-            detail="Ya hay una cuenta de App Vecinos con ese email.",
-        )
-
-    # Insert ciudadano con defaults pragmaticos (decision sesion 2026-05-19, §32 quirk extendido).
-    # El ciudadano puede actualizar fecha_nac, sexo, cuil real desde la PWA mas adelante.
-    cuil_placeholder = _construir_cuil_placeholder(dni)
-
-    insert_ciudadano = await db.execute(
-        text("""
-            INSERT INTO ciudadanos
-                (doc_tipo, doc_nro, cuil, nombre, apellido, sexo, fecha_nac,
-                 id_nacionalidad, ren_chk, telefono, email, email_chk, emp_chk,
-                 activo, estado_validacion, ficha_completa, id_municipio,
-                 id_usuario_alta, fecha_alta, fecha_modificacion)
-            VALUES
-                ('DNI', :dni, :cuil, :nombre, :apellido, 'OTROS', DATE '1900-01-01',
-                 1, FALSE, :telefono, :email, FALSE, FALSE,
-                 TRUE, 'verificado', FALSE, :id_municipio,
-                 :id_usuario_alta, NOW(), NOW())
-            RETURNING id_ciudadano
-        """),
-        {
-            "dni": dni,
-            "cuil": cuil_placeholder,
-            "nombre": data.nombre.strip(),
-            "apellido": data.apellido.strip(),
-            "telefono": (data.telefono or "0").strip() or "0",
-            "email": email,
-            "id_municipio": id_municipio,
-            "id_usuario_alta": current_agente["id_usuario"],
-        },
-    )
-    id_ciudadano = insert_ciudadano.fetchone().id_ciudadano
-
-    # Insert credencial con token de activacion (7 dias)
-    await db.execute(
-        text(f"""
-            INSERT INTO ciudadano_credencial
-                (id_ciudadano, password_hash, token_activacion, token_activacion_expira,
-                 activado, fecha_ultimo_email_activacion,
-                 activo, id_municipio, fecha_alta, fecha_modificacion, id_usuario_alta)
-            VALUES
-                (:id_ciudadano, NULL, gen_random_uuid(), NOW() + INTERVAL '{DIAS_ACTIVACION} days',
-                 FALSE, NOW(),
-                 TRUE, :id_municipio, NOW(), NOW(), :id_usuario_alta)
-        """),
-        {
-            "id_ciudadano": id_ciudadano,
-            "id_municipio": id_municipio,
-            "id_usuario_alta": current_agente["id_usuario"],
-        },
-    )
-
-    # Insert canal preferido con defaults
-    await db.execute(
-        text("""
-            INSERT INTO ciudadano_canal_preferido
-                (id_ciudadano, canal_email, canal_push, canal_whatsapp, canal_sms,
-                 activo, id_municipio, fecha_alta, fecha_modificacion, id_usuario_alta)
-            VALUES
-                (:id_ciudadano, TRUE, TRUE, FALSE, FALSE,
-                 TRUE, :id_municipio, NOW(), NOW(), :id_usuario_alta)
-        """),
-        {
-            "id_ciudadano": id_ciudadano,
-            "id_municipio": id_municipio,
-            "id_usuario_alta": current_agente["id_usuario"],
-        },
-    )
-
-    # Leer token recien creado para mandarlo por mail
-    res = await db.execute(
-        text("SELECT token_activacion FROM ciudadano_credencial WHERE id_ciudadano = :id"),
-        {"id": id_ciudadano},
-    )
-    token = str(res.fetchone().token_activacion)
-
-    await db.commit()
-
-    # Encolar mail (corre despues de cerrar la respuesta)
-    municipio_nombre, municipio_logo_url = await _municipio_branding(db, id_municipio)
-    background_tasks.add_task(
-        enviar_mail_activacion_ciudadano,
-        email,
-        data.nombre.strip(),
-        data.apellido.strip(),
-        token,
-        municipio_nombre,
-        await base_app(db, id_municipio, "vecinos"),
-        municipio_logo_url,
-        id_municipio=id_municipio,
-    )
-
-    return RegistroCiudadanoOut(
-        id_ciudadano=id_ciudadano,
-        email=email,
-        activacion_enviada=True,
-    )
+@router.post("/registrar", status_code=410, responses={410: {"description": "Retirado"}})
+async def registrar_ciudadano(current_agente: dict = Depends(get_current_user)):
+    """Retirado (2026-11-24): creaba personas con datos de relleno (PLAN_REGISTRO_PREVIO.md §2).
+    El agente registra al vecino con su ficha completa en `POST /api/v1/buc/ciudadanos`."""
+    raise HTTPException(status_code=410, detail="El alta se hace con la ficha completa del vecino.")
 
 
 @router.post("/confirmar-correo", response_model=ConfirmarCorreoOut)

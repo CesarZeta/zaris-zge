@@ -77,6 +77,16 @@ def _validar_dni(dni: str) -> str:
     return limpio
 
 
+def _validar_documento(tipo: str, numero: str) -> str:
+    """DNI: 7 u 8 dígitos. Pasaporte: hasta 10, como en el alta del backoffice."""
+    if tipo == "DNI":
+        return _validar_dni(numero)
+    limpio = _solo_digitos(numero)
+    if not (6 <= len(limpio) <= 10):
+        raise HTTPException(status_code=400, detail="Número de pasaporte inválido")
+    return limpio
+
+
 def _validar_cuit(cuit: str) -> str:
     limpio = _solo_digitos(cuit)
     if len(limpio) != 11:
@@ -91,6 +101,10 @@ def _cuil_desde_cuit(cuit_digits: str) -> str:
 
 
 MSG_DUPLICADO = "Ya existe un registro con ese documento, CUIL o correo."
+MSG_EMPRESA_PROPIA = "Ya tenés registrada esa empresa."
+MSG_EMPRESA_EXISTENTE = (
+    "Ya hay una empresa registrada con ese CUIT. Si la representás, acercate al municipio para que te vinculen."
+)
 
 
 async def _branding(db: AsyncSession, id_municipio: int) -> dict:
@@ -243,7 +257,7 @@ async def alta_cuenta(
 
     muni = await municipio_de_slug_u_origen(db, request, data.municipio_slug)
     id_municipio = muni["id_municipio"]
-    doc_nro = _validar_dni(_solo_digitos(data.doc_nro))
+    doc_nro = _validar_documento(data.doc_tipo, data.doc_nro)
     email = data.email.lower().strip()
     cuil = data.cuil  # validado módulo 11 por el schema (digit-only)
     telefono = _solo_digitos(data.telefono) or "0"
@@ -268,14 +282,14 @@ async def alta_cuenta(
     # "activar cuenta existente" (POST /alta/activar-existente).
     res = await db.execute(
         text("""SELECT id_ciudadano FROM ciudadanos
-                 WHERE doc_nro = :doc AND activo = TRUE AND id_municipio = :mun LIMIT 1"""),
-        {"doc": doc_nro, "mun": id_municipio},
+                 WHERE doc_tipo = :tipo AND doc_nro = :doc AND activo = TRUE AND id_municipio = :mun LIMIT 1"""),
+        {"tipo": data.doc_tipo, "doc": doc_nro, "mun": id_municipio},
     )
     if res.fetchone():
         raise HTTPException(
             status_code=409,
-            detail="Ya existe un registro con ese documento. Si sos vos, usá la opción "
-                   "\"Ya estoy registrado en el municipio\" para activar tu cuenta.",
+            detail="Ya hay una persona registrada con ese documento. Si sos vos, usá la opción "
+                   "«Ya estoy registrado en el municipio» para generar tu usuario.",
         )
 
     # CUIL ya registrado por otro ciudadano activo (es UNIQUE)
@@ -344,7 +358,7 @@ async def _insertar_ciudadano_autoregistrado(db: AsyncSession, data: AltaCuentaI
                  observaciones, activo, estado_validacion, ficha_completa, id_municipio,
                  fecha_alta, fecha_modificacion)
             VALUES
-                ('DNI', :doc_nro, :cuil, :nombre, :apellido, :sexo, :fecha_nac,
+                (:doc_tipo, :doc_nro, :cuil, :nombre, :apellido, :sexo, :fecha_nac,
                  :id_nacionalidad, FALSE, :calle, :localidad, :provincia,
                  :latitud, :longitud, :telefono, :email, FALSE, FALSE,
                  :observaciones, TRUE, 'auto_registrado', TRUE, :id_municipio,
@@ -352,6 +366,7 @@ async def _insertar_ciudadano_autoregistrado(db: AsyncSession, data: AltaCuentaI
             RETURNING id_ciudadano
         """),
         {
+            "doc_tipo": data.doc_tipo,
             "doc_nro": v["doc_nro"],
             "cuil": v["cuil"],
             "nombre": data.nombre.strip(),
@@ -427,8 +442,8 @@ async def activar_cuenta_existente(
     muni = await municipio_de_slug_u_origen(db, request, data.municipio_slug)
 
     doc_nro = _solo_digitos(data.doc_nro)
-    if not (7 <= len(doc_nro) <= 8):
-        return ActivarExistenteOut()  # DNI inválido: misma respuesta genérica
+    if not (6 <= len(doc_nro) <= 10):
+        return ActivarExistenteOut()  # documento inválido: misma respuesta genérica
 
     res = await db.execute(
         text("""
@@ -494,14 +509,22 @@ async def alta_empresa(
     if not res.fetchone():
         raise HTTPException(status_code=400, detail="La actividad seleccionada no es válida.")
 
-    # CUIT ya registrado -> no duplicar
-    res = await db.execute(
-        text("""SELECT id_empresa FROM empresas
-                 WHERE cuit = :cuit AND activo = TRUE AND id_municipio = :mun LIMIT 1"""),
-        {"cuit": cuit, "mun": id_municipio},
-    )
-    if res.fetchone():
-        raise HTTPException(status_code=409, detail="Ya existe una empresa registrada con ese CUIT.")
+    if data.id_tipo_representacion is not None and not await db.scalar(
+            text("SELECT 1 FROM tipo_representacion WHERE id = :id AND activo IS NOT FALSE"),
+            {"id": data.id_tipo_representacion}):
+        raise HTTPException(status_code=400, detail="El tipo de representación no es válido.")
+
+    # CUIT ya registrado -> no duplicar. Hay filas viejas con guiones: se compara por dígitos.
+    existente = (await db.execute(
+        text("""SELECT e.id_empresa, EXISTS (SELECT 1 FROM ciudadano_empresa ce
+                        WHERE ce.id_empresa = e.id_empresa AND ce.id_ciudadano = :c AND ce.activo = TRUE) AS mia
+                  FROM empresas e
+                 WHERE regexp_replace(e.cuit, '\\D', '', 'g') = :cuit AND e.activo = TRUE AND e.id_municipio = :mun
+                 LIMIT 1"""),
+        {"cuit": cuit, "mun": id_municipio, "c": id_ciudadano},
+    )).fetchone()
+    if existente:
+        raise HTTPException(status_code=409, detail=MSG_EMPRESA_PROPIA if existente.mia else MSG_EMPRESA_EXISTENTE)
 
     try:
         id_empresa, token = await _insertar_empresa(db, data, id_ciudadano, {
@@ -509,7 +532,7 @@ async def alta_empresa(
         })
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=409, detail="Ya existe una empresa registrada con ese CUIT.")
+        raise HTTPException(status_code=409, detail=MSG_EMPRESA_EXISTENTE)
 
     cfg = await _branding(db, id_municipio)
     cta_url = _frontend_verificar_url(muni["slug"], token)

@@ -1173,8 +1173,10 @@ async def crear_empresa(
             detail="La empresa requiere un vecino representante/contacto válido y activo.",
         )
 
+    # Hay filas viejas con el CUIT con guiones: se compara por dígitos.
     existing = await db.execute(
-        select(Empresa).where(Empresa.cuit == data.cuit, Empresa.id_municipio == id_municipio)
+        select(Empresa).where(func.regexp_replace(Empresa.cuit, r"\D", "", "g") == data.cuit,
+                              Empresa.id_municipio == id_municipio)
     )
     if existing.scalars().first():
         raise HTTPException(status_code=409, detail=f"Ya existe una empresa con CUIT {data.cuit}")

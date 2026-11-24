@@ -41,7 +41,7 @@ export const crearContactoEventual = (body: ContactoEventualCreateBody) =>
   api.post<ContactoEventual>(`${P}/contactos-eventuales`, body)
 export const promoverContactoABuc = (
   id: number,
-  body: { id_ciudadano?: number; apellido?: string; nombre?: string; email?: string },
+  body: { id_ciudadano?: number },
 ) =>
   api.post<{ id_ciudadano: number; ciudadano_creado: boolean; eventos_reasignados: number }>(
     `${P}/contactos-eventuales/${id}/promover-a-buc`, body)

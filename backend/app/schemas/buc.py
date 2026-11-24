@@ -244,7 +244,13 @@ class CiudadanoBase(BaseModel):
 
 
 class CiudadanoCreate(CiudadanoBase):
-    pass
+    # Misma regla que el registro del vecino en el portal (PLAN_REGISTRO_PREVIO.md, F5).
+    @field_validator("fecha_nac")
+    @classmethod
+    def validar_fecha_nac(cls, v: date) -> date:
+        if v.year < 1900 or v >= date.today():
+            raise ValueError("La fecha de nacimiento no es válida")
+        return v
 
 
 class CiudadanoUpdate(BaseModel):

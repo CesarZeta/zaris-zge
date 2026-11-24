@@ -211,11 +211,23 @@ export function useFichaCiudadano({ modo, id, docInicial }: Opciones) {
     if (form.cuil) {
       const r = validarCuilCuit(form.cuil)
       if (!r.valido) errs.cuil = r.error
+      // Mismo control que el registro del vecino en el portal. Solo en el alta: una ficha vieja
+      // se puede seguir editando.
+      else if (modo === 'new' && form.doc_tipo === 'DNI' && form.doc_nro
+        && soloDigitos(form.cuil).slice(2, 10) !== soloDigitos(form.doc_nro).padStart(8, '0')) {
+        errs.cuil = 'El CUIL no corresponde al DNI ingresado'
+      }
+    }
+    if (modo === 'new' && form.doc_tipo === 'DNI' && form.doc_nro && !/^\d{7,8}$/.test(soloDigitos(form.doc_nro))) {
+      errs.doc_nro = 'El DNI tiene 7 u 8 dígitos'
     }
     if (!form.nombre.trim()) errs.nombre = 'Requerido'
     if (!form.apellido.trim()) errs.apellido = 'Requerido'
     if (!form.sexo) errs.sexo = 'Requerido'
     if (!form.fecha_nac) errs.fecha_nac = 'Requerido'
+    else if (modo === 'new' && (form.fecha_nac < '1900-01-01' || form.fecha_nac >= new Date().toLocaleDateString('en-CA'))) {
+      errs.fecha_nac = 'La fecha de nacimiento no es válida'
+    }
     if (!form.id_nacionalidad) errs.id_nacionalidad = 'Requerido'
     if (!form.calle.trim()) errs.calle = 'Requerido'
     if (!form.localidad.trim()) errs.localidad = 'Requerido'

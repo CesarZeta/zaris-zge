@@ -109,7 +109,7 @@ export function CiudadanoForm({
               <option value="">Seleccionar...</option>
               <option value="HOMBRE">Hombre</option>
               <option value="MUJER">Mujer</option>
-              <option value="OTROS">Otros</option>
+              <option value="OTROS">Otro</option>
             </select>
           </Field>
           <Field label="Fecha de Nacimiento" required error={errores.fecha_nac}>

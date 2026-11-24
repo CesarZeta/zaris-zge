@@ -2,7 +2,7 @@
 Schemas Pydantic para auth publico de ciudadanos (App Vecinos).
 Endpoints bajo /api/v1/publico/auth/* y /api/v1/publico/identidad-municipio.
 """
-from pydantic import AliasChoices, BaseModel, EmailStr, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 
 class CiudadanoBasicoOut(BaseModel):
@@ -17,21 +17,6 @@ class CiudadanoBasicoOut(BaseModel):
     ficha_completa: bool = False
     # Mig 143: lo asigna el sistema cuando el vecino genera su usuario.
     numero_usuario: int | None = None
-
-
-class RegistroCiudadanoIn(BaseModel):
-    """Body que envia un agente para dar de alta a un ciudadano + crear su credencial."""
-    dni: str = Field(..., min_length=7, max_length=8)
-    apellido: str = Field(..., min_length=1, max_length=100)
-    nombre: str = Field(..., min_length=1, max_length=100)
-    email: EmailStr
-    telefono: str | None = Field(None, max_length=15)
-
-
-class RegistroCiudadanoOut(BaseModel):
-    id_ciudadano: int
-    email: str
-    activacion_enviada: bool
 
 
 class ActivarIn(BaseModel):

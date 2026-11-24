@@ -168,9 +168,22 @@ $ev4 = Invoke-Api POST "/api/v1/emergencias/eventos" $H @{
     direccion_evento = "Calle 50 nro 1234"
 }
 $code = Get-StatusCode { Invoke-Api POST "/api/v1/emergencias/contactos-eventuales/$($ct.id_emergencia_contacto_eventual)/promover-a-buc" $H @{} }
-Assert ($code -eq 422) "promover sin datos -> 422 (pide apellido/nombre/email)"
-$prom = Invoke-Api POST "/api/v1/emergencias/contactos-eventuales/$($ct.id_emergencia_contacto_eventual)/promover-a-buc" $H @{ apellido = "Smoke"; nombre = "Eventual"; email = "smoke.eventual@test.local" }
-Assert ($prom.ciudadano_creado -eq $true -and $prom.eventos_reasignados -eq 2) "promocion crea ciudadano y reasigna 2 eventos"
+Assert ($code -eq 422) "promover a quien no esta registrado -> 422 (no se crea con datos de relleno)"
+$code = Get-StatusCode { Invoke-Api POST "/api/v1/emergencias/contactos-eventuales/$($ct.id_emergencia_contacto_eventual)/promover-a-buc" $H @{ apellido = "Smoke"; nombre = "Eventual"; email = "smoke.eventual@test.local" } }
+Assert ($code -eq 422) "promover con nombre y mail tampoco crea -> 422"
+# Se registra con la ficha completa y recien ahi se vincula
+function New-Cuil($dni) {
+    foreach ($pref in @("20", "23")) {
+        $b = $pref + $dni.PadLeft(8, '0'); $pesos = 5, 4, 3, 2, 7, 6, 5, 4, 3, 2; $sum = 0
+        for ($i = 0; $i -lt 10; $i++) { $sum += [int][string]$b[$i] * $pesos[$i] }
+        $dv = 11 - ($sum % 11); if ($dv -eq 11) { $dv = 0 }
+        if ($dv -ne 10) { return "$b$dv" }
+    }
+}
+$nacs = Invoke-Api GET "/api/v1/buc/nacionalidades" $H $null; $nac = $nacs[0]
+$ficha = Invoke-Api POST "/api/v1/buc/ciudadanos" $H @{ doc_tipo = "DNI"; doc_nro = "$dniNuevo"; cuil = (New-Cuil "$dniNuevo"); apellido = "Smoke"; nombre = "Eventual"; sexo = "OTROS"; fecha_nac = "1990-01-01"; id_nacionalidad = $nac.id; calle = "Calle 50 nro 1234"; localidad = "Olivos"; provincia = "Buenos Aires"; telefono = "1140001234"; email = "smoke.eventual.$dniNuevo@example.com" }
+$prom = Invoke-Api POST "/api/v1/emergencias/contactos-eventuales/$($ct.id_emergencia_contacto_eventual)/promover-a-buc" $H @{ id_ciudadano = $ficha.id_ciudadano }
+Assert ($prom.id_ciudadano -eq $ficha.id_ciudadano -and $prom.eventos_reasignados -eq 2) "vincula la ficha y reasigna 2 eventos"
 $ev4b = Invoke-Api GET "/api/v1/emergencias/eventos/$($ev4.id_emergencia_evento)" $H $null
 Assert ($ev4b.id_ciudadano_buc -eq $prom.id_ciudadano -and $null -eq $ev4b.id_contacto_eventual) "evento reapuntado a BUC, contacto en NULL"
 $r = Invoke-Api GET "/api/v1/emergencias/denunciantes/buscar?dni=$dniNuevo" $H $null

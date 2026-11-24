@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button, EmptyState, Skeleton } from '../../../ui'
 import { Modal } from '../../agenda/components/Modal'
+import { RegistroVecinoModal } from '../../ciudadanos/components/RegistroVecinoModal'
+import { httpStatus } from '../../../lib/api'
 import { useNotificationsStore } from '../../../stores/notifications'
 import {
   useAgregarNota,
@@ -36,7 +38,6 @@ export function DetalleEvento() {
   const [modal, setModal] = useState<ModalId>(null)
   const [destinoEstado, setDestinoEstado] = useState('')
   const [nota, setNota] = useState('')
-  const [prom, setProm] = useState({ apellido: '', nombre: '', email: '' })
 
   const cambiar = useCambiarEstado()
   const derivar = useDerivarEvento()
@@ -59,6 +60,18 @@ export function DetalleEvento() {
   // ~2s (latencia Railway) y dejarlos abiertos se percibe como "no cierra"
   // (QA humano 2026-06-11). El resultado llega por toast.
   const ok = (titulo: string) => () => push({ kind: 'success', title: titulo, body: ev.numero_operativo })
+
+  // Vincula el contacto eventual con su ficha. Si no está registrado (422), se abre el registro con
+  // su DNI y al guardarlo se vincula: nunca se crea una persona con datos de relleno.
+  const vincularContacto = (idCiudadano?: number) => {
+    promover.mutate(
+      { id: ev.id_contacto_eventual as number, ...(idCiudadano ? { id_ciudadano: idCiudadano } : {}) },
+      {
+        onSuccess: (r) => push({ kind: 'success', title: 'Contacto vinculado con su ficha de vecino', body: `${r.eventos_reasignados} evento(s) reasignado(s)` }),
+        onError: (e) => { if (!idCiudadano && httpStatus(e) === 422) setModal('promover'); else onError(e) },
+      },
+    )
+  }
 
   const abrirEstado = (destino: string) => { setDestinoEstado(destino); setModal('estado') }
 
@@ -157,7 +170,7 @@ export function DetalleEvento() {
                   <Dato label="Dirección" valor={contactoEventual.direccion} ancho />
                   <Dato label="Contacto alternativo" valor={contactoEventual.contacto_alt_nombre ? `${contactoEventual.contacto_alt_nombre} (${contactoEventual.contacto_alt_telefono ?? 's/tel'})` : null} ancho />
                   <div style={{ gridColumn: '1 / -1' }}>
-                    <Button variant="accent" onClick={() => setModal('promover')}>Promover a ciudadano BUC</Button>
+                    <Button variant="accent" disabled={busy} onClick={() => vincularContacto()}>Registrar como vecino</Button>
                   </div>
                 </>
               )}
@@ -283,54 +296,14 @@ export function DetalleEvento() {
           placeholder="Nota para el historial (no cambia el estado)..."
         />
       </Modal>
-      <Modal
-        open={modal === 'promover'}
-        onClose={() => setModal(null)}
-        title="Promover contacto eventual a BUC"
-        width={460}
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setModal(null)}>Cancelar</Button>
-            <Button
-              variant="accent"
-              disabled={busy || !prom.apellido.trim() || !prom.nombre.trim() || !prom.email.trim()}
-              onClick={() => {
-                setModal(null)
-                promover.mutate(
-                  { id: ev.id_contacto_eventual as number, apellido: prom.apellido.trim(), nombre: prom.nombre.trim(), email: prom.email.trim() },
-                  {
-                    onSuccess: (r) =>
-                      push({ kind: 'success', title: r.ciudadano_creado ? 'Ciudadano creado en la BUC' : 'Contacto vinculado a la BUC', body: `${r.eventos_reasignados} evento(s) reasignado(s)` }),
-                    onError,
-                  },
-                )
-              }}
-            >
-              Promover
-            </Button>
-          </>
-        }
-      >
-        <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--fg-2)', lineHeight: 1.5 }}>
-          Si ya existe un ciudadano con el mismo DNI se vincula automáticamente; si no, se crea uno nuevo en la BUC con estos datos. Todos los eventos del contacto pasan a apuntar al ciudadano.
-        </p>
-        <CampoModal label="Apellido *" value={prom.apellido} onChange={(v) => setProm({ ...prom, apellido: v })} />
-        <CampoModal label="Nombre *" value={prom.nombre} onChange={(v) => setProm({ ...prom, nombre: v })} />
-        <CampoModal label="Email *" value={prom.email} onChange={(v) => setProm({ ...prom, email: v })} />
-      </Modal>
-    </div>
-  )
-}
-
-function CampoModal({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <div style={{ marginBottom: 10 }}>
-      <label style={{ display: 'block', fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 600, color: 'var(--fg-2)', marginBottom: 4 }}>{label}</label>
-      <input
-        style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid var(--border-medium)', borderRadius: 8, background: 'var(--surface-100)', color: 'var(--fg-1)', fontFamily: 'var(--font-display)', fontSize: 14 }}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      />
+      {modal === 'promover' && contactoEventual && (
+        <RegistroVecinoModal
+          idCiudadano={null}
+          docInicial={(contactoEventual.dni ?? '').replace(/\D/g, '')}
+          onCerrar={() => setModal(null)}
+          onListo={(c) => { setModal(null); vincularContacto(c.id_ciudadano) }}
+        />
+      )}
     </div>
   )
 }

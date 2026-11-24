@@ -22,7 +22,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
-from app.schemas.buc import _validar_modulo11
+from app.schemas.buc import _validar_modulo11, _validar_telefono_arg
 
 
 # ─── Identidad del municipio (header de la página pública) ───────────────────
@@ -48,8 +48,9 @@ class AltaCuentaIn(BaseModel):
     # Opcional (IT-01 F4): sin slug, el municipio sale del Origin de la página.
     municipio_slug: Optional[str] = Field(None, min_length=1, max_length=20)
 
-    # Identificación
-    doc_nro: str = Field(..., min_length=6, max_length=15)   # DNI (digit-only se normaliza en el endpoint)
+    # Identificación: los mismos tipos que el alta del backoffice. DNI = 7 u 8 dígitos.
+    doc_tipo: Literal["DNI", "PASAPORTE"] = "DNI"
+    doc_nro: str = Field(..., min_length=6, max_length=15)   # digit-only, se normaliza en el endpoint
     cuil: str = Field(..., min_length=10, max_length=15)     # acepta guiones, se valida módulo 11
 
     # Datos personales
@@ -77,6 +78,11 @@ class AltaCuentaIn(BaseModel):
     @classmethod
     def _val_cuil(cls, v: str) -> str:
         return _validar_modulo11(v)
+
+    @field_validator("telefono")
+    @classmethod
+    def _val_telefono(cls, v: str) -> str:
+        return _validar_telefono_arg(v)
 
 
 class AltaCuentaOut(BaseModel):
@@ -151,7 +157,7 @@ class AltaEmpresaIn(BaseModel):
     # podía vincular una empresa a un id_ciudadano ajeno enumerando IDs secuenciales.
 
     cuit: str = Field(..., min_length=10, max_length=15)  # acepta guiones, se valida módulo 11
-    razon_social: str = Field(..., min_length=1, max_length=200)
+    razon_social: str = Field(..., min_length=1, max_length=100)
     id_actividad: int
 
     # Domicilio (OSM)
@@ -172,6 +178,11 @@ class AltaEmpresaIn(BaseModel):
     @classmethod
     def _val_cuit(cls, v: str) -> str:
         return _validar_modulo11(v)
+
+    @field_validator("telefono")
+    @classmethod
+    def _val_telefono(cls, v: str) -> str:
+        return _validar_telefono_arg(v)
 
 
 class AltaEmpresaOut(BaseModel):

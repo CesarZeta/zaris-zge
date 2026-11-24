@@ -24,8 +24,17 @@ DB_DSN = os.getenv(
 )
 ADMIN_EMAIL = "ciudadanovl@municipio.gob.ar"
 ADMIN_PASS = "123456"
-DNI_TEST = "99999999"
-EMAIL_TEST = "test+99999999@zaris.com.ar"
+DNI_TEST = "89999999"  # fuera del rango 99.xxx.xxx de las fichas demo, que no reciben cuenta
+
+
+def _cuil(dni: str, pref: str = "20") -> str:
+    base = pref + dni.zfill(8)
+    dv = 11 - sum(int(d) * p for d, p in zip(base, (5, 4, 3, 2, 7, 6, 5, 4, 3, 2))) % 11
+    return _cuil(dni, "23") if dv == 10 else base + str(0 if dv == 11 else dv)
+
+
+CUIL_TEST = _cuil(DNI_TEST)
+EMAIL_TEST = "test+89999999@zaris.com.ar"
 PASS_TEST = "TestPass123"
 PASS_NUEVA = "NuevaPass456"
 
@@ -63,26 +72,26 @@ async def main():
         admin_token = r.json()["access_token"]
         ok(f"login admin OK, token scope='agente' (len={len(admin_token)})")
 
-        # ─── PASO 3: POST /registrar ──────────────────────────────────────
-        print("\nPASO 3: POST /publico/auth/registrar")
+        # ─── PASO 3: alta por un agente con la ficha completa ─────────────
+        print("\nPASO 3: POST /buc/ciudadanos (y /publico/auth/registrar retirado)")
+        r = await client.post("/api/v1/publico/auth/registrar",
+                              headers={"Authorization": f"Bearer {admin_token}"}, json={"dni": DNI_TEST})
+        if r.status_code != 410:
+            fail(3, f"/registrar tendría que dar 410 -> {r.status_code} {r.text}")
         r = await client.post(
-            "/api/v1/publico/auth/registrar",
+            "/api/v1/buc/ciudadanos",
             headers={"Authorization": f"Bearer {admin_token}"},
             json={
-                "dni": DNI_TEST,
-                "apellido": "Vecinosmoke",
-                "nombre": "Test",
-                "email": EMAIL_TEST,
-                "telefono": "1140000000",
+                "doc_tipo": "DNI", "doc_nro": DNI_TEST, "cuil": CUIL_TEST, "apellido": "Vecinosmoke",
+                "nombre": "Test", "sexo": "OTROS", "fecha_nac": "1990-01-01", "id_nacionalidad": 1,
+                "calle": "Av. Maipú 1200", "localidad": "Olivos", "provincia": "Buenos Aires",
+                "email": EMAIL_TEST, "telefono": "1140000000",
             },
         )
         if r.status_code != 201:
-            fail(3, f"/registrar -> {r.status_code} {r.text}")
-        body = r.json()
-        if not body.get("activacion_enviada"):
-            fail(3, f"activacion_enviada=False en response: {body}")
-        id_ciudadano = body["id_ciudadano"]
-        ok(f"ciudadano creado id={id_ciudadano}, activacion_enviada=True")
+            fail(3, f"/buc/ciudadanos -> {r.status_code} {r.text}")
+        id_ciudadano = r.json()["id_ciudadano"]
+        ok(f"ciudadano creado id={id_ciudadano} con la ficha completa")
 
         # ─── PASO 4: verificar DB ─────────────────────────────────────────
         print("\nPASO 4: verificar DB post-registro")

@@ -37,7 +37,7 @@ autoservicios anónimos por token bajo `/api/v1/turnos/publico/*` y
 | POST | `/recuperar-password` | — | `{identificador}` (DNI o número de usuario). Pide mail de recovery. Anti-enumeración: siempre 200. |
 | POST | `/resetear-password` | — | Aplica nuevo pass con `token_recovery` (24h) → JWT. |
 | GET | `/nacionalidades` | publico | Catálogo para la ficha. |
-| POST | `/registrar` | **agente** (nivel ≤3) | Alta por mostrador. NO lo usa la PWA. |
+| POST | `/registrar` | **agente** | Retirado el 2026-11-24 (410): el agente da de alta con la ficha completa en el backoffice. |
 | POST | `/completar-ficha` | publico | Compat (el alta nuevo es en un paso, ver §38). |
 
 ## 2. Alta pública (autoregistro) — `/api/v1/publico/alta`
@@ -49,9 +49,9 @@ El municipio sale del slug `?m=<codigo_corto>` o, sin él, del `Origin`.
 | GET | `/identidad` | — | Nombre/logo/colores del municipio. |
 | GET | `/actividades` · `/nacionalidades` | — | Catálogos para el form. |
 | GET | `/geo/buscar?m=&q=` | — | Geocoding OSM sesgado a la zona del municipio. |
-| POST | `/cuenta` | — | Registro con la ficha completa (CUIL real, domicilio, etc.), **sin contraseña** desde 2026-11-24: el correo lleva a `{portal}/activar?token=`, donde confirma la casilla y genera su usuario. |
+| POST | `/cuenta` | — | Registro con la ficha completa (`doc_tipo` DNI o PASAPORTE, CUIL real, domicilio, teléfono de 10 dígitos), **sin contraseña** desde 2026-11-24: el correo lleva a `{portal}/activar?token=`, donde confirma la casilla y genera su usuario. |
 | POST | `/activar-existente` | — | Vecino ya en la BUC pide cuenta. Anti-enumeración: 200. |
-| POST | `/empresa` | publico | El vecino logueado da de alta su empresa. |
+| POST | `/empresa` | publico | El vecino logueado da de alta su empresa (`cuit`, `razon_social` ≤ 100, `id_actividad`, `id_tipo_representacion`, domicilio, `telefono` de 10 dígitos, `email`). El representante sale del token. **409** si el CUIT ya está registrado (el texto distingue si ya es suya). Manda el correo de verificación a la casilla de la empresa. |
 | GET | `/verificar?token=&m=` | — | Link de los correos anteriores al 2026-11-24 (y de las empresas); devuelve página HTML, o redirige al portal si falta elegir la contraseña. |
 
 ## 3. Identidad del municipio — `/api/v1/publico/identidad-municipio`
@@ -141,6 +141,13 @@ El municipio sale del slug `?m=<codigo_corto>` o, sin él, del `Origin`.
 > **CUIL placeholder:** el alta por agente inventa `20 + DNI + 9` porque la columna es NOT NULL. En ese caso `cuil` viene `null` y `cuil_es_placeholder=true` — no mostrar el dato inventado.
 >
 > **NO editables desde la app** (se ignoran si vienen en el body): DNI, CUIL, nombre, apellido, sexo, fecha_nac, nacionalidad (datos de identidad → mostrador) y **email** (es la credencial de recovery; cambiarlo exige re-verificación, flujo aparte pendiente de definir).
+
+## 10 bis. Empresas del vecino — `/api/v1/publico/empresas` (nuevo 2026-11-24)
+
+| Verbo | Ruta | Auth | Para qué |
+|---|---|---|---|
+| GET | `` | publico | Las empresas activas que representa: `{id_empresa, cuit, nombre, actividad, tipo_representacion, calle, localidad, provincia, telefono, email, email_verificado}`. |
+| GET | `/catalogos` | publico | `{actividades, tipos_representacion}` (`{id, nombre, detalle}`) del formulario de alta. |
 
 ## 11. Avisos del vecino (bandeja "Alertas") — `/api/v1/publico/avisos` (nuevo 2026-08-30, mig 99)
 

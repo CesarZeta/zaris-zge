@@ -174,7 +174,7 @@ export function useCrearContactoEventual() {
 export function usePromoverABuc() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...body }: { id: number; id_ciudadano?: number; apellido?: string; nombre?: string; email?: string }) =>
+    mutationFn: ({ id, ...body }: { id: number; id_ciudadano?: number }) =>
       promoverContactoABuc(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['emergencias'] }),
   })

@@ -65,6 +65,7 @@ from app.api.routes.publico_entradas_vecino import router as publico_entradas_ve
 from app.api.routes.publico_emergencias import router as publico_emergencias_router
 from app.api.routes.publico_push import router as publico_push_router
 from app.api.routes.usuario_push import router as usuario_push_router
+from app.api.routes.publico_empresas import router as publico_empresas_router
 from app.api.routes.publico_perfil import router as publico_perfil_router
 from app.api.routes.publico_avisos import router as publico_avisos_router
 from app.init_db import create_tables
@@ -255,6 +256,7 @@ app.include_router(publico_emergencias_router, dependencies=_modulo("publico_eme
 # Suscripciones Web Push del vecino (App Vecinos etapa E, scope publico)
 app.include_router(publico_push_router)
 # Perfil del vecino logueado (ficha BUC + edicion de contacto/domicilio, scope publico)
+app.include_router(publico_empresas_router)
 app.include_router(publico_perfil_router)
 # Bandeja de avisos del vecino (mig 99, scope publico)
 app.include_router(publico_avisos_router)
