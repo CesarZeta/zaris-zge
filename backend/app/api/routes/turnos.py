@@ -28,7 +28,7 @@ from collections import Counter
 from datetime import date, datetime, time, timedelta
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response, status
 
 from app.services.municipios.modulos import modulo_habilitado
 from sqlalchemy import text
@@ -85,6 +85,7 @@ from app.services.historia_clinica import (
 from app.middleware.rate_limit import check_rate_limit
 from app.utils.request_helpers import get_real_ip
 from app.services import encuestas_service
+from app.services.avisos_turnos import avisar_turno, marca_recordatorio
 from app.services.cuenta_vecino import exigir_cuenta_vecino
 from app.services.accesos_super import registrar_acceso_super
 
@@ -1121,6 +1122,7 @@ async def _validar_turno_en_scope(db: AsyncSession, user: dict, turno: dict[str,
 @router.post("", response_model=TurnoOut, status_code=201)
 async def crear_turno(
     payload: TurnoCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
     id_municipio: int = Depends(municipio_actual),
@@ -1258,6 +1260,7 @@ async def crear_turno(
     except IntegrityError as e:
         await db.rollback()
         raise _error_integridad_turno(e)
+    background_tasks.add_task(avisar_turno, int(id_turno), "confirmado")
     out = await _turno_to_out(db, int(id_turno), id_municipio)
     if out is None:
         raise HTTPException(500, "Turno creado pero no se pudo releer")
@@ -1268,6 +1271,7 @@ async def crear_turno(
 async def reprogramar_turno(
     id_turno: int,
     payload: TurnoUpdate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
     id_municipio: int = Depends(municipio_actual),
@@ -1277,7 +1281,7 @@ async def reprogramar_turno(
     ocupacion espejo."""
     _require_gestion(user)
     turno = (await db.execute(text("""
-        SELECT id_turno, id_agente, id_espacio, id_tipo_prestacion, id_ocupacion,
+        SELECT id_turno, id_agente, id_espacio, id_tipo_prestacion, id_ocupacion, id_espacio_ubicacion,
                fecha, hora_inicio, hora_fin, estado, id_municipio
         FROM turnos WHERE id_turno = :id AND activo = TRUE AND id_municipio = :m
     """), {"id": id_turno, "m": id_municipio})).mappings().first()
@@ -1376,6 +1380,13 @@ async def reprogramar_turno(
         "iu": id_ubicacion_turno,
         "uid": user["id_usuario"],
     }
+    # Lo que le cambia al vecino (no la duración ni las observaciones). Con fecha u hora nuevas el
+    # recordatorio vuelve a quedar pendiente.
+    cambio_de_horario = fecha != turno["fecha"] or hora_inicio != turno["hora_inicio"]
+    avisar = (cambio_de_horario or id_tipo_prestacion != turno["id_tipo_prestacion"]
+              or id_ubicacion_turno != turno["id_espacio_ubicacion"])
+    if cambio_de_horario:
+        sets.append("recordado_en = :rec"); params["rec"] = marca_recordatorio(fecha)
     if "observaciones" in data:
         sets.append("observaciones = :obs"); params["obs"] = data["observaciones"]
     try:
@@ -1404,6 +1415,8 @@ async def reprogramar_turno(
     except IntegrityError as e:
         await db.rollback()
         raise _error_integridad_turno(e)
+    if avisar:
+        background_tasks.add_task(avisar_turno, id_turno, "cambiado")
     out = await _turno_to_out(db, id_turno, id_municipio)
     return out  # type: ignore
 
@@ -1662,6 +1675,7 @@ async def marcar_ausente(
 @router.patch("/{id_turno}/cancelar", response_model=TurnoOut)
 async def cancelar_turno(
     id_turno: int,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
     id_municipio: int = Depends(municipio_actual),
@@ -1703,5 +1717,6 @@ async def cancelar_turno(
             WHERE id_ocupacion = :io
         """), {"io": turno["id_ocupacion"], "uid": user["id_usuario"]})
     await db.commit()
+    background_tasks.add_task(avisar_turno, id_turno, "cancelado")
     out = await _turno_to_out(db, id_turno, id_municipio)
     return out  # type: ignore

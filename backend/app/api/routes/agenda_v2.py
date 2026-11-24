@@ -15,7 +15,7 @@ import logging
 from datetime import date, datetime, time, timedelta
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -58,6 +58,7 @@ from app.schemas.agenda_v2 import (
     SubareaOut,
 )
 from app.services import encuestas_service
+from app.services.avisos_turnos import avisar_entrada, avisar_evento, marca_recordatorio
 from app.services.cuenta_vecino import exigir_cuenta_vecino
 from app.utils.fechas import hoy_local
 from app.utils.orden import clausula_orden, descripcion_orden
@@ -588,6 +589,7 @@ async def detalle_evento(
 async def actualizar_evento(
     id_evento: int,
     payload: EventoUpdate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_operador),
     id_municipio: int = Depends(municipio_actual),
@@ -645,6 +647,12 @@ async def actualizar_evento(
     await db.execute(text(f"UPDATE eventos SET {', '.join(sets)} WHERE id_evento = :id"), params)
 
     nuevo = await _evento_to_out(db, id_evento, id_municipio)
+    # Lo que le cambia a quien tiene entrada: día, hora o lugar. El recordatorio vuelve a quedar pendiente.
+    cambio_de_horario = any(nuevo[k] != actual[k] for k in ("fecha", "hora_inicio"))  # type: ignore[index]
+    avisar = cambio_de_horario or nuevo["id_espacio"] != actual["id_espacio"]  # type: ignore[index]
+    if cambio_de_horario:
+        await db.execute(text("UPDATE evento_reservas SET recordado_en = :rec WHERE id_evento = :e AND activo"),
+                         {"rec": marca_recordatorio(nuevo["fecha"]), "e": id_evento})  # type: ignore[index]
     await registrar_audit(
         db, current_user["id_usuario"], "evento", id_evento, "modificar",
         {k: actual.get(k) for k in cambios.keys()},
@@ -652,12 +660,15 @@ async def actualizar_evento(
         id_municipio=actual["id_municipio"],
     )
     await db.commit()
+    if avisar:
+        background_tasks.add_task(avisar_evento, id_evento, "cambiado")
     return nuevo  # type: ignore[return-value]
 
 
 @router.patch("/eventos/{id_evento}/cancelar", response_model=EventoOut)
 async def cancelar_evento(
     id_evento: int,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_operador),
     id_municipio: int = Depends(municipio_actual),
@@ -686,12 +697,14 @@ async def cancelar_evento(
         id_municipio=actual["id_municipio"],
     )
     await db.commit()
+    background_tasks.add_task(avisar_evento, id_evento, "cancelado")
     return nuevo  # type: ignore[return-value]
 
 
 @router.delete("/eventos/{id_evento}", status_code=204)
 async def eliminar_evento(
     id_evento: int,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_operador),
     id_municipio: int = Depends(municipio_actual),
@@ -714,6 +727,9 @@ async def eliminar_evento(
         {"activo": True}, {"activo": False}, id_municipio=actual["id_municipio"],
     )
     await db.commit()
+    # Un evento ya cancelado avisó al cancelarse.
+    if actual["estado_codigo"] != "cancelado":
+        background_tasks.add_task(avisar_evento, id_evento, "cancelado")
     return Response(status_code=204)
 
 
@@ -922,6 +938,7 @@ def _jsonable(d: Any) -> Any:
 async def crear_reserva(
     id_evento: int,
     payload: ReservaCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_operador),
     id_municipio: int = Depends(municipio_actual),
@@ -992,6 +1009,7 @@ async def crear_reserva(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(409, "El ciudadano ya tiene una reserva activa de este evento")
+    background_tasks.add_task(avisar_entrada, int(new_id), "confirmado")
     out = await _reserva_to_out(db, int(new_id), id_municipio)
     return out  # type: ignore[return-value]
 
@@ -1229,14 +1247,19 @@ async def reserva_asistio(
 @router.patch("/reservas/{id_evento_reserva}/cancelar", response_model=ReservaOut)
 async def reserva_cancelar(
     id_evento_reserva: int,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_operador),
     id_municipio: int = Depends(municipio_actual),
 ):
     """Marca la reserva como `cancelada`. Libera cupo automaticamente."""
+    previa = await _reserva_to_out(db, id_evento_reserva, id_municipio)
     nueva = await _patch_reserva_estado(db, id_evento_reserva, "cancelada", current_user["id_usuario"], id_municipio)
     if not nueva:
         raise HTTPException(404, "Reserva no encontrada")
+    # Solo si estaba vigente: repetir la cancelación o corregir una ya usada no avisa.
+    if previa and previa["estado_codigo"] == "reservada":
+        background_tasks.add_task(avisar_entrada, id_evento_reserva, "cancelado")
     return nueva
 
 

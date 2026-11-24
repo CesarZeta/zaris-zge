@@ -230,6 +230,10 @@ Spec en [`docs/superpowers/specs/2026-11-21-tramites-vecino-design.md`](docs/sup
 - **139b (datos):** marca `ofrecer_al_vecino` en los seis tipos por código (`aviso-obra`, `poda-arbol`, `inscripcion-profesional`, `exencion-tasas`, `permiso-espacio-publico`, `recurso-administrativo`), en todos los municipios que los tengan; no prende `exige_identidad_validada` en ninguno.
 - Reglas vivas en la skill `modulo-tramites` → «Trámites del vecino» y contrato en `docs/contrato_api_publica.md` §12.
 
+### Migración 144 — avisos de turnos y entradas (`backend/migrations/144_avisos_turnos_entradas.sql`)
+
+Tipos `turno` y `entrada` en `ck_ciudadano_aviso_tipo`; `turnos.recordado_en` y `evento_reservas.recordado_en` (un solo recordatorio) con índices parciales. Lleva `DROP CONSTRAINT`: en prod la corre César. Local el 2026-11-24. Va antes del código.
+
 ### Migración 143 — número de usuario del vecino (`backend/migrations/143_numero_usuario_vecino.sql`)
 
 Registro previo F3. `ciudadano_credencial.numero_usuario` (INTEGER, 100001 a 999999, único por municipio). Las cuentas ya activadas lo recibieron en la misma migración (4 en prod, 76 en local). No usa `numerador_municipio` porque ampliar su CHECK de entidades exigía un `DROP`: el número sale de `services/cuenta_vecino.py::asignar_numero_usuario` (lock por municipio, máximo + 1). Local y prod el 2026-11-24 (prod por MCP, antes del código).

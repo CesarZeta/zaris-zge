@@ -540,6 +540,23 @@ async def enviar_mail_retrabajo_auditoria_ciudadano(
     return await enviar_mail(to=to, subject=subject, body_html=html, body_text=text, from_override=from_header)
 
 
+async def enviar_mail_aviso_vecino(
+    *, to: str, nombre: str, titulo: str, parrafo: str, parrafo_extra: str, cta_texto: str, cta_url: str,
+    municipio_nombre: str, municipio_logo_url: str | None, id_municipio: int,
+) -> bool:
+    """Aviso corto al vecino (turnos y entradas, services/avisos_turnos.py). `parrafo` llega escapado."""
+    import html as _html
+    html, text = _build_template_app_vecinos(
+        titulo=titulo, saludo=f"Hola {_html.escape((nombre or '').strip() or 'vecino')},",
+        parrafo_principal=parrafo, cta_texto=cta_texto, cta_url=cta_url,
+        parrafo_extra=f"{parrafo_extra} No hace falta que respondas este correo.",
+        municipio_nombre=municipio_nombre, municipio_logo_url=municipio_logo_url,
+        cta_color=await _color_cta_municipio(id_municipio),
+    )
+    return await enviar_mail(to=to, subject=f"{titulo} - {municipio_nombre}", body_html=html, body_text=text,
+                             from_override=formatear_remitente(municipio_nombre, _from_address_base()))
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # Templates de ALTA PÚBLICA de vecinos (autoregistro desde URL pública)
 # ────────────────────────────────────────────────────────────────────────────

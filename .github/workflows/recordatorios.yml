@@ -1,0 +1,50 @@
+name: Recordatorios de turnos y entradas (cron diario)
+
+# Recuerda a los vecinos con la cuenta activada sus turnos y entradas de MAÑANA (POST
+# /api/v1/avisos/mantenimiento/recordatorios, PLAN_AVISOS_TURNOS_ENTRADAS.md). Desde las 9:00 de
+# Argentina, cuatro pasadas: cada una manda hasta un tope por municipio y la siguiente sigue donde quedó.
+# Es idempotente (cada turno y cada entrada se recuerda una sola vez): una corrida tardía no repite nada.
+#
+# Auth: header X-Dispatcher-Token (secret ENCUESTAS_DISPATCHER_TOKEN, el mismo de los otros crons).
+
+on:
+  schedule:
+    - cron: '0,30 12,13 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: recordatorios
+  cancel-in-progress: false
+
+jobs:
+  recordatorios:
+    runs-on: ubuntu-latest
+    steps:
+      # Solo tools/ci: el script que resume el resultado por municipio (IT-01 F6.4).
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/ci
+          sparse-checkout-cone-mode: false
+
+      - name: Enviar recordatorios
+        env:
+          API_URL: ${{ secrets.ZARIS_API_URL || 'https://zaris-api-production-bf0b.up.railway.app' }}
+          TOKEN: ${{ secrets.ENCUESTAS_DISPATCHER_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Falta el secret ENCUESTAS_DISPATCHER_TOKEN en el repo."
+            exit 1
+          fi
+          BODY=$(mktemp)
+          CODE=$(curl -sS -o "$BODY" -w '%{http_code}' \
+            -X POST "$API_URL/api/v1/avisos/mantenimiento/recordatorios" \
+            -H "X-Dispatcher-Token: $TOKEN" \
+            -H "Content-Type: application/json")
+          echo "HTTP $CODE"
+          cat "$BODY"; echo
+          if [ "$CODE" != "200" ]; then
+            echo "::error::La tarea devolvió HTTP $CODE (esperado 200)."
+            exit 1
+          fi
+          # Una línea por municipio; si alguno dio error, el paso falla con su nombre.
+          python3 tools/ci/resumen_cron.py "$BODY"

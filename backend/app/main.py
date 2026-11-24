@@ -45,6 +45,7 @@ from app.api.routes.auditoria_super import router as auditoria_super_router
 from app.api.routes.emergencias import router as emergencias_router
 from app.api.routes.tramites import router as tramites_router
 from app.api.routes.tramites_admin import router as tramites_admin_router
+from app.api.routes.avisos_mantenimiento import router as avisos_mantenimiento_router
 from app.api.routes.tramites_mantenimiento import router as tramites_mantenimiento_router
 from app.api.routes.municipios_mantenimiento import router as municipios_mantenimiento_router
 from app.api.routes.usuarios_mantenimiento import router as usuarios_mantenimiento_router
@@ -189,6 +190,8 @@ app.include_router(turnos_router, dependencies=_modulo("turnos_router"))
 # el /{numero_o_id} greedy lo atrapa como numero_o_id='mantenimiento' (S5).
 app.include_router(tramites_mantenimiento_router)
 app.include_router(municipios_mantenimiento_router)
+# avisos_mantenimiento: recordatorio de turnos y entradas (cron, X-Dispatcher-Token)
+app.include_router(avisos_mantenimiento_router)
 # tramites_router ANTES de admin_tablas (que tiene /{tabla} greedy).
 # /tramites/* no colisiona con otros routers pero lo dejamos arriba por convención.
 app.include_router(tramites_router, dependencies=_modulo("tramites_router"))

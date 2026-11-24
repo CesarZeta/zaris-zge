@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +33,7 @@ from app.core.auth import get_current_ciudadano
 from app.core.database import get_db
 from app.middleware.rate_limit import check_rate_limit
 from app.utils.request_helpers import get_real_ip
+from app.services.avisos_turnos import avisar_entrada
 from app.services.agenda import (
     cupo_disponible,
     generar_qr_codigo,
@@ -128,6 +129,7 @@ async def cartelera_eventos(
 async def reservar_entrada_vecino(
     id_evento: int,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current: dict = Depends(get_current_ciudadano),
 ) -> Any:
@@ -208,6 +210,8 @@ async def reservar_entrada_vecino(
         await db.rollback()
         raise HTTPException(409, "Ya tenés una entrada reservada para este evento")
 
+    # Sin notificación: la acaba de reservar desde la app.
+    background_tasks.add_task(avisar_entrada, new_id, "confirmado", con_push=False)
     return {
         "id_evento_reserva": new_id,
         "estado_codigo": "reservada",

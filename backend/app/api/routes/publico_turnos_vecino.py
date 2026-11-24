@@ -23,7 +23,7 @@ import logging
 from datetime import date, datetime, time, timedelta
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -34,6 +34,7 @@ from app.core.database import get_db
 from app.middleware.rate_limit import check_rate_limit
 from app.utils.request_helpers import get_real_ip
 from app.api.routes.turnos_publico import _resolver_prestacion
+from app.services.avisos_turnos import avisar_turno
 from app.services.agenda import (
     advisory_lock_tx,
     disponibilidad_efectiva,
@@ -92,6 +93,7 @@ async def listar_mis_turnos(
 async def reservar_turno_vecino(
     payload: TurnoVecinoCreate,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current: dict = Depends(get_current_ciudadano),
 ) -> Any:
@@ -194,6 +196,8 @@ async def reservar_turno_vecino(
         await db.rollback()
         raise HTTPException(409, "El horario solicitado ya no está disponible")
 
+    # Sin notificación: lo acaba de sacar desde la app.
+    background_tasks.add_task(avisar_turno, int(row["id_turno"]), "confirmado", con_push=False)
     return {
         "id_turno": int(row["id_turno"]),
         "estado": "reservado",

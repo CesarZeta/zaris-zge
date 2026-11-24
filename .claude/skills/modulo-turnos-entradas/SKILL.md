@@ -151,3 +151,13 @@ La **historia clínica** (HC) es la unión, por ciudadano BUC, de `turno_atencio
   - el panel muestra `MotivoSuperForm` y no pide nada hasta que lo confirma;
   - `HistorialAtenciones` ofrece el mismo formulario si las atenciones vienen reservadas.
 - **El export PDF de «Prestaciones realizadas» no pide motivo:** para el super administrador sale con el contenido reservado.
+
+## Avisos al vecino (mig 144, 2026-11-24, `PLAN_AVISOS_TURNOS_ENTRADAS.md`)
+
+`services/avisos_turnos.py` es la única fuente: `avisar_turno`, `avisar_entrada` y `avisar_evento`, con los momentos `confirmado`, `cambiado`, `cancelado` (por el municipio) y `recordatorio`. Se encolan con `BackgroundTasks` después del commit.
+
+- **Toda vía nueva que reserve, cambie o cancele un turno, una reserva o un evento los llama.** Hoy: turnos (alta del backoffice y del vecino, reprogramar, cancelar) y entradas (alta del backoffice y del vecino, cancelar reserva, y cambiar, cancelar o eliminar el evento). Lo que cancela el propio vecino no avisa; lo que reserva él no manda notificación (`con_push=False`). Los generadores de demostración no avisan.
+- **Correo solo con la cuenta activada**, y el recordatorio entero también: es lo que deja afuera a los vecinos de demostración (unos 45 turnos por día). Nunca filtrar por dominio.
+- **Salud:** la notificación y el correo no nombran prestación ni lugar, solo la dirección (`gestion_es_salud`). La bandeja, con sesión, sí.
+- **Recordatorio:** `POST /avisos/mantenimiento/recordatorios` (cron `recordatorios.yml`, 9:00 a 10:30 AR). Marca `recordado_en` y después manda; lo reservado hoy para mañana no se recuerda. Quien cambie fecha u hora pone `recordado_en = marca_recordatorio(fecha)`.
+- Smoke `smoke_avisos_turnos.py` (35 casos, mails y notificaciones capturados).

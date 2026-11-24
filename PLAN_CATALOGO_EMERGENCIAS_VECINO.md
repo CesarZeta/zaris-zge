@@ -1,6 +1,6 @@
 # Catálogo de emergencias del vecino — tabla completa y propuesta
 
-> **Estado (2026-11-24):** para decisión de César. Sin código todavía. Datos leídos de producción (San Andrés): 50 tipos activos, todos visibles hoy para el vecino.
+> **Estado (2026-11-24):** aprobado por César con las cuatro recomendaciones. Sin código todavía (va después de los avisos de turnos). Datos leídos de producción (San Andrés): 50 tipos activos, todos visibles hoy para el vecino.
 > Dirección ya dada por César (2026-11-02): el vecino **primero clasifica** eligiendo de un catálogo propio y **después amplía** con una descripción.
 
 ## Cómo leer la tabla
