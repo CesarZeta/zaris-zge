@@ -7,6 +7,8 @@ description: "Usar al trabajar en el módulo Datos / BI (Análisis de datos) de 
 
 Tableros analíticos sobre `reclamos`. Módulo React `web-app/src/modules/bi/` (sidebar "datos", `moduloCodigo='bi'`, mig 65, nivel ≤ 2). Router backend `backend/app/api/routes/bi.py` (`/api/v1/bi/*`, guard JWT a nivel router). Entregado 2026-05-26.
 
+**Acceso (2026-11-24):** los tres routers exigen `require_modulo("bi")` (nivel mínimo del municipio más excepciones por usuario; en San Andrés, 1). Reemplaza a lo que esta skill diga de «guard JWT a nivel router» o «nivel ≤ 2 en la UI». Router o tablero nuevo: lo mismo. Prueba: `backend/smoke_bi_acceso.py`, que toma las rutas de OpenAPI.
+
 ### Estructura
 - **Landing DATOS** (`/bi`, `pages/DatosLanding.tsx`): 3 tarjetas estilo Contactos, las tres activas → **Operativo** (`/bi/operativo`), **Ejecutivo** (`/bi/ejecutivo`) y **Atención** (`/bi/atencion`) (verificado 2026-10-30). No hay tablero de OT, Emergencias ni Trámites.
 - **Operativo = UNA PÁGINA** (`/bi/operativo`, `pages/OperativoPage.tsx`, desde 2026-08-30 — reemplazó los 4 tabs, decisión de César al revisar los tableros Power BI de referencia): barra **fija** arriba con índice de secciones (anclas `#resumen` / `#respuesta` / `#pendientes` / `#subreclamos`, `scrollIntoView`) + **filtros globales**, y las 4 secciones (`sections/*Section.tsx`) apiladas verticalmente con `Seccion` (`components/SeccionHeader.tsx`). Las rutas viejas `/bi/operativo/{resueltos|pendientes|subreclamos}` siguen existiendo y desplazan a la sección (compat). `BiLayout` quedó solo breadcrumb + título.

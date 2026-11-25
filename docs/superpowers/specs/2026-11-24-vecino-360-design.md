@@ -1,6 +1,6 @@
 # Vecino 360 — diseño
 
-Fecha: 2026-11-24. Estado: borrador para aprobación de César.
+Fecha: 2026-11-24. Estado: **aprobado por César el 2026-11-24.** Fase 1 hecha ese día; siguen la 2, la 3 y la 4.
 Marcas: **[César]** decidido por César · **[Propuesta]** llamada de Claude, corregible.
 
 ## 1. Intención
@@ -40,7 +40,7 @@ Hoy (San Andrés, prod, 2026-11-24): 3.354 reclamos, 4.578 turnos (3.639 de Salu
 
 **A. Un servicio único en el servidor** **[César]**: `backend/app/services/interacciones.py` arma la lista normalizada y aplica permisos; lo usan la ficha, el portal y Datos. Se descartaron: **B**, que cada pantalla consulte a cada módulo (el listado de reclamos no filtra por vecino, sin paginado real, permisos repartidos, sin totales), y **C**, una tabla que registre cada movimiento (duplica el dato real; el volumen no lo justifica).
 
-Sin migración, salvo la de §7.2 si se aprueba.
+Sin migración.
 
 ## 4. La interacción
 
@@ -111,9 +111,10 @@ Abiertos: 2 reclamos · 1 trámite   Último contacto 12/11   Calificó 4,2
 - La consulta vieja sigue viva para las apps con la versión anterior.
 
 ### 7.2 De mi empresa
-Selector «Míos | {empresa}» si representa alguna: reclamos y trámites de la empresa, sin detalle (número, tipo, estado visible, fecha).
+**[César, 2026-11-24]** Lo de una empresa lo ve todo vecino que tenga **representación activa sobre ella** (`ciudadano_empresa.activo`, empresa activa, mismo municipio), sin otra confirmación. Se le ofrece **elegir qué CUIT** de los que representa: selector «Míos | {CUIT · razón social}», uno por empresa.
 
-**[Propuesta]** Lo de la empresa lo ve solo quien tenga la **representación confirmada por el municipio**: migración con `ciudadano_empresa.confirmada_en` e `id_usuario_confirma`; las que carga un agente nacen confirmadas, las del portal quedan pendientes y un agente (niveles 1 a 4) las confirma desde la ficha de la empresa. La única que hay hoy queda confirmada por la migración solo si la cargó un agente; si no, pendiente. Mientras está pendiente, el vecino ve «Pendiente de confirmación del municipio».
+- Muestra los reclamos y trámites de la empresa, sin detalle (número, tipo, estado visible, fecha); el detalle de los trámites de empresa es la segunda etapa del spec de trámites del vecino.
+- La representación se comprueba en cada pedido: al darse de baja, deja de verla. Una empresa que no representa responde 404, como una inexistente.
 
 ## 8. Datos
 
@@ -137,15 +138,15 @@ Cuarta tarjeta de la landing, ruta `/bi/vecino360`, endpoints `/api/v1/bi/vecino
 
 | Fase | Contenido | Se publica |
 |---|---|---|
-| 1 | Control de acceso en Datos | sola |
+| 1 | Control de acceso en Datos (**hecha el 2026-11-24**, `smoke_bi_acceso.py`) | sola |
 | 2 | Servicio, endpoints y pestañas en las dos fichas | sola |
-| 3 | «Historial» del portal y representación confirmada | servidor primero, después la app |
+| 3 | «Historial» del portal, con selector de CUIT | servidor primero, después la app |
 | 4 | Tablero de Datos | sola |
 
 ## 10. Verificación
 
 - `smoke_interacciones.py` in-process, con y sin barrera: cada nivel (1 a 5), con y sin subárea, con excepción por usuario, super; turno de Salud enmascarado; lo no visible no se cuenta; otro municipio 404; paginado sin repetidos ni faltantes; abiertos según §4; empresa.
-- Portal: auditoría y estados ocultos no se filtran; empresa ajena 404; representación pendiente no ve.
+- Portal: auditoría y estados ocultos no se filtran; empresa ajena 404; representación dada de baja no ve; vecino con dos empresas elige el CUIT.
 - **Cuadre:** los totales por tipo de una persona coinciden con lo que devuelve cada módulo al mismo usuario, y los de Datos con los tableros existentes.
 - `smoke_aislamiento.py`, `smoke_barrera.py`, barridos, y los smokes de Datos con el guard nuevo.
 - Recorrida navegando: ficha con un agente de Atención, uno de Gestión y un administrador; portal en 390 px; Datos; modo oscuro.

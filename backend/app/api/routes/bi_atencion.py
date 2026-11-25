@@ -43,7 +43,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user
+from app.core.auth import require_modulo
 from app.core.database import get_db
 from app.core.municipio import municipio_actual
 from app.api.routes.bi import _parse_meses
@@ -53,7 +53,8 @@ from app.utils.fechas import hoy_local
 router = APIRouter(
     prefix="/api/v1/bi/atencion",
     tags=["BI Atención"],
-    dependencies=[Depends(get_current_user)],
+    # El módulo, también en el servidor: el menú oculto no protege el endpoint (§30).
+    dependencies=[Depends(require_modulo("bi"))],
 )
 
 # Tolerancia para considerar un llamado "a tiempo" (minutos despues de la hora del turno).

@@ -328,12 +328,12 @@ async def main() -> None:
             check(f"sin token {p} -> 401", r.status_code == 401, short(r, 60))
         r = await c.get(f"{BASE}/score", headers={"Authorization": "Bearer basura"})
         check("token invalido -> 401", r.status_code == 401, short(r, 60))
-        # Guard JWT a nivel router: cualquier nivel autenticado entra (la UI gatea <= 2).
+        # El router exige el modulo `bi` (minimo 1 en local); el detalle, en smoke_bi_acceso.py.
         n2 = await q1("SELECT email FROM usuarios WHERE activo = TRUE AND nivel_acceso = 2 AND email LIKE '%@municipio.gob.ar' AND debe_cambiar_password = FALSE ORDER BY id_usuario LIMIT 1")
         if n2:
             h2 = await login(c, n2["email"])
             r = await c.get(f"{BASE}/score", headers=h2)
-            check(f"supervisor n2 ({n2['email']}) -> 200", r.status_code == 200, short(r, 60))
+            check(f"supervisor n2 ({n2['email']}) sin el modulo -> 403", r.status_code == 403, short(r, 60))
         else:
             skip("supervisor n2", "no hay cuenta n2 dev")
         # Marker OpenAPI del router nuevo (para verificar el deploy en prod, §9).

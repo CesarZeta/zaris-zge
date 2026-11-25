@@ -10,7 +10,7 @@ date_trunc, width_bucket); el frontend solo dibuja. Disenado para escalar a mile
 de filas sin traer datos crudos.
 
 Auth: router con guard JWT (§39). Lectura para cualquier usuario autenticado;
-la UI ademas gatea el modulo a nivel <= 2 (supervisores/admin).
+y todo el router exige el modulo `bi` (nivel minimo del municipio + excepciones).
 
 Convenciones:
   - El AREA se deriva SIEMPRE via subarea (mig 27 dropeo tipo_reclamo.id_area;
@@ -36,7 +36,7 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, require_modulo
 from app.core.database import get_db
 from app.core.municipio import municipio_actual
 
@@ -65,7 +65,8 @@ def cond_clase(alias: str = "r") -> str:
 router = APIRouter(
     prefix="/api/v1/bi",
     tags=["BI"],
-    dependencies=[Depends(get_current_user), Depends(clase_bi)],
+    # El módulo, también en el servidor: el menú oculto no protege el endpoint (§30).
+    dependencies=[Depends(require_modulo("bi")), Depends(clase_bi)],
 )
 
 # Estados finales / agrupaciones reutilizadas

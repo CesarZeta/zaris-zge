@@ -22,7 +22,7 @@ Convenciones (espejo de bi.py):
   - Satisfacción: encuesta_envio (id_reclamo) + encuesta_respuesta.
     clasificacion_inicial 1-5; satisfecho = >=4 (regla del módulo Encuestas).
     %Rep = respuestas/enviadas · %Sat = satisfechos/respuestas.
-Auth: guard JWT a nivel router (§39); la UI gatea nivel <= 2 como el resto de DATOS.
+Auth: todo el router exige el modulo `bi` (nivel minimo del municipio + excepciones).
 """
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user
+from app.core.auth import require_modulo
 from app.core.database import get_db
 from app.core.municipio import municipio_actual
 from app.api.routes.bi import _CON_SLA, _DENTRO_SLA, _DIAS_CIERRE, _JOIN_AREA, _parse_meses, cond_clase, clase_bi
@@ -42,7 +42,8 @@ router = APIRouter(
     prefix="/api/v1/bi/ejecutivo",
     tags=["BI Ejecutivo"],
     # clase_bi: reclamos del vecino o relevamientos (mig 141), ver bi.py.
-    dependencies=[Depends(get_current_user), Depends(clase_bi)],
+    # El módulo, también en el servidor: el menú oculto no protege el endpoint (§30).
+    dependencies=[Depends(require_modulo("bi")), Depends(clase_bi)],
 )
 
 # Join de encuestas de reclamos: un envío por fila (contar envíos = correcto para
