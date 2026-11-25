@@ -81,3 +81,5 @@ description: "Usar al trabajar en el módulo Admin Tablas / CRUD genérico de ma
 
 - Cada municipio tiene 6 áreas fijas (`area.es_sistema = true`): se renombran, no se dan de baja. La API responde 422 «Es un área fija del sistema: se puede renombrar, no dar de baja.» al PUT con `activo: false` y al DELETE (`_rechazar_baja_area_fija` en `admin_tablas.py`), y un trigger (`area_sistema_no_baja`) lo impide también en la base. En Maestros → Áreas el botón «Baja» de esas filas sale deshabilitado con ese texto.
 - `configuracion_general` por POST genérico: lo usa Config → Sistema para crear una clave que el municipio no tiene.
+
+> **Select que depende de otro (2026-11-24):** `filtraPor: 'id_tipo'` en una columna `select` muestra solo las opciones cuyo `id_tipo` es el elegido en ese campo, y se vacía al cambiarlo (caso: subtipo en «Opciones (app del vecino)»). La coherencia se valida además en el backend.
